@@ -77,14 +77,26 @@ if ! kill -0 "$NAV_PID" 2>/dev/null; then
 fi
 
 echo "[OK] Nav2 が起動しました"
+
+# AMCL に初期位置を教える。
+# RViz の「2D Pose Estimate」でクリックすると、この地図は原点が
+# (-58, -53) にあるため大きくずれる（実測で位置 31 m / 向き 179 度）。
+# Isaac Sim は真値を持っているので、それをそのまま渡す。
+echo "[INFO] 初期姿勢を Isaac Sim の真値から設定します"
+sleep 5
+python3 "$SCRIPT_DIR/src/set_initial_pose.py" || \
+    echo "[WARN] 初期姿勢の設定に失敗しました。手動で設定してください"
+
 echo
 echo "=============================================================="
 echo " 使い方:"
-echo "   1. 別ターミナルで RViz を起動する:"
-echo "        source /opt/ros/jazzy/setup.bash"
-echo "        ros2 run rviz2 rviz2 -d \$(ros2 pkg prefix nav2_bringup)/share/nav2_bringup/rviz/nav2_default_view.rviz"
-echo "   2. RViz の「2D Pose Estimate」で G1 の現在位置を教える"
-echo "   3. RViz の「2D Goal Pose」で目標地点を指定する"
+echo "   1. 別ターミナルで RViz を起動する:  bash run_rviz.sh"
+echo "   2. RViz の「2D Goal Pose」で目標地点を指定する"
+echo
+echo "   初期姿勢は上で自動設定済み（Isaac Sim の真値）。"
+echo "   RViz の「2D Pose Estimate」は使わないこと。この地図は原点が"
+echo "   ずれているためクリックでは大きく外れる。"
+echo "   やり直したいときは: python3 src/set_initial_pose.py"
 echo
 echo " ログ: $LOG_DIR/nav2.log / $LOG_DIR/nav2_sim.log"
 echo " 終了: Ctrl-C"
