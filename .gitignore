@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# 実行ログ（実行のたびに増えるため管理対象外）
+logs/
+*.log
+
+# 学習済み checkpoint（IsaacLab の PretrainedCheckpoints から再取得可能。CLAUDE.md 参照）
+checkpoints/
+*.pt
