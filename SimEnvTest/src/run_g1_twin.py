@@ -35,6 +35,30 @@ parser.add_argument(
 )
 parser.add_argument("--x", type=float, default=0.0, help="G1 のスポーン X 座標")
 parser.add_argument("--y", type=float, default=0.0, help="G1 のスポーン Y 座標")
+parser.add_argument(
+    "--ros",
+    action="store_true",
+    help="ROS 2 へ /scan と /odom を配信する（SLAM / Nav2 で使う）",
+)
+parser.add_argument(
+    "--command-source",
+    type=str,
+    default="keyboard",
+    choices=("keyboard", "patrol", "ros"),
+    help=(
+        "速度指令の供給源。keyboard: 手動操作 / "
+        "patrol: LiDAR を見て自動巡回（SLAM 用）/ ros: Nav2 の /cmd_vel"
+    ),
+)
+parser.add_argument(
+    "--patrol-seed", type=int, default=0, help="自動巡回の乱数種（再現性のため）"
+)
+parser.add_argument(
+    "--max-steps",
+    type=int,
+    default=0,
+    help="この制御ステップ数で自動終了する（0 なら無制限）。自動巡回の時間制限に使う",
+)
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 
@@ -57,10 +81,17 @@ def main() -> None:
     sim_cfg = sim_utils.SimulationCfg(dt=PHYSICS_DT, device=args.device)
     sim = SimulationContext(sim_cfg)
 
+    # 自動巡回・Nav2 連携には LiDAR と ROS が要るので暗黙に有効化する
+    enable_ros = args.ros or args.command_source in ("patrol", "ros")
+
     config = RunnerConfig(
         use_warehouse=not args.flat,
         spawn_xy=(args.x, args.y),
         device=args.device,
+        enable_ros=enable_ros,
+        command_source=args.command_source,
+        patrol_seed=args.patrol_seed,
+        max_steps=args.max_steps,
     )
     runner = G1TwinRunner(checkpoint_path, config)
     runner.build_scene()
@@ -71,7 +102,14 @@ def main() -> None:
     # カメラを G1 の周辺へ向ける
     sim.set_camera_view(eye=(3.0, 3.0, 2.5), target=(args.x, args.y, 0.8))
 
-    runner.start_keyboard()
+    # 指令の供給源に応じて必要なものだけ起動する
+    if args.command_source == "keyboard":
+        runner.start_keyboard()
+    elif args.command_source == "patrol":
+        runner.start_patrol()
+
+    if enable_ros:
+        runner.start_ros()
 
     try:
         runner.run(sim, simulation_app)
