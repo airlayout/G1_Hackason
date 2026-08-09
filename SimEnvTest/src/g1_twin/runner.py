@@ -30,6 +30,13 @@ WAREHOUSE_USD: str = "/Isaac/Environments/Simple_Warehouse/full_warehouse.usd"
 # 10Hz に間引く（実機の 2D LiDAR も 10〜20Hz 程度）。
 SCAN_PUBLISH_EVERY: int = 5  # 50Hz / 5 = 10Hz
 
+# ROS 経由の指令の 1 周期あたり最大変化量。
+# 50Hz なので 0.02 は 1 秒で 1.0 m/s の加速に相当する。
+# 実測で vx=0.5 -> 0 の急変により転倒したため制限する。
+MAX_ACCEL_PER_STEP: float = 0.02
+# 旋回は並進より姿勢を崩しにくいので緩めにする（1 秒で 2.0 rad/s）
+MAX_YAW_ACCEL_PER_STEP: float = 0.04
+
 
 @dataclass
 class RunnerConfig:
@@ -75,6 +82,8 @@ class G1TwinRunner:
         self._latest_scan = None
         # 実時間比の計測用
         self._last_rate_time: float = 0.0
+        # ROS 指令のレート制限用（前回送った指令）
+        self._last_ros_command = VelocityCommand()
 
     # ------------------------------------------------------------------
     # シーン構築
@@ -183,6 +192,39 @@ class G1TwinRunner:
             joint_vel=joint_vel_rel,
         )
 
+    def _rate_limit(self, target: VelocityCommand) -> VelocityCommand:
+        """指令の変化量を制限して急変を防ぐ。
+
+        歩行ポリシーは前進の勢いがある状態で並進を急に止められると
+        姿勢を崩す。実測では vx=0.5 で歩行中に vx=0 / yaw=0.6 へ
+        急変した直後に転倒した。
+
+        Args:
+            target: 送りたい指令
+
+        Returns:
+            前回からの変化量を制限した指令
+        """
+
+        def step_toward(current: float, goal: float, limit: float) -> float:
+            delta = goal - current
+            if delta > limit:
+                return current + limit
+            if delta < -limit:
+                return current - limit
+            return goal
+
+        previous = self._last_ros_command
+        limited = VelocityCommand(
+            vx=step_toward(previous.vx, target.vx, MAX_ACCEL_PER_STEP),
+            vy=step_toward(previous.vy, target.vy, MAX_ACCEL_PER_STEP),
+            yaw_rate=step_toward(
+                previous.yaw_rate, target.yaw_rate, MAX_YAW_ACCEL_PER_STEP
+            ),
+        )
+        self._last_ros_command = limited
+        return limited
+
     def _is_fallen(self) -> bool:
         """転倒しているかを判定する。
 
@@ -283,13 +325,15 @@ class G1TwinRunner:
             elif self._config.command_source == "ros" and self._ros is not None:
                 # Nav2 からの /cmd_vel。後退はポリシーが転倒するため許可しない。
                 received = self._ros.latest_command
-                self._sink.send(
-                    VelocityCommand(
-                        vx=max(0.0, received.vx),
-                        vy=received.vy,
-                        yaw_rate=received.yaw_rate,
-                    )
+                # 指令の急変を鈍らせる。実測では vx=0.5 で歩行中に
+                # vx=0 / yaw=0.6 へ急変した直後に転倒した。歩行ロボットは
+                # 前進の勢いがある状態で並進を急に止めると姿勢が崩れる。
+                target = VelocityCommand(
+                    vx=max(0.0, received.vx),
+                    vy=received.vy,
+                    yaw_rate=received.yaw_rate,
                 )
+                self._sink.send(self._rate_limit(target))
             elif self._commander is not None:
                 # キーボードからコマンドを取得して送信先へ渡す
                 self._sink.send(self._commander.poll())

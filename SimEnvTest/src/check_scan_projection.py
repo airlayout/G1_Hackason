@@ -78,7 +78,9 @@ def project(ranges: np.ndarray, scan: LaserScan, pose: tuple[float, float, float
     idx = np.where(np.isfinite(ranges) & (ranges > scan.range_min))[0]
     if idx.size == 0:
         return np.zeros((0, 2))
-    angles = scan.angle_min + idx * scan.angle_increment + yaw
+    # yaw は足さない。LiDAR は ray_alignment="yaw" で構築されており、
+    # /scan の角度はすでにワールド座標基準になっているため。
+    angles = scan.angle_min + idx * scan.angle_increment
     d = ranges[idx]
     return np.stack([x + d * np.cos(angles), y + d * np.sin(angles)], axis=1)
 

@@ -115,7 +115,15 @@ class MapBuilder(Node):
         idx = np.where(valid)[0]
         if idx.size == 0:
             return
-        angles = msg.angle_min + idx * msg.angle_increment + yaw
+        # yaw を足してはいけない。
+        #
+        # LiDAR は ray_alignment="yaw" で構築されており、RayCaster が
+        # 既にロボットの yaw を反映してレイを飛ばしている。つまり
+        # /scan の角度はすでにワールド座標基準になっている。
+        # ここで odom の yaw を足すと二重適用になり、点が回転して
+        # Warehouse の外へ飛ぶ（実測: 全スキャンの 96.7% で発生し、
+        # 地図が実シーンから中央値 11 m ずれていた）。
+        angles = msg.angle_min + idx * msg.angle_increment
         d = ranges[idx]
         points = np.stack([x + d * np.cos(angles), y + d * np.sin(angles)], axis=1)
         self.observations.append((points, (x, y)))
