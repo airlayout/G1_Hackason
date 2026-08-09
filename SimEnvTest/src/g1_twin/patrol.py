@@ -26,12 +26,27 @@ FRONT_CLEAR_DISTANCE: float = 1.6
 # 旋回を止めてよい前方の余裕 [m]。FRONT_CLEAR_DISTANCE より大きくして
 # 境界での前進と旋回の往復（チャタリング）を防ぐ。
 FRONT_RESUME_DISTANCE: float = 2.2
+# 旋回しても FRONT_RESUME_DISTANCE に届かない狭い場所では、
+# これ以上の余裕があれば前進を再開する（デッドロック脱出用）。
+# 通路が狭く四方が 2.2 m 未満だと、どちらを向いても旋回を抜けられず
+# その場で回り続けてしまうため（実際に発生した）。
+FRONT_ESCAPE_DISTANCE: float = 1.2
+# この回数だけ旋回方向を反転しても抜けられなければ脱出モードに入る
+STUCK_REVERSALS_BEFORE_ESCAPE: int = 2
+# 脱出時に、旋回判定を抑止して強制的に前進し続けるステップ数。
+# これが無いと前進を再開した次の周期でまた旋回に入り、同じ場所に留まる。
+# 50Hz なので 100 step = シム内 2 秒 = 約 0.8 m 進む。
+ESCAPE_FORWARD_STEPS: int = 100
+# 脱出中でも、これより近ければ衝突するので旋回に戻す [m]
+ESCAPE_ABORT_DISTANCE: float = 0.7
 # 巡回時の前進速度 [m/s]（実測で +0.5 指令 -> 0.38 実速度）
 PATROL_SPEED: float = 0.5
 # 旋回速度 [rad/s]（実測で指令とほぼ一致する）
 PATROL_TURN_RATE: float = 0.6
-# 同じ場所で旋回し続けたときに諦めて向きを変えるまでのステップ数
-STUCK_TURN_STEPS: int = 400
+# 同じ場所で旋回し続けたときに諦めて向きを変えるまでのステップ数。
+# 50Hz なので 150 step = シム内 3 秒。旋回速度 0.6 rad/s では約 100 度回る。
+# これで開けないなら向きを変えても無駄と判断する。
+STUCK_TURN_STEPS: int = 150
 
 
 @dataclass
@@ -61,6 +76,10 @@ class AutoPatrol:
         # 旋回方向（+1: 左, -1: 右）。旋回に入るたびに決め直す。
         self._turn_sign = 1.0
         self._turn_steps = 0
+        # 旋回方向を反転した回数（デッドロック検知用）
+        self._reversals = 0
+        # 脱出のため強制的に前進する残りステップ数
+        self._escape_steps = 0
         self.stats = PatrolStats()
         # 扇形ごとのビーム番号。スキャンの形は毎回同じなので初回に作って使い回す。
         self._sector_cache: dict[tuple[float, float], list[int]] = {}
@@ -124,6 +143,26 @@ class AutoPatrol:
             if front > FRONT_RESUME_DISTANCE:
                 self._turning = False
                 self._turn_steps = 0
+                self._reversals = 0
+                self.stats.forward_steps += 1
+                return VelocityCommand(vx=PATROL_SPEED, vy=0.0, yaw_rate=0.0)
+
+            # 何度反転しても開けない場合は、狭い通路にいるとみなして
+            # 判定を緩める。そうしないと同じ場所で回り続けてしまう。
+            if (
+                self._reversals >= STUCK_REVERSALS_BEFORE_ESCAPE
+                and front > FRONT_ESCAPE_DISTANCE
+            ):
+                self._turning = False
+                self._turn_steps = 0
+                self._reversals = 0
+                # しばらく旋回判定を抑止しないと、次の周期で再び旋回に入り
+                # 同じ場所から動けなくなる（実際に発生した）
+                self._escape_steps = ESCAPE_FORWARD_STEPS
+                print(
+                    f"[Patrol] 狭い場所なので前方 {front:.2f} m で前進を再開します"
+                    f"（{ESCAPE_FORWARD_STEPS} step は旋回しない）"
+                )
                 self.stats.forward_steps += 1
                 return VelocityCommand(vx=PATROL_SPEED, vy=0.0, yaw_rate=0.0)
 
@@ -132,12 +171,26 @@ class AutoPatrol:
             if self._turn_steps > STUCK_TURN_STEPS:
                 self._turn_sign = -self._turn_sign
                 self._turn_steps = 0
-                print("[Patrol] 旋回が長引いたため向きを反転します")
+                self._reversals += 1
+                print(
+                    f"[Patrol] 旋回が長引いたため向きを反転します "
+                    f"（{self._reversals} 回目、前方 {front:.2f} m）"
+                )
 
             self.stats.turn_steps += 1
             return VelocityCommand(
                 vx=0.0, vy=0.0, yaw_rate=PATROL_TURN_RATE * self._turn_sign
             )
+
+        # 脱出中はしばらく旋回せずに前進する。ただし衝突しそうなら中止する。
+        if self._escape_steps > 0:
+            self._escape_steps -= 1
+            if front > ESCAPE_ABORT_DISTANCE:
+                self.stats.forward_steps += 1
+                return VelocityCommand(vx=PATROL_SPEED, vy=0.0, yaw_rate=0.0)
+            # 近すぎるので脱出を打ち切って通常の判定に戻す
+            self._escape_steps = 0
+            print(f"[Patrol] 前方 {front:.2f} m まで近づいたため脱出を中止します")
 
         # 前進中: 前方が塞がったら旋回に入る
         if front < FRONT_CLEAR_DISTANCE:
@@ -152,6 +205,7 @@ class AutoPatrol:
 
             self._turning = True
             self._turn_steps = 0
+            self._reversals = 0
             print(
                 f"[Patrol] 前方 {front:.2f} m で旋回開始 "
                 f"（左 {left:.1f} / 右 {right:.1f}、"
