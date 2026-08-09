@@ -39,13 +39,23 @@ PGM_UNKNOWN: int = 205
 PGM_FREE: int = 254
 PGM_OCCUPIED: int = 0
 # 障害物と判定する対数オッズの閾値
-LOG_ODDS_OCCUPIED: float = 2.0
-LOG_ODDS_FREE: float = -1.5
-# 1 回の観測で加算する対数オッズ
-HIT_GAIN: float = 0.85
-MISS_GAIN: float = 0.4
+LOG_ODDS_OCCUPIED: float = 1.0
+LOG_ODDS_FREE: float = -1.0
+# 1 回の観測で加算する対数オッズ。
+# hit を大きく、miss を小さくする。同じ場所を何度も通ると
+# レイの通過（空き）の回数が当たり（障害物）の回数を大きく上回るため、
+# miss が大きいと壁が消える（実測: 障害物が 833 セル = 0.0% しか残らなかった）。
+HIT_GAIN: float = 2.0
+MISS_GAIN: float = 0.05
+# 対数オッズの上下限。これが無いと何度も観測した空きが際限なく
+# 負に振れ、あとから壁を見つけても打ち消せない。
+LOG_ODDS_MAX: float = 6.0
+LOG_ODDS_MIN: float = -2.0
 # 地図の余白 [m]
 MARGIN: float = 2.0
+# この秒数スキャンが来なければ Isaac Sim が終了したとみなして収集を打ち切る。
+# 待ち続けてもデータは増えず、そこまでの分で地図を作るほうがよい。
+IDLE_TIMEOUT_SEC: float = 30.0
 
 
 class MapBuilder(Node):
@@ -159,9 +169,13 @@ def build_grid(
             # レイが通った空間は空き
             for fx, fy in bresenham_free_cells(ocx, ocy, pcx, pcy):
                 if 0 <= fx < width and 0 <= fy < height:
-                    log_odds[fy, fx] -= MISS_GAIN
+                    log_odds[fy, fx] = max(
+                        LOG_ODDS_MIN, log_odds[fy, fx] - MISS_GAIN
+                    )
             # 当たった点は障害物
-            log_odds[pcy, pcx] += HIT_GAIN
+            log_odds[pcy, pcx] = min(
+                LOG_ODDS_MAX, log_odds[pcy, pcx] + HIT_GAIN
+            )
 
     grid = np.full((height, width), UNKNOWN, dtype=np.int8)
     grid[log_odds <= LOG_ODDS_FREE] = FREE
@@ -218,30 +232,79 @@ def main() -> None:
     parser.add_argument(
         "--duration", type=float, default=120.0, help="収集する秒数"
     )
+    parser.add_argument(
+        "--cache",
+        default="",
+        help=(
+            "スキャンの保存先 .npz。指定すると収集結果を保存し、"
+            "次回から Isaac Sim 無しで再構築できる（格子パラメータの調整用）"
+        ),
+    )
+    parser.add_argument(
+        "--from-cache",
+        default="",
+        help="保存済みの .npz から地図を作る（Isaac Sim は不要）",
+    )
     args = parser.parse_args()
+
+    # キャッシュから作る場合は ROS を使わない
+    if args.from_cache:
+        print(f"[Map] キャッシュから読み込みます: {args.from_cache}")
+        data = np.load(args.from_cache, allow_pickle=True)
+        observations = [
+            (points, tuple(origin))
+            for points, origin in zip(data["points"], data["origins"])
+        ]
+        print(f"[Map] {len(observations)} スキャンを読み込みました")
+        grid, ox, oy = build_grid(observations)
+        save_map(grid, ox, oy, args.output)
+        return
 
     rclpy.init()
     node = MapBuilder(args.duration)
 
-    print(f"[Map] {args.duration:.0f} 秒間スキャンを集めます...")
+    print(f"[Map] 最大 {args.duration:.0f} 秒間スキャンを集めます...")
     import time
 
     start = time.time()
     last_report = start
+    last_count = 0
+    idle_since = start
     while time.time() - start < args.duration:
         rclpy.spin_once(node, timeout_sec=0.1)
         now = time.time()
-        if now - last_report >= 20.0:
+        count = len(node.observations)
+
+        # スキャンが途絶えたら（Isaac Sim が終了したら）収集を打ち切る。
+        # 待ち続けても増えないため、そこまでの分で地図を作る。
+        if count > last_count:
+            last_count = count
+            idle_since = now
+        elif count > 0 and now - idle_since > IDLE_TIMEOUT_SEC:
             print(
-                f"[Map] {now - start:.0f} 秒経過、"
-                f"{len(node.observations)} スキャン取得"
+                f"[Map] {IDLE_TIMEOUT_SEC:.0f} 秒間スキャンが来ないため収集を終了します"
+                "（Isaac Sim が終了したと判断）"
             )
+            break
+
+        if now - last_report >= 20.0:
+            print(f"[Map] {now - start:.0f} 秒経過、{count} スキャン取得")
             last_report = now
 
     print(f"[Map] 合計 {len(node.observations)} スキャンを取得しました")
     if len(node.observations) < 5:
         print("[NG] スキャンが足りません。Isaac Sim が動いているか確認してください")
         sys.exit(1)
+
+    if args.cache:
+        # あとで Isaac Sim 無しに再構築できるよう保存する。
+        # 格子のパラメータ調整のたびにシムを回すのは時間の無駄なため。
+        np.savez_compressed(
+            args.cache,
+            points=np.array([p for p, _ in node.observations], dtype=object),
+            origins=np.array([o for _, o in node.observations]),
+        )
+        print(f"[Map] スキャンを保存しました: {args.cache}")
 
     print("[Map] 占有格子を構築しています...")
     grid, ox, oy = build_grid(node.observations)
