@@ -12,6 +12,8 @@ logs/
 
 # SLAM の作業中に保存した確認用の地図（完成版のみ手動で追加する）
 SimEnvTest/maps/check*
+# スキャンのキャッシュ（40MB 超。再収集できるので追跡しない）
+SimEnvTest/maps/scans*.npz
 SimEnvTest/maps/direct*
 SimEnvTest/maps/projection*
 *_preview.png

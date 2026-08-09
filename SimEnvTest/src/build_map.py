@@ -56,6 +56,15 @@ MARGIN: float = 2.0
 # この秒数スキャンが来なければ Isaac Sim が終了したとみなして収集を打ち切る。
 # 待ち続けてもデータは増えず、そこまでの分で地図を作るほうがよい。
 IDLE_TIMEOUT_SEC: float = 30.0
+# 地図作成に使うレイの最大長 [m]。
+#
+# 短くすると壁を貫通する長いレイを除ける一方、壁を定義する見通しまで
+# 失われる。実測（9497 スキャン）での比較:
+#     30 m: 探索 3030 m2、壁は出るが扇状のノイズあり  <- 最良
+#     25 m: 探索 1925 m2、ノイズは減るが壁も痩せる
+#     12 m: 探索  631 m2、地図の形が失われる
+# 現状は制限しないのが最良。ノイズの根本原因は別途調査が必要。
+MAP_MAX_RAY: float = 30.0
 
 
 class MapBuilder(Node):
@@ -91,7 +100,12 @@ class MapBuilder(Node):
         x, y, yaw = self._latest_odom
         ranges = np.array(msg.ranges)
         # 有効な測距のみ使う。0.0（近すぎ）と inf（当たらず）は障害物ではない。
-        valid = np.isfinite(ranges) & (ranges > msg.range_min) & (ranges < msg.range_max)
+        # 遠すぎるレイは使わない（壁を貫通して扇状のノイズを作るため）
+        valid = (
+            np.isfinite(ranges)
+            & (ranges > msg.range_min)
+            & (ranges < min(msg.range_max, MAP_MAX_RAY))
+        )
         idx = np.where(valid)[0]
         if idx.size == 0:
             return
@@ -160,22 +174,63 @@ def build_grid(
             int((wy - lo_y) / RESOLUTION),
         )
 
-    for points, (ox, oy) in observations:
-        ocx, ocy = to_cell(ox, oy)
-        for px, py in points:
-            pcx, pcy = to_cell(px, py)
-            if not (0 <= pcx < width and 0 <= pcy < height):
-                continue
-            # レイが通った空間は空き
-            for fx, fy in bresenham_free_cells(ocx, ocy, pcx, pcy):
-                if 0 <= fx < width and 0 <= fy < height:
-                    log_odds[fy, fx] = max(
-                        LOG_ODDS_MIN, log_odds[fy, fx] - MISS_GAIN
-                    )
-            # 当たった点は障害物
-            log_odds[pcy, pcx] = min(
-                LOG_ODDS_MAX, log_odds[pcy, pcx] + HIT_GAIN
-            )
+    # レイごとに Python でループすると 9500 スキャン × 270 本で
+    # 30 分以上かかる。numpy で一括処理する。
+    #
+    # 各レイを等間隔にサンプリングして通過セルを求める（Bresenham の
+    # 代わり）。解像度の半分の刻みで取れば、セルの取りこぼしは起きない。
+    for index, (points, (ox, oy)) in enumerate(observations):
+        if points.size == 0:
+            continue
+
+        # 長すぎるレイは落とす。キャッシュから読んだ場合は収集時の
+        # フィルタが効いていないため、ここでも同じ条件を課す。
+        ray_len = np.hypot(points[:, 0] - ox, points[:, 1] - oy)
+        points = points[ray_len <= MAP_MAX_RAY]
+        if points.size == 0:
+            continue
+
+        # 当たり点のセル座標
+        pcx = ((points[:, 0] - lo_x) / RESOLUTION).astype(np.int32)
+        pcy = ((points[:, 1] - lo_y) / RESOLUTION).astype(np.int32)
+        inside = (
+            (pcx >= 0) & (pcx < width) & (pcy >= 0) & (pcy < height)
+        )
+        pcx, pcy = pcx[inside], pcy[inside]
+        hit_points = points[inside]
+        if pcx.size == 0:
+            continue
+
+        # レイの通過セルを求める。最長のレイに合わせた数のサンプルを取り、
+        # 各レイは自分の長さの範囲だけを使う（t は 0..1 の比率）。
+        distances = np.hypot(hit_points[:, 0] - ox, hit_points[:, 1] - oy)
+        max_samples = int(distances.max() / (RESOLUTION * 0.5)) + 2
+        t = np.linspace(0.0, 1.0, max_samples)[None, :]  # (1, S)
+        # 終点（障害物のセル）は含めない
+        sx = ox + (hit_points[:, 0:1] - ox) * t  # (N, S)
+        sy = oy + (hit_points[:, 1:2] - oy) * t
+
+        fcx = ((sx - lo_x) / RESOLUTION).astype(np.int32).ravel()
+        fcy = ((sy - lo_y) / RESOLUTION).astype(np.int32).ravel()
+        valid = (
+            (fcx >= 0) & (fcx < width) & (fcy >= 0) & (fcy < height)
+        )
+        fcx, fcy = fcx[valid], fcy[valid]
+
+        # 同じセルを何度も引かないよう、このスキャン内では 1 回だけ数える
+        flat_free = np.unique(fcy.astype(np.int64) * width + fcx)
+        flat_hit = np.unique(pcy.astype(np.int64) * width + pcx)
+        # 障害物になるセルは空きから除く（終点を含めないため）
+        flat_free = flat_free[~np.isin(flat_free, flat_hit)]
+
+        flat = log_odds.ravel()
+        np.subtract.at(flat, flat_free, MISS_GAIN)
+        np.add.at(flat, flat_hit, HIT_GAIN)
+        # 上下限を課す。これが無いと何度も観測した空きが際限なく負に振れる。
+        np.clip(log_odds, LOG_ODDS_MIN, LOG_ODDS_MAX, out=log_odds)
+
+        if (index + 1) % 2000 == 0:
+            print(f"[Map] {index + 1}/{len(observations)} スキャンを処理しました")
 
     grid = np.full((height, width), UNKNOWN, dtype=np.int8)
     grid[log_odds <= LOG_ODDS_FREE] = FREE
