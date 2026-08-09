@@ -7,7 +7,11 @@
 方針:
     前方が開いていれば前進する。塞がっていれば、より開いている側へ
     その場旋回する。壁沿いを追うのではなく単純な反応型にしてある。
-    歩行ポリシーは後退が苦手（-0.3 m/s 以上で転倒）なので後退は使わない。
+
+    通常は後退を使わない（歩行ポリシーは -0.3 m/s 以上の後退で転倒する）。
+    ただし LiDAR に映らない低い障害物に引っかかったときだけ、
+    転倒しない -0.2 m/s で後退して脱出する。旋回だけでは体が引っかかった
+    ままで、実測では 21 回旋回しても同じ位置から動けなかった。
 """
 
 from __future__ import annotations
@@ -53,6 +57,12 @@ CONFINED_STEPS: int = 750
 # 閉じ込めから脱出するときに直進させるステップ数。
 # 50Hz なので 250 step = シム内 5 秒 = 約 1.9 m 進む。
 CONFINED_ESCAPE_STEPS: int = 250
+# 障害物に引っかかったときの後退速度 [m/s]。
+# ポリシーは -0.2 m/s までなら転倒せずに歩ける（実測、G1/CLAUDE.md 参照）。
+# -0.3 m/s 以上では転倒するのでこれ以上下げないこと。
+BACKUP_SPEED: float = -0.2
+# 後退するステップ数。50Hz なので 150 step = シム内 3 秒 = 約 0.6 m。
+BACKUP_STEPS: int = 150
 
 
 @dataclass
@@ -66,6 +76,8 @@ class PatrolStats:
     stall_recoveries: int = 0
     # 同じ場所に閉じ込められて脱出した回数
     confined_recoveries: int = 0
+    # 後退した step 数
+    backup_steps: int = 0
 
 
 class AutoPatrol:
@@ -98,6 +110,8 @@ class AutoPatrol:
         self._anchor: tuple[float, float] | None = None
         self._anchor_steps = 0
         self._confined = False
+        # 後退中の残りステップ数
+        self._backing_steps = 0
         self.stats = PatrolStats()
         # 扇形ごとのビーム番号。スキャンの形は毎回同じなので初回に作って使い回す。
         self._sector_cache: dict[tuple[float, float], list[int]] = {}
@@ -261,20 +275,34 @@ class AutoPatrol:
             )
 
         # 前方が開いているのに進めていない場合は、LiDAR に映らない
-        # 低い障害物にぶつかっている。強制的に向きを変えて脱出する。
+        # 低い障害物にぶつかっている。まず後退して離れてから向きを変える。
+        #
+        # 旋回だけでは脱出できない。障害物に接した状態で回っても
+        # 体が引っかかったままで、実測では 21 回旋回しても同じ位置から
+        # 動けなかった。物理的に離れる必要がある。
         if self._stall_steps >= STALL_STEPS_BEFORE_TURN:
             self._stall_steps = 0
             self._escape_steps = 0
-            self._turning = True
-            self._turn_steps = 0
-            self._turn_sign = self._rng.choice((1.0, -1.0))
-            self._turn_target_deg = 120.0
+            self._turning = False
+            self._backing_steps = BACKUP_STEPS
             self.stats.stall_recoveries += 1
             print(
                 "[Patrol] 前方は開いているのに進めていないため "
-                f"（LiDAR に映らない障害物）、{'左' if self._turn_sign > 0 else '右'}へ "
-                "120 度回ります"
+                f"（LiDAR に映らない障害物）、{BACKUP_STEPS} step 後退します"
             )
+
+        # 後退中。ポリシーは -0.2 m/s までなら転倒せずに歩ける（実測）。
+        if self._backing_steps > 0:
+            self._backing_steps -= 1
+            if self._backing_steps == 0:
+                # 後退し終えたら向きを変える
+                self._turning = True
+                self._turn_steps = 0
+                self._turn_sign = self._rng.choice((1.0, -1.0))
+                self._turn_target_deg = 120.0
+                print("[Patrol] 後退を終えたので 120 度回ります")
+            self.stats.backup_steps += 1
+            return VelocityCommand(vx=BACKUP_SPEED, vy=0.0, yaw_rate=0.0)
 
         front = self._sector_min_distance(scan, 0.0, FRONT_HALF_ANGLE_DEG)
 

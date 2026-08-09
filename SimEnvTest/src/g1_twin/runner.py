@@ -376,5 +376,6 @@ class G1TwinRunner:
             print(
                 f"[Patrol] 巡回の統計: 合計 {stats.steps} step "
                 f"(前進 {stats.forward_steps} / 旋回 {stats.turn_steps} / "
-                f"足踏み脱出 {stats.stall_recoveries} 回)"
+                f"後退 {stats.backup_steps} / 足踏み脱出 {stats.stall_recoveries} 回 / "
+                f"閉じ込め脱出 {stats.confined_recoveries} 回)"
             )
