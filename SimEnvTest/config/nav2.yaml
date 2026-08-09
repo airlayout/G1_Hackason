@@ -1,0 +1,218 @@
+# Nav2 の設定（G1 デジタルツイン用）
+#
+# G1 の歩行ポリシーには車輪型ロボットと違う制約があるため、
+# 既定値のままでは転倒する。以下を実測値に基づいて調整してある。
+#
+# 歩行ポリシーの制約（実測値・G1/CLAUDE.md 参照）:
+#   - 後退は学習範囲外。-0.3 m/s 以上で転倒するため後退は禁止する
+#     （min_vel_x = 0.0）。方向転換はその場旋回で行う。
+#   - 前進は +0.5 指令 -> 0.38 m/s 程度
+#   - 旋回は指令とほぼ一致する（±1.0 -> ±0.98）ので信頼してよい
+#   - 静止指令でも 0.04 m/s 程度漂う
+
+amcl:
+  ros__parameters:
+    use_sim_time: false
+    base_frame_id: base_link
+    odom_frame_id: odom
+    global_frame_id: map
+    scan_topic: /scan
+    # 真値 odom を使うのでオドメトリの誤差モデルは小さくてよい
+    alpha1: 0.1
+    alpha2: 0.1
+    alpha3: 0.1
+    alpha4: 0.1
+    alpha5: 0.1
+    # 全方向移動できるので omni モデルを使う（G1 は横移動が可能）
+    robot_model_type: "nav2_amcl::OmniMotionModel"
+    laser_max_range: 30.0
+    laser_min_range: 0.3
+    max_particles: 2000
+    min_particles: 500
+    update_min_a: 0.2
+    update_min_d: 0.25
+    transform_tolerance: 1.0
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: false
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /odom
+    # 変換の待ち時間。Sim が実時間より遅いので長めに取る。
+    transform_tolerance: 1.0
+    bt_loop_duration: 20
+    default_server_timeout: 40
+
+controller_server:
+  ros__parameters:
+    use_sim_time: false
+    controller_frequency: 10.0
+    # 静止指令でも 0.04 m/s 程度漂うため、停止判定はそれより上に置く
+    min_x_velocity_threshold: 0.05
+    min_y_velocity_threshold: 0.05
+    min_theta_velocity_threshold: 0.05
+    failure_tolerance: 0.5
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      # 歩行は遅いので進捗の判定を緩める
+      required_movement_radius: 0.5
+      movement_time_allowance: 30.0
+
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.35
+      yaw_goal_tolerance: 0.4
+      stateful: true
+
+    # RotationShim: 目標が真後ろ等にあるとき、まずその場で向きを変えてから
+    # 本来のコントローラへ渡す。後退できない G1 に適している。
+    FollowPath:
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      angular_dist_threshold: 0.6
+      forward_sampling_distance: 0.6
+      rotate_to_heading_angular_vel: 0.6
+      max_angular_accel: 1.0
+      simulate_ahead_time: 1.0
+
+      # --- RegulatedPurePursuit の設定 ---
+      desired_linear_vel: 0.5
+      lookahead_dist: 0.8
+      min_lookahead_dist: 0.4
+      max_lookahead_dist: 1.2
+      lookahead_time: 1.5
+      transform_tolerance: 1.0
+      use_velocity_scaled_lookahead_dist: true
+      # 障害物に近づいたら減速する
+      use_regulated_linear_velocity_scaling: true
+      use_cost_regulated_linear_velocity_scaling: false
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.25
+      # 後退は禁止。これを true にすると転倒する。
+      allow_reversing: false
+      # 曲がりきれないときはその場旋回に切り替える
+      use_rotate_to_heading: true
+      rotate_to_heading_min_angle: 0.7
+      rotate_to_heading_angular_vel: 0.6
+      max_robot_pose_search_dist: 10.0
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: false
+      global_frame: odom
+      robot_base_frame: base_link
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      width: 6
+      height: 6
+      resolution: 0.05
+      rolling_window: true
+      # G1 の胴体半径。腕の振りを含めて余裕をみる。
+      robot_radius: 0.4
+      transform_tolerance: 1.0
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 30.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 25.0
+          obstacle_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.7
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      global_frame: map
+      robot_base_frame: base_link
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      resolution: 0.05
+      robot_radius: 0.4
+      transform_tolerance: 1.0
+      track_unknown_space: true
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 30.0
+          obstacle_max_range: 25.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.7
+
+map_server:
+  ros__parameters:
+    use_sim_time: false
+    yaml_filename: ""
+
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner::NavfnPlanner"
+      tolerance: 0.5
+      use_astar: false
+      allow_unknown: true
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: false
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_link
+    transform_tolerance: 1.0
+    behavior_plugins: ["spin", "wait"]
+    spin:
+      plugin: "nav2_behaviors::Spin"
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    # BackUp（後退）は G1 が転倒するため意図的に外してある。
+    # 詰まったときは spin で向きを変えて脱出させる。
+    max_rotational_vel: 0.6
+    min_rotational_vel: 0.2
+    rotational_acc_lim: 1.0
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: false
+    smoothing_frequency: 10.0
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+    # 後退を含めない（min の x を 0 にする）
+    max_velocity: [0.5, 0.4, 1.0]
+    min_velocity: [0.0, -0.4, -1.0]
+    max_accel: [1.0, 1.0, 2.0]
+    max_decel: [-1.0, -1.0, -2.0]
+    odom_topic: "/odom"
+    odom_duration: 0.1

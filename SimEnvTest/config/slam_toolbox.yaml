@@ -1,0 +1,78 @@
+# slam_toolbox の設定（G1 デジタルツイン用）
+#
+# Isaac Sim は実時間比 0.3 倍程度で動くため、実機向けの既定値のままだと
+# 「スキャンが来ない」と誤判定される。時間に依存する閾値を緩めてある。
+#
+# 使い方:
+#   ros2 launch ... もしくは
+#   ros2 run slam_toolbox async_slam_toolbox_node --ros-args --params-file config/slam_toolbox.yaml
+
+slam_toolbox:
+  ros__parameters:
+    # --- 座標系 ---
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+    scan_topic: /scan
+    # 地図を作るモード（既存地図への位置合わせではない）
+    mode: mapping
+
+    # --- 動作設定 ---
+    # 地図を更新する間隔 [s]。Sim が遅いので長めに取る。
+    map_update_interval: 2.0
+    # LiDAR の最大距離 [m]。lidar.py の MAX_RANGE と合わせる。
+    max_laser_range: 30.0
+    # スキャンの重複を判定する距離・角度。歩行は揺れるのでやや緩める。
+    minimum_travel_distance: 0.3
+    minimum_travel_heading: 0.3
+    # スキャンマッチングに使う直近スキャン数
+    scan_buffer_size: 20
+    scan_buffer_maximum_scan_distance: 30.0
+
+    # --- 解像度 ---
+    # 地図の解像度 [m/cell]。0.05 は Nav2 の標準的な値。
+    resolution: 0.05
+
+    # --- スキャンマッチング ---
+    # 真値 odom を使うため、スキャンマッチングへの依存度は下げてよい。
+    # ただし有効にしておくと地図の整合性が上がる。
+    use_scan_matching: true
+    use_scan_barycenter: true
+    # ループ閉じ込み（同じ場所に戻ったときの補正）
+    do_loop_closing: true
+    loop_search_maximum_distance: 3.0
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+
+    # --- 相関スキャンマッチャ ---
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+
+    # --- スキャンマッチャの重み ---
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+    fine_search_angle_offset: 0.00349
+    coarse_search_angle_offset: 0.349
+    coarse_angle_resolution: 0.0349
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+    use_response_expansion: true
+
+    # --- その他 ---
+    # 変換の待ち時間 [s]。Sim が遅いので長めに取らないと
+    # 「TF が来ていない」と判断されてスキャンが捨てられる。
+    transform_timeout: 1.0
+    tf_buffer_duration: 30.0
+    # 地図の配信に使うスレッド数
+    stack_size_to_use: 40000000
+    # デバッグ用の描画（負荷になるので無効）
+    debug_logging: false
+    throttle_scans: 1
+    # 実時間ではなく受け取ったスキャンの時刻で処理する
+    use_sim_time: false

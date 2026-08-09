@@ -72,20 +72,100 @@ IsaacLab で再学習する必要がある。
 
 ```
 SimEnvTest/
-├── run.sh                  # 起動スクリプト（PYTHONPATH ブリッジ）
+├── run.sh                  # 起動スクリプト（キーボード操作）
+├── run_slam.sh             # 自動巡回で地図を作る（SLAM）
+├── run_nav2.sh             # 作った地図で自律走行する（Nav2）
+├── env.sh                  # Isaac Sim + IsaacLab + ROS 2 の共通環境設定
+├── config/
+│   ├── slam_toolbox.yaml   # slam_toolbox の設定
+│   └── nav2.yaml           # Nav2 の設定（後退禁止など G1 向け調整）
 ├── src/
 │   ├── run_g1_twin.py      # エントリポイント
 │   ├── test_commands.py    # コマンド追従の自動検証（キーボード不要）
+│   ├── check_map.py        # 地図の埋まり具合を数値で確認する
+│   ├── inspect_warehouse.py # Warehouse の prim 構造調査（調査用）
+│   ├── probe_raycaster.py  # RayCaster 版 LiDAR の検証（調査用）
+│   ├── probe_pose.py       # 姿勢データの形式確認（調査用）
+│   ├── probe_lidar.py      # PhysX LiDAR の不具合記録（調査用・動作しない）
 │   └── g1_twin/
 │       ├── checkpoint.py   # checkpoint の取得・キャッシュ
 │       ├── command.py      # 速度コマンド + 送信先の抽象層
 │       ├── keyboard.py     # キーボード入力 -> コマンド
 │       ├── policy.py       # 学習済み歩行ポリシー
-│       └── runner.py       # シーン構築 + 実行ループ
+│       ├── runner.py       # シーン構築 + 実行ループ
+│       ├── lidar.py        # SLAM 用 2D LiDAR（MultiMeshRayCaster）
+│       ├── ros_bridge.py   # ROS 2 連携（/scan /odom /tf、/cmd_vel 購読）
+│       └── patrol.py       # 自動巡回（地図作成用）
 ├── checkpoints/            # 学習済み checkpoint（自動ダウンロード）
+├── maps/                   # SLAM で作った地図（.pgm / .yaml）
 ├── g1_joints.json          # G1 の関節順・既定姿勢・ゲイン（実測ダンプ）
 └── logs/
 ```
+
+## SLAM と自律ナビゲーション
+
+ROS 2 Jazzy + slam_toolbox + Nav2 で、地図作成から自律走行までを行う。
+
+### 1. 地図を作る
+
+```bash
+bash run_slam.sh          # 既定 12000 step（シム内 240 秒）
+bash run_slam.sh 20000    # step 数を指定
+```
+
+G1 が LiDAR を見ながら自動で歩き回り（人の操作は不要）、
+`maps/warehouse.pgm` / `.yaml` を出力する。
+
+### 2. 自律走行させる
+
+```bash
+bash run_nav2.sh
+```
+
+起動後、別ターミナルで RViz を開き、「2D Pose Estimate」で現在位置を教えてから
+「2D Goal Pose」で目標を指定すると、G1 が自律的に歩いて到達する。
+
+### 構成
+
+| 項目 | 選択 | 理由 |
+|---|---|---|
+| LiDAR | `MultiMeshRayCaster`（IsaacLab） | PhysX LiDAR がこのビルドで動かないため |
+| 設置高さ | 地上 1.1 m | 低いと棚の脚だけを拾って地図が穴だらけになる |
+| オドメトリ | Sim の真値 | ドリフトが無く SLAM が安定する |
+| ROS 接続 | `rclpy` を直接使用 | 既存のループ構造をそのまま保てる |
+| 後退 | 禁止（`vx >= 0`） | ポリシーが -0.3 m/s 以上で転倒するため |
+
+### ROS 2 のトピック
+
+| トピック | 向き | 内容 |
+|---|---|---|
+| `/scan` | 配信 | 2D LiDAR（360 ビーム、10Hz、最大 30 m） |
+| `/odom` | 配信 | オドメトリ（Sim の真値、50Hz） |
+| `/tf` | 配信 | `odom` → `base_link`、`base_link` → `laser` |
+| `/cmd_vel` | 購読 | Nav2 からの速度指令 |
+
+### つまずいた点
+
+**slam_toolbox はライフサイクルノード。** 起動しただけでは `/scan` を購読せず、
+地図が全く作られない。`ros2 lifecycle set /slam_toolbox configure` と
+`activate` が必要（`run_slam.sh` は実行済み）。エラーも出ないので気付きにくい。
+
+**PhysX LiDAR は使えない。** `RangeSensorCreateLidar` が Imageable でない
+Lidar prim の `visibility` 属性を設定しようとして例外になり、prim の作成に
+失敗する（`Empty typeName for </World/Lidar.visibility>`）。加えて
+`isaacsim.util.debug_draw` が undefined symbol で読み込めない
+（ユーザーローカルに Isaac Sim 4.5 世代の拡張が残っており版が混在している）。
+`RotatingLidarPhysX` クラスも `SimulationManager._get_backend_utils` が無く
+動かない。調査の記録として `src/probe_lidar.py` を残してある。
+
+**レイキャストが重い。** 1 回 74 ms かかり 50Hz（20 ms）に収まらない。
+LiDAR の更新を配信周期（10Hz）に間引いて実時間比 0.07x → 0.5x に改善した。
+ビーム数を 1/4 に減らしても 45 ms までしか下がらず、コストはビーム数ではなく
+レイキャスト演算自体に支配される。SLAM はスキャンのタイムスタンプで処理する
+ため、実時間より遅くても地図は正しく作られる。
+
+**クォータニオンの順序が違う。** IsaacLab の `root_quat_w` は `(w,x,y,z)`、
+ROS の `geometry_msgs` は `(x,y,z,w)`。取り違えると地図が回転して壊れる。
 
 ## 歩行ポリシー
 
