@@ -216,7 +216,9 @@ docking_server:
     dock_plugins: ["simple_charging_dock"]
     simple_charging_dock:
       plugin: "opennav_docking::SimpleChargingDock"
-    docks: []
+    # docks は書かない。空リストは launch のパラメータ変換で
+    # 「Expected value to be float/int/str/bool/bytes but got ()」
+    # という例外になり、nav2 コンテナごと落ちる。
     controller_frequency: 10.0
     base_frame: "base_link"
     fixed_frame: "odom"
