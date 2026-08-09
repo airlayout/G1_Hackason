@@ -41,7 +41,8 @@ class ScanData:
     """1 スキャン分の距離データ。
 
     Attributes:
-        ranges: 各ビームの距離 [m]。測距できないビームは inf。
+        ranges: 各ビームの距離 [m]。何にも当たらないビームは inf、
+            近すぎて無効なビームは 0.0。
         angle_min: 最初のビームの角度 [rad]
         angle_max: 最後のビームの角度 [rad]
         angle_increment: ビーム間の角度差 [rad]
@@ -128,7 +129,7 @@ class G1Lidar:
         """現在のスキャンを LaserScan 相当の形式で返す。
 
         RayCaster はワールド座標の当たり点を返すため、センサ原点からの
-        距離に変換する。当たらなかったビームは inf になる。
+        距離に変換する。当たらなかったビームは inf、近すぎるものは 0.0 になる。
         """
         hits_w = self._sensor.data.ray_hits_w[0]  # (B, 3)
         origin = self._sensor.data.pos_w[0]  # (3,)
@@ -143,8 +144,13 @@ class G1Lidar:
                 hits_w[finite] - origin.unsqueeze(0), dim=-1
             )
 
-        # 近すぎるものは自己の身体の可能性が高いので無効にする
-        distances[distances < MIN_RANGE] = float("inf")
+        # 近すぎるものは 0.0 にする。
+        #
+        # inf にしてはいけない。LaserScan の inf は「最大距離まで何も無い」
+        # を意味するため、近くの壁を inf にすると SLAM は「30 m 先まで空き」
+        # と解釈し、地図が放射状に真っ白に塗り潰される（実際に発生した）。
+        # range_min 未満の値は ROS の規約で「無効」として無視される。
+        distances[distances < MIN_RANGE] = 0.0
 
         return ScanData(
             ranges=distances.cpu().tolist(),
