@@ -6,6 +6,6 @@ __pycache__/
 logs/
 *.log
 
-# 学習済み checkpoint（IsaacLab の PretrainedCheckpoints から再取得可能。CLAUDE.md 参照）
-checkpoints/
+# 学習済み checkpoint（SimEnvTest/checkpoints/ は共有のため追跡対象。それ以外の .pt は除外）
 *.pt
+!SimEnvTest/checkpoints/*.pt
