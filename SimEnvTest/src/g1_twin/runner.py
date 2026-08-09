@@ -271,7 +271,14 @@ class G1TwinRunner:
 
             # 速度指令の供給源を選ぶ
             if self._patrol is not None and scan is not None:
-                # 自動巡回: LiDAR を見て自分で進路を決める
+                # 自動巡回: LiDAR を見て自分で進路を決める。
+                # 位置も渡す。LiDAR は地上 1.1 m を見ているため足元の低い
+                # 障害物を検出できず、「前方は開いているのに進めない」状況が
+                # 起きる。位置が動いているかで足踏みを検知する。
+                position = wp.to_torch(self._robot.data.root_pos_w)[0]
+                self._patrol.notify_position(
+                    float(position[0]), float(position[1])
+                )
                 self._sink.send(self._patrol.step(scan))
             elif self._config.command_source == "ros" and self._ros is not None:
                 # Nav2 からの /cmd_vel。後退はポリシーが転倒するため許可しない。
@@ -368,5 +375,6 @@ class G1TwinRunner:
             stats = self._patrol.stats
             print(
                 f"[Patrol] 巡回の統計: 合計 {stats.steps} step "
-                f"(前進 {stats.forward_steps} / 旋回 {stats.turn_steps})"
+                f"(前進 {stats.forward_steps} / 旋回 {stats.turn_steps} / "
+                f"足踏み脱出 {stats.stall_recoveries} 回)"
             )

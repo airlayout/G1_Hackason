@@ -39,6 +39,12 @@ PATROL_SPEED: float = 0.5
 PATROL_TURN_RATE: float = 0.6
 # 制御周期 [s]。回った角度を step 数から求めるのに使う（runner の CONTROL_DT と一致）。
 CONTROL_DT_SEC: float = 0.02
+# 1 周期でこれ未満しか進まなければ「足踏み」とみなす [m]。
+# 前進速度 0.38 m/s なら 1 周期で 0.0076 m 進むので、その 1/4 を閾値にする。
+STALL_DISTANCE: float = 0.002
+# 足踏みがこの回数続いたら、LiDAR に映らない障害物にぶつかっているとみなす。
+# 50Hz なので 150 step = シム内 3 秒。
+STALL_STEPS_BEFORE_TURN: int = 150
 
 
 @dataclass
@@ -48,6 +54,8 @@ class PatrolStats:
     steps: int = 0
     forward_steps: int = 0
     turn_steps: int = 0
+    # LiDAR に映らない障害物から脱出した回数
+    stall_recoveries: int = 0
 
 
 class AutoPatrol:
@@ -72,6 +80,10 @@ class AutoPatrol:
         self._turn_target_deg = 90.0
         # 脱出のため強制的に前進する残りステップ数
         self._escape_steps = 0
+        # 足踏み検知用
+        self._last_position: tuple[float, float] | None = None
+        self._stall_steps = 0
+        self._commanded_forward = False
         self.stats = PatrolStats()
         # 扇形ごとのビーム番号。スキャンの形は毎回同じなので初回に作って使い回す。
         self._sector_cache: dict[tuple[float, float], list[int]] = {}
@@ -152,6 +164,32 @@ class AutoPatrol:
             f"{'左' if self._turn_sign > 0 else '右'}へ {self._turn_target_deg:.0f} 度）"
         )
 
+    def notify_position(self, x: float, y: float) -> None:
+        """現在位置を伝える。進めているかの判定に使う。
+
+        LiDAR は地上 1.1 m を見ているため、足元の低い障害物（パレットや
+        棚の下段）は検出できない。「前方が開いているのに進めない」状況が
+        起きるので、位置が動いているかを別途監視する必要がある。
+
+        Args:
+            x: ワールド座標の X [m]
+            y: ワールド座標の Y [m]
+        """
+        if self._last_position is None:
+            self._last_position = (x, y)
+            self._stall_steps = 0
+            return
+
+        dx = x - self._last_position[0]
+        dy = y - self._last_position[1]
+        moved = math.hypot(dx, dy)
+        # 前進指令を出しているのに動いていなければ足踏みとみなす
+        if self._commanded_forward and moved < STALL_DISTANCE:
+            self._stall_steps += 1
+        else:
+            self._stall_steps = 0
+        self._last_position = (x, y)
+
     def step(self, scan: ScanData) -> VelocityCommand:
         """スキャンを見て次の速度指令を決める。
 
@@ -161,7 +199,30 @@ class AutoPatrol:
         Returns:
             この制御周期で与える速度指令
         """
+        command = self._decide(scan)
+        # 足踏み判定のため、前進を指令したかを覚えておく
+        self._commanded_forward = command.vx > 0.0
+        return command
+
+    def _decide(self, scan: ScanData) -> VelocityCommand:
+        """実際の判断を行う（step から呼ばれる）。"""
         self.stats.steps += 1
+
+        # 前方が開いているのに進めていない場合は、LiDAR に映らない
+        # 低い障害物にぶつかっている。強制的に向きを変えて脱出する。
+        if self._stall_steps >= STALL_STEPS_BEFORE_TURN:
+            self._stall_steps = 0
+            self._escape_steps = 0
+            self._turning = True
+            self._turn_steps = 0
+            self._turn_sign = self._rng.choice((1.0, -1.0))
+            self._turn_target_deg = 120.0
+            self.stats.stall_recoveries += 1
+            print(
+                "[Patrol] 前方は開いているのに進めていないため "
+                f"（LiDAR に映らない障害物）、{'左' if self._turn_sign > 0 else '右'}へ "
+                "120 度回ります"
+            )
 
         front = self._sector_min_distance(scan, 0.0, FRONT_HALF_ANGLE_DEG)
 
