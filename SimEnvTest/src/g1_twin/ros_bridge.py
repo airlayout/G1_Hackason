@@ -88,6 +88,7 @@ class RosBridge:
         from nav_msgs.msg import Odometry
         from rclpy.node import Node
         from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+        from rosgraph_msgs.msg import Clock
         from sensor_msgs.msg import LaserScan
         from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 
@@ -95,6 +96,15 @@ class RosBridge:
             rclpy.init()
         self._rclpy = rclpy
         self._node: Node = rclpy.create_node(node_name)
+
+        # Isaac Sim は実時間の 0.3〜0.7 倍で動き、その比率も負荷で変動する。
+        # 実時間のタイムスタンプを付けると、スキャンの時刻とロボットが実際に
+        # そこに居た時刻がずれ、SLAM が誤った姿勢でスキャンを重ねて地図が
+        # 放射状に壊れる。そのためシミュレーション内の時刻を /clock として
+        # 配信し、SLAM / Nav2 側は use_sim_time:=true で参照させる。
+        self._sim_time: float = 0.0
+        self._Clock = Clock
+        self._clock_pub = self._node.create_publisher(Clock, "/clock", 10)
 
         # センサデータは欠落を許容する（最新が届けばよい）
         sensor_qos = QoSProfile(
@@ -116,8 +126,14 @@ class RosBridge:
         self._LaserScan = LaserScan
         self._Odometry = Odometry
 
-        self._publish_static_tf()
-        print("[ROS] ノードを起動しました: /scan /odom /tf を配信、/cmd_vel を購読")
+        # 静的 TF はシム時刻が動き出してから送る（時刻 0 のまま送ると
+        # use_sim_time を使う購読側が受け取れないことがある）。
+        # 実際の送信は publish_odom から初回だけ行う。
+        self._static_tf_sent = False
+        print(
+            "[ROS] ノードを起動しました: /clock /scan /odom /tf を配信、"
+            "/cmd_vel を購読"
+        )
 
     # ------------------------------------------------------------------
     # 内部
@@ -131,8 +147,31 @@ class RosBridge:
         )
 
     def _now(self):
-        """現在時刻を ROS の Time として返す。"""
-        return self._node.get_clock().now().to_msg()
+        """シミュレーション内の現在時刻を ROS の Time として返す。
+
+        実時間ではなくシム内時刻を使う。実時間だと Sim の進みが遅い分だけ
+        スキャンと姿勢の対応がずれ、地図が壊れる。
+        """
+        from builtin_interfaces.msg import Time
+
+        stamp = Time()
+        stamp.sec = int(self._sim_time)
+        stamp.nanosec = int((self._sim_time - int(self._sim_time)) * 1e9)
+        return stamp
+
+    def publish_clock(self, sim_time: float) -> None:
+        """シミュレーション内の経過時刻を /clock として配信する。
+
+        他のノード（slam_toolbox / Nav2）は use_sim_time:=true でこれを
+        参照する。配信するトピック類のタイムスタンプもこの時刻に揃う。
+
+        Args:
+            sim_time: シミュレーション開始からの経過秒数
+        """
+        self._sim_time = sim_time
+        msg = self._Clock()
+        msg.clock = self._now()
+        self._clock_pub.publish(msg)
 
     def _publish_static_tf(self) -> None:
         """base_link -> laser の固定 TF を配信する。"""
@@ -174,6 +213,11 @@ class RosBridge:
     def publish_odom(self, state: OdomState) -> None:
         """Odometry と odom -> base_link の TF を配信する。"""
         from geometry_msgs.msg import TransformStamped
+
+        # 静的 TF はシム時刻が進み始めてから 1 度だけ送る
+        if not self._static_tf_sent and self._sim_time > 0.0:
+            self._publish_static_tf()
+            self._static_tf_sent = True
 
         stamp = self._now()
         qx, qy, qz, qw = yaw_to_quat_xyzw(state.yaw)

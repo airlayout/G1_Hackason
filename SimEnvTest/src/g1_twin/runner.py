@@ -210,6 +210,10 @@ class G1TwinRunner:
         """
         from .ros_bridge import OdomState, quat_wxyz_to_yaw
 
+        # 先に /clock を配信する。以降のメッセージのタイムスタンプは
+        # ここで設定したシム内時刻に揃う。
+        self._ros.publish_clock(self._step_count * CONTROL_DT)
+
         data = self._robot.data
         pos = wp.to_torch(data.root_pos_w)[0]
         quat = wp.to_torch(data.root_quat_w)[0]

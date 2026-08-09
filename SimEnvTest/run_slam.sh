@@ -83,9 +83,20 @@ fi
 
 # slam_toolbox はライフサイクルノードなので、activate しないと
 # /scan の購読を始めない（起動しただけでは地図が全く作られない）。
-echo "[INFO] slam_toolbox を activate します"
-ros2 lifecycle set /slam_toolbox configure || true
-ros2 lifecycle set /slam_toolbox activate || true
+# ノードが自分で configure を済ませていることがあるため、
+# 現在の状態を見てから必要な遷移だけを行う。
+echo "[INFO] slam_toolbox を active にします"
+for _ in $(seq 1 20); do
+    STATE=$(ros2 lifecycle get /slam_toolbox 2>/dev/null | awk '{print $1}')
+    case "$STATE" in
+        active) break ;;
+        inactive) ros2 lifecycle set /slam_toolbox activate >/dev/null 2>&1 || true ;;
+        unconfigured) ros2 lifecycle set /slam_toolbox configure >/dev/null 2>&1 || true ;;
+        *) : ;;  # 遷移中などはそのまま待つ
+    esac
+    sleep 2
+done
+
 STATE=$(ros2 lifecycle get /slam_toolbox 2>/dev/null || echo "不明")
 echo "[INFO] slam_toolbox の状態: $STATE"
 if [[ "$STATE" != active* ]]; then

@@ -64,7 +64,7 @@ echo "[INFO] === 段階 2/2: Nav2 を起動します ==="
 ros2 launch nav2_bringup bringup_launch.py \
     map:="$MAP_YAML" \
     params_file:="$SCRIPT_DIR/config/nav2.yaml" \
-    use_sim_time:=false \
+    use_sim_time:=true \
     autostart:=true \
     > "$LOG_DIR/nav2.log" 2>&1 &
 NAV_PID=$!

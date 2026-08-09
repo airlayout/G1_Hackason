@@ -74,5 +74,7 @@ slam_toolbox:
     # デバッグ用の描画（負荷になるので無効）
     debug_logging: false
     throttle_scans: 1
-    # 実時間ではなく受け取ったスキャンの時刻で処理する
-    use_sim_time: false
+    # Isaac Sim が配信する /clock（シム内時刻）を使う。
+    # 実時間だと Sim の進みが遅い分だけスキャンと姿勢の対応がずれ、
+    # 地図が放射状に壊れる（実際に発生した）。
+    use_sim_time: true

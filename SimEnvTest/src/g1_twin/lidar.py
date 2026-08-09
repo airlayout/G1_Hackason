@@ -87,9 +87,14 @@ class G1Lidar:
         cfg = MultiMeshRayCasterCfg(
             prim_path=f"{robot_prim_path}/torso_link",
             offset=MultiMeshRayCasterCfg.OffsetCfg(pos=(0.0, 0.0, LIDAR_OFFSET_Z)),
-            # "base" は胴体の姿勢に完全に追従する（yaw のみでなく roll/pitch も）。
-            # 歩行中は胴体が傾くため、その傾きも反映される。
-            ray_alignment="base",
+            # "yaw" は yaw だけに追従し、レイは常に水平を保つ。
+            #
+            # "base"（胴体の姿勢に完全追従）にすると、歩行中の胴体の
+            # pitch/roll がレイに乗って上下を向き、同じ方向の距離が
+            # 1 スキャンごとに 10 m 近く暴れる（実測）。SLAM はスキャンを
+            # 重ねられず地図が放射状に壊れる。実機の 2D LiDAR も水平に
+            # 保持されるので、"yaw" の方が実機の挙動にも近い。
+            ray_alignment="yaw",
             pattern_cfg=pattern,
             mesh_prim_paths=mesh_prim_paths or ["/World/Warehouse"],
             max_distance=MAX_RANGE,
