@@ -74,18 +74,24 @@ def test_bresenham_excludes_endpoint() -> bool:
     return ok
 
 
-def test_single_observation_makes_walls() -> bool:
-    """1 回の観測で壁が障害物として記録される。
+def test_few_observations_make_walls() -> bool:
+    """数回の観測で壁が障害物として記録される。
+
+    同じ場所から何度観測してもビームは常に同じ点を叩くため、壁のセルは
+    飛び飛びのままで孤立点の除去に消される。実運用では移動しながら
+    観測するので隙間が埋まる。ここでも少し動かしながら 20 回観測する。
 
     空きは 1 回では確定しない。MISS_GAIN を小さく (0.05) してあるため、
     空きと確定するには同じセルを何度も通る必要がある。これは壁が
-    消えないための意図的な設計。ここでは障害物だけを確認する。
+    消えないための意図的な設計。
     """
-    obs = [make_room_observation((0.0, 0.0), 5.0)]
+    obs = [
+        make_room_observation((i * 0.05, i * 0.03), 5.0) for i in range(20)
+    ]
     grid, _, _ = build_grid(obs)
     occupied = int((grid == OCCUPIED).sum())
     ok = occupied > 100
-    print(f"[{'OK' if ok else 'NG'}] 1 回の観測で壁が立つ: 障害物 {occupied} セル")
+    print(f"[{'OK' if ok else 'NG'}] 20 回の観測で壁が立つ: 障害物 {occupied} セル")
     return ok
 
 
@@ -132,7 +138,7 @@ def main() -> None:
     """全テストを実行する。"""
     results = [
         test_bresenham_excludes_endpoint(),
-        test_single_observation_makes_walls(),
+        test_few_observations_make_walls(),
         test_unknown_outside_room(),
         test_walls_survive_many_observations(),
     ]

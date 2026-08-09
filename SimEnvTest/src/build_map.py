@@ -65,6 +65,12 @@ IDLE_TIMEOUT_SEC: float = 30.0
 #     12 m: 探索  631 m2、地図の形が失われる
 # 現状は制限しないのが最良。ノイズの根本原因は別途調査が必要。
 MAP_MAX_RAY: float = 30.0
+# 障害物セルとして残すために必要な、8 近傍にある障害物の数。
+#
+# 1 セル幅の直線の壁は近傍が 2 個（左右の隣）しかない。3 にすると
+# 実在の壁まで消えるため 2 とする。孤立した単発のノイズは近傍 0〜1 なので
+# これで除去できる。
+MIN_OBSTACLE_NEIGHBORS: int = 2
 
 
 class MapBuilder(Node):
@@ -235,6 +241,34 @@ def build_grid(
     grid = np.full((height, width), UNKNOWN, dtype=np.int8)
     grid[log_odds <= LOG_ODDS_FREE] = FREE
     grid[log_odds >= LOG_ODDS_OCCUPIED] = OCCUPIED
+
+    # 孤立した障害物セルを消す。
+    #
+    # スキャンのばらつきで単発の当たりが記録されると、開けた空間に
+    # 点々と「障害物」が散らばる。Nav2 はこれを本物の障害物として扱うため、
+    # どこにいても数センチ先が塞がっていることになり経路を作れなくなる
+    # （実測: 開けた場所でも障害物までの距離が 0.05〜0.36 m しかなかった）。
+    # 実在の壁は連続しているので、近傍に仲間が少ないセルだけを消せばよい。
+    occupied_mask = grid == OCCUPIED
+    # 8 近傍の障害物数を数える（自分は含めない）
+    padded = np.pad(occupied_mask, 1, mode="constant", constant_values=False)
+    neighbor_count = np.zeros(occupied_mask.shape, dtype=np.int16)
+    for dy in (0, 1, 2):
+        for dx in (0, 1, 2):
+            if dy == 1 and dx == 1:
+                continue
+            neighbor_count += padded[
+                dy:dy + occupied_mask.shape[0], dx:dx + occupied_mask.shape[1]
+            ]
+    isolated = occupied_mask & (neighbor_count < MIN_OBSTACLE_NEIGHBORS)
+    removed = int(isolated.sum())
+    # 消した跡は「空き」にする（周囲が空きなら通行できるはずのため）
+    grid[isolated] = FREE
+    print(
+        f"[Map] 孤立した障害物セルを {removed} 個除去しました"
+        f"（残り {int((grid == OCCUPIED).sum())} 個）"
+    )
+
     return grid, lo_x, lo_y
 
 
