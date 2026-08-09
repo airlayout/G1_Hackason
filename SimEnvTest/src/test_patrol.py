@@ -127,6 +127,51 @@ def test_turn_completes() -> bool:
     return ok
 
 
+def test_detects_confinement() -> bool:
+    """同じ場所に留まり続けたら閉じ込めとして検知する。
+
+    実測では全スキャンの 77% が半径 5 cm の一点から取られていた。
+    その場旋回を繰り返している間は「足踏み」判定が働かないため、
+    位置が変わらないこと自体を別途監視する必要がある。
+    """
+    patrol = AutoPatrol(seed=0)
+    scan = make_scan({0: 0.5, 150: 25.0})
+
+    # 同じ位置を通知し続ける（＝その場で回っている状況）
+    detected_at = None
+    for step in range(1500):
+        patrol.notify_position(10.0, 20.0)
+        patrol.step(scan)
+        if patrol.stats.confined_recoveries > 0:
+            detected_at = step
+            break
+
+    ok = detected_at is not None
+    print(
+        f"[{'OK' if ok else 'NG'}] 閉じ込め検知: "
+        f"{f'{detected_at} step で検知' if ok else '1500 step 経過しても検知せず'}"
+    )
+    return ok
+
+
+def test_moving_does_not_trigger_confinement() -> bool:
+    """移動しているときは閉じ込めと誤判定しない。"""
+    patrol = AutoPatrol(seed=0)
+    scan = make_scan({})
+
+    for step in range(1500):
+        # 少しずつ移動する（1 周期 0.0076 m 相当）
+        patrol.notify_position(step * 0.0076, 0.0)
+        patrol.step(scan)
+
+    ok = patrol.stats.confined_recoveries == 0
+    print(
+        f"[{'OK' if ok else 'NG'}] 移動中は誤検知しない: "
+        f"閉じ込め検知 {patrol.stats.confined_recoveries} 回"
+    )
+    return ok
+
+
 def main() -> None:
     """全テストを実行する。"""
     results = [
@@ -134,6 +179,8 @@ def main() -> None:
         test_wall_ahead_turns(),
         test_turn_completes(),
         test_escapes_dead_end(),
+        test_detects_confinement(),
+        test_moving_does_not_trigger_confinement(),
     ]
     passed = sum(results)
     print(f"\n{passed}/{len(results)} 件が成功しました")

@@ -45,6 +45,14 @@ STALL_DISTANCE: float = 0.002
 # 足踏みがこの回数続いたら、LiDAR に映らない障害物にぶつかっているとみなす。
 # 50Hz なので 150 step = シム内 3 秒。
 STALL_STEPS_BEFORE_TURN: int = 150
+# この半径から出られない状態が続いたら「閉じ込められた」とみなす [m]
+CONFINED_RADIUS: float = 1.5
+# 閉じ込め判定までのステップ数。50Hz なので 750 step = シム内 15 秒。
+# その場旋回を繰り返していても位置が変わらないので、この判定が要る。
+CONFINED_STEPS: int = 750
+# 閉じ込めから脱出するときに直進させるステップ数。
+# 50Hz なので 250 step = シム内 5 秒 = 約 1.9 m 進む。
+CONFINED_ESCAPE_STEPS: int = 250
 
 
 @dataclass
@@ -56,6 +64,8 @@ class PatrolStats:
     turn_steps: int = 0
     # LiDAR に映らない障害物から脱出した回数
     stall_recoveries: int = 0
+    # 同じ場所に閉じ込められて脱出した回数
+    confined_recoveries: int = 0
 
 
 class AutoPatrol:
@@ -84,6 +94,10 @@ class AutoPatrol:
         self._last_position: tuple[float, float] | None = None
         self._stall_steps = 0
         self._commanded_forward = False
+        # 閉じ込め検知用（基準点からの離脱を見る）
+        self._anchor: tuple[float, float] | None = None
+        self._anchor_steps = 0
+        self._confined = False
         self.stats = PatrolStats()
         # 扇形ごとのビーム番号。スキャンの形は毎回同じなので初回に作って使い回す。
         self._sector_cache: dict[tuple[float, float], list[int]] = {}
@@ -177,6 +191,8 @@ class AutoPatrol:
         """
         if self._last_position is None:
             self._last_position = (x, y)
+            self._anchor = (x, y)
+            self._anchor_steps = 0
             self._stall_steps = 0
             return
 
@@ -189,6 +205,22 @@ class AutoPatrol:
         else:
             self._stall_steps = 0
         self._last_position = (x, y)
+
+        # 「狭い範囲に閉じ込められていないか」を別途監視する。
+        #
+        # 上の足踏み判定は前進指令中しか働かないため、その場旋回を
+        # 繰り返している間は検知できない。実測では全スキャンの 77% が
+        # 半径 5 cm の一点から取られており、ロボットはそこで回り続けていた。
+        # 地図はその 1 スキャンが回転しただけの楕円になった。
+        self._anchor_steps += 1
+        if math.hypot(x - self._anchor[0], y - self._anchor[1]) > CONFINED_RADIUS:
+            # 十分離れたので基準点を更新する
+            self._anchor = (x, y)
+            self._anchor_steps = 0
+        elif self._anchor_steps >= CONFINED_STEPS:
+            self._confined = True
+            self._anchor = (x, y)
+            self._anchor_steps = 0
 
     def step(self, scan: ScanData) -> VelocityCommand:
         """スキャンを見て次の速度指令を決める。
@@ -207,6 +239,26 @@ class AutoPatrol:
     def _decide(self, scan: ScanData) -> VelocityCommand:
         """実際の判断を行う（step から呼ばれる）。"""
         self.stats.steps += 1
+
+        # 狭い範囲に閉じ込められている場合は、最も開けた方向へ向き直してから
+        # 長めに直進する。旋回だけを繰り返していると位置が変わらず、
+        # 地図に同じスキャンしか溜まらない。
+        if self._confined:
+            self._confined = False
+            self._turning = False
+            self._turn_steps = 0
+            self._stall_steps = 0
+            # 一番開けている方向へ向け直す
+            self._begin_turn(scan, self._sector_min_distance(
+                scan, 0.0, FRONT_HALF_ANGLE_DEG
+            ))
+            # 回り終えたあと通常より長く直進させ、確実にその場から離れる
+            self._escape_steps = CONFINED_ESCAPE_STEPS
+            self.stats.confined_recoveries += 1
+            print(
+                f"[Patrol] 同じ場所に留まっているため脱出します"
+                f"（{CONFINED_ESCAPE_STEPS} step 直進）"
+            )
 
         # 前方が開いているのに進めていない場合は、LiDAR に映らない
         # 低い障害物にぶつかっている。強制的に向きを変えて脱出する。
