@@ -8,14 +8,30 @@
 #   bash run_slam.sh で maps/warehouse.yaml を作ってあること
 #
 # 使い方:
-#   bash run_nav2.sh                      # 既定の地図を使う
+#   bash run_nav2.sh                      # 自律走行（既定の地図）
+#   bash run_nav2.sh --manual             # キーボード操作。Nav2 と RViz は
+#                                         # 地図・自己位置の表示用に動かす
 #   bash run_nav2.sh maps/other.yaml      # 地図を指定する
+#   bash run_nav2.sh --manual maps/x.yaml # 両方
+#
+# --manual と既定（自律）は排他。実行中には切り替えられないので、
+# 起動時にどちらで動かすかを決めること。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/env.sh"
 
-MAP_YAML="${1:-$SCRIPT_DIR/maps/warehouse.yaml}"
+# --manual があればキーボード操作にする
+COMMAND_SOURCE="ros"
+ARGS=()
+for a in "$@"; do
+    case "$a" in
+        --manual) COMMAND_SOURCE="keyboard" ;;
+        *) ARGS+=("$a") ;;
+    esac
+done
+
+MAP_YAML="${ARGS[0]:-$SCRIPT_DIR/maps/warehouse.yaml}"
 LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
@@ -38,10 +54,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[INFO] === 段階 1/2: Isaac Sim を起動します（Nav2 の指令で歩く） ==="
+if [[ "$COMMAND_SOURCE" == "keyboard" ]]; then
+    echo "[INFO] 手動操作モード（キーボードで歩かせる）"
+else
+    echo "[INFO] 自律モード（Nav2 の指令で歩く）"
+fi
+echo "[INFO] === 段階 1/2: Isaac Sim を起動します ==="
 "$ISAAC_SIM/python.sh" "$SCRIPT_DIR/src/run_g1_twin.py" \
     --viz kit \
-    --command-source ros \
+    --command-source "$COMMAND_SOURCE" \
     > "$LOG_DIR/nav2_sim.log" 2>&1 &
 SIM_PID=$!
 
@@ -89,9 +110,21 @@ python3 "$SCRIPT_DIR/src/set_initial_pose.py" || \
 
 echo
 echo "=============================================================="
-echo " 使い方:"
-echo "   1. 別ターミナルで RViz を起動する:  bash run_rviz.sh"
-echo "   2. RViz の「2D Goal Pose」で目標地点を指定する"
+if [[ "$COMMAND_SOURCE" == "keyboard" ]]; then
+    echo " 使い方（手動操作モード）:"
+    echo "   1. 別ターミナルで RViz を起動する:  bash run_rviz.sh"
+    echo "   2. Isaac Sim のウィンドウをクリックしてフォーカスを当てる"
+    echo "   3. W/S 前後  A/D 左右  Q/E 旋回  SPACE 停止  SHIFT 低速"
+    echo
+    echo "   RViz には地図と G1 の位置が表示される（動作確認用）。"
+    echo "   Nav2 も起動しているが、2D Goal Pose を指定しないので指令は出ない。"
+else
+    echo " 使い方（自律モード）:"
+    echo "   1. 別ターミナルで RViz を起動する:  bash run_rviz.sh"
+    echo "   2. RViz の「2D Goal Pose」で目標地点を指定する"
+    echo
+    echo "   キーボードで操作したい場合は  bash run_nav2.sh --manual  で起動する。"
+fi
 echo
 echo "   初期姿勢は上で自動設定済み（Isaac Sim の真値）。"
 echo "   RViz の「2D Pose Estimate」は使わないこと。この地図は原点が"

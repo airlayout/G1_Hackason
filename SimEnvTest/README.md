@@ -14,6 +14,7 @@ Unitree G1 を Isaac Sim の Warehouse シーン上で動かす環境。
 | キーボード操作 | `bash run.sh` | 動作確認済み |
 | 地図作成 | `src/build_map.py`（下記） | 動作確認済み（実形状とのずれ 0.36 m） |
 | 自律ナビゲーション | `bash run_nav2.sh` + `bash run_rviz.sh` | 動作確認済み（短距離） |
+| 手動操作 + 地図表示 | `bash run_nav2.sh --manual` | 地図と自己位置を RViz で見ながら手動操作 |
 
 **既知の制約:** 距離が長いと成功率が下がる。実時間比が 0.23x（GUI 込み）まで
 落ちること、地図の未探索領域が残ること、G1 が後退できないことが要因。
@@ -181,9 +182,23 @@ bash run_slam.sh 40000
 ### 2. 自律走行させる
 
 ```bash
-bash run_nav2.sh                 # Isaac Sim + Nav2
+bash run_nav2.sh                 # 自律走行（Nav2 が指令を出す）
+bash run_nav2.sh --manual        # 手動操作（キーボードで歩かせる）
 bash run_rviz.sh                 # 別ターミナルで RViz
 ```
+
+**手動と自律は排他で、実行中には切り替えられない。** 起動時にどちらで
+動かすか決めること。`--manual` でも Nav2 と RViz は起動するので、
+地図と自己位置を見ながらキーボードで操作できる（2D Goal Pose を
+指定しなければ Nav2 は指令を出さない）。
+
+指令の供給源は `run_g1_twin.py` の `--command-source` で決まる:
+
+| 値 | 指令元 | 使う場面 |
+|---|---|---|
+| `keyboard`（既定） | キーボード | 手動操作 |
+| `patrol` | 自動巡回 | 地図作成 |
+| `ros` | Nav2 の `/cmd_vel` | 自律走行 |
 
 **動作確認済み（2026-08-10）。** RViz の 2D Goal Pose で目標を与えると、
 G1 が向き直ってから歩き、目標に到達する。

@@ -218,11 +218,14 @@ im.resize((im.width//2, im.height//2)).save('/tmp/map.png')
 
 ```bash
 # 端末 1
-bash run_nav2.sh
+bash run_nav2.sh              # 自律走行
+bash run_nav2.sh --manual     # 手動操作（地図を見ながらキーボードで歩かせる）
 
 # 端末 2（Nav2 の起動完了後）
 bash run_rviz.sh
 ```
+
+手動と自律は排他で、実行中には切り替えられない。起動時に決めること。
 
 RViz で「2D Goal Pose」をクリックし、地図上の白い場所へドラッグする。
 G1 が向き直ってから歩き出せば成功。
