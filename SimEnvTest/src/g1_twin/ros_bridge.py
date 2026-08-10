@@ -60,11 +60,19 @@ class OdomState:
     yaw_rate: float
 
 
-def quat_wxyz_to_yaw(w: float, x: float, y: float, z: float) -> float:
-    """クォータニオン (w,x,y,z) から yaw [rad] を取り出す。
+def quat_xyzw_to_yaw(x: float, y: float, z: float, w: float) -> float:
+    """クォータニオン (x,y,z,w) から yaw [rad] を取り出す。
 
-    IsaacLab の root_quat_w は (w, x, y, z) 順である（実測で確認済み）。
-    ROS の geometry_msgs は (x, y, z, w) 順なので混同しないこと。
+    IsaacLab の root_quat_w は **(x, y, z, w) 順**である。
+    base_articulation_data.py の docstring に
+    "Root link orientation (x, y, z, w)" と明記されている。
+
+    以前 (w,x,y,z) と誤解していた。静止状態 (yaw=30度) での検証では
+    たまたま辻褄が合ってしまい、歩行中に初めて破綻した。
+    実測: 初期姿勢（無回転）の生値が [-0.0005, -0.0014, 0.0024, 1.0] で、
+    単位クォータニオン w=1 が最後に来ることから (x,y,z,w) と確定した。
+
+    ROS の geometry_msgs も (x, y, z, w) 順なので、そのまま渡せる。
     """
     return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
 

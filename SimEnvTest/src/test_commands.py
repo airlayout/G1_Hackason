@@ -52,8 +52,14 @@ TEST_CASES: list[tuple[str, VelocityCommand]] = [
 
 
 def yaw_from_quat(quat: torch.Tensor) -> float:
-    """クォータニオン (w, x, y, z) から yaw 角 [rad] を取り出す。"""
-    w, x, y, z = (float(v) for v in quat)
+    """クォータニオン (x, y, z, w) から yaw 角 [rad] を取り出す。
+
+    IsaacLab の root_quat_w は (x, y, z, w) 順である。
+    base_articulation_data.py の docstring に明記されており、
+    実測でも初期姿勢（無回転）の生値が [~0, ~0, ~0, 1.0] と
+    w が最後に来ることを確認した。
+    """
+    x, y, z, w = (float(v) for v in quat)
     return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
 
 

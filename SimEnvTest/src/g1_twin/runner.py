@@ -250,7 +250,7 @@ class G1TwinRunner:
         odom は Sim の真値をそのまま使う（ドリフトが無いので SLAM が安定する）。
         scan は 50Hz では過剰なので SCAN_PUBLISH_EVERY 周期に間引く。
         """
-        from .ros_bridge import OdomState, quat_wxyz_to_yaw
+        from .ros_bridge import OdomState, quat_xyzw_to_yaw
 
         # 先に /clock を配信する。以降のメッセージのタイムスタンプは
         # ここで設定したシム内時刻に揃う。
@@ -262,8 +262,9 @@ class G1TwinRunner:
         lin_vel_b = wp.to_torch(data.root_lin_vel_b)[0]
         ang_vel_b = wp.to_torch(data.root_ang_vel_b)[0]
 
-        # root_quat_w は (w, x, y, z) 順（実測で確認済み）
-        yaw = quat_wxyz_to_yaw(
+        # root_quat_w は (x, y, z, w) 順。IsaacLab の docstring に明記されており、
+        # 実測でも初期姿勢の生値が [~0, ~0, ~0, 1.0] と w が最後に来ることを確認済み。
+        yaw = quat_xyzw_to_yaw(
             float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3])
         )
 
