@@ -151,7 +151,7 @@ Mesh を個別列挙した状態で、層数 × 水平ビーム数を振った�
 環境設定は `SimEnvTest` と同じ（`env.sh` をコピーしてある）。
 
 ```bash
-cd /home/spacedata/isaac_dev/G1/SimEnv3D
+cd <このリポジトリ>/SimEnv3D
 source env.sh
 ```
 

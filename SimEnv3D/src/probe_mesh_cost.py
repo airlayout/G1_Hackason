@@ -11,7 +11,7 @@
     結果によって 3D 化の設計方針（メッシュを絞るか、別方式にするか）が決まる。
 
 実行方法:
-    cd /home/spacedata/isaac_dev/G1/SimEnv3D
+    cd <このリポジトリ>/SimEnv3D
     source env.sh
     "$ISAAC_SIM/python.sh" src/probe_mesh_cost.py --viz none --num-meshes 200
 """

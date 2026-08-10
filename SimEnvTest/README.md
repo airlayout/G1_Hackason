@@ -26,7 +26,7 @@ Unitree G1 を Isaac Sim の Warehouse シーン上で動かす環境。
 ### 1. 手動操作だけ（一番軽い）
 
 ```bash
-cd /home/spacedata/isaac_dev/G1/SimEnvTest
+cd <このリポジトリ>/SimEnvTest
 bash run.sh                # Warehouse シーン（GUI）
 bash run.sh --flat         # 平地のみ（動作確認用）
 ```
@@ -511,10 +511,8 @@ action 37 はハンド関節を含む全身の関節位置制御。12 自由度�
 キーボードを使わずに、各方向の指令へ追従しているかを確認できる。
 
 ```bash
-cd /home/spacedata/isaac_dev/G1/SimEnvTest
-S=/home/spacedata/isaacSim6.0dev2/_build/linux-x86_64/release
-SP=/home/spacedata/IsaacLab/env_isaaclab/lib/python3.12/site-packages
-PP=$(ls -d /home/spacedata/IsaacLab/source/*/ | tr '\n' ':')
+cd <このリポジトリ>/SimEnvTest
+source env.sh   # パスの設定はここに集約してある
 PYTHONPATH="$PWD/src:$PP$SP" OPENBLAS_NUM_THREADS=1 \
   $S/python.sh src/test_commands.py --viz none
 ```

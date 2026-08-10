@@ -5,7 +5,7 @@ point_step や offset を間違えても ROS は黙って受け取るため、�
 確認しておく。
 
 実行方法:
-    cd /home/spacedata/isaac_dev/G1/SimEnv3D
+    cd <このリポジトリ>/SimEnv3D
     source env.sh
     python3 src/test_pointcloud_encoding.py
 """

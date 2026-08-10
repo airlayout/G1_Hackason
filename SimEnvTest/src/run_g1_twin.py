@@ -3,7 +3,7 @@
 Warehouse シーンに配置した G1 を、キーボードの速度指令で歩かせる。
 
 実行方法:
-    cd /home/spacedata/isaac_dev/G1/SimEnvTest
+    cd <このリポジトリ>/SimEnvTest
     bash run.sh
 
 操作:

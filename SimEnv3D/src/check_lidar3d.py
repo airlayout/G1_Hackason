@@ -8,7 +8,7 @@
     4. センサ座標系への変換が正しいか（ワールドとの往復）
 
 実行方法:
-    cd /home/spacedata/isaac_dev/G1/SimEnv3D
+    cd <このリポジトリ>/SimEnv3D
     source env.sh
     "$ISAAC_SIM/python.sh" src/check_lidar3d.py --viz none
 """

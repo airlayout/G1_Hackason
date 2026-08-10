@@ -6,7 +6,7 @@
 誤認した前例がある）。
 
 実行方法:
-    cd /home/spacedata/isaac_dev/G1/SimEnv3D
+    cd <このリポジトリ>/SimEnv3D
     source env.sh
     python3 src/test_build_map_3d.py
 """

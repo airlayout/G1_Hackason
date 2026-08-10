@@ -10,7 +10,7 @@ remap、TF）が正しいかだけを切り分ける。実機や Sim を絡め�
     3. 既知の形（壁）を入れて、地図がその形になるか
 
 実行方法:
-    cd /home/spacedata/isaac_dev/G1/SimEnv3D
+    cd <このリポジトリ>/SimEnv3D
     source env.sh
     python3 src/test_octomap_pipeline.py
 """

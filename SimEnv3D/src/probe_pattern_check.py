@@ -4,7 +4,7 @@ probe_lidar3d_cost.py の実測で「層数を 64 倍にしても時間が変わ
 物理的にありえない結果が出たため、パターン生成そのものを切り分ける。
 
 実行方法:
-    cd /home/spacedata/isaac_dev/G1/SimEnv3D
+    cd <このリポジトリ>/SimEnv3D
     source env.sh
     python3 src/probe_pattern_check.py
 """

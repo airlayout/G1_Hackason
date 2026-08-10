@@ -5,7 +5,7 @@
 Isaac Sim を起動せずに検証できるようにしておく。
 
 実行方法:
-    cd /home/spacedata/isaac_dev/G1/SimEnv3D
+    cd <このリポジトリ>/SimEnv3D
     source env.sh
     python3 src/test_lidar3d_math.py
 """

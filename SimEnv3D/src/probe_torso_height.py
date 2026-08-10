@@ -10,7 +10,7 @@ TORSO_HEIGHT=0.753 を前提に offset +0.347 を足して地上 1.1 m に置く
     どちらなのかで修正内容が変わるため、実測して切り分ける。
 
 実行方法:
-    cd /home/spacedata/isaac_dev/G1/SimEnv3D
+    cd <このリポジトリ>/SimEnv3D
     source env.sh
     "$ISAAC_SIM/python.sh" src/probe_torso_height.py --viz none
 """

@@ -13,7 +13,7 @@ lidar.py / lidar3d.py の距離が offset ぶん誤る。
 ここでは ray_starts_w（実際の発射位置）を直接見て確認する。
 
 実行方法:
-    cd /home/spacedata/isaac_dev/G1/SimEnv3D
+    cd <このリポジトリ>/SimEnv3D
     source env.sh
     "$ISAAC_SIM/python.sh" src/probe_ray_origin.py --viz none
 """

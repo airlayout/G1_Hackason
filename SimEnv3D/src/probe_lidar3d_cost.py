@@ -17,7 +17,7 @@
     run_cost_map.sh が条件ごとにプロセスを起こして回す。
 
 実行方法（単一条件）:
-    cd /home/spacedata/isaac_dev/G1/SimEnv3D
+    cd <このリポジトリ>/SimEnv3D
     source env.sh
     "$ISAAC_SIM/python.sh" src/probe_lidar3d_cost.py --viz none --channels 16 --beams 360
 
