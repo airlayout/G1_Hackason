@@ -35,6 +35,26 @@ MAP_YAML="${ARGS[0]:-$SCRIPT_DIR/maps/warehouse.yaml}"
 LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
+# 既存のプロセスが残っていると、複数の Isaac Sim / Nav2 が同時に TF を
+# 配信して互いに打ち消し合う（TF_OLD_DATA が大量に出て、RViz に
+# 現在地が表示されなくなる）。起動前に検出して止める。
+# 注意点が 2 つある:
+#   1. pgrep は何も見つからないと終了コード 1 を返す。set -e で止まるので
+#      || true が要る（これが無くて起動しなくなった）。
+#   2. pgrep -f / pkill -f は自分自身のコマンドラインにもマッチする。
+#      $$ を除外しないと自分を kill してしまう。
+STALE=$(pgrep -f "run_g1_twin|component_container_isolated" 2>/dev/null \
+        | grep -v "^$$\$" | wc -l || true)
+if [[ "$STALE" -gt 0 ]]; then
+    echo "[WARN] 既に $STALE 個のプロセスが動いています（前回の残骸の可能性）"
+    echo "[INFO] 停止します..."
+    for pid in $(pgrep -f "run_g1_twin|component_container_isolated" 2>/dev/null || true); do
+        [[ "$pid" != "$$" ]] && kill -9 "$pid" 2>/dev/null || true
+    done
+    sleep 5
+    echo "[OK] 停止しました"
+fi
+
 if [[ ! -f "$MAP_YAML" ]]; then
     echo "[NG] 地図が見つかりません: $MAP_YAML"
     echo "     先に 'bash run_slam.sh' を実行して地図を作ってください。"
@@ -105,8 +125,14 @@ echo "[OK] Nav2 が起動しました"
 # Isaac Sim は真値を持っているので、それをそのまま渡す。
 echo "[INFO] 初期姿勢を Isaac Sim の真値から設定します"
 sleep 5
-python3 "$SCRIPT_DIR/src/set_initial_pose.py" || \
-    echo "[WARN] 初期姿勢の設定に失敗しました。手動で設定してください"
+INITIAL_POSE_OK=1
+python3 "$SCRIPT_DIR/src/set_initial_pose.py" || INITIAL_POSE_OK=0
+if [[ "$INITIAL_POSE_OK" -eq 0 ]]; then
+    echo "[WARN] 初期姿勢の設定に失敗しました。"
+    echo "       RViz に現在地が表示されない場合は、Nav2 の起動完了後に"
+    echo "       別ターミナルで次を実行してください:"
+    echo "         source env.sh && python3 src/set_initial_pose.py"
+fi
 
 echo
 echo "=============================================================="
@@ -126,7 +152,12 @@ else
     echo "   キーボードで操作したい場合は  bash run_nav2.sh --manual  で起動する。"
 fi
 echo
-echo "   初期姿勢は上で自動設定済み（Isaac Sim の真値）。"
+if [[ "$INITIAL_POSE_OK" -eq 1 ]]; then
+    echo "   初期姿勢は自動設定済み（Isaac Sim の真値）。"
+else
+    echo "   [!] 初期姿勢の設定に失敗している。現在地が出ない場合は:"
+    echo "       source env.sh && python3 src/set_initial_pose.py"
+fi
 echo "   RViz の「2D Pose Estimate」は使わないこと。この地図は原点が"
 echo "   ずれているためクリックでは大きく外れる。"
 echo "   やり直したいときは: python3 src/set_initial_pose.py"
