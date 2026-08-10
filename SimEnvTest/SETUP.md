@@ -132,6 +132,16 @@ echo "$ISAAC_SIM"                    # パスが表示されること
 echo "$PYTHONPATH" | tr ':' '\n' | head -5   # IsaacLab と ROS が入っていること
 ```
 
+パスが間違っていると `env.sh` が検出して止まる。
+
+```
+[NG] Isaac Sim が見つかりません: /opt/nonexistent/isaacsim
+     env.sh の ISAAC_SIM を自分の環境に合わせてください。
+     探す場合: find / -name python.sh -path '*isaac*' 2>/dev/null
+```
+
+ROS 2 が無い場合は警告だけ出して続行する（キーボード操作のみ使える）。
+
 ## 5. 歩行ポリシーの checkpoint
 
 リポジトリに含まれている（`checkpoints/g1_flat_checkpoint.pt`、2.0MB）。
