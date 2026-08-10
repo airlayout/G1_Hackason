@@ -1,0 +1,212 @@
+"""G1 に搭載する 2D LiDAR。
+
+SLAM (slam_toolbox) 用に 360 度の 2D スキャンを取得する。
+
+実装方式について:
+    Isaac Sim 標準の PhysX LiDAR (RangeSensorSchema) は、このビルドでは
+    prim の作成に失敗するため使用できない。RangeSensorCreatePrim が
+    Imageable でない Lidar prim の "visibility" 属性を設定しようとして
+    例外になる（Empty typeName for </World/Lidar.visibility>）。
+    加えて isaacsim.util.debug_draw が undefined symbol で読み込めず、
+    PhysX LiDAR プラグインがセンサを認識しない。
+
+    そのため IsaacLab の MultiMeshRayCaster を使う。Warehouse の
+    Mesh 3473 個を対象にしても構築は 1 秒未満で、実用上の問題は無い。
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+
+import torch
+
+# LiDAR の水平解像度 [deg]。360 / 1.0 = 360 ビーム。
+# slam_toolbox は 1 度刻みでも十分な精度で地図を作れる。
+HORIZONTAL_RES_DEG: float = 1.0
+# 測定可能な最大距離 [m]。Warehouse の対角より長く取る。
+MAX_RANGE: float = 30.0
+# 測定可能な最小距離 [m]。自己の身体を拾わないための下限。
+MIN_RANGE: float = 0.3
+# G1 の胴体 (torso_link) は地上 0.753 m にある（実測値）。
+# 地上 1.1 m に置きたいので、その差分を offset とする。
+# 棚の下部が空洞なため、低すぎると棚の脚だけを拾って地図が穴だらけになる。
+TORSO_HEIGHT: float = 0.753
+TARGET_LIDAR_HEIGHT: float = 1.1
+LIDAR_OFFSET_Z: float = TARGET_LIDAR_HEIGHT - TORSO_HEIGHT  # +0.347
+
+
+def expand_mesh_paths(roots: list[str]) -> list[str]:
+    """指定パス配下の Mesh prim を個別に列挙する。
+
+    性能上もっとも重要な処理。親パス（"/World/Warehouse"）を 1 つだけ渡すと、
+    MultiMeshRayCaster は毎スキャンで配下の prim を走査し直すらしく、
+    同じメッシュ・同じビーム数でも極端に遅くなる。
+
+    実測（11520 ビーム、Warehouse の Mesh 3473 個）:
+        親パス "/World/Warehouse" を 1 つ渡す : 467.0 ms
+        Mesh を個別に 3473 個渡す            :   3.2 ms  (146 倍速い)
+
+    ビーム数を 360 -> 11520 と 32 倍にしても時間が変わらなかったのは、
+    この走査が支配的だったため。以前「コストはレイキャスト演算自体に
+    支配される」と結論づけたが、これは誤りだった。
+
+    Args:
+        roots: 探索の起点となる prim パス
+
+    Returns:
+        Mesh prim のパス一覧。Mesh が見つからない場合は roots をそのまま返す。
+    """
+    import isaacsim.core.utils.stage as stage_utils
+    from pxr import Usd, UsdGeom
+
+    stage = stage_utils.get_current_stage()
+    paths: list[str] = []
+    for root in roots:
+        prim = stage.GetPrimAtPath(root)
+        if not prim.IsValid():
+            continue
+        for child in Usd.PrimRange(prim):
+            if child.IsA(UsdGeom.Mesh):
+                paths.append(str(child.GetPath()))
+
+    # GroundPlane のように Mesh を持たない prim はそのまま渡す
+    if not paths:
+        return roots
+
+    print(f"[Lidar] raycast 対象の Mesh を {len(paths)} 個列挙しました")
+    return paths
+
+
+@dataclass(frozen=True)
+class ScanData:
+    """1 スキャン分の距離データ。
+
+    Attributes:
+        ranges: 各ビームの距離 [m]。何にも当たらないビームは inf、
+            近すぎて無効なビームは 0.0。
+        angle_min: 最初のビームの角度 [rad]
+        angle_max: 最後のビームの角度 [rad]
+        angle_increment: ビーム間の角度差 [rad]
+        range_min: 有効な最小距離 [m]
+        range_max: 有効な最大距離 [m]
+    """
+
+    ranges: list[float]
+    angle_min: float
+    angle_max: float
+    angle_increment: float
+    range_min: float
+    range_max: float
+
+
+class G1Lidar:
+    """G1 の胴体に取り付ける 2D LiDAR。
+
+    Isaac Sim のアプリ起動後に生成すること（isaaclab.sensors の import が必要）。
+    """
+
+    def __init__(
+        self,
+        robot_prim_path: str = "/World/G1",
+        mesh_prim_paths: list[str] | None = None,
+        expand_meshes: bool = True,
+    ) -> None:
+        """LiDAR を構築する。
+
+        Args:
+            robot_prim_path: G1 の prim パス
+            mesh_prim_paths: raycast の対象とする prim。既定は Warehouse。
+            expand_meshes: 指定パス配下の Mesh を個別に列挙して渡すか。
+                親パスをそのまま渡すと毎スキャンで配下を走査し直すため
+                146 倍遅くなる（実測）。通常は True のままにする。
+        """
+        from isaaclab.sensors import MultiMeshRayCaster, MultiMeshRayCasterCfg, patterns
+
+        targets = mesh_prim_paths or ["/World/Warehouse"]
+        if expand_meshes:
+            targets = expand_mesh_paths(targets)
+
+        # 2D スキャン: 1 層のみ、水平 360 度
+        pattern = patterns.LidarPatternCfg(
+            channels=1,
+            vertical_fov_range=(0.0, 0.0),
+            horizontal_fov_range=(-180.0, 180.0),
+            horizontal_res=HORIZONTAL_RES_DEG,
+        )
+
+        cfg = MultiMeshRayCasterCfg(
+            prim_path=f"{robot_prim_path}/torso_link",
+            offset=MultiMeshRayCasterCfg.OffsetCfg(pos=(0.0, 0.0, LIDAR_OFFSET_Z)),
+            # "yaw" は yaw だけに追従し、レイは常に水平を保つ。
+            #
+            # "base"（胴体の姿勢に完全追従）にすると、歩行中の胴体の
+            # pitch/roll がレイに乗って上下を向き、同じ方向の距離が
+            # 1 スキャンごとに 10 m 近く暴れる（実測）。SLAM はスキャンを
+            # 重ねられず地図が放射状に壊れる。実機の 2D LiDAR も水平に
+            # 保持されるので、"yaw" の方が実機の挙動にも近い。
+            ray_alignment="yaw",
+            pattern_cfg=pattern,
+            mesh_prim_paths=targets,
+            max_distance=MAX_RANGE,
+            debug_vis=False,
+        )
+        self._sensor = MultiMeshRayCaster(cfg)
+
+        # ビームの並びは実測で確認済み:
+        #   360 本、-180 度から +179 度まで 1 度刻み（+180 度は -180 度と重複するため無い）
+        #   先頭ビーム dirs[0] = (-1, 0, 0) = センサ後方
+        self._num_beams = int(360.0 / HORIZONTAL_RES_DEG)
+        self._angle_increment = math.radians(HORIZONTAL_RES_DEG)
+        self._angle_min = math.radians(-180.0)
+        self._angle_max = self._angle_min + self._angle_increment * (self._num_beams - 1)
+
+        print(
+            f"[Lidar] 2D LiDAR を構築しました: {self._num_beams} ビーム, "
+            f"最大 {MAX_RANGE} m, 地上 {TARGET_LIDAR_HEIGHT} m"
+        )
+
+    def update(self, dt: float) -> None:
+        """センサを更新する。シミュレーションループから毎制御周期呼ぶ。"""
+        self._sensor.update(dt, force_recompute=True)
+
+    @property
+    def position_w(self) -> torch.Tensor:
+        """センサのワールド座標 (3,)。"""
+        return self._sensor.data.pos_w[0]
+
+    def read_scan(self) -> ScanData:
+        """現在のスキャンを LaserScan 相当の形式で返す。
+
+        RayCaster はワールド座標の当たり点を返すため、センサ原点からの
+        距離に変換する。当たらなかったビームは inf、近すぎるものは 0.0 になる。
+        """
+        hits_w = self._sensor.data.ray_hits_w[0]  # (B, 3)
+        origin = self._sensor.data.pos_w[0]  # (3,)
+
+        # 当たらなかったビームは inf が入るので、有限のものだけ距離を計算する
+        finite = torch.isfinite(hits_w).all(dim=-1)
+        distances = torch.full(
+            (hits_w.shape[0],), float("inf"), device=hits_w.device, dtype=torch.float32
+        )
+        if finite.any():
+            distances[finite] = torch.linalg.norm(
+                hits_w[finite] - origin.unsqueeze(0), dim=-1
+            )
+
+        # 近すぎるものは 0.0 にする。
+        #
+        # inf にしてはいけない。LaserScan の inf は「最大距離まで何も無い」
+        # を意味するため、近くの壁を inf にすると SLAM は「30 m 先まで空き」
+        # と解釈し、地図が放射状に真っ白に塗り潰される（実際に発生した）。
+        # range_min 未満の値は ROS の規約で「無効」として無視される。
+        distances[distances < MIN_RANGE] = 0.0
+
+        return ScanData(
+            ranges=distances.cpu().tolist(),
+            angle_min=self._angle_min,
+            angle_max=self._angle_max,
+            angle_increment=self._angle_increment,
+            range_min=MIN_RANGE,
+            range_max=MAX_RANGE,
+        )
