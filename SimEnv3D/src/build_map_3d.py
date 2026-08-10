@@ -58,6 +58,9 @@ MAX_RANGE: float = 30.0
 MIN_HITS: int = 2
 # センサの取り付け高さ [m]。lidar3d.py の TARGET_LIDAR_HEIGHT と揃える。
 LIDAR_HEIGHT: float = 1.1
+# センサの前傾角 [deg]。lidar3d.py の FORWARD_TILT_DEG と揃えること。
+# ここがずれると地図と octomap の結果が食い違う。
+FORWARD_TILT_DEG: float = 20.0
 
 
 class PointMapBuilder(Node):
@@ -113,13 +116,26 @@ class PointMapBuilder(Node):
             return
 
         # センサ座標 -> ワールド座標。
-        # 前傾は publish 側で既に点に反映されている（センサ座標系が傾いている）
-        # ため、ここでは yaw 回転と平行移動だけを適用する。
+        #
+        # **前傾を必ず適用する。** /points は真のセンサ座標系（前傾した座標系）
+        # で配信されるため、yaw だけを適用すると前傾ぶんが抜け落ちる。
+        # 実測すると 10 m 先の点で高さが 3.42 m ずれる（水平は 0.60 m）。
+        # octomap 側は base_link -> lidar3d の静的 TF で前傾を適用しているので、
+        # ここで適用しないと 2 つの地図が食い違う。
+        #
+        # 順序: まず前傾（pitch）を戻し、そのあと yaw を適用する。
+        tilt = math.radians(FORWARD_TILT_DEG)
+        cos_t, sin_t = math.cos(tilt), math.sin(tilt)
+        # y 軸まわりの回転（センサの前傾を base_link 基準へ戻す）
+        bx = pts[:, 0] * cos_t + pts[:, 2] * sin_t
+        by = pts[:, 1]
+        bz = -pts[:, 0] * sin_t + pts[:, 2] * cos_t
+
         cos_y, sin_y = math.cos(yaw), math.sin(yaw)
-        wx = x + pts[:, 0] * cos_y - pts[:, 1] * sin_y
-        wy = y + pts[:, 0] * sin_y + pts[:, 1] * cos_y
+        wx = x + bx * cos_y - by * sin_y
+        wy = y + bx * sin_y + by * cos_y
         # センサは地上 1.1 m にあるので、点の z はそこからの相対値
-        wz = pts[:, 2] + LIDAR_HEIGHT
+        wz = bz + LIDAR_HEIGHT
 
         # 高さで絞る（床と天井を除く）
         keep = (wz >= MIN_Z) & (wz <= MAX_Z)

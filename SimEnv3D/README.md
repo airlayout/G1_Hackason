@@ -135,6 +135,29 @@ python3 src/probe_pattern_check.py
 "$ISAAC_SIM/python.sh" src/probe_mesh_cost.py --viz none --num-meshes 99999  # 個別
 ```
 
+## はまり点：前傾を二重に適用しない／忘れない
+
+`/points` は **真のセンサ座標系**（前傾も歩行の pitch/roll も含む）で配信される。
+`lidar3d.read_point_cloud()` がセンサのワールド姿勢 `quat_w` の**逆回転**で
+変換しているためで、yaw だけでなく前傾も既に除かれている。
+
+したがって点群を使う側は**必ず前傾を適用して**ワールドへ戻す:
+
+| 消費者 | 前傾の適用 |
+|---|---|
+| `octomap_server` | `base_link -> lidar3d` の静的 TF が適用（正しい） |
+| `build_map_3d.py` | コード内で明示的に適用（`FORWARD_TILT_DEG`） |
+
+**実装中に実際にこのバグを入れた。** `build_map_3d.py` で yaw だけを適用し、
+前傾を忘れていた。10 m 先の点で**高さが 3.42 m**（水平は 0.60 m）ずれる。
+2 つの地図が食い違う形になるため、octomap と自前地図を比べれば検出できる。
+
+2D 版の「yaw を足してはいけない」（`ray_alignment="yaw"` なので二重適用に
+なる）とは**逆の注意点**なので混同しないこと。
+
+`FORWARD_TILT_DEG` は `lidar3d.py` と `build_map_3d.py` の両方にあり、
+**変えるときは両方揃えること**（片方だけ変えると地図が食い違う）。
+
 ## octomap のはまり点：2D 投影が空のまま
 
 **`incremental_2D_projection` は `false` にすること。** `true` だと 3D 地図は

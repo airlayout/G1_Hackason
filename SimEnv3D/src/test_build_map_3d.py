@@ -57,10 +57,35 @@ class FakeCloud:
         self.points = points
 
 
+def sensor_to_world(
+    pts: np.ndarray, x: float, y: float, yaw: float
+) -> np.ndarray:
+    """期待値を独立に計算する（実装と同じ式を書かないための参照実装）。
+
+    センサ座標 -> 前傾を戻す -> yaw -> 平行移動、の順。
+    """
+    import build_map_3d as bm
+
+    tilt = math.radians(bm.FORWARD_TILT_DEG)
+    ct, st = math.cos(tilt), math.sin(tilt)
+    bx = pts[:, 0] * ct + pts[:, 2] * st
+    by = pts[:, 1]
+    bz = -pts[:, 0] * st + pts[:, 2] * ct
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    return np.stack(
+        [x + bx * cy - by * sy, y + bx * sy + by * cy, bz + bm.LIDAR_HEIGHT], axis=1
+    )
+
+
 def test_wall_position() -> None:
-    """センサ前方 3 m の壁が、ワールド座標の正しい位置に焼かれる。"""
+    """センサ前方の壁が、前傾を考慮した正しい位置に焼かれる。
+
+    前傾 20 度があるため、センサ座標で真正面 3 m の点はワールドでは
+    水平 2.82 m・高さ 1.1-1.03=0.07 m 付近に来る。前傾を無視すると
+    水平 3.0 m・高さ 1.1 m になり、10 m 先では 3.4 m もずれる。
+    """
     global failures
-    print("[Test] 壁の位置（odom が原点・yaw=0）")
+    print("[Test] 壁の位置（前傾 20 度を考慮）")
     import build_map_3d as bm
 
     # センサ座標で前方 3 m、幅 2 m、センサ基準 z=-0.5〜+0.5 の壁
@@ -71,7 +96,6 @@ def test_wall_position() -> None:
     pts = np.stack([xx.ravel(), yy.ravel(), zz.ravel()], axis=1).astype(np.float32)
 
     builder, _ = make_builder((0.0, 0.0, 0.0))
-    # read_points_numpy を差し替える
     orig = bm.point_cloud2.read_points_numpy
     bm.point_cloud2.read_points_numpy = lambda msg, field_names: msg.points
     try:
@@ -84,25 +108,44 @@ def test_wall_position() -> None:
         print(f"  {FAIL} voxel が 1 つも作られなかった")
         return
 
+    # 参照実装で期待値を出す（高さフィルタで残るものだけ）
+    expected = sensor_to_world(pts, 0.0, 0.0, 0.0)
+    keep = (expected[:, 2] >= bm.MIN_Z) & (expected[:, 2] <= bm.MAX_Z)
+    expected = expected[keep]
+
     keys = np.array(list(builder.voxel_hits.keys()))
     x_m = keys[:, 0] * bm.VOXEL_SIZE
     z_m = keys[:, 2] * bm.VOXEL_SIZE
     print(f"  voxel 数: {len(builder.voxel_hits)}")
-    print(f"  X 範囲: {x_m.min():.2f} 〜 {x_m.max():.2f} m（期待 3.0 付近）")
-    print(f"  Z 範囲: {z_m.min():.2f} 〜 {z_m.max():.2f} m（期待 0.6〜1.6）")
+    print(f"  X 範囲: {x_m.min():.2f} 〜 {x_m.max():.2f} m "
+          f"(期待 {expected[:, 0].min():.2f} 〜 {expected[:, 0].max():.2f})")
+    print(f"  Z 範囲: {z_m.min():.2f} 〜 {z_m.max():.2f} m "
+          f"(期待 {expected[:, 2].min():.2f} 〜 {expected[:, 2].max():.2f})")
 
-    if abs(x_m.mean() - 3.0) < 0.2:
-        print(f"  {PASS} 壁が前方 3 m にある")
+    # voxel の量子化（0.1 m）ぶんの誤差を許す
+    if abs(x_m.min() - expected[:, 0].min()) < 0.15:
+        print(f"  {PASS} 前傾を考慮した X 位置になっている")
     else:
         failures += 1
-        print(f"  {FAIL} X がずれている（平均 {x_m.mean():.2f} m）")
+        print(f"  {FAIL} X がずれている")
 
-    # センサは地上 1.1 m。壁は センサ基準 -0.5〜+0.5 なので 0.6〜1.6 m。
-    if 0.5 < z_m.min() < 0.8 and 1.4 < z_m.max() < 1.8:
-        print(f"  {PASS} 高さがセンサ高さ 1.1 m を基準にしている")
+    # 前傾を無視すると壁は「X=3.0 の平面」に潰れる（Z によらず一定）。
+    # 前傾があると壁が傾くため X に幅が出る。ここでそれを確かめる。
+    #
+    # 注意: 壁は z=-0.5〜+0.5 の広がりを持つので、傾けると上端の X は
+    # 3.0 に達する。「max が 3.0 でない」ではなく「幅がある」で判定する
+    # （最初この判定を誤って書き、正しい実装を NG と誤判定した）。
+    # 期待される幅は sin(20 度) x 壁の高さ(1.0 m) = 0.34 m だが、
+    # voxel 0.1 m に量子化されるため 0.1 m 刻みでしか現れない。
+    x_spread = float(x_m.max() - x_m.min())
+    expected_spread = float(expected[:, 0].max() - expected[:, 0].min())
+    print(f"  X の幅: {x_spread:.2f} m "
+          f"（期待 {expected_spread:.2f} m / 前傾を無視すると 0.0）")
+    if x_spread > 0.05:
+        print(f"  {PASS} 前傾により壁が傾いている")
     else:
         failures += 1
-        print(f"  {FAIL} Z がずれている")
+        print(f"  {FAIL} 壁が平面のまま（前傾が適用されていない）")
 
 
 def test_yaw_applied() -> None:
@@ -125,11 +168,13 @@ def test_yaw_applied() -> None:
         print(f"  {FAIL} voxel が作られなかった")
         return
 
+    exp = sensor_to_world(pts, 0.0, 0.0, math.radians(90.0))[0]
     key = list(builder.voxel_hits.keys())[0]
     x_m, y_m = key[0] * bm.VOXEL_SIZE, key[1] * bm.VOXEL_SIZE
-    print(f"  点の位置: ({x_m:.2f}, {y_m:.2f}) m（期待 (0.0, 3.0)）")
-    if abs(x_m) < 0.2 and abs(y_m - 3.0) < 0.2:
-        print(f"  {PASS} yaw が正しく適用されている")
+    print(f"  点の位置: ({x_m:.2f}, {y_m:.2f}) m"
+          f"（期待 ({exp[0]:.2f}, {exp[1]:.2f})）")
+    if abs(x_m - exp[0]) < 0.15 and abs(y_m - exp[1]) < 0.15:
+        print(f"  {PASS} yaw が正しく適用されている（+Y 方向へ回った）")
     else:
         failures += 1
         print(f"  {FAIL} yaw の適用が誤っている")
@@ -150,10 +195,12 @@ def test_translation_applied() -> None:
     finally:
         bm.point_cloud2.read_points_numpy = orig
 
+    exp = sensor_to_world(pts, 10.0, -5.0, 0.0)[0]
     key = list(builder.voxel_hits.keys())[0]
     x_m, y_m = key[0] * bm.VOXEL_SIZE, key[1] * bm.VOXEL_SIZE
-    print(f"  点の位置: ({x_m:.2f}, {y_m:.2f}) m（期待 (13.0, -5.0)）")
-    if abs(x_m - 13.0) < 0.2 and abs(y_m + 5.0) < 0.2:
+    print(f"  点の位置: ({x_m:.2f}, {y_m:.2f}) m"
+          f"（期待 ({exp[0]:.2f}, {exp[1]:.2f})）")
+    if abs(x_m - exp[0]) < 0.15 and abs(y_m - exp[1]) < 0.15:
         print(f"  {PASS} 平行移動が正しく適用されている")
     else:
         failures += 1
@@ -161,14 +208,23 @@ def test_translation_applied() -> None:
 
 
 def test_height_filter() -> None:
-    """高さ範囲の外（床・天井）が除外される。"""
+    """高さ範囲の外（床・天井）が除外される。
+
+    前傾を適用したあとの高さで判定されるため、期待値も参照実装から出す。
+    """
     global failures
     print("[Test] 高さフィルタ")
     import build_map_3d as bm
 
-    # センサ基準 z: -1.1 は地上 0.0（床）、+2.0 は地上 3.1（天井の上）
+    # 真下（床）・正面・真上（天井の上）の 3 点を、センサ座標で作る。
+    # 前傾があるので「真正面」でも地上高は 1.1 m にならない。
     pts = np.array(
-        [[3.0, 0.0, -1.09], [3.0, 0.0, 0.0], [3.0, 0.0, 2.0]], dtype=np.float32
+        [
+            [0.0, 0.0, -3.0],   # 真下 3 m -> 地上 -1.9 m（床より下）
+            [1.0, 0.0, 0.0],    # 正面 1 m -> 地上 0.76 m（範囲内）
+            [0.0, 0.0, 3.0],    # 真上 3 m -> 地上 4.1 m（天井の上）
+        ],
+        dtype=np.float32,
     )
     builder, _ = make_builder((0.0, 0.0, 0.0))
     orig = bm.point_cloud2.read_points_numpy
@@ -178,12 +234,20 @@ def test_height_filter() -> None:
     finally:
         bm.point_cloud2.read_points_numpy = orig
 
-    # 中央の 1 点（地上 1.1 m）だけ残るはず
-    if len(builder.voxel_hits) == 1:
-        print(f"  {PASS} 床と天井が除外された（3 点 -> 1 voxel）")
+    world = sensor_to_world(pts, 0.0, 0.0, 0.0)
+    expected_n = int(
+        ((world[:, 2] >= bm.MIN_Z) & (world[:, 2] <= bm.MAX_Z)).sum()
+    )
+    heights = ", ".join(f"{z:.2f}" for z in world[:, 2])
+    print(f"  3 点の地上高: {heights} m（採用範囲 {bm.MIN_Z}〜{bm.MAX_Z} m）")
+
+    if len(builder.voxel_hits) == expected_n:
+        print(f"  {PASS} 範囲外が除外された（3 点 -> {expected_n} voxel）")
     else:
         failures += 1
-        print(f"  {FAIL} voxel が {len(builder.voxel_hits)} 個（期待 1）")
+        print(
+            f"  {FAIL} voxel が {len(builder.voxel_hits)} 個（期待 {expected_n}）"
+        )
 
 
 def test_min_hits_and_save() -> None:
