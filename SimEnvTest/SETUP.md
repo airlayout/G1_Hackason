@@ -221,7 +221,7 @@ im.resize((im.width//2, im.height//2)).save('/tmp/map.png')
 bash run_nav2.sh              # 自律走行
 bash run_nav2.sh --manual     # 手動操作（地図を見ながらキーボードで歩かせる）
 
-# 端末 2（Nav2 の起動完了後）
+# 端末 2（Nav2 の起動完了後、2〜5 分かかる）
 bash run_rviz.sh
 ```
 
@@ -229,6 +229,10 @@ bash run_rviz.sh
 
 RViz で「2D Goal Pose」をクリックし、地図上の白い場所へドラッグする。
 G1 が向き直ってから歩き出せば成功。
+
+**RViz でロボットの向きが分からない場合**は、表示が円形の footprint だけで
+向きが見えないため。Add → TF を追加すると座標軸で向きが分かる。
+詳細は [README.md](README.md) の「起動」を参照。
 
 **「2D Pose Estimate」は使わないこと。** 初期姿勢は `run_nav2.sh` が
 Isaac Sim の真値から自動設定する。クリックで指定すると大きくずれる

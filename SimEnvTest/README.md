@@ -21,15 +21,87 @@ Unitree G1 を Isaac Sim の Warehouse シーン上で動かす環境。
 
 ## 起動
 
+用途に応じて 3 通りある。**手動と自律は排他で、実行中には切り替えられない。**
+
+### 1. 手動操作だけ（一番軽い）
+
 ```bash
 cd /home/spacedata/isaac_dev/G1/SimEnvTest
 bash run.sh                # Warehouse シーン（GUI）
 bash run.sh --flat         # 平地のみ（動作確認用）
-bash run.sh --viz none     # ヘッドレス
 ```
 
-`run.sh` が PYTHONPATH のブリッジと `--viz kit` の付与を行う。
-`./isaaclab.sh` は**使えない**（理由は `../CLAUDE.md` 参照）。
+Isaac Sim だけを起動する。地図も RViz も使わないので起動が速い。
+歩行の挙動だけを見たいときはこれ。
+
+### 2. 手動操作 + 地図表示
+
+```bash
+# 端末 1
+bash run_nav2.sh --manual
+
+# 端末 2（Nav2 の起動完了を待ってから）
+bash run_rviz.sh
+```
+
+Nav2 と RViz も起動するので、地図と自己位置を見ながらキーボードで歩かせられる。
+地図の妥当性を目で確かめたいときに使う。
+2D Goal Pose を指定しなければ Nav2 は指令を出さないので競合しない。
+
+### 3. 自律ナビゲーション
+
+```bash
+# 端末 1
+bash run_nav2.sh
+bash run_nav2.sh maps/other.yaml   # 地図を指定する場合
+
+# 端末 2（Nav2 の起動完了を待ってから）
+bash run_rviz.sh
+```
+
+RViz の「**2D Goal Pose**」で目標地点を指定すると、G1 が向き直ってから歩いて到達する。
+
+**「2D Pose Estimate」は使わないこと。** 初期姿勢は `run_nav2.sh` が Isaac Sim の
+真値から自動設定する。クリックで指定すると大きくずれる
+（実測で位置 31 m / 向き 179 度）。失敗した場合は次でやり直す。
+
+```bash
+source env.sh && python3 src/set_initial_pose.py
+```
+
+### 共通の注意
+
+- **起動に 2〜5 分かかる。** Isaac Sim の初期化とアセット取得のため。
+  「反応が無い」と思っても待つこと。
+- `run.sh` / `run_nav2.sh` が PYTHONPATH のブリッジを行う。
+  `./isaaclab.sh` は**使えない**（理由は `../CLAUDE.md` 参照）。
+- 前回のプロセスが残っていると TF が二重に配信されて RViz に現在地が出なくなる。
+  `run_nav2.sh` は起動時に検出して止めるが、手動で確認するなら次を見る。
+
+```bash
+ps aux | grep -c "[r]un_g1_twin"        # 1 以下が正常
+ros2 topic info /tf | grep Publisher    # 1 が正常
+```
+
+- Isaac Sim の起動が「`Waiting on global named semaphore`」で詰まる場合は
+  古い共有メモリが残っている。`rm -f /dev/shm/sem.carbonite-sharedmemory`
+
+### RViz でロボットの向きが分からないとき
+
+RViz が表示するのは `robot_radius` から作られた**円形の footprint** なので、
+回転しても形が変わらず向きが見えない。3D モデルを出す RobotModel は
+`/robot_description` を必要とするが、本プロジェクトは配信していない。
+
+向きを見たい場合は RViz に **TF** 表示を追加する。
+
+1. 左パネル下部の **Add** をクリック
+2. **TF** を選んで OK
+3. 追加された TF の `Frames` で `base_link` と `laser` だけ有効にする（全部出すと見づらい）
+
+座標軸（赤 = X 前方、緑 = Y 左）で向きが分かる。
+
+なお `/odom` と TF 自体は正しく回転を報告している（実測で確認済み）。
+表示上の問題であって、データやナビゲーションには影響しない。
 
 ## 操作
 
@@ -181,24 +253,16 @@ bash run_slam.sh 40000
 
 ### 2. 自律走行させる
 
-```bash
-bash run_nav2.sh                 # 自律走行（Nav2 が指令を出す）
-bash run_nav2.sh --manual        # 手動操作（キーボードで歩かせる）
-bash run_rviz.sh                 # 別ターミナルで RViz
-```
-
-**手動と自律は排他で、実行中には切り替えられない。** 起動時にどちらで
-動かすか決めること。`--manual` でも Nav2 と RViz は起動するので、
-地図と自己位置を見ながらキーボードで操作できる（2D Goal Pose を
-指定しなければ Nav2 は指令を出さない）。
-
-指令の供給源は `run_g1_twin.py` の `--command-source` で決まる:
+起動方法は冒頭の「[起動](#起動)」を参照。指令の供給源は
+`run_g1_twin.py` の `--command-source` で決まる。
 
 | 値 | 指令元 | 使う場面 |
 |---|---|---|
 | `keyboard`（既定） | キーボード | 手動操作 |
 | `patrol` | 自動巡回 | 地図作成 |
 | `ros` | Nav2 の `/cmd_vel` | 自律走行 |
+
+`runner.py` が `if/elif` で排他分岐しているため、実行中の切り替えはできない。
 
 **動作確認済み（2026-08-10）。** RViz の 2D Goal Pose で目標を与えると、
 G1 が向き直ってから歩き、目標に到達する。
