@@ -1,7 +1,22 @@
 # G1 デジタルツイン操作環境
 
-Unitree G1 を Warehouse シーン上でキーボード操作する環境。
+Unitree G1 を Isaac Sim の Warehouse シーン上で動かす環境。
+キーボード操作、地図作成（SLAM）、Nav2 による自律ナビゲーションに対応する。
 将来の実機連携を見据え、コマンド送信部を差し替え可能な抽象層にしている。
+
+**初めて動かす場合は [SETUP.md](SETUP.md) を先に読むこと。**
+必要な環境、インストール手順、最初の動作確認までをまとめてある。
+
+## できること
+
+| 機能 | 起動方法 | 状態 |
+|---|---|---|
+| キーボード操作 | `bash run.sh` | 動作確認済み |
+| 地図作成 | `src/build_map.py`（下記） | 動作確認済み（実形状とのずれ 0.36 m） |
+| 自律ナビゲーション | `bash run_nav2.sh` + `bash run_rviz.sh` | 動作確認済み（短距離） |
+
+**既知の制約:** 距離が長いと成功率が下がる。実時間比が 0.23x（GUI 込み）まで
+落ちること、地図の未探索領域が残ること、G1 が後退できないことが要因。
 
 ## 起動
 
@@ -72,40 +87,57 @@ IsaacLab で再学習する必要がある。
 
 ```
 SimEnvTest/
-├── run.sh                  # 起動スクリプト（キーボード操作）
-├── run_slam.sh             # 自動巡回で地図を作る（SLAM）
-├── run_nav2.sh             # 作った地図で自律走行する（Nav2）
+├── SETUP.md                # セットアップ手順（初めての人はこちら）
+├── README.md               # このファイル
 ├── env.sh                  # Isaac Sim + IsaacLab + ROS 2 の共通環境設定
+├── run.sh                  # キーボード操作で起動
+├── run_nav2.sh             # Nav2 で自律走行させる
+├── run_rviz.sh             # RViz を起動する
+├── run_slam.sh             # slam_toolbox で地図を作る（現状は非推奨）
 ├── config/
-│   ├── slam_toolbox.yaml   # slam_toolbox の設定
-│   └── nav2.yaml           # Nav2 の設定（後退禁止など G1 向け調整）
+│   ├── nav2.yaml           # Nav2 の設定（後退禁止など G1 向け調整）
+│   ├── navigate_g1.xml     # Behavior Tree（BackUp を除いたもの）
+│   ├── navigate_through_poses_g1.xml
+│   └── slam_toolbox.yaml   # slam_toolbox の設定
 ├── src/
 │   ├── run_g1_twin.py      # エントリポイント
-│   ├── test_commands.py    # コマンド追従の自動検証（キーボード不要）
 │   ├── build_map.py        # 真値 odom から地図を作る（推奨）
-│   ├── check_map.py        # 地図の埋まり具合を数値で確認する
-│   ├── check_scan.py       # スキャンの安定性を検査する
-│   ├── check_scan_projection.py # スキャン+姿勢を自前で点群化（切り分け用）
-│   ├── test_patrol.py      # 巡回ロジックの単体テスト
-│   ├── test_build_map.py   # 地図生成の単体テスト
-│   ├── test_scan_semantics.py # LaserScan の規約の回帰テスト
-│   ├── inspect_warehouse.py # Warehouse の prim 構造調査（調査用）
-│   ├── probe_raycaster.py  # RayCaster 版 LiDAR の検証（調査用）
-│   ├── probe_pose.py       # 姿勢データの形式確認（調査用）
-│   ├── probe_scan_angle.py # スキャンの角度規約の検証（調査用）
-│   ├── probe_lidar.py      # PhysX LiDAR の不具合記録（調査用・動作しない）
-│   ├── probe_spawn.py      # 開けた場所の探索（調査用・未完成）
+│   ├── set_initial_pose.py # AMCL の初期姿勢を真値から設定
+│   ├── publish_map_odom_tf.py  # map->odom を恒等変換で流す（AMCL の代替）
+│   │
+│   │   # --- 検証ツール ---
+│   ├── check_map_alignment.py   # 地図と実シーンのずれを測る（重要）
+│   ├── check_map.py             # 地図の埋まり具合
+│   ├── check_scan.py            # スキャンの安定性
+│   ├── check_scan_projection.py # スキャン+姿勢を自前で点群化
+│   │
+│   │   # --- 単体テスト（Isaac Sim 不要）---
+│   ├── test_patrol.py           # 巡回ロジック（6件）
+│   ├── test_build_map.py        # 地図生成（4件）
+│   ├── test_scan_semantics.py   # LaserScan の規約（4件）
+│   ├── test_commands.py         # コマンド追従の実測（Isaac Sim 必要）
+│   │
+│   │   # --- 調査用（記録として残しているもの）---
+│   ├── inspect_warehouse.py     # Warehouse の prim 構造
+│   ├── probe_raycaster.py       # RayCaster 版 LiDAR の検証
+│   ├── probe_pose.py            # 姿勢データの形式確認
+│   ├── probe_walking_yaw.py     # 歩行中の姿勢更新の確認
+│   ├── probe_scan_angle.py      # スキャンの角度規約
+│   ├── probe_torso_yaw.py       # torso と pelvis の姿勢差
+│   ├── probe_lidar.py           # PhysX LiDAR の不具合記録（動作しない）
+│   └── probe_spawn.py           # 開けた場所の探索（未完成）
+│
 │   └── g1_twin/
 │       ├── checkpoint.py   # checkpoint の取得・キャッシュ
 │       ├── command.py      # 速度コマンド + 送信先の抽象層
 │       ├── keyboard.py     # キーボード入力 -> コマンド
 │       ├── policy.py       # 学習済み歩行ポリシー
 │       ├── runner.py       # シーン構築 + 実行ループ
-│       ├── lidar.py        # SLAM 用 2D LiDAR（MultiMeshRayCaster）
+│       ├── lidar.py        # 2D LiDAR（MultiMeshRayCaster）
 │       ├── ros_bridge.py   # ROS 2 連携（/scan /odom /tf、/cmd_vel 購読）
 │       └── patrol.py       # 自動巡回（地図作成用）
 ├── checkpoints/            # 学習済み checkpoint（自動ダウンロード）
-├── maps/                   # SLAM で作った地図（.pgm / .yaml）
+├── maps/                   # 地図（.pgm / .yaml）
 ├── g1_joints.json          # G1 の関節順・既定姿勢・ゲイン（実測ダンプ）
 └── logs/
 ```
@@ -153,27 +185,36 @@ bash run_nav2.sh                 # Isaac Sim + Nav2
 bash run_rviz.sh                 # 別ターミナルで RViz
 ```
 
-RViz の「2D Pose Estimate」で現在位置を教えてから「2D Goal Pose」で
-目標を指定すると、G1 が自律的に歩いて到達する。
+**動作確認済み（2026-08-10）。** RViz の 2D Goal Pose で目標を与えると、
+G1 が向き直ってから歩き、目標に到達する。
 
-**この経路はまだ実地検証していない。** map_server が地図を読み込んで
-`/map` を配信するところまでは確認済み（1794 x 1849 @ 0.05 m/cell）。
-実際に目標を与えて歩かせる検証は RViz の操作が要るため未実施。
+    [controller_server]: Reached the goal!
+    [bt_navigator]: Goal succeeded
 
-### 現在の地図の品質（要確認）
+実測: 総移動 5.24 m、経路計画の失敗 0 回、自己位置のずれ 約 0.6 m。
 
-`maps/warehouse.pgm` は 9497 スキャン（シム内 25 分の巡回）から生成した。
-探索面積 3030 m2、障害物 88877 セル。
+初期姿勢は run_nav2.sh が自動設定する（Isaac Sim の真値を使う）。
+RViz の「2D Pose Estimate」は使わないこと。この地図は原点が
+(-28.5, -25.4) にあり、画像上のどこがどの座標か直感的に分からないため
+クリックでは大きくずれる。
 
-Warehouse の壁・内部の仕切り・等間隔に並ぶ棚は判別できるが、
-**右側と下側に扇状のノイズが残っている**。原因は未特定。
-以下は調べたが主因ではなかった:
+### 現在の地図の品質
 
-- スキャン自体は正常（連続フレームの差 0.033 m、壁を正しく捉えている）
-- オドメトリは正常（原点の跳びゼロ、移動は滑らか）
-- レイの長さ制限は逆効果（25 m で探索 1925 m2、12 m で 631 m2 まで低下）
+`maps/warehouse.pgm` は 7503 スキャン（シム内 20 分の巡回）から生成した。
+721 x 1161 セル、探索面積 1430 m2。
 
-Nav2 で使う前に、この領域が経路計画に悪影響しないか確認すること。
+実シーンとの照合結果（`src/check_map_alignment.py`）:
+
+| 項目 | 実シーン | 地図 |
+|---|---|---|
+| X 範囲 | -26.5 〜 +5.5 m | -26.5 〜 +5.5 m |
+| Y 範囲 | -23.4 〜 +30.6 m | -23.4 〜 +30.6 m |
+| 実形状までの距離 | — | **中央値 0.36 m** |
+
+範囲が完全に一致しており、Nav2 での自律走行にも成功している。
+
+地図を作り直したら `check_map_alignment.py` で必ず検証すること。
+以前 yaw の二重適用で 11 m ずれた地図を「正常」と誤認した。
 
 ### 構成
 
@@ -200,7 +241,11 @@ Nav2 で使う前に、この領域が経路計画に悪影響しないか確認
 | `/tf` | 配信 | `odom` → `base_link`、`base_link` → `laser` |
 | `/cmd_vel` | 購読 | Nav2 からの速度指令 |
 
-### つまずいた点
+## つまずいた点
+
+開発中に踏んだ落とし穴。同じ環境で作業する人向け。
+
+### 地図作成・SLAM 関連
 
 **slam_toolbox はライフサイクルノード。** 起動しただけでは `/scan` を購読せず、
 地図が全く作られない。`ros2 lifecycle set /slam_toolbox configure` と
@@ -220,8 +265,27 @@ LiDAR の更新を配信周期（10Hz）に間引いて実時間比 0.07x → 0.
 レイキャスト演算自体に支配される。SLAM はスキャンのタイムスタンプで処理する
 ため、実時間より遅くても地図は正しく作られる。
 
-**クォータニオンの順序が違う。** IsaacLab の `root_quat_w` は `(w,x,y,z)`、
-ROS の `geometry_msgs` は `(x,y,z,w)`。取り違えると地図が回転して壊れる。
+**クォータニオンは `(x,y,z,w)` 順。** IsaacLab の `root_quat_w` は
+`base_articulation_data.py` の docstring に "Root link orientation (x, y, z, w)"
+と明記されている。ROS の `geometry_msgs` と同じ順序なのでそのまま渡せる。
+
+これを `(w,x,y,z)` と誤解していたため、`/odom` が実際の向きをまったく
+反映せず、Nav2 が旋回指令を出し続けても G1 が回らなかった。
+
+**静止状態の検証では見つからない。** 以前 `probe_pose.py` で yaw=30 度の
+静止状態を調べて「(w,x,y,z) 順」と誤った結論を出した。歩行中に初めて破綻する。
+判別は初期姿勢（無回転）の生値を見るのが確実で、単位クォータニオンの
+`w=1` がどの位置に来るかで分かる。
+
+実測（500 step の旋回、期待 458 度）:
+
+| 解釈 | root の回転量 |
+|---|---|
+| `(w,x,y,z)`（誤り） | +5.9 度 |
+| `(x,y,z,w)`（正しい） | **+105.6 度**（458-360=98 度とほぼ一致） |
+
+角速度 `root_ang_vel_b` は正常な値を返すので、**角速度は正しいのに姿勢が
+変わらない**という矛盾がこのバグの指紋になる。
 
 **LiDAR は `ray_alignment="yaw"` にする。** ここが今回いちばんはまった点。
 `"base"`（胴体の姿勢に完全追従）にすると、歩行中の pitch/roll がレイに乗って
@@ -275,6 +339,35 @@ ROS の規約で「無効」として無視される `0.0` にする。
 **進捗の判定に粗いログを使わない。** 状態ログは 5 秒ごとにしか出ないため、
 その中のユニーク位置を数えると正常な移動でも「停滞」に見える。実際に一度
 これで誤判定した。移動距離の合計など、意味のある量で判断すること。
+
+
+### 基本操作・実行時の注意
+
+**ループ内で `simulation_app.update()` を必ず呼ぶ。** これを呼ばないと
+Kit の UI イベントが処理されず、**キーボードのコールバックが一切発火しない**
+（キーを押しても無反応になる）。`sim.step()` と `sim.render()` だけでは足りない。
+
+**エントリポイントを import してはいけない。** `run_g1_twin.py` はモジュール直下で
+`AppLauncher` を起動するため、他のスクリプトから import すると
+**アプリが二重起動して即座に落ちる**（エラーも出ない）。
+共有したい処理は `g1_twin/` 配下へ置くこと。
+
+**`finally` で `simulation_app.close()` を呼ばない。** 例外を隠して
+「エラーも無く終了した」ように見える。`main()` の外で閉じる。
+
+**起動に 2〜5 分かかる。** Isaac Sim 本体の初期化に加え、G1 の USD をリモートの
+アセットサーバーから取得するため。タイムアウトを短く設定すると
+「エラーも出ずに落ちた」ように見えるので、待ち時間は十分に取ること。
+2 回目以降は `~/.cache/ov` にキャッシュされる。
+
+**起動時に segfault することがある。** `blas_thread_shutdown` / `__libc_fork` で
+落ちる。`OPENBLAS_NUM_THREADS=1` 等で回避する（`env.sh` / `run.sh` は設定済み）。
+
+**静止コマンド (0,0,0) でもゆっくり漂う**（実測 約 0.04 m/s）。
+このポリシーは速度追従で学習されており位置保持の項が無いため、仕様上の挙動。
+
+**キーボード操作は GUI でしか使えない。** ヘッドレス（`--viz none`）では
+`omni.appwindow` が import できずエラーになる。
 
 ## 歩行ポリシー
 
@@ -361,36 +454,20 @@ PYTHONPATH="$PWD/src:$PP$SP" OPENBLAS_NUM_THREADS=1 \
 動作確認済み（2026-08-04、GUI で実操作）: W / S / A / D / Q / E および
 同時押し（W+D, W+E）が正しく指令に反映され、操作中に転倒しないことを確認。
 
-## 実装上の注意（つまずいた点）
-
-- **ループ内で `simulation_app.update()` を必ず呼ぶ。** これを呼ばないと
-  Kit の UI イベントが処理されず、**キーボードのコールバックが一切発火しない**
-  （キーを押しても無反応になる）。`sim.step()` と `sim.render()` だけでは足りない。
-  IsaacLab の teleop スクリプト（`teleop_se3_agent.py` 等）も同様に呼んでいる。
-
-- **エントリポイントを import してはいけない。** `run_g1_twin.py` はモジュール直下で
-  `AppLauncher` を起動するため、他のスクリプトから import すると
-  **アプリが二重起動して即座に落ちる**（エラーも出ない）。
-  共有したい処理は `g1_twin/` 配下へ置くこと（`checkpoint.py` がその例）。
-- **`finally` で `simulation_app.close()` を呼ばない。** 例外を隠して
-  「エラーも無く終了した」ように見える。IsaacLab の参考実装と同じく
-  `main()` の外で閉じる。
-- 起動時に `blas_thread_shutdown` / `__libc_fork` で segfault することがある。
-  `OPENBLAS_NUM_THREADS=1` 等で回避する（`run.sh` は設定済み）。
-
-## 実行時の注意
-
-- **起動に 2〜5 分かかる。** Isaac Sim 本体の初期化に加え、G1 の USD をリモートの
-  アセットサーバーから取得するため。タイムアウトを短く設定すると
-  「エラーも出ずに落ちた」ように見えるので、待ち時間は十分に取ること。
-- Warehouse シーン（`full_warehouse.usd`）は本体 6.8MB だが、マテリアル・テクスチャを
-  多数の個別ファイルとして参照するため初回ロードは特に時間がかかる。
-  2 回目以降は `~/.cache/ov` にキャッシュされる。
-- **静止コマンド (0,0,0) でもゆっくり漂う**（実測 約 0.04 m/s）。
-  このポリシーは速度追従で学習されており位置保持の項が無いため、仕様上の挙動。
-  完全に止めたい場合は別途位置制御を重ねる必要がある。
-
 ## 既知の問題
 
-- `isaacsim.util.debug_draw` が `libtbb.so.2` 不足で読み込めない。
-  歩行には影響しないが、センサー可視化に使う場合は `libtbb2` の導入が必要（sudo 権限）。
+- **`isaacsim.util.debug_draw` が読み込めない。** ユーザーローカル
+  （`~/.local/share/ov/data/exts/v2/`）に Isaac Sim 4.5 世代（cp311）の拡張が
+  残っており、6.0（cp312）と版が混在しているため。歩行・地図作成には影響しないが、
+  PhysX LiDAR が使えない原因の一つになっている。
+
+- **長距離のナビゲーションは成功率が下がる。** 実時間比 0.23x（GUI 込み）で
+  Nav2 の制御周期と噛み合わないこと、地図に未探索領域が残ること、
+  G1 が後退で立て直せないことが要因。改善するなら headless で動かし、
+  巡回時間を延ばして地図の探索範囲を広げる。
+
+- **slam_toolbox では安定した地図が作れなかった。** Warehouse は同じ形の棚が
+  並び 2D スキャンでは特徴が乏しいため、相関スキャンマッチャが誤マッチする。
+  設定は `config/slam_toolbox.yaml` に残してあるので、実機連携時や
+  別のシーンでは再挑戦する価値がある。なお当時は yaw の二重適用バグ
+  （下記）が入っていたため、修正後なら結果が変わる可能性がある。
