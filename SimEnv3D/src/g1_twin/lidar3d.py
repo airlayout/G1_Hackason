@@ -175,8 +175,34 @@ class G1Lidar3D:
 
     @property
     def position_w(self) -> torch.Tensor:
-        """センサのワールド座標 (3,)。"""
-        return self._sensor.data.pos_w[0]
+        """レイの実際の発射位置（ワールド座標 (3,)）。
+
+        **`data.pos_w` をそのまま返してはいけない。** IsaacLab の RayCaster は
+        `cfg.offset.pos` をレイの始点（`ray_starts`）にしか適用せず、
+        `data.pos_w` には含めない（`ray_caster.py` の 217 行目と 233 行目）。
+
+        実測（2026-08-10）:
+            cfg.offset.pos の z   : +0.347
+            ray_starts のローカル z: 0.347   <- 効いている
+            data.pos_w の z        : 0.745   <- 含まない（torso_link と同じ）
+            真の発射高さ           : 1.092   <- pos_w + offset
+
+        `data.pos_w` を原点として距離を計算すると、足元の点で 0.32 m（28%）
+        も過小評価する。実際にこのバグを入れた。
+        """
+        return self._sensor.data.pos_w[0] + self._offset_w()
+
+    def _offset_w(self) -> torch.Tensor:
+        """cfg.offset.pos をワールド座標系へ回した値 (3,) を返す。
+
+        offset はセンサのローカル座標なので、姿勢で回してから足す必要がある。
+        `ray_alignment="base"` では胴体の姿勢がそのまま乗る。
+        """
+        quat_w = self._sensor.data.quat_w[0]
+        offset_local = torch.tensor(
+            [0.0, 0.0, LIDAR_OFFSET_Z], device=quat_w.device, dtype=torch.float32
+        )
+        return _rotate_by_quat(offset_local.unsqueeze(0), quat_w)[0]
 
     @property
     def quat_w(self) -> torch.Tensor:
@@ -194,7 +220,9 @@ class G1Lidar3D:
         地図生成（build_map_3d.py）はワールド座標で点を積むため、こちらを使う。
         """
         hits_w = self._sensor.data.ray_hits_w[0]  # (B, 3)
-        origin = self._sensor.data.pos_w[0]  # (3,)
+        # position_w（offset を含む真の発射位置）を使う。data.pos_w を直接
+        # 使うと距離が 0.32 m 過小になる（position_w の docstring 参照）。
+        origin = self.position_w  # (3,)
 
         valid = self._valid_mask(hits_w, origin)
         return hits_w[valid]
@@ -218,7 +246,8 @@ class G1Lidar3D:
             ステップ 4（"base" vs "yaw" の比較）で実測して判断する。
         """
         hits_w = self._sensor.data.ray_hits_w[0]  # (B, 3)
-        origin = self._sensor.data.pos_w[0]  # (3,)
+        # offset を含む真の発射位置を原点にする（data.pos_w だと 0.32 m ずれる）
+        origin = self.position_w  # (3,)
         quat_w = self._sensor.data.quat_w[0]  # (4,) (w, x, y, z)
 
         valid = self._valid_mask(hits_w, origin)

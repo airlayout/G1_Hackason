@@ -172,8 +172,22 @@ class G1Lidar:
 
     @property
     def position_w(self) -> torch.Tensor:
-        """センサのワールド座標 (3,)。"""
-        return self._sensor.data.pos_w[0]
+        """レイの実際の発射位置（ワールド座標 (3,)）。
+
+        **`data.pos_w` をそのまま返してはいけない。** IsaacLab の RayCaster は
+        `cfg.offset.pos` をレイの始点にしか適用せず、`data.pos_w` には含めない
+        （`ray_caster.py` の 217 行目と 233 行目）。
+
+        実測（2026-08-10）: pos_w の z は torso_link と同じ 0.745 m を返し、
+        offset +0.347 が抜けていた。真の発射高さは 1.092 m。
+        これを原点に距離を計算すると足元の点で 0.32 m（28%）過小評価する。
+
+        `ray_alignment="yaw"` ではレイが常に水平なので、offset は z 方向の
+        平行移動としてそのまま足せる（3D 版と違い回転を考える必要が無い）。
+        """
+        pos = self._sensor.data.pos_w[0].clone()
+        pos[2] += LIDAR_OFFSET_Z
+        return pos
 
     def read_scan(self) -> ScanData:
         """現在のスキャンを LaserScan 相当の形式で返す。
@@ -182,7 +196,9 @@ class G1Lidar:
         距離に変換する。当たらなかったビームは inf、近すぎるものは 0.0 になる。
         """
         hits_w = self._sensor.data.ray_hits_w[0]  # (B, 3)
-        origin = self._sensor.data.pos_w[0]  # (3,)
+        # offset を含む真の発射位置を原点にする（data.pos_w だと 0.32 m ずれる。
+        # position_w の docstring を参照）
+        origin = self.position_w  # (3,)
 
         # 当たらなかったビームは inf が入るので、有限のものだけ距離を計算する
         finite = torch.isfinite(hits_w).all(dim=-1)
