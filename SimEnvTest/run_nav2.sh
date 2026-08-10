@@ -100,11 +100,19 @@ for _ in $(seq 1 180); do
     sleep 5
 done
 
+# nav2.yaml の Behavior Tree のパスを実際の場所に合わせる。
+# Nav2 は設定内の環境変数を展開しないため絶対パスで書く必要があり、
+# リポジトリを別の場所へ置くと壊れる。起動のたびに書き換えて回避する。
+GENERATED_PARAMS="$LOG_DIR/nav2_params_generated.yaml"
+sed -e "s|^\( *default_nav_to_pose_bt_xml: \).*|\1$SCRIPT_DIR/config/navigate_g1.xml|" \
+    -e "s|^\( *default_nav_through_poses_bt_xml: \).*|\1$SCRIPT_DIR/config/navigate_through_poses_g1.xml|" \
+    "$SCRIPT_DIR/config/nav2.yaml" > "$GENERATED_PARAMS"
+
 echo "[INFO] === 段階 2/2: Nav2 を起動します ==="
 # map_server に地図を渡し、AMCL で自己位置を推定する構成
 ros2 launch nav2_bringup bringup_launch.py \
     map:="$MAP_YAML" \
-    params_file:="$SCRIPT_DIR/config/nav2.yaml" \
+    params_file:="$GENERATED_PARAMS" \
     use_sim_time:=true \
     autostart:=true \
     > "$LOG_DIR/nav2.log" 2>&1 &

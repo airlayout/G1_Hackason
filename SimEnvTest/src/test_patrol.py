@@ -11,9 +11,11 @@ Isaac Sim を起動せずに巡回の判断だけを検証する。実測で遭�
 from __future__ import annotations
 
 import math
+import pathlib
 import sys
 
-sys.path.insert(0, "/home/spacedata/isaac_dev/G1/SimEnvTest/src")
+# このファイルの位置から src/ を求める（リポジトリの置き場所に依存しない）
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from g1_twin.lidar import ScanData  # noqa: E402
 from g1_twin.patrol import AutoPatrol  # noqa: E402

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import argparse
+import pathlib
 
 from isaaclab.app import AppLauncher
 
@@ -36,7 +37,8 @@ import isaacsim.core.utils.stage as stage_utils  # noqa: E402
 from pxr import Usd, UsdGeom  # noqa: E402
 
 WAREHOUSE_USD: str = "/Isaac/Environments/Simple_Warehouse/full_warehouse.usd"
-MAP_STEM: str = "/home/spacedata/isaac_dev/G1/SimEnvTest/maps/warehouse"
+# このファイルの位置から maps/ を求める（リポジトリの置き場所に依存しない）
+MAP_STEM: str = str(pathlib.Path(__file__).resolve().parent.parent / "maps" / "warehouse")
 # LiDAR の高さ [m]。この高さを通る形状だけを 2D の障害物とみなす。
 #
 # 幅を広めに取る。狭くすると壁の一部しか拾えず、Warehouse の実際の

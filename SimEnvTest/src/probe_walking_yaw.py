@@ -38,9 +38,11 @@ from isaaclab.assets import Articulation  # noqa: E402
 from isaaclab.sim import SimulationContext  # noqa: E402
 from isaaclab_assets.robots.unitree import G1_CFG  # noqa: E402
 
+import pathlib
 import sys  # noqa: E402
 
-sys.path.insert(0, "/home/spacedata/isaac_dev/G1/SimEnvTest/src")
+# このファイルの位置から src/ を求める（リポジトリの置き場所に依存しない）
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from g1_twin.checkpoint import resolve_checkpoint  # noqa: E402
 from g1_twin.command import VelocityCommand  # noqa: E402
 from g1_twin.policy import G1FlatPolicy  # noqa: E402

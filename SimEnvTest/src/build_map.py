@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import pathlib
 import sys
 
 import numpy as np
@@ -323,7 +324,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="真値 odom から 2D 地図を作る")
     parser.add_argument(
         "--output",
-        default="/home/spacedata/isaac_dev/G1/SimEnvTest/maps/warehouse",
+        default=str(pathlib.Path(__file__).resolve().parent.parent / "maps" / "warehouse"),
         help="出力先（拡張子なし）",
     )
     parser.add_argument(

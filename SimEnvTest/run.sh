@@ -11,16 +11,10 @@
 #   bash run.sh --viz none     # ヘッドレス
 set -euo pipefail
 
-ISAAC_SIM=/home/spacedata/isaacSim6.0dev2/_build/linux-x86_64/release
-ISAACLAB=/home/spacedata/IsaacLab
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# editable install の実ソースと、依存パッケージ（warp, rsl_rl 等）の両方を通す
-LAB_SOURCES=$(ls -d "$ISAACLAB"/source/*/ | tr '\n' ':')
-LAB_SITE_PACKAGES="$ISAACLAB/env_isaaclab/lib/python3.12/site-packages"
-
-export PYTHONPATH="${SCRIPT_DIR}/src:${LAB_SOURCES}${LAB_SITE_PACKAGES}"
-export DISPLAY="${DISPLAY:-:1}"
+# パスの定義は env.sh に一本化してある。2 箇所に書くと片方の修正漏れが起きる。
+source "$SCRIPT_DIR/env.sh"
 
 mkdir -p "$SCRIPT_DIR/logs"
 LOG="$SCRIPT_DIR/logs/g1_twin.log"

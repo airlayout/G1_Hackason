@@ -13,9 +13,11 @@ Isaac Sim も ROS も使わず、人工的な観測から占有格子を作っ�
 from __future__ import annotations
 
 import math
+import pathlib
 import sys
 
-sys.path.insert(0, "/home/spacedata/isaac_dev/G1/SimEnvTest/src")
+# このファイルの位置から src/ を求める（リポジトリの置き場所に依存しない）
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import numpy as np  # noqa: E402
 

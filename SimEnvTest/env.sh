@@ -9,6 +9,11 @@
 #   source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 #   "$ISAAC_SIM/python.sh" some_script.py
 
+# ============================================================
+# 環境ごとに変更が必要なのはこの 3 行だけ。
+# 他のスクリプトは env.sh を source するか、自分のファイル位置から
+# 相対でパスを求めるので、ここ以外に書き換える箇所は無い。
+# ============================================================
 ISAAC_SIM=/home/spacedata/isaacSim6.0dev2/_build/linux-x86_64/release
 ISAACLAB=/home/spacedata/IsaacLab
 ENV_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

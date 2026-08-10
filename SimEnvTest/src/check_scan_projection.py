@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import math
+import pathlib
 import sys
 
 import numpy as np
@@ -24,7 +25,8 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import LaserScan
 
-OUT_PATH: str = "/home/spacedata/isaac_dev/G1/SimEnvTest/maps/projection.png"
+# このファイルの位置から maps/ を求める（リポジトリの置き場所に依存しない）
+OUT_PATH: str = str(pathlib.Path(__file__).resolve().parent.parent / "maps" / "projection.png")
 # 何フレーム重ねるか
 NUM_FRAMES: int = 12
 # 出力画像の解像度 [m/pixel]

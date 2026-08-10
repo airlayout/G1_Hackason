@@ -116,12 +116,13 @@ ISAACLAB=/home/spacedata/IsaacLab                                      # ← 変
 ROS_SETUP=/opt/ros/jazzy/setup.bash                                    # ← 必要なら
 ```
 
-`src/set_initial_pose.py` と `src/build_map.py` など一部のスクリプトに
-絶対パスが埋まっている。別の場所に置く場合は以下を確認する。
+**書き換えが必要なのはこの 3 行だけ。** 他のスクリプトは `env.sh` を
+source するか、自分のファイル位置から相対でパスを求めるので、
+リポジトリをどこに置いても動く。
 
-```bash
-grep -rn "/home/spacedata/isaac_dev/G1" src/ | grep -v "^src/probe_"
-```
+`config/nav2.yaml` に Behavior Tree の絶対パスが書いてあるが、
+`run_nav2.sh` が起動時に実際の場所へ書き換えるため触らなくてよい
+（Nav2 は設定内の環境変数を展開しないため絶対パスが必要）。
 
 ### 動作確認
 

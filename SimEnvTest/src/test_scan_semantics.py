@@ -13,9 +13,11 @@ Isaac Sim を起動せずに ScanData の規約だけを検証する。
 from __future__ import annotations
 
 import math
+import pathlib
 import sys
 
-sys.path.insert(0, "/home/spacedata/isaac_dev/G1/SimEnvTest/src")
+# このファイルの位置から src/ を求める（リポジトリの置き場所に依存しない）
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import torch  # noqa: E402
 
