@@ -49,6 +49,9 @@ class RunnerConfig:
     device: str = "cuda:0"
     # ROS 2 へ /scan と /odom を配信するか（SLAM / Nav2 で使う）
     enable_ros: bool = False
+    # 頭部カメラを搭載するか。Isaac Sim 起動時に --enable_cameras が
+    # 無いとカメラ拡張が読み込まれず構築できないため、その状態と連動させる。
+    enable_camera: bool = False
     # 速度指令の供給源: "keyboard" / "patrol"（自動巡回） / "ros"（Nav2）
     command_source: str = "keyboard"
     # 自動巡回の乱数種（再現性のため）
@@ -78,6 +81,8 @@ class G1TwinRunner:
         self._lidar = None
         self._ros = None
         self._patrol = None
+        # 頭部カメラ（常時搭載。現時点では配信・利用はしていない）
+        self._camera = None
         # 直近の LiDAR スキャン（間引くため前回値を保持する）
         self._latest_scan = None
         # 実時間比の計測用
@@ -90,24 +95,23 @@ class G1TwinRunner:
     # ------------------------------------------------------------------
     def build_scene(self) -> None:
         """Warehouse シーンと G1 をステージへ配置する。"""
-        import isaacsim.core.utils.prims as prim_utils
-        from isaacsim.core.utils.stage import add_reference_to_stage
-        from isaacsim.storage.native import get_assets_root_path
+        from isaaclab.sim import add_reference_to_stage
+        from isaaclab.utils.assets import NUCLEUS_ASSET_ROOT_DIR
         from pxr import UsdLux
 
         import isaaclab.sim as sim_utils
         from isaaclab.assets import Articulation
         from isaaclab_assets.robots.unitree import G1_CFG
 
-        assets_root = get_assets_root_path()
-        if assets_root is None:
+        assets_root = NUCLEUS_ASSET_ROOT_DIR
+        if not assets_root:
             raise RuntimeError(
                 "[G1] アセットサーバーに接続できません。ネットワーク接続を確認してください。"
             )
 
         if self._config.use_warehouse:
             warehouse_path = assets_root + WAREHOUSE_USD
-            add_reference_to_stage(usd_path=warehouse_path, prim_path="/World/Warehouse")
+            add_reference_to_stage(usd_path=warehouse_path, path="/World/Warehouse")
             print(f"[OK] Warehouse シーンを読み込みました: {warehouse_path}")
         else:
             # 平地のみ
@@ -125,6 +129,14 @@ class G1TwinRunner:
         robot_cfg.init_state = robot_cfg.init_state.replace(pos=(x, y, SPAWN_HEIGHT))
         self._robot = Articulation(robot_cfg)
         print(f"[OK] G1 を配置しました: pos=({x}, {y}, {SPAWN_HEIGHT})")
+
+        # 頭部カメラ（sim.reset() より前に構築する必要がある。センサの登録のため）。
+        # --enable_cameras 無しで起動した場合はカメラ拡張が無く構築できないため、
+        # そのときだけ搭載しない（他の実行スクリプトを壊さないため）。
+        if self._config.enable_camera:
+            from .camera import G1Camera
+
+            self._camera = G1Camera(robot_prim_path="/World/G1")
 
         # LiDAR は sim.reset() より前に構築する必要がある（センサの登録のため）
         if self._config.enable_ros:
@@ -311,6 +323,11 @@ class G1TwinRunner:
                 self._lidar.update(CONTROL_DT * SCAN_PUBLISH_EVERY)
                 self._latest_scan = self._lidar.read_scan()
             scan = self._latest_scan
+
+            # 頭部カメラを更新する（レンダリングが重いため LiDAR と同じ
+            # 周期(10Hz)に間引く。現時点では取得した画像は使っていない）。
+            if self._camera is not None and self._step_count % SCAN_PUBLISH_EVERY == 0:
+                self._camera.update(CONTROL_DT * SCAN_PUBLISH_EVERY)
 
             # 速度指令の供給源を選ぶ
             if self._patrol is not None and scan is not None:

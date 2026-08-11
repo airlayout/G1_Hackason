@@ -95,24 +95,23 @@ class G1TwinRunner:
     # ------------------------------------------------------------------
     def build_scene(self) -> None:
         """Warehouse シーンと G1 をステージへ配置する。"""
-        import isaacsim.core.utils.prims as prim_utils
-        from isaacsim.core.utils.stage import add_reference_to_stage
-        from isaacsim.storage.native import get_assets_root_path
+        from isaaclab.sim import add_reference_to_stage
+        from isaaclab.utils.assets import NUCLEUS_ASSET_ROOT_DIR
         from pxr import UsdLux
 
         import isaaclab.sim as sim_utils
         from isaaclab.assets import Articulation
         from isaaclab_assets.robots.unitree import G1_CFG
 
-        assets_root = get_assets_root_path()
-        if assets_root is None:
+        assets_root = NUCLEUS_ASSET_ROOT_DIR
+        if not assets_root:
             raise RuntimeError(
                 "[G1] アセットサーバーに接続できません。ネットワーク接続を確認してください。"
             )
 
         if self._config.use_warehouse:
             warehouse_path = assets_root + WAREHOUSE_USD
-            add_reference_to_stage(usd_path=warehouse_path, prim_path="/World/Warehouse")
+            add_reference_to_stage(usd_path=warehouse_path, path="/World/Warehouse")
             print(f"[OK] Warehouse シーンを読み込みました: {warehouse_path}")
         else:
             # 平地のみ

@@ -15,6 +15,7 @@ Unitree G1 を Isaac Sim の Warehouse シーン上で動かす環境。
 | 地図作成 | `src/build_map.py`（下記） | 動作確認済み（実形状とのずれ 0.36 m） |
 | 自律ナビゲーション | `bash run_nav2.sh` + `bash run_rviz.sh` | 動作確認済み（短距離） |
 | 手動操作 + 地図表示 | `bash run_nav2.sh --manual` | 地図と自己位置を RViz で見ながら手動操作 |
+| 頭部カメラ | `bash run.sh`（自動で有効） | 搭載のみ動作確認済み。ROS 配信・画像の利用は未実装 |
 
 **既知の制約:** 距離が長いと成功率が下がる。実時間比が 0.23x（GUI 込み）まで
 落ちること、地図の未探索領域が残ること、G1 が後退できないことが要因。
@@ -207,6 +208,7 @@ SimEnvTest/
 │       ├── policy.py       # 学習済み歩行ポリシー
 │       ├── runner.py       # シーン構築 + 実行ループ
 │       ├── lidar.py        # 2D LiDAR（MultiMeshRayCaster）
+│       ├── camera.py       # 頭部カメラ（RGB、搭載のみ・未配信）
 │       ├── ros_bridge.py   # ROS 2 連携（/scan /odom /tf、/cmd_vel 購読）
 │       └── patrol.py       # 自動巡回（地図作成用）
 ├── checkpoints/            # 学習済み checkpoint（自動ダウンロード）
@@ -323,6 +325,59 @@ RViz の「2D Pose Estimate」は使わないこと。この地図は原点が
 ## つまずいた点
 
 開発中に踏んだ落とし穴。同じ環境で作業する人向け。
+
+### 環境の例②: pip 版 Isaac Sim（6.0.1）固有のつまずき（2026-08-11）
+
+このプロジェクトは複数のユーザー・複数の Isaac Sim 入手方法
+（ソースビルド版 / pip 版など）で使われることを想定している。
+検証環境（`devuser` のソースビルド版 Isaac Sim 6.0.0-rc.22）とは別に、
+pip 版 Isaac Sim 6.0.1.0 + IsaacLab `release/3.0.0-beta2` の組み合わせで
+別ユーザー環境から動かしたケースがあり、その際に踏んだ点をここに記録する。
+手順の全体は [SETUP.md](SETUP.md) の「環境の例②: pip 版 Isaac Sim を
+使う場合」を参照。
+
+**IsaacLab `main`（v2.3.x）は Isaac Sim 6.0 で起動直後にクラッシュする。**
+`isaaclab/sim/simulation_context.py` の `bind_physics_material` が
+`PhysxSchema.PhysxDeformableBodyAPI` を参照するが、Isaac Sim 6.0 では
+このシンボルが無くなっており `AttributeError` になる。同様に
+`isaaclab/assets/articulation/articulation.py` の
+`import omni.physics.tensors.impl.api as physx` も `ModuleNotFoundError`
+になる。**`release/3.0.0-beta2` 以降を使うこと。** このブランチは
+Isaac Sim 6.0.1 を正式サポートしており、上記の問題は起きない。
+
+**「フリーズしたように見える」の多くは単なる出力バッファリング。**
+標準出力をファイルにリダイレクトすると、Python の `print()` はブロック
+バッファリングされ、プロセスが動き続けている間はバッファが flush されない。
+起動確認のために `python -u`（`PYTHONUNBUFFERED=1`）を付けずに
+`> log.txt 2>&1` でリダイレクトして「`[INFO] Setup complete` が出ない
+＝ 固まっている」と誤判断しやすい。実際には正常に動いていることが多いので、
+判断する前に `PYTHONUNBUFFERED=1` を付けて再実行すること
+（`run.sh` / `env.sh` は設定済み）。GPU のファイル記述子が増え続けているか
+（`ls /proc/<pid>/fd | wc -l` を数回叩いて増減を見る）も生死の判断材料になる。
+
+**`isaacsim.core.utils` / `isaacsim.storage.native` が import できない。**
+Isaac Sim 6.0.0 で非推奨化され、IsaacLab の `.kit` アプリ構成では既定で
+読み込まれない。`isaaclab.sim.add_reference_to_stage`
+（引数名は `prim_path` ではなく `path`）と
+`isaaclab.utils.assets.NUCLEUS_ASSET_ROOT_DIR`（定数、関数ではない）に
+置き換える。詳細は SETUP.md の対応表を参照。
+
+**`/tmp/Assets` の権限エラー。** 共有マシンで他ユーザーが先に
+`/tmp/Assets`（IsaacLab のアセットダウンロードキャッシュ）を作っていると
+書き込めない。`env.sh` で `TMPDIR` を自分専用のディレクトリに向けて回避する。
+
+**`--enable_cameras` を付けると起動が固まる（2026-08-11）。**
+`camera.py`（頭部カメラ）を有効にするために必要な `--enable_cameras` を
+付けると、`[ISAACLAB] AppLauncher initialization complete` が出るより前、
+拡張機能の読み込み中に無言のまま止まることがある。原因は、カメラ関連の
+拡張の一部が pip 版の `extscache`（ローカルキャッシュ）に含まれておらず、
+オンラインの拡張レジストリ（`kit-extensions.ov.nvidia.com`）に問い合わせに
+行くが、この環境からは名前解決できず（`NXDOMAIN`）、待ち続けてしまうため。
+`ls /proc/<pid>/fd | wc -l` が全く増えない、`ss -tnp` で 127.0.0.1 の
+Omniverse Hub プロセスへの接続が張られたまま変化しない、といった状態で
+気付ける。`--kit_args="--/app/extensions/registryEnabled=false"` を渡して
+レジストリへの問い合わせ自体を止めると、数十秒で正常に起動する
+（`run.sh` は `--enable_cameras` と併せてこの対処を自動的に付けるよう設定済み）。
 
 ### 地図作成・SLAM 関連
 

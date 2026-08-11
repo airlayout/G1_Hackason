@@ -14,8 +14,8 @@
 # 他のスクリプトは env.sh を source するか、自分のファイル位置から
 # 相対でパスを求めるので、ここ以外に書き換える箇所は無い。
 # ============================================================
-ISAAC_SIM=/home/spacedata/isaacSim6.0dev2/_build/linux-x86_64/release
-ISAACLAB=/home/spacedata/IsaacLab
+ISAAC_SIM=/home/ubuntu/NVIDIA/env_isaaclab
+ISAACLAB=/home/ubuntu/NVIDIA/IsaacLab
 ENV_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # パスが正しいか先に確かめる。
@@ -27,6 +27,10 @@ if [[ ! -x "$ISAAC_SIM/python.sh" ]]; then
     echo "     python.sh がある階層を指定します。例:" >&2
     echo "       ISAAC_SIM=/path/to/isaacsim/_build/linux-x86_64/release" >&2
     echo "     探す場合: find / -name python.sh -path '*isaac*' 2>/dev/null" >&2
+    echo "     pip 版 Isaac Sim（venv に isaacsim をインストールした場合）には" >&2
+    echo "     python.sh が存在しない。venv 直下に次の薄いラッパーを置けばよい:" >&2
+    echo "       #!/bin/bash" >&2
+    echo '       exec "$(dirname "${BASH_SOURCE[0]}")/bin/python" "$@"' >&2
     return 1 2>/dev/null || exit 1
 fi
 
@@ -40,7 +44,9 @@ fi
 
 # editable install の実ソースと、依存パッケージ（warp, rsl_rl 等）の両方を通す
 LAB_SOURCES=$(ls -d "$ISAACLAB"/source/*/ | tr '\n' ':')
-LAB_SITE_PACKAGES="$ISAACLAB/env_isaaclab/lib/python3.12/site-packages"
+# pip 版 Isaac Sim（isaacsim と isaaclab が同じ venv = ISAAC_SIM に同居）では
+# site-packages は ISAACLAB 配下ではなく ISAAC_SIM 配下にある。
+LAB_SITE_PACKAGES="$ISAAC_SIM/lib/python3.12/site-packages"
 
 # ROS 2 Jazzy（rclpy / tf2_ros / 各メッセージ型）を通す。
 # Isaac Sim と ROS 2 はどちらも Python 3.12 なので ABI が一致し、
@@ -61,6 +67,13 @@ fi
 
 export PYTHONPATH="${ENV_SH_DIR}/src:${LAB_SOURCES}${LAB_SITE_PACKAGES}${PYTHONPATH:+:${PYTHONPATH}}"
 export DISPLAY="${DISPLAY:-:1}"
+
+# IsaacLab はアセットのダウンロードキャッシュを $TMPDIR（既定 /tmp）配下の
+# 固定パス（/tmp/Assets/...）に書き込む。共有マシンで他ユーザーが所有する
+# /tmp/Assets が既に存在し書き込み権限が無い場合に備え、自分専用のキャッシュ
+# ディレクトリを使う。
+mkdir -p "${TMPDIR:-/home/ubuntu/NVIDIA/.isaac_asset_cache}"
+export TMPDIR="${TMPDIR:-/home/ubuntu/NVIDIA/.isaac_asset_cache}"
 
 # print() をバッファリングさせない（tee 越しでも進捗が即座に見えるように）
 export PYTHONUNBUFFERED=1

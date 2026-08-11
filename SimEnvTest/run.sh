@@ -26,6 +26,22 @@ if ! printf '%s\n' "$@" | grep -q -- "--viz"; then
     ARGS+=(--viz kit)
 fi
 
+# G1 の頭部カメラ（camera.py）を使うには起動時の --enable_cameras が必要。
+# 無いとカメラ拡張が読み込まれずセンサ構築時にエラーになる。
+if ! printf '%s\n' "$@" | grep -q -- "--enable_cameras"; then
+    ARGS+=(--enable_cameras)
+fi
+
+# --enable_cameras 指定時、環境によっては拡張レジストリ（オンライン）への
+# 到達性が無く「AppLauncher initialization complete」より前で無言のまま
+# 数分〜無限に止まることがある（extscache に無いカメラ関連拡張をオンライン
+# 解決しようとして固まる）。ローカルの extscache だけで完結させ、
+# レジストリへは問い合わせないようにする。
+# ユーザーが自分で --kit_args を指定している場合は上書きしない。
+if ! printf '%s\n' "$@" | grep -q -- "--kit_args"; then
+    ARGS+=(--kit_args="--/app/extensions/registryEnabled=false")
+fi
+
 # print() をバッファリングさせない（tee 越しでも進捗が即座に見えるように）
 export PYTHONUNBUFFERED=1
 

@@ -57,7 +57,7 @@ def expand_mesh_paths(roots: list[str]) -> list[str]:
     Returns:
         Mesh prim のパス一覧。Mesh が見つからない場合は roots をそのまま返す。
     """
-    import isaacsim.core.utils.stage as stage_utils
+    import isaaclab.sim as stage_utils
     from pxr import Usd, UsdGeom
 
     stage = stage_utils.get_current_stage()

@@ -89,6 +89,7 @@ def main() -> None:
         spawn_xy=(args.x, args.y),
         device=args.device,
         enable_ros=enable_ros,
+        enable_camera=args.enable_cameras,
         command_source=args.command_source,
         patrol_seed=args.patrol_seed,
         max_steps=args.max_steps,

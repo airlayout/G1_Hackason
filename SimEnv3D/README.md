@@ -149,6 +149,9 @@ Mesh を個別列挙した状態で、層数 × 水平ビーム数を振った�
 ## 実行方法
 
 環境設定は `SimEnvTest` と同じ（`env.sh` をコピーしてある）。
+pip 版 Isaac Sim を使う場合の追加対応（`python.sh` シム、`isaacsim.core.utils`
+非推奨対応、`/tmp/Assets` 権限対応など）は
+[`../SimEnvTest/SETUP.md`](../SimEnvTest/SETUP.md) を参照。
 
 ```bash
 cd <このリポジトリ>/SimEnv3D

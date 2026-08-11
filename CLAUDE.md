@@ -7,10 +7,10 @@ Unitree G1 をデジタルツイン上で操作する環境を構築するプロ
 **このプロジェクトでは以下の Isaac Sim を使用する。**
 親ディレクトリ `~/isaac_dev/CLAUDE.md` に記載のパスではなく、こちらを優先すること。
 
-- Isaac Sim: `/home/spacedata/isaacSim6.0dev2/_build/linux-x86_64/release`
+- Isaac Sim: `/home/devuser/isaacSim6.0dev2/_build/linux-x86_64/release`
   - バージョン: 6.0.0-rc.22
-- Python: `/home/spacedata/isaacSim6.0dev2/_build/linux-x86_64/release/python.sh` で実行
-- IsaacLab: `/home/spacedata/IsaacLab`（`isaaclab.sh`）
+- Python: `/home/devuser/isaacSim6.0dev2/_build/linux-x86_64/release/python.sh` で実行
+- IsaacLab: `/home/devuser/IsaacLab`（`isaaclab.sh`）
 - GPU: NVIDIA L40S (46GB)
 
 ※ この指定は G1 プロジェクト配下のみに適用される。`~/isaac_dev/` 配下の他プロジェクト
@@ -18,8 +18,24 @@ Unitree G1 をデジタルツイン上で操作する環境を構築するプロ
 
 ## 重要：編集してよいファイル
 - `~/isaac_dev/` 以下のみ編集すること
-- `/home/spacedata/isaacSim6.0dev2` 配下は絶対に編集しない
-- `/home/spacedata/IsaacLab` 配下は絶対に編集しない（設定は本プロジェクト内に置く）
+- `/home/devuser/isaacSim6.0dev2` 配下は絶対に編集しない
+- `/home/devuser/IsaacLab` 配下は絶対に編集しない（設定は本プロジェクト内に置く）
+
+## 別環境での動作実績（2026-08-11、`ubuntu` ユーザーで確認済み）
+
+上記は `devuser` ユーザー環境（ソースビルド版 Isaac Sim）専用の設定。
+**このリポジトリは複数のユーザー・複数の環境（ソースビルド版 / pip 版など）で
+使われることを想定しており、上記はその一つの事例に過ぎない。**
+別ユーザー・別マシンで動かす場合は、`SimEnvTest/SETUP.md` の
+「環境の例②: pip 版 Isaac Sim を使う場合」を参照すること。実際に以下の
+組み合わせで `SimEnvTest/run.sh`（Warehouse, 自動巡回, 2000 step）の
+完走を確認済み:
+
+- Isaac Sim: **6.0.1.0**（pip 版、`pip install "isaacsim[all,extscache]==6.0.1.0"`）
+- IsaacLab: **3.0.0-beta2**（`release/3.0.0-beta2` ブランチ。main/v2.3.2 は
+  Isaac Sim 6.0 系と非互換なので使わないこと）
+- 詳細な移行手順・つまずいた点は `SimEnvTest/README.md` の
+  「pip 版 Isaac Sim（6.0.1）固有のつまずき」を参照。
 
 ## プロジェクト方針（2026-08-04 決定）
 
@@ -64,7 +80,7 @@ Sim / unitree_sdk2 (DDS) / ROS2 を差し替えで選べる形**にする。
 キーボード入力の扱いとデバッグのしやすさを優先。
 
 ```bash
-cd /home/spacedata/isaacSim6.0dev2/_build/linux-x86_64/release && ./python.sh <スクリプト>
+cd /home/devuser/isaacSim6.0dev2/_build/linux-x86_64/release && ./python.sh <スクリプト>
 ```
 
 ## アセット（2026-08-04 疎通確認済み）
@@ -111,7 +127,7 @@ https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0
 
 利用方法:
 ```bash
-cd /home/spacedata/IsaacLab
+cd /home/devuser/IsaacLab
 ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py \
   --task Isaac-Velocity-Flat-G1-v0 --use_pretrained_checkpoint --num_envs 16
 ```
@@ -151,17 +167,17 @@ GUI で 16 体を動かし、目視で正常に歩行することを確認した
 **`./isaaclab.sh` は使えない。** この環境では isaacsim と isaaclab が別々の Python に
 入っており、`isaaclab.sh` が選ぶ `env_isaaclab` では Isaac Sim が import できない。
 
-- `/home/spacedata/IsaacLab/env_isaaclab/bin/python` … **isaaclab のみ**（`isaacsim` なし）
+- `/home/devuser/IsaacLab/env_isaaclab/bin/python` … **isaaclab のみ**（`isaacsim` なし）
   - `/usr/bin/python3.12` 上の venv で `include-system-site-packages = false`
 - Isaac Sim の `python.sh` … **isaacsim のみ**（`isaaclab` なし）
-- `/home/spacedata/IsaacLab/_isaac_sim` → `isaacSim6.0dev2` へのシンボリックリンク（正しい）
+- `/home/devuser/IsaacLab/_isaac_sim` → `isaacSim6.0dev2` へのシンボリックリンク（正しい）
 
 ### 正しい起動方法（PYTHONPATH でブリッジする）
 ```bash
-cd /home/spacedata/IsaacLab
-S=/home/spacedata/isaacSim6.0dev2/_build/linux-x86_64/release
-SP=/home/spacedata/IsaacLab/env_isaaclab/lib/python3.12/site-packages
-PP=$(ls source/*/ -d | sed "s|^|/home/spacedata/IsaacLab/|" | tr '\n' ':')
+cd /home/devuser/IsaacLab
+S=/home/devuser/isaacSim6.0dev2/_build/linux-x86_64/release
+SP=/home/devuser/IsaacLab/env_isaaclab/lib/python3.12/site-packages
+PP=$(ls source/*/ -d | sed "s|^|/home/devuser/IsaacLab/|" | tr '\n' ':')
 export PYTHONPATH="$PP$SP"
 export DISPLAY=:1        # GUI 表示用
 $S/python.sh scripts/reinforcement_learning/rsl_rl/play.py \

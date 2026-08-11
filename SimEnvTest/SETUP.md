@@ -9,8 +9,8 @@
 |---|---|---|
 | OS | Ubuntu 24.04 | 開発環境。他の版は未検証 |
 | GPU | NVIDIA、VRAM 8GB 以上 | 検証環境は L40S (46GB) |
-| Isaac Sim | 6.0.0-rc.22 | 他の版では API が違う可能性が高い |
-| IsaacLab | Isaac Sim 6.0 対応版 | `source/` が editable install されていること |
+| Isaac Sim | 6.0.0-rc.22 または 6.0.1.0（pip 版） | いずれも動作確認済み。5.1 以下は非対応 |
+| IsaacLab | `release/3.0.0-beta2` 以降 | `source/` が editable install されていること。`main`（v2.3.x）は Isaac Sim 6.0 と非互換 |
 | ROS 2 | Jazzy | Python 3.12 であることが重要（後述） |
 | ディスク | 20GB 以上 | Isaac Sim のアセットキャッシュを含む |
 
@@ -21,12 +21,18 @@ NVIDIA のアセットサーバーから取得する。
 
 インストール手順は本プロジェクトの範囲外。NVIDIA の公式手順に従うこと。
 
+**Isaac Sim の入手方法（ソースビルド版 / pip 版 / バイナリ版）やインストール先は
+ユーザーごとに異なる。** 以下は実際に動作確認できた環境の例であり、
+これ以外の構成を否定するものではない。`env.sh` の3行（`ISAAC_SIM` /
+`ISAACLAB` / `ROS_SETUP`）を自分の環境に合わせて書き換えれば、
+どの入手方法でも基本的には動くはず。
+
 インストール後、以下のパスを控えておく。
 
 ```bash
-# 例（検証環境のパス）
-ISAAC_SIM=/home/spacedata/isaacSim6.0dev2/_build/linux-x86_64/release
-ISAACLAB=/home/spacedata/IsaacLab
+# 例（検証環境のパス。ソースビルド版 Isaac Sim の場合）
+ISAAC_SIM=/home/devuser/isaacSim6.0dev2/_build/linux-x86_64/release
+ISAACLAB=/home/devuser/IsaacLab
 ```
 
 ### 動作確認
@@ -46,6 +52,60 @@ ls "$ISAACLAB/source"   # isaaclab, isaaclab_assets, isaaclab_tasks などがあ
 
 **`isaaclab.sh` は Isaac Sim が見つからなくても終了コード 0 を返す。**
 成功したように見えるので、必ずログ本文でエラーを確認すること。
+
+### 環境の例②: pip 版 Isaac Sim を使う場合（2026-08-11 検証済み）
+
+上記はソースビルド版 Isaac Sim を使う環境の例だったが、**別のユーザーが
+別マシンで pip 版 Isaac Sim を使ってこのプロジェクトを動かすケースもある。**
+実際に `pip install "isaacsim[all,extscache]==6.0.1.0"` で入れた Isaac Sim +
+IsaacLab `release/3.0.0-beta2` の組み合わせでも、`SimEnvTest/run.sh`
+（Warehouse, 自動巡回 2000 step）の完走を確認済み。この場合は以下の
+追加対応が必要になる（ソースビルド版では不要な対応も含む）。
+
+**1. `python.sh` が存在しない。** pip 版は venv に `isaacsim` パッケージが
+入っているだけで、ソースビルド版のような `python.sh` ランチャーが無い。
+venv 直下に薄いラッパーを置けば `env.sh` の仕組みがそのまま使える。
+
+```bash
+cat > /path/to/env_isaaclab/python.sh << 'EOF'
+#!/bin/bash
+exec "$(dirname "${BASH_SOURCE[0]}")/bin/python" "$@"
+EOF
+chmod +x /path/to/env_isaaclab/python.sh
+```
+
+`env.sh` の `ISAAC_SIM` にはこの venv のパスをそのまま指定する
+（`isaacsim` と `isaaclab` が同じ venv に同居していれば `ISAACLAB` は
+IsaacLab リポジトリのパスのまま、`LAB_SITE_PACKAGES` は `env.sh` が
+自動的に `$ISAAC_SIM/lib/python3.12/site-packages` を見るようになっている）。
+
+**2. `isaacsim.core.utils` / `isaacsim.storage.native` が import できない。**
+Isaac Sim 6.0.0 で非推奨（`isaacsim.core.experimental.utils` に統合）となり、
+IsaacLab 標準の `.kit` アプリ構成では既定で読み込まれなくなった
+（ソースビルド版でも起きるはずだが、`devuser` 環境では別の理由で
+気付かれなかった可能性がある）。`g1_twin/runner.py` は次のように
+IsaacLab 側の同等 API に置き換え済み:
+
+| 旧（動かない） | 新（動く） |
+|---|---|
+| `isaacsim.core.utils.stage.add_reference_to_stage(usd_path=, prim_path=)` | `isaaclab.sim.add_reference_to_stage(usd_path=, path=)`（引数名が変わる） |
+| `isaacsim.storage.native.get_assets_root_path()` | `isaaclab.utils.assets.NUCLEUS_ASSET_ROOT_DIR`（関数ではなく定数） |
+| `isaacsim.core.utils.prims`（`runner.py` では未使用のimportだった） | 削除 |
+
+自分で別のスクリプトを書く場合も同じ置き換えが必要になる可能性が高い。
+
+**3. `/tmp/Assets` の権限エラー。** IsaacLab はダウンロードしたアセットを
+`$TMPDIR`（既定 `/tmp`）配下の固定パス `/tmp/Assets/...` にキャッシュする。
+共有マシンで別ユーザーが先に `/tmp/Assets` を作っていると
+`PermissionError: [Errno 13] Permission denied` になる。
+`env.sh` は自分専用のキャッシュディレクトリを `TMPDIR` に設定することで
+回避している（他ユーザーのファイルには一切触れない）。
+
+**4. Isaac Sim 6.0 系は IsaacLab `main`（v2.3.x 系）と非互換。**
+`main` ブランチは PhysX の内部 API（`omni.physics.tensors.impl` や
+`PhysxSchema.PhysxDeformableBodyAPI` など）が Isaac Sim 6.0 で変更された
+影響を受け、起動直後にクラッシュする。**必ず `release/3.0.0-beta2` 以降を
+使うこと。**
 
 ## 2. ROS 2 Jazzy
 
@@ -111,8 +171,8 @@ vi env.sh
 ```
 
 ```bash
-ISAAC_SIM=/home/spacedata/isaacSim6.0dev2/_build/linux-x86_64/release  # ← 変更
-ISAACLAB=/home/spacedata/IsaacLab                                      # ← 変更
+ISAAC_SIM=/home/devuser/isaacSim6.0dev2/_build/linux-x86_64/release  # ← 変更
+ISAACLAB=/home/devuser/IsaacLab                                      # ← 変更
 ROS_SETUP=/opt/ros/jazzy/setup.bash                                    # ← 必要なら
 ```
 
