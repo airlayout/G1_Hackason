@@ -13,7 +13,7 @@ Unitree G1 に Livox Mid-360 相当の 3D LiDAR を載せ、3D voxel マップ�
 | 1 | レイキャストのコスト実測 | **完了（重大な発見あり・下記）** |
 | 2 | `lidar3d.py`（Mid-360 相当） | 実装済み・単体テスト通過 |
 | 3 | `/points` (PointCloud2) 配信 | 実装済み・エンコード検証済み |
-| 4 | `"base"` vs `"yaw"` の歩行中比較 | **未実施（要 Isaac Sim 実走行）** |
+| 4 | `"base"` vs `"yaw"` の歩行中比較 | **完了。"base" のままで問題ないと判明（下記）** |
 | 5 | `build_map_3d.py` | 実装済み・座標変換を検証済み |
 | 6 | `octomap_server` 統合 | **パイプライン検証済み**（合成点群で壁を再現） |
 | 7 | 足元の障害物で固着しないか実走行確認 | 未着手 |
@@ -283,6 +283,7 @@ SimEnv3D/
 │   ├── check_lidar3d.py        # 3D 点群の検証（足元・上方が見えているか）
 │   ├── probe_lidar3d_cost.py   # 3D LiDAR のコスト実測（単一条件）
 │   ├── probe_mesh_cost.py      # メッシュ指定方法とコストの関係
+│   ├── probe_walk_tilt.py      # torso の pelvis に対する姿勢差（歩行中、ステップ4）
 │   ├── inspect_warehouse.py    # Warehouse の Mesh 構造
 │   │
 │   │   # --- 単体テスト（Isaac Sim 不要）---
@@ -326,20 +327,39 @@ python3 src/build_map_3d.py --duration 1500 --output maps/warehouse_3d
 
 ## 次にやること
 
-1. **ステップ 4: 歩行中の `"base"` vs `"yaw"` を比較する。**
-   3D では `"base"` が正しいと判断したが、歩行の揺れが octomap に
-   ノイズとして入らないかは実測していない。
+1. ~~**ステップ 4: 歩行中の `"base"` vs `"yaw"` を比較する。**~~
+   **完了（2026-08-11、`src/probe_walk_tilt.py` で実測）。**
 
-   **既知の近似がここに絡む。** `base_link -> lidar3d` の静的 TF は前傾しか
-   持たないため、歩行中の pitch/roll は TF に反映されない。一方 `/points` は
-   その pitch/roll が除かれた座標で来るので、octomap 側では歩行の揺れが
-   そのまま誤差になる。対策の候補:
-   - 動的 TF にして毎フレームの姿勢を流す（正確だが TF の負荷が増える）
-   - `ray_alignment="yaw"` にして pitch/roll をレイに乗せない（2D と同じ発想。
-     ただし実機の挙動から離れる）
-   - 誤差が小さければ放置する
+   **結論: 静的 TF (`base_link -> lidar3d`) のままで問題ない。**
+   torso_link（LiDAR 搭載部位）を pelvis（base_link）基準の相対回転で
+   500 step（前進 0.5 m/s、歩行安定後）測定した結果:
 
-   まず実測してどれが必要か決めること。
+   | 軸 | 平均 | 標準偏差 | 範囲 |
+   |---|---|---|---|
+   | roll  | -0.000 度 | 0.000 度 | -0.000 〜 +0.000 度 |
+   | pitch | +0.000 度 | 0.000 度 | +0.000 〜 +0.000 度 |
+   | yaw   | +0.650 度 | 4.859 度 | -6.493 〜 +8.541 度 |
+
+   **torso は pelvis に対して pitch/roll 方向には全く動かない**（ウエスト
+   関節が yaw 回転のみのため、剛体接続と等価）。したがって「歩行中の
+   pitch/roll が静的 TF の前提を崩し octomap にノイズが乗る」という
+   当初の懸念は実際には発生しない。`ray_alignment="base"` の設計判断は
+   これで裏付けられた。動的 TF 化や `ray_alignment="yaw"` への変更は不要。
+
+   yaw 方向には最大 ±8.5 度の揺れ（waist yaw）があるが、これは
+   `SimEnvTest` の `probe_torso_yaw.py` が扱っていた既知の課題であり、
+   3D LiDAR の ray_alignment 選択とは別の問題（水平方向の位置合わせの
+   問題であり、レイの上下方向が暴れる問題ではない）。
+
+   **副産物（重要）: `probe_torso_yaw.py` にクォータニオン成分順序のバグ
+   がある。** `w, x, y, z = torso_quat` と展開しているが、
+   `root_quat_w` / `body_quat_w` は IsaacLab のソース
+   （`base_articulation_data.py` の `QUAT_XYZW_ELEMENT_NAMES`）で
+   **`(x, y, z, w)` 順**と定義されている。同じ間違いを過去に `/odom` の
+   yaw で踏んでいる（本 README 下部の「はまり点」参照）のに、調査用
+   スクリプト側で再発していた。`probe_walk_tilt.py` は `(x, y, z, w)` 順で
+   正しく実装しているので、以後の姿勢まわりの調査はこちらを参照・流用する
+   こと。`probe_torso_yaw.py` の yaw 差の数値は再検証するまで信用しない。
 
 2. **実走行でパレットへの固着が消えるか確認する**（ステップ 7）。
    これが 3D 化の目的そのもの。`check_lidar3d.py` で足元が見えることは

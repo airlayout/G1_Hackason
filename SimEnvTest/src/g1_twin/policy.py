@@ -41,33 +41,59 @@ CHECKPOINT_URL: str = (
 )
 
 
-def _build_actor(state_dict: dict[str, torch.Tensor]) -> torch.nn.Sequential:
+def _extract_actor_state_dict(checkpoint: dict) -> tuple[dict[str, torch.Tensor], str]:
+    """checkpoint 全体から actor 部分の state_dict とキーの prefix を取り出す。
+
+    rsl_rl の checkpoint 形式はバージョンによって 2 通りある
+    （NVIDIA の配信元 checkpoint で実際に両方観測されている）:
+
+    - 旧形式: `checkpoint["model_state_dict"]` に actor/critic が同居し、
+      キーは `actor.0.weight` のように `actor.` で始まる。
+    - 新形式: `checkpoint["actor_state_dict"]` が actor だけの独立した
+      state_dict で、キーは `mlp.0.weight` のように `mlp.` で始まる
+      （`actor.` プレフィックスは無い）。
+
+    Returns:
+        (state_dict, プレフィックス) のタプル。
+    """
+    if "model_state_dict" in checkpoint:
+        return checkpoint["model_state_dict"], "actor."
+    if "actor_state_dict" in checkpoint:
+        return checkpoint["actor_state_dict"], "mlp."
+    raise KeyError(
+        "[G1] checkpoint に 'model_state_dict' も 'actor_state_dict' も無い: "
+        f"実際のキー: {list(checkpoint.keys())}"
+    )
+
+
+def _build_actor(state_dict: dict[str, torch.Tensor], prefix: str) -> torch.nn.Sequential:
     """checkpoint の state_dict から actor ネットワークを再構築する。
 
     rsl_rl の ActorCritic は actor が ELU 活性化の MLP になっている。
     層の形状は state_dict から読み取るため、隠れ層サイズをハードコードしない。
 
     Args:
-        state_dict: checkpoint の "model_state_dict"
+        state_dict: actor 部分の state_dict（`_extract_actor_state_dict` の戻り値）
+        prefix: 層のキーの prefix（"actor." または "mlp."）
 
     Returns:
         actor の重みを読み込んだ Sequential モデル
     """
-    # actor.0.weight, actor.2.weight, ... の順に層を集める
+    # {prefix}0.weight, {prefix}2.weight, ... の順に層を集める
     indices = sorted(
-        int(k.split(".")[1])
+        int(k[len(prefix) :].split(".")[0])
         for k in state_dict
-        if k.startswith("actor.") and k.endswith(".weight")
+        if k.startswith(prefix) and k.endswith(".weight")
     )
 
     layers: list[torch.nn.Module] = []
     for pos, idx in enumerate(indices):
-        weight = state_dict[f"actor.{idx}.weight"]
+        weight = state_dict[f"{prefix}{idx}.weight"]
         out_features, in_features = weight.shape
         linear = torch.nn.Linear(in_features, out_features)
         with torch.no_grad():
             linear.weight.copy_(weight)
-            linear.bias.copy_(state_dict[f"actor.{idx}.bias"])
+            linear.bias.copy_(state_dict[f"{prefix}{idx}.bias"])
         layers.append(linear)
         # 最終層以外に活性化関数を挟む
         if pos < len(indices) - 1:
@@ -92,9 +118,9 @@ class G1FlatPolicy:
         """
         self._device = torch.device(device)
         checkpoint = torch.load(checkpoint_path, map_location=self._device, weights_only=False)
-        state_dict = checkpoint["model_state_dict"]
+        state_dict, prefix = _extract_actor_state_dict(checkpoint)
 
-        self._actor = _build_actor(state_dict).to(self._device).eval()
+        self._actor = _build_actor(state_dict, prefix).to(self._device).eval()
 
         # 形状の検証（黙って間違った次元で動かさない）
         first = next(m for m in self._actor if isinstance(m, torch.nn.Linear))
