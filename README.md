@@ -14,3 +14,11 @@ Unitree G1 をデジタルツイン上で操作するプロジェクト。以下
 | [SimEnv3D/](SimEnv3D/README.md) | 3D LiDAR（Livox Mid-360 相当）+ octomap による 3D 化 | 作りかけ（`SimEnvTest/` の後継として開発中） |
 
 環境設定・開発時の注意点は [CLAUDE.md](CLAUDE.md) を参照。
+
+## 初期設定・環境構築
+
+初めて動かす場合は [SimEnvTest/SETUP.md](SimEnvTest/SETUP.md) を読むこと。
+必要な環境・インストール手順・最初の動作確認までをまとめてある。
+
+**Claude Code などの AI エージェントに `SimEnvTest/SETUP.md` を読み込ませ、
+その内容に沿って環境構築を行わせることを推奨する。**
