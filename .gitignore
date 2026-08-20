@@ -17,3 +17,9 @@ SimEnvTest/maps/scans*.npz
 SimEnvTest/maps/direct*
 SimEnvTest/maps/projection*
 *_preview.png
+
+# G1_HuggingFace/ 配下の外部クローン（それぞれ独自の .git を持つため、
+# サブモジュール化を避けてこのリポジトリの追跡対象からは除外する）
+G1_HuggingFace/unitree_sdk2_python/
+G1_HuggingFace/lerobot/
+G1_HuggingFace/cyclonedds/

@@ -12,6 +12,7 @@ Unitree G1 をデジタルツイン上で操作するプロジェクト。以下
 |---|---|---|
 | [SimEnvTest/](SimEnvTest/README.md) | キーボード操作 + 2D LiDAR による地図作成・Nav2 自律走行 | 動作確認済み |
 | [SimEnv3D/](SimEnv3D/README.md) | 3D LiDAR（Livox Mid-360 相当）+ octomap による 3D 化 | 作りかけ（`SimEnvTest/` の後継として開発中） |
+| [G1_HuggingFace/](G1_HuggingFace/README.md) | HuggingFace LeRobot + Unitree SDK (`unitree_sdk2py`) 経由の操作環境 | 動作確認済み（シミュレーション） |
 
 環境設定・開発時の注意点は [CLAUDE.md](CLAUDE.md) を参照。
 
