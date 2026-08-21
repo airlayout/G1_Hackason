@@ -5,7 +5,7 @@
 - GitHub push用にSSH鍵(id_ed25519_github)を作成・登録し、リモートURLをSSHに変更
 - PATは作業後に無効化を推奨（ユーザーに案内済み）
 
-■ 操作PC(このマシン, Ubuntu 24.04, hironori-RL7C-R45-C5N)での環境構築
+■ 操作PC(このマシン, Ubuntu 24.04, ローカルPC)での環境構築
 - G1_HuggingFace/README.mdはAWSのVM向け手順だったが、今回はローカルPCで実施
 - conda不使用、G1_HuggingFace/venv/ に素のPython venvで構築
 - CycloneDDS(releases/0.10.x)をソースからビルド → G1_HuggingFace/cyclonedds/install
