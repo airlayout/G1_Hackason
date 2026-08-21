@@ -1,0 +1,73 @@
+2026-08-21 作業ログ
+
+■ リポジトリのセットアップ
+- private repo (airlayout/G1_Hackason) をPAT経由でclone
+- GitHub push用にSSH鍵(id_ed25519_github)を作成・登録し、リモートURLをSSHに変更
+- PATは作業後に無効化を推奨（ユーザーに案内済み）
+
+■ 操作PC(このマシン, Ubuntu 24.04, hironori-RL7C-R45-C5N)での環境構築
+- G1_HuggingFace/README.mdはAWSのVM向け手順だったが、今回はローカルPCで実施
+- conda不使用、G1_HuggingFace/venv/ に素のPython venvで構築
+- CycloneDDS(releases/0.10.x)をソースからビルド → G1_HuggingFace/cyclonedds/install
+- unitree_sdk2_python をeditable install
+- lerobot を pip install -e '.[unitree_g1]'（torch/onnxruntime含む、CPU版）
+- mujoco/scipy/msgpack等シミュレーション用パッケージを追加
+- mujocoのレンダリングはOSMesaではなくデフォルト(Intel iGPU/Mesa)で動作確認
+- verify_g1_sim_command.py, release_band_and_walk_forward.py(要 patch_mujoco_elastic_band.py)
+  ともにシミュレーションで正常動作確認済み(RESULT_OK, 5秒で1.86m前進)
+- Ubuntu 22.04への切り替えは見送り、24.04continueで方針決定
+  (unitree_sdk2pyはOS依存の特別な機能を使っていないため)
+
+■ 実機接続用スクリプトの作成(操作PC側)
+- G1_HuggingFace/scripts/walk_forward_real.py
+  release_band_and_walk_forward.pyから実機/シム共通部分だけを抜き出したもの。
+  安全のため2段階の確認ゲートあり:
+    1. connect()前(転倒防止の準備確認)
+    2. connect()完了後(標準立位姿勢へ遷移し外部制御開始した時点) ← 目視確認必須
+- G1_HuggingFace/scripts/check_g1_connectivity.py
+  ping/SSH到達性/(任意)SSHログイン試行/(任意)ZMQブリッジポート(6000/6001/5555)確認。
+  lerobot環境不要(標準ライブラリのみ)。
+- G1_HuggingFace/scripts/setup_ethernet_for_g1.sh
+  enp3s0をG1(192.168.123.164)向けにstatic IP(192.168.123.200/24)化。
+  既存のnetplan-enp3s0プロファイルをnmcli modifyで書き換える方式は
+  ipv4.methodだけ"auto"に戻ってしまう不具合があったため、G1専用の別プロファイル
+  ("g1-link", autoconnect=no)を新規作成する方式に変更して解決。
+
+■ 実機G1との接続
+- Ethernetケーブル接続 → setup_ethernet_for_g1.shで疎通確認、READY
+- SSHログイン成功(unitree@192.168.123.164, パスワード123は工場出荷時デフォルトのまま有効)
+- G1用のSSH鍵(id_ed25519_g1)を作成・登録し、パスワード無しでssh/scp可能に (Host: g1)
+- G1はUbuntu 20.04.6 LTS (aarch64)、Python 3.8.10、conda無し、unitree_sdk2py/lerobot未導入
+  だったことを確認
+- インターネット共有(操作PCのWiFi wlo1 → Ethernet enp3s0経由でNAT)を設定し、
+  G1からインターネットに出られるようにした
+
+■ 実機G1側の環境構築
+- lerobotがPython 3.9+の構文(dict[str,...]等)を使っており、Python 3.8では
+  importすら失敗すると判明。PYTHONPATHのみで済ませる作戦は断念。
+- Miniforge(aarch64版)をインストールし、Python 3.12のconda環境"lerobot"を作成
+- CycloneDDSをG1上(aarch64)でソースからビルド
+- unitree_sdk2py をPython 3.12環境で再インストール(cp312 aarch64のwheelが正常にビルド)
+- lerobot を pip install -e '.[unitree_g1]' で導入(torch含む、aarch64版wheelで問題なく成功)
+- run_g1_server.py の起動確認に成功("bridge running (lowstate -> zmq, lowcmd -> dds)")
+  → nohupでバックグラウンド起動し、SSH切断後も稼働継続する状態にした
+
+■ 疎通・状態確認
+- 操作PC側からcheck_g1_connectivity.py --check-bridge-portsで
+  lowcmd(6000)/lowstate(6001)への到達性を確認 → READY
+- MotionSwitcherClient.CheckMode()でG1の現在モードを確認 → {'name': ''}
+  (高レベルのsport_mode等は非アクティブ、低レベル制御を受け付けられる状態)
+- run_g1_server.py自体がCheckMode()/ReleaseMode()を起動時に実行するため、
+  アプリでのsport_mode手動オフ操作は不要と判断
+
+■ 未実施・次回以降のタスク
+- walk_forward_real.py の実機での実行(まだ未実施)
+  - 現在の物理セットアップ: ウィンチで上半身を吊り、足は接地(良い状態)
+  - ウィンチの支持点が固定式かトロリー式か未確認(固定式だと前進距離が制限される可能性)
+  - 前進速度の実測値は無し。シム実測(remote.ly=0.5→約0.37m/s)からの単純比例推定では
+    remote.ly=0.3・5秒で約1.1m程度(実機未検証の推定値)
+
+■ Git
+- walk_forward_real.py, check_g1_connectivity.py, setup_ethernet_for_g1.sh を
+  それぞれコミット・push済み(コミット: 496eaf6, 39a0d65, 9971487)
+- コミット用のgitユーザーはこのリポジトリのみローカル設定: airlayout <air.layout@gmail.com>
