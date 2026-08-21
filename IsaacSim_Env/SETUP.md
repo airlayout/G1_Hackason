@@ -58,7 +58,7 @@ ls "$ISAACLAB/source"   # isaaclab, isaaclab_assets, isaaclab_tasks などがあ
 上記はソースビルド版 Isaac Sim を使う環境の例だったが、**別のユーザーが
 別マシンで pip 版 Isaac Sim を使ってこのプロジェクトを動かすケースもある。**
 実際に `pip install "isaacsim[all,extscache]==6.0.1.0"` で入れた Isaac Sim +
-IsaacLab `release/3.0.0-beta2` の組み合わせでも、`SimEnvTest/run.sh`
+IsaacLab `release/3.0.0-beta2` の組み合わせでも、`IsaacSim_Env/run.sh`
 （Warehouse, 自動巡回 2000 step）の完走を確認済み。この場合は以下の
 追加対応が必要になる（ソースビルド版では不要な対応も含む）。
 
@@ -166,7 +166,7 @@ python3 -c "import numpy, scipy, PIL, yaml" || \
 `env.sh` の先頭にあるパスを自分の環境に合わせる。
 
 ```bash
-cd <このリポジトリ>/SimEnvTest
+cd <このリポジトリ>/IsaacSim_Env
 vi env.sh
 ```
 

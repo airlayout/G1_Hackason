@@ -26,15 +26,15 @@ Unitree G1 をデジタルツイン上で操作する環境を構築するプロ
 上記は `devuser` ユーザー環境（ソースビルド版 Isaac Sim）専用の設定。
 **このリポジトリは複数のユーザー・複数の環境（ソースビルド版 / pip 版など）で
 使われることを想定しており、上記はその一つの事例に過ぎない。**
-別ユーザー・別マシンで動かす場合は、`SimEnvTest/SETUP.md` の
+別ユーザー・別マシンで動かす場合は、`IsaacSim_Env/SETUP.md` の
 「環境の例②: pip 版 Isaac Sim を使う場合」を参照すること。実際に以下の
-組み合わせで `SimEnvTest/run.sh`（Warehouse, 自動巡回, 2000 step）の
+組み合わせで `IsaacSim_Env/run.sh`（Warehouse, 自動巡回, 2000 step）の
 完走を確認済み:
 
 - Isaac Sim: **6.0.1.0**（pip 版、`pip install "isaacsim[all,extscache]==6.0.1.0"`）
 - IsaacLab: **3.0.0-beta2**（`release/3.0.0-beta2` ブランチ。main/v2.3.2 は
   Isaac Sim 6.0 系と非互換なので使わないこと）
-- 詳細な移行手順・つまずいた点は `SimEnvTest/README.md` の
+- 詳細な移行手順・つまずいた点は `IsaacSim_Env/README.md` の
   「pip 版 Isaac Sim（6.0.1）固有のつまずき」を参照。
 
 ## プロジェクト方針（2026-08-04 決定）
@@ -146,7 +146,7 @@ GUI で 16 体を動かし、目視で正常に歩行することを確認した
     --task Isaac-Velocity-Flat-G1-v0 --use_pretrained_checkpoint \
     --num_envs 16 --viz kit
   ```
-- ログ: `SimEnvTest/logs/g1_play_gui.log`
+- ログ: `IsaacSim_Env/logs/g1_play_gui.log`
 
 ### 代替候補（公開ポリシー）
 1. `unitreerobotics/unitree_rl_lab` — Apache-2.0、IsaacLab 2.3.0 ネイティブ。
@@ -192,10 +192,10 @@ $S/python.sh scripts/reinforcement_learning/rsl_rl/play.py \
 `isaaclab.sh` は Isaac Sim が見つからなくても**終了コード 0 を返す**。
 成功したように見えるので、必ずログ本文でエラーを確認する。
 
-## 実装済みの環境: SimEnvTest/
+## 実装済みの環境: IsaacSim_Env/
 
-キーボードで G1 を操作する環境を `SimEnvTest/` に実装済み。詳細は
-`SimEnvTest/README.md` を参照。起動は `bash SimEnvTest/run.sh`。
+キーボードで G1 を操作する環境を `IsaacSim_Env/` に実装済み。詳細は
+`IsaacSim_Env/README.md` を参照。起動は `bash IsaacSim_Env/run.sh`。
 
 ### ポリシーの制約（実測で確認済み・重要）
 **この歩行ポリシーは前進のみで学習されている。**

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .policy import CHECKPOINT_URL
 
-# 既定のキャッシュ先（SimEnvTest/checkpoints/）
+# 既定のキャッシュ先（IsaacSim_Env/checkpoints/）
 DEFAULT_CACHE_DIR: Path = Path(__file__).resolve().parents[2] / "checkpoints"
 DEFAULT_CACHE_NAME: str = "g1_flat_checkpoint.pt"
 
@@ -21,7 +21,7 @@ def resolve_checkpoint(explicit_path: str = "", cache_dir: Path | None = None) -
 
     Args:
         explicit_path: 明示指定されたパス（空なら自動取得）
-        cache_dir: キャッシュ先ディレクトリ（既定は SimEnvTest/checkpoints/）
+        cache_dir: キャッシュ先ディレクトリ（既定は IsaacSim_Env/checkpoints/）
 
     Returns:
         ローカルの checkpoint.pt のパス

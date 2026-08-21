@@ -2,7 +2,7 @@
 
 [HuggingFace LeRobot の Unitree G1 ドキュメント](https://huggingface.co/docs/lerobot/unitree_g1) に基づいて、
 Unitree G1 を Unitree SDK (`unitree_sdk2py`) 経由で操作するための環境。
-`G1_Hackason/` の他ディレクトリ（`SimEnvTest/`, `SimEnv3D/`）は Isaac Sim ベースのデジタルツイン
+`G1_Hackason/` の他ディレクトリ（`IsaacSim_Env/`, `SimEnv3D/`）は Isaac Sim ベースのデジタルツイン
 アプローチだが、こちらは LeRobot 公式サポートの DDS ベースのアプローチ。
 
 ## セットアップ済み環境（2026-08-20 構築・動作確認済み）

@@ -62,8 +62,8 @@ bt_navigator:
     # このパスは run_nav2.sh が起動時に実際の場所へ書き換える
     # （Nav2 は設定内の環境変数を展開しないため絶対パスが必要）。
     # 直接 nav2.yaml を指定して起動する場合はここを自分で直すこと。
-    default_nav_to_pose_bt_xml: /home/devuser/isaac_dev/G1/SimEnvTest/config/navigate_g1.xml
-    default_nav_through_poses_bt_xml: /home/devuser/isaac_dev/G1/SimEnvTest/config/navigate_through_poses_g1.xml
+    default_nav_to_pose_bt_xml: /home/devuser/isaac_dev/G1/IsaacSim_Env/config/navigate_g1.xml
+    default_nav_through_poses_bt_xml: /home/devuser/isaac_dev/G1/IsaacSim_Env/config/navigate_through_poses_g1.xml
 controller_server:
   ros__parameters:
     use_sim_time: true
