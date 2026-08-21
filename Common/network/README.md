@@ -83,6 +83,18 @@ python3 Common/network/check_g1_connectivity.py --check-bridge-ports
 
 `run_g1_server.py`が未起動の場合、これらは「到達不可」になるのが正常。
 
+**このオプションは`lerobot`方式（`SimpleWalk/real/walk_forward_real.py`）専用**。
+`walk_forward_real.py`は`run_g1_server.py`経由のZMQブリッジでG1と通信するため、
+このポート確認が意味を持つ。一方`walk_forward_real_sdk.py`（Unitree SDK標準の
+`LocoClient`を使う方式）は操作PCから直接DDS接続するため、これらのZMQポートは
+一切使わない。SDK方式の疎通確認は、ping/SSH確認（1〜3）だけで十分。
+
+| | `check_g1_connectivity.py`の対応範囲 |
+|---|---|
+| `setup_ethernet_for_g1.sh` | 両方式で共通 |
+| ping/SSH確認（オプション無し） | 両方式で共通 |
+| `--check-bridge-ports` | lerobot方式（`walk_forward_real.py`）専用 |
+
 ### 5. WiFi接続の場合
 
 WiFi接続時はIPが可変になるため、`--host`でG1の実際のIPを指定する:
