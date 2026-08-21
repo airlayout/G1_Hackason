@@ -29,9 +29,9 @@ lerobot/unitree_sdk2pyの環境構築は不要(標準ライブラリのみ)。�
     --ssh-password で実際に試して確認できるようにしている。
 
 使い方:
-  python scripts/check_g1_connectivity.py
-  python scripts/check_g1_connectivity.py --host 192.168.123.164 --ssh-password 123
-  python scripts/check_g1_connectivity.py --host <WiFiのIP> --check-bridge-ports
+  python Common/network/check_g1_connectivity.py
+  python Common/network/check_g1_connectivity.py --host 192.168.123.164 --ssh-password 123
+  python Common/network/check_g1_connectivity.py --host <WiFiのIP> --check-bridge-ports
 """
 import argparse
 import ipaddress

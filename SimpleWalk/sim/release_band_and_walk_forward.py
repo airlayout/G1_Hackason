@@ -126,7 +126,7 @@ def main():
     inner.elastic_band.enable = False
     # 解除直後は骨盤のクォータニオンが一瞬ゼロノルムになることがあり、対策前の
     # ElasticBand.Advance() ではここで例外を投げて物理演算スレッドが黙って死んでいた
-    # （scripts/patch_mujoco_elastic_band.py で修正済み。未パッチだとこの settle 中に
+    # （SimpleWalk/sim/patch_mujoco_elastic_band.py で修正済み。未パッチだとこの settle 中に
     # 「pelvis pos after release+settle」の値がスポーン位置のまま一切変わらなくなる）。
     print("elastic_band released (enable=False). Letting it settle for 2s (idle)...", flush=True)
     pos_settled = run(robot, {}, duration_s=2.0, inner=inner)

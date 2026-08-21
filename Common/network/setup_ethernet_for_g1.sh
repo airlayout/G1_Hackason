@@ -15,8 +15,8 @@
 # (x!=164) のstatic IPが必要。
 #
 # 使い方:
-#   bash scripts/setup_ethernet_for_g1.sh            # G1用の接続に切り替える
-#   bash scripts/setup_ethernet_for_g1.sh --revert   # 通常のDHCP接続に戻す
+#   bash Common/network/setup_ethernet_for_g1.sh            # G1用の接続に切り替える
+#   bash Common/network/setup_ethernet_for_g1.sh --revert   # 通常のDHCP接続に戻す
 set -euo pipefail
 
 IFACE="enp3s0"

@@ -1,19 +1,24 @@
 #!/usr/bin/env python
 """実機G1に接続し、前進コマンド(remote.ly)を送って歩かせるスクリプト。
 
-scripts/release_band_and_walk_forward.py の「[実機でも共通]」部分
+SimpleWalk/sim/release_band_and_walk_forward.py の「[実機でも共通]」部分
 （robot.connect()/disconnect() と、send_action({"remote.ly": ...}) による
 コマンド送信ループ)だけを残し、「[シミュレーション専用]」部分
 （elastic band解除、mujoco内部状態(pelvis座標)の直接読み取り)を取り除いたもの。
 歩行結果はpelvis座標のようなものでは確認できないため、目視で確認すること。
 
-安全のため2段階の確認を挟む:
+安全のため3段階の確認を挟む:
   1. connect()前(ロボットがまだ外部制御下にない段階) — 転倒防止の準備確認。
   2. connect()完了後(ロボットが標準立位姿勢へ遷移し、GrootLocomotionController
      による外部制御下でバランスを取り始めた段階) — ここで一度停止し、
      安定して自立していることを目視確認してから前進コマンドを送るか判断する。
      robot.connect() は内部の reset() が完了するまでブロックするため、
      connect() が返った時点で既に姿勢遷移と制御スレッド起動は完了している。
+  3. 前進コマンド終了後 — disconnect()は実機の場合、関節をゼロトルク(脱力)に
+     する仕様(unitree_g1.py の _send_zero_torque())。支えが無い状態で脱力すると
+     そのまま倒れるため、disconnect()するまでは hold_standing_until() で
+     待機コマンドを送り続けて直立姿勢を保持し、人間が支える準備を確認してから
+     脱力させる。
 
 前提（安全上必須）:
   - G1本体の電源が入り、転倒しないよう安全確保された状態であること
@@ -27,11 +32,12 @@ scripts/release_band_and_walk_forward.py の「[実機でも共通]」部分
     static IP を持ち、Ethernetで直結されていること。
 
 使い方:
-  python scripts/walk_forward_real.py --robot-ip 192.168.123.164
+  python SimpleWalk/real/walk_forward_real.py --robot-ip 192.168.123.164
 """
 import argparse
 import os
 import sys
+import threading
 import time
 
 from lerobot.robots.unitree_g1 import UnitreeG1, UnitreeG1Config
@@ -45,6 +51,23 @@ def run(robot, action_overrides, duration_s, control_hz=50):
     action.update(action_overrides)
     dt = 1.0 / control_hz
     for _ in range(int(duration_s * control_hz)):
+        t0 = time.perf_counter()
+        robot.send_action(dict(action))
+        elapsed = time.perf_counter() - t0
+        if elapsed < dt:
+            time.sleep(dt - elapsed)
+
+
+def hold_standing_until(robot, stop_event, control_hz=50):
+    """stop_event がセットされるまで remote.* をゼロ(=待機)で送り続け、
+    GrootLocomotionController に直立姿勢を保持させ続ける。[実機でも共通]
+
+    disconnect() は関節をゼロトルク(脱力)にするため、脱力させてよいと
+    人間が確認するまでは、この関数でバランス制御を止めないようにする。
+    """
+    action = default_remote_input()
+    dt = 1.0 / control_hz
+    while not stop_event.is_set():
         t0 = time.perf_counter()
         robot.send_action(dict(action))
         elapsed = time.perf_counter() - t0
@@ -110,10 +133,25 @@ def main():
     )
     run(robot, {"remote.ly": args.forward_speed}, duration_s=args.forward_duration)
 
-    print("Stopping (remote.ly=0) for 1s before disconnect...", flush=True)
-    run(robot, {}, duration_s=1.0)
+    print(
+        "\n前進コマンド終了。ここからは待機コマンドを送り続け、その場で直立姿勢を"
+        "保持します(脱力はまだしません)。",
+        flush=True,
+    )
+    stop_holding = threading.Event()
+    hold_thread = threading.Thread(target=hold_standing_until, args=(robot, stop_holding), daemon=True)
+    hold_thread.start()
 
-    print("Disconnecting...", flush=True)  # [実機でも共通]
+    print(
+        "!!! disconnect()すると関節が脱力します。支える準備ができてから Enter を押してください。 !!!",
+        flush=True,
+    )
+    input("支える準備ができたら Enter: ")
+
+    stop_holding.set()
+    hold_thread.join(timeout=2.0)
+
+    print("Disconnecting (脱力します)...", flush=True)  # [実機でも共通]
     try:
         robot.disconnect()
     except Exception as e:  # noqa: BLE001

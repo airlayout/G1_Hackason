@@ -62,13 +62,13 @@ G1（MuJoCo）が反応することを検証したい場合は、`UnitreeG1` を
 `send_action()` は `controller_input` を更新するだけで、実際の反映はバックグラウンドの
 `_controller_thread`（`GrootLocomotionController` など、50Hz）が行う。
 
-`scripts/verify_g1_sim_command.py` で検証済み（2026-08-20）: `remote.ly` / `remote.lx` /
+`SimpleWalk/sim/verify_g1_sim_command.py` で検証済み（2026-08-20）: `remote.ly` / `remote.lx` /
 `remote.rx` を送ると、`GrootLocomotionController.cmd`（`[vx, vy, theta_dot]`）に
 期待通りの符号・値（`ly→cmd[0]`, `lx→-cmd[1]`, `rx→-cmd[2]`）で反映され、ゼロに戻すと
 `cmd` も正しく `0` に戻ることを確認した。
 
 ```bash
-python G1_HuggingFace/scripts/verify_g1_sim_command.py
+python SimpleWalk/sim/verify_g1_sim_command.py
 ```
 
 なお、脚関節の角速度（`dq`）や IMU の `gyro.z` を直接比較して「歩行で有意に変化するか」
@@ -102,14 +102,14 @@ ValueError: Found zero norm quaternions in `quat`.
 **プロセスは落ちずスレッドだけが黙って死に、以後シミュレーションが完全に停止する**。
 teleop ループやコントローラループは何事もなく動き続けるため非常に気づきにくい。
 
-`scripts/patch_mujoco_elastic_band.py` で、HF Hub キャッシュ内の
+`SimpleWalk/sim/patch_mujoco_elastic_band.py` で、HF Hub キャッシュ内の
 `unitree_sdk2py_bridge.py`（`ElasticBand.Advance()`）にゼロノルムガードを当てて修正済み
 （何度実行しても安全な idempotent スクリプト。まだ一度もシミュレーションを起動していない
 環境ではキャッシュが無いため先に一度 `lerobot-teleoperate` 等でダウンロードさせてから
 実行すること）:
 
 ```bash
-python G1_HuggingFace/scripts/patch_mujoco_elastic_band.py
+python SimpleWalk/sim/patch_mujoco_elastic_band.py
 ```
 
 ⚠️ このパッチは `~/.cache/huggingface/hub/models--lerobot--unitree-g1-mujoco/blobs/...`
@@ -117,7 +117,7 @@ python G1_HuggingFace/scripts/patch_mujoco_elastic_band.py
 パッチ後もこのクラッシュ自体が非決定的なので、まれに接続直後に無言で止まることがある
 （その場合は再実行すれば大抵通る）。
 
-### 実際に前進歩行することを確認（`scripts/release_band_and_walk_forward.py`）
+### 実際に前進歩行することを確認（`SimpleWalk/sim/release_band_and_walk_forward.py`）
 
 パッチ適用後、`elastic_band.enable = False` でバンドを解除し、`remote.ly=0.5`（前進）を
 5 秒間送って MuJoCo 側の pelvis 座標（`mj_data.qpos[0:3]`）を直接読んで検証した:
@@ -133,8 +133,8 @@ python G1_HuggingFace/scripts/patch_mujoco_elastic_band.py
 座標レベルで確認済み。
 
 ```bash
-python G1_HuggingFace/scripts/patch_mujoco_elastic_band.py  # 未適用なら先に
-python G1_HuggingFace/scripts/release_band_and_walk_forward.py
+python SimpleWalk/sim/patch_mujoco_elastic_band.py  # 未適用なら先に
+python SimpleWalk/sim/release_band_and_walk_forward.py
 ```
 
 ## 実機への接続（未検証・このマシンからは実施不可）
