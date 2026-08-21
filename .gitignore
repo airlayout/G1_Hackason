@@ -24,3 +24,6 @@ G1_HuggingFace/unitree_sdk2_python/
 G1_HuggingFace/lerobot/
 G1_HuggingFace/cyclonedds/
 G1_HuggingFace/venv/
+
+# SimEnv3D(作りかけの3D環境、追跡対象外)
+SimEnv3D/
