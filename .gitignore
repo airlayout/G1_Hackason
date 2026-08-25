@@ -27,3 +27,9 @@ G1_HuggingFace/venv/
 
 # SimEnv3D(作りかけの3D環境、追跡対象外)
 SimEnv3D/
+
+# Mapping: 収録したスキャンと生成した地図（再収録できるので追跡しない）
+Mapping/data/
+
+# MuJoCo が実行時に吐くログ
+MUJOCO_LOG.TXT
