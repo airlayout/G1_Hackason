@@ -10,15 +10,15 @@ Unitree G1 をデジタルツイン上で操作するプロジェクト。
 | [Common/](Common/) | 機能横断で使う共通スクリプト（ネットワーク設定・疎通確認など） | 運用中 |
 | [SimpleWalk/](SimpleWalk/README.md) | 前進歩行 | 動作確認済み（シミュレーション・実機） |
 | [Perception/](Perception/README.md) | 画像取得・認識 | 未着手 |
-| [Mapping/](Mapping/README.md) | G1によるMap計測・作成 | 未着手 |
+| [Mapping/](Mapping/README.md) | G1内蔵LIO／FAST-LIO2による3D Mapping | 実装済み（実機検証待ち） |
 | [SLAM/](SLAM/README.md) | G1内SLAM機能 | 未着手 |
 | [IsaacSim_Env/](IsaacSim_Env/README.md) | キーボード操作 + 2D LiDAR による地図作成・Nav2 自律走行 | 当面使用しない |
 | [SimEnv3D/](SimEnv3D/README.md) | 3D LiDAR（Livox Mid-360 相当）+ octomap による 3D 化 | 当面使用しない（作りかけ） |
 
 `SimpleWalk/`・`Perception/`・`Mapping/`・`SLAM/`は、それぞれ`sim/`（シミュレーションでの
 検証）と`real/`（実機デプロイ）に分けて開発する。`SimpleWalk/`で実践した
-「シムで作る→実機で動かす」の流れをテンプレート化したもの。いずれも
-`G1_HuggingFace/`の環境（操作PC側venv・G1本体側conda環境）を共通で使う。
+「シムで作る→実機で動かす」の流れをテンプレート化したもの。Mappingの実機用ROS 2環境は
+再現性を優先してDockerへ隔離し、`G1_HuggingFace/`のvenvとは依存関係を共有しない。
 各フォルダの`FAILURES.md`に、実際に起きた失敗と反省を記録する。
 
 環境設定・開発時の注意点は [CLAUDE.md](CLAUDE.md) を参照。

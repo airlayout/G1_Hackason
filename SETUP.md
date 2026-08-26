@@ -1,8 +1,10 @@
 # セットアップ手順
 
 `G1_HuggingFace/`配下（HuggingFace LeRobot + Unitree SDK経由の環境）を新しいマシンで
-ゼロから構築するための手順。`SimpleWalk/`・`Perception/`・`Mapping/`・`SLAM/`など、
-このリポジトリの機能フォルダはすべてこの環境を共通で使う。
+ゼロから構築するための手順。`SimpleWalk/`などのLeRobot系機能がこの環境を使う。
+
+`Mapping/real/`は例外で、ROS 2 Humble環境をDockerへ隔離している。
+Mappingだけを使う場合は[`Mapping/real/README.md`](Mapping/real/README.md)の手順を参照する。
 
 所要時間は環境構築込みで1〜2時間（G1本体側のビルドも含めるとさらに数十分）。
 

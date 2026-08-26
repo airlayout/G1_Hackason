@@ -1,31 +1,29 @@
-# Mapping（G1によるMap計測・作成）
+# Mapping（G1による部屋空間の計測・作成）
 
-G1に搭載されたセンサー（LiDAR/カメラ等）を使って周囲の地図を計測・作成する機能。
+G1の3D LiDARとIMUを使い、部屋の点群地図・軌跡・再処理可能な生データを作る機能。
+実機用は次の2方式を、同じ操作と成果物形式で切り替えられる。
+
+- `onboard` — G1内蔵のUnitree LIO/SLAMサービスを利用
+- `raw` — G1の生LiDAR・IMUをROS 2版FAST-LIO2で処理
+
+どちらの方式でも、取得できる生データはrosbag2へ並行記録する。現場でオンライン地図が
+完成しなくても、記録を持ち帰って再処理できることを優先している。
+
+RViz2は可視化専用コンテナへ分離している。Mapping中のライブ点群と、保存後の
+`map_raw.pcd`を同じ表示設定で確認できる。
 
 ## 構成
 
-- `sim/` — シミュレーション上での地図計測ロジックの検証
-- `real/` — 実機G1のセンサーから地図を作成する処理
+- [`real/`](real/README.md) — 実機用の共通CLI、2つのbackend、Docker配備、テスト
+- [`sim/`](sim/README.md) — シミュレーション側の将来の入力アダプタ
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — システム境界と成果物契約
+- [`FIELD_RUNBOOK.md`](FIELD_RUNBOOK.md) — 現場で上から順に実行する手順
+- [`FAILURES.md`](FAILURES.md) — 実測で判明した失敗と再発防止策
 
-## 環境
+MappingのROS 2環境はDocker内へ隔離する。LeRobotによる歩行環境
+`G1_HuggingFace/venv/`とは依存関係を共有しない。
 
-`G1_HuggingFace/venv/`（操作PC側）・G1本体側のPython 3.12 conda環境（`lerobot`）を
-共通で使う想定。ネットワーク接続・疎通確認は`Common/network/`を参照。
+## 現在の状態
 
-## 注意
-
-`IsaacSim_Env/`に2D LiDAR + SLAM/Nav2、`SimEnv3D/`に3D LiDAR + octomapの実装が
-既にあるが、いずれも当面使わない環境という位置づけ。本機能は
-`G1_HuggingFace/`と同じMuJoCo/lerobotスタックを前提に進める。
-（MuJoCo環境側にLiDAR相当のセンサーが無い場合は、対応方法をここで検討する）
-
-## 進め方
-
-1. `sim/`でロジックを作り、シミュレーション上で動作確認
-2. `real/`で実機センサーに接続し、同じロジックが実機でも動くか確認
-
-失敗した内容は`FAILURES.md`に記録する。
-
-## 状態
-
-未着手。
+実機非接続で実装・mock検証済み。実機固有のトピック名、PointCloud2 fields、時刻同期、
+LiDAR–IMU外部パラメータは、最初の現場試験で`mapctl doctor`の結果を基に確定する。
