@@ -98,6 +98,19 @@ class ComposeRuntime:
                 "</Interfaces></General></Domain></CycloneDDS>"
             )
             arguments.extend(["-e", f"CYCLONEDDS_URI={loopback_uri}"])
+        launch_arguments = [f"mode:={mode}"]
+        # ライブ表示ではPCDを読まないため pcd_path が空になる。ros2 launch は
+        # `pcd_path:=` のような空値を malformed として拒否するので、空のときは
+        # 引数自体を渡さない（view.launch.py が default_value="" を宣言済み）。
+        if pcd_path:
+            launch_arguments.append(f"pcd_path:={pcd_path}")
+        launch_arguments.extend(
+            [
+                f"fixed_frame:={fixed_frame}",
+                f"map_topic:={map_topic}",
+                f"rviz:={'true' if rviz else 'false'}",
+            ]
+        )
         arguments.extend(
             [
                 service,
@@ -105,11 +118,7 @@ class ComposeRuntime:
                 "launch",
                 "g1_mapping_visualization",
                 "view.launch.py",
-                f"mode:={mode}",
-                f"pcd_path:={pcd_path}",
-                f"fixed_frame:={fixed_frame}",
-                f"map_topic:={map_topic}",
-                f"rviz:={'true' if rviz else 'false'}",
+                *launch_arguments,
             ]
         )
         environment = self.settings.compose_environment()

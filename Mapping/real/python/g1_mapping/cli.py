@@ -14,6 +14,7 @@ from .config import Settings
 from .doctor import DiagnosticReport, diagnose, print_report
 from .mock import write_mock_artifacts
 from .pcd import validate_session
+from .rebuild import rebuild_map
 from .session import MappingSession, SessionManager
 
 
@@ -61,6 +62,24 @@ def _parser() -> argparse.ArgumentParser:
     )
     view.add_argument("--fixed-frame")
     view.add_argument("--map-topic")
+
+    rebuild = subparsers.add_parser(
+        "rebuild", help="rosbagの地図点群からmap_raw.pcdを再構成する"
+    )
+    rebuild.add_argument("session_id", nargs="?")
+    rebuild.add_argument(
+        "--topic", help="使うPointCloud2トピック（既定: backendに応じた地図点群）"
+    )
+    rebuild.add_argument(
+        "--voxel",
+        type=float,
+        default=0.05,
+        help="ボクセル一辺[m]。0で間引きなし（既定: 0.05）",
+    )
+    rebuild.add_argument("--output", type=Path, help="出力先PCD（既定: セッションのmap/）")
+    rebuild.add_argument(
+        "--force", action="store_true", help="既存のmap_raw.pcdを上書きする"
+    )
 
     bundle = subparsers.add_parser("bundle", help="オフライン現場配備物を作る")
     bundle.add_argument("--output", type=Path)
@@ -287,6 +306,49 @@ def _view(settings: Settings, arguments: argparse.Namespace) -> int:
     return 0
 
 
+def _rebuild(settings: Settings, arguments: argparse.Namespace) -> int:
+    """rosbagに残っている地図点群から map_raw.pcd を作り直す。"""
+
+    manager = SessionManager(settings)
+    session = manager.resolve(arguments.session_id)
+    output_path = arguments.output or session.map_path
+    if output_path.exists() and not arguments.force:
+        # 実機から回収した地図のほうが正なので、黙って潰さない
+        raise RuntimeError(
+            f"既に存在します: {output_path}（上書きするなら --force）"
+        )
+    topic = arguments.topic or (
+        settings.onboard_points_topic
+        if session.backend == "onboard"
+        else settings.raw_points_topic
+    )
+    print(f"[REBUILD] session={session.session_id} backend={session.backend}")
+    print(f"[REBUILD] topic={topic} voxel={arguments.voxel}m")
+
+    def report(messages: int, raw_points: int, kept: int) -> None:
+        print(
+            f"  {messages} msg / {raw_points} points -> {kept} points",
+            flush=True,
+        )
+
+    result = rebuild_map(
+        session.directory,
+        topic=topic,
+        output_path=output_path,
+        voxel_size=arguments.voxel,
+        progress=report,
+    )
+    extent = [
+        result.maximum_xyz[index] - result.minimum_xyz[index] for index in range(3)
+    ]
+    print(f"[OK] {result.written_points} points を書き出しました")
+    print(f"[INFO] 読み込み {result.message_count} メッセージ / {result.raw_points} points")
+    print(f"[INFO] 範囲 x={extent[0]:.2f}m y={extent[1]:.2f}m z={extent[2]:.2f}m")
+    print(f"[OUTPUT] {result.output_path}")
+    print("[NEXT] ./mapctl validate で検証できます")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = _parser().parse_args(argv)
     settings = Settings.load()
@@ -317,6 +379,8 @@ def main(argv: list[str] | None = None) -> int:
             return _validate(settings, arguments)
         if arguments.command == "view":
             return _view(settings, arguments)
+        if arguments.command == "rebuild":
+            return _rebuild(settings, arguments)
         if arguments.command == "bundle":
             script = settings.project_dir / "scripts" / "make-field-kit.sh"
             command = [str(script)]
