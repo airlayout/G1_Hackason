@@ -53,6 +53,32 @@ mockでも実際と同じセッション状態遷移を通り、PCD、trajectory
 ./mapctl validate
 ```
 
+## rosbagから地図を作り直す
+
+通信断などでG1へ「Mapping終了」を送れないと、G1側にPCDが書き出されずセッションが
+`map_raw.pcd`なしで終わる。この場合はrosbagに残った地図点群から作り直せる。
+
+```bash
+./mapctl rebuild                          # 最新セッション
+./mapctl rebuild <session_id>             # セッション指定
+./mapctl rebuild --voxel 0.02             # 解像度を上げる（既定 0.05m）
+./mapctl rebuild --voxel 0                # 間引きなし
+./mapctl rebuild --topic /unitree/slam_mapping/points
+./mapctl rebuild --force                  # 既存のmap_raw.pcdを上書きする
+```
+
+`db3`を直接読むため**ROS 2もDockerも要らず**、`metadata.yaml`が欠けたセッションからも
+復旧できる。処理はホストのPythonだけで完結する（標準ライブラリのみ）。
+
+既定では`onboard`セッションは`ONBOARD_POINTS_TOPIC`、それ以外は`RAW_POINTS_TOPIC`を使う。
+`RAW_POINTS_TOPIC`はセンサー座標系なので、姿勢で変換しない限り重ならない点に注意する。
+つまり実用になるのは`onboard`セッションの再構成である。
+
+同一ボクセルに落ちた点は最初の1点だけを残す。既存の`map_raw.pcd`は`--force`なしでは
+上書きしない（実機から回収した地図のほうが正であるため）。
+
+作り直したら`./mapctl validate`で検証し、`./mapctl view <session_id>`で確認する。
+
 ## RViz表示
 
 Mapping中のライブ表示は、別のGUI端末から実行する。

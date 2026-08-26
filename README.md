@@ -10,7 +10,7 @@ Unitree G1 をデジタルツイン上で操作するプロジェクト。
 | [Common/](Common/) | 機能横断で使う共通スクリプト（ネットワーク設定・疎通確認など） | 運用中 |
 | [SimpleWalk/](SimpleWalk/README.md) | 前進歩行 | 動作確認済み（シミュレーション・実機） |
 | [Perception/](Perception/README.md) | 画像取得・認識 | 未着手 |
-| [Mapping/](Mapping/README.md) | G1内蔵LIO／FAST-LIO2による3D Mapping | 実装済み（実機検証待ち） |
+| [Mapping/](Mapping/README.md) | G1内蔵LIO／FAST-LIO2による3D Mapping | 実機で初回試験済み（onboard系。raw系は未実走） |
 | [SLAM/](SLAM/README.md) | G1内SLAM機能 | 未着手 |
 | [IsaacSim_Env/](IsaacSim_Env/README.md) | キーボード操作 + 2D LiDAR による地図作成・Nav2 自律走行 | 当面使用しない |
 | [SimEnv3D/](SimEnv3D/README.md) | 3D LiDAR（Livox Mid-360 相当）+ octomap による 3D 化 | 当面使用しない（作りかけ） |

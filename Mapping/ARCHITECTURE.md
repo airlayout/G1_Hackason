@@ -38,6 +38,17 @@ Mappingプロセスは歩行指令を送らない。最初の現場試験ではU
 `auto`は内蔵LIOを先にprobeし、利用できなければraw backendをprobeする。明示的に
 `--backend onboard`または`--backend raw`を指定することもできる。
 
+現場で地図を保存できなかったセッションは、持ち帰ってから作り直す。
+
+```bash
+./mapctl rebuild [session_id]
+```
+
+これはrosbagに記録済みの地図点群を蓄積して`map/map_raw.pcd`を書き出す**オフライン
+経路**であり、G1にもDockerにもROS 2にも依存しない。`db3`だけを読むため、異常終了で
+`metadata.yaml`が欠けたセッションからも復旧できる。「生データを並行記録しておけば
+現場で地図が完成しなくても持ち帰れる」という前提を、実際に成立させるための実装。
+
 ## 可視化境界
 
 可視化は`g1-mapping-visualization` imageへ分離し、Mapping backendのコンテナへGUI、
@@ -109,10 +120,22 @@ runs/<timestamp>_<name>/
 
 ## 初回現場試験で確定する値
 
-- 実際に公開されるLiDAR、IMU、内蔵LIOのトピック名と型
-- PointCloud2のfieldsと各点時刻の単位
-- LiDARとIMUのheader時刻差・受信周波数
-- `T_imu_lidar`と`T_base_lidar`
-- G1上で内蔵LIOがPCDを書き込めるディレクトリ
-
 推測値をコードへ固定せず、診断結果とセッションmanifestに残してから設定を更新する。
+
+2026-08-26の初回試験で確定した分:
+
+- **トピック名と型・受信周波数** — `/utlidar/cloud_livox_mid360`(PointCloud2) 9.97Hz、
+  `/utlidar/imu_livox_mid360`(Imu) 200.06Hz、`/unitree/slam_mapping/points`(PointCloud2)
+  および`/unitree/slam_mapping/odom`(Odometry) 各9.96Hz。`.env.example`の既定値と一致した。
+- **内蔵LIO出力のfields** — `x y z intensity normal_x normal_y normal_z curvature`、
+  `point_step=48`、`frame_id=map`。地図全体ではなく、地図座標系へ変換済みの増分スキャンで
+  1メッセージ672〜1090点。
+
+未確定のまま残っている分:
+
+- PointCloud2の各点時刻の単位（`raw` backendを実走させるまで確定しない）
+- LiDARとIMUのheader時刻差
+- `T_imu_lidar`と`T_base_lidar`
+- **G1上で内蔵LIOがPCDを書き込めるディレクトリ** — 試験では停止時に通信が切れ、
+  `kEndMapping`が届かなかったため`/home/unitree/maps/`は作られなかった。書き込み先も
+  権限も未確認のまま。
