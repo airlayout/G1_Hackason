@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>g1_mapping_bringup</name>
+  <version>0.1.0</version>
+  <description>Launch and configuration for raw G1 FAST-LIO mapping.</description>
+  <maintainer email="devnull@example.com">G1 Hackathon Team</maintainer>
+  <license>BSD-3-Clause</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>fast_lio</exec_depend>
+  <exec_depend>g1_sensor_adapter</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

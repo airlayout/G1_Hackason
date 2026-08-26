@@ -1,0 +1,111 @@
+name: g1-mapping
+
+x-common-environment: &common-environment
+  G1_IFACE: ${G1_IFACE:-enp3s0}
+  G1_HOST: ${G1_HOST:-192.168.123.164}
+  ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+  RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+  CYCLONEDDS_URI: >-
+    <CycloneDDS><Domain><General><Interfaces><NetworkInterface
+    name="${G1_IFACE:-enp3s0}" priority="default"
+    multicast="default" /></Interfaces></General></Domain></CycloneDDS>
+  MAPPING_SESSION_ID: ${MAPPING_SESSION_ID:-unknown}
+  RAW_POINTS_TOPIC: ${RAW_POINTS_TOPIC:-/utlidar/cloud_livox_mid360}
+  RAW_IMU_TOPIC: ${RAW_IMU_TOPIC:-/utlidar/imu_livox_mid360}
+  ONBOARD_POINTS_TOPIC: ${ONBOARD_POINTS_TOPIC:-/unitree/slam_mapping/points}
+  ONBOARD_ODOM_TOPIC: ${ONBOARD_ODOM_TOPIC:-/unitree/slam_mapping/odom}
+  POINT_TIMESTAMP_MODE: ${POINT_TIMESTAMP_MODE:-auto}
+  ALLOW_INFERRED_POINT_TIME: ${ALLOW_INFERRED_POINT_TIME:-true}
+
+x-common-runtime: &common-runtime
+  network_mode: host
+  ipc: host
+  init: true
+  environment: *common-environment
+  volumes:
+    - ${MAPPING_RUNS_DIR:-./runs}:/runs
+
+services:
+  onboard_client:
+    <<: *common-runtime
+    profiles: [onboard]
+    image: g1-mapping-onboard:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: onboard
+    entrypoint: [/opt/g1/bin/onboard-entrypoint.sh]
+    command: [probe]
+
+  onboard_recorder:
+    <<: *common-runtime
+    profiles: [onboard]
+    image: g1-mapping-onboard:local
+    command: [/opt/g1/bin/record-topics.sh, onboard]
+    stop_grace_period: 30s
+
+  onboard_trajectory:
+    <<: *common-runtime
+    profiles: [onboard]
+    image: g1-mapping-onboard:local
+    command: [/opt/g1/bin/trajectory-writer.sh, onboard]
+    stop_grace_period: 10s
+
+  raw_tools:
+    <<: *common-runtime
+    profiles: [raw]
+    image: g1-mapping-raw:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: raw
+    command: [bash]
+
+  raw_lio:
+    <<: *common-runtime
+    profiles: [raw]
+    image: g1-mapping-raw:local
+    command: [ros2, launch, g1_mapping_bringup, raw_mapping.launch.py]
+    stop_grace_period: 30s
+
+  raw_recorder:
+    <<: *common-runtime
+    profiles: [raw]
+    image: g1-mapping-raw:local
+    command: [/opt/g1/bin/record-topics.sh, raw]
+    stop_grace_period: 30s
+
+  raw_trajectory:
+    <<: *common-runtime
+    profiles: [raw]
+    image: g1-mapping-raw:local
+    command: [/opt/g1/bin/trajectory-writer.sh, raw]
+    stop_grace_period: 10s
+
+  rviz:
+    <<: *common-runtime
+    profiles: [viz]
+    image: g1-mapping-visualization:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: visualization
+    environment:
+      <<: *common-environment
+      DISPLAY: ${DISPLAY:-}
+      XAUTHORITY: /tmp/.Xauthority
+      QT_X11_NO_MITSHM: "1"
+      LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
+    volumes:
+      - ${MAPPING_RUNS_DIR:-./runs}:/runs:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${XAUTHORITY:-/dev/null}:/tmp/.Xauthority:ro
+    command: [bash]
+
+  pcd_server:
+    <<: *common-runtime
+    profiles: [viz]
+    image: g1-mapping-visualization:local
+    volumes:
+      - ${MAPPING_RUNS_DIR:-./runs}:/runs:ro
+    command: [bash]

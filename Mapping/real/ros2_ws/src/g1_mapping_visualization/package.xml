@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>g1_mapping_visualization</name>
+  <version>0.1.0</version>
+  <description>G1 Mappingのライブ表示と保存PCD表示を共通化するRViz2 bringup。</description>
+  <maintainer email="sodai@example.com">sodai</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>pcl_ros</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
