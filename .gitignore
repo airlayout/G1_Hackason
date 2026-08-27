@@ -34,3 +34,6 @@ Mapping/real/runs/*
 Mapping/real/.env
 Mapping/real/dist/
 Mapping/real/.mapping-state.json
+
+# このPCだけに置くローカル専用データ（共有しない・再取得できるもの）
+_local/
