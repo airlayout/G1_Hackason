@@ -5,6 +5,7 @@
 
 `Mapping/real/`は例外で、ROS 2 Humble環境をDockerへ隔離している。
 Mappingだけを使う場合は[`Mapping/real/README.md`](Mapping/real/README.md)の手順を参照する。
+`Navigation/`は`Mapping/real/`の`.env`と設定モジュールを共有する。
 
 所要時間は環境構築込みで1〜2時間（G1本体側のビルドも含めるとさらに数十分）。
 

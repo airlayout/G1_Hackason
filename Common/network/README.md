@@ -1,7 +1,7 @@
 # G1との通信確認
 
 実機G1にコマンドを送る前に、通信できているかを確認するための手順とスクリプト。
-`SimpleWalk/real/`をはじめ、`Perception/`・`Mapping/`・`SLAM/`の実機デプロイでも
+`SimpleWalk/real/`をはじめ、`Perception/`・`Mapping/`・`Navigation/`の実機デプロイでも
 共通で使う。
 
 ## 前提
