@@ -5,6 +5,8 @@ __pycache__/
 # 実行ログ（実行のたびに増えるため管理対象外）
 logs/
 *.log
+# MuJoCo が実行時にカレントディレクトリへ吐くログ（拡張子が .TXT なので *.log に該当しない）
+MUJOCO_LOG.TXT
 
 # 学習済み checkpoint（IsaacSim_Env/checkpoints/ は共有のため追跡対象。それ以外の .pt は除外）
 *.pt
