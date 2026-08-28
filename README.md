@@ -23,6 +23,24 @@ Unitree G1 をデジタルツイン上で操作するプロジェクト。
 
 環境設定・開発時の注意点は [CLAUDE.md](CLAUDE.md) を参照。
 
+## 開発環境の使い分け（2026-08-28 決定）
+
+**Dockerを使うのは`Mapping/`だけ。他のフォルダでは使わない。**
+
+| フォルダ | 環境 | 理由 |
+|---|---|---|
+| `Mapping/` | **Docker**（ROS 2 Humble） | LiDAR点群の高レート購読・rosbag記録・FAST-LIO2にROS 2が要る |
+| それ以外すべて | `G1_HuggingFace/venv/`（Python 3.12） | ROS 2が不要なため |
+
+G1への指令はDDSで送る。歩行（`LocoClient`）も純正SLAM/ナビ（`slam_operate`のAPI-ID）も
+`unitree_sdk2py`から直接叩けるので、**制御するだけならROS 2もDockerも要らない**。
+ROS 2が要るのは、ROS 2エコシステムの既製ノード（rosbag、RViz、FAST-LIO2など）を
+使いたいときだけである。
+
+開発環境のDockerイメージを8人全員へ配る案もあったが、ROS 2が必要なのはMapping班だけ
+なので、不要な重さを配らないほうを選んだ。他のフォルダでROS 2が必要になったら、
+その時点で`Mapping/real/`の構成を流用して判断し直す。
+
 ## 初期設定・環境構築
 
 初めて動かす場合は [SETUP.md](SETUP.md) を読むこと。

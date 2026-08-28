@@ -29,6 +29,10 @@ Unitree純正のSLAM/ナビサービス（`slam_operate`）に乗る方針。自
 `G1_HuggingFace/venv/`（操作PC側）・G1本体側のPython 3.12 conda環境（`lerobot`）を
 共通で使う想定。ネットワーク接続・疎通確認は`Common/network/`を参照。
 
+**Dockerは使わない。** `slam_operate`はDDSのAPI-IDにJSONを投げるだけなので、
+`unitree_sdk2py`から直接叩けてROS 2が要らない。`Mapping/`がDockerを使うのは
+LiDAR点群の高レート購読とFAST-LIO2にROS 2が必要だからで、Navigationには該当しない。
+
 `.env`（G1のIP・NIC名・`ROS_DOMAIN_ID`）は`Mapping/real/.env`と共有する。二重に持たない。
 設定読み込み・疎通確認・`runs/`への記録は当面`Mapping/real/python/g1_mapping`の
 `config` / `doctor` / `session`をimportして使い、共通レイヤの`Common/`への切り出しは

@@ -3,9 +3,12 @@
 `G1_HuggingFace/`配下（HuggingFace LeRobot + Unitree SDK経由の環境）を新しいマシンで
 ゼロから構築するための手順。`SimpleWalk/`などのLeRobot系機能がこの環境を使う。
 
-`Mapping/real/`は例外で、ROS 2 Humble環境をDockerへ隔離している。
+**Dockerを使うのは`Mapping/real/`だけで、他のフォルダはこの環境で動く**
+（判断の経緯は[README.md](README.md)の「開発環境の使い分け」を参照）。
 Mappingだけを使う場合は[`Mapping/real/README.md`](Mapping/real/README.md)の手順を参照する。
-`Navigation/`は`Mapping/real/`の`.env`と設定モジュールを共有する。
+
+`Navigation/`は`Mapping/real/`の`.env`と設定モジュール（ホスト側で動く純Python）を
+共有するが、**Docker自体は使わない**。
 
 所要時間は環境構築込みで1〜2時間（G1本体側のビルドも含めるとさらに数十分）。
 
