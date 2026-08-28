@@ -11,11 +11,11 @@ Unitree G1 をデジタルツイン上で操作するプロジェクト。
 | [SimpleWalk/](SimpleWalk/README.md) | 前進歩行 | 動作確認済み（シミュレーション・実機） |
 | [Perception/](Perception/README.md) | 画像取得・認識 | 未着手 |
 | [Mapping/](Mapping/README.md) | G1内蔵LIO／FAST-LIO2による3D Mapping | 実機で初回試験済み（onboard系。raw系は未実走） |
-| [SLAM/](SLAM/README.md) | G1内SLAM機能 | 未着手 |
+| [Navigation/](Navigation/README.md) | 作成済み地図を使った自律移動・巡回（Unitree純正`slam_operate`に乗る） | 未着手 |
 | [IsaacSim_Env/](IsaacSim_Env/README.md) | キーボード操作 + 2D LiDAR による地図作成・Nav2 自律走行 | 当面使用しない |
 | [SimEnv3D/](SimEnv3D/README.md) | 3D LiDAR（Livox Mid-360 相当）+ octomap による 3D 化 | 当面使用しない（作りかけ） |
 
-`SimpleWalk/`・`Perception/`・`Mapping/`・`SLAM/`は、それぞれ`sim/`（シミュレーションでの
+`SimpleWalk/`・`Perception/`・`Mapping/`・`Navigation/`は、それぞれ`sim/`（シミュレーションでの
 検証）と`real/`（実機デプロイ）に分けて開発する。`SimpleWalk/`で実践した
 「シムで作る→実機で動かす」の流れをテンプレート化したもの。Mappingの実機用ROS 2環境は
 再現性を優先してDockerへ隔離し、`G1_HuggingFace/`のvenvとは依存関係を共有しない。
