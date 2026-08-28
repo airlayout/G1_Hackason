@@ -34,6 +34,20 @@ Unitree純正のSLAM/ナビサービス（`slam_operate`）に乗る方針。自
 `config` / `doctor` / `session`をimportして使い、共通レイヤの`Common/`への切り出しは
 本フォルダが動いてからの課題とする。
 
+### `g1_mapping`への依存範囲
+
+依存してよいのは`config` / `doctor` / `session`の**3モジュールだけ**。
+`mapctl`本体・ROS2ワークスペース・Dockerまわりは`Mapping/`班の内側であり、
+予告なく変わる前提なのでimportしない。
+
+この3つは**班をまたぐインターフェース＝契約**として扱う。シグネチャの変更が必要に
+なったらNavigation班だけで判断せず、Mapping班と合意してから変える。
+
+**注意: この依存は`Mapping/README.md`には書いていない**（2026-08-28時点）。
+Mapping班はNavigationから参照されていることを知らないため、**Mapping側の変更で
+こちらが壊れる可能性が残っている**。実際に壊れたら、その時点で`Mapping/README.md`にも
+依存を明記すること。
+
 ## 純正API（`slam_operate` v1.0.0.1）
 
 unitree_sdk2のAPI-ID方式。リクエスト/レスポンスとも JSON。
