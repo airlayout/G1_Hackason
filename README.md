@@ -49,3 +49,7 @@ ROS 2が要るのは、ROS 2エコシステムの既製ノード（rosbag、RViz
 実際に作業した際の生ログは[G1_HuggingFace/Note](G1_HuggingFace/Note)を参照。
 
 （`IsaacSim_Env/SETUP.md`はIsaac Sim版の手順だが、`IsaacSim_Env/`自体は当面使用しない）
+
+作業用のUbuntu環境をUSBメモリに用意する場合は
+[PORTABLE_UBUNTU_USB.md](PORTABLE_UBUNTU_USB.md) を参照。別のPCに挿しても起動する
+持ち運び用のUbuntuをUSBへフルインストールする手順（Live USBとは別物）。
