@@ -78,14 +78,29 @@ SHAが変わり、そのブランチを既にpullしている人の手元と履�
 squashを使うなら「マージ後にブランチを削除し、毎回新しく切る」とセットにする必要がある。
 本プロジェクトは長命ブランチを選んだので、merge commitで統一する。
 
-### リポジトリ設定
+### リポジトリ設定の現状（2026-09-01）
 
-- `Settings` → `General` → `Pull Requests`: **Allow merge commitsのみ有効**
-- `Settings` → `Branches` → `main`の保護ルール:
-  - Require a pull request before merging（**Require approvalsは外す**——
-    自分のPRは自分でapproveできないため、入れると各自マージが成立しない）
-  - Require branches to be up to date before merging
-  - **Require linear historyは入れない**（merge commitを禁止する設定のため）
+**上のルールは、大半がGitHubの設定では強制されていない。運用で守る前提である。**
+「設定で守られているから大丈夫」と考えないこと。
+
+| | 状態 |
+|---|---|
+| squash / rebase merge の無効化 | **設定済み**（`Settings`→`General`→`Pull Requests`でAllow merge commitsのみ有効） |
+| PR必須 | **未設定**。mainへ直pushできてしまう |
+| マージ前にmainへ追従（up to date） | **未設定** |
+| マージ後のブランチ自動削除 | オフのまま（このままでよい） |
+
+まずは運用ルールだけで回してみて、実際に事故が起きたら設定で締める、という順で進める。
+締める場合はBranch ruleset（`Settings`→`Rules`→`Rulesets`）で以下を設定する。
+
+- **Enforcement statusを`Active`に**、かつ**Target branchesにmainを指定**する。
+  どちらか欠けるとルールは1つも適用されない（「Applies to 0 targets」と表示される）
+- Require a pull request before merging（**Required approvalsは0にする**——
+  自分のPRは自分でapproveできないため、1以上だと各自マージが成立しない）
+- Require status checks to pass → **Rulesetsでは空にできない**ので、
+  status checkを1つ以上用意してから指定する
+  - その上で Require branches to be up to date before merging を有効化
+- **Require linear historyは入れない**（merge commitを禁止する設定のため）
 
 ## 初期設定・環境構築
 
