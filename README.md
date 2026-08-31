@@ -43,9 +43,49 @@ ROS 2が要るのは、ROS 2エコシステムの既製ノード（rosbag、RViz
 
 ## Git運用
 
+各班は機能ブランチ（`Dev/Mapping2`・`Dev/Navigation`・`Dev/Perception`）で作業し、
+mainへはPR経由で入れる。ブランチは**マージ後も消さず、同じものを使い続ける**。
+
+### 守ること
+
 - **コミットとpushは分ける。** `git commit && git push`のようにまとめて実行しない。
   コミットは手元の操作だが、pushはチーム全員へ公開する操作で取り消しやすさが違う。
   コミットまでで止め、内容を確認してから明示的にpushする。
+- **マージは「Create a merge commit」。** squashとrebaseはリポジトリ設定で無効化済み。
+- **マージ後に「Delete branch」を押さない。** 各班が使い続けるブランチのため。
+- **「Update branch」はmerge commit版を使う。rebase版は使わない。** ← 設定で防げない唯一の穴
+- **レビューは各自**。自分のPRを自分でマージしてよい（`Require approvals`は使わない）。
+- **作業を再開するときは、先にmainを取り込む。**
+
+```bash
+git checkout <自分のブランチ>
+git fetch origin
+git merge origin/main
+```
+
+### なぜsquashとrebaseを禁止するのか
+
+**長命ブランチと噛み合わないため。** squashもrebaseも、元のコミットとは別の
+新しいコミットをmainに作る。中身は入るが元のコミットはmainの祖先にならないので、
+**Gitから見るとブランチは「未マージ」のまま**になる。
+
+そのまま同じブランチで作業を続けて`git merge origin/main`すると、
+**すでに取り込まれたはずの自分の変更でコンフリクトが出る**。原因が分かりにくい壊れ方をする。
+
+「Update branch」のrebase版も同じ理由で使わない。**ブランチのコミットが作り直されて
+SHAが変わり、そのブランチを既にpullしている人の手元と履歴が食い違う。**
+
+squashを使うなら「マージ後にブランチを削除し、毎回新しく切る」とセットにする必要がある。
+本プロジェクトは長命ブランチを選んだので、merge commitで統一する。
+
+### リポジトリ設定
+
+- `Settings` → `General` → `Pull Requests`: **Allow merge commitsのみ有効**
+- `Settings` → `Branches` → `main`の保護ルール:
+  - Require a pull request before merging（**Require approvalsは外す**——
+    自分のPRは自分でapproveできないため、入れると各自マージが成立しない）
+  - Require branches to be up to date before merging
+  - **Require linear historyは入れない**（merge commitを禁止する設定のため）
 
 ## 初期設定・環境構築
 
