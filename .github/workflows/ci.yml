@@ -1,0 +1,28 @@
+# mainのブランチ保護で「Require branches to be up to date before merging」を使うために、
+# status checkが最低1つ必要（Rulesetsでは空にできない）。あわせて、Mappingの
+# ロジックが壊れていないかをPRごとに検証する。
+#
+# 現状の対象はMappingのみ。他フォルダのテストが用意できたらjobを追加する。
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  mapping-tests:
+    name: Mapping tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # 実機・ROS 2・LiDARは不要。標準ライブラリのみのunittestに加えて、
+      # シェルスクリプトの構文チェックとcompose.yamlの妥当性検証を行う。
+      - name: Run Mapping tests
+        run: bash Mapping/real/tests/run_tests.sh
