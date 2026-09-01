@@ -126,6 +126,32 @@ class UnobservedTest(unittest.TestCase):
         self.assertTrue(grid.is_free(0.5, 0.5))
 
 
+class FreeRegionTest(unittest.TestCase):
+    def test_open_room_is_one_region(self):
+        grid = build_grid(floor(-2.0, -2.0, 2.0, 2.0), resolution=0.1, inflation=0.0)
+        self.assertEqual(len(grid.free_regions()), 1)
+
+    def test_a_full_wall_splits_the_room(self):
+        grid = build_grid(
+            floor(-3.0, -3.0, 3.0, 3.0) + wall_points(0.0, -3.0, 3.0),
+            resolution=0.1,
+            inflation=0.0,
+        )
+        regions = grid.free_regions()
+        self.assertEqual(len(regions), 2)
+        # 左右ほぼ同じ広さになるはず
+        self.assertAlmostEqual(len(regions[0]) / len(regions[1]), 1.0, delta=0.1)
+
+    def test_regions_are_sorted_largest_first(self):
+        grid = build_grid(
+            floor(-3.0, -3.0, 3.0, 3.0) + wall_points(1.0, -3.0, 3.0),
+            resolution=0.1,
+            inflation=0.0,
+        )
+        regions = grid.free_regions()
+        self.assertGreater(len(regions[0]), len(regions[1]))
+
+
 class SegmentTest(unittest.TestCase):
     def setUp(self):
         # x=0 に壁のある部屋

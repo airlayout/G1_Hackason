@@ -434,19 +434,20 @@ Navigation/
 │   ├── protocol.py          ✅ 1804/1102/slam_info/slam_key_info のJSONスキーマと定数
 │   ├── occupancy.py         ✅ 地図PCD → 2D占有格子（直線が歩けるかの判定に使う）
 │   ├── route.py             ✅ ルート分割器（迂回経路 + 10m以内の直線区間へ）
-│   ├── transport.py         SlamTransport 抽象 + RealTransport
-│   └── mission.py           ミッション実行の状態機械
+│   ├── transport.py         ✅ SlamTransport 抽象 + RealTransport（実機部分は未検証）
+│   └── mission.py           ✅ ミッション実行の状態機械
 ├── tests/                   ✅ 実機・PC2・DDS・numpyのいずれも不要
 │   ├── run_tests.sh         `scripts/ci/run_all_tests.sh` が自動で見つける
 │   ├── test_geometry.py
 │   ├── test_protocol.py
 │   ├── test_occupancy.py
-│   └── test_route.py
+│   ├── test_route.py
+│   └── test_mission.py
 ├── sim/
 │   ├── npz_to_pcd.py        ✅ scans.npz → 地図PCD + 真値軌跡
 │   ├── maps/                （.gitignore済み。npzから再生成できる）
-│   ├── fake_service.py      偽slam_operate（FakeTransport の中身。運動学と507注入を含む）
-│   └── run_sim.py           シナリオ実行と評価
+│   ├── fake_service.py      ✅ 偽slam_operate（運動・障害物・507注入。標準ライブラリのみ）
+│   └── run_sim.py           ✅ シナリオ実行と評価（ASCII地図つき）
 └── real/
     └── run_real.py          実機に対して同じmissionを流す
 ```
@@ -461,9 +462,9 @@ Navigation/
 |---|---|---|---|
 | **0** | 地図の用意（`npz_to_pcd.py`） | 不要 | ✅ 完了 |
 | **1** | `nav/geometry.py` + `nav/protocol.py` + `nav/occupancy.py` + `nav/route.py` + 単体テスト76件 | 不要 | ✅ 完了 |
-| **2** | `sim/fake_service.py` + `nav/transport.py` + `nav/mission.py`。mockでプロトコル検証 | 不要 | ← 次 |
-| **3** | `--kinematics` を足してsim化。`sim_room.pcd`で幾何検証 | 不要 | |
-| **4** | DDSモックをPC2で起動（別domain）。ワイヤ形式を検証 | PC2のみ | |
+| **2** | `sim/fake_service.py` + `nav/transport.py` + `nav/mission.py`。mockでプロトコル検証 | 不要 | ✅ 完了 |
+| **3** | `sim/run_sim.py`。`sim_room.pcd`で幾何検証 | 不要 | ✅ 完了 |
+| **4** | `RealTransport` をPC2で実行してワイヤ形式を検証 | PC2のみ | ← 次 |
 | **5** | 実機。1801→1802で本物の地図を作り、1804→1102 | 必要 | |
 
 **Phase 1〜3は実機もPC2も要らない。** ここまでで「10m分割が正しいか」「is_arrived待ちが
@@ -542,7 +543,8 @@ Navigation/
 
 ## 状態
 
-**Phase 1 完了**（2026-09-02）。単体テスト76件がgreen。実機・PC2・DDS・numpyのいずれも不要。
+**Phase 3 まで完了**（2026-09-02）。単体テスト100件がgreen。
+**実機・PC2・DDS・numpyのいずれも不要。**
 
 | できていること | 内容 |
 |---|---|
@@ -554,15 +556,78 @@ Navigation/
 | 姿勢の変換 | `nav/geometry.py`。四元数とroll/pitch/yawの混在をここに閉じ込めた |
 | 通行判定 | `nav/occupancy.py`。地図PCD → 2D占有格子（未観測は通行不可） |
 | ルート分割器 | `nav/route.py`。迂回経路の生成 + 8m以内への分割 |
+| 通信の抽象化 | `nav/transport.py`。`FakeTransport`（sim）と`RealTransport`（実機・未検証） |
+| ミッション実行器 | `nav/mission.py`。1804 → 1102連打 → 到達待ち → 迂回 → 巡回 |
+| 偽サービス | `sim/fake_service.py`。運動・障害物・507注入。仮想時間で動く |
+| シナリオ実行 | `sim/run_sim.py`。実地図で巡回を回して評価する |
 
-テストの実行:
+### 動かす
 
 ```bash
+# テスト（実機不要）
 bash Navigation/tests/run_tests.sh        # Navigationだけ
 bash scripts/ci/run_all_tests.sh          # リポジトリ全体（CIと同じ）
+
+# シミュレーション。既定は sim/maps/sim_room.pcd の四隅を1周
+python3 Navigation/sim/run_sim.py
+
+# 居座る障害物を置いて迂回を見る
+python3 Navigation/sim/run_sim.py --obstacle 2.9,0,0.9 --obstacle-wait 8 --detour-limit 6
+
+# 人が横切る（3秒に現れて16秒に消える）。待って再開するはず
+python3 Navigation/sim/run_sim.py --obstacle 0.1,-2.5,0.7,3,16
+
+# 3周させる
+python3 Navigation/sim/run_sim.py --laps 3
+
+# 運動を積分しないmockモード（プロトコルと状態遷移だけ）
+python3 Navigation/sim/run_sim.py --mock
 ```
 
-次は **Phase 2**（`sim/fake_service.py` + `nav/transport.py` + `nav/mission.py`）。実機不要。
-`is_arrived`のタイムアウトと507のリトライ方針はここで決める。
+`sim/maps/` は `.gitignore` 済み。無ければ先に作る:
 
-**実機で未検証**: 1802（PC1への保存）、1804（自己位置合わせ）、1102（移動）。
+```bash
+G1_Hackason/.venv/bin/python Navigation/sim/npz_to_pcd.py \
+    ../artifacts/scans.npz --output-dir Navigation/sim/maps --name sim_room
+```
+
+### sim で確認できたこと（`sim_room.pcd`・10m×8mの部屋）
+
+| シナリオ | 結果 |
+|---|---|
+| 四隅を1周 | 6区間・総距離24.17m・最長6.07m・所要47.0秒（仮想時間） |
+| 人が横切る（13秒だけ塞ぐ） | 12.8秒待って再開。**迂回0回**・完走 |
+| 居座る障害物 | 8秒待って迂回1回。1102は6→11回に増えて完走 |
+| mockモード | 3.6秒でプロトコルと状態遷移を検証 |
+| 壁を貫く区間 | 0本 |
+| 部屋の外へ出る区間 | 0本 |
+
+### Phase 2 で決めたこと
+
+| 決めたこと | 値 | 理由 |
+|---|---|---|
+| **到達判定の一次情報** | `rt/slam_key_info` の `task_result.is_arrived` | 離散イベントなので取りこぼしと重複が起きにくい |
+| **`ctrl_info.is_arrived` の扱い** | 補助。**一度Falseを見てから**しか採用しない | 前の区間の到達フラグが残っていると、次の区間を即「到達」と誤判定する |
+| **打ち切り時間** | 区間距離 / 0.5m/s × 3.0 + 20秒 | `speed`は指定できないので想定速度から見積もる。3倍も取るのは回頭・加減速・定位のばらつきが読めないため。実機で計測したら詰める |
+| **停滞の検知** | `progress.completion_percentage` が45秒動かなければ打ち切り | 速度では判定できない（実測: 静止中も vx/vy/vyaw が0にならない） |
+| **障害物で止まったとき** | 15秒待つ。それでも駄目なら迂回 | 人が横切っただけなら数秒で消える。すぐ迂回すると経路が無用に伸びる |
+| **障害物で止まった時間** | 打ち切り時間に**数えない** | 人が横切っただけで巡回全体を落とすのは行き過ぎ |
+| **迂回のやり方** | 機体の前方に仮の障害物を書き込んで経路を引き直す | `obsInfo` は有無と経過秒だけで、**障害物の位置を教えてくれない**。LiDARの生点群から実位置を取るのはPhase 5以降 |
+| **仮の障害物の位置** | 前方1.5m。ただし機体自身から0.3m以上離す | ⚠️ 離さないと円が機体を飲み込み「出発点が壁の中」で経路が引けなくなる（実装中に踏んだ） |
+| **迂回の回数上限** | 3回 | 通路そのものが塞がっているときに無限に試さない |
+| **507のリトライ** | 3回（0.5秒・1.5秒待ち）で諦める | 応答0.01秒＝ファイルI/Oの前に落ちている。粘っても同じ。1802直後のレースだけ拾えれば十分。無限リトライは原因を隠す |
+
+### 次: Phase 4（PC2でワイヤ形式を検証）
+
+`nav/transport.py` の `RealTransport` は**まだ一度も動かしていない**。
+`unitree_sdk2py` の `Client._Call(apiId, json文字列) -> (code, data)` を使い、
+api-idは事前に `_RegistApi` で登録する必要がある（未登録は
+`RPC_ERR_CLIENT_API_NOT_REG`=3103 で機体まで届かない）。
+
+PC2で確かめること:
+
+1. `RealTransport` が `rt/slam_info` を購読できるか（`ctrl_info` が約5Hzで来るか）
+2. `_Call` の戻り値 `code` とレスポンスJSONの `errorCode` の対応（実測: 507のとき code=1）
+3. 1201/1202 が受理されるか（地図が無くても通るはず）
+
+**実機で未検証**: 1802（PC1への保存）、1804（自己位置合わせ）、1102（移動）、到達判定。

@@ -114,6 +114,58 @@ class OccupancyGrid:
                 return False
         return True
 
+    def with_extra_obstacle(self, x: float, y: float, radius: float) -> "OccupancyGrid":
+        """一時的な障害物を足した**新しい**格子を返す。元の格子は変えない。
+
+        巡回中に人や荷物で塞がれたときの迂回に使う。`slam_operate` は
+        障害物の位置を教えてくれない（`obsInfo` は有無と経過秒だけ）ので、
+        呼び側が「機体の前方どこか」と推定した円をここに置く。
+
+        radius は**機体中心が入ってはいけない半径**。この格子は既に
+        `DEFAULT_INFLATION_M` で膨張済みなので、障害物の実寸に機体半径を
+        足した値を渡すこと。
+        """
+
+        painted = bytearray(self._occupied)
+        cells = int(math.ceil(radius / self.spec.resolution))
+        center_col, center_row = self.spec.to_cell(x, y)
+        for drow in range(-cells, cells + 1):
+            for dcol in range(-cells, cells + 1):
+                if math.hypot(dcol, drow) * self.spec.resolution > radius:
+                    continue
+                col, row = center_col + dcol, center_row + drow
+                if self.spec.contains(col, row):
+                    painted[row * self.spec.width + col] = 1
+        return OccupancyGrid(self.spec, painted)
+
+    def free_regions(self) -> list[list[tuple[int, int]]]:
+        """自由セルを4近傍でつないだ塊の一覧。大きい順。
+
+        地図は自由に見えても、機体半径ぶんの膨張で通路が塞がって分断される
+        ことがある（`sim_room.pcd` では壁際に32セルの孤立ポケットができた）。
+        巡回地点を選ぶ前にここを見ておくと、実機に投げてから詰まらずに済む。
+        """
+
+        free = set(self.free_cells())
+        regions: list[list[tuple[int, int]]] = []
+        seen: set[tuple[int, int]] = set()
+        for cell in free:
+            if cell in seen:
+                continue
+            seen.add(cell)
+            queue, region = deque([cell]), []
+            while queue:
+                col, row = queue.popleft()
+                region.append((col, row))
+                for dcol, drow in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    neighbor = (col + dcol, row + drow)
+                    if neighbor in free and neighbor not in seen:
+                        seen.add(neighbor)
+                        queue.append(neighbor)
+            regions.append(region)
+        regions.sort(key=len, reverse=True)
+        return regions
+
     def free_cells(self) -> list[tuple[int, int]]:
         return [
             (col, row)
