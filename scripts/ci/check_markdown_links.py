@@ -27,9 +27,30 @@ def tracked_markdown() -> list[Path]:
     return [Path(p) for p in out if not p.startswith(EXCLUDED)]
 
 
+def tracked_paths() -> set[str]:
+    """git管理下のファイルと、その親ディレクトリの集合。
+
+    ファイルシステムの存在ではなくgit管理下かで判定する。手元にしか無いファイル
+    （.gitignore済みのSimEnv3D/など）へのリンクは、cloneした人には切れているため。
+    ローカル実行とCIの結果を一致させる意味もある。
+    """
+    out = subprocess.run(
+        ["git", "ls-files"], capture_output=True, text=True, check=True
+    ).stdout.split()
+    paths: set[str] = set()
+    for item in out:
+        path = Path(item)
+        paths.add(path.as_posix())
+        for parent in path.parents:
+            if parent != Path("."):
+                paths.add(parent.as_posix())
+    return paths
+
+
 def main() -> int:
     total = 0
     broken: list[str] = []
+    known = tracked_paths()
 
     for md in tracked_markdown():
         text = md.read_text(encoding="utf-8", errors="replace")
@@ -38,7 +59,10 @@ def main() -> int:
             if not target or target.startswith(("http://", "https://", "mailto:")):
                 continue
             total += 1
-            if not (md.parent / target).exists():
+            resolved = (md.parent / target).as_posix().rstrip("/")
+            # ../ を含むパスを正規化する
+            resolved = Path(resolved).resolve().relative_to(Path.cwd()).as_posix()
+            if resolved not in known:
                 broken.append(f"{md} -> {target}")
 
     print(f"[links] 相対リンク {total} 本を検査")

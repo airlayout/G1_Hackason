@@ -27,9 +27,6 @@ G1_HuggingFace/lerobot/
 G1_HuggingFace/cyclonedds/
 G1_HuggingFace/venv/
 
-# SimEnv3D(作りかけの3D環境、追跡対象外)
-SimEnv3D/
-
 # 実機 Mapping の実行成果物・ローカル設定・配備物
 Mapping/real/runs/*
 !Mapping/real/runs/.gitkeep
