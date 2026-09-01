@@ -1,8 +1,9 @@
-# mainのブランチ保護で「Require branches to be up to date before merging」を使うために、
-# status checkが最低1つ必要（Rulesetsでは空にできない）。あわせて、Mappingの
-# ロジックが壊れていないかをPRごとに検証する。
+# mainへのマージのレビューは各自で行う方針のため、他人の目がPRに入らない。
+# このCIが唯一の機械的なチェックになる。
 #
-# 現状の対象はMappingのみ。他フォルダのテストが用意できたらjobを追加する。
+# 現状の対象はMappingのみ。Navigation・Perception・Entameにはテストが無いため、
+# それらのPRでもCIは緑になるが中身は検証されていない。
+# 「CIが緑だから安全」ではない点に注意する。各班のテストが用意できたらjobを追加する。
 
 name: CI
 
