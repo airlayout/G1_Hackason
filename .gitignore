@@ -39,3 +39,6 @@ _local/
 
 # Navigation: scans.npz から再生成できる中間成果物
 Navigation/sim/maps/
+
+# Navigation 専用の uv 環境（uv sync で再生成できる）
+Navigation/.venv/

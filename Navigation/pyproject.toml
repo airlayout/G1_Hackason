@@ -1,0 +1,33 @@
+# Navigation 専用の Python 環境。他班の環境（G1_HuggingFace/venv, Mapping の Docker）には触れない。
+#
+#   cd Navigation && uv sync --group dds          # 実機・DDS（unitree_sdk2py）を叩くとき
+#   cd Navigation && uv sync --group dds --group mujoco --group viz   # 全部
+#
+# Python を 3.10 に固定する理由: unitree_sdk2py が要求する cyclonedds==0.10.2 の
+# macOS arm64 wheel が cp38/cp39/cp310 にしか無い（3.11 以降は無い）。
+# nav/ 本体と tests/ は標準ライブラリのみで、この環境が無くても python3 で動く（CI はそう動く）。
+[project]
+name = "g1-navigation"
+version = "0.1.0"
+description = "Unitree G1 の純正ナビ(slam_operate)に乗る Navigation 層"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "numpy>=1.26",          # sim/npz_to_pcd.py だけが使う
+]
+
+[dependency-groups]
+dds = [
+    "cyclonedds==0.10.2",
+    "unitree-sdk2py @ git+https://github.com/unitreerobotics/unitree_sdk2_python.git@65691c8a8bc53b98d3976dba4dbf9d5d20b2e7f5",
+]
+mujoco = [
+    "mujoco>=3.3",
+    "mujoco-lidar",
+]
+viz = [
+    "matplotlib>=3.8",
+]
+
+[tool.uv]
+package = false            # Navigation はパッケージとして install しない（PYTHONPATH で使う）
+default-groups = ["dds"]

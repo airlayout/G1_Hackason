@@ -464,7 +464,9 @@ Navigation/
 | **1** | `nav/geometry.py` + `nav/protocol.py` + `nav/occupancy.py` + `nav/route.py` + 単体テスト76件 | 不要 | ✅ 完了 |
 | **2** | `sim/fake_service.py` + `nav/transport.py` + `nav/mission.py`。mockでプロトコル検証 | 不要 | ✅ 完了 |
 | **3** | `sim/run_sim.py`。`sim_room.pcd`で幾何検証 | 不要 | ✅ 完了 |
-| **4** | `RealTransport` をPC2で実行してワイヤ形式を検証 | PC2のみ | ← 次 |
+| **3.5** | 歩行を OSS に差し替え（`sim/g1_walker.py` + `sim/slam_service.py`） | 不要 | ← 次 |
+| **3.6** | Python環境の統一（uv + Python 3.10 + `uv.lock`） | 不要 | ✅ 完了 |
+| **4** | `RealTransport` をPC2で実行してワイヤ形式を検証 | PC2のみ | |
 | **5** | 実機。1801→1802で本物の地図を作り、1804→1102 | 必要 | |
 
 **Phase 1〜3は実機もPC2も要らない。** ここまでで「10m分割が正しいか」「is_arrived待ちが
@@ -545,6 +547,12 @@ Navigation/
 
 **Phase 3 まで完了**（2026-09-02）。単体テスト100件がgreen。
 **実機・PC2・DDS・numpyのいずれも不要。**
+
+> ⚠️ **2026-09-02 夕に方針転換。** 「自作の運動学モックは禁止。OSS を流用する」との方針により、
+> `sim/fake_service.py` の運動学部分を **Unitree 公式の学習済み歩行ポリシー
+> （`unitree_rl_gym` の `motion.pt`）+ MuJoCo** に差し替える（Phase 3.5）。
+> **`nav/` は変更なし。** 経緯・調査結果・決定の一覧は
+> `docs/G1＿Hackthon/` ではなく `docs/plan/2026-09-02-g1-navigation-sim.md` の 10 章にある。
 
 | できていること | 内容 |
 |---|---|
