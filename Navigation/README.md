@@ -625,8 +625,12 @@ uv run python sim/run_sim.py --laps 3
 # 歩行ポリシーだけを見る（ナビも地図も通さない）
 uv run python -m sim.g1_walker --selftest
 
-# MuJoCo のビューアで見る（macOS は mjpython が要る）
-uv run mjpython sim/run_sim.py --viewer
+# MuJoCo のビューアで見る（macOS は mjpython が要る。下の注意を読むこと）
+DYLD_LIBRARY_PATH="$(.venv/bin/python -c 'import sysconfig;print(sysconfig.get_config_var("LIBDIR"))')" \
+  .venv/bin/mjpython sim/run_sim.py --viewer
+
+# ビューアの速度を変える（既定は実時間。20 なら20倍速で流し見）
+DYLD_LIBRARY_PATH=... .venv/bin/mjpython sim/run_sim.py --viewer --speed 20
 
 # 実地図(PCD)で経路だけ検証する。MuJoCo の世界を持たないので歩けない
 uv sync --group pcd
@@ -635,6 +639,33 @@ uv run python sim/run_sim.py --map sim/maps/uis_main_floor.pcd --route-only
 
 `--obstacle` の値が負で始まるときは `--obstacle=-2.0,...` と `=` で繋ぐこと
 （`-2.0` がオプション名と解釈される）。
+
+#### ⚠️ macOS + uv でビューアを出すときの 2 つの罠
+
+**1. `mjpython` が `libpython3.10.dylib` を見つけられない**
+
+```
+failed to dlopen ... Library not loaded: @rpath/libpython3.10.dylib
+```
+
+`uv` が入れる CPython は共有ライブラリを `lib/` に持っているが、`mjpython` から
+見える rpath に入っていない。`DYLD_LIBRARY_PATH` で場所を教える（上のコマンド参照）。
+`uv run mjpython` ではこの環境変数を渡せないので、`.venv/bin/mjpython` を直に叩く。
+
+**2. ビューアを別スレッドから `sync()` しない**
+
+```
+ERROR mj_copyDataVisual (engine_io.c:1165):
+      attempting to copy mjData while stack is in use
+```
+
+ミッションを別スレッドで回して本スレッドで `viewer.sync()` すると、
+`mj_step` と衝突してプロセスごと落ちる（実測・exit 133）。
+`sim/run_sim.py` は**スレッドを使わず**、`SimTransport.set_frame_hook()` で
+描き替えをミッションと同じスレッドへ差し込んでいる。
+
+**速度について**: ビューア無しなら約 50 倍速で走るので、100 秒の巡回が 2 秒で終わる。
+`--viewer` を付けると既定で実時間になる（`--speed` で変更可）。
 
 `sim/maps/` は `.gitignore` 済み。無ければ先に作る:
 

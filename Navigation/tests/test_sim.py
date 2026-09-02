@@ -162,6 +162,58 @@ class SlamServiceTest(unittest.TestCase):
         transport.sleep(1.0)
         self.assertAlmostEqual(transport.now(), 1.0, places=1)
 
+    def test_by_default_it_runs_as_fast_as_it_can(self):
+        """テストと CI で待たせる理由は無い。既定は実時間に縛らない。"""
+
+        import time
+
+        transport = self.make()
+        started = time.monotonic()
+        transport.sleep(2.0)
+        self.assertLess(
+            time.monotonic() - started, 1.0,
+            "実時間を待ってしまっている（既定は realtime_factor=None のはず）",
+        )
+
+    def test_a_realtime_factor_slows_it_down(self):
+        """`--viewer` のとき目で追えるようにするための仕掛け。"""
+
+        import time
+
+        transport = self.make(realtime_factor=4.0)
+        started = time.monotonic()
+        transport.sleep(2.0)   # sim 2 秒 / 4 倍速 = 実時間 0.5 秒のはず
+        elapsed = time.monotonic() - started
+        self.assertGreater(elapsed, 0.3, f"待っていない（{elapsed:.2f}秒）")
+        self.assertLess(elapsed, 1.5, f"待ちすぎ（{elapsed:.2f}秒）")
+
+    def test_the_frame_hook_is_called_on_the_calling_thread(self):
+        """ビューアの描き替えはミッションと同じスレッドで呼ぶ。
+
+        別スレッドから `viewer.sync()` すると `mj_step` と衝突して
+        プロセスごと落ちる（実測・exit 133）ので、ここが崩れると GUI が死ぬ。
+        """
+
+        import threading
+
+        transport = self.make()
+        seen: list[int] = []
+        here = threading.get_ident()
+        transport.set_frame_hook(lambda: seen.append(threading.get_ident()))
+        transport.sleep(0.5)
+        self.assertGreater(len(seen), 0, "フックが一度も呼ばれていない")
+        self.assertEqual(set(seen), {here}, "別スレッドから呼ばれている")
+
+    def test_the_frame_hook_can_be_removed(self):
+        transport = self.make()
+        calls: list[int] = []
+        transport.set_frame_hook(lambda: calls.append(1))
+        transport.sleep(0.3)
+        transport.set_frame_hook(None)
+        before = len(calls)
+        transport.sleep(0.3)
+        self.assertEqual(len(calls), before)
+
 
 @needs_sim
 class PatrolTest(unittest.TestCase):

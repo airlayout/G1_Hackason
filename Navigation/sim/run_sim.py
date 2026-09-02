@@ -106,6 +106,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--detour-limit", type=int, default=3, help="許す迂回の回数")
     parser.add_argument("--viewer", action="store_true",
                         help="MuJoCo のビューアを出す（macOS は mjpython で起動すること）")
+    parser.add_argument("--speed", type=float, default=None, metavar="X",
+                        help="sim を実時間の X 倍で進める。--viewer のとき既定 1.0。"
+                             "省略かつ --viewer 無しなら全速（約50倍）")
     parser.add_argument("--quiet", action="store_true", help="ログを出さない")
     return parser.parse_args(argv)
 
@@ -182,9 +185,16 @@ def _walk(args, room, grid: OccupancyGrid, waypoints: list[Pose2D]) -> int:
     from sim.slam_service import SimOptions, SimTransport
 
     obstacles = tuple(_parse_obstacle(text) for text in args.obstacle)
+    # ビューアを出すなら既定で実時間。全速（約50倍）だと 100 秒の巡回が 2 秒で
+    # 終わって目で追えない。--speed で明示されていればそちらを優先する。
+    realtime_factor = args.speed if args.speed is not None else (1.0 if args.viewer else None)
     transport = SimTransport(
         room,
-        SimOptions(known_maps=frozenset({SIM_MAP_ADDRESS}), obstacles=obstacles),
+        SimOptions(
+            known_maps=frozenset({SIM_MAP_ADDRESS}),
+            obstacles=obstacles,
+            realtime_factor=realtime_factor,
+        ),
     )
     mission = Mission(
         transport,
@@ -199,7 +209,8 @@ def _walk(args, room, grid: OccupancyGrid, waypoints: list[Pose2D]) -> int:
         ),
     )
 
-    print(f"\n歩行: MuJoCo + unitree_rl_gym 12DoF ポリシー / 障害物 {len(obstacles)}個")
+    pace = "全速" if realtime_factor is None else f"実時間の{realtime_factor:g}倍"
+    print(f"\n歩行: MuJoCo + unitree_rl_gym 12DoF ポリシー / 障害物 {len(obstacles)}個 / {pace}")
     started = time.time()
     report = _run_with_optional_viewer(mission, transport, args.viewer)
     wall = time.time() - started
@@ -212,31 +223,38 @@ def _walk(args, room, grid: OccupancyGrid, waypoints: list[Pose2D]) -> int:
 
 
 def _run_with_optional_viewer(mission: Mission, transport, want_viewer: bool):
-    """ビューアを出す場合だけ、別スレッドでミッションを回して本スレッドで描く。
+    """ビューアを出す場合は、描き替えをミッションの中へ差し込んで回す。
 
-    MuJoCo のビューアは**本スレッドを占有する**（macOS は `mjpython` が要る）ので、
-    ミッションのほうを別スレッドへ逃がす。
+    **スレッドを使わない。** 別スレッドから `viewer.sync()` すると
+    ミッション側の `mj_step` と衝突し、
+    `mj_copyDataVisual: attempting to copy mjData while stack is in use` で
+    プロセスごと落ちる（実測。exit 133）。
+    `SimTransport` が 1 コマごとにフックを呼んでくれるので、そこで描く。
     """
 
     if not want_viewer:
         return mission.run()
 
-    import threading
-
     import mujoco.viewer
 
-    result: dict = {}
-
-    def worker() -> None:
-        result["report"] = mission.run()
-
-    thread = threading.Thread(target=worker, daemon=True)
     with mujoco.viewer.launch_passive(transport.walker.model, transport.walker.data) as viewer:
-        thread.start()
-        while thread.is_alive() and viewer.is_running():
-            viewer.sync()
-        thread.join()
-    return result["report"]
+        closed = False
+
+        def draw_frame() -> None:
+            nonlocal closed
+            if viewer.is_running():
+                viewer.sync()
+            elif not closed:
+                # 窓を閉じられた。待たせる相手が居ないので全速で片付ける
+                closed = True
+                print("\nビューアが閉じられた。残りは全速で走らせる")
+                transport.set_realtime_factor(None)
+
+        transport.set_frame_hook(draw_frame)
+        try:
+            return mission.run()
+        finally:
+            transport.set_frame_hook(None)
 
 
 # ------------------------------------------------------------------- 表示

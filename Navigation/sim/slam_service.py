@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -52,6 +53,10 @@ from nav.protocol import (
 from nav.transport import SlamTransport
 from sim.g1_walker import MAX_VX_MPS, MAX_WZ_RPS, G1Walker, Mid360, build_model
 from sim.rooms import DynamicObstacle, Room
+
+# ビューアを描き替える間隔[s]。60fps 相当。
+# 待っている間もこの間隔で描くので、実時間で走らせても滑らかに見える。
+FRAME_S = 1.0 / 60.0
 
 # 速度指令を作り直す間隔[s]。実機の `ctrl_info` が約 5Hz、ポリシーが 50Hz なので、
 # その間の 10Hz にする。細かくしても歩容は 50Hz でしか変わらない。
@@ -135,6 +140,14 @@ class SimOptions:
     経路計画だけを見たいときの逃げ道として残してある。
     """
 
+    realtime_factor: float | None = None
+    """sim 時間を実時間の何倍で進めるか。`None` なら**待たずに全速**（既定）。
+
+    人が見るとき（`--viewer`）だけ 1.0 前後にする。全速だと 50 倍で走るので、
+    100 秒の巡回が 2 秒で終わって目で追えない。
+    テストと CI では待たせる理由が無いので `None` のまま。
+    """
+
 
 class SimTransport(SlamTransport):
     """MuJoCo の中の G1 を相手にした `SlamTransport`。
@@ -163,6 +176,9 @@ class SimTransport(SlamTransport):
         self._blocked = False
         self._blocked_since: float | None = None
         self._task_results: list = []
+        self._realtime_factor = self._options.realtime_factor
+        self._wall_origin: float | None = None
+        self._frame_hook = None
         self.calls: list[tuple[int, dict]] = []
         """投げられた API の記録。テストで順序を確かめるのに使う。"""
 
@@ -202,6 +218,50 @@ class SimTransport(SlamTransport):
             self._sync_obstacles()
             self._drive(tick)
             remaining -= tick
+            self._pace()
+
+    def set_realtime_factor(self, factor: float | None) -> None:
+        """途中で速度を変える。ビューアを閉じたら全速に戻すのに使う。"""
+
+        self._realtime_factor = factor
+        self._wall_origin = None
+
+    def set_frame_hook(self, hook) -> None:
+        """1 コマ進むたびに呼ぶもの。ビューアの描き替えに使う。
+
+        **ミッションと同じスレッドから呼ばれる。** MuJoCo のビューアを別スレッドから
+        `sync()` すると `mj_step` と衝突して
+        `mj_copyDataVisual: attempting to copy mjData while stack is in use` で
+        プロセスごと落ちる（実測）。描画をここへ差し込むことでスレッドを使わずに済ませる。
+        """
+
+        self._frame_hook = hook
+
+    def _pace(self) -> None:
+        """sim 時間が実時間を追い越していたら、追いつかれるまで待つ。
+
+        遅れている（sim のほうが遅い）場合は詰めようとしない。
+        取り戻そうと早回しすると、見ている人には**カクついて見えるだけ**で
+        歩行の様子が分からなくなる。
+
+        待っている間も `FRAME_S` ごとにコマを進める。待ち時間をまとめて
+        `time.sleep` すると、その間ビューアが固まる。
+        """
+
+        if self._frame_hook is not None:
+            self._frame_hook()
+        if self._realtime_factor is None:
+            return
+        if self._wall_origin is None:
+            self._wall_origin = time.monotonic() - self._walker.sim_time / self._realtime_factor
+        target = self._wall_origin + self._walker.sim_time / self._realtime_factor
+        while True:
+            delay = target - time.monotonic()
+            if delay <= 0.0:
+                return
+            time.sleep(min(delay, FRAME_S))
+            if self._frame_hook is not None:
+                self._frame_hook()
 
     # ------------------------------------------------------------ 状態の参照
 
