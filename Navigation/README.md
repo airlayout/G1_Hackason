@@ -429,27 +429,38 @@ DDSモックをPC2で動かすときは、**必ず`ROS_DOMAIN_ID`を0以外に�
 
 ```text
 Navigation/
-├── nav/                     sim/real 共通のロジック（ここが本体。標準ライブラリのみ）
-│   ├── geometry.py          ✅ 平面姿勢と四元数↔yaw変換
-│   ├── protocol.py          ✅ 1804/1102/slam_info/slam_key_info のJSONスキーマと定数
-│   ├── occupancy.py         ✅ 地図PCD → 2D占有格子（直線が歩けるかの判定に使う）
-│   ├── route.py             ✅ ルート分割器（迂回経路 + 10m以内の直線区間へ）
+├── nav/                     sim/real 共通のロジック
+│   ├── protocol.py          ✅ slam_operate のJSONスキーマと定数（OSS に代替なし）
 │   ├── transport.py         ✅ SlamTransport 抽象 + RealTransport（実機部分は未検証）
-│   └── mission.py           ✅ ミッション実行の状態機械
+│   ├── occupancy.py         ⬜ 地図 → 通行判定。scipy で書き直す
+│   ├── route.py             ⬜ 経路と8m分割。scikit-image で書き直す
+│   └── mission.py           ⬜ ミッションの状態機械。書き直す
 ├── tests/                   ⬜ Phase 3.5 で作り直す（旧100件は削除済み）
 │   └── run_tests.sh         `scripts/ci/run_all_tests.sh` が自動で見つける
 ├── sim/
 │   ├── npz_to_pcd.py        ✅ scans.npz → 地図PCD + 真値軌跡
 │   ├── maps/                （.gitignore済み。npzから再生成できる）
-│   ├── fake_service.py      ✅ 偽slam_operate（運動・障害物・507注入。標準ライブラリのみ）
-│   └── run_sim.py           ✅ シナリオ実行と評価（ASCII地図つき）
+│   ├── g1_walker.py         ⬜ unitree_rl_gym の学習済みポリシーで歩かせる
+│   ├── slam_service.py      ⬜ 1804/1102 を受けて速度指令に翻訳する
+│   └── run_sim.py           ⬜ シナリオ実行と評価
 └── real/
     └── run_real.py          実機に対して同じmissionを流す
 ```
 
-**`nav/` は標準ライブラリだけで書く。** `scripts/ci/run_all_tests.sh` は `pip install` を
-持たず、`Mapping/` も同じ理由でnumpy非依存になっている。numpyが要る処理（点群の
-大量変換など）は `sim/` 側に置く。
+**自作は「OSS に代替が無いもの」に限る。** 2026-09-02 に、既製ライブラリで置き換えられる
+自作コード 1,767 行を削除した。
+
+| 削除したもの | 代替 |
+|---|---|
+| `nav/occupancy.py`（343行・占有格子と膨張） | `scipy.ndimage` の `distance_transform_edt` と `binary_fill_holes`。**出力の完全一致と25倍速を実測** |
+| `nav/route.py`（272行・A*） | `skimage.graph.route_through_array`（1ms） |
+| `nav/geometry.py`（99行・四元数変換） | `scipy.spatial.transform.Rotation` |
+| `nav/mission.py`（404行） | 代替なし。scipy 版の上に書き直す |
+| `sim/fake_service.py`（351行・運動学モック） | `unitree_rl_gym` の学習済みポリシー + MuJoCo |
+| `sim/run_sim.py`（264行） | 上に追従して書き直す |
+
+残したのは `protocol.py` と `transport.py` だけ。**`slam_operate` を実装した OSS は
+GitHub 全体に存在しない**ことを確認済みなので、ここだけは自作するしかない。
 
 ### 段取り
 

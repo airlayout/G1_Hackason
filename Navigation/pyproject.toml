@@ -12,7 +12,9 @@ version = "0.1.0"
 description = "Unitree G1 の純正ナビ(slam_operate)に乗る Navigation 層"
 requires-python = ">=3.10,<3.11"
 dependencies = [
-    "numpy>=1.26",          # sim/npz_to_pcd.py だけが使う
+    "numpy>=1.26",
+    "scipy>=1.11",          # 四元数変換・占有格子の膨張・距離変換
+    "scikit-image>=0.22",   # 格子上の経路探索（route_through_array）
 ]
 
 [dependency-groups]

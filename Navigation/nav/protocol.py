@@ -22,7 +22,36 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from .geometry import Pose2D, quaternion_to_yaw, yaw_to_quaternion
+from scipy.spatial.transform import Rotation
+
+
+@dataclass(frozen=True)
+class Pose2D:
+    """平面上の姿勢。yawの単位はラジアン。
+
+    G1のナビは室内平地が適用条件で、roll/pitch は制御対象ではない。
+    z も 1102 に渡す値は「地図の高さ」であって指示できる自由度ではないため持たない。
+    """
+
+    x: float
+    y: float
+    yaw: float = 0.0
+
+
+def yaw_to_quaternion(yaw: float) -> tuple[float, float, float, float]:
+    """yaw[rad] -> (q_x, q_y, q_z, q_w)。Z軸まわりの回転のみ。"""
+
+    return tuple(Rotation.from_euler("z", yaw).as_quat())
+
+
+def quaternion_to_yaw(q_x: float, q_y: float, q_z: float, q_w: float) -> float:
+    """(q_x,q_y,q_z,q_w) -> yaw[rad]。roll/pitch は捨てる。
+
+    正規化されていない四元数も受ける（実機のJSONを直接食わせるため）。
+    ノルムが0に近い四元数は scipy が ValueError にする。
+    """
+
+    return float(Rotation.from_quat([q_x, q_y, q_z, q_w]).as_euler("zyx")[0])
 
 SERVICE_NAME = "slam_operate"
 SERVICE_VERSION = "1.0.0.1"
