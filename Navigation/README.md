@@ -436,13 +436,8 @@ Navigation/
 │   ├── route.py             ✅ ルート分割器（迂回経路 + 10m以内の直線区間へ）
 │   ├── transport.py         ✅ SlamTransport 抽象 + RealTransport（実機部分は未検証）
 │   └── mission.py           ✅ ミッション実行の状態機械
-├── tests/                   ✅ 実機・PC2・DDS・numpyのいずれも不要
-│   ├── run_tests.sh         `scripts/ci/run_all_tests.sh` が自動で見つける
-│   ├── test_geometry.py
-│   ├── test_protocol.py
-│   ├── test_occupancy.py
-│   ├── test_route.py
-│   └── test_mission.py
+├── tests/                   ⬜ Phase 3.5 で作り直す（旧100件は削除済み）
+│   └── run_tests.sh         `scripts/ci/run_all_tests.sh` が自動で見つける
 ├── sim/
 │   ├── npz_to_pcd.py        ✅ scans.npz → 地図PCD + 真値軌跡
 │   ├── maps/                （.gitignore済み。npzから再生成できる）
@@ -545,8 +540,11 @@ Navigation/
 
 ## 状態
 
-**Phase 3 まで完了**（2026-09-02）。単体テスト100件がgreen。
-**実機・PC2・DDS・numpyのいずれも不要。**
+**Phase 3 まで完了**（2026-09-02）。**実機・PC2・DDS・numpyのいずれも不要。**
+
+> ⚠️ **テストは Phase 3.5 で作り直すため、既存の100件をいったん全削除した**（2026-09-02）。
+> 削除前の内容は `c5e113a`（geometry/protocol/occupancy/route）と
+> `1b1bbfe`（mission）の履歴から復元できる。
 
 > ⚠️ **2026-09-02 夕に方針転換。** 「自作の運動学モックは禁止。OSS を流用する」との方針により、
 > `sim/fake_service.py` の運動学部分を **Unitree 公式の学習済み歩行ポリシー
