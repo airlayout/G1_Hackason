@@ -66,6 +66,13 @@ LIDAR_SITE_NAME = "mid360"
 LIDAR_MOUNT_XYZ = (0.15, 0.0, 0.557)
 LIDAR_PITCH_DEG = 20.0
 
+# 機体を追うカメラ。`trackcom` なので pos は重心からの world 基準オフセット。
+# 向きは pos から重心を見る方向を自動で計算する（`_quat_looking_at_origin_from`）。
+# 後ろ 4m・上 2.5m だと機体と行き先の両方が入る（オフスクリーン描画で確認）。
+CHASE_CAMERA_NAME = "chase"
+CHASE_CAMERA_OFFSET = (-4.0, 0.0, 2.5)
+CHASE_CAMERA_FOVY = 60.0
+
 # レイの間引き。1 は 24,000 本（3.2ms）、4 で 6,000 本（4.1ms）。
 # 障害物の有無を見るだけなら 4 で十分で、実機 10Hz に対して 24 倍速。
 LIDAR_DOWNSAMPLE = 4
@@ -281,6 +288,16 @@ def build_model(room: Room, obstacles: tuple[DynamicObstacle, ...] = ()):
     half = math.radians(LIDAR_PITCH_DEG) / 2
     site.quat = [math.cos(half), 0.0, math.sin(half), 0.0]  # y 軸まわり＝前傾
 
+    # 歩いている機体を追うカメラ。ビューアで `[` / `]` で切り替えられる。
+    # `trackcom` は位置だけ機体に追従し、向きは world 基準のまま。機体の
+    # ロール・ピッチに合わせて回らないので、歩容で画面が揺れない。
+    chase = spec.body("pelvis").add_camera()
+    chase.name = CHASE_CAMERA_NAME
+    chase.mode = mujoco.mjtCamLight.mjCAMLIGHT_TRACKCOM
+    chase.pos = list(CHASE_CAMERA_OFFSET)
+    chase.fovy = CHASE_CAMERA_FOVY
+    chase.quat = _quat_looking_at_origin_from(CHASE_CAMERA_OFFSET)
+
     for index, obstacle in enumerate(obstacles):
         body = spec.worldbody.add_body()
         body.name = f"obstacle_{index}"
@@ -344,6 +361,27 @@ def _site_id(model, name: str) -> int:
     if site_id < 0:
         raise ValueError(f"site {name!r} がモデルに無い。build_model() を通したか確認すること")
     return site_id
+
+
+def _quat_looking_at_origin_from(offset) -> list[float]:
+    """`offset` の位置から原点を見るカメラの四元数 (w, x, y, z)。
+
+    MuJoCo のカメラは **-z 方向を見て +y が画面の上**。その 3 軸を直接組んで
+    `scipy` に四元数へ直させる。手で四元数を掛け合わせると必ず取り違える
+    （実際に一度間違えて、カメラが床を向いた）。
+    """
+
+    from scipy.spatial.transform import Rotation
+
+    position = np.asarray(offset, dtype=float)
+    forward = -position / np.linalg.norm(position)   # 原点へ向かう向き
+    z_axis = -forward                                # カメラの +z は視線の逆
+    x_axis = np.cross([0.0, 0.0, 1.0], z_axis)       # world の上と直交する「右」
+    x_axis /= np.linalg.norm(x_axis)
+    y_axis = np.cross(z_axis, x_axis)                # 画面の「上」
+    rotation = Rotation.from_matrix(np.stack([x_axis, y_axis, z_axis], axis=1))
+    q_x, q_y, q_z, q_w = rotation.as_quat()
+    return [q_w, q_x, q_y, q_z]                      # MuJoCo は (w,x,y,z) 順
 
 
 def _projected_gravity(quaternion) -> np.ndarray:

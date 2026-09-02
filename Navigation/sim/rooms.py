@@ -39,6 +39,20 @@ ROBOT_XML = ASSET_DIR / "g1_description" / "g1_12dof.xml"
 # 居ない間の障害物を退避させる高さ[m]。床（z=0）と機体から十分に離す。
 PARKED_Z_M = -10.0
 
+# ビューアが開いたときのカメラの寄り具合を決める `<statistic>` の値。
+#
+# **これを書かないと部屋が見えない。** MuJoCo は `<statistic>` が無いとモデルの
+# 境界箱から extent を推定するが、床は無限平面（`size="0 0 0.05"`）で境界箱に
+# 寄与しないため、**機体の手足の寸法だけ**から決まってしまう。
+# 実測: 11m x 6m の部屋で extent=1.23 になり、カメラが床のテクスチャに寄り切って
+# ロボットも壁も画面に入らなかった。
+#
+# center は部屋の中心。高さは立っている機体の胸あたり。
+# extent は部屋の長辺の 0.65 倍。オフスクリーン描画で 4 通り試して、
+# 「壁 4 枚と柱と仕切りと機体が全部入る」いちばん寄った値を選んだ。
+STATISTIC_CENTER_Z = 1.0
+STATISTIC_EXTENT_RATIO = 0.65
+
 # 機体を置く高さ[m]。`g1_12dof.xml` の `<body name="pelvis" pos="0 0 0.793">` と揃える。
 SPAWN_HEIGHT_M = 0.793
 
@@ -195,6 +209,7 @@ class Room:
         """
 
         include = '  <include file="g1_12dof.xml"/>\n' if with_robot else ""
+        (x0, x1), (y0, y1) = self.inner_x, self.inner_y
         geoms = "\n".join(box.to_mjcf() for box in self.solids)
         spawn = ""
         if with_robot:
@@ -208,9 +223,16 @@ class Room:
                 + '"/></keyframe>\n'
             )
         return f"""<mujoco model="{self.name}">
-{include}  <visual>
+{include}  <statistic center="{(x0 + x1) / 2:.3f} {(y0 + y1) / 2:.3f} {STATISTIC_CENTER_Z:.3f}"
+             extent="{max(x1 - x0, y1 - y0) * STATISTIC_EXTENT_RATIO:.3f}"/>
+  <visual>
     <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0.2 0.2 0.2"/>
-    <global azimuth="120" elevation="-20"/>
+    <!-- azimuth/elevation はビューアが開いたときの自由カメラの向き。
+         真南(-90)から 45° 見下ろす。壁の高さが 2m あるので、これより浅いと
+         手前の壁が視界を塞いで部屋の中が見えない（実測で確認）。
+         offwidth/offheight はオフスクリーン描画の上限（既定 640x480 では
+         スクリーンショットや動画が撮れない）。 -->
+    <global azimuth="-90" elevation="-45" offwidth="1920" offheight="1080"/>
   </visual>
   <asset>
     <texture type="2d" name="groundplane" builtin="checker" mark="edge"
