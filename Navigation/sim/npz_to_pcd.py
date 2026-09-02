@@ -1,25 +1,33 @@
 #!/usr/bin/env python3
-"""IsaacSim_Envのscans.npzから、1804へ渡せる地図PCDと真値軌跡を作る。
+"""scans.npz から、1804へ渡せる地図PCDと軌跡を作る。
 
-`IsaacSim_Env/src/build_map.py --cache maps/scans.npz` が出力するスキャン束を、
-`slam_operate` 1804 の `address` に渡せる形式（PCD）へ変換する。
+**このデータは実機で取得したもの。** 2026-08-26 に矢田が **UiS メインフロア**で
+G1 を走らせて収集し、Google Drive の `20260826_UIS_Test/scans.npz`（78.5MB）として
+共有された。ローカルの `artifacts/scans.npz` と同一ファイル。
 
-**[シミュレーション専用]** 本スクリプトが扱うのはIsaac Simの真値姿勢付きデータで、
-実機のmapctl出力ではない。実機の地図は `Mapping/` の `map_raw.pcd` を使うこと
-（実機の部屋とシムの部屋は当然一致しないため、この地図で実機の定位はできない）。
+実機データであることは中身からも裏付けられる（2026-09-02 実測）:
+
+| 指標 | 実測 | 意味 |
+|---|---|---|
+| スキャン間隔 | 125.0 ± 7.92 ms | ばらつき 6.3%。シミュレータなら固定刻みでほぼ 0 |
+| 1スキャンの点数 | 10,862 ± 98 | 変動あり。シミュレータはレイ本数が固定 |
+| 距離のユニーク率 | 0.997 | 量子化されていない |
+
+**つまりこの地図は実在の部屋のものなので、UiS メインフロアで 1804 の定位に使える
+可能性がある。**（要実機検証。Phase 5 で 1801→1802 の建図を省ける見込み）
 
 npzの構造:
   points   (N, 3) float32  全スキャンを連結した点。**センサー座標系**
   counts   (S,)   int64    1スキャンあたりの点数
-  gt_poses (S,4,4) float64 各スキャン時刻の真値姿勢（world <- sensor のSE3）
+  gt_poses (S,4,4) float64 各スキャン時刻の姿勢（world <- sensor のSE3）
   times    (S,)   float64  各スキャンの時刻[s]（先頭が0起点）
 
 `points` はセンサー座標系なので、そのまま重ねても地図にならない。
-gt_poses で world 座標へ変換してから累積する必要がある。
+`gt_poses`（収集時の推定姿勢）で world 座標へ変換してから累積する必要がある。
 
 出力:
   map.pcd         world座標の点群（binary PCD, x/y/z float32）
-  trajectory.tum  真値軌跡（TUM形式）。経路追従の誤差評価に使う
+  trajectory.tum  軌跡（TUM形式）。経路追従の誤差評価に使う
 
 注: `Mapping/real/python/g1_mapping/rebuild.py` に同等のPCD書き出しがあるが、
 `Navigation/README.md` の取り決めでMapping側から import してよいのは
@@ -29,11 +37,10 @@ config / doctor / session の3モジュールだけなので、ここでは自�
 from __future__ import annotations
 
 import argparse
-import math
-import struct
 from pathlib import Path
 
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 # 同一ボクセルに落ちた点は最初の1点だけ残す（rebuild.pyと同じ方針。
 # 平均を取るほうが滑らかだが、蓄積中に全点を保持する必要が出てメモリが跳ねる）
@@ -92,66 +99,34 @@ def drop_floor(points: np.ndarray, threshold_m: float) -> np.ndarray:
 
 
 def write_pcd(path: Path, points: np.ndarray) -> None:
-    """x/y/zのみのbinary PCDとして書き出す。"""
+    """binary PCD として書き出す。**書式は open3d に任せる。**
+
+    自前でヘッダを組んでいたが（23行）、読む側も `nav/occupancy.py` の
+    `load_points` が open3d なので、書く側も揃えたほうが取り違えが起きない。
+    """
+
+    import open3d as o3d
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    header = (
-        "# .PCD v0.7 - Point Cloud Data file format\n"
-        "VERSION 0.7\n"
-        "FIELDS x y z\n"
-        "SIZE 4 4 4\n"
-        "TYPE F F F\n"
-        "COUNT 1 1 1\n"
-        f"WIDTH {len(points)}\n"
-        "HEIGHT 1\n"
-        "VIEWPOINT 0 0 0 1 0 0 0\n"
-        f"POINTS {len(points)}\n"
-        "DATA binary\n"
-    )
-    with path.open("wb") as stream:
-        stream.write(header.encode("ascii"))
-        stream.write(points.astype("<f4").tobytes())
-
-
-def rotation_to_quaternion(rotation: np.ndarray) -> tuple[float, float, float, float]:
-    """回転行列 -> (qx, qy, qz, qw)。scipyに依存しないShepperd法。"""
-
-    trace = rotation[0, 0] + rotation[1, 1] + rotation[2, 2]
-    if trace > 0.0:
-        scale = math.sqrt(trace + 1.0) * 2.0
-        w = 0.25 * scale
-        x = (rotation[2, 1] - rotation[1, 2]) / scale
-        y = (rotation[0, 2] - rotation[2, 0]) / scale
-        z = (rotation[1, 0] - rotation[0, 1]) / scale
-    elif rotation[0, 0] > rotation[1, 1] and rotation[0, 0] > rotation[2, 2]:
-        scale = math.sqrt(1.0 + rotation[0, 0] - rotation[1, 1] - rotation[2, 2]) * 2.0
-        w = (rotation[2, 1] - rotation[1, 2]) / scale
-        x = 0.25 * scale
-        y = (rotation[0, 1] + rotation[1, 0]) / scale
-        z = (rotation[0, 2] + rotation[2, 0]) / scale
-    elif rotation[1, 1] > rotation[2, 2]:
-        scale = math.sqrt(1.0 + rotation[1, 1] - rotation[0, 0] - rotation[2, 2]) * 2.0
-        w = (rotation[0, 2] - rotation[2, 0]) / scale
-        x = (rotation[0, 1] + rotation[1, 0]) / scale
-        y = 0.25 * scale
-        z = (rotation[1, 2] + rotation[2, 1]) / scale
-    else:
-        scale = math.sqrt(1.0 + rotation[2, 2] - rotation[0, 0] - rotation[1, 1]) * 2.0
-        w = (rotation[1, 0] - rotation[0, 1]) / scale
-        x = (rotation[0, 2] + rotation[2, 0]) / scale
-        y = (rotation[1, 2] + rotation[2, 1]) / scale
-        z = 0.25 * scale
-    return x, y, z, w
+    cloud = o3d.geometry.PointCloud()
+    cloud.points = o3d.utility.Vector3dVector(np.asarray(points, dtype=np.float64))
+    if not o3d.io.write_point_cloud(str(path), cloud, write_ascii=False):
+        raise OSError(f"PCD を書けなかった: {path}")
 
 
 def write_trajectory(path: Path, poses: np.ndarray, times: np.ndarray) -> None:
-    """真値軌跡をTUM形式で書き出す（Mapping/のtrajectory.tumと同じ形式）。"""
+    """真値軌跡をTUM形式で書き出す（Mapping/のtrajectory.tumと同じ形式）。
+
+    回転行列 -> 四元数は `scipy.spatial.transform.Rotation` に任せる。
+    自前の Shepperd 法（31行）を置き換えたもの。`nav/protocol.py` の
+    四元数変換も scipy なので、リポジトリ内で 1 つに揃う。
+    """
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    quaternions = Rotation.from_matrix(poses[:, :3, :3]).as_quat()  # (qx, qy, qz, qw)
     lines = ["# timestamp tx ty tz qx qy qz qw"]
-    for pose, stamp in zip(poses, times):
+    for pose, stamp, (qx, qy, qz, qw) in zip(poses, times, quaternions):
         tx, ty, tz = pose[:3, 3]
-        qx, qy, qz, qw = rotation_to_quaternion(pose[:3, :3])
         lines.append(
             f"{stamp:.9f} {tx:.9f} {ty:.9f} {tz:.9f} "
             f"{qx:.9f} {qy:.9f} {qz:.9f} {qw:.9f}"
@@ -161,9 +136,9 @@ def write_trajectory(path: Path, poses: np.ndarray, times: np.ndarray) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("npz", type=Path, help="build_map.py --cache が出力したscans.npz")
+    parser.add_argument("npz", type=Path, help="UiS メインフロアで収集した scans.npz")
     parser.add_argument("--output-dir", type=Path, default=Path("maps"))
-    parser.add_argument("--name", default="sim_room", help="出力ファイルのベース名")
+    parser.add_argument("--name", default="uis_main_floor", help="出力ファイルのベース名")
     parser.add_argument(
         "--voxel", type=float, default=DEFAULT_VOXEL_M, help="ボクセル一辺[m]。0で間引きなし"
     )

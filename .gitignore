@@ -42,3 +42,7 @@ Navigation/sim/maps/
 
 # Navigation 専用の uv 環境（uv sync で再生成できる）
 Navigation/.venv/
+
+# Navigation: unitree_rl_gym から取ってくる歩行資産（24MB）。
+# 上流のコミットで固定してあり、bash Navigation/sim/fetch_assets.sh で再取得できる。
+Navigation/sim/assets/

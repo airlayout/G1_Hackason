@@ -1,7 +1,9 @@
 # Navigation 専用の Python 環境。他班の環境（G1_HuggingFace/venv, Mapping の Docker）には触れない。
 #
-#   cd Navigation && uv sync --group dds          # 実機・DDS（unitree_sdk2py）を叩くとき
-#   cd Navigation && uv sync --group dds --group mujoco --group viz   # 全部
+#   cd Navigation && uv sync                                  # 既定(dds)。実機を叩くとき
+#   cd Navigation && uv sync --group mujoco --group walk      # sim を動かすとき
+#   cd Navigation && uv sync --group pcd                      # 実地図(PCD)を読むとき
+#   cd Navigation && uv sync --all-groups                     # 全部
 #
 # Python を 3.10 に固定する理由: unitree_sdk2py が要求する cyclonedds==0.10.2 の
 # macOS arm64 wheel が cp38/cp39/cp310 にしか無い（3.11 以降は無い）。
@@ -26,8 +28,21 @@ mujoco = [
     "mujoco>=3.3",
     "mujoco-lidar",
 ]
+# 学習済み歩行ポリシー(motion.pt)を回すのに要るもの。
+# motion.pt は TorchScript なので torch が要る（onnxruntime では読めない）。
+# pyyaml は unitree_rl_gym の g1.yaml（kps/kds/観測スケール）を読むため。
+walk = [
+    "torch>=2.2",
+    "pyyaml>=6.0",
+]
 viz = [
     "matplotlib>=3.8",
+]
+# 点群ファイル(PCD/PLY)の読み書き。約 400MB あるので既定には入れない。
+# `nav/occupancy.py` は関数の中で import しており、点群を numpy で自前に組む
+# `sim/rooms.py` 経由なら入っていなくても動く。
+pcd = [
+    "open3d>=0.18",
 ]
 
 [tool.uv]
