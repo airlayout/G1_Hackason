@@ -201,6 +201,18 @@ def _edge_targets(start: Pose2D, end: Pose2D, max_segment_m: float) -> list[Pose
     return targets
 
 
+def needs_command(origin: Pose2D, target: Pose2D) -> bool:
+    """`origin` に立っている機体に、`target` へ向かう 1102 を投げる価値があるか。
+
+    `nav/mission.py` が「そのウェイポイントは既に満たしているか」を判定するのに使う。
+    **判定基準をここと共有するのが肝。** 別の閾値で判定すると、
+    「route は区間を作らないが mission は未到達と思っている」状態になり、
+    同じ地点を延々と計画し直して**無限ループする**（実際に踏んだ）。
+    """
+
+    return _worth_commanding(origin, target, is_leg_goal=True)
+
+
 def _worth_commanding(cursor: Pose2D, target: Pose2D, is_leg_goal: bool) -> bool:
     """この区間を 1102 として投げる価値があるか。
 

@@ -38,7 +38,7 @@ from .protocol import (
     pause_request,
     resume_request,
 )
-from .route import MAX_SEGMENT_M, RouteError, Segment, plan_route
+from .route import MAX_SEGMENT_M, RouteError, Segment, needs_command, plan_route
 
 
 class Outcome(Enum):
@@ -170,7 +170,14 @@ class Mission:
         grid: OccupancyGrid,
         waypoints: list[Pose2D],
         options: MissionOptions,
+        on_note=None,
     ) -> None:
+        """`on_note` を渡すと、記録した1行が起きたその場で呼ばれる。
+
+        報告書（`MissionReport.log`）は最後まで溜まるので、走っている間は
+        何も分からない。実時間で走らせる sim では 100 秒以上黙ることになり、
+        「動いているのか固まっているのか」が見えない。
+        """
         if len(waypoints) < 2:
             raise ValueError(f"ウェイポイントは出発点を含めて2点以上必要: {len(waypoints)}点")
         if options.laps < 1:
@@ -189,6 +196,7 @@ class Mission:
 
         self._waypoints = list(waypoints)
         self._options = options
+        self._on_note = on_note
         self._report = MissionReport(outcome=Outcome.COMPLETED)
 
     def run(self) -> MissionReport:
@@ -198,6 +206,16 @@ class Mission:
         finally:
             self._report.elapsed_s = self._transport.now() - started
         return self._report
+
+    @property
+    def waypoints_reached(self) -> int:
+        """いま何個のウェイポイントを通過したか。走っている最中でも読める。
+
+        報告書は `run()` が返るまで手に入らないので、ビューアに
+        「次はどこを目指しているのか」を描くのにこれが要る。
+        """
+
+        return self._report.waypoints_reached
 
     def pause(self) -> ServiceResponse:
         """1201。別スレッドから呼ぶ想定。"""
@@ -217,12 +235,49 @@ class Mission:
         current = self._waypoints[0]
         remaining = self._waypoints[1:] * self._options.laps
         while remaining:
+            remaining = self._drop_satisfied(current, remaining)
+            if not remaining:
+                return
             segments = self._plan(current, remaining)
             if segments is None:
+                return
+            if not segments:
+                # ここに来るのは `_drop_satisfied` と `plan_route` の判定が
+                # 食い違ったとき。放っておくと同じ計画を延々と繰り返して
+                # **無限ループする**（実際に踏んで 11 分回り続けた）。
+                # 進めないなら黙って回らず、理由を付けて止まる。
+                self._fail(
+                    Outcome.FAILED_ROUTE,
+                    f"残り{len(remaining)}地点に対して区間が1つも作れなかった。"
+                    f"現在地({current.x:.2f}, {current.y:.2f})と"
+                    f"次の目標({remaining[0].x:.2f}, {remaining[0].y:.2f})が"
+                    "近すぎるか、判定の閾値が食い違っている",
+                )
                 return
             current, remaining, keep_going = self._walk(segments, current, remaining)
             if not keep_going:
                 return
+
+    def _drop_satisfied(self, current: Pose2D, remaining: list[Pose2D]) -> list[Pose2D]:
+        """もう立っているウェイポイントを、到達済みとして先頭から取り除く。
+
+        `nav/route.py` は「動く必要が無い」区間を作らない（`MIN_SEGMENT_M` 未満で
+        向き直しも要らないもの）。区間が作られないと `_walk` が到達を数えられず、
+        そのウェイポイントが `remaining` から永久に外れない。結果として
+        同じ計画を作り直し続けて**無限ループする**（実測: 11 分回り続けた）。
+
+        判定は `route.needs_command` と共有する。別々の閾値を持つと必ず食い違う。
+        """
+
+        while remaining and not needs_command(current, remaining[0]):
+            reached = remaining[0]
+            remaining = remaining[1:]
+            self._report.waypoints_reached += 1
+            self._note(
+                f"ウェイポイント({reached.x:.2f}, {reached.y:.2f})は"
+                "既にその場に立っているので到達済みとする"
+            )
+        return remaining
 
     def _initialize(self) -> bool:
         """1804。失敗したら理由を残して終わる。"""
@@ -359,6 +414,15 @@ class Mission:
     def _execute(self, segment: Segment) -> _SegmentResult:
         """1区間ぶんの1102を投げて到達を待つ。"""
 
+        # 「どこからどこへ向かっているのか」を、投げた時点で残す。
+        # 到達したときだけ記録していると、走っている間はどこを目指しているのか
+        # 分からない（実際に sim を見ていて分からなかった）。
+        self._note(
+            f"1102 #{segment.index}: "
+            f"({segment.start.x:.2f}, {segment.start.y:.2f}) -> "
+            f"({segment.target.x:.2f}, {segment.target.y:.2f})  {segment.length:.2f}m"
+            + ("  ★ウェイポイント" if segment.is_waypoint else "")
+        )
         response = self._transport.call(API_NAVIGATE_POSE, navigate_request(segment.target))
         if not response.succeed:
             self._note(f"1102が受理されなかった errorCode={response.error_code} {response.info}")
@@ -378,7 +442,10 @@ class Mission:
         return fallback
 
     def _note(self, line: str) -> None:
-        self._report.log.append(f"[{self._transport.now():8.2f}s] {line}")
+        entry = f"[{self._transport.now():8.2f}s] {line}"
+        self._report.log.append(entry)
+        if self._on_note is not None:
+            self._on_note(entry)
 
     def _fail(self, outcome: Outcome, message: str) -> None:
         self._report.outcome = outcome

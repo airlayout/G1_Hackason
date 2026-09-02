@@ -29,8 +29,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+from scipy import ndimage
 
-from nav.occupancy import OccupancyGrid, build_grid
+from nav.occupancy import DEFAULT_RESOLUTION_M, OccupancyGrid, build_grid
 from nav.protocol import Pose2D
 
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
@@ -348,6 +349,108 @@ def patrol_waypoints(room: Room, *, inset: float = 1.0) -> list[Pose2D]:
         Pose2D(x0 + inset, y1 - inset),
     ]
     return corners + [corners[0]]
+
+
+def room_from_point_cloud(
+    path: Path,
+    *,
+    name: str | None = None,
+    resolution: float = DEFAULT_RESOLUTION_M,
+    height: float = WALL_HEIGHT_M,
+) -> Room:
+    """実地図の点群から、**MuJoCo で歩ける** `Room` を起こす。
+
+    点群そのものは MuJoCo に置けない（面が無いので機体がすり抜ける）。
+    そこで `nav/occupancy.py` が作る**通行不可の格子をそのまま箱に起こす**。
+
+    こうすると `test_room` と同じ不変条件が保たれる:
+    **地図と MuJoCo の世界が同じ 1 つの元から出る**ので食い違わない。
+    箱を置いてから `Room.grid()` で格子を作り直すと、元の点群から作った格子と
+    ほぼ一致する（`--verify-map` で差を出せる）。
+
+    「通行不可」には壁のほかに**未観測の外側**も入る。そこも箱で塞ぐのが正しい
+    （地図に無い場所へ歩かせないという `occupancy.py` の判断をそのまま物理にする）。
+
+    膨張はしない。膨張は経路計画で機体半径を見込むためのもので、
+    そこに壁が建っているという意味ではない。
+    """
+
+    from nav.occupancy import build_grid, load_points
+
+    source = build_grid(load_points(path), resolution=resolution, inflation=0.0)
+    spec = source.spec
+    boxes = _boxes_from_mask(source.blocked, spec, height)
+    inner_x = (spec.origin_x, spec.origin_x + spec.width * spec.resolution)
+    inner_y = (spec.origin_y, spec.origin_y + spec.height * spec.resolution)
+    return Room(
+        name=name or path.stem,
+        inner_x=inner_x,
+        inner_y=inner_y,
+        boxes=tuple(boxes),
+        spawn=_open_spot(source),
+    )
+
+
+def _boxes_from_mask(mask: np.ndarray, spec, height: float) -> list[Box]:
+    """通行不可セルを、行ごとの連続run単位で箱にまとめる。
+
+    1 セル 1 箱にすると 5,000 個を超えて MuJoCo が重くなる。
+    壁はおおむね軸に沿っているので、横に連続したぶんを 1 箱にすると
+    実測で 258 個に落ちる。縦方向もまとめられるが、そこまで削る必要が無い。
+    """
+
+    boxes: list[Box] = []
+    for row in range(spec.height):
+        line = mask[row]
+        col = 0
+        while col < spec.width:
+            if not line[col]:
+                col += 1
+                continue
+            start = col
+            while col < spec.width and line[col]:
+                col += 1
+            x0 = spec.origin_x + start * spec.resolution
+            x1 = spec.origin_x + col * spec.resolution
+            y0 = spec.origin_y + row * spec.resolution
+            y1 = y0 + spec.resolution
+            boxes.append(
+                Box(
+                    f"map_{row}_{start}",
+                    (x0 + x1) / 2,
+                    (y0 + y1) / 2,
+                    (x1 - x0) / 2,
+                    (y1 - y0) / 2,
+                    height,
+                )
+            )
+    return boxes
+
+
+def _open_spot(grid: OccupancyGrid) -> Pose2D:
+    """機体を置ける場所。**いちばん広い自由領域の、いちばん奥まった点**を選ぶ。
+
+    重心をそのまま使うと、その点が壁の中に入ることがある（L 字の部屋など）。
+    距離変換で「最も壁から遠いセル」を選べば、必ず自由でかつ余裕がある。
+    """
+
+    from nav.occupancy import DEFAULT_INFLATION_M
+
+    walkable = grid.blocked.copy()
+    regions = OccupancyGrid(grid.spec, walkable).free_regions()
+    if not regions:
+        raise ValueError("歩ける場所が 1 つも無い地図")
+    largest = regions[0]
+    keep = np.ones_like(walkable)
+    keep[largest[:, 1], largest[:, 0]] = False   # 最大成分だけ自由に残す
+    distance = ndimage.distance_transform_edt(~keep, sampling=grid.spec.resolution)
+    if distance.max() < DEFAULT_INFLATION_M:
+        raise ValueError(
+            f"どの点も壁から {DEFAULT_INFLATION_M}m 離れていない（通路が機体幅より狭い）"
+        )
+    row, col = np.unravel_index(int(np.argmax(distance)), distance.shape)
+    x, y = grid.spec.to_world(col, row)
+    return Pose2D(float(x), float(y), 0.0)
 
 
 def _main() -> int:

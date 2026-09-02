@@ -270,6 +270,15 @@ class SimTransport(SlamTransport):
         return self._walker.pose
 
     @property
+    def target(self) -> Pose2D | None:
+        """いま 1102 で指示している目標。無ければ None。
+
+        ビューアに「どこへ向かっているのか」を描くのに使う。
+        """
+
+        return self._target
+
+    @property
     def walker(self) -> G1Walker:
         return self._walker
 
