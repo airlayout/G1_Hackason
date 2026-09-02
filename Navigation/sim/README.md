@@ -20,11 +20,14 @@
 
 ## 使い方
 
+`Navigation/navctl` から叩く。
+
 ```bash
 cd Navigation
-bash sim/fetch_assets.sh
-uv sync --group mujoco --group walk
-uv run python sim/run_sim.py
+./navctl setup     # 歩行資産(24MB)の取得と依存の導入。最初に1回
+./navctl view      # GUI で見る（既定は実時間）
+./navctl sim       # ヘッドレス。約50倍速
+./navctl help      # 一覧
 ```
 
 詳しい実行例と実測値は `Navigation/README.md` の「動かす」節にある。

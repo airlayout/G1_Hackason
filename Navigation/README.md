@@ -431,6 +431,7 @@ DDSモックをPC2で動かすときは、**必ず`ROS_DOMAIN_ID`を0以外に�
 
 ```text
 Navigation/
+├── navctl                   ✅ 操作の入口（setup / view / sim / walk / test ...）
 ├── nav/                     sim/real 共通のロジック
 │   ├── protocol.py          ✅ slam_operate のJSONスキーマと定数（OSS に代替なし）
 │   ├── transport.py         ✅ SlamTransport 抽象 + RealTransport（実機部分は未検証）
@@ -595,52 +596,44 @@ sim を動かすには `mujoco` + `torch` と `sim/fetch_assets.sh` が要る。
 
 ### 動かす
 
-一度だけ用意する:
+`./navctl` にまとめてある（`Mapping/real/mapctl` と同じ「フォルダ直下の実行スクリプト」方式）。
 
 ```bash
 cd Navigation
-bash sim/fetch_assets.sh              # unitree_rl_gym から motion.pt と MJCF（24MB）
-uv sync --group mujoco --group walk   # mujoco / mujoco-lidar / torch / pyyaml
+./navctl setup     # 最初に1回。歩行資産(24MB)の取得と依存の導入
+./navctl view      # GUI で見る。既定は実時間
+./navctl help      # 一覧
 ```
 
+| コマンド | 何をするか |
+|---|---|
+| `./navctl setup` | `sim/fetch_assets.sh` + `uv sync`（mujoco / walk / viz / pcd） |
+| `./navctl view [引数]` | **GUI**。既定は実時間。macOS の面倒事（`mjpython` と `DYLD_LIBRARY_PATH`）を自動で処理する |
+| `./navctl sim [引数]` | ヘッドレスで巡回。約50倍速で終わる |
+| `./navctl walk` | 歩行ポリシーだけの自己診断（ナビも地図も通さない） |
+| `./navctl room [部屋名]` | 部屋の点群と占有格子を確かめる |
+| `./navctl route` | 実地図(PCD)で経路だけ検証する。歩かない |
+| `./navctl map` | `artifacts/scans.npz` から地図PCDを作り直す |
+| `./navctl test` | テスト（`scripts/ci/run_all_tests.sh` からも自動で拾われる） |
+
+引数は `run_sim.py` にそのまま渡る:
+
 ```bash
-# テスト（実機不要。sim の18件は依存が無ければ skip される）
-bash Navigation/tests/run_tests.sh        # Navigationだけ
-bash scripts/ci/run_all_tests.sh          # リポジトリ全体（CIと同じ）
-
-cd Navigation
-
-# テスト部屋を1周。MuJoCo の物理で実際に歩く
-uv run python sim/run_sim.py
-
-# 人が横切る（3秒に現れて14秒に消える）。待って再開するはず
-uv run python sim/run_sim.py --obstacle=-2.0,-1.62,0.35,3,14
-
-# 居座る障害物。迂回するはず
-uv run python sim/run_sim.py --obstacle=-2.0,-1.62,0.35
-
-# 3周させる
-uv run python sim/run_sim.py --laps 3
-
-# 歩行ポリシーだけを見る（ナビも地図も通さない）
-uv run python -m sim.g1_walker --selftest
-
-# MuJoCo のビューアで見る（macOS は mjpython が要る。下の注意を読むこと）
-DYLD_LIBRARY_PATH="$(.venv/bin/python -c 'import sysconfig;print(sysconfig.get_config_var("LIBDIR"))')" \
-  .venv/bin/mjpython sim/run_sim.py --viewer
-
-# ビューアの速度を変える（既定は実時間。20 なら20倍速で流し見）
-DYLD_LIBRARY_PATH=... .venv/bin/mjpython sim/run_sim.py --viewer --speed 20
-
-# 実地図(PCD)で経路だけ検証する。MuJoCo の世界を持たないので歩けない
-uv sync --group pcd
-uv run python sim/run_sim.py --map sim/maps/uis_main_floor.pcd --route-only
+./navctl view --obstacle=-2.0,-1.62,0.35,3,14   # 人が横切る。待って再開する
+./navctl view --obstacle=-2.0,-1.62,0.35        # 居座る障害物。迂回する
+./navctl view --speed 20                        # 20倍速で流し見
+./navctl view --laps 3                          # 3周
+./navctl sim --room empty_room                  # 障害物の無い部屋
+./navctl sim --help                             # 指定できるもの全部
 ```
 
 `--obstacle` の値が負で始まるときは `--obstacle=-2.0,...` と `=` で繋ぐこと
 （`-2.0` がオプション名と解釈される）。
 
 #### ⚠️ macOS + uv でビューアを出すときの 2 つの罠
+
+`./navctl view` はどちらも中で処理しているので、**素の `python sim/run_sim.py --viewer`
+を叩かない限り踏まない。** 直接叩く必要が出たときのために残しておく。
 
 **1. `mjpython` が `libpython3.10.dylib` を見つけられない**
 
@@ -649,8 +642,13 @@ failed to dlopen ... Library not loaded: @rpath/libpython3.10.dylib
 ```
 
 `uv` が入れる CPython は共有ライブラリを `lib/` に持っているが、`mjpython` から
-見える rpath に入っていない。`DYLD_LIBRARY_PATH` で場所を教える（上のコマンド参照）。
-`uv run mjpython` ではこの環境変数を渡せないので、`.venv/bin/mjpython` を直に叩く。
+見える rpath に入っていない。`DYLD_LIBRARY_PATH` で場所を教える。
+`uv run mjpython` では環境変数を渡せないので `.venv/bin/mjpython` を直に叩く:
+
+```bash
+DYLD_LIBRARY_PATH="$(.venv/bin/python -c 'import sysconfig;print(sysconfig.get_config_var("LIBDIR"))')" \
+  .venv/bin/mjpython sim/run_sim.py --viewer
+```
 
 **2. ビューアを別スレッドから `sync()` しない**
 
@@ -667,12 +665,7 @@ ERROR mj_copyDataVisual (engine_io.c:1165):
 **速度について**: ビューア無しなら約 50 倍速で走るので、100 秒の巡回が 2 秒で終わる。
 `--viewer` を付けると既定で実時間になる（`--speed` で変更可）。
 
-`sim/maps/` は `.gitignore` 済み。無ければ先に作る:
-
-```bash
-Navigation/.venv/bin/python Navigation/sim/npz_to_pcd.py \
-    ../artifacts/scans.npz --output-dir Navigation/sim/maps --name uis_main_floor
-```
+`sim/maps/` は `.gitignore` 済み。無ければ `./navctl map` で作り直す。
 
 ### sim で確認できたこと（`test_room`・11m×6m・2026-09-02 実測）
 
