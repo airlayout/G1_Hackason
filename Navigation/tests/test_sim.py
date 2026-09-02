@@ -262,13 +262,82 @@ class PatrolTest(unittest.TestCase):
         self.assertGreater(report.detours, 0)
         self.assertFalse(transport.has_fallen)
 
-    def test_giving_up_is_reported_rather_than_walking_into_it(self):
+    def test_one_detour_is_enough_when_the_position_is_measured(self):
+        """実測の位置が使えると、迂回1回で回り込めること。
+
+        **以前はここで `FAILED_BLOCKED` になっていた。** 位置が分からず
+        「前方1.5mに半径1.0m」と当て推量で置いていたため、円が実物から
+        0.35m ずれ、1回では回り込めなかった。生 LiDAR から位置を測るように
+        してから、迂回上限1でも完走する（実測: 迂回2回→1回、sim 152→102秒）。
+        """
+
         parked = (DynamicObstacle(-2.0, -1.62, 0.35),)
         report, transport = self.run_patrol(
             TEST_ROOM, parked, obstacle_wait_s=15.0, detour_limit=1
         )
-        self.assertEqual(report.outcome, Outcome.FAILED_BLOCKED)
+        self.assertEqual(report.outcome, Outcome.COMPLETED, report.message)
+        self.assertEqual(report.detours, 1)
+        self.assertFalse(transport.has_fallen)
+
+    def test_giving_up_is_reported_rather_than_walking_into_it(self):
+        """通れないときは、理由を添えて止まる。転ばない。
+
+        通路そのものを塞ぐので、位置を測れても回り込む先が無い。
+        """
+
+        # 柱と南壁の隙間、仕切りの西側の通路をまとめて塞ぐ
+        wall = tuple(
+            DynamicObstacle(0.0, y, 0.5) for y in (-2.6, -1.8, -1.0, -0.2, 0.6, 1.4, 2.2, 2.9)
+        )
+        report, transport = self.run_patrol(
+            TEST_ROOM, wall, obstacle_wait_s=2.0, detour_limit=2
+        )
+        self.assertNotEqual(report.outcome, Outcome.COMPLETED)
+        self.assertTrue(report.message, "理由が空のまま止まっている")
         self.assertFalse(transport.has_fallen, "諦めたのに転んでいる")
+
+    def test_the_measured_position_is_close_to_the_truth(self):
+        """推定した障害物の位置が、置いた真値に近いこと。
+
+        sim で 6 通り測った実測は位置誤差 平均 0.100m / 最大 0.182m、
+        半径誤差 平均 -0.048m（手前の面しか見えないので小さめに出る）。
+        ここは代表 1 点だけ固定する。
+        """
+
+        from nav.protocol import (
+            API_INIT_POSE,
+            API_NAVIGATE_POSE,
+            init_pose_request,
+            navigate_request,
+        )
+
+        true_x, true_y, true_r = -2.0, -1.62, 0.35
+        transport = SimTransport(
+            TEST_ROOM,
+            SimOptions(
+                known_maps=frozenset({MAP}),
+                obstacles=(DynamicObstacle(true_x, true_y, true_r),),
+            ),
+        )
+        transport.call(API_INIT_POSE, init_pose_request(MAP, TEST_ROOM.spawn))
+        transport.call(API_NAVIGATE_POSE, navigate_request(Pose2D(4.5, -2.0, 0.0)))
+        observed = None
+        for _ in range(300):
+            transport.sleep(0.2)
+            if transport.is_blocked:
+                observed = transport.observe_obstacle()
+                if observed is not None:
+                    break
+        self.assertIsNotNone(observed, "塞がれたのに位置を返していない")
+        error = math.hypot(observed.x - true_x, observed.y - true_y)
+        self.assertLess(error, 0.35, f"位置がずれすぎ（{error:.3f}m）")
+        self.assertGreater(observed.radius, true_r - 0.20, "半径が小さすぎ")
+        self.assertLess(observed.radius, true_r + 0.20, "半径が大きすぎ")
+        self.assertGreater(observed.point_count, 20)
+
+    def test_the_position_is_unknown_when_nothing_blocks(self):
+        transport = SimTransport(TEST_ROOM, SimOptions(known_maps=frozenset({MAP})))
+        self.assertIsNone(transport.observe_obstacle())
 
 
 def _wrap(angle: float) -> float:

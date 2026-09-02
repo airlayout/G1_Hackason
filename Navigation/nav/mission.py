@@ -128,6 +128,15 @@ class MissionOptions:
     実機で1102を計測したら詰める。
     """
 
+    detour_measured_margin_m: float = 0.15
+    """実測の位置が使えたときに、測った半径へ足す余裕[m]。
+
+    LiDAR は手前の面しか見ないので、見えた横幅からの半径は**必ず小さめに出る**。
+    sim で真値と比べた実測（6 通り）では平均 -0.048m・最大 -0.125m だったので、
+    その最大側を覆う 0.15m にした。実機では自己位置の誤差も乗るので、
+    Phase 5 で測り直して詰める。
+    """
+
     detour_self_clearance_m: float = 0.3
     """仮の障害物を機体自身から離す最小距離[m]。
 
@@ -398,18 +407,45 @@ class Mission:
             return segment.start, remaining, False
 
         here = self._current_pose(segment.start)
-        heading = _heading(here, segment.target)
+        blocked_x, blocked_y, radius, source = self._locate_obstacle(here, segment)
+        self._guessed_obstacles.append((blocked_x, blocked_y, radius))
+        self._report.detours += 1
+        self._note(
+            f"迂回{self._report.detours}回目: ({blocked_x:.2f}, {blocked_y:.2f}) "
+            f"半径{radius:.2f}m を塞がれたとみなす（{source}）"
+        )
+        return here, remaining, True
+
+    def _locate_obstacle(
+        self, here: Pose2D, segment: Segment
+    ) -> tuple[float, float, float, str]:
+        """ふさいでいるものの位置と半径。実測が使えればそれを、無ければ推定を返す。
+
+        **実測が使えるかは相手による。** `slam_operate` の `obsInfo` は有無と
+        経過秒しか返さないので、生 LiDAR を見ている実装だけが位置を答えられる
+        （`nav/transport.py` の `observe_obstacle`）。答えられないときは
+        「機体の前方にあるはず」という推定で代替する。
+        """
+
+        observed = self._transport.observe_obstacle()
+        if observed is not None:
+            radius = (
+                observed.radius
+                + self._options.detour_measured_margin_m
+                + DEFAULT_INFLATION_M
+            )
+            return observed.x, observed.y, radius, f"実測 {observed.point_count}点"
+
+        # 位置が分からないので、機体の前方に置く。
+        # 前方 detour_ahead_m なのは、機体が障害物を検知して止まる位置がその手前だから。
+        # 円が自分を飲み込まないよう、半径ぶんは必ず離す。
         radius = self._options.detour_obstacle_radius_m + DEFAULT_INFLATION_M
         ahead = max(
             self._options.detour_ahead_m, radius + self._options.detour_self_clearance_m
         )
-        blocked_x, blocked_y = _ahead_of(here, heading, ahead)
-        self._guessed_obstacles.append((blocked_x, blocked_y, radius))
-        self._report.detours += 1
-        self._note(
-            f"迂回{self._report.detours}回目: ({blocked_x:.2f}, {blocked_y:.2f}) を塞がれたとみなす"
-        )
-        return here, remaining, True
+        heading = _heading(here, segment.target)
+        x, y = _ahead_of(here, heading, ahead)
+        return x, y, radius, "位置不明のため前方を推定"
 
     def _execute(self, segment: Segment) -> _SegmentResult:
         """1区間ぶんの1102を投げて到達を待つ。"""

@@ -21,6 +21,7 @@ import abc
 import json
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from .protocol import (
@@ -47,8 +48,44 @@ REGISTERED_API_IDS = (1801, 1802, 1804, 1102, 1201, 1202, 1901)
 DEFAULT_RPC_TIMEOUT_S = 10.0
 
 
+@dataclass(frozen=True)
+class ObstacleObservation:
+    """進路をふさいでいるものの、**実測の**位置と広がり。
+
+    `slam_operate` の `obsInfo` は有無と経過秒しか返さないので、これは
+    `slam_operate` ではなく**生 LiDAR の点群**から作る。出所は 2 つあり、
+    どちらも 10Hz で SLAM とは独立に流れている:
+
+    | 実装 | 出所 |
+    |---|---|
+    | `SimTransport` | `mujoco_lidar` が撃った点から、地図で説明できるものを引いた残り |
+    | `RealTransport` | `rt/utlidar/cloud_livox_mid360`（実測 9.97Hz・LiDARドライバ直） |
+
+    ⚠️ **LiDAR は障害物の手前の面しか見ない。** 奥行きは見えないので、
+    `x, y` は「見えた面から推定した中心」であって真の中心ではない。
+    `radius` も見えた横幅からの推定。実機ではさらに自己位置の誤差
+    （`ctrl_info.currentPose` は約5Hz）が乗る。
+    """
+
+    x: float
+    y: float
+    radius: float
+    point_count: int
+    """この推定の根拠になった点の数。少ないほど当てにならない。"""
+
+
 class SlamTransport(abc.ABC):
     """`slam_operate` への窓口。"""
+
+    def observe_obstacle(self) -> ObstacleObservation | None:
+        """いま進路をふさいでいるものの位置。**分からなければ None**。
+
+        既定は None（＝位置は分からない）。`obsInfo` だけでは位置が分からないので、
+        これを返せるのは生 LiDAR を見ている実装だけ。呼び側（`nav/mission.py`）は
+        None でも動くように書く必要がある。
+        """
+
+        return None
 
     @abc.abstractmethod
     def call(self, api_id: int, request: dict[str, Any]) -> ServiceResponse:
@@ -117,6 +154,22 @@ class RealTransport(SlamTransport):
         with self._lock:
             taken, self._task_results = self._task_results, []
         return taken
+
+    # `observe_obstacle` は既定の None のまま（＝位置は分からない）。
+    #
+    # ⚠️ **実装できるが、まだしていない。** `rt/utlidar/cloud_livox_mid360` が
+    # 10Hz（実測 9.97Hz）で SLAM とは独立に生点群を流しているので、
+    # 原理的には `SimTransport` と同じことができる。要るのは:
+    #
+    # 1. `PointCloud2` の購読とデコード（`unitree_sdk2py` の idl にある）
+    # 2. センサ座標 -> 地図座標の変換。`ctrl_info.currentPose`（約5Hz）を使うが、
+    #    LiDAR は 10Hz なので**時刻がずれる**。歩行中は姿勢が動くので、
+    #    このずれがそのまま位置の誤差になる
+    # 3. 地図（PC1 が読んだ PCD と同じもの）との差分。こちらで同じ PCD を
+    #    読んでおく必要がある
+    #
+    # 2 の時刻同期が実機での主な不確かさになる。Phase 5 で `currentPose` の
+    # 実際の配信間隔とジッタを測ってから実装する。
 
     def now(self) -> float:
         return time.monotonic()

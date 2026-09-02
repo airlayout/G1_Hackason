@@ -50,7 +50,7 @@ from nav.protocol import (
     parse_response,
     parse_task_result,
 )
-from nav.transport import SlamTransport
+from nav.transport import ObstacleObservation, SlamTransport
 from sim.g1_walker import MAX_VX_MPS, MAX_WZ_RPS, G1Walker, Mid360, build_model
 from sim.rooms import DynamicObstacle, Room
 
@@ -106,6 +106,19 @@ OBSTACLE_Z_MAX = 1.80
 
 # これだけの点が条件を満たしたら「塞がれた」。1 点だとノイズで止まる。
 OBSTACLE_MIN_POINTS = 8
+
+# 位置を推定するときの半径の下限[m]。
+# 細い柱を正面から見ると横幅がほぼ 0 になり、半径 0 の円を置くことになる。
+# 実物がそこにある以上、最低限の大きさは見込む。
+MIN_ESTIMATED_RADIUS_M = 0.15
+
+# 大きさを測るときに点を集める半径[m]。
+# **検知の帯（CORRIDOR_HALF_WIDTH_M）で切った点では測れない。** 帯は
+# 「自分の進路がふさがれているか」を見るための窓で、幅 0.7m しかない。
+# 実物がそれより太いと胴体が帯の外へはみ出し、見えた横幅が実際より狭く出る
+# （実測: 半径 0.35m の障害物が 0.15m と推定された）。
+# 検知は帯で、採寸は帯の外まで集めて、と窓を分ける。
+CLUSTER_RADIUS_M = 1.2
 
 # 地図で説明できる点を捨てるときの余裕[m]。
 # LiDAR の当たった点は壁の面から数 cm ずれるし、地図の格子も 0.10m 刻みなので、
@@ -175,6 +188,12 @@ class SimTransport(SlamTransport):
         self._arrived = False
         self._blocked = False
         self._blocked_since: float | None = None
+        self._blocking_points = np.zeros((0, 3))
+        """「塞がれた」と判定した根拠の点（world 座標）。位置の推定に使う。"""
+
+        self._blocking_bearing = 0.0
+        self._last_unmapped = np.zeros((0, 3))
+        """直近のスキャンで地図で説明できなかった点。採寸のときに帯の外まで拾う。"""
         self._task_results: list = []
         self._realtime_factor = self._options.realtime_factor
         self._wall_origin: float | None = None
@@ -436,6 +455,14 @@ class SimTransport(SlamTransport):
         return blocked
 
     def _points_in_corridor(self, here: Pose2D, bearing: float) -> bool:
+        """進路の帯に、地図で説明できない点が十分あるか。
+
+        判定に使った点は `_blocking_points` に残しておく。
+        `observe_obstacle()` がそこから位置を推定する。
+        """
+
+        self._blocking_points = np.zeros((0, 3))
+        self._blocking_bearing = bearing
         points = self._unmapped_points()
         if len(points) == 0:
             return False
@@ -450,7 +477,60 @@ class SimTransport(SlamTransport):
             & (points[:, 2] > OBSTACLE_Z_MIN)
             & (points[:, 2] < OBSTACLE_Z_MAX)
         )
-        return int(in_corridor.sum()) >= OBSTACLE_MIN_POINTS
+        if int(in_corridor.sum()) < OBSTACLE_MIN_POINTS:
+            return False
+        self._blocking_points = points[in_corridor]
+        return True
+
+    def observe_obstacle(self) -> ObstacleObservation | None:
+        """ふさいでいるものの位置を、LiDAR が当てた点から推定する。
+
+        **LiDAR は手前の面しか見ない。** 見えた点をそのまま重心にすると、
+        実物の中心より手前（機体寄り）に寄る。断面をおおむね円と見なして、
+        見えた横幅の半分を半径とし、**その半径ぶん奥へ押し込む**と中心に近づく。
+
+        実機では同じ計算を `rt/utlidar/cloud_livox_mid360` の点でやればよい。
+        違いは点の出所と、自己位置の精度だけ。
+        """
+
+        if not self._blocked or len(self._blocking_points) < OBSTACLE_MIN_POINTS:
+            return None
+
+        # 帯の中の点を種にして、その周りの点を帯の外まで集め直す（採寸用の窓）
+        seed = self._blocking_points[:, :2].mean(axis=0)
+        near = self._last_unmapped
+        if len(near) == 0:
+            return None
+        distance = np.linalg.norm(near[:, :2] - seed, axis=1)
+        cluster = near[distance < CLUSTER_RADIUS_M][:, :2]
+        if len(cluster) < OBSTACLE_MIN_POINTS:
+            cluster = self._blocking_points[:, :2]
+
+        if not np.isfinite(cluster).all():
+            # ここに来たら点群の作りが壊れている。黙って推定を返すと
+            # 迂回の円がおかしな場所に飛ぶので、位置不明として扱わせる。
+            return None
+
+        bearing = self._blocking_bearing
+        forward_axis = np.array([math.cos(bearing), math.sin(bearing)])
+        lateral_axis = np.array([-math.sin(bearing), math.cos(bearing)])
+        # `np.errstate` で抑えているのは、**LiDAR のスキャン中に立った**
+        # 浮動小数の例外フラグ（`mujoco_lidar` はスラブ法の交差判定で軸に平行な
+        # レイに対して正当に 0 除算する）。numpy はフラグを立てたまま返し、
+        # あとの無関係な演算がそれを見て「divide by zero in matmul」と言い出す。
+        # Python 側から累積フラグを確実に消す手段が無いので、ここで黙らせる。
+        # **握りつぶしているのは報告だけで、値の健全性は直前の isfinite で見ている。**
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            lateral = cluster @ lateral_axis
+            radius = max(float(lateral.max() - lateral.min()) / 2.0, MIN_ESTIMATED_RADIUS_M)
+            # 見えているのは手前の面。断面を円と見なして半径ぶん奥へ押し込む
+            center = cluster.mean(axis=0) + forward_axis * radius
+        return ObstacleObservation(
+            x=float(center[0]),
+            y=float(center[1]),
+            radius=radius,
+            point_count=int(len(cluster)),
+        )
 
     def _unmapped_points(self) -> np.ndarray:
         """LiDAR が当てた点のうち、**地図で説明できないもの**だけを返す。
@@ -466,6 +546,7 @@ class SimTransport(SlamTransport):
 
         points = self._lidar.scan(self._walker.data)
         if len(points) == 0:
+            self._last_unmapped = points
             return points
         spec = self._known.spec
         col, row = spec.to_cell(points[:, 0], points[:, 1])
@@ -473,7 +554,8 @@ class SimTransport(SlamTransport):
         # 地図の外に出た点は「地図で説明できない」側に寄せる（見落とすより止まる）
         explained = np.zeros(len(points), bool)
         explained[inside] = self._known.blocked[row[inside], col[inside]]
-        return points[~explained]
+        self._last_unmapped = points[~explained]
+        return self._last_unmapped
 
     def _find_mocap_ids(self, model) -> list[int]:
         import mujoco

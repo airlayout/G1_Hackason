@@ -350,8 +350,19 @@ class Mid360:
             distance = self._wrapper.get_distances()
             rotation = data.site_xmat[self._site_id].reshape(3, 3)
             world = data.site_xpos[self._site_id] + local @ rotation.T
-        hit = (distance > 0.01) & (distance < LIDAR_CUTOFF_M - 0.5) & np.isfinite(world).all(axis=1)
-        return world[hit]
+            hit = (
+                (distance > 0.01)
+                & (distance < LIDAR_CUTOFF_M - 0.5)
+                & np.isfinite(world).all(axis=1)
+            )
+            result = world[hit]
+        # ⚠️ この errstate を抜けても、立った浮動小数の例外フラグは残る。
+        # `mujoco_lidar` はスラブ法の交差判定で軸に平行なレイに対して
+        # **正当に 0 除算する**。numpy はフラグを立てたまま返し、あとの無関係な
+        # 演算がそれを見て警告する。空打ち（スカラも配列も）では消せなかったので、
+        # フラグを気にする側（`slam_service.observe_obstacle`）で黙らせている。
+        # ここで返す点は上の `isfinite` で有限であることを確かめてある。
+        return result
 
 
 def _site_id(model, name: str) -> int:
