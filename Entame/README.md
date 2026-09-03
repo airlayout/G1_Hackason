@@ -39,6 +39,33 @@ VLA動作と共通の課題。動作の事後条件は直立姿勢へ戻すこ�
 
 失敗した内容は`FAILURES.md`に記録する。
 
+## 開発ルール
+
+- 依存は`Common/`配下のみ。他チームのフォルダ（`Mapping/`, `Navigation/`,
+  `Perception/`等）は import しない
+- 共通で使うもの（地図作成・自己位置推定・巡回・安全停止）は`Common/`に置く
+- エンタメ側に閉じるもの（ゲームのルール判定・参加者向けUI・演出）は
+  `Entame/`配下に閉じる
+
+### セットアップ手順
+
+```bash
+git clone <repo-url>
+cd G1_Hackason
+git checkout Dev/Entame
+
+# 作業ブランチを作成（Dev/Entame という ref が既に存在するため
+# `Dev/Entame/<名前>` は git の仕様上作成できない。別名にする）
+git checkout -b feature/entame-<自分の作業名>
+
+# 作業ツリーを Common/ と Entame/ だけに絞る（他チームのフォルダを誤って
+# 編集しないための保険。git管理・履歴には影響しない、ローカル表示のみの設定）
+git sparse-checkout init --cone
+git sparse-checkout set Common Entame
+```
+
+作業が終わったら`feature/entame-<名前>`ブランチから`Dev/Entame`へPRを出す。
+
 ## 状態
 
 未着手。実現方法（SDK方式 / lerobot方式）も未決定。
