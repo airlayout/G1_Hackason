@@ -9,7 +9,7 @@ Unitree G1 をデジタルツイン上で操作するプロジェクト。
 | [G1_HuggingFace/](G1_HuggingFace/README.md) | HuggingFace LeRobot + Unitree SDK (`unitree_sdk2py`) 経由の共通環境（操作PC/G1本体のPython環境構築） | 動作確認済み |
 | [Common/](Common/) | 機能横断で使う共通スクリプト（ネットワーク設定・疎通確認など） | 運用中 |
 | [SimpleWalk/](SimpleWalk/README.md) | 前進歩行 | 動作確認済み（シミュレーション・実機） |
-| [Perception/](Perception/README.md) | 画像取得・認識 | 未着手 |
+| [Perception/](Perception/README.md) | 画像取得・認識 | 実機での確認をすれば完了 |
 | [Mapping/](Mapping/README.md) | G1内蔵LIO／FAST-LIO2による3D Mapping | 実機で初回試験済み（onboard系。raw系は未実走） |
 | [Navigation/](Navigation/README.md) | 作成済み地図を使った自律移動・巡回（Unitree純正`slam_operate`に乗る） | 未着手 |
 | [IsaacSim_Env/](IsaacSim_Env/README.md) | キーボード操作 + 2D LiDAR による地図作成・Nav2 自律走行 | 当面使用しない |
