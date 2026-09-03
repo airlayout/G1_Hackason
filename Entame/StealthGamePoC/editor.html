@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Stage Editor</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="editor.css" />
+</head>
+<body>
+<h1>STAGE EDITOR</h1>
+
+<a href="index.html" id="back-link">← ゲームに戻る</a>
+
+<div id="editor-panel">
+  <div id="editor-toolbar">
+    <label>Stage:
+      <select id="stage-select">
+        <option value="new">New</option>
+      </select>
+    </label>
+    <button id="btn-new-stage">New Stage</button>
+  </div>
+
+  <div id="editor-modes">
+    <button class="mode-button" data-mode="start">START配置</button>
+    <button class="mode-button" data-mode="target">TARGET配置</button>
+    <button class="mode-button" data-mode="guardStart">警備員初期位置</button>
+    <button class="mode-button" data-mode="waypoint">巡回ルート追加（クリック）</button>
+    <button class="mode-button" data-mode="wall">壁を描く（ドラッグ）</button>
+    <button class="mode-button" data-mode="deleteWall">壁を削除（クリック）</button>
+  </div>
+
+  <div id="editor-path-controls">
+    <button id="btn-undo-waypoint">最後の点を削除</button>
+    <button id="btn-clear-waypoints">ルートを全消去</button>
+  </div>
+
+  <div id="editor-fields">
+    <label>Name <input id="field-name" type="text" /></label>
+    <label>ID <input id="field-id" type="number" /></label>
+    <label>Width (m) <input id="field-width-m" type="number" min="5" max="25" step="0.5" /></label>
+    <label>Height (m) <input id="field-height-m" type="number" min="5" max="25" step="0.5" /></label>
+    <label>Move Speed (m/s) <input id="field-move-speed" type="number" step="0.1" min="0" /></label>
+    <label>Vision Angle (°) <input id="field-vision-angle" type="number" step="1" /></label>
+    <label>Vision Distance (m) <input id="field-vision-distance" type="number" step="0.1" min="0" /></label>
+  </div>
+
+  <div id="editor-actions">
+    <button id="btn-test-play">▶ テストプレイ</button>
+    <button id="btn-save">💾 JSONを保存</button>
+    <button id="btn-export">コードをテキスト表示</button>
+  </div>
+</div>
+
+<div id="play-overlay" class="hidden">
+  <div id="play-overlay-title"></div>
+  <button id="btn-stop-play">■ 編集に戻る</button>
+</div>
+
+<canvas id="editor-canvas" width="800" height="800"></canvas>
+
+<div id="validation-messages" class="validation-ok"></div>
+
+<textarea id="export-output" readonly rows="16" placeholder="「コードをテキスト表示」を押すと、このステージのJSONがここに表示されます（コピー用）"></textarea>
+
+<script type="module" src="editor.js"></script>
+</body>
+</html>
