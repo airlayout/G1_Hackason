@@ -29,6 +29,10 @@ python3 devserver.py
 | プレイヤー(人)の歩行速度 | 1.0 m/s（= 80px/sec、`player.js`） |
 | 警備員(G1)の歩行速度 | 0.5 m/s（= 40px/sec、各`stages/*.json`の`guard.moveSpeed`） |
 
+視野角・視認距離の初期値の根拠（水平画角70°のWebカメラ想定など）は
+`Entame/docs/g1-detection-spec.md`を正とする。数値を変更する場合は両方を
+更新すること。
+
 ## 操作方法
 
 - 矢印キー（↑↓←→）のみで移動
