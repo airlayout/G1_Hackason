@@ -19,7 +19,35 @@ PNGに保存する。認識処理は含まない。
 
 ## 当日の手順(コマンド早見表)
 
+### 端末の準備
+
+**操作PCで端末を2つ開く。** コマンドはすべて操作PCのキーボードから打つが、
+実行される場所が2つに分かれる。
+
+| | 役割 | 実行される場所 |
+|---|---|---|
+| **端末A** | `ssh`でG1にログインして使う | **G1本体** |
+| **端末B** | 操作PCのまま使う | **操作PC** |
+
+`ssh`でログインした時点から、端末Aで打つコマンドはG1上で動く。
+**迷ったらプロンプトを見る**:
+
+| プロンプト | どこ |
+|---|---|
+| `unitree@` で始まる | G1本体(端末A) |
+| それ以外(自分のユーザー名) | 操作PC(端末B) |
+
+手順3でサーバーを起動すると端末Aは占有され、戻ってこなくなる。以降は端末Bで作業する。
+
+実行順:
+
+```
+0（安全確保）→ 1（端末B）→ 2・3（端末A）→ 4〜7（端末B）→ 8（端末A→端末B）
+```
+
 ### 事前(前日までに、実機なしでできること)
+
+**【端末B｜操作PC】**
 
 ```bash
 cd ~/Robot/G1_Hackason
@@ -33,7 +61,7 @@ git pull
 
 ロボットを吊る／支える／座らせる。**この手順を飛ばさないこと**(理由は「安全上の注意」参照)。
 
-### 1. 操作PC — ネットワーク設定と疎通確認
+### 1. 【端末B｜操作PC】ネットワーク設定と疎通確認
 
 ```bash
 cd ~/Robot/G1_Hackason
@@ -43,7 +71,13 @@ python3 Common/network/check_g1_connectivity.py
 
 `READY`が出ればOK。
 
-### 2. G1本体 — カメラのデバイス番号を確認
+⚠️ **操作PCがWSL2の場合、`setup_ethernet_for_g1.sh`は使えない**(物理NICを持たないため)。
+代わりにWindows側でEthernetアダプタに静的IP(`192.168.123.200` /
+サブネット`255.255.255.0` / ゲートウェイ空欄)を設定し、`.wslconfig`に
+`networkingMode=mirrored`を書いて`wsl --shutdown`する必要がある。
+WSL内で`ip -br a`に`192.168.123.x`が見え、G1にpingが通ることを確認してから先へ進む。
+
+### 2. 【端末A｜G1本体】カメラのデバイス番号を確認
 
 ```bash
 ssh unitree@192.168.123.164     # または ssh g1
@@ -52,7 +86,7 @@ ls /dev/video*
 
 `run_g1_server.py`の既定は`/dev/video4`。無ければ次の手順で`--camera-device <番号>`を足す。
 
-### 3. G1本体 — 配信サーバーを起動
+### 3. 【端末A｜G1本体】配信サーバーを起動
 
 ```bash
 source ~/miniforge3/bin/activate lerobot
@@ -63,9 +97,9 @@ python -u src/lerobot/robots/unitree_g1/run_g1_server.py --camera
 ```
 
 `bridge running`と`Camera server started on port 5555`が出ればOK。
-この端末は占有されるので、以降は操作PC側の別端末で作業する。
+**この端末はここで占有される。以降は触らず、端末Bで作業する。**
 
-### 4. 操作PC — ポートの到達性確認
+### 4. 【端末B｜操作PC】ポートの到達性確認
 
 ```bash
 python3 Common/network/check_g1_connectivity.py --check-bridge-ports
@@ -73,7 +107,7 @@ python3 Common/network/check_g1_connectivity.py --check-bridge-ports
 
 5555が到達可能になっていればOK。
 
-### 5. 操作PC — まず30枚で動作確認
+### 5. 【端末B｜操作PC】まず30枚で動作確認
 
 ```bash
 ./G1_HuggingFace/venv/bin/python Perception/real/probe_zmq_camera.py \
@@ -82,12 +116,12 @@ python3 Common/network/check_g1_connectivity.py --check-bridge-ports
 
 `RESULT_OK`を確認。解像度・受信レート・カメラ名をメモする。
 
-### 6. 色順の判定
+### 6. 【端末B｜操作PC】色順の判定
 
 `_local/perception/real/`の`_asis`と`_swapped`を見比べ、どちらが自然な色かを確認する。
 実装上はシムと同じくRGB(=`_swapped`が正しい)のはずだが、実物で確認すること。
 
-### 7. 大量収集(最重要)
+### 7. 【端末B｜操作PC】大量収集(最重要)
 
 ```bash
 ./G1_HuggingFace/venv/bin/python Perception/real/probe_zmq_camera.py \
@@ -98,10 +132,20 @@ python3 Common/network/check_g1_connectivity.py --check-bridge-ports
 
 ### 8. 撤収
 
+**【端末A｜G1本体】** サーバーを停止してログアウトする:
+
 ```bash
-# G1側の端末で Ctrl-C（サーバー停止）
-bash Common/network/setup_ethernet_for_g1.sh --revert   # 必要なら元のネットワークに戻す
+# Ctrl-C でサーバーを停止
+exit
 ```
+
+**【端末B｜操作PC】** 必要なら元のネットワーク設定に戻す:
+
+```bash
+bash Common/network/setup_ethernet_for_g1.sh --revert
+```
+
+撮った画像のバックアップも忘れないこと(「実機の時間で優先すべきこと」参照)。
 
 ## 当日メモすべきこと
 
