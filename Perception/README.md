@@ -82,5 +82,6 @@ python Perception/real/run_real.py --server-address 192.168.123.164
 
 ## 状態
 
-`common/`・`sim/`・`real/`の骨格を実装済み。ZMQストリーム経由の実接続確認（sim/real
-双方）はこれから。
+`common/`・`sim/`・`real/`の骨格を実装済み。`sim/probe_zmq_camera.py`でシム側の
+ZMQ配信(head_camera・640x480・RGB配信であること等)は実測済み。`run_sim.py`
+(YOLO検出パイプライン本体)・`real/`側の実機接続確認はこれから。
