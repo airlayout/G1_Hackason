@@ -63,7 +63,9 @@ ssh -t unitree@192.168.123.164 'bash ~/mapping_tools/start_camera_only.sh'
 ./mapctl validate
 ```
 
-`mapctl view --live`では、蓄積点群、最新登録点群、自己位置、軌跡、RGBを同時表示する。
+`mapctl view --live`では、密度色付き蓄積点群、最新登録点群、自己位置、軌跡、RGBを
+同時表示する。青は観測回数が少なく、黄〜赤は繰り返し観測された領域を表す。
+密度1.0までに必要なスキャン数は`.env`の`DENSITY_TARGET_SCANS`で変更できる。
 
 ## rosbagから地図を作り直す
 

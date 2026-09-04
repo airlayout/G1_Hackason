@@ -15,7 +15,7 @@ cd ../real
 ./mapctl doctor --backend sim
 ./mapctl start --backend sim --name warehouse
 
-# 端末3: 地図・登録点群・自己位置・軌跡・RGB
+# 端末3: 密度地図・登録点群・自己位置・軌跡・RGB
 cd Mapping/real
 ./mapctl view --live
 ```

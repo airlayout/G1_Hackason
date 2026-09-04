@@ -98,6 +98,10 @@ ssh -t unitree@192.168.123.164 'bash ~/mapping_tools/start_camera_only.sh'
 ./mapctl view --live
 ```
 
+`Density Map`は、同じ5cmボクセルを何スキャンから観測できたかを青→緑→黄→赤で示す。
+青い領域が広く残る場合は、急旋回せず別角度からもう一度観測する。色の上限は
+`.env`の`DENSITY_TARGET_SCANS`（既定10スキャン）で調整できる。
+
 RVizを閉じてもMapping処理は継続する。反対に、Mapping停止後もRVizは自動終了しないため、
 確認が終わったらRVizウィンドウを閉じる。
 

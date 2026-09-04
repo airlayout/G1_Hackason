@@ -94,6 +94,11 @@ Mappingプロセスには影響せず、Mappingが停止しても可視化プロ
 | カメラ内部パラメータ | `/g1_camera/color/camera_info` | `sensor_msgs/msg/CameraInfo` |
 | カメラmetadata | `/g1_camera/frame_metadata` | `std_msgs/msg/String` |
 
+`/g1_mapping/map`は表示用のボクセル地図で、通常の`x/y/z/intensity`に加えて
+`density`、`hit_count`、`scan_count`を持つ。`scan_count`は同一スキャン内の重複を
+1回として数え、`density=min(scan_count/DENSITY_TARGET_SCANS, 1)`とする。
+この地図は派生データなのでrosbagへ重複保存せず、登録済み点群から再生成する。
+
 実機入力・内蔵LIO出力のトピック名は`.env`で変更できる。ファームウェア差をソースコードに
 埋め込まない。
 
