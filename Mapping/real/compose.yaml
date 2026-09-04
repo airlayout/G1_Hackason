@@ -26,6 +26,8 @@ x-common-environment: &common-environment
   CAMERA_FY: ${CAMERA_FY:-0.0}
   CAMERA_CX: ${CAMERA_CX:-0.0}
   CAMERA_CY: ${CAMERA_CY:-0.0}
+  MAP_VOXEL_SIZE: ${MAP_VOXEL_SIZE:-0.05}
+  DENSITY_TARGET_SCANS: ${DENSITY_TARGET_SCANS:-10}
   POINT_TIMESTAMP_MODE: ${POINT_TIMESTAMP_MODE:-auto}
   ALLOW_INFERRED_POINT_TIME: ${ALLOW_INFERRED_POINT_TIME:-true}
 
@@ -110,6 +112,8 @@ services:
       - source_odom:=${ONBOARD_ODOM_TOPIC:-/unitree/slam_mapping/odom}
       - source_cloud:=${ONBOARD_POINTS_TOPIC:-/unitree/slam_mapping/points}
       - use_sim_time:=false
+      - voxel_size:=${MAP_VOXEL_SIZE:-0.05}
+      - target_scan_count:=${DENSITY_TARGET_SCANS:-10}
     stop_grace_period: 10s
 
   raw_tools:

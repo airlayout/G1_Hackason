@@ -144,6 +144,11 @@ class SessionManager:
                     or (self.settings.camera_fx > 0.0 and self.settings.camera_fy > 0.0)
                 ),
             },
+            "live_map": {
+                "voxel_size": self.settings.map_voxel_size,
+                "density_definition": "unique_scan_count",
+                "density_target_scans": self.settings.density_target_scans,
+            },
             "remote_map_path": remote_map_path,
             "diagnostic": diagnostic,
         }

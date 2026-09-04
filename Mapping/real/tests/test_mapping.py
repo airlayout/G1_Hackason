@@ -38,6 +38,8 @@ def make_settings(root: Path) -> Settings:
         camera_fy=450.0,
         camera_cx=320.0,
         camera_cy=180.0,
+        map_voxel_size=0.05,
+        density_target_scans=10,
         min_free_gib=0.01,
         min_map_points=1000,
     )

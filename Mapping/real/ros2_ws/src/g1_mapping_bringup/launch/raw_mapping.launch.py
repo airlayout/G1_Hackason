@@ -83,6 +83,14 @@ def generate_launch_description() -> LaunchDescription:
         executable="map_accumulator",
         name="g1_map_accumulator",
         output="screen",
-        parameters=[{"use_sim_time": use_sim_time}],
+        parameters=[
+            {
+                "use_sim_time": use_sim_time,
+                "voxel_size": float(os.environ.get("MAP_VOXEL_SIZE", "0.05")),
+                "target_scan_count": int(
+                    os.environ.get("DENSITY_TARGET_SCANS", "10")
+                ),
+            }
+        ],
     )
     return LaunchDescription([adapter, fast_lio, normalizer, accumulator])

@@ -81,6 +81,14 @@ def _host_checks(
                 "CAMERA_REQUIRED=trueのときCAMERA_ENABLED=falseにはできません",
             )
         )
+    if settings.map_voxel_size <= 0.0 or settings.density_target_scans <= 0:
+        checks.append(
+            Check(
+                "host.density_config",
+                "FAIL",
+                "MAP_VOXEL_SIZEとDENSITY_TARGET_SCANSは0より大きい必要があります",
+            )
+        )
     if mock or simulation:
         mode = "mock" if mock else "sim"
         checks.append(Check("host.network", "PASS", f"{mode}ではG1用NICを要求しません"))

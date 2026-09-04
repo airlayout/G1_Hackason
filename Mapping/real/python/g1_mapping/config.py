@@ -66,6 +66,8 @@ class Settings:
     camera_fy: float
     camera_cx: float
     camera_cy: float
+    map_voxel_size: float
+    density_target_scans: int
     min_free_gib: float
     min_map_points: int
 
@@ -118,6 +120,8 @@ class Settings:
             camera_fy=float(value("CAMERA_FY", "0")),
             camera_cx=float(value("CAMERA_CX", "0")),
             camera_cy=float(value("CAMERA_CY", "0")),
+            map_voxel_size=float(value("MAP_VOXEL_SIZE", "0.05")),
+            density_target_scans=int(value("DENSITY_TARGET_SCANS", "10")),
             min_free_gib=float(value("MIN_FREE_GIB", "5")),
             min_map_points=int(value("MIN_MAP_POINTS", "1000")),
         )
@@ -149,6 +153,8 @@ class Settings:
                 "CAMERA_FY": str(self.camera_fy),
                 "CAMERA_CX": str(self.camera_cx),
                 "CAMERA_CY": str(self.camera_cy),
+                "MAP_VOXEL_SIZE": str(self.map_voxel_size),
+                "DENSITY_TARGET_SCANS": str(self.density_target_scans),
             }
         )
         if session_id:
