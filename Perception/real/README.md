@@ -1,8 +1,41 @@
 # Perception / real
 
-実機G1上での実行コードをここに置く。
+実機G1上での実行コード。ここには2種類のスクリプトがある:
 
-## probe_zmq_camera.py ※実機未検証(2026-09-01時点)
+- `run_real.py` — `common/`のYOLO検出パイプライン一式(FrameSource -> YoloDetector ->
+  ResultWriter)を、ZMQストリーム経由で実機G1に接続して動かすもの
+- `probe_zmq_camera.py` — 認識処理を含まない、画像取得だけの動作確認スクリプト
+
+## run_real.py（YOLO検出パイプライン）
+
+### 前提
+
+実機G1側で、カメラ配信付きのサーバを起動しておくこと（`G1_HuggingFace/README.md`の
+「実機への接続」を参照）:
+
+```bash
+# G1本体側(SSH接続後)
+cd ~/lerobot
+python src/lerobot/robots/unitree_g1/run_g1_server.py --camera
+```
+
+操作PC側は`configs/config.yaml`の`source.zmq.server_address`をG1のIP
+（既定`192.168.123.164`）に合わせる。ネットワーク疎通確認は`Common/network/`を参照。
+
+### 実行
+
+```bash
+source ../../G1_HuggingFace/venv/bin/activate  # 未activateの場合
+pip install -r ../requirements.txt             # 未インストールの場合
+
+python run_real.py --server-address 192.168.123.164
+# フレーム数を絞って動作確認する場合: python run_real.py --max-frames 30
+```
+
+検出結果は`outputs/`にJSON Lines(`run.jsonl`)・CSV(`run.csv`)として出力される
+（`.gitignore`で追跡対象外）。
+
+## probe_zmq_camera.py（画像取得のみの動作確認） ※実機未検証(2026-09-01時点)
 
 G1の一人称視点(head_camera)をZMQ経由で受け取り、解像度・受信レート・遅延を実測して
 PNGに保存する。認識処理は含まない。
@@ -121,6 +154,9 @@ python3 Common/network/check_g1_connectivity.py --check-bridge-ports
 `_local/perception/real/`の`_asis`と`_swapped`を見比べ、どちらが自然な色かを確認する。
 実装上はシムと同じくRGB(=`_swapped`が正しい)のはずだが、実物で確認すること。
 
+`run_real.py`(common/camera/zmq_camera.py)側は、シムでの実測(RGB)を前提に
+`cv2.cvtColor(..., cv2.COLOR_RGB2BGR)`を内部で適用済み。実機で色順が異なると
+判明した場合は、まずここで確認してから`zmq_camera.py`の修正要否を判断すること。
 ### 7. 【端末B｜操作PC】大量収集(最重要)
 
 ```bash
@@ -195,7 +231,9 @@ JSONという形式は共通だが、以下の違いがある(コードを読ん
 別の手段(対象の実サイズを既知とする、複数視点を使う等)を検討すること。
 
 **空メッセージは実機では実際に飛んでくる。** `probe_zmq_camera.py`の
-「`images`が空なら警告して次へ」の処理は、実機で実際に必要になる。
+「`images`が空なら警告して次へ」の処理と、`common/camera/zmq_camera.py`の
+`ZmqFrameSource.read()`が`images`が空の場合に`None`を返す処理は、どちらも
+実機で実際に必要になる。
 
 ## 実機の時間で優先すべきこと
 

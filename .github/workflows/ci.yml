@@ -1,0 +1,45 @@
+# mainへのマージのレビューは各自で行う方針のため、他人の目がPRに入らない。
+# このCIが唯一の機械的なチェックになる。
+#
+# 対象と限界は run_all_tests.sh の出力で毎回明示される。テストが無いフォルダは
+# 「検証されていない」と一覧に出るので、緑＝安全ではない点を隠さない。
+#
+# テストを追加するときは <フォルダ>/tests/run_tests.sh を作れば自動で拾われる。
+# このファイルを編集する必要はない。
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # 実機・ROS 2・LiDARは不要。各フォルダのtests/run_tests.shを自動で探して実行する。
+      - name: Run tests
+        run: bash scripts/ci/run_all_tests.sh
+
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # テストが無いフォルダにも効く共通検査。
+      # Python構文チェックとMarkdownの相対リンク切れ検査。
+      - name: Run checks
+        run: bash scripts/ci/run_checks.sh
