@@ -19,6 +19,11 @@ from .base import FrameSource
 #
 # 将来lerobot側でこのプロトコル(JSONのキー名やbase64+JPEGという形式)が変わった場合は、
 # このファイルも追従が必要。変わっていないか確認したい場合は上記ファイルを参照。
+#
+# NOTE(チャンネル順について、2026-08-30 sim実測で確認・Perception/sim/README.md参照):
+# 配信側はRGB順で画像をエンコードしているため、cv2.imdecode()の戻り値をそのまま使うと
+# 赤と青が入れ替わって見える。FrameSourceインターフェースの契約(BGRを返す。
+# webcam.py/video_file.pyと揃える)に合わせるため、ここでRGB2BGR変換を行う。
 
 
 class ZmqFrameSource(FrameSource):
@@ -82,7 +87,9 @@ class ZmqFrameSource(FrameSource):
 
         img_bytes = base64.b64decode(img_b64)
         frame = cv2.imdecode(np.frombuffer(img_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
-        return frame
+        if frame is None:
+            return None
+        return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
     def close(self) -> None:
         if self._socket is not None:
