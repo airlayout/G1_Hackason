@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 import ipaddress
 import json
+import socket
 import shutil
 import subprocess
 
@@ -68,10 +69,21 @@ def _interface_addresses(interface: str) -> list[ipaddress.IPv4Interface]:
     return addresses
 
 
-def _host_checks(settings: Settings, *, mock: bool) -> list[Check]:
+def _host_checks(
+    settings: Settings, *, mock: bool, simulation: bool = False
+) -> list[Check]:
     checks: list[Check] = []
-    if mock:
-        checks.append(Check("host.network", "PASS", "mockではG1用NICを要求しません"))
+    if settings.camera_required and not settings.camera_enabled:
+        checks.append(
+            Check(
+                "host.camera_config",
+                "FAIL",
+                "CAMERA_REQUIRED=trueのときCAMERA_ENABLED=falseにはできません",
+            )
+        )
+    if mock or simulation:
+        mode = "mock" if mock else "sim"
+        checks.append(Check("host.network", "PASS", f"{mode}ではG1用NICを要求しません"))
     else:
         interface_path = Path("/sys/class/net") / settings.g1_iface
         if not interface_path.exists():
@@ -132,16 +144,27 @@ def _host_checks(settings: Settings, *, mock: bool) -> list[Check]:
         )
     )
 
-    if shutil.which("scp") is None:
-        checks.append(
-            Check(
-                "host.scp",
-                "WARN",
-                "scpがありません。内蔵LIOのPCDをG1から自動回収できません",
+    if settings.camera_enabled and not mock and not simulation:
+        try:
+            with socket.create_connection(
+                (settings.camera_host, settings.camera_zmq_port), timeout=2.0
+            ):
+                pass
+            checks.append(
+                Check(
+                    "host.camera",
+                    "PASS",
+                    f"LeRobot ImageServer {settings.camera_host}:{settings.camera_zmq_port}へ接続できます",
+                )
             )
-        )
-    else:
-        checks.append(Check("host.scp", "PASS", "scpを利用できます"))
+        except OSError as error:
+            checks.append(
+                Check(
+                    "host.camera",
+                    "FAIL" if settings.camera_required else "WARN",
+                    f"LeRobot ImageServerへ接続できません: {error}",
+                )
+            )
 
     return checks
 
@@ -153,7 +176,8 @@ def diagnose(
     mock: bool = False,
     timeout_seconds: int = 5,
 ) -> DiagnosticReport:
-    checks = _host_checks(settings, mock=mock)
+    simulation = requested_backend == "sim"
+    checks = _host_checks(settings, mock=mock, simulation=simulation)
     if mock:
         checks.extend(
             [
@@ -169,13 +193,21 @@ def diagnose(
         return DiagnosticReport(requested_backend, selected, checks)
 
     runtime = ComposeRuntime(settings)
-    candidates = (
-        ["onboard", "raw"] if requested_backend == "auto" else [requested_backend]
-    )
+    if requested_backend == "sim":
+        candidates = ["sim"]
+    else:
+        candidates = [
+            "onboard",
+            "raw",
+        ] if requested_backend == "auto" else [requested_backend]
     selected: str | None = None
 
     for backend in candidates:
-        image = f"g1-mapping-{backend}:local"
+        image = (
+            "g1-mapping-raw:local"
+            if backend == "sim"
+            else f"g1-mapping-{backend}:local"
+        )
         if not runtime.image_exists(image):
             checks.append(
                 Check(
@@ -189,11 +221,28 @@ def diagnose(
         result = (
             runtime.probe_onboard(timeout_seconds)
             if backend == "onboard"
-            else runtime.probe_raw(timeout_seconds)
+            else runtime.probe_raw(timeout_seconds, backend=backend)
         )
         detail = (result.stdout + result.stderr).strip()
         if result.returncode == 0:
             checks.append(Check(f"backend.{backend}", "PASS", detail or "応答あり"))
+            if settings.camera_enabled and backend != "sim":
+                camera_result = runtime.probe_camera(timeout_seconds, backend=backend)
+                camera_detail = (camera_result.stdout + camera_result.stderr).strip()
+                camera_status = (
+                    "PASS"
+                    if camera_result.returncode == 0
+                    else ("FAIL" if settings.camera_required else "WARN")
+                )
+                checks.append(
+                    Check(
+                        "sensor.camera",
+                        camera_status,
+                        camera_detail or "カメラフレームを受信できません",
+                    )
+                )
+                if camera_status == "FAIL":
+                    continue
             selected = backend
             break
         checks.append(

@@ -16,6 +16,7 @@ def _boolean_environment(name: str, default: str) -> bool:
 
 def generate_launch_description() -> LaunchDescription:
     session_id = os.environ.get("MAPPING_SESSION_ID", "unknown")
+    use_sim_time = _boolean_environment("USE_SIM_TIME", "false")
     output_path = Path("/runs") / session_id / "map" / "map_raw.pcd"
     config_path = (
         Path(get_package_share_directory("g1_mapping_bringup"))
@@ -43,6 +44,7 @@ def generate_launch_description() -> LaunchDescription:
                     "ALLOW_INFERRED_POINT_TIME", "true"
                 ),
                 "scan_period_seconds": 0.1,
+                "use_sim_time": use_sim_time,
             }
         ],
     )
@@ -51,11 +53,36 @@ def generate_launch_description() -> LaunchDescription:
         executable="fastlio_mapping",
         name="fastlio_mapping",
         output="screen",
-        parameters=[str(config_path), {"map_file_path": str(output_path)}],
+        parameters=[
+            str(config_path),
+            {"map_file_path": str(output_path), "use_sim_time": use_sim_time},
+        ],
         remappings=[
-            ("/Odometry", "/g1_mapping/odom"),
-            ("/cloud_registered", "/g1_mapping/cloud_registered"),
-            ("/Laser_map", "/g1_mapping/map"),
+            ("/Odometry", "/g1_mapping/backend/odom"),
+            ("/cloud_registered", "/g1_mapping/backend/cloud_registered"),
+            ("/Laser_map", "/g1_mapping/backend/map"),
         ],
     )
-    return LaunchDescription([adapter, fast_lio])
+    normalizer = Node(
+        package="g1_mapping_tools",
+        executable="mapping_adapter",
+        name="g1_mapping_adapter",
+        output="screen",
+        parameters=[
+            {
+                "source_odom": "/g1_mapping/backend/odom",
+                "source_cloud": "/g1_mapping/backend/cloud_registered",
+                "global_frame": "map",
+                "fallback_child_frame": "lio_body",
+                "use_sim_time": use_sim_time,
+            }
+        ],
+    )
+    accumulator = Node(
+        package="g1_mapping_tools",
+        executable="map_accumulator",
+        name="g1_map_accumulator",
+        output="screen",
+        parameters=[{"use_sim_time": use_sim_time}],
+    )
+    return LaunchDescription([adapter, fast_lio, normalizer, accumulator])

@@ -83,23 +83,33 @@ class SessionManager:
         if directory.exists():
             raise RuntimeError(f"セッションディレクトリが既に存在します: {directory}")
 
-        for child in ("raw", "map", "trajectory", "logs", "report"):
+        for child in (
+            "raw",
+            "calibration",
+            "map",
+            "trajectory",
+            "derived",
+            "logs",
+            "report",
+        ):
             (directory / child).mkdir(parents=True, exist_ok=False)
 
         remote_map_path = (
             f"{self.settings.onboard_remote_map_dir}/{session_id}.pcd"
+            if backend == "onboard"
+            else ""
         )
         now = datetime.now(timezone.utc).isoformat()
         manifest: dict[str, object] = {
-            "schema_version": 1,
+            "schema_version": 2,
             "session_id": session_id,
             "name": name,
             "backend": backend,
             "created_at": now,
             "git_revision": _git_revision(self.settings.project_dir),
             "robot": {
-                "host": self.settings.g1_host,
-                "network_interface": self.settings.g1_iface,
+                "host": None if backend == "sim" else self.settings.g1_host,
+                "network_interface": "lo" if backend == "sim" else self.settings.g1_iface,
                 "ros_domain_id": self.settings.ros_domain_id,
             },
             "topics": {
@@ -107,6 +117,32 @@ class SessionManager:
                 "raw_imu": self.settings.raw_imu_topic,
                 "onboard_points": self.settings.onboard_points_topic,
                 "onboard_odom": self.settings.onboard_odom_topic,
+                "canonical_odom": "/g1_mapping/odom",
+                "canonical_registered_cloud": "/g1_mapping/cloud_registered",
+                "canonical_map": "/g1_mapping/map",
+                "camera_image": "/g1_camera/color/image/compressed",
+                "camera_info": "/g1_camera/color/camera_info",
+                "camera_metadata": "/g1_camera/frame_metadata",
+            },
+            "camera": {
+                "required": self.settings.camera_required,
+                "source": "isaac_sim" if backend == "sim" else "lerobot_zmq",
+                "host": None if backend == "sim" else self.settings.camera_host,
+                "port": None if backend == "sim" else self.settings.camera_zmq_port,
+                "name": self.settings.camera_name,
+                "frame_id": self.settings.camera_frame_id,
+                "intrinsics": {
+                    "width": self.settings.camera_width,
+                    "height": self.settings.camera_height,
+                    "fx": self.settings.camera_fx,
+                    "fy": self.settings.camera_fy,
+                    "cx": self.settings.camera_cx,
+                    "cy": self.settings.camera_cy,
+                },
+                "calibration_complete": (
+                    backend == "sim"
+                    or (self.settings.camera_fx > 0.0 and self.settings.camera_fy > 0.0)
+                ),
             },
             "remote_map_path": remote_map_path,
             "diagnostic": diagnostic,
