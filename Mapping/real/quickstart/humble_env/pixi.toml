@@ -1,0 +1,20 @@
+# G1 の LiDAR/SLAM を ROS 2 で扱うための Humble 環境。
+# PC2 の /opt/ros/foxy には一切触らない。撤退はこのディレクトリを消すだけ。
+#
+# 背景: foxy 同梱の cyclonedds 0.7.0 は、Unitree(0.10.2) が撒く discovery を
+# ddsi_plist_init_frommsg で解釈中に SIGSEGV する（2026-09-03 に gdb で確認）。
+# RTPS は未知パラメータの読み飛ばしを規格で要求しているので、これは 0.7.0 側の
+# 実装バグ。0.10 世代を持ち込むことで回避する。
+[workspace]
+name = "g1-humble"
+version = "0.1.0"
+channels = ["robostack-humble", "conda-forge"]
+platforms = ["linux-aarch64"]
+
+[dependencies]
+ros-humble-ros-base = "*"
+ros-humble-rmw-cyclonedds-cpp = "*"
+# 点群は 441KB/フレーム。rosbridge の JSON より、バイナリで送る foxglove-bridge を使う
+# 3.x は libfoxglove.so が GLIBC 2.32+ を要求し、Ubuntu 20.04(2.31) では動かない。
+# 0.8 系は websocketpp ベースで libfoxglove.so を使わないため 20.04 で動く。
+ros-humble-foxglove-bridge = "0.8.*"
