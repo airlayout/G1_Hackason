@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""Perception / sim エントリスクリプト。
+
+MuJoCoシムのhead_cameraが配信するZMQストリームに接続してYOLO検出を回す。
+事前に、シム側でZMQカメラ配信を有効にした状態(例: lerobot-teleoperateを
+--robot.cameras='{"...":{"type":"zmq","server_address":"localhost","port":5555,
+"camera_name":"head_camera",...}}' 付きで起動する等)にしておくこと。
+"""
+import argparse
+import sys
+from pathlib import Path
+
+import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from common.pipeline import run_pipeline  # noqa: E402
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Perception / sim: G1 YOLO検出パイプライン")
+    parser.add_argument(
+        "--config",
+        default=str(Path(__file__).resolve().parent / "configs" / "config.yaml"),
+        help="設定ファイル(YAML)のパス",
+    )
+    parser.add_argument(
+        "--source",
+        choices=["zmq", "video", "webcam"],
+        help="config.yamlのsource.typeを上書きする",
+    )
+    parser.add_argument(
+        "--video-path",
+        help="--source video のときに使う動画ファイルパス(config.yamlのsource.video.pathを上書き)",
+    )
+    parser.add_argument(
+        "--max-frames",
+        type=int,
+        default=None,
+        help="処理するフレーム数の上限(動作確認用、指定しなければ無制限)",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+
+    with open(args.config, encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    if args.source:
+        config["source"]["type"] = args.source
+    if args.video_path:
+        config["source"].setdefault("video", {})["path"] = args.video_path
+
+    run_pipeline(config, max_frames=args.max_frames)
+
+
+if __name__ == "__main__":
+    main()

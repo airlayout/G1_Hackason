@@ -1,0 +1,15 @@
+ultralytics>=8.4.0
+opencv-python>=4.9
+numpy>=1.26
+torch>=2.2
+torchvision>=0.17
+PyYAML>=6.0
+pyzmq>=26.0
+
+# G1_HuggingFace/venv/ を共有する場合、上記のうちultralytics/opencv-python/PyYAML/
+# pyzmq 以外(torch/torchvision)はG1_HuggingFace側で既にCUDA対応版が入っている可能性が
+# あります。README.md の「セットアップ」を参照してください。
+#
+# 実行用PC(NVIDIA GPU搭載)でCUDA推論を有効にする場合、pip既定のtorch/torchvisionは
+# CPU版wheelが入ることがあります。GPUドライバのCUDAバージョンに対応したtorchを
+# index-url指定で入れ直してください(例はREADME.md参照)。
