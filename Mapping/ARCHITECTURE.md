@@ -2,19 +2,19 @@
 
 ## 結論
 
-操作・記録・成果物検証を共通化し、LIOの実行部分だけをbackendとして交換する。
-Mapping中にbackendを切り替えることはせず、失敗時は新しいセッションとして再開する。
+生LiDAR・IMU・RGBをrosbag2へ保存したものを正本とし、LIOの実行部分だけを
+pose providerとして交換する。provider固有topicはadapterで正規化し、記録・軌跡・
+ライブ地図・RViz・成果物検証は共通topicだけを使う。
+Mapping中にproviderを切り替えることはせず、失敗時は新しいセッションとして再開する。
 
 ```text
-                         onboard backend ─ Unitree slam_operate ─ G1内蔵LIO
-                       /
-mapctl ─ session manager
-                       \
-                         raw backend ─ PointCloud2 adapter ─ FAST-LIO2
-
-           ├─ rosbag2 recorder
-           ├─ trajectory writer
-           └─ PCD/session validator
+G1内蔵LIO ─ onboard adapter ─┐
+                             ├─ canonical odom / registered cloud
+FAST-LIO2 ─ raw adapter ─────┘              │
+                                            ├─ map accumulator ─ RViz2
+RGB camera ─ camera adapter ────────────────┼─ rosbag2 recorder
+                                            ├─ trajectory writer
+                                            └─ PCD/session validator
 
 別プロセス: visualization ─ RViz2
                          └─ 保存PCD publisher
@@ -37,6 +37,7 @@ Mappingプロセスは歩行指令を送らない。最初の現場試験ではU
 
 `auto`は内蔵LIOを先にprobeし、利用できなければraw backendをprobeする。明示的に
 `--backend onboard`または`--backend raw`を指定することもできる。
+Isaac Simでは`--backend sim`を使い、実機rawと同じFAST-LIO2を実行する。
 
 現場で地図を保存できなかったセッションは、持ち帰ってから作り直す。
 
@@ -54,10 +55,9 @@ Mappingプロセスは歩行指令を送らない。最初の現場試験ではU
 可視化は`g1-mapping-visualization` imageへ分離し、Mapping backendのコンテナへGUI、
 X11ソケット、RViz依存を持ち込まない。
 
-- ライブ: backendが配信する点群をRViz2が直接購読する。
+- ライブ: 共通地図、登録点群、odometry、軌跡、カメラ映像をRViz2が購読する。
 - 保存済み地図: `pcl_ros/pcd_to_pointcloud`がPCDを`/g1_mapping/map`へ再配信する。
-- raw backendの既定Fixed Frameは`camera_init`、保存PCDは`map`とする。
-- onboardの実トピックはROS remappingで共通表示名へ接続する。
+- Fixed Frameと正規化後のglobal frameは常に`map`とする。
 - 保存PCD表示ではCycloneDDSをloopbackへ限定し、G1用NICがない開発PCでも動かす。
 
 操作は`mapctl view --live`と`mapctl view [session_id]`へ集約する。RVizを終了しても
@@ -69,7 +69,7 @@ Mappingプロセスには影響せず、Mappingが停止しても可視化プロ
 
 - Unitree SDK2のDDS RPCで`slam_operate`へ接続する。
 - Mapping開始はAPI ID `1801`、終了・PCD保存は`1802`を使う。
-- PCDはまずG1上へ保存し、停止処理でSSH/SCPにより現場PCへ回収する。
+- G1内のPCDは回収経路として使わず、登録済み増分点群から共通PCDを再構成する。
 - `slam_info`または`slam_key_info`を受信できることを、非破壊probeの成功条件にする。
 
 ### raw
@@ -89,6 +89,10 @@ Mappingプロセスには影響せず、Mappingが停止しても可視化プロ
 | LIO odometry | `/g1_mapping/odom` | `nav_msgs/msg/Odometry` |
 | 登録済み点群 | `/g1_mapping/cloud_registered` | `sensor_msgs/msg/PointCloud2` |
 | 地図点群 | `/g1_mapping/map` | `sensor_msgs/msg/PointCloud2` |
+| 移動軌跡 | `/g1_mapping/path` | `nav_msgs/msg/Path` |
+| RGB画像 | `/g1_camera/color/image/compressed` | `sensor_msgs/msg/CompressedImage` |
+| カメラ内部パラメータ | `/g1_camera/color/camera_info` | `sensor_msgs/msg/CameraInfo` |
+| カメラmetadata | `/g1_camera/frame_metadata` | `std_msgs/msg/String` |
 
 実機入力・内蔵LIO出力のトピック名は`.env`で変更できる。ファームウェア差をソースコードに
 埋め込まない。
@@ -100,8 +104,10 @@ runs/<timestamp>_<name>/
 ├── manifest.json
 ├── state.json
 ├── raw/rosbag2/
+├── calibration/
 ├── map/map_raw.pcd
 ├── trajectory/trajectory.tum
+├── derived/
 ├── logs/
 └── report/quality.json
 ```
