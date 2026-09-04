@@ -8,7 +8,7 @@
 ES Modules を使っているため `file://` では動かない。簡易HTTPサーバで配信する。
 
 ```bash
-cd Entame/StealthGamePoC
+cd Entame/StealthGame2D
 python3 devserver.py
 ```
 

@@ -8,11 +8,10 @@ import {
   GUARD_TURN_SPEED,
   GUARD_TURN_ALIGN_THRESHOLD,
   DETECTION_HOLD_TIME_SEC,
+  REACTION_DURATION_SEC,
 } from "./constants";
 import type { GuardConfig, GuardReaction, Point2D, Stage } from "./types";
 import type { Player } from "./player";
-
-const REACTION_DURATION_SEC = 2.5; // STOP/LOOK/CHASEを継続する時間
 
 export interface Guard {
   x: number;
@@ -146,25 +145,19 @@ function updatePatrolMovement(guard: Guard, dt: number, stage: Stage): void {
   moveWithWallCollision(guard, dx * ratio, dy * ratio, guard.radius, stage.walls, stage);
 }
 
-function signedAngleDelta(from: number, to: number): number {
-  let diff = (to - from) % (Math.PI * 2);
-  if (diff > Math.PI) diff -= Math.PI * 2;
-  if (diff < -Math.PI) diff += Math.PI * 2;
-  return diff;
-}
-
-function normalizeAngleDiff(a: number): number {
-  let diff = a % (Math.PI * 2);
-  if (diff > Math.PI) diff -= Math.PI * 2;
-  if (diff < -Math.PI) diff += Math.PI * 2;
-  return Math.abs(diff);
-}
-
 function normalizeAngle(a: number): number {
   let angle = a % (Math.PI * 2);
   if (angle > Math.PI) angle -= Math.PI * 2;
   if (angle < -Math.PI) angle += Math.PI * 2;
   return angle;
+}
+
+function signedAngleDelta(from: number, to: number): number {
+  return normalizeAngle(to - from);
+}
+
+function normalizeAngleDiff(a: number): number {
+  return Math.abs(normalizeAngle(a));
 }
 
 export function canSeePlayer(guard: Guard, player: Player, walls: Stage["walls"]): boolean {

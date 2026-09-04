@@ -24,6 +24,7 @@ export const GUARD_RADIUS_PX = 10;
 export const WAYPOINT_ARRIVAL_DIST_PX = 4;
 export const GUARD_TURN_SPEED = Math.PI / 4; // rad/sec
 export const GUARD_TURN_ALIGN_THRESHOLD = (2 * Math.PI) / 180;
+export const REACTION_DURATION_SEC = 2.5; // STOP/LOOK/CHASEを継続する時間
 
 // Entame/docs/g1-detection-spec.md の初期値。
 export const DETECTION_HOLD_TIME_SEC = 0.35; // 警戒→OUTまでの検知継続しきい値(0.2〜0.5s)
