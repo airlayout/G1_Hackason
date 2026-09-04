@@ -24,7 +24,11 @@ map -> odom は slam_toolbox が配信するため、ここでは出さない。
 
 from __future__ import annotations
 
+import copy
+import io
+import json
 import math
+import struct
 from dataclasses import dataclass
 
 from .command import VelocityCommand
@@ -36,6 +40,8 @@ FRAME_BASE: str = "base_link"
 FRAME_LASER: str = "laser"
 # 3D LiDAR は 2D とは取り付け姿勢（前傾）が違うため別フレームで持つ。
 FRAME_LIDAR3D: str = "lidar3d"
+FRAME_LIVOX: str = "livox_frame"
+FRAME_CAMERA: str = "camera_color_optical_frame"
 
 # G1 の root body は "pelvis" で base_link は存在しない（実測で確認済み）。
 # ROS 側では base_link という名前が慣習なので、pelvis を base_link として扱う。
@@ -62,6 +68,16 @@ class OdomState:
     vx: float
     vy: float
     yaw_rate: float
+
+
+@dataclass(frozen=True)
+class GroundTruthState:
+    """評価用の完全な6DoF状態。"""
+
+    position: tuple[float, float, float]
+    orientation: tuple[float, float, float, float]
+    linear_velocity: tuple[float, float, float]
+    angular_velocity: tuple[float, float, float]
 
 
 def quat_xyzw_to_yaw(x: float, y: float, z: float, w: float) -> float:
@@ -96,12 +112,13 @@ class RosBridge:
     def __init__(self, node_name: str = "g1_twin") -> None:
         """ROS 2 を初期化してノードとトピックを作る。"""
         import rclpy
-        from geometry_msgs.msg import Twist
+        from geometry_msgs.msg import PoseStamped, Twist
         from nav_msgs.msg import Odometry
         from rclpy.node import Node
         from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
         from rosgraph_msgs.msg import Clock
-        from sensor_msgs.msg import LaserScan, PointCloud2, PointField
+        from sensor_msgs.msg import CameraInfo, CompressedImage, Imu, LaserScan, PointCloud2, PointField
+        from std_msgs.msg import String
         from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 
         if not rclpy.ok():
@@ -127,9 +144,35 @@ class RosBridge:
 
         self._scan_pub = self._node.create_publisher(LaserScan, "/scan", sensor_qos)
         self._points_pub = self._node.create_publisher(
+            PointCloud2, "/utlidar/cloud_livox_mid360", sensor_qos
+        )
+        self._legacy_points_pub = self._node.create_publisher(
             PointCloud2, "/points", sensor_qos
         )
+        self._imu_pub = self._node.create_publisher(
+            Imu, "/utlidar/imu_livox_mid360", sensor_qos
+        )
+        self._image_pub = self._node.create_publisher(
+            CompressedImage, "/g1_camera/color/image/compressed", sensor_qos
+        )
+        self._camera_metadata_pub = self._node.create_publisher(
+            String, "/g1_camera/frame_metadata", sensor_qos
+        )
+        camera_info_qos = QoSProfile(
+            depth=1,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self._camera_info_pub = self._node.create_publisher(
+            CameraInfo, "/g1_camera/color/camera_info", camera_info_qos
+        )
         self._odom_pub = self._node.create_publisher(Odometry, "/odom", 10)
+        self._ground_truth_odom_pub = self._node.create_publisher(
+            Odometry, "/g1_sim/ground_truth/odom", 10
+        )
+        self._ground_truth_camera_pub = self._node.create_publisher(
+            PoseStamped, "/g1_sim/ground_truth/camera_pose", sensor_qos
+        )
         self._tf_broadcaster = TransformBroadcaster(self._node)
         self._static_tf_broadcaster = StaticTransformBroadcaster(self._node)
 
@@ -142,13 +185,20 @@ class RosBridge:
         self._Odometry = Odometry
         self._PointCloud2 = PointCloud2
         self._PointField = PointField
+        self._Imu = Imu
+        self._CompressedImage = CompressedImage
+        self._CameraInfo = CameraInfo
+        self._PoseStamped = PoseStamped
+        self._String = String
+        self._camera_sequence = 0
+        self._sensor_rig_tf_sent = False
 
         # 静的 TF はシム時刻が動き出してから送る（時刻 0 のまま送ると
         # use_sim_time を使う購読側が受け取れないことがある）。
         # 実際の送信は publish_odom から初回だけ行う。
         self._static_tf_sent = False
         print(
-            "[ROS] ノードを起動しました: /clock /scan /odom /tf を配信、"
+            "[ROS] ノードを起動しました: /clock、LiDAR、IMU、RGB、真値を配信、"
             "/cmd_vel を購読"
         )
 
@@ -171,9 +221,16 @@ class RosBridge:
         """
         from builtin_interfaces.msg import Time
 
+        return self._time_at(self._sim_time)
+
+    @staticmethod
+    def _time_at(seconds: float):
+        from builtin_interfaces.msg import Time
+
+        seconds = max(0.0, seconds)
         stamp = Time()
-        stamp.sec = int(self._sim_time)
-        stamp.nanosec = int((self._sim_time - int(self._sim_time)) * 1e9)
+        stamp.sec = int(seconds)
+        stamp.nanosec = int((seconds - int(seconds)) * 1e9)
         return stamp
 
     def publish_clock(self, sim_time: float) -> None:
@@ -202,32 +259,28 @@ class RosBridge:
         tf.transform.translation.y = 0.0
         tf.transform.translation.z = LIDAR_OFFSET_Z_FROM_BASE
         tf.transform.rotation.w = 1.0
-        # 3D LiDAR は前傾させて取り付けるため、その回転を TF に載せる。
-        # ここを恒等回転にすると octomap が全点を誤った向きに置いてしまう。
-        from .lidar3d import FORWARD_TILT_DEG, tilt_quat_wxyz
+        from .sensor_rig import (
+            TORSO_TO_MID360_RPY,
+            TORSO_TO_MID360_XYZ,
+            rpy_to_quat_xyzw,
+        )
 
         tf3d = TransformStamped()
         tf3d.header.stamp = self._now()
         tf3d.header.frame_id = FRAME_BASE
         tf3d.child_frame_id = FRAME_LIDAR3D
-        tf3d.transform.translation.x = 0.0
-        tf3d.transform.translation.y = 0.0
-        tf3d.transform.translation.z = LIDAR_OFFSET_Z_FROM_BASE
-        # tilt_quat_wxyz は IsaacLab 規約の (w,x,y,z) を返す。
-        # ROS の geometry_msgs は (x,y,z,w) 順なので詰め替える。
-        qw, qx, qy, qz = tilt_quat_wxyz(FORWARD_TILT_DEG)
+        tf3d.transform.translation.x = TORSO_TO_MID360_XYZ[0]
+        tf3d.transform.translation.y = TORSO_TO_MID360_XYZ[1]
+        tf3d.transform.translation.z = TORSO_TO_MID360_XYZ[2]
+        qx, qy, qz, qw = rpy_to_quat_xyzw(*TORSO_TO_MID360_RPY)
         tf3d.transform.rotation.x = qx
         tf3d.transform.rotation.y = qy
         tf3d.transform.rotation.z = qz
         tf3d.transform.rotation.w = qw
-
-        # 静的 TF は 1 度の呼び出しでまとめて送る（別々に送ると後の呼び出しが
-        # 前のものを置き換えてしまい、片方しか残らない）
         self._static_tf_broadcaster.sendTransform([tf, tf3d])
         print(
             f"[ROS] 固定 TF を配信: {FRAME_BASE} -> {FRAME_LASER} "
-            f"(z={LIDAR_OFFSET_Z_FROM_BASE}), "
-            f"{FRAME_BASE} -> {FRAME_LIDAR3D} (前傾 {FORWARD_TILT_DEG} 度)"
+            f"(z={LIDAR_OFFSET_Z_FROM_BASE})"
         )
 
     # ------------------------------------------------------------------
@@ -261,8 +314,9 @@ class RosBridge:
         import numpy as np
 
         msg = self._PointCloud2()
-        msg.header.stamp = self._now()
-        msg.header.frame_id = FRAME_LIDAR3D
+        # Livoxのheaderはフレーム先頭時刻、各点timestampはそこからのoffset。
+        msg.header.stamp = self._time_at(self._sim_time - 0.1)
+        msg.header.frame_id = FRAME_LIVOX
 
         # torch.Tensor -> numpy float32 (N, 3)
         if hasattr(points_sensor, "detach"):
@@ -286,13 +340,130 @@ class RosBridge:
             field.datatype = self._PointField.FLOAT32
             field.count = 1
             fields.append(field)
+        fields.extend(
+            [
+                self._PointField(
+                    name="intensity", offset=12, datatype=self._PointField.FLOAT32, count=1
+                ),
+                self._PointField(
+                    name="tag", offset=16, datatype=self._PointField.UINT8, count=1
+                ),
+                self._PointField(
+                    name="line", offset=17, datatype=self._PointField.UINT8, count=1
+                ),
+                self._PointField(
+                    name="timestamp", offset=18, datatype=self._PointField.FLOAT64, count=1
+                ),
+            ]
+        )
         msg.fields = fields
 
-        msg.point_step = 12  # float32 x 3
+        msg.point_step = 26
         msg.row_step = msg.point_step * num_points
-        msg.data = pts.tobytes()
+        data = bytearray(msg.row_step)
+        denominator = max(1, num_points - 1)
+        for index, (x, y, z) in enumerate(pts):
+            point_time = 0.1 * index / denominator
+            struct.pack_into(
+                "<ffffBBd",
+                data,
+                index * msg.point_step,
+                float(x),
+                float(y),
+                float(z),
+                100.0,
+                0,
+                index % 4,
+                point_time,
+            )
+        msg.data = bytes(data)
 
         self._points_pub.publish(msg)
+        legacy = copy.deepcopy(msg)
+        legacy.header.frame_id = FRAME_LIDAR3D
+        self._legacy_points_pub.publish(legacy)
+
+    def publish_imu(self, angular_velocity, linear_acceleration) -> None:
+        """200HzのLiDAR内蔵IMU相当データを配信する。"""
+
+        message = self._Imu()
+        message.header.stamp = self._now()
+        message.header.frame_id = FRAME_LIVOX
+        message.orientation_covariance[0] = -1.0
+        message.angular_velocity.x = float(angular_velocity[0])
+        message.angular_velocity.y = float(angular_velocity[1])
+        message.angular_velocity.z = float(angular_velocity[2])
+        message.linear_acceleration.x = float(linear_acceleration[0])
+        message.linear_acceleration.y = float(linear_acceleration[1])
+        message.linear_acceleration.z = float(linear_acceleration[2])
+        self._imu_pub.publish(message)
+
+    def publish_camera(self, rgb, intrinsic, position, orientation) -> None:
+        """RGB JPEG、CameraInfo、metadata、評価用真値姿勢を同時配信する。"""
+
+        import numpy as np
+        from PIL import Image
+
+        pixels = rgb.detach().cpu().numpy() if hasattr(rgb, "detach") else np.asarray(rgb)
+        if pixels.dtype != np.uint8:
+            maximum = float(np.nanmax(pixels)) if pixels.size else 0.0
+            if maximum <= 1.0:
+                pixels = pixels * 255.0
+            pixels = np.clip(pixels, 0.0, 255.0).astype(np.uint8)
+        output = io.BytesIO()
+        Image.fromarray(pixels, mode="RGB").save(output, format="JPEG", quality=90)
+
+        image = self._CompressedImage()
+        image.header.stamp = self._now()
+        image.header.frame_id = FRAME_CAMERA
+        image.format = "rgb8; jpeg compressed rgb8"
+        image.data = output.getvalue()
+        self._image_pub.publish(image)
+
+        matrix = intrinsic.detach().cpu().numpy() if hasattr(intrinsic, "detach") else np.asarray(intrinsic)
+        info = self._CameraInfo()
+        info.header = image.header
+        info.width = int(pixels.shape[1])
+        info.height = int(pixels.shape[0])
+        info.distortion_model = "plumb_bob"
+        info.d = [0.0, 0.0, 0.0, 0.0, 0.0]
+        info.k = [float(value) for value in matrix.reshape(-1)]
+        info.r = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+        info.p = [
+            info.k[0], 0.0, info.k[2], 0.0,
+            0.0, info.k[4], info.k[5], 0.0,
+            0.0, 0.0, 1.0, 0.0,
+        ]
+        self._camera_info_pub.publish(info)
+
+        metadata = self._String()
+        stamp_ns = image.header.stamp.sec * 1_000_000_000 + image.header.stamp.nanosec
+        metadata.data = json.dumps(
+            {
+                "schema_version": 1,
+                "sequence": self._camera_sequence,
+                "stamp_ns": stamp_ns,
+                "timestamp_source": "simulation_clock",
+                "width": info.width,
+                "height": info.height,
+                "calibration_complete": True,
+            },
+            separators=(",", ":"),
+        )
+        self._camera_metadata_pub.publish(metadata)
+        self._camera_sequence += 1
+
+        pose = self._PoseStamped()
+        pose.header = image.header
+        pose.header.frame_id = "sim_world"
+        pose.pose.position.x = float(position[0])
+        pose.pose.position.y = float(position[1])
+        pose.pose.position.z = float(position[2])
+        pose.pose.orientation.x = float(orientation[0])
+        pose.pose.orientation.y = float(orientation[1])
+        pose.pose.orientation.z = float(orientation[2])
+        pose.pose.orientation.w = float(orientation[3])
+        self._ground_truth_camera_pub.publish(pose)
 
     def publish_odom(self, state: OdomState) -> None:
         """Odometry と odom -> base_link の TF を配信する。"""
@@ -335,6 +506,28 @@ class RosBridge:
         tf.transform.rotation.z = qz
         tf.transform.rotation.w = qw
         self._tf_broadcaster.sendTransform(tf)
+
+    def publish_ground_truth(self, state: GroundTruthState) -> None:
+        """アルゴリズム入力から隔離した評価用6DoF odometryを配信する。"""
+
+        message = self._Odometry()
+        message.header.stamp = self._now()
+        message.header.frame_id = "sim_world"
+        message.child_frame_id = "sim_base_link"
+        message.pose.pose.position.x = state.position[0]
+        message.pose.pose.position.y = state.position[1]
+        message.pose.pose.position.z = state.position[2]
+        message.pose.pose.orientation.x = state.orientation[0]
+        message.pose.pose.orientation.y = state.orientation[1]
+        message.pose.pose.orientation.z = state.orientation[2]
+        message.pose.pose.orientation.w = state.orientation[3]
+        message.twist.twist.linear.x = state.linear_velocity[0]
+        message.twist.twist.linear.y = state.linear_velocity[1]
+        message.twist.twist.linear.z = state.linear_velocity[2]
+        message.twist.twist.angular.x = state.angular_velocity[0]
+        message.twist.twist.angular.y = state.angular_velocity[1]
+        message.twist.twist.angular.z = state.angular_velocity[2]
+        self._ground_truth_odom_pub.publish(message)
 
     # ------------------------------------------------------------------
     # 受信

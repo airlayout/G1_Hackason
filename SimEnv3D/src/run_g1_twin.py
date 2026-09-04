@@ -99,6 +99,7 @@ def main() -> None:
         patrol_seed=args.patrol_seed,
         max_steps=args.max_steps,
         enable_lidar3d=args.lidar3d,
+        enable_camera=args.enable_cameras,
     )
     runner = G1TwinRunner(checkpoint_path, config)
     runner.build_scene()
