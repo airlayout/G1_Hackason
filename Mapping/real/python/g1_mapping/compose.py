@@ -14,6 +14,11 @@ class ComposeError(RuntimeError):
     pass
 
 
+# docker compose run はコンテナ生成とROS初期化で十数秒かかることがある。
+# probeの--durationにこの余裕を足した値をsubprocessのタイムアウトにする。
+_CONTAINER_STARTUP_MARGIN = 45
+
+
 class ComposeRuntime:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -160,7 +165,7 @@ class ComposeRuntime:
             "probe",
             "--timeout",
             str(timeout_seconds),
-            timeout=timeout_seconds + 10,
+            timeout=timeout_seconds + _CONTAINER_STARTUP_MARGIN,
             check=False,
         )
 
@@ -186,7 +191,7 @@ class ComposeRuntime:
             str(timeout_seconds),
             *( ["--require-camera"] if backend == "sim" else [] ),
             backend=backend,
-            timeout=timeout_seconds + 15,
+            timeout=timeout_seconds + _CONTAINER_STARTUP_MARGIN,
             check=False,
         )
 
@@ -211,7 +216,7 @@ class ComposeRuntime:
             "--duration",
             str(timeout_seconds),
             backend=backend,
-            timeout=timeout_seconds + 10,
+            timeout=timeout_seconds + _CONTAINER_STARTUP_MARGIN,
             check=False,
         )
 
