@@ -20,14 +20,26 @@ def make_settings(root: Path) -> Settings:
         env_file=root / ".env",
         g1_iface="mock0",
         g1_host="192.168.123.164",
-        g1_user="unitree",
-        g1_ssh_key="",
         ros_domain_id=0,
         raw_points_topic="/utlidar/cloud_livox_mid360",
         raw_imu_topic="/utlidar/imu_livox_mid360",
         onboard_points_topic="/unitree/slam_mapping/points",
         onboard_odom_topic="/unitree/slam_mapping/odom",
         onboard_remote_map_dir="/home/unitree/maps",
+        camera_enabled=True,
+        camera_required=True,
+        camera_host="192.168.123.164",
+        camera_zmq_port=5555,
+        camera_name="head_camera",
+        camera_frame_id="camera_color_optical_frame",
+        camera_width=640,
+        camera_height=360,
+        camera_fx=450.0,
+        camera_fy=450.0,
+        camera_cx=320.0,
+        camera_cy=180.0,
+        map_voxel_size=0.05,
+        density_target_scans=10,
         min_free_gib=0.01,
         min_map_points=1000,
     )
@@ -49,6 +61,16 @@ class ConfigurationTest(unittest.TestCase):
         self.assertEqual(saved.session_id, "session_01")
         self.assertTrue(saved.publish_only)
         self.assertEqual(saved.fixed_frame, "map")
+
+    def test_sim_backend_uses_loopback_and_sim_time(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            settings = make_settings(Path(temporary))
+            environment = settings.compose_environment(backend="sim")
+            self.assertEqual(environment["G1_IFACE"], "lo")
+            self.assertEqual(environment["USE_SIM_TIME"], "true")
+
+        arguments = _parser().parse_args(["start", "--backend", "sim"])
+        self.assertEqual(arguments.backend, "sim")
 
 
 class SessionLifecycleTest(unittest.TestCase):
@@ -72,6 +94,10 @@ class SessionLifecycleTest(unittest.TestCase):
             self.assertTrue(success)
             self.assertTrue(quality["success"])
             self.assertEqual(inspect_pcd(session.map_path)["points"], 1200)
+            self.assertTrue(quality["topic_counts"]["/g1_mapping/odom"] > 0)
+            self.assertTrue(
+                quality["topic_counts"]["/g1_camera/color/image/compressed"] > 0
+            )
 
             manager.finish(session, success=True, message="done")
             self.assertIsNone(manager.active())

@@ -56,6 +56,8 @@ class RunnerConfig:
     # 3D LiDAR（Mid-360 相当）を載せて /points を配信するか。
     # レイキャストは Mesh を個別列挙すれば十分速いため 2D と併用できる。
     enable_lidar3d: bool = False
+    # 3DGS用RGBカメラ。Mapping実行時は3D LiDARと同時に有効化する。
+    enable_camera: bool = False
     # この制御ステップ数で自動終了する（0 なら無制限）。
     # 人が見ていない自動巡回に時間制限をかけるために使う。
     max_steps: int = 0
@@ -80,11 +82,15 @@ class G1TwinRunner:
         # SLAM / Nav2 用（enable_ros のときだけ生成する）
         self._lidar = None
         self._lidar3d = None
+        self._imu = None
+        self._camera = None
         self._ros = None
         self._patrol = None
         # 直近の LiDAR スキャン（間引くため前回値を保持する）
         self._latest_scan = None
         self._latest_points = None
+        self._camera_pending = False
+        self._physics_step_count = 0
         # 実時間比の計測用
         self._last_rate_time: float = 0.0
         # ROS 指令のレート制限用（前回送った指令）
@@ -146,10 +152,19 @@ class G1TwinRunner:
 
             if self._config.enable_lidar3d:
                 from .lidar3d import G1Lidar3D
+                from .imu import G1LidarImu
 
                 self._lidar3d = G1Lidar3D(
                     robot_prim_path="/World/G1", mesh_prim_paths=mesh_paths
                 )
+                self._imu = G1LidarImu(
+                    robot_prim_path="/World/G1", update_period=PHYSICS_DT
+                )
+
+        if self._config.enable_camera:
+            from .camera import G1Camera
+
+            self._camera = G1Camera(robot_prim_path="/World/G1")
 
     def start_keyboard(self) -> None:
         """キーボード操作を開始する。"""
@@ -261,11 +276,11 @@ class G1TwinRunner:
         odom は Sim の真値をそのまま使う（ドリフトが無いので SLAM が安定する）。
         scan は 50Hz では過剰なので SCAN_PUBLISH_EVERY 周期に間引く。
         """
-        from .ros_bridge import OdomState, quat_xyzw_to_yaw
+        from .ros_bridge import GroundTruthState, OdomState, quat_xyzw_to_yaw
 
         # 先に /clock を配信する。以降のメッセージのタイムスタンプは
         # ここで設定したシム内時刻に揃う。
-        self._ros.publish_clock(self._step_count * CONTROL_DT)
+        self._ros.publish_clock(self._physics_step_count * PHYSICS_DT)
 
         data = self._robot.data
         pos = wp.to_torch(data.root_pos_w)[0]
@@ -289,6 +304,27 @@ class G1TwinRunner:
                 yaw_rate=float(ang_vel_b[2]),
             )
         )
+        self._ros.publish_ground_truth(
+            GroundTruthState(
+                position=(float(pos[0]), float(pos[1]), float(pos[2])),
+                orientation=(
+                    float(quat[0]),
+                    float(quat[1]),
+                    float(quat[2]),
+                    float(quat[3]),
+                ),
+                linear_velocity=(
+                    float(lin_vel_b[0]),
+                    float(lin_vel_b[1]),
+                    float(lin_vel_b[2]),
+                ),
+                angular_velocity=(
+                    float(ang_vel_b[0]),
+                    float(ang_vel_b[1]),
+                    float(ang_vel_b[2]),
+                ),
+            )
+        )
 
         # scan は呼び出し側で既に SCAN_PUBLISH_EVERY に間引かれている。
         # 更新された周期だけ配信する（同じスキャンを重複配信しないため）。
@@ -301,6 +337,16 @@ class G1TwinRunner:
             and self._step_count % SCAN_PUBLISH_EVERY == 0
         ):
             self._ros.publish_points(self._latest_points.points_sensor)
+
+        if self._camera_pending and self._camera is not None:
+            position, orientation = self._camera.pose_ros()
+            self._ros.publish_camera(
+                self._camera.read_rgb(),
+                self._camera.intrinsic_matrix(),
+                position,
+                orientation,
+            )
+            self._camera_pending = False
 
     # ------------------------------------------------------------------
     # 実行ループ
@@ -315,6 +361,9 @@ class G1TwinRunner:
         self._robot.reset()
         self._policy.reset()
         self._step_count = 0
+        self._physics_step_count = 0
+        if self._imu is not None:
+            self._imu.reset()
         self._last_rate_time = time.perf_counter()
         print(
             f"[OK] シミュレーションを開始します "
@@ -340,6 +389,10 @@ class G1TwinRunner:
             ):
                 self._lidar3d.update(CONTROL_DT * SCAN_PUBLISH_EVERY)
                 self._latest_points = self._lidar3d.read_point_cloud()
+
+            if self._camera is not None and self._step_count % SCAN_PUBLISH_EVERY == 0:
+                self._camera.update(CONTROL_DT * SCAN_PUBLISH_EVERY)
+                self._camera_pending = True
 
             # 速度指令の供給源を選ぶ
             if self._patrol is not None and scan is not None:
@@ -388,6 +441,12 @@ class G1TwinRunner:
             # 物理は 200Hz で decimation 回進める
             for _ in range(DECIMATION):
                 sim.step(render=False)
+                self._physics_step_count += 1
+                if self._imu is not None and self._ros is not None:
+                    self._imu.update(PHYSICS_DT)
+                    self._ros.publish_clock(self._physics_step_count * PHYSICS_DT)
+                    angular_velocity, linear_acceleration = self._imu.read()
+                    self._ros.publish_imu(angular_velocity, linear_acceleration)
             sim.render()
             self._robot.update(CONTROL_DT)
 

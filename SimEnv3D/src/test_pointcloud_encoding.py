@@ -12,6 +12,7 @@ point_step や offset を間違えても ROS は黙って受け取るため、�
 
 from __future__ import annotations
 
+import struct
 import sys
 
 import numpy as np
@@ -22,7 +23,7 @@ PASS = "[OK]"
 FAIL = "[NG]"
 failures = 0
 
-FRAME_LIDAR3D = "lidar3d"
+FRAME_LIDAR3D = "livox_frame"
 
 
 def build_message(points: np.ndarray) -> PointCloud2:
@@ -49,11 +50,33 @@ def build_message(points: np.ndarray) -> PointCloud2:
         field.datatype = PointField.FLOAT32
         field.count = 1
         fields.append(field)
+    fields.extend(
+        [
+            PointField(name="intensity", offset=12, datatype=PointField.FLOAT32, count=1),
+            PointField(name="tag", offset=16, datatype=PointField.UINT8, count=1),
+            PointField(name="line", offset=17, datatype=PointField.UINT8, count=1),
+            PointField(name="timestamp", offset=18, datatype=PointField.FLOAT64, count=1),
+        ]
+    )
     msg.fields = fields
 
-    msg.point_step = 12
+    msg.point_step = 26
     msg.row_step = msg.point_step * num_points
-    msg.data = pts.tobytes()
+    data = bytearray(msg.row_step)
+    for index, (x, y, z) in enumerate(pts):
+        struct.pack_into(
+            "<ffffBBd",
+            data,
+            index * msg.point_step,
+            float(x),
+            float(y),
+            float(z),
+            100.0,
+            0,
+            index % 4,
+            0.1 * index / max(1, num_points - 1),
+        )
+    msg.data = bytes(data)
     return msg
 
 
@@ -98,9 +121,9 @@ def test_metadata() -> None:
     checks = [
         ("height", msg.height, 1),
         ("width", msg.width, 100),
-        ("point_step", msg.point_step, 12),
-        ("row_step", msg.row_step, 1200),
-        ("data の長さ", len(msg.data), 1200),
+        ("point_step", msg.point_step, 26),
+        ("row_step", msg.row_step, 2600),
+        ("data の長さ", len(msg.data), 2600),
         ("frame_id", msg.header.frame_id, FRAME_LIDAR3D),
     ]
     for name, actual, expected in checks:
@@ -124,17 +147,17 @@ def test_empty() -> None:
 
 
 def test_large() -> None:
-    """3D LiDAR の実際の点数（32 層 x 360 = 11520）で動く。"""
+    """Mid-360公称200k points/sを10Hzで区切った点数で動く。"""
     global failures
-    print("[Test] 実サイズ（11520 点）")
+    print("[Test] 実サイズ（20000 点）")
     rng = np.random.default_rng(0)
-    pts = (rng.random((11520, 3), dtype=np.float32) - 0.5) * 60.0
+    pts = (rng.random((20000, 3), dtype=np.float32) - 0.5) * 60.0
     msg = build_message(pts)
     decoded = point_cloud2.read_points_numpy(msg, field_names=("x", "y", "z"))
     diff = float(np.abs(decoded - pts).max())
     size_kb = len(msg.data) / 1024.0
     if diff < 1e-6:
-        print(f"  {PASS} 11520 点が一致（{size_kb:.0f} KB / スキャン）")
+        print(f"  {PASS} 20000 点が一致（{size_kb:.0f} KB / スキャン）")
         # 10Hz 配信時の帯域を出しておく（参考値）
         print(f"  [INFO] 10Hz なら {size_kb * 10 / 1024:.1f} MB/s")
     else:

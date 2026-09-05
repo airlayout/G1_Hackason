@@ -2,8 +2,7 @@
 
 2D 版（lidar.py）との違い:
     - 垂直 FOV を持つ多層スキャン（Mid-360 相当の -7〜+52 度）
-    - 前傾させて搭載する（Mid-360 は下向きが -7 度しかなく、水平搭載では
-      足元が見えない。20 度前傾で下向き -27 度を確保する）
+    - Unitree公式G1記述のtorso_link -> mid360_link姿勢で搭載する
     - ray_alignment="base"（2D とは逆。下記参照）
     - 出力は距離配列ではなく 3D 点群（PointCloud2 用）
 
@@ -33,6 +32,11 @@ from dataclasses import dataclass
 import torch
 
 from .lidar import expand_mesh_paths
+from .sensor_rig import (
+    TORSO_TO_MID360_RPY,
+    TORSO_TO_MID360_XYZ,
+    rpy_to_quat_wxyz,
+)
 
 # Livox Mid-360 の垂直 FOV [deg]。実機 G1 の標準構成に合わせる。
 VERTICAL_FOV_DEG: tuple[float, float] = (-7.0, 52.0)
@@ -40,20 +44,19 @@ VERTICAL_FOV_DEG: tuple[float, float] = (-7.0, 52.0)
 # ほぼ依存しないため、多めに取っても実行時間は変わらない）。
 CHANNELS: int = 32
 # 水平方向のビーム数（360 度を等分する）
-HORIZONTAL_BEAMS: int = 360
-# 前傾角 [deg]。正の値でセンサが下を向く。
-# Mid-360 の下向きは -7 度しかないため、水平搭載では足元（水平から 7 度 =
-# 8.9 m 先の床）しか見えず「パレットに引っかかる」課題が解決しない。
-# 20 度前傾させると下向き -27 度となり 2.2 m 先の床から見える。
-FORWARD_TILT_DEG: float = 20.0
+HORIZONTAL_BEAMS: int = 625
+# 32 x 625 x 10Hz = 200,000 points/s。走査形状は等間隔近似だが、
+# 点数・FOV・フレーム周期はMid-360公称仕様へ合わせる。
+FORWARD_TILT_DEG: float = math.degrees(TORSO_TO_MID360_RPY[1])
 
 MAX_RANGE: float = 30.0
 MIN_RANGE: float = 0.3
 
 # G1 の胴体 (torso_link) は地上 0.753 m にある（実測値）。
-TORSO_HEIGHT: float = 0.753
-TARGET_LIDAR_HEIGHT: float = 1.1
-LIDAR_OFFSET_Z: float = TARGET_LIDAR_HEIGHT - TORSO_HEIGHT  # +0.347
+LIDAR_OFFSET_Z: float = TORSO_TO_MID360_XYZ[2]
+# 旧検証ツールが表示・投影計算に使う値。Mapping本体はセンサ姿勢を直接使う。
+TORSO_HEIGHT: float = 0.745
+TARGET_LIDAR_HEIGHT: float = TORSO_HEIGHT + LIDAR_OFFSET_Z
 
 
 def tilt_quat_wxyz(tilt_deg: float) -> tuple[float, float, float, float]:
@@ -135,8 +138,12 @@ class G1Lidar3D:
         cfg = MultiMeshRayCasterCfg(
             prim_path=f"{robot_prim_path}/torso_link",
             offset=MultiMeshRayCasterCfg.OffsetCfg(
-                pos=(0.0, 0.0, LIDAR_OFFSET_Z),
-                rot=tilt_quat_wxyz(tilt_deg),
+                pos=TORSO_TO_MID360_XYZ,
+                rot=rpy_to_quat_wxyz(
+                    TORSO_TO_MID360_RPY[0],
+                    math.radians(tilt_deg),
+                    TORSO_TO_MID360_RPY[2],
+                ),
             ),
             # 3D では "base" が正しい（2D の "yaw" とは逆）。詳細は
             # モジュール冒頭の docstring を参照。
@@ -155,7 +162,7 @@ class G1Lidar3D:
         up_deg = VERTICAL_FOV_DEG[1] - tilt_deg
         # 下向き角から床が見え始める距離を出す（地上 TARGET_LIDAR_HEIGHT から）
         if down_deg < 0.0:
-            floor_dist = TARGET_LIDAR_HEIGHT / math.tan(math.radians(-down_deg))
+            floor_dist = 1.1 / math.tan(math.radians(-down_deg))
             floor_note = f"{floor_dist:.1f} m 先の床から見える"
         else:
             floor_note = "床は見えない"
@@ -200,7 +207,7 @@ class G1Lidar3D:
         """
         quat_w = self._sensor.data.quat_w[0]
         offset_local = torch.tensor(
-            [0.0, 0.0, LIDAR_OFFSET_Z], device=quat_w.device, dtype=torch.float32
+            list(TORSO_TO_MID360_XYZ), device=quat_w.device, dtype=torch.float32
         )
         return _rotate_by_quat(offset_local.unsqueeze(0), quat_w)[0]
 

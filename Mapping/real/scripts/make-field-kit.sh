@@ -9,6 +9,7 @@ OUTPUT_PATH="${1:-$REAL_DIR/dist/g1-mapping-field-kit_$TIMESTAMP.tar.gz}"
 TEMP_DIR="$(mktemp -d)"
 KIT_DIR="$TEMP_DIR/g1-mapping-field-kit"
 IMAGES=(
+    g1-mapping-common:local
     g1-mapping-onboard:local
     g1-mapping-raw:local
     g1-mapping-visualization:local

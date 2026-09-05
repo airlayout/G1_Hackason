@@ -14,6 +14,11 @@ class ComposeError(RuntimeError):
     pass
 
 
+# docker compose run はコンテナ生成とROS初期化で十数秒かかることがある。
+# probeの--durationにこの余裕を足した値をsubprocessのタイムアウトにする。
+_CONTAINER_STARTUP_MARGIN = 45
+
+
 class ComposeRuntime:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -38,13 +43,14 @@ class ComposeRuntime:
         self,
         *arguments: str,
         session_id: str | None = None,
+        backend: str | None = None,
         timeout: float | None = None,
         check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
         result = subprocess.run(
             self._command(*arguments),
             cwd=self.settings.project_dir,
-            env=self.settings.compose_environment(session_id),
+            env=self.settings.compose_environment(session_id, backend),
             text=True,
             capture_output=True,
             timeout=timeout,
@@ -71,6 +77,8 @@ class ComposeRuntime:
             "--profile",
             "raw",
             "--profile",
+            "sim",
+            "--profile",
             "viz",
             "build",
         )
@@ -85,6 +93,7 @@ class ComposeRuntime:
         fixed_frame: str,
         map_topic: str,
         rviz: bool,
+        backend: str | None = None,
     ) -> None:
         """可視化コンテナをforegroundで実行する。"""
 
@@ -121,7 +130,7 @@ class ComposeRuntime:
                 *launch_arguments,
             ]
         )
-        environment = self.settings.compose_environment()
+        environment = self.settings.compose_environment(backend=backend)
         if rviz and not environment.get("XAUTHORITY"):
             xauthority_candidates = (
                 Path.home() / ".Xauthority",
@@ -156,14 +165,16 @@ class ComposeRuntime:
             "probe",
             "--timeout",
             str(timeout_seconds),
-            timeout=timeout_seconds + 10,
+            timeout=timeout_seconds + _CONTAINER_STARTUP_MARGIN,
             check=False,
         )
 
-    def probe_raw(self, timeout_seconds: int) -> subprocess.CompletedProcess[str]:
+    def probe_raw(
+        self, timeout_seconds: int, *, backend: str = "raw"
+    ) -> subprocess.CompletedProcess[str]:
         return self.run(
             "--profile",
-            "raw",
+            backend,
             "run",
             "--rm",
             "-T",
@@ -178,20 +189,51 @@ class ComposeRuntime:
             self.settings.raw_imu_topic,
             "--duration",
             str(timeout_seconds),
-            timeout=timeout_seconds + 15,
+            *( ["--require-camera"] if backend == "sim" else [] ),
+            backend=backend,
+            timeout=timeout_seconds + _CONTAINER_STARTUP_MARGIN,
+            check=False,
+        )
+
+    def probe_camera(self, timeout_seconds: int, *, backend: str) -> subprocess.CompletedProcess[str]:
+        return self.run(
+            "--profile",
+            backend,
+            "run",
+            "--rm",
+            "-T",
+            "session_recorder",
+            "ros2",
+            "run",
+            "g1_mapping_tools",
+            "zmq_camera_probe",
+            "--host",
+            self.settings.camera_host,
+            "--port",
+            str(self.settings.camera_zmq_port),
+            "--camera-name",
+            self.settings.camera_name,
+            "--duration",
+            str(timeout_seconds),
+            backend=backend,
+            timeout=timeout_seconds + _CONTAINER_STARTUP_MARGIN,
             check=False,
         )
 
     def start(self, session: MappingSession) -> None:
+        common_services = ["session_recorder", "session_trajectory"]
+        if self.settings.camera_enabled and session.backend != "sim":
+            common_services.append("camera_bridge")
         if session.backend == "onboard":
             self.run(
                 "--profile",
                 "onboard",
                 "up",
                 "-d",
-                "onboard_recorder",
-                "onboard_trajectory",
+                *common_services,
+                "onboard_pipeline",
                 session_id=session.session_id,
+                backend=session.backend,
             )
             self.run(
                 "--profile",
@@ -204,82 +246,95 @@ class ComposeRuntime:
                 "--map",
                 session.remote_map_path,
                 session_id=session.session_id,
+                backend=session.backend,
                 timeout=20,
             )
             return
 
-        if session.backend == "raw":
+        if session.backend in {"raw", "sim"}:
             self.run(
                 "--profile",
-                "raw",
+                session.backend,
                 "up",
                 "-d",
-                "raw_recorder",
-                "raw_trajectory",
+                *common_services,
                 "raw_lio",
                 session_id=session.session_id,
+                backend=session.backend,
             )
             return
 
         raise ValueError(f"未知のbackendです: {session.backend}")
 
+    def _stop_services(self, session: MappingSession, *backend_services: str) -> None:
+        services = [*backend_services]
+        if self.settings.camera_enabled and session.backend != "sim":
+            services.append("camera_bridge")
+        services.extend(["session_trajectory", "session_recorder"])
+        self.run(
+            "--profile",
+            session.backend,
+            "stop",
+            "-t",
+            "30",
+            *services,
+            session_id=session.session_id,
+            backend=session.backend,
+            check=False,
+        )
+
     def save_and_stop(self, session: MappingSession) -> None:
         if session.backend == "onboard":
-            self.run(
-                "--profile",
-                "onboard",
-                "run",
-                "--rm",
-                "-T",
-                "onboard_client",
-                "stop",
-                "--map",
-                session.remote_map_path,
-                session_id=session.session_id,
-                timeout=30,
-            )
-            self.run(
-                "--profile",
-                "onboard",
-                "stop",
-                "-t",
-                "20",
-                "onboard_trajectory",
-                "onboard_recorder",
-                session_id=session.session_id,
-                check=False,
-            )
+            failure: Exception | None = None
+            try:
+                self.run(
+                    "--profile",
+                    "onboard",
+                    "run",
+                    "--rm",
+                    "-T",
+                    "onboard_client",
+                    "stop",
+                    "--map",
+                    session.remote_map_path,
+                    session_id=session.session_id,
+                    backend=session.backend,
+                    timeout=30,
+                )
+            except Exception as error:
+                failure = error
+            finally:
+                self._stop_services(session, "onboard_pipeline")
+            if failure is not None:
+                raise failure
             return
 
-        if session.backend == "raw":
-            self.run(
-                "--profile",
-                "raw",
-                "exec",
-                "-T",
-                "raw_lio",
-                "bash",
-                "-lc",
-                (
-                    "source /opt/ros/humble/setup.bash && "
-                    "source /opt/g1_ws/install/setup.bash && "
-                    "ros2 service call /map_save std_srvs/srv/Trigger '{}'"
-                ),
-                session_id=session.session_id,
-                timeout=60,
-            )
-            self.run(
-                "--profile",
-                "raw",
-                "stop",
-                "-t",
-                "30",
-                "raw_lio",
-                "raw_trajectory",
-                "raw_recorder",
-                session_id=session.session_id,
-                check=False,
-            )
+        if session.backend in {"raw", "sim"}:
+            failure = None
+            try:
+                self.run(
+                    "--profile",
+                    session.backend,
+                    "exec",
+                    "-T",
+                    "raw_lio",
+                    "bash",
+                    "-lc",
+                    (
+                        "source /opt/ros/humble/setup.bash && "
+                        "source /opt/g1_ws/install/setup.bash && "
+                        "ros2 service call /map_save std_srvs/srv/Trigger '{}'"
+                    ),
+                    session_id=session.session_id,
+                    backend=session.backend,
+                    timeout=60,
+                )
+            except Exception as error:
+                failure = error
+            finally:
+                self._stop_services(session, "raw_lio")
+            if failure is not None:
+                raise failure
             return
 
         raise ValueError(f"未知のbackendです: {session.backend}")
@@ -292,6 +347,7 @@ class ComposeRuntime:
             "logs",
             "--no-color",
             session_id=session.session_id,
+            backend=session.backend,
             check=False,
         )
         log_path = session.directory / "logs" / "compose.log"
@@ -303,6 +359,7 @@ class ComposeRuntime:
             session.backend,
             "ps",
             session_id=session.session_id,
+            backend=session.backend,
             check=False,
         )
         return (result.stdout + result.stderr).strip()

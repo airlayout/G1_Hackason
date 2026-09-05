@@ -14,6 +14,20 @@ x-common-environment: &common-environment
   RAW_IMU_TOPIC: ${RAW_IMU_TOPIC:-/utlidar/imu_livox_mid360}
   ONBOARD_POINTS_TOPIC: ${ONBOARD_POINTS_TOPIC:-/unitree/slam_mapping/points}
   ONBOARD_ODOM_TOPIC: ${ONBOARD_ODOM_TOPIC:-/unitree/slam_mapping/odom}
+  USE_SIM_TIME: ${USE_SIM_TIME:-false}
+  CAMERA_ENABLED: ${CAMERA_ENABLED:-true}
+  CAMERA_HOST: ${CAMERA_HOST:-192.168.123.164}
+  CAMERA_ZMQ_PORT: ${CAMERA_ZMQ_PORT:-5555}
+  CAMERA_NAME: ${CAMERA_NAME:-head_camera}
+  CAMERA_FRAME_ID: ${CAMERA_FRAME_ID:-camera_color_optical_frame}
+  CAMERA_WIDTH: ${CAMERA_WIDTH:-0}
+  CAMERA_HEIGHT: ${CAMERA_HEIGHT:-0}
+  CAMERA_FX: ${CAMERA_FX:-0.0}
+  CAMERA_FY: ${CAMERA_FY:-0.0}
+  CAMERA_CX: ${CAMERA_CX:-0.0}
+  CAMERA_CY: ${CAMERA_CY:-0.0}
+  MAP_VOXEL_SIZE: ${MAP_VOXEL_SIZE:-0.05}
+  DENSITY_TARGET_SCANS: ${DENSITY_TARGET_SCANS:-10}
   POINT_TIMESTAMP_MODE: ${POINT_TIMESTAMP_MODE:-auto}
   ALLOW_INFERRED_POINT_TIME: ${ALLOW_INFERRED_POINT_TIME:-true}
 
@@ -26,6 +40,55 @@ x-common-runtime: &common-runtime
     - ${MAPPING_RUNS_DIR:-./runs}:/runs
 
 services:
+  session_recorder:
+    <<: *common-runtime
+    profiles: [onboard, raw, sim]
+    image: g1-mapping-common:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: base
+    command: [/opt/g1/bin/record-topics.sh]
+    stop_grace_period: 30s
+
+  session_trajectory:
+    <<: *common-runtime
+    profiles: [onboard, raw, sim]
+    image: g1-mapping-common:local
+    command: [/opt/g1/bin/trajectory-writer.sh]
+    stop_grace_period: 10s
+
+  camera_bridge:
+    <<: *common-runtime
+    profiles: [onboard, raw]
+    image: g1-mapping-common:local
+    command:
+      - ros2
+      - run
+      - g1_mapping_tools
+      - zmq_camera_bridge
+      - --ros-args
+      - -p
+      - host:=${CAMERA_HOST:-192.168.123.164}
+      - -p
+      - port:=${CAMERA_ZMQ_PORT:-5555}
+      - -p
+      - camera_name:=${CAMERA_NAME:-head_camera}
+      - -p
+      - frame_id:=${CAMERA_FRAME_ID:-camera_color_optical_frame}
+      - -p
+      - width:=${CAMERA_WIDTH:-0}
+      - -p
+      - height:=${CAMERA_HEIGHT:-0}
+      - -p
+      - fx:=${CAMERA_FX:-0.0}
+      - -p
+      - fy:=${CAMERA_FY:-0.0}
+      - -p
+      - cx:=${CAMERA_CX:-0.0}
+      - -p
+      - cy:=${CAMERA_CY:-0.0}
+
   onboard_client:
     <<: *common-runtime
     profiles: [onboard]
@@ -37,23 +100,25 @@ services:
     entrypoint: [/opt/g1/bin/onboard-entrypoint.sh]
     command: [probe]
 
-  onboard_recorder:
+  onboard_pipeline:
     <<: *common-runtime
     profiles: [onboard]
     image: g1-mapping-onboard:local
-    command: [/opt/g1/bin/record-topics.sh, onboard]
-    stop_grace_period: 30s
-
-  onboard_trajectory:
-    <<: *common-runtime
-    profiles: [onboard]
-    image: g1-mapping-onboard:local
-    command: [/opt/g1/bin/trajectory-writer.sh, onboard]
+    command:
+      - ros2
+      - launch
+      - g1_mapping_tools
+      - normalized_mapping.launch.py
+      - source_odom:=${ONBOARD_ODOM_TOPIC:-/unitree/slam_mapping/odom}
+      - source_cloud:=${ONBOARD_POINTS_TOPIC:-/unitree/slam_mapping/points}
+      - use_sim_time:=false
+      - voxel_size:=${MAP_VOXEL_SIZE:-0.05}
+      - target_scan_count:=${DENSITY_TARGET_SCANS:-10}
     stop_grace_period: 10s
 
   raw_tools:
     <<: *common-runtime
-    profiles: [raw]
+    profiles: [raw, sim]
     image: g1-mapping-raw:local
     build:
       context: .
@@ -63,24 +128,10 @@ services:
 
   raw_lio:
     <<: *common-runtime
-    profiles: [raw]
+    profiles: [raw, sim]
     image: g1-mapping-raw:local
     command: [ros2, launch, g1_mapping_bringup, raw_mapping.launch.py]
     stop_grace_period: 30s
-
-  raw_recorder:
-    <<: *common-runtime
-    profiles: [raw]
-    image: g1-mapping-raw:local
-    command: [/opt/g1/bin/record-topics.sh, raw]
-    stop_grace_period: 30s
-
-  raw_trajectory:
-    <<: *common-runtime
-    profiles: [raw]
-    image: g1-mapping-raw:local
-    command: [/opt/g1/bin/trajectory-writer.sh, raw]
-    stop_grace_period: 10s
 
   rviz:
     <<: *common-runtime

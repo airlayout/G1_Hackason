@@ -7,10 +7,12 @@ G1の部屋Mappingを、内蔵LIOと生LiDAR＋IMUの2方式で実行する現�
 
 | backend | 処理場所 | 主な依存 | PCD保存 |
 |---|---|---|---|
-| `onboard` | G1内蔵SLAMサービス | Unitree SDK2 | G1へ保存後、SCPで回収 |
+| `onboard` | G1内蔵SLAMサービス | Unitree SDK2 | 登録済み点群から共通再構成 |
 | `raw` | 現場Ubuntu PC | ROS 2 Humble、FAST-LIO2 | 現場PCへ直接保存 |
+| `sim` | Isaac Sim＋現場PC | ROS 2 Humble、FAST-LIO2 | 現場PCへ直接保存 |
 
-いずれも、購読できるLiDAR・IMU・odometryをrosbag2へ並行記録する。
+いずれも、生LiDAR・IMU・RGB・CameraInfo・正規化済みodometry・登録点群を同じ
+rosbag2へ並行記録する。これが再処理可能な正本になる。
 
 ## 必要環境
 
@@ -45,6 +47,14 @@ mockでも実際と同じセッション状態遷移を通り、PCD、trajectory
 
 ## 現場操作
 
+G1 PC2では、歩行modeに触れないカメラ専用serverを先に起動する。
+
+```bash
+ssh -t unitree@192.168.123.164 'bash ~/mapping_tools/start_camera_only.sh'
+```
+
+この端末は計測中そのまま開いておく。別端末の現場PCで次を実行する。
+
 ```bash
 ./mapctl doctor --backend auto
 ./mapctl start --backend auto --name room_a
@@ -52,6 +62,10 @@ mockでも実際と同じセッション状態遷移を通り、PCD、trajectory
 ./mapctl stop
 ./mapctl validate
 ```
+
+`mapctl view --live`では、密度色付き蓄積点群、最新登録点群、自己位置、軌跡、RGBを
+同時表示する。青は観測回数が少なく、黄〜赤は繰り返し観測された領域を表す。
+密度1.0までに必要なスキャン数は`.env`の`DENSITY_TARGET_SCANS`で変更できる。
 
 ## rosbagから地図を作り直す
 
@@ -70,9 +84,8 @@ mockでも実際と同じセッション状態遷移を通り、PCD、trajectory
 `db3`を直接読むため**ROS 2もDockerも要らず**、`metadata.yaml`が欠けたセッションからも
 復旧できる。処理はホストのPythonだけで完結する（標準ライブラリのみ）。
 
-既定では`onboard`セッションは`ONBOARD_POINTS_TOPIC`、それ以外は`RAW_POINTS_TOPIC`を使う。
-`RAW_POINTS_TOPIC`はセンサー座標系なので、姿勢で変換しない限り重ならない点に注意する。
-つまり実用になるのは`onboard`セッションの再構成である。
+既定ではbackendによらず`/g1_mapping/cloud_registered`を使う。adapterより前の生LiDARは
+センサー座標系なので、PCD再構成には使用しない。
 
 同一ボクセルに落ちた点は最初の1点だけを残す。既存の`map_raw.pcd`は`--force`なしでは
 上書きしない（実機から回収した地図のほうが正であるため）。

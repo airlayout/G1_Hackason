@@ -27,13 +27,19 @@ def _parser() -> argparse.ArgumentParser:
     subparsers.add_parser("build", help="onboard/raw Docker imageを構築する")
 
     doctor = subparsers.add_parser("doctor", help="接続・センサー・backendを非破壊診断する")
-    doctor.add_argument("--backend", choices=("auto", "onboard", "raw"), default="auto")
+    doctor.add_argument(
+        "--backend", choices=("auto", "onboard", "raw", "sim"), default="auto"
+    )
     doctor.add_argument("--timeout", type=int, default=5)
     doctor.add_argument("--json", action="store_true", dest="as_json")
     doctor.add_argument("--mock", action="store_true")
 
     start = subparsers.add_parser("start", help="新しいMappingセッションを開始する")
-    start.add_argument("--backend", choices=("auto", "onboard", "raw", "mock"), default="auto")
+    start.add_argument(
+        "--backend",
+        choices=("auto", "onboard", "raw", "sim", "mock"),
+        default="auto",
+    )
     start.add_argument("--name", default="room")
     start.add_argument("--timeout", type=int, default=5)
     start.add_argument(
@@ -68,7 +74,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     rebuild.add_argument("session_id", nargs="?")
     rebuild.add_argument(
-        "--topic", help="使うPointCloud2トピック（既定: backendに応じた地図点群）"
+        "--topic", help="使うPointCloud2トピック（既定: 共通の登録済み点群）"
     )
     rebuild.add_argument(
         "--voxel",
@@ -86,27 +92,6 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _fetch_onboard_map(settings: Settings, session: MappingSession) -> None:
-    command = [
-        "scp",
-        "-o",
-        "ConnectTimeout=10",
-        "-o",
-        "StrictHostKeyChecking=accept-new",
-    ]
-    if settings.g1_ssh_key:
-        command.extend(["-i", str(Path(settings.g1_ssh_key).expanduser())])
-    command.extend(
-        [
-            f"{settings.g1_user}@{settings.g1_host}:{session.remote_map_path}",
-            str(session.map_path),
-        ]
-    )
-    result = subprocess.run(command, text=True, capture_output=True, check=False)
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "G1からPCDを回収できませんでした")
-
-
 def _choose_backend(
     settings: Settings,
     requested: str,
@@ -121,9 +106,13 @@ def _choose_backend(
     report = diagnose(
         settings, requested_backend=requested, mock=False, timeout_seconds=timeout
     )
-    if report.selected_backend:
+    if report.ready and report.selected_backend:
         return report.selected_backend, report
-    if force and requested in {"onboard", "raw"}:
+    host_failed = any(
+        check.status == "FAIL" and check.name.startswith("host.")
+        for check in report.checks
+    )
+    if force and not host_failed and requested in {"onboard", "raw", "sim"}:
         return requested, report
     print_report(report)
     raise RuntimeError("利用可能なbackendを確認できませんでした")
@@ -160,8 +149,10 @@ def _start(settings: Settings, arguments: argparse.Namespace) -> int:
     print(f"[STARTED] {session.session_id}")
     print(f"[BACKEND] {backend}")
     print(f"[OUTPUT] {session.directory}")
-    if backend != "mock":
+    if backend in {"onboard", "raw"}:
         print("[NEXT] G1を5〜10秒静止させてから、純正リモコンで低速移動してください")
+    elif backend == "sim":
+        print("[NEXT] Isaac Simを走行させ、別端末で ./mapctl view --live を実行できます")
     return 0
 
 
@@ -185,11 +176,16 @@ def _stop(settings: Settings, arguments: argparse.Namespace) -> int:
             runtime.collect_logs(session)
         except Exception as exc:
             errors.append(f"ログ回収: {exc}")
-        if session.backend == "onboard":
+        if not session.map_path.is_file():
             try:
-                _fetch_onboard_map(settings, session)
+                rebuild_map(
+                    session.directory,
+                    topic="/g1_mapping/cloud_registered",
+                    output_path=session.map_path,
+                    voxel_size=0.05,
+                )
             except Exception as exc:
-                errors.append(f"PCD回収: {exc}")
+                errors.append(f"共通登録点群からのPCD再構成: {exc}")
 
     valid, report = validate_session(
         session.directory,
@@ -259,14 +255,8 @@ def _view(settings: Settings, arguments: argparse.Namespace) -> int:
             raise RuntimeError("mockセッションはライブ表示できません。保存後に表示してください")
         mode = "live"
         pcd_path = ""
-        fixed_frame = arguments.fixed_frame or (
-            "camera_init" if session.backend == "raw" else "map"
-        )
-        map_topic = arguments.map_topic or (
-            settings.onboard_points_topic
-            if session.backend == "onboard"
-            else "/g1_mapping/map"
-        )
+        fixed_frame = arguments.fixed_frame or "map"
+        map_topic = arguments.map_topic or "/g1_mapping/map"
     else:
         session = manager.resolve(arguments.session_id)
         if not session.map_path.is_file():
@@ -299,6 +289,7 @@ def _view(settings: Settings, arguments: argparse.Namespace) -> int:
             fixed_frame=fixed_frame,
             map_topic=map_topic,
             rviz=rviz,
+            backend=session.backend if mode == "live" else None,
         )
     except KeyboardInterrupt:
         print("\n[STOPPED] 可視化を終了しました")
@@ -317,11 +308,7 @@ def _rebuild(settings: Settings, arguments: argparse.Namespace) -> int:
         raise RuntimeError(
             f"既に存在します: {output_path}（上書きするなら --force）"
         )
-    topic = arguments.topic or (
-        settings.onboard_points_topic
-        if session.backend == "onboard"
-        else settings.raw_points_topic
-    )
+    topic = arguments.topic or "/g1_mapping/cloud_registered"
     print(f"[REBUILD] session={session.session_id} backend={session.backend}")
     print(f"[REBUILD] topic={topic} voxel={arguments.voxel}m")
 
