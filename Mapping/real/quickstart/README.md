@@ -49,7 +49,8 @@ Mac 側には **Lichtblick** を入れる（`app.foxglove.dev`はアカウント
 
 ```bash
 # --- 1. 有線をつなぎ、疎通を確認する ---
-#     Mac の en8 が 192.168.123.200 であること。WiFi は AP 分離で使えない
+#     Mac の en8 が 192.168.123.0/24 に居ること。**番号は固定でない**
+#     （他の作業者に取られることがある。第7節の落とし穴）。WiFi は AP 分離で使えない
 ping -c 3 192.168.123.164
 ssh g1 'hostname'
 
@@ -715,6 +716,109 @@ PC2のwlan0（`rtl8852bu`）はAPモードに対応しており、`dnsmasq-base`
 **「進捗の確認」には十分だが、「最終地図の正確なプレビュー」ではない。**
 UnitreeのLIOが再最適化を配信するのかは未確認。
 
+## 7. RViz2 で見る（Macのコンテナを G1 の L2 に載せる・**実機で確認済み**）
+
+第6節の Foxglove Bridge + Lichtblick を置き換える経路。2026-09-06 に一巡した。
+**RViz2 は `2D Goal Pose` を標準で持つ**ので、見るだけでなく目標を投げる側にも使える
+（`rviz_default_plugins` の `goal_tool.cpp`。Nav2 とは独立している）。
+
+```bash
+bash quickstart/start_rviz_mac.sh      # 冪等。二度打ちしてよい
+# → ブラウザで http://192.168.123.201/   （VNCのパスワードは ubuntu）
+```
+
+### 構成
+
+```text
+G1 内蔵スイッチ 192.168.123.0/24
+  ├ PC1      .161   slam_operate（クローズド）
+  ├ PC2      .164   pixi + Humble
+  ├ LiDAR    .120
+  ├ Mac      .202   有線NIC（en8。USBアダプタなので挿すまで現れない）
+  └ colima VM .201  ← socket_vmnet で L2 に直接参加。RViz2 はこの中
+```
+
+**なぜコンテナか。** RViz2 は Mac に native で入らない。X転送（PC2 で RViz2 → XQuartz）は
+コンテナ → VM → macOS と 2 段またぐ配管が要り、indirect GLX の壁で結局ソフトウェア描画に
+なる。X11 をコンテナ内で完結させブラウザで見る方が段が少ない。**XQuartz は要らなかった。**
+
+**なぜブリッジか。** colima の既定（shared）では VM が NAT の内側に居るため DDS の
+discovery が L2 に出ない。bridged にすると VM が L2 の一員になり、ROS 2 の通常の分散構成が
+そのまま成立する。イメージは [`tiryoh/ros2-desktop-vnc:humble`](https://hub.docker.com/r/tiryoh/ros2-desktop-vnc)
+（arm64 あり）で、Dockerfile は書いていない。足したのは `rmw_cyclonedds_cpp` だけ。
+
+### 実測（2026-09-06）
+
+| 項目 | 実測 |
+|---|---|
+| コンテナから見えるトピック | **131〜134**（`/api/*` を含む G1 の全DDS） |
+| `/utlidar/cloud_livox_mid360` | 9.97Hz / 4.58MB/s / 取りこぼし0（std dev 0.0009s） |
+| RViz2 の描画 | **31fps**（生LiDAR表示時は 9fps） |
+| Mac → VM の往復 | 0.4ms |
+
+**PC2 のアダプタは要らなかった。** 点群も `/slam_info` も ROS 2 の標準型
+（`sensor_msgs/PointCloud2`・`std_msgs/String`）なので、コンテナが直接購読できる。
+標準型でないのは `/api/slam_operate/request` の `unitree_api/msg/Request` だけで、
+**指令を出す側にだけ変換が要る**（購読側は不要）。
+
+### Fixed Frame — 生LiDARと建図点群は重ねられない
+
+`g1_live.rviz` の既定は `map`。建図（1801）を投げるまで `/unitree/slam_mapping/points` は
+流れないので、**始めるまで画面は空である**。生LiDARを見たいときは `LiDAR raw` を有効にし、
+Fixed Frame を `livox_frame` にする。
+
+**両方を同時に見ることはできない。** G1 は `/tf` も `/tf_static` も配信しておらず
+（publisher 0）、`odom_to_tf.py` を流しても繋がるのは `map → base_link` まで。
+`base_link → livox_frame` の取付オフセットは**実測値が手元に無い**（`odom_to_tf.py` 冒頭）。
+
+### 落とし穴（実際に踏んだもの）
+
+**初回の `colima start` だけは自分の手で端末から実行する。** `/private/etc/sudoers.d/colima`
+を置くのに sudo パスワードが要り、**tty が無いと必ず失敗する**（`sudo: a terminal is required`）。
+一度入れば以降は聞かれない。エージェント経由では通せない。
+
+**`colima stop` を Ctrl-C で中断しない。** データディスクのロックが残り、次回の起動が
+`failed to run attach disk "colima", in use by instance "colima"` で落ちる。外し方:
+
+```bash
+LIMA_HOME=~/.colima/_lima limactl disk unlock colima
+```
+
+**内蔵スイッチに DHCP は無い。** `.120` `.161` `.164` はすべて固定で、VM にも静的に振る
+必要がある（`start_rviz_mac.sh` が毎回 `col0` に振る。VM を作り直すたびに要る）。
+
+**ケーブルを抜き差ししたら Mac の IP を疑う。** このスイッチには**他の作業者も居る。**
+2026-09-06 に、抜いている間に `.200` を別マシン（`b4:e2:5b:5e:6c:03`）に取られ、macOS が
+重複を検知して IP を放棄した。設定は Manual `.200` のまま残るので、サービスを off/on しても
+永久に戻らない。**別の番号に振り直すしかない。**
+
+```bash
+ifconfig en8 | grep 'inet '           # status は active なのに IPv4 が無い
+colima ssh -- ip neigh show dev col0  # .200 の lladdr が自分の MAC と違えば衝突
+sudo networksetup -setmanual "AX88179B" 192.168.123.202 255.255.255.0 ""
+```
+
+**このとき VM は巻き添えにならない。** `col0` は socket_vmnet 経由で L2 に直接載っており、
+ホストの IP とは独立している。実際 DDS も RViz2 も動き続けた。Mac から `.201` に届かない
+間も、RViz2 は **`http://localhost/`** で見られる（colima のポートフォワードが
+`--network host` のコンテナにも効く）。切り分けの指針になる。
+
+**コンテナで RViz2 を起こすとき `bash -lc` を使わない。** ログインシェルが環境を作り直して
+`XAUTHORITY` を落とし、`Authorization required, but no authorization protocol specified` で
+起動に失敗する。`docker exec -u ubuntu -e DISPLAY=:1 -e XAUTHORITY=...` と直接渡す。
+デスクトップを持っているのは `ubuntu` で、root では X の cookie を引けない。
+
+**RViz2 のログを `/tmp` に置かない。** 一度でも root で起動を試すと `/tmp/rviz2.log` が
+root 所有で残り、以後 `ubuntu` ではリダイレクトできず、**bash が rviz2 を実行する前に死ぬ。**
+しかも **`docker exec -d` はそれでも exit 0 を返す**ので、成功したように見える。
+`$HOME` に置き、起動前に消すこと。**古いログを読んで誤診しやすい**（同じ X 認証エラーが
+残っているので、症状が一致してしまう）。切り分けは mtime を見るのが速い。
+
+```bash
+docker exec rviz ls -la --time-style=full-iso /home/ubuntu/rviz2.log
+docker exec rviz date -Is        # ログが古ければ、起動そのものが失敗している
+```
+
 ## 実測値（2026-09-02・G1を立たせて静止）
 
 | 項目 | 実測 |
@@ -777,6 +881,8 @@ PC2でimageをpullしたりapt installしたりする前提の手順は組まな
 | foxyでのROS 2利用 | **不可と確定。** `ddsi_plist_init_frommsg`でSIGSEGV（gdbで確認） |
 | pixi + Humble + foxglove_bridge | **実機で実証済み**（2026-09-03。生LiDAR 10.13Hz/4.5MB/s、地図 9.97Hz/0.4MB/s） |
 | WiFi越しのMac→PC2疎通 | **不可と確定。** AP分離で双方向遮断（第6節） |
+| Macコンテナの RViz2（L2ブリッジ） | **実機で実証済み**（2026-09-06。131トピック、LiDAR 9.97Hz/4.58MB/s、31fps。第7節） |
+| コンテナから G1 の DDS を直接購読 | **実機で実証済み**（2026-09-06。PC2 のアダプタ無しで点群・`/slam_info` が見える） |
 
 ### オフラインで確認したこと（2026-09-03・手動）
 
