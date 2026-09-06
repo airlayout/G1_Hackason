@@ -278,10 +278,26 @@ def rebuild_map(
     )
 
 
-def write_pcd(path: Path, points: "list[tuple[float, float, float]]") -> None:
-    """x/y/zのみのbinary PCDとして書き出す（pcd.pyのinspect_pcdが読める形式）。"""
+def write_pcd(
+    path: Path,
+    points: "list[tuple[float, float, float]]",
+    viewpoint: "tuple[float, float, float, float, float, float, float] | None" = None,
+) -> None:
+    """x/y/zのみのbinary PCDとして書き出す（pcd.pyのinspect_pcdが読める形式）。
+
+    viewpointは (tx, ty, tz, qw, qx, qy, qz)。PCLのVIEWPOINTは並進が先、
+    四元数はqwが先である。可視性ベースの地図掃除（OctoMap等）はこの欄から
+    センサ位置を読んでレイキャストするため、姿勢を書く場合はここに入れる。
+    省略時は従来どおり原点・無回転を書く。
+    """
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    if viewpoint is None:
+        viewpoint_line = "0 0 0 1 0 0 0"
+    else:
+        if len(viewpoint) != 7:
+            raise ValueError(f"viewpointは7要素(tx,ty,tz,qw,qx,qy,qz)である必要があります: {viewpoint}")
+        viewpoint_line = " ".join(f"{v:.9g}" for v in viewpoint)
     header = (
         "# .PCD v0.7 - Point Cloud Data file format\n"
         "VERSION 0.7\n"
@@ -291,7 +307,7 @@ def write_pcd(path: Path, points: "list[tuple[float, float, float]]") -> None:
         "COUNT 1 1 1\n"
         f"WIDTH {len(points)}\n"
         "HEIGHT 1\n"
-        "VIEWPOINT 0 0 0 1 0 0 0\n"
+        f"VIEWPOINT {viewpoint_line}\n"
         f"POINTS {len(points)}\n"
         "DATA binary\n"
     )

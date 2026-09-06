@@ -142,7 +142,39 @@ class PointCloudToLivox final : public rclcpp::Node {
     return static_cast<std::uint32_t>(std::llround(offset));
   }
 
+  // header.stamp が壊れているスキャンを弾く。
+  //
+  // 2026-09-04 の UiS_room_v2 で、生 LiDAR 6,785 スキャンのうち **480 件(7.07%)**
+  // が `header.stamp = 0` で届いていた。しかもその 480 件は点数が 1,046 点しか
+  // 無く（正常は 20,064 点）、部分的なパケットとみられる。
+  //
+  // FAST-LIO2 はスキャンの時刻が前回より戻ると
+  // 「lidar loop back, clear buffer」でバッファを丸ごと捨てるため、
+  // **7% のゴミが混じるだけで地図が一度も育たない**。実際に育たなかった。
+  //
+  // 打ち直さずに捨てるのは、点数が正常の 5% しかなく、per-point の `time` が
+  // 誤った基準時刻からの相対値になるため。**推測した時刻で de-skew すると
+  // かえって歪む。** 7% 落としても 10Hz が 9.3Hz になるだけで済む。
+  bool has_valid_stamp(const PointCloud2& cloud) {
+    const std::int64_t stamp_ns = rclcpp::Time(cloud.header.stamp).nanoseconds();
+    // 2001-09-09 より前の時刻は「打たれていない」とみなす
+    constexpr std::int64_t kMinimumPlausibleNs = 1000000000LL * 1000000000LL;
+    if (stamp_ns >= kMinimumPlausibleNs) {
+      return true;
+    }
+    ++dropped_scans_;
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 10000,
+        "header.stamp が不正なスキャンを捨てました（累計 %zu / %zu 件, %u 点）",
+        dropped_scans_, total_scans_, cloud.width * cloud.height);
+    return false;
+  }
+
   void on_points(const PointCloud2& cloud) {
+    ++total_scans_;
+    if (!has_valid_stamp(cloud)) {
+      return;
+    }
     try {
       convert_and_publish(cloud);
     } catch (const std::exception& error) {
@@ -233,6 +265,8 @@ class PointCloudToLivox final : public rclcpp::Node {
   }
 
   std::string timestamp_mode_;
+  std::size_t dropped_scans_{0};
+  std::size_t total_scans_{0};
   bool allow_inferred_time_{true};
   bool reported_inferred_time_{false};
   double scan_period_seconds_{0.1};
