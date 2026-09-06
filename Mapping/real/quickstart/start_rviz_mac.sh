@@ -46,14 +46,27 @@ PC2_IP="${G1_PC2_IP:-192.168.123.164}"
 IMAGE="${G1_RVIZ_IMAGE:-tiryoh/ros2-desktop-vnc:humble}"
 NAME="${G1_RVIZ_NAME:-rviz}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# ワークスペースの根（physical_ai）。コンテナに /work として見せる。
+# colima の VM に $HOME が virtiofs で入っているので、ここからバインドできる
+REPO_ROOT="$(cd "$HERE/../../../.." && pwd)"
 RVIZ_CFG="${G1_RVIZ_CFG:-$HERE/rviz/g1_live.rviz}"
 
 # DDS を必ずブリッジ側の NIC に載せる。VM には NAT の eth0 もあるので、
 # 指定しないと CycloneDDS がそちらを選んで G1 が見えないことがある。
 DDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$VM_NIC\" priority=\"default\" multicast=\"default\"/></Interfaces></General></Domain></CycloneDDS>"
+# offline では col0 が無い。ループバックに閉じないと CycloneDDS が NIC を選べない
+DDS_URI_OFFLINE="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"lo\" priority=\"default\" multicast=\"true\"/></Interfaces><AllowMulticast>true</AllowMulticast></General></Domain></CycloneDDS>"
 
 say() { echo "[rviz] $*"; }
 die() { echo "[rviz] $*" >&2; exit 1; }
+
+# offline: 実機に繋がず、記録した bag を再生して RViz2 で見るためのモード。
+# 有線・VM のブリッジ・PC2 への疎通をすべて飛ばし、DDS はコンテナ内に閉じる
+OFFLINE=0
+if [ "${1:-}" = "offline" ]; then
+    OFFLINE=1
+    shift
+fi
 
 if [ "${1:-}" = "stop" ]; then
     docker rm -f "$NAME" >/dev/null 2>&1 && say "コンテナを止めました（VM は動いたまま）"
@@ -66,48 +79,56 @@ if [ "${1:-}" = "down" ]; then
     exit 0
 fi
 
-# --- 1. 有線がつながっているか ------------------------------------------------
-ifconfig "$IFACE" >/dev/null 2>&1 \
-    || die "$IFACE が無い。有線アダプタを挿してから実行すること"
-MAC_IP=$(ifconfig "$IFACE" | awk '/inet /{print $2}')
-[ -n "$MAC_IP" ] || die "$IFACE に IPv4 が無い。ケーブルを確認すること"
-say "$IFACE = $MAC_IP"
-ping -c1 -W1000 "$PC2_IP" >/dev/null 2>&1 || die "PC2 ($PC2_IP) に届かない"
+DDS_ACTIVE="$DDS_URI"
+if [ "$OFFLINE" = 1 ]; then
+    DDS_ACTIVE="$DDS_URI_OFFLINE"
+    say "offline モード（実機に繋がない。記録の再生用）"
+    colima status >/dev/null 2>&1 || die "VM が動いていない。一度 実機ありで起動するか colima start すること"
+else
+    # --- 1. 有線がつながっているか ------------------------------------------------
+    ifconfig "$IFACE" >/dev/null 2>&1 \
+        || die "$IFACE が無い。有線アダプタを挿してから実行すること"
+    MAC_IP=$(ifconfig "$IFACE" | awk '/inet /{print $2}')
+    [ -n "$MAC_IP" ] || die "$IFACE に IPv4 が無い。ケーブルを確認すること"
+    say "$IFACE = $MAC_IP"
+    ping -c1 -W1000 "$PC2_IP" >/dev/null 2>&1 || die "PC2 ($PC2_IP) に届かない"
 
-# --- 2. VM の IP が誰かと衝突していないか -------------------------------------
-# G1 の内蔵スイッチに DHCP は無い（.120/.161/.164/.200 はすべて固定）。
-# 静的に振るので、振る前に空いていることを確かめる。
-if ! colima status >/dev/null 2>&1; then
-    if ping -c1 -W800 "$VM_IP" >/dev/null 2>&1; then
-        die "$VM_IP は誰かが使っている。G1_VM_IP で別の番号を指定すること"
+    # --- 2. VM の IP が誰かと衝突していないか -------------------------------------
+    # G1 の内蔵スイッチに DHCP は無い（.120/.161/.164/.200 はすべて固定）。
+    # 静的に振るので、振る前に空いていることを確かめる。
+    if ! colima status >/dev/null 2>&1; then
+        if ping -c1 -W800 "$VM_IP" >/dev/null 2>&1; then
+            die "$VM_IP は誰かが使っている。G1_VM_IP で別の番号を指定すること"
+        fi
     fi
-fi
 
-# --- 3. VM をブリッジで起動 ---------------------------------------------------
-if colima status >/dev/null 2>&1; then
-    say "VM は起動済み"
-else
-    say "VM を起動する（初回は sudo パスワードを聞かれる）"
-    # 中断すると datadisk のロックが残り、次回 "in use by instance" で起動できなくなる。
-    # そのときは LIMA_HOME=~/.colima/_lima limactl disk unlock colima で外す。
-    colima start --cpu "${G1_VM_CPU:-4}" --memory "${G1_VM_MEM:-6}" --disk "${G1_VM_DISK:-24}" \
-        --vm-type vz --network-mode bridged --network-interface "$IFACE" --network-address \
-        || die "VM の起動に失敗した"
-fi
+    # --- 3. VM をブリッジで起動 ---------------------------------------------------
+    if colima status >/dev/null 2>&1; then
+        say "VM は起動済み"
+    else
+        say "VM を起動する（初回は sudo パスワードを聞かれる）"
+        # 中断すると datadisk のロックが残り、次回 "in use by instance" で起動できなくなる。
+        # そのときは LIMA_HOME=~/.colima/_lima limactl disk unlock colima で外す。
+        colima start --cpu "${G1_VM_CPU:-4}" --memory "${G1_VM_MEM:-6}" --disk "${G1_VM_DISK:-24}" \
+            --vm-type vz --network-mode bridged --network-interface "$IFACE" --network-address \
+            || die "VM の起動に失敗した"
+    fi
 
-colima ssh -- ip link show "$VM_NIC" >/dev/null 2>&1 \
-    || die "VM に $VM_NIC が無い。bridged になっていない（colima start のログを見ること）"
+    colima ssh -- ip link show "$VM_NIC" >/dev/null 2>&1 \
+        || die "VM に $VM_NIC が無い。bridged になっていない（colima start のログを見ること）"
 
-# --- 4. ブリッジ NIC に静的 IP を振る -----------------------------------------
-# DHCP が無いので colima 任せでは IP が付かない。VM を作り直すたびに要る。
-if colima ssh -- ip -4 addr show "$VM_NIC" 2>/dev/null | grep -q "$VM_IP"; then
-    say "$VM_NIC = $VM_IP （設定済み）"
-else
-    colima ssh -- sudo ip addr add "$VM_IP/24" dev "$VM_NIC" \
-        || die "$VM_NIC への IP 付与に失敗した"
-    say "$VM_NIC = $VM_IP を付与した"
+    # --- 4. ブリッジ NIC に静的 IP を振る -----------------------------------------
+    # DHCP が無いので colima 任せでは IP が付かない。VM を作り直すたびに要る。
+    if colima ssh -- ip -4 addr show "$VM_NIC" 2>/dev/null | grep -q "$VM_IP"; then
+        say "$VM_NIC = $VM_IP （設定済み）"
+    else
+        colima ssh -- sudo ip addr add "$VM_IP/24" dev "$VM_NIC" \
+            || die "$VM_NIC への IP 付与に失敗した"
+        say "$VM_NIC = $VM_IP を付与した"
+    fi
+    ping -c2 -W1000 "$VM_IP" >/dev/null 2>&1 || die "$VM_IP に届かない。ブリッジが通っていない"
+
 fi
-ping -c2 -W1000 "$VM_IP" >/dev/null 2>&1 || die "$VM_IP に届かない。ブリッジが通っていない"
 
 # --- 5. コンテナ --------------------------------------------------------------
 # --network host で VM の netns を共有する。こうしないとコンテナが docker0 の
@@ -117,10 +138,13 @@ if docker inspect "$NAME" >/dev/null 2>&1; then
     say "コンテナは起動済み"
 else
     say "コンテナを作る（イメージが無ければ pull に数分）"
+    # リポジトリを /work に見せる。記録した bag をコンテナで `ros2 bag play` するのに要る。
+    # colima の VM には $HOME が virtiofs で入っているので、そこからバインドできる
     docker run -d --name "$NAME" --network host \
+        -v "$REPO_ROOT:/work" \
         -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}" \
         -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
-        -e CYCLONEDDS_URI="$DDS_URI" \
+        -e CYCLONEDDS_URI="$DDS_ACTIVE" \
         -e LIBGL_ALWAYS_SOFTWARE=1 \
         --security-opt seccomp=unconfined --shm-size=512m \
         "$IMAGE" >/dev/null || die "コンテナの起動に失敗した"
@@ -159,7 +183,7 @@ docker exec -d -u ubuntu \
     -e LIBGL_ALWAYS_SOFTWARE=1 \
     -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}" \
     -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
-    -e CYCLONEDDS_URI="$DDS_URI" \
+    -e CYCLONEDDS_URI="$DDS_ACTIVE" \
     "$NAME" bash -c "source /opt/ros/humble/setup.bash; rviz2 -d /home/ubuntu/g1_live.rviz >$LOG 2>&1"
 
 sleep 12

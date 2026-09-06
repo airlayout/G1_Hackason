@@ -38,7 +38,7 @@ from sensor_msgs.msg import PointCloud2
 
 
 class Restamp(Node):
-    def __init__(self, src: str, dst: str, force: bool) -> None:
+    def __init__(self, src: str, dst: str, force: bool, frame_id: str = "") -> None:
         super().__init__("restamp_points")
         qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -49,11 +49,21 @@ class Restamp(Node):
         self._pub = self.create_publisher(PointCloud2, dst, qos)
         self.create_subscription(PointCloud2, src, self._on_cloud, qos)
         self._force = force
+        self._frame_id = frame_id
         self._count = 0
         self._nonzero = 0
-        self.get_logger().info("[restamp] {} -> {} （時刻を打ち直す）".format(src, dst))
+        note = "時刻を打ち直す"
+        if frame_id:
+            note += " / 座標系を {} に付け替える".format(frame_id)
+        self.get_logger().info("[restamp] {} -> {} （{}）".format(src, dst, note))
 
     def _on_cloud(self, msg: PointCloud2) -> None:
+        # 実機は frame_id="map" を名乗るが、それは**ロボットの地図座標系**であって
+        # こちらの map ではない。TF では odom に相当するので、そのまま RViz や Nav2 に
+        # 渡すと位置合わせの変換を通らず、ずれたまま描かれる（2026-09-06 に踏んだ）。
+        # 名前を付け替えれば TF が効く
+        if self._frame_id:
+            msg.header.frame_id = self._frame_id
         original_zero = (msg.header.stamp.sec == 0 and msg.header.stamp.nanosec == 0)
         if not original_zero:
             self._nonzero += 1
@@ -79,12 +89,17 @@ def main(argv=None) -> int:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--src", default="/unitree/slam_mapping/points")
     p.add_argument("--dst", default="/unitree/slam_mapping/points_stamped")
+    p.add_argument("--frame-id", default="",
+                   help="再配信時に header.frame_id をこれに差し替える。"
+                        "実機の SLAM は frame_id=\"map\" を名乗るが、それは"
+                        "ロボットの地図座標系で、こちらの TF では odom に当たる。"
+                        "Nav2 構成では --frame-id odom を指定する")
     p.add_argument("--force", action="store_true",
                    help="元から時刻が入っていても打ち直す")
     args = p.parse_args(argv)
 
     rclpy.init()
-    node = Restamp(args.src, args.dst, args.force)
+    node = Restamp(args.src, args.dst, args.force, args.frame_id)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
