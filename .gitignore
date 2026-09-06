@@ -39,9 +39,13 @@ _local/
 
 # Navigation の sim 資産（fetch_assets.sh が取り直す。手で編集しない前提のvendored物と、
 # pcd_to_mjcf.py などが生成する MJCF / STL / hfield が同居するため丸ごと除外する）
+# 上流のコミットで固定してあり、bash Navigation/sim/fetch_assets.sh で再取得できる（24MB）
 Navigation/sim/assets/
 # 記録から作り直せる地図（runs/ 自体が除外されているのと同じ理由）
+# scans.npz から再生成できる中間成果物でもある
 Navigation/sim/maps/
+# Navigation 専用の uv 環境（uv sync で再生成できる）
+Navigation/.venv/
 
 # 外部リポジトリのクローン（それぞれ独自の .git を持つ）
 Mapping/real/vendor/

@@ -1,0 +1,50 @@
+# Navigation 専用の Python 環境。他班の環境（G1_HuggingFace/venv, Mapping の Docker）には触れない。
+#
+#   cd Navigation && uv sync                                  # 既定(dds)。実機を叩くとき
+#   cd Navigation && uv sync --group mujoco --group walk      # sim を動かすとき
+#   cd Navigation && uv sync --group pcd                      # 実地図(PCD)を読むとき
+#   cd Navigation && uv sync --all-groups                     # 全部
+#
+# Python を 3.10 に固定する理由: unitree_sdk2py が要求する cyclonedds==0.10.2 の
+# macOS arm64 wheel が cp38/cp39/cp310 にしか無い（3.11 以降は無い）。
+# nav/ 本体と tests/ は標準ライブラリのみで、この環境が無くても python3 で動く（CI はそう動く）。
+[project]
+name = "g1-navigation"
+version = "0.1.0"
+description = "Unitree G1 の純正ナビ(slam_operate)に乗る Navigation 層"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",          # 四元数変換・占有格子の膨張・距離変換
+    "scikit-image>=0.22",   # 格子上の経路探索（route_through_array）
+]
+
+[dependency-groups]
+dds = [
+    "cyclonedds==0.10.2",
+    "unitree-sdk2py @ git+https://github.com/unitreerobotics/unitree_sdk2_python.git@65691c8a8bc53b98d3976dba4dbf9d5d20b2e7f5",
+]
+mujoco = [
+    "mujoco>=3.3",
+    "mujoco-lidar",
+]
+# 学習済み歩行ポリシー(motion.pt)を回すのに要るもの。
+# motion.pt は TorchScript なので torch が要る（onnxruntime では読めない）。
+# pyyaml は unitree_rl_gym の g1.yaml（kps/kds/観測スケール）を読むため。
+walk = [
+    "torch>=2.2",
+    "pyyaml>=6.0",
+]
+viz = [
+    "matplotlib>=3.8",
+]
+# 点群ファイル(PCD/PLY)の読み書き。約 400MB あるので既定には入れない。
+# `nav/occupancy.py` は関数の中で import しており、点群を numpy で自前に組む
+# `sim/rooms.py` 経由なら入っていなくても動く。
+pcd = [
+    "open3d>=0.18",
+]
+
+[tool.uv]
+package = false            # Navigation はパッケージとして install しない（PYTHONPATH で使う）
+default-groups = ["dds"]
