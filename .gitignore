@@ -36,3 +36,16 @@ Mapping/real/.mapping-state.json
 
 # このPCだけに置くローカル専用データ（共有しない・再取得できるもの）
 _local/
+
+# Navigation の sim 資産（fetch_assets.sh が取り直す。手で編集しない前提のvendored物と、
+# pcd_to_mjcf.py などが生成する MJCF / STL / hfield が同居するため丸ごと除外する）
+Navigation/sim/assets/
+# 記録から作り直せる地図（runs/ 自体が除外されているのと同じ理由）
+Navigation/sim/maps/
+
+# 外部リポジトリのクローン（それぞれ独自の .git を持つ）
+Mapping/real/vendor/
+
+# 深度カメラの撮影結果がリポジトリ直下に落ちたもの
+Mapping/real/DepthCamera_*.json
+Mapping/real/DepthCapture_*.png
