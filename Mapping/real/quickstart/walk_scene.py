@@ -42,6 +42,7 @@ from pathlib import Path
 
 import numpy as np
 import open3d as o3d
+from scipy import ndimage
 from scipy.spatial import cKDTree
 
 QUICKSTART = Path(__file__).resolve().parent
@@ -77,6 +78,11 @@ def farthest_pair(free: np.ndarray) -> "tuple[tuple[int, int], tuple[int, int]]"
     """自由セルの中で、最短経路が最も長くなる 2 点を 2 回掃引で求める。
 
     直線距離で選ぶと壁を挟んだ 2 点を選んでしまい、「端から端」にならない。
+
+    **掃引は島をまたげないので、最初に一番大きい島を選ぶ。** 実測地図の自由空間は
+    壁と未知でいくつもの島に割れる（UiS_room_v3 で 130 個）。走査順で最初に見つけた
+    自由セルから広げると、地図の隅にある小部屋に当たったときそこから出られず、
+    「端から端」がその小部屋の差し渡しになる（同地図で 95m² の本体を素通りして 4.9m）。
     """
     def sweep(seed: "tuple[int, int]") -> "tuple[tuple[int, int], np.ndarray]":
         distance = np.full(free.shape, -1, np.int32)
@@ -93,7 +99,12 @@ def farthest_pair(free: np.ndarray) -> "tuple[tuple[int, int], tuple[int, int]]"
         flat = int(np.argmax(distance))
         return (flat // free.shape[1], flat % free.shape[1]), distance
 
-    rows, cols = np.nonzero(free)
+    islands, count = ndimage.label(free)
+    if count == 0:
+        raise ValueError("自由セルが 1 つも無い")
+    sizes = np.bincount(islands.ravel())
+    sizes[0] = 0                                    # 0 は「自由でない」側の札
+    rows, cols = np.nonzero(islands == int(sizes.argmax()))
     first, _ = sweep((int(rows[0]), int(cols[0])))
     second, _ = sweep(first)
     return first, second
