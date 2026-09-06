@@ -191,8 +191,8 @@ def initial_guess(track: PoseTrack, when: float, extrinsic: np.ndarray,
     return guess
 
 
-def export(session: Path, limit: int, start: int, voxel: float, min_fitness: float,
-           use_icp: bool) -> None:
+def export(session: Path, limit: int, start: int, stride: int, voxel: float,
+           min_fitness: float, use_icp: bool, out_name: str) -> None:
     bags = sorted(session.glob("raw/rosbag2/*.db3"))
     if not bags:
         raise SystemExit(f"db3 が見つかりません: {session}/raw/rosbag2/")
@@ -200,7 +200,7 @@ def export(session: Path, limit: int, start: int, voxel: float, min_fitness: flo
     if not map_path.exists():
         raise SystemExit(f"地図が見つかりません: {map_path}")
 
-    out_dir = session / "benchmark"
+    out_dir = session / out_name
     pcd_dir = out_dir / "pcd"
     pcd_dir.mkdir(parents=True, exist_ok=True)
 
@@ -226,6 +226,10 @@ def export(session: Path, limit: int, start: int, voxel: float, min_fitness: flo
 
         for index, (when, points) in enumerate(iter_raw_scans(connection)):
             if index < start:
+                continue
+            # 間引きは ICP に入る前に落とす。ICP が処理時間のほぼ全部なので、
+            # ここで落とした枚数がそのまま時間の削減になる
+            if stride > 1 and (index - start) % stride:
                 continue
             if len(points) < 500:
                 continue
@@ -281,6 +285,7 @@ def export(session: Path, limit: int, start: int, voxel: float, min_fitness: flo
         f"fitness 不足で捨てた枚数: {skipped_low}（閾値 {min_fitness}）",
         f"点の総数: {total_points:,}（1枚あたり {total_points//max(written,1):,}）",
         f"フレーム内の間引き: {voxel} m",
+        f"スキャンの間引き: {stride} 枚に 1 枚",
     ]
     if valid:
         report += [
@@ -297,6 +302,14 @@ def main() -> None:
     parser.add_argument("session_dir", type=Path)
     parser.add_argument("--limit", type=int, default=0, help="書き出す枚数の上限（0で全件）")
     parser.add_argument("--start", type=int, default=0, help="先頭から読み飛ばすスキャン数")
+    parser.add_argument("--stride", type=int, default=1,
+                        help="何枚に1枚だけ書き出すか（既定 1＝全部）。"
+                             "ICP が処理時間のほぼ全部なので、ここを N にすると時間も約 1/N になる。"
+                             "ただし OctoMap の可視性除去は「後から光線が通り抜けた回数」を"
+                             "証拠にするので、証拠も約 1/N に薄くなる")
+    parser.add_argument("--out-name", default="benchmark",
+                        help="<session>/ 直下の書き出し先の名前（既定 benchmark）。"
+                             "間引きの効き方を比べるとき、既存の出力を潰さずに並べられる")
     parser.add_argument("--voxel", type=float, default=0.05,
                         help="フレーム内の間引き辺長[m]（0で間引かない。既定 0.05）")
     parser.add_argument("--min-fitness", type=float, default=0.6,
@@ -304,8 +317,8 @@ def main() -> None:
     parser.add_argument("--no-icp", action="store_true",
                         help="ICP をせず odom + 外部パラメータのみで置く（検証用）")
     args = parser.parse_args()
-    export(args.session_dir, args.limit, args.start, args.voxel, args.min_fitness,
-           not args.no_icp)
+    export(args.session_dir, args.limit, args.start, args.stride, args.voxel,
+           args.min_fitness, not args.no_icp, args.out_name)
 
 
 if __name__ == "__main__":

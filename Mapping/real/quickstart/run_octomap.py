@@ -148,6 +148,9 @@ def main() -> None:
                         help="掃除する地図（既定 <session>/map/map_raw.pcd）")
     parser.add_argument("--output", default="map_octomap.pcd", help="map/ 配下の出力名")
     parser.add_argument("--stride", type=int, default=1, help="何枚に1枚投入するか（既定 1）")
+    parser.add_argument("--benchmark-dir", type=Path, default=None,
+                        help="姿勢つきPCDの置き場（既定 <session>/benchmark）。"
+                             "export_benchmark_data.py の --out-name と対で使う")
     parser.add_argument("--limit", type=int, default=0, help="投入する枚数の上限（0で全部）")
     parser.add_argument("--max-range", type=float, default=DEFAULT_MAX_RANGE,
                         help=f"レイを伸ばす上限[m]（-1で制限なし。既定 {DEFAULT_MAX_RANGE}）")
@@ -174,7 +177,8 @@ def main() -> None:
           f"閾値=[{args.thres_min},{args.thres_max}] maxRange={args.max_range}")
 
     began = time.time()
-    frames, points_in = insert_scans(tree, session / "benchmark" / "pcd",
+    benchmark_dir = args.benchmark_dir or (session / "benchmark")
+    frames, points_in = insert_scans(tree, benchmark_dir / "pcd",
                                      args.stride, args.limit, args.max_range)
     tree.updateInnerOccupancy()
     insert_seconds = time.time() - began
@@ -205,7 +209,7 @@ def main() -> None:
     write_pcd(out_dir / args.output, [tuple(p) for p in target.points[keep]])
     stem = Path(args.output).stem
     write_pcd(out_dir / f"{stem}_removed.pcd", [tuple(p) for p in target.points[removed]])
-    (session / "benchmark" / "octomap_report.txt").write_text("\n".join(lines) + "\n")
+    (benchmark_dir / "octomap_report.txt").write_text("\n".join(lines) + "\n")
     print(f"\n出力: {out_dir/args.output} と {out_dir/(stem+'_removed.pcd')}")
 
 
