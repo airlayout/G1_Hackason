@@ -156,7 +156,7 @@ Visualization Manager:
     Update Interval: 0
     Value: false
   - Class: rviz_default_plugins/MarkerArray
-    Enabled: false
+    Enabled: true
     Name: OctoMap voxels
     Namespaces: {}
     Topic:

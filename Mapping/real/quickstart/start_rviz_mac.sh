@@ -50,6 +50,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # colima の VM に $HOME が virtiofs で入っているので、ここからバインドできる
 REPO_ROOT="$(cd "$HERE/../../../.." && pwd)"
 RVIZ_CFG="${G1_RVIZ_CFG:-$HERE/rviz/g1_live.rviz}"
+# 転送先の名前は渡した設定と揃える。以前は常に g1_live.rviz という名前で
+# コピーしていたので、G1_RVIZ_CFG=.../g1_nav.rviz を渡しても RViz2 の
+# タイトルもログも g1_live のままで、どちらが出ているのか分からなかった。
+RVIZ_CFG_NAME="$(basename "$RVIZ_CFG")"
+RVIZ_CFG_DST="/home/ubuntu/$RVIZ_CFG_NAME"
 
 # DDS を必ずブリッジ側の NIC に載せる。VM には NAT の eth0 もあるので、
 # 指定しないと CycloneDDS がそちらを選んで G1 が見えないことがある。
@@ -161,11 +166,55 @@ if ! docker exec "$NAME" test -f /opt/ros/humble/lib/librmw_cyclonedds_cpp.so; t
         >/dev/null 2>&1 || die "rmw_cyclonedds_cpp の導入に失敗した"
 fi
 
+# MOLA-LO（LiDAR-Inertial Odometry）。これも ros-humble-desktop には入っていない。
+# 内蔵SLAM の odom は歩行中に roll/pitch が中央値 10.5° 狂う（2026-09-07 実測）。
+# その姿勢は PC1 の中で作られていて手が届かないので、こちらで作り直す。
+# MOLA-LO は IMU 融合・scan-to-map・map->odom(REP-105) を 1 本でやる。
+# 詳細は docs/plan/2026-09-07_2-mola-lo-map-alignment.md
+if [ "${G1_SKIP_MOLA:-0}" != "1" ] \
+   && ! docker exec "$NAME" test -f /opt/ros/humble/bin/mola-lidar-odometry-cli; then
+    say "MOLA-LO を入れる（39 パッケージ・数分）"
+    docker exec "$NAME" bash -c \
+        'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+             ros-humble-mola-lidar-odometry ros-humble-mola-bridge-ros2 \
+             ros-humble-mola-state-estimation ros-humble-mrpt-map-server ros-humble-mp2p-icp \
+             ros-humble-mola-metric-maps' \
+        >/dev/null 2>&1 || die "MOLA-LO の導入に失敗した（G1_SKIP_MOLA=1 で飛ばせる）"
+fi
+
+# ros-humble-mola-metric-maps は mola-lidar-odometry の依存に入っていないが、
+# パイプライン YAML が実行時に libmola_metric_maps.so をプラグインとして読む。
+# 無いと「Could not find 'libmola_metric_maps.so'」で最初の 1 スキャンで fatal に
+# なり、以降の観測が全部捨てられて 0 キーフレームで終わる（2026-09-07 に踏んだ）。
+# 上の一括導入に足したので、既存コンテナのための追いかけだけ別に見る。
+if [ "${G1_SKIP_MOLA:-0}" != "1" ] \
+   && ! docker exec "$NAME" test -e /opt/ros/humble/lib/aarch64-linux-gnu/libmola_metric_maps.so; then
+    say "mola_metric_maps（MOLA のプラグイン）を入れる"
+    docker exec "$NAME" bash -c \
+        'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+             ros-humble-mola-metric-maps' \
+        >/dev/null 2>&1 || die "mola_metric_maps の導入に失敗した"
+fi
+
+# Nav2 / OctoMap 一式。2026-09-06 に手で apt した分で、コンテナの中にしか無かった。
+# docker rm や別マシンでの再構築で消えるので、MOLA-LO と同じ形のガードで残す。
+# octomap_server は /occupied_cells_vis_array（MarkerArray）を自分で出すので、
+# 3D voxel は RViz2 の標準プラグインで描ける（octomap-rviz-plugins は要らない）。
+if [ "${G1_SKIP_NAV2:-0}" != "1" ] \
+   && ! docker exec "$NAME" test -f /opt/ros/humble/lib/octomap_server/octomap_server_node; then
+    say "Nav2 と OctoMap を入れる（数分）"
+    docker exec "$NAME" bash -c \
+        'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+             ros-humble-navigation2 ros-humble-nav2-bringup ros-humble-nav2-rviz-plugins \
+             ros-humble-octomap-server ros-humble-pointcloud-to-laserscan' \
+        >/dev/null 2>&1 || die "Nav2/OctoMap の導入に失敗した（G1_SKIP_NAV2=1 で飛ばせる）"
+fi
+
 # --- 6. RViz2 -----------------------------------------------------------------
 [ -f "$RVIZ_CFG" ] || die "$RVIZ_CFG が無い"
-docker cp "$RVIZ_CFG" "$NAME:/home/ubuntu/g1_live.rviz" >/dev/null \
+docker cp "$RVIZ_CFG" "$NAME:$RVIZ_CFG_DST" >/dev/null \
     || die "設定の転送に失敗した"
-docker exec "$NAME" chown ubuntu:ubuntu /home/ubuntu/g1_live.rviz
+docker exec "$NAME" chown ubuntu:ubuntu "$RVIZ_CFG_DST"
 
 docker exec "$NAME" pkill -f rviz2 >/dev/null 2>&1 && sleep 2
 
@@ -184,7 +233,7 @@ docker exec -d -u ubuntu \
     -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}" \
     -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     -e CYCLONEDDS_URI="$DDS_ACTIVE" \
-    "$NAME" bash -c "source /opt/ros/humble/setup.bash; rviz2 -d /home/ubuntu/g1_live.rviz >$LOG 2>&1"
+    "$NAME" bash -c "source /opt/ros/humble/setup.bash; rviz2 -d $RVIZ_CFG_DST >$LOG 2>&1"
 
 sleep 12
 if docker exec "$NAME" pgrep -f rviz2 >/dev/null 2>&1; then
