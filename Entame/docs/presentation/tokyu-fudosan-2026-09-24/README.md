@@ -9,7 +9,7 @@
 tokyu-fudosan-2026-09-24/
   slides.html                  # 提出・投影用スライド本体(台本を内包)
   scripts/generate-narration.py  # slides.html から台本を抽出しWAVを生成する
-  audio/slide_1.wav ... slide_7.wav  # スライド番号と1対1対応するナレーション音声
+  audio/slide_1.wav ... slide_8.wav  # スライド番号と1対1対応するナレーション音声
 ```
 
 ## 運用ルール

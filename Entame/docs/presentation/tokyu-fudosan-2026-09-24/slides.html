@@ -375,7 +375,7 @@
     </div>
     <div class="talk-script">
       <span class="script-label">🗣 台本</span>
-      <p>本日は12分お時間をいただき、ありがとうございます。エンタメチームより「もう一回、体験したくなる理由」というテーマでご提案します。巨大な設備投資に頼らず、ロボットの制御パラメータの調整と、体験の共有だけで、リピーターと新規のお客様を同時に生み出す新しいエンタメのご提案です。</p>
+      <p>本日はお時間をいただき、ありがとうございます。エンタメチームより「もう一回、体験したくなる理由」というテーマでご提案します。巨大な設備投資に頼らず、ロボットの制御パラメータの調整と、体験の共有だけで、リピーターと新規のお客様を同時に生み出す新しいエンタメのご提案です。</p>
       <audio controls src="audio/slide_1.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
@@ -442,29 +442,50 @@
     </div>
   </section>
 
-  <!-- 5: 技術説明・仕組み（How） -->
+  <!-- 5: なぜ成功すると言えるか・差別化 -->
   <section class="slide">
     <span class="slide-number mono">05</span>
     <div class="slide-body">
-      <h2>技術説明・仕組み（How）</h2>
+      <h2>なぜ成功すると言えるか・差別化</h2>
       <div class="slide-content">
         <ul class="plain">
-          <li>新しい動作を追加開発せず、既存の制御パラメータ（歩行速度・巡回ルート・警戒範囲）の調整のみで難易度を実現</li>
-          <li>難易度が変わっても1プレイの制限時間は固定し、店舗の回転率を維持</li>
+          <li>近接ジャンル（リアル脱出ゲーム・国内ゲームセンター）では、継続来場は「①コンテンツの更新」と「②やり込み・関係性」の2条件で起きている（各種公開統計より）</li>
+          <li>本提案はこの2条件を、①難易度段階の追加 ②プレイ映像の共有、に対応させて設計している</li>
+          <li>差別化ポイント：画面越しの体験ではなく、実在するロボットが会場内を実際に歩き回って追いかけてくる、現物の緊張感</li>
         </ul>
-        <p class="fill">※対価（1,500〜2,000円）・ミッション段階数・開発体制など具体的な運用数値は現時点でたたき台（`repeat-design.html`由来）</p>
+        <p class="fill">※継続率の具体的な数値は「なぜ成功するか」の裏づけとして参照した業界一般の統計であり、本アトラクション自体の実績ではない</p>
       </div>
     </div>
     <div class="talk-script">
       <span class="script-label">🗣 台本</span>
-      <p>技術的なポイントは、G1に新しい複雑な動きを追加していないことです。もともとある歩く速さや巡回ルート、警戒範囲といった設定値を変えるだけで、難易度の異なる体験を作れます。また、難易度に関わらず1回の体験時間は一定にしているので、店舗の回転率を崩しません。なお料金設定や難易度の段階数などの具体的な数値は、現時点ではたたき台の段階です。</p>
+      <p>なぜ続けて来ていただけると言えるのか。近い業態であるリアル脱出ゲームやゲームセンターでは、継続の理由は大きく2つに整理できます。1つは新しいコンテンツが追加されること。もう1つは、やり込みや、人に話したくなるような関係性です。今回の提案は、この2つを、難易度の追加と映像の共有という形で満たす設計にしています。そして何より、画面の中ではなく実際にロボットが会場を歩き回って追いかけてくるという、他にはない現物の緊張感が差別化のポイントです。</p>
       <audio controls src="audio/slide_5.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
 
-  <!-- 6: ガバナンス・現場配慮 -->
+  <!-- 6: 技術アーキテクチャ -->
   <section class="slide">
     <span class="slide-number mono">06</span>
+    <div class="slide-body">
+      <h2>技術アーキテクチャ</h2>
+      <div class="demo-flow">
+        <div class="demo-step"><div class="t">①ロボット</div><div class="d">歩行・追跡といった基本挙動</div></div>
+        <div class="demo-step"><div class="t">②難易度パラメータ層</div><div class="d">歩行速度・巡回ルート・警戒範囲の設定値を切り替えるだけで難易度を作る</div></div>
+        <div class="demo-step"><div class="t">③体験管理</div><div class="d">難易度に関わらずプレイ時間を固定し、店舗の回転率を維持</div></div>
+        <div class="demo-step"><div class="t">④映像取得・共有</div><div class="d">プレイ映像を記録し、持ち帰り・共有できる導線につなげる</div></div>
+      </div>
+      <p class="demo-fallback">実機との接続は現在検証中の段階（社内実証フェーズ）。</p>
+    </div>
+    <div class="talk-script">
+      <span class="script-label">🗣 台本</span>
+      <p>仕組みは大きく4段階です。まずロボットの歩行・追跡という基本挙動があり、その上に難易度パラメータの層を置きます。速度や巡回ルート、警戒範囲といった設定値を切り替えるだけで難易度を作れるので、新しい動作を一から開発する必要がありません。さらに、難易度が変わってもプレイ時間は固定し、店舗の回転率を守ります。最後に、プレイ映像を記録して持ち帰れる導線につなげます。なお実機との接続は現在検証を進めている段階です。</p>
+      <audio controls src="audio/slide_6.wav" style="width:100%;margin-top:0.4rem"></audio>
+    </div>
+  </section>
+
+  <!-- 7: ガバナンス・現場配慮 -->
+  <section class="slide">
+    <span class="slide-number mono">07</span>
     <div class="slide-body">
       <h2>ガバナンス・現場配慮（Safety &amp; Security）</h2>
       <div class="slide-content">
@@ -478,13 +499,13 @@
     <div class="talk-script">
       <span class="script-label">🗣 台本</span>
       <p>安全面では、ロボットが動く範囲を明確に区切り、いつでも止められる非常停止を用意する想定です。人との接触を避けるためのセンサーによる自動停止・回避といった仕組みは、現時点ではまだ実装できておらず、今後詰めていく重要な課題です。映像については、受付でお客様に同意をいただいた上で撮影し、安全に配布できる仕組みを検討しています。</p>
-      <audio controls src="audio/slide_6.wav" style="width:100%;margin-top:0.4rem"></audio>
+      <audio controls src="audio/slide_7.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
 
-  <!-- 7: 今後の展望・まとめ -->
+  <!-- 8: 今後の展望・まとめ -->
   <section class="slide">
-    <span class="slide-number mono">07</span>
+    <span class="slide-number mono">08</span>
     <div class="slide-body">
       <h2>今後の展望・まとめ（Vision）</h2>
       <div class="slide-content">
@@ -501,7 +522,7 @@
     <div class="talk-script">
       <span class="script-label">🗣 台本</span>
       <p>今後は、まず都心の商業施設で小さく試し、手応えが見えればリゾートなど他のエリアにも広げていきたいと考えています。まとめますと、新しい大きな開発をせずとも、既にある仕組みの設定変更だけで、もう一度来たくなる理由と、話題が広がる仕組みを両立できるというのが今回のご提案です。以上です。ご質問をお願いします。</p>
-      <audio controls src="audio/slide_7.wav" style="width:100%;margin-top:0.4rem"></audio>
+      <audio controls src="audio/slide_8.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
 
@@ -509,7 +530,7 @@
 
 <div class="present-bar no-print">
   <button onclick="prev()">← 前へ</button>
-  <span><span id="slideNo" class="mono">1</span> / 7</span>
+  <span><span id="slideNo" class="mono">1</span> / 8</span>
   <span>経過 <span id="stopwatch" class="mono">0:00</span></span>
   <span>このスライド <span id="slideWatch" class="mono">0:00</span><span id="slideBudget" class="mono budget">/0:00</span></span>
   <button onclick="toggleScript()">台本 表示/隠す</button>
@@ -534,7 +555,7 @@
 <script>
   (function () {
     var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
-    var CUM_END = [15, 45, 75, 195, 225, 255, 300];
+    var CUM_END = [15, 45, 75, 195, 220, 245, 275, 320];
     var SLIDE_BUDGET = CUM_END.map(function (end, i) {
       return i === 0 ? end : end - CUM_END[i - 1];
     });
