@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>企画書｜G1ステルスアトラクション周回システム実証計画</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;700;900&display=swap">
+  <style>
+    :root {
+      --ink: #16202B;
+      --ink-2: #3C4956;
+      --ink-3: #6B7885;
+      --rule: #D3DAE1;
+      --rule-soft: #E7EBEF;
+      --paper: #FFFFFF;
+      --surface: #F0F4F8;
+      --surface-2: #F7F9FA;
+      --detect: #B3341F;
+      --detect-soft: #F6E4E0;
+      --safe: #186E66;
+      --safe-soft: #DCEDEA;
+      --warn: #8A6412;
+      --warn-soft: #F6EEDA;
+      --ground: #E2E7EC;
+      --shadow: rgba(22, 32, 43, 0.12);
+      --sans: "Noto Sans JP", "Hiragino Kaku Gothic ProN", sans-serif;
+      --disp: "Zen Kaku Gothic New", "Noto Sans JP", sans-serif;
+      --mono: "JetBrains Mono", Consolas, monospace;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --ground: #11171D;
+        --paper: #1B232B;
+        --surface: #222C35;
+        --surface-2: #28333D;
+        --ink: #E6EBF0;
+        --ink-2: #AFBAC5;
+        --ink-3: #828D98;
+        --rule: #2F3A45;
+        --rule-soft: #28323B;
+        --detect: #E86A4E;
+        --detect-soft: #39201A;
+        --safe: #4FB3A5;
+        --safe-soft: #12302D;
+        --warn: #D9A93F;
+        --warn-soft: #322813;
+        --shadow: rgba(0, 0, 0, 0.55);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      background: var(--ground);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 13.5px;
+      line-height: 1.65;
+      margin: 0;
+      padding: 28px 16px 56px;
+      display: flex;
+      justify-content: center;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page {
+      background: var(--paper);
+      color: var(--ink);
+      width: min(820px, 100%);
+      padding: 40px 48px 48px;
+      box-shadow: 0 4px 20px var(--shadow);
+      border-radius: 6px;
+    }
+    @media (max-width: 640px) {
+      .page { padding: 24px 16px 36px; }
+    }
+
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--detect);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    h1 {
+      font-family: var(--disp);
+      font-weight: 900;
+      font-size: 24px;
+      line-height: 1.3;
+      margin: 0 0 10px;
+      letter-spacing: -0.01em;
+    }
+
+    .lede {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--ink-2);
+      margin: 0 0 28px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--rule-soft);
+    }
+
+    .section {
+      margin-bottom: 32px;
+    }
+
+    h2 {
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 11.5px;
+      color: var(--detect);
+      letter-spacing: 0.1em;
+      margin: 0 0 2px;
+      text-transform: uppercase;
+    }
+
+    h3 {
+      font-family: var(--disp);
+      font-weight: 900;
+      font-size: 16.5px;
+      margin: 0 0 10px;
+      padding-left: 8px;
+      border-left: 3px solid var(--detect);
+      line-height: 1.3;
+    }
+
+    /* 3分割サイクル */
+    .equation {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    @media (max-width: 600px) {
+      .equation { flex-direction: column; align-items: stretch; }
+      .eq-op { text-align: center; transform: rotate(90deg); margin: -4px 0; }
+    }
+    .eq-box {
+      flex: 1;
+      background: var(--surface-2);
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center;
+    }
+    .eq-box .l {
+      font-family: var(--disp);
+      font-weight: 700;
+      font-size: 13.5px;
+      color: var(--ink);
+    }
+    .eq-box .s {
+      font-size: 11px;
+      color: var(--ink-2);
+      margin-top: 2px;
+    }
+    .eq-op {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--detect);
+      flex-shrink: 0;
+    }
+
+    /* 3カラム価値グリッド */
+    .value-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 14px 0 10px;
+    }
+    @media (max-width: 600px) {
+      .value-grid { grid-template-columns: 1fr; }
+    }
+    .value-card {
+      background: var(--surface);
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .value-card .title {
+      font-family: var(--disp);
+      font-weight: 700;
+      font-size: 12.5px;
+      color: var(--ink);
+      margin-bottom: 2px;
+    }
+    .value-card p {
+      margin: 0;
+      font-size: 11.5px;
+      color: var(--ink-2);
+      line-height: 1.5;
+    }
+
+    /* テーブル共通 */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 12.5px;
+    }
+    th, td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--rule-soft);
+      vertical-align: top;
+    }
+    th {
+      font-family: var(--disp);
+      font-weight: 700;
+      color: var(--ink);
+      background: var(--surface);
+      border-bottom: 2px solid var(--rule);
+      font-size: 12px;
+    }
+    td.col-name {
+      font-family: var(--disp);
+      font-weight: 700;
+      color: var(--ink);
+      white-space: nowrap;
+    }
+    td.lv {
+      font-family: var(--mono);
+      font-weight: 700;
+      color: var(--detect);
+      width: 110px;
+      white-space: nowrap;
+    }
+
+    /* コールアウト枠 */
+    .callout {
+      background: var(--surface);
+      border-left: 3px solid var(--safe);
+      padding: 10px 14px;
+      border-radius: 0 6px 6px 0;
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--ink-2);
+      line-height: 1.6;
+    }
+    .callout b { color: var(--ink); }
+
+    /* 受取ステップ */
+    .step-bar {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+    @media (max-width: 600px) {
+      .step-bar { grid-template-columns: 1fr; }
+    }
+    .step-box {
+      background: #1B232B;
+      color: #E6EBF0;
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .step-box .num {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: #D9A93F;
+    }
+    .step-box .head {
+      font-family: var(--disp);
+      font-weight: 700;
+      font-size: 12.5px;
+      margin: 2px 0;
+    }
+    .step-box .desc {
+      font-size: 11px;
+      color: #AFBAC5;
+      line-height: 1.5;
+    }
+
+    /* 4人分業グリッド */
+    .role-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    @media (max-width: 600px) {
+      .role-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .role-card {
+      background: var(--surface-2);
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    .role-card .role-title {
+      font-family: var(--disp);
+      font-weight: 700;
+      font-size: 12px;
+      color: var(--safe);
+      margin-bottom: 2px;
+    }
+    .role-card p {
+      margin: 0;
+      font-size: 11px;
+      color: var(--ink-2);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="eyebrow">PoC企画書｜G1ステルスアトラクション周回システム実証</div>
+    <h1>なぜ、もう一回挑戦したくなるのか。</h1>
+    <p class="lede">
+      「ロボットの視線から隠れる緊張感」と「自分のプレイを見返す面白さ」。<br>
+      週4時間×4人（総工数約128時間）の最小工数で、2ヶ月後に確実に動く周回実証モデルを構築します。
+    </p>
+
+    <!-- 01 / 体験サイクルと対価価値 -->
+    <div class="section">
+      <h2>01 / 体験サイクル &amp; 価値</h2>
+      <h3>リピートを生む循環と、想定対価（1,500〜2,000円）の理由</h3>
+      
+      <div class="equation">
+        <div class="eq-box">
+          <div class="l">① ミッション選択</div>
+          <div class="s">3段階の難易度</div>
+        </div>
+        <div class="eq-op">→</div>
+        <div class="eq-box">
+          <div class="l">② ロボット視点で録画</div>
+          <div class="s">1分ダイジェストを自動生成</div>
+        </div>
+        <div class="eq-op">→</div>
+        <div class="eq-box">
+          <div class="l">③ 振り返り・再挑戦</div>
+          <div class="s">友人と共有／上位難易度へ</div>
+        </div>
+      </div>
+
+      <div class="value-grid">
+        <div class="value-card">
+          <div class="title">① 生身で対峙する非日常</div>
+          <p>画面やガラス越しではなく、人型ロボットが同じ空間で足音を立てて迫る実在感。</p>
+        </div>
+        <div class="value-card">
+          <div class="title">② 手元に残る動画土産</div>
+          <p>写真1枚（1,500円〜）と違い、ロボット目線の1分動画データがスマホに残る納得感。</p>
+        </div>
+        <div class="value-card">
+          <div class="title">③ 直感的なルール</div>
+          <p>脱出ゲームのような「難問で詰まるストレス」がなく、誰でも100%楽しめる。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 02 / 難易度設計 -->
+    <div class="section">
+      <h2>02 / 難易度設計（攻略欲）</h2>
+      <h3>パラメータ調整のみで構成する「3段階ミッション」</h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>ミッション</th>
+            <th>G1内部制御（設定変更のみ）</th>
+            <th>狙い（制限時間：一律固定）</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="lv">Mission 1: 基本巡回</td>
+            <td>巡回ルート固定 ／ 歩行速度：遅め</td>
+            <td>初心者が確実に隠れきれる成功体験</td>
+          </tr>
+          <tr>
+            <td class="lv">Mission 2: 不規則索敵</td>
+            <td>巡回ルート一部ランダム ／ 歩行速度：標準</td>
+            <td>先読みを崩し、「次は別ルートで」と周回を促す</td>
+          </tr>
+          <tr>
+            <td class="lv">Mission 3: 高警戒巡回</td>
+            <td>巡回ルート全ランダム ／ 速度：標準強・感度：高</td>
+            <td>死角を見極めて脱出を目指す上級編</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <b>新モーション開発は不要：</b> G1自身は「歩行と停止」に専念。臨場感は現場の減光・赤色スマートライト・警報音（物理）で担保します。
+      </div>
+    </div>
+
+    <!-- 03 / 映像提供 -->
+    <div class="section">
+      <h2>03 / 映像提供（共有欲）</h2>
+      <h3>プレイを客観的に確認できる「G1視点ダイジェスト動画」</h3>
+
+      <div class="step-bar">
+        <div class="step-box">
+          <div class="num">STEP 01</div>
+          <div class="head">受付時</div>
+          <div class="desc">POPのQRから利用規約・撮影に同意</div>
+        </div>
+        <div class="step-box">
+          <div class="num">STEP 02</div>
+          <div class="head">体験中</div>
+          <div class="desc">G1搭載カメラから視界映像を自動クリップ</div>
+        </div>
+        <div class="step-box">
+          <div class="num">STEP 03</div>
+          <div class="head">退場時</div>
+          <div class="desc">専用QRから1分動画（成否ロゴ付）を保存</div>
+        </div>
+      </div>
+
+      <div class="callout" style="border-left-color: var(--ink-3);">
+        <b>ロボット視線ならではの記録：</b> 隠れきった時は「目の前を素通りする様子」、発見時は「見つかった瞬間」が残るため、体験後の振り返りや話題化につながります。
+      </div>
+    </div>
+
+    <!-- 04 / スコープ比較 & 2ヶ月体制 -->
+    <div class="section">
+      <h2>04 / 実装スコープ &amp; 2ヶ月体制</h2>
+      <h3>デモ版（PoC）と本番（商業展開）の役割分界点</h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>項目</th>
+            <th>2ヶ月デモ版（PoCレベル）</th>
+            <th>本番展開（商業施設レベル）</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-name">ロボット制御</td>
+            <td>パラメータ調整による巡回・停止（開発担当）</td>
+            <td>自律SLAM巡回・自動充電ドック連携（開発＋ベンダー）</td>
+          </tr>
+          <tr>
+            <td class="col-name">空間演出</td>
+            <td>会議室の減光＋市販ライト・スピーカー机上配置（設置1h）</td>
+            <td>遮蔽壁の施工、天井埋込DMX照明・立体音響（<b>施設側施工</b>）</td>
+          </tr>
+          <tr>
+            <td class="col-name">映像生成</td>
+            <td>ffmpeg定型スクリプト＋ローカルQR表示（開発担当）</td>
+            <td>クラウド自動配信・マイページ連携（開発＋インフラ）</td>
+          </tr>
+          <tr>
+            <td class="col-name">現場運用</td>
+            <td>オズの魔法使い方式（裏方スタッフの手動支援）</td>
+            <td>施設常駐スタッフによる定型マニュアル運用（<b>施設側運用</b>）</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 4人分業グリッド -->
+      <div class="role-grid">
+        <div class="role-card">
+          <div class="role-title">🤖 A：ロボット</div>
+          <p>G1実機の歩行・停止の安定検証</p>
+        </div>
+        <div class="role-card">
+          <div class="role-title">📹 B：カメラ</div>
+          <p>G1カメラ映像のMP4録画スクリプト</p>
+        </div>
+        <div class="role-card">
+          <div class="role-title">🚨 C：空間演出</div>
+          <p>減光・市販ライト・スピーカー配置</p>
+        </div>
+        <div class="role-card">
+          <div class="role-title">🎬 D：動画・受取</div>
+          <p>ffmpeg定型合成と受取用QR画面</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
