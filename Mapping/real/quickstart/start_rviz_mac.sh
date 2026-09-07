@@ -39,16 +39,25 @@
 # （colima のポートフォワードが --network host のコンテナにも効く）。
 set -uo pipefail
 
-IFACE="${G1_MAC_IFACE:-en8}"          # 有線 NIC。USB アダプタなので挿すまで現れない
-VM_IP="${G1_VM_IP:-192.168.123.201}"
-VM_NIC="${G1_VM_NIC:-col0}"           # colima が bridged で足す NIC の名前
-PC2_IP="${G1_PC2_IP:-192.168.123.164}"
-IMAGE="${G1_RVIZ_IMAGE:-tiryoh/ros2-desktop-vnc:humble}"
-NAME="${G1_RVIZ_NAME:-rviz}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# DDS の URI と IP/名前の既定値はここ 1 箇所に置いてある。
+# 同じ XML が 6 ファイルに散っていて、1 文字違うと「G1 が見えない」という
+# 同じ症状になり切り分けに時間がかかっていた（2026-09-07 に切り出した）。
+# ⚠️ **変数を使う前に source すること。** set -u があるので順番を逆にすると
+# 「G1_MAC_IFACE: unbound variable」で即死する
+# shellcheck source=_common.sh
+. "$HERE/_common.sh"
+
+# 既定値は _common.sh。上書きは同じ環境変数（G1_MAC_IFACE など）で効く
+IFACE="$G1_MAC_IFACE"                 # 有線 NIC。USB アダプタなので挿すまで現れない
+VM_IP="$G1_VM_IP"
+VM_NIC="$G1_VM_NIC"                   # colima が bridged で足す NIC の名前
+PC2_IP="$G1_PC2_IP"
+IMAGE="$G1_RVIZ_IMAGE"
+NAME="$G1_RVIZ_NAME"
 # ワークスペースの根（physical_ai）。コンテナに /work として見せる。
 # colima の VM に $HOME が virtiofs で入っているので、ここからバインドできる
-REPO_ROOT="$(cd "$HERE/../../../.." && pwd)"
+REPO_ROOT="$G1_REPO_ROOT"
 RVIZ_CFG="${G1_RVIZ_CFG:-$HERE/rviz/g1_live.rviz}"
 # 転送先の名前は渡した設定と揃える。以前は常に g1_live.rviz という名前で
 # コピーしていたので、G1_RVIZ_CFG=.../g1_nav.rviz を渡しても RViz2 の
@@ -56,11 +65,12 @@ RVIZ_CFG="${G1_RVIZ_CFG:-$HERE/rviz/g1_live.rviz}"
 RVIZ_CFG_NAME="$(basename "$RVIZ_CFG")"
 RVIZ_CFG_DST="/home/ubuntu/$RVIZ_CFG_NAME"
 
-# DDS を必ずブリッジ側の NIC に載せる。VM には NAT の eth0 もあるので、
-# 指定しないと CycloneDDS がそちらを選んで G1 が見えないことがある。
-DDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$VM_NIC\" priority=\"default\" multicast=\"default\"/></Interfaces></General></Domain></CycloneDDS>"
-# offline では col0 が無い。ループバックに閉じないと CycloneDDS が NIC を選べない
-DDS_URI_OFFLINE="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"lo\" priority=\"default\" multicast=\"true\"/></Interfaces><AllowMulticast>true</AllowMulticast></General></Domain></CycloneDDS>"
+# DDS の URI は _common.sh が唯一の定義箇所。
+#   live    : ブリッジ側の NIC に載せる。VM には NAT の eth0 もあるので、
+#             指定しないと CycloneDDS がそちらを選んで G1 が見えないことがある
+#   offline : col0 が無いので、ループバックに閉じないと NIC を選べない
+DDS_URI="$(g1_dds_uri_live)"
+DDS_URI_OFFLINE="$(g1_dds_uri_offline)"
 
 say() { echo "[rviz] $*"; }
 die() { echo "[rviz] $*" >&2; exit 1; }

@@ -8,6 +8,19 @@ GUI確認まで通す**ための最小経路。
 
 2026-09-02に実機で端から端まで実証した。
 
+---
+
+> ## ⚠️ このファイルは**建図**の話。測位と Nav2 は [README-nav2.md](README-nav2.md) を見ること
+>
+> | やりたいこと | 読む先 |
+> |---|---|
+> | LiDAR を録って地図にして GUI で見る | **このファイル** |
+> | **事前地図の上で自己位置を出す**（MOLA-LO） | [README-nav2.md](README-nav2.md) |
+> | **Nav2 で歩かせる** / `/cmd_vel` を足に通す | [README-nav2.md](README-nav2.md) |
+> | 実機に繋がらないときの切り分け | `bash quickstart/check_link.sh`（[README-nav2.md](README-nav2.md) §2） |
+
+---
+
 ## 通しの例
 
 初回配布（`## 配置`）を済ませてあれば、これで一周する。`Mapping/real`で実行する。

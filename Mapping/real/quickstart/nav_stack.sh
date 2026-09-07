@@ -38,7 +38,12 @@
 # PC2 側の loco_driver.py（Navigation/real/）である。動かすにはあちらを --arm で起こす。
 set -uo pipefail
 
-NAME="${G1_RVIZ_NAME:-rviz}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# DDS の URI と IP/名前の既定値は _common.sh に 1 箇所だけ置いてある
+# shellcheck source=_common.sh
+. "$HERE/_common.sh"
+
+NAME="$G1_RVIZ_NAME"
 SESSION="${G1_SESSION:-20260906T135940_UiS_room_v3}"
 BAG="/work/G1_Hackason/Mapping/real/runs/$SESSION/raw/rosbag2"
 RATE="3"
@@ -61,11 +66,7 @@ MODE="offline"
 # offline はブリッジ NIC が無いので DDS をループバックに閉じる。
 # live は G1 の L2 に載っている col0 に載せる
 # （コンテナは --network host なので VM と同じ netns を見る）
-if [ "$MODE" = "live" ]; then
-    DDS='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="col0" priority="default" multicast="default"/></Interfaces></General></Domain></CycloneDDS>'
-else
-    DDS='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo" priority="default" multicast="true"/></Interfaces><AllowMulticast>true</AllowMulticast></General></Domain></CycloneDDS>'
-fi
+DDS="$(g1_dds_uri "$MODE")"
 
 say() { echo "[stack] $*"; }
 
