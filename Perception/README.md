@@ -12,10 +12,22 @@ G1のカメラ映像を取得し、YOLOによる物体検出を行う機能。
   - `output/` — `ResultWriter`（検出結果をconsole/JSON/CSVへ出力）
   - `pipeline.py` — `FrameSource -> YoloDetector -> ResultWriter` を繋いでループ実行する
 - `sim/` — MuJoCoシムの`head_camera`が配信するZMQストリームに接続して動作確認
-  （`run_sim.py` + `configs/config.yaml`）
 - `real/` — 実機G1のカメラ（`run_g1_server.py --camera`が配信するZMQストリーム、
-  デフォルトポート5555）に接続（`run_real.py` + `configs/config.yaml`）
+  デフォルトポート5555）に接続
 - `tests/` — `run_tests.sh`（CIが自動検出）。サンプル画像・動画によるYOLO検出の動作確認
+
+`sim/`・`real/`にはそれぞれ3つのスクリプトがあり、目的と依存の重さで使い分ける。
+
+| スクリプト | 何をするか | 依存 | いつ使うか |
+|---|---|---|---|
+| `probe_zmq_camera.py` | 認識せず、画像取得だけを確認・計測する | zmq/cv2/numpy | 接続確認、画像の収集 |
+| `run_*_visual.py` | 検出＋検出枠を描いた画像の保存 | ＋ultralytics/torch | 開発・検証（目視で確かめる） |
+| `run_*.py` | 検出のみ（console/JSONL/CSV） | ＋ultralytics/torch | 本番運用（実機のCPU向け） |
+
+**画像が来ないのか、認識が動かないのかを切り分けたいときは、まず
+`probe_zmq_camera.py`で画像経路だけを確定させる。** 検出精度を評価したいときは
+`run_*_visual.py`（数値だけでは正しいか目視できないため）。実機で常時動かすときは
+`run_*.py`（画像を保存しないぶん軽い）。
 
 sim・realのどちらも**同じZMQストリームの仕組み**（`common/camera/zmq_camera.py`の
 `ZmqFrameSource`）を使う。接続先(`server_address`)がシムなら`localhost`、実機なら

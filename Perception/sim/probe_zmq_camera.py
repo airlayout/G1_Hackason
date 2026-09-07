@@ -3,6 +3,13 @@
 シミュレーションでも実機でも同じスクリプトが使える(--host を変えるだけ)。
 手順・実測値は Perception/sim/README.md と Perception/real/README.md を参照。
 
+common/camera/zmq_camera.py の ZmqFrameSource は**あえて使っていない**。
+ZmqFrameSource の契約は「BGR画像を1枚返す」ことなので、
+  (1) 変換前の生データ … チャンネル順(RGB/BGR)の判定に必要
+  (2) メッセージ内の配信時刻 … 遅延・受信間隔の計測に必要
+のどちらも取り出せない。共通化するとこのスクリプトの役割そのものが失われるため、
+重複を承知でZMQ受信を自前で持っている。
+
 使い方:
   端末1: ./G1_HuggingFace/venv/bin/python SimpleWalk/sim/release_band_and_walk_forward.py
   端末2: ./G1_HuggingFace/venv/bin/python Perception/sim/probe_zmq_camera.py

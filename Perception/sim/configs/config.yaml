@@ -36,3 +36,10 @@ output:
   save_json: true
   save_csv: true
   output_dir: outputs
+
+  # 以下は run_sim_visual.py だけが読む(run_sim.py は無視する)。
+  # "none" | "all" | "detections_only"
+  save_images: detections_only
+  # 画像は再取得できるローカルデータなので _local/ 配下に置く(.gitignoreで除外済み)。
+  # Perception/sim/ から実行した場合の相対パス。
+  image_dir: ../../_local/perception/sim/images

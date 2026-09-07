@@ -1,11 +1,16 @@
 # Perception / sim
 
-MuJoCoシミュレーション上での検証コード。ここには2種類のスクリプトがある:
+MuJoCoシミュレーション上での検証コード。ここには3種類のスクリプトがある:
 
-- `run_sim.py` — `common/`のYOLO検出パイプライン一式(FrameSource -> YoloDetector ->
-  ResultWriter)を、ZMQストリーム経由でシムに接続して動かすもの
-- `probe_zmq_camera.py` — 認識処理を含まない、画像取得だけの動作確認スクリプト。
-  「そもそも画像が取れるか」を素早く確認するためのもの
+| スクリプト | 何をするか | いつ使うか |
+|---|---|---|
+| `probe_zmq_camera.py` | 認識せず、画像取得だけを確認・計測する | **接続確認**、画像の収集 |
+| `run_sim_visual.py` | 検出＋**検出枠を描いた画像の保存** | **開発・検証**(目視で確かめる) |
+| `run_sim.py` | 検出のみ(console/JSONL/CSV)。軽い | 本番運用(実機のCPU向け) |
+
+依存の重さもこの順で、`probe_zmq_camera.py`はzmq/cv2/numpyだけで動く
+(ultralytics/torchを必要としない)。**画像が来ないのか、認識が動かないのかを
+切り分けたいときは、まず`probe_zmq_camera.py`で画像経路だけを確定させるとよい。**
 
 ## run_sim.py（YOLO検出パイプライン）
 
@@ -32,6 +37,50 @@ python run_sim.py
 
 `common/camera/zmq_camera.py`の`ZmqFrameSource`は、下記「メッセージ形式」「実測値」の
 チャンネル順(RGB)を踏まえてBGRに変換してから返す（詳細はコード内コメントを参照）。
+
+## run_sim_visual.py（検出結果を画像として保存する版）
+
+`run_sim.py`との違いは「検出枠を描いた画像を保存するかどうか」だけ。
+`bbox=(120, 45, 260, 430)`という数値だけでは検出が正しいか人間が判断できないため、
+**目視で確認するために画像を残す**。検出精度の評価にはこちらを使う。
+
+`common/`の部品はそのまま再利用し、繋ぐループだけを独自に持つ。`run_sim.py`・
+`common/pipeline.py`は変更していないので、実機向けの軽い経路には影響しない。
+
+### 実行
+
+```bash
+cd Perception/sim
+../../G1_HuggingFace/venv/bin/python run_sim_visual.py --max-frames 30
+```
+
+シムの映像には人が写らないため、初回は`--save-images all`を付けて
+「検出0でも画像が保存されること」を確認するとよい。
+
+### 追加のオプション
+
+`run_sim.py`のオプションに加えて:
+
+| オプション | 既定値 | 説明 |
+|---|---|---|
+| `--save-images` | `detections_only` | `none` / `all` / `detections_only` |
+| `--image-dir` | `../../_local/perception/sim/images` | 画像の保存先 |
+
+既定の`detections_only`は「**検出が1つ以上あったフレームだけ保存**」。警備用途では
+何も起きていない時間が大半なので、この方が現実的。設定は`configs/config.yaml`の
+`output.save_images` / `output.image_dir`にもある（`run_sim.py`はこの項目を読まない）。
+
+保存先を`_local/`配下にしているのは、画像が再取得できるローカルデータであり、
+上流の`.gitignore`が`_local/`を除外済みのため。
+
+### 実装上の注意
+
+- 描画時は`frame.copy()`してから描く（`cv2.rectangle`は配列を直接書き換えるため）
+- `bbox`は`float`なので`int()`に変換してから`cv2`へ渡す
+- **チャンネル順の変換はしない**。`FrameSource`の契約がBGRで、`cv2.imwrite`も
+  BGR前提なので、そのまま保存すれば正しい色になる
+  （`probe_zmq_camera.py`は生データを扱うので変換が必要。逆なので混同しないこと）
+- ラベルは英数字のみ（`cv2.putText`は日本語を描けない）
 
 ## probe_zmq_camera.py（画像取得のみの動作確認）
 

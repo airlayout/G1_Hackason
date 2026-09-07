@@ -4,6 +4,13 @@
 既定値だけが違う。片方を直したらもう片方にも反映すること。
 手順・注意点は Perception/real/README.md を参照。
 
+common/camera/zmq_camera.py の ZmqFrameSource は**あえて使っていない**。
+ZmqFrameSource の契約は「BGR画像を1枚返す」ことなので、
+  (1) 変換前の生データ … チャンネル順(RGB/BGR)の判定に必要
+  (2) メッセージ内の配信時刻 … 遅延・受信間隔の計測に必要
+のどちらも取り出せない。共通化するとこのスクリプトの役割そのものが失われるため、
+重複を承知でZMQ受信を自前で持っている。
+
 使い方(先にG1本体で run_g1_server.py --camera を起動しておくこと):
   ./G1_HuggingFace/venv/bin/python Perception/real/probe_zmq_camera.py \
       --host 192.168.123.164 --timeout 60
