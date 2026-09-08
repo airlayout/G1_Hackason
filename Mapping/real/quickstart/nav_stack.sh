@@ -124,8 +124,17 @@ IMU_TOPIC="${G1_IMU_TOPIC:-/utlidar/imu_livox_mid360}"
 
 BAG_OFFSET="${G1_BAG_OFFSET:-0}"
 MOLA_TRAJ="${G1_MOLA_TRAJ:-$(dirname "$MOLA_MAP")/traj.txt}"
-# Nav2 の global_costmap.static_layer が読む /map の出どころ
-NAV_MAP="${G1_NAV_MAP:-/work/G1_Hackason/Mapping/real/runs/$SESSION/map/nav_map.yaml}"
+# Nav2 の global_costmap.static_layer が読む /map の出どころ。
+# 既定を nav_map_clean にしてある。2026-09-08 の実測で、元の nav_map.pgm は
+# **機体が実際に歩いた道の 60.4%（軌跡セル）を自分で塞いでいた**（占有セルまでの
+# 距離 中央値 0.224m < robot_radius 0.30m）。原因は 2 つで、どちらも作り方の側にあった:
+#   1. 追従者が軌跡沿いに焼き込まれていた（近距離除去 + OctoMap で落とした）
+#   2. 障害物帯の下限 0.15m が min_obstacle_height 0.23m と食い違い、床を撃っていた
+# 作り直した nav_map_clean は 中央値 0.781m / 0.30m 未満 1.9%。
+# 昔の測定を再現したいときは G1_NAV_MAP で nav_map.yaml を明示すること。
+# 作り方: filter_scans_near.py → run_octomap.py → pcd_to_occupancy.py
+# 合否:   check_map_clearance.py <地図> <traj.txt> --baseline <元の地図>
+NAV_MAP="${G1_NAV_MAP:-/work/G1_Hackason/Mapping/real/runs/$SESSION/map/nav_map_clean.yaml}"
 
 MODE="offline"
 [ "${1:-}" = "live" ] && { MODE="live"; shift; }

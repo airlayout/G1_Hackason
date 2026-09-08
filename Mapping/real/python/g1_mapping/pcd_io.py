@@ -79,3 +79,39 @@ def read_pcd(path: Path, finite_only: bool = True) -> PcdData:
     if finite_only:
         points = points[np.isfinite(points).all(axis=1)]
     return PcdData(points, _parse_viewpoint(header))
+
+
+def write_pcd_array(path: Path, points: np.ndarray,
+                    viewpoint: "tuple[float, ...] | None" = None) -> None:
+    """(N,3) の ndarray を binary PCD として書く。`read_pcd` の対。
+
+    `rebuild.write_pcd` と同じ形式だが、あちらは numpy を持ち込まない約束で
+    1 点ずつ struct.pack する。数百万点を書くとそこが支配的になるため、
+    numpy 側の入口にまとめて書く版を置く。
+
+    viewpoint は (tx, ty, tz, qw, qx, qy, qz)。PCL の並びは並進が先で qw が先。
+    """
+    points = np.ascontiguousarray(points, dtype=np.float32)
+    if points.ndim != 2 or points.shape[1] != 3:
+        raise ValueError(f"(N,3) の配列である必要があります: {points.shape}")
+    values = DEFAULT_VIEWPOINT if viewpoint is None else tuple(viewpoint)
+    if len(values) != 7:
+        raise ValueError(f"viewpointは7要素(tx,ty,tz,qw,qx,qy,qz)である必要があります: {values}")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = (
+        "# .PCD v0.7 - Point Cloud Data file format\n"
+        "VERSION 0.7\n"
+        "FIELDS x y z\n"
+        "SIZE 4 4 4\n"
+        "TYPE F F F\n"
+        "COUNT 1 1 1\n"
+        f"WIDTH {len(points)}\n"
+        "HEIGHT 1\n"
+        "VIEWPOINT {}\n".format(" ".join(f"{v:.9g}" for v in values)) +
+        f"POINTS {len(points)}\n"
+        "DATA binary\n"
+    )
+    with path.open("wb") as stream:
+        stream.write(header.encode("ascii"))
+        stream.write(points.tobytes())

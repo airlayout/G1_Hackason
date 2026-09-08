@@ -22,6 +22,15 @@ Nav2 の global costmap の静的レイヤは `nav_msgs/OccupancyGrid` を要求
     ../../Navigation/.venv/bin/python quickstart/pcd_to_occupancy.py \\
         runs/<id>/map/map_octomap_r4_s5.pcd runs/<id>/map/nav_map
     # -> nav_map.pgm と nav_map.yaml ができる
+
+作った地図は必ず `check_map_clearance.py` にかける。**軌跡が自分の歩いた道を
+塞いでいないか**は、地図を眺めても分からない（2026-09-08 に実際に嵌まった）。
+
+    quickstart/check_map_clearance.py runs/<id>/map/nav_map runs/<id>/mola_floor0/traj.txt
+
+⚠️ 出力名にドットを入れない（`with_suffix` が `band0.15` を `band0.pgm` にする）。
+⚠️ `--band 0.15 1.80` が 2026-09-06 までの既定だった。当時の nav_map を再現するときは
+   明示的に渡すこと（既定は `min_obstacle_height` に合わせて 0.23 にした）。
 """
 from __future__ import annotations
 
@@ -33,7 +42,15 @@ import open3d as o3d
 from scipy import ndimage
 
 FLOOR_PERCENTILE = 5.0      # 床の高さに使う分位。低い側から取る
-OBSTACLE_BAND = (0.15, 1.80)  # 床上のこの帯を障害物とする
+# ⚠️ 下限は `Navigation/nav2/g1_nav2.yaml` の `min_obstacle_height` と**同じ値**にする。
+# 静的地図の帯だけ低いと、静的レイヤが床を障害物として撃つ一方、costmap の
+# 観測レイヤは撃たない、という食い違いが起きる。2026-09-08 の実測:
+# 下限 0.15 の地図では軌跡の 60.4% が占有セルから 0.30m 未満だったが、
+# 0.23 にすると 1.9% になった（消えたのは全部床だった）。
+# なぜ 0.15 では足りないか: FLOOR_PERCENTILE の床推定は真の床（最頻ビン）より
+# 0.06〜0.07m 低く出る。さらに床自体が最大 +0.126m うねっている
+# （check_calibration.py で実測）。0.15 は実質 0.08m しか確保できていなかった。
+OBSTACLE_BAND = (0.23, 1.80)  # 床上のこの帯を障害物とする
 FLOOR_BAND = (-0.20, 0.15)    # 床面とみなす帯
 # pgm の慣習。Nav2 の map_server がこの値で読む
 PGM_OCCUPIED, PGM_FREE, PGM_UNKNOWN = 0, 254, 205
