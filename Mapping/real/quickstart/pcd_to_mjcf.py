@@ -59,6 +59,7 @@ QUICKSTART = Path(__file__).resolve().parent
 sys.path.insert(0, str(QUICKSTART))
 
 from eval_removal import read_trajectory  # noqa: E402
+from grid_boxes import boxes_from_grid  # noqa: E402,F401  再公開（下の (A) を参照）
 
 
 
@@ -253,36 +254,9 @@ def crop_to_content(grids: dict, mask: np.ndarray, margin: int = 2) -> dict:
 
 
 # ── (A) 箱にする ──────────────────────────────────────────────
-def boxes_from_grid(mask: np.ndarray, level: np.ndarray, cell: float,
-                    origin: np.ndarray) -> "list[tuple[float, float, float, float, float]]":
-    """行ごとに、同じ高さ段の連続セルを1つの箱へまとめる（行方向のランレングス）。
-
-    高さを量子化してから繋げるのが要点。生の最大高さで繋げると1セルごとに段が
-    変わって箱が減らない。
-    """
-    boxes = []
-    nrow, ncol = mask.shape
-    for row in range(nrow):
-        occupied_row, level_row = mask[row], level[row]
-        col = 0
-        while col < ncol:
-            if not occupied_row[col]:
-                col += 1
-                continue
-            height = level_row[col]
-            end = col
-            while end + 1 < ncol and occupied_row[end + 1] and level_row[end + 1] == height:
-                end += 1
-            width = end - col + 1
-            boxes.append((
-                float(origin[0] + (col + width / 2.0) * cell),   # 中心 x
-                float(origin[1] + (row + 0.5) * cell),           # 中心 y
-                float(height / 2.0),                             # 中心 z
-                float(width * cell / 2.0),                       # 半幅 x
-                float(height / 2.0),                             # 半高 z
-            ))
-            col = end + 1
-    return boxes
+# 実体は grid_boxes.py（numpy だけに依存）。Isaac Sim 側の
+# build_scene_usd.py が同じ箱を作るために、あちらからも同じ関数を読む。
+# ここは既存の呼び出し元（walk_scene.py / scene_to_html.py）のための再公開。
 
 
 # ── (C) ハイトフィールドにする ────────────────────────────────
