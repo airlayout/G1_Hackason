@@ -105,6 +105,44 @@ Visualization Manager:
     Use Fixed Frame: true
     Use rainbow: false
     Value: false
+  # 事前地図の 3D 版。nav_map.pgm（2D）と同じ map_octomap_r4_s5.pcd が出どころなので
+  # 「Static map 2D」とぴったり重なる。出しているのは pcl_ros の pcd_to_pointcloud で、
+  # publisher が Volatile ＝ 3 秒ごとに撃ち直しているだけなので、RViz2 を後から
+  # 起動しても最大 3 秒で出る。高さで着色して 3D の構造が見えるようにしてある
+  # （z は map 系。床 ≈ -1.2 / 天井 ≈ +1.6）。
+  - Alpha: 1
+    Autocompute Intensity Bounds: true
+    Autocompute Value Bounds:
+      Max Value: 1.65
+      Min Value: -1.35
+      Value: false
+    Axis: Z
+    Channel Name: intensity
+    Class: rviz_default_plugins/PointCloud2
+    Color: 200; 200; 200
+    Color Transformer: AxisColor
+    Decay Time: 0
+    Enabled: true
+    Invert Rainbow: false
+    Max Color: 255; 255; 255
+    Max Intensity: 1
+    Min Color: 0; 0; 0
+    Min Intensity: 0
+    Name: 事前地図 3D (OctoMap 4m)
+    Position Transformer: XYZ
+    Selectable: false
+    Size (Pixels): 2
+    Size (m): 0.03
+    Style: Points
+    Topic:
+      Depth: 2
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /cloud_pcd
+    Use Fixed Frame: true
+    Use rainbow: true
+    Value: true
   - Angle Tolerance: 0.1
     Class: rviz_default_plugins/Odometry
     Covariance:
@@ -188,7 +226,7 @@ Visualization Manager:
     Use Timestamp: false
   - Class: rviz_default_plugins/Map
     Enabled: true
-    Name: Static map (OctoMap 4m)
+    Name: Static map 2D (OctoMap 4m を投影)
     Alpha: 0.6
     Color Scheme: map
     Draw Behind: true
