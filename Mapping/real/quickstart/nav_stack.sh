@@ -169,6 +169,13 @@ if [ "${1:-}" = "stop" ]; then
     # SIGINT なら 3 秒以内に落ちる。**古い MOLA が生き残ると古い地図で map->odom を
     # 出し続ける**ので、次の起動で「新しい地図を読ませたのに測位がおかしい」という
     # 追いにくい形で出る。だから mola 系は -INT で送り、最後に生存確認 → SIGKILL する。
+    # ⚠️⚠️⚠️ **この bash -c の中に、パターンと同じ literal を書かないこと（コメントも）。**
+    # 2026-09-08 に踏んだ: コメントに `navigation_launch.py` と**括らずに**書いたら、
+    # `pkill -f "navigation_launc[h]"` が**この bash -c 自身のコマンド行に当たって
+    # 停止スクリプトを殺した**。そこで打ち切られ、以降のパターン（Nav2 群・mola）に
+    # 到達せず、`bag play`/`odom_to_tf`/`octomap` だけが落ちる、という形で出た。
+    # 症状は「stop が ⚠️ 残っています と言い続ける」。単体で pkill すると効くので混乱する。
+    # → コメントでも `navigation_launc[h]` のように括る、または別の言い方にする。
     # ⚠️⚠️ **パターンは配列で持つ。空白区切りの文字列にしてはいけない。**
     # 2026-09-08 に踏んだ: `PATTERNS="ros2 bag pla[y] ..."` を `for p in $PATTERNS` で
     # 回すと単語分割で `ros2` / `bag` / `pla[y]` の 3 語になり、最初の
@@ -184,6 +191,10 @@ if [ "${1:-}" = "stop" ]; then
             "nav2_velocity_smoother/velocity_smoothe[r]"
             "nav2_lifecycle_manager/lifecycle_manage[r]"
             "nav2_map_server/map_serve[r]"
+            # ⚠️ nav2_bringup の launch はこの 2 つも起こす。2026-09-08 に取りこぼして、
+            # 次の起動でノード名が衝突したまま測定した（stop は「止めました」と言う）
+            "nav2_smoother/smoother_serve[r]"
+            "nav2_waypoint_follower/waypoint_followe[r]"
         )
         # mola は SIGTERM を無視するので SIGINT で送る
         MOLA_PATTERNS=("mola-cl[i]" "ros2-lidar-odometr[y]")
@@ -201,12 +212,20 @@ if [ "${1:-}" = "stop" ]; then
             sleep 1
         done
         for p in "${PATTERNS[@]}" "${MOLA_PATTERNS[@]}"; do pkill -KILL -f "$p"; done
-        exit 0' >/dev/null 2>&1
+
+        # ⚠️ ここに `/opt/ros/humble/lib/nav2_[a-z]` のような総ざらいを足さないこと。
+        # 2026-09-08 に試して 2 つの形で失敗した:
+        #   1. `pkill -f "/opt/ros/humble/lib/nav2_"` は**この bash -c 自身の
+        #      コマンド行に当たり**、停止スクリプトが exit 137 で死ぬ（何も止まらない）
+        #   2. `nav2_[a-z]` は上の注記のとおり map_server も巻き添えにする
+        # ノードが増えたら PATTERNS に**名指しで**足す。漏れは下の生存確認が言う。
+        exit 0' 2>/dev/null
 
     # 本当に消えたかを**呼び出し側で確かめる**（黙って生き残るのが一番困る）
     left="$(docker exec "$NAME" bash -c '
         for p in "ros2 bag pla[y]" odom_to_t[f] octomap_serve[r] mola-cl[i] \
-                 controller_serve[r] planner_serve[r] bt_navigato[r] map_serve[r]; do
+                 controller_serve[r] planner_serve[r] bt_navigato[r] map_serve[r] \
+                 smoother_serve[r] waypoint_followe[r]; do
             pgrep -f "$p" >/dev/null && echo "$p"
         done' 2>/dev/null)"
     if [ -n "$left" ]; then
