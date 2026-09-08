@@ -17,12 +17,20 @@
 
 ## 段と合否
 
-    ① 追従者を落とす（共通）
+    ① 追従者とノイズを落とす（共通）
        filter_scans_near.py → run_octomap.py
+       → filter_persistence.py（✔ 構造ボクセル残存 100 %）
     ② 2D — Nav2 の静的レイヤ
-       pcd_to_occupancy.py → ✔ check_map_clearance.py（軌跡クリアランス 中央 > robot_radius）
+       pcd_to_occupancy.py（--min-points）→ ✔ check_map_clearance.py（軌跡クリアランス）
     ③ 3D — Isaac Sim / MuJoCo
-       filter_persistence.py（✔ 構造ボクセル残存 100 %）→ pcd_to_mjcf.py（✔ 偽障害物）
+       pcd_to_mjcf.py（✔ 偽障害物）
+
+⚠️ **①の出力（map_octomap_sim.pcd）を 2D と 3D の両方が読む。**
+2026-09-08 まで `filter_persistence.py` は③の中にあり、**2D の nav_map だけ
+掃除が浅い**状態だった。さらに `pcd_to_occupancy.py` は「帯の中に 1 点でも
+在れば占有」だったのに対し、`pcd_to_mjcf.py` は 3 点を要求していた。
+結果として **nav_map の占有 19,464 セルのうち 4,023（20.7 %）が sim シーンに
+存在しない**という食い違いが出ていた。両方の入力と閾値を揃えてこれを閉じる。
 
 **✔ が落ちたらそこで止まり、何を掃引すべきか印字する。**
 
@@ -55,6 +63,10 @@ DEFAULT_RADIUS = 4.0          # 近距離除去。部屋の広さに依存する
 DEFAULT_MAX_RANGE = 4.0       # OctoMap。掃引で決めるべき値
 DEFAULT_FLOOR_MARGIN = 0.10   # 床のうねりの上に積む余裕[m]
 BAND_UPPER_2D = 1.80          # Nav2 は天井が要らない
+# 帯の中の点数がこれ未満のセルは占有にしない。
+# ⚠️ pcd_to_mjcf.py の MIN_POINTS と**同じ値**にする（2D と 3D を揃える）。
+# 4 以上にすると壁を抜ける経路が出る（2026-09-08 実測: K=4 で 3 セル抜けた）。
+MIN_POINTS_2D = 3
 BAND_UPPER_3D = 2.20          # 3D は人の頭（〜2.1m）まで消したい
 FLOOR_CELL = 0.5              # 床のうねりを測る格子の一辺[m]
 FLOOR_SLAB = 0.30             # 床とみなす帯（推定床からの片側）[m]
@@ -227,11 +239,26 @@ def main() -> int:
               "静的地図の帯だけ低いと**床を撃つ**".format(configured))
         print("     どちらかに揃えること（2026-09-08 にこれで軌跡の 60.4% が塞がれていた）")
 
+    # ── ①-3 持続性で残りを落とす（2D も 3D もこの出力を読む）─────
+    # ⚠️ 2026-09-08 まではここが③の中にあり、2D の nav_map だけ掃除が浅かった。
+    if run([py, HERE / "filter_persistence.py", session, "map_octomap_clean.pcd",
+            "--source", args.source, "--band", lower, BAND_UPPER_3D,
+            "--output", "map_octomap_sim.pcd"],
+           "①-3 持続性で残りを落とす（✔ 構造残存）") != 0:
+        die("①-3 持続性フィルタ",
+            "**構造ボクセルを削っている。**--max-range を下げるか --span を短くする\n"
+            "  （既定は 最遠 6 m / 時間幅 5 秒。filter_persistence.py の帯の表を読むこと）")
+
     # ── ② 2D ─────────────────────────────────────────────
+    # ⚠️ 入力は①-3 の出力。**sim シーンと同じ点群を読む**（食い違いを作らない）
+    # ⚠️ --min-points は pcd_to_mjcf.py の MIN_POINTS と同じ値にする。
+    #    1（＝帯の中に 1 点で占有）だと床のうねりが帯の下端をかすめた所が障害物になり、
+    #    2026-09-08 の長距離では**それが経路を幅 0.7 m の隙間へ押し込んでいた**。
     if run([py, HERE / "pcd_to_occupancy.py",
-            session / "map" / "map_octomap_clean.pcd", session / "map" / "nav_map_clean",
-            "--band", lower, BAND_UPPER_2D],
-           "② 占有格子（帯 {:.2f}〜{:.2f} m）".format(lower, BAND_UPPER_2D)) != 0:
+            session / "map" / "map_octomap_sim.pcd", session / "map" / "nav_map_clean",
+            "--band", lower, BAND_UPPER_2D, "--min-points", MIN_POINTS_2D],
+           "② 占有格子（帯 {:.2f}〜{:.2f} m / 帯の中 {} 点以上）".format(
+               lower, BAND_UPPER_2D, MIN_POINTS_2D)) != 0:
         die("②-1 占有格子", "pcd_to_occupancy.py が落ちた")
 
     baseline = session / "map" / "nav_map"
@@ -255,14 +282,6 @@ def main() -> int:
         return 0
 
     # ── ③ 3D ─────────────────────────────────────────────
-    if run([py, HERE / "filter_persistence.py", session, "map_octomap_clean.pcd",
-            "--source", args.source, "--band", lower, BAND_UPPER_3D,
-            "--output", "map_octomap_sim.pcd"],
-           "③ 持続性で残りを落とす（✔ 構造残存）") != 0:
-        die("③-1 持続性フィルタ",
-            "**構造ボクセルを削っている。**--max-range を下げるか --span を短くする\n"
-            "  （既定は 最遠 6 m / 時間幅 5 秒。filter_persistence.py の帯の表を読むこと）")
-
     if run([py, HERE / "pcd_to_mjcf.py", session, "map_octomap_sim.pcd"],
            "③ シーン化（pcd_to_mjcf.py）") != 0:
         die("③-2 シーン化", "pcd_to_mjcf.py が落ちた")

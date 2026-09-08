@@ -51,6 +51,15 @@ FLOOR_PERCENTILE = 5.0      # 床の高さに使う分位。低い側から取�
 # 0.06〜0.07m 低く出る。さらに床自体が最大 +0.126m うねっている
 # （check_calibration.py で実測）。0.15 は実質 0.08m しか確保できていなかった。
 OBSTACLE_BAND = (0.23, 1.80)  # 床上のこの帯を障害物とする
+# ⚠️ **帯の中の点数**がこれ未満のセルは占有にしない。
+# 1（＝1 点で占有）だと、床のうねりが帯の下端をかすめた所が障害物になる。
+# 2026-09-08 の実測: 長距離の経路を塞いでいたセルは点 25 個のうち
+# **帯の中が 2 点だけ**で、その 2 点は 0.23 / 0.24 m ＝ 帯の下端ちょうど。
+# 残りは床（0.10〜0.24 m が 14 点）と天井（2.78〜2.95 m が 11 点）だった。
+# ⚠️ **全高さの点数で数えると見つからない**（このセルは合計 25 点あり「濃い」）。
+# 数えるのは帯の中だけである。
+# 3 は sim シーン（pcd_to_mjcf.py の MIN_POINTS）と同じ値。両者を揃えるため既定にする。
+MIN_POINTS = 3
 FLOOR_BAND = (-0.20, 0.15)    # 床面とみなす帯
 # pgm の慣習。Nav2 の map_server がこの値で読む
 PGM_OCCUPIED, PGM_FREE, PGM_UNKNOWN = 0, 254, 205
@@ -66,6 +75,9 @@ def main() -> int:
                    help="床上の障害物とみなす高さ帯[m]")
     p.add_argument("--dilate-free", type=float, default=0.30,
                    help="床セルをこの距離だけ広げて空きにする[m]。測り漏れを埋める")
+    p.add_argument("--min-points", type=int, default=MIN_POINTS,
+                   help=f"帯の中の点数がこれ未満のセルは占有にしない（既定 {MIN_POINTS}）。"
+                        "1 にすると 2026-09-08 以前の挙動")
     args = p.parse_args()
 
     cloud = o3d.io.read_point_cloud(str(args.pcd))
@@ -98,7 +110,13 @@ def main() -> int:
     occupied = np.zeros((height_cells, width), dtype=bool)
     free = np.zeros_like(occupied)
     if len(obstacle):
-        c = to_cells(obstacle[:, :2]); occupied[c[:, 1], c[:, 0]] = True
+        c = to_cells(obstacle[:, :2])
+        # ⚠️ 「1 点でも在れば占有」にしない。帯の中の点数で足切りする
+        counts = np.zeros((height_cells, width), dtype=np.int32)
+        np.add.at(counts, (c[:, 1], c[:, 0]), 1)
+        occupied = counts >= args.min_points
+        thin = int(((counts > 0) & ~occupied).sum())
+        print("  帯の中の点数が {} 未満で落としたセル {:,}".format(args.min_points, thin))
     if len(floor):
         c = to_cells(floor[:, :2]); free[c[:, 1], c[:, 0]] = True
 
