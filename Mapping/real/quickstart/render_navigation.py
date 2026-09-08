@@ -49,6 +49,38 @@ def load_scene(npz_path: Path):
     return d["occupied"], d["level"], d["origin"], float(d["cell"])
 
 
+def occupied_bbox(occ: np.ndarray, origin: np.ndarray,
+                  cell: float) -> tuple[float, float, float, float]:
+    """占有セルが実際に在る範囲。npz の格子は周りに空白を抱えているので、
+    そのまま extent を使うと地図が小さく写る。"""
+    rows, cols = np.nonzero(occ)
+    if not len(rows):
+        raise SystemExit("[NG] シーンに占有セルが無い")
+    return (float(origin[0]) + cols.min() * cell,
+            float(origin[0]) + (cols.max() + 1) * cell,
+            float(origin[1]) + rows.min() * cell,
+            float(origin[1]) + (rows.max() + 1) * cell)
+
+
+def fit_view(box: tuple[float, float, float, float], pad: float,
+             panel_aspect: float) -> tuple[tuple[float, float], tuple[float, float]]:
+    """`box` が全部入るように、パネルの縦横比に合わせて余っている側へ余白を足す。
+
+    ⚠️ `set_aspect("equal")` に任せると軸の箱が縮んで左右に白が残る。
+    先に縦横比を合わせておけば、地図がパネルいっぱいに写る。
+    `panel_aspect` は `ax.get_position()` から実測した値を渡すこと
+    （gridspec の比から手計算すると wspace のぶん外れる）。
+    """
+    x0, x1, y0, y1 = box[0] - pad, box[1] + pad, box[2] - pad, box[3] + pad
+    w, h = x1 - x0, y1 - y0
+    if w / h < panel_aspect:
+        w = h * panel_aspect
+    else:
+        h = w / panel_aspect
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    return (cx - w / 2, cx + w / 2), (cy - h / 2, cy + h / 2)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rec", required=True)
@@ -64,6 +96,8 @@ def main() -> None:
                             "AMCL が真値から離れ、機体は高さ 1.00 m の机の塊に乗り上げて止まる")
     ap.add_argument("--est-label", default="AMCL の推定",
                     help="推定の凡例。測位を差し替えたら必ず変えること")
+    ap.add_argument("--view", choices=("full", "fit"), default="full",
+                    help="full: 地図全体を写す（既定）/ fit: 軌跡の周りだけに寄る")
     args = ap.parse_args()
 
     data = json.loads((Path(args.rec) / "navigation.json").read_text())
@@ -83,21 +117,18 @@ def main() -> None:
     zs = np.array([s["sim_z"] if s["sim_z"] is not None else np.nan for s in track])
     cmds = np.array([s["cmd"] for s in track])
 
-    # 表示範囲は真値と AMCL とゴールが全部入るように
-    allx = np.concatenate([truth[:, 0], amcl[:, 0]])
-    ally = np.concatenate([truth[:, 1], amcl[:, 1]])
-    goals = np.array([s["goal"] for s in track if s["goal"]])
-    if len(goals):
-        allx = np.concatenate([allx, goals[:, 0]])
-        ally = np.concatenate([ally, goals[:, 1]])
-    pad = 2.0
-    xlim = (allx.min() - pad, allx.max() + pad)
-    ylim = (ally.min() - pad, ally.max() + pad)
-    # 縦横比を figure に合わせる
-    span = max(xlim[1] - xlim[0], (ylim[1] - ylim[0]) * 1.35)
-    cx, cy = np.mean(xlim), np.mean(ylim)
-    xlim = (cx - span / 2, cx + span / 2)
-    ylim = (cy - span / 2.7, cy + span / 2.7)
+    # 表示範囲。既定は「地図全体」（部屋のどこを歩いているのかが分かる）。
+    # --view fit は軌跡とゴールの周りだけに寄る（短距離の記録で細部を見たいとき）。
+    if args.view == "full":
+        box, pad = occupied_bbox(occ, origin, cell), 0.5
+    else:
+        allx = np.concatenate([truth[:, 0], amcl[:, 0]])
+        ally = np.concatenate([truth[:, 1], amcl[:, 1]])
+        goals = np.array([s["goal"] for s in track if s["goal"]])
+        if len(goals):
+            allx = np.concatenate([allx, goals[:, 0]])
+            ally = np.concatenate([ally, goals[:, 1]])
+        box, pad = (allx.min(), allx.max(), ally.min(), ally.max()), 2.0
 
     # 乗り上げてからは何も動かないので、そこから先は間引いて早送りにする。
     # ⚠️ 早送りしていることは画面に出す（等速に見えると誤解を生む）。
@@ -107,13 +138,22 @@ def main() -> None:
           f"（{args.fast_after:.0f} s まで等速、以降 {args.fast_factor} 倍速）")
 
     fig = plt.figure(figsize=(16, 9), dpi=120, facecolor=SURFACE)
+    # ⚠️ top は 0.885 まで上げられない。fit_view で縦横比を合わせた結果、軸の箱が
+    # 縮まずに埋まるので、左パネルの表題（set_title）が副題に重なる。
     gs = fig.add_gridspec(3, 2, width_ratios=[1.45, 1.0], height_ratios=[1, 1, 1],
-                          left=0.035, right=0.97, top=0.885, bottom=0.065,
+                          left=0.035, right=0.97, top=0.862, bottom=0.065,
                           wspace=0.14, hspace=0.42)
     ax = fig.add_subplot(gs[:, 0])
     ax_err = fig.add_subplot(gs[0, 1])
     ax_z = fig.add_subplot(gs[1, 1])
     ax_cmd = fig.add_subplot(gs[2, 1])
+
+    # 軸の箱を実測して縦横比を合わせる（gridspec の比から計算すると wspace のぶん外れる）
+    pos = ax.get_position()
+    fw, fh = fig.get_size_inches()
+    xlim, ylim = fit_view(box, pad, (pos.width * fw) / (pos.height * fh))
+    print(f"[view] {args.view}  x {xlim[0]:.1f}〜{xlim[1]:.1f} m"
+          f" / y {ylim[0]:.1f}〜{ylim[1]:.1f} m")
 
     fig.text(0.035, 0.955, args.title,
              fontsize=19, color=INK, weight="bold", va="center")
@@ -173,6 +213,10 @@ def main() -> None:
                     color=BAD, lw=2.0, ls=":", zorder=9)
             ax.add_patch(Circle((truth[i, 0], truth[i, 1]), 0.25, fill=False,
                                 ec=TRUTH, lw=2.4, zorder=10))
+            # 地図全体を写すと 0.25 m の円は 10 px 程度になる。機体の位置を
+            # 見失わないよう、縮尺に依らない点も重ねる。
+            ax.plot([truth[i, 0]], [truth[i, 1]], "o", ms=7, color=TRUTH,
+                    markeredgecolor="white", markeredgewidth=1.0, zorder=10)
             ax.plot([amcl[i, 0]], [amcl[i, 1]], "o", ms=9, color=AMCL,
                     markeredgecolor="white", zorder=10)
             mx, my = (truth[i, 0] + amcl[i, 0]) / 2, (truth[i, 1] + amcl[i, 1]) / 2
@@ -191,9 +235,11 @@ def main() -> None:
             climbed = (not np.isnan(zs[i])) and zs[i] > STAND_Z + 0.10
             if climbed:
                 # 乗り上げた場所を図の中でも指しておく（真値 z だけでは場所が分からない）
+                # ⚠️ 吹き出しの位置は**点**で置く。データ座標（m）で置くと
+                # 縮尺が変わったときに機体へ重なる（--view full で踏んだ）。
                 ax.annotate("高さ 1.00 m の机の塊の上\n（robot_radius より狭い所へ入り込んだ）",
                             (truth[i, 0], truth[i, 1]),
-                            xytext=(truth[i, 0] - 2.9, truth[i, 1] - 1.9),
+                            textcoords="offset points", xytext=(-70, -60),
                             fontsize=11.5, color=BAD, weight="bold", zorder=12,
                             ha="center",
                             arrowprops=dict(arrowstyle="->", color=BAD, lw=1.8),

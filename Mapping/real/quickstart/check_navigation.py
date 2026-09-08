@@ -220,7 +220,8 @@ def main() -> int:
             results.append(False)
             continue
         rx, ry, _ = pose
-        # 投げる直前の姿勢から 3〜8 m のゴールを選ぶ
+        # 投げる直前の姿勢から --range の帯に入るゴールのうち最も近いものを選ぶ。
+        # 着いた先から次も同じ帯で選ぶので、帯を長くすると部屋を往復する形になる。
         near = [(math.hypot(w["x"] - rx, w["y"] - ry), w) for w in waypoints]
         band = sorted((d, w) for d, w in near if lo <= d <= hi)
         if not band:
