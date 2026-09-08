@@ -46,6 +46,8 @@ Navigation/sim/assets/
 Navigation/sim/maps/
 # Navigation 専用の uv 環境（uv sync で再生成できる）
 Navigation/.venv/
+# nav2_static_map 専用の3.12 venv（rclpy用。--system-site-packagesで作り直せる。1GB超）
+Navigation/nav2_static_map/.venv_amcl/
 
 # 外部リポジトリのクローン（それぞれ独自の .git を持つ）
 Mapping/real/vendor/

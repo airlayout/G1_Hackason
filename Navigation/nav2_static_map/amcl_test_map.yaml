@@ -1,0 +1,6 @@
+image: amcl_test_map.pgm
+resolution: 0.100000
+origin: [-6.700000, -4.200000, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196

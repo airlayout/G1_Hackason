@@ -1,0 +1,182 @@
+# MuJoCoシム上でNav2のフルスタック(controller_server/planner_server/behavior_server/
+# bt_navigator)を動かし、「ゴールを与えたら実際にそこまで歩くか」を検証するための設定。
+# 2026-09-07 作成。
+#
+# ## amcl_test_map.yaml / room_a_map.yamlとの違い
+# 使う地図は`sim/rooms.py`の`test_room`から生成される`amcl_test_map.yaml`。
+# MuJoCoの物理世界(`sim/rooms.py`)と地図が**同じ元から**出ているので、
+# 「地図上は通れるが物理的に通れない」食い違いが起きない
+# （`amcl_sim_verify.py`のモジュールdocstring参照）。
+#
+# ## real/g1_nav2.yamlとの違い
+# - `use_sim_time`は使わない（`/clock`を publish していないので false=壁時計のまま）
+# - センサは`/scan`(LaserScan)。実機の生LiDAR点群(`PointCloud2`)ではなく
+#   `amcl_sim_verify.Bridge`が作る360ビームのLaserScanを使うため、
+#   costmapは`VoxelLayer`ではなく`ObstacleLayer`（2D）を使う
+# - odomは`/odom`（ground truthそのまま。`amcl_sim_verify.py`docstring参照）
+
+amcl:
+  ros__parameters:
+    use_sim_time: false
+    base_frame_id: base_link
+    odom_frame_id: odom
+    global_frame_id: map
+    scan_topic: /scan
+    set_initial_pose: true
+    initial_pose.x: -4.5
+    initial_pose.y: -2.0
+    initial_pose.yaw: 0.0
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: false
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    default_nav_to_pose_bt_xml: /opt/ros/jazzy/share/nav2_bt_navigator/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml
+
+controller_server:
+  ros__parameters:
+    use_sim_time: false
+    controller_frequency: 10.0        # /scanが10Hz相当なのでそれ以上にしても意味が無い
+    min_x_velocity_threshold: 0.02
+    min_y_velocity_threshold: 0.02
+    min_theta_velocity_threshold: 0.05
+    failure_tolerance: 0.3
+    odom_topic: /odom
+    progress_checker_plugin: progress_checker
+    goal_checker_plugins: [general_goal_checker]
+    controller_plugins: [FollowPath]
+
+    progress_checker:
+      plugin: nav2_controller::SimpleProgressChecker
+      required_movement_radius: 0.5
+      movement_time_allowance: 20.0
+    general_goal_checker:
+      plugin: nav2_controller::SimpleGoalChecker
+      xy_goal_tolerance: 0.30         # 二足なので厳しくしない（real/g1_nav2.yamlと同じ）
+      yaw_goal_tolerance: 0.50
+      stateful: true
+
+    FollowPath:
+      plugin: nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+      desired_linear_vel: 0.30        # sim/g1_walker.pyのMAX_VX_MPS(0.6)に余裕を持たせた仮値
+      lookahead_dist: 0.8
+      min_lookahead_dist: 0.4
+      max_lookahead_dist: 1.2
+      use_velocity_scaled_lookahead_dist: true
+      transform_tolerance: 0.3
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.5
+      use_regulated_linear_velocity_scaling: true
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.15
+      use_rotate_to_heading: true
+      rotate_to_heading_angular_vel: 0.5
+      max_angular_accel: 1.0
+      allow_reversing: false
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      width: 8
+      height: 8
+      resolution: 0.10
+      robot_radius: 0.40              # nav/occupancy.pyのDEFAULT_INFLATION_M(0.40)と揃える
+      plugins: [obstacle_layer, inflation_layer]
+      obstacle_layer:
+        plugin: nav2_costmap_2d::ObstacleLayer
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          data_type: LaserScan
+          sensor_frame: livox_frame
+          marking: true
+          clearing: true
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.35
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.35
+      inflation_layer:
+        plugin: nav2_costmap_2d::InflationLayer
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      resolution: 0.10
+      track_unknown_space: true
+      robot_radius: 0.40
+      plugins: [static_layer, obstacle_layer, inflation_layer]
+      static_layer:
+        plugin: nav2_costmap_2d::StaticLayer
+        map_subscribe_transient_local: true
+        map_topic: /map
+      obstacle_layer:
+        plugin: nav2_costmap_2d::ObstacleLayer
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          data_type: LaserScan
+          sensor_frame: livox_frame
+          marking: true
+          clearing: true
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.35
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.35
+      inflation_layer:
+        plugin: nav2_costmap_2d::InflationLayer
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
+
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+    expected_planner_frequency: 1.0
+    planner_plugins: [GridBased]
+    GridBased:
+      plugin: nav2_navfn_planner::NavfnPlanner
+      tolerance: 0.5
+      use_astar: true
+      allow_unknown: true
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: false
+    local_costmap_topic: local_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_costmap_topic: global_costmap/costmap_raw
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: [spin, backup, wait]
+    spin:
+      plugin: nav2_behaviors::Spin
+    backup:
+      plugin: nav2_behaviors::BackUp
+    wait:
+      plugin: nav2_behaviors::Wait
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_link
+    transform_tolerance: 0.3
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 0.5
+    min_rotational_vel: 0.1
+    rotational_acc_lim: 1.0
