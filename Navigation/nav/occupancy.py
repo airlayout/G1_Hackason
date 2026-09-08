@@ -20,12 +20,40 @@ from skimage.draw import line_aa as raster_line
 # 格子の解像度[m]。足の置き場ではなく「その直線が壁を貫くか」を見る粒度。
 DEFAULT_RESOLUTION_M = 0.10
 
-# 障害物とみなす高さの範囲[m]。座標系の原点は Mid360-IMU（公式「一、介绍」）。
+# 障害物とみなす高さの範囲[m]。**床からの相対高さ**（2026-09-08修正。以下参照）。
 # 下限 0.30: 床の点を障害物にしないため。公式の「障害物は高さ50cm以上ないとLiDARが
 #   検知しない」は**走行時**の話で、地図に写る壁は安全側に 0.3m から拾う。
 # 上限 1.80: 天井と、頭上を通過できる張り出しを除くため。
+#
+# ⚠️ 2026-09-08まで絶対座標のZとして扱っていた（座標系の原点はMid360-IMU、
+# 公式ドキュメントの想定では床がZ≈0という前提）。しかしMapping班のSLAM出力
+# （`map_20260907.pcd`）では実測で床が絶対Z≈-1.30mにあり、この前提が崩れていた。
+# 絶対Zのまま適用すると「床から1.6〜3.1m」（天井を突き抜けた範囲）を見てしまい、
+# 天井の点を障害物として大量に誤検出する
+# （`Navigation/nav3/README.md`「重大なバグ発覚」節で先に発見・修正済み）。
+# `build_grid()`は点群自体から`find_floor()`で床を検出し、そこからの相対高さで
+# 判定するよう変更した。床がZ≈0の点群（`sim/rooms.py`由来の合成点群等）では
+# 挙動は変わらない。
 DEFAULT_OBSTACLE_Z_MIN = 0.30
 DEFAULT_OBSTACLE_Z_MAX = 1.80
+
+
+def find_floor(z: np.ndarray) -> float:
+    """Zヒストグラムの下半分の最頻ビンを床とみなす。
+
+    床は面として広がっているため、天井や什器より圧倒的に点数が多い
+    （`nav3/pcd_to_ros_map.py`と同じ考え方。詳細はそちらのdocstring参照）。
+    """
+
+    low, high = np.percentile(z, [1.0, 99.0])
+    core = z[(z >= low) & (z <= high)]
+    if len(core) < 100:
+        core = z
+    hist, edges = np.histogram(core, bins=80)
+    centers = (edges[:-1] + edges[1:]) / 2.0
+    middle = (centers[0] + centers[-1]) / 2.0
+    lower = centers < middle
+    return float(centers[lower][np.argmax(hist[lower])])
 
 # 障害物を膨らませる半径[m]。G1 の肩幅は約 0.45m ＝ 機体半径 約 0.25m。
 # 定位誤差と歩容の揺れを足して 0.40m。これで経路判定を「点が通れるか」で書ける。
@@ -187,7 +215,11 @@ def build_grid(
     observed = np.zeros((spec.height, spec.width), bool)
     observed[row[inside], col[inside]] = True
 
-    is_obstacle = inside & (points[:, 2] >= z_min) & (points[:, 2] <= z_max)
+    # z_min/z_maxは床からの相対高さ。点群自体から床を検出する
+    # （DEFAULT_OBSTACLE_Z_MIN/MAXのコメント参照）。
+    floor_z = find_floor(points[:, 2])
+    height_above_floor = points[:, 2] - floor_z
+    is_obstacle = inside & (height_above_floor >= z_min) & (height_above_floor <= z_max)
     obstacle = np.zeros((spec.height, spec.width), bool)
     obstacle[row[is_obstacle], col[is_obstacle]] = True
 
@@ -209,7 +241,19 @@ def load_points(path: Path) -> np.ndarray:
     **open3d はここでだけ import する**（依存グループ `pcd`）。約 400MB あり、
     格子を作るのに要るのは numpy 配列だけなので、`sim/rooms.py` のように
     点群を自分で組む経路では入っていなくても動くようにしておく。
+
+    `.npy`（`np.save`で保存した (N,3) 配列）は open3d 無しで読む。
+    `Navigation/nav3/.venv_amcl`（rclpy用の別venv）には open3d を
+    足していないため、そちらから実地図を使うにはこの経路が要る
+    （前処理で範囲を絞った点群を`.npy`で渡す運用を想定）。
     """
+
+    path = Path(path)
+    if path.suffix == ".npy":
+        points = np.load(path)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError(f".npyの形が(N,3)ではない: {points.shape} ({path})")
+        return points.astype(float)
 
     import open3d as o3d
 
