@@ -128,7 +128,7 @@ Visualization Manager:
   Tools:
     - Class: rviz_default_plugins/MoveCamera
     - Class: rviz_default_plugins/Select
-    - Class: nav2_rviz_plugins/GoalTool
+    - Class: rviz_default_plugins/SetGoal
   Transformation:
     Current:
       Class: rviz_default_plugins/TF

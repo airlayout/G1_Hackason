@@ -494,15 +494,18 @@ bash run_nav2_sim.sh --goal-x -1.0 --goal-y 1.5 --timeout 90
 ### RVizでゴールを地図上から指定する
 
 `--goal-x/--goal-y`は決め打ちの座標だが、`--interactive`を付けると
-自分ではゴールを送らず、RViz2の「Nav2 Goal」ツールでクリックしたゴールを待つ
+自分ではゴールを送らず、RViz2の「2D Goal Pose」ツールでクリックしたゴールを待つ
 （`navigate_to_pose`のアクションサーバはbt_navigatorが立てているので、
-送信元がどのクライアントでも受け付ける）。
+送信元がどのクライアントでも受け付ける）。`--viewer`を足すとMuJoCoのGUIも
+同時に開き、実際に歩く様子を目視できる（`nav2_sim_bridge.py`の`--viewer`。
+`sim/run_sim.py`と同じ`mujoco.viewer.launch_passive`）。
 
 ```bash
 # ターミナル1: フルスタックを起動し、外部からのゴール送信を待つ
 source /opt/ros/jazzy/setup.bash
+export DISPLAY=:1         # --viewerでMuJoCoのGUIも見るなら必須
 cd Navigation/nav2_static_map
-bash run_nav2_sim.sh --interactive
+bash run_nav2_sim.sh --viewer --interactive
 
 # ターミナル2: RVizを開き、地図上でゴールを指定する
 source /opt/ros/jazzy/setup.bash
@@ -511,9 +514,21 @@ export DISPLAY=:1         # このマシンのX表示先
 rviz2 -d Navigation/nav2_static_map/nav2_sim.rviz
 ```
 
-RVizが開いたらツールバーの「Nav2 Goal」を選び、地図上でクリック＆ドラッグして
+RVizが開いたらツールバーの「2D Goal Pose」を選び、地図上でクリック＆ドラッグして
 位置と向きを指定する。`nav2_sim.rviz`には`/map`・`/scan`・TF・AMCLパーティクル雲
 (`/particle_cloud`)の表示も入れてあるので、経路追従の様子を目視できる。
+
+⚠️ **`nav2_rviz_plugins/GoalTool`（ツールバー表示名「Nav2 Goal」）は使わないこと。
+このROS2 Jazzy環境では機能しない（2026-09-08判明）。** ボタンの見た目上は
+反応する（クリック＆ドラッグ後にツールが元のMove Cameraへ戻る）が、
+`ros2 topic info /goal_pose --verbose`で確認すると`Publisher count: 0`のまま、
+`ros2 node info /rviz`でも`Action Clients:`が空で、**ROS側には何も送られていない**。
+何度も丁寧にドラッグして再現するので、操作ミスではなくツール自体の不具合と判断した。
+`bt_navigator`（`NavigateToPoseNavigator::onGoalPoseReceived`）は`/goal_pose`
+(`geometry_msgs/PoseStamped`)を購読しているので、標準の`rviz_default_plugins/SetGoal`
+（表示名「2D Goal Pose」）に差し替えたところ即座に`/goal_pose`へ発行され、
+実際に`bt_navigator`が`Begin navigating from ... to ...` → `Goal succeeded`まで
+到達することを確認済み（`nav2_sim.rviz`は修正済み）。
 
 ### 確認できたこと / 残った課題
 
