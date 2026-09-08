@@ -178,19 +178,21 @@ def main() -> int:
     print("  構造ボクセル（観測 {:.0f} 秒以上）の残存: {:,} / {:,} = {:.1f}%".format(
         STRUCTURE_SPAN, int(kept_struct.sum()), int(structure.sum()),
         100.0 * kept_struct.sum() / max(1, structure.sum())))
-    if structure.any() and kept_struct.sum() < structure.sum():
-        print("  ⚠️ 構造を削っている。しきい値を緩めること")
+    lost_structure = structure.any() and kept_struct.sum() < structure.sum()
+    if lost_structure:
+        print("  ⚠️ **構造を削っている。**--max-range を下げるか --span を短くすること")
 
     if args.dry_run:
         print("[dry-run] 書き出していない")
-        return 0
+        return 1 if lost_structure else 0
     name = args.output or (Path(args.pcd).stem + "_p.pcd")
     out = args.session_dir / "map" / name
     write_pcd_array(out, target[keep])
     print("[OK] {}（{:,} 点）".format(out, int(keep.sum())))
     print("     ⚠️ Nav2 の 2D 地図への効果はほぼ無い（冒頭の表）。"
           "3D の用途（Isaac Sim / MuJoCo / RViz）のための掃除である")
-    return 0
+    # 構造を 1 ボクセルでも失ったら**落ちる**。呼び出し側（clean_map.py）が止まれるように
+    return 1 if lost_structure else 0
 
 
 if __name__ == "__main__":
