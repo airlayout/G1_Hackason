@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import math
 import statistics
+from collections import deque
 import sys
 import time
 
@@ -137,6 +138,61 @@ def window_stats(grid: OccupancyGrid | None, x: float, y: float, radius_m: float
     return counts
 
 
+# 診断用の探索範囲。ゴールは 3〜6 m なので、20 m 四方あれば「回り込み」も入る
+REACH_WINDOW_CELLS = 200
+
+
+def reach_4conn(grid: OccupancyGrid | None, rx: float, ry: float,
+                gx: float, gy: float) -> "tuple[bool | None, int]":
+    """機体からゴールへ **4 連結** で辿り着けるかを見る。**診断であって合否ではない。**
+
+    ⚠️ 2026-09-07 に、**8 連結の BFS で 4 連結の NavFn を評価して誤結論**を出した。
+    合否は planner に投げた結果だけで決める（このスクリプトの方針）。ここは
+    「失敗したのは壁の向こうを選んだからか、それとも planner 側か」を切り分けるだけ。
+
+    `pick_goal` は「そのセルが致死でない」ゴールを選ぶだけで到達可能性は見ない。
+    だから**壁の向こうの自由セル**が選ばれうる。そのときの失敗は地図の問題ではない。
+    """
+    if grid is None:
+        return (None, 0)
+    info = grid.info
+    to_cell = lambda x, y: (int((x - info.origin.position.x) / info.resolution),
+                            int((y - info.origin.position.y) / info.resolution))
+    c0, r0 = to_cell(rx, ry)
+    c1, r1 = to_cell(gx, gy)
+    for c, r in ((c0, r0), (c1, r1)):
+        if not (0 <= c < info.width and 0 <= r < info.height):
+            return ("範囲外", 0)
+
+    def open_cell(c: int, r: int) -> bool:
+        v = grid.data[r * info.width + c]
+        return v < INSCRIBED          # 未知(-1) も通れる扱い（track_unknown_space 既定）
+
+    # ⚠️ **機体自身のセルが塞がっていると BFS は 1 セルも広がらない。**
+    # これを「ゴールが壁の向こう」と読むと原因を取り違える（2026-09-08 に一度やった）。
+    # この場合の失敗は §4 段 B の 2 つ目（機体セルが inscribed でない）と同じ話である。
+    if not open_cell(c0, r0):
+        return ("機体が囲まれている", 0)
+    if not open_cell(c1, r1):
+        return ("ゴールのセルが塞がっている", 0)
+
+    lo_c, hi_c = max(0, c0 - REACH_WINDOW_CELLS), min(info.width, c0 + REACH_WINDOW_CELLS)
+    lo_r, hi_r = max(0, r0 - REACH_WINDOW_CELLS), min(info.height, r0 + REACH_WINDOW_CELLS)
+    seen = {(c0, r0)}
+    queue = deque([(c0, r0)])
+    while queue:
+        c, r = queue.popleft()
+        if (c, r) == (c1, r1):
+            return ("同じ自由領域", len(seen))
+        for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nc, nr = c + dc, r + dr
+            if lo_c <= nc < hi_c and lo_r <= nr < hi_r and (nc, nr) not in seen:
+                if open_cell(nc, nr):
+                    seen.add((nc, nr))
+                    queue.append((nc, nr))
+    return ("ゴールは壁の向こう", len(seen))
+
+
 def pick_goal(node: Planning, rx: float, ry: float, ryaw: float):
     """機体の前方 3〜6 m で、global costmap 上で到達可能そうなゴールを 1 つ選ぶ。"""
     g = node.grids.get("/global_costmap/costmap")
@@ -225,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     results: list[bool] = []
     robot_cells_global: list[int] = []
     boxed_in = 0
+    causes: dict[str, int] = {}
     no_goal = 0
     for k in range(args.tries):
         node.spin_for(0.6)                      # 最新のコストマップと TF を取り込む
@@ -254,13 +311,33 @@ def main(argv: list[str] | None = None) -> int:
         gx, gy, dist, bearing, gv = picked
         ok, why = plan_once(node, gx, gy, args.planner)
         results.append(ok)
+        note = ""
+        if not ok:
+            verdict, seen = reach_4conn(g, rx, ry, gx, gy)
+            note = f" [診断] {verdict}"
+            if seen:
+                note += f"（{seen:,}セル探索）"
+            if verdict == "同じ自由領域":
+                note += " → **planner 側の問題**"
+            causes[verdict] = causes.get(verdict, 0) + 1
         print(f"  {k + 1:2d}: ({rx:+6.2f},{ry:+6.2f}) 機体セル {vs}/{vg}/{vl} "
               f"周り 致死{w['lethal']} 内接{w['inscribed']} → "
-              f"ゴール {dist:.0f}m/{bearing:+.0f}deg(cost {gv}) "
-              f"{'成功' if ok else '失敗'} {why}")
+              f"ゴール ({gx:+6.2f},{gy:+6.2f}) {dist:.0f}m/{bearing:+.0f}deg(cost {gv}) "
+              f"{'成功' if ok else '失敗'} {why}{note}")
 
     n_ok = sum(results)
     print()
+    n_fail = len(results) - n_ok
+    if n_fail:
+        print(f"== 失敗 {n_fail} 件の内訳（**診断**。合否には使わない）==")
+        for label, n in sorted(causes.items(), key=lambda kv: -kv[1]):
+            mark = "  ← ここが本当の問題" if label == "同じ自由領域" else ""
+            print(f"  {label:26s}: {n}{mark}")
+        if no_goal:
+            print(f"  {'到達可能なゴールが無い':26s}: {no_goal}")
+        print("  ⚠️ pick_goal は「そのセルが致死でない」ゴールを選ぶだけで、"
+              "到達可能かは見ていない。「ゴールは壁の向こう」は測り方の副作用で、地図の問題ではない")
+        print()
     print("== 合否（docs/plan/2026-09-08-global-localization-and-move.md §4 段 B）==")
     ok_plan = n_ok > 0
     print(f"  [{'PASS' if ok_plan else 'FAIL'}] 3〜6 m 先の到達可能なゴールへ経路が引ける  "
