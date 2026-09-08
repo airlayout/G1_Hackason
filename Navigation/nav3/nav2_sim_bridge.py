@@ -18,7 +18,7 @@
 ## 実行
 
   source /opt/ros/jazzy/setup.bash
-  cd Navigation/nav2_static_map
+  cd Navigation/nav3
   bash run_nav2_sim.sh   # map_server/amcl/controller_server/planner_server/
                           # behavior_server/bt_navigatorを一括起動し、
                           # このスクリプトを実行してゴールへ送り込む
@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from amcl_sim_verify import Bridge, CONTROL_TICK_S, grid_to_ros_map  # noqa: E402
 from nav.protocol import Pose2D  # noqa: E402
-from sim.rooms import get_room  # noqa: E402
+from sim.rooms import get_room, room_from_point_cloud  # noqa: E402
 
 DEFAULT_ROOM = "test_room"
 
@@ -297,6 +297,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--room", default=DEFAULT_ROOM)
+    parser.add_argument("--map", type=Path, default=None, metavar="PCD",
+                        help="--roomの代わりに実地図(PCD)を使う。sim/run_sim.pyの--mapと同じ"
+                             "room_from_point_cloud()で、通行不可の格子をMuJoCoの箱に起こす")
     parser.add_argument("--map-only", action="store_true", help="地図(.pgm/.yaml)だけ作って終わる")
     parser.add_argument("--goal-x", type=float, default=4.5)
     parser.add_argument("--goal-y", type=float, default=-2.0)
@@ -317,7 +320,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    room = get_room(args.room)
+    room = room_from_point_cloud(args.map) if args.map else get_room(args.room)
     out = Path(__file__).resolve().parent / "amcl_test_map"
     grid_to_ros_map(room, out)
     if args.map_only:

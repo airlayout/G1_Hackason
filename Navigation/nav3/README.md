@@ -1,4 +1,4 @@
-# Navigation / nav2_static_map（`map_server`起動まで検証済み、`nav_stack.sh`への統合は未実施）
+# Navigation / nav3（`map_server`起動まで検証済み、`nav_stack.sh`への統合は未実施）
 
 ⚠️ **これは新しい検討用フォルダ。`../nav/`・`../real/`・`../nav2/`は一切変更していない。**
 既存の純正方式・Nav2方式（`real/README.md`参照）とは別に、
@@ -35,7 +35,7 @@
 **一切変更せず**、高さ帯・解像度の定数だけ再利用して3値判定を別途実装した。
 
 ```bash
-cd Navigation/nav2_static_map
+cd Navigation/nav3
 python3 pcd_to_ros_map.py <地図.pcd> <出力名> --bounds X_MIN X_MAX Y_MIN Y_MAX
 ```
 
@@ -253,7 +253,7 @@ rviz2 -d Mapping/real/quickstart/rviz/g1_nav.rviz
 1. ~~座標系の整合性~~ → ✅ 上記で確認できた（ただし`room_a`セッション自身の
    rosbagに限る。別セッションや実機ライブでは未確認のまま）
 2. **`map_server`の起動が`nav_stack.sh`本体には組み込まれていない。** 今回は
-   `nav2_static_map`フォルダ内で個別に起動して検証しただけで、`nav_stack.sh`
+   `nav3`フォルダ内で個別に起動して検証しただけで、`nav_stack.sh`
    自体は変更していない（統合案は本セクションの下に残す）
 3. **占有マップの「部屋の一部が黒くなりすぎる」問題は、閾値調整で緩和したが
    根本解決ではない。** `--occupied-min-points`の最適値は経験則であり、
@@ -270,7 +270,7 @@ rviz2 -d Mapping/real/quickstart/rviz/g1_nav.rviz
 ```bash
 # nav_stack.sh の 2/4 と 3/4 の間あたりに追加するイメージ
 spawn mapserver.log "ros2 run nav2_map_server map_server --ros-args \
-    -p yaml_filename:=/work/G1_Hackason/Navigation/nav2_static_map/room_a_map.yaml \
+    -p yaml_filename:=/work/G1_Hackason/Navigation/nav3/room_a_map.yaml \
     -p use_sim_time:=$SIM_TIME"
 spawn lifecycle.log "ros2 run nav2_util lifecycle_bringup map_server"
 ```
@@ -295,7 +295,7 @@ spawn lifecycle.log "ros2 run nav2_util lifecycle_bringup map_server"
 照合して自己位置を求め直す仕組み）は使われていない。外部で作った地図・別セッションへの
 再利用にはこれが要る（`../README.md`参照）。ここでは**AMCLが実際に機能するか**を、
 MuJoCo上のG1シミュレーションで検証した。**作業はすべて`Navigation/`配下**
-（`nav2_static_map/amcl_sim_verify.py`・`.venv_amcl/`）にとどめている。
+（`nav3/amcl_sim_verify.py`・`.venv_amcl/`）にとどめている。
 
 ### 実行環境: 3つ目のPython環境が必要だった
 
@@ -304,7 +304,7 @@ Python 3.10固定)は**同じプロセスで同居できない**（`cyclonedds`�
 `.venv`は3.10に固定されているが、`rclpy`は3.12でビルドされている）。
 
 そこで本フォルダ専用に`--system-site-packages`付きの3.12 venv
-（`nav2_static_map/.venv_amcl/`）を新規に作り、そこへ`mujoco`/`mujoco-lidar`/
+（`nav3/.venv_amcl/`）を新規に作り、そこへ`mujoco`/`mujoco-lidar`/
 `torch`(CPU版)/`scipy`/`scikit-image`を追加インストールした。ROS2側の共有ライブラリ
 （`librcl_action.so`等）を見つけるには`source /opt/ros/jazzy/setup.bash`が要る
 （`--system-site-packages`だけでは`/opt/ros/jazzy/...`は入らないため、
@@ -375,8 +375,8 @@ MuJoCo(G1Walker) --LiDARヒット点--> LaserScan(/scan)
 ### 動かす
 
 ```bash
-# 1) 地図を作る（Navigation/nav2_static_map/amcl_test_map.pgm/.yaml ができる）
-cd Navigation/nav2_static_map
+# 1) 地図を作る（Navigation/nav3/amcl_test_map.pgm/.yaml ができる）
+cd Navigation/nav3
 .venv_amcl/bin/python amcl_sim_verify.py --map-only
 
 # 2) map_server と amcl を起動（別ターミナル、ROS_DOMAIN_IDは他と衝突しない値に）
@@ -487,7 +487,7 @@ ros2 run nav2_util lifecycle_bringup amcl
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-cd Navigation/nav2_static_map
+cd Navigation/nav3
 bash run_nav2_sim.sh --goal-x -1.0 --goal-y 1.5 --timeout 90
 ```
 
@@ -504,14 +504,14 @@ bash run_nav2_sim.sh --goal-x -1.0 --goal-y 1.5 --timeout 90
 # ターミナル1: フルスタックを起動し、外部からのゴール送信を待つ
 source /opt/ros/jazzy/setup.bash
 export DISPLAY=:1         # --viewerでMuJoCoのGUIも見るなら必須
-cd Navigation/nav2_static_map
+cd Navigation/nav3
 bash run_nav2_sim.sh --viewer --interactive
 
 # ターミナル2: RVizを開き、地図上でゴールを指定する
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=44   # run_nav2_sim.shと同じドメインに合わせる
 export DISPLAY=:1         # このマシンのX表示先
-rviz2 -d Navigation/nav2_static_map/nav2_sim.rviz
+rviz2 -d Navigation/nav3/nav2_sim.rviz
 ```
 
 RVizが開いたらツールバーの「2D Goal Pose」を選び、地図上でクリック＆ドラッグして

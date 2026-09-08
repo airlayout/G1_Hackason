@@ -5,12 +5,21 @@
 #
 # 使い方:
 #   source /opt/ros/jazzy/setup.bash   # 呼び出し元で先にsourceしておくこと
-#   cd Navigation/nav2_static_map
-#   bash run_nav2_sim.sh [nav2_sim_bridge.pyへ渡す追加引数...]
+#   cd Navigation/nav3
+#   bash run_nav2_sim.sh [--params <yamlファイル>] [nav2_sim_bridge.pyへ渡す追加引数...]
 #
-# 例: ゴールを変える（⚠️ "--"は付けない。"$@"でそのままnav2_sim_bridge.pyへ渡るので、
+# 例: ゴールを変える（⚠️ "--"は付けない。そのままnav2_sim_bridge.pyへ渡るので、
 #      "--"を付けるとargparseがそれ自体を認識できない引数として拒否する）
 #   bash run_nav2_sim.sh --goal-x 3.0 --goal-y 2.0
+#
+# 例: 実地図(PCD)で試す（--roomの代わりに--map。nav2_sim_bridge.pyの--map参照）。
+#      初期位置は部屋ごとに違うので、spawnに合わせたparamsファイルを別途用意し--paramsで渡す
+#   bash run_nav2_sim.sh --params nav2_sim_params_room_a.yaml \
+#       --map sim/maps/room_a_cropped.pcd --interactive --viewer
+#
+# --paramsはこのスクリプト自身が消費し、nav2_sim_bridge.pyへは渡さない
+# （map_server/amcl/controller_server/planner_server/behavior_server/bt_navigatorの
+# --params-fileに使うだけで、nav2_sim_bridge.py側には無い引数のため）。
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 set -m   # ジョブ制御を有効化。&で起動したジョブを専用プロセスグループにするため
@@ -27,7 +36,21 @@ fi
 export ROS_DOMAIN_ID=44   # amcl_sim_verify.py(43)と衝突しない専用ドメイン
 LOG_DIR="$(pwd)/verification/nav2_sim_logs"
 mkdir -p "$LOG_DIR"
+
 PARAMS="$(pwd)/nav2_sim_params.yaml"
+BRIDGE_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --params)
+            PARAMS="$2"
+            shift 2
+            ;;
+        *)
+            BRIDGE_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
 
 echo "[run_nav2_sim] 前回実行の残留プロセスを掃除"
 pkill -9 -f "nav2_map_server/map_server" 2>/dev/null || true
@@ -83,8 +106,8 @@ bringup() {
     fi
 }
 
-echo "[run_nav2_sim] 地図を再生成(sim/rooms.test_room由来、MuJoCoの世界と一致させる)"
-.venv_amcl/bin/python nav2_sim_bridge.py --map-only
+echo "[run_nav2_sim] 地図を再生成(既定はsim/rooms.test_room由来。--mapで実地図に差し替え可。MuJoCoの世界と一致させる)"
+.venv_amcl/bin/python nav2_sim_bridge.py --map-only "${BRIDGE_ARGS[@]}"
 
 echo "[run_nav2_sim] === map_server ==="
 # nav2_sim_params.yamlにmap_server:ブロックは無い（amcl_sim_verify.pyの検証時と同じく
@@ -105,7 +128,7 @@ bringup amcl
 # nav2_sim_bridge.py 側は navigate_to_pose アクションサーバの出現を
 # 非ブロッキングでポーリングするので、bt_navigator がまだ無くても起動して構わない。
 echo "[run_nav2_sim] === MuJoCoシム + ブリッジ (先に起動してTFを流し続ける) ==="
-.venv_amcl/bin/python nav2_sim_bridge.py "$@" > "$LOG_DIR/nav2_sim_bridge.log" 2>&1 &
+.venv_amcl/bin/python nav2_sim_bridge.py "${BRIDGE_ARGS[@]}" > "$LOG_DIR/nav2_sim_bridge.log" 2>&1 &
 BRIDGE_PID=$!
 PIDS+=("$BRIDGE_PID")
 echo "[run_nav2_sim] 起動: nav2_sim_bridge.py (log: nav2_sim_bridge.log, pid: $BRIDGE_PID)"

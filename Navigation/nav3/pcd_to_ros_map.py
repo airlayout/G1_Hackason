@@ -6,7 +6,7 @@
 `Navigation/nav2/g1_nav2.yaml`のglobal_costmapには既に`static_layer`が設定済み
 （`map_topic: /map`から読む前提のコメント付き）だが、それを配信する`map_server`は
 `Mapping/real/quickstart/nav_stack.sh`で一度も起動されていない。地図ファイル自体も
-存在しない。本ツールはその地図ファイルを作る（`nav2_static_map/README.md`の設計参照）。
+存在しない。本ツールはその地図ファイルを作る（`nav3/README.md`の設計参照）。
 
 ## `nav/occupancy.py`を呼ばず、3値で自分で作る理由
 
@@ -69,27 +69,18 @@ import numpy as np
 from scipy import ndimage
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from nav.occupancy import DEFAULT_RESOLUTION_M, load_points  # noqa: E402
+from nav.occupancy import DEFAULT_RESOLUTION_M, find_floor, load_points  # noqa: E402
 
 # 床からの相対高さ[m]。絶対Zではない（下の「高さは床からの相対高さで判定する」参照）。
 # 下限0.10: 床に落ちた小物・ケーブル等の厚みは拾わない。什器の脚はここから掛かる
 # 上限1.50: 人の頭・天井際を除く。実測の天井は床上約2.8mなので余裕を持たせてある
+#
+# nav/occupancy.pyのDEFAULT_OBSTACLE_Z_MIN/MAX(0.30/1.80)とは値が異なる。
+# あちらは直線経路が安全に通れるかという保守的な判定用、こちらは地図の見た目・
+# 什器の解像度を優先した値で、意図して別々にしてある（find_floor()による
+# 「床からの相対高さ」という土台の部分だけ共通化した。2026-09-08）。
 DEFAULT_OBSTACLE_HEIGHT_MIN = 0.10
 DEFAULT_OBSTACLE_HEIGHT_MAX = 1.50
-
-
-def find_floor(z: np.ndarray) -> float:
-    """Zヒストグラムの下半分の最頻ビンを床とみなす（Mapping班の各ツールと同じ考え方）。"""
-
-    low, high = np.percentile(z, [1.0, 99.0])
-    core = z[(z >= low) & (z <= high)]
-    if len(core) < 100:
-        core = z
-    hist, edges = np.histogram(core, bins=80)
-    centers = (edges[:-1] + edges[1:]) / 2.0
-    middle = (centers[0] + centers[-1]) / 2.0
-    lower = centers < middle
-    return float(centers[lower][np.argmax(hist[lower])])
 
 # ROS map_serverの標準的な値（turtlebot3/nav2のサンプル地図と同じ配色）。
 PIXEL_FREE = 254

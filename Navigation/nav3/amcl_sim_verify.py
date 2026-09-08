@@ -32,7 +32,7 @@ Python 3.12でビルドされているため**同居できない**。そこで�
 `Navigation/.venv`（3.10、`uv sync`管理）とは別物であり、依存関係も混ぜない。
 
   source /opt/ros/jazzy/setup.bash
-  cd Navigation/nav2_static_map
+  cd Navigation/nav3
   .venv_amcl/bin/python amcl_sim_verify.py --map-only     # 地図生成だけ
   .venv_amcl/bin/python amcl_sim_verify.py                # 地図生成 + sim走行 + 記録
                                                             # （map_server/amclは別途起動しておくこと）
