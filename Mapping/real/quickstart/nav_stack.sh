@@ -249,7 +249,21 @@ else
     BAG_OPTS="--rate $RATE --clock"
     [ "${G1_BAG_LOOP:-0}" = "1" ] && BAG_OPTS="$BAG_OPTS --loop"
     [ "$BAG_OFFSET" != "0" ] && BAG_OPTS="$BAG_OPTS --start-offset $BAG_OFFSET"
-    say "[1] 記録を再生する（$SESSION / ${RATE}倍速 / 開始 +${BAG_OFFSET}s / ループ ${G1_BAG_LOOP:-0}）"
+    # ⚠️ **再生を遅らせないと MOLA が古い姿勢から始まる**（2026-09-08 に踏んだ）。
+    # MOLA は [3] で起きるので、[1] から 11 秒ほど遅れる。その間 bag は流れ続けるのに
+    # initial_pose_at.py が渡すのは「+BAG_OFFSET ちょうど」の姿勢なので、
+    # **MOLA は 11 秒ぶん（歩行で約 3 m）古い場所から scan-to-map を始める。**
+    # この部屋は机が等間隔に並んでいるので、ICP はすぐ隣の列に食いつき、
+    # そのまま戻らない（MOLA は /initialpose で引き込まない）。実測では
+    # 真値から **10〜19 m** ずれたまま ICP 品質だけ高い、という状態になった。
+    # → --delay で MOLA が立つまで再生を止めておく。
+    #   ⚠️ 短すぎると黙って上の壊れ方をする。measure_localization.py --traj で必ず確かめる。
+    DELAY_NOTE=""
+    if [ "$USE_MOLA" = "1" ]; then
+        BAG_OPTS="$BAG_OPTS --delay ${G1_BAG_DELAY:-18}"
+        DELAY_NOTE=" / 再生遅延 ${G1_BAG_DELAY:-18}s"
+    fi
+    say "[1] 記録を再生する（$SESSION / ${RATE}倍速 / 開始 +${BAG_OFFSET}s / ループ ${G1_BAG_LOOP:-0}${DELAY_NOTE}）"
     spawn bagplay.log "ros2 bag play $BAG $BAG_OPTS"
     sleep 4
 fi
