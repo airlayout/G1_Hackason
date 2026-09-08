@@ -57,8 +57,38 @@ DEFAULT_MAX_RANGE = 6.0   # これより遠くから一度も見えていない�
 DEFAULT_SPAN = 5.0        # 観測がこの秒数に収まるボクセルを疑う
 DEFAULT_VOXEL = 0.10      # 判定の粒度。占有格子の解像度に合わせる
 STRUCTURE_SPAN = 60.0     # これ以上の時間幅を持つボクセルは「構造」とみなす歯止め
-BAND = (0.23, 1.80)       # 障害物帯。min_obstacle_height と揃える
 MATCH_WARN = 0.98         # 対応率がこれを下回ったら入力を疑う
+
+# ⚠️ **帯の両端に理由がある。広げてはいけない。**（2026-09-08 に実測して決めた）
+# 床と天井は grazing 角でしか見えないので、**近くからしか見えない**という
+# 追従者と同じ署名を持つ。持続性で切ると床や天井が抜ける。
+#
+#   真の床基準の高さ      点数      署名     解釈
+#   −1.00〜 0.15      365,615    7.3%   床そのもの      ← 触ってはいけない
+#    0.15〜 0.23        5,249    1.0%   床のうねりの上端
+#    0.23〜 1.75      189,655  0.0〜0.2% 脚・机・人の胴（既に掃除済み）
+#    1.75〜 2.10       35,699    3.2%   ここが残っていた実体
+#    2.10〜 2.60       43,844    1.0%   天井の縁
+#    2.60〜             132,587    0.0%   天井そのもの
+BAND = (0.23, 2.20)       # 下限は床のうねり（最大 +0.126 m）の上、上限は天井の下
+
+# ⚠️ 床は**最頻ビン**で推定する。5% 分位は真の床より 0.06〜0.07 m 低く出るので、
+# 帯の下限がその分だけ床に食い込む（pcd_to_occupancy.py が実際にそれで床を撃っていた）。
+FLOOR_HIST_BINS = 100
+
+
+def estimate_floor(points: np.ndarray) -> float:
+    """z の下側の最頻ビンを床とみなす（`run_octomap.estimate_floor` と同じ）。
+
+    分位ではなく最頻ビンを使う理由は上の BAND の注記を読むこと。
+    """
+    z = points[:, 2]
+    low, high = np.percentile(z, [1.0, 50.0])
+    lower = z[(z >= low) & (z <= high)]
+    if len(lower) == 0:
+        return float(z.min())
+    counts, edges = np.histogram(lower, bins=FLOOR_HIST_BINS)
+    return float(edges[int(counts.argmax())] + (edges[1] - edges[0]) / 2)
 
 
 def voxel_key(points: np.ndarray, voxel: float) -> np.ndarray:
@@ -129,14 +159,14 @@ def main() -> int:
         print("  ⚠️ 対応率が低い。入力がこのスキャン群から作られていない疑い"
               "（内蔵 SLAM 由来の点群を渡していないか）")
 
-    floor_z = float(np.percentile(target[:, 2], 5.0))
+    floor_z = estimate_floor(target)
     height = target[:, 2] - floor_z
     in_band = (height >= args.band[0]) & (height <= args.band[1])
     drop = (matched & in_band
             & (max_range[at] < args.max_range) & (span[at] < args.span))
     structure = matched & (span[at] >= STRUCTURE_SPAN)
 
-    print("床 z={:+.3f} m / 帯 {:.2f}〜{:.2f} m の点 {:,}".format(
+    print("床 z={:+.3f} m（最頻ビン）/ 帯 {:.2f}〜{:.2f} m の点 {:,}".format(
         floor_z, args.band[0], args.band[1], int(in_band.sum())))
     print("条件: 最遠 < {} m かつ 観測の時間幅 < {} 秒".format(args.max_range, args.span))
     print("  落とす点 {:,}（帯の {:.1f}% / 全体の {:.1f}%）".format(
