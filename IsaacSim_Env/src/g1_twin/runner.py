@@ -44,6 +44,11 @@ class RunnerConfig:
 
     # Warehouse を使うか（False なら平地のみ）
     use_warehouse: bool = True
+    # 実測地図から生成した障害物メッシュ USD（例: UiS_room_v3）。
+    # 指定時は Warehouse の代わりにこれを /World/Warehouse へ読み込み、
+    # 床は別途平地（GroundPlaneCfg）を敷く（このメッシュは障害物のみで床を含まない）。
+    # use_warehouse より優先される。
+    scene_usd_path: str = ""
     # G1 のスポーン位置 (x, y)
     spawn_xy: tuple[float, float] = (0.0, 0.0)
     device: str = "cuda:0"
@@ -52,8 +57,12 @@ class RunnerConfig:
     # 頭部カメラを搭載するか。Isaac Sim 起動時に --enable_cameras が
     # 無いとカメラ拡張が読み込まれず構築できないため、その状態と連動させる。
     enable_camera: bool = False
-    # 速度指令の供給源: "keyboard" / "patrol"（自動巡回） / "ros"（Nav2）
+    # 速度指令の供給源:
+    #   "keyboard" / "patrol"（自動巡回） / "ros"（Nav2） /
+    #   "goto"（座標を1つ渡して障害物回避なしで直進、Nav2 不要）
     command_source: str = "keyboard"
+    # command_source="goto" のときの目標座標 (x, y) [m]
+    goto_xy: tuple[float, float] = (0.0, 0.0)
     # 自動巡回の乱数種（再現性のため）
     patrol_seed: int = 0
     # この制御ステップ数で自動終了する（0 なら無制限）。
@@ -81,6 +90,7 @@ class G1TwinRunner:
         self._lidar = None
         self._ros = None
         self._patrol = None
+        self._goto = None
         # 頭部カメラ（常時搭載。現時点では配信・利用はしていない）
         self._camera = None
         # 直近の LiDAR スキャン（間引くため前回値を保持する）
@@ -109,7 +119,15 @@ class G1TwinRunner:
                 "[G1] アセットサーバーに接続できません。ネットワーク接続を確認してください。"
             )
 
-        if self._config.use_warehouse:
+        if self._config.scene_usd_path:
+            # 実測地図から生成した障害物メッシュ（床を含まないので別途平地を敷く）
+            add_reference_to_stage(
+                usd_path=self._config.scene_usd_path, path="/World/Warehouse"
+            )
+            ground = sim_utils.GroundPlaneCfg()
+            ground.func("/World/GroundPlane", ground)
+            print(f"[OK] 実測地図シーンを読み込みました: {self._config.scene_usd_path}")
+        elif self._config.use_warehouse:
             warehouse_path = assets_root + WAREHOUSE_USD
             add_reference_to_stage(usd_path=warehouse_path, path="/World/Warehouse")
             print(f"[OK] Warehouse シーンを読み込みました: {warehouse_path}")
@@ -142,12 +160,15 @@ class G1TwinRunner:
         if self._config.enable_ros:
             from .lidar import G1Lidar
 
-            # 平地のときは Warehouse が無いので地面を raycast 対象にする
-            mesh_paths = (
-                ["/World/Warehouse"]
-                if self._config.use_warehouse
-                else ["/World/GroundPlane"]
-            )
+            # 平地のときは Warehouse が無いので地面を raycast 対象にする。
+            # 実測地図シーンは障害物メッシュ（Warehouse パス）と平地の
+            # 両方に当たる必要がある（障害物メッシュ自体は床を含まないため）。
+            if self._config.scene_usd_path:
+                mesh_paths = ["/World/Warehouse", "/World/GroundPlane"]
+            elif self._config.use_warehouse:
+                mesh_paths = ["/World/Warehouse"]
+            else:
+                mesh_paths = ["/World/GroundPlane"]
             self._lidar = G1Lidar(
                 robot_prim_path="/World/G1", mesh_prim_paths=mesh_paths
             )
@@ -170,6 +191,13 @@ class G1TwinRunner:
 
         self._patrol = AutoPatrol(seed=self._config.patrol_seed)
         print("[OK] 自動巡回モードで動作します")
+
+    def start_goto(self) -> None:
+        """座標指定の直進モードを開始する（Nav2 不要、障害物回避なし）。"""
+        from .goto import GotoController
+
+        self._goto = GotoController(self._config.goto_xy)
+        print("[OK] 座標指定モードで動作します")
 
     # ------------------------------------------------------------------
     # 観測の構築
@@ -340,6 +368,18 @@ class G1TwinRunner:
                     float(position[0]), float(position[1])
                 )
                 self._sink.send(self._patrol.step(scan))
+            elif self._goto is not None:
+                # 座標指定の直進（Nav2 不要、障害物回避なし）。
+                # 急停止で姿勢を崩さないよう、ros 経路と同じ rate limit を通す。
+                from .ros_bridge import quat_xyzw_to_yaw
+
+                pos = wp.to_torch(self._robot.data.root_pos_w)[0]
+                quat = wp.to_torch(self._robot.data.root_quat_w)[0]
+                yaw = quat_xyzw_to_yaw(
+                    float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3])
+                )
+                target = self._goto.step(float(pos[0]), float(pos[1]), yaw)
+                self._sink.send(self._rate_limit(target))
             elif self._config.command_source == "ros" and self._ros is not None:
                 # Nav2 からの /cmd_vel。後退はポリシーが転倒するため許可しない。
                 received = self._ros.latest_command

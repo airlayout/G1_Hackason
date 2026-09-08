@@ -33,6 +33,15 @@ parser.add_argument(
     action="store_true",
     help="Warehouse を使わず平地で実行する（動作確認用）",
 )
+parser.add_argument(
+    "--scene-usd",
+    type=str,
+    default="",
+    help=(
+        "Warehouse の代わりに読み込む USD ファイルのパス（実測地図から生成した"
+        "障害物メッシュ等）。床は含まれない前提で別途平地を敷く。--flat より優先"
+    ),
+)
 parser.add_argument("--x", type=float, default=0.0, help="G1 のスポーン X 座標")
 parser.add_argument("--y", type=float, default=0.0, help="G1 のスポーン Y 座標")
 parser.add_argument(
@@ -44,14 +53,21 @@ parser.add_argument(
     "--command-source",
     type=str,
     default="keyboard",
-    choices=("keyboard", "patrol", "ros"),
+    choices=("keyboard", "patrol", "ros", "goto"),
     help=(
         "速度指令の供給源。keyboard: 手動操作 / "
-        "patrol: LiDAR を見て自動巡回（SLAM 用）/ ros: Nav2 の /cmd_vel"
+        "patrol: LiDAR を見て自動巡回（SLAM 用）/ ros: Nav2 の /cmd_vel / "
+        "goto: --goto-x/--goto-y の座標へ障害物回避なしで直進（Nav2 不要）"
     ),
 )
 parser.add_argument(
     "--patrol-seed", type=int, default=0, help="自動巡回の乱数種（再現性のため）"
+)
+parser.add_argument(
+    "--goto-x", type=float, default=0.0, help="--command-source goto の目標 X 座標"
+)
+parser.add_argument(
+    "--goto-y", type=float, default=0.0, help="--command-source goto の目標 Y 座標"
 )
 parser.add_argument(
     "--max-steps",
@@ -86,11 +102,13 @@ def main() -> None:
 
     config = RunnerConfig(
         use_warehouse=not args.flat,
+        scene_usd_path=args.scene_usd,
         spawn_xy=(args.x, args.y),
         device=args.device,
         enable_ros=enable_ros,
         enable_camera=args.enable_cameras,
         command_source=args.command_source,
+        goto_xy=(args.goto_x, args.goto_y),
         patrol_seed=args.patrol_seed,
         max_steps=args.max_steps,
     )
@@ -108,6 +126,8 @@ def main() -> None:
         runner.start_keyboard()
     elif args.command_source == "patrol":
         runner.start_patrol()
+    elif args.command_source == "goto":
+        runner.start_goto()
 
     if enable_ros:
         runner.start_ros()
