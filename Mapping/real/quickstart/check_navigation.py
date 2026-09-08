@@ -190,6 +190,20 @@ class Navigator(Node):
         }
 
 
+def save_record(record: str | None, waypoints: list, results: list,
+                track: list) -> None:
+    """記録を書き出す。1 回ごとに呼んで上書きする（途中で止めても残る）。"""
+    if not record:
+        return
+    d = Path(record)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "navigation.json").write_text(json.dumps({
+        "waypoints": waypoints, "results": results, "track": track,
+    }, ensure_ascii=False))
+    print(f"[record] -> {d}/navigation.json（{len(track)} サンプル / "
+          f"{len(results)} 回ぶん）")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--waypoints", required=True)
@@ -212,68 +226,68 @@ def main() -> int:
     lo, hi = args.range
     results = []
     for k in range(args.tries):
-        node.spin_for(1.0)
-        pose = node.pose()
-        truth = sim_truth()
-        if pose is None:
-            print(f"  {k + 1}: TF が引けない")
-            results.append(False)
-            continue
-        rx, ry, _ = pose
-        # 投げる直前の姿勢から --range の帯に入るゴールのうち最も近いものを選ぶ。
-        # 着いた先から次も同じ帯で選ぶので、帯を長くすると部屋を往復する形になる。
-        near = [(math.hypot(w["x"] - rx, w["y"] - ry), w) for w in waypoints]
-        band = sorted((d, w) for d, w in near if lo <= d <= hi)
-        if not band:
-            print(f"  {k + 1}: {lo}-{hi} m にゴール候補が無い（現在地 "
-                  f"{rx:+.2f}, {ry:+.2f}）")
-            results.append(False)
-            continue
-        dist, w = band[0]
-        t = f"真値({truth[0]:+.2f}, {truth[1]:+.2f})" if truth else "真値不明"
-        print(f"  {k + 1}: 現在地 AMCL({rx:+.2f}, {ry:+.2f}) {t} → "
-              f"ゴール({w['x']:+.2f}, {w['y']:+.2f}) 直線 {dist:.2f} m "
-              f"(clearance {w['clearance']:.2f} m)")
+        # ⚠️ 1 回ごとに記録を書く。最後にまとめて書くと、途中で止めたときに
+        # **記録が丸ごと消える**（長距離は 1 回で最大 900 s なので、
+        # 「見込みが無いから止める」判断ができなくなる。2026-09-08 に踏んだ）。
+        # continue で抜ける経路が 4 つあるので try/finally で確実に通す。
+        try:
+            node.spin_for(1.0)
+            pose = node.pose()
+            truth = sim_truth()
+            if pose is None:
+                print(f"  {k + 1}: TF が引けない")
+                results.append(False)
+                continue
+            rx, ry, _ = pose
+            # 投げる直前の姿勢から --range の帯に入るゴールのうち最も近いものを選ぶ。
+            # 着いた先から次も同じ帯で選ぶので、帯を長くすると部屋を往復する形になる。
+            near = [(math.hypot(w["x"] - rx, w["y"] - ry), w) for w in waypoints]
+            band = sorted((d, w) for d, w in near if lo <= d <= hi)
+            if not band:
+                print(f"  {k + 1}: {lo}-{hi} m にゴール候補が無い（現在地 "
+                      f"{rx:+.2f}, {ry:+.2f}）")
+                results.append(False)
+                continue
+            dist, w = band[0]
+            t = f"真値({truth[0]:+.2f}, {truth[1]:+.2f})" if truth else "真値不明"
+            print(f"  {k + 1}: 現在地 AMCL({rx:+.2f}, {ry:+.2f}) {t} → "
+                  f"ゴール({w['x']:+.2f}, {w['y']:+.2f}) 直線 {dist:.2f} m "
+                  f"(clearance {w['clearance']:.2f} m)")
 
-        r = node.navigate(w["x"], w["y"], args.timeout)
-        if not r["accepted"]:
-            print("       ゴールが受理されなかった")
-            results.append(False)
-            continue
-        if r.get("timeout"):
+            r = node.navigate(w["x"], w["y"], args.timeout)
+            if not r["accepted"]:
+                print("       ゴールが受理されなかった")
+                results.append(False)
+                continue
+            if r.get("timeout"):
+                end_pose, end_truth = node.pose(), sim_truth()
+                print(f"       時間切れ（{args.timeout:.0f} s）。"
+                      f"残り {r.get('distance_remaining')}")
+                if end_pose and end_truth:
+                    print(f"       到達点 AMCL({end_pose[0]:+.2f}, {end_pose[1]:+.2f}) "
+                          f"真値({end_truth[0]:+.2f}, {end_truth[1]:+.2f})")
+                results.append(False)
+                continue
+
             end_pose, end_truth = node.pose(), sim_truth()
-            print(f"       時間切れ（{args.timeout:.0f} s）。"
-                  f"残り {r.get('distance_remaining')}")
+            err = ERROR_NAMES.get(r["error_code"], str(r["error_code"]))
+            print(f"       {'成功' if r['succeeded'] else '失敗'} "
+                  f"error_code={r['error_code']}({err}) "
+                  f"recoveries={r['recoveries']}")
             if end_pose and end_truth:
+                gap = math.hypot(end_truth[0] - w["x"], end_truth[1] - w["y"])
+                drift = math.hypot(end_truth[0] - end_pose[0], end_truth[1] - end_pose[1])
                 print(f"       到達点 AMCL({end_pose[0]:+.2f}, {end_pose[1]:+.2f}) "
-                      f"真値({end_truth[0]:+.2f}, {end_truth[1]:+.2f})")
-            results.append(False)
-            continue
-
-        end_pose, end_truth = node.pose(), sim_truth()
-        err = ERROR_NAMES.get(r["error_code"], str(r["error_code"]))
-        print(f"       {'成功' if r['succeeded'] else '失敗'} "
-              f"error_code={r['error_code']}({err}) "
-              f"recoveries={r['recoveries']}")
-        if end_pose and end_truth:
-            gap = math.hypot(end_truth[0] - w["x"], end_truth[1] - w["y"])
-            drift = math.hypot(end_truth[0] - end_pose[0], end_truth[1] - end_pose[1])
-            print(f"       到達点 AMCL({end_pose[0]:+.2f}, {end_pose[1]:+.2f}) "
-                  f"真値({end_truth[0]:+.2f}, {end_truth[1]:+.2f})  "
-                  f"真値とゴールの差 {gap:.2f} m / AMCL と真値の差 {drift:.2f} m")
-        results.append(bool(r["succeeded"]))
+                      f"真値({end_truth[0]:+.2f}, {end_truth[1]:+.2f})  "
+                      f"真値とゴールの差 {gap:.2f} m / AMCL と真値の差 {drift:.2f} m")
+            results.append(bool(r["succeeded"]))
+        finally:
+            save_record(args.record, waypoints, results, node.track)
 
     print()
     ok = sum(results)
     print(f"== 到達 {ok}/{len(results)} ==")
-    if args.record:
-        d = Path(args.record)
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "navigation.json").write_text(json.dumps({
-            "waypoints": waypoints, "results": results,
-            "track": node.track,
-        }, ensure_ascii=False))
-        print(f"[record] -> {d}/navigation.json（{len(node.track)} サンプル）")
+    save_record(args.record, waypoints, results, node.track)
     node.destroy_node()
     rclpy.shutdown()
     return 0 if ok == len(results) else 1
