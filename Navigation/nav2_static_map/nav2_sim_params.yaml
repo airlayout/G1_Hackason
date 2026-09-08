@@ -26,6 +26,17 @@ amcl:
     initial_pose.x: -4.5
     initial_pose.y: -2.0
     initial_pose.yaw: 0.0
+    # alpha1〜5(既定値は全て0.2)は「オドメトリがどれだけ信用ならないか」を表す運動モデルの
+    # ノイズ係数で、毎回の移動のたびにこの値に比例したノイズをパーティクル群へ注入する。
+    # しかしこのシムの/odomはamcl_sim_verify.pyのdocstring通りground truthそのまま
+    # （誤差ゼロ）なので、既定値のままだとAMCLが自分でノイズを作って自分で見失っていた
+    # （2026-09-08、誤差0.15〜0.65mで振動し収束しない問題の原因）。
+    # オドメトリを信用してよいと教えるため、ほぼ0まで絞る。
+    alpha1: 0.02
+    alpha2: 0.02
+    alpha3: 0.02
+    alpha4: 0.02
+    alpha5: 0.02
 
 bt_navigator:
   ros__parameters:
