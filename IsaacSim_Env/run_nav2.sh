@@ -16,6 +16,23 @@
 #
 # --manual と既定（自律）は排他。実行中には切り替えられないので、
 # 起動時にどちらで動かすかを決めること。
+#
+# 環境変数:
+#   SCENE_USD / SPAWN_X / SPAWN_Y  シーンと初期位置を上書きする
+#   G1_PERFECT_LOC=1               **測位を完璧にする**（下記）
+#
+# ## G1_PERFECT_LOC=1（測位のせいか、それ以外かを割る実験用）
+#
+# Isaac Sim の /odom は真値そのもの（runner.py の _publish_ros が root_pos_w を
+# そのまま流す）。だから map -> odom を恒等変換で出せば「測位が完璧」になる。
+# この状態で着かなければ、残るのは制御・コストマップ・scan 高さの問題で、
+# **それは実機にそのまま映る**。着けば残るのは測位だけと言える。
+#
+# AMCL は kill しない。ライフサイクル管理（lifecycle_manager_localization）が
+# bond の切断を検出して起こし直してしまうため。代わりに tf_broadcast: false で
+# 黙らせ、publish_map_odom_tf.py に map -> odom を出させる。
+# AMCL 自体は生きているので /amcl_pose に「測位がどう外したか」が残り、
+# 完璧な測位で歩いた軌跡と並べて比べられる。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,11 +81,14 @@ echo "[INFO] 地図: $MAP_YAML"
 
 SIM_PID=""
 NAV_PID=""
+TF_PID=""
 cleanup() {
     echo "[INFO] 後片付けをしています..."
+    [[ -n "$TF_PID" ]] && kill "$TF_PID" 2>/dev/null || true
     [[ -n "$NAV_PID" ]] && kill "$NAV_PID" 2>/dev/null || true
     [[ -n "$SIM_PID" ]] && kill "$SIM_PID" 2>/dev/null || true
     sleep 2
+    [[ -n "$TF_PID" ]] && kill -9 "$TF_PID" 2>/dev/null || true
     [[ -n "$NAV_PID" ]] && kill -9 "$NAV_PID" 2>/dev/null || true
     [[ -n "$SIM_PID" ]] && kill -9 "$SIM_PID" 2>/dev/null || true
 }
@@ -80,9 +100,20 @@ else
     echo "[INFO] 自律モード（Nav2 の指令で歩く）"
 fi
 echo "[INFO] === 段階 1/2: Isaac Sim を起動します ==="
+# SCENE_USD 環境変数が指定されていれば Warehouse の代わりにそれを読み込む
+# （実測地図から生成した障害物メッシュ等。地図と物理シーンを一致させたい場合に使う）
+SCENE_ARGS=()
+if [[ -n "${SCENE_USD:-}" ]]; then
+    echo "[INFO] シーン: $SCENE_USD"
+    SCENE_ARGS=(--scene-usd "$SCENE_USD")
+fi
+# SPAWN_X / SPAWN_Y も同様に環境変数で上書きできる（実測地図の自由空間に合わせる）
 "$ISAAC_SIM/python.sh" "$SCRIPT_DIR/src/run_g1_twin.py" \
     --viz kit \
     --command-source "$COMMAND_SOURCE" \
+    --x "${SPAWN_X:-0.0}" \
+    --y "${SPAWN_Y:-0.0}" \
+    "${SCENE_ARGS[@]}" \
     > "$LOG_DIR/nav2_sim.log" 2>&1 &
 SIM_PID=$!
 
@@ -100,13 +131,38 @@ for _ in $(seq 1 180); do
     sleep 5
 done
 
+# G1_PERFECT_LOC=1 なら、Nav2 より先に map -> odom の恒等変換を出しておく。
+# 先に出すのは、AMCL / bt_navigator が起動直後から TF を引けるようにするため。
+# /clock は Isaac Sim が出しているので、シム起動を待った今なら使える。
+if [[ "${G1_PERFECT_LOC:-0}" == "1" ]]; then
+    echo "[INFO] 測位を完璧にします（map -> odom を恒等変換で配信、AMCL は黙らせる）"
+    python3 "$SCRIPT_DIR/src/publish_map_odom_tf.py" \
+        > "$LOG_DIR/map_odom_tf.log" 2>&1 &
+    TF_PID=$!
+    sleep 3
+    if ! kill -0 "$TF_PID" 2>/dev/null; then
+        echo "[NG] map -> odom の配信が始まりませんでした:"
+        cat "$LOG_DIR/map_odom_tf.log"
+        exit 1
+    fi
+fi
+
 # nav2.yaml の Behavior Tree のパスを実際の場所に合わせる。
 # Nav2 は設定内の環境変数を展開しないため絶対パスで書く必要があり、
 # リポジトリを別の場所へ置くと壊れる。起動のたびに書き換えて回避する。
 GENERATED_PARAMS="$LOG_DIR/nav2_params_generated.yaml"
-sed -e "s|^\( *default_nav_to_pose_bt_xml: \).*|\1$SCRIPT_DIR/config/navigate_g1.xml|" \
-    -e "s|^\( *default_nav_through_poses_bt_xml: \).*|\1$SCRIPT_DIR/config/navigate_through_poses_g1.xml|" \
-    "$SCRIPT_DIR/config/nav2.yaml" > "$GENERATED_PARAMS"
+# 測位を完璧にするときだけ AMCL の TF 配信を止める。
+# ⚠️ ros2 param set では効かない（configure 時に読まれた値で動く）。
+# yaml を書き換えて起動しないと変わらない。always_send_full_costmap で同じ罠を踏んだ。
+PARAM_EDITS=(
+    -e "s|^\( *default_nav_to_pose_bt_xml: \).*|\1$SCRIPT_DIR/config/navigate_g1.xml|"
+    -e "s|^\( *default_nav_through_poses_bt_xml: \).*|\1$SCRIPT_DIR/config/navigate_through_poses_g1.xml|"
+)
+if [[ "${G1_PERFECT_LOC:-0}" == "1" ]]; then
+    PARAM_EDITS+=(-e "s|^\( *tf_broadcast: \).*|\1false|")
+    echo "[INFO] AMCL の tf_broadcast を false にします（推定は続けるが TF は出さない）"
+fi
+sed "${PARAM_EDITS[@]}" "$SCRIPT_DIR/config/nav2.yaml" > "$GENERATED_PARAMS"
 
 echo "[INFO] === 段階 2/2: Nav2 を起動します ==="
 # map_server に地図を渡し、AMCL で自己位置を推定する構成
