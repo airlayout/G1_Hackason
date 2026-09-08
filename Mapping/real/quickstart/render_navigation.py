@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""check_navigation.py --record の記録から、走行の中身を動画にする。
+
+左: 部屋の障害物（高さで色分け）の上に、**真値**と**測位の推定**を並べて描く。
+    2 つが離れていくのがそのまま失敗の中身。
+右: 上から「真値と推定のずれ」「真値の z（乗り上げ）」「Nav2 の指令」。
+
+**指令は出続けているのに位置が動かない**ことと、**z が 0.63 → 1.02 に上がる**ことが
+同時に見えるように 3 段を揃えて描く。
+
+⚠️ **表題は記録によって変えること。** 同じ描画で、失敗した記録（AMCL）と
+成功した記録（`G1_PERFECT_LOC=1`）の両方を描く。既定の文言は失敗した記録の
+ものなので、成功した記録にそのまま使うと**動画が嘘をつく**。
+`--title` / `--subtitle` / `--est-label` で渡す。
+"""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.animation import FFMpegWriter
+from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.patches import Circle
+
+plt.rcParams["font.family"] = ["Hiragino Sans", "DejaVu Sans"]
+plt.rcParams["font.monospace"] = ["Menlo", "Hiragino Sans", "DejaVu Sans Mono"]
+
+INK, INK2, INK3 = "#111620", "#46505f", "#6b7686"
+LINE = "#dce1e9"
+TRUTH, AMCL, GOAL_C, PLAN_C = "#0f6fc4", "#b1500f", "#14714a", "#14714a"
+BAD, SURFACE = "#a8202c", "#ffffff"
+
+STAND_Z = 0.63          # 正常に立っているときの pelvis の高さ [m]（実測）
+# 障害物の高さの配色。低い＝薄い灰、高い＝濃い。真値（青）と AMCL（橙）に
+# 色を取られないよう、地の部分は無彩色にしてある。
+HEIGHT_CMAP = LinearSegmentedColormap.from_list(
+    "height", ["#e4e8ef", "#aab3c1", "#6b7686", "#3b4453", "#1c2430"])
+FPS = 10
+TAIL = 10**9            # 軌跡は全部残す
+
+
+def load_scene(npz_path: Path):
+    d = np.load(npz_path)
+    return d["occupied"], d["level"], d["origin"], float(d["cell"])
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--rec", required=True)
+    ap.add_argument("--scene", required=True, help="sim/octomap_sim.npz")
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--fast-after", type=float, default=100.0,
+                    help="この秒数を過ぎたら早送りにする（機体は止まっているので）")
+    ap.add_argument("--fast-factor", type=int, default=6)
+    ap.add_argument("--title",
+                    default="走行試験がどう失敗したか（掃除済み地図・Isaac Sim・3 回とも未到達）")
+    ap.add_argument("--subtitle",
+                    default="経路計画は 8/8 通っている。落ちたのは歩き始めてから。"
+                            "AMCL が真値から離れ、機体は高さ 1.00 m の机の塊に乗り上げて止まる")
+    ap.add_argument("--est-label", default="AMCL の推定",
+                    help="推定の凡例。測位を差し替えたら必ず変えること")
+    args = ap.parse_args()
+
+    data = json.loads((Path(args.rec) / "navigation.json").read_text())
+    track = [s for s in data["track"] if s["truth"] and s["amcl"]]
+    if not track:
+        raise SystemExit("[NG] 記録が空")
+
+    occ, lvl, origin, cell = load_scene(Path(args.scene))
+    extent = (float(origin[0]), float(origin[0]) + occ.shape[1] * cell,
+              float(origin[1]), float(origin[1]) + occ.shape[0] * cell)
+
+    t0 = track[0]["t"]
+    ts = np.array([s["t"] - t0 for s in track])
+    truth = np.array([s["truth"] for s in track])
+    amcl = np.array([s["amcl"] for s in track])
+    err = np.hypot(truth[:, 0] - amcl[:, 0], truth[:, 1] - amcl[:, 1])
+    zs = np.array([s["sim_z"] if s["sim_z"] is not None else np.nan for s in track])
+    cmds = np.array([s["cmd"] for s in track])
+
+    # 表示範囲は真値と AMCL とゴールが全部入るように
+    allx = np.concatenate([truth[:, 0], amcl[:, 0]])
+    ally = np.concatenate([truth[:, 1], amcl[:, 1]])
+    goals = np.array([s["goal"] for s in track if s["goal"]])
+    if len(goals):
+        allx = np.concatenate([allx, goals[:, 0]])
+        ally = np.concatenate([ally, goals[:, 1]])
+    pad = 2.0
+    xlim = (allx.min() - pad, allx.max() + pad)
+    ylim = (ally.min() - pad, ally.max() + pad)
+    # 縦横比を figure に合わせる
+    span = max(xlim[1] - xlim[0], (ylim[1] - ylim[0]) * 1.35)
+    cx, cy = np.mean(xlim), np.mean(ylim)
+    xlim = (cx - span / 2, cx + span / 2)
+    ylim = (cy - span / 2.7, cy + span / 2.7)
+
+    # 乗り上げてからは何も動かないので、そこから先は間引いて早送りにする。
+    # ⚠️ 早送りしていることは画面に出す（等速に見えると誤解を生む）。
+    idxs = [i for i in range(len(track))
+            if ts[i] <= args.fast_after or i % args.fast_factor == 0]
+    print(f"[frames] {len(track)} サンプル → {len(idxs)} コマ"
+          f"（{args.fast_after:.0f} s まで等速、以降 {args.fast_factor} 倍速）")
+
+    fig = plt.figure(figsize=(16, 9), dpi=120, facecolor=SURFACE)
+    gs = fig.add_gridspec(3, 2, width_ratios=[1.45, 1.0], height_ratios=[1, 1, 1],
+                          left=0.035, right=0.97, top=0.885, bottom=0.065,
+                          wspace=0.14, hspace=0.42)
+    ax = fig.add_subplot(gs[:, 0])
+    ax_err = fig.add_subplot(gs[0, 1])
+    ax_z = fig.add_subplot(gs[1, 1])
+    ax_cmd = fig.add_subplot(gs[2, 1])
+
+    fig.text(0.035, 0.955, args.title,
+             fontsize=19, color=INK, weight="bold", va="center")
+    fig.text(0.035, 0.917, args.subtitle,
+             fontsize=12.5, color=INK2, va="center")
+
+    # ⚠️ 毎コマ ax.clear() するので、カラーバーを ax の子（inset）に置くと消える。
+    # figure 直下の軸に置いて 1 度だけ作る。
+    cax = fig.add_axes([0.415, 0.115, 0.155, 0.016])
+    cb_done = [False]
+
+    writer = FFMpegWriter(fps=FPS, bitrate=3600,
+                          metadata={"title": "走行試験の失敗"})
+
+    with writer.saving(fig, args.out, dpi=120):
+        for i in idxs:
+            s = track[i]
+            # ── 左：部屋と 2 つの軌跡 ─────────────────
+            ax.clear()
+            ax.set_facecolor("#f6f8fa")
+            h = np.ma.masked_where(~occ, lvl)
+            im = ax.imshow(h, origin="lower", extent=extent, cmap=HEIGHT_CMAP,
+                           norm=Normalize(0.0, 2.0), interpolation="nearest")
+            ax.set_xlim(*xlim); ax.set_ylim(*ylim)
+            ax.set_aspect("equal")
+            ax.tick_params(labelsize=9, colors=INK3)
+            for sp in ax.spines.values():
+                sp.set_color(LINE)
+            ax.set_xlabel("map x [m]", fontsize=10, color=INK3)
+            ax.set_ylabel("map y [m]", fontsize=10, color=INK3)
+
+            if cb_done[0] is False:
+                cb = fig.colorbar(im, cax=cax, orientation="horizontal")
+                cb.set_label("障害物の高さ [m]", fontsize=10, color=INK3, labelpad=2)
+                cb.ax.tick_params(labelsize=9, colors=INK3, length=2, pad=1)
+                cb.outline.set_edgecolor(LINE)
+                cb_done[0] = True
+
+            # 今のゴールと経路
+            if s["goal"]:
+                ax.plot([s["goal"][0]], [s["goal"][1]], marker="*", ms=22,
+                        color=GOAL_C, markeredgecolor="white", markeredgewidth=1.2,
+                        zorder=7)
+                ax.annotate("ゴール", (s["goal"][0], s["goal"][1]),
+                            textcoords="offset points", xytext=(12, 8),
+                            fontsize=11.5, color=GOAL_C, weight="bold", zorder=8)
+            if s["plan"]:
+                p = np.asarray(s["plan"])
+                ax.plot(p[:, 0], p[:, 1], color=PLAN_C, lw=3.2, alpha=0.45,
+                        zorder=4, label="Nav2 の経路")
+
+            ax.plot(truth[:i + 1, 0], truth[:i + 1, 1], color=TRUTH, lw=2.6,
+                    zorder=6, label="真値（Isaac Sim）")
+            ax.plot(amcl[:i + 1, 0], amcl[:i + 1, 1], color=AMCL, lw=2.6,
+                    ls="--", zorder=6, label=args.est_label)
+            ax.plot([truth[i, 0], amcl[i, 0]], [truth[i, 1], amcl[i, 1]],
+                    color=BAD, lw=2.0, ls=":", zorder=9)
+            ax.add_patch(Circle((truth[i, 0], truth[i, 1]), 0.25, fill=False,
+                                ec=TRUTH, lw=2.4, zorder=10))
+            ax.plot([amcl[i, 0]], [amcl[i, 1]], "o", ms=9, color=AMCL,
+                    markeredgecolor="white", zorder=10)
+            mx, my = (truth[i, 0] + amcl[i, 0]) / 2, (truth[i, 1] + amcl[i, 1]) / 2
+            if err[i] > 0.4:
+                ax.annotate(f"ずれ {err[i]:.2f} m", (mx, my),
+                            textcoords="offset points", xytext=(8, -14),
+                            fontsize=11.5, color=BAD, weight="bold", zorder=11,
+                            bbox=dict(fc="white", ec="none", alpha=0.8, pad=1.5))
+            ax.legend(loc="upper left", fontsize=10.5, framealpha=0.92)
+            if ts[i] > args.fast_after:
+                ax.text(0.985, 0.965, f"{args.fast_factor} 倍速",
+                        transform=ax.transAxes, ha="right", va="top",
+                        fontsize=12, color=INK2, weight="bold",
+                        bbox=dict(fc="#eef1f6", ec=LINE, pad=3.0))
+
+            climbed = (not np.isnan(zs[i])) and zs[i] > STAND_Z + 0.10
+            if climbed:
+                # 乗り上げた場所を図の中でも指しておく（真値 z だけでは場所が分からない）
+                ax.annotate("高さ 1.00 m の机の塊の上\n（robot_radius より狭い所へ入り込んだ）",
+                            (truth[i, 0], truth[i, 1]),
+                            xytext=(truth[i, 0] - 2.9, truth[i, 1] - 1.9),
+                            fontsize=11.5, color=BAD, weight="bold", zorder=12,
+                            ha="center",
+                            arrowprops=dict(arrowstyle="->", color=BAD, lw=1.8),
+                            bbox=dict(fc="white", ec=BAD, lw=1.0, alpha=0.92, pad=3.0))
+            ax.set_title(
+                f"経過 {ts[i]:5.1f} s    真値 ({truth[i,0]:+.2f}, {truth[i,1]:+.2f})"
+                f"    推定 ({amcl[i,0]:+.2f}, {amcl[i,1]:+.2f})"
+                + ("    ← 机に乗り上げている" if climbed else ""),
+                fontsize=13.5, color=BAD if climbed else INK, pad=10, loc="left")
+
+            # ── 右：3 つの時系列 ────────────────────
+            for a, (ylab, title) in zip(
+                    (ax_err, ax_z, ax_cmd),
+                    (("[m]", "① 真値と推定のずれ"),
+                     ("[m]", "② 真値の z（pelvis の高さ）"),
+                     ("", "③ Nav2 が出している指令"))):
+                a.clear()
+                a.set_facecolor(SURFACE)
+                a.tick_params(labelsize=9.5, colors=INK3)
+                for sp in a.spines.values():
+                    sp.set_color(LINE)
+                a.set_xlim(0, ts[-1] * 1.02)
+                a.set_title(title, fontsize=12.5, color=INK, loc="left", pad=6)
+                a.set_ylabel(ylab, fontsize=9.5, color=INK3)
+
+            ax_err.plot(ts[:i + 1], err[:i + 1], color=BAD, lw=2.4)
+            ax_err.axhline(0.30, color=INK3, lw=1, ls=":")
+            ax_err.text(ts[-1] * 0.99, 0.34, "合格の目安 0.30 m", fontsize=10,
+                        color=INK3, ha="right")
+            ax_err.set_ylim(0, max(1.0, np.nanmax(err) * 1.25))
+            ax_err.text(0.012, 0.86, "いま", transform=ax_err.transAxes,
+                        fontsize=12, color=INK3)
+            ax_err.text(0.075, 0.86, f"{err[i]:.2f} m", transform=ax_err.transAxes,
+                        fontsize=13.5, color=BAD, weight="bold", family="monospace")
+
+            ax_z.plot(ts[:i + 1], zs[:i + 1], color=TRUTH, lw=2.4)
+            ax_z.axhline(STAND_Z, color=INK3, lw=1, ls=":")
+            ax_z.text(ts[-1] * 0.99, STAND_Z + 0.02, f"正常に立っている {STAND_Z} m",
+                      fontsize=10, color=INK3, ha="right")
+            lo = np.nanmin(zs) if np.isfinite(np.nanmin(zs)) else 0.5
+            hi = np.nanmax(zs) if np.isfinite(np.nanmax(zs)) else 1.1
+            ax_z.set_ylim(min(0.55, lo - 0.05), max(1.15, hi + 0.08))
+            ax_z.text(0.012, 0.86, "いま", transform=ax_z.transAxes,
+                      fontsize=12, color=INK3)
+            ax_z.text(0.075, 0.86, f"{zs[i]:.2f} m", transform=ax_z.transAxes,
+                      fontsize=13.5, color=BAD if climbed else TRUTH, weight="bold",
+                      family="monospace")
+
+            ax_cmd.plot(ts[:i + 1], cmds[:i + 1, 0], color=TRUTH, lw=2.2,
+                        label="vx [m/s]")
+            ax_cmd.plot(ts[:i + 1], cmds[:i + 1, 2], color=AMCL, lw=2.2,
+                        label="yaw [rad/s]")
+            ax_cmd.axhline(0, color=LINE, lw=1)
+            ax_cmd.set_ylim(-1.2, 1.2)
+            ax_cmd.legend(loc="upper right", fontsize=10, ncol=2, framealpha=0.9)
+            ax_cmd.set_xlabel("経過 [s]", fontsize=9.5, color=INK3)
+
+            writer.grab_frame()
+
+    print(f"[OK] -> {args.out}  （{len(track)} サンプル / {ts[-1]:.0f} 秒ぶん）")
+
+
+if __name__ == "__main__":
+    main()

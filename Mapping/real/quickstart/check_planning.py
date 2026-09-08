@@ -37,6 +37,7 @@ import statistics
 from collections import deque
 import sys
 import time
+from pathlib import Path
 
 import rclpy
 from geometry_msgs.msg import PoseStamped
@@ -193,6 +194,64 @@ def reach_4conn(grid: OccupancyGrid | None, rx: float, ry: float,
     return ("ゴールは壁の向こう", len(seen))
 
 
+def _grid_dict(grid: "OccupancyGrid | None") -> dict:
+    """OccupancyGrid を保存できる形にする。"""
+    if grid is None:
+        return {}
+    i = grid.info
+    return {
+        "width": i.width, "height": i.height, "resolution": i.resolution,
+        "origin": [i.origin.position.x, i.origin.position.y],
+        "data": list(grid.data),
+    }
+
+
+def _frame(k: int, rx: float, ry: float, ryaw: float,
+           vs: "int | None", vg: "int | None", vl: "int | None", w: dict,
+           g: "OccupancyGrid | None", goal: "tuple | None",
+           ok: bool, why: str, path_xy: list) -> dict:
+    """--record 用に 1 回ぶんをまとめる。**測定には一切影響しない。**"""
+    return {
+        "try": k + 1,
+        "robot": [rx, ry, ryaw],
+        "cost_static": vs, "cost_global": vg, "cost_local": vl,
+        "window": w,
+        "goal": list(goal) if goal else None,
+        "ok": bool(ok), "why": why,
+        "path": [[x, y] for x, y in path_xy],
+        "global_costmap": _grid_dict(g),
+    }
+
+
+def save_record(record_dir: Path, frames: list, static: "OccupancyGrid",
+                meta: dict) -> None:
+    """記録を JSON で書く。コストマップは嵩むので npz に分ける。"""
+    import json
+
+    import numpy as np
+
+    record_dir.mkdir(parents=True, exist_ok=True)
+    arrays = {}
+    for f in frames:
+        g = f.pop("global_costmap")
+        if g:
+            arrays[f"costmap_{f['try']:02d}"] = np.asarray(g.pop("data"), dtype=np.int16)
+            f["global_costmap_info"] = g
+    si = static.info
+    arrays["static"] = np.asarray(static.data, dtype=np.int16)
+    meta = dict(meta)
+    meta["static_info"] = {
+        "width": si.width, "height": si.height, "resolution": si.resolution,
+        "origin": [si.origin.position.x, si.origin.position.y],
+    }
+    meta["frames"] = frames
+    (record_dir / "planning.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=1))
+    np.savez_compressed(record_dir / "planning_grids.npz", **arrays)
+    print(f"[record] -> {record_dir}/planning.json + planning_grids.npz "
+          f"（{len(frames)} 回）")
+
+
 def pick_goal(node: Planning, rx: float, ry: float, ryaw: float):
     """機体の前方 3〜6 m で、global costmap 上で到達可能そうなゴールを 1 つ選ぶ。"""
     g = node.grids.get("/global_costmap/costmap")
@@ -206,7 +265,9 @@ def pick_goal(node: Planning, rx: float, ry: float, ryaw: float):
     return None
 
 
-def plan_once(node: Planning, gx: float, gy: float, planner_id: str) -> tuple[bool, str]:
+def plan_once(node: Planning, gx: float, gy: float,
+              planner_id: str) -> "tuple[bool, str, list[tuple[float, float]]]":
+    """経路を 1 回引く。**引けた経路の点列も返す**（--record で図にするため）。"""
     goal = ComputePathToPose.Goal()
     goal.goal = PoseStamped()
     goal.goal.header.frame_id = "map"
@@ -220,23 +281,24 @@ def plan_once(node: Planning, gx: float, gy: float, planner_id: str) -> tuple[bo
     send = node.planner.send_goal_async(goal)
     rclpy.spin_until_future_complete(node, send, timeout_sec=10.0)
     if not send.done() or send.result() is None:
-        return (False, "送信が返ってこない")
+        return (False, "送信が返ってこない", [])
     handle = send.result()
     if not handle.accepted:
-        return (False, "planner がゴールを受け付けない")
+        return (False, "planner がゴールを受け付けない", [])
     res = handle.get_result_async()
     rclpy.spin_until_future_complete(node, res, timeout_sec=15.0)
     if not res.done() or res.result() is None:
-        return (False, "結果が返ってこない")
+        return (False, "結果が返ってこない", [])
     poses = res.result().result.path.poses
     if not poses:
-        return (False, "経路が空（failed to create plan）")
+        return (False, "経路が空（failed to create plan）", [])
     length = sum(
         math.dist((poses[i].pose.position.x, poses[i].pose.position.y),
                   (poses[i + 1].pose.position.x, poses[i + 1].pose.position.y))
         for i in range(len(poses) - 1)
     )
-    return (True, f"{len(poses)} 点 / 経路長 {length:.2f} m")
+    xy = [(pp.pose.position.x, pp.pose.position.y) for pp in poses]
+    return (True, f"{len(poses)} 点 / 経路長 {length:.2f} m", xy)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -247,6 +309,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--planner", default="GridBased",
                    help="planner_id。既定の GridBased(NavFn) が実測で最良（Smac2D は常用しない）")
     p.add_argument("--no-sim-time", action="store_true", help="実機で使うとき")
+    p.add_argument("--record", metavar="DIR",
+                   help="各回の姿勢・コストマップ・経路を保存する（動画にするため）。"
+                        "測定そのものは変えない")
     p.add_argument("--robot-radius", type=float, default=0.30,
                    help="g1_nav2.yaml と揃えること。機体周りの窓の大きさに使う")
     args = p.parse_args(argv)
@@ -278,6 +343,9 @@ def main(argv: list[str] | None = None) -> int:
     print("   凡例: 機体セル = static/global/local。static は事前地図、")
     print("         global は静的＋ライブ＋膨張、local はライブ＋膨張のみ")
 
+    record_dir = Path(args.record) if args.record else None
+    frames: list[dict] = []
+
     results: list[bool] = []
     robot_cells_global: list[int] = []
     boxed_in = 0
@@ -307,9 +375,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {k + 1:2d}: ({rx:+6.2f},{ry:+6.2f}) 機体セル {vs}/{vg}/{vl} "
                   f"周り 致死{w['lethal']} 内接{w['inscribed']} → **到達可能なゴールが無い**")
             results.append(False)
+            if record_dir is not None:
+                frames.append(_frame(k, rx, ry, ryaw, vs, vg, vl, w, g,
+                                     None, False, "到達可能なゴールが無い", []))
             continue
         gx, gy, dist, bearing, gv = picked
-        ok, why = plan_once(node, gx, gy, args.planner)
+        ok, why, path_xy = plan_once(node, gx, gy, args.planner)
         results.append(ok)
         note = ""
         if not ok:
@@ -324,6 +395,9 @@ def main(argv: list[str] | None = None) -> int:
               f"周り 致死{w['lethal']} 内接{w['inscribed']} → "
               f"ゴール ({gx:+6.2f},{gy:+6.2f}) {dist:.0f}m/{bearing:+.0f}deg(cost {gv}) "
               f"{'成功' if ok else '失敗'} {why}{note}")
+        if record_dir is not None:
+            frames.append(_frame(k, rx, ry, ryaw, vs, vg, vl, w, g,
+                                 (gx, gy, dist, bearing, gv), ok, why + note, path_xy))
 
     n_ok = sum(results)
     print()
@@ -348,6 +422,18 @@ def main(argv: list[str] | None = None) -> int:
           f"実測 {len(results) - boxed_in}/{len(results)} 回（コストの中央値 {med}）")
     if no_goal:
         print(f"  参考: 到達可能なゴールが 1 つも取れなかった回が {no_goal}/{len(results)}")
+
+    if record_dir is not None:
+        save_record(record_dir, frames, static, {
+            "planner": args.planner,
+            "tries": args.tries,
+            "robot_radius": args.robot_radius,
+            "n_ok": n_ok,
+            "boxed_in": boxed_in,
+            "median_robot_cell": med,
+            "pass_plan": ok_plan,
+            "pass_cell": ok_cell,
+        })
 
     node.destroy_node()
     rclpy.shutdown()
