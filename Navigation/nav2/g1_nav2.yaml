@@ -11,10 +11,38 @@
 #
 # ## 値の根拠と未確定なところ
 #
-# - `robot_radius` は**仮**。G1 の肩幅から 0.35m と置いた。実測で詰めること
+# - `robot_radius` は 0.30m。2026-09-07 に**地図の連結性を測って決めた**。
+#   0.35m だと機体の居る島が 11,157 セルに孤立し、主要な通行領域（203,611 セル）から
+#   切り離される（機体位置の静的地図クリアランスが 0.36m で閾値の際だった）。
+#   0.30m 以下なら地図全体（約 2,215 m^2）が 1 つに繋がる。
+#   G1 の肩幅は約 0.45m ＝ 必要半径 0.23m なので 0.30m でも 3 割の余裕がある
 # - 速度上限は**安全側の仮値**。公式の速度域は Go2/Go2_W 用（0.2〜0.8 m/s）しか無く、
 #   二足の G1 で同じ保証は無い。実機で下から上げて決める
 # - `obstacle_max_range` は 2.0m。OctoMap の掃引で maxRange 2m が誤除去最少だった
+#
+# ## ⚠️⚠️ 2026-09-08: **経路が引けない主因はこのファイルではない。地図である**
+#
+# 再生でこのファイルの設定を検証したところ（段 B。実機不要）、
+# **機体セルは静的地図 `/map` でも local costmap でも常に 0（自由）なのに、
+# global costmap だけが 0 と 99 を行き来し、planner が 10 回中 6 回失敗した。**
+# 機体の周り ±0.60 m に致死セルが 1〜5 個あり、その膨張が機体を囲んでいた。
+#
+# 原因を地図と軌跡だけで測った（ROS 不要・2 分）:
+#
+#   nav_map.pgm の占有セルまでの距離を、**機体が実際に歩いた軌跡の全 5,670 点**で測る
+#     中央値 0.200 m / 25%分位 0.100 m / 5%分位 0.000 m
+#     → **軌跡の 73.1% が占有セルから 0.30 m 未満**（robot_radius 0.30 の内接円に触る）
+#
+# つまり**事前地図が自分の歩いた道を塞いでいる。** planner や robot_radius の
+# 調整では直らない（0.35 なら 77.3%、0.45 なら 86.2% と悪化するだけ）。
+#
+# **床が原因ではない。** 障害物帯の下端を 0.15 → 0.50 m まで上げても
+# 73.1% → 68.1% しか動かない（占有セルは 24,370 → 21,065）。
+# 0.15〜1.80 m の帯にある実体（追従者・家具）が軌跡沿いに焼き込まれている。
+# → **直すのは `pcd_to_occupancy.py` に食わせる点群**（動的点の除去）であって、
+#    このファイルの値ではない。だから 2026-09-08 は値を変えていない。
+#
+# 測り方: `quickstart/check_planning.py`（**1 回ごとに姿勢を読み直す**版）
 #   （2026-09-06 実測）ことに合わせた
 
 amcl:
@@ -87,7 +115,7 @@ local_costmap:
       width: 8
       height: 8
       resolution: 0.10
-      robot_radius: 0.35              # ⚠️ 仮
+      robot_radius: 0.30              # 連結性の実測で決めた（冒頭の注記）
       plugins: [voxel_layer, inflation_layer]
       voxel_layer:
         plugin: nav2_costmap_2d::VoxelLayer
@@ -95,10 +123,33 @@ local_costmap:
         publish_voxel_map: true
         # ⚠️ 下端を 0 にすると LiDAR 自身が範囲外になり、レイキャストが一切できない
         # （2026-09-06 のオフライン検証で "Sensor origin ... is out of map bounds" が出た）。
-        # LiDAR は base_link より下に付いており、map 系では z ≈ -0.12m になる
+        #
+        # ⚠️⚠️ **高さ帯は map 系の z なので、読ませる .mm と必ず一対で動かす。**
+        # MOLA-LO 測位は ignore_lidar_pose_from_tf:=true で base_link ≡ livox_frame
+        # なので、map の z 原点は「地図を作ったときの初期姿勢の z」で決まる。
+        #
+        #   runs/<S>/mola_floor0/map.mm … MOLA_INITIAL_Z=1.228（床上高さ）で作り直した。
+        #                                 **床が z≈0**。下の値はこちら用（自然な値に戻した）
+        #   runs/<S>/mola_aligned/map.mm … 旧。MOLA_INITIAL_Z=-0.0437 なので**床が z≈-1.2**。
+        #                                 使うなら origin_z -1.40 にし、帯は 1.30 m 下げる
+        #                                 （実測の z 差。0.23 → -1.07 / 1.80 → 0.50）。
+        #                                 ⚠️ 旧記載の -1.10 は**床の振れ幅を知る前の値**で
+        #                                 余裕がほぼ無く、間欠失敗が再発する。測り直すこと
+        #
+        # ⚠️⚠️ **min_obstacle_height は「床の振れ幅」から決める。固定値を焼かないこと。**
+        # MOLA の絶対 z は歩行中に振れる（2026-09-07 実測: 590 秒で **0.119〜0.149 m**、
+        # 床の高さが +0.006 〜 +0.126 を行き来した）。センサ→床の距離自体は姿勢依存でもあり
+        # （G1 は二足なので立ち方で胴体高さが変わる）、定数にできない。
+        # **この帯が床の最大値を下回ると、床が間欠的に障害物として撃たれて機体が囲まれ、
+        # 経路が引けなくなる**（2026-09-07 に planner が 5 回中 1〜4 回しか通らなかった機構）。
+        # 下の 0.23 は quickstart/check_calibration.py が算出した値
+        # （床の最大 +0.126 に 10cm の余裕）。**記録や地図を替えたら測り直すこと**:
+        #   check_calibration.py <bag> --traj <traj.txt> --pcd <map.pcd>
+        # 同時に「向きのcalibration」と「z 原点」も判定してくれる
+        # （2026-09-07: 傾き最大 0.79 deg・床の中央 +0.046 m でどちらも OK）。
         origin_z: -0.60
         z_resolution: 0.15
-        z_voxels: 16
+        z_voxels: 16                  # -0.60 .. +1.80。LiDAR 自身の z≈+1.26 を含む
         max_obstacle_height: 1.80     # 天井は入れない
         mark_threshold: 1
         observation_sources: livox
@@ -108,7 +159,7 @@ local_costmap:
           sensor_frame: livox_frame
           marking: true
           clearing: true
-          min_obstacle_height: 0.10   # 床は障害物にしない
+          min_obstacle_height: 0.23   # 床(z≈0)の振れ幅から算出。上の注記を読むこと
           max_obstacle_height: 1.80
           obstacle_max_range: 2.0
           obstacle_min_range: 0.30    # 至近は機体自身が写る
@@ -129,7 +180,7 @@ global_costmap:
       robot_base_frame: base_link
       resolution: 0.10
       track_unknown_space: true
-      robot_radius: 0.35              # ⚠️ 仮
+      robot_radius: 0.30              # 連結性の実測で決めた（冒頭の注記）
       plugins: [static_layer, voxel_layer, inflation_layer]
       static_layer:
         plugin: nav2_costmap_2d::StaticLayer
@@ -144,7 +195,7 @@ global_costmap:
         publish_voxel_map: true
         # ⚠️ 下端を 0 にすると LiDAR 自身が範囲外になり、レイキャストが一切できない
         # （2026-09-06 のオフライン検証で "Sensor origin ... is out of map bounds" が出た）。
-        # LiDAR は base_link より下に付いており、map 系では z ≈ -0.12m になる
+        # ⚠️ 高さ帯は map 系の z。**読ませる .mm と一対で動かす。**根拠は local_costmap 側の注記
         origin_z: -0.60
         z_resolution: 0.15
         z_voxels: 16
@@ -157,7 +208,7 @@ global_costmap:
           sensor_frame: livox_frame
           marking: true
           clearing: true
-          min_obstacle_height: 0.10
+          min_obstacle_height: 0.23
           max_obstacle_height: 1.80
           obstacle_max_range: 2.0
           obstacle_min_range: 0.30
@@ -172,12 +223,38 @@ planner_server:
   ros__parameters:
     use_sim_time: true
     expected_planner_frequency: 1.0
-    planner_plugins: [GridBased]
+    planner_plugins: [GridBased, Smac2D]
     GridBased:
       plugin: nav2_navfn_planner/NavfnPlanner
       tolerance: 0.5
       use_astar: true
       allow_unknown: true             # 未知を通す。広い部屋で証拠が薄いため
+    # 予備の planner。**既定（GridBased）より成績が悪いので常用しないこと。**
+    #
+    # 入れた経緯: NavFn（GridBased）は**4連結**で伝播する。2026-09-07 に実機で、
+    # 機体の区画からの脱出口が**斜めだけの隘路**になった瞬間があり、そのときの
+    # コストマップでは 8連結なら 218,641 セル到達・4連結だと 25 セルで詰みだった
+    # （planner は 6ms で "failed to create plan" を返す）。
+    # そこで 8連結の Smac2D を足したが、**実測では逆に悪かった**:
+    #   同じゴールに 5 回投げて Smac2D 1/5 成功・GridBased 4/5 成功（2026-09-07）。
+    # 斜め隘路は本当に起きるが**支配的な要因ではない**。効いているのは、
+    # 立脚中の機体が揺れることと、散らかった場所でライブ層の障害物が出入りして
+    # コストマップが毎秒変わることで、**開けた場所に機体を置くのが本筋の対策**。
+    #   使うとき: ros2 action send_goal /compute_path_to_pose ... "{..., planner_id: 'Smac2D'}"
+    Smac2D:
+      plugin: nav2_smac_planner/SmacPlanner2D
+      tolerance: 0.5
+      allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 10.0
+      cost_travel_multiplier: 2.0
+      use_final_approach_orientation: false
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
 
 behavior_server:
   ros__parameters:
