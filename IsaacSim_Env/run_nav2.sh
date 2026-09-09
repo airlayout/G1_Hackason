@@ -82,6 +82,16 @@ echo "[INFO] 地図: $MAP_YAML"
 SIM_PID=""
 NAV_PID=""
 TF_PID=""
+# ⚠️⚠️ このスクリプト自身を外から止めるときは **SIGTERM**（`kill <pid>`）を使う。
+# `kill -INT` は効かない。run_long_nav.sh 等から `setsid ... &` で起動されると、
+# 非対話シェルの非同期ジョブとして SIGINT / SIGQUIT が SIG_IGN にされる（POSIX）。
+# bash は「起動時に無視されていたシグナルは trap で捕まえ直せない」ので、
+# このスクリプト側でどうにかすることもできない。SIGTERM は無視されないので
+# 素の kill で死に、下の EXIT トラップが走る。
+# ⚠️ 送る先で signal が逆になる点に注意:
+#     このスクリプト  -> SIGTERM（SIGINT は無視される）
+#     内側の ros2 launch -> SIGINT（SIGTERM だと子を孤児化する。下記）
+# 2026-09-09 に kill -INT を送って「15 分間何も起きない」を踏んだ。
 cleanup() {
     echo "[INFO] 後片付けをしています..."
     # ⚠️ NAV_PID（ros2 launch）には SIGTERM ではなく SIGINT を送ること。
