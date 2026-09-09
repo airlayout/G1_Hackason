@@ -44,6 +44,8 @@ from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.parameter import Parameter
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
 
 # Isaac Sim の真値ログ。**/odom の z は 0 固定なので、乗り上げはここでしか分からない。**
@@ -94,6 +96,21 @@ class Navigator(Node):
         self.create_subscription(Twist, "/cmd_vel", self._on_cmd, 20)
         self.track: list[dict] = []
         self.recording = False
+        # navigate_g1.xml の PlannerSelector が読む所。NavigateToPose.Goal には
+        # planner_id フィールドが無い（ComputePathToPose 専用）ので、BT が
+        # 経路計画のたびに参照するこのトピック経由でしか切り替えられない。
+        # LatchedSubscriptionQoS（TRANSIENT_LOCAL）で購読されるので、
+        # BT が作り直されても最後の 1 件を受け取り直す。
+        self.planner_pub = self.create_publisher(
+            String, "planner_selector",
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                      durability=DurabilityPolicy.TRANSIENT_LOCAL))
+
+    def select_planner(self, planner_id: str) -> None:
+        if not planner_id:
+            return
+        self.planner_pub.publish(String(data=planner_id))
+        self.spin_for(1.0)
 
     def _on_odom(self, m) -> None:
         q = m.pose.pose.orientation
@@ -148,15 +165,13 @@ class Navigator(Node):
         self.get_logger().warn(f"map -> base_link が引けない: {last}")
         return None
 
-    def navigate(self, gx: float, gy: float, timeout_s: float,
-                 planner_id: str = "") -> dict:
+    def navigate(self, gx: float, gy: float, timeout_s: float) -> dict:
         goal = NavigateToPose.Goal()
         goal.pose.header.frame_id = "map"
         goal.pose.header.stamp = self.get_clock().now().to_msg()
         goal.pose.pose.position.x = gx
         goal.pose.pose.position.y = gy
         goal.pose.pose.orientation.w = 1.0
-        goal.planner_id = planner_id
 
         self.feedback = []
         send = self.client.send_goal_async(
@@ -217,7 +232,10 @@ def main() -> int:
                     help="真値・AMCL・経路・指令を 0.5 秒ごとに記録する（動画用）")
     ap.add_argument("--planner-id", default="", metavar="PLUGIN_NAME",
                     help="planner_server の planner_plugins に登録された名前 "
-                    "（例: Smac2D, ThetaStar）。空なら既定（GridBased/NavFn）")
+                    "（例: Smac2D, ThetaStar）。navigate_g1.xml の "
+                    "PlannerSelector が読む /planner_selector トピックへ発行する "
+                    "（NavigateToPose には planner_id フィールドが無いため）。"
+                    "空なら既定（GridBased/NavFn）のまま")
     args = ap.parse_args()
 
     waypoints = json.loads(Path(args.waypoints).read_text())
@@ -229,6 +247,7 @@ def main() -> int:
         print("[FAIL] navigate_to_pose のサーバが居ない")
         return 1
     print(f"[planner_id] {args.planner_id or '(既定)'}")
+    node.select_planner(args.planner_id)
 
     lo, hi = args.range
     results = []
@@ -261,7 +280,7 @@ def main() -> int:
                   f"ゴール({w['x']:+.2f}, {w['y']:+.2f}) 直線 {dist:.2f} m "
                   f"(clearance {w['clearance']:.2f} m)")
 
-            r = node.navigate(w["x"], w["y"], args.timeout, args.planner_id)
+            r = node.navigate(w["x"], w["y"], args.timeout)
             if not r["accepted"]:
                 print("       ゴールが受理されなかった")
                 results.append(False)
