@@ -48,7 +48,18 @@
 本来 `base_link→livox_frame` は剛体の固定変換であり、歩行中は胴体姿勢が振動するので
 **取付角の実測値（U-09）で置き換えるべき**。現状は静止した配線試験のための実用的な近似。
 
-並進は暫定値（U-09 確定後に実測値へ置き換える）。
+### 並進（base_link の高さ）
+
+**`base_link` は床面に置く**。`base_link → livox_frame` の並進 z は U-09 の実測値
+**1.213m**（立位でのセンサー高さ）を既定にしている。こうすると costmap の
+`min_obstacle_height`/`max_obstacle_height` を**床基準**で書けるので直感的。
+
+⚠️ **並進を (0,0,0) にすると base_link がセンサー位置（床から1.2m）になり、
+costmap の高さ帯が 1.2m ずれて天井付近を拾う。**（2026-09-09 に実際にこの状態で
+Nav2 配線試験を走らせてしまった）
+
+x/y のオフセットは未計測（0 のまま）。歩行時の姿勢変化で z も変わるので、
+厳密には脚の関節角から求めるべきだが、2D の costmap では影響は小さい。
 
 ## 使い方
 
@@ -296,9 +307,12 @@ def main() -> None:
                         metavar=("AX", "AY", "AZ"),
                         help="IMU の linear_acceleration(センサー座標系)。**重力ではなく上向き**。"
                              "既定は立位での実測値。MID-360 は逆さ取付なので z が負になる")
-    parser.add_argument("--lidar-xyz", type=float, nargs=3, default=[0.0, 0.0, 0.0],
+    parser.add_argument("--lidar-xyz", type=float, nargs=3, default=[0.0, 0.0, 1.213],
                         metavar=("X", "Y", "Z"),
-                        help="base_link から LiDAR までの並進[m]。**暫定値**(U-09 確定後に差し替え)")
+                        help="base_link から LiDAR までの並進[m]。既定の z=1.213 は U-09 の実測値"
+                             "(立位でのセンサー高さ)。**base_link を床面に置く前提**なので、"
+                             "costmap の高さ帯(min/max_obstacle_height)を床基準で書ける。"
+                             "x/y は未計測のため 0")
     parser.add_argument("--lidar-frame", default="livox_frame",
                         help="点群の frame_id (既定: livox_frame)")
     parser.add_argument("--map-to-odom", type=float, nargs=3, default=[0.0, 0.0, 0.0],
