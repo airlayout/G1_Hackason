@@ -326,6 +326,28 @@ RViz の「2D Pose Estimate」は使わないこと。この地図は原点が
 
 開発中に踏んだ落とし穴。同じ環境で作業する人向け。
 
+### 停止は `bash stop_nav2.sh` を使う。手で `kill` を打たない（2026-09-09）
+
+停止に必要な signal が**送る先で逆になる**ため、手打ちすると必ず事故る。
+
+| 対象 | 正しい signal | 間違えたときの症状 |
+|---|---|---|
+| `run_nav2.sh`（外側） | **SIGTERM**（素の `kill`） | SIGINT は `SIG_IGN` で**黙って無視される** |
+| `ros2 launch`（cleanup 内） | **SIGINT** | SIGTERM だと `component_container_isolated` が**孤児化** |
+
+- `run_nav2.sh` は `run_long_nav.sh` 等から `setsid ... &` で起動されるため、
+  非対話シェルの非同期ジョブとして SIGINT / SIGQUIT が `SIG_IGN` にされる（POSIX）。
+  bash は起動時に無視されていた signal を `trap` で捕まえ直せないので、
+  スクリプト側では対処できない。実際に `kill -INT` を送って
+  **15 分間何も起きなかった**（`ps` の STAT は `Ss` のまま、Isaac Sim は `R` で走り続ける）
+- `ros2 launch` の側は逆で、`launch_service.py` の `_on_sigterm` が
+  サブプロセスを止めずに自分だけ終了する。ソースにそのまま
+  `using SIGTERM can result in orphaned processes` と書かれている。
+  そのため孤児が `PPID=1` で残り、次回起動時に TF が二重配信されて
+  `TF_OLD_DATA` が大量に出る
+- `stop_nav2.sh` は上記を正しい順序で送り、**本当に消えたかを検証して**、
+  残っていれば強制 `kill -9` する。正常時は 30 秒未満・孤児ゼロで終わる
+
 ### 環境の例②: pip 版 Isaac Sim（6.0.1）固有のつまずき（2026-08-11）
 
 このプロジェクトは複数のユーザー・複数の Isaac Sim 入手方法
