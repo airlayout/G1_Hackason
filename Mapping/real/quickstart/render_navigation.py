@@ -98,12 +98,32 @@ def main() -> None:
                     help="推定の凡例。測位を差し替えたら必ず変えること")
     ap.add_argument("--view", choices=("full", "fit"), default="full",
                     help="full: 地図全体を写す（既定）/ fit: 軌跡の周りだけに寄る")
+    ap.add_argument("--segment", type=int, metavar="N",
+                    help="N 回目のゴール（1 始まり）だけを描く。**動画は 1 回ぶんずつ "
+                         "別ファイルにする**（繋げると見たい回まで早送りが要る）。"
+                         "区切りは analyze_navigation.py と同じ「ゴールが変わる所」")
     args = ap.parse_args()
 
     data = json.loads((Path(args.rec) / "navigation.json").read_text())
     track = [s for s in data["track"] if s["truth"] and s["amcl"]]
     if not track:
         raise SystemExit("[NG] 記録が空")
+
+    if args.segment is not None:
+        # ゴールが変わったところで区切る（analyze_navigation.py と同じ規則）。
+        segments: list[list[dict]] = []
+        for s in track:
+            g = tuple(s["goal"]) if s["goal"] else None
+            if not segments or (segments[-1][0]["goal"] and
+                                tuple(segments[-1][0]["goal"]) != g):
+                segments.append([s])
+            else:
+                segments[-1].append(s)
+        if not 1 <= args.segment <= len(segments):
+            raise SystemExit(f"[NG] --segment は 1〜{len(segments)}（この記録の区間数）")
+        track = segments[args.segment - 1]
+        print(f"[segment] {args.segment}/{len(segments)} 区間目"
+              f"（{len(track)} サンプル）")
 
     occ, lvl, origin, cell = load_scene(Path(args.scene))
     extent = (float(origin[0]), float(origin[0]) + occ.shape[1] * cell,
