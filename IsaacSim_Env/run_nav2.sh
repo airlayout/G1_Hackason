@@ -84,13 +84,26 @@ NAV_PID=""
 TF_PID=""
 cleanup() {
     echo "[INFO] 後片付けをしています..."
+    # ⚠️ NAV_PID（ros2 launch）には SIGTERM ではなく SIGINT を送ること。
+    # launch_service.py の実装上、SIGTERM/SIGQUIT はサブプロセス（特に
+    # component_container_isolated）を止めずに launch 自身だけ終了する
+    # （ソースの TODO コメントに "using SIGTERM can result in orphaned
+    # processes" と明記されている）。SIGINT だけが Ctrl-C 相当の正規の
+    # シャットダウンシーケンスを子プロセスに伝播する。これを踏んで
+    # component_container_isolated が PPID=1 の孤児として残り続けた
+    # （2026-09-09 に実測で 2 回再現）。
     [[ -n "$TF_PID" ]] && kill "$TF_PID" 2>/dev/null || true
-    [[ -n "$NAV_PID" ]] && kill "$NAV_PID" 2>/dev/null || true
+    [[ -n "$NAV_PID" ]] && kill -INT "$NAV_PID" 2>/dev/null || true
     [[ -n "$SIM_PID" ]] && kill "$SIM_PID" 2>/dev/null || true
-    sleep 2
+    sleep 5
     [[ -n "$TF_PID" ]] && kill -9 "$TF_PID" 2>/dev/null || true
     [[ -n "$NAV_PID" ]] && kill -9 "$NAV_PID" 2>/dev/null || true
     [[ -n "$SIM_PID" ]] && kill -9 "$SIM_PID" 2>/dev/null || true
+    # 保険。上記でも孤児が残ることがあるため、原因に関わらずここで確実に払う
+    # （起動前の STALE チェックと同じパターンマッチ。$$ は自分自身を除外）。
+    for pid in $(pgrep -f "run_g1_twin|component_container_isolated" 2>/dev/null || true); do
+        [[ "$pid" != "$$" ]] && kill -9 "$pid" 2>/dev/null || true
+    done
 }
 trap cleanup EXIT
 
