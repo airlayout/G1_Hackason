@@ -295,13 +295,44 @@ Phase 1 の U-08（各速度での停止距離）を実測してから決める�
 
 ### Phase 1 — SDK Bridge の実機成立
 
-**前提**: Phase 0 完了。
+**前提**: Phase 0 完了（2026-09-09 に完了条件4つすべて達成）。
+
+> ## ✅ 作業項目1・3を達成した（2026-09-09）
+>
+> **私たちのソフトウェア経路で実機が初めて歩いた。**
+>
+> ```
+> teleop クライアント → IPC(Unix domain socket) → SdkBridgeProcess(20Hz・状態機械)
+>   → RealMoveBackend(--arm) → LocoClient::SetVelocity(0.3, 0, 0, 0.20) → G1 が前進
+> ```
+>
+> | 確認項目 | 結果 |
+> |---|---|
+> | 発進ゲート(`--arm`) | 開で SDK 送信 **252 件** / ゲート停止 0 件、`sdk_err=0` |
+> | 状態遷移 | `DISCONNECTED` → **`NAVIGATING`**(非ゼロ指令中) → **`READY`**(ゼロ指令) |
+> | 20Hz 周期送信（D-09） | 成立 |
+> | 起動時ゼロ速度（D-11） | 成立（起動直後に SDK送信 1 件） |
+> | 状態フィードバック | IPC 経由で `status`/`pose`/`sdk_error_count` が返る |
+> | `sdk_command_duration_s = 0.20`（D-27） | **この値で歩容が成立する**ことを確認 |
+>
+> **ROS を介していない点に注意**: IPC は Unix domain socket なので ROS 側は SDK 側と
+> 同一ホストで動く必要があるが、PC2 の ROS は Foxy で `g1_ws` は Jazzy 向け(D-01)。
+> そこで [g1_sdk_bridge_cpp/src/teleop_client_main.cpp](g1_sdk_bridge_cpp/src/teleop_client_main.cpp)
+> （ROS 非依存の IPC クライアント）で SDK 側プロセス単体を検証した。
+> **`g1_cmd_router` を実機で動かすには ROS のバージョン問題を解く必要がある**（残作業）。
+>
+> ⚠️ **はまった点**: 最初「動かない」となったが、原因は **SDK 側プロセスが起動して
+> いなかった**こと（`/tmp/g1_bridge/` が作られていないのが証拠）。
+> このとき筆者は「`duration=0.20` が短すぎて歩容が始まらない」という仮説を立てたが
+> **誤りだった**。SDK 呼び出しの成功（`sdk_err=0`）は「指令が届いた」ことしか意味せず、
+> **機体が動いたかどうかは別に確認する必要がある**という教訓。
 
 **作業項目**
-1. SDK 側プロセスを実機接続し、`/cmd_vel_safe` → IPC → `Move()` の経路を成立させる
+1. ✅ SDK 側プロセスを実機接続し、`/cmd_vel_safe` → IPC → `Move()` の経路を成立させる
+   （ただし ROS 側は未接続。teleop クライアントで代替）
 2. systemd サービス化（`Restart=always`、起動直後ゼロ速度送信）
-3. 20 Hz 周期送信と SDK 側 watchdog を実機で検証
-4. `g1_state_bridge` 経由で odometry を ROS 側に出し、**符号と単位を校正**（U-10 確定）
+3. ✅ 20 Hz 周期送信を実機で検証（SDK 側 watchdog の検証は未実施＝クライアントを強制終了させる試験が残っている）
+4. `g1_state_bridge` 経由で odometry を ROS 側に出し、**符号と単位を校正**（U-10 は 2026-09-09 に内蔵SLAM の odom で確定済み。ROS 側への配線は残作業）
 5. teleop による低速試験（仕様書 14.3 段階 1〜5 に相当）
    - 段階 1: 安全支持、ゼロ指令・通信確認
    - 段階 2: 純正リモコンによる停止介入確認

@@ -130,6 +130,11 @@ else()
         " 実機接続機で使う場合は -DUNITREE_SDK2_ROOT=... を指定すること。")
 endif()
 
+# Phase 1 用の teleop クライアント。ROS 不要で IPC 直結。SDK は使わないので常にビルドする
+add_executable(g1_sdk_bridge_teleop src/teleop_client_main.cpp)
+target_link_libraries(g1_sdk_bridge_teleop PRIVATE g1_sdk_bridge)
+target_compile_options(g1_sdk_bridge_teleop PRIVATE -Wall -Wextra)
+
 option(G1_SDK_BRIDGE_BUILD_TESTS "単体テストをビルドする" ON)
 if(G1_SDK_BRIDGE_BUILD_TESTS)
     enable_testing()

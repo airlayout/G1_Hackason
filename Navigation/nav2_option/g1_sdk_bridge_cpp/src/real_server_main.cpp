@@ -53,6 +53,9 @@ void PrintUsage(const char* argv0) {
         "  --domain-id <N>           DDS domain id (既定: 0)\n"
         "  --cmd-sock <PATH>         cmd用ソケット (既定: /tmp/g1_bridge/cmd.sock)\n"
         "  --state-sock <PATH>       state用ソケット (既定: /tmp/g1_bridge/state.sock)\n"
+        "  --sdk-duration <s>        SetVelocity に渡す duration (既定 0.20。D-27)\n"
+        "                            既定値で歩容が成立することは実機で確認済み\n"
+        "  --cmd-timeout <s>         指令が古いと判定する閾値 (既定 0.30)\n"
         "  --arm                     発進を許可する。付けなければSDKを一切呼ばない\n"
         "  --help                    この表示\n",
         argv0);
@@ -63,6 +66,11 @@ int main(int argc, char** argv) {
     g1_sdk_bridge::RealMoveBackendConfig backend_cfg;
     std::string cmd_path = "/tmp/g1_bridge/cmd.sock";
     std::string state_path = "/tmp/g1_bridge/state.sock";
+    // duration / cmd_timeout を実機で調整できるようにしてある(D-27 の原則の範囲内で
+    // Validate() が検証する)。**既定の 0.20 秒で歩容が成立することは実機で確認済み**
+    // (2026-09-09: vx=0.3 を 20Hz・duration 0.20 秒で送り、実際に前進した)。
+    double sdk_duration_s = -1.0;   // 負なら SdkBridgeConfig の既定値を使う
+    double cmd_timeout_s = -1.0;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -81,6 +89,10 @@ int main(int argc, char** argv) {
             cmd_path = next("--cmd-sock");
         } else if (arg == "--state-sock") {
             state_path = next("--state-sock");
+        } else if (arg == "--sdk-duration") {
+            sdk_duration_s = std::stod(next("--sdk-duration"));
+        } else if (arg == "--cmd-timeout") {
+            cmd_timeout_s = std::stod(next("--cmd-timeout"));
         } else if (arg == "--arm") {
             backend_cfg.armed = true;
         } else if (arg == "--help" || arg == "-h") {
@@ -100,6 +112,16 @@ int main(int argc, char** argv) {
     g1_sdk_bridge::SdkBridgeConfig cfg;
     cfg.cmd_sock_path = cmd_path;
     cfg.state_sock_path = state_path;
+    if (cmd_timeout_s > 0.0) cfg.cmd_timeout_s = cmd_timeout_s;
+    if (sdk_duration_s > 0.0) cfg.sdk_command_duration_s = sdk_duration_s;
+    try {
+        cfg.Validate();   // D-27: 送信周期 < duration <= cmd_timeout
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "[real_server] 設定が D-27 の原則に反する: %s\n", e.what());
+        return 2;
+    }
+    std::printf("[real_server] cmd_rate=%.0fHz sdk_duration=%.3fs cmd_timeout=%.3fs\n",
+                cfg.cmd_rate_hz, cfg.sdk_command_duration_s, cfg.cmd_timeout_s);
     // 発進ゲートの手前でも duration の上限を SdkBridgeConfig と揃えておく
     backend_cfg.max_duration_s = cfg.cmd_timeout_s;
 
