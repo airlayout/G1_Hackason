@@ -23,7 +23,15 @@ G1 は指令ゼロでも約 3.4 cm/s 後退する（ポリシーの残留速度�
 **ゴールは投げる直前の姿勢から選ぶ。**固定のゴールを使い回さない。
 
 使い方:
+    # Isaac Sim（/clock がある）
     python3 check_navigation.py --waypoints waypoints.json --tries 3 --record /tmp/rec
+    # 実機の最初の 1 本（**これから始める**）。真っ直ぐ 1m。旋回が要らないので予測できる
+    python3 check_navigation.py --ahead 1.0 --tries 1 --no-sim-time \
+        --planner-id Smac2D --max-stray 0.5 --timeout 40 --record /tmp/rec
+
+    # 実機で部屋の座標を使う（/clock が無いので --no-sim-time が必須）
+    python3 check_navigation.py --waypoints waypoints.json --tries 3 --no-sim-time \
+        --planner-id Smac2D --range 1.4 1.6 --max-stray 1.0 --timeout 60 --record /tmp/rec
 """
 from __future__ import annotations
 
@@ -78,9 +86,14 @@ def sim_truth() -> tuple[float, float] | None:
 
 
 class Navigator(Node):
-    def __init__(self) -> None:
+    def __init__(self, use_sim_time: bool = True) -> None:
+        # ⚠️ **実機では False にすること（--no-sim-time）。**
+        # 実機に `/clock` は無い。True のままだとノードの時刻が 0 で止まり、
+        # `rclpy.spin_until_future_complete(..., timeout_sec=...)` が張る
+        # タイマーが**永久に発火しない**（ゴールの受理待ちでそのまま固まる）。
+        # ゴールの header.stamp も 0 になる。2026-09-09 に実機で気づいた。
         super().__init__("run_navigation_test", parameter_overrides=[
-            Parameter("use_sim_time", Parameter.Type.BOOL, True)])
+            Parameter("use_sim_time", Parameter.Type.BOOL, use_sim_time)])
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.client = ActionClient(self, NavigateToPose, "navigate_to_pose")
@@ -171,13 +184,43 @@ class Navigator(Node):
         self.get_logger().warn(f"map -> base_link が引けない: {last}")
         return None
 
-    def navigate(self, gx: float, gy: float, timeout_s: float) -> dict:
+    def navigate(self, gx: float, gy: float, timeout_s: float,
+                 gyaw: float | None = None, max_stray: float | None = None) -> dict:
+        """ゴールを投げて結果を待つ。
+
+        ⚠️ **`gyaw` を省略してはいけない（2026-09-09 に実機で踏んだ）。**
+        以前は `orientation.w = 1.0`（＝ yaw 0）を固定で入れていた。これは
+        機体の向きともゴールへの方位とも無関係な値で、**位置は達成しても
+        `yaw_goal_tolerance` を永久に満たせない**。実測ではゴールまで 0.283 m
+        （許容 0.30 m）まで詰めたのに「到達」にならず、その場で向きを直そうとし、
+        `SimpleProgressChecker` は**並進しか数えない**ので
+        「15 秒で 0.5 m 動いていない」＝失敗と判定され、復帰動作の
+        **Spin 90°** が走った。1.79 m のゴールに対して累積 5.59 m 動き 174° 回った。
+        **落ちないし転倒もしないので「なぜか着かない」としか見えない。**
+        """
         goal = NavigateToPose.Goal()
         goal.pose.header.frame_id = "map"
         goal.pose.header.stamp = self.get_clock().now().to_msg()
         goal.pose.pose.position.x = gx
         goal.pose.pose.position.y = gy
-        goal.pose.pose.orientation.w = 1.0
+        if gyaw is None:
+            self.get_logger().warn(
+                "[navigate] ゴールの向きが指定されていない。yaw=0 を入れるが、"
+                "実機では Spin 復帰を呼ぶので使わないこと")
+            gyaw = 0.0
+        goal.pose.pose.orientation.z = math.sin(gyaw / 2.0)
+        goal.pose.pose.orientation.w = math.cos(gyaw / 2.0)
+
+        start = self.pose(retries=3)
+        leash = None
+        if max_stray is not None and start is not None:
+            # 逸脱ガード。**「どこに動くか分からない」への直接の答え。**
+            # 開始点からの距離が「ゴールまでの直線 + 余裕」を超えたら即キャンセルする。
+            # 復帰動作の Spin や再計画で機体が想定外の方へ行ったとき、
+            # timeout（最大 timeout_s 秒）を待たずに止められる。
+            leash = math.hypot(gx - start[0], gy - start[1]) + max_stray
+            self.get_logger().info(
+                "[navigate] 逸脱ガード: 開始点から {:.2f} m を超えたら中止".format(leash))
 
         self.feedback = []
         send = self.client.send_goal_async(
@@ -190,11 +233,27 @@ class Navigator(Node):
         result_future = handle.get_result_async()
         end = time.monotonic() + timeout_s
         next_sample = 0.0
+        strayed = None
         while rclpy.ok() and not result_future.done() and time.monotonic() < end:
             rclpy.spin_once(self, timeout_sec=0.2)
+            if leash is not None:
+                now = self.pose(retries=1)
+                if now is not None:
+                    d = math.hypot(now[0] - start[0], now[1] - start[1])
+                    if d > leash:
+                        strayed = d
+                        self.get_logger().error(
+                            "[navigate] 逸脱ガード作動: 開始点から {:.2f} m "
+                            "（上限 {:.2f} m）。中止する".format(d, leash))
+                        handle.cancel_goal_async()
+                        self.spin_for(2.0)
+                        break
             if self.recording and time.monotonic() >= next_sample:
                 self.sample((gx, gy))
                 next_sample = time.monotonic() + 0.5
+        if strayed is not None:
+            return {"accepted": True, "timeout": False, "strayed": strayed,
+                    "succeeded": False, "status": None}
         if not result_future.done():
             handle.cancel_goal_async()
             self.spin_for(2.0)
@@ -230,12 +289,24 @@ def save_record(record: str | None, waypoints: list, results: list,
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--waypoints", required=True)
+    ap.add_argument("--waypoints", help="ゴール候補の json（--ahead を使うなら不要）")
+    ap.add_argument("--ahead", type=float, metavar="D",
+                    help="**現在の向きに真っ直ぐ D m 先**をゴールにする。"
+                         "ゴールの向きは今の向きそのままなので、**旋回が一度も要らない**。"
+                         "実機で最初の 1 本を通すにはこれを使う"
+                         "（waypoint は部屋の座標なので、機体の向きと無関係な方位になり、"
+                         "着いた後に大きく回ろうとする）")
+    ap.add_argument("--max-stray", type=float, default=None, metavar="M",
+                    help="逸脱ガード。開始点からの距離が「ゴールまでの直線 + M」を"
+                         "超えたら即キャンセルする。実機では必ず付けること")
     ap.add_argument("--tries", type=int, default=3)
     ap.add_argument("--range", type=float, nargs=2, default=[3.0, 8.0])
     ap.add_argument("--timeout", type=float, default=180.0)
     ap.add_argument("--record", metavar="DIR",
                     help="真値・AMCL・経路・指令を 0.5 秒ごとに記録する（動画用）")
+    ap.add_argument("--no-sim-time", action="store_true",
+                    help="実機で使うときに付ける。**/clock が無い環境では必須**"
+                         "（付けないとゴールの受理待ちで固まる）")
     ap.add_argument("--planner-id", default="", metavar="PLUGIN_NAME",
                     help="planner_server の planner_plugins に登録された名前 "
                     "（例: Smac2D, ThetaStar）。navigate_g1.xml の "
@@ -244,9 +315,11 @@ def main() -> int:
                     "空なら既定（GridBased/NavFn）のまま")
     args = ap.parse_args()
 
-    waypoints = json.loads(Path(args.waypoints).read_text())
+    if not args.waypoints and args.ahead is None:
+        ap.error("--waypoints か --ahead のどちらかが要る")
+    waypoints = json.loads(Path(args.waypoints).read_text()) if args.waypoints else []
     rclpy.init()
-    node = Navigator()
+    node = Navigator(use_sim_time=not args.no_sim_time)
     node.recording = args.record is not None
     node.spin_for(5.0)
     if not node.client.wait_for_server(timeout_sec=15.0):
@@ -270,23 +343,40 @@ def main() -> int:
                 print(f"  {k + 1}: TF が引けない")
                 results.append(False)
                 continue
-            rx, ry, _ = pose
-            # 投げる直前の姿勢から --range の帯に入るゴールのうち最も近いものを選ぶ。
-            # 着いた先から次も同じ帯で選ぶので、帯を長くすると部屋を往復する形になる。
-            near = [(math.hypot(w["x"] - rx, w["y"] - ry), w) for w in waypoints]
-            band = sorted((d, w) for d, w in near if lo <= d <= hi)
-            if not band:
-                print(f"  {k + 1}: {lo}-{hi} m にゴール候補が無い（現在地 "
-                      f"{rx:+.2f}, {ry:+.2f}）")
+            rx, ry, ryaw = pose
+            if args.ahead is not None:
+                # **現在の向きに真っ直ぐ D m 先。** ゴールの向きも今の向きなので
+                # 出発時も終端も旋回が要らない（＝ Spin 復帰を呼ばない）
+                w = {"x": rx + args.ahead * math.cos(ryaw),
+                     "y": ry + args.ahead * math.sin(ryaw),
+                     "clearance": float("nan")}
+                dist, gyaw = args.ahead, ryaw
+            else:
+                # 投げる直前の姿勢から --range の帯に入るゴールのうち最も近いものを選ぶ。
+                # 着いた先から次も同じ帯で選ぶので、帯を長くすると部屋を往復する形になる。
+                near = [(math.hypot(w["x"] - rx, w["y"] - ry), w) for w in waypoints]
+                band = sorted((d, w) for d, w in near if lo <= d <= hi)
+                if not band:
+                    print(f"  {k + 1}: {lo}-{hi} m にゴール候補が無い（現在地 "
+                          f"{rx:+.2f}, {ry:+.2f}）")
+                    results.append(False)
+                    continue
+                dist, w = band[0]
+                # ⚠️ **ゴールの向きは「機体からゴールへの方位」にする。**
+                # waypoint は部屋の座標しか持たないので、向きを固定値にすると
+                # 着いた後に大きく回ろうとして Spin 復帰を呼ぶ（実機で踏んだ）
+                gyaw = math.atan2(w["y"] - ry, w["x"] - rx)
+            t = f"真値({truth[0]:+.2f}, {truth[1]:+.2f})" if truth else "真値不明"
+            print(f"  {k + 1}: 現在地 AMCL({rx:+.2f}, {ry:+.2f}, {math.degrees(ryaw):+.0f}°) {t} → "
+                  f"ゴール({w['x']:+.2f}, {w['y']:+.2f}, {math.degrees(gyaw):+.0f}°) "
+                  f"直線 {dist:.2f} m (clearance {w['clearance']:.2f} m)")
+
+            r = node.navigate(w["x"], w["y"], args.timeout,
+                              gyaw=gyaw, max_stray=args.max_stray)
+            if r.get("strayed") is not None:
+                print(f"       **逸脱ガードで中止**（開始点から {r['strayed']:.2f} m）")
                 results.append(False)
                 continue
-            dist, w = band[0]
-            t = f"真値({truth[0]:+.2f}, {truth[1]:+.2f})" if truth else "真値不明"
-            print(f"  {k + 1}: 現在地 AMCL({rx:+.2f}, {ry:+.2f}) {t} → "
-                  f"ゴール({w['x']:+.2f}, {w['y']:+.2f}) 直線 {dist:.2f} m "
-                  f"(clearance {w['clearance']:.2f} m)")
-
-            r = node.navigate(w["x"], w["y"], args.timeout)
             if not r["accepted"]:
                 print("       ゴールが受理されなかった")
                 results.append(False)

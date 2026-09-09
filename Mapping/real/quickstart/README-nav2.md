@@ -18,7 +18,8 @@
 | 姿勢の精度 | 歩行中 中央値 **1.49°** / p95 3.97°（直す前は 10.53° / 17.82°） |
 | 重畳 | 実機の**立脚静止で 89.2 %**（±10 cm で 95.4 %）。**歩行中は未測定** |
 | 純正 SLAM（1801） | **要らない。**MOLA-LO 単体で `map → base_link` が出る |
-| Nav2 で歩く | **未達。**`odom` フレームが無い問題が残っている（§6） |
+| Nav2 で歩く | **歩いた（2026-09-09）。**1.79m のゴールに残り 0.283m まで（許容 0.30m）。転倒 0。
+  ただし**「到達」判定は出ていない**（ゴールの向きの指定が誤っていた。§7 の落とし穴）|
 
 **直っていない前提**: 内蔵 SLAM の odom は**歩行中に roll/pitch が中央値 10.5° 狂う**。
 これは PC1 の中で作られていて手が届かない。**だから測位を外で作り直している。**
@@ -221,37 +222,53 @@ Navigation/.venv/bin/python quickstart/measure_overlay.py \
 
 ---
 
-## 6. Nav2 と繋ぐ（未達。ここが残件）
-
-### `odom` フレームが存在しない
-
-Nav2 の `local_costmap` は `global_frame: odom` を要求する（`g1_nav2.yaml`）が、
-MOLA-LO を `publish_localization_following_rep105:=False` で回すと
-**`map → base_link` を直接出すので `odom` が無い。**
-
-対処案（**未検証**）:
+## 6. Nav2 と繋ぐ（2026-09-09 に通した）
 
 ```bash
-# map -> odom を恒等の静的変換で置くと、TF が odom -> map -> base_link を辿って
-# odom -> base_link を合成できる（odom ≡ map になる）
-ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 map odom
+G1_USE_MOLA=1 bash quickstart/nav_stack.sh live
 ```
 
-許容できる理由: `odom` を使う狙いは「局所コストマップを滑らかな座標系に置く」ことで、
-この測位は**漂流 0.7 mm / ばらつき 0.39°** なので `map` でも滑らかである。
+`live` かつ `G1_USE_MOLA=1` なら、下の 3 つは `nav_stack.sh` が自動で選ぶ。
+**手で組み直さないこと**（3 つは対で動く）。
 
-### `map_server` は自分で起こす
+### (1) `odom` は恒等の静的変換で置く
 
-Nav2 の `global_costmap.static_layer` は `/map` を読むが、
-**それを publish するノードが 2026-09-06 の構成に無く、静的レイヤが空のままだった。**
+MOLA-LO を `publish_localization_following_rep105:=False` で回すと
+`map → base_link` を直接出すので `odom` が無い。`odom_to_tf.py --static-only` が
+`map → odom` を恒等の静的変換として置き、TF が `odom → map → base_link` を辿る。
+
+⚠️ **`rep105:=True` は使えない。** MOLA は rep105 の値に関わらず
+`odom → base_link` と `map → odom` も出し続けるが、**それは MOLA 内部の時計**
+（起動からの秒数）で、`map → base_link` だけが ROS の時計である。
+だから REP-105 ペアは Nav2 からは使えない。
+
+⚠️ さらに、既定のままだと **`odom` を MOLA（動的）と我々（静的）の 2 つが名乗る。**
+tf2 はフレームを最初に受けた種類で確定するので、**どちらが先に届くかで動く時と動かない時がある。**
+動的が先に立つと壁時計での参照が全部
+`transformPoseInTargetFrame: Extrapolation Error` になり、
+**controller が経路を変換できず `/cmd_vel` が 1 度も出ない。**
+コストマップの中身は静的レイヤで埋まるので**「動いているように見える」。**
+→ `local_costmap.global_frame` を **`map`** にして `odom` を引かせない（`g1_nav2.yaml`）。
+
+### (2) `base_link` は「水平・床面」で定義し直す
+
+⚠️⚠️ **`LIVOX_RPY_DEG` の pitch -8.41° は内蔵 odom の傾いた胴体系を基準に測った値。**
+内蔵 odom を使わない live の構成ではその傾きを誰も補正しないので、
+`map → base_link` が **pitch 12.2° / z 1.27m**（＝ LiDAR の位置）になる。
+経路の点は map の z=0 に在るので、RPP が 3D で `base_link` 系へ変換すると
+**全点が一様に約 +0.27m 前・約 -0.033m 右にずれ、機体は右へ逸れ続ける**
+（RPP は変換の**後**に z を 0 にするので歪みが残る）。
+
+live では `rpy 177.93 3.32 0 / xyz 0 0 1.228` を使う。地図 `mola_floor0` の datum から
+合成が厳密に閉じる（検算 4.4e-16 m）。初期姿勢も対で
+`[-0.0168, 0.0264, 0.0, 0.24, 0.0, 0.0]` になる。
+**確認**: `tf2_echo map base_link` の z が 0、pitch が 0 付近。
+
+### (3) `map_server` は自分で起こす
+
+Nav2 の `global_costmap.static_layer` は `/map` を読むが、それを publish する
+ノードが 2026-09-06 の構成に無く、静的レイヤが空のままだった。
 `nav_stack.sh` に追加済み。ライフサイクルノードなので `lifecycle_bringup` も要る。
-
-### ⚠️ `nav_stack.sh --mola` は §4 の組み合わせと食い違っている
-
-`G1_USE_MOLA=1` の経路は**まだ一度も通していない**。
-`map_full.mm` を読む・`initial_pose` を渡さない・`ignore_*_pose_from_tf` が違う・
-REP-105 が `True` など、**§4 で実機が動いた組み合わせと 6 箇所違う。**
-直す前に §4 を手で流して確かめること。
 
 ---
 
@@ -264,15 +281,68 @@ localhost の UDP（47600）で繋いでいる。**安全機構は「止めら�
 [Nav2] --/cmd_vel--> [cmd_vel_bridge.py (pixi 3.11)] --UDP--> [loco_driver.py (system 3.8)] --> 足
 ```
 
-```bash
-# 素振り。⚠️ --dry-run 単体では何も表示されない（--arm の判定が先にあるため）
-ssh g1 'python3 ~/nav_tools/loco_driver.py --dry-run --arm'
+### 配る
 
-# 本番。前方のみに限るなら --max-vy 0（後退は既定で禁止）
+```bash
+bash Navigation/real/deploy_to_pc2.sh          # md5 で検証して配る（冪等）
+bash Navigation/real/deploy_to_pc2.sh check    # 配らずに差分だけ
+bash Navigation/real/deploy_to_pc2.sh status   # PC2 で何が動いているか
+```
+
+### 起こす（この順で）
+
+```bash
+# 1. ROS 側。⚠️ pixi run python では DDS の環境変数が入らず /cmd_vel が見えない
+ssh g1 'bash ~/mapping_tools/start_cmd_vel_bridge.sh'
+
+# 2. 素振り。⚠️ --dry-run 単体では何も表示されない（--arm の判定が先にあるため）
+ssh g1 'python3 ~/nav_tools/loco_driver.py --dry-run --arm --max-vy 0'
+
+# 3. 本番。**ここから足が動く。**前景で走らせて Ctrl+C を停止手段にする
 ssh -t g1 'python3 ~/nav_tools/loco_driver.py --network-interface eth0 --max-vy 0 --arm'
 ```
 
 既定のクランプ: `vx 0.30` / `vy 0.20` / `vyaw 0.50` / **無指令 0.5 秒で停止**。
+
+⚠️ **`pkill -f loco_driver.py` を ssh の 1 行に書かないこと。**
+パターンが**リモートコマンド行自身にマッチして自分のシェルを殺す**（ssh が exit 255 で落ちる）。
+`loco_drive[r].py` と括り、**kill と起動は別の ssh 呼び出しに分ける**
+（同じ行に `loco_driver.py` という literal が別の用途で入っていても当たる）。
+
+### ⚠️⚠️ ゴールの向きを固定値で投げてはいけない（2026-09-09 に実機で踏んだ）
+
+`check_navigation.py` は以前ゴール姿勢を `orientation.w = 1.0`（yaw 0）で投げていた。
+**機体の向きともゴールへの方位とも無関係な値**なので、
+
+1. 位置は達成しても `yaw_goal_tolerance`（0.35 rad）を永久に満たせない
+   （実測: ゴールまで残り 0.283m < 許容 0.30m まで詰めたのに「到達」にならない）
+2. その場で向きを直そうとする → **`SimpleProgressChecker` は並進しか数えない**ので
+   「15 秒で 0.5m 動いていない」＝失敗と判定
+3. 失敗 → 復帰動作の **`Spin` 90°** が走る
+
+結果、**1.79m のゴールに対して累積 5.59m 動き 174° 回った。**
+転倒もエラーも出ないので「なぜか着かない」としか見えない。
+
+**最初の 1 本はこれで通す**（旋回が一度も要らないので、どこへ動くかが自明）:
+
+```bash
+python3 check_navigation.py --ahead 1.0 --tries 1 --no-sim-time \
+    --planner-id Smac2D --max-stray 0.5 --timeout 40 --record /tmp/rec
+```
+
+- `--ahead D` … **今の向きに真っ直ぐ D m 先**。ゴールの向きも今の向きなので旋回ゼロ
+- `--max-stray M` … 逸脱ガード。開始点から「直線 + M」を超えたら即キャンセル。
+  **実機では必ず付ける**（復帰動作で想定外の方へ行ったとき timeout を待たずに止まる）
+- 部屋の座標（`--waypoints`）を使う場合、向きは**機体からゴールへの方位**が入る
+
+### 安全の決め事
+
+1. **人が支える。** 最初の 1 本は必ず二人（操作と支え）で
+2. **停止手段を手に持つ。** 一次はリモコンの緊急停止、二次は `loco_driver` の端末の Ctrl+C
+3. **`--max-vy 0`** で前進と旋回だけに絞る（横移動を混ぜない）
+4. **短距離から。** `--ahead 1.0` → 1.5 → 5 → 15
+5. **バッテリーを見る。** `rt/lf/bmsstate` の `soc`（PC2 の SDK でしか読めない。
+   コンテナには `unitree_hg` の型が無い）。38% で純正 SLAM が黙って止まった記録がある
 
 ---
 
