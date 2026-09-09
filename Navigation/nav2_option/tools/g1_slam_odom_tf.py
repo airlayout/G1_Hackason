@@ -73,16 +73,26 @@ from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 SLAM_ODOM_TOPIC = "/unitree/slam_mapping/odom"
 
 
-def leveling_quaternion(gx: float, gy: float, gz: float) -> tuple[float, float, float, float]:
-    """センサー座標系で測った重力を (0,0,-1) に合わせる回転を (x,y,z,w) で返す。
+def leveling_quaternion(ax: float, ay: float, az: float) -> tuple[float, float, float, float]:
+    """センサー座標系で測った**加速度計の値(=上向き)**を (0,0,+1) に合わせる回転を返す。
+
+    ⚠️ **符号を取り違えないこと(2026-09-09 に実際にバグを作った)。**
+    静止した加速度計が返すのは「重力」ではなく**重力の反作用＝上向き**である。
+    当初これを「重力」だと思って (0,0,-1) に合わせており、**z軸が下向きのフレーム**を
+    作ってしまっていた(ROS の base_link/odom/map は z 上向きが規約)。
+
+    さらに **MID-360 は逆さ(roll≈180°)に取り付けられている**ため、センサー座標系での
+    上向きは概ね (0,0,-1) を指す。したがって正しい変換には約180°の反転が含まれる。
+    実測: 本体IMU の上向き (-0.056,+0.018,+0.998) に対し、Livox IMU は (-0.064,-0.002,-0.999)。
 
     軸角で素直に作る。オイラー角の順序規約に悩まなくて済むのが利点。
     """
-    norm = math.sqrt(gx * gx + gy * gy + gz * gz)
+    norm = math.sqrt(ax * ax + ay * ay + az * az)
     if norm < 1e-9:
         return (0.0, 0.0, 0.0, 1.0)
-    gx, gy, gz = gx / norm, gy / norm, gz / norm
-    tx, ty, tz = 0.0, 0.0, -1.0
+    gx, gy, gz = ax / norm, ay / norm, az / norm
+    # 加速度計の値(上向き)を +z へ合わせる ＝ 出来上がるフレームは z 上向き(ROS 規約)
+    tx, ty, tz = 0.0, 0.0, 1.0
     # 回転軸 = g × target、回転角 = acos(g・target)
     ax, ay, az = gy * tz - gz * ty, gz * tx - gx * tz, gx * ty - gy * tx
     s = math.sqrt(ax * ax + ay * ay + az * az)
@@ -236,12 +246,14 @@ class SlamOdomTf(Node):
 
         r_needed = r_map_base.T @ r_level
         # 検算: 合成した結果、重力が (0,0,-1) に落ちるか
+        # 検算: 加速度計の値(上向き)が map 系で (0,0,+1) に来れば正しい(z上向き=ROS規約)
         gm = (r_map_base @ r_needed) @ g
-        residual = math.degrees(math.acos(max(-1.0, min(1.0, float(-gm[2])))))
-        tilt_raw = math.degrees(math.acos(max(-1.0, min(1.0, float(-g[2])))))
+        residual = math.degrees(math.acos(max(-1.0, min(1.0, float(gm[2])))))
+        # 生センサーの傾き。MID-360 は逆さ取付なので上向きは概ね -z を指す
+        tilt_raw = math.degrees(math.acos(max(-1.0, min(1.0, float(abs(g[2]))))))
         self.get_logger().info(
             f"自動校正した: 生センサーの傾き {tilt_raw:.2f}° / "
-            f"SLAM姿勢を含めた合成後の残差 {residual:.3f}° (0に近ければ成功)")
+            f"map系で上向きが +z から {residual:.3f}° (0に近ければ成功)")
         self._publish_static(matrix_to_quat(r_needed))
 
     def _on_odom(self, msg: Odometry) -> None:
@@ -280,9 +292,10 @@ class SlamOdomTf(Node):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--gravity", type=float, nargs=3, default=[0.0918, -0.0443, -0.9948],
-                        metavar=("GX", "GY", "GZ"),
-                        help="IMUで実測した重力ベクトル(センサー座標系)。既定は座位での実測値")
+    parser.add_argument("--gravity", type=float, nargs=3, default=[-0.0642, -0.0016, -0.9994],
+                        metavar=("AX", "AY", "AZ"),
+                        help="IMU の linear_acceleration(センサー座標系)。**重力ではなく上向き**。"
+                             "既定は立位での実測値。MID-360 は逆さ取付なので z が負になる")
     parser.add_argument("--lidar-xyz", type=float, nargs=3, default=[0.0, 0.0, 0.0],
                         metavar=("X", "Y", "Z"),
                         help="base_link から LiDAR までの並進[m]。**暫定値**(U-09 確定後に差し替え)")

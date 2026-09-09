@@ -35,6 +35,7 @@ for target, src in (("map","livox_frame"), ("map","base_link"), ("base_link","li
     q = tr.transform.rotation
     R = quat_to_R([q.x,q.y,q.z,q.w])
     gm = R @ g
-    ang = math.degrees(math.acos(max(-1,min(1, -gm[2]))))
-    print(f"{target}<-{src}: 重力を変換 → ({gm[0]:+.4f}, {gm[1]:+.4f}, {gm[2]:+.4f})  -Z軸からのずれ {ang:.2f}°")
-print("\n判定: 'map<-livox_frame' のずれが 0°付近なら正しい。6〜12°なら二重計上/未補正")
+    ang = math.degrees(math.acos(max(-1,min(1, gm[2]))))  # +z に来れば0°
+    print(f"{target}<-{src}: 重力を変換 → ({gm[0]:+.4f}, {gm[1]:+.4f}, {gm[2]:+.4f})  +Z軸からのずれ {ang:.2f}°")
+print("\n判定: 'map<-livox_frame' で加速度計の値(上向き)が (0,0,+1) に来れば正しい。")
+print("⚠️ 2026-09-09: 当初 (0,0,-1) を正解として検証していたが、それはバグの側を検証していた")
