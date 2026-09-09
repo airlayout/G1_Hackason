@@ -55,3 +55,11 @@ Mapping/real/vendor/
 # 深度カメラの撮影結果がリポジトリ直下に落ちたもの
 Mapping/real/DepthCamera_*.json
 Mapping/real/DepthCapture_*.png
+
+# nav2_option: 点群→占有格子ツール専用venv(pip installで再生成できる。open3d同梱で1.8GB超)
+Navigation/nav2_option/tools/pointcloud_to_occupancy_grid/.venv/
+# nav2_option: ビルド成果物(colcon build / cmake で再生成できる)
+Navigation/nav2_option/g1_sdk_bridge_cpp/build/
+Navigation/nav2_option/g1_ws/build/
+Navigation/nav2_option/g1_ws/install/
+Navigation/nav2_option/g1_ws/log/
