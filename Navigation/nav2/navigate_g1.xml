@@ -1,0 +1,80 @@
+<!--
+  G1 用の Behavior Tree。**実機（Humble）と Isaac Sim（Jazzy）で共有する 1 本。**
+
+  ## なぜ要るのか
+
+  Nav2 標準の navigate_to_pose_w_replanning_and_recovery.xml は
+  **planner_id="GridBased" が直書き**で、PlannerSelector を持たない。
+  そのため /planner_selector トピックへ発行しても切り替わらない
+  （実機で確認: 購読者が 0 で ros2 topic info が Unknown topic と言う。2026-09-09）。
+  Smac2D を採ると決めた（同条件の Isaac Sim 実測で NavFn 0/3 に対し 3/3）ので、
+  実機でもプランナを選べる形にする。
+
+  ## なぜ 1 本にできるのか（元は sim 側に Jazzy 専用の別ファイルがあった）
+
+  もとの IsaacSim_Env/config/navigate_g1.xml は **Jazzy 専用**だった。
+  WouldAPlannerRecoveryHelp / WouldAControllerRecoveryHelp というノード型と、
+  ComputePathToPose や FollowPath の error_code_id ポートが Humble に無いためである
+  （実機コンテナで実測: 上の 2 ノード以外の 12 個は全部 Humble にも在った。
+  つまり**食い違いはこの 1 系統だけ**だった）。
+  それらは「計画が失敗したときコストマップを消すのが役に立つか」を判定する最適化で、
+  無くても外側の RecoveryNode が再試行で同じことをする。だから**両方に在るノードだけで
+  書き直し、1 本を両 distro で共有する**ことにした（2026-09-09）。
+
+  ⚠️ **ここに Jazzy 専用のノードやポートを足さないこと。** 足した瞬間に実機で
+  BT の読み込みごと失敗する（error_code 2 = FAILED_TO_LOAD_BEHAVIOR_TREE）。
+  逆に Humble 専用のものも足さない。**両方に在るものだけを使う。**
+
+  ## BTCPP_format について
+
+  Humble は BehaviorTree.CPP **v3**（libbehaviortree_cpp_v3.so）、Jazzy は **v4** である。
+  v4 は root に BTCPP_format="4" が要り、v3 は未知の属性を読み飛ばす。
+  だから **属性は書いておく**（v4 が正しく読み、v3 は無視する）。
+  実機（Humble）で読み込みを確認済み。
+
+  ## 標準からの差分は 2 つだけ
+
+  1. PlannerSelector を足し、既定を Smac2D にした。ComputePathToPose の planner_id を
+     {selected_planner} にしてある。NavFn に戻したいときは yaml を触らず、
+     /planner_selector トピックへ GridBased を発行する
+     （check_navigation.py の planner-id オプションが内部で同じことをする）。
+  2. 復帰動作から BackUp（後退）を外した。**G1 は後退させない。**
+     歩行ポリシーの学習範囲外（-0.3 m/s 以上で転倒）で、
+     さらに loco_driver.py が既定で後退指令を捨てる（後方上部がセンサの死角）。
+     残しておくと「復帰しているのに何も起きない」という追いにくい形で時間を食う。
+     詰まったときは Spin（その場旋回）と Wait で復帰させる。
+     旋回は指令と実測がほぼ一致する（±1.0 -> ±0.98）ので信頼できる。
+
+  ⚠️ XML のコメントにはハイフン 2 つを書けないので、コマンド行そのものは
+  README-nav2 と docs/作業ログ/ に置いてある。
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="Smac2D" topic_name="planner_selector"/>
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Sequence name="ClearingActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </Sequence>
+          <Spin spin_dist="1.57"/>
+          <Wait wait_duration="5"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

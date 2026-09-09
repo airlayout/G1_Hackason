@@ -1,4 +1,13 @@
 <!--
+  ⚠️⚠️ **このファイルは使われていない（2026-09-09 に共通版へ移行）。**
+  実機と共有する 1 本は `Navigation/nav2/navigate_g1.xml` で、sim の nav2.yaml も
+  そちらを指している。このファイルは **Jazzy 専用**（WouldAPlannerRecoveryHelp /
+  WouldAControllerRecoveryHelp / error_code_id は Humble に無い）で実機に載らない。
+  **消していないのは、共通版の Jazzy での読み込みをまだ確認できていないため**
+  （.200 が 2026-09-09 時点でネットワークに居ない）。確認が取れたら消す。
+  それまでは nav2.yaml の 1 行を戻せばこちらに復帰できる。
+  ⚠️ **こちらを編集しないこと。** 直すのは共通版のほう。
+
   G1 用の Behavior Tree。
 
   Nav2 標準の navigate_to_pose_w_replanning_and_recovery.xml をもとに、
