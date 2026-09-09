@@ -49,7 +49,8 @@ def quaternion_from_rpy(roll: float, pitch: float, yaw: float):
 
 class OdomToTf(Node):
     def __init__(self, topic: str, livox_xyz, livox_rpy,
-                 nav2_frames: bool = False, publish_map_odom: bool = True) -> None:
+                 nav2_frames: bool = False, publish_map_odom: bool = True,
+                 static_only: bool = False) -> None:
         super().__init__("odom_to_tf")
         # G1側の配信QoSは不明。BEST_EFFORTで購読すればRELIABLEな相手とも繋がる
         qos = QoSProfile(
@@ -59,17 +60,30 @@ class OdomToTf(Node):
             durability=QoSDurabilityPolicy.VOLATILE,
         )
         self._tf_pub = self.create_publisher(TFMessage, "/tf", 10)
-        self.create_subscription(Odometry, topic, self._on_odom, qos)
 
         self._count = 0
         self._warned_no_child = False
-        self.get_logger().info("[odom_to_tf] {} を購読して /tf へ流します".format(topic))
+        if static_only:
+            # 動的な odom -> base_link は出さない。**base_link に親が 2 つ付くのを避ける**ため。
+            # MOLA-LO を publish_localization_following_rep105:=False で回すと
+            # あちらが map -> base_link を毎スキャン出すので、ここが odom -> base_link も
+            # 出すと base_link の親が map と odom の 2 つになり、TF が壊れる。
+            self.get_logger().info(
+                "[odom_to_tf] 静的変換のみ（{} は購読しない）".format(topic))
+        else:
+            self.create_subscription(Odometry, topic, self._on_odom, qos)
+            self.get_logger().info("[odom_to_tf] {} を購読して /tf へ流します".format(topic))
 
         self._nav2_frames = nav2_frames
         if nav2_frames and publish_map_odom:
             self._publish_static_identity("map", "odom")
-            self.get_logger().info(
-                "[odom_to_tf] Nav2 用: map -> odom を恒等にし、odom -> base_link を流します")
+            if static_only:
+                self.get_logger().info(
+                    "[odom_to_tf] Nav2 用: map -> odom を恒等にする"
+                    "（odom -> base_link は MOLA-LO の map -> base_link から TF が合成する）")
+            else:
+                self.get_logger().info(
+                    "[odom_to_tf] Nav2 用: map -> odom を恒等にし、odom -> base_link を流します")
         elif nav2_frames:
             self.get_logger().info(
                 "[odom_to_tf] Nav2 用: odom -> base_link のみ流します"
@@ -172,6 +186,12 @@ def main(argv=None) -> int:
                         "G1 の odom は map -> base_link を直接出すので、"
                         "そのままでは REP-105 に合わない。"
                         "map -> odom を恒等の静的変換とし、odom -> base_link として流す")
+    p.add_argument("--static-only", action="store_true",
+                   help="静的変換だけを出し、odom のトピックは購読しない。"
+                        "**MOLA-LO に map -> base_link を直接出させる構成（段 A の案 1）で使う。**"
+                        "純正 SLAM を起こさないと /unitree/slam_mapping/odom は配信されないので、"
+                        "この構成では購読しても何も出ない。さらに MOLA が map -> base_link を"
+                        "出しているところに odom -> base_link を足すと base_link の親が 2 つになる")
     p.add_argument("--no-map-odom", action="store_true",
                    help="map -> odom を流さない。**過去の地図の座標系で走らせるとき**に使う。"
                         "その変換は align_to_map.py が求め、static_transform_publisher が流すので、"
@@ -187,7 +207,7 @@ def main(argv=None) -> int:
 
     rclpy.init()
     node = OdomToTf(args.topic, args.livox_xyz, rpy,
-                    args.nav2_frames, not args.no_map_odom)
+                    args.nav2_frames, not args.no_map_odom, args.static_only)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

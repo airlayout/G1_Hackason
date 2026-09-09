@@ -2,8 +2,13 @@
 #
 # ## この設定が前提にしているもの
 #
-# - TF は `odom_to_tf.py --nav2-frames` が出す（map -> odom は恒等、odom -> base_link は
-#   内蔵SLAM の /unitree/slam_mapping/odom）。G1 は /tf を一切出さないので必須
+# - TF は 2 つで作る（2026-09-09 に実機で通した構成。段 A）。G1 は /tf を一切出さない:
+#     `odom_to_tf.py --nav2-frames --static-only` … map -> odom（恒等）と
+#                                                   base_link -> livox_frame（実測）
+#     MOLA-LO（rep105:=False）              … map -> base_link を毎スキャン
+#   odom -> base_link は TF が odom -> map -> base_link を辿って合成する。
+#   ⚠️ **内蔵SLAM の /unitree/slam_mapping/odom は使わない**（純正 SLAM を起こさないので
+#   配信されない。歩行中に roll/pitch が中央値 10.5° 狂うのが元々の理由）
 # - 障害物は生 LiDAR `/utlidar/cloud_livox_mid360` から取る。
 #   **地図点群 /unitree/slam_mapping/points は header.stamp=0 なので使えない**
 #   （コストマップはメッセージ時刻で TF を引くため）
@@ -56,9 +61,17 @@ bt_navigator:
     use_sim_time: true
     global_frame: map
     robot_base_frame: base_link
-    odom_topic: /unitree/slam_mapping/odom
+    odom_topic: /dog_odom
     bt_loop_duration: 10
     default_server_timeout: 20
+    # ⚠️ **Nav2 標準の BT では Smac2D を選べない。**
+    # navigate_to_pose_w_replanning_and_recovery.xml は planner_id="GridBased" が
+    # 直書きで PlannerSelector を持たない。/planner_selector へ発行しても
+    # 購読者が居ないので効かない（実機で確認: Unknown topic。2026-09-09）。
+    # navigate_g1.xml は Humble 用に作った差し替え（PlannerSelector 有り・既定 Smac2D、
+    # 復帰動作から BackUp を除去）。sim 側の同名ファイルは **Jazzy 専用なので流用できない。**
+    # パスはコンテナ内から見た形（nav_stack.sh が /work にリポジトリをマウントする）
+    default_nav_to_pose_bt_xml: /work/G1_Hackason/Navigation/nav2/navigate_g1.xml
 
 controller_server:
   ros__parameters:
@@ -68,15 +81,30 @@ controller_server:
     min_y_velocity_threshold: 0.02
     min_theta_velocity_threshold: 0.05
     failure_tolerance: 0.3
-    odom_topic: /unitree/slam_mapping/odom
+    # ⚠️ **`/unitree/slam_mapping/odom` は配信されていない**（純正 SLAM を起こさない構成。
+    # 2026-09-09 に実機で確認: hz が取れない）。指していると OdomSmoother が
+    # **速度を常に 0 と読む**ので、下の use_velocity_scaled_lookahead_dist が
+    # lookahead を min（0.4m）に張り付かせる。落ちないので気づきにくい。
+    # `/dog_odom` は G1 内蔵の状態推定で 1005 Hz で生きており twist に実データが入る。
+    # ⚠️ **使うのは twist だけ。** pose と frame（odom -> robot_center）は G1 内部の
+    # odom 系で、roll/pitch が静止中でも 10〜20° 狂う（測位を外で作り直している理由）。
+    # Nav2 が odom_topic から取るのは速度だけなので、これで筋は通る。
+    odom_topic: /dog_odom
     progress_checker_plugin: progress_checker
     goal_checker_plugins: [general_goal_checker]
     controller_plugins: [FollowPath]
 
     progress_checker:
       plugin: nav2_controller::SimpleProgressChecker
-      required_movement_radius: 0.5
-      movement_time_allowance: 15.0
+      # ⚠️ **SimpleProgressChecker は並進しか数えない（2026-09-09 に実機で踏んだ）。**
+      # その場旋回は移動 0 m なので、**向きを直している間ずっと「進んでいない」**と判定される。
+      # 実測: ゴール位置は達成（残り 0.283 m < 許容 0.30 m）したのに向きが合わず、
+      # 旋回中に 0.5m/15s を満たせず失敗 → 復帰動作の Spin 90° が走った。
+      # 二足は旋回に時間がかかるので、半径を下げて（＝緩めて）猶予を伸ばす。
+      # ⚠️ ただし**これは対症療法**で、本筋はゴールの向きを機体に対して意味のある値にすること
+      # （check_navigation.py の --ahead / 方位からの gyaw）。
+      required_movement_radius: 0.15
+      movement_time_allowance: 25.0
     general_goal_checker:
       plugin: nav2_controller::SimpleGoalChecker
       xy_goal_tolerance: 0.30         # 二足なので厳しくしない
@@ -109,9 +137,34 @@ local_costmap:
       use_sim_time: true
       update_frequency: 5.0
       publish_frequency: 2.0
-      global_frame: odom
+      # ⚠️⚠️ **`odom` にしてはいけない（2026-09-09 に実機で踏んだ。計画の案 2 に移行）。**
+      # MOLA は rep105 の値に関わらず「odometry」の TF（`odom -> base_link` と
+      # `map -> odom`）も出し続け、それは **MOLA 内部の時計**（起動からの秒数）である。
+      # 一方 localization の `map -> base_link` だけが ROS の時計。
+      # つまり `odom` を我々の静的な恒等変換と MOLA の動的変換の 2 つが名乗る状態になり、
+      # tf2 はフレームを最初に受けた種類（静的/動的）で確定するので、
+      # **どちらが先に届くかで動く時と動かない時がある。**
+      # 動的が先に立つと壁時計での参照が全部
+      #   `transformPoseInTargetFrame: Extrapolation Error looking up target frame`
+      # になり、**controller が経路を変換できず /cmd_vel が 1 度も出ない**
+      # （local costmap も `Message Filter dropping message: frame 'livox_frame'` で
+      # LiDAR を捨てる）。⚠️ **コストマップの中身は静的レイヤで埋まるので
+      # 「動いているように見える」。**気づく手は nav2.log の Extrapolation Error を数えること。
+      # `map` にすれば Nav2 は `odom` を一度も引かないので、この競合の外に出られる。
+      # 測位は漂流 0.7mm / ばらつき 0.39° なので `map` 自体が滑らかで、
+      # rolling window の狙い（局所コストマップを滑らかな系に置く）は保てる。
+      # ⚠️ behavior_server は既に global_frame: map なので、これで `odom` の参照者は居なくなる。
+      global_frame: map
       robot_base_frame: base_link
       rolling_window: true
+      # ⚠️ **local 側にも要る（2026-09-09 に実機で判った）。**
+      # 「rolling window は原点が毎周期変わるのでフル版が出る」というのは
+      # **歩いているときだけ**の話で、**静止中は原点が動かないので出ない。**
+      # 実機で立たせたまま測ったら /local_costmap/costmap は 12 秒待っても 0 通、
+      # /local_costmap/costmap_updates だけが 1.67 Hz で来ていた
+      # （フル版は transient_local の latched を取れば読めるので「壊れている」訳ではない）。
+      # 段 A の合否「周期的に届き、中身が全 0 でない」がこれで測れなくなるため足した。
+      always_send_full_costmap: true
       width: 8
       height: 8
       resolution: 0.10
@@ -179,6 +232,15 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       resolution: 0.10
+      # ⚠️ 既定の false では /global_costmap/costmap に**部分更新しか出ない**。
+      # 後から購読しても transient_local のキャッシュが無く、
+      # /global_costmap/costmap_updates だけが届いてフル版は 30 秒待っても来ない
+      # （解像度の問題ではない。0.05 → 0.1 に落としても同じだった）。
+      # ローカルは rolling window で原点が毎周期変わるためフル版が出るので、
+      # この症状はグローバル側にだけ出る。RViz2 の Global Costmap 表示と
+      # check_planning.py の「機体セルのコスト」がこれを要求する。
+      # sim 側（IsaacSim_Env/config/nav2.yaml）は先に入れてあった（2026-09-08）。
+      always_send_full_costmap: true
       track_unknown_space: true
       robot_radius: 0.30              # 連結性の実測で決めた（冒頭の注記）
       plugins: [static_layer, voxel_layer, inflation_layer]
@@ -324,5 +386,5 @@ velocity_smoother:
     min_velocity: [-0.10, -0.20, -0.50]
     max_accel: [0.5, 0.5, 1.0]
     max_decel: [-0.8, -0.8, -1.5]
-    odom_topic: /unitree/slam_mapping/odom
+    odom_topic: /dog_odom      # feedback が OPEN_LOOP なので実際には読まれない
     odom_duration: 0.1

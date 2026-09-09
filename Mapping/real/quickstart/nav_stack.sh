@@ -52,13 +52,67 @@ SESSION="${G1_SESSION:-20260906T135940_UiS_room_v3}"
 BAG="/work/G1_Hackason/Mapping/real/runs/$SESSION/raw/rosbag2"
 RATE="3"
 NAV2_PARAMS="/work/G1_Hackason/Navigation/nav2/g1_nav2.yaml"
-# 実測値（2026-09-05）。**度**で渡す。--livox-rpy はラジアンなので取り違えないこと
-LIVOX_RPY_DEG="178.35 -8.41 -0.72"
-LIVOX_XYZ="-0.004 0.016 -0.037"
+# base_link -> livox_frame。**度**で渡す（--livox-rpy はラジアンなので取り違えないこと）。
+#
+# ⚠️⚠️ **値は 2 組ある。どちらの構成かで base_link の意味が違うため。**
+#
+# (a) offline（内蔵 odom が base_link を定義する）:
+#     rpy 178.35 -8.41 -0.72 / xyz -0.004 0.016 -0.037（実測 2026-09-05）
+#     この -8.41° は **内蔵 odom の胴体系を基準に測った取付角**である。
+#     その胴体系自体が map に対して静止中でも 10〜20° 傾いているので、
+#     odom -> base_link を内蔵 odom から流す構成では**これで筋が通る**。
+#
+# (b) live（--static-only。base_link を我々が定義する）:
+#     rpy 177.93 3.32 0 / xyz 0 0 1.228
+#     **base_link を「重力基準で水平・床面（z=0）・LiDAR の真下」と定義し直したもの。**
+#     地図 mola_floor0 の datum（rebuild.log の
+#     "(x,y,z,yaw,pitch,roll)=(-0.0168, 0.0264, 1.2280, 0.24, 3.32, 177.93)" ＝
+#     記録開始時の **LiDAR** の map 系姿勢）から合成が**厳密に閉じる**
+#     （検算 4.4e-16 m / 1.1e-15 deg）。
+#
+# ⚠️ **(a) を live で使うと歩かせたときに右へ逸れ続ける（2026-09-09 に実機で踏んだ）。**
+# 内蔵 odom を使わないので、(a) が前提にしている胴体系の傾きを誰も補正しない。
+# 結果 map -> base_link が **pitch 12.2° / z 1.27m**（＝ LiDAR の位置）になる。
+# 経路の点は map の z=0 に在るので、RPP が 3D で base_link 系へ変換すると
+# **全点が一様に約 +0.27 m 前・約 -0.033 m 右にずれる**
+# （RPP は変換の**後**に z を 0 にするので、この歪みは残る）。
+# 実測: carrot が (x 0.400, y -0.010) と出て「0.4m 先」を名乗るが実際は 0.13m 先。
+# ⚠️ **落ちないし経路も出る。** 見つける手は /lookahead_point の z と
+# map -> base_link の pitch を見ることだけ。
+if [ "${G1_MAP_ODOM_STATIC:-}" = "0" ]; then
+    LIVOX_RPY_DEG="178.35 -8.41 -0.72"; LIVOX_XYZ="-0.004 0.016 -0.037"
+elif [ "${1:-}" = "live" ]; then
+    LIVOX_RPY_DEG="177.93 3.32 0"; LIVOX_XYZ="0 0 1.228"
+else
+    LIVOX_RPY_DEG="178.35 -8.41 -0.72"; LIVOX_XYZ="-0.004 0.016 -0.037"
+fi
+LIVOX_RPY_DEG="${G1_LIVOX_RPY_DEG:-$LIVOX_RPY_DEG}"
+LIVOX_XYZ="${G1_LIVOX_XYZ:-$LIVOX_XYZ}"
 # OctoMap の maxRange。2026-09-06 の掃引で 2m が誤除去最少だった
 OCTO_MAX_RANGE="${G1_OCTO_MAX_RANGE:-2.0}"
 # 段 3: map->odom を MOLA-LO に出させるか
 USE_MOLA="${G1_USE_MOLA:-0}"
+# 段 A（2026-09-09）: odom フレームの作り方。**live と offline で違う。**
+#
+#   0 … MOLA が rep105:=True で map -> odom を出し、odom_to_tf.py が
+#       純正 SLAM の /unitree/slam_mapping/odom から odom -> base_link を出す。
+#       **記録の再生ではこちら**（bag に純正 odom が入っている）。
+#   1 … MOLA が rep105:=False で map -> base_link を直接出し、
+#       map -> odom は恒等の静的変換で置く（odom ≡ map）。
+#       TF は odom -> map -> base_link を辿って odom -> base_link を合成する。
+#
+# ⚠️ **live では 1 でなければ動かない。** README-nav2 §4 の構成は純正 SLAM を
+# 起こさないので、`/unitree/slam_mapping/odom` が**配信されない**
+# （2026-09-09 に実機で確認: hz が取れず、odom_to_tf は静的変換しか出さない）。
+# 0 のまま live で回すと odom -> base_link が永久に来ず、local_costmap が
+# `global_frame: odom` を引けないまま黙って空になる。
+#
+# 恒等で許される根拠: odom の狙いは「局所コストマップを滑らかな座標系に置く」ことで、
+# この測位は漂流 0.7mm / ばらつき 0.39°（2026-09-07 実測）なので map 自体が滑らかである。
+# ⚠️ 逆に言えば**測位が跳んだら local_costmap も一緒に跳ぶ。** MOLA は跳ばない実測が
+# あるので実用上は成立するが、跳んだときに気づく手段は別に要る（門番の話は
+# docs/plan/2026-09-08-global-localization-and-move.md）。
+# 既定は下で MODE が確定してから決める（G1_MAP_ODOM_STATIC で上書きできる）
 # ⚠️ 2 つ間違えやすいので注意（どちらも 2026-09-07 に実機で踏んだ）:
 #   1. **`map_full.mm`（sm2mm 製）では測位できない。** パイプラインの ICP は
 #      `localmap` 層（HashedVoxelPointCloud）を見るが、sm2mm の既定生成器は
@@ -106,7 +160,17 @@ MOLA_PIPELINE="/work/G1_Hackason/Mapping/real/quickstart/mola/g1_lidar3d_icp_imu
 # 自分で合成せず `initial_pose_at.py` に出させること（あれは軌跡の quaternion から
 # rebuild.log の datum を厳密に再現するところまで検算済み）。
 MOLA_LOC_METHOD="${G1_MOLA_LOC_METHOD:-InitLocalization::FixedPose}"
-MOLA_INIT_POSE="${G1_MOLA_INIT_POSE:-[-0.0051, 0.0108, 1.2635, 0.911, 11.736, -0.282]}"
+# ⚠️ **初期姿勢も base_link の定義と対で決まる**（上の LIVOX_* の注記を読むこと）。
+#   offline（内蔵 odom が base_link）: [-0.0051, 0.0108, 1.2635, 0.911, 11.736, -0.282]
+#   live（水平・床面の base_link）:    [-0.0168, 0.0264, 0.0, 0.24, 0.0, 0.0]
+# live の値は datum そのもので、z=0・pitch=roll=0 になる（そう定義したので当然）。
+# **片方だけ替えると MOLA は収束しない。** 必ず対で動かす。
+if [ "${1:-}" = "live" ] && [ "${G1_MAP_ODOM_STATIC:-1}" != "0" ]; then
+    MOLA_INIT_POSE_DEFAULT="[-0.0168, 0.0264, 0.0, 0.24, 0.0, 0.0]"
+else
+    MOLA_INIT_POSE_DEFAULT="[-0.0051, 0.0108, 1.2635, 0.911, 11.736, -0.282]"
+fi
+MOLA_INIT_POSE="${G1_MOLA_INIT_POSE:-$MOLA_INIT_POSE_DEFAULT}"
 
 # 記録のどこから再生するか（秒）。**0 以外なら初期姿勢を軌跡から作り直す。**
 #
@@ -138,6 +202,15 @@ NAV_MAP="${G1_NAV_MAP:-/work/G1_Hackason/Mapping/real/runs/$SESSION/map/nav_map_
 
 MODE="offline"
 [ "${1:-}" = "live" ] && { MODE="live"; shift; }
+
+# 上の注記のとおり、live は純正 SLAM の odom が無いので静的にするしかない
+if [ -n "${G1_MAP_ODOM_STATIC:-}" ]; then
+    MAP_ODOM_STATIC="$G1_MAP_ODOM_STATIC"
+elif [ "$MODE" = "live" ] && [ "$USE_MOLA" = "1" ]; then
+    MAP_ODOM_STATIC=1
+else
+    MAP_ODOM_STATIC=0
+fi
 
 # offline はブリッジ NIC が無いので DDS をループバックに閉じる。
 # live は G1 の L2 に載っている col0 に載せる
@@ -287,7 +360,13 @@ else
     sleep 4
 fi
 
-if [ "$USE_MOLA" = "1" ]; then
+if [ "$USE_MOLA" = "1" ] && [ "$MAP_ODOM_STATIC" = "1" ]; then
+    say "[2] TF を流す（静的変換だけ: map -> odom は恒等、base_link -> livox_frame は実測）"
+    # --static-only が要るのは、MOLA が rep105:=False で map -> base_link を出すため。
+    # ここが odom -> base_link も出すと base_link の親が 2 つになって TF が壊れる。
+    spawn odomtf.log "python3 /work/G1_Hackason/Mapping/real/quickstart/odom_to_tf.py \
+        --nav2-frames --static-only --livox-rpy-deg $LIVOX_RPY_DEG --livox-xyz $LIVOX_XYZ"
+elif [ "$USE_MOLA" = "1" ]; then
     say "[2] TF を流す（map -> odom は MOLA-LO に任せるので出さない）"
     spawn odomtf.log "python3 /work/G1_Hackason/Mapping/real/quickstart/odom_to_tf.py \
         --nav2-frames --no-map-odom --livox-rpy-deg $LIVOX_RPY_DEG --livox-xyz $LIVOX_XYZ"
@@ -311,11 +390,36 @@ if [ "$USE_MOLA" = "1" ]; then
         echo "[stack] MOLA の地図が無い: $MOLA_MAP" >&2
         echo "[stack] 先に docker exec rviz bash /work/.../run_mola_lo.sh <SESSION> で作る" >&2
         exit 1; }
-    say "[3] MOLA-LO を測位のみモードで起こす（map -> odom を出させる）"
+    # rep105 が True なら MOLA は map -> odom を出す（odom -> base_link は別途要る）。
+    # False なら map -> base_link を直接出す（段 A の案 1。odom は恒等の静的変換）
+    #
+    # ⚠️⚠️ **mola_bridge_odometry_frame を既定の `odom` から逃がすこと（2026-09-09 に実機で踏んだ）。**
+    # MOLA は rep105 の値に関わらず「odometry」の TF（`odom -> base_link` と `map -> odom`）も
+    # 出し続ける。しかもそれは **MOLA 内部の時計**（起動からの秒数。実測 5765 s 台）で、
+    # localization の `map -> base_link` だけが ROS の時計である。
+    # 既定のままだと `odom` を**我々の静的な恒等変換と MOLA の動的変換の 2 つが名乗る**。
+    # tf2 はフレームを最初に受けた種類（静的 or 動的）で確定するので、
+    # **どちらが先に届くかで挙動が変わる**（同じ設定で動く時と動かない時がある）。
+    # 動的が先に立つと、壁時計での参照が全部
+    #   `transformPoseInTargetFrame: Extrapolation Error looking up target frame`
+    # になり、**controller が経路を変換できず /cmd_vel が 1 度も出ない**。
+    # local costmap も `Message Filter dropping message: frame 'livox_frame'` で LiDAR を捨てる。
+    # ⚠️ **コストマップの中身は静的レイヤで埋まるので「動いているように見える」。**
+    # 気づく手は nav2.log の Extrapolation Error を数えることだけ。
+    #
+    # なお **この事実は rep105:=True の経路が成立しないことの証明でもある**:
+    # MOLA の REP-105 ペアは丸ごと内部時計なので、Nav2 からは使えない。
+    REP105=True
+    OUT_FRAMES="map -> odom"
+    if [ "$MAP_ODOM_STATIC" = "1" ]; then
+        REP105=False
+        OUT_FRAMES="map -> base_link"
+    fi
+    say "[3] MOLA-LO を測位のみモードで起こす（$OUT_FRAMES を出させる）"
     say "    地図: $MOLA_MAP"
     say "    初期姿勢($MOLA_LOC_METHOD): $MOLA_INIT_POSE"
     # start_mapping_enabled:=False が測位のみ。地図は更新しない
-    # publish_localization_following_rep105:=True（既定）で map -> odom を出す
+    # publish_localization_following_rep105 が True（既定）なら map -> odom、False なら map -> base_link
     # min_nearby_poses_occupied:=2 は Livox の非反復スキャン向け
     spawn mola.log "ros2 launch mola_lidar_odometry ros2-lidar-odometry.launch.py \
         mola_lo_pipeline:=$MOLA_PIPELINE \
@@ -327,7 +431,8 @@ if [ "$USE_MOLA" = "1" ]; then
         mola_initial_map_mm_file:=$MOLA_MAP \
         initial_localization_method:=$MOLA_LOC_METHOD \
         initial_pose:=\"$MOLA_INIT_POSE\" \
-        publish_localization_following_rep105:=True \
+        publish_localization_following_rep105:=$REP105 \
+        mola_bridge_odometry_frame:=mola_odom \
         ignore_lidar_pose_from_tf:=false \
         use_mola_gui:=False use_rviz:=False \
         use_sim_time:=$SIM_TIME"
