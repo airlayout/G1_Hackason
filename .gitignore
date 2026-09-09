@@ -27,15 +27,18 @@ G1_HuggingFace/lerobot/
 G1_HuggingFace/cyclonedds/
 G1_HuggingFace/venv/
 
-# SimEnv3D(作りかけの3D環境、追跡対象外)
-SimEnv3D/
-
 # 実機 Mapping の実行成果物・ローカル設定・配備物
 Mapping/real/runs/*
 !Mapping/real/runs/.gitkeep
 Mapping/real/.env
 Mapping/real/dist/
 Mapping/real/.mapping-state.json
+
+# Perception の検出結果出力（再生成できるため追跡しない）
+Perception/sim/outputs/*
+!Perception/sim/outputs/.gitkeep
+Perception/real/outputs/*
+!Perception/real/outputs/.gitkeep
 
 # このPCだけに置くローカル専用データ（共有しない・再取得できるもの）
 _local/

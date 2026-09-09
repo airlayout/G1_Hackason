@@ -1,0 +1,38 @@
+# Perception / sim 設定
+# 実行時に --config で別ファイルを指定することも可能です。
+
+source:
+  # "zmq" | "video" | "webcam"
+  type: zmq
+
+  zmq:
+    # MuJoCoシムのhead_cameraが配信するZMQストリームへの接続先。
+    # lerobot-teleoperate等で --robot.cameras='{"...":{"type":"zmq","server_address":"localhost",...}}'
+    # と同じ仕組みを使うため、通常はlocalhostのままでよい。
+    server_address: localhost
+    port: 5555
+    camera_name: head_camera
+    timeout_ms: 5000
+
+  video:
+    # source.type: video のときに使うローカル動画ファイルパス(接続確認できない場合のフォールバック)
+    path: sample.mp4
+    loop: false
+
+  webcam:
+    # source.type: webcam のときに使うOpenCVのデバイス番号(手元での動作確認用)
+    device_index: 0
+
+detector:
+  model: yolo26n.pt
+  # 検出対象クラス(COCOのクラス名)。personのみに絞る
+  classes: [person]
+  confidence_threshold: 0.5
+  # "auto" | "cpu" | "cuda"
+  device: auto
+
+output:
+  console: true
+  save_json: true
+  save_csv: true
+  output_dir: outputs

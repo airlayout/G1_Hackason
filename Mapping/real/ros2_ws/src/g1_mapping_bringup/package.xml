@@ -7,6 +7,7 @@
   <license>BSD-3-Clause</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <exec_depend>fast_lio</exec_depend>
+  <exec_depend>g1_mapping_tools</exec_depend>
   <exec_depend>g1_sensor_adapter</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

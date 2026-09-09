@@ -62,7 +62,7 @@ def generate_launch_description() -> LaunchDescription:
                 description="live: ROS graphを表示、saved: PCDを再配信して表示",
             ),
             DeclareLaunchArgument("pcd_path", default_value=""),
-            DeclareLaunchArgument("fixed_frame", default_value="camera_init"),
+            DeclareLaunchArgument("fixed_frame", default_value="map"),
             DeclareLaunchArgument("map_topic", default_value="/g1_mapping/map"),
             DeclareLaunchArgument("rviz", default_value="true"),
             pcd_publisher,

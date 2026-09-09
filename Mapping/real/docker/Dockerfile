@@ -13,10 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     iproute2 \
     openssh-client \
+    python3-zmq \
     python3-colcon-common-extensions \
     python3-rosdep \
     ros-humble-rmw-cyclonedds-cpp \
     ros-humble-rosbag2 \
+    ros-humble-sensor-msgs-py \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -118,6 +120,7 @@ FROM raw AS visualization
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-rviz2 \
+    ros-humble-image-transport-plugins \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

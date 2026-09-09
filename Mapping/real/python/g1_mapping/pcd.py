@@ -7,6 +7,7 @@ from pathlib import Path
 import json
 import math
 import struct
+import sqlite3
 
 
 @dataclass(frozen=True)
@@ -132,6 +133,26 @@ def inspect_pcd(path: Path, sample_limit: int = 100_000) -> dict[str, object]:
     }
 
 
+def _bag_topic_counts(bag_dir: Path) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for database_path in sorted(bag_dir.glob("*.db3")):
+        connection = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
+        try:
+            rows = connection.execute(
+                """
+                SELECT topics.name, COUNT(messages.id)
+                FROM topics
+                LEFT JOIN messages ON messages.topic_id = topics.id
+                GROUP BY topics.id, topics.name
+                """
+            ).fetchall()
+            for name, count in rows:
+                counts[str(name)] = counts.get(str(name), 0) + int(count)
+        finally:
+            connection.close()
+    return counts
+
+
 def validate_session(
     session_dir: Path,
     *,
@@ -191,6 +212,65 @@ def validate_session(
         )
     )
 
+    manifest_path = session_dir / "manifest.json"
+    manifest = (
+        json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest_path.is_file()
+        else {}
+    )
+    camera = manifest.get("camera", {})
+    camera_required = bool(camera.get("required", False)) if isinstance(camera, dict) else False
+    try:
+        topic_counts = _bag_topic_counts(bag_dir)
+    except (OSError, sqlite3.DatabaseError) as error:
+        topic_counts = {}
+        checks.append(ValidationCheck("raw.topics", "FAIL", str(error)))
+
+    topics = manifest.get("topics", {})
+    if not isinstance(topics, dict):
+        topics = {}
+    required_topics = (
+        str(topics.get("raw_points", "/utlidar/cloud_livox_mid360")),
+        str(topics.get("raw_imu", "/utlidar/imu_livox_mid360")),
+        str(topics.get("canonical_odom", "/g1_mapping/odom")),
+        str(
+            topics.get(
+                "canonical_registered_cloud", "/g1_mapping/cloud_registered"
+            )
+        ),
+    )
+    for topic in required_topics:
+        count = topic_counts.get(topic, 0)
+        checks.append(
+            ValidationCheck(
+                f"topic:{topic}",
+                "PASS" if count > 0 else ("WARN" if allow_partial else "FAIL"),
+                f"{count} messages",
+            )
+        )
+
+    camera_topics = (
+        str(topics.get("camera_image", "/g1_camera/color/image/compressed")),
+        str(topics.get("camera_info", "/g1_camera/color/camera_info")),
+        str(topics.get("camera_metadata", "/g1_camera/frame_metadata")),
+    )
+    for topic in camera_topics:
+        count = topic_counts.get(topic, 0)
+        status = "PASS" if count > 0 else (
+            "FAIL" if camera_required and not allow_partial else "WARN"
+        )
+        checks.append(ValidationCheck(f"topic:{topic}", status, f"{count} messages"))
+
+    if camera_required and isinstance(camera, dict):
+        calibrated = bool(camera.get("calibration_complete", False))
+        checks.append(
+            ValidationCheck(
+                "camera.calibration",
+                "PASS" if calibrated else "WARN",
+                "内部パラメータあり" if calibrated else "内部パラメータは実機で確定が必要です",
+            )
+        )
+
     trajectory = session_dir / "trajectory" / "trajectory.tum"
     trajectory_lines = 0
     if trajectory.exists():
@@ -213,6 +293,7 @@ def validate_session(
         "success": success,
         "checks": [asdict(check) for check in checks],
         "pcd": pcd_info,
+        "topic_counts": topic_counts,
     }
     report_path = session_dir / "report" / "quality.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)

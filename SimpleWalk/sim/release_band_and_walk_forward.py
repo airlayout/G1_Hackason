@@ -136,8 +136,8 @@ def main():
     # 直結する（lerobot/robots/unitree_g1/controllers/gr00t_locomotion.py 参照）。
     # send_action({"remote.ly": 0.5}) というコマンド自体は実機でも同じ意味を持つ。
     # ただし戻り値の pos_after_fwd（pelvis_pos）はシミュレーション専用の確認手段。
-    print("Sending forward command (remote.ly=0.5) for 5s...", flush=True)
-    pos_after_fwd = run(robot, {"remote.ly": 0.5}, duration_s=5.0, inner=inner)
+    print("Sending forward command (remote.ly=0.5) for 60s...", flush=True)
+    pos_after_fwd = run(robot, {"remote.ly": 0.5}, duration_s=60.0, inner=inner)
     print("pelvis pos after forward cmd:", pos_after_fwd, flush=True)
 
     disp = pos_after_fwd - pos_settled
@@ -145,9 +145,9 @@ def main():
     print(f"\n=== SUMMARY ===", flush=True)
     print(f"suspended pelvis z (band有効時)   : {pelvis_pos(inner)[2]:.3f} (直後の再取得。参考値)", flush=True)
     print(f"settled  pelvis pos (band解除, 静止): {pos_settled}", flush=True)
-    print(f"final    pelvis pos (前進5秒後)     : {pos_after_fwd}", flush=True)
+    print(f"final    pelvis pos (前進60秒後)     : {pos_after_fwd}", flush=True)
     print(f"displacement xyz = {disp}", flush=True)
-    print(f"horizontal distance = {dist_xy:.4f} m over 5s", flush=True)
+    print(f"horizontal distance = {dist_xy:.4f} m over 60s", flush=True)
     # 0.05m は静止時のノイズ（バランス制御による微小な重心移動）を上回るよう
     # 実測値（静止時は数cm未満、歩行成功時は5秒で1.8m前後）から経験的に決めた閾値。
     print("MOVED_FORWARD" if dist_xy > 0.05 else "DID_NOT_MOVE_SIGNIFICANTLY", flush=True)

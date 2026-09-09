@@ -10,6 +10,7 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
+        (f"share/{package_name}/launch", ["launch/normalized_mapping.launch.py"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -21,6 +22,10 @@ setup(
         "console_scripts": [
             "sensor_doctor = g1_mapping_tools.sensor_doctor:main",
             "trajectory_writer = g1_mapping_tools.trajectory_writer:main",
+            "mapping_adapter = g1_mapping_tools.mapping_adapter:main",
+            "map_accumulator = g1_mapping_tools.map_accumulator:main",
+            "zmq_camera_bridge = g1_mapping_tools.zmq_camera_bridge:main",
+            "zmq_camera_probe = g1_mapping_tools.zmq_camera_probe:main",
         ]
     },
 )

@@ -17,8 +17,8 @@ cp .env.example .env
 ```
 
 `.env`の`G1_IFACE`を現場PCのNIC名に変更する。確認には`ip -br address`を使う。
-SSH鍵を使う場合は`G1_SSH_KEY`も設定する。`onboard` backendはG1へ保存したPCDを
-SCPで回収するため、**鍵の設定を現場で後回しにしない**。
+カメラserverの配置と起動にはPC2へのSSHログインを使用する。パスワードや鍵は
+リポジトリへ保存しない。
 
 現場PCのstatic IPは`192.168.123.0/24`のうちG1側が使っていないアドレスにする。
 G1のリンク上には本体以外の機器もいるため、`192.168.123.200`のような切りのよい
@@ -36,9 +36,28 @@ ping -c1 -W1 192.168.123.<候補>  # 応答が無ければ空き
 ./mapctl build
 ```
 
+カメラ専用serverスクリプトをPC2へ配置する。これはカメラだけを起動し、歩行modeや
+`slam_operate`を変更しない。
+
+```bash
+ssh unitree@192.168.123.164 'mkdir -p ~/mapping_tools'
+scp quickstart/start_camera_only.sh quickstart/camera_only_server.py \
+  unitree@192.168.123.164:~/mapping_tools/
+ssh unitree@192.168.123.164 'chmod +x ~/mapping_tools/start_camera_only.sh'
+```
+
 オフラインfield kitを受け取った場合は、同梱の`install-field-kit.sh`を先に実行する。
 
 ## 3. 非破壊診断
+
+先に別端末でカメラserverを起動し、計測終了まで開いておく。
+
+```bash
+ssh -t unitree@192.168.123.164 'bash ~/mapping_tools/start_camera_only.sh'
+```
+
+`run_g1_server.py --camera`は低レベル制御bridgeも同時に起動してmotion modeを解放するため、
+内蔵LIO＋純正リモコンでのMappingには使用しない。
 
 ```bash
 ./mapctl doctor --backend auto
@@ -52,6 +71,7 @@ ping -c1 -W1 192.168.123.<候補>  # 応答が無ければ空き
 - 生LiDAR・IMUの型、受信周波数、点群fields
 - 各点時刻の有無とLiDAR–IMU時刻差
 - 保存先の空き容量
+- LeRobot ImageServerのJPEG、撮影timestamp、解像度、受信周波数
 
 `FAIL`を無視して開始しない。`WARN`は内容をセッションメモへ残す。
 
@@ -78,6 +98,10 @@ ping -c1 -W1 192.168.123.<候補>  # 応答が無ければ空き
 ./mapctl view --live
 ```
 
+`Density Map`は、同じ5cmボクセルを何スキャンから観測できたかを青→緑→黄→赤で示す。
+青い領域が広く残る場合は、急旋回せず別角度からもう一度観測する。色の上限は
+`.env`の`DENSITY_TARGET_SCANS`（既定10スキャン）で調整できる。
+
 RVizを閉じてもMapping処理は継続する。反対に、Mapping停止後もRVizは自動終了しないため、
 確認が終わったらRVizウィンドウを閉じる。
 
@@ -91,7 +115,8 @@ RVizを閉じてもMapping処理は継続する。反対に、Mapping停止後�
 `stop`は地図保存を要求してからrosbagを停止する。途中で端末を閉じたりコンテナを強制終了
 したりしない。
 
-`validate`が成功し、`map/map_raw.pcd`と`raw/rosbag2/`が存在することを確認する。
+`validate`が成功し、`map/map_raw.pcd`と`raw/rosbag2/`が存在し、LiDAR・IMU・odometry・
+登録点群・RGB・CameraInfo・camera metadataの件数がすべて1以上であることを確認する。
 
 保存済み地図の再確認:
 
@@ -114,7 +139,11 @@ RVizを閉じてもMapping処理は継続する。反対に、Mapping停止後�
 rosbag2が自分で`metadata.yaml`を書き出す。
 
 ```bash
-docker stop -t 30 g1-mapping-onboard_recorder-1 g1-mapping-onboard_trajectory-1
+docker stop -t 30 \
+  g1-mapping-session_recorder-1 \
+  g1-mapping-session_trajectory-1 \
+  g1-mapping-onboard_pipeline-1 \
+  g1-mapping-camera_bridge-1
 ```
 
 次にrosbagから地図を作り直し、検証する。
