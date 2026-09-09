@@ -1,0 +1,697 @@
+<meta charset="utf-8">
+<title>G1の目を、盗め。 ピッチスライド（下書き）</title>
+<style>
+  /* ============================================================
+     Design tokens
+     このデッキは「印刷してPDF化 → そのまま提出物になる」書類。
+     ブラウザのダーク/ライト切り替えに追従させると印刷結果が
+     不安定になるため、あえて単一の紙面トーン（暖白紙 + 緑系アクセント）
+     に固定している。背景・文字色は全てここで明示。
+     ============================================================ */
+  :root {
+    --paper: #faf9f4;
+    --deck-bg: #e5e6dc;
+    --ink: #1c2321;
+    --ink-soft: #5b6660;
+    --rule: #cfd2c4;
+    --accent: #2f6e5e;
+    --accent-ink: #163d32;
+    --accent-soft: #dceae4;
+    --data: #c9701a;
+    --data-soft: #f3dfc4;
+    --placeholder: #b5451b;
+    --shadow: rgba(28, 35, 33, 0.16);
+
+    /* スライド本文の文字サイズは以下5段階のみを使う。個別セレクタに
+       font-sizeを直接書かず、必ずこのトークンを参照する。単位は素のcqw
+       （.slideのcontainer-type: inline-sizeに対する割合）。 */
+    --fs-1: 1.3125cqw;  /* 極小ラベル・monoタグ */
+    --fs-2: 1.625cqw;   /* 補足テキスト・キャプション */
+    --fs-3: 1.9375cqw;  /* 本文 */
+    --fs-4: 2.875cqw;   /* 強調数値・インデックス */
+    --fs-5: 5.4cqw;      /* サービス名などヒーロー見出し */
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--deck-bg);
+    color: var(--ink);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP",
+      "Yu Gothic", "Meiryo", sans-serif;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .mono {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono",
+      Consolas, monospace;
+  }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+
+  /* ---------- intro / footer chrome (never printed) ---------- */
+
+  .no-print {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem;
+  }
+
+  .kicker {
+    display: inline-block;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    padding: 0.2rem 0.6rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .intro h1 { font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 700; }
+  .intro p { color: var(--ink-soft); max-width: 68ch; }
+
+  .print-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+    margin-top: 1.6rem;
+  }
+
+  button.print-btn {
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--paper);
+    background: var(--ink);
+    border: 1px solid var(--ink);
+    padding: 0.55rem 1.1rem;
+    cursor: pointer;
+  }
+
+  button.print-btn:hover { background: var(--accent); border-color: var(--accent); }
+  button.print-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .print-bar span.note { color: var(--ink-soft); font-size: 0.85rem; }
+
+  /* ---------- the deck itself ---------- */
+
+  .deck {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2.4rem;
+    padding: 0.5rem 1rem 4rem;
+  }
+
+  .slide {
+    position: relative;
+    width: 100%;
+    max-width: 1280px;
+    aspect-ratio: 16 / 9;
+    background: var(--paper);
+    box-shadow: 0 22px 46px var(--shadow);
+    display: grid;
+    grid-template-columns: 1fr;
+    overflow: hidden;
+    container-type: inline-size;
+  }
+
+  .slide-number {
+    position: absolute;
+    top: 1rem;
+    right: 1.4rem;
+    z-index: 2;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    font-size: 1.9375cqw;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--ink-soft);
+  }
+
+  .slide-body {
+    padding: 2.1rem 2.6rem 1.9rem;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .slide-body > .eyebrow {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    font-size: var(--fs-1);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 0.3rem;
+  }
+
+  .slide-body > h2 {
+    font-size: 3.2cqw;
+    font-weight: 700;
+    border-bottom: 2px solid var(--rule);
+    padding-bottom: 0.6rem;
+    margin-bottom: 1rem;
+  }
+
+  .impact-note { margin: 0 0 0.6rem; font-size: var(--fs-2); color: var(--ink-soft); }
+
+  .slide-content { flex: 1; min-height: 0; display: grid; gap: 1rem; }
+
+  ul.plain { margin: 0; padding-left: 1.15em; font-size: var(--fs-3); }
+  ul.plain li { margin-bottom: 0.5rem; }
+
+  .field { display: flex; flex-direction: column; gap: 0.3rem; }
+  .field label {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    font-size: var(--fs-1);
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+  }
+  .field p { margin: 0; font-size: var(--fs-3); }
+
+  .fill {
+    color: var(--placeholder);
+    font-style: italic;
+    font-size: var(--fs-2);
+  }
+
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .stat { border-top: 3px solid var(--accent); padding-top: 0.5rem; }
+  .stat .num { font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace; font-size: var(--fs-3); font-weight: 700; color: var(--accent-ink); }
+  .stat .cap { font-size: var(--fs-1); color: var(--ink-soft); }
+
+  table.data-table { width: 100%; border-collapse: collapse; font-size: var(--fs-2); }
+  table.data-table th, table.data-table td {
+    text-align: left; border-bottom: 1px solid var(--rule);
+    padding: 0.4rem 0.6rem 0.4rem 0; vertical-align: top;
+  }
+  table.data-table th {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    font-size: var(--fs-1); letter-spacing: 0.06em; color: var(--ink-soft); font-weight: 500;
+  }
+
+  .demo-flow { display: flex; flex-direction: column; gap: 0.6rem; flex: 1; min-height: 0; }
+  .demo-step {
+    border-left: 3px solid var(--accent);
+    padding: 0.3rem 0 0.4rem 0.8rem;
+    display: flex;
+    gap: 1rem;
+    align-items: baseline;
+  }
+  .demo-step .t { font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace; font-size: var(--fs-1); color: var(--accent-ink); white-space: nowrap; }
+  .demo-step .d { font-size: var(--fs-3); }
+  .demo-fallback {
+    margin-top: auto;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--rule);
+    font-size: var(--fs-2);
+    color: var(--placeholder);
+  }
+
+  .cover-slide .slide-body { position: relative; justify-content: center; align-items: center; text-align: center; }
+  .cover-slide .event-name { position: absolute; top: 1.2rem; left: 1.4rem; font-size: 2.4cqw; letter-spacing: 0.06em; color: var(--ink-soft); }
+  .cover-slide .service-name { font-size: var(--fs-5); font-weight: 700; color: var(--ink); }
+  .cover-slide .tagline { color: var(--accent); font-size: var(--fs-3); margin: 0.5rem 0 0; }
+  .cover-meta { position: absolute; left: 0; right: 0; bottom: 2.2rem; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+
+  /* ---------- talk script overlay (rehearsal aid, never printed) ---------- */
+
+  .talk-script {
+    display: none;
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    z-index: 5;
+    max-height: 46%;
+    overflow-y: auto;
+    background: rgba(28, 35, 33, 0.94);
+    color: var(--paper);
+    padding: 0.55rem 1rem 0.65rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  body.show-script .talk-script { display: block; }
+  .talk-script .script-label {
+    display: block;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    font-size: 0.64rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #a8e0cb;
+    margin-bottom: 0.25rem;
+  }
+
+  /* ---------- present mode (rehearsal / live delivery) ---------- */
+
+  .present-bar { display: none; }
+  body.present-mode .no-print:not(.present-bar) { display: none; }
+  body.present-mode footer.no-print { display: none; }
+
+  body.present-mode {
+    overflow: hidden;
+    --present-pad-top: 2rem;
+    --present-pad-bottom: 5rem;
+  }
+  body.present-mode.clean-mode { --present-pad-bottom: 2rem; }
+
+  body.present-mode .deck {
+    position: fixed; inset: 0; margin: 0; gap: 0;
+    padding: var(--present-pad-top) 2rem var(--present-pad-bottom);
+    background: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  body.present-mode .slide { display: none; }
+  body.present-mode .slide.active {
+    display: grid;
+    max-width: none;
+    --present-avail-h: calc(100vh - var(--present-pad-top) - var(--present-pad-bottom));
+    width: min(92vw, calc(var(--present-avail-h) * 16 / 9));
+    height: min(var(--present-avail-h), calc(92vw * 9 / 16));
+  }
+
+  body.present-mode .present-bar {
+    display: flex;
+    position: fixed; left: 0; right: 0; bottom: 0;
+    z-index: 50;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 0.6rem 1.2rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-size: 0.85rem;
+    border-top: 1px solid rgba(250, 249, 244, 0.2);
+  }
+
+  .present-bar button {
+    font: inherit;
+    color: var(--paper);
+    background: transparent;
+    border: 1px solid rgba(250, 249, 244, 0.5);
+    padding: 0.3rem 0.7rem;
+    cursor: pointer;
+  }
+  .present-bar button:hover { background: rgba(250, 249, 244, 0.15); }
+  .present-bar .spacer { flex: 1; }
+  body.present-mode.clean-mode .present-bar { display: none; }
+
+  #stopwatch.over { color: #ff8a8a; font-weight: 700; }
+  #slideWatch.over { color: #ff8a8a; font-weight: 700; }
+  .budget { color: var(--placeholder); }
+
+  /* ---------- footer checklist ---------- */
+
+  .checklist { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: 0.5rem; }
+  .checklist li { display: flex; gap: 0.6rem; align-items: flex-start; font-size: 0.92rem; }
+  .checklist input { margin-top: 0.3rem; }
+  footer.no-print { border-top: 1px solid var(--rule); margin-top: 1rem; }
+
+  @media (max-width: 720px) {
+    .stat-row { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* ---------- print / PDF export ---------- */
+
+  @media print {
+    @page { size: 13.333in 7.5in; margin: 0; }
+    body { background: var(--paper); }
+    .no-print { display: none !important; }
+    .talk-script { display: none !important; }
+    .deck { display: block; width: 13.333in; padding: 0; }
+    .slide {
+      max-width: none; min-width: 0;
+      width: 13.333in; height: 7.5in;
+      aspect-ratio: auto;
+      box-shadow: none;
+      page-break-after: always;
+    }
+  }
+</style>
+
+<div class="no-print intro">
+  <span class="kicker">東急不動産グループ社員向け「フィジカルAI体験会」（2026/9/24・エンタメチーム枠）下書き</span>
+  <h1>G1の目を、盗め。 ― 東急不動産様 商業施設向け体験企画案</h1>
+  <p>
+    12分枠（7分発表＋5分質疑、11:05-11:30）用の下書きスライド。台本の正本はこのファイル内の
+    <code>talk-script</code>であり、内容は既存企画書
+    <code>Entame/docs/proposal/repeat-design.html</code>（PoC版）に準拠する。90秒・6m×8m・
+    20〜25組/時などの数値は同資料由来の「たたき台」であり確定値ではない。詳細は
+    <a href="README.md">README.md</a> を参照。
+  </p>
+  <p>
+    「台本を表示」で各スライドのトークスクリプトと音声プレーヤーを重ねて表示、
+    「プレゼンモードで練習」でフルスクリーンのスライド送り＋経過時間表示のリハーサルができる。
+    音声は <code>scripts/generate-narration.py</code> をVOICEVOX ENGINE起動中に実行して生成する
+    （このリポジトリには音声ファイル自体はコミットしない運用。詳細はREADME参照）。
+  </p>
+  <div class="print-bar">
+    <button class="print-btn" onclick="window.print()">印刷してPDF化</button>
+    <button class="print-btn" id="scriptToggleBtn" onclick="toggleScript()">台本を表示</button>
+    <button class="print-btn" onclick="enterPresent()">プレゼンモードで練習（全画面）</button>
+    <button class="print-btn" onclick="enterPresent({ clean: true })">本番モード（全画面・表示のみ）</button>
+    <span class="note">Chrome/Edgeの印刷ダイアログで「PDFに保存」を選ぶと配布用PDFになる</span>
+  </div>
+</div>
+
+<main class="deck">
+
+  <!-- 1: タイトル -->
+  <section class="slide cover-slide">
+    <span class="slide-number mono">01</span>
+    <div class="event-name mono">東急不動産グループ フィジカルAI体験会</div>
+    <div class="slide-body">
+      <div class="service-name">G1の目を、盗め。</div>
+      <div class="tagline">最先端ヒューマノイドが生み出す集客・回遊・話題化の超体感型アトラクション</div>
+      <div class="cover-meta">
+        <div class="field"><label class="mono">TEAM</label><p>エンタメチーム</p></div>
+      </div>
+    </div>
+    <div class="talk-script">
+      <span class="script-label">🗣 台本</span>
+      <p>本日はお時間をいただき、ありがとうございます。エンタメチームより「G1の目を、盗め。」というテーマでご提案します。最先端のヒューマノイドロボットG1を使い、巨大な設備投資に頼らず、集客と回遊、そして話題化を同時に生み出す体験型アトラクションのご提案です。</p>
+      <audio controls src="audio/slide_1.wav" style="width:100%;margin-top:0.4rem"></audio>
+    </div>
+  </section>
+
+  <!-- 2: 商業施設を「体験の目的地」へ -->
+  <section class="slide">
+    <span class="slide-number mono">02</span>
+    <div class="slide-body">
+      <h2>商業施設を「体験の目的地」へ</h2>
+      <div class="slide-content">
+        <ul class="plain">
+          <li>東急プラザ・キューズモール・Shibuya Sakura Stage等、貴社の多様な商業施設で共通して求められるのは「単なる買物の場」を超えた価値づくり</li>
+          <li>目新しいロボットを置くだけでは話題になっても1回で終わり、リピートや滞在時間の向上につながりにくい</li>
+          <li>最新テクノロジーを使い、「足を運ぶ理由」と「滞在価値」を継続的に創出したい</li>
+          <li>商業施設を数多く運営する貴社だからこそ、複数施設へ横展開できる打ち手かどうかが重要</li>
+        </ul>
+      </div>
+    </div>
+    <div class="talk-script">
+      <span class="script-label">🗣 台本</span>
+      <p>東急プラザやキューズモール、Shibuya Sakura Stageなど、貴社が運営される商業施設に共通する課題は、単なる買物の場を超えた「体験の目的地」になれるかどうかです。目新しいロボットを置くだけでは、話題になっても1回で終わってしまい、投資回収が難しい。これは現場でよく聞く悩みです。多くの施設を運営される貴社にとっては、一施設だけの話ではなく、複数施設に横展開できる打ち手かどうかという視点が重要だと考えています。</p>
+      <audio controls src="audio/slide_2.wav" style="width:100%;margin-top:0.4rem"></audio>
+    </div>
+  </section>
+
+  <!-- 3: 東急不動産様の施設が得られる3つのメリット -->
+  <section class="slide">
+    <span class="slide-number mono">03</span>
+    <div class="slide-body">
+      <h2>東急不動産様の施設が得られる3つのメリット</h2>
+      <div class="slide-content">
+        <ul class="plain">
+          <li><strong>圧倒的な集客＆人集り</strong> — 人型ロボットが実際に稼働するインパクトで、催事広場や吹き抜けエリアに強いアイキャッチを創出</li>
+          <li><strong>館内回遊＆テナント送客</strong> — ミッションクリア報酬や参加特典を施設内クーポン・デジタルポイントと連携し、購買へ誘引</li>
+          <li><strong>まちづくりの先進性PR</strong> — 「広域渋谷圏」等におけるイノベーション＆エンタメの発信拠点として、SNS・メディア露出を最大化</li>
+          <li>汎用ロボットが実用段階に入りつつある今だからこそ、大規模な造作投資なしに試せる</li>
+        </ul>
+      </div>
+    </div>
+    <div class="talk-script">
+      <span class="script-label">🗣 台本</span>
+      <p>私たちが提案するのは、G1を使った鬼ごっこ型の体験です。貴社の施設が得られるメリットは3つ。1つ目は、ロボットが実際に稼働するインパクトによる圧倒的な集客。2つ目は、ミッションクリア報酬を施設内クーポンやポイントと連携させることによる館内回遊とテナント送客。3つ目は、広域渋谷圏をはじめとするイノベーション拠点としての先進性PRです。人型ロボットが実用段階に入りつつある今だからこそ、専用アトラクションを新設せずに試せるタイミングだと考えています。</p>
+      <audio controls src="audio/slide_3.wav" style="width:100%;margin-top:0.4rem"></audio>
+    </div>
+  </section>
+
+  <!-- 4: 体験内容「90秒ステルスミッション」（デモ） -->
+  <section class="slide">
+    <span class="slide-number mono">04</span>
+    <div class="slide-body">
+      <h2>体験内容：「90秒ステルスミッション」（デモ）</h2>
+      <div class="slide-content">
+        <ul class="plain">
+          <li><strong>ロボット警備網</strong> — G1が首のセンサー・カメラで周囲を監視</li>
+          <li><strong>障害物エリア</strong> — ポップな遮蔽物を設置し、物陰に隠れながら進む</li>
+          <li><strong>ターゲット奪取</strong> — G1の足元にあるキーアイテムを奪い、脱出できれば成功</li>
+          <li><strong>高回転率</strong> — 1回約2〜3分（説明込み）で1時間あたり20〜25組が体験可能（たたき台）</li>
+        </ul>
+      </div>
+      <div class="demo-flow">
+        <div class="demo-step"><div class="t">0:00-0:20</div><div class="d">会場にG1を配置、スタンバイ状態を見せる</div></div>
+        <div class="demo-step"><div class="t">0:20-1:00</div><div class="d">実機：90秒ミッションに挑戦（易しい設定）</div></div>
+        <div class="demo-step"><div class="t">1:00-1:40</div><div class="d">実機：難易度を上げて再実演（速度アップ・ルート変化）</div></div>
+        <div class="demo-step"><div class="t">1:40-2:00</div><div class="d">まとめのひとこと、次スライドへ</div></div>
+      </div>
+      <p class="demo-fallback">実機が20秒以内に正常起動しない、または動作中に停止した場合は、即座に事前収録のバックアップ映像へ切り替える（判断遅延によるタイムオーバーを避けるため、切替は20秒ルールで即断する）。</p>
+    </div>
+    <div class="talk-script">
+      <span class="script-label">🗣 台本（実機が動く場合）</span>
+      <p>体験内容は「90秒ステルスミッション」です。G1が首のセンサーとカメラで周囲を監視する中、ポップな遮蔽物に隠れながら進み、G1の足元にあるキーアイテムを奪って脱出できれば成功です。では実際にご覧いただきます。まずは易しい設定です。次に難易度を上げると、このように速度が上がり、警戒する範囲も広がります。1回2〜3分の短時間設計なので、1時間あたり20〜25組体験いただける計算です。これらの数値は現時点のたたき台です。</p>
+      <span class="script-label" style="margin-top:0.5rem">🗣 台本（実機が動かない場合の切替セリフ）</span>
+      <p>本日は会場の都合上、事前に撮影した映像でご覧いただきます。このように、難易度に応じて歩行速度と警戒範囲が変わり、追いかけられる緊張感が変化します。</p>
+      <audio controls src="audio/slide_4.wav" style="width:100%;margin-top:0.4rem"></audio>
+    </div>
+  </section>
+
+  <!-- 5: 商業施設・テナント連動の施策イメージ -->
+  <section class="slide">
+    <span class="slide-number mono">05</span>
+    <div class="slide-body">
+      <h2>商業施設・テナント連動の施策イメージ</h2>
+      <div class="slide-content">
+        <ul class="plain">
+          <li><strong>クーポン・回遊連動</strong> — 参加者全員に館内飲食店・アパレルで使える限定割引券を発行</li>
+          <li>ミッション成功者にはプレミアム景品（東急ポイント等）を進呈</li>
+          <li>イベント参加レシートの提示で2回目チャレンジ等の買物誘発</li>
+          <li><strong>フォトスポット＆SNS拡散</strong> — 体験前後にG1と記念撮影できる専用フォトブースを併設</li>
+          <li>「#東急プラザ」「#G1の目を盗め」等のハッシュタグ投稿キャンペーン、親子連れ・若者層のTikTok/Xでの拡散を狙う</li>
+        </ul>
+      </div>
+    </div>
+    <div class="talk-script">
+      <span class="script-label">🗣 台本</span>
+      <p>商業施設・テナントとの連動施策も2つ考えています。1つはクーポン・回遊連動です。参加者全員に館内飲食店やアパレルで使える限定割引券をお渡しし、ミッション成功者にはプレミアム景品を進呈、参加レシートの提示で2回目のチャレンジや買物を誘発します。もう1つはフォトスポットとSNS拡散です。体験前後にG1と記念撮影できるフォトブースを併設し、ハッシュタグ投稿キャンペーンで親子連れや若者層のTikTokやXでの拡散を狙います。</p>
+      <audio controls src="audio/slide_5.wav" style="width:100%;margin-top:0.4rem"></audio>
+    </div>
+  </section>
+
+  <!-- 6: 施設運営に配慮した安全・設営仕様 -->
+  <section class="slide">
+    <span class="slide-number mono">06</span>
+    <div class="slide-body">
+      <h2>施設運営に配慮した安全・設営仕様</h2>
+      <div class="slide-content">
+        <table class="data-table">
+          <thead><tr><th>項目</th><th>運用設計（たたき台）</th><th>安全・施設配慮のポイント</th></tr></thead>
+          <tbody>
+            <tr><td>区画スペース</td><td>約6m×8m程度（可動式安全フェンス設置）</td><td>通行人の動線阻害を防ぐ専用ギャラリーエリア確保</td></tr>
+            <tr><td>安全管理</td><td>非常停止スイッチ＋専任オペレーター2名体制（想定）</td><td>センサー検知・手動介入の2重安全システムを目指す設計</td></tr>
+            <tr><td>電源・設備</td><td>AC100V電源1系統のみ（低消費電力）</td><td>仮設工事不要、撤収・レイアウト復元も約1時間で完了見込み</td></tr>
+          </tbody>
+        </table>
+        <p class="fill">※人との接触を避けるためのセンサーによる自動停止・回避などの仕組みは現時点で未実装。実機との接続も含め、今後の重要な検討事項として検証中</p>
+      </div>
+    </div>
+    <div class="talk-script">
+      <span class="script-label">🗣 台本</span>
+      <p>施設運営に配慮した安全・設営仕様についてです。区画スペースは約6m×8m程度を想定し、可動式の安全フェンスで通行人の動線を阻害しない専用エリアを確保します。安全管理は非常停止スイッチと専任オペレーター2名体制を想定しており、センサー検知と手動介入の2重の仕組みを目指しています。電源はAC100V1系統のみで仮設工事は不要、撤収・原状回復も約1時間で完了する見込みです。なお、人との接触を避けるセンサーによる自動停止・回避や、実機との接続そのものは、現時点ではまだ検証中の段階であり、今後詰めていく重要な課題です。</p>
+      <audio controls src="audio/slide_6.wav" style="width:100%;margin-top:0.4rem"></audio>
+    </div>
+  </section>
+
+  <!-- 7: 展開場所・イベント適用例 -->
+  <section class="slide">
+    <span class="slide-number mono">07</span>
+    <div class="slide-body">
+      <h2>展開場所・イベント適用例</h2>
+      <div class="slide-content">
+        <ul class="plain">
+          <li><strong>アトリウム・催事広場</strong> — 屋内大型吹き抜け空間でのメインイベントとして開催</li>
+          <li><strong>Shibuya Sakura Stage等イノベーション拠点</strong> — 最先端ロボティクス×エンタメのPoC展示・体験会</li>
+          <li><strong>キューズモール等ファミリー向け施設</strong> — 休日ファミリー層に向けた体験型集客イベント</li>
+        </ul>
+        <p class="fill">※プレイ映像の取り扱い（撮影同意の取得、配布方法）は安全性を優先して検討中</p>
+      </div>
+    </div>
+    <div class="talk-script">
+      <span class="script-label">🗣 台本</span>
+      <p>展開場所のイメージです。アトリウムや催事広場のような屋内大型吹き抜け空間では、メインイベントとして開催できます。Shibuya Sakura Stageのようなイノベーション拠点では、最先端ロボティクス×エンタメのPoC展示・体験会として。キューズモールのようなファミリー向け施設では、休日のファミリー層に向けた体験型集客イベントとして、様々な貴社アセットに対応できると考えています。なお、プレイ映像の撮影同意や配布方法については、安全性を優先して検討している段階です。</p>
+      <audio controls src="audio/slide_7.wav" style="width:100%;margin-top:0.4rem"></audio>
+    </div>
+  </section>
+
+  <!-- 8: AIロボットと本気で遊ぶ、新しい街の風景を。 -->
+  <section class="slide">
+    <span class="slide-number mono">08</span>
+    <div class="slide-body">
+      <h2>AIロボットと本気で遊ぶ、新しい街の風景を。</h2>
+      <div class="slide-content">
+        <ul class="plain">
+          <li>「悔しさ」を生むゲーム設計が、1回で終わらない周回・リピートを生む</li>
+          <li>「体験映像」のシェアが、Z世代・ファミリーを呼ぶ自走型のPRになる</li>
+          <li><strong>「人×AIの共存エンタメ」</strong>が、東急不動産の施設を唯一無二の目的地に変える</li>
+        </ul>
+        <p class="impact-note">まずは今日のQ&amp;Aと実機体験で、この「悔しさ」を体感してください！</p>
+      </div>
+    </div>
+    <div class="talk-script">
+      <span class="script-label">🗣 台本</span>
+      <p>私たちが目指すのは、AIロボットと本気で遊ぶ、新しい街の風景です。「悔しい、もう一回！」を生むゲーム設計が、1回で終わらない周回とリピートを生みます。その「悔しさ」を含んだ体験映像のシェアが、Z世代やファミリー層を呼び込む自走型のPRになります。この人とAIが共存するエンタメこそが、東急不動産様の施設を唯一無二の目的地に変えると信じています。まずは今日のQ&amp;Aと実機体験で、この「悔しさ」をぜひ体感してください。ご清聴ありがとうございました。</p>
+      <audio controls src="audio/slide_8.wav" style="width:100%;margin-top:0.4rem"></audio>
+    </div>
+  </section>
+
+</main>
+
+<div class="present-bar no-print">
+  <button onclick="prev()">← 前へ</button>
+  <span><span id="slideNo" class="mono">1</span> / 8</span>
+  <span>経過 <span id="stopwatch" class="mono">0:00</span></span>
+  <span>このスライド <span id="slideWatch" class="mono">0:00</span><span id="slideBudget" class="mono budget">/0:00</span></span>
+  <button onclick="toggleScript()">台本 表示/隠す</button>
+  <span class="spacer"></span>
+  <button onclick="next()">次へ →</button>
+  <button onclick="toggleFullscreen()">全画面 切替（F）</button>
+  <button onclick="document.body.classList.add('clean-mode')">バーを隠す（H）</button>
+  <button onclick="exitPresent()">終了（Esc）</button>
+</div>
+
+<footer class="no-print">
+  <h3>本番前チェック</h3>
+  <ul class="checklist">
+    <li><input type="checkbox" id="c1" /><label for="c1">台本を見直し、プレゼンモードで通し練習し合計5分（プレゼン部分）以内に収まった</label></li>
+    <li><input type="checkbox" id="c2" /><label for="c2">実機実演の20秒切替ルールをリハーサルで確認した</label></li>
+    <li><input type="checkbox" id="c3" /><label for="c3">バックアップ映像を用意し、即座に再生できる状態にした</label></li>
+    <li><input type="checkbox" id="c4" /><label for="c4">「印刷してPDF化」でPDF出力し、実際に開いて崩れがないか確認した</label></li>
+    <li><input type="checkbox" id="c5" /><label for="c5">台本を修正した場合はscripts/generate-narration.pyを再実行し、音声を作り直した</label></li>
+  </ul>
+</footer>
+
+<script>
+  (function () {
+    var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+    var CUM_END = [15, 45, 75, 195, 220, 245, 275, 320];
+    var SLIDE_BUDGET = CUM_END.map(function (end, i) {
+      return i === 0 ? end : end - CUM_END[i - 1];
+    });
+    var current = 0;
+    var startedAt = null;
+    var slideStartedAt = null;
+    var tickHandle = null;
+
+    var stopwatchEl = document.getElementById("stopwatch");
+    var slideWatchEl = document.getElementById("slideWatch");
+    var slideBudgetEl = document.getElementById("slideBudget");
+    var slideNoEl = document.getElementById("slideNo");
+    var scriptBtn = document.getElementById("scriptToggleBtn");
+
+    function render() {
+      slides.forEach(function (s, i) { s.classList.toggle("active", i === current); });
+      if (slideNoEl) slideNoEl.textContent = current + 1;
+    }
+
+    function resetSlideWatch() {
+      if (startedAt !== null) slideStartedAt = performance.now();
+    }
+
+    function next() { if (current < slides.length - 1) { current++; resetSlideWatch(); render(); } }
+    function prev() { if (current > 0) { current--; resetSlideWatch(); render(); } }
+
+    function mmss(sec) {
+      var m = Math.floor(sec / 60), s = sec % 60;
+      return m + ":" + (s < 10 ? "0" : "") + s;
+    }
+
+    function tick() {
+      if (startedAt === null || !stopwatchEl) return;
+      var sec = Math.floor((performance.now() - startedAt) / 1000);
+      stopwatchEl.textContent = mmss(sec);
+      stopwatchEl.classList.toggle("over", sec > CUM_END[current]);
+      if (slideWatchEl && slideStartedAt !== null) {
+        var slideSec = Math.floor((performance.now() - slideStartedAt) / 1000);
+        var budget = SLIDE_BUDGET[current];
+        slideWatchEl.textContent = mmss(slideSec);
+        slideWatchEl.classList.toggle("over", slideSec > budget);
+        if (slideBudgetEl) slideBudgetEl.textContent = "/" + mmss(budget);
+      }
+      tickHandle = requestAnimationFrame(tick);
+    }
+
+    function requestFullscreen() {
+      var el = document.documentElement;
+      var req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (!req) return;
+      try {
+        var ret = req.call(el);
+        if (ret && ret.catch) ret.catch(function (err) { console.warn("全画面にできませんでした", err); });
+      } catch (err) {
+        console.warn("全画面にできませんでした", err);
+      }
+    }
+
+    function exitFullscreen() {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) return;
+      var exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (!exit) return;
+      try {
+        var ret = exit.call(document);
+        if (ret && ret.catch) ret.catch(function (err) { console.warn("全画面を解除できませんでした", err); });
+      } catch (err) {
+        console.warn("全画面を解除できませんでした", err);
+      }
+    }
+
+    function enterPresent(options) {
+      var clean = !!(options && options.clean);
+      document.body.classList.add("present-mode");
+      document.body.classList.toggle("clean-mode", clean);
+      current = 0;
+      startedAt = performance.now();
+      slideStartedAt = startedAt;
+      render();
+      tick();
+      document.addEventListener("keydown", onKey);
+      requestFullscreen();
+    }
+
+    function exitPresent() {
+      document.body.classList.remove("present-mode");
+      document.body.classList.remove("clean-mode");
+      document.removeEventListener("keydown", onKey);
+      if (tickHandle) cancelAnimationFrame(tickHandle);
+      startedAt = null;
+      slideStartedAt = null;
+      exitFullscreen();
+    }
+
+    function isFullscreen() {
+      return !!(document.fullscreenElement || document.webkitFullscreenElement);
+    }
+
+    function toggleFullscreen() {
+      if (isFullscreen()) exitFullscreen(); else requestFullscreen();
+    }
+
+    function onKey(e) {
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") { next(); e.preventDefault(); }
+      else if (e.key === "ArrowLeft" || e.key === "PageUp") { prev(); e.preventDefault(); }
+      else if (e.key === "f" || e.key === "F") { toggleFullscreen(); e.preventDefault(); }
+      else if (e.key === "h" || e.key === "H") { document.body.classList.toggle("clean-mode"); e.preventDefault(); }
+      else if (e.key === "Escape") { exitPresent(); }
+    }
+
+    function toggleScript() {
+      var on = document.body.classList.toggle("show-script");
+      if (scriptBtn) scriptBtn.textContent = on ? "台本を隠す" : "台本を表示";
+    }
+
+    window.enterPresent = enterPresent;
+    window.exitPresent = exitPresent;
+    window.toggleFullscreen = toggleFullscreen;
+    window.next = next;
+    window.prev = prev;
+    window.toggleScript = toggleScript;
+
+    render();
+  })();
+</script>
