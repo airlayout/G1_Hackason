@@ -104,6 +104,9 @@ class Navigator(Node):
         self.truth: tuple[float, float, float] | None = None
         self.plan_xy: list = []
         self.cmd: tuple[float, float, float] = (0.0, 0.0, 0.0)
+        # 記録に残すゴールの向き。**動画で「ゴールとの向きの差」を描くのに要る**
+        # （2026-09-09 の記録には無く、あの日の失敗の中身がこれだったのに描けなかった）
+        self.goal_yaw: float | None = None
         self.create_subscription(Odometry, "/odom", self._on_odom, 20)
         self.create_subscription(NavPath, "/plan", self._on_plan, 5)
         self.create_subscription(Twist, "/cmd_vel", self._on_cmd, 20)
@@ -154,6 +157,7 @@ class Navigator(Node):
             "plan": list(self.plan_xy),
             "cmd": list(self.cmd),
             "goal": list(goal_xy) if goal_xy else None,
+            "goal_yaw": self.goal_yaw,
         })
 
     def spin_for(self, sec: float) -> None:
@@ -210,6 +214,7 @@ class Navigator(Node):
             gyaw = 0.0
         goal.pose.pose.orientation.z = math.sin(gyaw / 2.0)
         goal.pose.pose.orientation.w = math.cos(gyaw / 2.0)
+        self.goal_yaw = gyaw
 
         start = self.pose(retries=3)
         leash = None
