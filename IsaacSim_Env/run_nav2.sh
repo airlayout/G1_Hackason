@@ -52,21 +52,33 @@ MAP_YAML="${ARGS[0]:-$SCRIPT_DIR/maps/warehouse.yaml}"
 LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
-# 既存のプロセスが残っていると、複数の Isaac Sim / Nav2 が同時に TF を
-# 配信して互いに打ち消し合う（TF_OLD_DATA が大量に出て、RViz に
-# 現在地が表示されなくなる）。起動前に検出して止める。
-# 注意点が 2 つある:
+# Isaac Sim / Nav2 の本体プロセスの PID を返す。**kill する前に必ずこれを通す。**
+# 注意点が 3 つある:
 #   1. pgrep は何も見つからないと終了コード 1 を返す。set -e で止まるので
 #      || true が要る（これが無くて起動しなくなった）。
 #   2. pgrep -f / pkill -f は自分自身のコマンドラインにもマッチする。
-#      $$ を除外しないと自分を kill してしまう。
-STALE=$(pgrep -f "run_g1_twin|component_container_isolated" 2>/dev/null \
-        | grep -v "^$$\$" | wc -l || true)
-if [[ "$STALE" -gt 0 ]]; then
-    echo "[WARN] 既に $STALE 個のプロセスが動いています（前回の残骸の可能性）"
+#      $$ / $PPID を除外しないと自分を kill してしまう。
+#   3. ⚠️⚠️ **`bash -c` のラッパも除外しないといけない。** ssh 越しに
+#      `ssh host "... run_g1_twin ..."` と打つと、その `bash -c` のコマンドライン
+#      文字列にパターンが含まれるため引っかかる。$$ の除外では防げない（別 PID）。
+#      これを忘れて、後片付けが**呼び出し元の ssh セッションを kill -9 した**
+#      （2026-09-09。exit 255 になって気づいた）。
+stack_pids() {
+    pgrep -af "run_g1_twin|component_container_isolated" 2>/dev/null \
+        | grep -v 'bash -c' \
+        | awk -v self="$$" -v parent="$PPID" '$1 != self && $1 != parent {print $1}' \
+        || true
+}
+
+# 既存のプロセスが残っていると、複数の Isaac Sim / Nav2 が同時に TF を
+# 配信して互いに打ち消し合う（TF_OLD_DATA が大量に出て、RViz に
+# 現在地が表示されなくなる）。起動前に検出して止める。
+STALE_PIDS=$(stack_pids)
+if [[ -n "$STALE_PIDS" ]]; then
+    echo "[WARN] 既に $(echo "$STALE_PIDS" | wc -l | tr -d ' ') 個のプロセスが動いています（前回の残骸の可能性）"
     echo "[INFO] 停止します..."
-    for pid in $(pgrep -f "run_g1_twin|component_container_isolated" 2>/dev/null || true); do
-        [[ "$pid" != "$$" ]] && kill -9 "$pid" 2>/dev/null || true
+    for pid in $STALE_PIDS; do
+        kill -9 "$pid" 2>/dev/null || true
     done
     sleep 5
     echo "[OK] 停止しました"
@@ -109,10 +121,11 @@ cleanup() {
     [[ -n "$TF_PID" ]] && kill -9 "$TF_PID" 2>/dev/null || true
     [[ -n "$NAV_PID" ]] && kill -9 "$NAV_PID" 2>/dev/null || true
     [[ -n "$SIM_PID" ]] && kill -9 "$SIM_PID" 2>/dev/null || true
-    # 保険。上記でも孤児が残ることがあるため、原因に関わらずここで確実に払う
-    # （起動前の STALE チェックと同じパターンマッチ。$$ は自分自身を除外）。
-    for pid in $(pgrep -f "run_g1_twin|component_container_isolated" 2>/dev/null || true); do
-        [[ "$pid" != "$$" ]] && kill -9 "$pid" 2>/dev/null || true
+    # 保険。上記でも孤児が残ることがあるため、原因に関わらずここで確実に払う。
+    # ⚠️ 必ず stack_pids() を通すこと（`bash -c` ラッパを除外する。生の pgrep を
+    # 使うと**呼び出し元の ssh セッションを kill -9 する**。2026-09-09 に実測）。
+    for pid in $(stack_pids); do
+        kill -9 "$pid" 2>/dev/null || true
     done
 }
 trap cleanup EXIT
