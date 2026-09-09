@@ -200,13 +200,40 @@ planner_server:
   ros__parameters:
     use_sim_time: true
     expected_planner_frequency: 1.0
+    # 既定は GridBased（NavFn）のまま。Smac2D / ThetaStar は planner_id で選ぶ
+    # 予備プランナ（2026-09-09 プランナ比較のため追加。実機の g1_nav2.yaml の
+    # Smac2D ブロックと同一パラメータ）。
+    #   使うとき: check_navigation.py --planner-id Smac2D / ThetaStar
     planner_plugins:
     - GridBased
+    - Smac2D
+    - ThetaStar
     GridBased:
       plugin: nav2_navfn_planner::NavfnPlanner
       tolerance: 0.5
       use_astar: false
       allow_unknown: true
+    Smac2D:
+      plugin: nav2_smac_planner/SmacPlanner2D
+      tolerance: 0.5
+      allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 10.0
+      cost_travel_multiplier: 2.0
+      use_final_approach_orientation: false
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+    ThetaStar:
+      plugin: nav2_theta_star_planner/ThetaStarPlanner
+      how_many_corners: 8
+      w_euc_cost: 1.0
+      w_traversal_cost: 2.0
+      allow_unknown: true
+      use_final_approach_orientation: false
 behavior_server:
   ros__parameters:
     use_sim_time: true

@@ -148,13 +148,15 @@ class Navigator(Node):
         self.get_logger().warn(f"map -> base_link が引けない: {last}")
         return None
 
-    def navigate(self, gx: float, gy: float, timeout_s: float) -> dict:
+    def navigate(self, gx: float, gy: float, timeout_s: float,
+                 planner_id: str = "") -> dict:
         goal = NavigateToPose.Goal()
         goal.pose.header.frame_id = "map"
         goal.pose.header.stamp = self.get_clock().now().to_msg()
         goal.pose.pose.position.x = gx
         goal.pose.pose.position.y = gy
         goal.pose.pose.orientation.w = 1.0
+        goal.planner_id = planner_id
 
         self.feedback = []
         send = self.client.send_goal_async(
@@ -191,7 +193,7 @@ class Navigator(Node):
 
 
 def save_record(record: str | None, waypoints: list, results: list,
-                track: list) -> None:
+                track: list, planner_id: str) -> None:
     """記録を書き出す。1 回ごとに呼んで上書きする（途中で止めても残る）。"""
     if not record:
         return
@@ -199,6 +201,7 @@ def save_record(record: str | None, waypoints: list, results: list,
     d.mkdir(parents=True, exist_ok=True)
     (d / "navigation.json").write_text(json.dumps({
         "waypoints": waypoints, "results": results, "track": track,
+        "planner_id": planner_id,
     }, ensure_ascii=False))
     print(f"[record] -> {d}/navigation.json（{len(track)} サンプル / "
           f"{len(results)} 回ぶん）")
@@ -212,6 +215,9 @@ def main() -> int:
     ap.add_argument("--timeout", type=float, default=180.0)
     ap.add_argument("--record", metavar="DIR",
                     help="真値・AMCL・経路・指令を 0.5 秒ごとに記録する（動画用）")
+    ap.add_argument("--planner-id", default="", metavar="PLUGIN_NAME",
+                    help="planner_server の planner_plugins に登録された名前 "
+                    "（例: Smac2D, ThetaStar）。空なら既定（GridBased/NavFn）")
     args = ap.parse_args()
 
     waypoints = json.loads(Path(args.waypoints).read_text())
@@ -222,6 +228,7 @@ def main() -> int:
     if not node.client.wait_for_server(timeout_sec=15.0):
         print("[FAIL] navigate_to_pose のサーバが居ない")
         return 1
+    print(f"[planner_id] {args.planner_id or '(既定)'}")
 
     lo, hi = args.range
     results = []
@@ -254,7 +261,7 @@ def main() -> int:
                   f"ゴール({w['x']:+.2f}, {w['y']:+.2f}) 直線 {dist:.2f} m "
                   f"(clearance {w['clearance']:.2f} m)")
 
-            r = node.navigate(w["x"], w["y"], args.timeout)
+            r = node.navigate(w["x"], w["y"], args.timeout, args.planner_id)
             if not r["accepted"]:
                 print("       ゴールが受理されなかった")
                 results.append(False)
@@ -282,12 +289,13 @@ def main() -> int:
                       f"真値とゴールの差 {gap:.2f} m / AMCL と真値の差 {drift:.2f} m")
             results.append(bool(r["succeeded"]))
         finally:
-            save_record(args.record, waypoints, results, node.track)
+            save_record(args.record, waypoints, results, node.track,
+                       args.planner_id)
 
     print()
     ok = sum(results)
     print(f"== 到達 {ok}/{len(results)} ==")
-    save_record(args.record, waypoints, results, node.track)
+    save_record(args.record, waypoints, results, node.track, args.planner_id)
     node.destroy_node()
     rclpy.shutdown()
     return 0 if ok == len(results) else 1

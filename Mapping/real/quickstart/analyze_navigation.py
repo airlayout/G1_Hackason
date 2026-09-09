@@ -80,6 +80,7 @@ def main() -> None:
             segments[-1].append(s)
 
     print(f"[rec] {args.rec}")
+    print(f"[planner_id] {data.get('planner_id') or '(既定)'}")
     print(f"[rec] {len(track)} サンプル / "
           f"{track[-1]['t'] - track[0]['t']:.0f} s / {len(segments)} 区間\n")
 
