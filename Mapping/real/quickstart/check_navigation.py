@@ -129,6 +129,12 @@ class Navigator(Node):
         est = self.pose(retries=1)
         self.track.append({
             "t": time.time(),
+            # ⚠️ **壁時計（t）だけでは速度を出せない。** Isaac Sim は実時間より
+            # 遅く（実測 0.39x）動くので、壁時計の所要は機体の体感時間より
+            # 2〜3 倍長く出る。sim 時刻を一緒に残しておけば、**倍速が何倍でも
+            # 後から補正できる**（use_sim_time=true なので get_clock() は /clock）。
+            # 実機では /clock が無く壁時計と一致するので、同じ式がそのまま通る。
+            "t_sim": self.get_clock().now().nanoseconds * 1e-9,
             "sim_z": sim_z(),
             "truth": list(self.truth) if self.truth else None,
             "amcl": list(est) if est else None,

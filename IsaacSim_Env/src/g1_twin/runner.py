@@ -5,6 +5,7 @@ Warehouse シーンに G1 を配置し、キーボードからの速度コマン
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 
@@ -29,6 +30,38 @@ WAREHOUSE_USD: str = "/Isaac/Environments/Simple_Warehouse/full_warehouse.usd"
 # ROS へスキャンを流す周期。50Hz は slam_toolbox には過剰で負荷も高いため
 # 10Hz に間引く（実機の 2D LiDAR も 10〜20Hz 程度）。
 SCAN_PUBLISH_EVERY: int = 5  # 50Hz / 5 = 10Hz
+
+# 描画（sim.render() と Kit の UI 更新）を何制御周期ごとに行うか。
+#
+# ## なぜ間引くのか（2026-09-09 の実測）
+#
+# 以前は**制御周期ごと（50Hz）に毎回描画していた**。その状態の実時間比は
+# **0.39x**（19.3 step/s。実時間には 50 step/s が要る）で、壁時計で測った
+# 走行時間が機体の体感時間の 2.6 倍に出ていた。GPU 73 % / CPU 1.9 コア
+# （20 コアのうち）で**どの資源も飽和しておらず**、GPU 待ちと CPU 待ちを
+# 交互に繰り返す直列化が律速だった。
+#
+# 描画を 50Hz で回す必要は無い:
+#   - 人が見るには 10Hz で足りる
+#   - **LiDAR は MultiMeshRayCaster（メッシュへのレイキャスト）なので描画に依存しない**
+#   - カメラは --enable_cameras を付けたときだけ構築される
+#
+# ⚠️ カメラを使うときは描画が必要なので、その更新周期には必ず描画する（下の need_render）。
+# ⚠️ Kit の UI 更新（キーボード入力の処理）も同じ周期になる。10Hz あれば操作できる。
+#
+# ## 実測（2026-09-09、RTX 5060 Ti / Core Ultra 7 265F、同じシーン）
+#
+#   G1_RENDER_EVERY |  実時間比 | step/s（実時間には 50 が必要）
+#   ----------------|-----------|------------------------------
+#   1（従来）        |   0.39x   |  19.3
+#   5               |   0.84x   |  41.8
+#   10（既定）       | 0.96〜1.00x |  48〜50   ← ほぼ実時間
+#
+# **描画が律速の全てだった。** 既定を 10（5Hz）にしてある。
+# ⚠️ 5Hz は人の目にはやや粗い。滑らかに見たいときは G1_RENDER_EVERY=2〜5 にする
+#    （そのぶん遅くなるが、記録に sim 時刻が入るので計測値は正しく出る）。
+# G1_RENDER_EVERY で上書きできる（1 なら従来どおり毎周期）。
+RENDER_EVERY: int = max(1, int(os.environ.get("G1_RENDER_EVERY", "10")))  # 50Hz / 10 = 5Hz
 
 # ROS 経由の指令の 1 周期あたり最大変化量。
 # 50Hz なので 0.02 は 1 秒で 1.0 m/s の加速に相当する。
@@ -416,7 +449,15 @@ class G1TwinRunner:
             # 物理は 200Hz で decimation 回進める
             for _ in range(DECIMATION):
                 sim.step(render=False)
-            sim.render()
+            # 描画は RENDER_EVERY 周期に間引く（既定 10Hz）。毎周期描くと
+            # 実時間比が 0.39x まで落ちる（RENDER_EVERY のコメント参照）。
+            # ⚠️ カメラを使うときはその更新周期に描画が必要。
+            need_render = (self._step_count % RENDER_EVERY == 0) or (
+                self._camera is not None
+                and self._step_count % SCAN_PUBLISH_EVERY == 0
+            )
+            if need_render:
+                sim.render()
             self._robot.update(CONTROL_DT)
 
             # ROS へ配信する（odom は毎周期、scan は間引く）
@@ -427,7 +468,9 @@ class G1TwinRunner:
 
             # Kit の UI イベント（キーボード入力を含む）を処理する。
             # これを呼ばないとキーボードのコールバックが発火せず操作できない。
-            simulation_app.update()
+            # 描画と同じ周期に間引く（既定 10Hz。キーボード操作には十分）。
+            if need_render:
+                simulation_app.update()
 
             self._step_count += 1
             # 最初の数ステップは必ず出力してループ突入を確認できるようにする

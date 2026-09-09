@@ -95,6 +95,16 @@ def main() -> None:
                                 b["truth"][1] - a["truth"][1])
                      for a, b in zip(seg, seg[1:]))
         elapsed = t1 - t0
+        # ⚠️ **速度は sim 時刻で出す。** Isaac Sim は実時間より遅く動くので
+        # （実測 0.39x）、壁時計の所要は機体の体感時間より 2〜3 倍長く出る。
+        # 記録に t_sim があれば実時間比を**その区間で実測**して補正する
+        # （倍速が何倍でも、途中で変わっても正しく出る）。
+        # t_sim が無い古い記録は壁時計のまま（比 1.0 とみなす）。
+        if "t_sim" in seg[0] and "t_sim" in seg[-1]:
+            elapsed_sim = seg[-1]["t_sim"] - seg[0]["t_sim"]
+            rtf = elapsed_sim / elapsed if elapsed > 0 else 1.0
+        else:
+            elapsed_sim, rtf = elapsed, None
         # 指令は出ているのに動かない時間。
         # ⚠️ 並進だけを見ると**その場旋回**を誤って数える（ゴール到着時の
         # 向き合わせは vx 0 / yaw 0.8 rad/s で正常な動作である）。
@@ -108,9 +118,11 @@ def main() -> None:
                            math.cos(b["truth"][2] - a["truth"][2]))))
             cmd = max(abs(a["cmd"][0]), abs(a["cmd"][2]))
             if cmd > CMD_EPS and moved < STALL_M:
-                no_move += b["t"] - a["t"]
+                # 止まっていた時間も sim 時刻で積む（壁時計だと倍速のぶん伸びる）
+                key = "t_sim" if "t_sim" in a and "t_sim" in b else "t"
+                no_move += b[key] - a[key]
                 if turned < STALL_DEG:
-                    no_move_no_turn += b["t"] - a["t"]
+                    no_move_no_turn += b[key] - a[key]
         zs = [s["sim_z"] for s in seg if s["sim_z"] is not None]
         errs = [math.hypot(s["truth"][0] - s["amcl"][0],
                            s["truth"][1] - s["amcl"][1]) for s in seg]
@@ -130,12 +142,23 @@ def main() -> None:
               f"{clearance_at(end[0], end[1]):.2f} m")
         print(f"   直線 {straight:5.2f} m / 歩いた {walked:5.2f} m "
               f"（{walked / straight:.2f} 倍） / ゴールまで残り {gap:5.2f} m")
-        print(f"   所要 {elapsed:5.1f} s  実効 {straight / elapsed:.4f} m/s"
-              f"（直線ベース） {walked / elapsed:.4f} m/s（軌跡ベース）")
+        if rtf is None:
+            print(f"   所要 {elapsed:5.1f} s（壁時計のみ。⚠️ この記録に sim 時刻が"
+                  f"無いので倍速の補正ができない）")
+            print(f"        実効 {straight / elapsed:.4f} m/s（直線ベース） "
+                  f"{walked / elapsed:.4f} m/s（軌跡ベース）")
+        else:
+            print(f"   所要 {elapsed_sim:5.1f} s（sim 時刻）"
+                  f" / 壁時計 {elapsed:5.1f} s ＝ 実時間比 {rtf:.2f}x")
+            print(f"        実効 {straight / elapsed_sim:.4f} m/s（直線ベース） "
+                  f"{walked / elapsed_sim:.4f} m/s（軌跡ベース）"
+                  f"  ← **sim 時刻ベース。機体が体感する速度**")
+        # ⚠️ 分子（no_move）は sim 時刻で積んでいるので、分母も sim 時刻に揃える。
+        # 壁時計で割ると倍速のぶん率が小さく出る。
         print(f"   指令は出ているのに進まなかった時間 {no_move:5.1f} s"
-              f"（{100 * no_move / elapsed:.0f} %）"
+              f"（{100 * no_move / elapsed_sim:.0f} %）"
               f"  うち旋回もしていない {no_move_no_turn:5.1f} s"
-              f"（{100 * no_move_no_turn / elapsed:.0f} %）")
+              f"（{100 * no_move_no_turn / elapsed_sim:.0f} %）")
         if path_clear < math.inf:
             mark = " ← robot_radius を割る所を通そうとしている" \
                 if path_clear < ROBOT_RADIUS else ""
@@ -151,8 +174,13 @@ def main() -> None:
     total_walked = sum(math.hypot(b["truth"][0] - a["truth"][0],
                                   b["truth"][1] - a["truth"][1])
                        for a, b in zip(track, track[1:]))
-    print(f"[合計] 歩いた {total_walked:.2f} m / "
-          f"{track[-1]['t'] - track[0]['t']:.0f} s")
+    wall = track[-1]["t"] - track[0]["t"]
+    if "t_sim" in track[0] and "t_sim" in track[-1]:
+        sim = track[-1]["t_sim"] - track[0]["t_sim"]
+        print(f"[合計] 歩いた {total_walked:.2f} m / {sim:.0f} s（sim 時刻）"
+              f" / 壁時計 {wall:.0f} s ＝ 実時間比 {sim / wall:.2f}x")
+    else:
+        print(f"[合計] 歩いた {total_walked:.2f} m / {wall:.0f} s（壁時計のみ）")
 
 
 if __name__ == "__main__":
