@@ -36,6 +36,10 @@
 | `check_link.sh` | **経路の確認。**Mac の有線 → VM → コンテナ → 実機 → DDS を**切れる順に**上から見る |
 | `start_rviz_mac.sh` | コンテナを起こし、必要な apt を**冪等に**入れ、RViz2 を起動する |
 | `nav_stack.sh` | 再生 or 実機 ＋ TF ＋ MOLA-LO ＋ OctoMap ＋ `map_server` ＋ Nav2 |
+| `preflight.sh` | **歩かせる前の単一のゲート。**測位・base_link の向き・コストマップ・Nav2・足の接続を見る |
+| `run_stage.sh` | 1 本走らせ、**走行中の bag を録って重畳まで出す**（順番を焼き込んである） |
+| `stray_guard.py` | **逸脱と時間の見張り。**投げ方に関係なく効くので RViz のクリックも守れる |
+| `diag_turn.py` | RPP の追従点と指令 vyaw の突き合わせ。`base_link` の向きの狂いを見つける |
 
 ### 地図と測位
 
@@ -343,6 +347,84 @@ python3 check_navigation.py --ahead 1.0 --tries 1 --no-sim-time \
 4. **短距離から。** `--ahead 1.0` → 1.5 → 5 → 15
 5. **バッテリーを見る。** `rt/lf/bmsstate` の `soc`（PC2 の SDK でしか読めない。
    コンテナには `unitree_hg` の型が無い）。38% で純正 SLAM が黙って止まった記録がある
+
+---
+
+## 7.5 当日の手順（1 本道。**判断は現地でしない**）
+
+次の実機セッションはこの順で回す。**preflight が通るまで足を繋がない。**
+
+```bash
+cd G1_Hackason/Mapping/real
+
+# ── 0. 立てる（実機に触らない）
+bash quickstart/check_link.sh                              # 経路
+G1_RVIZ_CFG=$PWD/quickstart/rviz/g1_nav.rviz \
+  bash quickstart/start_rviz_mac.sh live
+G1_USE_MOLA=1 bash quickstart/nav_stack.sh live
+
+# ── 1. ゲート。**全部 OK でなければ先に進まない**
+bash quickstart/preflight.sh
+
+# ── 2. 逸脱ガードを常駐させる（RViz からクリックするなら必須）
+docker exec -d -u ubuntu -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+  -e CYCLONEDDS_URI="$(bash -c '. quickstart/_common.sh; g1_dds_uri live')" \
+  -e ROS_DOMAIN_ID=0 rviz bash -c \
+  'source /opt/ros/humble/setup.bash && python3 \
+   /work/G1_Hackason/Mapping/real/quickstart/stray_guard.py \
+   --margin 0.5 --max-abs 3.0 --max-seconds 60 --no-sim-time \
+   > /home/ubuntu/guard.log 2>&1'
+
+# ── 3. 足を繋ぐ。**人が支え、リモコンを手に持ってから**
+bash Navigation/real/deploy_to_pc2.sh                      # md5 で検証して配る
+ssh g1 'bash ~/mapping_tools/start_cmd_vel_bridge.sh'      # ROS 側（まだ動かない）
+ssh g1 'python3 ~/nav_tools/loco_driver.py --dry-run --arm --max-vy 0'   # 素振り
+ssh -t g1 'python3 ~/nav_tools/loco_driver.py --network-interface eth0 --max-vy 0 --arm'
+#   ↑ 前景で走らせる。**この端末の Ctrl+C が停止手段**
+
+# ── 4. 1 本目: 真っ直ぐ 1m（旋回ゼロ）＋ 走行中の重畳
+bash quickstart/run_stage.sh ahead 1.0
+
+# ── 5. 2 本目: 地図上の絶対座標（歩く前に ComputePathToPose で検算される）
+bash quickstart/run_stage.sh goal 1.15 1.02      # ← 第一候補（下の表）
+
+# ── 6. 3 本目: RViz2 の「2D Goal Pose」でクリック
+#   ⚠️ **ドラッグの向きがそのままゴールの yaw になる。**進行方向に沿ってドラッグする。
+#      横や逆を向けると位置は着いてもその場で回り続け、Spin 復帰を呼ぶ
+#   ガードのログ: docker exec rviz tail -f /home/ubuntu/guard.log
+```
+
+### 合否（測る前に決めてある）
+
+| # | 合格 | 測り方 |
+|---|---|---|
+| 4 | 1 回で到達（xy 0.30m / yaw 0.35rad 以内）・転倒 0・ガード不作動 | `run_stage.sh` の出力 |
+| 4 | **歩行中の重畳 ≥ 85%**（立脚静止の実測は 89.2%） | `run_stage.sh` が自動で出す |
+| 5 | 2〜3m の絶対座標に 3 回中 2 回 | `run_stage.sh goal` を 3 回 |
+| 6 | クリック 1 回で到達し、ガードが待機に戻る | 目視 ＋ `guard.log` |
+
+⚠️ **4 が落ちたら 5・6 はやらない。** 変数を増やさない。
+
+### 絶対座標のゴール候補（**当日に決めないで済むよう先に出してある**）
+
+今日の実機の立ち位置 `(-0.35, 0.05) yaw 25°` から 1.5〜3.5m にある waypoint:
+
+| 距離 | 機体正面からの方位 | X | Y | clearance | |
+|---|---|---|---|---|---|
+| 1.79 m | +8° | **1.15** | **1.02** | 2.12 m | **第一候補**（方位が小さく旋回が少ない）|
+| 3.42 m | +39° | 1.15 | 3.12 | 2.16 m | 予備 |
+
+⚠️ **当日の立ち位置がずれたら読み直す。** `tf2_echo map base_link` で現在地を見て、
+`runs/<SESSION>/measure_20260908/waypoints.json` から 2〜3m・方位が小さいものを選ぶ。
+**方位が大きいゴールは出発時に大きく回るので、最初の 1 本には向かない。**
+
+### 止める
+
+```bash
+ssh g1 'bash ~/mapping_tools/start_cmd_vel_bridge.sh stop'
+# loco_driver は前景の端末で Ctrl+C
+bash quickstart/nav_stack.sh stop
+```
 
 ---
 
