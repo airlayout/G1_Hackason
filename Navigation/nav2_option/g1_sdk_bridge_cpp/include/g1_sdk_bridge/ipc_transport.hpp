@@ -14,6 +14,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>  // std::uint8_t。gcc 9 では他ヘッダ経由で入るが gcc 13 では入らない
 #include <optional>
 #include <stdexcept>
 #include <string>

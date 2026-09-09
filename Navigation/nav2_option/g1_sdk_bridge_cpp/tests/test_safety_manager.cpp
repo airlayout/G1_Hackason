@@ -140,11 +140,13 @@ TEST_F(SafetyManagerStateMachineTest, NonzeroVelocityOnlySentWhileNavigating) {
 
 TEST_F(SafetyManagerStateMachineTest, NavTwistIsClampedAndForwardedWhileNavigating) {
     GotoNavigating();
-    SafetyLimits limits;  // デフォルトのmax_vx=0.20, max_ax=0.20
+    SafetyLimits limits;  // 既定値(2026-09-09 実測: max_vx=0.30, max_ax=0.20 は未測定の仮値)
     mgr_->set_limits(limits);
-    // EnableNavigation()からdt=1.0s経過させてから初回指令を送る。
-    // max_ax*dt=0.2 == max_vxなので、AccelLimitで頭打ちにならず、clampの上限にちょうど到達する。
-    clock_.Advance(1.0);
+    // AccelLimit が頭打ちにならないだけの時間を進めてから初回指令を送る。
+    // 必要な dt は max_vx / max_ax = 0.30 / 0.20 = 1.5s なので、余裕を見て 2.0s 進める。
+    // ⚠️ 以前は「max_ax*dt == max_vx」という偶然の一致に依存していたため、
+    // max_vx を 0.20 から 0.30 に変えた時点でこのテストが落ちた。値に依存しない形に直した。
+    clock_.Advance(limits.max_vx / limits.max_ax + 0.5);
     const Vel out = mgr_->OnNavTwist(1.0, 0.0, 0.0);  // 上限超えの指令
     EXPECT_EQ(out, (Vel{limits.max_vx, 0.0, 0.0}));
     EXPECT_EQ(sent_.back(), out);

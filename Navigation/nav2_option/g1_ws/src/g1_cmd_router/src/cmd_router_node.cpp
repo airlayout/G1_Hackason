@@ -34,7 +34,7 @@ const char* NavStateName(NavState s) {
 CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
     // 仕様書8章「初期安全パラメータ」に対応するデフォルト値。実測前の仮値(Planning.md D-16)。
     cmd_sock_path_ = declare_parameter<std::string>("cmd_sock_path", "/tmp/g1_bridge/cmd.sock");
-    limits_.max_vx = declare_parameter<double>("max_vx", 0.20);
+    limits_.max_vx = declare_parameter<double>("max_vx", 0.30);   // 2026-09-09 実測
     limits_.max_vy = declare_parameter<double>("max_vy", 0.0);  // D-15: MVPは横移動無効
     limits_.max_wz = declare_parameter<double>("max_wz", 0.30);
     limits_.max_ax = declare_parameter<double>("max_ax", 0.20);
@@ -42,7 +42,7 @@ CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
     limits_.max_awz = declare_parameter<double>("max_awz", 0.40);
     // D-14: 既定値は0(無効)。Phase 1のU-12実測でデッドバンド閾値が判明するまでの暫定措置
     // (QUESTIONS.md Q8で選択肢を整理し、ユーザーが(d)を選択。2026-09-09)。
-    limits_.min_vx = declare_parameter<double>("min_vx", 0.0);
+    limits_.min_vx = declare_parameter<double>("min_vx", 0.25);   // 2026-09-09 実測(U-12)
     limits_.min_wz = declare_parameter<double>("min_wz", 0.0);
     limits_.cmd_timeout_s = declare_parameter<double>("cmd_timeout", 0.30);
     limits_.max_sdk_errors = declare_parameter<int>("max_sdk_errors", 3);

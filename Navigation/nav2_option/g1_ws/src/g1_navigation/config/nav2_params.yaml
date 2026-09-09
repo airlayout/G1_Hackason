@@ -32,20 +32,29 @@ controller_server:
 
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"  # D-22
-      desired_linear_vel: 0.15
-      max_linear_accel: 0.20  # D-16のmax_ax相当(仮値)
+      # ⚠️ 2026-09-09 の実機実測で 0.15 → 0.28 に変更した。
+      # **0.15 m/s では歩容が成立しない**(0.1=不成立 / 0.2=歩くが方向が定まらない /
+      # 0.3=実用的に前進)。使える帯は 0.25〜0.30 m/s と狭いので、その中に収める。
+      desired_linear_vel: 0.28
+      max_linear_accel: 0.20  # D-16のmax_ax相当(**加速度は未測定の仮値**)
       max_linear_decel: 0.20
       lookahead_dist: 0.6
       min_lookahead_dist: 0.3
       max_lookahead_dist: 0.9
       use_velocity_scaled_lookahead_dist: false
-      min_approach_linear_velocity: 0.03  # D-14のデッドバンド閾値と整合させた仮値
+      # ⚠️ 2026-09-09 実測で 0.03 → 0.25 に変更した。
+      # Goal 接近時に 0.03 m/s を指令しても**歩容が成立せず前に進まない**ため、
+      # 「進めるうちは 0.25 で進み、それ以下になったらデッドバンドで止まる」形にする。
+      # 二足では速度プロファイルが実質「0.25〜0.30 か 停止」の二値になる。
+      min_approach_linear_velocity: 0.25
       approach_velocity_scaling_dist: 0.6
       max_allowed_time_to_collision_up_to_carrot: 1.0
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: false
       regulated_linear_scaling_min_radius: 0.9
-      regulated_linear_scaling_min_speed: 0.05
+      # ⚠️ 2026-09-09 実測で 0.05 → 0.25 に変更した。
+      # 曲率が大きい区間でここまで落とすと歩容が成立しない。下限を使える帯に合わせる
+      regulated_linear_scaling_min_speed: 0.25
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.785
       max_angular_accel: 0.40  # D-16のmax_awz相当(仮値)
@@ -167,8 +176,14 @@ velocity_smoother:
     enable_stamped_cmd_vel: true  # D-23
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.20, 0.0, 0.30]  # D-15: vy=0
+    # vx の上限は 2026-09-09 実測で 0.20 → 0.30 に変更(0.20 は方向が定まらない速度域)。
+    # vy=0 は D-15。⚠️ 後退(min_velocity の vx)は**未測定**。
+    # 姉妹実装 Navigation/real/loco_driver.py は「後方センサ上部が死角」として既定で
+    # 後退を禁止しているが、その根拠は D-21 と同じ前提に基づく可能性がある
+    # (D-21 は 2026-09-09 に誤りと判明した)。後退を使う前に別途測ること
+    max_velocity: [0.30, 0.0, 0.30]
     min_velocity: [-0.20, 0.0, -0.30]
+    # ⚠️ 加速度は未測定の仮値
     max_accel: [0.20, 0.0, 0.40]
     max_decel: [-0.20, 0.0, -0.40]
     odom_topic: "/odom"
