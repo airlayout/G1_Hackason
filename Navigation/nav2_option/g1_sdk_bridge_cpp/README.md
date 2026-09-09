@@ -47,12 +47,75 @@ Python版はGIL(Global Interpreter Lock)により、複数スレッドからの�
 これはD-28で「C++の方が周期送信の安定性で有利」と判断した理由の裏返しでもある——GILが無い分、
 並行処理の正しさを自分で保証する責任も増える。
 
-## 実機投入時に差し替える箇所
+## 本番バックエンド `RealMoveBackend`(2026-09-09 実装・実機で確認済み)
 
-- `MoveBackend`の実装を`MockMoveBackend`から、`unitree_sdk2`(C++)の
-  `LocoClient::SetVelocity()`を呼ぶ`RealMoveBackend`に差し替える
+`unitree_sdk2`(C++)の `LocoClient::SetVelocity()` を呼ぶ実装。
+[include/g1_sdk_bridge/real_move_backend.hpp](include/g1_sdk_bridge/real_move_backend.hpp) /
+[src/real_move_backend.cpp](src/real_move_backend.cpp)、実行ファイルは
+[src/real_server_main.cpp](src/real_server_main.cpp)。
+
+### 発進ゲート(`--arm`)
+
+**`--arm` を付けない限り SDK を一切呼ばない。** ROS 側の状態機械(`SafetyManager`)とは
+独立した防御層で、配線ミスや誤起動でプロセスを立ち上げただけでは機体が動かないことを
+構造的に保証する(D-10 の「防御を二重化する」方針と同じ。`Navigation/real/loco_driver.py` の
+`--arm` と同じ考え方)。
+
+```bash
+# ① 素振り。SDK を呼ばずに IPC と状態機械だけ確認する
+./g1_sdk_bridge_real_server --network-interface eth0
+
+# ② 実機を動かす。**人が支え、純正リモコンで停止できる状態で**
+./g1_sdk_bridge_real_server --network-interface eth0 --arm
+```
+
+**実機での確認結果(PC2、`--arm` 無し、15秒)**:
+
+```
+[real_backend] LocoClient を初期化した (iface=eth0 domain=0 timeout=10.0s) / 発進ゲート=閉(SDKを呼ばない)
+[real_server] status -> DISCONNECTED
+[real_server] SDK送信 0 件 / ゲートで停止 292 件      ← 20Hz周期(D-09)が回り、全てゲートで遮断
+```
+
+`ldd` チェックも通過（リンクは SDK 同梱の `libddscxx`/`libddsc` のみで、
+**`rmw`/`rclcpp`/`ament` は無し**。CycloneDDS が出るのは正常で、D-08 が禁じているのは
+ROS 側のライブラリの混入）。
+
+### D-27 の遵守
+
+`Move()` も `SwitchMoveMode(true)` も使わず、`SetVelocity(vx,vy,omega,duration)` に
+常に有限の duration を明示して渡す。バックエンド側でも `duration` が
+`(0, max_duration_s]` の範囲かを検証して弾く(上位の検証と二重化)。
+
+### ビルド(実機接続機)
+
+```bash
+cmake .. -DCMAKE_BUILD_TYPE=Release \
+    -DUNITREE_SDK2_ROOT=/home/unitree/work/unitree_sdk2
+```
+
+SDK が見つからない環境（このリポジトリを読むだけの開発機・CI 等）では
+本番実行ファイルだけをスキップし、モックとテストは従来どおりビルドされる。
+
+**⚠️ ビルドで踏んだ落とし穴(PC2 実測、2026-09-09)**
+
+1. **`/usr/local` に install 済みの unitree ヘッダには G1 の loco ヘッダが無い**
+   (`g1_loco_client.hpp` が存在しない)。**ソースツリーを `UNITREE_SDK2_ROOT` に指定すること。**
+   ヘッダとライブラリが別の場所から拾われると危ないので、CMake は
+   「1つの prefix の中で全部揃っているか」を確かめる方式にしてある
+2. **C++ 版の `<dds/dds.hpp>` は `thirdparty/include/ddscxx/` 配下**にある。
+   `thirdparty/include/dds/` は C 版(`dds.h`)なので取り違えると
+   `fatal error: dds/dds.hpp: No such file or directory` になる
+3. **`LocoClient` は `ChannelFactory::Init()` の後に構築しなければならない。**
+   pimpl のメンバ実体として持つと Init より前にコンストラクタが走り、**segfault する**。
+   `unique_ptr` で遅延構築している(公式サンプルも Init → client 構築の順)
+
+### 残作業
+
 - `SdkBridgeConfig`の`sdk_command_duration_s`は現在0.20秒(仮値)。Phase 0で
-  `duration`満了後の実機挙動を確認してから最終値を決定する([../Planning.md](../Planning.md) §3.3参照)
+  `duration`満了後の実機挙動(U-07)を確認してから最終値を決定する([../Planning.md](../Planning.md) §3.3参照)
+- **`--arm` を付けた実際の歩行検証は未実施**(Phase 0/1 の安全手順に従って実施する)
+- systemd サービス化(D-07。`Restart=always`、ROS 環境を継承させない)
 
 ## 未検証・既知の制約
 

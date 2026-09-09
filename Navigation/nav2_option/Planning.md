@@ -27,6 +27,7 @@
 | D-06 | **SDK 側プロセスは ROS 2 を一切初期化・リンクしない** | DDS ライブラリ競合の根本回避 |
 | D-07 | **SDK 側プロセスは systemd 管理とし、ROS launch から起動しない** | `ExecuteProcess` は `LD_LIBRARY_PATH` / `AMENT_PREFIX_PATH` を継承し ROS 側 CycloneDDS に誤リンクする。加えて、安全の最終防衛線を ROS launch のライフサイクルに従属させない |
 | D-08 | **SDK 側プロセスは colcon workspace 外の独立 CMake プロジェクトとしてビルドする** | ROS 環境が source された状態でのビルドを構造的に防ぐ |
+| D-29 | **`slam_operate` は `1801`(建図開始) と `1901`(SLAM終了) の 2 つだけを使う**（2026-09-09、ユーザー確認済み）。`1802`(建図保存) / `1804`(地図読込＋自己位置設定) は使わない。送信クライアントには**この 2 つだけを `_RegistApi()` し、`1102`(移動) は構造的に送れないようにする**（[tools/send_slam_api.py](tools/send_slam_api.py)） | 我々が内蔵 SLAM に求めるのは **odometry の供給だけ**（`/unitree/slam_mapping/odom`。これは 1801 で流れる）。`map→odom` は処理済み地図への ICP 合わせ、global costmap は `room_a_map.yaml` で足りるため、地図を PC1 に置く必要がなく 1802/1804 は不要。**これにより「外部で作った地図を PC1 へ転送できない」という制約自体が我々には効かない**。<br>諦めるのは「純正再定位でドリフトを補正する道」だけで、U-16（歩行中のドリフト）が許容範囲なら不要。許容できない場合の代替案として残す（その際はロボット自身に 1801→1802 で地図を作らせ、処理済み地図との変換を ICP で求める。詳細: [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) §8.6） |
 | D-28 | **SDK 側プロセスの本番実装言語は C++ に決定**（2026-09-09、ユーザー確認済み） | 周期送信の安定性（GIL・GC由来のジッタ回避）で有利という当初の判断どおり。`g1_sdk_bridge/` の Python 実装（A-3）はプロトタイプに位置づけ、ロジック（`protocol.py`/`ipc_transport.py`/`sdk_process_mock.py`/`safety_manager.py`）を C++ に移植する。`unitree_sdk2`（C++版）の `LocoClient` シグネチャを正とする（[findings/sdk2_api.md](findings/sdk2_api.md) §4 の C++/Python 差異は、C++版で確定済みのため実質解消） |
 
 ### 1.2 制御・安全
@@ -49,7 +50,7 @@
 |---|---|---|
 | D-17 | **Navigation スタックはオンボード（Jetson Orin NX）で動かす** | MID-360 は約 20 万点/秒。生点群を WiFi で外部 PC に送る構成は帯域・レイテンシとも成立しない |
 | D-18 | **外部 PC は RViz / rosbag / 監視・操作のみ**（軽量トピックのみ DDS で流す） | D-17 の帰結 |
-| D-19 | **Localization は FAST-LIO 系（既知点群地図に対する localization）を第一候補とする** | AMCL は 2D LiDAR 前提。MID-360 の非反復走査・3D 特性に合わない。`FAST_LIO_LOCALIZATION_HUMANOID` が G1 を明示対象としている。**加えて、G1 用 `SportModeState_`（`unitree_hg`名前空間）には `fsm_id/fsm_mode/task_id/task_time` の4フィールドしかなく、位置・速度が一切含まれない**（Go2用の同名メッセージには `position`/`velocity` があるが G1 は非対応）。つまり SDK2 側に internal odometry のフォールバックは存在せず、外部 LIO が唯一の位置情報源になる。姿勢（quaternion/rpy）のみ `LowState_.imu_state` から取得可能。詳細: [findings/sdk2_api.md](findings/sdk2_api.md) §6 |
+| D-19 | **Localization は FAST-LIO 系（既知点群地図に対する localization）を第一候補とする** | AMCL は 2D LiDAR 前提。MID-360 の非反復走査・3D 特性に合わない。`FAST_LIO_LOCALIZATION_HUMANOID` が G1 を明示対象としている。**加えて、G1 用 `SportModeState_`（`unitree_hg`名前空間）には `fsm_id/fsm_mode/task_id/task_time` の4フィールドしかなく、位置・速度が一切含まれない**（Go2用の同名メッセージには `position`/`velocity` があるが G1 は非対応）。つまり SDK2 側に internal odometry のフォールバックは存在せず、外部 LIO が唯一の位置情報源になる。姿勢（quaternion/rpy）のみ `LowState_.imu_state` から取得可能。詳細: [findings/sdk2_api.md](findings/sdk2_api.md) §6<br>**⚠️ 2026-09-09 追記（要見直し）**: この結論は「SDK2 の IDL に位置フィールドが無い」ことだけを根拠にしていた。実機のDDSを実測したところ、**ロボット自身のSLAMサブシステムが `/unitree/slam_relocation/odom`（`nav_msgs/Odometry`）と `/unitree/slam_relocation/global_map`（`sensor_msgs/PointCloud2`）を標準ROS型で配信する口を持っている**ことが判明した。SDK2 の高レベルAPIとは別系統のため前回の調査では見えていなかった。**「外部LIOが唯一の位置情報源」は誤りである可能性がある**（U-15 として確認する）。詳細: [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) |
 | D-20 | **点群地図の作成（mapping）はオフライン / 操作 PC で行う**<br>運用時の localization のみオンボード | 実機では rosbag 記録のみ。地図生成は高性能 PC でやり直し可能。運用時に mapping 特有の不安定さが入り込まない |
 | D-21 | **Local costmap は 3D 点群ベースとする**（`voxel_layer` 等）<br>2D `/scan` は Global costmap / 壁検出用に限定 | 頭部 LiDAR の垂直視野は -7°〜+52°。高さ 1.3m から -7° の光線は約 10.6m 先で床に当たるため、足元〜10m の床面と低障害物が原理的に見えない |
 | D-22 | **Controller は Regulated Pure Pursuit から開始する** | MPPI は Orin NX では負荷が厳しい。DWB/MPPI のモデル予測は歩容起因の遅延と乖離する。二足の遅い応答と相性が良い |
@@ -92,6 +93,8 @@
 | U-04 | ~~同リポジトリの TF 出力形式~~ | **確定(2026-09-08): 既に正しい2段構成。** `map→base_link`直出しではなかった(当初の懸念は外れた)。`open3d_loc`(localization)が`map→odom`のTFを正しいフレーム名で発行し、`fast_lio`(odometry)が`odom→base_link`相当のTFを`camera_init→body`という**非標準のフレーム名**で発行している。両者は`/Odometry_loc`という**トピック**（TFではない）経由で接続されている。**分解ノードは不要**。必要なのは`fast_lio`側のハードコードされたフレーム名文字列（`"camera_init"`→`"odom"`, `"body"`→`"base_link"`）を書き換える軽微なパッチのみ（Open3D対応と同種の1行修正）。詳細: [findings/fastlio_jazzy_build.md](findings/fastlio_jazzy_build.md)、ソース根拠は `FAST_LIO/src/laserMapping.cpp:642-672` と `open3d_loc/src/global_localization.cpp:279-297,482-505` |
 | U-05 | ~~`unitree_mujoco` が G1 の**高レベル** LocoClient をサポートするか~~ | **確定(2026-09-08): 非対応。** README に "Current version only supports low-level development" と明記。`LowCmd`/`LowState` の直接関節制御のみで、`Move(vx,vy,omega)` 相当の高レベル歩行API・歩行コントローラは未実装。`SportModeState` は配信されるが MuJoCo のセンサ値をそのまま流すだけで歩容生成ロジックは含まない。Go2 等の他ロボットも同様。DDSトピック名・IDL(`unitree_hg`)は実機と同一なので**DDS通信層・関節/センサマッピングの前倒し検証のみ可能**。「速度指令→実際の歩行」の統合検証は実機まで持ち越し。詳細: [findings/unitree_mujoco.md](findings/unitree_mujoco.md) |
 | U-06 | Isaac Sim 6.0 + Jazzy での Nav2 連携（Sim 共通化を再開する場合） | 差動二輪の単純モデルで先に検証 |
+| U-15 | ~~**G1 内蔵の再定位サービス（`/unitree/slam_relocation/*`）が Nav2 の localization を代替できるか**~~ **一部確定(2026-09-09)。**<br>**① 内蔵「再定位」で我々の地図を使う道は、現時点で見つかっていない（※未確定）**: 1804 の `address` は PC1 のファイルシステムを指す。`Navigation/README.md` に「実機で全 address が `errorCode 507`」「PC1 への転送手段が無い」と記録されている。**ただしこれは過去のチームの試行記録で、nav2_option 側では 1804 を一度も送っていない。加えて同 README の「PC1 の主要18ポート全て閉」という根拠は不正確で、実測で `9991` が開いていた。** 未調査の経路（9991 の正体、公式アプリの地図管理、`/unitree_slam/waypoints` の書き込み側、PC2 のゲートウェイ的プロセス）が残っており、「不可」と断定できる段階ではない。<br>**なお転送できなくても代替がある**: ロボット自身に地図を作らせ（`1801`→`1802`）自己位置はそれを使い、**処理済み地図は Nav2 の global costmap 専用**にする。2つの地図間の ICP 合わせが1回必要だが、それは odometry 方式でも必要なので追加コストはほぼ無い。<br>**② ただし内蔵 SLAM の odometry は使える**: `1801`(建図開始) を送ると `/unitree/slam_mapping/odom`(`nav_msgs/Odometry`) が **9.10 Hz**、`frame_id=map` / `child_frame_id=base_link`、**静止時ドリフト 70秒で 0.9cm** で流れることを実測（座位のまま成功、`1901` で完全に元に戻る）。**odometry 目的なら FAST-LIO は不要**で、`map→odom` は処理済み地図への ICP 合わせで与える。TF は出ないので自前で配信する。<br>**残る未確認**: 歩行中のドリフト（要移動）。詳細: [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) §7-8 |
+| U-16 | 上記②の odometry が**歩行中**も使える精度か（二足の上下動・旋回への耐性） | Phase 1 で teleop 歩行させながら計測する。ここが持てば Phase 2a の FAST-LIO 構築（A-6）を丸ごと省略できる | 実機のDDS上に `nav_msgs/Odometry` と点群地図を**標準ROS型**で配信する口があり、現在はサービス未起動でデータが流れていない。`slam_operate` API（純正方式トラック `Navigation/nav/` が使用、例: 1804 = 保存地図の読込＋自己位置設定）で起動して、①出力poseの座標系、②保存地図をどこに置くのか（`Navigation/nav3/README.md` は「`address` は PC1 のファイルシステムを指し、外部で作った地図の転送手段が不明」と記録）を確認する。**成立すれば Phase 2a の FAST-LIO 構築が不要になる可能性がある。** 詳細: [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) |
 
 ### 3.2 実機必須（Phase 0 / Phase 1 で確定）
 
@@ -164,6 +167,12 @@ Phase A-2 の調査により、`duration` は `SetVelocity(vx, vy, omega, durati
 - **副産物**: テスト中に D-10 の watchdog が設計どおり動作することを（意図せず）実証した。`enable_navigation` 成功後すぐに Twist を送らないと `cmd_timeout` 超過で自動的に FAULT へ遷移する
 - **既知の簡略化**: `STANDBY→READY` の遷移を「SDK接続時に即READY」に簡略化している（本来は TF/センサー鮮度確認後に遷移すべき、仕様書7章）。Phase 2c 着手時に正しい判定へ置き換える必要がある（コード内にTODO明記済み）
 - **環境固有の問題と対処法を記録**: このホストで conda が PATH を汚染し `ament_cmake` の python 解決に失敗する現象があった。G1接続PCで同様の環境（miniconda等）がある場合の対処法を [g1_ws/README.md](g1_ws/README.md) に記録した
+- **本番バックエンド `RealMoveBackend` 実装完了(2026-09-09、実機で確認済み)**: `unitree_sdk2`(C++)の `LocoClient::SetVelocity()` を呼ぶ実装を [g1_sdk_bridge_cpp/src/real_move_backend.cpp](g1_sdk_bridge_cpp/src/real_move_backend.cpp) に追加し、本番実行ファイル `g1_sdk_bridge_real_server` をPC2でビルド・起動確認した。
+  - **発進ゲート(`--arm`)を追加**: 付けない限り SDK を一切呼ばない。ROS 側の状態機械とは独立した防御層（D-10 の二重化方針、`Navigation/real/loco_driver.py` の `--arm` と同じ考え方）。実機で15秒起動し **SDK送信 0 件 / ゲートで停止 292 件**（20Hz周期が回り全て遮断）を確認
+  - `ldd` チェック通過（`rmw`/`rclcpp`/`ament` 無し。リンクは SDK 同梱の CycloneDDS のみ）。既存テスト39件も無回帰
+  - SDK ヘッダは pimpl で隠し、**ROS 側(`g1_ws`)がこのソースを相対パスでコンパイルしても SDK に依存しない**ようにした（D-08 の前提を保つ）
+  - **ビルドで踏んだ落とし穴3件**を README に記録: ①`/usr/local` の install 済みヘッダには G1 の loco ヘッダが無くソースツリー指定が必要 ②C++版 `<dds/dds.hpp>` は `thirdparty/include/ddscxx/` 配下 ③**`LocoClient` を `ChannelFactory::Init()` より前に構築すると segfault する**
+  - **未実施**: `--arm` を付けた実際の歩行検証（Phase 0/1 の安全手順に従う）、systemd サービス化
 - 未着手: `g1_interfaces`（独自msg/srv）、`g1_bringup`（launch構成）、`g1_description`（URDF・TF、U-09 待ち）。`/g1/stop` の Nav2 Goal キャンセル、E_STOP の手動解除サービスも未実装
 
 **A-5. `unitree_mujoco` 調査（U-05）— 完了・結論: 非対応**
@@ -172,7 +181,13 @@ Phase A-2 の調査により、`duration` は `SetVelocity(vx, vy, omega, durati
 - DDS トピック名・IDL は実機と同一なので、**IPC より外側（DDS通信層・関節/センサのマッピング）の検証にのみ**限定的に使える
 - **A-3 のモックバックエンド（SDK側プロセスのロジック検証）が、実機到着前に安全設計を検証する唯一の手段になる**ため優先度を上げる
 
-**A-6. LIO / Localization の事前評価（U-03, U-04）— 完了**
+**A-6. LIO / Localization の事前評価（U-03, U-04）— 完了。⚠️ ただし 2026-09-09 の実機実測で「そもそも不要かもしれない」ことが判明**
+
+> **⚠️ 前提の見直し（2026-09-09）**: 実機で `1801`(建図開始) を送ると、G1 内蔵 SLAM が
+> `/unitree/slam_mapping/odom`（`nav_msgs/Odometry`、**9.10 Hz**、静止時ドリフト 70秒で **0.9cm**）を
+> 標準 ROS 型で配信することを実測した。**odometry の供給源としては、以下で vendoring・修正した
+> FAST-LIO は不要になる見込み**（`map→odom` は処理済み地図への ICP 合わせで与える）。
+> 歩行中の精度（U-16）が持てば A-6 の成果物は使わずに済む。詳細: [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) §8
 - `FAST_LIO_LOCALIZATION_HUMANOID` の **`humble`ブランチ**を Jazzy でビルド・起動確認済み（`main`はROS1なので対象外）
 - Open3D は README指定の0.14.1ではなく**公式devel 0.18.0で代替**（1行修正で対応）。将来のマイナーバージョンアップでのAPI差分に備え、Dockerfileでバージョンを固定する
 - TF出力形式を確定: **分解ノードは不要**。`fast_lio`のハードコードされたフレーム名（`camera_init`/`body`）を`odom`/`base_link`に書き換えるパッチのみで、Nav2が要求する`map→odom→base_link`の3段構成になる
@@ -187,8 +202,13 @@ Phase A-2 の調査により、`duration` は `SetVelocity(vx, vy, omega, durati
 - **未観測を「自由」と誤判定しない3値出力**（occupied/free/unknown）にした。姉妹プロジェクト`Navigation/`が実際に踏んだ「未観測を自由にすると経路が建物の外を回る」問題を踏襲して回避
 - vendoring した `vendor/fast_lio_localization_humanoid/data/map.ply`（221,330点）で動作確認。生成した地図をPNG変換して目視し、壁の輪郭・観測済み領域が正しく分離されることを確認した
 - 成果物: [tools/pointcloud_to_occupancy_grid/](tools/pointcloud_to_occupancy_grid/)（スクリプト、README、動作確認サンプル出力）
-- 残作業: G1実機・MID-360の実点群での検証はまだ。高さフィルタの既定値はPhase 0のU-09確定後に調整が必要な可能性がある
-- **新たに判明した実装ギャップ(2026-09-09、A-9で発覚)**: このツールは点群の「点があるセル」だけをfree/occupiedと判定しており、センサーから点までの光線経路のレイトレーシングをしていない。そのため実点群由来の地図は自由空間が数万個の孤立した小片に分断され（最大連結成分3m²未満）、経路計画に使えなかった。**Phase 2a着手前にレイトレーシング（Bresenhamライン等でセンサー原点から各点までの経路上のセルをfreeにする）の実装が必要**
+- **G1実機データでの検証・ツール改修完了(2026-09-09)**: `Mapping/real/runs/20260904_203726_room_a` 由来の `map_20260907.pcd`（544,760点、動的物体除去済み）と同セッションの `trajectory.tum`（3,113姿勢）で検証し、実用可能な地図を生成した。生成物: [g1_ws/src/g1_navigation/maps/room_a_map.{pgm,yaml}](g1_ws/src/g1_navigation/maps/)（570x660セル @0.05m、occupied 10.9% / free 48.6% / unknown 40.5%）。この過程でツールの重大な欠陥を3件修正した:
+  1. **高さフィルタが絶対Z座標だった（床がZ≒0の前提）**。実データの床は絶対Z≈-1.26m、天井が≈+1.50mで、旧既定値(0.3〜1.8m)は実際には「床上1.55〜3.05m」＝天井付近を見ていた。点群自身のZヒストグラムから床を検出する `find_floor()` を追加し、`--min-height`/`--max-height` を**床からの相対高さ**に変更した。姉妹実装 [Navigation/nav3/pcd_to_ros_map.py](../nav3/pcd_to_ros_map.py) が同じバグを踏んで修正済みで、それに合わせた
+  2. **レイトレーシングが無かった**（下記A-9の残課題）。`--trajectory` でmapping時の軌跡を渡し、各姿勢をセンサー原点として2D光線を飛ばして可視セルをfreeにするようにした（実測で free セルを22,842増やした）
+  3. **軌跡カーブを新規追加**。`--no-carve` で計測すると、**ロボットが実際に立っていた3,113姿勢のうち476姿勢(15.3%)が occupied 判定になっていた**。原因はnav3が「閾値を上げても消えない斜めの筋」として報告した追従者(PCを持った人物)の胴体が経路上に焼き付いていたこと。Nav2のplannerは開始点が障害物内だと計画自体を拒否するため実質使えない状態だった。機体半径(0.25m)ぶんだけ軌跡沿いの占有を削るようにし、**軌跡100%が単一の連結した自由空間に収まる**状態にした（最大連結成分 397.2m² = free全体の86.9%）
+- 副産物: `.pcd` の内蔵リーダーを実装し open3d を任意依存にした（実機PC2など open3d が無い環境でも動く）。連結性の計測レポート（最大連結成分・軌跡が占有セルに乗っていないか）も追加し、「経路計画に使えるか」を数値で判定できるようにした
+- **Nav2で経路が引けることを実測確認(2026-09-09)**: `map_server`→`global_costmap`(static_layer)→`planner_server`(NavfnPlanner)を動かし、軌跡の両端（＝ロボットが実際に居た点）間に`ComputePathToPose`を投げて **967点・経路長24.18m（直線距離19.88m、迂回率1.22）** の経路が引けた。`allow_unknown: false`（未観測を通らせない）条件でも成立。RVizでの表示手順は [tools/view_map_rviz.sh](tools/view_map_rviz.sh)（このホストにROS 2が無いため、Nav2を足したMappingのDockerイメージで動かす）
+- 残作業: **controller(経路追従)側の検証はまだ**。上記のplanner検証は**Humble**のNav2(1.1.20)で行っており、nav2_option本体の`g1_ws`は**Jazzy**向け(D-01)なので`nav2_params.yaml`そのままでの疎通は別途確認が必要。高さフィルタの既定値はPhase 0のU-09確定後に再調整の可能性あり
 
 **A-8. 安全管理の準備 — 完了(2026-09-09)**
 - 試験区域の選定基準・立入管理手順を作成した
@@ -203,9 +223,19 @@ Phase A-2 の調査により、`duration` は `SetVelocity(vx, vy, omega, durati
 - **発見1(修正済み)**: `EnableNavigation(true)`直後にcmd_timeoutのカウントが始まり、Nav2のGoal計画時間（実測約1秒）中に最初の指令が届かずFAULTへ誤って遷移していた。「最初の指令を受け取るまではタイムアウト判定を待機する」設計に修正した（`g1_sdk_bridge_cpp`・`g1_sdk_bridge`両方、回帰テスト追加、38→39/39テスト全通過）
 - **発見2(解決)**: D-14のデッドバンド(`min_wz`既定0.03)が、Nav2のRegulatedPurePursuitControllerが起動直後の"rotate to heading"フェーズで要求する微小角速度(実測0.02 rad/s)を常時ゼロへ切り捨て、ロボットが永久に動き出せない「にらみ合い」状態に陥ることを発見した。**QUESTIONS.md Q8でユーザーが(d)を選択: Phase 1のU-12実測まで`min_vx`/`min_wz`の既定値を0(無効)にする**。C++・Python両方のデフォルト値を変更した
 - **発見3(未修正・運用上の注意点として記録)**: `cmd_timeout`(既定0.30秒)が、Nav2の"Failed to make progress"からの再計画サイクル（実測で数百ms〜1秒程度の間隔）と衝突し、一度FAULTに落ちると（D-13により自動復帰しないため）Nav2が気づかず永久に空振りリトライを続ける状態になることを実際に確認した。**手動で`/g1/clear_fault`+`/g1/enable_navigation`を呼び直すことで復帰し、その後Goalに到達できた。** 本番ではオペレータへのアラート、またはNav2側の再計画間隔とcmd_timeoutの整合を取る調整が必要（Phase 1のU-08/U-12実測と合わせてcmd_timeoutも見直す）
-- **副産物の発見**: A-7ツールがレイトレーシングをしていないため、実点群由来の地図(`test_room.yaml`)は自由空間がほぼ連結しておらず（最大連結成分3m²未満）、経路計画のデモに使えなかった。連結を保証した合成地図(`synthetic_room.yaml`)に切り替えて検証を継続した。A-7ツールの残課題として記録
+- **副産物の発見**: A-7ツールがレイトレーシングをしていないため、点群由来の地図(`test_room.yaml`)は自由空間がほぼ連結しておらず（最大連結成分3m²未満）、経路計画のデモに使えなかった。連結を保証した合成地図(`synthetic_room.yaml`)に切り替えて検証を継続した。A-7ツールの残課題として記録
+  - **⚠️ 上記の帰属を訂正(2026-09-09)**: この `test_room.yaml` は **G1実機の地図ではなく、vendoringしたFAST-LIOのサンプル地図(`vendor/fast_lio_localization_humanoid/data/map.ply`、221,330点)から作ったもの**だった（`tools/.../sample_output/vendored_sample_map.pgm` とバイト単位で同一と実測確認）。この地図は 1120x1102セル中 **90.4%が未観測・freeが7.5%** という極端に疎なデータで、分断はその疎さが主因である。**G1自身のroom_a地図(544,760点)で計測すると、レイトレーシング無しでも最大連結成分は376.7m²あり、「3m²未満」は実機データの性質ではない**。実機データで実際に効いた修正は「絶対Z高さフィルタの是正」と「追従者による偽障害物の除去」で、レイトレーシングの寄与は限定的だった（詳細はA-7の項）
 - **最終確認**: 発見1・2の修正後、`NavigateToPose`アクションでGoal(map座標 3.0, 4.0)を送信し、`Reached the goal!` / `Goal succeeded`（Nav2自身のログ）を確認。途中で発見3のFAULTに一度遭遇したが、手動復帰後に到達した
 - 成果物: [g1_ws/src/g1_navigation/](g1_ws/src/g1_navigation/)、[g1_ws/src/g1_navigation/README.md](g1_ws/src/g1_navigation/README.md)、[g1_ws/README.md](g1_ws/README.md)
+
+**A-10. 実機データで Nav2 の配線を通す（足は繋がない）— 完了(2026-09-09)**
+- `1801`(内蔵SLAM起動) → TF配線 → `map_server`(実地図 `room_a_map.yaml`) + **実機LiDARのlocal costmap** → planner → controller → `/cmd_vel` → velocity_smoother の**全経路を実機センサーで通した**
+- 全ライフサイクルノードが `active`、local costmap が 1.677Hz で配信、`NavigateToPose` のゴール受理、**`/cmd_vel` 214件（非ゼロ210件、`wz=0.300 rad/s`）・`/cmd_vel_smoothed` 499件**を確認
+- **⚠️ 内蔵SLAMの姿勢は重力整列されていないことが判明**。静止座位で SLAM は pitch `-7.469°±0.027°`（＝**胴体**の姿勢）を報告する一方、IMU が示すセンサーの傾きは約3.9°。無補正だと costmap が使う `map←livox_frame` の重力ずれが **6.10°（生の3.9°より悪化）**になる。[tools/g1_slam_odom_tf.py](tools/g1_slam_odom_tf.py) の `--auto-level` が起動時に IMU と SLAM 姿勢から `R(base_link←livox) = R(map←base_link)ᵀ·R_level` を逆算し、**残差 0.06°** まで追い込んだ
+  - ただしこの自動校正は「起動時の姿勢＝運用中の姿勢」でしか正しくない。歩行中は胴体姿勢が振動するので**U-09 の実測値で置き換えるべき**近似
+- **副産物（D-14/U-12への示唆）**: A-9 では疑似データの rotate-to-heading が 0.02 rad/s しか出ずデッドバンドに食われる問題があったが、**実機構成では 0.300 rad/s 出ている**ので同じ「にらみ合い」は起きにくい
+- **限界**: 現在地が room_a ではない（[findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) §6）ため `map→odom` は恒等変換のままで、**確認できたのは配線が通ることだけ**。自己位置推定と経路の妥当性は room_a で（または現在地の地図を作って）別途検証する
+- 成果物: [tools/g1_slam_odom_tf.py](tools/g1_slam_odom_tf.py)、[tools/nav2_live_wiring.yaml](tools/nav2_live_wiring.yaml)、[tools/run_nav2_live.sh](tools/run_nav2_live.sh)、[tools/send_goal_watch.py](tools/send_goal_watch.py)、[tools/check_gravity_tf.py](tools/check_gravity_tf.py)
 
 **完了条件**
 - SDK2 の API シグネチャが文書として確定し、§3.3 の分岐が決定している
@@ -463,7 +493,8 @@ flowchart TD
 | Goal 接近時に微小速度で足踏みし到達しない | Phase 1・2c | デッドバンド処理（D-14）。閾値は Phase 1 で実測 |
 | ~~D-14デッドバンドがNav2起動直後のランプアップ中の微小指令もゼロにし、ロボットが永久に動き出せない~~ | Phase 2c | **解消済み(2026-09-09)**: `min_vx`/`min_wz`の既定値を0(無効)にした（QUESTIONS.md Q8(d)）。Phase 1のU-12実測後に再度有効化を検討する |
 | `cmd_timeout`がNav2の再計画リトライ間隔と衝突し、一度FAULTになると永久に空振りリトライが続く | Phase 1・2c | 2026-09-09のdry-runで確認済み。手動`clear_fault`で復帰可能なことは確認済みだが、本番ではオペレータ通知の仕組みか、Nav2の再計画間隔とcmd_timeoutの整合調整が必要。Phase 1のU-08実測と合わせて見直す |
-| A-7の占有格子ツールがレイトレーシングをしておらず自由空間が連結しない | Phase 2a | Phase 2a着手前にBresenhamライン等でのレイトレーシングを実装する |
+| ~~A-7の占有格子ツールがレイトレーシングをしておらず自由空間が連結しない~~ | Phase 2a | **解消済み(2026-09-09)**: レイトレーシング（軌跡をセンサー原点とした2D光線）を実装。併せて、より影響の大きかった2件（絶対Z高さフィルタ、追従者による偽障害物）も修正した。G1実機のroom_a地図で軌跡100%が単一の連結自由空間に収まることを実測確認（A-7の項）。なお「最大連結成分3m²未満」はvendoringした疎なサンプル地図での値で、実機データの性質ではなかった |
+| 地図に写り込んだ追従者・機体自身が偽の障害物になり、ロボットが実際に通った場所が occupied になる | Phase 2a・2c | 2026-09-09に実測で発覚（room_a地図で軌跡の15.3%が occupied 上）。A-7ツールに軌跡カーブ（機体半径ぶん占有を削る）を実装して解消。**ただし根本的には Mapping 側の動的物体除去の精度に依存する**。軌跡カーブは「ロボットが通れた場所は自由」という事実に基づく事後補正であり、軌跡がドリフトしている場合は本物の障害物を削る危険があるため半径を機体半径以上に広げないこと |
 | 歩容起因の応答遅延で Controller が発振・不安定になる | Phase 2c | Regulated Pure Pursuit を採用（D-22）。Velocity Smoother の保守的な加速度制限を維持 |
 | その場旋回で位置がずれ Goal 精度が悪化 | Phase 1・2c | Phase 1 でドリフト量を実測し、Nav2 の回転動作の設定に反映 |
 | Orin NX の計算負荷不足 | Phase 2a・2c・3 | Controller を軽量なものから開始。負荷を各フェーズで実測。Locomotion Controller は別ユニットなので Orin は使い切れる |
@@ -520,6 +551,7 @@ Phase 0 以降の全ての実機作業で以下を満たす。
 - [findings/sdk2_api.md](findings/sdk2_api.md) — `LocoClient`/`SetVelocity` の確定シグネチャ、State型のフィールド一覧（Phase A-2, 2026-09-08）
 - [findings/unitree_mujoco.md](findings/unitree_mujoco.md) — 高レベルAPI非対応の確定根拠（Phase A-5, 2026-09-08）
 - [findings/fastlio_jazzy_build.md](findings/fastlio_jazzy_build.md) / [findings/fastlio_jazzy.Dockerfile](findings/fastlio_jazzy.Dockerfile) — `humble`ブランチのJazzyビルド確認、Open3D対応、TF構成の実測（Phase A-6, 2026-09-08）
+- [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) — **実機のDDSトピック一覧・センサー疎通の実測**（2026-09-09）。MID-360は9.998Hz/20,064点で正常、IMUは200.1Hz（ただしorientationは無効・単位はg）。**G1に内蔵の再定位サービス（`/unitree/slam_relocation/odom` 等、標準ROS型）が存在することを発見**（D-19の見直し材料）。頭部カメラはIRと深度のみ取得可で、Mappingが「color」として記録していた画像も実はIRだった
 
 **Localization / LIO**
 - [FAST_LIO_LOCALIZATION_HUMANOID](https://github.com/deepglint/FAST_LIO_LOCALIZATION_HUMANOID) — G1 を明示対象とした LiDAR localization。**`humble`ブランチがROS2実装**（`main`はROS1）。Jazzyでのビルド・起動を確認済み（2026-09-08）
