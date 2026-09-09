@@ -314,6 +314,11 @@ def main(argv: list[str] | None = None) -> int:
                         "測定そのものは変えない")
     p.add_argument("--robot-radius", type=float, default=0.30,
                    help="g1_nav2.yaml と揃えること。機体周りの窓の大きさに使う")
+    p.add_argument("--goal", type=float, nargs=2, metavar=("X", "Y"), default=None,
+                   help="**map 系の絶対座標のゴール 1 点**をそこへ投げる。"
+                        "既定は pick_goal が前方 3〜6m から自分で選ぶが、"
+                        "**歩かせる予定のゴールを歩く前に検算したいとき**はこちらを使う"
+                        "（1 点に固定されるので --tries は同じゴールの繰り返しになる）")
     args = p.parse_args(argv)
 
     rclpy.init()
@@ -369,7 +374,14 @@ def main(argv: list[str] | None = None) -> int:
         if vg is not None:
             robot_cells_global.append(vg)
 
-        picked = pick_goal(node, rx, ry, ryaw)
+        if args.goal is not None:
+            # 指定された 1 点。**到達可能かは見ない**（それが plan_once の仕事）
+            gx0, gy0 = args.goal
+            picked = (gx0, gy0, math.hypot(gx0 - rx, gy0 - ry),
+                      math.degrees(math.atan2(gy0 - ry, gx0 - rx) - ryaw),
+                      cell_at(g, gx0, gy0))
+        else:
+            picked = pick_goal(node, rx, ry, ryaw)
         if picked is None:
             no_goal += 1
             print(f"  {k + 1:2d}: ({rx:+6.2f},{ry:+6.2f}) 機体セル {vs}/{vg}/{vl} "
