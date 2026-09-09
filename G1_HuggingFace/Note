@@ -71,3 +71,99 @@
 - walk_forward_real.py, check_g1_connectivity.py, setup_ethernet_for_g1.sh を
   それぞれコミット・push済み(コミット: 496eaf6, 39a0d65, 9971487)
 - コミット用のgitユーザーはこのリポジトリのみローカル設定: airlayout <air.layout@gmail.com>
+
+
+2026-09-09 作業ログ
+
+■ 操作PC(ラボPC、Ubuntu、GPU: NVIDIA GeForce RTX 5060 Ti)でのvenv構築
+- G1_HackasonをDev/Perceptionブランチで ~/G1_Hackason_fresh に新規clone
+  (public repoのため認証なしでclone可能だった。旧 ~/G1_Hackason は.gitが無い
+  ファイルのみのコピーだったため、以後は ~/G1_Hackason_fresh を正式な作業フォルダとした)
+- G1_HuggingFace/venv/ に python3.12 -m venv venv で新規作成(既存venvは無かった)。
+  このPCのデフォルトpython3はminiforgeの3.14だったため、python3.12を明示指定する
+  必要があった(python --versionで3.12.3になることを確認)
+- Perception/README.mdの方針通り、本README(このファイル)記載のconda/lerobot/DDS
+  一式ではなく、Perception/requirements.txtのみをインストールする方針とした
+  (Perceptionは歩行制御をしないためDDS関連の重い依存は本来不要という判断)
+- pip install -r Perception/requirements.txt: ダウンロード容量は十数GB
+  (torch本体554MB, cudnn553MB, cublas423MB等)、所要時間約13分
+
+■ torch CUDA認識
+- torch.cuda.is_available() → True(手動での入れ替え対応は不要だった)
+- インストールされたバージョン: torch 2.14.0+cu130
+- 理由: nvidia-smiのドライバ(595.84)がCUDA 13.2対応済みで、pipが自動的にcu130版を
+  解決した。2026-08-21のAWS VM作業(L40S/driver 570.211.01でcu128明示指定が必要
+  だった件、上記「既知の注意点」参照)とは条件が異なり、今回は追加のindex-url指定は
+  不要だった
+
+■ テスト・推論確認(Perception/)
+- Perception/tests/run_tests.sh: 5テストすべて成功
+- ultralytics付属サンプル画像(zidane.jpg/bus.jpg)でYOLO推論を実施、人物検出は
+  既知の正解と一致(zidane.jpg: 2人 conf 0.85-0.90、bus.jpg: 4人 conf 0.66-0.87)
+- 処理速度(YoloDetector.detect()単体、ウォームアップ後20回平均):
+  - cuda(RTX 5060 Ti): 3.9-4.0ms/frame
+  - cpu(このラボPC): 10.3-12.4ms/frame
+  - 参考: 以前計測したWSL2/CPU環境は70-600ms/frame
+- config.yamlのdetector.device: autoがcudaを正しく自動選択することも、
+  run_sim.py --source video で確認済み
+
+■ G1実機への有線接続・ネットワーク確認
+- Ethernetケーブルで物理接続。インターフェース名: enp129s0
+- 既存の"G1-ethernet"という専用プロファイルが既に存在し、接続中だった
+  (192.168.123.200/24, ipv4.method: manual, ipv4.never-default: yes)。既存の
+  "Wired connection 1"プロファイルは別のまま残っており上書きされていない
+  → 過去に他メンバーがこのPCで設定したものと推測。新規プロファイル作成は不要だった
+- 疎通確認: Claude Code経由の実行環境はraw socket権限が無くpingが使えないため、
+  TCP接続・ARP解決で代替確認
+  - 初回: 192.168.123.164(PC2)・192.168.123.161(PC1)ともにARP解決FAILED/INCOMPLETE、
+    SSH(22番)タイムアウト
+  - 192.168.123.202(おそらく他メンバーのPC)は過去にARP解決できていた形跡(STALE
+    エントリ)あり → ネットワークセグメント自体は生きていた
+  - 物理リンク状態は終始 Link detected: yes、1000Mb/s Full Duplex
+  - 数回リトライしたところ、192.168.123.164(PC2)がARP解決REACHABLE・SSH(22番)
+    接続成功に変化した。原因は不明(G1側の起動完了待ちだった可能性)
+
+■ SSH認証方針
+- 共有PCであることを踏まえ、SSH鍵によるパスワードレス認証は設定せず、その都度
+  ユーザー本人が手動でSSHログインする方針とした(GitHub認証時と同じ考え方。Claude
+  Codeにパスワードを扱わせない)
+- 実際、Claude Code経由のssh実行は非対話式でありパスワードプロンプトに応答する
+  手段が無い(ssh-askpassが存在せず自動的に失敗する)ことも実機で確認した
+
+■ 手動SSHログイン・G1側の状態確認
+- ユーザー本人が手動で ssh unitree@192.168.123.164 に成功
+  (Last loginは192.168.123.222からの接続を表示、直近に別セッションからのログイン
+  があったことを確認)
+- ログイン時に ros:foxy(1) noetic(2) という選択プロンプトが表示された(今回の
+  作業には無関係と判断)
+- ps aux | grep run_g1_server → プロセスは起動していなかった(grep自身のみ表示)
+- 起動を試みる過程で以下が判明:
+  - which python3.12 → 該当なし
+  - python3 --version → Python 3.8.10(システムのデフォルト)
+  - condaコマンドが見つからない(command not found)
+
+■ 重要な発見(ブロッカー。詳細はPerception/FAILURES.mdにも記録)
+- 今回SSHログインしたG1のPC2には、2026-08-21の作業ログ(本ファイル上部)に記録した
+  はずのconda環境"lerobot"(Python 3.12)・CycloneDDS・unitree_sdk2py・lerobotが、
+  いずれも存在しないことが判明
+- 現在の状態は、2026-08-21のnote冒頭に記録した「G1はUbuntu 20.04.6 LTS、
+  Python 3.8.10、conda無し、unitree_sdk2py/lerobot未導入」という、環境構築
+  着手前の状態と一致している
+- 考えられる原因(未確認、チームへの確認が必要):
+  a) 2026-08-21にセットアップしたG1とは別個体に接続している
+  b) 同じ個体だが、PC2が何らかの理由でリセット・再インストールされた
+  c) 環境は別のユーザーアカウント配下に存在し、今回ログインしたアカウントからは
+     見えていないだけ
+- この時点で作業を一旦停止し、チームへの確認を優先することとした
+
+■ 未実施・次回以降のタスク
+- チームへの確認: G1個体・PC2の環境状態について
+- run_g1_server.py --cameraの起動(未実施。上記ブロッカーの解消が前提)
+- Perception/real/run_real.py での実機カメラ映像を使ったYOLO検出のエンドツーエンド
+  動作確認(未実施)
+
+■ Git
+- ~/G1_Hackason_fresh をDev/Perceptionブランチで作業フォルダとして採用
+  (旧 ~/G1_Hackason は.git無しのファイルコピーのみだったため使用を止めた)
+- git config はこのリポジトリのみローカル設定: Jigen Ishikawa <c5.e.folle@gmail.com>
+- 本エントリ作成時点でcommit/pushは未実施(ユーザー確認待ち)
