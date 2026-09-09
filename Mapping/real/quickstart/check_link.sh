@@ -207,7 +207,11 @@ if docker inspect -f '{{.State.Running}}' "$G1_RVIZ_NAME" 2>/dev/null | grep -q 
         step "7. レート（実測値と比べる）"
         for spec in "/utlidar/cloud_livox_mid360 9.95" "/utlidar/imu_livox_mid360 200.1"; do
             set -- $spec
-            R="$(g1_exec "$MODE" "timeout 10 ros2 topic hz --no-daemon $1 2>/dev/null" \
+            # ⚠️ hz は --no-daemon を受け付けない（list/info/echo だけの verb 引数）。
+            # 付けると argparse が rc=2 で落ち、常に「取れない」になる（2026-09-09 に踏んだ）。
+            # hz は自分で subscription を張るので daemon のグラフには依存しない。
+            # SIGTERM だと集計を印字せずに死ぬので -s INT を渡す。
+            R="$(g1_exec "$MODE" "stdbuf -oL timeout -s INT 12 ros2 topic hz $1 2>/dev/null" \
                  | sed -n 's/.*average rate: \([0-9.]*\).*/\1/p' | head -1 || true)"
             if [ -n "$R" ]; then
                 g1_ok "$1 = $R Hz（2026-09-07 の実測 $2 Hz）"
