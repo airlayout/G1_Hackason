@@ -3,7 +3,7 @@
 
 `AudioClient.TtsMaker(text, speaker_id)`はDDS経由でG1内蔵のTTSエンジンを呼び出す。
 追加インストール・外部API・PC2側の中継サーバは一切不要（`unitree_sdk2py`のみ）。
-対話パイプライン（段階3、`Voice/real/dialogue/`）のような複雑な構成が要らない、
+対話パイプライン（段階3、`Voice/dialogue/`）のような複雑な構成が要らない、
 最も手軽な発話手段。
 
 前提:
@@ -12,8 +12,8 @@
     Ethernetで直結されていること（`Common/network/setup_ethernet_for_g1.sh`参照）。
 
 使い方:
-  python Voice/real/tts_speak_real.py --network-interface enp3s0 "こんにちは"
-  python Voice/real/tts_speak_real.py --network-interface enp3s0 --speaker-id 0 --volume 50 "見つけたよ"
+  python Voice/tts_speak_real.py --network-interface enp3s0 "こんにちは"
+  python Voice/tts_speak_real.py --network-interface enp3s0 --speaker-id 0 --volume 50 "見つけたよ"
 """
 import argparse
 import time
