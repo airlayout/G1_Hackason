@@ -328,7 +328,17 @@ SIM_TIME="true"
 if [ "$MODE" = "live" ]; then
     SIM_TIME="false"
     say "[1] 実機のデータを使う（再生はしない）"
-    docker exec "$NAME" bash -c "source /opt/ros/humble/setup.bash && RMW_IMPLEMENTATION=rmw_cyclonedds_cpp CYCLONEDDS_URI='$DDS' ROS_DOMAIN_ID=0 timeout 8 ros2 topic hz /utlidar/cloud_livox_mid360 2>&1 | tail -1"
+    # ⚠️ **`tail -1` にしないこと（2026-09-10 に踏んだ）。**
+    # `ros2 topic hz` は 1 サンプルにつき 2 行出す:
+    #     average rate: 9.987
+    #         min: 0.089s max: 0.113s std dev: 0.00623s window: 12
+    # `tail -1` だと **見たい「average rate」の行だけを捨てて** min/max の行が残る。
+    # 2026-09-09 に直したのはクォート崩れ（syntax error）だけで、この行は
+    # 直った後も**レートを一度も表示していなかった**。実機モードで唯一のデータ確認なので
+    # 数字が出ないと「無言で飛んでいる」のと区別できない。
+    # ⚠️ ブリッジを張り直した直後は ros2 daemon が冷えていて 8 秒では 1 行も出ないことがある。
+    # その場合も止めたくないので `|| true` を付けている（データの有無は check_link.sh で見る）。
+    docker exec "$NAME" bash -c "source /opt/ros/humble/setup.bash && RMW_IMPLEMENTATION=rmw_cyclonedds_cpp CYCLONEDDS_URI='$DDS' ROS_DOMAIN_ID=0 timeout 8 ros2 topic hz /utlidar/cloud_livox_mid360 2>&1 | tail -2 || true"
 else
     docker exec "$NAME" test -d "$BAG" || { echo "[stack] bag が無い: ${BAG}（/work のバインドを確認）" >&2; exit 1; }
     # ⚠️⚠️ **`--loop` は既定にしない（2026-09-08 に踏んだ）。**
