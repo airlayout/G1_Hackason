@@ -8,7 +8,8 @@
 #
 # ## 当日の見せ方
 #
-#   RViz2 の「2D Goal Pose」でクリック → G1 がそこまで歩く。
+#   RViz2 のツールバーいちばん右の「Nav2 Goal」でドラッグ → G1 がそこまで歩く。
+#   （nav2_rviz_plugins/GoalTool。古い案内にある「2D Goal Pose」と同じもの）
 #   ⚠️ **「2D Pose Estimate」は使わないこと。** この地図は原点がずれているので
 #      クリックすると自己位置が大きく飛ぶ（実測で位置 31m / 向き 179度）。
 #      初期姿勢はこのスクリプトが Isaac Sim の真値から自動で入れる。
@@ -86,10 +87,12 @@ fi
 grep -E "初期姿勢|initial pose|設定しました" "${CONSOLE_LOG}" | tail -3 || true
 
 if [ "${OPEN_RVIZ}" = "1" ]; then
-    # IsaacSim_Env/run_rviz.sh は nav2 の既定設定を使うので**画面いっぱいに開き、
-    # Isaac Sim の窓を覆い隠す**。デモでは「シミュレータの中で G1 が歩く姿」と
-    # 「RViz の経路」を並べて見せたいので、右半分に固定した設定を持つ。
-    _info "RViz2 を開きます（画面の右半分。左に Isaac Sim が見えます）"
+    # IsaacSim_Env/run_rviz.sh は nav2 の既定設定を使う。あれは右のドック
+    # （Views / Docking / Selector）が開いたままで、**地図が細い帯になって
+    # ツールバーの文字が読めない**。Demo は右のドックを畳んだ設定を持つ。
+    # シミュレータで歩く姿を見せたいときは Alt+Tab で切り替える
+    # （並べて置くと、どちらも狭くなって両方読めなくなる）。
+    _info "RViz2 を開きます（Isaac Sim を見るときは Alt+Tab）"
     (
         cd "${ISAAC_DIR}" || exit 1
         # shellcheck disable=SC1091
@@ -111,8 +114,8 @@ cat <<'GUIDE'
 ==============================================================
  準備できました。
 
-   RViz2 の上のツールバーで「2D Goal Pose」を選び、
-   地図の上の行かせたい場所をクリックしてください。G1 が歩きます。
+   RViz2 の上のツールバーでいちばん右の「Nav2 Goal」を選び、
+   地図の上の行かせたい場所をドラッグしてください。G1 が歩きます。
 
    ⚠️ 「2D Pose Estimate」は押さないこと。自己位置が大きく飛びます。
 

@@ -61,3 +61,6 @@ Teleop/config/g1.env.omen
 
 # デモ機ごとの上書き設定（Demo/lib.sh が最後に読む）
 Demo/demo.env
+
+# macOS
+.DS_Store
