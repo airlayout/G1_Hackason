@@ -14,7 +14,7 @@ Phase 0 が済んだところ。**キットを取り込んだだけで、まだ�
 | ファイル | 状態 |
 |---|---|
 | `vendor/g1-starter-kit/` | ✅ 取り込み済み（38ファイル / `45ead40`） |
-| `config/g1.env.omen` | ✅ 回収済み（OMEN の実物） |
+| `config/g1.env.omen` | ✅ OMEN に配置済み。**git では追跡しない**（`config/README.md`） |
 | `SAFETY.md` `setup.sh` `record.sh` `replay.sh` `list.sh` `quest_ap.sh` | ❌ 未着手 |
 
 ### 取り込み先から動くことは OMEN で実測済み（2026-09-10）
@@ -57,5 +57,7 @@ Phase 0 が済んだところ。**キットを取り込んだだけで、まだ�
 - `setup/install_apt.sh` は**呼ばない**（`:35` が `jammy` 以外を `die` する。デモ機は 24.04）
 - `setup/apply_patches.py` は**省略できない**。これはキットではなく `~/xr_teleoperate` 側を
   書き換えるもの（腕速度 30→2 rad/s の安全パッチ、カメラ無しでも記録できるパッチ）
+- `config/g1.env.omen` は**追跡していない**ので clone し直すと消える。
+  `setup.sh` が不在を検知して復旧手順を印字すること（`config/README.md`）
 - 項目4 は **ROS 2 に依存しない**（キットで ROS を使うのは `lidar_view.sh` と
   `record_bag.sh` だけ。テレオペと再生は conda 環境 `tv` の素の Python）

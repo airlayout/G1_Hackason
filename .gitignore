@@ -53,3 +53,8 @@ Mapping/real/vendor/
 # 深度カメラの撮影結果がリポジトリ直下に落ちたもの
 Mapping/real/DepthCamera_*.json
 Mapping/real/DepthCapture_*.png
+
+# デモ機ごとの Teleop 設定（NIC 名・IP・機体構成）。環境ごとに違うので追跡しない。
+# 雛形は Teleop/vendor/g1-starter-kit/config/g1.env.example、
+# 中身の説明と OMEN の値は Teleop/config/README.md にある。
+Teleop/config/g1.env.omen
