@@ -84,13 +84,19 @@ if [ "${DRY}" = "0" ] && [ -f "${ENV_DST}" ]; then
 fi
 
 _head "4. git 管理外の作業物について"
-if [ -d "${BACKUP}" ]; then
+# dry-run では退避先がまだ無いので、いまの中身を見る
+INSPECT="${BACKUP}"
+[ "${DRY}" = "1" ] && INSPECT="${TARGET}"
+if [ -d "${INSPECT}" ]; then
     printf '  退避側に残っているもの:\n'
-    for d in IsaacSim_Env/logs Mapping/real/runs; do
-        if [ -d "${BACKUP}/${d}" ]; then
-            printf '    %-28s %s\n' "${d}" "$(du -sh "${BACKUP}/${d}" 2>/dev/null | cut -f1)"
+    FOUND=0
+    for d in IsaacSim_Env/logs Mapping/real/runs Teleop/config; do
+        if [ -d "${INSPECT}/${d}" ]; then
+            printf '    %-28s %s\n' "${d}" "$(du -sh "${INSPECT}/${d}" 2>/dev/null | cut -f1)"
+            FOUND=1
         fi
     done
+    [ "${FOUND}" = "0" ] && printf '    （ありません）\n' 
     printf '\n  戻したいものがあれば手でコピーしてください:\n'
     printf '    cp -r %s/Mapping/real/runs %s/Mapping/real/\n' "${BACKUP}" "${TARGET}"
     printf '\n  ⚠️ 退避したディレクトリは通し稽古（Phase 5）が通るまで消さないこと。\n'

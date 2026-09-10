@@ -17,14 +17,13 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib.sh"
 DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
 
-# 3 本のデモに要るもの。どれも Jazzy に candidate があることを確認済み（2026-09-10）。
+# **このリポジトリのスクリプトが実際に使うものだけ**を並べる。
+# 「あると便利そう」で足さないこと（入れたものは当日の障害の原因になりうる）。
 PACKAGES=(
-    ros-jazzy-rmw-cyclonedds-cpp     # G1 の DDS を購読する（項目2 経路(A)）
-    ros-jazzy-pointcloud-to-laserscan
-    ros-jazzy-tf2-ros                # 静的 TF（記録に TF が無いため）
-    ros-jazzy-rviz2
-    ros-jazzy-nav2-bringup           # 項目3
-    ros-jazzy-rosbag2-storage-mcap
+    ros-jazzy-rmw-cyclonedds-cpp   # 項目2 ライブ。G1 の DDS を購読する
+    ros-jazzy-tf2-ros              # 項目2。記録に /tf が無いので静的 TF を出す
+    ros-jazzy-rviz2                # 項目2・3
+    ros-jazzy-nav2-bringup         # 項目3
 )
 
 _head "入っているか調べる"
@@ -60,7 +59,16 @@ if [ "${DRY}" = "1" ]; then
 fi
 
 printf '\n'
-_info "sudo apt-get install を実行します（パスワードを聞かれます）"
+# ssh 越しだと sudo のパスワードが打てない。先に見て、駄目なら手順だけ出す。
+if ! sudo -n true 2>/dev/null; then
+    _warn "sudo にパスワードが要ります。"
+    printf '\n  \033[1mデモ機のターミナルで直接\033[0m 次を実行してください:\n\n'
+    printf '    sudo apt-get update\n'
+    printf '    sudo apt-get install -y %s\n\n' "${MISSING[*]}"
+    printf '  （ssh 越しや VSCode の統合ターミナルでは通らないことがあります）\n'
+    exit 1
+fi
+_info "sudo apt-get install を実行します"
 sudo apt-get update
 sudo apt-get install -y "${MISSING[@]}"
 

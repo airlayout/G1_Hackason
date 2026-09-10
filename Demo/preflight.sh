@@ -6,7 +6,9 @@
 # ロボットや Isaac Sim が無くても**最後まで走り切る**。
 # 「使えるもの / 使えないもの」を列挙して終わるので、当日はまずこれを読む。
 #
-# 終了コード: 0 = 3 本とも使える / 1 = 使えないものがある（内容は本文を読む）
+# 終了コード:
+#   0 = 4 つとも今すぐ見せられる
+#   1 = 見せられないものがある（実機が居ないだけ、という場合も 1 になる）
 set -eo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -153,14 +155,42 @@ show "${CAN_ISAAC}"        "項目3  Isaac Sim + Nav2      … bash Demo/02_isaa
 if [ "${CAN_LIDAR_LIVE}" = "1" ]; then
     _ok  "項目2  LiDAR ライブ           … bash Demo/01_lidar.sh live"
 else
-    _ng  "項目2  LiDAR ライブ           … 使えません（実機か DDS が未整備）"
+    _ng  "項目2  LiDAR ライブ           … 使えません"
 fi
 show "${CAN_LIDAR_REPLAY}" "項目2  LiDAR 記録の再生      … bash Demo/01_lidar.sh replay"
 show "${CAN_TELEOP}"       "項目4  Quest でエピソード     … bash Demo/03_teleop.sh"
 
-if [ "${FAIL}" = "0" ]; then
-    printf '\n\033[32m全部そろっています。\033[0m\n'
-else
-    printf '\n上の \033[31m[NG]\033[0m を解消してください。導入で直るものは bash Demo/setup/install.sh です。\n'
+# ---------------------------------------------------------------------------
+# 何をすれば直るかを書く。「使えない」で終わらせない。
+_head "次にやること"
+TODO=0
+if [ "${CAN_LIDAR_REPLAY}" = "0" ] && [ -f "${DEMO_ROS_SETUP}" ]; then
+    printf '  記録を持ってくる     : bash Mapping/real/ubuntu/fetch_bag.sh\n'
+    TODO=1
 fi
-exit "${FAIL}"
+if [ "${RMW_OK:-no}" = "no" ] || [ "${FAIL}" = "1" ]; then
+    printf '  足りない apt を入れる: bash Demo/setup/install.sh\n'
+    TODO=1
+fi
+if ! robot_reachable; then
+    printf '  G1 の電源を入れる    : 項目2 ライブと項目4 はこれが要ります\n'
+    TODO=1
+fi
+if [ "${CAN_TELEOP}" = "0" ] && [ ! -f "${REPO_DIR}/Teleop/vendor/g1-starter-kit/config/g1.env" ]; then
+    printf '  キットの設定を置く   : Teleop/config/README.md の手順\n'
+    TODO=1
+fi
+[ "${TODO}" = "0" ] && printf '  ありません\n'
+
+# ---------------------------------------------------------------------------
+READY=$((CAN_ISAAC + CAN_LIDAR_LIVE + CAN_LIDAR_REPLAY + CAN_TELEOP))
+printf '\n'
+if [ "${READY}" = "4" ]; then
+    printf '\033[32m4 つとも今すぐ見せられます。\033[0m\n'
+    exit 0
+fi
+printf '今すぐ見せられるのは \033[1m%d / 4\033[0m です。\n' "${READY}"
+if [ "${FAIL}" = "1" ]; then
+    printf '上の \033[31m[NG]\033[0m のうち、導入で直るものは bash Demo/setup/install.sh です。\n'
+fi
+exit 1

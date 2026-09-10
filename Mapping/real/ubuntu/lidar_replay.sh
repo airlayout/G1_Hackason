@@ -22,6 +22,12 @@
 # ⚠️ 恒等変換なので**生の点群は原点に貼り付く**（ロボットに追従しない）。
 #    見せたい絵は「SLAM が積んだ地図」のほう。生のほうは 1 スキャンの見本。
 #
+# ## Humble で録った bag は Jazzy でそのままでは再生できない
+#
+# ros2 bag info は通るのに play だけが落ちる。play は **db3 の中の metadata テーブル**を
+# 読むが、Humble の db3 にはそれが無いため（2026-09-10 実測）。
+# repair_bag_for_jazzy.py が**追記だけで**直す。このスクリプトが自動で呼ぶ。
+#
 # ## frame_id="map" は map ではない
 #
 # 純正 SLAM が名乗る "map" は実体としてはロボット基準（＝odom）。
@@ -53,6 +59,13 @@ fi
 use_ros
 # 再生は自分のドメインで完結させる。ロボットの domain 0 に流し込まない。
 export ROS_DOMAIN_ID="${DEMO_ROS_DOMAIN_ID}"
+
+# Humble 由来の db3 は Jazzy の play が開けない。足りない分を追記して直す（冪等）。
+REPAIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repair_bag_for_jazzy.py"
+if ! python3 "${REPAIR}" "${BAG_DIR}" > /dev/null 2>&1; then
+    _info "この記録は Humble 時代の形式です。Jazzy で再生できるよう直します（追記のみ）"
+    python3 "${REPAIR}" "${BAG_DIR}" --apply || _die "記録を直せませんでした"
+fi
 
 PIDS=()
 cleanup() {
