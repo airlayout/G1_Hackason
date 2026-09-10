@@ -14,8 +14,30 @@ Phase 0 が済んだところ。**キットを取り込んだだけで、まだ�
 | ファイル | 状態 |
 |---|---|
 | `vendor/g1-starter-kit/` | ✅ 取り込み済み（38ファイル / `45ead40`） |
-| `config/g1.env.omen` | ⚠️ 未回収（`Teleop/config/README.md` 参照） |
+| `config/g1.env.omen` | ✅ 回収済み（OMEN の実物） |
 | `SAFETY.md` `setup.sh` `record.sh` `replay.sh` `list.sh` `quest_ap.sh` | ❌ 未着手 |
+
+### 取り込み先から動くことは OMEN で実測済み（2026-09-10）
+
+`Teleop/` をまるごと別の場所（`~/relocate_test/Teleop/`）に置いて
+`./scripts/preflight.sh --skip-scan` を走らせ、**完走**することを確認した。
+
+| 見たところ | 結果 |
+|---|---|
+| `lib.sh` の `REPO_DIR` 自己解決 | ✅ 置いた場所を指した（`BASH_SOURCE` から解決するため） |
+| 新しい場所の `config/g1.env` の読み込み | ✅ `enp129s0` / `.200` / `G1_29` / domain 42 |
+| conda 環境 `tv` の activate | ✅ Python 3.10.21 |
+| `tools/preflight.py` の起動と有線リンク判定 | ✅ `up` / `192.168.123.200/24` |
+| DDS で `rt/lowstate` を受信 | ❌ 0 件 — **G1 が電源オフのため。想定どおり** |
+
+**キットは場所に依存しない。** 依存先（`~/xr_teleoperate` `~/miniforge3` `~/cyclonedds`）は
+`$HOME` 固定でキットの外にあるので、キットを動かしても一緒に動かす必要はない。
+
+⚠️ **ただし LiDAR 系（項目2 の経路(B)）は OMEN に入っていない。**
+`~/ws_livox/install/setup.bash` と `~/.local/lib/liblivox_lidar_sdk_shared.so` が
+両方とも不在（2026-09-10 実測）。つまり `scripts/lidar_view.sh` は今のままでは動かず、
+`setup/install_livox.sh` を先に流す必要がある。項目2 の第一候補は経路(A)（G1 の DDS を
+購読するだけ）なので、そちらが通ればこれは要らない。
 
 ## なぜ vendor を丸ごとコミットしているか
 
