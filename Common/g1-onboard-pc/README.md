@@ -15,8 +15,37 @@ ssh g1  # 実機PC2へSSH接続
 ## 基本情報
 
 - OS: Ubuntu（Jetson系、L4T使用）
+- ハードウェア: **Jetson Orin NX（ARM64 / aarch64）**。x86_64 PC でビルドした wheel
+  はそのままでは入らないため、追加パッケージが必要な場合は `manylinux_aarch64` /
+  `linux_aarch64` 版を明示的に取得すること
+  （出典: [unitree-g1-physical-ai/voice-conversation/RUNBOOK.md](https://github.com/mayochan32/unitree-g1-physical-ai/blob/main/voice-conversation/RUNBOOK.md)）
 - ユーザー: `unitree`（ホームディレクトリ `/home/unitree`）
-- ネットワーク: `eth0` が `192.168.123.164/24`（Unitree G1 標準の内部LANアドレス）
+- ネットワーク:
+  - `eth0` が `192.168.123.164/24`（Unitree G1 標準の内部LANアドレス、常時使用）
+  - `wlan0` は存在するが **`rfkill` で意図的にブロックされている**。有効化には
+    `rfkill unblock all` / `nmcli radio wifi on` / `nmcli device set wlan0 managed yes` /
+    `systemctl restart NetworkManager` 等、再起動後も残る恒久的な変更が必要になるため、
+    共有機材への配慮として避けること
+  - G1本体のマイク multicast は有線セグメント（`192.168.123.x`）内に閉じており、
+    ブリッジ/IGMPプロキシを構築しない限り `wlan0` 側には届かない
+  - unitree_sdk2py はPC2に最初から入っているため追加インストール不要
+    （出典: [g1_bridge/README.md](https://github.com/mayochan32/unitree-g1-physical-ai/blob/main/voice-conversation/g1_bridge/README.md)）
+
+## 共有機材としての運用ルール（他チームとの併用に配慮）
+
+PC2 は複数チームが共有する実機であるため、恒久的な環境変更を避ける運用が徹底されている
+（出典: 上記2ファイル）。
+
+- `sudo` を使わない
+- パッケージを PC2 本体の Python に `pip install` しない。必要な場合は `/tmp` 上の
+  使い捨て venv（例: `python3 -m venv --system-site-packages /tmp/xxx_venv`）に閉じる
+- 使い終わったら `/tmp/xxx_venv` 等は明示的に削除する（`/tmp` は再起動で消えるが、
+  再起動を待たずに片付ける）
+- スクリプト類は `/tmp` に置いて実行する（再起動で自動的に消え、痕跡が残らない）
+- 音量など本体設定を変更する API（`AudioClient.SetVolume()` 等）を使った場合は、
+  終了時に元の値へ戻す
+- `NetworkManager` 等のシステムサービスを再起動しない（他チームの作業中の接続を
+  切ってしまう可能性があるため）
 
 ## ディレクトリ構造（浅い階層）
 
