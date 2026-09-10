@@ -583,88 +583,111 @@ bash Demo/preflight.sh</code>
     </ul>
   </div>
 
-  <h3>リモコンのどこを押すか</h3>
-  <div class="figwrap"><svg viewBox="0 0 900 400" role="img" aria-labelledby="fig7t fig7d" xmlns="http://www.w3.org/2000/svg">
+  <h3>これがリモコン</h3>
+  <figure>
+    <img src="images/g1_remote.jpg" width="1400" height="864"
+         alt="Unitree G1 の純正リモコン。左グリップにスティックと十字キー、右グリップにスティックと XYAB、中央に一覧が印刷されたパネル、下辺に SELECT・F1・F3・START。">
+    <figcaption>Unitree G1 の純正リモコン。左にスティックと十字キー、右にスティックと XYAB。
+    L1/L2・R1/R2 は上面にある。
+    <b>出典: <a href="https://robostore.com/products/unitree-g1-remote-controller">RoboStore の製品ページ</a>（© RoboStore LLC）。</b>
+    製品写真をそのまま使っているので、外部へ出す資料に転用するときは扱いに注意すること。</figcaption>
+  </figure>
+
+  <div class="note bad">
+    <span class="lbl">⚠️ 本体に印刷されている一覧は G1 のものではない</span>
+    <p>中央パネルの表は <b>Stair Climbing / Pounce / Dance / Searchlight</b> ——
+    <b>四足（Go2 など）用</b>。リモコン本体が Unitree 共通なので、G1 に付いてくるものにも
+    四足の表が刷ってある。<b>そのまま読むと G1 では違う動きになる。</b>
+    G1 の組み合わせは下の表を使うこと。</p>
+  </div>
+
+  <h3>どこを押すか</h3>
+  <div class="figwrap"><svg viewBox="0 0 900 620" role="img" aria-labelledby="fig7t fig7d" xmlns="http://www.w3.org/2000/svg">
   <title id="fig7t">リモコンのどこを押すか</title>
-  <desc id="fig7d">起動に使うのは L2＋B（①ダンピング）、L2＋上（②立位ロック）、R1＋X（⑦通常運転）の 3 つ。走らせたいときだけ R2＋A（③走行）を足す。図の色が付いたボタンがそれ。</desc>
+  <desc id="fig7d">起動に使うのは L2＋B（①ダンピング）、L2＋上（②立位ロック）、R1＋X（⑦通常運転）の 3 つ。走らせたいときだけ R2＋A（③走行）を足す。図の色が付いたボタンがそれ。配置は左グリップがスティックと十字キー、右グリップがスティックと XYAB、中央が一覧の印刷パネル。</desc>
 
-  <!-- ── 本体 ───────────────────────────────────────── -->
-  <rect x="58" y="96" width="384" height="206" rx="30" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.5"/>
+  <!-- ══ 左: リモコン（実物の配置に合わせて縮小して置く）══ -->
+  <g transform="translate(20,10) scale(0.98)">
+    <rect x="150" y="118" width="228" height="150" rx="16" fill="#2b2f36" stroke="var(--line-strong)"/>
+    <rect x="162" y="128" width="204" height="130" rx="8" fill="#12151a" stroke="#3a4049"/>
+    <text x="264" y="180" text-anchor="middle" class="t-b" fill="#8b94a3">MODE SWITCH</text>
+    <text x="264" y="206" text-anchor="middle" class="t-m" fill="#6b7686">一覧の印刷パネル</text>
+    <text x="264" y="230" text-anchor="middle" class="t-m" fill="#e0964f">⚠️ 四足用。G1 では使わない</text>
+    <rect x="256" y="248" width="16" height="7" rx="2" fill="#c0392b"/>
 
-  <!-- 肩ボタン -->
-  <rect x="92"  y="74" width="66" height="20" rx="7" fill="var(--surface)"    stroke="var(--line-strong)"/>
-  <rect x="92"  y="52" width="66" height="18" rx="7" fill="var(--accent)"     stroke="var(--accent)"/>
-  <rect x="342" y="74" width="66" height="20" rx="7" fill="var(--accent)"     stroke="var(--accent)"/>
-  <rect x="342" y="52" width="66" height="18" rx="7" fill="var(--surface)"    stroke="var(--line-strong)"/>
-  <text x="125" y="89"  text-anchor="middle" class="t-mono-s">L1</text>
-  <text x="125" y="66"  text-anchor="middle" class="t-mono-s" fill="#fff">L2</text>
-  <text x="375" y="89"  text-anchor="middle" class="t-mono-s" fill="#fff">R1</text>
-  <text x="375" y="66"  text-anchor="middle" class="t-mono-s">R2</text>
+    <path d="M46 112 q-14 0 -14 16 v112 q0 34 34 34 h84 q18 0 18 -18 V118 q0 -6 -8 -6 z"
+          fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="2"/>
+    <path d="M854 138 q14 0 14 16 v112 q0 34 -34 34 h-84 q-18 0 -18 -18 V144 q0 -6 8 -6 z"
+          fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="2"/>
 
-  <!-- 十字キー（上だけ色を付ける） -->
-  <rect x="118" y="128" width="26" height="26" rx="4" fill="var(--accent)" stroke="var(--accent)"/>
-  <rect x="118" y="182" width="26" height="26" rx="4" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <rect x="91"  y="155" width="26" height="26" rx="4" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <rect x="145" y="155" width="26" height="26" rx="4" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <text x="131" y="146" text-anchor="middle" class="t-mono-s" fill="#fff">▲</text>
-  <text x="131" y="123" text-anchor="middle" class="t-lbl" fill="var(--accent)">UP</text>
+    <rect x="60"  y="94" width="58" height="16" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
+    <rect x="60"  y="72" width="58" height="18" rx="6" fill="var(--accent)"  stroke="var(--accent)"/>
+    <text x="89" y="108" text-anchor="middle" class="t-b">L1</text>
+    <text x="89"  y="87" text-anchor="middle" class="t-b" fill="#fff">L2</text>
+    <rect x="782" y="120" width="58" height="18" rx="6" fill="var(--accent)"  stroke="var(--accent)"/>
+    <rect x="782" y="98" width="58" height="16" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
+    <text x="811" y="135" text-anchor="middle" class="t-b" fill="#fff">R1</text>
+    <text x="811" y="112" text-anchor="middle" class="t-b">R2</text>
 
-  <!-- A B X Y（B と X に色）-->
-  <circle cx="368" cy="141" r="15" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <circle cx="368" cy="195" r="15" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <circle cx="341" cy="168" r="15" fill="var(--accent)"  stroke="var(--accent)"/>
-  <circle cx="395" cy="168" r="15" fill="var(--accent)"  stroke="var(--accent)"/>
-  <text x="368" y="146" text-anchor="middle" class="t-mono-s">Y</text>
-  <text x="368" y="200" text-anchor="middle" class="t-mono-s">A</text>
-  <text x="341" y="173" text-anchor="middle" class="t-mono-s" fill="#fff">X</text>
-  <text x="395" y="173" text-anchor="middle" class="t-mono-s" fill="#fff">B</text>
+    <circle cx="96" cy="152" r="24" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+    <circle cx="96" cy="152" r="10" fill="#2b2f36" stroke="var(--line-strong)"/>
+    <circle cx="96"  cy="200" r="13" fill="var(--accent)"  stroke="var(--accent)"/>
+    <circle cx="96"  cy="244" r="13" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+    <circle cx="68"  cy="222" r="13" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+    <circle cx="124" cy="222" r="13" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+    <text x="96" y="206" text-anchor="middle" class="t-b" fill="#fff">▲</text>
+    <text x="150" y="206" class="t-b" fill="var(--accent)">UP</text>
+    <rect x="50" y="266" width="28" height="12" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
+    <rect x="94" y="266" width="28" height="12" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
+    <text x="64"  y="296" text-anchor="middle" class="t-m" fill="var(--ink-3)">SELECT</text>
+    <text x="108" y="296" text-anchor="middle" class="t-m" fill="var(--ink-3)">F1</text>
 
-  <!-- SELECT / START -->
-  <rect x="204" y="150" width="36" height="14" rx="7" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <rect x="262" y="150" width="36" height="14" rx="7" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <text x="222" y="143" text-anchor="middle" class="t-lbl" fill="var(--ink-3)">SELECT</text>
-  <text x="280" y="143" text-anchor="middle" class="t-lbl" fill="var(--ink-3)">START</text>
-
-  <!-- スティック -->
-  <circle cx="186" cy="246" r="26" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <circle cx="186" cy="246" r="11" fill="var(--surface-2)" stroke="var(--line-strong)"/>
-  <circle cx="314" cy="246" r="26" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <circle cx="314" cy="246" r="11" fill="var(--surface-2)" stroke="var(--line-strong)"/>
-  <text x="186" y="292" text-anchor="middle" class="t-s" fill="var(--ink-3)">左スティック</text>
-  <text x="314" y="292" text-anchor="middle" class="t-s" fill="var(--ink-3)">右スティック</text>
-
-  <text x="58" y="336" class="t-s" fill="var(--ink-3)">色が付いているのが起動に使うボタン。配置は Unitree G1 の純正リモコン。</text>
-
-  <!-- ── 対応表 ─────────────────────────────────────── -->
-  <text x="500" y="66" class="t-b">起動に使う 3 つ</text>
-
-  <g>
-    <rect x="500" y="80" width="384" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
-    <text x="516" y="104" class="t-mono-b" fill="var(--accent)">①  L2 ＋ B</text>
-    <text x="640" y="104" class="t-b">ダンピング</text>
-    <text x="640" y="122" class="t-s">腕のモータが有効になる（実演4 の前提）</text>
-
-    <rect x="500" y="142" width="384" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
-    <text x="516" y="166" class="t-mono-b" fill="var(--accent)">②  L2 ＋ UP</text>
-    <text x="640" y="166" class="t-b">立位ロック</text>
-    <text x="640" y="184" class="t-s">ここでウィンチを緩める</text>
-
-    <rect x="500" y="204" width="384" height="52" rx="6" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/>
-    <text x="516" y="228" class="t-mono-b" fill="var(--good)">⑦  R1 ＋ X</text>
-    <text x="640" y="228" class="t-b">通常運転</text>
-    <text x="640" y="246" class="t-s">START で立ち、スティックで歩く</text>
+    <circle cx="804" cy="178" r="24" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+    <circle cx="804" cy="178" r="10" fill="#2b2f36" stroke="var(--line-strong)"/>
+    <circle cx="804" cy="226" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+    <circle cx="804" cy="272" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
+    <circle cx="775" cy="249" r="15" fill="var(--accent)"  stroke="var(--accent)"/>
+    <circle cx="833" cy="249" r="15" fill="var(--accent)"  stroke="var(--accent)"/>
+    <text x="804" y="232" text-anchor="middle" class="t-b">Y</text>
+    <text x="804" y="278" text-anchor="middle" class="t-b">A</text>
+    <text x="775" y="255" text-anchor="middle" class="t-b" fill="#fff">X</text>
+    <text x="833" y="255" text-anchor="middle" class="t-b" fill="#fff">B</text>
+    <rect x="758" y="292" width="28" height="12" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
+    <rect x="802" y="292" width="28" height="12" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
+    <text x="772" y="322" text-anchor="middle" class="t-m" fill="var(--ink-3)">F3</text>
+    <text x="816" y="322" text-anchor="middle" class="t-m" fill="var(--ink-3)">START</text>
   </g>
 
-  <text x="500" y="292" class="t-b">走らせたいときだけ足す</text>
-  <rect x="500" y="302" width="384" height="46" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-dasharray="4 3"/>
-  <text x="516" y="324" class="t-mono-b" fill="var(--ink-3)">③  R2 ＋ A</text>
-  <text x="640" y="324" class="t-s">走行（R2＋下 = 低速走 ／ R2＋上 = 高速走）</text>
-  <text x="640" y="342" class="t-s" fill="var(--warn)">デモでは使わなくてよい</text>
+  <text x="30" y="368" class="t-s" fill="var(--ink-3)">色が付いているのが起動に使うボタン。</text>
+  <text x="30" y="388" class="t-s" fill="var(--ink-3)">L1/L2・R1/R2 は上面にあり、この向きでは見えない。</text>
+
+  <!-- ══ 下段: 対応表 ══ -->
+  <text x="30" y="418" class="t-b">起動に使う 3 つ（この順に上げる）</text>
+
+  <rect x="30" y="430" width="840" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+  <text x="46" y="454" class="t-mono-b" fill="var(--accent)">①  L2 ＋ B</text>
+  <text x="200" y="454" class="t-b">ダンピング</text>
+  <text x="200" y="472" class="t-s">腕のモータが有効になる（実演4 の前提）</text>
+
+  <rect x="30" y="490" width="840" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+  <text x="46" y="514" class="t-mono-b" fill="var(--accent)">②  L2 ＋ UP</text>
+  <text x="200" y="514" class="t-b">立位ロック</text>
+  <text x="200" y="532" class="t-s">ここでウィンチを緩める</text>
+
+  <rect x="30" y="550" width="840" height="52" rx="6" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/>
+  <text x="46" y="574" class="t-mono-b" fill="var(--good)">⑦  R1 ＋ X</text>
+  <text x="200" y="574" class="t-b">通常運転</text>
+  <text x="200" y="592" class="t-s">START で立ち、スティックで歩く</text>
+
+  <text x="30" y="638" class="t-b">走らせたいときだけ足す</text>
+  <rect x="30" y="648" width="840" height="52" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-dasharray="4 3"/>
+  <text x="46" y="672" class="t-mono-b" fill="var(--ink-3)">③  R2 ＋ A</text>
+  <text x="200" y="672" class="t-s">走行（R2＋下 = 低速走 ／ R2＋上 = 高速走）</text>
+  <text x="200" y="690" class="t-s" fill="var(--warn)">デモでは使わなくてよい</text>
 </svg></div>
   <p class="figcap-after">ボタンの対応は
   <a href="https://docs.quadruped.de/projects/g1/html/operation_1.4.html">QUADRUPED Docs の G1 操作編（Firmware V1.0.4）</a>
-  で確認した。この図は<b>その内容をもとに書き起こしたもの</b>で、
-  向こうの図版そのものではない（このリポジトリは public なので第三者の図をそのまま置かない）。
+  で確認した。この図は<b>その内容をもとに書き起こしたもの</b>。
   実機のファームウェアが違うと組み合わせが変わることがあるので、
   食い違ったら実機と付属マニュアルを優先すること。</p>
 
