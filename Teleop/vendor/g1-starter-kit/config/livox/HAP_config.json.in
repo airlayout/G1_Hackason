@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "HAP 用の雛形。tools/lidar_probe.py --write-config が",
+    "この形を読んで config/livox/active.json を生成する。直接使わないこと。",
+    "host_net_info の形式: オブジェクト+チャネル別IP（機種で違う。混同すると LiDAR が無反応になる）"
+  ],
+  "lidar_summary_info": {
+    "lidar_type": 8
+  },
+  "HAP": {
+    "lidar_net_info": {
+      "cmd_data_port": 56000,
+      "push_msg_port": 0,
+      "point_data_port": 57000,
+      "imu_data_port": 58000,
+      "log_data_port": 59000
+    },
+    "host_net_info": {
+      "cmd_data_ip": "HOST_IP_PLACEHOLDER",
+      "cmd_data_port": 56000,
+      "push_msg_ip": "",
+      "push_msg_port": 0,
+      "point_data_ip": "HOST_IP_PLACEHOLDER",
+      "point_data_port": 57000,
+      "imu_data_ip": "HOST_IP_PLACEHOLDER",
+      "imu_data_port": 58000,
+      "log_data_ip": "",
+      "log_data_port": 59000
+    }
+  },
+  "lidar_configs": [
+    {
+      "ip": "LIDAR_IP_PLACEHOLDER",
+      "pcl_data_type": 1,
+      "pattern_mode": 0,
+      "extrinsic_parameter": {
+        "roll": 0.0,
+        "pitch": 0.0,
+        "yaw": 0.0,
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    }
+  ]
+}

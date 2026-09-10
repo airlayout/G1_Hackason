@@ -1,0 +1,22 @@
+# 環境ごとの設定（IP やインターフェース名）はコミットしない
+config/g1.env
+
+# 自動生成される LiDAR 設定
+config/livox/active.json
+
+# 記録した bag は巨大なのでコミットしない
+bags/*
+!bags/.gitkeep
+
+# 証明書・秘密鍵
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+
+# ROS のビルド生成物
+build/
+install/
+log/

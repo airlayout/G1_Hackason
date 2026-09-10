@@ -1,0 +1,6 @@
+image: uis_room_v3_clean.pgm
+resolution: 0.1
+origin: [-12.6960, -17.9279, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.25
