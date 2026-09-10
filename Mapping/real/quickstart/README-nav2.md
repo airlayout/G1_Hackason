@@ -94,9 +94,41 @@ Mac (en8 / 192.168.123.202)            ← USB アダプタ。抜けると OS �
                  └─ PC2 .164  ssh で入れる。loco_driver はここ
 ```
 
-**ケーブルを抜き差ししたら `colima restart` が要る。**
-Mac 側は生きたままなので気づきにくい。再起動後は `col0` の IPv4 が消えるので
-`start_rviz_mac.sh live` に付け直させる。
+### ⚠️ ケーブルを抜き差しするとブリッジが切れる（**もう手作業では直さない**）
+
+`col0` は socket_vmnet 経由で G1 の内蔵スイッチに L2 で載っている。
+**ケーブルを抜き差しするとこの結びつきが外れる。** 紛らわしいのは
+
+- **Mac → PC2 は通ったまま**（ホストの経路は別なので気づかない）
+- `col0` には IPv4 が**付いたまま**
+- `ros2 topic list` は daemon が握った**古い結果**を返すので「見えている」と錯覚する
+
+の 3 つで、実データ（`ros2 topic echo --once`）が 1 件も来ないところまで行かないと
+気づけない。
+
+**`start_rviz_mac.sh live` が起動時に自分で検査して直す。**
+コンテナ（無ければ VM）から PC2 の `22` へ TCP を張って測り、切れていたら
+`colima stop` してからブリッジ付きで起動し直す。**どちらの経路で測ったかは標準出力に出る。**
+張り直した後はコンテナの `ros2 daemon` も落とす（切れている間に握った古いグラフが
+残るため。「2 件しか見えない」→ `daemon stop` で 139 件、という実測がある）。
+
+⚠️ **`colima restart` 単体では直らないことがある**（`col0` に IPv4 が付かないまま
+上がる型がある）。`start_rviz_mac.sh` は自分で `ip addr add` するので、
+**手で restart せず `start_rviz_mac.sh live` を通すこと。**
+
+### 環境変数 `G1_COLIMA_RESTART`（ブリッジの張り直し方）
+
+| 値 | 挙動 |
+|---|---|
+| `auto`（**既定**） | colima が動いていればブリッジを検査し、**壊れている時だけ** `colima stop` する |
+| `always` | 検査せず無条件に `colima stop` してから起動する |
+| `never` | 検査も stop もしない（2026-09-09 までの挙動） |
+
+不正な値は起動時に弾く（`die`）。`offline` では `col0` が要らないので、
+**どの値でも検査も stop もしない。**
+
+⚠️ **無条件の stop（`always`）は VM の再起動に約 2 分かかる**
+（実測 08:02:26 stop → 08:04:49 起動完了）。当日は `auto` のまま使う。
 
 ---
 
@@ -358,10 +390,15 @@ python3 check_navigation.py --ahead 1.0 --tries 1 --no-sim-time \
 cd G1_Hackason/Mapping/real
 
 # ── 0. 立てる（実機に触らない）
-bash quickstart/check_link.sh                              # 経路
+bash quickstart/check_link.sh                              # 経路（見るだけ。直さない）
 G1_RVIZ_CFG=$PWD/quickstart/rviz/g1_nav.rviz \
-  bash quickstart/start_rviz_mac.sh live
+  bash quickstart/start_rviz_mac.sh live                   # ← ブリッジは**これが直す**
 G1_USE_MOLA=1 bash quickstart/nav_stack.sh live
+
+# ── 0.5. コストマップの消え残りを落とす。**preflight の前に 1 回**
+bash quickstart/clear_costmaps.sh
+#   立ち上げてから時間が経っているほど効く。減った分が消え残り、
+#   残った分は本物（壁・人・家具）。**走行のたびに打つ必要は無い**
 
 # ── 1. ゲート。**全部 OK でなければ先に進まない**
 bash quickstart/preflight.sh
@@ -384,6 +421,7 @@ ssh -t g1 'python3 ~/nav_tools/loco_driver.py --network-interface eth0 --max-vy 
 
 # ── 4. 1 本目: 真っ直ぐ 1m（旋回ゼロ）＋ 走行中の重畳
 bash quickstart/run_stage.sh ahead 1.0
+#   ⚠️ **1.0 未満にしない。** 0.80 m 以下は run_stage.sh が弾く（理由は §8）
 
 # ── 5. 2 本目: 地図上の絶対座標（歩く前に ComputePathToPose で検算される）
 bash quickstart/run_stage.sh goal 1.15 1.02      # ← 第一候補（下の表）
@@ -393,6 +431,16 @@ bash quickstart/run_stage.sh goal 1.15 1.02      # ← 第一候補（下の表�
 #      横や逆を向けると位置は着いてもその場で回り続け、Spin 復帰を呼ぶ
 #   ガードのログ: docker exec rviz tail -f /home/ubuntu/guard.log
 ```
+
+⚠️ **手順 0 で colima に手を出さない。** `check_link.sh` が「コンテナ → PC2 に届かない」
+と言っても、**現地で `colima restart` を打つか迷わなくてよい**。ブリッジの検査と
+張り直しは `start_rviz_mac.sh live` が自分でやる（§2 の `G1_COLIMA_RESTART`）。
+張り直しに入ると VM の再起動で 2 分ほど黙るが、何をしているかは標準出力に出る。
+
+⚠️ **距離を縮めて安全を買おうとしないこと。** 人が近くにいるときに縮めたくなるが、
+`ahead 0.5` は**歩かずに「到達 1/1」と出る**（§8）。安全は距離ではなく
+**逸脱ガードの上限**で買う。`stray_guard.py --margin 0.3 --max-abs 1.2 --max-seconds 20`
+のように締めれば、1.0 m の走行でも暴走は 1.2 m で止まる。
 
 ### 合否（測る前に決めてある）
 
@@ -429,6 +477,37 @@ bash quickstart/nav_stack.sh stop
 ---
 
 ## 8. 雑多だが毎回引っかかること
+
+### 歩かずに「到達 1/1」と出る（2026-09-10 に実機で踏んだ）
+
+**いちばん危ない型。落ちない・転倒しない・エラーコードも出ない。**
+`ahead 0.5` を投げたら `到達 1/1 / error_code=None / recoveries=0` と出たが、
+bag の `map -> base_link` 119 サンプル 11.83 秒で**開始点からの最大距離は 0.049 m**
+（＝測位のゆらぎ）だった。**1 歩も歩いていない。**
+
+機構は 3 つが噛み合ったもの:
+
+1. **コストマップの消え残り。** 障害物層（voxel_layer）の印は、そのセルを貫くレイが
+   後から来ないと消えない。30 分ほど立ち上げたままにしたら、機体まわり ±3 m の
+   LETHAL 1,305 セルのうち **384 セルが「事前地図にも無く、その時 LiDAR が見てもいない」**
+   ものになっていた。**そのうちの 1 つがちょうどゴールのセルだった**
+2. **Smac2D は `tolerance`（0.50 m）の中で一番近い到達可能点を返す。**
+   ゴールが 0.50 m 先だと、**機体の現在地そのもの**がその点になり得る。経路は 1 点だけ
+3. **コントローラは経路の終端と機体を比べる。** 終端＝現在地なので
+   **1.6 ms で「Reached the goal!」**、bt_navigator は `Goal succeeded`
+
+対策は入れてある。3 つとも要る:
+
+| 打ち手 | どこ |
+|---|---|
+| 消え残りを先に落とす | `clear_costmaps.sh`（§7.5 の手順 0.5）。実測で全体 LETHAL 20,046 → 19,525、ゴールのセルは 100 → 0 |
+| 短すぎるゴールを弾く | `run_stage.sh` が `ahead D` で `D ≤ xy_goal_tolerance + planner tolerance`（= 0.80 m）なら止める。値は `g1_nav2.yaml` から読むので焼き込みではない。どうしても短くしたいなら `G1_ALLOW_SHORT_AHEAD=1` |
+| 成功を幾何で裏取りする | `check_navigation.py` の `verify_arrival()`。アクションが成功と言っても**終端からゴールまでが `--arrive-tol`（既定 0.35 m）を超えていたら失敗として数える**。`navigation.json` に `checks`（実移動量・ゴールまでの距離）も残す |
+
+⚠️ **`results` だけを見ないこと。** `navigation.json` の `checks` に実移動量が入っている。
+`== 到達 n/m ==` の後に「Nav2 が成功と言ったが着いていない回」があれば必ず出る。
+
+
 
 ### 古いスタックが残る
 
@@ -480,6 +559,28 @@ docker cp rviz:/tmp/x.png ./x.png
 
 **`frame_id` を見ずに `point_step=22` を仮定して読むと、229 回だけ別座標系の点を掴む。**
 `measure_overlay.py` は**両方**で弾く。**他の記録は未調査。**
+
+### コンテナを起こした直後は X（`:1`）がまだ無い
+
+`docker start` の直後に RViz2 を起動すると
+`qt.qpa.xcb: could not connect to display :1` で即死する（2026-09-10 に踏んだ）。
+コンテナは `supervisord` → `vnc_run.sh` → `vncserver :1` → `Xtigervnc :1` の順に上がる。
+`start_rviz_mac.sh` は **`xdpyinfo` が通るまで 2 秒おきに待つ**（上限 90 秒。超えたら落ちる）。
+
+⚠️ **`xdpyinfo` は `-u ubuntu` ＋ `XAUTHORITY` で打つ。** root で打つと X が完全に
+上がっていても `Authorization required` で必ず失敗する。
+
+```bash
+# ❌ X が上がっていても失敗する
+docker exec rviz bash -c 'DISPLAY=:1 xdpyinfo'
+# ✅
+docker exec -u ubuntu -e DISPLAY=:1 -e XAUTHORITY=/home/ubuntu/.Xauthority \
+  rviz bash -c 'xdpyinfo | head -3'
+```
+
+⚠️ **ポート 80（noVNC の websockify）は X より先に開く。**
+`nc -z <VM_IP> 80` を「X の準備完了」の判定に使ってはいけない。
+`/tmp/.X11-unix/X1` の有無も cookie が読めるかとは別なので単体では足りない。
 
 ---
 

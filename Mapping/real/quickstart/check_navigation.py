@@ -239,13 +239,18 @@ class Navigator(Node):
         end = time.monotonic() + timeout_s
         next_sample = 0.0
         strayed = None
+        # ⚠️ **実移動量は逸脱ガードの有無に関わらず測る**（2026-09-10 に踏んだ）。
+        # 以前は leash があるときだけ姿勢を引いていたので、「1 度も動かずに成功と
+        # 出た」ことを後から示す材料が記録に何も残らなかった。
+        moved_max = 0.0
         while rclpy.ok() and not result_future.done() and time.monotonic() < end:
             rclpy.spin_once(self, timeout_sec=0.2)
-            if leash is not None:
+            if start is not None:
                 now = self.pose(retries=1)
                 if now is not None:
                     d = math.hypot(now[0] - start[0], now[1] - start[1])
-                    if d > leash:
+                    moved_max = max(moved_max, d)
+                    if leash is not None and d > leash:
                         strayed = d
                         self.get_logger().error(
                             "[navigate] 逸脱ガード作動: 開始点から {:.2f} m "
@@ -258,11 +263,13 @@ class Navigator(Node):
                 next_sample = time.monotonic() + 0.5
         if strayed is not None:
             return {"accepted": True, "timeout": False, "strayed": strayed,
-                    "succeeded": False, "status": None}
+                    "succeeded": False, "status": None,
+                    "start": start, "moved_max": moved_max}
         if not result_future.done():
             handle.cancel_goal_async()
             self.spin_for(2.0)
-            return {"accepted": True, "timeout": True}
+            return {"accepted": True, "timeout": True,
+                    "start": start, "moved_max": moved_max}
 
         res = result_future.result()
         fb = self.feedback[-1] if self.feedback else None
@@ -274,19 +281,54 @@ class Navigator(Node):
             "error_code": getattr(res.result, "error_code", None),
             "recoveries": getattr(fb, "number_of_recoveries", None),
             "distance_remaining": getattr(fb, "distance_remaining", None),
+            "start": start,
+            "moved_max": moved_max,
         }
 
 
+def verify_arrival(r: dict, end_pose, goal_xy: tuple[float, float],
+                   arrive_tol: float) -> tuple[bool, str]:
+    """アクションの「成功」を**幾何で裏取りする**。合否はこちらを使う。
+
+    ⚠️ **`status == SUCCEEDED` をそのまま到達にしてはいけない（2026-09-10 に実機で踏んだ）。**
+    コストマップの消え残りでゴールのセルが LETHAL になっていると、Smac2D は
+    ゴールへ行けず `tolerance`（既定 0.5 m）の中で一番近い到達可能点を返す。
+    ゴールが 0.50 m 先だと**機体の現在地そのものがその点になり得る**ので、経路は
+    1 点だけになる。コントローラは経路の終端と機体を比べるので **1.6 ms で
+    「Reached the goal!」**と言い、bt_navigator は `Goal succeeded` を返す。
+    実測: `到達 1/1`・error_code=None・recoveries=0 なのに、bag の map -> base_link
+    119 サンプル 11.83 秒で**開始点からの最大距離 0.049 m**（＝測位のゆらぎ）。
+    **落ちない・転倒しない・エラーも出ない。**記録を見ないと気づけない。
+    """
+    if not r.get("succeeded"):
+        return False, ""
+    moved = r.get("moved_max")
+    m = f" / 実移動 {moved:.2f} m" if moved is not None else ""
+    if end_pose is None:
+        return False, f"到達を確かめられない（map -> base_link が引けない）{m}"
+    gap = math.hypot(end_pose[0] - goal_xy[0], end_pose[1] - goal_xy[1])
+    if gap > arrive_tol:
+        return False, (f"**成功と言っているが着いていない**: ゴールまで {gap:.2f} m "
+                       f"> 許容 {arrive_tol:.2f} m{m}。"
+                       f"コストマップの消え残りでゴールが塞がっていないか "
+                       f"（clear_costmaps.sh）")
+    return True, f"裏取り: ゴールまで {gap:.2f} m ≤ 許容 {arrive_tol:.2f} m{m}"
+
+
 def save_record(record: str | None, waypoints: list, results: list,
-                track: list, planner_id: str) -> None:
-    """記録を書き出す。1 回ごとに呼んで上書きする（途中で止めても残る）。"""
+                track: list, planner_id: str, checks: list | None = None) -> None:
+    """記録を書き出す。1 回ごとに呼んで上書きする（途中で止めても残る）。
+
+    `checks` は 1 回ごとの裏取り（実移動量・終端からゴールまでの距離）。
+    **`results` だけ見ると「動かずに成功」を見逃す**ので必ず一緒に書く。
+    """
     if not record:
         return
     d = Path(record)
     d.mkdir(parents=True, exist_ok=True)
     (d / "navigation.json").write_text(json.dumps({
         "waypoints": waypoints, "results": results, "track": track,
-        "planner_id": planner_id,
+        "planner_id": planner_id, "checks": checks or [],
     }, ensure_ascii=False))
     print(f"[record] -> {d}/navigation.json（{len(track)} サンプル / "
           f"{len(results)} 回ぶん）")
@@ -305,6 +347,11 @@ def main() -> int:
                     help="逸脱ガード。開始点からの距離が「ゴールまでの直線 + M」を"
                          "超えたら即キャンセルする。実機では必ず付けること")
     ap.add_argument("--tries", type=int, default=3)
+    ap.add_argument("--arrive-tol", type=float, default=0.35, metavar="M",
+                    help="**到達の裏取り**。アクションが成功と言っても、終端から"
+                         "ゴールまでが M m を超えていたら失敗として数える。"
+                         "既定 0.35 は nav2 の xy_goal_tolerance 0.30 に測定の"
+                         "ゆらぎぶんを足した値。**下げすぎると正常な到達を落とす**")
     ap.add_argument("--range", type=float, nargs=2, default=[3.0, 8.0])
     ap.add_argument("--timeout", type=float, default=180.0)
     ap.add_argument("--record", metavar="DIR",
@@ -335,6 +382,7 @@ def main() -> int:
 
     lo, hi = args.range
     results = []
+    checks: list = []
     for k in range(args.tries):
         # ⚠️ 1 回ごとに記録を書く。最後にまとめて書くと、途中で止めたときに
         # **記録が丸ごと消える**（長距離は 1 回で最大 900 s なので、
@@ -381,10 +429,13 @@ def main() -> int:
             if r.get("strayed") is not None:
                 print(f"       **逸脱ガードで中止**（開始点から {r['strayed']:.2f} m）")
                 results.append(False)
+                checks.append({"try": k + 1, "arrived": False,
+                               "reason": "strayed", "moved_max": r.get("moved_max")})
                 continue
             if not r["accepted"]:
                 print("       ゴールが受理されなかった")
                 results.append(False)
+                checks.append({"try": k + 1, "arrived": False, "reason": "not_accepted"})
                 continue
             if r.get("timeout"):
                 end_pose, end_truth = node.pose(), sim_truth()
@@ -394,6 +445,8 @@ def main() -> int:
                     print(f"       到達点 AMCL({end_pose[0]:+.2f}, {end_pose[1]:+.2f}) "
                           f"真値({end_truth[0]:+.2f}, {end_truth[1]:+.2f})")
                 results.append(False)
+                checks.append({"try": k + 1, "arrived": False, "reason": "timeout",
+                               "moved_max": r.get("moved_max")})
                 continue
 
             end_pose, end_truth = node.pose(), sim_truth()
@@ -407,15 +460,37 @@ def main() -> int:
                 print(f"       到達点 AMCL({end_pose[0]:+.2f}, {end_pose[1]:+.2f}) "
                       f"真値({end_truth[0]:+.2f}, {end_truth[1]:+.2f})  "
                       f"真値とゴールの差 {gap:.2f} m / AMCL と真値の差 {drift:.2f} m")
-            results.append(bool(r["succeeded"]))
+            # ⚠️ **合否は幾何の裏取りで決める。**アクションの成功は材料の 1 つに過ぎない
+            arrived, why = verify_arrival(r, end_pose, (w["x"], w["y"]), args.arrive_tol)
+            if why:
+                print(f"       {why}")
+            results.append(arrived)
+            gap = (math.hypot(end_pose[0] - w["x"], end_pose[1] - w["y"])
+                   if end_pose else None)
+            checks.append({"try": k + 1, "arrived": arrived,
+                           "reason": "verified" if arrived else "not_arrived",
+                           "succeeded": bool(r["succeeded"]),
+                           "moved_max": r.get("moved_max"),
+                           "gap_to_goal": gap, "arrive_tol": args.arrive_tol})
         finally:
             save_record(args.record, waypoints, results, node.track,
-                       args.planner_id)
+                       args.planner_id, checks)
 
     print()
     ok = sum(results)
     print(f"== 到達 {ok}/{len(results)} ==")
-    save_record(args.record, waypoints, results, node.track, args.planner_id)
+    # 「アクションは成功と言ったが幾何では着いていない」回を目立たせる。
+    # ここを黙らせると 2026-09-10 の「1 度も歩かずに 到達 1/1」が再発する
+    false_ok = [c for c in checks if c.get("succeeded") and not c["arrived"]]
+    if false_ok:
+        print(f"⚠️ **Nav2 が成功と言ったが着いていない回が {len(false_ok)} 回ある**")
+        for c in false_ok:
+            mv = c.get("moved_max")
+            gap = c.get("gap_to_goal")
+            print(f"   {c['try']} 回目: 実移動 "
+                  f"{'不明' if mv is None else f'{mv:.2f} m'} / "
+                  f"ゴールまで {'不明' if gap is None else f'{gap:.2f} m'}")
+    save_record(args.record, waypoints, results, node.track, args.planner_id, checks)
     node.destroy_node()
     rclpy.shutdown()
     return 0 if ok == len(results) else 1
