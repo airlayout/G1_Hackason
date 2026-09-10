@@ -34,9 +34,17 @@ else
 fi
 
 _head "確認"
+# <defunct>（ゾンビ）は動いていない。親が回収すれば消えるので数えない。
+# apport は kill -9 した相手のクラッシュを拾いに来ただけなので数えない。
+# <defunct>（ゾンビ）は動いていない。親が回収すれば消えるので数えない。
+# apport は kill -9 した相手のクラッシュを拾いに来ただけなので数えない。
 STILL="$(pgrep -af 'rviz2|ros2 bag play|static_transform_publisher|run_g1_twin|component_container_isolated' 2>/dev/null \
     | grep -v 'bash -c' \
     | grep -v 'Demo/stop.sh' \
+    | grep -v '<defunct>' \
+    | grep -v 'apport' \
+    | grep -v '<defunct>' \
+    | grep -v 'apport' \
     | awk -v self="$$" -v parent="$PPID" '$1 != self && $1 != parent {print $0}' || true)"
 if [ -z "${STILL}" ]; then
     _ok "全部止まりました"

@@ -140,11 +140,16 @@ robot_reachable() {
 #   wait_for_log <ログファイル> <待つ文言> <秒> [説明]
 wait_for_log() {
     local logfile="$1" pattern="$2" limit="$3" what="${4:-$2}"
-    local waited=0
+    local waited=0 hits
     _info "待っています: ${what}（最大 ${limit} 秒）"
     while [ "${waited}" -lt "${limit}" ]; do
-        # grep -q は使わない（pipefail 下でパイプ元を SIGPIPE で殺すため）
-        if [ -f "${logfile}" ] && [ "$(grep -c -- "${pattern}" "${logfile}" 2>/dev/null || echo 0)" -gt 0 ]; then
+        # grep -q は使わない（pipefail 下でパイプ元を SIGPIPE で殺すため）。
+        # ⚠️ `$(grep -c ... || echo 0)` と書いてはいけない。0 件のとき grep は「0」を
+        #    印字したうえで exit 1 を返すので、`|| echo 0` も走って "0\n0" になり
+        #    `[ -gt ]` が "integer expression expected" で落ちる。代入の失敗で受けること。
+        hits=0
+        [ -f "${logfile}" ] && { hits="$(grep -c -- "${pattern}" "${logfile}" 2>/dev/null)" || hits=0; }
+        if [ "${hits}" -gt 0 ]; then
             _ok "出ました: ${what}（${waited} 秒）"
             return 0
         fi
@@ -176,21 +181,41 @@ stop_isaac_nav2() {
 
 # 自分が起動した子だけを止める。pgrep でパターン検索しない。
 # 使い方: PIDS+=($!) で溜めておいて stop_tracked_pids "${PIDS[@]}"
+#
+# ⚠️ **いきなり SIGKILL しないこと。** RViz2 を kill -9 すると Ubuntu の apport が
+#    クラッシュとして拾いに来て、ゾンビと apport プロセスが残る（2026-09-10 実測）。
+#    SIGINT → SIGTERM → SIGKILL の順に、それぞれ待ってから上げる。
+_alive() { kill -0 "$1" 2>/dev/null; }
+
+_wait_gone() {
+    local pid="$1" limit="$2" waited=0
+    while [ "${waited}" -lt "${limit}" ]; do
+        _alive "${pid}" || return 0
+        sleep 1
+        waited=$((waited + 1))
+    done
+    return 1
+}
+
 stop_tracked_pids() {
     local pid
     for pid in "$@"; do
         [ -n "${pid}" ] || continue
-        kill -0 "${pid}" 2>/dev/null || continue
+        _alive "${pid}" || continue
         _info "止めます pid=${pid}"
         kill -INT "${pid}" 2>/dev/null || true
     done
-    sleep 3
     for pid in "$@"; do
         [ -n "${pid}" ] || continue
-        if kill -0 "${pid}" 2>/dev/null; then
-            _warn "SIGINT で止まらないので強制します pid=${pid}"
-            kill -9 "${pid}" 2>/dev/null || true
-        fi
+        _alive "${pid}" || continue
+        _wait_gone "${pid}" 8 && continue
+        _warn "SIGINT で止まらないので SIGTERM を送ります pid=${pid}"
+        kill -TERM "${pid}" 2>/dev/null || true
+        _wait_gone "${pid}" 5 && continue
+        _warn "SIGTERM でも止まらないので強制します pid=${pid}"
+        kill -9 "${pid}" 2>/dev/null || true
+        # 親が居るうちに回収してゾンビを残さない
+        wait "${pid}" 2>/dev/null || true
     done
 }
 
