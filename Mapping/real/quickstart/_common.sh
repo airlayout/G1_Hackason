@@ -118,6 +118,60 @@ g1_wired_nic() {
         | awk '/^[a-z0-9]+:/{n=substr($1,1,length($1)-1)} /inet 192\.168\.123\./{print n; exit}'
 }
 
+# ── ブリッジ（VM/コンテナ → 実機）が生きているか ───────────────────
+# col0 は socket_vmnet 経由で G1 の内蔵スイッチに L2 で載っている。
+# **LAN ケーブルを抜き差しするとこの結びつきが黙って外れる。** 紛らわしいのは
+#
+#   * Mac → PC2 は**通ったまま**（ホストの経路は別）
+#   * col0 には IPv4 が**付いたまま**
+#   * `ros2 topic list` は daemon が握った**古い結果**を返す
+#
+# ので、実データが 1 件も来ないところまで行かないと気づけない。
+# 判定は check_link.sh 手順 5 の後半（コンテナ → PC2）と**同じものを共有する**。
+G1_TCP_PROBE_TIMEOUT="${G1_TCP_PROBE_TIMEOUT:-5}"
+
+# コンテナが起動しているか（--network host なので VM と同じ netns に居る）
+g1_container_running() {
+    [ "$(docker inspect -f '{{.State.Running}}' "${1:-$G1_RVIZ_NAME}" 2>/dev/null)" = "true" ]
+}
+
+# コンテナから TCP が張れるか。⚠️ ping はコンテナに入っていないので使えない
+g1_tcp_ok_container() {
+    local host="$1" port="$2"
+    docker exec "$G1_RVIZ_NAME" timeout "$G1_TCP_PROBE_TIMEOUT" \
+        bash -c "exec 3<>/dev/tcp/$host/$port" >/dev/null 2>&1
+}
+
+# VM から TCP が張れるか（コンテナが無い／止まっているとき用）。
+# ⚠️ `colima ssh -- ...` は argv をそのまま渡す（自分でクォートし直す必要は無い。
+# 逆に `bash -c "'...'"` と二重にすると引用符ごと 1 語になって command not found になる）。
+# ping は VM にも入っていない。timeout(1) と bash は colima の Ubuntu に入っている
+g1_tcp_ok_vm() {
+    local host="$1" port="$2"
+    colima ssh -- timeout "$G1_TCP_PROBE_TIMEOUT" \
+        bash -c "exec 3<>/dev/tcp/$host/$port" >/dev/null 2>&1
+}
+
+# どちらの経路で測れるかを返す（container / vm / none）。**ログに出すために名前で返す**
+g1_bridge_via() {
+    if g1_container_running; then
+        echo container
+    elif colima status >/dev/null 2>&1; then
+        echo vm
+    else
+        echo none
+    fi
+}
+
+# 上で決めた経路で PC2 へ TCP を張る。0=生きている / 1=切れている / 2=測れない
+g1_bridge_ok() {
+    case "${1:-$(g1_bridge_via)}" in
+        container) g1_tcp_ok_container "$G1_PC2_IP" "$G1_PC2_SSH_PORT" ;;
+        vm)        g1_tcp_ok_vm        "$G1_PC2_IP" "$G1_PC2_SSH_PORT" ;;
+        *)         return 2 ;;
+    esac
+}
+
 # ── 見た目 ─────────────────────────────────────────────────────────
 g1_say()  { echo "[${G1_TAG:-g1}] $*"; }
 g1_die()  { echo "[${G1_TAG:-g1}] $*" >&2; exit 1; }

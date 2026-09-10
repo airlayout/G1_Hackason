@@ -37,6 +37,11 @@
 # ホストの IP とは独立している。実際このとき DDS も RViz2 も動き続けた。
 # Mac から .201 に届かない間も、RViz2 は http://localhost/ で見られる
 # （colima のポートフォワードが --network host のコンテナにも効く）。
+# ## ブリッジが切れたら自分で直す（2026-09-10 に自動化した）
+# ケーブルの抜き差しで col0 と G1 の内蔵スイッチの結びつきが外れる。
+# **Mac → PC2 は通ったまま**で col0 の IPv4 も残るので、`ros2 topic echo` が
+# 何も返さないところまで行かないと気づけない。live のときだけ起動前に検査し、
+# 切れていたら `colima stop` してから下の起動処理を通す（`G1_COLIMA_RESTART`）。
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,6 +99,65 @@ if [ "${1:-}" = "down" ]; then
     exit 0
 fi
 
+# ブリッジ（col0 の L2）が切れていたときに自分で張り直すか。
+#   auto   : colima が動いていれば検査し、**壊れている時だけ** colima stop する（既定）
+#   always : 検査せず無条件に colima stop してから起動する（VM の再起動に 2 分ほどかかる）
+#   never  : 何もしない（2026-09-09 までの挙動）
+# ⚠️ offline では col0 そのものが要らないので、どの値でも検査も stop もしない。
+COLIMA_RESTART="${G1_COLIMA_RESTART:-auto}"
+case "$COLIMA_RESTART" in
+    auto|always|never) ;;
+    *) die "G1_COLIMA_RESTART=$COLIMA_RESTART は不正。auto / always / never のどれかにすること" ;;
+esac
+# colima stop を**実際に通ったか**。コンテナの ros2 daemon を作り直す条件になる（手順 5.5）
+COLIMA_STOPPED=0
+
+# ブリッジを検査して、切れていたら colima stop する。**張り直しは下の手順 3 に任せる。**
+#
+# ケーブルを抜き差しすると col0 と G1 の内蔵スイッチの結びつきが外れる。
+# 紛らわしいのは **Mac → PC2 は通ったまま**（手順 1 が OK になる）で、col0 にも
+# IPv4 が付いたまま（手順 4 が「設定済み」になる）で、しかも `ros2 topic list` は
+# daemon が握った**古い結果**を返すので「見えている」ように錯覚すること。
+# 実データ（`ros2 topic echo --once`）が 1 件も来ないところまで行かないと気づけない。
+#
+# ⚠️ `colima restart` 単体では直らないことがある（col0 に IPv4 が付かないまま上がる型）。
+# このスクリプトは手順 4 で自分で `ip addr add` するので、**stop → こちらの起動処理**を通す。
+repair_bridge_if_broken() {
+    if [ "$COLIMA_RESTART" = never ]; then
+        say "ブリッジの検査はしない（G1_COLIMA_RESTART=never）"
+        return 0
+    fi
+    if ! colima status >/dev/null 2>&1; then
+        say "VM は止まっている。検査は要らない（このまま起動する）"
+        return 0
+    fi
+    if [ "$COLIMA_RESTART" = always ]; then
+        say "検査せずブリッジを張り直す（G1_COLIMA_RESTART=always）。VM の再起動に 2 分ほどかかる"
+        colima stop || die "colima stop に失敗した"
+        COLIMA_STOPPED=1
+        return 0
+    fi
+
+    # auto: 壊れている時だけ止める。
+    # 手順 1 で **Mac → PC2 が通ることは確かめてある**ので、ここで届かなければ
+    # 実機が落ちているのではなくブリッジが切れている
+    local via
+    via="$(g1_bridge_via)"
+    say "ブリッジを検査する（$via → PC2 $PC2_IP:$G1_PC2_SSH_PORT の TCP）"
+    if g1_bridge_ok "$via"; then
+        say "ブリッジは生きている（$via 経由で確認）"
+        return 0
+    fi
+    if [ "$via" = none ]; then
+        say "ブリッジを測れなかった（コンテナも VM も居ない）。このまま起動する"
+        return 0
+    fi
+    say "ブリッジが切れている（$via → PC2 $PC2_IP:$G1_PC2_SSH_PORT が張れない） → colima stop してから張り直す"
+    say "VM の再起動に 2 分ほどかかる（実測 08:02:26 stop → 08:04:49 起動完了）"
+    colima stop || die "colima stop に失敗した"
+    COLIMA_STOPPED=1
+}
+
 DDS_ACTIVE="$DDS_URI"
 if [ "$OFFLINE" = 1 ]; then
     DDS_ACTIVE="$DDS_URI_OFFLINE"
@@ -116,6 +180,11 @@ else
             die "$VM_IP は誰かが使っている。G1_VM_IP で別の番号を指定すること"
         fi
     fi
+
+    # --- 2.5. ブリッジが生きているか（切れていたら自分で張り直す）------------------
+    # ここで colima stop まで行くと、下の手順 3 が「止まっている」を見てブリッジ付きで
+    # 起動し直す。**現地で `colima restart` を打つか迷わなくて済むようにする。**
+    repair_bridge_if_broken
 
     # --- 3. VM をブリッジで起動 ---------------------------------------------------
     if colima status >/dev/null 2>&1; then
@@ -164,6 +233,16 @@ else
         --security-opt seccomp=unconfined --shm-size=512m \
         "$IMAGE" >/dev/null || die "コンテナの起動に失敗した"
     sleep 8
+fi
+
+# --- 5.5. ros2 daemon を作り直す（ブリッジを張り直したときだけ）----------------
+# ros2 daemon は**先に起動したときの DDS 設定で作ったグラフをキャッシュ**する。
+# ブリッジが切れている間に起きた daemon はその状態のグラフを握り続け、経路が直った後も
+# 古い答えを返す（「2 件しか見えない」→ daemon stop で 139 件、という実測がある）。
+# 落としておけば次に ros2 を呼んだときに作り直される。**失敗しても致命ではない。**
+if [ "$COLIMA_STOPPED" = 1 ] && g1_container_running "$NAME"; then
+    say "ブリッジを張り直したので ros2 daemon を落とす（次の呼び出しで作り直される）"
+    g1_exec live "ros2 daemon stop" >/dev/null 2>&1 || say "ros2 daemon stop は失敗した（続行する）"
 fi
 
 # tiryoh のイメージは ros-humble-desktop（RViz2 込み）だが rmw_cyclonedds_cpp は
@@ -220,7 +299,66 @@ if [ "${G1_SKIP_NAV2:-0}" != "1" ] \
         >/dev/null 2>&1 || die "Nav2/OctoMap の導入に失敗した（G1_SKIP_NAV2=1 で飛ばせる）"
 fi
 
-# --- 6. RViz2 -----------------------------------------------------------------
+# --- 6. X（:1）が上がるのを待つ -------------------------------------------------
+# コンテナを作り直した／`docker start` した直後は X がまだ無く、RViz2 が
+# `qt.qpa.xcb: could not connect to display :1` で即死する（2026-09-10 に踏んだ）。
+# コンテナは supervisord → vnc_run.sh → vncserver :1 → Xtigervnc :1 の順に上がる。
+#
+# ⚠️ **ポート 80（noVNC の websockify）は X より先に開く。** 80 の生死を
+# 「X の準備完了」に使ってはいけない。/tmp/.X11-unix/X1 の有無も cookie が読めるかとは別。
+# ⚠️ **xdpyinfo は必ず `-u ubuntu` ＋ XAUTHORITY で打つ。** root で打つと X が完全に
+# 上がっていても "Authorization required" で必ず失敗し、上限まで待って die する。
+# 下の RViz2 の起動と**同じ組み合わせ**で打っている（`bash -lc` は XAUTHORITY を落とすので使わない）。
+X_WAIT_INTERVAL_S=2       # 見に行く間隔
+X_WAIT_TIMEOUT_S=90       # ここを超えたら諦めて落とす
+X_WAIT_REPORT_EVERY_S=10  # 進捗を出す間隔（毎回出すとうるさい）
+
+# xdpyinfo（x11-utils）が無いイメージのための追いかけ。他の apt と同じ形のガード
+if ! docker exec "$NAME" bash -c 'command -v xdpyinfo' >/dev/null 2>&1; then
+    say "x11-utils を入れる（X の起動待ちに使う xdpyinfo）"
+    docker exec "$NAME" bash -c \
+        'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq x11-utils' \
+        >/dev/null 2>&1 || true
+fi
+if docker exec "$NAME" bash -c 'command -v xdpyinfo' >/dev/null 2>&1; then
+    X_PROBE=xdpyinfo
+else
+    X_PROBE=socket
+    say "xdpyinfo が無い。X ソケットの有無で代用する（cookie までは見ないので判定は甘い）"
+fi
+
+x_display_ready() {
+    if [ "$X_PROBE" = xdpyinfo ]; then
+        docker exec -u ubuntu \
+            -e DISPLAY=:1 -e XAUTHORITY=/home/ubuntu/.Xauthority \
+            "$NAME" xdpyinfo >/dev/null 2>&1
+    else
+        docker exec "$NAME" test -S /tmp/.X11-unix/X1 >/dev/null 2>&1
+    fi
+}
+
+wait_for_x() {
+    local waited=0
+    while ! x_display_ready; do
+        if [ "$waited" -ge "$X_WAIT_TIMEOUT_S" ]; then
+            die "X（:1）が $X_WAIT_TIMEOUT_S 秒たっても上がらない（docker logs $NAME を見ること）"
+        fi
+        sleep "$X_WAIT_INTERVAL_S"
+        waited=$((waited + X_WAIT_INTERVAL_S))
+        if [ "$((waited % X_WAIT_REPORT_EVERY_S))" = 0 ]; then
+            say "X（:1）の起動を待っている… $waited 秒"
+        fi
+    done
+    if [ "$waited" -gt 0 ]; then
+        say "X（:1）が上がった（$waited 秒待った・$X_PROBE で確認）"
+    else
+        say "X（:1）は上がっている（$X_PROBE で確認）"
+    fi
+    return 0
+}
+wait_for_x
+
+# --- 7. RViz2 -----------------------------------------------------------------
 [ -f "$RVIZ_CFG" ] || die "$RVIZ_CFG が無い"
 docker cp "$RVIZ_CFG" "$NAME:$RVIZ_CFG_DST" >/dev/null \
     || die "設定の転送に失敗した"

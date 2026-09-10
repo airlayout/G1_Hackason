@@ -55,7 +55,7 @@ if [ "$MODE" = "live" ]; then
     else
         g1_bad "192.168.123.0/24 を持つ NIC が無い"
         note "USB-Ethernet アダプタが Mac 側で抜けている。挿し直す"
-        note "挿し直したら **colima restart** も要る（ブリッジが張り直される）"
+        note "挿し直したら bash quickstart/start_rviz_mac.sh live（ブリッジの張り直しは自分でやる）"
         FAIL=1
     fi
 else
@@ -150,13 +150,14 @@ if [ "$MODE" = "live" ]; then
     fi
     # コンテナ側からも測る。ここだけ切れていると DDS が通らない
     if docker inspect -f '{{.State.Running}}' "$G1_RVIZ_NAME" 2>/dev/null | grep -q true; then
-        if docker exec "$G1_RVIZ_NAME" bash -c \
-            "exec 3<>/dev/tcp/$G1_PC2_IP/$G1_PC2_SSH_PORT" >/dev/null 2>&1; then
+        # 判定は _common.sh の g1_tcp_ok_container に置いてある。
+        # start_rviz_mac.sh の自動修復（G1_COLIMA_RESTART）と**同じものを使う**
+        if g1_tcp_ok_container "$G1_PC2_IP" "$G1_PC2_SSH_PORT"; then
             g1_ok "コンテナ → PC2（DDS が載る経路）"
         else
             g1_bad "コンテナ → PC2 に届かない"
             note "VM の $G1_VM_NIC に IPv4 が無い（手順 2）か、ブリッジが切れている"
-            note "ケーブルを抜き差しした後は colima restart が要る"
+            note "bash quickstart/start_rviz_mac.sh live が自分で張り直す（手作業の colima restart は要らない）"
             FAIL=1
         fi
     fi
