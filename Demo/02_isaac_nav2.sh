@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 項目3 — Isaac Sim の UiS_room_v3 で、Nav2 に指定した場所まで G1 を歩かせる。
+# 実演2 — Isaac Sim の UiS_room_v3 で、Nav2 に指定した場所まで G1 を歩かせる。
 #
 #   bash Demo/02_isaac_nav2.sh            # 起動して RViz2 まで開く
 #   bash Demo/02_isaac_nav2.sh --no-rviz      # RViz2 を開かない（別画面で開きたいとき）
@@ -60,7 +60,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-_head "項目3 — Isaac Sim + Nav2"
+_head "実演2 — Isaac Sim + Nav2"
 _info "シーン : assets/uis_room_v3_sim_obstacles.usd"
 _info "地図   : maps/uis_room_v3_clean.yaml"
 _info "初期位置: (6.55, -0.78)  ※漂流の着地点で選んである。変えないこと"

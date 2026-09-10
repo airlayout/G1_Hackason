@@ -431,9 +431,9 @@ svg .t-mono-s{ font: 400 11.5px var(--mono); fill: var(--ink-2); }
   <p class="eyebrow">Demo — Ubuntu ゲーミング PC 1 台で回す</p>
   <h1>デモ当日の手順書</h1>
   <p class="dek">
-    操作するのは <b>Ubuntu ゲーミング PC（192.168.123.200）だけ</b>。
-    このページの順に押していけば、LiDAR の計測・Isaac Sim での Nav2 走行・Quest での
-    エピソード記録を見せられる。<b>まず「3 分チェック」から。</b>
+    実演は 4 つ。<b>実演1 はリモコンだけ</b>で、残る 3 つは
+    <b>Ubuntu ゲーミング PC（192.168.123.200）だけ</b>を操作する。
+    このページの順に押していけばよい。<b>まず「3 分チェック」から。</b>
   </p>
   <p class="meta">
     <span><b>更新</b> 2026-09-10</span>
@@ -442,7 +442,8 @@ svg .t-mono-s{ font: 400 11.5px var(--mono); fill: var(--ink-2); }
   </p>
 
   <dl class="figures">
-    <div class="fig"><dt>項目3 起動</dt><dd>40<small>秒</small></dd></div>
+    <div class="fig"><dt>実演</dt><dd>4<small>本</small></dd></div>
+    <div class="fig"><dt>実演2 起動</dt><dd>40<small>秒</small></dd></div>
     <div class="fig"><dt>到達</dt><dd>error_code 0</dd></div>
     <div class="fig"><dt>リカバリ</dt><dd>0<small>回</small></dd></div>
     <div class="fig"><dt>停止</dt><dd>6<small>秒・孤児 0</small></dd></div>
@@ -453,12 +454,13 @@ svg .t-mono-s{ font: 400 11.5px var(--mono); fill: var(--ink-2); }
   <ul class="toc">
     <li><a href="#check"><span class="n">01</span><span class="t">当日の 3 分チェック</span></a></li>
     <li><a href="#kit"><span class="n">02</span><span class="t">機材と、どれがどこで動くか</span></a></li>
-    <li><a href="#item3"><span class="n">03</span><span class="t">項目3 — Isaac Sim で Nav2 走行</span></a></li>
-    <li><a href="#item2"><span class="n">04</span><span class="t">項目2 — LiDAR で計測</span></a></li>
-    <li><a href="#item4"><span class="n">05</span><span class="t">項目4 — Quest でエピソード</span></a></li>
-    <li><a href="#stop"><span class="n">06</span><span class="t">止め方</span></a></li>
-    <li><a href="#trouble"><span class="n">07</span><span class="t">症状 → 原因</span></a></li>
-    <li><a href="#inside"><span class="n">08</span><span class="t">中身（触る人向け）</span></a></li>
+    <li><a href="#demo1"><span class="n">03</span><span class="t">実演1 — リモコンで歩かせる</span></a></li>
+    <li><a href="#demo2"><span class="n">04</span><span class="t">実演2 — Isaac Sim で Nav2 走行</span></a></li>
+    <li><a href="#demo3"><span class="n">05</span><span class="t">実演3 — LiDAR で計測</span></a></li>
+    <li><a href="#demo4"><span class="n">06</span><span class="t">実演4 — Quest でエピソード</span></a></li>
+    <li><a href="#stop"><span class="n">07</span><span class="t">止め方</span></a></li>
+    <li><a href="#trouble"><span class="n">08</span><span class="t">症状 → 原因</span></a></li>
+    <li><a href="#inside"><span class="n">09</span><span class="t">中身（触る人向け）</span></a></li>
   </ul>
 </header>
 
@@ -472,14 +474,14 @@ svg .t-mono-s{ font: 400 11.5px var(--mono); fill: var(--ink-2); }
   <code class="cmd">cd ~/G1_Hackason
 bash Demo/preflight.sh</code>
 
-  <p>最後に <b>「今すぐ見せられるのは n / 4 です」</b> と「次にやること」が出る。
+  <p>最後に <b>「今すぐ見せられるのは n / 5 です」</b> と「次にやること」が出る。
   そこに書いてあることだけやればよい。</p>
 
   <div class="note">
     <span class="lbl">読み方</span>
     <p><span class="chip ok">OK</span> はそのまま使える。<span class="chip no">NG</span> は使えないが、
     <b>理由と直し方が「次にやること」に出る</b>。実機の電源が入っていないだけなら、
-    項目2 は記録の再生に落ちて動く。</p>
+    実演3 は記録の再生に落ちて動く。</p>
   </div>
 
   <h3>電源とケーブル</h3>
@@ -488,8 +490,8 @@ bash Demo/preflight.sh</code>
     <thead><tr><th>見るもの</th><th>正しい状態</th><th>違ったら</th></tr></thead>
     <tbody>
       <tr><td>有線 <code>enp129s0</code></td><td><code>up</code> ＋ <code>192.168.123.200/24</code></td><td>LAN ケーブルを挿し直す</td></tr>
-      <tr><td>G1 の電源</td><td>PC2 <code>192.168.123.164:22</code> に TCP が通る</td><td>項目2 ライブと項目4 は諦めて再生で見せる</td></tr>
-      <tr><td>WiFi <code>wlp128s20f3</code></td><td>Quest と同じネットワーク</td><td>項目4 だけ影響する</td></tr>
+      <tr><td>G1 の電源</td><td>PC2 <code>192.168.123.164:22</code> に TCP が通る</td><td><b>実演1</b>・実演3 ライブ・実演4 は諦め、実演2 と再生で見せる</td></tr>
+      <tr><td>WiFi <code>wlp128s20f3</code></td><td>Quest と同じネットワーク</td><td>実演4 だけ影響する</td></tr>
     </tbody>
     <caption>疎通は <code>ping</code> ではなく <code>/dev/tcp</code> で測っている。<code>ping</code> だと「コマンドが無い」と「届かない」が同じ NG になり、過去に取り違えたため。</caption>
   </table>
@@ -499,10 +501,11 @@ bash Demo/preflight.sh</code>
 <!-- ══════════════════════════════════════════════════ -->
 <section id="kit" class="wrap">
   <h2>02　機材と、どれがどこで動くか</h2>
-  <p class="h2sub">項目3 は PC の中だけで完結する。実機に繋がるのは項目2 のライブと項目4 だけ。</p>
+  <p class="h2sub"><b>実演1 はリモコンだけで PC を使わない。</b>実演2 は PC の中だけで完結する。
+  実機に繋がるのは実演3 のライブと実演4 だけ。</p>
   <div class="figwrap"><svg viewBox="0 0 900 400" role="img" aria-labelledby="fig1t fig1d" xmlns="http://www.w3.org/2000/svg">
   <title id="fig1t">デモ当日の機材と、どれがどこで動くか</title>
-  <desc id="fig1d">Ubuntu ゲーミング PC 1 台で 3 つのデモを回す。項目3 は PC の中だけで完結し、項目2 のライブと項目4 だけが有線で G1 実機に繋がる。Mac は記録を渡すためだけに使う。</desc>
+  <desc id="fig1d">実演は 4 つ。実演1 はリモコンだけで PC を使わない。実演2 は PC の中だけで完結し、実演3 のライブと実演4 だけが有線で G1 実機に繋がる。Mac は記録を渡すためだけに使う。</desc>
 
   <defs>
     <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -521,15 +524,15 @@ bash Demo/preflight.sh</code>
   <text x="32" y="128" class="t-m">Ubuntu 24.04 ・ ROS 2 Jazzy</text>
 
   <rect x="32" y="146" width="372" height="52" rx="5" fill="var(--surface)" stroke="var(--good)" stroke-width="1.5"/>
-  <text x="46" y="168" class="t-b">項目3　Isaac Sim ＋ Nav2</text>
+  <text x="46" y="168" class="t-b">実演2　Isaac Sim ＋ Nav2</text>
   <text x="46" y="188" class="t-s" fill="var(--good)">この箱の中だけで完結する（実機は要らない）</text>
 
   <rect x="32" y="206" width="372" height="52" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <text x="46" y="228" class="t-b">項目2　LiDAR で計測</text>
+  <text x="46" y="228" class="t-b">実演3　LiDAR で計測</text>
   <text x="46" y="248" class="t-s">再生 = PC の中だけ ／ ライブ = 実機が要る</text>
 
   <rect x="32" y="266" width="372" height="52" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <text x="46" y="288" class="t-b">項目4　Quest でエピソード記録・再生</text>
+  <text x="46" y="288" class="t-b">実演4　Quest でエピソード記録・再生</text>
   <text x="46" y="308" class="t-s">実機が要る　＋　Quest 3 が同じ WiFi に居ること</text>
 
   <text x="32" y="348" class="t-s" fill="var(--ink-3)">enp129s0 = 有線（G1 側）　wlp128s20f3 = 無線（Quest 側）</text>
@@ -554,7 +557,8 @@ bash Demo/preflight.sh</code>
   <g color="var(--ink-3)">
     <line x1="420" y1="115" x2="556" y2="115" stroke="var(--warn)" stroke-width="2" marker-end="url(#arw)"/>
     <text x="432" y="105" class="t-s" fill="var(--warn)">有線 192.168.123.0/24</text>
-    <text x="432" y="134" class="t-s" fill="var(--warn)">項目2 ライブ ／ 項目4</text>
+    <text x="432" y="132" class="t-s" fill="var(--warn)">実演1 ・ 実演4</text>
+    <text x="432" y="150" class="t-s" fill="var(--warn)">実演3 ライブ</text>
 
     <line x1="420" y1="290" x2="556" y2="290" stroke="var(--line-strong)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar)"/>
     <text x="436" y="281" class="t-s" fill="var(--ink-3)">記録を一度だけ</text>
@@ -563,12 +567,128 @@ bash Demo/preflight.sh</code>
 </section>
 
 <!-- ══════════════════════════════════════════════════ -->
-<section id="item3" class="wrap">
-  <h2>03　項目3 — Isaac Sim で Nav2 走行 <span class="chip ok">実測済み</span></h2>
+<section id="demo1" class="wrap">
+  <h2>03　実演1 — リモコンで立たせて歩かせる <span class="chip no">実機が要る</span></h2>
+  <p class="h2sub"><b>この実演に PC は要らない。</b>触るのはリモコンだけ。
+  順番を間違えると立たないので、1 段ずつ上げる。</p>
+
+  <code class="cmd">bash Demo/01_remote.sh   <span class="c"># 順番を 1 つずつ出して Enter を待つだけの読み上げ係</span></code>
+
+  <div class="note bad">
+    <span class="lbl">安全 — 毎回確認する</span>
+    <ul>
+      <li>可動範囲に<b>人と物が無い</b>ことを確認する</li>
+      <li><b>電源を切れる位置に手が届く状態</b>で操作する</li>
+      <li>初めてのときは<b>必ず 2 人以上</b>で。片方が吊り具に手をかける</li>
+    </ul>
+  </div>
+
+  <h3>なぜ順番が要るのか</h3>
+  <p>電源を入れた直後、G1 の関節は<b>ゼロトルク（FSM 0）で脱力している</b>。
+  いきなり立たせようとしても効かないし、吊り下げから外すと崩れる。
+  <b>ダンピング → 立位ロック → 通常運転</b> と 1 段ずつ上げる。</p>
+
+  <div class="figwrap"><svg viewBox="0 0 900 250" role="img" aria-labelledby="fig6t fig6d" xmlns="http://www.w3.org/2000/svg">
+  <title id="fig6t">リモコンで上げていく順番</title>
+  <desc id="fig6d">電源投入直後はゼロトルクで脱力している。ダンピング、立位ロック、通常運転の順に 1 段ずつ上げる。腕のモータが有効になるのはダンピングに入れたときで、テレオペの前提になる。下ろすときは逆順。</desc>
+  <defs>
+    <marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--good)"/>
+    </marker>
+    <marker id="a6b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-3)"/>
+    </marker>
+  </defs>
+
+  <g>
+    <rect x="16" y="52" width="176" height="86" rx="6" fill="var(--surface-2)" stroke="var(--line-strong)"/>
+    <text x="32" y="78" class="t-lbl" fill="var(--ink-3)">電源投入直後</text>
+    <text x="32" y="102" class="t-b">ゼロトルク</text>
+    <text x="32" y="124" class="t-s" fill="var(--bad)">脱力。何を送っても効かない</text>
+
+    <rect x="230" y="52" width="176" height="86" rx="6" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.5"/>
+    <text x="246" y="78" class="t-lbl" fill="var(--accent)">① Damping</text>
+    <text x="246" y="102" class="t-b">ダンピング</text>
+    <text x="246" y="124" class="t-s" fill="var(--good)">腕のモータが有効になる</text>
+
+    <rect x="444" y="52" width="176" height="86" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
+    <text x="460" y="78" class="t-lbl" fill="var(--ink-3)">② Locked Standing</text>
+    <text x="460" y="102" class="t-b">立位ロック</text>
+    <text x="460" y="124" class="t-s">ここでウィンチを緩める</text>
+
+    <rect x="658" y="52" width="226" height="86" rx="6" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/>
+    <text x="674" y="78" class="t-lbl" fill="var(--good)">⑦ Regular / Running</text>
+    <text x="674" y="102" class="t-b">通常運転</text>
+    <text x="674" y="124" class="t-s">前後左右・旋回が効く</text>
+  </g>
+
+  <g stroke="var(--good)" stroke-width="2" fill="none">
+    <line x1="196" y1="95" x2="226" y2="95" marker-end="url(#a6)"/>
+    <line x1="410" y1="95" x2="440" y2="95" marker-end="url(#a6)"/>
+    <line x1="624" y1="95" x2="654" y2="95" marker-end="url(#a6)"/>
+  </g>
+
+  <text x="16" y="34" class="t-b">上げる（電源を入れる前にウィンチで吊り上げ、Zero Talk mode を待つ）</text>
+
+  <g>
+    <text x="16" y="180" class="t-b">下ろすときは逆順。いきなり電源を切らない</text>
+    <path d="M868 206 H40" stroke="var(--ink-3)" stroke-width="1.5" stroke-dasharray="6 4" fill="none" marker-end="url(#a6b)"/>
+    <text x="700" y="228" class="t-s" fill="var(--ink-3)">⑦ → ② → ① → 電源</text>
+  </g>
+</svg></div>
+
+  <ol class="steps">
+    <li>
+      <h3>ウィンチで吊り上げる</h3>
+      <p>吊り具で持ち上げ、<b>足が床から浮いた状態</b>にする。
+      立ち上がりの途中で崩れても倒れないようにするため。
+      <b>床に着けたまま次へ進まないこと。</b></p>
+    </li>
+    <li>
+      <h3>電源を入れ、Zero Talk mode を待つ</h3>
+      <p>電源投入後、機体が起動しきるまで待つ。
+      <b>音声案内（Zero Talk mode）が出るまで操作しない。</b>
+      この間の関節はゼロトルクで脱力している。数十秒かかる。</p>
+    </li>
+    <li>
+      <h3>① ダンピング（Damping mode）</h3>
+      <p>リモコンで <b>①</b> を選ぶ。関節に粘りが出て、押すと抵抗が返る。</p>
+      <div class="note">
+        <span class="lbl">ここが実演4 の前提でもある</span>
+        <p><b>腕のモータが有効（<code>mode=1</code>）になるのはここだけ。</b>
+        指令メッセージの <code>motor_cmd[].mode=1</code> では有効にならない。
+        実演4 のテレオペで「送信は成功するのに腕が 1 mm も動かない」のはこれが原因で、
+        <b>テレオペや再生を終了するたびにゼロトルクへ戻る</b>ので入れ直すこと。</p>
+      </div>
+    </li>
+    <li>
+      <h3>② 立位ロック（Locked Standing）</h3>
+      <p>リモコンで <b>②</b> を選ぶ。脚が伸びて立位で固定される。
+      <b>ここでウィンチを緩め、自分の脚で立っていることを確かめる。</b>
+      ぐらつくなら吊り上げ直して 1 からやり直す。</p>
+    </li>
+    <li>
+      <h3>⑦ 通常運転（Regular mode / Running mode）</h3>
+      <p>リモコンで <b>⑦</b> を選ぶ。歩行制御が動きだし、前後左右・旋回が効くようになる。
+      <b>まず小さく前後させて、素直に動くことを確かめてから見せる。</b></p>
+    </li>
+  </ol>
+
+  <div class="note warn">
+    <span class="lbl">見せ終わったら</span>
+    <p><b>逆の順で下ろす。いきなり電源を切らない。</b></p>
+    <p class="num">⑦ 通常運転　→　② 立位ロック　→　① ダンピング　→　電源</p>
+    <p>立たせたまま離れない。ダンピングへ落とす前に吊り具で支えること。</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<section id="demo2" class="wrap">
+  <h2>04　実演2 — Isaac Sim で Nav2 走行 <span class="chip ok">実測済み</span></h2>
   <p class="h2sub">実機は要らない。実測した部屋（UiS_room_v3）を再現したシーンの中で、RViz2 でクリックした場所まで G1 が歩く。</p>
 
   <figure class="clip">
-    <video src="video/03_isaac_sim.mp4" poster="video/03_isaac_sim.jpg"
+    <video src="video/02_isaac_sim.mp4" poster="video/02_isaac_sim.jpg"
            controls loop muted playsinline preload="metadata" width="1600" height="1062"></video>
     <figcaption><b>① シミュレータの中。</b>
     実測した部屋を再現したシーンで、Nav2 が出した <code>/cmd_vel</code> を歩行ポリシーが受けて G1 が歩く。
@@ -576,7 +696,7 @@ bash Demo/preflight.sh</code>
   </figure>
 
   <figure class="clip">
-    <video src="video/03_isaac_rviz.mp4" poster="video/03_isaac_rviz.jpg"
+    <video src="video/02_isaac_rviz.mp4" poster="video/02_isaac_rviz.jpg"
            controls loop muted playsinline preload="metadata" width="1600" height="884"></video>
     <figcaption><b>② 同じ走行を RViz2 で見たところ。</b>
     地図の上に経路（緑）とコストマップが出て、ロボットがそれをたどる。
@@ -597,7 +717,7 @@ bash Demo/preflight.sh</code>
   曲がって回り込む距離を投げる。</p>
 
   <figure class="clip">
-    <video src="video/03_isaac_long_sim.mp4" poster="video/03_isaac_long_sim.jpg"
+    <video src="video/02_isaac_long_sim.mp4" poster="video/02_isaac_long_sim.jpg"
            controls loop muted playsinline preload="metadata" width="960" height="728"></video>
     <figcaption><b>③ 同じ長距離をシミュレータの中から見たところ。</b>
     道のり 15.0 m ／ <span class="num">112</span> 秒 ／ <code>error_code 0</code> ／
@@ -608,7 +728,7 @@ bash Demo/preflight.sh</code>
   </figure>
 
   <figure class="clip">
-    <video src="video/03_isaac_long_rviz.mp4" poster="video/03_isaac_long_rviz.jpg"
+    <video src="video/02_isaac_long_rviz.mp4" poster="video/02_isaac_long_rviz.jpg"
            controls loop muted playsinline preload="metadata" width="1600" height="884"></video>
     <figcaption><b>④ 同じ走行を RViz2 で見たところ。道のり 15.0 m（直線 10.7 m）。</b>
     <span class="num">66</span> 秒 ／ <code>error_code 0</code> ／
@@ -741,16 +861,16 @@ bash Demo/preflight.sh</code>
 </section>
 
 <!-- ══════════════════════════════════════════════════ -->
-<section id="item2" class="wrap">
-  <h2>04　項目2 — LiDAR で計測</h2>
+<section id="demo3" class="wrap">
+  <h2>05　実演3 — LiDAR で計測</h2>
   <p class="h2sub">実機があればライブ、無ければ記録の再生。<b>引数なしで叩けば自動で切り替わる。</b></p>
 
-  <code class="cmd">bash Demo/01_lidar.sh            <span class="c"># 実機が居れば live、居なければ replay</span>
-bash Demo/01_lidar.sh replay     <span class="c"># 記録の再生を明示（実機不要）</span>
-bash Demo/01_lidar.sh live       <span class="c"># ライブを明示（実機が要る）</span></code>
+  <code class="cmd">bash Demo/03_lidar.sh            <span class="c"># 実機が居れば live、居なければ replay</span>
+bash Demo/03_lidar.sh replay     <span class="c"># 記録の再生を明示（実機不要）</span>
+bash Demo/03_lidar.sh live       <span class="c"># ライブを明示（実機が要る）</span></code>
 
   <figure class="clip">
-    <video src="video/02_lidar_replay.mp4" poster="video/02_lidar_replay.jpg"
+    <video src="video/03_lidar_replay.mp4" poster="video/03_lidar_replay.jpg"
            controls loop muted playsinline preload="metadata" width="1280" height="708"></video>
     <figcaption><b>記録の再生（実機不要）。</b>
     G1 が実際に部屋を歩いて測った 591 秒ぶん。歩くにつれて部屋の形が描かれていく。
@@ -1253,8 +1373,8 @@ requestAnimationFrame(() => reset(view));   // レイアウト確定後に画角
 </section>
 
 <!-- ══════════════════════════════════════════════════ -->
-<section id="item4" class="wrap">
-  <h2>05　項目4 — Quest でエピソード記録・再生 <span class="chip un">未実装</span></h2>
+<section id="demo4" class="wrap">
+  <h2>06　実演4 — Quest でエピソード記録・再生 <span class="chip un">未実装</span></h2>
   <p class="h2sub">実機の腕が動く。ここだけ性質がまったく違う。</p>
 
   <div class="note bad">
@@ -1268,7 +1388,7 @@ requestAnimationFrame(() => reset(view));   // レイアウト確定後に画角
     </ul>
   </div>
 
-  <p><code>Demo/03_teleop.sh</code> は<b>まだ書いていない</b>（Phase 4）。
+  <p><code>Demo/04_teleop.sh</code> は<b>まだ書いていない</b>（Phase 4）。
   いま動かすなら、取り込み済みのキットの手順に従うこと。</p>
   <code class="cmd">less Teleop/vendor/g1-starter-kit/README.md
 less Teleop/vendor/g1-starter-kit/docs/03-teleop.md</code>
@@ -1279,7 +1399,7 @@ less Teleop/vendor/g1-starter-kit/docs/03-teleop.md</code>
 
 <!-- ══════════════════════════════════════════════════ -->
 <section id="stop" class="wrap">
-  <h2>06　止め方</h2>
+  <h2>07　止め方</h2>
   <p class="h2sub">普段は各スクリプトで Ctrl-C。ターミナルを閉じてしまったときだけ下を使う。</p>
 
   <code class="cmd">bash Demo/stop.sh</code>
@@ -1336,7 +1456,7 @@ less Teleop/vendor/g1-starter-kit/docs/03-teleop.md</code>
 
 <!-- ══════════════════════════════════════════════════ -->
 <section id="trouble" class="wrap">
-  <h2>07　症状 → 原因</h2>
+  <h2>08　症状 → 原因</h2>
   <p class="h2sub">当日その場で引く表。</p>
 
   <div class="tw">
@@ -1390,11 +1510,11 @@ less Teleop/vendor/g1-starter-kit/docs/03-teleop.md</code>
 
 <!-- ══════════════════════════════════════════════════ -->
 <section id="inside" class="wrap">
-  <h2>08　中身（触る人向け）</h2>
+  <h2>09　中身（触る人向け）</h2>
   <p class="h2sub"><code>Demo/</code> は入口だけ。実装は領域フォルダが持つ。</p>
   <div class="figwrap"><svg viewBox="0 0 900 470" role="img" aria-labelledby="fig2t fig2d" xmlns="http://www.w3.org/2000/svg">
   <title id="fig2t">当日どのコマンドが何を呼ぶか</title>
-  <desc id="fig2d">Demo は入口だけで、実装は領域フォルダが持つ。項目2 は Mapping/real/ubuntu、項目3 は IsaacSim_Env、項目4 は Teleop を呼ぶ。設定は Demo/lib.sh に 1 箇所だけ置き、Teleop の設定ファイルから読む。</desc>
+  <desc id="fig2d">Demo は入口だけで、実装は領域フォルダが持つ。実演2 は IsaacSim_Env、実演3 は Mapping/real/ubuntu、実演4 は Teleop を呼ぶ。実演1 はリモコンだけで PC を使わない。設定は Demo/lib.sh に 1 箇所だけ置き、Teleop の設定ファイルから読む。</desc>
   <defs>
     <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="var(--line-strong)"/>
@@ -1420,37 +1540,37 @@ less Teleop/vendor/g1-starter-kit/docs/03-teleop.md</code>
 
   <!-- 3 本 -->
   <g>
-    <rect x="330" y="20" width="250" height="110" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
-    <text x="348" y="46" class="t-mono-b">Demo/01_lidar.sh</text>
-    <text x="348" y="68" class="t-s">項目2 — LiDAR で計測</text>
-    <text x="348" y="90" class="t-s" fill="var(--ink-3)">実機が無ければ黙って再生に落ちる</text>
-    <text x="348" y="114" class="t-mono-s" fill="var(--good)">再生は実機不要</text>
+    <rect x="330" y="20" width="250" height="110" rx="6" fill="var(--surface)" stroke="var(--good)" stroke-width="1.5"/>
+    <text x="348" y="46" class="t-mono-b">Demo/02_isaac_nav2.sh</text>
+    <text x="348" y="68" class="t-s">実演2 — Isaac Sim ＋ Nav2</text>
+    <text x="348" y="90" class="t-s" fill="var(--ink-3)">RViz2 の Nav2 Goal でドラッグ</text>
+    <text x="348" y="114" class="t-mono-s" fill="var(--good)">実機不要</text>
 
-    <rect x="330" y="150" width="250" height="110" rx="6" fill="var(--surface)" stroke="var(--good)" stroke-width="1.5"/>
-    <text x="348" y="176" class="t-mono-b">Demo/02_isaac_nav2.sh</text>
-    <text x="348" y="198" class="t-s">項目3 — Isaac Sim ＋ Nav2</text>
-    <text x="348" y="220" class="t-s" fill="var(--ink-3)">RViz2 の Nav2 Goal でドラッグ</text>
-    <text x="348" y="244" class="t-mono-s" fill="var(--good)">実機不要</text>
+    <rect x="330" y="150" width="250" height="110" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
+    <text x="348" y="176" class="t-mono-b">Demo/03_lidar.sh</text>
+    <text x="348" y="198" class="t-s">実演3 — LiDAR で計測</text>
+    <text x="348" y="220" class="t-s" fill="var(--ink-3)">実機が無ければ黙って再生に落ちる</text>
+    <text x="348" y="244" class="t-mono-s" fill="var(--good)">再生は実機不要</text>
 
     <rect x="330" y="280" width="250" height="110" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-dasharray="4 3"/>
-    <text x="348" y="306" class="t-mono-b" fill="var(--ink-3)">Demo/03_teleop.sh</text>
-    <text x="348" y="328" class="t-s" fill="var(--ink-3)">項目4 — Quest でエピソード</text>
+    <text x="348" y="306" class="t-mono-b" fill="var(--ink-3)">Demo/04_teleop.sh</text>
+    <text x="348" y="328" class="t-s" fill="var(--ink-3)">実演4 — Quest でエピソード</text>
     <text x="348" y="352" class="t-mono-s" fill="var(--warn)">未実装（Phase 4）</text>
   </g>
 
   <!-- 実装先 -->
   <g>
     <rect x="650" y="20" width="234" height="110" rx="6" fill="var(--surface-2)" stroke="var(--line)"/>
-    <text x="666" y="46" class="t-mono-b">Mapping/real/ubuntu/</text>
-    <text x="666" y="70" class="t-s">lidar_replay.sh</text>
-    <text x="666" y="90" class="t-s">lidar_live.sh ／ check_lidar.sh</text>
-    <text x="666" y="112" class="t-s">repair_bag_for_jazzy.py</text>
+    <text x="666" y="46" class="t-mono-b">IsaacSim_Env/</text>
+    <text x="666" y="70" class="t-s">run_nav2.sh</text>
+    <text x="666" y="90" class="t-s">stop_nav2.sh</text>
+    <text x="666" y="112" class="t-s">止め方はこちらが知っている</text>
 
     <rect x="650" y="150" width="234" height="110" rx="6" fill="var(--surface-2)" stroke="var(--line)"/>
-    <text x="666" y="176" class="t-mono-b">IsaacSim_Env/</text>
-    <text x="666" y="200" class="t-s">run_nav2.sh</text>
-    <text x="666" y="220" class="t-s">stop_nav2.sh</text>
-    <text x="666" y="244" class="t-s" fill="var(--ink-3)">止め方はこちらが知っている</text>
+    <text x="666" y="176" class="t-mono-b">Mapping/real/ubuntu/</text>
+    <text x="666" y="200" class="t-s">lidar_replay.sh</text>
+    <text x="666" y="220" class="t-s">lidar_live.sh ／ check_lidar.sh</text>
+    <text x="666" y="244" class="t-s" fill="var(--ink-3)">repair_bag_for_jazzy.py</text>
 
     <rect x="650" y="280" width="234" height="110" rx="6" fill="var(--surface-2)" stroke="var(--line)"/>
     <text x="666" y="306" class="t-mono-b">Teleop/</text>

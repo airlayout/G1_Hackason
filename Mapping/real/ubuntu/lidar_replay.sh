@@ -75,7 +75,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-_head "LiDAR の記録を再生する（項目2 / 実機不要）"
+_head "LiDAR の記録を再生する（実演3 / 実機不要）"
 _info "記録  : ${BAG_DIR}"
 _info "速さ  : ${RATE} 倍"
 grep -E "^  (version|storage_identifier|message_count):" "${BAG_DIR}/metadata.yaml" || true

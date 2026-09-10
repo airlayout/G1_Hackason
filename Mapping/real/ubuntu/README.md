@@ -1,7 +1,7 @@
-# Mapping/real/ubuntu — デモ機で LiDAR を見せる（デモ項目2）
+# Mapping/real/ubuntu — デモ機で LiDAR を見せる（デモ実演3）
 
 Ubuntu ゲーミング PC（`192.168.123.200`）から G1 の LiDAR を RViz2 に出す。
-`Demo/01_lidar.sh` がここを呼ぶ。直接叩いてもよい。
+`Demo/03_lidar.sh` がここを呼ぶ。直接叩いてもよい。
 
 | スクリプト | 実機 | 何をするか |
 |---|---|---|
