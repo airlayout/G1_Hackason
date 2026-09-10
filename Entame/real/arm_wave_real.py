@@ -39,7 +39,6 @@ Unitreeが工場出荷時から用意している定型モーションを`G1ArmA
   python Entame/real/arm_wave_real.py --network-interface enp3s0 --action "shake hand"
 """
 import argparse
-import sys
 import time
 
 from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
@@ -95,7 +94,7 @@ def main():
         )
         if input("続行しますか？ [y/N]: ").strip().lower() != "y":
             print("Aborted by user.", flush=True)
-            sys.exit(1)
+            raise SystemExit(1)
 
     print(f"Initializing DDS on interface {args.network_interface}...", flush=True)
     ChannelFactoryInitialize(0, args.network_interface)
@@ -108,7 +107,7 @@ def main():
     code, _ = msc.SelectMode("ai")
     if code != 0:
         print(f"SelectMode failed (code={code}). Aborting.", flush=True)
-        sys.exit(1)
+        raise SystemExit(1)
 
     arm_client = G1ArmActionClient()
     arm_client.SetTimeout(10.0)
@@ -119,7 +118,7 @@ def main():
     code = arm_client.ExecuteAction(action_id)
     if code != 0:
         print(f"ExecuteAction failed (code={code}).", flush=True)
-        sys.exit(1)
+        raise SystemExit(1)
 
     # 動作が完了するまでの待ち時間の目安。実測に基づく厳密な同期ではないため、
     # 動作によってはもっと長く/短く調整が必要になる可能性がある。
