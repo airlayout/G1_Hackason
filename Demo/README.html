@@ -446,6 +446,7 @@ svg .t-mono-s{ font: 400 11.5px var(--mono); fill: var(--ink-2); }
     <div class="fig"><dt>到達</dt><dd>error_code 0</dd></div>
     <div class="fig"><dt>リカバリ</dt><dd>0<small>回</small></dd></div>
     <div class="fig"><dt>停止</dt><dd>6<small>秒・孤児 0</small></dd></div>
+    <div class="fig"><dt>長距離</dt><dd>15.0<small>m / 66秒</small></dd></div>
     <div class="fig"><dt>記録の再生</dt><dd>136,047<small>msg</small></dd></div>
   </dl>
 
@@ -590,6 +591,94 @@ bash Demo/preflight.sh</code>
     当日は <code>Demo/nav2_g1.rviz</code> が RViz2 をほぼ全画面で開く。
     シミュレータを見せたいときは <b>Alt+Tab</b> で切り替える。</p>
   </div>
+
+  <h3>長い距離を走らせる</h3>
+  <p>上の 2 本は <b>2.5 m ほどの短い区間</b>。デモで「経路計画をしている」ことを見せたいなら、
+  曲がって回り込む距離を投げる。</p>
+
+  <figure class="clip">
+    <video src="video/03_isaac_long.mp4" poster="video/03_isaac_long.jpg"
+           controls loop muted playsinline preload="metadata" width="1600" height="884"></video>
+    <figcaption><b>③ 道のり 15.0 m（直線 10.7 m）を 1 本で走り切ったところ。</b>
+    <span class="num">66</span> 秒 ／ <code>error_code 0</code> ／
+    到達誤差 <span class="num">0.06</span> m（ゴール 14.804, -5.128 に対し 14.783, -5.072）。
+    <b>障害物を回り込むために経路が曲がっているのが見どころ。</b>
+    Nav2 は 1 秒ごとに経路を引き直していて、この 66 秒で <span class="num">58</span> 回引き直した。</figcaption>
+  </figure>
+
+  <div class="note">
+    <span class="lbl">この画面の作り</span>
+    <p>③ だけコストマップの網掛けを切ってある（<code>Demo/nav2_g1.rviz</code>）。
+    <b>網掛けを出したままだと経路が地図の白黒に埋もれて読めない。</b>
+    残してあるのは 静的地図 ／ LaserScan ／ 全体経路 ／ 局所経路 ／ ロボットの足形 だけ。
+    コストマップを見たいときは左のリストでチェックを入れ直す。</p>
+  </div>
+
+  <div class="note">
+    <span class="lbl">当日どこを指すか</span>
+    <p>この地図は<b>物が多く、行ける範囲が余裕の取り方で急に変わる</b>。
+    出発点から自由空間を辿って届く距離を測るとこうなる。</p>
+  </div>
+
+  <div class="figwrap"><svg viewBox="0 0 900 300" role="img" aria-labelledby="fig5t fig5d" xmlns="http://www.w3.org/2000/svg">
+  <title id="fig5t">どこまで行けるかは「余裕」の取り方で急に変わる</title>
+  <desc id="fig5d">出発点から自由空間を辿って届く最遠点を、必要な余裕を変えて測った。0.5m では 33.8m 届くが、0.6m にすると 6.7m しか届かない。その間に細い通路がある。</desc>
+
+  <text x="20" y="30" class="t-b">出発 (5.0, -0.6) から自由空間を辿って届く最遠点（道のり）</text>
+
+  <g>
+    <!-- 目盛 -->
+    <line x1="150" y1="250" x2="860" y2="250" stroke="var(--line-strong)" stroke-width="1"/>
+    <g class="t-s" fill="var(--ink-3)">
+      <text x="150" y="270" text-anchor="middle">0</text>
+      <text x="292" y="270" text-anchor="middle">30</text>
+      <text x="434" y="270" text-anchor="middle">60</text>
+      <text x="576" y="270" text-anchor="middle">90</text>
+      <text x="718" y="270" text-anchor="middle">120</text>
+      <text x="860" y="270" text-anchor="middle">150 m</text>
+    </g>
+
+    <!-- 各バー: 150m を 710px に対応させる -->
+    <g>
+      <text x="140" y="62"  text-anchor="end" class="t-mono-s">余裕 0.30 m</text>
+      <rect x="150" y="48" width="691" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
+      <text x="851" y="62" class="t-s" fill="var(--ink-2)">146.0</text>
+
+      <text x="140" y="98"  text-anchor="end" class="t-mono-s">余裕 0.35 m</text>
+      <rect x="150" y="84" width="691" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
+      <text x="851" y="98" class="t-s" fill="var(--ink-2)">146.0</text>
+
+      <text x="140" y="134" text-anchor="end" class="t-mono-s">余裕 0.40 m</text>
+      <rect x="150" y="120" width="510" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
+      <text x="670" y="134" class="t-s" fill="var(--ink-2)">107.8</text>
+
+      <text x="140" y="170" text-anchor="end" class="t-mono-s">余裕 0.45 m</text>
+      <rect x="150" y="156" width="510" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
+      <text x="670" y="170" class="t-s" fill="var(--ink-2)">107.8</text>
+
+      <text x="140" y="206" text-anchor="end" class="t-mono-s">余裕 0.50 m</text>
+      <rect x="150" y="192" width="160" height="18" rx="3" fill="var(--good)"/>
+      <text x="320" y="206" class="t-s" fill="var(--good)">33.8　← 長距離はここで選んでいる</text>
+
+      <text x="140" y="242" text-anchor="end" class="t-mono-s">余裕 0.60 m</text>
+      <rect x="150" y="228" width="32" height="18" rx="3" fill="var(--bad)"/>
+      <text x="192" y="242" class="t-s" fill="var(--bad)">6.7　← 通路が閉じる</text>
+    </g>
+  </g>
+</svg></div>
+
+  <p>つまり <b>0.5 m の余裕を見て選べば 33.8 m 先まで指せる</b>が、
+  0.6 m を要求すると 6.7 m しか行けない。当日は
+  <b>壁から離れた広いところ</b>を指すこと。狭い所を指すと計画そのものが出ない。</p>
+
+  <p>上の測定と、この動画のゴール選びに使ったのは <code>Demo/tools/pick_far_goal.py</code>。
+  <b>地図の上を BFS で辿る</b>ので、返る地点には必ず経路がある。
+  直線距離で選ぶと壁の向こう側を指してしまう。</p>
+
+  <code class="cmd">python3 Demo/tools/pick_far_goal.py \
+  IsaacSim_Env/maps/uis_room_v3_clean.yaml &lt;いまの x&gt; &lt;いまの y&gt; 15 0.5
+<span class="c"># → GOAL 14.804 -5.128（道のり 15.0 m ／ 直線 10.7 m）</span></code>
+
 
   <ol class="steps">
     <li>
