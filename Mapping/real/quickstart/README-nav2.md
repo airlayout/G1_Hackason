@@ -421,7 +421,8 @@ ssh -t g1 'python3 ~/nav_tools/loco_driver.py --network-interface eth0 --max-vy 
 
 # ── 4. 1 本目: 真っ直ぐ 1m（旋回ゼロ）＋ 走行中の重畳
 bash quickstart/run_stage.sh ahead 1.0
-#   ⚠️ **1.0 未満にしない。** 0.80 m 以下は run_stage.sh が弾く（理由は §8）
+bash quickstart/run_stage.sh ahead 1.0 --repeat 3   # 続けて 3 本（1 本ずつ別フォルダ）
+#   ⚠️ **1.0 未満にしない。** 0.80 m 以下は警告が出る（止めはしない。理由は §8）
 
 # ── 5. 2 本目: 地図上の絶対座標（歩く前に ComputePathToPose で検算される）
 bash quickstart/run_stage.sh goal 1.15 1.02      # ← 第一候補（下の表）
@@ -441,6 +442,28 @@ bash quickstart/run_stage.sh goal 1.15 1.02      # ← 第一候補（下の表�
 `ahead 0.5` は**歩かずに「到達 1/1」と出る**（§8）。安全は距離ではなく
 **逸脱ガードの上限**で買う。`stray_guard.py --margin 0.3 --max-abs 1.2 --max-seconds 20`
 のように締めれば、1.0 m の走行でも暴走は 1.2 m で止まる。
+
+### 実験段階の方針（2026-09-10 に決めた）
+
+**商用ではないので「歩き出す前の関門」は置かない。** `run_stage.sh` も
+`check_planning.py` も、気になることは**警告で出してそのまま走る**。
+実験を速く回すことを優先し、**機体を止める役目は走行中の逸脱ガードだけ**が持つ。
+
+⚠️ ただし**走った後の裏取りは落とさない**（`verify_arrival`）。止めないぶん、
+「動かずに成功」のような嘘の結果を後から必ず拾えるようにしておく必要がある。
+
+速さのつまみ（既定は実測から決めてある。括弧内は 2026-09-10 の実測値）:
+
+| 環境変数 | 既定 | 実際に必要な時間 |
+|---|---|---|
+| `G1_BAG_WARMUP_S` | 1.0 | bag の購読完了まで **0.12 s** |
+| `G1_BAG_FLUSH_S` | 1.0 | bag の書き出し完了まで **0.015 s** |
+| `G1_NAV_WARMUP_S` | 2.0 | `check_navigation` の TF 溜め（旧 5 s 固定） |
+| `G1_PREFLIGHT_RATE_SCALE` | 1.0 | `ros2 topic hz` の測定窓の倍率。**`hz` は必ず窓いっぱい待つ** |
+
+`preflight.sh` の所要は 1 本あたりの窓を実レートに合わせて **36 s → 16 s** に、
+`tf2_echo` を 14 s → 6 s に詰めてある。local costmap の中身も
+**同じメッセージを 2 回取りに行っていた**のを 1 回にした。
 
 ### 合否（測る前に決めてある）
 
@@ -501,7 +524,7 @@ bag の `map -> base_link` 119 サンプル 11.83 秒で**開始点からの最�
 | 打ち手 | どこ |
 |---|---|
 | 消え残りを先に落とす | `clear_costmaps.sh`（§7.5 の手順 0.5）。実測で全体 LETHAL 20,046 → 19,525、ゴールのセルは 100 → 0 |
-| 短すぎるゴールを弾く | `run_stage.sh` が `ahead D` で `D ≤ xy_goal_tolerance + planner tolerance`（= 0.80 m）なら止める。値は `g1_nav2.yaml` から読むので焼き込みではない。どうしても短くしたいなら `G1_ALLOW_SHORT_AHEAD=1` |
+| 短すぎるゴールを**警告する** | `run_stage.sh` が `ahead D` で `D ≤ xy_goal_tolerance + planner tolerance`（= 0.80 m）なら警告を出す。値は `g1_nav2.yaml` から読むので焼き込みではない。⚠️ **実験段階なので止めない**（2026-09-10 の方針）。嘘の成功は下の裏取りが拾う |
 | 成功を幾何で裏取りする | `check_navigation.py` の `verify_arrival()`。アクションが成功と言っても**終端からゴールまでが `--arrive-tol`（既定 0.35 m）を超えていたら失敗として数える**。`navigation.json` に `checks`（実移動量・ゴールまでの距離）も残す |
 
 ⚠️ **`results` だけを見ないこと。** `navigation.json` の `checks` に実移動量が入っている。

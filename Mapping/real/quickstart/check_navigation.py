@@ -347,6 +347,10 @@ def main() -> int:
                     help="逸脱ガード。開始点からの距離が「ゴールまでの直線 + M」を"
                          "超えたら即キャンセルする。実機では必ず付けること")
     ap.add_argument("--tries", type=int, default=3)
+    ap.add_argument("--warmup", type=float, default=5.0, metavar="S",
+                    help="立ち上げてから最初のゴールを投げるまでに TF バッファを"
+                         "溜める秒数。**実験を速く回したいときは 2.0 まで下げてよい**"
+                         "（下げすぎると map -> base_link が引けず 1 回ぶん無駄になる）")
     ap.add_argument("--arrive-tol", type=float, default=0.35, metavar="M",
                     help="**到達の裏取り**。アクションが成功と言っても、終端から"
                          "ゴールまでが M m を超えていたら失敗として数える。"
@@ -373,7 +377,7 @@ def main() -> int:
     rclpy.init()
     node = Navigator(use_sim_time=not args.no_sim_time)
     node.recording = args.record is not None
-    node.spin_for(5.0)
+    node.spin_for(args.warmup)
     if not node.client.wait_for_server(timeout_sec=15.0):
         print("[FAIL] navigate_to_pose のサーバが居ない")
         return 1

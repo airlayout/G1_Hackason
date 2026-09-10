@@ -41,8 +41,18 @@ ros() {
         bash -c "source /opt/ros/humble/setup.bash && $*" 2>/dev/null
 }
 # ⚠️ hz は --no-daemon を受け付けない。SIGTERM だと集計を印字しないので -s INT
-rate() { ros "stdbuf -oL timeout -s INT 12 ros2 topic hz $1" \
-         | sed -n 's/.*average rate: \([0-9.]*\).*/\1/p' | head -1; }
+#
+# ⚠️ **`hz` は必ず窓いっぱい待つ。**（早く終わる術は無い）ここが preflight の
+# 所要のほぼ全部だった（12 s x 3 本 = 36 s）。窓はトピックのレートで決める:
+# 2 通来れば数字は出るので、**10 Hz なら 3 s、0.67 Hz なら 8 s**あれば足りる。
+# 一律に縮めると遅いトピック（global costmap 0.67 Hz）で「取れない」に化ける。
+RATE_SCALE="${G1_PREFLIGHT_RATE_SCALE:-1.0}"   # 1 未満で更に急ぐ / 1 超で慎重に
+rate() {  # rate <topic> [窓の秒数]
+    local w
+    w="$(awk -v b="${2:-5}" -v s="$RATE_SCALE" 'BEGIN{v=b*s; printf "%d", (v<2?2:v)}')"
+    ros "stdbuf -oL timeout -s INT $w ros2 topic hz $1" \
+        | sed -n 's/.*average rate: \([0-9.]*\).*/\1/p' | head -1
+}
 # 購読者・発行者の数
 count() { ros "timeout 10 ros2 topic info --no-daemon $1" \
           | sed -n "s/^$2 count: //p" | head -1; }
@@ -62,7 +72,7 @@ elif awk "BEGIN{exit !($Q >= 0.70)}"; then
 else
     bad "ICP 品質 $Q が低い。地図の層が違うか初期姿勢が合っていない"
 fi
-R="$(rate /tf)"
+R="$(rate /tf 3)"
 if [ -n "$R" ] && awk "BEGIN{exit !($R >= 8.0)}"; then
     ok "/tf $R Hz（LiDAR が 10Hz なのでこの水準）"
 else
@@ -71,7 +81,7 @@ fi
 
 # ── 2. base_link の定義（今日の落とし穴）─────────────────────────
 step "2. base_link が水平・床面か（⚠️ ここが今日の落とし穴）"
-TF="$(ros "timeout 8 ros2 run tf2_ros tf2_echo map base_link" \
+TF="$(ros "timeout 3 ros2 run tf2_ros tf2_echo map base_link" \
       | grep -m1 -A3 'Translation' | tr '\n' ' ')"
 Z="$(echo "$TF" | sed -n 's/.*Translation: \[[^,]*, [^,]*, \([-0-9.]*\)\].*/\1/p')"
 PITCH="$(echo "$TF" | sed -n 's/.*RPY (degree) \[[^,]*, \([-0-9.]*\),.*/\1/p')"
@@ -96,7 +106,7 @@ fi
 # `set -o pipefail` はパイプライン全体を 141 にするので、**引けているのに「引けない」**
 # と出る（実測 PIPESTATUS=141 0 ＝ grep 自身は一致している）。
 # 変数に受けてから case で見る。パイプを作らないので取り違えようがない。
-OB="$(ros "timeout 6 ros2 run tf2_ros tf2_echo odom base_link")"
+OB="$(ros "timeout 3 ros2 run tf2_ros tf2_echo odom base_link")"
 case "$OB" in
     *Translation*) ok "odom -> base_link も引ける" ;;
     *)             bad "odom -> base_link が引けない（map -> odom の静的変換が出ていない）" ;;
@@ -104,8 +114,10 @@ esac
 
 # ── 3. コストマップ ─────────────────────────────────────────────
 step "3. コストマップ"
-for t in /local_costmap/costmap /global_costmap/costmap; do
-    R="$(rate "$t")"
+# local は 1.67 Hz / global は 0.67 Hz。**2 通来れば出る**ので窓はこの程度でよい
+for spec in "/local_costmap/costmap 5" "/global_costmap/costmap 8"; do
+    t="${spec% *}"; w="${spec##* }"
+    R="$(rate "$t" "$w")"
     if [ -n "$R" ]; then
         ok "$t $R Hz"
     else
@@ -113,10 +125,12 @@ for t in /local_costmap/costmap /global_costmap/costmap; do
         echo "     → always_send_full_costmap が両方に入っているか（静止中は local も出ない）"
     fi
 done
-NZ="$(ros "stdbuf -oL timeout -s INT 15 ros2 topic echo --once --field data /local_costmap/costmap" \
-      | tr ',[]' '   ' | tr ' ' '\n' | grep -cE '^-?[0-9]+$' || true)"
-OCC="$(ros "stdbuf -oL timeout -s INT 15 ros2 topic echo --once --field data /local_costmap/costmap" \
-       | tr ',[]' '   ' | tr ' ' '\n' | awk '$1+0>=99{n++} END{print n+0}' || true)"
+# ⚠️ **1 回だけ取る。**以前はセル数と占有数で `ros2 topic echo --once` を
+# 2 回打っており、同じメッセージを 2 度取りに行っていた（往復が丸ごと無駄）
+CELLS="$(ros "stdbuf -oL timeout -s INT 15 ros2 topic echo --once --field data /local_costmap/costmap" \
+         | tr ',[]' '   ' | tr ' ' '\n' | grep -E '^-?[0-9]+$' || true)"
+NZ="$(printf '%s\n' "$CELLS" | grep -cE '^-?[0-9]+$' || true)"
+OCC="$(printf '%s\n' "$CELLS" | awk '$1+0>=99{n++} END{print n+0}')"
 if [ "${NZ:-0}" -gt 0 ] && [ "${OCC:-0}" -gt 0 ]; then
     ok "local costmap の中身: 全 $NZ セル中 占有 $OCC"
 else
