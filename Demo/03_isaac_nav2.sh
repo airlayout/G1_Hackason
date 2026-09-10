@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 実演2 — Isaac Sim の UiS_room_v3 で、Nav2 に指定した場所まで G1 を歩かせる。
+# 実演3 — Isaac Sim の UiS_room_v3 で、Nav2 に指定した場所まで G1 を歩かせる。
 #
-#   bash Demo/02_isaac_nav2.sh            # 起動して RViz2 まで開く
-#   bash Demo/02_isaac_nav2.sh --no-rviz      # RViz2 を開かない（別画面で開きたいとき）
-#   bash Demo/02_isaac_nav2.sh --follow-cam   # Isaac Sim のカメラを G1 に追従させる
+#   bash Demo/03_isaac_nav2.sh            # 起動して RViz2 まで開く
+#   bash Demo/03_isaac_nav2.sh --no-rviz      # RViz2 を開かない（別画面で開きたいとき）
+#   bash Demo/03_isaac_nav2.sh --follow-cam   # Isaac Sim のカメラを G1 に追従させる
 #                                             # （長い距離を歩かせるとき。既定は固定）
 #
 # 実機は要らない。Isaac Sim の中だけで完結する。
@@ -60,7 +60,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-_head "実演2 — Isaac Sim + Nav2"
+_head "実演3 — Isaac Sim + Nav2"
 _info "シーン : assets/uis_room_v3_sim_obstacles.usd"
 _info "地図   : maps/uis_room_v3_clean.yaml"
 _info "初期位置: (6.55, -0.78)  ※漂流の着地点で選んである。変えないこと"

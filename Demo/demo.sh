@@ -16,8 +16,8 @@ while true; do
 
     printf '\n\033[1m====== G1 デモ ======\033[0m   %b\n\n' "${ROBOT}"
     printf '  1) リモコンで立たせて歩かせる  \033[31m※実機が動きます\033[0m（PC は使いません）\n'
-    printf '  2) Isaac Sim で Nav2 走行      （実機不要）\n'
-    printf '  3) LiDAR で計測を見せる        （実機が無ければ記録の再生に落ちます）\n'
+    printf '  2) LiDAR で計測を見せる        \033[2m← 1 と同時に。歩かせながら測る\033[0m\n'
+    printf '  3) Isaac Sim で Nav2 走行      （実機不要）\n'
     if have 04_teleop.sh; then
         printf '  4) Quest でエピソード記録・再生 \033[31m※実機の腕が動きます\033[0m\n'
     else
@@ -32,8 +32,8 @@ while true; do
 
     case "${CHOICE}" in
         1) bash "${DEMO_DIR}/01_remote.sh" || _warn "終了コード $?" ;;
-        2) bash "${DEMO_DIR}/02_isaac_nav2.sh" || _warn "終了コード $?" ;;
-        3) bash "${DEMO_DIR}/03_lidar.sh" || _warn "終了コード $?" ;;
+        2) bash "${DEMO_DIR}/02_lidar.sh" || _warn "終了コード $?" ;;
+        3) bash "${DEMO_DIR}/03_isaac_nav2.sh" || _warn "終了コード $?" ;;
         4)
             if have 04_teleop.sh; then
                 printf '\n\033[31m⚠️ 実機の腕が動きます。起動直後に両腕がゼロ姿勢へ移動します。\033[0m\n'

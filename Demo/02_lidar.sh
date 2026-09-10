@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 実演3 — LiDAR による計測を見せる。
+# 実演2 — LiDAR による計測を見せる。
 #
-#   bash Demo/03_lidar.sh            # 実機が居れば live、居なければ replay
-#   bash Demo/03_lidar.sh live       # 実機のライブ点群（実機が要る）
-#   bash Demo/03_lidar.sh replay     # 記録の再生（実機は要らない）
+#   bash Demo/02_lidar.sh            # 実機が居れば live、居なければ replay
+#   bash Demo/02_lidar.sh live       # 実機のライブ点群（実機が要る）
+#   bash Demo/02_lidar.sh replay     # 記録の再生（実機は要らない）
 #
 # 引数なしのときは**実機が居なければ黙って replay に落とす**。当日の保険。
 set -eo pipefail
@@ -27,5 +27,5 @@ fi
 case "${MODE}" in
     live)   exec bash "${UBUNTU_DIR}/lidar_live.sh" "$@" ;;
     replay) exec bash "${UBUNTU_DIR}/lidar_replay.sh" "$@" ;;
-    *)      _die "使い方: bash Demo/03_lidar.sh [live|replay]" ;;
+    *)      _die "使い方: bash Demo/02_lidar.sh [live|replay]" ;;
 esac

@@ -15,9 +15,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 FAIL=0
 CAN_REMOTE=1         # 実演1（リモコン。PC は使わないので実機だけが条件）
-CAN_ISAAC=1          # 実演2
-CAN_LIDAR_LIVE=1     # 実演3 ライブ
-CAN_LIDAR_REPLAY=1   # 実演3 再生
+CAN_ISAAC=1          # 実演3
+CAN_LIDAR_LIVE=1     # 実演2 ライブ
+CAN_LIDAR_REPLAY=1   # 実演2 再生
 CAN_TELEOP=1         # 実演4
 
 note_ng() { _ng "$1"; FAIL=1; }
@@ -63,7 +63,7 @@ if robot_reachable; then
     fi
 else
     _warn "G1 が見つかりません（${DEMO_G1_PC2}:22 に届かない）。電源とケーブルを確認してください"
-    printf '       → \033[1m実演1・実演3 のライブ点群・実演4 は使えません。\033[0m 実演3 は記録の再生に落ちます\n'
+    printf '       → \033[1m実演1・実演2 のライブ点群・実演4 は使えません。\033[0m 実演2 は記録の再生に落ちます\n'
     CAN_LIDAR_LIVE=0; CAN_TELEOP=0; CAN_REMOTE=0
 fi
 
@@ -83,7 +83,7 @@ if [ -f "${DEMO_ROS_SETUP}" ]; then
     if [ "${NAV2_OK}" = "yes" ]; then
         _ok "nav2_bringup あり"
     else
-        note_ng "nav2_bringup がありません（実演2 が動きません）"
+        note_ng "nav2_bringup がありません（実演3 が動きません）"
         CAN_ISAAC=0
     fi
     _info "ROS_DOMAIN_ID=${DEMO_ROS_DOMAIN_ID}（ロボットの Unitree DDS は 0。必ず 0 以外にすること）"
@@ -93,7 +93,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-_head "4. Isaac Sim（実演2）"
+_head "4. Isaac Sim（実演3）"
 if [ -d "${DEMO_ISAAC_ENV}" ]; then
     _ok "Isaac Sim の環境: ${DEMO_ISAAC_ENV}"
 else
@@ -140,7 +140,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-_head "6. LiDAR の記録（実演3 の再生）"
+_head "6. LiDAR の記録（実演2 の再生）"
 BAG_DIR="${REPO_DIR}/Mapping/real/runs/20260906T135940_UiS_room_v3/raw/rosbag2"
 if [ -f "${BAG_DIR}/metadata.yaml" ]; then
     _ok "記録あり: ${BAG_DIR}"
@@ -153,13 +153,13 @@ fi
 _head "まとめ"
 show() { if [ "$1" = "1" ]; then _ok "$2"; else _ng "$2"; fi; }
 show "${CAN_REMOTE}"       "実演1  リモコンで歩かせる     … bash Demo/01_remote.sh（PC は使いません）"
-show "${CAN_ISAAC}"        "実演2  Isaac Sim + Nav2      … bash Demo/02_isaac_nav2.sh"
 if [ "${CAN_LIDAR_LIVE}" = "1" ]; then
-    _ok  "実演3  LiDAR ライブ           … bash Demo/03_lidar.sh live"
+    _ok  "実演2  LiDAR ライブ           … bash Demo/02_lidar.sh live（実演1 と同時に）"
 else
-    _ng  "実演3  LiDAR ライブ           … 使えません"
+    _ng  "実演2  LiDAR ライブ           … 使えません"
 fi
-show "${CAN_LIDAR_REPLAY}" "実演3  LiDAR 記録の再生      … bash Demo/03_lidar.sh replay"
+show "${CAN_LIDAR_REPLAY}" "実演2  LiDAR 記録の再生      … bash Demo/02_lidar.sh replay"
+show "${CAN_ISAAC}"        "実演3  Isaac Sim + Nav2      … bash Demo/03_isaac_nav2.sh"
 show "${CAN_TELEOP}"       "実演4  Quest でエピソード     … bash Demo/04_teleop.sh"
 
 # ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ if [ "${RMW_OK:-no}" = "no" ] || [ "${FAIL}" = "1" ]; then
     TODO=1
 fi
 if ! robot_reachable; then
-    printf '  G1 の電源を入れる    : 実演1・実演3 ライブ・実演4 はこれが要ります\n'
+    printf '  G1 の電源を入れる    : 実演1・実演2 ライブ・実演4 はこれが要ります\n'
     TODO=1
 fi
 if [ "${CAN_TELEOP}" = "0" ] && [ ! -f "${REPO_DIR}/Teleop/vendor/g1-starter-kit/config/g1.env" ]; then

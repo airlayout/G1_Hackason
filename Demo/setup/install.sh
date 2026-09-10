@@ -20,10 +20,10 @@ DRY=0
 # **このリポジトリのスクリプトが実際に使うものだけ**を並べる。
 # 「あると便利そう」で足さないこと（入れたものは当日の障害の原因になりうる）。
 PACKAGES=(
-    ros-jazzy-rmw-cyclonedds-cpp   # 実演3 ライブ。G1 の DDS を購読する
-    ros-jazzy-tf2-ros              # 実演3。記録に /tf が無いので静的 TF を出す
-    ros-jazzy-rviz2                # 実演3・3
-    ros-jazzy-nav2-bringup         # 実演2
+    ros-jazzy-rmw-cyclonedds-cpp   # 実演2 ライブ。G1 の DDS を購読する
+    ros-jazzy-tf2-ros              # 実演2。記録に /tf が無いので静的 TF を出す
+    ros-jazzy-rviz2                # 実演2・3
+    ros-jazzy-nav2-bringup         # 実演3
 )
 
 _head "入っているか調べる"

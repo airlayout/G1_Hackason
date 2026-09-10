@@ -33,10 +33,10 @@ Phase 0 が済んだところ。**キットを取り込んだだけで、まだ�
 **キットは場所に依存しない。** 依存先（`~/xr_teleoperate` `~/miniforge3` `~/cyclonedds`）は
 `$HOME` 固定でキットの外にあるので、キットを動かしても一緒に動かす必要はない。
 
-⚠️ **ただし LiDAR 系（実演3 の経路(B)）は OMEN に入っていない。**
+⚠️ **ただし LiDAR 系（実演2 の経路(B)）は OMEN に入っていない。**
 `~/ws_livox/install/setup.bash` と `~/.local/lib/liblivox_lidar_sdk_shared.so` が
 両方とも不在（2026-09-10 実測）。つまり `scripts/lidar_view.sh` は今のままでは動かず、
-`setup/install_livox.sh` を先に流す必要がある。実演3 の第一候補は経路(A)（G1 の DDS を
+`setup/install_livox.sh` を先に流す必要がある。実演2 の第一候補は経路(A)（G1 の DDS を
 購読するだけ）なので、そちらが通ればこれは要らない。
 
 ## なぜ vendor を丸ごとコミットしているか

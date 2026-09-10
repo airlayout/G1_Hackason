@@ -443,7 +443,7 @@ svg .t-mono-s{ font: 400 11.5px var(--mono); fill: var(--ink-2); }
 
   <dl class="figures">
     <div class="fig"><dt>実演</dt><dd>4<small>本</small></dd></div>
-    <div class="fig"><dt>実演2 起動</dt><dd>40<small>秒</small></dd></div>
+    <div class="fig"><dt>実演3 起動</dt><dd>40<small>秒</small></dd></div>
     <div class="fig"><dt>到達</dt><dd>error_code 0</dd></div>
     <div class="fig"><dt>リカバリ</dt><dd>0<small>回</small></dd></div>
     <div class="fig"><dt>停止</dt><dd>6<small>秒・孤児 0</small></dd></div>
@@ -455,8 +455,8 @@ svg .t-mono-s{ font: 400 11.5px var(--mono); fill: var(--ink-2); }
     <li><a href="#check"><span class="n">01</span><span class="t">当日の 3 分チェック</span></a></li>
     <li><a href="#kit"><span class="n">02</span><span class="t">機材と、どれがどこで動くか</span></a></li>
     <li><a href="#demo1"><span class="n">03</span><span class="t">実演1 — リモコンで歩かせる</span></a></li>
-    <li><a href="#demo2"><span class="n">04</span><span class="t">実演2 — Isaac Sim で Nav2 走行</span></a></li>
-    <li><a href="#demo3"><span class="n">05</span><span class="t">実演3 — LiDAR で計測</span></a></li>
+    <li><a href="#demo2"><span class="n">04</span><span class="t">実演2 — LiDAR で計測</span></a></li>
+    <li><a href="#demo3"><span class="n">05</span><span class="t">実演3 — Isaac Sim で Nav2 走行</span></a></li>
     <li><a href="#demo4"><span class="n">06</span><span class="t">実演4 — Quest でエピソード</span></a></li>
     <li><a href="#stop"><span class="n">07</span><span class="t">止め方</span></a></li>
     <li><a href="#trouble"><span class="n">08</span><span class="t">症状 → 原因</span></a></li>
@@ -481,7 +481,7 @@ bash Demo/preflight.sh</code>
     <span class="lbl">読み方</span>
     <p><span class="chip ok">OK</span> はそのまま使える。<span class="chip no">NG</span> は使えないが、
     <b>理由と直し方が「次にやること」に出る</b>。実機の電源が入っていないだけなら、
-    実演3 は記録の再生に落ちて動く。</p>
+    実演2 は記録の再生に落ちて動く。</p>
   </div>
 
   <h3>電源とケーブル</h3>
@@ -490,7 +490,7 @@ bash Demo/preflight.sh</code>
     <thead><tr><th>見るもの</th><th>正しい状態</th><th>違ったら</th></tr></thead>
     <tbody>
       <tr><td>有線 <code>enp129s0</code></td><td><code>up</code> ＋ <code>192.168.123.200/24</code></td><td>LAN ケーブルを挿し直す</td></tr>
-      <tr><td>G1 の電源</td><td>PC2 <code>192.168.123.164:22</code> に TCP が通る</td><td><b>実演1</b>・実演3 ライブ・実演4 は諦め、実演2 と再生で見せる</td></tr>
+      <tr><td>G1 の電源</td><td>PC2 <code>192.168.123.164:22</code> に TCP が通る</td><td><b>実演1</b>・実演2 ライブ・実演4 は諦め、実演3 と再生で見せる</td></tr>
       <tr><td>WiFi <code>wlp128s20f3</code></td><td>Quest と同じネットワーク</td><td>実演4 だけ影響する</td></tr>
     </tbody>
     <caption>疎通は <code>ping</code> ではなく <code>/dev/tcp</code> で測っている。<code>ping</code> だと「コマンドが無い」と「届かない」が同じ NG になり、過去に取り違えたため。</caption>
@@ -501,11 +501,11 @@ bash Demo/preflight.sh</code>
 <!-- ══════════════════════════════════════════════════ -->
 <section id="kit" class="wrap">
   <h2>02　機材と、どれがどこで動くか</h2>
-  <p class="h2sub"><b>実演1 はリモコンだけで PC を使わない。</b>実演2 は PC の中だけで完結する。
-  実機に繋がるのは実演3 のライブと実演4 だけ。</p>
+  <p class="h2sub"><b>実演1 はリモコンだけで PC を使わない。</b>実演3 は PC の中だけで完結する。
+  実機に繋がるのは実演2 のライブと実演4 だけ。</p>
   <div class="figwrap"><svg viewBox="0 0 900 400" role="img" aria-labelledby="fig1t fig1d" xmlns="http://www.w3.org/2000/svg">
   <title id="fig1t">デモ当日の機材と、どれがどこで動くか</title>
-  <desc id="fig1d">実演は 4 つ。実演1 はリモコンだけで PC を使わない。実演2 は PC の中だけで完結し、実演3 のライブと実演4 だけが有線で G1 実機に繋がる。Mac は記録を渡すためだけに使う。</desc>
+  <desc id="fig1d">実演は 4 つ。実演1 はリモコンだけで PC を使わない。実演2 のライブは実演1 と同時に行う。実演3 は PC の中だけで完結し、実演2 のライブと実演4 だけが有線で G1 実機に繋がる。Mac は記録を渡すためだけに使う。</desc>
 
   <defs>
     <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -523,13 +523,13 @@ bash Demo/preflight.sh</code>
   <text x="32" y="110" class="t-m">192.168.123.200 / OMEN 16L / RTX 5060 Ti</text>
   <text x="32" y="128" class="t-m">Ubuntu 24.04 ・ ROS 2 Jazzy</text>
 
-  <rect x="32" y="146" width="372" height="52" rx="5" fill="var(--surface)" stroke="var(--good)" stroke-width="1.5"/>
-  <text x="46" y="168" class="t-b">実演2　Isaac Sim ＋ Nav2</text>
-  <text x="46" y="188" class="t-s" fill="var(--good)">この箱の中だけで完結する（実機は要らない）</text>
+  <rect x="32" y="146" width="372" height="52" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <text x="46" y="168" class="t-b">実演2　LiDAR で計測</text>
+  <text x="46" y="188" class="t-s">ライブは実演1 と同時に ／ 再生は PC の中だけ</text>
 
-  <rect x="32" y="206" width="372" height="52" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/>
-  <text x="46" y="228" class="t-b">実演3　LiDAR で計測</text>
-  <text x="46" y="248" class="t-s">再生 = PC の中だけ ／ ライブ = 実機が要る</text>
+  <rect x="32" y="206" width="372" height="52" rx="5" fill="var(--surface)" stroke="var(--good)" stroke-width="1.5"/>
+  <text x="46" y="228" class="t-b">実演3　Isaac Sim ＋ Nav2</text>
+  <text x="46" y="248" class="t-s" fill="var(--good)">この箱の中だけで完結する（実機は要らない）</text>
 
   <rect x="32" y="266" width="372" height="52" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/>
   <text x="46" y="288" class="t-b">実演4　Quest でエピソード記録・再生</text>
@@ -558,7 +558,7 @@ bash Demo/preflight.sh</code>
     <line x1="420" y1="115" x2="556" y2="115" stroke="var(--warn)" stroke-width="2" marker-end="url(#arw)"/>
     <text x="432" y="105" class="t-s" fill="var(--warn)">有線 192.168.123.0/24</text>
     <text x="432" y="132" class="t-s" fill="var(--warn)">実演1 ・ 実演4</text>
-    <text x="432" y="150" class="t-s" fill="var(--warn)">実演3 ライブ</text>
+    <text x="432" y="150" class="t-s" fill="var(--warn)">実演2 ライブ</text>
 
     <line x1="420" y1="290" x2="556" y2="290" stroke="var(--line-strong)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar)"/>
     <text x="436" y="281" class="t-s" fill="var(--ink-3)">記録を一度だけ</text>
@@ -582,6 +582,91 @@ bash Demo/preflight.sh</code>
       <li>初めてのときは<b>必ず 2 人以上</b>で。片方が吊り具に手をかける</li>
     </ul>
   </div>
+
+  <h3>リモコンのどこを押すか</h3>
+  <div class="figwrap"><svg viewBox="0 0 900 400" role="img" aria-labelledby="fig7t fig7d" xmlns="http://www.w3.org/2000/svg">
+  <title id="fig7t">リモコンのどこを押すか</title>
+  <desc id="fig7d">起動に使うのは L2＋B（①ダンピング）、L2＋上（②立位ロック）、R1＋X（⑦通常運転）の 3 つ。走らせたいときだけ R2＋A（③走行）を足す。図の色が付いたボタンがそれ。</desc>
+
+  <!-- ── 本体 ───────────────────────────────────────── -->
+  <rect x="58" y="96" width="384" height="206" rx="30" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.5"/>
+
+  <!-- 肩ボタン -->
+  <rect x="92"  y="74" width="66" height="20" rx="7" fill="var(--surface)"    stroke="var(--line-strong)"/>
+  <rect x="92"  y="52" width="66" height="18" rx="7" fill="var(--accent)"     stroke="var(--accent)"/>
+  <rect x="342" y="74" width="66" height="20" rx="7" fill="var(--accent)"     stroke="var(--accent)"/>
+  <rect x="342" y="52" width="66" height="18" rx="7" fill="var(--surface)"    stroke="var(--line-strong)"/>
+  <text x="125" y="89"  text-anchor="middle" class="t-mono-s">L1</text>
+  <text x="125" y="66"  text-anchor="middle" class="t-mono-s" fill="#fff">L2</text>
+  <text x="375" y="89"  text-anchor="middle" class="t-mono-s" fill="#fff">R1</text>
+  <text x="375" y="66"  text-anchor="middle" class="t-mono-s">R2</text>
+
+  <!-- 十字キー（上だけ色を付ける） -->
+  <rect x="118" y="128" width="26" height="26" rx="4" fill="var(--accent)" stroke="var(--accent)"/>
+  <rect x="118" y="182" width="26" height="26" rx="4" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <rect x="91"  y="155" width="26" height="26" rx="4" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <rect x="145" y="155" width="26" height="26" rx="4" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <text x="131" y="146" text-anchor="middle" class="t-mono-s" fill="#fff">▲</text>
+  <text x="131" y="123" text-anchor="middle" class="t-lbl" fill="var(--accent)">UP</text>
+
+  <!-- A B X Y（B と X に色）-->
+  <circle cx="368" cy="141" r="15" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <circle cx="368" cy="195" r="15" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <circle cx="341" cy="168" r="15" fill="var(--accent)"  stroke="var(--accent)"/>
+  <circle cx="395" cy="168" r="15" fill="var(--accent)"  stroke="var(--accent)"/>
+  <text x="368" y="146" text-anchor="middle" class="t-mono-s">Y</text>
+  <text x="368" y="200" text-anchor="middle" class="t-mono-s">A</text>
+  <text x="341" y="173" text-anchor="middle" class="t-mono-s" fill="#fff">X</text>
+  <text x="395" y="173" text-anchor="middle" class="t-mono-s" fill="#fff">B</text>
+
+  <!-- SELECT / START -->
+  <rect x="204" y="150" width="36" height="14" rx="7" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <rect x="262" y="150" width="36" height="14" rx="7" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <text x="222" y="143" text-anchor="middle" class="t-lbl" fill="var(--ink-3)">SELECT</text>
+  <text x="280" y="143" text-anchor="middle" class="t-lbl" fill="var(--ink-3)">START</text>
+
+  <!-- スティック -->
+  <circle cx="186" cy="246" r="26" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <circle cx="186" cy="246" r="11" fill="var(--surface-2)" stroke="var(--line-strong)"/>
+  <circle cx="314" cy="246" r="26" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <circle cx="314" cy="246" r="11" fill="var(--surface-2)" stroke="var(--line-strong)"/>
+  <text x="186" y="292" text-anchor="middle" class="t-s" fill="var(--ink-3)">左スティック</text>
+  <text x="314" y="292" text-anchor="middle" class="t-s" fill="var(--ink-3)">右スティック</text>
+
+  <text x="58" y="336" class="t-s" fill="var(--ink-3)">色が付いているのが起動に使うボタン。配置は Unitree G1 の純正リモコン。</text>
+
+  <!-- ── 対応表 ─────────────────────────────────────── -->
+  <text x="500" y="66" class="t-b">起動に使う 3 つ</text>
+
+  <g>
+    <rect x="500" y="80" width="384" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="516" y="104" class="t-mono-b" fill="var(--accent)">①  L2 ＋ B</text>
+    <text x="640" y="104" class="t-b">ダンピング</text>
+    <text x="640" y="122" class="t-s">腕のモータが有効になる（実演4 の前提）</text>
+
+    <rect x="500" y="142" width="384" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="516" y="166" class="t-mono-b" fill="var(--accent)">②  L2 ＋ UP</text>
+    <text x="640" y="166" class="t-b">立位ロック</text>
+    <text x="640" y="184" class="t-s">ここでウィンチを緩める</text>
+
+    <rect x="500" y="204" width="384" height="52" rx="6" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/>
+    <text x="516" y="228" class="t-mono-b" fill="var(--good)">⑦  R1 ＋ X</text>
+    <text x="640" y="228" class="t-b">通常運転</text>
+    <text x="640" y="246" class="t-s">START で立ち、スティックで歩く</text>
+  </g>
+
+  <text x="500" y="292" class="t-b">走らせたいときだけ足す</text>
+  <rect x="500" y="302" width="384" height="46" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-dasharray="4 3"/>
+  <text x="516" y="324" class="t-mono-b" fill="var(--ink-3)">③  R2 ＋ A</text>
+  <text x="640" y="324" class="t-s">走行（R2＋下 = 低速走 ／ R2＋上 = 高速走）</text>
+  <text x="640" y="342" class="t-s" fill="var(--warn)">デモでは使わなくてよい</text>
+</svg></div>
+  <p class="figcap-after">ボタンの対応は
+  <a href="https://docs.quadruped.de/projects/g1/html/operation_1.4.html">QUADRUPED Docs の G1 操作編（Firmware V1.0.4）</a>
+  で確認した。この図は<b>その内容をもとに書き起こしたもの</b>で、
+  向こうの図版そのものではない（このリポジトリは public なので第三者の図をそのまま置かない）。
+  実機のファームウェアが違うと組み合わせが変わることがあるので、
+  食い違ったら実機と付属マニュアルを優先すること。</p>
 
   <h3>なぜ順番が要るのか</h3>
   <p>電源を入れた直後、G1 の関節は<b>ゼロトルク（FSM 0）で脱力している</b>。
@@ -651,8 +736,8 @@ bash Demo/preflight.sh</code>
       この間の関節はゼロトルクで脱力している。数十秒かかる。</p>
     </li>
     <li>
-      <h3>① ダンピング（Damping mode）</h3>
-      <p>リモコンで <b>①</b> を選ぶ。関節に粘りが出て、押すと抵抗が返る。</p>
+      <h3>① ダンピング（Damping mode）　<code>L2 ＋ B</code></h3>
+      <p><b>L2 を押しながら B</b>。関節に粘りが出て、押すと抵抗が返る。</p>
       <div class="note">
         <span class="lbl">ここが実演4 の前提でもある</span>
         <p><b>腕のモータが有効（<code>mode=1</code>）になるのはここだけ。</b>
@@ -662,215 +747,47 @@ bash Demo/preflight.sh</code>
       </div>
     </li>
     <li>
-      <h3>② 立位ロック（Locked Standing）</h3>
-      <p>リモコンで <b>②</b> を選ぶ。脚が伸びて立位で固定される。
+      <h3>② 立位ロック（Locked Standing）　<code>L2 ＋ UP</code></h3>
+      <p><b>L2 を押しながら十字キーの上</b>。脚が伸びて立位で固定される。
       <b>ここでウィンチを緩め、自分の脚で立っていることを確かめる。</b>
       ぐらつくなら吊り上げ直して 1 からやり直す。</p>
     </li>
     <li>
-      <h3>⑦ 通常運転（Regular mode / Running mode）</h3>
-      <p>リモコンで <b>⑦</b> を選ぶ。歩行制御が動きだし、前後左右・旋回が効くようになる。
+      <h3>⑦ 通常運転（Main Operation Control）　<code>R1 ＋ X</code></h3>
+      <p><b>R1 を押しながら X</b>。歩行制御が動きだす。<b>START</b> で立ち、スティックで前後左右・旋回が効く。
       <b>まず小さく前後させて、素直に動くことを確かめてから見せる。</b></p>
     </li>
   </ol>
 
+  <div class="note good">
+    <span class="lbl">⭐ 実演2 はここと同時に</span>
+    <p><b>立たせたまま、別の端末で実演2 のライブ点群を出す。</b>
+    リモコンで歩かせながら、G1 が何を測っているかを同じ画面で見せられる。
+    実演1 と実演2 を分けずに続けてやるのがいちばん伝わる。</p>
+    <code class="cmd">bash Demo/02_lidar.sh live</code>
+    <p>⚠️ <b>歩き出す前に出しておくこと。</b>歩いてから起動すると立ち上がりを撮り逃す。</p>
+  </div>
+
   <div class="note warn">
     <span class="lbl">見せ終わったら</span>
     <p><b>逆の順で下ろす。いきなり電源を切らない。</b></p>
-    <p class="num">⑦ 通常運転　→　② 立位ロック　→　① ダンピング　→　電源</p>
+    <p class="num">⑦ 通常運転　→　② 立位ロック <code>L2＋UP</code>　→　① ダンピング <code>L2＋B</code>　→　電源</p>
     <p>立たせたまま離れない。ダンピングへ落とす前に吊り具で支えること。</p>
   </div>
 </section>
 
 <!-- ══════════════════════════════════════════════════ -->
 <section id="demo2" class="wrap">
-  <h2>04　実演2 — Isaac Sim で Nav2 走行 <span class="chip ok">実測済み</span></h2>
-  <p class="h2sub">実機は要らない。実測した部屋（UiS_room_v3）を再現したシーンの中で、RViz2 でクリックした場所まで G1 が歩く。</p>
+  <h2>04　実演2 — LiDAR で計測</h2>
+  <p class="h2sub">実機があればライブ、無ければ記録の再生。<b>引数なしで叩けば自動で切り替わる。</b><br>
+  <b>ライブは実演1 と同時にやる</b>—— リモコンで歩かせながら、測っている点群を横に出す。</p>
+
+  <code class="cmd">bash Demo/02_lidar.sh            <span class="c"># 実機が居れば live、居なければ replay</span>
+bash Demo/02_lidar.sh replay     <span class="c"># 記録の再生を明示（実機不要）</span>
+bash Demo/02_lidar.sh live       <span class="c"># ライブを明示（実機が要る）</span></code>
 
   <figure class="clip">
-    <video src="video/02_isaac_sim.mp4" poster="video/02_isaac_sim.jpg"
-           controls loop muted playsinline preload="metadata" width="1600" height="1062"></video>
-    <figcaption><b>① シミュレータの中。</b>
-    実測した部屋を再現したシーンで、Nav2 が出した <code>/cmd_vel</code> を歩行ポリシーが受けて G1 が歩く。
-    速度は画面に出している。</figcaption>
-  </figure>
-
-  <figure class="clip">
-    <video src="video/02_isaac_rviz.mp4" poster="video/02_isaac_rviz.jpg"
-           controls loop muted playsinline preload="metadata" width="1600" height="884"></video>
-    <figcaption><b>② 同じ走行を RViz2 で見たところ。</b>
-    地図の上に経路（緑）とコストマップが出て、ロボットがそれをたどる。
-    左下の「Navigation 2」パネルに <code>Feedback: reached</code> と <code>Recoveries: 0</code> が出れば成功。
-    <b>指示を出すのはこの画面。</b></figcaption>
-  </figure>
-
-  <div class="note">
-    <span class="lbl">2 画面あるのはなぜか</span>
-    <p>この 2 つは<b>同時に動いている</b>。1 枚に並べると RViz2 の地図が細くなって
-    ツールバーの文字が読めなかったので、それぞれ全画面で撮ってある。
-    当日は <code>Demo/nav2_g1.rviz</code> が RViz2 をほぼ全画面で開く。
-    シミュレータを見せたいときは <b>Alt+Tab</b> で切り替える。</p>
-  </div>
-
-  <h3>長い距離を走らせる</h3>
-  <p>上の 2 本は <b>2.5 m ほどの短い区間</b>。デモで「経路計画をしている」ことを見せたいなら、
-  曲がって回り込む距離を投げる。</p>
-
-  <figure class="clip">
-    <video src="video/02_isaac_long_sim.mp4" poster="video/02_isaac_long_sim.jpg"
-           controls loop muted playsinline preload="metadata" width="960" height="728"></video>
-    <figcaption><b>③ 同じ長距離をシミュレータの中から見たところ。</b>
-    道のり 15.0 m ／ <span class="num">112</span> 秒 ／ <code>error_code 0</code> ／
-    到達誤差 <span class="num">0.09</span> m。
-    <b>カメラが G1 を追いかけている。</b>起動時の固定カメラはスポーン地点を向いたままなので、
-    遠くへ行くと画角から出てしまう。長距離を見せるときは
-    <code>bash Demo/02_isaac_nav2.sh --follow-cam</code> を付ける（既定は固定のまま）。</figcaption>
-  </figure>
-
-  <figure class="clip">
-    <video src="video/02_isaac_long_rviz.mp4" poster="video/02_isaac_long_rviz.jpg"
-           controls loop muted playsinline preload="metadata" width="1600" height="884"></video>
-    <figcaption><b>④ 同じ走行を RViz2 で見たところ。道のり 15.0 m（直線 10.7 m）。</b>
-    <span class="num">66</span> 秒 ／ <code>error_code 0</code> ／
-    到達誤差 <span class="num">0.06</span> m（ゴール 14.804, -5.128 に対し 14.783, -5.072）。
-    <b>障害物を回り込むために経路が曲がっているのが見どころ。</b>
-    Nav2 は 1 秒ごとに経路を引き直していて、この 66 秒で <span class="num">58</span> 回引き直した。</figcaption>
-  </figure>
-
-  <div class="note warn">
-    <span class="lbl">追従カメラは走行を遅くする</span>
-    <p>同じ 15.0 m でも <b>③（追従あり）は 112 秒、④（追従なし）は 66 秒</b>。
-    カメラを動かすと毎回描き直しが要るぶん Isaac Sim が重くなり、
-    Nav2 の制御ループが目標の 5 Hz を落とす（<code>Control loop missed its desired rate</code>）。
-    <b>見せるための機能で、性能を測る用途には使わないこと。</b>既定はオフにしてある。</p>
-  </div>
-
-  <div class="note">
-    <span class="lbl">この画面の作り</span>
-    <p>④ だけコストマップの網掛けを切ってある（<code>Demo/nav2_g1.rviz</code>）。
-    <b>網掛けを出したままだと経路が地図の白黒に埋もれて読めない。</b>
-    残してあるのは 静的地図 ／ LaserScan ／ 全体経路 ／ 局所経路 ／ ロボットの足形 だけ。
-    コストマップを見たいときは左のリストでチェックを入れ直す。</p>
-  </div>
-
-  <div class="note">
-    <span class="lbl">当日どこを指すか</span>
-    <p>この地図は<b>物が多く、行ける範囲が余裕の取り方で急に変わる</b>。
-    出発点から自由空間を辿って届く距離を測るとこうなる。</p>
-  </div>
-
-  <div class="figwrap"><svg viewBox="0 0 900 300" role="img" aria-labelledby="fig5t fig5d" xmlns="http://www.w3.org/2000/svg">
-  <title id="fig5t">どこまで行けるかは「余裕」の取り方で急に変わる</title>
-  <desc id="fig5d">出発点から自由空間を辿って届く最遠点を、必要な余裕を変えて測った。0.5m では 33.8m 届くが、0.6m にすると 6.7m しか届かない。その間に細い通路がある。</desc>
-
-  <text x="20" y="30" class="t-b">出発 (5.0, -0.6) から自由空間を辿って届く最遠点（道のり）</text>
-
-  <g>
-    <!-- 目盛 -->
-    <line x1="150" y1="250" x2="860" y2="250" stroke="var(--line-strong)" stroke-width="1"/>
-    <g class="t-s" fill="var(--ink-3)">
-      <text x="150" y="270" text-anchor="middle">0</text>
-      <text x="292" y="270" text-anchor="middle">30</text>
-      <text x="434" y="270" text-anchor="middle">60</text>
-      <text x="576" y="270" text-anchor="middle">90</text>
-      <text x="718" y="270" text-anchor="middle">120</text>
-      <text x="860" y="270" text-anchor="middle">150 m</text>
-    </g>
-
-    <!-- 各バー: 150m を 710px に対応させる -->
-    <g>
-      <text x="140" y="62"  text-anchor="end" class="t-mono-s">余裕 0.30 m</text>
-      <rect x="150" y="48" width="691" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
-      <text x="851" y="62" class="t-s" fill="var(--ink-2)">146.0</text>
-
-      <text x="140" y="98"  text-anchor="end" class="t-mono-s">余裕 0.35 m</text>
-      <rect x="150" y="84" width="691" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
-      <text x="851" y="98" class="t-s" fill="var(--ink-2)">146.0</text>
-
-      <text x="140" y="134" text-anchor="end" class="t-mono-s">余裕 0.40 m</text>
-      <rect x="150" y="120" width="510" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
-      <text x="670" y="134" class="t-s" fill="var(--ink-2)">107.8</text>
-
-      <text x="140" y="170" text-anchor="end" class="t-mono-s">余裕 0.45 m</text>
-      <rect x="150" y="156" width="510" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
-      <text x="670" y="170" class="t-s" fill="var(--ink-2)">107.8</text>
-
-      <text x="140" y="206" text-anchor="end" class="t-mono-s">余裕 0.50 m</text>
-      <rect x="150" y="192" width="160" height="18" rx="3" fill="var(--good)"/>
-      <text x="320" y="206" class="t-s" fill="var(--good)">33.8　← 長距離はここで選んでいる</text>
-
-      <text x="140" y="242" text-anchor="end" class="t-mono-s">余裕 0.60 m</text>
-      <rect x="150" y="228" width="32" height="18" rx="3" fill="var(--bad)"/>
-      <text x="192" y="242" class="t-s" fill="var(--bad)">6.7　← 通路が閉じる</text>
-    </g>
-  </g>
-</svg></div>
-
-  <p>つまり <b>0.5 m の余裕を見て選べば 33.8 m 先まで指せる</b>が、
-  0.6 m を要求すると 6.7 m しか行けない。当日は
-  <b>壁から離れた広いところ</b>を指すこと。狭い所を指すと計画そのものが出ない。</p>
-
-  <p>上の測定と、この動画のゴール選びに使ったのは <code>Demo/tools/pick_far_goal.py</code>。
-  <b>地図の上を BFS で辿る</b>ので、返る地点には必ず経路がある。
-  直線距離で選ぶと壁の向こう側を指してしまう。</p>
-
-  <code class="cmd">python3 Demo/tools/pick_far_goal.py \
-  IsaacSim_Env/maps/uis_room_v3_clean.yaml &lt;いまの x&gt; &lt;いまの y&gt; 15 0.5
-<span class="c"># → GOAL 14.804 -5.128（道のり 15.0 m ／ 直線 10.7 m）</span></code>
-
-
-  <ol class="steps">
-    <li>
-      <h3>起動する</h3>
-      <code class="cmd">bash Demo/02_isaac_nav2.sh</code>
-      <p><b>3〜6 分かかる。</b> Isaac Sim の窓が開いてもまだ触らないこと。
-      <code>[OK] Nav2 が起動しました</code> と <code>[OK] RViz2 を開きました</code> が出たら準備完了。</p>
-    </li>
-    <li>
-      <h3>ゴールを置く</h3>
-      <p>RViz2 の上のツールバーでいちばん右の <b>「Nav2 Goal」</b> を選び、
-      地図の上の行かせたい場所を<b>ドラッグ</b>する。矢印の向きが到着したときの向きになる。</p>
-      <p class="figcap-after">※ 古い手順書やスクリプトの案内には「2D Goal Pose」と書いてあるが、
-      この設定（<code>nav2_rviz_plugins/GoalTool</code>）でのボタン名は <b>Nav2 Goal</b>。同じもの。</p>
-      <div class="note bad">
-        <span class="lbl">押してはいけない</span>
-        <p><b>「2D Pose Estimate」は絶対に押さない。</b> この地図は原点がずれているので、
-        クリックすると自己位置が大きく飛ぶ（実測で位置 31 m・向き 179 度）。
-        初期姿勢は起動時に自動で入っている。</p>
-      </div>
-    </li>
-    <li>
-      <h3>歩くのを見せる</h3>
-      <p>RViz2 の「Navigation 2」パネル（左下）に <code>Feedback: reached</code> と
-      <code>Recoveries: 0</code> が出れば成功。<b>Alt+Tab</b> で Isaac Sim に切り替えると
-      G1 が歩いている姿が見える。</p>
-    </li>
-    <li>
-      <h3>止める</h3>
-      <p>起動したターミナルで <b>Ctrl-C</b>。Isaac Sim も RViz2 もまとめて止まる。</p>
-    </li>
-  </ol>
-
-  <div class="note warn">
-    <span class="lbl">見せる前に知っておくこと</span>
-    <p><b>G1 は指令ゼロでも漂流する。</b> Isaac Sim の中で -x 方向へ 3.4 cm/s ほど動くので、
-    起動を待っている 3〜6 分のあいだに 1.7〜2.3 m 移動している。故障ではない。
-    初期位置 <code>(6.55, -0.78)</code> は「立たせたい場所」ではなく
-    <b>「漂流したあとの着地点」</b>で選んである。<b>この値を変えないこと。</b></p>
-  </div>
-</section>
-
-<!-- ══════════════════════════════════════════════════ -->
-<section id="demo3" class="wrap">
-  <h2>05　実演3 — LiDAR で計測</h2>
-  <p class="h2sub">実機があればライブ、無ければ記録の再生。<b>引数なしで叩けば自動で切り替わる。</b></p>
-
-  <code class="cmd">bash Demo/03_lidar.sh            <span class="c"># 実機が居れば live、居なければ replay</span>
-bash Demo/03_lidar.sh replay     <span class="c"># 記録の再生を明示（実機不要）</span>
-bash Demo/03_lidar.sh live       <span class="c"># ライブを明示（実機が要る）</span></code>
-
-  <figure class="clip">
-    <video src="video/03_lidar_replay.mp4" poster="video/03_lidar_replay.jpg"
+    <video src="video/02_lidar_replay.mp4" poster="video/02_lidar_replay.jpg"
            controls loop muted playsinline preload="metadata" width="1280" height="708"></video>
     <figcaption><b>記録の再生（実機不要）。</b>
     G1 が実際に部屋を歩いて測った 591 秒ぶん。歩くにつれて部屋の形が描かれていく。
@@ -1373,6 +1290,184 @@ requestAnimationFrame(() => reset(view));   // レイアウト確定後に画角
 </section>
 
 <!-- ══════════════════════════════════════════════════ -->
+<section id="demo3" class="wrap">
+  <h2>05　実演3 — Isaac Sim で Nav2 走行 <span class="chip ok">実測済み</span></h2>
+  <p class="h2sub">実機は要らない。実測した部屋（UiS_room_v3）を再現したシーンの中で、RViz2 でクリックした場所まで G1 が歩く。</p>
+
+  <figure class="clip">
+    <video src="video/03_isaac_sim.mp4" poster="video/03_isaac_sim.jpg"
+           controls loop muted playsinline preload="metadata" width="1600" height="1062"></video>
+    <figcaption><b>① シミュレータの中。</b>
+    実測した部屋を再現したシーンで、Nav2 が出した <code>/cmd_vel</code> を歩行ポリシーが受けて G1 が歩く。
+    速度は画面に出している。</figcaption>
+  </figure>
+
+  <figure class="clip">
+    <video src="video/03_isaac_rviz.mp4" poster="video/03_isaac_rviz.jpg"
+           controls loop muted playsinline preload="metadata" width="1600" height="884"></video>
+    <figcaption><b>② 同じ走行を RViz2 で見たところ。</b>
+    地図の上に経路（緑）とコストマップが出て、ロボットがそれをたどる。
+    左下の「Navigation 2」パネルに <code>Feedback: reached</code> と <code>Recoveries: 0</code> が出れば成功。
+    <b>指示を出すのはこの画面。</b></figcaption>
+  </figure>
+
+  <div class="note">
+    <span class="lbl">2 画面あるのはなぜか</span>
+    <p>この 2 つは<b>同時に動いている</b>。1 枚に並べると RViz2 の地図が細くなって
+    ツールバーの文字が読めなかったので、それぞれ全画面で撮ってある。
+    当日は <code>Demo/nav2_g1.rviz</code> が RViz2 をほぼ全画面で開く。
+    シミュレータを見せたいときは <b>Alt+Tab</b> で切り替える。</p>
+  </div>
+
+  <h3>長い距離を走らせる</h3>
+  <p>上の 2 本は <b>2.5 m ほどの短い区間</b>。デモで「経路計画をしている」ことを見せたいなら、
+  曲がって回り込む距離を投げる。</p>
+
+  <figure class="clip">
+    <video src="video/03_isaac_long_sim.mp4" poster="video/03_isaac_long_sim.jpg"
+           controls loop muted playsinline preload="metadata" width="960" height="728"></video>
+    <figcaption><b>③ 同じ長距離をシミュレータの中から見たところ。</b>
+    道のり 15.0 m ／ <span class="num">112</span> 秒 ／ <code>error_code 0</code> ／
+    到達誤差 <span class="num">0.09</span> m。
+    <b>カメラが G1 を追いかけている。</b>起動時の固定カメラはスポーン地点を向いたままなので、
+    遠くへ行くと画角から出てしまう。長距離を見せるときは
+    <code>bash Demo/03_isaac_nav2.sh --follow-cam</code> を付ける（既定は固定のまま）。</figcaption>
+  </figure>
+
+  <figure class="clip">
+    <video src="video/03_isaac_long_rviz.mp4" poster="video/03_isaac_long_rviz.jpg"
+           controls loop muted playsinline preload="metadata" width="1600" height="884"></video>
+    <figcaption><b>④ 同じ走行を RViz2 で見たところ。道のり 15.0 m（直線 10.7 m）。</b>
+    <span class="num">66</span> 秒 ／ <code>error_code 0</code> ／
+    到達誤差 <span class="num">0.06</span> m（ゴール 14.804, -5.128 に対し 14.783, -5.072）。
+    <b>障害物を回り込むために経路が曲がっているのが見どころ。</b>
+    Nav2 は 1 秒ごとに経路を引き直していて、この 66 秒で <span class="num">58</span> 回引き直した。</figcaption>
+  </figure>
+
+  <div class="note warn">
+    <span class="lbl">追従カメラは走行を遅くする</span>
+    <p>同じ 15.0 m でも <b>③（追従あり）は 112 秒、④（追従なし）は 66 秒</b>。
+    カメラを動かすと毎回描き直しが要るぶん Isaac Sim が重くなり、
+    Nav2 の制御ループが目標の 5 Hz を落とす（<code>Control loop missed its desired rate</code>）。
+    <b>見せるための機能で、性能を測る用途には使わないこと。</b>既定はオフにしてある。</p>
+  </div>
+
+  <div class="note">
+    <span class="lbl">この画面の作り</span>
+    <p>④ だけコストマップの網掛けを切ってある（<code>Demo/nav2_g1.rviz</code>）。
+    <b>網掛けを出したままだと経路が地図の白黒に埋もれて読めない。</b>
+    残してあるのは 静的地図 ／ LaserScan ／ 全体経路 ／ 局所経路 ／ ロボットの足形 だけ。
+    コストマップを見たいときは左のリストでチェックを入れ直す。</p>
+  </div>
+
+  <div class="note">
+    <span class="lbl">当日どこを指すか</span>
+    <p>この地図は<b>物が多く、行ける範囲が余裕の取り方で急に変わる</b>。
+    出発点から自由空間を辿って届く距離を測るとこうなる。</p>
+  </div>
+
+  <div class="figwrap"><svg viewBox="0 0 900 300" role="img" aria-labelledby="fig5t fig5d" xmlns="http://www.w3.org/2000/svg">
+  <title id="fig5t">どこまで行けるかは「余裕」の取り方で急に変わる</title>
+  <desc id="fig5d">出発点から自由空間を辿って届く最遠点を、必要な余裕を変えて測った。0.5m では 33.8m 届くが、0.6m にすると 6.7m しか届かない。その間に細い通路がある。</desc>
+
+  <text x="20" y="30" class="t-b">出発 (5.0, -0.6) から自由空間を辿って届く最遠点（道のり）</text>
+
+  <g>
+    <!-- 目盛 -->
+    <line x1="150" y1="250" x2="860" y2="250" stroke="var(--line-strong)" stroke-width="1"/>
+    <g class="t-s" fill="var(--ink-3)">
+      <text x="150" y="270" text-anchor="middle">0</text>
+      <text x="292" y="270" text-anchor="middle">30</text>
+      <text x="434" y="270" text-anchor="middle">60</text>
+      <text x="576" y="270" text-anchor="middle">90</text>
+      <text x="718" y="270" text-anchor="middle">120</text>
+      <text x="860" y="270" text-anchor="middle">150 m</text>
+    </g>
+
+    <!-- 各バー: 150m を 710px に対応させる -->
+    <g>
+      <text x="140" y="62"  text-anchor="end" class="t-mono-s">余裕 0.30 m</text>
+      <rect x="150" y="48" width="691" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
+      <text x="851" y="62" class="t-s" fill="var(--ink-2)">146.0</text>
+
+      <text x="140" y="98"  text-anchor="end" class="t-mono-s">余裕 0.35 m</text>
+      <rect x="150" y="84" width="691" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
+      <text x="851" y="98" class="t-s" fill="var(--ink-2)">146.0</text>
+
+      <text x="140" y="134" text-anchor="end" class="t-mono-s">余裕 0.40 m</text>
+      <rect x="150" y="120" width="510" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
+      <text x="670" y="134" class="t-s" fill="var(--ink-2)">107.8</text>
+
+      <text x="140" y="170" text-anchor="end" class="t-mono-s">余裕 0.45 m</text>
+      <rect x="150" y="156" width="510" height="18" rx="3" fill="var(--accent)" opacity="0.55"/>
+      <text x="670" y="170" class="t-s" fill="var(--ink-2)">107.8</text>
+
+      <text x="140" y="206" text-anchor="end" class="t-mono-s">余裕 0.50 m</text>
+      <rect x="150" y="192" width="160" height="18" rx="3" fill="var(--good)"/>
+      <text x="320" y="206" class="t-s" fill="var(--good)">33.8　← 長距離はここで選んでいる</text>
+
+      <text x="140" y="242" text-anchor="end" class="t-mono-s">余裕 0.60 m</text>
+      <rect x="150" y="228" width="32" height="18" rx="3" fill="var(--bad)"/>
+      <text x="192" y="242" class="t-s" fill="var(--bad)">6.7　← 通路が閉じる</text>
+    </g>
+  </g>
+</svg></div>
+
+  <p>つまり <b>0.5 m の余裕を見て選べば 33.8 m 先まで指せる</b>が、
+  0.6 m を要求すると 6.7 m しか行けない。当日は
+  <b>壁から離れた広いところ</b>を指すこと。狭い所を指すと計画そのものが出ない。</p>
+
+  <p>上の測定と、この動画のゴール選びに使ったのは <code>Demo/tools/pick_far_goal.py</code>。
+  <b>地図の上を BFS で辿る</b>ので、返る地点には必ず経路がある。
+  直線距離で選ぶと壁の向こう側を指してしまう。</p>
+
+  <code class="cmd">python3 Demo/tools/pick_far_goal.py \
+  IsaacSim_Env/maps/uis_room_v3_clean.yaml &lt;いまの x&gt; &lt;いまの y&gt; 15 0.5
+<span class="c"># → GOAL 14.804 -5.128（道のり 15.0 m ／ 直線 10.7 m）</span></code>
+
+
+  <ol class="steps">
+    <li>
+      <h3>起動する</h3>
+      <code class="cmd">bash Demo/03_isaac_nav2.sh</code>
+      <p><b>3〜6 分かかる。</b> Isaac Sim の窓が開いてもまだ触らないこと。
+      <code>[OK] Nav2 が起動しました</code> と <code>[OK] RViz2 を開きました</code> が出たら準備完了。</p>
+    </li>
+    <li>
+      <h3>ゴールを置く</h3>
+      <p>RViz2 の上のツールバーでいちばん右の <b>「Nav2 Goal」</b> を選び、
+      地図の上の行かせたい場所を<b>ドラッグ</b>する。矢印の向きが到着したときの向きになる。</p>
+      <p class="figcap-after">※ 古い手順書やスクリプトの案内には「2D Goal Pose」と書いてあるが、
+      この設定（<code>nav2_rviz_plugins/GoalTool</code>）でのボタン名は <b>Nav2 Goal</b>。同じもの。</p>
+      <div class="note bad">
+        <span class="lbl">押してはいけない</span>
+        <p><b>「2D Pose Estimate」は絶対に押さない。</b> この地図は原点がずれているので、
+        クリックすると自己位置が大きく飛ぶ（実測で位置 31 m・向き 179 度）。
+        初期姿勢は起動時に自動で入っている。</p>
+      </div>
+    </li>
+    <li>
+      <h3>歩くのを見せる</h3>
+      <p>RViz2 の「Navigation 2」パネル（左下）に <code>Feedback: reached</code> と
+      <code>Recoveries: 0</code> が出れば成功。<b>Alt+Tab</b> で Isaac Sim に切り替えると
+      G1 が歩いている姿が見える。</p>
+    </li>
+    <li>
+      <h3>止める</h3>
+      <p>起動したターミナルで <b>Ctrl-C</b>。Isaac Sim も RViz2 もまとめて止まる。</p>
+    </li>
+  </ol>
+
+  <div class="note warn">
+    <span class="lbl">見せる前に知っておくこと</span>
+    <p><b>G1 は指令ゼロでも漂流する。</b> Isaac Sim の中で -x 方向へ 3.4 cm/s ほど動くので、
+    起動を待っている 3〜6 分のあいだに 1.7〜2.3 m 移動している。故障ではない。
+    初期位置 <code>(6.55, -0.78)</code> は「立たせたい場所」ではなく
+    <b>「漂流したあとの着地点」</b>で選んである。<b>この値を変えないこと。</b></p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
 <section id="demo4" class="wrap">
   <h2>06　実演4 — Quest でエピソード記録・再生 <span class="chip un">未実装</span></h2>
   <p class="h2sub">実機の腕が動く。ここだけ性質がまったく違う。</p>
@@ -1514,7 +1609,7 @@ less Teleop/vendor/g1-starter-kit/docs/03-teleop.md</code>
   <p class="h2sub"><code>Demo/</code> は入口だけ。実装は領域フォルダが持つ。</p>
   <div class="figwrap"><svg viewBox="0 0 900 470" role="img" aria-labelledby="fig2t fig2d" xmlns="http://www.w3.org/2000/svg">
   <title id="fig2t">当日どのコマンドが何を呼ぶか</title>
-  <desc id="fig2d">Demo は入口だけで、実装は領域フォルダが持つ。実演2 は IsaacSim_Env、実演3 は Mapping/real/ubuntu、実演4 は Teleop を呼ぶ。実演1 はリモコンだけで PC を使わない。設定は Demo/lib.sh に 1 箇所だけ置き、Teleop の設定ファイルから読む。</desc>
+  <desc id="fig2d">Demo は入口だけで、実装は領域フォルダが持つ。実演3 は IsaacSim_Env、実演2 は Mapping/real/ubuntu、実演4 は Teleop を呼ぶ。実演1 はリモコンだけで PC を使わない。設定は Demo/lib.sh に 1 箇所だけ置き、Teleop の設定ファイルから読む。</desc>
   <defs>
     <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="var(--line-strong)"/>
@@ -1541,14 +1636,14 @@ less Teleop/vendor/g1-starter-kit/docs/03-teleop.md</code>
   <!-- 3 本 -->
   <g>
     <rect x="330" y="20" width="250" height="110" rx="6" fill="var(--surface)" stroke="var(--good)" stroke-width="1.5"/>
-    <text x="348" y="46" class="t-mono-b">Demo/02_isaac_nav2.sh</text>
-    <text x="348" y="68" class="t-s">実演2 — Isaac Sim ＋ Nav2</text>
+    <text x="348" y="46" class="t-mono-b">Demo/03_isaac_nav2.sh</text>
+    <text x="348" y="68" class="t-s">実演3 — Isaac Sim ＋ Nav2</text>
     <text x="348" y="90" class="t-s" fill="var(--ink-3)">RViz2 の Nav2 Goal でドラッグ</text>
     <text x="348" y="114" class="t-mono-s" fill="var(--good)">実機不要</text>
 
     <rect x="330" y="150" width="250" height="110" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
-    <text x="348" y="176" class="t-mono-b">Demo/03_lidar.sh</text>
-    <text x="348" y="198" class="t-s">実演3 — LiDAR で計測</text>
+    <text x="348" y="176" class="t-mono-b">Demo/02_lidar.sh</text>
+    <text x="348" y="198" class="t-s">実演2 — LiDAR で計測</text>
     <text x="348" y="220" class="t-s" fill="var(--ink-3)">実機が無ければ黙って再生に落ちる</text>
     <text x="348" y="244" class="t-mono-s" fill="var(--good)">再生は実機不要</text>
 

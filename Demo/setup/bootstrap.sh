@@ -104,4 +104,4 @@ fi
 
 _head "5. 次にやること"
 printf '  bash %s/Demo/preflight.sh        … 何が使えるか確認\n' "${TARGET}"
-printf '  bash %s/Demo/02_isaac_nav2.sh    … 実演2 が通るか実測\n' "${TARGET}"
+printf '  bash %s/Demo/03_isaac_nav2.sh    … 実演3 が通るか実測\n' "${TARGET}"

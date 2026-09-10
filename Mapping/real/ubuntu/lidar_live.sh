@@ -34,14 +34,14 @@ export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterfac
 if ! robot_reachable; then
     _die "G1 が見つかりません（${DEMO_G1_PC2}:22 に届かない）。
      電源とケーブルを確認してください。
-     実機なしで見せるなら: bash Demo/03_lidar.sh replay"
+     実機なしで見せるなら: bash Demo/02_lidar.sh replay"
 fi
 
 PIDS=()
 cleanup() { printf '\n'; _info "後片付けをします"; stop_tracked_pids "${PIDS[@]}"; }
 trap cleanup EXIT INT TERM
 
-_head "LiDAR ライブ（実演3 / 経路(A)）"
+_head "LiDAR ライブ（実演2 / 経路(A)）"
 _info "RMW           : ${RMW_IMPLEMENTATION}"
 _info "インターフェース : ${DEMO_WIRED_IFACE}"
 _info "ROS_DOMAIN_ID : 0（ロボットに合わせる）"
