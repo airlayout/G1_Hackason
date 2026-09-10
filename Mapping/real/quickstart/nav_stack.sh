@@ -315,7 +315,7 @@ docker inspect "$NAME" >/dev/null 2>&1 || { echo "[stack] コンテナ $NAME が
 # 再生位置をずらすなら初期姿勢も作り直す（G1_MOLA_INIT_POSE を明示したときは触らない）
 if [ "$BAG_OFFSET" != "0" ] && [ -z "${G1_MOLA_INIT_POSE:-}" ]; then
     docker exec "$NAME" test -f "$MOLA_TRAJ" || {
-        echo "[stack] 軌跡が無い: $MOLA_TRAJ（G1_MOLA_TRAJ で指定できる）" >&2; exit 1; }
+        echo "[stack] 軌跡が無い: ${MOLA_TRAJ}（G1_MOLA_TRAJ で指定できる）" >&2; exit 1; }
     MOLA_INIT_POSE="$(docker exec "$NAME" python3 \
         /work/G1_Hackason/Mapping/real/quickstart/initial_pose_at.py \
         "$MOLA_TRAJ" --offset "$BAG_OFFSET" --quiet)" || {
@@ -328,9 +328,9 @@ SIM_TIME="true"
 if [ "$MODE" = "live" ]; then
     SIM_TIME="false"
     say "[1] 実機のデータを使う（再生はしない）"
-    docker exec "$NAME" bash -c "source /opt/ros/humble/setup.bash && RMW_IMPLEMENTATION=rmw_cyclonedds_cpp CYCLONEDDS_URI='"'"'$DDS'"'"' ROS_DOMAIN_ID=0 timeout 8 ros2 topic hz /utlidar/cloud_livox_mid360 2>&1 | tail -1"
+    docker exec "$NAME" bash -c "source /opt/ros/humble/setup.bash && RMW_IMPLEMENTATION=rmw_cyclonedds_cpp CYCLONEDDS_URI='$DDS' ROS_DOMAIN_ID=0 timeout 8 ros2 topic hz /utlidar/cloud_livox_mid360 2>&1 | tail -1"
 else
-    docker exec "$NAME" test -d "$BAG" || { echo "[stack] bag が無い: $BAG（/work のバインドを確認）" >&2; exit 1; }
+    docker exec "$NAME" test -d "$BAG" || { echo "[stack] bag が無い: ${BAG}（/work のバインドを確認）" >&2; exit 1; }
     # ⚠️⚠️ **`--loop` は既定にしない（2026-09-08 に踏んだ）。**
     # bag が巻き戻ると `/clock` の sim time が過去に戻る。TF のバッファは未来の
     # スタンプを抱えたままなので、以降すべての変換が

@@ -58,7 +58,7 @@ Q="$(ros "stdbuf -oL timeout -s INT 12 ros2 topic echo --once /lidar_odometry/po
 if [ -z "$Q" ]; then
     bad "ICP 品質が取れない（MOLA が居ない）"
 elif awk "BEGIN{exit !($Q >= 0.70)}"; then
-    ok "ICP 品質 $Q（実測の常用域 0.83〜0.85）"
+    ok "ICP 品質 ${Q}（実測の常用域 0.83〜0.85）"
 else
     bad "ICP 品質 $Q が低い。地図の層が違うか初期姿勢が合っていない"
 fi
@@ -91,11 +91,16 @@ else
         echo "     → LIVOX_RPY_DEG が内蔵 odom 基準の値（pitch -8.41）になっていないか"
     fi
 fi
-if ros "timeout 6 ros2 run tf2_ros tf2_echo odom base_link" | grep -q Translation; then
-    ok "odom -> base_link も引ける"
-else
-    bad "odom -> base_link が引けない（map -> odom の静的変換が出ていない）"
-fi
+# ⚠️ **`... | grep -q` にしてはいけない**（2026-09-10 に踏んだ）。grep -q は一致した
+# 時点で終わるので、流し続けている上流の tf2_echo が SIGPIPE(141) で死ぬ。
+# `set -o pipefail` はパイプライン全体を 141 にするので、**引けているのに「引けない」**
+# と出る（実測 PIPESTATUS=141 0 ＝ grep 自身は一致している）。
+# 変数に受けてから case で見る。パイプを作らないので取り違えようがない。
+OB="$(ros "timeout 6 ros2 run tf2_ros tf2_echo odom base_link")"
+case "$OB" in
+    *Translation*) ok "odom -> base_link も引ける" ;;
+    *)             bad "odom -> base_link が引けない（map -> odom の静的変換が出ていない）" ;;
+esac
 
 # ── 3. コストマップ ─────────────────────────────────────────────
 step "3. コストマップ"
@@ -146,7 +151,7 @@ else
 fi
 PS="$(count /planner_selector Subscription)"
 if [ "${PS:-0}" -ge 1 ]; then
-    ok "/planner_selector の購読者 $PS（BT が差し替わっている）"
+    ok "/planner_selector の購読者 ${PS}（BT が差し替わっている）"
 else
     bad "/planner_selector に購読者が居ない。**Smac2D を選べない**"
     echo "     → bt_navigator の default_nav_to_pose_bt_xml が navigate_g1.xml か"
