@@ -7,14 +7,7 @@ Panels:
     - /Global Options1
     - /Status1
     Splitter Ratio: 0.5
-  Tree Height: 796
-- Class: rviz_common/Selection
-  Name: Selection
-- Class: rviz_common/Tool Properties
-  Expanded:
-  - /Publish Point1
-  Name: Tool Properties
-  Splitter Ratio: 0.5886790156364441
+  Tree Height: 500
 - Class: rviz_common/Views
   Expanded:
   - /Current View1
@@ -23,7 +16,7 @@ Panels:
 Visualization Manager:
   Class: ''
   Displays:
-  - Alpha: 0.5
+  - Alpha: 0.35
     Cell Size: 1
     Class: rviz_default_plugins/Grid
     Color: 160; 160; 164
@@ -38,7 +31,7 @@ Visualization Manager:
       Y: 0
       Z: 0
     Plane: XY
-    Plane Cell Count: 40
+    Plane Cell Count: 60
     Reference Frame: <Fixed Frame>
     Value: true
   - Alpha: 1
@@ -52,7 +45,7 @@ Visualization Manager:
     Class: rviz_default_plugins/PointCloud2
     Color: 255; 255; 255
     Color Transformer: AxisColor
-    Decay Time: 0.0
+    Decay Time: 600
     Enabled: true
     Invert Rainbow: false
     Max Color: 255; 255; 255
@@ -63,8 +56,8 @@ Visualization Manager:
     Position Transformer: XYZ
     Queue Size: 10
     Selectable: true
-    Size (Pixels): 2
-    Size (m): 0.009999999776482582
+    Size (Pixels): 3
+    Size (m): 0.05
     Style: Points
     Topic:
       Depth: 10
@@ -86,19 +79,19 @@ Visualization Manager:
     Class: rviz_default_plugins/PointCloud2
     Color: 255; 255; 255
     Color Transformer: Intensity
-    Decay Time: 0.0
-    Enabled: true
+    Decay Time: 0
+    Enabled: false
     Invert Rainbow: false
     Max Color: 255; 255; 255
     Max Intensity: 150
     Min Color: 0; 0; 0
     Min Intensity: 0
-    Name: 生の LiDAR（1 スキャン）
+    Name: 生の LiDAR（1 スキャン・既定オフ）
     Position Transformer: XYZ
     Queue Size: 10
     Selectable: true
     Size (Pixels): 3
-    Size (m): 0.009999999776482582
+    Size (m): 0.05
     Style: Points
     Topic:
       Depth: 10
@@ -108,7 +101,7 @@ Visualization Manager:
       Value: /utlidar/cloud_livox_mid360
     Use Fixed Frame: true
     Use rainbow: true
-    Value: true
+    Value: false
   - Angle Tolerance: 0.10000000149011612
     Class: rviz_default_plugins/Odometry
     Covariance:
@@ -119,27 +112,27 @@ Visualization Manager:
         Frame: Local
         Offset: 1
         Scale: 1
-        Value: true
+        Value: false
       Position:
         Alpha: 0.30000001192092896
         Color: 204; 51; 204
         Scale: 1
-        Value: true
+        Value: false
       Value: false
     Enabled: true
-    Keep: 300
+    Keep: 2000
     Name: 歩いた軌跡
-    Position Tolerance: 0.10000000149011612
+    Position Tolerance: 0.20000000298023224
     Shape:
       Alpha: 1
       Axes Length: 0.30000001192092896
       Axes Radius: 0.05000000074505806
-      Color: 255; 25; 0
-      Head Length: 0.10000000149011612
+      Color: 255; 40; 20
+      Head Length: 0.15000000596046448
       Head Radius: 0.10000000149011612
-      Shaft Length: 0.20000000298023224
+      Shaft Length: 0.25
       Shaft Radius: 0.03999999910593033
-      Value: Axes
+      Value: Arrow
     Topic:
       Depth: 5
       Durability Policy: Volatile
@@ -150,14 +143,14 @@ Visualization Manager:
     Value: true
   - Class: rviz_default_plugins/Axes
     Enabled: true
-    Length: 0.5
+    Length: 1.0
     Name: 原点(LiDAR)
-    Radius: 0.03
+    Radius: 0.05
     Reference Frame: livox_frame
     Value: true
   Enabled: true
   Global Options:
-    Background Color: 30; 30; 34
+    Background Color: 22; 24; 30
     Fixed Frame: map
     Frame Rate: 30
   Name: root
@@ -176,39 +169,30 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Class: rviz_default_plugins/Orbit
-      Distance: 25.0
+      Angle: 0
+      Class: rviz_default_plugins/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
-      Focal Point:
-        X: 0
-        Y: 0
-        Z: 0
-      Focal Shape Fixed Size: true
-      Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.9503982067108154
+      Scale: 26
       Target Frame: <Fixed Frame>
-      Value: Orbit (rviz)
-      Yaw: 2.6603963375091553
+      Value: TopDownOrtho (rviz_default_plugins)
+      X: 6.69
+      Y: -3.55
     Saved: null
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 1025
+  Height: 1040
   Hide Left Dock: false
-  Hide Right Dock: false
-  Selection:
-    collapsed: false
-  Tool Properties:
-    collapsed: false
+  Hide Right Dock: true
   Views:
     collapsed: false
-  Width: 1853
-  X: 67
-  Y: 27
+  Width: 1900
+  X: 10
+  Y: 30
