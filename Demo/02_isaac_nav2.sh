@@ -86,8 +86,16 @@ fi
 grep -E "初期姿勢|initial pose|設定しました" "${CONSOLE_LOG}" | tail -3 || true
 
 if [ "${OPEN_RVIZ}" = "1" ]; then
-    _info "RViz2 を開きます"
-    ( cd "${ISAAC_DIR}" && exec bash run_rviz.sh ) > "${LOG_DIR}/rviz.log" 2>&1 &
+    # IsaacSim_Env/run_rviz.sh は nav2 の既定設定を使うので**画面いっぱいに開き、
+    # Isaac Sim の窓を覆い隠す**。デモでは「シミュレータの中で G1 が歩く姿」と
+    # 「RViz の経路」を並べて見せたいので、右半分に固定した設定を持つ。
+    _info "RViz2 を開きます（画面の右半分。左に Isaac Sim が見えます）"
+    (
+        cd "${ISAAC_DIR}" || exit 1
+        # shellcheck disable=SC1091
+        source ./env.sh
+        exec ros2 run rviz2 rviz2 -d "${DEMO_DIR}/nav2_g1.rviz" --ros-args -p use_sim_time:=true
+    ) > "${LOG_DIR}/rviz.log" 2>&1 &
     RVIZ_PID=$!
     sleep 5
     if kill -0 "${RVIZ_PID}" 2>/dev/null; then

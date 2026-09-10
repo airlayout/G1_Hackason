@@ -1,0 +1,998 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>デモ当日の手順書 — Ubuntu ゲーミング PC 1 台で回す</title>
+<style>
+
+
+/* ── トークン ─────────────────────────────────────────────
+   色は本プロジェクトが一貫して使う Turbo カラーマップから採った。
+   青 = 床 / 橙 = 壁上部。橙は「警告・未検証」の意味色にだけ使う。 */
+:root {
+  --ground:      #f6f8fa;
+  --surface:     #ffffff;
+  --surface-2:   #eef1f6;
+  --ink:         #111620;
+  --ink-2:       #46505f;
+  --ink-3:       #6b7686;
+  --line:        #dce1e9;
+  --line-strong: #c3cbd7;
+
+  --accent:      #0f6fc4;   /* 計測青 */
+  --accent-soft: #e7f1fb;
+  --warn:        #b1500f;   /* 未検証・注意 */
+  --warn-soft:   #fbeee2;
+  --good:        #14714a;   /* 実証済み */
+  --good-soft:   #e3f2ea;
+  --bad:         #a8202c;   /* 不可 */
+  --bad-soft:    #f9e6e7;
+
+  /* CDN を読まない。デモ機（Ubuntu）と Mac の双方にあるものを並べる。 */
+  --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans CJK JP",
+          "Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, "DejaVu Sans Mono",
+          "Noto Sans Mono CJK JP", Consolas, monospace;
+
+  --col:   68ch;
+  --wide:  1180px;
+  --r:     6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #0e1116;
+    --surface:     #151a22;
+    --surface-2:   #1b212b;
+    --ink:         #e8eaed;
+    --ink-2:       #b3bcc9;
+    --ink-3:       #8b94a3;
+    --line:        #262d3a;
+    --line-strong: #38414f;
+
+    --accent:      #57a8ea;
+    --accent-soft: #16283a;
+    --warn:        #e0964f;
+    --warn-soft:   #2e2317;
+    --good:        #4cc08a;
+    --good-soft:   #14271e;
+    --bad:         #e8737f;
+    --bad-soft:    #2c1719;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:      #0e1116;
+  --surface:     #151a22;
+  --surface-2:   #1b212b;
+  --ink:         #e8eaed;
+  --ink-2:       #b3bcc9;
+  --ink-3:       #8b94a3;
+  --line:        #262d3a;
+  --line-strong: #38414f;
+
+  --accent:      #57a8ea;
+  --accent-soft: #16283a;
+  --warn:        #e0964f;
+  --warn-soft:   #2e2317;
+  --good:        #4cc08a;
+  --good-soft:   #14271e;
+  --bad:         #e8737f;
+  --bad-soft:    #2c1719;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 16px/1.75 var(--sans);
+  font-feature-settings: "palt" 1;
+}
+
+/* ── レイアウト ───────────────────────────────────────── */
+.wrap { max-width: var(--wide); margin: 0 auto; padding: 0 24px; }
+.col  { max-width: var(--col); }
+main > section { padding: 56px 0; border-top: 1px solid var(--line); }
+main > section:first-of-type { border-top: 0; }
+
+/* ── ヘッダ ───────────────────────────────────────────── */
+header { padding: 64px 0 40px; }
+.eyebrow {
+  font: 500 12px/1.4 var(--mono);
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+h1 {
+  margin: 14px 0 0;
+  font: 700 clamp(30px, 2.2rem + 1.6vw, 52px)/1.14 var(--sans);
+  letter-spacing: -.02em;
+  text-wrap: balance;
+}
+.dek {
+  margin: 18px 0 0; max-width: 62ch;
+  font-size: 18px; color: var(--ink-2);
+}
+.meta {
+  margin-top: 28px; display: flex; flex-wrap: wrap; gap: 6px 28px;
+  font: 400 13px/1.6 var(--mono); color: var(--ink-3);
+}
+.meta b { color: var(--ink-2); font-weight: 500; }
+
+/* 主要数値のストリップ */
+.figures {
+  margin-top: 36px;
+  display: grid; gap: 1px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  background: var(--line); border: 1px solid var(--line);
+  border-radius: var(--r); overflow: hidden;
+}
+.fig { background: var(--surface); padding: 16px 18px; }
+.fig dt {
+  font: 500 11px/1.4 var(--mono); letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.fig dd {
+  margin: 7px 0 0;
+  font: 600 22px/1.15 var(--mono); font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+}
+.fig dd small { font-size: 13px; font-weight: 400; color: var(--ink-3); margin-left: 2px; }
+
+/* ── 見出し ───────────────────────────────────────────── */
+h2 {
+  margin: 0 0 6px;
+  font: 600 clamp(23px, 1.3rem + .8vw, 31px)/1.25 var(--sans);
+  letter-spacing: -.015em; text-wrap: balance;
+}
+.h2sub { margin: 0 0 30px; color: var(--ink-2); max-width: 62ch; }
+h3 {
+  margin: 38px 0 10px;
+  font: 600 18px/1.4 var(--sans); letter-spacing: -.01em;
+}
+h4 {
+  margin: 26px 0 8px;
+  font: 500 12px/1.4 var(--mono); letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+p { margin: 0 0 16px; }
+p:last-child { margin-bottom: 0; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px;
+}
+code {
+  font: 400 .88em/1.5 var(--mono);
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 4px; padding: .08em .34em;
+}
+strong { font-weight: 600; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ── 検証状態チップ ───────────────────────────────────────
+   このプロジェクトの規律は「実証済みか未検証か」の線引きなので、
+   主張の横に必ず状態を出す。装飾ではなく内容の一部。 */
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font: 500 11px/1 var(--mono); letter-spacing: .06em;
+  padding: 4px 8px; border-radius: 3px; white-space: nowrap;
+  vertical-align: 2px;
+}
+.chip::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.chip.ok   { color: var(--good); background: var(--good-soft); }
+.chip.un   { color: var(--warn); background: var(--warn-soft); }
+.chip.no   { color: var(--bad);  background: var(--bad-soft); }
+.chip.info { color: var(--accent); background: var(--accent-soft); }
+
+/* ── 表 ───────────────────────────────────────────────── */
+.tw { overflow-x: auto; margin: 20px 0 8px; border: 1px solid var(--line); border-radius: var(--r); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+caption {
+  caption-side: bottom; padding: 10px 14px; text-align: left;
+  font-size: 13px; color: var(--ink-3); border-top: 1px solid var(--line);
+}
+th, td { padding: 9px 14px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead th {
+  background: var(--surface-2);
+  font: 500 11px/1.4 var(--mono); letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-3); white-space: nowrap;
+}
+tbody tr { background: var(--surface); }
+tbody tr:last-child td { border-bottom: 0; }
+td.n, th.n { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.k { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+.up   { color: var(--good); font-weight: 600; }
+.down { color: var(--bad);  font-weight: 600; }
+.flat { color: var(--ink-3); }
+
+/* ── コード ───────────────────────────────────────────── */
+pre {
+  margin: 18px 0; padding: 15px 17px; overflow-x: auto;
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 2px solid var(--line-strong);
+  border-radius: var(--r);
+  font: 400 13px/1.7 var(--mono); color: var(--ink-2);
+}
+pre b { color: var(--ink); font-weight: 500; }
+pre .c { color: var(--ink-3); }
+
+/* ── 注記 ─────────────────────────────────────────────── */
+.note {
+  margin: 20px 0; padding: 14px 18px;
+  border-left: 2px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 var(--r) var(--r) 0; font-size: 15px;
+}
+.note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+.note.bad  { border-left-color: var(--bad);  background: var(--bad-soft); }
+.note.good { border-left-color: var(--good); background: var(--good-soft); }
+figure img { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+ol.plain { padding-left: 1.35em; }
+ol.plain li { margin-bottom: 7px; }
+strong.warn { color: var(--warn); }
+.note > :last-child { margin-bottom: 0; }
+.note .lbl {
+  display: block; margin-bottom: 5px;
+  font: 500 11px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+}
+
+/* ── 図版 ─────────────────────────────────────────────── */
+figure { margin: 28px 0; }
+figure img {
+  display: block; width: 100%; height: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: var(--r);
+}
+figcaption {
+  margin-top: 10px; font-size: 13.5px; color: var(--ink-3);
+  max-width: 74ch;
+}
+figcaption b { color: var(--ink-2); font-weight: 500; }
+figcaption .still {
+  display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 3px;
+  font: 600 10.5px/1.7 var(--mono); letter-spacing: .08em; vertical-align: 1px;
+  color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line);
+}
+figcaption .jump {
+  color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap;
+}
+figcaption .jump:hover { text-decoration: underline; }
+.pair { display: grid; gap: 22px; grid-template-columns: 1fr; }
+@media (min-width: 860px) { .pair { grid-template-columns: 1fr 1fr; } }
+.pair figure { margin: 0; }
+
+/* ── 経路図 ───────────────────────────────────────────── */
+.hops { margin: 24px 0; display: flex; flex-direction: column; gap: 0; }
+.hop { display: grid; grid-template-columns: 26px 1fr; gap: 14px; }
+.hop .rail { position: relative; }
+.hop .rail::before {
+  content: ""; position: absolute; left: 12px; top: 6px; bottom: -6px;
+  width: 2px; background: var(--line-strong);
+}
+.hop:last-child .rail::before { display: none; }
+.hop .dot {
+  position: relative; z-index: 1;
+  width: 11px; height: 11px; margin: 7px 0 0 7px;
+  border-radius: 50%; background: var(--ground);
+  border: 2px solid var(--accent);
+}
+.hop.made .dot { background: var(--warn); border-color: var(--warn); }
+.hop .body { padding-bottom: 20px; }
+.hop .who { font: 500 14px/1.5 var(--sans); }
+.hop .proto {
+  font: 400 12.5px/1.6 var(--mono); color: var(--ink-2);
+}
+.hop .rate {
+  font: 500 12.5px/1.6 var(--mono); color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── ビューアへの誘導 ─────────────────────────────────── */
+.cta {
+  display: grid; gap: 0; margin: 26px 0;
+  border: 1px solid var(--line-strong); border-radius: var(--r);
+  overflow: hidden; background: var(--surface);
+}
+.cta .files { padding: 4px 0; }
+.cta .files a {
+  display: flex; justify-content: space-between; gap: 16px; align-items: baseline;
+  padding: 11px 22px; text-decoration: none; color: inherit;
+  border-bottom: 1px solid var(--line);
+  font: 400 13.5px/1.5 var(--mono);
+}
+.cta .files a:last-child { border-bottom: 0; }
+.cta .files a:hover { background: var(--surface-2); }
+.cta .files .sz { color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+kbd {
+  font: 500 11.5px/1.4 var(--mono);
+  background: var(--surface-2); border: 1px solid var(--line-strong);
+  border-bottom-width: 2px; border-radius: 4px; padding: 2px 6px;
+  color: var(--ink);
+}
+
+/* ── 引き継ぎ ─────────────────────────────────────────── */
+.carry { display: grid; gap: 14px; margin: 22px 0; }
+.carry > li {
+  list-style: none; padding: 16px 18px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 2px solid var(--warn); border-radius: 0 var(--r) var(--r) 0;
+}
+.carry .hd { font-weight: 600; margin-bottom: 5px; }
+.carry p { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+ul.plain { padding-left: 1.15em; margin: 14px 0; }
+ul.plain li { margin-bottom: 7px; }
+
+footer {
+  border-top: 1px solid var(--line); margin-top: 20px;
+  padding: 34px 0 60px; font-size: 13.5px; color: var(--ink-3);
+}
+footer p { margin-bottom: 8px; }
+
+/* ── 手法比較表の群見出し（追記2）───────────────────── */
+tbody tr.grp td {
+  background: var(--surface-2);
+  font: 500 11px/1.4 var(--mono); letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-3);
+  border-bottom: 1px solid var(--line-strong);
+}
+tbody tr.grp + tr td { border-top: 0; }
+
+
+/* ── 走行の録画 ───────────────────────────────────────── */
+.vids { margin: 26px 0 0; display: grid; gap: 22px; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .vids { grid-template-columns: 1fr 1fr 1fr; } }
+.vids figure { margin: 0; }
+figure video {
+  display: block; width: 100%; height: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: var(--r);
+}
+.vids figcaption { margin-top: 8px; font-size: 12.5px; }
+.vids figcaption b { display: block; color: var(--ink); font-weight: 700; }
+
+/* ── ここから Demo/README.html だけの追加 ───────────────────
+   図は inline SVG。外部 CDN も画像ファイルも使わない（当日ネットが無い前提）。
+   SVG の中の文字はここで一括して指定する。 */
+.figwrap { margin: 30px 0; }
+.figwrap svg { display: block; width: 100%; height: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 0; }
+svg .t-h     { font: 600 17px var(--sans); fill: var(--ink); }
+svg .t-b     { font: 600 14px var(--sans); fill: var(--ink); }
+svg .t-m     { font: 400 13px var(--sans); fill: var(--ink-2); }
+svg .t-s     { font: 400 12px var(--sans); fill: var(--ink-2); }
+svg .t-lbl   { font: 500 10.5px var(--mono); letter-spacing: .1em; }
+svg .t-mono-b{ font: 600 13px var(--mono); fill: var(--ink); }
+svg .t-mono-s{ font: 400 11.5px var(--mono); fill: var(--ink-2); }
+
+/* 手順のカード */
+.steps { counter-reset: s; margin: 24px 0 0; padding: 0; list-style: none; }
+.steps > li {
+  counter-increment: s; position: relative;
+  padding: 0 0 22px 52px; margin: 0;
+  border-left: 1px solid var(--line); margin-left: 15px;
+}
+.steps > li:last-child { border-left-color: transparent; padding-bottom: 0; }
+.steps > li::before {
+  content: counter(s); position: absolute; left: -15px; top: -2px;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent); color: #fff;
+  font: 600 14px/1 var(--mono);
+}
+.steps h3 { margin: 2px 0 6px; font-size: 16px; }
+.steps p  { margin: 0 0 8px; }
+
+/* 打つコマンド */
+.cmd {
+  display: block; margin: 10px 0; padding: 12px 16px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-left: 2px solid var(--accent); border-radius: 0 var(--r) var(--r) 0;
+  font: 500 14px/1.6 var(--mono); white-space: pre-wrap; overflow-x: auto;
+}
+.cmd .c { color: var(--ink-3); font-weight: 400; }
+
+/* 動画 */
+.clip { margin: 26px 0; }
+.clip video {
+  display: block; width: 100%; height: auto;
+  background: #101318; border: 1px solid var(--line); border-radius: var(--r);
+}
+.clip figcaption { margin-top: 10px; font-size: 13.5px; color: var(--ink-2); }
+.clip figcaption b { color: var(--ink); font-weight: 600; }
+
+/* 2 列 */
+.two { display: grid; gap: 24px; grid-template-columns: 1fr; margin-top: 24px; }
+@media (min-width: 820px) { .two { grid-template-columns: 1fr 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px 20px; }
+.card h3 { margin: 0 0 8px; font-size: 16px; }
+.card p:last-child, .card ul:last-child { margin-bottom: 0; }
+
+/* 目次 */
+.toc { margin: 30px 0 0; padding: 0; list-style: none;
+  display: grid; gap: 8px 24px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.toc a { display: block; padding: 9px 12px; border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--surface); text-decoration: none; color: var(--ink); }
+.toc a:hover { border-color: var(--accent); }
+.toc .n { font: 500 11px var(--mono); color: var(--ink-3); letter-spacing: .1em; }
+.toc .t { display: block; font-size: 14.5px; margin-top: 2px; }
+
+@media print {
+  .clip video { display: none; }
+  .clip::after { content: "（動画は画面で見てください）"; font-size: 13px; color: var(--ink-3); }
+}
+
+</style>
+</head>
+<body>
+<header class="wrap">
+  <p class="eyebrow">Demo — Ubuntu ゲーミング PC 1 台で回す</p>
+  <h1>デモ当日の手順書</h1>
+  <p class="dek">
+    操作するのは <b>Ubuntu ゲーミング PC（192.168.123.200）だけ</b>。
+    このページの順に押していけば、LiDAR の計測・Isaac Sim での Nav2 走行・Quest での
+    エピソード記録を見せられる。<b>まず「3 分チェック」から。</b>
+  </p>
+  <p class="meta">
+    <span><b>更新</b> 2026-09-10</span>
+    <span><b>デモ機</b> OMEN 16L / Ubuntu 24.04.4 / ROS 2 Jazzy / RTX 5060 Ti</span>
+    <span><b>ブランチ</b> Dev/Navigation</span>
+  </p>
+
+  <dl class="figures">
+    <div class="fig"><dt>項目3 起動</dt><dd>40<small>秒</small></dd></div>
+    <div class="fig"><dt>到達</dt><dd>error_code 0</dd></div>
+    <div class="fig"><dt>リカバリ</dt><dd>0<small>回</small></dd></div>
+    <div class="fig"><dt>停止</dt><dd>6<small>秒・孤児 0</small></dd></div>
+    <div class="fig"><dt>記録の再生</dt><dd>136,047<small>msg</small></dd></div>
+  </dl>
+
+  <ul class="toc">
+    <li><a href="#check"><span class="n">01</span><span class="t">当日の 3 分チェック</span></a></li>
+    <li><a href="#kit"><span class="n">02</span><span class="t">機材と、どれがどこで動くか</span></a></li>
+    <li><a href="#item3"><span class="n">03</span><span class="t">項目3 — Isaac Sim で Nav2 走行</span></a></li>
+    <li><a href="#item2"><span class="n">04</span><span class="t">項目2 — LiDAR で計測</span></a></li>
+    <li><a href="#item4"><span class="n">05</span><span class="t">項目4 — Quest でエピソード</span></a></li>
+    <li><a href="#stop"><span class="n">06</span><span class="t">止め方</span></a></li>
+    <li><a href="#trouble"><span class="n">07</span><span class="t">症状 → 原因</span></a></li>
+    <li><a href="#inside"><span class="n">08</span><span class="t">中身（触る人向け）</span></a></li>
+  </ul>
+</header>
+
+<main>
+
+<!-- ══════════════════════════════════════════════════ -->
+<section id="check" class="wrap">
+  <h2>01　当日の 3 分チェック</h2>
+  <p class="h2sub">何が使えて何が使えないかを、先に 1 本で出す。ロボットも Isaac Sim も起動しないので安全。</p>
+
+  <code class="cmd">cd ~/G1_Hackason
+bash Demo/preflight.sh</code>
+
+  <p>最後に <b>「今すぐ見せられるのは n / 4 です」</b> と「次にやること」が出る。
+  そこに書いてあることだけやればよい。</p>
+
+  <div class="note">
+    <span class="lbl">読み方</span>
+    <p><span class="chip ok">OK</span> はそのまま使える。<span class="chip no">NG</span> は使えないが、
+    <b>理由と直し方が「次にやること」に出る</b>。実機の電源が入っていないだけなら、
+    項目2 は記録の再生に落ちて動く。</p>
+  </div>
+
+  <h3>電源とケーブル</h3>
+  <div class="tw">
+  <table>
+    <thead><tr><th>見るもの</th><th>正しい状態</th><th>違ったら</th></tr></thead>
+    <tbody>
+      <tr><td>有線 <code>enp129s0</code></td><td><code>up</code> ＋ <code>192.168.123.200/24</code></td><td>LAN ケーブルを挿し直す</td></tr>
+      <tr><td>G1 の電源</td><td>PC2 <code>192.168.123.164:22</code> に TCP が通る</td><td>項目2 ライブと項目4 は諦めて再生で見せる</td></tr>
+      <tr><td>WiFi <code>wlp128s20f3</code></td><td>Quest と同じネットワーク</td><td>項目4 だけ影響する</td></tr>
+    </tbody>
+    <caption>疎通は <code>ping</code> ではなく <code>/dev/tcp</code> で測っている。<code>ping</code> だと「コマンドが無い」と「届かない」が同じ NG になり、過去に取り違えたため。</caption>
+  </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<section id="kit" class="wrap">
+  <h2>02　機材と、どれがどこで動くか</h2>
+  <p class="h2sub">項目3 は PC の中だけで完結する。実機に繋がるのは項目2 のライブと項目4 だけ。</p>
+  <div class="figwrap"><svg viewBox="0 0 900 400" role="img" aria-labelledby="fig1t fig1d" xmlns="http://www.w3.org/2000/svg">
+  <title id="fig1t">デモ当日の機材と、どれがどこで動くか</title>
+  <desc id="fig1d">Ubuntu ゲーミング PC 1 台で 3 つのデモを回す。項目3 は PC の中だけで完結し、項目2 のライブと項目4 だけが有線で G1 実機に繋がる。Mac は記録を渡すためだけに使う。</desc>
+
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+    </marker>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--warn)"/>
+    </marker>
+  </defs>
+
+  <!-- デモ機 -->
+  <rect x="16" y="40" width="404" height="336" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+  <text x="32" y="66" class="t-lbl" fill="var(--accent)">操作するのはこの 1 台だけ</text>
+  <text x="32" y="90" class="t-h">Ubuntu ゲーミング PC</text>
+  <text x="32" y="110" class="t-m">192.168.123.200 / OMEN 16L / RTX 5060 Ti</text>
+  <text x="32" y="128" class="t-m">Ubuntu 24.04 ・ ROS 2 Jazzy</text>
+
+  <rect x="32" y="146" width="372" height="52" rx="5" fill="var(--surface)" stroke="var(--good)" stroke-width="1.5"/>
+  <text x="46" y="168" class="t-b">項目3　Isaac Sim ＋ Nav2</text>
+  <text x="46" y="188" class="t-s" fill="var(--good)">この箱の中だけで完結する（実機は要らない）</text>
+
+  <rect x="32" y="206" width="372" height="52" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <text x="46" y="228" class="t-b">項目2　LiDAR で計測</text>
+  <text x="46" y="248" class="t-s">再生 = PC の中だけ ／ ライブ = 実機が要る</text>
+
+  <rect x="32" y="266" width="372" height="52" rx="5" fill="var(--surface)" stroke="var(--line-strong)"/>
+  <text x="46" y="288" class="t-b">項目4　Quest でエピソード記録・再生</text>
+  <text x="46" y="308" class="t-s">実機が要る　＋　Quest 3 が同じ WiFi に居ること</text>
+
+  <text x="32" y="348" class="t-s" fill="var(--ink-3)">enp129s0 = 有線（G1 側）　wlp128s20f3 = 無線（Quest 側）</text>
+
+  <!-- G1 -->
+  <rect x="560" y="40" width="324" height="150" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/>
+  <text x="578" y="66" class="t-lbl" fill="var(--ink-3)">実機</text>
+  <text x="578" y="90" class="t-h">Unitree G1</text>
+  <text x="578" y="112" class="t-m">PC1 .161　PC2 .164　LiDAR .120</text>
+  <text x="578" y="134" class="t-m">頭部 Livox Mid-360S ・ 29 DoF</text>
+  <text x="578" y="164" class="t-s" fill="var(--warn)">2026-09-10 時点で電源オフ</text>
+
+  <!-- Mac -->
+  <rect x="560" y="226" width="324" height="150" rx="8" fill="var(--surface)" stroke="var(--line)" stroke-dasharray="4 3"/>
+  <text x="578" y="252" class="t-lbl" fill="var(--ink-3)">当日は使わない</text>
+  <text x="578" y="276" class="t-h">Mac（開発機）</text>
+  <text x="578" y="298" class="t-m">192.168.123.202</text>
+  <text x="578" y="322" class="t-s">LiDAR の記録 3.0 GB を渡すためだけに一度だけ使う</text>
+  <text x="578" y="344" class="t-s" fill="var(--ink-3)">（渡したあとは外してよい）</text>
+
+  <!-- 線 -->
+  <g color="var(--ink-3)">
+    <line x1="420" y1="115" x2="556" y2="115" stroke="var(--warn)" stroke-width="2" marker-end="url(#arw)"/>
+    <text x="432" y="105" class="t-s" fill="var(--warn)">有線 192.168.123.0/24</text>
+    <text x="432" y="134" class="t-s" fill="var(--warn)">項目2 ライブ ／ 項目4</text>
+
+    <line x1="420" y1="290" x2="556" y2="290" stroke="var(--line-strong)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+    <text x="436" y="281" class="t-s" fill="var(--ink-3)">記録を一度だけ</text>
+  </g>
+</svg></div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<section id="item3" class="wrap">
+  <h2>03　項目3 — Isaac Sim で Nav2 走行 <span class="chip ok">実測済み</span></h2>
+  <p class="h2sub">実機は要らない。実測した部屋（UiS_room_v3）を再現したシーンの中で、RViz2 でクリックした場所まで G1 が歩く。</p>
+
+  <figure class="clip">
+    <video src="video/03_isaac_nav2.mp4" poster="video/03_isaac_nav2.jpg"
+           controls loop muted playsinline preload="metadata" width="1440" height="810"></video>
+    <figcaption><b>左が Isaac Sim、右が RViz2。</b>
+    RViz2 で「2D Goal Pose」を置くと、Nav2 が経路を引き、G1 が歩いてそこで止まる。
+    速度は画面に出している。</figcaption>
+  </figure>
+
+  <ol class="steps">
+    <li>
+      <h3>起動する</h3>
+      <code class="cmd">bash Demo/02_isaac_nav2.sh</code>
+      <p><b>3〜6 分かかる。</b> Isaac Sim の窓が開いてもまだ触らないこと。
+      <code>[OK] Nav2 が起動しました</code> と <code>[OK] RViz2 を開きました</code> が出たら準備完了。</p>
+    </li>
+    <li>
+      <h3>ゴールを置く</h3>
+      <p>RViz2（画面の右半分）の上のツールバーで <b>「2D Goal Pose」</b> を選び、
+      地図の上の行かせたい場所を<b>ドラッグ</b>する。矢印の向きが到着したときの向きになる。</p>
+      <div class="note bad">
+        <span class="lbl">押してはいけない</span>
+        <p><b>「2D Pose Estimate」は絶対に押さない。</b> この地図は原点がずれているので、
+        クリックすると自己位置が大きく飛ぶ（実測で位置 31 m・向き 179 度）。
+        初期姿勢は起動時に自動で入っている。</p>
+      </div>
+    </li>
+    <li>
+      <h3>歩くのを見せる</h3>
+      <p>左の Isaac Sim で G1 が歩く。RViz2 の「Navigation 2」パネルに
+      <code>Feedback: reached</code> と <code>Recoveries: 0</code> が出れば成功。</p>
+    </li>
+    <li>
+      <h3>止める</h3>
+      <p>起動したターミナルで <b>Ctrl-C</b>。Isaac Sim も RViz2 もまとめて止まる。</p>
+    </li>
+  </ol>
+
+  <div class="note warn">
+    <span class="lbl">見せる前に知っておくこと</span>
+    <p><b>G1 は指令ゼロでも漂流する。</b> Isaac Sim の中で -x 方向へ 3.4 cm/s ほど動くので、
+    起動を待っている 3〜6 分のあいだに 1.7〜2.3 m 移動している。故障ではない。
+    初期位置 <code>(6.55, -0.78)</code> は「立たせたい場所」ではなく
+    <b>「漂流したあとの着地点」</b>で選んである。<b>この値を変えないこと。</b></p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<section id="item2" class="wrap">
+  <h2>04　項目2 — LiDAR で計測</h2>
+  <p class="h2sub">実機があればライブ、無ければ記録の再生。<b>引数なしで叩けば自動で切り替わる。</b></p>
+
+  <code class="cmd">bash Demo/01_lidar.sh            <span class="c"># 実機が居れば live、居なければ replay</span>
+bash Demo/01_lidar.sh replay     <span class="c"># 記録の再生を明示（実機不要）</span>
+bash Demo/01_lidar.sh live       <span class="c"># ライブを明示（実機が要る）</span></code>
+
+  <figure class="clip">
+    <video src="video/02_lidar_replay.mp4" poster="video/02_lidar_replay.jpg"
+           controls loop muted playsinline preload="metadata" width="1280" height="708"></video>
+    <figcaption><b>記録の再生（実機不要）。</b>
+    G1 が実際に部屋を歩いて測った 591 秒ぶん。歩くにつれて部屋の形が描かれていく。
+    赤い矢印が歩いた軌跡。</figcaption>
+  </figure>
+
+  <div class="two">
+    <div class="card">
+      <h3>再生 <span class="chip ok">実測済み</span></h3>
+      <p>2026-09-06 に UiS_room_v3 で録った 3.0 GB・136,047 メッセージ。
+      RViz2 の左のリストで <b>「生の LiDAR」</b>にチェックを入れると 1 スキャンぶんの生の点も見える。</p>
+      <p>ただし記録に <code>/tf</code> が入っていないので、<b>生の点群は原点に貼り付いて見える</b>。故障ではない。</p>
+    </div>
+    <div class="card">
+      <h3>ライブ <span class="chip un">未検証</span></h3>
+      <p>G1 が既に配信している点群を購読するだけなので、ロボット内部と競合しない。</p>
+      <p>ただし Unitree の DDS は ROS 2 の type hash を載せない。Humble では 31 fps で出せた実績があるが、
+      <b>Jazzy では未検証</b>。先に <code>bash Mapping/real/ubuntu/check_lidar.sh</code> で型が解決できるか見ること。</p>
+    </div>
+  </div>
+
+  <h3>記録がデモ機に無いとき</h3>
+  <code class="cmd">bash Mapping/real/ubuntu/fetch_bag.sh</code>
+  <p>Mac の「リモートログイン」が既定で無効なので、そのままだと繋がらない。
+  繋がらなければ <b>Mac 側から押すコマンドが印字される</b>ので、それを Mac で打つ。</p>
+
+  <h3>この記録は Jazzy でそのままでは再生できなかった</h3>
+  <p>ここは自動で直るので当日は意識しなくてよいが、同じ症状に当たったときのために残しておく。</p>
+  <div class="figwrap"><svg viewBox="0 0 900 330" role="img" aria-labelledby="fig3t fig3d" xmlns="http://www.w3.org/2000/svg">
+  <title id="fig3t">Humble で録った記録が Jazzy で再生できない理由</title>
+  <desc id="fig3d">ros2 bag info は隣の metadata.yaml を読むので通る。ros2 bag play は db3 の中の metadata テーブルを読むので落ちる。Humble の db3 にはそのテーブルが無い。repair_bag_for_jazzy.py が追記だけで足す。</desc>
+  <defs>
+    <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--line-strong)"/>
+    </marker>
+  </defs>
+
+  <!-- 記録ディレクトリ -->
+  <rect x="20" y="60" width="270" height="200" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/>
+  <text x="38" y="88" class="t-lbl" fill="var(--ink-3)">記録ディレクトリ</text>
+  <rect x="38" y="102" width="234" height="46" rx="5" fill="var(--surface-2)" stroke="var(--line)"/>
+  <text x="52" y="122" class="t-mono-b">metadata.yaml</text>
+  <text x="52" y="140" class="t-s" fill="var(--ink-3)">version: 4</text>
+
+  <rect x="38" y="160" width="234" height="82" rx="5" fill="var(--surface-2)" stroke="var(--line)"/>
+  <text x="52" y="180" class="t-mono-b">…_0.db3　3.0 GB</text>
+  <text x="52" y="200" class="t-s">schema ／ topics ／ messages</text>
+  <text x="52" y="222" class="t-s" fill="var(--bad)">metadata テーブルが無い</text>
+
+  <!-- 通る側 -->
+  <rect x="400" y="34" width="230" height="80" rx="6" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/>
+  <text x="418" y="60" class="t-mono-b">ros2 bag info</text>
+  <text x="418" y="82" class="t-s">隣の yaml を読む</text>
+  <text x="418" y="102" class="t-s" fill="var(--good)">通る（だから気づきにくい）</text>
+
+  <!-- 落ちる側 -->
+  <rect x="400" y="140" width="230" height="98" rx="6" fill="var(--bad-soft)" stroke="var(--bad)" stroke-width="1.5"/>
+  <text x="418" y="166" class="t-mono-b">ros2 bag play</text>
+  <text x="418" y="188" class="t-s">db3 の中の metadata を読む</text>
+  <text x="418" y="210" class="t-s" fill="var(--bad)">SQL logic error で落ちる</text>
+  <text x="418" y="230" class="t-s" fill="var(--ink-3)">schema_version はどちらも 4</text>
+
+  <g stroke="var(--line-strong)" stroke-width="1.5" fill="none">
+    <path d="M290 125 H340 V74 H396" marker-end="url(#a3)"/>
+    <path d="M290 200 H340 V189 H396" marker-end="url(#a3)"/>
+  </g>
+
+  <!-- 直し -->
+  <rect x="676" y="112" width="208" height="126" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+  <text x="694" y="138" class="t-lbl" fill="var(--accent)">追記だけで直す</text>
+  <text x="694" y="162" class="t-mono-s">repair_bag_for_jazzy.py</text>
+  <text x="694" y="186" class="t-s">＋ metadata テーブル</text>
+  <text x="694" y="206" class="t-s">＋ message_definitions</text>
+  <text x="694" y="226" class="t-s">＋ type_description_hash 列</text>
+  <line x1="630" y1="189" x2="672" y2="189" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#a3)"/>
+
+  <text x="20" y="292" class="t-s" fill="var(--ink-3)">lidar_replay.sh が自動で呼ぶので、当日は意識しなくてよい。既存の行には触らないので何度実行してもよい。</text>
+  <text x="20" y="314" class="t-s" fill="var(--ink-3)">版番号では判別できない（Humble も Jazzy も schema_version は 4）。テーブルの有無で見ること。</text>
+</svg></div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<section id="item4" class="wrap">
+  <h2>05　項目4 — Quest でエピソード記録・再生 <span class="chip un">未実装</span></h2>
+  <p class="h2sub">実機の腕が動く。ここだけ性質がまったく違う。</p>
+
+  <div class="note bad">
+    <span class="lbl">安全 — 毎回確認する</span>
+    <p><b>起動直後、両腕が自動でゼロ姿勢へ動く。</b> 可動範囲に人と物が無いことを毎回確認すること。</p>
+    <ul>
+      <li>G1 は<b>座位で安定して固定</b>する</li>
+      <li><b>電源を切れる位置に手が届く状態</b>で操作する</li>
+      <li>終了は必ず <b><code>q</code></b>。<code>Ctrl-C</code> は腕が戻らないまま止まる</li>
+      <li>初めて動かすときは<b>必ず 2 人以上</b>で、片方が電源に手をかけて試す</li>
+    </ul>
+  </div>
+
+  <p><code>Demo/03_teleop.sh</code> は<b>まだ書いていない</b>（Phase 4）。
+  いま動かすなら、取り込み済みのキットの手順に従うこと。</p>
+  <code class="cmd">less Teleop/vendor/g1-starter-kit/README.md
+less Teleop/vendor/g1-starter-kit/docs/03-teleop.md</code>
+
+  <p>キットが<b>取り込み先から動くことは確認済み</b>（設定の読み込み・conda 環境 <code>tv</code>・
+  有線リンク判定まで通り、DDS の受信だけが実機オフで 0 件）。</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<section id="stop" class="wrap">
+  <h2>06　止め方</h2>
+  <p class="h2sub">普段は各スクリプトで Ctrl-C。ターミナルを閉じてしまったときだけ下を使う。</p>
+
+  <code class="cmd">bash Demo/stop.sh</code>
+
+  <div class="note bad">
+    <span class="lbl">やってはいけない</span>
+    <p><b>手で <code>kill</code> や <code>pkill</code> を打たないこと。</b>
+    止める signal は<b>送る先で逆になる</b>うえ、<code>pgrep -f</code> は
+    自分自身と <code>bash -c</code> のラッパにもマッチする。
+    除外を忘れて<b>呼び出し元の ssh セッションごと殺した</b>ことが 2 回ある。</p>
+  </div>
+
+  <div class="figwrap"><svg viewBox="0 0 900 250" role="img" aria-labelledby="fig4t fig4d" xmlns="http://www.w3.org/2000/svg">
+  <title id="fig4t">止める signal は送る先で逆になる</title>
+  <desc id="fig4d">外側のスクリプトには SIGTERM を送る。SIGINT は SIG_IGN で黙って無視される。内側の ros2 launch には SIGINT を送る。SIGTERM だと子を孤児化する。だから手で kill を打たず stop_nav2.sh を使う。</desc>
+  <defs>
+    <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--good)"/>
+    </marker>
+    <marker id="a4b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--bad)"/>
+    </marker>
+  </defs>
+
+  <rect x="20" y="30" width="200" height="70" rx="6" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/>
+  <text x="36" y="56" class="t-mono-b">run_nav2.sh</text>
+  <text x="36" y="78" class="t-s" fill="var(--ink-3)">外側のスクリプト</text>
+
+  <rect x="20" y="146" width="200" height="70" rx="6" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/>
+  <text x="36" y="172" class="t-mono-b">ros2 launch</text>
+  <text x="36" y="194" class="t-s" fill="var(--ink-3)">内側の子プロセス</text>
+
+  <g>
+    <line x1="230" y1="52" x2="380" y2="52" stroke="var(--good)" stroke-width="2" marker-end="url(#a4)"/>
+    <text x="392" y="57" class="t-mono-b" fill="var(--good)">SIGTERM</text>
+    <text x="510" y="57" class="t-s">正しく止まる</text>
+
+    <line x1="230" y1="84" x2="380" y2="84" stroke="var(--bad)" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#a4b)"/>
+    <text x="392" y="89" class="t-mono-b" fill="var(--bad)">SIGINT</text>
+    <text x="510" y="89" class="t-s" fill="var(--bad)">SIG_IGN で黙って無視される（15 分待っても何も起きない）</text>
+
+    <line x1="230" y1="168" x2="380" y2="168" stroke="var(--good)" stroke-width="2" marker-end="url(#a4)"/>
+    <text x="392" y="173" class="t-mono-b" fill="var(--good)">SIGINT</text>
+    <text x="510" y="173" class="t-s">正しく止まる</text>
+
+    <line x1="230" y1="200" x2="380" y2="200" stroke="var(--bad)" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#a4b)"/>
+    <text x="392" y="205" class="t-mono-b" fill="var(--bad)">SIGTERM</text>
+    <text x="510" y="205" class="t-s" fill="var(--bad)">自分だけ終了し、子が PPID=1 で孤児になる</text>
+  </g>
+
+  <text x="20" y="240" class="t-s" fill="var(--ink-3)">だから手で kill を打たない。bash Demo/stop.sh（内部で IsaacSim_Env/stop_nav2.sh）だけを使うこと。</text>
+</svg></div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<section id="trouble" class="wrap">
+  <h2>07　症状 → 原因</h2>
+  <p class="h2sub">当日その場で引く表。</p>
+
+  <div class="tw">
+  <table>
+    <thead><tr><th>症状</th><th>原因</th><th>やること</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>RViz2 に地図は出るが G1 が動かない</td>
+        <td>「2D Pose Estimate」を押して自己位置が飛んだ</td>
+        <td>止めて起動し直す。<b>Pose Estimate は使わない</b></td>
+      </tr>
+      <tr>
+        <td>起動待ちのあいだに G1 が壁に埋まった</td>
+        <td>漂流（-x へ 3.4 cm/s）。初期位置を変えていないか</td>
+        <td><code>SPAWN_X/Y</code> を <code>6.55 / -0.78</code> に戻す</td>
+      </tr>
+      <tr>
+        <td><code>ros2 bag info</code> は通るのに <code>play</code> が落ちる</td>
+        <td>Humble で録った db3 に <code>metadata</code> テーブルが無い</td>
+        <td><code>python3 Mapping/real/ubuntu/repair_bag_for_jazzy.py &lt;bag&gt; --apply</code></td>
+      </tr>
+      <tr>
+        <td>LiDAR のトピックが見えない</td>
+        <td><code>ros2 daemon</code> が古い DDS 設定のグラフを返している</td>
+        <td><code>--no-daemon</code> を付ける（<code>hz</code> だけは非対応）</td>
+      </tr>
+      <tr>
+        <td>点群が RViz2 に出ない</td>
+        <td><code>ROS_DOMAIN_ID</code> の食い違い</td>
+        <td>実機の購読は <b>0</b>、それ以外は <b>42</b></td>
+      </tr>
+      <tr>
+        <td>Isaac Sim が残って次の起動が壊れる</td>
+        <td>孤児プロセスが TF を二重配信している</td>
+        <td><code>bash Demo/stop.sh</code>（手で kill しない）</td>
+      </tr>
+      <tr>
+        <td><code>sudo</code> のパスワードが打てない</td>
+        <td>ssh 越し／VSCode の統合ターミナル</td>
+        <td>デモ機のターミナルで直接打つ</td>
+      </tr>
+      <tr>
+        <td>Mac から記録を押す rsync が黙って終わる</td>
+        <td>macOS の rsync は openrsync。<code>--info=progress2</code> が無い</td>
+        <td>そのオプションを外す</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ -->
+<section id="inside" class="wrap">
+  <h2>08　中身（触る人向け）</h2>
+  <p class="h2sub"><code>Demo/</code> は入口だけ。実装は領域フォルダが持つ。</p>
+  <div class="figwrap"><svg viewBox="0 0 900 470" role="img" aria-labelledby="fig2t fig2d" xmlns="http://www.w3.org/2000/svg">
+  <title id="fig2t">当日どのコマンドが何を呼ぶか</title>
+  <desc id="fig2d">Demo は入口だけで、実装は領域フォルダが持つ。項目2 は Mapping/real/ubuntu、項目3 は IsaacSim_Env、項目4 は Teleop を呼ぶ。設定は Demo/lib.sh に 1 箇所だけ置き、Teleop の設定ファイルから読む。</desc>
+  <defs>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--line-strong)"/>
+    </marker>
+  </defs>
+
+  <!-- 入口 -->
+  <rect x="20" y="20" width="240" height="128" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+  <text x="38" y="46" class="t-lbl" fill="var(--accent)">当日触るのはここだけ</text>
+  <text x="38" y="72" class="t-mono-b">Demo/demo.sh</text>
+  <text x="38" y="96" class="t-s">番号を選ぶだけのメニュー</text>
+  <text x="38" y="116" class="t-mono-s" fill="var(--ink-2)">Demo/preflight.sh</text>
+  <text x="38" y="132" class="t-mono-s" fill="var(--ink-2)">Demo/stop.sh</text>
+
+  <!-- lib.sh -->
+  <rect x="20" y="176" width="240" height="112" rx="8" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/>
+  <text x="38" y="202" class="t-mono-b">Demo/lib.sh</text>
+  <text x="38" y="224" class="t-s">設定の唯一の定義</text>
+  <text x="38" y="244" class="t-s">止め方・待ち方</text>
+  <text x="38" y="270" class="t-mono-s" fill="var(--ink-3)">← Teleop/config/g1.env.omen</text>
+
+  <line x1="140" y1="148" x2="140" y2="172" stroke="var(--line-strong)" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- 3 本 -->
+  <g>
+    <rect x="330" y="20" width="250" height="110" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
+    <text x="348" y="46" class="t-mono-b">Demo/01_lidar.sh</text>
+    <text x="348" y="68" class="t-s">項目2 — LiDAR で計測</text>
+    <text x="348" y="90" class="t-s" fill="var(--ink-3)">実機が無ければ黙って再生に落ちる</text>
+    <text x="348" y="114" class="t-mono-s" fill="var(--good)">再生は実機不要</text>
+
+    <rect x="330" y="150" width="250" height="110" rx="6" fill="var(--surface)" stroke="var(--good)" stroke-width="1.5"/>
+    <text x="348" y="176" class="t-mono-b">Demo/02_isaac_nav2.sh</text>
+    <text x="348" y="198" class="t-s">項目3 — Isaac Sim ＋ Nav2</text>
+    <text x="348" y="220" class="t-s" fill="var(--ink-3)">RViz2 の 2D Goal Pose でクリック</text>
+    <text x="348" y="244" class="t-mono-s" fill="var(--good)">実機不要</text>
+
+    <rect x="330" y="280" width="250" height="110" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-dasharray="4 3"/>
+    <text x="348" y="306" class="t-mono-b" fill="var(--ink-3)">Demo/03_teleop.sh</text>
+    <text x="348" y="328" class="t-s" fill="var(--ink-3)">項目4 — Quest でエピソード</text>
+    <text x="348" y="352" class="t-mono-s" fill="var(--warn)">未実装（Phase 4）</text>
+  </g>
+
+  <!-- 実装先 -->
+  <g>
+    <rect x="650" y="20" width="234" height="110" rx="6" fill="var(--surface-2)" stroke="var(--line)"/>
+    <text x="666" y="46" class="t-mono-b">Mapping/real/ubuntu/</text>
+    <text x="666" y="70" class="t-s">lidar_replay.sh</text>
+    <text x="666" y="90" class="t-s">lidar_live.sh ／ check_lidar.sh</text>
+    <text x="666" y="112" class="t-s">repair_bag_for_jazzy.py</text>
+
+    <rect x="650" y="150" width="234" height="110" rx="6" fill="var(--surface-2)" stroke="var(--line)"/>
+    <text x="666" y="176" class="t-mono-b">IsaacSim_Env/</text>
+    <text x="666" y="200" class="t-s">run_nav2.sh</text>
+    <text x="666" y="220" class="t-s">stop_nav2.sh</text>
+    <text x="666" y="244" class="t-s" fill="var(--ink-3)">止め方はこちらが知っている</text>
+
+    <rect x="650" y="280" width="234" height="110" rx="6" fill="var(--surface-2)" stroke="var(--line)"/>
+    <text x="666" y="306" class="t-mono-b">Teleop/</text>
+    <text x="666" y="330" class="t-s">vendor/g1-starter-kit/</text>
+    <text x="666" y="352" class="t-s" fill="var(--ink-3)">外部リポジトリの取り込み</text>
+  </g>
+
+  <g stroke="var(--line-strong)" stroke-width="1.5" fill="none">
+    <path d="M260 60 H312 V75 H326" marker-end="url(#a2)"/>
+    <path d="M260 85 H300 V205 H326" marker-end="url(#a2)"/>
+    <path d="M260 110 H288 V335 H326" marker-end="url(#a2)"/>
+    <line x1="580" y1="75"  x2="646" y2="75"  marker-end="url(#a2)"/>
+    <line x1="580" y1="205" x2="646" y2="205" marker-end="url(#a2)"/>
+    <line x1="580" y1="335" x2="646" y2="335" marker-end="url(#a2)"/>
+  </g>
+
+  <text x="20" y="432" class="t-s" fill="var(--ink-3)">Demo は入口だけ。実装は領域フォルダが持つ（既存の Mapping / Navigation / Perception の並びを崩さないため）。</text>
+  <text x="20" y="454" class="t-s" fill="var(--ink-3)">止め方を Demo 側で書き直さないこと。IsaacSim_Env/stop_nav2.sh が signal の向きを知っている。</text>
+</svg></div>
+
+  <h3>崩してはいけない約束</h3>
+  <ul>
+    <li><b><code>Demo/</code> は入口だけ。</b> 実装は領域フォルダが持つ（既存の
+      <code>Mapping/</code> <code>Navigation/</code> <code>Perception/</code> の並びを崩さないため）</li>
+    <li><b>止め方を書き直さない。</b> <code>IsaacSim_Env/stop_nav2.sh</code> が signal の向きを知っている</li>
+    <li><b>キットが潰した落とし穴を書き直さない。</b> DoF 自動判定・指令トピック自動選択・
+      腕速度の安全パッチは <code>Teleop/vendor/g1-starter-kit/</code> に既にある</li>
+  </ul>
+
+  <h3>コードを直すときに踏む罠</h3>
+  <div class="tw">
+  <table>
+    <thead><tr><th>書き方</th><th>何が起きるか</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>$(grep -c … || echo 0)</code></td>
+        <td>0 件のとき grep は「0」を印字した<b>うえで</b> exit 1 を返すので <code>"0\n0"</code> になり、
+            <code>[ -gt ]</code> が <code>integer expression expected</code> で落ちる。代入の失敗で受けること</td>
+      </tr>
+      <tr>
+        <td><code>grep -q</code>（<code>pipefail</code> 下）</td>
+        <td>見つかった時点でパイプ元を SIGPIPE で殺す。<b>合格側の経路だけ</b>落ちるので気づきにくい</td>
+      </tr>
+      <tr>
+        <td><code>pgrep -af</code> / <code>pkill -f</code></td>
+        <td>自分自身と <code>bash -c</code> のラッパにマッチする。<b>呼び出し元の ssh セッションごと死ぬ</b></td>
+      </tr>
+      <tr>
+        <td>いきなり <code>kill -9</code></td>
+        <td>RViz2 を強制終了すると apport がクラッシュとして拾いに来て、ゾンビと apport が残る。
+            SIGINT → SIGTERM → SIGKILL の順に上げる</td>
+      </tr>
+      <tr>
+        <td><code>$VAR</code> の直後に全角文字</td>
+        <td>変数名の一部と解釈されうる。<code>${VAR}</code> で囲むか半角空白を空ける</td>
+      </tr>
+      <tr>
+        <td><code>ping</code> で機器の生死を見る</td>
+        <td>「コマンドが無い」と「届かない」が同じ NG になる。<code>lib.sh</code> の
+            <code>tcp_probe</code>（<code>/dev/tcp</code>）を使う</td>
+      </tr>
+    </tbody>
+    <caption>どれも実際に踏んだもの。消さないこと。</caption>
+  </table>
+  </div>
+
+  <h3>設定を足すとき</h3>
+  <p><b><code>Demo/lib.sh</code> の 1 箇所にだけ書く。</b>
+  値は <code>Teleop/config/g1.env.omen</code> から読んでいるので二重に持たない。
+  デモ機ごとの上書きは <code>Demo/demo.env</code>（git では追跡していない）。</p>
+
+  <h3>まだ確かめていないこと</h3>
+  <div class="tw">
+  <table>
+    <thead><tr><th>項目</th><th>どう決まるか</th></tr></thead>
+    <tbody>
+      <tr><td>Jazzy が Unitree の DDS 型を解決できるか</td><td><code>bash Mapping/real/ubuntu/check_lidar.sh</code></td></tr>
+      <tr><td>腕の指令経路が <code>rt/arm_sdk</code> か <code>rt/lowcmd</code> か</td><td><code>python3 Teleop/vendor/g1-starter-kit/tools/armsdk_probe.py</code>（3 度だけ動かす）</td></tr>
+      <tr><td>Quest 3 が同じ LAN に居るか</td><td><code>bash Teleop/vendor/g1-starter-kit/scripts/quest_check.sh</code>（ロボット不要）</td></tr>
+      <tr><td>Ubuntu 24.04 でテレオペ本体が起動するか</td><td>キット README は 24.04 不可と書くが、実体は apt 側の話</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+</main>
+
+<footer class="wrap">
+  <p class="meta">
+    <span>G1_Hackason / Dev/Navigation</span>
+    <span>このページは <code>Demo/README.html</code>。外部 CDN に依存しないので、当日ネットが無くても開ける</span>
+  </p>
+</footer>
+
+</body>
+</html>

@@ -3,7 +3,7 @@
 #
 #   bash Demo/demo.sh
 #
-# 当日はこれと Demo/README.html だけ見ればよい（README.html は Phase 5 で作成）。
+# 当日はこれと Demo/README.html（図と動画つきの手順書）だけ見ればよい。
 set -eo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
