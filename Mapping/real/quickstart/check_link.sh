@@ -223,6 +223,48 @@ if docker inspect -f '{{.State.Running}}' "$G1_RVIZ_NAME" 2>/dev/null | grep -q 
     fi
 fi
 
+# ── 8. 記録の定義（機体もコンテナも要らない。offline でも見る）─────────
+step "8. 記録の定義 record_topics.txt（直書きが復活していないか）"
+if [ ! -f "$HERE/record_topics.txt" ]; then
+    g1_bad "$HERE/record_topics.txt が無い"
+    note "記録するトピックの唯一の定義。無いと run_stage.sh が走り出す前に落ちる"
+    FAIL=1
+else
+    # (a) 直書きの禁止。**トピック名を並べた `ros2 bag record` を探す。**
+    #     変数で渡している行（`"${TOPICS[@]}"` など）は当たらない＝それが正しい形。
+    #     ⚠️ 自分自身は外す（この検査の**パターン文字列が自分に当たる**。
+    #        2026-09-10 の pgrep 自己マッチと同じ型）。
+    #     `../docker/record-topics.sh` は別系統の古い実装で、この系では使わないので範囲外。
+    HARD="$(grep -rn -- 'ros2 bag record' "$HERE" 2>/dev/null \
+            | grep -v "$HERE/check_link.sh:" \
+            | grep -v "$HERE/record_topics.txt:" \
+            | grep -E '/utlidar/|/unitree/|/tf' || true)"
+    if [ -z "$HARD" ]; then
+        g1_ok "quickstart/ に記録トピックの直書きは無い"
+    else
+        g1_bad "記録トピックを直書きしている箇所がある"
+        printf '%s\n' "$HARD" | sed 's/^/       /'
+        note "record_topics.txt を読む形に直す:"
+        note "  TOPICS=\"\$(awk '/^[[:space:]]*#/{next} \$2==\"sensor\"||\$2==\"ros\"{printf \"%s \", \$1}' quickstart/record_topics.txt)\""
+        FAIL=1
+    fi
+
+    # (b) sensor 行は record_dds_to_bag.py の KNOWN_TOPICS に型が要る。
+    #     片方だけ足すと PC2 の記録が「未知のトピックです」で落ちる。
+    MISSING=""
+    for T in $(awk '/^[[:space:]]*#/{next} $2=="sensor"{print $1}' "$HERE/record_topics.txt"); do
+        [ -n "$(grep -F -- "\"$T\"" "$HERE/record_dds_to_bag.py" 2>/dev/null || true)" ] \
+            || MISSING="$MISSING $T"
+    done
+    if [ -z "$MISSING" ]; then
+        g1_ok "sensor 行は全部 record_dds_to_bag.py の KNOWN_TOPICS にある"
+    else
+        g1_bad "KNOWN_TOPICS に型が無い sensor 行:$MISSING"
+        note "record_dds_to_bag.py の KNOWN_TOPICS に \"<トピック>\": \"<型>\" を足す"
+        FAIL=1
+    fi
+fi
+
 echo
 echo "=============================================================="
 if [ "$FAIL" = "0" ]; then

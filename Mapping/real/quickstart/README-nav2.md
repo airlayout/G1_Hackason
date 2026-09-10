@@ -241,9 +241,11 @@ RViz2 のスクリーンショットは**カメラ角度と拡大率で印象が
 
 ```bash
 # 1. 録る（歩かせながら録るのが本番。静止中の値は甘い）
+#    記録トピックは quickstart/record_topics.txt が定義する。ここに直書きしない
+TOPICS="$(awk '/^[[:space:]]*#/{next} $2=="sensor"||$2=="ros"{printf "%s ", $1}' quickstart/record_topics.txt)"
 docker exec -u ubuntu rviz bash -c \
-  'source /opt/ros/humble/setup.bash && cd /work/G1_Hackason/Mapping/real/runs &&
-   timeout 30 ros2 bag record -o walk_bag /utlidar/cloud_livox_mid360 /tf /tf_static'
+  "source /opt/ros/humble/setup.bash && cd /work/G1_Hackason/Mapping/real/runs &&
+   timeout 30 ros2 bag record -o walk_bag ${TOPICS}"
 
 # 2. 測る（コンテナに numpy が無いので Mac 側の venv で）
 Navigation/.venv/bin/python quickstart/measure_overlay.py \

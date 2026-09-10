@@ -6,7 +6,9 @@
 こちらを合否の根拠にする。
 
   # 1. 実機（または再生）で /utlidar/cloud_livox_mid360 と /tf を録る
-  ros2 bag record -o live_overlay_bag /utlidar/cloud_livox_mid360 /tf /tf_static
+  #    記録トピックは quickstart/record_topics.txt が定義する（直書きしない）
+  TOPICS="$(awk '/^[[:space:]]*#/{next} $2=="sensor"||$2=="ros"{printf "%s ", $1}' quickstart/record_topics.txt)"
+  ros2 bag record -o live_overlay_bag ${TOPICS}
 
   # 2. 測る（Mac 側の venv で。コンテナには numpy/scipy が無い）
   Navigation/.venv/bin/python measure_overlay.py \

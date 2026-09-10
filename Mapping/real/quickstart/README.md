@@ -185,7 +185,8 @@ scp quickstart/probe_dds_topics.py quickstart/record_dds_to_bag.py \
     quickstart/mapping_ctl.py quickstart/diagnose_ros2.sh \
     quickstart/start_foxglove_bridge.sh \
     quickstart/odom_to_tf.py quickstart/start_odom_tf.sh \
-    quickstart/restamp_points.py quickstart/start_restamp.sh g1:~/mapping_tools/
+    quickstart/restamp_points.py quickstart/start_restamp.sh \
+    quickstart/record_topics.txt g1:~/mapping_tools/
 ssh g1 'chmod +x ~/mapping_tools/*.py ~/mapping_tools/*.sh'
 
 # ブラウザ可視化を使うなら、あわせてHumble環境も配る（第6節）

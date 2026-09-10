@@ -48,6 +48,52 @@ KNOWN_TOPICS = {
     "/unitree/slam_relocation/points": "sensor_msgs/msg/PointCloud2",
 }
 
+# 記録するトピックの**唯一の定義**は同じディレクトリの`record_topics.txt`。
+# 上のKNOWN_TOPICSは「名前→型」の辞書として残す（どちらが欠けても記録できない）。
+#
+# ⚠️ PC2へはscpで配る（`README.md`第5節のscp行に入っている）。配り忘れたときは
+# **黙ってトピックを減らさず**、警告を出して下の控えに落ちる。
+RECORD_TOPICS_TXT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "record_topics.txt")
+
+# `record_topics.txt`が無いときの控え。**あちらと同じ内容にしておくこと**
+FALLBACK_TOPICS = {
+    "sensor": ["/utlidar/cloud_livox_mid360", "/utlidar/imu_livox_mid360"],
+    "mapping": ["/unitree/slam_mapping/points", "/unitree/slam_mapping/odom"],
+}
+
+
+def read_record_topics(with_mapping):
+    """`record_topics.txt`から記録するトピックを読む。
+
+    2列目が範囲。DDS直記録で取れるのは`sensor`（`--with-mapping`のときは`mapping`も）
+    だけで、**`ros`行（/tf, /tf_static）はDDSに流れていない**ので取れない。
+    """
+    scopes = ("sensor", "mapping") if with_mapping else ("sensor",)
+    try:
+        with open(RECORD_TOPICS_TXT) as handle:
+            lines = handle.readlines()
+    except IOError:
+        print("⚠️ {} が無い。控えの既定で記録する（PC2へscpし忘れていないか）".format(
+            RECORD_TOPICS_TXT))
+        topics = []
+        for scope in scopes:
+            topics.extend(FALLBACK_TOPICS[scope])
+        return topics
+
+    topics = []
+    for line in lines:
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] in scopes:
+            topics.append(parts[0])
+    if not topics:
+        raise SystemExit("{} に {} の行が1つも無い".format(
+            RECORD_TOPICS_TXT, "/".join(scopes)))
+    return topics
+
 
 def resolve_idl_type(ros_type):
     """`sensor_msgs/msg/PointCloud2` から unitree_sdk2py の IDL クラスを引く。
@@ -198,11 +244,8 @@ def main():
     # 帯域は生LiDARが約4.4MB/s（地図点群は0.4MB/s）。12分で約3.5GB増えるが、
     # PC2の空きは1.8TBあるので問題にならない。容量を切り詰めたい場合のみ
     # `--topic`で明示指定して外すこと。
-    default_topics = (["/unitree/slam_mapping/points", "/unitree/slam_mapping/odom",
-                       "/utlidar/cloud_livox_mid360", "/utlidar/imu_livox_mid360"]
-                      if args.with_mapping
-                      else ["/utlidar/cloud_livox_mid360", "/utlidar/imu_livox_mid360"])
-    topics = list(args.topics or default_topics)
+    # 一覧は`record_topics.txt`が持つ。ここに書き並べない（2026-09-11）
+    topics = list(args.topics or read_record_topics(args.with_mapping))
     for topic in topics:
         if topic not in KNOWN_TOPICS:
             parser.error("未知のトピックです: {}（既知: {}）".format(

@@ -49,6 +49,13 @@ NAV2_YAML="${G1_NAV2_YAML:-$G1_REPO_ROOT/G1_Hackason/Navigation/nav2/g1_nav2.yam
 FALLBACK_XY_TOL=0.30
 FALLBACK_PLANNER_TOL=0.50
 
+# 記録するトピックは **record_topics.txt が唯一の定義**。ここにもどこにも直書きしない。
+# 2026-09-10 の 3 本は直書きで IMU を落とし、翌日「すべりの原因は IMU か」を
+# 記録から確かめられなかった。読めなければ**走り出す前に**落とす（黙って減らさない）。
+TOPICS_FILE="$HERE/record_topics.txt"
+REC_TOPICS="$(awk '/^[[:space:]]*#/{next} $2=="sensor"||$2=="ros"{printf "%s ", $1}' "$TOPICS_FILE" 2>/dev/null | sed 's/ *$//')"
+[ -n "$REC_TOPICS" ] || { echo "[stage] $TOPICS_FILE から記録トピックを読めない" >&2; exit 1; }
+
 BAG_WARMUP_S="${G1_BAG_WARMUP_S:-1.0}"
 BAG_FLUSH_S="${G1_BAG_FLUSH_S:-1.0}"
 NAV_WARMUP_S="${G1_NAV_WARMUP_S:-2.0}"
@@ -161,9 +168,9 @@ run_once() {
     local out="$1" local_out rc ov ov10 reach fake
     local_out="$(tolocal "$out")"
 
-    say "記録を開始する -> $out/bag"
+    say "記録を開始する -> $out/bag（${REC_TOPICS}）"
     ros "mkdir -p $out"
-    rosd "cd $out && ros2 bag record -o bag /utlidar/cloud_livox_mid360 /tf /tf_static \
+    rosd "cd $out && ros2 bag record -o bag $REC_TOPICS \
           > $out/bagrecord.log 2>&1"
     sleep "$BAG_WARMUP_S"
 

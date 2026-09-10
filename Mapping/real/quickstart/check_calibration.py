@@ -10,7 +10,9 @@
 ## 使い方
 
     # 実機（15 秒で足りる。590 秒の全長は要らない）
-    ros2 bag record -o calib_check /utlidar/cloud_livox_mid360 /tf /tf_static
+    # 記録トピックは quickstart/record_topics.txt が定義する（直書きしない）
+    TOPICS="$(awk '/^[[:space:]]*#/{next} $2=="sensor"||$2=="ros"{printf "%s ", $1}' quickstart/record_topics.txt)"
+    ros2 bag record -o calib_check ${TOPICS}
     Navigation/.venv/bin/python quickstart/check_calibration.py runs/calib_check
 
     # 記録＋MOLA-LO の軌跡（/tf が無い記録はこちら）
