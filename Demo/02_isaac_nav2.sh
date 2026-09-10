@@ -2,7 +2,9 @@
 # 項目3 — Isaac Sim の UiS_room_v3 で、Nav2 に指定した場所まで G1 を歩かせる。
 #
 #   bash Demo/02_isaac_nav2.sh            # 起動して RViz2 まで開く
-#   bash Demo/02_isaac_nav2.sh --no-rviz  # RViz2 を開かない（別画面で開きたいとき）
+#   bash Demo/02_isaac_nav2.sh --no-rviz      # RViz2 を開かない（別画面で開きたいとき）
+#   bash Demo/02_isaac_nav2.sh --follow-cam   # Isaac Sim のカメラを G1 に追従させる
+#                                             # （長い距離を歩かせるとき。既定は固定）
 #
 # 実機は要らない。Isaac Sim の中だけで完結する。
 #
@@ -27,9 +29,11 @@ set -eo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 OPEN_RVIZ=1
+FOLLOW_CAM=0
 for a in "$@"; do
     case "${a}" in
-        --no-rviz) OPEN_RVIZ=0 ;;
+        --no-rviz)     OPEN_RVIZ=0 ;;
+        --follow-cam)  FOLLOW_CAM=1 ;;
         *) _die "知らない引数です: ${a}" ;;
     esac
 done
@@ -71,6 +75,9 @@ printf '\n起動に 3〜6 分かかります。Isaac Sim のウィンドウが�
     export SPAWN_X=6.55
     export SPAWN_Y=-0.78
     export G1_PERFECT_LOC=1
+    # 長い距離を歩かせるときだけカメラを追従させる。起動時の固定カメラは
+    # スポーン地点を向いたままなので、遠くへ行くと画角から出る。
+    export G1_FOLLOW_CAM="${FOLLOW_CAM}"
     exec bash run_nav2.sh maps/uis_room_v3_clean.yaml
 ) >> "${CONSOLE_LOG}" 2>&1 &
 NAV_WRAPPER_PID=$!

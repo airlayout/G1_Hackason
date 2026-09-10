@@ -16,6 +16,7 @@ Warehouse シーンに配置した G1 を、キーボードの速度指令で歩
 
 from __future__ import annotations
 
+import os
 import argparse
 
 # --- Isaac Sim の起動は他の import より先に行う必要がある ---
@@ -111,6 +112,11 @@ def main() -> None:
         goto_xy=(args.goto_x, args.goto_y),
         patrol_seed=args.patrol_seed,
         max_steps=args.max_steps,
+        # ビューアのカメラを G1 に追従させる（既定オフ）。
+        # 長い距離を歩かせると起動時の固定カメラでは画角から出てしまうため、
+        # 見せる・録画するときだけ環境変数で有効にする。
+        # 他の設定（SCENE_USD / SPAWN_X / G1_PERFECT_LOC）と同じ流儀。
+        follow_camera=os.environ.get("G1_FOLLOW_CAM", "0") == "1",
     )
     runner = G1TwinRunner(checkpoint_path, config)
     runner.build_scene()

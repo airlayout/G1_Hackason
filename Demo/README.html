@@ -597,18 +597,37 @@ bash Demo/preflight.sh</code>
   曲がって回り込む距離を投げる。</p>
 
   <figure class="clip">
-    <video src="video/03_isaac_long.mp4" poster="video/03_isaac_long.jpg"
+    <video src="video/03_isaac_long_sim.mp4" poster="video/03_isaac_long_sim.jpg"
+           controls loop muted playsinline preload="metadata" width="960" height="728"></video>
+    <figcaption><b>③ 同じ長距離をシミュレータの中から見たところ。</b>
+    道のり 15.0 m ／ <span class="num">112</span> 秒 ／ <code>error_code 0</code> ／
+    到達誤差 <span class="num">0.09</span> m。
+    <b>カメラが G1 を追いかけている。</b>起動時の固定カメラはスポーン地点を向いたままなので、
+    遠くへ行くと画角から出てしまう。長距離を見せるときは
+    <code>bash Demo/02_isaac_nav2.sh --follow-cam</code> を付ける（既定は固定のまま）。</figcaption>
+  </figure>
+
+  <figure class="clip">
+    <video src="video/03_isaac_long_rviz.mp4" poster="video/03_isaac_long_rviz.jpg"
            controls loop muted playsinline preload="metadata" width="1600" height="884"></video>
-    <figcaption><b>③ 道のり 15.0 m（直線 10.7 m）を 1 本で走り切ったところ。</b>
+    <figcaption><b>④ 同じ走行を RViz2 で見たところ。道のり 15.0 m（直線 10.7 m）。</b>
     <span class="num">66</span> 秒 ／ <code>error_code 0</code> ／
     到達誤差 <span class="num">0.06</span> m（ゴール 14.804, -5.128 に対し 14.783, -5.072）。
     <b>障害物を回り込むために経路が曲がっているのが見どころ。</b>
     Nav2 は 1 秒ごとに経路を引き直していて、この 66 秒で <span class="num">58</span> 回引き直した。</figcaption>
   </figure>
 
+  <div class="note warn">
+    <span class="lbl">追従カメラは走行を遅くする</span>
+    <p>同じ 15.0 m でも <b>③（追従あり）は 112 秒、④（追従なし）は 66 秒</b>。
+    カメラを動かすと毎回描き直しが要るぶん Isaac Sim が重くなり、
+    Nav2 の制御ループが目標の 5 Hz を落とす（<code>Control loop missed its desired rate</code>）。
+    <b>見せるための機能で、性能を測る用途には使わないこと。</b>既定はオフにしてある。</p>
+  </div>
+
   <div class="note">
     <span class="lbl">この画面の作り</span>
-    <p>③ だけコストマップの網掛けを切ってある（<code>Demo/nav2_g1.rviz</code>）。
+    <p>④ だけコストマップの網掛けを切ってある（<code>Demo/nav2_g1.rviz</code>）。
     <b>網掛けを出したままだと経路が地図の白黒に埋もれて読めない。</b>
     残してあるのは 静的地図 ／ LaserScan ／ 全体経路 ／ 局所経路 ／ ロボットの足形 だけ。
     コストマップを見たいときは左のリストでチェックを入れ直す。</p>

@@ -90,6 +90,12 @@ class RunnerConfig:
     # 頭部カメラを搭載するか。Isaac Sim 起動時に --enable_cameras が
     # 無いとカメラ拡張が読み込まれず構築できないため、その状態と連動させる。
     enable_camera: bool = False
+    # ビューアのカメラを G1 に追従させるか（既定は起動時の固定カメラのまま）。
+    # 長い距離を歩かせると固定カメラでは画角から出てしまうため、
+    # デモの録画や見せる用途で使う。物理には影響しない（描画だけ）。
+    follow_camera: bool = False
+    # 追従カメラの位置。ロボットからの相対 (dx, dy, dz)。
+    follow_camera_offset: tuple[float, float, float] = (-4.0, -4.0, 3.0)
     # 速度指令の供給源:
     #   "keyboard" / "patrol"（自動巡回） / "ros"（Nav2） /
     #   "goto"（座標を1つ渡して障害物回避なしで直進、Nav2 不要）
@@ -389,6 +395,15 @@ class G1TwinRunner:
             # 周期(10Hz)に間引く。現時点では取得した画像は使っていない）。
             if self._camera is not None and self._step_count % SCAN_PUBLISH_EVERY == 0:
                 self._camera.update(CONTROL_DT * SCAN_PUBLISH_EVERY)
+
+            # ビューアのカメラを G1 に追従させる（描画だけ。物理には触らない）。
+            # 毎ステップ呼ぶと描画が重くなるので LiDAR と同じ 10Hz に間引く。
+            if self._config.follow_camera and self._step_count % SCAN_PUBLISH_EVERY == 0:
+                pos = wp.to_torch(self._robot.data.root_pos_w)[0]
+                px, py, pz = float(pos[0]), float(pos[1]), float(pos[2])
+                dx, dy, dz = self._config.follow_camera_offset
+                sim.set_camera_view(eye=(px + dx, py + dy, pz + dz),
+                                    target=(px, py, pz + 0.3))
 
             # 速度指令の供給源を選ぶ
             if self._patrol is not None and scan is not None:
