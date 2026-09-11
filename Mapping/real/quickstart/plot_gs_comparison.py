@@ -49,17 +49,10 @@ COLOR_LINE = "#c3cbd7"
 HEIGHT_EDGES = [-0.2, 0.25, 0.45, 0.65, 0.85, 1.05, 1.25, 1.5, 1.8, 2.2, 3.5]
 
 
-def japanese_font() -> None:
-    """図に日本語を出せるフォントを選ぶ。無ければ黙って既定のままにする。"""
-    import matplotlib
-    from matplotlib import font_manager
-
-    available = {f.name for f in font_manager.fontManager.ttflist}
-    for candidate in ("Hiragino Sans", "Hiragino Kaku Gothic ProN",
-                      "Noto Sans CJK JP", "IPAexGothic", "Arial Unicode MS"):
-        if candidate in available:
-            matplotlib.rcParams["font.family"] = candidate
-            return
+def japanese_font():
+    """図に日本語を出せるフォントを選ぶ。実体は jp_font.py（2026-09-11 に移した）。"""
+    from jp_font import japanese_font as pick
+    return pick()
 
 
 def read_trajectory(session: Path) -> np.ndarray:

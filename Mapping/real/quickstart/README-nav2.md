@@ -51,6 +51,8 @@
 | `measure_overlay.py` | **重畳を数値にする**（ライブ点群が事前地図の占有セルに乗った割合） |
 | `pcd_to_occupancy.py` | 点群 → `nav_map.pgm`（Nav2 の `static_layer` 用の 2D 占有格子） |
 | `odom_to_tf.py` | 内蔵 SLAM の odom を `/tf` に流す。**MOLA-LO 構成では要らない**（§4） |
+| `dump_grids.py` | RViz の 2D 層（`/map` / costmap / `/projected_map`）を **map_server 形式の PGM+yaml に落とす**（コンテナ内。画面を撮らずに層を比べる） |
+| `render_layers.py` | 上の出力を 1 枚の `layers.png` に並べる（Mac 側の venv） |
 
 ### もう使わないもの
 

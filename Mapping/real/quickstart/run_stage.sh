@@ -214,7 +214,8 @@ run_once() {
     say "歩行中の重畳を測る（既知の立脚静止は 89.2%）"
     ov="-"; ov10="-"
     if [ -x "$VENV" ] && [ -d "$local_out/bag" ]; then
-        # ⚠️ 解析は Mac 側でやる（コンテナに numpy も scipy も無い）。109 枚で 0.54 s
+        # ⚠️ 解析は Mac 側でやる。コンテナの numpy は 2.2.6 で入っているが scipy が無く、
+        # matplotlib は numpy 1.x ビルドで壊れている（2026-09-11 実測）。109 枚で 0.54 s
         "$VENV" "$HERE/measure_overlay.py" "$local_out/bag" "$(tolocal "$OVERLAY_REF")" \
             > "$local_out/overlay.txt" 2>&1
         tail -8 "$local_out/overlay.txt"
@@ -223,6 +224,21 @@ run_once() {
     else
         say "⚠️ 重畳を測れない（venv か bag が無い）。手で: "
         say "   Navigation/.venv/bin/python quickstart/measure_overlay.py <bag> ${OVERLAY_REF}"
+    fi
+
+    # ── 2D の層を落として 1 枚にする（どの層が何を描いたかを後から見る）──────
+    # 2026-09-11: 「RViz の 2D がざらつく」の正体を追うのに画面キャプチャが使えず
+    # （import -window root はデスクトップしか写らない）、latched topic を落として
+    # 描く形にした。**歩き終えた直後の層**でないと意味が無いのでここで撮る
+    say "2D の層を落とす -> $out/layers.png"
+    ros "python3 /work/G1_Hackason/Mapping/real/quickstart/dump_grids.py \
+         --out $out/layers --timeout 12" 2>&1 | sed 's/^/  /' \
+        || say "⚠️ 層を落とせなかった（スタックが起きているか）"
+    if [ -x "$VENV" ] && [ -f "$local_out/layers/counts.json" ]; then
+        "$VENV" "$HERE/render_layers.py" "$local_out/layers" \
+            --out "$local_out/layers.png" --title "$(basename "$out")" \
+            > "$local_out/layers.log" 2>&1 \
+            || say "⚠️ layers.png を描けなかった -> $local_out/layers.log"
     fi
 
     reach="$(sed -n 's/^== 到達 \(.*\) ==$/\1/p' "$local_out/navigate.log" 2>/dev/null | head -1)"
