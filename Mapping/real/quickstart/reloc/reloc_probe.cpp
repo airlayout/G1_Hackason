@@ -90,6 +90,10 @@ struct Args
   //    （2026-09-11 実測: ROI 10 m で一致率が 1〜14% に落ちた）。
   //    上位 K 件を**帯の残差と一致率で選び直す**。探索は候補を出す係、選ぶのはゲート側
   int candidates = 1;
+  // ⚠️ 候補を**詰める前の残差**で比べると順位が荒い。格子の量子化で残差が 2 倍に
+  //    膨らみ、しかもその膨らみ方は候補ごとに違うため。上位 K 件を**先に詰めてから**
+  //    比べる（2026-09-11 実測: 詰めずに比べると 44〜54%、天井は 65〜78%）。
+  int refineTop = 0;
   // 観測尤度のつまみ。**参照地図の層に載せる**（relocalization.h の注記どおり）。
   // ⚠️ 既定は「触らない」。層の型ごとに妥当な既定が違う
   //    （CPointsMap は sigma_dist 0.0025、HashedVoxelPointCloud は 0.5）ので、
@@ -134,6 +138,7 @@ Args parse(int argc, char** argv)
     else if (k == "--json") { a.jsonOut = next(1); i += 1; }
     else if (k == "--dump-grid") { a.gridOut = next(1); i += 1; }
     else if (k == "--candidates") { a.candidates = atoi(next(1)); i += 1; }
+    else if (k == "--refine-top") { a.refineTop = atoi(next(1)); i += 1; }
     else if (k == "--trusted-pose")
     {
       a.hasTrusted = true;
@@ -395,6 +400,42 @@ int main(int argc, char** argv)
     }
     double bx = p.x, by = p.y, yawDeg = mrpt::RAD2DEG(p.phi);
 
+    // 詰めを関数にする（--refine-top で候補ごとに呼ぶ）
+    auto refine = [&](double x0, double y0, double yaw0)
+        -> std::tuple<double, double, double, double> {  // x, y, yaw, 残差
+      double bestR = 1e9, rx = x0, ry = y0, ryaw = yaw0;
+      for (double dx = -a.resXY / 2; dx <= a.resXY / 2 + 1e-9; dx += a.refineXY)
+        for (double dy = -a.resXY / 2; dy <= a.resXY / 2 + 1e-9; dy += a.refineXY)
+          for (double dp = -a.resPhiDeg / 2; dp <= a.resPhiDeg / 2 + 1e-9; dp += a.refinePhiDeg)
+          {
+            const auto [rr, mm, nn] = residualsAt(x0 + dx, y0 + dy, yaw0 + dp, a.bandLo);
+            const double rate = nn ? double(mm) / double(nn) : 0.0;
+            if (rr > 0 && rate >= a.minMatchRate && rr < bestR)
+            { bestR = rr; rx = x0 + dx; ry = y0 + dy; ryaw = yaw0 + dp; }
+          }
+      return {rx, ry, ryaw, bestR};
+    };
+
+    // --refine-top: 上位 K 件を**詰めてから**比べ、残差が最小のものを採る
+    if (a.refineTop > 1)
+    {
+      const auto t0 = std::chrono::steady_clock::now();
+      double bestR = 1e9;
+      double bx2 = p.x, by2 = p.y, byaw2 = mrpt::RAD2DEG(p.phi);
+      int seen = 0;
+      for (auto it = best.rbegin(); it != best.rend() && seen < a.refineTop; ++it, ++seen)
+      {
+        const auto& q = it->second;
+        const auto [rx, ry, ryaw, rr] = refine(q.x, q.y, mrpt::RAD2DEG(q.phi));
+        if (rr < bestR) { bestR = rr; bx2 = rx; by2 = ry; byaw2 = ryaw; }
+      }
+      const double secs = std::chrono::duration<double>(
+                              std::chrono::steady_clock::now() - t0).count();
+      std::printf("\n[3/3] 上位 %d 件を詰めてから比べた / %.2f s -> (%.3f, %.3f, %.2f deg) 残差 %.4f m\n",
+                  seen, secs, bx2, by2, byaw2, bestR);
+      bx = bx2; by = by2; yawDeg = byaw2;
+    }
+    else
     // 詰め: 粗い格子の 1 セルぶんを細かく走り、帯の残差が最小になる姿勢を採る。
     // ⚠️ 詰めずにゲートすると、yaw の量子化だけで残差が 2 倍になり正解を弾く（実測）。
     //    ICP を回さずに済むのは、ゲートの指標そのものを最小化しているから
