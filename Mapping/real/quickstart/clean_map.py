@@ -263,7 +263,14 @@ def main() -> int:
                lower, BAND_UPPER_2D, MIN_POINTS_2D)) != 0:
         die("②-1 占有格子", "pcd_to_occupancy.py が落ちた")
 
-    baseline = session / "map" / "nav_map"
+    # 旧 nav_map は 2026-09-11 に map/old/ へ退避した。**黙って比較を落とさない**
+    baseline = session / "map" / "old" / "nav_map"
+    if not baseline.with_suffix(".yaml").exists():
+        baseline = session / "map" / "nav_map"
+    if baseline.with_suffix(".yaml").exists():
+        print("  比較の基準: {}".format(baseline.with_suffix(".yaml")))
+    else:
+        print("  ⚠️ 比較の基準（旧 nav_map）が無いので、差分は出さない")
     gate = [py, HERE / "check_map_clearance.py", session / "map" / "nav_map_clean", traj]
     if baseline.with_suffix(".yaml").exists():
         gate += ["--baseline", baseline]

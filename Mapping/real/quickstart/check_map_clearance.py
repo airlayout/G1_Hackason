@@ -39,7 +39,7 @@ robot_radius(0.30 m) の内側**にいた。つまり事前地図が自分の歩
     # 作り直した地図を元の地図と比べる
     ... quickstart/check_map_clearance.py \\
         runs/<id>/map/nav_map_clean runs/<id>/mola_floor0/traj.txt \\
-        --baseline runs/<id>/map/nav_map
+        --baseline runs/<id>/map/old/nav_map   # 旧 nav_map は map/old/ に退避済み
 
 地図は拡張子なし・`.yaml`・`.pgm` のどれで指しても良い。
 軌跡は TUM 形式（`time tx ty tz qx qy qz qw`）。`#` で始まる行は読み飛ばす。

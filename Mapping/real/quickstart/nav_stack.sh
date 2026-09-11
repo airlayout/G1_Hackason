@@ -195,7 +195,9 @@ MOLA_TRAJ="${G1_MOLA_TRAJ:-$(dirname "$MOLA_MAP")/traj.txt}"
 #   1. 追従者が軌跡沿いに焼き込まれていた（近距離除去 + OctoMap で落とした）
 #   2. 障害物帯の下限 0.15m が min_obstacle_height 0.23m と食い違い、床を撃っていた
 # 作り直した nav_map_clean は 中央値 0.781m / 0.30m 未満 1.9%。
-# 昔の測定を再現したいときは G1_NAV_MAP で nav_map.yaml を明示すること。
+# 昔の測定を再現したいときは G1_NAV_MAP で map/old/nav_map.yaml を明示すること。
+# ⚠️ **ここ（走る地図）と重畳の基準地図は別物。**基準は run_stage.sh の
+# G1_OVERLAY_REF_MAP（既定 map/old/nav_map.yaml）。片方を変えても他方は動かない。
 # 作り方: filter_scans_near.py → run_octomap.py → pcd_to_occupancy.py
 # 合否:   check_map_clearance.py <地図> <traj.txt> --baseline <元の地図>
 NAV_MAP="${G1_NAV_MAP:-/work/G1_Hackason/Mapping/real/runs/$SESSION/map/nav_map_clean.yaml}"

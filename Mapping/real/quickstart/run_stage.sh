@@ -38,7 +38,22 @@ NAME="$G1_RVIZ_NAME"
 DDS="$(g1_dds_uri live)"
 SESSION="${G1_SESSION:-20260906T135940_UiS_room_v3}"
 RUNS="/work/G1_Hackason/Mapping/real/runs"
-MAP="${G1_NAV_MAP_YAML:-$RUNS/$SESSION/map/nav_map.yaml}"
+# 重畳を測るときの**基準地図**。Nav2 が走る地図（nav_stack.sh の G1_NAV_MAP＝
+# nav_map_clean）とは**別物**で、ここで黙って導かない。2026-09-10 までこの 2 つは
+# 名前も既定も別のまま混同されており、数字が甘い方に振れていた。
+#
+# 基準に nav_map_clean を使わない理由（2026-09-11 実測）:
+#   clean は clean_map.py の --height 0.15 2.0 で机を丸ごと落としてある（意図的）。
+#   そのため静止の対照でも重畳は 43.9% が天井になる。同じ記録を旧 nav_map で測ると
+#   78.2%（±0.6 m/±4° でずらして最良を探しても増分 +0.0 ＝ 静止時のずれは無い）。
+#   合格線 85% はそちら側から引いた値なので、**基準は間引いていない地図**でないと引けない。
+OVERLAY_REF="${G1_OVERLAY_REF_MAP:-$RUNS/$SESSION/map/old/nav_map.yaml}"
+# 旧名を黙って無視しない（測定器の基準が知らぬ間に変わるのが一番まずい）
+if [ -n "${G1_NAV_MAP_YAML:-}" ]; then
+    echo "[stage] G1_NAV_MAP_YAML は G1_OVERLAY_REF_MAP に改名した（2026-09-11）。" >&2
+    echo "[stage] 走る地図 G1_NAV_MAP（nav_stack.sh）と紛らわしかったため。設定し直すこと" >&2
+    exit 1
+fi
 WP="${G1_WAYPOINTS:-$RUNS/$SESSION/measure_20260908/waypoints.json}"
 PLANNER="${G1_PLANNER:-Smac2D}"
 TIMEOUT="${G1_GOAL_TIMEOUT:-40}"
@@ -74,6 +89,13 @@ rosd() { docker exec -d -u ubuntu -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
              bash -c "source /opt/ros/humble/setup.bash && $*"; }
 # コンテナの /work は Mac の $G1_REPO_ROOT。**パスを焼かずにここで読み替える**
 tolocal() { printf '%s\n' "${1/#\/work/$G1_REPO_ROOT}"; }
+
+# 基準地図は歩く前に見ておく（走り終えてから「測れません」では遅い）。
+# ⚠️ 止めはしない（ここは実験の道具で安全装置ではない）。警告して走る
+if [ ! -f "$(tolocal "$OVERLAY_REF")" ]; then
+    echo "[stage] ⚠️ 重畳の基準地図が無い: $OVERLAY_REF" >&2
+    echo "[stage] ⚠️ このまま走るが**重畳は測れない**。G1_OVERLAY_REF_MAP で指すか map/old/ に置く" >&2
+fi
 
 # ── --repeat N を引数から抜く ──────────────────────────────────────────
 # ⚠️ 配列は使わない。macOS の /bin/bash は 3.2 で、`set -u` の下では
@@ -193,14 +215,14 @@ run_once() {
     ov="-"; ov10="-"
     if [ -x "$VENV" ] && [ -d "$local_out/bag" ]; then
         # ⚠️ 解析は Mac 側でやる（コンテナに numpy も scipy も無い）。109 枚で 0.54 s
-        "$VENV" "$HERE/measure_overlay.py" "$local_out/bag" "$(tolocal "$MAP")" \
+        "$VENV" "$HERE/measure_overlay.py" "$local_out/bag" "$(tolocal "$OVERLAY_REF")" \
             > "$local_out/overlay.txt" 2>&1
         tail -8 "$local_out/overlay.txt"
         ov="$(sed -n 's/.*占有セルに乗った割合 *\([0-9.]*\) %.*/\1/p' "$local_out/overlay.txt" | head -1)"
         ov10="$(sed -n 's/.*まで許した割合 *\([0-9.]*\) %.*/\1/p'     "$local_out/overlay.txt" | head -1)"
     else
         say "⚠️ 重畳を測れない（venv か bag が無い）。手で: "
-        say "   Navigation/.venv/bin/python quickstart/measure_overlay.py <bag> <nav_map.yaml>"
+        say "   Navigation/.venv/bin/python quickstart/measure_overlay.py <bag> ${OVERLAY_REF}"
     fi
 
     reach="$(sed -n 's/^== 到達 \(.*\) ==$/\1/p' "$local_out/navigate.log" 2>/dev/null | head -1)"

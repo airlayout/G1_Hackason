@@ -20,7 +20,7 @@
 
     ../../G1_Hackason/.venv/bin/python quickstart/render_nav_map.py \\
         runs/<id>/map/nav_map_try40 runs/<id>/mola_floor0/traj.txt \\
-        --baseline runs/<id>/map/nav_map --out /tmp/compare.png
+        --baseline runs/<id>/map/old/nav_map --out /tmp/compare.png
 """
 from __future__ import annotations
 

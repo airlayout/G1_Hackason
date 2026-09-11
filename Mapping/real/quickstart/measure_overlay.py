@@ -12,7 +12,11 @@
 
   # 2. 測る（Mac 側の venv で。コンテナには numpy/scipy が無い）
   Navigation/.venv/bin/python measure_overlay.py \
-      runs/live_overlay_bag runs/<SESSION>/map/nav_map.yaml
+      runs/live_overlay_bag runs/<SESSION>/map/old/nav_map.yaml
+
+⚠️ **基準は間引いていない旧 nav_map（map/old/）を渡す。**Nav2 が走る nav_map_clean は
+机を落としてあるので、静止の対照でも 43.9% が天井になり合格線 85% が引けない
+（同じ記録が旧 nav_map では 78.2%。2026-09-11 実測）。
 
 やっていること: 各スキャンを、その時刻の `map -> base_link`（MOLA-LO が出す）で
 map 系に変換し、壁の高さ帯だけ残して、事前地図の占有セルに当たった割合を数える。
@@ -168,6 +172,9 @@ def main() -> int:
 
     occ, res, ox, oy = read_map(a.map_yaml)
     h, w = occ.shape
+    # ⚠️ **どの地図で測ったかを必ず残す。**走る地図（nav_map_clean）と基準地図
+    # （間引いていない旧 nav_map）が別なので、数字だけ見ると取り違える
+    print(f"基準地図 {a.map_yaml}")
     print(f"事前地図 {w}x{h} セル / res {res} m / origin ({ox}, {oy}) / 占有 {occ.sum()} セル")
 
     tfs, scans, sensor_tf = read_bag(a.bag)
