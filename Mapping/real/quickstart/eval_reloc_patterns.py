@@ -38,6 +38,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
+
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]                      # .../physical_ai
 REAL = HERE.parent                          # .../Mapping/real
@@ -50,9 +52,17 @@ PROBE = "/tmp/reloc_build/bin/reloc_probe"
 STILL = "stage_20260910T084053"
 WALKS = ("stage_20260910T182639_r1", "stage_20260910T182639_r2", "stage_20260910T182639_r3")
 
-BAND_LO = 1.3            # ゲートに使う壁の帯の下限 [m]
+BAND_LO = 1.3            # 3D ゲートに使う壁の帯の下限 [m]
 DESK_BAND = (0.2, 1.2)   # 机の高さ帯（動かす対象）
 ROI = 3.0
+# ⚠️ **二重ゲート**（段 8b）。3D 残差（map.mm）だけでは誤採用する。
+#    2026-09-11 の段 8 で r3 が残差 1.02 倍（較正値より良い）で採用されたのに
+#    2D 重畳は 36.9%（真値基準 73.4%）だった。**3D と 2D は別の地図**なので、
+#    片方が壊れてももう片方で気づける。**食い違ったら棄却する。**
+OVERLAY_FRAC = 0.80      # 重畳が「真値に置いたときの値」の何割を下回ったら棄却するか
+REF_MAP = "map/old/nav_map.yaml"     # ⚠️ 間引いていない旧 nav_map（clean だと天井 43.9%）
+# 現実的な「机 1 台」。帯を丸ごと動かすと 44% の点が動き、それは机ではなく部屋の半分
+DESK_ONE = (-0.5, 0.5, 1.0)          # base_link 系の中心と半径 [m]（実測で最も密な塊）
 
 
 def run(cmd: list, **kw) -> subprocess.CompletedProcess:
@@ -95,6 +105,19 @@ def probe(scan: Path, center: tuple, out_stem: Path, r0: float,
     return json.loads(path.read_text())
 
 
+def overlay_at(scan_xyz: Path, pose, ref_map: Path, _cache={}) -> float:
+    """返った姿勢での 2D 重畳 [%]。**3D 残差とは別の地図**を見る（二重ゲートの片側）。"""
+    sys.path.insert(0, str(HERE))
+    from measure_overlay import read_map          # noqa: E402
+    from overlay_at_pose import overlay           # noqa: E402
+    if "map" not in _cache:
+        _cache["map"] = read_map(ref_map)
+    if scan_xyz not in _cache:
+        _cache[scan_xyz] = np.loadtxt(scan_xyz)
+    occ, res, ox, oy = _cache["map"]
+    return overlay(_cache[scan_xyz], pose, occ, res, ox, oy)["hit_pct"]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -116,7 +139,12 @@ def main() -> int:
     desk = export_scan(REAL / "runs" / STILL / "bag", out / "still_desk",
                        ["--index", str(a.still_index),
                         "--move-band", str(DESK_BAND[0]), str(DESK_BAND[1]), "1.0", "0.0"])
-    print("  机を動かした合成 {} 点 / {}".format(desk["points"], desk["synth"]))
+    print("  机（帯を丸ごと・過酷）{} 点 / {}".format(desk["points"], desk["synth"]))
+    desk1 = export_scan(REAL / "runs" / STILL / "bag", out / "still_desk1",
+                        ["--index", str(a.still_index), "--move-region",
+                         str(DESK_ONE[0]), str(DESK_ONE[1]), str(DESK_ONE[2]),
+                         str(DESK_BAND[0]), str(DESK_BAND[1]), "1.0", "0.0"])
+    print("  机（1 台ぶん・現実的）{} 点 / {}".format(desk1["points"], desk1["synth"]))
 
     walks = {}
     for w in WALKS:
@@ -156,8 +184,10 @@ def main() -> int:
          "戻って採用"),
         ("3", "大きい +3 m / 180°（ROI の端）", out / "still_full.xyz", off(3.0, 0.0), truth,
          "戻って採用、または自信なし"),
-        ("5", "机が動いた（z 0.2〜1.2 m を 1 m）", out / "still_desk.xyz", off(0.5, 0.0), truth,
+        ("5a", "机 1 台が動いた（現実的）", out / "still_desk1.xyz", off(0.5, 0.0), truth,
          "戻って採用"),
+        ("5b", "帯を丸ごと動かした（過酷）", out / "still_desk.xyz", off(0.5, 0.0), truth,
+         "戻るか、自信なし"),
         ("6", "誤報（正しい姿勢を渡す）", out / "still_full.xyz", off(0.0, 0.0), truth,
          "同じ姿勢・飛ばない"),
     ]
@@ -167,24 +197,45 @@ def main() -> int:
                          out / "walk_{}.xyz".format(w[-2:]), (m["x"], m["y"]), None,
                          "ゲートが判断（真値なし）"))
 
+    # ── 2D 側の較正: 同じスキャンを真値に置いたときの重畳 ────────────────
+    ref_map = REAL / "runs" / SESSION / REF_MAP
+    o0 = overlay_at(out / "still_full.xyz", truth, ref_map)
+    print("== 2D の較正（二重ゲートのもう片側）==")
+    print("  真値に置いたときの重畳 O0 = {:.1f}%（基準地図 {}）".format(o0, REF_MAP))
+    print("  ⚠️ 91 枚の平均 78.2% ではなく**この 1 枚の値**。棄却線は O0 x {:.2f} = {:.1f}%"
+          .format(OVERLAY_FRAC, OVERLAY_FRAC * o0))
+    print()
+
     results = []
     print("== パターン ==")
-    hdr = "{:<4} {:<34} {:>9} {:>7} {:>8}  {}"
-    print(hdr.format("#", "内容", "真値との差", "r/r0", "一致率", "判定"))
+    hdr = "{:<5} {:<30} {:>8} {:>6} {:>8} {:>7}  {}"
+    print(hdr.format("#", "内容", "真値差", "r/r0", "重畳", "対 O0", "二重ゲートの判定"))
     for pid, name, scan, center, tr, expect in patterns:
         stem = out / "pattern{}".format(pid)
         res = probe(scan, center, stem, r0, tr)
-        res.update({"id": pid, "name": name, "expect": expect,
-                    "scan": scan.name, "believed": list(center)})
+        # ── 二重ゲート: 3D が通っても 2D が食い違えば棄却 ──────────────
+        ov = overlay_at(scan, res["pose"], ref_map)
+        frac = ov / o0 if o0 else 0.0
+        ok3d = res["accepted"]
+        ok2d = frac >= OVERLAY_FRAC
+        if ok3d and ok2d:
+            verdict = "採用"
+        elif ok3d and not ok2d:
+            verdict = "棄却（3D は通ったが 2D が食い違う）"
+        else:
+            verdict = res["verdict"]
+        res.update({"id": pid, "name": name, "expect": expect, "scan": scan.name,
+                    "believed": list(center), "overlay_pct": ov, "overlay_frac": frac,
+                    "gate3d": ok3d, "gate2d": ok2d, "final": verdict})
         results.append(res)
-        print(hdr.format(pid, name,
-                         "{:.3f}".format(res["error_m"]) if "error_m" in res else "—",
+        print(hdr.format(pid, name[:28],
+                         "{:.2f}".format(res["error_m"]) if "error_m" in res else "—",
                          "{:.2f}".format(res["ratio"]),
-                         "{:.1f}%".format(100 * res["match_rate"]),
-                         res["verdict"]))
+                         "{:.1f}%".format(ov), "{:.2f}".format(frac), verdict))
 
     (out / "patterns.json").write_text(json.dumps(
-        {"r0": r0, "band_lo": BAND_LO, "roi": ROI, "truth": list(truth),
+        {"r0": r0, "o0": o0, "overlay_frac": OVERLAY_FRAC, "ref_map": REF_MAP,
+         "band_lo": BAND_LO, "roi": ROI, "truth": list(truth),
          "still_index": a.still_index, "results": results},
         ensure_ascii=False, indent=2))
     print("\n書いた: {}".format(out / "patterns.json"))

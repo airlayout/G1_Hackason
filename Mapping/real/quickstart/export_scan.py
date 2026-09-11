@@ -56,6 +56,13 @@ def main() -> int:
                     help="z の帯 LO..HI の点を (DX, DY) 平行移動する（机が動いた状況）")
     ap.add_argument("--drop-band", type=float, nargs=2, default=None, metavar=("LO", "HI"),
                     help="z の帯 LO..HI の点を消す（机が無くなった状況）")
+    # ⚠️ **帯を丸ごと動かすのは「机が動いた」ではなく「部屋の半分が動いた」。**
+    #    2026-09-11 に帯ごと動かしたら 12,070 点中 5,255 点（44%）が動き、
+    #    当然どの手法でも戻れなかった。実際の机は 1 台ずつ独立に動くので、
+    #    **場所でも切る**（中心 CX,CY・半径 R の円柱の中だけ）のが現実的な試験。
+    ap.add_argument("--move-region", type=float, nargs=7, default=None,
+                    metavar=("CX", "CY", "R", "LO", "HI", "DX", "DY"),
+                    help="base_link 系で中心(CX,CY)・半径 R・z の帯 LO..HI の点を (DX,DY) 動かす")
     a = ap.parse_args()
 
     tfs, scans, sensor_tf = read_bag(a.bag)
@@ -105,6 +112,14 @@ def main() -> int:
         p = np.vstack([p[~sel], moved])
         synth = "z {}..{} m の {} 点を ({}, {}) 平行移動".format(
             lo, hi, int(sel.sum()), dx, dy)
+    if a.move_region is not None:
+        cx, cy, rad, lo, hi, dx, dy = a.move_region
+        sel = ((p[:, 2] >= lo) & (p[:, 2] <= hi)
+               & (np.hypot(p[:, 0] - cx, p[:, 1] - cy) <= rad))
+        moved = p[sel] + np.array([dx, dy, 0.0])
+        p = np.vstack([p[~sel], moved])
+        synth = "{}中心({}, {}) 半径 {} m・z {}..{} m の {} 点を ({}, {}) 平行移動".format(
+            (synth + " / ") if synth else "", cx, cy, rad, lo, hi, int(sel.sum()), dx, dy)
     if a.drop_band is not None:
         lo, hi = a.drop_band
         sel = (p[:, 2] >= lo) & (p[:, 2] <= hi)
