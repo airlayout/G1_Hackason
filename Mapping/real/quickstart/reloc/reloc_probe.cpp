@@ -30,8 +30,11 @@
 // リンクしないと load_from_file が「class not registered」で落ちる
 #include <mola_metric_maps/HashedVoxelPointCloud.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <numeric>
+#include <vector>
 #include <cstdlib>
 #include <string>
 
@@ -45,6 +48,10 @@ struct Args
   int top = 5;
   bool hasTruth = false;
   double tx = 0, ty = 0, tyawDeg = 0;
+  // --residuals: 探索せず、与えた姿勢での「点 -> 地図の最近傍距離」の分布を出す。
+  // sigma_dist（＝期待される残差の標準偏差）を**測って決める**ため
+  bool residualsOnly = false;
+  double rx = 0, ry = 0, ryawDeg = 0;
   // 観測尤度のつまみ。**参照地図の層に載せる**（relocalization.h の注記どおり）。
   // ⚠️ 既定は「触らない」。層の型ごとに妥当な既定が違う
   //    （CPointsMap は sigma_dist 0.0025、HashedVoxelPointCloud は 0.5）ので、
@@ -79,6 +86,11 @@ Args parse(int argc, char** argv)
     else if (k == "--sigma") { a.sigma = atof(next(1)); i += 1; }
     else if (k == "--max-corr") { a.maxCorr = atof(next(1)); i += 1; }
     else if (k == "--decim") { a.decimation = atoi(next(1)); i += 1; }
+    else if (k == "--residuals")
+    {
+      a.residualsOnly = true;
+      a.rx = atof(next(1)); a.ry = atof(next(2)); a.ryawDeg = atof(next(3)); i += 3;
+    }
     else if (k == "--truth")
     {
       a.hasTruth = true;
@@ -148,6 +160,47 @@ int main(int argc, char** argv)
   auto cloud = mrpt::maps::CSimplePointsMap::Create();
   if (!cloud->load3D_from_text_file(a.scan)) die("スキャンを読めない: " + a.scan);
   std::printf("観測 %s: %zu 点（base_link 系）\n", a.scan.c_str(), cloud->size());
+
+  // ── --residuals: 探索せず、与えた姿勢での残差の分布だけ出す ───────────
+  if (a.residualsOnly)
+  {
+    mola::HashedVoxelPointCloud::Ptr vox;
+    for (auto& [name, layer] : ref.layers)
+      if (auto v = std::dynamic_pointer_cast<mola::HashedVoxelPointCloud>(layer); v) vox = v;
+    if (!vox) die("--residuals は HashedVoxelPointCloud の層にだけ対応している");
+
+    const double c = std::cos(mrpt::DEG2RAD(a.ryawDeg));
+    const double sn = std::sin(mrpt::DEG2RAD(a.ryawDeg));
+    std::vector<float> dists;
+    dists.reserve(cloud->size());
+    for (size_t i = 0; i < cloud->size(); i++)
+    {
+      float px, py, pz;
+      cloud->getPoint(i, px, py, pz);
+      const mrpt::math::TPoint3Df q(
+          static_cast<float>(a.rx + c * px - sn * py),
+          static_cast<float>(a.ry + sn * px + c * py), pz);
+      mrpt::math::TPoint3Df hit;
+      float d2 = 0;
+      uint64_t id = 0;
+      if (vox->nn_single_search(q, hit, d2, id)) dists.push_back(std::sqrt(d2));
+    }
+    if (dists.empty()) die("最近傍が 1 点も引けなかった");
+    std::sort(dists.begin(), dists.end());
+    auto pct = [&](double p) { return dists[static_cast<size_t>(p * (dists.size() - 1))]; };
+    double sum2 = 0;
+    for (float d : dists) sum2 += double(d) * d;
+    std::printf("\n姿勢 (%.3f, %.3f, %.2f deg) での 点->地図 の最近傍距離 [m]\n",
+                a.rx, a.ry, a.ryawDeg);
+    std::printf("  引けた点 %zu / %zu\n", dists.size(), cloud->size());
+    std::printf("  p10 %.4f  p25 %.4f  中央 %.4f  p75 %.4f  p90 %.4f  p95 %.4f\n",
+                pct(0.10), pct(0.25), pct(0.50), pct(0.75), pct(0.90), pct(0.95));
+    std::printf("  RMS %.4f  平均 %.4f\n", std::sqrt(sum2 / dists.size()),
+                std::accumulate(dists.begin(), dists.end(), 0.0) / dists.size());
+    std::printf("\n→ sigma_dist は**標準偏差[m]**（HashedVoxelPointCloud）。"
+                "残差の中央値〜RMS がそのまま目安になる\n");
+    return 0;
+  }
 
   auto obs = mrpt::obs::CObservationPointCloud::Create();
   obs->pointcloud = cloud;
