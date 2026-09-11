@@ -49,6 +49,13 @@ def main() -> int:
     ap.add_argument("--out", type=Path, required=True, help="拡張子なしの書き出し先")
     ap.add_argument("--band", type=float, nargs=2, default=None, metavar=("LO", "HI"),
                     help="base_link 系の z でこの帯だけ残す（壁の帯を試すとき）")
+    # ⚠️ 机が動いた状況を**観測の側で**合成する。地図は触らない
+    #    （地図を作り直すと「何が効いたか」が混ざる）
+    ap.add_argument("--move-band", type=float, nargs=4, default=None,
+                    metavar=("LO", "HI", "DX", "DY"),
+                    help="z の帯 LO..HI の点を (DX, DY) 平行移動する（机が動いた状況）")
+    ap.add_argument("--drop-band", type=float, nargs=2, default=None, metavar=("LO", "HI"),
+                    help="z の帯 LO..HI の点を消す（机が無くなった状況）")
     a = ap.parse_args()
 
     tfs, scans, sensor_tf = read_bag(a.bag)
@@ -59,7 +66,13 @@ def main() -> int:
     usable = [i for i, (ts, _) in enumerate(scans) if tt[0] <= ts <= tt[-1]]
     if not usable:
         raise SystemExit("/tf の時間範囲に入るスキャンが 1 枚も無い")
-    index = a.index if a.index is not None else usable[len(usable) // 2]
+    # 負の index は「使えるスキャンの末尾から」。-1 = すべった終端（段 8 のパターン 4）
+    if a.index is None:
+        index = usable[len(usable) // 2]
+    elif a.index < 0:
+        index = usable[a.index]
+    else:
+        index = a.index
     if index not in usable:
         raise SystemExit("index {} は /tf の範囲外。使えるのは {}..{}".format(
             index, usable[0], usable[-1]))
@@ -81,6 +94,26 @@ def main() -> int:
     d = np.linalg.norm(p, axis=1)
     p = p[(d > RANGE_MIN) & (d < RANGE_MAX)]
     p = p @ s_R.T + s_t
+
+    # ── 机が動いた／消えた状況の合成（base_link 系で。地図は触らない）────────
+    synth = None
+    if a.move_band is not None:
+        lo, hi, dx, dy = a.move_band
+        sel = (p[:, 2] >= lo) & (p[:, 2] <= hi)
+        # ⚠️ 不変な作り方をする（元の配列を書き換えない）
+        moved = p[sel] + np.array([dx, dy, 0.0])
+        p = np.vstack([p[~sel], moved])
+        synth = "z {}..{} m の {} 点を ({}, {}) 平行移動".format(
+            lo, hi, int(sel.sum()), dx, dy)
+    if a.drop_band is not None:
+        lo, hi = a.drop_band
+        sel = (p[:, 2] >= lo) & (p[:, 2] <= hi)
+        p = p[~sel]
+        synth = "{}z {}..{} m の {} 点を消した".format(
+            (synth + " / ") if synth else "", lo, hi, int(sel.sum()))
+    if synth:
+        print("  合成: {}".format(synth))
+
     if a.band is not None:
         p = p[(p[:, 2] >= a.band[0]) & (p[:, 2] <= a.band[1])]
         if len(p) == 0:
@@ -99,7 +132,7 @@ def main() -> int:
     meta = {
         "bag": str(a.bag), "scan_index": index, "stamp": float(ts),
         "points": int(len(p)), "band": a.band,
-        "frame": "base_link", "sensor_tf": note,
+        "frame": "base_link", "sensor_tf": note, "synth": synth,
         "truth_map_base_link": {"x": truth_t[0], "y": truth_t[1], "z": truth_t[2],
                                 "yaw_rad": float(truth_yaw),
                                 "yaw_deg": float(math.degrees(truth_yaw))},

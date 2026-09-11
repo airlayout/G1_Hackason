@@ -84,6 +84,8 @@ struct Args
   //    正解をゲートが弾く（2026-09-11 実測: 真値ちょうどでも 0.070 -> 0.142）
   double refineXY = 0.10;       // 詰めの刻み [m]。0 で詰めない
   double refinePhiDeg = 5.0;
+  std::string jsonOut;      // 結果を機械可読で落とす（段 8 の駆動スクリプトが読む）
+  std::string gridOut;      // 尤度格子（phi 方向の最大）を落とす。動画のヒートマップ用
   // 観測尤度のつまみ。**参照地図の層に載せる**（relocalization.h の注記どおり）。
   // ⚠️ 既定は「触らない」。層の型ごとに妥当な既定が違う
   //    （CPointsMap は sigma_dist 0.0025、HashedVoxelPointCloud は 0.5）ので、
@@ -125,6 +127,8 @@ Args parse(int argc, char** argv)
     else if (k == "--min-match") { a.minMatchRate = atof(next(1)); i += 1; }
     else if (k == "--refine-xy") { a.refineXY = atof(next(1)); i += 1; }
     else if (k == "--refine-phi") { a.refinePhiDeg = atof(next(1)); i += 1; }
+    else if (k == "--json") { a.jsonOut = next(1); i += 1; }
+    else if (k == "--dump-grid") { a.gridOut = next(1); i += 1; }
     else if (k == "--trusted-pose")
     {
       a.hasTrusted = true;
@@ -310,6 +314,33 @@ int main(int argc, char** argv)
   std::printf("所要 %.3f s / log尤度 %.3f .. %.3f\n",
               out.time_cost, out.min_log_likelihood, out.max_log_likelihood);
 
+  // 尤度格子を phi 方向の最大で潰して落とす（動画のヒートマップ用）。
+  // ⚠️ 中身は CPosePDFGrid のセル値＝**正規化済みの尤度**（対数ではない）。
+  //    全セルの和が 1 になるので、絶対値でなく**相対の高低**を見る
+  if (!a.gridOut.empty())
+  {
+    const auto& g = out.likelihood_grid;
+    FILE* f = std::fopen(a.gridOut.c_str(), "w");
+    if (!f) die("格子を書けない: " + a.gridOut);
+    std::fprintf(f, "# xmin ymin res nx ny （値は phi 方向の最大の尤度。和が 1 に正規化済み）\n");
+    std::fprintf(f, "%.4f %.4f %.4f %zu %zu\n", g.getXMin(), g.getYMin(),
+                 g.getResolutionXY(), g.getSizeX(), g.getSizeY());
+    for (size_t iy = 0; iy < g.getSizeY(); iy++)
+    {
+      for (size_t ix = 0; ix < g.getSizeX(); ix++)
+      {
+        double best_v = -1e300;
+        for (size_t ip = 0; ip < g.getSizePhi(); ip++)
+          best_v = std::max(best_v, static_cast<double>(*g.getByIndex(ix, iy, ip)));
+        std::fprintf(f, "%.6g%s", best_v, ix + 1 == g.getSizeX() ? "" : " ");
+      }
+      std::fprintf(f, "\n");
+    }
+    std::fclose(f);
+    std::printf("格子を書いた: %s（%zu x %zu）\n", a.gridOut.c_str(),
+                g.getSizeX(), g.getSizeY());
+  }
+
   const auto best = mola::find_best_poses_se2(out.likelihood_grid, 0.99);
   if (best.empty()) die("上位の姿勢が 1 つも返らなかった");
 
@@ -376,20 +407,46 @@ int main(int argc, char** argv)
                 100.0 * rate, matched, inBand, 100.0 * a.minMatchRate);
 
     // ⚠️ 「地図の外」と「部屋の中で間違えた」は別の症状。別々に言う（段 6 実測）
-    if (rate < a.minMatchRate)
+    const char* verdict = "採用";
+    int rc = 0;
+    if (rate < a.minMatchRate) { verdict = "自信なし（地図の外）"; rc = 3; }
+    else if (r < 0 || r > a.gateN * r0) { verdict = "自信なし（部屋の中だが合っていない）"; rc = 3; }
+
+    if (rc == 3 && rate < a.minMatchRate)
+      std::printf("\n**判定: %s。**帯の点の %.1f%% しか地図に当たらない\n", verdict, 100.0 * rate);
+    else if (rc == 3)
+      std::printf("\n**判定: %s。**この姿勢を /relocalize_near_pose に投げてはいけない\n", verdict);
+    else
+      std::printf("\n**判定: %s。**/relocalize_near_pose に投げる"
+                  "（共分散は格子の刻み %.2f m 相当）\n", verdict, a.resXY);
+
+    if (!a.jsonOut.empty())
     {
-      std::printf("\n**判定: 自信なし（地図の外）。**帯の点の %.1f%% しか地図に当たらない\n",
-                  100.0 * rate);
-      return 3;
+      FILE* f = std::fopen(a.jsonOut.c_str(), "w");
+      if (!f) die("json を書けない: " + a.jsonOut);
+      std::fprintf(f,
+          "{\n  \"center\": [%.4f, %.4f],\n  \"roi\": %.3f,\n"
+          "  \"r0\": %.5f,\n  \"gate_n\": %.2f,\n  \"min_match\": %.3f,\n"
+          "  \"band_lo\": %.3f,\n  \"search_seconds\": %.4f,\n"
+          "  \"coarse\": [%.4f, %.4f, %.3f],\n"
+          "  \"pose\": [%.4f, %.4f, %.3f],\n"
+          "  \"residual\": %.5f,\n  \"ratio\": %.4f,\n"
+          "  \"match_rate\": %.5f,\n  \"matched\": %zu,\n  \"in_band\": %zu,\n"
+          "  \"verdict\": \"%s\",\n  \"accepted\": %s",
+          a.cx, a.cy, a.roi, r0, a.gateN, a.minMatchRate, a.bandLo, out.time_cost,
+          p.x, p.y, mrpt::RAD2DEG(p.phi), bx, by, yawDeg,
+          r < 0 ? -1.0 : r, r < 0 ? -1.0 : r / r0, rate, matched, inBand,
+          verdict, rc == 0 ? "true" : "false");
+      if (a.hasTruth)
+        std::fprintf(f, ",\n  \"truth\": [%.4f, %.4f, %.3f],\n"
+                        "  \"error_m\": %.4f,\n  \"error_deg\": %.3f",
+                     a.tx, a.ty, a.tyawDeg, std::hypot(bx - a.tx, by - a.ty),
+                     wrapDeg(yawDeg - a.tyawDeg));
+      std::fprintf(f, "\n}\n");
+      std::fclose(f);
+      std::printf("json を書いた: %s\n", a.jsonOut.c_str());
     }
-    if (r < 0 || r > a.gateN * r0)
-    {
-      std::printf("\n**判定: 自信なし（部屋の中だが合っていない）。**"
-                  "この姿勢を /relocalize_near_pose に投げてはいけない\n");
-      return 3;
-    }
-    std::printf("\n**判定: 採用。**"
-                "/relocalize_near_pose に投げる（共分散は格子の刻み %.2f m 相当）\n", a.resXY);
+    return rc;
   }
   return 0;
 }
