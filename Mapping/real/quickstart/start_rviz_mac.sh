@@ -267,10 +267,14 @@ if [ "${G1_SKIP_MOLA:-0}" != "1" ] \
         'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
              ros-humble-mola-lidar-odometry ros-humble-mola-bridge-ros2 \
              ros-humble-mola-state-estimation ros-humble-mrpt-map-server ros-humble-mp2p-icp \
-             ros-humble-mola-metric-maps' \
+             ros-humble-mola-metric-maps ros-humble-mola-relocalization' \
         >/dev/null 2>&1 || die "MOLA-LO の導入に失敗した（G1_SKIP_MOLA=1 で飛ばせる）"
 fi
 
+# ros-humble-mola-relocalization は 2026-09-11 に足した。SE(2) の尤度探索で
+# 「追跡が外れたら戻す」を組むための**ライブラリ**（ノードもサービスも Python
+# バインディングも無い）。使うには quickstart/reloc を C++ で建てる（reloc/README.md）。
+#
 # ros-humble-mola-metric-maps は mola-lidar-odometry の依存に入っていないが、
 # パイプライン YAML が実行時に libmola_metric_maps.so をプラグインとして読む。
 # 無いと「Could not find 'libmola_metric_maps.so'」で最初の 1 スキャンで fatal に
