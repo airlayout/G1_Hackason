@@ -164,7 +164,7 @@ def main() -> int:
     a = ap.parse_args()
 
     limit = read_max_vel(a.nav2_yaml)
-    print("指令の上限 max_vel_x = {} m/s\n".format(limit))
+    print("機体に届く並進の上限 = {:.3f} m/s\n".format(limit))
 
     data = {}
     print("素材:")
