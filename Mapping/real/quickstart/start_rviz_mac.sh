@@ -122,6 +122,12 @@ COLIMA_STOPPED=0
 #
 # ⚠️ `colima restart` 単体では直らないことがある（col0 に IPv4 が付かないまま上がる型）。
 # このスクリプトは手順 4 で自分で `ip addr add` するので、**stop → こちらの起動処理**を通す。
+# ## 2026-09-12: まず「VM を落とさずに直す」を試すようになった
+#
+# 壊れるのは vmnet.framework が en8 に張った内部の口だけで、その手前の
+# macOS のブリッジ（bridge101 など）は生きている。そこに en8 を自分で足せば
+# 死んだ内部の口を迂回できる。**実測 2 分 23 秒 → 5.5 秒**、しかも RViz2 も
+# コンテナも実行中の ROS ノードも無停止。理屈と判定は repair_bridge.sh に書いた。
 repair_bridge_if_broken() {
     if [ "$COLIMA_RESTART" = never ]; then
         say "ブリッジの検査はしない（G1_COLIMA_RESTART=never）"
@@ -144,7 +150,12 @@ repair_bridge_if_broken() {
     local via
     via="$(g1_bridge_via)"
     say "ブリッジを検査する（$via → PC2 $PC2_IP:$G1_PC2_SSH_PORT の TCP）"
-    if g1_bridge_ok "$via"; then
+    # ⚠️ **TCP が通っても col0 が無ければ生きていない。**
+    # col0 が無いとき VM は lima の NAT（eth0 の default route）から
+    # 192.168.123.0/24 へ出られてしまい、PC2 への TCP が通る。
+    # 2026-09-12 にこの型（古い socket_vmnet が残って colima start が黙って
+    # ブリッジ無しで上がる）を踏み、ここが「生きている」と答えていた。
+    if g1_bridge_ok "$via" && colima ssh -- ip link show "$VM_NIC" >/dev/null 2>&1; then
         say "ブリッジは生きている（$via 経由で確認）"
         return 0
     fi
@@ -152,7 +163,15 @@ repair_bridge_if_broken() {
         say "ブリッジを測れなかった（コンテナも VM も居ない）。このまま起動する"
         return 0
     fi
-    say "ブリッジが切れている（$via → PC2 $PC2_IP:$G1_PC2_SSH_PORT が張れない） → colima stop してから張り直す"
+    say "ブリッジが切れている（$via → PC2 $PC2_IP:$G1_PC2_SSH_PORT が張れない）"
+
+    # まず VM を落とさずに直せるか。直れば以降の手順は全部飛ばせる
+    if bash "$HERE/repair_bridge.sh"; then
+        say "VM を落とさずに直った"
+        return 0
+    fi
+
+    say "落とさずには直せなかった → colima stop してから張り直す"
     say "VM の再起動に 2 分ほどかかる（実測 08:02:26 stop → 08:04:49 起動完了）"
     colima stop || die "colima stop に失敗した"
     COLIMA_STOPPED=1
@@ -190,6 +209,17 @@ else
     if colima status >/dev/null 2>&1; then
         say "VM は起動済み"
     else
+        # ⚠️ **古い socket_vmnet が残っていると、colima は黙ってブリッジ無しで VM を上げる。**
+        # daemon.log に `pidfile_open: Resource temporarily unavailable` →
+        # `error starting vmnet` → `VM started` と並ぶだけで、colima start は成功で返る。
+        # 2026-09-12 にこの状態で 19 時間気づかずに居た。**起動前に必ず始末する。**
+        if pgrep -f '/opt/colima/bin/socket_vmnet' >/dev/null 2>&1; then
+            say "古い socket_vmnet が残っている。始末してから起動する"
+            sudo -n pkill -F /opt/colima/run/vmnet-default.pid 2>/dev/null
+            sleep 1
+            pgrep -f '/opt/colima/bin/socket_vmnet' >/dev/null 2>&1 \
+                && die "古い socket_vmnet を落とせなかった。手で: sudo pkill -f '/opt/colima/bin/socket_vmnet'"
+        fi
         say "VM を起動する（初回は sudo パスワードを聞かれる）"
         # 中断すると datadisk のロックが残り、次回 "in use by instance" で起動できなくなる。
         # そのときは LIMA_HOME=~/.colima/_lima limactl disk unlock colima で外す。
