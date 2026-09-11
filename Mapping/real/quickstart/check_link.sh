@@ -130,8 +130,17 @@ if docker inspect -f '{{.State.Running}}' "$G1_RVIZ_NAME" 2>/dev/null | grep -q 
     check_path "libmola_metric_maps.so（MOLA のプラグイン）" \
         /opt/ros/humble/lib/aarch64-linux-gnu/libmola_metric_maps.so \
         "無いと MOLA-LO が最初の 1 スキャンで fatal になり 0 キーフレームで終わる"
-    check_path "octomap_server" /opt/ros/humble/lib/octomap_server/octomap_server_node \
-        "start_rviz_mac.sh が入れる（G1_SKIP_NAV2=1 で飛ばしていないか）"
+    # 無くても NG にしない。2026-09-11 から octomap_server は opt-in（G1_OCTOMAP=1）で、
+    # 既定の live では起こさない。Nav2 は /projected_map を一切参照しない
+    check_path_opt() {  # 表示名 パス 補足
+        if docker exec "$G1_RVIZ_NAME" test -e "$2" 2>/dev/null; then
+            g1_ok "$1"
+        else
+            g1_warn "$1 が無い（$3）"
+        fi
+    }
+    check_path_opt "octomap_server" /opt/ros/humble/lib/octomap_server/octomap_server_node \
+        "既定 off なので支障は無い。G1_OCTOMAP=1 で出すときだけ要る"
     check_path "nav2 planner_server" /opt/ros/humble/lib/nav2_planner/planner_server \
         "start_rviz_mac.sh が入れる（G1_SKIP_NAV2=1 で飛ばしていないか）"
     check_path "/work のマウント" /work/G1_Hackason/Mapping/real/quickstart \

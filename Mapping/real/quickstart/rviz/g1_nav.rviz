@@ -204,9 +204,11 @@ Visualization Manager:
     Tree: {}
     Update Interval: 0
     Value: true
+  # ⚠️ 2026-09-11 から既定 off。出しているのは octomap_server で、それ自体が
+  # nav_stack.sh の G1_OCTOMAP=1 のときしか起きない（Nav2 は参照しない）
   - Class: rviz_default_plugins/MarkerArray
-    Enabled: true
-    Name: OctoMap voxels
+    Enabled: false
+    Name: OctoMap voxels (要 G1_OCTOMAP=1)
     Namespaces: {}
     Topic:
       Depth: 5
@@ -215,9 +217,11 @@ Visualization Manager:
       Reliability Policy: Reliable
       Value: /occupied_cells_vis_array
     Value: true
+  # ⚠️ 2026-09-11 から既定 off。**2D 地図のざらつきの正体はこれ**（範囲の 43% が
+  # 占有、床まで投影）。購読者は RViz だけで Nav2 は一切参照しない
   - Class: rviz_default_plugins/Map
-    Enabled: true
-    Name: Projected map (2D)
+    Enabled: false
+    Name: Projected map 2D (ライブ OctoMap の投影。要 G1_OCTOMAP=1)
     Topic:
       Depth: 1
       Durability Policy: Transient Local
@@ -237,7 +241,9 @@ Visualization Manager:
     Use Timestamp: false
   - Class: rviz_default_plugins/Map
     Enabled: true
-    Name: Static map 2D (OctoMap 4m を投影)
+    # /map を出しているのは map_server（nav_stack.sh 手順 [5]）で、中身は
+    # G1_NAV_MAP の既定 nav_map_clean。OctoMap とは無関係（2026-09-11 に名前を直した）
+    Name: Static map 2D (nav_map_clean)
     Alpha: 0.6
     Color Scheme: map
     Draw Behind: true

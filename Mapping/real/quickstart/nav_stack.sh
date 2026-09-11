@@ -451,13 +451,31 @@ if [ "$USE_MOLA" = "1" ]; then
     sleep 10
 fi
 
-say "[4] OctoMap を作る（生 LiDAR / maxRange ${OCTO_MAX_RANGE}m）"
-# 地図点群 /unitree/slam_mapping/points は stamp=0 で TF を引けないので使わない
-spawn octomap.log "ros2 run octomap_server octomap_server_node --ros-args \
-    -p resolution:=0.10 -p frame_id:=map -p base_frame_id:=base_link \
-    -p sensor_model.max_range:=$OCTO_MAX_RANGE -p use_sim_time:=$SIM_TIME \
-    -r cloud_in:=/utlidar/cloud_livox_mid360"
-sleep 6
+# ── [4] OctoMap（/projected_map）は既定で起こさない（2026-09-11 に測って決めた）──
+#
+# 何を作っていたか: octomap_server が生 LiDAR（maxRange ${G1_OCTO_MAX_RANGE:-2} m）を
+#   map 座標の 3D 格子に**足し続け**、真上から見た影が /projected_map。
+# 誰が使っていたか: **RViz の表示だけ。**Nav2 は一切参照しない
+#   （静的レイヤは map_server の /map、障害物は voxel/obstacle layer が生 LiDAR から直接作る）。
+# 害: 測位がすべると**消えない塗り潰し**が残る。09-11 に /map と /projected_map を
+#   同座標で PGM に落として比べたら、132x60 セルの **43%（3,404 セル）が占有**で、
+#   床まで投影していた（occupancy_min_z も filter_ground も付けていない）。
+#   4 コアの VM で loadavg 6.77 だったことの一因でもある。
+# なぜ消さずに残すか: 建図の頃の名残だが、3D の見え方を確かめたくなる日がある。
+#
+# 戻し方: G1_OCTOMAP=1。RViz 側の 2 表示（OctoMap voxels / Projected map 2D）も
+#   既定 off にしてあるので、チェックを入れて出す。
+if [ "${G1_OCTOMAP:-0}" = "1" ]; then
+    say "[4] OctoMap を作る（G1_OCTOMAP=1 / 生 LiDAR / maxRange ${OCTO_MAX_RANGE}m）"
+    # 地図点群 /unitree/slam_mapping/points は stamp=0 で TF を引けないので使わない
+    spawn octomap.log "ros2 run octomap_server octomap_server_node --ros-args \
+        -p resolution:=0.10 -p frame_id:=map -p base_frame_id:=base_link \
+        -p sensor_model.max_range:=$OCTO_MAX_RANGE -p use_sim_time:=$SIM_TIME \
+        -r cloud_in:=/utlidar/cloud_livox_mid360"
+    sleep 6
+else
+    say "[4] OctoMap は起こさない（既定。Nav2 は使わない / 出すなら G1_OCTOMAP=1）"
+fi
 
 # Nav2 の global_costmap.static_layer は /map を読む（g1_nav2.yaml:140）。
 # その /map を出すノードが 2026-09-06 の構成には無く、静的レイヤが空のままだった
