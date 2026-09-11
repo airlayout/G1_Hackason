@@ -86,6 +86,10 @@ struct Args
   double refinePhiDeg = 5.0;
   std::string jsonOut;      // 結果を機械可読で落とす（段 8 の駆動スクリプトが読む）
   std::string gridOut;      // 尤度格子（phi 方向の最大）を落とす。動画のヒートマップ用
+  // ⚠️ 尤度の最大が正解とは限らない。とくに **ROI を広げると探索が地図の外へ出る**
+  //    （2026-09-11 実測: ROI 10 m で一致率が 1〜14% に落ちた）。
+  //    上位 K 件を**帯の残差と一致率で選び直す**。探索は候補を出す係、選ぶのはゲート側
+  int candidates = 1;
   // 観測尤度のつまみ。**参照地図の層に載せる**（relocalization.h の注記どおり）。
   // ⚠️ 既定は「触らない」。層の型ごとに妥当な既定が違う
   //    （CPointsMap は sigma_dist 0.0025、HashedVoxelPointCloud は 0.5）ので、
@@ -129,6 +133,7 @@ Args parse(int argc, char** argv)
     else if (k == "--refine-phi") { a.refinePhiDeg = atof(next(1)); i += 1; }
     else if (k == "--json") { a.jsonOut = next(1); i += 1; }
     else if (k == "--dump-grid") { a.gridOut = next(1); i += 1; }
+    else if (k == "--candidates") { a.candidates = atoi(next(1)); i += 1; }
     else if (k == "--trusted-pose")
     {
       a.hasTrusted = true;
@@ -365,7 +370,29 @@ int main(int argc, char** argv)
   // ── 3. ゲート（--relocalize）: 詰めてから**帯で**測り直して採否を出す ────
   if (a.relocalize)
   {
-    const auto& p = best.rbegin()->second;
+    // ── 候補の選び直し（--candidates K > 1 のとき）─────────────────────
+    // 尤度の 1 位をそのまま信じない。上位 K 件を**帯の残差**で並べ替え、
+    // 一致率が足りるものの中から残差が最小のものを採る。
+    auto p = best.rbegin()->second;
+    if (a.candidates > 1)
+    {
+      int seen = 0;
+      double bestR = 1e9;
+      auto pick = p;
+      bool found = false;
+      for (auto it = best.rbegin(); it != best.rend() && seen < a.candidates; ++it, ++seen)
+      {
+        const auto& q = it->second;
+        const auto [rr, mm, nn] = residualsAt(q.x, q.y, mrpt::RAD2DEG(q.phi), a.bandLo);
+        const double rate = nn ? double(mm) / double(nn) : 0.0;
+        if (rr < 0 || rate < a.minMatchRate) continue;   // 地図の外は最初から外す
+        if (rr < bestR) { bestR = rr; pick = q; found = true; }
+      }
+      std::printf("\n候補 %d 件を帯の残差で選び直した -> %s(%.3f, %.3f, %.2f deg) 残差 %.4f m\n",
+                  seen, found ? "" : "（一致率が足りるものが無い）",
+                  pick.x, pick.y, mrpt::RAD2DEG(pick.phi), found ? bestR : -1.0);
+      p = pick;
+    }
     double bx = p.x, by = p.y, yawDeg = mrpt::RAD2DEG(p.phi);
 
     // 詰め: 粗い格子の 1 セルぶんを細かく走り、帯の残差が最小になる姿勢を採る。

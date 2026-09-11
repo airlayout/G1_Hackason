@@ -17,6 +17,24 @@ from __future__ import annotations
 CANDIDATES = ("Hiragino Sans", "Hiragino Kaku Gothic ProN",
               "Noto Sans CJK JP", "IPAexGothic", "Arial Unicode MS")
 
+# ⚠️ **日本語の等幅フォントは期待しないこと。** 2026-09-11 にこの Mac で確認した結果、
+# Osaka-Mono / HackGen / Source Han Mono / Noto Sans Mono CJK JP / BIZ UDGothic は
+# どれも入っていない（あるのは Hiragino Sans と Menlo だけ）。
+# `family="monospace"` を指定すると Menlo が選ばれ、**日本語が全部豆腐になる**。
+# 数字を揃えたいときは family を指定せず、書式（{:>6.1f} など）で桁を揃える。
+MONO_CANDIDATES = ("Osaka-Mono", "HackGen", "Source Han Mono",
+                   "Noto Sans Mono CJK JP", "BIZ UDGothic")
+
+
+def japanese_mono():
+    """日本語が出せる等幅フォント。**無ければ None**（上の注記のとおり普通は無い）。"""
+    from matplotlib import font_manager
+    available = {f.name for f in font_manager.fontManager.ttflist}
+    for candidate in MONO_CANDIDATES:
+        if candidate in available:
+            return candidate
+    return None
+
 
 def japanese_font():
     """使えるフォントを 1 つ選んで rcParams に入れ、**選んだ名前を返す**。
