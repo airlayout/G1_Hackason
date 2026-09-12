@@ -30,6 +30,7 @@
 #   G1_IMU_QOS=1   ... MOLA の IMU 購読を reliable / depth 400 にする（段 5 の L1）
 #   G1_STATE_EST=1 ... StateEstimationSmoother を使う（段 5 の L1.5）⛔ G1 では発散する
 #   G1_MOLA_PRIOR_BLEND=0.5 ... ICP の解を事前姿勢に寄せる [0,1]（純回転の滑り対策）
+#   G1_LEG_ODOM=1  ... 純正の脚 odometry /dog_odom を MOLA の事前情報にする（L2。**未検証**）
 #                      いずれも**既定 off**。効くと分かってから既定にする
 #
 # ## G1_USE_MOLA=1 が何を変えるか
@@ -224,6 +225,42 @@ fi
 STATE_EST="${G1_STATE_EST:-0}"
 STATE_EST_ARGS=""
 [ "$STATE_EST" = "1" ] && STATE_EST_ARGS="use_state_estimator:=True"
+
+# ── L2: 純正の脚 odometry を MOLA の事前情報にする（2026-09-12 に追加。既定 off）──
+#
+# G1 は脚の運動学から出した odometry を **/dog_odom（nav_msgs/Odometry、1008 Hz、
+# odom -> robot_center＝骨盤）**として DDS に出している。09-11 まで「L2 は未整備
+# （PC2 で UDP 中継を自作）」と書いていたのは誤りで、ROS 標準型なのでコンテナから
+# そのまま読める。静止 8 秒で xy 変位 2.7 mm / yaw の震え 0.022°（MOLA は 0.253°）。
+#
+# なぜ要るか: その場旋回だけで MOLA の推定が 2.5 m 並進する（回転の推定は正しい。
+# 純回転では並進の拘束が弱く ICP の解が滑る）。脚 odom は「並進していない」を
+# 1 kHz で言う。文献の標準解（LLIO / Leg-KILO / VILENS）と同じ筋。
+#
+# 経路: odom_topic_name -> BridgeROS2 が CObservationRobotPose にする
+#       -> StateEstimationSimple::fuse_odometry_3d_pose() が **相対増分**として
+#          last_pose に足す（odom 系と map 系の yaw 差 34.8° は関係ない。
+#          /dog_odom の covariance は全部 0 だが、増分の経路では見ていない）
+#       -> ICP の初期推定（と robustKernelPriorRefBlend の基準）になる。
+#
+# ⚠️ インストール版 mola_state_estimation_simple **2.4.2** では速度の融合の重みが
+#    σ_pose/dt で、1 kHz だと σ_v ≈ 500 m/s ＝ カルマン利得 ≈ 0 で事実上無視される
+#    （develop 版は sigma_wheel_odom_* に直している）。**効くのは姿勢の増分だけ。**
+#    それで目的（旋回中に並進を 0 に保つ）には足りるはず。速度も融合したければ版を上げる。
+# ⚠️ 1 kHz の購読が VM の CPU に効くかは未測定（RViz2 だけで過負荷になった前例あり）。
+#    入れたら loadavg を見ること。topic_tools は入っていないので間引きは別途。
+# ⚠️ forward_ros_tf_odom_to_mola とは排他（launch が落とす）。こちらは /tf に載らないので
+#    odom_to_tf.py の静的 map->odom とは衝突しない。
+# ⚠️ **未検証**（2026-09-12 時点。機体が別作業中で試せなかった）。順番は
+#    (1) spin_probe.sh で /dog_odom 自身が旋回で並進を捏造しないことを確かめる
+#    (2) G1_LEG_ODOM=1 で同じベンチを回し、幻の並進の最大（基準: L1 のみ 2.63 m）と比べる
+#    (3) 直進（ahead 1.0）が劣化しないことも見る
+#    届いているかは `ros2 topic info /dog_odom` の Subscription count が 1 増えることで分かる。
+LEG_ODOM="${G1_LEG_ODOM:-0}"
+LEG_ODOM_ARGS=""
+if [ "$LEG_ODOM" = "1" ]; then
+    LEG_ODOM_ARGS="odom_topic_name:=${G1_LEG_ODOM_TOPIC:-/dog_odom} odom_sensor_label:=odom_legs"
+fi
 
 # ── ICP の解を「事前姿勢」に寄せる（2026-09-12 に追加）──────────────────
 #
@@ -505,7 +542,7 @@ if [ "$USE_MOLA" = "1" ]; then
         lidar_topic_name:=/utlidar/cloud_livox_mid360 \
         imu_topic_name:=$IMU_TOPIC \
         use_imu_for_lio:=True \
-        $IMU_QOS_ARGS $STATE_EST_ARGS \
+        $IMU_QOS_ARGS $STATE_EST_ARGS $LEG_ODOM_ARGS \
         min_nearby_poses_occupied:=2 \
         start_mapping_enabled:=False \
         mola_initial_map_mm_file:=$MOLA_MAP \
