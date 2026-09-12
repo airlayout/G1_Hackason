@@ -30,8 +30,8 @@
 #   G1_IMU_QOS=1   ... MOLA の IMU 購読を reliable / depth 400 にする（段 5 の L1）
 #   G1_STATE_EST=1 ... StateEstimationSmoother を使う（段 5 の L1.5）⛔ G1 では発散する
 #   G1_MOLA_PRIOR_BLEND=0.5 ... ICP の解を事前姿勢に寄せる [0,1]（純回転の滑り対策）
-#   G1_LEG_ODOM=1  ... 純正の脚 odometry /dog_odom を MOLA の事前情報にする（L2。**未検証**）
-#                      いずれも**既定 off**。効くと分かってから既定にする
+#   G1_LEG_ODOM=0  ... 純正の脚 odometry /dog_odom を切る（L2。**既定 ON**。09-12 に 3 手で合格）
+#                      L1/blend/L1.5 は**既定 off**。効くと分かってから既定にする
 #
 # ## G1_USE_MOLA=1 が何を変えるか
 #
@@ -251,12 +251,22 @@ STATE_EST_ARGS=""
 #    入れたら loadavg を見ること。topic_tools は入っていないので間引きは別途。
 # ⚠️ forward_ros_tf_odom_to_mola とは排他（launch が落とす）。こちらは /tf に載らないので
 #    odom_to_tf.py の静的 map->odom とは衝突しない。
-# ⚠️ **未検証**（2026-09-12 時点。機体が別作業中で試せなかった）。順番は
-#    (1) spin_probe.sh で /dog_odom 自身が旋回で並進を捏造しないことを確かめる
-#    (2) G1_LEG_ODOM=1 で同じベンチを回し、幻の並進の最大（基準: L1 のみ 2.63 m）と比べる
-#    (3) 直進（ahead 1.0）が劣化しないことも見る
-#    届いているかは `ros2 topic info /dog_odom` の Subscription count が 1 増えることで分かる。
-LEG_ODOM="${G1_LEG_ODOM:-0}"
+# ✅ **2026-09-12 に 3 手で検証して既定 ON にした**（手順と合否は
+#    docs/plan/2026-09-12-leg-odom-prior-for-rotation.md）。その場旋回のベンチで:
+#
+#                     幻の最大 / 終端 | 円の中心の移動 | yaw 誤差
+#      L2 OFF  MOLA    3.655 / 1.505 m |     1.293 m    | +15.7%
+#      L2 ON   #1      0.219 / 0.073 m |     0.071 m    |  +0.4%
+#      L2 ON   #2      0.250 / 0.110 m |     0.032 m    |  +1.2%
+#
+#    直進（ahead 1.0）も劣化しない: 到達 1/1・実移動 0.71 m、見かけ最大 0.57 → 0.51 m/s、
+#    上限超 5.2 → 8.3%（線 10%）、壁の帯の重畳 97.3 → 98.7%。
+#
+# ⚠️ **届いたことの確かめ方**: `ros2 topic info /dog_odom --verbose` の購読ノードに
+#    `mola_bridge_ros2` が出る。**mola.log には /dog_odom の行は出ない**（内部モジュールの
+#    購読しか書かない）ので、ログで探しても無駄。環境変数は /proc/<pid>/environ（-u ubuntu）。
+# ⚠️ 1 kHz の購読で loadavg は 1.33 → 2.08〜3.34（4 コア）。線 5 の内側だが只ではない。
+LEG_ODOM="${G1_LEG_ODOM:-1}"
 LEG_ODOM_ARGS=""
 if [ "$LEG_ODOM" = "1" ]; then
     LEG_ODOM_ARGS="odom_topic_name:=${G1_LEG_ODOM_TOPIC:-/dog_odom} odom_sensor_label:=odom_legs"
