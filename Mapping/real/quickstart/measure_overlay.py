@@ -164,13 +164,16 @@ def read_bag(bag_dir: Path) -> tuple[np.ndarray, list, tuple | None]:
 
 def world_points(bag_dir: Path, wall_z: tuple[float, float] | None = None,
                  verbose: bool = True) -> tuple[np.ndarray, int, float, float]:
-    """記録の各スキャンを map 系に起こし、**壁の高さ帯だけ**を (N, 2) で返す。
+    """記録の各スキャンを map 系に起こし、**壁の高さ帯だけ**を (N, 3) で返す。
 
     重畳を数えるのも、ずらして最良を探すのも、入口はここ 1 つにする。
     **ここが 2 つあると、片方だけ静的変換を掛け忘れても数字が下がるだけで落ちない**
     （2026-09-09 に 1 度読み違えた型）。
 
-    戻り値: (map 系の xy, 使ったスキャン数, 帯の下限, 帯の上限)。
+    戻り値: (map 系の xyz, 使ったスキャン数, 帯の下限, 帯の上限)。
+    z も返すのは「外れた点が床なのか物なのか」を後から分けられるようにするため
+    （2026-09-12。捨てていた頃は帯を変えて記録を読み直すしかなかった）。
+    数える側（count_hits）は先頭 2 列しか見ないので、渡す側は気にしなくてよい。
     帯は既定では LiDAR 高さからの相対なのでスキャンごとに動く。返すのは最後の 1 枚の値。
     """
     tfs, scans, sensor_tf = read_bag(bag_dir)
@@ -217,7 +220,7 @@ def world_points(bag_dir: Path, wall_z: tuple[float, float] | None = None,
             z_lo = sensor_z + WALL_Z_BELOW_SENSOR
             z_hi = sensor_z + WALL_Z_ABOVE_SENSOR
         q = q[(q[:, 2] > z_lo) & (q[:, 2] < z_hi)]
-        out.append(q[:, :2])
+        out.append(q)
     if not out:
         raise ValueError("帯に残った点が無い")
     return np.vstack(out), used, z_lo, z_hi
