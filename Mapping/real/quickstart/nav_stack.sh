@@ -201,7 +201,19 @@ IMU_TOPIC="${G1_IMU_TOPIC:-/utlidar/imu_livox_mid360}"
 #
 # L1.5: StateEstimationSmoother を使う（`mola_state_estimation_smoother` が要る。導入済み）。
 #
-# ⚠️ **既定は off のまま。**歩行中のすべりに効くかは未実測で、
+# ⛔ **L1.5 は G1 では使ってはいけない（2026-09-12 実測）。推定が発散する。**
+# 同じその場旋回のベンチ（`/cmd_vel` に vx=0/vyaw=0.5 を 10 秒）で:
+#
+#              幻の並進 最大 / 終端 | yaw 総回転 |  z 振れ幅 | roll 振れ幅
+#   L1 のみ        2.63 m / 0.20 m |  203°(正) |  0.045 m |    6.24°
+#   L1 + L1.5      3.03 m / 1.72 m |  616°(誤) |  3.640 m |   75.22°
+#
+# 起動時に `[StateEstimationSmoother] Ignoring non-normalized IMU orientation
+# quaternion` が出る。G1 の IMU の quaternion は (0,0,0,0) なので
+# smoother が姿勢を得られないまま出力している（致命では落ちないので気づきにくい）。
+# **試すなら `G1_IMU_FIX=1` と併用すること**（未検証）。
+#
+# ⚠️ L1 の既定も off のまま。歩行中のすべりに効くかは未実測で、
 # 既定を動かすと「前と同じ条件で測り直す」ができなくなる。効くと分かってから既定にする。
 IMU_QOS="${G1_IMU_QOS:-0}"
 IMU_QOS_ARGS=""
