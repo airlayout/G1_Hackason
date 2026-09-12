@@ -250,10 +250,11 @@ docker exec -u ubuntu rviz bash -c \
    timeout 30 ros2 bag record -o walk_bag ${TOPICS}"
 
 # 2. 測る（コンテナに numpy が無いので Mac 側の venv で）
-#    ⚠️ 基準は**間引いていない旧 nav_map（map/old/）**。走る地図 nav_map_clean は
-#    机を落としてあり、静止の対照でも 43.9% が天井になる（旧 nav_map なら 78.2%）
+#    ⚠️ 基準は**間引いていない nav_map_ref**。走る地図 nav_map_clean は
+#    机を落としてあり、静止の対照でも 43.9% が天井になる（間引かない地図なら 78.2%）
+#    nav_map_ref が無ければ make_ref_map.py で作る（MOLA 自身の地図から）
 Navigation/.venv/bin/python quickstart/measure_overlay.py \
-    runs/walk_bag runs/<SESSION>/map/old/nav_map.yaml
+    runs/walk_bag runs/<SESSION>/map/nav_map_ref.yaml
 ```
 
 **判定**: 占有セルに乗った割合。立脚静止で **89.2 %**（±10 cm で 95.4 %）。

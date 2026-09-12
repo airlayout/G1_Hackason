@@ -77,6 +77,95 @@ FLOOR_BAND = (-0.20, 0.15)    # 床面とみなす帯
 PGM_OCCUPIED, PGM_FREE, PGM_UNKNOWN = 0, 254, 205
 
 
+def build_grid(points: np.ndarray, resolution: float = 0.10,
+               band: tuple[float, float] = OBSTACLE_BAND,
+               dilate_free: float = 0.30, min_points: int = MIN_POINTS,
+               verbose: bool = True) -> tuple[np.ndarray, np.ndarray]:
+    """点群を 2D の占有格子にする。戻り値: (pgm の画素値の 2 次元配列, 左下の原点 [m])。
+
+    **占有の判定はここ 1 箇所だけ**にする。Nav2 が走る静的レイヤも、重畳の基準地図
+    （make_ref_map.py）も、同じ帯・同じ足切りを通らないと数字を比べられない。
+    """
+    points = points[np.isfinite(points).all(axis=1)]
+    if len(points) == 0:
+        raise ValueError("有限な点が 0 です")
+
+    floor_z = float(np.percentile(points[:, 2], FLOOR_PERCENTILE))
+    height = points[:, 2] - floor_z
+    if verbose:
+        print("点 {:,} / 床の高さ z={:.3f}m".format(len(points), floor_z))
+
+    obstacle = points[(height >= band[0]) & (height <= band[1])]
+    floor = points[(height >= FLOOR_BAND[0]) & (height <= FLOOR_BAND[1])]
+    if verbose:
+        print("  障害物帯 {:,} 点 / 床帯 {:,} 点".format(len(obstacle), len(floor)))
+
+    lo = points[:, :2].min(axis=0) - resolution
+    hi = points[:, :2].max(axis=0) + resolution
+    size = np.ceil((hi - lo) / resolution).astype(int)
+    width, height_cells = int(size[0]), int(size[1])
+    if verbose:
+        print("  格子 {} x {} セル（{:.1f} x {:.1f} m）".format(
+            width, height_cells, width * resolution, height_cells * resolution))
+
+    def to_cells(xy: np.ndarray) -> np.ndarray:
+        idx = np.floor((xy - lo) / resolution).astype(int)
+        idx[:, 0] = np.clip(idx[:, 0], 0, width - 1)
+        idx[:, 1] = np.clip(idx[:, 1], 0, height_cells - 1)
+        return idx
+
+    occupied = np.zeros((height_cells, width), dtype=bool)
+    free = np.zeros_like(occupied)
+    if len(obstacle):
+        c = to_cells(obstacle[:, :2])
+        # ⚠️ 「1 点でも在れば占有」にしない。帯の中の点数で足切りする
+        counts = np.zeros((height_cells, width), dtype=np.int32)
+        np.add.at(counts, (c[:, 1], c[:, 0]), 1)
+        occupied = counts >= min_points
+        thin = int(((counts > 0) & ~occupied).sum())
+        if verbose:
+            print("  帯の中の点数が {} 未満で落としたセル {:,}".format(min_points, thin))
+    if len(floor):
+        c = to_cells(floor[:, :2]); free[c[:, 1], c[:, 0]] = True
+
+    # 床は grazing 角でしか測れないので穴が空く。少しだけ広げて埋める
+    if dilate_free > 0:
+        radius = max(1, int(round(dilate_free / resolution)))
+        free = ndimage.binary_dilation(free, iterations=radius)
+    free &= ~occupied      # 障害物が勝つ
+
+    image = np.full((height_cells, width), PGM_UNKNOWN, dtype=np.uint8)
+    image[free] = PGM_FREE
+    image[occupied] = PGM_OCCUPIED
+    if verbose:
+        print("  占有 {:,} / 空き {:,} / 未知 {:,} セル".format(
+            int(occupied.sum()), int(free.sum()),
+            image.size - int(occupied.sum()) - int(free.sum())))
+    return image, lo
+
+
+def write_map(image: np.ndarray, lo: np.ndarray, resolution: float,
+              output: Path) -> tuple[Path, Path]:
+    """占有格子を Nav2 が読む .pgm + .yaml に落とす。"""
+    height_cells, width = image.shape
+    # pgm は左上が原点。ROS の格子は左下が原点なので上下を反転して書く
+    pgm_path = output.with_suffix(".pgm")
+    pgm_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(pgm_path, "wb") as handle:
+        handle.write("P5\n{} {}\n255\n".format(width, height_cells).encode("ascii"))
+        handle.write(np.flipud(image).tobytes())
+
+    yaml_path = output.with_suffix(".yaml")
+    yaml_path.write_text(
+        "image: {}\n"
+        "resolution: {}\n"
+        "origin: [{:.4f}, {:.4f}, 0.0]\n"
+        "negate: 0\n"
+        "occupied_thresh: 0.65\n"
+        "free_thresh: 0.25\n".format(pgm_path.name, resolution, lo[0], lo[1]))
+    return pgm_path, yaml_path
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -94,73 +183,13 @@ def main() -> int:
 
     cloud = o3d.io.read_point_cloud(str(args.pcd))
     points = np.asarray(cloud.points)
-    points = points[np.isfinite(points).all(axis=1)]
-    if len(points) == 0:
-        raise SystemExit("有限な点が 0 です: {}".format(args.pcd))
+    try:
+        image, lo = build_grid(points, args.resolution, tuple(args.band),
+                               args.dilate_free, args.min_points)
+    except ValueError as e:
+        raise SystemExit("{}: {}".format(e, args.pcd))
 
-    floor_z = float(np.percentile(points[:, 2], FLOOR_PERCENTILE))
-    height = points[:, 2] - floor_z
-    print("点 {:,} / 床の高さ z={:.3f}m".format(len(points), floor_z))
-
-    obstacle = points[(height >= args.band[0]) & (height <= args.band[1])]
-    floor = points[(height >= FLOOR_BAND[0]) & (height <= FLOOR_BAND[1])]
-    print("  障害物帯 {:,} 点 / 床帯 {:,} 点".format(len(obstacle), len(floor)))
-
-    lo = points[:, :2].min(axis=0) - args.resolution
-    hi = points[:, :2].max(axis=0) + args.resolution
-    size = np.ceil((hi - lo) / args.resolution).astype(int)
-    width, height_cells = int(size[0]), int(size[1])
-    print("  格子 {} x {} セル（{:.1f} x {:.1f} m）".format(
-        width, height_cells, width * args.resolution, height_cells * args.resolution))
-
-    def to_cells(xy: np.ndarray) -> np.ndarray:
-        idx = np.floor((xy - lo) / args.resolution).astype(int)
-        idx[:, 0] = np.clip(idx[:, 0], 0, width - 1)
-        idx[:, 1] = np.clip(idx[:, 1], 0, height_cells - 1)
-        return idx
-
-    occupied = np.zeros((height_cells, width), dtype=bool)
-    free = np.zeros_like(occupied)
-    if len(obstacle):
-        c = to_cells(obstacle[:, :2])
-        # ⚠️ 「1 点でも在れば占有」にしない。帯の中の点数で足切りする
-        counts = np.zeros((height_cells, width), dtype=np.int32)
-        np.add.at(counts, (c[:, 1], c[:, 0]), 1)
-        occupied = counts >= args.min_points
-        thin = int(((counts > 0) & ~occupied).sum())
-        print("  帯の中の点数が {} 未満で落としたセル {:,}".format(args.min_points, thin))
-    if len(floor):
-        c = to_cells(floor[:, :2]); free[c[:, 1], c[:, 0]] = True
-
-    # 床は grazing 角でしか測れないので穴が空く。少しだけ広げて埋める
-    if args.dilate_free > 0:
-        radius = max(1, int(round(args.dilate_free / args.resolution)))
-        free = ndimage.binary_dilation(free, iterations=radius)
-    free &= ~occupied      # 障害物が勝つ
-
-    image = np.full((height_cells, width), PGM_UNKNOWN, dtype=np.uint8)
-    image[free] = PGM_FREE
-    image[occupied] = PGM_OCCUPIED
-    print("  占有 {:,} / 空き {:,} / 未知 {:,} セル".format(
-        int(occupied.sum()), int(free.sum()),
-        image.size - int(occupied.sum()) - int(free.sum())))
-
-    # pgm は左上が原点。ROS の格子は左下が原点なので上下を反転して書く
-    pgm_path = args.output.with_suffix(".pgm")
-    pgm_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(pgm_path, "wb") as handle:
-        handle.write("P5\n{} {}\n255\n".format(width, height_cells).encode("ascii"))
-        handle.write(np.flipud(image).tobytes())
-
-    yaml_path = args.output.with_suffix(".yaml")
-    yaml_path.write_text(
-        "image: {}\n"
-        "resolution: {}\n"
-        "origin: [{:.4f}, {:.4f}, 0.0]\n"
-        "negate: 0\n"
-        "occupied_thresh: 0.65\n"
-        "free_thresh: 0.25\n".format(pgm_path.name, args.resolution, lo[0], lo[1]))
-
+    pgm_path, yaml_path = write_map(image, lo, args.resolution, args.output)
     print("\n[OK] {} と {}".format(pgm_path, yaml_path))
     return 0
 

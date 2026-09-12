@@ -44,10 +44,18 @@ RUNS="/work/G1_Hackason/Mapping/real/runs"
 #
 # 基準に nav_map_clean を使わない理由（2026-09-11 実測）:
 #   clean は clean_map.py の --height 0.15 2.0 で机を丸ごと落としてある（意図的）。
-#   そのため静止の対照でも重畳は 43.9% が天井になる。同じ記録を旧 nav_map で測ると
+#   そのため静止の対照でも重畳は 43.9% が天井になる。間引いていない地図で測ると
 #   78.2%（±0.6 m/±4° でずらして最良を探しても増分 +0.0 ＝ 静止時のずれは無い）。
 #   合格線 85% はそちら側から引いた値なので、**基準は間引いていない地図**でないと引けない。
-OVERLAY_REF="${G1_OVERLAY_REF_MAP:-$RUNS/$SESSION/map/old/nav_map.yaml}"
+#
+# 既定は 2026-09-12 に旧 nav_map（map/old/）から nav_map_ref に移した（計画書 段 13）。
+# nav_map_ref は MOLA 自身の地図（mola_floor0/map_full.mm）から make_ref_map.py が作る。
+# 旧 nav_map は 09-06 の OctoMap 由来で、地図を作り直しても付いてこない別系統だった。
+#   静止の対照 still_20260912T085449_r1 で 旧 70.1% -> 新 73.8%、
+#   最良のずらしが (-0.05,-0.05) -> **(0.00, 0.00)**、0.1 m ずらしたときの落差が
+#   -2.9 pt -> **-10.2 pt**。占有セルは 24,370 -> 20,466 と**減って**いる
+#   （緩くなって点が取れているのではない）。
+OVERLAY_REF="${G1_OVERLAY_REF_MAP:-$RUNS/$SESSION/map/nav_map_ref.yaml}"
 # 旧名を黙って無視しない（測定器の基準が知らぬ間に変わるのが一番まずい）
 if [ -n "${G1_NAV_MAP_YAML:-}" ]; then
     echo "[stage] G1_NAV_MAP_YAML は G1_OVERLAY_REF_MAP に改名した（2026-09-11）。" >&2
@@ -94,7 +102,8 @@ tolocal() { printf '%s\n' "${1/#\/work/$G1_REPO_ROOT}"; }
 # ⚠️ 止めはしない（ここは実験の道具で安全装置ではない）。警告して走る
 if [ ! -f "$(tolocal "$OVERLAY_REF")" ]; then
     echo "[stage] ⚠️ 重畳の基準地図が無い: $OVERLAY_REF" >&2
-    echo "[stage] ⚠️ このまま走るが**重畳は測れない**。G1_OVERLAY_REF_MAP で指すか map/old/ に置く" >&2
+    echo "[stage] ⚠️ このまま走るが**重畳は測れない**。quickstart/make_ref_map.py で作るか" >&2
+    echo "[stage] ⚠️ G1_OVERLAY_REF_MAP で別の地図を指すこと" >&2
 fi
 
 # ── --repeat N を引数から抜く ──────────────────────────────────────────

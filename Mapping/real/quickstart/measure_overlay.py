@@ -12,11 +12,15 @@
 
   # 2. 測る（Mac 側の venv で。コンテナには numpy/scipy が無い）
   Navigation/.venv/bin/python measure_overlay.py \
-      runs/live_overlay_bag runs/<SESSION>/map/old/nav_map.yaml
+      runs/live_overlay_bag runs/<SESSION>/map/nav_map_ref.yaml
 
-⚠️ **基準は間引いていない旧 nav_map（map/old/）を渡す。**Nav2 が走る nav_map_clean は
+⚠️ **基準は間引いていない nav_map_ref を渡す。**Nav2 が走る nav_map_clean は
 机を落としてあるので、静止の対照でも 43.9% が天井になり合格線 85% が引けない
-（同じ記録が旧 nav_map では 78.2%。2026-09-11 実測）。
+（同じ記録が間引いていない地図では 78.2%。2026-09-11 実測）。
+
+`nav_map_ref` は `make_ref_map.py` が MOLA 自身の地図（`mola_floor0/map_full.mm`）から作る。
+2026-09-12 まで基準は 09-06 の OctoMap 由来の旧 `nav_map`（`map/old/`）で、
+**地図を作り直しても付いてこない別系統**だった（計画書 段 13）。
 
 やっていること: 各スキャンを、その時刻の `map -> base_link`（MOLA-LO が出す）で
 map 系に変換し、壁の高さ帯だけ残して、事前地図の占有セルに当たった割合を数える。
@@ -158,6 +162,79 @@ def read_bag(bag_dir: Path) -> tuple[np.ndarray, list, tuple | None]:
     return np.array(sorted(tfs)), scans, sensor_tf
 
 
+def world_points(bag_dir: Path, wall_z: tuple[float, float] | None = None,
+                 verbose: bool = True) -> tuple[np.ndarray, int, float, float]:
+    """記録の各スキャンを map 系に起こし、**壁の高さ帯だけ**を (N, 2) で返す。
+
+    重畳を数えるのも、ずらして最良を探すのも、入口はここ 1 つにする。
+    **ここが 2 つあると、片方だけ静的変換を掛け忘れても数字が下がるだけで落ちない**
+    （2026-09-09 に 1 度読み違えた型）。
+
+    戻り値: (map 系の xy, 使ったスキャン数, 帯の下限, 帯の上限)。
+    帯は既定では LiDAR 高さからの相対なのでスキャンごとに動く。返すのは最後の 1 枚の値。
+    """
+    tfs, scans, sensor_tf = read_bag(bag_dir)
+    if len(tfs) < 2 or not scans:
+        raise ValueError("map->base_link の /tf か生 LiDAR が足りない")
+    if verbose:
+        print(f"map->base_link の /tf {len(tfs)} 件 / 生 LiDAR {len(scans)} 枚")
+
+    # base_link -> livox_frame。無い記録は「base_link が LiDAR 系」の構成なので恒等でよい
+    if sensor_tf is None:
+        s_t = np.zeros(3)
+        s_R = np.eye(3)
+        if verbose:
+            print("base_link -> livox_frame: /tf_static に無いので恒等とみなす"
+                  "（ignore_lidar_pose_from_tf:=true の構成）")
+    else:
+        s_t, s_q = sensor_tf
+        s_R = Rotation.from_quat(s_q).as_matrix()
+        if verbose:
+            rpy = Rotation.from_quat(s_q).as_euler("ZYX", degrees=True)[::-1]
+            print(f"base_link -> livox_frame: xyz {np.round(s_t, 4).tolist()} / "
+                  f"rpy {np.round(rpy, 2).tolist()} deg")
+
+    tt = tfs[:, 0]
+    slerp = Slerp(tt, Rotation.from_quat(tfs[:, 4:8]))
+    out = []
+    used = 0
+    z_lo = z_hi = float("nan")
+    for ts, p in scans:
+        if not (tt[0] <= ts <= tt[-1]):
+            continue
+        used += 1
+        p = p[np.isfinite(p).all(1)]
+        d = np.linalg.norm(p, axis=1)
+        p = p[(d > RANGE_MIN) & (d < RANGE_MAX)]
+        t = np.array([np.interp(ts, tt, tfs[:, 1 + i]) for i in range(3)])
+        R = slerp(ts).as_matrix()
+        # livox_frame -> base_link -> map。**静的変換を先に掛ける**
+        q = (R @ (s_R @ p.T + s_t[:, None])).T + t
+        if wall_z is not None:
+            z_lo, z_hi = wall_z
+        else:
+            sensor_z = float((R @ s_t + t)[2])   # map 系での LiDAR の高さ
+            z_lo = sensor_z + WALL_Z_BELOW_SENSOR
+            z_hi = sensor_z + WALL_Z_ABOVE_SENSOR
+        q = q[(q[:, 2] > z_lo) & (q[:, 2] < z_hi)]
+        out.append(q[:, :2])
+    if not out:
+        raise ValueError("帯に残った点が無い")
+    return np.vstack(out), used, z_lo, z_hi
+
+
+def count_hits(xy: np.ndarray, occ: np.ndarray, res: float, ox: float, oy: float,
+               dx: float = 0.0, dy: float = 0.0) -> tuple[int, int]:
+    """(占有セルに乗った点数, 地図の範囲に落ちた点数)。(dx, dy) だけずらして数える。"""
+    h, w = occ.shape
+    ix = np.floor((xy[:, 0] + dx - ox) / res).astype(int)
+    iy = np.floor((xy[:, 1] + dy - oy) / res).astype(int)
+    m = (ix >= 0) & (ix < w) & (iy >= 0) & (iy < h)
+    ix, iy = ix[m], iy[m]
+    row = h - 1 - iy                                   # pgm は上下反転
+    return int(occ[row, ix].sum()), int(m.sum())
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("bag", type=Path)
@@ -173,63 +250,20 @@ def main() -> int:
     occ, res, ox, oy = read_map(a.map_yaml)
     h, w = occ.shape
     # ⚠️ **どの地図で測ったかを必ず残す。**走る地図（nav_map_clean）と基準地図
-    # （間引いていない旧 nav_map）が別なので、数字だけ見ると取り違える
+    # （間引いていない nav_map_ref）が別なので、数字だけ見ると取り違える
     print(f"基準地図 {a.map_yaml}")
     print(f"事前地図 {w}x{h} セル / res {res} m / origin ({ox}, {oy}) / 占有 {occ.sum()} セル")
 
-    tfs, scans, sensor_tf = read_bag(a.bag)
-    if len(tfs) < 2 or not scans:
-        print("map->base_link の /tf か生 LiDAR が足りない", file=sys.stderr)
+    try:
+        xy, used, z_lo, z_hi = world_points(a.bag, a.wall_z)
+    except ValueError as e:
+        print(e, file=sys.stderr)
         return 1
-    print(f"map->base_link の /tf {len(tfs)} 件 / 生 LiDAR {len(scans)} 枚")
 
-    # base_link -> livox_frame。無い記録は「base_link が LiDAR 系」の構成なので恒等でよい
-    if sensor_tf is None:
-        s_t = np.zeros(3)
-        s_R = np.eye(3)
-        print("base_link -> livox_frame: /tf_static に無いので恒等とみなす"
-              "（ignore_lidar_pose_from_tf:=true の構成）")
-    else:
-        s_t, s_q = sensor_tf
-        s_R = Rotation.from_quat(s_q).as_matrix()
-        rpy = Rotation.from_quat(s_q).as_euler("ZYX", degrees=True)[::-1]
-        print(f"base_link -> livox_frame: xyz {np.round(s_t, 4).tolist()} / "
-              f"rpy {np.round(rpy, 2).tolist()} deg")
-
-    tt = tfs[:, 0]
-    slerp = Slerp(tt, Rotation.from_quat(tfs[:, 4:8]))
     k = 2 * a.tol_cells + 1
     occ_tol = binary_dilation(occ, np.ones((k, k), bool))
-
-    tot = hit = hit_tol = 0
-    used = 0
-    z_lo = z_hi = None
-    for ts, p in scans:
-        if not (tt[0] <= ts <= tt[-1]):
-            continue
-        used += 1
-        p = p[np.isfinite(p).all(1)]
-        d = np.linalg.norm(p, axis=1)
-        p = p[(d > RANGE_MIN) & (d < RANGE_MAX)]
-        t = np.array([np.interp(ts, tt, tfs[:, 1 + i]) for i in range(3)])
-        R = slerp(ts).as_matrix()
-        # livox_frame -> base_link -> map。**静的変換を先に掛ける**
-        q = (R @ (s_R @ p.T + s_t[:, None])).T + t
-        if a.wall_z is not None:
-            z_lo, z_hi = a.wall_z
-        else:
-            sensor_z = float((R @ s_t + t)[2])   # map 系での LiDAR の高さ
-            z_lo = sensor_z + WALL_Z_BELOW_SENSOR
-            z_hi = sensor_z + WALL_Z_ABOVE_SENSOR
-        q = q[(q[:, 2] > z_lo) & (q[:, 2] < z_hi)]
-        ix = np.floor((q[:, 0] - ox) / res).astype(int)
-        iy = np.floor((q[:, 1] - oy) / res).astype(int)
-        m = (ix >= 0) & (ix < w) & (iy >= 0) & (iy < h)
-        ix, iy = ix[m], iy[m]
-        row = h - 1 - iy                               # pgm は上下反転
-        tot += len(ix)
-        hit += int(occ[row, ix].sum())
-        hit_tol += int(occ_tol[row, ix].sum())
+    hit, tot = count_hits(xy, occ, res, ox, oy)
+    hit_tol, _ = count_hits(xy, occ_tol, res, ox, oy)
 
     if not tot:
         print("地図の範囲に落ちた点が無い。初期姿勢か地図が合っていない", file=sys.stderr)

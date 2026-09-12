@@ -14,7 +14,7 @@
 使い方:
     Navigation/.venv/bin/python quickstart/overlay_at_pose.py \\
         runs/reloc_eval_20260911/walk_r1.xyz \\
-        runs/20260906T135940_UiS_room_v3/map/old/nav_map.yaml \\
+        runs/20260906T135940_UiS_room_v3/map/nav_map_ref.yaml \\
         --pose 1.033 0.141 -30.0
 """
 from __future__ import annotations

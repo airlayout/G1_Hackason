@@ -308,10 +308,22 @@ MOLA_TRAJ="${G1_MOLA_TRAJ:-$(dirname "$MOLA_MAP")/traj.txt}"
 # 作り直した nav_map_clean は 中央値 0.781m / 0.30m 未満 1.9%。
 # 昔の測定を再現したいときは G1_NAV_MAP で map/old/nav_map.yaml を明示すること。
 # ⚠️ **ここ（走る地図）と重畳の基準地図は別物。**基準は run_stage.sh の
-# G1_OVERLAY_REF_MAP（既定 map/old/nav_map.yaml）。片方を変えても他方は動かない。
+# G1_OVERLAY_REF_MAP（既定 map/nav_map_ref.yaml。make_ref_map.py が作る）。
+# 片方を変えても他方は動かない。
 # 作り方: filter_scans_near.py → run_octomap.py → pcd_to_occupancy.py
 # 合否:   check_map_clearance.py <地図> <traj.txt> --baseline <元の地図>
 NAV_MAP="${G1_NAV_MAP:-/work/G1_Hackason/Mapping/real/runs/$SESSION/map/nav_map_clean.yaml}"
+# ⚠️ 重畳の**基準地図**を走る地図に指されたら落とす（2026-09-12）。nav_map_ref は
+# 掃除していないので軌跡クリアランス中央値 0.10 m ＝ **自分の歩いた道を自分で塞ぐ**
+# （clean は 0.781 m）。役割が逆の地図なので、取り違えても「経路が引けない」としか
+# 出ず原因に辿り着けない。名前で弾く。
+case "$NAV_MAP" in
+    *nav_map_ref*)
+        echo "[nav_stack] G1_NAV_MAP に重畳の基準地図 nav_map_ref が指定されている" >&2
+        echo "[nav_stack] あれは掃除していない測定器用（軌跡クリアランス中央値 0.10 m）。" >&2
+        echo "[nav_stack] 走る地図は map/nav_map_clean.yaml。基準は G1_OVERLAY_REF_MAP の側" >&2
+        exit 1 ;;
+esac
 
 MODE="offline"
 [ "${1:-}" = "live" ] && { MODE="live"; shift; }

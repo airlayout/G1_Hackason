@@ -19,7 +19,7 @@
 ## 使い方
 
     Navigation/.venv/bin/python quickstart/render_overlay.py \\
-        runs/<S>/map/old/nav_map.yaml out.png \\
+        runs/<S>/map/nav_map_ref.yaml out.png \\
         runs/still_A/bag:all:歩行前の静止 \\
         runs/stage_B/bag:first5:歩行の最初 \\
         runs/stage_B/bag:last5:歩行の終端

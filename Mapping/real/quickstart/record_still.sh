@@ -37,9 +37,10 @@ SESSION="${G1_SESSION:-20260906T135940_UiS_room_v3}"
 RUNS="/work/G1_Hackason/Mapping/real/runs"
 VENV="$G1_REPO_ROOT/G1_Hackason/Navigation/.venv/bin/python"
 
-# 重畳の基準地図。**run_stage.sh と同じ既定**（間引いていない旧 nav_map）。
+# 重畳の基準地図。**run_stage.sh と同じ既定**（間引いていない nav_map_ref）。
 # clean を基準にすると静止でも 43.9% が天井になり合格線 85% を引けない（2026-09-11 実測）。
-OVERLAY_REF="${G1_OVERLAY_REF_MAP:-$RUNS/$SESSION/map/old/nav_map.yaml}"
+# 既定は 2026-09-12 に旧 nav_map から nav_map_ref へ移した（make_ref_map.py が作る）。
+OVERLAY_REF="${G1_OVERLAY_REF_MAP:-$RUNS/$SESSION/map/nav_map_ref.yaml}"
 
 # 記録するトピックは **record_topics.txt が唯一の定義**。ここにも直書きしない。
 # 読めなければ**録り始める前に**落とす（黙って減らすと 09-10 の IMU 落ちを繰り返す）。
