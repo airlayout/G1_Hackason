@@ -9,11 +9,19 @@
 ⚠️ 2026-09-12 時点で /dog_odom 入りの旋回 bag はまだ無い（record_topics.txt に入れたのが
    旋回ベンチ 2 本のあと）。Odometry の CDR 読みは静止 8 秒の bag（7985 件）で検証済み。
 
-出すもの（旋回区間 = MOLA の |ω_yaw| > 0.15 rad/s）:
-  - 脚 odom の xy 逸脱の最大 / 終端（開始点からの距離）
-  - 脚 odom の yaw 総回転（ジャイロ積分 ≈ 200° と比べる）
-  - MOLA の同じ量（対照）
-  - 脚 odom の xy が描く円の半径 ≈ robot_center と回転軸のずれ（レバーアーム）
+⚠️ **「開始点からの xy 逸脱」で捏造を測ってはいけない（2026-09-12 に踏んだ）。**
+`robot_center`（骨盤）も `base_link` も**回転の中心ではない**ので、その場旋回でも
+幾何的に半径 r の円を描き、逸脱は最大 2r まで出る。これは本物の運動で捏造ではない。
+
+**捏造は「円の中心が動いたか」で測る。** その場で回るなら中心は止まっているはず。
+往路と復路で別々に円を当て、中心の差を見る（`RETURN=1` で録った場合）。
+円からの残差 RMS は「円運動としてどれだけ素直か」。
+
+出すもの:
+  - 往路 / 復路それぞれの円の中心・半径・残差 RMS
+  - **中心の移動量**（往路の中心 → 復路の中心）← これが捏造の量
+  - 終端の逸脱（出て戻ったあとに開始点へ帰れたか）
+  - yaw の振幅（peak-to-peak。net ではない。RETURN=1 では net ≈ 0 になる）
 """
 import math
 import sqlite3
@@ -53,6 +61,15 @@ def read_tf(con, tid):
     return np.array(sorted(rows))
 
 
+def fit_circle(x, y):
+    """最小二乗で円を当てる。(cx, cy, r, 残差RMS) を返す。"""
+    A = np.c_[2 * x, 2 * y, np.ones_like(x)]
+    cx, cy, c = np.linalg.lstsq(A, x**2 + y**2, rcond=None)[0]
+    r = math.sqrt(max(c + cx**2 + cy**2, 0.0))
+    res = np.hypot(x - cx, y - cy) - r
+    return cx, cy, r, float(np.sqrt((res**2).mean()))
+
+
 def summarize(name, a):
     """a: [t, x, y, z, qx, qy, qz, qw, ...]"""
     t = a[:, 0] - a[0, 0]
@@ -60,20 +77,25 @@ def summarize(name, a):
     yaw = np.unwrap(Rotation.from_quat(a[:, 4:8]).as_euler("xyz")[:, 2])
     rate = np.abs(np.gradient(yaw, a[:, 0]))
     turning = rate > 0.15
-    # 旋回区間だけの xy 逸脱（旋回前の静止で基準を取り直す）
-    if turning.any():
-        i0 = int(np.argmax(turning))
-        d_turn = np.hypot(a[turning, 1] - a[i0, 1], a[turning, 2] - a[i0, 2])
-        # レバーアーム: 旋回中の xy を円でフィット（最小二乗）
-        X, Y = a[turning, 1], a[turning, 2]
-        A = np.c_[2 * X, 2 * Y, np.ones_like(X)]
-        cx, cy, c = np.linalg.lstsq(A, X**2 + Y**2, rcond=None)[0]
-        radius = math.sqrt(max(c + cx**2 + cy**2, 0.0))
-    else:
-        d_turn, radius = np.array([0.0]), float("nan")
-    print("  {:<12} 件 {:>5}  xy逸脱 最大 {:.3f} m / 終端 {:.3f} m   旋回中の逸脱最大 {:.3f} m   "
-          "yaw総回転 {:6.1f}°   旋回中xyの円半径(レバーアーム) {:.3f} m".format(
-              name, len(a), d.max(), d[-1], d_turn.max(), math.degrees(abs(yaw[-1] - yaw[0])), radius))
+
+    # 往路と復路は yaw が最も離れた点で分ける（RETURN=1 で戻ってくる作り）
+    turn = int(np.argmax(np.abs(yaw - yaw[0])))
+    legs = []
+    for lbl, sl in (("往路", slice(0, turn + 1)), ("復路", slice(turn, len(a)))):
+        m = turning[sl]
+        if m.sum() < 20:
+            continue
+        X, Y = a[sl][m, 1], a[sl][m, 2]
+        legs.append((lbl,) + fit_circle(X, Y))
+
+    print("  【{}】 件 {}  yaw 振幅 {:.1f}°（net {:+.1f}°）  終端の逸脱 {:.3f} m  逸脱最大 {:.3f} m".format(
+        name, len(a), math.degrees(np.ptp(yaw)), math.degrees(yaw[-1] - yaw[0]), d[-1], d.max()))
+    for lbl, cx, cy, r, rms in legs:
+        print("    {} 円の中心 ({:+.3f}, {:+.3f})  半径 {:.3f} m  残差RMS {:.3f} m".format(
+            lbl, cx, cy, r, rms))
+    if len(legs) == 2:
+        shift = math.hypot(legs[0][1] - legs[1][1], legs[0][2] - legs[1][2])
+        print("    ★ 中心の移動 {:.3f} m  ← その場旋回なら 0 のはず（捏造の量）".format(shift))
 
 
 def main():
