@@ -27,6 +27,10 @@
 #
 #   G1_USE_MOLA=1 bash quickstart/nav_stack.sh      # map->odom を MOLA-LO に出させる（段 3）
 #
+#   G1_IMU_QOS=1   ... MOLA の IMU 購読を reliable / depth 400 にする（段 5 の L1）
+#   G1_STATE_EST=1 ... StateEstimationSmoother を使う（段 5 の L1.5）
+#                      どちらも**既定 off**。効くと分かってから既定にする
+#
 # ## G1_USE_MOLA=1 が何を変えるか
 #
 # 既定では odom_to_tf.py が map->odom を**固定変換**として出す。内蔵SLAM の odom は
@@ -185,6 +189,28 @@ MOLA_INIT_POSE="${G1_MOLA_INIT_POSE:-$MOLA_INIT_POSE_DEFAULT}"
 IMU_FIX="${G1_IMU_FIX:-0}"
 IMU_TOPIC="${G1_IMU_TOPIC:-/utlidar/imu_livox_mid360}"
 [ "$IMU_FIX" = "1" ] && IMU_TOPIC="/imu_fixed"
+
+# ── 段 5 の 2 つのつまみ（2026-09-12 に追加）────────────────────────────
+#
+# L1: IMU の QoS を publisher に合わせる。
+#   G1 の IMU は **RELIABLE / 199.6 Hz** で出ているのに、MOLA の購読は既定で
+#   **BEST_EFFORT / depth 50**。launch の説明文が名指しで
+#   「reliable にして高レートな publisher に合わせ、silent drop を避けよ」
+#   「高レート IMU が SLAM 負荷の下にあるときは depth を 200〜1000 に上げよ」
+#   と書いている、まさにその食い違い。落ちても**何も言わない**のが厄介な点。
+#
+# L1.5: StateEstimationSmoother を使う（`mola_state_estimation_smoother` が要る。導入済み）。
+#
+# ⚠️ **既定は off のまま。**歩行中のすべりに効くかは未実測で、
+# 既定を動かすと「前と同じ条件で測り直す」ができなくなる。効くと分かってから既定にする。
+IMU_QOS="${G1_IMU_QOS:-0}"
+IMU_QOS_ARGS=""
+if [ "$IMU_QOS" = "1" ]; then
+    IMU_QOS_ARGS="imu_qos_reliability:=reliable imu_qos_depth:=${G1_IMU_QOS_DEPTH:-400}"
+fi
+STATE_EST="${G1_STATE_EST:-0}"
+STATE_EST_ARGS=""
+[ "$STATE_EST" = "1" ] && STATE_EST_ARGS="use_state_estimator:=True"
 
 BAG_OFFSET="${G1_BAG_OFFSET:-0}"
 MOLA_TRAJ="${G1_MOLA_TRAJ:-$(dirname "$MOLA_MAP")/traj.txt}"
@@ -438,6 +464,7 @@ if [ "$USE_MOLA" = "1" ]; then
         lidar_topic_name:=/utlidar/cloud_livox_mid360 \
         imu_topic_name:=$IMU_TOPIC \
         use_imu_for_lio:=True \
+        $IMU_QOS_ARGS $STATE_EST_ARGS \
         min_nearby_poses_occupied:=2 \
         start_mapping_enabled:=False \
         mola_initial_map_mm_file:=$MOLA_MAP \
