@@ -28,6 +28,10 @@
 
 /utlidar/cloud_livox_mid360    sensor    # 生 LiDAR。9.95 Hz / 約 4.4 MB/s
 /utlidar/imu_livox_mid360      sensor    # 199.6 Hz。⚠️ 無いと後から掛け直せない（上の経緯）
+/dog_odom                      sensor    # 純正の脚 odometry（nav_msgs/Odometry、1008 Hz、odom->robot_center）。
+                                         # 2026-09-12 に存在を確認。旋回中の「並進していない」を知る唯一の独立な情報源。
+                                         # ⚠️ 09-12 の旋回ベンチ 2 本はこれを録っておらず、脚 odom が旋回で滑らないかを
+                                         # 後から確かめられなかった。IMU と同じ轍。約 0.75 MB/s
 /tf                            ros       # MOLA の map->base_link。測位を後から検算する唯一の手
 /tf_static                     ros       # base_link->livox_frame の取付
 /unitree/slam_mapping/points   mapping   # 内蔵 SLAM の地図座標系の点群

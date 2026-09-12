@@ -43,6 +43,8 @@ KNOWN_TOPICS = {
     "/utlidar/cloud_livox_mid360": "sensor_msgs/msg/PointCloud2",
     # IMUは記録しておかないと後からFAST-LIO2に掛け直せない。取り返しがつかないので既定に入れる
     "/utlidar/imu_livox_mid360": "sensor_msgs/msg/Imu",
+    # 純正の脚 odometry（1008 Hz）。旋回中に並進していないことを知る唯一の独立な情報源（2026-09-12）
+    "/dog_odom": "nav_msgs/msg/Odometry",
     "/unitree/slam_mapping/points": "sensor_msgs/msg/PointCloud2",
     "/unitree/slam_mapping/odom": "nav_msgs/msg/Odometry",
     "/unitree/slam_relocation/points": "sensor_msgs/msg/PointCloud2",
@@ -58,7 +60,7 @@ RECORD_TOPICS_TXT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 # `record_topics.txt`が無いときの控え。**あちらと同じ内容にしておくこと**
 FALLBACK_TOPICS = {
-    "sensor": ["/utlidar/cloud_livox_mid360", "/utlidar/imu_livox_mid360"],
+    "sensor": ["/utlidar/cloud_livox_mid360", "/utlidar/imu_livox_mid360", "/dog_odom"],
     "mapping": ["/unitree/slam_mapping/points", "/unitree/slam_mapping/odom"],
 }
 

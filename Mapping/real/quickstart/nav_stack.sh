@@ -28,8 +28,9 @@
 #   G1_USE_MOLA=1 bash quickstart/nav_stack.sh      # map->odom を MOLA-LO に出させる（段 3）
 #
 #   G1_IMU_QOS=1   ... MOLA の IMU 購読を reliable / depth 400 にする（段 5 の L1）
-#   G1_STATE_EST=1 ... StateEstimationSmoother を使う（段 5 の L1.5）
-#                      どちらも**既定 off**。効くと分かってから既定にする
+#   G1_STATE_EST=1 ... StateEstimationSmoother を使う（段 5 の L1.5）⛔ G1 では発散する
+#   G1_MOLA_PRIOR_BLEND=0.5 ... ICP の解を事前姿勢に寄せる [0,1]（純回転の滑り対策）
+#                      いずれも**既定 off**。効くと分かってから既定にする
 #
 # ## G1_USE_MOLA=1 が何を変えるか
 #
@@ -224,6 +225,31 @@ STATE_EST="${G1_STATE_EST:-0}"
 STATE_EST_ARGS=""
 [ "$STATE_EST" = "1" ] && STATE_EST_ARGS="use_state_estimator:=True"
 
+# ── ICP の解を「事前姿勢」に寄せる（2026-09-12 に追加）──────────────────
+#
+# パイプラインの Solver_GaussNewton は
+#   robustKernelPriorRefBlend: "${MOLA_LO_ROBUST_KERNEL_PRIOR_REF_BLEND|0.0}"
+# を読む。**ロバストカーネルが残差の大小を判定する基準を、現在の解ではなく
+# 事前姿勢（＝運動モデルの予測）にどれだけ寄せるか**（0=現在の解のみ / 1=事前のみ）。
+#
+# なぜ要るか: 2026-09-12 の実測で、**その場旋回だけで推定が 2.5 m 並進する**
+# ことが分かった（回転の推定は正しく、並進だけが捏造される）。純回転では
+# 並進の拘束が弱く ICP の解が滑る、LiDAR odometry の古典的な退化。
+# 1 に寄せるほど「事前から離れる方向を支持する対応づけ」が重み下げされる。
+#
+# ⚠️ **寄せすぎると本当に動いたときに追従しなくなる**はず。純回転だけでなく
+# 直進でも測ってから決めること。
+#
+# ⚠️ **これは MOLA のプロセスの環境変数として渡す必要がある**（launch 引数ではない）。
+# spawn に $SPAWN_ENV で渡す。渡っているかは
+#   docker exec rviz bash -lc "tr '\0' '\n' < /proc/<pid>/environ | grep MOLA_LO"
+# で確かめられる（黙って既定の 0.0 で走られると掃引が全部同じ値になる）。
+SPAWN_ENV=""
+PRIOR_BLEND="${G1_MOLA_PRIOR_BLEND:-}"
+if [ -n "$PRIOR_BLEND" ]; then
+    SPAWN_ENV="$SPAWN_ENV -e MOLA_LO_ROBUST_KERNEL_PRIOR_REF_BLEND=$PRIOR_BLEND"
+fi
+
 BAG_OFFSET="${G1_BAG_OFFSET:-0}"
 MOLA_TRAJ="${G1_MOLA_TRAJ:-$(dirname "$MOLA_MAP")/traj.txt}"
 # Nav2 の global_costmap.static_layer が読む /map の出どころ。
@@ -262,7 +288,10 @@ say() { echo "[stack] $*"; }
 # コンテナ内でノードを 1 つ起こす。環境は毎回明示する（bash -lc は XAUTHORITY を落とすので使わない）
 spawn() {
     local log="$1"; shift
-    docker exec -d -u ubuntu \
+    # ⚠️ $SPAWN_ENV は**引用しない**（"-e K=V" の並びとして単語分割させる）。
+    # bash 3.2 で配列が使えないのでこの形にしてある
+    # shellcheck disable=SC2086
+    docker exec -d -u ubuntu $SPAWN_ENV \
         -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp -e CYCLONEDDS_URI="$DDS" -e ROS_DOMAIN_ID=0 \
         "$NAME" bash -c "source /opt/ros/humble/setup.bash && $* > /home/ubuntu/$log 2>&1"
 }
