@@ -51,8 +51,16 @@ CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
         IpcSend(vx, vy, omega);
     });
 
-    sub_twist_ = create_subscription<geometry_msgs::msg::TwistStamped>(
-        "/cmd_vel_smoothed", 10, [this](geometry_msgs::msg::TwistStamped::SharedPtr msg) { OnTwist(msg); });
+    // D-23 では TwistStamped に統一する方針だが、**Nav2 側が出す型はディストリで異なる**
+    // (Humble は Twist 固定)。両方購読して、どちらで来ても動くようにする。詳細はヘッダのコメント。
+    cmd_vel_topic_ = declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel_smoothed");
+    no_cmd_warn_s_ = declare_parameter<double>("no_cmd_warn_s", 3.0);
+    sub_twist_stamped_ = create_subscription<geometry_msgs::msg::TwistStamped>(
+        cmd_vel_topic_, 10,
+        [this](geometry_msgs::msg::TwistStamped::SharedPtr msg) { OnTwistStamped(msg); });
+    sub_twist_unstamped_ = create_subscription<geometry_msgs::msg::Twist>(
+        cmd_vel_topic_, 10,
+        [this](geometry_msgs::msg::Twist::SharedPtr msg) { OnTwistUnstamped(msg); });
 
     // 仕様書5.1 /g1/estop。trueでソフトウェア緊急停止する。falseでの自動解除は行わない
     // (E_STOPからの復帰は手動解除+安全確認が必須、仕様書7章)。復帰用サービスは未実装(既知の残作業)。
@@ -87,8 +95,27 @@ CmdRouterNode::~CmdRouterNode() {
     }
 }
 
-void CmdRouterNode::OnTwist(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
-    mgr_->OnNavTwist(msg->twist.linear.x, msg->twist.linear.y, msg->twist.angular.z);
+void CmdRouterNode::OnTwistStamped(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+    OnNavTwist(msg->twist.linear.x, msg->twist.linear.y, msg->twist.angular.z, true);
+}
+
+void CmdRouterNode::OnTwistUnstamped(const geometry_msgs::msg::Twist::SharedPtr msg) {
+    OnNavTwist(msg->linear.x, msg->linear.y, msg->angular.z, false);
+}
+
+void CmdRouterNode::OnNavTwist(double vx, double vy, double omega, bool stamped) {
+    // どちらの型で受けているかを最初の1件だけ出す。「Nav2 は動いているのにロボットが
+    // 動かない」ときに、配線が繋がっているかを真っ先に切り分けられるようにするため。
+    if (stamped && !logged_stamped_) {
+        logged_stamped_ = true;
+        RCLCPP_INFO(get_logger(), "%s を TwistStamped で受信し始めた", cmd_vel_topic_.c_str());
+    } else if (!stamped && !logged_unstamped_) {
+        logged_unstamped_ = true;
+        RCLCPP_INFO(get_logger(), "%s を Twist(タイムスタンプ無し)で受信し始めた", cmd_vel_topic_.c_str());
+    }
+    last_cmd_time_ = now();
+    warned_no_cmd_ = false;
+    mgr_->OnNavTwist(vx, vy, omega);
 }
 
 void CmdRouterNode::OnEStop(const std_msgs::msg::Bool::SharedPtr msg) {
@@ -100,7 +127,43 @@ void CmdRouterNode::OnEStop(const std_msgs::msg::Bool::SharedPtr msg) {
 
 void CmdRouterNode::OnTimer() {
     mgr_->Tick();
+    WarnIfNoCommand();
     PublishDiagnostics();
+}
+
+// NAVIGATING なのに指令が1件も来ない状態を可視化する。**状態は変えない**。
+// SafetyManager は「最初の指令が来るまで cmd_timeout の計測を始めない」設計なので
+// (Nav2 の計画時間を待つため、意図的)、配線が間違っていると FAULT にも落ちず
+// ログも出ないまま静かに止まったままになる。2026-09-13 に Humble の velocity_smoother と
+// 繋いだとき、実際にこの沈黙に遭遇した。
+void CmdRouterNode::WarnIfNoCommand() {
+    const bool navigating = mgr_->state() == g1_sdk_bridge::NavState::kNavigating;
+    if (!navigating) {
+        navigating_since_.reset();
+        last_cmd_time_.reset();
+        warned_no_cmd_ = false;
+        return;
+    }
+    if (!navigating_since_.has_value()) {
+        navigating_since_ = now();
+    }
+    if (warned_no_cmd_ || no_cmd_warn_s_ <= 0.0) {
+        return;
+    }
+    // 基準は「最後に指令を受けた時刻」。一度も受けていなければ NAVIGATING に入った時刻。
+    // NAVIGATING 開始時刻だけを基準にすると、指令が届き始めた後も警告が出続ける。
+    const rclcpp::Time since = last_cmd_time_.value_or(*navigating_since_);
+    if ((now() - since).seconds() < no_cmd_warn_s_) {
+        return;
+    }
+    warned_no_cmd_ = true;
+    RCLCPP_WARN(get_logger(),
+                "NAVIGATING だが %s の指令が %.1f 秒間届いていない%s。"
+                "トピック名か**メッセージ型**の食い違いを疑うこと"
+                "(`ros2 topic info %s --verbose` で型が2つ並んでいないか確認する)。",
+                cmd_vel_topic_.c_str(), no_cmd_warn_s_,
+                last_cmd_time_.has_value() ? "" : "(一度も受信していない)",
+                cmd_vel_topic_.c_str());
 }
 
 void CmdRouterNode::IpcSend(double vx, double vy, double omega) {

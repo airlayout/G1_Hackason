@@ -10,7 +10,12 @@ controller_server:
   ros__parameters:
     use_sim_time: false
     controller_frequency: 20.0
-    enable_stamped_cmd_vel: true  # D-23
+    # ⚠️ **Humble にはこのパラメータが存在しない**(Jazzy で追加)。2026-09-13 に実測した
+    # ところ、Humble では宣言されていないため**黙って無視され**、出力は
+    # geometry_msgs/Twist のままだった(エラーも警告も出ない)。
+    # g1_cmd_router は Twist / TwistStamped の**両方**を購読するようにしたので
+    # (2026-09-13)、どちらのディストリでも配線は成立する。
+    enable_stamped_cmd_vel: true  # D-23。Jazzy 以降でのみ効く
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5  # D-15: vy無効なので実質使われない
     min_theta_velocity_threshold: 0.001
@@ -173,7 +178,12 @@ velocity_smoother:
   ros__parameters:
     use_sim_time: false
     smoothing_frequency: 20.0
-    enable_stamped_cmd_vel: true  # D-23
+    # ⚠️ **Humble にはこのパラメータが存在しない**(Jazzy で追加)。2026-09-13 に実測した
+    # ところ、Humble では宣言されていないため**黙って無視され**、出力は
+    # geometry_msgs/Twist のままだった(エラーも警告も出ない)。
+    # g1_cmd_router は Twist / TwistStamped の**両方**を購読するようにしたので
+    # (2026-09-13)、どちらのディストリでも配線は成立する。
+    enable_stamped_cmd_vel: true  # D-23。Jazzy 以降でのみ効く
     scale_velocities: false
     feedback: "OPEN_LOOP"
     # vx の上限は 2026-09-09 実測で 0.20 → 0.30 に変更(0.20 は方向が定まらない速度域)。

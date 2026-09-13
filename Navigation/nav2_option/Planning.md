@@ -54,7 +54,7 @@
 | D-20 | **点群地図の作成（mapping）はオフライン / 操作 PC で行う**<br>運用時の localization のみオンボード | 実機では rosbag 記録のみ。地図生成は高性能 PC でやり直し可能。運用時に mapping 特有の不安定さが入り込まない |
 | D-21 | **Local costmap は 3D 点群ベースとする**（`voxel_layer` 等）<br>2D `/scan` は Global costmap / 壁検出用に限定 | ~~頭部 LiDAR の垂直視野は -7°〜+52°。高さ 1.3m から -7° の光線は約 10.6m 先で床に当たるため、足元〜10m の床面と低障害物が原理的に見えない~~<br>**⚠️ この根拠は誤りだった（2026-09-09、立位で実測）。** **MID-360 は逆さ(roll≈180°)に取り付けられており、視野の広い側(52°)が下を向いている。** そのため床は **約1.0m 先から 11.9m 先まで見えており（床平面 inlier 623,965点）、死角は半径 0.91〜1.12m の円だけ**。センサー高さ 1.213m・傾き 3.81°。理論値も「52°が下向き」なら 0.95m で実測と一致し、「7°が下向き」なら 9.88m で実測と矛盾する。<br>**結論そのもの（Local costmap を 3D 点群ベースにする）は変えなくてよい**（3D 点群を使う利点は死角の有無とは別にある）が、**D-24 の適用環境限定と D-25/Phase 3 の優先度は見直すべき**。詳細: [safety/checklist_phase0.md](safety/checklist_phase0.md) 項目6 |
 | D-22 | **Controller は Regulated Pure Pursuit から開始する** | MPPI は Orin NX では負荷が厳しい。DWB/MPPI のモデル予測は歩容起因の遅延と乖離する。二足の遅い応答と相性が良い |
-| D-23 | **`enable_stamped_cmd_vel = true` とし TwistStamped を標準化する** | Jazzy のデフォルトは false（Twist）だが、Kilted 以降は true。タイムスタンプで stale 指令を弾ける利点もある |
+| D-23 | ~~**`enable_stamped_cmd_vel = true` とし TwistStamped を標準化する**~~ **修正(2026-09-13)**: 標準化は**できない**。**Humble にはこのパラメータが存在せず `Twist` 固定**で、TwistStamped だけを購読すると**無警告で繋がらない**（A-10c で実際に踏んだ）。`g1_cmd_router` は **両方の型を購読する**ことにした | Jazzy のデフォルトは false（Twist）、Kilted 以降は true、Humble は選択肢なし。ディストリ差を配線問題にしないため |
 
 ### 1.4 スコープ
 
@@ -298,6 +298,64 @@ rotate-to-heading が永久に完了しないまま進捗チェックに引っ�
 U-09 の実測値（逆さ取付・傾き 3.81°・高さ 1.213m）で固定するのが本来の姿。
 - 成果物: [tools/g1_slam_odom_tf.py](tools/g1_slam_odom_tf.py)、[tools/nav2_live_wiring.yaml](tools/nav2_live_wiring.yaml)、[tools/run_nav2_live.sh](tools/run_nav2_live.sh)、[tools/send_goal_watch.py](tools/send_goal_watch.py)、[tools/check_gravity_tf.py](tools/check_gravity_tf.py)
 
+**A-10c. ROS ディストリ互換性の決着 — 完了(2026-09-13、実機不要)**
+
+Phase 1 の残作業だった「ROS のバージョン問題」を、Docker 上で実測して決着させた。
+詳細は [findings/ros_distro_compat.md](findings/ros_distro_compat.md)。
+
+| 確認項目 | 結果 |
+|---|---|
+| 自作3パッケージの **Foxy** ビルド (gcc 9) | ✅ 無修正・警告ゼロ |
+| 自作3パッケージの **Humble** ビルド (gcc 11) | ✅ 無修正・警告ゼロ |
+| SDK側プロセスの **ホスト(Ubuntu 24.04 / gcc 13 / ROS無し)** ビルド | ✅ `ldd` 混入なし(D-08 受入基準) |
+| **Foxy でのエンドツーエンド動作**(モックSDK) | ✅ READY→NAVIGATING→指令到達→指令断でFAULT→clear_faultで復帰 |
+| 加速度制限(`max_ax=0.20`)のランプ | ✅ `0.000 → 0.015 → 0.115 → 0.215 → 0.300` |
+| デッドバンド(`min_vx=0.25`, U-12) | ✅ `vx=0.20` は1件も届かない(仕様どおり) |
+
+⚠️ **ただし Nav2 本体は Foxy では成立しない。** `g1_navigation` が依存する
+**`nav2_velocity_smoother` と `nav2_behaviors` が Foxy に存在しない**
+(Foxy にあるのは旧名の `nav2_recoveries` のみ)。`velocity_smoother` は D-23 の
+`/cmd_vel_smoothed` を出す当事者なので、代替なしには組めない。
+
+📌 **配置の結論**: **Nav2 と ROS 側ノードは Humble コンテナ、SDK 側プロセスは
+PC2 ホストにネイティブ常駐**（コンテナが `/tmp/g1_bridge` を bind mount する）。
+D-05 / D-06 / D-07 / D-08 のいずれも壊さない。
+
+### 🐛 実際に踏んだバグ: `Twist` と `TwistStamped` が繋がらない
+
+Humble の本物の `nav2_velocity_smoother` と `g1_cmd_router` を繋いだところ、
+`/cmd_vel` に 20Hz で `vx=0.3` を流しているのに **SDK 側には `vx=0.000` しか届かず、
+しかもエラーも警告も出ず、`FAULT` にも落ちなかった**（ロボットが黙って動かないだけ）。
+
+```
+$ ros2 topic info /cmd_vel_smoothed --verbose
+Type: ['geometry_msgs/msg/Twist', 'geometry_msgs/msg/TwistStamped']
+```
+
+同一トピック名に**2つの型**が同居していた。ROS 2 は型違いの publisher/subscriber を
+マッチさせないだけでエラーにしない。**Humble の `velocity_smoother` は `Twist` 固定で、
+`enable_stamped_cmd_vel` というパラメータ自体を持たない**（Jazzy で追加）。
+`nav2_params.yaml` に書いてあった `enable_stamped_cmd_vel: true`(D-23) は
+Humble では**黙って無視される**（起動失敗すらしない）ことも実測で確認した。
+
+`FAULT` に落ちなかったのは、SafetyManager が「最初の指令を受けるまで `cmd_timeout` の
+計測を始めない」設計(2026-09-09 に意図して入れた猶予)のため。
+**配線ミスのときこの猶予は無期限の沈黙になる。**
+
+**対処**（[g1_ws/src/g1_cmd_router](g1_ws/src/g1_cmd_router)）:
+1. `Twist` と `TwistStamped` の**両方を購読**する。ディストリ差を配線問題にしない
+2. 最初の1件でどちらの型で受けているかを INFO に出す
+3. `NAVIGATING` なのに指令が `no_cmd_warn_s`(既定3.0秒)届かないとき WARN を出す。
+   **状態遷移はさせない** — SafetyManager の猶予設計は意図的なので変えず、
+   「黙って動かない」状況を可視化するだけにとどめた
+
+**修正後、Humble の本物の `velocity_smoother` 経由で全経路が通ることを確認**
+(`vx: 0.000 → 0.050 → 0.150 → 0.250 → 0.300`)。Foxy 側も退行なし。
+
+- 成果物: [findings/ros_distro_compat.md](findings/ros_distro_compat.md)
+
+---
+
 **完了条件**
 - SDK2 の API シグネチャが文書として確定し、§3.3 の分岐が決定している
 - IPC 両端がモックで疎通し、単体テストが全て通る
@@ -357,7 +415,12 @@ U-09 の実測値（逆さ取付・傾き 3.81°・高さ 1.213m）で固定す�
 > 同一ホストで動く必要があるが、PC2 の ROS は Foxy で `g1_ws` は Jazzy 向け(D-01)。
 > そこで [g1_sdk_bridge_cpp/src/teleop_client_main.cpp](g1_sdk_bridge_cpp/src/teleop_client_main.cpp)
 > （ROS 非依存の IPC クライアント）で SDK 側プロセス単体を検証した。
-> **`g1_cmd_router` を実機で動かすには ROS のバージョン問題を解く必要がある**（残作業）。
+>
+> ✅ **この「ROS のバージョン問題」は 2026-09-13 に実機なしで決着した**（A-10c 参照）。
+> 自作 3 パッケージは Foxy / Humble の**両方で無修正ビルドでき、Foxy で全経路が動く**。
+> ただし **Nav2 本体が Foxy に無い**（`nav2_velocity_smoother` / `nav2_behaviors` が
+> 存在しない）ため、**Nav2 と ROS 側ノードは Humble コンテナに入れる**のが答えになった。
+> **残るのは PC2(arm64) 実機での確認のみ。**
 >
 > ### ✅ SDK 側 watchdog（D-10）も実機で検証した（2026-09-09）
 >
@@ -664,6 +727,8 @@ flowchart TD
 | `continous_move=True` を誤って使うと通信断で G1 が歩き続ける | Phase A〜運用全体 | D-27 でコーディング規約として明記。コードレビュー・単体テストで `SetVelocity` 呼び出しの `duration` が常に有限値であることを検証する |
 | **⚠️ 通信断（操作PC↔オンボード）はロボットを止めない。実測で切断後 0.85m 前進した** | Phase 1・2c・運用全体 | 2026-09-09 実測。`sshd` が TCP 切断を 14 秒検知せず SIGHUP が出ないため、オンボードの指令プロセスが生き残って指令を送り続けた。**「ケーブルを抜く」は停止手段にならない。** 物理的な停止手段（純正リモコン）が唯一の最終防衛線。オンボードの指令プロセスは有限時間で終わるか、操作側の heartbeat に依存させる必要がある（Phase 2c で設計） |
 | SDK2 と ROS 2 の DDS 競合 | Phase A・0 | D-04〜D-08 で構造的に回避。`ldd` 混入チェックを受入項目化 |
+| **⚠️ ROS 2 のディストリ差で `/cmd_vel_smoothed` の型が変わり、無警告で指令が届かない** | Phase 2c・運用全体 | **解消済み(2026-09-13)**: Humble の `velocity_smoother` は `Twist` 固定、Jazzy 以降は `TwistStamped` も選べる。`g1_cmd_router` が**両方を購読**するようにした。加えて「NAVIGATING なのに指令が届かない」WARN を追加（A-10c） |
+| **Nav2 本体が PC2 ネイティブの Foxy に存在しない**（`nav2_velocity_smoother` / `nav2_behaviors`） | Phase 2c | **方針確定(2026-09-13)**: Nav2 と ROS 側ノードは **Humble コンテナ**で動かし、SDK 側プロセスはホスト常駐＋`/tmp/g1_bridge` を bind mount する。**PC2(arm64) での実地確認は未実施** |
 | ~~`FAST_LIO_LOCALIZATION_HUMANOID` が Jazzy でビルドできない~~ | Phase A-6 | **解消済み(2026-09-08)**: `humble`ブランチでビルド・起動確認済み。Jazzy継続方針に対するリスクは無くなった |
 | ~~LIO の TF が `map→base_link` 直出しで Nav2 の Local costmap が壊れる~~ | Phase A-6 / 2a | **解消済み(2026-09-08)**: 実際は既に`map→odom`/`odom→base_link`の2段構成だった。フレーム名パッチのみで対応可能(分解ノードは不要) |
 | ~~`open3d_loc`(localizationノード)の`initialpose`パラメータ未適用によるSIGSEGV~~ | Phase 2a | **解消済み(2026-09-09)**: vendoring先の`open3d_loc/src/global_localization.cpp`にサイズ検証を追加し、SIGSEGVを`RCLCPP_FATAL`+例外に変えた。Docker上で無回帰も確認済み。詳細: [vendor/fast_lio_localization_humanoid/VENDOR_NOTES.md](vendor/fast_lio_localization_humanoid/VENDOR_NOTES.md) |
