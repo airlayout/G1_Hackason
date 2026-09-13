@@ -1,0 +1,409 @@
+Panels:
+- Class: rviz_common/Displays
+  Help Height: 78
+  Name: Displays
+  Property Tree Widget:
+    Expanded:
+    - /Global Options1
+    - /Map1
+    - /Registered Scan1
+    Splitter Ratio: 0.55
+  Tree Height: 560
+- Class: rviz_common/Selection
+  Name: Selection
+- Class: rviz_common/Tool Properties
+  Expanded: []
+  Name: Tool Properties
+  Splitter Ratio: 0.588679
+- Class: rviz_common/Views
+  Expanded:
+  - /Current View1
+  Name: Views
+  Splitter Ratio: 0.5
+Visualization Manager:
+  Class: ''
+  Displays:
+  - Alpha: 0.5
+    Cell Size: 1
+    Class: rviz_default_plugins/Grid
+    Color: 90; 90; 90
+    Enabled: true
+    Line Style:
+      Line Width: 0.03
+      Value: Lines
+    Name: Grid
+    Normal Cell Count: 0
+    Offset:
+      X: 0
+      Y: 0
+      Z: 0
+    Plane: XY
+    Plane Cell Count: 40
+    Reference Frame: <Fixed Frame>
+    Value: true
+  # 純正 SLAM（1801）を起こさない構成なので publisher が居ない。有効のままだと
+  # 「メッセージが来ない」の警告が並んで、本当に見たい表示が埋もれる（2026-09-09）
+  - Alpha: 1
+    Autocompute Intensity Bounds: false
+    Autocompute Value Bounds:
+      Max Value: 2.5
+      Min Value: -1.0
+      Value: false
+    Axis: Z
+    Channel Name: density
+    Class: rviz_default_plugins/PointCloud2
+    Color: 220; 220; 220
+    Color Transformer: AxisColor
+    Decay Time: 300
+    Enabled: false
+    Invert Rainbow: false
+    Max Color: 255; 255; 255
+    Max Intensity: 1
+    Min Color: 45; 74; 120
+    Min Intensity: 0
+    Name: SLAM map (純正 SLAM 用。この構成では起こさないので切る)
+    Position Transformer: XYZ
+    Selectable: true
+    Size (Pixels): 2
+    Size (m): 0.025
+    Style: Points
+    Topic:
+      Depth: 2
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /unitree/slam_mapping/points_stamped
+    Use Fixed Frame: true
+    Use rainbow: true
+    Value: false
+  - Alpha: 0.85
+    Autocompute Intensity Bounds: true
+    Autocompute Value Bounds:
+      Max Value: 10
+      Min Value: -10
+      Value: true
+    Axis: Z
+    Channel Name: intensity
+    Class: rviz_default_plugins/PointCloud2
+    Color: 80; 220; 255
+    Color Transformer: FlatColor
+    Decay Time: 1
+    Enabled: true
+    Invert Rainbow: false
+    Max Color: 255; 255; 255
+    Min Color: 0; 0; 0
+    Name: LiDAR raw (livox_frame)
+    Position Transformer: XYZ
+    Selectable: false
+    Size (Pixels): 3
+    Size (m): 0.03
+    Style: Points
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /utlidar/cloud_livox_mid360
+    Use Fixed Frame: true
+    Use rainbow: false
+    Value: false
+  # 事前地図の 3D 版。nav_map.pgm（2D）と同じ map_octomap_r4_s5.pcd が出どころなので
+  # 「Static map 2D」とぴったり重なる。出しているのは pcl_ros の pcd_to_pointcloud で、
+  # publisher が Volatile ＝ 3 秒ごとに撃ち直しているだけなので、RViz2 を後から
+  # 起動しても最大 3 秒で出る。高さで着色して 3D の構造が見えるようにしてある
+  # （z は map 系。床 ≈ -1.2 / 天井 ≈ +1.6）。
+  # /cloud_pcd を出すノードはスタックに入っていない。見たいときだけ起こす:
+  #   ros2 run pcl_ros pcd_to_pointcloud <map>.pcd 0.05 --ros-args \
+  #     -p frame_id:=map -r cloud_pcd:=/cloud_pcd
+  # ⚠️ QoS は VOLATILE で**周期発行**が要る（1 回だけ出しても RViz に残らない）。
+  # 点が多いと描画が落ちる（実測 728k 点 = 1 fps / 52.9k 点 = 20 fps）。
+  # ゴールを選ぶには 2D の Static map（/map）で足りるので既定では切ってある
+  - Alpha: 1
+    Autocompute Intensity Bounds: true
+    Autocompute Value Bounds:
+      Max Value: 1.65
+      Min Value: -1.35
+      Value: false
+    Axis: Z
+    Channel Name: intensity
+    Class: rviz_default_plugins/PointCloud2
+    Color: 200; 200; 200
+    Color Transformer: AxisColor
+    Decay Time: 0
+    Enabled: false
+    Invert Rainbow: false
+    Max Color: 255; 255; 255
+    Max Intensity: 1
+    Min Color: 0; 0; 0
+    Min Intensity: 0
+    Name: 事前地図 3D (要 pcd_to_pointcloud。既定は切る)
+    Position Transformer: XYZ
+    Selectable: false
+    Size (Pixels): 2
+    Size (m): 0.03
+    Style: Points
+    Topic:
+      Depth: 2
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /cloud_pcd
+    Use Fixed Frame: true
+    Use rainbow: true
+    Value: false
+  - Angle Tolerance: 0.1
+    Class: rviz_default_plugins/Odometry
+    Covariance:
+      Orientation:
+        Alpha: 0.35
+        Color: 255; 255; 127
+        Color Style: Unique
+        Frame: Local
+        Offset: 1
+        Scale: 1
+        Value: false
+      Position:
+        Alpha: 0.3
+        Color: 204; 51; 204
+        Scale: 1
+        Value: false
+    Enabled: false
+    Keep: 200
+    Name: Odometry
+    Position Tolerance: 0.1
+    Shape:
+      Alpha: 1
+      Axes Length: 0.4
+      Axes Radius: 0.04
+      Color: 255; 85; 0
+      Head Length: 0.12
+      Head Radius: 0.06
+      Shaft Length: 0.3
+      Shaft Radius: 0.03
+      Value: Arrow
+    Topic:
+      Depth: 10
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /unitree/slam_mapping/odom
+    Value: true
+  # 機体の向きはここで見る。**RobotModel は使えない**（G1 の URDF が repo に無く、
+  # /robot_description も配信されていない。Enabled にすると表示がエラーになる）。
+  # base_link の軸が出れば「どちらを向いているか」は判る。ゴールの向きを決めるのに要る
+  - Class: rviz_default_plugins/TF
+    Enabled: true
+    Frame Timeout: 15
+    Frames:
+      All Enabled: true
+    Marker Scale: 0.7
+    Name: TF (base_link の向き)
+    Show Arrows: true
+    Show Axes: true
+    Show Names: true
+    Tree: {}
+    Update Interval: 0
+    Value: true
+  # ⚠️ 2026-09-11 から既定 off。出しているのは octomap_server で、それ自体が
+  # nav_stack.sh の G1_OCTOMAP=1 のときしか起きない（Nav2 は参照しない）
+  - Class: rviz_default_plugins/MarkerArray
+    Enabled: false
+    Name: OctoMap voxels (要 G1_OCTOMAP=1)
+    Namespaces: {}
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /occupied_cells_vis_array
+    Value: true
+  # ⚠️ 2026-09-11 から既定 off。**2D 地図のざらつきの正体はこれ**（範囲の 43% が
+  # 占有、床まで投影）。購読者は RViz だけで Nav2 は一切参照しない
+  - Class: rviz_default_plugins/Map
+    Enabled: false
+    Name: Projected map 2D (ライブ OctoMap の投影。要 G1_OCTOMAP=1)
+    Topic:
+      Depth: 1
+      Durability Policy: Transient Local
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /projected_map
+    Alpha: 0.7
+    Color Scheme: map
+    Draw Behind: true
+    Value: true
+    Update Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /projected_map_updates
+    Use Timestamp: false
+  - Class: rviz_default_plugins/Map
+    Enabled: true
+    # /map を出しているのは map_server（nav_stack.sh 手順 [5]）で、中身は
+    # G1_NAV_MAP の既定 nav_map_clean。OctoMap とは無関係（2026-09-11 に名前を直した）
+    Name: Static map 2D (nav_map_clean)
+    Alpha: 0.6
+    Color Scheme: map
+    Draw Behind: true
+    Value: true
+    Use Timestamp: false
+    Topic:
+      Depth: 1
+      Durability Policy: Transient Local
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /map
+    Update Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /map_updates
+  - Class: rviz_default_plugins/Path
+    Enabled: true
+    Name: Nav2 plan
+    Alpha: 1.0
+    Buffer Length: 1
+    Color: 255; 85; 255
+    Line Style: Lines
+    Line Width: 0.03
+    Offset:
+      X: 0
+      Y: 0
+      Z: 0
+    Value: true
+    Pose Style: None
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /plan
+  # ── 段 B（2026-09-09）: なぜ動かないかを見るための 3 つ ────────────────
+  # ⚠️ どちらのコストマップも `always_send_full_costmap: true` が要る
+  # （g1_nav2.yaml で両方に入れた）。既定 false だと部分更新しか来ないので、
+  # **global は最初から出ず、local は静止中だけ出ない**という紛らわしい形になる。
+  - Class: rviz_default_plugins/Map
+    Enabled: true
+    Name: Global Costmap（経路が引けない理由の切り分け）
+    Alpha: 0.5
+    Color Scheme: costmap
+    Draw Behind: false
+    Value: true
+    Use Timestamp: false
+    Topic:
+      Depth: 1
+      Durability Policy: Transient Local
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /global_costmap/costmap
+    Update Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /global_costmap/costmap_updates
+  # これが埋まるかどうかが段 A（odom フレーム）の合否そのもの
+  - Class: rviz_default_plugins/Map
+    Enabled: true
+    Name: Local Costmap（段 A の合否）
+    Alpha: 0.7
+    Color Scheme: costmap
+    Draw Behind: false
+    Value: true
+    Use Timestamp: false
+    Topic:
+      Depth: 1
+      Durability Policy: Transient Local
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /local_costmap/costmap
+    Update Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /local_costmap/costmap_updates
+  # robot_radius 0.30 の内接円。向きは持たないので TF と組で見る
+  - Class: rviz_default_plugins/Polygon
+    Enabled: true
+    Name: Footprint (robot_radius 0.30)
+    Alpha: 1.0
+    Color: 25; 255; 0
+    Value: true
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /local_costmap/published_footprint
+  Enabled: true
+  Global Options:
+    Background Color: 32; 35; 42
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+  - Class: rviz_default_plugins/Interact
+    Hide Inactive Objects: true
+  - Class: rviz_default_plugins/MoveCamera
+  - Class: rviz_default_plugins/Select
+  - Class: rviz_default_plugins/FocusCamera
+  - Class: rviz_default_plugins/Measure
+    Line color: 128; 128; 0
+  - Class: rviz_default_plugins/SetGoal
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /goal_pose
+  Transformation:
+    Current:
+      Class: rviz_default_plugins/TF
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 45
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.06
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.01
+      Pitch: 0.65
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz)
+      Yaw: 0.78
+    Saved: null
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 700
+  Hide Left Dock: false
+  Hide Right Dock: true
+  # QMainWindow State は置かない。**表示が 13 個あって左ドックに収まらず、
+  # 下の方（Global/Local Costmap）が隠れてスクロールしないと状態が見えない。**
+  # 消しておくと RViz が既定のドック配分を作り直すので、一覧が全部見える（2026-09-09）
+  Selection:
+    collapsed: false
+  Time:
+    collapsed: false
+  Tool Properties:
+    collapsed: false
+  Views:
+    collapsed: false
+  Width: 1260
+  X: 20
+  Y: 30
