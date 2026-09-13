@@ -197,7 +197,7 @@ Phase 1 の U-08（各速度での停止距離）を実測してから決める�
   - SDK ヘッダは pimpl で隠し、**ROS 側(`g1_ws`)がこのソースを相対パスでコンパイルしても SDK に依存しない**ようにした（D-08 の前提を保つ）
   - **ビルドで踏んだ落とし穴3件**を README に記録: ①`/usr/local` の install 済みヘッダには G1 の loco ヘッダが無くソースツリー指定が必要 ②C++版 `<dds/dds.hpp>` は `thirdparty/include/ddscxx/` 配下 ③**`LocoClient` を `ChannelFactory::Init()` より前に構築すると segfault する**
   - **未実施**: `--arm` を付けた実際の歩行検証（Phase 0/1 の安全手順に従う）、systemd サービス化
-- 未着手: `g1_interfaces`（独自msg/srv）、`g1_bringup`（launch構成）、`g1_description`（URDF・TF、U-09 待ち）。`/g1/stop` の Nav2 Goal キャンセル、E_STOP の手動解除サービスも未実装
+- 未着手: `g1_interfaces`（独自msg/srv）、`g1_bringup`（launch構成）、`g1_description`（URDF・TF、U-09 待ち）。**E_STOP の手動解除サービスは依然として未実装**（`SafetyManager::ClearEStop()` はロジックに在るが、どのサービスからも呼ばれていない ＝ `/g1/estop` を一度立てると ROS からは戻せない）。`/g1/stop` の Nav2 Goal キャンセルは **A-10f で実装済み**
 
 **A-5. `unitree_mujoco` 調査（U-05）— 完了・結論: 非対応**
 - G1 の高レベル LocoClient は非対応（低レベル `LowCmd`/`LowState` のみ）と確定した
@@ -425,6 +425,69 @@ amd64×FastDDS / amd64×CycloneDDS / **arm64×FastDDS** の3通りで
 📌 **教訓: RMW を明示せずに検証していたことが、バグを見逃す原因になった。**
 イメージによって既定の RMW が変わるため「動いた」の意味が曖昧だった。
 以後、RMW に触る検証では `RMW_IMPLEMENTATION` を明示する。
+
+---
+
+**A-10f. Nav2 Goal のキャンセル — 完了(2026-09-13、実機不要)**
+
+heartbeat（D-31）の残作業。**`FAULT` で指令の転送は止まるが `bt_navigator` の Goal は
+生きたまま**なので、そのままだと `clear_fault` した瞬間に中断地点から巡回が再開する。
+人は「復帰させた」だけのつもりなので驚きが大きい。
+
+**実装**: `<action>/_action/cancel_goal`（`action_msgs/srv/CancelGoal`）を叩く。
+
+📌 **`nav2_msgs` には依存させなかった。** アクションのキャンセルは汎用サービスで
+行えるので `action_msgs`（ros-base に含まれる）だけで済む。これにより
+`g1_cmd_router` は **Nav2 が入っていない環境でもビルド・起動できる**性質を保てる
+（arm64 検証がこの性質のおかげで軽く済んだ、A-10e）。
+
+- `goal_id` と `stamp` を 0 のままにすると「**全ての Goal を取り消す**」という規約。
+  どの Goal が走っているかを追跡しなくてよいので取りこぼしが起きない
+- **`NAVIGATING` から `FAULT`/`E_STOP` へ抜けた瞬間**という 1 箇所で拾う。
+  異常の種類ごとに呼び出しを散らすと呼び忘れが起きるため
+- `/g1/stop` でも明示的に呼ぶ。⚠️ **ゼロ速度を先に送ってからキャンセルを要求する。**
+  キャンセルは非同期で、応答を待つ間もロボットは歩いているため
+- 非同期で投げる。50ms 周期のタイマーから呼ばれるので、応答待ちで実行器を止めない
+
+**検証**（Humble、`RMW_IMPLEMENTATION=rmw_fastrtps_cpp` を明示、本物の Nav2 一式）:
+
+| # | シナリオ | 結果 |
+|---|---|---|
+| ① | Goal 送信 → `/g1/stop` | ✅ `Goal finished with status: CANCELED`。bt_navigator も `Goal canceled` |
+| ② | Goal 実行中に **heartbeat を `kill -9`** | ✅ 1.00 秒で `FAULT` → ゼロ速度 → **Goal `CANCELED`**（理由=`operator_lost`） |
+| ③ | 送信再開 → `clear_fault` → `enable_navigation` | ✅ `NAVIGATING` に戻るが **SDK への指令はゼロのまま** ＝ Goal は復活していない |
+
+### 🐛 ここで見つかった別のバグ: `nav2_params.yaml` が Humble で起動しない
+
+検証のために **`nav2_params.yaml` を使って Nav2 を起動したのは今回が初めて**だった
+（A-10b は Humble 用の別設定 `tools/nav2_live_wiring.yaml` を使っていた）。
+結果、`planner_server` の configure が失敗し **lifecycle_manager が bringup ごと中断**した。
+
+```
+class nav2_navfn_planner::NavfnPlanner ... does not exist.
+Declared types are  nav2_navfn_planner/NavfnPlanner ...
+```
+
+⚠️ **プラグイン名の区切りは `/` と `::` が混在し、統一できない。**
+pluginlib は plugin description XML に `name=` があればそれを、無ければ C++ の型名を
+ルックアップ名にする。Humble の実際の宣言を引き出して確認した:
+
+| パッケージ | `name=` 属性 | 正しい書き方 |
+|---|---|---|
+| `nav2_navfn_planner` | あり | **`nav2_navfn_planner/NavfnPlanner`** |
+| `nav2_behaviors` | あり | **`nav2_behaviors/Spin`** 等 |
+| `nav2_controller` | なし | `nav2_controller::SimpleProgressChecker` 等 |
+| `nav2_costmap_2d` | なし | `nav2_costmap_2d::VoxelLayer` 等 |
+| `nav2_regulated_pure_pursuit_controller` | なし | `nav2_regulated_pure_pursuit_controller::...` |
+
+該当 4 箇所を修正し、**全ライフサイクルノードが `active` になり
+`/navigate_to_pose` が公開されることを確認した**。
+⚠️ 上記は Humble（D-30）の宣言。**Jazzy へ移る際は再確認すること。**
+
+📌 **これも「本番の設定で一度も起動していなかった」ことが原因。**
+テスト用の設定で通っていても、本番の設定が通る保証にはならない。
+
+- 成果物: [g1_ws/src/g1_cmd_router](g1_ws/src/g1_cmd_router)、[g1_ws/src/g1_navigation/config/nav2_params.yaml](g1_ws/src/g1_navigation/config/nav2_params.yaml)
 
 ---
 
@@ -699,9 +762,9 @@ amd64×FastDDS / amd64×CycloneDDS / **arm64×FastDDS** の3通りで
       SDK 側の指令がゼロに。送信だけ再開しても自動復帰せず、`clear_fault` が要る
     - 操作PC 側は `g1_heartbeat_sender`（**ROS 非依存**。操作PC に ROS は入っていない）
     - `heartbeat_required`（既定 **true**）/ `operator_timeout_s`（既定 1.0）で launch から調整
-    - ⚠️ **残作業: 実機での受入試験（切断後の前進距離の実測）と、Nav2 Goal のキャンセル**
-      （`FAULT` で指令転送は止まるが `bt_navigator` の Goal は生きたままなので、
-      `clear_fault` 後に中断地点から再開する。`/g1/stop` の既存 TODO と同じ経路が要る）
+    - ✅ **Nav2 Goal のキャンセルも実装済み**（A-10f）。`FAULT` になると
+      `NavigateToPose` の Goal が `CANCELED` になり、`clear_fault` 後も再開しない
+    - ⚠️ **残作業: 実機での受入試験（切断後の前進距離の実測）**
     - 設計と実装結果は [findings/operator_heartbeat_design.md](findings/operator_heartbeat_design.md)
     - 既存 3 層（`duration` 満了 / SDK側watchdog / ROS側watchdog）は
       **いずれも「オンボード側の誰かが死ぬこと」を検知する仕組み**であり、

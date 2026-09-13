@@ -220,9 +220,10 @@ session が変われば seq を追い直すようにした。単調性チェッ�
    `§7 受入試験` を実機で実施して、切断後の前進距離を実測する必要がある。
    検知遅れ 1.03 秒 × `max_vx=0.30` ≒ 0.31m に停止距離が加わる見積もりだが、
    **歩容の継続が絡むので実測でしか分からない**（2026-09-09 の実測は 0.85m）。
-2. **Nav2 Goal のキャンセルは未実装。** `FAULT` で指令の転送は止まるが、
-   `bt_navigator` の Goal は生きたままなので、`clear_fault` 後に中断地点から
-   再開する。`cmd_router` は Nav2 の action client を持っていないため、
-   `/g1/stop` の既存 TODO（「Nav2 Goal のキャンセルは上位の責務」）と
-   **まとめて設計する必要がある**（§8 参照）。
+2. ~~**Nav2 Goal のキャンセルは未実装。**~~ ✅ **実装済み（2026-09-13、A-10f）。**
+   `<action>/_action/cancel_goal`（`action_msgs/srv/CancelGoal`）を叩く方式にした。
+   `nav2_msgs` に依存させていないので、`cmd_router` が Nav2 の無い環境でも
+   ビルド・起動できる性質は保たれている。本物の Nav2 で、`/g1/stop` と
+   heartbeat 途絶の両方で Goal が `CANCELED` になり、`clear_fault` 後も
+   再開しないことを確認した。
 3. `operator_timeout_s` の初期値 1.0 秒は暫定。会場 room_a の電波状況で調整する。

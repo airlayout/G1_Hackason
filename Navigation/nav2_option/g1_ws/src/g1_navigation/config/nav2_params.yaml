@@ -149,7 +149,18 @@ planner_server:
     use_sim_time: false
     planner_plugins: ["GridBased"]
     GridBased:
-      plugin: "nav2_navfn_planner::NavfnPlanner"
+      # ⚠️ **プラグイン名の区切りは `/` と `::` が混在する。統一できない。**
+      # pluginlib は plugin description XML に `name=` があればそれを、無ければ
+      # C++ の型名(`::`)をルックアップ名にする。Humble の実際の宣言は:
+      #   nav2_navfn_planner  : name="nav2_navfn_planner/NavfnPlanner"  → **`/`**
+      #   nav2_behaviors      : name="nav2_behaviors/Spin" 等            → **`/`**
+      #   nav2_controller     : name 属性なし → `nav2_controller::...`  → `::`
+      #   nav2_costmap_2d     : name 属性なし → `nav2_costmap_2d::...`  → `::`
+      #   nav2_regulated_pure_pursuit_controller : name 属性なし        → `::`
+      # `::` で書くと `class ... does not exist` で planner_server の configure が
+      # 失敗し、**lifecycle_manager が bringup ごと中断する**(2026-09-13 に実測)。
+      # ⚠️ 上記は **Humble(D-30)** の宣言。Jazzy へ移る際は再確認すること。
+      plugin: "nav2_navfn_planner/NavfnPlanner"
       tolerance: 0.3
       use_astar: false
       allow_unknown: false  # 未観測を通行可能扱いしない(A-7と同じ方針)
@@ -159,11 +170,11 @@ behavior_server:
     use_sim_time: false
     behavior_plugins: ["spin", "backup", "wait"]
     spin:
-      plugin: "nav2_behaviors::Spin"
+      plugin: "nav2_behaviors/Spin"
     backup:
-      plugin: "nav2_behaviors::BackUp"
+      plugin: "nav2_behaviors/BackUp"
     wait:
-      plugin: "nav2_behaviors::Wait"
+      plugin: "nav2_behaviors/Wait"
     global_frame: odom
     robot_base_frame: base_link
 

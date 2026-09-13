@@ -15,7 +15,9 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
+#include <action_msgs/srv/cancel_goal.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
@@ -70,6 +72,19 @@ private:
     // D-31: 操作PC の heartbeat が途絶していないか監視する。途絶したら FAULT。
     void CheckOperatorHeartbeat();
 
+    // Nav2 の実行中 Goal を取り消す。
+    //
+    // ⚠️ **ゼロ速度の送信とは独立に、best-effort で行う。**
+    // キャンセルに失敗しても停止処理は止めない。物理的な停止は
+    // ゼロ速度 → SDK側 watchdog → duration 満了 の3層が担保しており、
+    // キャンセルは「**復帰後に勝手に巡回が再開しない**」ためのもの。
+    //
+    // 📌 `nav2_msgs` には依存しない。アクションのキャンセルは
+    // `<action>/_action/cancel_goal`(`action_msgs/srv/CancelGoal`) という
+    // 汎用サービスで行えるため、`action_msgs`(ros-base に含まれる)だけで済む。
+    // これにより `g1_cmd_router` は Nav2 が入っていない環境でもビルド・起動できる。
+    void CancelNav2Goals(const std::string& reason);
+
     void OnEnableNavigation(const std::shared_ptr<std_srvs::srv::SetBool::Request> req,
                              std::shared_ptr<std_srvs::srv::SetBool::Response> res);
     void OnStop(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
@@ -119,6 +134,12 @@ private:
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr srv_stop_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr srv_clear_fault_;
     rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr pub_diag_;
+
+    // Nav2 Goal キャンセル用。空なら機能を無効にする。
+    std::vector<std::string> nav2_cancel_services_;
+    std::vector<rclcpp::Client<action_msgs::srv::CancelGoal>::SharedPtr> cancel_clients_;
+    // NAVIGATING から異常系へ抜けたことを検知するために前回の状態を覚えておく
+    g1_sdk_bridge::NavState prev_state_ = g1_sdk_bridge::NavState::kDisconnected;
 };
 
 }  // namespace g1_cmd_router

@@ -121,6 +121,23 @@ CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
                     "通信断でロボットは止まらない(D-31)。ベンチ試験以外で使わないこと");
     }
 
+    // --- Nav2 Goal のキャンセル -------------------------------------------
+    // FAULT で指令の転送は止まるが、`bt_navigator` の Goal は生きたままなので、
+    // そのままだと `clear_fault` した瞬間に中断地点から巡回が再開してしまう。
+    // 人は「復帰させた」だけのつもりなので、これは驚きが大きい。
+    nav2_cancel_services_ = declare_parameter<std::vector<std::string>>(
+        "nav2_cancel_services",
+        std::vector<std::string>{"/navigate_to_pose/_action/cancel_goal",
+                                 "/navigate_through_poses/_action/cancel_goal"});
+    for (const auto& name : nav2_cancel_services_) {
+        if (!name.empty()) {
+            cancel_clients_.push_back(create_client<action_msgs::srv::CancelGoal>(name));
+        }
+    }
+    if (cancel_clients_.empty()) {
+        RCLCPP_WARN(get_logger(), "Nav2 Goal のキャンセルが無効。停止後に巡回が再開しうる");
+    }
+
     reconnect_thread_ = std::thread(&CmdRouterNode::ReconnectLoop, this);
 
     RCLCPP_INFO(get_logger(), "g1_cmd_router 起動。cmd_sock_path=%s", cmd_sock_path_.c_str());
@@ -217,7 +234,56 @@ void CmdRouterNode::OnTimer() {
     mgr_->Tick();
     CheckOperatorHeartbeat();
     WarnIfNoCommand();
+
+    // NAVIGATING から異常系へ抜けたら Nav2 の Goal も取り消す。
+    // 個々の異常(cmd_timeout / operator_lost / sdk_bridge_error / E-stop)ごとに
+    // 呼び出しを散らさず、**状態遷移という1箇所で拾う**。呼び忘れが起きないため。
+    const auto state = mgr_->state();
+    if (prev_state_ == g1_sdk_bridge::NavState::kNavigating &&
+        (state == g1_sdk_bridge::NavState::kFault || state == g1_sdk_bridge::NavState::kEStop)) {
+        CancelNav2Goals(mgr_->fault_reason().value_or(
+            state == g1_sdk_bridge::NavState::kEStop ? "e_stop" : "fault"));
+    }
+    prev_state_ = state;
+
     PublishDiagnostics();
+}
+
+// Nav2 の実行中 Goal を取り消す(best-effort)。詳細はヘッダのコメント。
+void CmdRouterNode::CancelNav2Goals(const std::string& reason) {
+    for (const auto& client : cancel_clients_) {
+        if (!client->service_is_ready()) {
+            // Nav2 が上がっていない/既に落ちている。停止処理自体は続ける。
+            RCLCPP_WARN(get_logger(), "%s が応答しないため Goal を取り消せない(理由=%s)",
+                        client->get_service_name(), reason.c_str());
+            continue;
+        }
+        // goal_id と stamp を 0 のままにすると「**全ての Goal を取り消す**」という
+        // action_msgs/srv/CancelGoal の規約になる。どの Goal が走っているかを
+        // 追跡しなくてよいので、取りこぼしが起きない。
+        auto req = std::make_shared<action_msgs::srv::CancelGoal::Request>();
+        const std::string service_name = client->get_service_name();
+        // ⚠️ 同期的に待たない。ここは 50ms 周期のタイマーとサービスコールバックの
+        // 中から呼ばれるので、応答待ちで実行器を止めると停止処理ごと固まる。
+        client->async_send_request(
+            req, [this, service_name](rclcpp::Client<action_msgs::srv::CancelGoal>::SharedFuture fut) {
+                const auto res = fut.get();
+                using Resp = action_msgs::srv::CancelGoal::Response;
+                if (res->return_code == Resp::ERROR_NONE) {
+                    RCLCPP_INFO(get_logger(), "Nav2 Goal を %zu 件取り消した(%s)",
+                                res->goals_canceling.size(), service_name.c_str());
+                } else if (res->return_code == Resp::ERROR_GOAL_TERMINATED ||
+                           res->goals_canceling.empty()) {
+                    // 走っている Goal が無かっただけ。異常ではない
+                    RCLCPP_INFO(get_logger(), "取り消す Nav2 Goal は無かった(%s)", service_name.c_str());
+                } else {
+                    RCLCPP_WARN(get_logger(), "Nav2 Goal の取り消しが拒否された: return_code=%d (%s)",
+                                static_cast<int>(res->return_code), service_name.c_str());
+                }
+            });
+        RCLCPP_INFO(get_logger(), "Nav2 Goal の取り消しを要求した(理由=%s, %s)", reason.c_str(),
+                    service_name.c_str());
+    }
 }
 
 // D-31: 操作PC との通信が途絶していたら FAULT へ落とす。
@@ -359,11 +425,14 @@ void CmdRouterNode::OnEnableNavigation(const std::shared_ptr<std_srvs::srv::SetB
 
 void CmdRouterNode::OnStop(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
                             std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
-    // 仕様書5.2: Nav2キャンセル後、ゼロ速度を即時送信する。Nav2 Goalのキャンセル自体は
-    // 上位(mission/bringup層、未実装)の責務。ここではNAVIGATINGを抜けてゼロ速度を送るところまで行う。
+    // 仕様書5.2: Nav2キャンセル後、ゼロ速度を即時送信する。
+    // ⚠️ **順序が逆に見えるが、ゼロ速度を先に送るのが正しい。**
+    // キャンセルは非同期で、応答を待つ間もロボットは歩いている。
+    // 止めることを最優先し、Goal の取り消しはその後で要求する。
     mgr_->EnableNavigation(false);
+    CancelNav2Goals("stop_service");
     res->success = true;
-    res->message = "ゼロ速度を送信した";
+    res->message = "ゼロ速度を送信し、Nav2 Goal の取り消しを要求した";
 }
 
 void CmdRouterNode::OnClearFault(const std::shared_ptr<std_srvs::srv::Trigger::Request>,

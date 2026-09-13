@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
+find_package(action_msgs REQUIRED)
 find_package(Threads REQUIRED)
 
 # g1_sdk_bridge_cpp は独立CMakeプロジェクト(D-08)。ROS 2に依存しないロジック
@@ -35,7 +36,7 @@ target_include_directories(g1_cmd_router_node PRIVATE
 )
 target_link_libraries(g1_cmd_router_node Threads::Threads)
 ament_target_dependencies(g1_cmd_router_node
-  rclcpp geometry_msgs std_srvs diagnostic_msgs
+  rclcpp geometry_msgs std_msgs std_srvs diagnostic_msgs action_msgs
 )
 
 install(TARGETS g1_cmd_router_node DESTINATION lib/${PROJECT_NAME})

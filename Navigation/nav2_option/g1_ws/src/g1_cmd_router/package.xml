@@ -17,6 +17,9 @@
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>diagnostic_msgs</depend>
+  <!-- Nav2 Goal のキャンセル用。nav2_msgs ではなく汎用の action_msgs を使うので
+       Nav2 が入っていない環境でもビルドできる -->
+  <depend>action_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
