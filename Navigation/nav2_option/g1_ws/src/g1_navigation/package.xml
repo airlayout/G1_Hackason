@@ -13,6 +13,8 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <exec_depend>nav2_bringup</exec_depend>
+  <!-- launch が RewrittenYaml を使う(観測源のトピック名を backend に応じて書き換える) -->
+  <exec_depend>nav2_common</exec_depend>
   <exec_depend>nav2_map_server</exec_depend>
   <exec_depend>nav2_lifecycle_manager</exec_depend>
   <exec_depend>nav2_controller</exec_depend>

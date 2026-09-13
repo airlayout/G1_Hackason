@@ -21,7 +21,11 @@ class FakeSensorPublisher(Node):
         rate = self.get_parameter("rate_hz").value
 
         self.pub_scan = self.create_publisher(LaserScan, "/scan", 10)
-        self.pub_points = self.create_publisher(PointCloud2, "/g1/points_local", 10)
+        # ⚠️ **実機と同じトピック名で出す。** モック専用の名前にすると、
+        # 「モックでは通るのに実機で通らない」設定の食い違いを作り込む。
+        self.declare_parameter("points_topic", "/utlidar/cloud_livox_mid360")
+        points_topic = self.get_parameter("points_topic").value
+        self.pub_points = self.create_publisher(PointCloud2, points_topic, 10)
         self.timer = self.create_timer(1.0 / rate, self.on_timer)
         self.get_logger().info("fake_sensor_publisher 起動(常に空のscan/pointcloudを配信する)")
 

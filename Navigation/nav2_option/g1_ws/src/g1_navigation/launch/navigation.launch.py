@@ -1,159 +1,217 @@
-"""Nav2 + 疑似データでの動作確認用launch(実機なし)。
+"""Nav2 一式の起動。**モック(実機なし)と実機の両方をここで賄う。**
 
-Planning.md「Nav2設定ファイル下書き+疑似データでの動作確認」に対応。
+`backend:=mock`（既定）と `backend:=real` で構成が変わる。**設定ファイルを二重に
+持たない**ため、実機固有の差分はすべてこの1ファイルに集約してある
+（分けると必ず片方だけ直して食い違う）。
 
-構成:
-- map_server: A-7で生成したtest_room.yamlを配信(静的地図)
-- static_transform_publisher: map -> odom (恒等変換。実際のlocalizationはPhase 2aで
-  vendoringしたFAST-LIOに置き換える。このdry-runではNav2自体の配線検証が目的)
-- g1_state_bridge: SDK側プロセスのstateから /odom と odom->base_link のTFを配信
-- fake_sensor_publisher: 空の /scan, /g1/points_local を配信(costmapが詰まらないように)
-- controller_server / planner_server / behavior_server / bt_navigator / velocity_smoother:
-  仕様書の構成(Nav2生指令 -> Smoother -> /cmd_vel_smoothed)を再現
-- g1_cmd_router: /cmd_vel_smoothed を安全処理してSDK側プロセスへIPC送信
+## backend による違い
 
-SDK側プロセス(g1_sdk_bridge_mock_server 等)は本launchの対象外。別途起動しておくこと。
+| | `mock` | `real` |
+|---|---|---|
+| センサー | `fake_sensor_publisher`(空の点群) | **G1 内蔵の MID-360** |
+| `odom→base_link` TF | `g1_state_bridge` | **`g1_slam_odom_tf.py`**(内蔵SLAM の odom) |
+| `map→odom` | 静的(dry-run 用のスタンドイン) | `g1_slam_odom_tf.py` が配信(ICP 合わせの結果) |
+| `/odom` | `g1_state_bridge` | `g1_slam_odom_tf.py` |
+| `g1_state_bridge` の役割 | odom と TF の供給源 | **状態監視のみ**(TF を止め `/odom` を改名) |
+
+⚠️ **`real` で `g1_state_bridge` の TF/odom を止める理由。**
+SDK 側の `MoveBackend` は `SetVelocity` しか持たず、**姿勢を読む口が無い**。
+つまり `g1_state_bridge` が出す姿勢は**送った指令を積分しただけ**で、
+実測で約19°横に逸れる機体では位置がすぐ破綻する。実機では内蔵 SLAM の
+odometry（LiDAR+IMU の実測。静止70秒でドリフト 0.9cm）を使う。
+`/odom` は `/g1/sdk_odom` に改名して残す（**両者を比較できると原因究明に効く**）。
+
+📌 **観測源のトピック名はモックと実機で同じ**(`/utlidar/cloud_livox_mid360`)。
+モック側が実機に合わせている。設定を2種類持つと必ず片方だけ直して食い違う。
+
+⚠️ **`real` を使う前に、G1 の内蔵 SLAM を `1801` で起動しておくこと**
+（`tools/send_slam_api.py`）。これが無いと `/unitree/slam_mapping/odom` が出ない。
+
+## 使い方
+
+    # モック(実機なし)
+    ros2 launch g1_navigation navigation.launch.py
+
+    # 実機
+    ros2 launch g1_navigation navigation.launch.py \\
+        backend:=real map:=/path/to/room_a_map.yaml
+
+SDK 側プロセス(`g1_sdk_bridge_real_server`)は本 launch の対象外。
+**ROS 環境を継承させないため systemd から起動する**(D-07、`deploy/` 参照)。
 """
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
+from nav2_common.launch import RewrittenYaml
+
+# 実機の MID-360 は G1 内蔵で、**Livox のドライバを別に立てる必要は無い**。
+# このトピック名は 2026-09-04 の記録と A-10b の配線検証で実測確認したもの。
+# ⚠️ **モックと実機で同じ名前を使う。** モック専用の名前にすると
+# 「モックでは通るのに実機で通らない」設定の食い違いを作り込む。
+# `fake_sensor_publisher` の側がこの名前に合わせている。
+SENSOR_TOPIC = "/utlidar/cloud_livox_mid360"
+
+LIFECYCLE_NODES = [
+    "map_server",
+    "controller_server",
+    "planner_server",
+    "behavior_server",
+    "bt_navigator",
+    "velocity_smoother",
+]
+
+
+def _launch_setup(context, *args, **kwargs):
+    """引数を解決してからノード構成を組み立てる。
+
+    `IfCondition` を撒くより、**解決済みの値で素直に分岐する**ほうが読みやすく、
+    「モックの設定のまま実機を動かす」事故も起きにくい。
+    """
+    share = get_package_share_directory("g1_navigation")
+    backend = LaunchConfiguration("backend").perform(context)
+    if backend not in ("mock", "real"):
+        raise RuntimeError(f"backend は mock か real: {backend}")
+    is_real = backend == "real"
+
+    params_file = LaunchConfiguration("params_file").perform(context)
+    map_yaml = LaunchConfiguration("map").perform(context)
+    sensor_topic = LaunchConfiguration("sensor_topic").perform(context) or SENSOR_TOPIC
+
+    def flag(name: str) -> bool:
+        return LaunchConfiguration(name).perform(context).lower() in ("true", "1", "yes")
+
+    # ⚠️ **記録済み bag で再生検証するときは `use_sim_time:=true` が必須。**
+    # bag のタイムスタンプは過去なので、壁時計のまま動かすと TF が常に
+    # 「未来を要求している」と判定されて Nav2 も鮮度監視も成立しない。
+    # `ros2 bag play --clock` と対で使う。
+    use_sim_time = flag("use_sim_time")
+
+    # 記録済み bag での再生検証のため `use_sim_time` を全ノードに行き渡らせる。
+    # ⚠️ `param_rewrites` の**キーはパラメータ名**であって、値の文字列置換ではない
+    # (一度そう誤解して観測源のトピックが書き換わらなかった。2026-09-13)。
+    # 観測源のトピック名は YAML 側を実機に合わせてあるので書き換え不要。
+    configured_params = RewrittenYaml(
+        source_file=params_file,
+        root_key="",
+        param_rewrites={"use_sim_time": str(use_sim_time)},
+        convert_types=True,
+    )
+
+    nodes = []
+
+    # --- 位置と姿勢の供給源 ---------------------------------------------------
+    if is_real:
+        # 内蔵 SLAM の odom → odom→base_link TF / map→odom / base_link→livox_frame。
+        # ⚠️ `--map-to-odom` を渡さないと map→odom は恒等変換になる。
+        # 保存地図と合わせるには `tools/match_scan_to_map_2d.py` の結果を渡すこと。
+        nodes.append(Node(
+            package="g1_navigation",
+            executable="g1_slam_odom_tf.py",
+            name="g1_slam_odom_tf",
+            output="screen",
+            arguments=["--lidar-frame", LaunchConfiguration("lidar_frame").perform(context)],
+            parameters=[{"use_sim_time": use_sim_time}],
+        ))
+    else:
+        # dry-run 専用のスタンドイン。synthetic_room の自由空間に起点を置く
+        nodes.append(Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="map_to_odom_static_tf",
+            arguments=["-3", "-4", "0", "0", "0", "0", "map", "odom"],
+        ))
+        nodes.append(Node(
+            package="g1_navigation",
+            executable="fake_sensor_publisher.py",
+            name="fake_sensor_publisher",
+        ))
+
+    # --- SDK 側との橋渡し -----------------------------------------------------
+    nodes.append(Node(
+        package="g1_state_bridge",
+        executable="g1_state_bridge_node",
+        name="g1_state_bridge",
+        # 実機では TF を止め、/odom を改名して衝突を避ける(冒頭のコメント参照)
+        parameters=[{"publish_tf": not is_real, "use_sim_time": use_sim_time}],
+        remappings=[("/odom", "/g1/sdk_odom")] if is_real else [],
+    ))
+    nodes.append(Node(
+        package="g1_cmd_router",
+        executable="g1_cmd_router_node",
+        name="g1_cmd_router",
+        output="screen",
+        parameters=[{
+            "heartbeat_required": flag("heartbeat_required"),
+            "operator_timeout_s": float(LaunchConfiguration("operator_timeout_s").perform(context)),
+            "require_tf": flag("require_tf"),
+            "require_sensor": flag("require_sensor"),
+            # 鮮度監視の対象も backend に合わせる(見ていないトピックを監視しても無意味)
+            "sensor_topic": sensor_topic,
+            "use_sim_time": use_sim_time,
+        }],
+    ))
+
+    # --- Nav2 本体 ------------------------------------------------------------
+    nodes += [
+        Node(package="nav2_map_server", executable="map_server", name="map_server",
+             parameters=[configured_params, {"yaml_filename": map_yaml}]),
+        Node(package="nav2_controller", executable="controller_server", name="controller_server",
+             parameters=[configured_params], remappings=[("cmd_vel", "/cmd_vel_nav")]),
+        Node(package="nav2_planner", executable="planner_server", name="planner_server",
+             parameters=[configured_params]),
+        Node(package="nav2_behaviors", executable="behavior_server", name="behavior_server",
+             parameters=[configured_params]),
+        Node(package="nav2_bt_navigator", executable="bt_navigator", name="bt_navigator",
+             parameters=[configured_params]),
+        Node(package="nav2_velocity_smoother", executable="velocity_smoother", name="velocity_smoother",
+             parameters=[configured_params],
+             remappings=[("cmd_vel", "/cmd_vel_nav"), ("cmd_vel_smoothed", "/cmd_vel_smoothed")]),
+        Node(package="nav2_lifecycle_manager", executable="lifecycle_manager",
+             name="lifecycle_manager_navigation",
+             parameters=[{"autostart": True, "node_names": LIFECYCLE_NODES,
+                          "use_sim_time": use_sim_time}]),
+    ]
+    return nodes
 
 
 def generate_launch_description():
-    g1_navigation_share = get_package_share_directory("g1_navigation")
-    default_params = os.path.join(g1_navigation_share, "config", "nav2_params.yaml")
-    # 既定はNav2の配線検証用の合成地図(連結した自由空間を保証)。A-7で生成した実点群由来の
-    # test_room.yamlは、レイトレーシングをしていないため自由空間がほぼ連結しておらず
-    # (最大連結成分3m^2未満)、経路計画のデモには使えなかった(既知の課題、Planning.md参照)。
-    default_map = os.path.join(g1_navigation_share, "maps", "synthetic_room.yaml")
-
-    params_file = LaunchConfiguration("params_file")
-    map_yaml = LaunchConfiguration("map")
-    # D-31: 操作PC の生存監視。既定は有効。
-    # ⚠️ **無効にすると通信断でロボットが止まらない**(2026-09-09 の実測では
-    # リンク切断後も 4.045 秒・0.85m 進み続けた)。ベンチ試験以外で false にしないこと。
-    heartbeat_required = LaunchConfiguration("heartbeat_required")
-    operator_timeout_s = LaunchConfiguration("operator_timeout_s")
-    # 仕様書7章: STANDBY→READY は TF とセンサーが健全になってから。既定は有効。
-    # ⚠️ 無効にすると、地図が無い/LiDAR が死んでいる状態でも走行を許可してしまう。
-    require_tf = LaunchConfiguration("require_tf")
-    require_sensor = LaunchConfiguration("require_sensor")
-
-    lifecycle_nodes = [
-        "map_server",
-        "controller_server",
-        "planner_server",
-        "behavior_server",
-        "bt_navigator",
-        "velocity_smoother",
-    ]
-
-    return LaunchDescription(
-        [
-            DeclareLaunchArgument("params_file", default_value=default_params),
-            DeclareLaunchArgument("map", default_value=default_map),
-            DeclareLaunchArgument(
-                "heartbeat_required",
-                default_value="true",
-                description="操作PCの生存監視(D-31)。falseにすると通信断で止まらない。ベンチ試験専用",
-            ),
-            DeclareLaunchArgument(
-                "operator_timeout_s",
-                default_value="1.0",
-                description="heartbeatが何秒途絶したら停止するか。会場の電波状況に応じて調整する",
-            ),
-            DeclareLaunchArgument(
-                "require_tf",
-                default_value="true",
-                description="TFの鮮度をREADYの条件にする(仕様書7章)。falseはベンチ試験専用",
-            ),
-            DeclareLaunchArgument(
-                "require_sensor",
-                default_value="true",
-                description="センサーの鮮度をREADYの条件にする(仕様書7章)。falseはベンチ試験専用",
-            ),
-            # map -> odom はdry-run専用のスタンドイン(Phase 2aで本物のlocalizationに置き換える)。
-            # synthetic_room.yaml の左下寄りの自由空間に疑似ロボットの起点を置く。
-            Node(
-                package="tf2_ros",
-                executable="static_transform_publisher",
-                name="map_to_odom_static_tf",
-                arguments=["-3", "-4", "0", "0", "0", "0", "map", "odom"],
-            ),
-            Node(
-                package="g1_navigation",
-                executable="fake_sensor_publisher.py",
-                name="fake_sensor_publisher",
-            ),
-            Node(
-                package="g1_state_bridge",
-                executable="g1_state_bridge_node",
-                name="g1_state_bridge",
-            ),
-            Node(
-                package="g1_cmd_router",
-                executable="g1_cmd_router_node",
-                name="g1_cmd_router",
-                parameters=[
-                    {
-                        # ⚠️ LaunchConfiguration は文字列を返すので、型を明示しないと
-                        # bool/double のパラメータ宣言と食い違って起動に失敗する。
-                        "heartbeat_required": ParameterValue(heartbeat_required, value_type=bool),
-                        "operator_timeout_s": ParameterValue(operator_timeout_s, value_type=float),
-                        "require_tf": ParameterValue(require_tf, value_type=bool),
-                        "require_sensor": ParameterValue(require_sensor, value_type=bool),
-                    }
-                ],
-            ),
-            Node(
-                package="nav2_map_server",
-                executable="map_server",
-                name="map_server",
-                parameters=[params_file, {"yaml_filename": map_yaml}],
-            ),
-            Node(
-                package="nav2_controller",
-                executable="controller_server",
-                name="controller_server",
-                parameters=[params_file],
-                remappings=[("cmd_vel", "/cmd_vel_nav")],
-            ),
-            Node(
-                package="nav2_planner",
-                executable="planner_server",
-                name="planner_server",
-                parameters=[params_file],
-            ),
-            Node(
-                package="nav2_behaviors",
-                executable="behavior_server",
-                name="behavior_server",
-                parameters=[params_file],
-            ),
-            Node(
-                package="nav2_bt_navigator",
-                executable="bt_navigator",
-                name="bt_navigator",
-                parameters=[params_file],
-            ),
-            Node(
-                package="nav2_velocity_smoother",
-                executable="velocity_smoother",
-                name="velocity_smoother",
-                parameters=[params_file],
-                remappings=[("cmd_vel", "/cmd_vel_nav"), ("cmd_vel_smoothed", "/cmd_vel_smoothed")],
-            ),
-            Node(
-                package="nav2_lifecycle_manager",
-                executable="lifecycle_manager",
-                name="lifecycle_manager_navigation",
-                parameters=[{"autostart": True, "node_names": lifecycle_nodes, "use_sim_time": False}],
-            ),
-        ]
-    )
+    share = get_package_share_directory("g1_navigation")
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            "backend", default_value="mock",
+            description="mock=疑似データ(実機なし) / real=G1実機。構成が変わる"),
+        DeclareLaunchArgument(
+            "params_file", default_value=os.path.join(share, "config", "nav2_params.yaml")),
+        # 既定は Nav2 の配線検証用の合成地図(連結した自由空間を保証)。
+        # A-7 で生成した test_room.yaml はレイトレーシング前のもので自由空間が
+        # 連結しておらず、経路計画のデモには使えない。実機では room_a_map.yaml を渡す。
+        DeclareLaunchArgument(
+            "map", default_value=os.path.join(share, "maps", "synthetic_room.yaml")),
+        DeclareLaunchArgument(
+            "sensor_topic", default_value="",
+            description=f"空なら {SENSOR_TOPIC}。モックも実機も同じ名前を使う"),
+        DeclareLaunchArgument(
+            "use_sim_time", default_value="false",
+            description="記録済み bag の再生検証で true。`ros2 bag play --clock` と対で使う"),
+        DeclareLaunchArgument(
+            "lidar_frame", default_value="livox_frame",
+            description="点群の frame_id。real でのみ使う"),
+        DeclareLaunchArgument(
+            "heartbeat_required", default_value="true",
+            description="操作PCの生存監視(D-31)。falseにすると通信断で止まらない。ベンチ試験専用"),
+        DeclareLaunchArgument(
+            "operator_timeout_s", default_value="1.0",
+            description="heartbeatが何秒途絶したら停止するか。会場の電波状況に応じて調整する"),
+        DeclareLaunchArgument(
+            "require_tf", default_value="true",
+            description="TFの鮮度をREADYの条件にする(仕様書7章)。falseはベンチ試験専用"),
+        DeclareLaunchArgument(
+            "require_sensor", default_value="true",
+            description="センサーの鮮度をREADYの条件にする(仕様書7章)。falseはベンチ試験専用"),
+        OpaqueFunction(function=_launch_setup),
+    ])

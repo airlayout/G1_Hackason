@@ -91,7 +91,12 @@ local_costmap:
         mark_threshold: 0
         observation_sources: "pointcloud"
         pointcloud:
-          topic: /g1/points_local
+          # ⚠️ **実機のトピック名を正とする。** G1 内蔵の MID-360 がこの名前で出す
+          # (Livox のドライバを別に立てる必要は無い)。モック
+          # (fake_sensor_publisher)の側が**この名前に合わせる**。
+          # 逆にすると「モックでは通るのに実機で通らない」を作り込むことになる
+          # (2026-09-13 に nav2_params.yaml が Humble で起動しなかった件と同じ構図)。
+          topic: /utlidar/cloud_livox_mid360
           data_type: "PointCloud2"
           min_obstacle_height: 0.05
           max_obstacle_height: 1.8
@@ -119,7 +124,14 @@ global_costmap:
       footprint: "[[0.25, 0.20], [0.25, -0.20], [-0.25, -0.20], [-0.25, 0.20]]"
       resolution: 0.05
       track_unknown_space: true  # 未観測を自由と誤判定しない(A-7の設計方針と整合)
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      # ⚠️ **`obstacle_layer` を外してある。** 実機に `/scan`(LaserScan)は存在せず、
+      # 残しても**データが永久に来ない層**になるため(A-10b の検証済み構成に合わせた)。
+      #
+      # 📌 **その結果、global costmap は保存地図しか知らない。** 通路が新しい障害物で
+      # 塞がれても global planner はそこを通る経路を引き続け、local costmap で避けられず
+      # controller が失敗する形になる。MVP は適用環境を限定する(D-24)前提なので許容し、
+      # 動的障害物への対応は Phase 4 の作業項目1で扱う。
+      plugins: ["static_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
