@@ -96,6 +96,17 @@ void SdkBridgeProcess::Stop() {
     if (cmd_recv_thread_.joinable()) cmd_recv_thread_.join();
     if (periodic_thread_.joinable()) periodic_thread_.join();
 
+    // D-11 と対称に、**終了時にも明示的にゼロ速度を送る**。
+    // 周期送信スレッドを止めた時点で最後の SetVelocity(duration=0.20秒) が残っており、
+    // 物理的にはその満了で止まる(D-27)。だが `systemctl stop` のような正常終了で
+    // 「最後に送った速度のまま手を離す」形にはしたくない。ゼロを1件送るだけなので
+    // 失敗しても続行する(ここで例外を投げるとデストラクタ経由で terminate しうる)。
+    try {
+        move_.SetVelocity(0.0, 0.0, 0.0, cfg_.sdk_command_duration_s);
+    } catch (...) {
+        // 終了処理中なので握りつぶす。物理的な停止は duration 満了が担保する
+    }
+
     std::lock_guard<std::mutex> lock(mutex_);
     if (cmd_endpoint_.has_value()) cmd_endpoint_->Close();
     if (state_endpoint_.has_value()) state_endpoint_->Close();

@@ -25,7 +25,7 @@
 | D-04 | **`g1_sdk_bridge` は最初から 2 プロセス構成**<br>（競合時のみ分離ではない） | Unitree 公式が「SDK2 は ROS/ROS2 が初期化された環境では起動できない」と明記。競合はほぼ確実に発生する |
 | D-05 | **IPC は Unix domain socket（`SOCK_SEQPACKET`）** | メッセージ境界が保たれ、接続断で相手プロセスの死亡を検知できる。全ノードが同一ホスト（Orin）に載るため素直に使える |
 | D-06 | **SDK 側プロセスは ROS 2 を一切初期化・リンクしない** | DDS ライブラリ競合の根本回避 |
-| D-07 | **SDK 側プロセスは systemd 管理とし、ROS launch から起動しない** | `ExecuteProcess` は `LD_LIBRARY_PATH` / `AMENT_PREFIX_PATH` を継承し ROS 側 CycloneDDS に誤リンクする。加えて、安全の最終防衛線を ROS launch のライフサイクルに従属させない |
+| D-07 | **SDK 側プロセスは systemd 管理とし、ROS launch から起動しない**（ユニット作成済み: [deploy/](deploy/)、2026-09-13） | `ExecuteProcess` は `LD_LIBRARY_PATH` / `AMENT_PREFIX_PATH` を継承し ROS 側 CycloneDDS に誤リンクする。加えて、安全の最終防衛線を ROS launch のライフサイクルに従属させない |
 | D-08 | **SDK 側プロセスは colcon workspace 外の独立 CMake プロジェクトとしてビルドする** | ROS 環境が source された状態でのビルドを構造的に防ぐ |
 | D-29 | **`slam_operate` は `1801`(建図開始) と `1901`(SLAM終了) の 2 つだけを使う**（2026-09-09、ユーザー確認済み）。`1802`(建図保存) / `1804`(地図読込＋自己位置設定) は使わない。送信クライアントには**この 2 つだけを `_RegistApi()` し、`1102`(移動) は構造的に送れないようにする**（[tools/send_slam_api.py](tools/send_slam_api.py)） | 我々が内蔵 SLAM に求めるのは **odometry の供給だけ**（`/unitree/slam_mapping/odom`。これは 1801 で流れる）。`map→odom` は処理済み地図への ICP 合わせ、global costmap は `room_a_map.yaml` で足りるため、地図を PC1 に置く必要がなく 1802/1804 は不要。**これにより「外部で作った地図を PC1 へ転送できない」という制約自体が我々には効かない**。<br>諦めるのは「純正再定位でドリフトを補正する道」だけで、U-16（歩行中のドリフト）が許容範囲なら不要。許容できない場合の代替案として残す（その際はロボット自身に 1801→1802 で地図を作らせ、処理済み地図との変換を ICP で求める。詳細: [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) §8.6） |
 | D-28 | **SDK 側プロセスの本番実装言語は C++ に決定**（2026-09-09、ユーザー確認済み） | 周期送信の安定性（GIL・GC由来のジッタ回避）で有利という当初の判断どおり。`g1_sdk_bridge/` の Python 実装（A-3）はプロトタイプに位置づけ、ロジック（`protocol.py`/`ipc_transport.py`/`sdk_process_mock.py`/`safety_manager.py`）を C++ に移植する。`unitree_sdk2`（C++版）の `LocoClient` シグネチャを正とする（[findings/sdk2_api.md](findings/sdk2_api.md) §4 の C++/Python 差異は、C++版で確定済みのため実質解消） |
@@ -356,6 +356,28 @@ Humble では**黙って無視される**（起動失敗すらしない）こと
 
 ---
 
+**A-10d. SDK 側プロセスの systemd ユニット作成（D-07）— 完了(2026-09-13、実機不要)**
+
+D-07 が要求していた systemd 管理の実体を作った。
+[deploy/](deploy/)（`g1-sdk-bridge.service` / `g1-sdk-bridge.default` / `README.md`）。
+
+| 設計 | 内容 |
+|---|---|
+| ROS 環境の遮断 | `UnsetEnvironment=` で `LD_LIBRARY_PATH` / `AMENT_PREFIX_PATH` / `CYCLONEDDS_URI` 等を明示的に消す（D-06/D-07） |
+| **発進ゲート** | `/etc/default/g1-sdk-bridge` の `G1_ARM=` が既定で**空（＝ゲート閉）**。「再起動したら勝手に動けるようになっていた」を構造的に防ぐ |
+| 停止時 | SIGTERM → `Stop()` が**明示的にゼロ速度を送る**（今回追加）。加えて `duration` 満了でも止まる（D-27）の二重 |
+| 再起動 | `Restart=on-failure`。起動時ゼロ送信（D-11）があるので前回速度は残らない。60秒に5回超で停止し、異常を隠さない |
+| ソケット | `RuntimeDirectory=g1_bridge` → `/run/g1_bridge/`。ROS をコンテナで動かす場合は `-v /run/g1_bridge:/tmp/g1_bridge` で既定パスのまま繋がる |
+
+📌 **`SdkBridgeProcess::Stop()` がゼロ速度を送っていなかったので追加した。**
+`Start()` の D-11（起動時ゼロ）と非対称だった。物理的には `duration` 満了で
+止まるが、`systemctl stop` で「最後に送った速度のまま手を離す」形にはしない。
+
+`systemd-analyze verify` は警告ゼロ。⚠️ **PC2 実機での起動確認は未実施。**
+特に `User=unitree` で G1 の内蔵スイッチ側 IF に届くかは要確認。
+
+---
+
 **完了条件**
 - SDK2 の API シグネチャが文書として確定し、§3.3 の分岐が決定している
 - IPC 両端がモックで疎通し、単体テストが全て通る
@@ -609,7 +631,7 @@ Humble では**黙って無視される**（起動失敗すらしない）こと
 **作業項目**
 1. Nav2 を起動し、`NavigateToPose` で単一 Goal を実行
 2. Controller は Regulated Pure Pursuit（D-22）。`vy = 0`（D-15）
-3. `enable_stamped_cmd_vel = true` で TwistStamped に統一（D-23）
+3. ~~`enable_stamped_cmd_vel = true` で TwistStamped に統一（D-23）~~ **修正(2026-09-13)**: Humble ではこのパラメータが無く統一できない。`g1_cmd_router` が Twist / TwistStamped の**両方を購読**する（A-10c）
 4. **歩容起因の応答遅延に対する Controller チューニング**
    - 速度追従が歩容周期（概ね 0.5〜0.7 秒/歩）に律速されることを前提に調整
    - Velocity Smoother の加速度制限は保守的な初期値を維持

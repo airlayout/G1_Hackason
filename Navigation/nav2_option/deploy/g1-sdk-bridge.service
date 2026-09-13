@@ -1,0 +1,84 @@
+# SDK 側プロセス(g1_sdk_bridge_real_server)の systemd ユニット。Planning.md D-07。
+#
+# ⚠️ **ROS 環境を継承させないことが、このユニットの存在理由である。**
+# ROS launch の `ExecuteProcess` から起動すると `LD_LIBRARY_PATH` /
+# `AMENT_PREFIX_PATH` を継承し、ROS 側の CycloneDDS に誤リンクする(D-06/D-07)。
+# systemd は既定でユーザーの環境を継承しないが、`DefaultEnvironment=` などで
+# 汚染されうるので、下の `Environment=` で必要なものだけを明示的に与える。
+#
+# ⚠️ **既定では発進ゲートが閉じている(--arm を付けない)。**
+# 実際に機体を動かすには /etc/default/g1-sdk-bridge で明示的に有効化する。
+# 「再起動したら勝手に動けるようになっていた」を構造的に起こさないため。
+
+[Unit]
+Description=G1 SDK Bridge (unitree_sdk2 LocoClient <-> ROS を Unix socket で仲介する)
+Documentation=file:///opt/g1/Planning.md
+# ROS 側とは独立に動く。ROS の起動順に従属させないこと(安全の最終防衛線のため)
+After=network-online.target
+Wants=network-online.target
+# 短時間に繰り返し落ちるなら、上げ続けずに止める(異常を隠さない)。
+# ⚠️ StartLimit* は systemd 229 以降 [Unit] に置く。[Service] に書くと無視される
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+
+# --- 発進ゲートと引数 -------------------------------------------------------
+# 既定値。/etc/default/g1-sdk-bridge で上書きする
+Environment=G1_NETWORK_INTERFACE=eth0
+Environment=G1_DOMAIN_ID=0
+Environment=G1_SDK_DURATION=0.20
+Environment=G1_CMD_TIMEOUT=0.30
+# ⚠️ 空文字 = 発進ゲート閉。動かすときだけ "--arm" を入れる
+Environment=G1_ARM=
+EnvironmentFile=-/etc/default/g1-sdk-bridge
+
+# ⚠️ ROS 由来の環境変数を明示的に消す。EnvironmentFile 等から混入した場合の保険
+UnsetEnvironment=LD_LIBRARY_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH PYTHONPATH \
+                 ROS_DISTRO ROS_VERSION RMW_IMPLEMENTATION CYCLONEDDS_URI \
+                 COLCON_PREFIX_PATH AMENT_CURRENT_PREFIX
+
+# ソケットは /run/g1_bridge に作る(RuntimeDirectory= が用意し、停止時に消す)。
+# ⚠️ 実行ファイルの既定は /tmp/g1_bridge なので、**ここで明示的に指定している**。
+# ROS 側をコンテナで動かす場合は `-v /run/g1_bridge:/tmp/g1_bridge` で渡せば、
+# コンテナ内からは既定パスのまま見える(cmd_router のパラメータ変更が不要)。
+# ROS 側をホストでネイティブに動かす場合は cmd_router の `cmd_sock_path` /
+# state_bridge の `state_sock_path` を /run/g1_bridge/... に合わせること。
+ExecStart=/opt/g1/bin/g1_sdk_bridge_real_server \
+    --network-interface ${G1_NETWORK_INTERFACE} \
+    --domain-id ${G1_DOMAIN_ID} \
+    --sdk-duration ${G1_SDK_DURATION} \
+    --cmd-timeout ${G1_CMD_TIMEOUT} \
+    --cmd-sock /run/g1_bridge/cmd.sock \
+    --state-sock /run/g1_bridge/state.sock \
+    $G1_ARM
+
+# SIGTERM でシグナルハンドラが走り、Stop() が明示的にゼロ速度を送る。
+# 物理的な停止は duration 満了(既定 0.20 秒)が別途担保する(D-27)。
+KillSignal=SIGTERM
+TimeoutStopSec=5
+
+# --- 再起動 -----------------------------------------------------------------
+# 落ちたら上げ直す。起動時に必ずゼロ速度を送る(D-11)ので、
+# 再起動で前回の速度が残ることはない。
+Restart=on-failure
+RestartSec=2
+# --- IPC ソケット -----------------------------------------------------------
+# ROS 側(コンテナ内でも可)から見えるよう、固定パスに作る。
+# コンテナで ROS を動かす場合は `-v /run/g1_bridge:/tmp/g1_bridge` で渡す。
+RuntimeDirectory=g1_bridge
+RuntimeDirectoryMode=0770
+
+# --- 権限 -------------------------------------------------------------------
+# root で動かす必要はない。G1 の内蔵スイッチに届くネットワーク権限だけあればよい
+User=unitree
+Group=unitree
+
+# --- ログ -------------------------------------------------------------------
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=g1-sdk-bridge
+
+[Install]
+WantedBy=multi-user.target
