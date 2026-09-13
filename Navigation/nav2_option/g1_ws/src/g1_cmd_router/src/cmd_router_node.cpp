@@ -58,6 +58,39 @@ CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
     no_cmd_warn_s_ = declare_parameter<double>("no_cmd_warn_s", 3.0);
     cmd_vel_type_ = declare_parameter<std::string>("cmd_vel_type", "auto");
     ipc_keepalive_s_ = declare_parameter<double>("ipc_keepalive_s", 0.2);
+
+    // --- STANDBY→READY のゲートと鮮度監視(仕様書7章) ------------------------
+    // ⚠️ 既定で**有効**。無効にすると、地図が無い/LiDAR が死んでいる状態でも
+    // 走行を許可してしまう。ベンチでモック相手に動かすときだけ false にする。
+    require_tf_ = declare_parameter<bool>("require_tf", true);
+    require_sensor_ = declare_parameter<bool>("require_sensor", true);
+    tf_target_frame_ = declare_parameter<std::string>("tf_target_frame", "map");
+    tf_source_frame_ = declare_parameter<std::string>("tf_source_frame", "base_link");
+    tf_timeout_s_ = declare_parameter<double>("tf_timeout_s", 0.5);
+    sensor_topic_ = declare_parameter<std::string>("sensor_topic", "/g1/points_local");
+    sensor_timeout_s_ = declare_parameter<double>("sensor_timeout_s", 1.0);
+
+    if (require_tf_) {
+        tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_, this);
+        RCLCPP_INFO(get_logger(), "TF の鮮度を監視する: %s <- %s (timeout=%.2fs)",
+                    tf_target_frame_.c_str(), tf_source_frame_.c_str(), tf_timeout_s_);
+    } else {
+        RCLCPP_WARN(get_logger(), "⚠️ TF の鮮度監視が無効(require_tf=false)。ベンチ試験以外で使わないこと");
+    }
+    if (require_sensor_) {
+        // ⚠️ 点群は大きいので購読するだけで復号コストがかかる。**鮮度しか見ていない**
+        // ので本来は型に依存しない購読(`create_generic_subscription`)で十分だが、
+        // それは Humble 以降にしか無く Foxy でビルドできなくなるため、型付きにしてある。
+        // QoS はセンサー用(best effort)に合わせないと、publisher と繋がらない。
+        sub_sensor_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+            sensor_topic_, rclcpp::SensorDataQoS(),
+            [this](sensor_msgs::msg::PointCloud2::SharedPtr msg) { OnSensor(msg); });
+        RCLCPP_INFO(get_logger(), "センサーの鮮度を監視する: %s (timeout=%.2fs)",
+                    sensor_topic_.c_str(), sensor_timeout_s_);
+    } else {
+        RCLCPP_WARN(get_logger(), "⚠️ センサーの鮮度監視が無効(require_sensor=false)。ベンチ試験以外で使わないこと");
+    }
     if (cmd_vel_type_ == "twist") {
         CreateUnstampedSubscription();
     } else if (cmd_vel_type_ == "twist_stamped") {
@@ -244,16 +277,39 @@ void CmdRouterNode::OnTimer() {
     // `mgr_` を触るのはこのスレッドだけ、という規律を保つため(ヘッダのコメント参照)。
     if (bridge_connected_.exchange(false)) {
         mgr_->OnBridgeConnected();
-        // TODO(MVP簡易実装): 本来STANDBY->READYは「歩行可能・センサー正常」の確認後に
-        // 遷移すべき(仕様書7章)。TF/センサー鮮度チェックをまだ配線していないため、
-        // 暫定的にSDK接続=READYとしている。Phase 2c(Nav2接続)着手時に、
-        // TFの存在確認・センサーのタイムスタンプ確認を経てからMarkReady()を
-        // 呼ぶように置き換えること。
-        mgr_->MarkReady();
     }
     if (bridge_lost_.exchange(false)) {
         RCLCPP_WARN(get_logger(), "SDK側プロセスとの接続が切れた");
         mgr_->OnBridgeDisconnected();
+    }
+
+    UpdateHealth();
+
+    // STANDBY→READY は **TF とセンサーが健全になってから**(仕様書7章)。
+    // 以前は「SDK に接続できた＝READY」と簡略化していたが、それだと
+    // 地図が無い/LiDAR が死んでいる状態でも走行を許可してしまう。
+    if (mgr_->state() == g1_sdk_bridge::NavState::kStandby) {
+        if (tf_ok() && sensor_ok()) {
+            mgr_->MarkReady();
+            RCLCPP_INFO(get_logger(), "TF とセンサーが健全になったので READY へ遷移した");
+            warned_not_ready_ = false;
+        } else if (!warned_not_ready_) {
+            warned_not_ready_ = true;
+            RCLCPP_WARN(get_logger(), "STANDBY のまま待機中: TF=%s センサー=%s",
+                        tf_ok() ? "OK" : tf_reason_.c_str(),
+                        sensor_ok() ? "OK" : "受信していない/古い");
+        }
+    }
+
+    // 走行中に古くなったら FAULT。SafetyManager に在ったが**これまで誰も呼んでいなかった**。
+    if (mgr_->state() == g1_sdk_bridge::NavState::kNavigating) {
+        if (!tf_ok()) {
+            RCLCPP_ERROR(get_logger(), "走行中に TF が失われた(%s)。停止する", tf_reason_.c_str());
+            mgr_->OnTfStale();
+        } else if (!sensor_ok()) {
+            RCLCPP_ERROR(get_logger(), "走行中に %s が途絶した。停止する", sensor_topic_.c_str());
+            mgr_->OnSensorStale();
+        }
     }
 
     mgr_->Tick();
@@ -288,6 +344,39 @@ void CmdRouterNode::OnTimer() {
     prev_state_ = state;
 
     PublishDiagnostics();
+}
+
+void CmdRouterNode::OnSensor(const sensor_msgs::msg::PointCloud2::SharedPtr) {
+    // 中身は見ない。**届いていること**だけが知りたい。
+    last_sensor_time_ = now();
+}
+
+bool CmdRouterNode::tf_ok() const { return !require_tf_ || tf_ok_; }
+bool CmdRouterNode::sensor_ok() const { return !require_sensor_ || sensor_ok_; }
+
+void CmdRouterNode::UpdateHealth() {
+    if (require_tf_) {
+        tf_ok_ = false;
+        tf_reason_.clear();
+        try {
+            // ⚠️ **最新(time 0)ではなく「今」の変換を要求する。**
+            // time 0 は「持っている中で最も新しいもの」を返すので、
+            // **配信が止まっていても古い変換で成功してしまい鮮度を見たことにならない。**
+            const auto stamp = now() - rclcpp::Duration::from_seconds(tf_timeout_s_);
+            if (tf_buffer_->canTransform(tf_target_frame_, tf_source_frame_, stamp,
+                                         tf2::durationFromSec(0.0), &tf_reason_)) {
+                tf_ok_ = true;
+            } else if (tf_reason_.empty()) {
+                tf_reason_ = "変換できない";
+            }
+        } catch (const tf2::TransformException& e) {
+            tf_reason_ = e.what();
+        }
+    }
+    if (require_sensor_) {
+        sensor_ok_ = last_sensor_time_.has_value() &&
+                     (now() - *last_sensor_time_).seconds() <= sensor_timeout_s_;
+    }
 }
 
 // 送信が途切れている間、定期的にゼロ速度を送って IPC の生存を確かめる。
@@ -480,6 +569,16 @@ void CmdRouterNode::OnEnableNavigation(const std::shared_ptr<std_srvs::srv::SetB
         RCLCPP_WARN(get_logger(), "%s", res->message.c_str());
         return;
     }
+    // TF/センサーが健全でないまま走り出させない(仕様書7章)。
+    // STANDBY→READY のゲートと同じ条件を、有効化の瞬間にも確かめる。
+    if (req->data && (!tf_ok() || !sensor_ok())) {
+        res->success = false;
+        res->message = std::string("TF/センサーが健全でないため許可できない(TF=") +
+                       (tf_ok() ? "OK" : tf_reason_) + ", センサー=" +
+                       (sensor_ok() ? "OK" : "受信していない/古い") + ")";
+        RCLCPP_WARN(get_logger(), "%s", res->message.c_str());
+        return;
+    }
     res->success = mgr_->EnableNavigation(req->data);
     res->message = res->success ? "ok" : "READY状態でないため許可できない(現在の状態を確認すること)";
 }
@@ -589,6 +688,20 @@ void CmdRouterNode::PublishDiagnostics() {
         } else {
             kv.value = heartbeat_->Alive() ? "alive" : "lost";
         }
+        st.values.push_back(kv);
+    }
+    {
+        diagnostic_msgs::msg::KeyValue kv;
+        kv.key = "tf";
+        kv.value = !require_tf_ ? "disabled" : (tf_ok_ ? "ok" : ("stale: " + tf_reason_));
+        st.values.push_back(kv);
+    }
+    {
+        diagnostic_msgs::msg::KeyValue kv;
+        kv.key = "sensor";
+        kv.value = !require_sensor_ ? "disabled"
+                                    : (sensor_ok_ ? "ok"
+                                                  : (last_sensor_time_.has_value() ? "stale" : "never_received"));
         st.values.push_back(kv);
     }
     if (heartbeat_) {

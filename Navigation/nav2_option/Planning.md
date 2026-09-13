@@ -189,7 +189,7 @@ Phase 1 の U-08（各速度での停止距離）を実測してから決める�
 - **ROS 2パッケージ化・完了(2026-09-09)**: このホストに ROS 2 Jazzy が既にインストール済み（2026-09-07、他作業由来）と判明したため前倒しした。[g1_ws/](g1_ws/) に `g1_cmd_router`・`g1_state_bridge` を実際の colcon パッケージ（ament_cmake、rclcpp）として実装し、ビルド・実行を確認した。`g1_sdk_bridge_cpp/`（D-08、ROS非依存）のソースを相対パスで直接コンパイルして使い、ament化はしていない（D-08の前提を壊さないため）
 - **エンドツーエンドの疎通を実証**: `g1_sdk_bridge_cpp` に開発用スタンドアロン実行ファイル（`g1_sdk_bridge_mock_server`、MockMoveBackend使用）を追加し、`TwistStamped → g1_cmd_router(クランプ/加速度制限) → IPC → SDK側watchdog → g1_state_bridge → /odom` の全経路が実際に動作することを確認した
 - **副産物**: テスト中に D-10 の watchdog が設計どおり動作することを（意図せず）実証した。`enable_navigation` 成功後すぐに Twist を送らないと `cmd_timeout` 超過で自動的に FAULT へ遷移する
-- **既知の簡略化**: `STANDBY→READY` の遷移を「SDK接続時に即READY」に簡略化している（本来は TF/センサー鮮度確認後に遷移すべき、仕様書7章）。Phase 2c 着手時に正しい判定へ置き換える必要がある（コード内にTODO明記済み）
+- ~~**既知の簡略化**: `STANDBY→READY` の遷移を「SDK接続時に即READY」に簡略化している~~ **解消(2026-09-13、A-10h)**（本来は TF/センサー鮮度確認後に遷移すべき、仕様書7章）。Phase 2c 着手時に正しい判定へ置き換える必要がある（コード内にTODO明記済み）
 - **環境固有の問題と対処法を記録**: このホストで conda が PATH を汚染し `ament_cmake` の python 解決に失敗する現象があった。G1接続PCで同様の環境（miniconda等）がある場合の対処法を [g1_ws/README.md](g1_ws/README.md) に記録した
 - **本番バックエンド `RealMoveBackend` 実装完了(2026-09-09、実機で確認済み)**: `unitree_sdk2`(C++)の `LocoClient::SetVelocity()` を呼ぶ実装を [g1_sdk_bridge_cpp/src/real_move_backend.cpp](g1_sdk_bridge_cpp/src/real_move_backend.cpp) に追加し、本番実行ファイル `g1_sdk_bridge_real_server` をPC2でビルド・起動確認した。
   - **発進ゲート(`--arm`)を追加**: 付けない限り SDK を一切呼ばない。ROS 側の状態機械とは独立した防御層（D-10 の二重化方針、`Navigation/real/loco_driver.py` の `--arm` と同じ考え方）。実機で15秒起動し **SDK送信 0 件 / ゲートで停止 292 件**（20Hz周期が回り全て遮断）を確認
@@ -469,9 +469,10 @@ heartbeat（D-31）の残作業。**`FAULT` で指令の転送は止まるが `b
 
 加えて `/g1/stop` は明示的にキャンセルする（`READY` へ抜けるが Goal は破棄する）。
 
-📌 `tf_stale` / `sensor_stale` / `sdk_bridge_error` は `SafetyManager` に関数が在るが
-**まだ ROS 側から呼ばれていない**。Phase 2c で TF/センサー鮮度チェックを配線すれば、
-状態遷移で拾う設計なので**キャンセルも自動的に効くようになる**。
+📌 `tf_stale` / `sensor_stale` は **A-10h で配線済み**。状態遷移で拾う設計なので
+**Nav2 Goal のキャンセルも自動的に効く**ことを確認した。
+`sdk_bridge_error` はまだ ROS 側から呼ばれていない（SDK 側の連続エラーを
+IPC の state で受け取って判定する必要があり、Phase 2c の残作業）。
 
 ### 🐛 ここで見つかった別のバグ: `nav2_params.yaml` が Humble で起動しない
 
@@ -593,6 +594,70 @@ Nav2 込みでも `理由=bridge_disconnected` で Goal が `CANCELED` になる
 ⚠️ **これはソフトウェア E-stop であって、本物の非常停止ではない。**
 通信が生きている前提の機構なので、通信断では送ることすらできない（§7）。
 **純正リモコン（物理）が唯一の最終防衛線**であることは変わらない。
+
+---
+
+**A-10h. STANDBY→READY の健全性ゲートと走行中の鮮度監視 — 完了(2026-09-13、実機不要)**
+
+これまで「SDK に接続できた＝READY」と簡略化していた（MVP の既知の手抜き）。
+**地図が無い／LiDAR が死んでいる状態でも走行を許可してしまう**ので、
+仕様書7章どおり TF とセンサーの健全性を条件にした。
+
+あわせて、`SafetyManager` に在ったのに**誰も呼んでいなかった** `OnTfStale()` /
+`OnSensorStale()` を走行中の監視に配線した。
+
+### 監視対象
+
+| | 既定 | 判定 |
+|---|---|---|
+| TF | `map` ← `base_link`、`tf_timeout_s`=0.5 | `canTransform` を **`now() - timeout` の時刻で**問う |
+| センサー | `/g1/points_local`(PointCloud2)、`sensor_timeout_s`=1.0 | 最後の受信からの経過 |
+
+📌 **TF は合成された変換を見る**ので、localization(`map→odom`) と
+state_bridge(`odom→base_link`) の**どちらが落ちても検知できる**。
+
+⚠️ **`canTransform` を「最新(time 0)」で問うてはいけない。**
+time 0 は「持っている中で最も新しいもの」を返すので、**配信が止まっていても
+古い変換で成功してしまい鮮度を見たことにならない。**
+
+⚠️ **静的変換(`/tf_static`)は原理的に古くならない。** latched かつ時刻を持たない
+扱いなので、publisher を殺しても tf2 は永久に答え続ける。現在の launch では
+`map→odom` が静的なので、**鮮度を検知できるのは動的に配信される側だけ**。
+（実装中にこれを知らずに `static_transform_publisher` で試験して「検知できない」と
+誤解した。localization を入れて `map→odom` が動的になれば両方が対象になる。）
+
+📌 **点群の購読は復号コストを払う。** 鮮度しか見ないので本来は型に依存しない
+`create_generic_subscription` で十分だが、**Foxy に無い**ため型付きにしてある。
+
+### 効く場所（3箇所）
+
+1. **STANDBY→READY** … 健全になるまで READY にしない
+2. **`/g1/enable_navigation`** … 健全でなければ理由付きで拒否
+3. **走行中** … 古くなったら `FAULT`（→ A-10f によりNav2 Goal も取り消される）
+
+### 検証（Humble、`RMW_IMPLEMENTATION=rmw_fastrtps_cpp` を明示）
+
+| # | シナリオ | 結果 |
+|---|---|---|
+| ① | TF もセンサーも無い | ✅ `STANDBY` で待機。有効化は理由付きで拒否 |
+| ② | センサーだけ出す | ✅ `STANDBY` のまま（TF が足りない） |
+| ③ | TF も出す | ✅ `READY` へ遷移 |
+| ④ | 走行開始 | ✅ `NAVIGATING`、`vx=0.300` |
+| ⑤ | 走行中にセンサーを止める | ✅ `FAULT`（`fault_reason=sensor_stale`）、指令ゼロ |
+| ⑥ | センサー復旧 → `clear_fault` | ✅ `READY` |
+| ⑦ | 走行中に `odom→base_link` を止める | ✅ `FAULT`（`fault_reason=tf_stale`）、指令ゼロ。検知遅れ = `tf_timeout_s` |
+| ⑧ | Nav2 一式(launch)の起動 | ✅ 従来どおり `READY` に到達（ゲートで詰まらない） |
+
+### 📌 副産物: オフラインで Nav2 の Goal 到達が初めて成立した
+
+⑧の流れで `NavigateToPose` が **`SUCCEEDED`** になった。
+A-10b では「オフライン再生では閉ループ制御を検証できない」と書いたが、それは
+**記録済み rosbag がロボットの指令に反応しない**ためだった。
+モック SDK は指令どおりに姿勢を積分し、`g1_state_bridge` がそれを `/odom` と TF に
+出すので、**閉ループが回る**。
+
+⚠️ ただし**検証できるのは配線とロジックであって、歩容の動特性ではない**。
+モックは完全な運動学モデルで、遅れも滑りも上下動も無い。実機での確認は依然必須。
 
 ---
 

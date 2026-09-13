@@ -40,6 +40,10 @@ def generate_launch_description():
     # リンク切断後も 4.045 秒・0.85m 進み続けた)。ベンチ試験以外で false にしないこと。
     heartbeat_required = LaunchConfiguration("heartbeat_required")
     operator_timeout_s = LaunchConfiguration("operator_timeout_s")
+    # 仕様書7章: STANDBY→READY は TF とセンサーが健全になってから。既定は有効。
+    # ⚠️ 無効にすると、地図が無い/LiDAR が死んでいる状態でも走行を許可してしまう。
+    require_tf = LaunchConfiguration("require_tf")
+    require_sensor = LaunchConfiguration("require_sensor")
 
     lifecycle_nodes = [
         "map_server",
@@ -63,6 +67,16 @@ def generate_launch_description():
                 "operator_timeout_s",
                 default_value="1.0",
                 description="heartbeatが何秒途絶したら停止するか。会場の電波状況に応じて調整する",
+            ),
+            DeclareLaunchArgument(
+                "require_tf",
+                default_value="true",
+                description="TFの鮮度をREADYの条件にする(仕様書7章)。falseはベンチ試験専用",
+            ),
+            DeclareLaunchArgument(
+                "require_sensor",
+                default_value="true",
+                description="センサーの鮮度をREADYの条件にする(仕様書7章)。falseはベンチ試験専用",
             ),
             # map -> odom はdry-run専用のスタンドイン(Phase 2aで本物のlocalizationに置き換える)。
             # synthetic_room.yaml の左下寄りの自由空間に疑似ロボットの起点を置く。
@@ -92,6 +106,8 @@ def generate_launch_description():
                         # bool/double のパラメータ宣言と食い違って起動に失敗する。
                         "heartbeat_required": ParameterValue(heartbeat_required, value_type=bool),
                         "operator_timeout_s": ParameterValue(operator_timeout_s, value_type=float),
+                        "require_tf": ParameterValue(require_tf, value_type=bool),
+                        "require_sensor": ParameterValue(require_sensor, value_type=bool),
                     }
                 ],
             ),

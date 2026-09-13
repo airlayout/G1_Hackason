@@ -20,6 +20,10 @@
   <!-- Nav2 Goal のキャンセル用。nav2_msgs ではなく汎用の action_msgs を使うので
        Nav2 が入っていない環境でもビルドできる -->
   <depend>action_msgs</depend>
+  <!-- STANDBY→READY のゲートと走行中の鮮度監視(仕様書7章)。どちらも ros-base に
+       含まれるので、Nav2 が無い環境でもビルドできる性質は保たれる -->
+  <depend>sensor_msgs</depend>
+  <depend>tf2_ros</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

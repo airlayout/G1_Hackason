@@ -19,6 +19,9 @@
 
 #include <action_msgs/srv/cancel_goal.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -70,6 +73,25 @@ private:
     void PublishDiagnostics();
     void WarnIfNoCommand();
     void SendIpcKeepaliveIfIdle();
+
+    // --- STANDBY→READY のゲートと、走行中の鮮度監視(仕様書7章) --------------
+    //
+    // これまで「SDK に接続できた＝READY」という簡略化をしていた(MVP)。本来は
+    // **TF とセンサーが健全であることを確かめてから** READY にしなければならない。
+    // 簡略化のままだと、地図が無い/LiDAR が死んでいる状態でも走行を許可してしまう。
+    //
+    // 監視対象:
+    //   - TF: `tf_target_frame` ← `tf_source_frame`(既定 map←base_link)。
+    //         **合成された変換を見るので、localization(map→odom)と
+    //         state_bridge(odom→base_link)のどちらが落ちても検知できる。**
+    //   - センサー: `sensor_topic`(既定 /g1/points_local、PointCloud2)。
+    //         local costmap の観測源そのものなので、ここが止まれば
+    //         障害物が見えなくなっている。
+    void UpdateHealth();
+    bool tf_ok() const;
+    bool sensor_ok() const;
+
+    void OnSensor(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
     // D-31: 操作PC の heartbeat が途絶していないか監視する。途絶したら FAULT。
     void CheckOperatorHeartbeat();
 
@@ -159,6 +181,25 @@ private:
     // ゼロなので機体は動かず、D-10 の「ROS側は明示的ゼロ送信も行う」にも沿う。
     double ipc_keepalive_s_ = 0.2;
     std::optional<rclcpp::Time> last_ipc_send_;
+
+    // --- 健全性監視 ---------------------------------------------------------
+    bool require_tf_ = true;
+    bool require_sensor_ = true;
+    std::string tf_source_frame_;
+    std::string tf_target_frame_;
+    double tf_timeout_s_ = 0.5;
+    std::string sensor_topic_;
+    double sensor_timeout_s_ = 1.0;
+
+    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_sensor_;
+    std::optional<rclcpp::Time> last_sensor_time_;
+    // 直近の判定結果(診断とログの抑制に使う)
+    bool tf_ok_ = false;
+    bool sensor_ok_ = false;
+    std::string tf_reason_;
+    bool warned_not_ready_ = false;
 
     rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr sub_twist_stamped_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_twist_unstamped_;
