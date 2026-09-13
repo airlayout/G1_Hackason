@@ -91,3 +91,28 @@ docker run --rm --network host --ipc host \
 
 ⚠️ `--include-hidden-topics` が無いと `/navigate_to_pose/_action/*` が黙って
 記録されない。`explain_run.py` が記録漏れを警告するので、**録った直後に一度流すこと。**
+
+## 実機で Nav2 を運用する（A-10k）
+
+| ツール | 用途 |
+|---|---|
+| `nav2_operate.rviz` | 運用用の RViz 設定。地図・costmap・経路・LiDAR・**2D Goal Pose ツール** |
+| `rviz_operate.sh` | 操作PC 側で RViz を起動する |
+
+```bash
+./rviz_operate.sh                 # 既定(ROS_DOMAIN_ID=0 / FastDDS)
+G1_DOMAIN_ID=3 ./rviz_operate.sh
+./rviz_operate.sh stop
+```
+
+⚠️ **RViz に何も出ないときに真っ先に疑う2つ**
+
+1. `ROS_DOMAIN_ID` が PC2 と一致しているか
+2. `RMW_IMPLEMENTATION` が PC2 と一致しているか（既定は FastDDS。
+   `view_map_rviz.sh` は CycloneDDS なので真似ると食い違う）
+
+Docker で動かす場合は **`--ipc host` が必須**。無いと FastDDS の共有メモリ転送が
+成立せず、**トピックは見えるのにデータが流れない**（`rviz_operate.sh` は指定済み）。
+
+⚠️ `view_map.rviz` は地図閲覧用で、Goal ツールも costmap も入っていない。
+運用には `nav2_operate.rviz` を使うこと。

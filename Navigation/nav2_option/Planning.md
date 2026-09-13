@@ -780,6 +780,53 @@ Humble で起動しなかった件と同じ構図）。`use_sim_time` も追加�
 
 ---
 
+**A-10k. 運用用 RViz の整備 — 完了(2026-09-13、実機不要)**
+
+「RViz から Goal を送って Nav まで」に必要な RViz 設定と起動スクリプトを用意した。
+
+⚠️ **既存の [tools/view_map.rviz](tools/view_map.rviz) は使えない。**
+地図と軌跡を眺めるためのもので、**Goal を送るツールも costmap も入っていない。**
+
+### 成果物
+
+| | 内容 |
+|---|---|
+| [tools/nav2_operate.rviz](tools/nav2_operate.rviz) | 保存地図 / global・local costmap / 実機 LiDAR / global・local path / TF / `base_link` 軸 / **2D Goal Pose ツール** |
+| [tools/rviz_operate.sh](tools/rviz_operate.sh) | 操作PC 側で RViz を起動する（Docker、`--network host --ipc host`） |
+
+📌 **`2D Pose Estimate` は入れていない。** AMCL を使っていないので送っても誰も
+受け取らない。自己位置の初期合わせは `match_scan_to_map_2d.py` の結果を
+`g1_slam_odom_tf.py --map-to-odom` に渡して行う。
+
+📌 URDF（`g1_description`）が未着手なので `RobotModel` は使えない。
+代わりに `base_link` の座標軸を出している。
+
+### 🐛 ここで踏んだもの: RViz に何も出ない2つの原因
+
+**① `--ipc host` が要る。**
+操作PC の RViz を Docker で動かすとき、これが無いと **FastDDS の共有メモリ転送が
+成立せず、トピックは見えるのにデータが流れない**（実測: ノード一覧 0件、
+`/plan` も `/cmd_vel_smoothed` も出ない。付けたら 15 ノード・`/plan` 0.97Hz・
+`/cmd_vel_smoothed` 19.99Hz が流れた）。
+
+**② `RMW_IMPLEMENTATION` を PC2 と揃える。**
+[tools/view_map_rviz.sh](tools/view_map_rviz.sh) は **CycloneDDS** を使っており、
+そのまま真似ると D-03（FastDDS）と食い違う。`rviz_operate.sh` の既定は
+`rmw_fastrtps_cpp`。`ROS_DOMAIN_ID` も揃えること。
+
+⚠️ **「RViz に何も出ない」ときはこの2つを先に疑う。**
+
+### 検証
+
+| 確認項目 | 結果 |
+|---|---|
+| RViz が設定を読み込んで起動する | ✅ |
+| `/goal_pose` に RViz の publisher が登録される | ✅ |
+| **別コンテナ（操作PC 相当）から Nav2 が見える** | ✅ 全 15 ノード、地図・costmap・`/plan` |
+| **RViz と同じ経路で Goal → 走行** | ✅ `bt_navigator: Begin navigating ... to (3.00, 0.00)`、SDK 側 `vx=0.280` |
+
+---
+
 **完了条件**
 - SDK2 の API シグネチャが文書として確定し、§3.3 の分岐が決定している
 - IPC 両端がモックで疎通し、単体テストが全て通る
