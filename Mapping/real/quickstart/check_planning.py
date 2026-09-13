@@ -11,6 +11,19 @@
 |---|---|
 | 3〜6 m 先の到達可能なゴールへ経路が引けるか | `SUCCEEDED` |
 | 機体セルのコスト | **inscribed(99) でない**。床由来の致死セルが機体の周りに出ない |
+| **経路終端と要求ゴールの距離** | **≤ `--gap-max`（既定 0.25 m）** |
+
+## ⚠️ 「経路が引けた」と「ゴールに着ける」は別物（2026-09-13 に追加）
+
+planner の `tolerance` は**経路の終端を要求ゴールの手前で打ち切ってよい量**である。
+`SUCCEEDED` はその打ち切った経路に対して返るので、**成功率だけ見ていると
+「引けているのに着かない」が見えない**。到達判定 `xy_goal_tolerance` は
+**要求ゴールではなく経路終端**に対して効くため、実際の到達点は
+
+    要求ゴール − （tolerance + グリッド丸め） − xy_goal_tolerance
+
+まで離れうる。09-12 の実測では終端が 0.18 m 手前・合計 0.48 m だった。
+**だからこのスクリプトは終端とゴールの距離を別建てで出す。**
 
 ## ⚠️ **1 回ごとに姿勢を読み直す。まとめて測ってはいけない**（2026-09-08 に踏んだ）
 
@@ -55,6 +68,13 @@ INSCRIBED = 99
 
 GOAL_DISTANCES_M = (3.0, 4.0, 5.0, 6.0)
 GOAL_BEARINGS_DEG = (0.0, 20.0, -20.0, 45.0, -45.0, 90.0, -90.0)
+
+# 経路終端が要求ゴールからどれだけ手前で終わってよいか[m]。
+# ⚠️ **planner の tolerance そのものではない**。到達判定はこの手前ぶんに
+# xy_goal_tolerance が「経路終端に対して」重なるので、**2 段で積み上がる**
+# （docs/plan/2026-09-13-rviz-click-walk-live.md §2.1）。
+# 0.25 は Smac2D.tolerance を 0.5 → 0.25 に下げたときの期待値。
+GOAL_GAP_MAX_M = 0.25
 
 
 def _map_qos() -> QoSProfile:
@@ -298,7 +318,8 @@ def plan_once(node: Planning, gx: float, gy: float,
         for i in range(len(poses) - 1)
     )
     xy = [(pp.pose.position.x, pp.pose.position.y) for pp in poses]
-    return (True, f"{len(poses)} 点 / 経路長 {length:.2f} m", xy)
+    gap = math.dist(xy[-1], (gx, gy))
+    return (True, f"{len(poses)} 点 / 経路長 {length:.2f} m / 終端 {gap:.3f} m 手前", xy)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -312,6 +333,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--record", metavar="DIR",
                    help="各回の姿勢・コストマップ・経路を保存する（動画にするため）。"
                         "測定そのものは変えない")
+    p.add_argument("--gap-max", type=float, default=GOAL_GAP_MAX_M,
+                   help="経路終端と要求ゴールの距離の合格線[m]。"
+                        "**planner の tolerance と揃えること**（既定 0.25）")
     p.add_argument("--robot-radius", type=float, default=0.30,
                    help="g1_nav2.yaml と揃えること。機体周りの窓の大きさに使う")
     p.add_argument("--goal", type=float, nargs=2, metavar=("X", "Y"), default=None,
@@ -352,6 +376,7 @@ def main(argv: list[str] | None = None) -> int:
     frames: list[dict] = []
 
     results: list[bool] = []
+    gaps: list[float] = []            # 経路終端と要求ゴールの距離（引けた回だけ）
     robot_cells_global: list[int] = []
     boxed_in = 0
     causes: dict[str, int] = {}
@@ -394,6 +419,8 @@ def main(argv: list[str] | None = None) -> int:
         gx, gy, dist, bearing, gv = picked
         ok, why, path_xy = plan_once(node, gx, gy, args.planner)
         results.append(ok)
+        if ok and path_xy:
+            gaps.append(math.dist(path_xy[-1], (gx, gy)))
         note = ""
         if not ok:
             verdict, seen = reach_4conn(g, rx, ry, gx, gy)
@@ -432,6 +459,15 @@ def main(argv: list[str] | None = None) -> int:
     med = statistics.median(robot_cells_global) if robot_cells_global else -1
     print(f"  [{'PASS' if ok_cell else 'FAIL'}] 機体セルが inscribed(99) 未満  "
           f"実測 {len(results) - boxed_in}/{len(results)} 回（コストの中央値 {med}）")
+    ok_gap = bool(gaps) and max(gaps) <= args.gap_max
+    if gaps:
+        print(f"  [{'PASS' if ok_gap else 'FAIL'}] 経路終端が要求ゴールから {args.gap_max:.2f} m 以内  "
+              f"実測 {sum(g <= args.gap_max for g in gaps)}/{len(gaps)} 回 "
+              f"（中央値 {statistics.median(gaps):.3f} / 最大 {max(gaps):.3f} m）")
+        print(f"       ⚠️ 到達判定はこの手前ぶんに xy_goal_tolerance が積み上がる。"
+              f"最悪の到達点は要求ゴールから **{max(gaps) + 0.30:.2f} m**")
+    else:
+        print("  [----] 経路終端の距離: 引けた経路が無いので測れない")
     if no_goal:
         print(f"  参考: 到達可能なゴールが 1 つも取れなかった回が {no_goal}/{len(results)}")
 
@@ -445,11 +481,14 @@ def main(argv: list[str] | None = None) -> int:
             "median_robot_cell": med,
             "pass_plan": ok_plan,
             "pass_cell": ok_cell,
+            "gap_max": args.gap_max,
+            "gaps": gaps,
+            "pass_gap": ok_gap,
         })
 
     node.destroy_node()
     rclpy.shutdown()
-    return 0 if (ok_plan and ok_cell) else 1
+    return 0 if (ok_plan and ok_cell and ok_gap) else 1
 
 
 if __name__ == "__main__":

@@ -95,20 +95,41 @@ controller_server:
     controller_plugins: [FollowPath]
 
     progress_checker:
-      plugin: nav2_controller::SimpleProgressChecker
-      # ⚠️ **SimpleProgressChecker は並進しか数えない（2026-09-09 に実機で踏んだ）。**
+      # ⚠️ **2026-09-13: SimpleProgressChecker から PoseProgressChecker に替えた。**
+      #
+      # 旧: SimpleProgressChecker は**並進しか数えない**（2026-09-09 に実機で踏んだ）。
       # その場旋回は移動 0 m なので、**向きを直している間ずっと「進んでいない」**と判定される。
       # 実測: ゴール位置は達成（残り 0.283 m < 許容 0.30 m）したのに向きが合わず、
-      # 旋回中に 0.5m/15s を満たせず失敗 → 復帰動作の Spin 90° が走った。
-      # 二足は旋回に時間がかかるので、半径を下げて（＝緩めて）猶予を伸ばす。
-      # ⚠️ ただし**これは対症療法**で、本筋はゴールの向きを機体に対して意味のある値にすること
-      # （check_navigation.py の --ahead / 方位からの gyaw）。
+      # 旋回中に 0.5m/15s を満たせず失敗 → 復帰動作の Spin 90° が走り、
+      # 1.79 m のゴールで**累積 5.59 m・174°**回った。
+      #
+      # `PoseProgressChecker` は SimpleProgressChecker の派生で、
+      # **`required_movement_angle` だけ回れば「進んでいる」と数える**。
+      # ＝ 半径を下げる対症療法ではなく、**原因そのもの**に効く。
+      # Humble の nav2_controller に**既製で入っている**（plugins.xml に登録済み。
+      # 2026-09-13 に offline 再生で configure が通ることまで確認した）。
+      #
+      # ⚠️ **効果は実機で未検証**（段 1 / 2.3 の合否は「recoveries が 3 回とも 0」）。
+      # 戻すなら plugin を nav2_controller::SimpleProgressChecker に書き換えるだけでよい
+      # （required_movement_angle は無視される）。
+      plugin: nav2_controller::PoseProgressChecker
       required_movement_radius: 0.15
       movement_time_allowance: 25.0
+      # G1 の旋回は遅い。25 s の猶予の中で確実に超える角度にする（0.5 rad = 29°は厳しい）
+      required_movement_angle: 0.20   # 11.5°
     general_goal_checker:
       plugin: nav2_controller::SimpleGoalChecker
       xy_goal_tolerance: 0.30         # 二足なので厳しくしない
-      yaw_goal_tolerance: 0.35
+      # ⚠️ **2026-09-13: 0.35 → 3.15 に緩めた（＝ 最終の向きを問わない）。**
+      # RViz2 のクリック運用では操作者が向きまで指定したいとは限らず、
+      # 向きが合わないと**位置を達成しても未達**になって Spin 復帰を呼ぶ。
+      # 3.15 rad は shortest_angular_distance の最大 π(3.14159) より大きいので
+      # **必ず満たされる**。まず位置だけで通し、通ったら 0.79 rad(45°) に締める。
+      # ⚠️ 「向きも合わせたい」用途なら**この段を飛ばして 0.79 から始める**こと。
+      # ⚠️ 向きを恒久的に問わないなら nav2_controller::PositionGoalChecker が正道
+      #    （Humble に既製。xy_goal_tolerance と stateful だけを取る）。
+      #    段階的に締める余地を残すため、いまは SimpleGoalChecker のままにしてある。
+      yaw_goal_tolerance: 3.15
       stateful: true
 
     FollowPath:
@@ -327,6 +348,25 @@ planner_server:
     # コストマップが毎秒変わることで、**開けた場所に機体を置くのが本筋の対策**。
     #   使うとき: ros2 action send_goal /compute_path_to_pose ... "{..., planner_id: 'Smac2D'}"
     Smac2D:
+      # ⚠️ **2026-09-13: 0.25 に下げる案は実測で否決した。0.5 のままにする。**
+      #
+      # 「tolerance 0.5 のせいで経路終端がゴールの 0.18 m 手前になる」という前提で
+      # 0.25 へ下げる計画だったが、offline 再生（nav_map_clean / bag +230s）で
+      # 同条件 A/B を取ると **終端とゴールの距離は変わらなかった**:
+      #
+      #   tolerance 0.5  … 9 本成功 / 中央値 0.033 m / 最大 0.045 m
+      #   tolerance 0.25 … 7 本成功 / 中央値 0.034 m / 最大 0.040 m
+      #
+      # 理由: **tolerance は「ゴールのセルが通れないときに、その手前で打ち切ってよい量」**で、
+      # ゴールのセルが通れるなら A* はそのセルまで引く（残りはグリッド丸めの 0.1·√2 未満）。
+      # そして**通れないときは tolerance があっても計画ごと失敗する**——
+      # cost 99（inscribed）のゴールを 4 回投げて planner_server は
+      # "Smac2D: failed to create plan, no valid path found." を返した。
+      # ⇒ **どちらの側でも tolerance は効いていない。下げる理由も上げる理由も無い。**
+      #
+      # 到達判定の積み上がりも、したがって **0.03 + xy_goal_tolerance 0.30 ＝ 約 0.33 m**
+      # であって 0.48 m ではない。**詰めたいなら触るのは xy_goal_tolerance の方**。
+      # 測り直す入口: check_planning.py（--gap-max で終端とゴールの距離を出す）
       plugin: nav2_smac_planner/SmacPlanner2D
       tolerance: 0.5
       allow_unknown: true

@@ -184,9 +184,27 @@ fi
 step "6. 逸脱ガード"
 if docker exec "$NAME" pgrep -f "stray_guar[d].py" >/dev/null 2>&1; then
     ok "stray_guard.py が常駐している"
+    # ⚠️ **居るだけでは足りない。**既定の --max-abs 3.0 はクリック運用では
+    # ゴールに着く前に必ず鳴る（09-12 に 4.35m のクリックで踏んだ）。
+    GA="$(docker exec "$NAME" pgrep -af "stray_guar[d].py" 2>/dev/null | head -1)"
+    case "$GA" in
+        *--max-abs*) ok "  --max-abs が指定されている" ;;
+        *) warn "  **--max-abs が既定(3.0m)のまま。**クリック運用では 15.0 を渡すこと" ;;
+    esac
+    case "$GA" in
+        *--no-g0*) warn "  **門番 G0 が切ってある（--no-g0）。**切った理由を記録に残すこと" ;;
+        *) ok "  門番 G0（見かけの速さ）が入っている" ;;
+    esac
+    case "$GA" in
+        *--no-sim-time*) ok "  --no-sim-time が付いている（実機では必須）" ;;
+        *) warn "  **--no-sim-time が無い。**実機では /clock が来ないので時間判定が止まる" ;;
+    esac
 else
     warn "stray_guard.py が居ない。**RViz からクリックするなら起こすこと**"
-    echo "     → docker exec -d ... python3 .../stray_guard.py --no-sim-time"
+    echo "     → docker exec -d -u ubuntu ... $NAME bash -c 'source /opt/ros/humble/setup.bash && \\"
+    echo "          python3 .../stray_guard.py --no-sim-time --max-abs 15.0 --max-seconds 120'"
+    echo "       ⚠️ --max-abs は既定 3.0 で頭打ちになる。**遠いゴールは着く前に鳴る**"
+    echo "       ⚠️ 門番 G0（見かけの速さ 0.72 m/s）と /tf 途絶(3s)は既定で入っている"
 fi
 
 echo
