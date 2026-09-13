@@ -194,6 +194,20 @@ if [ "$MODE" = "goal" ]; then
 fi
 
 # ── 1 本ぶん。**途中で止めない。**結果は SUMMARY に 1 行足すだけ ──────────
+# ── 中断されても記録を止める（2026-09-12 に踏んだ）──────────────────────
+#
+# bag は `docker exec -d` で**切り離して**起こすので、このスクリプトが
+# 途中で死ぬと **`ros2 bag record` だけが録り続ける**。毎秒 4.4 MB なので
+# 気づかないうちにディスクが埋まる。実際 10:04 に走らせ損ねた 2 回のぶんが
+# 4 分以上録り続け、合計 1.7 GB を食って**ホストのディスクを 100% にした**
+# （docker exec が I/O エラーを返し、スタックごと動かなくなった）。
+#
+# ⚠️ SIGINT で閉じさせること。SIGTERM だとキャッシュを書き出さずに死ぬ。
+stop_recording() {
+    docker exec "$NAME" bash -c 'pkill -INT -f "ros2 bag recor[d]"' 2>/dev/null || true
+}
+trap 'stop_recording' EXIT INT TERM
+
 SUMMARY=""
 run_once() {
     local out="$1" local_out rc ov ov10 reach fake
