@@ -41,9 +41,13 @@ export ROS_DOMAIN_ID=0
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 # cyclonedds 0.10 系の書式。0.7 の <NetworkInterfaceAddress> とは非互換
 export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="$IFACE" priority="default" multicast="default"/></Interfaces></General></Domain></CycloneDDS>'
+# include_hidden: アクションの /navigate_to_pose/_action/feedback は名前に
+# "_action" を含むため ROS 2 では hidden 扱いで、既定では広告されない。
+# recoveries（合否 3-3）はここにしか出ないので必ず開ける。
 exec ros2 run foxglove_bridge foxglove_bridge \\
     --ros-args -p port:=$PORT -p address:=0.0.0.0 \\
-               -p max_qos_depth:=5 -p send_buffer_limit:=100000000
+               -p max_qos_depth:=5 -p send_buffer_limit:=100000000 \\
+               -p include_hidden:=true
 INNER
 chmod +x "$PROJ/_run_bridge.sh"
 
