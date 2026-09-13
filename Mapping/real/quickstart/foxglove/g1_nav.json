@@ -1,0 +1,91 @@
+{
+  "configById": {
+    "3D!g1nav": {
+      "cameraState": {
+        "distance": 18,
+        "perspective": true,
+        "phi": 55,
+        "thetaOffset": 45,
+        "target": [0, 0, 0],
+        "targetOffset": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1],
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "followTf": "base_link",
+      "scene": {
+        "enableStats": false,
+        "backgroundColor": "#1a1a1a",
+        "transforms": { "showLabel": false, "axisScale": 0.5 }
+      },
+      "transforms": {
+        "frame:map": { "visible": true },
+        "frame:odom": { "visible": false },
+        "frame:base_link": { "visible": true },
+        "frame:livox_frame": { "visible": false }
+      },
+      "topics": {
+        "/map":                             { "visible": true,  "colorMode": "costmap" },
+        "/global_costmap/costmap":          { "visible": true,  "colorMode": "costmap" },
+        "/local_costmap/costmap":           { "visible": true,  "colorMode": "costmap" },
+        "/plan":                            { "visible": true,  "lineWidth": 0.08, "gradient": ["#ff2d55ff", "#ff2d55ff"] },
+        "/local_costmap/published_footprint": { "visible": true, "lineWidth": 0.04 },
+        "/goal_pose":                       { "visible": true },
+        "/utlidar/cloud_livox_mid360":      { "visible": false, "pointSize": 2, "colorMode": "colormap", "colorField": "z" },
+        "/cloud_pcd":                       { "visible": false, "pointSize": 1 },
+        "/occupied_cells_vis_array":        { "visible": false },
+        "/projected_map":                   { "visible": false },
+        "/unitree/slam_mapping/points_stamped": { "visible": false },
+        "/unitree/slam_mapping/odom":       { "visible": false }
+      },
+      "layers": {
+        "grid": { "layerId": "foxglove.Grid", "frameId": "map", "size": 40, "divisions": 40 }
+      },
+      "publish": {
+        "type": "pose",
+        "poseTopic": "/goal_pose",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose"
+      }
+    },
+    "Plot!tfrate": {
+      "paths": [
+        { "value": "/dog_odom.twist.twist.linear.x", "enabled": true, "timestampMethod": "receiveTime" },
+        { "value": "/cmd_vel.linear.x", "enabled": true, "timestampMethod": "receiveTime" },
+        { "value": "/cmd_vel.angular.z", "enabled": true, "timestampMethod": "receiveTime" }
+      ],
+      "showLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 30
+    },
+    "RawMessages!nav2fb": {
+      "topicPath": "/navigate_to_pose/_action/feedback"
+    },
+    "Log!rosout": {
+      "searchTerms": ["guard", "planner_server", "controller_server", "bt_navigator"],
+      "minLogLevel": 2
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": { "speed": 1 },
+  "layout": {
+    "first": "3D!g1nav",
+    "second": {
+      "first": "Log!rosout",
+      "second": {
+        "first": "Plot!tfrate",
+        "second": "RawMessages!nav2fb",
+        "direction": "column",
+        "splitPercentage": 55
+      },
+      "direction": "column",
+      "splitPercentage": 40
+    },
+    "direction": "row",
+    "splitPercentage": 68
+  }
+}
