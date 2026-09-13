@@ -51,16 +51,30 @@ CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
         IpcSend(vx, vy, omega);
     });
 
-    // D-23 では TwistStamped に統一する方針だが、**Nav2 側が出す型はディストリで異なる**
-    // (Humble は Twist 固定)。両方購読して、どちらで来ても動くようにする。詳細はヘッダのコメント。
+    // D-23 では TwistStamped に統一する方針だったが、**Nav2 側が出す型はディストリで異なる**
+    // (Humble は Twist 固定)。**両方を同時購読すると FastDDS で落ちる**ので、
+    // publisher の型を実行時に見て合う方を1本だけ張る。詳細はヘッダのコメント。
     cmd_vel_topic_ = declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel_smoothed");
     no_cmd_warn_s_ = declare_parameter<double>("no_cmd_warn_s", 3.0);
-    sub_twist_stamped_ = create_subscription<geometry_msgs::msg::TwistStamped>(
-        cmd_vel_topic_, 10,
-        [this](geometry_msgs::msg::TwistStamped::SharedPtr msg) { OnTwistStamped(msg); });
-    sub_twist_unstamped_ = create_subscription<geometry_msgs::msg::Twist>(
-        cmd_vel_topic_, 10,
-        [this](geometry_msgs::msg::Twist::SharedPtr msg) { OnTwistUnstamped(msg); });
+    cmd_vel_type_ = declare_parameter<std::string>("cmd_vel_type", "auto");
+    if (cmd_vel_type_ == "twist") {
+        CreateUnstampedSubscription();
+    } else if (cmd_vel_type_ == "twist_stamped") {
+        CreateStampedSubscription();
+    } else {
+        if (cmd_vel_type_ != "auto") {
+            RCLCPP_WARN(get_logger(),
+                        "cmd_vel_type='%s' は未知。auto として扱う(twist / twist_stamped / auto)",
+                        cmd_vel_type_.c_str());
+            cmd_vel_type_ = "auto";
+        }
+        // publisher が現れるまで購読を作らない。現れたらその型に合わせて1本張る。
+        resolve_timer_ = create_wall_timer(500ms, [this]() {
+            if (TryCreateCmdVelSubscription()) {
+                resolve_timer_->cancel();
+            }
+        });
+    }
 
     // 仕様書5.1 /g1/estop。trueでソフトウェア緊急停止する。falseでの自動解除は行わない
     // (E_STOPからの復帰は手動解除+安全確認が必須、仕様書7章)。復帰用サービスは未実装(既知の残作業)。
@@ -120,6 +134,53 @@ CmdRouterNode::~CmdRouterNode() {
     if (reconnect_thread_.joinable()) {
         reconnect_thread_.join();
     }
+}
+
+void CmdRouterNode::CreateStampedSubscription() {
+    sub_twist_stamped_ = create_subscription<geometry_msgs::msg::TwistStamped>(
+        cmd_vel_topic_, 10,
+        [this](geometry_msgs::msg::TwistStamped::SharedPtr msg) { OnTwistStamped(msg); });
+    RCLCPP_INFO(get_logger(), "%s を TwistStamped として購読する", cmd_vel_topic_.c_str());
+}
+
+void CmdRouterNode::CreateUnstampedSubscription() {
+    sub_twist_unstamped_ = create_subscription<geometry_msgs::msg::Twist>(
+        cmd_vel_topic_, 10, [this](geometry_msgs::msg::Twist::SharedPtr msg) { OnTwistUnstamped(msg); });
+    RCLCPP_INFO(get_logger(), "%s を Twist(タイムスタンプ無し)として購読する", cmd_vel_topic_.c_str());
+}
+
+// publisher が出している型を調べ、合う購読を1本だけ作る。
+// ⚠️ **両方を同時に張ると FastDDS が例外を投げてノードごと落ちる**(ヘッダのコメント参照)。
+bool CmdRouterNode::TryCreateCmdVelSubscription() {
+    const auto infos = get_publishers_info_by_topic(cmd_vel_topic_);
+    if (infos.empty()) {
+        return false;  // まだ Nav2 が上がっていない。次の tick で見直す
+    }
+    bool has_stamped = false;
+    bool has_plain = false;
+    for (const auto& info : infos) {
+        if (info.topic_type() == "geometry_msgs/msg/TwistStamped") has_stamped = true;
+        if (info.topic_type() == "geometry_msgs/msg/Twist") has_plain = true;
+    }
+    if (has_stamped && has_plain) {
+        // 両方の publisher が居る構成は想定していない。片方しか受けられないので、
+        // 黙って選ばずに warn する(どちらを選んでも半分の指令を取りこぼす)。
+        RCLCPP_WARN(get_logger(),
+                    "%s に Twist と TwistStamped の publisher が同時に居る。"
+                    "TwistStamped を選ぶが、構成を見直すこと",
+                    cmd_vel_topic_.c_str());
+    }
+    if (has_stamped) {
+        CreateStampedSubscription();
+        return true;
+    }
+    if (has_plain) {
+        CreateUnstampedSubscription();
+        return true;
+    }
+    RCLCPP_WARN(get_logger(), "%s の publisher の型が想定外: %s",
+                cmd_vel_topic_.c_str(), infos.front().topic_type().c_str());
+    return false;
 }
 
 void CmdRouterNode::OnTwistStamped(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {

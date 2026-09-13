@@ -128,10 +128,13 @@ subscriber を単にマッチさせないだけで、エラーにはしない。
 **Humble では宣言されていないパラメータなので黙って無視される**（起動は失敗しない）。
 これも実測で確認した。
 
-### 対処
+### 対処（⚠️ 最初の実装は誤りだった。§7 参照）
 
-`g1_cmd_router` が **`Twist` と `TwistStamped` の両方を購読する**ようにした。
-同じトピック名に 2 つの subscription を張り、どちらで来ても同じ経路に流す。
+~~`g1_cmd_router` が **`Twist` と `TwistStamped` の両方を購読する**ようにした。
+同じトピック名に 2 つの subscription を張り、どちらで来ても同じ経路に流す。~~
+
+**この実装は `rmw_fastrtps_cpp` でノードごと落ちる**ことが後で分かった（§7）。
+現在は **publisher の型を実行時に調べ、合う購読を 1 本だけ張る**方式にしてある。
 
 加えて、今回のような配線ミスが黙って通り過ぎないように 2 つの可視化を入れた:
 
@@ -186,3 +189,89 @@ docker run --rm -v <repo>/nav2_option:/nav2_option -w /nav2_option/g1_ws \
 
 ⚠️ コンテナは root で `build/` `install/` `log/` を作るため、ホスト側から
 `rm -rf` できなくなる。消すときはコンテナ経由で消す。
+
+
+---
+
+## 7. arm64（PC2）での検証と、そこで見つかった致命的なバグ（2026-09-13）
+
+D-30（Nav2 は Humble コンテナ）の前提は **PC2 が arm64（Jetson Orin NX）** であることに
+かかっている。手元の PC は amd64 なので、QEMU エミュレーション
+（`docker run --privileged tonistiigi/binfmt --install arm64`）で検証した。
+
+### 静的に確認できたこと（エミュレーション不要）
+
+| 確認項目 | 結果 |
+|---|---|
+| arm64 に Nav2 一式が在るか | ✅ **全部ある**。ROS apt 索引（arm64、7,540 パッケージ）を直接引いて確認。`nav2_velocity_smoother` 1.1.20 を含む依存 15 個すべて |
+| ベースイメージ | ✅ `ros:humble-ros-base-jammy` に arm64 版あり |
+| `Mapping/real/docker/Dockerfile` のアーキ依存 | ✅ **無い**。unitree_sdk2 / Livox-SDK2 / livox_ros_driver2 / FAST-LIO はすべて git からソースビルド。プリビルド wheel も CUDA も arch 固定 URL も無い |
+| 自作コードの arm64 リスク | ✅ **無い**。`char` の符号依存なし（ARM では `char` は unsigned。実際に確認した）、x86 固有記述なし、`static_assert` は `#pragma pack(1)` なので arch 非依存 |
+
+### エミュレーションで確認したこと
+
+| 確認項目 | 結果 |
+|---|---|
+| `uname -m` | ✅ `aarch64`、gcc は `aarch64-linux-gnu` 11 |
+| 自作 3 パッケージの colcon build | ✅ 成功（1分56秒）・警告ゼロ |
+| SDK 側（ROS 非依存）のビルド | ✅ 成功・警告ゼロ |
+| 単体テスト | ✅ **54 件すべて通過** |
+| 生成物が本当に arm64 か | ✅ `ELF 64-bit LSB pie executable, ARM aarch64` |
+| ワイヤフォーマット | ✅ arm64 でもバイト配置が同一（`HeartbeatPacketTest` が通る） |
+
+### 🐛 ここで見つかった致命的なバグ
+
+**`Twist` と `TwistStamped` を同一トピックに同時購読する実装は、`rmw_fastrtps_cpp`
+ではノードが起動時にクラッシュする。**
+
+```
+create_subscription() called for existing topic name rt/cmd_vel_smoothed
+with incompatible type geometry_msgs::msg::dds_::Twist_
+terminate called after throwing an instance of 'rclcpp::exceptions::RCLError'
+```
+
+| RMW | 結果 |
+|---|---|
+| `rmw_fastrtps_cpp` | ❌ **起動時にクラッシュ** |
+| `rmw_cyclonedds_cpp` | ✅ 動く |
+
+**amd64 の検証環境（Mapping イメージ）が CycloneDDS に解決されていたため、
+たまたま動いていただけだった。** arm64 の `ros:humble-ros-base-jammy` は
+FastDDS が既定なので、そこで初めて露見した。
+
+⚠️ **D-03 は「ROS 側 RMW は FastDDS」としている。** つまり意図した構成では
+最初から動かないコードを書いていたことになる。arm64 の問題ではなく設計の誤り。
+
+### 対処
+
+**publisher の型を実行時に調べ、合う購読を 1 本だけ張る**方式に変えた。
+
+- パラメータ `cmd_vel_type`: `auto`（既定）/ `twist` / `twist_stamped`
+- `auto` では publisher が現れるまで 500ms 周期で `get_publishers_info_by_topic()` を
+  見て待ち、型が分かった時点で該当する購読を 1 本だけ作ってタイマーを解除する
+- 両方の型の publisher が同時に居る想定外の構成では WARN を出す
+
+**検証結果**（いずれも `vx: 0 → 0.300` が SDK 側に到達）:
+
+| 環境 | RMW | 結果 |
+|---|---|---|
+| amd64 | `rmw_fastrtps_cpp` | ✅ |
+| amd64 | `rmw_cyclonedds_cpp` | ✅ |
+| **arm64** | `rmw_fastrtps_cpp`（既定） | ✅ |
+
+### 📌 検証環境についての教訓
+
+**RMW を明示せずに検証していたことが、バグを 1 日見逃す原因になった。**
+イメージによって既定の RMW が変わるため、「動いた」が何を意味するか曖昧だった。
+以後、RMW に触る検証では `RMW_IMPLEMENTATION` を明示すること。
+
+### エミュレーション環境の注意
+
+- `apt-get install ros-humble-navigation2` は **781 パッケージ**を引き、
+  QEMU 下では 20 分以上かかる。`libc-bin` の設定が失敗して
+  `dpkg returned an error code (1)` になるが、これは QEMU 下で `ldconfig` が
+  失敗する既知の artifact で、**Nav2 のパッケージ自体は正しく入る**
+- ただしこの失敗で apt が中断すると設定途中のパッケージが残り、
+  **後続の colcon build が失敗する**。自作パッケージだけを試すなら
+  `ros-humble-diagnostic-msgs` / `ros-humble-tf2-ros` だけ入れれば足りる
+  （それ以外は `ros-base` に含まれている）

@@ -27,7 +27,7 @@
 | D-06 | **SDK 側プロセスは ROS 2 を一切初期化・リンクしない** | DDS ライブラリ競合の根本回避 |
 | D-07 | **SDK 側プロセスは systemd 管理とし、ROS launch から起動しない**（ユニット作成済み: [deploy/](deploy/)、2026-09-13） | `ExecuteProcess` は `LD_LIBRARY_PATH` / `AMENT_PREFIX_PATH` を継承し ROS 側 CycloneDDS に誤リンクする。加えて、安全の最終防衛線を ROS launch のライフサイクルに従属させない |
 | D-08 | **SDK 側プロセスは colcon workspace 外の独立 CMake プロジェクトとしてビルドする** | ROS 環境が source された状態でのビルドを構造的に防ぐ |
-| D-30 | **Nav2 と ROS 側ノードは Humble コンテナで動かす**（2026-09-13、ユーザー確認済み） | PC2 ネイティブの Foxy には `nav2_velocity_smoother` / `nav2_behaviors` が存在せず、設計どおりに組めない（A-10c で実測）。Humble イメージは Mapping 用に既にあり、A-10b・A-10c の検証資産も全て Humble 上にある。**D-01（Jazzy 継続）はこの点で読み替えること。** 自作3パッケージは Foxy/Humble/Jazzy いずれでも無修正で動くので、後から Jazzy へ移っても配線は壊れない |
+| D-30 | **Nav2 と ROS 側ノードは Humble コンテナで動かす**（2026-09-13、ユーザー確認済み） | PC2 ネイティブの Foxy には `nav2_velocity_smoother` / `nav2_behaviors` が存在せず、設計どおりに組めない（A-10c で実測）。Humble イメージは Mapping 用に既にあり、A-10b・A-10c の検証資産も全て Humble 上にある。**D-01（Jazzy 継続）はこの点で読み替えること。** 自作3パッケージは Foxy/Humble/Jazzy いずれでも無修正で動くので、後から Jazzy へ移っても配線は壊れない。**arm64(PC2) での成立も確認済み(A-10e)** |
 | D-31 | **操作PC との通信が途絶したら巡回を停止する**（2026-09-13、ユーザー確認済み） | 警備 PoC の目的が「異常を見つけて人に知らせること」である以上、人と繋がっていない状態で動き続けることに価値が無い。実測では通信断後も 4.045 秒・0.85m 前進した。なお「減速して継続」は U-12 により選べない（`vx=0.2` で進行方向が定まらないため「ゆっくり歩いて帰る」が物理的に存在しない）。実装は Phase 2c 作業項目10 |
 | D-32 | **「NAVIGATING なのに指令が来ない」は WARN にとどめ、状態遷移はさせない**（2026-09-13、ユーザー確認済み） | SafetyManager の「最初の指令を受けるまで `cmd_timeout` の計測を始めない」猶予は Nav2 の計画時間を待つための意図的な設計であり、変えない。配線ミスを可視化するだけにとどめる（`no_cmd_warn_s`、既定 3.0 秒、0 で無効）。物理的な安全は SDK 側 watchdog と `duration` 満了が別途担保する |
 | D-29 | **`slam_operate` は `1801`(建図開始) と `1901`(SLAM終了) の 2 つだけを使う**（2026-09-09、ユーザー確認済み）。`1802`(建図保存) / `1804`(地図読込＋自己位置設定) は使わない。送信クライアントには**この 2 つだけを `_RegistApi()` し、`1102`(移動) は構造的に送れないようにする**（[tools/send_slam_api.py](tools/send_slam_api.py)） | 我々が内蔵 SLAM に求めるのは **odometry の供給だけ**（`/unitree/slam_mapping/odom`。これは 1801 で流れる）。`map→odom` は処理済み地図への ICP 合わせ、global costmap は `room_a_map.yaml` で足りるため、地図を PC1 に置く必要がなく 1802/1804 は不要。**これにより「外部で作った地図を PC1 へ転送できない」という制約自体が我々には効かない**。<br>諦めるのは「純正再定位でドリフトを補正する道」だけで、U-16（歩行中のドリフト）が許容範囲なら不要。許容できない場合の代替案として残す（その際はロボット自身に 1801→1802 で地図を作らせ、処理済み地図との変換を ICP で求める。詳細: [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) §8.6） |
@@ -57,7 +57,7 @@
 | D-20 | **点群地図の作成（mapping）はオフライン / 操作 PC で行う**<br>運用時の localization のみオンボード | 実機では rosbag 記録のみ。地図生成は高性能 PC でやり直し可能。運用時に mapping 特有の不安定さが入り込まない |
 | D-21 | **Local costmap は 3D 点群ベースとする**（`voxel_layer` 等）<br>2D `/scan` は Global costmap / 壁検出用に限定 | ~~頭部 LiDAR の垂直視野は -7°〜+52°。高さ 1.3m から -7° の光線は約 10.6m 先で床に当たるため、足元〜10m の床面と低障害物が原理的に見えない~~<br>**⚠️ この根拠は誤りだった（2026-09-09、立位で実測）。** **MID-360 は逆さ(roll≈180°)に取り付けられており、視野の広い側(52°)が下を向いている。** そのため床は **約1.0m 先から 11.9m 先まで見えており（床平面 inlier 623,965点）、死角は半径 0.91〜1.12m の円だけ**。センサー高さ 1.213m・傾き 3.81°。理論値も「52°が下向き」なら 0.95m で実測と一致し、「7°が下向き」なら 9.88m で実測と矛盾する。<br>**結論そのもの（Local costmap を 3D 点群ベースにする）は変えなくてよい**（3D 点群を使う利点は死角の有無とは別にある）が、**D-24 の適用環境限定と D-25/Phase 3 の優先度は見直すべき**。詳細: [safety/checklist_phase0.md](safety/checklist_phase0.md) 項目6 |
 | D-22 | **Controller は Regulated Pure Pursuit から開始する** | MPPI は Orin NX では負荷が厳しい。DWB/MPPI のモデル予測は歩容起因の遅延と乖離する。二足の遅い応答と相性が良い |
-| D-23 | ~~**`enable_stamped_cmd_vel = true` とし TwistStamped を標準化する**~~ **修正(2026-09-13)**: 標準化は**できない**。**Humble にはこのパラメータが存在せず `Twist` 固定**で、TwistStamped だけを購読すると**無警告で繋がらない**（A-10c で実際に踏んだ）。`g1_cmd_router` は **両方の型を購読する**ことにした | Jazzy のデフォルトは false（Twist）、Kilted 以降は true、Humble は選択肢なし。ディストリ差を配線問題にしないため |
+| D-23 | ~~**`enable_stamped_cmd_vel = true` とし TwistStamped を標準化する**~~ **修正(2026-09-13)**: 標準化は**できない**。**Humble にはこのパラメータが存在せず `Twist` 固定**で、TwistStamped だけを購読すると**無警告で繋がらない**（A-10c で実際に踏んだ）。`g1_cmd_router` は **publisher の型を実行時に調べて合う購読を1本だけ張る**（`cmd_vel_type=auto`）。⚠️ 当初「両方を同時購読」にしたが **FastDDS でクラッシュした**ので改めた（A-10e） | Jazzy のデフォルトは false（Twist）、Kilted 以降は true、Humble は選択肢なし。ディストリ差を配線問題にしないため |
 
 ### 1.4 スコープ
 
@@ -378,6 +378,53 @@ D-07 が要求していた systemd 管理の実体を作った。
 
 `systemd-analyze verify` は警告ゼロ。⚠️ **PC2 実機での起動確認は未実施。**
 特に `User=unitree` で G1 の内蔵スイッチ側 IF に届くかは要確認。
+
+---
+
+**A-10e. arm64(PC2) での成立確認 — 完了(2026-09-13、実機不要・QEMU)**
+
+D-30（Nav2 は Humble コンテナ）の前提は **PC2 が arm64(Jetson Orin NX)** であることに
+かかっている。QEMU エミュレーションで検証した。詳細は
+[findings/ros_distro_compat.md](findings/ros_distro_compat.md) §7。
+
+| 確認項目 | 結果 |
+|---|---|
+| arm64 に Nav2 一式が在るか | ✅ **全部ある**（ROS apt 索引を直接確認。`nav2_velocity_smoother` 含む依存15個） |
+| Dockerfile のアーキ依存 | ✅ 無い（依存はすべて git からソースビルド） |
+| 自作3パッケージの arm64 ビルド | ✅ 成功・警告ゼロ |
+| 単体テスト | ✅ **54 件すべて通過** |
+| 生成物 | ✅ `ELF 64-bit LSB pie executable, ARM aarch64` |
+
+📌 **D-30 の前提は成立している。**
+
+### 🐛 ここで見つかった致命的なバグ（A-10c の対処が誤っていた）
+
+A-10c で入れた「`Twist` と `TwistStamped` を**同時購読**する」実装は、
+**`rmw_fastrtps_cpp` ではノードが起動時にクラッシュする**。
+
+```
+create_subscription() called for existing topic name rt/cmd_vel_smoothed
+with incompatible type geometry_msgs::msg::dds_::Twist_
+```
+
+| RMW | 結果 |
+|---|---|
+| `rmw_fastrtps_cpp` | ❌ **起動時にクラッシュ** |
+| `rmw_cyclonedds_cpp` | ✅ 動く |
+
+⚠️ **D-03 は「ROS 側 RMW は FastDDS」としている**ので、意図した構成では
+最初から動かないコードだった。**amd64 の検証環境(Mapping イメージ)が
+CycloneDDS に解決されていたため、たまたま動いていただけ。**
+arm64 の問題ではなく設計の誤りで、arm64 検証が無ければ実機で踏んでいた。
+
+**対処**: **publisher の型を実行時に調べ、合う購読を 1 本だけ張る**方式に変更
+（パラメータ `cmd_vel_type`: `auto`(既定) / `twist` / `twist_stamped`）。
+amd64×FastDDS / amd64×CycloneDDS / **arm64×FastDDS** の3通りで
+`vx: 0 → 0.300` が SDK 側に到達することを確認した。
+
+📌 **教訓: RMW を明示せずに検証していたことが、バグを見逃す原因になった。**
+イメージによって既定の RMW が変わるため「動いた」の意味が曖昧だった。
+以後、RMW に触る検証では `RMW_IMPLEMENTATION` を明示する。
 
 ---
 
@@ -770,7 +817,7 @@ flowchart TD
 | `continous_move=True` を誤って使うと通信断で G1 が歩き続ける | Phase A〜運用全体 | D-27 でコーディング規約として明記。コードレビュー・単体テストで `SetVelocity` 呼び出しの `duration` が常に有限値であることを検証する |
 | **⚠️ 通信断（操作PC↔オンボード）はロボットを止めない。実測で切断後 0.85m 前進した** | Phase 1・2c・運用全体 | 2026-09-09 実測。`sshd` が TCP 切断を 14 秒検知せず SIGHUP が出ないため、オンボードの指令プロセスが生き残って指令を送り続けた。**「ケーブルを抜く」は停止手段にならない。** 物理的な停止手段（純正リモコン）が唯一の最終防衛線。オンボードの指令プロセスは有限時間で終わるか、操作側の heartbeat に依存させる必要がある。**実装済み(2026-09-13、モック検証まで)**: [findings/operator_heartbeat_design.md](findings/operator_heartbeat_design.md)。送信断から 1.03 秒で FAULT。⚠️ **実機での受入試験と Nav2 Goal キャンセルが残っている** |
 | SDK2 と ROS 2 の DDS 競合 | Phase A・0 | D-04〜D-08 で構造的に回避。`ldd` 混入チェックを受入項目化 |
-| **⚠️ ROS 2 のディストリ差で `/cmd_vel_smoothed` の型が変わり、無警告で指令が届かない** | Phase 2c・運用全体 | **解消済み(2026-09-13)**: Humble の `velocity_smoother` は `Twist` 固定、Jazzy 以降は `TwistStamped` も選べる。`g1_cmd_router` が**両方を購読**するようにした。加えて「NAVIGATING なのに指令が届かない」WARN を追加（A-10c） |
+| **⚠️ ROS 2 のディストリ差で `/cmd_vel_smoothed` の型が変わり、無警告で指令が届かない** | Phase 2c・運用全体 | **解消済み(2026-09-13)**: Humble の `velocity_smoother` は `Twist` 固定、Jazzy 以降は `TwistStamped` も選べる。`g1_cmd_router` が **publisher の型を実行時に判別して1本だけ購読**する（A-10c→A-10e で方式変更。同時購読は FastDDS でクラッシュした）。加えて「NAVIGATING なのに指令が届かない」WARN を追加 |
 | **Nav2 本体が PC2 ネイティブの Foxy に存在しない**（`nav2_velocity_smoother` / `nav2_behaviors`） | Phase 2c | **確定(2026-09-13、ユーザー確認済み・D-30)**: Nav2 と ROS 側ノードは **Humble コンテナ**で動かし、SDK 側プロセスはホスト常駐＋`/tmp/g1_bridge` を bind mount する。**PC2(arm64) での実地確認は未実施** |
 | ~~`FAST_LIO_LOCALIZATION_HUMANOID` が Jazzy でビルドできない~~ | Phase A-6 | **解消済み(2026-09-08)**: `humble`ブランチでビルド・起動確認済み。Jazzy継続方針に対するリスクは無くなった |
 | ~~LIO の TF が `map→base_link` 直出しで Nav2 の Local costmap が壊れる~~ | Phase A-6 / 2a | **解消済み(2026-09-08)**: 実際は既に`map→odom`/`odom→base_link`の2段構成だった。フレーム名パッチのみで対応可能(分解ノードは不要) |

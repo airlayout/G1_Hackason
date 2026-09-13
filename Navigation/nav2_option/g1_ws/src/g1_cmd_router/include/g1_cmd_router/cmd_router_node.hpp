@@ -36,19 +36,31 @@ public:
     ~CmdRouterNode() override;
 
 private:
-    // ⚠️ **同じトピック名に2つの型を購読している。** Nav2 の `velocity_smoother` が
-    // `/cmd_vel_smoothed` に出す型は ROS のディストリで異なる:
+    // Nav2 の `velocity_smoother` が `/cmd_vel_smoothed` に出す型はディストリで異なる:
     //   - Humble: `geometry_msgs/Twist` 固定(`enable_stamped_cmd_vel` 自体が無い)
     //   - Jazzy : 既定 `Twist`。`enable_stamped_cmd_vel=true` で `TwistStamped`(D-23)
     //   - Kilted 以降: 既定 `TwistStamped`
-    // TwistStamped だけを購読していると、Humble の Nav2 と繋いだとき
+    // 片方だけを購読していると、型が違うディストリと繋いだとき
     // **エラーも警告も出ないまま指令が1件も届かない**(2026-09-13 に実測で確認。
     // `ros2 topic info --verbose` が `Type: ['geometry_msgs/msg/Twist',
     // 'geometry_msgs/msg/TwistStamped']` と2つの型を並べるだけで、購読側は沈黙する)。
-    // どちらで来ても受けられるようにして、ディストリ差を配線の問題にしない。
+    //
+    // ⚠️⚠️ **同じトピック名に2つの型を同時購読してはいけない。**
+    // 一度その実装にしたが、**`rmw_fastrtps_cpp` では起動時に例外で落ちる**
+    // (`create_subscription() called for existing topic name ... with incompatible
+    // type`)。`rmw_cyclonedds_cpp` では通ってしまうため amd64 の検証環境では
+    // 気づけず、arm64(FastDDS 既定)で初めて発覚した(2026-09-13)。
+    // **D-03 は ROS 側 RMW を FastDDS としている**ので、これは致命的だった。
+    //
+    // そこで **publisher の型を実行時に調べて、合う方を1本だけ張る**。
+    // 型が分かるまで(publisher が現れるまで)は購読を作らず、タイマーで待つ。
     void OnTwistStamped(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
     void OnTwistUnstamped(const geometry_msgs::msg::Twist::SharedPtr msg);
     void OnNavTwist(double vx, double vy, double omega, bool stamped);
+    // publisher の型を調べて購読を1本だけ作る。作れたら true。
+    bool TryCreateCmdVelSubscription();
+    void CreateStampedSubscription();
+    void CreateUnstampedSubscription();
     void OnEStop(const std_msgs::msg::Bool::SharedPtr msg);
     void OnTimer();
     void IpcSend(double vx, double vy, double omega);
@@ -84,6 +96,10 @@ private:
     // どちらの型で指令が来ているかを一度だけログに出すためのフラグ(配線ミスの早期発見用)
     bool logged_stamped_ = false;
     bool logged_unstamped_ = false;
+    // "auto" | "twist" | "twist_stamped"
+    std::string cmd_vel_type_;
+    // 型が判明するまで publisher を探し続けるタイマー(判明したら解除する)
+    rclcpp::TimerBase::SharedPtr resolve_timer_;
     // NAVIGATING に入ってから一度も指令が来ていないことを警告する閾値。
     // **状態遷移はさせない**(FAULT にはしない)。SafetyManager の「最初の指令を待つ」
     // 猶予は意図的な設計なので変えず、**黙って動かない状況を可視化するだけ**にとどめる。
