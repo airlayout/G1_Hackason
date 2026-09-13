@@ -219,6 +219,72 @@ ros2 launch mola_lidar_odometry ros2-lidar-odometry.launch.py \
 **確認**: `/lidar_odometry/pose_quality` が **0.8 前後**、`/tf` が **10 Hz**。
 品質が 0.00 なら地図の層が違う（§3 の表）。
 
+### ⚠️⚠️ 測位が違う場所に居ることがある。**品質値では分からない**（2026-09-13 実機）
+
+**起きたこと**: MOLA を地図の原点を種に起こしたところ、**2.26 m・16.4° 離れた偽の極大**に
+収束した。**そのまま `preflight.sh` は「歩かせてよい」と答えた。**
+
+| | 誤った姿勢 | 正しい姿勢 |
+|---|---|---|
+| `pose_quality` | **0.855** | 0.818 |
+| 事前地図との重畳 | **29.6 %** | **74.8 %** |
+| 静止中の震え M4 | 0.963 m/s | 0.249 m/s |
+
+**品質は誤った姿勢の方が高い。**（09-11 の再定位の実験でも同じ性質を見ている。）
+**初期姿勢を 0.9 m ずらして起こし直しても、同じ偽の極大に戻る。**自力では抜けられない。
+
+#### 見つけ方（歩かせる前に必ず 1 回）
+
+```bash
+bash quickstart/record_still.sh 60      # 末尾に「重畳 xx %」が出る
+```
+
+| 重畳 | 判定 |
+|---|---|
+| **70 % 以上** | 合っている（09-10 は 77.5 / 09-12 は 68〜74） |
+| **50 % 前後** | 怪しい。下の全域探索をかける |
+| **30 % 台** | **違う場所に居る。歩かせない** |
+
+⚠️ **部屋が散らかっていても 70% は出る。**低いのは散らかりではなく測位である
+（09-13 は同じ部屋・同じ時間で 29.6 % → 74.8 % になった）。
+
+#### 直し方 — `mola_relocalization` の SE(2) 全域探索
+
+```bash
+# 0. 道具を建てる（初回だけ。コンテナの中。約 1 分）
+docker exec -u ubuntu rviz bash -c 'source /opt/ros/humble/setup.bash && \
+  cmake -S /work/G1_Hackason/Mapping/real/quickstart/reloc -B /tmp/reloc_build \
+        -DCMAKE_BUILD_TYPE=Release && cmake --build /tmp/reloc_build -j6'
+
+# 1. いまの記録から 1 スキャンを base_link 系で出す（Mac 側の venv）
+Navigation/.venv/bin/python quickstart/export_scan.py \
+    Mapping/real/runs/<いまの記録>/bag --out Mapping/real/runs/reloc_<日付>/scan_full
+
+# 2. 全域探索（ROI は**いまの推定**を中心に ±3 m。45,000 格子点で約 42 秒）
+docker exec -u ubuntu rviz bash -c 'source /opt/ros/humble/setup.bash && /tmp/reloc_build/bin/reloc_probe \
+  --map <...>/mola_floor0/map.mm --scan <...>/scan_full.xyz \
+  --center <いまのx> <いまのy> --roi 3.0 --res-xy 0.25 --res-phi 5 --top 8'
+
+# 3. 候補を 2D 地図で裏取りする（**探索が使う 3D 地図とは独立**）
+Navigation/.venv/bin/python quickstart/overlay_at_pose.py \
+    <...>/scan_full.xyz <...>/map/nav_map_ref.yaml --pose X Y YAW_DEG
+
+# 4. 詰めとゲート（候補を --trusted-pose に渡すと r0 を較正して採否まで出す）
+#    → 出た姿勢で MOLA を起こし直す
+G1_USE_MOLA=1 G1_MOLA_INIT_POSE="[X, Y, 0.0, YAW_DEG, 0.0, 0.0]" \
+    bash quickstart/nav_stack.sh live
+```
+
+⚠️ **探索は「全点」でかける。壁の帯に絞ると壊れる**（壁が自己相似なので別の壁に食いつく）。
+**ゲートは逆に「帯」で測る。**理由は同じで、床と机は「どこに置いても何かに当たる」から。
+詳細と実測は `quickstart/reloc/README.md`。
+
+⚠️ **尤度の面はほぼ平ら**（上位 8 件の差が 0.7%）。**格子探索の答えを鵜呑みにせず、
+必ず手順 3 の 2D 重畳で裏を取る**こと。09-13 は 28.8 % → **73.1 %** ではっきり分かれた。
+
+⚠️ **自分のずらし検査だけでは足りない。**09-13 に重畳を ±1.2 m・回転なしで掃いたときは
+「0.8 m ずれ」までしか見えなかった（本当は 2.26 m・16.4°）。**回転を含む全域探索が要る。**
+
 ### ⚠️ 踏んではいけない地雷
 
 | やってはいけないこと | 何が起きるか |
