@@ -27,6 +27,9 @@
 | D-06 | **SDK 側プロセスは ROS 2 を一切初期化・リンクしない** | DDS ライブラリ競合の根本回避 |
 | D-07 | **SDK 側プロセスは systemd 管理とし、ROS launch から起動しない**（ユニット作成済み: [deploy/](deploy/)、2026-09-13） | `ExecuteProcess` は `LD_LIBRARY_PATH` / `AMENT_PREFIX_PATH` を継承し ROS 側 CycloneDDS に誤リンクする。加えて、安全の最終防衛線を ROS launch のライフサイクルに従属させない |
 | D-08 | **SDK 側プロセスは colcon workspace 外の独立 CMake プロジェクトとしてビルドする** | ROS 環境が source された状態でのビルドを構造的に防ぐ |
+| D-30 | **Nav2 と ROS 側ノードは Humble コンテナで動かす**（2026-09-13、ユーザー確認済み） | PC2 ネイティブの Foxy には `nav2_velocity_smoother` / `nav2_behaviors` が存在せず、設計どおりに組めない（A-10c で実測）。Humble イメージは Mapping 用に既にあり、A-10b・A-10c の検証資産も全て Humble 上にある。**D-01（Jazzy 継続）はこの点で読み替えること。** 自作3パッケージは Foxy/Humble/Jazzy いずれでも無修正で動くので、後から Jazzy へ移っても配線は壊れない |
+| D-31 | **操作PC との通信が途絶したら巡回を停止する**（2026-09-13、ユーザー確認済み） | 警備 PoC の目的が「異常を見つけて人に知らせること」である以上、人と繋がっていない状態で動き続けることに価値が無い。実測では通信断後も 4.045 秒・0.85m 前進した。なお「減速して継続」は U-12 により選べない（`vx=0.2` で進行方向が定まらないため「ゆっくり歩いて帰る」が物理的に存在しない）。実装は Phase 2c 作業項目10 |
+| D-32 | **「NAVIGATING なのに指令が来ない」は WARN にとどめ、状態遷移はさせない**（2026-09-13、ユーザー確認済み） | SafetyManager の「最初の指令を受けるまで `cmd_timeout` の計測を始めない」猶予は Nav2 の計画時間を待つための意図的な設計であり、変えない。配線ミスを可視化するだけにとどめる（`no_cmd_warn_s`、既定 3.0 秒、0 で無効）。物理的な安全は SDK 側 watchdog と `duration` 満了が別途担保する |
 | D-29 | **`slam_operate` は `1801`(建図開始) と `1901`(SLAM終了) の 2 つだけを使う**（2026-09-09、ユーザー確認済み）。`1802`(建図保存) / `1804`(地図読込＋自己位置設定) は使わない。送信クライアントには**この 2 つだけを `_RegistApi()` し、`1102`(移動) は構造的に送れないようにする**（[tools/send_slam_api.py](tools/send_slam_api.py)） | 我々が内蔵 SLAM に求めるのは **odometry の供給だけ**（`/unitree/slam_mapping/odom`。これは 1801 で流れる）。`map→odom` は処理済み地図への ICP 合わせ、global costmap は `room_a_map.yaml` で足りるため、地図を PC1 に置く必要がなく 1802/1804 は不要。**これにより「外部で作った地図を PC1 へ転送できない」という制約自体が我々には効かない**。<br>諦めるのは「純正再定位でドリフトを補正する道」だけで、U-16（歩行中のドリフト）が許容範囲なら不要。許容できない場合の代替案として残す（その際はロボット自身に 1801→1802 で地図を作らせ、処理済み地図との変換を ICP で求める。詳細: [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) §8.6） |
 | D-28 | **SDK 側プロセスの本番実装言語は C++ に決定**（2026-09-09、ユーザー確認済み） | 周期送信の安定性（GIL・GC由来のジッタ回避）で有利という当初の判断どおり。`g1_sdk_bridge/` の Python 実装（A-3）はプロトタイプに位置づけ、ロジック（`protocol.py`/`ipc_transport.py`/`sdk_process_mock.py`/`safety_manager.py`）を C++ に移植する。`unitree_sdk2`（C++版）の `LocoClient` シグネチャを正とする（[findings/sdk2_api.md](findings/sdk2_api.md) §4 の C++/Python 差異は、C++版で確定済みのため実質解消） |
 
@@ -319,7 +322,7 @@ Phase 1 の残作業だった「ROS のバージョン問題」を、Docker 上�
 
 📌 **配置の結論**: **Nav2 と ROS 側ノードは Humble コンテナ、SDK 側プロセスは
 PC2 ホストにネイティブ常駐**（コンテナが `/tmp/g1_bridge` を bind mount する）。
-D-05 / D-06 / D-07 / D-08 のいずれも壊さない。
+D-05 / D-06 / D-07 / D-08 のいずれも壊さない。**2026-09-13 にユーザー確認済み（D-30）。**
 
 ### 🐛 実際に踏んだバグ: `Twist` と `TwistStamped` が繋がらない
 
@@ -650,8 +653,9 @@ D-07 が要求していた systemd 管理の実体を作った。
       **いずれも「オンボード側の誰かが死ぬこと」を検知する仕組み**であり、
       通信断ではオンボード側が全員無事なので誰も気づかない
     - **TCP の切断検知に依存しないこと**（今回の事故の原因がまさにそれ）。UDP 推奨
-    - ⚠️ **そもそも巡回を止めるべきかは運用方針の選択**（QUESTIONS.md Q12）。
+    - ✅ **通信断では巡回を停止する**（2026-09-13 ユーザー確認済み・D-31）。
       なお「減速して継続」は U-12 により実質選べない（`vx=0.2` で進行方向が定まらない）
+    - ⚠️ 残る未決: `operator_timeout_s` の初期値（案 1.0 秒）と、遷移先を `FAULT` にするか
     - 受入試験は 2026-09-09 と同じ手順の再現。目標: 歩容終了 t=+1.5秒以内・前進 0.35m 以内
 
 **完了条件**（= MVP 受入基準、仕様書 15章）
@@ -759,7 +763,7 @@ flowchart TD
 | **⚠️ 通信断（操作PC↔オンボード）はロボットを止めない。実測で切断後 0.85m 前進した** | Phase 1・2c・運用全体 | 2026-09-09 実測。`sshd` が TCP 切断を 14 秒検知せず SIGHUP が出ないため、オンボードの指令プロセスが生き残って指令を送り続けた。**「ケーブルを抜く」は停止手段にならない。** 物理的な停止手段（純正リモコン）が唯一の最終防衛線。オンボードの指令プロセスは有限時間で終わるか、操作側の heartbeat に依存させる必要がある。**設計案を作成済み(2026-09-13)**: [findings/operator_heartbeat_design.md](findings/operator_heartbeat_design.md)。実装は Phase 2c 作業項目10 |
 | SDK2 と ROS 2 の DDS 競合 | Phase A・0 | D-04〜D-08 で構造的に回避。`ldd` 混入チェックを受入項目化 |
 | **⚠️ ROS 2 のディストリ差で `/cmd_vel_smoothed` の型が変わり、無警告で指令が届かない** | Phase 2c・運用全体 | **解消済み(2026-09-13)**: Humble の `velocity_smoother` は `Twist` 固定、Jazzy 以降は `TwistStamped` も選べる。`g1_cmd_router` が**両方を購読**するようにした。加えて「NAVIGATING なのに指令が届かない」WARN を追加（A-10c） |
-| **Nav2 本体が PC2 ネイティブの Foxy に存在しない**（`nav2_velocity_smoother` / `nav2_behaviors`） | Phase 2c | **方針確定(2026-09-13)**: Nav2 と ROS 側ノードは **Humble コンテナ**で動かし、SDK 側プロセスはホスト常駐＋`/tmp/g1_bridge` を bind mount する。**PC2(arm64) での実地確認は未実施** |
+| **Nav2 本体が PC2 ネイティブの Foxy に存在しない**（`nav2_velocity_smoother` / `nav2_behaviors`） | Phase 2c | **確定(2026-09-13、ユーザー確認済み・D-30)**: Nav2 と ROS 側ノードは **Humble コンテナ**で動かし、SDK 側プロセスはホスト常駐＋`/tmp/g1_bridge` を bind mount する。**PC2(arm64) での実地確認は未実施** |
 | ~~`FAST_LIO_LOCALIZATION_HUMANOID` が Jazzy でビルドできない~~ | Phase A-6 | **解消済み(2026-09-08)**: `humble`ブランチでビルド・起動確認済み。Jazzy継続方針に対するリスクは無くなった |
 | ~~LIO の TF が `map→base_link` 直出しで Nav2 の Local costmap が壊れる~~ | Phase A-6 / 2a | **解消済み(2026-09-08)**: 実際は既に`map→odom`/`odom→base_link`の2段構成だった。フレーム名パッチのみで対応可能(分解ノードは不要) |
 | ~~`open3d_loc`(localizationノード)の`initialpose`パラメータ未適用によるSIGSEGV~~ | Phase 2a | **解消済み(2026-09-09)**: vendoring先の`open3d_loc/src/global_localization.cpp`にサイズ検証を追加し、SIGSEGVを`RCLCPP_FATAL`+例外に変えた。Docker上で無回帰も確認済み。詳細: [vendor/fast_lio_localization_humanoid/VENDOR_NOTES.md](vendor/fast_lio_localization_humanoid/VENDOR_NOTES.md) |
