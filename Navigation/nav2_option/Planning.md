@@ -456,6 +456,22 @@ heartbeat（D-31）の残作業。**`FAULT` で指令の転送は止まるが `b
 | ① | Goal 送信 → `/g1/stop` | ✅ `Goal finished with status: CANCELED`。bt_navigator も `Goal canceled` |
 | ② | Goal 実行中に **heartbeat を `kill -9`** | ✅ 1.00 秒で `FAULT` → ゼロ速度 → **Goal `CANCELED`**（理由=`operator_lost`） |
 | ③ | 送信再開 → `clear_fault` → `enable_navigation` | ✅ `NAVIGATING` に戻るが **SDK への指令はゼロのまま** ＝ Goal は復活していない |
+| ④ | Goal 実行中に **SDK側プロセスを `kill -9`** | ✅ `DISCONNECTED` → Goal `CANCELED`（理由=`bridge_disconnected`） |
+
+**キャンセルが発動する条件**（`NAVIGATING` から抜けた先で判定する）:
+
+| 抜けた先 | キャンセル | 該当する事象 |
+|---|---|---|
+| `FAULT` | ✅ | `cmd_timeout` / `operator_lost`（D-31）/ 将来の `tf_stale`・`sensor_stale`・`sdk_bridge_error` |
+| `E_STOP` | ✅ | `/g1/estop` |
+| `DISCONNECTED` | ✅ | SDK側プロセスの死亡 |
+| `READY` | ❌ | `/g1/enable_navigation false` ＝「一時停止（再開すると続きから）」の意味 |
+
+加えて `/g1/stop` は明示的にキャンセルする（`READY` へ抜けるが Goal は破棄する）。
+
+📌 `tf_stale` / `sensor_stale` / `sdk_bridge_error` は `SafetyManager` に関数が在るが
+**まだ ROS 側から呼ばれていない**。Phase 2c で TF/センサー鮮度チェックを配線すれば、
+状態遷移で拾う設計なので**キャンセルも自動的に効くようになる**。
 
 ### 🐛 ここで見つかった別のバグ: `nav2_params.yaml` が Humble で起動しない
 
@@ -486,6 +502,44 @@ pluginlib は plugin description XML に `name=` があればそれを、無け�
 
 📌 **これも「本番の設定で一度も起動していなかった」ことが原因。**
 テスト用の設定で通っていても、本番の設定が通る保証にはならない。
+
+### 🐛 さらに見つかった重大バグ: SDK側プロセスが死ぬと cmd_router がデッドロックする
+
+「ブリッジ断でも Goal を取り消すべきでは」と点検した際に発覚した。**私たちが入れた
+バグではなく、以前から在った欠陥。**
+
+`IpcSend()` が `ipc_mutex_` を保持したまま `mgr_->OnBridgeDisconnected()` を呼び、
+その中の `SendZero()` が `ipc_send_` 経由で `IpcSend()` に**再入**して
+同じ非再帰ミューテックスを取りに行っていた。
+
+**実測（kill -9 で SDK側プロセスを殺す）**:
+
+| | kill 前 | kill 後（修正前） | kill 後（修正後） |
+|---|---|---|---|
+| 診断 `/g1/bridge_status` | 19.99 Hz | **完全停止** | 19.99 Hz |
+| 状態 | NAVIGATING | NAVIGATING のまま | `DISCONNECTED` |
+| `/g1/stop` の応答 | あり | **無し** | あり |
+
+⚠️ **固まると `/g1/estop` も `/g1/stop` も応答しなくなる ＝ ソフトウェア E-stop が死ぬ。**
+機体自体は SDK側プロセスが消えることで `duration` 満了により止まるが、
+ROS 側はゾンビになり手動で殺すしかなかった。
+
+**対処**: **`SafetyManager` は実行器スレッドからだけ触る**という規律にした。
+他スレッド（IPC 送信の失敗検知、再接続スレッド）は `std::atomic<bool>` の
+フラグを立てるだけにし、状態遷移は `OnTimer()`(50ms) が拾う。
+再入も、`mgr_` への競合アクセス（再接続スレッド × 実行器スレッド）も同時に消える。
+
+### 🐛 もう1つ: 指令が流れていないと切断に気づかない
+
+上記を直した後も、**Nav2 が指令を出していない間に SDK側プロセスを殺すと
+`READY` のままだった**。切断は「送信の失敗」でしか分からないのに、
+`IpcSend()` は指令が来たときしか呼ばれないため。
+
+**対処**: 送信が `ipc_keepalive_s`(既定 0.2 秒) 途切れたら**ゼロ速度を送って生存確認**する。
+ゼロなので機体は動かず、D-10 の「ROS 側は明示的ゼロ送信も行う」にも沿う。
+
+**実測**: 指令を一切流さない `READY` 状態で SDK を kill → **2 秒以内に `DISCONNECTED`**。
+Nav2 込みでも `理由=bridge_disconnected` で Goal が `CANCELED` になることを確認した。
 
 - 成果物: [g1_ws/src/g1_cmd_router](g1_ws/src/g1_cmd_router)、[g1_ws/src/g1_navigation/config/nav2_params.yaml](g1_ws/src/g1_navigation/config/nav2_params.yaml)
 

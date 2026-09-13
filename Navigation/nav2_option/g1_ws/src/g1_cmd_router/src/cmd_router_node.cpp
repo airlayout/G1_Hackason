@@ -57,6 +57,7 @@ CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
     cmd_vel_topic_ = declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel_smoothed");
     no_cmd_warn_s_ = declare_parameter<double>("no_cmd_warn_s", 3.0);
     cmd_vel_type_ = declare_parameter<std::string>("cmd_vel_type", "auto");
+    ipc_keepalive_s_ = declare_parameter<double>("ipc_keepalive_s", 0.2);
     if (cmd_vel_type_ == "twist") {
         CreateUnstampedSubscription();
     } else if (cmd_vel_type_ == "twist_stamped") {
@@ -231,22 +232,74 @@ void CmdRouterNode::OnEStop(const std_msgs::msg::Bool::SharedPtr msg) {
 }
 
 void CmdRouterNode::OnTimer() {
+    // 他スレッドが立てたフラグを、ここ(実行器スレッド)で状態遷移に変換する。
+    // `mgr_` を触るのはこのスレッドだけ、という規律を保つため(ヘッダのコメント参照)。
+    if (bridge_connected_.exchange(false)) {
+        mgr_->OnBridgeConnected();
+        // TODO(MVP簡易実装): 本来STANDBY->READYは「歩行可能・センサー正常」の確認後に
+        // 遷移すべき(仕様書7章)。TF/センサー鮮度チェックをまだ配線していないため、
+        // 暫定的にSDK接続=READYとしている。Phase 2c(Nav2接続)着手時に、
+        // TFの存在確認・センサーのタイムスタンプ確認を経てからMarkReady()を
+        // 呼ぶように置き換えること。
+        mgr_->MarkReady();
+    }
+    if (bridge_lost_.exchange(false)) {
+        RCLCPP_WARN(get_logger(), "SDK側プロセスとの接続が切れた");
+        mgr_->OnBridgeDisconnected();
+    }
+
     mgr_->Tick();
+    SendIpcKeepaliveIfIdle();
     CheckOperatorHeartbeat();
     WarnIfNoCommand();
 
     // NAVIGATING から異常系へ抜けたら Nav2 の Goal も取り消す。
-    // 個々の異常(cmd_timeout / operator_lost / sdk_bridge_error / E-stop)ごとに
-    // 呼び出しを散らさず、**状態遷移という1箇所で拾う**。呼び忘れが起きないため。
+    // 個々の異常(cmd_timeout / operator_lost / tf_stale / sdk_bridge_error / E-stop)
+    // ごとに呼び出しを散らさず、**状態遷移という1箇所で拾う**。呼び忘れが起きないため。
+    //
+    // ⚠️ **DISCONNECTED も対象に含める。** SDK側プロセスが落ちた場合、ロボット自体は
+    // 止まる(指令が届かず duration 満了、D-27)が、**Goal は生き残る**。ブリッジが
+    // 復帰して再有効化した瞬間に中断地点から巡回が再開してしまう。
+    //
+    // ⚠️ **READY への遷移は対象に含めない。** `/g1/enable_navigation false` は
+    // 「一時停止(再開すると続きから)」の意味で、Goal を破棄したいときは
+    // `/g1/stop` を使う、という使い分けにしている。
     const auto state = mgr_->state();
-    if (prev_state_ == g1_sdk_bridge::NavState::kNavigating &&
-        (state == g1_sdk_bridge::NavState::kFault || state == g1_sdk_bridge::NavState::kEStop)) {
-        CancelNav2Goals(mgr_->fault_reason().value_or(
-            state == g1_sdk_bridge::NavState::kEStop ? "e_stop" : "fault"));
+    if (prev_state_ == g1_sdk_bridge::NavState::kNavigating) {
+        const char* abnormal = nullptr;
+        switch (state) {
+            case g1_sdk_bridge::NavState::kFault: abnormal = "fault"; break;
+            case g1_sdk_bridge::NavState::kEStop: abnormal = "e_stop"; break;
+            case g1_sdk_bridge::NavState::kDisconnected: abnormal = "bridge_disconnected"; break;
+            default: break;  // READY / STANDBY / NAVIGATING は正常な抜け方
+        }
+        if (abnormal != nullptr) {
+            CancelNav2Goals(mgr_->fault_reason().value_or(abnormal));
+        }
     }
     prev_state_ = state;
 
     PublishDiagnostics();
+}
+
+// 送信が途切れている間、定期的にゼロ速度を送って IPC の生存を確かめる。
+// ⚠️ **これが無いと、指令が流れていない間に SDK側プロセスが死んでも気づけない**
+// (切断は送信の失敗でしか分からないため)。詳細はヘッダのコメント。
+void CmdRouterNode::SendIpcKeepaliveIfIdle() {
+    if (ipc_keepalive_s_ <= 0.0) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(ipc_mutex_);
+        if (!cmd_endpoint_.has_value()) {
+            return;  // 未接続。ReconnectLoop に任せる
+        }
+    }
+    if (last_ipc_send_.has_value() && (now() - *last_ipc_send_).seconds() < ipc_keepalive_s_) {
+        return;  // 直近に送っている。通常の指令が流れている間はここを通らない
+    }
+    // 指令が流れていないのだからゼロで正しい。機体は動かない。
+    IpcSend(0.0, 0.0, 0.0);
 }
 
 // Nav2 の実行中 Goal を取り消す(best-effort)。詳細はヘッダのコメント。
@@ -364,12 +417,16 @@ void CmdRouterNode::IpcSend(double vx, double vy, double omega) {
     }
     const CmdPacket pkt{++seq_, MonotonicNs(), vx, vy, omega};
     const CmdWire wire = pkt.Encode();
+    last_ipc_send_ = now();
     try {
         cmd_endpoint_->SendLatest(&wire, sizeof(wire));
     } catch (const PeerClosed&) {
         cmd_endpoint_.reset();
-        mgr_->OnBridgeDisconnected();
-        RCLCPP_WARN(get_logger(), "SDK側プロセスとの接続が切れた");
+        // ⚠️ **ここで `mgr_->OnBridgeDisconnected()` を呼んではいけない。**
+        // その中の `SendZero()` が `ipc_send_` 経由で `IpcSend()` に再入し、
+        // 保持中の `ipc_mutex_`(非再帰)を取りに行ってデッドロックする。
+        // フラグだけ立てて `OnTimer()` に処理させる(ヘッダのコメント参照)。
+        bridge_lost_ = true;
     }
 }
 
@@ -388,13 +445,9 @@ void CmdRouterNode::ReconnectLoop() {
                     std::lock_guard<std::mutex> lock(ipc_mutex_);
                     cmd_endpoint_ = std::move(ep);
                 }
-                mgr_->OnBridgeConnected();
-                // TODO(MVP簡易実装): 本来STANDBY->READYは「歩行可能・センサー正常」の確認後に
-                // 遷移すべき(仕様書7章)。TF/センサー鮮度チェックをまだ配線していないため、
-                // 暫定的にSDK接続=READYとしている。Phase 2c(Nav2接続)着手時に、
-                // TFの存在確認・センサーのタイムスタンプ確認を経てからMarkReady()を
-                // 呼ぶように置き換えること。
-                mgr_->MarkReady();
+                // ⚠️ ここは**再接続スレッド**なので `mgr_` を直接触らない。
+                // フラグを立てて `OnTimer()`(実行器スレッド)に遷移させる。
+                bridge_connected_ = true;
                 RCLCPP_INFO(get_logger(), "SDK側プロセスに接続した: %s", cmd_sock_path_.c_str());
             } catch (const std::exception& e) {
                 RCLCPP_WARN(get_logger(), "SDK側プロセスへの接続待ち: %s", e.what());

@@ -69,6 +69,7 @@ private:
     void ReconnectLoop();
     void PublishDiagnostics();
     void WarnIfNoCommand();
+    void SendIpcKeepaliveIfIdle();
     // D-31: 操作PC の heartbeat が途絶していないか監視する。途絶したら FAULT。
     void CheckOperatorHeartbeat();
 
@@ -125,6 +126,35 @@ private:
 
     std::atomic<bool> running_{true};
     std::thread reconnect_thread_;
+
+    // ⚠️ **SafetyManager(`mgr_`)は必ず実行器スレッドからだけ触る。**
+    //
+    // 理由が2つある:
+    //
+    // ① **デッドロック**(2026-09-13 に実測で発覚)。以前は `IpcSend()` が
+    //    `ipc_mutex_` を保持したまま `mgr_->OnBridgeDisconnected()` を呼んでおり、
+    //    その中の `SendZero()` が `ipc_send_` 経由で `IpcSend()` に**再入**して
+    //    同じ非再帰ミューテックスを取りに行っていた。SDK側プロセスが死ぬと
+    //    `g1_cmd_router` が丸ごと固まり、**診断の配信が止まり `/g1/estop` も
+    //    `/g1/stop` も応答しなくなる**(＝ソフトウェアE-stopが死ぬ)。
+    //
+    // ② **データ競合**。`mgr_` は素のメンバを持つだけで thread-safe ではない。
+    //    再接続スレッドから `OnBridgeConnected()`/`MarkReady()` を呼び、
+    //    実行器スレッドから `OnNavTwist()`/`Tick()` を呼んでいた。
+    //
+    // そこで**他スレッドからは下のフラグを立てるだけ**にし、
+    // 状態遷移は `OnTimer()`(50ms)が拾って実行器スレッドで行う。
+    // 遅れは最大 50ms で、物理的な停止は SDK側 watchdog と duration 満了が担保する。
+    std::atomic<bool> bridge_lost_{false};
+    std::atomic<bool> bridge_connected_{false};
+
+    // ⚠️ **IPC の切断は「送信したとき」にしか分からない。**
+    // 指令が流れていない間に SDK側プロセスが死んでも、`IpcSend()` が呼ばれないので
+    // 気づけず、`READY` のまま「繋がっているつもり」になる(2026-09-13 に実測で発覚)。
+    // そこで**送信が途切れたら定期的にゼロ速度を送って生存を確かめる**。
+    // ゼロなので機体は動かず、D-10 の「ROS側は明示的ゼロ送信も行う」にも沿う。
+    double ipc_keepalive_s_ = 0.2;
+    std::optional<rclcpp::Time> last_ipc_send_;
 
     rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr sub_twist_stamped_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_twist_unstamped_;
