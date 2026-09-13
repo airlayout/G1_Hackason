@@ -215,15 +215,32 @@ else
         # 2026-09-12 にこの状態で 19 時間気づかずに居た。**起動前に必ず始末する。**
         if pgrep -f '/opt/colima/bin/socket_vmnet' >/dev/null 2>&1; then
             say "古い socket_vmnet が残っている。始末してから起動する"
+            # ⚠️ **パスワード無しで殺せるのは pidfile 経由だけ。**
+            # /private/etc/sudoers.d/colima が NOPASSWD で許しているのは
+            #   /usr/bin/pkill -F /opt/colima/run/*.pid
+            # の形だけで、`pkill -f <パターン>` は許されていない。
             sudo -n pkill -F /opt/colima/run/vmnet-default.pid 2>/dev/null
             sleep 1
-            pgrep -f '/opt/colima/bin/socket_vmnet' >/dev/null 2>&1 \
-                && die "古い socket_vmnet を落とせなかった。手で: sudo pkill -f '/opt/colima/bin/socket_vmnet'"
+            if pgrep -f '/opt/colima/bin/socket_vmnet' >/dev/null 2>&1; then
+                # ⚠️ **pidfile が空だとここに来る（2026-09-13 に踏んだ）。**
+                # NIC が無い状態で起動した socket_vmnet は初期化に失敗して
+                # **PID を書かないまま居座る**ので、pkill -F は何も殺せない。
+                say "⚠️ pidfile: $(wc -c < /opt/colima/run/vmnet-default.pid 2>/dev/null || echo '?') バイト"\
+                    "（0 なら PID が書かれていない＝ pkill -F では落とせない）"
+                die "古い socket_vmnet を落とせなかった。**端末から手で 1 行**: sudo pkill -f '/opt/colima/bin/socket_vmnet'"
+            fi
         fi
-        say "VM を起動する（初回は sudo パスワードを聞かれる）"
+        # ⚠️⚠️ **既定は 8 vCPU。4 に戻さないこと（2026-09-13 の実測）。**
+        # 空回りループ 3 本を相手に測位が正しく追えた回数は
+        #   4 vCPU: 0/6 ／ 6 vCPU: 1/6 ／ **8 vCPU: 3/6**。
+        # ここで --cpu を明示的に渡すので、**colima.yaml の cpu: 8 は上書きされる。**
+        # つまりこの既定値が実効値である（yaml を直しても効かない）。
+        # ⚠️ M4 の高性能コアは 4 本しかないので、8 にしても倍にはならない
+        #   （半分は省電力コアに載る）。それでも「余裕」は買える。
+        say "VM を起動する（${G1_VM_CPU:-8} vCPU / ${G1_VM_MEM:-6} GB。初回は sudo パスワードを聞かれる）"
         # 中断すると datadisk のロックが残り、次回 "in use by instance" で起動できなくなる。
         # そのときは LIMA_HOME=~/.colima/_lima limactl disk unlock colima で外す。
-        colima start --cpu "${G1_VM_CPU:-4}" --memory "${G1_VM_MEM:-6}" --disk "${G1_VM_DISK:-24}" \
+        colima start --cpu "${G1_VM_CPU:-8}" --memory "${G1_VM_MEM:-6}" --disk "${G1_VM_DISK:-24}" \
             --vm-type vz --network-mode bridged --network-interface "$IFACE" --network-address \
             || die "VM の起動に失敗した"
     fi
