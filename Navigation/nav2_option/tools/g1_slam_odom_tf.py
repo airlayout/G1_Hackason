@@ -194,17 +194,23 @@ class SlamOdomTf(Node):
         now = self.get_clock().now().to_msg()
         transforms = []
 
-        # map -> odom。既定は恒等(＝配線試験用)。ICP の結果を渡せば地図基準になる
-        m2o = TransformStamped()
-        m2o.header.stamp = now
-        m2o.header.frame_id = "map"
-        m2o.child_frame_id = "odom"
-        m2o.transform.translation.x = float(self._args.map_to_odom[0])
-        m2o.transform.translation.y = float(self._args.map_to_odom[1])
-        qx, qy, qz, qw = yaw_quaternion(float(self._args.map_to_odom[2]))
-        m2o.transform.rotation.x, m2o.transform.rotation.y = qx, qy
-        m2o.transform.rotation.z, m2o.transform.rotation.w = qz, qw
-        transforms.append(m2o)
+        # map -> odom。既定は恒等(＝配線試験用)。ICP の結果を渡せば地図基準になる。
+        #
+        # ⚠️ **`--no-map-to-odom` を付けると出さない。**
+        # 連続 localization(`map_localizer.py`)を併用するときは、あちらが
+        # **動的に** map→odom を更新する。同じ親子関係を静的と動的の両方で
+        # 出すと、tf2 は静的側を「常に最新」として扱うため**補正が効かなくなる**。
+        if self._args.publish_map_to_odom:
+            m2o = TransformStamped()
+            m2o.header.stamp = now
+            m2o.header.frame_id = "map"
+            m2o.child_frame_id = "odom"
+            m2o.transform.translation.x = float(self._args.map_to_odom[0])
+            m2o.transform.translation.y = float(self._args.map_to_odom[1])
+            qx, qy, qz, qw = yaw_quaternion(float(self._args.map_to_odom[2]))
+            m2o.transform.rotation.x, m2o.transform.rotation.y = qx, qy
+            m2o.transform.rotation.z, m2o.transform.rotation.w = qz, qw
+            transforms.append(m2o)
 
         # base_link -> livox_frame。回転は重力から求める(上の docstring 参照)
         b2l = TransformStamped()
@@ -221,8 +227,9 @@ class SlamOdomTf(Node):
 
         self._static_tf.sendTransform(transforms)
         self._static_done = True
+        names = ("map->odom, " if self._args.publish_map_to_odom else "")
         self.get_logger().info(
-            f"静的TF を発行した: map->odom, base_link->{self._args.lidar_frame}")
+            f"静的TF を発行した: {names}base_link->{self._args.lidar_frame}")
 
     def _on_imu(self, msg: Imu) -> None:
         a = msg.linear_acceleration
@@ -265,6 +272,18 @@ class SlamOdomTf(Node):
         self.get_logger().info(
             f"自動校正した: 生センサーの傾き {tilt_raw:.2f}° / "
             f"map系で上向きが +z から {residual:.3f}° (0に近ければ成功)")
+        # ⚠️ **重力だけでは yaw(鉛直軸まわり)が決まらない。**
+        # leveling_quaternion は「上向きを +z に合わせる最小回転」なので、
+        # 鉛直軸まわりの回転は**任意のまま残る**。MID-360 は逆さ取付(U-09)なので、
+        # 実測では地図に対して約 168° ずれていた(2026-09-13、記録済み bag で確認)。
+        # 補正値は tools/find_map_offset.py が地図と照合して求める。
+        yaw = math.radians(float(self._args.lidar_yaw))
+        if abs(yaw) > 1e-9:
+            c, sn = math.cos(yaw), math.sin(yaw)
+            rz = np.array([[c, -sn, 0.0], [sn, c, 0.0], [0.0, 0.0, 1.0]])
+            # base_link の z(鉛直)まわりに回す
+            r_needed = rz @ r_needed
+            self.get_logger().info(f"base_link->{self._args.lidar_frame} に yaw {self._args.lidar_yaw:+.2f}° を足した")
         self._publish_static(matrix_to_quat(r_needed))
 
     def _on_odom(self, msg: Odometry) -> None:
@@ -323,6 +342,15 @@ def main() -> None:
                         help="起動時に IMU と SLAM 姿勢から base_link->LiDAR を逆算する(既定)")
     parser.add_argument("--no-auto-level", dest="auto_level", action="store_false",
                         help="自動校正せず --gravity の値だけを使う")
+    parser.add_argument("--no-map-to-odom", dest="publish_map_to_odom", action="store_false",
+                        default=True,
+                        help="map->odom を出さない。連続localization(map_localizer.py)を"
+                             "併用するときに指定する(あちらが動的に更新するため)")
+    parser.add_argument("--lidar-yaw", type=float, default=0.0,
+                        help="base_link->livox_frame に足す yaw[度]。"
+                             "⚠️ **自動校正(重力)は roll/pitch しか決められず yaw は未拘束**。"
+                             "逆さ取付(U-09)だと約180°ずれる。"
+                             "tools/find_map_offset.py で地図と照合して求めること")
     parser.add_argument("--imu-topic", default="/utlidar/imu_livox_mid360")
     parser.add_argument("--calib-samples", type=int, default=50,
                         help="自動校正に使うサンプル数(既定: 50)")

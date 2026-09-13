@@ -114,7 +114,8 @@ def _launch_setup(context, *args, **kwargs):
             executable="g1_slam_odom_tf.py",
             name="g1_slam_odom_tf",
             output="screen",
-            arguments=["--lidar-frame", LaunchConfiguration("lidar_frame").perform(context)],
+            arguments=["--lidar-frame", LaunchConfiguration("lidar_frame").perform(context),
+                       "--lidar-yaw", LaunchConfiguration("lidar_yaw").perform(context)],
             parameters=[{"use_sim_time": use_sim_time}],
         ))
     else:
@@ -201,6 +202,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "lidar_frame", default_value="livox_frame",
             description="点群の frame_id。real でのみ使う"),
+        # ⚠️ **180 が既定。** 自動校正(重力)は roll/pitch しか決められず yaw は未拘束で、
+        # MID-360 は逆さ取付(U-09)なので 180° ずれる。0 のままだと地図と噛み合わない
+        # (実測: 未補正で距離の中央値 1.23m/20cm以内 23% → 180 で 0.000m/97%)。
+        DeclareLaunchArgument(
+            "lidar_yaw", default_value="180",
+            description="base_link->livox_frame に足す yaw[度]。逆さ取付(U-09)のため既定 180"),
         DeclareLaunchArgument(
             "heartbeat_required", default_value="true",
             description="操作PCの生存監視(D-31)。falseにすると通信断で止まらない。ベンチ試験専用"),
