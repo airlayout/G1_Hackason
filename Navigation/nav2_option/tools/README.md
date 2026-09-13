@@ -73,3 +73,21 @@ docker run --rm --network host --ipc host \
 | `send_goal_watch.py` | `NavigateToPose` にゴールを送り `/cmd_vel` が出るかを見る |
 | `view_map_rviz.sh` / `view_map.rviz` | 生成した地図を RViz2 で表示する（Linux ホスト用。Mac は Mapping 側の VNC 経路） |
 | `publish_trajectory_path.py` | mapping 軌跡を `nav_msgs/Path` で配信（地図の自由空間に乗っているかの目視確認用） |
+
+## 巡回の記録と事後解析（A-10i、Phase 2c 完了条件）
+
+| ツール | 用途 |
+|---|---|
+| `record_nav2_run.sh` | 巡回1回分を rosbag に記録する。`--profile diag`(既定、約3.8MB/分) / `full`(生点群込み、GB級) |
+| `explain_run.py` | 記録を時系列に要約し、**なぜ止まったのか**を特定する |
+
+```bash
+# 記録(Nav2 より先に立ち上げてよい)
+./record_nav2_run.sh --output runs/$(date +%Y%m%d_%H%M%S)_nav2
+
+# 事後解析
+./explain_run.py runs/20260913_120000_nav2
+```
+
+⚠️ `--include-hidden-topics` が無いと `/navigate_to_pose/_action/*` が黙って
+記録されない。`explain_run.py` が記録漏れを警告するので、**録った直後に一度流すこと。**

@@ -661,6 +661,68 @@ A-10b では「オフライン再生では閉ループ制御を検証できな�
 
 ---
 
+**A-10i. 巡回記録と事後解析の整備 — 完了(2026-09-13、実機不要)**
+
+Phase 2c の完了条件「**rosbag から Goal・経路・姿勢・速度指令・停止理由を追跡できる**」
+に対応する。停止経路が複数ある（`cmd_timeout` / `operator_lost` / `tf_stale` /
+`sensor_stale` / `bridge_disconnected` / `e_stop`）ので、**どれで止まったのかが
+区別できて初めて意味がある。**
+
+📌 **「人が手で掘れば分かる」では現場で分からない。**
+[tools/explain_run.py](tools/explain_run.py) が答えを出せることをもって満たしたとする。
+
+### 成果物
+
+| | 内容 |
+|---|---|
+| [tools/record_nav2_run.sh](tools/record_nav2_run.sh) | 記録。`diag`(既定、**約 3.8 MB/分**)と `full`(costmap 格子＋生点群)の2プロファイル |
+| [tools/explain_run.py](tools/explain_run.py) | bag を時系列に要約し、**停止理由を特定する** |
+
+⚠️ **`/rosout` を必ず記録すること。** 「走行中に TF が失われた」等の
+`RCLCPP_ERROR` はここにしか残らない。
+
+⚠️ **`ros2 bag record` に `--include-hidden-topics` が要る。**
+`/navigate_to_pose/_action/*` は隠しトピックなので、**名前を明示しても
+これが無いと黙って記録されない**（2026-09-13 に実測で踏んだ。
+`explain_run.py` の記録漏れ検出が捕まえた）。
+
+### 検証: 実際に事故を起こして再構成した
+
+**① 通信断（Nav2 一式込み）** — `heartbeat_sender` を走行中に `kill -9`
+
+```
+    50.28s  状態        READY → **NAVIGATING**
+    50.65s  経路        358 点の global path
+    50.69s  速度指令     /cmd_vel_smoothed 非ゼロになった (vx=0.010, wz=0.020)
+    59.43s  log:ERROR  [g1_cmd_router] 操作PCのheartbeatが途絶した(最終受信から1.043208秒)…
+    59.43s  状態        NAVIGATING → **FAULT**
+    59.43s  停止理由     operator_lost
+    59.46s  Goal       **CANCELED**
+    60.84s  速度指令     /cmd_vel_smoothed **ゼロになった**
+=== まとめ ===
+  ⚠️ **停止 1 回**: t=59.43s operator_lost
+  Goal の結末: CANCELED
+```
+
+**② 停止理由の区別** — 1 本の記録に 3 種類の事故を仕込んだ
+
+```
+=== まとめ ===
+  ⚠️ **停止 3 回**:
+       t=  10.24s  e_stop(手動)
+       t=  20.87s  sensor_stale
+       t=  33.27s  tf_stale
+```
+
+⚠️ **停止は 1 回とは限らない。** 巡回中に何度も止まって復帰していることがあるので、
+最後の 1 件だけ見ると経緯を見落とす。全部を時刻付きで並べる作りにしてある。
+
+📌 **記録漏れを自動検出する。** 追跡に必要なトピックが欠けていたら警告する。
+これが無いと「記録したつもり」で現場に出てしまう（実際に①で
+`--include-hidden-topics` の欠落を捕まえた）。
+
+---
+
 **完了条件**
 - SDK2 の API シグネチャが文書として確定し、§3.3 の分岐が決定している
 - IPC 両端がモックで疎通し、単体テストが全て通る
@@ -953,7 +1015,7 @@ A-10b では「オフライン再生では閉ループ制御を検証できな�
 - 指令途絶後、規定時間内に **G1 の実速度がゼロになる**
 - E-stop、SDK 異常、TF 異常、センサー期限切れをログ付きで検出できる
 - Low-level 関節制御と高レベル Locomotion Controller を同時使用していない
-- rosbag から Goal・経路・姿勢・速度指令・停止理由を追跡できる
+- rosbag から Goal・経路・姿勢・速度指令・停止理由を追跡できる（**記録と解析の道具は A-10i で用意済み**: [tools/record_nav2_run.sh](tools/record_nav2_run.sh) / [tools/explain_run.py](tools/explain_run.py)）
 
 ---
 
