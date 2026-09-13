@@ -22,6 +22,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -34,6 +35,11 @@ def generate_launch_description():
 
     params_file = LaunchConfiguration("params_file")
     map_yaml = LaunchConfiguration("map")
+    # D-31: 操作PC の生存監視。既定は有効。
+    # ⚠️ **無効にすると通信断でロボットが止まらない**(2026-09-09 の実測では
+    # リンク切断後も 4.045 秒・0.85m 進み続けた)。ベンチ試験以外で false にしないこと。
+    heartbeat_required = LaunchConfiguration("heartbeat_required")
+    operator_timeout_s = LaunchConfiguration("operator_timeout_s")
 
     lifecycle_nodes = [
         "map_server",
@@ -48,6 +54,16 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("params_file", default_value=default_params),
             DeclareLaunchArgument("map", default_value=default_map),
+            DeclareLaunchArgument(
+                "heartbeat_required",
+                default_value="true",
+                description="操作PCの生存監視(D-31)。falseにすると通信断で止まらない。ベンチ試験専用",
+            ),
+            DeclareLaunchArgument(
+                "operator_timeout_s",
+                default_value="1.0",
+                description="heartbeatが何秒途絶したら停止するか。会場の電波状況に応じて調整する",
+            ),
             # map -> odom はdry-run専用のスタンドイン(Phase 2aで本物のlocalizationに置き換える)。
             # synthetic_room.yaml の左下寄りの自由空間に疑似ロボットの起点を置く。
             Node(
@@ -70,6 +86,14 @@ def generate_launch_description():
                 package="g1_cmd_router",
                 executable="g1_cmd_router_node",
                 name="g1_cmd_router",
+                parameters=[
+                    {
+                        # ⚠️ LaunchConfiguration は文字列を返すので、型を明示しないと
+                        # bool/double のパラメータ宣言と食い違って起動に失敗する。
+                        "heartbeat_required": ParameterValue(heartbeat_required, value_type=bool),
+                        "operator_timeout_s": ParameterValue(operator_timeout_s, value_type=float),
+                    }
+                ],
             ),
             Node(
                 package="nav2_map_server",

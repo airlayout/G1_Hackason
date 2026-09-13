@@ -27,6 +27,7 @@ add_executable(g1_cmd_router_node
   ${G1_SDK_BRIDGE_CPP_DIR}/src/safety_manager.cpp
   ${G1_SDK_BRIDGE_CPP_DIR}/src/protocol.cpp
   ${G1_SDK_BRIDGE_CPP_DIR}/src/ipc_transport.cpp
+  ${G1_SDK_BRIDGE_CPP_DIR}/src/heartbeat.cpp  # D-31: 操作PC生存監視
 )
 target_include_directories(g1_cmd_router_node PRIVATE
   include

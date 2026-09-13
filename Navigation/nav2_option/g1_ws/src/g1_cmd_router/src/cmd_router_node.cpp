@@ -83,12 +83,39 @@ CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
 
     pub_diag_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/g1/bridge_status", 10);
 
+    // --- D-31: 操作PC 生存監視 ---------------------------------------------
+    // 2026-09-09 の実測で、走行中に操作PC のリンクを切ってもロボットは
+    // 4.045 秒歩き続け約 0.85m 前進した。既存の watchdog は全て「オンボード側の
+    // 誰かが死ぬこと」を見ているので、通信断(オンボード側は全員無事)では効かない。
+    heartbeat_required_ = declare_parameter<bool>("heartbeat_required", true);
+    const int hb_port = declare_parameter<int>("heartbeat_port", g1_sdk_bridge::kDefaultHeartbeatPort);
+    const double hb_timeout = declare_parameter<double>("operator_timeout_s", 1.0);
+    const std::string hb_bind = declare_parameter<std::string>("heartbeat_bind_address", "");
+    if (heartbeat_required_) {
+        // ⚠️ ここで例外が出たら**起動を失敗させる**。監視できないまま
+        // 「監視しているつもり」で走り出すのが一番危ない。
+        heartbeat_ = std::make_unique<g1_sdk_bridge::HeartbeatReceiver>(
+            static_cast<std::uint16_t>(hb_port), hb_timeout, hb_bind);
+        heartbeat_->Start();
+        RCLCPP_INFO(get_logger(),
+                    "操作PCの生存監視を開始した(UDP port=%d, timeout=%.2fs)。"
+                    "操作PC側で g1_heartbeat_sender を動かすこと",
+                    hb_port, hb_timeout);
+    } else {
+        RCLCPP_WARN(get_logger(),
+                    "⚠️ 操作PCの生存監視が無効(heartbeat_required=false)。"
+                    "通信断でロボットは止まらない(D-31)。ベンチ試験以外で使わないこと");
+    }
+
     reconnect_thread_ = std::thread(&CmdRouterNode::ReconnectLoop, this);
 
     RCLCPP_INFO(get_logger(), "g1_cmd_router 起動。cmd_sock_path=%s", cmd_sock_path_.c_str());
 }
 
 CmdRouterNode::~CmdRouterNode() {
+    if (heartbeat_) {
+        heartbeat_->Stop();
+    }
     running_ = false;
     if (reconnect_thread_.joinable()) {
         reconnect_thread_.join();
@@ -127,8 +154,43 @@ void CmdRouterNode::OnEStop(const std_msgs::msg::Bool::SharedPtr msg) {
 
 void CmdRouterNode::OnTimer() {
     mgr_->Tick();
+    CheckOperatorHeartbeat();
     WarnIfNoCommand();
     PublishDiagnostics();
+}
+
+// D-31: 操作PC との通信が途絶していたら FAULT へ落とす。
+//
+// ⚠️ **これは停止手段ではない。** 被害を小さくする仕組みであって、
+// 物理的な停止手段(純正リモコン)が唯一の最終防衛線であることは変わらない(§7)。
+void CmdRouterNode::CheckOperatorHeartbeat() {
+    if (!heartbeat_) {
+        return;
+    }
+    // NAVIGATING 以外では監視しない。待機中に操作PC を落としただけで
+    // FAULT にすると、起動手順の順番に過剰な制約がかかるため。
+    if (mgr_->state() != g1_sdk_bridge::NavState::kNavigating) {
+        warned_heartbeat_missing_ = false;
+        return;
+    }
+    if (heartbeat_->Alive()) {
+        warned_heartbeat_missing_ = false;
+        return;
+    }
+    if (warned_heartbeat_missing_) {
+        return;  // 既に FAULT にした。毎 tick ログを出さない
+    }
+    warned_heartbeat_missing_ = true;
+    const auto since = heartbeat_->SecondsSinceLast();
+    // 一時オブジェクトの c_str() を三項演算子の中で渡すと寿命が読みにくいので、
+    // 名前を付けてから渡す。
+    const std::string since_text =
+        since.has_value() ? (std::to_string(*since) + "秒") : std::string("一度も受信していない");
+    RCLCPP_ERROR(get_logger(),
+                 "操作PCのheartbeatが途絶した(最終受信から%s)。巡回を停止する(D-31)。"
+                 "復帰には操作PC側の送信再開と /g1/clear_fault が必要",
+                 since_text.c_str());
+    mgr_->OnOperatorLost();
 }
 
 // NAVIGATING なのに指令が1件も来ない状態を可視化する。**状態は変えない**。
@@ -218,6 +280,18 @@ void CmdRouterNode::ReconnectLoop() {
 
 void CmdRouterNode::OnEnableNavigation(const std::shared_ptr<std_srvs::srv::SetBool::Request> req,
                                         std::shared_ptr<std_srvs::srv::SetBool::Response> res) {
+    // D-31: heartbeat を一度も受けていない状態で走り出させない。
+    // 「操作PC側の送信を立ち上げ忘れたまま巡回を始めてしまう」を防ぐ。
+    // ⚠️ 有効化を拒むのは NAVIGATING に入るときだけ。無効化(false)は常に通す。
+    if (req->data && heartbeat_ && !heartbeat_->Alive()) {
+        res->success = false;
+        res->message = heartbeat_->EverReceived()
+                           ? "操作PCのheartbeatが途絶している(D-31)。送信を再開してから有効化すること"
+                           : "操作PCのheartbeatを一度も受信していない(D-31)。"
+                             "操作PC側で g1_heartbeat_sender を起動すること";
+        RCLCPP_WARN(get_logger(), "%s", res->message.c_str());
+        return;
+    }
     res->success = mgr_->EnableNavigation(req->data);
     res->message = res->success ? "ok" : "READY状態でないため許可できない(現在の状態を確認すること)";
 }
@@ -271,6 +345,29 @@ void CmdRouterNode::PublishDiagnostics() {
         kv.key = "fault_reason";
         kv.value = *mgr_->fault_reason();
         st.values.push_back(kv);
+    }
+    // D-31: 操作PC の生存状況も診断に載せる。「なぜ止まったのか」を
+    // rosbag から追跡できるようにするため(Phase 2c 完了条件)。
+    {
+        diagnostic_msgs::msg::KeyValue kv;
+        kv.key = "operator_heartbeat";
+        if (!heartbeat_) {
+            kv.value = "disabled";
+        } else if (!heartbeat_->EverReceived()) {
+            kv.value = "never_received";
+        } else {
+            kv.value = heartbeat_->Alive() ? "alive" : "lost";
+        }
+        st.values.push_back(kv);
+    }
+    if (heartbeat_) {
+        const auto since = heartbeat_->SecondsSinceLast();
+        if (since.has_value()) {
+            diagnostic_msgs::msg::KeyValue kv;
+            kv.key = "operator_heartbeat_age_s";
+            kv.value = std::to_string(*since);
+            st.values.push_back(kv);
+        }
     }
     arr.status.push_back(st);
     pub_diag_->publish(arr);

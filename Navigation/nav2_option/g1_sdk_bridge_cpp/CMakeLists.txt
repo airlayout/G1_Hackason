@@ -18,6 +18,7 @@ add_library(g1_sdk_bridge
     src/ipc_transport.cpp
     src/safety_manager.cpp
     src/sdk_bridge_process.cpp
+    src/heartbeat.cpp
 )
 target_include_directories(g1_sdk_bridge PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -130,6 +131,12 @@ else()
         " 実機接続機で使う場合は -DUNITREE_SDK2_ROOT=... を指定すること。")
 endif()
 
+# D-31: 操作PC 側で動かす heartbeat 送信プログラム。ROS も SDK も使わないので常にビルドする。
+# 操作PC には ROS が入っていないことを前提にしている(だから ROS 非依存のこちらに置く)。
+add_executable(g1_heartbeat_sender src/heartbeat_sender_main.cpp)
+target_link_libraries(g1_heartbeat_sender PRIVATE g1_sdk_bridge)
+target_compile_options(g1_heartbeat_sender PRIVATE -Wall -Wextra)
+
 # Phase 1 用の teleop クライアント。ROS 不要で IPC 直結。SDK は使わないので常にビルドする
 add_executable(g1_sdk_bridge_teleop src/teleop_client_main.cpp)
 target_link_libraries(g1_sdk_bridge_teleop PRIVATE g1_sdk_bridge)
@@ -145,6 +152,7 @@ if(G1_SDK_BRIDGE_BUILD_TESTS)
         tests/test_ipc_transport.cpp
         tests/test_safety_manager.cpp
         tests/test_sdk_bridge.cpp
+        tests/test_heartbeat.cpp
     )
     target_link_libraries(g1_sdk_bridge_tests PRIVATE g1_sdk_bridge GTest::gtest GTest::gtest_main Threads::Threads)
     target_compile_options(g1_sdk_bridge_tests PRIVATE -Wall -Wextra)

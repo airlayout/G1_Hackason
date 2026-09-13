@@ -142,6 +142,7 @@ bool SafetyManager::ClearEStop() {
 void SafetyManager::OnTfStale() { TransitionFault("tf_stale"); }
 void SafetyManager::OnSensorStale() { TransitionFault("sensor_stale"); }
 void SafetyManager::OnBridgeError() { TransitionFault("sdk_bridge_error"); }
+void SafetyManager::OnOperatorLost() { TransitionFault("operator_lost"); }
 void SafetyManager::OnCollisionStop() { SendZero(); }
 
 bool SafetyManager::ClearFault() {

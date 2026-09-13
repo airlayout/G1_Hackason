@@ -24,6 +24,7 @@
 #include <std_srvs/srv/set_bool.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
+#include "g1_sdk_bridge/heartbeat.hpp"
 #include "g1_sdk_bridge/ipc_transport.hpp"
 #include "g1_sdk_bridge/safety_manager.hpp"
 
@@ -54,6 +55,8 @@ private:
     void ReconnectLoop();
     void PublishDiagnostics();
     void WarnIfNoCommand();
+    // D-31: 操作PC の heartbeat が途絶していないか監視する。途絶したら FAULT。
+    void CheckOperatorHeartbeat();
 
     void OnEnableNavigation(const std::shared_ptr<std_srvs::srv::SetBool::Request> req,
                              std::shared_ptr<std_srvs::srv::SetBool::Response> res);
@@ -64,6 +67,13 @@ private:
 
     std::string cmd_sock_path_;
     std::string cmd_vel_topic_;
+
+    // D-31: 操作PC 生存監視。`heartbeat_required=false` のときは nullptr。
+    // ⚠️ **既定は有効(true)。** 人と繋がっていない状態で巡回させないため。
+    // ベンチでモック相手に動かすときだけ明示的に false にする。
+    bool heartbeat_required_ = true;
+    std::unique_ptr<g1_sdk_bridge::HeartbeatReceiver> heartbeat_;
+    bool warned_heartbeat_missing_ = false;
     g1_sdk_bridge::SafetyLimits limits_;
     std::unique_ptr<g1_sdk_bridge::SafetyManager> mgr_;
 

@@ -129,6 +129,11 @@ public:
     void OnTfStale();
     void OnSensorStale();
     void OnBridgeError();
+    // D-31: 操作PC との通信が途絶したときに呼ぶ。FAULT へ遷移しゼロ速度を送る。
+    // ⚠️ **E_STOP ではなく FAULT にする。** E_STOP は手動解除が必須なので、
+    // Wi-Fi の瞬断のたびに人が現地へ行くことになる。FAULT なら `/g1/clear_fault`
+    // で遠隔復帰できる。ただし**自動復帰はさせない**(人が明示的に叩く)。
+    void OnOperatorLost();
     // Collision Monitorからの停止指令。FAULTにはせず、その場でゼロにするだけ(再開可能)。
     void OnCollisionStop();
     // 仕様書5.2 /g1/clear_fault。原因解消・安全確認後に呼ぶ。

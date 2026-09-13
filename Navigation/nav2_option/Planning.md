@@ -647,16 +647,24 @@ D-07 が要求していた systemd 管理の実体を作った。
 7. 状態機械の全遷移を実機で検証（E-stop、FAULT、Clear）
 8. Nav2 再起動・Bridge 再起動時に不意に歩行しないことを確認
 9. Orin NX 上での総合的な計算負荷を実測し、周期遅延がないことを確認（U-14 確定）
-10. **操作PC の生存監視（heartbeat）を実装する**（Phase 1 作業項目8 で出た新規要求）
-    - 設計案は [findings/operator_heartbeat_design.md](findings/operator_heartbeat_design.md)（2026-09-13、実機不要で作成）
+10. ✅ **操作PC の生存監視（heartbeat）— 実装済み(2026-09-13、実機不要)**
+    - モック相手にエンドツーエンド検証済み。**送信を `kill -9` して 1.03 秒で `FAULT`**、
+      SDK 側の指令がゼロに。送信だけ再開しても自動復帰せず、`clear_fault` が要る
+    - 操作PC 側は `g1_heartbeat_sender`（**ROS 非依存**。操作PC に ROS は入っていない）
+    - `heartbeat_required`（既定 **true**）/ `operator_timeout_s`（既定 1.0）で launch から調整
+    - ⚠️ **残作業: 実機での受入試験（切断後の前進距離の実測）と、Nav2 Goal のキャンセル**
+      （`FAULT` で指令転送は止まるが `bt_navigator` の Goal は生きたままなので、
+      `clear_fault` 後に中断地点から再開する。`/g1/stop` の既存 TODO と同じ経路が要る）
+    - 設計と実装結果は [findings/operator_heartbeat_design.md](findings/operator_heartbeat_design.md)
     - 既存 3 層（`duration` 満了 / SDK側watchdog / ROS側watchdog）は
       **いずれも「オンボード側の誰かが死ぬこと」を検知する仕組み**であり、
       通信断ではオンボード側が全員無事なので誰も気づかない
     - **TCP の切断検知に依存しないこと**（今回の事故の原因がまさにそれ）。UDP 推奨
     - ✅ **通信断では巡回を停止する**（2026-09-13 ユーザー確認済み・D-31）。
       なお「減速して継続」は U-12 により実質選べない（`vx=0.2` で進行方向が定まらない）
-    - ⚠️ 残る未決: `operator_timeout_s` の初期値（案 1.0 秒）と、遷移先を `FAULT` にするか
+    - ⚠️ 残る未決: `operator_timeout_s` の初期値（暫定 1.0 秒で実装済み。会場の電波状況で調整）
     - 受入試験は 2026-09-09 と同じ手順の再現。目標: 歩容終了 t=+1.5秒以内・前進 0.35m 以内
+      （モックでの検知遅れは 1.03 秒。**実機の前進距離は歩容の継続が絡むので実測が必要**）
 
 **完了条件**（= MVP 受入基準、仕様書 15章）
 - RViz から指定した単一 Goal へ自律移動できる
@@ -760,7 +768,7 @@ flowchart TD
 |---|---|---|
 | `Move()` の既定（`duration=1.0`秒）をそのまま使うと `cmd_timeout`（0.30秒）との整合が崩れる | Phase A・0〜1 | **解消済み**: `SetVelocity()` を直接呼び `duration` を明示指定する（D-27）。残るのは `duration` 満了後の実挙動が未確認な点のみ（U-07、Phase 0 で最優先確認） |
 | `continous_move=True` を誤って使うと通信断で G1 が歩き続ける | Phase A〜運用全体 | D-27 でコーディング規約として明記。コードレビュー・単体テストで `SetVelocity` 呼び出しの `duration` が常に有限値であることを検証する |
-| **⚠️ 通信断（操作PC↔オンボード）はロボットを止めない。実測で切断後 0.85m 前進した** | Phase 1・2c・運用全体 | 2026-09-09 実測。`sshd` が TCP 切断を 14 秒検知せず SIGHUP が出ないため、オンボードの指令プロセスが生き残って指令を送り続けた。**「ケーブルを抜く」は停止手段にならない。** 物理的な停止手段（純正リモコン）が唯一の最終防衛線。オンボードの指令プロセスは有限時間で終わるか、操作側の heartbeat に依存させる必要がある。**設計案を作成済み(2026-09-13)**: [findings/operator_heartbeat_design.md](findings/operator_heartbeat_design.md)。実装は Phase 2c 作業項目10 |
+| **⚠️ 通信断（操作PC↔オンボード）はロボットを止めない。実測で切断後 0.85m 前進した** | Phase 1・2c・運用全体 | 2026-09-09 実測。`sshd` が TCP 切断を 14 秒検知せず SIGHUP が出ないため、オンボードの指令プロセスが生き残って指令を送り続けた。**「ケーブルを抜く」は停止手段にならない。** 物理的な停止手段（純正リモコン）が唯一の最終防衛線。オンボードの指令プロセスは有限時間で終わるか、操作側の heartbeat に依存させる必要がある。**実装済み(2026-09-13、モック検証まで)**: [findings/operator_heartbeat_design.md](findings/operator_heartbeat_design.md)。送信断から 1.03 秒で FAULT。⚠️ **実機での受入試験と Nav2 Goal キャンセルが残っている** |
 | SDK2 と ROS 2 の DDS 競合 | Phase A・0 | D-04〜D-08 で構造的に回避。`ldd` 混入チェックを受入項目化 |
 | **⚠️ ROS 2 のディストリ差で `/cmd_vel_smoothed` の型が変わり、無警告で指令が届かない** | Phase 2c・運用全体 | **解消済み(2026-09-13)**: Humble の `velocity_smoother` は `Twist` 固定、Jazzy 以降は `TwistStamped` も選べる。`g1_cmd_router` が**両方を購読**するようにした。加えて「NAVIGATING なのに指令が届かない」WARN を追加（A-10c） |
 | **Nav2 本体が PC2 ネイティブの Foxy に存在しない**（`nav2_velocity_smoother` / `nav2_behaviors`） | Phase 2c | **確定(2026-09-13、ユーザー確認済み・D-30)**: Nav2 と ROS 側ノードは **Humble コンテナ**で動かし、SDK 側プロセスはホスト常駐＋`/tmp/g1_bridge` を bind mount する。**PC2(arm64) での実地確認は未実施** |

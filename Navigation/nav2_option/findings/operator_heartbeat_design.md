@@ -1,7 +1,7 @@
 # 操作PC 生存監視（heartbeat）の設計案（2026-09-13、実機不要）
 
 Planning.md Phase 1 作業項目8 の通信断試験で出た**新規の設計要求**に対する設計案。
-方針は確定済み（§6、D-31）。実装は Phase 2c 作業項目10。
+**実装済み（2026-09-13）。** 実装結果は §9 を参照。
 
 ---
 
@@ -164,3 +164,65 @@ heartbeat は**被害を小さくする仕組みであって、停止手段で�
 📌 **Goal キャンセルだけ既存の宿題と重なっている。** `OnStop()` のコメントに
 「Nav2 Goal のキャンセル自体は上位(mission/bringup層、未実装)の責務」とあり、
 heartbeat 途絶時も同じ経路が要る。**まとめて設計したほうがよい。**
+
+
+---
+
+## 9. 実装結果（2026-09-13、実機不要）
+
+設計どおり実装し、モック相手にエンドツーエンドで検証した。
+
+### 成果物
+
+| ファイル | 内容 |
+|---|---|
+| `g1_sdk_bridge_cpp/include/g1_sdk_bridge/heartbeat.hpp` / `src/heartbeat.cpp` | ワイヤフォーマット、`HeartbeatMonitor`（純粋ロジック）、`HeartbeatReceiver`（UDP ソケット＋受信スレッド） |
+| `g1_sdk_bridge_cpp/src/heartbeat_sender_main.cpp` | 操作PC 側の送信プログラム `g1_heartbeat_sender`。**ROS 非依存**（操作PC に ROS は入っていない） |
+| `g1_sdk_bridge_cpp/src/safety_manager.cpp` | `OnOperatorLost()` → `TransitionFault("operator_lost")` |
+| `g1_ws/src/g1_cmd_router/` | 受信の起動、`OnTimer` での判定、`enable_navigation` の起動時ガード、診断への出力 |
+| `g1_ws/src/g1_navigation/launch/navigation.launch.py` | `heartbeat_required`（既定 true）/ `operator_timeout_s`（既定 1.0） |
+
+### 検証結果（モック SDK、Humble コンテナ）
+
+| # | シナリオ | 結果 |
+|---|---|---|
+| ① | heartbeat 未受信で `enable_navigation` | ✅ 拒否（`never_received`） |
+| ② | 送信開始 → `enable_navigation` → 指令 | ✅ `NAVIGATING`、SDK 側に `vx=0.300` 到達 |
+| ③ | **送信を `kill -9`（通信断の再現）** | ✅ **1.03 秒で `FAULT`**、SDK 側の指令がゼロに |
+| ④ | 送信だけ再開 | ✅ `alive` に戻るが `FAULT` のまま。`enable_navigation` は拒否（**自動復帰しない**） |
+| ⑤ | `clear_fault` → `enable_navigation` | ✅ `NAVIGATING` へ復帰 |
+
+単体テスト 54 件が全て通過（heartbeat 関連で 15 件追加）。
+
+### 🐛 実装中に踏んだバグ 2 件
+
+どちらも単体テスト・統合試験で見つかった。**設計段階では想定していなかった。**
+
+**1. `SO_REUSEADDR` で同じポートに二重 bind できてしまう**
+
+Linux では UDP に `SO_REUSEADDR` を付けると同じ `addr:port` に複数の socket が
+bind できる。`cmd_router` を誤って二重起動すると datagram が両者に振り分けられ、
+**どちらも「取りこぼしている」＝途絶したと誤検知する。**
+TIME_WAIT の回避は TCP の話なので受信専用 UDP に付ける利点は無く、削除した。
+二重 bind は `EADDRINUSE` で失敗し、起動時に気づける。
+
+**2. 送信プログラムを再起動すると永久に拒否される**
+
+`seq` の単調性チェック（遅れて届いた古いパケットで「生きている」と誤認しないため）
+が、送信側の再起動で `seq` が 1 に戻ったときも効いてしまい、**新しいパケットを
+すべて古いものとして拒否し続けた。** 運用で送信を再起動したらロボットが二度と
+動けなくなる。**起動ごとに振り直すセッション ID**（乱数 64bit）をパケットに追加し、
+session が変われば seq を追い直すようにした。単調性チェックはセッション内で維持。
+
+### ⚠️ 残作業
+
+1. **実機での確認は未実施。** 上記は全てモック相手・ローカル PC の Docker 上。
+   `§7 受入試験` を実機で実施して、切断後の前進距離を実測する必要がある。
+   検知遅れ 1.03 秒 × `max_vx=0.30` ≒ 0.31m に停止距離が加わる見積もりだが、
+   **歩容の継続が絡むので実測でしか分からない**（2026-09-09 の実測は 0.85m）。
+2. **Nav2 Goal のキャンセルは未実装。** `FAULT` で指令の転送は止まるが、
+   `bt_navigator` の Goal は生きたままなので、`clear_fault` 後に中断地点から
+   再開する。`cmd_router` は Nav2 の action client を持っていないため、
+   `/g1/stop` の既存 TODO（「Nav2 Goal のキャンセルは上位の責務」）と
+   **まとめて設計する必要がある**（§8 参照）。
+3. `operator_timeout_s` の初期値 1.0 秒は暫定。会場 room_a の電波状況で調整する。
