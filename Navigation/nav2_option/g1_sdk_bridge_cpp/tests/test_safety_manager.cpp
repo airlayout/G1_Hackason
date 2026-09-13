@@ -188,6 +188,27 @@ TEST_F(SafetyManagerStateMachineTest, ClearEStopRequiresEStopState) {
     EXPECT_EQ(mgr_->state(), NavState::kStandby);
 }
 
+// ⚠️ **実装中に踏んだ罠。** ClearEStop() は STANDBY までしか戻さないので、
+// 呼び出し側が MarkReady() を呼ばないと EnableNavigation() が永久に false を返し、
+// **二度と走行を再開できなくなる**。ROS 側 (`OnClearEStop`) はこれを踏まえて
+// MarkReady() を呼んでいる。
+TEST_F(SafetyManagerStateMachineTest, ClearEStopAloneDoesNotAllowNavigatingAgain) {
+    GotoNavigating();
+    mgr_->EStop();
+    ASSERT_TRUE(mgr_->ClearEStop());
+    ASSERT_EQ(mgr_->state(), NavState::kStandby);
+
+    // STANDBY のままでは走行を許可できない
+    EXPECT_FALSE(mgr_->EnableNavigation(true));
+    EXPECT_EQ(mgr_->state(), NavState::kStandby);
+
+    // MarkReady() を経て初めて再開できる
+    mgr_->MarkReady();
+    EXPECT_EQ(mgr_->state(), NavState::kReady);
+    EXPECT_TRUE(mgr_->EnableNavigation(true));
+    EXPECT_EQ(mgr_->state(), NavState::kNavigating);
+}
+
 TEST_F(SafetyManagerStateMachineTest, ClearFaultRequiresFaultState) {
     EXPECT_FALSE(mgr_->ClearFault());
     GotoNavigating();

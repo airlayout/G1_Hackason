@@ -92,6 +92,10 @@ private:
                 std::shared_ptr<std_srvs::srv::Trigger::Response> res);
     void OnClearFault(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                       std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+    // E_STOP の手動解除。⚠️ **自動解除は絶対にしない**(`/g1/estop` に false が
+    // 来ても解除しない)。人が明示的にこのサービスを叩くことを要件にする。
+    void OnClearEStop(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                      std::shared_ptr<std_srvs::srv::Trigger::Response> res);
 
     std::string cmd_sock_path_;
     std::string cmd_vel_topic_;
@@ -163,6 +167,15 @@ private:
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr srv_enable_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr srv_stop_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr srv_clear_fault_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr srv_clear_estop_;
+
+    // `/g1/estop` の最後の入力値。**物理の E-stop と同じインターロック**にする:
+    // 押しボタンを戻さないとリセットボタンが効かないのと同じで、
+    // `/g1/estop` に false を送って「手を離した」状態にしないと解除を受け付けない。
+    // これが無いと、true を出し続けている発信源が居るのに解除でき、
+    // 次の tick で即座に E_STOP に戻る(あるいは戻らずに走り出す)という
+    // 分かりにくい状態になる。
+    bool estop_input_ = false;
     rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr pub_diag_;
 
     // Nav2 Goal キャンセル用。空なら機能を無効にする。

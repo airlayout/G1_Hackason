@@ -197,7 +197,7 @@ Phase 1 の U-08（各速度での停止距離）を実測してから決める�
   - SDK ヘッダは pimpl で隠し、**ROS 側(`g1_ws`)がこのソースを相対パスでコンパイルしても SDK に依存しない**ようにした（D-08 の前提を保つ）
   - **ビルドで踏んだ落とし穴3件**を README に記録: ①`/usr/local` の install 済みヘッダには G1 の loco ヘッダが無くソースツリー指定が必要 ②C++版 `<dds/dds.hpp>` は `thirdparty/include/ddscxx/` 配下 ③**`LocoClient` を `ChannelFactory::Init()` より前に構築すると segfault する**
   - **未実施**: `--arm` を付けた実際の歩行検証（Phase 0/1 の安全手順に従う）、systemd サービス化
-- 未着手: `g1_interfaces`（独自msg/srv）、`g1_bringup`（launch構成）、`g1_description`（URDF・TF、U-09 待ち）。**E_STOP の手動解除サービスは依然として未実装**（`SafetyManager::ClearEStop()` はロジックに在るが、どのサービスからも呼ばれていない ＝ `/g1/estop` を一度立てると ROS からは戻せない）。`/g1/stop` の Nav2 Goal キャンセルは **A-10f で実装済み**
+- 未着手: `g1_interfaces`（独自msg/srv）、`g1_bringup`（launch構成）、`g1_description`（URDF・TF、U-09 待ち）。E_STOP の手動解除サービスは **A-10g で実装済み**（`/g1/clear_estop`）。`/g1/stop` の Nav2 Goal キャンセルは **A-10f で実装済み**
 
 **A-5. `unitree_mujoco` 調査（U-05）— 完了・結論: 非対応**
 - G1 の高レベル LocoClient は非対応（低レベル `LowCmd`/`LowState` のみ）と確定した
@@ -542,6 +542,57 @@ ROS 側はゾンビになり手動で殺すしかなかった。
 Nav2 込みでも `理由=bridge_disconnected` で Goal が `CANCELED` になることを確認した。
 
 - 成果物: [g1_ws/src/g1_cmd_router](g1_ws/src/g1_cmd_router)、[g1_ws/src/g1_navigation/config/nav2_params.yaml](g1_ws/src/g1_navigation/config/nav2_params.yaml)
+
+---
+
+**A-10g. E_STOP の手動解除サービス — 完了(2026-09-13、実機不要)**
+
+`SafetyManager::ClearEStop()` はロジックに在るのに**どのサービスからも呼ばれておらず**、
+`/g1/estop` を一度立てると ROS からは二度と復帰できなかった
+（`g1_cmd_router` を再起動するしかなかった）。「勝手に解除されない」は正しい設計だが、
+**人が明示的に解除する手段が無い**のは単なる欠落だった。
+
+`/g1/clear_estop`（`std_srvs/srv/Trigger`）を追加した。
+
+### 設計: 物理の E-stop と同じ作法にする
+
+復帰には**人の操作が 3 つ**必要:
+
+| # | 操作 | 意味 |
+|---|---|---|
+| ① | `/g1/estop` に `false` | 押しボタンから手を離す（停止要求の取り下げ） |
+| ② | `/g1/clear_estop` | リセットボタン（E_STOP → STANDBY → READY） |
+| ③ | `/g1/enable_navigation` | 安全確認のうえ走行を許可 |
+
+⚠️ **①のインターロックが肝。** `/g1/estop` が `true` のままでは解除を受け付けない。
+物理の E-stop で押しボタンを戻さないとリセットが効かないのと同じで、これが無いと
+「true を出し続けている発信源が居るのに解除できてしまい、直後に E_STOP に戻る」
+という分かりにくい状態になる。
+
+⚠️ **`/g1/estop` に `false` が来ても自動解除はしない。** 発信源のフラグが下がった
+瞬間に無人で走行が再開しうるため。`false` は解除の前提条件として記録するだけ。
+
+📌 **`ClearEStop()` は STANDBY までしか戻さない。** 呼び出し側で `MarkReady()` を
+呼ばないと `EnableNavigation()` が永久に false を返し、**二度と走行再開できなくなる**
+（STANDBY→READY は「新規接続時」にしか走らないため）。実装中に実際に踏んだので、
+単体テスト `ClearEStopAloneDoesNotAllowNavigatingAgain` で固定した。
+
+### 検証（Humble、`RMW_IMPLEMENTATION=rmw_fastrtps_cpp` を明示）
+
+| # | シナリオ | 結果 |
+|---|---|---|
+| ① | 走行中に `/g1/estop` true | ✅ `E_STOP`、SDK 指令がゼロ |
+| ② | E_STOP 中に指令を流し続ける | ✅ ゼロのまま（動かない） |
+| ③ | `false` を送らずに `/g1/clear_estop` | ✅ **拒否**（理由を明示） |
+| ④ | `false` 送信 | ✅ **自動解除されない**（`E_STOP` のまま） |
+| ⑤ | `/g1/clear_estop` | ✅ `READY` へ |
+| ⑥ | 解除直後 | ✅ SDK 指令はゼロのまま（**勝手に走り出さない**） |
+| ⑦ | `/g1/enable_navigation` | ✅ `NAVIGATING`、`vx=0.300` |
+| ⑧ | E_STOP 中に指令断（cmd_timeout） | ✅ **`FAULT` に上書きされず `E_STOP` のまま** |
+
+⚠️ **これはソフトウェア E-stop であって、本物の非常停止ではない。**
+通信が生きている前提の機構なので、通信断では送ることすらできない（§7）。
+**純正リモコン（物理）が唯一の最終防衛線**であることは変わらない。
 
 ---
 

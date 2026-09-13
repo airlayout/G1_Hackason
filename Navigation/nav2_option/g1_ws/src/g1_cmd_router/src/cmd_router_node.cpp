@@ -95,6 +95,9 @@ CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
     srv_clear_fault_ = create_service<std_srvs::srv::Trigger>(
         "/g1/clear_fault", [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                                    std::shared_ptr<std_srvs::srv::Trigger::Response> res) { OnClearFault(req, res); });
+    srv_clear_estop_ = create_service<std_srvs::srv::Trigger>(
+        "/g1/clear_estop", [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                                   std::shared_ptr<std_srvs::srv::Trigger::Response> res) { OnClearEStop(req, res); });
 
     pub_diag_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/g1/bridge_status", 10);
 
@@ -225,9 +228,14 @@ void CmdRouterNode::OnNavTwist(double vx, double vy, double omega, bool stamped)
 }
 
 void CmdRouterNode::OnEStop(const std_msgs::msg::Bool::SharedPtr msg) {
+    // ⚠️ **false が来ても解除しない。** 解除は `/g1/clear_estop` を人が叩くことだけ。
+    // ここで自動解除すると、発信源のフラグが下がった瞬間に無人で走行が再開しうる。
+    // false は「押しボタンから手を離した」という記録としてだけ使う(解除の前提条件)。
+    estop_input_ = msg->data;
     if (msg->data) {
         mgr_->EStop();
-        RCLCPP_ERROR(get_logger(), "/g1/estop によりE_STOPへ遷移した");
+        RCLCPP_ERROR(get_logger(), "/g1/estop によりE_STOPへ遷移した。"
+                                   "復帰は /g1/estop に false を送ってから /g1/clear_estop");
     }
 }
 
@@ -498,6 +506,46 @@ void CmdRouterNode::OnClearFault(const std::shared_ptr<std_srvs::srv::Trigger::R
         mgr_->MarkReady();
     }
     res->message = res->success ? "ok" : "FAULT状態でないため解除の必要がない";
+}
+
+// E_STOP の手動解除。詳細はヘッダのコメント。
+void CmdRouterNode::OnClearEStop(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+                                  std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
+    if (mgr_->state() != g1_sdk_bridge::NavState::kEStop) {
+        res->success = false;
+        res->message = "E_STOP状態でないため解除の必要がない";
+        return;
+    }
+    // ⚠️ **押しボタンを戻していないと解除させない**(物理のE-stopと同じ作法)。
+    // true を出し続けている発信源が居るまま解除できてしまうと、
+    // 「解除したのに即E_STOPに戻る」という分かりにくい状態になる。
+    if (estop_input_) {
+        res->success = false;
+        res->message = "/g1/estop が true のままなので解除できない。"
+                       "まず /g1/estop に false を送って停止要求を取り下げること";
+        RCLCPP_WARN(get_logger(), "%s", res->message.c_str());
+        return;
+    }
+    res->success = mgr_->ClearEStop();
+    if (res->success) {
+        // ⚠️ `ClearEStop()` は STANDBY までしか戻さない。**ここで MarkReady() を
+        // 呼ばないと READY への経路が無く、二度と走行再開できなくなる**
+        // (STANDBY→READY は `bridge_connected_` フラグ＝新規接続時にしか走らないため)。
+        // `OnClearFault()` と同じ簡略化(TODO: Phase 2c で TF/センサー鮮度確認に置き換え)。
+        //
+        // 📌 **走行が自動で再開するわけではない。** READY は「走ってよい状態」であって
+        // 「走っている状態」ではなく、実際に動かすには `/g1/enable_navigation` が要る。
+        // つまり復帰には人の操作が3つ必要:
+        //   ① `/g1/estop` に false（停止要求の取り下げ）
+        //   ② `/g1/clear_estop`（このサービス）
+        //   ③ `/g1/enable_navigation`（安全確認のうえで走行許可）
+        mgr_->MarkReady();
+        RCLCPP_WARN(get_logger(), "E_STOP を解除した。走行再開には安全確認のうえ "
+                                  "/g1/enable_navigation が必要");
+        res->message = "E_STOPを解除した。走行再開には /g1/enable_navigation が必要";
+    } else {
+        res->message = "解除に失敗した(状態を確認すること)";
+    }
 }
 
 void CmdRouterNode::PublishDiagnostics() {
