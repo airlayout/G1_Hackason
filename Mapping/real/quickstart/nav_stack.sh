@@ -46,6 +46,16 @@
 #
 # ⚠️ live でも**足は動かない**。Nav2 は /cmd_vel を出すだけで、それを足に渡すのは
 # PC2 側の loco_driver.py（Navigation/real/）である。動かすにはあちらを --arm で起こす。
+#
+# ## live の起動は「大域 → 局所」を通る（2026-09-14 から。計画 §2.1）
+#
+# MOLA を起こす前に `bootstrap_localization.sh` が SE(2) 全域探索と 2 つのゲート
+# （3D の残差 / 2D の重畳）を通し、**決まらなければ MOLA を起こさずに止まる**。
+# 09-13 に焼いた datum から始めて偽の極大へ落ち、`preflight.sh` が全項目 OK と
+# 答えたまま 1 時間以上走った事故の再発を防ぐため。実測 3 秒。
+#
+#   G1_GLOBAL_INIT=0            従来動作（焼いた datum から始める）に戻す
+#   G1_MOLA_INIT_POSE=...       明示すれば大域測位は走らない
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -561,6 +571,32 @@ if [ "$USE_MOLA" = "1" ]; then
         REP105=False
         OUT_FRAMES="map -> base_link"
     fi
+    # ── 起こす前に「大域 → 局所」を通す（計画 §2.1-c / 2.1-d）────────────
+    # ⚠️ **焼いた datum から始めると偽の極大に落ちる。** 09-13 の実機はこれで
+    # 真値から 2.26 m・16.4 deg 外した場所で 1 時間以上走り、`preflight.sh` は
+    # 全項目 OK と答えた。**落ちても誰も気づかない**のが最悪の性質である。
+    # 2026-09-14 の実測では 3 秒で済む（局所・粗い格子）ので、毎回通して損が無い。
+    # 止めたいときは G1_GLOBAL_INIT=0。
+    if [ "$MODE" = "live" ] && [ "${G1_GLOBAL_INIT:-1}" != "0" ] \
+       && [ -z "${G1_MOLA_INIT_POSE:-}" ]; then
+        say "[3a] 大域測位（bootstrap_localization.sh）で初期姿勢を決める"
+        BOOT_OUT="$(bash "$HERE/bootstrap_localization.sh" 2>&1)"
+        BOOT_RC=$?
+        printf '%s\n' "$BOOT_OUT" | sed 's/^/    /'
+        if [ "$BOOT_RC" -ne 0 ]; then
+            echo "[stack] ⛔ 大域測位が決まらなかった（rc=$BOOT_RC）。**MOLA を起こさない**" >&2
+            echo "[stack] 機体を地図の濃い所へ移すか、G1_GLOBAL_INIT=0 で従来動作に戻せる" >&2
+            exit 1
+        fi
+        BOOT_POSE="$(printf '%s\n' "$BOOT_OUT" | sed -nE 's/^G1_MOLA_INIT_POSE=(.*)$/\1/p' | tail -1)"
+        if [ -z "$BOOT_POSE" ]; then
+            echo "[stack] ⛔ 大域測位の出力から姿勢を読めない。**MOLA を起こさない**" >&2
+            exit 1
+        fi
+        MOLA_INIT_POSE="$BOOT_POSE"
+        say "    大域測位が決めた初期姿勢: $MOLA_INIT_POSE"
+    fi
+
     say "[3] MOLA-LO を測位のみモードで起こす（$OUT_FRAMES を出させる）"
     say "    地図: $MOLA_MAP"
     say "    初期姿勢($MOLA_LOC_METHOD): $MOLA_INIT_POSE"
