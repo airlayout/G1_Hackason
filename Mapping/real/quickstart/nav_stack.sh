@@ -306,13 +306,21 @@ MOLA_TRAJ="${G1_MOLA_TRAJ:-$(dirname "$MOLA_MAP")/traj.txt}"
 #   1. 追従者が軌跡沿いに焼き込まれていた（近距離除去 + OctoMap で落とした）
 #   2. 障害物帯の下限 0.15m が min_obstacle_height 0.23m と食い違い、床を撃っていた
 # 作り直した nav_map_clean は 中央値 0.781m / 0.30m 未満 1.9%。
-# 昔の測定を再現したいときは G1_NAV_MAP で map/old/nav_map.yaml を明示すること。
+# ⚠️ **2026-09-14 に既定を nav_map_run に移した。**nav_map_clean は OctoMap の動的点除去で
+# 作ったもので、**机を消しすぎていた** —— 別の日（09-10）の記録で測ると机の帯の重畳が
+# **41.5%**（掃除なしの地図なら 77.6%）。**Nav2 は机を知らないまま走っていた。**
+# nav_map_run = nav_map_clean ＋「09-13 のゴースト除去した地図にだけ在り、かつ別の記録が
+# 実在を裏付けた 940 セル」。**足すだけ**なのでクリアランスも経路も壊れない:
+#   クリア中央 0.781→0.728m / 通れる wp 14/14 のまま / 迂回ゼロ 31 通りのまま /
+#   壁の帯 94.2→97.3% / 机の帯 41.5→78.3%
+# 作り方と合否: quickstart/ghost/make_nav_map_run.py（合否に落ちたら本番を書き換えない）
+# 昔の測定を再現したいときは G1_NAV_MAP で map/nav_map_clean.yaml や
+# map/old/nav_map.yaml を明示すること。**09-13 以前の走行の数字とは並べられない。**
 # ⚠️ **ここ（走る地図）と重畳の基準地図は別物。**基準は run_stage.sh の
 # G1_OVERLAY_REF_MAP（既定 map/nav_map_ref.yaml。make_ref_map.py が作る）。
 # 片方を変えても他方は動かない。
-# 作り方: filter_scans_near.py → run_octomap.py → pcd_to_occupancy.py
 # 合否:   check_map_clearance.py <地図> <traj.txt> --baseline <元の地図>
-NAV_MAP="${G1_NAV_MAP:-/work/G1_Hackason/Mapping/real/runs/$SESSION/map/nav_map_clean.yaml}"
+NAV_MAP="${G1_NAV_MAP:-/work/G1_Hackason/Mapping/real/runs/$SESSION/map/nav_map_run.yaml}"
 # ⚠️ 重畳の**基準地図**を走る地図に指されたら落とす（2026-09-12）。nav_map_ref は
 # 掃除していないので軌跡クリアランス中央値 0.10 m ＝ **自分の歩いた道を自分で塞ぐ**
 # （clean は 0.781 m）。役割が逆の地図なので、取り違えても「経路が引けない」としか
@@ -321,7 +329,7 @@ case "$NAV_MAP" in
     *nav_map_ref*)
         echo "[nav_stack] G1_NAV_MAP に重畳の基準地図 nav_map_ref が指定されている" >&2
         echo "[nav_stack] あれは掃除していない測定器用（軌跡クリアランス中央値 0.10 m）。" >&2
-        echo "[nav_stack] 走る地図は map/nav_map_clean.yaml。基準は G1_OVERLAY_REF_MAP の側" >&2
+        echo "[nav_stack] 走る地図は map/nav_map_run.yaml。基準は G1_OVERLAY_REF_MAP の側" >&2
         exit 1 ;;
 esac
 

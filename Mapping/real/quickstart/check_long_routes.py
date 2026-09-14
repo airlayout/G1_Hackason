@@ -14,7 +14,7 @@ nav_map_clean / robot_radius 0.25 / 4 連結。`check_planning.py` は Nav2 を�
 実測（2026-09-08、nav_map_clean）: 迂回ゼロの長距離ルートは 8 通りあり、
 最長は wp 7→11 の直線 23.80 m / 経路 32.90 m。
 """
-import itertools, json, math
+import argparse, itertools, json, math
 from collections import deque
 from pathlib import Path
 
@@ -27,21 +27,29 @@ ROBOT_RADIUS = 0.25          # IsaacSim_Env/config/nav2.yaml の値
 MIN_STRAIGHT_M = 8.0         # これ未満の組は出さない
 EXTRA_TOL_M = 0.35           # マンハッタン下限との差がこれ未満なら迂回ゼロ
 
+# 2026-09-14: 走る地図を差し替えられるようにした（既定は nav_stack.sh と同じ nav_map_run）
+_ap = argparse.ArgumentParser(description=__doc__,
+                              formatter_class=argparse.RawDescriptionHelpFormatter)
+_ap.add_argument("--map", default="nav_map_run",
+                 help="map/ の下の地図名（拡張子なし）。既定 nav_map_run")
+_a = _ap.parse_args()
+MAP = _a.map
+
 meta = {}
-for line in (R / "map/nav_map_clean.yaml").read_text().splitlines():
+for line in (R / "map/{}.yaml".format(MAP)).read_text().splitlines():
     if ":" in line:
         k, _, v = line.partition(":")
         meta[k.strip()] = v.strip()
 res = float(meta["resolution"])
 ox, oy = [float(v) for v in meta["origin"].strip("[]").split(",")[:2]]
-img = np.asarray(Image.open(R / "map/nav_map_clean.pgm"), dtype=np.float64)
+img = np.asarray(Image.open(R / "map/{}.pgm".format(MAP)), dtype=np.float64)
 occ = ((255.0 - img) / 255.0) > float(meta["occupied_thresh"])
 h, w = occ.shape
 # robot_radius ぶん膨らませる（機体の中心が入れないセル）
 rad = int(math.ceil(ROBOT_RADIUS / res))
 blocked = ndimage.binary_dilation(occ, ndimage.generate_binary_structure(2, 1),
                                   iterations=rad)
-print(f"[map] {w}x{h} / {res} m / origin ({ox:.4f}, {oy:.4f})")
+print(f"[map] {MAP}  {w}x{h} / {res} m / origin ({ox:.4f}, {oy:.4f})")
 print(f"[map] 占有 {occ.sum():,} → robot_radius {ROBOT_RADIUS} m 膨張後 "
       f"{blocked.sum():,} セル（自由 {(~blocked).sum():,}）")
 

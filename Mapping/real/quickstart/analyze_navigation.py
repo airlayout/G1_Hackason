@@ -39,13 +39,13 @@ CMD_EPS = 0.02               # 指令が出ていると見なす下限
 def load_clearance() -> tuple[np.ndarray, float, float, float]:
     """事前地図の各セルから最も近い障害物までの距離 [m]。"""
     meta: dict[str, str] = {}
-    for line in (R / "map/nav_map_clean.yaml").read_text().splitlines():
+    for line in (R / "map/nav_map_run.yaml").read_text().splitlines():
         if ":" in line:
             k, _, v = line.partition(":")
             meta[k.strip()] = v.strip()
     res = float(meta["resolution"])
     ox, oy = [float(v) for v in meta["origin"].strip("[]").split(",")[:2]]
-    img = np.asarray(Image.open(R / "map/nav_map_clean.pgm"), dtype=np.float64)
+    img = np.asarray(Image.open(R / "map/nav_map_run.pgm"), dtype=np.float64)
     occ = ((255.0 - img) / 255.0) > float(meta["occupied_thresh"])
     return ndimage.distance_transform_edt(~occ) * res, res, ox, oy
 
