@@ -83,6 +83,21 @@ EOF
     chmod +x "$1"
     echo "[env] ラッパ: $(basename "$1")"
 }
-wrap "$ROS/lib/mola_launcher/mola-cli"
-wrap "$ROS/bin/mola-lidar-odometry-cli"
+# ⚠️ **`ros2 launch` が execve する実行ファイルは全部ラップする（罠 3）。**
+# ELF の PT_INTERP は `/lib/ld-linux-aarch64.so.1`（＝ focal のローダ）なので、
+# そのままだと `error while loading shared libraries: librcl.so` で落ちる。
+# 2026-09-14 に Nav2 を入れたら **29 個**増えたので、列挙をやめて全部拾う。
+# `.so` と、既にラップ済みの `.real`、ELF でない物（python スクリプト等）は除く。
+wrapped=0
+for d in "$ROS/bin" "$ROS/lib"; do
+    [ -d "$d" ] || continue
+    while IFS= read -r f; do
+        case "$f" in *.real|*.so|*.so.*) continue ;; esac
+        head -c4 "$f" 2>/dev/null | grep -q ELF || continue
+        wrap "$f" >/dev/null && wrapped=$((wrapped + 1))
+    done <<EOF
+$(find "$d" -maxdepth 2 -type f -executable 2>/dev/null)
+EOF
+done
+echo "[env] ラッパ: $wrapped 個"
 echo "[env] 書いた: $ROOT/env.sh"
