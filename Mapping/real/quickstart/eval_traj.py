@@ -21,6 +21,15 @@ open3d_loc / KISS-ICP …）ごとに出力形式は違うが、**ここへ落�
 ⚠️ **歩行中の並進には独立した真値が無い。** 歩行では M3（見かけの速さ）と
 脚 odom との粗い食い違いしか見られない。**歩行の順位付けはこの入り口では出さない。**
 
+⚠️⚠️ **M1 / M2 は純回転の窓でしか出さない**（2026-09-14 に道具側で塞いだ）。
+判定は**脚 odom の正味変位**（MOLA とは独立）で、上限は `PURE_ROT_MAX_DISP_M`。
+純回転 0.043 / 0.468 m 対 歩行 12.7 / 15.7 m と **27 倍離れている**ので迷わない。
+塞ぐ前は歩行記録に当たって **click4 で M2 −245.6 %**、
+**到達した click3 でも +101.8 %** が出た。⇒ 09-14 の 3 連続の誤診の入口になった。
+
+⚠️ **`--control <良好な記録>` を必ず渡すこと。** 同じ指標を良好な回にかけて並べれば、
+指標の誤用はその場で分かる。09-14 の誤診 3 件はすべて対照を並べていれば防げた。
+
 ⚠️ **ICP 品質 / fitness は指標にしない。** 09-12 の実測で `blend > 0` は品質を
 0.83 -> 0.93 に水増しし、**間違った場所の品質のほうが平常より高く出た**（0.95〜1.00 対 0.851）。
 正直な指標は M1 と M2 だけである。
@@ -35,6 +44,9 @@ open3d_loc / KISS-ICP …）ごとに出力形式は違うが、**ここへ落�
 
     # 複数の記録・複数の候補を 1 つの表に
     ... eval_traj.py runs/spin_*T13* --json out.json
+
+    # 歩行の記録は **対照を必ず並べる**（M1/M2 は両方 `—` になるのが正しい）
+    ... eval_traj.py runs/click4_20260913 --control runs/click3_20260913
 
 TUM 形式: `timestamp tx ty tz qx qy qz qw`（`#` で始まる行は註釈）。
 ⚠️ **軌跡は `base_link`（水平・床面）で渡すこと。** IMU 系（`livox_frame`）のまま渡すと
@@ -65,6 +77,12 @@ TURN_RATE_RAD_S = 0.05
 STILL_WINDOW_S = 0.5
 # 見かけの速さを出すときに無視する dt。MOLA の /tf は 10 Hz 前後
 MIN_DT_S = 0.01
+# 「純回転の窓」と見なす脚 odom の正味変位の上限 [m]。**M1 / M2 はこれを超えたら出さない。**
+# 2026-09-14 の実測で純回転と歩行は 27 倍離れている:
+#   純回転 spin_20260912T120348 **0.043 m** · spin_20260912T132858 **0.468 m**
+#   歩行   click3_20260913 **12.719 m** · click4_20260913 **15.685 m**
+# 1.0 m は最悪の純回転の 2.1 倍・最短の歩行の 1/12.7。どちらからも遠い。
+PURE_ROT_MAX_DISP_M = 1.0
 
 
 # ---------------------------------------------------------------- 記録を読む
@@ -214,7 +232,13 @@ def slice_time(a: np.ndarray, t0: float, t1: float) -> np.ndarray:
 
 
 def evaluate(traj: np.ndarray, truth: dict, window: tuple[float, float]) -> dict:
-    """軌跡 1 本 -> M1〜M4。M5 は歩行記録で M3 を見るので同じ関数で足りる。"""
+    """軌跡 1 本 -> M1〜M4。M5 は歩行記録で M3 を見るので同じ関数で足りる。
+
+    ⚠️ **M1 / M2 は純回転の窓でしか意味が無い**（真値が「並進 0」だから）。
+    窓が純回転でなければ**計算せず** `skip_reason` を返す。2026-09-14 に入れた。
+    入れる前は歩行記録に当たって **click4 で M2 −245.6 %**、
+    **到達した click3 でも +101.8 %** という値が出て、実際に誤診の元になった。
+    """
     t0, t1 = window
     seg = slice_time(traj, t0, t1)
     out = {"samples": int(len(traj)), "samples_in_window": int(len(seg))}
@@ -222,16 +246,26 @@ def evaluate(traj: np.ndarray, truth: dict, window: tuple[float, float]) -> dict
         out["note"] = "窓の中に推定が 2 点未満"
         return out
 
-    # M1 幻の並進: 純回転中の端から端の変位。真値 ~ 0
-    out["M1_phantom_m"] = float(math.hypot(seg[-1, 1] - seg[0, 1], seg[-1, 2] - seg[0, 2]))
-    out["max_stray_m"] = float(np.hypot(seg[:, 1] - seg[0, 1], seg[:, 2] - seg[0, 2]).max())
+    # 正味変位: 窓の端から端。**歩行でも意味がある**ので常に出す
+    out["est_net_disp_m"] = float(math.hypot(seg[-1, 1] - seg[0, 1], seg[-1, 2] - seg[0, 2]))
+    odom_disp = truth.get("odom_net_disp_m")
+    if odom_disp is not None:
+        out["net_disp_vs_odom_m"] = float(out["est_net_disp_m"] - odom_disp)
 
-    # M2 回転の追従: 推定の正味 dyaw / ジャイロの正味 dyaw - 1
     est = net_yaw(seg[:, 4:8])
     out["est_net_yaw_deg"] = float(math.degrees(est[-1] - est[0]))
-    gt = truth.get("gyro_net_yaw_deg_window")
-    if gt is not None and abs(gt) > 1.0:
-        out["M2_yaw_ratio_pct"] = float((out["est_net_yaw_deg"] / gt - 1.0) * 100.0)
+
+    if truth.get("is_pure_rotation"):
+        # M1 幻の並進: 純回転中の端から端の変位。真値 ~ 0
+        out["M1_phantom_m"] = out["est_net_disp_m"]
+        out["max_stray_m"] = float(np.hypot(seg[:, 1] - seg[0, 1], seg[:, 2] - seg[0, 2]).max())
+
+        # M2 回転の追従: 推定の正味 dyaw / ジャイロの正味 dyaw - 1
+        gt = truth.get("gyro_net_yaw_deg_window")
+        if gt is not None and abs(gt) > 1.0:
+            out["M2_yaw_ratio_pct"] = float((out["est_net_yaw_deg"] / gt - 1.0) * 100.0)
+    else:
+        out["skip_reason"] = truth.get("pure_rot_reason", "純回転の窓ではない")
 
     # M3 見かけの速さの上限超（窓の中）
     ts, sp = apparent_speed(seg)
@@ -273,6 +307,16 @@ def analyze_run(run_dir: Path, traj_specs: list[tuple[str, Path, str]],
         a, b = window_arg.split(":")
         win = (t_g[0] + float(a), t_g[0] + float(b))
 
+    # ⚠️ **窓が記録の外なら黙って通さない**（2026-09-14）。
+    # 49.6 s の記録に `--window 100:170` を渡したら「窓の中に推定が 2 点未満」とだけ
+    # 出て、対照が空のまま表が並んでしまった。**空の対照は対照ではない。**
+    span = (float(t_g[0]), float(t_g[-1]))
+    if win[1] > span[1] + 1e-6 or win[0] < span[0] - 1e-6:
+        res["window_out_of_range"] = (
+            "窓 {:.1f}:{:.1f} s は記録の長さ {:.1f} s の外にはみ出している"
+            .format(win[0] - span[0], win[1] - span[0], span[1] - span[0]))
+        win = (max(win[0], span[0]), min(win[1], span[1]))
+
     gw = yaw_g[(t_g >= win[0]) & (t_g <= win[1])]
     res["truth"] = {
         "imu_hz": float(len(imu) / (imu[-1, 0] - imu[0, 0])),
@@ -291,6 +335,26 @@ def analyze_run(run_dir: Path, traj_specs: list[tuple[str, Path, str]],
             if len(ow) > 1 else None,
             "odom_net_yaw_deg": float(math.degrees(oy[-1] - oy[0])) if len(ow) > 1 else None,
         })
+
+    # 窓が純回転か。**脚 odom（MOLA とは独立）の正味変位**で決める。
+    # これが M1 / M2 を出すかどうかのゲートになる（2026-09-14）。
+    disp = res["truth"].get("odom_net_disp_m")
+    if disp is None:
+        res["truth"]["is_pure_rotation"] = False
+        # ⚠️ **「無い」と「窓が空」を混ぜない。** 混ぜると窓の指定ミスを
+        # 記録の不備と読み違える（2026-09-14 に対照の記録で踏んだ）。
+        res["truth"]["pure_rot_reason"] = (
+            "窓の中に脚 odom が 2 点未満（窓の指定を見直すこと）"
+            if "odom_hz" in res["truth"] else
+            "脚 odom（/dog_odom）が記録に無く純回転か判定できない")
+    elif disp > PURE_ROT_MAX_DISP_M:
+        res["truth"]["is_pure_rotation"] = False
+        res["truth"]["pure_rot_reason"] = (
+            "窓の中で脚 odom が {:.2f} m 動いている（純回転の上限 {:.1f} m）"
+            .format(disp, PURE_ROT_MAX_DISP_M))
+    else:
+        res["truth"]["is_pure_rotation"] = True
+        res["truth"]["pure_rot_reason"] = None
 
     # 既定の軌跡: 記録に入っている /tf（= その回に動いていた測位。C0 の基準線）
     if not traj_specs:
@@ -358,7 +422,51 @@ def to_base_link(traj: np.ndarray, st, conjugate: bool = False) -> np.ndarray:
     return out
 
 
-FMT = "  {:<26} {:>9} {:>9} {:>9} {:>9} {:>9}"
+FMT = "  {:<24} {:>8} {:>8} {:>7} {:>8} {:>8} {:>8} {:>8}"
+
+
+def print_run(r: dict, tag: str = "") -> None:
+    """1 記録ぶんを表にする。**M1 / M2 は純回転の窓でなければ `—`** と理由を出す。"""
+    tr = r["truth"]
+    print("\n=== {}{} ===".format(tag, r["run"]))
+    print("  長さ {:.1f} s / IMU {:.1f} Hz{} / 窓 {} s".format(
+        tr["duration_s"], tr["imu_hz"],
+        " / 脚odom {:.0f} Hz".format(tr["odom_hz"]) if "odom_hz" in tr else "",
+        tr["window_s"]))
+    print("  真値: ジャイロ 正味 {:+.1f}° (窓 {:+.1f}°) / 総回転 {:.0f}°{}".format(
+        tr["gyro_net_yaw_deg"], tr["gyro_net_yaw_deg_window"] or float("nan"),
+        tr["gyro_total_yaw_deg"],
+        "  脚odom 正味 {:+.1f}° / 変位 {:.3f} m".format(
+            tr["odom_net_yaw_deg"], tr["odom_net_disp_m"])
+        if tr.get("odom_net_yaw_deg") is not None else ""))
+
+    if r.get("window_out_of_range"):
+        print("  ⛔ {}".format(r["window_out_of_range"]))
+        print("     → 記録の中に切り詰めた。**この記録を対照に使わないこと**")
+
+    if tr.get("is_pure_rotation"):
+        print("  窓の種別: **純回転**（脚 odom {:.3f} m ≦ {:.1f} m）→ M1 / M2 を出す"
+              .format(tr.get("odom_net_disp_m", float("nan")), PURE_ROT_MAX_DISP_M))
+    else:
+        print("  窓の種別: **歩行など** → M1 / M2 は出さない（{}）"
+              .format(tr.get("pure_rot_reason")))
+
+    print(FMT.format("候補", "M1[m]", "M2[%]", "M3[%]", "M4[m/s]",
+                     "最大[m/s]", "正味[m]", "脚odom差"))
+    for name, m in r["traj"].items():
+        if "est_net_disp_m" not in m:
+            print("  {:<24} {}".format(name[:24], m.get("note", "?")))
+            continue
+        print(FMT.format(
+            name[:24],
+            "{:.3f}".format(m["M1_phantom_m"]) if "M1_phantom_m" in m else "—",
+            "{:+.1f}".format(m["M2_yaw_ratio_pct"]) if "M2_yaw_ratio_pct" in m else "—",
+            "{:.1f}".format(m.get("M3_over_limit_pct", float("nan"))),
+            "{:.3f}".format(m.get("M4_still_jitter_mps", float("nan"))),
+            "{:.3f}".format(m.get("max_apparent_mps", float("nan"))),
+            "{:.3f}".format(m["est_net_disp_m"]),
+            "{:+.3f}".format(m["net_disp_vs_odom_m"])
+            if "net_disp_vs_odom_m" in m else "—"))
 
 
 def main() -> None:
@@ -373,6 +481,9 @@ def main() -> None:
                     help="livox = map->livox の軌跡 / livox_odom = 基準も逆さまな odometry")
     ap.add_argument("--window", default="auto",
                     help="auto（回転区間）/ full / t0:t1（記録の頭からの秒）")
+    ap.add_argument("--control", action="append", default=[], type=Path,
+                    help="対照の記録。同じ指標・同じ窓の決め方にかけて並べる。"
+                         "**歩行の記録を測るときは必ず良好な回を 1 本渡すこと**")
     ap.add_argument("--json", type=Path)
     args = ap.parse_args()
 
@@ -385,30 +496,20 @@ def main() -> None:
     for run in args.runs:
         r = analyze_run(run, specs, args.window)
         all_res.append(r)
-        tr = r["truth"]
-        print("\n=== {} ===".format(r["run"]))
-        print("  長さ {:.1f} s / IMU {:.1f} Hz{} / 窓 {} s".format(
-            tr["duration_s"], tr["imu_hz"],
-            " / 脚odom {:.0f} Hz".format(tr["odom_hz"]) if "odom_hz" in tr else "",
-            tr["window_s"]))
-        print("  真値: ジャイロ 正味 {:+.1f}° (窓 {:+.1f}°) / 総回転 {:.0f}°{}".format(
-            tr["gyro_net_yaw_deg"], tr["gyro_net_yaw_deg_window"] or float("nan"),
-            tr["gyro_total_yaw_deg"],
-            "  脚odom 正味 {:+.1f}° / 変位 {:.3f} m".format(
-                tr["odom_net_yaw_deg"], tr["odom_net_disp_m"])
-            if tr.get("odom_net_yaw_deg") is not None else ""))
-        print(FMT.format("候補", "M1[m]", "M2[%]", "M3[%]", "M4[m/s]", "最大[m/s]"))
-        for name, m in r["traj"].items():
-            if "M1_phantom_m" not in m:
-                print("  {:<26} {}".format(name, m.get("note", "?")))
-                continue
-            print(FMT.format(
-                name[:26],
-                "{:.3f}".format(m["M1_phantom_m"]),
-                "{:+.1f}".format(m["M2_yaw_ratio_pct"]) if "M2_yaw_ratio_pct" in m else "-",
-                "{:.1f}".format(m.get("M3_over_limit_pct", float("nan"))),
-                "{:.3f}".format(m.get("M4_still_jitter_mps", float("nan"))),
-                "{:.3f}".format(m.get("max_apparent_mps", float("nan")))))
+        print_run(r)
+
+    # 対照。**同じ指標・同じ窓の決め方**にかけて必ず並べる（2026-09-14）。
+    # 09-14 に「4 本目は測位が崩れた」と 3 回誤診した入口が、対照を並べなかったこと
+    # だった。良好な記録に同じ指標を当てれば、その場で誤用に気づける。
+    for ctl in args.control:
+        c = analyze_run(ctl, specs, args.window)
+        c["is_control"] = True
+        all_res.append(c)
+        print_run(c, tag="対照 ")
+
+    if args.control:
+        print("\n  ⚠️ 対照と本番で M1 / M2 の出る・出ないが違うときは、"
+              "**窓の性質が違う**のであって測位の優劣ではない。")
 
     if args.json:
         args.json.write_text(json.dumps(all_res, ensure_ascii=False, indent=2))
