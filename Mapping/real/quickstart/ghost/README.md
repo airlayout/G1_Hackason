@@ -10,7 +10,20 @@ MOLA の地図（`nav_map_ref` の元）には、建図中に機体について�
 cd Mapping/real
 ../../Navigation/.venv/bin/python quickstart/ghost/run_all.py     # 3 案と合わせ技を比べる
 ../../Navigation/.venv/bin/python quickstart/ghost/render_figs.py # 図を 2 枚
+
+# 3D ビューア（作業ログに貼り込む断片）
+../../Navigation/.venv/bin/python quickstart/ghost/prep_3d.py
+../../Navigation/.venv/bin/python quickstart/pcd_to_html.py frag.html \
+    "前（掃除なし）=runs/ghost_eval_20260912/pcd3d/room_前.pcd" \
+    "09-12 の採用案=runs/ghost_eval_20260912/pcd3d/room_09-12案.pcd" \
+    "2026-09-13 合わせ技=runs/ghost_eval_20260912/pcd3d/room_今回.pcd" \
+    --fragment --voxel 0.12 --trim 0
 ```
+
+⚠️ `--trim` は既定 1.0（各軸で上下 1% を捨てる）。`prep_3d.py` が既に箱で切っているので
+**0 を渡す**こと。渡さないと領域 A・B の端が黙って欠ける。
+⚠️ 部屋全体は `--voxel 0.12`、B の拡大は `0.04` で作業ログ 1 枚あたり 2.1 MB / 1.0 MB。
+既定の 0.08 だと部屋だけで 3.8 MB になる。
 
 成果物（候補地図・キャッシュ・ログ）は `runs/ghost_eval_20260912/` に出る。
 ⚠️ **`runs/` は `.gitignore` の対象**。道具はこちら（`quickstart/`）に置くこと。
@@ -25,6 +38,7 @@ cd Mapping/real
 | `run_tube.py` / `run_blob.py` / `run_carve.py` | 各案の掃引 |
 | `run_all.py` | 3 案の最良と合わせ技を 1 枚で比較 |
 | `render_figs.py` | 前後の図と、手ごとの除去範囲の図 |
+| `prep_3d.py` | 3D ビューア用の PCD（**床は前の点群 1 つで決めて 3 つに使い回す**。個別に取ると高さが揃わない） |
 | `build_history.py` | ボクセルごとの観測履歴を `.npz` に（**持続性フィルタは棄却済み**。履歴自体は診断に使える） |
 
 ## 3 つの手と、効く／効かない場所
