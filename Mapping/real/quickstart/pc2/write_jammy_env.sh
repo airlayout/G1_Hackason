@@ -14,6 +14,17 @@
 #    ＝ focal のローダなので GLIBC_2.34 が無くて落ちる ⇒ 実体を退避してラッパを置く。
 # 4. **ラッパの shebang は focal の /bin/sh。** 呼び出し側が LD_LIBRARY_PATH を
 #    jammy に向けていると **sh 自身が落ちる** ⇒ ラッパの**内側**で export する。
+# 5. **`jrun` も LD_LIBRARY_PATH を export してはいけない（2026-09-14 に判明）。**
+#    罠 1・4 は「自分のシェル」の話として書いていたが、**子プロセスにも同じことが起きる**。
+#    `ros2 launch` を jrun で起こすと LD_LIBRARY_PATH が子に継承され、launch が
+#    `mola-cli`（ラッパ）を起こした瞬間に **focal の /bin/sh が jammy の libc を掴んで
+#    segfault する**。ラッパの中身は 1 行も実行されない（env ダンプを仕込んでも出ない）。
+#    これが「mola-cli は ROS 2 ブリッジ経由だと SIGSEGV」の正体だった。
+#    実測: `LD_LIBRARY_PATH=$JAMMY_LIBS /bin/sh -c echo` は **rc=139**、外すと rc=0。
+#    ⇒ **`--library-path` だけで足りる。**ld.so の `--library-path` はプロセス全体
+#    （dlopen 含む）に効くので、export をやめても機能は落ちない。
+#    実測: 外したら `ros2 launch mola_lidar_odometry ros2-lidar-odometry.launch.py` が
+#    30 秒間 died 0 回で回り、BridgeROS2 が全ソースを購読した。
 set -uo pipefail
 
 ROOT="${1:-$HOME/jammy_ros}"
@@ -46,9 +57,11 @@ RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=\${G1_JAMMY_DOMAIN:-42}
 export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo" priority="default" multicast="true"/></Interfaces><AllowMulticast>true</AllowMulticast></General></Domain></CycloneDDS>'
 
-# jammy の loader で任意の実行ファイルを起動する
+# jammy の loader で任意の実行ファイルを起動する。
+# ⚠️ **LD_LIBRARY_PATH を渡さない（罠 5）。** 渡すと子の focal /bin/sh が落ちる。
+# ld.so の --library-path はプロセス全体（dlopen 含む）に効くのでこれで足りる。
 jrun() { local exe="\$1"; shift
-    env \$JAMMY_ENV LD_LIBRARY_PATH="\$JAMMY_LIBS" \\
+    env \$JAMMY_ENV \\
         "\$LOADER" --library-path "\$JAMMY_LIBS" "\$exe" "\$@"; }
 jros2() { jrun "\$PREFIX/usr/bin/python3.10" "\$ROS/bin/ros2" "\$@"; }
 EOF
