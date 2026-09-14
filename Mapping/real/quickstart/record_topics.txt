@@ -36,3 +36,57 @@
 /tf_static                     ros       # base_link->livox_frame の取付
 /unitree/slam_mapping/points   mapping   # 内蔵 SLAM の地図座標系の点群
 /unitree/slam_mapping/odom     mapping   # 内蔵 SLAM の自己位置
+
+# ── Nav2 側（2026-09-14 に追加）──────────────────────────────────────
+#
+# ## なぜ増やすのか（3 度目の「録っておけばよかった」）
+#
+# 09-10 は IMU が無くて原因を追えず、09-12 は脚 odom が無くて追えなかった。
+# **09-13 に 3 度目をやった** —— クリック走行 4 本目で「経路は毎秒引けているのに
+# 機体が 80 秒まったく動かない」という状態になり、`Failed to make progress` →
+# `Spin` → 見張りが 120 秒でキャンセル、で終わった。
+# **何が指令されていたのかを後から確かめられなかった。`/cmd_vel` を録っていなかったから。**
+#
+# ## 方針: 探索段階では「安い物は全部録る」
+#
+# 実測した追加ぶんは **約 +0.37 MB/s（+7%）**。そのほとんどは
+# `/global_costmap/costmap`（780x431 セル・always_send_full_costmap・約 1 Hz で 0.34 MB/s）で、
+# 残りは合計しても 0.03 MB/s に満たない。**LiDAR の 4.4 MB/s に比べれば誤差**である。
+#
+# ⚠️ **存在しないトピックを並べても記録は壊れない**（2026-09-14 に実測）。
+# rosbag2 は在るものだけ購読して録り続ける（`Listening for topics...` のまま待つ）。
+# **だから「まだ使うか分からない物」も書いておいてよい。**
+#
+# ⚠️ **効くのはディスクの方**。1 本 5 分で約 1.6 GB になる。置き場を先に決めること
+# （計画 `2026-09-14-global-first-localization-and-costmap.md` §2.5）。
+
+/cmd_vel                       ros       # **Nav2 が出した指令**。09-13 の 4 本目はこれが無くて原因を追えなかった
+/cmd_vel_smoothed              ros       # velocity_smoother の出力。⚠️ 名前は要確認（無ければ無視される）
+/plan                          ros       # global path。経路終端と要求ゴールの距離を後から測れる
+/local_plan                    ros       # controller が実際に追っている局所経路
+/lookahead_point               ros       # RPP の carrot。09-09 の「右へ逸れ続ける」はこの z で見つけた
+/goal_pose                     ros       # **何をクリックしたか**。RViz2 の 2D Goal Pose の出力
+/navigate_to_pose/_action/feedback  ros  # 残り距離・経過時間・**recoveries の回数**
+/navigate_to_pose/_action/status    ros  # ゴールの生死（成功 / 中止 / キャンセル）
+/global_costmap/costmap        ros       # ⚠️ 追加ぶんの大半（0.34 MB/s）。だが 09-13 の
+                                         # `Starting point in lethal space!` が 254 か 253 かは
+                                         # **これが無いと永久に分からない**
+/local_costmap/costmap         ros       # ライブ層の様子
+/local_costmap/published_footprint  ros  # 機体の占有。足元が消えているかを見る
+/lidar_odometry/pose_quality   ros       # MOLA の自己申告。⚠️ **合否には使えない**
+                                         # （09-13 実測: 誤った姿勢 0.855 対 正しい姿勢 0.818）が、
+                                         # 「高いのに外している」を後から示すために録る
+/rosout                        ros       # **ログそのもの**。コンテナの *.log は起動し直すと消える
+
+# ── 機体側で録りたいが未確認（2026-09-14）────────────────────────────
+#
+# ⚠️ **まだ足していない。** コンテナに unitree_hg の型が無く、録れるか確かめていないため
+# （型が無いトピックを並べたときの挙動は未検証。「存在しない」場合は安全だと確かめたが、
+#  「存在するが型が読めない」場合は別である）。**次に機体を使うときに確かめて足す:**
+#
+#   /lowstate      バッテリ soc・関節。段 6（HR²-KILO）の解除条件。取り逃すと遡れない
+#   /lf/lowstate   同上（低頻度版）
+#   /odommodestate 内蔵 odom のモード
+#   /secondary_imu 胴体側の IMU。首の受動関節を疑うときに要る
+#
+# 足すときは `sensor` 範囲にし、**`record_dds_to_bag.py` の KNOWN_TOPICS に型も足す**こと。
