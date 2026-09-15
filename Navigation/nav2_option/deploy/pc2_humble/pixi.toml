@@ -1,0 +1,35 @@
+# nav2_option トラックの Nav2 実行環境(PC2 = Jetson Orin NX, linux-aarch64)。
+#
+# D-30「Nav2 と ROS 側ノードは Humble で動かす」の **PC2 側の実体**。
+# docker コンテナではなく pixi を使う理由:
+#   - PC2 の unitree ユーザーに docker デーモンへの権限が無い(2026-09-15 確認)
+#   - arm64 の Nav2 入りイメージが存在せず、作るには sudo が要る
+#   - robostack-humble に aarch64 の navigation2 1.1.20 が在る(同日確認)
+# PC2 の /opt/ros/foxy には一切触らない。撤退はこのディレクトリを消すだけ。
+#
+# ⚠️ Mapping トラックの ~/g1_humble(foxglove-bridge 用)とは**別に持つ**。
+# あちらに Nav2 を足すと、片方の都合でもう片方が壊れる。
+#
+# ⚠️ cyclonedds 0.7.0(foxy 同梱)は Unitree(0.10.2)の discovery で SIGSEGV する。
+# Humble を持ち込むのはこれを避けるためでもある(~/g1_humble の pixi.toml 参照)。
+
+[workspace]
+name = "g1-nav2-humble"
+version = "0.1.0"
+channels = ["robostack-humble", "conda-forge"]
+platforms = ["linux-aarch64"]
+
+[dependencies]
+ros-humble-ros-base = "*"
+# nav2_velocity_smoother / nav2_behaviors を含む一式(A-10c で Foxy に無いと判明した2つ)
+ros-humble-navigation2 = "*"
+ros-humble-nav2-bringup = "*"
+# A-10e の教訓: RMW を明示せずに検証したことがバグを見逃す原因になった。
+# 両方入れておき、実行時に RMW_IMPLEMENTATION で必ず明示する。
+ros-humble-rmw-cyclonedds-cpp = "*"
+ros-humble-rmw-fastrtps-cpp = "*"
+# 自作3パッケージ(ament_cmake)を PC2 でビルドするため
+colcon-common-extensions = "*"
+cxx-compiler = "*"
+cmake = "*"
+make = "*"

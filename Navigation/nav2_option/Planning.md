@@ -27,7 +27,7 @@
 | D-06 | **SDK 側プロセスは ROS 2 を一切初期化・リンクしない** | DDS ライブラリ競合の根本回避 |
 | D-07 | **SDK 側プロセスは systemd 管理とし、ROS launch から起動しない**（ユニット作成済み: [deploy/](deploy/)、2026-09-13） | `ExecuteProcess` は `LD_LIBRARY_PATH` / `AMENT_PREFIX_PATH` を継承し ROS 側 CycloneDDS に誤リンクする。加えて、安全の最終防衛線を ROS launch のライフサイクルに従属させない |
 | D-08 | **SDK 側プロセスは colcon workspace 外の独立 CMake プロジェクトとしてビルドする** | ROS 環境が source された状態でのビルドを構造的に防ぐ |
-| D-30 | **Nav2 と ROS 側ノードは Humble コンテナで動かす**（2026-09-13、ユーザー確認済み） | PC2 ネイティブの Foxy には `nav2_velocity_smoother` / `nav2_behaviors` が存在せず、設計どおりに組めない（A-10c で実測）。Humble イメージは Mapping 用に既にあり、A-10b・A-10c の検証資産も全て Humble 上にある。**D-01（Jazzy 継続）はこの点で読み替えること。** 自作3パッケージは Foxy/Humble/Jazzy いずれでも無修正で動くので、後から Jazzy へ移っても配線は壊れない。**arm64(PC2) での成立も確認済み(A-10e)** |
+| D-30 | **Nav2 と ROS 側ノードは Humble コンテナで動かす**（2026-09-13、ユーザー確認済み） | PC2 ネイティブの Foxy には `nav2_velocity_smoother` / `nav2_behaviors` が存在せず、設計どおりに組めない（A-10c で実測）。Humble イメージは Mapping 用に既にあり、A-10b・A-10c の検証資産も全て Humble 上にある。**D-01（Jazzy 継続）はこの点で読み替えること。** 自作3パッケージは Foxy/Humble/Jazzy いずれでも無修正で動くので、後から Jazzy へ移っても配線は壊れない。**arm64(PC2) での成立も確認済み(A-10e)**。<br>**⚠️ 2026-09-15 追記: PC2 側の実体は「コンテナ」ではなく pixi にした。** PC2 の `unitree` は docker デーモンへの権限が無く（sudo はパスワード必須）、arm64 の Nav2 入りイメージも存在しなかった。robostack-humble に **aarch64 の `navigation2` 1.1.20** が在るのでこれを使う（[deploy/pc2_humble/](deploy/pc2_humble/)）。`/opt/ros/foxy` には触らず、撤退はディレクトリ削除のみ。**D-30 の意図（Foxy に無い `nav2_velocity_smoother` / `nav2_behaviors` を使う）は満たしている** |
 | D-31 | **操作PC との通信が途絶したら巡回を停止する**（2026-09-13、ユーザー確認済み） | 警備 PoC の目的が「異常を見つけて人に知らせること」である以上、人と繋がっていない状態で動き続けることに価値が無い。実測では通信断後も 4.045 秒・0.85m 前進した。なお「減速して継続」は U-12 により選べない（`vx=0.2` で進行方向が定まらないため「ゆっくり歩いて帰る」が物理的に存在しない）。実装は Phase 2c 作業項目10 |
 | D-32 | **「NAVIGATING なのに指令が来ない」は WARN にとどめ、状態遷移はさせない**（2026-09-13、ユーザー確認済み） | SafetyManager の「最初の指令を受けるまで `cmd_timeout` の計測を始めない」猶予は Nav2 の計画時間を待つための意図的な設計であり、変えない。配線ミスを可視化するだけにとどめる（`no_cmd_warn_s`、既定 3.0 秒、0 で無効）。物理的な安全は SDK 側 watchdog と `duration` 満了が別途担保する |
 | D-29 | **`slam_operate` は `1801`(建図開始) と `1901`(SLAM終了) の 2 つだけを使う**（2026-09-09、ユーザー確認済み）。`1802`(建図保存) / `1804`(地図読込＋自己位置設定) は使わない。送信クライアントには**この 2 つだけを `_RegistApi()` し、`1102`(移動) は構造的に送れないようにする**（[tools/send_slam_api.py](tools/send_slam_api.py)） | 我々が内蔵 SLAM に求めるのは **odometry の供給だけ**（`/unitree/slam_mapping/odom`。これは 1801 で流れる）。`map→odom` は処理済み地図への ICP 合わせ、global costmap は `room_a_map.yaml` で足りるため、地図を PC1 に置く必要がなく 1802/1804 は不要。**これにより「外部で作った地図を PC1 へ転送できない」という制約自体が我々には効かない**。<br>諦めるのは「純正再定位でドリフトを補正する道」だけで、U-16（歩行中のドリフト）が許容範囲なら不要。許容できない場合の代替案として残す（その際はロボット自身に 1801→1802 で地図を作らせ、処理済み地図との変換を ICP で求める。詳細: [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) §8.6） |
@@ -97,6 +97,7 @@
 | U-05 | ~~`unitree_mujoco` が G1 の**高レベル** LocoClient をサポートするか~~ | **確定(2026-09-08): 非対応。** README に "Current version only supports low-level development" と明記。`LowCmd`/`LowState` の直接関節制御のみで、`Move(vx,vy,omega)` 相当の高レベル歩行API・歩行コントローラは未実装。`SportModeState` は配信されるが MuJoCo のセンサ値をそのまま流すだけで歩容生成ロジックは含まない。Go2 等の他ロボットも同様。DDSトピック名・IDL(`unitree_hg`)は実機と同一なので**DDS通信層・関節/センサマッピングの前倒し検証のみ可能**。「速度指令→実際の歩行」の統合検証は実機まで持ち越し。詳細: [findings/unitree_mujoco.md](findings/unitree_mujoco.md) |
 | U-06 | Isaac Sim 6.0 + Jazzy での Nav2 連携（Sim 共通化を再開する場合） | 差動二輪の単純モデルで先に検証 |
 | U-15 | ~~**G1 内蔵の再定位サービス（`/unitree/slam_relocation/*`）が Nav2 の localization を代替できるか**~~ **一部確定(2026-09-09)。**<br>**① 内蔵「再定位」で我々の地図を使う道は、現時点で見つかっていない（※未確定）**: 1804 の `address` は PC1 のファイルシステムを指す。`Navigation/README.md` に「実機で全 address が `errorCode 507`」「PC1 への転送手段が無い」と記録されている。**ただしこれは過去のチームの試行記録で、nav2_option 側では 1804 を一度も送っていない。加えて同 README の「PC1 の主要18ポート全て閉」という根拠は不正確で、実測で `9991` が開いていた。** 未調査の経路（9991 の正体、公式アプリの地図管理、`/unitree_slam/waypoints` の書き込み側、PC2 のゲートウェイ的プロセス）が残っており、「不可」と断定できる段階ではない。<br>**なお転送できなくても代替がある**: ロボット自身に地図を作らせ（`1801`→`1802`）自己位置はそれを使い、**処理済み地図は Nav2 の global costmap 専用**にする。2つの地図間の ICP 合わせが1回必要だが、それは odometry 方式でも必要なので追加コストはほぼ無い。<br>**② ただし内蔵 SLAM の odometry は使える**: `1801`(建図開始) を送ると `/unitree/slam_mapping/odom`(`nav_msgs/Odometry`) が **9.10 Hz**、`frame_id=map` / `child_frame_id=base_link`、**静止時ドリフト 70秒で 0.9cm** で流れることを実測（座位のまま成功、`1901` で完全に元に戻る）。**odometry 目的なら FAST-LIO は不要**で、`map→odom` は処理済み地図への ICP 合わせで与える。TF は出ないので自前で配信する。<br>**残る未確認**: 歩行中のドリフト（要移動）。詳細: [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) §7-8 |
+| U-17 | **内蔵SLAM が 12〜17 分で勝手に止まる条件**（2026-09-15 実機で発生） | 機体を立てたまま放置しただけで `/unitree/slam_mapping/odom` と `/points` が両方停止し、`/slam_info` が `"info": "not init"` に戻った。LiDAR 生点群は 9.97Hz で流れ続けるので**気づきにくい**。バッテリ 77% / CPU 55% / 59℃ と余裕のある状態。`1801` 再送で完全復帰する。<br>**巡回時間の上限を決めてしまう問題**なので、時間依存か・無移動が条件か・負荷依存かを切り分ける必要がある。`tools/watch_slam_alive.sh` で計測中。<br>⚠️ **再起動すると odom 原点が現在地にリセットされる**ため `map→odom` が無効になり、`map_localizer.py`（局所探索）では追従できない。落ちたら §7 をやり直す運用になる |
 | U-16 | 上記②の odometry が**歩行中**も使える精度か（二足の上下動・旋回への耐性） | Phase 1 で teleop 歩行させながら計測する。ここが持てば Phase 2a の FAST-LIO 構築（A-6）を丸ごと省略できる | 実機のDDS上に `nav_msgs/Odometry` と点群地図を**標準ROS型**で配信する口があり、現在はサービス未起動でデータが流れていない。`slam_operate` API（純正方式トラック `Navigation/nav/` が使用、例: 1804 = 保存地図の読込＋自己位置設定）で起動して、①出力poseの座標系、②保存地図をどこに置くのか（`Navigation/nav3/README.md` は「`address` は PC1 のファイルシステムを指し、外部で作った地図の転送手段が不明」と記録）を確認する。**成立すれば Phase 2a の FAST-LIO 構築が不要になる可能性がある。** 詳細: [findings/g1_dds_sensors.md](findings/g1_dds_sensors.md) |
 
 ### 3.2 実機必須（Phase 0 / Phase 1 で確定）
@@ -930,6 +931,44 @@ Humble で起動しなかった件と同じ構図）。`use_sim_time` も追加�
 | ⑤ | Orin の CPU 負荷 | **U-14** |
 
 ⚠️ ①②は同じ場所・同じ Goal で比べないと意味が無いので、床に印を付ける。
+
+---
+
+---
+
+**A-10n. 実機での通し確認（2026-09-15、機体は歩かせず）**
+
+**§3〜§7 を実機で通した。** 機体は立位だが**上体が 19° 傾いた姿勢**（通常の立位は 3.81°）
+だったため、§5 の校正値と §7 の数値は捨て値。**配線の確認が目的**。
+
+| 段 | 結果 |
+|---|---|
+| 環境 | PC2 に pixi の Humble + navigation2 1.1.20。`g1_ws` 3パッケージ警告ゼロ |
+| §3 | `1801` → odom **9.985 Hz** ✅ |
+| §5 | 6ノード `active [3]` ✅ / `yaw +180.00°` ✅ / 自動校正の残差 **0.000°**（生センサー 19.45°） |
+| §6.1 | heartbeat **`alive`**（age 0.14s）。**D-31 の経路が実機で初通電** |
+| §6.2 | RViz に地図・点群・`base_link` が出た（§9 の①②は解消） |
+| §7 | 地図が room_a と一致（20cm以内 **97%**、中央値 5cm）。連続localization も `localized`/`採用` |
+| RMW | 点群は **FastDDS が安定**（9.98Hz）、CycloneDDS は 8.18Hz で最大遅れ 0.301s。**D-03 のままでよい** |
+
+### 🐛 当日なら止まっていた不具合 5 件
+
+| # | 不具合 | 対処 |
+|---|---|---|
+| ① | **`tools/g1_slam_odom_tf.py` に実行ビットが無く §5 が即死。** `install(PROGRAMS)` は正しいが `--symlink-install` だとソースの権限がそのまま出る | `chmod +x`（修正済み） |
+| ② | **launch が `--map-to-odom` / `--no-map-to-odom` を公開しておらず、§7 のどちらの分岐も実行不能** | launch 引数 `map_to_odom`（`"dx dy yaw"` / `none`）を追加（両分岐とも実機確認済み） |
+| ③ | **手順書 §5.3 の「この時点では STANDBY」が誤り。** `STANDBY→READY` は TF とセンサーの健全性だけで決まり、heartbeat は `enable_navigation` の瞬間にしか効かない | 手順書を修正。安全性は保たれている |
+| ④ | **§7 の「残差 yaw ±5° 以内」が実機では成り立たない。** `find_map_offset.py` は**絶対値の `map→odom`** を返す。さらに既定の ±20° 探索が**偽のピークを 99%（真値 97% より高スコア）で掴んだ** | 手順書を修正。`--yaw-range 180` 必須＋RViz 目視を判定に追加 |
+| ⑤ | **内蔵SLAM が 12〜17 分で勝手に止まる**（U-17） | `tools/watch_slam_alive.sh` を追加。落ちたら `1801` 再送＋§7 やり直し |
+
+📌 **`bridge_status` は `tf: stale` を正しく出したが、`message` は `READY` のままだった。**
+READY は一方通行で、後から TF が壊れても表示が変わらない。走り出しは
+`enable_navigation` 側で防がれるが、**画面上は正常に見える**ので手順書に注記した。
+
+📌 **LocalCostmap が機体の周囲を埋めた。** 5m以内の点の **71.7%** が障害物帯
+（z 0.05〜1.8m）に入り、死角半径は **0.04m**（正常は 0.91〜1.12m）。センサー自身の高さ
+（1.2〜1.3m）・水平距離 0.00m に 6,465 点の塊があり、**機体に密着した物**が原因。
+19° の傾きと同じ原因（支持具等）の可能性が高い。`tools/why_costmap.py` で切り分けた。
 
 ---
 

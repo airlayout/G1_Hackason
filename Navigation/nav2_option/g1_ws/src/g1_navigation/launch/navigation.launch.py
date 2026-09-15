@@ -109,13 +109,24 @@ def _launch_setup(context, *args, **kwargs):
         # 内蔵 SLAM の odom → odom→base_link TF / map→odom / base_link→livox_frame。
         # ⚠️ `--map-to-odom` を渡さないと map→odom は恒等変換になる。
         # 保存地図と合わせるには `tools/match_scan_to_map_2d.py` の結果を渡すこと。
+        odom_args = ["--lidar-frame", LaunchConfiguration("lidar_frame").perform(context),
+                     "--lidar-yaw", LaunchConfiguration("lidar_yaw").perform(context)]
+        # 手順書 §7 の2分岐。`none` は「map->odom を出さない」= map_localizer.py に任せる。
+        map_to_odom = LaunchConfiguration("map_to_odom").perform(context).strip()
+        if map_to_odom == "none":
+            odom_args.append("--no-map-to-odom")
+        else:
+            parts = map_to_odom.split()
+            if len(parts) != 3:
+                raise RuntimeError(
+                    f'map_to_odom は "dx dy yaw" の3つか `none`: {map_to_odom!r}')
+            odom_args += ["--map-to-odom", *parts]
         nodes.append(Node(
             package="g1_navigation",
             executable="g1_slam_odom_tf.py",
             name="g1_slam_odom_tf",
             output="screen",
-            arguments=["--lidar-frame", LaunchConfiguration("lidar_frame").perform(context),
-                       "--lidar-yaw", LaunchConfiguration("lidar_yaw").perform(context)],
+            arguments=odom_args,
             parameters=[{"use_sim_time": use_sim_time}],
         ))
     else:
@@ -220,5 +231,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "require_sensor", default_value="true",
             description="センサーの鮮度をREADYの条件にする(仕様書7章)。falseはベンチ試験専用"),
+        # ⚠️ ここが無いと、当日の手順書 §7 の**どちらの分岐も実行できない**
+        # (`g1_slam_odom_tf.py` は両オプションを持つのに launch が公開していなかった。
+        #  2026-09-15 に実機で気づいた)。
+        DeclareLaunchArgument(
+            "map_to_odom", default_value="0 0 0",
+            description="map->odom の初期値 \"dx dy yaw[rad]\"。find_map_offset.py の結果を渡す。"
+                        "`none` なら map->odom を配信しない(連続localization を併用するとき)"),
         OpaqueFunction(function=_launch_setup),
     ])

@@ -43,12 +43,21 @@
 
 PC2 で。**ROS 環境を source していない端末**で行う（D-07）。
 
+⚠️ **`ssh g1` でログインすると `ros:foxy(1) noetic(2) ?` と聞かれる**（`~/.bashrc` の
+fishros ブロック）。**そのまま Enter を押す。** `case` に既定節が無いので空なら何も
+source されない。`1` を選ぶと Foxy + CycloneDDS 0.10.2 + `LD_LIBRARY_PATH=/usr/local/lib`
+が入り、**D-06/D-07 が防ごうとしている汚染そのものが起きる**。
+
 ```bash
+echo "ROS_DISTRO=[$ROS_DISTRO]"                # → [] であること
 # 発進ゲートが閉じていることを確認する
 grep '^G1_ARM=' /etc/default/g1-sdk-bridge     # → G1_ARM=  (空であること)
 sudo systemctl start g1-sdk-bridge
 journalctl -u g1-sdk-bridge -n 20 --no-pager
 ```
+
+⚠️ **`sudo` はパスワードを聞かれる**（`unitree` は sudo グループだが NOPASSWD ではない）。
+配置がまだなら [../deploy/README.md](../deploy/README.md) の手順を先に実行する。
 
 ✅判定: `発進ゲートが閉じています(--arm 無し)` が出ている。
 `/run/g1_bridge/cmd.sock` と `state.sock` がある
@@ -74,6 +83,22 @@ ros2 topic hz /unitree/slam_mapping/odom     # → 約 9〜10 Hz
 📌 座位のままでも通る。終了時は `1901`（§8）。
 ⚠️ このスクリプトは **1801 と 1901 しか送れない**（D-29）。移動系 API は構造的に送れない
 
+### ⚠️⚠️ 内蔵SLAM は勝手に止まることがある（2026-09-15 実測）
+
+機体を立てたまま放置しただけで、**`1801` から 12〜17 分で odom と points が両方止まった**。
+`/slam_info` は `"info": "not init"` に戻る。LiDAR の生点群は 9.97Hz で流れ続けるので
+**気づきにくい**。バッテリ 77% / CPU 55% / 59℃ と余裕のある状態で起きた。原因は未特定。
+
+**`1801` を再送すれば完全に復帰する**（odom も TF も戻る）。巡回中は監視すること:
+
+```bash
+setsid nohup bash tools/watch_slam_alive.sh > /dev/null 2>&1 &   # 60秒ごとに /tmp/slam_watch.log
+```
+
+⚠️⚠️ **落ちたら §7 をやり直すこと。** 再起動すると **odom 原点が機体の現在地にリセット**
+されるため、§7 で求めた `map→odom` が無効になる。機体が 1801 を送った場所から動いて
+いれば、その移動量ぶん飛ぶ。`map_localizer.py` は局所探索なので窓を超えて追従できない。
+
 ---
 
 ## 4. 記録を開始する（Nav2 より先）
@@ -92,11 +117,22 @@ tools/record_nav2_run.sh --output runs/$(date +%Y%m%d_%H%M%S)_nav2
 
 ### 5.1 ⚠️ **機体を静止させたまま** launch する
 
+**PC2 で、pixi の Humble 環境から起動する**（D-30 の PC2 側実体。
+[../deploy/pc2_humble/](../deploy/pc2_humble/) 参照）。
+
 ```bash
-ros2 launch g1_navigation navigation.launch.py \
-    backend:=real \
-    map:=<room_a_map.yaml のパス>
+cd ~/g1_nav2/pc2_humble
+~/.pixi/bin/pixi run bash -lc '
+  source ~/g1_nav2/g1_ws/install/setup.bash
+  export ROS_DOMAIN_ID=0 RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+  ros2 launch g1_navigation navigation.launch.py \
+      backend:=real \
+      map:=<room_a_map.yaml のパス>'
 ```
+
+⚠️ **`RMW_IMPLEMENTATION` は必ず明示する**（A-10e の教訓）。点群は
+**FastDDS のほうが安定**（2026-09-15 実測: FastDDS 9.98Hz / CycloneDDS 8.18Hz、
+最大遅れ 0.301s）。RViz 側（`rviz_operate.sh`、既定 FastDDS）と揃うこと。
 
 ⚠️ **起動時の自動校正は静止状態で行う。** 歩行中に校正すると歩容の上下動を拾い、
 センサーの傾きを 11° 台と誤る（静止時の実測は 3.81°、A-10j）。
@@ -127,7 +163,16 @@ for n in map_server planner_server controller_server behavior_server bt_navigato
 ros2 topic echo /g1/bridge_status --once
 ```
 
-この時点では **`STANDBY`** のはず（heartbeat がまだ無いため）。
+この時点で **`READY`** になる。**`STANDBY` ではない**（2026-09-15 に実機で確認。
+以前この行は「heartbeat がまだ無いので STANDBY のはず」と書いていたが**誤り**だった）。
+
+`STANDBY→READY` のゲートは **TF とセンサーの健全性だけ**で決まる
+（`cmd_router_node.cpp:288-298`）。heartbeat が効くのは `enable_navigation` を
+叩いた瞬間（同 `:563`）なので、**heartbeat 無しで READY でも走り出せない**。
+
+⚠️ **`READY` でも `tf` / `sensor` の値は必ず見ること。** READY は一方通行で、
+後から TF が stale になっても **`READY` の表示は変わらない**（内蔵SLAM が落ちた
+ときに実際にそうなった。§3 の警告を参照）。
 
 ---
 
@@ -172,17 +217,32 @@ G1_DOMAIN_ID=<PC2と同じ> tools/rviz_operate.sh
 python3 tools/find_map_offset.py --yaw-range 180 --yaw-step 3
 ```
 
-✅判定: `20cm以内` が **80% 以上**。残差 yaw が **±5° 以内**
+⚠️ **`--yaw-range 180` は必須。** 既定の ±20° だと**偽のピークを掴む**。
+2026-09-15 の実機で、真値（yaw 159°、20cm以内 97%）に対し既定の探索が
+**yaw 3.0° を 99%（真値より高スコア）で返した**。スコアだけでは正誤を判別できない。
 
-出た `dx dy yaw` を控える。
+✅判定: `20cm以内` が **80% 以上**。かつ **RViz で自己位置が実際の位置と一致**していること
 
-- **連続 localization を使わない場合**: launch を止め、
-  `g1_slam_odom_tf.py --map-to-odom <dx> <dy> <yaw_rad>` を渡して再起動
-- **連続 localization を使う場合**（推奨）:
+⚠️ **「残差 yaw が ±5° 以内」は実機では成り立たない**（以前ここにあった判定は誤り）。
+このツールが返すのは**残差ではなく絶対値の `map→odom`** で、実機では odom 原点が
+機体の現在地なので **159° のような任意の値**になる。±5° になったのは、地図原点と
+odom 原点が一致していた B2 の bag 検証に固有の条件だった。
+**適用後に測り直しても同じ値が返るのが正常**（2026-09-15 に確認: 159° → 162°）。
+
+出た `dx dy yaw`（yaw は**度**。`--map-to-odom` に渡すときは**ラジアン**）を控える。
+
+- **連続 localization を使わない場合**: launch を止め、`map_to_odom` 引数を付けて上げ直す
+  ```bash
+  ros2 launch g1_navigation navigation.launch.py backend:=real map:=<地図> \
+      map_to_odom:="<dx> <dy> <yaw_rad>"
+  ```
+- **連続 localization を使う場合**（推奨）: launch を **`map_to_odom:=none`** で上げ、
   ```bash
   python3 tools/map_localizer.py --initial <dx> <dy> <yaw_rad>
   ```
-  かつ `g1_slam_odom_tf.py` 側は `--no-map-to-odom` にする
+
+⚠️ `map_to_odom` 引数は 2026-09-15 に追加した。**それ以前の launch にはこの引数が無く、
+`--map-to-odom` / `--no-map-to-odom` をどちらも渡せなかった**（実機で気づいた）。
 
 ```bash
 ros2 topic echo /g1/localizer_status --once
@@ -260,6 +320,8 @@ RViz の **「2D Goal Pose」**で、**1〜2m 先**を指定する。いきな�
 | **点群が反対向き** | `--lidar-yaw 180` が効いているか（§5.1） |
 | **自己位置が合わない** | §7 をやり直す。`find_map_offset.py` の `20cm以内` を見る |
 | **急に止まった** | `/g1/bridge_status` の `fault_reason`。`operator_lost` なら heartbeat が途絶えている |
+| **TF が消えた / planner が Extrapolation Error** | **内蔵SLAM が落ちている**。`ros2 topic hz /unitree/slam_mapping/odom` が無反応なら `1801` を再送し、**§7 をやり直す**（§3 の警告） |
+| **costmap が機体の周りを埋める** | 機体に密着した物・人・支持具。`tools/why_costmap.py` で方位と距離を出す。2026-09-15 は 5m以内の 71.7% が障害物帯に入り、死角半径が 0.04m（正常は 0.91〜1.12m）だった |
 | **FAULT から戻したい** | `ros2 service call /g1/clear_fault std_srvs/srv/Trigger {}` |
 | **E_STOP から戻したい** | `/g1/estop` に **false** を送ってから `/g1/clear_estop`（両方必要） |
 

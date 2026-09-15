@@ -34,6 +34,9 @@ docker run --rm --network host --ipc host \
 | `check_gravity_tf.py` | 重力を TF で変換し、`map←livox_frame` が重力整列しているかを検算する |
 | `grab_live_cloud.py` | 生点群を N スキャン取って `.npy` に落とす |
 | `grab_cloud_and_imu.py` | 点群と IMU 重力を同時に取る（水平化に使う） |
+| `fit_floor.py` | ↑ で取った点群に床平面を当て、**センサーの傾きと高さ**を出す。**立っているかの判定はこれで行う**（IMU の傾きだけでは全高が出ているか分からない）。立位の基準は 3.81° / 1.213m |
+| `why_costmap.py` | LocalCostmap が機体の周りを塗る理由を切り分ける。z のヒストグラムと方位分布を出し、「床の水平の狂い（全方位に一様）」と「近くの物や人（方位が偏る）」を区別する |
+| `watch_slam_alive.sh` | **内蔵SLAM の生存監視。** 60秒ごとに odom の有無を `/tmp/slam_watch.log` に記録する。2026-09-15 に**12〜17分で勝手に止まった**ため用意した |
 
 ### 計測（実機を動かす試験の記録側）
 
