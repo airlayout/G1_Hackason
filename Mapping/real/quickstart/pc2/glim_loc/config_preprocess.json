@@ -1,0 +1,19 @@
+{
+  /*** 前処理（屋内・UiS room v3）***
+  // distance_near_thresh は FAST-LIO の blind 0.5 に合わせる（自機の脚と胴を落とす）。
+  // far は部屋が 20 m 弱なので 40 m で足りる。
+  */
+  "preprocess": {
+    "distance_near_thresh": 0.5,
+    "distance_far_thresh": 40.0,
+    "use_random_grid_downsampling": true,
+    "downsample_resolution": 0.25,
+    "random_downsample_target": 10000,
+    "random_downsample_rate": 0.1,
+    "enable_outlier_removal": false,
+    "outlier_removal_k": 10,
+    "outlier_std_mul_factor": 1.0,
+    "k_correspondences": 30,
+    "num_threads": 2
+  }
+}

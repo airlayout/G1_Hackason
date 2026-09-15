@@ -1,0 +1,48 @@
+{
+  /*** GlobalMapping（建図）と Localization（事前地図測位）***
+  //
+  // ⚠️ **ブロックが 2 つ要る。**glim_ros.cpp は localization モードのとき
+  //    "localization" ブロックの so_name を読む（glim_ros.cpp:119）が、
+  //    LocalizationParams は GlobalMappingParams を継承しているので
+  //    **基底クラスが "global_mapping" ブロックを読む**（localization.cpp:95 の
+  //    LocalizationParams::LocalizationParams(): GlobalMappingParams()）。
+  //    片方だけ書くと、書かなかった側が既定値のまま静かに効く。
+  //
+  // map_path は run_glim_loc_live.sh が ROS パラメータで上書きする。
+  */
+  "global_mapping": {
+    "so_name": "libglobal_mapping.so",
+    "enable_imu": false,
+    "enable_optimization": true,
+    "init_pose_damping_scale": 1e10,
+    "create_between_factors": true,
+    "between_registration_type": "NONE",
+    "registration_error_factor_type": "VGICP",
+    "randomsampling_rate": 1.0,
+    "submap_voxel_resolution": 0.25,
+    "submap_voxelmap_levels": 2,
+    "submap_voxelmap_scaling_factor": 2.0,
+    "max_implicit_loop_distance": 20.0,
+    "min_implicit_loop_overlap": 0.2,
+    "use_isam2_dogleg": false,
+    "isam2_relinearize_skip": 1,
+    "isam2_relinearize_thresh": 0.1,
+    "enable_gps": false,
+    "gps_noise": 100
+  },
+
+  "localization": {
+    "so_name": "liblocalization.so",
+    "map_path": "",
+    "init_pose_damping_scale": 1.0,
+    "submap_voxelmap_levels": 3,
+    "max_localization_distance": 30.0,
+    "min_localization_overlap": 0.1,
+    "linear_search_window": 3.0,
+    "angular_search_window": 6.28,
+    "relocalization_factor_weight": 1e10,
+    "loc_between_factor_weight": 1e3,
+    "output_debug_factor_graph": "",
+    "num_keep_submaps": 20
+  }
+}

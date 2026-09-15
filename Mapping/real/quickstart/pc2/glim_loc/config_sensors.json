@@ -1,0 +1,27 @@
+{
+  /*** G1 のセンサ設定 ***
+  //
+  // T_lidar_imu: MID-360 の内蔵 IMU。unitree のドライバは LiDAR も IMU も
+  //   frame_id='livox_frame' で出しており、FAST-LIO の設定（fastlio_g1.yaml 60-61 行目）も
+  //   extrinsic_T/R を単位にしている。ここも単位で合わせる（食い違うと静かにずれる）。
+  //
+  // per-point time: 実測で **ナノ秒・フレーム先頭からの相対**
+  //   （field 'time' は float32、0 〜 100,320,000 = 0.1 s）。
+  //   autoconf に任せず明示する。間違えると deskew が静かに壊れる（落ちない）。
+  */
+  "sensors": {
+    "imu_acc_noise": 0.00615542885,
+    "imu_gyro_noise": 0.00634177393,
+    "imu_int_noise": 0.001,
+    "imu_bias_noise": 5.470215473115752e-04,
+
+    "global_shutter_lidar": false,
+    "T_lidar_imu": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+    "T_robot_imu":  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+
+    "autoconf_perpoint_times": false,
+    "autoconf_prefer_frame_time": false,
+    "perpoint_relative_time": true,
+    "perpoint_time_scale": 1e-9
+  }
+}

@@ -36,6 +36,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from eval_traj import read_static_tf, resample_hz, to_base_link  # noqa: E402
 from measure_overlay import Cdr, read_bag, read_map  # noqa: E402
 from tf_chain import resolve  # noqa: E402
 
@@ -91,6 +92,22 @@ def main() -> int:
     ap.add_argument("--fast", type=int, default=4, help="何倍速にするか（スキャンの間引き）")
     ap.add_argument("--mark", default=None, metavar="A:B", help="強調する区間 [s]")
     ap.add_argument("--zoom", type=float, default=0.8, help="拡大窓の半幅 [m]")
+    ap.add_argument("--traj", type=Path, default=None,
+                    help="推定の軌跡を別の bag から読む（再生の出力）。"
+                         "⚠️ 再生の出力に LiDAR を録り直すと 1 本 800 MB になるので、"
+                         "スキャンは元の記録から、軌跡だけこちらから読む")
+    ap.add_argument("--label", default=None, help="見出しに出す候補の名前")
+    ap.add_argument("--traj-frame", default="base_link", choices=("base_link", "livox"),
+                    help="livox = 軌跡が `map -> livox_frame`（**GLIM がこれ**）。"
+                         "掛け忘れるとスキャンに取付が**二重に**かかって絵だけ壊れる。"
+                         "⚠️ 2026-09-15 実測: 掛け忘れると GLIM の base_link が "
+                         "z +1.278 m・roll -178.8°（＝ LiDAR の取付そのもの）で入り、"
+                         "重畳が 85.5%% → 50.1%% に化ける")
+    ap.add_argument("--hz", type=float, default=10.0,
+                    help="推定の軌跡をこのレートへ揃えてから描く（0 = そのまま）。"
+                         "⚠️ 候補どうしで揃えないと見かけの速さが比べられない。"
+                         "MOLA の鎖は 10 Hz、AMCL の鎖は脚 odom の 140 Hz で出る"
+                         "（eval_traj.resample_hz の注記）")
     a = ap.parse_args()
 
     bag = a.run / "bag" if (a.run / "bag").is_dir() else a.run
@@ -99,7 +116,22 @@ def main() -> int:
     con = sqlite3.connect(f"file:{next(bag.glob('*.db3'))}?mode=ro", uri=True)
     tid = {n: i for i, n in con.execute("SELECT id,name FROM topics")}
 
-    est, desc = resolve(con, tid)
+    if a.traj is not None:
+        # ⚠️ **再生の出力は候補ごとに置き場が違う**（AMCL / FAST_LIO は `tf_bag/` の下、
+        #    GLIM は直下）。直下と `bag/` だけを見る実装は**黙って StopIteration で死ぬ**。
+        #    2026-09-15 に 4 本の動画を取りこぼした。再帰で探す。
+        tdb = next(iter(sorted(a.traj.rglob("*.db3"))), None)
+        if tdb is None:
+            print(f"⛔ {a.traj} に .db3 が無い")
+            return 3
+        tcon = sqlite3.connect(f"file:{tdb}?mode=ro", uri=True)
+        ttid = {n: i for i, n in tcon.execute("SELECT id,name FROM topics")}
+        est, desc = resolve(tcon, ttid)
+    else:
+        est, desc = resolve(con, tid)
+    if a.traj_frame == "livox":
+        est = to_base_link(est, read_static_tf(con, tid))
+    est = resample_hz(est, a.hz)
     if len(est) < 2:
         print(f"⛔ {desc}")
         return 3
@@ -151,8 +183,9 @@ def main() -> int:
     axm = fig.add_subplot(gs[0:2, 0])
     azi = fig.add_subplot(gs[2, 0])          # 拡大窓は独立させる（地図に重ねると読めない）
     ax1, ax2, ax3 = (fig.add_subplot(gs[i, 1]) for i in range(3))
-    fig.text(0.05, 0.955, f"{a.run.name} — 推定と脚 odom の突き合わせ",
-             fontsize=18, color=INK, weight="bold", va="center")
+    head = f"{a.run.name} — {a.label} と脚 odom の突き合わせ" if a.label else \
+           f"{a.run.name} — 推定と脚 odom の突き合わせ"
+    fig.text(0.05, 0.955, head, fontsize=18, color=INK, weight="bold", va="center")
     sub = fig.text(0.05, 0.915, "", fontsize=12, color=INK2, va="center")
 
     # ⚠️ **`-movflags +faststart` を必ず付ける。** 付けないと `moov` アトムが
@@ -173,7 +206,7 @@ def main() -> int:
             axm.clear()
             axm.scatter(MX, MY, s=1.6, c="#9aa5b4", marker=".", linewidths=0, zorder=1)
             axm.plot(xy[:k + 1, 0], xy[:k + 1, 1], "-", color=EST, lw=2.0,
-                     label="推定（map→base_link）", zorder=5)
+                     label=(a.label or "推定") + "（map→base_link）", zorder=5)
             if oxy is not None:
                 kk = int(np.argmin(np.abs(ot - now)))
                 axm.plot(oxy[:kk + 1, 0], oxy[:kk + 1, 1], "--", color=ODO, lw=1.7,

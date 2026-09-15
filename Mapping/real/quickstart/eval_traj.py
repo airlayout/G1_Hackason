@@ -138,6 +138,32 @@ def read_tf_chain(con, tid, parent="map", child="base_link") -> np.ndarray:
     return traj
 
 
+def resample_hz(traj: np.ndarray, hz: float) -> np.ndarray:
+    """軌跡を一定レートの格子へ落とす（各格子点に**最も近い標本**を 1 つ選ぶ）。
+
+    ## なぜ要るのか（2026-09-15）
+
+    **M3 と M4 はレートに依存する。** 見かけの速さは連続する 2 標本の差分なので、
+    10 Hz の MOLA は 100 ms 分を均してしまうが、AMCL の鎖は `odom -> base_link` の
+    レート（脚 odom を間引いた 200 Hz）で出るため、脚 odom の高周波の震えが
+    そのまま速さに乗る。**同じ物差しで比べるには揃えるしかない。**
+
+    ⚠️ 揃えないと 2 つの形で静かに壊れる:
+      1. `MIN_DT_S = 0.01` より細かい標本は `apparent_speed` が**全部捨てる**。
+         200 Hz（dt 0.005 s）だと速さの配列が空になり、**M3 が 0 % と出る**（合格に見える）。
+      2. `worst_window_median` は O(N^2) なので 5 万点で実質止まる。
+    """
+    if hz <= 0 or len(traj) < 2:
+        return traj
+    t = traj[:, 0]
+    if len(t) < 2 or (t[-1] - t[0]) * hz < 2:
+        return traj
+    grid = np.arange(t[0], t[-1] + 0.5 / hz, 1.0 / hz)
+    i = np.searchsorted(t, grid).clip(1, len(t) - 1)
+    idx = np.unique(np.where(grid - t[i - 1] < t[i] - grid, i - 1, i))
+    return traj[idx]
+
+
 def read_static_tf(con, tid, parent="base_link", child="livox_frame"):
     """(translation, quaternion) を返す。⚠️ (R, t) ではない（09-12 に読み違えた）。"""
     if "/tf_static" not in tid:
@@ -285,7 +311,7 @@ def evaluate(traj: np.ndarray, truth: dict, window: tuple[float, float]) -> dict
 
 
 def analyze_run(run_dir: Path, traj_specs: list[tuple[str, Path, str]],
-                window_arg: str) -> dict:
+                window_arg: str, traj_hz: float = 0.0) -> dict:
     con, tid = open_bag(run_dir)
     imu = read_imu(con, tid)
     odom = read_odom(con, tid)
@@ -361,7 +387,8 @@ def analyze_run(run_dir: Path, traj_specs: list[tuple[str, Path, str]],
         tf = read_tf_chain(con, tid)
         if len(tf) > 1:
             traj_specs = [("C0 bag内 /tf", None, "base_link")]
-            res["traj"]["C0 bag内 /tf"] = evaluate(tf, res["truth"], win)
+            res["traj"]["C0 bag内 /tf"] = evaluate(resample_hz(tf, traj_hz),
+                                                  res["truth"], win)
         else:
             res["traj"]["(bag に /tf が無い)"] = {"note": "推定が記録されていない"}
         return res
@@ -385,6 +412,8 @@ def analyze_run(run_dir: Path, traj_specs: list[tuple[str, Path, str]],
             traj = read_tum(path)
         if frame in ("livox", "livox_odom"):
             traj = to_base_link(traj, st, conjugate=(frame == "livox_odom"))
+        # ⚠️ 候補どうしを比べるときは必ずレートを揃える（resample_hz の注記を読むこと）
+        traj = resample_hz(traj, traj_hz)
         res["traj"][name] = evaluate(traj, res["truth"], win)
     return res
 
@@ -484,6 +513,10 @@ def main() -> None:
     ap.add_argument("--control", action="append", default=[], type=Path,
                     help="対照の記録。同じ指標・同じ窓の決め方にかけて並べる。"
                          "**歩行の記録を測るときは必ず良好な回を 1 本渡すこと**")
+    ap.add_argument("--traj-hz", type=float, default=0.0,
+                    help="軌跡をこのレートへ揃えてから測る（0 = そのまま）。"
+                         "**候補どうしを比べるときは必ず指定する**（既定の鎖のレートは"
+                         "候補ごとに 10 Hz 〜 200 Hz とばらばらで、M3/M4 はレート依存）")
     ap.add_argument("--json", type=Path)
     args = ap.parse_args()
 
@@ -494,7 +527,7 @@ def main() -> None:
 
     all_res = []
     for run in args.runs:
-        r = analyze_run(run, specs, args.window)
+        r = analyze_run(run, specs, args.window, args.traj_hz)
         all_res.append(r)
         print_run(r)
 
@@ -502,7 +535,7 @@ def main() -> None:
     # 09-14 に「4 本目は測位が崩れた」と 3 回誤診した入口が、対照を並べなかったこと
     # だった。良好な記録に同じ指標を当てれば、その場で誤用に気づける。
     for ctl in args.control:
-        c = analyze_run(ctl, specs, args.window)
+        c = analyze_run(ctl, specs, args.window, args.traj_hz)
         c["is_control"] = True
         all_res.append(c)
         print_run(c, tag="対照 ")

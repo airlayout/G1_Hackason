@@ -255,9 +255,16 @@ def main(argv=None) -> int:
                         "CDR の読み出しを疑うときだけ使う")
     p.add_argument("--livox-xyz", nargs=3, type=float, default=list(LIVOX_XYZ))
     p.add_argument("--livox-rpy-deg", nargs=3, type=float, default=list(LIVOX_RPY_DEG))
+    # ⚠️ **記録の再生で測るときは必ず付けること。** TF の打刻は `get_clock().now()` で
+    # 打っている（`/dog_odom` の打刻ではない）ので、既定の壁時計のままだと
+    # 2026-09-13 の打刻を持つ `/scan` と**2 日ずれる**。AMCL は lookup に失敗し、
+    # `map -> odom` を 1 度も出さないまま「動いているように見える」（落ちない）。
+    p.add_argument("--use-sim-time", action="store_true",
+                   help="`/clock`（`ros2 bag play --clock`）に乗る。再生で測るときは必須")
     args = p.parse_args(argv)
 
-    rclpy.init()
+    rclpy.init(args=[sys.argv[0], "--ros-args", "-p", "use_sim_time:=true"]
+               if args.use_sim_time else None)
     node = DogOdomToTf(args)
     try:
         spin_paced(node, args.rate)

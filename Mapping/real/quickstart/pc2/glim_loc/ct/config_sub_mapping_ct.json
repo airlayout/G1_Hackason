@@ -1,0 +1,23 @@
+{
+  /*** IMU 無しのときの SubMapping ***
+  //
+  // ⚠️ **libsub_mapping.so は IMU 無しでは使えない。**enable_imu:false にすると
+  //    キーフレーム同士を繋ぐ因子が IMU 因子しか無いので因子グラフが分断され、
+  //    "An inference algorithm was called with inconsistent arguments" で
+  //    サブマップの最適化が毎回例外を投げる（2026-09-15 実測）。
+  //    ⇒ 最適化をしない passthrough に差し替える。1 フレームずつサブマップにするので
+  //       測位の反応も速い（事前地図測位ではむしろこちらが素直）。
+  */
+  "sub_mapping": {
+    "so_name": "libsub_mapping_passthrough.so",
+    "keyframe_update_interval_rot": 0.01,
+    "keyframe_update_interval_trans": 0.1,
+    "max_num_keyframes": 10,
+    "max_num_voxels": -1,
+    "adaptive_max_num_voxels": 2.5,
+    "submap_voxel_resolution": 0.25,
+    "min_dist_in_voxel": 0.1,
+    "max_num_points_in_voxel": 100,
+    "submap_target_num_points": 50000
+  }
+}

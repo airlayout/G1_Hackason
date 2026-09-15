@@ -1,0 +1,24 @@
+{
+  /*** IMU 無しの記録を再生するための設定 ***
+  //
+  // ⚠️ **手元の静止記録（runs/_meas/B_amcl・runs/_boot/bag・runs/_boot/still）には
+  //    IMU が入っていない。**録ったトピックが /utlidar/cloud_livox_mid360 と /tf 系だけ。
+  //    GLIM の既定 odometry（libodometry_estimation_cpu.so）は IMU 必須なので起動しない。
+  //    ⇒ CT-ICP（libodometry_estimation_ct.so・requires_imu() == false）に差し替える。
+  //
+  // 相対パスは config_path からの相対で解決される（本家 liosam/walking/config.json と同じ書き方）。
+  // 差分は 2 ファイルだけ。残りは 1 つ上のディレクトリを共有する。
+  */
+  "global": {
+    "config_path": "",
+    "config_ros": "../config_ros.json",
+    "config_editor": "../config_editor.json",
+    "config_octomap": "../config_octomap.json",
+    "config_viewer": "../config_viewer.json",
+    "config_sensors": "../config_sensors.json",
+    "config_preprocess": "../config_preprocess.json",
+    "config_odometry": "../config_odometry_ct.json",
+    "config_sub_mapping": "config_sub_mapping_ct.json",
+    "config_global_mapping": "config_global_mapping_ct.json"
+  }
+}

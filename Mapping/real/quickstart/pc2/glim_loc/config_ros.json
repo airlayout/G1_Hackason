@@ -1,0 +1,63 @@
+{
+  /*** G1 の ROS 側設定 ***
+  //
+  // ⚠️ **points_frame_id / points_point_step は我々が足したパラメータである。**
+  //    G1 の /utlidar/cloud_livox_mid360 には frame_id='map' / point_step=48 の異物
+  //    （純正 SLAM の地図点群）が混ざる。5900 件中 229 件（3.9%）で実測。
+  //    この異物も x/y/z を持つので GLIM の extract_raw_points は**通してしまい**、
+  //    header.stamp=0 のまま TimeKeeper に入って静かに壊れる。
+  //    glim_ros.cpp の points_callback で両方を見て弾く（片方だけでは通り抜ける）。
+  //
+  // ⚠️ acc_scale は 9.80665。G1 の IMU は **g 単位**で出る（実測 |acc| = 1.0021）。
+  //    1.0 のままだと重力が 1/9.8 になり、IMU 積分が丸ごと壊れる。
+  //
+  // TF は "glim_map -> odom -> base_link" が出る。base_frame_id != imu_frame_id なので
+  // rviz_viewer は TF から livox_frame -> base_link を引く（run スクリプトが静的に出す）。
+  //
+  // ⚠️ **map_frame_id は "map" ではなく "glim_map"。**GLIM の事前地図は記録の最初の
+  //    IMU 姿勢（重力整列）が原点で、既存の floor0 系とは一致しない。既存の 2D 地図
+  //    （nav_map_*.yaml）・Nav2 の params・過去の実測は全部 floor0 系なので、
+  //    **GLIM の側に別名を与えて `map -> glim_map` の静的 TF で吸収する**。
+  //    変換は align_glim_to_map.py が両者の軌跡から求める（実測 RMSE 0.056 m）。
+  //    鎖: map -(静的)-> glim_map -(GLIM)-> odom -(GLIM)-> base_link
+  */
+  "glim_ros": {
+    "enable_local_mapping": true,
+    "enable_global_mapping": true,
+    "keep_raw_points": false,
+    "imu_time_offset": 0.0,
+    "points_time_offset": 0.0,
+    "acc_scale": 9.80665,
+
+    "imu_frame_id": "livox_frame",
+    "lidar_frame_id": "livox_frame",
+    "base_frame_id": "base_link",
+    "odom_frame_id": "odom",
+    "map_frame_id": "glim_map",
+    "publish_imu2lidar": false,
+    "publish_topic_odom": true,
+    "tf_time_offset": 1e-6,
+
+    "extension_modules": [
+      "librviz_viewer.so"
+    ],
+
+    "imu_topic": "/utlidar/imu_livox_mid360",
+    "points_topic": "/utlidar/cloud_livox_mid360",
+    "image_topic": "/__unused_image",
+    "wheel_topic": "/__unused_wheel",
+    "gps_topic": "/__unused_gps",
+
+    "points_frame_id": "livox_frame",
+    "points_point_step": 22,
+
+    "playback_speed": 0.0,
+    "rviz_random_sampling_rate": 0.2
+  },
+
+  "localization": {
+    "extension_modules": [
+      "librviz_viewer.so"
+    ]
+  }
+}
