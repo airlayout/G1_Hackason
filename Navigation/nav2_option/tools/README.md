@@ -36,7 +36,10 @@ docker run --rm --network host --ipc host \
 | `grab_cloud_and_imu.py` | 点群と IMU 重力を同時に取る（水平化に使う） |
 | `fit_floor.py` | ↑ で取った点群に床平面を当て、**センサーの傾きと高さ**を出す。**立っているかの判定はこれで行う**（IMU の傾きだけでは全高が出ているか分からない）。立位の基準は 3.81° / 1.213m |
 | `why_costmap.py` | LocalCostmap が機体の周りを塗る理由を切り分ける。z のヒストグラムと方位分布を出し、「床の水平の狂い（全方位に一様）」と「近くの物や人（方位が偏る）」を区別する |
-| `watch_slam_alive.sh` | **内蔵SLAM の生存監視。** 60秒ごとに odom の有無を `/tmp/slam_watch.log` に記録する。2026-09-15 に**12〜17分で勝手に止まった**ため用意した |
+| `watch_slam_alive.sh` | **内蔵SLAM の生存監視。** 60秒ごとに odom の有無を `/tmp/slam_watch.log` に記録する。2026-09-15 に**約16分で勝手に止まる**ことが分かったため用意した（3回とも 941〜1022 秒） |
+| `count_costmap.py` | LocalCostmap の lethal セルを距離帯ごとに数える。**footprint の内側に lethal があると Nav2 は経路を出せない**ので、Goal を送る前の判定に使う |
+| `hb_stability.sh` | heartbeat の `operator_heartbeat_age_s` を集計する。**その網で `operator_timeout_s` が足りるか**を決めるための道具（Q12） |
+| `make_fastdds_peers.sh` | マルチキャストが通らない網（スマホのテザリング等）向けに FastDDS の initial peers 設定を作る。⚠️ **マルチキャストアドレスも peer に入れること**（入れないと機体が見えなくなる） |
 
 ### 計測（実機を動かす試験の記録側）
 

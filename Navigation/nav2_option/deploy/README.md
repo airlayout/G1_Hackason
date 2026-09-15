@@ -102,9 +102,20 @@ ROS 側をホストでネイティブに動かす場合は、`cmd_sock_path` / `
 - **発進ゲート閉のまま手起動しても正しく動く**ことを確認した
   （`SDK送信 0 件 / ゲートで停止 N 件`、ソケット生成 OK、`User=unitree` で `eth0` に届く）
 
+## systemd ユニットも実機で通った（2026-09-15）
+
+- `systemctl start/restart` で起動し、`RuntimeDirectory=` が `/run/g1_bridge/` に
+  ソケットを作ることを確認した。`User=unitree` で `eth0` に届く
+- **`restart` でソケットが作り直されても、ROS 側は自動で再接続する**
+  （`SDK側プロセスに接続した: /run/g1_bridge/cmd.sock`）
+- ⚠️ **ROS 側は既定で `/tmp/g1_bridge` を見る。** ユニットは `/run/g1_bridge` を使うので、
+  ROS をホストでネイティブに動かす本構成では launch 引数 `bridge_sock_dir` で
+  合わせること（既定を `/run/g1_bridge` にした）。合わせないと `DISCONNECTED` のまま
+- ⚠️ **systemd 版と手起動版が二重に立つ事故を踏んだ。** arm する前に
+  `pgrep -af g1_sdk_bridge_real_server` で**1本だけ**であることを確認する
+- ⚠️ **サービスは `enable` していない。** バッテリ交換等で PC2 が再起動すると
+  起動しない（`/etc/default` の `G1_ARM=--arm` は残るが自動起動はしないので安全側）
+
 ## 未確認
 
-⚠️ **systemd ユニット経由での起動は未検証**（2026-09-15 時点）。上記の確認は
-実行ファイルを手起動して行った。ユニットファイルの構文は `systemd-analyze verify`
-で検証済みだが、`RuntimeDirectory=` によるソケット生成と `UnsetEnvironment=` の
-効き目は実機で未確認。
+⚠️ `UnsetEnvironment=` の効き目は実機で未確認。

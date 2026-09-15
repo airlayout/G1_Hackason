@@ -25,9 +25,15 @@ controller_server:
     controller_plugins: ["FollowPath"]
 
     progress_checker:
-      plugin: "nav2_controller::SimpleProgressChecker"
+      # ⚠️ **SimpleProgressChecker は並進しか見ない。** その場旋回中は並進ゼロなので、
+      # 旋回が 10 秒で終わらないと「進んでいない」と判定して abort する
+      # (2026-09-15 実機でこれを踏んだ。G1 の旋回は指令の約1/3しか出ないので
+      #  60°回るだけでも 10 秒では足りない)。
+      # PoseProgressChecker なら**角度の進捗も進捗として数える**。
+      plugin: "nav2_controller::PoseProgressChecker"
       required_movement_radius: 0.05
-      movement_time_allowance: 10.0
+      required_movement_angle: 0.10   # 約5.7°。これだけ回れば「進んでいる」と見なす
+      movement_time_allowance: 20.0   # 旋回の遅さを見込んで 10 → 20 秒
 
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
@@ -62,7 +68,22 @@ controller_server:
       regulated_linear_scaling_min_speed: 0.25
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.785
-      max_angular_accel: 0.40  # D-16のmax_awz相当(仮値)
+      # ⚠️⚠️ **0.40 だと機体が永久に回り出せない**(2026-09-15 実機で判明)。
+      #
+      # RPP の rotate-to-heading は **実測角速度(odom)を基準に**加速度制限をかける:
+      #     指令 = 実測 + max_angular_accel × dt = 0 + 0.40 × 0.05 = **0.02 rad/s**
+      # G1 は 0.02 rad/s では歩容が成立しないので回らない → 実測は 0 のまま →
+      # 次の周期もまた 0.02、という**デッドロック**になる。
+      # 実測: wz=-0.02 が 2,363 周期続き、機体は 4mm も動かなかった。
+      # その結果 SimpleProgressChecker(5cm/10秒)が**きっかり 10 秒ごとに abort** し、
+      # 復帰動作 → 指令途切れ → cmd_timeout → FAULT、を繰り返した。
+      #
+      # 「加速度制限」と「最小作動閾値を持つ二足」の**構造的な非互換**なので、
+      # 1 周期ぶんの増分が歩容の閾値を超えるように上げる。
+      # 実測で omega=0.3 は回る(U-11)ので 0.3 × 20Hz = 6.0 を下限の目安にした。
+      # 加速の滑らかさは機体側の歩行コントローラが持っているので、ここで絞る意味は薄い。
+      # ⚠️ **未検証**(この値で実機を動かす前に接続が切れた)。次回まずこれを試すこと。
+      max_angular_accel: 6.0
       max_robot_pose_search_dist: 5.0
 
 # D-21: Local costmapは3D点群ベース(voxel_layer)。2D /scan はGlobal専用にする
@@ -89,6 +110,13 @@ local_costmap:
         z_voxels: 16  # nav2_costmap_2dのVoxelGrid実装上の上限(16)。max_obstacle_height=1.8mに対し0.1125m/voxel相当
         max_obstacle_height: 1.8
         mark_threshold: 0
+        # ⚠️ **機体自身の脚を障害物として立ててしまうので必須**(2026-09-15 実機)。
+        # センサーは高さ 1.213m にあるので、水平 0.24m の自分の足でも
+        # 3次元距離は 1.22m あり obstacle_min_range(0.9) を通り抜ける。
+        # さらに**死角(半径約1m)の中はレイが通らないのでクリアリングも効かず**、
+        # 一度立つと消えない。footprint 内を毎周期クリアすることで構造的に防ぐ。
+        # (clear_entirely_local_costmap を叩いても毎周期立て直されることを実機で確認)
+        footprint_clearing_enabled: true
         observation_sources: "pointcloud"
         pointcloud:
           # ⚠️ **実機のトピック名を正とする。** G1 内蔵の MID-360 がこの名前で出す
@@ -101,8 +129,17 @@ local_costmap:
           min_obstacle_height: 0.05
           max_obstacle_height: 1.8
           obstacle_max_range: 5.0
-          obstacle_min_range: 0.0
+          # ⚠️ **0.0 だと機体自身や装着物の反射を障害物として立ててしまう**
+          # (2026-09-15 実機: 5m以内の点の 77% が障害物帯に入り、LocalCostmap が
+          #  機体の周囲を完全に囲んだ。死角半径が 0.07m ＝ ほぼゼロ距離の反射が
+          #  1.2〜1.3m の高さ＝センサーと同じ高さに 6,500 点あった)。
+          # MID-360 の死角は半径 0.91〜1.12m(U-09)なので、**それより近い反射は
+          # 原理的に環境の反射ではない**。構造的に除外する。
+          # 代償: 0.9m より近い実在の障害物は「新たには」立たなくなる。ただし
+          # 元々見えない距離であり、遠くで立った格子は rolling window に残る。
+          obstacle_min_range: 0.9
           raytrace_max_range: 5.5
+          # クリアリングは 0 のままにする。近距離の誤検出を消す働きがあるため
           raytrace_min_range: 0.0
           clearing: true
           marking: true
@@ -180,6 +217,19 @@ planner_server:
 behavior_server:
   ros__parameters:
     use_sim_time: false
+    # ⚠️ **`backup` を外してはいけない**(2026-09-15 実機で踏んだ)。
+    # 既定の behavior tree(navigate_*_w_replanning_and_recovery.xml)が backup の
+    # アクションサーバを前提にしており、リストから外すと bt_navigator が
+    # 「Action server backup not available」で起動に失敗し、lifecycle_manager が
+    # bringup ごと中断する。
+    #
+    # ⚠️ **ただし後退そのものは未検証の動作である。** 経路追従に詰まると Nav2 は
+    # 人の合図なしに後退する。後退方向の停止距離も歩容の成立性も実測していない。
+    # 救いは既定の BT が backup_speed=0.05 m/s を渡すことで、これは歩容の成立下限
+    # (0.1〜0.2 m/s、U-12)を下回るため**物理的にはほぼ動かない**。
+    # 塞ぐなら、backup を含まない BT XML を本パッケージに置いて
+    # bt_navigator の default_nav_to_pose_bt_xml / default_nav_through_poses_bt_xml
+    # で差し替えること。**プラグインリストだけ削っても動かない。**
     behavior_plugins: ["spin", "backup", "wait"]
     spin:
       plugin: "nav2_behaviors/Spin"

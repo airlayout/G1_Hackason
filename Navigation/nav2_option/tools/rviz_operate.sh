@@ -64,6 +64,17 @@ echo "[rviz] 設定: $CONFIG"
 TTY_ARGS=()
 [ -t 0 ] && [ -t 1 ] && TTY_ARGS=(-it)
 
+# マルチキャストが通らない網(スマホのテザリング等)では DDS の discovery が成立せず、
+# **RViz に何も映らない**(2026-09-15 実機。ping は通るのにトピックが 2 件しか見えない)。
+# tools/make_fastdds_peers.sh で相手の IP を名指しした設定を作っておくと、ここで渡す。
+PEERS_XML="${G1_FASTDDS_PEERS:-/tmp/fastdds_peers.xml}"
+PEER_ARGS=()
+if [ -f "$PEERS_XML" ]; then
+    PEER_ARGS=(-v "$PEERS_XML:/cfg/fastdds_peers.xml:ro"
+               -e FASTRTPS_DEFAULT_PROFILES_FILE=/cfg/fastdds_peers.xml)
+    echo "[rviz] initial peers を使う: $PEERS_XML"
+fi
+
 # --network host: DDS の discovery をホストのネットワークで行う(PC2 と同じ L2 に居る前提)
 docker run --rm "${TTY_ARGS[@]}" --name "$NAME" \
     --network host --ipc host \
@@ -72,6 +83,7 @@ docker run --rm "${TTY_ARGS[@]}" --name "$NAME" \
     -e LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}" \
     -e RMW_IMPLEMENTATION="$RMW" \
     -e ROS_DOMAIN_ID="$DOMAIN" \
+    "${PEER_ARGS[@]}" \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     -v "$CONFIG:/cfg/nav2_operate.rviz:ro" \
     "$IMAGE" \

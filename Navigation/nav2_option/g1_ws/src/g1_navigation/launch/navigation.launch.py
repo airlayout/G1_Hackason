@@ -144,12 +144,19 @@ def _launch_setup(context, *args, **kwargs):
         ))
 
     # --- SDK 側との橋渡し -----------------------------------------------------
+    # ⚠️ **ソケットの置き場は systemd ユニット(D-07)が /run/g1_bridge を指定している。**
+    # 実行ファイルの既定は /tmp/g1_bridge なので、ROS 側をホストでネイティブに
+    # (＝コンテナの bind mount 無しで)動かす本構成では、**明示的に合わせないと
+    # 繋がらない**。2026-09-15 に、systemd 版と手起動版の2本が立っていて ROS 側が
+    # 手起動版に繋がっていた事故を踏んだ。arm する前は必ず1本にすること。
+    sock_dir = LaunchConfiguration("bridge_sock_dir").perform(context).rstrip("/")
     nodes.append(Node(
         package="g1_state_bridge",
         executable="g1_state_bridge_node",
         name="g1_state_bridge",
         # 実機では TF を止め、/odom を改名して衝突を避ける(冒頭のコメント参照)
-        parameters=[{"publish_tf": not is_real, "use_sim_time": use_sim_time}],
+        parameters=[{"publish_tf": not is_real, "use_sim_time": use_sim_time,
+                     "state_sock_path": f"{sock_dir}/state.sock"}],
         remappings=[("/odom", "/g1/sdk_odom")] if is_real else [],
     ))
     nodes.append(Node(
@@ -165,6 +172,7 @@ def _launch_setup(context, *args, **kwargs):
             # 鮮度監視の対象も backend に合わせる(見ていないトピックを監視しても無意味)
             "sensor_topic": sensor_topic,
             "use_sim_time": use_sim_time,
+            "cmd_sock_path": f"{sock_dir}/cmd.sock",
         }],
     ))
 
@@ -236,6 +244,11 @@ def generate_launch_description():
         # ⚠️ ここが無いと、当日の手順書 §7 の**どちらの分岐も実行できない**
         # (`g1_slam_odom_tf.py` は両オプションを持つのに launch が公開していなかった。
         #  2026-09-15 に実機で気づいた)。
+        # systemd ユニット(deploy/g1-sdk-bridge.service)が RuntimeDirectory= で
+        # /run/g1_bridge に作る。手起動で実行ファイルの既定を使う場合だけ /tmp/g1_bridge。
+        DeclareLaunchArgument(
+            "bridge_sock_dir", default_value="/run/g1_bridge",
+            description="SDK側プロセスの Unix socket の置き場。systemd 運用なら既定のまま"),
         DeclareLaunchArgument(
             "map_to_odom", default_value="0 0 0",
             description="map->odom の初期値 \"dx dy yaw[rad]\"。find_map_offset.py の結果を渡す。"
