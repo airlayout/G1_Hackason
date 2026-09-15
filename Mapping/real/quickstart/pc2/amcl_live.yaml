@@ -1,0 +1,102 @@
+# **Nav2 標準の AMCL で事前地図測位を出す**（PC2・live）。2026-09-15。
+#
+# ## なぜ MOLA-LO をやめるのか
+#
+# 2026-09-15 の実測: 機体が**立ったまま静止**しているのに MOLA の推定が
+# 8.4 秒で 0.527 m 滑った。そのとき PC2 の load average は 8 コアで **8.01**（飽和）で、
+# MOLA 単体が 253% CPU を食っていた（`sigma-is-not-the-cause-cpu-contention-is`：
+# 再生では何をしても壊れず、負荷 3 本で再現する）。
+# AMCL は 2D パーティクルフィルタで、**更新は機体が動いたときだけ**走る。
+# 構造的に 1〜2 桁軽い。
+#
+# ## この設定が前提にしているもの
+#
+#   map -> odom        AMCL（このファイル）
+#   odom -> base_link  `dog_odom_to_tf.py`（`/dog_odom` を 2D に潰して詰め替える）
+#   base_link -> livox_frame  同上（静的）
+#   /scan              `cloud_to_scan.py`（3D 点群を base_link 系の帯で切る）
+#
+# ⚠️ **MOLA は起こさない。** 起こすと `map -> base_link` と衝突して base_link の親が
+# 2 つになる。
+#
+# ## 値の根拠
+#
+# - `laser_model_type: likelihood_field`
+#   **地図の方が濃くても罰しないモデルだから。** 2D 地図 `nav_map_run` は床上
+#   0.23〜1.80 m の帯で焼いてある（`pcd_to_occupancy.py` の `OBSTACLE_BAND`）のに対し、
+#   `/scan` は壁の高さ 1.30〜1.80 m しか見ない。likelihood_field は
+#   「スキャン点が地図の占有セルの近くにあるか」だけを見るので、
+#   地図にあってスキャンに無いもの（机・椅子）は減点されない。
+#   ⚠️ `beam` にすると自由空間の食い違いを罰するのでこの非対称が効いてしまう。
+# - `laser_max_range: 20.0` は `cloud_to_scan.py --range-max` と**同じ値**にすること。
+#   食い違うと AMCL が端のビームを黙って捨てる。
+# - `max_beams: 180`。⚠️ 既定の 60 では足りない。逆さ付けの MID-360 は水平より上が
+#   7° しか無く、帯 1.30〜1.80 m は細い円錐でしか拾えないので **720 ビンの多くが inf** になる。
+#   inf のビームは likelihood_field が読み飛ばすため、間引きすぎると有効ビームが数本になる。
+# - `robot_model_type: OmniMotionModel`。G1 は横移動できる（実測 ±0.4 m/s）。
+#   差動 2 輪用の `DifferentialMotionModel` だと横滑りを全部ノイズとして扱う。
+# - `update_min_d/a` は **静止中に更新を走らせない**ための値。静止していれば AMCL は
+#   直近の `map -> odom` を打ち直すだけで、パーティクルを触らない。
+# - `initial_pose` は 2026-09-15 の大域探索が出した値
+#   （x 0.703 / y 12.966 / yaw -57.5 deg = -1.0035643 rad）。
+#   ⚠️ **地図の datum を焼いた値ではない。** 機体を動かしたら必ず取り直すこと。
+
+amcl:
+  ros__parameters:
+    use_sim_time: false
+
+    # ── 座標系 ─────────────────────────────────────────────────────
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    global_frame_id: "map"
+    scan_topic: "scan"
+    map_topic: "map"
+    tf_broadcast: true
+    transform_tolerance: 1.0
+
+    # ── 観測モデル ─────────────────────────────────────────────────
+    laser_model_type: "likelihood_field"
+    laser_likelihood_max_dist: 2.0
+    laser_min_range: 0.4
+    laser_max_range: 20.0
+    max_beams: 180
+    sigma_hit: 0.2
+    z_hit: 0.5
+    z_max: 0.05
+    z_rand: 0.5
+    z_short: 0.05
+    lambda_short: 0.1
+    do_beamskip: false
+    beam_skip_distance: 0.5
+    beam_skip_error_threshold: 0.9
+    beam_skip_threshold: 0.3
+
+    # ── 運動モデル ─────────────────────────────────────────────────
+    robot_model_type: "nav2_amcl::OmniMotionModel"
+    alpha1: 0.2      # 回転から生じる回転の誤差
+    alpha2: 0.2      # 並進から生じる回転の誤差
+    alpha3: 0.2      # 並進から生じる並進の誤差
+    alpha4: 0.2      # 回転から生じる並進の誤差
+    alpha5: 0.2      # 横滑り（Omni のみ）
+
+    # ── パーティクル ───────────────────────────────────────────────
+    min_particles: 500
+    max_particles: 2000
+    pf_err: 0.05
+    pf_z: 0.99
+    resample_interval: 1
+    recovery_alpha_slow: 0.0
+    recovery_alpha_fast: 0.0
+    update_min_d: 0.20
+    update_min_a: 0.20
+    save_pose_rate: 0.5
+
+    # ── 初期姿勢 ───────────────────────────────────────────────────
+    set_initial_pose: true
+    always_reset_initial_pose: false
+    first_map_only: false
+    initial_pose:
+      x: 0.703
+      y: 12.966
+      z: 0.0
+      yaw: -1.0035643

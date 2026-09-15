@@ -1,0 +1,89 @@
+#!/bin/sh
+# NetworkManager dispatcher: AP が上がるたびに
+# 「有線 LAN(192.168.123.0/24) → 無線クライアント(10.42.0.0/24)」向きの
+# **filter の許可**と **NAT(送信元書き換え)** を入れ直す。
+#
+# ## なぜ 2 本要るのか（2026-09-14 実測 / 2026-09-15 恒久化）
+#
+# 1. 行きが reject される。
+#    NetworkManager の `shared` モードは AP を上げるたび nm-sh-fw-<dev> チェーンを
+#    作り直す。その既定は「クライアントの外向き」と「その戻り(ct related,established)」
+#    だけを通し、**LAN 側からの新規接続を reject する**。
+#    実測: 入れる前は ping 10 発がそのまま reject のカウンタに吸い込まれた（1 → 11）。
+#
+# 2. 戻りが機体の内部スイッチへ消える。
+#    PC2 の eth0 は機体内部のスイッチ（PC1 .161 / LiDAR .120）に繋がったままで、
+#    その内部網も 192.168.123.0/24。Mac は 192.168.123.202 なので機体は
+#    `ip route get 192.168.123.202 → dev eth0` と判断し、返事を内部へ投げる。
+#    ⛔ 機体側の経路を触ってはいけない（PC1 と LiDAR への通信が壊れる）。
+#    ⇒ AP 側で送信元を 10.42.0.1 に書き換える（masquerade）。
+#    確認: 機体で `echo $SSH_CLIENT` が 10.42.0.1 になっていれば効いている。
+#
+# ⚠️ NM の shared モードは filter だけでなく **ip nat テーブルも作り直す**ので、
+#    NAT 側も dispatcher で入れ直す必要がある。
+#
+# 設置: sudo install -m 755 ~/50-g1teleop-forward /etc/NetworkManager/dispatcher.d/
+# 撤去: sudo rm /etc/NetworkManager/dispatcher.d/50-g1teleop-forward
+IFACE="$1"; ACTION="$2"
+AP_DEV="wlp128s20f3"; LAN_DEV="enp129s0"
+SUBNET="10.42.0.0/24"; LAN_SUBNET="192.168.123.0/24"
+CONTAINER_IP="192.168.123.201"   # Mac のコンテナ（colima の col0）
+CHAIN="nm-sh-fw-${AP_DEV}"
+
+[ "$IFACE" = "$AP_DEV" ] || exit 0
+case "$ACTION" in up|dhcp4-change) ;; *) exit 0 ;; esac
+
+# ⚠️ NM がチェーンを作る前に入れると消える。出来るまで待つ
+i=0
+while [ "$i" -lt 20 ]; do
+    nft list chain ip filter "$CHAIN" >/dev/null 2>&1 && break
+    sleep 0.5; i=$((i+1))
+done
+
+# --- (1) filter: LAN → 無線クライアント の新規接続を通す ---
+if nft list chain ip filter "$CHAIN" >/dev/null 2>&1; then
+    if ! nft list chain ip filter "$CHAIN" 2>/dev/null \
+         | grep -q "iifname \"${LAN_DEV}\" oifname \"${AP_DEV}\""; then
+        nft insert rule ip filter "$CHAIN" \
+            iifname "$LAN_DEV" oifname "$AP_DEV" ip daddr "$SUBNET" counter accept
+    fi
+fi
+
+# --- (2) NAT: LAN → 無線クライアント の送信元を AP(10.42.0.1) に書き換える ---
+i=0
+while [ "$i" -lt 20 ]; do
+    nft list chain ip nat POSTROUTING >/dev/null 2>&1 && break
+    sleep 0.5; i=$((i+1))
+done
+nft list chain ip nat POSTROUTING >/dev/null 2>&1 || exit 0
+
+if nft list chain ip nat POSTROUTING 2>/dev/null \
+     | grep -q "ip saddr ${LAN_SUBNET} ip daddr ${SUBNET}"; then
+    exit 0
+fi
+
+nft insert rule ip nat POSTROUTING \
+    ip saddr "$LAN_SUBNET" ip daddr "$SUBNET" oifname "$AP_DEV" counter masquerade
+
+# --- (3) NAT の例外: コンテナ(192.168.123.201)だけは送信元を書き換えない ---
+#
+# ## なぜ要るのか（2026-09-15 実測）
+#
+# Mac のコンテナ（colima の col0 = 192.168.123.201）から PC2 を触るとき、
+# masquerade されると PC2 からは 10.42.0.1 に見える。HTTP や scp なら conntrack で
+# 戻るので困らないが、**送信元を保った方が素直**で、PC2 側に
+# `192.168.123.201/32 via 10.42.0.1 dev wlan0` のホスト経路があれば直接戻れる。
+#
+# ⚠️ **この例外は PC2 側のホスト経路とセットでないと通信が片道で死ぬ。**
+#    PC2 側（要 root・再起動で消える）:
+#        sudo ip route add 192.168.123.201/32 via 10.42.0.1 dev wlan0
+#
+# ⚠️ **DDS をこれで通そうとしても駄目だった**（2026-09-15）。PC2 の CycloneDDS を
+#    eth0 + wlan0 の 2 NIC にすると**同一ホスト内の探索まで壊れる**。
+#    さらに RViz2 が要る点群は 4.4 MB/s で、AP（2.4 GHz 20 MHz・実効 ~3 MB/s）では
+#    そもそも運べない。**AP 越しの可視化は購読を絞れる foxglove_bridge 側で行うこと。**
+if ! nft list chain ip nat POSTROUTING 2>/dev/null \
+     | grep -q "ip saddr ${CONTAINER_IP} ip daddr ${SUBNET}"; then
+    nft insert rule ip nat POSTROUTING \
+        ip saddr "$CONTAINER_IP" ip daddr "$SUBNET" oifname "$AP_DEV" counter return
+fi

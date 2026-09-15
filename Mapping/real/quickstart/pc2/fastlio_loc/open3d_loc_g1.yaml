@@ -1,0 +1,43 @@
+# open3d_loc（C5 の外側＝事前地図に対する測位）の設定。
+#
+# 値は **出荷時の G1 用 launch（open3d_loc/launch/open3d_loc_g1.launch.py）と同じ**にしてある。
+# ベンダが G1 で使っている値なので、まずここから動かさない。
+#
+# ⚠️ ノード名は実体が `global_loc_node`、出荷時 launch は `name=global_localization_node` で
+#    改名している。直接起動するので `/**:` にして名前に依存しないようにする。
+#
+# ⚠️ `initialpose` はここに**書かない**。run_fastlio_loc_live.sh が
+#    `--ros-args -p initialpose:=[...]` で渡す。理由は下記。
+#
+#    initialpose は名前に反して **T_map_odom（odom 原点の map 内での姿勢）**である
+#    （global_localization.cpp:775 `mat_odom2map_ = mat_initialpose_;`）。
+#    base_link の姿勢ではない。FAST-LIO の camera_init は重力整列されない
+#    （IMU_Processing.hpp:195 の整列行はコメントアウト）ので t=0 で odom ≡ livox_frame、
+#    したがって
+#        initialpose = T_map_baselink(t0) · (base_link -> livox_frame)
+#    になる。さらに角度の規約が **Rx·Ry·Rz**（global_localization.cpp:425〜433）で
+#    ROS の rpy（Rz·Ry·Rx）とは**別物**。この 2 つの変換をスクリプトにやらせる。
+/**:
+  ros__parameters:
+    pcd_queue_maxsize: 10
+    voxelsize_coarse: 0.01
+    voxelsize_fine: 0.2          # ICP のしきい値は voxelsize_fine*2 = 0.4 m
+    threshold_fitness: 0.5       # 通常時の採用ゲート
+    threshold_fitness_init: 0.5  # 初期化時の採用ゲート
+    loc_frequence: 2.5           # 地図への位置合わせは 2.5 Hz（別スレッド）
+    save_scan: false
+    hidden_removal: false
+    maxpoints_source: 80000
+    maxpoints_target: 400000
+    filter_odom2map: false
+    kalman_processVar2: 0.001
+    kalman_estimatedMeasVar2: 0.02
+    confidence_loc_th: 0.7
+    dis_updatemap: 3.5           # 3.5 m 動いたら submap を取り直す
+    use_sim_time: false
+
+    # baselink2map のカルマン。出荷時の loc_param_g1.yaml と同じ
+    kf_baselink2map:
+      x: [0.001, 0.002]
+      y: [0.001, 0.005]
+      z: [0.00001, 0.04]

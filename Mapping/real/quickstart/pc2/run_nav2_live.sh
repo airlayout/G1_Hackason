@@ -41,7 +41,14 @@ say() { echo "[nav2] $*"; }
 # shellcheck source=/dev/null
 . "$JAMMY/env.sh"
 export ROS_DOMAIN_ID="$DOMAIN"
-export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$DDS_NIC\" priority=\"default\" multicast=\"default\"/></Interfaces></General></Domain></CycloneDDS>"
+# ⚠️ **NIC を 2 つにしたいときは `G1_PC2_DDS_URI` で丸ごと差し替える。**（2026-09-15）
+#    eth0 だけだと participant の locator が 192.168.123.164 になり、AP 越しの
+#    コンテナ（192.168.123.201）からは DDS が見えない。wlan0 も列挙すると見える。
+if [ -n "${G1_PC2_DDS_URI:-}" ]; then
+    export CYCLONEDDS_URI="$G1_PC2_DDS_URI"
+else
+    export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$DDS_NIC\" priority=\"default\" multicast=\"default\"/></Interfaces></General></Domain></CycloneDDS>"
+fi
 
 PIDS=""
 cleanup() {

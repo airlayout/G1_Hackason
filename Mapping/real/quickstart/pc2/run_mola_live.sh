@@ -5,6 +5,7 @@
 #   bash run_mola_live.sh --map <map.mm>       # 事前地図の上で測位のみ
 #   bash run_mola_live.sh --map <map.mm> --init "[x, y, 0.0, yaw, 0.0, 0.0]"
 #   G1_PC2_SECONDS=60 bash run_mola_live.sh    # 動かす秒数（既定 0 = 無限）
+#   G1_ODOM_TOPIC="" bash run_mola_live.sh     # 脚 odom を渡さない（事前情報なしの従来動作）
 #
 # ## なぜ PC2 で動かすのか
 #
@@ -30,6 +31,23 @@
 #    `RKNN search requires nanoflann>=1.5.1` で**最初の 1 スキャンで落ちる**。
 #    プロジェクトの `mola/g1_lidar3d_icp_imu.yaml` はこれを避けてある。
 #
+# ## 脚 odom を事前情報として渡す（2026-09-15 追加）
+#
+# 純正の脚 odometry `/dog_odom`（`nav_msgs/Odometry`・約 1008 Hz・静止 60 s で xy 2.7 mm）を
+# MOLA に食わせる。launch 引数は **`odom_topic_name`**（`ros2-lidar-odometry.launch.py`
+# の 384-388 行目で宣言され、環境変数 `MOLA_ODOM_TOPIC` になる）。
+# 経路は BridgeROS2 → `CObservationRobotPose` → `state_estimation`
+# （`mola::state_estimation_simple::StateEstimationSimple`）→ LidarOdometry の
+# `state_.navstate_fuse` → **ICP の prior（コスト項）**。初期値だけではない。
+#
+# ⚠️ **`forward_ros_tf_odom_to_mola`（既定 False）とは排他。** 両方立てると launch の
+#    `validate_odometry_sources()` が RuntimeError で止まる（同 75-118 行目）。
+# ⚠️ ラベルの regex（`do_process_odometry_labels_re`）の既定は `.*` なので
+#    `odom_sensor_label` は何でも通る（`Parameters.h` 75 行目）。
+# ⚠️ `publish_tf_from_robot_pose_observations` は yaml で **false 固定**なので
+#    （`mola-cli-launchs/lidar_odometry_ros2.yaml` 117 行目）、
+#    base_link に親が 2 つ生える心配は無い。
+#
 # ## 取付値（live）
 #
 # `nav_stack.sh` の live と同じ `rpy 177.93 3.32 0 deg` / `xyz 0 0 1.228`。
@@ -43,6 +61,11 @@ CFG="${G1_PC2_CFG:-$HOME/g1_cfg}"
 PIPELINE="${G1_MOLA_PIPELINE:-$CFG/mola/g1_lidar3d_icp_imu.yaml}"
 LIDAR_TOPIC="${G1_LIDAR_TOPIC:-/utlidar/cloud_livox_mid360}"
 IMU_TOPIC="${G1_IMU_TOPIC:-/utlidar/imu_livox_mid360}"
+# 脚 odom（上の「脚 odom を事前情報として渡す」を読むこと）。
+# ⚠️ `:-` ではなく `-` を使う。**空文字を「渡さない」の意味にするため**
+#    （`:-` だと空文字が既定値に化けて切れなくなる）。
+ODOM_TOPIC="${G1_ODOM_TOPIC-/dog_odom}"
+ODOM_LABEL="${G1_ODOM_SENSOR_LABEL:-odom_legs}"
 # 機体の内部網。⚠️ wlan0 ではない（LiDAR は PC1 から eth0 側に出ている）
 DDS_NIC="${G1_PC2_DDS_NIC:-eth0}"
 DOMAIN="${G1_PC2_DOMAIN:-0}"
@@ -56,7 +79,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --map)  MAP="$2"; shift 2 ;;
         --init) INIT_POSE="$2"; shift 2 ;;
-        -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "[pc2] 知らない引数: $1" >&2; exit 2 ;;
     esac
 done
@@ -70,7 +93,14 @@ say() { echo "[pc2] $*"; }
 # shellcheck source=/dev/null
 . "$JAMMY/env.sh"
 export ROS_DOMAIN_ID="$DOMAIN"
-export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$DDS_NIC\" priority=\"default\" multicast=\"default\"/></Interfaces></General></Domain></CycloneDDS>"
+# ⚠️ **NIC を 2 つにしたいときは `G1_PC2_DDS_URI` で丸ごと差し替える。**（2026-09-15）
+#    eth0 だけだと participant の locator が 192.168.123.164 になり、AP 越しの
+#    コンテナ（192.168.123.201）からは DDS が見えない。wlan0 も列挙すると見える。
+if [ -n "${G1_PC2_DDS_URI:-}" ]; then
+    export CYCLONEDDS_URI="$G1_PC2_DDS_URI"
+else
+    export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$DDS_NIC\" priority=\"default\" multicast=\"default\"/></Interfaces></General></Domain></CycloneDDS>"
+fi
 
 # ── 静的 TF（前提 3）───────────────────────────────────────────────
 # rpy[deg] -> rad。static_transform_publisher はラジアンを取る
@@ -100,6 +130,12 @@ kill -0 "$STF_PID" 2>/dev/null || { echo "[pc2] 静的 TF が起動しない（/
 ARGS="mola_lo_pipeline:=$PIPELINE lidar_topic_name:=$LIDAR_TOPIC imu_topic_name:=$IMU_TOPIC"
 ARGS="$ARGS use_imu_for_lio:=True use_mola_gui:=False use_rviz:=False"
 ARGS="$ARGS min_nearby_poses_occupied:=2 ignore_lidar_pose_from_tf:=false"
+if [ -n "$ODOM_TOPIC" ]; then
+    ARGS="$ARGS odom_topic_name:=$ODOM_TOPIC odom_sensor_label:=$ODOM_LABEL"
+    say "脚 odom を事前情報に使う: $ODOM_TOPIC（ラベル $ODOM_LABEL）"
+else
+    say "⚠️ 脚 odom を渡さない（事前情報なし）。G1_ODOM_TOPIC が空"
+fi
 if [ -n "$MAP" ]; then
     # 測位のみ。地図は更新しない。map -> base_link を出させる
     ARGS="$ARGS start_mapping_enabled:=False mola_initial_map_mm_file:=$MAP"

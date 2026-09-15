@@ -1,0 +1,79 @@
+# FAST-LIO2（C5 = FAST_LIO_LOCALIZATION_HUMANOID 同梱）を G1 の live に合わせた設定。
+#
+# 出発点は quickstart/fastlio/g1_mid360_pc2.yaml（2026-09-12・記録の実測から作った）。
+# **C5 の測位で使うために 2 箇所を変えてある**。下の ⚠️ を読むこと。
+#
+# 実測した点群の中身:
+#   x,y,z,intensity(f32),ring(u16),time(f32) / point_step 22 / 20,064 点
+#   = velodyne_ros::Point と同じ並び        -> lidar_type: 2（Velodyne）
+#   time は **ナノ秒**（0〜100,320,000 = 0.1 s） -> timestamp_unit: 3
+#   ⚠️ timestamp_unit を間違えると **deskew が静かに壊れる**（落ちない）
+#   ring は **0〜3 の 4 値**                  -> scan_line: 4
+#
+# ノード名は `laser_mapping`。`/**:` なのでノード名に依存しない。
+/**:
+  ros__parameters:
+    feature_extract_enable: false   # ring が Velodyne 前提と違うので特徴抽出は使わない
+    point_filter_num: 3
+    max_iteration: 3
+    filter_size_surf: 0.5
+    filter_size_map: 0.5
+    cube_side_length: 1000.0
+    runtime_pos_log_enable: false
+    map_file_path: "./test.pcd"     # pcd_save_en が false なので使われない
+
+    common:
+      lid_topic: "/utlidar/cloud_livox_mid360"
+      imu_topic: "/utlidar/imu_livox_mid360"
+      time_sync_en: false
+      time_offset_lidar_to_imu: 0.0
+
+    preprocess:
+      lidar_type: 2          # 2 = Velodyne 互換の PointCloud2
+      scan_line: 4
+      blind: 0.5
+      timestamp_unit: 3      # 3 = ナノ秒
+      scan_rate: 10
+
+    mapping:
+      acc_cov: 0.1
+      gyr_cov: 0.1
+      b_acc_cov: 0.0001
+      b_gyr_cov: 0.0001
+      fov_degree: 360.0
+      det_range: 100.0
+      # ⚠️ 変更点 1/2: 外部パラメータを単位行列にし、オンライン推定を切る。
+      #
+      # FAST-LIO の `body` フレームは **IMU 系**で、offset_R/T_L_I は「IMU 系から見た
+      # LiDAR の位置」である。出荷時の値 [-0.011,-0.02329,0.04412] を入れると
+      # `body` は真の IMU 系（livox_frame から 5 cm ずれた所）になる。
+      #
+      # 我々の取付値 `base_link -> livox_frame`（xyz 0 0 1.228 / rpy 177.93 3.32 0）は
+      # **LiDAR 系** に対して定義されているので、`body ≡ livox_frame` でないと
+      # run_fastlio_loc_live.sh が出す静的 TF が 5 cm ぶん食い違う。
+      # 単位行列にすると `body ≡ livox_frame` が厳密に成り立つ。
+      #
+      # ⚠️ extrinsic_est_en は **必ず false**。true だとフィルタが offset を
+      # 単位行列から真の IMU-LiDAR 値へ寄せてしまい、`body ≡ livox_frame` が
+      # **時間とともに静かに崩れる**（落ちずに測位だけ悪くなる型）。
+      extrinsic_est_en: false
+      extrinsic_T: [0., 0., 0.]
+      extrinsic_R: [1., 0., 0., 0., 1., 0., 0., 0., 1.]
+
+    publish:
+      path_en: false
+      effect_map_en: false
+      map_en: false          # /Laser_map_1 は要らない（CPU と帯域の節約）
+      # ⚠️ 変更点 2/2: scan_publish_en は **true でなければならない**。
+      # open3d_loc は `/cloud_registered_1` を購読しており、これは
+      # laserMapping.cpp:1091 の `if (scan_pub_en)` で出ている。
+      # false にすると open3d_loc が
+      # "Waiting for cloud_registered_1..." のまま**永久に初期化しない**。
+      # （09-12 の g1_mid360_pc2.yaml は odometry 単体の計測用だったので false だった）
+      scan_publish_en: true
+      dense_publish_en: false   # feats_down_body を使う。ICP の source には十分で軽い
+      scan_bodyframe_pub_en: false  # /cloud_registered_body_1 は使わない（transformer を起こさない）
+
+    pcd_save:
+      pcd_save_en: false     # ⚠️ true にすると全フレームを 1 つの pcd に溜めてディスクを埋める
+      interval: -1
