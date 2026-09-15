@@ -1006,9 +1006,26 @@ G1 は 0.02 rad/s では歩容が成立しないので回らない → 実測 0 
 `movement_time_allowance: 10.0` が**10 秒ちょうどで abort** する。
 G1 の旋回は指令の約 1/3 しか出ない(U-11)ので、60° 回るだけでも 10 秒では足りない。
 
-**対処（未検証。次回まずこれを試す）**:
+**対処**:
 `max_angular_accel` を 0.40 → **6.0**（0.3 rad/s × 20Hz。1 周期の増分が歩容の閾値を超える）、
 progress checker を **`PoseProgressChecker`**（角度の進捗も数える）+ 20 秒に変更した。
+
+**設定としては通ることを確認済み**（2026-09-15、操作PC のモックで起動確認）:
+
+| 確認項目 | 結果 |
+|---|---|
+| `nav2_controller::PoseProgressChecker` が Humble に在るか | ✅ 在る（「距離**と角度**の両方を見る」） |
+| `required_movement_angle` | ✅ 実在（`.so` のシンボルで確認） |
+| `required_movement_radius` / `movement_time_allowance` | ✅ `SimpleProgressChecker` を継承しているので有効 |
+| 実際の読み込み | ✅ `Created progress_checker : ... PoseProgressChecker` |
+| `max_angular_accel: 6.0` | ✅ 拒否されず RPP が正常に生成された |
+| `[ERROR]` / ライフサイクル | ✅ ERROR ゼロ、`Configuring`→`Activating`→`connected with bond` |
+
+⚠️ **ただし「機体が回り出すか」は未検証。** 次回の判定基準:
+**`/cmd_vel_smoothed` の wz が 0.02 で止まらず 0.3 前後まで上がるか**（今日は 2,363 周期
+ずっと 0.02 だった）、その場旋回が始まるか、`follow_path` が 10 秒ちょうどで切れなくなるか。
+wz が 0.3 まで上がっても回らなければ、原因は加速度制限ではなく**旋回の作動閾値そのもの**。
+そのときは `rotate_to_heading_angular_vel`（未指定なので既定 1.8 のはず）を明示する。
 
 ### 🐛 その他、実機で踏んだもの（2026-09-15 後半）
 
