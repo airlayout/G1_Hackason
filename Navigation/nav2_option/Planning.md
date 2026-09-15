@@ -1,5 +1,7 @@
 # Unitree G1 ROS 2 Navigation 実装計画
 
+📌 **次に何をするかは [HANDOVER.md](HANDOVER.md) にまとめてある。**この文書は経緯と根拠の記録。
+
 | 項目 | 内容 |
 |---|---|
 | 文書版 | v0.1 |
