@@ -13,6 +13,7 @@ Unitree G1 をデジタルツイン上で操作するプロジェクト。
 | [Mapping/](Mapping/README.md) | G1内蔵LIO／FAST-LIO2による3D Mapping | 実機で初回試験済み（onboard系。raw系は未実走） |
 | [Navigation/](Navigation/README.md) | 作成済み地図を使った自律移動・巡回（Unitree純正`slam_operate`に乗る） | 未着手 |
 | [Entame/](Entame/README.md) | エンタメ系の動作（ダンス・ジェスチャー等） | 未着手 |
+| [Voice/](Voice/README.md) | G1の発話（TTS）・マイク文字化・音声対話 | 単発TTSのみ実機確認済み。マイク文字化・対話パイプラインは未着手 |
 | [IsaacSim_Env/](IsaacSim_Env/README.md) | キーボード操作 + 2D LiDAR による地図作成・Nav2 自律走行 | 当面使用しない |
 | [SimEnv3D/](SimEnv3D/README.md) | 3D LiDAR（Livox Mid-360 相当）+ octomap による 3D 化 | 当面使用しない（作りかけ） |
 
