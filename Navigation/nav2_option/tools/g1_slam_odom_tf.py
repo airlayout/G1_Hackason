@@ -117,6 +117,47 @@ def leveling_quaternion(ax: float, ay: float, az: float) -> tuple[float, float, 
     return (ax * sin_h, ay * sin_h, az * sin_h, math.cos(half))
 
 
+def heading_preserving_leveling(ax: float, ay: float, az: float) -> "np.ndarray":
+    """加速度計の値(=上向き)で水平化しつつ、**センサー X 軸の方位を保存する**回転を返す。
+
+    ⚠️ **`leveling_quaternion`(最小回転)を水平化に使ってはいけない**（2026-09-15 実機）。
+    逆さ取付だと最小回転は**約180°の回転**になり、その軸は傾きの方位で決まる。
+    180°回転は軸まわりの鏡映と同じなので、**センサー X の行き先は「軸の方位の2倍」**に
+    飛ぶ。つまり水平化が**姿勢に依存した任意の yaw 誤差**を注入する。
+
+    | 姿勢 | 軸の方位 | X の行き先 | `--lidar-yaw` で救えるか |
+    |---|---|---|---|
+    | 2026-09-13(bag) | +91.8° | -176.4° | 180 で残差 3.6°(たまたま救えた) |
+    | 2026-09-15(直立) | -56.4° | -112.8° | **0 でも 180 でも 67° 以上残る** |
+
+    ここでは「上向きを +z に」「センサー X の水平成分を base の +x に」の2条件で
+    フレームを組む。**MID-360 の X 軸は物理的に機体前方を向いている**（2026-09-15、
+    利用者が実機で確認）ので、これが正しい拘束になる。逆さ取付(roll≈180°)は
+    上向き u が概ね -z を指すことで自動的に表現される。分岐も残差も出ない。
+
+    戻り値は base_link←livox_frame の回転行列。
+    """
+    u = np.array([ax, ay, az], dtype=float)
+    n = float(np.linalg.norm(u))
+    if n < 1e-9:
+        return np.eye(3)
+    e3 = u / n                                   # センサー系で見た「上」
+    x_l = np.array([1.0, 0.0, 0.0])              # センサーの X 軸 = 機体前方
+    e1 = x_l - float(x_l @ e3) * e3              # 水平面へ射影する
+    n1 = float(np.linalg.norm(e1))
+    if n1 < 1e-6:
+        # X 軸が鉛直に近い＝この拘束は使えない。Y 軸で組み直す
+        y_l = np.array([0.0, 1.0, 0.0])
+        e1 = y_l - float(y_l @ e3) * e3
+        e1 /= float(np.linalg.norm(e1))
+        e1 = np.cross(e1, e3)
+    else:
+        e1 /= n1
+    e2 = np.cross(e3, e1)
+    # 行ベクトルに並べると「センサー系のベクトル → base 系」の回転になる
+    return np.vstack([e1, e2, e3])
+
+
 def yaw_quaternion(yaw: float) -> tuple[float, float, float, float]:
     return (0.0, 0.0, math.sin(yaw / 2.0), math.cos(yaw / 2.0))
 
@@ -256,7 +297,9 @@ class SlamOdomTf(Node):
             self.get_logger().error("IMU の重力が 0。自動校正できない")
             return
         g = g / norm
-        r_level = quat_to_matrix(leveling_quaternion(float(g[0]), float(g[1]), float(g[2])))
+        # ⚠️ 最小回転(leveling_quaternion)ではなく、X の方位を保存する水平化を使う。
+        # 理由は heading_preserving_leveling の docstring を参照(2026-09-15 実機)。
+        r_level = heading_preserving_leveling(float(g[0]), float(g[1]), float(g[2]))
 
         q = np.asarray(self._odom_quats[-need:]).mean(axis=0)
         q = q / float(np.linalg.norm(q))
@@ -347,10 +390,11 @@ def main() -> None:
                         help="map->odom を出さない。連続localization(map_localizer.py)を"
                              "併用するときに指定する(あちらが動的に更新するため)")
     parser.add_argument("--lidar-yaw", type=float, default=0.0,
-                        help="base_link->livox_frame に足す yaw[度]。"
-                             "⚠️ **自動校正(重力)は roll/pitch しか決められず yaw は未拘束**。"
-                             "逆さ取付(U-09)だと約180°ずれる。"
-                             "tools/find_map_offset.py で地図と照合して求めること")
+                        help="base_link->livox_frame に足す yaw[度]。**既定 0 のままでよい**。"
+                             "2026-09-15 に水平化を heading_preserving_leveling に替えたので、"
+                             "yaw は構成上ずれなくなった(以前は姿勢によって 0/180 が入れ替わり、"
+                             "どちらでも合わない姿勢もあった)。"
+                             "取付を変えた等で残差が出るときだけ手で与える")
     parser.add_argument("--imu-topic", default="/utlidar/imu_livox_mid360")
     parser.add_argument("--calib-samples", type=int, default=50,
                         help="自動校正に使うサンプル数(既定: 50)")

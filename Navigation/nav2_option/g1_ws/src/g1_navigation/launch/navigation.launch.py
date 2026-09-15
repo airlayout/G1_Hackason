@@ -213,12 +213,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "lidar_frame", default_value="livox_frame",
             description="点群の frame_id。real でのみ使う"),
-        # ⚠️ **180 が既定。** 自動校正(重力)は roll/pitch しか決められず yaw は未拘束で、
-        # MID-360 は逆さ取付(U-09)なので 180° ずれる。0 のままだと地図と噛み合わない
-        # (実測: 未補正で距離の中央値 1.23m/20cm以内 23% → 180 で 0.000m/97%)。
+        # ⚠️ **既定は 0 に戻した(2026-09-15)。** 以前は 180 を既定にしていたが、
+        # あれは「最小回転で水平化する」実装が姿勢依存の yaw 誤差を注入していたことへの
+        # 対症療法で、**0 でも 180 でも合わない姿勢が実機で出た**(軸の方位 -56.4°、
+        # X の行き先 -112.8°)。水平化を heading_preserving_leveling に替えて
+        # 構成上ずれないようにしたので、補正は不要になった。
         DeclareLaunchArgument(
-            "lidar_yaw", default_value="180",
-            description="base_link->livox_frame に足す yaw[度]。逆さ取付(U-09)のため既定 180"),
+            "lidar_yaw", default_value="0",
+            description="base_link->livox_frame に足す yaw[度]。既定 0 のままでよい"),
         DeclareLaunchArgument(
             "heartbeat_required", default_value="true",
             description="操作PCの生存監視(D-31)。falseにすると通信断で止まらない。ベンチ試験専用"),
