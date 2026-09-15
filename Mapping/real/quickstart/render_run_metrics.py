@@ -155,7 +155,12 @@ def main() -> int:
              fontsize=18, color=INK, weight="bold", va="center")
     sub = fig.text(0.05, 0.915, "", fontsize=12, color=INK2, va="center")
 
-    writer = FFMpegWriter(fps=FPS, bitrate=3600, metadata={"title": a.run.name})
+    # ⚠️ **`-movflags +faststart` を必ず付ける。** 付けないと `moov` アトムが
+    #    ファイル末尾に置かれ、`<video preload="none">` のブラウザが読み込めない
+    #    （2026-09-15 に踏んだ。既存の動画は moov が 36 バイト目、こちらは末尾だった）。
+    #    `-pix_fmt yuv420p` も同様に、付けないと再生できない環境がある。
+    writer = FFMpegWriter(fps=FPS, bitrate=3600, metadata={"title": a.run.name},
+                          extra_args=["-pix_fmt", "yuv420p", "-movflags", "+faststart"])
     a.out.parent.mkdir(parents=True, exist_ok=True)
     print(f"[render] {len(sel)} 枚 / {a.fast} 倍速 -> {a.out}")
     with writer.saving(fig, str(a.out), dpi=100):
