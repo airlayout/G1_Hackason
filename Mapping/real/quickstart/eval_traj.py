@@ -124,18 +124,18 @@ def read_odom(con, tid, topic="/dog_odom") -> np.ndarray | None:
 
 
 def read_tf_chain(con, tid, parent="map", child="base_link") -> np.ndarray:
-    """記録に入っている推定姿勢（= その回に動いていた測位）を軌跡として取り出す。"""
-    if "/tf" not in tid:
-        return np.empty((0, 8))
-    rows = []
-    for (blob,) in con.execute("SELECT data FROM messages WHERE topic_id=?", (tid["/tf"],)):
-        r = Cdr(blob)
-        for _ in range(r.u32()):
-            sec, nsec = r.i32(), r.u32(); par, ch = r.st(), r.st()
-            tr = [r.f64() for _ in range(3)]; q = [r.f64() for _ in range(4)]
-            if par == parent and ch == child:
-                rows.append([sec + nsec * 1e-9] + tr + q)
-    return np.array(sorted(rows)) if rows else np.empty((0, 8))
+    """記録に入っている推定姿勢（= その回に動いていた測位）を軌跡として取り出す。
+
+    ⚠️ **直接の対だけを見てはいけない。** 候補ごとに鎖の形が違う——
+    MOLA は `map -> base_link` を直接出すが、AMCL は `map -> odom -> base_link`、
+    FAST_LIO は `map -> odom -> camera_init -> body -> base_link`（静的 2 本を含む）。
+    直接だけ見ると空が返り、呼び出し側が**「推定が記録されていない」と誤報する**
+    （落ちないので気づけない。2026-09-15 に `still_report.py` で 2 度踏んだ）。
+    鎖を辿るのは `tf_chain.resolve` に一本化してある。
+    """
+    from tf_chain import resolve
+    traj, _desc = resolve(con, tid, parent, child)
+    return traj
 
 
 def read_static_tf(con, tid, parent="base_link", child="livox_frame"):
