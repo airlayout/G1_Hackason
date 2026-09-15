@@ -68,4 +68,5 @@ git sparse-checkout set Common Entame
 
 ## 状態
 
-未着手。実現方法（SDK方式 / lerobot方式）も未決定。
+腕の定型モーション（SDK方式、`real/arm_wave_real.py`）は実機で"high wave"の動作を
+確認済み。ダンス・独自振り付け（lerobot方式）は未着手・未決定のまま。
