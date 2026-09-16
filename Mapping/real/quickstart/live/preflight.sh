@@ -47,8 +47,21 @@ else
 fi
 
 # ── 3. AP（OMEN）────────────────────────────────────────────────────
-step "3. AP を出している Ubuntu（$G1_AP_HOST）"
-if tcp_ok "$G1_AP_HOST" 22; then
+# ⚠️ **有線構成では AP は要らない。**2026-09-17 に PC2 を有線（192.168.123.164）で
+# 繋いだところ、コンテナ（col0 = 192.168.123.201）から機体の DDS が全部見え、
+# foxglove 中継も不要だった。AP は「PC2 を無線にしたいとき」だけの仕掛けである。
+#   G1_LINK=wired … AP の項目を情報表示にする（既定。PC2 の有線 IP に届けばこちら）
+#   G1_LINK=ap    … AP 構成として厳しく見る
+LINK="${G1_LINK:-auto}"
+if [ "$LINK" = "auto" ]; then
+    if tcp_ok "$G1_PC2_WIRED" 22; then LINK=wired; else LINK=ap; fi
+fi
+say "リンク構成: ${LINK}（G1_LINK で固定できる）"
+
+step "3. AP を出している Ubuntu（${G1_AP_HOST}）"
+if [ "$LINK" = "wired" ]; then
+    note "有線構成なので AP は見ない（G1_LINK=ap で厳しく見る）"
+elif tcp_ok "$G1_AP_HOST" 22; then
     ok "$G1_AP_HOST:22 に届く"
     APDEV="$(ap 'nmcli -t -f DEVICE,STATE,CONNECTION device status | grep ^wlp' 2>/dev/null || true)"
     case "$APDEV" in
@@ -68,20 +81,29 @@ else
 fi
 
 # ── 4. PC2（無線）──────────────────────────────────────────────────
-step "4. PC2（$G1_PC2_HOST）"
+step "4. PC2（${G1_PC2_HOST}）"
 if tcp_ok "$G1_PC2_HOST" 22; then
     ok "$G1_PC2_HOST:22 に届く"
-    W="$(pc2 'nmcli -t -f DEVICE,STATE,CONNECTION device status | grep ^wlan0' 2>/dev/null || true)"
-    case "$W" in
-        *g1-teleop-client*) ok "PC2 が AP に付いている" ;;
-        *) bad "PC2 の wlan0 が AP に付いていない（いま: ${W##*:}）"
-           echo "     → ssh 先で nmcli connection up g1-teleop-client" >&2
-           echo "     ⚠️ AP より先に PC2 が起動すると社内 Wi-Fi に付く" >&2
-           FAIL=1 ;;
-    esac
-    SC="$(pc2 'echo $SSH_CLIENT' 2>/dev/null | awk '{print $1}')"
-    [ "$SC" = "10.42.0.1" ] && ok "AP の NAT が効いている（SSH_CLIENT=$SC）" \
-                            || warn "SSH_CLIENT=$SC（10.42.0.1 のはず）"
+    if [ "$LINK" = "wired" ]; then
+        note "有線構成なので wlan0 は見ない"
+        # ⚠️ **2 NIC は残る。**wlan0 が社内 Wi-Fi に付いたままでも、
+        # CycloneDDS は放っておくと wlan0 を掴んで eth0 側の PC1 が見えなくなる。
+        # live の各スクリプトが CYCLONEDDS_URI を eth0 に固定しているのが前提
+        NICS="$(pc2 'ip -4 -o addr show scope global | awk "{print \$2}" | tr "\n" " "' 2>/dev/null || true)"
+        note "PC2 の NIC: ${NICS}（eth0 固定が要る）"
+    else
+        W="$(pc2 'nmcli -t -f DEVICE,STATE,CONNECTION device status | grep ^wlan0' 2>/dev/null || true)"
+        case "$W" in
+            *g1-teleop-client*) ok "PC2 が AP に付いている" ;;
+            *) bad "PC2 の wlan0 が AP に付いていない（いま: ${W##*:}）"
+               echo "     → ssh 先で nmcli connection up g1-teleop-client" >&2
+               echo "     ⚠️ AP より先に PC2 が起動すると社内 Wi-Fi に付く" >&2
+               FAIL=1 ;;
+        esac
+        SC="$(pc2 'echo $SSH_CLIENT' 2>/dev/null | awk '{print $1}')"
+        [ "$SC" = "10.42.0.1" ] && ok "AP の NAT が効いている（SSH_CLIENT=${SC}）" \
+                                || warn "SSH_CLIENT=${SC}（10.42.0.1 のはず）"
+    fi
 else
     bad "PC2 に届かない。機体の電源と AP を確認する"
     exit 1
@@ -97,32 +119,55 @@ else
 fi
 
 # ── 6. センサ（ここが今日いちばん効いた）────────────────────────────
+# ⚠️ **有線構成ではコンテナから直接測れる。**機体の DDS が col0 に載っているので、
+# PC2 に何も置かずに `ros2 topic hz` で見られる（2026-09-17 に確認）。
+# 以前ここが参照していた `probe_imu_sdk.py` は**一度も書かれていない**。
 step "6. センサ（⚠️ LiDAR の IMU は起動ごとに出ないことがある）"
-SENS="$(pc2 'cd "$HOME/g1_cfg/apriltag" 2>/dev/null || cd "$HOME"
-             python3 /tmp/probe_imu_sdk.py 8 eth0 2>/dev/null' 2>/dev/null || true)"
-if [ -z "$SENS" ]; then
-    warn "probe_imu_sdk.py が PC2 に無い。ROS 経由で見る"
-    SENS="$(pc2_ros 'true' 2>/dev/null; echo)"
-    warn "→ up.sh が起動直後に測るので、そこで確認する"
-else
-    printf '%s\n' "$SENS" | sed 's/^/     /' >&2
-    case "$SENS" in
-        *imu_livox_mid360*0\ 件*|*imu_livox_mid360*⛔*)
+probe_hz() {   # $1=topic $2=期待レート[Hz] → 実測を印字
+    local out
+    out="$(ctr "source /opt/ros/humble/setup.bash >/dev/null 2>&1
+                timeout 8 ros2 topic hz $1 2>/dev/null | awk '/average rate/{print \$3; exit}'" 2>/dev/null \
+           | tr -d '[:space:]')"
+    printf '%s' "$out"
+}
+for spec in "/utlidar/cloud_livox_mid360 10" "/utlidar/imu_livox_mid360 200" "/dog_odom 900"; do
+    topic="${spec%% *}"; want="${spec##* }"
+    rate="$(probe_hz "$topic")"
+    if [ -z "$rate" ]; then
+        if [ "$topic" = "/utlidar/imu_livox_mid360" ]; then
             bad "**LiDAR の IMU が出ていない。FAST-LIO2 は初期化できない**"
             echo "     → PC1 に入れないので、**機体の電源を入れ直す**しかない" >&2
             echo "     （2026-09-16 実測: 入れ直したら 200.0 Hz で復活した）" >&2
-            FAIL=1 ;;
-        *) ok "LiDAR と IMU が来ている" ;;
-    esac
-fi
+            FAIL=1
+        else
+            bad "${topic} が来ていない"
+            FAIL=1
+        fi
+    else
+        # awk で整数比較（bash に浮動小数は無い）
+        if awk -v r="$rate" -v w="$want" 'BEGIN{exit !(r > w*0.5)}'; then
+            ok "${topic} = ${rate} Hz（期待 ${want} 前後）"
+        else
+            warn "${topic} = ${rate} Hz（期待 ${want} 前後より遅い）"
+        fi
+    fi
+done
 
 # ── 7. 既に何か動いていないか ───────────────────────────────────────
 step "7. 二重起動の確認（⚠️ 測位が 2 つ出ると /tf が壊れる）"
-RUNNING="$(pc2 'ps -eo args | grep -cE "fastlio_mapping|global_localization_node|mola-cli|nav2_amcl"' 2>/dev/null || echo 1)"
-if [ "${RUNNING:-1}" -le 1 ]; then
+# ⚠️ **パターンを角括弧で割る。**そうしないと `ps -eo args` の出力に
+# この grep 自身（と ssh の bash -c）のコマンド行が入り、**常に 2 件見つかる**。
+# 2026-09-17 に「測位らしきものが 1 個動いている」と誤報した（実際は 0 個）。
+# comm では見分けられない —— PC2 の ROS ノードは jammy のローダ経由なので
+# comm が全部 `ld-linux-aarch6` になる。
+# ⚠️ `grep -c` は 0 件のとき終了コード 1 を返すので、リモート側で `|| true` して
+# **数字を 1 個だけ**返させる（外で `|| echo 0` を足すと "0\n0" になって
+# `[: integer expression expected` で落ちる。2026-09-17 に踏んだ）
+RUNNING="$(pc2 'ps -eo args | grep -cE "fastlio[_]mapping|global[_]localization_node|mola[-]cli|nav2[_]amcl" || true' 2>/dev/null | tr -d "[:space:]")"
+if [ "${RUNNING:-0}" -eq 0 ] 2>/dev/null; then
     ok "測位は動いていない（これから起こす）"
 else
-    warn "測位らしきものが $((RUNNING-1)) 個動いている"
+    warn "測位らしきものが ${RUNNING} 個動いている"
     echo "     → 続けるなら bash quickstart/live/down.sh で一度落とす" >&2
 fi
 

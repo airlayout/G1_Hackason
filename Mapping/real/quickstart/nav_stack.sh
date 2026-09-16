@@ -584,7 +584,7 @@ if [ "$USE_MOLA" = "1" ]; then
         BOOT_RC=$?
         printf '%s\n' "$BOOT_OUT" | sed 's/^/    /'
         if [ "$BOOT_RC" -ne 0 ]; then
-            echo "[stack] ⛔ 大域測位が決まらなかった（rc=$BOOT_RC）。**MOLA を起こさない**" >&2
+            echo "[stack] ⛔ 大域測位が決まらなかった（rc=${BOOT_RC}）。**MOLA を起こさない**" >&2
             echo "[stack] 機体を地図の濃い所へ移すか、G1_GLOBAL_INIT=0 で従来動作に戻せる" >&2
             exit 1
         fi

@@ -38,7 +38,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$BAG" ] && [ -n "$INIT" ] && [ -n "$OUT" ] || { echo "[replay] --bag --init --out が要る" >&2; exit 2; }
 [ -d "$MAP" ] || { echo "[replay] 事前地図が無い: $MAP" >&2; exit 2; }
-[ -f "$FRAME" ] || { echo "[replay] 変換が無い: $FRAME（align_glim_to_map.py を先に走らせる）" >&2; exit 2; }
+[ -f "$FRAME" ] || { echo "[replay] 変換が無い: ${FRAME}（align_glim_to_map.py を先に走らせる）" >&2; exit 2; }
 [ "$CT" = 1 ] && CFG="$CFG/ct"
 
 say() { echo "[replay] $*"; }
@@ -124,7 +124,7 @@ say "静的 TF 2 本（map->glim_map / base_link->livox_frame）"
 GPID=$!
 sleep 6
 kill -0 "$GPID" 2>/dev/null || { echo "[replay] glim_rosnode が起動しない（/tmp/glim_loc.log）" >&2; tail -20 /tmp/glim_loc.log; exit 1; }
-say "glim_rosnode 起動（config: $CFG）"
+say "glim_rosnode 起動（config: ${CFG}）"
 
 ros2 service call /glim_ros/load_map std_srvs/srv/Trigger "{}" > /tmp/glim_loadmap.log 2>&1
 grep -q "Successuflly load map" /tmp/glim_loadmap.log \

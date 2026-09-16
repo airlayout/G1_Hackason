@@ -199,7 +199,7 @@ EOF
     PROC_PAT="[g]lobal_localization_node"
     LIFECYCLE=0
     ;;
-*)  echo "[cand] 知らない候補: $CAND（amcl | fastlio）" >&2; exit 2 ;;
+*)  echo "[cand] 知らない候補: ${CAND}（amcl | fastlio）" >&2; exit 2 ;;
 esac
 
 # ── 立ったことを確かめてから進む ───────────────────────────────────

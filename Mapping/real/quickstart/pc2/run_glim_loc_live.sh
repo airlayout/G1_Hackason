@@ -117,7 +117,7 @@ fi
 [ -f "$GLIM_CFG/config.json" ] || { echo "[glim] 設定が無い: $GLIM_CFG/config.json" >&2; exit 2; }
 [ -d "$MAP" ]               || { echo "[glim] 事前地図が無い: $MAP" >&2; exit 2; }
 [ -f "$MAP/graph.txt" ]     || { echo "[glim] 事前地図に graph.txt が無い: $MAP" >&2; exit 2; }
-[ -f "$FRAME" ]             || { echo "[glim] 変換が無い: $FRAME（align_glim_to_map.py が出す）" >&2; exit 2; }
+[ -f "$FRAME" ]             || { echo "[glim] 変換が無い: ${FRAME}（align_glim_to_map.py が出す）" >&2; exit 2; }
 
 # shellcheck source=/dev/null
 . "$FRAME"          # G1_GLIM_MAP_XYZ / G1_GLIM_MAP_RPY_DEG

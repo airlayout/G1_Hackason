@@ -67,7 +67,7 @@ if [ "$MODE" = "--arm" ]; then
 fi
 
 # ── SDK 側（安全機構はこちら）────────────────────────────────────────
-say "SDK 側 $DRIVER_PY を起こす（$MODE）"
+say "SDK 側 $DRIVER_PY を起こす（${MODE}）"
 pc2 "nohup setsid python3 \$HOME/nav_tools/$DRIVER_PY \
        --network-interface eth0 $MODE > \$HOME/g1_runs/loco.log 2>&1 < /dev/null &
      sleep 6; tail -3 \$HOME/g1_runs/loco.log | sed 's/^/     /'"

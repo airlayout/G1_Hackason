@@ -5,7 +5,12 @@
 #   . "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 
 # ── 宛先 ───────────────────────────────────────────────────────────
-G1_PC2_HOST="${G1_PC2_HOST:-10.42.0.76}"          # PC2（無線）。有線は 192.168.123.164
+# ⚠️ **既定を有線にした（2026-09-17）。**PC2 を 192.168.123.0/24 に有線で繋ぐと
+# コンテナ（col0 = 192.168.123.201）から機体の DDS が全部見え、foxglove 中継も
+# AP も要らない。無線でやるときだけ G1_PC2_HOST=10.42.0.76 を渡す。
+G1_PC2_WIRED="${G1_PC2_WIRED:-192.168.123.164}"   # PC2（有線）
+G1_PC2_WIRELESS="${G1_PC2_WIRELESS:-10.42.0.76}"  # PC2（AP 経由）
+G1_PC2_HOST="${G1_PC2_HOST:-$G1_PC2_WIRED}"
 G1_AP_HOST="${G1_AP_HOST:-192.168.123.200}"       # AP を出している Ubuntu（OMEN）
 G1_AP_USER="${G1_AP_USER:-ubuntu}"
 G1_PC2_USER="${G1_PC2_USER:-unitree}"
@@ -29,6 +34,7 @@ ok()   { printf '  \033[32mOK\033[0m   %s\n' "$*" >&2; }
 warn() { printf '  \033[33mWARN\033[0m %s\n' "$*" >&2; }
 bad()  { printf '  \033[31mNG\033[0m   %s\n' "$*" >&2; }
 die()  { printf '[live] ⛔ %s\n' "$*" >&2; exit 1; }
+note() { printf '  --   %s\n' "$*" >&2; }
 
 # ── PC2 でコマンドを走らせる ────────────────────────────────────────
 pc2() { ssh -i "$G1_KEY" -o BatchMode=yes -o ConnectTimeout=15 \

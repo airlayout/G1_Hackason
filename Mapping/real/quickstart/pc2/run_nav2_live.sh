@@ -74,7 +74,7 @@ trap cleanup EXIT INT TERM
 
 # ── 静的レイヤの出どころ ─────────────────────────────────────────────
 if [ "$STATIC_SOURCE" = "octomap" ] && [ ! -f "$OCTOMAP_SEED" ]; then
-    say "⚠️ 種が無い（$OCTOMAP_SEED）。map_server に落とす"
+    say "⚠️ 種が無い（${OCTOMAP_SEED}）。map_server に落とす"
     say "   作り方: Mac で quickstart/octomap_seed_from_nav_map.py runs/<id>"
     STATIC_SOURCE="map_server"
 fi

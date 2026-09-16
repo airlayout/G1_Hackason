@@ -90,8 +90,8 @@ fi
 step "2. base_link が水平・床面か（⚠️ ここが今日の落とし穴）"
 TF="$(ros "timeout 3 ros2 run tf2_ros tf2_echo map base_link" \
       | grep -m1 -A3 'Translation' | tr '\n' ' ')"
-Z="$(echo "$TF" | sed -n 's/.*Translation: \[[^,]*, [^,]*, \([-0-9.]*\)\].*/\1/p')"
-PITCH="$(echo "$TF" | sed -n 's/.*RPY (degree) \[[^,]*, \([-0-9.]*\),.*/\1/p')"
+Z="$(echo "$TF" | sed -n 's/.*Translation: \[[^,]*, [^,]*, \([-+0-9.]*\)\].*/\1/p')"
+PITCH="$(echo "$TF" | sed -n 's/.*RPY (degree) \[[^,]*, \([-+0-9.]*\),.*/\1/p')"
 if [ -z "$Z" ] || [ -z "$PITCH" ]; then
     bad "map -> base_link が引けない"
 else

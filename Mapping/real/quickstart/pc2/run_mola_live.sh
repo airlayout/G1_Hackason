@@ -134,7 +134,7 @@ ARGS="$ARGS use_imu_for_lio:=True use_mola_gui:=False use_rviz:=False"
 ARGS="$ARGS min_nearby_poses_occupied:=2 ignore_lidar_pose_from_tf:=false"
 if [ -n "$ODOM_TOPIC" ]; then
     ARGS="$ARGS odom_topic_name:=$ODOM_TOPIC odom_sensor_label:=$ODOM_LABEL"
-    say "脚 odom を事前情報に使う: $ODOM_TOPIC（ラベル $ODOM_LABEL）"
+    say "脚 odom を事前情報に使う: ${ODOM_TOPIC}（ラベル ${ODOM_LABEL}）"
 else
     say "⚠️ 脚 odom を渡さない（事前情報なし）。G1_ODOM_TOPIC が空"
 fi
