@@ -28,7 +28,11 @@ OP_TIMEOUT="${3:-1.0}"
 # （＝従来どおりの単純ゴール指定モードだけが使える）。現地で
 # `tools/record_waypoints.py` を回して作ったファイルを渡すこと。
 PATROL_WAYPOINTS="${4:-}"
-MAP=/home/unitree/g1_nav2/g1_ws/install/g1_navigation/share/g1_navigation/maps/room_a_map.yaml
+# ⚠️ 2026-09-16 に **9/11 取得の地図へ切り替えた**（未知 40.5%→27.4%、
+# 連結した自由空間 397→439m²）。⚠️ **現状との一致は未検証。**
+# 合わなければ第5引数に旧地図を渡して戻すこと（room_a_map.yaml）。
+MAPS=/home/unitree/g1_nav2/g1_ws/install/g1_navigation/share/g1_navigation/maps
+MAP="${5:-$MAPS/room_a_map_20260911.yaml}"
 CYCLONE_CFG=/home/unitree/g1_nav2/cyclonedds_eth0.xml
 cd /home/unitree/g1_nav2/pc2_humble
 rm -f /tmp/nav_launch.log
@@ -42,3 +46,4 @@ setsid nohup ~/.pixi/bin/pixi run bash -lc "
 " > /tmp/nav_launch.log 2>&1 < /dev/null &
 echo "started (map_to_odom=$MAP2ODOM lidar_yaw=$LIDAR_YAW operator_timeout_s=$OP_TIMEOUT rmw=cyclonedds)"
 echo "  巡回路: ${PATROL_WAYPOINTS:-(未指定。単純ゴール指定モードのみ)}"
+echo "  地図  : $(basename "$MAP")"

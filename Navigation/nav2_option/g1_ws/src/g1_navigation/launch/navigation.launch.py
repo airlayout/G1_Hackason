@@ -261,7 +261,9 @@ def generate_launch_description():
             "params_file", default_value=os.path.join(share, "config", "nav2_params.yaml")),
         # 既定は Nav2 の配線検証用の合成地図(連結した自由空間を保証)。
         # A-7 で生成した test_room.yaml はレイトレーシング前のもので自由空間が
-        # 連結しておらず、経路計画のデモには使えない。実機では room_a_map.yaml を渡す。
+        # 連結しておらず、経路計画のデモには使えない。
+        # ⚠️ 実機では **room_a_map_20260911.yaml** を渡す（2026-09-16 に 9/07 の
+        # room_a_map.yaml から切り替えた。A-10q）。旧地図も残してある。
         DeclareLaunchArgument(
             "map", default_value=os.path.join(share, "maps", "synthetic_room.yaml")),
         DeclareLaunchArgument(

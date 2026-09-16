@@ -63,3 +63,11 @@ Navigation/nav2_option/g1_sdk_bridge_cpp/build/
 Navigation/nav2_option/g1_ws/build/
 Navigation/nav2_option/g1_ws/install/
 Navigation/nav2_option/g1_ws/log/
+
+# 地図の素になる巨大ファイル（2026-09-16 追加）
+# ⚠️ **消さないこと。** 地図を作り直すときに要る。git に入れないだけ。
+#    生成物（trajectory/*.tum と maps/*.pgm）はリポジトリに入れてあるので、
+#    これらが無くても地図は使える。
+Navigation/nav2_option/0911_robag/
+Navigation/nav2_option/*.pcd
+Navigation/*.pcd

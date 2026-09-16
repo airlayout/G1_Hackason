@@ -95,46 +95,40 @@ cd ~/g1_nav2/tools && python3 record_waypoints.py -o ~/g1_nav2/patrol_room_a.yam
 ⚠️ **単純ゴール指定（手順書 8.4）が通ってから**にすること。巡回は同じ
 `NavigateToPose` を連続で投げるだけなので、1回の Goal が通らないなら巡回も通らない。
 
-### ② 地図を測り直す
+### ② 地図 — ✅ **作り直した（2026-09-16）。残るのは実機での確認だけ**
 
-room_a の地図は **9/07 取得**で、現状と合っていない。スキャンの一致率が
-**20cm以内 40〜45% / 50cm以内 47〜99%（場所による）**まで落ちている。
+9/11 の rosbag に**軌跡が入っていた**（`/unitree/slam_mapping/odom` 7002件/9.97Hz）。
+これが見つからず止まっていたので、これで解決した。
+詳細: [findings/map_rebuild_20260911.md](findings/map_rebuild_20260911.md)
 
-⚠️ **一致率が低い ＝ 自己位置が間違い、ではない。** 今日、利用者が RViz で目視確認し、
-かつ odometry と 6cm 以内で一致していた。
-
-**判定基準は場面で分ける**（2026-09-16 決定。手順書 §7 と揃えた）:
-
-| 場面 | 見る値 | 目安 |
+| | **9/07（旧）** | **9/11（新・既定）** |
 |---|---|---|
-| §7 の校正直後（出発地点） | **20cm以内** | **80% 以上** |
-| 歩いたあと・部屋の別の場所 | **50cm以内** | 参考値。低くても自己位置の誤りとは限らない |
+| 大きさ | 28.5 × 33.0 m | **23.8 × 37.5 m** |
+| **unknown** | **40.5%** | **27.4%** |
+| **最大連結の自由空間** | 397.2 m² | **438.7 m²（+10%）** |
+| 自由空間の断片 | 7,221 個 | **4,743 個** |
 
-校正直後は地図と同じ場所を見ているので高い値が出て当然で、そこで 80% を切るなら
-本当に何かおかしい。一方、歩いたあとの低下は**地図の古さ**を映しているだけのことが多い。
-最終判定は **RViz で位置と向きを目視**。
+**既定を `room_a_map_20260911.yaml` に切り替えた。** 旧地図も残してある。
 
-**軌跡（trajectory）が要る。** 点群だけでは自由空間が連結せず、経路計画に使えない
-（A-7 の `test_room.yaml` と同じ失敗）。
-
-- `Navigation/map_wireless_dualcam_01_cleaned_no_ceiling.pcd`（880万点、58m×40m、数日前）が
-  手元にあるが、**対応する軌跡が見つかっていない**。これ単体では今日の地図を上回れない
-- Mapping のパイプラインは実行ごとに `trajectory/trajectory.tum` を自動生成する
-  （`g1_mapping_tools/trajectory_writer.py`）。**その run ディレクトリを探すこと**
-- bag が残っていれば `/unitree/slam_mapping/odom` から再生成できる（XY だけでよい）
-
-⚠️ **軌跡ファイルの形式には落とし穴がある。**
-`pointcloud_to_occupancy_grid.py` は **「2列目が x、3列目が y」しか見ない**。
-TUM（`timestamp tx ty tz ...`）はそのまま通るが、
-`nav_msgs/Odometry` を CSV に落としたもの（`sec,nsec,frame,child,x,y,z,...`）は
-**x が5列目**なので**全行スキップされ、警告も出ないまま「軌跡なし」と同じ地図ができる**。
+⚠️⚠️ **「現状に近いか」はまだ測っていない。今日は原理的に測れない。**
+**次回 §7 で `find_map_offset.py` を両方の地図に対して走らせること**（数分で済む）。
+同じスキャンに対する一致率が並べば、どちらが現状に近いか数字で決まる。
 
 ```bash
-# Odometry CSV → 読める形式へ
-awk -F, '{print $1"."$2, $5, $6, $7}' <odom.csv> > trajectory.txt
-python3 tools/pointcloud_to_occupancy_grid/pointcloud_to_occupancy_grid.py <点群.pcd> \
-    --trajectory trajectory.txt --resolution 0.05 --out newmap
+# §7 で 2 回走らせるだけ
+python3 ~/g1_nav2/tools/find_map_offset.py --yaw-range 180 --yaw-step 1        # 新(既定)
+# 旧と比べたいときは map_server を旧地図で上げ直してもう一度
 ```
+
+⚠️ **合わなければ旧地図に戻せる**: `g1up.sh --map .../room_a_map.yaml`
+⚠️ **2枚は座標系が約10°違う。** 旧地図の座標で書いたものは全部無効
+（`map→odom` はどのみち毎回取り直すので実害は無い）。
+⚠️ **occupied が 1.6 倍になった**（102.8→161.2m²）。本物の什器なのか、
+ノイズや**動いている人が焼き付いた**のかは数字では区別できない。**現地で目視確認すること。**
+
+📌 **25m×25m 制約が緩んだ。** x は **23.8m で 25m を切った**。
+実際に歩いた範囲は **15.8 × 29.4 m**。**y を 25m 以内に区切れば推奨範囲に収まる**
+（会場全体を1周するのは諦める、という判断にはなる）。
 
 ### ③ 内蔵SLAM の16分停止 — **方針は (a) に決めた。タダで取れるデータがある**
 
@@ -158,6 +152,11 @@ python3 tools/pointcloud_to_occupancy_grid/pointcloud_to_occupancy_grid.py <点�
 > **⚠️ 観測に偏りがある。** 2026-09-15 の3回とも**機体が静止している間**に落ちた。
 > 歩行中のセッションは一度も16分を超えていないので、「時間で切れる」のか
 > 「無動作で切れる」のかを区別できていない。
+
+📌 **弱い証拠が1つ増えた（2026-09-16）。** 9/11 の bag は **11.7 分間、
+歩きっぱなしで一度も落ちていない**（odom 9.97Hz、最大の欠測 0.16 秒）。
+「無動作で切れる」説をわずかに支持するが、**11.7 分は 16 分に届いていないので
+決着しない。** 上の実験はやはり必要。
 
 **もし「時間で切れる」と確定したら**、選択肢は2つに絞られる。
 
@@ -289,10 +288,17 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
 
 ### リポジトリ
 
-- ブランチ **`Dev/Navigation02`**、2026-09-15 のコミット **5件。push はしていない**
-- 未追跡のまま残してあるファイル2つ（扱い未定）:
-  - `Navigation/nav2_option/map_20260907.pcd`（6.5MB、いまの地図の元データ）
-  - `Navigation/map_wireless_dualcam_01_cleaned_no_ceiling.pcd`（101MB、軌跡が無く未使用）
+- ブランチ **`Dev/Navigation02`**
+- ⚠️ **git 管理外のまま残してある大きいファイル**（**消さないこと**）:
+  | | |
+  |---|---|
+  | `Navigation/nav2_option/0911_robag/` | **3.5GB。9/11 の rosbag。いまの地図の素**。軌跡はここから取り出した |
+  | `Navigation/map_wireless_dualcam_01_cleaned_no_ceiling.pcd` | 101MB、880万点。**いまの地図の素** |
+  | `Navigation/nav2_option/map_20260907.pcd` | 6.5MB、**旧**地図の素 |
+
+  📌 軌跡（`trajectory/map_wireless_dualcam_01.tum`、550KB）と生成した地図は
+  **リポジトリに入れてある**ので、上の巨大ファイルが無くても地図は使える。
+  作り直したいときだけ要る。
 
 ### PC2（`~/g1_nav2/`）— 次回そのまま使える
 
@@ -301,7 +307,7 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
 | `pc2_humble/` | pixi の Humble + navigation2 1.1.20（aarch64）。**docker も sudo も不要** |
 | `g1_ws/` | ビルド済み（3パッケージ） |
 | `tools/` | リポジトリと同期済み |
-| `start_nav.sh` / `start_record.sh` / `start_localizer.sh` | 起動スクリプト |
+| `start_nav.sh` / `start_record.sh` / `start_localizer.sh` | 起動スクリプト。⚠️ **2026-09-16 に更新した。配置し直すこと**（既定地図の切り替え・巡回路の受け渡し・`start_localizer.sh` の引数化） |
 | `runs/` | **記録が 4 本残っている**（回収して `explain_run.py` に掛けること） |
 | 動いたままかもしれないもの | Nav2 一式、`g1-sdk-bridge`。⚠️ **`/etc/default` は `G1_ARM=--arm` のまま**。ただしサービスは `enable` されていないので再起動後は自動起動しない |
 

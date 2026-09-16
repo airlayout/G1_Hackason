@@ -53,7 +53,9 @@ WS="$HERE/g1_ws"
 TOOLS="$HERE/tools"
 CYCLONE_CFG="$HERE/cyclonedds_eth0.xml"
 PIXI="$HOME/.pixi/bin/pixi"
-MAP_DEFAULT="$WS/install/g1_navigation/share/g1_navigation/maps/room_a_map.yaml"
+# ⚠️ 2026-09-16 に **9/11 取得の地図へ切り替えた**（A-10q）。
+# 旧地図に戻すときは --map .../room_a_map.yaml
+MAP_DEFAULT="$WS/install/g1_navigation/share/g1_navigation/maps/room_a_map_20260911.yaml"
 
 MAP="$MAP_DEFAULT"
 LIDAR_YAW=0
@@ -247,7 +249,7 @@ fi
 
 # --- 5+7. Nav2 と自己位置合わせ ---------------------------------------------
 launch_nav() {   # $1 = map_to_odom
-    run "bash '$HERE/start_nav.sh' '$1' $LIDAR_YAW $OP_TIMEOUT '$PATROL'" || die "launch できなかった"
+    run "bash '$HERE/start_nav.sh' '$1' $LIDAR_YAW $OP_TIMEOUT '$PATROL' '$MAP'" || die "launch できなかった"
     [ "$DRY" = 1 ] && return 0
     local i
     for i in $(seq 1 40); do
@@ -300,7 +302,10 @@ fi
 if [ "$USE_LOCALIZER" = 1 ]; then
     step "7b. 連続 localization を使う"
     launch_nav "none"
-    run "bash '$HERE/start_localizer.sh'" || die "map_localizer を起動できなかった"
+    # ⚠️ **引数で渡すこと。** 2026-09-16 まで引数なしで呼んでおり、
+    # start_localizer.sh 内の 2026-09-15 のハードコード値が使われていた。
+    # それでいて下の ok() は $DX $DY $YAWRAD と表示するので、**ログが嘘をついていた**。
+    run "bash '$HERE/start_localizer.sh' $DX $DY $YAWRAD" || die "map_localizer を起動できなかった"
     run "sleep 6"
     ok "map_localizer を起動した（初期値 $DX $DY $YAWRAD）"
 else
