@@ -86,15 +86,37 @@ docker run --rm --network host --ipc host \
 
 | ツール | 用途 |
 |---|---|
-| `patrol_ctl.sh` | 巡回の `start` / `pause` / `stop` / `skip` / `status` / `watch` |
-| `record_waypoints.py` | **巡回路を機体の実位置から記録する。** 地図が古いので座標は手で書かない |
+| `patrol_ctl.sh` | 巡回の `start` / `pause` / `stop` / `skip` / `status` / `watch` と、教示の `teach` / `undo` / `save` / `cancel` |
+| `record_waypoints.py` | **巡回路を機体の実位置から記録する。** いちばん確実 |
+
+### 巡回路の作り方は2つ
+
+| | やり方 | ⚠️ |
+|---|---|---|
+| **RViz で引く**（速い） | `patrol_ctl.sh teach` → RViz の**「Publish Point」**で回りたい順にクリック → `save` | ⚠️ クリックするのは**地図の上の座標**。地図が 9/07 取得で現状と合っていないので、**地図では通れるように見えて実際には通れない点**を作れてしまう |
+| **機体を連れて行く**（確実） | `record_waypoints.py` で機体の実位置を拾う | 手間はかかるが、**機体が実際にそこに立てた**という事実が座標の裏付けになる |
+
+📌 実務的には**併用**。教示でざっと引いて1周流し、着けなかった点だけ取り直す。
+
+⚠️⚠️ **教示に「2D Goal Pose」は使えない。** `bt_navigator` が `/goal_pose` を直接
+購読しているので、**クリックした瞬間に機体が本当にそこへ歩き出す**。必ず
+**「Publish Point」**を使うこと（`nav2_operate.rviz` に追加済み）。
+📌 向き(`yaw_deg`)は**「次の点へ向かう方位」が自動で入る**。特定の向きで止まりたい
+点は yaml を書き換えるか `record_waypoints.py` で取り直す。
+📌 引いた巡回路は RViz の **PatrolRoute**（マゼンタの線＋黄色の矢印）に出る。
+教示中は**クリックするそばから形が見える**。
 
 ```bash
-# 現地で巡回路を作る（§7 の地図照合まで済ませた状態で）
+# --- 巡回路を作る（§7 の地図照合まで済ませた状態で。1回だけ）---
+# (1) RViz で引く
+./tools/patrol_ctl.sh teach     # 以後「Publish Point」のクリックが点になる
+./tools/patrol_ctl.sh undo      # 直前の1点を取り消す
+./tools/patrol_ctl.sh save      # yaml に書き、そのまま読み込む（再起動不要）
+# (2) 機体を連れて行く
 python3 tools/record_waypoints.py -o patrol_room_a.yaml
 
-# 走らせる
-./tools/patrol_ctl.sh start     # 断られたら理由が出る（STANDBY=発進ゲートがまだ）
+# --- 走らせる ---
+./tools/patrol_ctl.sh start     # 断られたら理由が出る（READY=enable_navigation がまだ）
 ./tools/patrol_ctl.sh watch
 ```
 
@@ -109,13 +131,14 @@ python3 tools/record_waypoints.py -o patrol_room_a.yaml
 | ツール | 用途 |
 |---|---|
 | `mock_deadlock_test.sh` | **旋回デッドロックの再現と修正確認。** `old` で 2026-09-15 の現象を再現し、`new` で直ることを確認する。モックのビルドから Goal 到達まで自動 |
-| `mock_patrol_test.sh` | **巡回モードの通し確認。** ①走れない状態で start を断る ②2点を順に回る ③手動 Goal に退く ④HOLD から自動復帰しない、の4件。`dwell` モードで「各点で何秒止まっていられるか」を測る |
+| `mock_patrol_test.sh` | **巡回モードの通し確認。** `basic`(4件) / `dwell`(各点で何秒止まっていられるか) / `teach`(RViz 教示) |
 
 ```bash
 ./tools/mock_deadlock_test.sh old    # 60秒経っても 1mm も動かない（再現）
 ./tools/mock_deadlock_test.sh new    # Reached the goal!（修正確認）
 ./tools/mock_patrol_test.sh          # 巡回の4件（約4分）
 ./tools/mock_patrol_test.sh dwell    # 各点で止まれる時間（約3分）。G1_DWELL=5.0 が既定
+./tools/mock_patrol_test.sh teach    # RViz 教示モード（約2分）
 ```
 
 ⚠️ **各点で止まっていられるのは約1.3秒しかない**（`velocity_smoother` の

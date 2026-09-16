@@ -15,6 +15,7 @@
 #     cd <repo>/Navigation/nav2_option
 #     ./tools/mock_patrol_test.sh          # 上の4件（約4分）
 #     ./tools/mock_patrol_test.sh dwell    # 各点で長く止まると FAULT になるかを測る（約3分）
+#     ./tools/mock_patrol_test.sh teach    # RViz 教示モード（約2分）
 #
 # `dwell` は別建てにしてある。**`dwell_s` を何秒まで伸ばせるかは
 # `velocity_smoother` の velocity_timeout(既定 1.0) と `cmd_timeout`(0.30) で決まり、
@@ -25,7 +26,8 @@
 set -o pipefail
 
 MODE="${1:-basic}"
-case "$MODE" in basic|dwell) ;; *) echo "使い方: $0 [basic|dwell]" >&2; exit 2 ;; esac
+case "$MODE" in basic|dwell|teach) ;;
+  *) echo "使い方: $0 [basic|dwell|teach]" >&2; exit 2 ;; esac
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # nav2_option
 IMAGE="${G1_MOCK_IMAGE:-g1-mapping-visualization:local}"
@@ -100,6 +102,76 @@ pkill -f "lib/nav[2]_" 2>/dev/null; pkill -f g1_sdk_bridge_mock_serve[r] 2>/dev/
 pkill -f "ros2 launc[h]" 2>/dev/null
 INNER
 
+cat > "$WORK/teach.sh" <<'INNER'
+# RViz の「Publish Point」で巡回路を引けるか。
+# RViz は立てられないので、**同じトピック `/clicked_point` に publish して代替する**
+# （RViz の PublishPoint ツールが出すのはこの PointStamped 1本だけなので等価）。
+set -o pipefail
+source /opt/ros/humble/setup.bash
+source /w/g1_ws/install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+pkill -f g1_sdk_bridge_mock_serve[r] 2>/dev/null; pkill -f "lib/nav[2]_" 2>/dev/null
+pkill -f "ros2 launc[h]" 2>/dev/null; sleep 3
+rm -rf /tmp/g1_bridge; mkdir -p /tmp/g1_bridge
+rm -f /out/taught.yaml
+setsid nohup /out/build/g1_sdk_bridge_mock_server --like-g1 >/tmp/mock_sdk.log 2>&1 &
+sleep 2
+setsid nohup ros2 launch g1_navigation navigation.launch.py backend:=mock \
+    heartbeat_required:=false patrol_waypoints:=/out/waypoints.yaml \
+    patrol_teach_output:=/out/taught.yaml >/tmp/nav_teach.log 2>&1 &
+sleep 40
+
+st()   { timeout 4 ros2 topic echo --once --full-length /g1/patrol/status std_msgs/msg/String 2>/dev/null \
+         | sed -n 's/^data: //p'; }
+call() { timeout 15 ros2 service call "/g1/patrol/$1" std_srvs/srv/Trigger "{}" 2>&1 \
+         | sed -n "s/.*Trigger_Response(\(.*\))$/    \1/p"; }
+click() { timeout 10 ros2 topic pub --once /clicked_point geometry_msgs/PointStamped \
+          "{header: {frame_id: map}, point: {x: $1, y: $2}}" >/dev/null 2>&1; }
+# ⚠️ **`--qos-durability transient_local` が要る。** route は「変わったときだけ」
+# 出す latched トピックなので、既定(volatile)で購読すると**既に出ている最新値を
+# 受け取れず 0 件に見える**（2026-09-16 にこれで「RViz に出ない」と誤判定した）。
+# RViz 側は nav2_operate.rviz で Durability Policy: Transient Local を指定してある。
+route() { timeout 5 ros2 topic echo --once --qos-durability transient_local \
+              /g1/patrol/route nav_msgs/msg/Path 2>/dev/null | grep -c "position:"; }
+
+echo
+echo "① TEACH でないときのクリックは無視されるか"
+click -3.0 -2.5
+sleep 1
+echo "   status: $(st)"
+
+echo
+echo "② teach に入って3点クリックする"
+call teach
+for p in "-3.0 -2.5" "-4.3 -2.5" "-4.3 -4.0"; do click $p; sleep 1; done
+sleep 1
+echo "   status: $(st)"
+echo "   /g1/patrol/route の点数: $(route)"
+
+echo
+echo "③ undo で1点戻せるか"
+call teach_undo
+sleep 1
+echo "   status: $(st)"
+
+echo
+echo "④ 教示中に start を断るか"
+call start
+
+echo
+echo "⑤ save で yaml に書き、そのまま読み込むか"
+click -4.3 -4.0; sleep 1
+call teach_save
+sleep 1
+echo "   status: $(st)"
+echo "   --- 書き出した yaml ---"
+sed 's/^/    /' /out/taught.yaml
+echo "   /g1/patrol/route の点数: $(route)"
+
+pkill -f "lib/nav[2]_" 2>/dev/null; pkill -f g1_sdk_bridge_mock_serve[r] 2>/dev/null
+pkill -f "ros2 launc[h]" 2>/dev/null
+INNER
+
 cat > "$WORK/run.sh" <<'INNER'
 set -o pipefail
 source /opt/ros/humble/setup.bash
@@ -161,7 +233,10 @@ pkill -f "lib/nav[2]_" 2>/dev/null; pkill -f g1_sdk_bridge_mock_serve[r] 2>/dev/
 pkill -f "ros2 launc[h]" 2>/dev/null; pkill -f patrol_nod[e].py 2>/dev/null
 INNER
 
-if [ "$MODE" = dwell ]; then
+if [ "$MODE" = teach ]; then
+    echo "########## RViz 教示モード ##########"
+    SCRIPT=/out/teach.sh
+elif [ "$MODE" = dwell ]; then
     echo "########## 各点で止まっていられる時間 ##########"
     SCRIPT=/out/dwell.sh
 else

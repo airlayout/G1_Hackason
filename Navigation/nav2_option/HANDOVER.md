@@ -75,13 +75,22 @@ RPP の rotate-to-heading は**実測角速度を基準に**加速度制限を�
 合っていないので、**座標を手で書かず、機体を実際にその場所へ持って行って拾う**:
 
 ```bash
-# PC2。§7 の地図照合まで済ませた状態で（1回だけ。地図を作り直したらやり直す）
+# --- (1) RViz で引く（速い。機体は動かない）---
+~/g1_nav2/tools/patrol_ctl.sh teach   # 以後「Publish Point」のクリックが点になる
+#   ⚠️⚠️「2D Goal Pose」ではない。あれはクリックした瞬間に機体が歩き出す
+~/g1_nav2/tools/patrol_ctl.sh save    # yaml に書き、そのまま読み込む（再起動不要）
+
+# --- (2) 機体を連れて行く（確実）---
 cd ~/g1_nav2/tools && python3 record_waypoints.py -o ~/g1_nav2/patrol_room_a.yaml
-# 巡回路つきで上げ直す
-~/g1_nav2/g1up.sh --patrol ~/g1_nav2/patrol_room_a.yaml
-# 8.3 の enable_navigation の後で
+~/g1_nav2/g1up.sh --patrol ~/g1_nav2/patrol_room_a.yaml   # 上げ直しが要る
+
+# --- 走らせる（8.3 の enable_navigation の後で）---
 ~/g1_nav2/tools/patrol_ctl.sh start
 ```
+
+⚠️ **(1) でクリックするのは「地図の上の座標」**なので、地図が古いぶんだけずれる。
+(2) は**機体が実際にそこに立てた**という事実が裏付けになる。
+**併用が実務的** — (1) でざっと引いて1周流し、着けなかった点だけ (2) で取り直す。
 
 ⚠️ **単純ゴール指定（手順書 8.4）が通ってから**にすること。巡回は同じ
 `NavigateToPose` を連続で投げるだけなので、1回の Goal が通らないなら巡回も通らない。
@@ -261,6 +270,7 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
 | 12 | **バッテリ交換で PC2 も機体も再起動する。** `/tmp` が消えて全部落ちる | 交換後は §3 から組み直す |
 | 13 | **`bridge_status: READY` は「走行許可」ではない。** TF とセンサーが健全になっただけで、この状態では速度指令が SDK へ1件も通らない（`OnNavTwist` が `SendZero`）。**機体は1mmも動かないまま Goal が abort し続ける** | `enable_navigation` を呼んで **`NAVIGATING`** にする。巡回ノードは `NAVIGATING` 以外では `start` を断る |
 | 14 | **Goal 到達の約 1.3 秒後に `cmd_timeout` で FAULT に落ちる**（`velocity_smoother` の velocity_timeout 1.0 + `cmd_timeout` 0.30）。巡回で各点に止まろうとすると1点目で止まる | 巡回の `dwell_s` は **0**（既定）。長く止まりたいなら [findings/patrol_mode.md](findings/patrol_mode.md) §6 の(a)(b)(c)から選ぶ判断が要る |
+| 15 | **`transient_local`（latched）にしても、あとから張った購読に届かないことがある。** CycloneDDS で実測。RViz は Nav2 より後に立ち上げるので、これに頼ると**見えるはずのものが見えない** | 周期配信で出し直す。確認は `ros2 topic echo --once --qos-durability transient_local` |
 
 ---
 

@@ -35,6 +35,28 @@ Goal を1件しか持てないので、**退かないと「人が送った Goal 
 **巡回は自動的に `HOLD` する**（暴走しない）。再定位のあと
 `/g1/patrol/start` を呼べば**止まった地点の次から**続きを回る（`index` を保つ）。
 
+## RViz で巡回路を引く（教示モード）
+
+    ./tools/patrol_ctl.sh teach     # TEACH に入る。以後 RViz の「Publish Point」が点になる
+    # RViz で回りたい順に地面をクリックしていく（/g1/patrol/route に見える）
+    ./tools/patrol_ctl.sh save      # yaml に書き、そのまま巡回路として読み込む
+    ./tools/patrol_ctl.sh undo      # 直前の1点を取り消す
+    ./tools/patrol_ctl.sh cancel    # 全部捨てて TEACH を抜ける
+
+⚠️⚠️ **「2D Goal Pose」は教示に使えない。** `bt_navigator` が `/goal_pose` を直接
+購読しているので、**クリックした瞬間に機体が本当にそこへ歩き出す**。
+RViz は同じツールを2つ置けるが、どちらも「2D Goal Pose」という同じ名前で
+並んでしまい現場で取り違える。そこで**別ツールの「Publish Point」**
+(`/clicked_point`) を使う。
+
+📌 **向き(`yaw`)は「次の点へ向かう方位」を自動で入れる。** 巡回では普通それが
+正しいし、クリックのたびに矢印を引かせるより速い。特定の向きで止まりたい点は
+あとから yaml の `yaw_deg` を書き換えるか、`tools/record_waypoints.py` で取り直す。
+
+⚠️ **RViz でクリックするのは「地図の上の座標」**。room_a の地図は 2026-09-07 取得で
+現状と合っていないので、**機体を実際にそこへ立たせて拾う `record_waypoints.py` の
+ほうが確実**。教示でざっと引いて、危ない点だけ取り直すのが実務的。
+
 ## ウェイポイントファイル
 
     frame_id: map          # 省略時 map
@@ -53,16 +75,18 @@ import json
 import math
 import os
 import time
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import rclpy
 import yaml
 from action_msgs.msg import GoalStatus
 from diagnostic_msgs.msg import DiagnosticArray
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PointStamped, PoseStamped
 from nav2_msgs.action import NavigateToPose
+from nav_msgs.msg import Path
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
@@ -142,6 +166,15 @@ class PatrolNode(Node):
             "bridge_status_topic", "/g1/bridge_status").value
         # 診断が何秒来なければ「見えていない」と判断するか
         self.bridge_stale_s = self.declare_parameter("bridge_stale_s", 3.0).value
+        # 教示モードの書き出し先。⚠️ **既定を waypoints_file にはしない。**
+        # 実機の既定は install/share 配下（--symlink-install でリポジトリの実体）なので、
+        # 上書きするとリポジトリが汚れるし、元のひな形も失う。
+        self.teach_output = self.declare_parameter("teach_output", "").value
+        if not self.teach_output:
+            home = os.path.expanduser("~")
+            base = os.path.join(home, "g1_nav2")
+            self.teach_output = os.path.join(
+                base if os.path.isdir(base) else home, "patrol_taught.yaml")
 
         if self.on_failure not in ("skip", "stop"):
             raise RuntimeError(f"on_failure は skip か stop: {self.on_failure}")
@@ -151,7 +184,7 @@ class PatrolNode(Node):
         self.load_error: Optional[str] = None
         self._load_waypoints()
 
-        self.state = "IDLE"            # IDLE / RUNNING / HOLD / DONE
+        self.state = "IDLE"            # IDLE / RUNNING / HOLD / DONE / TEACH
         self.index = 0
         self.loop_count = 0
         self.retries = 0
@@ -163,6 +196,7 @@ class PatrolNode(Node):
         self._wait_until = 0.0         # dwell / retry の待ち
         self._bridge_state = ""
         self._bridge_stamp = 0.0
+        self._teach: List[Dict[str, float]] = []   # 教示中に溜めた点
         self._autostart_at = time.monotonic() + float(self.start_delay_s)
 
         self._client = ActionClient(self, NavigateToPose, "navigate_to_pose")
@@ -172,15 +206,36 @@ class PatrolNode(Node):
         # 検出して巡回を畳むためだけに見ている。
         self.create_subscription(PoseStamped, "/goal_pose", self._on_manual_goal, 10)
 
+        # ⚠️ 教示は **「Publish Point」** を使う。「2D Goal Pose」は bt_navigator が
+        # 直接購読しているので、クリックした瞬間に機体が本当に歩き出してしまう。
+        self.create_subscription(PointStamped, "/clicked_point", self._on_clicked_point, 10)
+
         self._pub_status = self.create_publisher(String, "/g1/patrol/status", 10)
+        # 巡回路を RViz で見えるようにする。
+        # ⚠️⚠️ **transient_local だけに頼らないこと。** 2026-09-16 のモック確認で、
+        # CycloneDDS では**あとから張った購読に latched の1件が届かなかった**
+        # (先に購読を張れば届く)。RViz は Nav2 より後に立ち上げるのが普通なので、
+        # これだと**巡回路が見えない**。**1Hz で出し直す**ことで依存を断つ
+        # (4点の Path なので負荷は無視できる)。durability はそのまま残してある
+        # (届く環境では即座に出るので、あって損はない)。
+        self._pub_route = self.create_publisher(
+            Path, "/g1/patrol/route",
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.create_service(Trigger, "/g1/patrol/start", self._srv_start)
         self.create_service(Trigger, "/g1/patrol/pause", self._srv_pause)
         self.create_service(Trigger, "/g1/patrol/stop", self._srv_stop)
         self.create_service(Trigger, "/g1/patrol/skip", self._srv_skip)
+        self.create_service(Trigger, "/g1/patrol/teach", self._srv_teach)
+        self.create_service(Trigger, "/g1/patrol/teach_save", self._srv_teach_save)
+        self.create_service(Trigger, "/g1/patrol/teach_undo", self._srv_teach_undo)
+        self.create_service(Trigger, "/g1/patrol/teach_cancel", self._srv_teach_cancel)
 
         self.create_timer(0.2, self._tick)
         self.create_timer(1.0, self._publish_status)
+        # ⚠️ 遅れて立ち上がる RViz のために出し直す（上の publisher のコメント参照）
+        self.create_timer(1.0, self._publish_route)
 
+        self._publish_route()
         if self.load_error:
             self.get_logger().error(f"❌ ウェイポイントを読めない: {self.load_error}")
         self.get_logger().info(
@@ -256,6 +311,11 @@ class PatrolNode(Node):
     # --- サービス ----------------------------------------------------------
     def _srv_start(self, req, res):
         del req
+        if self.state == "TEACH":
+            res.success = False
+            res.message = (f"教示中（{len(self._teach)} 点）。"
+                           "teach_save で確定するか teach_cancel で捨ててから start すること")
+            return res
         if self.load_error:
             res.success, res.message = False, f"ウェイポイントが無い: {self.load_error}"
             return res
@@ -291,12 +351,20 @@ class PatrolNode(Node):
 
     def _srv_stop(self, req, res):
         del req
+        was_teaching = self.state == "TEACH"
+        n_teach = len(self._teach)
         self._cancel_current("stop")
+        self._teach = []
         self.state = "IDLE"
         self.index, self.loop_count, self.retries = 0, 0, 0
         self.hold_reason = ""
-        self.get_logger().info("■ 巡回を止めた（次の start は1点目から）")
-        res.success, res.message = True, "巡回を止めた。次の start は1点目から"
+        self._publish_route()
+        if was_teaching:
+            res.message = f"教示をやめた（{n_teach} 点は捨てた）"
+        else:
+            res.message = "巡回を止めた。次の start は1点目から"
+        self.get_logger().info(f"■ {res.message}")
+        res.success = True
         return res
 
     def _srv_skip(self, req, res):
@@ -465,7 +533,152 @@ class PatrolNode(Node):
         self._advance()
         self._wait_until = time.monotonic() + float(self.retry_dwell_s)
 
+    # --- 教示モード（RViz の Publish Point で巡回路を引く）-------------------
+    def _srv_teach(self, req, res):
+        del req
+        if self.state == "TEACH":
+            res.success, res.message = True, f"すでに教示中（{len(self._teach)} 点）"
+            return res
+        if self.state == "RUNNING":
+            # 人が明示的に教示へ入るのだから、巡回は畳む（手動が勝つのと同じ思想）
+            self.get_logger().warn("⚠️ 巡回中だったので畳んで教示に入る")
+            self._cancel_current("teach")
+        self.state = "TEACH"
+        self._teach = []
+        self.hold_reason = ""
+        self._publish_route()
+        self.get_logger().info(
+            f"✏️ 教示モード。RViz の **「Publish Point」**で回りたい順にクリックする"
+            f"（⚠️「2D Goal Pose」ではない。あれは本当に歩き出す）。"
+            f"書き出し先: {self.teach_output}")
+        res.success = True
+        res.message = (f"教示モード。RViz の「Publish Point」でクリック → save で確定。"
+                       f"書き出し先 {self.teach_output}")
+        return res
+
+    def _on_clicked_point(self, msg: PointStamped) -> None:
+        if self.state != "TEACH":
+            return   # 教示中でなければ何もしない（誤クリックで何も起きない）
+        frame = msg.header.frame_id or self.frame_id
+        if frame != self.frame_id:
+            self.get_logger().warn(
+                f"⚠️ クリックが {frame} 座標系で来た（巡回路は {self.frame_id}）。"
+                "RViz の Fixed Frame を map にすること。この点は捨てる")
+            return
+        self._teach.append({"x": round(float(msg.point.x), 3),
+                            "y": round(float(msg.point.y), 3)})
+        self._publish_route()
+        self.get_logger().info(
+            f"✏️ {len(self._teach)} 点目 ({self._teach[-1]['x']}, {self._teach[-1]['y']})")
+
+    def _srv_teach_undo(self, req, res):
+        del req
+        if self.state != "TEACH":
+            res.success, res.message = False, "教示中ではない"
+            return res
+        if not self._teach:
+            res.success, res.message = False, "取り消す点が無い"
+            return res
+        dropped = self._teach.pop()
+        self._publish_route()
+        res.success = True
+        res.message = f"({dropped['x']}, {dropped['y']}) を取り消した（残り {len(self._teach)} 点）"
+        self.get_logger().info(f"↩ {res.message}")
+        return res
+
+    def _srv_teach_cancel(self, req, res):
+        del req
+        if self.state != "TEACH":
+            res.success, res.message = False, "教示中ではない"
+            return res
+        n = len(self._teach)
+        self._teach = []
+        self.state = "IDLE"
+        self._publish_route()
+        res.success, res.message = True, f"{n} 点を捨てて教示をやめた"
+        self.get_logger().info(f"🗑 {res.message}")
+        return res
+
+    def _teach_with_yaw(self) -> List[dict]:
+        """教示した点に「次の点へ向かう方位」を入れて返す。
+
+        📌 巡回では普通それが正しい向きで、クリックのたびに矢印を引かせるより速い。
+        最後の点は、周回なら1点目へ向かう方位、1周きりなら**手前の区間の方位**を引き継ぐ。
+        """
+        pts = self._teach
+        out: List[dict] = []
+        last_yaw = 0.0
+        for i, p in enumerate(pts):
+            nxt = None
+            if i + 1 < len(pts):
+                nxt = pts[i + 1]
+            elif self.loop and len(pts) > 1:
+                nxt = pts[0]
+            if nxt is not None:
+                last_yaw = math.atan2(nxt["y"] - p["y"], nxt["x"] - p["x"])
+            out.append({"name": f"wp{i + 1}", "x": p["x"], "y": p["y"],
+                        "yaw_deg": round(math.degrees(last_yaw), 1)})
+        return out
+
+    def _srv_teach_save(self, req, res):
+        del req
+        if self.state != "TEACH":
+            res.success, res.message = False, "教示中ではない"
+            return res
+        if len(self._teach) < 2:
+            res.success, res.message = False, f"点が {len(self._teach)} しかない（2点以上要る）"
+            return res
+        points = self._teach_with_yaw()
+        try:
+            os.makedirs(os.path.dirname(self.teach_output) or ".", exist_ok=True)
+            with open(self.teach_output, "w", encoding="utf-8") as f:
+                f.write("# RViz の「Publish Point」で引いた巡回路（patrol_node.py の教示モード）\n")
+                f.write("# yaw_deg は「次の点へ向かう方位」を自動で入れたもの。\n")
+                f.write("# ⚠️ 地図の上でクリックした座標。地図が古いと実際には通れないことがある。\n")
+                f.write("#    怪しい点は tools/record_waypoints.py で取り直すこと。\n")
+                f.write(f"frame_id: {self.frame_id}\n")
+                f.write("waypoints:\n")
+                for p in points:
+                    f.write(f"  - {{name: {p['name']}, x: {p['x']}, y: {p['y']}, "
+                            f"yaw_deg: {p['yaw_deg']}}}\n")
+        except OSError as e:
+            res.success, res.message = False, f"書けなかった: {e}"
+            self.get_logger().error(res.message)
+            return res
+
+        # そのまま使えるように差し替える（**再起動を要らなくするのが教示モードの眼目**）
+        self.waypoints = [Waypoint(i, w) for i, w in enumerate(points)]
+        self.load_error = None
+        self._teach = []
+        self.state = "IDLE"
+        self.index, self.loop_count, self.retries = 0, 0, 0
+        self._publish_route()
+        res.success = True
+        res.message = (f"{len(points)} 点を {self.teach_output} に書き、そのまま読み込んだ。"
+                       "start で走る")
+        self.get_logger().info(f"💾 {res.message}")
+        return res
+
     # --- 見える化 ----------------------------------------------------------
+    def _publish_route(self) -> None:
+        """いまの巡回路（教示中なら教示中の点）を Path で流す。RViz で見るため。"""
+        pts = (self._teach_with_yaw() if self.state == "TEACH"
+               else [{"x": w.x, "y": w.y, "yaw_deg": math.degrees(w.yaw)}
+                     for w in self.waypoints])
+        path = Path()
+        path.header.frame_id = self.frame_id
+        path.header.stamp = self.get_clock().now().to_msg()
+        for p in pts:
+            ps = PoseStamped()
+            ps.header = path.header
+            ps.pose.position.x = float(p["x"])
+            ps.pose.position.y = float(p["y"])
+            _, _, qz, qw = yaw_to_quat(math.radians(float(p["yaw_deg"])))
+            ps.pose.orientation.z = qz
+            ps.pose.orientation.w = qw
+            path.poses.append(ps)
+        self._pub_route.publish(path)
+
     def _publish_status(self) -> None:
         wp = self.waypoints[self.index] if self.waypoints else None
         msg = String()
@@ -479,6 +692,7 @@ class PatrolNode(Node):
             "last_result": self.last_result,
             "hold_reason": self.hold_reason,
             "bridge": self._bridge_state or "unknown",
+            "teach_points": len(self._teach),
             "error": self.load_error or "",
         }, ensure_ascii=False)
         self._pub_status.publish(msg)

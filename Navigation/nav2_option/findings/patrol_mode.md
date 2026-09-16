@@ -11,6 +11,8 @@ Planning.md の Phase 4-7「複数 Goal / waypoint follower への拡張」の�
 | `g1_ws/src/g1_navigation/config/patrol_synthetic.yaml` | モック用の巡回路（4点） |
 | `g1_ws/src/g1_navigation/config/patrol_room_a.yaml` | 実会場用。**空のひな形**（§7） |
 | `tools/record_waypoints.py` | 巡回路を機体の実位置から記録する |
+| 教示モード（`patrol_node.py` 内） | **RViz の「Publish Point」で巡回路を引く**（§8） |
+| `tools/nav2_operate.rviz` | `PublishPoint` ツールと `PatrolRoute` 表示を追加 |
 | `tools/patrol_ctl.sh` | `start` / `pause` / `stop` / `skip` / `status` / `watch` |
 | `tools/mock_patrol_test.sh` | 回帰テスト |
 | launch 引数 | `patrol` / `patrol_waypoints` / `patrol_loop` / `patrol_dwell_s` / `patrol_on_failure` / `patrol_autostart` |
@@ -169,7 +171,76 @@ fault_reason: cmd_timeout
 
 ---
 
-## 7. ⚠️ これで言えないこと
+## 7. RViz で巡回路を引く（教示モード）
+
+    patrol_ctl.sh teach     # TEACH に入る
+    # RViz の「Publish Point」で回りたい順に地面をクリック（PatrolRoute に出る）
+    patrol_ctl.sh undo      # 直前の1点を取り消す
+    patrol_ctl.sh save      # yaml に書き、そのまま読み込む（**再起動不要**）
+    patrol_ctl.sh cancel    # 全部捨てて抜ける
+
+### ⚠️⚠️ 「2D Goal Pose」は教示に使えない
+
+`bt_navigator` が `/goal_pose` を**直接**購読している。教示のつもりでクリックすると
+**機体が本当にそこへ歩き出す**。「クリックされたら即キャンセルする」で誤魔化すことも
+考えたが、**Goal を受理してから取り消すまでの間に機体が動きうる**ので採らなかった。
+
+RViz は `SetGoal` ツールを2つ置いて別々のトピックに出すこともできるが、
+**ツール名はプラグイン名で決まるので、ツールバーに「2D Goal Pose」が2つ並ぶ**。
+現場で取り違えたら機体が歩き出す。そこで**別ツールの「Publish Point」**
+（`/clicked_point`）を使う。TEACH でなければ誰も拾わないので、誤クリックしても
+**何も起きない**（モック確認の①）。
+
+### 向きは自動で入れる
+
+`yaw_deg` は**「次の点へ向かう方位」**を計算して入れる。最後の点は、周回なら
+1点目へ向かう方位。巡回では普通それが正しい向きだし、クリックのたびに矢印を
+引かせるより速い。特定の向きで止まりたい点は yaml を直すか `record_waypoints.py` で取り直す。
+
+### ⚠️ 教示と `record_waypoints.py` の差は「便利さ」ではなく「正しさ」
+
+| | 拾う座標 | |
+|---|---|---|
+| 教示（RViz） | **地図の上でクリックした点** | 速い。ただし地図が 9/07 取得で現状と合っていない（A-10n）ので、**地図では通れるように見えて実際には通れない点**を作り込める |
+| `record_waypoints.py` | **機体が実際に立った位置** | 手間はかかるが、**機体がそこに立てたという事実**が座標の裏付けになる |
+
+📌 **併用が実務的。** 教示でざっと引いて1周流し、着けなかった点だけ取り直す。
+
+### 🐛 `transient_local` だけでは RViz に出なかった
+
+巡回路（`/g1/patrol/route`）は「変わったときだけ」出す latched トピックにしていた。
+`Durability: TRANSIENT_LOCAL` を指定してあるので、あとから繋いだ RViz にも
+最後の1件が届く——**はずだった。届かなかった。**
+
+| 購読を張る順 | 受信 |
+|---|---|
+| 配信より**先**に張る | ✅ 届く |
+| 配信より**後**に張る（＝ RViz を後から立ち上げる） | ❌ **0 件** |
+
+**RViz は Nav2 より後に立ち上げるのが普通**（手順書もその順）なので、これだと
+実運用でいちばん要るときに巡回路が見えない。**1Hz で出し直す**ことにして依存を断った
+（4点の Path なので負荷は無視できる）。`transient_local` 自体は残してある
+（届く環境では即座に出るので、あって損はない）。
+
+📌 **「latched にしたから遅れて繋いでも見える」を検証せずに信じないこと。**
+この確認は `ros2 topic echo --once --qos-durability transient_local` で取れる。
+
+### 結果（モック）
+
+| # | 確かめたこと | 結果 |
+|---|---|---|
+| ① | TEACH でないクリックを無視するか | ✅ `teach_points: 0` のまま |
+| ② | 3点クリックで溜まるか | ✅ `state: TEACH` / `teach_points: 3`。**`/g1/patrol/route` も 3 点**（RViz に出る） |
+| ③ | `undo` で戻せるか | ✅ `(-4.3, -4.0) を取り消した（残り 2 点）` |
+| ④ | 教示中に `start` を断るか | ✅ `success=False`「teach_save か teach_cancel してから」 |
+| ⑤ | `save` で yaml に書き、そのまま読み込むか | ✅ 3点を書き出し、`waypoints: 3` に差し替わった。`route` も 3 点のまま |
+
+方位も検算どおり（`wp1→wp2` が真西で 180.0°、`wp2→wp3` が真南で -90.0°、
+`wp3→wp1` が `atan2(1.5, 1.3)` = 49.1°）。
+
+---
+
+## 8. ⚠️ これで言えないこと
 
 - **実機では未検証。** モックに物理は無い
 - **巡回路がまだ無い。** `config/patrol_room_a.yaml` は**空のひな形**。

@@ -1132,6 +1132,16 @@ Phase 4-7「複数 Goal / waypoint follower への拡張」を前倒しした。
   `bt_navigator` は Goal を1件しか持てないので、退かないと**人が送った Goal を
   巡回が奪い返す**という最悪の挙動になる
 
+**巡回路の作り方は2つ**（A-10p、2026-09-16 追加）
+
+| | 拾う座標 | |
+|---|---|---|
+| **教示モード**（RViz） | 地図の上でクリックした点 | 速い。`patrol_ctl.sh teach` → **「Publish Point」**でクリック → `save`。⚠️ **「2D Goal Pose」は使えない**。`bt_navigator` が `/goal_pose` を直接購読しており、クリックした瞬間に機体が歩き出す |
+| `tools/record_waypoints.py` | **機体が実際に立った位置** | 確実。手間はかかる |
+
+向きは「次の点へ向かう方位」を自動で入れる。引いた巡回路は `/g1/patrol/route`
+（RViz の `PatrolRoute`）に出るので、**クリックするそばから形が見える**。
+
 **ウェイポイントは手で書かない。** `tools/record_waypoints.py` で
 **機体を実際にその場所へ持って行って `map→base_link` を拾う**。地図が 9/07 取得で
 現状と合っていない（A-10n）ため、地図画像から座標を決めても通れる保証が無い。

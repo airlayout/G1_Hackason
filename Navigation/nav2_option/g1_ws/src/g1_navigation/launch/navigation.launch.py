@@ -242,6 +242,7 @@ def _launch_setup(context, *args, **kwargs):
                 "loop": flag("patrol_loop"),
                 "dwell_s": float(LaunchConfiguration("patrol_dwell_s").perform(context)),
                 "on_failure": LaunchConfiguration("patrol_on_failure").perform(context),
+                "teach_output": LaunchConfiguration("patrol_teach_output").perform(context),
                 # ⚠️ **既定 false。** 立ち上げただけで機体が歩き出さないようにする
                 "autostart": flag("patrol_autostart"),
                 "use_sim_time": use_sim_time,
@@ -323,6 +324,12 @@ def generate_launch_description():
             "patrol_dwell_s", default_value="0.0",
             description="各点で止まる秒数。⚠️ 1.3秒を超えると FAULT に落ちる。"
                         "点ごとに yaml の dwell_s で上書きできる"),
+        # ⚠️ 空なら ~/g1_nav2/patrol_taught.yaml（無ければ ~/patrol_taught.yaml）。
+        # **既定を patrol_waypoints にはしない。** 実機の既定は install/share 配下
+        # （--symlink-install でリポジトリの実体）なので、上書きするとリポジトリが汚れる。
+        DeclareLaunchArgument(
+            "patrol_teach_output", default_value="",
+            description="教示モード(RViz の Publish Point)の書き出し先 yaml"),
         DeclareLaunchArgument(
             "patrol_on_failure", default_value="skip",
             description="到達できない点の扱い。skip=飛ばして次へ / stop=巡回を止める"),

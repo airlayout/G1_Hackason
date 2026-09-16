@@ -131,6 +131,32 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /local_plan
       Value: true
+    # 巡回路。**教示中は「いまクリックした点の列」がそのまま出る**ので、
+    # 引きながら形を確認できる。⚠️ Transient Local なので後から RViz を開いても見える。
+    # 矢印はその点に着いたときの向き(既定は「次の点へ向かう方位」)。
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 255; 0; 255
+      Enabled: true
+      Head Diameter: 0.2
+      Head Length: 0.2
+      Length: 0.3
+      Line Style: Lines
+      Line Width: 0.06
+      Name: PatrolRoute
+      Pose Color: 255; 255; 0
+      Pose Style: Arrows
+      Radius: 0.03
+      Shaft Diameter: 0.08
+      Shaft Length: 0.3
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /g1/patrol/route
+      Value: true
     # URDF(g1_description)が未着手なので RobotModel は使えない。
     # 代わりに base_link の座標軸を出して機体の位置と向きを見る。
     - Class: rviz_default_plugins/Axes
@@ -192,6 +218,22 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /goal_pose
+    # ⚠️⚠️ **巡回路の教示はこちら（「Publish Point」）を使う。**
+    # `patrol_ctl.sh teach` で TEACH に入っている間だけ、クリックが巡回路の点になる。
+    # TEACH でなければ誰も拾わないので、誤クリックしても何も起きない。
+    #
+    # **「2D Goal Pose」を教示に流用してはいけない。** `bt_navigator` が `/goal_pose` を
+    # 直接購読しているので、クリックした瞬間に機体が本当にそこへ歩き出す。
+    # RViz は SetGoal を2つ置けるが、**どちらも「2D Goal Pose」という同じ名前で
+    # 並んでしまい現場で取り違える**ので、別ツールにしてある。
+    - Class: rviz_default_plugins/PublishPoint
+      Single click: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /clicked_point
   Transformation:
     Current:
       Class: rviz_default_plugins/TF

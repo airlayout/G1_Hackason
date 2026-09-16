@@ -28,6 +28,17 @@ Nav2のライフサイクル・経路計画・制御ループを検証した。
 | 入口 | RViz の 2D Goal Pose(`/goal_pose`) | `ros2 service call /g1/patrol/start std_srvs/srv/Trigger "{}"` |
 | 中身 | `bt_navigator` の `NavigateToPose` | **同じ**。`patrol_node.py` が1点ずつ投げる |
 
+巡回路は **RViz で引ける**（教示モード）:
+
+```bash
+tools/patrol_ctl.sh teach   # 以後「Publish Point」のクリックが巡回路の点になる
+tools/patrol_ctl.sh save    # yaml に書き、そのまま読み込む（再起動不要）
+```
+
+⚠️⚠️ **教示に「2D Goal Pose」は使えない。** `bt_navigator` が `/goal_pose` を直接
+購読しているので、クリックした瞬間に機体が本当にそこへ歩き出す。
+📌 引いた巡回路は `/g1/patrol/route`（RViz の `PatrolRoute`）に出る。
+
 ⚠️ **巡回は `bridge_status` が `NAVIGATING` でないと `start` を断る。**
 `READY` は「準備完了」であって走行許可ではない（`enable_navigation` がまだ）。
 ⚠️ 巡回中に RViz から Goal を送ると**巡回のほうが退く**（`bt_navigator` は Goal を

@@ -8,6 +8,22 @@
 #   ./patrol_ctl.sh status   # いまの状態を1行で
 #   ./patrol_ctl.sh watch    # 状態を流し続ける
 #
+# ## RViz で巡回路を引く（教示モード）
+#
+#   ./patrol_ctl.sh teach    # TEACH に入る
+#   （RViz の **「Publish Point」**で回りたい順に地面をクリック。
+#     引いた形は PatrolRoute として見える）
+#   ./patrol_ctl.sh undo     # 直前の1点を取り消す
+#   ./patrol_ctl.sh save     # yaml に書き、そのまま巡回路として読み込む（再起動不要）
+#   ./patrol_ctl.sh cancel   # 全部捨てて TEACH を抜ける
+#
+# ⚠️⚠️ **教示に「2D Goal Pose」を使わないこと。** `bt_navigator` が `/goal_pose` を
+#    直接購読しているので、**クリックした瞬間に機体が本当にそこへ歩き出す**。
+# ⚠️ 向きは「次の点へ向かう方位」が自動で入る。特定の向きで止まりたい点は
+#    yaml の `yaw_deg` を書き換えるか `record_waypoints.py` で取り直す。
+# ⚠️ クリックするのは**地図の上の座標**。地図が古いと実際には通れない点を作れてしまう。
+#    確実なのは `record_waypoints.py`（機体を実際にその場所へ立たせて拾う）。
+#
 # ⚠️ **`start` は `bridge_status` が `NAVIGATING` でないと断られる。** 断り文に理由が入る。
 #
 #   | bridge | 意味 | すること |
@@ -26,8 +42,15 @@ set -o pipefail   # ⚠️ set -u は ROS の setup.bash を壊す
 
 CMD="${1:-status}"
 
+# 教示系は打ちやすい短い名前にする（サービス名は teach_* ）
 case "$CMD" in
-  start|pause|stop|skip)
+  save)   CMD=teach_save ;;
+  undo)   CMD=teach_undo ;;
+  cancel) CMD=teach_cancel ;;
+esac
+
+case "$CMD" in
+  start|pause|stop|skip|teach|teach_save|teach_undo|teach_cancel)
     # ⚠️ `tail -1` は空行を拾う。**応答行を明示的に抜く**こと
     ros2 service call "/g1/patrol/$CMD" std_srvs/srv/Trigger "{}" \
       | sed -n "s/.*Trigger_Response(\(.*\))$/\1/p"
@@ -41,7 +64,7 @@ case "$CMD" in
     ros2 topic echo --full-length /g1/patrol/status std_msgs/msg/String | sed -n 's/^data: //p'
     ;;
   *)
-    sed -n '2,30p' "$0" >&2
+    sed -n '2,40p' "$0" >&2
     exit 2
     ;;
 esac
