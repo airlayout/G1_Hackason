@@ -15,7 +15,12 @@
 #
 # ## やること / やらないこと
 #
-# やる  : §2 ブリッジ起動(ゲート閉) → §3 内蔵SLAM → §4 記録 → §5 Nav2 → §7 自己位置合わせ
+# やる  : §1 姿勢の検査 → §2 ブリッジ起動(ゲート閉) → §3 内蔵SLAM → §4 記録
+#         → §5 Nav2 → §7 自己位置合わせ
+#
+# ⚠️ **実行前に、機体を「歩かせるときと同じ通常の立位」にして、出発位置に置くこと。**
+# §5 の校正と §7 の照合は**いまの姿勢と位置で決まる**ので、あとで動かすと無効になる。
+# 人は機体から 2m 以上離れること(近いと costmap と地図照合の両方が劣化する)。
 # やらない: **発進ゲートの開放と Goal 送信**。ここは人が判断して叩く(D-07 の設計意図)。
 #          操作PC 側の heartbeat と RViz も別途(最後に手順を表示する)
 #
@@ -48,6 +53,7 @@ USE_LOCALIZER=0
 SKIP_RECORD=0
 DRY=0
 DO_ENABLE=0
+FORCE_POSTURE=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -57,6 +63,7 @@ while [ $# -gt 0 ]; do
         --localizer)        USE_LOCALIZER=1; shift ;;
         --skip-record)      SKIP_RECORD=1; shift ;;
         --dry-run)          DRY=1; shift ;;
+        --force-posture)    FORCE_POSTURE=1; shift ;;
         --enable)           DO_ENABLE=1; shift ;;
         -h|--help)          sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "未知の引数: $1" >&2; exit 2 ;;
@@ -121,6 +128,35 @@ for pat in "g1_slam_odom_t[f].py" "g1_state_bridge_nod[e]" "g1_cmd_router_nod[e]
 done
 run "sleep 3"
 ok "ROS 側のプロセスを掃除した"
+
+# --- 1. 機体の姿勢 ----------------------------------------------------------
+# ⚠️⚠️ **ここが 2026-09-15 に最も時間を溶かした落とし穴。**
+# §5 の自動校正は**その瞬間の姿勢を重力整列として焼き込む**。座位や傾いた立位で
+# 校正すると、歩き出して姿勢が変わった分だけ点群が傾き、地図と噛み合わなくなる。
+# 実測: 通常の立位 1.59〜4.35°(基準 3.81°) / 座位 15.67° / 傾いた立位 19.04°
+step "1. 機体の姿勢"
+if [ "$DRY" = 0 ]; then
+    TILT=$(ros "timeout 30 python3 '$TOOLS/check_imu_attitude.py' 2>&1 | grep -o '傾き = [0-9.]*' | grep -o '[0-9.]*'")
+    if [ -z "$TILT" ]; then
+        warn "傾きを測れなかった（IMU が届いていない）。姿勢の検査を飛ばす"
+    else
+        BAD=$(python3 -c "print(1 if float('$TILT') > 10 else 0)")
+        MEH=$(python3 -c "print(1 if float('$TILT') > 6 else 0)")
+        if [ "$BAD" = 1 ] && [ "$FORCE_POSTURE" = 0 ]; then
+            warn "センサーの傾き ${TILT}°（通常の立位は 2〜4°）"
+            warn "**座位か、傾いた立位の可能性が高い。** この姿勢で校正すると、"
+            warn "歩き出したときに点群が地図と噛み合わなくなる。"
+            echo "      → 純正リモコンで**通常の立位**（歩かせるときと同じ姿勢）にしてから再実行する"
+            echo "      → 意図的に進めるなら --force-posture"
+            die "姿勢が立位でない（傾き ${TILT}°）"
+        elif [ "$MEH" = 1 ]; then
+            warn "センサーの傾き ${TILT}°。やや大きい（通常は 2〜4°）。RViz での目視確認を特に丁寧に"
+        else
+            ok "センサーの傾き ${TILT}°（通常の立位の範囲）"
+        fi
+    fi
+fi
+warn "⚠️ **ここから先、機体を動かさないこと。** §5 の校正と §7 の照合は、いまの姿勢と位置で決まる"
 
 # --- 2. SDK側プロセス（発進ゲートは閉じたまま）------------------------------
 step "2. SDK側プロセス（発進ゲートは閉じたまま）"
@@ -204,6 +240,14 @@ launch_nav() {   # $1 = map_to_odom
     grep -aq "自動校正した" /tmp/nav_launch.log 2>/dev/null \
         || die "自動校正が終わらない。IMU か内蔵SLAM の odom が届いていない可能性が高い（/tmp/nav_launch.log）"
     grep -a "自動校正した" /tmp/nav_launch.log | tail -1 | sed 's/^/  /'
+    # 焼き込まれた値そのものを検査する（§1 の事前チェックの裏取り）
+    local raw
+    raw=$(grep -a "自動校正した" /tmp/nav_launch.log | tail -1 | grep -o '生センサーの傾き [0-9.]*' | grep -o '[0-9.]*')
+    if [ -n "$raw" ] && [ "$FORCE_POSTURE" = 0 ]; then
+        if [ "$(python3 -c "print(1 if float('$raw') > 10 else 0)")" = 1 ]; then
+            die "校正に焼き込まれた傾きが ${raw}° と大きすぎる。立位にしてからやり直すこと"
+        fi
+    fi
 }
 
 step "5. Nav2 を起動する（機体は静止させたまま）"
