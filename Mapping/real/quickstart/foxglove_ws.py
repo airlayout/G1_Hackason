@@ -82,6 +82,25 @@ class FoxgloveClient:
         masked = bytes(c ^ mask[i % 4] for i, c in enumerate(payload))
         self.sock.sendall(bytes(header) + mask + masked)
 
+    def send_binary(self, payload: bytes):
+        """クライアント→サーバのバイナリ枠（ClientMessageData 用）。
+
+        ⚠️ クライアントからの枠は **必ずマスクする**（RFC 6455）。send_json と同じ作り。
+        """
+        mask = os.urandom(4)
+        header = bytearray([0x80 | OP_BINARY])
+        n = len(payload)
+        if n < 126:
+            header.append(0x80 | n)
+        elif n < 65536:
+            header.append(0x80 | 126)
+            header += struct.pack(">H", n)
+        else:
+            header.append(0x80 | 127)
+            header += struct.pack(">Q", n)
+        masked = bytes(c ^ mask[i % 4] for i, c in enumerate(payload))
+        self.sock.sendall(bytes(header) + mask + masked)
+
     # ── Foxglove の手順 ──────────────────────────────────────────────
     def collect_channels(self, settle=3.0):
         """advertise は分割して届くので、静まるまで集める。"""
