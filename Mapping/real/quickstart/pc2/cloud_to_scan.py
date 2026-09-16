@@ -49,8 +49,15 @@ from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReli
 from sensor_msgs.msg import LaserScan, PointCloud2
 
 # live の取付値。run_mola_live.sh / nav_stack.sh と同じ値でなければならない
-LIVOX_XYZ = (0.0, 0.0, 1.228)
-LIVOX_RPY_DEG = (177.93, 3.32, 0.0)
+# ⚠️ **2026-09-16 に床基準へ定義し直した。** 旧値 xyz (0,0,1.228) / rpy (177.93, 3.32, 0) は
+# 機体内蔵 odom 基準で、これで定義した base_link は**床に対して 5.90 度傾く**
+# （生スキャンの床平面フィット 4411 点・残差 3.3 mm で実測。法線 (0.0917, 0.0465, 0.9947)）。
+# その結果 map->base_link に pitch -5.1 度が定常で乗り、preflight.sh の
+# 「pitch は ±3 度」に落ちる値だった。yaw を動かさない水平軸まわりの最小回転 5.901 度で補正。
+# 検算: 新しい値で床を測り直すと 傾き 0.046 度 / 高さ +0.00002 m。
+# 補正後の実機 map->base_link は roll -0.32 / pitch +0.08 度（補正前 +2.43 / -5.06）。
+LIVOX_XYZ = (-0.112579, -0.057151, 1.209672)
+LIVOX_RPY_DEG = (-179.401, -1.9437, 0.0321)
 
 
 def rotation_from_rpy(roll: float, pitch: float, yaw: float) -> np.ndarray:

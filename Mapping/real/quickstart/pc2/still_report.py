@@ -51,8 +51,10 @@ SPEED_LIMIT = 0.361          # velocity_smoother の hypot（計画書 M3）
 WALL_LO, WALL_HI = 1.30, 1.82
 DEF_LO, DEF_HI = 0.02, 1.82
 # live の取付値。記録に base_link->livox_frame が無い候補のための既定
-LIVOX_XYZ = (0.0, 0.0, 1.228)
-LIVOX_RPY_DEG = (177.93, 3.32, 0.0)
+# ⚠️ 2026-09-16 に床基準へ定義し直した（旧 (0,0,1.228)/(177.93,3.32,0) は内蔵 odom 基準で
+#    base_link が床から 5.90 度傾く）。詳細は dog_odom_to_tf.py の注記。
+LIVOX_XYZ = (-0.112579, -0.057151, 1.209672)
+LIVOX_RPY_DEG = (-179.401, -1.9437, 0.0321)
 
 
 def read_edges(bag_dir: Path) -> dict[tuple[str, str], np.ndarray]:

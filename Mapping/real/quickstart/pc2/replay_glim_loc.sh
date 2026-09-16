@@ -20,8 +20,10 @@ CFG=/work/G1_Hackason/Mapping/real/quickstart/pc2/glim_loc
 MAP=/work/G1_Hackason/Mapping/real/runs/20260906T135940_UiS_room_v3/glim/map
 FRAME=/work/G1_Hackason/Mapping/real/runs/20260906T135940_UiS_room_v3/glim/map_frame.txt
 BAG=""; INIT=""; OUT=""; CT=0; SECONDS_LIMIT=0
-LIVOX_XYZ="0 0 1.228"
-LIVOX_RPY_DEG="177.93 3.32 0"
+# ⚠️ 2026-09-16 に床基準へ定義し直した（旧 xyz 0 0 1.228 / rpy 177.93 3.32 0 は内蔵 odom 基準で
+#    base_link が床から 5.90 度傾く）。詳細は dog_odom_to_tf.py の注記。
+LIVOX_XYZ="-0.112579 -0.057151 1.209672"
+LIVOX_RPY_DEG="-179.401 -1.9437 0.0321"
 
 while [ $# -gt 0 ]; do
     case "$1" in

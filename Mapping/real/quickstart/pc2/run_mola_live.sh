@@ -71,8 +71,10 @@ DDS_NIC="${G1_PC2_DDS_NIC:-eth0}"
 DOMAIN="${G1_PC2_DOMAIN:-0}"
 SECONDS_LIMIT="${G1_PC2_SECONDS:-0}"
 # live の取付値（上の注記）
-LIVOX_XYZ="${G1_LIVOX_XYZ:-0 0 1.228}"
-LIVOX_RPY_DEG="${G1_LIVOX_RPY_DEG:-177.93 3.32 0}"
+# ⚠️ 2026-09-16 に床基準へ定義し直した（旧 xyz 0 0 1.228 / rpy 177.93 3.32 0 は内蔵 odom 基準で
+#    base_link が床から 5.90 度傾く）。詳細は dog_odom_to_tf.py の注記。
+LIVOX_XYZ="${G1_LIVOX_XYZ:--0.112579 -0.057151 1.209672}"
+LIVOX_RPY_DEG="${G1_LIVOX_RPY_DEG:--179.401 -1.9437 0.0321}"
 
 MAP=""; INIT_POSE=""
 while [ $# -gt 0 ]; do
