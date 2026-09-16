@@ -128,8 +128,31 @@ AP（OMEN の `g1-teleop-ap`）より先に PC2 が起動すると、PC2 の wla
 - **`/tf_static` は `depth=1` にしない。** 静的 TF ごとに 1 通来るので、最後の 1 通しか
   残らず、後から開いた RViz2 で**鎖が切れる**（`tf2_echo map base_link` が無言になる）。
   `depth=100` にしてある
-- **`/map` は中継できない。** latched なので橋が再送しない。コンテナ側で `map_server` を
-  立てる（`up.sh` がやる）。同じ格子を AP 越しに何度も運ばずに済む
+- **`/map` は中継できない。** latched なので橋が再送しない。
+  ⚠️ **2026-09-16 に静的レイヤを `/projected_map` に移した**（`octomap_server`。
+  机が動いても地図が追従する）。`/projected_map` は**周期発行なので運べる**。
+  コンテナの `map_server` は**既定 off**（`G1_SHOW_SEED_MAP=1` で比較用に出せる）
+- **`/projected_map` は間引く。** 778×431 ≒ **335 KB** で、`octomap_server` は
+  **点群と同じレートで出し直す**。10 Hz なら 3.35 MB/s ＝ AP の実効（~3 MB/s）を超える。
+  機体内の Nav2 は全レートで受ければよく、RViz2 に 2 Hz の地図更新は要らないので、
+  中継側で **0.5 Hz**（0.17 MB/s）に落としてある（`foxglove_to_ros.py` の
+  `DEFAULT_THROTTLE_HZ`。`--throttle /topic=HZ` で変えられる）
+
+### 9. `octomap_server` の既定値は 4 つとも危ない
+
+2026-09-16 に `quickstart/verify_octomap_seed.sh` で測って決めた値。
+**根拠は `quickstart/pc2/run_nav2_live.sh` の注記と `docs/plan/2026-09-16-growing-map-octomap.md`。**
+
+| param | 既定 | 採用 | 既定のままだと |
+|---|---|---|---|
+| `occupancy_min_z` / `max_z` | ±100 | **0.23 / 1.80** | 床と天井が入って**部屋全体が障害物** |
+| `sensor_model.max_range` | **-1.0**（無制限） | **4.0** | 遠く・低い構造（机）を **683 セル消す**。CPU も 2.7 倍 |
+| `latch` | **true** | **false** | 購読者が居なくても全層を毎スキャン出して **CPU 4 倍**（48.7 % 対 13.5 %）|
+| （対） `map_subscribe_transient_local` | true | **false** | `latch:=false` は VOLATILE。true のままだと**購読者 0 と数えられ地図が作られない** |
+
+⚠️ **帯は `min_obstacle_height` / `max_obstacle_height` と同じ値にする。**
+片方だけ上げると静的レイヤと観測レイヤが食い違う。上げても良くならない
+（下限 0.23→1.30 で占有セル 19,997→7,509・壁の帯 93.5→82.3 %）。
 
 ---
 

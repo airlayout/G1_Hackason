@@ -267,11 +267,34 @@ global_costmap:
       plugins: [static_layer, voxel_layer, inflation_layer]
       static_layer:
         plugin: nav2_costmap_2d::StaticLayer
-        map_subscribe_transient_local: true
-        # 過去に作った地図（OctoMap で掃除済み）を map_server で /map に流して使う。
-        # octomap_server の /projected_map は走りながら育つので部屋の全体像を持てない。
-        # 先に読ませておけば、まだ見ていない場所も含めて経路を引ける
-        map_topic: /map
+        # ⚠️⚠️ **false でなければならない**（2026-09-16 実測）。
+        # octomap_server を `latch:=false` で起こすので /projected_map のパブリッシャは
+        # **VOLATILE** になる。TRANSIENT_LOCAL で購読すると QoS が噛み合わず、
+        # パブリッシャ側の Subscription count が **0** と数えられ、
+        # octomap_server は「購読者が居ない層は 2D 投影を計算しない」ので
+        # **地図が来ないだけでなく、そもそも作られない**。二重に静かに壊れる。
+        # なぜ latch:=false にするかは下の map_topic の注記を読むこと。
+        map_subscribe_transient_local: false
+        # ⚠️ **2026-09-16 に /map から移した。**机が動くたびに地図を作り直す手間を
+        # なくすため（docs/plan/2026-09-16-growing-map-octomap.md）。
+        # octomap_server が 3D の OctoMap を持ち、レイキャストで古い占有が消える。
+        #
+        # 「走りながら育つので部屋の全体像を持てない」問題は **種（.bt）** で解いた:
+        #   quickstart/octomap_seed_from_nav_map.py が nav_map_run から seed.bt を作り、
+        #   octomap_server の `octomap_path` に渡す。実測（段 1〜3）:
+        #     nav_map_run   占有 20,404 / クリア中央 0.728m / 壁 97.3% / 机 78.3% / wp 14/14
+        #     種の 2D 投影   占有 19,997 / クリア中央 0.762m / 壁 93.5% / 机 72.7% / wp 14/14
+        #   セル単位の重畳は ±1 セルで 99.9%。育てても種は **97.8% その場に残る**。
+        #
+        # ⚠️ octomap_server 側で必ず明示する値（既定が危ない）:
+        #   occupancy_min_z:=0.23 occupancy_max_z:=1.80  既定は ±100 ＝部屋全体が障害物
+        #     **この 2 つは下の min_obstacle_height / max_obstacle_height と同じ値にする。**
+        #     上げると占有セルが減る（0.50→17,613 / 0.85→13,145 / 1.30→7,509 セル）
+        #   sensor_model.max_range:=3.0   既定は -1.0 ＝無制限。無制限のレイは静止構造を
+        #     grazing 角で舐めて消す（2026-09-06 の地図作成では天井の 56.7% が消えた）
+        #   latch:=false                  既定 true。true だと octomap_full/binary/marker を
+        #     購読者の有無に関わらず毎スキャン出すので CPU が 4 倍（10 Hz で 48.7% -> 13.5%）
+        map_topic: /projected_map
       voxel_layer:
         plugin: nav2_costmap_2d::VoxelLayer
         enabled: true

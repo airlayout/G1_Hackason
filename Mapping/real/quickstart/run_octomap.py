@@ -69,8 +69,13 @@ def build_tree(resolution: float, prob_hit: float, prob_miss: float,
 
 
 def insert_scans(tree: octomap.OcTree, pcd_dir: Path, stride: int, limit: int,
-                 max_range: float) -> "tuple[int, int]":
-    """姿勢つきPCDを順に投入する。(投入した枚数, 投入した点数) を返す。"""
+                 max_range: float, z_offset: float = 0.0) -> "tuple[int, int]":
+    """姿勢つきPCDを順に投入する。(投入した枚数, 投入した点数) を返す。
+
+    `z_offset` は点とレイの始点を同じだけ z にずらす。配備済みの事前地図は
+    床を z≈0 に置いた `*_floor0.pcd`（元の地図の +1.247803 m）なので、
+    その系で木を作りたいときに使う（make_octomap_seed.py）。
+    """
     files = sorted(pcd_dir.glob("*.pcd"))
     if not files:
         raise SystemExit(f"PCD がありません: {pcd_dir}。先に export_benchmark_data.py を回すこと")
@@ -85,7 +90,11 @@ def insert_scans(tree: octomap.OcTree, pcd_dir: Path, stride: int, limit: int,
         data = read_pcd(path)
         if len(data.points) == 0:
             continue
-        tree.insertPointCloud(data.points, data.origin, max_range, False)
+        points, origin = data.points, data.origin
+        if z_offset:
+            points = points + np.array([0.0, 0.0, z_offset])
+            origin = origin + np.array([0.0, 0.0, z_offset])
+        tree.insertPointCloud(points, origin, max_range, False)
         inserted_points += len(data.points)
         if index % 50 == 0 or index == len(chosen):
             elapsed = time.time() - began

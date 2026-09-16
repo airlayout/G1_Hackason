@@ -61,13 +61,25 @@ CDR_OFFSET = 13
 
 # 既定で中継するもの。RViz2 で Nav2 を見るのに要る最小限。
 # ⚠️ `/map` は入れない。latched（TRANSIENT_LOCAL）なので橋が再送せず 0 件になる
-#    （2026-09-16 実測）。地図は**こちら側で map_server を立てる**方が確実で、
-#    同じ格子を AP 越しに何度も運ばずに済む。
+#    （2026-09-16 実測）。**固定地図はこちら側で map_server を立てる。**
+# `/projected_map`（octomap_server が育てる 2D）は**周期発行なので運べる**。
+# こちらが「いま Nav2 の静的レイヤが見ている地図」なので、これを出さないと
+# RViz2 が固定地図のまま更新されず、**机を動かしても画面が変わらない**と誤診する。
 DEFAULT_TOPICS = [
-    "/tf", "/tf_static", "/scan",
+    "/tf", "/tf_static", "/scan", "/projected_map",
     "/global_costmap/costmap", "/local_costmap/costmap",
     "/local_costmap/published_footprint", "/plan",
 ]
+
+# AP 越しに運ぶレートの上限[Hz]。**0 は無制限。**
+# ⚠️ `/projected_map` は 778x431 ≒ 335 KB。octomap_server は**点群と同じレートで
+# 出し直す**ので、10 Hz なら 3.35 MB/s ＝ AP の実効（~3 MB/s）を超える。
+# 機体内の Nav2 は全レートで受ければよく、**RViz2 に 2 Hz の地図更新は要らない**。
+# 0.5 Hz なら 0.17 MB/s（計画 §5-3 が見積もっていた値はこのレート前提だった）。
+DEFAULT_THROTTLE_HZ = {
+    "/projected_map": 0.5,
+    "/global_costmap/costmap": 0.5,
+}
 
 LATCHED = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
                      reliability=ReliabilityPolicy.RELIABLE,
@@ -87,10 +99,15 @@ SENSOR = QoSProfile(depth=5, history=HistoryPolicy.KEEP_LAST,
 
 
 def qos_for(topic: str) -> QoSProfile:
-    """⚠️ 地図系を VOLATILE にすると、後から開いた RViz2 には**何も出ない**。"""
+    """⚠️ 地図系を VOLATILE にすると、後から開いた RViz2 には**何も出ない**。
+
+    `/projected_map` は**機体側が VOLATILE**（`latch:=false` で起こすため）だが、
+    こちら側は LATCHED で出し直す。そうしないと RViz2 を開き直すたびに
+    次の 1 通（間引き後は最長 2 秒先）まで地図が真っ白になる。
+    """
     if topic == "/tf_static":
         return STATIC
-    if topic == "/map" or topic.endswith("/costmap"):
+    if topic in ("/map", "/projected_map") or topic.endswith("/costmap"):
         return LATCHED
     if topic == "/scan":
         return SENSOR
@@ -107,7 +124,15 @@ def main() -> int:
     ap.add_argument("--all", action="store_true",
                     help="橋が広告する全トピック。⚠️ 点群まで来るので AP の帯域を食う")
     ap.add_argument("--settle", type=float, default=4.0, help="advertise を集める秒数")
+    ap.add_argument("--throttle", action="append", default=None, metavar="/topic=HZ",
+                    help="このトピックを HZ 以下に間引く（繰り返し可。0 で無制限）。"
+                         f"省略すると既定 {DEFAULT_THROTTLE_HZ}")
     a = ap.parse_args()
+
+    throttle_hz = dict(DEFAULT_THROTTLE_HZ)
+    for spec in a.throttle or []:
+        topic, _, value = spec.partition("=")
+        throttle_hz[topic] = float(value)
 
     print(f"[relay] 橋に繋ぐ ws://{a.host}:{a.port}")
     client = FoxgloveClient(a.host, a.port)
@@ -147,12 +172,16 @@ def main() -> int:
             continue
         types[t] = msg_type
         pubs[t] = node.create_publisher(msg_type, t, qos_for(t))
-        print(f"[relay]   {t:38s} {schema}")
+        limit = throttle_hz.get(t, 0.0)
+        note = f"  ≤{limit} Hz に間引く" if limit > 0 else ""
+        print(f"[relay]   {t:38s} {schema}{note}")
 
     by_id = client.subscribe(list(pubs))
     print(f"[relay] 中継開始（{len(pubs)} トピック）。Ctrl-C で止める")
 
     counts = {t: 0 for t in pubs}
+    dropped = {t: 0 for t in pubs}
+    last_sent: "dict[str, float]" = {}
     last_report = time.time()
     client.sock.settimeout(5.0)
     try:
@@ -169,6 +198,13 @@ def main() -> int:
             topic = by_id.get(sub_id)
             if topic is None or topic not in pubs:
                 continue
+            # ⚠️ **間引きは deserialize より前**。335 KB の格子を捨てるだけのために
+            # 毎回 CDR を組み立てるのは無駄（中継は Mac のコンテナで回る）
+            now = time.time()
+            limit = throttle_hz.get(topic, 0.0)
+            if limit > 0 and now - last_sent.get(topic, 0.0) < 1.0 / limit:
+                dropped[topic] += 1
+                continue
             try:
                 msg = deserialize_message(bytes(payload[CDR_OFFSET:]), types[topic])
             except Exception:
@@ -178,14 +214,17 @@ def main() -> int:
             except Exception:
                 break                                # 終了中。ここで静かに抜ける
             counts[topic] += 1
+            last_sent[topic] = now
 
-            now = time.time()
             if now - last_report >= 10.0:
-                alive = [f"{t.rsplit('/', 1)[-1]}={n}" for t, n in counts.items() if n]
-                dead = [t for t, n in counts.items() if not n]
+                alive = ["{}={}{}".format(t.rsplit('/', 1)[-1], n,
+                                          f"(-{dropped[t]})" if dropped[t] else "")
+                         for t, n in counts.items() if n or dropped[t]]
+                dead = [t for t, n in counts.items() if not n and not dropped[t]]
                 print(f"[relay] 10 秒: {' '.join(alive) if alive else '(0 件)'}"
                       + (f"  ⚠️ 来ない: {', '.join(dead)}" if dead else ""))
                 counts = {t: 0 for t in pubs}
+                dropped = {t: 0 for t in pubs}
                 last_report = now
     except KeyboardInterrupt:
         print("\n[relay] 止める")

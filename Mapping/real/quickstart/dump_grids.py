@@ -56,25 +56,48 @@ DEFAULT_LAYERS = (
 )
 
 
-def latched(depth: int = 1) -> QoSProfile:
-    """map_server も costmap も octomap_server も TRANSIENT_LOCAL で出す。
+def map_qos(transient_local: bool = True, depth: int = 5) -> QoSProfile:
+    """地図の層を購読する QoS。
 
-    ⚠️ VOLATILE で購読すると**永遠に来ない**（2026-09-07 に踏んだ型）。
+    `map_server` も costmap も `octomap_server`（`latch:=true`）も TRANSIENT_LOCAL で出す。
+    ⚠️ **1 回だけ latched で出る層を VOLATILE で購読すると永遠に来ない**（2026-09-07）。
+
+    逆向きの罠もある。`octomap_server` を **`latch:=false`** で起こすと
+    パブリッシャが **VOLATILE** になり、**TRANSIENT_LOCAL で購読すると
+    QoS 不一致で 1 通も来ない**（2026-09-16 実測）。しかも `octomap_server` は
+    「購読者が居る層だけ出す」ので、不一致だと購読者 0 と数えられ、
+    `/projected_map` は**そもそも計算されない**。二重に来なくなる。
+    ⇒ `latch:=false` で回すときは `--volatile` を付けること。
     """
     return QoSProfile(depth=depth,
                       history=QoSHistoryPolicy.KEEP_LAST,
                       reliability=QoSReliabilityPolicy.RELIABLE,
-                      durability=QoSDurabilityPolicy.TRANSIENT_LOCAL)
+                      durability=(QoSDurabilityPolicy.TRANSIENT_LOCAL if transient_local
+                                  else QoSDurabilityPolicy.VOLATILE))
 
 
 class GridDumper(Node):
-    def __init__(self, layers):
+    """層ごとに**最後に来た**メッセージを持つ。
+
+    ⚠️ 2026-09-16 まで `setdefault` で**最初の 1 通**を握っていた。`/map` のように
+    1 回だけ latched で出る層では同じだが、`octomap_server` の `/projected_map` は
+    点群が来るたびに出し直すので、育った後の姿が取れず「1 セルも動いていない」と
+    誤診した（TRANSIENT_LOCAL の履歴から古い標本が先に届く）。
+    """
+
+    def __init__(self, layers, transient_local: bool = True):
         super().__init__("dump_grids")
         self.grids = {}
+        self.counts = {}
+        qos = map_qos(transient_local)
         for name, topic in layers:
-            self.create_subscription(
-                OccupancyGrid, topic,
-                lambda m, n=name: self.grids.setdefault(n, m), latched())
+            self.create_subscription(OccupancyGrid, topic, self._keep(name), qos)
+
+    def _keep(self, name: str):
+        def callback(message: OccupancyGrid) -> None:
+            self.grids[name] = message
+            self.counts[name] = self.counts.get(name, 0) + 1
+        return callback
 
 
 def to_pgm_bytes(grid: OccupancyGrid) -> "tuple[bytes, int, int]":
@@ -137,6 +160,12 @@ def main() -> int:
                     help="latched が全部来るまで待つ上限 [s]")
     ap.add_argument("--layer", action="append", default=None,
                     metavar="NAME=/topic", help="層を指定（繰り返し可）")
+    ap.add_argument("--volatile", action="store_true",
+                    help="VOLATILE で購読する。octomap_server を latch:=false で"
+                         "起こしたときはこちら（TRANSIENT_LOCAL だと 1 通も来ない）")
+    ap.add_argument("--settle", type=float, default=1.0,
+                    help="全層がそろってから、さらに待つ時間[s]。"
+                         "出し直される層（/projected_map 等）の最後の姿を取るため")
     a = ap.parse_args()
 
     layers = DEFAULT_LAYERS
@@ -145,12 +174,15 @@ def main() -> int:
 
     a.out.mkdir(parents=True, exist_ok=True)
     rclpy.init()
-    node = GridDumper(layers)
-    deadline = node.get_clock().now().nanoseconds / 1e9 + a.timeout
-    while rclpy.ok() and len(node.grids) < len(layers):
+    node = GridDumper(layers, transient_local=not a.volatile)
+    now = lambda: node.get_clock().now().nanoseconds / 1e9
+    deadline = now() + a.timeout
+    while rclpy.ok() and len(node.grids) < len(layers) and now() < deadline:
         rclpy.spin_once(node, timeout_sec=0.2)
-        if node.get_clock().now().nanoseconds / 1e9 > deadline:
-            break
+    # ⚠️ 全層が 1 通そろってからも少し回す。出し直される層は**最後の姿**が要る
+    settle = now() + a.settle
+    while rclpy.ok() and now() < settle:
+        rclpy.spin_once(node, timeout_sec=0.2)
 
     report = {}
     for name, topic in layers:
@@ -161,11 +193,14 @@ def main() -> int:
             print("--  {:<16} {:<28} 来なかった".format(name, topic))
             continue
         info = write_layer(a.out, name, grid)
-        info.update({"topic": topic, "received": True})
+        info.update({"topic": topic, "received": True,
+                     "messages": node.counts.get(name, 0)})
         report[name] = info
-        print("OK  {:<16} {:<28} {}x{} / res {} / 占有(>=65) {} / 膨張(26..64) {}".format(
-            name, topic, info["size"][0], info["size"][1], info["resolution"],
-            info["occupied_65_98"] + info["lethal_99_100"], info["inflated_26_64"]))
+        print("OK  {:<16} {:<28} {}x{} / res {:.3f} / 占有(>=65) {:,} / "
+              "空き {:,} / 未知 {:,} / 受信 {} 通".format(
+                  name, topic, info["size"][0], info["size"][1], info["resolution"],
+                  info["occupied_65_98"] + info["lethal_99_100"],
+                  info["free"], info["unknown"], info["messages"]))
 
     (a.out / "counts.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
     node.destroy_node()

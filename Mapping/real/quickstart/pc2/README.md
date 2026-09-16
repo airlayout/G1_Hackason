@@ -464,3 +464,42 @@ done
 | 14 | 再定位が **overlap 0.0 の偽の一致で上書きされる** | `/initialpose` を投げっぱなしで 2 回送っていた。**受理をログで確認してから次を投げる**（確認してから送る順に直した） |
 | 15 | 終了時に `terminate called without an active exception` で core を吐く | `Localization` の再定位スレッドが join されないまま落ちる。**測位そのものには影響しない**（仕事は全部終わってから落ちる）。未修正 |
 | 16 | `libsub_mapping.so` を `enable_imu: false` で使うと毎フレーム `An inference algorithm was called with inconsistent arguments` | キーフレームを繋ぐ因子が IMU 因子しか無いので因子グラフが分断される。IMU 無しでは `libsub_mapping_passthrough.so`（最適化しない）に替える |
+
+## 5b. octomap_server を足す（2026-09-16・段 5 の準備）
+
+静的レイヤを `octomap_server` の `/projected_map` に移したので、PC2 に 7 個の deb が要る。
+**「5.」の閉包解決をそのまま使える**（空の `dpkg status` で 914 個引けるが、
+Nav2 の 1006 個が既に入っているので実際に足すのはこの 7 個だけ）。
+
+    # Mac のコンテナで取る（実測 2.1 MB・10 秒）
+    docker exec rviz bash -lc 'R=/tmp/jammy_nav2; OPTS=$(cat $R/aptopts)
+      mkdir -p /tmp/octomap_debs && cd /tmp/octomap_debs
+      apt-get $OPTS install --no-install-recommends --download-only -y --print-uris \
+        ros-humble-octomap-server ros-humble-topic-tools 2>/dev/null \
+        | awk -F"\x27" "/^\x27/{print \$2}" | grep -iE "octomap|topic-tools" > /tmp/want.txt
+      wget -q -nc -i /tmp/want.txt'
+
+    # すでに third_party/octomap_pc2/ に置いてある（git 追跡外）
+    tar cf - -C third_party/octomap_pc2 . | ssh g1 'mkdir -p ~/jammy_ros/octomap_debs
+        && tar xf - -C ~/jammy_ros/octomap_debs'
+    ssh g1 'for d in ~/jammy_ros/octomap_debs/*.deb; do dpkg -x "$d" ~/jammy_ros/rootfs; done
+            cp -n ~/jammy_ros/octomap_debs/*.deb ~/jammy_ros/var/cache/apt/archives/
+            bash ~/mapping_tools/write_jammy_env.sh ~/jammy_ros'
+
+| deb | 大きさ |
+|---|---|
+| `ros-humble-octomap-server` 2.3.1 | 629 KB |
+| `liboctomap-dev` / `liboctomap1.9` 1.9.7 | 1,163 / 75 KB |
+| `ros-humble-octomap-msgs` 2.0.1 / `octomap-ros` 0.4.4 | 82 / 15 KB |
+| `ros-humble-topic-tools` 1.1.2 ＋ interfaces | 187 / 80 KB |
+
+⚠️ **`write_jammy_env.sh` を必ず流し直す。** 罠 3（ELF の `PT_INTERP` が focal の
+`ld.so`）は octomap_server も踏む。`$ROS/lib/octomap_server/octomap_server_node` が
+ラップされていないと `librcl.so: cannot open shared object file` で落ちる。
+
+⚠️ **種（`seed.bt`）も配ること。** `$HOME/g1_cfg/map/seed.bt` に置く（`run_nav2_live.sh`
+の `G1_OCTOMAP_SEED` の既定）。無ければ `map_server` に自動で落ちるが、そのときは
+`g1_nav2.yaml` の `static_layer.map_topic` を `/map` に戻さないと静的レイヤが空になる。
+
+`topic_tools` は `/projected_map` や点群を間引きたくなったとき用。**現状は使っていない**
+（`sensor_model.max_range:=4.0` で CPU 3.9 %、中継側の 0.5 Hz 間引きで帯域 0.17 MB/s に収まる）。

@@ -9,8 +9,15 @@
 #
 # ## 何が立つか
 #
-#   PC2 : FAST_LIO(+open3d_loc) -> cloud_to_scan -> Nav2 -> foxglove_bridge -> 姿勢ロガー
-#   Mac : 中継(in) -> map_server -> 中継(back) -> RViz2
+#   PC2 : FAST_LIO(+open3d_loc) -> cloud_to_scan -> octomap_server -> Nav2
+#         -> foxglove_bridge -> 姿勢ロガー
+#   Mac : 中継(in) -> 中継(back) -> RViz2
+#
+# ⚠️ **2026-09-16 に静的レイヤを `octomap_server` の `/projected_map` に移した**
+# （机が動くたびに地図を作り直す手間をなくす。段 1〜5 は機体なしで測って合格）。
+#   - 種は `quickstart/octomap_seed_from_nav_map.py` が `nav_map_run` から作る
+#   - `octomap_server` は `run_nav2_live.sh` が起こす（値の根拠はあちらの注記）
+#   - **コンテナの map_server は既定 off**（`G1_SHOW_SEED_MAP=1` で比較用に出せる）
 #
 #   機体 --> 橋 --(WS/TCP・AP 越え)--> 中継(in) --> コンテナの DDS --> RViz2
 #   RViz2 --> コンテナの DDS --> 中継(back) --(WS)--> 橋 --> 機体の /goal_pose
@@ -131,14 +138,26 @@ ctr_kill "map_ser" "ver"; ctr_kill "rvi" "z2"
 ctr_bg "source /opt/ros/humble/setup.bash >/dev/null 2>&1
         cd /work/G1_Hackason/Mapping/real/quickstart
         exec python3 -u foxglove_to_ros.py --host $G1_PC2_HOST > /tmp/relay.log 2>&1"
-ctr_bg "source /opt/ros/humble/setup.bash >/dev/null 2>&1
-        exec ros2 run nav2_map_server map_server --ros-args \
-             -p yaml_filename:=$MAP -p use_sim_time:=false > /tmp/mapsrv.log 2>&1"
-sleep 18
-ctr "source /opt/ros/humble/setup.bash >/dev/null 2>&1
-     ros2 lifecycle set /map_server configure >/dev/null 2>&1
-     ros2 lifecycle set /map_server activate  >/dev/null 2>&1
-     echo '     map_server 活性化'"
+
+# ── コンテナ側の固定地図（既定 off）────────────────────────────────
+# 2026-09-16 に既定を off にした。静的レイヤは `octomap_server` の `/projected_map`
+# に移り、**中継がそれを運ぶ**（`foxglove_to_ros.py` の DEFAULT_TOPICS。0.5 Hz に間引く）。
+# ⚠️ ここで map_server を立てると RViz2 に**育たない固定地図**が `/map` として並び、
+# 「机を動かしても画面が変わらない」と誤診する元になる（計画 §5-2 の警告）。
+# 種と育った地図を見比べたいときだけ G1_SHOW_SEED_MAP=1 で出す。
+if [ "${G1_SHOW_SEED_MAP:-0}" = "1" ]; then
+    say "   固定地図（種の元）を /map に出す ＝ 比較用"
+    ctr_bg "source /opt/ros/humble/setup.bash >/dev/null 2>&1
+            exec ros2 run nav2_map_server map_server --ros-args \
+                 -p yaml_filename:=$MAP -p use_sim_time:=false > /tmp/mapsrv.log 2>&1"
+    sleep 18
+    ctr "source /opt/ros/humble/setup.bash >/dev/null 2>&1
+         ros2 lifecycle set /map_server configure >/dev/null 2>&1
+         ros2 lifecycle set /map_server activate  >/dev/null 2>&1
+         echo '     map_server 活性化'"
+else
+    sleep 18
+fi
 ctr_bg "source /opt/ros/humble/setup.bash >/dev/null 2>&1
         cd /work/G1_Hackason/Mapping/real/quickstart
         exec python3 -u ros_to_foxglove.py --host $G1_PC2_HOST > /tmp/back.log 2>&1"
