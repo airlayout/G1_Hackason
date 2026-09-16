@@ -116,6 +116,54 @@ ROS 側をホストでネイティブに動かす場合は、`cmd_sock_path` / `
 - ⚠️ **サービスは `enable` していない。** バッテリ交換等で PC2 が再起動すると
   起動しない（`/etc/default` の `G1_ARM=--arm` は残るが自動起動はしないので安全側）
 
+## 立ち上げの自動化（`g1up.sh`）
+
+§2〜§7 を1コマンドで通す。**PC2 で叩く。**
+
+```bash
+ssh g1                    # ros:foxy(1) noetic(2)? には **Enter だけ**
+~/g1_nav2/g1up.sh         # → §2 ブリッジ → §3 SLAM → §4 記録 → §5 Nav2 → §7 自己位置合わせ
+```
+
+⚠️ **発進ゲートの開放と Goal 送信はしない。** 人が判断して叩く部分として意図的に
+残してある（D-07 の「再起動したら勝手に動けるようになっていた、を構造的に防ぐ」）。
+最後に、次に何を叩けばよいかを画面に出す。
+
+### 配置
+
+```bash
+rsync -a deploy/pc2_humble/ g1:/home/unitree/g1_nav2/pc2_humble/
+rsync -a deploy/pc2_humble/{g1up.sh,start_nav.sh,start_record.sh,start_localizer.sh,cyclonedds_eth0.xml} \
+         g1:/home/unitree/g1_nav2/
+```
+
+⚠️ **`g1up.sh` は `~/g1_nav2/` 直下に置く**（`pc2_humble/` `g1_ws/` `tools/` と並ぶ位置）。
+自分の居場所を基準に部品を探すため。
+
+### 一度だけ必要な設定（NOPASSWD）
+
+```bash
+sudo tee /etc/sudoers.d/g1-bridge >/dev/null <<'EOS'
+unitree ALL=(root) NOPASSWD: /bin/systemctl start g1-sdk-bridge
+EOS
+sudo chmod 440 /etc/sudoers.d/g1-bridge
+```
+
+⚠️ **許可するのは「ゲートを閉じたままの起動」だけ。** `restart` も
+`/etc/default` の書き換えも含めない。**発進ゲートを開ける操作は人のパスワードを要求する**
+状態に保つ。
+
+### 主なオプション
+
+| | |
+|---|---|
+| `--localizer` | §7 を連続 localization（`map_localizer.py`）にする。既定は静的 |
+| `--lidar-yaw 180` | RViz で赤軸が逆を向いていたとき |
+| `--map <yaml>` | 地図を差し替える |
+| `--operator-timeout 1.0` | 有線運用なら 1.0（既定 2.0 は無線向け。Q12） |
+| `--enable` | 走行許可だけを出す。**発進ゲートは開けない** |
+| `--dry-run` | 何もせず、やることだけ表示する |
+
 ## 未確認
 
 ⚠️ `UnsetEnvironment=` の効き目は実機で未確認。
