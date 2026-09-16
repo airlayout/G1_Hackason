@@ -44,11 +44,27 @@ ap()  { ssh -o BatchMode=yes -o ConnectTimeout=10 "$G1_AP_USER@$G1_AP_HOST" "$@"
 # PC2 で ROS 環境を整えて走らせる。
 # ⚠️ `jros2` は**シェル関数**なので `timeout jros2 ...` は動かない
 #    （timeout は実行ファイルしか起動できない。2026-09-16 に踏んだ）。
+# ⚠️⚠️ **env.sh を先に source してから上書きする。**順序が逆だと env.sh の既定
+# （`ROS_DOMAIN_ID=42` と `CYCLONEDDS_URI=lo` ＝ 再生用の隔離）が eth0 の設定を
+# 上書きしてしまい、**機体の DDS が 1 件も見えない**。
+# 症状は「topic does not appear to be published yet」で、センサが正常でも
+# 「来ていない」と出る（2026-09-17 に実機で誤診した。手で測ると 200 Hz 出ていた）。
 pc2_ros() {
-    pc2 "export ROS_DOMAIN_ID=0
+    pc2 ". \"\$HOME/jammy_ros/env.sh\" >/dev/null 2>&1
+         export ROS_DOMAIN_ID=0
          export CYCLONEDDS_URI='$G1_DDS_ETH0'
-         . \"\$HOME/jammy_ros/env.sh\" >/dev/null 2>&1
          $*"
+}
+
+# PC2 の ros2 を **timeout に渡せる形**で走らせる。
+# ⚠️ `jros2` は env.sh が定義する**シェル関数**なので `timeout jros2 ...` は
+# `command not found` になり、**出力が空 ＝「来ていない」と誤診する**
+# （2026-09-17 に「センサが全部来ていない」と誤報した。実際は 10/200/1037 Hz）。
+# ローダの実体を直に叩けば timeout で囲める。
+pc2_ros2() {                    # $1=秒 以降が ros2 の引数
+    local secs="$1"; shift
+    pc2_ros "timeout $secs env \$JAMMY_ENV \"\$LOADER\" --library-path \"\$JAMMY_LIBS\" \
+             \"\$PREFIX/usr/bin/python3.10\" \"\$ROS/bin/ros2\" $*"
 }
 
 # コンテナでコマンドを走らせる。

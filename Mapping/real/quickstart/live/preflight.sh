@@ -123,12 +123,20 @@ fi
 # PC2 に何も置かずに `ros2 topic hz` で見られる（2026-09-17 に確認）。
 # 以前ここが参照していた `probe_imu_sdk.py` は**一度も書かれていない**。
 step "6. センサ（⚠️ LiDAR の IMU は起動ごとに出ないことがある）"
-probe_hz() {   # $1=topic $2=期待レート[Hz] → 実測を印字
+probe_hz() {   # $1=topic → 実測レートを印字（取れなければ空）
     local out
-    out="$(ctr "source /opt/ros/humble/setup.bash >/dev/null 2>&1
-                timeout 8 ros2 topic hz $1 2>/dev/null | awk '/average rate/{print \$3; exit}'" 2>/dev/null \
-           | tr -d '[:space:]')"
-    printf '%s' "$out"
+    if [ "$LINK" = "wired" ]; then
+        # 有線なら機体の DDS が col0 に載っているのでコンテナから測れる
+        out="$(ctr "source /opt/ros/humble/setup.bash >/dev/null 2>&1
+                    timeout 10 ros2 topic hz $1 2>/dev/null \
+                      | awk '/average rate/{print \$3; exit}'" 2>/dev/null)"
+    else
+        # ⚠️ AP 構成では DDS が AP を越えられないので**コンテナからは測れない**。
+        # PC2 の上で測る。jros2（シェル関数）を timeout に渡さないこと
+        out="$(pc2_ros2 14 topic hz "$1" 2>/dev/null \
+               | awk '/average rate/{print $3; exit}')"
+    fi
+    printf '%s' "$(printf '%s' "$out" | tr -d '[:space:]')"
 }
 for spec in "/utlidar/cloud_livox_mid360 10" "/utlidar/imu_livox_mid360 200" "/dog_odom 900"; do
     topic="${spec%% *}"; want="${spec##* }"
