@@ -1102,6 +1102,65 @@ READY は一方通行で、後から TF が壊れても表示が変わらない�
 
 ---
 
+**A-10o. 巡回モードの実装（2026-09-16、実機不要）**
+
+Phase 4-7「複数 Goal / waypoint follower への拡張」を前倒しした。
+**単純ゴール指定モード（RViz の 2D Goal Pose）と併存させ、再起動なしで切り替わる。**
+
+| | 単純ゴール指定 | 巡回 |
+|---|---|---|
+| 入口 | `/goal_pose` | `/g1/patrol/start` |
+| 中身 | `bt_navigator` の `NavigateToPose` | **同じ**。`patrol_node.py` が1点ずつ投げる |
+
+📌 **`nav2_waypoint_follower` を採らなかった。** 理由は3つ:
+1. **周回できない**（リストを1回なめて終わる）。警備の巡回は回り続けるもの
+2. `FollowWaypoints` は内部で `navigate_to_pose` を呼ぶので、`g1_cmd_router` が
+   FAULT 時に `navigate_to_pose` をキャンセルしても、**waypoint follower は
+   「1点失敗」と解釈して次の点へ進んでしまう**。停止が停止にならない
+3. 16分で内蔵SLAM が落ちる（U-17）以上、**中断と再開は必ず要る**。
+   再開地点を持てる仕組みがどのみち必要だった
+
+**安全側の設計**（迂回を作らないこと最優先）
+- `patrol_node.py` は **`NavigateToPose` に Goal を送るだけ**。速度指令は従来どおり
+  `velocity_smoother → g1_cmd_router → SDK` を通る。**発進ゲート・heartbeat・
+  デッドバンド・E-stop は一切迂回しない**
+- `/g1/bridge_status` が `READY`/`NAVIGATING` 以外なら **`start` を断る**。
+  走行中にそうなったら **`HOLD`**（`STANDBY` も断る＝ `enable_navigation` 前に走らない）
+- ⚠️ **`HOLD` から自動復帰しない。** `clear_fault` した瞬間に巡回が再開すると、人は
+  「復帰させた」だけのつもりなので驚きが大きい（A-10f で Goal をキャンセルしたのと同じ思想）
+- **手動 Goal が常に勝つ。** 巡回中に `/goal_pose` が来たら巡回が退く。
+  `bt_navigator` は Goal を1件しか持てないので、退かないと**人が送った Goal を
+  巡回が奪い返す**という最悪の挙動になる
+
+**ウェイポイントは手で書かない。** `tools/record_waypoints.py` で
+**機体を実際にその場所へ持って行って `map→base_link` を拾う**。地図が 9/07 取得で
+現状と合っていない（A-10n）ため、地図画像から座標を決めても通れる保証が無い。
+したがって `config/patrol_room_a.yaml` は**空のひな形**で、現地で記録するまで
+`start` は断られる。`config/patrol_synthetic.yaml`（モック用）は仕切り壁を
+回り込む4点で、**必ず旋回が入る**ので旋回デッドロックの回帰確認を兼ねる。
+
+**確認**: `tools/mock_patrol_test.sh`（①start を断る ②2点を順に回る
+③手動 Goal に退く ④HOLD から自動復帰しない）。4件とも合格。結果は
+[findings/patrol_mode.md](findings/patrol_mode.md)。
+
+**🐛 モックで見つけた欠陥2件**（どちらも巡回に限った話ではない）
+
+1. **`READY` を「走ってよい」と読んでいた。** 状態機械は
+   `STANDBY → READY → (enable_navigation) → NAVIGATING` で、`READY` では
+   `OnNavTwist` が `SendZero()` を返す。**機体は1mmも動かないまま Goal が abort され、
+   全点を空振りで消化する。** `BRIDGE_OK_STATES` を `NAVIGATING` だけに直した
+2. ⚠️ **Goal 到達の約 1.3 秒後に `cmd_timeout` で FAULT に落ちる。**
+   `velocity_smoother` の `velocity_timeout`(既定 1.0) + `cmd_timeout`(0.30)。
+   `dwell_s=5.0` で**1点目の直後に `fault_reason: cmd_timeout`**（実測）。
+   `dwell_s` の既定を 0 にして回避したが、**「各点で止まって見回す」は今できない**。
+   これは `g1_navigation/README.md` の既知不具合③で、**巡回で初めて実害になった**。
+   将来の VLA 動作（巡回中のモード切替）はこれが前提になるので、
+   [findings/patrol_mode.md](findings/patrol_mode.md) §6 に (a)(b)(c) を並べてある。
+   **(b) は D-10 の ROS 側 watchdog を殺し、(c) は「走行許可は人が出す」(D-07)と
+   ぶつかる。人の判断が要る。**
+
+---
+
 **完了条件**
 - SDK2 の API シグネチャが文書として確定し、§3.3 の分岐が決定している
 - IPC 両端がモックで疎通し、単体テストが全て通る

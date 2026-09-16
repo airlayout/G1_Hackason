@@ -80,16 +80,48 @@ docker run --rm --network host --ipc host \
 | `view_map_rviz.sh` / `view_map.rviz` | 生成した地図を RViz2 で表示する（Linux ホスト用。Mac は Mapping 側の VNC 経路） |
 | `publish_trajectory_path.py` | mapping 軌跡を `nav_msgs/Path` で配信（地図の自由空間に乗っているかの目視確認用） |
 
+## 巡回モード（A-10o）
+
+単純ゴール指定モード（RViz の 2D Goal Pose）と**併存する**。再起動なしで切り替わる。
+
+| ツール | 用途 |
+|---|---|
+| `patrol_ctl.sh` | 巡回の `start` / `pause` / `stop` / `skip` / `status` / `watch` |
+| `record_waypoints.py` | **巡回路を機体の実位置から記録する。** 地図が古いので座標は手で書かない |
+
+```bash
+# 現地で巡回路を作る（§7 の地図照合まで済ませた状態で）
+python3 tools/record_waypoints.py -o patrol_room_a.yaml
+
+# 走らせる
+./tools/patrol_ctl.sh start     # 断られたら理由が出る（STANDBY=発進ゲートがまだ）
+./tools/patrol_ctl.sh watch
+```
+
+⚠️ **巡回ノードは既定で常駐するが `IDLE` で何もしない。** `/g1/patrol/start` を
+呼ぶまで Goal を1件も出さないので、置いてあるだけなら従来と同じ挙動になる。
+⚠️ **単純ゴール指定に戻すのに `stop` は要らない。** RViz から Goal を送れば
+巡回のほうが退く（`bt_navigator` は Goal を1件しか持てないため）。
+⚠️ **`HOLD` からは自動復帰しない。** FAULT 解除や再定位のあと、人が `start` を呼ぶこと。
+
 ## モックでの回帰テスト（実機不要）
 
 | ツール | 用途 |
 |---|---|
 | `mock_deadlock_test.sh` | **旋回デッドロックの再現と修正確認。** `old` で 2026-09-15 の現象を再現し、`new` で直ることを確認する。モックのビルドから Goal 到達まで自動 |
+| `mock_patrol_test.sh` | **巡回モードの通し確認。** ①走れない状態で start を断る ②2点を順に回る ③手動 Goal に退く ④HOLD から自動復帰しない、の4件。`dwell` モードで「各点で何秒止まっていられるか」を測る |
 
 ```bash
 ./tools/mock_deadlock_test.sh old    # 60秒経っても 1mm も動かない（再現）
 ./tools/mock_deadlock_test.sh new    # Reached the goal!（修正確認）
+./tools/mock_patrol_test.sh          # 巡回の4件（約4分）
+./tools/mock_patrol_test.sh dwell    # 各点で止まれる時間（約3分）。G1_DWELL=5.0 が既定
 ```
+
+⚠️ **各点で止まっていられるのは約1.3秒しかない**（`velocity_smoother` の
+velocity_timeout 1.0 + `cmd_timeout` 0.30）。超えると `fault_reason: cmd_timeout` で
+FAULT に落ちて巡回が HOLD する。だから `patrol_dwell_s` の既定は **0**。
+詳細と対処の選択肢: [../findings/patrol_mode.md](../findings/patrol_mode.md) §6。
 
 ⚠️ **モックはコンテナ内でビルドすること**（ホストのバイナリは `GLIBCXX` が合わず動かない）。
 ⚠️ **`heartbeat_required:=false` が要る**（既定 true だと `enable_navigation` が拒否される）。

@@ -15,6 +15,23 @@ Nav2のライフサイクル・経路計画・制御ループを検証した。
 - `scripts/fake_sensor_publisher.py`: 空の`/scan`・`/g1/points_local`を配信(costmapが詰まらないように)
 - `launch/navigation.launch.py`: 上記一式 + `g1_state_bridge`/`g1_cmd_router` + `map→odom`の
   静的TF(dry-run専用のスタンドイン)をまとめて起動する
+- `scripts/patrol_node.py`: **巡回モード**。ウェイポイントを順に `NavigateToPose` へ投げる。
+  ⚠️ **常駐するが `IDLE` で何もしない**(`/g1/patrol/start` を呼ぶまで Goal を1件も出さない)
+- `config/patrol_synthetic.yaml`: モック用の巡回路(仕切り壁を回り込む4点)
+- `config/patrol_room_a.yaml`: 実会場用。**空のひな形**。地図が古いので座標は手で書かず、
+  現地で `tools/record_waypoints.py` を回して作る
+
+## 2つの運転モード（再起動なしで切り替わる）
+
+| | 単純ゴール指定 | 巡回 |
+|---|---|---|
+| 入口 | RViz の 2D Goal Pose(`/goal_pose`) | `ros2 service call /g1/patrol/start std_srvs/srv/Trigger "{}"` |
+| 中身 | `bt_navigator` の `NavigateToPose` | **同じ**。`patrol_node.py` が1点ずつ投げる |
+
+⚠️ **巡回は `bridge_status` が `NAVIGATING` でないと `start` を断る。**
+`READY` は「準備完了」であって走行許可ではない（`enable_navigation` がまだ）。
+⚠️ 巡回中に RViz から Goal を送ると**巡回のほうが退く**（`bt_navigator` は Goal を
+1件しか持てないため）。設計と検証は [../findings/patrol_mode.md](../findings/patrol_mode.md)。
 
 SDK側プロセス(`g1_sdk_bridge_mock_server`)は別途起動しておくこと。
 

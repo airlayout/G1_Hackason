@@ -15,6 +15,7 @@ endif()
 
 install(PROGRAMS
   scripts/fake_sensor_publisher.py
+  scripts/patrol_node.py
   ${G1_TOOLS_DIR}/g1_slam_odom_tf.py
   DESTINATION lib/${PROJECT_NAME}
 )

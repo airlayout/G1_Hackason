@@ -21,7 +21,8 @@
 # ⚠️ **実行前に、機体を「歩かせるときと同じ通常の立位」にして、出発位置に置くこと。**
 # §5 の校正と §7 の照合は**いまの姿勢と位置で決まる**ので、あとで動かすと無効になる。
 # 人は機体から 2m 以上離れること(近いと costmap と地図照合の両方が劣化する)。
-# やらない: **発進ゲートの開放と Goal 送信**。ここは人が判断して叩く(D-07 の設計意図)。
+# やらない: **発進ゲートの開放と Goal 送信（巡回の開始も含む）**。
+#          ここは人が判断して叩く(D-07 の設計意図)。
 #          操作PC 側の heartbeat と RViz も別途(最後に手順を表示する)
 #
 # ## 前提
@@ -35,6 +36,14 @@
 #
 # ⚠️ **発進ゲートの開放(`G1_ARM=--arm` + restart)は意図的に NOPASSWD にしない。**
 # 「再起動したら勝手に動けるようになっていた」を構造的に防ぐため(D-07)。
+#
+# ## 巡回モードを使うとき
+#
+#     ~/g1_nav2/g1up.sh --patrol ~/g1_nav2/patrol_room_a.yaml
+#
+# 巡回路を渡しても**ここでは走り出さない**。⑥で `patrol_ctl.sh start` を叩くまで
+# 巡回ノードは IDLE のまま。巡回路は現地で `tools/record_waypoints.py` で作る
+# (地図が 9/07 取得で現状と合っていないので、座標を手で書かないこと)。
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,6 +63,7 @@ SKIP_RECORD=0
 DRY=0
 DO_ENABLE=0
 FORCE_POSTURE=0
+PATROL=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -64,8 +74,9 @@ while [ $# -gt 0 ]; do
         --skip-record)      SKIP_RECORD=1; shift ;;
         --dry-run)          DRY=1; shift ;;
         --force-posture)    FORCE_POSTURE=1; shift ;;
+        --patrol)           PATROL="$2"; shift 2 ;;
         --enable)           DO_ENABLE=1; shift ;;
-        -h|--help)          sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)          sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "未知の引数: $1" >&2; exit 2 ;;
     esac
 done
@@ -117,6 +128,12 @@ ok "ROS 環境は汚染されていない"
 [ -f "$MAP" ] || die "地図が無い: $MAP"
 [ -f "$CYCLONE_CFG" ] || die "CycloneDDS 設定が無い: $CYCLONE_CFG"
 ok "pixi 環境・地図・DDS 設定がある"
+if [ -n "$PATROL" ]; then
+    [ -f "$PATROL" ] || die "巡回路が無い: $PATROL（tools/record_waypoints.py で現地で作ること）"
+    N=$(grep -c '^  *- *{' "$PATROL" 2>/dev/null || echo 0)
+    [ "$N" -gt 0 ] || die "巡回路にウェイポイントが1点も無い: $PATROL"
+    ok "巡回路 $N 点: $(basename "$PATROL")"
+fi
 
 # --- 掃除: 前回の残骸を消す（二重起動を防ぐ）--------------------------------
 step "0.5 前回の残骸を掃除する"
@@ -230,7 +247,7 @@ fi
 
 # --- 5+7. Nav2 と自己位置合わせ ---------------------------------------------
 launch_nav() {   # $1 = map_to_odom
-    run "bash '$HERE/start_nav.sh' '$1' $LIDAR_YAW $OP_TIMEOUT" || die "launch できなかった"
+    run "bash '$HERE/start_nav.sh' '$1' $LIDAR_YAW $OP_TIMEOUT '$PATROL'" || die "launch できなかった"
     [ "$DRY" = 1 ] && return 0
     local i
     for i in $(seq 1 40); do
@@ -338,9 +355,17 @@ ${c_b}④ 発進ゲートを開く（ここは意図的に自動化していな�
    sudo systemctl restart g1-sdk-bridge
    pgrep -af g1_sdk_bridge_real_server      # → 末尾に --arm があること
 
-${c_b}⑤ 走行を許可して Goal を送る${c_0}
+${c_b}⑤ 走行を許可する${c_0}
    $0 --enable   （または手で ros2 service call /g1/enable_navigation ...）
-   → RViz の「2D Goal Pose」で 1〜2m 先を指す
+   → bridge_status が ${c_b}NAVIGATING${c_0} になること（READY のままなら許可できていない）
+
+${c_b}⑥ 走らせる。2つのモードは再起動なしで切り替わる${c_0}
+   ${c_b}単純ゴール指定${c_0}: RViz の「2D Goal Pose」で 1〜2m 先を指す
+   ${c_b}巡回${c_0}          : $TOOLS/patrol_ctl.sh start
+                    $TOOLS/patrol_ctl.sh watch     # 状態を見る
+                    $TOOLS/patrol_ctl.sh pause     # 止める（index は保つ）
+   ⚠️ 巡回中に RViz から Goal を送ると${c_b}巡回のほうが退く${c_0}。戻すときは再度 start
+   ⚠️ 内蔵SLAM が16分で落ちると FAULT → 巡回は HOLD する。${c_b}自動では戻らない${c_0}
 
 ${c_b}撤収${c_0}
    sudo sed -i 's/^G1_ARM=.*/G1_ARM=/' /etc/default/g1-sdk-bridge && sudo systemctl restart g1-sdk-bridge

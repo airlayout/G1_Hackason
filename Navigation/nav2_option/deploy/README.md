@@ -135,6 +135,7 @@ ssh g1                    # ros:foxy(1) noetic(2)? には **Enter だけ**
 rsync -a deploy/pc2_humble/ g1:/home/unitree/g1_nav2/pc2_humble/
 rsync -a deploy/pc2_humble/{g1up.sh,start_nav.sh,start_record.sh,start_localizer.sh,cyclonedds_eth0.xml} \
          g1:/home/unitree/g1_nav2/
+rsync -a tools/ g1:/home/unitree/g1_nav2/tools/      # record_waypoints.py / patrol_ctl.sh を含む
 ```
 
 ⚠️ **`g1up.sh` は `~/g1_nav2/` 直下に置く**（`pc2_humble/` `g1_ws/` `tools/` と並ぶ位置）。
@@ -158,6 +159,7 @@ sudo chmod 440 /etc/sudoers.d/g1-bridge
 | | |
 |---|---|
 | `--localizer` | §7 を連続 localization（`map_localizer.py`）にする。既定は静的 |
+| `--patrol <yaml>` | **巡回路を読ませる。** ⚠️ 渡しても走り出さない（`patrol_ctl.sh start` を叩くまで `IDLE`）。巡回路は現地で `tools/record_waypoints.py` で作る |
 | `--lidar-yaw 180` | RViz で赤軸が逆を向いていたとき |
 | `--map <yaml>` | 地図を差し替える |
 | `--operator-timeout 1.0` | 有線運用なら 1.0（既定 2.0 は無線向け。Q12） |

@@ -24,6 +24,10 @@ LIDAR_YAW="${2:-0}"
 # 代償: 検知が遅れるぶん、通信断からの停止までの前進距離が伸びる
 # (max_vx=0.30 なので +1 秒 ≒ +0.3m)。D-31 の受入目標 0.35m はこの値では満たせない。
 OP_TIMEOUT="${3:-1.0}"
+# 第4引数: 巡回路の yaml。空なら巡回ノードは常駐するが**ウェイポイント0点で start を断る**
+# （＝従来どおりの単純ゴール指定モードだけが使える）。現地で
+# `tools/record_waypoints.py` を回して作ったファイルを渡すこと。
+PATROL_WAYPOINTS="${4:-}"
 MAP=/home/unitree/g1_nav2/g1_ws/install/g1_navigation/share/g1_navigation/maps/room_a_map.yaml
 CYCLONE_CFG=/home/unitree/g1_nav2/cyclonedds_eth0.xml
 cd /home/unitree/g1_nav2/pc2_humble
@@ -34,6 +38,7 @@ setsid nohup ~/.pixi/bin/pixi run bash -lc "
   export CYCLONEDDS_URI=file://$CYCLONE_CFG
   exec ros2 launch g1_navigation navigation.launch.py backend:=real map:=$MAP \
        map_to_odom:='$MAP2ODOM' lidar_yaw:=$LIDAR_YAW \
-       operator_timeout_s:=$OP_TIMEOUT
+       operator_timeout_s:=$OP_TIMEOUT patrol_waypoints:='$PATROL_WAYPOINTS'
 " > /tmp/nav_launch.log 2>&1 < /dev/null &
 echo "started (map_to_odom=$MAP2ODOM lidar_yaw=$LIDAR_YAW operator_timeout_s=$OP_TIMEOUT rmw=cyclonedds)"
+echo "  巡回路: ${PATROL_WAYPOINTS:-(未指定。単純ゴール指定モードのみ)}"

@@ -1,6 +1,6 @@
 # 引き継ぎ — 次にこれを触る人へ
 
-最終更新: **2026-09-15**（実機セッション）
+最終更新: **2026-09-16**（実機なし。旋回の再現検証と巡回モードの実装）
 
 このファイルは「**次に何をすればいいか**」だけを書く。何があったかの記録は
 [Planning.md](Planning.md) の A-10n、当日の操作手順は
@@ -64,6 +64,27 @@ RPP の rotate-to-heading は**実測角速度を基準に**加速度制限を�
 **真の閾値が 0.3 より上なら 6.0 でも足りない**（6.0 × 0.05 = 0.30 が1周期ぶんのため）。
 そのときは `rotate_to_heading_angular_vel`（未指定なので既定 1.8）を明示するか、
 `max_angular_accel` をさらに上げる（10.0 なら1周期で 0.5）。
+
+### ①' 巡回モードを実機で通す ← ①と同じ日にできる
+
+**2026-09-16 に実装し、モックで通した**（[findings/patrol_mode.md](findings/patrol_mode.md)）。
+**単純ゴール指定モードと併存する。再起動なしで切り替わる。**
+
+⚠️ **実機で足りていないのは「巡回路そのもの」。** `config/patrol_room_a.yaml` は
+**空のひな形**で、現地で記録するまで `start` は断られる。地図が 9/07 取得で現状と
+合っていないので、**座標を手で書かず、機体を実際にその場所へ持って行って拾う**:
+
+```bash
+# PC2。§7 の地図照合まで済ませた状態で（1回だけ。地図を作り直したらやり直す）
+cd ~/g1_nav2/tools && python3 record_waypoints.py -o ~/g1_nav2/patrol_room_a.yaml
+# 巡回路つきで上げ直す
+~/g1_nav2/g1up.sh --patrol ~/g1_nav2/patrol_room_a.yaml
+# 8.3 の enable_navigation の後で
+~/g1_nav2/tools/patrol_ctl.sh start
+```
+
+⚠️ **単純ゴール指定（手順書 8.4）が通ってから**にすること。巡回は同じ
+`NavigateToPose` を連続で投げるだけなので、1回の Goal が通らないなら巡回も通らない。
 
 ### ② 地図を測り直す
 
@@ -151,6 +172,9 @@ python3 tools/pointcloud_to_occupancy_grid/pointcloud_to_occupancy_grid.py <点�
 ```bash
 ssh g1              # ros:foxy(1) noetic(2)? には **Enter だけ**
 ~/g1_nav2/g1up.sh   # §1〜§7 を一気に通し、各段の✅判定を出す
+
+# 巡回もするなら（巡回路を現地で記録したあと）
+~/g1_nav2/g1up.sh --patrol ~/g1_nav2/patrol_room_a.yaml
 ```
 
 スクリプトは**姿勢を2段で検査する**（2026-09-15 に最も時間を溶かした落とし穴のため）:
@@ -209,7 +233,12 @@ sudo systemctl restart g1-sdk-bridge
 pgrep -af g1_sdk_bridge_real_server         # → --arm が付いていること
 # ROS 側は自動で再接続する
 ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
-# → RViz の「2D Goal Pose」で 1〜2m 先を指す
+# → bridge_status が NAVIGATING になること（READY のままなら許可できていない）
+
+# --- ここから2つのモードを再起動なしで選べる ---
+# 単純ゴール指定: RViz の「2D Goal Pose」で 1〜2m 先を指す
+# 巡回          : ~/g1_nav2/tools/patrol_ctl.sh start   （watch / pause / stop / skip）
+# ⚠️ 巡回中に RViz から Goal を送ると**巡回のほうが退く**。戻すときは再度 start
 ```
 
 ---
@@ -230,6 +259,8 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
 | 10 | **`/etc/default` を書き換えただけではゲートは開かない** | `systemctl restart` が必須 |
 | 11 | **PC2 の時計は CST、操作PC は JST で 1 時間ずれている** | ログの突き合わせに注意 |
 | 12 | **バッテリ交換で PC2 も機体も再起動する。** `/tmp` が消えて全部落ちる | 交換後は §3 から組み直す |
+| 13 | **`bridge_status: READY` は「走行許可」ではない。** TF とセンサーが健全になっただけで、この状態では速度指令が SDK へ1件も通らない（`OnNavTwist` が `SendZero`）。**機体は1mmも動かないまま Goal が abort し続ける** | `enable_navigation` を呼んで **`NAVIGATING`** にする。巡回ノードは `NAVIGATING` 以外では `start` を断る |
+| 14 | **Goal 到達の約 1.3 秒後に `cmd_timeout` で FAULT に落ちる**（`velocity_smoother` の velocity_timeout 1.0 + `cmd_timeout` 0.30）。巡回で各点に止まろうとすると1点目で止まる | 巡回の `dwell_s` は **0**（既定）。長く止まりたいなら [findings/patrol_mode.md](findings/patrol_mode.md) §6 の(a)(b)(c)から選ぶ判断が要る |
 
 ---
 
@@ -272,6 +303,13 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
 - **`obstacle_min_range: 0.9` の副作用**の確認。0.9m より近い実在の障害物は
   新たにはマークされない。死角(0.91〜1.12m)と整合しているが、詰めきれていない
 - PC2 の `runs/` 4本の回収と解析
+- **巡回の実機検証**（モックまで済み）
+- ⚠️ **「各点で止まって見回す」ができない件の判断**（人が決めること）。
+  Goal 到達の約1.3秒後に `cmd_timeout` で FAULT に落ちるため（落とし穴14）。
+  [findings/patrol_mode.md](findings/patrol_mode.md) §6 に (a)何もしない /
+  (b)`velocity_timeout` を伸ばす（⚠️ D-10 の watchdog が死ぬ）/
+  (c)dwell 中だけ `enable_navigation(false)`（⚠️ 巡回が走行許可を出し直せてしまう）
+  のトレードオフを並べた。**将来の VLA 動作（巡回中のモード切替）はこれが前提になる**
 - ⚠️ **会場が内蔵SLAM の推奨範囲を超えている件の扱い**（2026-09-16 に判明）。
   公式ドキュメントは適用範囲を「**25m×25m 未満。推奨範囲を超えないこと**」と明記している。
   **room_a は 28.5m×33.0m（自由空間 457m²）で既に超過。** 新しい点群

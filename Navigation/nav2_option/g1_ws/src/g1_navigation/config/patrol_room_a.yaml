@@ -1,0 +1,25 @@
+# room_a（実会場）の巡回路。
+#
+# ⚠️⚠️ **まだ空。現地で記録すること。** 座標を手で書かないこと。
+#
+# 理由:
+#   1. `room_a_map.pgm` は **2026-09-07 取得で現状と合っていない**
+#      （スキャンの一致率が 20cm以内 40〜45% まで落ちている。HANDOVER ②）。
+#      地図を目で見て座標を決めても、実機がそこに行けるとは限らない
+#   2. `map→odom` は毎回 `find_map_offset.py` で決め直す。**地図座標は
+#      セッションごとに同じ場所を指すが、地図自体が古いのでずれは残る**
+#
+# 記録の仕方（機体を人が歩かせて、止まるたびに1点ずつ拾う）:
+#
+#   # PC2 で Nav2 を上げ、§7 の地図照合まで済ませた状態で
+#   python3 ~/g1_nav2/tools/record_waypoints.py -o ~/g1_nav2/patrol_room_a.yaml
+#   # → 機体を回したい場所へ動かし、そのつど Enter。q で保存
+#
+#   # 巡回ノードに読ませる
+#   ros2 launch g1_navigation navigation.launch.py backend:=real \
+#       patrol_waypoints:=/home/unitree/g1_nav2/patrol_room_a.yaml ...
+#
+# 目安（2026-09-15 の実績から）: **1点あたり 3〜5m 以内**にすること。
+# それ以上離すと途中の障害物で経路が長くなり、内蔵SLAM の16分制限に当たりやすい。
+frame_id: map
+waypoints: []

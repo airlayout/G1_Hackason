@@ -1,0 +1,14 @@
+# モック(backend:=mock)用の巡回路。**実機とは無関係の合成地図 synthetic_room 向け。**
+#
+# synthetic_room は 12m×12m（x,y ともに -6..6）で、中央 x≒-0.2 に
+# y=-1.8..2.2 の仕切り壁がある。その壁を**回り込む4点**にしてある
+# （＝必ず旋回が入るので、旋回デッドロックの回帰確認を兼ねる）。
+#
+# モックの出発点は map→odom の静的変換で (-3, -4)。sw から始めると
+# 「いまいる場所が最初の目標」になって何も起きないので、north から回る。
+frame_id: map
+waypoints:
+  - {name: north,      x: -3.0, y:  3.0, yaw_deg:   0}
+  - {name: north_east, x:  3.0, y:  3.0, yaw_deg: -90}
+  - {name: south_east, x:  3.0, y: -3.5, yaw_deg: 180}
+  - {name: south_west, x: -3.0, y: -3.5, yaw_deg:  90}

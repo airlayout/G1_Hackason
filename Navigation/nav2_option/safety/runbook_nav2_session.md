@@ -340,6 +340,46 @@ RViz の **「2D Goal Pose」**で、**1〜2m 先**を指定する。いきな�
 1〜2m → 3〜5m → 障害物を回る経路、と**一歩ずつ**広げる。
 各回で **RViz の自己位置と実際の位置のずれ**を目視で確認する。
 
+### 8.6 巡回モード（8.5 まで通ってから）
+
+⚠️ **単純ゴール指定（8.4）が成立してから**にすること。巡回は同じ `NavigateToPose` を
+連続で投げるだけなので、1回の Goal が通らないなら巡回も通らない。切り分けが難しくなる。
+
+**巡回路をまず作る**（1回だけ。地図を作り直したらやり直す）:
+
+```bash
+# PC2。§7 の地図照合まで済んだ状態で
+cd ~/g1_nav2/tools && python3 record_waypoints.py -o ~/g1_nav2/patrol_room_a.yaml
+# → 機体を純正リモコンで回りたい場所へ動かし、そのつど Enter。q で保存
+```
+
+⚠️ **地図の画像を見て座標を手で書かないこと。** room_a の地図は 9/07 取得で
+現状と合っていない。**機体を実際にその場所へ持って行って拾う**のがいちばん確実。
+⚠️ 記録が終わったら **Nav2 を巡回路つきで上げ直す**（`g1up.sh --patrol <yaml>`）。
+
+**走らせる**:
+
+```bash
+~/g1_nav2/tools/patrol_ctl.sh start     # 開始（8.3 の enable_navigation の後）
+~/g1_nav2/tools/patrol_ctl.sh watch     # 状態を流し続ける
+~/g1_nav2/tools/patrol_ctl.sh pause     # 止める（次の start は同じ点から）
+~/g1_nav2/tools/patrol_ctl.sh stop      # 止めて1点目に戻す
+```
+
+✅判定: `state` が `RUNNING` になり、`loop_count` が増えていく
+
+| 症状 | 意味 |
+|---|---|
+| `start` が `bridge=READY` で断られる | **8.3 の `enable_navigation` がまだ。** READY は「準備完了」であって「走行許可」ではない |
+| `start` が `bridge=STANDBY` で断られる | TF かセンサーがまだ。§5.3 に戻る |
+| 走行中に `HOLD` になった | FAULT か手動 Goal。**自動では戻らない**。`hold_reason` を見て、直してから `start` |
+
+⚠️ **単純ゴール指定に戻すのに `stop` は要らない。** RViz から Goal を送れば
+**巡回のほうが退く**（`bt_navigator` は Goal を1件しか持てないため）。
+⚠️ **内蔵SLAM が約16分で落ちると TF が止まり FAULT → 巡回は HOLD する。**
+`1801` を送り直して §7 をやり直したあと、`patrol_ctl.sh start` で
+**止まった点から**続けられる。
+
 ---
 
 ## ⛔ 中止条件（1つでも該当したら即座にリモコンで停止）

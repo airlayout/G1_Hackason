@@ -27,6 +27,19 @@ odometry（LiDAR+IMU の実測。静止70秒でドリフト 0.9cm）を使う。
 ⚠️ **`real` を使う前に、G1 の内蔵 SLAM を `1801` で起動しておくこと**
 （`tools/send_slam_api.py`）。これが無いと `/unitree/slam_mapping/odom` が出ない。
 
+## 2つの運転モード（**再起動なしで切り替わる**）
+
+| | 単純ゴール指定 | 巡回 |
+|---|---|---|
+| 入口 | RViz の 2D Goal Pose(`/goal_pose`) | `ros2 service call /g1/patrol/start std_srvs/srv/Trigger` |
+| 準備 | 不要 | `patrol_waypoints:=<yaml>` |
+
+📌 **`patrol_node.py` は既定で常駐するが `IDLE` で何もしない。**
+`/g1/patrol/start` を呼ぶまで Goal を1件も出さないので、置いてあるだけの状態は
+従来と完全に同じ挙動になる。巡回中に人が RViz から Goal を送ると、
+**巡回のほうが退く**（`bt_navigator` は Goal を1件しか持てないため）。
+ノードごと消したいときは `patrol:=false`。
+
 ## 使い方
 
     # モック(実機なし)
@@ -35,6 +48,11 @@ odometry（LiDAR+IMU の実測。静止70秒でドリフト 0.9cm）を使う。
     # 実機
     ros2 launch g1_navigation navigation.launch.py \\
         backend:=real map:=/path/to/room_a_map.yaml
+
+    # 実機 + 巡回（現地で記録したウェイポイントを読ませる）
+    ros2 launch g1_navigation navigation.launch.py backend:=real \\
+        map:=/path/to/room_a_map.yaml \\
+        patrol_waypoints:=/home/unitree/g1_nav2/patrol_room_a.yaml
 
 SDK 側プロセス(`g1_sdk_bridge_real_server`)は本 launch の対象外。
 **ROS 環境を継承させないため systemd から起動する**(D-07、`deploy/` 参照)。
@@ -201,6 +219,34 @@ def _launch_setup(context, *args, **kwargs):
              parameters=[{"autostart": True, "node_names": LIFECYCLE_NODES,
                           "use_sim_time": use_sim_time}]),
     ]
+
+    # --- 巡回モード -----------------------------------------------------------
+    # ⚠️ **ここで巡回が始まるわけではない。** ノードは IDLE で待つだけで、
+    # `/g1/patrol/start` を呼ぶまで Goal を1件も出さない。だから既定で常駐させても
+    # 単純ゴール指定モードの邪魔をしない（両モードを再起動なしで選べるようにするため）。
+    if flag("patrol"):
+        waypoints = LaunchConfiguration("patrol_waypoints").perform(context).strip()
+        if not waypoints:
+            # 既定は backend で変える。実機の room_a は**空のひな形**なので、
+            # 現地で `tools/record_waypoints.py` を回すまで巡回は start を拒否する。
+            waypoints = os.path.join(
+                share, "config",
+                "patrol_room_a.yaml" if is_real else "patrol_synthetic.yaml")
+        nodes.append(Node(
+            package="g1_navigation",
+            executable="patrol_node.py",
+            name="g1_patrol",
+            output="screen",
+            parameters=[{
+                "waypoints_file": waypoints,
+                "loop": flag("patrol_loop"),
+                "dwell_s": float(LaunchConfiguration("patrol_dwell_s").perform(context)),
+                "on_failure": LaunchConfiguration("patrol_on_failure").perform(context),
+                # ⚠️ **既定 false。** 立ち上げただけで機体が歩き出さないようにする
+                "autostart": flag("patrol_autostart"),
+                "use_sim_time": use_sim_time,
+            }],
+        ))
     return nodes
 
 
@@ -259,5 +305,31 @@ def generate_launch_description():
             "map_to_odom", default_value="0 0 0",
             description="map->odom の初期値 \"dx dy yaw[rad]\"。find_map_offset.py の結果を渡す。"
                         "`none` なら map->odom を配信しない(連続localization を併用するとき)"),
+        # --- 巡回モード（単純ゴール指定モードと併存する）----------------------
+        DeclareLaunchArgument(
+            "patrol", default_value="true",
+            description="巡回ノードを常駐させる。⚠️ 常駐するだけで走り出さない"
+                        "(/g1/patrol/start を呼ぶまで IDLE)。false でノードごと消す"),
+        DeclareLaunchArgument(
+            "patrol_waypoints", default_value="",
+            description="巡回路の yaml。空なら backend で決まる"
+                        "（real→config/patrol_room_a.yaml, mock→config/patrol_synthetic.yaml）"),
+        DeclareLaunchArgument(
+            "patrol_loop", default_value="true",
+            description="最後の点まで行ったら1点目に戻る。false なら1周で終わる"),
+        # ⚠️ **既定 0。** 1.3 秒を超えて止まると `cmd_timeout` で FAULT に落ちる
+        # （velocity_timeout 1.0 + cmd_timeout 0.30。2026-09-16 モックで実測）。
+        DeclareLaunchArgument(
+            "patrol_dwell_s", default_value="0.0",
+            description="各点で止まる秒数。⚠️ 1.3秒を超えると FAULT に落ちる。"
+                        "点ごとに yaml の dwell_s で上書きできる"),
+        DeclareLaunchArgument(
+            "patrol_on_failure", default_value="skip",
+            description="到達できない点の扱い。skip=飛ばして次へ / stop=巡回を止める"),
+        # ⚠️ **既定 false のまま運用すること。** true にすると launch しただけで
+        # 機体が歩き出す。発進ゲートと heartbeat は効くが、人の「開始」の意思が抜ける。
+        DeclareLaunchArgument(
+            "patrol_autostart", default_value="false",
+            description="⚠️ 起動後に自動で巡回を始める。ベンチ/モック専用"),
         OpaqueFunction(function=_launch_setup),
     ])

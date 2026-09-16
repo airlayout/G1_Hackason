@@ -25,6 +25,12 @@
   <exec_depend>nav2_costmap_2d</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>rclpy</exec_depend>
+  <!-- patrol_node.py: NavigateToPose を順に投げる(巡回モード) -->
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>g1_cmd_router</exec_depend>
   <exec_depend>g1_state_bridge</exec_depend>
