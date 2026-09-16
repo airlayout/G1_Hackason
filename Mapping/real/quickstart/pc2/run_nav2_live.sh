@@ -97,6 +97,30 @@ if [ "$STATIC_SOURCE" = "octomap" ]; then
     #       marker_array を**購読者の有無に関わらず毎スキャン出す**ので CPU が 4 倍
     #       （10 Hz で 48.7 % 対 13.5 %）。PC2 は load 5〜7/8 なので false
     #       ⚠️ false ＝ VOLATILE なので `map_subscribe_transient_local: false` と一対
+    # ── body ≡ livox_frame の静的 TF ─────────────────────────────────
+    # ⚠️ **これが無いと octomap_server は点群を 1 枚も入れられない。**
+    # 生 LiDAR の header.frame_id は `livox_frame` だが、FAST_LIO 構成の TF 木は
+    #   map -> odom -> camera_init -> body -> base_link -> imu_link
+    # で **`livox_frame` が存在しない**。octomap_server は
+    # `livox_frame -> map` を引けず、`Message Filter dropping message` を
+    # 延々出し続ける（落ちないので気づきにくい。2026-09-17 に踏んだ）。
+    #
+    # `fastlio_g1.yaml` は `extrinsic_T: [0,0,0]` / `extrinsic_R: 単位行列` /
+    # `extrinsic_est_en: false` なので **`body ≡ livox_frame` が厳密に成り立つ**
+    # （あの yaml の注記がそう書いている）。だから恒等で繋ぐのが正しい。
+    #
+    # ⚠️ 計画 §3 の「`/cloud_registered_1` を食わせる」は**採れない**。
+    # あれは `camera_init`（world）系なので、octomap_server が
+    # レイの始点に使う「点群フレームの原点」が**地図の原点**になってしまう。
+    # `/cloud_registered_body_1` は advertise だけで配信されていない。
+    say "  body ≡ livox_frame の静的 TF を出す（extrinsic は単位行列なので厳密）"
+    jros2 run tf2_ros static_transform_publisher \
+        --x 0 --y 0 --z 0 --roll 0 --pitch 0 --yaw 0 \
+        --frame-id body --child-frame-id livox_frame \
+        > /tmp/pc2_livox_tf.log 2>&1 &
+    PIDS="$PIDS $!"
+    sleep 3
+
     say "octomap_server を起こす（種 $(basename "$OCTOMAP_SEED") / 帯 ${OCTOMAP_BAND_MIN}-${OCTOMAP_BAND_MAX} m / max_range ${OCTOMAP_MAX_RANGE} m）"
     jros2 run octomap_server octomap_server_node --ros-args \
         -r cloud_in:="$CLOUD_TOPIC" \
@@ -141,5 +165,5 @@ if [ "$SECONDS_LIMIT" != "0" ]; then
     say "${SECONDS_LIMIT} 秒で止める"
     ( sleep "$SECONDS_LIMIT"; kill -INT "$NAV2_PID" 2>/dev/null ) &
 fi
-say "ログ: /tmp/pc2_nav2.log /tmp/pc2_octomap.log /tmp/pc2_mapserver.log"
+say "ログ: /tmp/pc2_nav2.log /tmp/pc2_octomap.log /tmp/pc2_livox_tf.log /tmp/pc2_mapserver.log"
 wait "$NAV2_PID"

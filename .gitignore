@@ -64,3 +64,6 @@ Demo/demo.env
 
 # macOS
 .DS_Store
+
+# up.sh が書く実行時の目印（記録の回収に使う）
+Mapping/real/quickstart/live/.last_run

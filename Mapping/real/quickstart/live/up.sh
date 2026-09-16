@@ -86,20 +86,21 @@ pc2 "rm -f /tmp/pc2_c5_run.log
      grep -E '初期姿勢|動作中|エラー' /tmp/pc2_c5_run.log | sed 's/^/     /'"
 
 say "   ⚠️ **最初に roll/pitch を見る**（立位なら 0 付近。±3 度を超えたら取付を疑う）"
-TF="$(pc2_ros "\$HOME/g1_cfg/../nav_tools/../:; true" 2>/dev/null; \
-      pc2 "cat > /tmp/_tf.sh <<'EOS'
-. \"\$HOME/jammy_ros/env.sh\" >/dev/null 2>&1
-export ROS_DOMAIN_ID=0
-export CYCLONEDDS_URI='$G1_DDS_ETH0'
-setsid bash -c \". \\\$HOME/jammy_ros/env.sh >/dev/null 2>&1
-  export ROS_DOMAIN_ID=0 CYCLONEDDS_URI='$G1_DDS_ETH0'
-  jros2 run tf2_ros tf2_echo map base_link\" > /tmp/_tf.txt 2>&1 &
-p=\$!; g=\$(ps -o pgid= -p \$p | tr -d ' '); sleep 12; kill -9 -\$g 2>/dev/null
-grep -E 'Translation|RPY \(degree\)' /tmp/_tf.txt | tail -2
-EOS
-      bash /tmp/_tf.sh")"
+# ⚠️ **待つ。**FAST_LIO を起こした直後は `map` フレームがまだ無く、
+# tf2_echo が `Invalid frame ID "map" ... frame does not exist` を返す。
+# open3d_loc は 2.5 Hz（1 周 2.3 秒スリープ）なので収束まで数十秒かかる。
+# 2026-09-17 に 12 秒だけ見て die し、**測位は正常なのに「出ていない」と誤診した**
+# （そのとき ICP の fitness は 0.974 で良好だった）。
+TF=""
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    TF="$(pc2_ros2 12 run tf2_ros tf2_echo map base_link 2>/dev/null \
+          | grep -E 'Translation|RPY \(degree\)' | tail -2)"
+    [ -n "$TF" ] && break
+    say "   map->base_link を待つ（${attempt}/10・open3d_loc の収束待ち）"
+done
 printf '%s\n' "$TF" | sed 's/^/     /' >&2
-printf '%s\n' "$TF" | grep -q Translation || die "map->base_link が出ていない。/tmp/pc2_o3dloc.log を見る"
+printf '%s\n' "$TF" | grep -q Translation \
+    || die "map->base_link が 2 分待っても出ない。/tmp/pc2_o3dloc.log と /tmp/pc2_fastlio.log を見る"
 
 # ── 2. /scan（2D 化）────────────────────────────────────────────────
 # ⚠️ CYCLONEDDS_URI を渡さないと wlan0 を掴んで Nav2 から見えなくなる。
