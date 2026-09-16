@@ -6,10 +6,20 @@
 namespace g1_sdk_bridge {
 
 namespace {
-std::array<double, 3> IntegratePose(const std::array<double, 3>& pose, const std::array<double, 3>& vel, double dt) {
+std::array<double, 3> IntegratePose(const std::array<double, 3>& pose, const std::array<double, 3>& vel, double dt,
+                                   double gait_min_vx = 0.0, double gait_min_omega = 0.0) {
     // デモ用の簡易積分。実機ではodometryはLIOから供給される(D-19)ため、この積分自体は本番では使わない。
     double x = pose[0], y = pose[1], yaw = pose[2];
-    const double vx = vel[0], vy = vel[1], omega = vel[2];
+    double vx = vel[0], vy = vel[1], omega = vel[2];
+    // 最小作動閾値(モック専用。既定 0 なら無効=従来どおり)。詳細はヘッダのコメント。
+    // ⚠️ 並進と旋回を**独立に**切る。実機も「前進はするが旋回は始まらない」が起きる。
+    if (gait_min_vx > 0.0 && std::abs(vx) < gait_min_vx && std::abs(vy) < gait_min_vx) {
+        vx = 0.0;
+        vy = 0.0;
+    }
+    if (gait_min_omega > 0.0 && std::abs(omega) < gait_min_omega) {
+        omega = 0.0;
+    }
     x += (vx * std::cos(yaw) - vy * std::sin(yaw)) * dt;
     y += (vx * std::sin(yaw) + vy * std::cos(yaw)) * dt;
     yaw += omega * dt;
@@ -240,7 +250,7 @@ void SdkBridgeProcess::Tick(double dt) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         status_ = new_status;
-        pose_ = IntegratePose(pose_, effective, dt);
+        pose_ = IntegratePose(pose_, effective, dt, cfg_.gait_min_vx, cfg_.gait_min_omega);
         pose = pose_;
         err = sdk_error_count_;
     }

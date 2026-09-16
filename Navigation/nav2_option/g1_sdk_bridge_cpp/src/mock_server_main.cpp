@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
+#include <string>
 #include <thread>
 
 #include "g1_sdk_bridge/protocol.hpp"
@@ -34,8 +35,39 @@ const char* StatusName(g1_sdk_bridge::BridgeStatus s) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    const std::string cmd_path = argc > 1 ? argv[1] : "/tmp/g1_bridge/cmd.sock";
-    const std::string state_path = argc > 2 ? argv[2] : "/tmp/g1_bridge/state.sock";
+    std::string cmd_path = "/tmp/g1_bridge/cmd.sock";
+    std::string state_path = "/tmp/g1_bridge/state.sock";
+    // ⚠️ **二足の最小作動閾値を模す。** 既定は 0(無効)＝指令どおりに完璧に動く。
+    // 値を入れると「指令が小さすぎると動かない」実機の性質が入り、
+    // 2026-09-15 に踏んだ旋回デッドロックを実機なしで再現できる。
+    // 実測の目安: vx は 0.2 未満で歩容が成立しない、omega は 0.02 で不動・0.3 で回る。
+    double gait_min_vx = 0.0;
+    double gait_min_omega = 0.0;
+    int positional = 0;
+    for (int i = 1; i < argc; ++i) {
+        const std::string a = argv[i];
+        if (a == "--gait-min-vx" && i + 1 < argc) {
+            gait_min_vx = std::stod(argv[++i]);
+        } else if (a == "--gait-min-omega" && i + 1 < argc) {
+            gait_min_omega = std::stod(argv[++i]);
+        } else if (a == "--like-g1") {
+            // 実機に近い閾値をまとめて入れる近道
+            gait_min_vx = 0.2;
+            gait_min_omega = 0.15;
+        } else if (a == "--help" || a == "-h") {
+            std::cout << "使い方: g1_sdk_bridge_mock_server [cmd_sock] [state_sock]\n"
+                      << "  --gait-min-vx <m/s>      これ未満の並進指令では動かない(既定 0=無効)\n"
+                      << "  --gait-min-omega <rad/s> これ未満の旋回指令では動かない(既定 0=無効)\n"
+                      << "  --like-g1                実機に近い閾値(vx 0.2 / omega 0.15)をまとめて入れる\n";
+            return 0;
+        } else if (positional == 0) {
+            cmd_path = a;
+            ++positional;
+        } else if (positional == 1) {
+            state_path = a;
+            ++positional;
+        }
+    }
     std::filesystem::create_directories(std::filesystem::path(cmd_path).parent_path());
 
     std::signal(SIGINT, OnSignal);
@@ -45,6 +77,12 @@ int main(int argc, char** argv) {
     g1_sdk_bridge::SdkBridgeConfig cfg;
     cfg.cmd_sock_path = cmd_path;
     cfg.state_sock_path = state_path;
+    cfg.gait_min_vx = gait_min_vx;
+    cfg.gait_min_omega = gait_min_omega;
+    if (gait_min_vx > 0.0 || gait_min_omega > 0.0) {
+        std::cout << "[mock_server] 最小作動閾値: vx=" << gait_min_vx
+                  << " omega=" << gait_min_omega << " (これ未満の指令では動かない)" << std::endl;
+    }
 
     g1_sdk_bridge::SdkBridgeProcess bridge(cfg, backend);
     bridge.Start();

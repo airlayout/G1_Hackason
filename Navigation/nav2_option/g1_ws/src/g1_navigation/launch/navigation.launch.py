@@ -149,7 +149,12 @@ def _launch_setup(context, *args, **kwargs):
     # (＝コンテナの bind mount 無しで)動かす本構成では、**明示的に合わせないと
     # 繋がらない**。2026-09-15 に、systemd 版と手起動版の2本が立っていて ROS 側が
     # 手起動版に繋がっていた事故を踏んだ。arm する前は必ず1本にすること。
+    # ⚠️ 既定は backend で変える。**モックは /tmp、実機(systemd)は /run**。
+    # 2026-09-16: 既定を /run 固定にしたらモック構成が無言で壊れた
+    # (state_bridge が繋がらない → TF が出ない → controller_server が activate できない)。
     sock_dir = LaunchConfiguration("bridge_sock_dir").perform(context).rstrip("/")
+    if not sock_dir:
+        sock_dir = "/run/g1_bridge" if is_real else "/tmp/g1_bridge"
     nodes.append(Node(
         package="g1_state_bridge",
         executable="g1_state_bridge_node",
@@ -247,8 +252,9 @@ def generate_launch_description():
         # systemd ユニット(deploy/g1-sdk-bridge.service)が RuntimeDirectory= で
         # /run/g1_bridge に作る。手起動で実行ファイルの既定を使う場合だけ /tmp/g1_bridge。
         DeclareLaunchArgument(
-            "bridge_sock_dir", default_value="/run/g1_bridge",
-            description="SDK側プロセスの Unix socket の置き場。systemd 運用なら既定のまま"),
+            "bridge_sock_dir", default_value="",
+            description="SDK側プロセスの Unix socket の置き場。"
+                        "空なら backend で決まる（real→/run/g1_bridge, mock→/tmp/g1_bridge）"),
         DeclareLaunchArgument(
             "map_to_odom", default_value="0 0 0",
             description="map->odom の初期値 \"dx dy yaw[rad]\"。find_map_offset.py の結果を渡す。"

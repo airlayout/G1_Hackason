@@ -80,6 +80,21 @@ docker run --rm --network host --ipc host \
 | `view_map_rviz.sh` / `view_map.rviz` | 生成した地図を RViz2 で表示する（Linux ホスト用。Mac は Mapping 側の VNC 経路） |
 | `publish_trajectory_path.py` | mapping 軌跡を `nav_msgs/Path` で配信（地図の自由空間に乗っているかの目視確認用） |
 
+## モックでの回帰テスト（実機不要）
+
+| ツール | 用途 |
+|---|---|
+| `mock_deadlock_test.sh` | **旋回デッドロックの再現と修正確認。** `old` で 2026-09-15 の現象を再現し、`new` で直ることを確認する。モックのビルドから Goal 到達まで自動 |
+
+```bash
+./tools/mock_deadlock_test.sh old    # 60秒経っても 1mm も動かない（再現）
+./tools/mock_deadlock_test.sh new    # Reached the goal!（修正確認）
+```
+
+⚠️ **モックはコンテナ内でビルドすること**（ホストのバイナリは `GLIBCXX` が合わず動かない）。
+⚠️ **`heartbeat_required:=false` が要る**（既定 true だと `enable_navigation` が拒否される）。
+詳細: [../findings/mock_deadlock_repro.md](../findings/mock_deadlock_repro.md)
+
 ## 巡回の記録と事後解析（A-10i、Phase 2c 完了条件）
 
 | ツール | 用途 |
