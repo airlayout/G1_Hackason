@@ -158,6 +158,12 @@ if [ -n "$INIT" ]; then
     read -r IX IY IYAW_DEG <<EOF
 $INIT
 EOF
+    # ⚠️ **必ず小数にする。** `--init "3 0 -15"` のように整数で渡すと ROS が
+    # `parameter {initial_pose.x} is of type {double}, setting it to {integer}
+    # is not allowed` で落ちる（2026-09-16 に踏んだ。amcl だけが死に、
+    # map_server は生きたまま残るので「起動した」ように見える）。
+    IX="$(awk -v v="$IX" 'BEGIN{printf "%.6f", v}')"
+    IY="$(awk -v v="$IY" 'BEGIN{printf "%.6f", v}')"
     IYAW="$(awk -v d="$IYAW_DEG" 'BEGIN{printf "%.7f", d*3.141592653589793/180}')"
     say "初期姿勢を上書き: x=$IX y=$IY yaw=${IYAW_DEG} deg ($IYAW rad)"
     AMCL_ARGS="$AMCL_ARGS -p set_initial_pose:=true"
