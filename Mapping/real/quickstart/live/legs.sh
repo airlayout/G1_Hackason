@@ -53,6 +53,24 @@ case "${1:-}" in
         say "足を外す"
         pc2_kill "$BRIDGE_PY" "" TERM
         pc2_kill "$DRIVER_PY" "" INT      # SDK 側は INT で StopMove を通す
+        # ⚠️⚠️ **INT で死んだか必ず確かめる。**`--dry-run` のドライバは SIGINT を
+        # 無視するので、`--stop` しても**ポート 47600 を掴んだまま残る**
+        # （2026-09-17 に 19 分残し、次の `--arm` が
+        #  `OSError: [Errno 98] Address already in use` で失敗した）。
+        # しかも `cmd_vel_bridge` だけは起動に成功するので、`--status` は
+        # 「両方稼働中・Subscription count 1」と出て**繋がったように見える**。
+        # 指令は素振りのドライバへ流れ、**機体は動かない**。
+        pc2 "for _ in 1 2 3 4 5; do
+               n=\$(ps -eo args --no-headers | grep -cE '[l]oco_driv|[c]md_vel_brid' || true)
+               [ \"\$n\" = 0 ] && break
+               sleep 1
+             done
+             for p in \$(ps -eo pid,args --no-headers | grep -E '[l]oco_driv|[c]md_vel_brid' | awk '{print \$1}'); do
+               echo \"     INT で死ななかった \$p を KILL する\"; kill -KILL \"\$p\" 2>/dev/null
+             done
+             sleep 1
+             echo \"     残り \$(ps -eo args --no-headers | grep -cE '[l]oco_driv|[c]md_vel_brid' || true) 個 / \
+47600 を掴む socket \$(ss -lun 2>/dev/null | grep -c 47600 || true) 個\""
         status; exit 0 ;;
     --dry-run|--arm) MODE="$1" ;;
     *) sed -n '2,10p' "$0" >&2; exit 2 ;;
@@ -66,11 +84,33 @@ if [ "$MODE" = "--arm" ]; then
     [ "$ans" = "yes" ] || die "中止した"
 fi
 
+# ── 先に 47600 が空いているか見る ────────────────────────────────────
+# ⚠️ **ここで止めないと危ない誤解が生まれる。**ポートが埋まっているとドライバは
+# bind に失敗して死ぬが、橋は起動に成功するので `--status` が
+# 「両方稼働中・Subscription count 1」と出る。**指令の行き先が古いドライバ**になる。
+# ⚠️ **`|| echo 0` と繋いではいけない（`|| true` にする）。**
+# `grep -c` も `pgrep -c` も、0 件のとき「0」を印字した上で**終了コード 1** を返す。
+# `|| echo 0` を足すと数字が 2 個出て `"00"` になり、`!= "0"` が**必ず真になる**
+# ＝ ポートが空いていても「埋まっている」と出て中止する。
+# 2026-09-17 に preflight.sh で直した直後、ここで同じ型を再発させた。
+# 同じ注記が quickstart/apriltag/record_registration.sh にもある（既知の罠）。
+HELD="$(pc2 "ss -lun 2>/dev/null | grep -c 47600 || true" 2>/dev/null | tr -d '[:space:]')"
+if [ "${HELD:-0}" != "0" ]; then
+    say "⚠️ 127.0.0.1:47600 が既に埋まっている（古い $DRIVER_PY が残っている）"
+    pc2 "ps -eo pid,etime,args --no-headers | grep '[l]oco_driv' | cut -c1-110 | sed 's/^/     /'"
+    die "先に bash quickstart/live/legs.sh --stop を実行すること"
+fi
+
 # ── SDK 側（安全機構はこちら）────────────────────────────────────────
 say "SDK 側 $DRIVER_PY を起こす（${MODE}）"
 pc2 "nohup setsid python3 \$HOME/nav_tools/$DRIVER_PY \
        --network-interface eth0 $MODE > \$HOME/g1_runs/loco.log 2>&1 < /dev/null &
      sleep 6; tail -3 \$HOME/g1_runs/loco.log | sed 's/^/     /'"
+
+# ⚠️ **bind できたかを確かめてから橋を起こす。**失敗したまま橋を起こすと
+# 「繋がっているつもりで繋がっていない」状態になる（上の注記）。
+pc2 "grep -q 'Address already in use\|Traceback' \$HOME/g1_runs/loco.log && exit 9 || exit 0" \
+    || die "$DRIVER_PY が起動できていない（~/g1_runs/loco.log を見る）。橋は起こさない"
 
 # ── ROS 側（⚠️ eth0 を必ず渡す）──────────────────────────────────────
 say "ROS 側 $BRIDGE_PY を起こす（CYCLONEDDS_URI を eth0 に固定）"

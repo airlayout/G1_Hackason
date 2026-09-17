@@ -40,6 +40,16 @@ SECONDS_LIMIT="${G1_PC2_SECONDS:-0}"
 STATIC_SOURCE="${G1_STATIC_SOURCE:-octomap}"
 OCTOMAP_SEED="${G1_OCTOMAP_SEED:-$CFG/map/seed.bt}"
 CLOUD_TOPIC="${G1_CLOUD_TOPIC:-/utlidar/cloud_livox_mid360}"
+# ⚠️ **生 LiDAR をそのまま octomap_server に繋いではいけない。**頭の LiDAR が
+# 見下ろした自分の胴体を占有として焼き込み、自分の体が遮るので永久に消えない。
+# 2026-09-17 実機: 最近傍の占有セルが 0.07 m・0.30 m 以内に 8 セルになり
+# `Smac2D: Starting point in lethal space!` で planner が経路を作れなかった。
+# filter_self_returns.py が機体を囲む円柱を落としてから渡す。
+SELF_RADIUS="${G1_SELF_RADIUS:-0.35}"
+# octomap_server の CPU は実機で 71%（10 Hz で 335k セルを毎回再投影）。
+# ここで間引くと入力が 1/5 になる。幽霊が消えるのに要る 9 miss は 2 Hz で 4.5 秒
+OCTOMAP_HZ="${G1_OCTOMAP_HZ:-2}"
+FILTERED_TOPIC="${G1_FILTERED_TOPIC:-/utlidar/cloud_livox_mid360_noself}"
 # 以下 4 つは 2026-09-16 に測って決めた。**既定値は全部危ない**（根拠は下の注記）
 OCTOMAP_BAND_MIN="${G1_OCTOMAP_BAND_MIN:-0.23}"
 OCTOMAP_BAND_MAX="${G1_OCTOMAP_BAND_MAX:-1.80}"
@@ -113,6 +123,16 @@ if [ "$STATIC_SOURCE" = "octomap" ]; then
     # あれは `camera_init`（world）系なので、octomap_server が
     # レイの始点に使う「点群フレームの原点」が**地図の原点**になってしまう。
     # `/cloud_registered_body_1` は advertise だけで配信されていない。
+    # ── 機体自身の点を落とす（上の注記）────────────────────────────
+    say "  filter_self_returns を起こす（円柱 ${SELF_RADIUS} m / ${OCTOMAP_HZ} Hz に間引く）"
+    jrun "$PREFIX/usr/bin/python3.10" "$CFG/filter_self_returns.py" \
+        --in-topic "$CLOUD_TOPIC" --out-topic "$FILTERED_TOPIC" \
+        --radius "$SELF_RADIUS" --max-hz "$OCTOMAP_HZ" \
+        > /tmp/pc2_selffilter.log 2>&1 &
+    PIDS="$PIDS $!"
+    sleep 8
+    grep -E "落とした点|入力が来ていない|filter\]" /tmp/pc2_selffilter.log | tail -2 | sed 's/^/[nav2]   /'
+
     say "  body ≡ livox_frame の静的 TF を出す（extrinsic は単位行列なので厳密）"
     jros2 run tf2_ros static_transform_publisher \
         --x 0 --y 0 --z 0 --roll 0 --pitch 0 --yaw 0 \
@@ -123,7 +143,7 @@ if [ "$STATIC_SOURCE" = "octomap" ]; then
 
     say "octomap_server を起こす（種 $(basename "$OCTOMAP_SEED") / 帯 ${OCTOMAP_BAND_MIN}-${OCTOMAP_BAND_MAX} m / max_range ${OCTOMAP_MAX_RANGE} m）"
     jros2 run octomap_server octomap_server_node --ros-args \
-        -r cloud_in:="$CLOUD_TOPIC" \
+        -r cloud_in:="$FILTERED_TOPIC" \
         -p octomap_path:="$OCTOMAP_SEED" \
         -p frame_id:=map -p resolution:="$OCTOMAP_RESOLUTION" \
         -p occupancy_min_z:="$OCTOMAP_BAND_MIN" \
@@ -165,5 +185,5 @@ if [ "$SECONDS_LIMIT" != "0" ]; then
     say "${SECONDS_LIMIT} 秒で止める"
     ( sleep "$SECONDS_LIMIT"; kill -INT "$NAV2_PID" 2>/dev/null ) &
 fi
-say "ログ: /tmp/pc2_nav2.log /tmp/pc2_octomap.log /tmp/pc2_livox_tf.log /tmp/pc2_mapserver.log"
+say "ログ: /tmp/pc2_nav2.log /tmp/pc2_octomap.log /tmp/pc2_selffilter.log /tmp/pc2_livox_tf.log"
 wait "$NAV2_PID"

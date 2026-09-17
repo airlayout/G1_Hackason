@@ -148,8 +148,27 @@ controller_server:
       regulated_linear_scaling_min_radius: 0.9
       regulated_linear_scaling_min_speed: 0.15
       use_rotate_to_heading: true
-      rotate_to_heading_angular_vel: 0.5    # ⚠️ 仮
-      max_angular_accel: 1.0
+      rotate_to_heading_angular_vel: 0.5
+      # ⚠️⚠️ **1.0 にしてはいけない。指令が 0.1 rad/s に張り付いて機体が回らない。**
+      # 2026-09-17 の実機で踏んだ（3 m のゴールに 130 秒・経路長 9.7 m・回転 343.7 度）。
+      #
+      # RPP の `rotateToHeading` は指令をこう絞る:
+      #     指令 = clamp(rotate_to_heading_angular_vel,
+      #                  測定角速度 - max_angular_accel*dt,
+      #                  測定角速度 + max_angular_accel*dt)
+      # `dt` は 1/controller_frequency = 0.1 s。そして**測定角速度は 0 と読まれる** ——
+      # `min_theta_velocity_threshold: 0.05` が下回る値を 0 に丸めるため。
+      # ⇒ 1 回目の指令は `0 + 1.0*0.1` = **0.1 rad/s** にしかならない。
+      # ところが **0.1 rad/s では G1 が実際に回らない**（実測: 60 秒で yaw +0.02 度）。
+      # 回らない ⇒ 測定値は 0 のまま ⇒ 指令は 0.1 のまま、という**行き止まり**になる。
+      # 中継のログには `vx=+0.000 vy=+0.000 vyaw=+0.100` が 600 件並んだ。
+      #
+      # 5.0 なら 1 回目から `0 + 5.0*0.1` = 0.5 rad/s ＝ 設定値そのものが出る。
+      # **加速度の制限は velocity_smoother に任せる**（あちらは `max_accel` の
+      # theta が 1.0 rad/s² で、`feedback: OPEN_LOOP` ＝自分の前回出力を基準に
+      # 積むので**測定値に依存せず必ず立ち上がる**。0 → 0.5 rad/s に 0.5 秒）。
+      # 実機側にも G1 自身の加速度制限があるので二重の歯止めになる。
+      max_angular_accel: 5.0
       allow_reversing: false          # 後方センサ上部が死角なので後退はしない
 
 local_costmap:

@@ -72,7 +72,7 @@ elif tcp_ok "$G1_AP_HOST" 22; then
                         echo "     ⚠️ 無線 1 枚で AP と STA は同居できない。社内 Wi-Fi は切れる" >&2
                         FAIL=1 ;;
     esac
-    NAT="$(ap 'grep -c "nat POSTROUTING" /etc/NetworkManager/dispatcher.d/50-g1teleop-forward 2>/dev/null' 2>/dev/null || echo 0)"
+    NAT="$(ap 'grep -c "nat POSTROUTING" /etc/NetworkManager/dispatcher.d/50-g1teleop-forward 2>/dev/null || true' 2>/dev/null)"
     [ "${NAT:-0}" -gt 0 ] && ok "dispatcher に NAT が入っている（$NAT 件）" \
                           || { bad "AP の filter/NAT が無い"; FAIL=1; }
 else

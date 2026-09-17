@@ -51,10 +51,10 @@ ssh_pc2() { ssh -o BatchMode=yes -o ConnectTimeout=10 -i "$KEY" -o IdentitiesOnl
 
 # ── 前提の確認（走り終えてから「測れません」では遅い）────────────────
 say "PC2 の測位を確認"
-RUNNING="$(ssh_pc2 'pgrep -cf "nav2_amc[l]|mola-cl[i]|global_localization_nod[e]|glim_ro[s]" 2>/dev/null || echo 0')"
+RUNNING="$(ssh_pc2 'pgrep -cf "nav2_amc[l]|mola-cl[i]|global_localization_nod[e]|glim_ro[s]" 2>/dev/null || true')"
 [ "${RUNNING:-0}" -ge 1 ] || { echo "⛔ PC2 に測位が動いていない" >&2; exit 3; }
 say "  測位らしきプロセス: $RUNNING 本"
-NAV2="$(ssh_pc2 'pgrep -cf "nav2_bt_navigato[r]|bt_navigato[r]" 2>/dev/null || echo 0')"
+NAV2="$(ssh_pc2 'pgrep -cf "nav2_bt_navigato[r]|bt_navigato[r]" 2>/dev/null || true')"
 [ "${NAV2:-0}" -ge 1 ] || { echo "⛔ Nav2 が動いていない（bt_navigator が無い）" >&2; exit 3; }
 
 # 記録トピックは正典から読む。**ここで直書きしない**（record_topics.txt の冒頭参照）
