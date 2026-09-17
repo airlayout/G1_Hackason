@@ -5,7 +5,7 @@
 | スクリプト | 何をするか | いつ使うか |
 |---|---|---|
 | `probe_zmq_camera.py` | 認識せず、画像取得だけを確認・計測する | **実機で最初に使う**。接続確認・画像の収集 |
-| `run_real_visual.py` | 検出＋**検出枠を描いた画像の保存** | **開発・検証**(目視で確かめる) |
+| `run_real_visual.py` | 検出＋**検出枠を描いた画像の保存・表示** | **開発・検証**(目視で確かめる)、リアルタイム確認 |
 | `run_real.py` | 検出のみ(console/JSONL/CSV)。軽い | 本番運用(実機のCPU向け) |
 
 依存の重さもこの順で、`probe_zmq_camera.py`はzmq/cv2/numpyだけで動く
@@ -20,10 +20,16 @@
 「実機への接続」を参照）:
 
 ```bash
-# G1本体側(SSH接続後)
+# G1本体側(SSH接続後)。conda環境を有効化しないとpython3.8で起動して失敗する
+source ~/miniforge3/bin/activate lerobot
 cd ~/lerobot
+export CYCLONEDDS_HOME=~/cyclonedds/install
+export LD_LIBRARY_PATH=~/cyclonedds/install/lib:$LD_LIBRARY_PATH
 python src/lerobot/robots/unitree_g1/run_g1_server.py --camera
 ```
+
+詳細な手順と、環境が見つからないように見えるときの確認方法は、下の
+「当日の手順」の手順2.5・3を参照。
 
 操作PC側は`configs/config.yaml`の`source.zmq.server_address`をG1のIP
 （既定`192.168.123.164`）に合わせる。ネットワーク疎通確認は`Common/network/`を参照。
@@ -41,10 +47,11 @@ python run_real.py --server-address 192.168.123.164
 検出結果は`outputs/`にJSON Lines(`run.jsonl`)・CSV(`run.csv`)として出力される
 （`.gitignore`で追跡対象外）。
 
-## run_real_visual.py（検出結果を画像として保存する版）
+## run_real_visual.py（検出結果を画像として保存・表示する版）
 
-`run_real.py`との違いは「検出枠を描いた画像を保存するかどうか」だけ。数値だけでは
-検出が正しいか人間が判断できないため、**目視で確認するために画像を残す**。
+`run_real.py`との違いは「検出枠を描いた画像を保存・表示できるかどうか」。数値だけでは
+検出が正しいか人間が判断できないため、**目視で確認するために画像を残す、またはその場で
+ウィンドウに表示する**。
 
 `sim/run_sim_visual.py`と処理は同一で、参照するconfigが違うだけ（接続先が実機G1の
 IPになる）。**片方を直したらもう片方にも反映すること。**
@@ -53,8 +60,15 @@ IPになる）。**片方を直したらもう片方にも反映すること。*
 
 ```bash
 cd Perception/real
+# 画像を保存して後から確認する
 ../../G1_HuggingFace/venv/bin/python run_real_visual.py --max-frames 30
+# 実機カメラの映像をリアルタイムで表示する(q または Esc で終了)
+../../G1_HuggingFace/venv/bin/python run_real_visual.py --show
 ```
+
+`--show`は**操作PC側にディスプレイがあり、GUI対応のOpenCVが入っている場合のみ**使える。
+起動直後に「ウィンドウを開けませんでした」と出たら、
+[../sim/README.md](../sim/README.md)の「--show が使えないとき」を参照。
 
 ### 追加のオプション
 
@@ -63,13 +77,16 @@ cd Perception/real
 | オプション | 既定値 | 説明 |
 |---|---|---|
 | `--save-images` | `detections_only` | `none` / `all` / `detections_only` |
-| `--image-dir` | `../../_local/perception/real/images` | 画像の保存先 |
+| `--run-name` | 実行時の日時 | この実行の名前。`visual_dir/<run-name>/`に画像と数値がまとまる |
+| `--visual-dir` | `../../_local/perception/visual/real` | 実行フォルダを作る親ディレクトリ |
+| `--show` | 無効 | 検出枠付きの映像をウィンドウに表示（`q`/`Esc`で終了） |
 
 ⚠️ 実機で撮った画像は**別途バックアップすること**（`_local/`はGit管理外のため。
 詳細は「実機の時間で優先すべきこと」を参照）。
 
-実装上の注意（描画時の`copy()`、`bbox`の`int()`変換、チャンネル順を変換しないこと等）は
-[../sim/README.md](../sim/README.md)を参照。
+評価としての使い方（`--run-name`を分ける理由、`run.csv`の数え方）、終了時に表示される
+処理時間の内訳の読み方、実装上の注意（描画時の`copy()`、`bbox`の`int()`変換、
+チャンネル順を変換しないこと等）は[../sim/README.md](../sim/README.md)を参照。
 
 ## probe_zmq_camera.py（画像取得のみの動作確認） ※実機未検証(2026-09-01時点)
 
@@ -81,7 +98,7 @@ PNGに保存する。認識処理は含まない。
 | | sim版 | real版(これ) |
 |---|---|---|
 | `--host` | `localhost` | `192.168.123.164` |
-| `--out-dir` | `_local/perception/sim` | `_local/perception/real` |
+| `--out-dir` | `_local/perception/probe/sim` | `_local/perception/probe/real` |
 
 配信側の実装はシムと実機で異なるが、メッセージ形式は共通なので処理は変える必要がない
 (詳細は後述)。**片方のロジックを直したらもう片方にも反映すること。**
@@ -111,7 +128,7 @@ PNGに保存する。認識処理は含まない。
 実行順:
 
 ```
-0（安全確保）→ 1（端末B）→ 2・3（端末A）→ 4〜7（端末B）→ 8（端末A→端末B）
+0（安全確保）→ 1（端末B）→ 2・2.5・3（端末A）→ 4〜7（端末B）→ 8（端末A→端末B）
 ```
 
 ### 事前(前日までに、実機なしでできること)
@@ -140,6 +157,11 @@ python3 Common/network/check_g1_connectivity.py
 
 `READY`が出ればOK。
 
+**G1の電源を入れた直後は、ネットワークが繋がるまで1〜2分待つ。** 2026-09-09の作業では、
+リンクは確立しているのにARPが解決せずSSHもタイムアウトし、数回リトライした後に
+繋がった。PC2の起動完了待ちだった可能性が高い。すぐ繋がらなくても設定を疑う前に
+少し待ってから再試行すること。
+
 ⚠️ **操作PCがWSL2の場合、`setup_ethernet_for_g1.sh`は使えない**(物理NICを持たないため)。
 代わりにWindows側でEthernetアダプタに静的IP(`192.168.123.200` /
 サブネット`255.255.255.0` / ゲートウェイ空欄)を設定し、`.wslconfig`に
@@ -154,6 +176,40 @@ ls /dev/video*
 ```
 
 `run_g1_server.py`の既定は`/dev/video4`。無ければ次の手順で`--camera-device <番号>`を足す。
+
+### 2.5 【端末A｜G1本体】作業前チェック: 環境が実在するか
+
+**`conda`や`python3.12`が見つからないのは正常。環境が無いと判断しないこと。**
+
+G1側のMiniforgeは`bash Miniforge3-Linux-aarch64.sh -b -p ~/miniforge3`
+(`-b`=バッチモード)でインストールしており、この方式では`.bashrc`にcondaの設定が
+書き込まれない。そのためログイン直後のシェルでは次のようになるが、**環境が
+インストールされていても同じ結果になる**:
+
+| コマンド | 結果 | 意味 |
+|---|---|---|
+| `which conda` | 見つからない | condaがPATHに無いだけ |
+| `which python3.12` | 見つからない | Python 3.12はconda環境の中にしか無い |
+| `python3 --version` | 3.8.10 | システム標準のPython |
+
+環境の有無は、**ディレクトリの実在で**確認する:
+
+```bash
+ls -d ~/miniforge3 ~/lerobot ~/cyclonedds ~/unitree_sdk2_python
+ls ~/miniforge3/envs/          # lerobot があればOK
+```
+
+- **すべて存在する** → 環境は無事。手順3の`source ~/miniforge3/bin/activate lerobot`で
+  有効化してから使う。有効化後に`python --version`が3.12になることを確認する
+- **存在しない** → 本当に環境が無い。別個体に接続していないか、PC2がリセットされて
+  いないかをチームに確認したうえで、`SETUP.md`の3章の手順で再構築する
+
+`run_g1_server.py`のプロセスが動いていないのも正常(`nohup`で起動していても、G1を
+再起動すれば消える)。毎回手順3で起動する。
+
+(2026-09-09の作業では、上表の3つの結果から「環境が存在しない」と判断して作業を
+停止した。ディレクトリの確認は行っておらず、実際に環境が失われていたかは未確認。
+`Perception/FAILURES.md`の同日のエントリも参照)
 
 ### 3. 【端末A｜G1本体】配信サーバーを起動
 
@@ -187,12 +243,13 @@ python3 Common/network/check_g1_connectivity.py --check-bridge-ports
 
 ### 6. 【端末B｜操作PC】色順の判定
 
-`_local/perception/real/`の`_asis`と`_swapped`を見比べ、どちらが自然な色かを確認する。
+`_local/perception/probe/real/`の`_asis`と`_swapped`を見比べ、どちらが自然な色かを確認する。
 実装上はシムと同じくRGB(=`_swapped`が正しい)のはずだが、実物で確認すること。
 
 `run_real.py`(common/camera/zmq_camera.py)側は、シムでの実測(RGB)を前提に
 `cv2.cvtColor(..., cv2.COLOR_RGB2BGR)`を内部で適用済み。実機で色順が異なると
 判明した場合は、まずここで確認してから`zmq_camera.py`の修正要否を判断すること。
+
 ### 7. 【端末B｜操作PC】大量収集(最重要)
 
 ```bash

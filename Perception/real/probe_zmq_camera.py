@@ -37,7 +37,7 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=5555, help="ZMQのポート")
     parser.add_argument("--frames", type=int, default=30, help="受信するフレーム数")
     parser.add_argument("--save", type=int, default=3, help="PNGとして保存する枚数")
-    parser.add_argument("--out-dir", default="_local/perception/real", help="保存先ディレクトリ")
+    parser.add_argument("--out-dir", default="_local/perception/probe/real", help="保存先ディレクトリ")
     parser.add_argument("--timeout", type=float, default=20.0, help="1枚あたりの受信待ち時間(秒)")
     parser.add_argument("--camera", default=None, help="カメラ名。省略時は最初に見つかったもの")
     args = parser.parse_args()

@@ -39,6 +39,8 @@ output:
   # 以下は run_real_visual.py だけが読む(run_real.py は無視する)。
   # "none" | "all" | "detections_only"
   save_images: detections_only
-  # 画像は再取得できるローカルデータなので _local/ 配下に置く(.gitignoreで除外済み)。
+  # 実行フォルダを作る親ディレクトリ。1回の実行ごとに visual_dir/<run-name>/ が作られ、
+  # 画像も run.csv / run.jsonl もそこにまとまる(--run-name 省略時は日時が名前になる)。
+  # 再取得できるローカルデータなので _local/ 配下に置く(.gitignoreで除外済み)。
   # Perception/real/ から実行した場合の相対パス。
-  image_dir: ../../_local/perception/real/images
+  visual_dir: ../../_local/perception/visual/real
