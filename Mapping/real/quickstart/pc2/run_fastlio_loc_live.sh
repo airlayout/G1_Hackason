@@ -107,7 +107,7 @@ while [ $# -gt 0 ]; do
         --gicp)  NODE_BIN="global_localization_node_gicp"; shift ;;
         --init)  INIT_BASELINK="$2"; shift 2 ;;
         --map)   MAP="$2"; shift 2 ;;
-        --stop)  say "止める"; stop_all; say "残り: $(pgrep -cf "$WS/bin/" 2>/dev/null || echo 0)"; exit 0 ;;
+        --stop)  say "止める"; stop_all; say "残り: $(pgrep -cf "$WS/bin/" 2>/dev/null || true)"; exit 0 ;;
         -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "[c5] 知らない引数: $1" >&2; exit 2 ;;
     esac

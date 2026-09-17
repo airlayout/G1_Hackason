@@ -33,10 +33,13 @@ DRIVER_PY='loco_driv''er.py'
 
 status() {
     say "足の状態"
-    pc2 "for p in '$BRIDGE_PY' '$DRIVER_PY'; do
-           n=\$(ps -eo args | grep -F \"\$p\" | grep -v ' grep ' | grep -cF python)
-           printf '  %-20s %s\n' \"\$p\" \"\$([ \$n -gt 0 ] && echo 稼働中 || echo 停止)\"
-         done"
+    # ⚠️ **PC2 側で grep しない**（`_common.sh` の注記。自己マッチで 4 回誤診した）。
+    # 旧実装は `grep -v ' grep '` に**偶然守られていた**だけで、
+    # パターンを 1 つでも変えれば「常に稼働中」と出る形だった。
+    for py in "$BRIDGE_PY" "$DRIVER_PY"; do
+        n="$(pc2_count "$py")"
+        printf '  %-20s %s\n' "$py" "$([ "${n:-0}" -gt 0 ] && echo 稼働中 || echo 停止)" >&2
+    done
     # ⚠️ ここが 0 件なら「繋がっているつもりで繋がっていない」。必ず見ること。
     pc2 "cat > /tmp/_cv.sh <<'EOS'
 . \"\$HOME/jammy_ros/env.sh\" >/dev/null 2>&1
@@ -60,17 +63,9 @@ case "${1:-}" in
         # しかも `cmd_vel_bridge` だけは起動に成功するので、`--status` は
         # 「両方稼働中・Subscription count 1」と出て**繋がったように見える**。
         # 指令は素振りのドライバへ流れ、**機体は動かない**。
-        pc2 "for _ in 1 2 3 4 5; do
-               n=\$(ps -eo args --no-headers | grep -cE '[l]oco_driv|[c]md_vel_brid' || true)
-               [ \"\$n\" = 0 ] && break
-               sleep 1
-             done
-             for p in \$(ps -eo pid,args --no-headers | grep -E '[l]oco_driv|[c]md_vel_brid' | awk '{print \$1}'); do
-               echo \"     INT で死ななかった \$p を KILL する\"; kill -KILL \"\$p\" 2>/dev/null
-             done
-             sleep 1
-             echo \"     残り \$(ps -eo args --no-headers | grep -cE '[l]oco_driv|[c]md_vel_brid' || true) 個 / \
-47600 を掴む socket \$(ss -lun 2>/dev/null | grep -c 47600 || true) 個\""
+        pc2_kill_procs 'loco_driver|cmd_vel_bridge' KILL
+        HELD="$(pc2 "ss -lun 2>/dev/null | grep -c 47600 || true" 2>/dev/null | tr -d '[:space:]')"
+        note "47600 を掴む socket ${HELD:-0} 個"
         status; exit 0 ;;
     --dry-run|--arm) MODE="$1" ;;
     *) sed -n '2,10p' "$0" >&2; exit 2 ;;
@@ -97,7 +92,7 @@ fi
 HELD="$(pc2 "ss -lun 2>/dev/null | grep -c 47600 || true" 2>/dev/null | tr -d '[:space:]')"
 if [ "${HELD:-0}" != "0" ]; then
     say "⚠️ 127.0.0.1:47600 が既に埋まっている（古い $DRIVER_PY が残っている）"
-    pc2 "ps -eo pid,etime,args --no-headers | grep '[l]oco_driv' | cut -c1-110 | sed 's/^/     /'"
+    pc2_procs "$DRIVER_PY" | cut -c1-110 | sed 's/^/     /' >&2
     die "先に bash quickstart/live/legs.sh --stop を実行すること"
 fi
 

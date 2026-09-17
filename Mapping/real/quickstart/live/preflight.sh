@@ -163,15 +163,9 @@ done
 
 # ── 7. 既に何か動いていないか ───────────────────────────────────────
 step "7. 二重起動の確認（⚠️ 測位が 2 つ出ると /tf が壊れる）"
-# ⚠️ **パターンを角括弧で割る。**そうしないと `ps -eo args` の出力に
-# この grep 自身（と ssh の bash -c）のコマンド行が入り、**常に 2 件見つかる**。
-# 2026-09-17 に「測位らしきものが 1 個動いている」と誤報した（実際は 0 個）。
-# comm では見分けられない —— PC2 の ROS ノードは jammy のローダ経由なので
-# comm が全部 `ld-linux-aarch6` になる。
-# ⚠️ `grep -c` は 0 件のとき終了コード 1 を返すので、リモート側で `|| true` して
-# **数字を 1 個だけ**返させる（外で `|| echo 0` を足すと "0\n0" になって
-# `[: integer expression expected` で落ちる。2026-09-17 に踏んだ）
-RUNNING="$(pc2 'ps -eo args | grep -cE "fastlio[_]mapping|global[_]localization_node|mola[-]cli|nav2[_]amcl" || true' 2>/dev/null | tr -d "[:space:]")"
+# ⚠️ **PC2 側で grep しない。**`_common.sh` の `pc2_count` を使う
+# （理由はあちらの注記。自己マッチと `grep -c` の終了コードで 4 回誤診した）。
+RUNNING="$(pc2_count 'fastlio_mapping|global_localization_node|mola-cli|nav2_amcl')"
 if [ "${RUNNING:-0}" -eq 0 ] 2>/dev/null; then
     ok "測位は動いていない（これから起こす）"
 else

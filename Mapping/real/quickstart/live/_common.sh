@@ -41,6 +41,52 @@ pc2() { ssh -i "$G1_KEY" -o BatchMode=yes -o ConnectTimeout=15 \
             -o IdentitiesOnly=yes "$G1_PC2_USER@$G1_PC2_HOST" "$@"; }
 ap()  { ssh -o BatchMode=yes -o ConnectTimeout=10 "$G1_AP_USER@$G1_AP_HOST" "$@"; }
 
+# ── PC2 のプロセスを数える／殺す ────────────────────────────────────
+# ⚠️⚠️ **PC2 側で grep してはいけない。必ずこの 4 つを通す。**
+# 2026-09-17 の 1 セッションで、同じ型の誤診を **4 回**繰り返した:
+#
+# 1. `pc2 'ps -eo args | grep -cE "..."`  → ssh が送った `bash -c` の**コマンド行に
+#    パターンが載る**ので自分に一致する。「測位が 1 個動いている」と誤報（実際は 0）
+# 2. `grep -c ... || echo 0` → `grep -c` は 0 件でも「0」を印字した上で**終了コード 1**
+#    を返すので、数字が 2 個出て `"00"` になる。`!= "0"` が必ず真 ＝ ガードが常に発火
+# 3. `comm` は 15 文字で切れる。しかも PC2 の ROS ノードは jammy のローダ経由なので
+#    **全部 `ld-linux-aarch6`** になり、comm では種類を見分けられない
+# 4. 「残り 2 個」と出たので二重起動を疑って掃除したが、実体は 1 個だった（1 と同じ）
+#
+# ⇒ **PC2 では `ps` を素で出し、絞り込みは Mac 側でやる。**これで 1 と 3 が原理的に
+#    起きない（PC2 のコマンド行はいつも `ps -eo ...` だけ）。数えるのは `wc -l` で
+#    行い、`grep -c` を使わない（2 が起きない）。
+
+# $1 = Mac 側で当てる拡張正規表現（省略で全件）
+pc2_procs() {
+    pc2 'ps -eo pid,etime,args --no-headers' 2>/dev/null \
+      | grep -E "${1:-.}" | grep -v 'ps -eo pid,etime,args'
+}
+# ⚠️ `wc -l` を使う（`grep -c` は 0 件で終了コード 1 を返す）
+pc2_count() { pc2_procs "$1" | wc -l | tr -d '[:space:]'; }
+pc2_pids()  { pc2_procs "$1" | awk '{print $1}'; }
+
+# $1=正規表現 / $2=最初に送るシグナル（既定 TERM）。死ななければ KILL まで面倒を見る。
+# ⚠️ **`--dry-run` の loco_driver は SIGINT を無視する**（2026-09-17 に 19 分残し、
+# 次の `--arm` が `Address already in use` で失敗した）。確かめずに終わらせない。
+pc2_kill_procs() {
+    local pattern="$1" sig="${2:-TERM}" pids left
+    pids="$(pc2_pids "$pattern" | tr '\n' ' ')"
+    [ -n "${pids// /}" ] || { note "止めるものが無い: $pattern"; return 0; }
+    pc2 "kill -$sig $pids 2>/dev/null; true"
+    for _ in 1 2 3 4 5; do
+        [ "$(pc2_count "$pattern")" = "0" ] && break
+        sleep 1
+    done
+    left="$(pc2_pids "$pattern" | tr '\n' ' ')"
+    if [ -n "${left// /}" ]; then
+        warn "$sig で死ななかった（$left）。KILL する"
+        pc2 "kill -KILL $left 2>/dev/null; true"
+        sleep 1
+    fi
+    note "残り $(pc2_count "$pattern") 個: $pattern"
+}
+
 # PC2 で ROS 環境を整えて走らせる。
 # ⚠️ `jros2` は**シェル関数**なので `timeout jros2 ...` は動かない
 #    （timeout は実行ファイルしか起動できない。2026-09-16 に踏んだ）。

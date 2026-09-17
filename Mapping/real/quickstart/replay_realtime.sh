@@ -165,8 +165,8 @@ say "出力: $OUT （tf_bag $n 個）"
 msgs=$(docker exec -u ubuntu "$NAME" python3 -c "
 import sqlite3,glob
 db=glob.glob('$OUT/tf_bag/*.db3')[0]
-print(sqlite3.connect('file:%s?mode=ro'%db,uri=True).execute('SELECT COUNT(*) FROM messages').fetchone()[0])" 2>/dev/null || echo 0)
+print(sqlite3.connect('file:%s?mode=ro'%db,uri=True).execute('SELECT COUNT(*) FROM messages').fetchone()[0])" 2>/dev/null || true)
 say "録れた /tf: $msgs 件"
 [ "${msgs:-0}" -lt 10 ] && { say "⛔ /tf がほとんど録れていない。MOLA の出力を確認する"; exit 1; }
-docker exec -u ubuntu "$NAME" bash -c "grep -c 'Not able to use velocity motion model' $OUT/mola.log 2>/dev/null || echo 0" \
+docker exec -u ubuntu "$NAME" bash -c "grep -c 'Not able to use velocity motion model' $OUT/mola.log 2>/dev/null || true" \
     | sed 's/^/[rt] velocity motion model を使えなかった回数: /'

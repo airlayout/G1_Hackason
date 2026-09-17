@@ -38,14 +38,17 @@ ok "外した"
 
 # ── 2. Nav2 ────────────────────────────────────────────────────────
 say "2. Nav2（起動役の PGID に SIGINT。⚠️ --stop は無い）"
-pc2 "P=\$(ps -eo pid,args | grep -F \"\$(printf '%s%s' 'run_nav2_liv' 'e.sh')\" \
-          | grep -v ' grep ' | awk '{print \$1}' | head -1)
-     if [ -n \"\$P\" ]; then
-       G=\$(ps -o pgid= -p \$P | tr -d ' ')
-       kill -INT -\$G 2>/dev/null
-       for i in \$(seq 30); do ps -eo args | grep -q '[b]t_navigator' || break; sleep 1; done
-     fi
-     echo \"     残り \$(ps -eo args | grep -c '[b]t_navigator') 個\""
+# ⚠️ **PC2 側で grep しない**（`_common.sh` の注記）。起動役の PGID に INT を送ると
+# 内側の `ros2 launch` が子まで畳んでくれる（SIGTERM だと孤児になる）。
+NAV2_PID="$(pc2_pids 'run_nav2_live\.sh' | head -1)"
+if [ -n "$NAV2_PID" ]; then
+    pc2 "G=\$(ps -o pgid= -p $NAV2_PID | tr -d ' '); kill -INT -\$G 2>/dev/null; true"
+    for _ in $(seq 30); do
+        [ "$(pc2_count 'bt_navigator')" = "0" ] && break
+        sleep 1
+    done
+fi
+note "bt_navigator 残り $(pc2_count 'bt_navigator') 個"
 
 # ── 3. 測位 ────────────────────────────────────────────────────────
 say "3. 測位（run_fastlio_loc_live.sh --stop は有る）"

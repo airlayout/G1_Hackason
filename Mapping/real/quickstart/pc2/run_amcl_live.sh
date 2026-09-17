@@ -85,7 +85,7 @@ stop_all() {
 # ── --stop ──────────────────────────────────────────────────────────
 if [ "$STOP" = "1" ]; then
     stop_all
-    say "止めた。残り $(pgrep -c -f "$KILL_RE" 2>/dev/null || echo 0) 個"
+    say "止めた。残り $(pgrep -c -f "$KILL_RE" 2>/dev/null || true) 個"
     exit 0
 fi
 
@@ -117,7 +117,7 @@ cleanup() {
     # ⚠️ 孫は `jros2 run` の下に居るので PID では届かない。パターンで落とす
     for p in $PIDS; do kill -INT "$p" 2>/dev/null; done
     stop_all
-    say "後始末おわり。残り $(pgrep -c -f "$KILL_RE" 2>/dev/null || echo 0) 個"
+    say "後始末おわり。残り $(pgrep -c -f "$KILL_RE" 2>/dev/null || true) 個"
 }
 trap cleanup EXIT INT TERM
 

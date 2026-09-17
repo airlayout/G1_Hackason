@@ -108,7 +108,7 @@ stop_all() {
 
 if [ "$STOP" = "1" ]; then
     stop_all
-    say "止めた。残り $(pgrep -c -f "$KILL_RE" 2>/dev/null || echo 0) 個"
+    say "止めた。残り $(pgrep -c -f "$KILL_RE" 2>/dev/null || true) 個"
     exit 0
 fi
 
@@ -197,7 +197,7 @@ cleanup() {
     CLEANED=1
     for p in $PIDS; do kill -INT "$p" 2>/dev/null; done
     stop_all
-    say "後始末おわり。残り $(pgrep -c -f "$KILL_RE" 2>/dev/null || echo 0) 個"
+    say "後始末おわり。残り $(pgrep -c -f "$KILL_RE" 2>/dev/null || true) 個"
 }
 trap cleanup EXIT INT TERM
 
