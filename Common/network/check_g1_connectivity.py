@@ -137,9 +137,8 @@ def main():
     else:
         print(f"  NG: {args.subnet} 上のIPがこのPCに見つかりません。")
         print(
-            "      有線接続なら、例えば "
-            "`sudo ip addr add 192.168.123.200/24 dev <interface名>` "
-            "`sudo ip link set <interface名> up` を実行してください。"
+            "      有線接続なら `bash Common/network/setup_ethernet_for_g1.sh` を "
+            "実行してください（空きアドレスを探して設定します）。"
         )
         ok = False
 

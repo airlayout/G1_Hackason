@@ -121,12 +121,20 @@ export CYCLONEDDS_HOME=$(pwd)/G1_HuggingFace/cyclonedds/install
 `Common/network/setup_ethernet_for_g1.sh`を使う。G1のIPは`192.168.123.164`固定。
 
 ```bash
-bash Common/network/setup_ethernet_for_g1.sh
+bash Common/network/setup_ethernet_for_g1.sh          # 空きアドレスを自動で選ぶ
+bash Common/network/setup_ethernet_for_g1.sh 222      # 192.168.123.222 を使う
 ```
 
-操作PC専用の接続プロファイル(`g1-link`)を新規作成し、static IP
-(`192.168.123.200/24`)を設定する（既存のDHCP接続には影響しない）。
-元に戻す場合は`bash Common/network/setup_ethernet_for_g1.sh --revert`。
+操作PC専用の接続プロファイル(`g1-link`)を作成し、`192.168.123.0/24`のstatic IPを
+設定する（既存のDHCP接続には影響しない）。元に戻す場合は
+`bash Common/network/setup_ethernet_for_g1.sh --revert`。
+
+> ⚠️ **アドレスは人によって違う。** G1のリンクには他の作業者もぶら下がるので、
+> 決め打ちすると衝突して**設定だけ残って疎通が無言で消える**。スクリプトは繋ぐ前に
+> `arping`のDADで空きを確認して選ぶ（要`sudo apt install -y iputils-arping`）。
+> **自分に割り当たったアドレスは実行結果の`OK: <NIC> = 192.168.123.<n>`で確認する。**
+> 以降の手順で「操作PCのIP」が要る場面ではこの値を使う。
+> 詳細は[Common/network/README.md](Common/network/README.md)。
 
 ### 2.2 疎通確認
 
@@ -172,12 +180,16 @@ sudo iptables -A FORWARD -i <EthernetのIF名> -o <WiFiのIF名> -j ACCEPT
 
 **G1側**（`ssh g1`でログインして実行。Ethernetインターフェース名は`ip -br addr show`で確認、通常`eth0`）:
 
+`<操作PCのIP>`は2.1で割り当たったアドレス（`192.168.123.<n>`）に読み替える。
+
 ```bash
-sudo ip route del default 2>/dev/null || true
-sudo ip route add default via 192.168.123.200 dev eth0
+sudo ip route replace default via <操作PCのIP> dev eth0
 echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
 ping -c 3 8.8.8.8   # 通ることを確認
 ```
+
+> ⚠️ **default routeはG1本体の共有設定。** 他の人が繋いでいる間に自分のIPへ向けると、
+> その人がケーブルを抜いたときにG1のインターネットが切れる。作業が終わったら戻す。
 
 ---
 

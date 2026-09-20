@@ -118,9 +118,15 @@ RUN source /opt/ros/humble/setup.bash \
 
 FROM raw AS visualization
 
+# nav_stack.sh が呼ぶ octomap_server / nav2_bringup 用。
+# navigation2 メタパッケージだけでも nav2-bringup は依存関係で入るはずだが、
+# nav_stack.sh が直接 `ros2 launch nav2_bringup` を呼ぶため明示しておく
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-rviz2 \
     ros-humble-image-transport-plugins \
+    ros-humble-navigation2 \
+    ros-humble-nav2-bringup \
+    ros-humble-octomap-server \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

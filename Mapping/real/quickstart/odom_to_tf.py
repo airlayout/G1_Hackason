@@ -48,7 +48,8 @@ def quaternion_from_rpy(roll: float, pitch: float, yaw: float):
 
 
 class OdomToTf(Node):
-    def __init__(self, topic: str, livox_xyz, livox_rpy) -> None:
+    def __init__(self, topic: str, livox_xyz, livox_rpy,
+                 nav2_frames: bool = False, publish_map_odom: bool = True) -> None:
         super().__init__("odom_to_tf")
         # G1側の配信QoSは不明。BEST_EFFORTで購読すればRELIABLEな相手とも繋がる
         qos = QoSProfile(
@@ -64,12 +65,39 @@ class OdomToTf(Node):
         self._warned_no_child = False
         self.get_logger().info("[odom_to_tf] {} を購読して /tf へ流します".format(topic))
 
+        self._nav2_frames = nav2_frames
+        if nav2_frames and publish_map_odom:
+            self._publish_static_identity("map", "odom")
+            self.get_logger().info(
+                "[odom_to_tf] Nav2 用: map -> odom を恒等にし、odom -> base_link を流します")
+        elif nav2_frames:
+            self.get_logger().info(
+                "[odom_to_tf] Nav2 用: odom -> base_link のみ流します"
+                "（map -> odom は別途 align_to_map.py の結果を流すこと）")
+
         if livox_xyz is not None:
             self._publish_static_livox(livox_xyz, livox_rpy)
         else:
             self.get_logger().info(
                 "[odom_to_tf] base_link->livox_frame は流しません"
                 "（実測値が無いため。--livox-xyz で指定可）")
+
+    def _publish_static_identity(self, parent: str, child: str) -> None:
+        """恒等の静的変換。map -> odom のように、ずれが無い関係を繋ぐのに使う。"""
+        static_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        pub = self.create_publisher(TFMessage, "/tf_static", static_qos)
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = parent
+        t.child_frame_id = child
+        t.transform.rotation.w = 1.0
+        pub.publish(TFMessage(transforms=[t]))
+        self._identity_pub = pub        # GCで消えないよう保持する
 
     def _publish_static_livox(self, xyz, rpy) -> None:
         # transient_local にしないと、後から繋いだ購読者が静的変換を受け取れない
@@ -107,7 +135,9 @@ class OdomToTf(Node):
 
         t = TransformStamped()
         t.header.stamp = msg.header.stamp          # 元の時刻をそのまま使う
-        t.header.frame_id = msg.header.frame_id
+        # Nav2 は map -> odom -> base_link を要求する。G1 の odom は map -> base_link を
+        # 直接出しているので、親を odom に付け替えて REP-105 の形に合わせる
+        t.header.frame_id = "odom" if self._nav2_frames else msg.header.frame_id
         t.child_frame_id = child
         t.transform.translation.x = msg.pose.pose.position.x
         t.transform.translation.y = msg.pose.pose.position.y
@@ -132,11 +162,32 @@ def main(argv=None) -> int:
     p.add_argument("--livox-xyz", nargs=3, type=float, metavar=("X", "Y", "Z"),
                    default=None, help="base_link->livox_frame の並進[m]。**実測値のみ**")
     p.add_argument("--livox-rpy", nargs=3, type=float, metavar=("R", "P", "Y"),
-                   default=[0.0, 0.0, 0.0], help="同回転[rad]")
+                   default=None, help="同回転[**ラジアン**]。度で渡すなら --livox-rpy-deg")
+    p.add_argument("--livox-rpy-deg", nargs=3, type=float, metavar=("R", "P", "Y"),
+                   default=None,
+                   help="同回転[**度**]。実測値は repo 全体で度で記録されているので"
+                        "（例 178.35 -8.41 -0.72）、通常はこちらを使う")
+    p.add_argument("--nav2-frames", action="store_true",
+                   help="Nav2 が要求する map -> odom -> base_link の形で流す。"
+                        "G1 の odom は map -> base_link を直接出すので、"
+                        "そのままでは REP-105 に合わない。"
+                        "map -> odom を恒等の静的変換とし、odom -> base_link として流す")
+    p.add_argument("--no-map-odom", action="store_true",
+                   help="map -> odom を流さない。**過去の地図の座標系で走らせるとき**に使う。"
+                        "その変換は align_to_map.py が求め、static_transform_publisher が流すので、"
+                        "こちらが恒等を流すと衝突する")
     args = p.parse_args(argv)
 
+    if args.livox_rpy is not None and args.livox_rpy_deg is not None:
+        p.error("--livox-rpy と --livox-rpy-deg は同時に指定できない")
+    if args.livox_rpy_deg is not None:
+        rpy = [math.radians(v) for v in args.livox_rpy_deg]
+    else:
+        rpy = args.livox_rpy if args.livox_rpy is not None else [0.0, 0.0, 0.0]
+
     rclpy.init()
-    node = OdomToTf(args.topic, args.livox_xyz, args.livox_rpy)
+    node = OdomToTf(args.topic, args.livox_xyz, rpy,
+                    args.nav2_frames, not args.no_map_odom)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

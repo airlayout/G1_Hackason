@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Navigation の入口。`Mapping/real/mapctl` と同じ「フォルダ直下の実行スクリプト」方式。
+#
+#   ./navctl help
+#
+# ここに集約する理由は 2 つ:
+#
+# 1. **GUI の起動が素直に書けない。** macOS のビューアは `mjpython` が要り、
+#    さらに uv の CPython は `libpython*.dylib` を rpath に持たないので
+#    `DYLD_LIBRARY_PATH` を渡す必要がある。`uv run` では環境変数を渡せないため
+#    コマンドが長くなる。それを毎回手で打たせない
+# 2. よく使う操作（sim / GUI / テスト / 地図の再生成）の名前を 1 か所に並べておく
+
+set -euo pipefail
+
+NAV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV="${NAV_DIR}/.venv"
+PY="${VENV}/bin/python"
+
+cd "${NAV_DIR}"
+
+die() { echo "error: $*" >&2; exit 1; }
+
+need_venv() {
+    [[ -x "${PY}" ]] || die "${VENV} が無い。先に ./navctl setup を実行すること"
+}
+
+need_assets() {
+    [[ -f "${NAV_DIR}/sim/assets/motion.pt" ]] \
+        || die "歩行ポリシーが無い。先に ./navctl setup を実行すること"
+}
+
+# uv の CPython は libpython*.dylib を lib/ に持っているが mjpython から見える
+# rpath に入っていない。sysconfig に本人が答えを持っているので聞く。
+lib_dir() { "${PY}" -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))'; }
+
+usage() {
+    cat <<'USAGE'
+Navigation の操作
+
+  ./navctl setup              歩行資産(24MB)を取得し、依存を入れる（最初に1回）
+  ./navctl view [引数...]      GUI で見る。既定は実時間（macOS の面倒事は自動で処理）
+  ./navctl sim [引数...]       ヘッドレスで巡回。約50倍速で終わる
+  ./navctl walk               歩行ポリシーだけを自己診断する（ナビも地図も通さない）
+  ./navctl room [部屋名]       部屋の点群と占有格子を確かめる
+  ./navctl route              実地図(PCD)で経路だけ検証する。歩かない
+  ./navctl map                artifacts/scans.npz から地図PCDを作り直す
+  ./navctl test               テストを走らせる
+  ./navctl help               これ
+
+よく見るシナリオ（view にも sim にも付けられる）:
+
+  ./navctl view --obstacle=-2.0,-1.62,0.35,3,14   人が横切る。待って再開する
+  ./navctl view --obstacle=-2.0,-1.62,0.35        居座る障害物。迂回する
+  ./navctl view --speed 20                        20倍速で流し見する
+  ./navctl view --laps 3                          3周
+  ./navctl sim --room empty_room                  障害物の無い部屋
+
+引数は run_sim.py にそのまま渡る。全部の指定は ./navctl sim --help で見られる。
+USAGE
+}
+
+command="${1:-help}"
+[[ $# -gt 0 ]] && shift
+
+case "${command}" in
+    setup)
+        bash "${NAV_DIR}/sim/fetch_assets.sh"
+        echo
+        echo "依存を入れる（mujoco / torch / open3d。数分かかることがある）..."
+        uv sync --group mujoco --group walk --group viz --group pcd
+        echo
+        echo "確認: ./navctl walk"
+        ;;
+
+    view)
+        need_venv; need_assets
+        [[ -x "${VENV}/bin/mjpython" ]] || die "mjpython が無い。./navctl setup を実行すること"
+        # macOS のビューアは mjpython（本スレッドを AppKit に渡す）でしか出せない
+        DYLD_LIBRARY_PATH="$(lib_dir)${DYLD_LIBRARY_PATH:+:${DYLD_LIBRARY_PATH}}" \
+            exec "${VENV}/bin/mjpython" sim/run_sim.py --viewer "$@"
+        ;;
+
+    sim)
+        need_venv; need_assets
+        exec "${PY}" sim/run_sim.py "$@"
+        ;;
+
+    walk)
+        need_venv; need_assets
+        exec "${PY}" -m sim.g1_walker --selftest "$@"
+        ;;
+
+    room)
+        need_venv
+        exec "${PY}" -m sim.rooms --room "${1:-test_room}" "${@:2}"
+        ;;
+
+    route)
+        need_venv
+        [[ -f "${NAV_DIR}/sim/maps/uis_main_floor.pcd" ]] \
+            || die "地図が無い。先に ./navctl map を実行すること"
+        exec "${PY}" sim/run_sim.py --map sim/maps/uis_main_floor.pcd --route-only "$@"
+        ;;
+
+    map)
+        need_venv
+        scans="${NAV_DIR}/../../artifacts/scans.npz"
+        [[ -f "${scans}" ]] || die "${scans} が無い（実機データ。共有ドライブから取ること）"
+        exec "${PY}" sim/npz_to_pcd.py "${scans}" \
+            --output-dir "${NAV_DIR}/sim/maps" --name uis_main_floor "$@"
+        ;;
+
+    test)
+        exec bash "${NAV_DIR}/tests/run_tests.sh" "$@"
+        ;;
+
+    help|-h|--help)
+        usage
+        ;;
+
+    *)
+        echo "知らないコマンド: ${command}" >&2
+        echo >&2
+        usage >&2
+        exit 1
+        ;;
+esac

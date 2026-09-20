@@ -18,6 +18,13 @@ ament_target_dependencies(pointcloud_to_livox
 )
 target_compile_options(pointcloud_to_livox PRIVATE -Wall -Wextra -Wpedantic)
 
-install(TARGETS pointcloud_to_livox DESTINATION lib/${PROJECT_NAME})
+add_executable(crop_box src/crop_box.cpp)
+ament_target_dependencies(crop_box
+  rclcpp
+  sensor_msgs
+)
+target_compile_options(crop_box PRIVATE -Wall -Wextra -Wpedantic)
+
+install(TARGETS pointcloud_to_livox crop_box DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

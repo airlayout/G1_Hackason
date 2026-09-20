@@ -54,8 +54,13 @@ def resolve_idl_type(ros_type):
 
     型ごとにモジュールが違う（sensor_msgs / nav_msgs）ので名前から解決する。
     SDKに無い型はここで分かる。
+
+    `Imu_` だけは PC2 の unitree_sdk2py に**存在しない**（2026-09-04 実測）。
+    DDS 側では `sensor_msgs::msg::dds_::Imu_` として実際に配信されているので、
+    足りないのは購読側の Python 型だけ。`idl_imu` が SDK のモジュールへ注入する。
     """
     import importlib
+    import idl_imu  # noqa: F401  Imu_ を unitree_sdk2py へ注入する
     package, _, name = ros_type.split("/")
     module = importlib.import_module("unitree_sdk2py.idl.{}.msg.dds_".format(package))
     return getattr(module, name + "_")

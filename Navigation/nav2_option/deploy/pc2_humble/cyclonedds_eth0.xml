@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- PC2(Orin NX) で CycloneDDS を使うときの設定。
+     CYCLONEDDS_URI=file:///home/unitree/g1_nav2/cyclonedds_eth0.xml で読ませる。
+
+     ⚠️ **インターフェースを eth0 に固定する理由**(2026-09-15 実機)。
+     PC2 は eth0(192.168.123.164、G1 本体の内蔵スイッチ側)と
+     wlan0(テザリング)の2つを持つ。指定しないと CycloneDDS が
+     テザリング側を選ぶことがあり、**機体のトピックが取れなくなる**。
+     同日、既定ルートが wlan0 になっていたせいで FastDDS のマルチキャスト
+     announce がテザリング側へ出て、「トピックは見えるのにデータが来ない」
+     という分かりにくい壊れ方を実際に踏んだ。 -->
+<CycloneDDS>
+  <Domain>
+    <General>
+      <Interfaces>
+        <NetworkInterface name="eth0" priority="default" multicast="default"/>
+      </Interfaces>
+    </General>
+  </Domain>
+</CycloneDDS>

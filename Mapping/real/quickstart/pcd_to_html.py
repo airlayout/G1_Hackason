@@ -74,6 +74,31 @@ def load_cloud(path: Path, voxel: float, trim: float) -> np.ndarray:
     return points
 
 
+def detect_ceiling(points: np.ndarray, margin: float = 0.35) -> "float | None":
+    """天井を切る Z を返す。屋内で床と天井が Z ヒストグラムのピークに出ることを使う。
+
+    `cut_ceiling_pcd.py` と同じ判定にしてある（下半分・上半分それぞれの最頻ビン）。
+    天井が見つからない（屋外・部分地図など）場合は None を返し、切らない。
+    """
+    z = points[:, 2]
+    if len(z) < 1000:
+        return None
+    lo, hi = float(np.percentile(z, 1)), float(np.percentile(z, 99))
+    if hi - lo < 1.5:                      # 高さ方向に薄い＝屋内地図ではない
+        return None
+    counts, edges = np.histogram(z[(z >= lo) & (z <= hi)], bins=120)
+    centre = (edges[:-1] + edges[1:]) / 2
+    middle = (lo + hi) / 2
+    lower, upper = centre < middle, centre >= middle
+    if lower.sum() < 3 or upper.sum() < 3:
+        return None
+    floor_z = float(centre[lower][np.argmax(counts[lower])])
+    ceiling_z = float(centre[upper][np.argmax(counts[upper])])
+    if ceiling_z - floor_z < 1.5:          # 天井高が現実的でない
+        return None
+    return ceiling_z - margin
+
+
 def quantize(points: np.ndarray) -> tuple[str, list[float], list[float]]:
     """uint16 に量子化して base64 にする。戻り値は (base64, scale, offset)。"""
     low = points.min(axis=0)
@@ -183,6 +208,11 @@ FRAGMENT = """
     <div class="pcv-bar">
       <span class="pcv-lbl" data-pcv="swlbl">点群</span>
       <span class="pcv-group" data-pcv="tabs"></span>
+      <span class="pcv-lbl">天井</span>
+      <span class="pcv-group">
+        <button type="button" data-pcv="roof" data-roof="on">残す</button>
+        <button type="button" data-pcv="roof" data-roof="off">切る</button>
+      </span>
       <span class="pcv-lbl">視点</span>
       <span class="pcv-group">
         <button type="button" data-pcv="view" data-view="iso">斜め</button>
@@ -238,12 +268,19 @@ uniform mat4 uMVP;
 uniform vec3 uScale, uOffset;
 uniform vec2 uZRange;
 uniform float uPointSize;
+uniform float uZCut;
 varying float vT;
 void main() {
   vec3 p = aQ * uScale + uOffset;
-  gl_Position = uMVP * vec4(p, 1.0);
   vT = clamp((p.z - uZRange.x) / max(uZRange.y - uZRange.x, 1e-6), 0.0, 1.0);
   gl_PointSize = uPointSize;
+  if (p.z > uZCut) {
+    // 天井カット。WebGL1 に頂点の discard は無いので、
+    // クリップ空間の外へ飛ばして描画対象から外す。
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+  gl_Position = uMVP * vec4(p, 1.0);
 }`;
 const FRAG = `
 precision mediump float;
@@ -280,6 +317,7 @@ const loc = {
   offset: gl.getUniformLocation(prog, "uOffset"),
   zRange: gl.getUniformLocation(prog, "uZRange"),
   pointSize: gl.getUniformLocation(prog, "uPointSize"),
+  zCut: gl.getUniformLocation(prog, "uZCut"),
 };
 for (const c of CLOUDS) {
   const data = decode(c.b64);
@@ -325,6 +363,9 @@ const VIEWS = {
 };
 const FOVY = Math.PI / 4;
 let active = 0, pointSize = 2.0, view = "iso";
+// 屋内地図は不透明な天井が全部を覆うので、既定で切っておく。
+// 天井が検出できなかった点群（zcut が null）では自動的に無効になる。
+let roofOff = true;
 const cam = { az: -Math.PI / 2, el: 1.15, dist: 40, target: [0, 0, 0] };
 
 function reset(name) {
@@ -333,7 +374,9 @@ function reset(name) {
   cam.target = c.center.slice();
   // 外接球がちょうど収まる距離。どの角度へ回しても画面から出ない。
   // 縦長の枠では水平画角のほうが狭くなるので、狭いほうに合わせる。
-  const radius = 0.5 * Math.hypot(c.span[0], c.span[1], c.span[2]);
+  const zSpan = (roofOff && c.zcut != null)
+    ? Math.max(c.zcut - c.zlo, 0.5) : c.span[2];
+  const radius = 0.5 * Math.hypot(c.span[0], c.span[1], zSpan);
   const aspect = Math.max(stage.clientWidth, 1) / Math.max(stage.clientHeight, 1);
   const halfV = FOVY / 2, halfH = Math.atan(Math.tan(halfV) * aspect);
   cam.dist = radius / Math.sin(Math.min(halfV, halfH)) * 1.06;
@@ -367,6 +410,7 @@ function draw() {
   gl.uniform3fv(loc.offset, c.offset);
   gl.uniform2fv(loc.zRange, [c.zlo, c.zhi]);
   gl.uniform1f(loc.pointSize, pointSize * dpr);
+  gl.uniform1f(loc.zCut, (roofOff && c.zcut != null) ? c.zcut : 1e9);
   gl.bindBuffer(gl.ARRAY_BUFFER, c.buffer);
   gl.enableVertexAttribArray(loc.aQ);
   gl.vertexAttribPointer(loc.aQ, 3, gl.UNSIGNED_SHORT, false, 0, 0);
@@ -433,12 +477,32 @@ CLOUDS.forEach((c, i) => {
 if (CLOUDS.length < 2) { tabs.style.display = "none"; q("swlbl").style.display = "none"; }
 root.querySelectorAll('[data-pcv="view"]').forEach(
   (b) => { b.onclick = () => reset(b.dataset.view); });
+root.querySelectorAll('[data-pcv="roof"]').forEach(
+  (b) => { b.onclick = () => setRoof(b.dataset.roof === "off"); });
+
+function setRoof(off) {
+  roofOff = off;
+  syncRoof();
+  reset(view);                      // 切った高さに合わせて画角を取り直す
+}
+function syncRoof() {
+  const c = CLOUDS[active], ok = c.zcut != null;
+  root.querySelectorAll('[data-pcv="roof"]').forEach((b) => {
+    // 天井が検出できない点群ではボタンを使えなくする
+    b.disabled = !ok;
+    b.setAttribute("aria-pressed",
+      String(ok && (b.dataset.roof === "off") === roofOff));
+  });
+  const n = (roofOff && ok) ? c.ncut : c.count;
+  q("n").textContent = n.toLocaleString() + " 点"
+    + ((roofOff && ok) ? "（天井カット後）" : "");
+}
 
 function select(i) {
   active = i;
   const c = CLOUDS[i];
   [...tabs.children].forEach((b, j) => b.setAttribute("aria-pressed", String(j === i)));
-  q("n").textContent = c.count.toLocaleString() + " 点";
+  syncRoof();
   q("ext").textContent = c.span.map((v) => v.toFixed(1)).join(" × ") + " m";
   q("zr").textContent = "Z " + c.zlo.toFixed(2) + " 〜 " + c.zhi.toFixed(2);
   q("zlo").textContent = c.zlo.toFixed(1);
@@ -493,6 +557,10 @@ def main() -> None:
         points = load_cloud(path, args.voxel, args.trim)
         b64, scale, offset = quantize(points)
         low, high = points.min(axis=0), points.max(axis=0)
+        # 天井を切る高さ。屋内地図を上や斜めから見ると不透明な天井が全部を覆うので、
+        # ビューア側で既定で切れるようにしておく（点は残すので後から戻せる）。
+        zcut = detect_ceiling(points)
+        ncut = int((points[:, 2] <= zcut).sum()) if zcut is not None else len(points)
         entries.append({
             "name": label,
             "b64": b64,
@@ -502,9 +570,13 @@ def main() -> None:
             "span": [float(v) for v in (high - low)],
             "zlo": float(np.percentile(points[:, 2], 2)),
             "zhi": float(np.percentile(points[:, 2], 98)),
+            "zcut": zcut,
+            "ncut": ncut,
         })
+        cut = (f" / 天井 Z={zcut:+.2f} で切ると {ncut:,} 点"
+               if zcut is not None else " / 天井は検出できず")
         print(f"[html] {label}: {path.name} -> {len(points)} 点 "
-              f"({len(b64) / 1e6:.1f} MB の base64)")
+              f"({len(b64) / 1e6:.1f} MB の base64){cut}")
 
     fragment = FRAGMENT.replace("__DATA__", json.dumps(entries, ensure_ascii=False))
     if args.fragment:

@@ -1,0 +1,18 @@
+# 注記(nav2_option vendoring, 2026-09-09): このトップレベルキーはC++コンストラクタの
+# デフォルトノード名("global_loc_node", global_localization.cpp)とは一致していないが、
+# 正規の起動経路である launch/open3d_loc_g1.launch.py が
+# Node(name='global_localization_node', ...) で名前を明示的に上書きしているため、
+# この経路では正しくマッチする。誤って直接実行ファイルを(nameオーバーライド無しで)
+# 起動するとマッチせず、initialposeが空vectorのままになりクラッシュしていた
+# (元の調査で発見した現象)。この不整合自体は直さず、C++側
+# (global_localization.cpp)にinitialposeのサイズ検証を追加して、
+# どちらの起動経路でも安全に倒れるようにした。
+global_localization_node:
+  ros__parameters:
+    # x, y, z, roll, pitch, yaw (单位:度degrees)
+    initialpose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    kf_baselink2map:
+      x: [0.001, 0.002]
+      y: [0.001, 0.005]
+      z: [0.00001, 0.04]

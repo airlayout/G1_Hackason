@@ -42,3 +42,38 @@ Perception/real/outputs/*
 
 # このPCだけに置くローカル専用データ（共有しない・再取得できるもの）
 _local/
+
+# Navigation の sim 資産（fetch_assets.sh が取り直す。手で編集しない前提のvendored物と、
+# pcd_to_mjcf.py などが生成する MJCF / STL / hfield が同居するため丸ごと除外する）
+# 上流のコミットで固定してあり、bash Navigation/sim/fetch_assets.sh で再取得できる（24MB）
+Navigation/sim/assets/
+# 記録から作り直せる地図（runs/ 自体が除外されているのと同じ理由）
+# scans.npz から再生成できる中間成果物でもある
+Navigation/sim/maps/
+# Navigation 専用の uv 環境（uv sync で再生成できる）
+Navigation/.venv/
+# nav3 専用の3.12 venv（rclpy用。--system-site-packagesで作り直せる。1GB超）
+Navigation/nav3/.venv_amcl/
+
+# 外部リポジトリのクローン（それぞれ独自の .git を持つ）
+Mapping/real/vendor/
+
+# 深度カメラの撮影結果がリポジトリ直下に落ちたもの
+Mapping/real/DepthCamera_*.json
+Mapping/real/DepthCapture_*.png
+
+# nav2_option: 点群→占有格子ツール専用venv(pip installで再生成できる。open3d同梱で1.8GB超)
+Navigation/nav2_option/tools/pointcloud_to_occupancy_grid/.venv/
+# nav2_option: ビルド成果物(colcon build / cmake で再生成できる)
+Navigation/nav2_option/g1_sdk_bridge_cpp/build/
+Navigation/nav2_option/g1_ws/build/
+Navigation/nav2_option/g1_ws/install/
+Navigation/nav2_option/g1_ws/log/
+
+# 地図の素になる巨大ファイル（2026-09-16 追加）
+# ⚠️ **消さないこと。** 地図を作り直すときに要る。git に入れないだけ。
+#    生成物（trajectory/*.tum と maps/*.pgm）はリポジトリに入れてあるので、
+#    これらが無くても地図は使える。
+Navigation/nav2_option/0911_robag/
+Navigation/nav2_option/*.pcd
+Navigation/*.pcd

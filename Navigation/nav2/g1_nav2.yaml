@@ -1,0 +1,228 @@
+# G1 用の Nav2 設定。2026-09-06 に記録 20260906T135940_UiS_room_v3 の再生で組んだ。
+#
+# ## この設定が前提にしているもの
+#
+# - TF は `odom_to_tf.py --nav2-frames` が出す（map -> odom は恒等、odom -> base_link は
+#   内蔵SLAM の /unitree/slam_mapping/odom）。G1 は /tf を一切出さないので必須
+# - 障害物は生 LiDAR `/utlidar/cloud_livox_mid360` から取る。
+#   **地図点群 /unitree/slam_mapping/points は header.stamp=0 なので使えない**
+#   （コストマップはメッセージ時刻で TF を引くため）
+# - 静的レイヤは octomap_server が出す /projected_map を使う
+#
+# ## 値の根拠と未確定なところ
+#
+# - `robot_radius` は**仮**。G1 の肩幅から 0.35m と置いた。実測で詰めること
+# - 速度上限は**安全側の仮値**。公式の速度域は Go2/Go2_W 用（0.2〜0.8 m/s）しか無く、
+#   二足の G1 で同じ保証は無い。実機で下から上げて決める
+# - `obstacle_max_range` は 2.0m。OctoMap の掃引で maxRange 2m が誤除去最少だった
+#   （2026-09-06 実測）ことに合わせた
+
+amcl:
+  ros__parameters:
+    use_sim_time: true
+    # 使わない。自己位置は内蔵SLAM が map 系で出しており、map -> odom は恒等でよい。
+    # 起動はするが tf を出さない設定にはできないので、bringup からは外して使う
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: true
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /unitree/slam_mapping/odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+
+controller_server:
+  ros__parameters:
+    use_sim_time: true
+    controller_frequency: 10.0        # LiDAR が 10Hz なのでそれ以上にしても意味が無い
+    min_x_velocity_threshold: 0.02
+    min_y_velocity_threshold: 0.02
+    min_theta_velocity_threshold: 0.05
+    failure_tolerance: 0.3
+    odom_topic: /unitree/slam_mapping/odom
+    progress_checker_plugin: progress_checker
+    goal_checker_plugins: [general_goal_checker]
+    controller_plugins: [FollowPath]
+
+    progress_checker:
+      plugin: nav2_controller::SimpleProgressChecker
+      required_movement_radius: 0.5
+      movement_time_allowance: 15.0
+    general_goal_checker:
+      plugin: nav2_controller::SimpleGoalChecker
+      xy_goal_tolerance: 0.30         # 二足なので厳しくしない
+      yaw_goal_tolerance: 0.35
+      stateful: true
+
+    FollowPath:
+      # RPP は非ホロノミック前提だが、まず素直な挙動で通す。
+      # G1 は横移動(vy)もできるので、詰めるなら MPPI に替えて omni を有効にする
+      plugin: nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
+      desired_linear_vel: 0.30        # ⚠️ 仮。実機で決める
+      lookahead_dist: 0.8
+      min_lookahead_dist: 0.4
+      max_lookahead_dist: 1.2
+      use_velocity_scaled_lookahead_dist: true
+      transform_tolerance: 0.3        # 歩行中は odom が揺れるので緩めに取る
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.5
+      use_regulated_linear_velocity_scaling: true
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.15
+      use_rotate_to_heading: true
+      rotate_to_heading_angular_vel: 0.5    # ⚠️ 仮
+      max_angular_accel: 1.0
+      allow_reversing: false          # 後方センサ上部が死角なので後退はしない
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: true
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      width: 8
+      height: 8
+      resolution: 0.10
+      robot_radius: 0.35              # ⚠️ 仮
+      plugins: [voxel_layer, inflation_layer]
+      voxel_layer:
+        plugin: nav2_costmap_2d::VoxelLayer
+        enabled: true
+        publish_voxel_map: true
+        # ⚠️ 下端を 0 にすると LiDAR 自身が範囲外になり、レイキャストが一切できない
+        # （2026-09-06 のオフライン検証で "Sensor origin ... is out of map bounds" が出た）。
+        # LiDAR は base_link より下に付いており、map 系では z ≈ -0.12m になる
+        origin_z: -0.60
+        z_resolution: 0.15
+        z_voxels: 16
+        max_obstacle_height: 1.80     # 天井は入れない
+        mark_threshold: 1
+        observation_sources: livox
+        livox:
+          topic: /utlidar/cloud_livox_mid360
+          data_type: PointCloud2
+          sensor_frame: livox_frame
+          marking: true
+          clearing: true
+          min_obstacle_height: 0.10   # 床は障害物にしない
+          max_obstacle_height: 1.80
+          obstacle_max_range: 2.0
+          obstacle_min_range: 0.30    # 至近は機体自身が写る
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.30
+      inflation_layer:
+        plugin: nav2_costmap_2d::InflationLayer
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: true
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      resolution: 0.10
+      track_unknown_space: true
+      robot_radius: 0.35              # ⚠️ 仮
+      plugins: [static_layer, voxel_layer, inflation_layer]
+      static_layer:
+        plugin: nav2_costmap_2d::StaticLayer
+        map_subscribe_transient_local: true
+        # 過去に作った地図（OctoMap で掃除済み）を map_server で /map に流して使う。
+        # octomap_server の /projected_map は走りながら育つので部屋の全体像を持てない。
+        # 先に読ませておけば、まだ見ていない場所も含めて経路を引ける
+        map_topic: /map
+      voxel_layer:
+        plugin: nav2_costmap_2d::VoxelLayer
+        enabled: true
+        publish_voxel_map: true
+        # ⚠️ 下端を 0 にすると LiDAR 自身が範囲外になり、レイキャストが一切できない
+        # （2026-09-06 のオフライン検証で "Sensor origin ... is out of map bounds" が出た）。
+        # LiDAR は base_link より下に付いており、map 系では z ≈ -0.12m になる
+        origin_z: -0.60
+        z_resolution: 0.15
+        z_voxels: 16
+        max_obstacle_height: 1.80
+        mark_threshold: 1
+        observation_sources: livox
+        livox:
+          topic: /utlidar/cloud_livox_mid360
+          data_type: PointCloud2
+          sensor_frame: livox_frame
+          marking: true
+          clearing: true
+          min_obstacle_height: 0.10
+          max_obstacle_height: 1.80
+          obstacle_max_range: 2.0
+          obstacle_min_range: 0.30
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.30
+      inflation_layer:
+        plugin: nav2_costmap_2d::InflationLayer
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
+
+planner_server:
+  ros__parameters:
+    use_sim_time: true
+    expected_planner_frequency: 1.0
+    planner_plugins: [GridBased]
+    GridBased:
+      plugin: nav2_navfn_planner/NavfnPlanner
+      tolerance: 0.5
+      use_astar: true
+      allow_unknown: true             # 未知を通す。広い部屋で証拠が薄いため
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: true
+    local_costmap_topic: local_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_costmap_topic: global_costmap/costmap_raw
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: [spin, backup, wait]
+    spin:
+      plugin: nav2_behaviors/Spin
+    backup:
+      plugin: nav2_behaviors/BackUp
+    wait:
+      plugin: nav2_behaviors/Wait
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_link
+    transform_tolerance: 0.3
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 0.5           # ⚠️ 仮
+    min_rotational_vel: 0.1
+    rotational_acc_lim: 1.0
+
+waypoint_follower:
+  ros__parameters:
+    use_sim_time: true
+    loop_rate: 20
+    stop_on_failure: false
+    waypoint_task_executor_plugin: wait_at_waypoint
+    wait_at_waypoint:
+      plugin: nav2_waypoint_follower::WaitAtWaypoint
+      enabled: true
+      waypoint_pause_duration: 2000   # 各点で 2 秒止まる
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: true
+    smoothing_frequency: 10.0
+    scale_velocities: false
+    feedback: OPEN_LOOP
+    max_velocity: [0.30, 0.20, 0.50]  # ⚠️ 仮。vx, vy, vyaw
+    min_velocity: [-0.10, -0.20, -0.50]
+    max_accel: [0.5, 0.5, 1.0]
+    max_decel: [-0.8, -0.8, -1.5]
+    odom_topic: /unitree/slam_mapping/odom
+    odom_duration: 0.1
