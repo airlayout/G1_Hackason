@@ -1,0 +1,62 @@
+# 警備システム UI の設定。パスはこのファイルからの相対で書く。
+
+video:
+  # "video" | "zmq" | "webcam"
+  #   video  … 手元の動画で UI を組むとき（いまはこれ）
+  #   zmq    … 実機 G1 の `run_g1_server.py --camera` に繋ぐとき
+  #   webcam … 手元のカメラで試すとき
+  source: video
+
+  video:
+    path: ../Reference/夜間監視.mp4
+    loop: true
+    # ⚠️ 実時間で再生する（余ったフレームは捨てる）。false にすると 1 フレームずつ
+    # 順に読むので、24fps の動画を target_fps=10 で読むと **2.4 倍遅くなり**、
+    # 検知ログの継続時間も同じ倍率で水増しされる（2026-09-20 実測）
+    realtime: true
+  zmq:
+    server_address: 192.168.123.164
+    port: 5555
+    camera_name: head_camera
+    timeout_ms: 5000
+  webcam:
+    device_index: 0
+
+  # 推論の上限 fps。上げても UI の見た目はほとんど変わらず GPU だけ食う
+  target_fps: 10
+  jpeg_quality: 80
+
+detector:
+  model: yolo26n.pt
+  classes: [person]
+  # 2026-09-20 にサンプル動画で実測: 0.5 と 0.25 で検出率が 53.8% / 56.0% とほぼ変わらず。
+  # 下げる意味が無いので 0.5 のままにしてある
+  confidence_threshold: 0.5
+  device: auto        # "auto" | "cpu" | "cuda"
+
+  # 検知ログの不感帯。素の判定だと検出が1フレーム落ちるたびに
+  # 「消失 0.1秒」→「検知」が並んでログが読めなくなる（2026-09-20 実測）
+  present_frames: 2     # これだけ連続で映ったら「検知」
+  absent_grace_s: 1.5   # これだけ映らなかったら「消失」
+
+nav:
+  # "mock" | "http"
+  #   mock … 実機も ROS も無しで UI を組む（いまはこれ）
+  #   http … Docker 内の ROS アダプタに繋ぐ（アダプタはまだ未実装）
+  source: mock
+
+  mock:
+    # ⚠️ Navigation トラックの既定地図。手で書き換えないこと
+    map_yaml: ../../../Navigation/nav2_option/g1_ws/src/g1_navigation/maps/room_a_map_20260911.yaml
+    speed_mps: 0.35
+  http:
+    url: http://127.0.0.1:8081
+    timeout_s: 0.5
+
+server:
+  host: 127.0.0.1
+  port: 8090        # 8080 は別プロセスが使っていたので避けている
+
+log:
+  # 検知イベントを JSONL で残す先
+  dir: ../Log

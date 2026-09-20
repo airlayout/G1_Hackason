@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>G1 警備システム</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">G1 <span>警備システム</span></div>
+  <div class="chips">
+    <span class="chip" id="chip-bridge"><label>走行</label><b>—</b></span>
+    <span class="chip" id="chip-patrol"><label>巡回</label><b>—</b></span>
+    <span class="chip" id="chip-vision"><label>映像</label><b>—</b></span>
+    <span class="chip" id="chip-link"><label>接続</label><b>—</b></span>
+  </div>
+  <div class="clock" id="clock">--:--:--</div>
+</header>
+
+<main>
+  <!-- 左: カメラ -->
+  <section class="panel cam">
+    <h2>カメラ
+      <small>
+        <label class="toggle"><input type="checkbox" id="boxes" checked> 検出枠</label>
+        <span id="cam-note">—</span>
+      </small>
+    </h2>
+    <div class="cam-box">
+      <img id="video" alt="G1 のカメラ映像">
+      <div class="alert" id="alert" hidden>人を検知</div>
+    </div>
+  </section>
+
+  <!-- 右上: 地図 -->
+  <section class="panel map">
+    <h2>位置と経路
+      <small>
+        <label class="toggle"><input type="checkbox" id="follow"> 機体に寄る</label>
+      </small>
+    </h2>
+    <canvas id="map"></canvas>
+    <div class="legend">
+      <span><i class="sw route"></i>巡回路</span>
+      <span><i class="sw plan"></i>経路</span>
+      <span><i class="sw goal"></i>目的地</span>
+      <span><i class="sw robot"></i>G1</span>
+    </div>
+  </section>
+
+  <!-- 右下: 操作 -->
+  <section class="panel ops">
+    <h2>操作</h2>
+    <div class="btns">
+      <button data-cmd="enable_navigation" class="go">走行許可</button>
+      <button data-cmd="disable_navigation">許可を取消</button>
+      <button data-cmd="stop" class="halt">停止</button>
+      <button data-cmd="clear_fault">FAULT 解除</button>
+      <button data-cmd="patrol_start" class="go">巡回開始</button>
+      <button data-cmd="patrol_pause">一時停止</button>
+      <button data-cmd="patrol_stop" class="halt">巡回停止</button>
+      <button data-cmd="patrol_skip">次の点へ</button>
+    </div>
+    <p class="msg" id="msg">—</p>
+    <p class="note">
+      ⚠️ 目的地の指定はこの画面からは行えません。UI 経由で機体が歩き出す経路を作らない
+      という設計です。
+    </p>
+  </section>
+
+  <!-- 下: 検知ログ -->
+  <section class="panel log">
+    <h2>検知ログ</h2>
+    <ul id="events"><li class="empty">まだ何も検知していません</li></ul>
+  </section>
+</main>
+
+<div class="mockbar" id="mockbar" hidden>
+  ⚠️ モックで動作中 — 航法の情報は作り物です。実機には繋がっていません
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
