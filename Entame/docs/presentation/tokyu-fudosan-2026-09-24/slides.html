@@ -357,6 +357,25 @@
   }
   .vision-figure figcaption { font-size: var(--fs-1); color: var(--ink-soft); }
 
+  /* ---------- demo slide (ルール + 体験イメージ) ---------- */
+
+  .demo-split {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 1.4rem;
+    align-items: start;
+    min-height: 0;
+  }
+  .demo-figure { margin: 0; display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+  .demo-figure img {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    border-radius: 0.5rem;
+    box-shadow: 0 8px 20px var(--shadow);
+  }
+  .demo-figure figcaption { font-size: var(--fs-1); color: var(--ink-soft); }
+
   .vision-message {
     margin: 0 0 0.9rem;
     padding: 0.55rem 0.9rem;
@@ -606,28 +625,27 @@
     <span class="slide-number mono">04</span>
     <div class="slide-body">
       <h2>体験内容：「90秒ステルスミッション」（デモ）</h2>
-      <p class="lead">「ルール説明不要の直感性」×「G1のセンサー・自律歩行の最大活用」が生み出す高回転アトラクション</p>
+      <p class="lead">
+        <strong>【戦略的アプローチ】</strong>CX（顧客体験）向上の第一歩として、まずは最も集客・回遊効果が高い<strong>「アミューズメント領域」</strong>にフォーカス。<br>
+        「説明不要の直感性」×「G1のセンサー・自律歩行のフル活用」により、短時間で大きなインパクトを生み出します。
+      </p>
       <div class="slide-content">
-        <ul class="plain">
-          <li><strong>ロボット警備網</strong> — G1が首のセンサー・カメラで周囲を監視</li>
-          <li><strong>障害物エリア</strong> — ポップな遮蔽物を設置し、物陰に隠れながら進む</li>
-          <li><strong>ターゲット奪取</strong> — G1の足元にあるキーアイテムを奪い、脱出できれば成功</li>
-          <li><strong>高回転率</strong> — 1回約2〜3分（説明込み）で1時間あたり20〜25組が体験可能（たたき台）</li>
-        </ul>
+        <div class="demo-split">
+          <ul class="plain">
+            <li><strong>ロボット警備網</strong> — G1が首のセンサー・カメラで周囲を監視</li>
+            <li><strong>障害物エリア</strong> — ポップな遮蔽物を設置し、物陰に隠れながら進む</li>
+            <li><strong>高回転率</strong> — 1回約2〜3分（説明込み）で1時間あたり20〜25組が体験可能</li>
+          </ul>
+          <figure class="demo-figure">
+            <img src="assets/demo-stealth.jpg" alt="遮蔽物に隠れながらG1の監視をかいくぐる体験のイメージ">
+            <figcaption>※体験イメージ</figcaption>
+          </figure>
+        </div>
       </div>
-      <div class="demo-flow">
-        <div class="demo-step"><div class="t">0:00-0:20</div><div class="d">会場にG1を配置、スタンバイ状態を見せる</div></div>
-        <div class="demo-step"><div class="t">0:20-1:00</div><div class="d">実機：90秒ミッションに挑戦（易しい設定）</div></div>
-        <div class="demo-step"><div class="t">1:00-1:40</div><div class="d">実機：難易度を上げて再実演（速度アップ・ルート変化）</div></div>
-        <div class="demo-step"><div class="t">1:40-2:00</div><div class="d">まとめのひとこと、次スライドへ</div></div>
-      </div>
-      <p class="demo-fallback">実機が20秒以内に正常起動しない、または動作中に停止した場合は、即座に事前収録のバックアップ映像へ切り替える（判断遅延によるタイムオーバーを避けるため、切替は20秒ルールで即断する）。</p>
     </div>
     <div class="talk-script">
-      <span class="script-label">🗣 台本（実機が動く場合）</span>
-      <p>では、この集客・回遊・話題化という3つのメリットを最大化するために今回選んだアミューズメントが、「90秒ステルスミッション」です。数あるゲームの中でこれを選んだ理由はシンプルで、説明不要で誰でも一瞬で理解できる直感性があり、かつG1のカメラや自律歩行という機能を最もわかりやすく体感できるからです。内容はこうです。G1が首のセンサーとカメラで周囲を監視する中、ポップな遮蔽物に隠れながら進み、G1の足元にあるキーアイテムを奪って脱出できれば成功です。では実際にご覧いただきます。まずは易しい設定です。次に難易度を上げると、このように速度が上がり、警戒する範囲も広がります。1回2〜3分の短時間設計なので、1時間あたり20〜25組体験いただける計算です。これらの数値は現時点のたたき台です。</p>
-      <span class="script-label" style="margin-top:0.5rem">🗣 台本（実機が動かない場合の切替セリフ）</span>
-      <p>本日は会場の都合上、事前に撮影した映像でご覧いただきます。このように、難易度に応じて歩行速度と警戒範囲が変わり、追いかけられる緊張感が変化します。</p>
+      <span class="script-label">🗣 台本</span>
+      <p>商業施設におけるCX向上の取り組みとして、今回はまず、最もダイレクトに集客と館内回遊を生み出せる「アミューズメント領域」に特化してご提案します。その具体的な体験が、この「90秒ステルスミッション」です。ルール説明が不要で誰でも一瞬で理解でき、G1のカメラや自律歩行機能をフルに体験いただけます。G1が首のセンサーとカメラで監視する中、遮蔽物に隠れながら、見つからずにエリアを進み切れれば成功です。では、実際の動作デモをご覧ください。まずは易しい設定、続いて速度と警戒範囲を上げた難易度高めの設定です。1回2〜3分の設計で高回転な運営が可能です。</p>
       <audio controls src="audio/slide_4.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
