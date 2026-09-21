@@ -216,6 +216,161 @@
     color: var(--placeholder);
   }
 
+  /* ---------- tech map (G1人体図 + 部位別コールアウト) ---------- */
+
+  .tech-map {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    grid-template-rows: 1fr 1fr;
+    column-gap: 1.6rem;
+    row-gap: 1.1rem;
+    align-items: center;
+  }
+
+  .tech-figure {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    justify-self: center;
+    /* 行の高さを超えさせない。超えると下の注記に重なる。 */
+    max-height: 100%;
+    height: 33cqw;
+    width: auto;
+    object-fit: contain;
+    border-radius: 0.6rem;
+    box-shadow: 0 8px 20px var(--shadow);
+  }
+
+  .callout { position: relative; }
+  .callout .part {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    font-size: var(--fs-1);
+    letter-spacing: 0.1em;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    padding: 0.05em 0.6em;
+  }
+  .callout h3 {
+    font-size: var(--fs-3);
+    font-weight: 700;
+    margin: 0.3rem 0 0.15rem;
+  }
+  .callout p { margin: 0; font-size: var(--fs-2); color: var(--ink-soft); }
+
+  /* 図へ向かうリーダー線。左列は右端から、右列は左端から伸ばす。 */
+  .callout.left { grid-column: 1; text-align: right; padding-right: 1.1rem; }
+  .callout.right { grid-column: 3; padding-left: 1.1rem; }
+  .callout::after {
+    content: "";
+    position: absolute;
+    top: 1.1em;
+    width: 0.8rem;
+    border-top: 2px solid var(--accent);
+  }
+  .callout.left::after { right: 0; }
+  .callout.right::after { left: 0; }
+
+  .tech-foot {
+    margin: 0.4rem 0 0;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    align-items: baseline;
+    gap: 1.2rem;
+  }
+  .tech-note { margin: 0; font-size: var(--fs-2); color: var(--ink-soft); }
+  .tech-credit {
+    margin: 0;
+    margin-left: auto;
+    white-space: nowrap;
+    font-size: var(--fs-1);
+    color: var(--ink-soft);
+  }
+
+  /* ---------- venue cards (展開場所の施設写真) ---------- */
+
+  .venue-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.4rem;
+    align-content: start;
+  }
+  .venue-card { display: flex; flex-direction: column; min-width: 0; }
+  /* 3枚は元の縦横比がばらばらなので、必ず1:1に揃えて並べる。 */
+  .venue-card img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: 0.5rem;
+    box-shadow: 0 6px 16px var(--shadow);
+  }
+  .venue-card h3 {
+    font-size: var(--fs-3);
+    font-weight: 700;
+    margin: 0.6rem 0 0.15rem;
+  }
+  .venue-card p { margin: 0; font-size: var(--fs-2); color: var(--ink-soft); }
+  .venue-foot {
+    margin: 0.4rem 0 0;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    align-items: baseline;
+    gap: 1.2rem;
+  }
+  .venue-foot .fill { margin: 0; }
+  .venue-credit {
+    margin: 0;
+    margin-left: auto;
+    white-space: nowrap;
+    font-size: var(--fs-1);
+    color: var(--ink-soft);
+  }
+
+  /* ---------- vision slide (世界観イメージ + Key Value) ---------- */
+
+  .slide-body > .lead {
+    margin: -0.6rem 0 0.9rem;
+    font-size: var(--fs-2);
+    color: var(--accent-ink);
+  }
+
+  .vision-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.6rem;
+    align-items: start;
+    min-height: 0;
+  }
+  .vision-figure { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+  .vision-figure img {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    border-radius: 0.5rem;
+    box-shadow: 0 8px 20px var(--shadow);
+  }
+  .vision-figure figcaption { font-size: var(--fs-1); color: var(--ink-soft); }
+
+  .vision-message {
+    margin: 0 0 0.9rem;
+    padding: 0.55rem 0.9rem;
+    background: var(--accent-soft);
+    border-left: 4px solid var(--accent);
+    font-size: var(--fs-3);
+    font-weight: 700;
+    color: var(--accent-ink);
+  }
+  .key-values { display: flex; flex-direction: column; gap: 0.8rem; }
+  .key-value { border-top: 3px solid var(--accent); padding-top: 0.4rem; }
+  .key-value h3 { font-size: var(--fs-3); font-weight: 700; margin: 0 0 0.1rem; }
+  .key-value p { margin: 0; font-size: var(--fs-2); color: var(--ink-soft); }
+
   .cover-slide .slide-body { position: relative; justify-content: center; align-items: center; text-align: center; }
   .cover-slide .event-name { position: absolute; top: 1.2rem; left: 1.4rem; font-size: 2.4cqw; letter-spacing: 0.06em; color: var(--ink-soft); }
   .cover-slide .service-name { font-size: var(--fs-5); font-weight: 700; color: var(--ink); }
@@ -369,14 +524,14 @@
     <div class="event-name mono">東急不動産グループ フィジカルAI体験会</div>
     <div class="slide-body">
       <div class="service-name">G1の目を、盗め。</div>
-      <div class="tagline">最先端ヒューマノイドが生み出す集客・回遊・話題化の超体感型アトラクション</div>
+      <div class="tagline">初期投資を抑え、集客・館内回遊・話題化を同時実現する「フィジカルAI体験プラットフォーム」</div>
       <div class="cover-meta">
         <div class="field"><label class="mono">TEAM</label><p>エンタメチーム</p></div>
       </div>
     </div>
     <div class="talk-script">
       <span class="script-label">🗣 台本</span>
-      <p>本日はお時間をいただき、ありがとうございます。エンタメチームより「G1の目を、盗め。」というテーマでご提案します。最先端のヒューマノイドロボットG1を使い、巨大な設備投資に頼らず、集客と回遊、そして話題化を同時に生み出す体験型アトラクションのご提案です。</p>
+      <p>本日はお時間をいただき、ありがとうございます。エンタメチームより「G1の目を、盗め。」というテーマでご提案します。最先端のヒューマノイドロボットG1を使い、固定の造作投資に頼らず、集客と館内回遊、そして話題化を同時に実現する「フィジカルAI体験プラットフォーム」のご提案です。</p>
       <audio controls src="audio/slide_1.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
@@ -385,19 +540,41 @@
   <section class="slide">
     <span class="slide-number mono">02</span>
     <div class="slide-body">
-      <h2>商業施設を「体験の目的地」へ</h2>
+      <h2>商業施設を「単なる買物の場」から「体験の目的地」へ</h2>
+      <p class="lead">フィジカルAI×DXで創出する、感情が動く継続的な顧客体験（CX）</p>
       <div class="slide-content">
-        <ul class="plain">
-          <li>東急プラザ・キューズモール・Shibuya Sakura Stage等、貴社の多様な商業施設で共通して求められるのは「単なる買物の場」を超えた価値づくり</li>
-          <li>目新しいロボットを置くだけでは話題になっても1回で終わり、リピートや滞在時間の向上につながりにくい</li>
-          <li>最新テクノロジーを使い、「足を運ぶ理由」と「滞在価値」を継続的に創出したい</li>
-          <li>商業施設を数多く運営する貴社だからこそ、複数施設へ横展開できる打ち手かどうかが重要</li>
-        </ul>
+        <div class="vision-split">
+
+          <figure class="vision-figure">
+            <img src="assets/vision-mall.jpg"
+                 alt="商業施設でロボットが買物に寄り添い、子供がロボット犬と遊び、ライブ調理を見せている様子">
+            <figcaption>※世界観のイメージ（生成画像）</figcaption>
+          </figure>
+
+          <div>
+            <p class="vision-message">ロボットを「作業の代替」から「人の感情を動かす演出装置」へ</p>
+            <div class="key-values">
+              <div class="key-value">
+                <h3>1. 「買物」を超えた感情体験</h3>
+                <p>コンパニオン、ロボット犬、ライブ調理。店舗でしか味わえない時間をつくる。</p>
+              </div>
+              <div class="key-value">
+                <h3>2. 1回限りの話題化から、継続的なリピートへ</h3>
+                <p>置くだけでは1回で飽きられる。演出を更新し常に新しい体験に。</p>
+              </div>
+              <div class="key-value">
+                <h3>3. グループ横展開できる体験プラットフォーム</h3>
+                <p>同じ仕組みを東急プラザやキューズモールへ横展開できる。</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
     <div class="talk-script">
       <span class="script-label">🗣 台本</span>
-      <p>東急プラザやキューズモール、Shibuya Sakura Stageなど、貴社が運営される商業施設に共通する課題は、単なる買物の場を超えた「体験の目的地」になれるかどうかです。目新しいロボットを置くだけでは、話題になっても1回で終わってしまい、投資回収が難しい。これは現場でよく聞く悩みです。多くの施設を運営される貴社にとっては、一施設だけの話ではなく、複数施設に横展開できる打ち手かどうかという視点が重要だと考えています。</p>
+      <p>私たちがご提案したいのは、商業施設を単なる買物の場から「体験の目的地」へ変えることです。左の絵をご覧ください。ロボットが買物に寄り添い、子供はロボット犬と遊び、ガラス越しにライブ調理を見せている。ロボットを人の作業の代替として使うのではなく、人の感情を動かす演出装置として使う、という発想です。ポイントは3つあります。1つ目は、買物を超えた感情体験。リアル店舗でしか得られない時間が、足を運ぶ理由になります。2つ目は、1回限りの話題化で終わらせないこと。機器を置くだけの導入では1回で飽きられてしまうので、演出やゲームの内容を更新し続け、同じ施設でも常に新しい体験を提供します。3つ目は、グループ横展開です。東急プラザ、キューズモール、Shibuya Sakura Stageへ同じ仕組みで広げられ、体験データが貯まることでグループ全体のアセット価値向上につながると考えています。そして今回は、その第一歩として、最も直感的に集客と館内回遊を生み出せる「アミューズメント体験」にフォーカスを絞ってご提案します。まずは、そのアミューズメント体験から貴社の施設が得られる3つのメリットをご説明します。</p>
       <audio controls src="audio/slide_2.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
@@ -412,13 +589,14 @@
           <li><strong>圧倒的な集客＆人集り</strong> — 人型ロボットが実際に稼働するインパクトで、催事広場や吹き抜けエリアに強いアイキャッチを創出</li>
           <li><strong>館内回遊＆テナント送客</strong> — ミッションクリア報酬や参加特典を施設内クーポン・デジタルポイントと連携し、購買へ誘引</li>
           <li><strong>まちづくりの先進性PR</strong> — 「広域渋谷圏」等におけるイノベーション＆エンタメの発信拠点として、SNS・メディア露出を最大化</li>
-          <li>汎用ロボットが実用段階に入りつつある今だからこそ、大規模な造作投資なしに試せる</li>
+          <li><strong>低CAPEXでの検証</strong> — 固定の内装工事（CAPEX）費用をゼロに抑え、既存の催事スペースで即座に検証可能</li>
         </ul>
+        <p class="tech-note">※固定造作が不要なため、季節や施設ターゲットに応じた演出変更や他施設への横展開が容易です</p>
       </div>
     </div>
     <div class="talk-script">
       <span class="script-label">🗣 台本</span>
-      <p>私たちが提案するのは、G1を使った鬼ごっこ型の体験です。貴社の施設が得られるメリットは3つ。1つ目は、ロボットが実際に稼働するインパクトによる圧倒的な集客。2つ目は、ミッションクリア報酬を施設内クーポンやポイントと連携させることによる館内回遊とテナント送客。3つ目は、広域渋谷圏をはじめとするイノベーション拠点としての先進性PRです。人型ロボットが実用段階に入りつつある今だからこそ、専用アトラクションを新設せずに試せるタイミングだと考えています。</p>
+      <p>私たちが提案するのは、G1を使った鬼ごっこ型の体験です。貴社の施設が得られるメリットは3つ。1つ目は、ロボットが実際に稼働するインパクトによる圧倒的な集客。2つ目は、ミッションクリア報酬を施設内クーポンやポイントと連携させることによる館内回遊とテナント送客。3つ目は、広域渋谷圏をはじめとするイノベーション拠点としての先進性PRです。そして固定の内装工事、いわゆるCAPEXをかけずに、既存の催事スペースで即座に検証できます。固定造作が不要なので、季節や施設のターゲットに応じた演出変更も、他施設への横展開も容易です。</p>
       <audio controls src="audio/slide_3.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
@@ -428,6 +606,7 @@
     <span class="slide-number mono">04</span>
     <div class="slide-body">
       <h2>体験内容：「90秒ステルスミッション」（デモ）</h2>
+      <p class="lead">「ルール説明不要の直感性」×「G1のセンサー・自律歩行の最大活用」が生み出す高回転アトラクション</p>
       <div class="slide-content">
         <ul class="plain">
           <li><strong>ロボット警備網</strong> — G1が首のセンサー・カメラで周囲を監視</li>
@@ -446,98 +625,158 @@
     </div>
     <div class="talk-script">
       <span class="script-label">🗣 台本（実機が動く場合）</span>
-      <p>体験内容は「90秒ステルスミッション」です。G1が首のセンサーとカメラで周囲を監視する中、ポップな遮蔽物に隠れながら進み、G1の足元にあるキーアイテムを奪って脱出できれば成功です。では実際にご覧いただきます。まずは易しい設定です。次に難易度を上げると、このように速度が上がり、警戒する範囲も広がります。1回2〜3分の短時間設計なので、1時間あたり20〜25組体験いただける計算です。これらの数値は現時点のたたき台です。</p>
+      <p>では、この集客・回遊・話題化という3つのメリットを最大化するために今回選んだアミューズメントが、「90秒ステルスミッション」です。数あるゲームの中でこれを選んだ理由はシンプルで、説明不要で誰でも一瞬で理解できる直感性があり、かつG1のカメラや自律歩行という機能を最もわかりやすく体感できるからです。内容はこうです。G1が首のセンサーとカメラで周囲を監視する中、ポップな遮蔽物に隠れながら進み、G1の足元にあるキーアイテムを奪って脱出できれば成功です。では実際にご覧いただきます。まずは易しい設定です。次に難易度を上げると、このように速度が上がり、警戒する範囲も広がります。1回2〜3分の短時間設計なので、1時間あたり20〜25組体験いただける計算です。これらの数値は現時点のたたき台です。</p>
       <span class="script-label" style="margin-top:0.5rem">🗣 台本（実機が動かない場合の切替セリフ）</span>
       <p>本日は会場の都合上、事前に撮影した映像でご覧いただきます。このように、難易度に応じて歩行速度と警戒範囲が変わり、追いかけられる緊張感が変化します。</p>
       <audio controls src="audio/slide_4.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
 
-  <!-- 5: 商業施設・テナント連動の施策イメージ -->
+  <!-- 5: 何を使って、何を実現しているのか -->
   <section class="slide">
     <span class="slide-number mono">05</span>
     <div class="slide-body">
-      <h2>商業施設・テナント連動の施策イメージ</h2>
+      <h2>汎用ハードウェア×AIが生み出す、施設運営への拡張性</h2>
+      <p class="lead">「人を見つける・自律巡回する・声で伝える」基盤技術は、イベント終了後も館内案内・夜間巡回などの施設運営ソリューションへそのまま流用・拡張できます。</p>
       <div class="slide-content">
-        <ul class="plain">
-          <li><strong>クーポン・回遊連動</strong> — 参加者全員に館内飲食店・アパレルで使える限定割引券を発行</li>
-          <li>ミッション成功者にはプレミアム景品（東急ポイント等）を進呈</li>
-          <li>イベント参加レシートの提示で2回目チャレンジ等の買物誘発</li>
-          <li><strong>フォトスポット＆SNS拡散</strong> — 体験前後にG1と記念撮影できる専用フォトブースを併設</li>
-          <li>「#東急プラザ」「#G1の目を盗め」等のハッシュタグ投稿キャンペーン、親子連れ・若者層のTikTok/Xでの拡散を狙う</li>
-        </ul>
+        <div class="tech-map">
+
+          <div class="callout left" style="grid-row:1">
+            <span class="part mono">頭 / HEAD</span>
+            <h3>カメラ・LiDAR</h3>
+            <p>カメラで人物を検知し、LiDARで障害物と距離を測る。誰がどこにいるかを自分で把握する。</p>
+          </div>
+
+          <div class="callout left" style="grid-row:2">
+            <span class="part mono">首から下 / UPPER BODY</span>
+            <h3>関節モータ</h3>
+            <p>振り向く・見回す・手を振るモーションを再生。発見時のリアクションを作る。</p>
+          </div>
+
+          <img class="tech-figure" src="assets/g1-figure.jpg"
+               alt="Unitree G1 の全身。頭部のカメラとLiDAR、胸のスピーカー、上半身と脚の関節モータで体験を実現する。">
+
+          <div class="callout right" style="grid-row:1">
+            <span class="part mono">胸 / CHEST</span>
+            <h3>スピーカー</h3>
+            <p>発見の宣告や残り時間を音声で伝える。司会の実況なしで体験が完結する。</p>
+          </div>
+
+          <div class="callout right" style="grid-row:2">
+            <span class="part mono">足 / LEGS</span>
+            <h3>脚部モータ</h3>
+            <p>自律歩行でエリア内を巡回。ラジコン操作ではないため毎回同じ動きにならない。</p>
+          </div>
+
+        </div>
+        <div class="tech-foot">
+          <p class="tech-credit">画像出典：Unitree 公式</p>
+        </div>
       </div>
     </div>
     <div class="talk-script">
       <span class="script-label">🗣 台本</span>
-      <p>商業施設・テナントとの連動施策も2つ考えています。1つはクーポン・回遊連動です。参加者全員に館内飲食店やアパレルで使える限定割引券をお渡しし、ミッション成功者にはプレミアム景品を進呈、参加レシートの提示で2回目のチャレンジや買物を誘発します。もう1つはフォトスポットとSNS拡散です。体験前後にG1と記念撮影できるフォトブースを併設し、ハッシュタグ投稿キャンペーンで親子連れや若者層のTikTokやXでの拡散を狙います。</p>
+      <p>ここで使っているのは、このゲーム専用の特注機ではなく、汎用のヒューマノイドです。「人を見つける・自律巡回する・声で伝える」という基盤技術は、イベント終了後も館内案内や夜間巡回といった施設運営ソリューションへそのまま流用・拡張できます。では部位ごとにご説明します。まず頭です。カメラで人を検知し、LiDARで周囲の障害物と距離を測ります。誰がどこにいて、何が視界を遮っているかをG1自身が把握しています。胸にはスピーカーがあり、発見の宣告や残り時間、成功・失敗の告知を声で伝えます。司会スタッフの実況なしで1回の体験が完結するため、高回転での運営ができます。首から下は関節モータで、振り向く、見回す、手を振るといったモーションを再生し、見つけたときのリアクションを作ります。そして足。自律歩行の制御でエリア内を巡回します。操縦者がラジコンで動かしているわけではないので、毎回まったく同じ動きにはなりません。つまり、イベント用に作り込んだ一点ものではなく、施設運営へ展開できる汎用の基盤だとお考えください。</p>
       <audio controls src="audio/slide_5.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
 
-  <!-- 6: 施設運営に配慮した安全・設営仕様 -->
+  <!-- 6: 商業施設・テナント連動の施策イメージ -->
   <section class="slide">
     <span class="slide-number mono">06</span>
     <div class="slide-body">
-      <h2>施設運営に配慮した安全・設営仕様</h2>
+      <h2>商業施設・テナント連動の施策イメージ</h2>
       <div class="slide-content">
-        <table class="data-table">
-          <thead><tr><th>項目</th><th>運用設計（たたき台）</th><th>安全・施設配慮のポイント</th></tr></thead>
-          <tbody>
-            <tr><td>区画スペース</td><td>約6m×8m程度（可動式安全フェンス設置）</td><td>通行人の動線阻害を防ぐ専用ギャラリーエリア確保</td></tr>
-            <tr><td>安全管理</td><td>非常停止スイッチ＋専任オペレーター2名体制（想定）</td><td>センサー検知・手動介入の2重安全システムを目指す設計</td></tr>
-            <tr><td>電源・設備</td><td>AC100V電源1系統のみ（低消費電力）</td><td>仮設工事不要、撤収・レイアウト復元も約1時間で完了見込み</td></tr>
-          </tbody>
-        </table>
-        <p class="fill">※人との接触を避けるためのセンサーによる自動停止・回避などの仕組みは現時点で未実装。実機との接続も含め、今後の重要な検討事項として検証中</p>
+        <ul class="plain">
+          <li><strong>1. 高いテナント送客・購買誘発</strong> — 参加・クリア報酬として館内テナントで使える限定クーポンや「東急ポイント」を即時付与。体験を直接「館内売上」へ転換</li>
+          <li><strong>2. 2回目来店・周回インセンティブ</strong> — 当日レシート提示によるリピート挑戦権で、施設内の「買物→遊ぶ→買物」の回遊ループを形成</li>
+          <li><strong>3. SNS・メディア拡散装置</strong> — 専用フォトブースでの体験動画・写真シェア（#ShibuyaSakuraStage 等）による、オーガニックな施設ブランディング</li>
+        </ul>
       </div>
     </div>
     <div class="talk-script">
       <span class="script-label">🗣 台本</span>
-      <p>施設運営に配慮した安全・設営仕様についてです。区画スペースは約6m×8m程度を想定し、可動式の安全フェンスで通行人の動線を阻害しない専用エリアを確保します。安全管理は非常停止スイッチと専任オペレーター2名体制を想定しており、センサー検知と手動介入の2重の仕組みを目指しています。電源はAC100V1系統のみで仮設工事は不要、撤収・原状回復も約1時間で完了する見込みです。なお、人との接触を避けるセンサーによる自動停止・回避や、実機との接続そのものは、現時点ではまだ検証中の段階であり、今後詰めていく重要な課題です。</p>
+      <p>テナント連動の施策は3つです。1つ目は、テナント送客と購買誘発。参加報酬・クリア報酬として、館内テナントで使える限定クーポンや東急ポイントを即時付与し、体験をそのまま館内売上へ転換します。2つ目は、2回目来店と周回のインセンティブです。当日のレシート提示でリピート挑戦権をお渡しし、買物、遊ぶ、また買物という回遊ループを施設内に作ります。3つ目は、SNS・メディアの拡散装置としての機能です。専用フォトブースでの体験動画や写真のシェアが、オーガニックな施設ブランディングにつながります。</p>
       <audio controls src="audio/slide_6.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
 
-  <!-- 7: 展開場所・イベント適用例 -->
+  <!-- 7: 施設運営に配慮した安全・設営仕様 -->
   <section class="slide">
     <span class="slide-number mono">07</span>
     <div class="slide-body">
-      <h2>展開場所・イベント適用例</h2>
+      <h2>既存運用を妨げない、パッケージ化された安全・省力設計</h2>
       <div class="slide-content">
-        <ul class="plain">
-          <li><strong>アトリウム・催事広場</strong> — 屋内大型吹き抜け空間でのメインイベントとして開催</li>
-          <li><strong>Shibuya Sakura Stage等イノベーション拠点</strong> — 最先端ロボティクス×エンタメのPoC展示・体験会</li>
-          <li><strong>キューズモール等ファミリー向け施設</strong> — 休日ファミリー層に向けた体験型集客イベント</li>
-        </ul>
-        <p class="fill">※プレイ映像の取り扱い（撮影同意の取得、配布方法）は安全性を優先して検討中</p>
+        <table class="data-table">
+          <thead><tr><th>項目</th><th>運用設計</th><th>安全・施設配慮のポイント</th></tr></thead>
+          <tbody>
+            <tr><td>区画スペース</td><td>約6m×8m程度（可動式安全フェンス設置）</td><td>通行人の動線阻害を防ぐ専用ギャラリーエリア確保</td></tr>
+            <tr><td>安全管理</td><td>非常停止スイッチ＋専任オペレーター2名体制</td><td>センサー検知・手動介入の2重安全システムを標準設計として組込み</td></tr>
+            <tr><td>電源・設備</td><td>既存のAC100V電源1系統のみで稼働（低消費電力）</td><td>特殊な仮設工事は一切不要。設営・撤収は各1時間程度で完結し、原状回復も容易</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
     <div class="talk-script">
       <span class="script-label">🗣 台本</span>
-      <p>展開場所のイメージです。アトリウムや催事広場のような屋内大型吹き抜け空間では、メインイベントとして開催できます。Shibuya Sakura Stageのようなイノベーション拠点では、最先端ロボティクス×エンタメのPoC展示・体験会として。キューズモールのようなファミリー向け施設では、休日のファミリー層に向けた体験型集客イベントとして、様々な貴社アセットに対応できると考えています。なお、プレイ映像の撮影同意や配布方法については、安全性を優先して検討している段階です。</p>
+      <p>運用面は、既存の施設運用を妨げないパッケージとして設計しています。区画スペースは約6m×8m程度、可動式の安全フェンスで通行人の動線を阻害しない専用ギャラリーエリアを確保します。安全管理は非常停止スイッチと専任オペレーター2名体制。センサー検知と手動介入という2重の安全システムを標準設計として組み込んでいます。電源は既存のAC100V1系統のみ。特殊な仮設工事は一切不要で、設営・撤収は各1時間程度で完結し、原状回復も容易です。大がかりな施工を伴わない、非常にローリスクな運用パッケージだとお考えください。</p>
       <audio controls src="audio/slide_7.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
 
-  <!-- 8: AIロボットと本気で遊ぶ、新しい街の風景を。 -->
+  <!-- 8: 展開場所・イベント適用例 -->
   <section class="slide">
     <span class="slide-number mono">08</span>
     <div class="slide-body">
-      <h2>AIロボットと本気で遊ぶ、新しい街の風景を。</h2>
+      <h2>展開場所・イベント適用例</h2>
+      <p class="lead">ソフトの変更により、施設ごとの顧客層に最適化した演出・難易度へ柔軟にチューニング可能</p>
       <div class="slide-content">
-        <ul class="plain">
-          <li>「悔しさ」を生むゲーム設計が、1回で終わらない周回・リピートを生む</li>
-          <li>「体験映像」のシェアが、Z世代・ファミリーを呼ぶ自走型のPRになる</li>
-          <li><strong>「人×AIの共存エンタメ」</strong>が、東急不動産の施設を唯一無二の目的地に変える</li>
-        </ul>
-        <p class="impact-note">まずは今日のQ&amp;Aと実機体験で、この「悔しさ」を体感してください！</p>
+        <div class="venue-row">
+          <div class="venue-card">
+            <img src="assets/venue-sakura-stage.jpg" alt="Shibuya Sakura Stage の外観">
+            <h3>Shibuya Sakura Stage</h3>
+            <p>最先端イノベーションの発信・PoC展示として。</p>
+          </div>
+          <div class="venue-card">
+            <img src="assets/venue-qs-mall.jpg" alt="あべのキューズモールの外観">
+            <h3>キューズモール</h3>
+            <p>ファミリー向けに難易度を調整したポップな体験型集客イベントとして。</p>
+          </div>
+          <div class="venue-card">
+            <img src="assets/venue-kabukicho-tower.jpg" alt="東急歌舞伎町タワーの外観">
+            <h3>東急歌舞伎町タワー</h3>
+            <p>ナイトタイムエコノミーや若者層を狙った高難易度・ナイトモードイベントとして。</p>
+          </div>
+        </div>
+        <div class="venue-foot">
+          <p class="venue-credit">画像出典：各施設公式サイト</p>
+        </div>
       </div>
     </div>
     <div class="talk-script">
       <span class="script-label">🗣 台本</span>
-      <p>私たちが目指すのは、AIロボットと本気で遊ぶ、新しい街の風景です。「悔しい、もう一回！」を生むゲーム設計が、1回で終わらない周回とリピートを生みます。その「悔しさ」を含んだ体験映像のシェアが、Z世代やファミリー層を呼び込む自走型のPRになります。この人とAIが共存するエンタメこそが、東急不動産様の施設を唯一無二の目的地に変えると信じています。まずは今日のQ&amp;Aと実機体験で、この「悔しさ」をぜひ体感してください。ご清聴ありがとうございました。</p>
+      <p>展開場所のイメージです。重要なのは、ハードを入れ替えずソフトの変更だけで、施設ごとの顧客層に合わせて演出と難易度をチューニングできる点です。Shibuya Sakura Stageでは、最先端イノベーションの発信・PoC展示として。キューズモールでは、ファミリー向けに難易度を調整したポップな体験型集客イベントとして。東急歌舞伎町タワーでは、ナイトタイムエコノミーや若者層を狙った高難易度のナイトモードイベントとして。アトリウムや催事広場のような屋内の広い空間があれば開催できるため、貴社の多様なアセットへ同じ仕組みで展開できます。</p>
       <audio controls src="audio/slide_8.wav" style="width:100%;margin-top:0.4rem"></audio>
+    </div>
+  </section>
+
+  <!-- 9: AIロボットと本気で遊ぶ、新しい街の風景を。 -->
+  <section class="slide">
+    <span class="slide-number mono">09</span>
+    <div class="slide-body">
+      <h2>人とAIが共存する、東急不動産様の新しいアセット価値へ</h2>
+      <div class="slide-content">
+        <ul class="plain">
+          <li><strong>熱量を生む体験設計</strong> — 「悔しさ・達成感」を伴う質の高いCXが、施設へのリピートとファン化を生む</li>
+          <li><strong>自走型PRとデータ蓄積</strong> — 来場者の自発的な動画拡散と、体験データの蓄積によるマーケティング活用</li>
+          <li><strong>唯一無二の目的地化</strong> — 単なる「買物の場」を超え、最先端の体験価値を提供する施設ブランディングをグループ全体へ展開</li>
+        </ul>
+      </div>
+    </div>
+    <div class="talk-script">
+      <span class="script-label">🗣 台本</span>
+      <p>私たちが目指すのは、人とAIが共存する、東急不動産様の新しいアセット価値です。ポイントは3つ。1つ目は、熱量を生む体験設計。「悔しい、もう一回」という感情を伴う質の高い顧客体験が、施設へのリピートとファン化を生みます。2つ目は、自走型のPRとデータ蓄積。来場者の自発的な動画拡散に加え、体験データが貯まり、マーケティングに活用できます。3つ目は、唯一無二の目的地化。単なる買物の場を超えた最先端の体験価値を、グループ全体の施設ブランディングへ展開していきます。ご清聴ありがとうございました。</p>
+      <audio controls src="audio/slide_9.wav" style="width:100%;margin-top:0.4rem"></audio>
     </div>
   </section>
 
@@ -545,7 +784,7 @@
 
 <div class="present-bar no-print">
   <button onclick="prev()">← 前へ</button>
-  <span><span id="slideNo" class="mono">1</span> / 8</span>
+  <span><span id="slideNo" class="mono">1</span> / 9</span>
   <span>経過 <span id="stopwatch" class="mono">0:00</span></span>
   <span>このスライド <span id="slideWatch" class="mono">0:00</span><span id="slideBudget" class="mono budget">/0:00</span></span>
   <button onclick="toggleScript()">台本 表示/隠す</button>
@@ -570,7 +809,7 @@
 <script>
   (function () {
     var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
-    var CUM_END = [15, 45, 75, 195, 220, 245, 275, 320];
+    var CUM_END = [15, 45, 75, 195, 240, 265, 290, 320, 365];
     var SLIDE_BUDGET = CUM_END.map(function (end, i) {
       return i === 0 ? end : end - CUM_END[i - 1];
     });
