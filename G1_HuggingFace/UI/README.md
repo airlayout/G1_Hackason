@@ -42,10 +42,10 @@ bash Main/run.sh --nav http      # UI 本体は素の venv のまま
   ```
 - YOLO の重み `Main/yolo26n.pt`。無ければ初回起動時に自動ダウンロードされる
   （`.gitignore` の `*.pt` で除外。リポジトリには含めない）
-- ⚠️ **サンプル動画は git に入っていない**（2026-09-20 の判断。リポジトリを重くしない
-  ため）。`Reference/` に自分で置くこと。無いと `run.sh` が
-  「動画が見つかりません」で止まる。実機に繋ぐ場合は `config.yaml` の
-  `video.source` を `zmq` にすれば動画は要らない
+- ⚠️ **既定は実機カメラ（`video.source: zmq`）。** 実機が無いところで画面だけ作るなら
+  `video` に戻すこと。ただし**サンプル動画は git に入っていない**ので（2026-09-20 の判断。
+  リポジトリを重くしないため）`Reference/` に自分で置く。無いと `run.sh` は
+  「動画が見つかりません」で止まる
 
 ## つくり
 
@@ -60,6 +60,53 @@ UI サーバ（操作PC の venv・ROS 非依存）
         ├── MockNavSource    … 実機も ROS も無しで画面を作るとき
         └── HttpNavSource ──HTTP──> Adapter/ros_adapter.py（Docker・rclpy）──> ROS
 ```
+
+### 実機のカメラ（`Camera/`）
+
+```bash
+# ① 操作PC と G1 を有線でつなぐ（ケーブルを挿しただけでは IP が付かない）
+nmcli connection up g1-link          # 192.168.123.222/24。戻すのは con down
+
+# ② ロボット側で配信を始める
+scp Camera/camera_server.py g1:~/g1_ui_camera/
+ssh g1 'python3 ~/g1_ui_camera/camera_server.py --list'        # 開けるカメラを見る
+ssh g1 'nohup setsid python3 ~/g1_ui_camera/camera_server.py --device 6 \
+        > ~/g1_ui_camera/camera.log 2>&1 < /dev/null &'
+ssh g1 'pkill -f g1_ui_camer[a]'                                # 止める
+
+# ③ UI 側は config.yaml の video.source を zmq にするだけ
+```
+
+#### ⚠️ G1 のカメラの割り当て（2026-09-23 に実測）
+
+`/dev/video0`〜`7` が並ぶが、**開けるのは一部だけで、名前からは何か分からない。**
+`--list` は平均輝度も出すので手掛かりになる。
+
+| デバイス | 正体 |
+|---|---|
+| **`video6` `video7`** | **USB 接続の「Full HD webcam」**（Sunplus 1bcf:2283）。**カラー。これを使う** |
+| `video0`〜`video3` | Intel RealSense（`video1` がカラー） |
+| `video4` `video5` | Intel RealSense（`video2` `video5` は **IR**。赤外ドットパターンが写る） |
+
+素性は `cat /sys/class/video4linux/video*/name` と `readlink -f .../device` で確かめられる。
+
+#### ⚠️ `run_g1_server.py --camera` を使わない理由
+
+lerobot 同梱のあれは **DDS↔ZMQ のロボット指令ブリッジ**で、`LowCmd`（モーター指令）を
+ロボットへ中継し `MotionSwitcherClient` を持つ。カメラはその「おまけ」に過ぎない。
+**映像を見るためだけに指令経路を開けるべきではない。**
+（ついでに `--camera-device` の既定値 4 は実機では開けない。）
+
+#### ⚠️ JPEG は RGB で符号化すること
+
+受信側（`ZmqFrameSource`）が `cv2.COLOR_RGB2BGR` で戻す前提。BGR のまま送ると
+**赤と青が入れ替わる**。
+
+#### ⚠️ `pkill -f` が自分自身に当たる
+
+SSH で流すコマンド行に `camera_server.py` というパスが含まれるため、同じコマンドの中で
+`pkill -f camera_server.py` すると**自分のシェルごと落ちる**（実際に2回踏んだ）。
+停止と起動は**別の ssh に分ける**か、パスを含まないパターン（`g1_ui_camer[a]`）を使う。
 
 ### ROS アダプタ（`Adapter/`）
 
@@ -129,6 +176,7 @@ heartbeat 途絶による自動 FAULT に任せ、画面には状態表示だけ
 | `Main/nav/base.py` | **UI と ROS の境界。** ここに ROS の語彙を持ち込まない |
 | `Main/nav/mock.py` | 実地図の上を歩くモック。状態機械は実機の断り方に合わせてある |
 | `Main/nav/http_source.py` | ROS アダプタに繋ぐ側 |
+| `Camera/camera_server.py` | **実機のカメラを ZMQ で配信する。ロボット本体で動かす**（下記） |
 | `Adapter/ros_adapter.py` | **ROS アダプタ本体。** rclpy + HTTP。Docker の中で動く |
 | `Adapter/run.sh` | アダプタを Docker で起動する |
 | `Adapter/mock/fake_ros.py` | 偽の ROS 側（実機なしでアダプタを試すため） |
@@ -146,7 +194,7 @@ heartbeat 途絶による自動 FAULT に任せ、画面には状態表示だけ
 
 | 項目 | 既定 | 意味 |
 |---|---|---|
-| `video.source` | `video` | `video` / `zmq`（実機）/ `webcam` |
+| `video.source` | **`zmq`** | `zmq`（実機）/ `video`（手元の動画）/ `webcam` |
 | `video.realtime` | true | 動画を実時間で流す（余りは捨てる）。下記 |
 | `nav.source` | `mock` | `mock` / `http`（ROS アダプタ） |
 | `detector.confidence_threshold` | 0.5 | 下げても検出はほぼ増えない（下記の実測） |
