@@ -42,10 +42,10 @@ bash Main/run.sh --nav http      # UI 本体は素の venv のまま
   ```
 - YOLO の重み `Main/yolo26n.pt`。無ければ初回起動時に自動ダウンロードされる
   （`.gitignore` の `*.pt` で除外。リポジトリには含めない）
-- ⚠️ **サンプル動画は git に入っていない**（2026-09-20 の判断。リポジトリを重くしない
-  ため）。`Reference/` に自分で置くこと。無いと `run.sh` が
-  「動画が見つかりません」で止まる。実機に繋ぐ場合は `config.yaml` の
-  `video.source` を `zmq` にすれば動画は要らない
+- ⚠️ **既定は実機カメラ（`video.source: zmq`）。** 実機が無いところで画面だけ作るなら
+  `video` に戻すこと。ただし**サンプル動画は git に入っていない**ので（2026-09-20 の判断。
+  リポジトリを重くしないため）`Reference/` に自分で置く。無いと `run.sh` は
+  「動画が見つかりません」で止まる
 
 ## つくり
 
@@ -60,6 +60,68 @@ UI サーバ（操作PC の venv・ROS 非依存）
         ├── MockNavSource    … 実機も ROS も無しで画面を作るとき
         └── HttpNavSource ──HTTP──> Adapter/ros_adapter.py（Docker・rclpy）──> ROS
 ```
+
+### 実機のカメラ（`Camera/`）
+
+```bash
+# ① 操作PC と G1 を有線でつなぐ（ケーブルを挿しただけでは IP が付かない）
+nmcli connection up g1-link          # 192.168.123.222/24。戻すのは con down
+
+# ② ロボット側で配信を始める
+scp Camera/camera_server.py g1:~/g1_ui_camera/
+ssh g1 'python3 ~/g1_ui_camera/camera_server.py --list'        # 開けるカメラと安定名
+# ⚠️ --device は **by-id の安定名**を使う（下記）
+ssh g1 'nohup setsid python3 ~/g1_ui_camera/camera_server.py \
+        --device /dev/v4l/by-id/usb-SunplusIT_Inc_Full_HD_webcam_...-video-index0 \
+        > ~/g1_ui_camera/camera.log 2>&1 < /dev/null &'
+ssh g1 'pkill -f g1_ui_camer[a]'                                # 止める
+
+# ③ UI 側は config.yaml の video.source を zmq にするだけ
+```
+
+#### ⚠️ G1 のカメラの割り当て（2026-09-23 に実測）
+
+`/dev/video0`〜`7` が並ぶが、**開けるのは一部だけで、名前からは何か分からない。**
+`--list` は平均輝度も出すので手掛かりになる。
+
+| デバイス | 正体 |
+|---|---|
+| **`video6` `video7`** | **USB 接続の「Full HD webcam」**（Sunplus 1bcf:2283）。**カラー。これを使う** |
+| `video0`〜`video3` | Intel RealSense（`video1` がカラー） |
+| `video4` `video5` | Intel RealSense（`video2` `video5` は **IR**。赤外ドットパターンが写る） |
+
+素性は `cat /sys/class/video4linux/video*/name` と `readlink -f .../device` で確かめられる。
+
+#### ⚠️⚠️ 番号（`/dev/videoN`）で指定しないこと
+
+**USB が再認識されると番号が変わる。** 2026-09-23 の実機で、配信中に
+`/dev/video6` が消えて `/dev/video7` になり（USB の Device 番号も 005→006）、
+映像が止まった。`--list` が出す **by-id の安定名**を使うこと。
+
+```
+--device /dev/v4l/by-id/usb-SunplusIT_Inc_Full_HD_webcam_J20230323V1-video-index0
+```
+
+読めなくなったら 10 回で**カメラを開き直す**ようにもしてある。安定名を指定していれば
+再認識からそのまま復帰する（番号指定だと復帰できない）。
+
+#### ⚠️ `run_g1_server.py --camera` を使わない理由
+
+lerobot 同梱のあれは **DDS↔ZMQ のロボット指令ブリッジ**で、`LowCmd`（モーター指令）を
+ロボットへ中継し `MotionSwitcherClient` を持つ。カメラはその「おまけ」に過ぎない。
+**映像を見るためだけに指令経路を開けるべきではない。**
+（ついでに `--camera-device` の既定値 4 は実機では開けない。）
+
+#### ⚠️ JPEG は RGB で符号化すること
+
+受信側（`ZmqFrameSource`）が `cv2.COLOR_RGB2BGR` で戻す前提。BGR のまま送ると
+**赤と青が入れ替わる**。
+
+#### ⚠️ `pkill -f` が自分自身に当たる
+
+SSH で流すコマンド行に `camera_server.py` というパスが含まれるため、同じコマンドの中で
+`pkill -f camera_server.py` すると**自分のシェルごと落ちる**（実際に2回踏んだ）。
+停止と起動は**別の ssh に分ける**か、パスを含まないパターン（`g1_ui_camer[a]`）を使う。
 
 ### ROS アダプタ（`Adapter/`）
 
@@ -80,6 +142,19 @@ UI サーバ（操作PC の venv・ROS 非依存）
 | `/g1/enable_navigation` | SetBool（`disable_navigation` は false を送る） |
 | `/g1/stop` `/g1/clear_fault` | Trigger |
 | `/g1/patrol/{start,pause,stop,skip}` | Trigger |
+
+#### ⚠️⚠️ DDS を有線に固定すること
+
+操作PC は WiFi（既定経路）と有線（G1 側）の2つを持つ。固定しないと CycloneDDS が
+**WiFi 側を選んで「トピックは見えるのにデータが来ない」**という分かりにくい壊れ方を
+する（PC2 側も同じ理由で `eth0` に固定している）。`Adapter/run.sh` が
+`cyclonedds_operator.xml` をコンテナへ渡して固定する。
+
+- インターフェース名は `G1_UI_IFACE`（既定 `enp3s0`）。`ip -br addr` で確かめること
+- ⚠️ **有線はケーブルを挿しただけでは IP が付かない。** `nmcli connection up g1-link`
+- ⚠️ PC2 は 2026-09-15 に FastDDS → **CycloneDDS** に変わっている。
+  `tools/rviz_operate.sh` の既定は `rmw_fastrtps_cpp` のままなので、あちらを使うときは
+  `G1_RMW=rmw_cyclonedds_cpp` が要る
 
 ⚠️ **古い TF は出さない。** `--stale-s`（既定 3 秒）より古ければ現在地を `null` にして
 UI に「取れていない」と描かせる。止まった自己位置が生きているように見えるのが
@@ -129,6 +204,7 @@ heartbeat 途絶による自動 FAULT に任せ、画面には状態表示だけ
 | `Main/nav/base.py` | **UI と ROS の境界。** ここに ROS の語彙を持ち込まない |
 | `Main/nav/mock.py` | 実地図の上を歩くモック。状態機械は実機の断り方に合わせてある |
 | `Main/nav/http_source.py` | ROS アダプタに繋ぐ側 |
+| `Camera/camera_server.py` | **実機のカメラを ZMQ で配信する。ロボット本体で動かす**（下記） |
 | `Adapter/ros_adapter.py` | **ROS アダプタ本体。** rclpy + HTTP。Docker の中で動く |
 | `Adapter/run.sh` | アダプタを Docker で起動する |
 | `Adapter/mock/fake_ros.py` | 偽の ROS 側（実機なしでアダプタを試すため） |
@@ -146,7 +222,7 @@ heartbeat 途絶による自動 FAULT に任せ、画面には状態表示だけ
 
 | 項目 | 既定 | 意味 |
 |---|---|---|
-| `video.source` | `video` | `video` / `zmq`（実機）/ `webcam` |
+| `video.source` | **`zmq`** | `zmq`（実機）/ `video`（手元の動画）/ `webcam` |
 | `video.realtime` | true | 動画を実時間で流す（余りは捨てる）。下記 |
 | `nav.source` | `mock` | `mock` / `http`（ROS アダプタ） |
 | `detector.confidence_threshold` | 0.5 | 下げても検出はほぼ増えない（下記の実測） |
@@ -242,14 +318,19 @@ RViz の「2D Goal Pose」専用。**`/plan` の終点から取ること。**
 
 ## 次にやること
 
-1. **実機に繋ぐ。** 本物の Nav2 までは通してあるが、物理・実 LiDAR は未検証。
-   PC2 で Nav2 が上がっている状態で `bash Adapter/run.sh` → `bash Main/run.sh --nav http`
+1. **自己位置を合わせる。** 2026-09-23 は**座位のまま・`map_to_odom` を `0 0 0`** で
+   通しただけなので、**地図上の位置は合っていない**。手順書 §7
+   （`find_map_offset.py --yaw-range 180`）が要る。⚠️ 座位だと LiDAR の高さが
+   地図作成時と違うので、立たせてから測ること
+2. **PC2 を再配置する。** 2026-09-23 時点の PC2 は 9/15 の配置のままで、
+   **地図が 9/07 の旧版**（28.5×33.0m）、**巡回ノードが入っていない**（`g1_patrol` が
+   ノード一覧に出ない＝巡回路は常に 0 点）。`deploy/README.md` の手順で更新すること
    - ⚠️ `ROS_DOMAIN_ID` を PC2 と合わせること（`G1_DOMAIN=...`）
    - ⚠️ **`/map` が来ないと地図が出ない。** `map_server` が上がっているか確認する
    - ⚠️ 地図の原点が回転している場合、UI の座標変換は軸平行を前提にしているのでずれる
      （アダプタが警告を出す）
-2. **実機のカメラ映像を録る**（`run_g1_server.py --camera` の ZMQ を保存）。
+3. **実機のカメラ映像を録る**（`run_g1_server.py --camera` の ZMQ を保存）。
    録画スクリプトはまだ無い
-3. **コンテナの出どころを決める。** いまは Mapping トラックの
+4. **コンテナの出どころを決める。** いまは Mapping トラックの
    `g1-mapping-visualization:local` を借りている。向こうが作り直すと動かなくなりうるので、
    固定するか派生イメージを持つかを決めること（`G1_UI_IMAGE` で差し替えられる）
