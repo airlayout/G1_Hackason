@@ -1,6 +1,6 @@
 # 引き継ぎ — 次にこれを触る人へ
 
-最終更新: **2026-09-16**（実機なし。旋回の再現検証と巡回モードの実装）
+最終更新: **2026-09-23**（機体は座位のまま接続。**9/16 の成果を PC2 へ配置**し、残っていた記録を回収・解析した）
 
 このファイルは「**次に何をすればいいか**」だけを書く。何があったかの記録は
 [Planning.md](Planning.md) の A-10n、当日の操作手順は
@@ -26,6 +26,7 @@
 ### ① 旋回デッドロックの対処を実機で試す ← **最優先。10分で終わる**
 
 **今日の失敗のほぼ全部がこれで説明できる。** 対処はコミット済みだが**実機で未検証**。
+📌 **2026-09-23 に PC2 へ配置・再ビルド済み**（`install/` の `nav2_params.yaml` が`max_angular_accel: 6.0` / `PoseProgressChecker` になっていることを確認）。**残っているのは実機で見ることだけ。**
 
 RPP の rotate-to-heading は**実測角速度を基準に**加速度制限をかけるため、
 
@@ -206,7 +207,8 @@ ssh g1              # ros:foxy(1) noetic(2)? には **Enter だけ**
 意図的に座位などで進めたいときは `--force-posture`。
 
 ⚠️ **発進ゲートの開放と Goal 送信はしない**（人の判断を残すため）。最後に次の手順を表示する。
-⚠️ **まだ実機で動かしていない。** 失敗したら下の手動手順に落ちること。
+⚠️ **まだ実機で最後まで動かしていない。** 2026-09-23 に `--dry-run` が §0〜§2 まで通ることだけ確認した（§2 で `G1_ARM=--arm` を検出して正しく止まった）。失敗したら下の手動手順に落ちること。
+⚠️ **NOPASSWD が未設定なので、§2 の `sudo systemctl start` でパスワードを聞かれる。**
 配置と NOPASSWD の設定は [deploy/README.md](deploy/README.md) を参照。
 
 ### 手動手順（`g1up.sh` が転んだとき / 中身を知りたいとき）
@@ -306,14 +308,17 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
 | | |
 |---|---|
 | `pc2_humble/` | pixi の Humble + navigation2 1.1.20（aarch64）。**docker も sudo も不要** |
-| `g1_ws/` | ビルド済み（3パッケージ） |
-| `tools/` | リポジトリと同期済み |
-| `start_nav.sh` / `start_record.sh` / `start_localizer.sh` | 起動スクリプト。⚠️ **2026-09-16 に更新した。配置し直すこと**（既定地図の切り替え・巡回路の受け渡し・`start_localizer.sh` の引数化） |
-| `runs/` | **記録が 4 本残っている**（回収して `explain_run.py` に掛けること） |
+| `g1_ws/` | ✅ **2026-09-23 に再ビルド済み**（3パッケージ）。`max_angular_accel: 6.0` / `PoseProgressChecker` / `patrol_node.py` / 新地図 `room_a_map_20260911` が `install/` に入っていることを確認した |
+| `tools/` | ✅ リポジトリと同期済み（`patrol_ctl.sh` / `record_waypoints.py` を含む） |
+| `start_nav.sh` / `start_record.sh` / `start_localizer.sh` / `g1up.sh` | ✅ **2026-09-23 に配置済み**（`--dry-run` が §0〜§2 まで通ることを確認） |
+| `runs/` | ✅ **2026-09-23 に 6 本すべて回収・解析した**（下記）。PC2 側にも残してある |
 | 動いたままかもしれないもの | Nav2 一式、`g1-sdk-bridge`。⚠️ **`/etc/default` は `G1_ARM=--arm` のまま**。ただしサービスは `enable` されていないので再起動後は自動起動しない |
 
 ⚠️ **次回接続したら真っ先に `grep '^G1_ARM=' /etc/default/g1-sdk-bridge` を見ること。**
 `--arm` のままなので、`systemctl start` した瞬間に武装する。
+**2026-09-23 時点でも `--arm` のまま**（サービスは `inactive`）。`sudo` はパスワードが要るので人が閉じること。`g1up.sh --dry-run` は §2 でこれを検出して止まる。
+
+⚠️ **`/etc/sudoers.d/` に `g1-bridge`（NOPASSWD）が入っていない**（2026-09-23 確認。中身は配布時の `README` だけ）。`g1up.sh` は §2 の `sudo systemctl start g1-sdk-bridge` でパスワードを聞く。入れるなら [deploy/README.md](deploy/README.md) の「一度だけ必要な設定」を実行すること（許可するのは**ゲートを閉じたままの起動だけ**）。
 
 ### 操作PC
 
@@ -330,7 +335,11 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
 - **`backup` を含まない BT XML** を作って差し替える（落とし穴8の恒久対策）
 - **`obstacle_min_range: 0.9` の副作用**の確認。0.9m より近い実在の障害物は
   新たにはマークされない。死角(0.91〜1.12m)と整合しているが、詰めきれていない
-- PC2 の `runs/` 4本の回収と解析
+- ~~PC2 の `runs/` の回収と解析~~ ✅ **2026-09-23 に完了**（6 本。`_local/nav2_runs/` に回収し、各ディレクトリに `explain.txt` を置いた）
+  - ⚠️ **5 本は `metadata.yaml` が無く、そのままでは開けなかった**（記録を正常終了させずに落としたため）。`ros2 bag reindex -s sqlite3 <dir>` で復旧できる
+  - 停止理由は **`cmd_timeout` 6 回 / `operator_lost` 2 回**。Goal は **SUCCEEDED 2 件**、残りは ABORTED / CANCELED
+  - **旋回デッドロックが記録にそのまま残っている**: `/cmd_vel_smoothed` の wz が**`-0.020` に張り付いたまま**動かない。①の実機確認では同じ区間で **0.3 前後まで上がるか**を見ればよい（比較の基準値がこれで手に入った）
+  - 4 本は同じ時間帯を重複して記録している（`explain.txt` の時刻が食い違うのはこのため）
 - **自己位置の異常検知**（2026-09-16 に整理。**結論: いまは作らない**）
 
   走行を止める条件は TF鮮度 / センサー鮮度 / heartbeat / cmd_timeout / E-stop /
