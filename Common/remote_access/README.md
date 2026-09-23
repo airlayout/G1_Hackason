@@ -91,6 +91,8 @@ Slackワークスペース「P.AI Nexus Japan ハッカソン」（painexusjapan
 
 ## 関連
 
+- [isaac_sim_streaming.md](./isaac_sim_streaming.md) — Isaac SimのGUIだけを
+  WebRTCで低遅延に遠隔操作したい場合の手順（本ドキュメントのSSH/RDPとは別方式）
 - [Common/shared-pc/README.md](../shared-pc/README.md) — このPC自体のスペック・セットアップ状況
 - [Common/network/README.md](../network/README.md) — G1本体とのEthernet直結・疎通確認
   （こちらはロボット本体との通信、本ドキュメントは開発PCへの遠隔接続という別レイヤー）
