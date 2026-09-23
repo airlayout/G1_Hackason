@@ -1,84 +1,61 @@
 # Tailscaleによる開発PCへの遠隔接続
 
-開発PC（G1のホストPC / GPUマシンなど）に外出先・自宅から安全にリモート接続し、
-SSH開発やGUI確認を行うための手順。エンタメ・警備チーム共通で使う。
+開発PC（例: OMEN Ubuntu共有PC）に外出先・自宅から安全にリモート接続し、
+SSH開発やGUI操作を行うための手順。エンタメ・警備チーム共通で使う。
+
+管理者（小林）がTailscaleの招待リンクを発行し、各メンバーはそのリンクを
+承諾する形でTailnetに参加する運用。個人で新規Tailnetを作る必要はない。
 
 ## 前提
 
-- 開発PC・接続元PCの両方が同じTailnet（Tailscaleネットワーク）に参加していること
-- 開発PC側でTailscaleがインストール済み・ログイン済みであること
-- 社内で使うTailscaleアカウント（組織のTailnet）を利用すること
-  （個人アカウントで新規Tailnetを作らない。他メンバーと同じTailnetに入る）
+- 招待リンクは管理者（小林）が発行する。まだ持っていない場合は本人に連絡する
+- 対象の開発PC側は既にTailscaleセットアップ済み（管理者が対応）
 
-## 開発PC側のセットアップ（初回のみ）
+## 接続手順（メンバー側）
 
-### 1. Tailscaleのインストール
+### 1. 招待リンクを開いてTailscaleに参加する
 
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-```
+管理者から共有される招待リンク（例: `https://login.tailscale.com/admin/invite/xxxxxxxxxxxx`）
+を開き、案内に従ってTailscaleアカウントを作成・承認する。
 
-### 2. ログイン
+### 2. 手元のPCにTailscaleアプリを入れる
 
-```bash
-sudo tailscale up
-```
-
-表示されるURLをブラウザで開き、組織のTailscaleアカウントで認証する。
-
-### 3. SSHを有効化する（Tailscale SSH機能を使う場合）
-
-Tailscale自体にSSH機能があり、これを使うとSSH鍵の配布・管理が不要になる。
-
-```bash
-sudo tailscale up --ssh
-```
-
-これにより、同一Tailnet内の許可された端末からTailscaleのIDベース認証だけで
-SSHログインできるようになる（ACLでのアクセス制御は管理者コンソールで設定）。
-
-### 4. 起動時の自動接続を確認する
-
-```bash
-sudo systemctl enable --now tailscaled
-```
-
-再起動後も自動的にTailnetへ再接続されることを確認する。
-
-### 5. マシン名の確認
-
-```bash
-tailscale status
-```
-
-自分の開発PCの名前（`<hostname>.<tailnet-name>.ts.net`）を控えておく。
-チームで共有する際はこの名前を使う（IPは固定ではないため名前解決を使う）。
-
-## 接続元PCからの利用方法
-
-### 1. Tailscaleのインストール・ログイン
-
-開発PC側と同じ組織のTailscaleアカウントでログインする。
-
-- macOS/Windows: 公式アプリをインストールしてログイン
+- macOS/Windows: [公式サイト](https://tailscale.com/download)からアプリをインストールし、
+  手順1で作成したアカウントでログインして有効化する
 - Linux: `curl -fsSL https://tailscale.com/install.sh | sh` → `sudo tailscale up`
 
-### 2. SSH接続
+有効化後、開発PCのTailscale IP（例: `100.99.102.70`。管理者から連絡される）へ
+到達できるようになる。
 
-Tailscale SSHを有効化済みの場合:
+### 3-A. CUI・コマンド作業（SSH）
 
 ```bash
-ssh <user>@<hostname>.<tailnet-name>.ts.net
+ssh ubuntu@<開発PCのTailscale IP>
 ```
 
-通常のSSH鍵運用をしている場合も、接続先ホスト名をTailscaleのマシン名に
-置き換えるだけで同様に接続できる（`~/.ssh/config`の`HostName`を書き換える）。
+例:
 
-### 3. GUI/リモートデスクトップ
+```
+% ssh ubuntu@100.99.102.70
+ubuntu@100.99.102.70's password:
+Welcome to Ubuntu 24.04.4 LTS (GNU/Linux 7.0.0-31-generic x86_64)
+...
+(base) ubuntu@ubuntu-OMEN-16L-Gaming-Desktop-TG03-0xxx:~$
+```
 
-VNCやRDPなど既存のリモートデスクトップ手段を使う場合も、接続先ホストを
-TailscaleのマシンIP（`tailscale ip -4`で確認）またはマシン名に向ければ、
-社内ネットワーク外からでも同様に到達できる。
+パスワードは管理者から個別に共有されたものを使う。
+毎回パスワード入力したくない場合は、通常のSSH鍵運用と同様に鍵を登録できる:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_omen -N ""
+ssh-copy-id -i ~/.ssh/id_ed25519_omen.pub ubuntu@<開発PCのTailscale IP>
+```
+
+### 3-B. GUI・デスクトップ操作（リモートデスクトップ）
+
+1. RDPアプリを起動する（Mac: Microsoft Remote Desktop / Windows: リモートデスクトップ接続）
+2. 接続先に開発PCのTailscale IP（例: `100.99.102.70`）を入力する
+3. ユーザー名 `ubuntu` とパスワードを入力してログインする
 
 ## 開発の進め方
 
@@ -86,26 +63,24 @@ TailscaleのマシンIP（`tailscale ip -4`で確認）またはマシン名に�
   （例: [`SETUP.md`](../../SETUP.md)、[`IsaacSim_Env/SETUP.md`](../../IsaacSim_Env/SETUP.md)）
 - GPUを使う処理（Isaac Sim等）はリモート接続先の開発PC上で実行し、
   接続元PCは操作端末として使う想定
-- 複数人で同じ開発PCに同時接続する場合は、作業前に`tmux`/`screen`等で
+- **複数人で同じ開発PCに同時接続する可能性がある。** 作業前に`tmux`/`screen`等で
   セッションを分離し、他人の作業プロセスを誤って落とさないよう注意する
 
 ## トラブルシューティング
 
-### 接続できない
+### 接続できない・ログインエラーが出る
 
 ```bash
 tailscale status
 ```
 
-を開発PC・接続元PCの両方で実行し、双方がTailnetに`Connected`状態であることを
-確認する。`Offline`や見えない場合は、開発PC側で`tailscaled`が起動しているか
-（`systemctl status tailscaled`）を確認する。
+を実行し、自分の端末がTailnetに`Connected`状態になっているか確認する。
+`Offline`や一覧に開発PCが出てこない場合、または招待リンクの承認・アカウント作成で
+つまずいた場合は、管理者（小林）に連絡する。
 
-### 組織のACLで拒否される
+### パスワードが分からない
 
-Tailscale管理コンソール（[login.tailscale.com](https://login.tailscale.com/)）の
-ACL設定で、自分のアカウント・端末が対象の開発PCへのアクセスを許可されているか
-管理者に確認する。
+管理者（小林）に確認する。招待リンクとは別に個別共有される。
 
 ## 関連
 
