@@ -43,7 +43,9 @@ Welcome to Ubuntu 24.04.4 LTS (GNU/Linux 7.0.0-31-generic x86_64)
 (base) ubuntu@ubuntu-OMEN-16L-Gaming-Desktop-TG03-0xxx:~$
 ```
 
-パスワードは管理者から個別に共有されたものを使う。
+パスワードは、Slackワークスペース「P.AI Nexus Japan ハッカソン」
+（painexusjapan.slack.com）内を検索するか、見つからなければ他のメンバーに
+直接聞く。
 毎回パスワード入力したくない場合は、通常のSSH鍵運用と同様に鍵を登録できる:
 
 ```bash
@@ -80,7 +82,8 @@ tailscale status
 
 ### パスワードが分からない
 
-管理者（小林）に確認する。招待リンクとは別に個別共有される。
+Slackワークスペース「P.AI Nexus Japan ハッカソン」（painexusjapan.slack.com）内を
+検索する。見つからない場合は他のメンバーに聞く。
 
 ## 関連
 
