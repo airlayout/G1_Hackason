@@ -197,6 +197,16 @@ def _launch_setup(context, *args, **kwargs):
             # `--cmd-timeout 0.30` は据え置きなので、指令が途切れれば**機体は 0.3 秒で
             # ゼロ速度になる**。ここを伸ばして変わるのは「FAULT にして Goal ごと
             # 捨てるまでの猶予」だけで、**止まる速さは変わらない**。
+            #
+            # ⚠️ **2026-09-24 に 1.0 → 2.0 秒へ（利用者の判断）。** 1.0 でも復帰動作の
+            # 切り替わりで足りなかったため。**上限は heartbeat と同じ 2.0 まで**とする。
+            # これ以上にすると他の番人（heartbeat 2.0 / センサー鮮度 1.0 / TF 鮮度 0.5）の
+            # ほうが先に発火するので、この番人は名目だけになる。
+            # ⚠️ 伸ばすと増えるリスクは2つ:
+            #   1. **無人のまま再開する窓が広がる**。長く詰まったあと Nav2 が
+            #      **古い姿勢で計算した指令**を出して動き出しうる（FAULT なら Goal ごと捨てる）
+            #   2. **状態表示が嘘をつく時間が伸びる**。ROS 側が死んでも 2 秒間は
+            #      `NAVIGATING` のままで、UI も「走行中」と出し続ける
             "cmd_timeout": float(LaunchConfiguration("cmd_timeout").perform(context)),
             "require_tf": flag("require_tf"),
             "require_sensor": flag("require_sensor"),
@@ -215,8 +225,20 @@ def _launch_setup(context, *args, **kwargs):
              parameters=[configured_params], remappings=[("cmd_vel", "/cmd_vel_nav")]),
         Node(package="nav2_planner", executable="planner_server", name="planner_server",
              parameters=[configured_params]),
+        # ⚠️⚠️ **`cmd_vel` の付け替えが要る**(2026-09-24 に実機で判明)。
+        # `behavior_server`(spin / backup / wait)は既定で **`/cmd_vel`** に出すが、
+        # 下流は `controller_server` に合わせて `/cmd_vel_nav` → velocity_smoother →
+        # `/cmd_vel_smoothed` と繋がっており、`g1_cmd_router` は最後だけを見ている。
+        # 付け替えが無いと**復帰動作の指令はどこにも届かない**:
+        #   実機ログ: `/cmd_vel 非ゼロ (vx=0.000, wz=1.000)` の裏で
+        #             `/cmd_vel_smoothed` は**ゼロ**のまま
+        # その結果 **BT が復帰動作に入るたびに指令が必ず途切れ**、`cmd_timeout` で
+        # FAULT → Goal 取り消し → 人が clear_fault するまで停止、を繰り返していた。
+        # ⚠️ **`cmd_timeout` をいくら伸ばしても直らない**（spin は 10 秒級で粘るため）。
+        # 本家 nav2_bringup も velocity_smoother を使う構成では同じ付け替えをしている。
         Node(package="nav2_behaviors", executable="behavior_server", name="behavior_server",
-             parameters=[configured_params]),
+             parameters=[configured_params],
+             remappings=[("cmd_vel", "/cmd_vel_nav")]),
         Node(package="nav2_bt_navigator", executable="bt_navigator", name="bt_navigator",
              parameters=[configured_params]),
         Node(package="nav2_velocity_smoother", executable="velocity_smoother", name="velocity_smoother",
@@ -270,13 +292,13 @@ def generate_launch_description():
         # 既定は Nav2 の配線検証用の合成地図(連結した自由空間を保証)。
         # A-7 で生成した test_room.yaml はレイトレーシング前のもので自由空間が
         # 連結しておらず、経路計画のデモには使えない。
-        # ⚠️ 実機では **room_b_map_Sorasta_20260923.yaml** を渡す（2026-09-24。
-        # 会場が Sorasta に変わったため）。room_a の地図も残してある。
+        # ⚠️ 実機では **room_a_map_20260911.yaml** を渡す（2026-09-24 後半に room_a へ
+        # 戻した）。9/07 版(room_a_map.yaml)と Sorasta 版も残してある。
         DeclareLaunchArgument(
             "map", default_value=os.path.join(share, "maps", "synthetic_room.yaml")),
         DeclareLaunchArgument(
-            "cmd_timeout", default_value="1.0",
-            description="指令の途切れを何秒で FAULT にするか(2026-09-24 に 0.30 から変更)"),
+            "cmd_timeout", default_value="2.0",
+            description="指令の途切れを何秒で FAULT にするか(2026-09-24 に 0.30 → 1.0 → 2.0)"),
         DeclareLaunchArgument(
             "sensor_topic", default_value="",
             description=f"空なら {SENSOR_TOPIC}。モックも実機も同じ名前を使う"),

@@ -71,5 +71,5 @@ Navigation/nav2_option/g1_ws/log/
 Navigation/nav2_option/0911_robag/
 # 2026-09-23 に Sorasta で取った計測一式(rosbag 877MB + RGB 313MB)。地図の素
 Navigation/nav2_option/0923_rosbag/
-Navigation/nav2_option/*.pcd
+Navigation/nav2_option/maps/clouds/
 Navigation/*.pcd

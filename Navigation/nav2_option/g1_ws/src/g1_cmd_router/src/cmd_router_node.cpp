@@ -171,6 +171,52 @@ CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
             cancel_clients_.push_back(create_client<action_msgs::srv::CancelGoal>(name));
         }
     }
+    // --- D1: Goal が走っていないときは cmd_timeout を数えない ---------------
+    // ⚠️ **購読側は volatile にすること**(2026-09-24 にモックで踏んだ)。
+    // durability は「publisher >= subscriber」でしか繋がらないので、
+    // 購読側を transient_local にすると **volatile な publisher と一致せず、
+    // status が 1 件も届かない**(エラーも警告も出ない。購読は作られたまま黙る)。
+    // volatile で張れば publisher がどちらでも繋がる。
+    cmd_timeout_requires_goal_ = declare_parameter<bool>("cmd_timeout_requires_goal", true);
+    if (cmd_timeout_requires_goal_) {
+        const auto status_qos = rclcpp::QoS(rclcpp::KeepLast(10)).reliable();
+        std::vector<std::string> topics;
+        for (const auto& name : nav2_cancel_services_) {
+            if (!name.empty()) {
+                // `<action>/_action/cancel_goal` → `<action>/_action/status`
+                topics.push_back(name.substr(0, name.size() - std::string("cancel_goal").size()) +
+                                 "status");
+            }
+        }
+        // ⚠️ **復帰動作(spin / backup / wait)も「Nav2 は生きている」に数える。**
+        // とくに `wait` は**指令を1件も publish しない**まま既定 5 秒待つので、
+        // これを入れないと復帰のたびに cmd_timeout で FAULT に落ちる(2026-09-24)。
+        // 📌 代償: 復帰動作が走っている間は cmd_timeout が効かない。その窓で
+        // Nav2 が死んだ場合は TF 鮮度(0.5秒)とセンサー鮮度(1.0秒)が受け持つ。
+        for (const auto& extra : declare_parameter<std::vector<std::string>>(
+                 "nav2_activity_status_topics",
+                 std::vector<std::string>{"/spin/_action/status", "/backup/_action/status",
+                                          "/wait/_action/status"})) {
+            if (!extra.empty()) {
+                topics.push_back(extra);
+            }
+        }
+        for (const auto& topic : topics) {
+            goal_active_by_topic_[topic] = false;
+            sub_goal_status_.push_back(create_subscription<action_msgs::msg::GoalStatusArray>(
+                topic, status_qos,
+                [this, topic](const action_msgs::msg::GoalStatusArray::SharedPtr msg) {
+                    OnGoalStatus(topic, msg);
+                }));
+        }
+        RCLCPP_INFO(get_logger(), "Nav2 の生死を %zu 本の status で見る"
+                                  "(cmd_timeout は Goal か復帰動作が走っている間だけ)",
+                    topics.size());
+    } else {
+        RCLCPP_WARN(get_logger(), "cmd_timeout_requires_goal=false。"
+                                  "**Goal 到達のたびに FAULT に落ちる**(2026-09-24 以前の挙動)");
+    }
+
     if (cancel_clients_.empty()) {
         RCLCPP_WARN(get_logger(), "Nav2 Goal のキャンセルが無効。停止後に巡回が再開しうる");
     }
@@ -260,6 +306,36 @@ void CmdRouterNode::OnNavTwist(double vx, double vy, double omega, bool stamped)
     mgr_->OnNavTwist(vx, vy, omega);
 }
 
+bool CmdRouterNode::AnyGoalActive() const {
+    for (const auto& [topic, active] : goal_active_by_topic_) {
+        (void)topic;
+        if (active) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void CmdRouterNode::OnGoalStatus(const std::string& topic,
+                                 const action_msgs::msg::GoalStatusArray::SharedPtr msg) {
+    // ⚠️ **トピックごとに覚える。** 走っていない側の status(空)で、走っている側の
+    // true を消さないため。判定は AnyGoalActive() の OR で行う。
+    bool active = false;
+    for (const auto& status : msg->status_list) {
+        if (status.status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED ||
+            status.status == action_msgs::msg::GoalStatus::STATUS_EXECUTING) {
+            active = true;
+            break;
+        }
+    }
+    if (!logged_goal_status_) {
+        logged_goal_status_ = true;
+        RCLCPP_INFO(get_logger(), "Nav2 の状態を受信し始めた(%s active=%s)", topic.c_str(),
+                    active ? "true" : "false");
+    }
+    goal_active_by_topic_[topic] = active;
+}
+
 void CmdRouterNode::OnEStop(const std_msgs::msg::Bool::SharedPtr msg) {
     // ⚠️ **false が来ても解除しない。** 解除は `/g1/clear_estop` を人が叩くことだけ。
     // ここで自動解除すると、発信源のフラグが下がった瞬間に無人で走行が再開しうる。
@@ -312,6 +388,11 @@ void CmdRouterNode::OnTimer() {
         }
     }
 
+    // D1: Goal が走っていない間は cmd_timeout を数えない(2026-09-24)。
+    // ⚠️ **Tick() の前に呼ぶこと。** 後に置くと、この周期の判定には間に合わない。
+    if (cmd_timeout_requires_goal_ && !AnyGoalActive()) {
+        mgr_->SuspendCmdTimeout();
+    }
     mgr_->Tick();
     SendIpcKeepaliveIfIdle();
     CheckOperatorHeartbeat();

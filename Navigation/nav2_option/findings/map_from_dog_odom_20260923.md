@@ -33,7 +33,7 @@
 | | |
 |---|---|
 | 点群 | `quicklook_cloud_odom.npz`（**odom で融合済み** 727,459 点）を `.pcd` に変換 |
-| 軌跡 | `/dog_odom` を TUM 形式に変換 → `trajectory/room_b_sorasta_20260923.tum` |
+| 軌跡 | `/dog_odom` を TUM 形式に変換 → `maps/trajectory/room_b_sorasta_20260923.tum` |
 
 ⚠️ **点群を bag から融合し直してはいない。** 収録スクリプトが作る quicklook の
 融合結果をそのまま使った（`tools/quicklook_npz_to_pcd.py`）。
@@ -51,13 +51,13 @@
 
 ```bash
 python3 tools/bag_odom_to_tum.py 0923_rosbag/rosbag2 --topic /dog_odom --stride 20 \
-    --out trajectory/room_b_sorasta_20260923.tum
+    --out maps/trajectory/room_b_sorasta_20260923.tum
 python3 tools/quicklook_npz_to_pcd.py 0923_rosbag/quicklook_cloud_odom.npz \
-    --out room_b_sorasta_20260923.pcd
+    --out maps/clouds/room_b_sorasta_20260923.pcd
 python3 tools/pointcloud_to_occupancy_grid/pointcloud_to_occupancy_grid.py \
-    room_b_sorasta_20260923.pcd --trajectory trajectory/room_b_sorasta_20260923.tum \
+    maps/clouds/room_b_sorasta_20260923.pcd --trajectory maps/trajectory/room_b_sorasta_20260923.tum \
     --floor-z 0.33 --min-height 0.8 --max-height 1.8 --occupied-min-points 8 \
-    --resolution 0.05 --out g1_ws/src/g1_navigation/maps/room_b_map_Sorasta_20260923
+    --resolution 0.05 --out maps/grids/room_b_map_Sorasta_20260923
 ```
 
 ### ⚠️ 既定値のままでは「通れない地図」になる。2つ効かせる必要があった

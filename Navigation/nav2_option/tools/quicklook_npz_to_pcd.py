@@ -9,7 +9,7 @@ Mapping トラックの収録スクリプトは、生の Livox スキャンを o
 使い方:
 
     python3 quicklook_npz_to_pcd.py <計測一式>/quicklook_cloud_odom.npz \\
-        --out ../room_b_sorasta_20260923.pcd
+        --out ../maps/clouds/room_b_sorasta_20260923.pcd
 
 ⚠️ **SLAM 補正は入っていない**（収録側の note のとおり）。融合に使った odom の
 ドリフトと LiDAR 外部パラメータの誤差がそのまま乗る。壁が二重に見えるなら

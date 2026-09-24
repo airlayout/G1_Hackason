@@ -37,7 +37,7 @@ Nav2 のプランナは**未知セルを通れない**ので、点群だけで�
 2026-09-15 の3回は**すべて静止中**に落ちた。「無動作で切れる」説をわずかに支持するが、
 **11.7 分は 16 分に届いていないので決着しない。** 予定どおり次回に切り分ける。
 
-抽出先: `trajectory/map_wireless_dualcam_01.tum`（TUM 形式）
+抽出先: `maps/trajectory/map_wireless_dualcam_01.tum`（TUM 形式）
 
 ⚠️ `pointcloud_to_occupancy_grid.py` は**「2列目が x、3列目が y」しか見ない**。
 TUM はそのまま通るが、Odometry を素直に CSV に落としたものは x が5列目なので
@@ -63,10 +63,10 @@ TUM はそのまま通るが、Odometry を素直に CSV に落としたもの�
 
 ```bash
 python3 tools/pointcloud_to_occupancy_grid/pointcloud_to_occupancy_grid.py \
-    Navigation/map_wireless_dualcam_01_cleaned_no_ceiling.pcd \
-    --trajectory trajectory/map_wireless_dualcam_01.tum \
+    maps/clouds/map_wireless_dualcam_01_cleaned_no_ceiling.pcd \
+    --trajectory maps/trajectory/map_wireless_dualcam_01.tum \
     --bounds -5.2 18.6 -19.6 17.8 --resolution 0.05 \
-    --out room_a_map_20260911
+    --out maps/grids/room_a_map_20260911
 ```
 
 床は絶対 Z = **-1.268m** と自動検出された（9/07 の点群の -1.25m とほぼ同じ）。

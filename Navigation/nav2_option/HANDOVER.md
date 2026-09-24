@@ -324,10 +324,10 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
   | | |
   |---|---|
   | `Navigation/nav2_option/0911_robag/` | **3.5GB。9/11 の rosbag。いまの地図の素**。軌跡はここから取り出した |
-  | `Navigation/map_wireless_dualcam_01_cleaned_no_ceiling.pcd` | 101MB、880万点。**いまの地図の素** |
-  | `Navigation/nav2_option/map_20260907.pcd` | 6.5MB、**旧**地図の素 |
+  | `Navigation/nav2_option/maps/clouds/map_wireless_dualcam_01_cleaned_no_ceiling.pcd` | 101MB、880万点。**いまの地図の素** |
+  | `maps/clouds/map_20260907.pcd` | 6.5MB、**旧**地図の素 |
 
-  📌 軌跡（`trajectory/map_wireless_dualcam_01.tum`、550KB）と生成した地図は
+  📌 軌跡（`maps/trajectory/map_wireless_dualcam_01.tum`、550KB）と生成した地図は
   **リポジトリに入れてある**ので、上の巨大ファイルが無くても地図は使える。
   作り直したいときだけ要る。
 

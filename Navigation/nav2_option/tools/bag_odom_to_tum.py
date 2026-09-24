@@ -12,7 +12,7 @@ rosbag2_py を使うには ROS を source した端末が要り、地図づく�
 使い方:
 
     python3 bag_odom_to_tum.py <bagディレクトリ or .db3> --topic /dog_odom \\
-        --out ../trajectory/room_b_sorasta_20260923.tum
+        --out ../maps/trajectory/room_b_sorasta_20260923.tum
 
 ⚠️ **`/unitree/slam_mapping/odom` が 0 件の記録がある**（内蔵SLAM を上げ忘れた記録）。
 その場合は `/dog_odom`（脚オドメトリ）しか無い。歩いた距離が伸びるほどドリフトが

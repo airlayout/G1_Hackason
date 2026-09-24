@@ -19,7 +19,19 @@ controller_server:
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5  # D-15: vy無効なので実質使われない
     min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.3
+    # ⚠️⚠️ **人が横切るたびに巡回が終わっていた**(2026-09-24 実機)。
+    # RPP が `collision ahead` を出す → **0.3 秒で** follow_path を abort →
+    # BT の復帰動作(costmap 消去 → spin → wait)へ移る → その切り替わりで
+    # `/cmd_vel_smoothed` が 1 秒以上途切れる → `cmd_timeout` で **FAULT** →
+    # `g1_cmd_router` が Goal を取り消す → **人が /g1/clear_fault を叩くまで停止**。
+    # 警備の巡回では人が横切るのが通常状態なので、この作りでは運用にならない。
+    #
+    # 粘っている間 controller は**ゼロ速度を出し続ける**ので、指令が途切れず
+    # FAULT に落ちない。人が通り過ぎれば**そのまま再開**する。
+    # 📌 `cmd_timeout` は「ROS 側が死んだ」を捕まえる番人であって、
+    # **プランナが意図的に止まっている状態まで捕まえるべきではない**、という切り分け。
+    # ⚠️ 代償: 本当に道が塞がっているときは、この秒数だけ棒立ちしてから復帰動作に移る。
+    failure_tolerance: 10.0
     progress_checker_plugins: ["progress_checker"]
     goal_checker_plugins: ["goal_checker"]
     controller_plugins: ["FollowPath"]

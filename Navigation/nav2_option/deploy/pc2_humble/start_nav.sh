@@ -28,13 +28,14 @@ OP_TIMEOUT="${3:-1.0}"
 # （＝従来どおりの単純ゴール指定モードだけが使える）。現地で
 # `tools/record_waypoints.py` を回して作ったファイルを渡すこと。
 PATROL_WAYPOINTS="${4:-}"
-# ⚠️ 2026-09-24 に **会場が変わったので Sorasta の地図を既定にした**。
-# room_a に戻るときは第5引数で渡すこと（room_a_map_20260911.yaml / room_a_map.yaml）。
-# ⚠️⚠️ **この地図は内蔵SLAM の軌跡が無い記録から作った**（/dog_odom で代用）。
-# 壁が点線状に途切れており、room_a の地図ほどの品質は無い。
-# 詳細と作り直しの手順: findings/map_from_dog_odom_20260923.md
+# ⚠️ 2026-09-24（後半）に **既定を room_a へ戻した**（次も room_a で動かすため）。
+# 使うのは **9/11 の記録から作り直した版**（未知 40.5%→27.4%、連結した自由空間 +10%）。
+# 他の地図は第5引数で渡せる:
+#   room_a_map.yaml … 9/07 の `map_20260907.pcd` 由来（旧）
+#   room_b_map_Sorasta_20260923.yaml … Sorasta。⚠️ /dog_odom 由来で壁が点線状
+# ⚠️⚠️ **地図と実際の会場が違うと §7 の照合は必ず失敗する。** 会場に合わせて選ぶこと。
 MAPS=/home/unitree/g1_nav2/g1_ws/install/g1_navigation/share/g1_navigation/maps
-MAP="${5:-$MAPS/room_b_map_Sorasta_20260923.yaml}"
+MAP="${5:-$MAPS/room_a_map_20260911.yaml}"
 CYCLONE_CFG=/home/unitree/g1_nav2/cyclonedds_eth0.xml
 # ⚠️ **空の引数を渡してはいけない**(2026-09-24 に実機で踏んだ)。`ros2 launch` は
 # `patrol_waypoints:=` を `malformed launch argument` として**起動前に**弾くため、
