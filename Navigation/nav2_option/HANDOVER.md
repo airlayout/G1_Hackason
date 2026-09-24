@@ -25,6 +25,48 @@
 
 ## 2. 次にやること（この順で）
 
+### ⓪' 次の実機セッションの目標: **巡回を通す**（2026-09-24 に決めた）
+
+モックでは **7 点の巡回路を 2.5 周、FAULT・abort・`collision ahead` ゼロ**で回った
+（1 周 約135秒 / 机上の距離 28.1m）。**実機で同じことをやる。**
+
+**⚠️ 実機に入る前に必ずやること（今日の変更が PC2 に1つも入っていない）:**
+
+```bash
+nmcli connection up g1-link
+rsync -a --exclude clouds/ maps/            g1:/home/unitree/g1_nav2/maps/        # ⚠️ 忘れるとビルドが落ちる
+rsync -a --exclude '__pycache__' g1_ws/src/ g1:/home/unitree/g1_nav2/g1_ws/src/
+rsync -a --exclude '__pycache__' tools/     g1:/home/unitree/g1_nav2/tools/
+rsync -a deploy/pc2_humble/{g1up.sh,start_nav.sh,start_record.sh,start_localizer.sh} g1:/home/unitree/g1_nav2/
+ssh g1 'cd ~/g1_nav2/pc2_humble && ~/.pixi/bin/pixi run bash -lc "cd ~/g1_nav2/g1_ws && colcon build --symlink-install"'
+```
+
+⚠️⚠️ **PC2 の発進ゲートは開いたまま（`G1_ARM=--arm`）**。`g1up.sh` は §2 で止まるので、
+先に閉じること: `sudo sed -i 's/^G1_ARM=.*/G1_ARM=/' /etc/default/g1-sdk-bridge`
+
+**当日の流れ（③で初めて歩く。①②では動かない）:**
+
+| 段 | やること | 機体 |
+|---|---|---|
+| 準備 | 機体を**通常の立位**で出発位置へ。人は2m以上離れる | 立つだけ |
+| §2〜§7 | `~/g1_nav2/g1up.sh`（巡回路は既定で `config/patrol_room_a.yaml` を読む） | 動かない |
+| 目視 | **RViz で位置と赤軸の向き**。§7 の一致率も見る（50cm以内が80%を切ったら地図を疑う） | 動かない |
+| ① | ゲートを開く（`G1_ARM=--arm` + `systemctl restart`） | **まだ動かない** |
+| ② | `g1up.sh --enable`（`NAVIGATING` になる） | **まだ動かない** |
+| ③ | `~/g1_nav2/tools/patrol_ctl.sh start` | **ここで歩き出す。まず p1 へ** |
+
+**⚠️ 巡回路の 7 点は「地図の上でクリックした座標」**（`tools/mark_map.py`）。
+現地で測ったものではない。**最初の1周は人がついて見ること。** ずれるようなら
+`tools/record_waypoints.py` で取り直す（機体を実際にその場所へ連れて行く方が確か）。
+
+**⚠️ 今日の対処で `spin` が実際に動くようになった**（`behavior_server` の cmd_vel を
+`/cmd_vel_nav` へ付け替えた）。これまで復帰動作の指令はどこにも届いていなかった。
+**その場旋回が起きることを想定しておくこと。**
+
+📌 **16〜18分で内蔵SLAM が落ちる。** 1周135秒なら 5〜7周で止まる。落ちたら
+TF 途絶 → FAULT → 巡回は HOLD。`1801` 再送 → **§7 をやり直し** → `clear_fault` →
+`patrol_ctl.sh start` で再開（自動では戻らない）。
+
 ### ⓪ `collision ahead` を切り分ける ← **2026-09-24 以降の最優先**
 
 **機体は歩くが、5 秒ほどで `RegulatedPurePursuitController detected collision ahead!`

@@ -148,12 +148,18 @@ def _launch_setup(context, *args, **kwargs):
             parameters=[{"use_sim_time": use_sim_time}],
         ))
     else:
-        # dry-run 専用のスタンドイン。synthetic_room の自由空間に起点を置く
+        # dry-run 専用のスタンドイン。既定は synthetic_room の自由空間に起点を置く。
+        # ⚠️ **地図を差し替えるときは `mock_start` も変えること**(2026-09-24)。
+        # 既定の (-3,-4) は synthetic_room の値で、room_a の地図では
+        # **巡回エリアと繋がっていない別の自由空間**に落ちる（＝どこへも行けない）。
+        mock_start = LaunchConfiguration("mock_start").perform(context).split()
+        if len(mock_start) != 3:
+            raise RuntimeError(f'mock_start は "x y yaw[rad]" の3つ: {mock_start!r}')
         nodes.append(Node(
             package="tf2_ros",
             executable="static_transform_publisher",
             name="map_to_odom_static_tf",
-            arguments=["-3", "-4", "0", "0", "0", "0", "map", "odom"],
+            arguments=[mock_start[0], mock_start[1], "0", mock_start[2], "0", "0", "map", "odom"],
         ))
         nodes.append(Node(
             package="g1_navigation",
@@ -297,6 +303,10 @@ def generate_launch_description():
         # 手編集していない版・9/07 版・Sorasta 版も残してある。
         DeclareLaunchArgument(
             "map", default_value=os.path.join(share, "maps", "synthetic_room.yaml")),
+        DeclareLaunchArgument(
+            "mock_start", default_value="-3 -4 0",
+            description="backend:=mock のときの出発点 \"x y yaw[rad]\"。"
+                        "⚠️ 地図を変えたら通れる場所に置き直すこと"),
         DeclareLaunchArgument(
             "cmd_timeout", default_value="2.0",
             description="指令の途切れを何秒で FAULT にするか(2026-09-24 に 0.30 → 1.0 → 2.0)"),
