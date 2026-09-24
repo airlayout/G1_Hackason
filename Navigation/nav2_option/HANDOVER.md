@@ -75,18 +75,24 @@ Nav2 ごと上げ直していた（20〜25秒・巡回も IDLE に戻る）が�
 map→odom を出さなくなるので、外から差し替えられる。
 
 ```bash
-bash ~/g1_nav2/start_nav.sh none 0 2.0        # map→odom を外部供給にする
-~/g1_nav2/tools/map2odom_ctl.sh static    <dx> <dy> <yaw>   # 従来どおり固定
-~/g1_nav2/tools/map2odom_ctl.sh observe   <dx> <dy> <yaw>   # ⭐ 測るだけ（TF を出さない）
-~/g1_nav2/tools/map2odom_ctl.sh localizer <dx> <dy> <yaw>   # 連続補正（実機未使用）
+bash ~/g1_nav2/start_nav.sh none 0 2.0                    # map→odom を外部供給にする
+~/g1_nav2/tools/map2odom_ctl.sh start   <dx> <dy> <yaw>   # 供給開始（hold＝補正しない。従来と同じ挙動）
+~/g1_nav2/tools/map2odom_ctl.sh observe <dx> <dy> <yaw>   # ⭐ 測るだけ（TF を出さない・併走可）
+~/g1_nav2/tools/map2odom_ctl.sh correct                   # 補正を入れる（**走行中に切り替えてよい**）
+~/g1_nav2/tools/map2odom_ctl.sh hold                      # 補正を止める
 ~/g1_nav2/tools/map2odom_ctl.sh status
 ```
+
+⚠️⚠️ **静的 TF と動的 TF の「入れ替え」は成立しない**（2026-09-24 にモックで実測）。
+`map_localizer` は起動後 **距離場の作成に約3秒** TF を出せず、その間に静的を止めると
+`tf_stale` → FAULT → 巡回が HOLD。順序を逆にしても、**静的 TF は tf2 のバッファに
+残り続ける**ので入れ替え自体が成立しない。だから**供給者は常に `map_localizer` 1本**にし、
+`hold`/`correct` をサービスで切り替える形にした。モックでは**走行中に `correct` へ
+切り替えても `NAVIGATING` のまま巡回が続く**ことを確認済み。
 
 📌 **`observe` は static と併走してよい**（TF を出さないため）。走行に影響せず、
 `runs/drift_*.csv` に**累積補正量＝実際のずれ**が残る。**次回これを回すこと。**
 
-⚠️ **static と localizer を同時に出さないこと。** tf2 は静的側を常に最新として扱うので
-**補正が一切効かない**（エラーも出ない）。`map2odom_ctl.sh` は切り替え時に相手を止める。
 ⚠️ **この経路は実機で未検証。** 従来どおり `g1up.sh`（§7b で Nav2 を上げ直す）も残してある。
 
 ### ⓪ `collision ahead` を切り分ける ← **2026-09-24 以降の最優先**

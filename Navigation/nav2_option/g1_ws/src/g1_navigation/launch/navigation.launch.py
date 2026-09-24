@@ -152,15 +152,20 @@ def _launch_setup(context, *args, **kwargs):
         # ⚠️ **地図を差し替えるときは `mock_start` も変えること**(2026-09-24)。
         # 既定の (-3,-4) は synthetic_room の値で、room_a の地図では
         # **巡回エリアと繋がっていない別の自由空間**に落ちる（＝どこへも行けない）。
-        mock_start = LaunchConfiguration("mock_start").perform(context).split()
-        if len(mock_start) != 3:
-            raise RuntimeError(f'mock_start は "x y yaw[rad]" の3つ: {mock_start!r}')
-        nodes.append(Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            name="map_to_odom_static_tf",
-            arguments=[mock_start[0], mock_start[1], "0", mock_start[2], "0", "0", "map", "odom"],
-        ))
+        raw_start = LaunchConfiguration("mock_start").perform(context).strip()
+        # ⚠️ `none` なら **map→odom を出さない**（実機側の map_to_odom:=none と同じ意味）。
+        # 外から供給する構成（tools/map2odom_ctl.sh）をモックでも試せるようにするため。
+        if raw_start != "none":
+            mock_start = raw_start.split()
+            if len(mock_start) != 3:
+                raise RuntimeError(f'mock_start は "x y yaw[rad]" か none: {raw_start!r}')
+            nodes.append(Node(
+                package="tf2_ros",
+                executable="static_transform_publisher",
+                name="map_to_odom_static_tf",
+                arguments=[mock_start[0], mock_start[1], "0", mock_start[2], "0", "0",
+                           "map", "odom"],
+            ))
         nodes.append(Node(
             package="g1_navigation",
             executable="fake_sensor_publisher.py",
