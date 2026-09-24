@@ -54,9 +54,11 @@ TOOLS="$HERE/tools"
 CYCLONE_CFG="$HERE/cyclonedds_eth0.xml"
 PIXI="$HOME/.pixi/bin/pixi"
 # ⚠️ 2026-09-24（後半）に **既定を room_a（9/11 版）へ戻した**。差し替えは --map で:
+#   --map .../room_a_map_20260911.yaml            手編集していない版
 #   --map .../room_a_map.yaml                     9/07 の map_20260907.pcd 由来（旧）
+# ⚠️ 既定の `_edited` は手で 28 箇所開けたもの（maps/grids/EDITS.md に理由と座標）。
 #   --map .../room_b_map_Sorasta_20260923.yaml    Sorasta（⚠️ /dog_odom 由来）
-MAP_DEFAULT="$WS/install/g1_navigation/share/g1_navigation/maps/room_a_map_20260911.yaml"
+MAP_DEFAULT="$WS/install/g1_navigation/share/g1_navigation/maps/room_a_map_20260911_edited.yaml"
 
 MAP="$MAP_DEFAULT"
 LIDAR_YAW=0

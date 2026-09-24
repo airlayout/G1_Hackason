@@ -31,11 +31,15 @@ PATROL_WAYPOINTS="${4:-}"
 # ⚠️ 2026-09-24（後半）に **既定を room_a へ戻した**（次も room_a で動かすため）。
 # 使うのは **9/11 の記録から作り直した版**（未知 40.5%→27.4%、連結した自由空間 +10%）。
 # 他の地図は第5引数で渡せる:
+#   room_a_map_20260911.yaml … 手編集していない版
 #   room_a_map.yaml … 9/07 の `map_20260907.pcd` 由来（旧）
+# ⚠️ 既定の `_edited` は、実地の目視で「地図では塞がっているが実際は通路」と判断した
+# 28 箇所(半径0.4m・計3.02m²)を開けたもの。**測ったのではなく人が判断した変更**なので、
+# 何を開けたかは maps/grids/EDITS.md に残してある。
 #   room_b_map_Sorasta_20260923.yaml … Sorasta。⚠️ /dog_odom 由来で壁が点線状
 # ⚠️⚠️ **地図と実際の会場が違うと §7 の照合は必ず失敗する。** 会場に合わせて選ぶこと。
 MAPS=/home/unitree/g1_nav2/g1_ws/install/g1_navigation/share/g1_navigation/maps
-MAP="${5:-$MAPS/room_a_map_20260911.yaml}"
+MAP="${5:-$MAPS/room_a_map_20260911_edited.yaml}"
 CYCLONE_CFG=/home/unitree/g1_nav2/cyclonedds_eth0.xml
 # ⚠️ **空の引数を渡してはいけない**(2026-09-24 に実機で踏んだ)。`ros2 launch` は
 # `patrol_waypoints:=` を `malformed launch argument` として**起動前に**弾くため、

@@ -13,7 +13,9 @@ maps/
 
 | ファイル | 会場 | 由来 | 備考 |
 |---|---|---|---|
-| **`room_a_map_20260911`** | room_a | 9/11 の rosbag の `/unitree/slam_mapping/odom` + `map_wireless_dualcam_01_cleaned_no_ceiling.pcd` | **いまの既定。** 未知 27.4% / 最大連結 438.7m² |
+| **`room_a_map_20260911_edited`** | room_a | 下の 9/11 版を**手で 28 箇所開けた**もの | **いまの既定。** ⚠️ 測ったのではなく人が判断した変更（[grids/EDITS.md](grids/EDITS.md)）。走れる範囲 289.6→296.4m² |
+| `room_a_map_20260911` | room_a | 9/11 の rosbag の `/unitree/slam_mapping/odom` + `map_wireless_dualcam_01_cleaned_no_ceiling.pcd` | 手編集なし。未知 27.4% / 最大連結 438.7m² |
+| `room_a_map_20260911_denoised` | room_a | 上から 2 セル以下の孤立点 589 個を消したもの | **未使用。**通れる面積が +4%(289.6→302.0m²)しか増えず、既定にする意味が薄いと判断 |
 | `room_a_map` | room_a | 9/07 の `map_20260907.pcd` | 旧。未知 40.5% / 最大連結 397.2m² |
 | `room_b_map_Sorasta_20260923` | **Sorasta** | 9/23 の計測（⚠️ **内蔵SLAM の軌跡が無く `/dog_odom` で代用**） | 壁が点線状。[../findings/map_from_dog_odom_20260923.md](../findings/map_from_dog_odom_20260923.md) |
 | `synthetic_room` | （合成） | 手書き | モックの配線確認用。自由空間が連結していることを保証 |

@@ -292,8 +292,9 @@ def generate_launch_description():
         # 既定は Nav2 の配線検証用の合成地図(連結した自由空間を保証)。
         # A-7 で生成した test_room.yaml はレイトレーシング前のもので自由空間が
         # 連結しておらず、経路計画のデモには使えない。
-        # ⚠️ 実機では **room_a_map_20260911.yaml** を渡す（2026-09-24 後半に room_a へ
-        # 戻した）。9/07 版(room_a_map.yaml)と Sorasta 版も残してある。
+        # ⚠️ 実機では **room_a_map_20260911_edited.yaml** を渡す（2026-09-24）。
+        # 実地の目視で通路と判断した 28 箇所を開けた版（maps/grids/EDITS.md）。
+        # 手編集していない版・9/07 版・Sorasta 版も残してある。
         DeclareLaunchArgument(
             "map", default_value=os.path.join(share, "maps", "synthetic_room.yaml")),
         DeclareLaunchArgument(
