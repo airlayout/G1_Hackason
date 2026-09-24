@@ -67,6 +67,28 @@ ssh g1 'cd ~/g1_nav2/pc2_humble && ~/.pixi/bin/pixi run bash -lc "cd ~/g1_nav2/g
 TF 途絶 → FAULT → 巡回は HOLD。`1801` 再送 → **§7 をやり直し** → `clear_fault` →
 `patrol_ctl.sh start` で再開（自動では戻らない）。
 
+### ⓪'' 自己位置の補正を「その場で切り替えられる」ようにした（2026-09-24）
+
+**`map→odom` を Nav2 の外に出せるようにした。** 従来は §7 の値を入れるのに
+Nav2 ごと上げ直していた（20〜25秒・巡回も IDLE に戻る）が、
+`start_nav.sh` の第1引数に **`none`** を渡せば `g1_slam_odom_tf.py` は
+map→odom を出さなくなるので、外から差し替えられる。
+
+```bash
+bash ~/g1_nav2/start_nav.sh none 0 2.0        # map→odom を外部供給にする
+~/g1_nav2/tools/map2odom_ctl.sh static    <dx> <dy> <yaw>   # 従来どおり固定
+~/g1_nav2/tools/map2odom_ctl.sh observe   <dx> <dy> <yaw>   # ⭐ 測るだけ（TF を出さない）
+~/g1_nav2/tools/map2odom_ctl.sh localizer <dx> <dy> <yaw>   # 連続補正（実機未使用）
+~/g1_nav2/tools/map2odom_ctl.sh status
+```
+
+📌 **`observe` は static と併走してよい**（TF を出さないため）。走行に影響せず、
+`runs/drift_*.csv` に**累積補正量＝実際のずれ**が残る。**次回これを回すこと。**
+
+⚠️ **static と localizer を同時に出さないこと。** tf2 は静的側を常に最新として扱うので
+**補正が一切効かない**（エラーも出ない）。`map2odom_ctl.sh` は切り替え時に相手を止める。
+⚠️ **この経路は実機で未検証。** 従来どおり `g1up.sh`（§7b で Nav2 を上げ直す）も残してある。
+
 ### ⓪ `collision ahead` を切り分ける ← **2026-09-24 以降の最優先**
 
 **機体は歩くが、5 秒ほどで `RegulatedPurePursuitController detected collision ahead!`

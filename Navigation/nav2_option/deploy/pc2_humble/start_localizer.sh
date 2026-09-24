@@ -14,12 +14,18 @@ if [ $# -lt 3 ]; then
     echo "使い方: $0 <dx> <dy> <yaw[rad]>   # find_map_offset.py の結果を渡す" >&2
     exit 2
 fi
-INIT_X="$1"; INIT_Y="$2"; INIT_YAW="$3"
+INIT_X="$1"; INIT_Y="$2"; INIT_YAW="$3"; shift 3
+# 4つ目以降はそのまま map_localizer.py へ渡す（--observe-only など）
+EXTRA="$*"
 cd /home/unitree/g1_nav2/pc2_humble
 rm -f /tmp/localizer.log
 setsid nohup ~/.pixi/bin/pixi run bash -lc "
   source /home/unitree/g1_nav2/g1_ws/install/setup.bash
-  export ROS_DOMAIN_ID=0 RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-  exec python3 /home/unitree/g1_nav2/tools/map_localizer.py --initial $INIT_X $INIT_Y $INIT_YAW
+  # ⚠️ **CycloneDDS を使う**(2026-09-24 修正)。Nav2 側は 2026-09-15 に FastDDS から
+  # 切り替わっているのに、ここだけ fastrtps のままだった。揃っていないと
+  # 「トピックは見えるのにデータが来ない」という分かりにくい壊れ方をする。
+  export ROS_DOMAIN_ID=0 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+  export CYCLONEDDS_URI=file:///home/unitree/g1_nav2/cyclonedds_eth0.xml
+  exec python3 /home/unitree/g1_nav2/tools/map_localizer.py --initial $INIT_X $INIT_Y $INIT_YAW $EXTRA
 " > /tmp/localizer.log 2>&1 < /dev/null &
-echo "started (initial=$INIT_X $INIT_Y $INIT_YAW)"
+echo "started (initial=$INIT_X $INIT_Y $INIT_YAW${EXTRA:+ $EXTRA})"
