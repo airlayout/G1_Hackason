@@ -84,6 +84,9 @@ def main() -> int:
     ap.add_argument("--snap", type=float, default=0.6,
                     help="点が入れない場所にあるとき、この距離[m]まで近くの通れるセルへ寄せる")
     ap.add_argument("--no-loop", action="store_true", help="最後の点から最初へ戻る区間を見ない")
+    ap.add_argument("--face-next", action="store_true",
+                    help="各点の yaw を**次の点の方向**にする（既定は 0 のまま）。"
+                         "0 のままだと各点で +x を向くためにその場旋回が入る")
     ap.add_argument("--out-yaml", type=Path, default=None, help="巡回路を yaml に書き出す")
     ap.add_argument("--png", type=Path, default=None, help="経路を重ねた絵を書き出す")
     args = ap.parse_args()
@@ -154,8 +157,18 @@ def main() -> int:
 
     if args.out_yaml and ok:
         args.out_yaml.parent.mkdir(parents=True, exist_ok=True)
+        def yaw_to_next(i: int) -> int:
+            # ⚠️ **最後の点は最初の点を向く**（周回するため）。--no-loop のときは
+            # 一つ前と同じ向きにしておく（そこで終わるので意味は薄い）。
+            nxt = pts[(i + 1) % len(pts)] if not args.no_loop or i + 1 < len(pts) else pts[i - 1]
+            dx, dy = nxt[0] - pts[i][0], nxt[1] - pts[i][1]
+            if math.hypot(dx, dy) < 1e-6:
+                return 0
+            return int(round(math.degrees(math.atan2(dy, dx))))
+
         body = {"frame_id": "map",
-                "waypoints": [{"name": f"p{i+1}", "x": round(x, 2), "y": round(y, 2), "yaw_deg": 0}
+                "waypoints": [{"name": f"p{i+1}", "x": round(x, 2), "y": round(y, 2),
+                               "yaw_deg": yaw_to_next(i) if args.face_next else 0}
                               for i, (x, y) in enumerate(pts)]}
         args.out_yaml.write_text(
             "# patrol_dryrun.py が書き出した巡回路。⚠️ **机上で経路が引けることまでしか"
