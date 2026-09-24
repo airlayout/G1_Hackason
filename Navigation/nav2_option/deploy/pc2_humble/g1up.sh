@@ -53,9 +53,10 @@ WS="$HERE/g1_ws"
 TOOLS="$HERE/tools"
 CYCLONE_CFG="$HERE/cyclonedds_eth0.xml"
 PIXI="$HOME/.pixi/bin/pixi"
-# ⚠️ 2026-09-16 に **9/11 取得の地図へ切り替えた**（A-10q）。
-# 旧地図に戻すときは --map .../room_a_map.yaml
-MAP_DEFAULT="$WS/install/g1_navigation/share/g1_navigation/maps/room_a_map_20260911.yaml"
+# ⚠️ 2026-09-24 に **会場が変わったので Sorasta の地図を既定にした**。
+# room_a に戻るときは --map .../room_a_map_20260911.yaml
+# ⚠️⚠️ **内蔵SLAM の軌跡が無い記録から作った地図**（findings/map_from_dog_odom_20260923.md）。
+MAP_DEFAULT="$WS/install/g1_navigation/share/g1_navigation/maps/room_b_map_Sorasta_20260923.yaml"
 
 MAP="$MAP_DEFAULT"
 LIDAR_YAW=0

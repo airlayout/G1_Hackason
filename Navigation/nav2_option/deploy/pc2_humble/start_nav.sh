@@ -28,12 +28,35 @@ OP_TIMEOUT="${3:-1.0}"
 # （＝従来どおりの単純ゴール指定モードだけが使える）。現地で
 # `tools/record_waypoints.py` を回して作ったファイルを渡すこと。
 PATROL_WAYPOINTS="${4:-}"
-# ⚠️ 2026-09-16 に **9/11 取得の地図へ切り替えた**（未知 40.5%→27.4%、
-# 連結した自由空間 397→439m²）。⚠️ **現状との一致は未検証。**
-# 合わなければ第5引数に旧地図を渡して戻すこと（room_a_map.yaml）。
+# ⚠️ 2026-09-24 に **会場が変わったので Sorasta の地図を既定にした**。
+# room_a に戻るときは第5引数で渡すこと（room_a_map_20260911.yaml / room_a_map.yaml）。
+# ⚠️⚠️ **この地図は内蔵SLAM の軌跡が無い記録から作った**（/dog_odom で代用）。
+# 壁が点線状に途切れており、room_a の地図ほどの品質は無い。
+# 詳細と作り直しの手順: findings/map_from_dog_odom_20260923.md
 MAPS=/home/unitree/g1_nav2/g1_ws/install/g1_navigation/share/g1_navigation/maps
-MAP="${5:-$MAPS/room_a_map_20260911.yaml}"
+MAP="${5:-$MAPS/room_b_map_Sorasta_20260923.yaml}"
 CYCLONE_CFG=/home/unitree/g1_nav2/cyclonedds_eth0.xml
+# ⚠️ **空の引数を渡してはいけない**(2026-09-24 に実機で踏んだ)。`ros2 launch` は
+# `patrol_waypoints:=` を `malformed launch argument` として**起動前に**弾くため、
+# 巡回路を指定しない(＝単純ゴール指定モードだけの)通常運用が丸ごと立たなかった。
+# ログにも ERROR の1行しか出ないので、g1up.sh からは「校正が終わらない」に見える。
+PATROL_ARG=""
+[ -n "$PATROL_WAYPOINTS" ] && PATROL_ARG="patrol_waypoints:=$PATROL_WAYPOINTS"
+
+# ⚠️ **前の Nav2 を必ず落としてから上げる**(2026-09-24 に実機で踏んだ)。
+# g1up.sh は §5 で1回、§7b で map→odom を入れてもう1回このスクリプトを呼ぶので、
+# **掃除しないと必ず2本立つ**。すると lifecycle_manager が2つになってノード名が衝突し、
+# `map_server` / `planner_server` / `bt_navigator` が **unconfigured のまま残る**
+# (controller/behavior/velocity_smoother だけ active という中途半端な状態になり、
+#  Goal を投げても計画が出ない)。
+pkill -f 'ros2 launch g1_navigatio[n]' 2>/dev/null || true
+pkill -f 'g1_slam_odom_t[f].py'        2>/dev/null || true
+pkill -f 'g1_state_bridge_nod[e]'      2>/dev/null || true
+pkill -f 'g1_cmd_router_nod[e]'        2>/dev/null || true
+pkill -f 'patrol_nod[e].py'            2>/dev/null || true
+pkill -f 'envs/default/lib/nav[2]_'    2>/dev/null || true
+sleep 3
+
 cd /home/unitree/g1_nav2/pc2_humble
 rm -f /tmp/nav_launch.log
 setsid nohup ~/.pixi/bin/pixi run bash -lc "
@@ -42,7 +65,7 @@ setsid nohup ~/.pixi/bin/pixi run bash -lc "
   export CYCLONEDDS_URI=file://$CYCLONE_CFG
   exec ros2 launch g1_navigation navigation.launch.py backend:=real map:=$MAP \
        map_to_odom:='$MAP2ODOM' lidar_yaw:=$LIDAR_YAW \
-       operator_timeout_s:=$OP_TIMEOUT patrol_waypoints:='$PATROL_WAYPOINTS'
+       operator_timeout_s:=$OP_TIMEOUT $PATROL_ARG
 " > /tmp/nav_launch.log 2>&1 < /dev/null &
 echo "started (map_to_odom=$MAP2ODOM lidar_yaw=$LIDAR_YAW operator_timeout_s=$OP_TIMEOUT rmw=cyclonedds)"
 echo "  巡回路: ${PATROL_WAYPOINTS:-(未指定。単純ゴール指定モードのみ)}"

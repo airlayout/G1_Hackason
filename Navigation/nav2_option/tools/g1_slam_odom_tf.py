@@ -203,6 +203,7 @@ class SlamOdomTf(Node):
     def __init__(self, args: argparse.Namespace) -> None:
         super().__init__("g1_slam_odom_tf")
         self._args = args
+        self._skew_logged_at = 0.0   # 時計のずれを出した最後の時刻(30秒ごと)
         self._tf = TransformBroadcaster(self)
         self._static_tf = StaticTransformBroadcaster(self)
         self._odom_pub = self.create_publisher(Odometry, "/odom", 10)
@@ -329,11 +330,39 @@ class SlamOdomTf(Node):
             self.get_logger().info(f"base_link->{self._args.lidar_frame} に yaw {self._args.lidar_yaw:+.2f}° を足した")
         self._publish_static(matrix_to_quat(r_needed))
 
+    def _report_clock_skew(self, msg: Odometry) -> None:
+        """内蔵SLAM の時計と PC2 の時計の差を 30 秒ごとに出す。
+
+        ⚠️ **貼り替えるなら、ずれの大きさは必ず見えるようにしておくこと。**
+        黙って直すと「なぜか位置が古い」の原因が二度と分からなくなる。
+        """
+        now = self.get_clock().now().nanoseconds * 1e-9
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        skew = now - stamp
+        if now - self._skew_logged_at < 30.0:
+            return
+        self._skew_logged_at = now
+        note = "(--restamp-now で PC2 の時計に貼り替えている)" if self._args.restamp_now else ""
+        self.get_logger().info(f"内蔵SLAM との時計のずれ {skew:+.3f} 秒 {note}")
+
     def _on_odom(self, msg: Odometry) -> None:
         # 内蔵SLAMは frame_id='map' / child='base_link' と名乗るが、原点は1801時点の
         # ロボット位置なので odometry として扱う。ここで改名する
+        #
+        # ⚠️⚠️ **内蔵SLAM の時計は PC2 の時計から離れていく**(2026-09-24 実測)。
+        # 受信時刻とヘッダ時刻の差が **5.0 秒**あり、20 秒で 0.06 秒(≒0.3%)ずつ開いた。
+        # 伝送遅延なら一定のはずなので、これは**時計のドリフト**。
+        # そのままヘッダ時刻で TF を出すと、PC2 の時計で `now-0.5秒` を引く
+        # `g1_cmd_router` から見て常に「古い」ので、**STANDBY から一生上がらない**
+        # (`Lookup would require extrapolation into the future`)。
+        # --restamp-now で PC2 の時計に貼り替える。
+        # 📌 **「SLAM が落ちたら FAULT」は壊れない。** この関数は odom を受け取った
+        # ときだけ動くので、配信が止まれば TF も止まる(タイマーではない)。
+        # ⚠️ 代償: 実際の伝送遅延ぶんだけ姿勢が新しく見える。
+        stamp = self.get_clock().now().to_msg() if self._args.restamp_now else msg.header.stamp
+        self._report_clock_skew(msg)
         t = TransformStamped()
-        t.header.stamp = msg.header.stamp
+        t.header.stamp = stamp
         t.header.frame_id = "odom"
         t.child_frame_id = "base_link"
         t.transform.translation.x = msg.pose.pose.position.x
@@ -343,7 +372,7 @@ class SlamOdomTf(Node):
         self._tf.sendTransform(t)
 
         out = Odometry()
-        out.header.stamp = msg.header.stamp
+        out.header.stamp = stamp
         out.header.frame_id = "odom"
         out.child_frame_id = "base_link"
         out.pose = msg.pose
@@ -395,6 +424,11 @@ def main() -> None:
                              "yaw は構成上ずれなくなった(以前は姿勢によって 0/180 が入れ替わり、"
                              "どちらでも合わない姿勢もあった)。"
                              "取付を変えた等で残差が出るときだけ手で与える")
+    parser.add_argument("--restamp-now", dest="restamp_now", action="store_true", default=True,
+                        help="TF と /odom を **PC2 の時計** で打ち直す(既定)。内蔵SLAM の時計が"
+                             "ドリフトするため(2026-09-24)")
+    parser.add_argument("--no-restamp-now", dest="restamp_now", action="store_false",
+                        help="内蔵SLAM が付けた時刻をそのまま使う(9/24 以前の挙動)")
     parser.add_argument("--imu-topic", default="/utlidar/imu_livox_mid360")
     parser.add_argument("--calib-samples", type=int, default=50,
                         help="自動校正に使うサンプル数(既定: 50)")

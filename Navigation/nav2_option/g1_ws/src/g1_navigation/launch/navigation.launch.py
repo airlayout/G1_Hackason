@@ -190,6 +190,14 @@ def _launch_setup(context, *args, **kwargs):
         parameters=[{
             "heartbeat_required": flag("heartbeat_required"),
             "operator_timeout_s": float(LaunchConfiguration("operator_timeout_s").perform(context)),
+            # ⚠️ **指令が何秒途切れたら FAULT にするか。** 既定 0.30 だと、復帰動作
+            # (spin / DriveOnHeading)の切り替わりや Goal 到達の直後に必ず落ちる
+            # (2026-09-24 実機で発生。約0.8m 歩いた直後に cmd_timeout で FAULT)。
+            # 📌 **機体の安全は SDK 側が別に持っている。** systemd の
+            # `--cmd-timeout 0.30` は据え置きなので、指令が途切れれば**機体は 0.3 秒で
+            # ゼロ速度になる**。ここを伸ばして変わるのは「FAULT にして Goal ごと
+            # 捨てるまでの猶予」だけで、**止まる速さは変わらない**。
+            "cmd_timeout": float(LaunchConfiguration("cmd_timeout").perform(context)),
             "require_tf": flag("require_tf"),
             "require_sensor": flag("require_sensor"),
             # 鮮度監視の対象も backend に合わせる(見ていないトピックを監視しても無意味)
@@ -262,10 +270,13 @@ def generate_launch_description():
         # 既定は Nav2 の配線検証用の合成地図(連結した自由空間を保証)。
         # A-7 で生成した test_room.yaml はレイトレーシング前のもので自由空間が
         # 連結しておらず、経路計画のデモには使えない。
-        # ⚠️ 実機では **room_a_map_20260911.yaml** を渡す（2026-09-16 に 9/07 の
-        # room_a_map.yaml から切り替えた。A-10q）。旧地図も残してある。
+        # ⚠️ 実機では **room_b_map_Sorasta_20260923.yaml** を渡す（2026-09-24。
+        # 会場が Sorasta に変わったため）。room_a の地図も残してある。
         DeclareLaunchArgument(
             "map", default_value=os.path.join(share, "maps", "synthetic_room.yaml")),
+        DeclareLaunchArgument(
+            "cmd_timeout", default_value="1.0",
+            description="指令の途切れを何秒で FAULT にするか(2026-09-24 に 0.30 から変更)"),
         DeclareLaunchArgument(
             "sensor_topic", default_value="",
             description=f"空なら {SENSOR_TOPIC}。モックも実機も同じ名前を使う"),
