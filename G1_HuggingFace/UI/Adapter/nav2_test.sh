@@ -15,7 +15,7 @@ set -o pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UI_DIR="$(cd "$HERE/.." && pwd)"
-NAV2_DIR="$(cd "$UI_DIR/../../Navigation/nav2_option" && pwd)"
+NAV2_DIR="$(cd "$UI_DIR/../../Navigation/nav2_stable" && pwd)"
 IMAGE="${G1_UI_IMAGE:-g1-mapping-visualization:local}"
 WORK="${G1_UI_NAV2_WORK:-/tmp/g1_ui_nav2}"
 # ⚠️ ホストや他のモックテストと混ざらないよう専用の DOMAIN にする

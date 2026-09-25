@@ -49,7 +49,7 @@ nav:
 
   mock:
     # ⚠️ Navigation トラックの既定地図。手で書き換えないこと
-    map_yaml: ../../../Navigation/nav2_option/g1_ws/src/g1_navigation/maps/room_a_map_20260911.yaml
+    map_yaml: ../../../Navigation/nav2_stable/maps/grids/room_a_map_20260911_edited.yaml
     speed_mps: 0.35
   http:
     url: http://127.0.0.1:8081
