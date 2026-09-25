@@ -1,0 +1,337 @@
+# Nav2設定ファイル(下書き)。Planning.md D-14/D-15/D-21/D-22/D-23の決定に対応。
+#
+# footprint は仮値([[0.25,0.20],[0.25,-0.20],[-0.25,-0.20],[-0.25,0.20]])。
+# 実測(歩容中の脚の包絡線、Phase 2b)後に置き換えること。
+#
+# トピック構成(仕様書5.1に対応。実際の remap は launch/navigation.launch.py で行う):
+#   controller_server(/cmd_vel_nav) -> velocity_smoother -> /cmd_vel_smoothed -> g1_cmd_router
+
+controller_server:
+  ros__parameters:
+    use_sim_time: false
+    controller_frequency: 20.0
+    # ⚠️ **Humble にはこのパラメータが存在しない**(Jazzy で追加)。2026-09-13 に実測した
+    # ところ、Humble では宣言されていないため**黙って無視され**、出力は
+    # geometry_msgs/Twist のままだった(エラーも警告も出ない)。
+    # g1_cmd_router は Twist / TwistStamped の**両方**を購読するようにしたので
+    # (2026-09-13)、どちらのディストリでも配線は成立する。
+    enable_stamped_cmd_vel: true  # D-23。Jazzy 以降でのみ効く
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5  # D-15: vy無効なので実質使われない
+    min_theta_velocity_threshold: 0.001
+    # ⚠️⚠️ **人が横切るたびに巡回が終わっていた**(2026-09-24 実機)。
+    # RPP が `collision ahead` を出す → **0.3 秒で** follow_path を abort →
+    # BT の復帰動作(costmap 消去 → spin → wait)へ移る → その切り替わりで
+    # `/cmd_vel_smoothed` が 1 秒以上途切れる → `cmd_timeout` で **FAULT** →
+    # `g1_cmd_router` が Goal を取り消す → **人が /g1/clear_fault を叩くまで停止**。
+    # 警備の巡回では人が横切るのが通常状態なので、この作りでは運用にならない。
+    #
+    # 粘っている間 controller は**ゼロ速度を出し続ける**ので、指令が途切れず
+    # FAULT に落ちない。人が通り過ぎれば**そのまま再開**する。
+    # 📌 `cmd_timeout` は「ROS 側が死んだ」を捕まえる番人であって、
+    # **プランナが意図的に止まっている状態まで捕まえるべきではない**、という切り分け。
+    # ⚠️ 代償: 本当に道が塞がっているときは、この秒数だけ棒立ちしてから復帰動作に移る。
+    failure_tolerance: 10.0
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      # ⚠️ **SimpleProgressChecker は並進しか見ない。** その場旋回中は並進ゼロなので、
+      # 旋回が 10 秒で終わらないと「進んでいない」と判定して abort する
+      # (2026-09-15 実機でこれを踏んだ。G1 の旋回は指令の約1/3しか出ないので
+      #  60°回るだけでも 10 秒では足りない)。
+      # PoseProgressChecker なら**角度の進捗も進捗として数える**。
+      plugin: "nav2_controller::PoseProgressChecker"
+      required_movement_radius: 0.05
+      required_movement_angle: 0.10   # 約5.7°。これだけ回れば「進んでいる」と見なす
+      movement_time_allowance: 20.0   # 旋回の遅さを見込んで 10 → 20 秒
+
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      # ⚠️⚠️ **2026-09-25 に 0.20/0.20 から緩めた。実機で無限ループになったため。**
+      #
+      # SimpleGoalChecker は**位置と向きを同時に**満たすことを要求する。実機では
+      # p2 に着いたあと **180 秒間、位置も向きも一度も同時に揃わなかった**
+      # （記録 runs/20260925_194258_nav2、775 サンプルで該当 0 件）:
+      #
+      #   位置が 0.20m 以内だった 231 件 → 向きの誤差は 最小 33.9° / 中央 136.2°
+      #   向きが 11.5° 以内だった   8 件 → 距離は     最小 0.31m  / 中央 0.35m
+      #
+      # 原因は RPP の `use_rotate_to_heading`。ゴールまで数 cm になると
+      # 「その場旋回」に切り替わるが、数 cm 先の点への方位はわずかな横ずれで
+      # 符号が反転するため、**上限の wz=±0.30 で回っては行き過ぎる**を繰り返す
+      # （2.5 分で符号反転 33 回、途中まるまる1周した）。歩行機は旋回中に位置が
+      # ずれるので、回れば位置が外れ、位置を直せば向きが外れる。
+      #
+      # ⚠️ **これは時間の浪費では済まない。**その場旋回は内蔵SLAM のドリフトを
+      # 一気に進めるので、**回っている間に自己位置が壊れる**（同日、最終的に
+      # 10.8m ずれた）。
+      #
+      # 記録から許容値を振って確かめた結果（到達までの時間）:
+      #
+      #   xy 0.20 / yaw 0.20rad(11.5°) … **到達せず**（これが現行値だった）
+      #   xy 0.40 / yaw 0.20rad        … 147.6 秒   ← xy だけ緩めても効かない
+      #   xy 0.20 / yaw 1.00rad(57°)   …  20.3 秒（該当 8 件＝余裕 約2秒）
+      #   xy 0.30 / yaw 1.00rad        …  20.3 秒（該当 18 件＝余裕 約4秒）← 採用
+      #   xy 0.30 / yaw 1.57rad(90°)   …  19.0 秒（該当 50 件）
+      #
+      # **効いているのは向きの許容値。** xy も 0.30 にしたのは、該当サンプルを
+      # 8→18 件に増やして取りこぼしを減らすため（巡回に 0.30m の精度で足りる）。
+      # ⚠️ **これでも駄目なら yaw を 1.57rad(90°) へ。** それでも駄目なら
+      # 各点の向き指定自体をやめる（到着後に別動作で回す）。
+      # 📌 元の値は xy 0.20 / yaw 0.20（仕様書9.2）。戻すのは数値2つ。
+      xy_goal_tolerance: 0.30
+      yaw_goal_tolerance: 1.00
+      stateful: true
+
+    FollowPath:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"  # D-22
+      # ⚠️ 2026-09-09 の実機実測で 0.15 → 0.28 に変更した。
+      # **0.15 m/s では歩容が成立しない**(0.1=不成立 / 0.2=歩くが方向が定まらない /
+      # 0.3=実用的に前進)。使える帯は 0.25〜0.30 m/s と狭いので、その中に収める。
+      desired_linear_vel: 0.28
+      max_linear_accel: 0.20  # D-16のmax_ax相当(**加速度は未測定の仮値**)
+      max_linear_decel: 0.20
+      lookahead_dist: 0.6
+      min_lookahead_dist: 0.3
+      max_lookahead_dist: 0.9
+      use_velocity_scaled_lookahead_dist: false
+      # ⚠️ 2026-09-09 実測で 0.03 → 0.25 に変更した。
+      # Goal 接近時に 0.03 m/s を指令しても**歩容が成立せず前に進まない**ため、
+      # 「進めるうちは 0.25 で進み、それ以下になったらデッドバンドで止まる」形にする。
+      # 二足では速度プロファイルが実質「0.25〜0.30 か 停止」の二値になる。
+      min_approach_linear_velocity: 0.25
+      approach_velocity_scaling_dist: 0.6
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_regulated_linear_velocity_scaling: true
+      use_cost_regulated_linear_velocity_scaling: false
+      regulated_linear_scaling_min_radius: 0.9
+      # ⚠️ 2026-09-09 実測で 0.05 → 0.25 に変更した。
+      # 曲率が大きい区間でここまで落とすと歩容が成立しない。下限を使える帯に合わせる
+      regulated_linear_scaling_min_speed: 0.25
+      use_rotate_to_heading: true
+      rotate_to_heading_min_angle: 0.785
+      # ⚠️⚠️ **0.40 だと機体が永久に回り出せない**(2026-09-15 実機で判明)。
+      #
+      # RPP の rotate-to-heading は **実測角速度(odom)を基準に**加速度制限をかける:
+      #     指令 = 実測 + max_angular_accel × dt = 0 + 0.40 × 0.05 = **0.02 rad/s**
+      # G1 は 0.02 rad/s では歩容が成立しないので回らない → 実測は 0 のまま →
+      # 次の周期もまた 0.02、という**デッドロック**になる。
+      # 実測: wz=-0.02 が 2,363 周期続き、機体は 4mm も動かなかった。
+      # その結果 SimpleProgressChecker(5cm/10秒)が**きっかり 10 秒ごとに abort** し、
+      # 復帰動作 → 指令途切れ → cmd_timeout → FAULT、を繰り返した。
+      #
+      # 「加速度制限」と「最小作動閾値を持つ二足」の**構造的な非互換**なので、
+      # 1 周期ぶんの増分が歩容の閾値を超えるように上げる。
+      # 実測で omega=0.3 は回る(U-11)ので 0.3 × 20Hz = 6.0 を下限の目安にした。
+      # 加速の滑らかさは機体側の歩行コントローラが持っているので、ここで絞る意味は薄い。
+      # 📌 **設定としては通ることを確認済み**(2026-09-15、モックで起動確認。
+      # RPP が正常に生成され ERROR ゼロ)。ただし**機体が実際に回り出すかは未検証**。
+      # 次回の判定基準:
+      #   ・`/cmd_vel_smoothed` の wz が **0.02 で止まらず 0.3 前後まで上がるか**
+      #     (今日は 2,363 周期ずっと 0.02 だった)
+      #   ・その場旋回が始まるか / follow_path が 10 秒ちょうどで切れなくなるか
+      # wz が 0.3 まで上がっても回らなければ、原因は加速度制限ではなく旋回の
+      # 作動閾値そのもの。そのときは `rotate_to_heading_angular_vel` を明示する
+      # (未指定なので既定 1.8 のはず)。
+      max_angular_accel: 6.0
+      max_robot_pose_search_dist: 5.0
+
+# D-21: Local costmapは3D点群ベース(voxel_layer)。2D /scan はGlobal専用にする
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      width: 6
+      height: 6
+      resolution: 0.05
+      footprint: "[[0.25, 0.20], [0.25, -0.20], [-0.25, -0.20], [-0.25, 0.20]]"
+      plugins: ["voxel_layer", "inflation_layer"]
+      voxel_layer:
+        plugin: "nav2_costmap_2d::VoxelLayer"
+        enabled: true
+        publish_voxel_map: true
+        origin_z: 0.0
+        z_resolution: 0.1
+        z_voxels: 16  # nav2_costmap_2dのVoxelGrid実装上の上限(16)。max_obstacle_height=1.8mに対し0.1125m/voxel相当
+        max_obstacle_height: 1.8
+        mark_threshold: 0
+        # ⚠️ **機体自身の脚を障害物として立ててしまうので必須**(2026-09-15 実機)。
+        # センサーは高さ 1.213m にあるので、水平 0.24m の自分の足でも
+        # 3次元距離は 1.22m あり obstacle_min_range(0.9) を通り抜ける。
+        # さらに**死角(半径約1m)の中はレイが通らないのでクリアリングも効かず**、
+        # 一度立つと消えない。footprint 内を毎周期クリアすることで構造的に防ぐ。
+        # (clear_entirely_local_costmap を叩いても毎周期立て直されることを実機で確認)
+        footprint_clearing_enabled: true
+        observation_sources: "pointcloud"
+        pointcloud:
+          # ⚠️ **実機のトピック名を正とする。** G1 内蔵の MID-360 がこの名前で出す
+          # (Livox のドライバを別に立てる必要は無い)。モック
+          # (fake_sensor_publisher)の側が**この名前に合わせる**。
+          # 逆にすると「モックでは通るのに実機で通らない」を作り込むことになる
+          # (2026-09-13 に nav2_params.yaml が Humble で起動しなかった件と同じ構図)。
+          topic: /utlidar/cloud_livox_mid360
+          data_type: "PointCloud2"
+          min_obstacle_height: 0.05
+          max_obstacle_height: 1.8
+          obstacle_max_range: 5.0
+          # ⚠️ **0.0 だと機体自身や装着物の反射を障害物として立ててしまう**
+          # (2026-09-15 実機: 5m以内の点の 77% が障害物帯に入り、LocalCostmap が
+          #  機体の周囲を完全に囲んだ。死角半径が 0.07m ＝ ほぼゼロ距離の反射が
+          #  1.2〜1.3m の高さ＝センサーと同じ高さに 6,500 点あった)。
+          # MID-360 の死角は半径 0.91〜1.12m(U-09)なので、**それより近い反射は
+          # 原理的に環境の反射ではない**。構造的に除外する。
+          # 代償: 0.9m より近い実在の障害物は「新たには」立たなくなる。ただし
+          # 元々見えない距離であり、遠くで立った格子は rolling window に残る。
+          obstacle_min_range: 0.9
+          raytrace_max_range: 5.5
+          # クリアリングは 0 のままにする。近距離の誤検出を消す働きがあるため
+          raytrace_min_range: 0.0
+          clearing: true
+          marking: true
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.40  # 姉妹Navigation班の実測根拠(肩幅+定位誤差+歩容の揺れ)を踏襲
+      always_send_full_costmap: true
+
+# D-21: Global costmapは既知地図(A-7で生成)+ 2D scanでの壁検出のみ
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      footprint: "[[0.25, 0.20], [0.25, -0.20], [-0.25, -0.20], [-0.25, 0.20]]"
+      resolution: 0.05
+      track_unknown_space: true  # 未観測を自由と誤判定しない(A-7の設計方針と整合)
+      # ⚠️ **`obstacle_layer` を外してある。** 実機に `/scan`(LaserScan)は存在せず、
+      # 残しても**データが永久に来ない層**になるため(A-10b の検証済み構成に合わせた)。
+      #
+      # 📌 **その結果、global costmap は保存地図しか知らない。** 通路が新しい障害物で
+      # 塞がれても global planner はそこを通る経路を引き続け、local costmap で避けられず
+      # controller が失敗する形になる。MVP は適用環境を限定する(D-24)前提なので許容し、
+      # 動的障害物への対応は Phase 4 の作業項目1で扱う。
+      plugins: ["static_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: "scan"
+        scan:
+          topic: /scan
+          data_type: "LaserScan"
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.40
+      always_send_full_costmap: true
+
+map_server:
+  ros__parameters:
+    use_sim_time: false
+    yaml_filename: "test_room.yaml"  # launchで絶対パスに置換される
+
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+    planner_plugins: ["GridBased"]
+    GridBased:
+      # ⚠️ **プラグイン名の区切りは `/` と `::` が混在する。統一できない。**
+      # pluginlib は plugin description XML に `name=` があればそれを、無ければ
+      # C++ の型名(`::`)をルックアップ名にする。Humble の実際の宣言は:
+      #   nav2_navfn_planner  : name="nav2_navfn_planner/NavfnPlanner"  → **`/`**
+      #   nav2_behaviors      : name="nav2_behaviors/Spin" 等            → **`/`**
+      #   nav2_controller     : name 属性なし → `nav2_controller::...`  → `::`
+      #   nav2_costmap_2d     : name 属性なし → `nav2_costmap_2d::...`  → `::`
+      #   nav2_regulated_pure_pursuit_controller : name 属性なし        → `::`
+      # `::` で書くと `class ... does not exist` で planner_server の configure が
+      # 失敗し、**lifecycle_manager が bringup ごと中断する**(2026-09-13 に実測)。
+      # ⚠️ 上記は **Humble(D-30)** の宣言。Jazzy へ移る際は再確認すること。
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      tolerance: 0.3
+      use_astar: false
+      allow_unknown: false  # 未観測を通行可能扱いしない(A-7と同じ方針)
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: false
+    # ⚠️ **`backup` を外してはいけない**(2026-09-15 実機で踏んだ)。
+    # 既定の behavior tree(navigate_*_w_replanning_and_recovery.xml)が backup の
+    # アクションサーバを前提にしており、リストから外すと bt_navigator が
+    # 「Action server backup not available」で起動に失敗し、lifecycle_manager が
+    # bringup ごと中断する。
+    #
+    # ⚠️ **ただし後退そのものは未検証の動作である。** 経路追従に詰まると Nav2 は
+    # 人の合図なしに後退する。後退方向の停止距離も歩容の成立性も実測していない。
+    # 救いは既定の BT が backup_speed=0.05 m/s を渡すことで、これは歩容の成立下限
+    # (0.1〜0.2 m/s、U-12)を下回るため**物理的にはほぼ動かない**。
+    # 塞ぐなら、backup を含まない BT XML を本パッケージに置いて
+    # bt_navigator の default_nav_to_pose_bt_xml / default_nav_through_poses_bt_xml
+    # で差し替えること。**プラグインリストだけ削っても動かない。**
+    behavior_plugins: ["spin", "backup", "wait"]
+    spin:
+      plugin: "nav2_behaviors/Spin"
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+    wait:
+      plugin: "nav2_behaviors/Wait"
+    global_frame: odom
+    robot_base_frame: base_link
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: false
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /odom
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: false
+    smoothing_frequency: 20.0
+    # ⚠️ **Humble にはこのパラメータが存在しない**(Jazzy で追加)。2026-09-13 に実測した
+    # ところ、Humble では宣言されていないため**黙って無視され**、出力は
+    # geometry_msgs/Twist のままだった(エラーも警告も出ない)。
+    # g1_cmd_router は Twist / TwistStamped の**両方**を購読するようにしたので
+    # (2026-09-13)、どちらのディストリでも配線は成立する。
+    enable_stamped_cmd_vel: true  # D-23。Jazzy 以降でのみ効く
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+    # vx の上限は 2026-09-09 実測で 0.20 → 0.30 に変更(0.20 は方向が定まらない速度域)。
+    # vy=0 は D-15。⚠️ 後退(min_velocity の vx)は**未測定**。
+    # 姉妹実装 Navigation/real/loco_driver.py は「後方センサ上部が死角」として既定で
+    # 後退を禁止しているが、その根拠は D-21 と同じ前提に基づく可能性がある
+    # (D-21 は 2026-09-09 に誤りと判明した)。後退を使う前に別途測ること
+    max_velocity: [0.30, 0.0, 0.30]
+    min_velocity: [-0.20, 0.0, -0.30]
+    # ⚠️ 加速度は未測定の仮値
+    max_accel: [0.20, 0.0, 0.40]
+    max_decel: [-0.20, 0.0, -0.40]
+    odom_topic: "/odom"
+    odom_duration: 0.1
+
+lifecycle_manager_navigation:
+  ros__parameters:
+    use_sim_time: false
+    autostart: true
+    node_names:
+      - map_server
+      - controller_server
+      - planner_server
+      - behavior_server
+      - bt_navigator
+      - velocity_smoother
