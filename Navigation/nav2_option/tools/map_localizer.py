@@ -54,6 +54,8 @@ from __future__ import annotations
 
 import argparse
 import math
+import time
+from pathlib import Path
 
 import numpy as np
 import rclpy
@@ -63,6 +65,7 @@ from nav_msgs.msg import OccupancyGrid
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import PointCloud2, PointField
+from std_srvs.srv import SetBool
 from tf2_ros import Buffer, TransformListener, TransformBroadcaster
 
 
@@ -159,6 +162,7 @@ class MapLocalizer(Node):
         self._resolution = 0.05
         self._accepted = 0
         self._rejected = 0
+        self._m2o_initial = self._m2o.copy()   # 累積補正量を測る基準
         self._last_score: float | None = None
         self._last_reason = "起動直後"
 
@@ -183,6 +187,10 @@ class MapLocalizer(Node):
         )
         self.create_subscription(PointCloud2, args.cloud_topic, self._on_cloud, cloud_qos)
         self._diag_pub = self.create_publisher(DiagnosticArray, "/g1/localizer_status", 10)
+        # ⚠️ **TF の供給を止めずにモードだけ変える**ための口。プロセスを入れ替えると
+        # 必ず TF が途切れ、`tf_stale` で FAULT になる（2026-09-24 にモックで実測）。
+        self._mode = args.mode
+        self.create_service(SetBool, "/g1/localizer/correct", self._srv_mode)
 
         # map→odom は**補正が無くても出し続ける**。出さないと TF が途切れ、
         # Nav2 も cmd_router の鮮度監視も止まってしまう(A-10h)。
@@ -283,7 +291,19 @@ class MapLocalizer(Node):
         # 代わりに、外に出た割合が大きすぎる候補は上で inf にしている。
         return float(self._field[rows[inside], cols[inside]].mean())
 
+    def _srv_mode(self, req, res):
+        """data=true → correct（補正する） / false → hold（初期値のまま出す）。"""
+        self._mode = "correct" if req.data else "hold"
+        self._last_reason = f"モードを {self._mode} にした"
+        self.get_logger().info(f"モード: **{self._mode}**")
+        res.success = True
+        res.message = self._mode
+        return res
+
     def _match(self, pts_odom: np.ndarray) -> None:
+        if self._mode != "correct":
+            self._last_reason = "hold（補正しない）"
+            return
         base = self._m2o.copy()
         best = base.copy()
         best_score = self._score(pts_odom, base)
@@ -321,9 +341,29 @@ class MapLocalizer(Node):
         self._m2o = self._m2o + a * delta
         self._accepted += 1
         self._last_reason = "採用"
+        self._log_row(best_score, dist, dyaw)
+
+    def _log_row(self, score: float, step_m: float, step_rad: float) -> None:
+        """1周期ぶんを CSV に残す。**累積補正量が「ずれの実測値」になる。**"""
+        if not self._args.log_csv:
+            return
+        drift = self._m2o - self._m2o_initial
+        new_file = not self._args.log_csv.exists()
+        with self._args.log_csv.open("a", encoding="utf-8") as fp:
+            if new_file:
+                fp.write("t,score,step_m,step_deg,cum_dx,cum_dy,cum_dyaw_deg,cum_dist,"
+                         "accepted,rejected\n")
+            fp.write(f"{time.time():.3f},{score:.4f},{step_m:.4f},"
+                     f"{math.degrees(step_rad):.3f},{drift[0]:.4f},{drift[1]:.4f},"
+                     f"{math.degrees(drift[2]):.3f},{math.hypot(drift[0], drift[1]):.4f},"
+                     f"{self._accepted},{self._rejected}\n")
 
     # --- 出力 ---------------------------------------------------------------
     def _publish_tf(self) -> None:
+        # ⚠️ 観測専用では**出さない**。出すと §7 の静的 TF と二重になり、
+        # どちらが効いているか分からないまま機体が動くことになる。
+        if self._args.observe_only:
+            return
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "map"
@@ -354,6 +394,7 @@ class MapLocalizer(Node):
             ("reason", self._last_reason),
             ("score", "-" if self._last_score is None else f"{self._last_score:.4f}"),
             ("accepted", str(self._accepted)),
+            ("mode", self._mode),
             ("rejected", str(self._rejected)),
             ("map_to_odom",
              f"{self._m2o[0]:.3f}, {self._m2o[1]:.3f}, {math.degrees(self._m2o[2]):.2f}deg"),
@@ -382,6 +423,24 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--min-points", type=int, default=200)
     p.add_argument("--max-points", type=int, default=1500,
                    help="これ以上は無作為に間引く(1周期の計算量を抑える)")
+    # --- 観測専用（2026-09-24 追加）------------------------------------------
+    # ⚠️ **既定の運用は「起動時に1回だけ合わせて以後固定」**（§7 の find_map_offset）。
+    # つまり実質の補正頻度は**16〜18分に1回**（内蔵SLAM が落ちるたび）で、
+    # AMCL 等の 1〜20Hz と比べて桁違いに薄い。ただし常時補正へいきなり切り替えると、
+    # 補正のたびに姿勢が飛んで追従が乱れる恐れがある。
+    # そこで **「計算はするが TF を出さない」** モードを用意した。巡回を回しながら
+    # これを流せば、**走行に一切影響せずに「何 m ずれていくか」が数字になる。**
+    p.add_argument("--mode", choices=("hold", "correct"), default="correct",
+                   help="hold=**初期値のまま出すだけ**（従来の静的 map→odom と同じ）/ "
+                        "correct=照合して補正する（既定）。"
+                        "⚠️ **走行中に切り替えるならこれを使うこと。** 静的 TF と動的 TF の"
+                        "入れ替えは tf2 の仕様上うまくいかない（静的はバッファに残り続け、"
+                        "止めた瞬間に tf_stale で FAULT になる。2026-09-24 にモックで実測）")
+    p.add_argument("--observe-only", action="store_true",
+                   help="補正量を計算・記録するだけで **map→odom の TF を出さない**。"
+                        "走行には影響しない（ずれの実測用）")
+    p.add_argument("--log-csv", type=Path, default=None,
+                   help="1周期ごとに時刻・スコア・累積補正量を CSV で残す")
     p.add_argument("--match-rate", type=float, default=2.0, help="照合する頻度[Hz]")
     p.add_argument("--tf-rate", type=float, default=20.0,
                    help="map->odom を出す頻度[Hz]。**照合できなくても出し続ける**")

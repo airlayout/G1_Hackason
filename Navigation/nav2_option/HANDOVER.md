@@ -1,6 +1,9 @@
 # 引き継ぎ — 次にこれを触る人へ
 
-最終更新: **2026-09-16**（実機なし。旋回の再現検証と巡回モードの実装）
+最終更新: **2026-09-25 夜**（⭐ **巡回を1周完走した。** そして `collision ahead` の
+原因が確定した → [findings/collision_ahead_cause_20260925.md](findings/collision_ahead_cause_20260925.md)）
+
+⚠️ 会場は **room_a**（9/24 に一時 Sorasta を既定にしたが 9/25 に戻した）。
 
 このファイルは「**次に何をすればいいか**」だけを書く。何があったかの記録は
 [Planning.md](Planning.md) の A-10n、当日の操作手順は
@@ -8,24 +11,194 @@
 
 ---
 
-## 1. 到達点（2026-09-15 時点）
+## 1. 到達点（2026-09-25 時点）
 
-**実機が Nav2 の指令で歩いた。** §3〜§8 の経路がすべて実機で成立している。
+⭐ **実機で巡回路 6 点を1周完走した**（2周目の途中で内蔵SLAM の寿命切れ）。
+§3〜§8 の経路がすべて実機で成立している。
 
 | | |
 |---|---|
-| 自律歩行 | 3 回（**0.34m / 3.17m / 4.96m**）。Goal は **1 件 SUCCEEDED** |
+| 会場 | **room_a**。既定地図は `maps/grids/room_a_map_20260911_edited.yaml`（9/11 版を手で28箇所開けたもの）。⚠️ 9/24 に一時 Sorasta にしたが 9/25 に戻した |
+| **9/25 の到達点** | ⭐ **巡回 1 周完走**（p1→p2→p3→p4→p5→p6→p1、6区間すべて）。`collision ahead` の**原因が確定**（下記 2-⓪） |
+| 9/24 の到達点 | 自律歩行 **2 回（0.78m / 0.62m）**。**旋回デッドロックは再現せず**（wz が 0.30 出た） |
+| 自律歩行（9/15・room_a） | 3 回（**0.34m / 3.17m / 4.96m**）。Goal は **1 件 SUCCEEDED** |
 | **U-16（歩行中の odometry 精度）** | ✅ **答えが出た。約5m 歩いてドリフト 7cm（測定分解能）、yaw ゼロ。** Phase 2a の FAST-LIO 構築（A-6）は省略できる見込み |
 | D-31（heartbeat） | 実機で初通電。通信断で正しく停止することを確認（意図せず 1 回発動した） |
-| 残る壁 | **その場旋回が始まらない**（下記 2-①）と、**地図が現状と合っていない**（2-②） |
+| 残る壁 | **`collision ahead` の恒久対処**（原因は判明。直し方は未実装 → 2-⓪）と、**内蔵SLAM が 20〜26 分で落ちる**（2-③） |
 
 ---
 
 ## 2. 次にやること（この順で）
 
-### ① 旋回デッドロックの対処を実機で試す ← **最優先。10分で終わる**
+### ⓪' 次の実機セッションの目標: **巡回を通す**（2026-09-24 に決めた）
+
+モックでは **6 点の巡回路を 4 周、FAULT・abort・`collision ahead` ゼロ**で回った
+（1 周 約75秒 / room_a の実地図の上）。**実機で同じことをやる。**
+
+**✅ 2026-09-25 に PC2 へ配布・ビルド済み**（`g1_navigation` / `g1_cmd_router` とも成功）。
+`maps/` `tools/` `g1_ws/src/` `g1_sdk_bridge_cpp/` 起動スクリプト一式が入っている。
+次に PC2 へ配るときはこれ:
+
+```bash
+nmcli connection up g1-link
+rsync -a --exclude clouds/ maps/                    g1:/home/unitree/g1_nav2/maps/        # ⚠️ 忘れるとビルドが落ちる
+rsync -a --exclude '__pycache__' g1_ws/src/         g1:/home/unitree/g1_nav2/g1_ws/src/
+rsync -a --exclude build --exclude '__pycache__' \
+        g1_sdk_bridge_cpp/                          g1:/home/unitree/g1_nav2/g1_sdk_bridge_cpp/   # ⚠️⚠️ 忘れやすい
+rsync -a --exclude '__pycache__' tools/             g1:/home/unitree/g1_nav2/tools/
+rsync -a deploy/pc2_humble/{g1up.sh,start_nav.sh,start_record.sh,start_localizer.sh} g1:/home/unitree/g1_nav2/
+ssh g1 'cd ~/g1_nav2/pc2_humble && ~/.pixi/bin/pixi run bash -lc "cd ~/g1_nav2/g1_ws && colcon build --symlink-install"'
+```
+
+⚠️⚠️ **`g1_sdk_bridge_cpp/` は `g1_ws/src/` の外**にある（独立 CMake プロジェクト・D-08）。
+2026-09-25 に送り忘れて `SafetyManager has no member named 'SuspendCmdTimeout'` でビルドが落ちた。
+
+⚠️ **発進ゲートは `/etc/default/g1-sdk-bridge` で `G1_ARM=--arm` のまま**。
+ただし **サービスは `inactive` かつ `disabled`**（PC2 再起動で落ちた）ので、いまは武装していない。
+`systemctl start` した瞬間に武装するので、動かす気が無いなら先に閉じること:
+`sudo sed -i 's/^G1_ARM=.*/G1_ARM=/' /etc/default/g1-sdk-bridge`
+
+**当日の流れ（③で初めて歩く。①②では動かない）:**
+
+| 段 | やること | 機体 |
+|---|---|---|
+| 準備 | 機体を**通常の立位**で出発位置へ。人は2m以上離れる | 立つだけ |
+| §2〜§7 | `~/g1_nav2/g1up.sh`（巡回路は既定で `config/patrol_room_a.yaml` を読む） | 動かない |
+| 目視 | **RViz で位置と赤軸の向き**。§7 の一致率も見る（50cm以内が80%を切ったら地図を疑う） | 動かない |
+| ① | ゲートを開く（`G1_ARM=--arm` + `systemctl restart`） | **まだ動かない** |
+| ② | `g1up.sh --enable`（`NAVIGATING` になる） | **まだ動かない** |
+| ③ | `~/g1_nav2/tools/patrol_ctl.sh start` | **ここで歩き出す。まず p1 へ** |
+
+**⚠️ 巡回路の 6 点は「地図の上でクリックした座標」**（`tools/mark_map.py`）。
+各点の `yaw_deg` は**次の点を向く**ように入れてある（`patrol_dryrun.py --face-next`）。
+現地で測ったものではない。**最初の1周は人がついて見ること。** ずれるようなら
+`tools/record_waypoints.py` で取り直す（機体を実際にその場所へ連れて行く方が確か）。
+
+**⚠️ 今日の対処で `spin` が実際に動くようになった**（`behavior_server` の cmd_vel を
+`/cmd_vel_nav` へ付け替えた）。これまで復帰動作の指令はどこにも届いていなかった。
+**その場旋回が起きることを想定しておくこと。**
+
+📌 **16〜18分で内蔵SLAM が落ちる。** 1周75秒なら **13周前後**で止まる。落ちたら
+TF 途絶 → FAULT → 巡回は HOLD。`1801` 再送 → **§7 をやり直し** → `clear_fault` →
+`patrol_ctl.sh start` で再開（自動では戻らない）。
+
+### ⓪'' 自己位置の補正を「その場で切り替えられる」ようにした（2026-09-24）
+
+**`map→odom` を Nav2 の外に出せるようにした。** 従来は §7 の値を入れるのに
+Nav2 ごと上げ直していた（20〜25秒・巡回も IDLE に戻る）が、
+`start_nav.sh` の第1引数に **`none`** を渡せば `g1_slam_odom_tf.py` は
+map→odom を出さなくなるので、外から差し替えられる。
+
+```bash
+bash ~/g1_nav2/start_nav.sh none 0 2.0                    # map→odom を外部供給にする
+~/g1_nav2/tools/map2odom_ctl.sh start   <dx> <dy> <yaw>   # 供給開始（hold＝補正しない。従来と同じ挙動）
+~/g1_nav2/tools/map2odom_ctl.sh observe <dx> <dy> <yaw>   # ⭐ 測るだけ（TF を出さない・併走可）
+~/g1_nav2/tools/map2odom_ctl.sh correct                   # 補正を入れる（**走行中に切り替えてよい**）
+~/g1_nav2/tools/map2odom_ctl.sh hold                      # 補正を止める
+~/g1_nav2/tools/map2odom_ctl.sh status
+```
+
+⚠️⚠️ **静的 TF と動的 TF の「入れ替え」は成立しない**（2026-09-24 にモックで実測）。
+`map_localizer` は起動後 **距離場の作成に約3秒** TF を出せず、その間に静的を止めると
+`tf_stale` → FAULT → 巡回が HOLD。順序を逆にしても、**静的 TF は tf2 のバッファに
+残り続ける**ので入れ替え自体が成立しない。だから**供給者は常に `map_localizer` 1本**にし、
+`hold`/`correct` をサービスで切り替える形にした。モックでは**走行中に `correct` へ
+切り替えても `NAVIGATING` のまま巡回が続く**ことを確認済み。
+
+📌 **`observe` は static と併走してよい**（TF を出さないため）。走行に影響せず、
+`runs/drift_*.csv` に**累積補正量＝実際のずれ**が残る。**次回これを回すこと。**
+
+⚠️ **この経路は実機で未検証。** 従来どおり `g1up.sh`（§7b で Nav2 を上げ直す）も残してある。
+
+### ⓪⓪ ⚠️⚠️ **PC2 へ未配布の変更がある**（2026-09-25 夜）
+
+`config/nav2_params.yaml` の `goal_checker` を緩めたが、**リンクを切ったあとに
+直したので PC2 に入っていない**。次に繋いだら最初にこれを送ること:
+
+```bash
+rsync -a g1_ws/src/g1_navigation/config/nav2_params.yaml \
+        g1:/home/unitree/g1_nav2/g1_ws/src/g1_navigation/config/
+# ⚠️ install 側が symlink でなければ colcon build も要る
+```
+
+### ⓪''' ゴールに着いても止まれず回り続ける ← **最優先（原因は判明、対処は未検証）**
+
+⭐ **2026-09-25 に実機で発生・原因特定** → [findings/goal_orbit_and_drift_20260925.md](findings/goal_orbit_and_drift_20260925.md)
+
+**p2 に 0.009m まで着いたのに、180 秒間その場で回り続けた**（位置と向きが
+**一度も同時に**許容内にならない。775 サンプルで該当 0 件）。
+**その旋回で内蔵SLAM がドリフトし、最終的に自己位置が 10.8m ずれた。**
+
+対処として `goal_checker` を **`xy 0.20→0.30` / `yaw 0.20→1.00 rad(57°)`** にした
+（記録から計算すると **到達せず → 20.3 秒**）。⚠️ **実機で未検証。**
+駄目なら yaw を 1.57 → 向き指定をやめる、の順で落とす（findings の §5）。
+
+### ⓪'''' 次の実機セッションで必ずやること
+
+1. **§7 のあと RViz で位置と向きを目視確認する。**
+   ⚠️ 2026-09-25 の2回目はこれを飛ばして走らせ、見当違いの場所へ歩かせた。
+   **§7 の値が何回やっても同じでも、正しさの証拠にはならない。**
+2. **`tools/map2odom_ctl.sh observe` を併走させる。**（TF を出さないので走行に影響しない）
+   ドリフトが実際どれだけ育つかを測る。**用意済みで未使用。**
+3. **記録に点群を含める。** 9/25 は `diag` プロファイル（19 トピック）で録ったため、
+   **オフラインで自己位置を再計算できず、ドリフト説を確証できなかった。**
+4. **巡回を start する前に costmap 消去が動いているか確認する。**（下の ⓪ 参照）
+
+### ⓪ `collision ahead` を**恒久的に**直す ← **最優先**
+
+⭐ **2026-09-25 に原因が確定した** → [findings/collision_ahead_cause_20260925.md](findings/collision_ahead_cause_20260925.md)
+
+**実在の障害物でも、地図のノイズでも、自己位置のずれでもない。**
+`local_costmap` に残った **LiDAR 観測の消し残り**が、機体の足元を障害物にしていた。
+
+```
+local costmap : footprint(0.32m)内に lethal 33 セル / 最短 0.17 m  →「衝突」
+生の LiDAR    : 障害物として立つ点の最短が 2.67 m 先（センサー基準）
+costmap を消す→ 0 セル。静止14秒では戻らない。約100秒歩くと 37 セルまで再蓄積（2回とも同じ）
+```
+
+`local_costmap` は `plugins: ["voxel_layer","inflation_layer"]` で**静的地図の層が無い**。
+**MID-360 の死角（立位の実測で半径 0.91〜1.12m。D-21）の中はレイが通らず、
+一度立った格子を消せない。** 歩くほど溜まる。
+⚠️ 当初「この地点では 1.57m」と書いたが**誤りなので取り消した**
+（`why_costmap.py` が odom 原点基準で測っていた。同日センサー基準に修正）。
+
+⚠️ **`cmd_timeout` を伸ばしても直らない。** 本当の原因はここだった。
+
+**暫定処置（今日これで1周できた）**: 20秒ごとに
+`/local_costmap/clear_entirely_local_costmap` を呼ぶループを併走させる。
+⚠️⚠️ **本物の障害物も一瞬消える。死角(〜1.6m)の中のものは立ち直らない。人が見ている場でのみ。**
+
+**次にやること（この順で）:**
+
+1. **記録 `runs/20260925_182814_nav2`（106MB）を再生して、消し残りの正体を見る。**
+   機体自身の脚（`min_obstacle_height: 0.05`）なのか、通り過ぎた人なのか。
+2. **死角の中だけ毎周期 free にする層を足す**（本命）。死角は幾何で決まるので、
+   その中を信用しないのは筋が通っている。
+3. G1 内蔵の `/collision_clouds` `/pre_collision_clouds` `/safe_clouds` を調べる（未着手）。
+
+### ③ 内蔵SLAM の寿命（9/25 に n=2 で計測）
+
+**19分39秒** と **26分**。従来の「16〜18分」より幅がある。落ちると TF 断 →
+`tf_stale` → FAULT → 巡回 HOLD。**自動では戻らない。**
+
+復帰: `cd ~/g1_nav2/tools && /usr/bin/python3 send_slam_api.py 1801`
+（⚠️ **pixi ではなく `/usr/bin/python3`**。pixi には `cyclonedds` が入っていない）
+→ **§7 をやり直し**（odom 原点がリセットされるため）→ `clear_fault` → `patrol_ctl.sh start`
+
+⚠️ **1801 を送り直すと odom レートが変わることがある。** 9/25 は
+**10.077 Hz → 約4 Hz に半減**し、`tf_timeout_s` の既定 0.5 秒では
+**enable した直後に必ず `tf_stale` FAULT** になった。
+→ `start_nav.sh` の**第6引数**（または launch の `tf_timeout_s:=`）で **1.0** にして回避した。
+
+### ① ~~旋回デッドロックの対処を実機で試す~~ ✅ **2026-09-24、再現しなかった**
+
+`/cmd_vel_smoothed` の wz が **0.30** まで上がり、機体は歩いた（9/15 は 0.02 で
+2,363 周期張り付き）。⚠️ **「その場旋回だけ」を分離しては見ていない**ので、
+`rotate_to_heading` 単体の合否は未確定。以下は当時の記録。
 
 **今日の失敗のほぼ全部がこれで説明できる。** 対処はコミット済みだが**実機で未検証**。
+📌 **2026-09-23 に PC2 へ配置・再ビルド済み**（`install/` の `nav2_params.yaml` が`max_angular_accel: 6.0` / `PoseProgressChecker` になっていることを確認）。**残っているのは実機で見ることだけ。**
 
 RPP の rotate-to-heading は**実測角速度を基準に**加速度制限をかけるため、
 
@@ -146,6 +319,13 @@ cd ~/g1_nav2/tools && python3 record_waypoints.py -o ~/g1_nav2/patrol_room_a.yam
 - 未適用の注意事項: 「**建図中は機体内蔵の障害物回避を切る**（頭部ライトが青になる）」
   「建図中は機体を速く動かしすぎない」
 
+### ✅ 2026-09-24 に 1 回ぶんの答えが出た: **18.5 分。歩いていても切れた**
+
+`1801` を 1 回だけ送り、07:22:45 → **07:41:22 に停止（18.5 分）**。
+**この間に他の人が機体を歩かせている**（odom が 0.6m 以上動いた）ので、
+**「無動作で切れる」説は弱まり、「時間で切れる」が濃厚**になった。
+⚠️ **n=1**。過去 3 回（15.7〜17.0 分）より長い理由も説明できていない。
+
 📌📌 **次のセッションで、ロボットの時間を追加で使わずに判別できる。**
 `1801` を**最初に1回だけ送り、以後は再送せずに** `watch_slam_alive.sh` を回しっぱなしにする。
 ①②③で機体は歩くので、**16分を超えて生き延びれば「無動作で切れる」**と分かる。
@@ -206,7 +386,8 @@ ssh g1              # ros:foxy(1) noetic(2)? には **Enter だけ**
 意図的に座位などで進めたいときは `--force-posture`。
 
 ⚠️ **発進ゲートの開放と Goal 送信はしない**（人の判断を残すため）。最後に次の手順を表示する。
-⚠️ **まだ実機で動かしていない。** 失敗したら下の手動手順に落ちること。
+⚠️ **まだ実機で最後まで動かしていない。** 2026-09-23 に `--dry-run` が §0〜§2 まで通ることだけ確認した（§2 で `G1_ARM=--arm` を検出して正しく止まった）。失敗したら下の手動手順に落ちること。
+⚠️ **NOPASSWD が未設定なので、§2 の `sudo systemctl start` でパスワードを聞かれる。**
 配置と NOPASSWD の設定は [deploy/README.md](deploy/README.md) を参照。
 
 ### 手動手順（`g1up.sh` が転んだとき / 中身を知りたいとき）
@@ -294,10 +475,10 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
   | | |
   |---|---|
   | `Navigation/nav2_option/0911_robag/` | **3.5GB。9/11 の rosbag。いまの地図の素**。軌跡はここから取り出した |
-  | `Navigation/map_wireless_dualcam_01_cleaned_no_ceiling.pcd` | 101MB、880万点。**いまの地図の素** |
-  | `Navigation/nav2_option/map_20260907.pcd` | 6.5MB、**旧**地図の素 |
+  | `Navigation/nav2_option/maps/clouds/map_wireless_dualcam_01_cleaned_no_ceiling.pcd` | 101MB、880万点。**いまの地図の素** |
+  | `maps/clouds/map_20260907.pcd` | 6.5MB、**旧**地図の素 |
 
-  📌 軌跡（`trajectory/map_wireless_dualcam_01.tum`、550KB）と生成した地図は
+  📌 軌跡（`maps/trajectory/map_wireless_dualcam_01.tum`、550KB）と生成した地図は
   **リポジトリに入れてある**ので、上の巨大ファイルが無くても地図は使える。
   作り直したいときだけ要る。
 
@@ -306,14 +487,21 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
 | | |
 |---|---|
 | `pc2_humble/` | pixi の Humble + navigation2 1.1.20（aarch64）。**docker も sudo も不要** |
-| `g1_ws/` | ビルド済み（3パッケージ） |
-| `tools/` | リポジトリと同期済み |
-| `start_nav.sh` / `start_record.sh` / `start_localizer.sh` | 起動スクリプト。⚠️ **2026-09-16 に更新した。配置し直すこと**（既定地図の切り替え・巡回路の受け渡し・`start_localizer.sh` の引数化） |
-| `runs/` | **記録が 4 本残っている**（回収して `explain_run.py` に掛けること） |
+| `g1_ws/` | ✅ **2026-09-23 に再ビルド済み**（3パッケージ）。`max_angular_accel: 6.0` / `PoseProgressChecker` / `patrol_node.py` / 新地図 `room_a_map_20260911` が `install/` に入っていることを確認した |
+| `tools/` | ✅ リポジトリと同期済み（`patrol_ctl.sh` / `record_waypoints.py` を含む） |
+| `start_nav.sh` / `start_record.sh` / `start_localizer.sh` / `g1up.sh` | ✅ **2026-09-23 に配置済み**（`--dry-run` が §0〜§2 まで通ることを確認） |
+| `runs/` | ✅ 9/15 の 6 本・**9/24 の 5 本（519MB）**とも `_local/nav2_runs/` に回収済み。⚠️ **9/24 の 5 本はまだ `explain_run.py` に掛けていない** |
 | 動いたままかもしれないもの | Nav2 一式、`g1-sdk-bridge`。⚠️ **`/etc/default` は `G1_ARM=--arm` のまま**。ただしサービスは `enable` されていないので再起動後は自動起動しない |
+
+⚠️⚠️ **2026-09-24 の撤収時、ゲートを開けたまま終わった**（`G1_ARM=--arm` / サービス active）。
+Nav2・内蔵SLAM・記録はすべて止めてあるので指令は流れないが、**次に触る人は真っ先に閉じること**:
+`sudo sed -i 's/^G1_ARM=.*/G1_ARM=/' /etc/default/g1-sdk-bridge && sudo systemctl restart g1-sdk-bridge`
 
 ⚠️ **次回接続したら真っ先に `grep '^G1_ARM=' /etc/default/g1-sdk-bridge` を見ること。**
 `--arm` のままなので、`systemctl start` した瞬間に武装する。
+**2026-09-23 時点でも `--arm` のまま**（サービスは `inactive`）。`sudo` はパスワードが要るので人が閉じること。`g1up.sh --dry-run` は §2 でこれを検出して止まる。
+
+⚠️ **`/etc/sudoers.d/` に `g1-bridge`（NOPASSWD）が入っていない**（2026-09-23 確認。中身は配布時の `README` だけ）。`g1up.sh` は §2 の `sudo systemctl start g1-sdk-bridge` でパスワードを聞く。入れるなら [deploy/README.md](deploy/README.md) の「一度だけ必要な設定」を実行すること（許可するのは**ゲートを閉じたままの起動だけ**）。
 
 ### 操作PC
 
@@ -330,7 +518,11 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
 - **`backup` を含まない BT XML** を作って差し替える（落とし穴8の恒久対策）
 - **`obstacle_min_range: 0.9` の副作用**の確認。0.9m より近い実在の障害物は
   新たにはマークされない。死角(0.91〜1.12m)と整合しているが、詰めきれていない
-- PC2 の `runs/` 4本の回収と解析
+- ~~PC2 の `runs/` の回収と解析~~ ✅ **2026-09-23 に完了**（6 本。`_local/nav2_runs/` に回収し、各ディレクトリに `explain.txt` を置いた）
+  - ⚠️ **5 本は `metadata.yaml` が無く、そのままでは開けなかった**（記録を正常終了させずに落としたため）。`ros2 bag reindex -s sqlite3 <dir>` で復旧できる
+  - 停止理由は **`cmd_timeout` 6 回 / `operator_lost` 2 回**。Goal は **SUCCEEDED 2 件**、残りは ABORTED / CANCELED
+  - **旋回デッドロックが記録にそのまま残っている**: `/cmd_vel_smoothed` の wz が**`-0.020` に張り付いたまま**動かない。①の実機確認では同じ区間で **0.3 前後まで上がるか**を見ればよい（比較の基準値がこれで手に入った）
+  - 4 本は同じ時間帯を重複して記録している（`explain.txt` の時刻が食い違うのはこのため）
 - **自己位置の異常検知**（2026-09-16 に整理。**結論: いまは作らない**）
 
   走行を止める条件は TF鮮度 / センサー鮮度 / heartbeat / cmd_timeout / E-stop /
@@ -354,7 +546,12 @@ ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: true}"
   それでも先に作るなら、絶対スコアではなく**補正量が急に飛ぶか**を見ること
   （地図の古さは一定のバイアスとして乗るだけなので原理的には分離できる。
   ただし閾値を決める実測データがまだ無い）
-- **巡回の実機検証**（モックまで済み）
+- **巡回の実機検証**（モックまで済み）。⚠️ **Sorasta の巡回路はまだ 1 点も記録していない**
+- **9/24 の記録 5 本の解析**（`_local/nav2_runs/20260924_*`。`explain_run.py`）。
+  特に **`collision ahead` の時間帯の costmap** を見れば ⓪ の切り分けがつく
+- **Sorasta の地図の取り直し**（SLAM 軌跡つき。⓪(2) が本命ならこれが本筋）
+- **内蔵SLAM の時計ドリフトの扱い**（2026-09-24 に `--restamp-now` で回避した）。
+  **回避であって解決ではない。** dock 側の時計を合わせる手段があるなら、そちらが筋
 - ⚠️ **「各点で止まって見回す」ができない件の判断**（人が決めること）。
   Goal 到達の約1.3秒後に `cmd_timeout` で FAULT に落ちるため（落とし穴14）。
   [findings/patrol_mode.md](findings/patrol_mode.md) §6 に (a)何もしない /

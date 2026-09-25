@@ -125,6 +125,12 @@ void SafetyManager::Tick() {
     }
 }
 
+void SafetyManager::SuspendCmdTimeout() {
+    // 「最初の指令を待っている」状態へ戻すだけ。Tick() は has_value() を見て
+    // 判定を見送るので、判定経路をもう1本増やさずに済む。
+    last_nav_cmd_time_.reset();
+}
+
 void SafetyManager::EStop() {
     state_ = NavState::kEStop;
     SendZero();

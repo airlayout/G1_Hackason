@@ -35,7 +35,7 @@ if [ "${1:-}" = "stop" ]; then
     exit 0
 fi
 
-MAP_YAML="${1:-$NAV2_OPTION/g1_ws/src/g1_navigation/maps/room_a_map.yaml}"
+MAP_YAML="${1:-$NAV2_OPTION/maps/grids/room_a_map_20260911.yaml}"
 TRAJ="${2:-$REPO_ROOT/Mapping/real/runs/20260904_203726_room_a/trajectory/trajectory.tum}"
 
 [ -f "$MAP_YAML" ] || { echo "[view] 地図が無い: $MAP_YAML" >&2; exit 1; }

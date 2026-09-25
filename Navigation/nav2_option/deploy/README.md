@@ -136,7 +136,15 @@ rsync -a deploy/pc2_humble/ g1:/home/unitree/g1_nav2/pc2_humble/
 rsync -a deploy/pc2_humble/{g1up.sh,start_nav.sh,start_record.sh,start_localizer.sh,cyclonedds_eth0.xml} \
          g1:/home/unitree/g1_nav2/
 rsync -a tools/ g1:/home/unitree/g1_nav2/tools/      # record_waypoints.py / patrol_ctl.sh を含む
+rsync -a --exclude clouds/ maps/ g1:/home/unitree/g1_nav2/maps/   # ⚠️ 2026-09-24 に必要になった
+rsync -a --exclude '__pycache__' ../nav2_option/g1_ws/src/ g1:/home/unitree/g1_nav2/g1_ws/src/
 ```
+
+⚠️⚠️ **`maps/` を送り忘れると PC2 のビルドが落ちる**（2026-09-24 に地図を
+`nav2_option/maps/` へ集約したため）。`g1_navigation` の `CMakeLists.txt` が
+`../../../maps/grids` を参照しており、無いと `maps/grids が見つからない` で
+**FATAL_ERROR** になる。`clouds/`（116MB の点群）は地図を作り直すときしか要らないので
+PC2 へは送らない。
 
 ⚠️ **`g1up.sh` は `~/g1_nav2/` 直下に置く**（`pc2_humble/` `g1_ws/` `tools/` と並ぶ位置）。
 自分の居場所を基準に部品を探すため。

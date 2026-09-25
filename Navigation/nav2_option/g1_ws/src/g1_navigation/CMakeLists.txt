@@ -3,7 +3,16 @@ project(g1_navigation)
 
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY config launch maps scripts DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config launch scripts DESTINATION share/${PROJECT_NAME})
+
+# ⚠️ **地図の実体は `nav2_option/maps/` に集約してある**(2026-09-24)。
+# 占有格子・点群・軌跡が4か所に散っていたのをまとめたため、ここからは相対参照する。
+# (`tools/g1_slam_odom_tf.py` を実体1つにしているのと同じ方針)
+set(G1_MAPS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../maps/grids)
+if(NOT EXISTS ${G1_MAPS_DIR}/room_a_map_20260911.yaml)
+  message(FATAL_ERROR "maps/grids が見つからない: ${G1_MAPS_DIR}")
+endif()
+install(DIRECTORY ${G1_MAPS_DIR}/ DESTINATION share/${PROJECT_NAME}/maps)
 
 # ⚠️ `g1_slam_odom_tf.py` は `nav2_option/tools/` に**実体を1つだけ**置き、
 # ここからインストールする。コピーを作ると必ず片方だけ直して食い違う。

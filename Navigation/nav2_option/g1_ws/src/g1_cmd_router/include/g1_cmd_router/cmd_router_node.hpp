@@ -17,6 +17,9 @@
 #include <thread>
 #include <vector>
 
+#include <map>
+
+#include <action_msgs/msg/goal_status_array.hpp>
 #include <action_msgs/srv/cancel_goal.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -222,6 +225,24 @@ private:
     // Nav2 Goal キャンセル用。空なら機能を無効にする。
     std::vector<std::string> nav2_cancel_services_;
     std::vector<rclcpp::Client<action_msgs::srv::CancelGoal>::SharedPtr> cancel_clients_;
+
+    // --- D1: Goal が走っていない間は cmd_timeout を数えない(2026-09-24) -------
+    // ⚠️ **これが無いと、Goal に到達するたびに必ず FAULT に落ちる。** 到達後は
+    // Nav2 が指令を出すのをやめ、velocity_smoother も 1 秒で沈黙するため
+    // (2026-09-15 / 09-24 の実機でどちらも踏んだ)。巡回は各点で必ずこれを踏む。
+    // 📌 **「Nav2 が死んだ」検知は失われない。** Goal が ACTIVE のまま指令が
+    // 途切れれば、従来どおり cmd_timeout で FAULT になる。
+    // ⚠️ status を一度も受け取れない構成(Nav2 が上がっていない等)では
+    // cmd_timeout が働かない。その場合は TF 鮮度とセンサー鮮度が受け持つ。
+    // ⚠️ **トピックごとに覚えて OR を取る。** 1つの bool を共有すると、
+    // 走っていない側の status(空)が走っている側の true を消してしまう。
+    void OnGoalStatus(const std::string& topic,
+                      const action_msgs::msg::GoalStatusArray::SharedPtr msg);
+    bool AnyGoalActive() const;
+    std::vector<rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr> sub_goal_status_;
+    std::map<std::string, bool> goal_active_by_topic_;
+    bool cmd_timeout_requires_goal_ = true;   // false にすると 2026-09-24 以前の挙動
+    bool logged_goal_status_ = false;
     // NAVIGATING から異常系へ抜けたことを検知するために前回の状態を覚えておく
     g1_sdk_bridge::NavState prev_state_ = g1_sdk_bridge::NavState::kDisconnected;
 };

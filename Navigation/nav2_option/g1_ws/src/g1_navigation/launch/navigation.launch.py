@@ -148,13 +148,24 @@ def _launch_setup(context, *args, **kwargs):
             parameters=[{"use_sim_time": use_sim_time}],
         ))
     else:
-        # dry-run 専用のスタンドイン。synthetic_room の自由空間に起点を置く
-        nodes.append(Node(
-            package="tf2_ros",
-            executable="static_transform_publisher",
-            name="map_to_odom_static_tf",
-            arguments=["-3", "-4", "0", "0", "0", "0", "map", "odom"],
-        ))
+        # dry-run 専用のスタンドイン。既定は synthetic_room の自由空間に起点を置く。
+        # ⚠️ **地図を差し替えるときは `mock_start` も変えること**(2026-09-24)。
+        # 既定の (-3,-4) は synthetic_room の値で、room_a の地図では
+        # **巡回エリアと繋がっていない別の自由空間**に落ちる（＝どこへも行けない）。
+        raw_start = LaunchConfiguration("mock_start").perform(context).strip()
+        # ⚠️ `none` なら **map→odom を出さない**（実機側の map_to_odom:=none と同じ意味）。
+        # 外から供給する構成（tools/map2odom_ctl.sh）をモックでも試せるようにするため。
+        if raw_start != "none":
+            mock_start = raw_start.split()
+            if len(mock_start) != 3:
+                raise RuntimeError(f'mock_start は "x y yaw[rad]" か none: {raw_start!r}')
+            nodes.append(Node(
+                package="tf2_ros",
+                executable="static_transform_publisher",
+                name="map_to_odom_static_tf",
+                arguments=[mock_start[0], mock_start[1], "0", mock_start[2], "0", "0",
+                           "map", "odom"],
+            ))
         nodes.append(Node(
             package="g1_navigation",
             executable="fake_sensor_publisher.py",
@@ -190,7 +201,34 @@ def _launch_setup(context, *args, **kwargs):
         parameters=[{
             "heartbeat_required": flag("heartbeat_required"),
             "operator_timeout_s": float(LaunchConfiguration("operator_timeout_s").perform(context)),
+            # ⚠️ **指令が何秒途切れたら FAULT にするか。** 既定 0.30 だと、復帰動作
+            # (spin / DriveOnHeading)の切り替わりや Goal 到達の直後に必ず落ちる
+            # (2026-09-24 実機で発生。約0.8m 歩いた直後に cmd_timeout で FAULT)。
+            # 📌 **機体の安全は SDK 側が別に持っている。** systemd の
+            # `--cmd-timeout 0.30` は据え置きなので、指令が途切れれば**機体は 0.3 秒で
+            # ゼロ速度になる**。ここを伸ばして変わるのは「FAULT にして Goal ごと
+            # 捨てるまでの猶予」だけで、**止まる速さは変わらない**。
+            #
+            # ⚠️ **2026-09-24 に 1.0 → 2.0 秒へ（利用者の判断）。** 1.0 でも復帰動作の
+            # 切り替わりで足りなかったため。**上限は heartbeat と同じ 2.0 まで**とする。
+            # これ以上にすると他の番人（heartbeat 2.0 / センサー鮮度 1.0 / TF 鮮度 0.5）の
+            # ほうが先に発火するので、この番人は名目だけになる。
+            # ⚠️ 伸ばすと増えるリスクは2つ:
+            #   1. **無人のまま再開する窓が広がる**。長く詰まったあと Nav2 が
+            #      **古い姿勢で計算した指令**を出して動き出しうる（FAULT なら Goal ごと捨てる）
+            #   2. **状態表示が嘘をつく時間が伸びる**。ROS 側が死んでも 2 秒間は
+            #      `NAVIGATING` のままで、UI も「走行中」と出し続ける
+            "cmd_timeout": float(LaunchConfiguration("cmd_timeout").perform(context)),
             "require_tf": flag("require_tf"),
+            # ⚠️ **TF が何秒古くなったら FAULT にするか。** 既定 0.5 は
+            # 内蔵SLAM の odom が 10Hz 出ている前提の値。
+            # 2026-09-25 に実機で **odom が 4Hz に半減**し(1801 を送り直した後)、
+            # TF の間隔が最大 0.425 秒＋遅延で 0.5 秒を超え、
+            # `Lookup would require extrapolation into the future`(最新 TF が 0.513 秒前)
+            # で **enable した直後に必ず tf_stale FAULT** になった。
+            # 代償: 本当に TF が途絶したときの検知が最大この秒数だけ遅れる
+            # (max_vx 0.30 なので +0.5 秒 ≒ +0.15m 余分に進む)。
+            "tf_timeout_s": float(LaunchConfiguration("tf_timeout_s").perform(context)),
             "require_sensor": flag("require_sensor"),
             # 鮮度監視の対象も backend に合わせる(見ていないトピックを監視しても無意味)
             "sensor_topic": sensor_topic,
@@ -207,8 +245,20 @@ def _launch_setup(context, *args, **kwargs):
              parameters=[configured_params], remappings=[("cmd_vel", "/cmd_vel_nav")]),
         Node(package="nav2_planner", executable="planner_server", name="planner_server",
              parameters=[configured_params]),
+        # ⚠️⚠️ **`cmd_vel` の付け替えが要る**(2026-09-24 に実機で判明)。
+        # `behavior_server`(spin / backup / wait)は既定で **`/cmd_vel`** に出すが、
+        # 下流は `controller_server` に合わせて `/cmd_vel_nav` → velocity_smoother →
+        # `/cmd_vel_smoothed` と繋がっており、`g1_cmd_router` は最後だけを見ている。
+        # 付け替えが無いと**復帰動作の指令はどこにも届かない**:
+        #   実機ログ: `/cmd_vel 非ゼロ (vx=0.000, wz=1.000)` の裏で
+        #             `/cmd_vel_smoothed` は**ゼロ**のまま
+        # その結果 **BT が復帰動作に入るたびに指令が必ず途切れ**、`cmd_timeout` で
+        # FAULT → Goal 取り消し → 人が clear_fault するまで停止、を繰り返していた。
+        # ⚠️ **`cmd_timeout` をいくら伸ばしても直らない**（spin は 10 秒級で粘るため）。
+        # 本家 nav2_bringup も velocity_smoother を使う構成では同じ付け替えをしている。
         Node(package="nav2_behaviors", executable="behavior_server", name="behavior_server",
-             parameters=[configured_params]),
+             parameters=[configured_params],
+             remappings=[("cmd_vel", "/cmd_vel_nav")]),
         Node(package="nav2_bt_navigator", executable="bt_navigator", name="bt_navigator",
              parameters=[configured_params]),
         Node(package="nav2_velocity_smoother", executable="velocity_smoother", name="velocity_smoother",
@@ -262,10 +312,18 @@ def generate_launch_description():
         # 既定は Nav2 の配線検証用の合成地図(連結した自由空間を保証)。
         # A-7 で生成した test_room.yaml はレイトレーシング前のもので自由空間が
         # 連結しておらず、経路計画のデモには使えない。
-        # ⚠️ 実機では **room_a_map_20260911.yaml** を渡す（2026-09-16 に 9/07 の
-        # room_a_map.yaml から切り替えた。A-10q）。旧地図も残してある。
+        # ⚠️ 実機では **room_a_map_20260911_edited.yaml** を渡す（2026-09-24）。
+        # 実地の目視で通路と判断した 28 箇所を開けた版（maps/grids/EDITS.md）。
+        # 手編集していない版・9/07 版・Sorasta 版も残してある。
         DeclareLaunchArgument(
             "map", default_value=os.path.join(share, "maps", "synthetic_room.yaml")),
+        DeclareLaunchArgument(
+            "mock_start", default_value="-3 -4 0",
+            description="backend:=mock のときの出発点 \"x y yaw[rad]\"。"
+                        "⚠️ 地図を変えたら通れる場所に置き直すこと"),
+        DeclareLaunchArgument(
+            "cmd_timeout", default_value="2.0",
+            description="指令の途切れを何秒で FAULT にするか(2026-09-24 に 0.30 → 1.0 → 2.0)"),
         DeclareLaunchArgument(
             "sensor_topic", default_value="",
             description=f"空なら {SENSOR_TOPIC}。モックも実機も同じ名前を使う"),
@@ -289,6 +347,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "operator_timeout_s", default_value="1.0",
             description="heartbeatが何秒途絶したら停止するか。会場の電波状況に応じて調整する"),
+        DeclareLaunchArgument(
+            "tf_timeout_s", default_value="0.5",
+            description="TFが何秒古くなったらFAULTにするか。内蔵SLAMのodomが遅いときは伸ばす"),
         DeclareLaunchArgument(
             "require_tf", default_value="true",
             description="TFの鮮度をREADYの条件にする(仕様書7章)。falseはベンチ試験専用"),
