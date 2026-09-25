@@ -220,6 +220,15 @@ def _launch_setup(context, *args, **kwargs):
             #      `NAVIGATING` のままで、UI も「走行中」と出し続ける
             "cmd_timeout": float(LaunchConfiguration("cmd_timeout").perform(context)),
             "require_tf": flag("require_tf"),
+            # ⚠️ **TF が何秒古くなったら FAULT にするか。** 既定 0.5 は
+            # 内蔵SLAM の odom が 10Hz 出ている前提の値。
+            # 2026-09-25 に実機で **odom が 4Hz に半減**し(1801 を送り直した後)、
+            # TF の間隔が最大 0.425 秒＋遅延で 0.5 秒を超え、
+            # `Lookup would require extrapolation into the future`(最新 TF が 0.513 秒前)
+            # で **enable した直後に必ず tf_stale FAULT** になった。
+            # 代償: 本当に TF が途絶したときの検知が最大この秒数だけ遅れる
+            # (max_vx 0.30 なので +0.5 秒 ≒ +0.15m 余分に進む)。
+            "tf_timeout_s": float(LaunchConfiguration("tf_timeout_s").perform(context)),
             "require_sensor": flag("require_sensor"),
             # 鮮度監視の対象も backend に合わせる(見ていないトピックを監視しても無意味)
             "sensor_topic": sensor_topic,
@@ -338,6 +347,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "operator_timeout_s", default_value="1.0",
             description="heartbeatが何秒途絶したら停止するか。会場の電波状況に応じて調整する"),
+        DeclareLaunchArgument(
+            "tf_timeout_s", default_value="0.5",
+            description="TFが何秒古くなったらFAULTにするか。内蔵SLAMのodomが遅いときは伸ばす"),
         DeclareLaunchArgument(
             "require_tf", default_value="true",
             description="TFの鮮度をREADYの条件にする(仕様書7章)。falseはベンチ試験専用"),

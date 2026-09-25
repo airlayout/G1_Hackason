@@ -135,7 +135,13 @@ ok "ROS 環境は汚染されていない"
 ok "pixi 環境・地図・DDS 設定がある"
 if [ -n "$PATROL" ]; then
     [ -f "$PATROL" ] || die "巡回路が無い: $PATROL（tools/record_waypoints.py で現地で作ること）"
-    N=$(grep -c '^  *- *{' "$PATROL" 2>/dev/null || echo 0)
+    # ⚠️ 2026-09-25 に2つ直した:
+    #  (1) `^  *- *{` は**行頭に空白が1つ以上**必要だったが、patrol_dryrun.py の
+    #      書き出しは `- {name: p1, ...}` と行頭から始まる → 常に0点と判定していた
+    #  (2) `$(grep -c ... || echo 0)` は、grep が0件で終了コード1を返すと
+    #      **"0" と "0" の2行**になり `[: 0\n0: integer expression expected`
+    # ブロック形式（`- name: p1` 改行 `  x: ...`）も数えられるようにしてある
+    N=$(grep -cE '^[[:space:]]*-[[:space:]]*(\{|name:)' "$PATROL" 2>/dev/null) || N=0
     [ "$N" -gt 0 ] || die "巡回路にウェイポイントが1点も無い: $PATROL"
     ok "巡回路 $N 点: $(basename "$PATROL")"
 fi
@@ -320,9 +326,15 @@ fi
 # --- 検収 -------------------------------------------------------------------
 step "検収"
 if [ "$DRY" = 0 ]; then
+    # ⚠️⚠️ **先に ros2 daemon を落とす**（2026-09-25 にここで誤判定した）。
+    # §5/§7b で Nav2 を2回上げ下げすると daemon が古いノードを掴んだままになり、
+    # `ros2 lifecycle get` が **6ノード全部 `xmlrpc.client.Fault: !rclpy.ok()`** を
+    # 返す。ノードは実際には全部 active なのに「active でないノードがある」で止まる。
+    # daemon は次の ros2 コマンドで自動的に上がり直すので落として構わない。
+    ros "ros2 daemon stop >/dev/null 2>&1; sleep 3" >/dev/null 2>&1
     BAD=0
     for n in map_server planner_server controller_server behavior_server bt_navigator velocity_smoother; do
-        S=$(ros "timeout 10 ros2 lifecycle get /$n 2>&1 | head -1")
+        S=$(ros "timeout 20 ros2 lifecycle get /$n 2>&1 | tail -1")
         case "$S" in *"active"*) ;; *) echo "  ${c_ng}$n: $S${c_0}"; BAD=1 ;; esac
     done
     [ "$BAD" = 0 ] && ok "Nav2 6ノードすべて active" || die "active でないノードがある"

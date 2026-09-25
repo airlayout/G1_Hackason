@@ -48,7 +48,7 @@ class G(Node):
     def __init__(self, args):
         super().__init__("find_map_offset")
         self.a=args
-        self.f=None; self.done=False
+        self.f=None; self.done=False; self.skipped=0
         self.buf=Buffer(); self.lis=TransformListener(self.buf,self)
         mq=QoSProfile(depth=1,history=QoSHistoryPolicy.KEEP_LAST,
                       reliability=QoSReliabilityPolicy.RELIABLE,
@@ -71,6 +71,17 @@ class G(Node):
         except Exception: return
         a=cloud_xyz(msg)
         if a is None: return
+        # ⚠️⚠️ **G1 の LiDAR は「満杯のフレーム」と「1点だけのフレーム」を交互に出す**
+        # (2026-09-25 実測: 1, 41951, 1, 44255, 1, ... 発行元は1つ)。
+        # ここは**最初に変換できた1通だけ**を使うので、1点のほうを掴むと
+        # 「スキャン 1点で大域探索する」→「見つからず」になり、原因が分かりにくい。
+        # **点数が少ないフレームは捨てて次を待つ。**
+        if len(a)<self.a.min_points:
+            self.skipped+=1
+            if self.skipped in (1,20,100):
+                print(f"点の少ないフレームを飛ばした({len(a)}点 < {self.a.min_points}) "
+                      f"計{self.skipped}回",flush=True)
+            return
         t=tf.transform.translation; q=tf.transform.rotation
         x,y,z,w=q.x,q.y,q.z,q.w
         R=np.array([[1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w)],
@@ -131,6 +142,9 @@ def build_parser():
                    help="探索する yaw の範囲[度]。全周を探すなら 180")
     p.add_argument("--yaw-step",type=float,default=1.0,help="yaw の刻み[度]")
     p.add_argument("--timeout",type=float,default=120.0)
+    p.add_argument("--min-points",type=int,default=1000,
+                   help="この点数に満たないフレームは捨てる(既定 1000)。"
+                        "G1 の LiDAR は 1 点だけのフレームを交互に出すため")
     return p
 
 _args=build_parser().parse_args(rclpy.utilities.remove_ros_args(sys.argv)[1:]

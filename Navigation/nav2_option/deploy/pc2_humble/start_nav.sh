@@ -40,6 +40,13 @@ PATROL_WAYPOINTS="${4:-}"
 # ⚠️⚠️ **地図と実際の会場が違うと §7 の照合は必ず失敗する。** 会場に合わせて選ぶこと。
 MAPS=/home/unitree/g1_nav2/g1_ws/install/g1_navigation/share/g1_navigation/maps
 MAP="${5:-$MAPS/room_a_map_20260911_edited.yaml}"
+# 第6引数: tf_timeout_s。TF が何秒古くなったら FAULT にするか。
+# ⚠️ 2026-09-25 に実機で踏んだ: 内蔵SLAM を 1801 で上げ直したあと **odom が
+# 10.1Hz → 約4Hz に半減**し、TF の間隔(最大0.425秒)＋遅延で既定 0.5 秒を超え、
+# `enable_navigation` の直後に必ず tf_stale FAULT になった
+# (`Lookup would require extrapolation into the future`／最新TFが0.513秒前)。
+# 代償: 本当に TF が途絶したときの検知がこの秒数だけ遅れる(max_vx 0.30 で +0.15m/0.5秒)。
+TF_TIMEOUT="${6:-0.5}"
 CYCLONE_CFG=/home/unitree/g1_nav2/cyclonedds_eth0.xml
 # ⚠️ **空の引数を渡してはいけない**(2026-09-24 に実機で踏んだ)。`ros2 launch` は
 # `patrol_waypoints:=` を `malformed launch argument` として**起動前に**弾くため、
@@ -70,8 +77,8 @@ setsid nohup ~/.pixi/bin/pixi run bash -lc "
   export CYCLONEDDS_URI=file://$CYCLONE_CFG
   exec ros2 launch g1_navigation navigation.launch.py backend:=real map:=$MAP \
        map_to_odom:='$MAP2ODOM' lidar_yaw:=$LIDAR_YAW \
-       operator_timeout_s:=$OP_TIMEOUT $PATROL_ARG
+       operator_timeout_s:=$OP_TIMEOUT tf_timeout_s:=$TF_TIMEOUT $PATROL_ARG
 " > /tmp/nav_launch.log 2>&1 < /dev/null &
-echo "started (map_to_odom=$MAP2ODOM lidar_yaw=$LIDAR_YAW operator_timeout_s=$OP_TIMEOUT rmw=cyclonedds)"
+echo "started (map_to_odom=$MAP2ODOM lidar_yaw=$LIDAR_YAW operator_timeout_s=$OP_TIMEOUT tf_timeout_s=$TF_TIMEOUT rmw=cyclonedds)"
 echo "  巡回路: ${PATROL_WAYPOINTS:-(未指定。単純ゴール指定モードのみ)}"
 echo "  地図  : $(basename "$MAP")"
