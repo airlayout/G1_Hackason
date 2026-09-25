@@ -50,7 +50,12 @@ p = np.stack([rec["x"], rec["y"], rec["z"]], axis=-1).astype(np.float64)
 p = p @ R.T + np.array([t.x, t.y, t.z])
 print(f"odom<-{msg.header.frame_id}: 並進 z={t.z:+.3f} m")
 
-r = np.linalg.norm(p[:, :2], axis=1)
+# ⚠️⚠️ **センサーからの距離で測る**(2026-09-25 に直した)。
+# それまで `norm(p[:, :2])` と書いており、**odom 原点からの距離**を測っていた。
+# 機体が odom 原点に居るとき(内蔵SLAM を上げた直後)だけ正しく、離れた場所で回すと
+# 下の「死角の半径」が**まったく別の数字**になる。実際に機体が原点から約7m の
+# 地点で回して 1.57m と出し、死角が広がったと誤読した。
+r = np.linalg.norm(p[:, :2] - np.array([t.x, t.y]), axis=1)
 near = p[r < MAX_R]
 rn = r[r < MAX_R]
 print(f"5m以内 {len(near)} 点")

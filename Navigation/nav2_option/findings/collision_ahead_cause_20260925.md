@@ -13,7 +13,7 @@ room_a、巡回中に `RegulatedPurePursuitController detected collision ahead!`
 | 見たもの | 結果 |
 |---|---|
 | `tools/count_costmap.py`（local costmap） | **footprint(0.32m)内に lethal 33 セル**。最短 **0.17 m** |
-| `tools/why_costmap.py`（**生の LiDAR**） | 障害物点の**最短が 2.67 m**。1.57 m 以内に点が**1つも無い** |
+| `tools/why_costmap.py`（**生の LiDAR**） | 障害物として立つ点の**最短が 2.67 m**（センサー基準・方位別でも最短 2.67 m） |
 
 **LiDAR は何も見ていないのに、costmap には足元に障害物がある。**
 
@@ -37,12 +37,19 @@ room_a、巡回中に `RegulatedPurePursuitController detected collision ahead!`
 つまりこの lethal は保存地図ではなく **LiDAR 観測そのもの**。
 
 `voxel_layer` は `clearing: true` / `raytrace_max_range: 5.5` なので、
-本来はレイが通った格子を消す。だが **MID-360 には機体まわりに死角がある**:
-
-- 立位の実測（既存の記録）: 半径 **0.91〜1.12 m**
-- **この地点での実測: 半径 1.57 m**
+本来はレイが通った格子を消す。だが **MID-360 には機体まわりに死角がある**
+（立位の実測: 半径 **0.91〜1.12 m**。D-21 の 2026-09-09 の計測）。
 
 **死角の中はレイが1本も通らないので、一度立った格子は永久に残る。**
+
+⚠️⚠️ **訂正（2026-09-25 夜）。** ここに当初「この地点での実測: 半径 1.57 m」と
+書いていたが、**誤りなので取り消した。** `why_costmap.py` が
+`norm(p[:, :2])` と **odom 原点からの距離**を測っており、機体が原点から
+約7m 離れた場所で回したためまったく別の数字が出ていた
+（ツールは同日センサー基準に修正済み）。
+**死角が普段より広がっていたという根拠は無い。**
+📌 上の「障害物点の最短距離 = 2.67 m」は別の行で正しくセンサー基準で
+計算しているので、こちらは有効。
 歩くほど溜まり、やがて自分の足元が「障害物」になり、RPP が
 `collision ahead` → `Controller patience exceeded` → abort → 復帰動作
 （`spin` も `Collision Ahead - Exiting Spin` で失敗）→ `wait` →
