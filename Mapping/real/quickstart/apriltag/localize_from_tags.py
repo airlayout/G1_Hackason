@@ -26,7 +26,8 @@
     # いまカメラに写っているもので（PC2）
     python3 localize_from_tags.py --live --seconds 5 \\
         --registry ~/g1_cfg/apriltag/tag_registry.json \\
-        --extrinsics ~/g1_cfg/apriltag/extrinsics.json
+        --extrinsics ~/g1_cfg/apriltag/extrinsics.json \\
+        --map-frame "$(cat ~/g1_cfg/map/map_frame.txt)"
 """
 
 from __future__ import annotations
@@ -95,6 +96,36 @@ def capture_live(seconds: float, width: int, height: int, fps: int, device: str)
     return frames
 
 
+# map_frame を持たない registry（2026-09-16 の登録）は 0906 の地図で登録された。
+# それ以外の地図で登録したことは無いので、欠けていればこれとみなす（警告は出す）
+LEGACY_MAP_FRAME = "20260906T135940_UiS_room_v3"
+
+
+def check_map_frame(registry: dict, map_frame: "str | None") -> bool:
+    """registry を登録した座標系と、いま使う地図の座標系が同じかを確かめる。
+
+    ⚠️ 下の自己検査 3 つは**全部が剛体移動で不変**なので、別の座標系の地図と組み合わせても
+    合格する。そのまま原点の差ぶんずれた種で起動し、FAST_LIO は局所 ICP しか持たないので
+    戻らない（`docs/plan/2026-09-18-swap-map-to-0911-and-remap-apriltag.md` §1.3）。
+    ファイルの同一性（SHA）ではなく座標系で比べる: 同じ座標系へ移した地図（案 A）なら
+    タグは登録し直さなくても正しいため。
+    """
+    registered = registry.get("map_frame")
+    if registered is None:
+        registered = LEGACY_MAP_FRAME
+        print(f"⚠️ registry に map_frame が無い。{LEGACY_MAP_FRAME} で登録したものとみなす")
+    if map_frame is None:
+        print(f"⚠️ --map-frame が無いので地図の座標系を照合していない（registry は {registered}）")
+        return True
+    if map_frame != registered:
+        print(f"**[NG] 座標系が違う: registry は {registered}、地図は {map_frame}**\n"
+              "  この組み合わせで出す姿勢は、自己検査が全部合格しても原点の差ぶんずれる。\n"
+              "  地図を戻すか、この地図の座標系でタグを登録し直すこと（register_tags.py --map-frame）")
+        return False
+    print(f"座標系の照合: OK（{registered}）")
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -113,9 +144,14 @@ def main() -> int:
     parser.add_argument("--intrinsics", default=None)
     parser.add_argument("--hfov-deg", type=float, default=87.0)
     parser.add_argument("--out", default=None, help="求めた姿勢を JSON で書く")
+    parser.add_argument("--map-frame", default=None,
+                        help="いま使う地図の座標系（~/g1_cfg/map/map_frame.txt）。"
+                             "registry と違えば止まる")
     arguments = parser.parse_args()
 
     registry = json.loads(Path(arguments.registry).read_text())
+    if not check_map_frame(registry, arguments.map_frame):
+        return 2
     extrinsics = json.loads(Path(arguments.extrinsics).read_text())
     tag_m = (arguments.tag_mm / 1000.0 if arguments.tag_mm
              else float(registry.get("tag_size_m", 0.160)))

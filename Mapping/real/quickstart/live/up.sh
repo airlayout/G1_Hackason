@@ -61,11 +61,20 @@ done
 # ── 0. 初期姿勢（タグから取る）──────────────────────────────────────
 if [ -z "$INIT" ]; then
     say "初期姿勢をタグから取る（大域探索も種も要らない）"
-    OUT="$(pc2 'cd "$HOME/g1_cfg/apriltag" && timeout 150 python3 localize_from_tags.py \
+    # ⚠️ 2026-09-25: 地図の座標系をタグの登録と照合する（違えば localize_from_tags.py が止まる）。
+    # map_frame.txt は地図と一緒に配る（quickstart/map_frame.py --write が作る）。
+    # 無ければ照合せずに警告だけ出る（配布前の構成を壊さないため）
+    OUT="$(pc2 'cd "$HOME/g1_cfg/apriltag" && MF="$HOME/g1_cfg/map/map_frame.txt" &&
+                 timeout 150 python3 localize_from_tags.py \
                  --live --seconds 5 \
                  --registry "$HOME/g1_cfg/apriltag/tag_registry.json" \
-                 --extrinsics "$HOME/g1_cfg/apriltag/extrinsics.json" 2>&1' || true)"
-    printf '%s\n' "$OUT" | grep -E '^\*\*|\*\*\(x|食い違い|z .*roll|ばらつき' | sed 's/^/     /' >&2
+                 --extrinsics "$HOME/g1_cfg/apriltag/extrinsics.json" \
+                 $( [ -s "$MF" ] && printf -- "--map-frame %s" "$(cat "$MF")" ) 2>&1' || true)"
+    printf '%s\n' "$OUT" | grep -E '^\*\*|\*\*\(x|食い違い|z .*roll|ばらつき|座標系|map_frame' | sed 's/^/     /' >&2
+    case "$OUT" in
+        *"[NG] 座標系が違う"*)
+            die "タグの登録と地図の座標系が違う（上の行）。~/g1_cfg/map を戻すか、タグを登録し直す" ;;
+    esac
     # ⚠️ **文字クラスに `+` を入れる。**localize_from_tags.py は符号を必ず付けて
     # `**(x -0.139, y +0.184, yaw +11.98 deg)**` と出す。`[-0-9.]` だと `+0.184` を
     # 拾えず、**タグ測位が成功しているのに「取れなかった」と die する**
@@ -151,7 +160,10 @@ echo "$STAMP" > "$HERE/.last_run"
 
 # ── 6. Mac 側 ──────────────────────────────────────────────────────
 say "6. コンテナの中継・地図・RViz2"
-MAP=/work/G1_Hackason/Mapping/real/runs/20260906T135940_UiS_room_v3/map/nav_map_run.yaml
+# ⚠️ 比較表示（G1_SHOW_SEED_MAP=1）用の地図。走る静的レイヤは PC2 の ~/g1_cfg/map/seed.bt
+# なので、**ここを変えても Nav2 の地図は変わらない**。差し替えは PC2 へ配る側で行う
+MAP_SESSION="${G1_MAP_SESSION:-20260906T135940_UiS_room_v3}"
+MAP=/work/G1_Hackason/Mapping/real/runs/$MAP_SESSION/map/nav_map_run.yaml
 ctr_kill "foxglove_to_r" "os.py"; ctr_kill "ros_to_foxglo" "ve.py"
 ctr_kill "map_ser" "ver"; ctr_kill "rvi" "z2"
 

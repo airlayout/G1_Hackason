@@ -39,13 +39,26 @@ for a in "$@"; do
 done
 
 ISAAC_DIR="${REPO_DIR}/IsaacSim_Env"
+
+# 部屋の選択。⚠️ 既定は v3（09-06 の記録）のまま。0911 は sim で未検証（段 7 待ち）
+#   G1_ISAAC_ROOM=0911 bash Demo/03_isaac_nav2.sh
+# 0911 では旧 spawn (6.55, -0.78) が机の中になった（09-06〜09-11 に家具が動いた）。
+# 13.25, -10.88 は pick_spawn.py --map maps/uis_room_0911.yaml のおすすめ
+# （漂流通路の最小余裕 0.30 m ＝ robot_radius 0.25 m ぎりぎり。段 7 で確かめる）
+case "${G1_ISAAC_ROOM:-v3}" in
+    v3)   ROOM_USD="assets/uis_room_v3_sim_obstacles.usd"; ROOM_MAP="maps/uis_room_v3_clean.yaml"
+          ROOM_SPAWN_X=6.55;  ROOM_SPAWN_Y=-0.78 ;;
+    0911) ROOM_USD="assets/uis_room_0911_sim_obstacles.usd"; ROOM_MAP="maps/uis_room_0911.yaml"
+          ROOM_SPAWN_X=13.25; ROOM_SPAWN_Y=-10.88 ;;
+    *)    _die "G1_ISAAC_ROOM は v3 か 0911: ${G1_ISAAC_ROOM}" ;;
+esac
 LOG_DIR="${ISAAC_DIR}/logs"
 CONSOLE_LOG="${LOG_DIR}/run_nav2_console.log"
 mkdir -p "${LOG_DIR}"
 
 for f in "${ISAAC_DIR}/run_nav2.sh" \
-         "${ISAAC_DIR}/assets/uis_room_v3_sim_obstacles.usd" \
-         "${ISAAC_DIR}/maps/uis_room_v3_clean.yaml"; do
+         "${ISAAC_DIR}/${ROOM_USD}" \
+         "${ISAAC_DIR}/${ROOM_MAP}"; do
     [ -f "${f}" ] || _die "ありません: ${f}
      bash Demo/preflight.sh で足りないものを確認してください。"
 done
@@ -61,9 +74,9 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 _head "実演3 — Isaac Sim + Nav2"
-_info "シーン : assets/uis_room_v3_sim_obstacles.usd"
-_info "地図   : maps/uis_room_v3_clean.yaml"
-_info "初期位置: (6.55, -0.78)  ※漂流の着地点で選んである。変えないこと"
+_info "シーン : ${ROOM_USD}"
+_info "地図   : ${ROOM_MAP}"
+_info "初期位置: (${ROOM_SPAWN_X}, ${ROOM_SPAWN_Y})  ※漂流の着地点で選んである。変えないこと"
 _info "測位   : G1_PERFECT_LOC=1（map -> odom を恒等に）"
 _info "ログ   : ${CONSOLE_LOG}"
 printf '\n起動に 3〜6 分かかります。Isaac Sim のウィンドウが開いても、まだ触らないでください。\n\n'
@@ -71,14 +84,14 @@ printf '\n起動に 3〜6 分かかります。Isaac Sim のウィンドウが�
 : > "${CONSOLE_LOG}"
 (
     cd "${ISAAC_DIR}" || exit 1
-    export SCENE_USD="${ISAAC_DIR}/assets/uis_room_v3_sim_obstacles.usd"
-    export SPAWN_X=6.55
-    export SPAWN_Y=-0.78
+    export SCENE_USD="${ISAAC_DIR}/${ROOM_USD}"
+    export SPAWN_X="${ROOM_SPAWN_X}"
+    export SPAWN_Y="${ROOM_SPAWN_Y}"
     export G1_PERFECT_LOC=1
     # 長い距離を歩かせるときだけカメラを追従させる。起動時の固定カメラは
     # スポーン地点を向いたままなので、遠くへ行くと画角から出る。
     export G1_FOLLOW_CAM="${FOLLOW_CAM}"
-    exec bash run_nav2.sh maps/uis_room_v3_clean.yaml
+    exec bash run_nav2.sh "${ROOM_MAP}"
 ) >> "${CONSOLE_LOG}" 2>&1 &
 NAV_WRAPPER_PID=$!
 

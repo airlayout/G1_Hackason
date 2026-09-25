@@ -347,6 +347,11 @@ def main() -> int:
     parser.add_argument("--known-gap", nargs=3, metavar=("ID_A", "ID_B", "METERS"),
                         help="巻尺で測ったタグ間距離。地図の上でも同じになるかを見る")
     parser.add_argument("--out", default=None)
+    # ⚠️ 2026-09-25: registry が「どの座標系の map か」を持たないと、地図を差し替えたとき
+    # 自己検査が全部合格したまま原点の差ぶんずれた場所から起動する（剛体移動で不変なので）。
+    # 値は map_frame.py <session> が出す名前（座標系を定義したセッション）
+    parser.add_argument("--map-frame", required=True,
+                        help="登録に使った地図の座標系（quickstart/map_frame.py が出す名前）")
     parser.add_argument("--force", action="store_true", help="静止していなくても続ける")
     arguments = parser.parse_args()
 
@@ -510,6 +515,7 @@ def main() -> int:
     if arguments.out:
         payload = {
             "frame_id": "map",
+            "map_frame": arguments.map_frame,
             "tag_family": arguments.family,
             "tag_size_m": arguments.tag_mm / 1000.0,
             "camera_yaw_deg": yaw_used,

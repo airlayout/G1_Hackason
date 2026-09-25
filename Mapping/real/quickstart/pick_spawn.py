@@ -46,15 +46,15 @@ TIGHT_M = 0.50               # 余裕がこれ未満の所を「狭い」と数�
 SLOW_MPS = 0.0249            # 長距離の実効速度（wall clock・直線ベース）の実測
 
 
-def load_map() -> tuple[np.ndarray, np.ndarray, float, float, float]:
+def load_map(yaml_path: Path) -> tuple[np.ndarray, np.ndarray, float, float, float]:
     meta: dict[str, str] = {}
-    for line in (R / "map/nav_map_clean.yaml").read_text().splitlines():
+    for line in yaml_path.read_text().splitlines():
         if ":" in line:
             k, _, v = line.partition(":")
             meta[k.strip()] = v.strip()
     res = float(meta["resolution"])
     ox, oy = [float(v) for v in meta["origin"].strip("[]").split(",")[:2]]
-    img = np.asarray(Image.open(R / "map/nav_map_clean.pgm"), dtype=np.float64)
+    img = np.asarray(Image.open(yaml_path.parent / meta["image"]), dtype=np.float64)
     occ = ((255.0 - img) / 255.0) > float(meta["occupied_thresh"])
     return occ, np.asarray([ox, oy]), res, ox, oy
 
@@ -67,9 +67,13 @@ def main() -> None:
                     default=[12.0, 20.0, 15.0, 20.0],
                     help="試す --range の組（lo hi lo hi …）")
     ap.add_argument("--tries", type=int, default=3)
+    # 2026-09-25: 地図を 0911 に差し替えたら既定の spawn (6.55, -0.78) が机の中になった
+    # （room-changed-between-recordings）。waypoints は旧座標系のまま使える（案 A）
+    ap.add_argument("--map", type=Path, default=R / "map/nav_map_clean.yaml",
+                    help="Isaac が読む 2D 地図の yaml（既定は旧 nav_map_clean）")
     args = ap.parse_args()
 
-    occ, _, res, ox, oy = load_map()
+    occ, _, res, ox, oy = load_map(args.map)
     h, w = occ.shape
     # 各自由セルから最も近い占有セルまでの距離 [m]
     clear = ndimage.distance_transform_edt(~occ) * res

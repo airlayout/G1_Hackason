@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import sqlite3
 import struct
 import sys
@@ -43,7 +44,41 @@ FLOOR_LOW, FLOOR_HIGH = -0.20, 0.25
 CEILING_LOW = 2.2
 
 
+def read_align_transform(session: Path) -> "np.ndarray | None":
+    """manifest.json に記録された「別の地図の座標系へ移した変換」(4x4) を返す。無ければ None。
+
+    `apply_transform_to_session.py` で点群・姿勢つきスキャンを旧座標系へ移した記録は、
+    **rosbag の odom だけが元の座標系に取り残される**。2026-09-25 に 0911 で踏んだ:
+    軌跡が 3.7 m ずれ 21° 回ったまま偽障害物を数え、16.18 m² と出た（計器の故障）。
+    """
+    manifest = session / "manifest.json"
+    if not manifest.exists():
+        return None
+    meta = json.loads(manifest.read_text(encoding="utf-8"))
+    rel = meta.get("align_transform") or meta.get("diagnostic", {}).get("align_transform")
+    if not rel:
+        return None
+    path = session / rel
+    if not path.exists():
+        raise SystemExit(f"manifest.json の align_transform が見つからない: {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    matrix = np.asarray(data["transform"] if isinstance(data, dict) else data, dtype=float)
+    if matrix.shape != (4, 4):
+        raise SystemExit(f"align_transform が 4x4 でない: {path} {matrix.shape}")
+    return matrix
+
+
 def read_trajectory(session: Path) -> np.ndarray:
+    """rosbag の odom の xyz。記録が別の座標系へ移されていれば、同じ変換を掛けて返す。"""
+    poses = read_odom_positions(session)
+    matrix = read_align_transform(session)
+    if matrix is None:
+        return poses
+    print("[軌跡] manifest の align_transform を掛けた（地図と同じ座標系にする）", flush=True)
+    return poses @ matrix[:3, :3].T + matrix[:3, 3]
+
+
+def read_odom_positions(session: Path) -> np.ndarray:
     bag = sorted(glob.glob(str(session / "raw/rosbag2/*.db3")))[0]
     connection = sqlite3.connect(f"file:{bag}?mode=ro", uri=True)
     try:
