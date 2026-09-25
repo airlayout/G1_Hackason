@@ -18,8 +18,8 @@ from mapimage import load_map                      # noqa: E402
 from nav.base import COMMANDS, NavState, Pose      # noqa: E402
 from nav.mock import MockNavSource                 # noqa: E402
 
-MAP_YAML = (MAIN / "../../../Navigation/nav2_option/g1_ws/src/g1_navigation/maps"
-                   "/room_a_map_20260911.yaml").resolve()
+MAP_YAML = (MAIN / "../../../Navigation/nav2_stable/maps/grids"
+                   "/room_a_map_20260911_edited.yaml").resolve()
 
 
 class MapTest(unittest.TestCase):
