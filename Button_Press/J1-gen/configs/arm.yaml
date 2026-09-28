@@ -1,0 +1,89 @@
+# Button_Press / 腕の指令部分の設定（タスク1）
+# 当日はコードを編集せず、この値だけを変える。
+
+# 経路: sim（MuJoCo）| arm_sdk（プランA: rt/arm_sdk）| lowcmd（プランB: デバッグモード + rt/lowcmd）
+path: sim
+# 動かす腕: right | left
+arm: right
+
+# 実機（DDS）の設定。ラボ PC で G1 につないでいる有線 NIC の名前（`ip -br a` で確認する）
+# ⚠️ 実機日に設定すること。空のままだと実機経路は起動しない
+network_interface: ""
+domain_id: 0
+# lowstate の mode_machine がこの値でなければ中止する（g1_29dof_rev_1_0 = 5）
+expected_mode_machine: 5
+
+# 送信周期 [Hz]。公式 arm_sdk サンプルは 50Hz（0.02 秒）
+control_hz: 50
+# 開始時に lowstate を待つ秒数
+start_state_wait_s: 10.0
+# lowstate がこの秒数途切れたら止める（g1-starter-kit replay_arm.py と同じ 0.5 秒）
+state_timeout_s: 0.5
+
+# 腕のゲイン（PD 制御の Kp / Kd）
+gains:
+  # 公式 g1_arm7_sdk_dds_example.py と同じ値
+  arm: {kp: 60.0, kd: 1.5}
+  # 手首は弱いモータ。xr_teleoperate / armsdk_probe.py と同じ値
+  wrist: {kp: 40.0, kd: 1.5}
+
+safety:
+  # 関節の最大速度 [rad/s]。1ステップの最大移動量 = これ ÷ control_hz
+  max_joint_speed_rad_s: 0.5
+  # 関節リミットからこれ以上内側でない目標は拒否する [rad]
+  limit_margin_rad: 0.05
+  # weight を 0→1、1→0 にする時間 [秒]（公式サンプルは 3 秒、armsdk_probe.py は 2 秒）
+  weight_ramp_s: 2.0
+  # 移動にかける最短時間 [秒]
+  min_move_s: 1.0
+  # 移動後に止まって待つ時間 [秒]（追従を確認する前に）
+  settle_s: 0.5
+  # 移動後の追従誤差がこれを超えたら警告する [rad]（0.05 rad ≈ 2.9°）
+  tracking_tolerance_rad: 0.05
+  # 「送信したのに動かない」の判定。指令した変化が min_commanded_rad より大きい関節で、
+  # 実際の変化が指令の min_ratio 倍未満ならエラーにして止める
+  motion_check:
+    min_commanded_rad: 0.02
+    min_ratio: 0.3
+
+# プランA（arm_sdk）
+arm_sdk:
+  # 腰3関節を「開始時の角度で保持」する指令も arm_sdk で送るか。
+  # ⚠️ 要確認: 公式 g1_arm7_sdk_dds_example.py は腰も arm_sdk で送る（目標 0）が、
+  #   armsdk_probe.py は腕 14 関節だけを送る。腰を送らない場合に weight=1 で腰がどうなるかは未確認
+  include_waist_hold: true
+  waist_hold: {kp: 60.0, kd: 1.5}
+
+# プランB（lowcmd）
+lowcmd:
+  # 腕以外の関節を開始時の姿勢で保持するゲイン（motor 番号 0〜28 の順。腕の欄は使わない）。
+  # 値は公式 g1_low_level_example.py の Kp / Kd。
+  # （参考: xr_teleoperate / replay_arm.py は脚・腰を kp=300 で保持している）
+  hold_kp: [60, 60, 60, 100, 40, 40,
+            60, 60, 60, 100, 40, 40,
+            60, 40, 40,
+            40, 40, 40, 40, 40, 40, 40,
+            40, 40, 40, 40, 40, 40, 40]
+  hold_kd: [1, 1, 1, 2, 1, 1,
+            1, 1, 1, 2, 1, 1,
+            1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1]
+  # 安全終了で、現在の姿勢を保持してから送信をやめるまでの時間 [秒]
+  stop_hold_s: 2.0
+
+# MuJoCo（path: sim のとき）
+sim:
+  # どちらの経路を近似するか: arm_sdk（weight でブレンド）| lowcmd（ブレンドなし）
+  emulate: arm_sdk
+  # 重力補償。PD だけだと腕の重さの分だけ目標から下がる（実機の lowcmd では補償されない）
+  gravity_compensation: true
+  # true なら実時間で進める（画面で見るとき）。テストでは false（速く進む）
+  realtime: false
+  mode_machine: 5
+  # 開始時の関節角（motor 番号順）。全 0 は肘を約 90° 曲げて前に出した姿勢
+  initial_q: [0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0,
+              0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0]

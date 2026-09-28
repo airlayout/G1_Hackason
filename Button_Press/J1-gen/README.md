@@ -12,11 +12,19 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
 - `common/` — sim / real 共通のロジック
   - `config.py` — 設定ファイル（YAML）の読み込み
   - `robot_model.py` — 関節の並び（motor 番号）、公式モデルの読み込みと頭カメラの追加
+  - `arm/` — 腕の指令部分（タスク1）。`ArmCommander` と、送り先（バックエンド）の切り替え
+    - `commander.py` — 開始（weight 0→1）、移動、動いたかの確認、安全な終了
+    - `safety.py` — 関節リミット、1ステップの最大移動量、作業空間の箱、補間
+    - `backend_sim.py` — MuJoCo（胴体固定）。arm_sdk の weight ブレンドを近似する
+    - `backend_dds.py` — 実機。`rt/arm_sdk`（プランA）/ `rt/lowcmd`（プランB）へ DDS で直接送る
 - `sim/` — MuJoCo での検証
   - `fetch_models.sh` — 公式モデル（unitree_ros の `g1_29dof_rev_1_0`）を取得する
-- `real/` — 実機用（これから）
+  - `move_arm_sim.py` — 腕を指定の関節角へ動かして戻す
+- `real/` — 実機用
+  - `move_arm_real.py` — 同じことを実機で行う（既定は dry-run。送るには `--execute`）
 - `configs/` — 設定ファイル。当日はコードを編集せず、ここだけを変える
   - `robot.yaml` — モデルのパス、頭カメラの取り付け位置
+  - `arm.yaml` — 経路（sim / arm_sdk / lowcmd）、NIC 名、ゲイン、安全の上限
 - `tests/` — `run_tests.sh`（CI が自動で見つけて実行する）
 
 ## 機体モデル
@@ -37,10 +45,33 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
 | # | タスク | 状態 |
 |---|---|---|
 | 0 | 土台づくり（構成、環境構築、モデル取得、CI 登録） | 済み |
-| 1 | 腕の指令部分（sim / arm_sdk / lowcmd） | これから |
+| 1 | 腕の指令部分（sim / arm_sdk / lowcmd） | 済み（実機は未確認） |
 | 2 | FK / IK と軌道生成 | これから |
 | 3 | 深度付きの配信サーバ（PC2） | これから |
 | 4 | ボトル検出 → 3D 座標 → pelvis 座標 | これから |
 | 5 | 収録ツール | これから |
 | 6 | 全体をつなぐスクリプト | これから |
 | 7 | 実機日用のツールと手順 | これから |
+
+## 腕の指令部分（タスク1）
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/move_arm_sim.py
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/move_arm_sim.py --realtime   # 途中で Ctrl+C を試せる
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/move_arm_real.py --path arm_sdk              # dry-run
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/move_arm_real.py --path arm_sdk --execute    # 実際に送る
+```
+
+- 開始時に、`mode_machine` が 5 であること、指令する関節のモータが有効（mode=1）であることを確認し、
+  違えば何も送らずに中止する。
+- 移動後に lowstate を読み、指令した変化の 3 割未満しか動いていなければ「送信したのに動かない」として止める。
+- Ctrl+C / SIGTERM / 例外のどれでも、プランA は現在の姿勢のまま weight を 1→0、
+  プランB は現在の姿勢を保持してから送信をやめる。
+
+### シミュレーションで分かったこと（2026-09-28）
+
+- 公式モデルは関節のアーマチュアと減衰が 0 で、手首ロールの慣性が非常に小さい（約 0.00037 kg·m²）。
+  PD の Kd 項をそのまま計算すると数値的に発散したため、MuJoCo の関節減衰と implicitfast 積分器で計算している。
+- 重力補償なし（実機のプランB と同じ条件）では、Kp=60 で腕が 1.7〜2.5° 下がる。
+  IK の精度（手先 1cm）に効くので、タスク2で扱う。
+- 右腕の肩ロールを正（内向き）に動かすと、上腕が胴体（`torso_link`）に当たる。
