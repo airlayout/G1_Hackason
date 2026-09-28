@@ -55,6 +55,18 @@ python3 -m venv venv
 ./venv/bin/pip install --upgrade pip
 ```
 
+**`python3` が 3.12 でないマシン（例: Ubuntu 26.04 は 3.14）の場合**は、上の代わりに
+uv（Python 本体と venv をまとめて扱うツール。sudo 不要）で 3.12 の venv を作る。
+以降の手順（`./venv/bin/pip ...`）はそのまま使える（`--seed` で venv に pip が入るため）。
+2026-09-28 に WSL2 Ubuntu 26.04（aarch64）で確認。
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+~/.local/bin/uv python install 3.12
+cd G1_HuggingFace
+~/.local/bin/uv venv --python 3.12 --seed venv
+```
+
 ### 1.2 CycloneDDS をソースからビルド
 
 ```bash
