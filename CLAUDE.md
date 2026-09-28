@@ -231,3 +231,8 @@ IsaacLab の `flat_env_cfg.py` が `lin_vel_x = (0.0, 1.0)` と設定してい�
 ## コーディング規約
 親ディレクトリの `~/isaac_dev/CLAUDE.md` の規約に従う（コメントは日本語、型ヒント必須、
 ログは `print("[タグ] メッセージ")` 形式）。
+
+## Navigation の緊急停止（2026-09-28）
+
+「Navigationを止めて」と言われたら、確認せず直ちに `bash Navigation/real/nav_stop.sh` を実行する
+（スキル `.claude/skills/stop-navigation/`）。手順と原因は `Navigation/real/STOP.md`。

@@ -23,11 +23,14 @@
 一方、純正の `1804` は保存地図の座標系で自己位置を出すので、**こちらの ICP の手作業を
 置き換えられる可能性がある**。どちらに寄せるかはまだ決めていない。
 
+> 🛑 **G1 が Nav2 の経路を勝手に歩き出したら** → `bash nav_stop.sh`（手順と原因は [STOP.md](STOP.md)）
+
 ## このフォルダのファイル
 
 | ファイル | 側 | 役割 |
 |---|---|---|
 | `cmd_vel_bridge.py` | **ROS 側** | `/cmd_vel` を購読して UDP へ中継するだけ |
+| `nav_stop.sh` | 両方 | Navigation を止める。Mac / Ubuntu 共通（[STOP.md](STOP.md)） |
 | `loco_driver.py` | **SDK 側** | UDP を受けて `LocoClient` に渡す。**安全機構は全部こちらにある** |
 
 **なぜ 2 プロセスに分かれているか。** `rclpy` と `unitree_sdk2py` が同居できないため
