@@ -1,0 +1,22 @@
+ii  libnvidia-cfg1-595:amd64                         595.84-0ubuntu0.24.04.1                  amd64        NVIDIA binary OpenGL/GLX configuration library
+ii  libnvidia-common-595                             595.84-0ubuntu0.24.04.1                  amd64        Shared files used by the NVIDIA libraries
+ii  libnvidia-compute-595:amd64                      595.84-0ubuntu0.24.04.1                  amd64        NVIDIA libcompute package
+ii  libnvidia-decode-595:amd64                       595.84-0ubuntu0.24.04.1                  amd64        NVIDIA Video Decoding runtime libraries
+ii  libnvidia-egl-wayland1:amd64                     1:1.1.13-1ubuntu0.1                      amd64        Wayland EGL External Platform library -- shared library
+ii  libnvidia-encode-595:amd64                       595.84-0ubuntu0.24.04.1                  amd64        NVENC Video Encoding runtime library
+ii  libnvidia-extra-595:amd64                        595.84-0ubuntu0.24.04.1                  amd64        Extra libraries for the NVIDIA driver
+ii  libnvidia-fbc1-595:amd64                         595.84-0ubuntu0.24.04.1                  amd64        NVIDIA OpenGL-based Framebuffer Capture runtime library
+ii  libnvidia-gl-595:amd64                           595.84-0ubuntu0.24.04.1                  amd64        NVIDIA OpenGL/GLX/EGL/GLES GLVND libraries and Vulkan ICD
+ii  linux-image-7.0.0-31-generic                     7.0.0-31.31~24.04.1                      amd64        Signed kernel image generic
+ii  linux-image-7.0.0-34-generic                     7.0.0-34.34~24.04.1                      amd64        Signed kernel image generic
+ii  linux-image-generic-hwe-24.04                    7.0.0-34.34~24.04.1                      amd64        Generic Linux kernel image
+ii  linux-modules-nvidia-595-open-7.0.0-31-generic   7.0.0-31.31~24.04.1                      amd64        Linux kernel nvidia modules for version 7.0.0-31
+ii  linux-modules-nvidia-595-open-generic-hwe-24.04  7.0.0-31.31~24.04.1                      amd64        Extra drivers for nvidia-595-open for the generic-hwe-24.04 flavour
+ii  nvidia-compute-utils-595                         595.84-0ubuntu0.24.04.1                  amd64        NVIDIA compute utilities
+ii  nvidia-driver-595-open                           595.84-0ubuntu0.24.04.1                  amd64        NVIDIA driver (open kernel) metapackage
+ii  nvidia-firmware-595-595.84                       595.84-0ubuntu0.24.04.1                  amd64        Firmware files used by the kernel module
+ii  nvidia-kernel-common-595                         595.84-0ubuntu0.24.04.1                  amd64        Shared files used with the kernel module
+ii  nvidia-kernel-source-595-open                    595.84-0ubuntu0.24.04.1                  amd64        NVIDIA kernel source package
+ii  nvidia-prime                                     0.8.17.2                                 all          Tools to enable NVIDIA's Prime
+ii  nvidia-settings                                  510.47.03-0ubuntu4.24.04.1               amd64        Tool for configuring the NVIDIA graphics driver
+ii  nvidia-utils-595                                 595.84-0ubuntu0.24.04.1                  amd64        NVIDIA driver support binaries
