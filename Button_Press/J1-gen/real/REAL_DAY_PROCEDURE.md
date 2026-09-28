@@ -1,9 +1,28 @@
-# 実機日の手順書（下書き）
-
-> ⚠️ **下書き**。タスク7で完成させる。ここには、それまでのタスクで「当日手順書に入れる」と決めた項目を
-> 忘れないように集めている。
+# 実機日の手順書（ボトル押し）
 
 コマンドはすべてラボ PC のリポジトリ直下（`G1_Hackason/`）で、1行ずつ実行する。
+`<NIC>` は G1 につないでいる有線 NIC の名前（`ip -br a` で確認し、`configs/arm.yaml` の `network_interface` にも書く）。
+
+## 安全のルール（全段階で守る）
+
+- **人が常にリモコンを持つ。緊急時は L2+B（ダンピング）。**
+- 腕を手で動かす（ティーチング・較正）ときはダンピング状態にする。**ダンピング中は全身が脱力するので、
+  必ず座った状態か吊り下げた状態で行う**（`teach.py` / `calibrate.py` は開始時に確認して Enter を待つ）。
+- プランB（デバッグモード + lowcmd）もバランス制御が止まるので、座った状態か吊り下げた状態で行う。
+- 実機に送るスクリプトは、まず dry-run（既定）→ `--execute`（確認モードで各段階 Enter）の順。
+- 実機で撮ったデータは取り直せない。収録が終わるたびにバックアップする。
+
+## 当日の流れ（HANDOFF 8章）
+
+| 段階 | 内容 | 使うもの（この手順書の節） | 失敗したときの対応 |
+|---|---|---|---|
+| 0 | 接続確認（RGB・深度・lowstate、`mode_machine` = 5） | 「段階0: 接続確認」「深度付きカメラサーバ」 | 深度がだめなら「pyrealsense2 が使えなかった場合の切り替え」 |
+| 1 | ボタン撮影とボトル周りの収録 | 「収録（タスク5）」 | 必ずやり切る |
+| 2 | 経路の判定（arm_sdk が効くか） | 「段階2: 経路の判定」 | 効かなければ座った状態（吊り下げ）でプランB |
+| 3 | ティーチング、FK と実物の比較 | 「段階3: ティーチングと FK の確認」「重力補償の確認」 | URDF と関節の対応、指先の点を確かめる |
+| 4 | 較正 | 「段階4: 較正」 | 一定のずれなら補正値を入れる |
+| 5 | dry-run → 確認モードで低速 → 押し込み | 「段階5・6: 押し込み」（タスク6） | 手前の姿勢まで行ければ成功 |
+| 6 | 置き場所を変えて繰り返す | 同上 | 全試行を収録する |
 
 ## 事前準備（ラボ PC）
 
@@ -38,7 +57,13 @@ ip -br a
 - **開始直後に、まず腰の角度を lowstate で確かめる。** 腰の3関節は Kp=300 / Kd=3.0 で開始時の角度に
   保持している（MuJoCo では、公式 low_level サンプルの Kp=40 だと上体の重さで腰ピッチが約 19° 倒れた）。
   開始時から `safety.waist_max_deviation_rad`（既定 0.05 rad ≈ 2.9°）以上ずれると自動で中止する。
-  （具体的なコマンドはタスク7で追加する）
+  スクリプトを動かしている間に、別のターミナルで腰の角度を表示して確かめる（何も送信しない）:
+
+  ```bash
+  G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/check_connection.py --seconds 1
+  ```
+
+  「腰 yaw / roll / pitch」が開始前とほぼ同じ（1° 以内）なら OK。倒れていくなら、すぐに止める（Ctrl+C、危なければ L2+B）。
 
 ## 重力補償の確認
 
@@ -179,9 +204,130 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label button
 
 **収録が終わるたびに、バックアップする**（取り直せないため）。終了時に表示される `cp -r ...` を実行する。
 
-## タスク7で追加する項目
+## 段階0: 接続確認
 
-- 接続確認（RGB・深度・lowstate、`mode_machine` = 5）
-- 経路の判定: Dev/Navigation の `mode_check.py` と `armsdk_probe.py` を直接実行する手順
-- ティーチング、FK の確認（手先の点 `end_effector` の実測との比較）、較正
-- 作業空間の箱（`configs/press.yaml` の `workspace`、仮の値）の調整
+何も送信しない。lowstate の頻度、`mode_machine`（5 であること）、腰・腕のモータの mode、腰の角度、
+指先の位置（FK）を表示する。`--rgbd` で深度付きストリームも確かめる:
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/check_connection.py --rgbd
+```
+
+- `mode_machine` が 5 でなければ中止（機体構成が違う。IK のモデルが合わない）。
+- モータの mode が 0 なら、リモコンでダンピング（FSM 1）に入れて有効化する（指令側からは有効化できない）。
+  プログラムを終了するたびにゼロトルクに戻ることがあるので、**実行の前に毎回確かめる**。
+
+## 段階2: 経路の判定（Dev/Navigation の g1-starter-kit を直接実行する）
+
+g1-starter-kit はこのブランチに取り込まず、Dev/Navigation を別のフォルダ（`../G1_nav`）に出して実行する。
+今の作業フォルダには影響しない（`git worktree`: 同じリポジトリの別のブランチを、別のフォルダに取り出す仕組み）:
+
+```bash
+git fetch origin
+```
+```bash
+git worktree add --detach ../G1_nav origin/Dev/Navigation
+```
+
+1. モーションコントローラの状態と、どちらの経路が効くかを見る（何も動かさない）:
+
+   ```bash
+   G1_HuggingFace/venv/bin/python ../G1_nav/Teleop/vendor/g1-starter-kit/tools/mode_check.py --iface <NIC>
+   ```
+
+2. arm_sdk が効くかを、関節を 1 つだけ約 3° 動かして確かめる（右肩ピッチ = motor 22。確認を求められる）:
+
+   ```bash
+   G1_HuggingFace/venv/bin/python ../G1_nav/Teleop/vendor/g1-starter-kit/tools/armsdk_probe.py --iface <NIC> --joint 22
+   ```
+
+   - 「✅ arm_sdk が効いています」→ プランA（`--path arm_sdk`）で進める
+   - 「❌ arm_sdk が効いていません」→ **座った状態か吊り下げた状態にしてから**、デバッグ状態へ切り替えてプランB:
+
+     ```bash
+     G1_HuggingFace/venv/bin/python ../G1_nav/Teleop/vendor/g1-starter-kit/tools/mode_check.py --iface <NIC> --release
+     ```
+
+     終わったら元の状態へ戻す:
+
+     ```bash
+     G1_HuggingFace/venv/bin/python ../G1_nav/Teleop/vendor/g1-starter-kit/tools/mode_check.py --iface <NIC> --restore
+     ```
+
+3. 選んだ経路で、腕を小さく（肩ピッチ −5°、肘 +5°）動かして戻す。まず dry-run、次に `--execute`:
+
+   ```bash
+   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/move_arm_real.py --path arm_sdk
+   ```
+   ```bash
+   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/move_arm_real.py --path arm_sdk --execute
+   ```
+
+   プランB なら `--path lowcmd`。**開始直後に腰の角度を確かめる**（別のターミナルで `check_connection.py`。
+   上の「プランB（デバッグモード + lowcmd）を使う場合」）。
+
+実機日が終わったら、取り出したフォルダを片付ける:
+
+```bash
+git worktree remove ../G1_nav
+```
+
+## 段階3: ティーチングと FK の確認
+
+⚠️ 腕を手で動かすので、ダンピング状態にする。**全身が脱力するので、必ず座った状態か吊り下げた状態で行う。**
+
+1. 押し込み姿勢を記録する（腕を手で動かし、中指の先がボトルに触れる少し手前で Enter）。
+   `configs/taught_poses.yaml` に保存され、タスク6で IK の初期値に使う:
+
+   ```bash
+   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/teach.py --name press_bottle --arm right
+   ```
+
+2. FK と実物を比べる。FK で求めた中指の先を頭カメラの画像に丸で描いて保存する（`_local/button_press/fk_check/`）:
+
+   ```bash
+   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/fk_check.py --overlay
+   ```
+
+   - 丸が画像の中の**実物の中指の先**に重なっていれば OK（FK とカメラの取り付け位置の両方が合っている）。
+   - ずれていたら、指先の点（`configs/robot.yaml` の `end_effector`。今は公式メッシュの中指の先）を
+     `--ee-offset X Y Z` で試しに変えて、丸が中指の先に重なる値を探す。見つかったら robot.yaml に書き写す:
+
+     ```bash
+     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/fk_check.py --overlay --ee-offset 0.17 0.028 0.007
+     ```
+
+   - 腕をいくつかの姿勢にして、どの姿勢でも同じようにずれるか（一定のずれ）、姿勢で変わるか（関節の対応や
+     モデルの違い）を記録する。
+
+## 段階4: 較正
+
+⚠️ 指先で触れるときは腕を手で動かすので、座った状態か吊り下げた状態で行う。
+押す位置の近くで、ボトルの置き場所を変えて 3〜5 か所。各場所で、**先に腕をどけてカメラで測り、そのあとで
+中指の先を触れさせる**（触れている状態で撮ると、手が写り込んで深度が狂う）:
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/calibrate.py --arm right
+```
+
+- 最後に、場所ごとの補正値の候補（差）と、平均からのずれが表で出る。ばらつきが数 mm なら一定のずれなので、
+  `--write` を付けてやり直すか、`configs/localize.yaml` の `calibration.offset_pelvis_m` に平均を書く。
+- ばらつきが 1 cm を超える、またはずれが 5 cm を超えるときは、補正では直らない。段階3の結果（FK）と、
+  頭カメラの取り付け位置（`configs/robot.yaml` の `head_camera`）を疑う。
+
+## 作業空間の箱の調整
+
+`configs/press.yaml` の `workspace`（手先が入ってよい箱、pelvis 座標）は仮の値。段階3で記録した押し込み姿勢の
+指先の位置（`configs/taught_poses.yaml` の `fingertip_pelvis_m`）と、段階4のボトルの位置が箱の中に入っているかを見て、
+必要なら広げる（押す位置のまわり ±10〜15 cm 程度にとどめる）。
+
+## 段階5・6: 押し込み
+
+（タスク6の全体をつなぐスクリプトを作ったあとで、ここに手順を書く）
+
+## 実機日が終わったら
+
+- 収録（`_local/button_press/recordings/`）と、較正・FK 確認の画像（`_local/button_press/`）をバックアップする。
+- `configs/taught_poses.yaml`、`configs/localize.yaml`（補正値）、`configs/robot.yaml`（指先の点を直した場合）、
+  `configs/arm.yaml`（NIC 名など）の変更をコミットして残す。
+- `git worktree remove ../G1_nav`

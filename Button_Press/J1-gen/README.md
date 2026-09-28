@@ -30,6 +30,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `dds.py` — DDS の初期化（1 プロセス 1 回）と lowstate の受信
   - `sim_scene.py` / `sim_camera.py` — MuJoCo の机とボトル、頭カメラの RGB + 深度、セグメンテーションの検出器
   - `recording.py` / `recorder.py` — 収録（RGB・深度・lowstate を時刻付きで保存）と再生
+  - `realday.py` — 実機日用のツールの部品（指先の FK、画像への投影、教えた姿勢、支持の確認）
 - `sim/` — MuJoCo での検証
   - `fetch_models.sh` — 公式モデル（unitree_ros の `g1_29dof_rev_1_0`）を取得する
   - `move_arm_sim.py` — 腕を指定の関節角へ動かして戻す
@@ -37,11 +38,15 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `locate_sim.py` — 頭カメラの画像と深度からボトルの位置を求め、正解と比べる
 - `real/` — 実機用
   - `move_arm_real.py` — 同じことを実機で行う（既定は dry-run。送るには `--execute`）
-  - `REAL_DAY_PROCEDURE.md` — 実機日の手順書（下書き。タスク7で完成させる）
+  - `REAL_DAY_PROCEDURE.md` — 実機日の手順書（段階0〜6）
   - `depth_server/` — PC2 で動かす深度付きカメラサーバ（`rgbd_server.py`）と、その使い方（`README.md`）
   - `probe_rgbd.py` — 深度付きストリームが届くかを確かめる（ラボ PC で）
   - `locate_bottle.py` — ボトルの位置を pelvis 座標で求める（ライブ、保存したファイル、収録から）
   - `record.py` — 収録ツール（全フレーム / N 秒ごと / Enter を押したとき、深度付き / RGB だけ）
+  - `check_connection.py` — 段階0の接続確認（lowstate、`mode_machine`、モータの mode、腰、指先、深度）
+  - `teach.py` — ティーチング（手で動かした腕の姿勢を `configs/taught_poses.yaml` に記録）
+  - `fk_check.py` — FK の確認（指先の位置の表示、頭カメラの画像への投影、指先の点を試しに変える）
+  - `calibrate.py` — 較正（カメラで求めた位置と、指先で触れた位置の差を複数か所で取る）
 - `configs/` — 設定ファイル。当日はコードを編集せず、ここだけを変える
   - `robot.yaml` — モデルのパス、頭カメラの取り付け位置
   - `arm.yaml` — 経路（sim / arm_sdk / lowcmd）、NIC 名、ゲイン、安全の上限、重力補償
@@ -51,6 +56,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `localize.yaml` — 検出器（YOLO の重み・クラス）、深度を取る基準点と領域、較正の補正
   - `sim_scene.yaml` — MuJoCo の机とボトル、検出するときの姿勢
   - `record.yaml` — 収録の保存先、カラーの形式、lowstate の周期、間引きの間隔
+  - `taught_poses.yaml` — ティーチングで記録した姿勢（`teach.py` が書く。実機日のあとコミットする）
 - `tests/` — `run_tests.sh`（CI が自動で見つけて実行する）
 
 ## 機体モデル
@@ -77,7 +83,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
 | 4 | ボトル検出 → 3D 座標 → pelvis 座標 | 済み（YOLO は実機の画像で未確認） |
 | 5 | 収録ツール | 済み |
 | 6 | 全体をつなぐスクリプト | これから |
-| 7 | 実機日用のツールと手順 | これから |
+| 7 | 実機日用のツールと手順 | 済み（実機では未確認） |
 
 ## 腕の指令部分（タスク1）
 
@@ -119,7 +125,9 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/move_arm_real.py --path 
 G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/press_sim.py --target 0.40 -0.20 0.05 --push-dir 1 0 0
 ```
 
-- 手先の点は、ハンドのメッシュで最も前に出ている点（`robot.yaml` の `end_effector`。実機日に確認）。
+- 手先の点は**中指の先**（`robot.yaml` の `end_effector`）。公式のハンドのメッシュで、指の先が並ぶ向き（z）に
+  親指・人差し指・中指・薬指・小指があり、中指が最も長い（x = 0.1733 m）。実機日に `fk_check.py --overlay` で確認する。
+  2026-09-28 に、y の符号を左右で取り違えていた（手の外の点になっていた）のを直した。
 - IK は減衰付き擬似逆行列の微分 IK。動かすのは片腕 7 関節だけで、腰と反対の腕は固定。
   指の向き（手先リンクの x 軸）を押す方向にそろえ、指の軸まわりの回転は自由にする。
   余った自由度で初期値（ティーチングで記録した姿勢）に近づける。
@@ -206,3 +214,22 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --recor
 - 再生（`common/recording.py` の `Recording`）は、フレームと、そのときの腰の角度を返す。
   `locate_bottle.py --recording` で、収録したデータからオフラインでボトルの位置を求められる。
 - **実機のデータは取り直せない。終わったら必ずバックアップする**（終了時にコマンドを表示する）。
+
+## 実機日用のツール（タスク7）
+
+手順は [real/REAL_DAY_PROCEDURE.md](real/REAL_DAY_PROCEDURE.md)。どのツールも lowstate と頭カメラを読むだけで、何も送信しない。
+
+- `check_connection.py`: 段階0。`mode_machine` = 5、モータの mode = 1 を確かめる
+- `teach.py`: 段階3。腕を手で動かした押し込み姿勢を記録する（IK の初期値に使う）
+- `fk_check.py --overlay`: 段階3。FK の中指の先を頭カメラの画像に投影する。実物の中指の先に重なれば、
+  FK とカメラの取り付け位置の両方が合っている。ずれていれば `--ee-offset` で指先の点を試しに変える
+- `calibrate.py`: 段階4。押す位置の近くの複数か所で、カメラで測った位置（先に腕をどけて測る）と、
+  中指の先で触れた位置（FK）の差を取り、場所ごとの差と平均からのずれを表示する。平均を補正値にする
+- 腕を手で動かす `teach.py` / `calibrate.py` は、ダンピング状態（全身が脱力する）で使うので、開始時に
+  「座った状態か吊り下げた状態か」を確認して Enter を待つ
+- 経路の判定（段階2）は、Dev/Navigation の g1-starter-kit の `mode_check.py` / `armsdk_probe.py` を
+  `git worktree` で別のフォルダに出して、そのまま実行する（このブランチには取り込まない）
+
+確かめたこと（2026-09-28、実機なし）: 投影と逆投影が往復で一致する。MuJoCo で、FK の中指の先を頭カメラに
+投影した画素に右手が写っている（取り違えていた値では写っていなかった）。教えた姿勢の保存と読み込み、
+補正値の書き込み（コメントは残る）。
