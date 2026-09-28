@@ -41,6 +41,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `locate_sim.py` — 頭カメラの画像と深度からボトルの位置を求め、正解と比べる
   - `press_bottle_sim.py` — 全体をつなぐスクリプト（MuJoCo、同じプロセス）
   - `sim_robot_server.py` — ループバックの模擬ロボット（実機と同じ DDS とカメラ。故障をわざと起こせる）
+  - `rehearsal.py` — 実機日のリハーサル（当日手順書の段階0〜6と故障の場面を、模擬ロボットで通しで実行）
 - `real/` — 実機用
   - `move_arm_real.py` — 同じことを実機で行う（既定は dry-run。送るには `--execute`）
   - `REAL_DAY_PROCEDURE.md` — 実機日の手順書（段階0〜6）
@@ -274,4 +275,18 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/press_bottle.py --path a
 - `--fault` でわざと故障を起こせる: `ignore_arm_sdk`（arm_sdk が効かない）/ `motor_mode0`（ゼロトルク）/
   `lowstate_dropout`（途切れる）/ `mode_machine`（機体構成の違い）/ `waist_sag`（腰が倒れる）。
   それぞれ決まった終了コード（3 / 4 / 4 / 4 / 5）で安全に止まることを `tests/test_sim_robot.py` で確かめている。
-- 模擬ロボットは domain 1 なので、domain 0 で動く g1-starter-kit の `mode_check.py` / `armsdk_probe.py` は試せない。
+- 模擬ロボットは domain 1 なので、domain 0 で動く g1-starter-kit の `mode_check.py` / `armsdk_probe.py` は試せない
+  （この 2 つは `--help` と、使うモジュールが venv で読み込めることだけを 2026-09-29 に確かめた）。
+
+### リハーサル
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/rehearsal.py
+```
+
+当日手順書の段階0〜6と、故障の場面（arm_sdk が効かない → プランB、ゼロトルク、機体構成の違い、押し込み中の
+lowstate の途切れ、押し込み中に腰が倒れる）を、実機用のスクリプトで通しで実行する（約 8 分）。結果は
+`_local/button_press/rehearsal/<日時>/report.md`（各コマンドの所要時間・終了コード・期待どおりか、段階ごとの合計）。
+
+2026-09-29 の結果: 26 / 26 件が期待どおり。1 回目は、経由の姿勢（肩ピッチ 17.2°）で手を上げる途中に机の 4〜8 mm まで
+近づき、計画の段階で拒否された（何も送っていない）ので、肩ピッチを 28.6° にした（180 mm 以上離れる）。

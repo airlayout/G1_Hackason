@@ -100,7 +100,9 @@ def main() -> int:
     writer = RecordingWriter(root, args.label, meta, cfg["color_format"], int(cfg["jpeg_quality"]))
     print(f"[record] 収録フォルダ: {writer.dir}")
 
-    flag = threading.Event()
+    # Enter が押された回数（素早く続けて押しても取りこぼさないよう、回数で数える）
+    presses = [0]
+    lock = threading.Lock()
     if args.mode == "enter":
         def wait_enter() -> None:
             while True:
@@ -108,14 +110,16 @@ def main() -> int:
                     input()
                 except EOFError:
                     return
-                flag.set()
+                with lock:
+                    presses[0] += 1
         threading.Thread(target=wait_enter, daemon=True).start()
         print("[record] Enter を押すと 1 枚保存する。Ctrl+C で終わる")
 
     def trigger() -> bool:
-        if flag.is_set():
-            flag.clear()
-            return True
+        with lock:
+            if presses[0] > 0:
+                presses[0] -= 1
+                return True
         return False
 
     rec = Recorder(writer, get_frame, reader, args.mode,

@@ -3,6 +3,22 @@
 コマンドはすべてラボ PC のリポジトリ直下（`G1_Hackason/`）で、1行ずつ実行する。
 `<NIC>` は G1 につないでいる有線 NIC の名前（`ip -br a` で確認し、`configs/arm.yaml` の `network_interface` にも書く）。
 
+## 時間の目安（2026-09-29 のリハーサル。ループバックの模擬ロボット）
+
+機械が動いている時間の実測。人の作業（接続、ロボットの姿勢を整える、腕を手で動かす、ボトルを置き直す）は含まない。
+
+| 段階 | 実測 | 内容 |
+|---|---|---|
+| 0 接続確認 | 約 7 秒 | `check_connection.py --rgbd`、`probe_rgbd.py --save` |
+| 1 収録 | 約 45 秒 | ボトル 20 秒、ボタン 1 秒に 1 枚 × 15 秒、Enter × 3（本番のボタン 150〜300 枚は 1 秒に 1 枚で 3〜5 分） |
+| 2 経路の判定 | 約 15 秒 | `move_arm_real.py` の dry-run と送信（各 8 秒）。プランB への切り替えを含めると +13 秒 |
+| 3 ティーチング・FK・重力補償 | 約 25 秒 | 重力補償 0 / 0.5 / 1.0 の比較が各 6 秒 |
+| 4 較正 | 約 6 秒 | 3 か所（人が指先を触れさせる時間は含まない） |
+| 5 押し込み | 約 108 秒 | dry-run 54 秒 + 送信 54 秒（1 回の押し込みは、経由の姿勢を通る行き来を含めて約 54 秒） |
+| 6 繰り返し | 約 53 秒 / 回 | 置き場所を変えるたびに 1 回 |
+
+リハーサル全体（故障の場面を含む）は約 8 分。
+
 ## 安全のルール（全段階で守る）
 
 - **人が常にリモコンを持つ。緊急時は L2+B（ダンピング）。**
@@ -369,9 +385,20 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/calibrate.py --arm right
 終了コード: 0 成功 / 2 目標を拒否（何も送っていない、または動かしたあと安全に止めた）/ 3 動いていない /
 4 lowstate・相手・mode_machine・モータの問題 / 5 腰が倒れた / 130 中止（q、Ctrl+C）
 
+## 前日までのリハーサル
+
+手元の PC かラボ PC で、この手順書の流れを模擬ロボットで通しで確かめられる（約 8 分。G1 はつながなくてよい）:
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/rehearsal.py
+```
+
+模擬ロボットはこのマシンの中（口 `lo`、domain 1）だけで動くので、G1 を LAN につないだままでも混ざらない。
+結果は `_local/button_press/rehearsal/<日時>/report.md`。
+
 ## 実機日が終わったら
 
 - 収録（`_local/button_press/recordings/`）と、較正・FK 確認の画像（`_local/button_press/`）をバックアップする。
-- `configs/taught_poses.yaml`、`configs/localize.yaml`（補正値）、`configs/robot.yaml`（指先の点を直した場合）、
+- `configs/taught_poses.yaml`、`configs/obstacles.yaml`（机の箱）、`configs/localize.yaml`（補正値）、`configs/robot.yaml`（指先の点を直した場合）、
   `configs/arm.yaml`（NIC 名など）の変更をコミットして残す。
 - `git worktree remove ../G1_nav`

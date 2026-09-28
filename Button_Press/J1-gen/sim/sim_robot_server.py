@@ -48,6 +48,8 @@ from common.sim_camera import SimHeadCamera  # noqa: E402
 from common.sim_scene import detection_pose  # noqa: E402
 
 FAULTS = ("ignore_arm_sdk", "motor_mode0", "lowstate_dropout", "mode_machine", "waist_sag")
+# 指令がこの秒数届かなければ、内蔵コントローラが元の姿勢を保持する状態に戻す（プログラムが終わったあと）
+COMMAND_TIMEOUT_S = 0.5
 CAMERA_HOST = "127.0.0.1"  # ループバックだけで待ち受ける
 WAIST_SAG_TORQUE = 25.0  # [Nm] 腰ピッチを前に倒す力（Kp=300 の保持で約 5° 倒れる）
 
@@ -201,6 +203,7 @@ class SimRobotServer:
         if self.faults:
             print(f"[sim_robot] 故障: {sorted(self.faults)}（{self.fault_after:.0f} 秒後から）")
         tick = 0
+        last_cmd_t: float | None = None
         next_log = time.monotonic() + 5.0
         cam_thread = threading.Thread(target=self._camera_loop, daemon=True)
         cam_thread.start()
@@ -208,6 +211,14 @@ class SimRobotServer:
             while not self._stop and (duration_s is None or time.monotonic() - self._t0 < duration_s):
                 with self._lock:
                     pending, self._pending = self._pending, None
+                if pending is not None:
+                    last_cmd_t = time.monotonic()
+                elif last_cmd_t is not None and time.monotonic() - last_cmd_t > COMMAND_TIMEOUT_S:
+                    # 指令が途絶えた: 内蔵コントローラが開始時の姿勢を保持する状態へ戻す
+                    be.uses_weight = True
+                    be._gravity_comp = True
+                    be.send(JointCommand())
+                    last_cmd_t = None
                 if pending is not None:
                     topic, cmd = pending
                     be.uses_weight = topic == "arm_sdk"

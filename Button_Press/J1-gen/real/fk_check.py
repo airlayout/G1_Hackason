@@ -39,6 +39,7 @@ def main() -> int:
     p.add_argument("--ee-offset", type=float, nargs=3, metavar=("X", "Y", "Z"),
                    help="指先の点を、この値（右手の wrist_yaw_link 基準 [m]。左手は y の符号を逆にする）で試す。"
                         "合っていたら configs/robot.yaml の end_effector に書き写す")
+    p.add_argument("--out-dir", type=Path, help="画像などの保存先（既定は _local/button_press/ の下）")
     args = p.parse_args()
 
     robot_cfg = load_config("robot.yaml")
@@ -56,7 +57,7 @@ def main() -> int:
     fk = FingertipFK(robot_cfg, load_config("press.yaml")["ik"])
     transform = HeadCameraTransform(robot_cfg, load_config("localize.yaml")["calibration"]["offset_pelvis_m"])
     src = None
-    out = REPO_ROOT / "_local" / "button_press" / "fk_check"
+    out = args.out_dir or REPO_ROOT / "_local" / "button_press" / "fk_check"
     if args.overlay:
         from common.camera_rgbd import RgbdZmqSource
 

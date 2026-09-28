@@ -32,6 +32,7 @@ def main() -> int:
     p.add_argument("--port", type=int, help="ポート（既定は設定ファイル）")
     p.add_argument("--seconds", type=float, default=5.0, help="受信する秒数")
     p.add_argument("--save", action="store_true", help="最後のフレームを保存する")
+    p.add_argument("--out-dir", type=Path, help="画像などの保存先（既定は _local/button_press/ の下）")
     args = p.parse_args()
 
     cfg = load_config(args.config)["rgbd"]
@@ -67,7 +68,7 @@ def main() -> int:
     print(f"[probe_rgbd] 深度が 0（測れなかった）の画素: {np.mean(d == 0) * 100:.1f}%")
 
     if args.save:
-        stem = REPO_ROOT / "_local" / "button_press" / "probe" / time.strftime("%Y%m%d_%H%M%S")
+        stem = (args.out_dir or REPO_ROOT / "_local" / "button_press" / "probe") / time.strftime("%Y%m%d_%H%M%S")
         save_rgbd(last, stem)
         print(f"[probe_rgbd] 保存: {stem}_color.png / _depth.png / _meta.json")
     return 0

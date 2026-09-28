@@ -83,6 +83,7 @@ def main() -> int:
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
     p.add_argument("--camera-config", default="camera.yaml", help="カメラの接続先の設定（模擬ロボットは camera_sim.yaml）")
     p.add_argument("--detector", choices=["yolo", "color"], help="検出器（既定は configs/localize.yaml）")
+    p.add_argument("--out-dir", type=Path, help="画像などの保存先（既定は _local/button_press/ の下）")
     args = p.parse_args()
 
     if not confirm_support():
@@ -104,7 +105,7 @@ def main() -> int:
     reader.open()
     reader.wait(10.0)
     cam = load_config(args.camera_config)["rgbd"]
-    out = REPO_ROOT / "_local" / "button_press" / "calibration"
+    out = args.out_dir or REPO_ROOT / "_local" / "button_press" / "calibration"
     out.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     pairs: list[dict] = []

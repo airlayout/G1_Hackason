@@ -61,6 +61,7 @@ def main() -> int:
     p.add_argument("--frames", type=int, default=1, help="--live で処理するフレーム数")
     p.add_argument("--camera-config", default="camera.yaml", help="カメラの接続先の設定（模擬ロボットは camera_sim.yaml）")
     p.add_argument("--detector", choices=["yolo", "color"], help="検出器（既定は configs/localize.yaml）")
+    p.add_argument("--out-dir", type=Path, help="画像などの保存先（既定は _local/button_press/ の下）")
     args = p.parse_args()
 
     robot_cfg = load_config("robot.yaml")
@@ -68,7 +69,7 @@ def main() -> int:
     if args.detector:
         loc_cfg["detector"]["type"] = args.detector
     locator = Locator(robot_cfg, loc_cfg, make_detector(loc_cfg))
-    out = REPO_ROOT / "_local" / "button_press" / "locate"
+    out = args.out_dir or REPO_ROOT / "_local" / "button_press" / "locate"
     out.mkdir(parents=True, exist_ok=True)
 
     frames: list[tuple[RgbdFrame, np.ndarray]] = []
