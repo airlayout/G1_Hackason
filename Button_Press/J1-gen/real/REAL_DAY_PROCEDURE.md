@@ -59,6 +59,15 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/move_arm_real.py --path 
 - 腰の重力補償（`--waist-gravity-scale`、プランB のときだけ効く）は、腕の確認のあとで必要なら試す。
 - lowstate の IMU が pelvis のものかは未確認。倍率 1.0 で逆に下がり方が大きくなる場合は、IMU の向きを疑う。
 
+## 深度付きカメラサーバ（PC2）
+
+手順は [depth_server/README.md](depth_server/README.md)。要点:
+
+- `lsusb | grep -i intel` で RealSense が PC2 につながっているかを最初に確かめる。つながっていなければ、
+  深度は使えないので、対象の位置を設定ファイルの値（定規で測った位置）で与えるモード（タスク6）に切り替える。
+- `run_g1_server.py` は `--camera` なしで起動する（RealSense は 1 つのプログラムしか開けない）。
+- ラボ PC で `real/probe_rgbd.py --save` を実行し、fps・内部パラメータ・深度を確かめて保存する。
+
 ## タスク7で追加する項目
 
 - 接続確認（RGB・深度・lowstate、`mode_machine` = 5）

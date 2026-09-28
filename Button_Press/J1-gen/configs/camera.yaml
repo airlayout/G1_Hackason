@@ -1,0 +1,16 @@
+# Button_Press / カメラの受信側（ラボ PC）の設定。タスク3〜6で使う。
+
+rgbd:
+  # 深度付きカメラサーバ（real/depth_server/rgbd_server.py）の接続先。PC2 = 192.168.123.164
+  # MuJoCo やダミーで確かめるときは localhost
+  server_address: 192.168.123.164
+  # configs/depth_server.yaml の publish.rgbd.port と同じ値にする
+  port: 5556
+  timeout_ms: 5000
+
+legacy_rgb:
+  # RGB 互換ストリーム（run_g1_server.py --camera、または rgbd_server.py の互換出力）
+  server_address: 192.168.123.164
+  port: 5555
+  camera_name: head_camera
+  timeout_ms: 5000

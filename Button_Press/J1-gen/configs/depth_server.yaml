@@ -1,0 +1,35 @@
+# Button_Press / 深度付きカメラサーバの設定（タスク3）。G1 の PC2 で動かす。
+# 本番では外付けカメラの配信（別のポート）とも同時に動かす可能性があるので、ポートはここで変える。
+
+camera:
+  # realsense（本番）| dummy（RealSense が無いマシンでの動作確認用。作り物の画像と深度を出す）
+  source: realsense
+  # RealSense のシリアル番号。空なら最初に見つかった 1 台を使う。
+  # 一覧は `python real/depth_server/rgbd_server.py --list-devices` で表示できる
+  serial: ""
+  # カラーと深度の大きさとフレームレート（深度はカラーに位置合わせするので、送る大きさはカラーと同じ）
+  width: 640
+  height: 480
+  fps: 30
+  # wait_for_frames のタイムアウト [ms]
+  timeout_ms: 5000
+
+publish:
+  # 受け付けるアドレス（"*" はすべてのネットワークの口）
+  bind_address: "*"
+  camera_name: head_camera
+
+  # 深度付きストリーム（形式は common/rgbd_protocol.py）
+  rgbd:
+    enabled: true
+    port: 5556
+    jpeg_quality: 90
+    # 深度の圧縮: zlib（既定。640x480 で約 600KB → 数百 KB）| none
+    depth_compression: zlib
+
+  # RGB 互換ストリーム（run_g1_server.py --camera と同じ形式。既存の ZmqFrameSource がそのまま使える）
+  legacy_rgb:
+    enabled: true
+    port: 5555
+    # lerobot の ImageServer と同じ値
+    jpeg_quality: 80

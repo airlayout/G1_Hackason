@@ -21,6 +21,9 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `collision.py` — 腕と体がぶつからないかを MuJoCo で確かめる（ハンドには衝突判定用の箱を足す）
   - `press_planner.py` — 押し込みの軌道（手前の姿勢 → 直線で押し込む → 戻る）。届かない・ぶつかる目標は拒否
   - `press.py` — 軌道を ArmCommander で実行する
+  - `rgbd_protocol.py` — 深度付きストリームの形式（サーバとクライアントで共有）
+  - `camera_rgbd.py` — 深度付きストリームの受信側 `RgbdZmqSource`（Perception の FrameSource を継承）
+  - `perception_bridge.py` — Perception/common を別名で読み込む（どちらもパッケージ名が `common` のため）
 - `sim/` — MuJoCo での検証
   - `fetch_models.sh` — 公式モデル（unitree_ros の `g1_29dof_rev_1_0`）を取得する
   - `move_arm_sim.py` — 腕を指定の関節角へ動かして戻す
@@ -28,10 +31,14 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
 - `real/` — 実機用
   - `move_arm_real.py` — 同じことを実機で行う（既定は dry-run。送るには `--execute`）
   - `REAL_DAY_PROCEDURE.md` — 実機日の手順書（下書き。タスク7で完成させる）
+  - `depth_server/` — PC2 で動かす深度付きカメラサーバ（`rgbd_server.py`）と、その使い方（`README.md`）
+  - `probe_rgbd.py` — 深度付きストリームが届くかを確かめる（ラボ PC で）
 - `configs/` — 設定ファイル。当日はコードを編集せず、ここだけを変える
   - `robot.yaml` — モデルのパス、頭カメラの取り付け位置
   - `arm.yaml` — 経路（sim / arm_sdk / lowcmd）、NIC 名、ゲイン、安全の上限、重力補償
   - `press.yaml` — IK、衝突の確認、押し込み（手前の距離・深さ・速さ）、作業空間の箱
+  - `depth_server.yaml` — 深度付きカメラサーバ（PC2）: RealSense のシリアル番号、ポート（深度付き 5556 / RGB 互換 5555）
+  - `camera.yaml` — 受信側（ラボ PC）の接続先とポート
 - `tests/` — `run_tests.sh`（CI が自動で見つけて実行する）
 
 ## 機体モデル
@@ -54,7 +61,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
 | 0 | 土台づくり（構成、環境構築、モデル取得、CI 登録） | 済み |
 | 1 | 腕の指令部分（sim / arm_sdk / lowcmd） | 済み（実機は未確認） |
 | 2 | FK / IK と軌道生成 | 済み |
-| 3 | 深度付きの配信サーバ（PC2） | これから |
+| 3 | 深度付きの配信サーバ（PC2） | 済み（本物の RealSense では未確認） |
 | 4 | ボトル検出 → 3D 座標 → pelvis 座標 | これから |
 | 5 | 収録ツール | これから |
 | 6 | 全体をつなぐスクリプト | これから |
@@ -127,3 +134,14 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/press_sim.py --target 0.4
 
   計算し直したあとに残る約 2 mm は、押し込みで腕が前に伸びる間に腰がさらに少し倒れる分。
 - 真下に押す姿勢は手首が特異姿勢に近く、1 周期の関節の動きの上限で拒否された（横から押すボトルでは問題ない）。
+
+## 深度付きの配信サーバ（タスク3）
+
+PC2 で RealSense を pyrealsense2 で直接読み、深度をカラー画像に位置合わせして 16bit のまま、内部パラメータと
+一緒に配信する（ポート 5556）。既存と同じ形式の RGB（ポート 5555）も出すので、既存の `ZmqFrameSource` もそのまま動く。
+使い方・PC2 の準備・うまくいかないときは [real/depth_server/README.md](real/depth_server/README.md)。
+
+- `run_g1_server.py` は変更しない。RealSense は 1 つのプログラムしか開けないので、このサーバを使うときは
+  `run_g1_server.py` を `--camera` なしで起動する。
+- 既存の `run_g1_server.py --camera` は、RealSense を pyrealsense2 ではなく OpenCV で `/dev/video4` として開いている
+  （lerobot の `ImageServer`、2026-09-28 に GitHub の main で確認）。
