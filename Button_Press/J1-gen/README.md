@@ -29,6 +29,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `rgbd_io.py` — RgbdFrame のファイルへの保存と読み込み（カラー PNG、深度 16bit PNG、JSON）
   - `dds.py` — DDS の初期化（1 プロセス 1 回）と lowstate の受信
   - `sim_scene.py` / `sim_camera.py` — MuJoCo の机とボトル、頭カメラの RGB + 深度、セグメンテーションの検出器
+  - `recording.py` / `recorder.py` — 収録（RGB・深度・lowstate を時刻付きで保存）と再生
 - `sim/` — MuJoCo での検証
   - `fetch_models.sh` — 公式モデル（unitree_ros の `g1_29dof_rev_1_0`）を取得する
   - `move_arm_sim.py` — 腕を指定の関節角へ動かして戻す
@@ -39,7 +40,8 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `REAL_DAY_PROCEDURE.md` — 実機日の手順書（下書き。タスク7で完成させる）
   - `depth_server/` — PC2 で動かす深度付きカメラサーバ（`rgbd_server.py`）と、その使い方（`README.md`）
   - `probe_rgbd.py` — 深度付きストリームが届くかを確かめる（ラボ PC で）
-  - `locate_bottle.py` — ボトルの位置を pelvis 座標で求める（ライブ、または保存したファイルから）
+  - `locate_bottle.py` — ボトルの位置を pelvis 座標で求める（ライブ、保存したファイル、収録から）
+  - `record.py` — 収録ツール（全フレーム / N 秒ごと / Enter を押したとき、深度付き / RGB だけ）
 - `configs/` — 設定ファイル。当日はコードを編集せず、ここだけを変える
   - `robot.yaml` — モデルのパス、頭カメラの取り付け位置
   - `arm.yaml` — 経路（sim / arm_sdk / lowcmd）、NIC 名、ゲイン、安全の上限、重力補償
@@ -48,6 +50,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `camera.yaml` — 受信側（ラボ PC）の接続先とポート
   - `localize.yaml` — 検出器（YOLO の重み・クラス）、深度を取る基準点と領域、較正の補正
   - `sim_scene.yaml` — MuJoCo の机とボトル、検出するときの姿勢
+  - `record.yaml` — 収録の保存先、カラーの形式、lowstate の周期、間引きの間隔
 - `tests/` — `run_tests.sh`（CI が自動で見つけて実行する）
 
 ## 機体モデル
@@ -72,7 +75,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
 | 2 | FK / IK と軌道生成 | 済み |
 | 3 | 深度付きの配信サーバ（PC2） | 済み（本物の RealSense では未確認） |
 | 4 | ボトル検出 → 3D 座標 → pelvis 座標 | 済み（YOLO は実機の画像で未確認） |
-| 5 | 収録ツール | これから |
+| 5 | 収録ツール | 済み |
 | 6 | 全体をつなぐスクリプト | これから |
 | 7 | 実機日用のツールと手順 | これから |
 
@@ -185,3 +188,21 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --files
   腰を保持するので、腰がほぼ 0° のまま検出する前提。
 - 事前学習済みの YOLO は、MuJoCo の円柱を組み合わせた作り物のボトルを検出しなかった。シミュレーションでは
   セグメンテーション（画素ごとに写っている物の番号）で枠を作る。**YOLO は実機日に撮った画像で確かめる。**
+
+## 収録ツール（タスク5）
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label bottle                                  # 全フレーム
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label button --mode interval --interval-s 1   # 1 秒に 1 枚
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label button --mode enter                     # Enter で 1 枚
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label bottle --rgb-only                       # 深度なし
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --recording _local/button_press/recordings/<フォルダ> --every 10
+```
+
+- 保存先は `_local/button_press/recordings/<日時>_<ラベル>/`。カラー（PNG）、深度（16bit PNG）、
+  フレームごとの時刻と腰の角度（`frames.jsonl`）、lowstate（`lowstate.csv`、100 Hz、関節角・速度・IMU）、
+  内部パラメータと使った設定（`meta.json`）。途中で落ちてもそれまでの分が残るよう、1 行ずつ追記する。
+- 時刻はラボ PC の時計。lowstate は DDS で直接受信する（`--no-lowstate` で記録しない）。
+- 再生（`common/recording.py` の `Recording`）は、フレームと、そのときの腰の角度を返す。
+  `locate_bottle.py --recording` で、収録したデータからオフラインでボトルの位置を求められる。
+- **実機のデータは取り直せない。終わったら必ずバックアップする**（終了時にコマンドを表示する）。

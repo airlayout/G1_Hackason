@@ -154,6 +154,31 @@ bash Button_Press/J1-gen/real/depth_server/fetch_offline_packages.sh
 - YOLO がボトルを検出するか、枠と基準点が胴に乗っているかを、保存された画像（`_local/button_press/locate/`）で見る。
 - 深度が使えないときは、`probe_zmq_camera.py` などで撮った RGB で YOLO の検出だけを確かめる。
 
+## 収録（タスク5）
+
+「必ずやり切る」段階（HANDOFF 8章の段階1）。lowstate も一緒に記録する（NIC は `configs/arm.yaml`）。
+`--note` に、置いた場所・照明・ボトルの種類などを書いておく。
+
+ボトルのまわり（全フレーム。Ctrl+C で止める）:
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label bottle --note "机の上、ラベル付きボトル"
+```
+
+ボタンの撮影（①の学習用。150〜300 枚。背景を変えたもの 2〜3 割、ボタンが写っていないもの 1 割）。
+構図を決めてから撮るなら `enter`、動かしながら撮るなら `interval`:
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label button --mode enter
+```
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label button --mode interval --interval-s 1
+```
+
+深度が使えないときは `--rgb-only` を付ける（`run_g1_server.py --camera` の 5555 から受信する）。
+
+**収録が終わるたびに、バックアップする**（取り直せないため）。終了時に表示される `cp -r ...` を実行する。
+
 ## タスク7で追加する項目
 
 - 接続確認（RGB・深度・lowstate、`mode_machine` = 5）

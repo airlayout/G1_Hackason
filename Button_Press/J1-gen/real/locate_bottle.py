@@ -4,11 +4,14 @@
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --live
     # 保存したファイル（probe_rgbd.py --save の出力。<stem> は _color.png などの前の部分）
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --files _local/button_press/probe/20260930_101500
+    # 収録したデータ（record.py の出力フォルダ）を再生して、10 フレームおきに求める
+    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --recording _local/button_press/recordings/<フォルダ> --every 10
 
 腰の角度（pelvis 座標に直すのに使う）:
 - --waist-deg YAW ROLL PITCH で直接与える
 - 与えなければ、--live では DDS の lowstate から読む（NIC は configs/arm.yaml の network_interface
-  か --network-interface）。ファイルでは、メタデータに waist_q があればそれ、無ければ 0°（警告を出す）
+  か --network-interface）。ファイルでは、メタデータに waist_q があればそれ、無ければ 0°（警告を出す）。
+  収録では、そのフレームを保存したときの腰の角度（無ければ近い時刻の lowstate、それも無ければ 0°）
 
 結果（枠・基準点・座標）を描いた画像を _local/button_press/locate/ に保存する。
 """
@@ -51,6 +54,8 @@ def main() -> int:
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--live", action="store_true", help="深度付きカメラサーバから受信する")
     src.add_argument("--files", type=Path, help="保存したファイルの <stem>")
+    src.add_argument("--recording", type=Path, help="収録したフォルダ（record.py の出力）")
+    p.add_argument("--every", type=int, default=1, help="--recording で、何フレームおきに処理するか")
     p.add_argument("--waist-deg", type=float, nargs=3, metavar=("YAW", "ROLL", "PITCH"))
     p.add_argument("--network-interface", help="lowstate を読む NIC（既定は configs/arm.yaml）")
     p.add_argument("--frames", type=int, default=1, help="--live で処理するフレーム数")
@@ -63,7 +68,27 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
 
     frames: list[tuple[RgbdFrame, np.ndarray]] = []
-    if args.files:
+    if args.recording:
+        from common.recording import Recording
+
+        rec = Recording(args.recording)
+        print(f"[locate] 収録 {args.recording}: {len(rec)} フレーム、lowstate {rec.lowstate_count} 行")
+        for k in range(0, len(rec), max(1, args.every)):
+            fr = rec.load(k)
+            if fr.rgbd is None:
+                print(f"[locate] フレーム {fr.index}: 深度が無い（RGB だけの収録）ので飛ばす")
+                continue
+            if args.waist_deg is not None:
+                qw = np.radians(args.waist_deg)
+            elif fr.waist_q is not None:
+                qw = fr.waist_q
+            else:
+                print(f"[locate] ⚠️ フレーム {fr.index}: 腰の角度が分からないので 0° とする")
+                qw = np.zeros(3)
+            # 表示と保存するファイル名には、収録の中での番号を使う（サーバが付けた番号ではなく）
+            fr.rgbd.frame_id = fr.index
+            frames.append((fr.rgbd, qw))
+    elif args.files:
         frame, meta = load_rgbd(args.files)
         if args.waist_deg is not None:
             qw = np.radians(args.waist_deg)

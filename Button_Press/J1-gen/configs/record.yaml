@@ -1,0 +1,18 @@
+# Button_Press / 収録ツールの設定（タスク5）。ラボ PC で動かす。
+
+# 保存先（リポジトリ直下からの相対パス。_local/ は git 管理外）
+output_dir: _local/button_press/recordings
+
+# カラー画像の保存形式: png（劣化しない。1 枚約 0.5 MB）| jpg（小さい）
+color_format: png
+jpeg_quality: 95
+
+# lowstate を記録する周期 [Hz]（lowstate は約 500 Hz で届くので間引く）
+lowstate_hz: 100
+
+# interval モードの間隔 [秒]（ボタン撮影の間引き保存）
+interval_s: 1.0
+
+# 保存先のディスクの空きがこれ [GB] より少なければ、開始時に警告する
+# （深度付き・PNG で 1 フレーム約 0.7 MB。10 fps で 1 分あたり約 0.4 GB）
+warn_free_gb: 20
