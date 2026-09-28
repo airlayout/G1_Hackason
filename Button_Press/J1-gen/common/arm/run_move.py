@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 
 from ..config import load_config
-from .gravity import GravityModel
+from .gravity import GravityModel, needs_gravity_model
 from . import (
     ArmCommander,
     NoMotionError,
@@ -41,7 +41,9 @@ def add_common_args(p: argparse.ArgumentParser, default_delta: list[float]) -> N
     p.add_argument("--duration", type=float, help="移動にかける秒数（既定は上限速度から自動）")
     p.add_argument("--no-return", action="store_true", help="目標へ動かしたあと、開始姿勢へ戻さない")
     p.add_argument("--gravity-scale", type=float,
-                   help="重力補償の倍率 0.0〜1.0（既定は設定ファイル。実機日は 0 → 0.5 → 1.0 で比べる）")
+                   help="腕の重力補償の倍率 0.0〜1.0（既定は設定ファイル。実機日は 0 → 0.5 → 1.0 で比べる）")
+    p.add_argument("--waist-gravity-scale", type=float,
+                   help="腰の重力補償の倍率 0.0〜1.0（プランB のときだけ効く。既定は設定ファイル）")
 
 
 def run(args: argparse.Namespace, path: str, dry_run: bool, confirm: bool,
@@ -52,6 +54,8 @@ def run(args: argparse.Namespace, path: str, dry_run: bool, confirm: bool,
         arm_cfg["arm"] = args.arm
     if args.gravity_scale is not None:
         arm_cfg["gravity_compensation"]["scale"] = args.gravity_scale
+    if args.waist_gravity_scale is not None:
+        arm_cfg["gravity_compensation"]["waist_scale"] = args.waist_gravity_scale
     for k, v in (overrides or {}).items():
         arm_cfg[k] = v
 
@@ -59,7 +63,7 @@ def run(args: argparse.Namespace, path: str, dry_run: bool, confirm: bool,
     backend = make_backend(arm_cfg, robot_cfg, dry_run=dry_run, path=path)
     try:
         backend.open()
-        gravity = GravityModel(robot_cfg) if float(arm_cfg["gravity_compensation"]["scale"]) > 0 else None
+        gravity = GravityModel(robot_cfg) if needs_gravity_model(arm_cfg) else None
         with ArmCommander(backend, arm_cfg, lower, upper, confirm=confirm, gravity=gravity) as arm:
             q_start = arm.commanded_arm_q
             if args.target_deg is not None:

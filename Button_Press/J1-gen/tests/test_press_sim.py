@@ -23,27 +23,27 @@ class TestPressSim(unittest.TestCase):
             self.assertLess(errs["approach"], 0.01, (tgt, errs))
             self.assertLess(errs["end"], 0.01, (tgt, errs))
 
-    def test_plan_b_conditions_with_gravity_compensation(self) -> None:
-        """プランB の条件（MuJoCo 側の補償なし）: 重力補償なしでは手先が下がり、倍率 1.0 で 1cm 以内に戻る。
-
-        腰の保持は Kp=300（既定の Kp=40 では腰が倒れて監視で止まるため。README 参照）。
-        """
+    def _plan_b(self, scale: float, waist_scale: float, replan: bool) -> dict[str, float]:
+        """プランB の条件（MuJoCo 側の重力補償なし、腰の保持は既定の Kp=300 / Kd=3）で押す。"""
         arm = load_config("arm.yaml")
         sim = dict(arm["sim"], emulate="lowcmd", gravity_compensation=False)
-        lowcmd = dict(arm["lowcmd"])
-        lowcmd["hold_kp"] = list(lowcmd["hold_kp"])
-        lowcmd["hold_kp"][12:15] = [300, 300, 300]
-        errs = {}
-        for scale in (0.0, 1.0):
-            errs[scale] = run_press_sim(
-                np.array(REACHABLE[0][0]), np.array(REACHABLE[0][1]),
-                arm_overrides={"sim": sim, "lowcmd": lowcmd,
-                               "gravity_compensation": {"scale": scale, "tau_max_nm": 7.0}},
-            )
-        print(f"\n[test] プランB 条件の手先の誤差: 補償なし {errs[0.0]['end'] * 1000:.1f} mm、"
-              f"倍率 1.0 {errs[1.0]['end'] * 1000:.1f} mm")
-        self.assertLess(errs[1.0]["end"], 0.01, errs)
-        self.assertGreater(errs[0.0]["end"], errs[1.0]["end"])
+        gc = {"scale": scale, "tau_max_nm": 7.0, "waist_scale": waist_scale, "waist_tau_max_nm": 15.0}
+        return run_press_sim(np.array(REACHABLE[0][0]), np.array(REACHABLE[0][1]),
+                             arm_overrides={"sim": sim, "gravity_compensation": gc}, replan=replan)
+
+    def test_plan_b_gravity_compensation_and_replan(self) -> None:
+        """プランB の条件で、腕の重力補償 → 実測の腰で計算し直し → 腰の重力補償 の順に誤差が減る。"""
+        none = self._plan_b(0.0, 0.0, replan=False)
+        arm_only = self._plan_b(1.0, 0.0, replan=False)
+        replanned = self._plan_b(1.0, 0.0, replan=True)
+        waist = self._plan_b(1.0, 1.0, replan=True)
+        print("\n[test] プランB 条件の押し込み終わりの誤差: "
+              f"補償なし {none['end'] * 1000:.1f} mm、腕の補償 {arm_only['end'] * 1000:.1f} mm、"
+              f"+計算し直し {replanned['end'] * 1000:.1f} mm、+腰の補償 {waist['end'] * 1000:.1f} mm")
+        self.assertGreater(none["end"], arm_only["end"])
+        self.assertLess(arm_only["end"], 0.01)
+        self.assertLess(replanned["end"], 0.003)
+        self.assertLess(waist["end"], 0.001)
 
     def test_unreachable_is_rejected_before_moving(self) -> None:
         with self.assertRaises(UnsafeTargetError):

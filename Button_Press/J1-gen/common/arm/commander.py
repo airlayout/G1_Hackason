@@ -106,7 +106,13 @@ class ArmCommander:
             raise ValueError(f"gravity_compensation.scale は 0.0〜1.0: {self.gc_scale}")
         if self.gc_tau_max <= 0.0:
             raise ValueError(f"gravity_compensation.tau_max_nm は正の値: {self.gc_tau_max}")
-        if self.gc_scale > 0.0 and gravity is None:
+        self.gc_waist_scale = float(gc.get("waist_scale", 0.0))
+        self.gc_waist_tau_max = float(gc.get("waist_tau_max_nm", 15.0))
+        if not (0.0 <= self.gc_waist_scale <= 1.0):
+            raise ValueError(f"gravity_compensation.waist_scale は 0.0〜1.0: {self.gc_waist_scale}")
+        if self.gc_waist_tau_max <= 0.0:
+            raise ValueError(f"gravity_compensation.waist_tau_max_nm は正の値: {self.gc_waist_tau_max}")
+        if (self.gc_scale > 0.0 or self.gc_waist_scale > 0.0) and gravity is None:
             raise ValueError("重力補償の倍率が 0 より大きいのに、GravityModel が渡されていない")
         self.gravity = gravity
         self._arms_idx = np.array(list(LEFT_ARM_IDX) + list(RIGHT_ARM_IDX))
@@ -154,6 +160,10 @@ class ArmCommander:
     def commanded_arm_q(self) -> np.ndarray:
         """いま指令している片腕 7 関節の角度（開始直後は開始時の実測値）。"""
         return self._cmd.q[self.arm_idx].copy()
+
+    def measured_q(self) -> np.ndarray:
+        """lowstate の最新の関節角（29、motor 番号順）。途切れていれば StateTimeoutError。"""
+        return self._fresh_state().q.copy()
 
     @property
     def joints(self) -> list[int]:
@@ -224,10 +234,15 @@ class ArmCommander:
                 f"（上限 {np.degrees(self.waist_max_dev):.1f}°）。中止する"
             )
 
+    @property
+    def _waist_gc_active(self) -> bool:
+        # 腰の重力補償はプランB（lowcmd）のときだけ。arm_sdk では内蔵コントローラと二重になるため送らない
+        return self.gc_waist_scale > 0.0 and not self.backend.uses_weight
+
     def _update_gravity_tau(self, st: JointState | None) -> None:
-        """両腕の tau に、重力トルク × 倍率（上限付き）を入れる。倍率 0 なら 0。"""
-        if self.gc_scale <= 0.0 or self.gravity is None:
-            self._cmd.tau[:] = 0.0
+        """両腕（とプランB で有効なら腰）の tau に、重力トルク × 倍率（上限付き）を入れる。倍率 0 なら 0。"""
+        self._cmd.tau[:] = 0.0
+        if self.gravity is None or (self.gc_scale <= 0.0 and not self._waist_gc_active):
             return
         imu = st.imu_quat if st is not None else None
         # 腕は目標の角度で計算する（実測値を使うと、センサの揺れがそのままトルクに乗るため）。
@@ -236,9 +251,10 @@ class ArmCommander:
         if st is not None:
             q[list(WAIST_IDX)] = st.q[list(WAIST_IDX)]
         g = self.gravity.torques(q, imu)
-        tau = np.clip(self.gc_scale * g[self._arms_idx], -self.gc_tau_max, self.gc_tau_max)
-        self._cmd.tau[:] = 0.0
-        self._cmd.tau[self._arms_idx] = tau
+        self._cmd.tau[self._arms_idx] = np.clip(self.gc_scale * g[self._arms_idx], -self.gc_tau_max, self.gc_tau_max)
+        if self._waist_gc_active:
+            w = list(WAIST_IDX)
+            self._cmd.tau[w] = np.clip(self.gc_waist_scale * g[w], -self.gc_waist_tau_max, self.gc_waist_tau_max)
 
     def _send_tick(self) -> None:
         st = None
@@ -288,7 +304,9 @@ class ArmCommander:
             if ans.strip().lower() == "q":
                 raise StopRequested("支持の確認で中止")
         if self.gc_scale > 0.0:
-            print(f"[arm] 重力補償: 倍率 {self.gc_scale}、上限 {self.gc_tau_max} Nm")
+            print(f"[arm] 重力補償（腕）: 倍率 {self.gc_scale}、上限 {self.gc_tau_max} Nm")
+        if self._waist_gc_active:
+            print(f"[arm] 重力補償（腰）: 倍率 {self.gc_waist_scale}、上限 {self.gc_waist_tau_max} Nm")
         self._waist_start = st.q[list(WAIST_IDX)].copy()
 
         # 目標 = 今の姿勢。これで weight を上げても腕は動かない

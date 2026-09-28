@@ -270,6 +270,22 @@ class TestWaistSupportGravity(unittest.TestCase):
         self.assertTrue(np.all(np.abs(taus[1.0]) <= 7.0))
         self.assertGreater(np.abs(taus[1.0][arms]).max(), 0.1)
 
+    def test_waist_gravity_only_in_plan_b(self) -> None:
+        gm = GravityModel(load_config("robot.yaml"))
+        for uses_weight in (True, False):
+            cfg = load_config("arm.yaml")
+            cfg["arm"] = "right"
+            cfg["gravity_compensation"]["waist_scale"] = 1.0
+            be = FakeBackend(uses_weight=uses_weight)
+            with ArmCommander(be, cfg, LOWER, UPPER, gravity=gm):
+                pass
+            waist_tau = be.sent[0].tau[list(WAIST_IDX)]
+            if uses_weight:
+                self.assertTrue(np.all(waist_tau == 0.0))  # arm_sdk では送らない
+            else:
+                self.assertGreater(np.abs(waist_tau).max(), 1.0)
+                self.assertTrue(np.all(np.abs(waist_tau) <= 15.0))
+
     def test_gravity_scale_validated(self) -> None:
         cfg = load_config("arm.yaml")
         cfg["gravity_compensation"]["scale"] = 1.5

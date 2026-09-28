@@ -36,9 +36,6 @@ class TestArmSim(unittest.TestCase):
         cfg = load_config("arm.yaml")
         cfg["arm"] = "right"
         cfg["sim"].update(emulate=emulate, gravity_compensation=gravity_comp, realtime=False)
-        if not gravity_comp:
-            # 腰の保持が既定（Kp=40）だと腰が倒れて監視で止まるので、腰だけ Kp=300 にする
-            cfg["lowcmd"]["hold_kp"][12:15] = [300, 300, 300]
         be = make_backend(cfg, self.robot_cfg, dry_run=False, path="sim")
         be.open()
         with ArmCommander(be, cfg, self.lower, self.upper) as arm:
@@ -64,7 +61,7 @@ class TestArmSim(unittest.TestCase):
     def test_gravity_compensation_removes_sag(self) -> None:
         """MuJoCo 側の補償を切り（実機のプランBの条件）、こちらから tau で重力補償を送ると下がりが消える。
 
-        腰の保持は Kp=300 にする（Kp=40 だと腰が約 19° 倒れて、腰の監視で止まるため。README 参照）。
+        腰の保持は既定の Kp=300（Kp=40 だと腰が約 19° 倒れて、腰の監視で止まるため。README 参照）。
         """
         gm = GravityModel(self.robot_cfg)
         errs = {}
@@ -72,7 +69,6 @@ class TestArmSim(unittest.TestCase):
             cfg = load_config("arm.yaml")
             cfg["arm"] = "right"
             cfg["sim"].update(emulate="lowcmd", gravity_compensation=False, realtime=False)
-            cfg["lowcmd"]["hold_kp"][12:15] = [300, 300, 300]
             cfg["gravity_compensation"]["scale"] = scale
             be = make_backend(cfg, self.robot_cfg, dry_run=False, path="sim")
             be.open()
@@ -83,11 +79,13 @@ class TestArmSim(unittest.TestCase):
         self.assertGreater(errs[0.0], np.radians(1.0))
         self.assertLess(errs[1.0], np.radians(0.2))
 
-    def test_waist_sag_is_caught_with_default_plan_b_gains(self) -> None:
-        """既定の腰の保持ゲイン（公式 low_level サンプル）では、腰が倒れて監視で止まる。"""
+    def test_waist_sag_is_caught_with_weak_waist_gains(self) -> None:
+        """腰の保持が公式 low_level サンプルの Kp=40 だと、腰が倒れて監視で止まる（既定を 300 にした理由）。"""
         cfg = load_config("arm.yaml")
         cfg["arm"] = "right"
         cfg["sim"].update(emulate="lowcmd", gravity_compensation=False, realtime=False)
+        cfg["lowcmd"]["hold_kp"][12:15] = [60, 40, 40]
+        cfg["lowcmd"]["hold_kd"][12:15] = [1, 1, 1]
         be = make_backend(cfg, self.robot_cfg, dry_run=False, path="sim")
         be.open()
         with self.assertRaises(WaistDeviationError):

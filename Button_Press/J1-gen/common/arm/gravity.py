@@ -24,6 +24,12 @@ from ..robot_model import JOINT_NAMES, load_model
 GRAVITY = 9.81
 
 
+def needs_gravity_model(arm_cfg: dict[str, Any]) -> bool:
+    """設定で腕または腰の重力補償が有効か（GravityModel を作る必要があるか）。"""
+    gc = arm_cfg["gravity_compensation"]
+    return float(gc["scale"]) > 0.0 or float(gc.get("waist_scale", 0.0)) > 0.0
+
+
 def quat_wxyz_to_mat(q: np.ndarray) -> np.ndarray:
     """四元数 (w, x, y, z) → 回転行列。"""
     w, x, y, z = np.asarray(q, dtype=float) / np.linalg.norm(q)

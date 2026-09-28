@@ -43,6 +43,9 @@ class PressPlan:
     end_point: np.ndarray  # 押し込み終わりの点
     push_dir: np.ndarray  # 押す方向（単位ベクトル）
     max_ik_err_m: float
+    depth: float  # 押し込みの深さ [m]（上限で頭打ちにした後の値）
+    # 計算に使った腰の角度（yaw, roll, pitch）[rad]
+    waist_q: np.ndarray
 
     def summary(self) -> str:
         f = lambda v: np.array2string(np.asarray(v), precision=3, suppress_small=True)  # noqa: E731
@@ -199,4 +202,17 @@ class PressPlanner:
             end_point=end,
             push_dir=n,
             max_ik_err_m=max_err,
+            depth=d,
+            waist_q=q_now[[12, 13, 14]].copy(),
         )
+
+    def replan(self, plan: PressPlan, q_measured: np.ndarray, q_arm_now: np.ndarray) -> PressPlan:
+        """手前の姿勢に着いたあと、実測の腰の角度で同じ押し込みを計算し直す。
+
+        腰が倒れると肩の位置が動くので、最初の計算（開始時の腰の角度）のままだと手先がずれる。
+        q_measured: lowstate の関節角（29）。腰と反対の腕はこの値を使う
+        q_arm_now: 今の指令の片腕 7 関節（手前の姿勢）。IK の初期値にする
+        """
+        q = np.asarray(q_measured, dtype=float).copy()
+        q[self.kin.arm_idx] = q_arm_now
+        return self.plan(q, plan.target_point, plan.push_dir, q_seed=q, depth=plan.depth)
