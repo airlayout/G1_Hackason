@@ -1,0 +1,5 @@
+# Button_Press/J1-gen の依存（タスクの進行に合わせて追加する）
+# G1_HuggingFace/venv/（Python 3.12）に入れる前提。SETUP_button_press.md を参照。
+numpy>=1.26
+PyYAML>=6.0
+mujoco>=3.2

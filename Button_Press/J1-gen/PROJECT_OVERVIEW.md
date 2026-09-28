@@ -26,7 +26,7 @@
 ## 3. リポジトリ
 
 - `github.com/airlayout/G1_Hackason`
-- Jigen の作業ブランチ：**`Dev/Perception`**。他に `Dev/Navigation`、`Dev/Mapping2`、`Dev/Common` などがある。
+- Jigen の作業ブランチ：**`Dev/ButtonPress`**（ボタン押し。Perception 全般は `Dev/Perception`）。他に `Dev/Navigation`、`Dev/Mapping2`、`Dev/Common` などがある。
 
 | フォルダ | 内容 | 状態（README より） |
 |---|---|---|

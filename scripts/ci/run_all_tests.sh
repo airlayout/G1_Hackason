@@ -12,7 +12,7 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 # 棚上げ中のフォルダは対象外（IsaacSim_Envのtest_*.pyはIsaac Sim本体が要る）
-FEATURE_DIRS=(Common SimpleWalk Perception Mapping Navigation Entame)
+FEATURE_DIRS=(Common SimpleWalk Perception Mapping Navigation Entame Button_Press)
 
 echo "=== テストの所在 ==="
 declare -a RUNNERS=()

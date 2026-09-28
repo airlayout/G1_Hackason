@@ -11,7 +11,7 @@
 
 - Physical AI ハッカソン。Unitree G1（ヒューマノイド）で自律警備パトロールを作る。10月末が目標。
 - 自分（Jigen）の担当は Perception（画像認識）。
-- リポジトリ：`github.com/airlayout/G1_Hackason`、作業ブランチ：`Dev/Perception`
+- リポジトリ：`github.com/airlayout/G1_Hackason`、作業ブランチ：`Dev/ButtonPress`
 - 構成：`sim/`（MuJoCo で検証）→ `real/`（実機）
 - 今回のタスク：**G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動かして押す**。最終的な目標はエレベーターのボタン。
 
