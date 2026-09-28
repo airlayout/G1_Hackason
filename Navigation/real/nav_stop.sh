@@ -1,35 +1,39 @@
 #!/usr/bin/env bash
-# Navigation（Nav2 方式）を止め、G1 の足を止める。Mac / Ubuntu どちらでもこれ 1 本でよい。
+# Navigation（Nav2 方式）を止め、G1 の足を止める。Mac / Ubuntu どちらの操作PCでもこれ 1 本でよい。
 #
-#   bash Navigation/real/nav_stop.sh              # 全部止める（G1 側 → ROS 側の順）
-#   bash Navigation/real/nav_stop.sh --no-robot   # G1 に ssh しない（ROS 側だけ止める）
-#   bash Navigation/real/nav_stop.sh --no-ros     # ROS 側に触らない（G1 側だけ止める）
+#   bash Navigation/real/nav_stop.sh              # 全部止める（G1 の PC2 → この PC の順）
+#   bash Navigation/real/nav_stop.sh --no-robot   # G1 に ssh しない（この PC の ROS 側だけ止める）
+#   bash Navigation/real/nav_stop.sh --no-ros     # この PC の ROS 側に触らない（G1 側だけ止める）
 #
 # 手順の意味・手で打つ場合のコマンドは同じフォルダの STOP.md を見ること。
 #
+# ## 止める対象
+#
+# | 構成 | どこで動いているか | 止め方 |
+# |---|---|---|
+# | **nav2_stable**（`g1up.sh`。現行） | **PC2**: Nav2・`cmd_router`・巡回ノード / systemd `g1-sdk-bridge` | `/g1/estop` → 巡回 stop → 走行許可取消 → Goal 取消 → launch を停止 → 発進ゲートを閉じる |
+# | 旧 real/（`loco_driver.py`） | **PC2**: `loco_driver.py` / `cmd_vel_bridge.py` | SIGINT で止め、SDK から速度 0 |
+# | 旧 nav_stack.sh | **操作PC**: Mac のコンテナ `rviz` / Ubuntu の `/opt/ros/humble` | Goal 取消 → `/cmd_vel` に 0 → Nav2 を停止 |
+#
 # ## なぜこの順番か
 #
-# 1. **G1 側を先に止める。** 足に指令を渡しているのは PC2 の `loco_driver.py` だけなので、
-#    ここを止めれば ROS 側が何を出していても歩かない
-# 2. `loco_driver.py` は **SIGINT で止める。** `pkill` の既定の SIGTERM では `finally` の
-#    `StopMove()` が走らず、`continous_move=True`（duration=864000 秒）の最後の速度指令が
-#    G1 の中に 10 日間残る。念のため SDK から速度 0 も直接送って上書きする
-# 3. そのあと Nav2 の Goal を取り消し、Nav2 一式を止める。**Goal が生きている限り、
-#    G1 を再起動しても Nav2 は同じ経路の続きを出し続ける**（2026-09-28 に踏んだ）
-#
-# ## ROS 側をどこで動かすか（自動で選ぶ）
-#
-# | 条件 | 実行先 |
-# |---|---|
-# | Docker コンテナ `rviz`（`G1_RVIZ_NAME`）が動いている | コンテナの中（Mac の `start_rviz_mac.sh` 構成） |
-# | `/opt/ros/humble/setup.bash` がある | この PC の ROS 2（Ubuntu 直入れ構成） |
-# | どちらも無い | ROS 側は飛ばす（G1 側だけ止める） |
+# 1. **G1 の PC2 を先に止める。** 足に指令を渡しているのは PC2 だけなので、ここを止めれば
+#    操作PC側が何を出していても歩かない
+# 2. nav2_stable は **まず `/g1/estop` で E_STOP に落とす。** `cmd_router` がその場でゼロ速度に
+#    切り替え、`/g1/clear_estop` を呼ぶまで解除されない（自動解除しない設計）
+# 3. **巡回（`patrol_ctl.sh start`）は巡回路を回り続ける。** Goal を取り消しても次の点の Goal を
+#    送り直すので、必ず `/g1/patrol/stop` で巡回ノードごと止める
+# 4. `loco_driver.py` は **SIGINT で止める。** SIGTERM では `finally` の `StopMove()` が走らず、
+#    `continous_move=True`（duration=864000 秒）の最後の速度指令が G1 の中に 10 日間残る
+# 5. 発進ゲート（`G1_ARM=--arm`）が開いていれば閉じる。開いたままだと、次に誰かが
+#    Nav2 を上げた瞬間に歩ける状態になる。`sudo` にパスワードが要る PC2 では閉じられないので、
+#    その場合はコマンドを表示する
 #
 # ## 環境変数
 #
 #   G1_SSH          G1 PC2 への ssh 先（既定: ~/.ssh/config に g1 があれば g1、無ければ unitree@192.168.123.164）
-#   G1_RVIZ_NAME    ROS 2 を動かしているコンテナ名（既定: rviz）
-#   NAV_STOP_IFACE  DDS を載せる NIC（既定: col0 → 192.168.123.x を持つ NIC → lo の順で探す）
+#   G1_RVIZ_NAME    操作PCで ROS 2 を動かしているコンテナ名（既定: rviz）
+#   NAV_STOP_IFACE  操作PCで DDS を載せる NIC（既定: col0 → 192.168.123.x を持つ NIC → lo の順で探す）
 #   ROS_DOMAIN_ID   既定 0
 set -uo pipefail
 
@@ -40,14 +44,14 @@ for arg in "$@"; do
     case "$arg" in
         --no-robot) DO_ROBOT=0 ;;
         --no-ros) DO_ROS=0 ;;
-        -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,41p' "$0"; exit 0 ;;
         *) echo "[stop] 不明な引数: $arg" >&2; exit 2 ;;
     esac
 done
 
 say() { echo "[stop] $*"; }
 FAILED=0
-SKIPPED=0
+GATE_OPEN=0
 
 # ------------------------------------------------------------------ G1 (PC2) 側
 
@@ -59,21 +63,67 @@ if [ -z "${G1_SSH:-}" ]; then
     fi
 fi
 
-stop_robot() {
-    say "1/3 G1 側を止める（ssh $G1_SSH）"
-    # パターンは [] で括る。pkill -f は自分自身のコマンド行（ssh の引数）にも当たるため
-    if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "$G1_SSH" bash -s <<'REMOTE'
+# PC2 で実行するスクリプト。終了コード: 0 = 止めた / 1 = 止め切れていない / 10 = 止めたがゲートが開いたまま
+remote_script() {
+    cat <<'REMOTE'
 set -u
-# SIGINT で止める。finally の StopMove() を走らせるため（SIGTERM では走らない）
-pkill -INT -f "loco_drive[r].py" && echo "[stop]   loco_driver.py に SIGINT を送った"
-pkill -INT -f "cmd_vel_bridg[e].py" && echo "[stop]   cmd_vel_bridge.py に SIGINT を送った"
-sleep 2
-# 2 秒待っても残っていたら強制終了する
-pkill -KILL -f "loco_drive[r].py" && echo "[stop]   loco_driver.py を強制終了した"
-pkill -KILL -f "cmd_vel_bridg[e].py" && echo "[stop]   cmd_vel_bridge.py を強制終了した"
+RC=0
+# パターンは [] で括る。pkill -f は自分自身のコマンド行にも当たるため
+NAV_PATTERN='ros2 launch g1_navigatio[n]|g1_cmd_router_nod[e]|g1_state_bridge_nod[e]|patrol_nod[e].py|g1_slam_odom_t[f].py|envs/default/lib/nav[2]_'
 
-# G1 の中に残っている速度指令を 0 で上書きする。loco_driver が強制終了された場合に
-# StopMove() が送られていない可能性があるため、ここで必ず送る
+# --- nav2_stable（現行。g1up.sh / start_nav.sh で上げたもの） ---------------
+NAV_HOME=/home/unitree/g1_nav2
+PIXI=/home/unitree/.pixi/bin/pixi
+if pgrep -f "$NAV_PATTERN" >/dev/null; then
+    echo "[stop]   nav2_stable が動いている → E-stop・巡回停止・走行許可取消・Goal 取消"
+    if [ -x "$PIXI" ] && [ -d "$NAV_HOME/pc2_humble" ]; then
+        # start_nav.sh と同じ環境。**素の shell には ROS を入れない**(D-07)
+        ( cd "$NAV_HOME/pc2_humble" && timeout 90 "$PIXI" run bash -lc '
+            source /home/unitree/g1_nav2/g1_ws/install/setup.bash
+            export ROS_DOMAIN_ID=0 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+            export CYCLONEDDS_URI=file:///home/unitree/g1_nav2/cyclonedds_eth0.xml
+            # 発見が済む前の数発は落ちうるので 2 秒間流し続ける。E_STOP はラッチされる
+            timeout 8 ros2 topic pub --times 20 -r 10 /g1/estop std_msgs/msg/Bool "{data: true}" >/dev/null 2>&1 \
+                && echo "[stop]   /g1/estop に true を送った（E_STOP。解除は /g1/clear_estop）"
+            timeout 10 ros2 service call /g1/patrol/stop std_srvs/srv/Trigger "{}" >/dev/null 2>&1 \
+                && echo "[stop]   巡回を止めた（/g1/patrol/stop）"
+            timeout 10 ros2 service call /g1/enable_navigation std_srvs/srv/SetBool "{data: false}" >/dev/null 2>&1 \
+                && echo "[stop]   走行許可を取り消した（/g1/enable_navigation false）"
+            # 空の CancelGoal（goal_id も stamp も 0）は「全 Goal の取り消し」を意味する
+            for a in navigate_to_pose navigate_through_poses follow_waypoints; do
+                timeout 10 ros2 service call /$a/_action/cancel_goal action_msgs/srv/CancelGoal "{}" >/dev/null 2>&1 \
+                    && echo "[stop]   /$a の Goal を取り消した"
+            done
+            true
+        ' ) || echo "[stop]   ⚠️ ROS のサービス呼び出しが時間切れ。launch の停止に進む"
+    else
+        echo "[stop]   ⚠️ pixi 環境（$NAV_HOME/pc2_humble）が無い。E-stop を送れないので launch の停止に進む"
+    fi
+    # launch を止める。cmd_router が居なくなれば SDK 側は cmd_timeout（0.30 秒）で止まる
+    pkill -INT -f "$NAV_PATTERN"
+    sleep 4
+    pkill -KILL -f "$NAV_PATTERN" && echo "[stop]   残っていた nav2_stable のプロセスを強制終了した"
+    if pgrep -f "$NAV_PATTERN" >/dev/null; then
+        echo "[stop]   ⚠️ nav2_stable のプロセスが残っている:"; pgrep -af "$NAV_PATTERN" | cut -c1-110
+        RC=1
+    else
+        echo "[stop]   nav2_stable（Nav2・cmd_router・巡回）は残っていない"
+    fi
+else
+    echo "[stop]   nav2_stable は動いていない"
+fi
+
+# --- 旧 real/（loco_driver.py / cmd_vel_bridge.py） -------------------------
+if pgrep -f "loco_drive[r].py|cmd_vel_bridg[e].py" >/dev/null; then
+    # SIGINT で止める。finally の StopMove() を走らせるため（SIGTERM では走らない）
+    pkill -INT -f "loco_drive[r].py" && echo "[stop]   loco_driver.py に SIGINT を送った"
+    pkill -INT -f "cmd_vel_bridg[e].py" && echo "[stop]   cmd_vel_bridge.py に SIGINT を送った"
+    sleep 2
+    pkill -KILL -f "loco_drive[r].py|cmd_vel_bridg[e].py" && echo "[stop]   loco_driver / cmd_vel_bridge を強制終了した"
+fi
+
+# G1 の中に残っている速度指令を 0 で上書きする。loco_driver が強制終了されていると
+# StopMove() が送られておらず、continous_move=True の指令が残っているため
 python3 - <<'PY'
 import sys
 sys.path.insert(0, "/home/unitree/unitree_sdk2_python")
@@ -85,25 +135,67 @@ try:
     client.SetTimeout(5.0)
     client.Init()
     code = client.SetVelocity(0.0, 0.0, 0.0, 1.0)
-    print("[stop]   速度 0 を送った（SetVelocity 戻り値 {}）".format(code))
+    print("[stop]   SDK から速度 0 を送った（SetVelocity 戻り値 {}）".format(code))
 except Exception as error:
-    print("[stop]   速度 0 を送れなかった: {}".format(error))
+    print("[stop]   ⚠️ SDK から速度 0 を送れなかった: {}".format(error))
     sys.exit(1)
 PY
-SDK_RC=$?
-
-LEFT=$(pgrep -af "loco_drive[r].py|cmd_vel_bridg[e].py")
-if [ -n "$LEFT" ]; then
-    echo "[stop]   まだ残っている:"; echo "$LEFT"; exit 1
+if [ $? -ne 0 ] && ! pgrep -f "g1_sdk_bridge_real_serve[r]" >/dev/null; then
+    # g1-sdk-bridge が動いていれば、あちらが cmd_timeout でゼロ速度を送るので致命ではない
+    RC=1
 fi
-echo "[stop]   PC2 に loco_driver / cmd_vel_bridge は残っていない"
-exit $SDK_RC
+
+if pgrep -f "loco_drive[r].py|cmd_vel_bridg[e].py" >/dev/null; then
+    echo "[stop]   ⚠️ loco_driver / cmd_vel_bridge が残っている"; RC=1
+fi
+
+# --- 発進ゲート（g1-sdk-bridge の --arm） -----------------------------------
+BRIDGE=$(pgrep -af "g1_sdk_bridge_real_serve[r]" | head -1)
+PERSIST=$(grep '^G1_ARM=' /etc/default/g1-sdk-bridge 2>/dev/null)
+case "$BRIDGE $PERSIST" in
+    *--arm*)
+        if sudo -n sed -i 's/^G1_ARM=.*/G1_ARM=/' /etc/default/g1-sdk-bridge 2>/dev/null \
+                && sudo -n systemctl restart g1-sdk-bridge 2>/dev/null; then
+            echo "[stop]   発進ゲートを閉じた（G1_ARM= にして g1-sdk-bridge を restart）"
+        else
+            echo "[stop]   ⚠️ 発進ゲートが開いたまま（sudo にパスワードが要るので閉じられなかった）"
+            echo "[stop]      いまのプロセス: ${BRIDGE:-(停止中)}"
+            echo "[stop]      /etc/default: ${PERSIST:-(無し)}"
+            [ "$RC" -eq 0 ] && RC=10
+        fi
+        ;;
+    *)
+        echo "[stop]   発進ゲートは閉じている（--arm 無し）"
+        ;;
+esac
+exit $RC
 REMOTE
-    then
-        say "   ⚠️ G1 側を止め切れなかった（ssh 不通 / 速度 0 を送れなかった / プロセスが残っている）"
-        say "   → リモコンでダンピング（L2+B）にすること。脱力するので支えてから"
-        FAILED=1
-    fi
+}
+
+stop_robot() {
+    say "1/3 G1 の PC2 を止める（ssh $G1_SSH）"
+    local rc
+    # スクリプトは base64 にして引数で渡し、PC2 でファイルに戻してから実行する。
+    # - 標準入力で渡さない: PC2 の ~/.bashrc はログイン時に「ros:foxy(1) noetic(2) ?」と
+    #   read するので、食われうる（-n で塞ぐ）
+    # - `bash -c <本文>` で渡さない: 本文がコマンド行に載り、中の `pkill -f` が
+    #   **自分自身に当たって止まる**（[] で括ったパターンも本文中の文字列には当たる）
+    local b64
+    b64=$(remote_script | base64 | tr -d '\n')
+    ssh -n -o ConnectTimeout=5 -o BatchMode=yes "$G1_SSH" \
+        "f=\$(mktemp /tmp/nav_stop.XXXXXX) && echo $b64 | base64 -d > \$f && bash \$f; rc=\$?; rm -f \$f; exit \$rc"
+    rc=$?
+    case "$rc" in
+        0) ;;
+        10)
+            GATE_OPEN=1
+            ;;
+        *)
+            say "   ⚠️ G1 側を止め切れなかった（ssh 不通 / プロセスが残っている / 速度 0 を送れなかった）"
+            say "   → リモコンでダンピング（L2+B）にすること。脱力するので支えてから"
+            FAILED=1
+            ;;
+    esac
 }
 
 # ------------------------------------------------------------------ ROS 側
@@ -174,7 +266,7 @@ ROS
 }
 
 stop_ros() {
-    say "2/3 Nav2 の Goal を取り消し、Nav2 一式を止める"
+    say "2/3 この PC の ROS 側（旧 nav_stack.sh 構成）の Goal を取り消し、Nav2 を止める"
     local rc
     if command -v docker >/dev/null 2>&1 \
             && [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = "true" ]; then
@@ -188,9 +280,8 @@ stop_ros() {
         ros_script | bash -s
         rc=$?
     else
-        say "   ROS 2 が見つからない（コンテナ $NAME も /opt/ros/humble も無い）。ROS 側は飛ばす"
-        say "   → Nav2 を別の PC で動かしているなら、その PC でもこのスクリプトを実行すること"
-        SKIPPED=1
+        say "   この PC には ROS 2 が無い（コンテナ $NAME も /opt/ros/humble も無い）。飛ばす"
+        say "   （現行の nav2_stable は PC2 で動くので、1/3 で止まっていれば問題ない）"
         return
     fi
     if [ "$rc" -ne 0 ]; then
@@ -205,12 +296,18 @@ if [ "$DO_ROBOT" -eq 1 ]; then stop_robot; else say "1/3 G1 側は飛ばす（--
 if [ "$DO_ROS" -eq 1 ]; then stop_ros; else say "2/3 ROS 側は飛ばす（--no-ros）"; fi
 
 say "3/3 結果"
-if [ "$FAILED" -eq 0 ] && [ "$SKIPPED" -eq 1 ]; then
-    say "   G1 側は止めた。ROS 側はこの PC に無いので未確認（Nav2 を動かしている PC でも実行すること）"
+if [ "$FAILED" -eq 0 ] && [ "$DO_ROBOT" -eq 0 ]; then
+    say "   この PC の ROS 側は止めた。G1 の PC2 は触っていない（--no-robot）"
+    exit 0
+fi
+if [ "$FAILED" -eq 0 ] && [ "$GATE_OPEN" -eq 1 ]; then
+    say "   止めた。ただし発進ゲートが開いたまま。PC2 で人が閉じること（パスワードを聞かれる）:"
+    say "     ssh -t $G1_SSH \"sudo sed -i 's/^G1_ARM=.*/G1_ARM=/' /etc/default/g1-sdk-bridge && sudo systemctl restart g1-sdk-bridge\""
     exit 0
 fi
 if [ "$FAILED" -eq 0 ]; then
     say "   止めた。ランニングモードに入れても Navigation の経路は歩かないはず"
+    say "   （nav2_stable を再開するときは /g1/clear_estop が要る）"
     exit 0
 fi
 say "   ⚠️ 一部を止め切れていない。上の ⚠️ を見ること。手順は Navigation/real/STOP.md"
