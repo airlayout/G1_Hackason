@@ -28,3 +28,15 @@ head_camera:
   height: 480
   fovy_deg: 42.6
   name: head_camera
+
+# 押すときの手先の点（一番出ている中指の先）。{side}_wrist_yaw_link 基準 [m]。
+# 公式メッシュ（right/left_rubber_hand.STL）で wrist_yaw_link の x 方向に最も出ている点
+# （2026-09-28 に MuJoCo でメッシュの頂点から計算）。
+# ⚠️ 実機のハンドと同じかは未確認。実機日に FK と実測を比べて確認する（タスク7）
+end_effector:
+  right:
+    link: right_wrist_yaw_link
+    offset: [0.1733, -0.0283, 0.0067]
+  left:
+    link: left_wrist_yaw_link
+    offset: [0.1733, 0.0283, 0.0067]
