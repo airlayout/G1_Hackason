@@ -20,6 +20,8 @@ class JointState:
     mode_machine: int
     # 受信した時刻（time.monotonic()）
     stamp: float
+    # IMU の姿勢（四元数 w, x, y, z）。重力補償で pelvis の傾きを知るのに使う
+    imu_quat: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0, 0.0]))
 
 
 @dataclass

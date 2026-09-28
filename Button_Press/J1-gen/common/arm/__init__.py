@@ -8,7 +8,13 @@ import numpy as np
 
 from ..robot_model import JOINT_NAMES, load_model
 from .backend import ArmBackend
-from .commander import ArmCommander, NoMotionError, StateTimeoutError, StopRequested
+from .commander import (
+    ArmCommander,
+    NoMotionError,
+    StateTimeoutError,
+    StopRequested,
+    WaistDeviationError,
+)
 from .safety import UnsafeTargetError, WorkspaceBox
 
 __all__ = [
@@ -18,6 +24,7 @@ __all__ = [
     "StateTimeoutError",
     "StopRequested",
     "UnsafeTargetError",
+    "WaistDeviationError",
     "WorkspaceBox",
     "joint_limits",
     "make_backend",

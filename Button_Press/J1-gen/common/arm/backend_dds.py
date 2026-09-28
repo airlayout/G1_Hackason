@@ -67,6 +67,8 @@ class DdsBackend(ArmBackend):
             raise ValueError(f"path は arm_sdk か lowcmd: {path}")
         self.path = path
         self.uses_weight = path == "arm_sdk"
+        # プランB はバランス制御が止まるので、座った状態か吊り下げで使う
+        self.needs_support_check = path == "lowcmd"
         self.topic = TOPIC_ARM_SDK if self.uses_weight else TOPIC_LOWCMD
         self.name = f"{self.topic}{'（dry-run）' if dry_run else ''}"
         self.dry_run = dry_run
@@ -108,7 +110,10 @@ class DdsBackend(ArmBackend):
         q = np.array([msg.motor_state[i].q for i in range(NUM_MOTORS)])
         dq = np.array([msg.motor_state[i].dq for i in range(NUM_MOTORS)])
         mode = np.array([msg.motor_state[i].mode for i in range(NUM_MOTORS)], dtype=int)
-        st = JointState(q=q, dq=dq, motor_mode=mode, mode_machine=int(msg.mode_machine), stamp=time.monotonic())
+        # unitree の IMU 四元数は (w, x, y, z) の順
+        imu = np.array(msg.imu_state.quaternion, dtype=float)
+        st = JointState(q=q, dq=dq, motor_mode=mode, mode_machine=int(msg.mode_machine),
+                        stamp=time.monotonic(), imu_quat=imu)
         with self._lock:
             self._state = st
 

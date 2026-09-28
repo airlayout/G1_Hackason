@@ -67,6 +67,12 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/move_arm_real.py --path 
 - 移動後に lowstate を読み、指令した変化の 3 割未満しか動いていなければ「送信したのに動かない」として止める。
 - Ctrl+C / SIGTERM / 例外のどれでも、プランA は現在の姿勢のまま weight を 1→0、
   プランB は現在の姿勢を保持してから送信をやめる。
+- 腰は開始時の角度を保持する指令を送る（プランA でも `include_waist_hold: true`）。実測の腰の角度が
+  開始時から `waist_max_deviation_rad`（既定 0.05 rad ≈ 2.9°）以上ずれたら中止する。
+- プランB（実機の lowcmd）は、開始前に必ず「座った状態、または吊り下げた状態か」を聞き、Enter を待つ。
+- 重力補償: `gravity_compensation.scale`（0.0〜1.0、既定 0）× 腕の重力トルクを `tau` で送る。
+  1 関節あたり `tau_max_nm` で上限をかける。重力トルクは公式モデルと IMU の姿勢から計算する。
+  `--gravity-scale 0.5` のようにコマンドラインでも変えられる。
 
 ### シミュレーションで分かったこと（2026-09-28）
 
@@ -75,3 +81,7 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/move_arm_real.py --path 
 - 重力補償なし（実機のプランB と同じ条件）では、Kp=60 で腕が 1.7〜2.5° 下がる。
   IK の精度（手先 1cm）に効くので、タスク2で扱う。
 - 右腕の肩ロールを正（内向き）に動かすと、上腕が胴体（`torso_link`）に当たる。
+- 重力補償（MuJoCo 側の補償を切った、プランB と同じ条件）: 倍率 0 / 0.5 / 1.0 で腕の誤差が
+  1.74° / 0.87° / 0.01°。
+- **プランB の腰の保持が既定の Kp=40（公式 low_level サンプル）だと、上体の重さで腰ピッチが約 19° 前に倒れる。**
+  Kp=300（xr_teleoperate / replay_arm.py の値）なら約 1.3°。既定値のままでは、腰の監視（2.9°）で中止になる。

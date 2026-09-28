@@ -16,7 +16,8 @@ from pathlib import Path
 
 import numpy as np
 
-from common.arm import ArmCommander, joint_limits, make_backend
+from common.arm import ArmCommander, WaistDeviationError, joint_limits, make_backend
+from common.arm.gravity import GravityModel
 from common.config import FEATURE_DIR, REPO_ROOT, load_config
 from common.robot_model import RIGHT_ARM_IDX
 
@@ -35,6 +36,9 @@ class TestArmSim(unittest.TestCase):
         cfg = load_config("arm.yaml")
         cfg["arm"] = "right"
         cfg["sim"].update(emulate=emulate, gravity_compensation=gravity_comp, realtime=False)
+        if not gravity_comp:
+            # 腰の保持が既定（Kp=40）だと腰が倒れて監視で止まるので、腰だけ Kp=300 にする
+            cfg["lowcmd"]["hold_kp"][12:15] = [300, 300, 300]
         be = make_backend(cfg, self.robot_cfg, dry_run=False, path="sim")
         be.open()
         with ArmCommander(be, cfg, self.lower, self.upper) as arm:
@@ -56,6 +60,39 @@ class TestArmSim(unittest.TestCase):
         print(f"\n[test] 重力補償なしの追従誤差 {np.degrees(err):.2f}°")
         self.assertGreater(err, np.radians(0.5))
         self.assertLess(err, np.radians(5.0))
+
+    def test_gravity_compensation_removes_sag(self) -> None:
+        """MuJoCo 側の補償を切り（実機のプランBの条件）、こちらから tau で重力補償を送ると下がりが消える。
+
+        腰の保持は Kp=300 にする（Kp=40 だと腰が約 19° 倒れて、腰の監視で止まるため。README 参照）。
+        """
+        gm = GravityModel(self.robot_cfg)
+        errs = {}
+        for scale in (0.0, 1.0):
+            cfg = load_config("arm.yaml")
+            cfg["arm"] = "right"
+            cfg["sim"].update(emulate="lowcmd", gravity_compensation=False, realtime=False)
+            cfg["lowcmd"]["hold_kp"][12:15] = [300, 300, 300]
+            cfg["gravity_compensation"]["scale"] = scale
+            be = make_backend(cfg, self.robot_cfg, dry_run=False, path="sim")
+            be.open()
+            with ArmCommander(be, cfg, self.lower, self.upper, gravity=gm) as arm:
+                target = arm.commanded_arm_q + TARGET_DELTA
+                arm.move_to(target)
+                errs[scale] = float(np.max(np.abs(be.read_state().q[ARM] - target)))
+        self.assertGreater(errs[0.0], np.radians(1.0))
+        self.assertLess(errs[1.0], np.radians(0.2))
+
+    def test_waist_sag_is_caught_with_default_plan_b_gains(self) -> None:
+        """既定の腰の保持ゲイン（公式 low_level サンプル）では、腰が倒れて監視で止まる。"""
+        cfg = load_config("arm.yaml")
+        cfg["arm"] = "right"
+        cfg["sim"].update(emulate="lowcmd", gravity_compensation=False, realtime=False)
+        be = make_backend(cfg, self.robot_cfg, dry_run=False, path="sim")
+        be.open()
+        with self.assertRaises(WaistDeviationError):
+            with ArmCommander(be, cfg, self.lower, self.upper) as arm:
+                arm.move_to(arm.commanded_arm_q + TARGET_DELTA)
 
     def test_sigint_stops_safely(self) -> None:
         script = FEATURE_DIR / "sim" / "move_arm_sim.py"

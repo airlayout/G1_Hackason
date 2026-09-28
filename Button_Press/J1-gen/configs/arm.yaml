@@ -45,6 +45,18 @@ safety:
   motion_check:
     min_commanded_rad: 0.02
     min_ratio: 0.3
+  # 腰の角度が開始時からこれ以上ずれたら中止する [rad]（0.05 rad ≈ 2.9°）。
+  # 腰は動かさない（保持の指令を送る）ので、ずれるのは腕の動きで上体が引っ張られたとき。
+  # 実機日の段階2で lowstate を見て調整する
+  waist_max_deviation_rad: 0.05
+
+# 重力補償: 腕の重力トルク × scale を tau（フィードフォワード）として送る。
+# 既定はオフ（scale: 0.0）。実機日は 0 → 0.5 → 1.0 の順に試して腕の下がり方を比べる。
+# 重力トルクは公式モデル（g1_29dof_rev_1_0.xml）と lowstate の IMU の姿勢から計算する。
+gravity_compensation:
+  scale: 0.0
+  # 1 関節あたりのトルクの上限 [Nm]。腕を前に水平に伸ばしたときの肩ピッチで約 6 Nm（MuJoCo で計算）
+  tau_max_nm: 7.0
 
 # プランA（arm_sdk）
 arm_sdk:
@@ -76,7 +88,8 @@ lowcmd:
 sim:
   # どちらの経路を近似するか: arm_sdk（weight でブレンド）| lowcmd（ブレンドなし）
   emulate: arm_sdk
-  # 重力補償。PD だけだと腕の重さの分だけ目標から下がる（実機の lowcmd では補償されない）
+  # 「内蔵コントローラが重力を補償する」ことの近似。PD だけだと腕の重さの分だけ目標から下がる。
+  # 上の gravity_compensation.scale（こちらから tau で送る補償）を試すときは false にする（二重になるため）
   gravity_compensation: true
   # true なら実時間で進める（画面で見るとき）。テストでは false（速く進む）
   realtime: false

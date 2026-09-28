@@ -18,6 +18,8 @@ class ArmBackend(ABC):
     uses_weight: bool = True
     #: True なら送信しない（計算して表示するだけ）
     dry_run: bool = False
+    #: True なら開始前に「座った状態、または吊り下げた状態か」を人に確認する（実機のプランB）
+    needs_support_check: bool = False
 
     @abstractmethod
     def open(self) -> None:

@@ -13,12 +13,14 @@ from common.arm import (
     StateTimeoutError,
     StopRequested,
     UnsafeTargetError,
+    WaistDeviationError,
     WorkspaceBox,
 )
+from common.arm.gravity import GravityModel
 from common.arm.backend import ArmBackend
 from common.arm.types import JointCommand, JointState
 from common.config import load_config
-from common.robot_model import NUM_MOTORS, RIGHT_ARM_IDX
+from common.robot_model import NUM_MOTORS, RIGHT_ARM_IDX, WAIST_IDX
 
 LOWER = np.full(NUM_MOTORS, -2.0)
 UPPER = np.full(NUM_MOTORS, 2.0)
@@ -29,8 +31,9 @@ class FakeBackend(ArmBackend):
     """指令を記録するだけの偽物。follow=True なら実測値が指令に追従する（weight 込み）。"""
 
     def __init__(self, uses_weight: bool = True, follow: bool = True, dry_run: bool = False,
-                 mode_machine: int = 5, motor_mode: int = 1) -> None:
+                 mode_machine: int = 5, motor_mode: int = 1, needs_support_check: bool = False) -> None:
         self.name = "fake"
+        self.needs_support_check = needs_support_check
         self.uses_weight = uses_weight
         self.dry_run = dry_run
         self.follow = follow
@@ -204,6 +207,77 @@ class TestMove(unittest.TestCase):
         with self.assertRaises(UnsafeTargetError):
             with make(be) as arm:
                 arm.follow([be.q0[ARM] + 0.5])
+
+
+
+class TestWaistSupportGravity(unittest.TestCase):
+    """タスク1の追加分: 腰のずれの監視、プランBの支持の確認、重力補償。"""
+
+    def test_waist_deviation_stops(self) -> None:
+        be = FakeBackend()
+        with self.assertRaises(WaistDeviationError):
+            with make(be) as arm:
+                be.q[WAIST_IDX[2]] += 0.06  # 上限 0.05 rad を超えて腰ピッチがずれた
+                arm.move_to(be.q0[ARM] + 0.05)
+        self.assertAlmostEqual(be.sent[-1].weight, 0.0)
+
+    def test_small_waist_deviation_is_ok(self) -> None:
+        be = FakeBackend()
+        with make(be) as arm:
+            be.q[WAIST_IDX[2]] += 0.03
+            arm.move_to(be.q0[ARM] + 0.05)
+
+    def test_support_check_asked_for_plan_b(self) -> None:
+        asked: list[str] = []
+
+        def answer(prompt: str) -> str:
+            asked.append(prompt)
+            return "q"
+
+        be = FakeBackend(uses_weight=False, needs_support_check=True)
+        arm = make(be, input_fn=answer)
+        # 開始処理（with に入る前）での中止なので、StopRequested がそのまま外に出る
+        with self.assertRaises(StopRequested):
+            with arm:
+                pass
+        self.assertEqual(len(asked), 1)
+        self.assertIn("座った状態", asked[0])
+        self.assertEqual(be.sent, [])  # 何も送っていない
+        self.assertIn("支持", arm.stop_reason or "")
+
+    def test_support_check_not_asked_for_plan_a(self) -> None:
+        def never(prompt: str) -> str:
+            raise AssertionError("聞かれないはず")
+
+        with make(FakeBackend(), input_fn=never):
+            pass
+
+    def test_gravity_tau_scaled_and_clipped(self) -> None:
+        gm = GravityModel(load_config("robot.yaml"))
+        taus = {}
+        for scale in (0.0, 0.5, 1.0):
+            cfg = load_config("arm.yaml")
+            cfg["arm"] = "right"
+            cfg["gravity_compensation"]["scale"] = scale
+            be = FakeBackend()
+            with ArmCommander(be, cfg, LOWER, UPPER, gravity=gm):
+                pass
+            taus[scale] = be.sent[0].tau.copy()
+        self.assertTrue(np.all(taus[0.0] == 0.0))
+        arms = list(range(15, 29))
+        np.testing.assert_allclose(taus[0.5][arms], 0.5 * taus[1.0][arms], atol=1e-9)
+        self.assertTrue(np.all(taus[1.0][:15] == 0.0))  # 脚・腰には送らない
+        self.assertTrue(np.all(np.abs(taus[1.0]) <= 7.0))
+        self.assertGreater(np.abs(taus[1.0][arms]).max(), 0.1)
+
+    def test_gravity_scale_validated(self) -> None:
+        cfg = load_config("arm.yaml")
+        cfg["gravity_compensation"]["scale"] = 1.5
+        with self.assertRaises(ValueError):
+            ArmCommander(FakeBackend(), cfg, LOWER, UPPER)
+        cfg["gravity_compensation"]["scale"] = 0.5
+        with self.assertRaises(ValueError):  # GravityModel が無い
+            ArmCommander(FakeBackend(), cfg, LOWER, UPPER)
 
 
 if __name__ == "__main__":

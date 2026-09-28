@@ -12,7 +12,11 @@
 3. 関節リミット、1ステップの最大移動量、作業空間の箱 → safety.py。外れる目標は送らずに拒否する
 4. （IK が届かない場合の拒否は、タスク2の IK 側で行う）
 5. dry-run（backend.dry_run）と確認モード（confirm=True で各段階で Enter を待つ）
+6. 腰は動かさない → 腰は開始時の角度を保持する指令を送り、実測の腰の角度が開始時から
+   waist_max_deviation_rad 以上ずれたら中止する（WaistDeviationError）
 さらに、送信後に lowstate で実際に動いたかを確認する（check_motion）。
+プランB（実機の lowcmd）では、開始前に必ず「座った状態、または吊り下げた状態か」を人に確認する。
+重力補償（gravity_compensation.scale > 0）のときは、腕の重力トルク × 倍率を tau として送る。
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ import numpy as np
 
 from ..robot_model import JOINT_NAMES, LEFT_ARM_IDX, NUM_MOTORS, RIGHT_ARM_IDX, WAIST_IDX
 from .backend import ArmBackend
+from .gravity import GravityModel
 from .safety import (
     UnsafeTargetError,
     WorkspaceBox,
@@ -52,6 +57,10 @@ class StateTimeoutError(RuntimeError):
     """lowstate が途切れた。"""
 
 
+class WaistDeviationError(RuntimeError):
+    """腰の角度が開始時からずれた（腕の動きで上体が引っ張られている、など）。"""
+
+
 class ArmCommander:
     def __init__(
         self,
@@ -63,10 +72,12 @@ class ArmCommander:
         workspace: WorkspaceBox | None = None,
         confirm: bool = False,
         input_fn: Callable[[str], str] = input,
+        gravity: GravityModel | None = None,
     ) -> None:
         """
         joint_lower / joint_upper: 29関節の可動範囲（motor 番号順、モデルから読む）
         fk: 29関節の角度 → 手先の位置（pelvis 座標）。与えれば作業空間の箱で目標を確認する
+        gravity: 重力補償に使うモデル。設定の倍率が 0 より大きいときは必須
         """
         self.backend = backend
         self.cfg = arm_cfg
@@ -85,6 +96,20 @@ class ArmCommander:
         saf = arm_cfg["safety"]
         self.max_step = float(saf["max_joint_speed_rad_s"]) * self.dt
         self.margin = float(saf["limit_margin_rad"])
+        self.waist_max_dev = float(saf["waist_max_deviation_rad"])
+        self._waist_start: np.ndarray | None = None
+
+        gc = arm_cfg["gravity_compensation"]
+        self.gc_scale = float(gc["scale"])
+        self.gc_tau_max = float(gc["tau_max_nm"])
+        if not (0.0 <= self.gc_scale <= 1.0):
+            raise ValueError(f"gravity_compensation.scale は 0.0〜1.0: {self.gc_scale}")
+        if self.gc_tau_max <= 0.0:
+            raise ValueError(f"gravity_compensation.tau_max_nm は正の値: {self.gc_tau_max}")
+        if self.gc_scale > 0.0 and gravity is None:
+            raise ValueError("重力補償の倍率が 0 より大きいのに、GravityModel が渡されていない")
+        self.gravity = gravity
+        self._arms_idx = np.array(list(LEFT_ARM_IDX) + list(RIGHT_ARM_IDX))
 
         self._joints, self._kp, self._kd = self._build_gains()
         self._cmd = JointCommand()
@@ -142,7 +167,9 @@ class ArmCommander:
             self._old_handlers[sig] = signal.signal(sig, self._on_signal)
         try:
             self.start()
-        except BaseException:
+        except BaseException as e:
+            if isinstance(e, StopRequested):
+                self.stop_reason = str(e) or "中止"
             self.__exit__(None, None, None)
             raise
         return self
@@ -187,9 +214,40 @@ class ArmCommander:
             raise StateTimeoutError(f"lowstate が {age:.2f} 秒途切れている")
         return st
 
+    def _check_waist(self, st: JointState) -> None:
+        if self._waist_start is None:
+            return
+        dev = np.abs(st.q[list(WAIST_IDX)] - self._waist_start)
+        if float(np.max(dev)) > self.waist_max_dev:
+            raise WaistDeviationError(
+                f"腰の角度が開始時から {np.degrees(dev).round(2)}° ずれた"
+                f"（上限 {np.degrees(self.waist_max_dev):.1f}°）。中止する"
+            )
+
+    def _update_gravity_tau(self, st: JointState | None) -> None:
+        """両腕の tau に、重力トルク × 倍率（上限付き）を入れる。倍率 0 なら 0。"""
+        if self.gc_scale <= 0.0 or self.gravity is None:
+            self._cmd.tau[:] = 0.0
+            return
+        imu = st.imu_quat if st is not None else None
+        # 腕は目標の角度で計算する（実測値を使うと、センサの揺れがそのままトルクに乗るため）。
+        # 腰は実測値を使う（腰が倒れると腕にかかる重力の向きが変わるため）
+        q = self._cmd.q.copy()
+        if st is not None:
+            q[list(WAIST_IDX)] = st.q[list(WAIST_IDX)]
+        g = self.gravity.torques(q, imu)
+        tau = np.clip(self.gc_scale * g[self._arms_idx], -self.gc_tau_max, self.gc_tau_max)
+        self._cmd.tau[:] = 0.0
+        self._cmd.tau[self._arms_idx] = tau
+
     def _send_tick(self) -> None:
+        st = None
         if not self._stopping:
-            self._fresh_state()
+            st = self._fresh_state()
+            self._check_waist(st)
+        else:
+            st = self.backend.read_state()
+        self._update_gravity_tau(st)
         self.backend.send(self._cmd)
         self.backend.tick(self.dt)
 
@@ -222,6 +280,16 @@ class ArmCommander:
                 "この状態では送信しても動かない。リモコンでダンピング（FSM 1）に入れて有効化すること"
             )
         check_finite(st.q, "lowstate の関節角")
+        if self.backend.needs_support_check:
+            ans = self._input(
+                "[confirm] プランB（デバッグモード）はバランス制御が止まる。"
+                "ロボットは座った状態、または吊り下げた状態か？ → Enter で続行 / q で中止: "
+            )
+            if ans.strip().lower() == "q":
+                raise StopRequested("支持の確認で中止")
+        if self.gc_scale > 0.0:
+            print(f"[arm] 重力補償: 倍率 {self.gc_scale}、上限 {self.gc_tau_max} Nm")
+        self._waist_start = st.q[list(WAIST_IDX)].copy()
 
         # 目標 = 今の姿勢。これで weight を上げても腕は動かない
         self._cmd.q[:] = st.q

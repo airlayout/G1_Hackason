@@ -14,12 +14,14 @@ from typing import Any
 import numpy as np
 
 from ..config import load_config
+from .gravity import GravityModel
 from . import (
     ArmCommander,
     NoMotionError,
     StateTimeoutError,
     StopRequested,
     UnsafeTargetError,
+    WaistDeviationError,
     joint_limits,
     make_backend,
 )
@@ -38,6 +40,8 @@ def add_common_args(p: argparse.ArgumentParser, default_delta: list[float]) -> N
     p.add_argument("--arm", choices=["left", "right"], help="動かす腕（既定は設定ファイルの値）")
     p.add_argument("--duration", type=float, help="移動にかける秒数（既定は上限速度から自動）")
     p.add_argument("--no-return", action="store_true", help="目標へ動かしたあと、開始姿勢へ戻さない")
+    p.add_argument("--gravity-scale", type=float,
+                   help="重力補償の倍率 0.0〜1.0（既定は設定ファイル。実機日は 0 → 0.5 → 1.0 で比べる）")
 
 
 def run(args: argparse.Namespace, path: str, dry_run: bool, confirm: bool,
@@ -46,6 +50,8 @@ def run(args: argparse.Namespace, path: str, dry_run: bool, confirm: bool,
     robot_cfg = load_config(args.robot_config)
     if args.arm:
         arm_cfg["arm"] = args.arm
+    if args.gravity_scale is not None:
+        arm_cfg["gravity_compensation"]["scale"] = args.gravity_scale
     for k, v in (overrides or {}).items():
         arm_cfg[k] = v
 
@@ -53,7 +59,8 @@ def run(args: argparse.Namespace, path: str, dry_run: bool, confirm: bool,
     backend = make_backend(arm_cfg, robot_cfg, dry_run=dry_run, path=path)
     try:
         backend.open()
-        with ArmCommander(backend, arm_cfg, lower, upper, confirm=confirm) as arm:
+        gravity = GravityModel(robot_cfg) if float(arm_cfg["gravity_compensation"]["scale"]) > 0 else None
+        with ArmCommander(backend, arm_cfg, lower, upper, confirm=confirm, gravity=gravity) as arm:
             q_start = arm.commanded_arm_q
             if args.target_deg is not None:
                 q_goal = np.radians(args.target_deg)
@@ -77,6 +84,9 @@ def run(args: argparse.Namespace, path: str, dry_run: bool, confirm: bool,
     except NoMotionError as e:
         print(f"[move] ❌ {e}")
         return 3
+    except WaistDeviationError as e:
+        print(f"[move] ❌ {e}")
+        return 5
     except StateTimeoutError as e:
         print(f"[move] ❌ {e}")
         return 4
