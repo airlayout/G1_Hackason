@@ -112,6 +112,33 @@ bash Button_Press/J1-gen/sim/fetch_models.sh
 PYTHON=G1_HuggingFace/venv/bin/python bash Button_Press/J1-gen/tests/run_tests.sh
 ```
 
+## push の前に実行するテスト（このマシンでの運用）
+
+このマシン（docker・gsplat・open3d が無い）では `scripts/ci/run_all_tests.sh` が Mapping で失敗し、
+その後の班のテストが実行されない。そのため、push の前には次の3つを**個別に**実行する。
+全班のテストは、PR を出したときの GitHub の CI で確認する（`run_all_tests.sh` は変更しない）。
+
+Perception と Common のテストは `python3` と `pip` を直接呼ぶので、先に venv を有効にする:
+
+```bash
+source G1_HuggingFace/venv/bin/activate
+```
+```bash
+bash Button_Press/J1-gen/tests/run_tests.sh
+```
+```bash
+bash Perception/tests/run_tests.sh
+```
+```bash
+bash Common/tests/run_tests.sh
+```
+```bash
+bash scripts/ci/run_checks.sh
+```
+
+`run_checks.sh` の Markdown リンク検査は、2026-09-28 時点で Navigation の既存のリンク切れ 20 本により
+失敗する。**それ以外のファイルで NG が出ていないか**を出力で確認する。
+
 ## 動作確認済みの組み合わせ
 
 | 日付 | マシン | Python | 主なパッケージ |
