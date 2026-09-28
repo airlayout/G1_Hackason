@@ -6,6 +6,7 @@ import unittest
 
 import numpy as np
 
+from _env import needs
 from common.collision import CollisionChecker
 from common.config import load_config
 from common.kinematics import ArmKinematics
@@ -15,6 +16,7 @@ from common.robot_model import load_model
 REACHABLE = [((0.40, -0.20, 0.05), (1, 0, 0)), ((0.45, -0.15, 0.15), (1, 0, 0))]
 
 
+@needs('mujoco', 'pin')
 class TestKinematics(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -77,6 +79,7 @@ class TestKinematics(unittest.TestCase):
         np.testing.assert_array_equal(res.q[others], q0[others])
 
 
+@needs('mujoco')
 class TestCollision(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -104,6 +107,7 @@ class TestCollision(unittest.TestCase):
         self.assertTrue(np.all(half > 0.01))
 
 
+@needs('mujoco', 'pin')
 class TestPressPlanner(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

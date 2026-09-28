@@ -16,16 +16,10 @@ import tempfile
 import time
 import unittest
 
+from _env import needs
 from common.config import FEATURE_DIR, REPO_ROOT
 from common.dds import PeerMismatchError, check_peer, init_dds
 from common.arm.types import JointState
-
-try:
-    import unitree_sdk2py  # noqa: F401
-
-    HAVE_SDK = True
-except ImportError:
-    HAVE_SDK = False
 
 PY = sys.executable
 SERVER = str(FEATURE_DIR / "sim" / "sim_robot_server.py")
@@ -88,7 +82,7 @@ class TestPeerCheck(unittest.TestCase):
             init_dds(1, "enp3s0")
 
 
-@unittest.skipUnless(HAVE_SDK, "unitree_sdk2py が無い")
+@needs('sdk', 'render', 'pin')
 class TestSimRobotFaults(unittest.TestCase):
     def test_normal_move(self) -> None:
         with SimRobot():
@@ -131,7 +125,7 @@ class TestSimRobotFaults(unittest.TestCase):
         self.assertIn("安全終了", out)
 
 
-@unittest.skipUnless(HAVE_SDK, "unitree_sdk2py が無い")
+@needs('sdk', 'render', 'pin')
 class TestSimRobotPipeline(unittest.TestCase):
     def test_press_bottle_real_script(self) -> None:
         """実機用の全体のスクリプトを、模擬ロボット相手にそのまま実行する（色の検出、机を障害物に）。"""

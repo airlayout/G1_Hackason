@@ -100,13 +100,12 @@ class SegmentationDetector:
     """
 
     def __init__(self, camera: SimHeadCamera, geom_prefix: str, class_name: str = "bottle") -> None:
-        from .perception_bridge import perception
-
-        self._Detection = perception("detector").Detection
         self.camera = camera
         self.prefix = geom_prefix
         self.class_name = class_name
 
     def detect(self, frame: np.ndarray) -> list:  # noqa: ARG002（画像ではなく、今のシミュレーションの状態を使う）
         bb = self.camera.segmentation_bbox(self.prefix)
-        return [] if bb is None else [self._Detection(class_name=self.class_name, confidence=1.0, bbox=bb)]
+        from .localize import Detection
+
+        return [] if bb is None else [Detection(class_name=self.class_name, confidence=1.0, bbox=bb)]

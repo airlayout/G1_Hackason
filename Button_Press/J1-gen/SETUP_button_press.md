@@ -136,6 +136,11 @@ bash Common/tests/run_tests.sh
 bash scripts/ci/run_checks.sh
 ```
 
+`run_tests.sh` は最初に「実行環境: mujoco あり、pin あり、…」の一覧を出す。足りないもの（画面・OpenGL、
+unitree_sdk2py、YOLO など）を使うテストは「スキップ: <理由>」と表示して飛ばす（`tests/_env.py`）。
+GitHub の CI には画面も unitree_sdk2py も無いので、そこではカメラの描画・模擬ロボット・DDS のテストはスキップされる
+（2026-09-29、CI と同じ条件の venv で 115 件中 22 件スキップ、失敗 0 件を確認）。スキップしたテストは確かめていない。
+
 `run_checks.sh` の Markdown リンク検査は、2026-09-28 時点で Navigation の既存のリンク切れ 20 本により
 失敗する。**それ以外のファイルで NG が出ていないか**を出力で確認する。
 

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
+from _env import needs
 from common.arm import ArmCommander, WaistDeviationError, joint_limits, make_backend
 from common.arm.gravity import GravityModel
 from common.config import FEATURE_DIR, REPO_ROOT, load_config
@@ -26,6 +27,7 @@ ARM = np.array(RIGHT_ARM_IDX)
 TARGET_DELTA = np.radians([-20, -10, 0, 15, 10, 10, 10])
 
 
+@needs('mujoco')
 class TestArmSim(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

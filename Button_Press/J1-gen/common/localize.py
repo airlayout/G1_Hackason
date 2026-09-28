@@ -29,6 +29,17 @@ class Detector(Protocol):
 
 
 @dataclass
+class Detection:
+    """検出結果（Perception の Detection と同じ項目）。YOLO 以外の検出器（色、シミュレーションの
+    セグメンテーション）はこちらを返す。Perception の detector を読み込むと torch と ultralytics が
+    要るので、それらが無い環境（GitHub の CI など）でも使えるように、ここにも持っておく。"""
+
+    class_name: str
+    confidence: float
+    bbox: tuple[float, float, float, float]  # (x1, y1, x2, y2) 画素
+
+
+@dataclass
 class Located:
     class_name: str
     confidence: float
@@ -134,9 +145,6 @@ class ColorDetector:
     """
 
     def __init__(self, hsv_ranges: list[list[list[int]]], min_area_px: int, class_name: str) -> None:
-        from .perception_bridge import perception
-
-        self._Detection = perception("detector").Detection
         self.ranges = [(np.array(lo, np.uint8), np.array(hi, np.uint8)) for lo, hi in hsv_ranges]
         self.min_area = int(min_area_px)
         self.class_name = class_name
@@ -156,7 +164,7 @@ class ColorDetector:
         if area < self.min_area:
             return []
         conf = float(area) / float(w * h)  # 枠の中で色が占める割合（確からしさの代わり）
-        return [self._Detection(class_name=self.class_name, confidence=conf,
+        return [Detection(class_name=self.class_name, confidence=conf,
                                 bbox=(float(x), float(y), float(x + w), float(y + h)))]
 
 

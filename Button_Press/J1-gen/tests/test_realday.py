@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
+from _env import needs
 from common.camera_geometry import HeadCameraTransform
 from common.config import FEATURE_DIR, load_config
 from common.localize import deproject
@@ -39,6 +40,7 @@ class TestObstacleFromTouch(unittest.TestCase):
         with self.assertRaises(ValueError):
             box_from_touch_points([np.array([0.3, 0.0, 0.0])], 0.03, 0.6, 0.8)
 
+    @needs('mujoco', 'pin')
     def test_saved_box_is_used_by_planner(self) -> None:
         """保存した箱が全体の流れの設定に入り、机をくぐる経路を計画の段階で拒否する。"""
         import argparse
@@ -67,6 +69,7 @@ class TestObstacleFromTouch(unittest.TestCase):
             pl.plan(q0, np.array([0.388, -0.2, 0.04]), np.array([1.0, 0, 0]), q_seed=seed, q_via_arm=np.zeros(7))
 
 
+@needs('pin')
 class TestProjection(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -86,6 +89,7 @@ class TestProjection(unittest.TestCase):
         t = HeadCameraTransform(self.robot)
         self.assertIsNone(project_to_image(np.array([-1.0, 0.0, 0.5]), np.zeros(3), t, INTR))
 
+    @needs('render')
     def test_fingertip_projects_onto_hand_in_sim(self) -> None:
         """MuJoCo で、FK の指先を頭カメラに投影した画素に、右手（wrist_yaw_link の体）が写っている。"""
         import mujoco

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from _env import needs
 from common.arm.types import JointState
 from common.config import FEATURE_DIR, load_config
 from common.localize import Locator
@@ -128,6 +129,7 @@ class TestRecording(unittest.TestCase):
         self.assertIsNotNone(r.q_at(0.0))
 
 
+@needs('render', 'pin')
 class TestOfflineLocate(unittest.TestCase):
     def test_locate_from_recorded_sim_frames(self) -> None:
         """MuJoCo のフレームを収録し、再生したフレームでタスク4（位置）を求めると、収録前と同じ結果になる。"""

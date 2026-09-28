@@ -9,6 +9,7 @@ import unittest
 
 import numpy as np
 
+from _env import needs
 from common.arm.backend_dds import active_joints, fill_lowcmd
 from common.arm.types import JointCommand
 from common.robot_model import ARM_SDK_WEIGHT_IDX, NUM_MOTORS
@@ -16,10 +17,8 @@ from common.robot_model import ARM_SDK_WEIGHT_IDX, NUM_MOTORS
 try:
     from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_
     from unitree_sdk2py.utils.crc import CRC
-
-    HAVE_SDK = True
-except ImportError:
-    HAVE_SDK = False
+except ImportError:  # 無い環境では、使うテストを @needs("sdk") でスキップする
+    pass
 
 
 def arm_command(weight: float) -> JointCommand:
@@ -31,7 +30,7 @@ def arm_command(weight: float) -> JointCommand:
     return c
 
 
-@unittest.skipUnless(HAVE_SDK, "unitree_sdk2py が無い")
+@needs("sdk")
 class TestFillLowCmd(unittest.TestCase):
     def test_arm_sdk_message(self) -> None:
         msg = unitree_hg_msg_dds__LowCmd_()

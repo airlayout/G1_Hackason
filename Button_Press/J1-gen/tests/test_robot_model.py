@@ -6,10 +6,12 @@ import unittest
 
 import numpy as np
 
+from _env import needs
 from common.config import load_config
 from common.robot_model import JOINT_NAMES, NUM_MOTORS, load_model, rpy_to_quat_wxyz
 
 
+@needs('mujoco')
 class TestRobotModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -57,6 +59,7 @@ class TestRobotModel(unittest.TestCase):
         # 下向き（pitch 約 47.6°）なので、光軸の z 成分は負
         self.assertLess(expected_forward[2], -0.7)
 
+    @needs('render')
     def test_head_camera_renders(self) -> None:
         """頭カメラで画像を描画できる（描画環境が無い場合はスキップ）。"""
         mj = self.mujoco

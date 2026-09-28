@@ -11,6 +11,7 @@ import unittest
 
 import numpy as np
 
+from _env import needs
 from common.config import FEATURE_DIR
 from common.pipeline import EXIT_OK, EXIT_TARGET
 from common.post_press import PostPressContext, PostPressResult
@@ -41,6 +42,7 @@ def csv_rows(path: object) -> int:
         return sum(1 for _ in csv.reader(f)) - 1
 
 
+@needs('render', 'mujoco', 'pin')
 class TestPipelineSim(unittest.TestCase):
     def test_depth_target_full_run(self) -> None:
         res, backend, logger = run_sim(args())

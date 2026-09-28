@@ -7,6 +7,7 @@ import unittest
 
 import numpy as np
 
+from _env import needs
 from common.arm import UnsafeTargetError
 from common.config import FEATURE_DIR, load_config
 
@@ -16,6 +17,7 @@ from press_sim import run_press_sim  # noqa: E402
 from test_kinematics import REACHABLE  # noqa: E402
 
 
+@needs('mujoco', 'pin')
 class TestPressSim(unittest.TestCase):
     def test_reaches_targets_within_1cm(self) -> None:
         for tgt, d in REACHABLE:

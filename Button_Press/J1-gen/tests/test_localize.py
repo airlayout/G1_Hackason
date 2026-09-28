@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
+from _env import needs
 from common.camera_geometry import R_LINK_OPTICAL, HeadCameraTransform
 from common.config import FEATURE_DIR, load_config
 from common.localize import Locator, anchor_pixel, bbox_depth, deproject, make_detector
@@ -44,6 +45,7 @@ class TestDepthAndDeprojection(unittest.TestCase):
         self.assertEqual(anchor_pixel((10, 20, 30, 120), (0.5, 0.7)), (20, 90))
 
 
+@needs('pin')
 class TestTransform(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -76,6 +78,7 @@ class TestTransform(unittest.TestCase):
                                    [0.01, -0.02, 0.03], atol=1e-12)
 
 
+@needs('render', 'pin')
 class TestSimCamera(unittest.TestCase):
     def test_deprojection_matches_mujoco_rays(self) -> None:
         """MuJoCo の深度から逆投影した点が、同じ画素へ飛ばした光線の当たる点と一致する（腰を動かしても）。"""
@@ -110,14 +113,15 @@ class TestSimCamera(unittest.TestCase):
 
 class FakeDetector:
     def __init__(self, bbox: tuple[float, float, float, float]) -> None:
-        from common.perception_bridge import perception
+        from common.localize import Detection
 
-        self.det = perception("detector").Detection("bottle", 0.9, bbox)
+        self.det = Detection("bottle", 0.9, bbox)
 
     def detect(self, frame: np.ndarray) -> list:
         return [self.det]
 
 
+@needs('pin')
 class TestLocator(unittest.TestCase):
     def frame(self, depth_mm: int) -> RgbdFrame:
         depth = np.zeros((480, 640), np.uint16)
@@ -139,6 +143,7 @@ class TestLocator(unittest.TestCase):
         self.assertIsNone(loc.best(found))
         self.assertTrue(found[0].reason)
 
+    @needs('yolo')
     def test_yolo_detector_builds(self) -> None:
         """Perception の YoloDetector が bottle クラスで作れて、画像を処理できる（重みは初回に自動ダウンロード）。"""
         det = make_detector(load_config("localize.yaml"))

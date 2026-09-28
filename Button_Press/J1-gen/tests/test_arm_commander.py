@@ -7,6 +7,7 @@ import unittest
 
 import numpy as np
 
+from _env import needs
 from common.arm import (
     ArmCommander,
     NoMotionError,
@@ -262,6 +263,7 @@ class TestWaistSupportGravity(unittest.TestCase):
         with make(FakeBackend(), input_fn=never):
             pass
 
+    @needs('mujoco')
     def test_gravity_tau_scaled_and_clipped(self) -> None:
         gm = GravityModel(load_config("robot.yaml"))
         taus = {}
@@ -280,6 +282,7 @@ class TestWaistSupportGravity(unittest.TestCase):
         self.assertTrue(np.all(np.abs(taus[1.0]) <= 7.0))
         self.assertGreater(np.abs(taus[1.0][arms]).max(), 0.1)
 
+    @needs('mujoco')
     def test_waist_gravity_only_in_plan_b(self) -> None:
         gm = GravityModel(load_config("robot.yaml"))
         for uses_weight in (True, False):

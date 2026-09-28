@@ -3,5 +3,8 @@
 numpy>=1.26
 PyYAML>=6.0
 mujoco>=3.2
+# カメラの受信・保存と、深度付きストリーム（Perception の requirements にもあるが、単独でも動くように書く）
+opencv-python>=4.9
+pyzmq>=26.0
 # IK（URDF の FK / ヤコビアン）。pip の配布名は pin（2026-09-28: pin 4.1.0、numpy は変わらない）
 pin>=3.0
