@@ -24,21 +24,30 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `rgbd_protocol.py` — 深度付きストリームの形式（サーバとクライアントで共有）
   - `camera_rgbd.py` — 深度付きストリームの受信側 `RgbdZmqSource`（Perception の FrameSource を継承）
   - `perception_bridge.py` — Perception/common を別名で読み込む（どちらもパッケージ名が `common` のため）
+  - `camera_geometry.py` — 頭カメラの座標 → pelvis 座標（腰 3 関節の FK 込み）
+  - `localize.py` — 検出（YoloDetector）→ 枠の中の深度の中央値 → 逆投影 → pelvis 座標
+  - `rgbd_io.py` — RgbdFrame のファイルへの保存と読み込み（カラー PNG、深度 16bit PNG、JSON）
+  - `dds.py` — DDS の初期化（1 プロセス 1 回）と lowstate の受信
+  - `sim_scene.py` / `sim_camera.py` — MuJoCo の机とボトル、頭カメラの RGB + 深度、セグメンテーションの検出器
 - `sim/` — MuJoCo での検証
   - `fetch_models.sh` — 公式モデル（unitree_ros の `g1_29dof_rev_1_0`）を取得する
   - `move_arm_sim.py` — 腕を指定の関節角へ動かして戻す
   - `press_sim.py` — 指定した点（pelvis 座標）を押す
+  - `locate_sim.py` — 頭カメラの画像と深度からボトルの位置を求め、正解と比べる
 - `real/` — 実機用
   - `move_arm_real.py` — 同じことを実機で行う（既定は dry-run。送るには `--execute`）
   - `REAL_DAY_PROCEDURE.md` — 実機日の手順書（下書き。タスク7で完成させる）
   - `depth_server/` — PC2 で動かす深度付きカメラサーバ（`rgbd_server.py`）と、その使い方（`README.md`）
   - `probe_rgbd.py` — 深度付きストリームが届くかを確かめる（ラボ PC で）
+  - `locate_bottle.py` — ボトルの位置を pelvis 座標で求める（ライブ、または保存したファイルから）
 - `configs/` — 設定ファイル。当日はコードを編集せず、ここだけを変える
   - `robot.yaml` — モデルのパス、頭カメラの取り付け位置
   - `arm.yaml` — 経路（sim / arm_sdk / lowcmd）、NIC 名、ゲイン、安全の上限、重力補償
   - `press.yaml` — IK、衝突の確認、押し込み（手前の距離・深さ・速さ）、作業空間の箱
   - `depth_server.yaml` — 深度付きカメラサーバ（PC2）: RealSense のシリアル番号、ポート（深度付き 5556 / RGB 互換 5555）
   - `camera.yaml` — 受信側（ラボ PC）の接続先とポート
+  - `localize.yaml` — 検出器（YOLO の重み・クラス）、深度を取る基準点と領域、較正の補正
+  - `sim_scene.yaml` — MuJoCo の机とボトル、検出するときの姿勢
 - `tests/` — `run_tests.sh`（CI が自動で見つけて実行する）
 
 ## 機体モデル
@@ -62,7 +71,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
 | 1 | 腕の指令部分（sim / arm_sdk / lowcmd） | 済み（実機は未確認） |
 | 2 | FK / IK と軌道生成 | 済み |
 | 3 | 深度付きの配信サーバ（PC2） | 済み（本物の RealSense では未確認） |
-| 4 | ボトル検出 → 3D 座標 → pelvis 座標 | これから |
+| 4 | ボトル検出 → 3D 座標 → pelvis 座標 | 済み（YOLO は実機の画像で未確認） |
 | 5 | 収録ツール | これから |
 | 6 | 全体をつなぐスクリプト | これから |
 | 7 | 実機日用のツールと手順 | これから |
@@ -149,3 +158,30 @@ PC2 で RealSense を pyrealsense2 で直接読み、深度をカラー画像に
   PC2 で `install_offline.sh`。sudo は使わず、libusb は中身を取り出すだけ）。
 - 既存の `run_g1_server.py --camera` は、RealSense を pyrealsense2 ではなく OpenCV で `/dev/video4` として開いている
   （lerobot の `ImageServer`、2026-09-28 に GitHub の main で確認）。
+
+## ボトル検出 → 3D 座標 → pelvis 座標（タスク4）
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/locate_sim.py --save
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --live
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --files _local/button_press/probe/<stem>
+```
+
+1. Perception の `YoloDetector`（事前学習済み、COCO の `bottle`）で枠を得る
+2. 枠の中の基準点（`localize.yaml` の `depth.anchor`）のまわりの深度から、0 と範囲外を除いて中央値を取る
+3. 内部パラメータで逆投影してカメラ座標（x 右、y 下、z 前）の点にする
+4. `d435_link` → `torso_link`（`robot.yaml` の取り付け位置）→ 腰 3 関節の FK → pelvis 座標。較正の補正を足す
+
+### 確かめたこと（2026-09-28）
+
+- 座標変換は URDF の `d435_link` と一致（誤差 0）。腰を動かした姿勢でも同じ。
+- MuJoCo の深度から逆投影した点と、同じ画素へ飛ばした光線が実際に当たる点の差は 0.5 mm 未満（画像の隅、腰を動かした姿勢を含む）。
+- MuJoCo のボトル（腰 0°）で、求めた点は胴の前面から x 方向 0.9 mm、ボトルの中心から左右 5.9 mm。
+- 頭カメラは斜め上から見下ろすので、ボトルの枠の中心には肩が写る。胴の前面を狙うため、基準点を縦 0.7 にした
+  （ボタンのように正面を向いた対象は 0.5）。
+- **検出するときは、腕をカメラの視野から外す**（肘を曲げた姿勢だと手がボトルを隠す）。シミュレーションでは
+  `sim_scene.yaml` の `detection_pose_deg`（両腕を下ろした姿勢）。
+- 腰を回すとボトルを斜めから見るので、狙う点が円柱の横寄りになる（腰ヨー 10° で中心から 26 mm）。押すときは
+  腰を保持するので、腰がほぼ 0° のまま検出する前提。
+- 事前学習済みの YOLO は、MuJoCo の円柱を組み合わせた作り物のボトルを検出しなかった。シミュレーションでは
+  セグメンテーション（画素ごとに写っている物の番号）で枠を作る。**YOLO は実機日に撮った画像で確かめる。**

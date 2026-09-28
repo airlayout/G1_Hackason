@@ -4,14 +4,13 @@
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/probe_rgbd.py --address localhost --save
 
 受信したフレーム数・fps・1 フレームの大きさ・内部パラメータ・画像中央の深度を表示する。
---save を付けると、最後のフレームのカラー（PNG）と深度（16bit PNG）と内部パラメータ（JSON）を
+--save を付けると、最後のフレームのカラー（PNG）と深度（16bit PNG）と内部パラメータなど（JSON）を
 _local/button_press/probe/ に保存する（16bit PNG は深度の値をそのまま保存できる）。
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from dataclasses import asdict
@@ -23,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.camera_rgbd import RgbdZmqSource  # noqa: E402
 from common.config import REPO_ROOT, load_config  # noqa: E402
+from common.rgbd_io import save_rgbd  # noqa: E402
 
 
 def main() -> int:
@@ -67,17 +67,9 @@ def main() -> int:
     print(f"[probe_rgbd] 深度が 0（測れなかった）の画素: {np.mean(d == 0) * 100:.1f}%")
 
     if args.save:
-        import cv2
-
-        out = REPO_ROOT / "_local" / "button_press" / "probe"
-        out.mkdir(parents=True, exist_ok=True)
-        stem = time.strftime("%Y%m%d_%H%M%S")
-        cv2.imwrite(str(out / f"{stem}_color.png"), last.color_bgr)
-        cv2.imwrite(str(out / f"{stem}_depth.png"), last.depth)
-        (out / f"{stem}_intrinsics.json").write_text(
-            json.dumps({"intrinsics": asdict(last.intrinsics), "depth_scale": last.depth_scale}, indent=2)
-        )
-        print(f"[probe_rgbd] 保存: {out}/{stem}_*")
+        stem = REPO_ROOT / "_local" / "button_press" / "probe" / time.strftime("%Y%m%d_%H%M%S")
+        save_rgbd(last, stem)
+        print(f"[probe_rgbd] 保存: {stem}_color.png / _depth.png / _meta.json")
     return 0
 
 

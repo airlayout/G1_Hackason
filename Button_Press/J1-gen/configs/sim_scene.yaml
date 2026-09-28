@@ -1,0 +1,33 @@
+# Button_Press / MuJoCo のシーン（机とボトル）。タスク4・6 のシミュレーションで使う。
+# 位置は pelvis 座標 [m]（x 前方、y 左、z 上）。シミュレーションでは pelvis を固定しているので、
+# ワールドの位置 = pelvis の位置 + この値。
+
+# 検出するときの姿勢（両腕を下ろしてカメラの視野から外す。肘を曲げた姿勢のままだと手がボトルを隠す）。
+# 29 関節のうち、ここに書いた関節だけを変える（motor 番号: 角度 [deg]）
+detection_pose_deg:
+  15: 11.5   # left_shoulder_pitch
+  16: 14.3   # left_shoulder_roll（外向き）
+  18: 86.0   # left_elbow
+  22: 11.5   # right_shoulder_pitch
+  23: -14.3  # right_shoulder_roll（外向き）
+  25: 86.0   # right_elbow
+
+table:
+  # 天板の上面の中心と、天板の大きさ（半分の長さ）
+  top_center: [0.50, -0.10, -0.05]
+  half_size: [0.20, 0.35, 0.02]
+  rgba: [0.55, 0.45, 0.35, 1.0]
+
+bottle:
+  # 底の中心の位置（x, y）。z は天板の上に置く
+  xy: [0.42, -0.20]
+  # 胴の半径と高さ、首の半径と高さ、キャップ [m]
+  radius: 0.033
+  body_height: 0.15
+  neck_radius: 0.013
+  neck_height: 0.04
+  cap_height: 0.015
+  # 胴（ラベル）、首、キャップの色
+  body_rgba: [0.85, 0.15, 0.15, 1.0]
+  neck_rgba: [0.75, 0.85, 0.95, 0.6]
+  cap_rgba: [0.1, 0.3, 0.8, 1.0]

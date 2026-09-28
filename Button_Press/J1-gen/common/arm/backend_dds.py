@@ -23,6 +23,7 @@ from typing import Any
 import numpy as np
 
 from ..robot_model import ARM_SDK_WEIGHT_IDX, NUM_MOTORS
+from ..dds import init_dds, parse_lowstate
 from .backend import ArmBackend
 from .types import JointCommand, JointState
 
@@ -80,11 +81,7 @@ class DdsBackend(ArmBackend):
         self._send_count = 0
 
     def open(self) -> None:
-        from unitree_sdk2py.core.channel import (
-            ChannelFactoryInitialize,
-            ChannelPublisher,
-            ChannelSubscriber,
-        )
+        from unitree_sdk2py.core.channel import ChannelPublisher, ChannelSubscriber
         from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_
         from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_, LowState_
         from unitree_sdk2py.utils.crc import CRC
@@ -94,8 +91,7 @@ class DdsBackend(ArmBackend):
                 "configs/arm.yaml の network_interface が空。G1 につないでいる有線 NIC の名前"
                 "（`ip -br a` で確認）を設定すること"
             )
-        print(f"[dds] DDS 初期化（domain={self._domain_id}, NIC={self._iface}）")
-        ChannelFactoryInitialize(self._domain_id, self._iface)
+        init_dds(self._domain_id, self._iface)
         self._sub = ChannelSubscriber(TOPIC_LOWSTATE, LowState_)
         self._sub.Init(self._on_state, 10)
         self._pub = None
@@ -107,13 +103,7 @@ class DdsBackend(ArmBackend):
         print(f"[dds] 送信先 {self.topic}（{'送信しない: dry-run' if self.dry_run else '送信する'}）")
 
     def _on_state(self, msg: Any) -> None:
-        q = np.array([msg.motor_state[i].q for i in range(NUM_MOTORS)])
-        dq = np.array([msg.motor_state[i].dq for i in range(NUM_MOTORS)])
-        mode = np.array([msg.motor_state[i].mode for i in range(NUM_MOTORS)], dtype=int)
-        # unitree の IMU 四元数は (w, x, y, z) の順
-        imu = np.array(msg.imu_state.quaternion, dtype=float)
-        st = JointState(q=q, dq=dq, motor_mode=mode, mode_machine=int(msg.mode_machine),
-                        stamp=time.monotonic(), imu_quat=imu)
+        st = parse_lowstate(msg)
         with self._lock:
             self._state = st
 

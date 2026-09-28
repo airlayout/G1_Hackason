@@ -141,6 +141,19 @@ bash Button_Press/J1-gen/real/depth_server/fetch_offline_packages.sh
 4. 対象（ボトル）の位置は、タスク6の「定規で測った位置」モードで与える
    （設定のキー名と具体的なコマンドは、タスク6の実装後にここへ追記する）。
 
+## ボトルの位置を求める（タスク4）
+
+- **検出するときは、腕をカメラの視野から外す**（手がボトルを隠さないように）。
+- ボトルはラベル付きのもの（透明な PET ボトルは深度が取れない）。
+- ライブで確かめる（腰の角度は lowstate から読む）:
+
+  ```bash
+  G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --live --frames 5
+  ```
+
+- YOLO がボトルを検出するか、枠と基準点が胴に乗っているかを、保存された画像（`_local/button_press/locate/`）で見る。
+- 深度が使えないときは、`probe_zmq_camera.py` などで撮った RGB で YOLO の検出だけを確かめる。
+
 ## タスク7で追加する項目
 
 - 接続確認（RGB・深度・lowstate、`mode_machine` = 5）

@@ -1,0 +1,27 @@
+# Button_Press / 対象の検出と 3D 座標の設定（タスク4）
+
+detector:
+  # Perception と同じ YOLO の重み（ultralytics が初回に自動でダウンロードする）
+  model: yolo26n.pt
+  # 事前学習済み（COCO）のクラス名。ボトル押しは bottle。ボタンは 10/1 以降に学習したモデルで置き換える
+  classes: [bottle]
+  confidence_threshold: 0.4
+  # auto（GPU があれば GPU）| cpu | cuda
+  device: auto
+
+depth:
+  # 深度を取る基準点（枠の幅・高さに対する割合。[0.5, 0.5] が中心）。
+  # 頭カメラは斜め上から見下ろすので、ボトルの枠の中心には肩が写る。胴の前面を狙うため縦 0.7 にする
+  # （MuJoCo で胴の前面から x 方向 1.5 mm）。正面を向いたボタンなら [0.5, 0.5]
+  anchor: [0.5, 0.7]
+  # 基準点のまわりの、幅・高さとも枠のこの割合の領域から深度の中央値を取る
+  roi_fraction: 0.2
+  # この範囲の深度だけを使う [m]（D435 はおよそ 0.2 m 未満を測れない）
+  min_m: 0.15
+  max_m: 1.5
+  # 有効な深度の画素がこれより少なければ「位置が求まらない」とする
+  min_valid_pixels: 20
+
+calibration:
+  # pelvis 座標で足す補正 [m]。実機日に、既知の位置に置いたボトルで求めた一定のずれを入れる（タスク7）
+  offset_pelvis_m: [0.0, 0.0, 0.0]
