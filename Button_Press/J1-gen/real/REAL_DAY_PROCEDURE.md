@@ -59,14 +59,87 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/move_arm_real.py --path 
 - 腰の重力補償（`--waist-gravity-scale`、プランB のときだけ効く）は、腕の確認のあとで必要なら試す。
 - lowstate の IMU が pelvis のものかは未確認。倍率 1.0 で逆に下がり方が大きくなる場合は、IMU の向きを疑う。
 
+## 事前準備: PC2 用のオフラインのファイル（実機日の前に、ネットにつながったマシンで）
+
+PC2 はインターネットにつながっていない可能性が高いので、pyrealsense2（Python 3.8 / 3.10 / 3.12 用）と
+libusb-1.0 の .deb を事前にダウンロードしておく（約 17 MB）:
+
+```bash
+bash Button_Press/J1-gen/real/depth_server/fetch_offline_packages.sh
+```
+
+`_local/button_press/offline/` にできる。手元の PC で用意した場合は、このフォルダをラボ PC に持っていく
+（`_local/` は git に入らないので、push しても届かない）。
+
 ## 深度付きカメラサーバ（PC2）
 
-手順は [depth_server/README.md](depth_server/README.md)。要点:
+詳しい手順は [depth_server/README.md](depth_server/README.md)。流れ:
 
-- `lsusb | grep -i intel` で RealSense が PC2 につながっているかを最初に確かめる。つながっていなければ、
-  深度は使えないので、対象の位置を設定ファイルの値（定規で測った位置）で与えるモード（タスク6）に切り替える。
-- `run_g1_server.py` は `--camera` なしで起動する（RealSense は 1 つのプログラムしか開けない）。
-- ラボ PC で `real/probe_rgbd.py --save` を実行し、fps・内部パラメータ・深度を確かめて保存する。
+1. RealSense が PC2 につながっているかを確かめる（PC2 で）:
+
+   ```bash
+   lsusb | grep -i intel
+   ```
+
+2. Python の版を確かめ、pyrealsense2 が無ければオフラインのファイルで入れる。ラボ PC から PC2 へコピー:
+
+   ```bash
+   ssh unitree@192.168.123.164 mkdir -p button_press
+   ```
+   ```bash
+   scp -r _local/button_press/offline unitree@192.168.123.164:button_press/
+   ```
+
+   PC2 で（conda を使うなら先に `source ~/miniforge3/bin/activate lerobot`）:
+
+   ```bash
+   python3 --version
+   ```
+   ```bash
+   bash ~/button_press/offline/install_offline.sh
+   ```
+
+3. サーバのファイルを PC2 に置き（README の 3）、`run_g1_server.py` を **`--camera` なしで**起動し（README の 4）、
+   `start_rgbd_server.sh` でサーバを起動する。
+4. ラボ PC で届いているかを確かめて保存する:
+
+   ```bash
+   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/probe_rgbd.py --save
+   ```
+
+## pyrealsense2 が使えなかった場合の切り替え
+
+次のどれかになったら、深度はあきらめて切り替える（RGB の収録と、ボトル押しそのものは続ける）:
+
+- `lsusb` で RealSense が PC2 に見えない（PC1 につながっている）
+- `install_offline.sh` が失敗する（Python の版に合う wheel が無い、など）
+- `start_rgbd_server.sh` が起動しない、または `probe_rgbd.py` で深度が届かない
+
+切り替えの手順:
+
+1. PC2 で `rgbd_server.py` を止める（動いていれば Ctrl+C）。RealSense は 1 つのプログラムしか開けないので、
+   止めないと次の手順でカメラを開けない。
+2. PC2 で `run_g1_server.py` を止め、**`--camera` を付けて**起動し直す（RGB は OpenCV 経由で、既存と同じ形式・ポート 5555）:
+
+   ```bash
+   python -u src/lerobot/robots/unitree_g1/run_g1_server.py --camera
+   ```
+
+   画像が来ないときは、カメラのデバイス番号（既定 4 = `/dev/video4`）が違う可能性がある。PC2 で一覧を見て、
+   `--camera-device <番号>` で指定する:
+
+   ```bash
+   ls -l /dev/v4l/by-id/
+   ```
+
+3. ラボ PC で RGB が届いているかを確かめる（既存の Perception の確認スクリプト）:
+
+   ```bash
+   G1_HuggingFace/venv/bin/python Perception/real/probe_zmq_camera.py --host 192.168.123.164 --timeout 60
+   ```
+
+4. 対象（ボトル）の位置は、タスク6の「定規で測った位置」モードで与える
+   （設定のキー名と具体的なコマンドは、タスク6の実装後にここへ追記する）。
 
 ## タスク7で追加する項目
 

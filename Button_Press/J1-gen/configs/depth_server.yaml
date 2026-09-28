@@ -18,6 +18,9 @@ publish:
   # 受け付けるアドレス（"*" はすべてのネットワークの口）
   bind_address: "*"
   camera_name: head_camera
+  # 配信の上限 [fps]。カメラは camera.fps（30）で読み続け、送る回数だけをここまで間引く
+  # （PC2 の CPU とネットワークの負担を減らすため。ボタン押しは 10fps で足りる）。0 なら間引かない
+  max_fps: 10
 
   # 深度付きストリーム（形式は common/rgbd_protocol.py）
   rgbd:

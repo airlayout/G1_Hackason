@@ -182,14 +182,29 @@ class RgbdServer:
         self.camera.start()
         for key in self.sockets:
             print(f"[rgbd_server] 配信: {key} → ポート {pub[key]['port']}")
-        n = 0
+        max_fps = float(pub.get("max_fps", 0) or 0)
+        min_interval = 1.0 / max_fps if max_fps > 0 else 0.0
+        print(f"[rgbd_server] 配信の上限: {f'{max_fps:g} fps' if max_fps > 0 else 'なし'}")
+        n = 0  # 送ったフレーム数
+        t_next_pub: float | None = None  # 次に送る予定の時刻
+        # カメラのフレームは 1/camera.fps ごとに届くので、予定の時刻より周期の半分以内の早さなら送る
+        # （これが無いと、予定の直前に届いたフレームを見送って 1 周期待つことが続き、平均が上限より下がる）
+        slack = 0.5 / float(self.cfg["camera"]["fps"])
         t_log = time.monotonic()
         n_log = 0
         try:
             while not self._stop and (max_frames is None or n < max_frames):
+                # カメラは読み続ける（読まないと古いフレームが溜まる）。送る回数だけを間引く
                 f = self.camera.read()
                 if f is None:
                     continue
+                now = time.monotonic()
+                if t_next_pub is not None and now < t_next_pub - slack:
+                    continue
+                # 予定の時刻は積み上げる（平均を上限に合わせるため）。1 周期以上遅れたら今を基準に戻す
+                if t_next_pub is None or now > t_next_pub + min_interval:
+                    t_next_pub = now
+                t_next_pub += min_interval
                 n += 1
                 if "rgbd" in self.sockets:
                     msg = encode_rgbd(
@@ -234,6 +249,7 @@ def main() -> int:
     p.add_argument("--rgbd-port", type=int, help="深度付きストリームのポート（既定は設定ファイル）")
     p.add_argument("--rgb-port", type=int, help="RGB 互換ストリームのポート（既定は設定ファイル）")
     p.add_argument("--no-legacy-rgb", action="store_true", help="RGB 互換ストリームを出さない")
+    p.add_argument("--max-fps", type=float, help="配信の上限 [fps]。0 なら間引かない（既定は設定ファイル）")
     p.add_argument("--list-devices", action="store_true", help="つながっている RealSense を表示して終わる")
     p.add_argument("--max-frames", type=int, help="このフレーム数を送ったら終わる（確認用）")
     args = p.parse_args()
@@ -258,6 +274,8 @@ def main() -> int:
         cfg["publish"]["legacy_rgb"]["port"] = args.rgb_port
     if args.no_legacy_rgb:
         cfg["publish"]["legacy_rgb"]["enabled"] = False
+    if args.max_fps is not None:
+        cfg["publish"]["max_fps"] = args.max_fps
 
     server = RgbdServer(cfg)
     signal.signal(signal.SIGINT, server.request_stop)

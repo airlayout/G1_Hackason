@@ -7,7 +7,8 @@ G1 の頭カメラ（RealSense D435i）を PC2 で直接読み、ZMQ で配信�
 | 5556 | 深度付き: カラー（JPEG）＋ カラーに位置合わせした深度（16bit のまま）＋ カメラの内部パラメータ | `common/camera_rgbd.py` の `RgbdZmqSource` |
 | 5555 | RGB 互換: `run_g1_server.py --camera` と同じ形式 | 既存の `ZmqFrameSource`（Perception）がそのまま動く |
 
-- ポート番号、RealSense のシリアル番号、画像の大きさなどは `configs/depth_server.yaml` で変える
+- 配信は既定で **10 fps** に間引く（カメラは 30 fps で読み続ける。PC2 の CPU とネットワークの負担を減らすため）。
+- ポート番号、RealSense のシリアル番号、画像の大きさ、配信の上限 fps は `configs/depth_server.yaml` で変える
   （外付けカメラの配信と同時に動かすときに、ポートがぶつからないようにする）。
   受け取る側の接続先は `configs/camera.yaml`。
 - 形式の詳細は `common/rgbd_protocol.py` の先頭のコメント。
@@ -33,47 +34,79 @@ lsusb | grep -i intel
 
 ## 2. pyrealsense2 が入っているか確かめる（PC2 で）
 
-PC2 では、SETUP.md の 3.2 で作った conda の `lerobot` 環境（Python 3.12）を使う。
+まず Python の版と、pyrealsense2 がすでに入っているかを確かめる。PC2 に conda の `lerobot` 環境
+（SETUP.md 3.2、Python 3.12）があればそれを使う。無ければ PC2 の `python3` を使う。
 
 ```bash
 source ~/miniforge3/bin/activate lerobot
 ```
 ```bash
-python -c "import pyrealsense2 as rs; print(rs.__version__)"
+python3 --version
+```
+```bash
+python3 -c "import pyrealsense2 as rs; print(rs.__version__)"
 ```
 
-版の番号が出れば入っている。`ModuleNotFoundError` なら、次で入れる:
+版の番号が出れば入っているので、3 へ進む。`ModuleNotFoundError` なら、次の 2-1 か 2-2 で入れる。
+
+ほかに使うパッケージ（numpy、opencv、pyzmq、PyYAML）が入っているかも確かめる:
 
 ```bash
-pip install pyrealsense2
+python3 -c "import numpy, cv2, zmq, yaml; print('ok')"
 ```
 
-- 2026-09-28 に、PyPI に aarch64（Jetson と同じ CPU）用の配布物があることを確認した
-  （Python 3.12 用は 2.58.4、Python 3.8 用は 2.55.1）。ビルドは要らない。
-- `ImportError: libusb-1.0.so.0` が出たら、USB を扱うライブラリが無い。次で確かめる:
-
-  ```bash
-  ldconfig -p | grep libusb-1.0
-  ```
-
-  何も出なければ `sudo apt install libusb-1.0-0` が必要（**実行する前にチームに確認する**）。
-
-ほかに使うパッケージ（numpy、opencv、pyzmq、PyYAML）は lerobot と一緒に入っているはず。確かめる:
+### 2-1. インターネットにつながっている場合
 
 ```bash
-python -c "import numpy, cv2, zmq, yaml; print('ok')"
+python3 -m pip install pyrealsense2
 ```
 
-## 3. ファイルを PC2 に置く（ラボ PC で）
+### 2-2. インターネットにつながっていない場合（オフラインで入れる）
 
-サーバに要るのは `Button_Press/J1-gen/` の `common/`・`configs/`・`real/` だけ。PC2 の `~/button_press/` に置く:
+PC2 はインターネットにつながっていない可能性が高い。そこで、**事前にネットにつながったマシンで**必要なファイルを
+ダウンロードしておき、当日 PC2 にコピーして入れる。sudo は使わず、システムも変えない。
+
+用意するもの（`fetch_offline_packages.sh` がまとめてダウンロードする。合計約 17 MB）:
+
+| ファイル | 用途 |
+|---|---|
+| `pyrealsense2-*-cp38-*-manylinux2014_aarch64.whl` | Python 3.8 用（2.55.1） |
+| `pyrealsense2-*-cp310-*-manylinux2014_aarch64.whl` | Python 3.10 用（2.58.4） |
+| `pyrealsense2-*-cp312-*-manylinux2014_aarch64.whl` | Python 3.12 用（2.58.4。SETUP.md の conda 環境の版） |
+| `libusb-1.0-0_1.0.23-2build1_arm64.deb` | pyrealsense2 が使う USB のライブラリ（Ubuntu 20.04 用）。PC2 に無い場合だけ使う |
+| `install_offline.sh`、`SHA256SUMS` | PC2 で入れるスクリプトと、ファイルが壊れていないかを確かめる値 |
+
+**事前（ネットにつながったマシン。ラボ PC でも手元の PC でもよい）:**
+
+```bash
+bash Button_Press/J1-gen/real/depth_server/fetch_offline_packages.sh
+```
+
+`_local/button_press/offline/` にファイルができる。手元の PC で用意した場合は、このフォルダをラボ PC にも持っていく。
+
+**当日（ラボ PC → PC2 へコピー）:**
 
 ```bash
 ssh unitree@192.168.123.164 mkdir -p button_press
 ```
 ```bash
-scp -r Button_Press/J1-gen/common Button_Press/J1-gen/configs Button_Press/J1-gen/real unitree@192.168.123.164:button_press/
+scp -r _local/button_press/offline unitree@192.168.123.164:button_press/
 ```
+
+**当日（PC2 で入れる）:** 使う Python の環境に入ってから（conda なら `source ~/miniforge3/bin/activate lerobot`）:
+
+```bash
+bash ~/button_press/offline/install_offline.sh
+```
+
+- Python の版に合う wheel を選んで `pip install --no-index` で入れる。conda を使わず PC2 の別の Python を
+  使うときは、`PYTHON=/usr/bin/python3 bash ~/button_press/offline/install_offline.sh` のように指定する。
+- libusb-1.0 がシステムに無ければ、.deb を**インストールせず、中身だけ**を `~/button_press/libusb_local/` に
+  取り出す（`dpkg -x`）。サーバは 4 の `start_rgbd_server.sh` で起動すれば、自動でここを使う。
+- 最後に `[install] pyrealsense2 ... OK、RealSense 1 台` と出れば成功。
+
+2026-09-28 に、PC2 と同じ条件（aarch64、Python 3.12、libusb がシステムに無い）の手元のマシンで、
+`install_offline.sh` → `start_rgbd_server.sh` の流れを確かめた（RealSense は無いので `--source dummy` で起動）。
 
 ## 4. 起動する（PC2 で）
 
@@ -112,17 +145,20 @@ source ~/miniforge3/bin/activate lerobot
 cd ~/button_press
 ```
 ```bash
-python real/depth_server/rgbd_server.py --list-devices
+bash real/depth_server/start_rgbd_server.sh --list-devices
 ```
 ```bash
-python real/depth_server/rgbd_server.py
+bash real/depth_server/start_rgbd_server.sh
 ```
+
+（`start_rgbd_server.sh` は、2-2 で libusb を取り出していればその場所を設定してから `rgbd_server.py` を起動する。
+引数はそのまま `rgbd_server.py` に渡る。conda を使わないときは `PYTHON=/usr/bin/python3` を前に付ける）
 
 `[rgbd_server] RealSense 開始: ...` と内部パラメータが表示され、5 秒ごとに配信したフレーム数と fps が出れば動いている。
 Ctrl+C で止まる。SSH を切っても動かし続けたいときは:
 
 ```bash
-nohup python -u real/depth_server/rgbd_server.py > ~/rgbd_server.log 2>&1 &
+nohup bash real/depth_server/start_rgbd_server.sh > ~/rgbd_server.log 2>&1 &
 ```
 
 ### よく使うオプション
@@ -132,6 +168,7 @@ nohup python -u real/depth_server/rgbd_server.py > ~/rgbd_server.log 2>&1 &
 | `--serial <番号>` | RealSense をシリアル番号で選ぶ（`--list-devices` で表示される番号） |
 | `--rgbd-port <番号>` / `--rgb-port <番号>` | ポートを変える（設定ファイルより優先） |
 | `--no-legacy-rgb` | RGB 互換ストリーム（5555）を出さない |
+| `--max-fps <数>` | 配信の上限 [fps]（既定 10。`configs/depth_server.yaml` の `publish.max_fps`）。0 なら間引かない |
 | `--source dummy` | RealSense を使わず、作り物の画像と深度を出す（配信経路だけを確かめる） |
 
 ## 5. 届いているか確かめる（ラボ PC で）
@@ -155,14 +192,18 @@ G1_HuggingFace/venv/bin/python Perception/real/run_real.py --server-address 192.
 |---|---|
 | `--list-devices` で見つからない | 1 の `lsusb` で見えるか。見えるのに見つからないなら、ほかのプログラム（`run_g1_server.py --camera` など）が開いていないか |
 | 起動時に `Device or resource busy` など | ほかのプログラムが RealSense を開いている。`run_g1_server.py` を `--camera` なしで起動し直す |
+| `ImportError: libusb-1.0.so.0` | libusb が見つからない。2-2 の `install_offline.sh` で取り出し、`start_rgbd_server.sh` で起動する |
 | 権限のエラー（permission denied） | RealSense の USB に触る権限が無い。udev ルールの追加が必要な場合がある。**PC2 の設定を変える前にチームに確認する** |
 | ラボ PC でタイムアウト | アドレス（`configs/camera.yaml`）とポートが合っているか。PC2 側で `ss -ltnp \| grep 5556` で待ち受けているか |
 | 深度が 0 ばかり | 近すぎる（D435 はおよそ 0.2 m 未満を測れない）、または透明・黒い物。ボトルはラベル付きを使う |
 
 ## 確かめたこと（2026-09-28、実機なし）
 
-- ダミーカメラで、サーバ → `RgbdZmqSource` と、サーバ → 既存の `ZmqFrameSource` の両方で受け取れた（約 30 fps）。
+- ダミーカメラで、サーバ → `RgbdZmqSource` と、サーバ → 既存の `ZmqFrameSource` の両方で受け取れた。
+  配信の上限は 10 / 5 / 0（なし）で、受信側で 10.0 / 5.0 / 30.0 fps。
   赤い物が赤のまま届く（色の順番が入れ替わらない）ことも確かめた。
 - 深度は送った値と完全に一致する（16bit のまま、zlib で圧縮しても値は変わらない）。
 - 実際に近い深度（640x480）で、1 フレームは圧縮なし 606 KB、zlib で約 201 KB（30 fps で約 49 Mbps）。
-- **本物の RealSense では未確認**（pyrealsense2 の呼び方は、偽物のモジュールを使ったテストで確かめただけ）。
+- 本物の pyrealsense2（2.58.4）を読み込み、サーバで使っている関数や項目（`enable_device`、`get_depth_scale`、
+  内部パラメータの `ppx` / `ppy` など）がすべてあることを確かめた。
+- **本物の RealSense をつないでの確認はまだ**（実機日に行う）。

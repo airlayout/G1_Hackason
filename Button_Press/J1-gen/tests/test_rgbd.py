@@ -117,6 +117,29 @@ class TestServerLoopback(unittest.TestCase):
         self.assertFalse(th.is_alive())
 
 
+class TestPublishRate(unittest.TestCase):
+    def _elapsed(self, max_fps: float, frames: int) -> float:
+        cfg = load_config("depth_server.yaml")
+        cfg["camera"]["source"] = "dummy"
+        cfg["publish"]["bind_address"] = "127.0.0.1"
+        cfg["publish"]["rgbd"]["port"] = free_port()
+        cfg["publish"]["legacy_rgb"]["enabled"] = False
+        cfg["publish"]["max_fps"] = max_fps
+        server = rgbd_server.RgbdServer(cfg)
+        t0 = time.monotonic()
+        n = server.run(max_frames=frames)
+        self.assertEqual(n, frames)
+        return time.monotonic() - t0
+
+    def test_max_fps_throttles_publishing(self) -> None:
+        """カメラ 30fps・上限 10fps で 6 フレーム送ると約 0.5 秒。上限なしなら約 0.17 秒。"""
+        throttled = self._elapsed(10, 6)
+        free = self._elapsed(0, 6)
+        self.assertGreater(throttled, 0.4)
+        self.assertLess(throttled, 0.9)
+        self.assertLess(free, 0.4)
+
+
 class FakeRs(types.ModuleType):
     """pyrealsense2 の代わり（呼ばれ方を記録する）。"""
 
