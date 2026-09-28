@@ -157,6 +157,16 @@ class TestMove(unittest.TestCase):
                 arm.move_to(be.q0[ARM] + np.radians([10, 0, 0, 0, 0, 0, 0]))
         self.assertAlmostEqual(be.sent[-1].weight, 0.0)
 
+    def test_one_joint_pushed_back_is_not_no_motion(self) -> None:
+        """押し当てで 1 つの関節だけ押し戻されても、腕全体として動いていれば「動いていない」にしない。"""
+        be = FakeBackend()
+        with make(be) as arm:
+            q0 = be.q[ARM].copy()
+            target = q0 + np.radians([10, 10, 10, 10, 0, 3, 0])
+            arm.move_to(target)
+            be.q[ARM[5]] = q0[5] - 0.01  # 手首ピッチだけ逆向きに押し戻された
+            arm.check_motion(q0, q0, target)
+
     def test_dry_run_skips_motion_check(self) -> None:
         be = FakeBackend(dry_run=True)
         with make(be) as arm:

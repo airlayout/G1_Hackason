@@ -1,0 +1,13 @@
+# Button_Press / カメラの受信側の設定（ループバックの模擬ロボット sim/sim_robot_server.py 用）。
+# 実機用のスクリプトに --camera-config camera_sim.yaml を付けると、こちらを使う。
+
+rgbd:
+  server_address: 127.0.0.1
+  port: 5556
+  timeout_ms: 5000
+
+legacy_rgb:
+  server_address: 127.0.0.1
+  port: 5555
+  camera_name: head_camera
+  timeout_ms: 5000

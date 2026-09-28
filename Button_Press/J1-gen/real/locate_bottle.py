@@ -59,10 +59,14 @@ def main() -> int:
     p.add_argument("--waist-deg", type=float, nargs=3, metavar=("YAW", "ROLL", "PITCH"))
     p.add_argument("--network-interface", help="lowstate を読む NIC（既定は configs/arm.yaml）")
     p.add_argument("--frames", type=int, default=1, help="--live で処理するフレーム数")
+    p.add_argument("--camera-config", default="camera.yaml", help="カメラの接続先の設定（模擬ロボットは camera_sim.yaml）")
+    p.add_argument("--detector", choices=["yolo", "color"], help="検出器（既定は configs/localize.yaml）")
     args = p.parse_args()
 
     robot_cfg = load_config("robot.yaml")
     loc_cfg = load_config("localize.yaml")
+    if args.detector:
+        loc_cfg["detector"]["type"] = args.detector
     locator = Locator(robot_cfg, loc_cfg, make_detector(loc_cfg))
     out = REPO_ROOT / "_local" / "button_press" / "locate"
     out.mkdir(parents=True, exist_ok=True)
@@ -101,7 +105,7 @@ def main() -> int:
     else:
         from common.camera_rgbd import RgbdZmqSource
 
-        cam = load_config("camera.yaml")["rgbd"]
+        cam = load_config(args.camera_config)["rgbd"]
         reader = None
         if args.waist_deg is None:
             from common.dds import LowStateReader

@@ -1,0 +1,53 @@
+# Button_Press / 全体をつなぐスクリプト（タスク6）の設定。当日はコードを編集せず、ここだけを変える。
+
+# 動かす腕（configs/arm.yaml の arm より優先）
+arm: right
+
+target:
+  # 対象の位置の与え方:
+  #   depth  : 頭カメラの検出と深度から求める（configs/localize.yaml。較正値 calibration.offset_pelvis_m を必ず足す）
+  #   manual : 下の manual の値を使う（深度が使えないとき）
+  source: depth
+
+  depth:
+    # この枚数のフレームで位置を求め、中央値を使う
+    frames: 5
+    # 位置が求まったフレームがこれより少なければ中止
+    min_valid_frames: 3
+    # フレームごとの位置のばらつき（各軸の最大 − 最小）がこれを超えたら中止 [m]
+    max_spread_m: 0.02
+    # 指先（FK）を画像に投影して、対象の枠の中に入っていたら「手が対象を隠している」とする
+    #   warn: 警告だけ出して続ける | abort: 中止する
+    hand_in_view: warn
+
+  manual:
+    # どちらか一方を書く（両方あれば point_pelvis_m を使う）:
+    # 1. pelvis 座標の点 [m]（対象の表面の、押す点）
+    point_pelvis_m: null
+    # 2. 教えた姿勢（configs/taught_poses.yaml）の中指の先の位置から、定規で測ったずれ offset_m [m] の点。
+    #    例: ボトルの表面に中指の先を触れさせた姿勢を reference として記録しておき、ずれは 0 にする。
+    #    ボトルを動かしたら、動かした量（pelvis 座標の向き。x 前、y 左、z 上）を offset_m に書く
+    taught_pose: null
+    offset_m: [0.0, 0.0, 0.0]
+
+push:
+  # 押す方向: forward（pelvis の前方 [1, 0, 0]）| [x, y, z]（pelvis 座標のベクトル）
+  direction: forward
+
+# 経由する姿勢: 開始 → 経由 → 手前の姿勢 の順に動き、戻るときも経由する。次のどれか:
+#   null: 直接
+#   zero: 腕のゼロ姿勢（肘を約 90° 曲げて手を胸の前に出した姿勢）
+#   教えた姿勢の名前（configs/taught_poses.yaml。実機日に、机の縁より手前で手を上げた姿勢を記録してもよい）
+#   [7 つの角度 deg]: 右腕の shoulder_pitch, shoulder_roll, shoulder_yaw, elbow, wrist_roll, wrist_pitch, wrist_yaw
+#                     （左腕は左右を反転して使う）
+# 両腕を下ろした姿勢から関節空間でまっすぐ動くと、手が机の縁の下をくぐって机に当たる（MuJoCo で確認。
+# ゼロ姿勢を経由しても当たった）。既定は、肩を少し後ろへ引き、肘を曲げて手を体の近くで持ち上げる姿勢
+# （机の縁より手前で手を上げてから、机の上へ出る）。机は configs/press.yaml の obstacles に書くと、
+# 当たる経路は計画の段階で拒否される
+via_pose: [17.2, -11.5, 0.0, -34.4, 0.0, 0.0, 0.0]
+
+# IK の初期値に使う、教えた姿勢の名前（configs/taught_poses.yaml）。無ければ今の姿勢から解く（警告を出す）
+seed_pose: press_bottle
+
+# 記録の保存先（リポジトリ直下からの相対パス）
+log_dir: _local/button_press/runs

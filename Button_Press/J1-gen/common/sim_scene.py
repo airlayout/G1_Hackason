@@ -45,6 +45,15 @@ def bottle_front_point(scene_cfg: dict[str, Any], height_fraction: float = 0.5) 
     return np.array([b["xy"][0] - b["radius"], b["xy"][1], z])
 
 
+def table_obstacle(scene_cfg: dict[str, Any], below_m: float = 0.4) -> dict[str, Any]:
+    """シーンの机を、衝突の確認の障害物（configs/press.yaml の obstacles の形）にする。脚の分として下に below_m 伸ばす。"""
+    t = scene_cfg["table"]
+    top = np.asarray(t["top_center"], dtype=float)
+    half = np.asarray(t["half_size"], dtype=float)
+    hz = (2 * half[2] + below_m) / 2
+    return {"name": "table", "center": [top[0], top[1], top[2] - hz], "half_size": [half[0], half[1], hz]}
+
+
 def detection_pose(scene_cfg: dict[str, Any], q: np.ndarray) -> np.ndarray:
     """q（29）のうち、detection_pose_deg に書いた関節だけを検出用の姿勢にしたもの。"""
     out = np.asarray(q, dtype=float).copy()

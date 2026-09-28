@@ -1,6 +1,8 @@
 # Button_Press / 対象の検出と 3D 座標の設定（タスク4）
 
 detector:
+  # yolo（既定）| color（色で探す。YOLO が対象を見つけられないときの予備。模擬ロボットのリハーサルでも使う）
+  type: yolo
   # Perception と同じ YOLO の重み（ultralytics が初回に自動でダウンロードする）
   model: yolo26n.pt
   # 事前学習済み（COCO）のクラス名。ボトル押しは bottle。ボタンは 10/1 以降に学習したモデルで置き換える
@@ -8,6 +10,13 @@ detector:
   confidence_threshold: 0.4
   # auto（GPU があれば GPU）| cpu | cuda
   device: auto
+  # type: color のときの色の範囲（HSV。H は 0〜179）。既定は赤（色相が 0 付近と 179 付近の 2 つ）。
+  # 実機のボトルのラベルの色に合わせて変える
+  color:
+    hsv_ranges:
+      - [[0, 120, 60], [8, 255, 255]]
+      - [[170, 120, 60], [179, 255, 255]]
+    min_area_px: 300
 
 depth:
   # 深度を取る基準点（枠の幅・高さに対する割合。[0.5, 0.5] が中心）。

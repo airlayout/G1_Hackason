@@ -22,6 +22,8 @@ class JointState:
     stamp: float
     # IMU の姿勢（四元数 w, x, y, z）。重力補償で pelvis の傾きを知るのに使う
     imu_quat: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0, 0.0]))
+    # 模擬ロボット（sim/sim_robot_server.py）が送った lowstate か（reserve[0] の目印）
+    sim_marker: bool = False
 
 
 @dataclass

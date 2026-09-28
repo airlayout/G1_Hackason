@@ -163,8 +163,13 @@ bash Button_Press/J1-gen/real/depth_server/fetch_offline_packages.sh
    G1_HuggingFace/venv/bin/python Perception/real/probe_zmq_camera.py --host 192.168.123.164 --timeout 60
    ```
 
-4. 対象（ボトル）の位置は、タスク6の「定規で測った位置」モードで与える
-   （設定のキー名と具体的なコマンドは、タスク6の実装後にここへ追記する）。
+4. 対象（ボトル）の位置は、「定規で測った位置」モード（`--target manual`）で与える。段階3で、ボトルの表面に
+   中指の先を触れさせた姿勢を `touch_bottle` などの名前で記録しておき、ボトルを動かしたら動かした量
+   （pelvis の向き。x 前、y 左、z 上 [m]）を `--offset` に書く:
+
+   ```bash
+   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/press_bottle.py --path arm_sdk --target manual --taught-pose touch_bottle --offset 0 0 0 --no-camera
+   ```
 
 ## ボトルの位置を求める（タスク4）
 
@@ -300,6 +305,22 @@ git worktree remove ../G1_nav
    - 腕をいくつかの姿勢にして、どの姿勢でも同じようにずれるか（一定のずれ）、姿勢で変わるか（関節の対応や
      モデルの違い）を記録する。
 
+### 机の障害物の箱を作る（段階3の続き。段階5の前に必ず）
+
+机はロボットのモデルに無いので、箱を作っておかないと「手が机の縁の下をくぐる」経路を計画で見つけられない
+（MuJoCo では、両腕を下ろした姿勢から手を上げる途中に机に当たった）。腕を手で動かすので、座った状態か吊り下げで行う。
+
+中指の先で、机の天板の角を 1 か所ずつ触って Enter（少なくとも手前の左右の 2 か所。奥の角も届けば触る）。q で終わる:
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/teach.py --obstacle table --arm right
+```
+
+- 触った点から箱を作り、`configs/obstacles.yaml` に保存する。手前の縁から奥へ 0.6 m、天板の上面から下へ 0.8 m、
+  まわりに 3 cm の余裕（`--depth-m` / `--below-m` / `--margin-m` で変えられる）。表示された箱の範囲が、机と合っているかを見る。
+- 全体をつなぐスクリプトは、この箱も衝突の確認に使う（腕が箱に近づく・入る経路は、送る前に拒否する）。
+- 机を動かしたら作り直す。
+
 ## 段階4: 較正
 
 ⚠️ 指先で触れるときは腕を手で動かすので、座った状態か吊り下げた状態で行う。
@@ -323,7 +344,30 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/calibrate.py --arm right
 
 ## 段階5・6: 押し込み
 
-（タスク6の全体をつなぐスクリプトを作ったあとで、ここに手順を書く）
+事前に `configs/obstacles.yaml`（机の箱。段階3の `teach.py --obstacle` で作る）と、`configs/pipeline.yaml` の
+`via_pose`（机の縁より手前で手を上げる経由の姿勢）を確かめておく。検出するときは腕をカメラの視野から外す。
+
+1. dry-run（何も送らない。検出・計画・指令の計算と記録だけ）。計画で拒否されたら、表示された理由
+   （届かない / ぶつかる / 作業空間の外）を見て、ボトルの置き場所や `workspace` / `obstacles` を見直す:
+
+   ```bash
+   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/press_bottle.py --path arm_sdk --label dry
+   ```
+
+2. 確認モードで送る（各段階で Enter。危なければ q か Ctrl+C、さらに危なければ L2+B）。
+   「手前の姿勢まで行ければ成功」とする:
+
+   ```bash
+   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/press_bottle.py --path arm_sdk --execute --label try1
+   ```
+
+   プランB なら `--path lowcmd`（座った状態か吊り下げ。開始時に確認される）。押し込みの深さは `--depth-mm`（上限 30 mm）。
+
+3. ボトルの置き場所を変えて繰り返す（段階6）。**別のターミナルで `record.py` を動かしたまま**押し、全試行を収録する。
+   各回の記録は `_local/button_press/runs/<日時>_<ラベル>/`（RGB・深度・lowstate・検出・IK・送った指令）。
+
+終了コード: 0 成功 / 2 目標を拒否（何も送っていない、または動かしたあと安全に止めた）/ 3 動いていない /
+4 lowstate・相手・mode_machine・モータの問題 / 5 腰が倒れた / 130 中止（q、Ctrl+C）
 
 ## 実機日が終わったら
 

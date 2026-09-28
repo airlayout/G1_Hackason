@@ -90,6 +90,53 @@ def save_taught_pose(name: str, side: str, q: np.ndarray, fingertip: np.ndarray,
     path.write_text(header + body, encoding="utf-8")
 
 
+OBSTACLES = CONFIG_DIR / "obstacles.yaml"
+
+
+def box_from_touch_points(
+    points: list[np.ndarray], margin_m: float, depth_m: float, below_m: float
+) -> dict[str, Any]:
+    """中指の先で触った机の角などの点（pelvis 座標）から、障害物の箱を作る。
+
+    ロボットは +x を向いている前提:
+    - x: 一番手前の点を手前の縁とし、そこから奥へ depth_m（触った点がもっと奥にあればそこまで）
+    - y: 触った点の左右の範囲
+    - z: 一番高い点を天板の上面とし、下へ below_m（机の脚の分）
+    まわりに margin_m の余裕を足す。
+    """
+    p = np.asarray(points, dtype=float)
+    if p.ndim != 2 or p.shape[0] < 2:
+        raise ValueError("点が 2 つ以上いる（机の手前の左右の角など）")
+    x0 = p[:, 0].min()
+    lo = np.array([x0 - margin_m, p[:, 1].min() - margin_m, p[:, 2].max() - below_m])
+    hi = np.array([max(p[:, 0].max(), x0 + depth_m) + margin_m, p[:, 1].max() + margin_m, p[:, 2].max() + margin_m])
+    return {"center": [round(float(v), 4) for v in (lo + hi) / 2],
+            "half_size": [round(float(v), 4) for v in (hi - lo) / 2]}
+
+
+def load_obstacles(path: Path | str = OBSTACLES) -> list[dict[str, Any]]:
+    path = Path(path)
+    if not path.exists():
+        return []
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return list(data.get("obstacles") or [])
+
+
+def save_obstacle(name: str, box: dict[str, Any], points: list[np.ndarray], note: str = "",
+                  path: Path = OBSTACLES) -> None:
+    """障害物の箱を追加する（同じ名前があれば置き換える）。"""
+    header = (
+        "# Button_Press / 障害物の箱（real/teach.py --obstacle が書く）。pelvis 座標 [m]。\n"
+        "# configs/press.yaml の obstacles に加えて、全体をつなぐスクリプトの衝突の確認に使う。\n"
+        "# touch_points_m は中指の先で触った点。実機日のデータなので、終わったらコミットして残す。\n"
+    )
+    obs = [o for o in load_obstacles(path) if o.get("name") != name]
+    obs.append({"name": name, "center": box["center"], "half_size": box["half_size"],
+                "touch_points_m": [[round(float(v), 4) for v in pt] for pt in points],
+                "recorded_at": time.strftime("%Y-%m-%d %H:%M:%S"), "note": note})
+    path.write_text(header + yaml.safe_dump({"obstacles": obs}, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+
 def taught_q_seed(name: str, q_now: np.ndarray, path: Path = TAUGHT_POSES) -> tuple[str, np.ndarray]:
     """教えた姿勢を IK の初期値（29 関節）にする。腕以外は q_now のまま。(腕の左右, q) を返す。"""
     poses = load_taught_poses(path)

@@ -81,6 +81,8 @@ def main() -> int:
     p.add_argument("--frames", type=int, default=10, help="カメラで位置を求めるフレーム数（中央値を取る）")
     p.add_argument("--write", action="store_true", help="最後に、差の平均を localize.yaml に書き込む")
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
+    p.add_argument("--camera-config", default="camera.yaml", help="カメラの接続先の設定（模擬ロボットは camera_sim.yaml）")
+    p.add_argument("--detector", choices=["yolo", "color"], help="検出器（既定は configs/localize.yaml）")
     args = p.parse_args()
 
     if not confirm_support():
@@ -91,6 +93,8 @@ def main() -> int:
     robot_cfg = load_config("robot.yaml")
     arm_cfg = load_config("arm.yaml")
     loc_cfg = load_config("localize.yaml")
+    if args.detector:
+        loc_cfg["detector"]["type"] = args.detector
     old_offset = np.asarray(loc_cfg["calibration"]["offset_pelvis_m"], dtype=float)
     raw_cfg = copy.deepcopy(loc_cfg)
     raw_cfg["calibration"]["offset_pelvis_m"] = [0.0, 0.0, 0.0]  # 補正を入れない生の値で比べる
@@ -99,7 +103,7 @@ def main() -> int:
     reader = LowStateReader(int(arm_cfg.get("domain_id", 0)), args.network_interface or arm_cfg["network_interface"])
     reader.open()
     reader.wait(10.0)
-    cam = load_config("camera.yaml")["rgbd"]
+    cam = load_config(args.camera_config)["rgbd"]
     out = REPO_ROOT / "_local" / "button_press" / "calibration"
     out.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")

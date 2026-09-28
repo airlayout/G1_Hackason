@@ -7,7 +7,8 @@
 - 同じ腕のリンクどうしは調べない（関節の構造で隣り合っていて常に近い。可動範囲は関節リミットで守る）
 - 公式モデルのハンド（rubber_hand）は見た目用のメッシュしか無く、衝突判定の形状が無い。
   そこで、ハンドのメッシュの頂点を包む箱を衝突判定用に足す（このチェック用のモデルだけ。公式ファイルは変えない）
-- 床（world）は除く。机やボトルなど、モデルに無い物との接触は調べない（押す対象には触れるのが正しいため）
+- 床（world）は除く。押す対象（ボトルなど）はモデルに入れない（触れるのが正しいため）
+- 机などの障害物は、設定（configs/press.yaml の obstacles）に箱で書けば調べる
 """
 
 from __future__ import annotations
@@ -60,32 +61,60 @@ def _hand_box(model: Any, data: Any, side: str) -> tuple[np.ndarray, np.ndarray]
     return (lo + hi) / 2, (hi - lo) / 2
 
 
+def hand_boxes(robot_cfg: dict[str, Any]) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """左右のハンドのメッシュを包む箱（中心、半分の大きさ）。{side}_wrist_yaw_link 基準。"""
+    import mujoco
+
+    base = build_spec(robot_cfg, fixed_base=True).compile()
+    bd = mujoco.MjData(base)
+    mujoco.mj_kinematics(base, bd)
+    mujoco.mj_camlight(base, bd)
+    return {s: _hand_box(base, bd, s) for s in ("left", "right")}
+
+
+def add_hand_boxes(spec: Any, boxes: dict[str, tuple[np.ndarray, np.ndarray]]) -> None:
+    """公式モデルのハンドには衝突判定の形状が無いので、メッシュを包む箱を足す（見た目には出ない）。"""
+    import mujoco
+
+    for s, (center, half) in boxes.items():
+        g = spec.body(f"{s}_wrist_yaw_link").add_geom()
+        g.name = f"{s}_hand_collision_box"
+        g.type = mujoco.mjtGeom.mjGEOM_BOX
+        g.pos = list(center)
+        g.size = list(half)
+        g.contype = 1
+        g.conaffinity = 1
+        g.group = 3
+        g.rgba = [1, 0, 0, 0.3]
+
+
+def add_obstacles(spec: Any, obstacles: list[dict[str, Any]]) -> None:
+    """障害物の箱（机など。pelvis 座標の中心 center と半分の大きさ half_size）をワールドに置く。"""
+    import mujoco
+
+    pelvis = np.asarray(spec.body("pelvis").pos, dtype=float)
+    for i, ob in enumerate(obstacles):
+        b = spec.worldbody.add_body(name=f"obstacle_{i}_{ob.get('name', '')}",
+                                    pos=list(pelvis + np.asarray(ob["center"], dtype=float)))
+        g = b.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=list(ob["half_size"]))
+        g.contype = 1
+        g.conaffinity = 1
+
+
 class CollisionChecker:
-    def __init__(self, robot_cfg: dict[str, Any], side: str, clearance_m: float) -> None:
+    def __init__(self, robot_cfg: dict[str, Any], side: str, clearance_m: float,
+                 obstacles: list[dict[str, Any]] | None = None) -> None:
+        """obstacles: 障害物の箱（机など）。腕（ハンドを含む）が近づく・入る姿勢を「ぶつかる」とする。"""
         import mujoco
 
         self._mj = mujoco
         self.side = side
         self.clearance = float(clearance_m)
 
-        # ハンドの箱の大きさを知るため、いったん公式モデルのまま組み立てる
-        base = build_spec(robot_cfg, fixed_base=True).compile()
-        bd = mujoco.MjData(base)
-        mujoco.mj_kinematics(base, bd)
-        mujoco.mj_camlight(base, bd)
-        boxes = {s: _hand_box(base, bd, s) for s in ("left", "right")}
-
+        boxes = hand_boxes(robot_cfg)
         spec = build_spec(robot_cfg, fixed_base=True)
-        for s, (center, half) in boxes.items():
-            g = spec.body(f"{s}_wrist_yaw_link").add_geom()
-            g.name = f"{s}_hand_collision_box"
-            g.type = mujoco.mjtGeom.mjGEOM_BOX
-            g.pos = list(center)
-            g.size = list(half)
-            g.contype = 1
-            g.conaffinity = 1
-            g.group = 3
-            g.rgba = [1, 0, 0, 0.3]
+        add_hand_boxes(spec, boxes)
+        add_obstacles(spec, obstacles or [])
         self.model = spec.compile()
         self.data = mujoco.MjData(self.model)
         m = self.model

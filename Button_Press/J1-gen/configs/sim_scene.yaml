@@ -6,10 +6,10 @@
 # 29 関節のうち、ここに書いた関節だけを変える（motor 番号: 角度 [deg]）
 detection_pose_deg:
   15: 11.5   # left_shoulder_pitch
-  16: 14.3   # left_shoulder_roll（外向き）
+  16: 20.0   # left_shoulder_roll（外向き。14.3° だと、経由の姿勢へ上げる途中で手が腰の 1 cm 以内を通った）
   18: 86.0   # left_elbow
   22: 11.5   # right_shoulder_pitch
-  23: -14.3  # right_shoulder_roll（外向き）
+  23: -20.0  # right_shoulder_roll（外向き）
   25: 86.0   # right_elbow
 
 table:

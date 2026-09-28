@@ -21,6 +21,52 @@ import calibrate  # noqa: E402
 INTR = Intrinsics(640, 480, 615.0, 615.0, 319.5, 239.5)
 
 
+class TestObstacleFromTouch(unittest.TestCase):
+    def test_box_from_front_corners(self) -> None:
+        """手前の左右の角（天板の上面 z = −0.05、手前の縁 x = 0.30）から、余裕 3 cm の箱を作る。"""
+        from common.realday import box_from_touch_points
+
+        box = box_from_touch_points([np.array([0.30, -0.40, -0.05]), np.array([0.31, 0.20, -0.052])],
+                                    margin_m=0.03, depth_m=0.6, below_m=0.8)
+        lo = np.array(box["center"]) - np.array(box["half_size"])
+        hi = np.array(box["center"]) + np.array(box["half_size"])
+        np.testing.assert_allclose(lo, [0.27, -0.43, -0.85], atol=1e-4)
+        np.testing.assert_allclose(hi, [0.93, 0.23, -0.02], atol=1e-4)
+
+    def test_needs_two_points(self) -> None:
+        from common.realday import box_from_touch_points
+
+        with self.assertRaises(ValueError):
+            box_from_touch_points([np.array([0.3, 0.0, 0.0])], 0.03, 0.6, 0.8)
+
+    def test_saved_box_is_used_by_planner(self) -> None:
+        """保存した箱が全体の流れの設定に入り、机をくぐる経路を計画の段階で拒否する。"""
+        import argparse
+
+        from common.pipeline_cli import load_pipeline_config
+        from common.press_planner import PressPlanner, UnreachableError
+        from common.realday import box_from_touch_points, load_obstacles, save_obstacle
+        from common.sim_scene import detection_pose
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "obstacles.yaml"
+            pts = [np.array([0.30, -0.45, -0.05]), np.array([0.30, 0.25, -0.05])]
+            save_obstacle("table", box_from_touch_points(pts, 0.03, 0.4, 0.4), pts, path=path)
+            save_obstacle("table", box_from_touch_points(pts, 0.03, 0.4, 0.4), pts, path=path)  # 置き換え
+            self.assertEqual(len(load_obstacles(path)), 1)
+            ns = argparse.Namespace(arm=None, target=None, point=None, taught_pose=None, offset=None, seed_pose=None,
+                                    depth_mm=None, detector=None, gravity_scale=None, obstacles_file=str(path))
+            cfg = load_pipeline_config(ns)
+        self.assertEqual([o["name"] for o in cfg.press["obstacles"]], ["table"])
+        pl = PressPlanner.from_config(cfg.robot, cfg.press, cfg.arm, "right")
+        q0 = detection_pose(load_config("sim_scene.yaml"), np.zeros(29))
+        seed = q0.copy()
+        seed[22:29] = 0.0
+        with self.assertRaisesRegex(UnreachableError, "obstacle"):
+            # 両腕を下ろした姿勢から、ゼロ姿勢を経由すると机をくぐる
+            pl.plan(q0, np.array([0.388, -0.2, 0.04]), np.array([1.0, 0, 0]), q_seed=seed, q_via_arm=np.zeros(7))
+
+
 class TestProjection(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

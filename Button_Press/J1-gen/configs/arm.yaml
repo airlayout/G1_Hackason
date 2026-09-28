@@ -40,8 +40,8 @@ safety:
   settle_s: 0.5
   # 移動後の追従誤差がこれを超えたら警告する [rad]（0.05 rad ≈ 2.9°）
   tracking_tolerance_rad: 0.05
-  # 「送信したのに動かない」の判定。指令した変化が min_commanded_rad より大きい関節で、
-  # 実際の変化が指令の min_ratio 倍未満ならエラーにして止める
+  # 「送信したのに動かない」の判定。指令した変化が min_commanded_rad より大きい関節について、
+  # 腕全体で実際の変化が指令の向きに min_ratio 倍未満しか進んでいなければ（射影で見る）、エラーにして止める
   motion_check:
     min_commanded_rad: 0.02
     min_ratio: 0.3

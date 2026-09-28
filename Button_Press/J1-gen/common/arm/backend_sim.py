@@ -25,7 +25,7 @@ from typing import Any
 
 import numpy as np
 
-from ..robot_model import JOINT_NAMES, NUM_MOTORS, load_model
+from ..robot_model import JOINT_NAMES, NUM_MOTORS, build_spec, load_model
 from .backend import ArmBackend
 from .types import JointCommand, JointState
 
@@ -55,7 +55,18 @@ class SimBackend(ArmBackend):
         import mujoco
 
         self._mj = mujoco
-        self.model = load_model(self._robot_cfg, fixed_base=True)
+        scene = self._sim_cfg.get("scene")
+        if scene:
+            # 机とボトルを置き、ハンドに衝突判定の箱を足す（指先がボトルに当たって止まるように）
+            from ..collision import add_hand_boxes, hand_boxes
+            from ..sim_scene import add_scene
+
+            spec = build_spec(self._robot_cfg, fixed_base=True)
+            add_scene(spec, scene)
+            add_hand_boxes(spec, hand_boxes(self._robot_cfg))
+            self.model = spec.compile()
+        else:
+            self.model = load_model(self._robot_cfg, fixed_base=True)
         # Kd 項を陰的に解くため（上の説明を参照）
         self.model.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
         self.data = mujoco.MjData(self.model)

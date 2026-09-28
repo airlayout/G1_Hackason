@@ -126,11 +126,48 @@ class Locator:
         return ok[0] if ok else None
 
 
+class ColorDetector:
+    """色（HSV の範囲）で対象を探す検出器。YOLO が対象を見つけられないときの予備と、模擬ロボットのリハーサル用。
+
+    HSV: 色相（H: 0〜179、OpenCV の単位）・彩度（S）・明るさ（V）。赤は色相が 0 付近と 179 付近に分かれるので、
+    範囲を 2 つ書ける。一番大きい色の塊を 1 つ返す（面積が min_area_px より小さければ何も返さない）。
+    """
+
+    def __init__(self, hsv_ranges: list[list[list[int]]], min_area_px: int, class_name: str) -> None:
+        from .perception_bridge import perception
+
+        self._Detection = perception("detector").Detection
+        self.ranges = [(np.array(lo, np.uint8), np.array(hi, np.uint8)) for lo, hi in hsv_ranges]
+        self.min_area = int(min_area_px)
+        self.class_name = class_name
+
+    def detect(self, frame: np.ndarray) -> list[Any]:
+        import cv2
+
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        mask = np.zeros(hsv.shape[:2], np.uint8)
+        for lo, hi in self.ranges:
+            mask |= cv2.inRange(hsv, lo, hi)
+        n, _, stats, _ = cv2.connectedComponentsWithStats(mask)
+        if n <= 1:
+            return []
+        i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        x, y, w, h, area = stats[i]
+        if area < self.min_area:
+            return []
+        conf = float(area) / float(w * h)  # 枠の中で色が占める割合（確からしさの代わり）
+        return [self._Detection(class_name=self.class_name, confidence=conf,
+                                bbox=(float(x), float(y), float(x + w), float(y + h)))]
+
+
 def make_detector(loc_cfg: dict[str, Any]) -> Detector:
-    """Perception の YoloDetector を設定から作る。"""
+    """設定の detector.type に応じて、Perception の YoloDetector か、色の検出器を作る。"""
     from .perception_bridge import perception
 
     det = loc_cfg["detector"]
+    if det.get("type", "yolo") == "color":
+        c = det["color"]
+        return ColorDetector(c["hsv_ranges"], int(c["min_area_px"]), str(det["classes"][0]))
     return perception("detector").YoloDetector(
         model_name=det["model"], classes=list(det["classes"]),
         confidence_threshold=float(det["confidence_threshold"]), device=det.get("device", "auto"),

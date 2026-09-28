@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 
 from ..robot_model import ARM_SDK_WEIGHT_IDX, NUM_MOTORS
-from ..dds import init_dds, parse_lowstate
+from ..dds import check_peer, init_dds, parse_lowstate, peer_label
 from .backend import ArmBackend
 from .types import JointCommand, JointState
 
@@ -71,7 +71,7 @@ class DdsBackend(ArmBackend):
         # プランB はバランス制御が止まるので、座った状態か吊り下げで使う
         self.needs_support_check = path == "lowcmd"
         self.topic = TOPIC_ARM_SDK if self.uses_weight else TOPIC_LOWCMD
-        self.name = f"{self.topic}{'（dry-run）' if dry_run else ''}"
+        self.name = f"{self.topic}（{peer_label(network_interface)}{'、dry-run' if dry_run else ''}）"
         self.dry_run = dry_run
         self._iface = network_interface
         self._domain_id = domain_id
@@ -130,6 +130,9 @@ class DdsBackend(ArmBackend):
         rest = self._next_deadline - time.monotonic()
         if rest > 0:
             time.sleep(rest)
+
+    def verify_peer(self, state: JointState) -> None:
+        check_peer(state, self._iface)
 
     def close(self) -> None:
         print(f"[dds] 送信回数 {self._send_count}")

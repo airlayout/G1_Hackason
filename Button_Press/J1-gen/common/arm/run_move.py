@@ -97,6 +97,9 @@ def run(args: argparse.Namespace, path: str, dry_run: bool, confirm: bool,
     except StopRequested as e:
         print(f"[move] 中止: {e}")
         return 130
+    except RuntimeError as e:  # モータが無効（ゼロトルク）、mode_machine が違う、相手の食い違い、など
+        print(f"[move] ❌ {e}")
+        return 4
     finally:
         backend.close()
 

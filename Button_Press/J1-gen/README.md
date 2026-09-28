@@ -31,11 +31,16 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `sim_scene.py` / `sim_camera.py` — MuJoCo の机とボトル、頭カメラの RGB + 深度、セグメンテーションの検出器
   - `recording.py` / `recorder.py` — 収録（RGB・深度・lowstate を時刻付きで保存）と再生
   - `realday.py` — 実機日用のツールの部品（指先の FK、画像への投影、教えた姿勢、支持の確認）
+  - `pipeline.py` / `pipeline_cli.py` — 全体をつなぐ流れ（検出 → 目標 → IK → 手前の姿勢 → 押し込み → 戻る）
+  - `run_logger.py` — 1 回分の記録（RGB・深度・lowstate・検出・IK・送った指令。dry-run でも）
+  - `post_press.py` — 押したあとの確認の差し込み口（ボタン版で「点灯しなければ深く押し直す」に使う）
 - `sim/` — MuJoCo での検証
   - `fetch_models.sh` — 公式モデル（unitree_ros の `g1_29dof_rev_1_0`）を取得する
   - `move_arm_sim.py` — 腕を指定の関節角へ動かして戻す
   - `press_sim.py` — 指定した点（pelvis 座標）を押す
   - `locate_sim.py` — 頭カメラの画像と深度からボトルの位置を求め、正解と比べる
+  - `press_bottle_sim.py` — 全体をつなぐスクリプト（MuJoCo、同じプロセス）
+  - `sim_robot_server.py` — ループバックの模擬ロボット（実機と同じ DDS とカメラ。故障をわざと起こせる）
 - `real/` — 実機用
   - `move_arm_real.py` — 同じことを実機で行う（既定は dry-run。送るには `--execute`）
   - `REAL_DAY_PROCEDURE.md` — 実機日の手順書（段階0〜6）
@@ -47,6 +52,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `teach.py` — ティーチング（手で動かした腕の姿勢を `configs/taught_poses.yaml` に記録）
   - `fk_check.py` — FK の確認（指先の位置の表示、頭カメラの画像への投影、指先の点を試しに変える）
   - `calibrate.py` — 較正（カメラで求めた位置と、指先で触れた位置の差を複数か所で取る）
+  - `press_bottle.py` — 全体をつなぐスクリプト（実機。既定は dry-run）
 - `configs/` — 設定ファイル。当日はコードを編集せず、ここだけを変える
   - `robot.yaml` — モデルのパス、頭カメラの取り付け位置
   - `arm.yaml` — 経路（sim / arm_sdk / lowcmd）、NIC 名、ゲイン、安全の上限、重力補償
@@ -57,6 +63,8 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `sim_scene.yaml` — MuJoCo の机とボトル、検出するときの姿勢
   - `record.yaml` — 収録の保存先、カラーの形式、lowstate の周期、間引きの間隔
   - `taught_poses.yaml` — ティーチングで記録した姿勢（`teach.py` が書く。実機日のあとコミットする）
+  - `pipeline.yaml` — 全体の流れ: 対象の与え方（depth / manual）、押す方向、経由の姿勢、IK の初期値、記録の保存先
+  - `camera_sim.yaml` — 模擬ロボット用のカメラの接続先（127.0.0.1）
 - `tests/` — `run_tests.sh`（CI が自動で見つけて実行する）
 
 ## 機体モデル
@@ -82,7 +90,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
 | 3 | 深度付きの配信サーバ（PC2） | 済み（本物の RealSense では未確認） |
 | 4 | ボトル検出 → 3D 座標 → pelvis 座標 | 済み（YOLO は実機の画像で未確認） |
 | 5 | 収録ツール | 済み |
-| 6 | 全体をつなぐスクリプト | これから |
+| 6 | 全体をつなぐスクリプト | 済み（MuJoCo と模擬ロボットで確認。実機では未確認） |
 | 7 | 実機日用のツールと手順 | 済み（実機では未確認） |
 
 ## 腕の指令部分（タスク1）
@@ -233,3 +241,37 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --recor
 確かめたこと（2026-09-28、実機なし）: 投影と逆投影が往復で一致する。MuJoCo で、FK の中指の先を頭カメラに
 投影した画素に右手が写っている（取り違えていた値では写っていなかった）。教えた姿勢の保存と読み込み、
 補正値の書き込み（コメントは残る）。
+
+## 全体をつなぐスクリプト（タスク6）
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/press_bottle_sim.py                     # MuJoCo（同じプロセス）
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/press_bottle.py --path arm_sdk             # 実機、dry-run
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/press_bottle.py --path arm_sdk --execute   # 実機、送信（確認モード）
+```
+
+流れ（`common/pipeline.py`）: lowstate と相手の確認 → 対象の位置（depth: 複数フレームの中央値、較正値を必ず足す。
+manual: 設定の点、または教えた姿勢の中指の先 + 定規のずれ）→ 計画（IK の初期値は 教えた姿勢 → 今の姿勢 → 腕のゼロ姿勢 の順に試す。
+届かない・ぶつかるならここで中止し、何も送らない）→ 経由の姿勢 → 手前の姿勢 → **実測の腰の角度で必ず計算し直す** → 押し込み →
+保持 → 戻り → 押したあとの確認（押し直しは上限付き）→ 経由の姿勢 → 開始姿勢。
+
+- 記録: `_local/button_press/runs/<日時>_<ラベル>/`（dry-run でも）。形式は `common/run_logger.py` の先頭のコメント。
+- 机などの障害物は `configs/press.yaml` の `obstacles` に箱で書く。両腕を下ろした姿勢から手を上げると、手が机の縁に
+  当たった（MuJoCo。腰のずれの監視で止まった）。経由の姿勢（`pipeline.yaml` の `via_pose`）で、机の縁より手前で手を上げる。
+- 「送信したのに動かない」の判定は、腕全体の動き（指令の向きへの射影）で見る。押し当てで 1 つの関節だけ押し戻されても
+  誤判定しない（模擬ロボットで、手首ピッチだけ押し戻されて誤判定したため変えた）。
+
+### ループバックの模擬ロボット
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/sim_robot_server.py
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/press_bottle.py --path arm_sdk --network-interface lo --camera-config camera_sim.yaml --detector color --sim-scene-obstacles --execute
+```
+
+- MuJoCo の G1 を、実機と同じ DDS のトピックと ZMQ のカメラで見せる。実機用のスクリプトを、当日と同じコマンドのまま試せる。
+- **実機と混ざらないように固定している**: DDS は口 `lo` と domain 1（G1 は domain 0）、カメラは 127.0.0.1 だけ。
+  lowstate の `reserve[0]` に目印を入れ、実機用のスクリプトは開始時に口と相手（実機 / 模擬ロボット）を表示し、食い違えば中止する。
+- `--fault` でわざと故障を起こせる: `ignore_arm_sdk`（arm_sdk が効かない）/ `motor_mode0`（ゼロトルク）/
+  `lowstate_dropout`（途切れる）/ `mode_machine`（機体構成の違い）/ `waist_sag`（腰が倒れる）。
+  それぞれ決まった終了コード（3 / 4 / 4 / 4 / 5）で安全に止まることを `tests/test_sim_robot.py` で確かめている。
+- 模擬ロボットは domain 1 なので、domain 0 で動く g1-starter-kit の `mode_check.py` / `armsdk_probe.py` は試せない。

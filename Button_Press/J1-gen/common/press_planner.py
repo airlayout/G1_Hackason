@@ -46,10 +46,13 @@ class PressPlan:
     depth: float  # 押し込みの深さ [m]（上限で頭打ちにした後の値）
     # 計算に使った腰の角度（yaw, roll, pitch）[rad]
     waist_q: np.ndarray
+    # 経由する姿勢（片腕 7 関節）。開始 → 経由 → 手前 の順に動く（机などをくぐらないように）。無ければ直接
+    q_via: np.ndarray | None = None
 
     def summary(self) -> str:
-        f = lambda v: np.array2string(np.asarray(v), precision=3, suppress_small=True)  # noqa: E731
+        f = lambda v: "[" + ", ".join(f"{x:+.3f}" for x in np.asarray(v, dtype=float)) + "]"  # noqa: E731
         return (
+            ("経由の姿勢あり、" if self.q_via is not None else "") +
             f"手前 {f(self.approach_point)} → 表面 {f(self.target_point)} → 押し込み終わり {f(self.end_point)}"
             f"（押す方向 {f(self.push_dir)}、直線 {len(self.press_in)} 点、IK の最大誤差 "
             f"{self.max_ik_err_m * 1000:.1f} mm）"
@@ -82,7 +85,8 @@ class PressPlanner:
         dt = 1.0 / float(arm_cfg["control_hz"])
         return cls(
             kin=ArmKinematics(robot_cfg, side, press_cfg["ik"]),
-            collision=CollisionChecker(robot_cfg, side, press_cfg["collision"]["clearance_m"]),
+            collision=CollisionChecker(robot_cfg, side, press_cfg["collision"]["clearance_m"],
+                                       press_cfg.get("obstacles") or []),
             workspace=WorkspaceBox.from_config(press_cfg["workspace"][side]),
             press_cfg=press_cfg["press"],
             control_dt=dt,
@@ -123,12 +127,14 @@ class PressPlanner:
         push_dir: np.ndarray,
         q_seed: np.ndarray | None = None,
         depth: float | None = None,
+        q_via_arm: np.ndarray | None = None,
     ) -> PressPlan:
         """
         q_now: 今の関節角（29、実測）。腰と反対の腕はこの値で固定して計算する
         target: 対象の表面の点（pelvis 座標）
         push_dir: 押す方向（pelvis 座標。長さは問わない）
         q_seed: IK の初期値（29）。ティーチングで記録した押し込み姿勢を渡す。無ければ q_now
+        q_via_arm: 経由する姿勢（片腕 7 関節）。与えれば 開始 → 経由 → 手前 の経路で衝突を確かめる
         depth: 押し込みの深さ [m]（無ければ設定値）。max_press_depth_m で頭打ちにする
         """
         c = self.cfg
@@ -156,18 +162,25 @@ class PressPlanner:
 
         q_app = self.solve(approach, seed, axis, "手前の姿勢")
 
-        # 今の姿勢 → 手前の姿勢（関節空間の補間）の途中の姿勢もぶつからないか
+        # 今の姿勢 →（経由の姿勢 →）手前の姿勢（関節空間の補間）の途中の姿勢もぶつからないか
         arm = self.kin.arm_idx
-        path = interpolate_joint(q_now[arm], q_app[arm], 1.0, 1.0 / self.joint_path_samples)
-        for k, qa in enumerate(path):
-            q = q_app.copy()
-            q[arm] = qa
-            hits = self.collision.contacts(q)
-            if hits:
-                raise UnreachableError(
-                    f"手前の姿勢へ移動する途中（{k + 1}/{len(path)}）で腕が体にぶつかる: "
-                    + "; ".join(str(h) for h in hits[:3])
-                )
+        legs = [(q_now[arm], q_app[arm], "手前の姿勢へ移動する途中")]
+        if q_via_arm is not None:
+            q_via_full = q_app.copy()
+            q_via_full[arm] = q_via_arm
+            self.check_pose(q_via_full, "経由の姿勢")
+            legs = [(q_now[arm], np.asarray(q_via_arm, dtype=float), "経由の姿勢へ移動する途中"),
+                    (np.asarray(q_via_arm, dtype=float), q_app[arm], "経由の姿勢から手前の姿勢へ移動する途中")]
+        for a, b, what in legs:
+            path = interpolate_joint(a, b, 1.0, 1.0 / self.joint_path_samples)
+            for k, qa in enumerate(path):
+                q = q_app.copy()
+                q[arm] = qa
+                hits = self.collision.contacts(q)
+                if hits:
+                    raise UnreachableError(
+                        f"{what}（{k + 1}/{len(path)}）で腕が体にぶつかる: " + "; ".join(str(h) for h in hits[:3])
+                    )
 
         # 直線の押し込み。1 周期に進む距離 = 速さ × dt
         length = float(np.linalg.norm(end - approach))
@@ -204,15 +217,21 @@ class PressPlanner:
             max_ik_err_m=max_err,
             depth=d,
             waist_q=q_now[[12, 13, 14]].copy(),
+            q_via=None if q_via_arm is None else np.asarray(q_via_arm, dtype=float).copy(),
         )
 
-    def replan(self, plan: PressPlan, q_measured: np.ndarray, q_arm_now: np.ndarray) -> PressPlan:
+    def replan(self, plan: PressPlan, q_measured: np.ndarray, q_arm_now: np.ndarray,
+               depth: float | None = None) -> PressPlan:
         """手前の姿勢に着いたあと、実測の腰の角度で同じ押し込みを計算し直す。
 
         腰が倒れると肩の位置が動くので、最初の計算（開始時の腰の角度）のままだと手先がずれる。
         q_measured: lowstate の関節角（29）。腰と反対の腕はこの値を使う
         q_arm_now: 今の指令の片腕 7 関節（手前の姿勢）。IK の初期値にする
+        depth: 押し込みの深さ [m]。無ければ前の計画と同じ（押し直しで深くするときに与える）
         """
         q = np.asarray(q_measured, dtype=float).copy()
         q[self.kin.arm_idx] = q_arm_now
-        return self.plan(q, plan.target_point, plan.push_dir, q_seed=q, depth=plan.depth)
+        new = self.plan(q, plan.target_point, plan.push_dir, q_seed=q,
+                        depth=plan.depth if depth is None else depth)
+        new.q_via = plan.q_via  # 経由の姿勢は、戻るときにも使うので引き継ぐ
+        return new

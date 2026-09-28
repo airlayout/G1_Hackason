@@ -40,3 +40,6 @@ class ArmBackend(ABC):
     @abstractmethod
     def close(self) -> None:
         """後片付け。"""
+
+    def verify_peer(self, state: JointState) -> None:
+        """最初の lowstate で、相手が想定どおりか（実機 / 模擬ロボット）を確かめる。実機の経路で上書きする。"""

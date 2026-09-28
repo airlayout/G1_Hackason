@@ -35,6 +35,7 @@ def main() -> int:
     p.add_argument("--overlay", action="store_true", help="指先を頭カメラの画像に投影して保存する")
     p.add_argument("--seconds", type=float, default=30.0, help="続ける秒数（Ctrl+C でも止まる）")
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
+    p.add_argument("--camera-config", default="camera.yaml", help="カメラの接続先の設定（模擬ロボットは camera_sim.yaml）")
     p.add_argument("--ee-offset", type=float, nargs=3, metavar=("X", "Y", "Z"),
                    help="指先の点を、この値（右手の wrist_yaw_link 基準 [m]。左手は y の符号を逆にする）で試す。"
                         "合っていたら configs/robot.yaml の end_effector に書き写す")
@@ -59,7 +60,7 @@ def main() -> int:
     if args.overlay:
         from common.camera_rgbd import RgbdZmqSource
 
-        cam = load_config("camera.yaml")["rgbd"]
+        cam = load_config(args.camera_config)["rgbd"]
         src = RgbdZmqSource(cam["server_address"], int(cam["port"]), int(cam["timeout_ms"]))
         src.open()
         out.mkdir(parents=True, exist_ok=True)

@@ -283,6 +283,7 @@ class ArmCommander:
 
     def start(self) -> None:
         st = self._wait_state()
+        self.backend.verify_peer(st)
         print(f"[arm] 経路 {self.backend.name}、腕 {self.cfg['arm']}、mode_machine={st.mode_machine}")
         expected = int(self.cfg["expected_mode_machine"])
         if st.mode_machine != expected:
@@ -328,8 +329,11 @@ class ArmCommander:
 
     # ---- 目標の確認と移動 ----------------------------------------------------------
 
-    def validate_arm_target(self, q_arm: np.ndarray, what: str = "目標") -> np.ndarray:
-        """片腕 7 関節の目標を確認し、29 関節の指令ベクトルにして返す。通らなければ UnsafeTargetError。"""
+    def validate_arm_target(self, q_arm: np.ndarray, what: str = "目標", check_workspace: bool = True) -> np.ndarray:
+        """片腕 7 関節の目標を確認し、29 関節の指令ベクトルにして返す。通らなければ UnsafeTargetError。
+
+        check_workspace=False は、開始時にいた姿勢へ戻るときだけに使う（開始姿勢は作業空間の箱の外にあってよい）。
+        """
         q_arm = np.asarray(q_arm, dtype=float)
         if q_arm.shape != (len(self.arm_idx),):
             raise UnsafeTargetError(f"{what}の要素数が {q_arm.shape}（{len(self.arm_idx)} のはず）")
@@ -343,15 +347,21 @@ class ArmCommander:
         )
         q_full = self._cmd.q.copy()
         q_full[self.arm_idx] = q_arm
-        if self.fk is not None and self.workspace is not None:
+        if check_workspace and self.fk is not None and self.workspace is not None:
             self.workspace.check(self.fk(q_full), f"{what}の手先")
         return q_full
 
-    def move_to(self, q_arm: np.ndarray, duration: float | None = None, label: str = "移動") -> None:
+    @property
+    def started(self) -> bool:
+        """start() が済み、指令を送り始めたか（エラーの表示を分けるため）。"""
+        return self._started
+
+    def move_to(self, q_arm: np.ndarray, duration: float | None = None, label: str = "移動",
+                check_workspace: bool = True) -> None:
         """片腕 7 関節を、関節空間で smoothstep 補間して目標へ動かし、動いたかを確認する。"""
         if not self._started or self._stopping:
             raise RuntimeError("start() の前、または終了処理中に move_to() が呼ばれた")
-        self.validate_arm_target(q_arm)
+        self.validate_arm_target(q_arm, check_workspace=check_workspace)
         q_arm = np.asarray(q_arm, dtype=float)
         q0 = self._cmd.q[self.arm_idx].copy()
         dist = float(np.max(np.abs(q_arm - q0)))
@@ -426,13 +436,15 @@ class ArmCommander:
         err = float(np.max(np.abs(q_after - q_target)))
         big = np.abs(commanded) > float(mc["min_commanded_rad"])
         if np.any(big):
-            ratio = measured[big] / commanded[big]
-            worst = float(np.min(ratio))
-            if worst < float(mc["min_ratio"]):
-                names = [JOINT_NAMES[i] for i in self.arm_idx[big]]
+            # 腕全体として、指令した変化の向きにどれだけ進んだか（射影の割合）。関節ごとの最小では見ない
+            # （押し当てたときに、1 つの関節だけ押し戻されることがあるため。模擬ロボットで手首ピッチが −0.17）
+            c, m = commanded[big], measured[big]
+            progress = float(np.dot(m, c) / np.dot(c, c))
+            if progress < float(mc["min_ratio"]):
+                per_joint = ", ".join(f"{JOINT_NAMES[i]}={r:+.2f}" for i, r in zip(self.arm_idx[big], m / c))
                 raise NoMotionError(
-                    f"指令どおりに動いていない（指令に対する実際の変化の割合 {np.round(ratio, 2)}、"
-                    f"関節 {names}）。motor の mode・経路（arm_sdk / lowcmd）・weight を確認すること"
+                    f"指令どおりに動いていない（腕全体で指令の {progress:.2f} 倍しか動いていない。関節ごと: "
+                    f"{per_joint}）。motor の mode・経路（arm_sdk / lowcmd）・weight を確認すること"
                 )
         tol = float(self.cfg["safety"]["tracking_tolerance_rad"])
         mark = "OK" if err <= tol else "⚠️ 追従誤差が大きい"

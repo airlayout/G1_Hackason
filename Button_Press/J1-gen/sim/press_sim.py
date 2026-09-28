@@ -67,6 +67,8 @@ def run_press_sim(
 
     def measure(stage: str, p: PressPlan) -> None:
         tip = mujoco_fingertip(backend, robot_cfg, side)
+        if stage not in ("approach", "approach_replanned", "end"):
+            return
         ref = p.end_point if stage == "end" else p.approach_point
         key = "end" if stage == "end" else "approach"
         errs[key] = float(np.linalg.norm(tip - ref))
@@ -75,7 +77,7 @@ def run_press_sim(
     with ArmCommander(backend, arm_cfg, lower, upper, fk=planner.kin.fk_pos, workspace=planner.workspace,
                       confirm=confirm, gravity=gravity) as arm:
         execute_press(arm, plan, hold_s=float(press_cfg["press"]["hold_s"]), return_to=arm.commanded_arm_q,
-                      planner=planner if replan else None, on_stage=measure)
+                      planner=planner, on_stage=measure, replan=replan)
     if arm.stop_reason:
         raise StopRequested(arm.stop_reason)
     return errs

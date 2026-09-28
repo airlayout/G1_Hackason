@@ -33,10 +33,14 @@ def main() -> int:
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
     p.add_argument("--seconds", type=float, default=3.0, help="lowstate を受信する秒数")
     p.add_argument("--rgbd", action="store_true", help="深度付きストリームも確かめる")
+    p.add_argument("--camera-config", default="camera.yaml", help="カメラの接続先の設定（模擬ロボットは camera_sim.yaml）")
     args = p.parse_args()
 
     arm_cfg = load_config("arm.yaml")
     iface = args.network_interface or arm_cfg["network_interface"]
+    from common.dds import peer_label
+
+    print(f"[check] ネットワークの口: {iface or '（未設定）'}、想定する相手: {peer_label(iface) if iface else '?'}")
     reader = LowStateReader(int(arm_cfg.get("domain_id", 0)), iface)
     ok = True
     try:
@@ -75,7 +79,7 @@ def main() -> int:
     if args.rgbd:
         from common.camera_rgbd import RgbdZmqSource
 
-        cam = load_config("camera.yaml")["rgbd"]
+        cam = load_config(args.camera_config)["rgbd"]
         with RgbdZmqSource(cam["server_address"], int(cam["port"]), int(cam["timeout_ms"])) as src:
             f = src.read_rgbd()
         if f is None:
