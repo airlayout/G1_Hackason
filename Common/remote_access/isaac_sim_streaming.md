@@ -1,93 +1,42 @@
-# Isaac SimをTailscale経由で遠隔利用する（WebRTC Streaming）
+# MacからIsaac Simを使う（Tailscale + WebRTC）
 
-[README.md](./README.md)のSSH/RDP接続に加えて、Isaac SimのGUIそのものを
-リモートPC上でサーバーとして起動し、手元のPCから
-**Isaac Sim WebRTC Streaming Client**で画面越しに操作する方法。
-SSHはコマンド実行向け、RDPはデスクトップ全体の操作向け、この方式は
-**Isaac SimのGUIだけを低遅延で使いたいとき**に向いている。
+**何をしたいか** | **使う方法**
+--- | ---
+Ubuntuでコマンドを実行する | [SSH](./README.md#3-a-cuiコマンド作業ssh)
+Ubuntuのデスクトップ全体を操作する | [RDP](./README.md#3-b-guiデスクトップ操作リモートデスクトップ)
+Isaac Simの画面をMacで見る | このページのWebRTC手順
 
-## 前提
+## 標準Isaac Sim GUIを表示する（実機で映像確認済み）
 
-- 手元のPC・開発PCの両方がTailnetに参加済み（[README.md](./README.md)参照）
-- 開発PC上にIsaac Simがインストール済み
+Ubuntu 24.04のpip版Isaac Sim 6.0.1.0と、Apple Silicon MacのWebRTC Streaming Client 2.0.0で確認した手順。
 
-## 手順
+1. [SSHでUbuntuに接続](./README.md#3-a-cuiコマンド作業ssh)し、GPUと既存のIsaac Simプロセスを確認する。
 
-### 1. 開発PC側: Isaac Simをstreaming（サーバー）モードで起動
+   ```bash
+   nvidia-smi
+   pgrep -af 'isaacsim|run_g1_twin.py'
+   ```
 
-SSHでログインする（[README.md](./README.md)の3-A参照）:
+2. 使用中の人がいなければ、Ubuntuで起動する。準備に数分かかる。
 
-```bash
-ssh ubuntu@<開発PCのTailscale IP>
-```
+   ```bash
+   /home/ubuntu/NVIDIA/env_isaaclab/bin/isaacsim isaacsim.exp.full.streaming --no-window
+   ```
 
-Isaac Simのインストール形態によって起動コマンドが異なる。**どちらの形態か
-不明な場合は先に以下で確認する**:
+3. Macで[Isaac Sim WebRTC Streaming Client](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/installation/download.html)を開き、管理者から案内されたUbuntuのTailscale IPを入力して`Connect`する。旧Omniverse Streaming Appは使わない。
 
-```bash
-# ビルド版（例: G1プロジェクトのdevuser環境）の場合、このスクリプトが存在する
-find / -maxdepth 6 -iname "isaac-sim.streaming.sh" 2>/dev/null
+4. `LIVE`とViewport映像を確認する。確認後はUbuntuの起動ターミナルで`Ctrl+C`を押して終了する。
 
-# pip版（venvにisaacsimをインストールした環境）の場合、代わりにこれが存在する
-find / -maxdepth 8 -iname "isaacsim.exp.full.streaming.kit" 2>/dev/null
-```
+2026-09-28にTailscale経由でLIVE・約60 FPS・1280×720を確認した。暗いグリッドはシーンを開いていない標準GUIの表示。Macからの入力、シーン保存、G1表示はまだ確認していない。
 
-#### ビルド版の場合
+## G1を表示したい場合（未検証）
 
-```bash
-cd <Isaac Simのインストール先>/_build/linux-x86_64/release
-./isaac-sim.streaming.sh
-```
+標準GUIの終了後、Ubuntu側の`IsaacSim_Env/run.sh`と使用するUSDを確認してから、G1用Isaac Labスクリプトの`--livestream 2`を別に試す。Ubuntu上とこのリポジトリでは`run.sh`の既定シーンが異なるため、現時点で共通の起動コマンドは記載しない。結果は[作業記録](./worklogs/2026-09-28.md)に追記する。
 
-（G1プロジェクトのdevuser環境の場合、パスは`G1_Hackason/CLAUDE.md`に記載）
+## 映らないとき
 
-#### pip版の場合
+- まずUbuntuで`nvidia-smi`とIsaac Simの起動ログを確認する。
+- 接続試行中にUbuntuで`ss -ltn '( sport = :49100 )'`と`ss -lunp '( sport = :47998 )'`を確認する。TCP 49100は接続、UDP 47998は映像用。
+- 接続後に画面が更新されないときはクライアントの`View > Reload`を試す。暗いグリッドが見えるときはシーンの読み込みを確認する。
 
-venv直下の`python.sh`から、streaming用のkitアプリ
-（`isaacsim.exp.full.streaming.kit`）を指定して起動する:
-
-```bash
-<venvのパス>/python.sh -m isaacsim isaacsim.exp.full.streaming.kit
-```
-
-例（2026-09-23時点でOMEN機を確認した際のパス。実際のパスは環境によって
-異なるため、上記のfindコマンドで都度確認すること）:
-
-```bash
-/home/ubuntu/NVIDIA/env_isaaclab/python.sh -m isaacsim isaacsim.exp.full.streaming.kit
-```
-
-> ⚠️ **未検証**: 2026-09-23時点でこのコマンド自体の実機動作確認はできていない
-> （作業中にOMEN機の電源が落ち中断）。次回作業時に実際に起動できるか確認し、
-> 結果をこのファイルに追記すること。
-
-いずれの場合もウィンドウなしで起動し、WebRTCサーバーとして待ち受ける。
-起動に数分かかることがある。
-
-### 2. 手元のPC側: Isaac Sim WebRTC Streaming Clientをインストール
-
-以下のページから、使用中のIsaac Simバージョンに対応した
-Isaac Sim WebRTC Streaming Clientをダウンロード・インストールする
-（URLはバージョンに応じて変わるので、使用バージョンのドキュメントを開くこと）:
-
-```
-https://docs.isaacsim.omniverse.nvidia.com/<バージョン>/installation/download.html
-```
-
-### 3. 接続
-
-WebRTC Streaming Clientを起動し、IPアドレス欄に開発PCのTailscale IP
-（例: `100.99.102.70`）を入力して接続する。
-
-## トラブルシューティング
-
-- 接続できない場合、まず`tailscale status`で開発PCが`active`になっているか
-  確認する（[README.md](./README.md)のトラブルシューティング参照）
-- Isaac Sim起動直後は数分間ポートが開かないため、起動ログでエラーが出ていない
-  ことを確認してからクライアント側で接続を試みる
-
-## 関連
-
-- [README.md](./README.md) — Tailscaleでの基本的なSSH/RDP接続手順
-- [G1_Hackason/CLAUDE.md](../../G1_Hackason/CLAUDE.md) — G1プロジェクトの
-  Isaac Sim環境（ビルド版）の詳細パス
+起動コマンド、ポート、Reloadは[NVIDIA公式のWebRTC手順](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/installation/manual_livestream_clients.html)を参照。TailnetのIPや認証情報は共有資料に記載しない。

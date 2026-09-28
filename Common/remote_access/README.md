@@ -25,7 +25,7 @@ G1開発用の共有デスクトップPC（OMEN、詳細は[Common/shared-pc/REA
   手順1で作成したアカウントでログインして有効化する
 - Linux: `curl -fsSL https://tailscale.com/install.sh | sh` → `sudo tailscale up`
 
-有効化後、開発PCのTailscale IP（例: `100.99.102.70`。管理者から連絡される）へ
+有効化後、管理者から案内された開発PCのTailscale IPへ
 到達できるようになる。
 
 ### 3-A. CUI・コマンド作業（SSH）
@@ -37,29 +37,29 @@ ssh ubuntu@<開発PCのTailscale IP>
 例:
 
 ```
-% ssh ubuntu@100.99.102.70
-ubuntu@100.99.102.70's password:
+% ssh ubuntu@<開発PCのTailscale IP>
+ubuntu@<開発PCのTailscale IP>'s password:
 Welcome to Ubuntu 24.04.4 LTS (GNU/Linux 7.0.0-31-generic x86_64)
 ...
 (base) ubuntu@ubuntu-OMEN-16L-Gaming-Desktop-TG03-0xxx:~$
 ```
 
-パスワードは、Slackワークスペース「P.AI Nexus Japan ハッカソン」
-（painexusjapan.slack.com）内を検索するか、見つからなければ他のメンバーに
-直接聞く。
+パスワードは管理者または各チームリーダーに確認する。共有資料やPRには記載しない。
 毎回パスワード入力したくない場合は、以下のように自分で鍵を作成・登録できる
 （管理者側の作業は不要。`ssh-copy-id`は既存のパスワードを使って自分の公開鍵を
 自分で登録するだけのコマンド）:
 
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_omen -N ""
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_omen
 ssh-copy-id -i ~/.ssh/id_ed25519_omen.pub ubuntu@<開発PCのTailscale IP>
 ```
+
+鍵ファイルが既に存在する場合は上書きせず、別名で作成する。秘密鍵やパスフレーズは共有しない。
 
 ### 3-B. GUI・デスクトップ操作（リモートデスクトップ）
 
 1. RDPアプリを起動する（Mac: Microsoft Remote Desktop / Windows: リモートデスクトップ接続）
-2. 接続先に開発PCのTailscale IP（例: `100.99.102.70`）を入力する
+2. 接続先に管理者から案内された開発PCのTailscale IPを入力する
 3. ユーザー名 `ubuntu` とパスワードを入力してログインする
 
 ## 開発の進め方
@@ -86,8 +86,7 @@ tailscale status
 
 ### パスワードが分からない
 
-Slackワークスペース「P.AI Nexus Japan ハッカソン」（painexusjapan.slack.com）内を
-検索する。見つからない場合は他のメンバーに聞く。
+管理者または各チームリーダーに確認する。
 
 ## 関連
 
