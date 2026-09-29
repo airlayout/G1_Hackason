@@ -168,6 +168,26 @@ nohup bash real/depth_server/start_rgbd_server.sh > ~/rgbd_server.log 2>&1 &
 | `--no-legacy-rgb` | RGB 互換ストリーム（5555）を出さない |
 | `--max-fps <数>` | 配信の上限 [fps]（既定 10。`configs/depth_server.yaml` の `publish.max_fps`）。0 なら間引かない |
 | `--source dummy` | RealSense を使わず、作り物の画像と深度を出す（配信経路だけを確かめる） |
+| `--source videohub` | カラーは Unitree の videohub から受け取り、深度だけを RealSense から開く（videohub_pc4 がカラーを開いているとき用。下の「videohub から受け取る」） |
+
+### videohub から受け取る（`--source videohub`）
+
+Unitree の `videohub_pc4` が RealSense のカラー（`/dev/video4`）を開いていると、ふつうの起動は
+`Device or resource busy` で止まる。そのときは videohub を止めずに、次で起動する（PC2 で）:
+
+```bash
+bash real/depth_server/start_rgbd_server.sh --source videohub
+```
+
+- カラー: videohub に 1 枚ずつ頼んで受け取る（`unitree_sdk2py` の Go2 用 `VideoClient`、DDS は `eth0`）。
+  1920x1080 を縦横比を保って **640x360** に縮めて送る（ふつうの起動は 640x480）
+- 深度: RealSense から深度だけを開く（640x480、30 fps）。起動直後の 15 枚は捨てる
+- 位置合わせ: pyrealsense2 の `align` はカラーを開いていないと使えないので、`common/depth_align.py` で計算する。
+  カラーの内部パラメータと深度 → カラーの位置関係は、カラーを開かずに RealSense の設定から読む
+- カラーと深度は別の経路なので、撮った瞬間は揃わない。5 秒ごとの表示に、時刻の差と位置合わせの時間が出る
+- 設定は `configs/depth_server.yaml` の `camera.videohub`（ネットワークの口、送る幅、videohub の画像の大きさ）
+- `unitree_sdk2py` が要る（PC2 のシステムの Python には `~/unitree_sdk2_python` が入っている）
+- 受け取る側（`probe_rgbd.py` など）は変えなくてよい（送る形式は同じで、大きさと内部パラメータが中に書いてある）
 
 ## 5. 届いているか確かめる（ラボ PC で）
 
@@ -217,3 +237,13 @@ G1_HuggingFace/venv/bin/python Perception/real/run_real.py --server-address 192.
   - `depth_only_check.py`: 深度だけなら videohub が動いたままでも 28 fps で取れる
   - `videohub_check.py`: カラーは videohub から 1920x1080 の JPEG で受け取れる（Go2 用 `VideoClient`、52 枚/秒）
 - 次回、`rgbd_server.py` に `--source videohub`（カラーは videohub、深度は直接、位置合わせは自前）を足して確かめる。
+
+## 確かめたこと（2026-09-30、実機なし）
+
+- `--source videohub` を足した。pyrealsense2 と VideoClient の代わりを使うテスト（`tests/test_depth_align.py`）で:
+  - カラーは開かず（開こうとすると失敗する代わりを使った）、深度だけを開く。カラーの内部パラメータは設定から読む
+  - 位置合わせ: 同じカメラどうしなら入力と完全に一致する。箱の角が計算で投影した位置の 1 画素以内に来て、
+    箱の中に穴が空かない。手前の物が奥の物を隠す。librealsense の回転の並び（列の順）どおりに読む
+  - サーバの配信ループを通して、受け取る側に 640x360 のカラー（赤が赤のまま）と深度が届く
+- PC2 と同じ Python 3.8・numpy 1.24.4（オフラインのファイル）でもテストが通り、位置合わせは 1 フレーム約 28 ms（ノート PC）。
+- **本物の videohub と RealSense での確認はまだ**（次回 G1 につないだときに行う）。

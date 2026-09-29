@@ -343,7 +343,7 @@ python3 ~/button_press/real/depth_server/videohub_check.py
 今の `rgbd_server.py` は、カラーと深度を 1 つの pipeline で開くので、videohub が動いていると起動できない。
 次回は「**カラーは videohub から、深度は RealSense から直接**」の配信を作って確かめる。
 
-G1 につなぐ前（ノート PC だけでできる）:
+G1 につなぐ前（ノート PC だけでできる）: **2026-09-30 に済んだ**（`tests/test_depth_align.py`。実機ではまだ）
 
 1. `rgbd_server.py` に `--source videohub` を足す（今の `realsense` と `dummy` は残す）。
    - カラー: `VideoClient.GetImageSample()` の 1920x1080 JPEG を、縦横比を保って 640x360 に縮める
@@ -361,8 +361,18 @@ G1 につないだら（無線でよい。PC2 で `~/button_press/real/` を送�
    `~/button_press/videohub_sample.jpg` をノート PC に `scp` で持ってきて見る）
    - 2026-09-29 の 1 枚は床（木目の床と、右上の端に椅子の車輪）で、下向きに付いた頭カメラの映像と合う。
      上下・左右の向きは、ボトルなど向きのわかる物を前に置いて確かめる
-2. `start_rgbd_server.sh --source videohub --max-fps 5` で配信し、「無線でノート PC から行う準備」の 4〜6
-   （probe_rgbd → locate_bottle（YOLO）→ record）を行う。深度がカラーの物の輪郭に重なっているかを保存画像で確かめる
+2. PC2 で配信する（`~/button_press` で。conda の環境には入らない）:
+
+   ```bash
+   bash real/depth_server/start_rgbd_server.sh --source videohub --max-fps 5
+   ```
+
+   「カラー: videohub の 1920x1080 を 640x360 に縮めて送る」と内部パラメータが出て、5 秒ごとに
+   「カラーと深度の時刻の差 … ms、位置合わせ … ms」が出れば動いている。
+   そのあと「無線でノート PC から行う準備」の 4〜6（probe_rgbd → locate_bottle（YOLO）→ record）を行う。
+   - 深度がカラーの物の輪郭に重なっているかを保存画像で確かめる（ずれていれば、深度 → カラーの位置関係か、
+     videohub の画像の向きを疑う）
+   - 赤い物が赤く写るか（videohub の JPEG の色の並び）も見る
 3. PC2 を元に戻す: 配信サーバを止めるだけ（2026-09-29 は `run_g1_server.py` が動いていなかったので、起動し直さない）
 
 ## pyrealsense2 が使えなかった場合の切り替え
