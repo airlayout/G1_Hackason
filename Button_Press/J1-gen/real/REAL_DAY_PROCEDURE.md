@@ -279,6 +279,23 @@ bash Button_Press/J1-gen/real/depth_server/fetch_offline_packages.sh
    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/probe_rgbd.py --save
    ```
 
+## 「Device or resource busy」でカメラを開けない場合（2026-09-29 に起きた）
+
+`start_rgbd_server.sh` が `xioctl(VIDIOC_S_FMT) failed, errno=16 Last Error: Device or resource busy` で止まるのは、
+ほかのプロセスが RealSense を開いているため。2026-09-29 には、G1 の電源が入り直したあとに、Unitree の
+システムのサービス **`/unitree/module/video_hub_pc4/videohub_pc4 /dev/video4`**（root で動く）が
+`/dev/video4`（RealSense の一部）を開いていた。見るだけで確かめるコマンド（PC2 で）:
+
+```bash
+ps -eo user,pid,etime,cmd | grep -i -E "realsense|camera|video|g1_server|rs-|python" | grep -v grep
+for d in /sys/class/video4linux/video*; do echo "$d: $(cat $d/name)"; done
+```
+
+- videohub は Unitree のサービスなので、**勝手に止めない**。止めてよいか・元に戻す方法は、ロボットの管理者に確かめる
+- `run_g1_server.py --camera` も既定で `/dev/video4` を開くので、下の「切り替え」をしても同じく開けない可能性が高い
+- カメラ以外（無線の経路・配信・位置を求める処理・収録）は、PC2 で `--source dummy --no-legacy-rgb` を付けて
+  配信サーバを起動し、ノート PC で `locate_bottle.py --detector color` などを動かせば確かめられる（ダミーの赤い箱を検出する）
+
 ## pyrealsense2 が使えなかった場合の切り替え
 
 次のどれかになったら、深度はあきらめて切り替える（RGB の収録と、ボトル押しそのものは続ける）:
