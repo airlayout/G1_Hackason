@@ -10,6 +10,7 @@ Unitree G1 をデジタルツイン上で操作するプロジェクト。
 | [Common/](Common/) | 機能横断で使う共通スクリプト（ネットワーク設定・疎通確認など） | 運用中 |
 | [SimpleWalk/](SimpleWalk/README.md) | 前進歩行 | 動作確認済み（シミュレーション・実機） |
 | [Perception/](Perception/README.md) | 画像取得・認識 | 実機での確認をすれば完了 |
+| [Manipulation/push_button/](Manipulation/push_button/README.md) | G1 29DoF の固定手先でエレベーター用ボタンを押す | MuJoCo の自由立位実験で押下確認済み・実機未検証 |
 | [Mapping/](Mapping/README.md) | G1内蔵LIO／FAST-LIO2による3D Mapping | 実機で初回試験済み（onboard系。raw系は未実走） |
 | [Navigation/](Navigation/README.md) | 作成済み地図を使った自律移動・巡回（Unitree純正`slam_operate`に乗る） | シミュレーションで巡回を完走（`Navigation/navctl view` で見られる）。実機は未検証 |
 | [Entame/](Entame/README.md) | エンタメ系の動作（ダンス・ジェスチャー等） | 未着手 |
