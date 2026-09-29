@@ -21,22 +21,24 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.camera_rgbd import RgbdZmqSource  # noqa: E402
+from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
 from common.config import REPO_ROOT, load_config  # noqa: E402
 from common.rgbd_io import save_rgbd  # noqa: E402
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--config", default="camera.yaml")
-    p.add_argument("--address", help="接続先（既定は設定ファイル）")
+    add_camera_args(p)
+    p.add_argument("--config", dest="camera_config", default="camera.yaml", help="--camera-config と同じ（前の名前）")
+    p.add_argument("--address", dest="host", help="--host と同じ（前の名前）")
     p.add_argument("--port", type=int, help="ポート（既定は設定ファイル）")
     p.add_argument("--seconds", type=float, default=5.0, help="受信する秒数")
     p.add_argument("--save", action="store_true", help="最後のフレームを保存する")
     p.add_argument("--out-dir", type=Path, help="画像などの保存先（既定は _local/button_press/ の下）")
     args = p.parse_args()
 
-    cfg = load_config(args.config)["rgbd"]
-    address = args.address or cfg["server_address"]
+    cfg = load_camera_config(args)["rgbd"]
+    address = cfg["server_address"]
     port = args.port or int(cfg["port"])
     print(f"[probe_rgbd] 接続: tcp://{address}:{port}")
     n = 0

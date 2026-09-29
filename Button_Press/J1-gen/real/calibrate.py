@@ -38,6 +38,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
 from common.config import CONFIG_DIR, REPO_ROOT, load_config  # noqa: E402
 from common.dds import LowStateReader  # noqa: E402
 from common.localize import Locator, make_detector  # noqa: E402
@@ -81,7 +82,7 @@ def main() -> int:
     p.add_argument("--frames", type=int, default=10, help="カメラで位置を求めるフレーム数（中央値を取る）")
     p.add_argument("--write", action="store_true", help="最後に、差の平均を localize.yaml に書き込む")
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
-    p.add_argument("--camera-config", default="camera.yaml", help="カメラの接続先の設定（模擬ロボットは camera_sim.yaml）")
+    add_camera_args(p)
     p.add_argument("--detector", choices=["yolo", "color"], help="検出器（既定は configs/localize.yaml）")
     p.add_argument("--out-dir", type=Path, help="画像などの保存先（既定は _local/button_press/ の下）")
     args = p.parse_args()
@@ -104,7 +105,7 @@ def main() -> int:
     reader = LowStateReader(int(arm_cfg.get("domain_id", 0)), args.network_interface or arm_cfg["network_interface"])
     reader.open()
     reader.wait(10.0)
-    cam = load_config(args.camera_config)["rgbd"]
+    cam = load_camera_config(args)["rgbd"]
     out = args.out_dir or REPO_ROOT / "_local" / "button_press" / "calibration"
     out.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")

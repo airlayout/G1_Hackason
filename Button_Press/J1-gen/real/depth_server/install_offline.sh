@@ -5,7 +5,7 @@
 #   bash ~/button_press/offline/install_offline.sh
 #   PYTHON=/usr/bin/python3 bash ~/button_press/offline/install_offline.sh   # 使う Python を指定する
 #
-# やること（sudo は使わない。システムは変えない）:
+# やること（sudo は使わない。システムは変えない。変わるのは ~/button_press/ の下と pip のパッケージだけ）:
 # 1. ファイルが壊れていないかを SHA256SUMS で確かめる
 # 2. 使う Python の版（3.8 / 3.10 / 3.12）に合う pyrealsense2 の wheel を pip で入れる
 # 3. libusb-1.0 がシステムに無ければ、.deb の中身を ~/button_press/libusb_local/ に取り出すだけにする
@@ -31,8 +31,15 @@ if [ -z "$wheel" ]; then
     echo "[install] ❌ Python ${ver:0:1}.${ver:1} 用の pyrealsense2 が無い（用意したのは 3.8 / 3.10 / 3.12）" >&2
     exit 1
 fi
+# conda / venv の Python ならその中に入れる。システムの Python なら --user（~/.local の下）に入れて、
+# sudo もシステムの変更もしない
+USER_FLAG=""
+if [ "$("$PYTHON" -c 'import sys, os; print(int(sys.prefix != sys.base_prefix or bool(os.environ.get("CONDA_PREFIX"))))')" = "0" ]; then
+    USER_FLAG="--user"
+    echo "[install] conda / venv ではないシステムの Python なので、--user（~/.local の下）に入れる"
+fi
 echo "[install] pip で入れる: $(basename "$wheel")"
-"$PYTHON" -m pip install --no-index --no-deps "$wheel"
+"$PYTHON" -m pip install --no-index --no-deps $USER_FLAG "$wheel"
 
 if ldconfig -p | grep -q 'libusb-1.0.so.0'; then
     echo "[install] libusb-1.0 はシステムに入っている（取り出しは不要）"

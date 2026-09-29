@@ -100,6 +100,125 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/move_arm_real.py --path 
 - 腰の重力補償（`--waist-gravity-scale`、プランB のときだけ効く）は、腕の確認のあとで必要なら試す。
 - lowstate の IMU が pelvis のものかは未確認。倍率 1.0 で逆に下がり方が大きくなる場合は、IMU の向きを疑う。
 
+## 無線でノート PC から行う準備（有線のラボ PC を使う前に）
+
+G1 が無線 LAN につながっていれば、カメラまわり（PC2 の準備、深度付きの配信、検出、収録）はノート PC から進められる。
+**無線では DDS が届かないので、lowstate の読み取りと腕の制御はしない**（それは有線のラボ PC で行う）。
+
+- PC2 の無線の IP は `configs/camera_wifi.yaml` の `pc2_host`（2026-09-29 は 192.168.0.82。DHCP なので変わることがある。
+  変わったら `pc2_host` を直すか、各スクリプトに `--host <IP>` を付ける）。以下では `<PC2>` と書く。
+- **PC2 で変えてよいのは `~/button_press/` の下と、pip でのパッケージのインストールだけ。** sudo は使わない
+  （libusb は `.deb` の中身を `~/button_press/libusb_local/` に取り出すだけ）。Unitree のシステムのサービスや設定には触れない。
+- 「PC2 で」とあるコマンドは、ノート PC から `ssh unitree@<PC2>` で入って 1 行ずつ実行する。
+
+### 1. PC2 の確認（PC2 で。どれも表示するだけ）
+
+```bash
+lsusb | grep -i intel
+```
+```bash
+python3 --version
+```
+```bash
+ls ~/miniforge3/envs 2>/dev/null
+```
+```bash
+python3 -m pip --version
+```
+```bash
+ldconfig -p | grep libusb-1.0
+```
+```bash
+python3 -c "import pyrealsense2 as rs; print(rs.__version__)"
+```
+```bash
+ps aux | grep -v grep | grep run_g1_server
+```
+
+- `lsusb` に RealSense が出なければ、深度はこの PC2 では使えない（PC1 につながっている）。
+- conda の `lerobot` 環境があれば（`ls ~/miniforge3/envs` に出れば）、以下はその環境で行う（`source ~/miniforge3/bin/activate lerobot`）。
+- **`run_g1_server.py` を起動したコマンド（`ps` に出た行）を控えておく。** 最後に同じコマンドで元に戻すため。
+
+### 2. オフラインのファイルを送って pyrealsense2 を入れる
+
+ノート PC で（リポジトリ直下）:
+
+```bash
+ssh unitree@<PC2> mkdir -p button_press
+```
+```bash
+scp -r _local/button_press/offline Button_Press/J1-gen/common Button_Press/J1-gen/configs Button_Press/J1-gen/real unitree@<PC2>:button_press/
+```
+
+PC2 で（conda を使うなら先に `source ~/miniforge3/bin/activate lerobot`）:
+
+```bash
+bash ~/button_press/offline/install_offline.sh
+```
+
+- Python の版に合う wheel を入れる。conda / venv ならその中、システムの Python なら `--user`（`~/.local` の下）に入れる。
+- libusb がシステムに無ければ、`.deb` の中身を `~/button_press/libusb_local/` に取り出すだけ（インストールしない）。
+- 最後に `pyrealsense2 ... OK、RealSense 1 台` と出れば成功。
+
+### 3. PC2 で配信サーバを起動する
+
+RealSense は 1 つのプログラムしか開けないので、`run_g1_server.py` を `--camera` なしで起動し直す。
+1 で控えた行が `--camera` 付きなら、そのプロセスを止めて（起動したターミナルで Ctrl+C。`nohup` で起動していれば
+`kill <PID>`）、同じコマンドから `--camera` を外して起動する（DDS の中継は、有線のラボ PC から使うときのために残す）。
+
+配信サーバを、無線に合わせて 5 fps で起動する（PC2 で。別のターミナル）:
+
+```bash
+cd ~/button_press
+```
+```bash
+bash real/depth_server/start_rgbd_server.sh --list-devices
+```
+```bash
+bash real/depth_server/start_rgbd_server.sh --max-fps 5
+```
+
+### 4. ノート PC で受け取って保存する
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/probe_rgbd.py --camera-config camera_wifi.yaml --save
+```
+
+fps（5 前後）、内部パラメータ、画像中央の深度、深度が 0 の画素の割合を見る。保存先は `_local/button_press/probe/`。
+
+### 5. ボトルを検出して 3 次元の位置を出す（lowstate は使わない）
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --live --no-lowstate --camera-config camera_wifi.yaml --frames 5
+```
+
+- カメラ座標（x 右、y 下、z 前）と、腰を 0° と仮定した pelvis 座標が出る（「腰の角度は仮定」と警告し、結果の JSON にも残す）。
+- YOLO が見つけなければ `--detector color`（`configs/localize.yaml` の色の範囲をボトルのラベルの色に合わせる）。
+- 枠と基準点が胴に乗っているかを、保存された画像（`_local/button_press/locate/`）で見る。
+
+### 6. RGB と深度を収録する（lowstate は記録しない）
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label bottle_wifi --no-lowstate --camera-config camera_wifi.yaml --duration-s 60
+```
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label button_wifi --no-lowstate --camera-config camera_wifi.yaml --mode enter
+```
+
+終わったらバックアップする（取り直せない）。
+
+### 7. PC2 を元の状態に戻す
+
+1. PC2 で配信サーバを止める（起動したターミナルで Ctrl+C）。
+2. `run_g1_server.py` を止め、**1 で控えたコマンドのまま（`--camera` あり）** 起動し直す。
+3. ノート PC で、RGB が元どおり届くかを確かめる:
+
+   ```bash
+   G1_HuggingFace/venv/bin/python Perception/real/probe_zmq_camera.py --host <PC2> --timeout 60
+   ```
+
+`~/button_press/` と pip で入れた pyrealsense2 は、そのまま残してよい（有線のラボ PC から使うときにも使う）。
+
 ## 事前準備: PC2 用のオフラインのファイル（実機日の前に、ネットにつながったマシンで）
 
 PC2 はインターネットにつながっていない可能性が高いので、pyrealsense2（Python 3.8 / 3.10 / 3.12 用）と

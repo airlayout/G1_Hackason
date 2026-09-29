@@ -22,6 +22,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
 from common.config import load_config  # noqa: E402
 from common.dds import LowStateReader  # noqa: E402
 from common.realday import FingertipFK  # noqa: E402
@@ -33,7 +34,7 @@ def main() -> int:
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
     p.add_argument("--seconds", type=float, default=3.0, help="lowstate を受信する秒数")
     p.add_argument("--rgbd", action="store_true", help="深度付きストリームも確かめる")
-    p.add_argument("--camera-config", default="camera.yaml", help="カメラの接続先の設定（模擬ロボットは camera_sim.yaml）")
+    add_camera_args(p)
     args = p.parse_args()
 
     arm_cfg = load_config("arm.yaml")
@@ -79,7 +80,7 @@ def main() -> int:
     if args.rgbd:
         from common.camera_rgbd import RgbdZmqSource
 
-        cam = load_config(args.camera_config)["rgbd"]
+        cam = load_camera_config(args)["rgbd"]
         with RgbdZmqSource(cam["server_address"], int(cam["port"]), int(cam["timeout_ms"])) as src:
             f = src.read_rgbd()
         if f is None:

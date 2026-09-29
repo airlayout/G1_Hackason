@@ -1,16 +1,18 @@
-# Button_Press / カメラの受信側（ラボ PC）の設定。タスク3〜6で使う。
+# Button_Press / カメラの受信側の設定（有線のラボ PC 用）。タスク3〜6で使う。
+# 読み込みは common/camera_cfg.py。接続先は pc2_host の 1 か所で決める（--host で上書きできる）。
+# 無線でノート PC からつなぐときは camera_wifi.yaml、模擬ロボットは camera_sim.yaml を使う。
+
+# PC2 の IP（有線。G1 の内部ネットワークでは固定）
+pc2_host: 192.168.123.164
 
 rgbd:
-  # 深度付きカメラサーバ（real/depth_server/rgbd_server.py）の接続先。PC2 = 192.168.123.164
-  # MuJoCo やダミーで確かめるときは localhost
-  server_address: 192.168.123.164
+  # 深度付きカメラサーバ（real/depth_server/rgbd_server.py）。
   # configs/depth_server.yaml の publish.rgbd.port と同じ値にする
   port: 5556
   timeout_ms: 5000
 
 legacy_rgb:
   # RGB 互換ストリーム（run_g1_server.py --camera、または rgbd_server.py の互換出力）
-  server_address: 192.168.123.164
   port: 5555
   camera_name: head_camera
   timeout_ms: 5000

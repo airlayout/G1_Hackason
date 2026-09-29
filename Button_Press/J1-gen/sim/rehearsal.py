@@ -67,7 +67,7 @@ def build_scenarios(r: Path) -> list[Scenario]:
         Step("0 接続確認", "check_connection.py --rgbd",
              [str(REAL / "check_connection.py"), *NET, *CAM, "--rgbd"], grab=[r"lowstate: \d+ Hz", r"相手: .*"]),
         Step("0 接続確認", "probe_rgbd.py --save",
-             [str(REAL / "probe_rgbd.py"), "--config", "camera_sim.yaml", "--seconds", "3", "--save",
+             [str(REAL / "probe_rgbd.py"), "--camera-config", "camera_sim.yaml", "--seconds", "3", "--save",
               "--out-dir", str(r / "probe")], grab=[r"\d+ フレーム / .*fps）"]),
         Step("1 収録", "record.py（ボトル、全フレーム 20 秒）", [*rec, "--label", "bottle", "--duration-s", "20"],
              grab=[r"終了: .*"]),

@@ -29,6 +29,7 @@ from types import FrameType
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
 from common.config import load_config, resolve_repo_path  # noqa: E402
 from common.recorder import Recorder  # noqa: E402
 from common.recording import RecordingWriter  # noqa: E402
@@ -42,8 +43,8 @@ def main() -> int:
     p.add_argument("--rgb-only", action="store_true", help="深度を使わず、RGB 互換ストリーム（5555）だけを保存する")
     p.add_argument("--no-lowstate", action="store_true", help="lowstate を記録しない")
     p.add_argument("--network-interface", help="lowstate を読む NIC（既定は configs/arm.yaml）")
-    p.add_argument("--camera-config", default="camera.yaml", help="カメラの接続先の設定（模擬ロボットは camera_sim.yaml）")
-    p.add_argument("--address", help="カメラの接続先（既定は --camera-config の値）")
+    add_camera_args(p)
+    p.add_argument("--address", dest="host", help="--host と同じ（前の名前）")
     p.add_argument("--port", type=int, help="カメラのポート（既定は configs/camera.yaml）")
     p.add_argument("--duration-s", type=float, help="この秒数で止める")
     p.add_argument("--max-frames", type=int, help="この枚数を保存したら止める")
@@ -52,7 +53,7 @@ def main() -> int:
     args = p.parse_args()
 
     cfg = load_config("record.yaml")
-    cam_cfg = load_config(args.camera_config)
+    cam_cfg = load_camera_config(args)
     root = resolve_repo_path(args.output_dir or cfg["output_dir"])
     root.mkdir(parents=True, exist_ok=True)
     free_gb = shutil.disk_usage(root).free / 1e9
@@ -65,7 +66,7 @@ def main() -> int:
         from common.perception_bridge import perception
 
         c = cam_cfg["legacy_rgb"]
-        src = perception("camera").ZmqFrameSource(args.address or c["server_address"], args.port or int(c["port"]),
+        src = perception("camera").ZmqFrameSource(c["server_address"], args.port or int(c["port"]),
                                                    c["camera_name"], int(c["timeout_ms"]))
 
         def get_frame():  # type: ignore[no-untyped-def]
@@ -75,13 +76,13 @@ def main() -> int:
         from common.camera_rgbd import RgbdZmqSource
 
         c = cam_cfg["rgbd"]
-        src = RgbdZmqSource(args.address or c["server_address"], args.port or int(c["port"]), int(c["timeout_ms"]))
+        src = RgbdZmqSource(c["server_address"], args.port or int(c["port"]), int(c["timeout_ms"]))
 
         def get_frame():  # type: ignore[no-untyped-def]
             f = src.read_rgbd()
             return None if f is None else (f.color_bgr, f)
     print(f"[record] カメラ: {'RGB だけ' if args.rgb_only else '深度付き'}"
-          f"（tcp://{args.address or c['server_address']}:{args.port or c['port']}）")
+          f"（tcp://{c['server_address']}:{args.port or c['port']}）")
 
     # lowstate
     reader = None
