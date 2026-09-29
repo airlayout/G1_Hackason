@@ -40,6 +40,21 @@ def test_rejects_unverified_or_invalid_joint_plan(tmp_path: Path) -> None:
         load_plan(path)
 
 
+def test_rejects_ik_plan_with_large_direction_error(tmp_path: Path) -> None:
+    path = tmp_path / "plan.json"
+    plan = example_plan()
+    plan["ik_validation"] = {
+        phase: {"position_error_m": 0.0005,
+                "axis_error_deg": 1.0,
+                "min_joint_margin_rad": 0.1}
+        for phase in ("approach", "contact", "press")
+    }
+    plan["ik_validation"]["press"]["axis_error_deg"] = 25.0
+    path.write_text(json.dumps(plan))
+    with pytest.raises(ValueError, match="IK検証結果が許容範囲外"):
+        load_plan(path)
+
+
 def test_rejects_fast_motion() -> None:
     with pytest.raises(ValueError, match="上限"):
         check_speed((0.0,) * 7, (1.0,) * 7, 0.5)

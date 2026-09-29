@@ -5,13 +5,17 @@ G1 にボタンを押させる動作の開発場所。
 ## 現在の実装
 
 - `trajectory.py`: 右腕7軸の関節角検証と滑らかな補間。
-- `sim/run_mujoco.py`: MuJoCo Menagerie の G1 29DoF モデルに、高さ1 m の
-  エレベーター模擬ボタンを追加。固定されたプラスチック製手先を球状の接触点として扱い、
+- `sim/run_mujoco.py`: MuJoCo Menagerie の G1 29DoF モデルに、写真を参考にした
+  暗色パネルと白い上下矢印ボタンを追加。固定されたプラスチック製手先を球状の接触点として扱い、
   腕の逆運動学で「待機→接触→押下→後退→初期姿勢」を生成・実行する。
   ボタンは可動ジョイントとばねを持ち、最大押下量・骨盤高・移動量・傾きで成否を判定する。
   既定は自由立位、`--fixed-base` は腕単体の切り分け用。
 - `real/push_button.py`: シミュレーションで成功した関節経路を読み込み、
   歩行停止要求後に `rt/arm_sdk` で右腕を動かす。既定は経路表示のみ。
+- `vision.py`: YOLOの検出枠とカラー画像に位置合わせした深度から、
+  ボタン表面中心とパネル法線を推定する。深度欠損・面推定失敗は中止する。
+- `sim/run_vision_mujoco.py`: MuJoCoのRGB-D画像で検出→3D推定→押下まで検証する。
+- `real/localize_button.py`: RealSense + YOLOで3D目標を記録する。腕は動かさない。
 
 ボタン前までの移動は、この段階では操作者または既存の Navigation 側で行う。
 位置が分からない壁へ開ループで歩かせる機能は含めていない。
@@ -34,19 +38,109 @@ git -C /tmp/mujoco_menagerie sparse-checkout set unitree_g1
 python -m pip install mujoco numpy
 python Manipulation/push_button/sim/run_mujoco.py \
   --model /tmp/mujoco_menagerie/unitree_g1/g1.xml \
-  --plan-out /tmp/button_plan.json
+  --button-direction up --gif-out /tmp/button_up.gif \
+  --plan-out /tmp/button_up_plan.json
+python Manipulation/push_button/sim/run_mujoco.py \
+  --model /tmp/mujoco_menagerie/unitree_g1/g1.xml \
+  --button-direction down --gif-out /tmp/button_down.gif \
+  --plan-out /tmp/button_down_plan.json
 ```
 
 `RESULT_SUCCESS` と最大押下量、骨盤高、移動量、傾きが出れば成功。
 `--viewer` を付けると物理時間に合わせて表示し、ボタンが十分押されると
-上の表示灯が赤から緑になる。`--fixed-base` は腕単体の接触試験に使う。
+押したボタンの白い面が淡い黄色に変わる。上と下のボタンは独立したスライドジョイントで、
+非対象ボタンが押されていないことも成功条件に含める。`--fixed-base` は腕単体の接触試験に使う。
 試験した Menagerie の
 コミットは `2cd6b7be15440787d12f7eb4c34ae1a1a03237c`、MuJoCo は 3.14.0。
-既定値は、ロボット前方 X=0.36 m、右側 Y=-0.25 m、床上高さ=1.00 m、
-ストローク=0.008 m、ボタン手前の待機距離=0.030 m。`--button-x`、`--button-y`、
-`--height`、`--stroke`、`--clearance` で変更できる。これらは**模擬値**であり、
+既定値は、ロボット前方 X=0.36 m、右側 Y=-0.25 m、上ボタン床上高さ=1.00 m、
+下ボタン床上高さ=0.86 m、ボタン半径=0.032 m、ストローク=0.008 m、
+ボタン手前の待機距離=0.030 m。`--button-x`、`--button-y`、`--height`、
+`--stroke`、`--clearance` で変更できる。`--height` は上ボタンの中心高さを指定する。
+これらは**模擬値**であり、
 実物のエレベーターの寸法ではない。
 `--tip-offset X Y Z` は右手首座標系から見たプラスチック手先の接触点。
+
+### YOLO + 深度画像で押す
+
+公開済みの[エレベーターボタンYOLOv8nモデル](https://github.com/Kshaw17-web/End-to-end-elevator-button-detection)
+の `models/best.pt` を重みとして使える。ライブラリは `mujoco`、`numpy`、
+`ultralytics`、`opencv-python`（画像保存時は `Pillow`）が必要。
+既存の `Perception/common/detector/yolo_detector.py` で推論するため、
+モデルをこのリポジトリへコピーする必要はない。
+
+```bash
+git clone --filter=blob:none --sparse \
+  https://github.com/Kshaw17-web/End-to-end-elevator-button-detection.git \
+  /tmp/elevator-button-yolo
+git -C /tmp/elevator-button-yolo sparse-checkout set models
+MUJOCO_GL=egl python Manipulation/push_button/sim/run_vision_mujoco.py \
+  --model /tmp/mujoco_menagerie/unitree_g1/g1.xml \
+  --weights /tmp/elevator-button-yolo/models/best.pt \
+  --button-direction down \
+  --snapshot /tmp/button_detection.png --gif-out /tmp/button_demo.gif \
+  --plan-out /tmp/button_vision_plan.json
+```
+
+`--gif-out` は腕とボタンが見える視点から、待機→接触→押下→後退をGIFに保存する。
+
+検出器を切り分けたい場合だけ `--detector oracle` を指定する。
+このモードはMuJoCoのセグメンテーションIDから正解枠を作るため、YOLOの精度試験にはならない。
+シミュレーションのカメラ位置・照明・ボタン形状は仮のもの。RGB-D カメラは
+パネルが見える仮想位置にあり、G1 実機の搭載カメラ位置を再現していない。
+MuJoCoで成功しても、
+実機のカメラでの検出精度とボタン位置精度は別途測定が必要。
+2026-09-29の実測では、Menagerie `2cd6b7b`、MuJoCo 3.3.7、公開重み `536e894`、
+Ultralytics 8.4.165で、今回の上下ボタンをそれぞれ検出・押下できた。
+公開モデルは `button` 1クラスなので、上下の指定は既知のパネル高さに基づいて行う。
+ロボットの別部位の誤検出は3D位置・押下方向の検査で棄却した。
+YOLO推定位置を使った模擬押下量は上8.2 mm、下7.4 mm（設定ストローク8 mm）。
+
+実機ではRealSenseのカラーと深度を同一のframesetから取得し、深度をカラーへ位置合わせする。
+既存のLeRobot ZMQ配信はカラーのみなので、この試験はカメラを持つG1 PC2上で行う。
+カラー配信サーバーが同じRealSenseを使用中なら停止してから起動する。
+
+```bash
+python Manipulation/push_button/real/localize_button.py \
+  --weights /path/to/elevator-model/models/best.pt --frames 10 \
+  --preview /tmp/button_preview.png --output /tmp/button_target_camera.json
+```
+
+複数ボタンが写る場合は、プレビュー画像に描かれた候補中心の画素座標を確認し、
+`--target-pixel U V` で押すボタンを指定して再実行する。
+指定した画素を含む候補が複数ある場合や、3D条件を満たす候補が複数ある場合は中止する。
+本実装は階数文字の自動選択にはまだ対応しない。
+
+この出力の `frame` は `camera_optical` であり、腕の経路には渡せない。
+ロボット基準の3D目標を出すには、実測した4×4同次変換 `T_base_optical` を
+JSONに保存して `--base-transform /path/to/calibration.json` を指定する。
+基準座標は**停止時の骨盤の床上投影を原点、前方+X、左+Y、床上+Z**とする。
+カメラ光学座標は右+X、下+Y、前+Z。カメラの取り付けや姿勢が変わったら再校正する。
+校正済み出力の `frame` は `robot_base` となり、次のMuJoCo試験へ渡せる。
+
+```bash
+python Manipulation/push_button/sim/run_mujoco.py \
+  --model /tmp/mujoco_menagerie/unitree_g1/g1.xml \
+  --button-direction down --target-json /tmp/button_target_base.json \
+  --plan-out /tmp/button_plan.json
+```
+
+この試験では、計測位置に仮想ボタンを配置して押下可能性を調べる。
+実物との位置誤差、押下力、接触安定性を証明するものではない。
+現時点の模擬パネルは前方+Xに向けて押す配置だけに対応する。
+
+### ボタン位置から右腕7軸の逆運動学へ
+
+深度画像から求めたボタン表面中心を `p`、パネルへ押し込む単位方向を `n`、
+手先の接触球の半径を `r` とする。`run_mujoco.py` は、待機点
+`p - (r + clearance)n`、接触直前 `p - (r + 0.003)n`、
+押下終点 `p - rn + stroke*n` を手先の目標として作る。
+
+各目標に対して、MuJoCoの手先ヤコビアンを使う右腕7軸の数値IKで関節角を求める。
+位置と手先の向きの誤差を同時に減らし、直前の解を次の初期値として使う。
+位置誤差1.5 mm未満・向き誤差10度未満・関節範囲内に収束しなければ、
+計画を出力せず中止する。各段階の誤差と関節限界までの余裕は
+`[ik:approach]` などのログと、計画JSONの `ik_validation` に記録する。
+このIKは目標姿勢と関節角の対応を求めるもので、実機の押下力制御にはならない。
 
 ## 実機での使い方
 

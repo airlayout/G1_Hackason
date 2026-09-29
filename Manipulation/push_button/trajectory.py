@@ -75,6 +75,25 @@ def load_plan(path: str | Path) -> dict:
             raise ValueError(f"{phase} の所要時間が不正です") from error
         if not math.isfinite(duration) or not 0.2 <= duration <= 20:
             raise ValueError(f"{phase} の所要時間が不正です")
+    ik_validation = plan.get("ik_validation")
+    if ik_validation is not None:
+        if not isinstance(ik_validation, dict):
+            raise ValueError("IK検証結果の形式が不正です")
+        for phase in ("approach", "contact", "press"):
+            metrics = ik_validation.get(phase)
+            if not isinstance(metrics, dict):
+                raise ValueError(f"{phase} のIK検証結果がありません")
+            try:
+                position = float(metrics["position_error_m"])
+                axis = float(metrics["axis_error_deg"])
+                margin = float(metrics["min_joint_margin_rad"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(f"{phase} のIK検証結果が不正です") from error
+            if (not all(math.isfinite(value) for value in (position, axis, margin))
+                    or not 0 <= position < 0.0015
+                    or not 0 <= axis < 10.0
+                    or margin < 0.025):
+                raise ValueError(f"{phase} のIK検証結果が許容範囲外です")
     return plan
 
 

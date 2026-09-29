@@ -191,6 +191,12 @@ def main() -> int:
         for phase in PHASES:
             print(f"{phase:8s} {plan['durations'][phase]:4.1f}s  "
                   + " ".join(f"{q:+.2f}" for q in plan["poses"][phase]))
+        if "ik_validation" in plan:
+            for phase in ("approach", "contact", "press"):
+                result = plan["ik_validation"][phase]
+                print(f"IK {phase}: 位置誤差={float(result['position_error_m'])*1000:.2f} mm, "
+                      f"方向誤差={float(result['axis_error_deg']):.2f} 度, "
+                      f"関節余裕={float(result['min_joint_margin_rad']):.3f} rad")
         print("シミュレーションの押下量: "
               f"{plan['sim_result']['max_stroke_m']*1000:.1f} mm "
               f"({'固定台' if plan['sim_result'].get('base_fixed') else '自由立位'})")
