@@ -136,6 +136,9 @@ ps aux | grep -v grep | grep run_g1_server
 ```
 
 - `lsusb` に RealSense が出なければ、深度はこの PC2 では使えない（PC1 につながっている）。
+  ただし PC2 の `lsusb` は名前の表が古く、D435i（`8086:0b3a`）を **`Intel Corp. 4-Port USB 3.0 Hub`** と表示する
+  （2026-09-29。ほかの班が「見えていない」と誤判定した）。`8086:0b3a` の行があれば D435i はつながっている。
+  確実なのは `bash ~/button_press/real/depth_server/start_rgbd_server.sh --list-devices`（pyrealsense2 を入れたあと）。
 - 配信サーバと pyrealsense2 は、**PC2 のシステムの Python（3.8）**で動かす。conda の `lerobot` 環境（3.12）用の
   pyrealsense2 は PC2 の glibc では動かなかった（2026-09-29）。conda の環境に入っていたら `conda deactivate` で抜ける。
 - **`run_g1_server.py` を起動したコマンド（`ps` に出た行）を控えておく。** 最後に同じコマンドで元に戻すため。
@@ -283,18 +286,84 @@ bash Button_Press/J1-gen/real/depth_server/fetch_offline_packages.sh
 
 `start_rgbd_server.sh` が `xioctl(VIDIOC_S_FMT) failed, errno=16 Last Error: Device or resource busy` で止まるのは、
 ほかのプロセスが RealSense を開いているため。2026-09-29 には、G1 の電源が入り直したあとに、Unitree の
-システムのサービス **`/unitree/module/video_hub_pc4/videohub_pc4 /dev/video4`**（root で動く）が
-`/dev/video4`（RealSense の一部）を開いていた。見るだけで確かめるコマンド（PC2 で）:
+システムのサービス **`/unitree/module/video_hub_pc4/videohub_pc4 /dev/video4`**（root で動く。ロボットの起動と一緒に
+立ち上がる）が `/dev/video4` を開いていた。見るだけで確かめるコマンド（PC2 で）:
 
 ```bash
 ps -eo user,pid,etime,cmd | grep -i -E "realsense|camera|video|g1_server|rs-|python" | grep -v grep
-for d in /sys/class/video4linux/video*; do echo "$d: $(cat $d/name)"; done
 ```
 
-- videohub は Unitree のサービスなので、**勝手に止めない**。止めてよいか・元に戻す方法は、ロボットの管理者に確かめる
-- `run_g1_server.py --camera` も既定で `/dev/video4` を開くので、下の「切り替え」をしても同じく開けない可能性が高い
+- videohub は Unitree のサービスなので、**勝手に止めない**。止めてよいか・元に戻す方法は、ロボットの管理者に確かめる。
+  PC2 の中の問題なので、**有線のラボ PC から使うときも同じく起きる**
+- `run_g1_server.py --camera` も既定で `/dev/video4` を開くので、同じく開けない
 - カメラ以外（無線の経路・配信・位置を求める処理・収録）は、PC2 で `--source dummy --no-legacy-rgb` を付けて
   配信サーバを起動し、ノート PC で `locate_bottle.py --detector color` などを動かせば確かめられる（ダミーの赤い箱を検出する）
+
+### videohub が動いたままでも、カラーと深度は取れる（2026-09-29 に確かめた）
+
+PC2 には `v4l2-ctl` が無いので、`real/depth_server/v4l2_list.py`（形式の一覧を聞くだけ。映像は開かない）で
+各 `/dev/video` の中身を調べた。D435i は USB の中で 2 つに分かれている:
+
+| USB の部分 | /dev | 中身 |
+|---|---|---|
+| 1.0（深度側） | video0 | 深度（Z16） |
+| | video2 | IR（GREY / Y8I / Y12I。UYVY も出せるが IR カメラの口） |
+| | video1, video3 | 補助データ（映像ではない） |
+| 1.3（カラー側） | **video4** | **カラー（YUYV）← videohub が開いている** |
+| | video5 | 補助データ |
+
+- **カラーのカメラの口は video4 だけ。** ほかの班の「内蔵 video2」（Mapping の `dual_webcam_server.py`）は深度側の IR の口。
+- **深度だけなら開ける。** `depth_only_check.py`（pyrealsense2 で深度だけを開く。カラーは開かない）で、
+  videohub が動いたまま 30/30 枚・28 fps で取れた（1 枚目は有効な画素 45%、30 枚目は 96%。最初の数枚は捨てる）。
+- **カラーは videohub に頼めば受け取れる。** videohub のプログラムの中に `rt/api/videohub/request` / `response` があり
+  （DDS。設定は `eth0`）、`unitree_sdk2py` の Go2 用 `VideoClient`（サービス名 `videohub`、API 1001 `GetImageSample`）が
+  そのまま使えた。`videohub_check.py` で **1920x1080 の JPEG（約 133 KB）を 30/30 枚、52 枚/秒**で受け取れた。
+  PC2 のシステムの Python に `unitree_sdk2py` が入っている（`~/unitree_sdk2_python`）。DDS はノート PC まで届かないので、
+  PC2 の中で受け取る。
+- 位置合わせに使う値（カラーを開かずにカメラの設定から読めた）:
+  カラー 640x480 の内部パラメータ fx=605.5 fy=605.1 cx=318.6 cy=254.8、深度 fx=384.8 fy=384.8 cx=325.4 cy=242.1、
+  深度 → カラーの平行移動 [0.015, -0.0004, 0.0003] m。1920x1080 用の内部パラメータはまだ読んでいない。
+- シリアル番号は 2 つある: pyrealsense2 の番号 `250122075509`（`--serial` に使うのはこちら）と、
+  `/dev/v4l/by-id` の名前に入る USB の番号 `254843066801`。同じ 1 台。
+
+見るだけ・受け取るだけの確認（PC2 で。どれも videohub を止めない）:
+
+```bash
+python3 ~/button_press/real/depth_server/v4l2_list.py
+```
+```bash
+python3 ~/button_press/real/depth_server/depth_only_check.py
+```
+```bash
+python3 ~/button_press/real/depth_server/videohub_check.py
+```
+
+## 次回やること（2026-09-29 の無線の回の続き）
+
+今の `rgbd_server.py` は、カラーと深度を 1 つの pipeline で開くので、videohub が動いていると起動できない。
+次回は「**カラーは videohub から、深度は RealSense から直接**」の配信を作って確かめる。
+
+G1 につなぐ前（ノート PC だけでできる）:
+
+1. `rgbd_server.py` に `--source videohub` を足す（今の `realsense` と `dummy` は残す）。
+   - カラー: `VideoClient.GetImageSample()` の 1920x1080 JPEG を、縦横比を保って 640x360 に縮める
+     （縮める倍率に合わせて、1920x1080 用のカラーの内部パラメータを縮める）
+   - 深度: pyrealsense2 で深度だけを開く（`depth_only_check.py` と同じ）
+   - 位置合わせ: 深度の内部パラメータ・深度 → カラーの位置関係・カラーの内部パラメータで、深度をカラーの画素に並べ直す
+     （pyrealsense2 の `align` はカラーを同じ pipeline で開いていないと使えないので、自分で計算する）
+   - カラーと深度は別の経路なので、撮った瞬間が揃わない（止まっている物なら問題ない。受け取った時刻の差を記録しておく）
+   - 送る形式（`common/rgbd_protocol.py`）は変えない。受け取る側（probe_rgbd / locate_bottle / record）はそのまま使う
+2. 位置合わせの計算を、ダミーの値で単体テストする
+
+G1 につないだら（無線でよい。PC2 で `~/button_press/real/` を送り直してから）:
+
+1. 1920x1080 の画像が頭カメラの映像で、上下・左右が逆でないかを見る（`videohub_check.py` が保存する
+   `~/button_press/videohub_sample.jpg` をノート PC に `scp` で持ってきて見る）
+   - 2026-09-29 の 1 枚は床（木目の床と、右上の端に椅子の車輪）で、下向きに付いた頭カメラの映像と合う。
+     上下・左右の向きは、ボトルなど向きのわかる物を前に置いて確かめる
+2. `start_rgbd_server.sh --source videohub --max-fps 5` で配信し、「無線でノート PC から行う準備」の 4〜6
+   （probe_rgbd → locate_bottle（YOLO）→ record）を行う。深度がカラーの物の輪郭に重なっているかを保存画像で確かめる
+3. PC2 を元に戻す: 配信サーバを止めるだけ（2026-09-29 は `run_g1_server.py` が動いていなかったので、起動し直さない）
 
 ## pyrealsense2 が使えなかった場合の切り替え
 

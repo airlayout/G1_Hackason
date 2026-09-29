@@ -52,6 +52,7 @@
 - RGB/BGR の並び順のバグは実機で見つけて修正済み。**新しいコードでも色の順番に注意すること**。
 - **現状は RGB のみで、深度はまだ配信していない**。
 - `unitree_sdk2_python` の `VideoClient` には G1 用のカメラモジュールがないので、カメラは ZMQ 経由で取得する。
+  - 2026-09-29 追記: G1 用のモジュールは無いが、**Go2 用の `VideoClient`（`unitree_sdk2py.go2.video`）で PC2 の中から頭カメラのカラー（1920x1080 の JPEG）を受け取れた**。Unitree の `videohub_pc4` が `/dev/video4` を開いているため、ボタン押しは「カラーは videohub、深度は RealSense から直接」にする予定（`real/REAL_DAY_PROCEDURE.md` の「次回やること」）。
 
 ### URDF / MJCF（リポジトリにも PC2 にも無い）
 - Mapping の README に「リポジトリにも PC2 にも URDF も extrinsic（センサーの取り付け位置）も無い」と記録されている。

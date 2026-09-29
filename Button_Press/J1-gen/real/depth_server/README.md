@@ -30,6 +30,8 @@ lsusb | grep -i intel
 ```
 
 `Intel Corp. Intel(R) RealSense(TM) Depth Camera 435i` のような行が出れば PC2 につながっている。
+PC2 の `lsusb` は名前の表が古く、D435i（`8086:0b3a`）を `Intel Corp. 4-Port USB 3.0 Hub` と表示する（2026-09-29）。
+`8086:0b3a` の行があればつながっている。
 **何も出なければ、このサーバは使えない。** その場合は、タスク6の「対象の位置を設定ファイルの値で与えるモード」を使う。
 
 ## 2. pyrealsense2 を入れる（PC2 で。システムの Python 3.8 に入れる）
@@ -187,7 +189,7 @@ G1_HuggingFace/venv/bin/python Perception/real/run_real.py --server-address 192.
 | 症状 | 原因と対処 |
 |---|---|
 | `--list-devices` で見つからない | 1 の `lsusb` で見えるか。見えるのに見つからないなら、ほかのプログラム（`run_g1_server.py --camera` など）が開いていないか |
-| 起動時に `Device or resource busy` など | ほかのプログラムが RealSense を開いている。`run_g1_server.py` を `--camera` なしで起動し直す |
+| 起動時に `Device or resource busy` など | ほかのプログラムが RealSense を開いている。`run_g1_server.py` なら `--camera` なしで起動し直す。Unitree の `videohub_pc4` が `/dev/video4`（カラー）を開いているときは止めない（`REAL_DAY_PROCEDURE.md` の「Device or resource busy」の節） |
 | `ImportError: libusb-1.0.so.0` | libusb が見つからない。2 の `install_offline.sh` で取り出し、`start_rgbd_server.sh` で起動する |
 | `GLIBC_2.38 not found` など | Python 3.10 / 3.12 用の pyrealsense2 を入れた。システムの Python 3.8 で 2 をやり直す |
 | 権限のエラー（permission denied） | RealSense の USB に触る権限が無い。udev ルールの追加が必要な場合がある。**PC2 の設定を変える前にチームに確認する** |
@@ -204,3 +206,14 @@ G1_HuggingFace/venv/bin/python Perception/real/run_real.py --server-address 192.
 - 本物の pyrealsense2（2.58.4）を読み込み、サーバで使っている関数や項目（`enable_device`、`get_depth_scale`、
   内部パラメータの `ppx` / `ppy` など）がすべてあることを確かめた。
 - **本物の RealSense をつないでの確認はまだ**（実機日に行う）。
+
+## 確かめたこと（2026-09-29、PC2 で無線から）
+
+- `install_offline.sh` で、システムの Python 3.8 に pyrealsense2 2.55.1 が入り、RealSense 1 台が見えた。
+- `--source dummy` で、無線（ノート PC）への配信・`probe_rgbd`・`locate_bottle --detector color`・`record` が動いた。
+- 本物のカメラでは、Unitree の `videohub_pc4` が `/dev/video4`（カラー）を開いていて、`Device or resource busy` で起動できなかった。
+- 見るだけ・受け取るだけの確認スクリプトで次がわかった（詳細は `REAL_DAY_PROCEDURE.md`）:
+  - `v4l2_list.py`: 深度は video0、カラーは video4 だけ（USB の別の部分）
+  - `depth_only_check.py`: 深度だけなら videohub が動いたままでも 28 fps で取れる
+  - `videohub_check.py`: カラーは videohub から 1920x1080 の JPEG で受け取れる（Go2 用 `VideoClient`、52 枚/秒）
+- 次回、`rgbd_server.py` に `--source videohub`（カラーは videohub、深度は直接、位置合わせは自前）を足して確かめる。

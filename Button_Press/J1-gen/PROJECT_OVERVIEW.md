@@ -86,6 +86,7 @@
 - 通信：CycloneDDS（0.10.2）、G1 用の `unitree_hg` IDL。
 - センサー：Livox Mid-360 LiDAR（`192.168.123.20`）、頭部に RealSense D435i（下向きに付いている）。
 - カメラは ZMQ 経由で取得する（`unitree_sdk2py` の `VideoClient` には G1 用のカメラモジュールがないため）。現在は RGB のみで、深度は未配信。
+  - 2026-09-29 追記: G1 用のモジュールは無いが、**Go2 用の `VideoClient`（`unitree_sdk2py.go2.video`）で PC2 の中から頭カメラのカラー（1920x1080 の JPEG）を受け取れた**。Unitree の `videohub_pc4` が `/dev/video4` を開いているため、ボタン押しは「カラーは videohub、深度は RealSense から直接」にする予定（`real/REAL_DAY_PROCEDURE.md` の「次回やること」）。
 - 手の指は動かせない。
 - ナビゲーションは、Nav2 から Unitree 純正の `slam_operate` API に方針を変更した。
 - カメラの使い分け：歩行は LiDAR のみで行う。人の認識・撮影・報告は外付けの RGB カメラで行う。ボタン押しには G1 の頭カメラを使う。
