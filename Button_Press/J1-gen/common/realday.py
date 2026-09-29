@@ -102,8 +102,9 @@ def box_from_touch_points(
     """中指の先で触った机の手前の縁の点（pelvis 座標）から、障害物の箱を作る。
 
     ロボットは +x を向いている前提:
-    - y（左右）: 触った点の真ん中から左右に width_m / 2 ずつ（触った点がもっと外にあればそこまで）。
-      机が大きくて角を触れないとき、縁の上の 2 点（20〜30 cm 離れた点）だけでも机の幅を覆えるように
+    - y（左右）: ロボットの正面（y = 0）から左右に width_m / 2 ずつ（触った点がもっと外にあればそこまで）。
+      机が大きくて角を触れないとき、縁の上の 2 点（20〜30 cm 離れた点）だけでも机の幅を覆えるように。
+      触った点の真ん中を基準にしないのは、右腕で触ると点が右に寄り、左側の机が箱から外れやすいため
     - x（前後）: 手前の縁から奥へ depth_m。手前の縁は、
         1 点: その点の x（縁がロボットの正面に平行だと仮定）
         2 点以上: 触った点を通る直線（x = a y + b）を左右の端まで延ばし、一番手前になる x
@@ -114,9 +115,8 @@ def box_from_touch_points(
     p = np.asarray(points, dtype=float).reshape(-1, 3)
     if p.shape[0] < 1:
         raise ValueError("点が 1 つ以上いる（机の手前の縁の上の点）")
-    y_mid = (p[:, 1].min() + p[:, 1].max()) / 2
-    y_lo = min(p[:, 1].min(), y_mid - width_m / 2)
-    y_hi = max(p[:, 1].max(), y_mid + width_m / 2)
+    y_lo = min(p[:, 1].min(), -width_m / 2)
+    y_hi = max(p[:, 1].max(), width_m / 2)
     warning = ""
     tilt_deg = 0.0
     if p.shape[0] == 1 or np.ptp(p[:, 1]) < 1e-3:

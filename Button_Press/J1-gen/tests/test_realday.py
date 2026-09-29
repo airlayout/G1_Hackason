@@ -24,7 +24,7 @@ INTR = Intrinsics(640, 480, 615.0, 615.0, 319.5, 239.5)
 
 class TestObstacleFromTouch(unittest.TestCase):
     def test_corners_wider_than_width_are_kept(self) -> None:
-        """触った点が幅より外にあれば、そこまで広げる（幅 0.4 m でも、角が 0.6 m 離れていれば 0.6 m）。"""
+        """触った点が幅より外にあれば、そこまで広げる（幅 0.4 m = 正面から左右 0.2 m でも、点が y = −0.4 ならそこまで）。"""
         from common.realday import box_from_touch_points
 
         box = box_from_touch_points([np.array([0.30, -0.40, -0.05]), np.array([0.30, 0.20, -0.05])],
@@ -37,24 +37,25 @@ class TestObstacleFromTouch(unittest.TestCase):
         return c - h, c + h
 
     def test_two_close_points_extend_to_width(self) -> None:
-        """縁の上の 2 点（25 cm 離れている）だけでも、左右に 1 m ずつ（既定の幅 2 m）の箱になる。"""
+        """右に寄った縁の上の 2 点（25 cm 離れている）だけでも、ロボットの正面から左右に 1 m ずつの箱になる
+        （左側の机も覆う）。"""
         from common.realday import box_from_touch_points
 
-        box = box_from_touch_points([np.array([0.30, -0.25, -0.05]), np.array([0.30, 0.0, -0.05])],
+        box = box_from_touch_points([np.array([0.30, -0.35, -0.05]), np.array([0.30, -0.10, -0.05])],
                                     margin_m=0.03, depth_m=0.6, below_m=0.8)
         lo, hi = self._lo_hi(box)
-        np.testing.assert_allclose(lo, [0.27, -0.125 - 1.0 - 0.03, -0.85], atol=1e-4)
-        np.testing.assert_allclose(hi, [0.93, -0.125 + 1.0 + 0.03, -0.02], atol=1e-4)
+        np.testing.assert_allclose(lo, [0.27, -1.03, -0.85], atol=1e-4)
+        np.testing.assert_allclose(hi, [0.93, 1.03, -0.02], atol=1e-4)
         self.assertEqual(box["warning"], "")
 
     def test_one_point_assumes_parallel_edge(self) -> None:
-        """1 点だけなら、縁は正面に平行だと仮定して、その点を中心に左右 1 m ずつ。"""
+        """1 点だけなら、縁は正面に平行だと仮定して、ロボットの正面から左右 1 m ずつ。"""
         from common.realday import box_from_touch_points
 
         box = box_from_touch_points([np.array([0.32, -0.1, -0.04])], 0.03, 0.6, 0.8, width_m=2.0)
         lo, hi = self._lo_hi(box)
-        np.testing.assert_allclose(lo, [0.29, -1.13, -0.84], atol=1e-4)
-        np.testing.assert_allclose(hi, [0.95, 0.93, -0.01], atol=1e-4)
+        np.testing.assert_allclose(lo, [0.29, -1.03, -0.84], atol=1e-4)
+        np.testing.assert_allclose(hi, [0.95, 1.03, -0.01], atol=1e-4)
 
     def test_tilted_edge_extends_toward_robot(self) -> None:
         """縁が斜めなら、左右に延ばした先で一番手前になる位置を手前の縁にして、警告する。"""
@@ -64,8 +65,8 @@ class TestObstacleFromTouch(unittest.TestCase):
         box = box_from_touch_points([np.array([0.40, -0.3, -0.05]), np.array([0.30, 0.0, -0.05])],
                                     0.03, 0.6, 0.8, width_m=2.0)
         lo, _ = self._lo_hi(box)
-        # 真ん中 y = -0.15、左端 y = +0.85 で x = 0.30 - 0.85 / 3 = 0.0167
-        self.assertAlmostEqual(lo[0], 0.30 - 0.85 / 3 - 0.03, places=3)
+        # 左端 y = +1.0 で x = 0.30 - 1.0 / 3
+        self.assertAlmostEqual(lo[0], 0.30 - 1.0 / 3 - 0.03, places=3)
         self.assertIn("傾いている", box["warning"])
 
     def test_needs_a_point(self) -> None:
