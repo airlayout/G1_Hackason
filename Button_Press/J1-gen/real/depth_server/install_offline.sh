@@ -51,7 +51,10 @@ with zipfile.ZipFile(sys.argv[1]) as z:
 print(f"{best[0]}.{best[1]}")
 PY
 )
-have=$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' || echo "0.0")
+# PC2 の glibc の版は Python から直接聞く（`ldd --version | head -1` は、pipefail の下で head が先に閉じると
+# ldd が失敗扱いになり、予備の値まで足されて「2.31」のあとに「0.0」が付いた。2026-09-29 に PC2 で起きた）。
+# PC2_GLIBC は試験用（ほかのマシンで PC2 の glibc を見せかける）
+have="${PC2_GLIBC:-$("$PYTHON" -c 'import os; print(os.confstr("CS_GNU_LIBC_VERSION").split()[-1])')}"
 echo "[install] glibc: 必要 $need、PC2 $have"
 if [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | tail -1)" != "$have" ]; then
     echo "[install] ❌ $(basename "$wheel") は glibc $need 以上が要るが、PC2 は $have。入れずに止める" >&2
