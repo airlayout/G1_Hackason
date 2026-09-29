@@ -173,7 +173,9 @@ PC2 で RealSense を pyrealsense2 で直接読み、深度をカラー画像に
 - `run_g1_server.py` は変更しない。RealSense は 1 つのプログラムしか開けないので、このサーバを使うときは
   `run_g1_server.py` を `--camera` なしで起動する。
 - 配信は既定で 10 fps に間引く（`configs/depth_server.yaml` の `publish.max_fps`）。
-- PC2 はインターネットにつながっていない可能性が高いので、pyrealsense2（Python 3.8 / 3.10 / 3.12 用）と
+- 配信サーバは PC2 のシステムの Python 3.8 で動かす（Python 3.10 / 3.12 用の pyrealsense2 は glibc 2.34 / 2.38 を必要とし、
+  PC2 の glibc 2.31 では動かなかった。2026-09-29）。
+- PC2 はインターネットにつながっていない可能性が高いので、pyrealsense2（Python 3.8 用）と numpy などと
   libusb-1.0 の .deb を事前にダウンロードして持っていく（`real/depth_server/fetch_offline_packages.sh` →
   PC2 で `install_offline.sh`。sudo は使わず、libusb は中身を取り出すだけ）。
 - 既存の `run_g1_server.py --camera` は、RealSense を pyrealsense2 ではなく OpenCV で `/dev/video4` として開いている

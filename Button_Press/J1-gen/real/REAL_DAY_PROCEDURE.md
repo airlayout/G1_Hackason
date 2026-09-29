@@ -136,7 +136,8 @@ ps aux | grep -v grep | grep run_g1_server
 ```
 
 - `lsusb` に RealSense が出なければ、深度はこの PC2 では使えない（PC1 につながっている）。
-- conda の `lerobot` 環境があれば（`ls ~/miniforge3/envs` に出れば）、以下はその環境で行う（`source ~/miniforge3/bin/activate lerobot`）。
+- 配信サーバと pyrealsense2 は、**PC2 のシステムの Python（3.8）**で動かす。conda の `lerobot` 環境（3.12）用の
+  pyrealsense2 は PC2 の glibc では動かなかった（2026-09-29）。conda の環境に入っていたら `conda deactivate` で抜ける。
 - **`run_g1_server.py` を起動したコマンド（`ps` に出た行）を控えておく。** 最後に同じコマンドで元に戻すため。
 
 ### 2. オフラインのファイルを送って pyrealsense2 を入れる
@@ -146,19 +147,30 @@ ps aux | grep -v grep | grep run_g1_server
 ```bash
 ssh unitree@<PC2> mkdir -p button_press
 ```
+長いコマンドは貼り付けで 2 行に分かれて失敗する（送り先が抜けると、ノート PC の中でコピーしてしまう）ので、1 つずつ送る:
+
 ```bash
-scp -r _local/button_press/offline Button_Press/J1-gen/common Button_Press/J1-gen/configs Button_Press/J1-gen/real unitree@<PC2>:button_press/
+scp -r _local/button_press/offline unitree@<PC2>:button_press/
+```
+```bash
+scp -r Button_Press/J1-gen/common unitree@<PC2>:button_press/
+```
+```bash
+scp -r Button_Press/J1-gen/configs unitree@<PC2>:button_press/
+```
+```bash
+scp -r Button_Press/J1-gen/real unitree@<PC2>:button_press/
 ```
 
-PC2 で（conda を使うなら先に `source ~/miniforge3/bin/activate lerobot`）:
+PC2 で（conda の環境から抜けた状態で）:
 
 ```bash
 bash ~/button_press/offline/install_offline.sh
 ```
 
-- Python の版に合う wheel を入れる。conda / venv ならその中、システムの Python なら `--user`（`~/.local` の下）に入れる。
-- libusb がシステムに無ければ、`.deb` の中身を `~/button_press/libusb_local/` に取り出すだけ（インストールしない）。
-- 最後に `pyrealsense2 ... OK、RealSense 1 台` と出れば成功。
+- システムの Python 3.8 に `--user`（`~/.local` の下）で pyrealsense2 2.55.1 を入れる。入れる前に、必要な glibc が
+  PC2 にあるかを比べる。numpy などは足りないものだけ入れる。libusb はシステムのもの（PC2 にはある）を使う。
+- 最後に `pyrealsense2 2.55.1.6486 OK、RealSense 1 台` と出れば成功。
 
 ### 3. PC2 で配信サーバを起動する
 
@@ -221,8 +233,8 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label button
 
 ## 事前準備: PC2 用のオフラインのファイル（実機日の前に、ネットにつながったマシンで）
 
-PC2 はインターネットにつながっていない可能性が高いので、pyrealsense2（Python 3.8 / 3.10 / 3.12 用）と
-libusb-1.0 の .deb を事前にダウンロードしておく（約 17 MB）:
+PC2 はインターネットにつながっていない可能性が高いので、pyrealsense2（PC2 のシステムの Python 3.8 用）と、
+配信サーバが使う numpy などと、libusb-1.0 の .deb を事前にダウンロードしておく（約 47 MB）:
 
 ```bash
 bash Button_Press/J1-gen/real/depth_server/fetch_offline_packages.sh
@@ -250,7 +262,7 @@ bash Button_Press/J1-gen/real/depth_server/fetch_offline_packages.sh
    scp -r _local/button_press/offline unitree@192.168.123.164:button_press/
    ```
 
-   PC2 で（conda を使うなら先に `source ~/miniforge3/bin/activate lerobot`）:
+   PC2 で（conda の環境から抜けた状態で）:
 
    ```bash
    python3 --version

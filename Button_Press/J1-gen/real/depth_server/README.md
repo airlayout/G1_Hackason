@@ -32,48 +32,32 @@ lsusb | grep -i intel
 `Intel Corp. Intel(R) RealSense(TM) Depth Camera 435i` のような行が出れば PC2 につながっている。
 **何も出なければ、このサーバは使えない。** その場合は、タスク6の「対象の位置を設定ファイルの値で与えるモード」を使う。
 
-## 2. pyrealsense2 が入っているか確かめる（PC2 で）
+## 2. pyrealsense2 を入れる（PC2 で。システムの Python 3.8 に入れる）
 
-まず Python の版と、pyrealsense2 がすでに入っているかを確かめる。PC2 に conda の `lerobot` 環境
-（SETUP.md 3.2、Python 3.12）があればそれを使う。無ければ PC2 の `python3` を使う。
+**配信サーバは、PC2 のシステムの Python（`/usr/bin/python3`、3.8）で動かす。conda の `lerobot` 環境（3.12）では動かない。**
+2026-09-29 に PC2 で確かめた: Python 3.10 / 3.12 用の pyrealsense2（aarch64）は、名前に `manylinux2014` と付いていても
+中身が glibc 2.34 / 2.38 を必要とし、PC2（Ubuntu 20.04、glibc 2.31）では `GLIBC_2.38 not found` で読み込めなかった。
+Python 3.8 用の 2.55.1 は glibc 2.17 で足りる。
 
-```bash
-source ~/miniforge3/bin/activate lerobot
-```
-```bash
-python3 --version
-```
-```bash
-python3 -c "import pyrealsense2 as rs; print(rs.__version__)"
-```
-
-版の番号が出れば入っているので、3 へ進む。`ModuleNotFoundError` なら、次の 2-1 か 2-2 で入れる。
-
-ほかに使うパッケージ（numpy、opencv、pyzmq、PyYAML）が入っているかも確かめる:
+まず conda の環境から抜けて、システムの Python で pyrealsense2 が入っているかを確かめる:
 
 ```bash
-python3 -c "import numpy, cv2, zmq, yaml; print('ok')"
+conda deactivate
 ```
-
-### 2-1. インターネットにつながっている場合
-
 ```bash
-python3 -m pip install pyrealsense2
+/usr/bin/python3 -c "import pyrealsense2; print('pyrealsense2 あり')"
 ```
 
-### 2-2. インターネットにつながっていない場合（オフラインで入れる）
+`ModuleNotFoundError` なら、次のオフラインの手順で入れる（PC2 はインターネットにつながっていない可能性が高いため）。
+sudo は使わず、システムも変えない（`pip --user` で `~/.local` の下に入れる）。
 
-PC2 はインターネットにつながっていない可能性が高い。そこで、**事前にネットにつながったマシンで**必要なファイルを
-ダウンロードしておき、当日 PC2 にコピーして入れる。sudo は使わず、システムも変えない。
-
-用意するもの（`fetch_offline_packages.sh` がまとめてダウンロードする。合計約 17 MB）:
+用意するもの（`fetch_offline_packages.sh` がまとめてダウンロードする。合計約 47 MB）:
 
 | ファイル | 用途 |
 |---|---|
-| `pyrealsense2-*-cp38-*-manylinux2014_aarch64.whl` | Python 3.8 用（2.55.1） |
-| `pyrealsense2-*-cp310-*-manylinux2014_aarch64.whl` | Python 3.10 用（2.58.4） |
-| `pyrealsense2-*-cp312-*-manylinux2014_aarch64.whl` | Python 3.12 用（2.58.4。SETUP.md の conda 環境の版） |
-| `libusb-1.0-0_1.0.23-2build1_arm64.deb` | pyrealsense2 が使う USB のライブラリ（Ubuntu 20.04 用）。PC2 に無い場合だけ使う |
+| `pyrealsense2-2.55.1.6486-cp38-cp38-manylinux2014_aarch64.whl` | pyrealsense2（Python 3.8 用。必要な glibc 2.17） |
+| `deps_cp38/`（numpy 1.24.4、opencv-python-headless 4.8.1、pyzmq 27.1.0、PyYAML 6.0.3） | 配信サーバが使うもの。システムの Python に無いときだけ入れる |
+| `libusb-1.0-0_1.0.23-2build1_arm64.deb` | USB のライブラリ（Ubuntu 20.04 用）。PC2 のシステムに無いときだけ、中身を取り出して使う |
 | `install_offline.sh`、`SHA256SUMS` | PC2 で入れるスクリプトと、ファイルが壊れていないかを確かめる値 |
 
 **事前（ネットにつながったマシン。ラボ PC でも手元の PC でもよい）:**
@@ -82,9 +66,10 @@ PC2 はインターネットにつながっていない可能性が高い。そ�
 bash Button_Press/J1-gen/real/depth_server/fetch_offline_packages.sh
 ```
 
-`_local/button_press/offline/` にファイルができる。手元の PC で用意した場合は、このフォルダをラボ PC にも持っていく。
+`_local/button_press/offline/` にファイルができる（`_local/` は git に入らないので、ほかの PC で使うときはコピーして持っていく）。
 
-**当日（ラボ PC → PC2 へコピー）:**
+**PC2 へコピー**（有線のラボ PC なら 192.168.123.164、無線なら PC2 の無線の IP）。コマンドが長いと貼り付けで
+2 行に分かれて失敗するので、1 つずつ送る:
 
 ```bash
 ssh unitree@192.168.123.164 mkdir -p button_press
@@ -93,20 +78,34 @@ ssh unitree@192.168.123.164 mkdir -p button_press
 scp -r _local/button_press/offline unitree@192.168.123.164:button_press/
 ```
 
-**当日（PC2 で入れる）:** 使う Python の環境に入ってから（conda なら `source ~/miniforge3/bin/activate lerobot`）:
+**PC2 で入れる**（conda の環境から抜けた状態で）:
 
 ```bash
 bash ~/button_press/offline/install_offline.sh
 ```
 
-- Python の版に合う wheel を選んで `pip install --no-index` で入れる。conda を使わず PC2 の別の Python を
-  使うときは、`PYTHON=/usr/bin/python3 bash ~/button_press/offline/install_offline.sh` のように指定する。
-- libusb-1.0 がシステムに無ければ、.deb を**インストールせず、中身だけ**を `~/button_press/libusb_local/` に
-  取り出す（`dpkg -x`）。サーバは 4 の `start_rgbd_server.sh` で起動すれば、自動でここを使う。
-- 最後に `[install] pyrealsense2 ... OK、RealSense 1 台` と出れば成功。
+- ファイルを確かめ、**wheel が必要とする glibc が PC2 にあるかを比べてから**入れる（足りなければ入れずに止まる）。
+- システムの Python なので `--user` で入れる。numpy などは、読み込めないものだけを `deps_cp38/` から入れる。
+- libusb はシステムにあればそれを使う（PC2 にはある）。無ければ `.deb` の中身を `~/button_press/libusb_local/` に取り出すだけ。
+- 最後に `[install] pyrealsense2 2.55.1.6486 OK、RealSense 1 台` と `numpy ... OK` が出れば成功。
+- 以前に conda の `lerobot` 環境へ入れてしまった pyrealsense2（動かない）は、`lerobot` 環境で `pip uninstall -y pyrealsense2` で消せる。
 
-2026-09-28 に、PC2 と同じ条件（aarch64、Python 3.12、libusb がシステムに無い）の手元のマシンで、
-`install_offline.sh` → `start_rgbd_server.sh` の流れを確かめた（RealSense は無いので `--source dummy` で起動）。
+2026-09-29 に、手元のマシンで Python 3.8 の空の環境から `install_offline.sh` → `start_rgbd_server.sh`（`--source dummy`）
+の流れを確かめた。glibc を 2.31 と見せかけて、Python 3.12 用の 2.58.4 が入らずに止まることも確かめた。
+
+## 3. サーバのファイルを PC2 に置く（ラボ PC / ノート PC で）
+
+サーバに要るのは `Button_Press/J1-gen/` の `common/`・`configs/`・`real/` だけ。PC2 の `~/button_press/` に 1 つずつ送る:
+
+```bash
+scp -r Button_Press/J1-gen/common unitree@192.168.123.164:button_press/
+```
+```bash
+scp -r Button_Press/J1-gen/configs unitree@192.168.123.164:button_press/
+```
+```bash
+scp -r Button_Press/J1-gen/real unitree@192.168.123.164:button_press/
+```
 
 ## 4. 起動する（PC2 で）
 
@@ -136,11 +135,8 @@ export LD_LIBRARY_PATH=~/cyclonedds/install/lib:$LD_LIBRARY_PATH
 python -u src/lerobot/robots/unitree_g1/run_g1_server.py
 ```
 
-深度付きカメラサーバを起動する（2 つ目のターミナル）:
+深度付きカメラサーバを起動する（2 つ目のターミナル。conda の環境には入らない。入っていたら `conda deactivate`）:
 
-```bash
-source ~/miniforge3/bin/activate lerobot
-```
 ```bash
 cd ~/button_press
 ```
@@ -151,8 +147,8 @@ bash real/depth_server/start_rgbd_server.sh --list-devices
 bash real/depth_server/start_rgbd_server.sh
 ```
 
-（`start_rgbd_server.sh` は、2-2 で libusb を取り出していればその場所を設定してから `rgbd_server.py` を起動する。
-引数はそのまま `rgbd_server.py` に渡る。conda を使わないときは `PYTHON=/usr/bin/python3` を前に付ける）
+（`start_rgbd_server.sh` は、システムの Python（`/usr/bin/python3`）で `rgbd_server.py` を起動する。2 で libusb を
+取り出していれば、その場所も設定する。引数はそのまま `rgbd_server.py` に渡る）
 
 `[rgbd_server] RealSense 開始: ...` と内部パラメータが表示され、5 秒ごとに配信したフレーム数と fps が出れば動いている。
 Ctrl+C で止まる。SSH を切っても動かし続けたいときは:
@@ -192,7 +188,8 @@ G1_HuggingFace/venv/bin/python Perception/real/run_real.py --server-address 192.
 |---|---|
 | `--list-devices` で見つからない | 1 の `lsusb` で見えるか。見えるのに見つからないなら、ほかのプログラム（`run_g1_server.py --camera` など）が開いていないか |
 | 起動時に `Device or resource busy` など | ほかのプログラムが RealSense を開いている。`run_g1_server.py` を `--camera` なしで起動し直す |
-| `ImportError: libusb-1.0.so.0` | libusb が見つからない。2-2 の `install_offline.sh` で取り出し、`start_rgbd_server.sh` で起動する |
+| `ImportError: libusb-1.0.so.0` | libusb が見つからない。2 の `install_offline.sh` で取り出し、`start_rgbd_server.sh` で起動する |
+| `GLIBC_2.38 not found` など | Python 3.10 / 3.12 用の pyrealsense2 を入れた。システムの Python 3.8 で 2 をやり直す |
 | 権限のエラー（permission denied） | RealSense の USB に触る権限が無い。udev ルールの追加が必要な場合がある。**PC2 の設定を変える前にチームに確認する** |
 | ラボ PC でタイムアウト | アドレス（`configs/camera.yaml`）とポートが合っているか。PC2 側で `ss -ltnp \| grep 5556` で待ち受けているか |
 | 深度が 0 ばかり | 近すぎる（D435 はおよそ 0.2 m 未満を測れない）、または透明・黒い物。ボトルはラベル付きを使う |

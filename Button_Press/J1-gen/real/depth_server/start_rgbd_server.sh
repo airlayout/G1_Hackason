@@ -3,14 +3,15 @@
 #
 #   bash ~/button_press/real/depth_server/start_rgbd_server.sh
 #   bash ~/button_press/real/depth_server/start_rgbd_server.sh --list-devices
-#   PYTHON=/usr/bin/python3 bash ~/button_press/real/depth_server/start_rgbd_server.sh
+#   PYTHON=/path/to/python bash ~/button_press/real/depth_server/start_rgbd_server.sh   # 別の Python を使うとき
 #
 # 引数はそのまま rgbd_server.py に渡す。
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-PYTHON="${PYTHON:-python3}"
+# 既定は PC2 のシステムの Python（3.8）。pyrealsense2 はここに入れる（install_offline.sh を参照）
+PYTHON="${PYTHON:-/usr/bin/python3}"
 LIBUSB_DIR="$ROOT/libusb_local/lib/aarch64-linux-gnu"
 
 if [ -d "$LIBUSB_DIR" ]; then
