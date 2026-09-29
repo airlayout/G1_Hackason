@@ -93,25 +93,49 @@ def save_taught_pose(name: str, side: str, q: np.ndarray, fingertip: np.ndarray,
 OBSTACLES = CONFIG_DIR / "obstacles.yaml"
 
 
+EDGE_TILT_WARN_DEG = 10.0
+
+
 def box_from_touch_points(
-    points: list[np.ndarray], margin_m: float, depth_m: float, below_m: float
+    points: list[np.ndarray], margin_m: float, depth_m: float, below_m: float, width_m: float = 2.0,
 ) -> dict[str, Any]:
-    """中指の先で触った机の角などの点（pelvis 座標）から、障害物の箱を作る。
+    """中指の先で触った机の手前の縁の点（pelvis 座標）から、障害物の箱を作る。
 
     ロボットは +x を向いている前提:
-    - x: 一番手前の点を手前の縁とし、そこから奥へ depth_m（触った点がもっと奥にあればそこまで）
-    - y: 触った点の左右の範囲
-    - z: 一番高い点を天板の上面とし、下へ below_m（机の脚の分）
-    まわりに margin_m の余裕を足す。
+    - y（左右）: 触った点の真ん中から左右に width_m / 2 ずつ（触った点がもっと外にあればそこまで）。
+      机が大きくて角を触れないとき、縁の上の 2 点（20〜30 cm 離れた点）だけでも机の幅を覆えるように
+    - x（前後）: 手前の縁から奥へ depth_m。手前の縁は、
+        1 点: その点の x（縁がロボットの正面に平行だと仮定）
+        2 点以上: 触った点を通る直線（x = a y + b）を左右の端まで延ばし、一番手前になる x
+                 （縁が斜めでも、延ばした先で箱が机より奥にならないように。安全側）
+    - z（上下）: 一番高い点を天板の上面とし、下へ below_m（机の脚の分）
+    まわりに margin_m の余裕を足す。縁の傾きが EDGE_TILT_WARN_DEG を超えたら "warning" に書く。
     """
-    p = np.asarray(points, dtype=float)
-    if p.ndim != 2 or p.shape[0] < 2:
-        raise ValueError("点が 2 つ以上いる（机の手前の左右の角など）")
-    x0 = p[:, 0].min()
-    lo = np.array([x0 - margin_m, p[:, 1].min() - margin_m, p[:, 2].max() - below_m])
-    hi = np.array([max(p[:, 0].max(), x0 + depth_m) + margin_m, p[:, 1].max() + margin_m, p[:, 2].max() + margin_m])
+    p = np.asarray(points, dtype=float).reshape(-1, 3)
+    if p.shape[0] < 1:
+        raise ValueError("点が 1 つ以上いる（机の手前の縁の上の点）")
+    y_mid = (p[:, 1].min() + p[:, 1].max()) / 2
+    y_lo = min(p[:, 1].min(), y_mid - width_m / 2)
+    y_hi = max(p[:, 1].max(), y_mid + width_m / 2)
+    warning = ""
+    tilt_deg = 0.0
+    if p.shape[0] == 1 or np.ptp(p[:, 1]) < 1e-3:
+        # 1 点（または左右に離れていない点）: 縁は正面に平行と仮定する
+        x_front = p[:, 0].min()
+        if p.shape[0] > 1:
+            warning = "触った点が左右に離れていないので、縁は正面に平行だと仮定した"
+    else:
+        a, b = np.polyfit(p[:, 1], p[:, 0], 1)  # x = a y + b
+        tilt_deg = float(np.degrees(np.arctan(a)))
+        x_front = min(p[:, 0].min(), a * y_lo + b, a * y_hi + b)
+        if abs(tilt_deg) > EDGE_TILT_WARN_DEG:
+            warning = (f"縁がロボットの正面に対して {tilt_deg:+.1f}° 傾いている。左右に延ばした先で手前に"
+                       f"せり出すので、箱の手前の縁を {x_front:+.3f} m にした（ロボットを机に正対させるとよい）")
+    lo = np.array([x_front - margin_m, y_lo - margin_m, p[:, 2].max() - below_m])
+    hi = np.array([max(p[:, 0].max(), x_front + depth_m) + margin_m, y_hi + margin_m, p[:, 2].max() + margin_m])
     return {"center": [round(float(v), 4) for v in (lo + hi) / 2],
-            "half_size": [round(float(v), 4) for v in (hi - lo) / 2]}
+            "half_size": [round(float(v), 4) for v in (hi - lo) / 2],
+            "edge_tilt_deg": round(tilt_deg, 1), "warning": warning}
 
 
 def load_obstacles(path: Path | str = OBSTACLES) -> list[dict[str, Any]]:
@@ -132,6 +156,7 @@ def save_obstacle(name: str, box: dict[str, Any], points: list[np.ndarray], note
     )
     obs = [o for o in load_obstacles(path) if o.get("name") != name]
     obs.append({"name": name, "center": box["center"], "half_size": box["half_size"],
+                "edge_tilt_deg": box.get("edge_tilt_deg", 0.0),
                 "touch_points_m": [[round(float(v), 4) for v in pt] for pt in points],
                 "recorded_at": time.strftime("%Y-%m-%d %H:%M:%S"), "note": note})
     path.write_text(header + yaml.safe_dump({"obstacles": obs}, allow_unicode=True, sort_keys=False), encoding="utf-8")

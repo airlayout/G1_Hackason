@@ -16,8 +16,12 @@
 表示される指先の位置（FK）を、定規で測った実際の位置と比べて FK を確かめる（段階3）。
 
 障害物（--obstacle）:
-1. 中指の先で、机の天板の角（少なくとも手前の左右の 2 か所。奥の角も届けば触る）を 1 か所ずつ触り、Enter
+1. 中指の先で、机の天板の手前の縁の上を 1 か所ずつ触り、Enter（机が大きくて角に届かなければ、
+   20〜30 cm 離れた 2 点でよい。1 点だけでもよい）
 2. q で終わると、触った点から箱を作り、configs/obstacles.yaml に保存する（同じ名前は置き換える）
+   - 左右: 触った点の真ん中から左右に --width-m の半分ずつ（既定 2.0 m で 1 m ずつ）
+   - 1 点だけなら、縁はロボットの正面に平行だと仮定する。2 点以上なら、触った点を通る直線を左右の端まで
+     延ばして一番手前になる位置を手前の縁にする（縁が 10° を超えて傾いていたら警告する）
    - 手前の縁から奥へ --depth-m（既定 0.6 m）、天板の上面から下へ --below-m（既定 0.8 m）、
      まわりに --margin-m（既定 0.03 m）の余裕を足す
 全体をつなぐスクリプトは、configs/press.yaml の obstacles に加えて、この箱も衝突の確認に使う
@@ -74,8 +78,8 @@ def teach_pose(args: argparse.Namespace, reader: LowStateReader, fk: FingertipFK
 
 
 def teach_obstacle(args: argparse.Namespace, reader: LowStateReader, fk: FingertipFK) -> int:
-    print(f"[teach] 障害物 {args.obstacle}: 中指の先で机の天板の角を 1 か所ずつ触って Enter"
-          "（少なくとも手前の左右の 2 か所）。q で終わる")
+    print(f"[teach] 障害物 {args.obstacle}: 中指の先で机の天板の手前の縁の上を 1 か所ずつ触って Enter"
+          "（20〜30 cm 離れた 2 点がよい。1 点でもよい）。q で終わる")
     points: list[np.ndarray] = []
     while True:
         ans = input(f"[teach] {len(points) + 1} 点目: 触って Enter / q で終わる: ").strip().lower()
@@ -86,10 +90,14 @@ def teach_obstacle(args: argparse.Namespace, reader: LowStateReader, fk: Fingert
         tip = fk.positions(st.q)[args.arm]
         points.append(tip)
         print(f"[teach] {len(points)} 点目（FK、pelvis 座標）: {fmt(tip)} m")
-    if len(points) < 2:
-        print("[teach] ❌ 点が 2 つ未満なので、箱を作らない")
+    if not points:
+        print("[teach] ❌ 点が無いので、箱を作らない")
         return 1
-    box = box_from_touch_points(points, args.margin_m, args.depth_m, args.below_m)
+    if len(points) == 1:
+        print("[teach] 点が 1 つなので、机の手前の縁はロボットの正面に平行だと仮定する")
+    box = box_from_touch_points(points, args.margin_m, args.depth_m, args.below_m, args.width_m)
+    if box["warning"]:
+        print(f"[teach] ⚠️ {box['warning']}")
     save_obstacle(args.obstacle, box, points, args.note, path=args.obstacles_file)
     lo = np.array(box["center"]) - np.array(box["half_size"])
     hi = np.array(box["center"]) + np.array(box["half_size"])
@@ -112,6 +120,8 @@ def main() -> int:
     p.add_argument("--margin-m", type=float, default=0.03, help="箱のまわりの余裕 [m]")
     p.add_argument("--depth-m", type=float, default=0.6, help="手前の縁から奥への長さ [m]")
     p.add_argument("--below-m", type=float, default=0.8, help="天板の上面から下への長さ [m]")
+    p.add_argument("--width-m", type=float, default=2.0,
+                   help="左右の幅 [m]（触った点の真ん中から左右に半分ずつ。触った点がもっと外ならそこまで）")
     args = p.parse_args()
 
     if not confirm_support():

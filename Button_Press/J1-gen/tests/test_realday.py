@@ -23,22 +23,56 @@ INTR = Intrinsics(640, 480, 615.0, 615.0, 319.5, 239.5)
 
 
 class TestObstacleFromTouch(unittest.TestCase):
-    def test_box_from_front_corners(self) -> None:
-        """手前の左右の角（天板の上面 z = −0.05、手前の縁 x = 0.30）から、余裕 3 cm の箱を作る。"""
+    def test_corners_wider_than_width_are_kept(self) -> None:
+        """触った点が幅より外にあれば、そこまで広げる（幅 0.4 m でも、角が 0.6 m 離れていれば 0.6 m）。"""
         from common.realday import box_from_touch_points
 
-        box = box_from_touch_points([np.array([0.30, -0.40, -0.05]), np.array([0.31, 0.20, -0.052])],
-                                    margin_m=0.03, depth_m=0.6, below_m=0.8)
-        lo = np.array(box["center"]) - np.array(box["half_size"])
-        hi = np.array(box["center"]) + np.array(box["half_size"])
-        np.testing.assert_allclose(lo, [0.27, -0.43, -0.85], atol=1e-4)
-        np.testing.assert_allclose(hi, [0.93, 0.23, -0.02], atol=1e-4)
+        box = box_from_touch_points([np.array([0.30, -0.40, -0.05]), np.array([0.30, 0.20, -0.05])],
+                                    margin_m=0.03, depth_m=0.6, below_m=0.8, width_m=0.4)
+        c, h = np.array(box["center"]), np.array(box["half_size"])
+        np.testing.assert_allclose([(c - h)[1], (c + h)[1]], [-0.43, 0.23], atol=1e-4)
 
-    def test_needs_two_points(self) -> None:
+    def _lo_hi(self, box: dict) -> tuple[np.ndarray, np.ndarray]:
+        c, h = np.array(box["center"]), np.array(box["half_size"])
+        return c - h, c + h
+
+    def test_two_close_points_extend_to_width(self) -> None:
+        """縁の上の 2 点（25 cm 離れている）だけでも、左右に 1 m ずつ（既定の幅 2 m）の箱になる。"""
+        from common.realday import box_from_touch_points
+
+        box = box_from_touch_points([np.array([0.30, -0.25, -0.05]), np.array([0.30, 0.0, -0.05])],
+                                    margin_m=0.03, depth_m=0.6, below_m=0.8)
+        lo, hi = self._lo_hi(box)
+        np.testing.assert_allclose(lo, [0.27, -0.125 - 1.0 - 0.03, -0.85], atol=1e-4)
+        np.testing.assert_allclose(hi, [0.93, -0.125 + 1.0 + 0.03, -0.02], atol=1e-4)
+        self.assertEqual(box["warning"], "")
+
+    def test_one_point_assumes_parallel_edge(self) -> None:
+        """1 点だけなら、縁は正面に平行だと仮定して、その点を中心に左右 1 m ずつ。"""
+        from common.realday import box_from_touch_points
+
+        box = box_from_touch_points([np.array([0.32, -0.1, -0.04])], 0.03, 0.6, 0.8, width_m=2.0)
+        lo, hi = self._lo_hi(box)
+        np.testing.assert_allclose(lo, [0.29, -1.13, -0.84], atol=1e-4)
+        np.testing.assert_allclose(hi, [0.95, 0.93, -0.01], atol=1e-4)
+
+    def test_tilted_edge_extends_toward_robot(self) -> None:
+        """縁が斜めなら、左右に延ばした先で一番手前になる位置を手前の縁にして、警告する。"""
+        from common.realday import box_from_touch_points
+
+        # y が 0.3 m 変わると x が 0.1 m 手前になる（約 18° 傾いている）
+        box = box_from_touch_points([np.array([0.40, -0.3, -0.05]), np.array([0.30, 0.0, -0.05])],
+                                    0.03, 0.6, 0.8, width_m=2.0)
+        lo, _ = self._lo_hi(box)
+        # 真ん中 y = -0.15、左端 y = +0.85 で x = 0.30 - 0.85 / 3 = 0.0167
+        self.assertAlmostEqual(lo[0], 0.30 - 0.85 / 3 - 0.03, places=3)
+        self.assertIn("傾いている", box["warning"])
+
+    def test_needs_a_point(self) -> None:
         from common.realday import box_from_touch_points
 
         with self.assertRaises(ValueError):
-            box_from_touch_points([np.array([0.3, 0.0, 0.0])], 0.03, 0.6, 0.8)
+            box_from_touch_points([], 0.03, 0.6, 0.8)
 
     @needs('mujoco', 'pin')
     def test_saved_box_is_used_by_planner(self) -> None:
