@@ -16,10 +16,14 @@ lowcmd（デバッグモード）では補償されない。設定で切り替�
 そこで Kd 項は MuJoCo の関節減衰（dof_damping）に入れ、積分器を implicitfast（減衰を陰的に解く）
 にして計算させる。物理モデルの値は変えない。Kp 項と重力補償はトルクとして与える
 （トルクの上限は公式モデルの actuatorfrcrange で効く。減衰の分はこの上限の外になる点だけが実機と違う）。
+
+画面（sim_cfg の viewer: true）: MuJoCo の画面を開いて、動きを 3D で見せる（mujoco.viewer.launch_passive）。
+計算はこれまでどおりこのスレッドで進め、tick() のたびに画面に反映する。画面を閉じても計算は止めない。
 """
 
 from __future__ import annotations
 
+import contextlib
 import time
 from typing import Any
 
@@ -50,6 +54,7 @@ class SimBackend(ArmBackend):
         self._cmd: JointCommand | None = None
         self.model: Any = None
         self.data: Any = None
+        self._viewer: Any = None
 
     def open(self) -> None:
         import mujoco
@@ -81,6 +86,23 @@ class SimBackend(ArmBackend):
         self._gravity_comp = bool(self._sim_cfg.get("gravity_compensation", True))
         self._realtime = bool(self._sim_cfg.get("realtime", False))
         print(f"[sim] MuJoCo 開始（重力補償={'あり' if self._gravity_comp else 'なし'}）")
+        if self._sim_cfg.get("viewer"):
+            self._open_viewer()
+
+    def _open_viewer(self) -> None:
+        import mujoco.viewer
+
+        self._viewer = mujoco.viewer.launch_passive(self.model, self.data)
+        # 右斜め前から、右腕とボトルが見える向き（2026-09-30 に描画して選んだ）
+        pelvis = self.data.body("pelvis").xpos
+        cam = self._viewer.cam
+        cam.lookat[:] = pelvis + np.array([0.3, -0.1, -0.05])
+        cam.distance, cam.azimuth, cam.elevation = 1.6, 210.0, -25.0
+        self._viewer.sync()
+        print("[sim] 画面を開いた（マウスの左ドラッグで回転、右ドラッグで移動、ホイールで拡大・縮小）")
+
+    def viewer_running(self) -> bool:
+        return self._viewer is not None and self._viewer.is_running()
 
     def read_state(self) -> JointState:
         d = self.data
@@ -120,19 +142,26 @@ class SimBackend(ArmBackend):
         n_sub = max(1, int(round(dt / m.opt.timestep)))
         t_start = time.monotonic()
         q_des, kp, kd, tau_ff = self._effective_targets()
-        m.dof_damping[self._vadr] = kd
-        for _ in range(n_sub):
-            q = d.qpos[self._qadr]
-            tau = kp * (q_des - q) + tau_ff
-            if self._gravity_comp:
-                # qfrc_bias = 重力 + コリオリ。関節ごとの重力トルクを打ち消す
-                tau = tau + d.qfrc_bias[self._vadr]
-            d.ctrl[self._act] = tau
-            mj.mj_step(m, d)
+        viewer = self._viewer if self.viewer_running() else None
+        # 画面は別のスレッドで描くので、計算の間は model / data を渡さない
+        with viewer.lock() if viewer is not None else contextlib.nullcontext():
+            m.dof_damping[self._vadr] = kd
+            for _ in range(n_sub):
+                q = d.qpos[self._qadr]
+                tau = kp * (q_des - q) + tau_ff
+                if self._gravity_comp:
+                    # qfrc_bias = 重力 + コリオリ。関節ごとの重力トルクを打ち消す
+                    tau = tau + d.qfrc_bias[self._vadr]
+                d.ctrl[self._act] = tau
+                mj.mj_step(m, d)
+        if viewer is not None:
+            viewer.sync()
         if self._realtime:
             rest = dt - (time.monotonic() - t_start)
             if rest > 0:
                 time.sleep(rest)
 
     def close(self) -> None:
-        pass
+        if self._viewer is not None:
+            self._viewer.close()
+            self._viewer = None

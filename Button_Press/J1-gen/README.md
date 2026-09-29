@@ -249,6 +249,7 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/locate_bottle.py --recor
 
 ```bash
 G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/press_bottle_sim.py                     # MuJoCo（同じプロセス）
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/press_bottle_sim.py --view              # 画面で動きを実時間で見る（WSL は WSLg で表示）
 G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/press_bottle.py --path arm_sdk             # 実機、dry-run
 G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/press_bottle.py --path arm_sdk --execute   # 実機、送信（確認モード）
 ```

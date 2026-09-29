@@ -2,6 +2,7 @@
 
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/press_bottle_sim.py
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/press_bottle_sim.py --target manual --point 0.39 -0.2 0.04
+    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/press_bottle_sim.py --view    # 画面で動きを見る
 
 MuJoCo（胴体固定、机とボトル、ハンドの衝突判定の箱あり）を同じプロセスで動かし、頭カメラは MuJoCo の描画、
 検出は既定でセグメンテーション（YOLO は作り物のボトルを検出しないため）。流れと記録は実機と同じ（common/pipeline.py）。
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +38,9 @@ def run_sim(args: argparse.Namespace, post_check: PostPressCheck | None = None,
     cfg = load_pipeline_config(args)
     scene = load_config("sim_scene.yaml")
     sim = dict(cfg.arm["sim"])
-    sim.update(scene=scene, initial_q=list(detection_pose(scene, np.zeros(29))), realtime=False)
+    view = bool(getattr(args, "view", False))
+    # 画面で見るときは実時間で進める（そうしないと一瞬で終わる）
+    sim.update(scene=scene, initial_q=list(detection_pose(scene, np.zeros(29))), realtime=view, viewer=view)
     cfg.arm["sim"] = sim
     for k, v in (arm_overrides or {}).items():
         cfg.arm[k] = v
@@ -60,11 +64,21 @@ def main() -> int:
     add_common_args(p)
     p.add_argument("--sim-detector", choices=["segmentation", "color", "yolo"], default="segmentation")
     p.add_argument("--confirm", action="store_true", help="各段階で Enter を待つ")
+    p.add_argument("--view", action="store_true",
+                   help="MuJoCo の画面を開いて、動きを実時間で見る（終わったあと、画面を閉じるとスクリプトが終わる）")
     args = p.parse_args()
     if args.sim_detector in ("color", "yolo"):
         args.detector = args.sim_detector
-    res, _, logger = run_sim(args)
+    res, backend, logger = run_sim(args)
     print(f"[press_bottle_sim] 記録: {logger.dir}")
+    if backend.viewer_running():
+        print("[press_bottle_sim] 終わった。画面を閉じると終わる（Ctrl+C でも終わる）")
+        try:
+            while backend.viewer_running():
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            pass
+    backend.close()
     return res.code
 
 
