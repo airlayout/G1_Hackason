@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stealth G1 3D PoC</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas"></canvas>
+      <div id="split-divider"></div>
+
+      <div id="level-select">
+        <h1>STEALTH G1 (3D)</h1>
+        <label for="reaction-select">
+          G1の反応パターン:
+          <select id="reaction-select">
+            <option value="STOP_NONE">①反応しない（巡回継続）</option>
+            <option value="STOP">②発見後2〜3秒停止</option>
+            <option value="LOOK_AT_PLAYER">③停止して目撃方向を見る</option>
+            <option value="CHASE">④目撃方向へ追跡</option>
+          </select>
+        </label>
+        <div id="level-buttons"></div>
+      </div>
+
+      <div id="hud" class="hidden">
+        <div id="hud-target">TARGET: -</div>
+        <div id="hud-timer">TIME: 0.0</div>
+        <div id="hud-hint">移動: WASD / 視点: 矢印キー</div>
+        <button id="btn-back">LEVEL SELECT</button>
+      </div>
+
+      <div id="overlay" class="hidden">
+        <h2 id="overlay-title"></h2>
+        <p id="overlay-hint"></p>
+        <button id="btn-retry">RETRY</button>
+        <button id="btn-overlay-back">LEVEL SELECT</button>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

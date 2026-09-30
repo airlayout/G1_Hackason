@@ -1,0 +1,10 @@
+# patrol_dryrun.py が書き出した巡回路。⚠️ **机上で経路が引けることまでしか確かめていない。**
+# 実機で使う前に、現地で record_waypoints.py を使って取り直すのが本筋。
+frame_id: map
+waypoints:
+- {name: p1, x: 0.74, y: -1.37, yaw_deg: -5}
+- {name: p2, x: 9.02, y: -2.06, yaw_deg: -91}
+- {name: p3, x: 8.98, y: -5.65, yaw_deg: -179}
+- {name: p4, x: 5.91, y: -5.73, yaw_deg: 90}
+- {name: p5, x: 5.94, y: -2.02, yaw_deg: 174}
+- {name: p6, x: 1.05, y: -1.47, yaw_deg: 162}

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Stealth Game PoC</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<h1>STEALTH GAME PoC</h1>
+
+<a href="editor.html" id="editor-link">ステージエディタを開く</a>
+
+<div id="level-select">
+  <h2>LEVEL SELECT</h2>
+</div>
+
+<div id="play-controls" class="hidden">
+  <button id="btn-retry">やり直す</button>
+  <button id="btn-back">レベル選択に戻る</button>
+</div>
+
+<p id="play-rules" class="hidden">
+  矢印キーで移動し、警備員(赤)の視野(扇形)を避けてTARGETを取ろう。<br />
+  視野に入ると一発GAME OVER。<br />
+  TARGETを取ったらSTARTまで戻ればCLEAR。
+</p>
+
+<canvas id="game-canvas" class="hidden"></canvas>
+
+<div id="overlay" class="hidden">
+  <div id="overlay-title"></div>
+  <div id="overlay-hint"></div>
+</div>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>

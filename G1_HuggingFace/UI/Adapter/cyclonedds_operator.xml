@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- 操作PC で CycloneDDS を使うときの設定。Adapter/run.sh が読ませる。
+
+     ⚠️ **インターフェースを有線に固定する理由。**
+     操作PC は wlo1(WiFi・既定経路)と enp3s0(G1 の内蔵スイッチ側、192.168.123.222)の
+     2つを持つ。指定しないと CycloneDDS が WiFi 側を選ぶことがあり、
+     **トピックは見えるのにデータが来ない**という分かりにくい壊れ方をする。
+     PC2 側が同じ理由で eth0 に固定している(g1_nav2/cyclonedds_eth0.xml)ので、
+     こちらも合わせる。
+
+     ⚠️ インターフェース名は環境で変わる。`ip -br addr` で確かめること
+        (G1_UI_IFACE で差し替えられるようにしてある)。 -->
+<CycloneDDS>
+  <Domain>
+    <General>
+      <Interfaces>
+        <NetworkInterface name="@IFACE@" priority="default" multicast="default"/>
+      </Interfaces>
+    </General>
+  </Domain>
+</CycloneDDS>
