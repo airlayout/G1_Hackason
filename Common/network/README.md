@@ -133,6 +133,9 @@ python3 Common/network/check_g1_connectivity.py --check-bridge-ports
 
 ### 5. WiFi接続の場合
 
+会場のモバイルルータ配下（`Physical_AI_5G`）で使う場合の構成・手順・トラブルシュートは
+[WIFI_ROUTER.md](./WIFI_ROUTER.md) を参照。
+
 WiFi接続時はIPが可変になるため、`--host`でG1の実際のIPを指定する:
 
 ```bash
@@ -163,5 +166,6 @@ Host g1
 
 ## 関連
 
+- [WIFI_ROUTER.md](./WIFI_ROUTER.md) — ルータ配下 Wi-Fi / Tailscale での接続構成
 - [SETUP.md](../../SETUP.md) — 操作PC側・G1本体側の環境構築全体の手順
 - [SimpleWalk/real/walk_forward_real.py](../../SimpleWalk/real/walk_forward_real.py) — 疎通確認の後に実行する歩行スクリプトの例
