@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>G1 開発コンソール</title>
+<style>
+:root{--bg:#f5f6f8;--fg:#1a1d21;--card:#fff;--line:#d8dce2;--ok:#1b7f3b;--warn:#b26a00;--bad:#c62828;--btn:#e8ecf3}
+@media (prefers-color-scheme:dark){:root{--bg:#14171b;--fg:#e6e8eb;--card:#1e2329;--line:#333a42;--ok:#4cc26d;--warn:#e0a030;--bad:#ef6a6a;--btn:#2a313a}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 -apple-system,sans-serif}
+main{max-width:640px;margin:0 auto;padding:24px 16px}
+h1{font-size:20px;margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px}
+.label{font-size:13px;opacity:.7}
+#mode{font-size:28px;font-weight:700;margin:4px 0}
+#detail{font-size:13px;opacity:.7;word-break:break-all}
+.ok{color:var(--ok)}.offline,.unknown{color:var(--bad)}.debug{color:var(--warn)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:8px}
+button{padding:14px 8px;border:1px solid var(--line);border-radius:10px;background:var(--btn);color:var(--fg);font-size:15px;cursor:pointer}
+button.danger{border-color:var(--bad)}
+button.current{outline:2px solid var(--ok)}
+button:disabled{opacity:.4;cursor:not-allowed}
+#msg{min-height:1.5em;font-size:14px}
+</style></head><body><main>
+<h1>G1 開発コンソール</h1>
+<div class="card"><div class="label">現在のモード</div>
+<div id="mode" class="unknown">取得中…</div><div id="detail"></div></div>
+<div class="card"><div class="label">モード切り替え</div><div class="grid" id="btns"></div>
+<p id="msg"></p></div>
+</main>
+<script>
+let current=null,busy=false,polling=false;
+const $=id=>document.getElementById(id);
+async function refresh(){
+  try{
+    const s=await (await fetch('/api/status')).json();
+    current=s.state==='ok'?s.fsm_id:null;
+    $('mode').className=s.state;
+    $('mode').textContent=s.state==='ok'?`${s.label}（ID ${s.fsm_id}）`:s.label;
+    $('detail').textContent=s.detail||'';
+  }catch(e){$('mode').className='offline';$('mode').textContent='コンソールサーバに接続できません';current=null}
+  document.querySelectorAll('#btns button').forEach(b=>{
+    b.classList.toggle('current',Number(b.dataset.id)===current);
+    b.disabled=busy||current===null;
+  });
+}
+async function setMode(b){
+  const walking=current===500||current===501;
+  const warn=b.danger&&walking?'\n\n歩行中にこの操作をすると転倒する恐れがあります。':'';
+  if(!confirm(`「${b.label}」に切り替えます。周囲の安全を確認しましたか？${warn}`))return;
+  busy=true;$('msg').textContent='送信中…';
+  try{
+    const r=await fetch('/api/mode',{method:'POST',body:JSON.stringify({id:b.id})});
+    const j=await r.json();
+    $('msg').textContent=r.ok?`送信しました（code=${j.set_code}）`:`失敗: ${j.error||r.status}`;
+  }catch(e){$('msg').textContent='失敗: '+e}
+  busy=false;await refresh();
+}
+(async()=>{
+  const {buttons}=await (await fetch('/api/buttons')).json();
+  for(const b of buttons){
+    const el=document.createElement('button');
+    el.textContent=b.label;el.dataset.id=b.id;
+    if(b.danger)el.classList.add('danger');
+    el.onclick=()=>setMode(b);$('btns').appendChild(el);
+  }
+  await refresh();setInterval(async()=>{if(busy||polling)return;polling=true;try{await refresh()}finally{polling=false}},1000);
+})();
+</script></body></html>
