@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""G1 開発コンソール（Mac 側）。標準ライブラリのみ。
+"""G1 開発コンソール（開発用 PC 側。macOS / Windows / Linux 共通）。標準ライブラリのみ。
 
   python3 server.py            # 実機: 設定タブで入れた Jetson へ ssh し、そこのヘルパーを使う（--host でも指定可）
   python3 server.py --mock     # 実機なしの模擬（UI 確認用。画面から状態を切り替えられる）

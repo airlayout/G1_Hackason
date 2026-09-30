@@ -1,4 +1,4 @@
-"""G1 の FSM ID 定義（Mac 側サーバと Jetson 側ヘルパーで共有する情報）。
+"""G1 の FSM ID 定義（開発用 PC 側サーバと Jetson 側ヘルパーで共有する情報）。
 
 出典: unitree_sdk2_python の g1_loco_client.py（0/1/3/500/702/706）と、
 Unitree 公式マニュアル系ドキュメント（501 = 腰3自由度版の通常モード）。

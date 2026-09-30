@@ -84,7 +84,7 @@
 ## 12. 性能上の知見
 
 - コールバック購読で約 2200 msg/s を受けると RPC が飢える → DataReader + KeepLast(1) + TimeBasedFilter、`take(N=1)` にする。ロガーの実測は各トピック約 2 Hz（period 0.5 s）。
-- 通信は Mac → ssh(tailscale) → Jetson → DDS。鮮度閾値 FRESH 2.5 s / STALE 8 s / GIVEUP 15 s。
+- 通信は 開発用 PC → ssh(tailscale) → Jetson → DDS。鮮度閾値 FRESH 2.5 s / STALE 8 s / GIVEUP 15 s。
 
 ## 13. 未確認リスト
 

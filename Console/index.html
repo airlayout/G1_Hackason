@@ -359,7 +359,7 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  <h2>接続先の設定</h2>
  <p class="note">環境（ネットワーク）によって変わる値です。保存すると <code>Console/settings.json</code> に書かれ、次回起動時にも使われます（git には入りません）。</p>
  <form id="set-form" autocomplete="off">
-  <label class="frow"><b>開発用 PC の IP</b><input type="text" name="dev_pc" placeholder="例 192.168.123.99"><span class="note">この Mac／開発機のアドレス。今は表示・記録のみで、接続には使いません。</span></label>
+  <label class="frow"><b>開発用 PC の IP</b><input type="text" name="dev_pc" placeholder="例 192.168.123.99"><span class="note">この開発用 PC のアドレス。今は表示・記録のみで、接続には使いません。</span></label>
   <label class="frow"><b>Jetson PC の IP</b><input type="text" name="jetson_host" placeholder="例 192.168.123.164 または Tailscale の IP"><span class="note">ssh の接続先（Tailscale の IP でも可）。変更すると Jetson への接続を張り直します。カメラ映像もここから取得します。</span></label>
   <label class="frow"><b>G1 本体の IP</b><input type="text" name="g1_ip" placeholder="例 192.168.123.161"><span class="note">G1 本体のアドレス。今は表示・記録のみです（G1 とは Jetson の DDS 経由で通信します）。</span></label>
   <details><summary>詳細（ssh ユーザー・鍵・カメラポート）</summary>
@@ -402,7 +402,7 @@ function nodes(){
 function diagnose(n){
   const code=t=>{const c=document.createElement('code');c.textContent=t;return c};
   const out=[];
-  if(n.server.st==='stopped')out.push('コンソールサーバーが動いていません（または応答がありません）。Mac のターミナルで ',code('python3 Console/server.py'),' を起動してください。この画面は自動で再接続します。');
+  if(n.server.st==='stopped')out.push('コンソールサーバーが動いていません（または応答がありません）。開発用 PC のターミナルで ',code('python3 Console/server.py'),' を起動してください。この画面は自動で再接続します。');
   else if(n.jetson.st==='paused')out.push('自動確認・再接続を停止しています。再開するか「今すぐ 1 回確認」を押すと確認します。');
   else if(n.server.st==='checking')out.push('サーバーに問い合わせています…');
   else if(n.jetson.st==='checking')out.push('サーバーは起動しました。G1 側の初回確認中です（数秒かかります）。');

@@ -15,7 +15,7 @@ G1 の電池切れ（2026-10-01）で取れなかったもの・未確認のも�
 ## 1. 最初の 10 分（読み取りのみ）
 1. `tailscale status | grep g1-jetson` で到達性を確認。
 2. `free -m; df -h /; uptime`、`ps aux --sort=-%mem | head` … 前回の残骸（ros2 デーモン等）が無いか。
-3. `date; timedatectl` … Jetson の時刻とタイムゾーン（Mac と約 1 時間ずれていた）。
+3. `date; timedatectl` … Jetson の時刻とタイムゾーン（開発用 PC と約 1 時間ずれていた）。
 4. バッテリー残量（Console の「バッテリー」）。低いなら長い取得はしない。
 5. `~/g1_console_camera/camera_ctl.sh status` … 停止中であること。
 
