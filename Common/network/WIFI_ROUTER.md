@@ -27,8 +27,8 @@ Ethernet 直結（`192.168.123.x`）の手順は [README.md](./README.md) を参
                  └──┬─────────┬──────────┬──┘
                     │ 5GHz    │ 5GHz     │ 5GHz
          ┌──────────┴──┐ ┌────┴────────┐ ┌┴─────────────────┐
-         │ 開発PC(Mac)  │ │ omen         │ │ G1 / Jetson Orin  │
-         │ 192.168.0.38 │ │ 192.168.0.167│ │ 192.168.0.82      │
+         │ 開発PC(各自) │ │ omen         │ │ G1 / Jetson Orin  │
+         │ DHCP(例 .38) │ │ 192.168.0.167│ │ 192.168.0.82      │
          └──────────────┘ └─────────────┘ └──────────────────┘
 
    Tailscale（tailnet: tail140c19.ts.net）で相互に到達可能
@@ -42,8 +42,13 @@ Ethernet 直結（`192.168.123.x`）の手順は [README.md](./README.md) を参
 | フリーWi-Fi | 上流回線 | インターネット | - | 確認済み（品質は §6） |
 | モバイルルータ TL-WR1502X | LAN構築・中継 | フリーWi-Fiへ上流接続 | 192.168.0.0/24 (GW .1) | 確認済み |
 | G1 Jetson Orin | G1の開発PC | ルータ 5GHz | LAN 192.168.0.82 / Tailscale 100.78.135.14 | 確認済み |
-| 開発PC（Mac） | 操作端末 | ルータ 5GHz | 192.168.0.38 | 確認済み |
+| 開発PC（各自の端末） | 操作端末 | ルータ 5GHz | DHCP（例: 192.168.0.38） | 確認済み（Mac で確認） |
 | omen | 遠隔開発PC（Isaac Sim 機） | ルータ 5GHz | LAN 192.168.0.167 / Tailscale 100.99.102.70 | 確認済み |
+
+**開発PC は各自の端末で、OS も IP も固定ではない**（Mac / Windows / Linux のいずれも可）。
+本書の `192.168.0.38` や Mac 前提のコマンドは一例。IP は DHCP で割り当てられるので、
+自分の端末の IP は `ifconfig` / `ipconfig` / `ip addr` 等で確認する。
+G1 と omen は上表の IP を使う。
 
 Wi-Fi パスワード・SSH パスワードは、Slack ワークスペース「P.AI Nexus Japan ハッカソン」
 （painexusjapan.slack.com）内を検索するか、他のメンバーに聞く（リポジトリには書かない）。
@@ -51,11 +56,18 @@ Wi-Fi パスワード・SSH パスワードは、Slack ワークスペース「P
 ## 3. G1 への接続手順（同一ルータ配下）
 
 1. 端末を `Physical_AI_5G`（5GHz）に接続
-2. 疎通確認
+2. 疎通確認（Mac / Linux）
 
    ```bash
    ping -c 5 192.168.0.82
    nc -z 192.168.0.82 22 && echo open
+   ```
+
+   Windows（PowerShell）の場合:
+
+   ```powershell
+   ping -n 5 192.168.0.82
+   Test-NetConnection 192.168.0.82 -Port 22
    ```
 
 3. SSH
@@ -121,6 +133,9 @@ LAN 内（Mac / omen / Jetson 間）は 5GHz で良好。問題は上流のイ�
 - 将来の改善案: SIM(LTE/5G) または有線 WAN を上流にできるルータへ変更
 
 ## 7. 端末側の設定（5GHz を確実に使う）
+
+以下は **Linux 端末（omen など）の場合**。Mac / Windows は OS が国コードを自動設定するため
+通常は不要で、`Physical_AI_5G` を選んで繋ぎ、`Physical_AI`（2.4GHz）を自動接続から外せばよい。
 
 国コードを JP にする（Linux）。未設定（`iw reg get` が country 00）だと、5GHz が見えない／
 DFS チャネル(52〜64)に繋げない。
