@@ -3,7 +3,7 @@ import json
 import subprocess
 from pathlib import Path
 
-d = Path("/Users/koba/aicle/G1_Hackason/Console/docs/g1_logs")
+d = Path(__file__).resolve().parent.parent / "docs" / "g1_logs"
 f = sorted(d.glob("live_*.jsonl"))[-1]
 last = {}
 for line in f.read_text(encoding="utf-8").splitlines():

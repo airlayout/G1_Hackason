@@ -70,7 +70,7 @@ if not line:
     print("取得失敗", r.stderr[-800:])
 else:
     d = json.loads(line[-1])
-    d_dir = Path("/Users/koba/aicle/G1_Hackason/Console/docs/g1_snapshot")
+    d_dir = Path(__file__).resolve().parent.parent / "docs" / "g1_snapshot"
     for f in d["frames"]:
         b = f.pop("data_b64", None)
         if b:

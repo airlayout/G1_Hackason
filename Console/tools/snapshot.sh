@@ -1,6 +1,6 @@
 #!/bin/bash
 # G1(Jetson)から読み取り専用で資料を丸ごと保存する。電源が切れる前の退避用。
-OUT=/Users/koba/aicle/G1_Hackason/Console/docs/g1_snapshot
+OUT="$(cd "$(dirname "$0")/.." && pwd)/docs/g1_snapshot"
 mkdir -p "$OUT"
 SSH="ssh -o BatchMode=yes -o ConnectTimeout=8 g1-ts"
 
@@ -16,7 +16,7 @@ $SSH 'ss -tulpn 2>&1 | head -80; echo ==; cat /etc/hosts; echo ==; cat ~/.bash_h
 echo "env done"
 
 # 3) 各 DDS トピックの実サンプルと、サービスの応答（読み取りのみ）
-cp /private/tmp/claude-501/-Users-koba-aicle-G1-Hackason/d5df4da4-c811-4479-b5da-170178b138bd/scratchpad/topics.txt "$OUT/dds_topics_discovered.txt"
+# トピック一覧（dds_topics_discovered.txt）は tools/discover.py の出力を $OUT に置いておく
 $SSH 'cd ~/unitree_sdk2_python && python3 -u -' > "$OUT/dds_samples.json" 2>"$OUT/dds_samples.err" <<'PYEOF'
 import json, os, time
 os.environ['CYCLONEDDS_URI']='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="eth0"/></Interfaces></General></Domain></CycloneDDS>'

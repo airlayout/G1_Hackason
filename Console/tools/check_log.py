@@ -2,7 +2,7 @@ import collections
 import json
 from pathlib import Path
 
-d = Path("/Users/koba/aicle/G1_Hackason/Console/docs/g1_logs")
+d = Path(__file__).resolve().parent.parent / "docs" / "g1_logs"
 f = sorted(d.glob("live_*.jsonl"))[-1]
 c = collections.Counter()
 n = 0
