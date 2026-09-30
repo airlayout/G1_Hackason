@@ -13,7 +13,7 @@
 ## 2. 環境の事実(要約)
 
 - Jetson Orin NX / L4T R35.3.1 / Ubuntu 20.04 / Python 3.8(システム)+ lerobot conda(3.12)+ pixi(3.11, ROS Humble)。
-- LAN: eth0 `192.168.123.164`、Tailscale 経由で `ssh g1-ts`(開発用 PC 側の ssh config)。
+- LAN: eth0 `192.168.123.164`、Tailscale 経由で `ssh g1-ts`(操作用 PC 側の ssh config)。
 - DDS: CycloneDDS 0.10.2、domain 0、eth0、`AllowMulticast=spdp`。
 - カメラ: D435i(video0-5)。RGB は video4、**Unitree の videohub_pc4 が専有**。webcam(Sunplus)は前回未列挙。
 - pyrealsense2 2.55.1.6486 は**導入済み**(古い記述の「未導入」は誤り)。
@@ -22,7 +22,7 @@
 ## 3. Console とロボットの関係
 
 ```
-開発用 PC                                     Jetson (g1-ts)
+操作用 PC                                     Jetson (g1-ts)
 server.py (127.0.0.1:18790, 標準ライブラリのみ)
   └ SshHelper --ssh--> remote_helper.py (py3.8 + unitree_sdk2py) --DDS--> ロボット
   └ /camera/<name> --HTTP proxy--> camera_stream.py (:8081, 手動起動のみ)
@@ -87,7 +87,7 @@ index.html: コンソール / DDS リスト / カメラ の 3 タブ
 7. `lsusb`
 8. `v4l2-ctl --list-devices` と `v4l2-ctl -d /dev/video4 --list-formats-ext`(読み取りのみ)
 9. `dpkg -l | grep -i -e realsense -e gstreamer`、`env | grep -e ROS -e RMW -e CYCLONE`、`date; timedatectl`
-10. 開発用 PC 側で `server.py` を通常起動し `/api/status` を確認(FSM/バッテリー)。
+10. 操作用 PC 側で `server.py` を通常起動し `/api/status` を確認(FSM/バッテリー)。
 
 やらないこと: `ros2 topic list`、`SetFsmId`、カメラサーバーの自動起動、`videohub_pc4` の kill。
 取得結果は `g1_snapshot/` と別のフォルダ(日付付き)に保存し、原本を上書きしない。
