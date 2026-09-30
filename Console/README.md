@@ -29,7 +29,7 @@ G1 の**現在の動作モードを表示**し、**ボタンでモードを切�
 ## 動かす
 
 ```bash
-# 実機（ssh g1 が通っていること。Jetson 上でヘルパーが DDS に繋ぐ）
+# 実機（設定タブで Jetson の IP を入れる。Jetson 上でヘルパーが DDS に繋ぐ）
 python3 server.py
 
 # 実機なしで画面だけ確認（状態は作り物。画面右上の「模擬シナリオ」で
@@ -45,8 +45,8 @@ python3 server.py --mock
 
 ```
 ブラウザ ─HTTP→ server.py（この PC, 127.0.0.1:18790）
-                  └─ ssh g1（標準入出力で JSON 1 行ずつ）
-                       └─ remote_helper.py（Jetson, Python 3.8, unitree_sdk2py）
+                  └─ ssh（設定タブの Jetson、標準入出力で JSON 1 行ずつ）
+                       └─ jetson/remote_helper.py（Jetson, Python 3.8, unitree_sdk2py）
                             └─ DDS（eth0, domain 0）→ G1 のモーションサービス
 ```
 
@@ -78,6 +78,24 @@ Jetson にファイルは残らない。
 | 500 / 501 | 通常歩行（腰1軸 / 腰3軸） | 500 は SDK、501 は公式マニュアル系資料。実機は 501 を返した |
 | 702 | 床から起立 | SDK |
 | 706 | しゃがみ⇔起立 | SDK |
+
+## 画面の構成（タブ = URL ハッシュ = API 名）
+
+ヘッダー常設: 3 段の接続状態・現在のモード・バッテリー%。その下に 6 タブ。
+
+| タブ | ハッシュ | 中身 | JSON |
+|---|---|---|---|
+| 操作 | `#ops` | モード切替・アクション・移動・操作履歴 | `/api/status` |
+| 状態 | `#state` | バッテリー詳細・IMU・オドメトリ・Jetson/メインボード・リモコン/非常停止 | `/api/state` |
+| 関節 | `#joints` | 29 軸の角度・速度・トルク・温度・指令 | `/api/joints` |
+| 音声 | `#audio` | 音量・LED・読み上げ（認識結果は未実装） | `/api/audio/volume` |
+| カメラ・lidar | `#camera` | カメラ映像（lidar は未実装） | `/api/cameras` |
+| DDS | `#dds` | トピック/サービス台帳・受信状況・機能の状態 | `/api/dds` |
+| 設定 | `#settings` | 開発用 PC／Jetson／G1 の IP（Jetson は ssh 接続先に反映。`settings.json` に保存） | `/api/settings`（GET/POST） |
+
+自動確認・再接続の停止／再開はヘッダーのボタン（`POST /api/monitor` `{"paused": true}`、1 回だけ確認は `{"check": true}`）。
+
+`/api/snapshot` は全タブ分を 1 回で返す。実機での確認項目は [`docs/REAL_ROBOT_CHECKLIST.md`](docs/REAL_ROBOT_CHECKLIST.md)。
 
 ## 実機調査の記録
 

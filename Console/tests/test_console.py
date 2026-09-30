@@ -11,9 +11,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dds_catalog import DISPLAYED, SERVICES, TOPICS  # noqa: E402
 from modes import validate_audio, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, PLANNED_MODES  # noqa: E402
-from server import MockHelper, Monitor, describe, make_handler  # noqa: E402
+from server import MockHelper, Monitor, SshHelper, describe, make_handler  # noqa: E402
+from settings import Settings, validate  # noqa: E402
 
 G1_TIMEOUT = {"ok": True, "checkmode_code": 3102, "service": None, "fsm_code": 3102, "fsm_id": None}
 
@@ -111,7 +113,7 @@ class DdsCatalogTest(unittest.TestCase):
 
     def test_displayed_topics_match_helper_subscriptions(self):
         # remote_helper.py が購読しているトピックと、表示済みの一覧は一致していなければならない
-        src = (Path(__file__).resolve().parent.parent / "remote_helper.py").read_text(encoding="utf-8")
+        src = (Path(__file__).resolve().parent.parent / "jetson" / "remote_helper.py").read_text(encoding="utf-8")
         for name in (t[0] for t in TOPICS if t[2] == DISPLAYED):
             self.assertIn('"%s"' % name, src)
         self.assertEqual(len([t for t in TOPICS if t[2] == DISPLAYED]), 18)
@@ -176,9 +178,10 @@ class HttpTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.helper = MockHelper()
+        cls.settings = Settings(None)
         cls.monitor = Monitor(cls.helper)
         cls.monitor.poll_once()
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.helper, cls.monitor))
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.helper, cls.monitor, None, cls.settings))
         cls.port = cls.server.server_address[1]
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
@@ -258,9 +261,104 @@ class HttpTest(unittest.TestCase):
         self.helper.scenario = "g1_off"
         self.assertEqual(self._post("/api/audio/led", json.dumps({"r": 1, "g": 2, "b": 3}).encode())[0], 502)
 
+    def test_settings_roundtrip_and_validation(self):
+        code, body = self._post("/api/settings", json.dumps({"jetson_host": "192.168.123.164", "g1_ip": "192.168.123.161"}).encode())
+        self.assertEqual(code, 200)
+        self.assertEqual(body["settings"]["jetson_host"], "192.168.123.164")
+        got = json.load(urllib.request.urlopen("http://127.0.0.1:%d/api/settings" % self.port, timeout=5))
+        self.assertEqual(got["settings"]["g1_ip"], "192.168.123.161")
+        for bad in ({"jetson_host": "-oProxyCommand=x"}, {"g1_ip": "999.1.1.1"}, {"camera_port": "0"}, {"jetson_user": "a b"}):
+            self.assertEqual(self._post("/api/settings", json.dumps(bad).encode())[0], 400, bad)
+
+    def test_pause_stops_background_checks_and_can_resume(self):
+        self.assertEqual(self._post("/api/monitor", b'{"paused": true}')[1], {"paused": True})
+        self.assertTrue(self._status()["paused"])
+        before = self._status()["sampled_at"]
+        time.sleep(0.01)
+        self.assertEqual(self._post("/api/monitor", b'{"check": true}')[0], 200)  # 手動の 1 回は動く
+        self.assertGreater(self._status()["sampled_at"], before)
+        self.assertEqual(self._post("/api/monitor", b'{"paused": false}')[1], {"paused": False})
+
+    def _api_doc(self):
+        return json.load(urllib.request.urlopen("http://127.0.0.1:%d/api" % self.port, timeout=5))
+
+    def test_every_documented_response_matches_its_schema_in_every_scenario(self):
+        from schema_check import check
+        doc = self._api_doc()
+        comps = doc["components"]["schemas"]
+        for scenario in ("ok", "g1_off", "jetson_off", "debug", "replay"):
+            self.helper.scenario = scenario
+            self.monitor.poll_once()
+            for path, methods in doc["paths"].items():
+                op = methods.get("get")
+                if not op or "{" in path or path in ("/openapi.yaml", "/api/scenarios"):
+                    continue
+                try:
+                    r = urllib.request.urlopen("http://127.0.0.1:%d%s" % (self.port, path), timeout=5)
+                    code, body = r.status, json.load(r)
+                except urllib.error.HTTPError as e:
+                    code, body = e.code, json.load(e)
+                self.assertIn(str(code), op["responses"], "%s %s: 未定義のコード %s" % (scenario, path, code))
+                schema = op["responses"][str(code)]["content"]["application/json"]["schema"]
+                self.assertEqual(check(body, schema, comps), [], "%s %s" % (scenario, path))
+
+    def test_documented_requests_are_accepted_and_bad_ones_are_400(self):
+        from schema_check import check
+        doc = self._api_doc()
+        comps = doc["components"]["schemas"]
+        for path, methods in doc["paths"].items():
+            op = methods.get("post")
+            if not op or path == "/api/scenario":
+                continue
+            content = op["requestBody"]["content"]["application/json"]
+            self.assertEqual(check(content["example"], content["schema"], comps), [], path)  # 例がスキーマに合っている
+            code, body = self._post(path, json.dumps(content["example"]).encode())
+            self.assertIn(str(code), op["responses"], "%s → %s" % (path, code))
+            self.assertEqual(check(body, op["responses"][str(code)]["content"]["application/json"]["schema"], comps), [], path)
+            if "400" in op["responses"]:
+                self.assertEqual(self._post(path, b"not json")[0], 400, path)
+        self._post("/api/audio/volume", b'{"volume": 85}')  # 例の送信で変わった模擬の音量を戻す
+
+    def test_every_route_in_the_spec_exists_and_openapi_yaml_is_served(self):
+        doc = self._api_doc()
+        self.assertEqual(doc["openapi"], "3.0.3")
+        ids = [op["operationId"] for m in doc["paths"].values() for op in m.values()]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertIn("openapi", urllib.request.urlopen("http://127.0.0.1:%d/openapi.yaml" % self.port, timeout=5).read().decode())
+        for path, methods in doc["paths"].items():
+            if "post" in methods and path != "/api/scenario":
+                self.assertNotEqual(self._post(path, b"{}")[0], 404, path)
+
+    def test_generated_api_docs_are_up_to_date(self):
+        from api_spec import render_markdown, render_yaml
+        docs = Path(__file__).resolve().parent.parent / "docs"
+        self.assertEqual((docs / "API.md").read_text(encoding="utf-8"), render_markdown(), "python3 Console/api_spec.py で再生成")
+        self.assertEqual((docs / "openapi.yaml").read_text(encoding="utf-8"), render_yaml(), "python3 Console/api_spec.py で再生成")
+
     def test_index_html_is_served(self):
         html = urllib.request.urlopen("http://127.0.0.1:%d/" % self.port, timeout=5).read().decode()
         self.assertIn("G1 開発コンソール", html)
+
+    def test_every_tab_has_button_and_panel_in_html(self):
+        from modes import TABS
+        html = urllib.request.urlopen("http://127.0.0.1:%d/" % self.port, timeout=5).read().decode()
+        for name in TABS:
+            self.assertIn('id="tab-b-%s"' % name, html)
+            self.assertIn('id="tab-%s"' % name, html)
+        self.assertIn('id="bat-soc"', html)  # バッテリー%はヘッダー常設
+
+    def test_tab_apis_return_the_same_data_as_the_screen(self):
+        self.helper.scenario = "replay"
+        self.monitor.poll_once()
+        get = lambda path: json.loads(urllib.request.urlopen("http://127.0.0.1:%d%s" % (self.port, path), timeout=5).read())
+        state, joints, snap = get("/api/state"), get("/api/joints"), get("/api/snapshot")
+        self.assertIn("soc", state["battery"])
+        self.assertIn("units_assumed", state["notes"])
+        self.assertEqual(len(joints["items"]), 29)
+        self.assertEqual(joints["items"][0]["name"], "左股 pitch")
+        self.assertIsNotNone(joints["items"][0]["cmd"])
+        self.assertEqual(snap["state"]["battery"]["soc"], state["battery"]["soc"])
+        self.assertEqual(snap["tabs"], ["ops", "state", "joints", "audio", "camera", "dds", "settings"])
 
 
 if __name__ == "__main__":
@@ -312,3 +410,26 @@ class CameraProxyTest(unittest.TestCase):
         url = "http://127.0.0.1:%d/api/cameras" % self.off.server_address[1]
         with urllib.request.urlopen(url) as r:
             self.assertFalse(json.loads(r.read())["enabled"])
+
+
+class SettingsTest(unittest.TestCase):
+    def test_saved_file_survives_restart_and_broken_file_falls_back(self):
+        import tempfile
+        path = Path(tempfile.mkdtemp()) / "settings.json"
+        Settings(path).update({"jetson_host": "jetson.local", "jetson_user": "unitree", "jetson_key": "~/k"})
+        again = Settings(path)
+        self.assertEqual(again.ssh_target(), ("unitree@jetson.local", "~/k"))
+        self.assertEqual(again.camera_base(), "http://jetson.local:8081")
+        path.write_text("{broken")
+        self.assertIsNone(Settings(path).ssh_target()[0])
+
+    def test_ipv6_and_hostname_validation(self):
+        self.assertEqual(validate({"jetson_host": "::1"})["jetson_host"], "::1")
+        self.assertEqual(validate({"jetson_host": "g1-ts"})["jetson_host"], "g1-ts")
+        with self.assertRaises(ValueError):
+            validate({"jetson_host": "1.2.3"})
+
+    def test_unconfigured_ssh_helper_reports_offline_without_spawning(self):
+        raw = SshHelper(None).call({"op": "status"})
+        self.assertTrue(raw["unconfigured"])
+        self.assertIn("未設定", describe(raw)["jetson"]["detail"])

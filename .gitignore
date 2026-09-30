@@ -85,3 +85,9 @@ Console/docs/g1_snapshot/
 Console/docs/g1_logs/
 Console/docs/g1_snapshot.tgz
 Console/docs/extracted/
+Console/settings.json
+Console/jetson/camera_stream.pid
+Console/jetson/camera_stream.log
+# 機器の生データ（公開リポジトリには載せない）と、Unitree 公式ドキュメントの保存コピー（著作権は Unitree）
+Console/docs/g1_raw/
+Console/docs/unitree-g1-developer/

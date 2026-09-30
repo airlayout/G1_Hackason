@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """G1 開発コンソール（Mac 側）。標準ライブラリのみ。
 
-  python3 server.py            # 実機: ssh g1 越しに Jetson 上のヘルパーを使う
+  python3 server.py            # 実機: 設定タブで入れた Jetson へ ssh し、そこのヘルパーを使う（--host でも指定可）
   python3 server.py --mock     # 実機なしの模擬（UI 確認用。画面から状態を切り替えられる）
 ブラウザで http://127.0.0.1:18790 を開く。
 
@@ -21,7 +21,10 @@ from pathlib import Path
 
 from dds_catalog import SERVICES, TOPICS
 from replay import Replay
-from modes import validate_audio, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, PLANNED_ACTIONS, PLANNED_MODES
+from api_spec import openapi, render_yaml
+from settings import DEFAULT_PATH, LABELS, Settings
+from modes import (ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, JOINT_NAMES, PLANNED_ACTIONS, PLANNED_MODES, TABS,
+                   validate_audio)
 
 HERE = Path(__file__).resolve().parent
 REPLY_TIMEOUT_S = 8.0
@@ -39,17 +42,23 @@ class SshHelper:
 
     backend = "ssh"
 
-    def __init__(self, host: str):
-        self._host = host
-        self.backend = "ssh " + host
+    def __init__(self, host=None, key: str = ""):
         self._lock = threading.Lock()
         self._proc = None
         self._lines = queue.Queue()
+        self.reconfigure(host, key)
+
+    def reconfigure(self, host, key: str = ""):
+        """接続先を差し替える（実行中のヘルパーは捨てて、次の呼び出しで新しい先へつなぐ）。host は検証済みの値。"""
+        self._host, self._key = host, key
+        self.backend = "ssh " + host if host else "接続先未設定"
+        self._kill()
 
     def _start(self):
-        src = (HERE / "remote_helper.py").read_text(encoding="utf-8")
+        src = (HERE / "jetson" / "remote_helper.py").read_text(encoding="utf-8")
         src = src.replace("__ALLOWED__", repr(sorted(ALLOWED_IDS)))
-        cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", self._host,
+        key = ["-i", self._key] if self._key else []
+        cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", *key, "--", self._host,
                "cd ~/unitree_sdk2_python && python3 -u -c " + shlex.quote(src)]
         self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                       stderr=subprocess.DEVNULL, text=True)
@@ -79,6 +88,9 @@ class SshHelper:
             self._proc = None
 
     def call(self, req: dict) -> dict:
+        if not self._host:
+            return {"ok": False, "offline": True, "unconfigured": True,
+                    "error": "Jetson の接続先が未設定です（設定タブで入力）"}
         with self._lock:
             try:
                 if self._proc is None or self._proc.poll() is not None:
@@ -183,6 +195,8 @@ class MockHelper:
 
 
 def _jetson_detail(raw: dict) -> str:
+    if raw.get("unconfigured"):
+        return "接続先が未設定です（設定タブで Jetson の IP を入力）"
     if raw.get("ssh_exit") == SSH_CONNECT_FAILED:
         return "ssh で接続できません（exit 255）"
     return "ヘルパーが応答しません（%s）" % raw.get("error", "不明")
@@ -227,6 +241,8 @@ class Monitor:
         self._interval = interval
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self._wake = threading.Event()
+        self._paused = False
         self._snap = {
             "sampled_at": None, "latency_ms": None, "last_g1_ok_at": None, "last_mode": None,
             "jetson": {"state": "unknown", "detail": "起動直後（初回の確認中）"},
@@ -257,19 +273,60 @@ class Monitor:
         with self._lock:
             snap = self._snap
         age = None if snap["sampled_at"] is None else max(0.0, time.time() - snap["sampled_at"])
-        return {**snap, "age_s": age, "poll_interval_s": self._interval,
+        return {**snap, "age_s": age, "poll_interval_s": self._interval, "paused": self._paused,
                 "server": {"backend": self._helper.backend, "mock": hasattr(self._helper, "scenario")}}
 
     def start(self):
         threading.Thread(target=self._loop, daemon=True).start()
 
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    def set_paused(self, paused: bool):
+        """自動確認（と自動再接続）の停止／再開。停止中は背景では ssh も DDS も叩かない。"""
+        self._paused = bool(paused)
+        self._wake.set()
+
     def _loop(self):
         while not self._stop.is_set():
-            snap = self.poll_once()
-            self._stop.wait(self._interval if snap["jetson"]["state"] == "ok" else POLL_INTERVAL_DOWN_S)
+            wait = POLL_INTERVAL_DOWN_S
+            if not self._paused:
+                snap = self.poll_once()
+                wait = self._interval if snap["jetson"]["state"] == "ok" else POLL_INTERVAL_DOWN_S
+            self._wake.wait(wait)
+            self._wake.clear()
 
 
-def make_handler(helper, monitor, camera_base=None):
+STATE_KEYS = ("battery", "imu", "imu2", "odom", "mainboard", "system", "remote", "estop", "strings", "ages")
+STATE_NOTES = {
+    "units_assumed": ["battery.voltage: mV", "battery.current: mA（負=放電）", "battery.temperature: ℃"],
+    "unverified": ["mainboard.value の意味", "joints の名前対応", "IMU の単位（rpy=rad, gyro=rad/s, accel=m/s²）は SDK 準拠"],
+}
+
+
+def view(snap: dict, name: str) -> dict:
+    """monitor.snapshot() から、タブ単位の JSON を作る（画面と同じ内容を AI が 1 回の取得で読める）。"""
+    tele = snap.get("telemetry") or {}
+    head = {"sampled_at": snap["sampled_at"], "age_s": snap["age_s"], "jetson": snap["jetson"],
+            "g1": snap["g1"], "mode": snap["mode"]}
+    if name == "state":
+        return {**head, **{k: tele.get(k) for k in STATE_KEYS}, "notes": STATE_NOTES}
+    if name == "joints":
+        items = (tele.get("joints") or {}).get("items") or []
+        cmds = (tele.get("lowcmd") or {}).get("items") or []
+        rows = [{"index": i, "name": JOINT_NAMES[i] if i < len(JOINT_NAMES) else "#%d" % i, **m,
+                 "cmd": cmds[i] if i < len(cmds) else None} for i, m in enumerate(items)]
+        return {**head, "mode_machine": (tele.get("joints") or {}).get("mode_machine"),
+                "age_s_joints": (tele.get("joints") or {}).get("age_s"), "items": rows,
+                "notes": {"unverified": ["関節名の対応"]}}
+    return {**head, "tabs": list(TABS), "state": view(snap, "state"), "joints": view(snap, "joints")}
+
+
+def make_handler(helper, monitor, camera_base=None, settings=None):
+    def camera_url():
+        return camera_base or (settings.camera_base() if settings else None)
+
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code: int, ctype: str, data: bytes):
             self.send_response(code)
@@ -288,8 +345,14 @@ def make_handler(helper, monitor, camera_base=None):
             return json.loads(self.rfile.read(length))
 
         def do_GET(self):
-            if self.path == "/api/status":
+            if self.path == "/api":
+                self._json(200, openapi())
+            elif self.path == "/openapi.yaml":
+                self._send(200, "application/yaml; charset=utf-8", render_yaml().encode("utf-8"))
+            elif self.path == "/api/status":
                 self._json(200, monitor.snapshot())
+            elif self.path in ("/api/state", "/api/joints", "/api/snapshot"):
+                self._json(200, view(monitor.snapshot(), self.path[len("/api/"):]))
             elif self.path == "/api/audio/volume":
                 self._audio_reply(helper.call({"op": "audio_get"}), "code")
             elif self.path == "/api/buttons":
@@ -303,7 +366,9 @@ def make_handler(helper, monitor, camera_base=None):
             elif self.path == "/api/scenarios" and hasattr(helper, "scenario"):
                 self._json(200, {"scenarios": helper.SCENARIOS, "current": helper.scenario})
             elif self.path == "/api/cameras":
-                self._json(200, {"enabled": bool(camera_base), "cameras": CAMERAS})
+                self._json(200, {"enabled": bool(camera_url()), "cameras": CAMERAS})
+            elif self.path == "/api/settings" and settings:
+                self._json(200, {"settings": settings.get(), "labels": LABELS})
             elif self.path.startswith("/camera/"):
                 self._proxy_camera(self.path[len("/camera/"):])
             elif self.path in ("/", "/index.html"):
@@ -313,10 +378,11 @@ def make_handler(helper, monitor, camera_base=None):
 
         def _proxy_camera(self, name: str):
             """Jetson の MJPEG をそのまま中継する（ブラウザは同一オリジンで <img> に入れられる）。"""
-            if not camera_base or name not in CAMERAS:
-                return self._json(404, {"error": "カメラ未設定（--camera-url を指定）"})
+            base = camera_url()
+            if not base or name not in CAMERAS:
+                return self._json(404, {"error": "カメラ未設定（設定タブで Jetson の IP を入力）"})
             try:
-                upstream = urllib.request.urlopen("%s/%s" % (camera_base, name), timeout=CAMERA_TIMEOUT_S)
+                upstream = urllib.request.urlopen("%s/%s" % (base, name), timeout=CAMERA_TIMEOUT_S)
             except OSError as exc:
                 return self._json(502, {"error": "カメラに届きません: %s" % exc})
             with upstream:
@@ -337,6 +403,10 @@ def make_handler(helper, monitor, camera_base=None):
                 return self._post_audio(self.path[len("/api/audio/"):])
             if self.path == "/api/scenario" and hasattr(helper, "scenario"):
                 return self._post_scenario()
+            if self.path == "/api/monitor":
+                return self._post_monitor()
+            if self.path == "/api/settings" and settings:
+                return self._post_settings()
             self._json(404, {"error": "not found"})
 
         def _post_mode(self):
@@ -354,8 +424,11 @@ def make_handler(helper, monitor, camera_base=None):
         def _audio_reply(self, raw: dict, *code_keys: str):
             """受理コードがすべて 0 なら 200、それ以外は 502（画面には生の応答も返す）。"""
             failed = not raw.get("ok") or any(raw.get(k) != 0 for k in code_keys)
-            body = raw if raw.get("ok") else {**raw, "error": raw.get("error", "ヘルパーが応答しません")}
-            self._json(502 if failed else 200, body)
+            if not failed:
+                return self._json(200, raw)
+            reason = raw.get("error") or ("G1 が要求を受理しませんでした（%s）" % ", ".join(
+                "%s=%s" % (k, raw.get(k)) for k in code_keys) if raw.get("ok") else "ヘルパーが応答しません")
+            self._json(502, {**raw, "error": reason})
 
         def _post_audio(self, kind: str):
             try:
@@ -364,6 +437,31 @@ def make_handler(helper, monitor, camera_base=None):
                 return self._json(400, {"error": str(exc)})
             raw = helper.call(req)
             self._audio_reply(raw, *(("set_code", "read_code") if kind == "volume" else ("code",)))
+
+        def _post_monitor(self):
+            """{"paused": bool} で自動確認を止める／再開。{"check": true} は 1 回だけ確認する。"""
+            try:
+                body = self._read_json()
+                if "paused" in body:
+                    monitor.set_paused(bool(body["paused"]))
+                if body.get("check"):
+                    monitor.poll_once()
+            except (ValueError, TypeError):
+                return self._json(400, {"error": "bad request"})
+            self._json(200, {"paused": monitor.paused})
+
+        def _post_settings(self):
+            try:
+                saved = settings.update(self._read_json())
+            except (ValueError, TypeError) as exc:
+                return self._json(400, {"error": str(exc)})
+            except OSError as exc:
+                return self._json(500, {"error": "設定を保存できません: %s" % exc})
+            if hasattr(helper, "reconfigure"):
+                helper.reconfigure(*settings.ssh_target())
+                if not monitor.paused:
+                    monitor.poll_once()
+            self._json(200, {"settings": saved, "labels": LABELS})
 
         def _post_scenario(self):
             try:
@@ -385,15 +483,17 @@ def make_handler(helper, monitor, camera_base=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mock", action="store_true")
-    parser.add_argument("--host", default="g1")
+    parser.add_argument("--host", help="Jetson の ssh 接続先（省略時は設定タブの値。~/.ssh/config の別名も可）")
     parser.add_argument("--port", type=int, default=18790)
-    parser.add_argument("--camera-url", help="Jetson の camera_stream.py の URL 例: http://100.78.135.14:8081")
+    parser.add_argument("--camera-url", help="Jetson の camera_stream.py の URL 例: http://<Jetson の IP>:8081")
     args = parser.parse_args()
-    helper = MockHelper() if args.mock else SshHelper(args.host)
+    initial = {"jetson_host": args.host, "jetson_user": ""} if args.host else {}
+    settings = Settings(None if args.mock else DEFAULT_PATH, initial)
+    helper = MockHelper() if args.mock else SshHelper(*settings.ssh_target())
     monitor = Monitor(helper)
     monitor.start()
     camera_base = args.camera_url.rstrip("/") if args.camera_url else None
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(helper, monitor, camera_base))
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(helper, monitor, camera_base, settings))
     print("[console] http://127.0.0.1:%d (%s)" % (args.port, helper.backend))
     server.serve_forever()
 

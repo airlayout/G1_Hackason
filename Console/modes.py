@@ -87,3 +87,16 @@ def validate_audio(kind: str, body: dict) -> dict:
     except KeyError as exc:
         raise ValueError("%s がありません" % exc.args[0])
     raise ValueError("unknown audio kind")
+
+
+# 関節名は SDK の並び順（脚 12・腰 3・腕 14）による対応。実機での突き合わせは未確認。
+JOINT_NAMES = [
+    "左股 pitch", "左股 roll", "左股 yaw", "左膝", "左足首 pitch", "左足首 roll",
+    "右股 pitch", "右股 roll", "右股 yaw", "右膝", "右足首 pitch", "右足首 roll",
+    "腰 yaw", "腰 roll", "腰 pitch",
+    "左肩 pitch", "左肩 roll", "左肩 yaw", "左肘", "左手首 roll", "左手首 pitch", "左手首 yaw",
+    "右肩 pitch", "右肩 roll", "右肩 yaw", "右肘", "右手首 roll", "右手首 pitch", "右手首 yaw",
+]
+
+# タブ名 = URL ハッシュ = API 名。AI もこの名前で画面と API を対応づけられる。
+TABS = ("ops", "state", "joints", "audio", "camera", "dds", "settings")
