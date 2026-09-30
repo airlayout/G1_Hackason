@@ -1,4 +1,4 @@
-"""読み取りのみ: lidar 点群 1〜数フレームを取得し、このPCへ保存する。"""
+"""読み取りのみ: lidar 点群 1〜数フレームを取得し、開発用 PC へ保存する。"""
 import base64
 import json
 import shlex

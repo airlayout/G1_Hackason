@@ -44,13 +44,13 @@ python3 server.py --mock
 ## つくり
 
 ```
-ブラウザ ─HTTP→ server.py（この PC, 127.0.0.1:18790）
+ブラウザ ─HTTP→ server.py（開発用 PC, 127.0.0.1:18790）
                   └─ ssh（設定タブの Jetson、標準入出力で JSON 1 行ずつ）
                        └─ jetson/remote_helper.py（Jetson, Python 3.8, unitree_sdk2py）
                             └─ DDS（eth0, domain 0）→ G1 のモーションサービス
 ```
 
-この PC は G1 の DDS ネットワーク（`192.168.123.0/24`）に入っていないため、DDS を直接は話せない。
+開発用 PC は G1 の DDS ネットワーク（`192.168.123.0/24`）に入っていないため、DDS を直接は話せない。
 Jetson 上で SDK を動かし、`ssh` 越しに呼ぶ。ヘルパーのソースは `ssh` の引数として送り込むので、
 Jetson にファイルは残らない。
 

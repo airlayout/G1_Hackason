@@ -1,7 +1,7 @@
-"""G1 のライブ値を、このPCへ JSON Lines で保存する（読み取り専用）。
+"""G1 のライブ値を、開発用 PC へ JSON Lines で保存する（読み取り専用）。
 
 開発用 PC 側から起動する: python3 Console/live_logger.py [--host g1-ts] [--out DIR] [--period 0.5]
-Jetson 上で DDS を購読して 1 行 1 メッセージで標準出力へ流し、ssh 越しにこの PC のファイルへ書く。
+Jetson 上で DDS を購読して 1 行 1 メッセージで標準出力へ流し、ssh 越しに開発用 PC のファイルへ書く。
 電源が切れて ssh が切れるまでの分が残る（行ごとに flush するので途中で切れても読める）。
 lidar・カメラ・地図・点群は対象外。lowstate などの高頻度トピックは --period 秒に 1 通へ間引く。
 イベント型（String_ 系）は間引かず、来た分をすべて記録する。
