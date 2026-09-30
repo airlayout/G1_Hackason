@@ -11,8 +11,8 @@
 | スナップショット一式（SDK tgz, DDS サンプル, サービス応答, 環境, lidar 1 フレーム 442 KB 他） | `docs/g1_snapshot/` | 対象外（bash_history・ネットワーク情報を含む） |
 | 間引きリプレイ用（20 秒に 1 件, 約 0.5 MB） | `tests/fixtures/g1_live_sample.jsonl` | 入れる |
 | 再取得用プローブ | `tools/`（discover / audio_probe2 / lidar_probe / arm_precheck / arm_one_joint / check_log / snapshot.sh） | 入れる |
-| ロガー | `live_logger.py` | 入れる |
-| トピック/サービス台帳 | `dds_catalog.py`（65 トピック + rt/api 39 + 25 サービス） | 入れる |
+| ロガー | `tools/live_logger.py` | 入れる |
+| トピック/サービス台帳 | `g1console/dds_catalog.py`（65 トピック + rt/api 39 + 25 サービス） | 入れる |
 
 ログの行形式: `{"t":epoch,"topic":..,"v":{..}}`、先頭に `meta`、5 秒毎に `beat`。
 間引き版は `t` を開始からの秒に直し `sample_info` を除いてある。
@@ -93,4 +93,4 @@
 ## 14. 使い方（開発）
 
 - 実機なしで UI を動かす: `server.py` の MockHelper（シナリオ ok/g1_off/jetson_off/debug）。実データに近い値は `tests/fixtures/g1_live_sample.jsonl`（`t` 秒・topic・v）から読む。
-- 再取得: `python3 Console/live_logger.py --host g1-ts`、要約は `tools/check_log.py`。
+- 再取得: `python3 Console/tools/live_logger.py --host g1-ts`、要約は `tools/check_log.py`。

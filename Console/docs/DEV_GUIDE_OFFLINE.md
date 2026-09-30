@@ -26,7 +26,7 @@
 server.py (127.0.0.1:18790, 標準ライブラリのみ)
   └ SshHelper --ssh--> remote_helper.py (py3.8 + unitree_sdk2py) --DDS--> ロボット
   └ /camera/<name> --HTTP proxy--> camera_stream.py (:8081, 手動起動のみ)
-index.html: コンソール / DDS リスト / カメラ の 3 タブ
+web/index.html: コンソール / DDS リスト / カメラ の 3 タブ
 ```
 
 - 監視は約 1 秒周期(切断時 3 秒)。許可 FSM ID は `[0,1,3,501,702,706]`。

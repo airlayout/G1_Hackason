@@ -1,6 +1,6 @@
 # 開発コンソール API 定義
 
-<!-- api_spec.py から生成。手で編集せず `python3 Console/api_spec.py` で再生成する -->
+<!-- api_spec.py から生成。手で編集せず `python3 Console/g1console/api_spec.py` で再生成する -->
 
 正本は OpenAPI: **`docs/openapi.yaml`**（実行中は `GET /openapi.yaml`、JSON なら `GET /api`）。この文書は人と AI が最初に読む要約。ベース URL は `http://127.0.0.1:18790`。
 

@@ -1,6 +1,6 @@
 """G1 のライブ値を、操作用 PC へ JSON Lines で保存する（読み取り専用）。
 
-操作用 PC 側から起動する: python3 Console/live_logger.py [--host g1-ts] [--out DIR] [--period 0.5]
+操作用 PC 側から起動する: python3 Console/tools/live_logger.py [--host g1-ts] [--out DIR] [--period 0.5]
 Jetson 上で DDS を購読して 1 行 1 メッセージで標準出力へ流し、ssh 越しに操作用 PC のファイルへ書く。
 電源が切れて ssh が切れるまでの分が残る（行ごとに flush するので途中で切れても読める）。
 lidar・カメラ・地図・点群は対象外。lowstate などの高頻度トピックは --period 秒に 1 通へ間引く。
@@ -72,7 +72,7 @@ while True:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--host", default="g1-ts")
-    ap.add_argument("--out", default=str(Path(__file__).resolve().parent / "docs" / "g1_logs"))
+    ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "docs" / "g1_logs"))
     ap.add_argument("--period", type=float, default=0.5, help="高頻度トピックを間引く間隔 [秒]")
     args = ap.parse_args()
     out_dir = Path(args.out)

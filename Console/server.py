@@ -19,11 +19,11 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from dds_catalog import SERVICES, TOPICS
-from replay import Replay
-from api_spec import openapi, render_yaml
-from settings import DEFAULT_PATH, LABELS, Settings
-from modes import (ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, JOINT_NAMES, PLANNED_ACTIONS, PLANNED_MODES, TABS,
+from g1console.dds_catalog import SERVICES, TOPICS
+from g1console.replay import Replay
+from g1console.api_spec import openapi, render_yaml
+from g1console.settings import DEFAULT_PATH, LABELS, Settings
+from g1console.modes import (ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, JOINT_NAMES, PLANNED_ACTIONS, PLANNED_MODES, TABS,
                    validate_audio)
 
 HERE = Path(__file__).resolve().parent
@@ -372,7 +372,7 @@ def make_handler(helper, monitor, camera_base=None, settings=None):
             elif self.path.startswith("/camera/"):
                 self._proxy_camera(self.path[len("/camera/"):])
             elif self.path in ("/", "/index.html"):
-                self._send(200, "text/html; charset=utf-8", (HERE / "index.html").read_bytes())
+                self._send(200, "text/html; charset=utf-8", (HERE / "web" / "index.html").read_bytes())
             else:
                 self._json(404, {"error": "not found"})
 

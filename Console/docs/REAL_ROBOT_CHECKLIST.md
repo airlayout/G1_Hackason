@@ -68,10 +68,10 @@ PR #30（`Dev/UI` 向け）は、この一覧の **A〜C が済むまでマー�
 - lidar: `rt/utlidar/cloud_livox_mid360` の受信帯域が Wi-Fi/tailscale 越しで持つか（4.4 MB/s）。持たなければ Jetson 側で間引く。
 - Dex3 ハンドが付いた機体か（今回は `rt/dex3/*` のデータなし）。
 - `rt/audio_msg` を画面に出す（実装は未着手）。
-- ログの再取得（`python3 Console/live_logger.py --host g1-ts`）を通常モードで取り、`tests/fixtures` の通常モード版を作る。
+- ログの再取得（`python3 Console/tools/live_logger.py --host g1-ts`）を通常モードで取り、`tests/fixtures` の通常モード版を作る。
 
 ## 終わったら
 
 1. 結果を上の表に記入し、`docs/G1_FINDINGS.md` の「未確認リスト」から確認済みを消す。
-2. `modes.py` の `FEATURES` の `verified` を、確認できた機能だけ `True` にする（推測で変えない）。
+2. `g1console/modes.py` の `FEATURES` の `verified` を、確認できた機能だけ `True` にする（推測で変えない）。
 3. PR #30 の「マージ保留」チェックリストを更新し、マージはユーザーが行う。

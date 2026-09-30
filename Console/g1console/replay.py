@@ -7,7 +7,7 @@ import json
 import time
 from pathlib import Path
 
-DEFAULT_FIXTURE = Path(__file__).resolve().parent / "tests" / "fixtures" / "g1_live_sample.jsonl"
+DEFAULT_FIXTURE = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "g1_live_sample.jsonl"
 JOINTS = 29
 SYSTEM = {"load": [1.2, 1.0, 0.8], "mem_total_mb": 15388, "mem_avail_mb": 12700, "uptime_s": 4000.0,
           "cpus": 8, "disk_free_gb": 1800.0, "temps": {"CPU-therm": 58.9, "GPU-therm": 54.9, "tj-therm": 58.8}}

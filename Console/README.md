@@ -4,8 +4,8 @@ G1 の**現在の動作モードを表示**し、**ボタンでモードを切�
 専用リモコンでやっている操作をブラウザに移していくための土台で、
 歩行操作（速度指令）などは**将来ここに足す予定**（現状は入っていない）。
 
-位置づけ・リモコンとの対応・SDK での実現手段は **[REMOTE_CONTROLLER.md](REMOTE_CONTROLLER.md)** にまとめた。
-画面にも「未実装」「実機未確認」を表示する（定義は [`modes.py`](modes.py) の `FEATURES`）。
+位置づけ・リモコンとの対応・SDK での実現手段は **[docs/REMOTE_CONTROLLER.md](docs/REMOTE_CONTROLLER.md)** にまとめた。
+画面にも「未実装」「実機未確認」を表示する（定義は [`g1console/modes.py`](g1console/modes.py) の `FEATURES`）。
 
 ## 状態（2026-09-30）
 
@@ -44,6 +44,20 @@ python3 server.py --mock
 **PC の呼び分け:** 操作用 PC = このコンソール（`server.py`）とブラウザを動かす PC（OS は問わない）。開発用 PC = 開発作業用の別の PC（設定タブに IP を記録するだけ）。Jetson PC = ロボット搭載 PC。
 動作確認をした操作用 PC の OS は macOS だけで、Windows は未確認（`ssh` の引数のクォート、`tools/*.sh` の bash）。
 
+## ディレクトリ構成
+
+```
+Console/
+├── server.py          起動用（python3 Console/server.py）。HTTP サーバと ssh ヘルパー呼び出し
+├── g1console/         サーバが使う Python 部品（modes / settings / dds_catalog / replay / api_spec）
+├── web/index.html     ブラウザ画面（1 ファイル）
+├── jetson/            Jetson 側で動くもの（remote_helper.py・camera_stream.py・camera_ctl.sh）
+├── tools/             実機調査・ログ取得の単発スクリプト（live_logger.py ほか）
+├── tests/             テストと実機ログの fixture
+├── docs/              設計・API 定義・実機調査・チェックリスト（.md / openapi.yaml）
+└── settings.json      設定タブの保存先（git 対象外）
+```
+
 ## つくり
 
 ```
@@ -71,7 +85,7 @@ Jetson にファイルは残らない。
   15 秒経っても着かなければ履歴に残す（この間もダンピングは押せる）。
 - **ボタン:** ダンピング / ゼロトルク / 座位 / しゃがみ⇔起立 / 床から起立 / 通常歩行。
   押すと確認ダイアログ。歩行中にダンピングやゼロトルクを押すと転倒の警告が付く。
-- **許可 ID:** サーバ側でも [`modes.py`](modes.py) の `BUTTONS` にある ID 以外は拒否する。
+- **許可 ID:** サーバ側でも [`g1console/modes.py`](g1console/modes.py) の `BUTTONS` にある ID 以外は拒否する。
 
 | FSM ID | 状態 | 出典 |
 |---|---|---|
@@ -104,7 +118,7 @@ Jetson にファイルは残らない。
 
 2026-09-30 に取った実機データ・解析・未確認リストは [`docs/G1_FINDINGS.md`](docs/G1_FINDINGS.md)。
 生ログ・スナップショットは `docs/g1_logs/`・`docs/g1_snapshot/`（git 対象外）、
-取得スクリプトは `tools/`、ロガーは `live_logger.py`。
+取得スクリプトは `tools/`、ロガーは `tools/live_logger.py`。
 主な知見: デバッグモードでは `CheckMode` が `(0, {'form':'0','name':''})`、`rt/arm_sdk` は効かない、
 腕アクション 27 種は未実行、lidar は帯域が大きいため購読しない。
 

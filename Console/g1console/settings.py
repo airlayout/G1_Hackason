@@ -9,7 +9,7 @@ import re
 import threading
 from pathlib import Path
 
-DEFAULT_PATH = Path(__file__).resolve().parent / "settings.json"
+DEFAULT_PATH = Path(__file__).resolve().parent.parent / "settings.json"
 DEFAULTS = {"dev_pc": "", "jetson_host": "", "jetson_user": "unitree", "jetson_key": "", "g1_ip": "", "camera_port": 8081}
 LABELS = {"dev_pc": "開発用 PC", "jetson_host": "Jetson PC", "jetson_user": "Jetson の ssh ユーザー",
           "jetson_key": "ssh 秘密鍵", "g1_ip": "G1 本体", "camera_port": "カメラ配信ポート"}

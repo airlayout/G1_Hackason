@@ -12,10 +12,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from dds_catalog import DISPLAYED, SERVICES, TOPICS  # noqa: E402
-from modes import validate_audio, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, PLANNED_MODES  # noqa: E402
+from g1console.dds_catalog import DISPLAYED, SERVICES, TOPICS  # noqa: E402
+from g1console.modes import validate_audio, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, PLANNED_MODES  # noqa: E402
 from server import MockHelper, Monitor, SshHelper, describe, make_handler  # noqa: E402
-from settings import Settings, validate  # noqa: E402
+from g1console.settings import Settings, validate  # noqa: E402
 
 G1_TIMEOUT = {"ok": True, "checkmode_code": 3102, "service": None, "fsm_code": 3102, "fsm_id": None}
 
@@ -86,7 +86,7 @@ class FeaturesTest(unittest.TestCase):
 
 class ReplayTest(unittest.TestCase):
     def test_telemetry_has_helper_shape_and_loops(self):
-        from replay import Replay
+        from g1console.replay import Replay
         r = Replay()
         for now in (r._t0, r._t0 + 100, r._t0 + r.length_s + 30):
             t = r.telemetry(now)
@@ -330,17 +330,17 @@ class HttpTest(unittest.TestCase):
                 self.assertNotEqual(self._post(path, b"{}")[0], 404, path)
 
     def test_generated_api_docs_are_up_to_date(self):
-        from api_spec import render_markdown, render_yaml
+        from g1console.api_spec import render_markdown, render_yaml
         docs = Path(__file__).resolve().parent.parent / "docs"
-        self.assertEqual((docs / "API.md").read_text(encoding="utf-8"), render_markdown(), "python3 Console/api_spec.py で再生成")
-        self.assertEqual((docs / "openapi.yaml").read_text(encoding="utf-8"), render_yaml(), "python3 Console/api_spec.py で再生成")
+        self.assertEqual((docs / "API.md").read_text(encoding="utf-8"), render_markdown(), "python3 Console/g1console/api_spec.py で再生成")
+        self.assertEqual((docs / "openapi.yaml").read_text(encoding="utf-8"), render_yaml(), "python3 Console/g1console/api_spec.py で再生成")
 
     def test_index_html_is_served(self):
         html = urllib.request.urlopen("http://127.0.0.1:%d/" % self.port, timeout=5).read().decode()
         self.assertIn("G1 開発コンソール", html)
 
     def test_every_tab_has_button_and_panel_in_html(self):
-        from modes import TABS
+        from g1console.modes import TABS
         html = urllib.request.urlopen("http://127.0.0.1:%d/" % self.port, timeout=5).read().decode()
         for name in TABS:
             self.assertIn('id="tab-b-%s"' % name, html)

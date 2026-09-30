@@ -3,7 +3,7 @@
   GET /api            OpenAPI（JSON）        GET /openapi.yaml  OpenAPI（YAML）
   docs/openapi.yaml   同上（ファイル）        docs/API.md        人と AI が読む用の要約
 
-`python3 Console/api_spec.py` で docs/ を再生成する。tests が「スキーマ = 実際のレスポンス」を検証するので、
+`python3 Console/g1console/api_spec.py` で docs/ を再生成する。tests が「スキーマ = 実際のレスポンス」を検証するので、
 API を変えたらここを直す（食い違うとテストが落ちる）。手書きの YAML ではなく Python で組む理由は、
 標準ライブラリだけで、スキーマの部品を共有し、テストから同じ定義を使えるから。
 """
@@ -196,7 +196,7 @@ def render_markdown() -> str:
     doc = openapi()
     lines = [
         "# 開発コンソール API 定義", "",
-        "<!-- api_spec.py から生成。手で編集せず `python3 Console/api_spec.py` で再生成する -->", "",
+        "<!-- api_spec.py から生成。手で編集せず `python3 Console/g1console/api_spec.py` で再生成する -->", "",
         "正本は OpenAPI: **`docs/openapi.yaml`**（実行中は `GET /openapi.yaml`、JSON なら `GET /api`）。"
         "この文書は人と AI が最初に読む要約。ベース URL は `http://127.0.0.1:18790`。", "",
         "## 使い方の型", "",
@@ -259,7 +259,7 @@ def render_yaml() -> str:
 
 if __name__ == "__main__":
     from pathlib import Path
-    docs = Path(__file__).resolve().parent / "docs"
+    docs = Path(__file__).resolve().parent.parent / "docs"
     (docs / "API.md").write_text(render_markdown(), encoding="utf-8")
     (docs / "openapi.yaml").write_text(render_yaml(), encoding="utf-8")
     print("[api] wrote", docs / "API.md", docs / "openapi.yaml")

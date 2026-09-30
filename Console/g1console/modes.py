@@ -29,7 +29,7 @@ BUTTONS = [
 
 ALLOWED_IDS = frozenset(b["id"] for b in BUTTONS)
 
-# 未実装のモード切替（画面に「未実装」で無効表示する）。理由は REMOTE_CONTROLLER.md 参照。
+# 未実装のモード切替（画面に「未実装」で無効表示する）。理由は docs/REMOTE_CONTROLLER.md 参照。
 PLANNED_MODES = [
     {"label": "準備（固定立位）", "note": "FSM ID が未確認"},
     {"label": "Run", "note": "FSM ID が未確認（801 は資料 1 件のみ）"},
