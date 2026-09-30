@@ -2,65 +2,341 @@
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>G1 開発コンソール</title>
 <style>
-:root{--bg:#f5f6f8;--fg:#1a1d21;--card:#fff;--line:#d8dce2;--ok:#1b7f3b;--warn:#b26a00;--bad:#c62828;--btn:#e8ecf3}
-@media (prefers-color-scheme:dark){:root{--bg:#14171b;--fg:#e6e8eb;--card:#1e2329;--line:#333a42;--ok:#4cc26d;--warn:#e0a030;--bad:#ef6a6a;--btn:#2a313a}}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 -apple-system,sans-serif}
-main{max-width:640px;margin:0 auto;padding:24px 16px}
-h1{font-size:20px;margin:0 0 16px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px}
-.label{font-size:13px;opacity:.7}
-#mode{font-size:28px;font-weight:700;margin:4px 0}
-#detail{font-size:13px;opacity:.7;word-break:break-all}
-.ok{color:var(--ok)}.offline,.unknown{color:var(--bad)}.debug{color:var(--warn)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:8px}
-button{padding:14px 8px;border:1px solid var(--line);border-radius:10px;background:var(--btn);color:var(--fg);font-size:15px;cursor:pointer}
+:root{--bg:#f5f6f8;--fg:#1a1d21;--sub:#5d6670;--card:#fff;--line:#d8dce2;--btn:#e8ecf3;
+--ok:#1b7f3b;--warn:#a86200;--bad:#c62828;--mute:#7a838d}
+@media (prefers-color-scheme:dark){:root{--bg:#14171b;--fg:#e6e8eb;--sub:#a3acb6;--card:#1e2329;--line:#333a42;--btn:#2a313a;
+--ok:#4cc26d;--warn:#e0a030;--bad:#ef6a6a;--mute:#8b949e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 -apple-system,"Hiragino Sans",sans-serif}
+main{max-width:720px;margin:0 auto;padding:20px 16px 40px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:20px;margin:0}
+h2{font-size:13px;font-weight:600;color:var(--sub);margin:0 0 10px;letter-spacing:.04em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+.head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.note{font-size:13px;color:var(--sub)}
+.mock{font-size:13px;color:var(--warn)}
+.mock select{font:inherit;margin-left:6px}
+
+/* 接続チェーン */
+.chain{list-style:none;margin:0;padding:0;display:flex;gap:6px;align-items:stretch}
+.chain li{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0;position:relative}
+.chain li+li{margin-left:18px}
+.chain li+li::before{content:"→";position:absolute;left:-19px;top:50%;transform:translateY(-50%);color:var(--mute)}
+.node-name{font-weight:600}
+.node-sub{font-size:12px;color:var(--sub);word-break:break-all}
+.node-st{margin-top:4px;font-weight:700}
+.node-st::before{margin-right:6px}
+.s-ok{color:var(--ok)}.s-ok::before{content:"●"}
+.s-down,.s-stopped{color:var(--bad)}.s-down::before,.s-stopped::before{content:"✕"}
+.s-stale{color:var(--warn)}.s-stale::before{content:"◐"}
+.s-unknown,.s-checking{color:var(--mute)}.s-unknown::before,.s-checking::before{content:"○"}
+.chain li.is-bad{border-color:var(--bad)}
+#diag{margin:12px 0 0;font-size:14px}
+#diag code{background:var(--btn);padding:1px 6px;border-radius:5px;font-size:13px}
+
+/* モード */
+#mode{font-size:30px;font-weight:700;margin:2px 0;line-height:1.25}
+#mode.m-ok{color:var(--ok)}
+#mode.m-debug{color:var(--warn)}
+#mode.m-none{color:var(--mute)}
+#mode-sub{font-size:14px;color:var(--sub);min-height:1.4em}
+#fresh{margin-top:10px;font-size:13px;font-variant-numeric:tabular-nums}
+#fresh.f-fresh{color:var(--ok)}#fresh.f-slow{color:var(--warn)}#fresh.f-stale{color:var(--bad)}
+
+/* ボタン */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:4px}
+button{padding:14px 8px;border:1px solid var(--line);border-radius:10px;background:var(--btn);color:var(--fg);font:inherit;font-size:15px;cursor:pointer}
 button.danger{border-color:var(--bad)}
-button.current{outline:2px solid var(--ok)}
+button.current{outline:2px solid var(--ok);outline-offset:1px}
 button:disabled{opacity:.4;cursor:not-allowed}
-#msg{min-height:1.5em;font-size:14px}
+#why{font-size:13px;color:var(--warn)}
+#pending{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:var(--btn);font-size:14px}
+#pending[hidden]{display:none}
+
+/* 操作履歴 */
+#log{list-style:none;margin:0;padding:0;font-size:13px;font-variant-numeric:tabular-nums}
+#log li{padding:3px 0;border-top:1px solid var(--line)}
+#log li:first-child{border-top:0}
+#log .t{color:var(--sub);margin-right:8px}
+#log .bad{color:var(--bad)}#log .ok{color:var(--ok)}
+
+/* 状態バッジ：未実装 / 実機未確認 / 実装済み */
+.tag{display:inline-block;font-size:11px;font-weight:600;line-height:1.5;padding:0 8px;margin-left:6px;border-radius:99px;border:1px solid;vertical-align:middle;white-space:nowrap}
+.tag.plan{color:var(--mute)}.tag.unver{color:var(--warn)}.tag.done{color:var(--ok)}
+.planned{margin-top:10px}
+.planned button small{display:block;margin-top:2px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.two .card,.card.solo{margin-bottom:14px}
+.keys{display:grid;grid-template-columns:repeat(3,44px);gap:6px;justify-content:center;margin:6px 0 10px}
+kbd{display:flex;align-items:center;justify-content:center;height:44px;border:1px solid var(--line);border-radius:8px;background:var(--btn);font:inherit;opacity:.4}
+#battery{font-size:24px;font-weight:700;color:var(--mute)}
+#features{list-style:none;margin:0;padding:0;font-size:14px}
+#features li{padding:6px 0;border-top:1px solid var(--line)}
+#features li:first-child{border-top:0}
+#features .note{display:block}
+@media (max-width:560px){
+ .two{grid-template-columns:1fr}
+ .chain{flex-direction:column;gap:18px}
+ .chain li+li{margin-left:0}
+ .chain li+li::before{content:"↓";left:50%;top:-18px;transform:translateX(-50%)}
+}
 </style></head><body><main>
-<h1>G1 開発コンソール</h1>
-<div class="card"><div class="label">現在のモード</div>
-<div id="mode" class="unknown">取得中…</div><div id="detail"></div></div>
-<div class="card"><div class="label">モード切り替え</div><div class="grid" id="btns"></div>
-<p id="msg"></p></div>
+<header>
+ <h1>G1 開発コンソール</h1>
+ <label class="mock" id="mockbar" hidden>模擬シナリオ<select id="scenario"></select></label>
+</header>
+
+<section class="card" aria-live="polite">
+ <h2>接続状態</h2>
+ <ol class="chain">
+  <li id="n-server"><div class="node-name">コンソールサーバー</div><div class="node-sub" id="server-sub"></div><div class="node-st" id="server-st"></div></li>
+  <li id="n-jetson"><div class="node-name">Jetson</div><div class="node-sub">ssh g1</div><div class="node-st" id="jetson-st"></div></li>
+  <li id="n-g1"><div class="node-name">G1 本体</div><div class="node-sub">DDS · モーションサービス</div><div class="node-st" id="g1-st"></div></li>
+ </ol>
+ <p id="diag"></p>
+ <div class="note"><b>自動再接続</b><span class="tags" data-feature="reconnect"></span></div>
+ <div class="note" id="reconnect-note"></div>
+</section>
+
+<section class="card">
+ <h2>現在のモード</h2>
+ <div id="mode" class="m-none">確認中…</div>
+ <div id="mode-sub"></div>
+ <div id="fresh"></div>
+</section>
+
+<section class="card">
+ <div class="head"><h2>モード切り替え<span class="tags" data-feature="mode"></span></h2><span id="why"></span></div>
+ <div class="grid" id="btns"></div>
+ <div class="grid planned" id="planned-modes"></div>
+ <div id="pending" hidden></div>
+</section>
+
+<div class="two">
+ <section class="card solo">
+  <h2>アクション<span class="tags" data-feature="action"></span></h2>
+  <div class="grid" id="planned-actions"></div>
+  <p class="note">リモコンの SELECT+Y / A / X 相当。</p>
+ </section>
+ <section class="card solo">
+  <h2>移動（矢印キー）<span class="tags" data-feature="move"></span></h2>
+  <div class="keys" aria-hidden="true"><span></span><kbd>↑</kbd><span></span><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></div>
+  <p class="note">↑↓ 前後 · ←→ 旋回 · Shift+←→ 横移動（案）。キーを離す／画面を離れると停止する設計にする予定。</p>
+ </section>
+</div>
+
+<section class="card">
+ <h2>バッテリー<span class="tags" data-feature="battery"></span></h2>
+ <div id="battery">—</div>
+ <p class="note">ロボット本体の残量。取得方法（DDS のトピック）が未確認のため、まだ表示できません。</p>
+</section>
+
+<section class="card">
+ <h2>操作履歴（この画面）</h2>
+ <ul id="log"><li class="note">まだ操作していません</li></ul>
+</section>
+
+<section class="card">
+ <h2>機能の状態</h2>
+ <ul id="features"></ul>
+ <p class="note">位置づけと SDK との対応は <code>Console/REMOTE_CONTROLLER.md</code>。</p>
+</section>
+
+<p class="note" id="cadence"></p>
 </main>
 <script>
-let current=null,busy=false,polling=false;
 const $=id=>document.getElementById(id);
-async function refresh(){
-  try{
-    const s=await (await fetch('/api/status')).json();
-    current=s.state==='ok'?s.fsm_id:null;
-    $('mode').className=s.state;
-    $('mode').textContent=s.state==='ok'?`${s.label}（ID ${s.fsm_id}）`:s.label;
-    $('detail').textContent=s.detail||'';
-  }catch(e){$('mode').className='offline';$('mode').textContent='コンソールサーバに接続できません';current=null}
+const FRESH_S=2.5, STALE_S=8, GIVEUP_S=15, POLL_MS=1000;
+const ST_LABEL={ok:'接続中',down:'未接続',unknown:'未確認',stale:'更新停止',checking:'確認中',stopped:'停止'};
+let S=null, recvAt=0, fails=0, busy=false, pending=null, buttons=[], logs=[], featuresLoaded=false;
+$('reconnect-note').textContent=`サーバーが止まっても、この画面は ${POLL_MS/1000} 秒ごとに再試行し、復帰すると自動で更新されます。Jetson に届かないときは、サーバーが数秒ごとに ssh を張り直します。`;
+
+const ageNow=()=>S&&S.age_s!=null?S.age_s+(performance.now()-recvAt)/1000:null;
+const clock=t=>new Date(t*1000).toLocaleTimeString('ja-JP',{hour12:false});
+const ago=s=>s<60?`${s.toFixed(0)} 秒前`:`${Math.floor(s/60)} 分 ${Math.floor(s%60)} 秒前`;
+const U=(st,detail)=>({st,detail});
+
+/* 3 段の接続状態。上流が切れていれば下流は「未確認」にする（見えていないものを接続中と言わない） */
+function nodes(){
+  const server=U(fails>=2?'stopped':(S?'ok':'checking'),'');
+  if(server.st==='stopped'){const d='サーバー停止のため未確認';return{server,jetson:U('unknown',d),g1:U('unknown',d)}}
+  if(!S||S.sampled_at==null)return{server,jetson:U('checking','初回の確認中'),g1:U('checking','初回の確認中')};
+  const age=ageNow();
+  if(age>STALE_S){const d=`最後に確認できてから ${age.toFixed(0)} 秒`;return{server,jetson:U('stale',d),g1:U('stale',d)}}
+  return{server,jetson:U(S.jetson.state,S.jetson.detail),g1:U(S.g1.state,S.g1.detail)};
+}
+
+function diagnose(n){
+  const code=t=>{const c=document.createElement('code');c.textContent=t;return c};
+  const out=[];
+  if(n.server.st==='stopped')out.push('コンソールサーバーが動いていません（または応答がありません）。Mac のターミナルで ',code('python3 Console/server.py'),' を起動してください。この画面は自動で再接続します。');
+  else if(n.server.st==='checking')out.push('サーバーに問い合わせています…');
+  else if(n.jetson.st==='checking')out.push('サーバーは起動しました。G1 側の初回確認中です（数秒かかります）。');
+  else if(n.jetson.st==='stale')out.push('サーバーは応答していますが、G1 側の確認が止まっています。ssh が詰まっている可能性があります（',n.jetson.detail,'）。');
+  else if(n.jetson.st==='down')out.push('Jetson に届きません：'+n.jetson.detail+'。Wi-Fi / Tailscale と ',code('ssh g1'),' を確認してください。');
+  else if(n.g1.st==='down')out.push('Jetson には繋がっていますが、G1 のモーションサービスが応答しません。G1 の電源と起動完了を確認してください。（'+n.g1.detail+'）');
+  else out.push('正常：サーバー → Jetson → G1 まで届いています。');
+  $('diag').replaceChildren(...out.map(x=>typeof x==='string'?document.createTextNode(x):x));
+}
+
+function renderChain(n){
+  for(const k of ['server','jetson','g1']){
+    const el=$(k+'-st');el.className='node-st s-'+n[k].st;el.textContent=ST_LABEL[n[k].st];
+    $('n-'+k).classList.toggle('is-bad',n[k].st==='down'||n[k].st==='stopped');
+    $('n-'+k).title=n[k].detail||'';
+  }
+  $('server-sub').textContent=location.host;
+}
+
+function renderMode(n){
+  const live=n.jetson.st==='ok'&&n.g1.st==='ok'&&S.mode;
+  const m=live?S.mode:null;
+  const mode=$('mode');
+  if(m&&m.state==='ok'){mode.className='m-ok';mode.textContent=m.label;$('mode-sub').textContent=`ID ${m.fsm_id} · service=${m.service}`}
+  else if(m&&m.state==='debug'){mode.className='m-debug';mode.textContent='デバッグモード';$('mode-sub').textContent='標準モーションサービスが解放されています。このコンソールからは切り替えできません。'}
+  else if(m&&m.state==='unknown'){mode.className='m-none';mode.textContent='状態不明';$('mode-sub').textContent=m.detail||''}
+  else{
+    mode.className='m-none';
+    mode.textContent=n.server.st==='checking'||n.jetson.st==='checking'?'確認中…':(n.jetson.st==='down'||n.g1.st==='down'?'未接続':'不明');
+    const lm=S&&S.last_mode;
+    $('mode-sub').textContent=lm?`最後に確認できたモード：${lm.label}${lm.fsm_id!=null?`（ID ${lm.fsm_id}）`:''} · ${clock(lm.at)}（${ago(Math.max(0,Date.now()/1000-lm.at))}）`:'';
+  }
+  const age=ageNow(),f=$('fresh');
+  if(age==null){f.className='';f.textContent='まだ取得できていません'}
+  else{
+    f.className=age<=FRESH_S?'f-fresh':(age<=STALE_S?'f-slow':'f-stale');
+    f.textContent=`最終取得 ${clock(S.sampled_at)} · ${age.toFixed(1)} 秒前`+(S.latency_ms!=null?` · G1 への往復 ${S.latency_ms} ms`:'')+(n.server.st==='stopped'?' · サーバー停止中（最後に受信した値）':'');
+  }
+}
+
+function switchBlockReason(n){
+  if(n.server.st==='stopped')return 'コンソールサーバー停止中';
+  if(n.server.st==='checking'||n.jetson.st==='checking')return '確認中';
+  if(n.jetson.st==='stale')return '状態が更新されていません';
+  if(n.jetson.st==='down')return 'Jetson 未接続';
+  if(n.g1.st==='down')return 'G1 未接続';
+  if(S.mode.state==='debug')return 'デバッグモード中は切り替え不可';
+  if(S.mode.state!=='ok')return '現在のモードを取得できません';
+  return '';
+}
+
+function renderButtons(n){
+  const why=switchBlockReason(n);
+  $('why').textContent=why?'切り替え無効：'+why:'';
+  const cur=!why?S.mode.fsm_id:null;
   document.querySelectorAll('#btns button').forEach(b=>{
-    b.classList.toggle('current',Number(b.dataset.id)===current);
-    b.disabled=busy||current===null;
+    b.classList.toggle('current',Number(b.dataset.id)===cur);
+    b.disabled=!!why||busy;
   });
 }
+
+/* 「送信した」と「目標のモードに着いた」は別。着くまでを見せる（この間もボタンは押せる＝緊急のダンピングを塞がない） */
+function renderPending(){
+  const el=$('pending');
+  if(!pending){el.hidden=true;return}
+  const elapsed=(performance.now()-pending.at)/1000;
+  const cur=S&&S.mode&&S.mode.state==='ok'?S.mode.fsm_id:null;
+  if(cur===pending.id){addLog(`「${pending.label}」に到達（${elapsed.toFixed(1)} 秒）`,'ok');pending=null;el.hidden=true;return}
+  if(elapsed>GIVEUP_S){addLog(`「${pending.label}」に ${GIVEUP_S} 秒経っても到達せず（現在：${S&&S.mode?S.mode.label:'不明'}）`,'bad');pending=null;el.hidden=true;return}
+  el.hidden=false;
+  el.textContent=`「${pending.label}」へ遷移中… 現在：${S&&S.mode?S.mode.label:'不明'} · ${elapsed.toFixed(0)} 秒経過`;
+}
+
+function addLog(text,cls){
+  logs=[{t:new Date().toLocaleTimeString('ja-JP',{hour12:false}),text,cls},...logs].slice(0,8);
+  $('log').replaceChildren(...logs.map(l=>{
+    const li=document.createElement('li'),t=document.createElement('span'),s=document.createElement('span');
+    t.className='t';t.textContent=l.t;s.className=l.cls||'';s.textContent=l.text;li.append(t,s);return li;
+  }));
+}
+
+function render(){
+  const n=nodes();
+  renderChain(n);diagnose(n);
+  renderMode(n);
+  renderButtons(n);
+  renderPending();
+  if(S)$('cadence').textContent=`サーバーが約 ${S.poll_interval_s} 秒ごとに G1 を確認し、この画面が ${POLL_MS/1000} 秒ごとにサーバーへ問い合わせます。表示は最大で数秒遅れることがあります。`;
+}
+
 async function setMode(b){
-  const walking=current===500||current===501;
-  const warn=b.danger&&walking?'\n\n歩行中にこの操作をすると転倒する恐れがあります。':'';
+  const cur=S&&S.mode&&S.mode.state==='ok'?S.mode.fsm_id:null;
+  const warn=b.danger&&(cur===500||cur===501)?'\n\n歩行中にこの操作をすると転倒する恐れがあります。':'';
   if(!confirm(`「${b.label}」に切り替えます。周囲の安全を確認しましたか？${warn}`))return;
-  busy=true;$('msg').textContent='送信中…';
+  busy=true;render();
   try{
     const r=await fetch('/api/mode',{method:'POST',body:JSON.stringify({id:b.id})});
     const j=await r.json();
-    $('msg').textContent=r.ok?`送信しました（code=${j.set_code}）`:`失敗: ${j.error||r.status}`;
-  }catch(e){$('msg').textContent='失敗: '+e}
-  busy=false;await refresh();
+    if(r.ok){pending={id:b.id,label:b.label,at:performance.now()};addLog(`「${b.label}」を送信（受理 code=${j.set_code}）· 到達待ち`,'')}
+    else addLog(`「${b.label}」失敗：${j.error||r.status}`,'bad');
+  }catch(e){addLog(`「${b.label}」失敗：サーバーに届きません（${e}）`,'bad')}
+  busy=false;render();
 }
-(async()=>{
-  const {buttons}=await (await fetch('/api/buttons')).json();
-  for(const b of buttons){
+
+async function loadButtons(){
+  const {buttons:list}=await (await fetch('/api/buttons',{cache:'no-store'})).json();
+  buttons=list;
+  $('btns').replaceChildren(...list.map(b=>{
     const el=document.createElement('button');
-    el.textContent=b.label;el.dataset.id=b.id;
+    el.textContent=b.label;el.dataset.id=b.id;el.disabled=true;
     if(b.danger)el.classList.add('danger');
-    el.onclick=()=>setMode(b);$('btns').appendChild(el);
-  }
-  await refresh();setInterval(async()=>{if(busy||polling)return;polling=true;try{await refresh()}finally{polling=false}},1000);
-})();
+    el.onclick=()=>setMode(b);return el;
+  }));
+}
+
+async function loadScenarios(){
+  const r=await fetch('/api/scenarios',{cache:'no-store'});
+  if(!r.ok)return;
+  const {scenarios,current}=await r.json();
+  const sel=$('scenario');
+  sel.replaceChildren(...Object.entries(scenarios).map(([k,v])=>{const o=document.createElement('option');o.value=k;o.textContent=v;return o}));
+  sel.value=current;
+  sel.onchange=async()=>{await fetch('/api/scenario',{method:'POST',body:JSON.stringify({scenario:sel.value})});await poll(true)};
+  $('mockbar').hidden=false;
+}
+
+/* 状態バッジ。未実装＝まだ無い機能、実機未確認＝実装したが G1 で試していない機能 */
+const tag=(text,cls)=>{const s=document.createElement('span');s.className='tag '+cls;s.textContent=text;return s};
+const statusTags=f=>!f?[]:!f.implemented?[tag('未実装','plan')]:[tag('実装済み','done'),...(f.verified?[]:[tag('実機未確認','unver')])];
+const headTags=f=>!f?[]:!f.implemented?[tag('未実装','plan')]:(f.verified?[]:[tag('実機未確認','unver')]);
+
+function renderPlanned(el,list){
+  el.replaceChildren(...list.map(p=>{
+    const b=document.createElement('button');
+    b.disabled=true;b.title=p.note||'';b.textContent=p.label;
+    const s=document.createElement('small');s.append(tag('未実装','plan'));b.append(s);return b;
+  }));
+}
+
+async function loadFeatures(){
+  const j=await (await fetch('/api/features',{cache:'no-store'})).json();
+  document.querySelectorAll('.tags').forEach(el=>el.replaceChildren(...headTags(j.features.find(f=>f.id===el.dataset.feature))));
+  renderPlanned($('planned-modes'),j.planned_modes);
+  renderPlanned($('planned-actions'),j.planned_actions);
+  $('features').replaceChildren(...j.features.map(f=>{
+    const li=document.createElement('li'),b=document.createElement('b');
+    b.textContent=f.label;li.append(b,...statusTags(f));
+    if(f.note){const n=document.createElement('span');n.className='note';n.textContent=f.note;li.append(n)}
+    return li;
+  }));
+  featuresLoaded=true;
+}
+
+async function poll(once){
+  try{
+    const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),3000);
+    const r=await fetch('/api/status',{signal:ctl.signal,cache:'no-store'});
+    clearTimeout(t);
+    S=await r.json();recvAt=performance.now();fails=0;
+    if(!buttons.length)await loadButtons();
+    if(!featuresLoaded)await loadFeatures();
+    if(S.server.mock&&$('mockbar').hidden)await loadScenarios();
+  }catch(e){fails++}
+  render();
+  if(!once)setTimeout(poll,POLL_MS);
+}
+
+setInterval(render,250); /* 経過秒を進める。取得が途絶えても「古さ」が正しく増える */
+poll();
 </script></body></html>

@@ -28,3 +28,30 @@ BUTTONS = [
 ]
 
 ALLOWED_IDS = frozenset(b["id"] for b in BUTTONS)
+
+# 未実装のモード切替（画面に「未実装」で無効表示する）。理由は REMOTE_CONTROLLER.md 参照。
+PLANNED_MODES = [
+    {"label": "準備（固定立位）", "note": "FSM ID が未確認"},
+    {"label": "Run", "note": "FSM ID が未確認（801 は資料 1 件のみ）"},
+    {"label": "デバッグモード", "note": "切替手順が未確認"},
+]
+
+# 未実装のアクション（リモコンの SELECT+Y/A/X 相当）。SDK では LocoClient.SetTaskId で実現する見込み。
+PLANNED_ACTIONS = [
+    {"label": "手を振る", "note": "SetTaskId(0)"},
+    {"label": "握手", "note": "SetTaskId(2/3)"},
+    {"label": "振り向いて手を振る", "note": "SetTaskId(1)"},
+]
+
+# 基本機能の状態。REMOTE_CONTROLLER.md の表と同じ内容を保つこと。
+# implemented: 実装済みか / verified: 実機（G1 電源オン、コンソール経由）で試したか
+FEATURES = [
+    {"id": "connection", "label": "接続状態表示", "implemented": True, "verified": False},
+    {"id": "reconnect", "label": "自動再接続", "implemented": True, "verified": False},
+    {"id": "mode", "label": "モード変更", "implemented": True, "verified": False,
+     "note": "ダンピング/ゼロトルク/座位/しゃがみ⇔起立/床から起立/通常歩行のみ"},
+    {"id": "action", "label": "アクション実行", "implemented": False, "verified": False},
+    {"id": "move", "label": "矢印キーで移動", "implemented": False, "verified": False},
+    {"id": "battery", "label": "バッテリー表示", "implemented": False, "verified": False,
+     "note": "取得方法（トピック）が未確認"},
+]
