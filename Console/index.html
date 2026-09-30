@@ -69,6 +69,9 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .two .card,.card.solo{margin-bottom:14px}
 .keys{display:grid;grid-template-columns:repeat(3,44px);gap:6px;justify-content:center;margin:6px 0 10px}
+.keygroups{display:flex;gap:24px;justify-content:center;flex-wrap:wrap}
+.keygroup{text-align:center;font-size:12px;color:var(--sub)}
+.keys.rot{grid-template-columns:repeat(2,56px)}
 kbd{display:flex;align-items:center;justify-content:center;height:44px;border:1px solid var(--line);border-radius:8px;background:var(--btn);font:inherit;opacity:.4}
 #battery{font-size:24px;font-weight:700;color:var(--mute)}
 #features{list-style:none;margin:0;padding:0;font-size:14px}
@@ -121,8 +124,11 @@ kbd{display:flex;align-items:center;justify-content:center;height:44px;border:1p
  </section>
  <section class="card solo">
   <h2>移動（矢印キー）<span class="tags" data-feature="move"></span></h2>
-  <div class="keys" aria-hidden="true"><span></span><kbd>↑</kbd><span></span><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></div>
-  <p class="note">↑↓ 前後 · ←→ 旋回 · Shift+←→ 横移動（案）。キーを離す／画面を離れると停止する設計にする予定。</p>
+  <div class="keygroups" aria-hidden="true">
+   <div class="keygroup"><div class="keys"><span></span><kbd>↑</kbd><span></span><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></div>前後左右</div>
+   <div class="keygroup"><div class="keys rot"><kbd>Q ↺</kbd><kbd>E ↻</kbd></div>回転（左 / 右）</div>
+  </div>
+  <p class="note">矢印キーで前後左右、Q / E で回転（案）。同時押しで斜め移動しながら回転もできる。キーを離す／画面を離れると停止する設計にする予定。</p>
  </section>
 </div>
 
