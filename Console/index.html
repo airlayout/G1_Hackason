@@ -73,7 +73,27 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .keygroup{text-align:center;font-size:12px;color:var(--sub)}
 .keys.rot{grid-template-columns:repeat(2,56px)}
 kbd{display:flex;align-items:center;justify-content:center;height:44px;border:1px solid var(--line);border-radius:8px;background:var(--btn);font:inherit;opacity:.4}
-#battery{font-size:24px;font-weight:700;color:var(--mute)}
+#battery{margin-bottom:8px}
+#bat-soc{font-size:32px;font-weight:700;color:var(--mute)}
+#bat-bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:6px}
+#bat-bar i{display:block;height:100%;width:0;background:var(--ok)}
+#bat-bar.low i{background:var(--warn)}#bat-bar.crit i{background:var(--bad)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:8px 0;font-size:14px}
+.kv dt{color:var(--sub)}.kv dd{margin:0;font-variant-numeric:tabular-nums}
+.kv.stale dd{color:var(--mute)}
+#joints{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px;font-variant-numeric:tabular-nums}
+#joints th,#joints td{text-align:right;padding:3px 6px;border-top:1px solid var(--line)}
+#joints th:first-child,#joints td:first-child{text-align:left}
+.arow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0 4px}
+.arow input[type=text]{flex:1;min-width:160px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--btn);color:inherit;font:inherit}
+.arow input[type=range]{flex:1;min-width:140px}
+.arow input[type=color]{width:44px;height:32px;padding:0;border:1px solid var(--line);border-radius:8px;background:none}
+.arow select{padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--btn);color:inherit;font:inherit}
+button.sm{padding:5px 12px;font-size:13px}
+.res{font-size:13px;color:var(--sub);min-height:18px;margin-bottom:6px}
+.res.ok{color:var(--ok)}.res.bad{color:var(--bad)}.res.warn{color:var(--warn)}
+#rates{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}#rates th,#rates td{text-align:left;padding:3px 6px;border-top:1px solid var(--line)}#rates td:last-child,#rates th:last-child{text-align:right}
+#joints tr.hot td{color:var(--warn)}
 #features{list-style:none;margin:0;padding:0;font-size:14px}
 #features li{padding:6px 0;border-top:1px solid var(--line)}
 #features li:first-child{border-top:0}
@@ -84,12 +104,24 @@ kbd{display:flex;align-items:center;justify-content:center;height:44px;border:1p
  .chain li+li{margin-left:0}
  .chain li+li::before{content:"↓";left:50%;top:-18px;transform:translateX(-50%)}
 }
+.tabs{display:flex;gap:8px;margin-bottom:14px}
+.tabs button{padding:8px 18px;font-size:14px}
+.tabs button[aria-selected=true]{outline:2px solid var(--ok);outline-offset:1px;font-weight:700}
+#dds-sum{margin:0 0 10px;font-size:14px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.filters button[aria-pressed=true]{outline:2px solid var(--ok);outline-offset:1px}
+.dtable{width:100%;border-collapse:collapse;font-size:12px}
+.dtable th,.dtable td{text-align:left;padding:4px 6px;border-top:1px solid var(--line);vertical-align:top}
+.dtable td:nth-child(1){word-break:break-all}
+.live-ok{color:var(--ok)}.live-none{color:var(--mute)}
 </style></head><body><main>
 <header>
  <h1>G1 開発コンソール</h1>
  <label class="mock" id="mockbar" hidden>模擬シナリオ<select id="scenario"></select></label>
 </header>
+<nav class="tabs" role="tablist"><button role="tab" id="tab-b-console" aria-selected="true">コンソール</button><button role="tab" id="tab-b-dds" aria-selected="false">DDS リスト</button><button role="tab" id="tab-b-camera" aria-selected="false">カメラ</button></nav>
 
+<div id="tab-console">
 <section class="card" aria-live="polite">
  <h2>接続状態</h2>
  <ol class="chain">
@@ -133,9 +165,67 @@ kbd{display:flex;align-items:center;justify-content:center;height:44px;border:1p
 </div>
 
 <section class="card">
- <h2>バッテリー<span class="tags" data-feature="battery"></span></h2>
- <div id="battery">—</div>
- <p class="note">ロボット本体の残量。取得方法（DDS のトピック）が未確認のため、まだ表示できません。</p>
+ <h2>音声・LED<span class="tags" data-feature="audio"></span></h2>
+ <p class="note">モーションには関係しない書き込み。モードに関係なく使える（デバッグモードでも可）。</p>
+ <div class="arow"><b>スピーカー音量</b><span id="vol-now">現在値 —</span><button id="vol-load" class="sm">読み込み</button></div>
+ <div class="arow"><input type="range" id="vol" min="0" max="100" value="50"><output id="vol-out">50</output>
+  <button id="vol-set" class="sm">反映</button><button id="vol-restore" class="sm" disabled>変更前に戻す</button></div>
+ <div class="res" id="vol-res"></div>
+ <div class="arow"><b>頭部 LED</b><input type="color" id="led" value="#00ff00"><button id="led-set" class="sm">送信</button><button id="led-off" class="sm">消灯（0,0,0）</button></div>
+ <div class="res" id="led-res">現在の色は読み取れません（戻すときは色を指定するか消灯）</div>
+ <div class="arow"><b>読み上げ</b><input type="text" id="tts" maxlength="100" placeholder="読み上げる文（100 文字まで）">
+  <select id="tts-spk"><option value="0">話者 0</option><option value="1">話者 1</option></select><button id="tts-go" class="sm">読み上げ</button></div>
+ <div class="res" id="tts-res"></div>
+ <p class="note">戻り値 0 は「G1 が受け取った」だけで、実際に動いた証拠ではない。<b>音量</b>は反映後に読み戻して一致を確認する。<b>LED は色が変わったか目で、読み上げは音が出たか耳で</b>確認すること（読み戻す API が無い）。話者 ID の意味は未確認。</p>
+</section>
+
+<div class="two">
+ <section class="card">
+  <h2>バッテリー<span class="tags" data-feature="battery"></span></h2>
+  <div id="battery"><span id="bat-soc">—</span><div id="bat-bar"><i></i></div></div>
+  <dl class="kv" id="bat-kv"></dl>
+  <p class="note">ロボット本体の残量（<code>rt/lf/bmsstate</code>）。電圧は mV、電流は mA として換算した<b>推定</b>（単位は資料で未確認）。電流が負のときは放電中とみている。</p>
+ </section>
+ <section class="card">
+  <h2>姿勢（IMU）<span class="tags" data-feature="sensors"></span></h2>
+  <dl class="kv" id="imu-kv"></dl>
+  <p class="note"><code>rt/lowstate</code> の <code>imu_state</code>。角度は rad を度に換算。</p>
+ </section>
+</div>
+
+<div class="two">
+ <section class="card">
+  <h2>オドメトリ<span class="tags" data-feature="sensors"></span></h2>
+  <dl class="kv" id="odom-kv"></dl>
+  <p class="note"><code>rt/odommodestate</code>。位置は起動位置からの推定で、ドリフトする。</p>
+ </section>
+ <section class="card">
+  <h2>関節（29 軸）<span class="tags" data-feature="sensors"></span></h2>
+  <div id="joint-sum" class="note">—</div>
+  <details><summary>全関節を表示（指令は <code>rt/lowcmd</code>）</summary>
+   <table id="joints"><thead><tr><th>関節</th><th>角度[°]</th><th>速度[rad/s]</th><th>トルク推定</th><th>温度[℃]</th><th>指令角度[°]</th><th>kp</th><th>kd</th></tr></thead><tbody></tbody></table>
+  </details>
+  <p class="note"><code>rt/lowstate</code>。関節名は SDK の並び順（脚 12・腰 3・腕 14）による対応で、実機での突き合わせは未確認。温度は 2 つの値（表面／巻線と推定）のうち高い方。</p>
+ </section>
+</div>
+
+<div class="two">
+ <section class="card">
+  <h2>Jetson・メインボード<span class="tags" data-feature="sensors"></span></h2>
+  <dl class="kv" id="sys-kv"></dl>
+  <p class="note">Jetson は <code>/proc</code>・<code>/sys</code> の読み取り、メインボードは <code>rt/lf/mainboardstate</code>。メインボードの <code>value</code> の意味は未確認（生の値を表示）。</p>
+ </section>
+ <section class="card">
+  <h2>リモコン・非常停止・サービス<span class="tags" data-feature="sensors"></span></h2>
+  <dl class="kv" id="misc-kv"></dl>
+  <p class="note">イベント型のトピックは、何も起きていなければ「受信なし」。受信なしは異常を意味しない。</p>
+ </section>
+</div>
+
+<section class="card">
+ <h2>トピック受信状況（DDS）<span class="tags" data-feature="sensors"></span></h2>
+ <table id="rates"><thead><tr><th>トピック</th><th>最終受信から [秒]</th></tr></thead><tbody></tbody></table>
+ <p class="note">Jetson が購読しているトピックの最終受信からの経過。「—」は一度も受信していない。負荷を避けるため高頻度のトピックは 0.2 秒に 1 通へ間引いて読むので、頻度（Hz）は測れない。lidar・カメラは対象外。</p>
 </section>
 
 <section class="card">
@@ -148,6 +238,31 @@ kbd{display:flex;align-items:center;justify-content:center;height:44px;border:1p
  <ul id="features"></ul>
  <p class="note">位置づけと SDK との対応は <code>Console/REMOTE_CONTROLLER.md</code>。</p>
 </section>
+
+</div>
+
+<div id="tab-camera" hidden>
+<section class="card">
+ <h2>カメラ映像</h2>
+ <div class="two" id="cams"></div>
+ <p class="note" id="cam-note"></p>
+</section>
+
+</div>
+
+<div id="tab-dds" hidden>
+ <section class="card">
+  <h2>DDS トピック（Jetson から観測した 104 件のうちサービス以外）</h2>
+  <p id="dds-sum"></p>
+  <div class="filters" id="dds-filters"></div>
+  <table class="dtable" id="dds-table"><thead><tr><th>トピック</th><th>型</th><th>状態</th><th>受信</th><th>説明</th></tr></thead><tbody></tbody></table>
+  <p class="note">「受信」は表示済みトピックだけ。Jetson が最後に受信してからの経過。イベント型は何も起きなければ「受信なし」で、異常ではない。</p>
+ </section>
+ <section class="card">
+  <h2>RPC サービス（rt/api/&lt;名前&gt;/request・response）</h2>
+  <table class="dtable" id="svc-table"><thead><tr><th>サービス</th><th>状態</th><th>説明</th></tr></thead><tbody></tbody></table>
+ </section>
+</div>
 
 <p class="note" id="cadence"></p>
 </main>
@@ -257,12 +372,177 @@ function addLog(text,cls){
   }));
 }
 
+const JOINT_NAMES=['左股 pitch','左股 roll','左股 yaw','左膝','左足首 pitch','左足首 roll',
+ '右股 pitch','右股 roll','右股 yaw','右膝','右足首 pitch','右足首 roll',
+ '腰 yaw','腰 roll','腰 pitch',
+ '左肩 pitch','左肩 roll','左肩 yaw','左肘','左手首 roll','左手首 pitch','左手首 yaw',
+ '右肩 pitch','右肩 roll','右肩 yaw','右肘','右手首 roll','右手首 pitch','右手首 yaw'];
+const RAD=180/Math.PI;
+const f=(v,d=2)=>v==null||!isFinite(v)?'—':Number(v).toFixed(d);
+
+function setKV(id,rows,live){
+  const el=$(id);el.className='kv'+(live?'':' stale');el.textContent='';
+  rows.forEach(([k,v])=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=live?v:'—';el.append(dt,dd)});
+}
+
+const JSON_S=v=>typeof v==='string'?v:JSON.stringify(v);
+function renderSystem(T,live){
+  const sy=live&&T.system,mb=live&&T.mainboard;
+  const temps=sy&&sy.temps?Object.entries(sy.temps):[];
+  const hot=temps.reduce((a,b)=>b[1]>a[1]?b:a,['',-1]);
+  setKV('sys-kv',[
+    ['Jetson 負荷（1/5/15 分）',sy&&sy.load?`${sy.load.join(' / ')}（${sy.cpus} コア）`:'—'],
+    ['メモリ空き',sy&&sy.mem_total_mb?`${sy.mem_avail_mb} / ${sy.mem_total_mb} MB`:'—'],
+    ['Jetson 最高温',temps.length?`${f(hot[1],1)}℃（${hot[0]}）`:'—'],
+    ['ディスク空き',sy&&sy.disk_free_gb!=null?`${sy.disk_free_gb} GB`:'—'],
+    ['Jetson 稼働時間',sy&&sy.uptime_s!=null?`${(sy.uptime_s/60).toFixed(0)} 分`:'—'],
+    ['メインボード温度',mb?mb.temperature.filter(t=>t>0).map(t=>`${t}℃`).join(' / ')||'—':'—'],
+    ['メインボード value（生）',mb?mb.value.slice(0,3).map(v=>f(v,1)).join(' / '):'—'],
+    ['メインボード state（生）',mb?JSON.stringify(mb.state.slice(0,3)):'—']],!!(sy||mb));
+}
+function renderMisc(T,live){
+  const rows=[];
+  const r=live&&T.remote,e=live&&T.estop;
+  rows.push(['無線リモコン入力',r?`lx ${f(r.lx)} ly ${f(r.ly)} rx ${f(r.rx)} ry ${f(r.ry)} keys ${r.keys}`:'受信なし']);
+  rows.push(['非常停止イベント',e?JSON_S(Object.fromEntries(Object.entries(e).filter(([k])=>k!=='age_s'))):'受信なし']);
+  const st=live&&T.strings?T.strings:{};
+  ['rt/servicestate','rt/servicestateactivate','rt/multiplestate','rt/selftest','rt/lf/battery_alarm','rt/rtc/state','rt/arm/action/state','rt/public_network_status','rt/gpt_state'].forEach(k=>{
+    rows.push([k.replace('rt/',''),st[k]?JSON_S(st[k].value):'受信なし']);
+  });
+  setKV('misc-kv',rows,live);
+  const tb=document.querySelector('#rates tbody');tb.textContent='';
+  Object.entries(live&&T.ages?T.ages:{}).sort((a,b)=>(a[1]==null)-(b[1]==null)||(a[1]||0)-(b[1]||0)).forEach(([k,v])=>{
+    const tr=document.createElement('tr');[k,v==null?'—':f(v,1)].forEach(x=>{const td=document.createElement('td');td.textContent=x;tr.append(td)});tb.append(tr);
+  });
+}
+
+function renderTelemetry(n){
+  const T=S&&S.telemetry,age=ageNow();
+  const live=!!T&&n.jetson.st==='ok'&&n.g1.st==='ok'&&age!=null&&age<=STALE_S;
+  const b=live&&T.battery,i=live&&T.imu,o=live&&T.odom,j=live&&T.joints;
+  const soc=$('bat-soc'),bar=$('bat-bar');
+  if(b){
+    soc.textContent=`${b.soc}%`;soc.style.color='';
+    bar.className=b.soc<=10?'crit':(b.soc<=20?'low':'');bar.firstElementChild.style.width=`${Math.max(0,Math.min(100,b.soc))}%`;
+  }else{soc.textContent='—';soc.style.color='';bar.className='';bar.firstElementChild.style.width='0'}
+  const volts=b?b.voltage.filter(v=>v>0):[],temps=b?b.temperature.filter(t=>t>0):[];
+  setKV('bat-kv',[
+    ['電圧（推定）',volts.map(v=>`${f(v/1000,2)} V`).join(' / ')||'—'],
+    ['電流（推定）',b?`${f(b.current/1000,2)} A（${b.current<0?'放電':'充電'}）`:'—'],
+    ['温度',temps.length?temps.map(t=>`${t}℃`).join(' / '):'—'],
+    ['更新',b?`${f(b.age_s,1)} 秒前に受信`:'—']],!!b);
+  const d=i?i.rpy.map(v=>v*RAD):[];
+  setKV('imu-kv',[
+    ['ロール／ピッチ／ヨー',i?`${f(d[0],1)}° / ${f(d[1],1)}° / ${f(d[2],1)}°`:'—'],
+    ['角速度 [rad/s]',i?i.gyro.map(v=>f(v)).join(' / '):'—'],
+    ['加速度 [m/s²]',i?i.accel.map(v=>f(v)).join(' / '):'—'],
+    ['IMU 温度',i?`${i.temperature}℃`:'—'],
+    ['2 つ目の IMU（ロール／ピッチ／ヨー）',i&&T.imu2?T.imu2.rpy.map(v=>f(v*RAD,1)+'°').join(' / '):'—']],!!i);
+  setKV('odom-kv',[
+    ['位置 x / y / z [m]',o?o.position.map(v=>f(v)).join(' / '):'—'],
+    ['速度 x / y / z [m/s]',o?o.velocity.map(v=>f(v)).join(' / '):'—'],
+    ['ヨー角速度 [rad/s]',o?f(o.yaw_speed):'—'],
+    ['胴体の高さ [m]',o?f(o.body_height):'—'],
+    ['mode / gait / error',o?`${o.mode} / ${o.gait_type} / ${o.error_code}`:'—']],!!o);
+  renderSystem(T,live);renderMisc(T,live);
+  const tb=document.querySelector('#joints tbody');tb.textContent='';
+  if(j){
+    let hot=0,hotI=0;
+    j.items.forEach((m,k)=>{
+      const t=Math.max(...m.temperature);if(t>hot){hot=t;hotI=k}
+      const tr=document.createElement('tr');
+      const c=T.lowcmd&&T.lowcmd.items[k];
+      [JOINT_NAMES[k]||`#${k}`,f(m.q*RAD,1),f(m.dq),f(m.tau),String(t),c?f(c.q*RAD,1):'—',c?f(c.kp,0):'—',c?f(c.kd,1):'—'].forEach(x=>{const td=document.createElement('td');td.textContent=x;tr.append(td)});
+      tb.append(tr);
+    });
+    const lost=j.items.filter(m=>m.lost!==0).length;
+    $('joint-sum').textContent=`最高温 ${hot}℃（${JOINT_NAMES[hotI]||'#'+hotI}）· motorstate が 0 以外の関節 ${lost} 個 · mode_machine ${j.mode_machine} · 指令 ${T.lowcmd?'あり':'受信なし'}`;
+  }else $('joint-sum').textContent=T&&live?'関節の値を受信できていません':'—（未接続または古いデータ）';
+}
+
+// ---- 音声・LED ----
+let originalVolume=null,audioReady=false,volumeTried=false;
+function setRes(id,text,cls){const e=$(id);e.textContent=text;e.className='res '+(cls||'')}
+async function audioPost(kind,body){
+  const r=await fetch('/api/audio/'+kind,{method:'POST',body:JSON.stringify(body)});
+  let j={};try{j=await r.json()}catch(_){}
+  return{ok:r.ok,j,status:r.status};
+}
+function stopCameras(){document.querySelectorAll('#cams img').forEach(i=>i.removeAttribute('src'))}  // タブを離れたら配信接続を閉じる
+async function loadCameras(){
+  try{
+    const r=await (await fetch('/api/cameras')).json();
+    if(!r.enabled){$('cam-note').textContent='カメラ未設定です。server.py を --camera-url 付きで起動してください。';return}
+    $('cams').replaceChildren(...Object.entries(r.cameras).map(([id,label])=>{
+      const box=document.createElement('div'),cap=document.createElement('b'),img=document.createElement('img');
+      cap.textContent=label;img.src='/camera/'+id;img.alt=label+'（映像なし）';img.style.cssText='width:100%;display:block;background:#000';
+      box.append(cap,img);return box}));
+    $('cam-note').textContent='Jetson の camera_stream.py の映像を中継しています。映らないときは Jetson 側で起動しているか、カメラが USB に刺さっているかを確認。';
+  }catch(e){$('cam-note').textContent='カメラ情報を取得できません: '+e}
+}
+async function loadVolume(){
+  setRes('vol-res','読み込み中…');
+  try{
+    const r=await fetch('/api/audio/volume',{cache:'no-store'}),j=await r.json();
+    if(!r.ok||j.volume==null){setRes('vol-res',`取得失敗：${j.error||'code='+j.code}`,'bad');return}
+    if(originalVolume==null){originalVolume=j.volume;$('vol-restore').disabled=false;$('vol-restore').textContent=`変更前（${originalVolume}）に戻す`}
+    $('vol-now').textContent=`現在値 ${j.volume}`;$('vol').value=j.volume;$('vol-out').value=j.volume;
+    setRes('vol-res',`取得しました（${clock(Date.now()/1000)}）`,'ok');
+  }catch(e){setRes('vol-res',`サーバーに届きません（${e}）`,'bad')}
+}
+async function setVolume(v){
+  if(originalVolume==null){setRes('vol-res','先に「読み込み」で変更前の値を取得してください','warn');return}
+  setRes('vol-res','送信中…');
+  try{
+    const {ok,j}=await audioPost('volume',{volume:v});
+    if(!ok){setRes('vol-res',`失敗：${j.error||`set_code=${j.set_code} read_code=${j.read_code}`}`,'bad');addLog(`音量 ${v} 失敗`,'bad');return}
+    const match=j.volume_after===v;
+    $('vol-now').textContent=`現在値 ${j.volume_after}`;
+    setRes('vol-res',match?`受理 → 読み戻して ${j.volume_after} と一致（確認済み）`:`受理されたが読み戻しは ${j.volume_after}（設定値 ${v} と不一致）`,match?'ok':'bad');
+    addLog(`音量 ${v} を設定（読み戻し ${j.volume_after}${match?'・一致':'・不一致'}）`,match?'':'bad');
+  }catch(e){setRes('vol-res',`サーバーに届きません（${e}）`,'bad')}
+}
+async function setLed(r,g,b){
+  setRes('led-res','送信中…');
+  try{
+    const {ok,j}=await audioPost('led',{r,g,b});
+    setRes('led-res',ok?`送信しました（受理 code=${j.code}）。色が変わったか目で確認してください`:`失敗：${j.error||'code='+j.code}`,ok?'warn':'bad');
+    addLog(`LED (${r},${g},${b}) ${ok?'送信（受理・目視待ち）':'失敗'}`,ok?'':'bad');
+  }catch(e){setRes('led-res',`サーバーに届きません（${e}）`,'bad')}
+}
+async function speak(){
+  const text=$('tts').value.trim();if(!text){setRes('tts-res','文を入力してください','warn');return}
+  if(!confirm(`実機のスピーカーから読み上げます：\n「${text}」\n周囲に問題ありませんか？`))return;
+  setRes('tts-res','送信中…');
+  try{
+    const {ok,j}=await audioPost('tts',{text,speaker_id:+$('tts-spk').value});
+    setRes('tts-res',ok?`送信しました（受理 code=${j.code}）。音が出たか耳で確認してください`:`失敗：${j.error||'code='+j.code}`,ok?'warn':'bad');
+    addLog(`読み上げ「${text}」${ok?'送信（受理・聴取待ち）':'失敗'}`,ok?'':'bad');
+  }catch(e){setRes('tts-res',`サーバーに届きません（${e}）`,'bad')}
+}
+function hexRgb(h){return[1,3,5].map(i=>parseInt(h.slice(i,i+2),16))}
+function initAudio(){
+  $('vol').oninput=()=>{$('vol-out').value=$('vol').value};
+  $('vol-load').onclick=loadVolume;
+  $('vol-set').onclick=()=>setVolume(+$('vol').value);
+  $('vol-restore').onclick=()=>setVolume(originalVolume);
+  $('led-set').onclick=()=>setLed(...hexRgb($('led').value));
+  $('led-off').onclick=()=>setLed(0,0,0);
+  $('tts-go').onclick=speak;
+}
+function renderAudio(n){
+  const live=n.jetson.st==='ok'&&n.g1.st==='ok'&&!busy;
+  document.querySelectorAll('.arow button,.arow input,.arow select').forEach(e=>{if(e.id==='vol-restore'&&originalVolume==null)return;e.disabled=!live});
+}
+
 function render(){
   const n=nodes();
   renderChain(n);diagnose(n);
   renderMode(n);
   renderButtons(n);
   renderPending();
+  renderTelemetry(n);
+  renderAudio(n);
   if(S)$('cadence').textContent=`サーバーが約 ${S.poll_interval_s} 秒ごとに G1 を確認し、この画面が ${POLL_MS/1000} 秒ごとにサーバーへ問い合わせます。表示は最大で数秒遅れることがあります。`;
 }
 
@@ -337,12 +617,61 @@ async function poll(once){
     S=await r.json();recvAt=performance.now();fails=0;
     if(!buttons.length)await loadButtons();
     if(!featuresLoaded)await loadFeatures();
+    if(!audioReady){audioReady=true;initAudio()}
+    if(!volumeTried&&S.jetson.state==='ok'&&S.g1.state==='ok'){volumeTried=true;loadVolume()}
     if(S.server.mock&&$('mockbar').hidden)await loadScenarios();
   }catch(e){fails++}
   render();
   if(!once)setTimeout(poll,POLL_MS);
 }
 
-setInterval(render,250); /* 経過秒を進める。取得が途絶えても「古さ」が正しく増える */
+/* ---- DDS リストタブ ---- */
+const DDS_LABEL={displayed:['表示済み','done'],todo:['未購読（未実装）','unver'],excluded:['対象外','plan']};
+let dds=null,ddsFilter='all',tab='console';
+function td(tr,x,cls){const c=document.createElement('td');c.textContent=x;if(cls)c.className=cls;tr.append(c);return c}
+function setTab(t){
+  tab=t;$('tab-console').hidden=t!=='console';$('tab-dds').hidden=t!=='dds';$('tab-camera').hidden=t!=='camera';
+  t==='camera'?loadCameras():stopCameras();
+  $('tab-b-console').setAttribute('aria-selected',t==='console');$('tab-b-dds').setAttribute('aria-selected',t==='dds');$('tab-b-camera').setAttribute('aria-selected',t==='camera');
+  history.replaceState(null,'',t==='dds'?'#dds':'#');
+  if(t==='dds'){if(!dds)loadDds();else renderDds()}
+}
+async function loadDds(){
+  try{dds=await(await fetch('/api/dds',{cache:'no-store'})).json()}catch(e){$('dds-sum').textContent='一覧を取得できません';return}
+  renderDds();
+}
+function buildDdsFilters(){
+  [['all','すべて'],['displayed','表示済み'],['todo','未購読（未実装）'],['excluded','対象外']].forEach(([k,l])=>{
+    const b=document.createElement('button');b.className='sm';b.textContent=l;b.dataset.k=k;
+    b.onclick=()=>{ddsFilter=k;renderDds()};$('dds-filters').append(b);
+  });
+}
+function renderDds(){
+  if(!dds||tab!=='dds')return;
+  const cnt={displayed:0,todo:0,excluded:0};dds.topics.forEach(t=>cnt[t.status]++);
+  $('dds-sum').textContent=`全 ${dds.topics.length} 件：表示済み ${cnt.displayed} ／ 未購読（未実装）${cnt.todo} ／ 対象外 ${cnt.excluded}`;
+  if(!$('dds-filters').children.length)buildDdsFilters();
+  [...$('dds-filters').children].forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===ddsFilter));
+  const n=S?nodes():null,T=S&&S.telemetry,live=!!T&&!!n&&n.jetson.st==='ok'&&n.g1.st==='ok';
+  const tb=document.querySelector('#dds-table tbody');tb.textContent='';
+  dds.topics.filter(t=>ddsFilter==='all'||t.status===ddsFilter).forEach(t=>{
+    const tr=document.createElement('tr');
+    td(tr,t.topic);td(tr,t.type);
+    const c=td(tr,'');const tg=document.createElement('span');tg.className='tag '+DDS_LABEL[t.status][1];tg.style.marginLeft='0';tg.textContent=DDS_LABEL[t.status][0];c.append(tg);
+    let rx='—',cls='';
+    if(t.status==='displayed'){
+      const a=live&&T.ages?T.ages[t.topic]:undefined;
+      if(a==null){rx=live?'受信なし':'未確認';cls='live-none'}else{rx=`${f(a,1)} 秒前`;cls=a<=5?'live-ok':'live-none'}
+    }
+    td(tr,rx,cls);td(tr,t.note);tb.append(tr);
+  });
+  const sb=document.querySelector('#svc-table tbody');sb.textContent='';
+  dds.services.forEach(v=>{const tr=document.createElement('tr');td(tr,v.name);td(tr,v.status,v.status==='使用中'?'live-ok':(v.status==='SDK あり・未実装'?'':'live-none'));td(tr,v.note);sb.append(tr)});
+}
+$('tab-b-console').onclick=()=>setTab('console');$('tab-b-dds').onclick=()=>setTab('dds');$('tab-b-camera').onclick=()=>setTab('camera');
+if(location.hash==='#dds')setTab('dds');
+if(location.hash==='#camera')setTab('camera');
+
+setInterval(render,250);setInterval(renderDds,1000); /* 経過秒を進める。取得が途絶えても「古さ」が正しく増える */
 poll();
 </script></body></html>

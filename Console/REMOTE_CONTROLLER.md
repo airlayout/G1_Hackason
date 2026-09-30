@@ -155,7 +155,7 @@ README の FSM 表では 501 を「腰 3 軸の通常歩行」としているの
 
 | リモコンの機能 | SDK での手段（候補） | 実機確認 | 備考 |
 |---|---|---|---|
-| 現在のモード表示 | `GetFsmId`（7001）、`MotionSwitcherClient.CheckMode` | ✅ 取得のみ確認 | 実測 `501` / `ai` |
+| 現在のモード表示 | `GetFsmId`（7001）、`MotionSwitcherClient.CheckMode` | ✅ 取得のみ確認 | 通常時 `501` / `ai`。デバッグモード中は `GetFsmId`=3102、`CheckMode`=`(0, {'form':'0','name':''})`（2026-09-30 実測） |
 | ゼロトルク / ダンピング / 座位 | `SetFsmId(0)` / `(1)` / `(3)` | ❌ | コンソールに実装済み |
 | しゃがみ | `SetFsmId(2)`（C++ 例の `Squat()`）。Python SDK には `Squat2StandUp` / `StandUp2Squat`（706）もある | ❌ | 2 と 706 の関係が未整理 |
 | 準備（固定立位） | C++ 例の `StandUp()` が `SetFsmId(4)`。**これが準備モードかは未確認** | ❌ | ID が不明。コンソールには未搭載 |
@@ -172,7 +172,7 @@ README の FSM 表では 501 を「腰 3 軸の通常歩行」としているの
 | デバッグモードへの切替 | `MotionSwitcherClient.ReleaseMode` | ❌ | 失敗すると復帰が面倒。慎重に |
 | 腰の制御（SELECT+右スティック） | 未調査（腕・腰は別 API か低レベル制御の可能性） | — | 未調査 |
 | オフセット補正（R1+矢印） | 対応 API 未調査 | — | 未調査 |
-| **ロボットのバッテリー** | `unitree_hg` に `BmsState` 型がある（`soc`、`current`、`bmsvoltage`、`temperature` 等）。**どのトピックで配信されるかは未確認** | ❌ | 方針が決まっていない。まず実機で購読して確認する |
+| **ロボットのバッテリー** | `unitree_hg` に `BmsState` 型がある（`soc`、`current`、`bmsvoltage`、`temperature` 等）。**どのトピックで配信されるかは未確認** | ✅ 取得済み | **`rt/lf/bmsstate`**（実測。SOC・電流・電圧・セル電圧・温度）。コンソールに表示済み。単位 mV/mA は推定、SOC 5% 未満は数分で停止（`docs/G1_FINDINGS.md`） |
 | リモコンの電池残量 | 取れない（物理 LED のみ） | — | 対象外 |
 
 ## 矢印キー移動の案（未決定・未実装）
@@ -196,6 +196,11 @@ README の FSM 表では 501 を「腰 3 軸の通常歩行」としているの
 1. リモコン世代による割り当ての違い（L1 系 / L2 系。上記）
 2. 準備（固定立位）・Run・デバッグの FSM ID と切替手順
 3. `SetFsmId` を実機で押したときの挙動（遷移に何秒かかるか、Jetson 上の歩行リレーと競合しないか）
-4. バッテリーのトピック名と、G1 が実際に配信しているか
+4. （解決）バッテリーは `rt/lf/bmsstate` で配信を確認。残: 単位・`battery_alarm` の発火条件（SOC 0% でも出なかった）
 5. 腰制御・オフセット補正の API
 6. `MotionSwitcherClient` 経由のデバッグモード切替の安全な手順
+
+7. 通常モード(ai)での `rt/arm_sdk`（デバッグモードでは効かなかった。`tools/arm_one_joint.py` で再試験）
+8. 旧版/新版のリモコン割当のどちらか（`ai_sport` 8.7.3.4 だけでは判別できない）
+
+実機調査の詳細: `docs/G1_FINDINGS.md`

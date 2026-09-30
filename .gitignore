@@ -79,3 +79,9 @@ Navigation/nav2_stable/0911_robag/
 Navigation/nav2_stable/0923_rosbag/
 Navigation/nav2_stable/maps/clouds/
 Navigation/*.pcd
+
+# G1 Console: 実機から取った生データ（巨大 / bash_history・ネットワーク情報を含む）。手元保管のみ
+Console/docs/g1_snapshot/
+Console/docs/g1_logs/
+Console/docs/g1_snapshot.tgz
+Console/docs/extracted/

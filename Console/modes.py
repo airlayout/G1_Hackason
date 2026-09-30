@@ -52,6 +52,38 @@ FEATURES = [
      "note": "ダンピング/ゼロトルク/座位/しゃがみ⇔起立/床から起立/通常歩行のみ"},
     {"id": "action", "label": "アクション実行", "implemented": False, "verified": False},
     {"id": "move", "label": "矢印キーで移動", "implemented": False, "verified": False},
-    {"id": "battery", "label": "バッテリー表示", "implemented": False, "verified": False,
-     "note": "取得方法（トピック）が未確認"},
+    {"id": "battery", "label": "バッテリー表示", "implemented": True, "verified": False,
+     "note": "rt/lf/bmsstate。電圧・電流の単位は推定"},
+    {"id": "audio", "label": "音声・LED（音量・頭部 LED・読み上げ）", "implemented": True, "verified": False,
+     "note": "実機で音量取得・LED・読み上げを送信済み（デバッグモード）。LED は読み戻し不可で目視、読み上げは rt/audio_msg の play_state で開始/終了を観測可。ユーザー確認は未完"},
+    {"id": "sensors", "label": "デバッグ情報表示（IMU・関節・指令・オドメトリ・Jetson・DDS 受信状況）", "implemented": True,
+     "verified": False, "note": "lidar・カメラは対象外。関節名の対応・メインボード value の意味は未確認"},
 ]
+
+
+# 音声・LED（モーションに関係しない書き込み）。範囲外は helper に渡さず弾く。
+TTS_MAX_CHARS = 100
+TTS_SPEAKERS = (0, 1)  # SDK のサンプルで使われる値。0=中国語, 1=英語（と推定、実機で未確認）
+
+
+def validate_audio(kind: str, body: dict) -> dict:
+    """POST 本文を検証し、helper に渡すリクエストを返す。不正なら ValueError。"""
+    def integer(key, lo, hi):
+        v = body[key]
+        if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+            raise ValueError("%s は %d〜%d の整数" % (key, lo, hi))
+        return v
+    try:
+        if kind == "volume":
+            return {"op": "audio_volume", "volume": integer("volume", 0, 100)}
+        if kind == "led":
+            return {"op": "audio_led", "r": integer("r", 0, 255), "g": integer("g", 0, 255), "b": integer("b", 0, 255)}
+        if kind == "tts":
+            text = body["text"]
+            if not isinstance(text, str) or not text.strip() or len(text) > TTS_MAX_CHARS:
+                raise ValueError("text は 1〜%d 文字" % TTS_MAX_CHARS)
+            speaker = integer("speaker_id", min(TTS_SPEAKERS), max(TTS_SPEAKERS))
+            return {"op": "audio_tts", "text": text, "speaker_id": speaker}
+    except KeyError as exc:
+        raise ValueError("%s がありません" % exc.args[0])
+    raise ValueError("unknown audio kind")

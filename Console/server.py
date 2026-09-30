@@ -15,10 +15,13 @@ import shlex
 import subprocess
 import threading
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from modes import ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, PLANNED_ACTIONS, PLANNED_MODES
+from dds_catalog import SERVICES, TOPICS
+from replay import Replay
+from modes import validate_audio, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, PLANNED_ACTIONS, PLANNED_MODES
 
 HERE = Path(__file__).resolve().parent
 REPLY_TIMEOUT_S = 8.0
@@ -26,6 +29,9 @@ READY_TIMEOUT_S = 30.0  # DDS 初期化待ち
 POLL_INTERVAL_S = 1.0
 POLL_INTERVAL_DOWN_S = 3.0  # Jetson に届かないときは ssh を叩きすぎない
 SSH_CONNECT_FAILED = 255  # ssh が接続自体に失敗したときの終了コード
+CAMERAS = {"std": "標準カメラ", "d435i": "D435i（RGB）"}  # camera_stream.py の --camera 名と揃える
+CAMERA_TIMEOUT_S = 5.0
+CAMERA_CHUNK = 16384
 
 
 class SshHelper:
@@ -99,32 +105,81 @@ class MockHelper:
         "g1_off": "G1 未応答（Jetson には届く）",
         "jetson_off": "Jetson に届かない",
         "debug": "デバッグモード",
+        "replay": "実機ログの再生（デバッグモード, 循環）",
     }
     TRANSITION_S = 2.0  # 実機の遷移に時間がかかる様子を模擬
 
     def __init__(self):
         self.scenario = "ok"
+        self.volume = 85
         self._fsm = 1
         self._target = None
         self._due = 0.0
+        self._replay = None
+
+    def _replay_telemetry(self):
+        if self._replay is None:
+            self._replay = Replay()
+        return self._replay.telemetry()
 
     def _current_fsm(self):
         if self._target is not None and time.time() >= self._due:
             self._fsm, self._target = self._target, None
         return self._fsm
 
+    @staticmethod
+    def _telemetry():
+        joints = [{"q": 0.01 * i, "dq": 0.0, "tau": 0.1, "temperature": [30 + i % 7, 29 + i % 5], "lost": 0}
+                  for i in range(29)]
+        return {"battery": {"soc": 67, "current": -1970, "voltage": [48811, 48818, 0],
+                            "temperature": [31, 27, 26, 32, 0, 0, 0, 0, 0, 0, 0, 0], "age_s": 0.1},
+                "imu": {"rpy": [0.01, 0.02, 0.5], "gyro": [0.0, 0.0, 0.0], "accel": [0.0, 0.1, 9.8],
+                        "temperature": 40, "age_s": 0.1},
+                "joints": {"age_s": 0.1, "mode_machine": 5, "items": joints},
+                "odom": {"position": [0.0, 0.0, 0.7], "velocity": [0.0, 0.0, 0.0], "yaw_speed": 0.0,
+                         "mode": 0, "gait_type": 0, "body_height": 0.7, "error_code": 0, "age_s": 0.1},
+                "lowcmd": {"age_s": 0.01, "mode_machine": 5, "items": [
+                    {"q": 0.01 * i, "dq": 0.0, "tau": 0.0, "kp": 300.0, "kd": 3.0, "mode": 1} for i in range(29)]},
+                "imu2": {"rpy": [0.01, 0.02, 0.5], "gyro": [0.0, 0.0, 0.0], "accel": [0.0, 0.1, 9.8], "age_s": 0.1},
+                "mainboard": {"fan_state": [0] * 6, "state": [32, 0, 0, 0, 0, 0], "temperature": [49, 0, 0, 0, 0, 0],
+                              "value": [45.6, 45.3, 1.6, 0.0, 0.0, 0.0], "age_s": 0.05},
+                "estop": None, "remote": None,
+                "strings": {"rt/rtc/state": {"value": {"connection_state": "not_connected"}, "age_s": 0.5},
+                            "rt/arm/action/state": {"value": {"holding": False, "id": 0, "name": ""}, "age_s": 0.1}},
+                "ages": {"rt/lowstate": 0.0, "rt/lowcmd": 0.0, "rt/lf/bmsstate": 0.0,
+                         "rt/odommodestate": 0.0, "rt/secondary_imu": 0.0, "rt/servicestate": None},
+                "system": {"load": [1.2, 1.0, 0.8], "mem_total_mb": 15388, "mem_avail_mb": 12700,
+                           "uptime_s": 4000.0, "cpus": 8, "disk_free_gb": 1800.0,
+                           "temps": {"CPU-therm": 58.9, "GPU-therm": 54.9, "tj-therm": 58.8}}}
+
+    def _audio(self, req: dict) -> dict:
+        if self.scenario == "g1_off":
+            return {"ok": True, "code": 3102, "set_code": 3102, "read_code": 3102, "volume": None, "volume_after": None}
+        op = req["op"]
+        if op == "audio_get":
+            return {"ok": True, "code": 0, "volume": self.volume}
+        if op == "audio_volume":
+            self.volume = req["volume"]
+            return {"ok": True, "set_code": 0, "read_code": 0, "volume_after": self.volume}
+        return {"ok": True, "code": 0}
+
     def call(self, req: dict) -> dict:
         if self.scenario == "jetson_off":
             return {"ok": False, "offline": True, "ssh_exit": SSH_CONNECT_FAILED, "error": "模擬"}
+        if req["op"].startswith("audio_"):
+            return self._audio(req)
         if self.scenario == "g1_off":
-            return {"ok": True, "checkmode_code": 3102, "service": None, "fsm_code": 3102, "fsm_id": None}
-        if self.scenario == "debug":
-            return {"ok": True, "checkmode_code": 0, "service": "", "fsm_code": 3102, "fsm_id": None}
+            return {"ok": True, "checkmode_code": 3102, "service": None, "fsm_code": 3102, "fsm_id": None,
+                    "telemetry": None}
+        if self.scenario in ("debug", "replay"):
+            tele = self._replay_telemetry() if self.scenario == "replay" else self._telemetry()
+            return {"ok": True, "checkmode_code": 0, "service": "", "fsm_code": 3102, "fsm_id": None,
+                    "telemetry": tele}
         if req["op"] == "set":
             self._target, self._due = int(req["id"]), time.time() + self.TRANSITION_S
             return {"ok": True, "set_code": 0}
         return {"ok": True, "checkmode_code": 0, "service": "ai", "fsm_code": 0,
-                "fsm_id": self._current_fsm()}
+                "fsm_id": self._current_fsm(), "telemetry": self._telemetry()}
 
 
 def _jetson_detail(raw: dict) -> str:
@@ -134,7 +189,12 @@ def _jetson_detail(raw: dict) -> str:
 
 
 def describe(raw: dict) -> dict:
-    """ヘルパーの生の応答を、3 段の接続状態（jetson / g1）と現在のモードに変換する。"""
+    """ヘルパーの生の応答を、3 段の接続状態・現在のモード・テレメトリに変換する。"""
+    telemetry = raw.get("telemetry") if raw.get("ok") else None
+    return {**_describe_links(raw), "telemetry": telemetry}
+
+
+def _describe_links(raw: dict) -> dict:
     if not raw.get("ok"):
         return {"jetson": {"state": "down", "detail": _jetson_detail(raw)},
                 "g1": {"state": "unknown", "detail": "Jetson に届かないため未確認"},
@@ -171,7 +231,7 @@ class Monitor:
             "sampled_at": None, "latency_ms": None, "last_g1_ok_at": None, "last_mode": None,
             "jetson": {"state": "unknown", "detail": "起動直後（初回の確認中）"},
             "g1": {"state": "unknown", "detail": "起動直後（初回の確認中）"},
-            "mode": {"state": "none", "label": "—"},
+            "mode": {"state": "none", "label": "—"}, "telemetry": None,
         }
 
     def poll_once(self) -> dict:
@@ -209,7 +269,7 @@ class Monitor:
             self._stop.wait(self._interval if snap["jetson"]["state"] == "ok" else POLL_INTERVAL_DOWN_S)
 
 
-def make_handler(helper, monitor):
+def make_handler(helper, monitor, camera_base=None):
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code: int, ctype: str, data: bytes):
             self.send_response(code)
@@ -230,21 +290,51 @@ def make_handler(helper, monitor):
         def do_GET(self):
             if self.path == "/api/status":
                 self._json(200, monitor.snapshot())
+            elif self.path == "/api/audio/volume":
+                self._audio_reply(helper.call({"op": "audio_get"}), "code")
             elif self.path == "/api/buttons":
                 self._json(200, {"buttons": BUTTONS})
+            elif self.path == "/api/dds":
+                self._json(200, {"topics": [dict(zip(("topic", "type", "status", "note"), t)) for t in TOPICS],
+                                 "services": [dict(zip(("name", "status", "note"), v)) for v in SERVICES]})
             elif self.path == "/api/features":
                 self._json(200, {"features": FEATURES, "planned_modes": PLANNED_MODES,
                                  "planned_actions": PLANNED_ACTIONS})
             elif self.path == "/api/scenarios" and hasattr(helper, "scenario"):
                 self._json(200, {"scenarios": helper.SCENARIOS, "current": helper.scenario})
+            elif self.path == "/api/cameras":
+                self._json(200, {"enabled": bool(camera_base), "cameras": CAMERAS})
+            elif self.path.startswith("/camera/"):
+                self._proxy_camera(self.path[len("/camera/"):])
             elif self.path in ("/", "/index.html"):
                 self._send(200, "text/html; charset=utf-8", (HERE / "index.html").read_bytes())
             else:
                 self._json(404, {"error": "not found"})
 
+        def _proxy_camera(self, name: str):
+            """Jetson の MJPEG をそのまま中継する（ブラウザは同一オリジンで <img> に入れられる）。"""
+            if not camera_base or name not in CAMERAS:
+                return self._json(404, {"error": "カメラ未設定（--camera-url を指定）"})
+            try:
+                upstream = urllib.request.urlopen("%s/%s" % (camera_base, name), timeout=CAMERA_TIMEOUT_S)
+            except OSError as exc:
+                return self._json(502, {"error": "カメラに届きません: %s" % exc})
+            with upstream:
+                self.send_response(200)
+                self.send_header("Content-Type", upstream.headers.get("Content-Type", "image/jpeg"))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                try:
+                    while chunk := upstream.read(CAMERA_CHUNK):
+                        self.wfile.write(chunk)
+                except (OSError, ValueError):
+                    pass  # どちらかが切れただけ
+
         def do_POST(self):
             if self.path == "/api/mode":
                 return self._post_mode()
+            if self.path.startswith("/api/audio/"):
+                return self._post_audio(self.path[len("/api/audio/"):])
             if self.path == "/api/scenario" and hasattr(helper, "scenario"):
                 return self._post_scenario()
             self._json(404, {"error": "not found"})
@@ -260,6 +350,20 @@ def make_handler(helper, monitor):
             if raw.get("ok") and raw.get("set_code") != 0:
                 return self._json(502, {"error": "G1 が要求を受理しませんでした（code=%s）" % raw.get("set_code")})
             self._json(200 if raw.get("ok") else 502, raw)
+
+        def _audio_reply(self, raw: dict, *code_keys: str):
+            """受理コードがすべて 0 なら 200、それ以外は 502（画面には生の応答も返す）。"""
+            failed = not raw.get("ok") or any(raw.get(k) != 0 for k in code_keys)
+            body = raw if raw.get("ok") else {**raw, "error": raw.get("error", "ヘルパーが応答しません")}
+            self._json(502 if failed else 200, body)
+
+        def _post_audio(self, kind: str):
+            try:
+                req = validate_audio(kind, self._read_json())
+            except (ValueError, TypeError) as exc:
+                return self._json(400, {"error": str(exc)})
+            raw = helper.call(req)
+            self._audio_reply(raw, *(("set_code", "read_code") if kind == "volume" else ("code",)))
 
         def _post_scenario(self):
             try:
@@ -283,11 +387,13 @@ def main():
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--host", default="g1")
     parser.add_argument("--port", type=int, default=18790)
+    parser.add_argument("--camera-url", help="Jetson の camera_stream.py の URL 例: http://100.78.135.14:8081")
     args = parser.parse_args()
     helper = MockHelper() if args.mock else SshHelper(args.host)
     monitor = Monitor(helper)
     monitor.start()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(helper, monitor))
+    camera_base = args.camera_url.rstrip("/") if args.camera_url else None
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(helper, monitor, camera_base))
     print("[console] http://127.0.0.1:%d (%s)" % (args.port, helper.backend))
     server.serve_forever()
 
