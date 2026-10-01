@@ -307,7 +307,7 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  <div class="arow"><b>頭部 LED</b><input type="color" id="led" value="#00ff00"><button id="led-set" class="sm">送信</button><button id="led-off" class="sm">消灯（0,0,0）</button></div>
  <div class="res" id="led-res">現在の色は読み取れません（戻すときは色を指定するか消灯）</div>
  <div class="arow"><b>読み上げ</b><input type="text" id="tts" maxlength="100" placeholder="読み上げる文（100 文字まで）">
-  <select id="tts-spk"><option value="0">話者 0</option><option value="1">話者 1</option></select><button id="tts-go" class="sm">読み上げ</button></div>
+  <select id="tts-spk"><option value="1" selected>話者 1（英語）</option><option value="0">話者 0（中国語・無音になることあり）</option></select><button id="tts-go" class="sm">読み上げ</button></div>
  <div class="res" id="tts-res"></div>
  <p class="note">戻り値 0 は「G1 が受け取った」だけで、実際に動いた証拠ではない。<b>音量</b>は反映後に読み戻して一致を確認する。<b>LED は色が変わったか目で、読み上げは音が出たか耳で</b>確認すること（読み戻す API が無い）。話者 ID の意味は未確認。</p>
 </section>
