@@ -100,6 +100,8 @@ class DepthGrabber(Grabber):
         ok = z > 0
         z, x, y = z[ok], xn[ok] * z[ok], yn[ok] * z[ok]
         zc = rot[2, 0] * x + rot[2, 1] * y + rot[2, 2] * z + trans[2]
+        front = zc > 0  # カラーの手前にある点だけ投影する（0 以下は割り算が壊れる）
+        z, x, y, zc = z[front], x[front], y[front], zc[front]
         u = (fx * (rot[0, 0] * x + rot[0, 1] * y + rot[0, 2] * z + trans[0]) / zc + ppx) * self.OUT_SCALE
         v = (fy * (rot[1, 0] * x + rot[1, 1] * y + rot[1, 2] * z + trans[1]) / zc + ppy) * self.OUT_SCALE
         w, h = int(self.COLOR_W * self.OUT_SCALE), int(self.COLOR_H * self.OUT_SCALE)
@@ -116,11 +118,13 @@ class DepthGrabber(Grabber):
         return out
 
     def run(self):
-        import pyrealsense2 as rs
-        calib = self._calibration(rs)
+        calib = None
         while True:
-            pipe = rs.pipeline()
-            try:
+            pipe = None
+            try:  # 初期化（import・キャリブレーション）の失敗も開き直す。スレッドを無言で終わらせない
+                import pyrealsense2 as rs
+                calib = calib or self._calibration(rs)
+                pipe = rs.pipeline()
                 cfg = rs.config()
                 cfg.enable_stream(rs.stream.depth, self.WIDTH, self.HEIGHT, rs.format.z16, self.DEPTH_FPS)
                 pipe.start(cfg)
@@ -134,12 +138,13 @@ class DepthGrabber(Grabber):
                     if ok:
                         with self._lock:
                             self._jpeg, self._seq = enc.tobytes(), self._seq + 1
-            except RuntimeError as exc:  # 抜けた・タイムアウトなど。開き直す
-                print("[camera] %s: 深度を読めません (%s)" % (self.name, exc), flush=True)
-            try:
-                pipe.stop()
-            except RuntimeError:
-                pass
+            except Exception as exc:  # 抜けた・タイムアウト・D435i 未接続・pyrealsense2 なしなど
+                print("[camera] %s: 深度を読めません (%s: %s)" % (self.name, type(exc).__name__, exc), flush=True)
+            if pipe is not None:
+                try:
+                    pipe.stop()
+                except RuntimeError:
+                    pass
             with self._lock:
                 self._jpeg = None
             time.sleep(REOPEN_WAIT_S)
@@ -156,22 +161,32 @@ class VideoClientGrabber(Grabber):
         self.interface = interface
 
     def run(self):
-        from unitree_sdk2py.core.channel import ChannelFactoryInitialize
-        from unitree_sdk2py.go2.video.video_client import VideoClient
-        ChannelFactoryInitialize(0, self.interface)
-        client = VideoClient()
-        client.SetTimeout(3.0)
-        client.Init()
+        factory_ready = False
         while True:
-            code, data = client.GetImageSample()
-            if code == 0 and data:
-                with self._lock:
-                    self._jpeg, self._seq = bytes(data), self._seq + 1
-                continue
-            print("[camera] %s: GetImageSample 失敗 code=%s" % (self.name, code), flush=True)
+            try:  # 初期化の失敗（SDK なし・NIC 違いなど）も開き直す。スレッドを無言で終わらせない
+                if not factory_ready:
+                    from unitree_sdk2py.core.channel import ChannelFactoryInitialize
+                    from unitree_sdk2py.go2.video.video_client import VideoClient
+                    ChannelFactoryInitialize(0, self.interface)
+                    factory_ready = True
+                client = VideoClient()
+                client.SetTimeout(3.0)
+                client.Init()
+                while True:
+                    code, data = client.GetImageSample()
+                    if code == 0 and data:
+                        with self._lock:
+                            self._jpeg, self._seq = bytes(data), self._seq + 1
+                        continue
+                    print("[camera] %s: GetImageSample 失敗 code=%s" % (self.name, code), flush=True)
+                    with self._lock:
+                        self._jpeg = None
+                    time.sleep(self.ERROR_WAIT_S)
+            except Exception as exc:
+                print("[camera] %s: VideoClient を使えません (%s: %s)" % (self.name, type(exc).__name__, exc), flush=True)
             with self._lock:
                 self._jpeg = None
-            time.sleep(self.ERROR_WAIT_S)
+            time.sleep(REOPEN_WAIT_S)
 
 
 def make_grabber(name: str, device: str):

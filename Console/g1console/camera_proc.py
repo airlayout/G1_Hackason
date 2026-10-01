@@ -3,12 +3,15 @@
 Jetson の ~/g1_console_camera/camera_ctl.sh を ssh で 1 回ずつ叩く（常駐ヘルパーとは別。DDS には触れない）。
 holders は「映像デバイスを掴んでいるプロセス」。videohub_pc4 などが握っていると camera_stream は開けない。
 """
+import re
 import subprocess
 
 REMOTE_DIR = "~/g1_console_camera"
 CTL_TIMEOUT_S = 30.0  # start は起動確認に約 2 秒待つ
 ACTIONS = ("status", "start", "stop")
 OWN_MARK = "camera_stream.py"
+SEP = "@@camera-ctl-sep@@"
+OWN_RE = re.compile(r"(^|[\s/])python[0-9.]*\s+(-u\s+)?\S*camera_stream\.py(\s|$)")  # python … camera_stream.py だけを自前とみなす
 
 
 _RESOLVED = {}
@@ -23,7 +26,7 @@ def resolve_host(host: str) -> str:
             names = [l.split(None, 1)[1] for l in done.stdout.splitlines() if l.startswith("hostname ")]
             _RESOLVED[host] = names[0].strip() if names else host
         except (OSError, subprocess.TimeoutExpired):
-            return host
+            _RESOLVED[host] = host  # 失敗も覚える（毎回 5 秒待たせない）。設定変更後は別の host 文字列になる
     return _RESOLVED[host]
 
 
@@ -34,7 +37,7 @@ def parse_holders(text: str) -> list:
         parts = line.split("\t", 3)
         if len(parts) == 4 and parts[1].isdigit():
             device, pid, user, cmd = parts
-            out.append({"device": device, "pid": int(pid), "user": user, "cmd": cmd, "own": OWN_MARK in cmd})
+            out.append({"device": device, "pid": int(pid), "user": user, "cmd": cmd, "own": bool(OWN_RE.search(cmd))})
     return out
 
 
@@ -60,23 +63,26 @@ class SshCameraCtl:
     def __init__(self, target_fn):
         self._target_fn = target_fn  # () -> (user@host or None, key)
 
-    def _run(self, *args: str) -> str:
+    def _run(self, script: str) -> str:
         host, key = self._target_fn()
         if not host:
             raise RuntimeError("Jetson の接続先が未設定です（設定タブで入力）")
         key_opt = ["-i", key] if key else []
-        cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", *key_opt, "--", host,
-               "%s/camera_ctl.sh %s" % (REMOTE_DIR, " ".join(args))]
+        cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", *key_opt, "--", host, script]
         done = subprocess.run(cmd, capture_output=True, text=True, timeout=CTL_TIMEOUT_S)
         if done.returncode == 255:
             raise RuntimeError("Jetson に ssh できません: %s" % (done.stderr.strip().splitlines() or [""])[-1])
         return done.stdout
 
     def call(self, action: str) -> dict:
+        """操作（status 以外）・status・holders を 1 回の ssh で実行し、SEP 行で 3 つに分ける。"""
         if action not in ACTIONS:
-            raise ValueError("unknown action")
-        message = self._run(action) if action != "status" else ""
-        return {**summarize(self._run("status"), self._run("holders")), "message": message.strip()}
+            raise ValueError("unknown action")  # script に入るのは許可リストの固定語だけ
+        ctl = "%s/camera_ctl.sh" % REMOTE_DIR
+        steps = ([ctl + " " + action] if action != "status" else ["true"]) + [ctl + " status", ctl + " holders"]
+        out = self._run(("; echo %s; " % SEP).join(steps))
+        message, status, holders = (out.split(SEP + "\n") + ["", ""])[:3]
+        return {**summarize(status, holders), "message": message.strip()}
 
 
 class MockCameraCtl:
