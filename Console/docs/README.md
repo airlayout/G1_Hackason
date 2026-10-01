@@ -5,8 +5,7 @@ Console（G1 開発コンソール）の資料。リンクがあるものは、�
 ## 実機を触る前に読む
 | 文書 | 内容 |
 |---|---|
-| [REAL_ROBOT_CHECKLIST.md](REAL_ROBOT_CHECKLIST.md) | 実機接続時の確認項目。PR #30 のマージ条件（A〜C）を含む |
-| [NEXT_CHECKLIST.md](NEXT_CHECKLIST.md) | 前回取れなかった項目・未解決（D435i の RGB など）の確認手順。守ること（カメラサーバーは手動起動・停止のみ）を含む |
+| [REAL_ROBOT_CHECKLIST.md](REAL_ROBOT_CHECKLIST.md) | 実機接続時の確認項目（A〜I）。カメラ（H）・担当と期限（I）を含む。旧 `NEXT_CHECKLIST.md` を統合 |
 
 ## 調査・分析（2026-09-30 取得のデータ）
 | 文書 | 内容 |

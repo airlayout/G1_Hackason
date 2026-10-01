@@ -2,6 +2,7 @@
 
 実機（Jetson 経由・デバッグモード・電池切れで停止するまで）から取ったものと、そこから分かったこと。
 **確認済み** = 実機の値・応答を見た。**未確認** = 推測・二次情報。
+役割: この文書は**事実の記録**（値・応答）。解釈と仮説は `g1_analysis.md`。実機での確認手順は `REAL_ROBOT_CHECKLIST.md`。
 
 ## 1. 取得データの置き場
 
@@ -86,11 +87,58 @@
 - コールバック購読で約 2200 msg/s を受けると RPC が飢える → DataReader + KeepLast(1) + TimeBasedFilter、`take(N=1)` にする。ロガーの実測は各トピック約 2 Hz（period 0.5 s）。
 - 通信は 操作用 PC → ssh(tailscale) → Jetson → DDS。鮮度閾値 FRESH 2.5 s / STALE 8 s / GIVEUP 15 s。
 
-## 13. 未確認リスト
+## 13. 未確認リスト（`REAL_ROBOT_CHECKLIST.md` の項番に対応）
 
-通常モードでの SetFsmId・矢印移動・arm_sdk 実行 / LED の永続性と既定色 / 関節名の割当（tools/arm_precheck.py の並びは SDK 例に従った仮定）/ バッテリーとメインボードの単位・意味 / lowcmd の出所 / `rt/lf/*` が低頻度コピーである点 / `audio_msg/filter` の役割 / 腕アクション実行。
+| 未確認の内容 | 項番 |
+|---|---|
+| 通常モードでの `SetFsmId`・矢印移動 | B1〜B5、E1〜E3 |
+| `arm_sdk` の実行（通常モード） | D2、G4 |
+| 腕アクションの実行 | D3、D4 |
+| LED の永続性と既定色 | C2、C3 |
+| 関節名の割当（`tools/arm_precheck.py` の並びは SDK 例に従った仮定） | A6 |
+| バッテリーとメインボードの単位・意味 | A2、A7 |
+| `lowcmd` の出所 | A8 |
+| `rt/lf/*` が低頻度コピーである点 | A9 |
+| `audio_msg/filter` の役割 | C4 |
+| D435i の RGB（OpenCV で開けない） | H1〜H4（§15 の方針で取る） |
 
 ## 14. 使い方（開発）
 
 - 実機なしで UI を動かす: `server.py` の MockHelper（シナリオ ok/g1_off/jetson_off/debug）。実データに近い値は `tests/fixtures/g1_live_sample.jsonl`（`t` 秒・topic・v）から読む。
 - 再取得: `python3 Console/tools/live_logger.py --host g1-ts`、要約は `tools/check_log.py`。
+
+## 15. 他班の実機調査から分かったこと（PR #34、2026-10-01 時点でレビュー中）
+
+PR #34（`Dev/Entame` 向け、マージされない前提で番号のみ参照）に、他班が実機で調べた記録がある。ここでは**このコンソールに関わるものだけ**を、出典の文書名つきで記録する。
+いずれも**他班の記録**であり、このコンソールの実機では未確認。パスは PR #34 の `Entame/real/integrated_demo/g1-bottle-reaction/docs/` 以下。
+
+### カメラ
+
+- **内蔵 RGB は公式 `VideoClient.GetImageSample()` で取れる。** 有線で 1920x1080・300 秒・9,762 フレーム・平均 32.5 FPS・クラッシュなし（`G1_CAMERA_WIRED.md`）。`videohub_pc4` → `VideoClient` の経路で、OpenCV で `/dev/video4` を開く必要はない。→ 「RGB が OpenCV で開けない」問題は、この経路で回避できる。
+- `GetImageSample()` に撮影時刻・連番はない。FPS を撮影→表示の遅延と読まない。取得失敗は一時的に 2 回出て、次の取得で復帰した。
+- **`videohub_pc4` は止めない・kill しない**（`AGENTS.md`）。停止しても watchdog で再起動したという利用者報告がある（xr_teleoperate issue #299、`G1_GAME_VISION.md`）。
+- 公式 `VideoClient` は **Depth を返さない**（RGB の画像バイナリのみ）。Depth が要るなら PC2 で D435i を直接開く経路だが、videohub と競合する可能性があり、PR #34 でも未実行（`G1_CAMERA_WIRED.md`）。
+- 追加 USB カメラ（SunplusIT Full HD webcam, USB ID `1bcf:2283`）は G1 に挿して使う。**追加 USB を挿したまま再起動すると video 番号が変わり、内蔵配信が起動失敗した。外して起動し、映像が戻ってから挿す**（`G1_USB_DUAL.md`）。G1 側に ffmpeg / v4l2-ctl は無く、GStreamer 1.16.3（v4l2src）は使える。
+- 公式 `ChannelFactoryInitialize` の設定トレースが有効だと SIGABRT になる事例がある（`snprintf` のバッファオーバーフロー）。SDK の XML から Tracing を外して回避している（`G1_CAMERA_WIRED.md`）。
+
+### ROS 2 / DDS
+
+- **`ros2 topic list` で死活確認をしない。** foxy では FastDDS 2.0 も `bad_alloc` で落ち、cyclonedds 0.7.0 では SIGSEGV（相手の自己紹介を受けた瞬間）。0.10 世代の cyclonedds（`unitree_sdk2py`）なら同じ機体で 9.98 Hz 受信できた。死活確認は DDS を直接読む `probe_dds_topics.py`（`Mapping/real/quickstart/README.md`）。
+- 読み取り専用の DDS 設定例: `config/g1-readonly-dds.xml`（`CYCLONEDDS_URI` で指定）。
+
+### 腕
+
+- 腕の制御は `rt/arm_sdk`（`LowCmd_`）に公式 arm7 例と同じ流れで送り、**完了時に weight を 0 に戻す**。実装の既定は小さな相対オフセット（肩 pitch -0.04、肩 roll -0.03、肘 +0.05 rad）（`CUSTOM_G1_MOTION.md`）。
+- プリセット動作（`G1ArmActionClient.ExecuteAction`）と `arm_sdk` は排他にする（同一プロセスのロック）。**プリセットの終了を `rt/arm/action/state` で確認する機能は PR #34 でも未実装。** 終了が分からないときは `arm_sdk` を保守的に使わない。
+- `ExecuteAction` が **3104（RPC タイムアウト）** を返しても、動作が始まっている可能性がある。失敗と断定せず、自動で再試行しない（二重動作の防止）。
+- 使っているアクション ID: 23（right hand up）、26（high wave）、解除は 99。起動時に `GetActionList()` で ID の存在を確認してから実行する（`G1_INTEGRATION.md`）。
+
+### モード・FSM
+
+- `sportmodestate`（`SportModeState_`）は `fsm_id` / `fsm_mode` / `task_id` / `task_time` の 4 項目（`G1_NAVIGATION_READONLY_FOLLOWUP_2026-09-12.md`）。FSM ID の API は 7001（GetFsmId）・7002（GetFsmMode）・7101（SetFsmId）。**PR #34 でも `GetFsmId` / `SetFsmId` は実行していない**（制御として未実行）。
+- デバッグモードへの入り方、`L2 + A`、`L2 + B` / `L1 + A` の版判定、通常モードへの戻り方は、PR #34 にも記載がない。→ 実機が必要（`REAL_ROBOT_CHECKLIST.md` の A11、G1〜G2、G7）。
+
+### 運用
+
+- 「2 人以上」: PR #34 の運用ルール（`G1_STATIC_LOCALIZATION_2026-09-12.md`: 少なくとも 2 人で低速の手動移動）。Unitree 公式の記載ではない。
+
