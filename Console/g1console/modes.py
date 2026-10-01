@@ -63,7 +63,7 @@ FEATURES = [
 
 # 音声・LED（モーションに関係しない書き込み）。範囲外は helper に渡さず弾く。
 TTS_MAX_CHARS = 100
-TTS_SPEAKERS = (0, 1)  # SDK のサンプルで使われる値。0=中国語, 1=英語（と推定、実機で未確認）
+TTS_SPEAKERS = (0, 1)  # 0=中国語, 1=英語。実機確認: 話者 1 は鳴る・話者 0 は無音だった（2026-10-01）
 
 
 def validate_audio(kind: str, body: dict) -> dict:
