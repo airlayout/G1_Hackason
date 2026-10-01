@@ -1,5 +1,9 @@
 # 統合・検証報告（2026-10-01）
 
+## Public archival snapshot 最終状態
+
+目的は **2026-09-29 validated development snapshot / archival integration** の保存であり、完全な実機配布物ではない。再配布権利未確認の4 WAVを追跡対象および公開予定branchから到達可能な未公開統合commit履歴から除外し、audio READMEとexact-path ignoreを追加した。元のローカルcommit SHAは履歴除外処理により変わる。runtimeロジック・テスト実装は変更なし。以降のWAV検証/test PASS記述は除外前の履歴記録であり、公開版で音声が存在することを意味しない。
+
 ## 作業と保存元
 
 - 作業checkout: `C:\dev\g1-integration-20261001\G1_Hackason`
@@ -114,7 +118,7 @@ codeに要求されるresident_worker/client、ownership probe、named reactions
 
 詳細はPUBLIC_LICENSE_REVIEW.md。Unitree BSD、CycloneDDS EPL/EDL、Viewer MITのnoticeと由来を保持。Chingmuは非商用prototyping条件と出典を保持、商用/競合dataset用途の許可は主張しない。private repoだったことを理由とするblockerなし。
 
-**TRUE BLOCKER**: `assets/audio/reactions/{person/detected.wav,banana/detected.wav,plushie/detected.wav,plushie/plushie_affectionate.wav}`の作者/声モデル/公開再配布条件を固定snapshotから確認できない。音声は保存し、公開権利の確認をユーザーへ依頼。違反だと断定せず、この4ファイルだけを未確認として分類。
+4 WAVの公開権利未確認は、public archival snapshotのGit対象/公開branch履歴から除外することで解消。ローカル未追跡コピーは公開されない。実機の完全再現には権利確認済みWAVを指定pathへ配置する必要がある。
 
 ### 最終検証
 
@@ -126,6 +130,6 @@ codeに要求されるresident_worker/client、ownership probe、named reactions
 - secret scanは実credential0、private-key headerはvendorの省略された文書例1件のみ。license scanは上記個別一覧。weight/build/venv/cacheはGitへ追加しない。
 - git diff --checkとcommit後statusは最終チェックで確認。push/PR/merge/G1接続/SSH/DDS/motion/walkingは未実行。
 
-READY FOR PUSH: NO
+READY FOR PUSH: YES
 
-TRUE BLOCKERS: 上記4 WAVの公開再配布権利の確認のみ。距離比較・原bundle未保存・公式YOLO重み・legacy Wander欠落をpush blockerとしては扱わない。
+TRUE BLOCKERS: NONE（public archival integrationとして）。距離比較・原bundle未保存・公式YOLO重み・legacy Wander欠落・exact 3-loop invocation未保存・aarch64 build未検証は既知事項として保持。今回の変更後確認はsecret scan、git diff --check、git statusのみ。追加の再現性調査・test修正・aarch64 build・実機操作・pushは行わない。

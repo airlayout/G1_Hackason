@@ -23,6 +23,6 @@ The following WAVs lack an identified creator/model-specific license or public r
 - `g1-bottle-reaction/assets/audio/reactions/plushie/detected.wav`
 - `g1-bottle-reaction/assets/audio/reactions/plushie/plushie_affectionate.wav` — these two files have the same source Git blob; docs describe user-provided audio without a rights statement.
 
-No copyright infringement is asserted. The files are retained locally to preserve the validated demo, but public redistribution permission cannot be concluded from the current repository evidence. User confirmation of authorship/redistribution rights or a source license is required before publishing these specific assets. A blanket AivisSpeech Engine license would not prove the license of an unidentified voice model or these WAVs.
+No copyright infringement is asserted. These four files have been removed from Git tracking and all unpublished integration commits reachable from the public-bound feature branch. Exact-path ignore rules prevent accidental re-addition; local copies can remain untracked. The audio README documents replacement paths. Their unconfirmed rights are therefore no longer a blocker for publishing this archival source snapshot. Rights must still be verified before separately redistributing the audio.
 
 No additional third-party file with an identified conflicting redistribution condition was found. This review does not relabel all private-origin code or all optional dependencies as blockers.

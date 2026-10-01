@@ -79,3 +79,8 @@ rosbag/
 rosbag2/
 mapping_runs/
 *.err
+# Public archival snapshot: redistribution rights for these historical WAVs are unconfirmed.
+/assets/audio/reactions/person/detected.wav
+/assets/audio/reactions/banana/detected.wav
+/assets/audio/reactions/plushie/detected.wav
+/assets/audio/reactions/plushie/plushie_affectionate.wav

@@ -4,6 +4,10 @@
     "motiondecode-test": "78bacb68caa620797042703444a8286223663128"
   },
   "excluded": [
+    "g1-bottle-reaction/assets/audio/reactions/banana/detected.wav",
+    "g1-bottle-reaction/assets/audio/reactions/person/detected.wav",
+    "g1-bottle-reaction/assets/audio/reactions/plushie/detected.wav",
+    "g1-bottle-reaction/assets/audio/reactions/plushie/plushie_affectionate.wav",
     "motiondecode-test/output/DL_Attention_Pointing_And_Gaze_00001_inspection.json",
     "motiondecode-test/output/DL_Attention_Pointing_And_Gaze_00001_sheet.jpg",
     "motiondecode-test/output/DL_Call_Response_Attention_Switch_00001_inspection.json",
@@ -505,5 +509,16 @@
     "motiondecode-test/external/cyclonedds/lib/libddsc.so.0": "120000",
     "motiondecode-test/scripts/evaluate_g1_preflight.py": "100755",
     "motiondecode-test/scripts/inspect_arm_sdk_publishers.py": "100755"
+  },
+  "public_audio_exclusion": {
+    "paths": [
+      "g1-bottle-reaction/assets/audio/reactions/person/detected.wav",
+      "g1-bottle-reaction/assets/audio/reactions/banana/detected.wav",
+      "g1-bottle-reaction/assets/audio/reactions/plushie/detected.wav",
+      "g1-bottle-reaction/assets/audio/reactions/plushie/plushie_affectionate.wav"
+    ],
+    "reason": "Public redistribution rights unconfirmed",
+    "local_copies": "Untracked and ignored",
+    "branch_history_sanitized": true
   }
 }

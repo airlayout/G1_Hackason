@@ -1,6 +1,6 @@
 # G1 ハッカソン 実機エンタメ統合デモ
 
-2026-09-29動作確認版の固定snapshotを保存する統合です。今回の作業では実機接続・DDS command・歩行・Arm motion・SSH・deploymentを実行していません。実機動作を再検証した版ではありません。
+これは **2026-09-29 validated development snapshot / archival integration** です。G1エンタメ開発成果を保存するpublic向け統合であり、完全な実機配布物ではありません。再配布権利未確認の4 WAVは追跡対象と公開branch履歴から除外しました。[音声配置の説明](g1-bottle-reaction/assets/audio/README.md)を参照してください。ソース・Reaction mapping・MotionDecode・Patrolの記録は保持しています。実機接続・SSH/DDS/motion/walkingは今回未実行です。
 
 ## Source snapshots
 
