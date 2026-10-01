@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from g1console.dds_catalog import DISPLAYED, SERVICES, TOPICS  # noqa: E402
 from g1console.modes import validate_audio, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, PLANNED_MODES  # noqa: E402
 from g1console.camera_proc import MockCameraCtl  # noqa: E402
+from g1console.lidar_proc import MockLidarCtl  # noqa: E402
 from server import MockHelper, Monitor, SshHelper, describe, make_handler  # noqa: E402
 from g1console.settings import Settings, validate  # noqa: E402
 
@@ -182,7 +183,7 @@ class HttpTest(unittest.TestCase):
         cls.settings = Settings(None)
         cls.monitor = Monitor(cls.helper)
         cls.monitor.poll_once()
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.helper, cls.monitor, None, cls.settings, MockCameraCtl()))
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.helper, cls.monitor, None, cls.settings, MockCameraCtl(), MockLidarCtl()))
         cls.port = cls.server.server_address[1]
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 

@@ -10,9 +10,10 @@ import threading
 from pathlib import Path
 
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "settings.json"
-DEFAULTS = {"dev_pc": "", "jetson_host": "", "jetson_user": "unitree", "jetson_key": "", "g1_ip": "", "camera_port": 8081}
+DEFAULTS = {"dev_pc": "", "jetson_host": "", "jetson_user": "unitree", "jetson_key": "", "g1_ip": "", "camera_port": 8081,
+            "lidar_port": 8082}
 LABELS = {"dev_pc": "開発用 PC", "jetson_host": "Jetson PC", "jetson_user": "Jetson の ssh ユーザー",
-          "jetson_key": "ssh 秘密鍵", "g1_ip": "G1 本体", "camera_port": "カメラ配信ポート"}
+          "jetson_key": "ssh 秘密鍵", "g1_ip": "G1 本体", "camera_port": "カメラ配信ポート", "lidar_port": "lidar 配信ポート"}
 
 _HOSTNAME = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$")
 _NUMERIC = re.compile(r"^[0-9.]+$")
@@ -46,13 +47,14 @@ def validate(values: dict) -> dict:
     if key.startswith("-") or "\0" in key or len(key) > MAX_KEY_PATH:
         raise ValueError("%s のパスが不正です" % LABELS["jetson_key"])
     out["jetson_key"] = key
-    try:
-        port = int(out["camera_port"])
-    except (TypeError, ValueError):
-        raise ValueError("%s は数字で入力してください" % LABELS["camera_port"]) from None
-    if not 1 <= port <= 65535:
-        raise ValueError("%s は 1〜65535 で入力してください" % LABELS["camera_port"])
-    out["camera_port"] = port
+    for name in ("camera_port", "lidar_port"):
+        try:
+            port = int(out[name])
+        except (TypeError, ValueError):
+            raise ValueError("%s は数字で入力してください" % LABELS[name]) from None
+        if not 1 <= port <= 65535:
+            raise ValueError("%s は 1〜65535 で入力してください" % LABELS[name])
+        out[name] = port
     return out
 
 
@@ -94,8 +96,15 @@ class Settings:
             return None, ""
         return (v["jetson_user"] + "@" if v["jetson_user"] else "") + v["jetson_host"], v["jetson_key"]
 
-    def camera_base(self, resolve=lambda host: host):
-        """カメラ配信の URL。resolve は ssh の別名を HTTP で使える名前に直す関数。"""
+    def _base(self, port_key: str, resolve):
         v = self.get()
         host = resolve(v["jetson_host"]) if v["jetson_host"] else ""
-        return "http://%s:%d" % (host if ":" not in host else "[%s]" % host, v["camera_port"]) if host else None
+        return "http://%s:%d" % (host if ":" not in host else "[%s]" % host, v[port_key]) if host else None
+
+    def camera_base(self, resolve=lambda host: host):
+        """カメラ配信の URL。resolve は ssh の別名を HTTP で使える名前に直す関数。"""
+        return self._base("camera_port", resolve)
+
+    def lidar_base(self, resolve=lambda host: host):
+        """lidar 配信の URL。"""
+        return self._base("lidar_port", resolve)

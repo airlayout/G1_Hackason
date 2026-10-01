@@ -116,7 +116,7 @@ Jetson にファイルは残らない。
 | 状態 | `#state` | バッテリー詳細・IMU・オドメトリ・Jetson/メインボード・リモコン/非常停止 | `/api/state` |
 | 関節 | `#joints` | 29 軸の角度・速度・トルク・温度・指令 | `/api/joints` |
 | 音声 | `#audio` | 音量・LED・読み上げ（認識結果は未実装） | `/api/audio/volume` |
-| カメラ・lidar | `#camera` | 配信プロセスの表示・起動・停止、RGB／深度の映像（lidar は未実装） | `/api/cameras`・`/api/camera/status`・`/api/camera/start`・`/api/camera/stop` |
+| カメラ・lidar | `#camera` | 配信プロセスの表示・起動・停止、RGB／深度の映像、lidar 点群の表示・起動・停止 | `/api/cameras`・`/api/camera/status`・`/api/camera/start`・`/api/camera/stop`・`/api/lidar/status`・`/lidar`・`/api/lidar/start`・`/api/lidar/stop` |
 | DDS | `#dds` | トピック/サービス台帳・受信状況・機能の状態 | `/api/dds` |
 | 設定 | `#settings` | 開発用 PC／Jetson／G1 の IP（Jetson は ssh 接続先に反映。`settings.json` に保存） | `/api/settings`（GET/POST） |
 
@@ -130,7 +130,9 @@ Jetson にファイルは残らない。
 生ログ・スナップショットは `docs/g1_logs/`・`docs/g1_snapshot/`（git 対象外）、
 取得スクリプトは `tools/`、ロガーは `tools/live_logger.py`。
 主な知見: デバッグモードでは `CheckMode` が `(0, {'form':'0','name':''})`、`rt/arm_sdk` は効かない、
-腕アクション 27 種は未実行、lidar は帯域が大きいため購読しない。
+腕アクション 27 種は未実行。lidar は帯域が大きい（生で約 4.4 MB/s）ので、コンソールのサーバーは直接購読せず、Jetson 側の `lidar_stream.py`（購読のみ・モーターに触れない）が要求ごとに間引いて配信する（#camera タブ）。
+画面の「点の細かさ」は粗（約 2.4k 点・0.4 MB/s）／標準（約 5k 点・0.9 MB/s・既定）／全点（有効な約 11k 点・1.8 MB/s）。`GET /lidar?voxel=<m>&max=<点数>` に対応し、範囲外・不正値は無視される。
+1 フレーム（0.1 秒）は走査がまばらなので、「重ねる枚数」（1／5／10）で直近フレームを重ねて描く（既定 5＝約 0.5 秒。歩行中は尾を引く）。座標は `livox_frame` のままで、G1 の向きに対する傾きは未検証。
 
 ## 未搭載（意図的）
 

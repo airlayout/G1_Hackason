@@ -190,6 +190,69 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/lidar/status":
+    get:
+      operationId: "getLidarStatus"
+      tags:
+        - "camera"
+      summary: "lidar_stream（Jetson の点群配信）の起動状態"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/lidar":
+    get:
+      operationId: "getLidar"
+      tags:
+        - "camera"
+      summary: "lidar 点群の最新 1 フレーム（既定は間引き済み）。float32 little-endian の (x,y,z,intensity) の繰り返し。点数は X-Lidar-Points"
+      x-effect: "read"
+      description: "座標は livox_frame のまま（単位 m）。G1 の向きに対して傾いている可能性がある。クエリ voxel（ボクセル幅 m、0〜1、0 で間引かない・既定 0.1）と max（上限点数 100〜30000・既定 5000）で間引きの強さを選べる。範囲外は無視して既定値になる。"
+      parameters:
+        - name: "voxel"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+            minimum: 0
+            maximum: 1
+        - name: "max"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            minimum: 100
+            maximum: 30000
+      responses:
+        "200":
+          description: "点群バイナリ（16 バイト × 点数）。X-Lidar-Seq / X-Lidar-Points / X-Lidar-Age-Ms ヘッダ付き"
+          content:
+            "application/octet-stream":
+              schema:
+                type: "string"
+        "404":
+          description: "lidar 未設定（設定タブで Jetson の IP を入力）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "配信元に届かない。lidar_stream が起動しているか確認"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/dds":
     get:
       operationId: "getDds"
@@ -372,6 +435,48 @@ paths:
       tags:
         - "camera"
       summary: "camera_stream.py だけを停止（videohub など他のプロセスは止めない）"
+      x-effect: "settings"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/lidar/start":
+    post:
+      operationId: "postLidarStart"
+      tags:
+        - "camera"
+      summary: "Jetson で lidar_stream.py を起動（DDS を購読するだけ。再起動はしない）"
+      x-effect: "settings"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/lidar/stop":
+    post:
+      operationId: "postLidarStop"
+      tags:
+        - "camera"
+      summary: "lidar_stream.py だけを停止"
       x-effect: "settings"
       responses:
         "200":
@@ -1077,6 +1182,10 @@ components:
           type: "integer"
           minimum: 1
           maximum: 65535
+        lidar_port:
+          type: "integer"
+          minimum: 1
+          maximum: 65535
       required:
         - "dev_pc"
         - "jetson_host"
@@ -1084,6 +1193,7 @@ components:
         - "jetson_key"
         - "g1_ip"
         - "camera_port"
+        - "lidar_port"
       additionalProperties: false
     SettingsPatch:
       type: "object"
@@ -1101,6 +1211,10 @@ components:
         g1_ip:
           type: "string"
         camera_port:
+          type: "integer"
+          minimum: 1
+          maximum: 65535
+        lidar_port:
           type: "integer"
           minimum: 1
           maximum: 65535

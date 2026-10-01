@@ -335,8 +335,25 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  <p class="note" id="cam-note"></p>
 </section>
 <section class="card">
- <h2>lidar<span class="tag plan">未実装</span></h2>
- <p class="note"><code>rt/utlidar/cloud_livox_mid360</code>（約 20k 点・10 Hz・約 4.4 MB/s）。帯域が大きいので既定では購読しない。</p>
+ <h2>lidar（点群）</h2>
+ <div class="arow"><b id="ld-state">確認中…</b>
+  <button id="ld-refresh" class="sm" type="button">再確認</button>
+  <button id="ld-start" class="sm" type="button">起動</button>
+  <button id="ld-stop" class="sm" type="button">停止</button></div>
+ <p class="res" id="ld-res"></p>
+ <div class="arow">
+  <label>点の細かさ <select id="ld-density">
+   <option value="0.1,5000">粗（約 2.5k 点・軽い）</option>
+   <option value="0.05,10000" selected>標準（約 5k 点）</option>
+   <option value="0,30000">全点（約 11k 点・約 1.8 MB/s）</option></select></label>
+  <label>重ねる枚数 <select id="ld-stack">
+   <option value="1">1（今の 1 枚）</option>
+   <option value="5" selected>5（約 0.5 秒）</option>
+   <option value="10">10（約 1 秒）</option></select></label>
+ </div>
+ <canvas id="ld-canvas" width="960" height="640" style="width:100%;display:block;background:#0b0e12;border-radius:6px;touch-action:none;cursor:grab"></canvas>
+ <div class="arow"><span id="ld-stats">停止中</span><button id="ld-reset" class="sm" type="button">視点リセット</button></div>
+ <p class="note">Jetson の <code>lidar_stream.py</code>（<code>rt/utlidar/cloud_livox_mid360</code> を購読するだけ。モーターには触れません）の点群を中継して表示します。<b>1 フレーム（0.1 秒）は元々まばら</b>な走査なので、<b>直近の数枚を重ねる</b>と壁や床の形が見えてきます（G1 が静止しているとき向き。歩行中は尾を引きます）。生は約 20k 点（うち有効なのは約 11k）・10 Hz で、「点の細かさ」で Jetson 側の間引きを選べます（粗 0.4 MB/s・標準 0.9 MB/s・全点 1.8 MB/s）。ドラッグで回転、ホイールで拡大縮小。色は高さ（青＝低い、赤＝高い、重ねた全点での相対値）。座標は <code>livox_frame</code>（lidar 原点・単位 m）のままで、G1 の向きに対して傾いている可能性があります。円は距離（m）、赤線が x 軸・緑線が y 軸。タブを離れると取得を止めます。</p>
 </section>
 </div>
 
@@ -373,10 +390,11 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
   <label class="frow"><b>開発用 PC の IP</b><input type="text" name="dev_pc" placeholder="例 192.168.123.99"><span class="note">コンソールを動かす操作用 PC とは別の、開発作業用 PC のアドレス。今は表示・記録のみで、接続には使いません。</span></label>
   <label class="frow"><b>Jetson PC の IP</b><input type="text" name="jetson_host" placeholder="例 192.168.123.164 または Tailscale の IP"><span class="note">ssh の接続先（Tailscale の IP でも可）。変更すると Jetson への接続を張り直します。カメラ映像もここから取得します。</span></label>
   <label class="frow"><b>G1 本体の IP</b><input type="text" name="g1_ip" placeholder="例 192.168.123.161"><span class="note">G1 本体のアドレス。今は表示・記録のみです（G1 とは Jetson の DDS 経由で通信します）。</span></label>
-  <details><summary>詳細（ssh ユーザー・鍵・カメラポート）</summary>
+  <details><summary>詳細（ssh ユーザー・鍵・カメラ／lidar ポート）</summary>
    <label class="frow"><b>Jetson の ssh ユーザー</b><input type="text" name="jetson_user"><span class="note">空欄なら ssh の設定（<code>~/.ssh/config</code>）に任せます。</span></label>
    <label class="frow"><b>ssh 秘密鍵のパス</b><input type="text" name="jetson_key" placeholder="例 ~/.ssh/id_ed25519_g1"><span class="note">空欄なら ssh の既定の鍵。</span></label>
    <label class="frow"><b>カメラ配信ポート</b><input type="text" name="camera_port" inputmode="numeric"></label>
+   <label class="frow"><b>lidar 配信ポート</b><input type="text" name="lidar_port" inputmode="numeric"></label>
   </details>
   <div class="arow"><button type="submit" id="set-save">保存して反映</button><span id="set-res" class="res"></span></div>
  </form>
@@ -643,6 +661,84 @@ async function camProc(action){
 }
 $('cv-start').onclick=()=>camProc('start');$('cv-stop').onclick=()=>camProc('stop');
 $('cp-refresh').onclick=()=>camProc('status');$('cp-start').onclick=()=>camProc('start');$('cp-stop').onclick=()=>camProc('stop');
+/* ---- lidar（点群）: 起動・停止と 2D 投影の表示。タブを離れたら取得を止める ---- */
+const LD_POLL_MS=120, LD_RETRY_MS=1500, LD_VIEW0={yaw:0.6,pitch:1.1,scale:70}, LD_RINGS_M=[1,2,3,5,8,12];
+let ld={...LD_VIEW0,frames:[],seq:null,timer:null,running:false,times:[]};
+const LD_COLORS=16;  // 高さの色を 16 段に分け、段ごとに 1 回で塗る（重ねた数万点でも軽く）
+function ldDraw(){
+  const c=$('ld-canvas'),g=c.getContext('2d'),w=c.width,h=c.height,cx=w/2,cy=h/2;
+  g.clearRect(0,0,w,h);
+  const cy_=Math.cos(ld.yaw),sy_=Math.sin(ld.yaw),cp=Math.cos(ld.pitch),sp=Math.sin(ld.pitch);
+  const proj=(x,y,z)=>{const x1=x*cy_-y*sy_,y1=x*sy_+y*cy_;return[cx+x1*ld.scale,cy-(y1*sp+z*cp)*ld.scale]};
+  g.strokeStyle='rgba(180,190,200,.25)';g.fillStyle='rgba(200,210,220,.7)';g.lineWidth=1;g.font='22px sans-serif';
+  for(const r of LD_RINGS_M){g.beginPath();for(let i=0;i<=64;i++){const a=i/64*2*Math.PI,[px,py]=proj(r*Math.cos(a),r*Math.sin(a),0);i?g.lineTo(px,py):g.moveTo(px,py)}g.stroke();
+    const[lx,ly]=proj(r,0,0);g.fillText(r+' m',lx+4,ly-4)}
+  for(const [vx,vy,col,name] of [[1,0,'#ef5350','x'],[0,1,'#66bb6a','y']]){const[a0,b0]=proj(0,0,0),[a1,b1]=proj(vx,vy,0);g.strokeStyle=col;g.fillStyle=col;g.lineWidth=2;g.beginPath();g.moveTo(a0,b0);g.lineTo(a1,b1);g.stroke();g.fillText(name,a1+4,b1)}
+  const zs=[];for(const p of ld.frames)for(let i=2;i<p.length;i+=4)zs.push(p[i]);
+  if(!zs.length)return;
+  zs.sort((a,b)=>a-b);
+  const lo=zs[Math.floor(zs.length*.05)],hi=zs[Math.floor(zs.length*.95)],span=Math.max(hi-lo,.1);
+  for(let k=0;k<LD_COLORS;k++){
+    g.fillStyle='hsl('+Math.round(240-k/(LD_COLORS-1)*240)+',85%,60%)';g.beginPath();
+    for(const p of ld.frames)for(let i=0;i<p.length;i+=4){
+      if(Math.min(LD_COLORS-1,Math.max(0,Math.floor((p[i+2]-lo)/span*LD_COLORS)))!==k)continue;
+      const[px,py]=proj(p[i],p[i+1],p[i+2]);g.rect(px-1,py-1,2.5,2.5)}
+    g.fill();
+  }
+}
+function ldStats(points,ageMs){
+  const now=performance.now();ld.times=ld.times.filter(t=>now-t<3000);ld.times.push(now);
+  const hz=ld.times.length>1?(ld.times.length-1)/((now-ld.times[0])/1000):0;
+  const total=ld.frames.reduce((n,f)=>n+f.length/4,0);
+  $('ld-stats').textContent='1 枚 '+points+' 点 × '+ld.frames.length+' 枚重ね＝'+total+' 点 ／ '+hz.toFixed(1)+' fps ／ 遅れ '+ageMs+' ms';
+}
+function ldQuery(){const[v,m]=$('ld-density').value.split(',');return '?voxel='+v+'&max='+m}
+async function ldTick(){
+  if(!ld.running)return;
+  let wait=LD_POLL_MS;
+  try{
+    const r=await fetch('/lidar'+ldQuery(),{cache:'no-store'});
+    if(!r.ok){let m='';try{m=(await r.json()).error}catch(_){}throw new Error(m||('HTTP '+r.status))}
+    const buf=await r.arrayBuffer(),seq=r.headers.get('X-Lidar-Seq');
+    if(buf.byteLength%16)throw new Error('点群の形式が不正です');
+    if(seq!==ld.seq){  // 同じフレームを二重に重ねない
+      ld.seq=seq;const keep=Number($('ld-stack').value);
+      ld.frames=[...ld.frames,new Float32Array(buf)].slice(-keep);
+      ldStats(buf.byteLength/16,r.headers.get('X-Lidar-Age-Ms')||'?');ldDraw();
+    }
+    setRes('ld-res','');
+  }catch(e){$('ld-stats').textContent='点群を取得できません';setRes('ld-res',String(e.message||e),'bad');wait=LD_RETRY_MS}
+  if(ld.running)ld.timer=setTimeout(ldTick,wait);
+}
+function ldView(on){
+  ld.running=on;clearTimeout(ld.timer);
+  if(on)ldTick();else{ld.frames=[];ld.seq=null;ld.times=[];$('ld-stats').textContent='停止中';ldDraw()}
+}
+$('ld-stack').onchange=()=>{ld.frames=ld.frames.slice(-Number($('ld-stack').value));ldDraw()};
+$('ld-density').onchange=()=>{ld.frames=[];ld.seq=null;ldDraw()};  // 密度の違う点群を混ぜない
+function renderLidarProc(j){
+  $('ld-state').textContent=j.running?'lidar_stream 起動中 (pid='+j.pid+')':'lidar_stream 停止中';
+  $('ld-start').disabled=j.running;$('ld-stop').disabled=!j.running;
+  if(j.running!==ld.running)ldView(j.running);
+}
+async function ldProc(action){
+  const get=action==='status';setRes('ld-res',get?'確認中…':(action==='start'?'起動中…':'停止中…'));
+  ['ld-refresh','ld-start','ld-stop'].forEach(i=>$(i).disabled=true);
+  try{
+    const r=await fetch('/api/lidar/'+action,{method:get?'GET':'POST'}),j=await r.json();
+    if(!r.ok){setRes('ld-res',j.error||('失敗 '+r.status),'bad');ldView(false);$('ld-state').textContent='状態を確認できません';$('ld-start').disabled=false}
+    else{renderLidarProc(j);setRes('ld-res',j.message||'')}
+  }catch(e){setRes('ld-res','取得できません: '+e,'bad')}
+  $('ld-refresh').disabled=false;
+}
+$('ld-refresh').onclick=()=>ldProc('status');$('ld-start').onclick=()=>ldProc('start');$('ld-stop').onclick=()=>ldProc('stop');
+$('ld-reset').onclick=()=>{Object.assign(ld,LD_VIEW0);ldDraw()};
+{const c=$('ld-canvas');let drag=null;
+ c.onpointerdown=e=>{drag=[e.clientX,e.clientY];c.setPointerCapture(e.pointerId);c.style.cursor='grabbing'};
+ c.onpointerup=()=>{drag=null;c.style.cursor='grab'};
+ c.onpointermove=e=>{if(!drag)return;ld.yaw+=(e.clientX-drag[0])*.01;ld.pitch=Math.min(Math.PI/2,Math.max(0,ld.pitch+(e.clientY-drag[1])*.01));drag=[e.clientX,e.clientY];ldDraw()};
+ c.addEventListener('wheel',e=>{e.preventDefault();ld.scale=Math.min(400,Math.max(10,ld.scale*(e.deltaY<0?1.1:1/1.1)));ldDraw()},{passive:false});
+ ldDraw()}
 async function loadVolume(){
   setRes('vol-res','読み込み中…');
   try{
@@ -798,7 +894,7 @@ function setTab(t){
   if(!TABS.includes(t))t='ops';
   tab=t;
   TABS.forEach(k=>{$('tab-'+k).hidden=k!==t;$('tab-b-'+k).setAttribute('aria-selected',k===t)});
-  t==='camera'?(camProc('status'),loadCameras()):stopCameras();
+  t==='camera'?(camProc('status'),loadCameras(),ldProc('status')):(stopCameras(),ldView(false));
   history.replaceState(null,'','#'+t);
   if(t==='dds'){if(!dds)loadDds();else renderDds()}
   if(t==='settings')loadSettings();
