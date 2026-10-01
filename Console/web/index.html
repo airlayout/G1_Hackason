@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>G1 開発コンソール</title>
+<style>
+:root{color-scheme:light dark;--fs:2;--nav-h:0px;--bg:#f5f6f8;--fg:#1a1d21;--sub:#5d6670;--card:#fff;--line:#d8dce2;--btn:#e8ecf3;
+--ok:#1b7f3b;--warn:#a86200;--bad:#c62828;--mute:#7a838d}
+@media (prefers-color-scheme:dark){:root{--bg:#14171b;--fg:#e6e8eb;--sub:#a3acb6;--card:#1e2329;--line:#333a42;--btn:#2a313a;
+--ok:#4cc26d;--warn:#e0a030;--bad:#ef6a6a;--mute:#8b949e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:calc(16px*var(--fs))/1.5 -apple-system,"Hiragino Sans",sans-serif}
+main{max-width:1600px;margin:0 auto;padding:20px max(16px,env(safe-area-inset-right)) calc(40px + var(--nav-h) + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:calc(20px*var(--fs));margin:0}
+h2{font-size:calc(13px*var(--fs));font-weight:600;color:var(--sub);margin:0 0 10px;letter-spacing:.04em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+.head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.note{font-size:calc(13px*var(--fs));color:var(--sub)}
+.mock{font-size:calc(13px*var(--fs));color:var(--warn)}
+.mock select{font:inherit;margin-left:6px}
+
+/* 接続チェーン */
+.chain{list-style:none;margin:0;padding:0;display:flex;gap:6px;align-items:stretch}
+.chain li{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0;position:relative}
+.chain li+li{margin-left:18px}
+.chain li+li::before{content:"→";position:absolute;left:-19px;top:50%;transform:translateY(-50%);color:var(--mute)}
+.node-name{font-weight:600}
+.node-sub{font-size:calc(12px*var(--fs));color:var(--sub);word-break:break-all}
+.node-st{margin-top:4px;font-weight:700}
+.node-st::before{margin-right:6px}
+.s-ok{color:var(--ok)}.s-ok::before{content:"●"}
+.s-down,.s-stopped{color:var(--bad)}.s-down::before,.s-stopped::before{content:"✕"}
+.s-stale{color:var(--warn)}.s-stale::before{content:"◐"}
+.s-unknown,.s-checking{color:var(--mute)}.s-unknown::before,.s-checking::before{content:"○"}
+.chain li.is-bad{border-color:var(--bad)}
+#diag{margin:12px 0 0;font-size:calc(14px*var(--fs))}
+#diag code{background:var(--btn);padding:1px 6px;border-radius:5px;font-size:calc(13px*var(--fs))}
+
+/* モード */
+#mode{font-size:calc(30px*var(--fs));font-weight:700;margin:2px 0;line-height:1.25}
+#mode.m-ok{color:var(--ok)}
+#mode.m-debug{color:var(--warn)}
+#mode.m-none{color:var(--mute)}
+#mode-sub{font-size:calc(14px*var(--fs));color:var(--sub);min-height:1.4em}
+#fresh{margin-top:10px;font-size:calc(13px*var(--fs));font-variant-numeric:tabular-nums}
+#fresh.f-fresh{color:var(--ok)}#fresh.f-slow{color:var(--warn)}#fresh.f-stale{color:var(--bad)}
+
+/* ボタン */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:4px}
+button{padding:14px 8px;border:1px solid var(--line);border-radius:10px;background:var(--btn);color:var(--fg);font:inherit;font-size:calc(15px*var(--fs));cursor:pointer}
+button.danger{border-color:var(--bad)}
+button.current{outline:2px solid var(--ok);outline-offset:1px}
+button:disabled{opacity:.4;cursor:not-allowed}
+#why{font-size:calc(13px*var(--fs));color:var(--warn)}
+#pending{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:var(--btn);font-size:calc(14px*var(--fs))}
+#pending[hidden]{display:none}
+
+/* 操作履歴 */
+#log{list-style:none;margin:0;padding:0;font-size:calc(13px*var(--fs));font-variant-numeric:tabular-nums}
+#log li{padding:3px 0;border-top:1px solid var(--line)}
+#log li:first-child{border-top:0}
+#log .t{color:var(--sub);margin-right:8px}
+#log .bad{color:var(--bad)}#log .ok{color:var(--ok)}
+
+/* 状態バッジ：未実装 / 実機未確認 / 実装済み */
+.tag{display:inline-block;font-size:calc(11px*var(--fs));font-weight:600;line-height:1.5;padding:0 8px;margin-left:6px;border-radius:99px;border:1px solid;vertical-align:middle;white-space:nowrap}
+.tag.plan{color:var(--mute)}.tag.unver{color:var(--warn)}.tag.done{color:var(--ok)}
+.planned{margin-top:10px}
+.planned button small{display:block;margin-top:2px}
+.two{display:grid;grid-template-columns:1fr;gap:14px}
+.two .card,.card.solo{margin-bottom:14px}
+.keys{display:grid;grid-template-columns:repeat(3,44px);gap:6px;justify-content:center;margin:6px 0 10px}
+.keygroups{display:flex;gap:24px;justify-content:center;flex-wrap:wrap}
+.keygroup{text-align:center;font-size:calc(12px*var(--fs));color:var(--sub)}
+.keys.rot{grid-template-columns:repeat(2,56px)}
+kbd{display:flex;align-items:center;justify-content:center;height:44px;border:1px solid var(--line);border-radius:8px;background:var(--btn);font:inherit;opacity:.4}
+#bat-soc{font-size:calc(32px*var(--fs));font-weight:700;color:var(--mute)}
+#bat-bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:6px}
+#bat-bar i{display:block;height:100%;width:0;background:var(--ok)}
+#bat-bar.low i{background:var(--warn)}#bat-bar.crit i{background:var(--bad)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:8px 0;font-size:calc(14px*var(--fs))}
+.kv dt{color:var(--sub)}.kv dd{margin:0;font-variant-numeric:tabular-nums}
+.kv.stale dd{color:var(--mute)}
+#joints{width:100%;border-collapse:collapse;font-size:calc(12px*var(--fs));margin-top:8px;font-variant-numeric:tabular-nums}
+#joints th,#joints td{text-align:right;padding:3px 6px;border-top:1px solid var(--line)}
+#joints th:first-child,#joints td:first-child{text-align:left}
+.arow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0 4px}
+.arow input[type=text]{flex:1;min-width:160px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--btn);color:inherit;font:inherit}
+.arow input[type=range]{flex:1;min-width:140px}
+.arow input[type=color]{width:44px;height:32px;padding:0;border:1px solid var(--line);border-radius:8px;background:none}
+.arow select{padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--btn);color:inherit;font:inherit}
+button.sm{padding:5px 12px;font-size:calc(13px*var(--fs))}
+.res{font-size:calc(13px*var(--fs));color:var(--sub);min-height:18px;margin-bottom:6px}
+.res.ok{color:var(--ok)}.res.bad{color:var(--bad)}.res.warn{color:var(--warn)}
+#rates{width:100%;border-collapse:collapse;font-size:calc(12px*var(--fs));font-variant-numeric:tabular-nums}#rates th,#rates td{text-align:left;padding:3px 6px;border-top:1px solid var(--line)}#rates td:last-child,#rates th:last-child{text-align:right}
+#joints tr.hot td{color:var(--warn)}
+#features{list-style:none;margin:0;padding:0;font-size:calc(14px*var(--fs))}
+#features li{padding:6px 0;border-top:1px solid var(--line)}
+#features li:first-child{border-top:0}
+#features .note{display:block}
+.tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.hrow{display:grid;grid-template-columns:1fr minmax(140px,220px);gap:14px;align-items:end;margin:12px 0 8px}
+#battery h2{margin-bottom:2px}
+.frow{display:flex;flex-direction:column;gap:4px;margin:14px 0}
+.frow input{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--btn);color:inherit;font:inherit;max-width:32em}
+#tab-settings details{margin:10px 0}
+.mon button{margin:0 6px}
+.node-st.s-paused{color:var(--sub)}
+.tabs button{padding:8px 18px;font-size:calc(14px*var(--fs))}
+.tabs button[aria-selected=true]{outline:2px solid var(--ok);outline-offset:1px;font-weight:700}
+#dds-sum{margin:0 0 10px;font-size:calc(14px*var(--fs))}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.filters button[aria-pressed=true]{outline:2px solid var(--ok);outline-offset:1px}
+.dtable{width:100%;border-collapse:collapse;font-size:calc(12px*var(--fs))}
+.dtable th,.dtable td{text-align:left;padding:4px 6px;border-top:1px solid var(--line);vertical-align:top}
+.dtable td:nth-child(1){word-break:break-all}
+.live-ok{color:var(--ok)}.live-none{color:var(--mute)}
+
+/* ---- レスポンシブ ----
+   PC（≥1300px）: 幅 1600px、カード 2〜3 列、状態バーは上部に固定。
+   タブレット/スマホ（<900px。900〜1299px は 1 列で上部タブ）: 1 列、タブは下部固定バー、状態バーは圧縮して上部固定。 */
+[hidden]{display:none!important}  /* タブの display:grid に負けさせない */
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px}
+.kv dd{word-break:break-word;min-width:0}
+input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡大しない下限 */
+#statusbar{position:sticky;top:0;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+#diag.ok{color:var(--sub)}
+@media (min-width:1300px){
+ .two{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #tab-state{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px;align-items:start}
+ #tab-state>.two{display:contents}
+ #tab-state>section:last-child{grid-column:1/-1}
+ #tab-ops{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 14px;align-items:start}
+ #tab-ops>.two{display:block}
+ #tab-ops>section:last-child{grid-column:1/-1}
+ #tab-dds{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 14px;align-items:start}
+ #tab-dds>section:first-child{grid-row:span 3}
+ #tab-audio{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 14px;align-items:start}
+}
+@media (max-width:899px){
+ main{padding-top:10px}
+ h1{font-size:calc(17px*var(--fs))}
+ header{margin-bottom:8px}
+ #statusbar{padding:10px 12px;margin-bottom:10px;border-radius:0 0 12px 12px;margin-left:-16px;margin-right:-16px}
+ #statusbar>h2,#statusbar .hrow h2,.node-sub,#reconnect-note{display:none}
+ #statusbar>.note{font-size:calc(11px*var(--fs))}
+ .chain{gap:0}
+ .chain li{padding:6px 8px;text-align:center}
+ .chain li+li{margin-left:14px}
+ .chain li+li::before{left:-15px}
+ .node-name{font-size:calc(12px*var(--fs))}
+ .node-st{font-size:calc(13px*var(--fs));margin-top:0}
+ #diag{font-size:calc(12px*var(--fs));margin-top:8px}
+ #diag.ok{display:none}
+ .hrow{grid-template-columns:1fr auto;margin:8px 0 4px;gap:10px}
+ #mode{font-size:calc(20px*var(--fs))}
+ #mode-sub{font-size:calc(12px*var(--fs))}
+ #fresh{font-size:calc(11px*var(--fs));margin-top:4px}
+ #bat-soc{font-size:calc(24px*var(--fs))}
+ #battery{min-width:96px}
+ .tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;margin:0;gap:0;padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background:var(--card);border-top:1px solid var(--line);flex-wrap:nowrap}
+ .tabs button{flex:1;min-width:0;border:0;border-radius:0;background:none;padding:10px 2px;font-size:calc(12px*var(--fs));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .tabs button[aria-selected=true]{outline:0;box-shadow:inset 0 3px 0 var(--ok);color:var(--ok)}
+ :root{--fs:1.5;--nav-h:68px}
+ .card{padding:14px;border-radius:10px}
+ .kv{grid-template-columns:minmax(0,42%) 1fr;font-size:calc(13px*var(--fs))}
+ .dtable td:nth-child(2),.dtable th:nth-child(2){display:none}  /* 型は狭い画面では省く */
+ #joints th:nth-child(n+7),#joints td:nth-child(n+7){display:none}  /* kp/kd は狭い画面では省く */
+ #joints{font-size:calc(11px*var(--fs))}
+ .grid{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+ .keygroups{display:none}  /* 矢印キー案は物理キーボード前提。画面の説明文だけ残す */
+}
+@media (max-width:420px){
+ .chain li+li{margin-left:10px}
+ .tabs button{font-size:calc(11px*var(--fs))}
+ .arow input[type=text]{min-width:100%}
+}
+@media (pointer:coarse){
+ button{min-height:44px}
+ button.sm{min-height:40px;padding:8px 14px}
+ input[type=range]{height:32px}
+ input[type=color]{width:56px;height:40px}
+}
+@media (prefers-reduced-motion:no-preference){.card{transition:none}}
+</style></head><body><main>
+<header>
+ <h1>G1 開発コンソール</h1>
+ <label class="mock" id="mockbar" hidden>模擬シナリオ<select id="scenario"></select></label>
+</header>
+
+<section class="card" id="statusbar" aria-live="polite">
+ <h2>接続状態</h2>
+ <ol class="chain">
+  <li id="n-server"><div class="node-name">コンソールサーバー</div><div class="node-sub" id="server-sub"></div><div class="node-st" id="server-st"></div></li>
+  <li id="n-jetson"><div class="node-name">Jetson</div><div class="node-sub" id="jetson-sub"></div><div class="node-st" id="jetson-st"></div></li>
+  <li id="n-g1"><div class="node-name">G1 本体</div><div class="node-sub">DDS · モーションサービス</div><div class="node-st" id="g1-st"></div></li>
+ </ol>
+ <p id="diag"></p>
+ <div class="hrow">
+  <div>
+   <h2>現在のモード</h2>
+   <div id="mode" class="m-none">確認中…</div>
+   <div id="mode-sub"></div>
+   <div id="fresh"></div>
+  </div>
+  <div id="battery">
+   <h2>バッテリー<span class="tags" data-feature="battery"></span></h2>
+   <span id="bat-soc">—</span><div id="bat-bar"><i></i></div>
+  </div>
+ </div>
+ <div class="note mon"><b>自動確認・再接続</b><span class="tags" data-feature="reconnect"></span>
+  <button id="mon-toggle" class="sm" type="button">停止する</button><button id="mon-once" class="sm" type="button" hidden>今すぐ 1 回確認</button>
+  <span id="reconnect-note"></span></div>
+</section>
+
+<nav class="tabs" role="tablist">
+ <button role="tab" id="tab-b-ops" aria-selected="true">操作</button>
+ <button role="tab" id="tab-b-state" aria-selected="false">状態</button>
+ <button role="tab" id="tab-b-joints" aria-selected="false">関節</button>
+ <button role="tab" id="tab-b-audio" aria-selected="false">音声</button>
+ <button role="tab" id="tab-b-camera" aria-selected="false">カメラ</button>
+ <button role="tab" id="tab-b-dds" aria-selected="false">DDS</button>
+ <button role="tab" id="tab-b-settings" aria-selected="false">設定</button>
+</nav>
+
+<div id="tab-ops" data-tab="ops">
+<section class="card">
+ <div class="head"><h2>モード切り替え<span class="tags" data-feature="mode"></span></h2><span id="why"></span></div>
+ <div class="grid" id="btns"></div>
+ <div class="grid planned" id="planned-modes"></div>
+ <div id="pending" hidden></div>
+</section>
+
+<div class="two">
+ <section class="card solo">
+  <h2>アクション<span class="tags" data-feature="action"></span></h2>
+  <div class="grid" id="planned-actions"></div>
+  <p class="note">リモコンの SELECT+Y / A / X 相当。</p>
+ </section>
+ <section class="card solo">
+  <h2>移動（矢印キー）<span class="tags" data-feature="move"></span></h2>
+  <div class="keygroups" aria-hidden="true">
+   <div class="keygroup"><div class="keys"><span></span><kbd>↑</kbd><span></span><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></div>前後左右</div>
+   <div class="keygroup"><div class="keys rot"><kbd>Q ↺</kbd><kbd>E ↻</kbd></div>回転（左 / 右）</div>
+  </div>
+  <p class="note">矢印キーで前後左右、Q / E で回転（案）。同時押しで斜め移動しながら回転もできる。キーを離す／画面を離れると停止する設計にする予定。</p>
+ </section>
+</div>
+
+<section class="card">
+ <h2>操作履歴（この画面）</h2>
+ <ul id="log"><li class="note">まだ操作していません</li></ul>
+</section>
+</div>
+
+<div id="tab-state" data-tab="state" hidden>
+<div class="two">
+ <section class="card">
+  <h2>バッテリー詳細<span class="tags" data-feature="battery"></span></h2>
+  <dl class="kv" id="bat-kv"></dl>
+  <p class="note">ロボット本体の残量（<code>rt/lf/bmsstate</code>）。電圧は mV、電流は mA として換算した<b>推定</b>（単位は資料で未確認）。電流が負のときは放電中とみている。</p>
+ </section>
+ <section class="card">
+  <h2>姿勢（IMU）<span class="tags" data-feature="sensors"></span></h2>
+  <dl class="kv" id="imu-kv"></dl>
+  <p class="note"><code>rt/lowstate</code> の <code>imu_state</code>。角度は rad を度に換算。</p>
+ </section>
+</div>
+
+<div class="two">
+ <section class="card">
+  <h2>オドメトリ<span class="tags" data-feature="sensors"></span></h2>
+  <dl class="kv" id="odom-kv"></dl>
+  <p class="note"><code>rt/odommodestate</code>。位置は起動位置からの推定で、ドリフトする。</p>
+ </section>
+ <section class="card">
+  <h2>Jetson・メインボード<span class="tags" data-feature="sensors"></span></h2>
+  <dl class="kv" id="sys-kv"></dl>
+  <p class="note">Jetson は <code>/proc</code>・<code>/sys</code> の読み取り、メインボードは <code>rt/lf/mainboardstate</code>。メインボードの <code>value</code> の意味は未確認（生の値を表示）。</p>
+ </section>
+</div>
+
+<section class="card">
+ <h2>リモコン・非常停止・サービス<span class="tags" data-feature="sensors"></span></h2>
+ <dl class="kv" id="misc-kv"></dl>
+ <p class="note">イベント型のトピックは、何も起きていなければ「受信なし」。受信なしは異常を意味しない。</p>
+</section>
+</div>
+
+<div id="tab-joints" data-tab="joints" hidden>
+<section class="card">
+ <h2>関節（29 軸）<span class="tags" data-feature="sensors"></span></h2>
+ <div id="joint-sum" class="note">—</div>
+ <div class="tscroll"><table id="joints"><thead><tr><th>関節</th><th>角度[°]</th><th>速度[rad/s]</th><th>トルク推定</th><th>温度[℃]</th><th>指令角度[°]</th><th>kp</th><th>kd</th></tr></thead><tbody></tbody></table></div>
+ <p class="note"><code>rt/lowstate</code>、指令は <code>rt/lowcmd</code>。関節名は SDK の並び順（脚 12・腰 3・腕 14）による対応で、実機での突き合わせは未確認。温度は 2 つの値（表面／巻線と推定）のうち高い方。</p>
+</section>
+</div>
+
+<div id="tab-audio" data-tab="audio" hidden>
+<section class="card">
+ <h2>音声・LED・読み上げ<span class="tags" data-feature="audio"></span></h2>
+ <p class="note">モーションには関係しない書き込み。モードに関係なく使える（デバッグモードでも可）。</p>
+ <div class="arow"><b>スピーカー音量</b><span id="vol-now">現在値 —</span><button id="vol-load" class="sm">読み込み</button></div>
+ <div class="arow"><input type="range" id="vol" min="0" max="100" value="50"><output id="vol-out">50</output>
+  <button id="vol-set" class="sm">反映</button><button id="vol-restore" class="sm" disabled>変更前に戻す</button></div>
+ <div class="res" id="vol-res"></div>
+ <div class="arow"><b>頭部 LED</b><input type="color" id="led" value="#00ff00"><button id="led-set" class="sm">送信</button><button id="led-off" class="sm">消灯（0,0,0）</button></div>
+ <div class="res" id="led-res">現在の色は読み取れません（戻すときは色を指定するか消灯）</div>
+ <div class="arow"><b>読み上げ</b><input type="text" id="tts" maxlength="100" placeholder="読み上げる文（100 文字まで）">
+  <select id="tts-spk"><option value="0">話者 0</option><option value="1">話者 1</option></select><button id="tts-go" class="sm">読み上げ</button></div>
+ <div class="res" id="tts-res"></div>
+ <p class="note">戻り値 0 は「G1 が受け取った」だけで、実際に動いた証拠ではない。<b>音量</b>は反映後に読み戻して一致を確認する。<b>LED は色が変わったか目で、読み上げは音が出たか耳で</b>確認すること（読み戻す API が無い）。話者 ID の意味は未確認。</p>
+</section>
+<section class="card">
+ <h2>マイク・認識結果<span class="tag plan">未実装</span></h2>
+ <p class="note">生音声のトピックは無い。<code>rt/audio_msg</code> に認識結果（text / angle / confidence / language）、再生の開始・終了（<code>play_state</code>）が流れる。表示は今後（<code>docs/G1_FINDINGS.md</code> 6 章）。</p>
+</section>
+</div>
+
+<div id="tab-camera" data-tab="camera" hidden>
+<section class="card">
+ <h2>カメラ映像</h2>
+ <div class="two" id="cams"></div>
+ <p class="note" id="cam-note"></p>
+</section>
+<section class="card">
+ <h2>lidar<span class="tag plan">未実装</span></h2>
+ <p class="note"><code>rt/utlidar/cloud_livox_mid360</code>（約 20k 点・10 Hz・約 4.4 MB/s）。帯域が大きいので既定では購読しない。</p>
+</section>
+</div>
+
+<div id="tab-dds" data-tab="dds" hidden>
+ <section class="card">
+  <h2>DDS トピック（Jetson から観測した 104 件のうちサービス以外）</h2>
+  <p id="dds-sum"></p>
+  <div class="filters" id="dds-filters"></div>
+  <div class="tscroll"><table class="dtable" id="dds-table"><thead><tr><th>トピック</th><th>型</th><th>状態</th><th>受信</th><th>説明</th></tr></thead><tbody></tbody></table></div>
+  <p class="note">「受信」は表示済みトピックだけ。Jetson が最後に受信してからの経過。イベント型は何も起きなければ「受信なし」で、異常ではない。</p>
+ </section>
+ <section class="card">
+  <h2>RPC サービス（rt/api/&lt;名前&gt;/request・response）</h2>
+  <div class="tscroll"><table class="dtable" id="svc-table"><thead><tr><th>サービス</th><th>状態</th><th>説明</th></tr></thead><tbody></tbody></table></div>
+ </section>
+ <section class="card">
+  <h2>トピック受信状況（Jetson の購読）</h2>
+  <table id="rates"><thead><tr><th>トピック</th><th>最終受信から [秒]</th></tr></thead><tbody></tbody></table>
+  <p class="note">高頻度のトピックは 0.2 秒に 1 通へ間引いて読むので、頻度（Hz）は測れない。lidar・カメラは対象外。</p>
+ </section>
+ <section class="card">
+  <h2>この画面について（機能の状態）</h2>
+  <ul id="features"></ul>
+  <p class="note">位置づけと SDK との対応は <code>Console/docs/REMOTE_CONTROLLER.md</code>、実機調査は <code>Console/docs/G1_FINDINGS.md</code>。
+  各タブの内容は <code>GET /api/state</code>・<code>/api/joints</code>・<code>/api/snapshot</code> でも JSON で読める。</p>
+ </section>
+</div>
+
+<div id="tab-settings" data-tab="settings" hidden>
+<section class="card">
+ <h2>接続先の設定</h2>
+ <p class="note">環境（ネットワーク）によって変わる値です。保存すると <code>Console/settings.json</code> に書かれ、次回起動時にも使われます（git には入りません）。</p>
+ <form id="set-form" autocomplete="off">
+  <label class="frow"><b>開発用 PC の IP</b><input type="text" name="dev_pc" placeholder="例 192.168.123.99"><span class="note">コンソールを動かす操作用 PC とは別の、開発作業用 PC のアドレス。今は表示・記録のみで、接続には使いません。</span></label>
+  <label class="frow"><b>Jetson PC の IP</b><input type="text" name="jetson_host" placeholder="例 192.168.123.164 または Tailscale の IP"><span class="note">ssh の接続先（Tailscale の IP でも可）。変更すると Jetson への接続を張り直します。カメラ映像もここから取得します。</span></label>
+  <label class="frow"><b>G1 本体の IP</b><input type="text" name="g1_ip" placeholder="例 192.168.123.161"><span class="note">G1 本体のアドレス。今は表示・記録のみです（G1 とは Jetson の DDS 経由で通信します）。</span></label>
+  <details><summary>詳細（ssh ユーザー・鍵・カメラポート）</summary>
+   <label class="frow"><b>Jetson の ssh ユーザー</b><input type="text" name="jetson_user"><span class="note">空欄なら ssh の設定（<code>~/.ssh/config</code>）に任せます。</span></label>
+   <label class="frow"><b>ssh 秘密鍵のパス</b><input type="text" name="jetson_key" placeholder="例 ~/.ssh/id_ed25519_g1"><span class="note">空欄なら ssh の既定の鍵。</span></label>
+   <label class="frow"><b>カメラ配信ポート</b><input type="text" name="camera_port" inputmode="numeric"></label>
+  </details>
+  <div class="arow"><button type="submit" id="set-save">保存して反映</button><span id="set-res" class="res"></span></div>
+ </form>
+</section>
+</div>
+
+<p class="note" id="cadence"></p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const FRESH_S=2.5, STALE_S=8, GIVEUP_S=15, POLL_MS=1000;
+const ST_LABEL={ok:'接続中',down:'未接続',unknown:'未確認',stale:'更新停止',checking:'確認中',stopped:'停止',paused:'確認停止'};
+let S=null, recvAt=0, fails=0, busy=false, pending=null, buttons=[], logs=[], featuresLoaded=false;
+const RECONNECT_ON=`サーバーが止まっても、この画面は ${POLL_MS/1000} 秒ごとに再試行し、復帰すると自動で更新されます。Jetson に届かないときは、サーバーが数秒ごとに ssh を張り直します。`;
+const RECONNECT_OFF='停止中：サーバーは G1 を確認せず、ssh も張り直しません。最後に取得した値をそのまま表示します。';
+let lastKey='',lastDiag='';
+
+const ageNow=()=>S&&S.age_s!=null?S.age_s+(performance.now()-recvAt)/1000:null;
+const clock=t=>new Date(t*1000).toLocaleTimeString('ja-JP',{hour12:false});
+const ago=s=>s<60?`${s.toFixed(0)} 秒前`:`${Math.floor(s/60)} 分 ${Math.floor(s%60)} 秒前`;
+const U=(st,detail)=>({st,detail});
+
+/* 3 段の接続状態。上流が切れていれば下流は「未確認」にする（見えていないものを接続中と言わない） */
+function nodes(){
+  const server=U(fails>=2?'stopped':(S?'ok':'checking'),'');
+  if(server.st==='stopped'){const d='サーバー停止のため未確認';return{server,jetson:U('unknown',d),g1:U('unknown',d)}}
+  if(!S||S.sampled_at==null)return{server,jetson:U('checking','初回の確認中'),g1:U('checking','初回の確認中')};
+  if(S.paused){const d='自動確認を停止中（最後の確認は '+(S.sampled_at?clock(S.sampled_at):'なし')+'）';return{server,jetson:U('paused',d),g1:U('paused',d)}}
+  const age=ageNow();
+  if(age>STALE_S){const d=`最後に確認できてから ${age.toFixed(0)} 秒`;return{server,jetson:U('stale',d),g1:U('stale',d)}}
+  return{server,jetson:U(S.jetson.state,S.jetson.detail),g1:U(S.g1.state,S.g1.detail)};
+}
+
+function diagnose(n){
+  const code=t=>{const c=document.createElement('code');c.textContent=t;return c};
+  const out=[];
+  if(n.server.st==='stopped')out.push('コンソールサーバーが動いていません（または応答がありません）。操作用 PC のターミナルで ',code('python3 Console/server.py'),' を起動してください。この画面は自動で再接続します。');
+  else if(n.jetson.st==='paused')out.push('自動確認・再接続を停止しています。再開するか「今すぐ 1 回確認」を押すと確認します。');
+  else if(n.server.st==='checking')out.push('サーバーに問い合わせています…');
+  else if(n.jetson.st==='checking')out.push('サーバーは起動しました。G1 側の初回確認中です（数秒かかります）。');
+  else if(n.jetson.st==='stale')out.push('サーバーは応答していますが、G1 側の確認が止まっています。ssh が詰まっている可能性があります（',n.jetson.detail,'）。');
+  else if(n.jetson.st==='down')out.push('Jetson に届きません：'+n.jetson.detail+'。Wi-Fi / Tailscale と、',code('設定'),' タブの Jetson の IP を確認してください。');
+  else if(n.g1.st==='down')out.push('Jetson には繋がっていますが、G1 のモーションサービスが応答しません。G1 の電源と起動完了を確認してください。（'+n.g1.detail+'）');
+  else out.push('正常：サーバー → Jetson → G1 まで届いています。');
+  const key=out.map(x=>typeof x==='string'?x:x.textContent).join('');
+  if(key===lastDiag)return;  /* 同じ文面なら DOM を触らない（ちらつき防止） */
+  lastDiag=key;
+  $('diag').className=out[0].startsWith('正常')?'ok':'';
+  $('diag').replaceChildren(...out.map(x=>typeof x==='string'?document.createTextNode(x):x));
+}
+
+function renderChain(n){
+  for(const k of ['server','jetson','g1']){
+    const el=$(k+'-st'),cls='node-st s-'+n[k].st,txt=ST_LABEL[n[k].st];
+    if(el.className!==cls)el.className=cls;
+    if(el.textContent!==txt)el.textContent=txt;
+    $('n-'+k).classList.toggle('is-bad',n[k].st==='down'||n[k].st==='stopped');
+    if($('n-'+k).title!==(n[k].detail||''))$('n-'+k).title=n[k].detail||'';
+  }
+  $('server-sub').textContent=location.host;
+  $('jetson-sub').textContent=S&&S.server.backend?S.server.backend.replace(/^ssh /,''):'';
+  const paused=!!(S&&S.paused);
+  $('mon-toggle').textContent=paused?'再開する':'停止する';
+  $('mon-once').hidden=!paused;
+  $('reconnect-note').textContent=paused?RECONNECT_OFF:RECONNECT_ON;
+}
+
+function renderMode(n){
+  const live=n.jetson.st==='ok'&&n.g1.st==='ok'&&S.mode;
+  const m=live?S.mode:null;
+  const mode=$('mode');
+  if(m&&m.state==='ok'){mode.className='m-ok';mode.textContent=m.label;$('mode-sub').textContent=`ID ${m.fsm_id} · service=${m.service}`}
+  else if(m&&m.state==='debug'){mode.className='m-debug';mode.textContent='デバッグモード';$('mode-sub').textContent='標準モーションサービスが解放されています。このコンソールからは切り替えできません。'}
+  else if(m&&m.state==='unknown'){mode.className='m-none';mode.textContent='状態不明';$('mode-sub').textContent=m.detail||''}
+  else{
+    mode.className='m-none';
+    mode.textContent=n.server.st==='checking'||n.jetson.st==='checking'?'確認中…':(n.jetson.st==='paused'?'確認停止中':(n.jetson.st==='down'||n.g1.st==='down'?'未接続':'不明'));
+    const lm=S&&S.last_mode;
+    $('mode-sub').textContent=lm?`最後に確認できたモード：${lm.label}${lm.fsm_id!=null?`（ID ${lm.fsm_id}）`:''} · ${clock(lm.at)}（${ago(Math.max(0,Date.now()/1000-lm.at))}）`:'';
+  }
+  const age=ageNow(),f=$('fresh');
+  if(n.jetson.st==='paused'){f.className='';f.textContent=S.sampled_at?`最終取得 ${clock(S.sampled_at)}（停止中のため更新しません）`:'まだ取得していません'}
+  else if(age==null){f.className='';f.textContent='まだ取得できていません'}
+  else{
+    f.className=age<=FRESH_S?'f-fresh':(age<=STALE_S?'f-slow':'f-stale');
+    f.textContent=`最終取得 ${clock(S.sampled_at)} · ${age.toFixed(1)} 秒前`+(S.latency_ms!=null?` · G1 への往復 ${S.latency_ms} ms`:'')+(n.server.st==='stopped'?' · サーバー停止中（最後に受信した値）':'');
+  }
+}
+
+function switchBlockReason(n){
+  if(n.server.st==='stopped')return 'コンソールサーバー停止中';
+  if(n.server.st==='checking'||n.jetson.st==='checking')return '確認中';
+  if(n.jetson.st==='paused')return '自動確認を停止中';
+  if(n.jetson.st==='stale')return '状態が更新されていません';
+  if(n.jetson.st==='down')return 'Jetson 未接続';
+  if(n.g1.st==='down')return 'G1 未接続';
+  if(S.mode.state==='debug')return 'デバッグモード中は切り替え不可';
+  if(S.mode.state!=='ok')return '現在のモードを取得できません';
+  return '';
+}
+
+function renderButtons(n){
+  const why=switchBlockReason(n);
+  $('why').textContent=why?'切り替え無効：'+why:'';
+  const cur=!why?S.mode.fsm_id:null;
+  document.querySelectorAll('#btns button').forEach(b=>{
+    b.classList.toggle('current',Number(b.dataset.id)===cur);
+    b.disabled=!!why||busy;
+  });
+}
+
+/* 「送信した」と「目標のモードに着いた」は別。着くまでを見せる（この間もボタンは押せる＝緊急のダンピングを塞がない） */
+function renderPending(){
+  const el=$('pending');
+  if(!pending){el.hidden=true;return}
+  const elapsed=(performance.now()-pending.at)/1000;
+  const cur=S&&S.mode&&S.mode.state==='ok'?S.mode.fsm_id:null;
+  if(cur===pending.id){addLog(`「${pending.label}」に到達（${elapsed.toFixed(1)} 秒）`,'ok');pending=null;el.hidden=true;return}
+  if(elapsed>GIVEUP_S){addLog(`「${pending.label}」に ${GIVEUP_S} 秒経っても到達せず（現在：${S&&S.mode?S.mode.label:'不明'}）`,'bad');pending=null;el.hidden=true;return}
+  el.hidden=false;
+  el.textContent=`「${pending.label}」へ遷移中… 現在：${S&&S.mode?S.mode.label:'不明'} · ${elapsed.toFixed(0)} 秒経過`;
+}
+
+function addLog(text,cls){
+  logs=[{t:new Date().toLocaleTimeString('ja-JP',{hour12:false}),text,cls},...logs].slice(0,8);
+  $('log').replaceChildren(...logs.map(l=>{
+    const li=document.createElement('li'),t=document.createElement('span'),s=document.createElement('span');
+    t.className='t';t.textContent=l.t;s.className=l.cls||'';s.textContent=l.text;li.append(t,s);return li;
+  }));
+}
+
+const JOINT_NAMES=['左股 pitch','左股 roll','左股 yaw','左膝','左足首 pitch','左足首 roll',
+ '右股 pitch','右股 roll','右股 yaw','右膝','右足首 pitch','右足首 roll',
+ '腰 yaw','腰 roll','腰 pitch',
+ '左肩 pitch','左肩 roll','左肩 yaw','左肘','左手首 roll','左手首 pitch','左手首 yaw',
+ '右肩 pitch','右肩 roll','右肩 yaw','右肘','右手首 roll','右手首 pitch','右手首 yaw'];
+const RAD=180/Math.PI;
+const f=(v,d=2)=>v==null||!isFinite(v)?'—':Number(v).toFixed(d);
+
+function setKV(id,rows,live){
+  const el=$(id);el.className='kv'+(live?'':' stale');el.textContent='';
+  rows.forEach(([k,v])=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=live?v:'—';el.append(dt,dd)});
+}
+
+const JSON_S=v=>typeof v==='string'?v:JSON.stringify(v);
+function renderSystem(T,live){
+  const sy=live&&T.system,mb=live&&T.mainboard;
+  const temps=sy&&sy.temps?Object.entries(sy.temps):[];
+  const hot=temps.reduce((a,b)=>b[1]>a[1]?b:a,['',-1]);
+  setKV('sys-kv',[
+    ['Jetson 負荷（1/5/15 分）',sy&&sy.load?`${sy.load.join(' / ')}（${sy.cpus} コア）`:'—'],
+    ['メモリ空き',sy&&sy.mem_total_mb?`${sy.mem_avail_mb} / ${sy.mem_total_mb} MB`:'—'],
+    ['Jetson 最高温',temps.length?`${f(hot[1],1)}℃（${hot[0]}）`:'—'],
+    ['ディスク空き',sy&&sy.disk_free_gb!=null?`${sy.disk_free_gb} GB`:'—'],
+    ['Jetson 稼働時間',sy&&sy.uptime_s!=null?`${(sy.uptime_s/60).toFixed(0)} 分`:'—'],
+    ['メインボード温度',mb?mb.temperature.filter(t=>t>0).map(t=>`${t}℃`).join(' / ')||'—':'—'],
+    ['メインボード value（生）',mb?mb.value.slice(0,3).map(v=>f(v,1)).join(' / '):'—'],
+    ['メインボード state（生）',mb?JSON.stringify(mb.state.slice(0,3)):'—']],!!(sy||mb));
+}
+function renderMisc(T,live){
+  const rows=[];
+  const r=live&&T.remote,e=live&&T.estop;
+  rows.push(['無線リモコン入力',r?`lx ${f(r.lx)} ly ${f(r.ly)} rx ${f(r.rx)} ry ${f(r.ry)} keys ${r.keys}`:'受信なし']);
+  rows.push(['非常停止イベント',e?JSON_S(Object.fromEntries(Object.entries(e).filter(([k])=>k!=='age_s'))):'受信なし']);
+  const st=live&&T.strings?T.strings:{};
+  ['rt/servicestate','rt/servicestateactivate','rt/multiplestate','rt/selftest','rt/lf/battery_alarm','rt/rtc/state','rt/arm/action/state','rt/public_network_status','rt/gpt_state'].forEach(k=>{
+    rows.push([k.replace('rt/',''),st[k]?JSON_S(st[k].value):'受信なし']);
+  });
+  setKV('misc-kv',rows,live);
+  const tb=document.querySelector('#rates tbody');tb.textContent='';
+  Object.entries(live&&T.ages?T.ages:{}).sort((a,b)=>(a[1]==null)-(b[1]==null)||(a[1]||0)-(b[1]||0)).forEach(([k,v])=>{
+    const tr=document.createElement('tr');[k,v==null?'—':f(v,1)].forEach(x=>{const td=document.createElement('td');td.textContent=x;tr.append(td)});tb.append(tr);
+  });
+}
+
+function renderTelemetry(n){
+  const T=S&&S.telemetry,age=ageNow();
+  const live=!!T&&n.jetson.st==='ok'&&n.g1.st==='ok'&&age!=null&&age<=STALE_S;
+  const b=live&&T.battery,i=live&&T.imu,o=live&&T.odom,j=live&&T.joints;
+  const soc=$('bat-soc'),bar=$('bat-bar');
+  if(b){
+    soc.textContent=`${b.soc}%`;soc.style.color='';
+    bar.className=b.soc<=10?'crit':(b.soc<=20?'low':'');bar.firstElementChild.style.width=`${Math.max(0,Math.min(100,b.soc))}%`;
+  }else{soc.textContent='—';soc.style.color='';bar.className='';bar.firstElementChild.style.width='0'}
+  const volts=b?b.voltage.filter(v=>v>0):[],temps=b?b.temperature.filter(t=>t>0):[];
+  setKV('bat-kv',[
+    ['電圧（推定）',volts.map(v=>`${f(v/1000,2)} V`).join(' / ')||'—'],
+    ['電流（推定）',b?`${f(b.current/1000,2)} A（${b.current<0?'放電':'充電'}）`:'—'],
+    ['温度',temps.length?temps.map(t=>`${t}℃`).join(' / '):'—'],
+    ['更新',b?`${f(b.age_s,1)} 秒前に受信`:'—']],!!b);
+  const d=i?i.rpy.map(v=>v*RAD):[];
+  setKV('imu-kv',[
+    ['ロール／ピッチ／ヨー',i?`${f(d[0],1)}° / ${f(d[1],1)}° / ${f(d[2],1)}°`:'—'],
+    ['角速度 [rad/s]',i?i.gyro.map(v=>f(v)).join(' / '):'—'],
+    ['加速度 [m/s²]',i?i.accel.map(v=>f(v)).join(' / '):'—'],
+    ['IMU 温度',i?`${i.temperature}℃`:'—'],
+    ['2 つ目の IMU（ロール／ピッチ／ヨー）',i&&T.imu2?T.imu2.rpy.map(v=>f(v*RAD,1)+'°').join(' / '):'—']],!!i);
+  setKV('odom-kv',[
+    ['位置 x / y / z [m]',o?o.position.map(v=>f(v)).join(' / '):'—'],
+    ['速度 x / y / z [m/s]',o?o.velocity.map(v=>f(v)).join(' / '):'—'],
+    ['ヨー角速度 [rad/s]',o?f(o.yaw_speed):'—'],
+    ['胴体の高さ [m]',o?f(o.body_height):'—'],
+    ['mode / gait / error',o?`${o.mode} / ${o.gait_type} / ${o.error_code}`:'—']],!!o);
+  renderSystem(T,live);renderMisc(T,live);
+  const tb=document.querySelector('#joints tbody');tb.textContent='';
+  if(j){
+    let hot=0,hotI=0;
+    j.items.forEach((m,k)=>{
+      const t=Math.max(...m.temperature);if(t>hot){hot=t;hotI=k}
+      const tr=document.createElement('tr');
+      const c=T.lowcmd&&T.lowcmd.items[k];
+      [JOINT_NAMES[k]||`#${k}`,f(m.q*RAD,1),f(m.dq),f(m.tau),String(t),c?f(c.q*RAD,1):'—',c?f(c.kp,0):'—',c?f(c.kd,1):'—'].forEach(x=>{const td=document.createElement('td');td.textContent=x;tr.append(td)});
+      tb.append(tr);
+    });
+    const lost=j.items.filter(m=>m.lost!==0).length;
+    $('joint-sum').textContent=`最高温 ${hot}℃（${JOINT_NAMES[hotI]||'#'+hotI}）· motorstate が 0 以外の関節 ${lost} 個 · mode_machine ${j.mode_machine} · 指令 ${T.lowcmd?'あり':'受信なし'}`;
+  }else $('joint-sum').textContent=T&&live?'関節の値を受信できていません':'—（未接続または古いデータ）';
+}
+
+// ---- 音声・LED ----
+let originalVolume=null,audioReady=false,volumeTried=false;
+function setRes(id,text,cls){const e=$(id);e.textContent=text;e.className='res '+(cls||'')}
+async function audioPost(kind,body){
+  const r=await fetch('/api/audio/'+kind,{method:'POST',body:JSON.stringify(body)});
+  let j={};try{j=await r.json()}catch(_){}
+  return{ok:r.ok,j,status:r.status};
+}
+function stopCameras(){document.querySelectorAll('#cams img').forEach(i=>i.removeAttribute('src'))}  // タブを離れたら配信接続を閉じる
+async function loadCameras(){
+  try{
+    const r=await (await fetch('/api/cameras')).json();
+    if(!r.enabled){$('cam-note').textContent='カメラ未設定です。server.py を --camera-url 付きで起動してください。';return}
+    $('cams').replaceChildren(...Object.entries(r.cameras).map(([id,label])=>{
+      const box=document.createElement('div'),cap=document.createElement('b'),img=document.createElement('img');
+      cap.textContent=label;img.src='/camera/'+id;img.alt=label+'（映像なし）';img.style.cssText='width:100%;display:block;background:#000';
+      box.append(cap,img);return box}));
+    $('cam-note').textContent='Jetson の camera_stream.py の映像を中継しています。映らないときは Jetson 側で起動しているか、カメラが USB に刺さっているかを確認。';
+  }catch(e){$('cam-note').textContent='カメラ情報を取得できません: '+e}
+}
+async function loadVolume(){
+  setRes('vol-res','読み込み中…');
+  try{
+    const r=await fetch('/api/audio/volume',{cache:'no-store'}),j=await r.json();
+    if(!r.ok||j.volume==null){setRes('vol-res',`取得失敗：${j.error||'code='+j.code}`,'bad');return}
+    if(originalVolume==null){originalVolume=j.volume;$('vol-restore').disabled=false;$('vol-restore').textContent=`変更前（${originalVolume}）に戻す`}
+    $('vol-now').textContent=`現在値 ${j.volume}`;$('vol').value=j.volume;$('vol-out').value=j.volume;
+    setRes('vol-res',`取得しました（${clock(Date.now()/1000)}）`,'ok');
+  }catch(e){setRes('vol-res',`サーバーに届きません（${e}）`,'bad')}
+}
+async function setVolume(v){
+  if(originalVolume==null){setRes('vol-res','先に「読み込み」で変更前の値を取得してください','warn');return}
+  setRes('vol-res','送信中…');
+  try{
+    const {ok,j}=await audioPost('volume',{volume:v});
+    if(!ok){setRes('vol-res',`失敗：${j.error||`set_code=${j.set_code} read_code=${j.read_code}`}`,'bad');addLog(`音量 ${v} 失敗`,'bad');return}
+    const match=j.volume_after===v;
+    $('vol-now').textContent=`現在値 ${j.volume_after}`;
+    setRes('vol-res',match?`受理 → 読み戻して ${j.volume_after} と一致（確認済み）`:`受理されたが読み戻しは ${j.volume_after}（設定値 ${v} と不一致）`,match?'ok':'bad');
+    addLog(`音量 ${v} を設定（読み戻し ${j.volume_after}${match?'・一致':'・不一致'}）`,match?'':'bad');
+  }catch(e){setRes('vol-res',`サーバーに届きません（${e}）`,'bad')}
+}
+async function setLed(r,g,b){
+  setRes('led-res','送信中…');
+  try{
+    const {ok,j}=await audioPost('led',{r,g,b});
+    setRes('led-res',ok?`送信しました（受理 code=${j.code}）。色が変わったか目で確認してください`:`失敗：${j.error||'code='+j.code}`,ok?'warn':'bad');
+    addLog(`LED (${r},${g},${b}) ${ok?'送信（受理・目視待ち）':'失敗'}`,ok?'':'bad');
+  }catch(e){setRes('led-res',`サーバーに届きません（${e}）`,'bad')}
+}
+async function speak(){
+  const text=$('tts').value.trim();if(!text){setRes('tts-res','文を入力してください','warn');return}
+  if(!confirm(`実機のスピーカーから読み上げます：\n「${text}」\n周囲に問題ありませんか？`))return;
+  setRes('tts-res','送信中…');
+  try{
+    const {ok,j}=await audioPost('tts',{text,speaker_id:+$('tts-spk').value});
+    setRes('tts-res',ok?`送信しました（受理 code=${j.code}）。音が出たか耳で確認してください`:`失敗：${j.error||'code='+j.code}`,ok?'warn':'bad');
+    addLog(`読み上げ「${text}」${ok?'送信（受理・聴取待ち）':'失敗'}`,ok?'':'bad');
+  }catch(e){setRes('tts-res',`サーバーに届きません（${e}）`,'bad')}
+}
+function hexRgb(h){return[1,3,5].map(i=>parseInt(h.slice(i,i+2),16))}
+function initAudio(){
+  $('vol').oninput=()=>{$('vol-out').value=$('vol').value};
+  $('vol-load').onclick=loadVolume;
+  $('vol-set').onclick=()=>setVolume(+$('vol').value);
+  $('vol-restore').onclick=()=>setVolume(originalVolume);
+  $('led-set').onclick=()=>setLed(...hexRgb($('led').value));
+  $('led-off').onclick=()=>setLed(0,0,0);
+  $('tts-go').onclick=speak;
+}
+function renderAudio(n){
+  const live=n.jetson.st==='ok'&&n.g1.st==='ok'&&!busy;
+  document.querySelectorAll('.arow button,.arow input,.arow select').forEach(e=>{if(e.id==='vol-restore'&&originalVolume==null)return;e.disabled=!live});
+}
+
+function render(){
+  const n=nodes();
+  renderChain(n);diagnose(n);
+  renderMode(n);
+  renderButtons(n);
+  renderPending();
+  /* 重い表は、取得値・状態・タブが変わったときだけ描き直す（250ms ごとの作り直しがちらつきの元だった） */
+  const key=[recvAt,tab,busy,n.server.st,n.jetson.st,n.g1.st].join('|');
+  if(key!==lastKey){lastKey=key;renderTelemetry(n);renderAudio(n)}
+  if(S)$('cadence').textContent=`サーバーが約 ${S.poll_interval_s} 秒ごとに G1 を確認し、この画面が ${POLL_MS/1000} 秒ごとにサーバーへ問い合わせます。表示は最大で数秒遅れることがあります。`;
+}
+
+async function setMode(b){
+  const cur=S&&S.mode&&S.mode.state==='ok'?S.mode.fsm_id:null;
+  const warn=b.danger&&(cur===500||cur===501)?'\n\n歩行中にこの操作をすると転倒する恐れがあります。':'';
+  if(!confirm(`「${b.label}」に切り替えます。周囲の安全を確認しましたか？${warn}`))return;
+  busy=true;render();
+  try{
+    const r=await fetch('/api/mode',{method:'POST',body:JSON.stringify({id:b.id})});
+    const j=await r.json();
+    if(r.ok){pending={id:b.id,label:b.label,at:performance.now()};addLog(`「${b.label}」を送信（受理 code=${j.set_code}）· 到達待ち`,'')}
+    else addLog(`「${b.label}」失敗：${j.error||r.status}`,'bad');
+  }catch(e){addLog(`「${b.label}」失敗：サーバーに届きません（${e}）`,'bad')}
+  busy=false;render();
+}
+
+async function loadButtons(){
+  const {buttons:list}=await (await fetch('/api/buttons',{cache:'no-store'})).json();
+  buttons=list;
+  $('btns').replaceChildren(...list.map(b=>{
+    const el=document.createElement('button');
+    el.textContent=b.label;el.dataset.id=b.id;el.disabled=true;
+    if(b.danger)el.classList.add('danger');
+    el.onclick=()=>setMode(b);return el;
+  }));
+}
+
+async function loadScenarios(){
+  const r=await fetch('/api/scenarios',{cache:'no-store'});
+  if(!r.ok)return;
+  const {scenarios,current}=await r.json();
+  const sel=$('scenario');
+  sel.replaceChildren(...Object.entries(scenarios).map(([k,v])=>{const o=document.createElement('option');o.value=k;o.textContent=v;return o}));
+  sel.value=current;
+  sel.onchange=async()=>{await fetch('/api/scenario',{method:'POST',body:JSON.stringify({scenario:sel.value})});await poll(true)};
+  $('mockbar').hidden=false;
+}
+
+/* 状態バッジ。未実装＝まだ無い機能、実機未確認＝実装したが G1 で試していない機能 */
+const tag=(text,cls)=>{const s=document.createElement('span');s.className='tag '+cls;s.textContent=text;return s};
+const statusTags=f=>!f?[]:!f.implemented?[tag('未実装','plan')]:[tag('実装済み','done'),...(f.verified?[]:[tag('実機未確認','unver')])];
+const headTags=f=>!f?[]:!f.implemented?[tag('未実装','plan')]:(f.verified?[]:[tag('実機未確認','unver')]);
+
+function renderPlanned(el,list){
+  el.replaceChildren(...list.map(p=>{
+    const b=document.createElement('button');
+    b.disabled=true;b.title=p.note||'';b.textContent=p.label;
+    const s=document.createElement('small');s.append(tag('未実装','plan'));b.append(s);return b;
+  }));
+}
+
+async function loadFeatures(){
+  const j=await (await fetch('/api/features',{cache:'no-store'})).json();
+  document.querySelectorAll('.tags').forEach(el=>el.replaceChildren(...headTags(j.features.find(f=>f.id===el.dataset.feature))));
+  renderPlanned($('planned-modes'),j.planned_modes);
+  renderPlanned($('planned-actions'),j.planned_actions);
+  $('features').replaceChildren(...j.features.map(f=>{
+    const li=document.createElement('li'),b=document.createElement('b');
+    b.textContent=f.label;li.append(b,...statusTags(f));
+    if(f.note){const n=document.createElement('span');n.className='note';n.textContent=f.note;li.append(n)}
+    return li;
+  }));
+  featuresLoaded=true;
+}
+
+async function poll(once){
+  try{
+    const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),3000);
+    const r=await fetch('/api/status',{signal:ctl.signal,cache:'no-store'});
+    clearTimeout(t);
+    S=await r.json();recvAt=performance.now();fails=0;
+    if(!buttons.length)await loadButtons();
+    if(!featuresLoaded)await loadFeatures();
+    if(!audioReady){audioReady=true;initAudio()}
+    if(!volumeTried&&S.jetson.state==='ok'&&S.g1.state==='ok'){volumeTried=true;loadVolume()}
+    if(S.server.mock&&$('mockbar').hidden)await loadScenarios();
+  }catch(e){fails++}
+  render();
+  if(!once)setTimeout(poll,POLL_MS);
+}
+
+/* ---- DDS リストタブ ---- */
+const DDS_LABEL={displayed:['表示済み','done'],todo:['未購読（未実装）','unver'],excluded:['対象外','plan']};
+let dds=null,ddsFilter='all',tab='ops';
+function td(tr,x,cls){const c=document.createElement('td');c.textContent=x;if(cls)c.className=cls;tr.append(c);return c}
+const TABS=['ops','state','joints','audio','camera','dds','settings'];
+function setTab(t){
+  if(!TABS.includes(t))t='ops';
+  tab=t;
+  TABS.forEach(k=>{$('tab-'+k).hidden=k!==t;$('tab-b-'+k).setAttribute('aria-selected',k===t)});
+  t==='camera'?loadCameras():stopCameras();
+  history.replaceState(null,'','#'+t);
+  if(t==='dds'){if(!dds)loadDds();else renderDds()}
+  if(t==='settings')loadSettings();
+  lastKey='';
+}
+async function loadDds(){
+  try{dds=await(await fetch('/api/dds',{cache:'no-store'})).json()}catch(e){$('dds-sum').textContent='一覧を取得できません';return}
+  renderDds();
+}
+function buildDdsFilters(){
+  [['all','すべて'],['displayed','表示済み'],['todo','未購読（未実装）'],['excluded','対象外']].forEach(([k,l])=>{
+    const b=document.createElement('button');b.className='sm';b.textContent=l;b.dataset.k=k;
+    b.onclick=()=>{ddsFilter=k;renderDds()};$('dds-filters').append(b);
+  });
+}
+function renderDds(){
+  if(!dds||tab!=='dds')return;
+  const cnt={displayed:0,todo:0,excluded:0};dds.topics.forEach(t=>cnt[t.status]++);
+  $('dds-sum').textContent=`全 ${dds.topics.length} 件：表示済み ${cnt.displayed} ／ 未購読（未実装）${cnt.todo} ／ 対象外 ${cnt.excluded}`;
+  if(!$('dds-filters').children.length)buildDdsFilters();
+  [...$('dds-filters').children].forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===ddsFilter));
+  const n=S?nodes():null,T=S&&S.telemetry,live=!!T&&!!n&&n.jetson.st==='ok'&&n.g1.st==='ok';
+  const tb=document.querySelector('#dds-table tbody');tb.textContent='';
+  dds.topics.filter(t=>ddsFilter==='all'||t.status===ddsFilter).forEach(t=>{
+    const tr=document.createElement('tr');
+    td(tr,t.topic);td(tr,t.type);
+    const c=td(tr,'');const tg=document.createElement('span');tg.className='tag '+DDS_LABEL[t.status][1];tg.style.marginLeft='0';tg.textContent=DDS_LABEL[t.status][0];c.append(tg);
+    let rx='—',cls='';
+    if(t.status==='displayed'){
+      const a=live&&T.ages?T.ages[t.topic]:undefined;
+      if(a==null){rx=live?'受信なし':'未確認';cls='live-none'}else{rx=`${f(a,1)} 秒前`;cls=a<=5?'live-ok':'live-none'}
+    }
+    td(tr,rx,cls);td(tr,t.note);tb.append(tr);
+  });
+  const sb=document.querySelector('#svc-table tbody');sb.textContent='';
+  dds.services.forEach(v=>{const tr=document.createElement('tr');td(tr,v.name);td(tr,v.status,v.status==='使用中'?'live-ok':(v.status==='SDK あり・未実装'?'':'live-none'));td(tr,v.note);sb.append(tr)});
+}
+/* ---- 設定タブ / 自動確認の停止 ---- */
+const form=$('set-form');
+async function loadSettings(){
+  try{
+    const j=await(await fetch('/api/settings',{cache:'no-store'})).json();
+    for(const [k,v] of Object.entries(j.settings))if(form.elements[k])form.elements[k].value=v;
+    $('set-res').textContent='';
+  }catch(e){$('set-res').textContent='設定を読めません（サーバーに届きません）'}
+}
+form.onsubmit=async ev=>{
+  ev.preventDefault();
+  const body=Object.fromEntries(new FormData(form).entries()),res=$('set-res');
+  res.className='res';res.textContent='保存中…';
+  try{
+    const r=await fetch('/api/settings',{method:'POST',body:JSON.stringify(body)}),j=await r.json();
+    if(!r.ok){res.className='res bad';res.textContent=j.error||('失敗 '+r.status);return}
+    for(const [k,v] of Object.entries(j.settings))if(form.elements[k])form.elements[k].value=v;
+    res.className='res ok';res.textContent='保存しました。Jetson への接続を張り直します。';
+    poll(true);
+  }catch(e){res.className='res bad';res.textContent='サーバーに届きません（'+e+'）'}
+};
+async function monitorCtl(body){
+  try{await fetch('/api/monitor',{method:'POST',body:JSON.stringify(body)})}catch(e){}
+  await poll(true);
+}
+$('mon-toggle').onclick=()=>monitorCtl({paused:!(S&&S.paused)});
+$('mon-once').onclick=()=>monitorCtl({check:true});
+TABS.forEach(k=>{$('tab-b-'+k).onclick=()=>setTab(k)});
+setTab(location.hash.slice(1)||'ops');  /* タブ名 = ハッシュ = API 名（#state ↔ /api/state） */
+
+setInterval(render,250);setInterval(renderDds,1000); /* 経過秒を進める。取得が途絶えても「古さ」が正しく増える */
+poll();
+</script></body></html>

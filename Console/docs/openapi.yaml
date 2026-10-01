@@ -1,0 +1,1162 @@
+# api_spec.py から生成（手で編集しない）
+openapi: "3.0.3"
+info:
+  title: "G1 開発コンソール API"
+  version: "0.1.0"
+  description: "人は画面で状態を把握し、Claude Code / Codex は同じ内容をこの API で読み、操作する。\nx-effect: read=読むだけ / settings=コンソールの設定だけ変える / robot_write=G1 に書く（音・LED） / robot_motion=G1 が動く。\nx-real-robot-verified=false は実機で未確認。エラー: HTTP 400=入力不正 / 404=未定義 / 500=保存失敗 / 502=G1 または Jetson に届かない・G1 が拒否。本文はすべて Error。"
+servers:
+  - url: "http://127.0.0.1:{port}"
+    variables:
+      port:
+        default: "18790"
+tags:
+  - name: "ops"
+    description: "操作タブ（接続・モード）"
+  - name: "state"
+    description: "状態タブ"
+  - name: "joints"
+    description: "関節タブ"
+  - name: "audio"
+    description: "音声タブ"
+  - name: "camera"
+    description: "カメラタブ"
+  - name: "dds"
+    description: "DDS タブ"
+  - name: "settings"
+    description: "設定タブ"
+  - name: "mock"
+    description: "--mock のときだけ有効"
+paths:
+  "/api":
+    get:
+      operationId: "getApi"
+      tags:
+        - "ops"
+      summary: "この API 定義（OpenAPI, JSON）"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+  "/api/status":
+    get:
+      operationId: "getStatus"
+      tags:
+        - "ops"
+      summary: "まず最初に読む。接続（jetson/g1）・現在のモード・確認の古さ・自動確認の停止中か"
+      x-effect: "read"
+      description: "jetson/g1 が ok でなければ、その先の値は信用しない。ok でも age_s が数秒以上なら古い値。paused=true の間は更新されない。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Status"
+  "/api/state":
+    get:
+      operationId: "getState"
+      tags:
+        - "state"
+      summary: "バッテリー・IMU・オドメトリ・メインボード・Jetson・リモコン・非常停止"
+      x-effect: "read"
+      description: "notes.units_assumed / notes.unverified に、単位が推定・意味が未確認の項目を列挙している。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/State"
+  "/api/joints":
+    get:
+      operationId: "getJoints"
+      tags:
+        - "joints"
+      summary: "29 関節の角度・速度・トルク推定・温度・指令値"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Joints"
+  "/api/snapshot":
+    get:
+      operationId: "getSnapshot"
+      tags:
+        - "ops"
+      summary: "state と joints を 1 回で取得（状況把握はこれ 1 本で足りる）"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Snapshot"
+  "/api/audio/volume":
+    get:
+      operationId: "getVolume"
+      tags:
+        - "audio"
+      summary: "スピーカー音量を G1 から読む（Jetson 経由で実際に問い合わせる）"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Volume"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      operationId: "postVolume"
+      tags:
+        - "audio"
+      summary: "音量を設定し、読み戻して一致を確認する"
+      x-effect: "robot_write"
+      description: "volume_after が指定値と一致していれば反映済み。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/VolumePatch"
+            example:
+              volume: 40
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/VolumeSet"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/cameras":
+    get:
+      operationId: "getCameras"
+      tags:
+        - "camera"
+      summary: "カメラ一覧と、配信が設定済みか（映像は GET /camera/{name}）"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Cameras"
+  "/api/dds":
+    get:
+      operationId: "getDds"
+      tags:
+        - "dds"
+      summary: "DDS トピックと RPC サービスの台帳（表示済み／未実装／対象外）"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Dds"
+  "/api/buttons":
+    get:
+      operationId: "getButtons"
+      tags:
+        - "ops"
+      summary: "切り替えできるモード。POST /api/mode の id はここから選ぶ"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Buttons"
+  "/api/features":
+    get:
+      operationId: "getFeatures"
+      tags:
+        - "dds"
+      summary: "機能ごとの implemented / verified（verified=false は実機で未確認）"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Features"
+  "/api/settings":
+    get:
+      operationId: "getSettings"
+      tags:
+        - "settings"
+      summary: "接続先の設定（開発用 PC / Jetson / G1 の IP ほか）"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Settings"
+    post:
+      operationId: "postSettings"
+      tags:
+        - "settings"
+      summary: "接続先を保存して反映（Jetson を変えると ssh を張り直す）"
+      x-effect: "settings"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/SettingsPatch"
+            example:
+              jetson_host: "192.168.123.164"
+              g1_ip: "192.168.123.161"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Settings"
+        "400":
+          description: "入力不正（IP かホスト名以外、範囲外など。理由が error に入る）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "500":
+          description: "保存できない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/scenarios":
+    get:
+      operationId: "getScenarios"
+      tags:
+        - "mock"
+      summary: "模擬シナリオの一覧と現在値"
+      x-effect: "read"
+      x-mock-only: true
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Scenarios"
+  "/camera/{name}":
+    get:
+      operationId: "getCamera"
+      tags:
+        - "camera"
+      summary: "カメラ映像（MJPEG のストリーム）。name は GET /api/cameras のキー"
+      x-effect: "read"
+      parameters:
+        - name: "name"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            enum:
+              - "std"
+              - "d435i"
+      responses:
+        "200":
+          description: "MJPEG ストリーム（終わらない）"
+          content:
+            "multipart/x-mixed-replace":
+              schema:
+                type: "string"
+                format: "binary"
+        "404":
+          description: "カメラ未設定または name が不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "配信元に届かない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/openapi.yaml":
+    get:
+      operationId: "getOpenapiYaml"
+      tags:
+        - "ops"
+      summary: "この API 定義（OpenAPI, YAML）"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/yaml":
+              schema:
+                type: "string"
+  "/api/monitor":
+    post:
+      operationId: "postMonitor"
+      tags:
+        - "ops"
+      summary: "自動確認・自動再接続の停止／再開、または 1 回だけ確認"
+      x-effect: "settings"
+      description: "停止中はサーバーが ssh も DDS も叩かない。停止中もモード切替などの明示操作は実行できる。"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/MonitorPatch"
+            example:
+              paused: true
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Monitor"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/mode":
+    post:
+      operationId: "postMode"
+      tags:
+        - "ops"
+      summary: "G1 のモード（FSM）を切り替える。**ロボットが動く**"
+      x-effect: "robot_motion"
+      description: "受理（set_code=0）は到達ではない。実行後は GET /api/status を繰り返し読み、mode.fsm_id が目標になるか確認する（15 秒を目安）。歩行中（500/501）に切り替えると転倒の恐れがある。実行前に必ず人へ確認する。実機では未検証。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/ModePatch"
+            example:
+              id: 3
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ModeAck"
+        "400":
+          description: "入力不正（許可されていない id）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/audio/led":
+    post:
+      operationId: "postLed"
+      tags:
+        - "audio"
+      summary: "頭部 LED の色を設定"
+      x-effect: "robot_write"
+      description: "code=0 は受理のみ。色が変わったかは目視（読み戻せない）。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/LedPatch"
+            example:
+              r: 0
+              g: 255
+              b: 0
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Ack"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/audio/tts":
+    post:
+      operationId: "postTts"
+      tags:
+        - "audio"
+      summary: "テキストを読み上げる"
+      x-effect: "robot_write"
+      description: "code=0 は受理のみ。音が出たかは耳で確認。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TtsPatch"
+            example:
+              text: "こんにちは"
+              speaker_id: 0
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Ack"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/scenario":
+    post:
+      operationId: "postScenario"
+      tags:
+        - "mock"
+      summary: "模擬シナリオを切り替える"
+      x-effect: "settings"
+      x-mock-only: true
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/ScenarioPatch"
+            example:
+              scenario: "g1_off"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Scenario"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+components:
+  schemas:
+    Error:
+      type: "object"
+      description: "エラー本文（全エンドポイント共通）。G1・Jetson に届かない 502 では ok=false・offline・ssh_exit などの生の情報も付く"
+      properties:
+        error:
+          type: "string"
+          description: "平易な日本語の理由"
+      required:
+        - "error"
+      additionalProperties: true
+    Link:
+      type: "object"
+      description: "接続 1 段の状態。jetson が down なら g1 は unknown"
+      properties:
+        state:
+          type: "string"
+          description: "ok=届いている / down=届かない / unknown=上流が切れていて見えていない"
+          enum:
+            - "ok"
+            - "down"
+            - "unknown"
+            - "checking"
+        detail:
+          type: "string"
+          description: "理由（画面の診断文と同じ）"
+      required:
+        - "state"
+        - "detail"
+      additionalProperties: false
+    Mode:
+      type: "object"
+      description: "現在のモード"
+      properties:
+        state:
+          type: "string"
+          description: "ok=通常モードで FSM ID が取れた / debug=デバッグモード / unknown=取得不可 / none=接続なし"
+          enum:
+            - "ok"
+            - "debug"
+            - "unknown"
+            - "none"
+        label:
+          type: "string"
+          description: "表示名"
+        fsm_id:
+          type: "integer"
+          description: "FSM ID（state=ok のときだけ）"
+        service:
+          type: "string"
+          description: "モーションサービス名"
+        detail:
+          type: "string"
+      required:
+        - "state"
+        - "label"
+      additionalProperties: false
+    Status:
+      type: "object"
+      description: "接続・モード・鮮度。まず最初に読む"
+      properties:
+        jetson:
+          "$ref": "#/components/schemas/Link"
+        g1:
+          "$ref": "#/components/schemas/Link"
+        mode:
+          "$ref": "#/components/schemas/Mode"
+        sampled_at:
+          type: "number"
+          description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
+          nullable: true
+        age_s:
+          type: "number"
+          description: "最後の確認から今までの秒数。大きければ古い値"
+          nullable: true
+        latency_ms:
+          type: "integer"
+          description: "G1 への往復 ms"
+          nullable: true
+        last_g1_ok_at:
+          type: "number"
+          nullable: true
+        last_mode:
+          type: "object"
+          description: "最後に確認できたモード（切断中の参考。現在値ではない）"
+          additionalProperties: true
+          nullable: true
+        paused:
+          type: "boolean"
+          description: "true=自動確認・再接続を停止中（値は更新されない）"
+        poll_interval_s:
+          type: "number"
+        server:
+          type: "object"
+          properties:
+            backend:
+              type: "string"
+              description: "接続先の表示"
+            mock:
+              type: "boolean"
+          required:
+            - "backend"
+            - "mock"
+          additionalProperties: false
+        telemetry:
+          type: "object"
+          description: "ヘルパーの生テレメトリ（形は /api/state・/api/joints が整えたもの）"
+          additionalProperties: true
+          nullable: true
+      required:
+        - "jetson"
+        - "g1"
+        - "mode"
+        - "sampled_at"
+        - "age_s"
+        - "paused"
+        - "server"
+      additionalProperties: false
+    State:
+      type: "object"
+      description: "状態タブ。値が null のものは未受信または接続なし"
+      properties:
+        jetson:
+          "$ref": "#/components/schemas/Link"
+        g1:
+          "$ref": "#/components/schemas/Link"
+        mode:
+          "$ref": "#/components/schemas/Mode"
+        sampled_at:
+          type: "number"
+          description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
+          nullable: true
+        age_s:
+          type: "number"
+          description: "最後の確認から今までの秒数。大きければ古い値"
+          nullable: true
+        battery:
+          type: "object"
+          description: "soc[%]・voltage・current・temperature（単位は推定。notes 参照）"
+          additionalProperties: true
+          nullable: true
+        imu:
+          type: "object"
+          description: "rpy[rad]・gyro・accel・temperature"
+          additionalProperties: true
+          nullable: true
+        imu2:
+          type: "object"
+          additionalProperties: true
+          nullable: true
+        odom:
+          type: "object"
+          description: "起動位置からの推定。ドリフトする"
+          additionalProperties: true
+          nullable: true
+        mainboard:
+          type: "object"
+          description: "value の意味は未確認（生の値）"
+          additionalProperties: true
+          nullable: true
+        system:
+          type: "object"
+          description: "Jetson の温度・負荷など"
+          additionalProperties: true
+          nullable: true
+        remote:
+          type: "object"
+          description: "リモコン入力。受信なし=null"
+          additionalProperties: true
+          nullable: true
+        estop:
+          type: "object"
+          description: "非常停止。受信なし=null"
+          additionalProperties: true
+          nullable: true
+        strings:
+          type: "object"
+          additionalProperties: true
+          nullable: true
+        ages:
+          type: "object"
+          description: "トピックごとの最終受信からの秒数"
+          additionalProperties: true
+          nullable: true
+        notes:
+          type: "object"
+          description: "単位が推定・意味が未確認の項目"
+          properties:
+            units_assumed:
+              type: "array"
+              items:
+                type: "string"
+            unverified:
+              type: "array"
+              items:
+                type: "string"
+          additionalProperties: false
+      required:
+        - "jetson"
+        - "g1"
+        - "mode"
+        - "sampled_at"
+        - "age_s"
+        - "notes"
+      additionalProperties: false
+    Joints:
+      type: "object"
+      description: "関節タブ"
+      properties:
+        jetson:
+          "$ref": "#/components/schemas/Link"
+        g1:
+          "$ref": "#/components/schemas/Link"
+        mode:
+          "$ref": "#/components/schemas/Mode"
+        sampled_at:
+          type: "number"
+          description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
+          nullable: true
+        age_s:
+          type: "number"
+          description: "最後の確認から今までの秒数。大きければ古い値"
+          nullable: true
+        mode_machine:
+          type: "integer"
+          nullable: true
+        age_s_joints:
+          type: "number"
+          nullable: true
+        items:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              index:
+                type: "integer"
+              name:
+                type: "string"
+                description: "SDK の並び順による名前（実機で未確認）"
+              q:
+                type: "number"
+                description: "角度 rad"
+              dq:
+                type: "number"
+                description: "速度 rad/s"
+              tau:
+                type: "number"
+                description: "トルク推定"
+              temperature:
+                type: "array"
+                items:
+                  type: "number"
+              cmd:
+                type: "object"
+                description: "lowcmd の指令値"
+                additionalProperties: true
+                nullable: true
+            required:
+              - "index"
+              - "name"
+            additionalProperties: true
+          description: "関節 29 軸（未接続なら空）"
+        notes:
+          type: "object"
+          properties:
+            unverified:
+              type: "array"
+              items:
+                type: "string"
+          additionalProperties: false
+      required:
+        - "jetson"
+        - "g1"
+        - "mode"
+        - "sampled_at"
+        - "age_s"
+        - "items"
+      additionalProperties: false
+    Snapshot:
+      type: "object"
+      description: "state と joints をまとめたもの"
+      properties:
+        jetson:
+          "$ref": "#/components/schemas/Link"
+        g1:
+          "$ref": "#/components/schemas/Link"
+        mode:
+          "$ref": "#/components/schemas/Mode"
+        sampled_at:
+          type: "number"
+          description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
+          nullable: true
+        age_s:
+          type: "number"
+          description: "最後の確認から今までの秒数。大きければ古い値"
+          nullable: true
+        tabs:
+          type: "array"
+          items:
+            type: "string"
+          description: "タブ名の一覧（= URL ハッシュ = API 名）"
+        state:
+          "$ref": "#/components/schemas/State"
+        joints:
+          "$ref": "#/components/schemas/Joints"
+      required:
+        - "jetson"
+        - "g1"
+        - "mode"
+        - "sampled_at"
+        - "age_s"
+        - "tabs"
+        - "state"
+        - "joints"
+      additionalProperties: false
+    Volume:
+      type: "object"
+      properties:
+        ok:
+          type: "boolean"
+        code:
+          type: "integer"
+          description: "0=G1 が受理"
+        volume:
+          type: "integer"
+          description: "0〜100"
+          minimum: 0
+          maximum: 100
+      required:
+        - "ok"
+        - "code"
+        - "volume"
+      additionalProperties: true
+    VolumeSet:
+      type: "object"
+      properties:
+        ok:
+          type: "boolean"
+        set_code:
+          type: "integer"
+        read_code:
+          type: "integer"
+        volume_after:
+          type: "integer"
+          description: "読み戻した値。指定値と一致すれば反映済み"
+      required:
+        - "ok"
+        - "set_code"
+        - "read_code"
+        - "volume_after"
+      additionalProperties: true
+    Ack:
+      type: "object"
+      properties:
+        ok:
+          type: "boolean"
+        code:
+          type: "integer"
+          description: "0=G1 が受理（効果は目視・聴取で確認）"
+      required:
+        - "ok"
+        - "code"
+      additionalProperties: true
+    ModeAck:
+      type: "object"
+      properties:
+        ok:
+          type: "boolean"
+        set_code:
+          type: "integer"
+          description: "0=G1 が受理。到達ではない"
+      required:
+        - "ok"
+        - "set_code"
+      additionalProperties: true
+    Cameras:
+      type: "object"
+      properties:
+        enabled:
+          type: "boolean"
+          description: "配信先（Jetson の camera_stream.py）が設定済みか"
+        cameras:
+          type: "object"
+          additionalProperties:
+            type: "string"
+          description: "名前 → 表示名"
+      required:
+        - "enabled"
+        - "cameras"
+      additionalProperties: false
+    Dds:
+      type: "object"
+      properties:
+        topics:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              topic:
+                type: "string"
+              type:
+                type: "string"
+              status:
+                type: "string"
+                description: "表示済み / 未購読（未実装） / 対象外"
+                enum:
+                  - "displayed"
+                  - "todo"
+                  - "excluded"
+              note:
+                type: "string"
+            required:
+              - "topic"
+              - "type"
+              - "status"
+              - "note"
+            additionalProperties: false
+        services:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              name:
+                type: "string"
+              status:
+                type: "string"
+              note:
+                type: "string"
+            required:
+              - "name"
+              - "status"
+              - "note"
+            additionalProperties: false
+      required:
+        - "topics"
+        - "services"
+      additionalProperties: false
+    Buttons:
+      type: "object"
+      properties:
+        buttons:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              id:
+                type: "integer"
+                description: "POST /api/mode の id"
+              label:
+                type: "string"
+              danger:
+                type: "boolean"
+            required:
+              - "id"
+              - "label"
+              - "danger"
+            additionalProperties: false
+      required:
+        - "buttons"
+      additionalProperties: false
+    Features:
+      type: "object"
+      properties:
+        features:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              id:
+                type: "string"
+              label:
+                type: "string"
+              implemented:
+                type: "boolean"
+              verified:
+                type: "boolean"
+                description: "false=実機で未確認。結果を断定しない"
+              note:
+                type: "string"
+            required:
+              - "id"
+              - "label"
+              - "implemented"
+              - "verified"
+            additionalProperties: false
+        planned_modes:
+          type: "array"
+          items:
+            type: "object"
+            additionalProperties: true
+        planned_actions:
+          type: "array"
+          items:
+            type: "object"
+            additionalProperties: true
+      required:
+        - "features"
+      additionalProperties: false
+    SettingsValues:
+      type: "object"
+      properties:
+        dev_pc:
+          type: "string"
+          description: "開発用 PC の IP（表示・記録のみ）"
+        jetson_host:
+          type: "string"
+          description: "Jetson の IP かホスト名（ssh とカメラの接続先）"
+        jetson_user:
+          type: "string"
+          description: "空なら ~/.ssh/config に任せる"
+        jetson_key:
+          type: "string"
+          description: "ssh 秘密鍵のパス。空なら既定"
+        g1_ip:
+          type: "string"
+          description: "G1 本体の IP（表示・記録のみ）"
+        camera_port:
+          type: "integer"
+          minimum: 1
+          maximum: 65535
+      required:
+        - "dev_pc"
+        - "jetson_host"
+        - "jetson_user"
+        - "jetson_key"
+        - "g1_ip"
+        - "camera_port"
+      additionalProperties: false
+    SettingsPatch:
+      type: "object"
+      description: "指定した項目だけ変わる（全て任意）"
+      properties:
+        dev_pc:
+          type: "string"
+          description: "IP アドレスかホスト名。空文字で未設定"
+        jetson_host:
+          type: "string"
+        jetson_user:
+          type: "string"
+        jetson_key:
+          type: "string"
+        g1_ip:
+          type: "string"
+        camera_port:
+          type: "integer"
+          minimum: 1
+          maximum: 65535
+      additionalProperties: false
+    Settings:
+      type: "object"
+      properties:
+        settings:
+          "$ref": "#/components/schemas/SettingsValues"
+        labels:
+          type: "object"
+          additionalProperties:
+            type: "string"
+      required:
+        - "settings"
+        - "labels"
+      additionalProperties: false
+    MonitorPatch:
+      type: "object"
+      description: "どちらか、または両方"
+      properties:
+        paused:
+          type: "boolean"
+          description: "true=停止 / false=再開"
+        check:
+          type: "boolean"
+          description: "true=1 回だけ確認"
+      additionalProperties: false
+    Monitor:
+      type: "object"
+      properties:
+        paused:
+          type: "boolean"
+      required:
+        - "paused"
+      additionalProperties: false
+    Scenarios:
+      type: "object"
+      properties:
+        scenarios:
+          type: "object"
+          additionalProperties:
+            type: "string"
+        current:
+          type: "string"
+      required:
+        - "scenarios"
+        - "current"
+      additionalProperties: false
+    ScenarioPatch:
+      type: "object"
+      properties:
+        scenario:
+          type: "string"
+      required:
+        - "scenario"
+      additionalProperties: false
+    Scenario:
+      type: "object"
+      properties:
+        scenario:
+          type: "string"
+      required:
+        - "scenario"
+      additionalProperties: false
+    ModePatch:
+      type: "object"
+      properties:
+        id:
+          type: "integer"
+          description: "GET /api/buttons に載っている id のみ"
+      required:
+        - "id"
+      additionalProperties: false
+    VolumePatch:
+      type: "object"
+      properties:
+        volume:
+          type: "integer"
+          minimum: 0
+          maximum: 100
+      required:
+        - "volume"
+      additionalProperties: false
+    LedPatch:
+      type: "object"
+      properties:
+        r:
+          type: "integer"
+          minimum: 0
+          maximum: 255
+        g:
+          type: "integer"
+          minimum: 0
+          maximum: 255
+        b:
+          type: "integer"
+          minimum: 0
+          maximum: 255
+      required:
+        - "r"
+        - "g"
+        - "b"
+      additionalProperties: false
+    TtsPatch:
+      type: "object"
+      properties:
+        text:
+          type: "string"
+          description: "読み上げる文"
+          minLength: 1
+          maxLength: 100
+        speaker_id:
+          type: "integer"
+          description: "話者 ID（意味は未確認）"
+          enum:
+            - 0
+            - 1
+      required:
+        - "text"
+        - "speaker_id"
+      additionalProperties: false
