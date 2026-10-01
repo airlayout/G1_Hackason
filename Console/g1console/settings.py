@@ -94,7 +94,8 @@ class Settings:
             return None, ""
         return (v["jetson_user"] + "@" if v["jetson_user"] else "") + v["jetson_host"], v["jetson_key"]
 
-    def camera_base(self):
+    def camera_base(self, resolve=lambda host: host):
+        """カメラ配信の URL。resolve は ssh の別名を HTTP で使える名前に直す関数。"""
         v = self.get()
-        return "http://%s:%d" % (v["jetson_host"] if ":" not in v["jetson_host"] else "[%s]" % v["jetson_host"],
-                                 v["camera_port"]) if v["jetson_host"] else None
+        host = resolve(v["jetson_host"]) if v["jetson_host"] else ""
+        return "http://%s:%d" % (host if ":" not in host else "[%s]" % host, v["camera_port"]) if host else None

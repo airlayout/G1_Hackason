@@ -19,6 +19,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from g1console.camera_proc import MockCameraCtl, SshCameraCtl, resolve_host
 from g1console.dds_catalog import SERVICES, TOPICS
 from g1console.replay import Replay
 from g1console.api_spec import openapi, render_yaml
@@ -32,7 +33,7 @@ READY_TIMEOUT_S = 30.0  # DDS 初期化待ち
 POLL_INTERVAL_S = 1.0
 POLL_INTERVAL_DOWN_S = 3.0  # Jetson に届かないときは ssh を叩きすぎない
 SSH_CONNECT_FAILED = 255  # ssh が接続自体に失敗したときの終了コード
-CAMERAS = {"std": "標準カメラ", "d435i": "D435i（RGB）"}  # camera_stream.py の --camera 名と揃える
+CAMERAS = {"std": "標準カメラ", "d435i": "D435i（RGB）", "depth": "D435i（深度）"}  # camera_stream.py の --camera 名と揃える
 CAMERA_TIMEOUT_S = 5.0
 CAMERA_CHUNK = 16384
 
@@ -323,9 +324,9 @@ def view(snap: dict, name: str) -> dict:
     return {**head, "tabs": list(TABS), "state": view(snap, "state"), "joints": view(snap, "joints")}
 
 
-def make_handler(helper, monitor, camera_base=None, settings=None):
+def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=None):
     def camera_url():
-        return camera_base or (settings.camera_base() if settings else None)
+        return camera_base or (settings.camera_base(resolve_host) if settings else None)
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code: int, ctype: str, data: bytes):
@@ -367,6 +368,8 @@ def make_handler(helper, monitor, camera_base=None, settings=None):
                 self._json(200, {"scenarios": helper.SCENARIOS, "current": helper.scenario})
             elif self.path == "/api/cameras":
                 self._json(200, {"enabled": bool(camera_url()), "cameras": CAMERAS})
+            elif self.path == "/api/camera/status" and camera_ctl:
+                self._camera_ctl("status")
             elif self.path == "/api/settings" and settings:
                 self._json(200, {"settings": settings.get(), "labels": LABELS})
             elif self.path.startswith("/camera/"):
@@ -403,11 +406,19 @@ def make_handler(helper, monitor, camera_base=None, settings=None):
                 return self._post_audio(self.path[len("/api/audio/"):])
             if self.path == "/api/scenario" and hasattr(helper, "scenario"):
                 return self._post_scenario()
+            if self.path in ("/api/camera/start", "/api/camera/stop") and camera_ctl:
+                return self._camera_ctl(self.path.rsplit("/", 1)[1])
             if self.path == "/api/monitor":
                 return self._post_monitor()
             if self.path == "/api/settings" and settings:
                 return self._post_settings()
             self._json(404, {"error": "not found"})
+
+        def _camera_ctl(self, action: str):
+            try:
+                self._json(200, camera_ctl.call(action))
+            except (RuntimeError, subprocess.TimeoutExpired, OSError) as exc:
+                self._json(502, {"ok": False, "error": "カメラ操作に失敗しました: %s" % exc})
 
         def _post_mode(self):
             try:
@@ -492,8 +503,9 @@ def main():
     helper = MockHelper() if args.mock else SshHelper(*settings.ssh_target())
     monitor = Monitor(helper)
     monitor.start()
+    camera_ctl = MockCameraCtl() if args.mock else SshCameraCtl(settings.ssh_target)
     camera_base = args.camera_url.rstrip("/") if args.camera_url else None
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(helper, monitor, camera_base, settings))
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(helper, monitor, camera_base, settings, camera_ctl))
     print("[console] http://127.0.0.1:%d (%s)" % (args.port, helper.backend))
     server.serve_forever()
 

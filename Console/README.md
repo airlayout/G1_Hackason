@@ -100,7 +100,15 @@ Jetson にファイルは残らない。
 
 ## 画面の構成（タブ = URL ハッシュ = API 名）
 
-ヘッダー常設: 3 段の接続状態・現在のモード・バッテリー%。その下に 7 タブ。
+ヘッダー: 3 段の接続状態・現在のモード・バッテリー%（固定表示にはしていない）。その下に 7 タブ。
+
+**操作タブ（`#ops`、デバッグモード中の例）**
+
+![操作タブ: 接続状態・現在のモード・バッテリー・モード切り替え](docs/images/console-ops.png)
+
+**カメラタブ（`#camera`）** — 掴んでいるプロセスの表示、配信の起動／停止、RGB と深度の映像。RGB は公式の `VideoClient` 経路、深度は `pyrealsense2` で取り、どちらも `videohub_pc4` を止めない。深度は RGB の視点に位置合わせして同じ縦横比（16:9）で出す（下の画像は位置合わせ前の撮影）。
+
+![カメラタブ: RGB と深度（カラーマップ）を別領域に表示](docs/images/console-camera.png)
 
 | タブ | ハッシュ | 中身 | JSON |
 |---|---|---|---|
@@ -108,7 +116,7 @@ Jetson にファイルは残らない。
 | 状態 | `#state` | バッテリー詳細・IMU・オドメトリ・Jetson/メインボード・リモコン/非常停止 | `/api/state` |
 | 関節 | `#joints` | 29 軸の角度・速度・トルク・温度・指令 | `/api/joints` |
 | 音声 | `#audio` | 音量・LED・読み上げ（認識結果は未実装） | `/api/audio/volume` |
-| カメラ・lidar | `#camera` | カメラ映像（lidar は未実装） | `/api/cameras` |
+| カメラ・lidar | `#camera` | 配信プロセスの表示・起動・停止、RGB／深度の映像（lidar は未実装） | `/api/cameras`・`/api/camera/status`・`/api/camera/start`・`/api/camera/stop` |
 | DDS | `#dds` | トピック/サービス台帳・受信状況・機能の状態 | `/api/dds` |
 | 設定 | `#settings` | 開発用 PC／Jetson／G1 の IP（Jetson は ssh 接続先に反映。`settings.json` に保存） | `/api/settings`（GET/POST） |
 

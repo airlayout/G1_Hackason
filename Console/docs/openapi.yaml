@@ -169,6 +169,27 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/Cameras"
+  "/api/camera/status":
+    get:
+      operationId: "getCameraStatus"
+      tags:
+        - "camera"
+      summary: "camera_stream の起動状態と、映像デバイスを掴んでいるプロセス（foreign＝自前以外）"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/dds":
     get:
       operationId: "getDds"
@@ -324,6 +345,48 @@ paths:
             "application/yaml":
               schema:
                 type: "string"
+  "/api/camera/start":
+    post:
+      operationId: "postCameraStart"
+      tags:
+        - "camera"
+      summary: "Jetson で camera_stream.py を起動（再起動はしない。他が掴んでいれば失敗しうる）"
+      x-effect: "settings"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/camera/stop":
+    post:
+      operationId: "postCameraStop"
+      tags:
+        - "camera"
+      summary: "camera_stream.py だけを停止（videohub など他のプロセスは止めない）"
+      x-effect: "settings"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/monitor":
     post:
       operationId: "postMonitor"

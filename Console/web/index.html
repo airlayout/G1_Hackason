@@ -122,7 +122,7 @@ button.sm{padding:5px 12px;font-size:calc(13px*var(--fs))}
 .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px}
 .kv dd{word-break:break-word;min-width:0}
 input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡大しない下限 */
-#statusbar{position:sticky;top:0;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+#statusbar{box-shadow:0 2px 8px rgba(0,0,0,.08)}
 #diag.ok{color:var(--sub)}
 @media (min-width:1300px){
  .two{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -319,7 +319,18 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
 
 <div id="tab-camera" data-tab="camera" hidden>
 <section class="card">
+ <h2>カメラ配信プロセス（Jetson）</h2>
+ <div class="arow"><b id="cp-state">確認中…</b>
+  <button id="cp-refresh" class="sm" type="button">再確認</button>
+  <button id="cp-start" class="sm" type="button">起動</button>
+  <button id="cp-stop" class="sm" type="button">停止</button></div>
+ <div class="tscroll"><table class="dtable" id="cp-table"><thead><tr><th>デバイス</th><th>PID</th><th>ユーザー</th><th>コマンド</th></tr></thead><tbody></tbody></table></div>
+ <p class="res" id="cp-res"></p>
+ <p class="note">映像デバイスを掴んでいるプロセスの一覧。<b>自前（camera_stream.py）以外</b>が掴んでいると映像は取れません（videohub_pc4 など）。停止は camera_stream.py だけで、他のプロセスは止めません。root のプロセスは引数にデバイス名が出るものだけ見えます。</p>
+</section>
+<section class="card">
  <h2>カメラ映像</h2>
+ <div class="arow"><button id="cv-start" class="sm" type="button">起動</button><button id="cv-stop" class="sm" type="button">停止</button><span id="cv-state"></span></div>
  <div class="two" id="cams"></div>
  <p class="note" id="cam-note"></p>
 </section>
@@ -601,10 +612,37 @@ async function loadCameras(){
     $('cams').replaceChildren(...Object.entries(r.cameras).map(([id,label])=>{
       const box=document.createElement('div'),cap=document.createElement('b'),img=document.createElement('img');
       cap.textContent=label;img.src='/camera/'+id;img.alt=label+'（映像なし）';img.style.cssText='width:100%;display:block;background:#000';
+      img.onerror=()=>{box.hidden=true;  // 未接続のカメラは枠ごと隠す
+        if([...$('cams').children].every(b=>b.hidden))$('cam-note').textContent='映像がありません。上の「起動」を押したか、カメラが接続されているかを確認してください。'};
       box.append(cap,img);return box}));
     $('cam-note').textContent='Jetson の camera_stream.py の映像を中継しています。映らないときは Jetson 側で起動しているか、カメラが USB に刺さっているかを確認。';
   }catch(e){$('cam-note').textContent='カメラ情報を取得できません: '+e}
 }
+function renderCamProc(j){
+  const own=j.holders.filter(h=>h.own).length,foreign=j.foreign.length;
+  $('cp-state').textContent=(j.running?'camera_stream 起動中 (pid='+j.pid+')':'camera_stream 停止中')+
+    (foreign?' ／ 他のプロセスが '+foreign+' 件掴んでいます':' ／ 他に掴んでいるプロセスなし');
+  for(const p of ['cp','cv']){$(p+'-start').disabled=j.running;$(p+'-stop').disabled=!j.running}
+  $('cv-state').textContent=j.running?'配信中':'停止中';
+  const rows=j.holders.map(h=>{const tr=document.createElement('tr');
+    [h.device,h.pid,h.user,h.cmd+(h.own?'（自前）':'')].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td)});return tr});
+  if(!rows.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=4;td.textContent='映像デバイスを掴んでいるプロセスはありません';tr.append(td);rows.push(tr)}
+  $('cp-table').tBodies[0].replaceChildren(...rows);
+}
+async function camProc(action){
+  const get=action==='status';setRes('cp-res',get?'確認中…':(action==='start'?'起動中…':'停止中…'));
+  ['cp-refresh','cp-start','cp-stop','cv-start','cv-stop'].forEach(i=>$(i).disabled=true);
+  try{
+    const r=await fetch('/api/camera/'+(get?'status':action),{method:get?'GET':'POST'});
+    const j=await r.json();
+    if(!r.ok){setRes('cp-res',j.error||('失敗 '+r.status),'bad');$('cp-refresh').disabled=false;return}
+    renderCamProc(j);setRes('cp-res',j.message||'');
+    if(!get)loadCameras();  // 起動・停止後は映像の接続を張り直す
+  }catch(e){setRes('cp-res','取得できません: '+e,'bad')}
+  $('cp-refresh').disabled=false;
+}
+$('cv-start').onclick=()=>camProc('start');$('cv-stop').onclick=()=>camProc('stop');
+$('cp-refresh').onclick=()=>camProc('status');$('cp-start').onclick=()=>camProc('start');$('cp-stop').onclick=()=>camProc('stop');
 async function loadVolume(){
   setRes('vol-res','読み込み中…');
   try{
@@ -760,7 +798,7 @@ function setTab(t){
   if(!TABS.includes(t))t='ops';
   tab=t;
   TABS.forEach(k=>{$('tab-'+k).hidden=k!==t;$('tab-b-'+k).setAttribute('aria-selected',k===t)});
-  t==='camera'?loadCameras():stopCameras();
+  t==='camera'?(camProc('status'),loadCameras()):stopCameras();
   history.replaceState(null,'','#'+t);
   if(t==='dds'){if(!dds)loadDds();else renderDds()}
   if(t==='settings')loadSettings();
