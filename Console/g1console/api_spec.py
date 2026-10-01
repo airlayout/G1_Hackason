@@ -113,6 +113,8 @@ ENDPOINTS = [
     ep("GET", "/api/snapshot", "getSnapshot", "ops", "state と joints を 1 回で取得（状況把握はこれ 1 本で足りる）", READ, "Snapshot"),
     ep("GET", "/api/audio/volume", "getVolume", "audio", "スピーカー音量を G1 から読む（Jetson 経由で実際に問い合わせる）", READ, "Volume", errors=[(502, E502)]),
     ep("GET", "/api/cameras", "getCameras", "camera", "カメラ一覧と、配信が設定済みか（映像は GET /camera/{name}）", READ, "Cameras"),
+    ep("GET", "/api/camera/status", "getCameraStatus", "camera", "camera_stream の起動状態と、映像デバイスを掴んでいるプロセス（foreign＝自前以外）", READ, None,
+       errors=[(502, E502)]),
     ep("GET", "/api/dds", "getDds", "dds", "DDS トピックと RPC サービスの台帳（表示済み／未実装／対象外）", READ, "Dds"),
     ep("GET", "/api/buttons", "getButtons", "ops", "切り替えできるモード。POST /api/mode の id はここから選ぶ", READ, "Buttons"),
     ep("GET", "/api/features", "getFeatures", "dds", "機能ごとの implemented / verified（verified=false は実機で未確認）", READ, "Features"),
@@ -125,6 +127,8 @@ ENDPOINTS = [
 
     ep("POST", "/api/settings", "postSettings", "settings", "接続先を保存して反映（Jetson を変えると ssh を張り直す）", SETTINGS, "Settings",
        request="SettingsPatch", example={"jetson_host": "192.168.123.164", "g1_ip": "192.168.123.161"}, errors=[(400, E400 + "（IP かホスト名以外、範囲外など。理由が error に入る）"), (500, "保存できない")]),
+    ep("POST", "/api/camera/start", "postCameraStart", "camera", "Jetson で camera_stream.py を起動（再起動はしない。他が掴んでいれば失敗しうる）", SETTINGS, None, errors=[(502, E502)]),
+    ep("POST", "/api/camera/stop", "postCameraStop", "camera", "camera_stream.py だけを停止（videohub など他のプロセスは止めない）", SETTINGS, None, errors=[(502, E502)]),
     ep("POST", "/api/monitor", "postMonitor", "ops", "自動確認・自動再接続の停止／再開、または 1 回だけ確認", SETTINGS, "Monitor",
        request="MonitorPatch", example={"paused": True}, errors=[(400, E400)],
        notes="停止中はサーバーが ssh も DDS も叩かない。停止中もモード切替などの明示操作は実行できる。"),
