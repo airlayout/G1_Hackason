@@ -177,4 +177,4 @@ OpenCV で開けて 1ch/低彩度に見えたのは、Y8/Y16 系の **IR ノー�
 6. 標準ウェブカメラが列挙されなかった理由(物理接続 or 電力 or 別ポート)。
 7. `key_server`, `unitree-upgrade`, `nginx`(TCP 80)が何を提供しているか(中身未取得)。
 
-関連: [g1-safety/](g1-safety/), [unitree-g1-developer/40_lidar_Instructions.md](unitree-g1-developer/40_lidar_Instructions.md), [unitree-g1-developer/41_depth_camera_instruction.md](unitree-g1-developer/41_depth_camera_instruction.md)
+関連: [g1-safety/](../../Common/g1-safety/), [unitree-g1-developer/40_lidar_Instructions.md](../../Common/unitree-g1-developer/40_lidar_Instructions.md), [unitree-g1-developer/41_depth_camera_instruction.md](../../Common/unitree-g1-developer/41_depth_camera_instruction.md)
