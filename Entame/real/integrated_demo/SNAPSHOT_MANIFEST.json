@@ -444,7 +444,7 @@
     {
       "path": "g1-bottle-reaction/scripts/start-motiondecode-resident.sh",
       "source_sha256": "ed3f32e82ce6850f1bdd7bb89d6ed6045cb91e71039cae3a8d0cc557b9012ee3",
-      "integrated_sha256": "781105abeb60197885bb9f01402ec276127bb004346f1f756bdd3b92f4575b0e"
+      "integrated_sha256": "55485b29127b85a4a69f143d2c5f14efaec91191460ba0fca7642da52fbace11"
     },
     {
       "path": "g1-bottle-reaction/src/g1_bottle_reaction/game_vision/app.py",
@@ -465,7 +465,7 @@
   "checks": {
     "python_syntax": {
       "errors": [],
-      "count": 435
+      "count": 438
     },
     "motion_hashes": {
       "passed": 10

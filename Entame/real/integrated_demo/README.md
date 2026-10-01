@@ -54,15 +54,13 @@ export PYTHONPATH="$DEMO/motiondecode-test/external:$DEMO/g1-bottle-reaction/src
 
 MotionDecodeのdesktop用依存は`motiondecode-test/requirements.lock.txt`に保存しています。CycloneDDS同梱C libraryはLinux x86_64用で、Windows/aarch64へ流用しないこと。Windows offline検証はnumpy・pytest・MuJoCo 3.13.0のみで可能な範囲を実行しました。実機residentは元スクリプトがMuJoCo 3.1.6を厳密に要求します。desktop lockをG1へそのまま適用してはいけません。
 
-YOLO11n重みは固定Git snapshotに存在しません。ライセンスを確認後、操作PCで取得します（このコマンドは今回未実行）。
+YOLO11n重みはGit管理外ですが、元の`docs/G1_PERSON_YOLO.md`に公式release・サイズ・SHA256が記録されています。**YOLO WEIGHT RECONSTRUCTIBLE**。今回は公式URLから取得し、その記録と一致することを確認しました。モデルのload/inferenceは実行していません。
 
 ```bash
-mkdir -p "$DEMO/g1-bottle-reaction/.runtime/models"
-cd "$DEMO/g1-bottle-reaction/.runtime/models"
-"$G1_PYTHON" -c 'from ultralytics import YOLO; YOLO("yolo11n.pt")'
+"$G1_PYTHON" "$DEMO/setup/fetch_yolo.py"
 ```
 
-これは現在の配布物の取得であり、9/29実機使用重みとbyte一致を保証できません。正確な再現には当日の重みとSHA256が必要です。重みはGit管理外。Ultralyticsの[公式ライセンス](https://www.ultralytics.com/license)を確認し、AGPL-3.0の公開条件または適切なEnterprise契約を満たしてください。
+期待値は5,613,764 bytes、SHA256 `0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1`。固定v8.3.0公式releaseから取得して両方を検証し、相違時は書き込みません。重みはGit管理外。Ultralyticsの[公式ライセンス](https://www.ultralytics.com/license)を確認し、AGPL-3.0の公開条件または適切なEnterprise契約を満たしてください。
 
 motion CSVはChingmuの非商用研究・個人学習・prototyping条件で保存した10候補です。出典は[CMRobot/MotionDecode](https://huggingface.co/datasets/CMRobot/MotionDecode)、固定revisionは`988decc8724ad686ace4b003851506e694000acc`。`external/MotionDecode_LICENSE.md`を保持しています。商用配布・転売・競合datasetとしてのhostingは許可されていません。公開push前にはこの用途での再配布条件を確認してください。欠落した候補は`motiondecode-test/scripts/download_candidates.py`で固定revision・SHA256検証付きで取得できます（setup時のネットワーク取得。今回実行していません）。SDK/モデルはBSD-3-Clause、CycloneDDSは同梱EPL-2.0/EDL-1.0表示を保持。
 
@@ -84,7 +82,7 @@ cd "$DEMO/motiondecode-test"
 
 1. 会場・吊り下げ支持・補助者・非常停止・安全な旋回範囲を確認する。既存Arm writer、Wander、Patrol、relayの競合がないことを確認する。接続設定はローカル環境へ保存し、credentialをGitへ入れない。
 2. 両snapshotを同じ`integrated_demo`配置でG1側へ準備する。Python SDKは同梱`motiondecode-test/external`を使用し、PC2に適合するCycloneDDS/native librariesを準備する。配置・接続は別途承認された実機作業でのみ行う。
-3. 元resident起動手順はG1側`/tmp/motiondecode-current`にMotionDecodeコード、`/tmp/motiondecode-hold-deps`にMuJoCo 3.1.6等を要求する。既存`/home/unitree/work/unitree_sdk2/thirdparty/lib/aarch64`はplatform libraryとして必要。9/29の事前構築bundleがGitにないため、`restore-motiondecode-known-good.sh`は現状そのまま利用不可。手順だけから当日bundleを再現したとは扱わない。
+3. residentはG1側`/tmp/motiondecode-current`にMotionDecodeコード、`/tmp/motiondecode-hold-deps`にMuJoCo 3.1.6等を要求する。[setup/README.md](setup/README.md)の固定依存・native build・manifest生成手順でbundleを再構築する。SDK/native libraryは生成したcode内から解決する。original runtime bundle not archivedは既知制約であり、当日bundleとのbyte一致は保証しない。再構築は別のLinux aarch64/Python 3.8 build hostで行い、今回G1に接続しない。
 4. 当日のruntimeを別途準備・検証後、操作PCで`G1_SSH_TARGET`、`G1_SSH_CONTROL`、`G1_PYTHON`を設定し、`scripts/start-motiondecode-resident.sh`を実行する。strict Arm PID probe、READY、IDLE、weight 0、ownership safeを確認する。
 5. G1側では同梱`g1-bottle-reaction/patrol/lidar_guard_relay.py`、次に`patrol/locomotion_relay.py`を起動する。`PYTHONPATH`には同梱SDKを設定する。具体的な引数は[Patrol README](g1-bottle-reaction/patrol/README.md)を参照し、旧独立deploymentパスは同梱`patrol/`へ読み替える。guard-pathには同梱`patrol`ディレクトリを指定する。
 6. 操作PCでは次の有限Patrol統合経路を使用する。これは実機コマンドであり、今回実行していない。
@@ -94,10 +92,15 @@ cd "$DEMO/g1-bottle-reaction"
 bash scripts/check-demo-ready.sh
 "$G1_PYTHON" scripts/run_integrated_demo.py \
   --real-patrol --operator-approved-real-patrol --headless \
+  --duration 600 \
   --ssh-target "$G1_SSH_TARGET" --ssh-control "$G1_SSH_CONTROL"
 ```
 
-旧`start-integrated-demo.sh`は`--with-wander`経路で、固定snapshotに`scripts/g1-wander-reactive-mvp.py`が存在しません。実行不可の既知制約として保存しています。欠落実装を推測で補ったり、Patrolへ置き換えて挙動を変えたりしていません。
+**CANONICAL VALIDATED PATH**: `scripts/run_integrated_demo.py`のPatrol + Reaction + MotionDecode。`reaction_command()`は`--with-wander`を含まず、Patrol IPC pause/resumeを使い、preflightは`WANDER=OFF`を表示します。`docs/G1_INTEGRATED_DEMO_20260926.md`も実機検証済み構成をwander offと明記しています。
+
+**LEGACY / ALTERNATIVE PATH**: `scripts/start-integrated-demo.sh`は`--with-wander`を使う古い経路です。固定snapshotに`scripts/g1-wander-reactive-mvp.py`はありませんが、正規Patrol経路はそのファイルを参照しません。**Legacy Wander path is not part of the validated integrated patrol demo**。コードは削除せず、欠落を既知制約として保存し、push blockerから外しています。
+
+「3周成功」の正確な当日コマンド/logは固定SHAに保存されていません。supervisorの`patrol_command()`は`--loops 1`固定、Patrol READMEの直接起動例は`--loops 3`です。正規アーキテクチャは特定できますが、supervisorが3周実行したとは断定しません。loop数やruntimeロジックは変更していません。
 
 ## 終了方法・安全事項
 
@@ -105,8 +108,8 @@ bash scripts/check-demo-ready.sh
 
 ## 既知の制約
 
-- 固定SHAはコードsnapshotを保証しますが、当日のGit管理外bundle・venv・YOLO重みまでは含まれていません。完全な実機再現はBLOCKEDです。
+- 原bundle/venvは未保存ですが、sourceと固定依存から再構築するsetupを追加しました。実機とbyte単位の完全一致は未保証、aarch64でのbuild/import確認は今回SKIP。YOLOは元の記録hashとの一致を確認済みです。
 - Linux専用`resource`、Unix socket、CycloneDDS依存はWindowsで検証できません。一部MuJoCo距離比較にはOS間の微小数値差があり、閾値を変更していません。
 - 歴史資料の旧環境パス、任意のmotion生成ツールに必要なGVHMR/GMR/SMPL等はデモ実行依存ではありません。これらの生成ツールの外部依存は保存しています。
 - 過去検証資料へのリンクには、不要な生成物を除外したため開けないものがあります。必要なtrajectory・安全gateのstage_result・テストfixtureは保持しました。
-- Push・PR・mergeは今回禁止。公開権利の確認とLinux/実機環境の検証を別途行うまで実機実行可能と判断しないでください。
+- Push・PR・mergeは今回禁止。公開権利の個別確認は[PUBLIC_LICENSE_REVIEW.md](PUBLIC_LICENSE_REVIEW.md)を参照。Windowsでは元SHAでも再現する距離比較failureを**UPSTREAM KNOWN FAILURE**とし、統合のpush blockerから外しました。実機実行可能という保証は別の検証です。

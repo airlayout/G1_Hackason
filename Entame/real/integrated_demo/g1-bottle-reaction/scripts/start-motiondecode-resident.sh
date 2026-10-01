@@ -30,22 +30,22 @@ fi
 ssh_base=(ssh -T -o BatchMode=yes -o ConnectTimeout=3 -S "$control" -- "$target")
 "${ssh_base[@]}" /bin/bash -s -- \
   "$remote_root" "$remote_python" "$dependency_root" "$socket_path" \
-  "$log_path" <<'REMOTE'
+"$log_path" <<'REMOTE'
 set -euo pipefail
-root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 root=$1
 python=$2
 deps=$3
 socket=$4
 log=$5
 export PYTHONPATH="$deps:$root/scripts:$root/external"
-export LD_LIBRARY_PATH="/home/unitree/work/unitree_sdk2/thirdparty/lib/aarch64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export CYCLONEDDS_HOME="$root/external/cyclonedds"
+export LD_LIBRARY_PATH="$root/external/cyclonedds/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 require_file() { test -f "$1" || { echo "REQUIRED FILE MISSING: $1" >&2; exit 10; }; }
 require_dir() { test -d "$1" || { echo "REQUIRED DIRECTORY MISSING: $1" >&2; exit 10; }; }
 test -x "$python" || { echo "REQUIRED PYTHON MISSING/NOT EXECUTABLE: $python" >&2; exit 10; }
 require_dir "$deps/mujoco"
-require_dir /home/unitree/work/unitree_sdk2/thirdparty/lib/aarch64
+require_dir "$root/external/cyclonedds/lib"
 require_file "$root/scripts/resident_worker.py"
 require_file "$root/scripts/resident_worker_client.py"
 require_file "$root/scripts/inspect_arm_sdk_publishers.py"
