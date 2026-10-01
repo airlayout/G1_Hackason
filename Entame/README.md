@@ -68,5 +68,10 @@ git sparse-checkout set Common Entame
 
 ## 状態
 
+2026-09-29版の実機エンタメ統合デモ（Reaction・MotionDecode・Patrol）は
+[real/integrated_demo/README.md](real/integrated_demo/README.md) を参照してください。
+固定snapshotと必要資産を同梱しています。今回は実機未検証で、当日のGit管理外runtime
+bundle等の再現制約を記録しています。
+
 腕の定型モーション（SDK方式、`real/arm_wave_real.py`）は実機で"high wave"の動作を
 確認済み。ダンス・独自振り付け（lerobot方式）は未着手・未決定のまま。

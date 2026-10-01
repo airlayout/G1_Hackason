@@ -1,0 +1,23 @@
+# Local Python environment and caches
+.venv/
+.cache/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Runtime-only state
+*.lock
+
+# Local environment overrides and credentials
+.env
+.env.*
+!.env.example
+
