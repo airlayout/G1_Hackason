@@ -1,7 +1,8 @@
 # 03. 高レベル制御と低レベル制御 — 絶対に知っておくこと
 
 出典: 公式（`MotionSwitcherClient`、デバッグモード、`rt/lowcmd`）と、技術ブログ「Unitree G1 に 3 つめの動作モードがあるって知ってた？」（2026.07）。
-**ブログのみ（公式で未検証）**: ユーザ制御（`SwitchToUserCtrl`、`rt/user_lowcmd`）、`InternalFsmMode`。SDK は 2026/7 時点。
+**公式で確認済み（2026-10-01）**: ユーザ制御（`SwitchToUserCtrl`、`rt/user_lowcmd`）と `InternalFsmMode`（`LAST` / `PASSIVE` / `WALKRUN`）は、公式 `24_sport_services_interface.md`「User Development Mode」に記載がある。
+公式の注意: 歩行・走行から自前制御へ切り替えるときは、自前制御の最初と最後の動作を標準立位にする（さもないと制御を失う恐れ）。SDK は 2026/7 時点。
 **実機で動かす前に、公式ドキュメント・ファームウェア・周囲の安全を確認する。**
 
 ## 1. 3 つの制御
