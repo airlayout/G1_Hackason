@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from g1console.camera_proc import MockCameraCtl, SshCameraCtl, resolve_host
+from g1console.lidar_proc import MockLidarCtl, SshLidarCtl, forward_query
 from g1console.dds_catalog import SERVICES, TOPICS
 from g1console.replay import Replay
 from g1console.api_spec import openapi, render_yaml
@@ -36,6 +37,9 @@ SSH_CONNECT_FAILED = 255  # ssh が接続自体に失敗したときの終了コ
 CAMERAS = {"std": "標準カメラ", "d435i": "D435i（RGB）", "depth": "D435i（深度）"}  # camera_stream.py の --camera 名と揃える
 CAMERA_TIMEOUT_S = 5.0
 CAMERA_CHUNK = 16384
+LIDAR_TIMEOUT_S = 5.0
+LIDAR_MAX_BYTES = 4 * 1024 * 1024  # 想定は約 80 KB。上流が暴れても読み切らない
+LIDAR_HEADERS = ("X-Lidar-Seq", "X-Lidar-Points", "X-Lidar-Age-Ms")
 
 
 class SshHelper:
@@ -324,9 +328,12 @@ def view(snap: dict, name: str) -> dict:
     return {**head, "tabs": list(TABS), "state": view(snap, "state"), "joints": view(snap, "joints")}
 
 
-def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=None):
+def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=None, lidar_ctl=None, lidar_base=None):
     def camera_url():
         return camera_base or (settings.camera_base(resolve_host) if settings else None)
+
+    def lidar_url():
+        return lidar_base or (settings.lidar_base(resolve_host) if settings else None)
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code: int, ctype: str, data: bytes):
@@ -370,6 +377,10 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 self._json(200, {"enabled": bool(camera_url()), "cameras": CAMERAS})
             elif self.path == "/api/camera/status" and camera_ctl:
                 self._camera_ctl("status")
+            elif self.path == "/api/lidar/status" and lidar_ctl:
+                self._lidar_ctl("status")
+            elif self.path.split("?", 1)[0] == "/lidar" and lidar_ctl:
+                self._proxy_lidar()
             elif self.path == "/api/settings" and settings:
                 self._json(200, {"settings": settings.get(), "labels": LABELS})
             elif self.path.startswith("/camera/"):
@@ -399,6 +410,43 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 except (OSError, ValueError):
                     pass  # どちらかが切れただけ
 
+        def _proxy_lidar(self):
+            """Jetson の最新点群 1 フレームを中継する（ブラウザは同一オリジンで fetch できる）。"""
+            if hasattr(lidar_ctl, "frame"):  # 模擬
+                frame = lidar_ctl.frame()
+                if frame is None:
+                    return self._json(502, {"error": "lidar_stream が起動していません"})
+                body, points = frame
+                return self._lidar_reply(body, {"X-Lidar-Seq": int(time.time() * 10), "X-Lidar-Points": points, "X-Lidar-Age-Ms": 0})
+            base = lidar_url()
+            if not base:
+                return self._json(404, {"error": "lidar 未設定（設定タブで Jetson の IP を入力）"})
+            try:
+                with urllib.request.urlopen("%s/lidar%s" % (base, forward_query(self.path)), timeout=LIDAR_TIMEOUT_S) as up:
+                    body = up.read(LIDAR_MAX_BYTES + 1)
+                    heads = {k: up.headers.get(k) for k in LIDAR_HEADERS if up.headers.get(k)}
+            except OSError as exc:
+                return self._json(502, {"error": "lidar に届きません（起動しているか確認）: %s" % exc})
+            if len(body) > LIDAR_MAX_BYTES:
+                return self._json(502, {"error": "lidar の応答が大きすぎます"})
+            self._lidar_reply(body, heads)
+
+        def _lidar_reply(self, body: bytes, heads: dict):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            for k, v in heads.items():
+                self.send_header(k, str(v))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _lidar_ctl(self, action: str):
+            try:
+                self._json(200, lidar_ctl.call(action))
+            except (RuntimeError, subprocess.TimeoutExpired, OSError) as exc:
+                self._json(502, {"ok": False, "error": "lidar 操作に失敗しました: %s" % exc})
+
         def do_POST(self):
             if self.path == "/api/mode":
                 return self._post_mode()
@@ -408,6 +456,8 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 return self._post_scenario()
             if self.path in ("/api/camera/start", "/api/camera/stop") and camera_ctl:
                 return self._camera_ctl(self.path.rsplit("/", 1)[1])
+            if self.path in ("/api/lidar/start", "/api/lidar/stop") and lidar_ctl:
+                return self._lidar_ctl(self.path.rsplit("/", 1)[1])
             if self.path == "/api/monitor":
                 return self._post_monitor()
             if self.path == "/api/settings" and settings:
@@ -504,8 +554,9 @@ def main():
     monitor = Monitor(helper)
     monitor.start()
     camera_ctl = MockCameraCtl() if args.mock else SshCameraCtl(settings.ssh_target)
+    lidar_ctl = MockLidarCtl() if args.mock else SshLidarCtl(settings.ssh_target, lambda: settings.get()["lidar_port"])
     camera_base = args.camera_url.rstrip("/") if args.camera_url else None
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(helper, monitor, camera_base, settings, camera_ctl))
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(helper, monitor, camera_base, settings, camera_ctl, lidar_ctl))
     print("[console] http://127.0.0.1:%d (%s)" % (args.port, helper.backend))
     server.serve_forever()
 

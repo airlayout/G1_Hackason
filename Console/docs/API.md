@@ -27,6 +27,8 @@
 | POST | `/api/audio/volume` | postVolume | robot_write | 音量を設定し、読み戻して一致を確認する ⚠実機未検証 |
 | GET | `/api/cameras` | getCameras | read | カメラ一覧と、配信が設定済みか（映像は GET /camera/{name}） |
 | GET | `/api/camera/status` | getCameraStatus | read | camera_stream の起動状態と、映像デバイスを掴んでいるプロセス（foreign＝自前以外） |
+| GET | `/api/lidar/status` | getLidarStatus | read | lidar_stream（Jetson の点群配信）の起動状態 |
+| GET | `/lidar` | getLidar | read | lidar 点群の最新 1 フレーム（既定は間引き済み）。float32 little-endian の (x,y,z,intensity) の繰り返し。点数は X-Lidar-Points |
 | GET | `/api/dds` | getDds | read | DDS トピックと RPC サービスの台帳（表示済み／未実装／対象外） |
 | GET | `/api/buttons` | getButtons | read | 切り替えできるモード。POST /api/mode の id はここから選ぶ |
 | GET | `/api/features` | getFeatures | read | 機能ごとの implemented / verified（verified=false は実機で未確認） |
@@ -37,6 +39,8 @@
 | GET | `/openapi.yaml` | getOpenapiYaml | read | この API 定義（OpenAPI, YAML） |
 | POST | `/api/camera/start` | postCameraStart | settings | Jetson で camera_stream.py を起動（再起動はしない。他が掴んでいれば失敗しうる） |
 | POST | `/api/camera/stop` | postCameraStop | settings | camera_stream.py だけを停止（videohub など他のプロセスは止めない） |
+| POST | `/api/lidar/start` | postLidarStart | settings | Jetson で lidar_stream.py を起動（DDS を購読するだけ。再起動はしない） |
+| POST | `/api/lidar/stop` | postLidarStop | settings | lidar_stream.py だけを停止 |
 | POST | `/api/monitor` | postMonitor | settings | 自動確認・自動再接続の停止／再開、または 1 回だけ確認 |
 | POST | `/api/mode` | postMode | robot_motion | G1 のモード（FSM）を切り替える。**ロボットが動く** ⚠実機未検証 |
 | POST | `/api/audio/led` | postLed | robot_write | 頭部 LED の色を設定 ⚠実機未検証 |

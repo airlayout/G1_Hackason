@@ -73,10 +73,11 @@ SCHEMAS = {
                     ["features"]),
     "SettingsValues": obj({"dev_pc": S("開発用 PC の IP（表示・記録のみ）"), "jetson_host": S("Jetson の IP かホスト名（ssh とカメラの接続先）"),
                            "jetson_user": S("空なら ~/.ssh/config に任せる"), "jetson_key": S("ssh 秘密鍵のパス。空なら既定"),
-                           "g1_ip": S("G1 本体の IP（表示・記録のみ）"), "camera_port": I(minimum=1, maximum=65535)},
-                          ["dev_pc", "jetson_host", "jetson_user", "jetson_key", "g1_ip", "camera_port"]),
+                           "g1_ip": S("G1 本体の IP（表示・記録のみ）"), "camera_port": I(minimum=1, maximum=65535),
+                           "lidar_port": I(minimum=1, maximum=65535)},
+                          ["dev_pc", "jetson_host", "jetson_user", "jetson_key", "g1_ip", "camera_port", "lidar_port"]),
     "SettingsPatch": obj({"dev_pc": S("IP アドレスかホスト名。空文字で未設定"), "jetson_host": S(), "jetson_user": S(), "jetson_key": S(),
-                          "g1_ip": S(), "camera_port": I(minimum=1, maximum=65535)}, desc="指定した項目だけ変わる（全て任意）"),
+                          "g1_ip": S(), "camera_port": I(minimum=1, maximum=65535), "lidar_port": I(minimum=1, maximum=65535)}, desc="指定した項目だけ変わる（全て任意）"),
     "Settings": obj({"settings": ref("SettingsValues"), "labels": {"type": "object", "additionalProperties": S()}}, ["settings", "labels"]),
     "MonitorPatch": obj({"paused": B("true=停止 / false=再開"), "check": B("true=1 回だけ確認")}, desc="どちらか、または両方"),
     "Monitor": obj({"paused": B()}, ["paused"]),
@@ -115,6 +116,12 @@ ENDPOINTS = [
     ep("GET", "/api/cameras", "getCameras", "camera", "カメラ一覧と、配信が設定済みか（映像は GET /camera/{name}）", READ, "Cameras"),
     ep("GET", "/api/camera/status", "getCameraStatus", "camera", "camera_stream の起動状態と、映像デバイスを掴んでいるプロセス（foreign＝自前以外）", READ, None,
        errors=[(502, E502)]),
+    ep("GET", "/api/lidar/status", "getLidarStatus", "camera", "lidar_stream（Jetson の点群配信）の起動状態", READ, None, errors=[(502, E502)]),
+    ep("GET", "/lidar", "getLidar", "camera", "lidar 点群の最新 1 フレーム（既定は間引き済み）。float32 little-endian の (x,y,z,intensity) の繰り返し。点数は X-Lidar-Points", READ, None,
+       errors=[(404, "lidar 未設定（設定タブで Jetson の IP を入力）"), (502, "配信元に届かない。lidar_stream が起動しているか確認")],
+       content="application/octet-stream", ok_status="点群バイナリ（16 バイト × 点数）。X-Lidar-Seq / X-Lidar-Points / X-Lidar-Age-Ms ヘッダ付き",
+       notes="座標は livox_frame のまま（単位 m）。G1 の向きに対して傾いている可能性がある。"
+             "クエリ voxel（ボクセル幅 m、0〜1、0 で間引かない・既定 0.1）と max（上限点数 100〜30000・既定 5000）で間引きの強さを選べる。範囲外は無視して既定値になる。"),
     ep("GET", "/api/dds", "getDds", "dds", "DDS トピックと RPC サービスの台帳（表示済み／未実装／対象外）", READ, "Dds"),
     ep("GET", "/api/buttons", "getButtons", "ops", "切り替えできるモード。POST /api/mode の id はここから選ぶ", READ, "Buttons"),
     ep("GET", "/api/features", "getFeatures", "dds", "機能ごとの implemented / verified（verified=false は実機で未確認）", READ, "Features"),
@@ -129,6 +136,8 @@ ENDPOINTS = [
        request="SettingsPatch", example={"jetson_host": "192.168.123.164", "g1_ip": "192.168.123.161"}, errors=[(400, E400 + "（IP かホスト名以外、範囲外など。理由が error に入る）"), (500, "保存できない")]),
     ep("POST", "/api/camera/start", "postCameraStart", "camera", "Jetson で camera_stream.py を起動（再起動はしない。他が掴んでいれば失敗しうる）", SETTINGS, None, errors=[(502, E502)]),
     ep("POST", "/api/camera/stop", "postCameraStop", "camera", "camera_stream.py だけを停止（videohub など他のプロセスは止めない）", SETTINGS, None, errors=[(502, E502)]),
+    ep("POST", "/api/lidar/start", "postLidarStart", "camera", "Jetson で lidar_stream.py を起動（DDS を購読するだけ。再起動はしない）", SETTINGS, None, errors=[(502, E502)]),
+    ep("POST", "/api/lidar/stop", "postLidarStop", "camera", "lidar_stream.py だけを停止", SETTINGS, None, errors=[(502, E502)]),
     ep("POST", "/api/monitor", "postMonitor", "ops", "自動確認・自動再接続の停止／再開、または 1 回だけ確認", SETTINGS, "Monitor",
        request="MonitorPatch", example={"paused": True}, errors=[(400, E400)],
        notes="停止中はサーバーが ssh も DDS も叩かない。停止中もモード切替などの明示操作は実行できる。"),
@@ -175,6 +184,9 @@ def _operation(e):
     if e["request"]:
         op["requestBody"] = {"required": True, "content": {"application/json": {
             "schema": ref(e["request"]), "example": e["example"]}}}
+    if e["path"] == "/lidar":
+        op["parameters"] = [{"name": "voxel", "in": "query", "required": False, "schema": {"type": "number", "minimum": 0, "maximum": 1}},
+                            {"name": "max", "in": "query", "required": False, "schema": I(minimum=100, maximum=30000)}]
     op["responses"] = responses
     return op
 
