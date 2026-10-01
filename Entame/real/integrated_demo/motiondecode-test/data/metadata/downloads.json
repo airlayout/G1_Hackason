@@ -1,0 +1,82 @@
+[
+  {
+    "label": "1.7.6.2",
+    "path": "samples/1.7.Daily_Life_Behaviors/1.7.6.Home_And_Social_Light/1.7.6.2.Attention_Pointing_And_Gaze/DL_Attention_Pointing_And_Gaze_00001.csv",
+    "local": "data/motions/DL_Attention_Pointing_And_Gaze_00001.csv",
+    "revision": "988decc8724ad686ace4b003851506e694000acc",
+    "sha256": "3d099a1607c8ffaa5b9b819f01e2f62255415e0fc2ca0ed1d9de74266b87a11d",
+    "bytes": 639294
+  },
+  {
+    "label": "1.7.6.4",
+    "path": "samples/1.7.Daily_Life_Behaviors/1.7.6.Home_And_Social_Light/1.7.6.4.Gesture_Communication/DL_Gesture_Communication_00001.csv",
+    "local": "data/motions/DL_Gesture_Communication_00001.csv",
+    "revision": "988decc8724ad686ace4b003851506e694000acc",
+    "sha256": "c0652286c5ddab4269b6c305db26a36030ee154154319c3575b9249d7a5df07a",
+    "bytes": 2864533
+  },
+  {
+    "label": "1.7.6.5",
+    "path": "samples/1.7.Daily_Life_Behaviors/1.7.6.Home_And_Social_Light/1.7.6.5.Emotional_Expression/DL_Emotional_Expression_00001.csv",
+    "local": "data/motions/DL_Emotional_Expression_00001.csv",
+    "revision": "988decc8724ad686ace4b003851506e694000acc",
+    "sha256": "b47c3a19e97933c2e7f44af9ab7c7467e3576eb060dd407e74bc29479ee90299",
+    "bytes": 1821944
+  },
+  {
+    "label": "1.7.6.6",
+    "path": "samples/1.7.Daily_Life_Behaviors/1.7.6.Home_And_Social_Light/1.7.6.6.Call_Response_Attention_Switch/DL_Call_Response_Attention_Switch_00001.csv",
+    "local": "data/motions/DL_Call_Response_Attention_Switch_00001.csv",
+    "revision": "988decc8724ad686ace4b003851506e694000acc",
+    "sha256": "b93d4e4ac17f44f580a286911584fb5add9a83fe40c5a5b10026d01e1aea3704",
+    "bytes": 626124
+  },
+  {
+    "label": "1.10.2.4",
+    "path": "samples/1.10.Emotional_Expressions_and_Social_Behaviors/1.10.2.Negative_Emotional_Actions/1.10.2.4.Confusion/EESB_Confusion_00001.csv",
+    "local": "data/motions/EESB_Confusion_00001.csv",
+    "revision": "988decc8724ad686ace4b003851506e694000acc",
+    "sha256": "18a7132c3bc1afe690ed72645a0052b2dda21cc47c11d088dcb34d441e35e135",
+    "bytes": 960135
+  },
+  {
+    "label": "1.8.2.1",
+    "path": "samples/1.8.Social_and_Interpersonal_Interaction/1.8.2.Pointing_Gesture/1.8.2.1.Direction_Pointing/SII_Direction_Pointing_00001.csv",
+    "local": "data/motions/SII_Direction_Pointing_00001.csv",
+    "revision": "988decc8724ad686ace4b003851506e694000acc",
+    "sha256": "a6d6531fe94d6be1adba7c9dc1b27d9e02e1c8e2baba5ef2428eebd235511302",
+    "bytes": 784936
+  },
+  {
+    "label": "1.10.4.2",
+    "path": "samples/1.10.Emotional_Expressions_and_Social_Behaviors/1.10.4.Attention_Performance/1.10.4.2.Observing_Surroundings/EESB_Observing_Surroundings_00001.csv",
+    "local": "data/motions/EESB_Observing_Surroundings_00001.csv",
+    "revision": "988decc8724ad686ace4b003851506e694000acc",
+    "sha256": "6b0959a2aa0f9f6c28e368366df928d1e64bef2fe96efabdcf5631c124772609",
+    "bytes": 3580366
+  },
+  {
+    "label": "1.10.1.4",
+    "path": "samples/1.10.Emotional_Expressions_and_Social_Behaviors/1.10.1.Positive_Emotional_Actions/1.10.1.4.Excitement/EESB_Excitement_00001.csv",
+    "local": "data/motions/EESB_Excitement_00001.csv",
+    "revision": "988decc8724ad686ace4b003851506e694000acc",
+    "sha256": "114a0c3374b20eed24d1205c46e262956454dac35a76a5767c0eff9b54023319",
+    "bytes": 1100683
+  },
+  {
+    "label": "1.10.4.3",
+    "path": "samples/1.10.Emotional_Expressions_and_Social_Behaviors/1.10.4.Attention_Performance/1.10.4.3.Attentive_Listening/EESB_Attentive_Listening_00001.csv",
+    "local": "data/motions/EESB_Attentive_Listening_00001.csv",
+    "revision": "988decc8724ad686ace4b003851506e694000acc",
+    "sha256": "a35651f416d22402915b41f9226778f2c6365c69b64bcbf47de782f5544db17a",
+    "bytes": 920129
+  },
+  {
+    "label": "1.10.2.5",
+    "path": "samples/1.10.Emotional_Expressions_and_Social_Behaviors/1.10.2.Negative_Emotional_Actions/1.10.2.5.Frustration/EESB_Frustration_00001.csv",
+    "local": "data/motions/EESB_Frustration_00001.csv",
+    "revision": "988decc8724ad686ace4b003851506e694000acc",
+    "sha256": "3c9c6397c7523fa80fc65995f2d03aa2fe9d50bbb7d91da546db896d8eb0f662",
+    "bytes": 2010880
+  }
+]
