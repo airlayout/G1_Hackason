@@ -1,0 +1,939 @@
+<title>G1 テレオペ起動手順</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=BIZ+UDPGothic:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* レイアウト: 単一カラム。手順は左に番号レール、右に本文。コマンドは暗色ブロックで独立させる */
+:root{
+  --bg:#f3f6f8;
+  --surface:#ffffff;
+  --surface-2:#e7ecf1;
+  --fg:#16202a;
+  --fg-dim:#596877;
+  --fg-faint:#8795a4;
+  --line:#d2dae2;
+  --line-strong:#b4c0cc;
+  --accent:#1d5fa8;
+  --accent-soft:#e2edf9;
+  --warn:#9a4f0d;
+  --warn-soft:#fcefdc;
+  --warn-line:#e0b183;
+  --ok:#2b6349;
+  --ok-soft:#e0efe7;
+  --ok-line:#9cc7b2;
+  --code-bg:#1a2430;
+  --code-fg:#dde6ef;
+  --code-dim:#8fa3b6;
+  --code-line:#2e3d4d;
+
+  --display:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+  --body:"BIZ UDPGothic","Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1620;
+    --surface:#161f2a;
+    --surface-2:#1e2834;
+    --fg:#e3eaf1;
+    --fg-dim:#97a5b5;
+    --fg-faint:#6e7f90;
+    --line:#2a3542;
+    --line-strong:#3b4855;
+    --accent:#6fabe9;
+    --accent-soft:#182940;
+    --warn:#dfa358;
+    --warn-soft:#2f2418;
+    --warn-line:#5c4428;
+    --ok:#6cc39a;
+    --ok-soft:#15281f;
+    --ok-line:#2c4b3a;
+    --code-bg:#0a1118;
+    --code-fg:#d5dfe9;
+    --code-dim:#7b8ea1;
+    --code-line:#1f2b37;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1620;
+  --surface:#161f2a;
+  --surface-2:#1e2834;
+  --fg:#e3eaf1;
+  --fg-dim:#97a5b5;
+  --fg-faint:#6e7f90;
+  --line:#2a3542;
+  --line-strong:#3b4855;
+  --accent:#6fabe9;
+  --accent-soft:#182940;
+  --warn:#dfa358;
+  --warn-soft:#2f2418;
+  --warn-line:#5c4428;
+  --ok:#6cc39a;
+  --ok-soft:#15281f;
+  --ok-line:#2c4b3a;
+  --code-bg:#0a1118;
+  --code-fg:#d5dfe9;
+  --code-dim:#7b8ea1;
+  --code-line:#1f2b37;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--bg);
+  color:var(--fg);
+  font-family:var(--body);
+  font-size:15.5px;
+  line-height:1.85;
+  -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:860px;margin:0 auto;padding-inline:20px;padding-block:0 72px}
+
+/* ---- ヘッダ ---- */
+header{
+  border-bottom:2px solid var(--fg);
+  padding-block:44px 22px;
+  margin-bottom:34px;
+}
+.eyebrow{
+  font-family:var(--display);
+  font-size:11.5px;font-weight:700;
+  letter-spacing:.18em;
+  color:var(--accent);
+  margin:0 0 14px;
+}
+h1{
+  font-family:var(--display);
+  font-weight:900;
+  font-size:clamp(28px,6.4vw,42px);
+  line-height:1.2;
+  letter-spacing:-.01em;
+  margin:0 0 16px;
+  text-wrap:balance;
+}
+.lede{margin:0;color:var(--fg-dim);max-width:62ch}
+.meta{
+  display:flex;flex-wrap:wrap;gap:8px 26px;
+  margin-top:22px;
+  font-family:var(--mono);font-size:12px;
+  color:var(--fg-faint);
+}
+.meta b{color:var(--fg-dim);font-weight:400}
+
+/* ---- 共通ブロック ---- */
+h2{
+  font-family:var(--display);font-weight:700;
+  font-size:clamp(19px,3.6vw,23px);
+  line-height:1.35;margin:52px 0 4px;
+  text-wrap:balance;
+}
+h3{
+  font-family:var(--display);font-weight:700;
+  font-size:16px;margin:30px 0 6px;
+}
+p{margin:0 0 14px;max-width:66ch}
+ul,ol{margin:0 0 14px;padding-left:1.4em;max-width:66ch}
+li{margin-bottom:5px}
+strong{font-weight:700}
+code:not(pre code){
+  font-family:var(--mono);font-size:.86em;
+  background:var(--surface-2);
+  border:1px solid var(--line);
+  border-radius:3px;
+  padding:.1em .35em;
+  white-space:nowrap;
+}
+a{color:var(--accent)}
+
+/* ---- 概要の流れ図 ---- */
+.flow{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:4px;
+  padding:22px 20px;
+  margin:0 0 10px;
+}
+.flow ol{list-style:none;padding:0;margin:0;max-width:none;
+  display:flex;flex-direction:column;gap:0}
+.flow li{
+  display:grid;grid-template-columns:30px 1fr;gap:12px;
+  margin:0;padding-bottom:16px;position:relative;
+}
+.flow li:not(:last-child)::before{
+  content:"";position:absolute;left:14px;top:22px;bottom:0;
+  width:2px;background:var(--line-strong);
+}
+.flow .dot{
+  width:30px;height:30px;border-radius:50%;
+  background:var(--accent-soft);
+  border:2px solid var(--accent);
+  color:var(--accent);
+  font-family:var(--mono);font-size:12px;font-weight:600;
+  display:grid;place-items:center;
+  position:relative;z-index:1;
+}
+.flow .ftxt{padding-top:3px;min-width:0}
+.flow .ftxt b{font-family:var(--display);display:block}
+.flow .ftxt span{color:var(--fg-dim);font-size:13.5px}
+.flow li.manual .dot{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+.flow-key{
+  display:flex;flex-wrap:wrap;gap:6px 20px;
+  font-size:12.5px;color:var(--fg-dim);margin:14px 0 0;
+}
+.flow-key i{
+  display:inline-block;width:11px;height:11px;border-radius:50%;
+  border:2px solid var(--accent);background:var(--accent-soft);
+  margin-right:6px;vertical-align:-1px;
+}
+.flow-key i.m{border-color:var(--warn);background:var(--warn-soft)}
+
+/* ---- 手順 ---- */
+.step{
+  display:grid;grid-template-columns:52px 1fr;gap:18px;
+  padding-block:30px;
+  border-top:1px solid var(--line);
+}
+.step:first-of-type{border-top:2px solid var(--fg)}
+.num{
+  font-family:var(--mono);font-size:21px;font-weight:600;
+  color:var(--accent);
+  line-height:1.1;padding-top:4px;
+  font-variant-numeric:tabular-nums;
+}
+.sbody{min-width:0}
+.step h2{margin:0 0 10px;font-size:clamp(18px,3.4vw,22px)}
+.oneline{
+  background:var(--accent-soft);
+  border-left:3px solid var(--accent);
+  padding:11px 14px;
+  margin:0 0 16px;
+  font-size:14.5px;
+  max-width:none;
+}
+.oneline b{font-family:var(--display)}
+.who{
+  display:inline-block;
+  font-family:var(--mono);font-size:11px;
+  letter-spacing:.06em;
+  border:1px solid var(--line-strong);
+  border-radius:99px;
+  padding:1px 9px;
+  color:var(--fg-dim);
+  margin-bottom:12px;
+}
+.who.hand{border-color:var(--warn-line);color:var(--warn);background:var(--warn-soft)}
+.who.safe{border-color:var(--ok-line);color:var(--ok);background:var(--ok-soft)}
+
+/* ---- コマンド ---- */
+.cmd{margin:0 0 16px}
+.cmd-head{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:var(--code-line);
+  border-radius:4px 4px 0 0;
+  padding:6px 8px 6px 12px;
+}
+.cmd-head span{
+  font-family:var(--mono);font-size:11px;letter-spacing:.07em;
+  color:var(--code-dim);
+}
+.cmd-head button{
+  font-family:var(--mono);font-size:11px;
+  background:transparent;color:var(--code-fg);
+  border:1px solid var(--code-dim);border-radius:3px;
+  padding:3px 9px;cursor:pointer;
+}
+.cmd-head button:hover{background:rgba(255,255,255,.08)}
+.cmd-head button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cmd pre{
+  margin:0;background:var(--code-bg);color:var(--code-fg);
+  border-radius:0 0 4px 4px;
+  padding:14px;overflow-x:auto;
+  font-family:var(--mono);font-size:12.5px;line-height:1.7;
+}
+.cmd pre b{color:#8fd0a8;font-weight:400}
+
+/* ---- 結果・注意 ---- */
+.result{
+  background:var(--ok-soft);
+  border:1px solid var(--ok-line);
+  border-radius:4px;
+  padding:14px 16px;
+  margin:0 0 16px;
+}
+.result .rt{
+  font-family:var(--display);font-weight:700;font-size:13px;
+  color:var(--ok);margin:0 0 7px;
+}
+.result pre{
+  margin:0;font-family:var(--mono);font-size:12px;line-height:1.65;
+  overflow-x:auto;color:var(--fg);
+}
+.note{
+  border:1px solid var(--warn-line);
+  background:var(--warn-soft);
+  border-radius:4px;
+  padding:14px 16px;margin:0 0 16px;
+}
+.note .nt{
+  font-family:var(--display);font-weight:700;font-size:13px;
+  color:var(--warn);margin:0 0 6px;
+}
+.note p{margin:0 0 8px;max-width:none}
+.note p:last-child{margin:0}
+.danger{border-width:2px}
+
+/* 公式ドキュメントからの引用 */
+.quote{
+  border-left:3px solid var(--line-strong);
+  background:var(--surface-2);
+  border-radius:0 4px 4px 0;
+  padding:12px 15px;
+  margin:0 0 14px;
+}
+.quote p{
+  margin:0 0 6px;max-width:none;
+  font-family:var(--mono);font-size:12.5px;line-height:1.7;
+  color:var(--fg);
+}
+.quote .src{
+  margin:0;font-family:var(--body);font-size:12px;
+  color:var(--fg-faint);
+}
+.quote .src a{color:var(--fg-dim)}
+
+/* ---- 表 ---- */
+.tablewrap{overflow-x:auto;margin:0 0 16px;border:1px solid var(--line);border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:440px}
+th,td{text-align:left;padding:9px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+th{
+  background:var(--surface-2);
+  font-family:var(--display);font-weight:700;font-size:12.5px;
+  white-space:nowrap;
+}
+tr:last-child td{border-bottom:none}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ---- 用語 ---- */
+.gloss{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:4px;
+  padding:4px 20px 18px;
+}
+.gloss dt{
+  font-family:var(--display);font-weight:700;font-size:14.5px;
+  margin-top:16px;
+}
+.gloss dd{margin:3px 0 0;color:var(--fg-dim);font-size:14px;max-width:62ch}
+
+footer{
+  margin-top:56px;padding-top:20px;
+  border-top:1px solid var(--line);
+  font-size:12.5px;color:var(--fg-faint);
+}
+footer p{max-width:none}
+
+@media (max-width:560px){
+  .step{grid-template-columns:1fr;gap:0}
+  .num{padding-top:0;margin-bottom:2px;font-size:18px}
+  .flow li{grid-template-columns:26px 1fr;gap:10px}
+  .flow .dot{width:26px;height:26px;font-size:11px}
+  .flow li:not(:last-child)::before{left:12px;top:19px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">UNITREE G1 × META QUEST 3</p>
+  <h1>G1 テレオペ起動手順</h1>
+  <p class="lede">電源を入れた状態から、Quest 3 のコントローラで G1 の両腕を動かせるようになるまで。実際に流したコマンドと、そのとき返ってきた値をそのまま載せています。エンジニアでなくても順に追えるように、各手順に「これは何をしているか」を付けました。</p>
+  <div class="meta">
+    <span><b>実施日</b> 2026-10-01</span>
+    <span><b>機体</b> G1 29自由度</span>
+    <span><b>設置</b> 吊り下げ（足は接地）</span>
+    <span><b>所要</b> 約25分</span>
+  </div>
+</header>
+
+<div class="note danger">
+  <p class="nt">最初に読んでください</p>
+  <p>これは<strong>実機の腕を動かす手順</strong>です。腕は人を傷つけられる速度と力を持っています。次の4つは省略できません。</p>
+  <ul style="margin-bottom:0">
+    <li>G1 を<strong>吊り下げまたは座位で支持</strong>する。立たせたまま行わない</li>
+    <li><strong>腕の可動範囲に人と物を置かない</strong></li>
+    <li><strong>電源をすぐ切れる位置に人を配置</strong>する</li>
+    <li>初めてのときは<strong>2人以上</strong>で行う</li>
+  </ul>
+</div>
+
+<h2>全体の流れ</h2>
+<p>やることは大きく4つです。<strong>つなぐ → 確かめる → ロボットの制御権を空ける → テレオペを起動する</strong>。このうち3番目が一番つまずきます。</p>
+
+<div class="flow">
+  <ol>
+    <li><span class="dot">1</span><span class="ftxt"><b>有線 LAN でつなぐ</b><span>ハブ経由でも可。無線では行わない</span></span></li>
+    <li><span class="dot">2</span><span class="ftxt"><b>疎通と機体構成を確かめる</b><span>ロボットは動かない</span></span></li>
+    <li><span class="dot">3</span><span class="ftxt"><b>腕を動かせる状態か確かめる</b><span>ロボットは動かない</span></span></li>
+    <li><span class="dot">4</span><span class="ftxt"><b>arm_sdk が使えるか試す</b><span>左肩が約3°だけ動く</span></span></li>
+    <li><span class="dot">5</span><span class="ftxt"><b>ai を解除してデバッグ状態にする</b><span>バランス制御が止まる</span></span></li>
+    <li class="manual"><span class="dot">6</span><span class="ftxt"><b>リモコンでダンピングに入れる</b><span>人の手でしかできない。最大の関門</span></span></li>
+    <li><span class="dot">7</span><span class="ftxt"><b>テレオペを起動する</b><span>両腕がゼロ姿勢へ動く</span></span></li>
+    <li class="manual"><span class="dot">8</span><span class="ftxt"><b>Quest 3 をつなぐ</b><span>ブラウザで開いて VR に入る</span></span></li>
+    <li><span class="dot">9</span><span class="ftxt"><b>追従を開始する</b><span>ここから腕が手に付いてくる</span></span></li>
+  </ol>
+  <p class="flow-key"><span><i></i>PC で実行</span><span><i class="m"></i>人の手で行う</span></p>
+</div>
+
+<h2>使う環境</h2>
+<div class="tablewrap">
+<table>
+<tr><th>項目</th><th>値</th></tr>
+<tr><td>作業用フォルダ</td><td class="n">/home/ubuntu/g1-starter-kit</td></tr>
+<tr><td>Python（専用環境）</td><td class="n">/home/ubuntu/miniforge3/envs/tv/bin/python</td></tr>
+<tr><td>有線の口（PC側）</td><td class="n">enp129s0 → 192.168.123.200</td></tr>
+<tr><td>ロボットの制御ユニット</td><td class="n">192.168.123.161</td></tr>
+<tr><td>PC の無線（Quest 用）</td><td class="n">192.168.0.167</td></tr>
+<tr><td>Quest 3</td><td class="n">192.168.0.247</td></tr>
+</table>
+</div>
+<p>コマンドはすべて作業用フォルダの中で実行します。最初に一度だけ移動しておきます。</p>
+
+<div class="cmd">
+  <div class="cmd-head"><span>作業フォルダへ移動</span><button type="button" data-copy>コピー</button></div>
+  <pre>cd /home/ubuntu/g1-starter-kit</pre>
+</div>
+
+<div class="step">
+  <div class="num">01</div>
+  <div class="sbody">
+    <h2>有線 LAN をつなぐ</h2>
+    <span class="who safe">ロボットは動きません</span>
+    <p class="oneline"><b>一言で：</b>ロボットと PC を LAN ケーブルでつなぎ、電気的につながったことを確かめます。</p>
+    <p>腕の制御は 1秒間に250回のやり取りをします。無線だと遅れのばらつきで動きが乱れ、しかも「止めろ」という指令も同じ道を通るため、切れたときに止められません。だから<strong>有線でしか行いません</strong>。ハブを挟んでも問題ありません。</p>
+
+    <div class="cmd">
+      <div class="cmd-head"><span>リンクの確認</span><button type="button" data-copy>コピー</button></div>
+      <pre>ip -br addr show enp129s0
+ethtool enp129s0 | grep -E "Link detected|Speed"</pre>
+    </div>
+
+    <div class="result">
+      <p class="rt">成功のしるし</p>
+      <pre>enp129s0  UP  192.168.123.200/24
+    Speed: 1000Mb/s
+    Link detected: yes</pre>
+    </div>
+
+    <div class="note">
+      <p class="nt">ハブを使うときの注意</p>
+      <p><code>Link detected: yes</code> が出ても、それは<strong>ハブとつながっただけ</strong>かもしれません。ロボットまで届いているかは次の手順の ping で判断します。実際にこの日は、ロボットの電源が入るまで <code>carrier=0</code>（信号なし）のままでした。</p>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">02</div>
+  <div class="sbody">
+    <h2>疎通と機体構成を確かめる</h2>
+    <span class="who safe">ロボットは動きません</span>
+    <p class="oneline"><b>一言で：</b>ロボットに声が届くか、そして「腕が何本の軸でできた機体か」を自動で判定します。</p>
+    <p>G1 には腕の軸数が23本のものと29本のものがあり、<strong>間違えると腕の動きの計算が合いません</strong>。手首の軸数で決まるので、人が目で数えるより機体に聞いたほうが確実です。</p>
+
+    <div class="cmd">
+      <div class="cmd-head"><span>疎通・構成の確認</span><button type="button" data-copy>コピー</button></div>
+      <pre>./scripts/preflight.sh</pre>
+    </div>
+
+    <div class="result">
+      <p class="rt">成功のしるし（この日の実測）</p>
+      <pre>[OK] リンク UP・静的IP あり
+192.168.123.161  ping応答  制御演算ユニット
+192.168.123.164  ping応答  開発演算ユニット PC2
+[OK] 受信 3120 件 / 1040 Hz
+     左腕 7軸 / 右腕 7軸 / 腰 3軸
+[OK] 機体構成の判定: --arm=G1_29</pre>
+    </div>
+    <p><strong>1040 Hz</strong> は、ロボットが自分の状態を1秒に1040回報告しているという意味です。この数字が出れば通信は健全です。</p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">03</div>
+  <div class="sbody">
+    <h2>腕を動かせる状態か確かめる</h2>
+    <span class="who safe">ロボットは動きません</span>
+    <p class="oneline"><b>一言で：</b>「腕のモーターに電気が入っているか」と「指令を送る道が空いているか」の2点を見ます。</p>
+    <p>ここが手順全体でいちばん大事です。この2つが揃っていないと、<strong>指令を送っても腕は1ミリも動かないのに、画面には「送信成功」と出ます</strong>。原因が分からず延々と悩むのは、ほぼこれです。</p>
+
+    <div class="cmd">
+      <div class="cmd-head"><span>状態の確認</span><button type="button" data-copy>コピー</button></div>
+      <pre>/home/ubuntu/miniforge3/envs/tv/bin/python tools/mode_check.py --iface enp129s0</pre>
+    </div>
+
+    <div class="result">
+      <p class="rt">この日の実測</p>
+      <pre>1. モーションコントローラ
+   'ai' が稼働中 → 規格上の経路: rt/arm_sdk
+2. 腕のモータ
+   有効（mode=1）</pre>
+    </div>
+
+    <div class="tablewrap">
+    <table>
+      <tr><th>見るところ</th><th>必要な状態</th><th>この日</th></tr>
+      <tr><td>腕のモーター</td><td class="n">mode=1（電気が入っている）</td><td class="n" style="color:var(--ok)">OK</td></tr>
+      <tr><td>指令を送る道</td><td class="n">空いている</td><td class="n" style="color:var(--warn)">ふさがっていた</td></tr>
+    </table>
+    </div>
+
+    <p>道がふさがっていたのは、ロボット自身の歩行制御プログラム（<code>ai</code>）が同じ道を<strong>1秒に1000回使い続けていた</strong>からです。ここにテレオペが1秒250回で割り込んでも、1000回のほうに上書きされて消えます。だから次の手順で道を空けます。</p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">04</div>
+  <div class="sbody">
+    <h2>もう1本の道が使えるか試す</h2>
+    <span class="who hand">左肩が約3°動きます</span>
+    <p class="oneline"><b>一言で：</b>「ai を止めずに腕だけ借りる」近道が、この機体で通用するかを最小の動きで試します。</p>
+    <p>規格上は <code>rt/arm_sdk</code> という別の道があり、歩行制御を止めずに腕だけ操作できるはずです。使えるなら手順5・6を飛ばせます。ただし機体によって応じないことがあるので、<strong>左肩を0.05ラジアン（約3°）だけ動かして実際に確かめます</strong>。</p>
+
+    <div class="cmd">
+      <div class="cmd-head"><span>arm_sdk が効くかの試験</span><button type="button" data-copy>コピー</button></div>
+      <pre>/home/ubuntu/miniforge3/envs/tv/bin/python tools/armsdk_probe.py --iface enp129s0 --yes</pre>
+    </div>
+
+    <div class="result">
+      <p class="rt">この日の結果：効かなかった</p>
+      <pre>対象: L_ShoulderPitch  現在 -0.1090 rad → 目標 -0.0590 rad
+  ① 制御権 0→1   weight=1.00  実測=-0.1090  偏差=+0.0000
+  ② 目標へ        weight=1.00  実測=-0.1090  偏差=+0.0000
+
+指令した変位 : +0.0500 rad  /  実測の最大変位: +0.0000 rad
+❌ arm_sdk が効いていません。</pre>
+    </div>
+
+    <p>「腕を貸してください」と正しく頼み、ロボットも受け取ったように見えるのに、<strong>実際には1ミリも動きませんでした</strong>（実測変位 0.0000）。この機体はこの近道に応じません。よって残る道は1つだけで、手順5へ進みます。</p>
+
+    <div class="note">
+      <p class="nt">この試験を省かないこと</p>
+      <p>省くと、あとで「腕が動かない」ときに<strong>原因が機体なのか設定なのか分からなくなります</strong>。3°の動きで切り分けられるので、毎回やる価値があります。</p>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">05</div>
+  <div class="sbody">
+    <h2>ai を解除してデバッグ状態にする</h2>
+    <span class="who hand">バランス制御が止まります</span>
+    <p class="oneline"><b>一言で：</b>ロボット自身の歩行制御を止めて、指令の道をテレオペに譲ります。</p>
+
+    <div class="note danger">
+      <p class="nt">実行前に必須</p>
+      <p>これを行うと<strong>バランス制御が止まります</strong>。吊り下げか座位で支持されていることを必ず確認してください。また実行直後に<strong>モーターの電気が切れて脱力します</strong>。リモコンを手元に用意し、機体に手を添えられる位置にいてください。</p>
+    </div>
+
+    <div class="cmd">
+      <div class="cmd-head"><span>ai の解除</span><button type="button" data-copy>コピー</button></div>
+      <pre>/home/ubuntu/miniforge3/envs/tv/bin/python tools/mode_check.py --iface enp129s0 --release</pre>
+    </div>
+
+    <div class="result">
+      <p class="rt">成功のしるし</p>
+      <pre>'ai' を解除します ...
+解除しました。デバッグ状態です（rt/lowcmd が効きます）。</pre>
+    </div>
+
+    <div class="note">
+      <p class="nt">1回目は失敗しました</p>
+      <p>この日の1回目は、6回試してすべて <code>status=3104</code>（送ったが返事が来ない）で失敗し、「リモコン側で操作してください」と出ました。<strong>もう一度同じコマンドを流したら成功しました。</strong> 散発的に失敗する通信なので、失敗しても1〜2回やり直してください。失敗しても何も起きません。</p>
+    </div>
+
+    <p>解除後の状態を見ると、狙いどおり道は空きましたが、モーターは全部切れていました。</p>
+    <div class="result">
+      <p class="rt">解除直後の実測</p>
+      <pre>rt/lowcmd = 0.0 Hz        ← 道が空いた（狙いどおり）
+腕mode=[0] 脚=[0]         ← 全モーターが脱力（想定内）</pre>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">06</div>
+  <div class="sbody">
+    <h2>リモコンでダンピングに入れる</h2>
+    <span class="who hand">人の手でしかできません</span>
+    <p class="oneline"><b>一言で：</b>脱力したモーターに、リモコンの操作で電気を入れ直します。</p>
+    <p><strong>これはソフトからは絶対にできません。</strong> ロボット側の安全設計で、リモコン操作でしか電気を入れられないようになっています。指令に「電気を入れて」と書いても無視されます。</p>
+
+    <div class="tablewrap">
+    <table>
+      <tr><th>やり方</th><th>結果</th></tr>
+      <tr><td>リモコンでダンピング（FSM 1）に入れる</td><td style="color:var(--ok)">これだけが有効</td></tr>
+      <tr><td>指令に <code>mode=1</code> と書いて送る</td><td style="color:var(--warn)">効かない</td></tr>
+      <tr><td>プログラムから <code>Damp()</code> を呼ぶ</td><td style="color:var(--warn)">解除中は応答しない</td></tr>
+    </table>
+    </div>
+
+    <div class="note danger">
+      <p class="nt">ここが最大の関門 ── 時間との勝負です</p>
+      <p>ダンピングに入れても、<strong>指令が届かない状態が続くと数十秒でまた脱力します</strong>。この日は実際に、ダンピングを確認してから手作業でテレオペを起動するまでの約30秒の間に脱力し、起動が弾かれました。</p>
+      <p>そこで<strong>ダンピングを検知した瞬間に自動でテレオペを起動する</strong>やり方に変えました。これで待ち時間がゼロになり、一度で成功しました。</p>
+    </div>
+
+    <p>監視スクリプトを動かしておき、その状態でリモコンを操作します。検知すると自動で手順7が始まります。</p>
+
+    <div class="cmd">
+      <div class="cmd-head"><span>監視を開始して待つ（この状態でリモコンを操作）</span><button type="button" data-copy>コピー</button></div>
+      <pre>setsid nohup /home/ubuntu/miniforge3/envs/tv/bin/python -u \
+  watch_and_launch.py teleop.log &gt; watch.log 2&gt;&amp;1 &lt; /dev/null &amp;</pre>
+    </div>
+
+    <div class="result">
+      <p class="rt">この日の実測</p>
+      <pre>WAIT   リモコンでダンピングに入れてください
+STATE  t=   0.0s  arm_mode=[0]  lowcmd=free
+STATE  t=  71.7s  arm_mode=[1]  lowcmd=free   ← 入った
+DETECT t=71.7s -&gt; teleop 起動
+LAUNCHED</pre>
+    </div>
+    <p>リモコンの操作から<strong>0.05秒以内</strong>にテレオペが起動しました。</p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">07</div>
+  <div class="sbody">
+    <h2>テレオペを起動する</h2>
+    <span class="who hand">両腕がゼロ姿勢へ動きます</span>
+    <p class="oneline"><b>一言で：</b>Quest とロボットをつなぐ本体プログラムを立ち上げます。</p>
+    <p>手順6の自動起動を使わず、人が直接起動する場合はこちらです。普通はこの形で使います。</p>
+
+    <div class="cmd">
+      <div class="cmd-head"><span>通常の起動（ターミナルでキー操作する）</span><button type="button" data-copy>コピー</button></div>
+      <pre>./scripts/teleop.sh</pre>
+    </div>
+    <p>この形では、立ち上がったターミナルで <code>r</code>（追従開始）、<code>q</code>（終了）を押して操作します。<strong>終了は必ず <code>q</code>。</strong> <code>Ctrl+C</code> だと腕が戻らないまま止まります。</p>
+
+    <p>この日は自動化のために、キーの代わりにプログラムから指示を送れる形で起動しました。</p>
+    <div class="cmd">
+      <div class="cmd-head"><span>この日実際に使った起動（プログラムから操作する形）</span><button type="button" data-copy>コピー</button></div>
+      <pre>./scripts/teleop.sh --ipc --headless</pre>
+    </div>
+
+    <div class="result">
+      <p class="rt">成功のしるし ── 2つの関門を通過</p>
+      <pre>[OK]  デバッグ状態 → rt/lowcmd を使います
+[OK]  腕モータ有効（mode=1）
+
+  機体         : G1_29
+  指令トピック : rt/lowcmd
+
+Quest のブラウザで開く URL:
+  https://192.168.0.167:8012/?ws=wss://192.168.0.167:8012</pre>
+    </div>
+
+    <p>この2つの <code>[OK]</code> が出れば、手順3〜6が正しく効いたという証明です。どちらかが欠けていると、ここで止まって理由を教えてくれます。</p>
+
+    <div class="note">
+      <p class="nt">起動直後の動き</p>
+      <p><strong>両腕がゆっくりゼロ姿勢へ動きます。</strong> 速度は毎秒2ラジアンに制限してあります（この制限を入れないと、起動した瞬間に両腕が高速で振られます）。可動範囲に人や物がないことを必ず確認してください。</p>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">08</div>
+  <div class="sbody">
+    <h2>Quest 3 をつなぐ</h2>
+    <span class="who hand">ヘッドセットの操作</span>
+    <p class="oneline"><b>一言で：</b>Quest のブラウザで PC の画面を開き、VR モードに入ります。</p>
+    <p>Quest 側にアプリを入れる必要はありません。<strong>ブラウザだけで動きます</strong>（開発者モードも不要です）。Quest と PC が同じ無線ネットワークにいることが条件です。</p>
+
+    <ol>
+      <li>Quest を PC と同じ WiFi につなぐ</li>
+      <li><strong>Meta Quest ブラウザ</strong>で手順7に表示された URL を開く</li>
+      <li>証明書の警告が出たら「<strong>詳細設定</strong>」→「<strong>アクセスする</strong>」（自己署名証明書なので正常です）</li>
+      <li>G1 の方を向いて Meta ボタン長押し →「<strong>ビューをリセット</strong>」</li>
+      <li>ページの「<strong>Virtual Reality</strong>」ボタンを押し、権限をすべて許可する</li>
+      <li><strong>G1 を直接目で見られる位置に立つ。</strong>ヘッドセットには周囲の現実（パススルー）が映るだけで、<strong>G1 のカメラ映像は映りません</strong></li>
+    </ol>
+
+    <div class="note">
+      <p class="nt">ページを開くだけでは足りません</p>
+      <p>「Virtual Reality」ボタンを押して<strong>没入ビューに入るまで、頭と手の位置は送られません</strong>。ここを飛ばすと「つながっているのに腕が動かない」になります。</p>
+    </div>
+
+    <div class="note">
+      <p class="nt">ヘッドセットに G1 のカメラ映像は映りません</p>
+      <p>「Virtual Reality」ボタンを押しても、見えるのは<strong>パススルー（自分の周囲の現実）だけ</strong>です。ロボット視点の映像は出ません。</p>
+      <p>理由は、カメラ映像を送るにはロボット内蔵のもう1台のコンピュータ（PC2）で<strong>画像サービスを別に起動する必要がある</strong>からです。この手順では起動していません。実際、テレオペ起動時のログにこう出ています。</p>
+      <div class="quote">
+        <p>WARNING  Request to 192.168.123.164:60000 timed out or no response, using local config.</p>
+        <p class="src">この日の teleop 起動ログ。<code>192.168.123.164</code> が PC2 で、画像サービスが応答していないという意味です。</p>
+      </div>
+      <p>公式ドキュメントでも、映像を見るには実機では画像サービスを手動で起動すること、そして <code>https://192.168.123.164:60001</code> を開いてカメラのプレビューを確認できることが案内されています。</p>
+      <div class="quote">
+        <p>&ldquo;the robot&rsquo;s first-person view in the headset&rdquo; ... in physical deployment: must be manually started on PC2</p>
+        <p class="src">出典: <a href="https://github.com/unitreerobotics/xr_teleoperate">unitreerobotics/xr_teleoperate</a> README</p>
+      </div>
+      <p>そのため、<strong>この構成では G1 を自分の目で直接見ながら操作します。</strong>G1 が見える位置に立ってください。手順4の「G1 の方を向いてビューをリセット」が大事なのもこのためです。</p>
+    </div>
+
+    <div class="note danger">
+      <p class="nt">映像が無くても腕は動きます ── 頭とコントローラの相対位置で決まります</p>
+      <p>映像が映らないので「まだ何も起きていない」と感じますが、<strong>姿勢データはすでに送られています</strong>。この直後の手順09で追従を開始すると、すぐに腕が動き始めます。</p>
+      <p>そして重要なのは、ロボットの腕の目標が<strong>「ヘッドセットから見てコントローラがどこにあるか」という相対位置で決まる</strong>ことです。公式の既定は頭の向きを基準にする方式で、リリースノートにこう書かれています。</p>
+      <div class="quote">
+        <p>&ldquo;use head-yaw-relative arm reference by default&rdquo;</p>
+        <p class="src">出典: <a href="https://github.com/unitreerobotics/xr_teleoperate">unitreerobotics/xr_teleoperate</a> リリースノート（v1.6）。この手順で使っているキットでは、向き基準だと操作中によそを向くと左右がズレるため、<strong>頭の位置を基準にする方式</strong>（<code>arm_reference_mode="head_position"</code>）に変更してあります。</p>
+      </div>
+      <p>どちらの方式でも、結果として次のことが起きます。</p>
+      <ul>
+        <li><strong>手を動かしていなくても、頭が動けば腕の目標が変わります。</strong>振り向く・しゃがむ・歩く・立ち上がる、すべて腕の動きになります</li>
+        <li>操作中は<strong>立ち位置と頭の高さをなるべく保つ</strong>こと。見回したいときは、手を体の前で止めたまま、ゆっくり動かす</li>
+        <li>コントローラは<strong>顔の前〜やや横</strong>に保つこと。ヘッドセットのカメラから見えない位置（真横・背後・体で隠れる位置）に入ると追従が止まります</li>
+      </ul>
+      <p>開始前の姿勢合わせについて、公式はこう書いています。次の手順09の注意と同じ趣旨です。</p>
+      <div class="quote">
+        <p>&ldquo;Align your arm to the robot&rsquo;s initial pose to avoid sudden movements at start.&rdquo;</p>
+        <p class="src">出典: <a href="https://github.com/unitreerobotics/xr_teleoperate">unitreerobotics/xr_teleoperate</a> README。終了時についても &ldquo;position the robot&rsquo;s arms close to the initial pose before pressing q to exit&rdquo; と案内されています。</p>
+      </div>
+    </div>
+
+    <p>届いているかは、通信量を見れば分かります。</p>
+    <div class="cmd">
+      <div class="cmd-head"><span>Quest からの通信を確認</span><button type="button" data-copy>コピー</button></div>
+      <pre>ss -tn | grep :8012</pre>
+    </div>
+    <div class="result">
+      <p class="rt">この日の実測</p>
+      <pre>192.168.0.247 から 7本の接続が確立
+受信 約26.7 KB/秒（3秒で80KB）で継続中  ← 姿勢が流れている</pre>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">09</div>
+  <div class="sbody">
+    <h2>追従を開始する</h2>
+    <span class="who hand">ここから腕が手に付いてきます</span>
+    <p class="oneline"><b>一言で：</b>「いまから手の動きをまねして」という合図を出します。</p>
+
+    <div class="note danger">
+      <p class="nt">合図を出す前に ── 腕の位置を合わせてください</p>
+      <p>追従が始まった瞬間、腕の速度上限が<strong>毎秒2ラジアンから30ラジアンへ上がります</strong>。つまりコントローラがロボットの手の位置から離れていると、<strong>その差を埋めるために腕が高速で動きます</strong>。</p>
+      <p>この日のロボットの腕は、<strong>両肘が約68〜70°曲がって前腕が前向き、右腕は内側に約47°捻れた</strong>姿勢でした。コントローラをその位置・向きに合わせてから開始しました。</p>
+      <p>合わせるのは手だけではありません。手順08で説明したとおり腕の目標は<strong>頭から見た手の相対位置</strong>で決まるので、<strong>開始したときの立ち位置と頭の高さを、そのまま保って操作を始めてください</strong>。合図を出した直後に屈んだり振り向いたりすると、手を動かしていなくても腕が動きます。</p>
+    </div>
+
+    <p>ターミナルで起動した場合は <code>r</code> を押すだけです。プログラムから送る場合は次のようにします。</p>
+
+    <div class="cmd">
+      <div class="cmd-head"><span>追従開始（r に相当）</span><button type="button" data-copy>コピー</button></div>
+      <pre>python - &lt;&lt;'EOF'
+import zmq, uuid
+ctx = zmq.Context.instance()
+req = ctx.socket(zmq.REQ)
+req.connect("ipc://@xr_teleoperate_data.ipc")
+req.send_json({"reqid": str(uuid.uuid4()), "cmd": "CMD_START"})
+print(req.recv_json())
+EOF</pre>
+    </div>
+
+    <div class="result">
+      <p class="rt">成功のしるし</p>
+      <pre>{'status': 'ok', 'msg': 'ok'}
+heartbeat: {'START': True, 'STOP': False, 'READY': True}</pre>
+    </div>
+
+    <h3>本当に追従しているかの確認</h3>
+    <p>8秒間コントローラを動かして、腕の14関節それぞれがどれだけ動いたかを測りました。</p>
+    <div class="result">
+      <p class="rt">この日の実測 ── 全14関節が反応</p>
+      <pre>指令レート    240 Hz
+左 肩Pitch   15.2°      右 肩Pitch   27.0°
+左 肩Roll     4.1°      右 肩Roll    11.1°
+左 肩Yaw      9.0°      右 肩Yaw      4.8°
+左 肘         0.2°      右 肘         3.3°
+左 手首Roll   7.1°      右 手首Roll  11.3°
+左 手首Pitch 10.1°      右 手首Pitch  9.3°
+左 手首Yaw   12.6°      右 手首Yaw   14.6°
+
+腕トルク最大 8.44 Nm    脚トルク最大 9.93 Nm
+→ 追従しています</pre>
+    </div>
+    <p>脚のトルクが開始前の 0.26 Nm から 9.93 Nm に上がりますが、これは正常です。テレオペは脚も含む全29関節を固定しているので、腕を動かすと吊り下げの機体が揺れ、脚がそれに抵抗します。脚の能力に対しては十分小さい値です。</p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">10</div>
+  <div class="sbody">
+    <h2>止めるとき</h2>
+    <span class="who safe">安全な終了</span>
+    <p class="oneline"><b>一言で：</b>両腕を初期姿勢へ戻してから、きれいに終了させます。</p>
+    <p>ターミナルで起動した場合は <code>q</code> を押します。<strong><code>Ctrl+C</code> は使わないでください</strong> ── 腕が戻らないまま制御が切れます。</p>
+    <p>止める前に、<strong>腕を初期姿勢の近くまで戻しておくと安全です</strong>。公式ドキュメントも同じことを案内しています。</p>
+    <div class="quote">
+      <p>&ldquo;position the robot&rsquo;s arms close to the initial pose before pressing q to exit&rdquo;</p>
+      <p class="src">出典: <a href="https://github.com/unitreerobotics/xr_teleoperate">unitreerobotics/xr_teleoperate</a> README</p>
+    </div>
+
+    <div class="cmd">
+      <div class="cmd-head"><span>終了（q に相当）</span><button type="button" data-copy>コピー</button></div>
+      <pre>python - &lt;&lt;'EOF'
+import zmq, uuid
+ctx = zmq.Context.instance()
+req = ctx.socket(zmq.REQ)
+req.connect("ipc://@xr_teleoperate_data.ipc")
+req.send_json({"reqid": str(uuid.uuid4()), "cmd": "CMD_STOP"})
+print(req.recv_json())
+EOF</pre>
+    </div>
+    <p>送ると<strong>両腕が約5秒かけて初期姿勢へ戻ってから</strong>停止します。</p>
+
+    <div class="result">
+      <p class="rt">この日の停止結果</p>
+      <pre>応答 {'status': 'ok', 'msg': 'ok'}
+
+rt/lowcmd     0.0 Hz        ← 誰も指令していない
+腕mode=[0] 脚mode=[0]       ← 脱力（終了時の既定）
+腕トルク 0.19 Nm / 脚 0.44 Nm ← 無負荷
+帰還後  左肘 +76.1°  右肘 +63.2°  ← 初期姿勢付近へ復帰
+teleop プロセス停止・ポート8012 解放</pre>
+    </div>
+
+    <div class="note">
+      <p class="nt">今回の構成では VR 内の緊急停止が使えません</p>
+      <p>右コントローラの A ボタンでの終了と、両スティック押し込みの緊急ダンピングは、別の起動方法（<code>--motion</code>）のときだけ有効です。この機体はそれが使えないため、<strong>止める手段は PC 側からの終了操作だけ</strong>です。最終手段は電源です。</p>
+      <p>その代わり、<strong>スティックが歩行指令になることもありません</strong>。脚が勝手に踏み出す心配はない構成です。</p>
+    </div>
+
+    <p>なお<strong>終了するたびにモーターは脱力に戻ります</strong>。次に動かすときは手順6のダンピングからやり直してください。</p>
+  </div>
+</div>
+
+<h2>この日つまずいたこと</h2>
+<p>すべて実際に起きたことです。同じところで止まったら、ここを見てください。</p>
+
+<div class="tablewrap">
+<table>
+<tr><th>症状</th><th>原因と対処</th></tr>
+<tr>
+  <td>ケーブルをつないだのにロボットが見つからない</td>
+  <td>ハブとつながって <code>Link detected: yes</code> になっていただけ。<strong>ロボットの電源が入るまで信号は来ません</strong>。ping で判断する</td>
+</tr>
+<tr>
+  <td>解除が6回連続で失敗（<code>status=3104</code>）</td>
+  <td>通信が散発的に失敗する。<strong>同じコマンドをもう一度流す</strong>と通った。失敗しても何も起きない</td>
+</tr>
+<tr>
+  <td>ダンピングに入れたのに、起動すると「モータが無効」で弾かれる</td>
+  <td>指令が届かない間に<strong>数十秒で脱力し直している</strong>。人の手で起動するまでの時間がデッドタイム。検知と同時に自動起動させる</td>
+</tr>
+<tr>
+  <td>テレオペが「ポートが使用中」で起動できない</td>
+  <td>Quest の到達確認ツール（<code>quest_check</code>）が同じポート 8012 を握っていた。<strong>両者は同時に動かせません</strong></td>
+</tr>
+<tr>
+  <td>デバッグ状態だとリモコンのダンピングが効かない</td>
+  <td>この日は効くまで何度か操作が必要だった。<strong>解除のやり直しと、リモコン操作の再試行</strong>で通る</td>
+</tr>
+<tr>
+  <td>ヘッドセットに G1 のカメラ映像が出ない</td>
+  <td><strong>異常ではありません。</strong>映像にはロボット側 PC2 の画像サービスが別途必要で、この手順では起動していない。パススルーで G1 を直接見ながら操作する。映像を使う場合は <code>https://192.168.123.164:60001</code> でプレビューを確認してから</td>
+</tr>
+<tr>
+  <td>手を動かしていないのに腕が動く</td>
+  <td>腕の目標が<strong>頭から見た手の相対位置</strong>で決まるため。振り向く・しゃがむ・歩くと腕が動く。立ち位置と頭の高さを保つ</td>
+</tr>
+</table>
+</div>
+
+<h2>追加した安全装置</h2>
+<p>前日、<strong>テレオペ稼働中に有線 LAN が抜け、つなぎ直した瞬間に全29関節が一斉に最大の力で動いて大きな音が出る</strong>という事故が起きました。原因を調べて、再発しないようにしてあります。</p>
+
+<h3>なぜ起きたか</h3>
+<p>テレオペは起動時に全29関節の位置を記録し、そこへ戻そうとする力をかけ続けます。ケーブルが抜けている間も<strong>届かない指令を1秒250回送り続け</strong>、その間ロボットの手足は脱力して重力で垂れていきます。つなぎ直した瞬間、<strong>抜ける前の古い位置</strong>へ強い力で引き戻そうとして、全関節が同時に跳ねました。腕の速度制限も、比較する実測値が古いまま止まっていたため働きませんでした。</p>
+
+<h3>どう直したか</h3>
+<p>ロボットからの報告が<strong>0.2秒途切れたら、指令の送信を止めてプログラムを強制終了する</strong>ようにしました。つなぎ直しても自動では復帰しません。復帰させると同じ事故が起きるからです。人が状態を確認してから起動し直す形にしてあります。</p>
+<p>実機なしで動作を確かめられる試験も用意しました。</p>
+
+<div class="cmd">
+  <div class="cmd-head"><span>安全装置の動作試験（ロボット不要）</span><button type="button" data-copy>コピー</button></div>
+  <pre>/home/ubuntu/miniforge3/envs/tv/bin/python tools/state_watchdog_selftest.py</pre>
+</div>
+
+<div class="result">
+  <p class="rt">試験結果</p>
+<pre>✅ 鮮度が新しい間は送信される（誤発火しない）
+✅ 途絶で強制終了する（終了コード 1）
+✅ 途絶を知らせるメッセージが出る
+✅ 送信を止めてから落ちている
+結果: PASS</pre>
+</div>
+
+<p><strong>いまテレオペ中に有線が抜けても、0.2秒でプログラムが止まるので跳ねません。</strong></p>
+
+<h2>用語</h2>
+<dl class="gloss">
+  <dt>ai（モーションコントローラ）</dt>
+  <dd>ロボットに最初から入っている歩行・バランス制御のプログラム。これが動いている間は指令の道を占有するため、テレオペと共存できません。</dd>
+
+  <dt>デバッグ状態</dt>
+  <dd>ai を止めて、外部から直接指令を送れるようにした状態。バランス制御は働かないので、必ず支持した状態で使います。</dd>
+
+  <dt>ダンピング（FSM 1）</dt>
+  <dd>モーターに電気が入り、動きに抵抗する状態。位置を保つわけではないので、手足は重力でゆっくり垂れます。テレオペを始めるにはこの状態が必要です。</dd>
+
+  <dt>ゼロトルク（FSM 0）</dt>
+  <dd>モーターの電気が切れて完全に脱力した状態。<strong>この状態では何を送っても腕は動かないのに、送信は成功と表示されます。</strong></dd>
+
+  <dt>kp（ゲイン）</dt>
+  <dd>目標の位置へどれだけ強く引き戻すかの強さ。腕は80、脚は300に設定されています。数字が大きいほど、位置がずれているときに強い力が出ます。</dd>
+
+  <dt>Hz（ヘルツ）</dt>
+  <dd>1秒あたりの回数。ロボットの報告は1040 Hz、テレオペの指令は250 Hz です。</dd>
+
+  <dt>Nm（ニュートンメートル）</dt>
+  <dd>関節にかかっている力の大きさ。この日の最大は腕8.44、脚9.93で、どちらも余裕のある値でした。</dd>
+</dl>
+
+<footer>
+  <p>2026-10-01 実施。G1 29自由度・吊り下げ設置での記録です。機体ごとに <code>arm_sdk</code> の挙動が異なるため、手順4の試験結果によって以降の流れが変わります。安全に関する記述は省略せずに実行してください。</p>
+</footer>
+
+</div>
+
+<script>
+document.querySelectorAll("button[data-copy]").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    var pre = btn.closest(".cmd").querySelector("pre");
+    var text = pre.innerText;
+    var done = function(){
+      var old = btn.textContent;
+      btn.textContent = "コピーしました";
+      setTimeout(function(){ btn.textContent = old; }, 1600);
+    };
+    try {
+      navigator.clipboard.writeText(text).then(done, function(){ select(pre); });
+    } catch (e) {
+      select(pre);
+    }
+  });
+});
+function select(pre){
+  try {
+    var r = document.createRange();
+    r.selectNodeContents(pre);
+    var s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(r);
+  } catch (e) {}
+}
+</script>
