@@ -24,10 +24,13 @@ G1 がエレベーター乗り場の呼びボタンを押す動作を、シミ�
   - `scene_spec.py` — 設定を、箱とボタンの一覧（pelvis 座標）にする。呼びボタンの点灯の状態（`CallButtonState`）
   - `j1gen_bridge.py` — J1-gen/common を `j1gen_common` という別名で読み込む
   - `config.py` — 設定ファイルの読み込み
+  - `realism.py` — 評価セット realistic の乱し（深度・カラー・関節のノイズ、遅れ、揺れなど）
+  - `viz.py` — 画像の見せ方（深度に色を付ける）
 - `sim/mujoco/` — MuJoCo 版（`mujoco_hall.py` がシーンを作る、`view_hall.py` で見る・確かめる、
-  `g1_sim_server.py` = 模擬 G1。実機と同じ DDS + ZMQ の口でシーンを見せ、判定する）
+  `g1_sim_server.py` = 模擬 G1。実機と同じ DDS + ZMQ の口でシーンを見せ、判定する、
+  `sample_images.py` = サンプルの画像を作る）
 - `sim/isaac/` — Isaac Sim 版（`isaac_hall.py` が乗り場を作る、`isaac_world.py` が G1・照明・カメラを足して世界を組み立てる、
-  `run.sh` → `view_hall_isaac.py` で見る・確かめる）
+  `run.sh` → `view_hall_isaac.py` で見る・確かめる、`sample_images_isaac.sh` = サンプルの画像を作る）
 - `real/` — 実機用（まだ無い）
 - `tests/` — テスト
 

@@ -39,12 +39,14 @@ class IsaacRobot(Robot):
     name = "isaac"
     base_enabled = False
 
-    def __init__(self, scene_cfg: dict[str, Any], contest_cfg: dict[str, Any], device: str = "cuda:0"):
+    def __init__(self, scene_cfg: dict[str, Any], contest_cfg: dict[str, Any], device: str = "cuda:0",
+                 overview: bool = False):
         from isaac_world import PHYSICS_DT, build_world
 
         self._physics_dt = PHYSICS_DT
         self.w = build_world(scene_cfg, device, gains_cfg=contest_cfg["gains"], cameras=True,
-                             head_data_types=("rgb", "distance_to_image_plane"), overview=False, new_stage=True)
+                             head_data_types=("rgb", "distance_to_image_plane"), overview=overview,
+                             new_stage=True)
         self.scene = self.w.scene
         names = list(self.w.robot.joint_names)
         missing = [n for n in JOINT_NAMES if n not in names]
