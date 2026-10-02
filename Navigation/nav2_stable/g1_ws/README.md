@@ -75,7 +75,7 @@ ros2 topic echo /odom --once   # x が増えていく、twist.linear.x=0.1 が�
 `g1_navigation/`(Nav2設定+疑似データでの動作確認)を実際にNav2フルスタックで動かし、
 2件の不具合を発見・解消したうえで、`NavigateToPose`によるGoal到達を実際に確認できた
 （Nav2自身のログで`Reached the goal!` / `Goal succeeded`）。詳細は
-[../Planning.md](../Planning.md) と [../g1_navigation/README.md](../g1_navigation/README.md) を参照。
+[../Planning.md](../Planning.md) と [src/g1_navigation/README.md](src/g1_navigation/README.md) を参照。
 
 1. **`EnableNavigation(true)`直後のcmd_timeout誤爆(修正済み)**: Nav2はGoal計画に
    数百ms〜数秒かかるが、有効化と同時にcmd_timeoutのカウントを始めていたため、
