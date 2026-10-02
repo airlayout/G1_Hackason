@@ -42,7 +42,7 @@ tools/patrol_ctl.sh save    # yaml に書き、そのまま読み込む（再起
 ⚠️ **巡回は `bridge_status` が `NAVIGATING` でないと `start` を断る。**
 `READY` は「準備完了」であって走行許可ではない（`enable_navigation` がまだ）。
 ⚠️ 巡回中に RViz から Goal を送ると**巡回のほうが退く**（`bt_navigator` は Goal を
-1件しか持てないため）。設計と検証は [../findings/patrol_mode.md](../findings/patrol_mode.md)。
+1件しか持てないため）。設計と検証は [findings/patrol_mode.md](../../../findings/patrol_mode.md)。
 
 SDK側プロセス(`g1_sdk_bridge_mock_server`)は別途起動しておくこと。
 
@@ -56,7 +56,7 @@ SDK側プロセス(`g1_sdk_bridge_mock_server`)は別途起動しておくこと
 | `g1_cmd_router`のIPC接続・状態遷移 | ✅ 確認(3件の不具合を発見、うち2件修正・1件は運用上の注意点として記録) |
 | Goal到達(ロボットが実際に動いてゴールに着く) | ✅ **達成**。`Reached the goal!` / `Goal succeeded`を確認 |
 
-**発見した不具合**(詳細は[../README.md](../README.md)「Nav2統合dry-run」参照):
+**発見した不具合**(詳細は[nav2_stable/README.md](../../../README.md)「Nav2統合dry-run」参照):
 
 1. `EnableNavigation(true)`直後のcmd_timeout誤爆 → **修正済み**(g1_sdk_bridge_cpp / g1_sdk_bridge両方)
 2. D-14デッドバンドがNav2のrotate-to-heading時の微小角速度(0.02 rad/s)を常時ゼロに切り捨て、

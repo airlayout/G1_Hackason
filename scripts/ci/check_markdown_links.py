@@ -16,6 +16,9 @@ from pathlib import Path
 
 # 棚上げ中のフォルダと外部クローンは対象外
 EXCLUDED = ("IsaacSim_Env/", "SimEnv3D/", "G1_HuggingFace/")
+# 外部から取り込んだコード（vendor/ の下）の文書も対象外。元のリポジトリにある画像・動画・別のパッケージへの
+# リンクなので、このリポジトリでは切れているのが正常（例: Navigation/nav2_stable/vendor/fast_lio_localization_humanoid）
+EXCLUDED_PARTS = ("/vendor/",)
 
 LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 
@@ -24,7 +27,17 @@ def tracked_markdown() -> list[Path]:
     out = subprocess.run(
         ["git", "ls-files", "*.md"], capture_output=True, text=True, check=True
     ).stdout.split()
-    return [Path(p) for p in out if not p.startswith(EXCLUDED)]
+    return [Path(p) for p in out if not p.startswith(EXCLUDED) and not any(x in f"/{p}" for x in EXCLUDED_PARTS)]
+
+
+def looks_like_path(target: str) -> bool:
+    """リンクの行き先が、ファイルやフォルダのパスらしいか。
+
+    「[m](G1の機体半径)」（単位の [m] のあとに、かっこ書きの説明）のように、リンクではない文も
+    [..](..) の形になる。ファイルやフォルダへのリンクは、ふつう「/」か「.」（拡張子）を含むので、
+    どちらも含まないものはリンクとみなさない。
+    """
+    return "/" in target or "." in target
 
 
 def tracked_paths() -> set[str]:
@@ -56,7 +69,7 @@ def main() -> int:
         text = md.read_text(encoding="utf-8", errors="replace")
         for match in LINK.finditer(text):
             target = match.group(2).split("#")[0].strip()
-            if not target or target.startswith(("http://", "https://", "mailto:")):
+            if not target or target.startswith(("http://", "https://", "mailto:")) or not looks_like_path(target):
                 continue
             total += 1
             resolved = (md.parent / target).as_posix().rstrip("/")
