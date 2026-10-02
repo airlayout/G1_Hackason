@@ -118,7 +118,8 @@ def view(model, data, hall: HallMujoco) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--scene", default="elevator_hall.yaml", help="シーンの設定（configs/ 基準）")
+    ap.add_argument("--scene", default="elevator_prod.yaml",
+                    help="シーンの設定（configs/ 基準）。elevator_prod.yaml = 本番に似た乗り場、elevator_hall.yaml = 前の盤")
     ap.add_argument("--png", help="画像を保存する（パスの先頭。_<カメラ名>.png を付けて保存）")
     ap.add_argument("--press", help="このボタンを外から押して確かめる（up / down）")
     ap.add_argument("--force", type=float, default=6.0, help="--press で押す力 [N]")

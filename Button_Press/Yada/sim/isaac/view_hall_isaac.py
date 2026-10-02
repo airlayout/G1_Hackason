@@ -5,7 +5,7 @@
     bash Button_Press/Yada/sim/isaac/run.sh --headless --press up --png _local/button_press_yada/isaac_pressed
 
 G1 は IK（J1-gen の Pinocchio）と同じ公式 URDF（g1_29dof_rev_1_0）から読み込み、pelvis をワールドに固定する。
-関節は configs/elevator_hall.yaml の initial_pose_deg の姿勢に保つ（歩行も腕の制御もまだ無いため）。
+関節はシーンの設定（既定は configs/elevator_prod.yaml）の initial_pose_deg の姿勢に保つ（歩行も腕の制御もまだ無いため）。
 """
 
 from __future__ import annotations
@@ -19,7 +19,8 @@ from pathlib import Path
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Isaac Sim のエレベーター乗り場のシーン")
-parser.add_argument("--scene", default="elevator_hall.yaml", help="シーンの設定（configs/ 基準）")
+parser.add_argument("--scene", default="elevator_prod.yaml",
+                    help="シーンの設定（configs/ 基準）。elevator_prod.yaml = 本番に似た乗り場、elevator_hall.yaml = 前の盤")
 parser.add_argument("--png", default="", help="画像を保存する（パスの先頭。_<カメラ名>.png を付けて保存）")
 parser.add_argument("--press", default="", help="このボタンをばねの目標を変えて押し、沈み量と点灯を確かめる（up / down）")
 parser.add_argument("--max-steps", type=int, default=0, help="画面で見るとき、この物理ステップ数で終了する（0 なら閉じるまで）")

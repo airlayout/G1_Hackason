@@ -168,6 +168,8 @@ def add_hall(spec: Any, scene: HallScene, robot_cfg: dict[str, Any] | None = Non
         j = body.add_joint(name=button_joint(b.name), type=mujoco.mjtJoint.mjJNT_SLIDE, axis=[1.0, 0.0, 0.0])
         j.range = [0.0, b.travel]
         j.limited = mujoco.mjtLimited.mjLIMITED_TRUE
+        # 沈む量の止まりも、接触と同じ硬さにする（既定の柔らかさだと、6 N で押すと止まりを 2 mm 以上越えた）
+        j.solref_limit = CONTACT_SOLREF
         _set_scalar_or_poly(j, "stiffness", b.stiffness)
         _set_scalar_or_poly(j, "damping", b.damping)
         j.springref = 0.0
