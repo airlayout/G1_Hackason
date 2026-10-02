@@ -14,8 +14,15 @@ $P Button_Press/Yada/tools/trouble_log.py push     # GitHub に送る
 $P Button_Press/Yada/tools/trouble_log.py list     # 一覧
 ```
 
-`Button_Press/Yada/tools/trouble_log.py` が無いブランチでは、評価環境のブランチ（`Dev/ButtonPress_Yada`）から
-取り込むか、GitHub のこのブランチに、`eval_env_log/` の下へ直接ファイルを足してもよい（1 件 = 1 ファイル、
+`Button_Press/Yada/tools/trouble_log.py` が無いブランチでも、ブランチを切り替えずに、このブランチに置いた写し
+（一番上の `trouble_log.py`）を取り出して使える（リポジトリの中で実行する）:
+
+```bash
+git fetch origin log/eval-env && git show origin/log/eval-env:trouble_log.py > /tmp/trouble_log.py
+python /tmp/trouble_log.py add
+```
+
+スクリプトを使わずに、GitHub のこのブランチの `eval_env_log/` の下へ、直接ファイルを足してもよい（1 件 = 1 ファイル、
 ファイル名は `日時_書いた人_分類_ランダムな4文字.md` のように英数字だけにする。下の項目をそろえる）。
 
 ## 1 件のファイルの中身
