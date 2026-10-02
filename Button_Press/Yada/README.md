@@ -31,6 +31,7 @@ G1 がエレベーター乗り場の呼びボタンを押す動作を、シミ�
   `sample_images.py` = サンプルの画像を作る）
 - `sim/isaac/` — Isaac Sim 版（`isaac_hall.py` が乗り場を作る、`isaac_world.py` が G1・照明・カメラを足して世界を組み立てる、
   `run.sh` → `view_hall_isaac.py` で見る・確かめる、`sample_images_isaac.sh` = サンプルの画像を作る）
+- `tools/trouble_log.py` — 評価環境で困ったことを記録する（どのブランチからでも書ける。ログはブランチ `log/eval-env`）
 - `real/` — 実機用（まだ無い）
 - `tests/` — テスト
 

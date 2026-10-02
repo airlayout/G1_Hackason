@@ -233,6 +233,9 @@ def run(args: argparse.Namespace, sim: str, make_robot: Callable, parallel: bool
                                "ablation": bool(args.ablation), "summary": summary,
                                "results": [r.to_dict() for r in results]}, ensure_ascii=False, indent=2))
     print(f"[eval] 保存した: {out}")
+    if any(r.outcome == "error" for r in results):
+        print("[eval] エージェントのエラーがあった。評価環境の側の問題だと思ったら、記録してほしい: "
+              "python Button_Press/Yada/tools/trouble_log.py add")
     if getattr(args, "report", False):
         from contest.report import REPORT_DIR, build_report, load_results
 
