@@ -1,4 +1,4 @@
-"""コンテストの部分（contest/）のテスト。"""
+"""評価環境（contest/）のテスト。"""
 
 from __future__ import annotations
 

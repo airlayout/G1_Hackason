@@ -77,6 +77,10 @@ class Observation:
     q: np.ndarray  # (29,) 関節の角度 [rad]
     dq: np.ndarray  # (29,) 関節の速度 [rad/s]
     t: float  # 試行の開始からの時間 [秒]
+    # 腰（pelvis）の IMU の姿勢 (w, x, y, z)。実機の lowstate の imu_state.quaternion と同じ（重力の向きが分かる）
+    imu_quat: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0, 0.0]))
+    # 画像を撮った時刻（試行の開始から [秒]）。画像の遅れがあると t より前になる
+    image_t: float = 0.0
 
 
 @dataclass

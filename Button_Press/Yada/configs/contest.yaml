@@ -1,4 +1,4 @@
-# Button_Press / Yada：エレベーターのボタン押しコンテストの設定（contest/ が読む）。
+# Button_Press / Yada：エレベーターのボタン押しの評価環境の設定（contest/ と模擬 G1 が読む）。
 # 角度は rad、長さは m、時間は秒。
 
 # 1 試行の制限時間
@@ -18,6 +18,13 @@ gains:
   wrist: {kp: 40.0, kd: 1.5}
   # 下半身（シミュレーションでは腰を固定しているので、脚を初期の姿勢に保つだけ）
   legs: {kp: 200.0, kd: 5.0}
+
+# 実機の arm_sdk で、Unitree の内蔵コントローラが腕の重力を補償するか（シミュレーションでの仮定）。
+# ⚠️ 実機では未確認（J1-gen の configs/arm.yaml にも「未確認」とある）。実機日に、重力補償なしの指令で腕が
+#    どれだけ下がるかを lowstate で測って決める。模擬 G1（sim/mujoco/g1_sim_server.py）と Python の API
+#    （contest/robots/mujoco_robot.py）の両方がこの値を使う（2 つで結果が食い違わないように）。
+#    false: 補償なし（PD だけ。腕は重さの分だけ下がる）。true: 補償あり（J1-gen の模擬ロボットと同じ仮定）
+arm_sdk_gravity_compensation: false
 
 # ランナーの安全のための処理（シミュレーションと実機で同じ）
 safety:
@@ -47,3 +54,54 @@ instructions:
     - "▼のボタンを押してください"
     - "下の階に行くボタンを押して"
     - "Press the down button."
+
+# 評価セット（evaluate.py --set）。basic = 上の randomize だけ。realistic = randomize に加えて、実機に近づける乱し（realism）
+# を入れる。乱しは基本の条件とは別の乱数で決めるので、同じ seed なら盤の配置などは basic と同じになる（乱しの影響だけを比べられる）
+sets:
+  basic: {realism: false}
+  realistic: {realism: true}
+
+# 実機に近づける乱し。範囲は [最小, 最大] の一様分布、数 1 つは ± その値の一様分布。
+# ⚠️ どれも目安（実機で測った値ではない）。実機日に測って直す
+realism:
+  # 頭カメラの深度（RealSense D435 の近似）。ノイズの標準偏差は距離の 2 乗に比例する（D435 の仕様は 2 m で 2% 以内
+  # → 1 m で約 10 mm）。むらは空間的につながっている（ステレオの照合の窓の大きさのため）
+  depth:
+    sigma_at_1m_m: [0.004, 0.012]
+    # 穴（測れない画素）の割合と、物の縁（深度が急に変わるところ）で測れなくなる確率
+    hole_ratio: [0.0, 0.03]
+    edge_hole_prob: 0.5
+    edge_jump_m: 0.03
+  # 頭カメラのカラー: 画素ごとのノイズ（0〜255 の標準偏差）と、明るさの倍率
+  color:
+    noise_sigma: [1.0, 4.0]
+    gain: [0.85, 1.15]
+  # 頭カメラの取り付けの誤差（シミュレーションのカメラだけをずらす。エージェントが使う robot.yaml の値はずらさない）
+  camera_mount:
+    xyz_m: 0.005
+    rpy_deg: 1.5
+  # 遅れ: 画像（撮ってから届くまで）、画像のコマ数、上半身の指令（送ってから効くまで）
+  latency:
+    image_s: [0.04, 0.12]
+    image_fps: [12.0, 30.0]
+    command_s: [0.0, 0.02]
+  # 関節のセンサ（lowstate）のノイズの標準偏差
+  joint_sensor:
+    q_sigma_rad: 0.0005
+    dq_sigma_rad_s: 0.01
+  # モータ: PD の強さのばらつき（関節ごと）、回転子の見かけの慣性（armature）、関節の摩擦。
+  # armature と摩擦は IsaacLab の G1 の設定（unitree.py: 腕 0.001〜0.03、摩擦 0.03）を目安にした
+  motors:
+    kp_scale: [0.9, 1.1]
+    armature: [0.001, 0.03]
+    friction_nm: [0.0, 0.1]
+  # 体の揺れ（立ってバランスを取っているときのふらつきの近似）。腰（pelvis）を、ゆっくりした正弦波の和で動かす
+  sway:
+    amp_xy_m: [0.002, 0.006]
+    amp_z_m: [0.0, 0.002]
+    amp_rot_deg: [0.2, 0.8]
+    freq_hz: [0.2, 1.0]
+  # 立ち位置のずれ（乗り場に対する、ロボットの位置と向き）
+  stance:
+    xy_m: 0.015
+    yaw_deg: 3.0

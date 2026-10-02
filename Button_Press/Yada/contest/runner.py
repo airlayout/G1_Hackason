@@ -6,6 +6,15 @@
 - timeout     制限時間内に点灯しなかった
 - gave_up     エージェントが done を返したが、点灯していない
 - error       エージェントが例外を出した、または出力の形が違う
+
+どこで失敗したか（stage。弱点のレポート用。シミュレーターから見て分かることだけで分ける。classify_stage）:
+- success / wrong_button / error
+- no_motion            腕をほとんど動かさなかった
+- collision            壁・扉・盤に強くぶつかった
+- touched_not_pressed  目標のボタンに触れたが、点灯する深さまで沈まなかった
+- near_miss            指先が目標のボタンの近く（3 cm 以内）まで来たが、触れなかった
+- not_reached          指先が目標のボタンに近づけなかった
+- unknown              シミュレーターが指先の位置を測れない（Isaac Sim、模擬 G1 の外など）
 """
 
 from __future__ import annotations
@@ -19,6 +28,12 @@ import numpy as np
 
 from .interface import UPPER_BODY_IDX, Action, Agent, TaskInfo
 from .robots.base import Robot
+
+
+# 失敗した段階の分類のしきい値
+NO_MOTION_RAD = 0.05  # 上半身の関節の、開始時からの変化の最大がこれより小さければ「動かさなかった」
+COLLISION_N = 20.0  # 壁・扉・盤との接触力がこれより大きければ「ぶつかった」
+NEAR_M = 0.03  # 指先の球の中心と、ボタンの面の中心の距離
 
 
 @dataclass
@@ -37,6 +52,7 @@ class EpisodeResult:
     act_time_mean_ms: float = 0.0  # act() にかかった時間の平均
     error: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
+    stage: str = ""  # どこで失敗したか（classify_stage）
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -66,6 +82,27 @@ class SafetyFilter:
         return self.prev.copy(), by_limit, by_rate
 
 
+def classify_stage(res: EpisodeResult) -> str:
+    """結果と記録（extra["diag"]）から、どこで失敗したかを決める。"""
+    if res.outcome == "success":
+        return "success"
+    if res.outcome == "wrong":
+        return "wrong_button"
+    if res.outcome == "error":
+        return "error"
+    d = res.extra.get("diag", {})
+    if d.get("max_arm_motion_rad", np.inf) < NO_MOTION_RAD:
+        return "no_motion"
+    if (res.max_contact_force_n or 0.0) > COLLISION_N:
+        return "collision"
+    if d.get("touched_target"):
+        return "touched_not_pressed"
+    dist = d.get("min_tip_dist_target_m")
+    if dist is None:
+        return "unknown"
+    return "near_miss" if dist < NEAR_M else "not_reached"
+
+
 def _check_action(a: Any) -> Action:
     if not isinstance(a, Action):
         raise TypeError(f"act() が Action を返さない: {type(a)}")
@@ -89,6 +126,18 @@ def run_episode(robot: Robot, agent: Agent, trial: Any, contest_cfg: dict[str, A
                     control_dt=dt, base_enabled=robot.base_enabled, upper_kp=kp, upper_kd=kd)
     res = EpisodeResult(seed=trial.seed, sim=robot.name, target=trial.target, instruction=trial.instruction,
                         outcome="timeout")
+    realism = getattr(trial, "realism", None)
+    res.extra["eval_set"] = getattr(trial, "eval_set", "")
+    scene_cfg = getattr(trial, "scene_cfg", None)
+    if scene_cfg is not None:
+        res.extra["conditions"] = {"wall_front_x": scene_cfg["wall"]["front_x"],
+                                   "panel_center_y": scene_cfg["panel"]["center_y"],
+                                   "panel_center_height": scene_cfg["panel"]["center_height"]}
+    if realism is not None:
+        from common.realism import features
+
+        res.extra["realism"] = realism.summary()
+        res.extra.setdefault("conditions", {}).update(features(realism))
     s = contest_cfg["safety"]
     lo, hi = robot.joint_limits()
     safety = SafetyFilter(lo, hi, float(s["limit_margin_rad"]), float(s["max_joint_speed_rad_s"]) * dt)
@@ -106,6 +155,11 @@ def run_episode(robot: Robot, agent: Agent, trial: Any, contest_cfg: dict[str, A
 
     t = 0.0
     max_f = 0.0
+    measured_force = False
+    q_upper0 = obs.q[list(UPPER_BODY_IDX)].copy()
+    other = [b for b in ("up", "down") if b != trial.target]
+    diag: dict[str, Any] = {"max_arm_motion_rad": 0.0, "touched_target": False, "touched_other": False,
+                            "max_depth_target_mm": 0.0, "max_depth_other_mm": 0.0}
     while t < limit:
         try:
             t0 = time.perf_counter()
@@ -126,7 +180,10 @@ def run_episode(robot: Robot, agent: Agent, trial: Any, contest_cfg: dict[str, A
         t += dt
         res.steps += 1
         if info.max_contact_force is not None:
+            measured_force = True
             max_f = max(max_f, info.max_contact_force)
+        if info.diag is not None:
+            _update_diag(diag, info.diag, trial.target, other)
         lit = [n for n, on in info.lit.items() if on]
         if lit:
             res.outcome = "success" if lit == [trial.target] else "wrong"
@@ -138,7 +195,22 @@ def run_episode(robot: Robot, agent: Agent, trial: Any, contest_cfg: dict[str, A
             res.outcome = "gave_up"
             break
         obs = robot.observe(t)
+        diag["max_arm_motion_rad"] = max(diag["max_arm_motion_rad"],
+                                         float(np.max(np.abs(obs.q[list(UPPER_BODY_IDX)] - q_upper0))))
 
-    res.max_contact_force_n = round(max_f, 2)
+    res.extra["diag"] = {k: (round(v, 4) if isinstance(v, float) else v) for k, v in diag.items()}
+    res.max_contact_force_n = round(max_f, 2) if measured_force else None
     res.act_time_mean_ms = round(1000.0 * float(np.mean(act_times)), 2) if act_times else 0.0
+    res.stage = classify_stage(res)
     return res
+
+
+def _update_diag(acc: dict[str, Any], d: dict[str, Any], target: str, other: list[str]) -> None:
+    """1 周期の記録（StepInfo.diag）を、試行全体の値（最小の距離、最大の沈み、触れたか）にまとめる。"""
+    if target in d.get("tip_dist", {}):
+        acc["min_tip_dist_target_m"] = min(d["tip_dist"][target], acc.get("min_tip_dist_target_m", np.inf))
+    acc["max_depth_target_mm"] = max(acc["max_depth_target_mm"], 1000.0 * d.get("depth", {}).get(target, 0.0))
+    acc["touched_target"] = acc["touched_target"] or bool(d.get("touched", {}).get(target, False))
+    for o in other:
+        acc["max_depth_other_mm"] = max(acc["max_depth_other_mm"], 1000.0 * d.get("depth", {}).get(o, 0.0))
+        acc["touched_other"] = acc["touched_other"] or bool(d.get("touched", {}).get(o, False))

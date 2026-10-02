@@ -1,8 +1,8 @@
-# Button_Press / Yada（エレベーターのボタン押し：VLA・画像認識の比較）
+# Button_Press / Yada（エレベーターのボタン押し：シミュレーションの評価環境）
 
-シミュレーション上でエレベーターのボタンを押す動作を、複数の方式
-（VLA モデル、画像認識 + IK など）で作り、比べる。
-シミュレーターは Isaac Sim と MuJoCo の両方を使う。
+G1 がエレベーター乗り場の呼びボタンを押す動作を、シミュレーションで評価するための環境。
+各チームは、作り方（VLA、画像認識 + IK など）もプログラムの作りも自由に、実機用のコードのまま評価できる。
+シミュレーターは MuJoCo と Isaac Sim の両方を使う。**使い方は [contest/GUIDE.md](contest/GUIDE.md)。**
 
 従来型（画像認識 → IK → 決めた軌道で押す）の実装は [../J1-gen/](../J1-gen/README.md) にある。
 共通に使える部分（機体モデル、IK、カメラの取り付け位置など）は複製せず、J1-gen から読み込んで使う
@@ -11,20 +11,23 @@
 ## 構成
 
 - `configs/elevator_hall.yaml` — 乗り場のシーンの寸法（MuJoCo と Isaac Sim で共通）
-- `configs/contest.yaml` — コンテストの設定（制限時間、PD の強さ、安全のための処理、試行ごとに変える条件、指示の文）
-- `contest/` — ボタン押しコンテスト（ルールは [contest/RULES.md](contest/RULES.md)）
+- `configs/contest.yaml` — 評価環境の設定（制限時間、PD の強さ、安全のための処理、試行ごとに変える条件、指示の文）
+- `contest/` — 評価環境（使い方は [contest/GUIDE.md](contest/GUIDE.md)）
   - `interface.py` — エージェントとロボットの間の決まり（`Agent` / `Observation` / `Action` / `TaskInfo`）
   - `runner.py` — 1 試行を動かす（観測 → `act()` → 安全のための処理 → 送る → 採点）。シミュレーションと実機で共通
-  - `robots/` — ロボットの差し替え部分（今は `mujoco_robot.py`。Isaac Sim と実機はこれから）
+  - `robots/` — ロボットの差し替え部分（`mujoco_robot.py`、`isaac_robot.py`、`real_g1.py` = 実機と模擬 G1 の DDS）
+  - `run_dds.py` — エージェントを実機と同じ口（DDS + ZMQ）で動かす。`evaluate_dds.py` — 模擬 G1 で試行を続けて評価する
   - `task.py` — 試行の条件を乱数の種から決める。`seeds.yaml` — 練習用の種
-  - `evaluate.py` — 評価と採点
+  - `evaluate.py` — 評価と採点（MuJoCo）。`evaluate_isaac.sh` → `evaluate_isaac.py` — Isaac Sim
   - `example_agent/` — 見本のエージェント（深度でボタンを見つける → IK → 押す）
 - `common/` — シミュレーターに依存しない部分
   - `scene_spec.py` — 設定を、箱とボタンの一覧（pelvis 座標）にする。呼びボタンの点灯の状態（`CallButtonState`）
   - `j1gen_bridge.py` — J1-gen/common を `j1gen_common` という別名で読み込む
   - `config.py` — 設定ファイルの読み込み
-- `sim/mujoco/` — MuJoCo 版（`mujoco_hall.py` がシーンを作る、`view_hall.py` で見る・確かめる）
-- `sim/isaac/` — Isaac Sim 版（`isaac_hall.py` がシーンを作る、`run.sh` → `view_hall_isaac.py` で見る・確かめる）
+- `sim/mujoco/` — MuJoCo 版（`mujoco_hall.py` がシーンを作る、`view_hall.py` で見る・確かめる、
+  `g1_sim_server.py` = 模擬 G1。実機と同じ DDS + ZMQ の口でシーンを見せ、判定する）
+- `sim/isaac/` — Isaac Sim 版（`isaac_hall.py` が乗り場を作る、`isaac_world.py` が G1・照明・カメラを足して世界を組み立てる、
+  `run.sh` → `view_hall_isaac.py` で見る・確かめる）
 - `real/` — 実機用（まだ無い）
 - `tests/` — テスト
 
@@ -82,9 +85,9 @@ bash Button_Press/Yada/sim/isaac/run.sh                                     # �
 bash Button_Press/Yada/sim/isaac/run.sh --headless --press up --png _local/button_press_yada/isaac_pressed
 ```
 
-ボタンはばねの目標を変えて押す（`--press`）。指で押す確認は、Isaac Sim のロボットを作ってから。
+ボタンはばねの目標を変えて押す（`--press`）。指で押す確認は評価（`contest/evaluate_isaac.sh`）で行う。
 
-### コンテスト（エージェントの評価）
+### 評価（詳しくは contest/GUIDE.md）
 
 ```bash
 P=~/miniconda3/envs/lerobot/bin/python
@@ -92,7 +95,13 @@ $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/Yada/contest/examp
 $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/Yada/contest/example_agent --seed 3 --view
 ```
 
-見本のエージェントは、練習用の 20 試行すべてで成功した（平均 5.5 秒、壁・盤への接触なし。MuJoCo）。
+```bash
+bash Button_Press/Yada/contest/evaluate_isaac.sh --agent Button_Press/Yada/contest/example_agent --seeds smoke   # Isaac Sim
+```
+
+見本のエージェントは、練習用の 20 試行すべてで成功した（MuJoCo、平均 5.5 秒、壁・盤への接触なし）。
+Isaac Sim でも同じコードのまま 20 試行すべてで成功した（平均 5.48 秒。MuJoCo は 5.47 秒）。
+Isaac Sim は試行ごとに新しいステージに世界を作り直す（アプリは 1 回だけ起動する）。1 試行に実時間で約 45 秒かかる。
 
 ### テスト
 
@@ -106,10 +115,13 @@ mujoco / pinocchio / 公式モデルが無いテストはスキップする。Is
 ## 状態
 
 - [x] 乗り場のシーン（MuJoCo、Isaac Sim）。ボタンの押し込みと点灯を両方で確認した
-- [x] コンテストの土台（インターフェース、ランナー、採点、MuJoCo のロボット、見本のエージェント）
+- [x] 評価環境の土台（インターフェース、ランナー、採点、MuJoCo のロボット、見本のエージェント）
 - [x] 腕を動かして指で押す（見本のエージェント。MuJoCo で 20/20 成功）
-- [ ] Isaac Sim のロボット（`contest/robots/isaac_robot.py`）
-- [ ] 実機のロボット（`contest/robots/real_g1.py`。下半身は LocoClient、上半身は arm_sdk）
+- [x] Isaac Sim のロボット（`contest/robots/isaac_robot.py`）。壁・盤との接触力はまだ測っていない
+- [x] 模擬 G1（MuJoCo、実機と同じ DDS + ZMQ の口）。見本のエージェントを実機用の経路で動かして成功した
+- [x] 実機のロボット（`contest/robots/real_g1.py`。下半身は LocoClient、上半身は arm_sdk）。模擬 G1 でだけ確認。実機は未確認
+- [ ] 模擬 G1 の Isaac Sim 版
+- [ ] J1-gen の実機用のスクリプトを模擬 G1 で動かす（つなぐことはできた。J1-gen の IK の計画が、肩と胴の衝突で目標を拒否した）
 - [ ] シミュレーションの下半身を、脚だけのポリシーに差し替える（今は腰を固定）
 - [ ] 画像（色）でボタンを見つける（見本は深度だけを使う）
 - [ ] VLA 用のデータ収集・学習・評価

@@ -38,6 +38,11 @@ OVERVIEW_CAMERA = "hall_overview"
 # （0.2 kg / 0.004² ≈ 12,500 N/m）。止まっているときの押す力はばねで決まるので変わらない
 CONTACT_SOLREF = [0.004, 1.0]
 BUTTON_MASS_MJ = 0.2
+# 体の揺れ（評価セット realistic）: 腰に足す関節の名前と、それを動かすばねの強さと減衰。
+# 並進 2e4 N/m（ボタンを 5 N で押しても 0.25 mm しか下がらない）、回転 3000 N·m/rad。減衰は臨界減衰の近く
+BASE_JOINTS = ("base_x", "base_y", "base_z", "base_roll", "base_pitch", "base_yaw")
+BASE_KP_LIN, BASE_KD_LIN = 2.0e4, 1.7e3
+BASE_KP_ROT, BASE_KD_ROT = 3.0e3, 1.5e2
 # 画像に映さない geom の group（MuJoCo の描画の既定は group 0〜2 だけを映す）
 HIDDEN_GROUP = 3
 
@@ -113,15 +118,44 @@ def _set_carpet(spec: Any, scene: HallScene) -> None:
     spec.geom(FLOOR_GEOM).material = CARPET
 
 
+def add_base_sway(spec: Any) -> None:
+    """腰（pelvis）に、前後・左右・上下と 3 方向の傾きの関節を足し、強いばね（位置のアクチュエータ）で目標を追わせる。
+
+    目標を揺らすと体が揺れる（実機の立っているときのふらつきの近似）。ばねなので、腕で押した反動で体がわずかに動く。
+    上下の関節は体の重さで下がるので、目標に重さ ÷ 強さを足して打ち消す（MujocoRobot.base_targets）。
+    """
+    import mujoco
+
+    pelvis = spec.body("pelvis")
+    for name, kind, axis in zip(BASE_JOINTS, ["slide"] * 3 + ["hinge"] * 3,
+                                [[1, 0, 0], [0, 1, 0], [0, 0, 1]] * 2):
+        j = pelvis.add_joint(name=name, type=mujoco.mjtJoint.mjJNT_SLIDE if kind == "slide" else mujoco.mjtJoint.mjJNT_HINGE,
+                             axis=axis)
+        kp, kd = (BASE_KP_LIN, BASE_KD_LIN) if kind == "slide" else (BASE_KP_ROT, BASE_KD_ROT)
+        _set_scalar_or_poly(j, "damping", kd)
+        a = spec.add_actuator(name=name, target=name, trntype=mujoco.mjtTrn.mjTRN_JOINT)
+        a.gaintype = mujoco.mjtGain.mjGAIN_FIXED
+        a.biastype = mujoco.mjtBias.mjBIAS_AFFINE
+        a.gainprm[0] = kp
+        a.biasprm[1] = -kp
+
+
 def add_hall(spec: Any, scene: HallScene, robot_cfg: dict[str, Any] | None = None,
-             fingertip_cfg: dict[str, Any] | None = None) -> None:
-    """壁、扉、ボタン盤、ボタン（と指先の衝突判定）を MjSpec に足す。"""
+             fingertip_cfg: dict[str, Any] | None = None, stance_xy: np.ndarray | None = None,
+             stance_yaw: float = 0.0) -> None:
+    """壁、扉、ボタン盤、ボタン（と指先の衝突判定）を MjSpec に足す。
+
+    stance_xy / stance_yaw: 立ち位置のずれ（評価セット realistic）。乗り場の側を、pelvis の真下を中心に回してずらす
+    （ロボットから見ると、乗り場に対して立ち位置と向きがずれている）。
+    """
     import mujoco
 
     if scene.floor is not None:
         _set_carpet(spec, scene)
     pelvis = np.asarray(spec.body("pelvis").pos, dtype=float)
-    hall = spec.worldbody.add_body(name=HALL_BODY, pos=pelvis.tolist())
+    offset = np.zeros(3) if stance_xy is None else np.array([stance_xy[0], stance_xy[1], 0.0])
+    hall = spec.worldbody.add_body(name=HALL_BODY, pos=(pelvis + offset).tolist(),
+                                   quat=[np.cos(stance_yaw / 2), 0.0, 0.0, np.sin(stance_yaw / 2)])
 
     for box in scene.boxes:
         g = hall.add_geom(name=box.name, type=mujoco.mjtGeom.mjGEOM_BOX,
@@ -172,11 +206,28 @@ def add_hall(spec: Any, scene: HallScene, robot_cfg: dict[str, Any] | None = Non
     spec.visual.global_.offheight = max(spec.visual.global_.offheight, 960)
 
 
-def build_hall_model(scene: HallScene, robot_cfg: dict[str, Any], fingertip_cfg: dict[str, Any] | None = None) -> Any:
-    """G1（胴体固定、頭カメラ付き）+ 乗り場の MjModel。"""
+def build_hall_model(scene: HallScene, robot_cfg: dict[str, Any], fingertip_cfg: dict[str, Any] | None = None,
+                     realism: Any = None) -> Any:
+    """G1（胴体固定、頭カメラ付き）+ 乗り場の MjModel。
+
+    realism（common/realism.py の Realism）を渡すと、体の揺れの関節、立ち位置のずれ、関節の armature と摩擦を入れる。
+    頭カメラの取り付けの誤差は、robot_cfg（perturbed_robot_cfg でずらしたもの）で渡す。
+    """
     spec = j1gen("robot_model").build_spec(robot_cfg, fixed_base=True)
-    add_hall(spec, scene, robot_cfg, fingertip_cfg)
-    return spec.compile()
+    if realism is not None:
+        add_base_sway(spec)
+        add_hall(spec, scene, robot_cfg, fingertip_cfg, realism.stance_xy, realism.stance_yaw)
+    else:
+        add_hall(spec, scene, robot_cfg, fingertip_cfg)
+    model = spec.compile()
+    if realism is not None:
+        import mujoco
+
+        names = j1gen("robot_model").JOINT_NAMES
+        dofs = [model.joint(n).dofadr[0] for n in names]
+        model.dof_armature[dofs] = realism.armature
+        model.dof_frictionloss[dofs] = realism.friction_nm
+    return model
 
 
 class HallMujoco:
@@ -196,6 +247,16 @@ class HallMujoco:
             self._cap[b.name] = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, button_cap(b.name))
             self._body[b.name] = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, button_body(b.name))
             self.states[b.name] = CallButtonState(b.press_depth)
+        # 乗り場の固定の箱（壁・扉・盤）の geom と、ロボットの geom（ワールド・乗り場・ボタン以外）。接触力を測るため
+        hall_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, HALL_BODY)
+        self._hall_geoms = set(np.flatnonzero(model.geom_bodyid == hall_id).tolist())
+        not_robot = [0, hall_id, *self._body.values()]
+        self._robot_geoms = set(np.flatnonzero(~np.isin(model.geom_bodyid, not_robot)).tolist())
+        self._f6 = np.zeros(6)
+        # 指先の衝突判定の球（add_hall で足したもの。無ければ空）
+        self._tips = [g for g in (mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, f"{s}_fingertip_collision")
+                                  for s in ("left", "right")) if g >= 0]
+        self._caps = {b.name: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, button_cap(b.name)) for b in scene.buttons}
         self._apply_colors()
 
     def depth(self, name: str) -> float:
@@ -222,6 +283,43 @@ class HallMujoco:
     def _apply_colors(self) -> None:
         for b in self.scene.buttons:
             self.model.geom_rgba[self._cap[b.name]] = b.lit_rgba if self.states[b.name].lit else b.off_rgba
+
+    def max_robot_contact_force(self) -> float:
+        """ロボットと乗り場の固定の箱（壁・扉・盤）の接触の、法線方向の力の最大 [N]（ボタンを押す力は含まない）。"""
+        import mujoco
+
+        d = self.data
+        best = 0.0
+        for i in range(d.ncon):
+            c = d.contact[i]
+            g1, g2 = int(c.geom1), int(c.geom2)
+            if (g1 in self._hall_geoms and g2 in self._robot_geoms) or (g2 in self._hall_geoms and g1 in self._robot_geoms):
+                mujoco.mj_contactForce(self.model, d, i, self._f6)
+                best = max(best, abs(float(self._f6[0])))
+        return best
+
+    def diagnostics(self) -> dict[str, dict[str, float | bool]]:
+        """弱点のレポート用の、今の状態（エージェントには渡さない）。
+
+        tip_dist: 指先の球の中心から、ボタンの面の中心までの距離の最小 [m]（球が無ければ入れない）
+        depth: ボタンの沈み [m]。touched: ロボットのどこかが、そのボタンに触れているか
+        """
+        d = self.data
+        out: dict[str, dict[str, float | bool]] = {"tip_dist": {}, "depth": {}, "touched": {}}
+        for b in self.scene.buttons:
+            face = d.xpos[self._body[b.name]]
+            if self._tips:
+                out["tip_dist"][b.name] = float(min(np.linalg.norm(d.geom_xpos[g] - face) for g in self._tips))
+            out["depth"][b.name] = self.depth(b.name)
+            out["touched"][b.name] = False
+        cap_to_name = {g: n for n, g in self._caps.items()}
+        for i in range(d.ncon):
+            c = d.contact[i]
+            g1, g2 = int(c.geom1), int(c.geom2)
+            for a, b in ((g1, g2), (g2, g1)):
+                if a in cap_to_name and b in self._robot_geoms:
+                    out["touched"][cap_to_name[a]] = True
+        return out
 
     def robot_qpos_slice(self) -> np.ndarray:
         """ロボットの関節の qpos の番号（ボタンのスライド関節以外）。"""
