@@ -1,0 +1,123 @@
+# Button_Press / Yada：エレベーターのボタン押しの評価環境の設定（contest/ と模擬 G1 が読む）。
+# 角度は rad、長さは m、時間は秒。
+
+# 1 試行の制限時間
+time_limit_s: 30.0
+# エージェントの act() を呼ぶ周期（実機の arm_sdk のサンプルと同じ 50 Hz）
+control_hz: 50
+# 試行の開始前に物理を進める時間（置いた直後の揺れを収める）
+settle_s: 0.3
+
+# 上半身（腰 3 + 左腕 7 + 右腕 7 = motor 12〜28）の PD の強さ。実機の arm_sdk に送る値と同じにする。
+# 腕と手首は J1-gen の configs/arm.yaml（公式 g1_arm7_sdk_dds_example.py / xr_teleoperate）と同じ。
+# ⚠️ 腰は実機の値が未確認（公式サンプルは腕と同じ 60 だが、weight=1 で上体を支えられるか分からない）。
+#    実機日に lowstate を見て決める。それまではシミュレーションで上体が垂れない値にしておく
+gains:
+  waist: {kp: 300.0, kd: 5.0}
+  arm: {kp: 60.0, kd: 1.5}
+  wrist: {kp: 40.0, kd: 1.5}
+  # 下半身（シミュレーションでは腰を固定しているので、脚を初期の姿勢に保つだけ）
+  legs: {kp: 200.0, kd: 5.0}
+
+# 実機の arm_sdk で、Unitree の内蔵コントローラが腕の重力を補償するか（シミュレーションでの仮定）。
+# ⚠️ 実機では未確認（J1-gen の configs/arm.yaml にも「未確認」とある）。実機日に、重力補償なしの指令で腕が
+#    どれだけ下がるかを lowstate で測って決める。模擬 G1（sim/mujoco/g1_sim_server.py）と Python の API
+#    （contest/robots/mujoco_robot.py）の両方がこの値を使う（2 つで結果が食い違わないように）。
+#    false: 補償なし（PD だけ。腕は重さの分だけ下がる）。true: 補償あり（J1-gen の模擬ロボットと同じ仮定）
+arm_sdk_gravity_compensation: false
+
+# ランナーの安全のための処理（シミュレーションと実機で同じ）
+safety:
+  # 関節の可動範囲からこれ以上内側に丸める
+  limit_margin_rad: 0.05
+  # 1 周期に動かせる最大の量 = これ ÷ control_hz（目標が飛んでも腕が急に動かないように）
+  max_joint_speed_rad_s: 1.0
+
+# シーンの設定（configs/ 基準）。elevator_prod.yaml = 本番に似た乗り場（黒い柱）、elevator_hall.yaml = 壁に付いた盤（前の形）
+scene_file: elevator_prod.yaml
+
+# 試行ごとに変える条件（乱数の種から決める。範囲は [最小, 最大] の一様分布）。
+# 「a.b.c」はシーンの設定の場所（例: column.width = elevator_prod.yaml の column の width）。
+# 名前に「.」が無いものは、まとめて決める値（task.py の _apply_special）。
+# 範囲は、頭カメラに一般用のボタンが映り、右手が届くことを確かめたもの（tests/test_contest.py の端の 8 通り）。
+# ⚠️ ボタンの高さ・直径・扉の幅は、本番のエレベーターの写真から推定した値（実測していない）
+randomize:
+  wall.front_x: [0.29, 0.36]
+  # 柱の出っ張り（= 柱の奥行き）。ボタンの穴の奥のふたが入るよう、ボタンの沈む量（3 mm）+ 2 mm 以上にする
+  column.protrusion: [0.006, 0.015]
+  column.width: [0.20, 0.30]
+  column.center_y: [-0.03, 0.03]
+  door.width: [0.90, 1.10]
+  buttons.common.radius: [0.015, 0.0225]
+  buttons.common.protrusion: [0.0005, 0.003]
+  # 一般用の ▲ の高さ（床から）と、▲ と ▼ の間隔。車いす用の ▲ の高さ（▼ は同じ間隔で下）
+  button_up_height: [1.03, 1.10]
+  button_spacing: [0.07, 0.09]
+  button_wc_up_height: [0.70, 0.80]
+  # 床の明るさ、柱の明るさの倍率
+  floor_brightness: [0.9, 1.1]
+  column_brightness: [0.7, 1.4]
+
+# 指示の文（試行ごとにどれか 1 つを選ぶ）
+instructions:
+  up:
+    - "上のボタンを押して"
+    - "▲のボタンを押してください"
+    - "上の階に行くボタンを押して"
+    - "Press the up button."
+  down:
+    - "下のボタンを押して"
+    - "▼のボタンを押してください"
+    - "下の階に行くボタンを押して"
+    - "Press the down button."
+
+# 評価セット（evaluate.py --set）。basic = 上の randomize だけ。realistic = randomize に加えて、実機に近づける乱し（realism）
+# を入れる。乱しは基本の条件とは別の乱数で決めるので、同じ seed なら盤の配置などは basic と同じになる（乱しの影響だけを比べられる）
+sets:
+  basic: {realism: false}
+  realistic: {realism: true}
+
+# 実機に近づける乱し。範囲は [最小, 最大] の一様分布、数 1 つは ± その値の一様分布。
+# ⚠️ どれも目安（実機で測った値ではない）。実機日に測って直す
+realism:
+  # 頭カメラの深度（RealSense D435 の近似）。ノイズの標準偏差は距離の 2 乗に比例する（D435 の仕様は 2 m で 2% 以内
+  # → 1 m で約 10 mm）。むらは空間的につながっている（ステレオの照合の窓の大きさのため）
+  depth:
+    sigma_at_1m_m: [0.004, 0.012]
+    # 穴（測れない画素）の割合と、物の縁（深度が急に変わるところ）で測れなくなる確率
+    hole_ratio: [0.0, 0.03]
+    edge_hole_prob: 0.5
+    edge_jump_m: 0.03
+  # 頭カメラのカラー: 画素ごとのノイズ（0〜255 の標準偏差）と、明るさの倍率
+  color:
+    noise_sigma: [1.0, 4.0]
+    gain: [0.85, 1.15]
+  # 頭カメラの取り付けの誤差（シミュレーションのカメラだけをずらす。エージェントが使う robot.yaml の値はずらさない）
+  camera_mount:
+    xyz_m: 0.005
+    rpy_deg: 1.5
+  # 遅れ: 画像（撮ってから届くまで）、画像のコマ数、上半身の指令（送ってから効くまで）
+  latency:
+    image_s: [0.04, 0.12]
+    image_fps: [12.0, 30.0]
+    command_s: [0.0, 0.02]
+  # 関節のセンサ（lowstate）のノイズの標準偏差
+  joint_sensor:
+    q_sigma_rad: 0.0005
+    dq_sigma_rad_s: 0.01
+  # モータ: PD の強さのばらつき（関節ごと）、回転子の見かけの慣性（armature）、関節の摩擦。
+  # armature と摩擦は IsaacLab の G1 の設定（unitree.py: 腕 0.001〜0.03、摩擦 0.03）を目安にした
+  motors:
+    kp_scale: [0.9, 1.1]
+    armature: [0.001, 0.03]
+    friction_nm: [0.0, 0.1]
+  # 体の揺れ（立ってバランスを取っているときのふらつきの近似）。腰（pelvis）を、ゆっくりした正弦波の和で動かす
+  sway:
+    amp_xy_m: [0.002, 0.006]
+    amp_z_m: [0.0, 0.002]
+    amp_rot_deg: [0.2, 0.8]
+    freq_hz: [0.2, 1.0]
+  # 立ち位置のずれ（乗り場に対する、ロボットの位置と向き）
+  stance:
+    xy_m: 0.015
+    yaw_deg: 3.0

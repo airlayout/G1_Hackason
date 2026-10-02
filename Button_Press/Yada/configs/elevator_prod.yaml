@@ -1,0 +1,111 @@
+# Button_Press / Yada：本番で使うエレベーターに似せた乗り場（2026-10-02 に写真を見て作った）。MuJoCo と Isaac Sim で共通。
+#
+# 本番のエレベーター（写真）: ステンレス調の 2 枚の扉（高さ約 2.5 m）の右に、床から上まで続く黒い柱（幅 20〜30 cm）。
+# 柱に、一般用の呼びボタン（上に 2 つ）と、車いす用の呼びボタン（車いすの印の下に 2 つ）が縦に並ぶ。
+# ボタンは小さな丸で、柱の面からほとんど出ていない。点灯すると、ボタン全体が白く光る。
+#
+# ⚠️ ボタンの高さ・直径・扉の幅は実測していない（写真から推定）。実物を測ったら直すこと。
+#    特に一般用の ▲ の高さ: 頭カメラ（床から 1.27 m、47.6° 下向き）は、床から約 1.1 m より高い物を、
+#    柱の正面に立った位置からは映せない（2026-10-02 に計算）。実物がそれより高いと、立ったままでは見えない。
+#
+# 値は、configs/contest.yaml の randomize で試行ごとに変える範囲の、だいたい真ん中にしてある。
+# 位置は pelvis 座標 [m]（x 前方、y 左、z 上）。高さは床から。G1 は柱の正面に立つ（柱の中心が y = 0）。
+
+layout: column
+
+# 床から pelvis までの高さ。公式 XML（g1_29dof_rev_1_0.xml）の pelvis の初期位置 z と同じ値
+pelvis_height: 0.793
+
+# ロボットの初期の姿勢（両腕を下ろす。J1-gen の configs/sim_scene.yaml の detection_pose_deg と同じ）
+initial_pose_deg:
+  15: 11.5   # left_shoulder_pitch
+  16: 20.0   # left_shoulder_roll
+  18: 86.0   # left_elbow
+  22: 11.5   # right_shoulder_pitch
+  23: -20.0  # right_shoulder_roll
+  25: 86.0   # right_elbow
+
+# 床の見た目（白っぽいタイル。写真の床）。見た目だけで、衝突判定や摩擦は変えない
+floor:
+  rgb: [0.86, 0.86, 0.85]
+  fine_noise: 0.02
+  coarse_noise: 0.01
+  tile_size: 0.6
+  texture_px: 256
+  seed: 0
+
+# 壁（柱の右と、扉の上）。front_x は壁の表面の x
+wall:
+  front_x: 0.33
+  thickness: 0.10
+  y_range: [-1.2, 2.2]
+  height: 2.9
+  rgba: [0.88, 0.88, 0.86, 1.0]
+
+# 柱（ボタンが付いている黒い柱。床から上まで）
+column:
+  center_y: 0.0
+  width: 0.25
+  # 壁の表面から出ている量。柱の表面 = wall.front_x − protrusion。G1 から柱の表面までは約 0.28〜0.35 m
+  # （頭カメラにボタンが映り、右手が届く範囲。2026-10-02 に計算）
+  protrusion: 0.01
+  height: 2.9
+  rgba: [0.08, 0.08, 0.09, 1.0]
+
+# 扉（閉じた状態）。center_y: auto で、柱のすぐ左に置く
+door:
+  center_y: auto
+  width: 1.0
+  height: 2.5
+  protrusion: 0.003
+  gap: 0.004
+  frame_width: 0.02
+  frame_protrusion: 0.008
+  leaf_rgba: [0.74, 0.75, 0.77, 1.0]
+  frame_rgba: [0.62, 0.63, 0.65, 1.0]
+  gap_rgba: [0.05, 0.05, 0.05, 1.0]
+
+# 柱に貼る印（見た目だけ）。車いす用のボタンの上の、青い車いすの印
+decals:
+  - name: wheelchair
+    height: 0.84
+    size: [0.03, 0.03]
+    rgba: [0.15, 0.35, 0.85, 1.0]
+
+buttons:
+  common:
+    radius: 0.019
+    # ほとんど出ていない（写真）
+    protrusion: 0.0015
+    # 押し込める深さと、押したと判定する深さ（押しボタンとしての最小限）
+    travel: 0.003
+    press_depth: 0.002
+    # ばねの強さ [N/m] と減衰。1000 N/m で、押したと判定するのに 2 N
+    stiffness: 1000.0
+    damping: 5.0
+    mass: 0.02
+    # 消灯は灰色の金属、点灯はボタン全体が白（写真）
+    off_rgba: [0.62, 0.63, 0.66, 1.0]
+    lit_rgba: [1.0, 1.0, 1.0, 1.0]
+    symbol_rgba: [0.25, 0.25, 0.27, 1.0]
+    symbol_size: 0.012
+    symbol_thickness: 0.0005
+  # 一般用（押すのはこちら）が上、車いす用が下。高さは床から（ボタンの中心）
+  items:
+    - name: up
+      symbol: up
+      height: 1.07
+    - name: down
+      symbol: down
+      height: 0.99
+    - name: wc_up
+      symbol: up
+      height: 0.76
+    - name: wc_down
+      symbol: down
+      height: 0.68
+
+# 指の先の衝突判定（公式モデルのハンドは見た目だけで、衝突判定が無いため）
+fingertip:
+  enabled: true
+  radius: 0.008
