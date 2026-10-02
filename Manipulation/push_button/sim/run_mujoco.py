@@ -13,7 +13,6 @@ import json
 import math
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -21,7 +20,9 @@ import mujoco
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from trajectory import ARM_JOINTS, DEFAULT_DURATIONS, PHASES, interpolate, validate_arm_q
+from trajectory import (ARM_JOINTS, DEFAULT_BUTTON_STROKE_M, DEFAULT_DURATIONS,
+                        PHASES, interpolate, validate_arm_q, validate_button_stroke)
+from kinematics import IkSolution, arm_addresses, solve_ik
 
 
 TIP_RADIUS = 0.015
@@ -29,24 +30,17 @@ BUTTON_HALF_DEPTH = 0.010
 BUTTON_RADIUS = 0.032
 BUTTON_VERTICAL_SPACING = 0.14
 DEFAULT_TIP_OFFSET = (0.110, -0.003, 0.0)  # 右の固定手先。実機では測り直す。
-IK_POSITION_TOLERANCE_M = 0.0015
-IK_AXIS_TOLERANCE_DEG = 10.0
-
-
-@dataclass(frozen=True)
-class IkSolution:
-    joint_angles: np.ndarray
-    position_error_m: float
-    axis_error_deg: float
-    min_joint_margin_rad: float
-    iterations: int
-
 
 def build_model(model_path: Path, button_x: float, button_y: float, height: float,
                 stroke: float, tip_offset: tuple[float, float, float], fixed_base: bool,
                 rgbd_camera: bool = False, button_direction: str = "up",
+                panel_offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
+                panel_yaw_deg: float = 0.0,
+                rgbd_position: str = "-0.10 -0.45 1.14",
+                rgbd_fovy: float = 60.0,
                 ) -> tuple[mujoco.MjModel, np.ndarray]:
     """G1 29DoF モデルに、写真を参考にした上下の可動ボタンを追加する。"""
+    stroke = validate_button_stroke(stroke)
     if button_direction not in ("up", "down"):
         raise ValueError("ボタン方向は up または down を指定してください")
     root = ET.parse(model_path).getroot()
@@ -84,7 +78,7 @@ def build_model(model_path: Path, button_x: float, button_y: float, height: floa
         # 検証用のカメラ。実機の取り付け位置・姿勢を再現した値ではない。
         ET.SubElement(world, "camera", name="button_rgbd", mode="targetbody",
                       target=f"elevator_button_{button_direction}",
-                      pos="-0.10 -0.45 1.14", fovy="60")
+                      pos=rgbd_position, fovy=str(rgbd_fovy))
         ET.SubElement(world, "camera", name="demo_camera", mode="targetbody",
                       target=f"elevator_button_{button_direction}",
                       pos="-0.45 -0.72 1.38", fovy="55")
@@ -94,6 +88,10 @@ def build_model(model_path: Path, button_x: float, button_y: float, height: floa
                   pos="0.5 1.0 2.0", dir="-0.2 -0.5 -1", diffuse="0.4 0.4 0.4")
     ET.SubElement(world, "geom", name="floor", type="plane", size="0 0 0.05",
                   rgba="0.2 0.2 0.2 1")
+    angle = math.radians(panel_yaw_deg) / 2
+    world = ET.SubElement(world, "body", name="elevator_panel_frame",
+                          pos=" ".join(map(str, panel_offset)),
+                          quat=f"{math.cos(angle)} 0 0 {math.sin(angle)}")
     # 写真は寸法資料ではない。パネル、ボタン間隔、銀色の縁は模擬寸法。
     panel_center_z = height - BUTTON_VERTICAL_SPACING / 2
     ET.SubElement(world, "geom", name="elevator_panel", type="box",
@@ -162,7 +160,10 @@ def build_model(model_path: Path, button_x: float, button_y: float, height: floa
                                pos=f"{button_x} {button_y} {z}")
         ET.SubElement(button, "joint", name=f"button_slide_{direction}",
                       type="slide", axis="1 0 0", limited="true",
-                      range=f"0 {stroke}", stiffness="350", damping="3")
+                      range=f"0 {stroke}", stiffness="350", damping="3",
+                      # 短いストロークの機械終端。既定の軟らかい制約だと
+                      # 1.5mmの上限を超えて沈む。2ms刻みで安定な4msの時定数。
+                      solreflimit="0.004 1", solimplimit="0.99 0.99 0.0001")
         ET.SubElement(button, "geom", name=f"button_face_{direction}",
                       type="cylinder", quat="0.70710678 0 0.70710678 0",
                       size=f"{BUTTON_RADIUS} {BUTTON_HALF_DEPTH}", mass="0.035",
@@ -170,14 +171,19 @@ def build_model(model_path: Path, button_x: float, button_y: float, height: floa
         arrow_tip = .018 if direction == "up" else -.018
         arrow_tail = -.014 if direction == "up" else .014
         arrow_shoulder = .006 if direction == "up" else -.006
-        arrow_x = -BUTTON_HALF_DEPTH - .001
+        arrow_x = -BUTTON_HALF_DEPTH - .0001
         for index, (y0, z0, y1, z1) in enumerate((
                 (0, arrow_tail, 0, arrow_tip),
                 (-.012, arrow_shoulder, 0, arrow_tip),
                 (.012, arrow_shoulder, 0, arrow_tip))):
+            # 印刷した矢印を薄い箱で表す。太いカプセルだと深度上で約4mm
+            # 突出し、表面位置を誤って計測してしまう。
+            angle = math.atan2(-(y1-y0), z1-z0) / 2
+            length = math.hypot(y1-y0, z1-z0)
             ET.SubElement(button, "geom", name=f"arrow_{direction}_{index}",
-                          type="capsule", fromto=f"{arrow_x} {y0} {z0} {arrow_x} {y1} {z1}",
-                          size="0.0028", rgba="0.025 0.025 0.025 1",
+                          type="box", pos=f"{arrow_x} {(y0+y1)/2} {(z0+z1)/2}",
+                          quat=f"{math.cos(angle)} {math.sin(angle)} 0 0",
+                          size=f"0.00005 0.0028 {length/2}", rgba="0.025 0.025 0.025 1",
                           contype="0", conaffinity="0")
     model = mujoco.MjModel.from_xml_string(ET.tostring(root, encoding="unicode"))
     expected_nq = 31 if fixed_base else 38
@@ -186,63 +192,6 @@ def build_model(model_path: Path, button_x: float, button_y: float, height: floa
     model.opt.timestep = 0.002
     return model, stand_q
 
-
-def arm_addresses(model: mujoco.MjModel) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    joints = [model.joint(name) for name in ARM_JOINTS]
-    qadr = np.array([joint.qposadr[0] for joint in joints], dtype=int)
-    dadr = np.array([joint.dofadr[0] for joint in joints], dtype=int)
-    actuator = np.array([model.actuator(name).id for name in ARM_JOINTS], dtype=int)
-    return qadr, dadr, actuator
-
-
-def solve_ik(model: mujoco.MjModel, data: mujoco.MjData, target: np.ndarray,
-             seed: np.ndarray, rest: np.ndarray, qadr: np.ndarray,
-             dadr: np.ndarray, desired_axis: np.ndarray | None = None) -> IkSolution:
-    """手先の3D位置と押下方向を、右腕7軸のヤコビアンIKで関節角へ変換する。
-
-    姿勢誤差と位置誤差を重み付きで扱い、関節限界を守りつつ現在の解に近い姿勢を選ぶ。
-    各目標で収束しない場合は、押下経路を作らずエラーにする。
-    """
-    site_id = model.site("button_tcp").id
-    q = seed.copy()
-    joint_limits = model.jnt_range[[model.joint(name).id for name in ARM_JOINTS]]
-    lower = joint_limits[:, 0] + 0.025
-    upper = joint_limits[:, 1] - 0.025
-    if desired_axis is None:
-        desired_axis = np.array([1.0, 0.0, 0.0])
-    for iteration in range(1, 351):
-        data.qpos[qadr] = q
-        mujoco.mj_forward(model, data)
-        position_error = target - data.site_xpos[site_id]
-        axis = data.site_xmat[site_id].reshape(3, 3)[:, 0]
-        axis_error_deg = math.degrees(math.acos(float(np.clip(
-            np.dot(axis, desired_axis), -1.0, 1.0))))
-        position_error_m = float(np.linalg.norm(position_error))
-        if (position_error_m < IK_POSITION_TOLERANCE_M
-                and axis_error_deg < IK_AXIS_TOLERANCE_DEG):
-            margin = float(min(np.min(q - joint_limits[:, 0]),
-                               np.min(joint_limits[:, 1] - q)))
-            return IkSolution(q.copy(), position_error_m, axis_error_deg,
-                              margin, iteration)
-        jac_pos = np.zeros((3, model.nv))
-        jac_rot = np.zeros((3, model.nv))
-        mujoco.mj_jacSite(model, data, jac_pos, jac_rot, site_id)
-        # d(axis)/dq = angular_velocity × axis
-        axis_jac = np.cross(jac_rot[:, dadr].T, axis).T
-        matrix = np.vstack((jac_pos[:, dadr], 0.10 * axis_jac, 0.003 * np.eye(7)))
-        residual = np.concatenate((position_error, 0.10 * (desired_axis - axis),
-                                   0.003 * (rest - q)))
-        step = np.linalg.lstsq(matrix, residual, rcond=None)[0]
-        step = np.clip(step, -0.10, 0.10)
-        q = np.clip(q + step, lower, upper)
-    data.qpos[qadr] = q
-    mujoco.mj_forward(model, data)
-    error = np.linalg.norm(target - data.site_xpos[site_id])
-    axis = data.site_xmat[site_id].reshape(3, 3)[:, 0]
-    axis_error = math.degrees(math.acos(float(np.clip(
-        np.dot(axis, desired_axis), -1.0, 1.0))))
-    raise ValueError(f"手先のIKが収束しません (位置誤差 {error:.3f} m、"
-                     f"方向誤差 {axis_error:.1f} 度): {target}")
 
 
 def run(args: argparse.Namespace, target_face_xyz: np.ndarray | None = None,
@@ -299,7 +248,8 @@ def run(args: argparse.Namespace, target_face_xyz: np.ndarray | None = None,
     for phase, target in (("approach", approach_target), ("contact", contact_target),
                           ("press", press_target)):
         solution = solve_ik(model, data, target, seed, rest, qadr, dadr,
-                            desired_axis=press_direction)
+                            desired_axis=press_direction,
+                            position_tolerance_m=min(0.0001, args.stroke / 50))
         seed = solution.joint_angles
         poses[phase] = [float(value) for value in seed]
         validate_arm_q(poses[phase])
@@ -449,7 +399,8 @@ def main() -> int:
     parser.add_argument("--height", type=float, default=1.0, help="ボタン中心の床上高さ [m]")
     parser.add_argument("--button-direction", choices=("up", "down"), default="up",
                         help="押すボタン。--height は上ボタンの中心高さ")
-    parser.add_argument("--stroke", type=float, default=0.008, help="ボタンのストローク [m]")
+    parser.add_argument("--stroke", type=float, default=DEFAULT_BUTTON_STROKE_M,
+                        help="ボタンのストローク [m] (既定: 0.0015)")
     parser.add_argument("--clearance", type=float, default=0.030, help="待機距離 [m]")
     parser.add_argument("--tip-offset", type=float, nargs=3,
                         default=list(DEFAULT_TIP_OFFSET), metavar=("X", "Y", "Z"),
@@ -486,7 +437,7 @@ def main() -> int:
         except (OSError, KeyError, TypeError, ValueError) as error:
             parser.error(f"--target-json: {error}")
     if not (0.2 <= args.button_x <= 0.5 and -0.45 <= args.button_y <= -0.10
-            and 0.7 <= args.height <= 1.2 and 0.002 <= args.stroke <= 0.015
+            and 0.7 <= args.height <= 1.2 and 0.0015 <= args.stroke <= 0.015
             and 0.01 <= args.clearance <= 0.08
             and 0.04 <= args.tip_offset[0] <= 0.16
             and all(abs(value) <= 0.05 for value in args.tip_offset[1:])):

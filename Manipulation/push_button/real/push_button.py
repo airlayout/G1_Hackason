@@ -89,6 +89,21 @@ class ArmSdk:
             raise RuntimeError(f"StopMove が失敗しました (code={code})")
         time.sleep(1.0)
 
+    def current_configuration(self):
+        """運動学と校正姿勢の監視用。脚や腰への指令は送らない。"""
+        self.current_arm(timeout=STATE_TIMEOUT)
+        with self._lock:
+            state, received_at = self._state, self._state_at
+            joints = tuple(float(state.motor_state[i].q) for i in range(29))
+            rpy = tuple(float(v) for v in state.imu_state.rpy)
+            leg_speed = max(abs(float(state.motor_state[i].dq)) for i in range(12))
+            gyro = max(abs(float(v)) for v in state.imu_state.gyroscope)
+        if len(rpy) != 3 or not all(math.isfinite(v) for v in (*joints, *rpy, leg_speed, gyro)):
+            raise RuntimeError("姿勢監視用の実機状態が不正です")
+        if time.monotonic() - received_at > STATE_TIMEOUT:
+            raise RuntimeError("実機状態が古すぎます")
+        return joints, rpy, received_at, leg_speed, gyro
+
     def set_hold(self, current: tuple[float, ...]) -> None:
         self._hold = list(current)
         self._last_right = tuple(current[7:])
@@ -179,6 +194,9 @@ def execute(plan: dict, interface: str) -> None:
 
 
 def main() -> int:
+    if "--align" in sys.argv[1:]:
+        from align_button import main as align_main
+        return align_main([arg for arg in sys.argv[1:] if arg != "--align"])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", required=True, help="MuJoCo で成功した経路 JSON")
     parser.add_argument("--network-interface", default="enp3s0")

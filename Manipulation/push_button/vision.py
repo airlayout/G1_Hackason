@@ -55,6 +55,7 @@ def estimate_button_target(
     *,
     min_depth_m: float = 0.15,
     max_depth_m: float = 2.0,
+    expected_face_xyz: np.ndarray | None = None,
 ) -> ButtonTarget:
     """カラー画素に位置合わせ済みの深度と、同じ画像の検出枠を使う。
 
@@ -131,6 +132,41 @@ def estimate_button_target(
         outward_optical = -outward_optical
     if -outward_optical[2] < 0.6:
         raise ValueError("パネル面がカメラに対して斜めすぎます")
+    # 斜めの面では中央領域内でも光学Z深度が変わる。深度だけの中央値を
+    # 枠中心へ代入せず、パネル法線へ投影した面位置と中心光線の交点を使う。
+    face_points = _points(np.column_stack((xs[central_valid], ys[central_valid])),
+                          depth[central_valid], intrinsics)
+    inward_optical = -outward_optical
+    if expected_face_xyz is not None:
+        expected = np.asarray(expected_face_xyz, dtype=float)
+        if expected.shape != (3,) or not np.all(np.isfinite(expected)):
+            raise ValueError("追跡中のボタン位置が不正です")
+        expected_optical = rotation.T @ (expected-transform[:3, 3])
+        keep = np.abs((face_points-expected_optical) @ inward_optical) <= 0.008
+        face_points = face_points[keep]
+    if len(face_points) < 12:
+        raise ValueError("遮蔽によりボタン表面の有効深度が不足しています")
+    offsets = face_points @ inward_optical
+    inliers = np.abs(offsets-np.median(offsets)) <= 0.002
+    face_points = face_points[inliers]
+    valid_fraction = float(len(face_points) / central.sum())
+    if len(face_points) < 12 or valid_fraction < 0.6:
+        raise ValueError("遮蔽によりボタン表面の有効深度が不足しています")
+    face_center = face_points.mean(axis=0)
+    _, _, face_vh = np.linalg.svd(face_points - face_center, full_matrices=False)
+    face_normal = face_vh[-1]
+    if face_normal @ inward_optical < 0:
+        face_normal = -face_normal
+    if (face_normal @ inward_optical < np.cos(np.deg2rad(15))
+            or np.max(np.abs((face_points-face_center) @ face_normal)) > 0.002):
+        raise ValueError("ボタン表面が不均一または手先に遮蔽されています")
+    plane_offset = float(face_center @ face_normal)
+    center_ray = _points(np.array([[center_u, center_v]]), np.array([1.0]), intrinsics)[0]
+    ray_projection = float(center_ray @ face_normal)
+    if ray_projection < 0.3:
+        raise ValueError("ボタン表面の中心光線が不正です")
+    face_depth = plane_offset / ray_projection
+    face_optical = center_ray * face_depth
     press_base = rotation @ -outward_optical
     press_base /= np.linalg.norm(press_base)
     face_base = rotation @ face_optical + transform[:3, 3]

@@ -13,6 +13,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from vision import CameraIntrinsics, estimate_button_target, validate_reachable_target
+from trajectory import DEFAULT_BUTTON_STROKE_M
 
 from run_mujoco import (BUTTON_HALF_DEPTH, BUTTON_VERTICAL_SPACING,
                         DEFAULT_TIP_OFFSET, build_model, run)
@@ -100,7 +101,7 @@ def main() -> int:
     parser.add_argument("--height", type=float, default=1.0)
     parser.add_argument("--button-direction", choices=("up", "down"), default="up",
                         help="押すボタン。--height は上ボタンの中心高さ")
-    parser.add_argument("--stroke", type=float, default=0.008)
+    parser.add_argument("--stroke", type=float, default=DEFAULT_BUTTON_STROKE_M)
     parser.add_argument("--clearance", type=float, default=0.030)
     parser.add_argument("--tip-offset", type=float, nargs=3,
                         default=list(DEFAULT_TIP_OFFSET))

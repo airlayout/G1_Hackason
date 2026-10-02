@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 
@@ -17,6 +19,7 @@ sys.path.insert(0, str(REPO_ROOT / "Perception"))
 
 from vision import (CameraIntrinsics, estimate_button_target,
                     validate_reachable_target)
+from alignment import TargetTracker
 
 
 def load_transform(path: str | None) -> tuple[np.ndarray, str]:
@@ -27,6 +30,82 @@ def load_transform(path: str | None) -> tuple[np.ndarray, str]:
     if "T_base_optical" not in payload:
         raise ValueError("校正ファイルに T_base_optical がありません")
     return np.asarray(payload["T_base_optical"], dtype=float), "robot_base"
+
+
+class RgbdLocalizer:
+    """実行時の再計測用。初回だけ画素で選び、その後は3D位置で追跡する。"""
+
+    def __init__(self, weights: str, transform: np.ndarray | Callable[[], np.ndarray],
+                 target_pixel: tuple[int, int] | None = None,
+                 confidence: float = 0.25):
+        import pyrealsense2 as rs
+        from common.detector.yolo_detector import YoloDetector
+
+        self.rs = rs
+        self.transform = transform
+        self.target_pixel = target_pixel
+        self.detector = YoloDetector(model_name=weights, classes=["button"],
+                                    confidence_threshold=confidence)
+        self.tracker = TargetTracker()
+        self.pipe = rs.pipeline()
+        cfg = rs.config()
+        cfg.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 15)
+        cfg.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 15)
+        profile = self.pipe.start(cfg)
+        self.align = rs.align(rs.stream.color)
+        self.scale = profile.get_device().first_depth_sensor().get_depth_scale()
+        self.last_preview = None
+        self.last_bbox = None
+
+    def close(self) -> None:
+        self.pipe.stop()
+
+    def observe(self, timeout_s: float = 2.0):
+        self.tracker.begin_measurement()
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            # 推論中に溜まった画像を捨て、次の新しいframesetを取得する。
+            while self.pipe.poll_for_frames():
+                pass
+            aligned = self.align.process(self.pipe.wait_for_frames(1000))
+            captured_at = time.monotonic()
+            transform = self.transform() if callable(self.transform) else self.transform
+            color = aligned.get_color_frame()
+            depth = aligned.get_depth_frame()
+            if not color or not depth:
+                self.tracker.samples.clear()
+                continue
+            intr = depth.profile.as_video_stream_profile().get_intrinsics()
+            intrinsics = CameraIntrinsics(intr.fx, intr.fy, intr.ppx, intr.ppy)
+            image = np.asanyarray(color.get_data())
+            depth_m = np.asanyarray(depth.get_data()).astype(np.float32) * self.scale
+            candidates = []
+            for detection in self.detector.detect(image):
+                if self.tracker.initial is None and self.target_pixel is not None:
+                    u, v = self.target_pixel
+                    x1, y1, x2, y2 = detection.bbox
+                    if not x1 <= u <= x2 or not y1 <= v <= y2:
+                        continue
+                try:
+                    target = estimate_button_target(depth_m, detection.bbox,
+                                                    intrinsics, transform,
+                                                    expected_face_xyz=self.tracker.previous)
+                    validate_reachable_target(target)
+                except ValueError:
+                    continue
+                candidates.append(target)
+            if self.tracker.previous is not None:
+                candidates = [t for t in candidates if np.linalg.norm(
+                    np.array(t.face_xyz) - self.tracker.previous) <= self.tracker.association_m]
+            if not candidates:
+                self.tracker.samples.clear()
+                continue
+            observation = self.tracker.update(candidates, captured_at)
+            self.last_preview = image.copy()
+            if observation is not None:
+                return observation
+        self.tracker.samples.clear()
+        raise RuntimeError("安定した新しいRGB-D計測を取得できません")
 
 
 def main() -> int:

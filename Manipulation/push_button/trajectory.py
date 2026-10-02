@@ -9,6 +9,18 @@ from typing import Iterator
 
 
 ARM_INDICES = tuple(range(22, 29))  # G1 29DoF の右腕。脚・腰は含めない。
+DEFAULT_BUTTON_STROKE_M = 0.0015
+MIN_BUTTON_STROKE_M = 0.0015
+MAX_BUTTON_STROKE_M = 0.015
+
+
+def validate_button_stroke(stroke: float) -> float:
+    stroke = float(stroke)
+    if not math.isfinite(stroke) or not MIN_BUTTON_STROKE_M <= stroke <= MAX_BUTTON_STROKE_M:
+        raise ValueError("strokeは1.5～15mmが必要です")
+    return stroke
+
+
 ALL_ARM_INDICES = tuple(range(15, 29))
 ARM_JOINTS = (
     "right_shoulder_pitch_joint",
