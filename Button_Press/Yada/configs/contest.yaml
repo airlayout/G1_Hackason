@@ -33,14 +33,30 @@ safety:
   # 1 周期に動かせる最大の量 = これ ÷ control_hz（目標が飛んでも腕が急に動かないように）
   max_joint_speed_rad_s: 1.0
 
+# シーンの設定（configs/ 基準）。elevator_prod.yaml = 本番に似た乗り場（黒い柱）、elevator_hall.yaml = 壁に付いた盤（前の形）
+scene_file: elevator_prod.yaml
+
 # 試行ごとに変える条件（乱数の種から決める。範囲は [最小, 最大] の一様分布）。
-# 範囲は、頭カメラに両方のボタンが映り、右手が届くことを確かめたもの（tests/test_contest.py）
+# 「a.b.c」はシーンの設定の場所（例: column.width = elevator_prod.yaml の column の width）。
+# 名前に「.」が無いものは、まとめて決める値（task.py の _apply_special）。
+# 範囲は、頭カメラに一般用のボタンが映り、右手が届くことを確かめたもの（tests/test_contest.py の端の 8 通り）。
+# ⚠️ ボタンの高さ・直径・扉の幅は、本番のエレベーターの写真から推定した値（実測していない）
 randomize:
-  wall_front_x: [0.40, 0.44]
-  panel_center_y: [-0.13, -0.07]
-  panel_center_height: [0.96, 1.02]
-  # 床の色の明るさの倍率
-  floor_brightness: [0.8, 1.2]
+  wall.front_x: [0.29, 0.36]
+  # 柱の出っ張り（= 柱の奥行き）。ボタンの穴の奥のふたが入るよう、ボタンの沈む量（3 mm）+ 2 mm 以上にする
+  column.protrusion: [0.006, 0.015]
+  column.width: [0.20, 0.30]
+  column.center_y: [-0.03, 0.03]
+  door.width: [0.90, 1.10]
+  buttons.common.radius: [0.015, 0.0225]
+  buttons.common.protrusion: [0.0005, 0.003]
+  # 一般用の ▲ の高さ（床から）と、▲ と ▼ の間隔。車いす用の ▲ の高さ（▼ は同じ間隔で下）
+  button_up_height: [1.03, 1.10]
+  button_spacing: [0.07, 0.09]
+  button_wc_up_height: [0.70, 0.80]
+  # 床の明るさ、柱の明るさの倍率
+  floor_brightness: [0.9, 1.1]
+  column_brightness: [0.7, 1.4]
 
 # 指示の文（試行ごとにどれか 1 つを選ぶ）
 instructions:

@@ -129,8 +129,52 @@ def _box_from_ranges(name: str, x: tuple[float, float], y: tuple[float, float], 
     return Box(name=name, center=(lo + hi) / 2.0, half_size=(hi - lo) / 2.0, rgba=tuple(float(v) for v in rgba))
 
 
+# 柱の丸い穴を作る横の帯の段の数（多いほど丸に近いが、箱の数が増える）
+HOLE_STRIPS = 10
+
+
+def _column_with_holes(cfg: dict[str, Any], floor: float, fx: float, front: float) -> list[Box]:
+    """ボタンの位置に丸い穴（階段状）の開いた柱（いくつかの箱の組み合わせ）と、穴の奥のふた。
+
+    実物の押しボタンは、パネルの穴にはまっていて、パネルの面より奥まで沈む。穴の無い 1 つの箱にすると、
+    ボタンが柱の面まで沈んだところで指先が柱に当たって止まり、出っ張りの小さいボタンが押せなかった（2026-10-02）。
+    穴の奥（ボタンが一番沈んだ位置より 1 mm 奥）には、柱と同じ色のふたを置く（壁が透けて見えないように）。
+    いちばん上の箱の名前を hall_panel にする（ボタンとの衝突を外す相手として使う）。
+    """
+    c = cfg["column"]
+    rgba = c["rgba"]
+    y0, y1 = float(c["center_y"]) - float(c["width"]) / 2.0, float(c["center_y"]) + float(c["width"]) / 2.0
+    top = floor + float(c["height"])
+    bc = cfg["buttons"]["common"]
+    half = float(bc["radius"]) + 0.001  # 穴の半分の大きさ（ボタンとのすき間 1 mm）
+    back = front + float(bc["travel"]) + 0.001
+    holes = sorted(((float(c["center_y"]) + float(it.get("offset_y", 0.0)), floor + float(it["height"]))
+                    for it in cfg["buttons"]["items"]), key=lambda h: -h[1])
+    out: list[Box] = []
+    z_hi = top
+    for k, (yc, zc) in enumerate(holes):
+        if z_hi > zc + half:  # 穴より上の帯（全幅）
+            out.append(_box_from_ranges("hall_panel" if k == 0 else f"hall_column_band{k}", (front, fx), (y0, y1),
+                                        (zc + half, z_hi), rgba))
+        # 穴のまわりは、細い横の帯を HOLE_STRIPS 段重ねる。帯ごとに内側の端を、その高さでの円の幅にそろえるので、
+        # 穴は階段状の丸になる（四角い穴では、ボタンのまわりに四角い枠が見えた。実物の穴は丸い）
+        edges = np.linspace(zc - half, zc + half, HOLE_STRIPS + 1)
+        for j in range(HOLE_STRIPS):
+            za, zb = edges[j] - zc, edges[j + 1] - zc
+            zmin = 0.0 if za <= 0.0 <= zb else min(abs(za), abs(zb))
+            w = float(np.sqrt(max(0.0, half ** 2 - zmin ** 2)))  # この帯の中での、円の幅の半分の最大
+            z = (float(edges[j]), float(edges[j + 1]))
+            out.append(_box_from_ranges(f"hall_column_hole{k}_s{j}_right", (front, fx), (y0, yc - w), z, rgba))
+            out.append(_box_from_ranges(f"hall_column_hole{k}_s{j}_left", (front, fx), (yc + w, y1), z, rgba))
+        out.append(_box_from_ranges(f"hall_column_hole{k}_back", (back, fx), (yc - half, yc + half),
+                                    (zc - half, zc + half), rgba))
+        z_hi = zc - half
+    out.append(_box_from_ranges("hall_column_bottom", (front, fx), (y0, y1), (floor, z_hi), rgba))
+    return out
+
+
 def build_hall_scene(cfg: dict[str, Any]) -> HallScene:
-    """configs/elevator_hall.yaml の中身から HallScene を作る。"""
+    """configs/elevator_hall.yaml（壁に付いた盤）/ elevator_prod.yaml（本番に似た黒い柱。layout: column）から HallScene を作る。"""
     floor = -float(cfg["pelvis_height"])
     boxes: list[Box] = []
 
@@ -139,8 +183,15 @@ def build_hall_scene(cfg: dict[str, Any]) -> HallScene:
     boxes.append(_box_from_ranges("hall_wall", (fx, fx + float(w["thickness"])), tuple(w["y_range"]),
                                   (floor, floor + float(w["height"])), w["rgba"]))
 
+    column = cfg.get("layout") == "column"
     d = cfg["door"]
-    cy, half_w = float(d["center_y"]), float(d["width"]) / 2.0
+    half_w = float(d["width"]) / 2.0
+    if column and str(d.get("center_y")) == "auto":
+        # 本番に似た形: 扉は、柱のすぐ左（y の大きい側）に置く
+        c = cfg["column"]
+        cy = float(c["center_y"]) + float(c["width"]) / 2.0 + float(d["frame_width"]) + half_w
+    else:
+        cy = float(d["center_y"])
     top = floor + float(d["height"])
     gap = float(d["gap"])
     front = fx - float(d["protrusion"])
@@ -161,17 +212,36 @@ def build_hall_scene(cfg: dict[str, Any]) -> HallScene:
     boxes.append(_box_from_ranges("hall_door_frame_top", (ff, fx), (cy - half_w - fw, cy + half_w + fw),
                                   (top, top + fw), d["frame_rgba"]))
 
-    p = cfg["panel"]
-    pcy, pcz = float(p["center_y"]), floor + float(p["center_height"])
-    panel_front = fx - float(p["thickness"])
-    boxes.append(_box_from_ranges("hall_panel", (panel_front, fx),
-                                  (pcy - float(p["width"]) / 2.0, pcy + float(p["width"]) / 2.0),
-                                  (pcz - float(p["height"]) / 2.0, pcz + float(p["height"]) / 2.0), p["rgba"]))
+    if column:
+        # 本番に似た形: 床から立つ黒い柱にボタンが縦に並ぶ。柱の名前は hall_panel（ボタンとの衝突を外す相手として使う）
+        c = cfg["column"]
+        pcy = float(c["center_y"])
+        panel_front = fx - float(c["protrusion"])
+        boxes += _column_with_holes(cfg, floor, fx, panel_front)
+        # 柱に貼る印（車いすの印など。見た目だけの薄い板）
+        for dc in cfg.get("decals", []):
+            hw, hh = float(dc["size"][0]) / 2.0, float(dc["size"][1]) / 2.0
+            zc, yc = floor + float(dc["height"]), pcy + float(dc.get("offset_y", 0.0))
+            boxes.append(_box_from_ranges(f"hall_decal_{dc['name']}", (panel_front - 0.0005, panel_front),
+                                          (yc - hw, yc + hw), (zc - hh, zc + hh), dc["rgba"]))
+
+        def button_z(item: dict[str, Any]) -> float:
+            return floor + float(item["height"])
+    else:
+        p = cfg["panel"]
+        pcy, pcz = float(p["center_y"]), floor + float(p["center_height"])
+        panel_front = fx - float(p["thickness"])
+        boxes.append(_box_from_ranges("hall_panel", (panel_front, fx),
+                                      (pcy - float(p["width"]) / 2.0, pcy + float(p["width"]) / 2.0),
+                                      (pcz - float(p["height"]) / 2.0, pcz + float(p["height"]) / 2.0), p["rgba"]))
+
+        def button_z(item: dict[str, Any]) -> float:
+            return pcz + float(item["offset_z"])
 
     bc = cfg["buttons"]["common"]
     buttons: list[ButtonSpec] = []
     for item in cfg["buttons"]["items"]:
-        face = np.array([panel_front - float(bc["protrusion"]), pcy, pcz + float(item["offset_z"])])
+        face = np.array([panel_front - float(bc["protrusion"]), pcy + float(item.get("offset_y", 0.0)), button_z(item)])
         buttons.append(ButtonSpec(
             name=str(item["name"]), symbol=str(item["symbol"]), face_center=face,
             radius=float(bc["radius"]), protrusion=float(bc["protrusion"]),

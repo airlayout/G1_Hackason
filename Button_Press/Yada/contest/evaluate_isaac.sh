@@ -21,9 +21,9 @@ ARGS=("$@")
 if ! printf '%s\n' "$@" | grep -q -- "--enable_cameras"; then
     ARGS+=(--enable_cameras)
 fi
-# 拡張のレジストリ（オンライン）に問い合わせると、起動の途中で止まることがある（IsaacSim_Env/run.sh と同じ対策）
+# Kit に起動のときに渡す設定（拡張のレジストリを使わない、環境光の強さ。env.sh の ISAAC_KIT_ARGS）
 if ! printf '%s\n' "$@" | grep -q -- "--kit_args"; then
-    ARGS+=(--kit_args="--/app/extensions/registryEnabled=false")
+    ARGS+=(--kit_args="$ISAAC_KIT_ARGS")
 fi
 
 echo "[INFO] Isaac Sim で評価します（起動に 2〜5 分かかる。log: $LOG）"

@@ -6,4 +6,4 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/env.sh"
 echo "[INFO] Isaac Sim を起動します（2〜5 分かかる）"
 "$ISAAC_SIM/python.sh" "$SCRIPT_DIR/sample_images_isaac.py" --headless --enable_cameras \
-    --kit_args="--/app/extensions/registryEnabled=false" "$@"
+    --kit_args="$ISAAC_KIT_ARGS" "$@"

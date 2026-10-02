@@ -10,7 +10,8 @@ G1 がエレベーター乗り場の呼びボタンを押す動作を、シミ�
 
 ## 構成
 
-- `configs/elevator_hall.yaml` — 乗り場のシーンの寸法（MuJoCo と Isaac Sim で共通）
+- `configs/elevator_prod.yaml` — **本番に似た乗り場**（黒い柱に、一般用と車いす用の呼びボタン。評価はこちら）
+- `configs/elevator_hall.yaml` — 前の乗り場（壁に付いた盤）。どちらも MuJoCo と Isaac Sim で共通
 - `configs/contest.yaml` — 評価環境の設定（制限時間、PD の強さ、安全のための処理、試行ごとに変える条件、指示の文）
 - `contest/` — 評価環境（使い方は [contest/GUIDE.md](contest/GUIDE.md)）
   - `interface.py` — エージェントとロボットの間の決まり（`Agent` / `Observation` / `Action` / `TaskInfo`）

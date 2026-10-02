@@ -33,6 +33,14 @@ export DISPLAY="${DISPLAY:-:1}"
 export TMPDIR="${TMPDIR:-/home/ubuntu/NVIDIA/.isaac_asset_cache}"
 mkdir -p "$TMPDIR"
 
+# Isaac Sim（Kit）に起動のときに渡す設定（run.sh・evaluate_isaac.sh・sample_images_isaac.sh が使う）。
+# - registryEnabled=false: 拡張のレジストリ（オンライン）に問い合わせると、起動の途中で止まることがある
+# - ambientLightIntensity=0.3: RTX の環境光（シーン全体を均一に照らす光。既定 1.0）。既定のままだと、照明を弱めても
+#   一定より暗くならず、黒い柱が灰色に、消灯のボタンが白っぽく写った。0.3 にし、照明の強さ（isaac_world.py の
+#   DOME_INTENSITY / SUN_INTENSITY）と合わせて、MuJoCo の頭カメラと明るさをそろえた（2026-10-02。
+#   柱・消灯のボタン・壁 = MuJoCo 11 / 71 / 113、Isaac Sim 約 11 / 66〜71 / 104〜110）。実行中に変えても効かない
+ISAAC_KIT_ARGS="--/app/extensions/registryEnabled=false --/rtx/sceneDb/ambientLightIntensity=0.3"
+
 export PYTHONUNBUFFERED=1
 # 起動時に blas_thread_shutdown / __libc_fork で segfault することがあるため（IsaacSim_Env/run.sh と同じ対策）
 export OPENBLAS_NUM_THREADS=1

@@ -128,11 +128,9 @@ def run_episode(robot: Robot, agent: Agent, trial: Any, contest_cfg: dict[str, A
                         outcome="timeout")
     realism = getattr(trial, "realism", None)
     res.extra["eval_set"] = getattr(trial, "eval_set", "")
-    scene_cfg = getattr(trial, "scene_cfg", None)
-    if scene_cfg is not None:
-        res.extra["conditions"] = {"wall_front_x": scene_cfg["wall"]["front_x"],
-                                   "panel_center_y": scene_cfg["panel"]["center_y"],
-                                   "panel_center_height": scene_cfg["panel"]["center_height"]}
+    params = getattr(trial, "params", None)
+    if params:
+        res.extra["conditions"] = {k: round(float(v), 5) for k, v in params.items()}
     if realism is not None:
         from common.realism import features
 
@@ -157,7 +155,7 @@ def run_episode(robot: Robot, agent: Agent, trial: Any, contest_cfg: dict[str, A
     max_f = 0.0
     measured_force = False
     q_upper0 = obs.q[list(UPPER_BODY_IDX)].copy()
-    other = [b for b in ("up", "down") if b != trial.target]
+    other: list[str] = []  # 目標以外のボタン（車いす用も含む。最初の記録で決める）
     diag: dict[str, Any] = {"max_arm_motion_rad": 0.0, "touched_target": False, "touched_other": False,
                             "max_depth_target_mm": 0.0, "max_depth_other_mm": 0.0}
     while t < limit:
@@ -183,6 +181,8 @@ def run_episode(robot: Robot, agent: Agent, trial: Any, contest_cfg: dict[str, A
             measured_force = True
             max_f = max(max_f, info.max_contact_force)
         if info.diag is not None:
+            if not other:
+                other = [b for b in info.diag.get("depth", {}) if b != trial.target]
             _update_diag(diag, info.diag, trial.target, other)
         lit = [n for n, on in info.lit.items() if on]
         if lit:

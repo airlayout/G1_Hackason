@@ -54,6 +54,41 @@ class TestHallScene(unittest.TestCase):
             build_hall_scene(cfg)
 
 
+class TestColumnScene(unittest.TestCase):
+    """本番に似た乗り場（configs/elevator_prod.yaml、layout: column）。"""
+
+    def setUp(self) -> None:
+        self.cfg = load_config("elevator_prod.yaml")
+        self.scene = build_hall_scene(self.cfg)
+
+    def test_buttons_in_column_holes(self) -> None:
+        """ボタンは柱の面より少し手前に出ていて、柱には、ボタンの位置に穴（ボタンを囲む箱）がある。"""
+        c = self.cfg["column"]
+        front = self.cfg["wall"]["front_x"] - c["protrusion"]
+        names = {b.name for b in self.scene.boxes}
+        self.assertIn("hall_panel", names)  # ボタンとの衝突を外す相手
+        for k, b in enumerate(sorted(self.scene.buttons, key=lambda b: -b.face_center[2])):
+            self.assertAlmostEqual(b.base_center[0], front, places=9)
+            self.assertLess(abs(b.face_center[1] - c["center_y"]), c["width"] / 2 - b.radius)
+            self.assertIn(f"hall_column_hole{k}_back", names)
+            # 穴を囲む箱（階段状の丸い穴）は、どれもボタンの円と重ならず、穴は円から 3 mm 以内（丸に近い）
+            pieces = [x for x in self.scene.boxes if x.name.startswith(f"hall_column_hole{k}_s")]
+            self.assertGreater(len(pieces), 4)
+            gaps = []
+            for box in pieces:
+                lo, hi = box.center[1:] - box.half_size[1:], box.center[1:] + box.half_size[1:]
+                d = np.linalg.norm(np.maximum(0.0, np.maximum(lo - b.face_center[1:], b.face_center[1:] - hi)))
+                self.assertGreater(d, b.radius, box.name)  # 円の中に入り込まない
+                gaps.append(d - b.radius)
+            self.assertLess(min(gaps), 0.003)
+
+    def test_order_and_door(self) -> None:
+        z = {b.name: b.face_center[2] for b in self.scene.buttons}
+        self.assertTrue(z["up"] > z["down"] > z["wc_up"] > z["wc_down"])
+        right = next(b for b in self.scene.boxes if b.name == "hall_door_right")
+        self.assertGreater(right.center[1] - right.half_size[1], self.cfg["column"]["width"] / 2)  # 扉は柱の左
+
+
 class TestCarpet(unittest.TestCase):
     def test_texture_color_and_seam(self) -> None:
         """平均の色は設定の rgb。端どうしの差が内側の隣り合う画素の差と同じくらい（並べても継ぎ目が出ない）。"""

@@ -39,6 +39,11 @@ RENDER_EVERY = 10
 # 関節の PD の強さを指定しないときの値（シーンを見るだけのとき。胴体固定で腕と脚が垂れないように）
 HOLD_STIFFNESS = 400.0
 HOLD_DAMPING = 20.0
+# 照明の強さ。MuJoCo の頭カメラの画像と明るさが近くなるように合わせた値（build_world の引数で変えられる）。
+# RTX の環境光を 0.3 にした（env.sh の ISAAC_KIT_ARGS）うえでの値。前の値（1200 / 1500、環境光 1.0）では、
+# 黒い柱が灰色に（MuJoCo 11 に対して 69）、消灯のボタンが白っぽく（71 に対して 186）写った（2026-10-02）
+DOME_INTENSITY = 135.0
+SUN_INTENSITY = 250.0
 # 中指の先の衝突判定の球（MuJoCo 版と同じ）
 FINGERTIP_NAME = "fingertip_collision"
 # 関節の名前 → configs/contest.yaml の gains の組
@@ -219,7 +224,8 @@ class World:
 
 
 def build_world(scene_cfg: dict, device: str, gains_cfg: dict | None = None, cameras: bool = True,
-                head_data_types: tuple[str, ...] = ("rgb",), overview: bool = True, new_stage: bool = False) -> World:
+                head_data_types: tuple[str, ...] = ("rgb",), overview: bool = True, new_stage: bool = False,
+                dome_intensity: float | None = None, sun_intensity: float | None = None) -> World:
     """G1 + 乗り場 + 照明 + カメラを作り、sim.reset() して初期の姿勢にした World を返す。
 
     new_stage=True で新しいステージに作る（評価で試行ごとに作り直すとき）。
@@ -233,9 +239,10 @@ def build_world(scene_cfg: dict, device: str, gains_cfg: dict | None = None, cam
     sim = SimulationContext(sim_utils.SimulationCfg(dt=PHYSICS_DT, render_interval=RENDER_EVERY, device=device))
     stage = sim_utils.get_current_stage()
     sim_utils.GroundPlaneCfg().func("/World/GroundPlane", sim_utils.GroundPlaneCfg())
-    dome = sim_utils.DomeLightCfg(intensity=1200.0, color=(0.95, 0.95, 0.95))
+    dome = sim_utils.DomeLightCfg(intensity=DOME_INTENSITY if dome_intensity is None else dome_intensity,
+                                  color=(0.95, 0.95, 0.95))
     dome.func("/World/DomeLight", dome)
-    sun = sim_utils.DistantLightCfg(intensity=1500.0, angle=1.0)
+    sun = sim_utils.DistantLightCfg(intensity=SUN_INTENSITY if sun_intensity is None else sun_intensity, angle=1.0)
     sun.func("/World/DistantLight", sun)
 
     robot = make_robot(robot_cfg, scene_cfg, pelvis_world, gains_cfg)

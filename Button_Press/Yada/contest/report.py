@@ -44,6 +44,20 @@ STAGE_LABELS: dict[str, tuple[str, str]] = {
     "unknown": ("分類できない（指先の位置を測れないシミュレーター）", ""),
 }
 BASIC_FEATURES: dict[str, str] = {
+    # 本番に似た乗り場（elevator_prod.yaml）
+    "wall.front_x": "壁までの距離 [m]",
+    "column.protrusion": "柱の出っ張り [m]",
+    "column.width": "柱の幅 [m]",
+    "column.center_y": "柱の左右の位置 [m]（負 = 右）",
+    "door.width": "扉の幅 [m]",
+    "buttons.common.radius": "ボタンの半径 [m]",
+    "buttons.common.protrusion": "ボタンの出っ張り [m]",
+    "button_up_height": "一般用 ▲ の高さ（床から）[m]",
+    "button_spacing": "▲ と ▼ の間隔 [m]",
+    "button_wc_up_height": "車いす用 ▲ の高さ（床から）[m]",
+    "floor_brightness": "床の明るさの倍率",
+    "column_brightness": "柱の明るさの倍率",
+    # 壁に付いた盤（elevator_hall.yaml）
     "wall_front_x": "壁までの距離 [m]",
     "panel_center_y": "盤の左右の位置 [m]（負 = 右）",
     "panel_center_height": "盤の高さ（床から）[m]",
