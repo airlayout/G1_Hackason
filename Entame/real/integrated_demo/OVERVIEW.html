@@ -191,7 +191,7 @@ html { scroll-behavior:smooth; }
       <text class="t-desc" x="706" y="120">LiDAR：前方の障害物</text>
       <text class="t-desc" x="706" y="140">センサー：向きと距離</text>
       <text class="t-desc" x="706" y="170">脚：歩く・止まる</text>
-      <text class="t-desc" x="706" y="190">腕：動きで反応する</text>
+      <text class="t-desc" x="706" y="190">腕・腰：動きで反応する</text>
       <text class="t-desc" x="706" y="210">スピーカー：声を出す</text>
 
       <rect class="z-world zone" x="925" y="80" width="70" height="130" rx="10"/>
@@ -231,7 +231,7 @@ html { scroll-behavior:smooth; }
     <li><span class="ic">🚶</span><b>1 歩く</b><p>決まったコースを一定の速さで進みます。距離と向きを測りながら歩きます。</p><span class="who">Patrol</span></li>
     <li><span class="ic">👀</span><b>2 見つける</b><p>カメラ映像から AI が人・バナナ・ぬいぐるみを探し、見間違いを避けて確定します。</p><span class="who">Reaction</span></li>
     <li><span class="ic">✋</span><b>3 止める</b><p>Reaction が Patrol に「止まって」と頼みます。止まったと確認できてから次へ進みます。</p><span class="who">Reaction → Patrol</span></li>
-    <li><span class="ic">🗣</span><b>4 反応する</b><p>声を出し、腕の動きを再生します。終わると腕を元の姿勢に戻します。</p><span class="who">Reaction → Jetson</span></li>
+    <li><span class="ic">🗣</span><b>4 反応する</b><p>声を出し、腕と腰の動きを再生します。脚は立ったままです。終わると腕を元の姿勢に戻します。</p><span class="who">Reaction → Jetson</span></li>
     <li><span class="ic">🚶</span><b>5 歩き出す</b><p>Reaction が「再開して」と頼み、Patrol が残りの距離ぶんを歩きます。</p><span class="who">Reaction → Patrol</span></li>
   </ol>
 </section>
@@ -571,14 +571,14 @@ html { scroll-behavior:smooth; }
       <tr><td><b>Patrol</b></td><td><span class="pill pc">操作PC</span></td><td>Python の状態機械</td><td>tick ごとに安全確認をして Move を送る</td><td>odom・IMU（UDP 47623）、LiDAR の状態（UDP 47621）</td><td>歩行コマンド vx・vyaw（UDP 47622）</td></tr>
       <tr><td><b>locomotion_relay</b></td><td><span class="pill jet">Jetson</span></td><td>LocoClient（unitree_sdk2py）、UDP</td><td>UDP 受信ごとに Move。20ms ごとに odom・IMU を返す。0.40 秒無通信で StopMove</td><td><code>rt/lowstate</code>（IMU）、<code>rt/unitree/slam_mapping/odom</code></td><td><b>脚</b>：Move / StopMove</td></tr>
       <tr><td><b>lidar_guard_relay</b></td><td><span class="pill jet">Jetson</span></td><td>unitree_sdk2py（DDS 購読）、UDP</td><td>点群が届くたびに前方・後方・旋回の状態を送る</td><td><code>rt/utlidar/cloud_livox_mid360</code></td><td>なし（読むだけ）</td></tr>
-      <tr><td><b>MotionDecode resident</b></td><td><span class="pill jet">Jetson</span></td><td>MotionDecode、CycloneDDS</td><td>普段は待機。execute の依頼中だけ約 50Hz で書き込む</td><td><code>rt/lowstate</code>、腕に他の書き手がいないか</td><td><b>腕</b>：<code>rt/arm_sdk</code> に目標角と weight。脚・腰は触らない</td></tr>
+      <tr><td><b>MotionDecode resident</b></td><td><span class="pill jet">Jetson</span></td><td>MotionDecode、CycloneDDS</td><td>普段は待機。execute の依頼中だけ約 50Hz で書き込む</td><td><code>rt/lowstate</code>、腕に他の書き手がいないか</td><td><b>腕と腰</b>：<code>rt/arm_sdk</code> に目標角と weight（振幅は腕 50%・腰 25%）。<b>脚は触らない</b></td></tr>
       <tr><td><b>camera sender</b></td><td><span class="pill jet">Jetson</span></td><td>VideoClient（<code>videohub_pc4</code>）、SSH</td><td>フレームごと（約 30fps）に JPEG を送る</td><td>G1 内蔵カメラ</td><td>なし</td></tr>
       <tr><td><b>audio sender</b></td><td><span class="pill jet">Jetson</span></td><td>AudioClient.PlayStream、SSH</td><td>音声の依頼が来たときだけ</td><td>PC から来る音声データ</td><td><b>スピーカー</b>：再生のみ</td></tr>
       <tr><td><b>run_integrated_demo.py</b></td><td><span class="pill pc">操作PC</span></td><td>Python（子プロセス管理）</td><td>起動と停止のときだけ</td><td>各プロセスの終了状態</td><td>起動順（Patrol → Reaction）と停止順（Patrol を先に）</td></tr>
     </tbody>
   </table>
   </div>
-  <p style="margin-top:14px;font-size:14px;color:var(--muted)">腕は <code>rt/arm_sdk</code> の weight で「内蔵コントローラから腕を借りる量」を決めます。1 で完全に借り、0 で返します。反応が終わったら q0（初期姿勢）に戻してから weight を 0 にします。</p>
+  <p style="margin-top:14px;font-size:14px;color:var(--muted)">腕と腰は <code>rt/arm_sdk</code> の weight で「内蔵コントローラから借りる量」を決めます。1 で完全に借り、0 で返します。反応が終わったら q0（初期姿勢）に戻してから weight を 0 にします。</p>
 </section>
 
 <section id="gloss">
@@ -618,7 +618,7 @@ html { scroll-behavior:smooth; }
     <div><dt>tick</dt><dd>ループの 1 回分。</dd></div>
     <div><dt>pause / resume</dt><dd>Patrol の一時停止と再開。Reaction が頼みます。</dd></div>
     <div><dt>preflight</dt><dd>腕を動かす前の事前確認。腕が静止しているかを見ます。</dd></div>
-    <div><dt>rt/arm_sdk・weight・q0</dt><dd>腕を内蔵コントローラから借りる口、借りる量（0〜1）、初期姿勢。</dd></div>
+    <div><dt>rt/arm_sdk・weight・q0</dt><dd>腕と腰を内蔵コントローラから借りる口、借りる量（0〜1）、初期姿勢。</dd></div>
     <div><dt>cooldown</dt><dd>反応のあとに次の反応を受け付けない待ち時間（2.0 秒）。</dd></div>
     <div><dt>found / surprise</dt><dd>反応の種類。人は found、バナナとぬいぐるみは surprise。</dd></div>
   </dl>
