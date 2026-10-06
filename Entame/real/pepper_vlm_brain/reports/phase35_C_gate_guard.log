@@ -1,0 +1,4 @@
+usage: benchmark_phase35.py [-h] [--experiments EXPERIMENTS]
+                            [--repeats REPEATS] [--output-dir OUTPUT_DIR]
+                            video
+benchmark_phase35.py: error: C requires independently evaluated A and B accuracy gates PASS

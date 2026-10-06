@@ -1,0 +1,1526 @@
+{
+  "backend": "yolo",
+  "worker": {
+    "type": "ready",
+    "info": {
+      "backend": "YOLO11n",
+      "device": "0",
+      "model": ".cache\\phase36\\yolo11n.pt",
+      "precision": "FP32",
+      "imgsz": 640,
+      "confidence": 0.25,
+      "target_selection": "largest bbox area; confidence; x/y tie break"
+    },
+    "pid": 22184
+  },
+  "video": {
+    "path": "C:\\Users\\slowh\\Downloads\\IMG_7121.mp4",
+    "fps": 30.0,
+    "frame_count": 885,
+    "duration_s": 29.5,
+    "source_size": [
+      910,
+      512
+    ],
+    "backend": "FFMPEG",
+    "orientation_degrees": 0.0
+  },
+  "runs": [
+    {
+      "timestamps": [
+        3,
+        7,
+        8,
+        9,
+        9.5,
+        10,
+        10.25,
+        12,
+        13
+      ],
+      "results": [
+        {
+          "kind": "fast",
+          "generation": 90,
+          "source_timestamp": 3.0,
+          "capture_timestamp": 15128.3384491,
+          "processing_start": 15128.3457354,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "CENTER",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            246.4868927001953,
+            74.1076431274414,
+            580.7991943359375,
+            475.2718200683594
+          ],
+          "bbox_center_x": 0.45455279507479823,
+          "confidence": 0.9249028563499451,
+          "detections": [
+            [
+              246.4868927001953,
+              74.1076431274414,
+              580.7991943359375,
+              475.2718200683594,
+              0.9249028563499451,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              246.4868927001953,
+              74.1076431274414,
+              580.7991943359375,
+              475.2718200683594,
+              0.9249028563499451,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 1.0378999995737104,
+              "inference": 9.393799999088515,
+              "postprocess": 29.70119999918097
+            }
+          },
+          "peak_allocated_gib": 0.06393289566040039,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.386919,
+          "inference_finished_timestamp": 15128.386919,
+          "inference_latency_s": 0.04118360000029497,
+          "result_age_s": 0.04846990000078222,
+          "dispatch_timestamp": 15128.3428417,
+          "received_timestamp": 15128.3883173,
+          "requested_timestamp": 3
+        },
+        {
+          "kind": "fast",
+          "generation": 210,
+          "source_timestamp": 7.000000000000001,
+          "capture_timestamp": 15128.3916089,
+          "processing_start": 15128.3975655,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            0.5155425071716309,
+            66.85546112060547,
+            246.01390075683594,
+            470.2044372558594
+          ],
+          "bbox_center_x": 0.13545573805714703,
+          "confidence": 0.9363234639167786,
+          "detections": [
+            [
+              0.5155425071716309,
+              66.85546112060547,
+              246.01390075683594,
+              470.2044372558594,
+              0.9363234639167786,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              0.5155425071716309,
+              66.85546112060547,
+              246.01390075683594,
+              470.2044372558594,
+              0.9363234639167786,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 1.3056000007054536,
+              "inference": 12.443899999198038,
+              "postprocess": 3.0002999992575496
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.4152871,
+          "inference_finished_timestamp": 15128.4152871,
+          "inference_latency_s": 0.017721600001095794,
+          "result_age_s": 0.023678200001086225,
+          "dispatch_timestamp": 15128.3948586,
+          "received_timestamp": 15128.4161274,
+          "requested_timestamp": 7
+        },
+        {
+          "kind": "fast",
+          "generation": 240,
+          "source_timestamp": 8.0,
+          "capture_timestamp": 15128.4192925,
+          "processing_start": 15128.4249965,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            0.1911534070968628,
+            56.72078323364258,
+            109.10649108886719,
+            466.7404479980469
+          ],
+          "bbox_center_x": 0.06005365082195827,
+          "confidence": 0.8917067050933838,
+          "detections": [
+            [
+              0.1911534070968628,
+              56.72078323364258,
+              109.10649108886719,
+              466.7404479980469,
+              0.8917067050933838,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              0.1911534070968628,
+              56.72078323364258,
+              109.10649108886719,
+              466.7404479980469,
+              0.8917067050933838,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 1.0188000014750287,
+              "inference": 9.798200000659563,
+              "postprocess": 1.6414000001532258
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.4385349,
+          "inference_finished_timestamp": 15128.4385349,
+          "inference_latency_s": 0.013538400000470574,
+          "result_age_s": 0.01924239999971178,
+          "dispatch_timestamp": 15128.4223738,
+          "received_timestamp": 15128.4400246,
+          "requested_timestamp": 8
+        },
+        {
+          "kind": "fast",
+          "generation": 270,
+          "source_timestamp": 9.0,
+          "capture_timestamp": 15128.4428629,
+          "processing_start": 15128.448628,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 1.0619999993650708,
+              "inference": 10.398000000350294,
+              "postprocess": 1.5019000002212124
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.4624581,
+          "inference_finished_timestamp": 15128.4624581,
+          "inference_latency_s": 0.013830100000632228,
+          "result_age_s": 0.01959520000127668,
+          "dispatch_timestamp": 15128.4458709,
+          "received_timestamp": 15128.4625515,
+          "requested_timestamp": 9
+        },
+        {
+          "kind": "fast",
+          "generation": 285,
+          "source_timestamp": 9.5,
+          "capture_timestamp": 15128.465417,
+          "processing_start": 15128.4718644,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9197999988828087,
+              "inference": 9.89589999880991,
+              "postprocess": 0.9303999995609047
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.4844511,
+          "inference_finished_timestamp": 15128.4844511,
+          "inference_latency_s": 0.012586699998792028,
+          "result_age_s": 0.01903409999977157,
+          "dispatch_timestamp": 15128.4686004,
+          "received_timestamp": 15128.4852027,
+          "requested_timestamp": 9.5
+        },
+        {
+          "kind": "fast",
+          "generation": 300,
+          "source_timestamp": 10.0,
+          "capture_timestamp": 15128.4877907,
+          "processing_start": 15128.4931609,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9243999993486796,
+              "inference": 12.210000000777654,
+              "postprocess": 1.6162000010808697
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.5087419,
+          "inference_finished_timestamp": 15128.5087419,
+          "inference_latency_s": 0.015580999999656342,
+          "result_age_s": 0.020951200000126846,
+          "dispatch_timestamp": 15128.4907613,
+          "received_timestamp": 15128.5091627,
+          "requested_timestamp": 10
+        },
+        {
+          "kind": "fast",
+          "generation": 308,
+          "source_timestamp": 10.266666666666667,
+          "capture_timestamp": 15128.5120332,
+          "processing_start": 15128.5176456,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 1.1195999995834427,
+              "inference": 9.094200000618002,
+              "postprocess": 0.9878000000753673
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.5297259,
+          "inference_finished_timestamp": 15128.5297259,
+          "inference_latency_s": 0.012080299999070121,
+          "result_age_s": 0.017692699999315664,
+          "dispatch_timestamp": 15128.5151169,
+          "received_timestamp": 15128.5304357,
+          "requested_timestamp": 10.25
+        },
+        {
+          "kind": "fast",
+          "generation": 360,
+          "source_timestamp": 12.0,
+          "capture_timestamp": 15128.5332416,
+          "processing_start": 15128.5404142,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            0.6367802619934082,
+            73.58776092529297,
+            316.9467468261719,
+            476.3277893066406
+          ],
+          "bbox_center_x": 0.17449644345503587,
+          "confidence": 0.9422966837882996,
+          "detections": [
+            [
+              0.6367802619934082,
+              73.58776092529297,
+              316.9467468261719,
+              476.3277893066406,
+              0.9422966837882996,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              0.6367802619934082,
+              73.58776092529297,
+              316.9467468261719,
+              476.3277893066406,
+              0.9422966837882996,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9011999991344055,
+              "inference": 9.455900000830297,
+              "postprocess": 1.4625000003434252
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.5531152,
+          "inference_finished_timestamp": 15128.5531152,
+          "inference_latency_s": 0.012700999999651685,
+          "result_age_s": 0.01987360000020999,
+          "dispatch_timestamp": 15128.5363379,
+          "received_timestamp": 15128.5534111,
+          "requested_timestamp": 12
+        },
+        {
+          "kind": "fast",
+          "generation": 390,
+          "source_timestamp": 13.0,
+          "capture_timestamp": 15128.5563791,
+          "processing_start": 15128.5618276,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            133.69491577148438,
+            26.872821807861328,
+            435.18670654296875,
+            476.2744445800781
+          ],
+          "bbox_center_x": 0.3125723199529962,
+          "confidence": 0.9290449619293213,
+          "detections": [
+            [
+              133.69491577148438,
+              26.872821807861328,
+              435.18670654296875,
+              476.2744445800781,
+              0.9290449619293213,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              133.69491577148438,
+              26.872821807861328,
+              435.18670654296875,
+              476.2744445800781,
+              0.9290449619293213,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9087999987968942,
+              "inference": 10.14240000040445,
+              "postprocess": 1.432000000932021
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.5752299,
+          "inference_finished_timestamp": 15128.5752299,
+          "inference_latency_s": 0.013402299999142997,
+          "result_age_s": 0.018850799999199808,
+          "dispatch_timestamp": 15128.5593769,
+          "received_timestamp": 15128.5764302,
+          "requested_timestamp": 13
+        }
+      ]
+    },
+    {
+      "timestamps": [
+        3,
+        7,
+        8,
+        9,
+        9.5,
+        10,
+        10.25,
+        12,
+        13
+      ],
+      "results": [
+        {
+          "kind": "fast",
+          "generation": 90,
+          "source_timestamp": 3.0,
+          "capture_timestamp": 15128.5794394,
+          "processing_start": 15128.5851253,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "CENTER",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            246.4868927001953,
+            74.1076431274414,
+            580.7991943359375,
+            475.2718200683594
+          ],
+          "bbox_center_x": 0.45455279507479823,
+          "confidence": 0.9249028563499451,
+          "detections": [
+            [
+              246.4868927001953,
+              74.1076431274414,
+              580.7991943359375,
+              475.2718200683594,
+              0.9249028563499451,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              246.4868927001953,
+              74.1076431274414,
+              580.7991943359375,
+              475.2718200683594,
+              0.9249028563499451,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 1.1966000001848442,
+              "inference": 9.447799999179551,
+              "postprocess": 1.4431999989028554
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.5984283,
+          "inference_finished_timestamp": 15128.5984283,
+          "inference_latency_s": 0.013302999999723397,
+          "result_age_s": 0.018988899999385467,
+          "dispatch_timestamp": 15128.5824574,
+          "received_timestamp": 15128.5985839,
+          "requested_timestamp": 3
+        },
+        {
+          "kind": "fast",
+          "generation": 210,
+          "source_timestamp": 7.000000000000001,
+          "capture_timestamp": 15128.6016879,
+          "processing_start": 15128.6081068,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            0.5155425071716309,
+            66.85546112060547,
+            246.01390075683594,
+            470.2044372558594
+          ],
+          "bbox_center_x": 0.13545573805714703,
+          "confidence": 0.9363234639167786,
+          "detections": [
+            [
+              0.5155425071716309,
+              66.85546112060547,
+              246.01390075683594,
+              470.2044372558594,
+              0.9363234639167786,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              0.5155425071716309,
+              66.85546112060547,
+              246.01390075683594,
+              470.2044372558594,
+              0.9363234639167786,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9245999990525888,
+              "inference": 9.093099999518017,
+              "postprocess": 1.450099998692167
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.6204688,
+          "inference_finished_timestamp": 15128.6204688,
+          "inference_latency_s": 0.012361999999484397,
+          "result_age_s": 0.018780899999910616,
+          "dispatch_timestamp": 15128.6055142,
+          "received_timestamp": 15128.6215822,
+          "requested_timestamp": 7
+        },
+        {
+          "kind": "fast",
+          "generation": 240,
+          "source_timestamp": 8.0,
+          "capture_timestamp": 15128.624663,
+          "processing_start": 15128.6310231,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            0.1911534070968628,
+            56.72078323364258,
+            109.10649108886719,
+            466.7404479980469
+          ],
+          "bbox_center_x": 0.06005365082195827,
+          "confidence": 0.8917067050933838,
+          "detections": [
+            [
+              0.1911534070968628,
+              56.72078323364258,
+              109.10649108886719,
+              466.7404479980469,
+              0.8917067050933838,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              0.1911534070968628,
+              56.72078323364258,
+              109.10649108886719,
+              466.7404479980469,
+              0.8917067050933838,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9284000007028226,
+              "inference": 10.152599999855738,
+              "postprocess": 2.883200000724173
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.6460027,
+          "inference_finished_timestamp": 15128.6460027,
+          "inference_latency_s": 0.014979599998696358,
+          "result_age_s": 0.02133969999886176,
+          "dispatch_timestamp": 15128.6282174,
+          "received_timestamp": 15128.6475491,
+          "requested_timestamp": 8
+        },
+        {
+          "kind": "fast",
+          "generation": 270,
+          "source_timestamp": 9.0,
+          "capture_timestamp": 15128.6505061,
+          "processing_start": 15128.6561885,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.988800000413903,
+              "inference": 9.29790000009234,
+              "postprocess": 0.9379999992233934
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.6683661,
+          "inference_finished_timestamp": 15128.6683661,
+          "inference_latency_s": 0.012177600001450628,
+          "result_age_s": 0.017859999999927823,
+          "dispatch_timestamp": 15128.6535957,
+          "received_timestamp": 15128.6695184,
+          "requested_timestamp": 9
+        },
+        {
+          "kind": "fast",
+          "generation": 285,
+          "source_timestamp": 9.5,
+          "capture_timestamp": 15128.6727151,
+          "processing_start": 15128.6785318,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9499999996478437,
+              "inference": 14.117999999143649,
+              "postprocess": 1.6042000006564194
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.6960677,
+          "inference_finished_timestamp": 15128.6960677,
+          "inference_latency_s": 0.017535900000439142,
+          "result_age_s": 0.02335260000108974,
+          "dispatch_timestamp": 15128.6758096,
+          "received_timestamp": 15128.6968759,
+          "requested_timestamp": 9.5
+        },
+        {
+          "kind": "fast",
+          "generation": 300,
+          "source_timestamp": 10.0,
+          "capture_timestamp": 15128.6999974,
+          "processing_start": 15128.7062604,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9273999985452974,
+              "inference": 10.342100000343635,
+              "postprocess": 0.9663000000728061
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.7193616,
+          "inference_finished_timestamp": 15128.7193616,
+          "inference_latency_s": 0.013101200000164681,
+          "result_age_s": 0.019364200001291465,
+          "dispatch_timestamp": 15128.7031864,
+          "received_timestamp": 15128.7209861,
+          "requested_timestamp": 10
+        },
+        {
+          "kind": "fast",
+          "generation": 308,
+          "source_timestamp": 10.266666666666667,
+          "capture_timestamp": 15128.7239316,
+          "processing_start": 15128.7298691,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9716999993543141,
+              "inference": 10.105100000146194,
+              "postprocess": 1.0455999999976484
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.7431945,
+          "inference_finished_timestamp": 15128.7431945,
+          "inference_latency_s": 0.013325400001122034,
+          "result_age_s": 0.019262900001194794,
+          "dispatch_timestamp": 15128.7271194,
+          "received_timestamp": 15128.746301,
+          "requested_timestamp": 10.25
+        },
+        {
+          "kind": "fast",
+          "generation": 360,
+          "source_timestamp": 12.0,
+          "capture_timestamp": 15128.7487951,
+          "processing_start": 15128.7560558,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            0.6367802619934082,
+            73.58776092529297,
+            316.9467468261719,
+            476.3277893066406
+          ],
+          "bbox_center_x": 0.17449644345503587,
+          "confidence": 0.9422966837882996,
+          "detections": [
+            [
+              0.6367802619934082,
+              73.58776092529297,
+              316.9467468261719,
+              476.3277893066406,
+              0.9422966837882996,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              0.6367802619934082,
+              73.58776092529297,
+              316.9467468261719,
+              476.3277893066406,
+              0.9422966837882996,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9747000003699213,
+              "inference": 9.457199999815202,
+              "postprocess": 1.6859999996086117
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.7692122,
+          "inference_finished_timestamp": 15128.7692122,
+          "inference_latency_s": 0.013156400000298163,
+          "result_age_s": 0.020417100000486244,
+          "dispatch_timestamp": 15128.7520253,
+          "received_timestamp": 15128.7708097,
+          "requested_timestamp": 12
+        },
+        {
+          "kind": "fast",
+          "generation": 390,
+          "source_timestamp": 13.0,
+          "capture_timestamp": 15128.7739799,
+          "processing_start": 15128.7797675,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            133.69491577148438,
+            26.872821807861328,
+            435.18670654296875,
+            476.2744445800781
+          ],
+          "bbox_center_x": 0.3125723199529962,
+          "confidence": 0.9290449619293213,
+          "detections": [
+            [
+              133.69491577148438,
+              26.872821807861328,
+              435.18670654296875,
+              476.2744445800781,
+              0.9290449619293213,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              133.69491577148438,
+              26.872821807861328,
+              435.18670654296875,
+              476.2744445800781,
+              0.9290449619293213,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9298999993916368,
+              "inference": 9.750900000653928,
+              "postprocess": 1.4090000004216563
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.7927735,
+          "inference_finished_timestamp": 15128.7927735,
+          "inference_latency_s": 0.013005999999222695,
+          "result_age_s": 0.018793600000208244,
+          "dispatch_timestamp": 15128.7770516,
+          "received_timestamp": 15128.7929925,
+          "requested_timestamp": 13
+        }
+      ]
+    },
+    {
+      "timestamps": [
+        3,
+        7,
+        8,
+        9,
+        9.5,
+        10,
+        10.25,
+        12,
+        13
+      ],
+      "results": [
+        {
+          "kind": "fast",
+          "generation": 90,
+          "source_timestamp": 3.0,
+          "capture_timestamp": 15128.7961361,
+          "processing_start": 15128.8024359,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "CENTER",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            246.4868927001953,
+            74.1076431274414,
+            580.7991943359375,
+            475.2718200683594
+          ],
+          "bbox_center_x": 0.45455279507479823,
+          "confidence": 0.9249028563499451,
+          "detections": [
+            [
+              246.4868927001953,
+              74.1076431274414,
+              580.7991943359375,
+              475.2718200683594,
+              0.9249028563499451,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              246.4868927001953,
+              74.1076431274414,
+              580.7991943359375,
+              475.2718200683594,
+              0.9249028563499451,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 1.8044999997073319,
+              "inference": 9.928499999659834,
+              "postprocess": 1.4348999993671896
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.8166931,
+          "inference_finished_timestamp": 15128.8166931,
+          "inference_latency_s": 0.014257200000429293,
+          "result_age_s": 0.020556999999826076,
+          "dispatch_timestamp": 15128.7992304,
+          "received_timestamp": 15128.8175268,
+          "requested_timestamp": 3
+        },
+        {
+          "kind": "fast",
+          "generation": 210,
+          "source_timestamp": 7.000000000000001,
+          "capture_timestamp": 15128.8202558,
+          "processing_start": 15128.8262659,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            0.5155425071716309,
+            66.85546112060547,
+            246.01390075683594,
+            470.2044372558594
+          ],
+          "bbox_center_x": 0.13545573805714703,
+          "confidence": 0.9363234639167786,
+          "detections": [
+            [
+              0.5155425071716309,
+              66.85546112060547,
+              246.01390075683594,
+              470.2044372558594,
+              0.9363234639167786,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              0.5155425071716309,
+              66.85546112060547,
+              246.01390075683594,
+              470.2044372558594,
+              0.9363234639167786,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9030000001075678,
+              "inference": 9.638200001063524,
+              "postprocess": 1.9334999997226987
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.8396634,
+          "inference_finished_timestamp": 15128.8396634,
+          "inference_latency_s": 0.013397500000792206,
+          "result_age_s": 0.019407600000704406,
+          "dispatch_timestamp": 15128.8234972,
+          "received_timestamp": 15128.8413378,
+          "requested_timestamp": 7
+        },
+        {
+          "kind": "fast",
+          "generation": 240,
+          "source_timestamp": 8.0,
+          "capture_timestamp": 15128.8448255,
+          "processing_start": 15128.8510521,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            0.1911534070968628,
+            56.72078323364258,
+            109.10649108886719,
+            466.7404479980469
+          ],
+          "bbox_center_x": 0.06005365082195827,
+          "confidence": 0.8917067050933838,
+          "detections": [
+            [
+              0.1911534070968628,
+              56.72078323364258,
+              109.10649108886719,
+              466.7404479980469,
+              0.8917067050933838,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              0.1911534070968628,
+              56.72078323364258,
+              109.10649108886719,
+              466.7404479980469,
+              0.8917067050933838,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 1.1153999985253904,
+              "inference": 9.49880000007397,
+              "postprocess": 1.4830000000074506
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.8640883,
+          "inference_finished_timestamp": 15128.8640883,
+          "inference_latency_s": 0.01303619999998773,
+          "result_age_s": 0.019262800000433344,
+          "dispatch_timestamp": 15128.8483805,
+          "received_timestamp": 15128.8656454,
+          "requested_timestamp": 8
+        },
+        {
+          "kind": "fast",
+          "generation": 270,
+          "source_timestamp": 9.0,
+          "capture_timestamp": 15128.8689078,
+          "processing_start": 15128.874772,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9091000010812422,
+              "inference": 9.88370000050054,
+              "postprocess": 1.1448000004747882
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.8875702,
+          "inference_finished_timestamp": 15128.8875702,
+          "inference_latency_s": 0.012798200001270743,
+          "result_age_s": 0.018662399999811896,
+          "dispatch_timestamp": 15128.8721794,
+          "received_timestamp": 15128.8887571,
+          "requested_timestamp": 9
+        },
+        {
+          "kind": "fast",
+          "generation": 285,
+          "source_timestamp": 9.5,
+          "capture_timestamp": 15128.8917686,
+          "processing_start": 15128.897434,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.8895999999367632,
+              "inference": 10.038999998869258,
+              "postprocess": 0.9115000011661323
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.9101541,
+          "inference_finished_timestamp": 15128.9101541,
+          "inference_latency_s": 0.012720099999569356,
+          "result_age_s": 0.0183854999995674,
+          "dispatch_timestamp": 15128.8948533,
+          "received_timestamp": 15128.9113909,
+          "requested_timestamp": 9.5
+        },
+        {
+          "kind": "fast",
+          "generation": 300,
+          "source_timestamp": 10.0,
+          "capture_timestamp": 15128.9144635,
+          "processing_start": 15128.9205874,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 1.2784999998984858,
+              "inference": 9.439299999939976,
+              "postprocess": 0.9474999988015043
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.9332224,
+          "inference_finished_timestamp": 15128.9332224,
+          "inference_latency_s": 0.012635000000955188,
+          "result_age_s": 0.018758900001557777,
+          "dispatch_timestamp": 15128.9174744,
+          "received_timestamp": 15128.9335465,
+          "requested_timestamp": 10
+        },
+        {
+          "kind": "fast",
+          "generation": 308,
+          "source_timestamp": 10.266666666666667,
+          "capture_timestamp": 15128.936763,
+          "processing_start": 15128.9424715,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9312000001955312,
+              "inference": 9.40450000052806,
+              "postprocess": 0.8895999999367632
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.9545475,
+          "inference_finished_timestamp": 15128.9545475,
+          "inference_latency_s": 0.012075999999069609,
+          "result_age_s": 0.017784499999834225,
+          "dispatch_timestamp": 15128.9399372,
+          "received_timestamp": 15128.9559888,
+          "requested_timestamp": 10.25
+        },
+        {
+          "kind": "fast",
+          "generation": 360,
+          "source_timestamp": 12.0,
+          "capture_timestamp": 15128.9590842,
+          "processing_start": 15128.9646279,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            0.6367802619934082,
+            73.58776092529297,
+            316.9467468261719,
+            476.3277893066406
+          ],
+          "bbox_center_x": 0.17449644345503587,
+          "confidence": 0.9422966837882996,
+          "detections": [
+            [
+              0.6367802619934082,
+              73.58776092529297,
+              316.9467468261719,
+              476.3277893066406,
+              0.9422966837882996,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              0.6367802619934082,
+              73.58776092529297,
+              316.9467468261719,
+              476.3277893066406,
+              0.9422966837882996,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.8907000010367483,
+              "inference": 14.115099998889491,
+              "postprocess": 1.4922999998816522
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15128.981983,
+          "inference_finished_timestamp": 15128.981983,
+          "inference_latency_s": 0.01735509999889473,
+          "result_age_s": 0.022898799999893527,
+          "dispatch_timestamp": 15128.9620774,
+          "received_timestamp": 15128.9829936,
+          "requested_timestamp": 12
+        },
+        {
+          "kind": "fast",
+          "generation": 390,
+          "source_timestamp": 13.0,
+          "capture_timestamp": 15128.9862217,
+          "processing_start": 15128.9919051,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            133.69491577148438,
+            26.872821807861328,
+            435.18670654296875,
+            476.2744445800781
+          ],
+          "bbox_center_x": 0.3125723199529962,
+          "confidence": 0.9290449619293213,
+          "detections": [
+            [
+              133.69491577148438,
+              26.872821807861328,
+              435.18670654296875,
+              476.2744445800781,
+              0.9290449619293213,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              133.69491577148438,
+              26.872821807861328,
+              435.18670654296875,
+              476.2744445800781,
+              0.9290449619293213,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9139000012510223,
+              "inference": 9.356399999887799,
+              "postprocess": 2.0506999990175245
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15129.0051214,
+          "inference_finished_timestamp": 15129.0051214,
+          "inference_latency_s": 0.013216299999839975,
+          "result_age_s": 0.018899699998655706,
+          "dispatch_timestamp": 15128.9893051,
+          "received_timestamp": 15129.0062978,
+          "requested_timestamp": 13
+        }
+      ]
+    },
+    {
+      "timestamps": [
+        8,
+        10,
+        12
+      ],
+      "results": [
+        {
+          "kind": "fast",
+          "generation": 240,
+          "source_timestamp": 8.0,
+          "capture_timestamp": 15129.0094166,
+          "processing_start": 15129.015585,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            0.1911534070968628,
+            56.72078323364258,
+            109.10649108886719,
+            466.7404479980469
+          ],
+          "bbox_center_x": 0.06005365082195827,
+          "confidence": 0.8917067050933838,
+          "detections": [
+            [
+              0.1911534070968628,
+              56.72078323364258,
+              109.10649108886719,
+              466.7404479980469,
+              0.8917067050933838,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              0.1911534070968628,
+              56.72078323364258,
+              109.10649108886719,
+              466.7404479980469,
+              0.8917067050933838,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.9443999988434371,
+              "inference": 9.318599999460275,
+              "postprocess": 1.3932000001659617
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15129.0281058,
+          "inference_finished_timestamp": 15129.0281058,
+          "inference_latency_s": 0.01252080000085698,
+          "result_age_s": 0.018689200000153505,
+          "dispatch_timestamp": 15129.0129288,
+          "received_timestamp": 15129.0290836,
+          "requested_timestamp": 8
+        },
+        {
+          "kind": "fast",
+          "generation": 300,
+          "source_timestamp": 10.0,
+          "capture_timestamp": 15129.0322466,
+          "processing_start": 15129.0388361,
+          "observation": {
+            "person_visible": false,
+            "person_count": 0,
+            "person_direction": "UNKNOWN",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": null,
+          "bbox_center_x": null,
+          "confidence": null,
+          "detections": [],
+          "raw_model_boxes": [],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 1.0347000006731832,
+              "inference": 18.398899999738205,
+              "postprocess": 1.6071999998530373
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15129.0606873,
+          "inference_finished_timestamp": 15129.0606873,
+          "inference_latency_s": 0.021851199999218807,
+          "result_age_s": 0.02844069999991916,
+          "dispatch_timestamp": 15129.0353694,
+          "received_timestamp": 15129.0614723,
+          "requested_timestamp": 10
+        },
+        {
+          "kind": "fast",
+          "generation": 360,
+          "source_timestamp": 12.0,
+          "capture_timestamp": 15129.0647779,
+          "processing_start": 15129.0709971,
+          "observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "UNKNOWN",
+            "blocking_obstacle": "UNKNOWN"
+          },
+          "bbox": [
+            0.6367802619934082,
+            73.58776092529297,
+            316.9467468261719,
+            476.3277893066406
+          ],
+          "bbox_center_x": 0.17449644345503587,
+          "confidence": 0.9422966837882996,
+          "detections": [
+            [
+              0.6367802619934082,
+              73.58776092529297,
+              316.9467468261719,
+              476.3277893066406,
+              0.9422966837882996,
+              0.0
+            ]
+          ],
+          "raw_model_boxes": [
+            [
+              0.6367802619934082,
+              73.58776092529297,
+              316.9467468261719,
+              476.3277893066406,
+              0.9422966837882996,
+              0.0
+            ]
+          ],
+          "metrics": {
+            "ultralytics_speed_ms": {
+              "preprocess": 0.921500000913511,
+              "inference": 9.597300000677933,
+              "postprocess": 1.429699999789591
+            }
+          },
+          "peak_allocated_gib": 0.0639333724975586,
+          "peak_reserved_gib": 0.087890625,
+          "processing_finish": 15129.0838945,
+          "inference_finished_timestamp": 15129.0838945,
+          "inference_latency_s": 0.012897399999928894,
+          "result_age_s": 0.01911660000041593,
+          "dispatch_timestamp": 15129.0678939,
+          "received_timestamp": 15129.085283,
+          "requested_timestamp": 12
+        }
+      ]
+    }
+  ],
+  "status": "complete"
+}

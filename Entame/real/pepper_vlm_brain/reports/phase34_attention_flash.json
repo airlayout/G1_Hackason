@@ -1,0 +1,369 @@
+{
+  "attention": "flash",
+  "status": "failed",
+  "note": "ATen dispatch probe excluded from latency samples; no CUPTI.",
+  "environment": {
+    "torch": "2.9.1+cu128",
+    "cuda": "12.8",
+    "gpu": "NVIDIA GeForce RTX 3060 Ti",
+    "cudnn_version": 91002,
+    "cudnn_benchmark": false,
+    "flash_enabled": true,
+    "math_enabled": true,
+    "mem_efficient_enabled": true,
+    "vision_attn": "sdpa",
+    "text_attn": "sdpa"
+  },
+  "warmup": {
+    "perception": {
+      "observation": null,
+      "raw_response": "",
+      "bare_json": false,
+      "fallback": true,
+      "error": "RuntimeError: No available kernel. Aborting execution.",
+      "metrics": {}
+    },
+    "planner": {
+      "decision": {
+        "action": "WAIT",
+        "direction": "UNKNOWN",
+        "target": "NONE",
+        "distance": "UNKNOWN"
+      },
+      "raw_response": "",
+      "bare_json": false,
+      "fallback": true,
+      "error": "Planner skipped: invalid Perception",
+      "metrics": {}
+    },
+    "state_before": {
+      "last_seen_person_direction": "UNKNOWN",
+      "person_visible_last_frame": null,
+      "frames_since_person_seen": 0,
+      "transition": "UNKNOWN"
+    },
+    "state_after": {
+      "last_seen_person_direction": "UNKNOWN",
+      "person_visible_last_frame": null,
+      "frames_since_person_seen": 0,
+      "transition": "UNKNOWN"
+    },
+    "transition": "UNKNOWN",
+    "timing": {
+      "perception_wall_s": 5.396216499999355,
+      "state_update_s": 6.000000212225132e-07,
+      "planner_wall_s": 0.0,
+      "total_brain_s": 5.396969899999931
+    }
+  },
+  "sample": {
+    "perception": {
+      "observation": null,
+      "raw_response": "",
+      "bare_json": false,
+      "fallback": true,
+      "error": "RuntimeError: No available kernel. Aborting execution.",
+      "metrics": {}
+    },
+    "planner": {
+      "decision": {
+        "action": "WAIT",
+        "direction": "UNKNOWN",
+        "target": "NONE",
+        "distance": "UNKNOWN"
+      },
+      "raw_response": "",
+      "bare_json": false,
+      "fallback": true,
+      "error": "Planner skipped: invalid Perception",
+      "metrics": {}
+    },
+    "state_before": {
+      "last_seen_person_direction": "UNKNOWN",
+      "person_visible_last_frame": null,
+      "frames_since_person_seen": 0,
+      "transition": "UNKNOWN"
+    },
+    "state_after": {
+      "last_seen_person_direction": "UNKNOWN",
+      "person_visible_last_frame": null,
+      "frames_since_person_seen": 0,
+      "transition": "UNKNOWN"
+    },
+    "transition": "UNKNOWN",
+    "timing": {
+      "perception_wall_s": 4.061610300000211,
+      "state_update_s": 5.000001692678779e-07,
+      "planner_wall_s": 0.0,
+      "total_brain_s": 4.061683500000072
+    }
+  },
+  "operators": [
+    {
+      "name": "aten.lift_fresh.default",
+      "count": 9
+    },
+    {
+      "name": "aten.view.default",
+      "count": 9
+    },
+    {
+      "name": "aten.permute.default",
+      "count": 4
+    },
+    {
+      "name": "aten.stack.default",
+      "count": 3
+    },
+    {
+      "name": "aten._upsample_bicubic2d_aa.default",
+      "count": 1
+    },
+    {
+      "name": "aten.select.int",
+      "count": 15
+    },
+    {
+      "name": "aten._to_copy.default",
+      "count": 5
+    },
+    {
+      "name": "aten.sub.Tensor",
+      "count": 6
+    },
+    {
+      "name": "aten.div_.Tensor",
+      "count": 1
+    },
+    {
+      "name": "aten.unsqueeze.default",
+      "count": 35
+    },
+    {
+      "name": "aten.slice.Tensor",
+      "count": 10
+    },
+    {
+      "name": "aten.repeat.default",
+      "count": 2
+    },
+    {
+      "name": "aten.cat.default",
+      "count": 6
+    },
+    {
+      "name": "aten.clone.default",
+      "count": 3
+    },
+    {
+      "name": "aten._unsafe_view.default",
+      "count": 1
+    },
+    {
+      "name": "aten.prod.default",
+      "count": 1
+    },
+    {
+      "name": "aten.floor_divide.default",
+      "count": 5
+    },
+    {
+      "name": "aten._local_scalar_dense.default",
+      "count": 1
+    },
+    {
+      "name": "aten.detach_.default",
+      "count": 5
+    },
+    {
+      "name": "aten.isin.Tensor_Tensor",
+      "count": 1
+    },
+    {
+      "name": "aten.any.default",
+      "count": 2
+    },
+    {
+      "name": "aten.is_nonzero.default",
+      "count": 5
+    },
+    {
+      "name": "aten.lt.Scalar",
+      "count": 1
+    },
+    {
+      "name": "aten.to.dtype_layout",
+      "count": 4
+    },
+    {
+      "name": "aten.ones.default",
+      "count": 2
+    },
+    {
+      "name": "aten.cumsum.default",
+      "count": 3
+    },
+    {
+      "name": "aten.ge.Scalar",
+      "count": 1
+    },
+    {
+      "name": "aten.to.dtype",
+      "count": 13
+    },
+    {
+      "name": "aten.eq.Scalar",
+      "count": 1
+    },
+    {
+      "name": "aten.masked_fill_.Scalar",
+      "count": 1
+    },
+    {
+      "name": "aten.ne.Scalar",
+      "count": 1
+    },
+    {
+      "name": "aten.embedding.default",
+      "count": 2
+    },
+    {
+      "name": "aten.conv3d.default",
+      "count": 1
+    },
+    {
+      "name": "aten.unbind.int",
+      "count": 11
+    },
+    {
+      "name": "aten.item.default",
+      "count": 15
+    },
+    {
+      "name": "aten.linspace.default",
+      "count": 2
+    },
+    {
+      "name": "aten.add.Tensor",
+      "count": 14
+    },
+    {
+      "name": "aten.clip.default",
+      "count": 2
+    },
+    {
+      "name": "aten.mul.Tensor",
+      "count": 15
+    },
+    {
+      "name": "aten.numpy_T.default",
+      "count": 8
+    },
+    {
+      "name": "aten.flatten.using_ints",
+      "count": 10
+    },
+    {
+      "name": "aten.rsub.Scalar",
+      "count": 4
+    },
+    {
+      "name": "aten.resolve_conj.default",
+      "count": 11
+    },
+    {
+      "name": "aten.resolve_neg.default",
+      "count": 11
+    },
+    {
+      "name": "aten.split_with_sizes.default",
+      "count": 4
+    },
+    {
+      "name": "aten.max.default",
+      "count": 1
+    },
+    {
+      "name": "aten.arange.default",
+      "count": 5
+    },
+    {
+      "name": "aten.outer.default",
+      "count": 1
+    },
+    {
+      "name": "aten.prod.dim_int",
+      "count": 1
+    },
+    {
+      "name": "aten.sum.default",
+      "count": 1
+    },
+    {
+      "name": "aten.empty.memory_format",
+      "count": 1
+    },
+    {
+      "name": "aten.expand.default",
+      "count": 2
+    },
+    {
+      "name": "aten.reshape.default",
+      "count": 5
+    },
+    {
+      "name": "aten.gt.Scalar",
+      "count": 1
+    },
+    {
+      "name": "aten.copy_.default",
+      "count": 1
+    },
+    {
+      "name": "aten.index.Tensor",
+      "count": 1
+    },
+    {
+      "name": "aten.cos.default",
+      "count": 1
+    },
+    {
+      "name": "aten.sin.default",
+      "count": 1
+    },
+    {
+      "name": "aten.repeat_interleave.self_Tensor",
+      "count": 1
+    },
+    {
+      "name": "aten.pad.default",
+      "count": 1
+    },
+    {
+      "name": "aten.layer_norm.default",
+      "count": 1
+    },
+    {
+      "name": "aten.linear.default",
+      "count": 1
+    },
+    {
+      "name": "aten.neg.default",
+      "count": 2
+    },
+    {
+      "name": "aten.transpose.int",
+      "count": 3
+    },
+    {
+      "name": "aten.scaled_dot_product_attention.default",
+      "count": 1
+    }
+  ],
+  "sdpa_operators": [
+    {
+      "name": "aten.scaled_dot_product_attention.default",
+      "count": 1
+    }
+  ]
+}

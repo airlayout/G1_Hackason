@@ -1,0 +1,22 @@
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+{"profile": {"name": "json_linear", "format": "json", "edge": 384, "minimal": false, "dtype": "bf16", "attention": "efficient_expanded", "instrument": true, "exact": false, "constrained": false, "planner_json": false, "planner_class": false, "linear_patch": true, "minified": false}, "presence_accuracy": 1.0, "direction_accuracy": 0.8, "main_pass": true, "extended_scores": [7, 7], "eligible": false, "tier": "REJECT"}

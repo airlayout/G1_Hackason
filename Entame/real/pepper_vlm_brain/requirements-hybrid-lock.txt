@@ -1,0 +1,21 @@
+# Optional .venv36 packages only; stable .venv packages are reused read-only.
+anyio==4.15.1
+cloudpickle==3.1.2
+contourpy==1.4.0
+cycler==0.12.1
+fonttools==4.66.1
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+kiwisolver==1.5.1
+matplotlib==3.11.2
+nvidia-ml-py==13.615.71
+pip==26.2.1
+polars==1.44.2
+polars-runtime-32==1.44.2
+pyparsing==3.3.3
+python-dateutil==2.9.0.post0
+six==1.17.0
+ultralytics==8.4.146
+ultralytics-platform==0.1.75
+ultralytics-thop==2.2.2

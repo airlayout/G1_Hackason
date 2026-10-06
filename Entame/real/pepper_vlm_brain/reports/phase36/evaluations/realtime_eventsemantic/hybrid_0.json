@@ -1,0 +1,152 @@
+{
+  "case": "hybrid",
+  "status": "complete",
+  "fast_count": 883,
+  "accepted_count": 883,
+  "rejected_count": 0,
+  "inference_latency_s": {
+    "count": 883,
+    "mean": 0.015644195016940678,
+    "median": 0.013260600000648992,
+    "p95": 0.03044173999915074,
+    "max": 0.10336509999979171
+  },
+  "slow_planner_latency_s": {
+    "count": 6,
+    "mean": 1.5704113000010693,
+    "median": 1.674347600001056,
+    "p95": 1.7641246500006673,
+    "max": 1.7797105999998166
+  },
+  "slow_semantic_latency_s": {
+    "count": 3,
+    "mean": 2.4052609000003335,
+    "median": 2.3673392000018794,
+    "p95": 2.5141199300014705,
+    "max": 2.530428900001425
+  },
+  "result_frame_age_s": {
+    "count": 883,
+    "mean": 0.028906420725080855,
+    "median": 0.027782499997556442,
+    "p95": 0.045213996667007435,
+    "max": 0.12327459999869461
+  },
+  "update_interval_s": {
+    "count": 882,
+    "mean": 0.03336545170068162,
+    "median": 0.03159880000021076,
+    "p95": 0.04999588500104437,
+    "max": 0.13066849999813712
+  },
+  "update_rate_hz": 29.93220338983051,
+  "overlap_fast_count": 502,
+  "overlap_latency_s": {
+    "count": 502,
+    "mean": 0.017417709163280063,
+    "median": 0.013731700002608704,
+    "p95": 0.03250885500165168,
+    "max": 0.10336509999979171
+  },
+  "verified_empty_window_false_positive_total": [
+    0,
+    58
+  ],
+  "look_frame_to_ready_s": {
+    "count": 818,
+    "mean": 0.029116166748467894,
+    "median": 0.027788183333541383,
+    "p95": 0.045754361667422916,
+    "max": 0.1234361999995599
+  },
+  "look_while_slow_frame_to_ready_s": {
+    "count": 446,
+    "mean": 0.03168788415579438,
+    "median": 0.02998565000052622,
+    "p95": 0.04857729166815261,
+    "max": 0.1234361999995599
+  },
+  "look_while_slow_count": 446,
+  "slow_active_fast_loop_pass": true,
+  "latest_frame_wins": true,
+  "no_queue_accumulation": true,
+  "stale_result_rejection_pass": true,
+  "high_level_planner_integrity_pass": true,
+  "policy_correct_total": [
+    6,
+    6
+  ],
+  "cancelled_jobs": [],
+  "integrity_errors": [],
+  "event_kpis": {
+    "body_center_to_LEFT": {
+      "look_ready_upper_s": 0.10133560000176622,
+      "look_ready_lower_s": 0.034668933335099794,
+      "generation": 179
+    },
+    "person_fully_disappears": {
+      "detection_latency_upper_s": 0.08499110000193433,
+      "detection_latency_lower_s": 0.018324433335267898,
+      "detected_generation": 254,
+      "search_ready_upper_s": 1.9671265000011768,
+      "search_from_detection_s": 1.8821353999992425,
+      "search_ready": {
+        "action": "SEARCH",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      }
+    },
+    "first_partial_head_reappears_LEFT": {
+      "look_ready_upper_s": 0.26162323333313253,
+      "look_ready_lower_s": 0.22828989999979932,
+      "generation": 318
+    }
+  },
+  "source_annotation_note": "Event latencies are conservative upper/lower bounds from visually annotated intervals; GT is evaluator-only.",
+  "cpu_process_percent": {
+    "7596": {
+      "count": 59,
+      "mean": 44.501694915254234,
+      "median": 46.8,
+      "p95": 55.919999999999995,
+      "max": 59.1
+    },
+    "8828": {
+      "count": 59,
+      "mean": 60.66779661016949,
+      "median": 90.6,
+      "p95": 127.0,
+      "max": 198.9
+    },
+    "11868": {
+      "count": 59,
+      "mean": 20.85593220338983,
+      "median": 12.5,
+      "p95": 56.58999999999998,
+      "max": 114.2
+    }
+  },
+  "gpu_utilization_percent": {
+    "count": 59,
+    "mean": 47.05084745762712,
+    "median": 59,
+    "p95": 89.0,
+    "max": 97
+  },
+  "gpu_used_gib": {
+    "count": 59,
+    "mean": 5.113243103027344,
+    "median": 5.113243103027344,
+    "p95": 5.113243103027344,
+    "max": 5.113243103027344
+  },
+  "peak_allocated_gib": 4.056459426879883,
+  "peak_reserved_gib": 4.095703125,
+  "fast_peak_allocated_gib": 0.0639333724975586,
+  "fast_peak_reserved_gib": 0.087890625,
+  "planner_trigger_count": 8,
+  "slow_dispatch_count": 9,
+  "cooperative_single_weight": false,
+  "shared_qwen_negative_control": false
+}

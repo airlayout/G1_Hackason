@@ -1,0 +1,310 @@
+{
+  "presence_correct_total": [
+    27,
+    27
+  ],
+  "direction_correct_total": [
+    15,
+    15
+  ],
+  "presence_accuracy": 1.0,
+  "direction_accuracy": 1.0,
+  "main_geometry_pass": true,
+  "eligible": true,
+  "latency_s": {
+    "count": 27,
+    "mean": 0.013835325926063687,
+    "median": 0.012373699999443488,
+    "p95": 0.019166620000760297,
+    "max": 0.04305989999920712
+  },
+  "frame_age_s": {
+    "count": 27,
+    "mean": 0.019924459259022517,
+    "median": 0.01851179999721353,
+    "p95": 0.02542098999911104,
+    "max": 0.05046320000110427
+  },
+  "peak_allocated_gib": 0.0639333724975586,
+  "peak_reserved_gib": 0.087890625,
+  "state_replay": [
+    [
+      {
+        "timestamp": 3,
+        "state": {
+          "last_seen_person_direction": "CENTER",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        }
+      },
+      {
+        "timestamp": 7,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "STILL_VISIBLE"
+        }
+      },
+      {
+        "timestamp": 8,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "STILL_VISIBLE"
+        }
+      },
+      {
+        "timestamp": 9,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 1,
+          "transition": "DISAPPEARED"
+        }
+      },
+      {
+        "timestamp": 9.5,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 2,
+          "transition": "STILL_ABSENT"
+        }
+      },
+      {
+        "timestamp": 10,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 3,
+          "transition": "STILL_ABSENT"
+        }
+      },
+      {
+        "timestamp": 10.25,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 4,
+          "transition": "STILL_ABSENT"
+        }
+      },
+      {
+        "timestamp": 12,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "APPEARED"
+        }
+      },
+      {
+        "timestamp": 13,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "STILL_VISIBLE"
+        }
+      }
+    ],
+    [
+      {
+        "timestamp": 3,
+        "state": {
+          "last_seen_person_direction": "CENTER",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        }
+      },
+      {
+        "timestamp": 7,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "STILL_VISIBLE"
+        }
+      },
+      {
+        "timestamp": 8,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "STILL_VISIBLE"
+        }
+      },
+      {
+        "timestamp": 9,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 1,
+          "transition": "DISAPPEARED"
+        }
+      },
+      {
+        "timestamp": 9.5,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 2,
+          "transition": "STILL_ABSENT"
+        }
+      },
+      {
+        "timestamp": 10,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 3,
+          "transition": "STILL_ABSENT"
+        }
+      },
+      {
+        "timestamp": 10.25,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 4,
+          "transition": "STILL_ABSENT"
+        }
+      },
+      {
+        "timestamp": 12,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "APPEARED"
+        }
+      },
+      {
+        "timestamp": 13,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "STILL_VISIBLE"
+        }
+      }
+    ],
+    [
+      {
+        "timestamp": 3,
+        "state": {
+          "last_seen_person_direction": "CENTER",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        }
+      },
+      {
+        "timestamp": 7,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "STILL_VISIBLE"
+        }
+      },
+      {
+        "timestamp": 8,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "STILL_VISIBLE"
+        }
+      },
+      {
+        "timestamp": 9,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 1,
+          "transition": "DISAPPEARED"
+        }
+      },
+      {
+        "timestamp": 9.5,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 2,
+          "transition": "STILL_ABSENT"
+        }
+      },
+      {
+        "timestamp": 10,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 3,
+          "transition": "STILL_ABSENT"
+        }
+      },
+      {
+        "timestamp": 10.25,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 4,
+          "transition": "STILL_ABSENT"
+        }
+      },
+      {
+        "timestamp": 12,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "APPEARED"
+        }
+      },
+      {
+        "timestamp": 13,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "STILL_VISIBLE"
+        }
+      }
+    ],
+    [
+      {
+        "timestamp": 8,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        }
+      },
+      {
+        "timestamp": 10,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": false,
+          "frames_since_person_seen": 1,
+          "transition": "DISAPPEARED"
+        }
+      },
+      {
+        "timestamp": 12,
+        "state": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "APPEARED"
+        }
+      }
+    ]
+  ]
+}

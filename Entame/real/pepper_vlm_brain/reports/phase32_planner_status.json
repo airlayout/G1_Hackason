@@ -1,0 +1,16 @@
+{
+  "status": "not_run",
+  "planner_gate": {
+    "pass": false,
+    "model_load_nf4": true,
+    "within_8gib": true,
+    "usable_absence_improved": false,
+    "note": "Improvement means validated usable absent Observations; invalid 2B JSON is not counted as a false positive or repaired. Raw 2B may already describe absence."
+  },
+  "reason": "User required confirmed 4B absence improvement before connecting State + real VLM Planner. Final additional absence scores were 2B=3/3 and 4B=3/3, and 4B still rejected 8s/12s Observations.",
+  "planner_inference_latency_s": null,
+  "total_brain_latency_s": null,
+  "planner_peak_allocated_gib": null,
+  "decision_timeline": [],
+  "state_only_replay_note": "Saved validated observations replayed separately; no Action is generated."
+}

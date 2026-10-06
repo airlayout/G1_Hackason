@@ -1,0 +1,12 @@
+{
+  "name": "IMG_7121 person disappearance and reappearance",
+  "video_filename": "IMG_7121.mp4",
+  "timestamps": [2, 6, 8, 10, 12, 16, 20, 24],
+  "purpose": "Human annotations for evaluation only; never passed to Brain, prompt, or Memory.",
+  "checks": [
+    {"timestamp": 6, "observation": "Person visible on left", "allowed_actions": ["LOOK", "FOUND"], "direction": "LEFT", "target": "PERSON", "person_visible_after": true},
+    {"timestamp": 8, "observation": "Person still visible at left edge", "allowed_actions": ["LOOK", "FOUND"], "direction": "LEFT", "target": "PERSON", "person_visible_after": true},
+    {"timestamp": 10, "observation": "Person absent", "allowed_actions": ["SEARCH"], "direction_from_memory": "last_seen_person_direction", "target": "PERSON", "person_visible_after": false},
+    {"timestamp": 12, "observation": "Person reappears on left", "allowed_actions": ["LOOK", "FOUND"], "direction": "LEFT", "target": "PERSON", "person_visible_after": true, "require_previous_absence": true}
+  ]
+}

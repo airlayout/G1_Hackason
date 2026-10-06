@@ -1,0 +1,54 @@
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: Memory efficient kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:915.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: For dense input, both fused kernels require query, key and value to have the same num_heads. Query.sizes(): [1, 16, 339, 128], Key sizes(): [1, 8, 339, 128], Value sizes(): [1, 8, 339, 128] instead. To broadcast dense inputs, try using unsqueeze and expand_to before passing them into the kernel. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen/native/transformers/sdp_utils_cpp.h:426.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: Flash attention kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:917.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: Torch was not compiled with flash attention. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:726.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: cuDNN attention kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:919.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: cuDNN attention has been runtime disabled. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:635.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=0 t=3 P='' D='' brain=0.043s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=0 t=7 P='' D='' brain=0.058s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=0 t=8 P='' D='' brain=0.044s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=0 t=9 P='' D='' brain=0.038s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=0 t=9.5 P='' D='' brain=0.040s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=0 t=10 P='' D='' brain=0.055s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=0 t=10.25 P='' D='' brain=0.041s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=0 t=12 P='' D='' brain=0.041s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=0 t=13 P='' D='' brain=0.049s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=1 t=3 P='' D='' brain=0.051s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=1 t=7 P='' D='' brain=0.047s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=1 t=8 P='' D='' brain=0.043s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=1 t=9 P='' D='' brain=0.051s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=1 t=9.5 P='' D='' brain=0.043s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=1 t=10 P='' D='' brain=0.040s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=1 t=10.25 P='' D='' brain=0.039s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=1 t=12 P='' D='' brain=0.041s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=1 t=13 P='' D='' brain=0.040s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=2 t=8 P='' D='' brain=0.050s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=2 t=10 P='' D='' brain=0.040s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_linear_efficient run=2 t=12 P='' D='' brain=0.046s

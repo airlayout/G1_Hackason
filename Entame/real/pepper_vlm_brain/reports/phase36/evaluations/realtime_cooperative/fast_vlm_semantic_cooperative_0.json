@@ -1,0 +1,140 @@
+{
+  "case": "fast_vlm_semantic_cooperative",
+  "status": "complete",
+  "fast_count": 200,
+  "accepted_count": 200,
+  "rejected_count": 0,
+  "inference_latency_s": {
+    "count": 200,
+    "mean": 0.09682533050010533,
+    "median": 0.09600535000208765,
+    "p95": 0.10826578500036703,
+    "max": 0.12069400000109454
+  },
+  "slow_planner_latency_s": {
+    "count": 0,
+    "mean": null,
+    "median": null,
+    "p95": null,
+    "max": null
+  },
+  "slow_semantic_latency_s": {
+    "count": 5,
+    "mean": 6.067864420000115,
+    "median": 6.576159200001712,
+    "p95": 6.613201100000151,
+    "max": 6.618451700000151
+  },
+  "result_frame_age_s": {
+    "count": 200,
+    "mean": 0.12262419799837516,
+    "median": 0.12245718333178957,
+    "p95": 0.14254503166393986,
+    "max": 0.21299553333301446
+  },
+  "update_interval_s": {
+    "count": 199,
+    "mean": 0.14857729497487698,
+    "median": 0.14787770000111777,
+    "p95": 0.16479602999934287,
+    "max": 0.1969662999981665
+  },
+  "update_rate_hz": 6.779661016949152,
+  "overlap_fast_count": 195,
+  "overlap_latency_s": {
+    "count": 195,
+    "mean": 0.09683875179497334,
+    "median": 0.09605500000179745,
+    "p95": 0.10825162999826717,
+    "max": 0.12069400000109454
+  },
+  "verified_empty_window_false_positive_total": [
+    0,
+    13
+  ],
+  "look_frame_to_ready_s": {
+    "count": 185,
+    "mean": 0.12251794936768223,
+    "median": 0.1224176333307696,
+    "p95": 0.14124132666620426,
+    "max": 0.21308543332997942
+  },
+  "look_while_slow_frame_to_ready_s": {
+    "count": 180,
+    "mean": 0.12275245296126135,
+    "median": 0.12270406666539202,
+    "p95": 0.1413526616664967,
+    "max": 0.21308543332997942
+  },
+  "look_while_slow_count": 180,
+  "slow_active_fast_loop_pass": true,
+  "latest_frame_wins": true,
+  "no_queue_accumulation": true,
+  "stale_result_rejection_pass": true,
+  "high_level_planner_integrity_pass": true,
+  "policy_correct_total": [
+    0,
+    0
+  ],
+  "cancelled_jobs": [],
+  "integrity_errors": [],
+  "event_kpis": {
+    "body_center_to_LEFT": {
+      "look_ready_upper_s": 0.1930513999992396,
+      "look_ready_lower_s": 0.12638473333257316,
+      "generation": 179
+    },
+    "person_fully_disappears": {
+      "detection_latency_upper_s": 0.23091149999672744,
+      "detection_latency_lower_s": 0.164244833330061,
+      "detected_generation": 255,
+      "search_ready_upper_s": null,
+      "search_from_detection_s": null,
+      "search_ready": null
+    },
+    "first_partial_head_reappears_LEFT": {
+      "look_ready_upper_s": 0.4947129333323872,
+      "look_ready_lower_s": 0.461379599999054,
+      "generation": 322
+    }
+  },
+  "source_annotation_note": "Event latencies are conservative upper/lower bounds from visually annotated intervals; GT is evaluator-only.",
+  "cpu_process_percent": {
+    "8980": {
+      "count": 62,
+      "mean": 377.76290322580644,
+      "median": 390.25,
+      "p95": 405.58500000000004,
+      "max": 430.7
+    },
+    "6120": {
+      "count": 62,
+      "mean": 17.920967741935485,
+      "median": 6.2,
+      "p95": 46.8,
+      "max": 244.2
+    }
+  },
+  "gpu_utilization_percent": {
+    "count": 62,
+    "mean": 44.306451612903224,
+    "median": 44.0,
+    "p95": 54.0,
+    "max": 54
+  },
+  "gpu_used_gib": {
+    "count": 62,
+    "mean": 4.86606191819714,
+    "median": 4.866313934326172,
+    "p95": 4.866313934326172,
+    "max": 4.866313934326172
+  },
+  "peak_allocated_gib": 4.049681186676025,
+  "peak_reserved_gib": 4.09765625,
+  "fast_peak_allocated_gib": 4.049681186676025,
+  "fast_peak_reserved_gib": 4.09765625,
+  "planner_trigger_count": 0,
+  "slow_dispatch_count": 5,
+  "cooperative_single_weight": true,
+  "shared_qwen_negative_control": false
+}

@@ -1,0 +1,93 @@
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 3 {'person_visible': True, 'person_count': 1, 'person_direction': 'CENTER', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.04118360000029497
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 7 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.017721600001095794
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 8 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.013538400000470574
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 9 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.013830100000632228
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 9.5 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.012586699998792028
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 10 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.015580999999656342
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 10.25 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.012080299999070121
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 12 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.012700999999651685
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 13 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.013402299999142997
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 3 {'person_visible': True, 'person_count': 1, 'person_direction': 'CENTER', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.013302999999723397
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 7 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.012361999999484397
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 8 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.014979599998696358
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 9 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.012177600001450628
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 9.5 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.017535900000439142
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 10 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.013101200000164681
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 10.25 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.013325400001122034
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 12 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.013156400000298163
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 13 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.013005999999222695
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 3 {'person_visible': True, 'person_count': 1, 'person_direction': 'CENTER', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.014257200000429293
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 7 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.013397500000792206
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 8 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.01303619999998773
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 9 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.012798200001270743
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 9.5 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.012720099999569356
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 10 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.012635000000955188
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 10.25 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.012075999999069609
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 12 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.01735509999889473
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 13 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.013216299999839975
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 8 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.01252080000085698
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 10 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.021851199999218807
+WARNING 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+yolo 12 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.012897399999928894
+qwen 3 {'person_visible': True, 'person_count': 1, 'person_direction': 'CENTER', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.10611789999893517
+qwen 7 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.10269890000017767
+qwen 8 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.10254729999905976
+qwen 9 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09463039999900502
+qwen 9.5 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09810680000009597
+qwen 10 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09652480000113428
+qwen 10.25 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.10515599999962433
+qwen 12 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09841729999970994
+qwen 13 {'person_visible': True, 'person_count': 1, 'person_direction': 'RIGHT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.10338880000017525
+qwen 3 {'person_visible': True, 'person_count': 1, 'person_direction': 'CENTER', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.10296279999965918
+qwen 7 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.10026769999967655
+qwen 8 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.0994635000006383
+qwen 9 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09943600000042352
+qwen 9.5 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09979810000004363
+qwen 10 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09569709999959741
+qwen 10.25 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09867260000100941
+qwen 12 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09301820000109728
+qwen 13 {'person_visible': True, 'person_count': 1, 'person_direction': 'RIGHT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.098149999999805
+qwen 3 {'person_visible': True, 'person_count': 1, 'person_direction': 'CENTER', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.10319519999939075
+qwen 7 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09484169999996084
+qwen 8 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.10474339999927906
+qwen 9 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09945239999979094
+qwen 9.5 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09754980000070645
+qwen 10 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09268510000038077
+qwen 10.25 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09856980000040494
+qwen 12 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09303920000093058
+qwen 13 {'person_visible': True, 'person_count': 1, 'person_direction': 'RIGHT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.10264269999970566
+qwen 8 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09330010000121547
+qwen 10 {'person_visible': False, 'person_count': 0, 'person_direction': 'UNKNOWN', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09514739999940502
+qwen 12 {'person_visible': True, 'person_count': 1, 'person_direction': 'LEFT', 'person_distance': 'UNKNOWN', 'blocking_obstacle': 'UNKNOWN'} 0.09955809999883058

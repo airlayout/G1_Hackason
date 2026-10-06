@@ -1,0 +1,90 @@
+A run=0 t=3 P='C' D=None time={'perception_wall_s': 0.1073417999996309, 'state_update_s': 5.9100000726175494e-05, 'total_geometry_s': 0.10740119999900344}
+A run=0 t=7 P='B' D=None time={'perception_wall_s': 0.09625870000127179, 'state_update_s': 5.5500000598840415e-05, 'total_geometry_s': 0.096314500000517}
+A run=0 t=8 P='B' D=None time={'perception_wall_s': 0.10033549999934621, 'state_update_s': 8.199999865610152e-05, 'total_geometry_s': 0.10041779999846767}
+A run=0 t=9 P='A' D=None time={'perception_wall_s': 0.09974590000092576, 'state_update_s': 5.400000009103678e-05, 'total_geometry_s': 0.0998001000007207}
+A run=0 t=9.5 P='A' D=None time={'perception_wall_s': 0.18039189999944938, 'state_update_s': 8.290000005217735e-05, 'total_geometry_s': 0.18047500000102445}
+A run=0 t=10 P='A' D=None time={'perception_wall_s': 0.1033237999999983, 'state_update_s': 6.849999954283703e-05, 'total_geometry_s': 0.10339249999924505}
+A run=0 t=10.25 P='A' D=None time={'perception_wall_s': 0.1030322000005981, 'state_update_s': 5.140000030223746e-05, 'total_geometry_s': 0.10308380000060424}
+A run=0 t=12 P='B' D=None time={'perception_wall_s': 0.10002290000011271, 'state_update_s': 5.359999886422884e-05, 'total_geometry_s': 0.10007670000049984}
+A run=0 t=13 P='D' D=None time={'perception_wall_s': 0.09885589999976219, 'state_update_s': 8.130000060191378e-05, 'total_geometry_s': 0.09893740000006801}
+A run=1 t=3 P='C' D=None time={'perception_wall_s': 0.09144749999904889, 'state_update_s': 5.249999958323315e-05, 'total_geometry_s': 0.09150019999833603}
+A run=1 t=7 P='B' D=None time={'perception_wall_s': 0.09304730000076233, 'state_update_s': 5.559999954130035e-05, 'total_geometry_s': 0.0931029999992461}
+A run=1 t=8 P='B' D=None time={'perception_wall_s': 0.09876470000017434, 'state_update_s': 5.3199999456410296e-05, 'total_geometry_s': 0.0988180000003922}
+A run=1 t=9 P='A' D=None time={'perception_wall_s': 0.0942644000006112, 'state_update_s': 5.450000026030466e-05, 'total_geometry_s': 0.09431910000057542}
+A run=1 t=9.5 P='A' D=None time={'perception_wall_s': 0.10351230000014766, 'state_update_s': 8.04999999672873e-05, 'total_geometry_s': 0.10359310000058031}
+A run=1 t=10 P='A' D=None time={'perception_wall_s': 0.0927190000002156, 'state_update_s': 5.169999894860666e-05, 'total_geometry_s': 0.09277079999992566}
+A run=1 t=10.25 P='A' D=None time={'perception_wall_s': 0.09541349999926751, 'state_update_s': 5.48999996681232e-05, 'total_geometry_s': 0.09546859999863955}
+A run=1 t=12 P='B' D=None time={'perception_wall_s': 0.09019649999936519, 'state_update_s': 8.440000055998098e-05, 'total_geometry_s': 0.09028109999962908}
+A run=1 t=13 P='D' D=None time={'perception_wall_s': 0.09721349999927043, 'state_update_s': 9.039999895321671e-05, 'total_geometry_s': 0.09730409999974654}
+A run=2 t=3 P='C' D=None time={'perception_wall_s': 0.10203650000039488, 'state_update_s': 5.3499999921768904e-05, 'total_geometry_s': 0.10209020000002056}
+A run=2 t=7 P='B' D=None time={'perception_wall_s': 0.09368800000083866, 'state_update_s': 8.000000161700882e-05, 'total_geometry_s': 0.09376830000110203}
+A run=2 t=8 P='B' D=None time={'perception_wall_s': 0.09136390000094252, 'state_update_s': 8.479999996779952e-05, 'total_geometry_s': 0.09144910000031814}
+A run=2 t=9 P='A' D=None time={'perception_wall_s': 0.0994248000006337, 'state_update_s': 5.360000068321824e-05, 'total_geometry_s': 0.09947860000102082}
+A run=2 t=9.5 P='A' D=None time={'perception_wall_s': 0.08898670000053244, 'state_update_s': 5.330000021785963e-05, 'total_geometry_s': 0.0890402000004542}
+A run=2 t=10 P='A' D=None time={'perception_wall_s': 0.09259430000020075, 'state_update_s': 5.400000009103678e-05, 'total_geometry_s': 0.09264849999999569}
+A run=2 t=10.25 P='A' D=None time={'perception_wall_s': 0.09819509999942966, 'state_update_s': 5.239999882178381e-05, 'total_geometry_s': 0.09824769999977434}
+A run=2 t=12 P='B' D=None time={'perception_wall_s': 0.09077199999956065, 'state_update_s': 5.580000106419902e-05, 'total_geometry_s': 0.09082800000032876}
+A run=2 t=13 P='D' D=None time={'perception_wall_s': 0.09342110000034154, 'state_update_s': 5.4099999033496715e-05, 'total_geometry_s': 0.09347540000089793}
+A run=3 t=8 P='B' D=None time={'perception_wall_s': 0.09787179999875661, 'state_update_s': 5.140000030223746e-05, 'total_geometry_s': 0.0979232999998203}
+A run=3 t=10 P='A' D=None time={'perception_wall_s': 0.09639460000107647, 'state_update_s': 5.359999886422884e-05, 'total_geometry_s': 0.0964484000014636}
+A run=3 t=12 P='B' D=None time={'perception_wall_s': 0.09485790000144334, 'state_update_s': 5.520000013348181e-05, 'total_geometry_s': 0.09491330000128073}
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+B run=0 t=3 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D=B time={'perception_wall_s': 2.2276535000000877, 'state_update_s': 1.089999932446517e-05, 'planner_wall_s': 0.09225829999923008, 'total_brain_s': 2.320005300000048}
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+B run=0 t=7 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D=C time={'perception_wall_s': 2.2528512999997474, 'state_update_s': 1.5100000382517464e-05, 'planner_wall_s': 0.09340569999949366, 'total_brain_s': 2.3463482999995904}
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+B run=0 t=8 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D=C time={'perception_wall_s': 2.3186970000006113, 'state_update_s': 1.2800001059076749e-05, 'planner_wall_s': 0.09212420000039856, 'total_brain_s': 2.410912199999075}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=0 t=9 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "UNKNOWN"\n}' D=M time={'perception_wall_s': 2.269933799998398, 'state_update_s': 1.2099999366910197e-05, 'planner_wall_s': 0.09429679999993823, 'total_brain_s': 2.3643315999997867}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=0 t=9.5 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D=M time={'perception_wall_s': 2.2179675999996107, 'state_update_s': 2.7799998861155473e-05, 'planner_wall_s': 0.09229969999978493, 'total_brain_s': 2.3103703999986465}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=0 t=10 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D=M time={'perception_wall_s': 2.2472811000006914, 'state_update_s': 1.1699999959091656e-05, 'planner_wall_s': 0.0934359000002587, 'total_brain_s': 2.3408046000004106}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=0 t=10.25 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D=M time={'perception_wall_s': 2.2250545999995666, 'state_update_s': 1.3999999282532372e-05, 'planner_wall_s': 0.09264819999953033, 'total_brain_s': 2.317785499999445}
+[MOCK ROBOT] FOUND LEFT target=PERSON distance=NEAR confidence=n/a
+B run=0 t=12 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D=J time={'perception_wall_s': 2.3158739999998943, 'state_update_s': 1.1800000720540993e-05, 'planner_wall_s': 0.09461669999836886, 'total_brain_s': 2.4105672999994567}
+[MOCK ROBOT] APPROACH CENTER target=PERSON distance=NEAR confidence=n/a
+B run=0 t=13 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D=D time={'perception_wall_s': 2.3265695000009146, 'state_update_s': 1.179999890155159e-05, 'planner_wall_s': 0.09320089999891934, 'total_brain_s': 2.419850399999632}
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+B run=1 t=3 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D=B time={'perception_wall_s': 2.2411160999999993, 'state_update_s': 1.0199999451288022e-05, 'planner_wall_s': 0.092068099998869, 'total_brain_s': 2.333246700000018}
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+B run=1 t=7 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D=C time={'perception_wall_s': 2.2999961000004987, 'state_update_s': 1.300000076298602e-05, 'planner_wall_s': 0.09529730000031122, 'total_brain_s': 2.395384400000694}
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+B run=1 t=8 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D=C time={'perception_wall_s': 2.294992600000114, 'state_update_s': 1.4199998986441642e-05, 'planner_wall_s': 0.09191680000003544, 'total_brain_s': 2.3870034999999916}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=1 t=9 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "UNKNOWN"\n}' D=M time={'perception_wall_s': 2.3231668999997055, 'state_update_s': 1.1899999663000926e-05, 'planner_wall_s': 0.09227269999973942, 'total_brain_s': 2.415511200000765}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=1 t=9.5 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D=M time={'perception_wall_s': 2.170079999999871, 'state_update_s': 1.1199999789823778e-05, 'planner_wall_s': 0.09155480000117677, 'total_brain_s': 2.2617232000011427}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=1 t=10 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D=M time={'perception_wall_s': 2.2517540999997436, 'state_update_s': 1.2800001059076749e-05, 'planner_wall_s': 0.09461790000023029, 'total_brain_s': 2.3464527999985876}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=1 t=10.25 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D=M time={'perception_wall_s': 2.315663700001096, 'state_update_s': 1.2300000889808871e-05, 'planner_wall_s': 0.09541889999854902, 'total_brain_s': 2.411176699999487}
+[MOCK ROBOT] FOUND LEFT target=PERSON distance=NEAR confidence=n/a
+B run=1 t=12 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D=J time={'perception_wall_s': 2.3920524999994086, 'state_update_s': 1.1800000720540993e-05, 'planner_wall_s': 0.09290910000163422, 'total_brain_s': 2.4850401999992755}
+[MOCK ROBOT] APPROACH CENTER target=PERSON distance=NEAR confidence=n/a
+B run=1 t=13 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D=D time={'perception_wall_s': 2.2620007999994414, 'state_update_s': 1.2099999366910197e-05, 'planner_wall_s': 0.09376999999949476, 'total_brain_s': 2.3558465000005526}
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+B run=2 t=3 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D=B time={'perception_wall_s': 2.2692409999999654, 'state_update_s': 9.700001101009548e-06, 'planner_wall_s': 0.09307850000004692, 'total_brain_s': 2.36238289999892}
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+B run=2 t=7 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D=C time={'perception_wall_s': 2.2409987000010005, 'state_update_s': 1.2200000128359534e-05, 'planner_wall_s': 0.09501060000002326, 'total_brain_s': 2.3360876999995526}
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+B run=2 t=8 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D=C time={'perception_wall_s': 2.2222834000003786, 'state_update_s': 1.1699999959091656e-05, 'planner_wall_s': 0.0930767999998352, 'total_brain_s': 2.3154362000004767}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=2 t=9 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "UNKNOWN"\n}' D=M time={'perception_wall_s': 2.2000351999995473, 'state_update_s': 1.2800001059076749e-05, 'planner_wall_s': 0.0950860000011744, 'total_brain_s': 2.295202399998743}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=2 t=9.5 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D=M time={'perception_wall_s': 2.1742630999997345, 'state_update_s': 1.1500000255182385e-05, 'planner_wall_s': 0.09118149999994785, 'total_brain_s': 2.265517900001214}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=2 t=10 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D=M time={'perception_wall_s': 2.3021016999991843, 'state_update_s': 1.3099999705445953e-05, 'planner_wall_s': 0.09214439999959723, 'total_brain_s': 2.394325499999468}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=2 t=10.25 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D=M time={'perception_wall_s': 2.1899288000004162, 'state_update_s': 1.2200000128359534e-05, 'planner_wall_s': 0.0913631000003079, 'total_brain_s': 2.281363299998702}
+[MOCK ROBOT] FOUND LEFT target=PERSON distance=NEAR confidence=n/a
+B run=2 t=12 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D=J time={'perception_wall_s': 2.3106491999988066, 'state_update_s': 1.2200000128359534e-05, 'planner_wall_s': 0.09132630000021891, 'total_brain_s': 2.402086000000054}
+[MOCK ROBOT] APPROACH CENTER target=PERSON distance=NEAR confidence=n/a
+B run=2 t=13 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D=D time={'perception_wall_s': 2.3230941999991046, 'state_update_s': 1.1500000255182385e-05, 'planner_wall_s': 0.09390389999862236, 'total_brain_s': 2.4170742000005703}
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+B run=3 t=8 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D=C time={'perception_wall_s': 2.2795098000005964, 'state_update_s': 1.0200001270277426e-05, 'planner_wall_s': 0.09155030000147235, 'total_brain_s': 2.371137900001486}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+B run=3 t=10 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D=M time={'perception_wall_s': 2.168480099999215, 'state_update_s': 1.2799999240087345e-05, 'planner_wall_s': 0.09173790000022564, 'total_brain_s': 2.2603113999994093}
+[MOCK ROBOT] FOUND LEFT target=PERSON distance=NEAR confidence=n/a
+B run=3 t=12 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D=J time={'perception_wall_s': 2.2066792999994504, 'state_update_s': 1.2600001355167478e-05, 'planner_wall_s': 0.0920352000011917, 'total_brain_s': 2.2988048999995954}

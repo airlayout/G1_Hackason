@@ -1,0 +1,37 @@
+{
+  "pass": true,
+  "integrity_errors": [],
+  "checks": [
+    {
+      "timestamp": 8,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 10,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 12,
+      "pass": true,
+      "errors": []
+    }
+  ],
+  "planner_policy_checks": [
+    {
+      "timestamp": 8.0,
+      "pass": true
+    },
+    {
+      "timestamp": 10.0,
+      "pass": true
+    },
+    {
+      "timestamp": 12.0,
+      "pass": true
+    }
+  ],
+  "planner_policy_pass": true,
+  "model_reuse": true
+}

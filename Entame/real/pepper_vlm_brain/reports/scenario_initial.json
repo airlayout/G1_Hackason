@@ -1,0 +1,34 @@
+{
+  "scenario": "IMG_7121 person disappearance and reappearance",
+  "pass": false,
+  "checks": [
+    {
+      "timestamp": 6,
+      "observation": "Person visible on left",
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 8,
+      "observation": "Person still visible at left edge",
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 10,
+      "observation": "Person absent",
+      "pass": false,
+      "errors": [
+        "Action mismatch",
+        "Direction mismatch",
+        "Memory visible state mismatch"
+      ]
+    },
+    {
+      "timestamp": 12,
+      "observation": "Person reappears on left",
+      "pass": true,
+      "errors": []
+    }
+  ]
+}

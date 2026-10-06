@@ -75,3 +75,6 @@ bundle等の再現制約を記録しています。
 
 腕の定型モーション（SDK方式、`real/arm_wave_real.py`）は実機で"high wave"の動作を
 確認済み。ダンス・独自振り付け（lerobot方式）は未着手・未決定のまま。
+
+Pepper向けVLM Brainの独立したsnapshotを追加しました。
+[real/pepper_vlm_brain/README.md](real/pepper_vlm_brain/README.md) にsource情報とUbuntu利用の前提を記載しています。
