@@ -45,6 +45,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `sim_robot_server.py` — ループバックの模擬ロボット（実機と同じ DDS とカメラ。故障をわざと起こせる）
   - `make_button_dataset.py` — ボタンの YOLO の学習データを、Yada の評価環境の画像から作る（正解の枠は自動）
   - `train_button_yolo.py` — ボタンの YOLO（クラス up / down）を学習する
+  - `record_trial_video.py` — 評価環境の 1 試行を、実際の速さで再生される動画にする
 - `contest_agent/` — Yada の評価環境（`Button_Press/Yada/contest`）で動かすエージェント（中身は `common/elevator_press.py`）
   - `rehearsal.py` — 実機日のリハーサル（当日手順書の段階0〜6と故障の場面を、模擬ロボットで通しで実行）
 - `real/` — 実機用
@@ -309,7 +310,8 @@ Yada さんの評価環境（`Button_Press/Yada/contest`。本番に似た乗り
 P=G1_HuggingFace/venv/bin/python
 $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent --seeds smoke
 $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent --seeds practice --set realistic --report
-$P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent --seed 1 --view   # 画面で見る
+$P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent --seed 1 --view   # 画面で見る（計算が間に合わずスローモーションになる）
+$P Button_Press/J1-gen/sim/record_trial_video.py --seed 1          # 実際の速さの動画（_local/button_press_yada/videos/）
 ```
 
 - 準備: `pip install scipy`（評価環境の見本が使う）。J1-gen の側は scipy を使わない
