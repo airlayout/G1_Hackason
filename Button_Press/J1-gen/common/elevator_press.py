@@ -130,9 +130,7 @@ class ElevatorPressController:
         el = t - self.t_phase
         c = self.cfg["press"]
         done = False
-        fresh = image_t > self.last_image_t
-        if fresh:
-            self.last_image_t = image_t
+        fresh = self._is_fresh(t, image_t)
 
         if self.phase == "look":
             if t >= float(c["look_start_s"]) and fresh:
@@ -172,6 +170,23 @@ class ElevatorPressController:
             done = True
 
         return self._gravity_offset(q_des, imu_quat), done
+
+    def _is_fresh(self, t: float, image_t: float) -> bool:
+        """新しい画像か。撮った時刻（image_t）が進んでいれば新しい。
+
+        撮った時刻が渡されない（0 のまま）ときは、image_interval_s ごとに新しいとみなす。評価環境の実機用の口
+        （Yada の contest/robots/real_g1.py。模擬 G1 と実機）は image_t を入れず、常に 0 になる。
+        image_t だけで判断すると最初の 1 枚しか使えず、3 フレームそろわずに中止した（2026-10-07、模擬 G1 の smoke）。
+        """
+        if image_t > 0.0:
+            if image_t > self.last_image_t:
+                self.last_image_t = image_t
+                return True
+            return False
+        if t - self.last_image_t >= float(self.cfg["press"]["image_interval_s"]) - 1e-6:
+            self.last_image_t = t
+            return True
+        return False
 
     # ---- 段階 ------------------------------------------------------------------
 

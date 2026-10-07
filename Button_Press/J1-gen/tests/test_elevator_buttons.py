@@ -194,6 +194,17 @@ class TestElevatorPlan(unittest.TestCase):
         with self.assertRaises(UnreachableError):
             self.ctl._plan(self.q0, self.call(x=0.9))
 
+    def test_fresh_images_without_capture_time(self) -> None:
+        """撮った時刻が 0 のまま（評価環境の実機用の口）でも、一定の間隔ごとに新しい画像とみなす。"""
+        self.ctl.reset("up", 0.02, np.full(17, 60.0))
+        interval = self.ctl.cfg["press"]["image_interval_s"]
+        fresh = [self.ctl._is_fresh(k * 0.02, 0.0) for k in range(int(round(1.0 / 0.02)))]
+        self.assertEqual(sum(fresh), int(round(1.0 / interval)))
+        # 撮った時刻があれば、それが進んだときだけ新しい
+        self.ctl.reset("up", 0.02, np.full(17, 60.0))
+        self.assertEqual([self.ctl._is_fresh(t, it) for t, it in [(0.1, 0.05), (0.12, 0.05), (0.14, 0.09)]],
+                         [True, False, True])
+
     def test_lit_check_retries_once(self) -> None:
         self.ctl.reset("down", 0.02, np.full(17, 60.0))
         self.ctl.call = self.call()

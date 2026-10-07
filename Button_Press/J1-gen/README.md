@@ -338,6 +338,7 @@ $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_age
 |---|---|---|---|
 | basic | 20 / 20 | 8.5 秒 | すべて 0 N |
 | realistic | 20 / 20 | 9.0 秒 | すべて 0 N |
+| 模擬 G1（DDS + ZMQ、実機と同じ口。`evaluate_dds.py` + `run_dds.py`） | 20 / 20 | 8.7 秒 | すべて 0 N |
 
 参考: 評価環境の見本のエージェントは basic 100%、realistic 95%（GUIDE.md）。seed 0 の ▲ では、見本は柱の横の壁に 40 N で当たった。
 
@@ -348,5 +349,18 @@ $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_age
   4 cm 手前に出た → 箱を面の向きに回して置く（`common/collision.py` の障害物に `x_axis` を足した）
 - realistic の seed 8: 柱が近く面が斜めで、手前の姿勢で手首が胴体に 9.9 mm まで近づいた → 指の傾きの候補を順に試す
 
-まだ確かめていないこと: 模擬 G1（DDS、A の使い方）、Isaac Sim、練習用以外の種、実機。
+- 模擬 G1（DDS）で 2 試行とも「▲▼ を見つけられない」で中止: 評価環境の実機用の口（`contest/robots/real_g1.py`）は
+  画像を撮った時刻 `image_t` を入れず常に 0 なので、最初の 1 枚しか新しい画像とみなさず、3 フレームそろわなかった
+  → 時刻が無いときは `image_interval_s`（0.1 秒）ごとに新しい画像とみなす。同じ口は IMU の向きも入れない（腰が固定の
+  模擬 G1 では影響なし。実機では重力の向きの計算に IMU が使われない点に注意）
+
+模擬 G1 で動かす（実機と同じ口。1 試行に実時間で約 18 秒）:
+
+```bash
+P=G1_HuggingFace/venv/bin/python
+$P Button_Press/Yada/contest/evaluate_dds.py --seeds practice \
+    --client "$P Button_Press/Yada/contest/run_dds.py --agent Button_Press/J1-gen/contest_agent"
+```
+
+まだ確かめていないこと: Isaac Sim、練習用以外の種、実機。
 
