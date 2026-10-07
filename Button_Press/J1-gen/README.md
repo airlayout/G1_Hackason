@@ -34,6 +34,8 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `pipeline.py` / `pipeline_cli.py` — 全体をつなぐ流れ（検出 → 目標 → IK → 手前の姿勢 → 押し込み → 戻る）
   - `run_logger.py` — 1 回分の記録（RGB・深度・lowstate・検出・IK・送った指令。dry-run でも）
   - `post_press.py` — 押したあとの確認の差し込み口（ボタン版で「点灯しなければ深く押し直す」に使う）
+  - `elevator_buttons.py` — エレベーターの呼びボタン（一般用の ▲▼）を見つける。画像の候補 → ▲▼ の記号 → 3D → 柱の面の向き → 上の 2 つ
+  - `elevator_press.py` — 呼びボタンを押す制御（50 Hz で 1 歩ずつ）。Yada の評価環境のエージェントの中身
 - `sim/` — MuJoCo での検証
   - `fetch_models.sh` — 公式モデル（unitree_ros の `g1_29dof_rev_1_0`）を取得する
   - `move_arm_sim.py` — 腕を指定の関節角へ動かして戻す
@@ -41,6 +43,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `locate_sim.py` — 頭カメラの画像と深度からボトルの位置を求め、正解と比べる
   - `press_bottle_sim.py` — 全体をつなぐスクリプト（MuJoCo、同じプロセス）
   - `sim_robot_server.py` — ループバックの模擬ロボット（実機と同じ DDS とカメラ。故障をわざと起こせる）
+- `contest_agent/` — Yada の評価環境（`Button_Press/Yada/contest`）で動かすエージェント（中身は `common/elevator_press.py`）
   - `rehearsal.py` — 実機日のリハーサル（当日手順書の段階0〜6と故障の場面を、模擬ロボットで通しで実行）
 - `real/` — 実機用
   - `move_arm_real.py` — 同じことを実機で行う（既定は dry-run。送るには `--execute`）
@@ -66,6 +69,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `taught_poses.yaml` — ティーチングで記録した姿勢（`teach.py` が書く。実機日のあとコミットする）
   - `pipeline.yaml` — 全体の流れ: 対象の与え方（depth / manual）、押す方向、経由の姿勢、IK の初期値、記録の保存先
   - `camera_sim.yaml` — 模擬ロボット用のカメラの接続先（127.0.0.1）
+  - `elevator.yaml` — エレベーターの呼びボタン: 探し方（classic / yolo）、大きさ・間隔、押し方、壁の箱
 - `tests/` — `run_tests.sh`（CI が自動で見つけて実行する）
 
 ## 機体モデル
@@ -293,3 +297,56 @@ lowstate の途切れ、押し込み中に腰が倒れる）を、実機用の�
 
 2026-09-29 の結果: 26 / 26 件が期待どおり。1 回目は、経由の姿勢（肩ピッチ 17.2°）で手を上げる途中に机の 4〜8 mm まで
 近づき、計画の段階で拒否された（何も送っていない）ので、肩ピッチを 28.6° にした（180 mm 以上離れる）。
+
+## エレベーターの呼びボタン（Yada の評価環境）
+
+Yada さんの評価環境（`Button_Press/Yada/contest`。本番に似た乗り場の黒い柱の ▲▼）で、J1-gen の部品で押す。
+使い方は評価環境の `Button_Press/Yada/contest/GUIDE.md` と同じ（B. Python の API）。
+
+```bash
+P=G1_HuggingFace/venv/bin/python
+$P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent --seeds smoke
+$P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent --seeds practice --set realistic --report
+$P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent --seed 1 --view   # 画面で見る
+```
+
+- 準備: `pip install scipy`（評価環境の見本が使う）。J1-gen の側は scipy を使わない
+- 中身は `common/elevator_press.py`（`contest_agent/agent.py` は評価環境の決まりにつなぐだけ）。設定は `configs/elevator.yaml`
+- シミュレーターの正解の値（ボタンの座標など）は使わない。観測（RGB・深度・内部パラメータ・関節の角度・IMU）と、
+  機体のモデル（`robot.yaml`）だけを使う
+
+### 流れ
+
+1. **見つける**（`common/elevator_buttons.py`）
+   - 画像で候補を探す: まわりより明るい、色の無い丸（classic）か、自分で学習した YOLO（yolo）
+   - 丸の中の黒い記号から ▲ か ▼ かを読む（三角形の重心は底辺の側に寄る）。縁の影を避け、内側だけを見る
+   - 深度で pelvis 座標にし、まわりの柱の面に平面を当てはめて押す向きを求める
+   - 柱ごとに上から並べ、**いちばん上の 2 つ**の間隔（5〜12 cm）と記号（上が ▲、下が ▼）が合うときだけ採用する。
+     ▲ が画面の外に切れていると、▼ と車いす用の ▲（20 cm 以上離れている）が上の 2 つになるが、間隔が合わないので押さない
+   - 新しいフレーム 3 つで、位置のばらつき 5 mm 以内・向き 5° 以内を確かめる
+2. **計画**（`PressPlanner`。ボトルと同じ）: IK、腕と体の衝突、作業空間の箱、押し込みの直線
+   - 指は押す向きから左・上に傾ける（右下から斜めに伸ばす）。傾きの候補を順に試す
+   - **柱・壁との衝突**: 柱の面の向きに回した箱を置き、開始 → 手前の姿勢の移動で腕が当たらないかを確かめる。
+     当たるなら、壁から離れた右側の経由点を通る（指の向きを手前の姿勢とそろえて解く）
+3. **押す**: 関節空間で手前の姿勢へ → 止まって指先のずれを補正（FK で積分）→ 押す向きに直線で押し込む → 戻る
+   - 腕の PD が弱く（kp 60）重力を補償しないので、重力のトルク ÷ kp だけ目標をずらす（`common/arm/gravity.py`、IMU の向きを使う）
+4. **確かめる**: 押したボタンの枠が明るくなったか（点灯したか）を見る。点灯していなければ 1 cm 深くして 1 回だけ押し直す
+
+### 確かめたこと（2026-10-07、MuJoCo、練習用の 20 試行）
+
+| 評価セット | 成功 | 点灯までの平均 | 壁・柱との接触力 |
+|---|---|---|---|
+| basic | 20 / 20 | 8.5 秒 | すべて 0 N |
+| realistic | 20 / 20 | 9.0 秒 | すべて 0 N |
+
+参考: 評価環境の見本のエージェントは basic 100%、realistic 95%（GUIDE.md）。seed 0 の ▲ では、見本は柱の横の壁に 40 N で当たった。
+
+途中で直したこと:
+- ▲▼ の記号を読み違えた（縁の影）→ ボタンの内側だけを見る
+- seed 1 の ▼: まっすぐ手前の姿勢へ動くと、手首が柱の 1.9 mm 手前を通った → 経由点（指の向きもそろえて解く）
+- realistic で 20 試行のうち 13 試行が動く前に中止: 柱の面の向きが 3° ほど傾いて推定され、軸にそろえた壁の箱が
+  4 cm 手前に出た → 箱を面の向きに回して置く（`common/collision.py` の障害物に `x_axis` を足した）
+- realistic の seed 8: 柱が近く面が斜めで、手前の姿勢で手首が胴体に 9.9 mm まで近づいた → 指の傾きの候補を順に試す
+
+まだ確かめていないこと: 模擬 G1（DDS、A の使い方）、Isaac Sim、練習用以外の種、実機。
+

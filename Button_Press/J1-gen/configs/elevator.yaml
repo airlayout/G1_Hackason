@@ -1,0 +1,121 @@
+# Button_Press / エレベーターの呼びボタン（一般用の ▲▼）を見つける設定（common/elevator_buttons.py）
+# 座標は pelvis 基準 [m]（x 前方、y 左、z 上）。
+
+# 候補を画像で探す方法: classic（明るい灰色の丸。MuJoCo の評価環境向け）/ yolo（自分で学習した重み）
+detector: classic
+
+classic:
+  # まわりの明るさを見る範囲 [px]（局所の平均）。柱は照明で上ほど明るく写るため、画像全体では見ない
+  background_px: 121
+  # まわりより明るい量（0〜255）と、色の強さ（最大 − 最小）の上限（青い車いすの印などを除く）
+  min_contrast: 18
+  max_chroma: 40
+  min_area_px: 40
+  max_area_px: 20000
+  # 枠に対して面が占める割合の下限（細長い線や縁を除く）と、縦横比の上限
+  min_fill: 0.5
+  max_aspect: 2.5
+
+yolo:
+  # sim/train_button_yolo.py で学習した重み（git の対象外）。クラスは up / down
+  weights: _local/button_press/button_yolo/weights/best.pt
+  confidence: 0.4
+  device: auto
+
+geometry:
+  # 深度を使う範囲 [m]
+  min_depth_m: 0.15
+  max_depth_m: 2.0
+  # 1 つのボタンに要る深度の点の数
+  min_points: 20
+  # ボタンの直径（評価環境は 3〜4.5 cm。車いす用はそれより小さい）
+  min_diameter_m: 0.015
+  max_diameter_m: 0.07
+  # 同じ柱とみなす左右のずれ
+  column_tolerance_m: 0.04
+  # 一般用の ▲ と ▼ の上下の間隔（評価環境は 7〜9 cm。▼ と車いす用の ▲ は 20 cm 以上離れている）
+  pair_spacing_m: [0.05, 0.12]
+  # 押す向き: ボタンのまわりのこの範囲の柱の面に平面を当てはめる
+  normal_region_m: 0.06
+  # 柱の面として使う、ボタンからの前後の距離（手など手前の物を除く）
+  normal_depth_band_m: 0.03
+  normal_min_points: 200
+  normal_min_inlier: 0.7
+  # 正面（+x）からの傾きの上限 [deg]。これより傾いた面は、何か別の物に当てはめたとみなす
+  normal_max_tilt_deg: 25
+
+tracking:
+  # 新しいフレームで続けて測る数と、そのばらつきの上限
+  frames: 3
+  max_spread_m: 0.005
+  max_normal_spread_deg: 5.0
+
+# ---- 押す（common/elevator_press.py。Yada の評価環境のエージェント contest_agent/ が使う） ----
+# configs/press.yaml の ik / press をこの値で上書きする
+ik:
+  # 50 Hz で少しずつ動く目標を解くので、精度を上げる
+  tol_pos_m: 0.0003
+
+press:
+  planner:
+    # 手前の点（球の表面がボタンに触れる位置から、押す向きにこれだけ戻る）[m]
+    approach_distance_m: 0.06
+    # ボタンの面から押し込む深さ [m]。腕の PD が弱い（kp 60）ので、ボタンの沈む量（評価環境は最大 3 mm）より
+    # 深く目標を置いて力を出す（Yada の見本のエージェントと同じ 15 mm）
+    press_depth_m: 0.015
+    max_press_depth_m: 0.03
+    # 押し込みの直線は、壁に触れるのが目的なので、体との衝突だけを調べる
+    align_finger: true
+  # 中指の先の衝突判定の球の半径 [m]（評価環境の configs/elevator_prod.yaml の fingertip.radius）
+  tip_radius_m: 0.008
+  # 指の向き: 押す向きから左・上に傾ける（右下から斜めに伸ばす）。正面に向けると、柱の正面に立つため
+  # 右腕を体の前に寄せることになり、肘・肩が胴体に当たった（Yada の見本のエージェントの記録、2026-10-02）
+  # [左, 上] [deg] の候補を順に試す。最初の 35°/20° は Yada の見本と同じ。柱が近く面が斜めのときは、
+  # これでは手首が胴体に近づきすぎた（realistic の seed 8）。端の条件 34 通りで、1 つの傾きで計画が立ったのは
+  # 35°/20° 26 通り、45°/20° 32 通り、35°/30° 29 通り、55°/20° 30 通り（2026-10-07）
+  finger_tilts_deg: [[35, 20], [45, 20], [35, 30], [55, 20]]
+  # IK を始める右腕の姿勢（motor 22〜28）。肘を外に張って腕を上げた姿勢（Yada の見本と同じ。腕を下ろした
+  # 姿勢から始めると、肘を内側にたたむ解になり、肩が胴に当たった）
+  ik_seed_right_arm: [-1.0, -0.5, 0.3, 0.3, 0.0, 0.0, 0.0]
+  # 腕と柱・壁の間に空ける距離 [m]（手前の姿勢へ動く途中）
+  wall_clearance_m: 0.01
+  # 壁に当たるときに通る経由点: [押す向きに戻る距離, 右へずらす距離] [m] を順に試す。高さの下限は pelvis 基準。
+  # 2026-10-07、評価環境の seed 1 の ▼ で、まっすぐ手前の姿勢へ動くと手首が柱の 1.9 mm 手前を通った。
+  # 経由点の候補 54 通りを調べ、通れたもののうち壁に近い順に並べた
+  via:
+    offsets_m: [[0.12, 0.08], [0.12, 0.15], [0.18, 0.15]]
+    min_height_m: 0.15
+  # 時間 [秒]
+  look_start_s: 0.2
+  look_timeout_s: 3.0
+  settle_s: 1.0
+  press_s: 2.5
+  hold_s: 0.6
+  retract_s: 1.0
+  check_wait_s: 0.3
+  # 関節空間の移動の速さの目安 [rad/s]（評価環境のランナーの上限 1.0 rad/s より遅く）と、最短の時間 [秒]
+  move_speed_rad_s: 0.8
+  min_move_s: 1.5
+  # 指先のずれの補正（積分）。gain [1/s]、上限 [m]、ボタンの面からこの距離より近づいたら止める [m]
+  servo:
+    gain: 3.0
+    max_m: 0.05
+    freeze_m: 0.01
+    # IK が収束しきらなくても、この誤差より小さければ使う（毎周期解き直すため）
+    accept_err_m: 0.01
+  # 点灯の確認: ボタンの枠の明るさ（0〜255 の平均）がこれだけ上がれば点灯とみなす
+  lit_brightness_rise: 25
+  # 点灯していなければ、この深さだけ深くして押し直す（回数の上限）
+  max_retries: 1
+  retry_extra_depth_m: 0.01
+
+# 柱（とその奥の壁）を表す箱（common/elevator_press.py の wall_obstacle）
+wall:
+  # ボタンの中央から左右・上下の半分の大きさ [m]
+  half_width_m: 0.5
+  half_height_m: 0.6
+  thickness_m: 0.2
+  # 箱の前面を、柱の面からこれだけ奥にする [m]（ボタンは柱の面から 0.5〜3 mm 出ているだけ）
+  margin_m: 0.0
+  # 移動の途中を調べる点の数
+  path_samples: 20

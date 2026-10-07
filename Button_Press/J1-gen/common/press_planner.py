@@ -48,6 +48,8 @@ class PressPlan:
     waist_q: np.ndarray
     # 経由する姿勢（片腕 7 関節）。開始 → 経由 → 手前 の順に動く（机などをくぐらないように）。無ければ直接
     q_via: np.ndarray | None = None
+    # 指の向き（単位ベクトル）。押す方向と違う向きを与えたときだけ入る（None なら設定の align_finger に従う）
+    finger_axis: np.ndarray | None = None
 
     def summary(self) -> str:
         f = lambda v: "[" + ", ".join(f"{x:+.3f}" for x in np.asarray(v, dtype=float)) + "]"  # noqa: E731
@@ -128,6 +130,7 @@ class PressPlanner:
         q_seed: np.ndarray | None = None,
         depth: float | None = None,
         q_via_arm: np.ndarray | None = None,
+        finger_axis: np.ndarray | None = None,
     ) -> PressPlan:
         """
         q_now: 今の関節角（29、実測）。腰と反対の腕はこの値で固定して計算する
@@ -136,6 +139,8 @@ class PressPlanner:
         q_seed: IK の初期値（29）。ティーチングで記録した押し込み姿勢を渡す。無ければ q_now
         q_via_arm: 経由する姿勢（片腕 7 関節）。与えれば 開始 → 経由 → 手前 の経路で衝突を確かめる
         depth: 押し込みの深さ [m]（無ければ設定値）。max_press_depth_m で頭打ちにする
+        finger_axis: 指の向き（pelvis 座標）。押す方向と違う向きにしたいとき（エレベーターのボタンを、体の前で
+            右下から斜めに押すなど）に与える。手先は、これとは関係なく押す方向にまっすぐ動く
         """
         c = self.cfg
         q_now = np.asarray(q_now, dtype=float)
@@ -148,7 +153,13 @@ class PressPlanner:
         d = min(max(d, 0.0), float(c["max_press_depth_m"]))
         approach = target - float(c["approach_distance_m"]) * n
         end = target + d * n
-        axis = n if c["align_finger"] else None
+        if finger_axis is not None:
+            axis = np.asarray(finger_axis, dtype=float)
+            if not np.all(np.isfinite(axis)) or np.linalg.norm(axis) < 1e-9:
+                raise UnreachableError(f"指の向きが不正: {finger_axis}")
+            axis = axis / np.linalg.norm(axis)
+        else:
+            axis = n if c["align_finger"] else None
 
         seed = q_now.copy()
         if q_seed is not None:
@@ -218,6 +229,7 @@ class PressPlanner:
             depth=d,
             waist_q=q_now[[12, 13, 14]].copy(),
             q_via=None if q_via_arm is None else np.asarray(q_via_arm, dtype=float).copy(),
+            finger_axis=None if finger_axis is None else axis.copy(),
         )
 
     def replan(self, plan: PressPlan, q_measured: np.ndarray, q_arm_now: np.ndarray,
@@ -232,6 +244,6 @@ class PressPlanner:
         q = np.asarray(q_measured, dtype=float).copy()
         q[self.kin.arm_idx] = q_arm_now
         new = self.plan(q, plan.target_point, plan.push_dir, q_seed=q,
-                        depth=plan.depth if depth is None else depth)
+                        depth=plan.depth if depth is None else depth, finger_axis=plan.finger_axis)
         new.q_via = plan.q_via  # 経由の姿勢は、戻るときにも使うので引き継ぐ
         return new
