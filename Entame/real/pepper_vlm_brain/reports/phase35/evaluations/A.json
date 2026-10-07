@@ -1,0 +1,136 @@
+{
+  "presence_correct_total": [
+    27,
+    27
+  ],
+  "direction_correct_total": [
+    12,
+    15
+  ],
+  "presence_accuracy": 1.0,
+  "direction_accuracy": 0.8,
+  "valid_class_rate": 1.0,
+  "main_pass": true,
+  "extended_geometry_scores": [
+    8,
+    8,
+    8
+  ],
+  "eligible": true,
+  "integrity_errors": [],
+  "metrics": {
+    "perception_wall_s": {
+      "count": 27,
+      "mean": 0.09986554444454938,
+      "median": 0.09721349999927043,
+      "p95": 0.10619294999978592
+    },
+    "perception": {
+      "processor_s": {
+        "count": 27,
+        "mean": 0.0029147962961562574,
+        "median": 0.002672000000529806,
+        "p95": 0.004118239998933859
+      },
+      "device_transfer_s": {
+        "count": 27,
+        "mean": 0.0006393074073895588,
+        "median": 0.0005897999999433523,
+        "p95": 0.0009310400000686057
+      },
+      "image_preprocessing_s": {
+        "count": 27,
+        "mean": 0.0048436888888250835,
+        "median": 0.004489699998885044,
+        "p95": 0.006524060000447207
+      },
+      "patch_embed_cuda_elapsed_s": {
+        "count": 27,
+        "mean": 0.00016963555691418825,
+        "median": 0.00016281600296497346,
+        "p95": 0.0002024447962641716
+      },
+      "vision_cuda_elapsed_s": {
+        "count": 27,
+        "mean": 0.026080172997933845,
+        "median": 0.025841663360595703,
+        "p95": 0.029335782432556152
+      },
+      "prefill_cuda_elapsed_s": {
+        "count": 27,
+        "mean": 0.08486165590639468,
+        "median": 0.08451363372802734,
+        "p95": 0.0920786506652832
+      },
+      "ttft_stage_s": {
+        "count": 27,
+        "mean": 0.09548295555551131,
+        "median": 0.09515180000016699,
+        "p95": 0.1019944999992731
+      },
+      "ttft_generation_s": {
+        "count": 27,
+        "mean": 0.087007329629732,
+        "median": 0.08641110000098706,
+        "p95": 0.09410189999998693
+      },
+      "decode_total_s": {
+        "count": 27,
+        "mean": 0.00047532222231017876,
+        "median": 0.00041339999916090164,
+        "p95": 0.000637970000570931
+      },
+      "text_decoding_s": {
+        "count": 27,
+        "mean": 0.00010493333320482634,
+        "median": 9.299999874201603e-05,
+        "p95": 0.00015126999969652388
+      },
+      "input_tokens": {
+        "count": 27,
+        "mean": 161,
+        "median": 161,
+        "p95": 161.0
+      },
+      "image_tokens": {
+        "count": 27,
+        "mean": 84,
+        "median": 84,
+        "p95": 84.0
+      },
+      "output_tokens": {
+        "count": 27,
+        "mean": 1,
+        "median": 1,
+        "p95": 1.0
+      },
+      "validation_parsing_s": {
+        "count": 27,
+        "mean": 2.7800000006445096e-05,
+        "median": 2.5899998945533298e-05,
+        "p95": 3.4640000922081524e-05
+      },
+      "peak_allocated_gib": {
+        "count": 27,
+        "mean": 4.006528854370117,
+        "median": 4.006528854370117,
+        "p95": 4.006528854370117
+      },
+      "peak_reserved_gib": {
+        "count": 27,
+        "mean": 4.01171875,
+        "median": 4.01171875,
+        "p95": 4.01171875
+      },
+      "stage_wall_s": {
+        "count": 27,
+        "mean": 0.09982218518504211,
+        "median": 0.0971596999988833,
+        "p95": 0.10614898999956494
+      }
+    }
+  },
+  "peak_allocated_gib": 4.006528854370117,
+  "peak_reserved_gib": 4.01171875,
+  "note": "Geometry-only gate, not full Observation or Action accuracy. Warmup/load/fresh main excluded from aggregates."
+}

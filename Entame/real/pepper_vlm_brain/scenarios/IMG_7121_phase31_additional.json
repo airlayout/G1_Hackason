@@ -1,0 +1,33 @@
+{
+  "purpose": "Human presence labels for post-run evaluation only. Inspected full-resolution source frames. Temporally correlated same-video samples; not independent generalization evidence.",
+  "labels": [
+    {
+      "timestamp": 3,
+      "person_visible": true
+    },
+    {
+      "timestamp": 7,
+      "person_visible": true
+    },
+    {
+      "timestamp": 9,
+      "person_visible": false
+    },
+    {
+      "timestamp": 9.5,
+      "person_visible": false
+    },
+    {
+      "timestamp": 10.25,
+      "person_visible": false
+    },
+    {
+      "timestamp": 13,
+      "person_visible": true
+    }
+  ],
+  "excluded_candidates": {
+    "10.5": "Partial head at left edge: not an absence sample",
+    "11": "Person head clearly visible"
+  }
+}

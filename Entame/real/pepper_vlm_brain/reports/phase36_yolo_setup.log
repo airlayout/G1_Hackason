@@ -1,0 +1,6 @@
+0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1
+WARNING user config directory 'C:\dev\robot-vlm-brain\.cache\phase36\yolo\Ultralytics' is not writable, using 'C:\dev\robot-vlm-brain\Ultralytics'. Set YOLO_CONFIG_DIR to override.
+Creating new Ultralytics Settings v0.0.8 file  
+View Ultralytics Settings with 'yolo settings' or at 'C:\dev\robot-vlm-brain\Ultralytics\settings.json'
+Update Settings with 'yolo settings key=value', i.e. 'yolo settings runs_dir=path/to/dir'. For help see https://docs.ultralytics.com/quickstart#ultralytics-settings.
+{'preprocess': 57.92010000004666, 'inference': 9.776300001249183, 'postprocess': 0.7858999997552019}

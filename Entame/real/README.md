@@ -15,3 +15,7 @@ python Entame/real/arm_wave_real.py --network-interface enp3s0
 ```
 
 lerobot方式（独自振り付け）はまだ未着手。
+
+## Pepper VLM Brain snapshot
+
+[pepper_vlm_brain/](pepper_vlm_brain/README.md) にPepper向けVLM Brainのtracked source snapshotを収録しています。G1統合デモとは独立しており、source SHA・Ubuntu利用の前提・未検証事項は同READMEを参照してください。

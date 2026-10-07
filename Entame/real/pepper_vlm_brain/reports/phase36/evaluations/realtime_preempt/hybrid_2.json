@@ -1,0 +1,158 @@
+{
+  "case": "hybrid",
+  "status": "complete",
+  "fast_count": 884,
+  "accepted_count": 884,
+  "rejected_count": 0,
+  "inference_latency_s": {
+    "count": 884,
+    "mean": 0.017048135407240473,
+    "median": 0.01416014999995241,
+    "p95": 0.0320230450013696,
+    "max": 0.08176860000094166
+  },
+  "slow_planner_latency_s": {
+    "count": 6,
+    "mean": 1.5090796000004048,
+    "median": 1.7042877500007307,
+    "p95": 1.8555607500006772,
+    "max": 1.8893681000008655
+  },
+  "slow_semantic_latency_s": {
+    "count": 3,
+    "mean": 2.5582444000010582,
+    "median": 2.5971100000006118,
+    "p95": 2.6472651100009896,
+    "max": 2.652837900001032
+  },
+  "result_frame_age_s": {
+    "count": 884,
+    "mean": 0.03029134653167821,
+    "median": 0.02996620000067196,
+    "p95": 0.04720572666792576,
+    "max": 0.1008495000005496
+  },
+  "update_interval_s": {
+    "count": 883,
+    "mean": 0.033342765232163785,
+    "median": 0.03212770000027376,
+    "p95": 0.05135581000122329,
+    "max": 0.11482950000026904
+  },
+  "update_rate_hz": 29.966101694915253,
+  "overlap_fast_count": 498,
+  "overlap_latency_s": {
+    "count": 498,
+    "mean": 0.01866705863458301,
+    "median": 0.014653949999228644,
+    "p95": 0.034010360000502254,
+    "max": 0.08176860000094166
+  },
+  "verified_empty_window_false_positive_total": [
+    0,
+    58
+  ],
+  "look_frame_to_ready_s": {
+    "count": 818,
+    "mean": 0.030589682804347297,
+    "median": 0.0302569500017853,
+    "p95": 0.04738395666763608,
+    "max": 0.10100880000027246
+  },
+  "look_while_slow_frame_to_ready_s": {
+    "count": 443,
+    "mean": 0.03297498961702017,
+    "median": 0.03179443333465315,
+    "p95": 0.051214686667299246,
+    "max": 0.10100880000027246
+  },
+  "look_while_slow_count": 443,
+  "slow_active_fast_loop_pass": true,
+  "latest_frame_wins": true,
+  "no_queue_accumulation": true,
+  "stale_result_rejection_pass": true,
+  "high_level_planner_integrity_pass": true,
+  "policy_correct_total": [
+    6,
+    6
+  ],
+  "cancelled_jobs": [
+    {
+      "kind": "planner",
+      "generation": 228,
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"LEFT\",\n "
+    }
+  ],
+  "integrity_errors": [],
+  "event_kpis": {
+    "body_center_to_LEFT": {
+      "look_ready_upper_s": 0.09942560000090417,
+      "look_ready_lower_s": 0.03275893333423774,
+      "generation": 179
+    },
+    "person_fully_disappears": {
+      "detection_latency_upper_s": 0.0981501000002023,
+      "detection_latency_lower_s": 0.03148343333353587,
+      "detected_generation": 254,
+      "search_ready_upper_s": 1.8362052000007676,
+      "search_from_detection_s": 1.7380551000005653,
+      "search_ready": {
+        "action": "SEARCH",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      }
+    },
+    "first_partial_head_reappears_LEFT": {
+      "look_ready_upper_s": 0.32138173333454034,
+      "look_ready_lower_s": 0.2880484000012071,
+      "generation": 320
+    }
+  },
+  "source_annotation_note": "Event latencies are conservative upper/lower bounds from visually annotated intervals; GT is evaluator-only.",
+  "cpu_process_percent": {
+    "2036": {
+      "count": 61,
+      "mean": 46.61967213114754,
+      "median": 46.8,
+      "p95": 59.4,
+      "max": 65.6
+    },
+    "12776": {
+      "count": 61,
+      "mean": 60.47377049180328,
+      "median": 87.4,
+      "p95": 102.5,
+      "max": 199.5
+    },
+    "396": {
+      "count": 61,
+      "mean": 18.24754098360656,
+      "median": 15.7,
+      "p95": 31.2,
+      "max": 40.5
+    }
+  },
+  "gpu_utilization_percent": {
+    "count": 61,
+    "mean": 41.622950819672134,
+    "median": 39,
+    "p95": 75.0,
+    "max": 76
+  },
+  "gpu_used_gib": {
+    "count": 61,
+    "mean": 5.121892084840868,
+    "median": 5.123741149902344,
+    "p95": 5.123985290527344,
+    "max": 5.123985290527344
+  },
+  "peak_allocated_gib": 4.056459426879883,
+  "peak_reserved_gib": 4.095703125,
+  "fast_peak_allocated_gib": 0.0639333724975586,
+  "fast_peak_reserved_gib": 0.087890625,
+  "planner_trigger_count": 7,
+  "slow_dispatch_count": 10,
+  "cooperative_single_weight": false,
+  "shared_qwen_negative_control": false
+}

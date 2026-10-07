@@ -1,0 +1,64 @@
+{
+  "scenario": "IMG_7121 person disappearance and reappearance Phase 3.1",
+  "pass": false,
+  "integrity_errors": [
+    "Pipeline did not pass",
+    "Rejected model output/fallback at 2.0: JSON validation failed: 1 validation error for PerceptionDecision\ndecision\n  Input should be a valid dictionary or instance of Decision [type=model_type, input_value='LOOK', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/model_type",
+    "Rejected model output/fallback at 6.0: JSON validation failed: 1 validation error for PerceptionDecision\nobservation\n  Value error, Absent transition requires current absent person [type=value_error, input_value={'person_visible': True, ...cking_obstacle': 'NONE'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error",
+    "Rejected model output/fallback at 8.0: JSON validation failed: 1 validation error for PerceptionDecision\nobservation\n  Value error, Absent transition requires current absent person [type=value_error, input_value={'person_visible': True, ...cking_obstacle': 'NONE'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error",
+    "Rejected model output/fallback at 10.0: JSON validation failed: 1 validation error for PerceptionDecision\nobservation\n  Value error, Absent transition requires current absent person [type=value_error, input_value={'person_visible': True, ...cking_obstacle': 'NONE'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+  ],
+  "checks": [
+    {
+      "timestamp": 6,
+      "observation": "Person visible on left",
+      "pass": false,
+      "errors": [
+        "Inference/parser fallback",
+        "Action mismatch",
+        "Target mismatch",
+        "Direction mismatch",
+        "Observation person_visible mismatch",
+        "Observation person_direction mismatch",
+        "Memory visible state mismatch"
+      ]
+    },
+    {
+      "timestamp": 8,
+      "observation": "Person still visible at left edge",
+      "pass": false,
+      "errors": [
+        "Inference/parser fallback",
+        "Action mismatch",
+        "Target mismatch",
+        "Direction mismatch",
+        "Observation person_visible mismatch",
+        "Observation person_direction mismatch",
+        "Observation transition mismatch",
+        "Memory visible state mismatch"
+      ]
+    },
+    {
+      "timestamp": 10,
+      "observation": "Person absent",
+      "pass": false,
+      "errors": [
+        "Inference/parser fallback",
+        "Action mismatch",
+        "Target mismatch",
+        "No previous known direction",
+        "Observation person_visible mismatch",
+        "Observation transition mismatch",
+        "Missed-frame count did not advance"
+      ]
+    },
+    {
+      "timestamp": 12,
+      "observation": "Person reappears on left",
+      "pass": false,
+      "errors": [
+        "Reappearance transition cannot pass without previous detected absence"
+      ]
+    }
+  ]
+}

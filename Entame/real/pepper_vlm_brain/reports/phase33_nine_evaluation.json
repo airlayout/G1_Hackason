@@ -1,0 +1,94 @@
+{
+  "pass": false,
+  "integrity_errors": [],
+  "checks": [
+    {
+      "timestamp": 3,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 7,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 8,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 9,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 9.5,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 10,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 10.25,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 12,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 13,
+      "pass": false,
+      "errors": [
+        "Perception direction mismatch",
+        "Planner direction/target mismatch"
+      ]
+    }
+  ],
+  "planner_policy_checks": [
+    {
+      "timestamp": 3.0,
+      "pass": true
+    },
+    {
+      "timestamp": 7.0,
+      "pass": true
+    },
+    {
+      "timestamp": 8.0,
+      "pass": true
+    },
+    {
+      "timestamp": 9.0,
+      "pass": true
+    },
+    {
+      "timestamp": 9.5,
+      "pass": true
+    },
+    {
+      "timestamp": 10.0,
+      "pass": true
+    },
+    {
+      "timestamp": 10.25,
+      "pass": true
+    },
+    {
+      "timestamp": 12.0,
+      "pass": true
+    },
+    {
+      "timestamp": 13.0,
+      "pass": true
+    }
+  ],
+  "planner_policy_pass": true,
+  "model_reuse": true
+}

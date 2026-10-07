@@ -1,0 +1,152 @@
+{
+  "case": "hybrid",
+  "status": "complete",
+  "fast_count": 883,
+  "accepted_count": 883,
+  "rejected_count": 0,
+  "inference_latency_s": {
+    "count": 883,
+    "mean": 0.016385128652304293,
+    "median": 0.013435900000331458,
+    "p95": 0.032210960000156774,
+    "max": 0.07963250000102562
+  },
+  "slow_planner_latency_s": {
+    "count": 7,
+    "mean": 1.593886842857111,
+    "median": 1.6711271999993187,
+    "p95": 1.777369780000663,
+    "max": 1.7793520000013814
+  },
+  "slow_semantic_latency_s": {
+    "count": 3,
+    "mean": 2.2843698666656564,
+    "median": 2.282039199999417,
+    "p95": 2.291756949998671,
+    "max": 2.2928366999985883
+  },
+  "result_frame_age_s": {
+    "count": 883,
+    "mean": 0.029924288148021613,
+    "median": 0.02855260000069393,
+    "p95": 0.048029196669813236,
+    "max": 0.08737889999974868
+  },
+  "update_interval_s": {
+    "count": 882,
+    "mean": 0.033383291950116564,
+    "median": 0.03165600000102131,
+    "p95": 0.0516237550009464,
+    "max": 0.09829529999842634
+  },
+  "update_rate_hz": 29.93220338983051,
+  "overlap_fast_count": 544,
+  "overlap_latency_s": {
+    "count": 544,
+    "mean": 0.018180761948529193,
+    "median": 0.013851650001015514,
+    "p95": 0.032999014999586504,
+    "max": 0.07963250000102562
+  },
+  "verified_empty_window_false_positive_total": [
+    0,
+    58
+  ],
+  "look_frame_to_ready_s": {
+    "count": 818,
+    "mean": 0.030100650409046237,
+    "median": 0.02867891666755895,
+    "p95": 0.048480421667409235,
+    "max": 0.087523100002727
+  },
+  "look_while_slow_frame_to_ready_s": {
+    "count": 485,
+    "mean": 0.03276871498433372,
+    "median": 0.03045840000049793,
+    "p95": 0.05257322666657273,
+    "max": 0.087523100002727
+  },
+  "look_while_slow_count": 485,
+  "slow_active_fast_loop_pass": true,
+  "latest_frame_wins": true,
+  "no_queue_accumulation": true,
+  "stale_result_rejection_pass": true,
+  "high_level_planner_integrity_pass": true,
+  "policy_correct_total": [
+    7,
+    7
+  ],
+  "cancelled_jobs": [],
+  "integrity_errors": [],
+  "event_kpis": {
+    "body_center_to_LEFT": {
+      "look_ready_upper_s": 0.10123090000124613,
+      "look_ready_lower_s": 0.0345642333345797,
+      "generation": 179
+    },
+    "person_fully_disappears": {
+      "detection_latency_upper_s": 0.09789250000321736,
+      "detection_latency_lower_s": 0.031225833336550934,
+      "detected_generation": 254,
+      "search_ready_upper_s": 1.9729015000026262,
+      "search_from_detection_s": 1.8750089999994088,
+      "search_ready": {
+        "action": "SEARCH",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      }
+    },
+    "first_partial_head_reappears_LEFT": {
+      "look_ready_upper_s": 0.25320773333636026,
+      "look_ready_lower_s": 0.21987440000302705,
+      "generation": 318
+    }
+  },
+  "source_annotation_note": "Event latencies are conservative upper/lower bounds from visually annotated intervals; GT is evaluator-only.",
+  "cpu_process_percent": {
+    "22508": {
+      "count": 59,
+      "mean": 44.1271186440678,
+      "median": 46.7,
+      "p95": 56.13999999999998,
+      "max": 62.5
+    },
+    "13752": {
+      "count": 59,
+      "mean": 63.93559322033898,
+      "median": 84.7,
+      "p95": 110.85999999999954,
+      "max": 215.5
+    },
+    "11868": {
+      "count": 59,
+      "mean": 22.13728813559322,
+      "median": 15.6,
+      "p95": 47.64999999999995,
+      "max": 249.1
+    }
+  },
+  "gpu_utilization_percent": {
+    "count": 59,
+    "mean": 38.59322033898305,
+    "median": 50,
+    "p95": 66.0,
+    "max": 71
+  },
+  "gpu_used_gib": {
+    "count": 59,
+    "mean": 5.113243103027344,
+    "median": 5.113243103027344,
+    "p95": 5.113243103027344,
+    "max": 5.113243103027344
+  },
+  "peak_allocated_gib": 4.056459426879883,
+  "peak_reserved_gib": 4.095703125,
+  "fast_peak_allocated_gib": 0.0639333724975586,
+  "fast_peak_reserved_gib": 0.087890625,
+  "planner_trigger_count": 9,
+  "slow_dispatch_count": 10,
+  "cooperative_single_weight": false,
+  "shared_qwen_negative_control": false
+}

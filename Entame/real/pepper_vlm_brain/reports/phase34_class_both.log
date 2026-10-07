@@ -1,0 +1,42 @@
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=0 t=3 P='C' D='K' brain=4.640s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=0 t=7 P='B' D='A' brain=4.438s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=0 t=8 P='B' D='A' brain=4.436s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=0 t=9 P='A' D='G' brain=4.531s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both run=0 t=9.5 P='A' D='N' brain=4.624s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both run=0 t=10 P='A' D='N' brain=4.561s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both run=0 t=10.25 P='A' D='N' brain=4.450s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=0 t=12 P='B' D='K' brain=4.566s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=0 t=13 P='D' D='C' brain=4.491s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=1 t=3 P='C' D='K' brain=4.486s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=1 t=7 P='B' D='A' brain=4.450s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=1 t=8 P='B' D='A' brain=4.565s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=1 t=9 P='A' D='G' brain=4.517s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both run=1 t=9.5 P='A' D='N' brain=4.657s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both run=1 t=10 P='A' D='N' brain=4.520s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both run=1 t=10.25 P='A' D='N' brain=4.512s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=1 t=12 P='B' D='K' brain=4.515s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=1 t=13 P='D' D='C' brain=4.575s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=2 t=8 P='B' D='A' brain=4.491s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=2 t=10 P='A' D='G' brain=4.480s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both run=2 t=12 P='B' D='K' brain=4.509s

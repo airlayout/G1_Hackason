@@ -1,0 +1,188 @@
+{
+  "source_pixel_sha256": "8799340344eb3fae71d21a5687fcc2aa3c407007c2bd98cacfa8a21dbf73dd2d",
+  "timestamp_s": 10,
+  "memory_context": {
+    "memory_available": true,
+    "last_action": "LOOK",
+    "last_seen_person_direction": "LEFT",
+    "person_visible_last_frame": true,
+    "frames_since_person_seen": 0
+  },
+  "visibility_note": "Legacy Decision-derived proxy; not an Observation measurement",
+  "results": [
+    {
+      "edge": 384,
+      "person_visible_legacy_proxy": true,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "MID",
+        "confidence": 0.95,
+        "scene_summary": "person visible in center"
+      },
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"CENTER\",\n  \"target\": \"PERSON\",\n  \"distance\": \"MID\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"person visible in center\"\n}",
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 12.538910600007512,
+        "model_allocated_gib": 3.9638280868530273,
+        "source_image_size": [
+          910,
+          512
+        ],
+        "image_size": [
+          384,
+          216
+        ],
+        "image_grid_thw": [
+          1,
+          14,
+          24
+        ],
+        "processor_image_size": [
+          384,
+          224
+        ],
+        "image_tokens": 84,
+        "prompt_characters": 2241,
+        "prompt_profile": "legacy",
+        "prompt_sha256": "27881dde5fb5d9024d92eab4202e27a8afa6b8178fe48167b7a1db39b9790219",
+        "max_new_tokens": 96,
+        "preprocessing_latency_s": 0.036766900011571124,
+        "generation_latency_s": 7.493527999991784,
+        "inference_latency_s": 7.531680200016126,
+        "input_tokens": 615,
+        "output_tokens": 53,
+        "peak_allocated_gib": 4.132607936859131,
+        "peak_reserved_gib": 4.15625,
+        "vram_free_gib": 2.763671875,
+        "vram_total_gib": 7.99951171875
+      }
+    },
+    {
+      "edge": 448,
+      "person_visible_legacy_proxy": true,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "MID",
+        "confidence": 0.95,
+        "scene_summary": "person visible in center"
+      },
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"CENTER\",\n  \"target\": \"PERSON\",\n  \"distance\": \"MID\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"person visible in center\"\n}",
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 12.538910600007512,
+        "model_allocated_gib": 3.9638280868530273,
+        "source_image_size": [
+          910,
+          512
+        ],
+        "image_size": [
+          448,
+          252
+        ],
+        "image_grid_thw": [
+          1,
+          16,
+          28
+        ],
+        "processor_image_size": [
+          448,
+          256
+        ],
+        "image_tokens": 112,
+        "prompt_characters": 2241,
+        "prompt_profile": "legacy",
+        "prompt_sha256": "27881dde5fb5d9024d92eab4202e27a8afa6b8178fe48167b7a1db39b9790219",
+        "max_new_tokens": 96,
+        "vram_free_gib": 2.708984375,
+        "vram_total_gib": 7.99951171875,
+        "preprocessing_latency_s": 0.011760699999285862,
+        "generation_latency_s": 8.371139499999117,
+        "inference_latency_s": 8.383070799987763,
+        "input_tokens": 643,
+        "output_tokens": 53,
+        "peak_allocated_gib": 4.139351844787598,
+        "peak_reserved_gib": 4.2109375
+      }
+    },
+    {
+      "edge": 512,
+      "person_visible_legacy_proxy": true,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "MID",
+        "confidence": 0.95,
+        "scene_summary": "person visible in center"
+      },
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"CENTER\",\n  \"target\": \"PERSON\",\n  \"distance\": \"MID\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"person visible in center\"\n}",
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 12.538910600007512,
+        "model_allocated_gib": 3.9638280868530273,
+        "source_image_size": [
+          910,
+          512
+        ],
+        "image_size": [
+          512,
+          288
+        ],
+        "image_grid_thw": [
+          1,
+          18,
+          32
+        ],
+        "processor_image_size": [
+          512,
+          288
+        ],
+        "image_tokens": 144,
+        "prompt_characters": 2241,
+        "prompt_profile": "legacy",
+        "prompt_sha256": "27881dde5fb5d9024d92eab4202e27a8afa6b8178fe48167b7a1db39b9790219",
+        "max_new_tokens": 96,
+        "vram_free_gib": 2.654296875,
+        "vram_total_gib": 7.99951171875,
+        "preprocessing_latency_s": 0.01114320001215674,
+        "generation_latency_s": 9.952562199992826,
+        "inference_latency_s": 9.963890999992145,
+        "input_tokens": 675,
+        "output_tokens": 53,
+        "peak_allocated_gib": 4.153413772583008,
+        "peak_reserved_gib": 4.265625
+      }
+    }
+  ]
+}

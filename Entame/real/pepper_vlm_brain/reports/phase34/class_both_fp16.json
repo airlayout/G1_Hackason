@@ -1,0 +1,4307 @@
+{
+  "mode": "phase34-experimental",
+  "profile": {
+    "name": "class_both",
+    "format": "class",
+    "edge": 384,
+    "minimal": false,
+    "dtype": "fp16",
+    "attention": "default",
+    "instrument": true,
+    "exact": false,
+    "constrained": true,
+    "planner_json": false,
+    "planner_class": true
+  },
+  "model_load": {
+    "gpu": "NVIDIA GeForce RTX 3060 Ti",
+    "cuda_available": true,
+    "gpu_used": true,
+    "dtype": "torch.float16",
+    "attention": "sdpa",
+    "model": "Qwen/Qwen3-VL-2B-Instruct",
+    "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+    "quantize_4bit": false,
+    "model_load_s": 3.1723198999998203,
+    "model_allocated_gib": 3.9638280868530273,
+    "model_load_peak_allocated_gib": 4.5434184074401855,
+    "model_load_peak_reserved_gib": 4.595703125,
+    "model_footprint_gib": 3.962837517261505,
+    "dtype_conversion_s": 0.08361760000025242,
+    "preserved_fp32_buffers": [
+      "model.visual.rotary_pos_emb.inv_freq",
+      "model.language_model.rotary_emb.inv_freq"
+    ],
+    "model_instance_id": 2552216584272,
+    "processor_instance_id": 2552214977040,
+    "model_load_count": 1,
+    "load_wall_s": 3.1920725999998467
+  },
+  "single_token_codes": {
+    "A": [
+      32
+    ],
+    "B": [
+      33
+    ],
+    "C": [
+      34
+    ],
+    "D": [
+      35
+    ],
+    "E": [
+      36
+    ],
+    "F": [
+      37
+    ],
+    "G": [
+      38
+    ],
+    "H": [
+      39
+    ],
+    "I": [
+      40
+    ],
+    "J": [
+      41
+    ],
+    "K": [
+      42
+    ],
+    "L": [
+      43
+    ],
+    "M": [
+      44
+    ],
+    "N": [
+      45
+    ]
+  },
+  "video": {
+    "path": "C:\\Users\\slowh\\Downloads\\IMG_7121.mp4",
+    "fps": 30.0,
+    "frame_count": 885,
+    "duration_s": 29.5,
+    "source_size": [
+      910,
+      512
+    ],
+    "backend": "FFMPEG",
+    "orientation_degrees": 0.0
+  },
+  "status": "pass",
+  "runs": [
+    {
+      "mode": "perception-state-planner",
+      "timestamps": [
+        3,
+        7,
+        8,
+        9,
+        9.5,
+        10,
+        10.25,
+        12,
+        13
+      ],
+      "status": "pass",
+      "frames": [
+        {
+          "timestamp": 3,
+          "actual_timestamp": 3.0,
+          "frame_index": 90,
+          "input_pixels_sha256": "49bdb53e0e2486b889d00e27cbb6514262a9d8337d84c1adfbbd642608ca318c",
+          "mock_robot_output": "[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "CENTER",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "C",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                34
+              ],
+              "processor_s": 0.003216199999769742,
+              "device_transfer_s": 0.0007359000001088134,
+              "text_decoding_s": 9.279999994760146e-05,
+              "generation_latency_s": 4.740562599999976,
+              "inference_latency_s": 4.7447705000004134,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.740142999999989,
+              "ttft_stage_s": 4.74786899999981,
+              "decode_total_s": 0.00041959999998653075,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.73782763671875,
+              "prefill_host_forward_s": 4.726029800000106,
+              "vision_cuda_elapsed_s": 4.6666669921875,
+              "vision_host_forward_s": 4.666269199999988,
+              "patch_embed_cuda_elapsed_s": 4.63130322265625,
+              "patch_embed_host_forward_s": 4.631327999999485,
+              "vision_block0_cuda_elapsed_s": 0.0013567999601364136,
+              "vision_block0_host_forward_s": 0.0010465999994266895,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                27.078125,
+                30.75,
+                32.8125,
+                32.25
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.003695800000059535,
+              "stage_wall_s": 4.748918900000717,
+              "validation_parsing_s": 2.3599999622092582e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "FOUND",
+              "direction": "CENTER",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "K",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "eeee044b3d8b3a24a4f6ab879bc5abb50516a41f316c8473fdb0cde50b19b095",
+              "max_new_tokens": 1,
+              "input_tokens": 308,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                42
+              ],
+              "processor_s": 0.0008612999999968451,
+              "device_transfer_s": 0.00010490000022400636,
+              "text_decoding_s": 0.00013360000048123766,
+              "generation_latency_s": 0.1005883999996513,
+              "inference_latency_s": 0.10185509999973874,
+              "peak_allocated_gib": 4.0373640060424805,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.10012230000029376,
+              "ttft_stage_s": 0.1011333000005834,
+              "decode_total_s": 0.00046609999935753876,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.09803401947021484,
+              "prefill_host_forward_s": 0.05318360000001121,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                28.515625,
+                31.8125,
+                31.71875,
+                31.390625,
+                25.546875,
+                25.8125,
+                26.359375,
+                28.34375,
+                24.703125,
+                27.09375,
+                33.09375,
+                27.03125,
+                23.828125,
+                23.1875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.10232139999970968,
+              "validation_parsing_s": 2.6899999284069054e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "UNKNOWN",
+            "person_visible_last_frame": null,
+            "frames_since_person_seen": 0,
+            "transition": "UNKNOWN"
+          },
+          "state_after": {
+            "last_seen_person_direction": "CENTER",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "UNKNOWN"
+          },
+          "transition": "UNKNOWN",
+          "timing": {
+            "perception_wall_s": 4.748951300000044,
+            "state_update_s": 7.999999979801942e-06,
+            "planner_wall_s": 0.10235340000053839,
+            "total_brain_s": 4.851381399999809
+          }
+        },
+        {
+          "timestamp": 7,
+          "actual_timestamp": 7.000000000000001,
+          "frame_index": 210,
+          "input_pixels_sha256": "ac486f858943830a227761847adc94c807ef401b16b243fc534a09e7d9182a6c",
+          "mock_robot_output": "[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "LEFT",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "B",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                33
+              ],
+              "processor_s": 0.002453899999636633,
+              "device_transfer_s": 0.0009114000004046829,
+              "text_decoding_s": 0.00011730000005627517,
+              "generation_latency_s": 4.6436069999999745,
+              "inference_latency_s": 4.6472813000000315,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.643164300000535,
+              "ttft_stage_s": 4.651097500001015,
+              "decode_total_s": 0.00044269999943935545,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.64028076171875,
+              "prefill_host_forward_s": 4.631439200000386,
+              "vision_cuda_elapsed_s": 4.56821142578125,
+              "vision_host_forward_s": 4.56778469999972,
+              "patch_embed_cuda_elapsed_s": 4.5299228515625,
+              "patch_embed_host_forward_s": 4.529952400000184,
+              "vision_block0_cuda_elapsed_s": 0.0013404159545898438,
+              "vision_block0_host_forward_s": 0.0010548000000198954,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                30.171875,
+                34.0625,
+                30.765625,
+                33.4375
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.004495600000154809,
+              "stage_wall_s": 4.652384600000005,
+              "validation_parsing_s": 4.2300000131945126e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "LOOK",
+              "direction": "LEFT",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "9853a027ae5b1206572f36e6e83ff9488335833817cdeabd844854582564a112",
+              "max_new_tokens": 1,
+              "input_tokens": 310,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.00111170000036509,
+              "device_transfer_s": 0.0002928000003521447,
+              "text_decoding_s": 0.00012380000043776818,
+              "generation_latency_s": 0.08361960000002,
+              "inference_latency_s": 0.08533140000054118,
+              "peak_allocated_gib": 4.038913249969482,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.08288520000041899,
+              "ttft_stage_s": 0.08435880000070028,
+              "decode_total_s": 0.0007343999996010098,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.08054354858398438,
+              "prefill_host_forward_s": 0.06162159999985306,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                34.59375,
+                29.9375,
+                32.0625,
+                30.03125,
+                26.5,
+                26.40625,
+                27.5625,
+                27.78125,
+                26.375,
+                27.25,
+                29.25,
+                28.984375,
+                24.4375,
+                24.515625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.08599950000007084,
+              "validation_parsing_s": 2.3999999939405825e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "CENTER",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "UNKNOWN"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "STILL_VISIBLE"
+          },
+          "transition": "STILL_VISIBLE",
+          "timing": {
+            "perception_wall_s": 4.652437599999757,
+            "state_update_s": 1.2399999832268804e-05,
+            "planner_wall_s": 0.08602889999929175,
+            "total_brain_s": 4.73856380000052
+          }
+        },
+        {
+          "timestamp": 8,
+          "actual_timestamp": 8.0,
+          "frame_index": 240,
+          "input_pixels_sha256": "e522cffae37612094ffdbb945f19e15b5c36203fbfb15fc9d28c34d796423d0e",
+          "mock_robot_output": "[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "LEFT",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "B",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                33
+              ],
+              "processor_s": 0.0025766999997358653,
+              "device_transfer_s": 0.0007805000004736939,
+              "text_decoding_s": 0.00010789999942062423,
+              "generation_latency_s": 4.641355700000531,
+              "inference_latency_s": 4.644979700000476,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.640953600000103,
+              "ttft_stage_s": 4.648158899999544,
+              "decode_total_s": 0.00040210000042861793,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.6379609375,
+              "prefill_host_forward_s": 4.626158299999588,
+              "vision_cuda_elapsed_s": 4.5539912109375,
+              "vision_host_forward_s": 4.553554400000394,
+              "patch_embed_cuda_elapsed_s": 4.51833251953125,
+              "patch_embed_host_forward_s": 4.518360699999903,
+              "vision_block0_cuda_elapsed_s": 0.001369055986404419,
+              "vision_block0_host_forward_s": 0.0010615999999572523,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                32.21875,
+                36.625,
+                31.734375,
+                35.6875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0037751999998363317,
+              "stage_wall_s": 4.649230999999418,
+              "validation_parsing_s": 2.3100000362319406e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "LOOK",
+              "direction": "LEFT",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "9853a027ae5b1206572f36e6e83ff9488335833817cdeabd844854582564a112",
+              "max_new_tokens": 1,
+              "input_tokens": 310,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.0008569999999963329,
+              "device_transfer_s": 0.00010609999935695669,
+              "text_decoding_s": 0.00010959999963233713,
+              "generation_latency_s": 0.07672920000004524,
+              "inference_latency_s": 0.07794919999923877,
+              "peak_allocated_gib": 4.038913249969482,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.07619460000023537,
+              "ttft_stage_s": 0.07720269999936136,
+              "decode_total_s": 0.0005345999998098705,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.07393366241455078,
+              "prefill_host_forward_s": 0.056152000000111,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                34.59375,
+                29.9375,
+                32.0625,
+                30.03125,
+                26.5,
+                26.40625,
+                27.5625,
+                27.78125,
+                26.375,
+                27.25,
+                29.25,
+                28.984375,
+                24.4375,
+                24.515625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.07839740000054007,
+              "validation_parsing_s": 2.7600000066740904e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "STILL_VISIBLE"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "STILL_VISIBLE"
+          },
+          "transition": "STILL_VISIBLE",
+          "timing": {
+            "perception_wall_s": 4.649263299999802,
+            "state_update_s": 1.0800000382005237e-05,
+            "planner_wall_s": 0.07843030000003637,
+            "total_brain_s": 4.727796899999703
+          }
+        },
+        {
+          "timestamp": 9,
+          "actual_timestamp": 9.0,
+          "frame_index": 270,
+          "input_pixels_sha256": "4546abd82dbbf844f22e72a992449f41c768e4b6a4692b957d18ba5904399a83",
+          "mock_robot_output": "[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": false,
+              "person_count": 0,
+              "person_direction": "UNKNOWN",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.002542100000027858,
+              "device_transfer_s": 0.00044800000068789814,
+              "text_decoding_s": 9.360000058222795e-05,
+              "generation_latency_s": 4.649393100000452,
+              "inference_latency_s": 4.6526222000002235,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.648977900000318,
+              "ttft_stage_s": 4.655657100000099,
+              "decode_total_s": 0.0004152000001340639,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.64714599609375,
+              "prefill_host_forward_s": 4.631958699999814,
+              "vision_cuda_elapsed_s": 4.574125,
+              "vision_host_forward_s": 4.572298999999475,
+              "patch_embed_cuda_elapsed_s": 4.5402646484375,
+              "patch_embed_host_forward_s": 4.540289699999448,
+              "vision_block0_cuda_elapsed_s": 0.001346560001373291,
+              "vision_block0_host_forward_s": 0.001042099999722268,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                41.5,
+                34.71875,
+                33.59375,
+                33.90625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.003629400000136229,
+              "stage_wall_s": 4.656736300000375,
+              "validation_parsing_s": 2.5499999537714757e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "SEARCH",
+              "direction": "RIGHT",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "G",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "5ca943e4ebefeb482690382f1c5158d57f8f51ed52ba952bd78737bf0928e924",
+              "max_new_tokens": 1,
+              "input_tokens": 311,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                38
+              ],
+              "processor_s": 0.0009153000000878819,
+              "device_transfer_s": 0.00010629999997036066,
+              "text_decoding_s": 9.359999967273325e-05,
+              "generation_latency_s": 0.1002358000005188,
+              "inference_latency_s": 0.10147830000005342,
+              "peak_allocated_gib": 4.039101600646973,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.09983400000055553,
+              "ttft_stage_s": 0.10090010000021721,
+              "decode_total_s": 0.0004017999999632593,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.09810002899169921,
+              "prefill_host_forward_s": 0.06256149999990157,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                26.796875,
+                26.40625,
+                26.703125,
+                26.859375,
+                28.203125,
+                29.359375,
+                31.0625,
+                26.515625,
+                25.515625,
+                25.09375,
+                25.5625,
+                26.953125,
+                25.0,
+                28.421875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.1019311000000016,
+              "validation_parsing_s": 2.3399999918183312e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "STILL_VISIBLE"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 1,
+            "transition": "DISAPPEARED"
+          },
+          "transition": "DISAPPEARED",
+          "timing": {
+            "perception_wall_s": 4.6567713000004005,
+            "state_update_s": 1.06999996205559e-05,
+            "planner_wall_s": 0.10195990000011079,
+            "total_brain_s": 4.758836599999995
+          }
+        },
+        {
+          "timestamp": 9.5,
+          "actual_timestamp": 9.5,
+          "frame_index": 285,
+          "input_pixels_sha256": "3cdf43ae2fa32a44db721971daae997f25c3f423f2277e84f0343edbd98bcfe6",
+          "mock_robot_output": "[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": false,
+              "person_count": 0,
+              "person_direction": "UNKNOWN",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.0025677000003270223,
+              "device_transfer_s": 0.0004572000007101451,
+              "text_decoding_s": 0.00013049999961367575,
+              "generation_latency_s": 4.387374899999486,
+              "inference_latency_s": 4.39071740000054,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.386500399999932,
+              "ttft_stage_s": 4.393343800000366,
+              "decode_total_s": 0.0008744999995542457,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.38430126953125,
+              "prefill_host_forward_s": 4.382601899999827,
+              "vision_cuda_elapsed_s": 4.3175341796875,
+              "vision_host_forward_s": 4.317045300000245,
+              "patch_embed_cuda_elapsed_s": 4.28543701171875,
+              "patch_embed_host_forward_s": 4.285460800000692,
+              "vision_block0_cuda_elapsed_s": 0.0012984319925308228,
+              "vision_block0_host_forward_s": 0.001023900000291178,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                40.21875,
+                34.5625,
+                33.875,
+                33.96875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.003759100000024773,
+              "stage_wall_s": 4.395062700000381,
+              "validation_parsing_s": 3.100000049016671e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "SURPRISE",
+              "direction": "UNKNOWN",
+              "target": "NONE",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "N",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "52b765ce9f654c808dff4791efd11f47827e55e27da7c94352a1b07d1590275c",
+              "max_new_tokens": 1,
+              "input_tokens": 311,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                45
+              ],
+              "processor_s": 0.001369900000099733,
+              "device_transfer_s": 0.00013159999980416615,
+              "text_decoding_s": 9.469999986322364e-05,
+              "generation_latency_s": 0.0752701999999772,
+              "inference_latency_s": 0.07703899999978603,
+              "peak_allocated_gib": 4.039101600646973,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.07485779999933584,
+              "ttft_stage_s": 0.07644629999958852,
+              "decode_total_s": 0.0004124000006413553,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.07273069000244141,
+              "prefill_host_forward_s": 0.05558660000042437,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                26.796875,
+                26.734375,
+                26.390625,
+                26.59375,
+                27.359375,
+                28.421875,
+                28.265625,
+                26.5,
+                25.859375,
+                24.75,
+                25.1875,
+                26.96875,
+                28.359375,
+                30.53125
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.07753989999946498,
+              "validation_parsing_s": 2.4399999347224366e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 1,
+            "transition": "DISAPPEARED"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 2,
+            "transition": "STILL_ABSENT"
+          },
+          "transition": "STILL_ABSENT",
+          "timing": {
+            "perception_wall_s": 4.395103900000322,
+            "state_update_s": 1.539999993838137e-05,
+            "planner_wall_s": 0.07756980000067415,
+            "total_brain_s": 4.472771400000056
+          }
+        },
+        {
+          "timestamp": 10,
+          "actual_timestamp": 10.0,
+          "frame_index": 300,
+          "input_pixels_sha256": "8799340344eb3fae71d21a5687fcc2aa3c407007c2bd98cacfa8a21dbf73dd2d",
+          "mock_robot_output": "[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": false,
+              "person_count": 0,
+              "person_direction": "UNKNOWN",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.002676699999938137,
+              "device_transfer_s": 0.0005659000007653958,
+              "text_decoding_s": 9.090000003197929e-05,
+              "generation_latency_s": 4.454434999999648,
+              "inference_latency_s": 4.4579162,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.454045899999983,
+              "ttft_stage_s": 4.4610089000007065,
+              "decode_total_s": 0.0003890999996656319,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.4520791015625,
+              "prefill_host_forward_s": 4.443440300000475,
+              "vision_cuda_elapsed_s": 4.3805615234375,
+              "vision_host_forward_s": 4.380280000000312,
+              "patch_embed_cuda_elapsed_s": 4.34737255859375,
+              "patch_embed_host_forward_s": 4.34754459999931,
+              "vision_block0_cuda_elapsed_s": 0.0013066240549087524,
+              "vision_block0_host_forward_s": 0.0010142000000996632,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                40.71875,
+                34.71875,
+                33.90625,
+                33.90625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0036576000002241926,
+              "stage_wall_s": 4.462031600000046,
+              "validation_parsing_s": 2.4300000404764432e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "SURPRISE",
+              "direction": "UNKNOWN",
+              "target": "NONE",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "N",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "8924bab9959afa84a96a1b1c9684dcc1222e804d7d720c8192fa9760f36c36b9",
+              "max_new_tokens": 1,
+              "input_tokens": 311,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                45
+              ],
+              "processor_s": 0.0008532000001650886,
+              "device_transfer_s": 0.0001063999998223153,
+              "text_decoding_s": 9.520000003249152e-05,
+              "generation_latency_s": 0.08153070000025764,
+              "inference_latency_s": 0.0827473999997892,
+              "peak_allocated_gib": 4.039101600646973,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.0807611000000179,
+              "ttft_stage_s": 0.08176600000024337,
+              "decode_total_s": 0.0007696000002397341,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.07839036560058593,
+              "prefill_host_forward_s": 0.05156100000021979,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                26.6875,
+                26.671875,
+                26.40625,
+                26.59375,
+                27.21875,
+                28.4375,
+                28.4375,
+                26.40625,
+                25.71875,
+                24.71875,
+                25.140625,
+                27.046875,
+                28.4375,
+                30.6875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.0832921000001079,
+              "validation_parsing_s": 2.530000074330019e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 2,
+            "transition": "STILL_ABSENT"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 3,
+            "transition": "STILL_ABSENT"
+          },
+          "transition": "STILL_ABSENT",
+          "timing": {
+            "perception_wall_s": 4.462065400000029,
+            "state_update_s": 1.1099999937869143e-05,
+            "planner_wall_s": 0.08332220000011148,
+            "total_brain_s": 4.545496399999138
+          }
+        },
+        {
+          "timestamp": 10.25,
+          "actual_timestamp": 10.266666666666667,
+          "frame_index": 308,
+          "input_pixels_sha256": "7dc4f786dfb5bdd177fd3ea415ad0388cda2b6461e40cf8e86db8c62bee45c8e",
+          "mock_robot_output": "[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": false,
+              "person_count": 0,
+              "person_direction": "UNKNOWN",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.002526199999920209,
+              "device_transfer_s": 0.00046769999971729703,
+              "text_decoding_s": 8.950000028562499e-05,
+              "generation_latency_s": 4.483283500000653,
+              "inference_latency_s": 4.486514100000022,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.482898900000691,
+              "ttft_stage_s": 4.489753500000916,
+              "decode_total_s": 0.0003845999999612104,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.481048828125,
+              "prefill_host_forward_s": 4.46892250000019,
+              "vision_cuda_elapsed_s": 4.40875927734375,
+              "vision_host_forward_s": 4.40824049999992,
+              "patch_embed_cuda_elapsed_s": 4.37617333984375,
+              "patch_embed_host_forward_s": 4.376196799999889,
+              "vision_block0_cuda_elapsed_s": 0.0012861440181732178,
+              "vision_block0_host_forward_s": 0.0010008999997808132,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                40.78125,
+                34.90625,
+                34.3125,
+                34.34375
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0037967000007483875,
+              "stage_wall_s": 4.490776399999959,
+              "validation_parsing_s": 2.550000044720946e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "SURPRISE",
+              "direction": "UNKNOWN",
+              "target": "NONE",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "N",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "d54bb3b8145fe90219ffd83f3bcfb0038a5bd43254ee8480307d22901385115a",
+              "max_new_tokens": 1,
+              "input_tokens": 311,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                45
+              ],
+              "processor_s": 0.001287400000364869,
+              "device_transfer_s": 0.0001990000000660075,
+              "text_decoding_s": 0.00010729999939940171,
+              "generation_latency_s": 0.09099549999973533,
+              "inference_latency_s": 0.09280239999952755,
+              "peak_allocated_gib": 4.039101600646973,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.09034830000018701,
+              "ttft_stage_s": 0.09190690000014001,
+              "decode_total_s": 0.0006471999995483202,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.08716236877441406,
+              "prefill_host_forward_s": 0.060106099999757134,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                26.046875,
+                26.4375,
+                26.09375,
+                26.359375,
+                26.65625,
+                28.546875,
+                28.65625,
+                26.328125,
+                25.75,
+                24.71875,
+                25.28125,
+                27.15625,
+                28.9375,
+                31.359375
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.09345229999962612,
+              "validation_parsing_s": 2.5600000299164094e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 3,
+            "transition": "STILL_ABSENT"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 4,
+            "transition": "STILL_ABSENT"
+          },
+          "transition": "STILL_ABSENT",
+          "timing": {
+            "perception_wall_s": 4.4908104999994976,
+            "state_update_s": 1.720000000204891e-05,
+            "planner_wall_s": 0.09348660000068776,
+            "total_brain_s": 4.584405399999923
+          }
+        },
+        {
+          "timestamp": 12,
+          "actual_timestamp": 12.0,
+          "frame_index": 360,
+          "input_pixels_sha256": "3e3879bada0dff3e999e795be87e06c1fdfdcb9ee6974f885bfd01b1b0976a63",
+          "mock_robot_output": "[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "LEFT",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "B",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                33
+              ],
+              "processor_s": 0.002843399999619578,
+              "device_transfer_s": 0.0005468999997901847,
+              "text_decoding_s": 0.00010829999973793747,
+              "generation_latency_s": 4.506133400000181,
+              "inference_latency_s": 4.509779699999854,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.505714599999919,
+              "ttft_stage_s": 4.513574600000538,
+              "decode_total_s": 0.00041880000026139896,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.50386572265625,
+              "prefill_host_forward_s": 4.489467700000205,
+              "vision_cuda_elapsed_s": 4.43340380859375,
+              "vision_host_forward_s": 4.43289410000034,
+              "patch_embed_cuda_elapsed_s": 4.3976435546875,
+              "patch_embed_host_forward_s": 4.397667700000056,
+              "vision_block0_cuda_elapsed_s": 0.0013393919467926025,
+              "vision_block0_host_forward_s": 0.0010473000002093613,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                30.34375,
+                34.125,
+                31.46875,
+                33.65625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.00440820000039821,
+              "stage_wall_s": 4.514732100000401,
+              "validation_parsing_s": 2.2700000045006163e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "FOUND",
+              "direction": "CENTER",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "K",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "8bb5e4aad209ff3a2daf2a43123a481492fd9947c5c8b4114d85a8acea744ad2",
+              "max_new_tokens": 1,
+              "input_tokens": 310,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                42
+              ],
+              "processor_s": 0.0008652000005895388,
+              "device_transfer_s": 0.0001229999998031417,
+              "text_decoding_s": 9.299999965151073e-05,
+              "generation_latency_s": 0.08362419999957638,
+              "inference_latency_s": 0.08490029999938997,
+              "peak_allocated_gib": 4.038913249969482,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.08321230000001378,
+              "ttft_stage_s": 0.0843113999999332,
+              "decode_total_s": 0.0004118999995625927,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.08134489440917969,
+              "prefill_host_forward_s": 0.056622799999786366,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                32.84375,
+                28.75,
+                30.953125,
+                29.78125,
+                26.375,
+                27.1875,
+                28.5,
+                28.65625,
+                27.53125,
+                32.59375,
+                32.96875,
+                30.953125,
+                24.8125,
+                25.1875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.08536730000014359,
+              "validation_parsing_s": 2.4500000108673703e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 4,
+            "transition": "STILL_ABSENT"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "APPEARED"
+          },
+          "transition": "APPEARED",
+          "timing": {
+            "perception_wall_s": 4.5147641000003205,
+            "state_update_s": 1.1199999789823778e-05,
+            "planner_wall_s": 0.08541590000004362,
+            "total_brain_s": 4.600281600000017
+          }
+        },
+        {
+          "timestamp": 13,
+          "actual_timestamp": 13.0,
+          "frame_index": 390,
+          "input_pixels_sha256": "e6b31a072a9fc4ceaba8ac18babc836d609d35cc6ddb149f187b54e716612d89",
+          "mock_robot_output": "[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "RIGHT",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "D",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                35
+              ],
+              "processor_s": 0.0025059999998120475,
+              "device_transfer_s": 0.0005488000006153015,
+              "text_decoding_s": 9.350000073027331e-05,
+              "generation_latency_s": 4.565583099999458,
+              "inference_latency_s": 4.568874600000527,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.565173299999515,
+              "ttft_stage_s": 4.572308600000724,
+              "decode_total_s": 0.00040979999994306127,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.5633662109375,
+              "prefill_host_forward_s": 4.552279200000157,
+              "vision_cuda_elapsed_s": 4.4951806640625,
+              "vision_host_forward_s": 4.494501899999705,
+              "patch_embed_cuda_elapsed_s": 4.4587548828125,
+              "patch_embed_host_forward_s": 4.4586229000005915,
+              "vision_block0_cuda_elapsed_s": 0.0013629440069198608,
+              "vision_block0_host_forward_s": 0.0010988999993060133,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                27.90625,
+                31.4375,
+                32.40625,
+                32.78125
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.004021100000500155,
+              "stage_wall_s": 4.573359600000003,
+              "validation_parsing_s": 2.3300000066228677e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "LOOK",
+              "direction": "RIGHT",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "C",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "472db759f99cc56402dc4e69103b4693aaa8d7e9b08f4fd64afe4a9ad126293a",
+              "max_new_tokens": 1,
+              "input_tokens": 310,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                34
+              ],
+              "processor_s": 0.0008557000001019333,
+              "device_transfer_s": 0.00010400000064691994,
+              "text_decoding_s": 0.00010469999961060239,
+              "generation_latency_s": 0.07928360000005341,
+              "inference_latency_s": 0.08048479999979463,
+              "peak_allocated_gib": 4.038913249969482,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.07872200000019802,
+              "ttft_stage_s": 0.07972499999959837,
+              "decode_total_s": 0.0005615999998553889,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.07676985931396485,
+              "prefill_host_forward_s": 0.052681500000289816,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                29.1875,
+                29.546875,
+                32.375,
+                29.0625,
+                24.9375,
+                26.0,
+                27.34375,
+                27.28125,
+                26.078125,
+                27.421875,
+                31.140625,
+                30.203125,
+                23.828125,
+                23.28125
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.08101089999945543,
+              "validation_parsing_s": 2.570000015111873e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "APPEARED"
+          },
+          "state_after": {
+            "last_seen_person_direction": "RIGHT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "STILL_VISIBLE"
+          },
+          "transition": "STILL_VISIBLE",
+          "timing": {
+            "perception_wall_s": 4.573391900000388,
+            "state_update_s": 1.0099999599333387e-05,
+            "planner_wall_s": 0.08104249999996682,
+            "total_brain_s": 4.654538500000854
+          }
+        }
+      ]
+    },
+    {
+      "mode": "perception-state-planner",
+      "timestamps": [
+        3,
+        7,
+        8,
+        9,
+        9.5,
+        10,
+        10.25,
+        12,
+        13
+      ],
+      "status": "pass",
+      "frames": [
+        {
+          "timestamp": 3,
+          "actual_timestamp": 3.0,
+          "frame_index": 90,
+          "input_pixels_sha256": "49bdb53e0e2486b889d00e27cbb6514262a9d8337d84c1adfbbd642608ca318c",
+          "mock_robot_output": "[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "CENTER",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "C",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                34
+              ],
+              "processor_s": 0.002928500000052736,
+              "device_transfer_s": 0.001538599999548751,
+              "text_decoding_s": 0.00010730000030889641,
+              "generation_latency_s": 4.681466700000783,
+              "inference_latency_s": 4.686226400000123,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.680951600000299,
+              "ttft_stage_s": 4.689092700000401,
+              "decode_total_s": 0.0005151000004843809,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.6777490234375,
+              "prefill_host_forward_s": 4.662533199999416,
+              "vision_cuda_elapsed_s": 4.60448046875,
+              "vision_host_forward_s": 4.603972100000647,
+              "patch_embed_cuda_elapsed_s": 4.56995947265625,
+              "patch_embed_host_forward_s": 4.569983799999136,
+              "vision_block0_cuda_elapsed_s": 0.001368064045906067,
+              "vision_block0_host_forward_s": 0.0010580999996818719,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                27.078125,
+                30.75,
+                32.8125,
+                32.25
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0035925000001952867,
+              "stage_wall_s": 4.690322700000252,
+              "validation_parsing_s": 2.320000021427404e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "FOUND",
+              "direction": "CENTER",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "K",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "eeee044b3d8b3a24a4f6ab879bc5abb50516a41f316c8473fdb0cde50b19b095",
+              "max_new_tokens": 1,
+              "input_tokens": 308,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                42
+              ],
+              "processor_s": 0.000886299999365292,
+              "device_transfer_s": 0.00015639999946870375,
+              "text_decoding_s": 9.539999973640079e-05,
+              "generation_latency_s": 0.06988490000003367,
+              "inference_latency_s": 0.07115440000052331,
+              "peak_allocated_gib": 4.0373640060424805,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.06944240000029822,
+              "ttft_stage_s": 0.07053210000049148,
+              "decode_total_s": 0.0004424999997354462,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.06760851287841797,
+              "prefill_host_forward_s": 0.04991379999955825,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                28.515625,
+                31.8125,
+                31.71875,
+                31.390625,
+                25.546875,
+                25.8125,
+                26.359375,
+                28.34375,
+                24.703125,
+                27.09375,
+                33.09375,
+                27.03125,
+                23.828125,
+                23.1875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.07161329999962618,
+              "validation_parsing_s": 2.3800000235496555e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "UNKNOWN",
+            "person_visible_last_frame": null,
+            "frames_since_person_seen": 0,
+            "transition": "UNKNOWN"
+          },
+          "state_after": {
+            "last_seen_person_direction": "CENTER",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "UNKNOWN"
+          },
+          "transition": "UNKNOWN",
+          "timing": {
+            "perception_wall_s": 4.690354800000023,
+            "state_update_s": 8.50000014906982e-06,
+            "planner_wall_s": 0.07164270000066608,
+            "total_brain_s": 4.762089699999706
+          }
+        },
+        {
+          "timestamp": 7,
+          "actual_timestamp": 7.000000000000001,
+          "frame_index": 210,
+          "input_pixels_sha256": "ac486f858943830a227761847adc94c807ef401b16b243fc534a09e7d9182a6c",
+          "mock_robot_output": "[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "LEFT",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "B",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                33
+              ],
+              "processor_s": 0.002505800000108138,
+              "device_transfer_s": 0.0005220000002736924,
+              "text_decoding_s": 0.00011200000062672189,
+              "generation_latency_s": 4.606571999999687,
+              "inference_latency_s": 4.609876999999869,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.6060976999997365,
+              "ttft_stage_s": 4.612861100000373,
+              "decode_total_s": 0.0004742999999507447,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.60361865234375,
+              "prefill_host_forward_s": 4.5897275999996054,
+              "vision_cuda_elapsed_s": 4.52974365234375,
+              "vision_host_forward_s": 4.529230900000584,
+              "patch_embed_cuda_elapsed_s": 4.49356982421875,
+              "patch_embed_host_forward_s": 4.4939158999995925,
+              "vision_block0_cuda_elapsed_s": 0.001393664002418518,
+              "vision_block0_host_forward_s": 0.0011268999996900675,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                30.171875,
+                34.0625,
+                30.765625,
+                33.4375
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0036717000002681743,
+              "stage_wall_s": 4.614010400000552,
+              "validation_parsing_s": 2.3399999918183312e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "LOOK",
+              "direction": "LEFT",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "9853a027ae5b1206572f36e6e83ff9488335833817cdeabd844854582564a112",
+              "max_new_tokens": 1,
+              "input_tokens": 310,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.0009515000001556473,
+              "device_transfer_s": 0.00013829999988956843,
+              "text_decoding_s": 9.57000002017594e-05,
+              "generation_latency_s": 0.10539320000043517,
+              "inference_latency_s": 0.10671360000014829,
+              "peak_allocated_gib": 4.038913249969482,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.10498910000023898,
+              "ttft_stage_s": 0.10612829999990936,
+              "decode_total_s": 0.00040410000019619474,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.102984130859375,
+              "prefill_host_forward_s": 0.05685979999998381,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                34.59375,
+                29.9375,
+                32.0625,
+                30.03125,
+                26.5,
+                26.40625,
+                27.5625,
+                27.78125,
+                26.375,
+                27.25,
+                29.25,
+                28.984375,
+                24.4375,
+                24.515625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.10719789999984641,
+              "validation_parsing_s": 2.4399999347224366e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "CENTER",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "UNKNOWN"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "STILL_VISIBLE"
+          },
+          "transition": "STILL_VISIBLE",
+          "timing": {
+            "perception_wall_s": 4.614042100000006,
+            "state_update_s": 1.0900000233959872e-05,
+            "planner_wall_s": 0.10722749999968073,
+            "total_brain_s": 4.721379100000377
+          }
+        },
+        {
+          "timestamp": 8,
+          "actual_timestamp": 8.0,
+          "frame_index": 240,
+          "input_pixels_sha256": "e522cffae37612094ffdbb945f19e15b5c36203fbfb15fc9d28c34d796423d0e",
+          "mock_robot_output": "[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "LEFT",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "B",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                33
+              ],
+              "processor_s": 0.0026595999997880426,
+              "device_transfer_s": 0.0004552000000330736,
+              "text_decoding_s": 9.250000039173756e-05,
+              "generation_latency_s": 4.617554299999938,
+              "inference_latency_s": 4.620908500000041,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.617111599999589,
+              "ttft_stage_s": 4.624119599999176,
+              "decode_total_s": 0.00044270000034885015,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.6153359375,
+              "prefill_host_forward_s": 4.606648800000585,
+              "vision_cuda_elapsed_s": 4.5492451171875,
+              "vision_host_forward_s": 4.548714300000029,
+              "patch_embed_cuda_elapsed_s": 4.5144453125,
+              "patch_embed_host_forward_s": 4.514467899999545,
+              "vision_block0_cuda_elapsed_s": 0.0014611200094223023,
+              "vision_block0_host_forward_s": 0.001189699999486038,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                32.21875,
+                36.625,
+                31.734375,
+                35.6875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.003834899999674235,
+              "stage_wall_s": 4.6252011999995375,
+              "validation_parsing_s": 2.27999998969608e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "LOOK",
+              "direction": "LEFT",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "9853a027ae5b1206572f36e6e83ff9488335833817cdeabd844854582564a112",
+              "max_new_tokens": 1,
+              "input_tokens": 310,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.0008657000007588067,
+              "device_transfer_s": 0.00010649999967426993,
+              "text_decoding_s": 9.330000011686934e-05,
+              "generation_latency_s": 0.07784629999969184,
+              "inference_latency_s": 0.07904049999979179,
+              "peak_allocated_gib": 4.038913249969482,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.07742200000029698,
+              "ttft_stage_s": 0.07843680000041786,
+              "decode_total_s": 0.0004242999993948615,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.07564633941650391,
+              "prefill_host_forward_s": 0.060186000000612694,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                34.59375,
+                29.9375,
+                32.0625,
+                30.03125,
+                26.5,
+                26.40625,
+                27.5625,
+                27.78125,
+                26.375,
+                27.25,
+                29.25,
+                28.984375,
+                24.4375,
+                24.515625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.07950749999963591,
+              "validation_parsing_s": 2.3399999918183312e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "STILL_VISIBLE"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "STILL_VISIBLE"
+          },
+          "transition": "STILL_VISIBLE",
+          "timing": {
+            "perception_wall_s": 4.625232899999901,
+            "state_update_s": 1.06999996205559e-05,
+            "planner_wall_s": 0.07953619999989314,
+            "total_brain_s": 4.70485809999991
+          }
+        },
+        {
+          "timestamp": 9,
+          "actual_timestamp": 9.0,
+          "frame_index": 270,
+          "input_pixels_sha256": "4546abd82dbbf844f22e72a992449f41c768e4b6a4692b957d18ba5904399a83",
+          "mock_robot_output": "[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": false,
+              "person_count": 0,
+              "person_direction": "UNKNOWN",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.0024338000002899207,
+              "device_transfer_s": 0.0005477999993672711,
+              "text_decoding_s": 9.339999996882398e-05,
+              "generation_latency_s": 4.577698899999632,
+              "inference_latency_s": 4.580918699999529,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.577282000000196,
+              "ttft_stage_s": 4.5841668000002755,
+              "decode_total_s": 0.0004168999994362821,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.5751572265625,
+              "prefill_host_forward_s": 4.56119740000031,
+              "vision_cuda_elapsed_s": 4.5032275390625,
+              "vision_host_forward_s": 4.502706799999942,
+              "patch_embed_cuda_elapsed_s": 4.468572265625,
+              "patch_embed_host_forward_s": 4.468960600000173,
+              "vision_block0_cuda_elapsed_s": 0.0013312000036239625,
+              "vision_block0_host_forward_s": 0.0010416999994049547,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                41.5,
+                34.71875,
+                33.59375,
+                33.90625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.003842099999928905,
+              "stage_wall_s": 4.585709800000586,
+              "validation_parsing_s": 2.480000057403231e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "SEARCH",
+              "direction": "RIGHT",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "G",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "5ca943e4ebefeb482690382f1c5158d57f8f51ed52ba952bd78737bf0928e924",
+              "max_new_tokens": 1,
+              "input_tokens": 311,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                38
+              ],
+              "processor_s": 0.0008533000000170432,
+              "device_transfer_s": 0.00010339999971620273,
+              "text_decoding_s": 0.00012830000014218967,
+              "generation_latency_s": 0.10411579999981768,
+              "inference_latency_s": 0.10536620000038965,
+              "peak_allocated_gib": 4.039101600646973,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.10356490000049234,
+              "ttft_stage_s": 0.10456680000061169,
+              "decode_total_s": 0.0005508999993253383,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.10150259399414062,
+              "prefill_host_forward_s": 0.05548019999969256,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                26.796875,
+                26.40625,
+                26.703125,
+                26.859375,
+                28.203125,
+                29.359375,
+                31.0625,
+                26.515625,
+                25.515625,
+                25.09375,
+                25.5625,
+                26.953125,
+                25.0,
+                28.421875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.10585290000017267,
+              "validation_parsing_s": 2.4699999812582973e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "STILL_VISIBLE"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 1,
+            "transition": "DISAPPEARED"
+          },
+          "transition": "DISAPPEARED",
+          "timing": {
+            "perception_wall_s": 4.58574309999949,
+            "state_update_s": 1.049999991664663e-05,
+            "planner_wall_s": 0.1058829000003243,
+            "total_brain_s": 4.691733300000124
+          }
+        },
+        {
+          "timestamp": 9.5,
+          "actual_timestamp": 9.5,
+          "frame_index": 285,
+          "input_pixels_sha256": "3cdf43ae2fa32a44db721971daae997f25c3f423f2277e84f0343edbd98bcfe6",
+          "mock_robot_output": "[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": false,
+              "person_count": 0,
+              "person_direction": "UNKNOWN",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.002505800000108138,
+              "device_transfer_s": 0.0005360999994081794,
+              "text_decoding_s": 9.479999971517827e-05,
+              "generation_latency_s": 4.55650549999973,
+              "inference_latency_s": 4.559787600000163,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.556050099999993,
+              "ttft_stage_s": 4.56291390000024,
+              "decode_total_s": 0.00045539999973698286,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.5537763671875,
+              "prefill_host_forward_s": 4.540507499999876,
+              "vision_cuda_elapsed_s": 4.47683984375,
+              "vision_host_forward_s": 4.4764045000001715,
+              "patch_embed_cuda_elapsed_s": 4.4425205078125,
+              "patch_embed_host_forward_s": 4.442544700000326,
+              "vision_block0_cuda_elapsed_s": 0.0013301759958267213,
+              "vision_block0_host_forward_s": 0.0010330000004614703,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                40.21875,
+                34.5625,
+                33.875,
+                33.96875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0037623999996867497,
+              "stage_wall_s": 4.564014599999609,
+              "validation_parsing_s": 2.3600000531587284e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "SURPRISE",
+              "direction": "UNKNOWN",
+              "target": "NONE",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "N",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "52b765ce9f654c808dff4791efd11f47827e55e27da7c94352a1b07d1590275c",
+              "max_new_tokens": 1,
+              "input_tokens": 311,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                45
+              ],
+              "processor_s": 0.0008705999998710467,
+              "device_transfer_s": 0.0001063999998223153,
+              "text_decoding_s": 8.459999935439555e-05,
+              "generation_latency_s": 0.07795239999995829,
+              "inference_latency_s": 0.07914049999999406,
+              "peak_allocated_gib": 4.039101600646973,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.07758869999997842,
+              "ttft_stage_s": 0.07861480000065058,
+              "decode_total_s": 0.0003636999999798718,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.07597020721435546,
+              "prefill_host_forward_s": 0.07006230000024516,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                26.796875,
+                26.734375,
+                26.390625,
+                26.59375,
+                27.359375,
+                28.421875,
+                28.265625,
+                26.5,
+                25.859375,
+                24.75,
+                25.1875,
+                26.96875,
+                28.359375,
+                30.53125
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.07958529999996244,
+              "validation_parsing_s": 2.300000051036477e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 1,
+            "transition": "DISAPPEARED"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 2,
+            "transition": "STILL_ABSENT"
+          },
+          "transition": "STILL_ABSENT",
+          "timing": {
+            "perception_wall_s": 4.5640479000003324,
+            "state_update_s": 1.160000010713702e-05,
+            "planner_wall_s": 0.07961320000049454,
+            "total_brain_s": 4.6438027000003785
+          }
+        },
+        {
+          "timestamp": 10,
+          "actual_timestamp": 10.0,
+          "frame_index": 300,
+          "input_pixels_sha256": "8799340344eb3fae71d21a5687fcc2aa3c407007c2bd98cacfa8a21dbf73dd2d",
+          "mock_robot_output": "[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": false,
+              "person_count": 0,
+              "person_direction": "UNKNOWN",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.0025398000007044175,
+              "device_transfer_s": 0.0005498000000443426,
+              "text_decoding_s": 9.589999990566866e-05,
+              "generation_latency_s": 4.5368202999998175,
+              "inference_latency_s": 4.540151899999728,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.536408899999515,
+              "ttft_stage_s": 4.54328329999953,
+              "decode_total_s": 0.00041140000030281954,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.53459423828125,
+              "prefill_host_forward_s": 4.521970299999339,
+              "vision_cuda_elapsed_s": 4.4645732421875,
+              "vision_host_forward_s": 4.464056400000118,
+              "patch_embed_cuda_elapsed_s": 4.43036376953125,
+              "patch_embed_host_forward_s": 4.430387399999745,
+              "vision_block0_cuda_elapsed_s": 0.0015347839593887328,
+              "vision_block0_host_forward_s": 0.0012772999998560408,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                40.71875,
+                34.71875,
+                33.90625,
+                33.90625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.003725700000359211,
+              "stage_wall_s": 4.544337500000438,
+              "validation_parsing_s": 2.4900000425986946e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "SURPRISE",
+              "direction": "UNKNOWN",
+              "target": "NONE",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "N",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "8924bab9959afa84a96a1b1c9684dcc1222e804d7d720c8192fa9760f36c36b9",
+              "max_new_tokens": 1,
+              "input_tokens": 311,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                45
+              ],
+              "processor_s": 0.0008655000001454027,
+              "device_transfer_s": 0.00010720000045694178,
+              "text_decoding_s": 0.000124399999549496,
+              "generation_latency_s": 0.0680982000003496,
+              "inference_latency_s": 0.06938420000005863,
+              "peak_allocated_gib": 4.039101600646973,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.06744150000031368,
+              "ttft_stage_s": 0.06846050000058312,
+              "decode_total_s": 0.0006567000000359258,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.06560002899169921,
+              "prefill_host_forward_s": 0.04935509999995702,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                26.6875,
+                26.671875,
+                26.40625,
+                26.59375,
+                27.21875,
+                28.4375,
+                28.4375,
+                26.40625,
+                25.71875,
+                24.71875,
+                25.140625,
+                27.046875,
+                28.4375,
+                30.6875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.0700222000004942,
+              "validation_parsing_s": 2.7099999897473026e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 2,
+            "transition": "STILL_ABSENT"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 3,
+            "transition": "STILL_ABSENT"
+          },
+          "transition": "STILL_ABSENT",
+          "timing": {
+            "perception_wall_s": 4.5443741999997656,
+            "state_update_s": 1.1100000847363845e-05,
+            "planner_wall_s": 0.07005579999986367,
+            "total_brain_s": 4.614538299999367
+          }
+        },
+        {
+          "timestamp": 10.25,
+          "actual_timestamp": 10.266666666666667,
+          "frame_index": 308,
+          "input_pixels_sha256": "7dc4f786dfb5bdd177fd3ea415ad0388cda2b6461e40cf8e86db8c62bee45c8e",
+          "mock_robot_output": "[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": false,
+              "person_count": 0,
+              "person_direction": "UNKNOWN",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.0025073999995584018,
+              "device_transfer_s": 0.0004523999996308703,
+              "text_decoding_s": 9.620000037102727e-05,
+              "generation_latency_s": 4.727253099999871,
+              "inference_latency_s": 4.730457800000295,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.726843200000076,
+              "ttft_stage_s": 4.733653000000231,
+              "decode_total_s": 0.0004098999997950159,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.72498876953125,
+              "prefill_host_forward_s": 4.7139899000003425,
+              "vision_cuda_elapsed_s": 4.651197265625,
+              "vision_host_forward_s": 4.650639100000262,
+              "patch_embed_cuda_elapsed_s": 4.6161982421875,
+              "patch_embed_host_forward_s": 4.6162218999998,
+              "vision_block0_cuda_elapsed_s": 0.0022732799053192137,
+              "vision_block0_host_forward_s": 0.0013083999992886675,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                40.78125,
+                34.90625,
+                34.3125,
+                34.34375
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0037902000003668945,
+              "stage_wall_s": 4.734713300000294,
+              "validation_parsing_s": 2.519999998185085e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "SURPRISE",
+              "direction": "UNKNOWN",
+              "target": "NONE",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "N",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "d54bb3b8145fe90219ffd83f3bcfb0038a5bd43254ee8480307d22901385115a",
+              "max_new_tokens": 1,
+              "input_tokens": 311,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                45
+              ],
+              "processor_s": 0.000886499999978696,
+              "device_transfer_s": 0.0001556999995955266,
+              "text_decoding_s": 9.489999956713291e-05,
+              "generation_latency_s": 0.07243790000029549,
+              "inference_latency_s": 0.07373989999996411,
+              "peak_allocated_gib": 4.039101600646973,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.07202090000009775,
+              "ttft_stage_s": 0.07312679999995453,
+              "decode_total_s": 0.0004170000001977314,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.06984502410888672,
+              "prefill_host_forward_s": 0.05220629999985249,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                26.046875,
+                26.4375,
+                26.09375,
+                26.359375,
+                26.65625,
+                28.546875,
+                28.65625,
+                26.328125,
+                25.75,
+                24.71875,
+                25.28125,
+                27.15625,
+                28.9375,
+                31.359375
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.07421209999938583,
+              "validation_parsing_s": 2.3399999918183312e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 3,
+            "transition": "STILL_ABSENT"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 4,
+            "transition": "STILL_ABSENT"
+          },
+          "transition": "STILL_ABSENT",
+          "timing": {
+            "perception_wall_s": 4.734747900000002,
+            "state_update_s": 1.140000040322775e-05,
+            "planner_wall_s": 0.07424040000023524,
+            "total_brain_s": 4.809086600000228
+          }
+        },
+        {
+          "timestamp": 12,
+          "actual_timestamp": 12.0,
+          "frame_index": 360,
+          "input_pixels_sha256": "3e3879bada0dff3e999e795be87e06c1fdfdcb9ee6974f885bfd01b1b0976a63",
+          "mock_robot_output": "[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "LEFT",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "B",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                33
+              ],
+              "processor_s": 0.002530300000216812,
+              "device_transfer_s": 0.0005701000000044587,
+              "text_decoding_s": 0.0001067000002876739,
+              "generation_latency_s": 4.711215999999695,
+              "inference_latency_s": 4.714568099999269,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.710806699999921,
+              "ttft_stage_s": 4.7177159999992,
+              "decode_total_s": 0.0004092999997737934,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.70896630859375,
+              "prefill_host_forward_s": 4.69527990000006,
+              "vision_cuda_elapsed_s": 4.6348544921875,
+              "vision_host_forward_s": 4.634347300000627,
+              "patch_embed_cuda_elapsed_s": 4.59919970703125,
+              "patch_embed_host_forward_s": 4.5992230000001655,
+              "vision_block0_cuda_elapsed_s": 0.0013629440069198608,
+              "vision_block0_host_forward_s": 0.0010553000001891633,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                30.34375,
+                34.125,
+                31.46875,
+                33.65625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.003748499999346677,
+              "stage_wall_s": 4.71878149999975,
+              "validation_parsing_s": 2.319999930477934e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "FOUND",
+              "direction": "CENTER",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "K",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "8bb5e4aad209ff3a2daf2a43123a481492fd9947c5c8b4114d85a8acea744ad2",
+              "max_new_tokens": 1,
+              "input_tokens": 310,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                42
+              ],
+              "processor_s": 0.0008912000002965215,
+              "device_transfer_s": 0.00010339999971620273,
+              "text_decoding_s": 0.00011670000003505265,
+              "generation_latency_s": 0.07048120000035851,
+              "inference_latency_s": 0.0717224999998507,
+              "peak_allocated_gib": 4.038913249969482,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.06997130000036123,
+              "ttft_stage_s": 0.07101039999997738,
+              "decode_total_s": 0.0005098999999972875,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.06804447937011719,
+              "prefill_host_forward_s": 0.0492738000002646,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                32.84375,
+                28.75,
+                30.953125,
+                29.78125,
+                26.375,
+                27.1875,
+                28.5,
+                28.65625,
+                27.53125,
+                32.59375,
+                32.96875,
+                30.953125,
+                24.8125,
+                25.1875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.07224719999976514,
+              "validation_parsing_s": 3.9399999877787195e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 4,
+            "transition": "STILL_ABSENT"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "APPEARED"
+          },
+          "transition": "APPEARED",
+          "timing": {
+            "perception_wall_s": 4.718814200000452,
+            "state_update_s": 1.1000000085914508e-05,
+            "planner_wall_s": 0.07229189999998198,
+            "total_brain_s": 4.7912019000004875
+          }
+        },
+        {
+          "timestamp": 13,
+          "actual_timestamp": 13.0,
+          "frame_index": 390,
+          "input_pixels_sha256": "e6b31a072a9fc4ceaba8ac18babc836d609d35cc6ddb149f187b54e716612d89",
+          "mock_robot_output": "[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "RIGHT",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "D",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                35
+              ],
+              "processor_s": 0.0029496999995899387,
+              "device_transfer_s": 0.0006798999993407051,
+              "text_decoding_s": 9.11999995878432e-05,
+              "generation_latency_s": 4.570292399999744,
+              "inference_latency_s": 4.574157100000775,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.56990549999955,
+              "ttft_stage_s": 4.577608799999325,
+              "decode_total_s": 0.00038690000019414583,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.56743115234375,
+              "prefill_host_forward_s": 4.561864799999967,
+              "vision_cuda_elapsed_s": 4.486810546875,
+              "vision_host_forward_s": 4.485933699999805,
+              "patch_embed_cuda_elapsed_s": 4.4515654296875,
+              "patch_embed_host_forward_s": 4.451593000000685,
+              "vision_block0_cuda_elapsed_s": 0.00131769597530365,
+              "vision_block0_host_forward_s": 0.0010216999999101972,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                27.90625,
+                31.4375,
+                32.40625,
+                32.78125
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.004013299999314768,
+              "stage_wall_s": 4.578634699999384,
+              "validation_parsing_s": 2.3099999452824704e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "LOOK",
+              "direction": "RIGHT",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "C",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "472db759f99cc56402dc4e69103b4693aaa8d7e9b08f4fd64afe4a9ad126293a",
+              "max_new_tokens": 1,
+              "input_tokens": 310,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                34
+              ],
+              "processor_s": 0.0011763000002247281,
+              "device_transfer_s": 0.0003202999996574363,
+              "text_decoding_s": 0.00011160000030940864,
+              "generation_latency_s": 0.09532330000001821,
+              "inference_latency_s": 0.09709449999991193,
+              "peak_allocated_gib": 4.038913249969482,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.09477519999927608,
+              "ttft_stage_s": 0.09633219999977882,
+              "decode_total_s": 0.0005481000007421244,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.09243020629882813,
+              "prefill_host_forward_s": 0.0563097000003836,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                29.1875,
+                29.546875,
+                32.375,
+                29.0625,
+                24.9375,
+                26.0,
+                27.34375,
+                27.28125,
+                26.078125,
+                27.421875,
+                31.140625,
+                30.203125,
+                23.828125,
+                23.28125
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.09768439999970724,
+              "validation_parsing_s": 3.889999970851932e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "APPEARED"
+          },
+          "state_after": {
+            "last_seen_person_direction": "RIGHT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "STILL_VISIBLE"
+          },
+          "transition": "STILL_VISIBLE",
+          "timing": {
+            "perception_wall_s": 4.578667699999642,
+            "state_update_s": 1.0900000233959872e-05,
+            "planner_wall_s": 0.0977286000006643,
+            "total_brain_s": 4.676496900000529
+          }
+        }
+      ]
+    },
+    {
+      "mode": "perception-state-planner",
+      "timestamps": [
+        8,
+        10,
+        12
+      ],
+      "status": "pass",
+      "frames": [
+        {
+          "timestamp": 8,
+          "actual_timestamp": 8.0,
+          "frame_index": 240,
+          "input_pixels_sha256": "e522cffae37612094ffdbb945f19e15b5c36203fbfb15fc9d28c34d796423d0e",
+          "mock_robot_output": "[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "LEFT",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "B",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                33
+              ],
+              "processor_s": 0.0024382000001423876,
+              "device_transfer_s": 0.00046300000030896626,
+              "text_decoding_s": 9.360000058222795e-05,
+              "generation_latency_s": 4.574292100000093,
+              "inference_latency_s": 4.57743870000013,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.573884899999939,
+              "ttft_stage_s": 4.580888399999822,
+              "decode_total_s": 0.00040720000015426194,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.57204833984375,
+              "prefill_host_forward_s": 4.557224099999985,
+              "vision_cuda_elapsed_s": 4.4986728515625,
+              "vision_host_forward_s": 4.498151599999801,
+              "patch_embed_cuda_elapsed_s": 4.46451904296875,
+              "patch_embed_host_forward_s": 4.464541800000006,
+              "vision_block0_cuda_elapsed_s": 0.0013015040159225465,
+              "vision_block0_host_forward_s": 0.0009958000000551692,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                32.21875,
+                36.625,
+                31.734375,
+                35.6875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.004038699999910023,
+              "stage_wall_s": 4.581944900000053,
+              "validation_parsing_s": 2.300000051036477e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "LOOK",
+              "direction": "LEFT",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "4bd7062a06b7c7c3e4943d67e82205a35c06be579d0c32af64fb528823e2d0e8",
+              "max_new_tokens": 1,
+              "input_tokens": 308,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.0008568000002924236,
+              "device_transfer_s": 0.00010620000011840602,
+              "text_decoding_s": 9.510000018053688e-05,
+              "generation_latency_s": 0.08449099999961618,
+              "inference_latency_s": 0.08567780000066705,
+              "peak_allocated_gib": 4.0373640060424805,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.0840580999993108,
+              "ttft_stage_s": 0.08506450000004406,
+              "decode_total_s": 0.00043290000030538067,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.08230921936035156,
+              "prefill_host_forward_s": 0.05411120000007941,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                34.375,
+                29.78125,
+                31.765625,
+                29.859375,
+                26.765625,
+                26.5,
+                27.578125,
+                27.546875,
+                26.09375,
+                26.765625,
+                28.78125,
+                28.71875,
+                24.1875,
+                24.65625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.08616900000015448,
+              "validation_parsing_s": 2.4700000722077675e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "UNKNOWN",
+            "person_visible_last_frame": null,
+            "frames_since_person_seen": 0,
+            "transition": "UNKNOWN"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "UNKNOWN"
+          },
+          "transition": "UNKNOWN",
+          "timing": {
+            "perception_wall_s": 4.581978100000015,
+            "state_update_s": 9.300000783696305e-06,
+            "planner_wall_s": 0.08619910000015807,
+            "total_brain_s": 4.668258300000161
+          }
+        },
+        {
+          "timestamp": 10,
+          "actual_timestamp": 10.0,
+          "frame_index": 300,
+          "input_pixels_sha256": "8799340344eb3fae71d21a5687fcc2aa3c407007c2bd98cacfa8a21dbf73dd2d",
+          "mock_robot_output": "[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": false,
+              "person_count": 0,
+              "person_direction": "UNKNOWN",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "A",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                32
+              ],
+              "processor_s": 0.002427700000225741,
+              "device_transfer_s": 0.00046519999978045234,
+              "text_decoding_s": 0.00012280000009923242,
+              "generation_latency_s": 4.715499299999465,
+              "inference_latency_s": 4.718684599999506,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.714386999999988,
+              "ttft_stage_s": 4.720985900000414,
+              "decode_total_s": 0.001112299999476818,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.7122939453125,
+              "prefill_host_forward_s": 4.697751800000333,
+              "vision_cuda_elapsed_s": 4.63856640625,
+              "vision_host_forward_s": 4.638054000000011,
+              "patch_embed_cuda_elapsed_s": 4.60416943359375,
+              "patch_embed_host_forward_s": 4.604192199999488,
+              "vision_block0_cuda_elapsed_s": 0.001716223955154419,
+              "vision_block0_host_forward_s": 0.0012023999997836654,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                40.71875,
+                34.71875,
+                33.90625,
+                33.90625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0036508000002868357,
+              "stage_wall_s": 4.72292010000001,
+              "validation_parsing_s": 2.9000000722589903e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "SEARCH",
+              "direction": "RIGHT",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "G",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "5ca943e4ebefeb482690382f1c5158d57f8f51ed52ba952bd78737bf0928e924",
+              "max_new_tokens": 1,
+              "input_tokens": 311,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                38
+              ],
+              "processor_s": 0.0012335000001257868,
+              "device_transfer_s": 0.0002669000004971167,
+              "text_decoding_s": 9.510000018053688e-05,
+              "generation_latency_s": 0.07843530000081955,
+              "inference_latency_s": 0.08018579999952635,
+              "peak_allocated_gib": 4.039101600646973,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.07798650000040652,
+              "ttft_stage_s": 0.07955659999970521,
+              "decode_total_s": 0.0004488000004130299,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.07612633514404298,
+              "prefill_host_forward_s": 0.051941099999567086,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                26.796875,
+                26.40625,
+                26.703125,
+                26.859375,
+                28.203125,
+                29.359375,
+                31.0625,
+                26.515625,
+                25.515625,
+                25.09375,
+                25.5625,
+                26.953125,
+                25.0,
+                28.421875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.0814567999996143,
+              "validation_parsing_s": 2.5399999685760122e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "UNKNOWN"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 1,
+            "transition": "DISAPPEARED"
+          },
+          "transition": "DISAPPEARED",
+          "timing": {
+            "perception_wall_s": 4.7229694999996354,
+            "state_update_s": 1.2800000149582047e-05,
+            "planner_wall_s": 0.08148720000008325,
+            "total_brain_s": 4.804565600000387
+          }
+        },
+        {
+          "timestamp": 12,
+          "actual_timestamp": 12.0,
+          "frame_index": 360,
+          "input_pixels_sha256": "3e3879bada0dff3e999e795be87e06c1fdfdcb9ee6974f885bfd01b1b0976a63",
+          "mock_robot_output": "[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a",
+          "perception": {
+            "observation": {
+              "person_visible": true,
+              "person_count": 1,
+              "person_direction": "LEFT",
+              "person_distance": "UNKNOWN",
+              "blocking_obstacle": "UNKNOWN"
+            },
+            "raw_response": "B",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "perception",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 1,
+              "image_grids_thw": [
+                [
+                  1,
+                  14,
+                  24
+                ]
+              ],
+              "image_tokens": 84,
+              "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+              "max_new_tokens": 1,
+              "input_tokens": 161,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                33
+              ],
+              "processor_s": 0.00319610000042303,
+              "device_transfer_s": 0.000842499999635038,
+              "text_decoding_s": 9.959999988495838e-05,
+              "generation_latency_s": 4.609890599999744,
+              "inference_latency_s": 4.614195999999538,
+              "peak_allocated_gib": 4.006087303161621,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 4.609455900000285,
+              "ttft_stage_s": 4.617221900000004,
+              "decode_total_s": 0.0004346999994595535,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 4.60722216796875,
+              "prefill_host_forward_s": 4.601628800000071,
+              "vision_cuda_elapsed_s": 4.53458837890625,
+              "vision_host_forward_s": 4.534070499999871,
+              "patch_embed_cuda_elapsed_s": 4.50089794921875,
+              "patch_embed_host_forward_s": 4.5009225000003426,
+              "vision_block0_cuda_elapsed_s": 0.0013116480112075805,
+              "vision_block0_host_forward_s": 0.0010181999996348168,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35
+              ],
+              "class_logits": [
+                30.34375,
+                34.125,
+                31.46875,
+                33.65625
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0036565000000337022,
+              "stage_wall_s": 4.618296399999963,
+              "validation_parsing_s": 2.3300000066228677e-05
+            }
+          },
+          "planner": {
+            "decision": {
+              "action": "FOUND",
+              "direction": "CENTER",
+              "target": "PERSON",
+              "distance": "UNKNOWN"
+            },
+            "raw_response": "K",
+            "bare_json": false,
+            "fallback": false,
+            "error": null,
+            "metrics": {
+              "stage": "planner",
+              "model": "Qwen/Qwen3-VL-2B-Instruct",
+              "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+              "dtype": "fp16",
+              "attention": "default",
+              "format": "class",
+              "model_instance_id": 2552216584272,
+              "processor_instance_id": 2552214977040,
+              "model_load_count": 1,
+              "image_count": 0,
+              "image_grids_thw": [],
+              "image_tokens": 0,
+              "prompt_sha256": "8bb5e4aad209ff3a2daf2a43123a481492fd9947c5c8b4114d85a8acea744ad2",
+              "max_new_tokens": 1,
+              "input_tokens": 310,
+              "output_tokens": 1,
+              "generated_token_ids": [
+                42
+              ],
+              "processor_s": 0.0009398999991390156,
+              "device_transfer_s": 0.00010539999948377954,
+              "text_decoding_s": 0.00025490000007266644,
+              "generation_latency_s": 0.10305450000032579,
+              "inference_latency_s": 0.10457580000002054,
+              "peak_allocated_gib": 4.038913249969482,
+              "peak_reserved_gib": 4.66796875,
+              "instrumented": true,
+              "ttft_generation_s": 0.10206509999989066,
+              "ttft_stage_s": 0.1031552999993437,
+              "decode_total_s": 0.0009894000004351255,
+              "decode_steps": 0,
+              "decode_ms_per_token": null,
+              "streamer_token_count": 1,
+              "prefill_cuda_elapsed_s": 0.099823486328125,
+              "prefill_host_forward_s": 0.06029279999984283,
+              "class_allowed_token_ids": [
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45
+              ],
+              "class_logits": [
+                32.84375,
+                28.75,
+                30.953125,
+                29.78125,
+                26.375,
+                27.1875,
+                28.5,
+                28.65625,
+                27.53125,
+                32.59375,
+                32.96875,
+                30.953125,
+                24.8125,
+                25.1875
+              ],
+              "class_logits_finite": true,
+              "image_preprocessing_s": 0.0,
+              "stage_wall_s": 0.1056244000001243,
+              "validation_parsing_s": 7.110000024113106e-05
+            }
+          },
+          "state_before": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": false,
+            "frames_since_person_seen": 1,
+            "transition": "DISAPPEARED"
+          },
+          "state_after": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0,
+            "transition": "APPEARED"
+          },
+          "transition": "APPEARED",
+          "timing": {
+            "perception_wall_s": 4.618330400000559,
+            "state_update_s": 1.089999932446517e-05,
+            "planner_wall_s": 0.10570780000034574,
+            "total_brain_s": 4.724243700000443
+          }
+        }
+      ]
+    }
+  ],
+  "prompts": {
+    "perception": [
+      null,
+      "Inspect current image only. Real people including partial people, not furniture. Body center: left <40%, center 40-60%, right >60%. Reply exactly one code: A=no person, B=person LEFT, C=person CENTER, D=person RIGHT. No whitespace, explanations or other tokens."
+    ],
+    "planner": [
+      "Observation is current truth; State is history. Visible LEFT/RIGHT: LOOK there. Visible CENTER MID/FAR: APPROACH; otherwise LOOK CENTER. APPEARED allows FOUND. Absent: SEARCH last known direction ONLY if transition DISAPPEARED or missed frames 1..3. Missed frames >=4 do not authorize SEARCH. Otherwise avoid opposite a LEFT/RIGHT blocking obstacle; CENTER/UNKNOWN/NONE obstacle or uncertain: WAIT UNKNOWN NONE UNKNOWN. Visible actions target PERSON and observed distance. Search distance UNKNOWN. Choose exactly one code for action/direction/target/distance. A=LOOK LEFT PERSON UNKNOWN; B=LOOK CENTER PERSON UNKNOWN; C=LOOK RIGHT PERSON UNKNOWN; D=APPROACH CENTER PERSON MID; E=SEARCH LEFT PERSON UNKNOWN; F=SEARCH CENTER PERSON UNKNOWN; G=SEARCH RIGHT PERSON UNKNOWN; H=AVOID_LEFT LEFT OBSTACLE UNKNOWN; I=AVOID_RIGHT RIGHT OBSTACLE UNKNOWN; J=FOUND LEFT PERSON UNKNOWN; K=FOUND CENTER PERSON UNKNOWN; L=FOUND RIGHT PERSON UNKNOWN; M=WAIT UNKNOWN NONE UNKNOWN; N=SURPRISE UNKNOWN NONE UNKNOWN. Return exactly one code character; no other tokens.",
+      null
+    ]
+  },
+  "warmup": {
+    "perception": {
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "raw_response": "C",
+      "bare_json": false,
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "fp16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 2552216584272,
+        "processor_instance_id": 2552214977040,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          34
+        ],
+        "processor_s": 0.003428100000746781,
+        "device_transfer_s": 0.0005751999997301027,
+        "text_decoding_s": 9.4600000011269e-05,
+        "generation_latency_s": 4.619339400000172,
+        "inference_latency_s": 4.623584199999641,
+        "peak_allocated_gib": 4.006087303161621,
+        "peak_reserved_gib": 4.66796875,
+        "instrumented": true,
+        "ttft_generation_s": 4.6189344000003985,
+        "ttft_stage_s": 4.626787700000023,
+        "decode_total_s": 0.00040499999977328116,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 4.6171552734375,
+        "prefill_host_forward_s": 4.607869200000096,
+        "vision_cuda_elapsed_s": 4.55147802734375,
+        "vision_host_forward_s": 4.550969299999451,
+        "patch_embed_cuda_elapsed_s": 4.516591796875,
+        "patch_embed_host_forward_s": 4.516615400000774,
+        "vision_block0_cuda_elapsed_s": 0.0021043200492858885,
+        "vision_block0_host_forward_s": 0.001089700000193261,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          27.078125,
+          30.75,
+          32.8125,
+          32.25
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0037873999999646912,
+        "stage_wall_s": 4.6278501000006145,
+        "validation_parsing_s": 2.4300000404764432e-05
+      }
+    },
+    "planner": {
+      "decision": {
+        "action": "FOUND",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "raw_response": "K",
+      "bare_json": false,
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "fp16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 2552216584272,
+        "processor_instance_id": 2552214977040,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "eeee044b3d8b3a24a4f6ab879bc5abb50516a41f316c8473fdb0cde50b19b095",
+        "max_new_tokens": 1,
+        "input_tokens": 308,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          42
+        ],
+        "processor_s": 0.0010922000001301058,
+        "device_transfer_s": 0.0001216000000567874,
+        "text_decoding_s": 0.00010689999999158317,
+        "generation_latency_s": 0.08401679999951739,
+        "inference_latency_s": 0.08547670000007201,
+        "peak_allocated_gib": 4.0373640060424805,
+        "peak_reserved_gib": 4.66796875,
+        "instrumented": true,
+        "ttft_generation_s": 0.08361220000006142,
+        "ttft_stage_s": 0.0848745000002964,
+        "decode_total_s": 0.0004045999994559679,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.08188771057128906,
+        "prefill_host_forward_s": 0.05161580000003596,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45
+        ],
+        "class_logits": [
+          28.515625,
+          31.8125,
+          31.71875,
+          31.390625,
+          25.546875,
+          25.8125,
+          26.359375,
+          28.34375,
+          24.703125,
+          27.09375,
+          33.09375,
+          27.03125,
+          23.828125,
+          23.1875
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.08594400000038149,
+        "validation_parsing_s": 2.700000004551839e-05
+      }
+    },
+    "state_before": {
+      "last_seen_person_direction": "UNKNOWN",
+      "person_visible_last_frame": null,
+      "frames_since_person_seen": 0,
+      "transition": "UNKNOWN"
+    },
+    "state_after": {
+      "last_seen_person_direction": "CENTER",
+      "person_visible_last_frame": true,
+      "frames_since_person_seen": 0,
+      "transition": "UNKNOWN"
+    },
+    "transition": "UNKNOWN",
+    "timing": {
+      "perception_wall_s": 4.6278834999993705,
+      "state_update_s": 8.600000001024455e-06,
+      "planner_wall_s": 0.08597620000000461,
+      "total_brain_s": 4.713937299999998
+    }
+  }
+}

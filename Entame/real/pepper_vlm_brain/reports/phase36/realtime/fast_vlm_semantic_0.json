@@ -1,0 +1,3714 @@
+{
+  "case": "fast_vlm_semantic",
+  "status": "complete",
+  "fast_source": "qwen",
+  "slow_load": "semantic",
+  "fast_results": [
+    {
+      "kind": "fast",
+      "generation": 0,
+      "source_timestamp": 0.0,
+      "capture_timestamp": 15485.9590554,
+      "processing_start": 15485.9685412,
+      "raw_response": "D",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "RIGHT",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          35
+        ],
+        "processor_s": 0.0032590999999229098,
+        "device_transfer_s": 0.0005751000007876428,
+        "text_decoding_s": 8.879999950295314e-05,
+        "generation_latency_s": 0.09645210000053339,
+        "inference_latency_s": 0.10052729999915755,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.09601310000107333,
+        "ttft_stage_s": 0.10387450000052922,
+        "decode_total_s": 0.00043899999946006574,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.0940346908569336,
+        "prefill_host_forward_s": 0.09250359999896318,
+        "vision_cuda_elapsed_s": 0.029800352096557618,
+        "vision_host_forward_s": 0.02975020000121731,
+        "patch_embed_cuda_elapsed_s": 0.00017190399765968322,
+        "patch_embed_host_forward_s": 0.00017970000044442713,
+        "vision_block0_cuda_elapsed_s": 0.0011100159883499145,
+        "vision_block0_host_forward_s": 0.0010489000014786143,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          27.375,
+          30.125,
+          31.875,
+          33.5
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.003959300000133226,
+        "stage_wall_s": 0.1050279999999475
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15486.0824513,
+      "inference_finished_timestamp": 15486.0824513,
+      "inference_latency_s": 0.11391010000079405,
+      "result_age_s": 0.12339590000010503,
+      "dispatch_timestamp": 15485.9662015,
+      "received_timestamp": 15486.0827872,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "UNKNOWN",
+        "person_visible_last_frame": null,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "state_after": {
+        "last_seen_person_direction": "RIGHT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "episode": 1
+    },
+    {
+      "kind": "fast",
+      "generation": 71,
+      "source_timestamp": 2.3666666666666667,
+      "capture_timestamp": 15488.325722066667,
+      "processing_start": 15488.3602881,
+      "raw_response": "C",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          34
+        ],
+        "processor_s": 0.0031352000005426817,
+        "device_transfer_s": 0.0005535000000236323,
+        "text_decoding_s": 8.879999950295314e-05,
+        "generation_latency_s": 0.09567449999849487,
+        "inference_latency_s": 0.09965659999943455,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.09528419999878679,
+        "ttft_stage_s": 0.1027579000001424,
+        "decode_total_s": 0.00039029999970807694,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.09268303680419922,
+        "prefill_host_forward_s": 0.09117130000049656,
+        "vision_cuda_elapsed_s": 0.03101900863647461,
+        "vision_host_forward_s": 0.030986800000391668,
+        "patch_embed_cuda_elapsed_s": 0.00021078400313854218,
+        "patch_embed_host_forward_s": 0.00022700000045006163,
+        "vision_block0_cuda_elapsed_s": 0.0012646399736404418,
+        "vision_block0_host_forward_s": 0.001222099999722559,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          27.75,
+          31.0,
+          33.25,
+          32.5
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0036641000006056856,
+        "stage_wall_s": 0.10384180000073684
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15488.4653244,
+      "inference_finished_timestamp": 15488.4653244,
+      "inference_latency_s": 0.10503629999948316,
+      "result_age_s": 0.1396023333327321,
+      "dispatch_timestamp": 15488.3580144,
+      "received_timestamp": 15488.4658357,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "RIGHT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "state_after": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "episode": 1
+    },
+    {
+      "kind": "fast",
+      "generation": 143,
+      "source_timestamp": 4.766666666666667,
+      "capture_timestamp": 15490.725722066667,
+      "processing_start": 15490.7426823,
+      "raw_response": "C",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          34
+        ],
+        "processor_s": 0.0025294000006397255,
+        "device_transfer_s": 0.0005614999990939396,
+        "text_decoding_s": 0.0001021999996737577,
+        "generation_latency_s": 0.08365159999993921,
+        "inference_latency_s": 0.08699539999906847,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.0831318000000465,
+        "ttft_stage_s": 0.08995940000022529,
+        "decode_total_s": 0.0005197999998927116,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.08130540466308593,
+        "prefill_host_forward_s": 0.07980250000036904,
+        "vision_cuda_elapsed_s": 0.0253306884765625,
+        "vision_host_forward_s": 0.025198199999067583,
+        "patch_embed_cuda_elapsed_s": 0.00015360000729560853,
+        "patch_embed_host_forward_s": 0.00015619999976479448,
+        "vision_block0_cuda_elapsed_s": 0.00108953595161438,
+        "vision_block0_host_forward_s": 0.001009600000543287,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          28.75,
+          32.25,
+          35.5,
+          33.25
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0036753000003955094,
+        "stage_wall_s": 0.09117590000096243
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15490.8353931,
+      "inference_finished_timestamp": 15490.8353931,
+      "inference_latency_s": 0.0927107999996224,
+      "result_age_s": 0.10967103333314299,
+      "dispatch_timestamp": 15490.7398855,
+      "received_timestamp": 15490.8365854,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "state_after": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "episode": 1
+    },
+    {
+      "kind": "fast",
+      "generation": 213,
+      "source_timestamp": 7.1,
+      "capture_timestamp": 15493.059055400001,
+      "processing_start": 15493.090192,
+      "raw_response": "B",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "LEFT",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          33
+        ],
+        "processor_s": 0.002533499999117339,
+        "device_transfer_s": 0.0004510000017035054,
+        "text_decoding_s": 9.679999857326038e-05,
+        "generation_latency_s": 0.08788920000006328,
+        "inference_latency_s": 0.0911231999998563,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.08746700000119745,
+        "ttft_stage_s": 0.09423330000026908,
+        "decode_total_s": 0.00042219999886583537,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.08577273559570313,
+        "prefill_host_forward_s": 0.08422839999911957,
+        "vision_cuda_elapsed_s": 0.02933350372314453,
+        "vision_host_forward_s": 0.029298900000867434,
+        "patch_embed_cuda_elapsed_s": 0.00015462400019168853,
+        "patch_embed_host_forward_s": 0.00015720000010333024,
+        "vision_block0_cuda_elapsed_s": 0.0014939839839935303,
+        "vision_block0_host_forward_s": 0.0014318000012281118,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          30.125,
+          34.0,
+          31.5,
+          34.0
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0037229999998089625,
+        "stage_wall_s": 0.0953073000000586
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15493.1866866,
+      "inference_finished_timestamp": 15493.1866866,
+      "inference_latency_s": 0.09649460000036925,
+      "result_age_s": 0.12763119999908668,
+      "dispatch_timestamp": 15493.0879325,
+      "received_timestamp": 15493.1871153,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "state_after": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "episode": 1
+    },
+    {
+      "kind": "fast",
+      "generation": 287,
+      "source_timestamp": 9.566666666666666,
+      "capture_timestamp": 15495.525722066668,
+      "processing_start": 15495.5415463,
+      "raw_response": "A",
+      "observation": {
+        "person_visible": false,
+        "person_count": 0,
+        "person_direction": "UNKNOWN",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          32
+        ],
+        "processor_s": 0.0025592999991204124,
+        "device_transfer_s": 0.0005678999987139832,
+        "text_decoding_s": 9.339999996882398e-05,
+        "generation_latency_s": 0.09527689999958966,
+        "inference_latency_s": 0.09864390000075218,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.09487029999945662,
+        "ttft_stage_s": 0.10172420000162674,
+        "decode_total_s": 0.00040660000013303943,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.09312982177734375,
+        "prefill_host_forward_s": 0.09159360000012384,
+        "vision_cuda_elapsed_s": 0.03485081481933594,
+        "vision_host_forward_s": 0.03481389999979001,
+        "patch_embed_cuda_elapsed_s": 0.0001554879993200302,
+        "patch_embed_host_forward_s": 0.00015779999921505805,
+        "vision_block0_cuda_elapsed_s": 0.001605631947517395,
+        "vision_block0_host_forward_s": 0.0015991000000212807,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          40.75,
+          34.75,
+          34.0,
+          34.0
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0036663000009866664,
+        "stage_wall_s": 0.10277580000001763
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15495.6455101,
+      "inference_finished_timestamp": 15495.6455101,
+      "inference_latency_s": 0.10396379999838246,
+      "result_age_s": 0.11978803333113319,
+      "dispatch_timestamp": 15495.5386757,
+      "received_timestamp": 15495.6463147,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "state_after": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": false,
+        "frames_since_person_seen": 1,
+        "transition": "DISAPPEARED"
+      },
+      "episode": 2
+    },
+    {
+      "kind": "fast",
+      "generation": 356,
+      "source_timestamp": 11.866666666666667,
+      "capture_timestamp": 15497.825722066667,
+      "processing_start": 15497.859909,
+      "raw_response": "D",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "RIGHT",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          35
+        ],
+        "processor_s": 0.002886100000978331,
+        "device_transfer_s": 0.0008453999998891959,
+        "text_decoding_s": 9.969999882741831e-05,
+        "generation_latency_s": 0.10487760000069102,
+        "inference_latency_s": 0.1088620999998966,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.1042821000010008,
+        "ttft_stage_s": 0.11180009999952745,
+        "decode_total_s": 0.0005954999996902188,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.10052397155761719,
+        "prefill_host_forward_s": 0.0990364999997837,
+        "vision_cuda_elapsed_s": 0.02817638397216797,
+        "vision_host_forward_s": 0.028047800000422285,
+        "patch_embed_cuda_elapsed_s": 0.0002600640058517456,
+        "patch_embed_host_forward_s": 0.0002856999999494292,
+        "vision_block0_cuda_elapsed_s": 0.002036736011505127,
+        "vision_block0_host_forward_s": 0.002056799999991199,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          28.875,
+          32.5,
+          31.625,
+          33.25
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0037256999985402217,
+        "stage_wall_s": 0.1132593000002089
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15497.9744408,
+      "inference_finished_timestamp": 15497.9744408,
+      "inference_latency_s": 0.11453179999989516,
+      "result_age_s": 0.14871873333322583,
+      "dispatch_timestamp": 15497.8573904,
+      "received_timestamp": 15497.9747261,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": false,
+        "frames_since_person_seen": 1,
+        "transition": "DISAPPEARED"
+      },
+      "state_after": {
+        "last_seen_person_direction": "RIGHT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "APPEARED"
+      },
+      "episode": 3
+    },
+    {
+      "kind": "fast",
+      "generation": 429,
+      "source_timestamp": 14.3,
+      "capture_timestamp": 15500.2590554,
+      "processing_start": 15500.2883702,
+      "raw_response": "C",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          34
+        ],
+        "processor_s": 0.002814399998896988,
+        "device_transfer_s": 0.0013718000009248499,
+        "text_decoding_s": 8.960000013757963e-05,
+        "generation_latency_s": 0.09244120000039402,
+        "inference_latency_s": 0.09688810000079684,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.09200609999970766,
+        "ttft_stage_s": 0.09995049999997718,
+        "decode_total_s": 0.00043510000068636145,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.0899527359008789,
+        "prefill_host_forward_s": 0.08844189999945229,
+        "vision_cuda_elapsed_s": 0.028564479827880858,
+        "vision_host_forward_s": 0.028553000000101747,
+        "patch_embed_cuda_elapsed_s": 0.00016896000504493713,
+        "patch_embed_host_forward_s": 0.00017269999989366625,
+        "vision_block0_cuda_elapsed_s": 0.0011100159883499145,
+        "vision_block0_host_forward_s": 0.0010330999994039303,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          27.375,
+          30.75,
+          34.0,
+          32.75
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.003671099999337457,
+        "stage_wall_s": 0.10100249999959487
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15500.3905137,
+      "inference_finished_timestamp": 15500.3905137,
+      "inference_latency_s": 0.10214350000023842,
+      "result_age_s": 0.131458300000304,
+      "dispatch_timestamp": 15500.2861791,
+      "received_timestamp": 15500.3910043,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "RIGHT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "APPEARED"
+      },
+      "state_after": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "episode": 3
+    },
+    {
+      "kind": "fast",
+      "generation": 502,
+      "source_timestamp": 16.733333333333334,
+      "capture_timestamp": 15502.692388733334,
+      "processing_start": 15502.7289377,
+      "raw_response": "C",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          34
+        ],
+        "processor_s": 0.003080400001636008,
+        "device_transfer_s": 0.0005643999993480975,
+        "text_decoding_s": 8.890000026440248e-05,
+        "generation_latency_s": 0.08501470000010158,
+        "inference_latency_s": 0.0889050000005227,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.08460110000123677,
+        "ttft_stage_s": 0.09235880000051111,
+        "decode_total_s": 0.0004135999988648109,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.08284534454345703,
+        "prefill_host_forward_s": 0.08130899999923713,
+        "vision_cuda_elapsed_s": 0.025438207626342774,
+        "vision_host_forward_s": 0.025346000000354252,
+        "patch_embed_cuda_elapsed_s": 0.000158720001578331,
+        "patch_embed_host_forward_s": 0.00015999999959603883,
+        "vision_block0_cuda_elapsed_s": 0.0011223039627075194,
+        "vision_block0_host_forward_s": 0.0010562999996182043,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          28.625,
+          32.5,
+          35.25,
+          33.5
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.004044600000270293,
+        "stage_wall_s": 0.09349269999984244
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15502.8236616,
+      "inference_finished_timestamp": 15502.8236616,
+      "inference_latency_s": 0.0947238999997353,
+      "result_age_s": 0.1312728666653129,
+      "dispatch_timestamp": 15502.7266413,
+      "received_timestamp": 15502.824712,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "state_after": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "episode": 3
+    },
+    {
+      "kind": "fast",
+      "generation": 575,
+      "source_timestamp": 19.166666666666668,
+      "capture_timestamp": 15505.125722066667,
+      "processing_start": 15505.1509233,
+      "raw_response": "D",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "RIGHT",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          35
+        ],
+        "processor_s": 0.0025867999993351987,
+        "device_transfer_s": 0.0007483999997930368,
+        "text_decoding_s": 0.00010990000009769574,
+        "generation_latency_s": 0.10648720000062895,
+        "inference_latency_s": 0.11013699999966775,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.10595480000120006,
+        "ttft_stage_s": 0.11319220000041241,
+        "decode_total_s": 0.0005323999994288897,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.10217062377929688,
+        "prefill_host_forward_s": 0.1006467999995948,
+        "vision_cuda_elapsed_s": 0.03528598403930664,
+        "vision_host_forward_s": 0.035149299999829964,
+        "patch_embed_cuda_elapsed_s": 0.0002560000121593475,
+        "patch_embed_host_forward_s": 0.0002781000002869405,
+        "vision_block0_cuda_elapsed_s": 0.0021544640064239504,
+        "vision_block0_host_forward_s": 0.002161699998396216,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          28.125,
+          31.75,
+          32.5,
+          32.75
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0037974000006215647,
+        "stage_wall_s": 0.11442870000064431
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15505.2665074,
+      "inference_finished_timestamp": 15505.2665074,
+      "inference_latency_s": 0.11558409999997821,
+      "result_age_s": 0.14078533333304222,
+      "dispatch_timestamp": 15505.1487597,
+      "received_timestamp": 15505.2668628,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "state_after": {
+        "last_seen_person_direction": "RIGHT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "episode": 3
+    },
+    {
+      "kind": "fast",
+      "generation": 648,
+      "source_timestamp": 21.6,
+      "capture_timestamp": 15507.559055400001,
+      "processing_start": 15507.5895452,
+      "raw_response": "C",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          34
+        ],
+        "processor_s": 0.0025466000006417744,
+        "device_transfer_s": 0.00045449999925040174,
+        "text_decoding_s": 8.920000072976109e-05,
+        "generation_latency_s": 0.08325310000145691,
+        "inference_latency_s": 0.0864886999988812,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.08282320000034815,
+        "ttft_stage_s": 0.0896842000001925,
+        "decode_total_s": 0.0004299000011087628,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.08111456298828125,
+        "prefill_host_forward_s": 0.07957499999974971,
+        "vision_cuda_elapsed_s": 0.023240703582763672,
+        "vision_host_forward_s": 0.02309429999877466,
+        "patch_embed_cuda_elapsed_s": 0.00016281600296497346,
+        "patch_embed_host_forward_s": 0.000164399998539011,
+        "vision_block0_cuda_elapsed_s": 0.0010537919998168945,
+        "vision_block0_host_forward_s": 0.000973300000623567,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          27.375,
+          30.75,
+          33.5,
+          32.25
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0038008000010449905,
+        "stage_wall_s": 0.09083480000117561
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15507.6815993,
+      "inference_finished_timestamp": 15507.6815993,
+      "inference_latency_s": 0.09205409999958647,
+      "result_age_s": 0.12254389999907289,
+      "dispatch_timestamp": 15507.5872999,
+      "received_timestamp": 15507.6824928,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "RIGHT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "state_after": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "episode": 3
+    },
+    {
+      "kind": "fast",
+      "generation": 719,
+      "source_timestamp": 23.966666666666665,
+      "capture_timestamp": 15509.925722066668,
+      "processing_start": 15509.9713998,
+      "raw_response": "C",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          34
+        ],
+        "processor_s": 0.0027865000010933727,
+        "device_transfer_s": 0.000690799999574665,
+        "text_decoding_s": 0.00011579999954847153,
+        "generation_latency_s": 0.10075639999922714,
+        "inference_latency_s": 0.10452660000009928,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.10023109999929147,
+        "ttft_stage_s": 0.10821289999876171,
+        "decode_total_s": 0.0005252999999356689,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.09813660430908203,
+        "prefill_host_forward_s": 0.0967501999984961,
+        "vision_cuda_elapsed_s": 0.026599424362182617,
+        "vision_host_forward_s": 0.026588400000036927,
+        "patch_embed_cuda_elapsed_s": 0.00016896000504493713,
+        "patch_embed_host_forward_s": 0.00018659999841474928,
+        "vision_block0_cuda_elapsed_s": 0.0011938560009002687,
+        "vision_block0_host_forward_s": 0.0011350999993737787,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          27.75,
+          31.0,
+          35.75,
+          33.25
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.004435699998794007,
+        "stage_wall_s": 0.10965419999956794
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15510.0833863,
+      "inference_finished_timestamp": 15510.0833863,
+      "inference_latency_s": 0.11198650000005728,
+      "result_age_s": 0.15766423333298007,
+      "dispatch_timestamp": 15509.9677466,
+      "received_timestamp": 15510.0846799,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "state_after": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "episode": 3
+    },
+    {
+      "kind": "fast",
+      "generation": 792,
+      "source_timestamp": 26.4,
+      "capture_timestamp": 15512.3590554,
+      "processing_start": 15512.3961118,
+      "raw_response": "C",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          34
+        ],
+        "processor_s": 0.004809199999726843,
+        "device_transfer_s": 0.0010170999994443264,
+        "text_decoding_s": 9.4600000011269e-05,
+        "generation_latency_s": 0.08780959999967308,
+        "inference_latency_s": 0.09389499999997497,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.08739229999991949,
+        "ttft_stage_s": 0.0971821999992244,
+        "decode_total_s": 0.00041729999975359533,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.08553788757324218,
+        "prefill_host_forward_s": 0.08400439999968512,
+        "vision_cuda_elapsed_s": 0.02371686363220215,
+        "vision_host_forward_s": 0.023576499999762746,
+        "patch_embed_cuda_elapsed_s": 0.000159743994474411,
+        "patch_embed_host_forward_s": 0.0001776000008248957,
+        "vision_block0_cuda_elapsed_s": 0.001201151967048645,
+        "vision_block0_host_forward_s": 0.0011632000005192822,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          28.125,
+          31.375,
+          36.5,
+          32.75
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0038872999994055135,
+        "stage_wall_s": 0.09841930000038701
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15512.4959201,
+      "inference_finished_timestamp": 15512.4959201,
+      "inference_latency_s": 0.09980829999949492,
+      "result_age_s": 0.13686469999993278,
+      "dispatch_timestamp": 15512.3937342,
+      "received_timestamp": 15512.4962422,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "state_after": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "episode": 3
+    },
+    {
+      "kind": "fast",
+      "generation": 865,
+      "source_timestamp": 28.833333333333332,
+      "capture_timestamp": 15514.792388733335,
+      "processing_start": 15514.8229512,
+      "raw_response": "C",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          34
+        ],
+        "processor_s": 0.002640400000018417,
+        "device_transfer_s": 0.00045990000035089906,
+        "text_decoding_s": 0.00017459999980928842,
+        "generation_latency_s": 0.08839509999961592,
+        "inference_latency_s": 0.0918894000005821,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.08773649999966437,
+        "ttft_stage_s": 0.09473260000049777,
+        "decode_total_s": 0.0006585999999515479,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 0.08599740600585938,
+        "prefill_host_forward_s": 0.084443800000372,
+        "vision_cuda_elapsed_s": 0.028049407958984376,
+        "vision_host_forward_s": 0.02789879999909317,
+        "patch_embed_cuda_elapsed_s": 0.00015353600680828095,
+        "patch_embed_host_forward_s": 0.0001560000000608852,
+        "vision_block0_cuda_elapsed_s": 0.0010629119873046876,
+        "vision_block0_host_forward_s": 0.0009800999996514292,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          27.5,
+          31.125,
+          34.75,
+          34.5
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0038287000006675953,
+        "stage_wall_s": 0.0974251000006916
+      },
+      "peak_allocated_gib": 4.006528854370117,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15514.9217418,
+      "inference_finished_timestamp": 15514.9217418,
+      "inference_latency_s": 0.09879060000093887,
+      "result_age_s": 0.12935306666622637,
+      "dispatch_timestamp": 15514.8208073,
+      "received_timestamp": 15514.9221476,
+      "slow_busy_at_dispatch": false,
+      "accepted": true,
+      "rejection_reason": null,
+      "state_before": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "state_after": {
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "STILL_VISIBLE"
+      },
+      "episode": 3
+    }
+  ],
+  "slow_results": [
+    {
+      "kind": "semantic",
+      "generation": 3,
+      "source_timestamp": 0.1,
+      "capture_timestamp": 15486.059055400001,
+      "processing_start": 15486.0854082,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"CENTER\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"NONE\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "NONE"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          78450,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          45425,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.003107399999862537,
+        "device_transfer_s": 0.0005857999985892093,
+        "text_decoding_s": 0.00012630000128410757,
+        "generation_latency_s": 2.261329499999192,
+        "inference_latency_s": 2.265241999999489,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.00460900000143738,
+        "stage_wall_s": 2.2702062000007572
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15488.3575304,
+      "inference_finished_timestamp": 15488.3575304,
+      "inference_latency_s": 2.2721222000000125,
+      "result_age_s": 2.2984749999995984,
+      "dispatch_timestamp": 15486.0828632,
+      "received_timestamp": 15488.3578902,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 3,
+        "source_timestamp": 0.1,
+        "capture_timestamp": 15486.059055400001,
+        "episode": 1,
+        "dispatch_timestamp": 15486.0828632
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 74,
+      "source_timestamp": 2.466666666666667,
+      "capture_timestamp": 15488.425722066668,
+      "processing_start": 15488.4689829,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"CENTER\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"NONE\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "NONE"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          78450,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          45425,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.003065900000365218,
+        "device_transfer_s": 0.0006482999997388106,
+        "text_decoding_s": 0.0002791999995679362,
+        "generation_latency_s": 2.259014400000524,
+        "inference_latency_s": 2.263146000001143,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.004111000000193599,
+        "stage_wall_s": 2.2676344999999856
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15490.7381637,
+      "inference_finished_timestamp": 15490.7381637,
+      "inference_latency_s": 2.2691807999999583,
+      "result_age_s": 2.312441633332128,
+      "dispatch_timestamp": 15488.4661432,
+      "received_timestamp": 15490.7397439,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 74,
+        "source_timestamp": 2.466666666666667,
+        "capture_timestamp": 15488.425722066668,
+        "episode": 1,
+        "dispatch_timestamp": 15488.4661432
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 145,
+      "source_timestamp": 4.833333333333333,
+      "capture_timestamp": 15490.792388733335,
+      "processing_start": 15490.8395382,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"CENTER\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"NONE\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "NONE"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          78450,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          45425,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.003947499999412685,
+        "device_transfer_s": 0.0007554999992862577,
+        "text_decoding_s": 0.00020219999896653462,
+        "generation_latency_s": 2.234280899998339,
+        "inference_latency_s": 2.2393245000002935,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.006297100000665523,
+        "stage_wall_s": 2.2460098000010476
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15493.0870383,
+      "inference_finished_timestamp": 15493.0870383,
+      "inference_latency_s": 2.247500100000252,
+      "result_age_s": 2.294649566665612,
+      "dispatch_timestamp": 15490.8367466,
+      "received_timestamp": 15493.0877414,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 145,
+        "source_timestamp": 4.833333333333333,
+        "capture_timestamp": 15490.792388733335,
+        "episode": 1,
+        "dispatch_timestamp": 15490.8367466
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 216,
+      "source_timestamp": 7.2,
+      "capture_timestamp": 15493.159055400001,
+      "processing_start": 15493.1894401,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"LEFT\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"NONE\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "LEFT",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "NONE"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          22397,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          45425,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.003064700000322773,
+        "device_transfer_s": 0.0005743999990954762,
+        "text_decoding_s": 0.0003068000005441718,
+        "generation_latency_s": 2.33781640000052,
+        "inference_latency_s": 2.341928199999529,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.003829299999779323,
+        "stage_wall_s": 2.346095900000364
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15495.5371082,
+      "inference_finished_timestamp": 15495.5371082,
+      "inference_latency_s": 2.3476680999992823,
+      "result_age_s": 2.378052799998841,
+      "dispatch_timestamp": 15493.1872701,
+      "received_timestamp": 15495.5384936,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 216,
+        "source_timestamp": 7.2,
+        "capture_timestamp": 15493.159055400001,
+        "episode": 1,
+        "dispatch_timestamp": 15493.1872701
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 290,
+      "source_timestamp": 9.666666666666666,
+      "capture_timestamp": 15495.625722066667,
+      "processing_start": 15495.6487363,
+      "raw_response": "{\n  \"person_visible\": false,\n  \"person_count\": 0,\n  \"person_direction\": \"UNKNOWN\",\n  \"person_distance\": \"UNKNOWN\",\n  \"blocking_obstacle\": \"RIGHT\"\n}",
+      "observation": {
+        "person_visible": false,
+        "person_count": 0,
+        "person_direction": "UNKNOWN",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "RIGHT"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 43,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          895,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          15,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          51378,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          51378,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          11572,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.0030346000003191875,
+        "device_transfer_s": 0.0007574000010208692,
+        "text_decoding_s": 0.00014100000043981709,
+        "generation_latency_s": 2.1982575000001816,
+        "inference_latency_s": 2.202289599999858,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.003882199998770375,
+        "stage_wall_s": 2.206445399999211
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15497.8563537,
+      "inference_finished_timestamp": 15497.8563537,
+      "inference_latency_s": 2.2076174000012543,
+      "result_age_s": 2.2306316333342693,
+      "dispatch_timestamp": 15495.6464621,
+      "received_timestamp": 15497.8572308,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 290,
+        "source_timestamp": 9.666666666666666,
+        "capture_timestamp": 15495.625722066667,
+        "episode": 2,
+        "dispatch_timestamp": 15495.6464621
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 360,
+      "source_timestamp": 12.0,
+      "capture_timestamp": 15497.9590554,
+      "processing_start": 15497.9772519,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"LEFT\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"LEFT\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "LEFT",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "LEFT"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          22397,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          22397,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.002838599999449798,
+        "device_transfer_s": 0.0005473999990499578,
+        "text_decoding_s": 0.000112599998828955,
+        "generation_latency_s": 2.2997230000000854,
+        "inference_latency_s": 2.3033091999986937,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0037510000001930166,
+        "stage_wall_s": 2.3073996000002808
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15500.2858322,
+      "inference_finished_timestamp": 15500.2858322,
+      "inference_latency_s": 2.3085802999994485,
+      "result_age_s": 2.3267767999986972,
+      "dispatch_timestamp": 15497.9749247,
+      "received_timestamp": 15500.2859493,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 360,
+        "source_timestamp": 12.0,
+        "capture_timestamp": 15497.9590554,
+        "episode": 3,
+        "dispatch_timestamp": 15497.9749247
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 432,
+      "source_timestamp": 14.4,
+      "capture_timestamp": 15500.3590554,
+      "processing_start": 15500.3933516,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"CENTER\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"NONE\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "NONE"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          78450,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          45425,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.004165899999861722,
+        "device_transfer_s": 0.0007200000000011642,
+        "text_decoding_s": 0.00012079999942216091,
+        "generation_latency_s": 2.3227868000012677,
+        "inference_latency_s": 2.327888499999972,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.003674999999930151,
+        "stage_wall_s": 2.331838300000527
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15502.7263578,
+      "inference_finished_timestamp": 15502.7263578,
+      "inference_latency_s": 2.3330062000004546,
+      "result_age_s": 2.3673023999999714,
+      "dispatch_timestamp": 15500.3911481,
+      "received_timestamp": 15502.7265126,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 432,
+        "source_timestamp": 14.4,
+        "capture_timestamp": 15500.3590554,
+        "episode": 3,
+        "dispatch_timestamp": 15500.3911481
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 505,
+      "source_timestamp": 16.833333333333332,
+      "capture_timestamp": 15502.792388733335,
+      "processing_start": 15502.8271122,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"CENTER\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"NONE\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "NONE"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          78450,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          45425,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.0036968999993405305,
+        "device_transfer_s": 0.0016952999994828133,
+        "text_decoding_s": 0.0001159999992523808,
+        "generation_latency_s": 2.3074851000001217,
+        "inference_latency_s": 2.3130891999990126,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.005139999999300926,
+        "stage_wall_s": 2.3185591000001295
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15505.1469718,
+      "inference_finished_timestamp": 15505.1469718,
+      "inference_latency_s": 2.3198596000002,
+      "result_age_s": 2.354583066666237,
+      "dispatch_timestamp": 15502.8248966,
+      "received_timestamp": 15505.1486162,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 505,
+        "source_timestamp": 16.833333333333332,
+        "capture_timestamp": 15502.792388733335,
+        "episode": 3,
+        "dispatch_timestamp": 15502.8248966
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 579,
+      "source_timestamp": 19.3,
+      "capture_timestamp": 15505.2590554,
+      "processing_start": 15505.2692719,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"CENTER\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"NONE\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "NONE"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          78450,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          45425,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.0038230000009207288,
+        "device_transfer_s": 0.0007212999989860691,
+        "text_decoding_s": 0.00012280000009923242,
+        "generation_latency_s": 2.303682600000684,
+        "inference_latency_s": 2.308443799998713,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.006065899999157409,
+        "stage_wall_s": 2.3149200999996538
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15507.5863327,
+      "inference_finished_timestamp": 15507.5863327,
+      "inference_latency_s": 2.3170608000000357,
+      "result_age_s": 2.3272773000007874,
+      "dispatch_timestamp": 15505.2670494,
+      "received_timestamp": 15507.5871738,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 579,
+        "source_timestamp": 19.3,
+        "capture_timestamp": 15505.2590554,
+        "episode": 3,
+        "dispatch_timestamp": 15505.2670494
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 651,
+      "source_timestamp": 21.7,
+      "capture_timestamp": 15507.659055400001,
+      "processing_start": 15507.6849118,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"CENTER\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"NONE\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "NONE"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          78450,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          45425,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.0031246999988070456,
+        "device_transfer_s": 0.0005063999997219071,
+        "text_decoding_s": 0.00011420000009820797,
+        "generation_latency_s": 2.2718546999985847,
+        "inference_latency_s": 2.275684700000056,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.003866899998683948,
+        "stage_wall_s": 2.2798231999986456
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15509.9660323,
+      "inference_finished_timestamp": 15509.9660323,
+      "inference_latency_s": 2.2811205000016344,
+      "result_age_s": 2.3069768999994267,
+      "dispatch_timestamp": 15507.682648,
+      "received_timestamp": 15509.9676212,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 651,
+        "source_timestamp": 21.7,
+        "capture_timestamp": 15507.659055400001,
+        "episode": 3,
+        "dispatch_timestamp": 15507.682648
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 723,
+      "source_timestamp": 24.1,
+      "capture_timestamp": 15510.059055400001,
+      "processing_start": 15510.0872056,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"CENTER\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"NONE\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "NONE"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          78450,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          45425,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.003167699998812168,
+        "device_transfer_s": 0.0008870000001479639,
+        "text_decoding_s": 0.0001320000010309741,
+        "generation_latency_s": 2.2961670000004233,
+        "inference_latency_s": 2.3004634999997506,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0037537000007432653,
+        "stage_wall_s": 2.3045889000004536
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15512.3932375,
+      "inference_finished_timestamp": 15512.3932375,
+      "inference_latency_s": 2.3060318999996525,
+      "result_age_s": 2.3341820999994525,
+      "dispatch_timestamp": 15510.0848449,
+      "received_timestamp": 15512.3936188,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 723,
+        "source_timestamp": 24.1,
+        "capture_timestamp": 15510.059055400001,
+        "episode": 3,
+        "dispatch_timestamp": 15510.0848449
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 795,
+      "source_timestamp": 26.5,
+      "capture_timestamp": 15512.4590554,
+      "processing_start": 15512.4987378,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"CENTER\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"NONE\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "NONE"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          78450,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          45425,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.003109999999651336,
+        "device_transfer_s": 0.0006020000000717118,
+        "text_decoding_s": 0.00011730000005627517,
+        "generation_latency_s": 2.3118732000002638,
+        "inference_latency_s": 2.3158038000001397,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.003991800000221701,
+        "stage_wall_s": 2.3201635999994323
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15514.8202605,
+      "inference_finished_timestamp": 15514.8202605,
+      "inference_latency_s": 2.3215227000000596,
+      "result_age_s": 2.3612051000000065,
+      "dispatch_timestamp": 15512.4963921,
+      "received_timestamp": 15514.820663,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 795,
+        "source_timestamp": 26.5,
+        "capture_timestamp": 15512.4590554,
+        "episode": 3,
+        "dispatch_timestamp": 15512.4963921
+      }
+    },
+    {
+      "kind": "semantic",
+      "generation": 868,
+      "source_timestamp": 28.933333333333334,
+      "capture_timestamp": 15514.892388733333,
+      "processing_start": 15514.9245229,
+      "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"CENTER\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"RIGHT\"\n}",
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "RIGHT"
+      },
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "be189c8c054f9ea74821de6370e9653551626039b4511359beca9eaa4b106bf3",
+        "max_new_tokens": 96,
+        "input_tokens": 339,
+        "output_tokens": 44,
+        "generated_token_ids": [
+          515,
+          220,
+          330,
+          8987,
+          34371,
+          788,
+          830,
+          345,
+          220,
+          330,
+          8987,
+          3180,
+          788,
+          220,
+          16,
+          345,
+          220,
+          330,
+          8987,
+          25438,
+          788,
+          330,
+          78450,
+          756,
+          220,
+          330,
+          8987,
+          19464,
+          788,
+          330,
+          3944,
+          934,
+          756,
+          220,
+          330,
+          70356,
+          36322,
+          43598,
+          788,
+          330,
+          11572,
+          698,
+          92,
+          151645
+        ],
+        "processor_s": 0.0027995999989798293,
+        "device_transfer_s": 0.00045990000035089906,
+        "text_decoding_s": 0.00019880000036209822,
+        "generation_latency_s": 2.303820299999643,
+        "inference_latency_s": 2.3074440000000322,
+        "peak_allocated_gib": 4.04778528213501,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.003743600000234437,
+        "stage_wall_s": 2.311640300000363
+      },
+      "peak_allocated_gib": 4.04778528213501,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15517.2375055,
+      "inference_finished_timestamp": 15517.2375055,
+      "inference_latency_s": 2.312982599998577,
+      "result_age_s": 2.3451167666662514,
+      "dispatch_timestamp": 15514.9223134,
+      "received_timestamp": 15517.2384709,
+      "request_context": {
+        "kind": "semantic",
+        "generation": 868,
+        "source_timestamp": 28.933333333333334,
+        "capture_timestamp": 15514.892388733333,
+        "episode": 3,
+        "dispatch_timestamp": 15514.9223134
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15486.0827267,
+      "generation": 3,
+      "capture_timestamp": 15486.059055400001
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15488.4657301,
+      "generation": 74,
+      "capture_timestamp": 15488.425722066668
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15490.8365173,
+      "generation": 145,
+      "capture_timestamp": 15490.792388733335
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15493.187054,
+      "generation": 216,
+      "capture_timestamp": 15493.159055400001
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15495.6462543,
+      "generation": 290,
+      "capture_timestamp": 15495.625722066667
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15497.9746333,
+      "generation": 360,
+      "capture_timestamp": 15497.9590554
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15500.3909406,
+      "generation": 432,
+      "capture_timestamp": 15500.3590554
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15502.8246293,
+      "generation": 505,
+      "capture_timestamp": 15502.792388733335
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15505.2667958,
+      "generation": 579,
+      "capture_timestamp": 15505.2590554
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15507.6824391,
+      "generation": 651,
+      "capture_timestamp": 15507.659055400001
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15510.084618,
+      "generation": 723,
+      "capture_timestamp": 15510.059055400001
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15512.4961784,
+      "generation": 795,
+      "capture_timestamp": 15512.4590554
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "semantic",
+      "timestamp": 15514.9220708,
+      "generation": 868,
+      "capture_timestamp": 15514.892388733333
+    }
+  ],
+  "commands": [
+    {
+      "channel": "immediate_geometry",
+      "generation": 0,
+      "source_timestamp": 0.0,
+      "capture_timestamp": 15485.9590554,
+      "ready_timestamp": 15486.0828548,
+      "event_to_ready_age_s": 0.12379940000028,
+      "decision": {
+        "action": "LOOK",
+        "direction": "RIGHT",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a"
+    },
+    {
+      "channel": "immediate_geometry",
+      "generation": 71,
+      "source_timestamp": 2.3666666666666667,
+      "capture_timestamp": 15488.325722066667,
+      "ready_timestamp": 15488.4659683,
+      "event_to_ready_age_s": 0.14024623333352793,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a"
+    },
+    {
+      "channel": "immediate_geometry",
+      "generation": 143,
+      "source_timestamp": 4.766666666666667,
+      "capture_timestamp": 15490.725722066667,
+      "ready_timestamp": 15490.8366651,
+      "event_to_ready_age_s": 0.11094303333265998,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a"
+    },
+    {
+      "channel": "immediate_geometry",
+      "generation": 213,
+      "source_timestamp": 7.1,
+      "capture_timestamp": 15493.059055400001,
+      "ready_timestamp": 15493.1871874,
+      "event_to_ready_age_s": 0.12813199999982317,
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a"
+    },
+    {
+      "channel": "immediate_geometry",
+      "generation": 356,
+      "source_timestamp": 11.866666666666667,
+      "capture_timestamp": 15497.825722066667,
+      "ready_timestamp": 15497.9748084,
+      "event_to_ready_age_s": 0.1490863333328889,
+      "decision": {
+        "action": "LOOK",
+        "direction": "RIGHT",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a"
+    },
+    {
+      "channel": "immediate_geometry",
+      "generation": 429,
+      "source_timestamp": 14.3,
+      "capture_timestamp": 15500.2590554,
+      "ready_timestamp": 15500.3910747,
+      "event_to_ready_age_s": 0.13201930000104767,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a"
+    },
+    {
+      "channel": "immediate_geometry",
+      "generation": 502,
+      "source_timestamp": 16.733333333333334,
+      "capture_timestamp": 15502.692388733334,
+      "ready_timestamp": 15502.8248058,
+      "event_to_ready_age_s": 0.13241706666667596,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a"
+    },
+    {
+      "channel": "immediate_geometry",
+      "generation": 575,
+      "source_timestamp": 19.166666666666668,
+      "capture_timestamp": 15505.125722066667,
+      "ready_timestamp": 15505.2669326,
+      "event_to_ready_age_s": 0.14121053333292366,
+      "decision": {
+        "action": "LOOK",
+        "direction": "RIGHT",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a"
+    },
+    {
+      "channel": "immediate_geometry",
+      "generation": 648,
+      "source_timestamp": 21.6,
+      "capture_timestamp": 15507.559055400001,
+      "ready_timestamp": 15507.6825617,
+      "event_to_ready_age_s": 0.123506299998553,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a"
+    },
+    {
+      "channel": "immediate_geometry",
+      "generation": 719,
+      "source_timestamp": 23.966666666666665,
+      "capture_timestamp": 15509.925722066668,
+      "ready_timestamp": 15510.0847506,
+      "event_to_ready_age_s": 0.1590285333313659,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a"
+    },
+    {
+      "channel": "immediate_geometry",
+      "generation": 792,
+      "source_timestamp": 26.4,
+      "capture_timestamp": 15512.3590554,
+      "ready_timestamp": 15512.4963147,
+      "event_to_ready_age_s": 0.13725929999964137,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a"
+    },
+    {
+      "channel": "immediate_geometry",
+      "generation": 865,
+      "source_timestamp": 28.833333333333332,
+      "capture_timestamp": 15514.792388733335,
+      "ready_timestamp": 15514.9222376,
+      "event_to_ready_age_s": 0.12984886666527018,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a"
+    }
+  ],
+  "resources": [
+    {
+      "timestamp": 15485.960394,
+      "cpu_process_percent": {
+        "5928": 0.0,
+        "13388": 0.0
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869976043701172
+    },
+    {
+      "timestamp": 15486.4620038,
+      "cpu_process_percent": {
+        "5928": 283.4,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15486.9641438,
+      "cpu_process_percent": {
+        "5928": 99.6,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 42,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15487.4654837,
+      "cpu_process_percent": {
+        "5928": 99.7,
+        "13388": 28.1
+      },
+      "gpu_utilization_percent": 42,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15487.9659963,
+      "cpu_process_percent": {
+        "5928": 99.9,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15488.4698667,
+      "cpu_process_percent": {
+        "5928": 167.4,
+        "13388": 18.6
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15488.9713347,
+      "cpu_process_percent": {
+        "5928": 211.9,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 36,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15489.4729399,
+      "cpu_process_percent": {
+        "5928": 99.7,
+        "13388": 9.3
+      },
+      "gpu_utilization_percent": 36,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15489.9743785,
+      "cpu_process_percent": {
+        "5928": 99.7,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 37,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15490.4756654,
+      "cpu_process_percent": {
+        "5928": 96.6,
+        "13388": 24.9
+      },
+      "gpu_utilization_percent": 37,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15490.9772882,
+      "cpu_process_percent": {
+        "5928": 239.8,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15491.4787806,
+      "cpu_process_percent": {
+        "5928": 140.2,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15491.9801967,
+      "cpu_process_percent": {
+        "5928": 99.7,
+        "13388": 9.3
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15492.4813502,
+      "cpu_process_percent": {
+        "5928": 99.8,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15492.9813924,
+      "cpu_process_percent": {
+        "5928": 96.9,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 38,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15493.4818532,
+      "cpu_process_percent": {
+        "5928": 271.6,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 38,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15493.9818959,
+      "cpu_process_percent": {
+        "5928": 100.0,
+        "13388": 21.9
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15494.4833134,
+      "cpu_process_percent": {
+        "5928": 102.8,
+        "13388": 3.1
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15494.983451,
+      "cpu_process_percent": {
+        "5928": 100.0,
+        "13388": 3.1
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15495.4848775,
+      "cpu_process_percent": {
+        "5928": 99.7,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15495.9858629,
+      "cpu_process_percent": {
+        "5928": 277.6,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 49,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15496.4858765,
+      "cpu_process_percent": {
+        "5928": 100.0,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 49,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15496.9867554,
+      "cpu_process_percent": {
+        "5928": 99.8,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15497.4867927,
+      "cpu_process_percent": {
+        "5928": 96.9,
+        "13388": 21.9
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15497.9871335,
+      "cpu_process_percent": {
+        "5928": 174.9,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15498.4875742,
+      "cpu_process_percent": {
+        "5928": 193.6,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15498.9887878,
+      "cpu_process_percent": {
+        "5928": 99.8,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 43,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15499.4890838,
+      "cpu_process_percent": {
+        "5928": 99.9,
+        "13388": 28.1
+      },
+      "gpu_utilization_percent": 43,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15499.9899752,
+      "cpu_process_percent": {
+        "5928": 96.7,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15500.4913062,
+      "cpu_process_percent": {
+        "5928": 205.7,
+        "13388": 28.1
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15500.9919021,
+      "cpu_process_percent": {
+        "5928": 165.4,
+        "13388": 3.1
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15501.4920977,
+      "cpu_process_percent": {
+        "5928": 93.7,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15501.9936045,
+      "cpu_process_percent": {
+        "5928": 99.7,
+        "13388": 24.9
+      },
+      "gpu_utilization_percent": 37,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15502.4943393,
+      "cpu_process_percent": {
+        "5928": 96.7,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 37,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15502.9955122,
+      "cpu_process_percent": {
+        "5928": 246.4,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15503.496116,
+      "cpu_process_percent": {
+        "5928": 124.8,
+        "13388": 40.6
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15503.9969408,
+      "cpu_process_percent": {
+        "5928": 96.7,
+        "13388": 34.3
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15504.4973484,
+      "cpu_process_percent": {
+        "5928": 96.8,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15504.9989481,
+      "cpu_process_percent": {
+        "5928": 93.5,
+        "13388": 24.9
+      },
+      "gpu_utilization_percent": 37,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15505.4998094,
+      "cpu_process_percent": {
+        "5928": 287.0,
+        "13388": 31.2
+      },
+      "gpu_utilization_percent": 37,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15506.0009332,
+      "cpu_process_percent": {
+        "5928": 102.9,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 38,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15506.5013444,
+      "cpu_process_percent": {
+        "5928": 103.0,
+        "13388": 0.0
+      },
+      "gpu_utilization_percent": 38,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15507.0025027,
+      "cpu_process_percent": {
+        "5928": 96.6,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15507.5036182,
+      "cpu_process_percent": {
+        "5928": 93.5,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15508.0039532,
+      "cpu_process_percent": {
+        "5928": 268.6,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 55,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15508.5048218,
+      "cpu_process_percent": {
+        "5928": 99.8,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 55,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15509.0048875,
+      "cpu_process_percent": {
+        "5928": 100.0,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15509.5051822,
+      "cpu_process_percent": {
+        "5928": 96.8,
+        "13388": 28.1
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15510.0067023,
+      "cpu_process_percent": {
+        "5928": 112.2,
+        "13388": 9.3
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15510.5068444,
+      "cpu_process_percent": {
+        "5928": 265.5,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15511.0070142,
+      "cpu_process_percent": {
+        "5928": 100.0,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15511.5086003,
+      "cpu_process_percent": {
+        "5928": 99.7,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15512.00885,
+      "cpu_process_percent": {
+        "5928": 100.0,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 38,
+      "gpu_used_gib": 4.869731903076172
+    },
+    {
+      "timestamp": 15512.5088985,
+      "cpu_process_percent": {
+        "5928": 162.5,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 38,
+      "gpu_used_gib": 4.869976043701172
+    },
+    {
+      "timestamp": 15513.0098159,
+      "cpu_process_percent": {
+        "5928": 209.0,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 56,
+      "gpu_used_gib": 4.870159149169922
+    },
+    {
+      "timestamp": 15513.5108841,
+      "cpu_process_percent": {
+        "5928": 93.6,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 56,
+      "gpu_used_gib": 4.870159149169922
+    },
+    {
+      "timestamp": 15514.0117652,
+      "cpu_process_percent": {
+        "5928": 99.8,
+        "13388": 3.1
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.870159149169922
+    },
+    {
+      "timestamp": 15514.5119128,
+      "cpu_process_percent": {
+        "5928": 103.1,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.870159149169922
+    },
+    {
+      "timestamp": 15515.0131612,
+      "cpu_process_percent": {
+        "5928": 193.3,
+        "13388": 24.9
+      },
+      "gpu_utilization_percent": 42,
+      "gpu_used_gib": 4.870159149169922
+    },
+    {
+      "timestamp": 15515.5139528,
+      "cpu_process_percent": {
+        "5928": 159.1,
+        "13388": 3.1
+      },
+      "gpu_utilization_percent": 42,
+      "gpu_used_gib": 4.870098114013672
+    },
+    {
+      "timestamp": 15516.0151189,
+      "cpu_process_percent": {
+        "5928": 99.8,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.870098114013672
+    },
+    {
+      "timestamp": 15516.5159046,
+      "cpu_process_percent": {
+        "5928": 103.0,
+        "13388": 0.0
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.870098114013672
+    },
+    {
+      "timestamp": 15517.0170035,
+      "cpu_process_percent": {
+        "5928": 96.7,
+        "13388": 3.1
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.870098114013672
+    }
+  ],
+  "queue_capacity": 0,
+  "latest_frame_slot_capacity": 1,
+  "max_in_flight_per_worker": 1,
+  "shared_qwen_negative_control": true,
+  "note": "Qwen negative control uses one safe serialized GPU owner; YOLO and Qwen use independent processes.",
+  "fast_worker": {
+    "type": "ready",
+    "info": {
+      "backend": "shared-one-Qwen2B",
+      "model_load": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 3.1155548000006092,
+        "model_allocated_gib": 3.9638280868530273,
+        "model_load_peak_allocated_gib": 3.9638280868530273,
+        "model_load_peak_reserved_gib": 3.96484375,
+        "model_footprint_gib": 3.962837517261505,
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1
+      }
+    },
+    "pid": 5928
+  },
+  "slow_worker": {
+    "type": "ready",
+    "info": {
+      "backend": "shared-one-Qwen2B",
+      "model_load": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 3.1155548000006092,
+        "model_allocated_gib": 3.9638280868530273,
+        "model_load_peak_allocated_gib": 3.9638280868530273,
+        "model_load_peak_reserved_gib": 3.96484375,
+        "model_footprint_gib": 3.962837517261505,
+        "model_instance_id": 1927644842368,
+        "processor_instance_id": 1927644841024,
+        "model_load_count": 1
+      }
+    },
+    "pid": 5928
+  },
+  "origin_perf_counter": 15485.9590554,
+  "video": {
+    "fps": 30.0,
+    "frame_count": 885,
+    "duration_s": 29.5
+  },
+  "producer_error": null,
+  "producer_frames": 885,
+  "latest_slot_overwrites": 884,
+  "slot_capacity": 1,
+  "final_state": {
+    "last_seen_person_direction": "CENTER",
+    "person_visible_last_frame": true,
+    "frames_since_person_seen": 0,
+    "transition": "STILL_VISIBLE"
+  },
+  "event_coalesced": 0,
+  "worker_counts": [
+    {
+      "pid": 5928,
+      "sent": 26,
+      "completed": 26
+    }
+  ]
+}

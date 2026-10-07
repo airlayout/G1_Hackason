@@ -1,0 +1,74 @@
+{
+  "decision": {
+    "action": "LOOK",
+    "direction": "RIGHT",
+    "target": "PERSON",
+    "distance": "MID",
+    "confidence": 0.95,
+    "scene_summary": "Woman and dog on beach"
+  },
+  "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"RIGHT\",\n  \"target\": \"PERSON\",\n  \"distance\": \"MID\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"Woman and dog on beach\"\n}",
+  "fallback": false,
+  "error": null,
+  "metrics": {
+    "gpu": "NVIDIA GeForce RTX 3060 Ti",
+    "cuda_available": true,
+    "gpu_used": true,
+    "dtype": "torch.bfloat16",
+    "attention": "sdpa",
+    "model": "Qwen/Qwen3-VL-2B-Instruct",
+    "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+    "quantize_4bit": false,
+    "model_load_s": 3.4544129999994766,
+    "model_allocated_gib": 3.9638280868530273,
+    "source_image_size": [
+      2048,
+      1365
+    ],
+    "image_size": [
+      448,
+      299
+    ],
+    "image_grid_thw": [
+      1,
+      18,
+      28
+    ],
+    "processor_image_size": [
+      448,
+      288
+    ],
+    "image_tokens": 126,
+    "image_tokens_per_image": [
+      126
+    ],
+    "image_grids_thw": [
+      [
+        1,
+        18,
+        28
+      ]
+    ],
+    "image_count": 1,
+    "prepared_image_sizes": [
+      [
+        448,
+        299
+      ]
+    ],
+    "combined_output": false,
+    "prompt_characters": 2115,
+    "prompt_profile": "legacy",
+    "prompt_sha256": "7ad72a534375b6e84a3f5bda13e7be910f0af73bbe6fde88c1dc9c244405f2d6",
+    "max_new_tokens": 96,
+    "preprocessing_latency_s": 0.05894240000634454,
+    "generation_latency_s": 9.803480500006117,
+    "inference_latency_s": 9.862679899990326,
+    "input_tokens": 624,
+    "output_tokens": 54,
+    "peak_allocated_gib": 4.134069442749023,
+    "peak_reserved_gib": 4.16015625,
+    "vram_free_gib": 2.759765625,
+    "vram_total_gib": 7.99951171875
+  }
+}
