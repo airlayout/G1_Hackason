@@ -43,7 +43,7 @@ class Experiment:
             button_direction=args.button_direction, panel_offset=tuple(args.offset),
             panel_yaw_deg=args.yaw_deg,
             rgbd_position=f"-0.10 -0.42 {1.45 if args.button_direction == 'up' else 1.31}",
-            rgbd_fovy=45.0)
+            rgbd_fovy=45.0, elevator_front=getattr(args, "elevator_front", False))
         self.data = mujoco.MjData(self.model)
         if args.fixed_base:
             self.data.qpos[:29] = self.stand
@@ -55,7 +55,14 @@ class Experiment:
         self.kin = ArmKinematics(self.model)
         self.kin.update(self.data.qpos)
         self.home = self.data.qpos[self.kin.qadr].copy()
-        self.sensor = mujoco.Renderer(self.model, height=480, width=640)
+        # セグメンテーションIDや深度を境界で混ぜない。GPUのMSAAによって
+        # 別のボタンの境界画素が対象IDになることがある。鑑賞用の描画設定は戻す。
+        samples = self.model.vis.quality.offsamples
+        self.model.vis.quality.offsamples = 0
+        try:
+            self.sensor = mujoco.Renderer(self.model, height=480, width=640)
+        finally:
+            self.model.vis.quality.offsamples = samples
         video_out = getattr(args, "video_out", None)
         self.demo = mujoco.Renderer(self.model, height=480, width=640) if args.gif_out or video_out else None
         self.video_writer = None
@@ -99,15 +106,32 @@ class Experiment:
         self.other_adr = self.model.joint(f"button_slide_{other}").qposadr[0]
         self.face_id = self.model.geom(f"button_face_{args.button_direction}").id
         self.max_stroke = self.max_other = self.max_drift = self.max_tilt = 0.0
+        self.base_drift_origin = np.zeros(2)
         self.min_height = float(self.data.body("pelvis").xpos[2])
 
-    def tick(self):
+    def before_approach(self):
+        """既定はボタン前から開始。歩行を接続する実験はこのフックを使う。"""
+
+    def step_physics(self):
         mujoco.mj_step(self.model, self.data)
+
+    def track_base_motion(self):
+        if not self.args.fixed_base:
+            self.max_drift = max(self.max_drift, float(np.linalg.norm(
+                self.data.qpos[:2] - self.base_drift_origin)))
+
+    def decorate_video_frame(self, canvas):
+        """歩行を接続する実験用の追加表示。"""
+
+    def control_status(self):
+        return "Fixed pelvis" if self.args.fixed_base else "Free standing / position servos"
+
+    def tick(self):
+        self.step_physics()
         self.max_stroke = max(self.max_stroke, float(self.data.qpos[self.stroke_adr]))
         self.max_other = max(self.max_other, float(self.data.qpos[self.other_adr]))
         self.min_height = min(self.min_height, float(self.data.body("pelvis").xpos[2]))
-        if not self.args.fixed_base:
-            self.max_drift = max(self.max_drift, float(np.linalg.norm(self.data.qpos[:2])))
+        self.track_base_motion()
         tilt = math.degrees(math.acos(float(np.clip(self.data.body("pelvis").xmat[8], -1, 1))))
         self.max_tilt = max(self.max_tilt, tilt)
         if self.max_stroke >= 0.9 * self.args.stroke:
@@ -144,7 +168,8 @@ class Experiment:
         font = ImageFont.truetype(font_path, 17)
         small = ImageFont.truetype(font_path, 14)
         dx, dy, dz = self.args.offset
-        draw.text((15, 8), f"G1 / RGB-D alignment / {self.args.button_direction.upper()} button", font=font, fill="white")
+        title = getattr(self.args, "demo_title", "G1 / RGB-D alignment")
+        draw.text((15, 8), f"{title} / {self.args.button_direction.upper()} button", font=font, fill="white")
         draw.text((15, 33), f"Arrival offset: X {dx*1000:+.0f} / Y {dy*1000:+.0f} / Z {dz*1000:+.0f} mm   yaw {self.args.yaw_deg:+.0f} deg", font=small, fill="#a8c8ef")
         draw.text((655, 70), "RGB-D / last detection", font=font, fill="white")
         if self.last_rgb is not None:
@@ -159,10 +184,11 @@ class Experiment:
                  "Tip error: --" if self.last_error is None else f"Tip error: {self.last_error*1000:.1f} mm",
                  f"Button stroke: {self.max_stroke*1000:.1f} / {self.args.stroke*1000:.1f} mm",
                  "Detector: YOLO" if self.detector else "Detector: segmentation (test)",
-                 "Fixed pelvis" if self.args.fixed_base else "Free standing / position servos"]
+                 self.control_status()]
         for i, line in enumerate(lines):
             draw.text((650, 355 + i * 24), line, font=small,
                       fill="#49ff85" if "error" in line else "white")
+        self.decorate_video_frame(canvas)
         if self.video_writer is not None:
             import cv2
             self.video_writer.write(cv2.cvtColor(np.asarray(canvas), cv2.COLOR_RGB2BGR))
@@ -296,6 +322,7 @@ class Experiment:
         initial_error = None
         alignment_duration = None
         try:
+            self.before_approach()
             self.hold(0.5)
             self.phase = "re-detect"
             first = self.observe()

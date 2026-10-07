@@ -38,6 +38,7 @@ def build_model(model_path: Path, button_x: float, button_y: float, height: floa
                 panel_yaw_deg: float = 0.0,
                 rgbd_position: str = "-0.10 -0.45 1.14",
                 rgbd_fovy: float = 60.0,
+                elevator_front: bool = False,
                 ) -> tuple[mujoco.MjModel, np.ndarray]:
     """G1 29DoF モデルに、写真を参考にした上下の可動ボタンを追加する。"""
     stroke = validate_button_stroke(stroke)
@@ -88,6 +89,17 @@ def build_model(model_path: Path, button_x: float, button_y: float, height: floa
                   pos="0.5 1.0 2.0", dir="-0.2 -0.5 -1", diffuse="0.4 0.4 0.4")
     ET.SubElement(world, "geom", name="floor", type="plane", size="0 0 0.05",
                   rgba="0.2 0.2 0.2 1")
+    if elevator_front:
+        # 押下ルーチンと同じパネルの隣に扉を置く。扉の開閉はこの試験の対象外。
+        for name, y, half_y, color in (
+                ("elevator_door_left", 0.37, 0.26, "0.58 0.62 0.65 1"),
+                ("elevator_door_right", 0.90, 0.26, "0.55 0.59 0.62 1"),
+                ("elevator_frame_left", 0.07, 0.035, "0.20 0.23 0.25 1"),
+                ("elevator_frame_right", 1.20, 0.035, "0.20 0.23 0.25 1")):
+            ET.SubElement(world, "geom", name=name, type="box", pos=f"0.48 {y} 1.05",
+                          size=f"0.035 {half_y} 1.05", rgba=color)
+        ET.SubElement(world, "geom", name="elevator_header", type="box",
+                      pos="0.48 0.635 2.14", size="0.035 0.60 0.04", rgba="0.20 0.23 0.25 1")
     angle = math.radians(panel_yaw_deg) / 2
     world = ET.SubElement(world, "body", name="elevator_panel_frame",
                           pos=" ".join(map(str, panel_offset)),
