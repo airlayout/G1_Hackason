@@ -97,6 +97,39 @@ class TestFindButtons(unittest.TestCase):
             self.find([(0.0, 0.05, "up")])
 
 
+class TestYoloCandidates(unittest.TestCase):
+    """YOLO の検出（クラス up / down）を、ボタンの候補（枠に内接する楕円の面）に変える。"""
+
+    def test_converts_detections(self) -> None:
+        from types import SimpleNamespace
+
+        from common.elevator_buttons import YoloButtonDetector
+
+        class FakeYolo:
+            def __init__(self) -> None:
+                self.frames: list[np.ndarray] = []
+
+            def detect(self, frame: np.ndarray) -> list[SimpleNamespace]:
+                self.frames.append(frame)
+                return [SimpleNamespace(class_name="up", confidence=0.9, bbox=(100.0, 50.0, 140.0, 80.0)),
+                        SimpleNamespace(class_name="down", confidence=0.8, bbox=(100.5, 150.0, 139.5, 180.0)),
+                        SimpleNamespace(class_name="other", confidence=0.7, bbox=(0.0, 0.0, 10.0, 10.0))]
+
+        det = YoloButtonDetector.__new__(YoloButtonDetector)
+        det._det = FakeYolo()
+        rgb = np.zeros((H, W, 3), np.uint8)
+        rgb[..., 0] = 200  # R
+        cands = det.detect(rgb)
+        self.assertEqual([c.arrow for c in cands], ["up", "down", None])
+        self.assertEqual(cands[1].bbox, (100, 150, 140, 180))
+        self.assertEqual(cands[0].source, "yolo")
+        # 面は枠に内接する楕円（面積 ≒ π × 20 × 15）
+        self.assertAlmostEqual(int(cands[0].mask.sum()), np.pi * 20 * 15, delta=40)
+        self.assertTrue(cands[0].mask[65, 120] and not cands[0].mask[50, 100])
+        # Perception の YoloDetector には BGR で渡す
+        self.assertEqual(int(det._det.frames[0][0, 0, 2]), 200)
+
+
 class TestSelectAndTrack(unittest.TestCase):
     def b(self, y: float, z: float, arrow: str | None = None) -> Button3D:
         return Button3D(np.array([0.3, y, z]), 0.035, arrow, (0, 0, 1, 1), 100)

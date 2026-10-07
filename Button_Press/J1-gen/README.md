@@ -43,6 +43,8 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `locate_sim.py` — 頭カメラの画像と深度からボトルの位置を求め、正解と比べる
   - `press_bottle_sim.py` — 全体をつなぐスクリプト（MuJoCo、同じプロセス）
   - `sim_robot_server.py` — ループバックの模擬ロボット（実機と同じ DDS とカメラ。故障をわざと起こせる）
+  - `make_button_dataset.py` — ボタンの YOLO の学習データを、Yada の評価環境の画像から作る（正解の枠は自動）
+  - `train_button_yolo.py` — ボタンの YOLO（クラス up / down）を学習する
 - `contest_agent/` — Yada の評価環境（`Button_Press/Yada/contest`）で動かすエージェント（中身は `common/elevator_press.py`）
   - `rehearsal.py` — 実機日のリハーサル（当日手順書の段階0〜6と故障の場面を、模擬ロボットで通しで実行）
 - `real/` — 実機用
@@ -364,3 +366,27 @@ $P Button_Press/Yada/contest/evaluate_dds.py --seeds practice \
 
 まだ確かめていないこと: Isaac Sim、練習用以外の種、実機。
 
+### ボタンの YOLO
+
+公開されているエレベーターボタンの YOLO（Kshaw17-web/End-to-end-elevator-button-detection）は使わない。
+リポジトリにライセンスの記載が無く、使用の許可が無いため（2026-10-07 確認。GitHub の API でも license が null。
+学習データの Roboflow のデータセット `acc-stwam/elevator-button-jinxe-qb0gs` は CC BY 4.0）。
+代わりに、評価環境の画像から自分で学習する（元にするのはリポジトリの `yolo26n.pt`。Ultralytics、AGPL-3.0）。
+
+```bash
+$P Button_Press/J1-gen/sim/make_button_dataset.py      # 学習データ（正解の枠は MuJoCo のセグメンテーションから自動）
+$P Button_Press/J1-gen/sim/train_button_yolo.py        # 学習 → _local/button_press/button_yolo/weights/best.pt
+J1GEN_BUTTON_DETECTOR=yolo $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent --seeds practice
+```
+
+- クラスは `up`（▲）と `down`（▼）。一般用か車いす用かは、YOLO ではなく位置の並びで決める
+- 学習データは、試行の種ごとの乗り場の違い、半分は realistic、腰の角度の違い、3 枚に 1 枚は右腕が写り込んだ画像
+- ⚠️ シミュレーションの画像だけで学習した重みは、本物のエレベーターではそのままでは使えない見込み。
+  実機の日に `real/record.py` で本物のボタンを撮り、手でラベル（`up` / `down` の枠）を付けて学習データに足し、学習し直す
+
+確かめたこと（2026-10-07）:
+- 学習データ: `--seeds 300 --start 1000`（練習用の種 0〜19 と重ならない）で 300 枚（学習 270、検証 30）、枠 1,174 個。
+  このノート PC（12 コア）で 2 分 48 秒。手に隠れたボタンの切れ端（幅か高さが 8 px 未満）の枠が 0 個であることを数えて確かめた
+- YOLO の結果をボタンの候補に変える部分: テスト（偽の検出器）。重みの読み込みと推論が動くことも確かめた
+- **学習は終わっていない**: GPU が無く CPU で 1 エポック 3〜5 分（40 エポックで 2〜3 時間の見込み）。2 エポックで止めたので、
+  使える重みはまだ無い。`detector: yolo` での評価もまだ（今の評価はすべて classic）
