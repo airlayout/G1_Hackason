@@ -79,3 +79,8 @@ Navigation/nav2_stable/0911_robag/
 Navigation/nav2_stable/0923_rosbag/
 Navigation/nav2_stable/maps/clouds/
 Navigation/*.pcd
+
+# VLA: Rerun の .rrd は 68MB と重い。VLA/sim/scripts/make_rrd.py で mp4 から作り直せる
+VLA/**/*.rrd
+# VLA: 可視化用の venv（pip install -r VLA/sim/requirements-viewer.txt で再生成できる）
+VLA/sim/.venv-viewer/
