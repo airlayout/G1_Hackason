@@ -1,0 +1,6 @@
+# 結果の可視化（make_rrd.py / make_contact_sheets.py）だけに要る依存。sim の実行（omen 側）には不要。
+# rerun-sdk は 0.38.1 で確認した。
+av
+numpy
+pillow
+rerun-sdk==0.38.1
