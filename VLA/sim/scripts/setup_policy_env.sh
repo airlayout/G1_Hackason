@@ -6,15 +6,22 @@
 # 入らないので外す（その代わり patch_no_flash_attn.py で SDPA に切り替える）。
 # 以後この venv では `uv sync` を再実行しない（cu126 に戻る）。実行は venv の python を直接使う。
 #
-# 使い方: bash setup_policy_env.sh
-#   TORCH_INDEX=https://download.pytorch.org/whl/cu128   torch の取得先（GPU に合わせて変える）
+# 使い方: bash setup_policy_env.sh        （前提: uv が PATH にある。無ければ https://docs.astral.sh/uv/ ）
+#   TORCH_BACKEND=cu128   torch の CUDA ビルド（GPU に合わせて変える。sync と入れ替えの両方に使う）
+#   TORCH_INDEX=...       torch の取得先（既定は https://download.pytorch.org/whl/$TORCH_BACKEND）
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=env.sh
 source "$HERE/env.sh"
 require_groot_dir
 
-TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/cu128}"
+if ! command -v uv >/dev/null 2>&1; then
+  echo "[error] uv が見つかりません。https://docs.astral.sh/uv/ の手順で入れてください（~/.local/bin に入る）。" >&2
+  exit 1
+fi
+
+TORCH_BACKEND="${TORCH_BACKEND:-cu128}"
+TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/$TORCH_BACKEND}"
 TORCH_VER="${TORCH_VER:-2.7.1}"
 TORCHVISION_VER="${TORCHVISION_VER:-0.22.1}"
 
@@ -25,7 +32,7 @@ if [ "$HEAD_COMMIT" != "$GROOT_COMMIT" ]; then
   echo "[warn] 動作確認したコミット $GROOT_COMMIT と異なります（HEAD=$HEAD_COMMIT）。パッチが当たらないことがあります。" >&2
 fi
 
-UV_TORCH_BACKEND=cu128 uv sync --python 3.10 --extra gpu --no-install-package flash-attn
+UV_TORCH_BACKEND="$TORCH_BACKEND" uv sync --python 3.10 --extra gpu --no-install-package flash-attn
 uv pip install --python .venv/bin/python --reinstall-package torch --reinstall-package torchvision \
   "torch==$TORCH_VER" "torchvision==$TORCHVISION_VER" --index-url "$TORCH_INDEX"
 

@@ -18,10 +18,11 @@ sim/
 
 ## 動かす計算機の条件
 
-動作を確認したのは次の 1 台だけ（それ以外は未確認）。
+動作を確認したのは次の 1 台だけ（それ以外は未確認）。この PC を、以降の文書では **omen**（ssh の接続名）と呼ぶ。
 
-- Ubuntu 24.04、NVIDIA RTX 5060 Ti 16GB（sm_120）、RAM 15GB、nvcc なし、sudo なし。
-- GPU 世代が違えば、`setup_policy_env.sh` の `TORCH_INDEX`（既定は cu128）を合わせる。
+- omen: Ubuntu 24.04、NVIDIA RTX 5060 Ti 16GB（sm_120）、RAM 15GB、nvcc なし、sudo なし。
+- `uv` が要る（無ければ [公式の手順](https://docs.astral.sh/uv/) で `~/.local/bin` に入れる）。
+- GPU 世代が違えば、`setup_policy_env.sh` の `TORCH_BACKEND`（既定は cu128）を合わせる。例: `TORCH_BACKEND=cu126 bash setup_policy_env.sh`。
 - 3B 級の VLA は RAM も要る。pi0.5 は RAM 15GB で落ちた（[FAILURES.md](../FAILURES.md)）。
 
 ## 1. Isaac-GR00T を用意する
@@ -38,7 +39,7 @@ git -C ~/Isaac-GR00T checkout 7d5a455add459e870c2e4e4569006acace432d49  # 動作
 
 ```bash
 cd VLA/sim/scripts
-bash install_git_lfs.sh        # git-lfs が無いとき（sudo 不要。~/.local/bin に入る）
+bash install_git_lfs.sh        # git-lfs が無いとき（sudo 不要。~/.local/bin に入る。版と SHA-256 を固定。Linux x86_64 のみ）
 bash setup_policy_env.sh       # 方策側の venv（torch は GPU に合わせた版へ入れ替え、GPU 計算まで確認する）
 bash setup_wbc_sim.sh          # sim 側の venv（公式スクリプトを呼ぶ）
 python3 -I patch_no_flash_attn.py   # flash-attn が無いときだけ。SDPA に切り替える（冪等）
@@ -60,7 +61,8 @@ CKPT=nvidia/GR00T-N1.6-G1-PnPAppleToPlate bash run_server.sh
 N_EP=1 MAX_STEPS=1440 bash run_client.sh
 ```
 
-- サーバーは `POLICY_HOST`（既定 127.0.0.1）でだけ待ち受ける。認証は無いので、広げないこと。
+- サーバーは `POLICY_BIND_HOST`（既定 127.0.0.1）でだけ待ち受ける。認証は無いので、広げないこと。
+  別の PC の sim から使うときだけ、サーバー側で `POLICY_BIND_HOST=0.0.0.0`、sim 側で `POLICY_HOST=<サーバーの IP>` を指定する（未確認）。
 - 初回は checkpoint の取得で数分かかる（cloudwalk で約 355 秒）。
 - 結果は、動画と、標準出力の成功率だけ。action / state は残らない。
 
@@ -82,7 +84,7 @@ scp -r omen:/tmp/sim_eval_videos_gr00tlocomanip_g1_sim/ ./sim_videos/
 
 - 画面中央のタブでエピソードを切り替える（✅ 成功 / ❌ 失敗 / 📋 まとめ）。時間軸は `sim_time`。
 - `.rrd` は 68MB あり、リポジトリには入れていない（`.gitignore` 済み）。上のコマンドで作り直せる。
-  作った 1 本は、omen の `~/vla_results/g1_compare_tabs.rrd` にもある。
+  作った 1 本は、omen の `~/vla_results/g1_compare_tabs.rrd` にもある（omen に入れる人だけ取れる）。
 - すでに Rerun が起動していると、`rerun` コマンドは新しい窓を作らず、起動中の窓に流し込んで終わる。別窓で開くなら `--port auto` を付ける。
 - 動画の一覧だけ見たいときは `make_contact_sheets.py --videos-dir DIR --out-dir DIR`。
 

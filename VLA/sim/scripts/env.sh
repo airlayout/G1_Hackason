@@ -6,7 +6,10 @@
 GROOT_DIR="${GROOT_DIR:-$HOME/Isaac-GR00T}"
 # 動作を確認した Isaac-GR00T のコミット（setup_policy_env.sh が一致を警告する）。
 GROOT_COMMIT="${GROOT_COMMIT:-7d5a455add459e870c2e4e4569006acace432d49}"
-# 方策サーバー（ZMQ）の待ち受け先。
+# 方策サーバー（ZMQ）。認証が無いので、既定は同じ PC からしか届かない 127.0.0.1。
+#   POLICY_BIND_HOST  サーバーが待ち受けるアドレス（run_server.sh）。別の PC から使うときだけ 0.0.0.0 などにする
+#   POLICY_HOST       クライアントが接続するサーバーのアドレス（run_client.sh / run_eval.sh）
+POLICY_BIND_HOST="${POLICY_BIND_HOST:-127.0.0.1}"
 POLICY_HOST="${POLICY_HOST:-127.0.0.1}"
 POLICY_PORT="${POLICY_PORT:-5555}"
 # 既定の checkpoint。cloudwalk 版に切り替えるなら CKPT=cloudwalk-research/GR00T-N1.6-G1-PnPAppleToPlate。
