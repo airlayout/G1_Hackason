@@ -19,3 +19,7 @@ lerobot方式（独自振り付け）はまだ未着手。
 ## Pepper VLM Brain snapshot
 
 [pepper_vlm_brain/](pepper_vlm_brain/README.md) にPepper向けVLM Brainのtracked source snapshotを収録しています。G1統合デモとは独立しており、source SHA・Ubuntu利用の前提・未検証事項は同READMEを参照してください。
+
+## Pepper 認識アプリ
+
+[pepper_app/](pepper_app/README.md) は、カメラの映像から人・椅子・手の動き（手を挙げる・振る）を CPU の YOLO で認識し、画面で割り当てた操作（見る・手を振る）を NAOqi API（ポート 9559）で Pepper に送る Streamlit アプリです。回る・進むはありません。

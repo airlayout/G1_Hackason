@@ -1,0 +1,9 @@
+.venv/
+.cache/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.pt
+logs/
+rules/rules.yaml
+.coverage

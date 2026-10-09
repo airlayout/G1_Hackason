@@ -1,0 +1,33 @@
+# 既定の割り当て。上の行ほど優先。画面の「割り当て」で編集すると rules/rules.yaml に保存される。
+# 操作は look（その方向を見る）/ look_front（正面を見る）/ wave（手を振る）の 3 つだけ。
+rules:
+  - trigger: wave
+    action: wave
+    cooldown_s: 10.0
+    enabled: true
+    note: 手を振られたら振り返す
+  - trigger: both_hands_up
+    action: wave
+    cooldown_s: 10.0
+    enabled: true
+    note: バンザイにも手を振る
+  - trigger: person_appeared
+    action: look
+    cooldown_s: 3.0
+    enabled: true
+    note: 人が現れたらその人を見る
+  - trigger: person_visible
+    action: look
+    cooldown_s: 1.5
+    enabled: false
+    note: 人を目で追い続ける（有効にすると首がよく動く）
+  - trigger: seen:chair
+    action: look
+    cooldown_s: 30.0
+    enabled: true
+    note: 椅子を見つけたら見る
+  - trigger: person_left
+    action: look_front
+    cooldown_s: 5.0
+    enabled: true
+    note: 誰もいなくなったら正面に戻る

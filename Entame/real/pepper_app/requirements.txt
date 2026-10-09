@@ -1,0 +1,14 @@
+# Pepper recognition app (CPU only). Install torch from the CPU index first; see setup_ubuntu.sh.
+#   pip install torch==2.9.1 torchvision==0.24.1 --index-url https://download.pytorch.org/whl/cpu
+torch==2.9.1
+torchvision==0.24.1
+ultralytics==8.4.146
+# ByteTrack (person IDs across frames) needs lap.
+lap==0.5.13
+streamlit==1.65.0
+PyYAML==6.0.3
+# NAOqi API client (tcp port 9559).
+qi==3.1.5
+opencv-python==4.13.0.92
+Pillow==12.1.0
+pytest==9.0.2
