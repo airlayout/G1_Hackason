@@ -29,6 +29,24 @@
 
 ROS 2 runnerは `/opt/ros/jazzy/setup.bash` と `/tmp/pepper_naoqi_ws.BwBAe7/install2/setup.bash` を参照します。後者は開発環境固有のoverlayで、このsnapshotにはありません。コードを変更していないため、Ubuntu上でそのまま実行可能とは保証しません。HTTP Android bridgeの経路とROS 2 head/speechの経路は別の実装です。
 
+## Ubuntu（ゲーミングPC）setup
+
+Windows用のrequirementsとは別に、Ubuntu x86_64 / Python 3.12 / NVIDIA GPU用のファイルを追加しました（2026-10-09）。Windows用ファイルは変更していません。
+
+|ファイル|内容|
+|---|---|
+|`requirements-ubuntu.txt`|Windows版と同じversion。torchはcu128 index（RTX 50系のsm_120はCUDA 12.8以上が必要）。Windowsで `.venv36`（YOLO）と `.venv4b`（bitsandbytes）に分けていたものも1つの `.venv` に入れる|
+|`requirements-ubuntu-lock.txt`|上をLinux x86_64 / Python 3.12向けに `uv pip compile` で解決したlock|
+|`setup_ubuntu.sh`|`.venv` 作成、lockのinstall、`pip check`、CUDA確認、YOLO11n重みのSHA256検証。`--models 2b\|4b\|all` でQwenの固定revisionも取得（Windows専用の `download_model4b.py` の代わり）|
+
+```bash
+./setup_ubuntu.sh              # 2Bは初回のQwenVLM.load()で自動取得される
+./setup_ubuntu.sh --models 2b  # 先に取得する（2Bは4.27 GB、4Bは8.89 GB）
+.venv/bin/python -m pytest
+```
+
+確認できているのは、lockがLinux x86_64 / Python 3.12向けに解決できることまでです。Ubuntu実機へのinstallは未実施です。ROS 2（rclpy / cv_bridge）はvenvに入れません。capture workerは従来どおり `/usr/bin/python3` で動かします（ROS 2 JazzyのC拡張はsystemのnumpy 1.xでbuildされています）。`adapters/camera_webcam.py` はWindowsのcamera backend（DirectShow / MSMF）しか試さないため、Ubuntuでは開けません。
+
 ## Pepper関連entry points
 
 |ファイル|役割・実装上の条件|
@@ -47,7 +65,7 @@ ROS 2 runnerは `/opt/ros/jazzy/setup.bash` と `/tmp/pepper_naoqi_ws.BwBAe7/ins
 
 ## Provenance
 
-source commitのtracked files 395件を `git archive` によりsnapshotとして取り込みました。別repositoryのGit historyはmergeしていません。コード本体・設定・requirements・tests・既存reportsはsource commitから変更していません。このdirectory内の意図的な変更は本 `README.md` のみです。sourceのローカル未コミット変更やuntracked filesは取り込んでいません。
+source commitのtracked files 395件を `git archive` によりsnapshotとして取り込みました。別repositoryのGit historyはmergeしていません。コード本体・設定・requirements・tests・既存reportsはsource commitから変更していません。このdirectory内の意図的な変更は本 `README.md` と、後から追加したUbuntu用の3ファイル（`requirements-ubuntu.txt` / `requirements-ubuntu-lock.txt` / `setup_ubuntu.sh`）のみです。sourceのローカル未コミット変更やuntracked filesは取り込んでいません。
 
 README以外の全394ファイルをsource archiveとbyte単位で比較し、一致を確認しました。pytest / full testはコード未変更のため今回実施しません。
 
