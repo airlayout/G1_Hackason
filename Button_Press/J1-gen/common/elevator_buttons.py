@@ -195,6 +195,9 @@ class YoloButtonDetector:
         self._det = yolo.YoloDetector(model_name=str(weights), classes=None,
                                       confidence_threshold=float(cfg.get("confidence", 0.4)),
                                       device=str(cfg.get("device", "auto")))
+        # 最初の 1 回の推論だけが遅い（2026-10-12、ノート PC の CPU で 1.1 秒。2 回目からは約 0.17 秒）。
+        # 実時間で動く模擬 G1・実機では、その間ロボットが前の指令のまま待つので、試行の前に済ませておく
+        self._det.detect(np.zeros((480, 640, 3), np.uint8))
 
     def detect(self, rgb: np.ndarray) -> list[Candidate2D]:
         h, w = rgb.shape[:2]
