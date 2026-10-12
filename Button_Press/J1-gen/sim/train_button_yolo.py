@@ -2,8 +2,13 @@
 
     P=G1_HuggingFace/venv/bin/python
     $P Button_Press/J1-gen/sim/make_button_dataset.py          # 先に学習データを作る
-    $P Button_Press/J1-gen/sim/train_button_yolo.py            # 学習（GPU が無ければ CPU。30〜60 分ほど）
+    $P Button_Press/J1-gen/sim/train_button_yolo.py            # 学習（GPU が無ければ CPU）
     $P Button_Press/J1-gen/sim/train_button_yolo.py --epochs 5 --fraction 0.2   # 試しに短く
+    # GPU を選ぶ（nvidia-smi の番号にそろえてから。PyTorch の既定の番号は nvidia-smi と違うことがある）
+    CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 $P Button_Press/J1-gen/sim/train_button_yolo.py --device 0
+
+かかった時間（40 エポック、300 枚）: RTX 5060 Ti で 1.4 分。CPU（ノート PC、12 コア）では 1 エポック 3〜5 分で、
+2〜3 時間かかる見込み（2026-10-12。GPU で学習した手順は README の「GPU のある PC で学習する」）。
 
 学習した重みは _local/button_press/button_yolo/weights/best.pt に写す（git の対象外）。
 configs/elevator.yaml の detector を yolo にすると、エージェントがこの重みを使う

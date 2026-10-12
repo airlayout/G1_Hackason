@@ -390,5 +390,53 @@ J1GEN_BUTTON_DETECTOR=yolo $P Button_Press/Yada/contest/evaluate.py --agent Butt
 - 学習データ: `--seeds 300 --start 1000`（練習用の種 0〜19 と重ならない）で 300 枚（学習 270、検証 30）、枠 1,174 個。
   このノート PC（12 コア）で 2 分 48 秒。手に隠れたボタンの切れ端（幅か高さが 8 px 未満）の枠が 0 個であることを数えて確かめた
 - YOLO の結果をボタンの候補に変える部分: テスト（偽の検出器）。重みの読み込みと推論が動くことも確かめた
-- **学習は終わっていない**: GPU が無く CPU で 1 エポック 3〜5 分（40 エポックで 2〜3 時間の見込み）。2 エポックで止めたので、
-  使える重みはまだ無い。`detector: yolo` での評価もまだ（今の評価はすべて classic）
+- CPU（このノート PC）では 1 エポック 3〜5 分（40 エポックで 2〜3 時間）かかるので、GPU で学習した（次）
+
+#### GPU のある PC で学習する（2026-10-12、RTX 5060 Ti）
+
+班員の PC（Ubuntu 22.04、Python 3.10）に SSH して学習した。その PC で変えたのは、作業用のフォルダと venv だけ。
+
+```bash
+# このノート PC: 学習に要るものだけをまとめる（73 MB）
+tar czf button_yolo_bundle.tgz Button_Press/J1-gen/sim/train_button_yolo.py Button_Press/J1-gen/yolo26n.pt \
+    _local/button_press/button_yolo/dataset
+# GPU の PC: 展開して、data.yaml の path をその PC の場所に直し、venv に入れる（約 7 GB）
+python3 -m venv ~/yolo_env && ~/yolo_env/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+~/yolo_env/bin/pip install ultralytics
+# 学習（GPU の番号は下の注意を参照）
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 ~/yolo_env/bin/python \
+    Button_Press/J1-gen/sim/train_button_yolo.py --device 0
+# できた _local/button_press/button_yolo/weights/best.pt を、このノート PC の同じ場所に写す
+```
+
+- ⚠️ **GPU の番号が nvidia-smi と PyTorch で逆だった**: nvidia-smi では 0 = GTX 1660 Ti、1 = RTX 5060 Ti だが、
+  PyTorch の既定（速い順）では 0 = 5060 Ti。`CUDA_DEVICE_ORDER=PCI_BUS_ID` で nvidia-smi と同じ番号にそろえてから選ぶ
+- RTX 50 系（Blackwell）には CUDA 12.8 版の torch（`cu128`）が要る
+- WSL2 からはその PC に届かなかったので、ファイルの受け渡し（scp）は Windows の PowerShell から
+  `\\wsl.localhost\Ubuntu\home\...` のパスで行った
+- 後片付け: `rm -rf ~/yolo_env ~/G1_Hackason ~/.cache/pip`
+
+結果（40 エポック、batch 16）:
+- **1.4 分**（1 エポック約 1.2 秒）。GPU のメモリは 2.7 GB
+- 検証用（30 枚、枠 119 個）: mAP50 **0.995**、mAP50-95 0.981、適合率 0.998、再現率 1.0。▲▼ の取り違え・見落とし 0
+- 学習・検証の損失はどちらも最後まで下がっていて、過学習の様子は無い
+- 確信度が低めだったのは、小さい車いす用の ▼ と、手の近くのボタン（0.7〜0.9）
+- ⚠️ この検証用の 30 枚は、分け方の誤りで **basic だけ**だった（`make_button_dataset.py` を直した。
+  学習データを作り直して学習し直せば、realistic の画像での成績が分かる）
+
+評価環境（`J1GEN_BUTTON_DETECTOR=yolo`、2026-10-12）:
+
+| 評価セット | 成功 | 点灯までの平均 | 壁・柱との接触力 |
+|---|---|---|---|
+| smoke | 2 / 2 | — | 0 N |
+| realistic（練習用の 20 試行） | 20 / 20 | 9.05 秒（classic 9.04 秒） | すべて 0 N |
+
+- 試行ごとの時間も classic とほぼ同じ。評価環境では、どちらの見つけ方でも結果は変わらない
+- ⚠️ **YOLO で並列に評価すると、メモリが足りなくなる**: 1 試行のプロセスが約 2.5 GB（classic は約 1.7 GB）。
+  このノート PC（WSL2、メモリ 15 GB + スワップ 4 GB）で `--workers 11` にすると WSL2 ごと落ちた。
+  `--workers 4` なら落ちず、速かった（16 分 → 5 分）:
+
+```bash
+J1GEN_BUTTON_DETECTOR=yolo OMP_NUM_THREADS=2 $P Button_Press/Yada/contest/evaluate.py \
+    --agent Button_Press/J1-gen/contest_agent --seeds practice --set realistic --report --workers 4
+```
