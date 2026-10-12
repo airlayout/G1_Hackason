@@ -60,6 +60,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `fk_check.py` — FK の確認（指先の位置の表示、頭カメラの画像への投影、指先の点を試しに変える）
   - `calibrate.py` — 較正（カメラで求めた位置と、指先で触れた位置の差を複数か所で取る）
   - `press_bottle.py` — 全体をつなぐスクリプト（実機。既定は dry-run）
+  - `check_button_photos.py` — 撮った写真で、呼びボタンを classic と YOLO で見つけられるかを並べて比べる
 - `configs/` — 設定ファイル。当日はコードを編集せず、ここだけを変える
   - `robot.yaml` — モデルのパス、頭カメラの取り付け位置
   - `arm.yaml` — 経路（sim / arm_sdk / lowcmd）、NIC 名、ゲイン、安全の上限、重力補償
@@ -384,7 +385,8 @@ J1GEN_BUTTON_DETECTOR=yolo $P Button_Press/Yada/contest/evaluate.py --agent Butt
 - クラスは `up`（▲）と `down`（▼）。一般用か車いす用かは、YOLO ではなく位置の並びで決める
 - 学習データは、試行の種ごとの乗り場の違い、半分は realistic、腰の角度の違い、3 枚に 1 枚は右腕が写り込んだ画像
 - ⚠️ シミュレーションの画像だけで学習した重みは、本物のエレベーターではそのままでは使えない見込み。
-  実機の日に `real/record.py` で本物のボタンを撮り、手でラベル（`up` / `down` の枠）を付けて学習データに足し、学習し直す
+  実機の日に `real/record.py` で本物のボタンを撮り、`real/check_button_photos.py` で確かめる。見つけられなければ、
+  手でラベル（`up` / `down` の枠）を付けて学習データに足し、学習し直す
 
 確かめたこと（2026-10-07）:
 - 学習データ: `--seeds 300 --start 1000`（練習用の種 0〜19 と重ならない）で 300 枚（学習 270、検証 30）、枠 1,174 個。
@@ -440,3 +442,31 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 ~/yolo_env/bin/python \
 J1GEN_BUTTON_DETECTOR=yolo OMP_NUM_THREADS=2 $P Button_Press/Yada/contest/evaluate.py \
     --agent Button_Press/J1-gen/contest_agent --seeds practice --set realistic --report --workers 4
 ```
+
+#### 撮った写真で確かめる（`real/check_button_photos.py`）
+
+実機の日に撮った写真で、classic と YOLO がボタンを見つけられるかを並べて比べる。シミュレーションの画像だけで
+学習した重みが本物のボタンで使えるかは、これで確かめる。
+
+```bash
+$P Button_Press/J1-gen/real/check_button_photos.py _local/button_press/recordings/<日時>_button   # 実機の収録
+$P Button_Press/J1-gen/real/check_button_photos.py ~/photos/elevator/                           # ただの写真のフォルダ
+```
+
+- 出力は `_local/button_press/button_check/<日時>/`: 1 枚ごとに左が classic・右が YOLO の画像（緑 = ▲、赤 = ▼、
+  黄 = 記号を読めない）と、`summary.csv`
+- 実機の収録（`real/record.py`）で深度と腰の角度があれば、▲▼ の 1 組を選ぶ（押す相手を決める）ところまで試す
+- 正解のラベル（YOLO の形式。`images/` と同じ並びの `labels/` の .txt）があれば、正解と比べて数える
+  （記号まで正しい・▲▼ の取り違え・見落とし・余分）。手でラベルを付けた実機の写真でも、同じように数えられる
+- `--every N` で N 枚に 1 枚、`--no-yolo` で classic だけ、`--confidence` で YOLO の確信度の下限を変える
+
+シミュレーションの検証用の 30 枚（枠 119 個。車いす用も含む）で試した結果（2026-10-12、9 秒）:
+
+| | 記号まで正しい | ▲▼ の取り違え・読めない | 見落とし | 余分 |
+|---|---|---|---|---|
+| classic | 97（82%） | 13 | 9 | 25 |
+| YOLO | 119（100%） | 0 | 0 | 1 |
+
+classic の余分は、ほとんどが白い腕（明るく色が無い）。小さい車いす用のボタンの記号も読めないことが多い。
+それでも評価環境で classic が 20 / 20 なのは、深度での大きさ・柱ごとの並び・3 フレームの確認で、
+一般用の ▲▼ の 1 組だけが残るため。

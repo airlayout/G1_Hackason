@@ -142,6 +142,78 @@ class TestYoloCandidates(unittest.TestCase):
         self.assertEqual(sum(s % 2 for s in val), 15)
 
 
+class TestCheckPhotos(unittest.TestCase):
+    """real/check_button_photos.py（撮った写真で確かめるツール）の、読み込みと数え方。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "real"))
+        import check_button_photos
+
+        cls.m = check_button_photos
+
+    def test_score_against_labels(self) -> None:
+        from common.elevator_buttons import Candidate2D
+
+        def cand(box: tuple[int, int, int, int], arrow: str | None) -> Candidate2D:
+            return Candidate2D(bbox=box, mask=np.zeros((1, 1), bool), arrow=arrow)
+
+        truth = [((10, 10, 30, 30), "up"), ((10, 50, 30, 70), "down"), ((100, 100, 120, 120), "up")]
+        cands = [cand((11, 10, 31, 30), "up"), cand((10, 51, 30, 71), None), cand((300, 300, 320, 320), "up")]
+        s = self.m.score_against(cands, truth)
+        self.assertEqual((s.correct, s.wrong_arrow, s.missed, s.extra), (1, 1, 1, 1))
+
+    def test_reads_yolo_labels_next_to_images(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as d:
+            img = Path(d) / "images" / "val" / "a.png"
+            img.parent.mkdir(parents=True)
+            (Path(d) / "labels" / "val").mkdir(parents=True)
+            (Path(d) / "labels" / "val" / "a.txt").write_text("1 0.5 0.25 0.1 0.2\n")
+            labels = self.m.read_yolo_labels(img, 200, 100)
+            self.assertEqual(len(labels), 1)
+            np.testing.assert_allclose(labels[0][0], (90.0, 15.0, 110.0, 35.0))
+            self.assertEqual(labels[0][1], "down")
+            self.assertIsNone(self.m.read_yolo_labels(Path(d) / "other" / "a.png", 200, 100))
+
+    def test_recording_with_depth_finds_pair(self) -> None:
+        """real/record.py の形式の収録から、深度・内部パラメータ・腰の角度を読み、▲▼ の 1 組まで選べる。"""
+        import tempfile
+        from pathlib import Path
+
+        from common.arm.types import JointState
+        from common.recording import RecordingWriter
+        from common.rgbd_protocol import Intrinsics, RgbdFrame
+
+        rgb, depth = scene([(0.0, 0.10, "up"), (0.0, 0.02, "down")])
+        bgr = np.ascontiguousarray(rgb[:, :, ::-1])
+        depth_u16 = np.round(depth / 0.001).astype(np.uint16)
+        frame = RgbdFrame(color_bgr=bgr, depth=depth_u16, depth_scale=0.001,
+                          intrinsics=Intrinsics(width=W, height=H, fx=F, fy=F, cx=W / 2, cy=H / 2),
+                          timestamp=1.0, frame_id=1)
+        z = np.zeros(29)
+        state = JointState(q=z, dq=z, motor_mode=np.ones(29, int), mode_machine=5, stamp=0.0)
+        with tempfile.TemporaryDirectory() as d:
+            w = RecordingWriter(Path(d), "button", {})
+            w.add_frame(bgr, depth_u16, 1.0, frame, state)
+            w.close()
+            photos = self.m.load_photos([w.dir], every=1)
+        self.assertEqual(len(photos), 1)
+        ph = photos[0]
+        self.assertAlmostEqual(float(ph.depth_m[0, 0]), WALL_X, delta=0.001)
+        self.assertEqual(ph.K[0, 0], F)
+        cfg = load_config("elevator.yaml")
+        finder = ButtonFinder(FacingCamera(), ClassicButtonDetector(cfg["classic"]), cfg)
+        self.assertTrue(self.m.try_pair(finder, ph).startswith("OK"))
+        ph.waist_q = None
+        self.assertIn("腰の角度が無い", self.m.try_pair(finder, ph))
+
+
 class TestSelectAndTrack(unittest.TestCase):
     def b(self, y: float, z: float, arrow: str | None = None) -> Button3D:
         return Button3D(np.array([0.3, y, z]), 0.035, arrow, (0, 0, 1, 1), 100)
