@@ -214,6 +214,76 @@ class TestCheckPhotos(unittest.TestCase):
         self.assertIn("腰の角度が無い", self.m.try_pair(finder, ph))
 
 
+class TestRealPhotoLabels(unittest.TestCase):
+    """real/label_button_photos.py（枠を付ける）と sim/merge_button_datasets.py（混ぜる）の、画面を使わない部分。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import sys
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        sys.path.insert(0, str(root / "real"))
+        sys.path.insert(0, str(root / "sim"))
+        import label_button_photos
+        import merge_button_datasets
+
+        cls.label = label_button_photos
+        cls.merge = merge_button_datasets
+
+    def test_edit_save_and_reload(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        rgb, _ = scene([(0.0, 0.10, "up"), (0.0, 0.02, "down")])
+        sheet = self.label.Sheet("a", np.ascontiguousarray(rgb[:, :, ::-1]))
+        self.label.prelabel(sheet, ClassicButtonDetector(load_config("elevator.yaml")["classic"]))
+        self.assertEqual(sorted(b.cls for b in sheet.boxes), ["down", "up"])
+        up = next(b for b in sheet.boxes if b.cls == "up")
+        cx, cy = (up.x1 + up.x2) / 2, (up.y1 + up.y2) / 2
+        self.assertTrue(sheet.toggle_at(cx, cy))
+        self.assertEqual(up.cls, "down")
+        self.assertTrue(sheet.delete_at(cx, cy))
+        self.assertFalse(sheet.add(10, 10, 12, 12, "up"))  # 小さすぎる枠は足さない
+        self.assertTrue(sheet.add(700, 500, 600, 400, "up"))  # 逆向きのドラッグ・画面の外も直す
+        self.assertEqual((sheet.boxes[-1].x2, sheet.boxes[-1].y2), (W, H))
+        with tempfile.TemporaryDirectory() as d:
+            self.label.save(sheet, Path(d))
+            again = self.label.Sheet("a", sheet.bgr)
+            self.assertTrue(self.label.load_saved(again, Path(d)))
+            self.assertEqual([b.cls for b in again.boxes], [b.cls for b in sheet.boxes])
+            np.testing.assert_allclose([(b.x1, b.y1, b.x2, b.y2) for b in again.boxes],
+                                       [(b.x1, b.y1, b.x2, b.y2) for b in sheet.boxes], atol=0.01)
+            self.label.remove(again, Path(d))
+            self.assertFalse((Path(d) / "labels" / "a.txt").exists())
+
+    def test_merge_splits_and_repeats_real(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        def put(folder: Path, split: str | None, names: list[str]) -> None:
+            img_dir = folder / "images" / split if split else folder / "images"
+            lab_dir = folder / "labels" / split if split else folder / "labels"
+            img_dir.mkdir(parents=True, exist_ok=True)
+            lab_dir.mkdir(parents=True, exist_ok=True)
+            for n in names:
+                (img_dir / f"{n}.png").write_bytes(b"x")
+                (lab_dir / f"{n}.txt").write_text("0 0.5 0.5 0.1 0.1\n")
+
+        with tempfile.TemporaryDirectory() as d:
+            sim, real, out = Path(d) / "sim", Path(d) / "hall", Path(d) / "mixed"
+            put(sim, "train", ["s1", "s2"])
+            put(sim, "val", ["s3"])
+            put(real, None, [f"f{i}" for i in range(10)])
+            (real / "images" / "nolabel.png").write_bytes(b"x")  # ラベルの無い写真は使わない
+            c = self.merge.merge(sim, [real], out, real_val_every=5, real_repeat=3)
+            self.assertEqual(c, {"sim_train": 2, "sim_val": 1, "real_train": 8, "real_val": 2})
+            self.assertEqual(len(list((out / "images" / "train").iterdir())), 2 + 8 * 3)
+            self.assertEqual(len(list((out / "labels" / "val").iterdir())), 1 + 2)
+            self.assertEqual(len(list((out / "images" / "val_real").iterdir())), 2)
+            self.assertIn(f"path: {out}", (out / "data.yaml").read_text())
+
+
 class TestSelectAndTrack(unittest.TestCase):
     def b(self, y: float, z: float, arrow: str | None = None) -> Button3D:
         return Button3D(np.array([0.3, y, z]), 0.035, arrow, (0, 0, 1, 1), 100)

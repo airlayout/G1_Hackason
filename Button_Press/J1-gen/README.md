@@ -46,6 +46,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `make_button_dataset.py` — ボタンの YOLO の学習データを、Yada の評価環境の画像から作る（正解の枠は自動）
   - `train_button_yolo.py` — ボタンの YOLO（クラス up / down）を学習する
   - `record_trial_video.py` — 評価環境の 1 試行を、実際の速さで再生される動画にする
+  - `merge_button_datasets.py` — シミュレーションの学習データと、枠を付けた実機の写真を混ぜる
 - `contest_agent/` — Yada の評価環境（`Button_Press/Yada/contest`）で動かすエージェント（中身は `common/elevator_press.py`）
   - `rehearsal.py` — 実機日のリハーサル（当日手順書の段階0〜6と故障の場面を、模擬ロボットで通しで実行）
 - `real/` — 実機用
@@ -61,6 +62,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `calibrate.py` — 較正（カメラで求めた位置と、指先で触れた位置の差を複数か所で取る）
   - `press_bottle.py` — 全体をつなぐスクリプト（実機。既定は dry-run）
   - `check_button_photos.py` — 撮った写真で、呼びボタンを classic と YOLO で見つけられるかを並べて比べる
+  - `label_button_photos.py` — 撮った写真に、呼びボタンの正解の枠を付ける（YOLO の結果を下書きにして直す）
 - `configs/` — 設定ファイル。当日はコードを編集せず、ここだけを変える
   - `robot.yaml` — モデルのパス、頭カメラの取り付け位置
   - `arm.yaml` — 経路（sim / arm_sdk / lowcmd）、NIC 名、ゲイン、安全の上限、重力補償
@@ -470,3 +472,35 @@ $P Button_Press/J1-gen/real/check_button_photos.py ~/photos/elevator/           
 classic の余分は、ほとんどが白い腕（明るく色が無い）。小さい車いす用のボタンの記号も読めないことが多い。
 それでも評価環境で classic が 20 / 20 なのは、深度での大きさ・柱ごとの並び・3 フレームの確認で、
 一般用の ▲▼ の 1 組だけが残るため。
+
+#### 実機の写真を学習データに足す
+
+撮った写真で YOLO がボタンを見つけられなかったときに、その写真に正解の枠を付けて、学習し直す。
+ラベルを付ける道具はこのリポジトリのもの（OpenCV の画面。追加のインストールは要らない）。
+
+```bash
+# 1. 枠を付ける（今の YOLO の結果が下書きとして入っているので、直すだけ。1 秒ごとの収録なら 3 枚に 1 枚で十分）
+$P Button_Press/J1-gen/real/label_button_photos.py _local/button_press/recordings/<日時>_button_hall --every 3
+# 2. シミュレーションの学習データと混ぜる（実機の 5 枚に 1 枚を検証用、学習用は 3 回ずつ入れる）
+$P Button_Press/J1-gen/sim/merge_button_datasets.py _local/button_press/button_real/<日時>_button_hall
+# 3. GPU のある PC で学習する（「GPU のある PC で学習する」の手順で、dataset の代わりに dataset_mixed を持っていく）
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 ~/yolo_env/bin/python Button_Press/J1-gen/sim/train_button_yolo.py \
+    --device 0 --data _local/button_press/button_yolo/dataset_mixed/data.yaml \
+    --out _local/button_press/button_yolo/weights/best_mixed.pt
+# 4. 実機の検証用の写真だけで確かめる（学習に使っていない写真）
+$P Button_Press/J1-gen/real/check_button_photos.py _local/button_press/button_yolo/dataset_mixed/images/val_real
+```
+
+- 操作: 左ドラッグで枠を足す（1 = up ▲、2 = down ▼）、右クリックで消す、c で ▲▼ を入れ替える、Space で保存して次へ、
+  x でその写真を使わない、b で戻る、q でやめる（続きから再開できる）
+- 枠は、一般用も車いす用も ▲▼ のボタンすべてに付ける。半分以上隠れた・画面の端で切れたボタンには付けない。
+  **ボタンが写っていない写真も、枠 0 個のまま保存する**（見間違いを減らす）
+- 4. で良ければ、`configs/elevator.yaml` の `yolo.weights` を `best_mixed.pt` にする。評価環境でも 20 / 20 のままかを確かめる
+  （`J1GEN_BUTTON_DETECTOR=yolo` で basic・realistic。シミュレーションのボタンを見つけられなくなっていないか）
+- 実機の検証用は、1 秒ごとの収録の中から選ぶので、学習用とよく似た写真になる（成績は甘めに出る）。
+  別の日・別の乗り場の写真があれば、それで確かめるほうが確か
+- ⚠️ 撮った写真には、建物の中が写る。外のサービス（Roboflow など）に上げない。GPU のある PC に持っていくときも、
+  終わったら消す
+
+試したこと（2026-10-12）: 実機の写真はまだ無いので、シミュレーションの写真で、枠の下書き・保存・読み直し・
+混ぜ方をテストで確かめた（画面の操作は未確認）。

@@ -10,7 +10,7 @@
 かかった時間（40 エポック、300 枚）: RTX 5060 Ti で 1.4 分。CPU（ノート PC、12 コア）では 1 エポック 3〜5 分で、
 2〜3 時間かかる見込み（2026-10-12。GPU で学習した手順は README の「GPU のある PC で学習する」）。
 
-学習した重みは _local/button_press/button_yolo/weights/best.pt に写す（git の対象外）。
+学習した重みは _local/button_press/button_yolo/weights/best.pt に写す（git の対象外。--out で変えられる）。
 configs/elevator.yaml の detector を yolo にすると、エージェントがこの重みを使う
 （評価のときだけ変えるなら、環境変数 J1GEN_BUTTON_DETECTOR=yolo）。
 
@@ -41,6 +41,8 @@ def main() -> int:
     ap.add_argument("--fraction", type=float, default=1.0, help="学習データのうち使う割合（試しに短く回すとき）")
     ap.add_argument("--device", default="", help="空なら自動（GPU があれば GPU）。cpu / 0 など")
     ap.add_argument("--name", default="up_down")
+    ap.add_argument("--out", default=str(WORK_DIR / "weights" / "best.pt"),
+                    help="できた重みを写す先（実機の写真を混ぜたときは、別の名前にして前の重みを残す）")
     args = ap.parse_args()
 
     data = Path(args.data)
@@ -58,7 +60,7 @@ def main() -> int:
     if not best.is_file():
         print(f"[train] ❌ 重みができなかった: {best}")
         return 1
-    out = WORK_DIR / "weights" / "best.pt"
+    out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(best, out)
     metrics = YOLO(str(out)).val(data=str(data), imgsz=args.imgsz, device=args.device or None, verbose=False,
