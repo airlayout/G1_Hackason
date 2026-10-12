@@ -96,6 +96,25 @@ class TestFindButtons(unittest.TestCase):
         with self.assertRaises(ButtonNotFound):
             self.find([(0.0, 0.05, "up")])
 
+    def test_calibration_offset_shifts_buttons(self) -> None:
+        """段階4の較正の補正（pelvis 座標で足す）が、ボタンの位置にも入る。押す向きは変わらない。"""
+        from common.elevator_buttons import calibration_offset
+
+        cam = FacingCamera()
+        cam.offset = np.array([0.01, -0.02, 0.005])
+        finder = ButtonFinder(cam, ClassicButtonDetector(self.cfg["classic"]), self.cfg)
+        rgb, depth = scene([(0.0, 0.10, "up"), (0.0, 0.02, "down")])
+        call = finder.find(rgb, depth, K, np.zeros(3))
+        base = self.find([(0.0, 0.10, "up"), (0.0, 0.02, "down")])
+        np.testing.assert_allclose(call.up.center - base.up.center, cam.offset, atol=1e-9)
+        np.testing.assert_allclose(call.normal, base.normal, atol=1e-9)
+        # 設定が null なら localize.yaml（ボトルと同じ較正）の値
+        self.assertIsNone(self.cfg["calibration"]["offset_pelvis_m"])
+        np.testing.assert_allclose(calibration_offset(self.cfg),
+                                   load_config("localize.yaml")["calibration"]["offset_pelvis_m"])
+        np.testing.assert_allclose(calibration_offset({"calibration": {"offset_pelvis_m": [0.0, 0.01, 0.0]}}),
+                                   [0.0, 0.01, 0.0])
+
 
 class TestYoloCandidates(unittest.TestCase):
     """YOLO の検出（クラス up / down）を、ボタンの候補（枠に内接する楕円の面）に変える。"""

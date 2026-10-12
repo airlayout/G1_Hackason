@@ -22,6 +22,11 @@ yolo:
   confidence: 0.4
   device: auto
 
+# 頭カメラの位置の補正（pelvis 座標で足す [m]）。null なら configs/localize.yaml の calibration.offset_pelvis_m
+# （実機日の段階4の較正の結果。ボトルと同じ頭カメラなので同じ値を使う）。ボタンだけ別の値にするときは [x, y, z] を書く
+calibration:
+  offset_pelvis_m: null
+
 geometry:
   # 深度を使う範囲 [m]
   min_depth_m: 0.15

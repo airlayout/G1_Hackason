@@ -1,4 +1,4 @@
-# 実機日の手順書（ボトル押し）
+# 実機日の手順書（ボトル押しと、エレベーターの呼びボタン）
 
 コマンドはすべてラボ PC のリポジトリ直下（`G1_Hackason/`）で、1行ずつ実行する。
 `<NIC>` は G1 につないでいる有線 NIC の名前（`ip -br a` で確認し、`configs/arm.yaml` の `network_interface` にも書く）。
@@ -39,6 +39,7 @@
 | 4 | 較正 | 「段階4: 較正」 | 一定のずれなら補正値を入れる |
 | 5 | dry-run → 確認モードで低速 → 押し込み | 「段階5・6: 押し込み」（タスク6） | 手前の姿勢まで行ければ成功 |
 | 6 | 置き場所を変えて繰り返す | 同上 | 全試行を収録する |
+| 7 | エレベーターの呼びボタン: 写真で確かめる → dry-run → 押す | 「段階7: エレベーターの呼びボタン」 | 見つけられなければ写真にラベルを付けて次の回に。arm_sdk が効かなければ行わない |
 
 ## 事前準備（ラボ PC）
 
@@ -617,6 +618,102 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/calibrate.py --arm right
 終了コード: 0 成功 / 2 目標を拒否（何も送っていない、または動かしたあと安全に止めた）/ 3 動いていない /
 4 lowstate・相手・mode_machine・モータの問題 / 5 腰が倒れた / 130 中止（q、Ctrl+C）
 
+## 段階7: エレベーターの呼びボタン
+
+エージェントは Yada さんの評価環境のもの（`contest_agent/`、中身は `common/elevator_press.py`）を、評価環境の
+実機用の口（`Button_Press/Yada/contest/run_dds.py` + `contest/robots/real_g1.py`）で動かす。シミュレーションで
+確かめたことは README の「エレベーターの呼びボタン」を参照（MuJoCo・模擬 G1 で 20 / 20。実機は未確認）。
+
+### 始める前に（条件）
+
+- **段階2で arm_sdk が効くこと。** 立ったまま（LocoClient のバランス制御が動いたまま）で腕を動かすので、
+  プランB（lowcmd、座った状態か吊り下げ）では行えない
+- 段階0（接続）・段階3（FK）・段階4（較正）が済んでいること。段階4の `configs/localize.yaml` の
+  `calibration.offset_pelvis_m` は、ボタンの位置にも使われる（`configs/elevator.yaml` の `calibration`）
+- ⚠️ 実機用の口（`real_g1.py`）にあるのは、weight の上げ下げ、lowstate の途切れでの停止、Ctrl+C での安全な終了、
+  関節の可動範囲と速さ（1.0 rad/s）の丸めだけ。**`press_bottle.py` と違い、段階ごとに Enter で止まらず、
+  約 9 秒で最後まで動く。** 作業空間の箱・腕と体や柱との衝突は、エージェントの計画（動く前）で確かめている
+- ⚠️ 実機用の口は、画像を撮った時刻と IMU の向きを入れない。時刻は 0.1 秒ごとに新しい画像とみなす
+  （`image_interval_s`）。重力の補正は pelvis がまっすぐ立っているとみなす（立っていれば数度の差）
+- ⚠️ 腰の PD（評価環境の `configs/contest.yaml` の `gains.waist`、kp 300）は実機で未確認（Yada さんのメモ）。
+  最初の送信のときは、腰が急に動かないかを特に見る
+
+### 1. 写真を撮って、見つけられるかを確かめる（その日のうちに）
+
+ロボットを押す位置（下の 2.）に立たせ、段階1と同じ `record.py` でボタンを撮る。距離（25〜50 cm）・左右・高さを
+少しずつ変える。**手でボタンを押して点灯した状態も**何枚か撮る（点灯の確かめ方の確認に使う）:
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/record.py --label button_hall --mode interval --interval-s 1 \
+    --note "<階・乗り場・照明>"
+```
+
+撮った収録で、classic と YOLO を並べて比べる（左 classic・右 YOLO の画像と summary.csv。5 枚に 1 枚）:
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/check_button_photos.py \
+    _local/button_press/recordings/<日時>_button_hall --every 5
+```
+
+| 結果 | 次 |
+|---|---|
+| classic で「pair: OK」が多い | `configs/elevator.yaml` の `detector: classic` のまま進む |
+| YOLO だけ「pair: OK」が多い | 下のコマンドの前に `J1GEN_BUTTON_DETECTOR=yolo` を付ける |
+| どちらもだめ（枠が無い・▲▼ の取り違え・1 組を選べない） | 押すのはやめる。写真にラベルを付けて学び直す（README の「実機の写真を学習データに足す」）。次の回に持ち越す |
+
+「pair: NG」の理由は summary.csv に出る（例: 間隔が 5〜12 cm の外 → `configs/elevator.yaml` の `pair_spacing_m` を、
+本物のボタンの間隔に合わせて直す）。
+
+### 2. ロボットを立たせる位置
+
+シミュレーションで確かめた範囲（評価環境の `configs/contest.yaml` の `randomize`）に入れる:
+
+- 柱の正面に向けて立たせ、**pelvis から柱の面まで 29〜36 cm**、柱の中心は体の中心から左右 3 cm 以内
+- 一般用の ▲ の高さは床から 1.03〜1.10 m を想定（本番の写真からの推定。実測していない）。
+  これより高い・低いときは、3. の dry-run で計画が立つかで判断する
+- 腕は下ろしておく（右腕が視野に入ると、ボタンを隠す）
+
+### 3. dry-run（指令を送らない）
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Button_Press/J1-gen/contest_agent \
+    --network-interface <NIC> --camera-host <PC2 の IP> --target up --instruction "上の階" --no-loco --dry-run
+```
+
+- `--no-loco`: J1-gen のエージェントは足を動かさないので、LocoClient につながない（立つのはリモコンで）
+- 見るところ:
+  - `[elevator] look: 見つけた: up=[x, y, z] …、down=[…]` — x がメジャーで測った柱までの距離と 1〜2 cm 以内か。
+    ▲ と ▼ の z の差が本物の間隔と合うか
+  - `[elevator] look: 計画（…）` — 計画が立った。「届かない」「当たる」が出たら、2. の位置を直す
+  - dry-run では腕が動かないので、そのあとの「点灯していない → 押し直す → 確かめられない」と、最後の
+    「エージェント側の結果: gave_up」は気にしない（模擬 G1 で確かめた。2026-10-12）
+- 「見つけられない」で止まるときは、1. に戻る
+
+### 4. 送る（押す）
+
+**人がリモコンを持ち、危なければ L2+B。** 別のターミナルで `record.py` を動かしたまま行う（あとで見直すため）。
+最初の 1 回は、押し直しを止めておく（点灯の確かめ方が本物のボタンで合っているかが分からないため）:
+`configs/elevator.yaml` の `press.max_retries` を 0 にする。
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Button_Press/J1-gen/contest_agent \
+    --network-interface <NIC> --camera-host <PC2 の IP> --target up --instruction "上の階" --no-loco
+```
+
+- 動き（シミュレーションの実測）: 見る 0.3 秒 → 手前の姿勢へ 6 秒（経由の姿勢を通る）→ 止まって補正 1 秒 →
+  押し込み 2.5 秒 → 0.6 秒保つ → 戻る 1 秒 → 点灯を確かめる
+- **点灯したかは人が見て記録する**（実機ではプログラムは読めない）。エージェントの「点灯していない」の表示と
+  食い違ったら、`press.lit_brightness_rise`（今は明るさ +25）を見直す
+- 点灯しなかったとき: 指先がボタンに届いていないなら、カメラの位置の推定のずれ（シミュレーションでも、カメラの
+  取り付けのずれで押す向きに最大 19 mm ずれた）。段階4の較正をやり直すか、`press.planner.press_depth_m` を
+  5 mm ずつ深くする（上限 `max_press_depth_m` 30 mm）
+- ボタンの端を押した・外したとき: 左右・上下のずれ。シミュレーションでも最大 13.5 mm ずれた。本物のボタンが
+  小さい（半径 15 mm 未満）と外れやすい。較正で直す
+- `▼` も同じく `--target down` で試す
+
+止めるとき: Ctrl+C（腕の weight を 2 秒で 0 に戻す）。動きがおかしいとき（腕が柱に向かって速く動く、腰が回る）は
+すぐ L2+B。
+
 ## 前日までのリハーサル
 
 手元の PC かラボ PC で、この手順書の流れを模擬ロボットで通しで確かめられる（約 8 分。G1 はつながなくてよい）:
@@ -626,6 +723,17 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/rehearsal.py
 ```
 
 模擬ロボットはこのマシンの中（口 `lo`、domain 1）だけで動くので、G1 を LAN につないだままでも混ざらない。
+
+呼びボタン（段階7）は、Yada さんの評価環境の模擬 G1（実機と同じ DDS + ZMQ の口）で通しで確かめられる
+（20 試行で約 7 分。dry-run の表示を見るなら `--seed 0` と、`--client` の中に `--no-loco --dry-run` を足す）:
+
+```bash
+P=G1_HuggingFace/venv/bin/python
+$P Button_Press/Yada/contest/evaluate_dds.py --seeds practice \
+    --client "$P Button_Press/Yada/contest/run_dds.py --agent Button_Press/J1-gen/contest_agent --no-loco"
+```
+
+2026-10-12: classic 20 / 20（平均 8.7 秒）、YOLO（`J1GEN_BUTTON_DETECTOR=yolo` を前に付ける）20 / 20（平均 10.2 秒）。
 結果は `_local/button_press/rehearsal/<日時>/report.md`。
 
 ## 実機日が終わったら

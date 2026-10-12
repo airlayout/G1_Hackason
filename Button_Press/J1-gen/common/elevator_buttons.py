@@ -226,6 +226,16 @@ def make_candidate_detector(cfg: dict[str, Any]) -> CandidateDetector:
 # ---- 3 次元 ---------------------------------------------------------------------
 
 
+def calibration_offset(cfg: dict[str, Any]) -> np.ndarray:
+    """頭カメラの位置の補正（pelvis 座標 [m]）。設定に無ければ（null）、ボトルと同じ configs/localize.yaml の値。"""
+    v = (cfg.get("calibration") or {}).get("offset_pelvis_m")
+    if v is None:
+        from .config import load_config
+
+        v = load_config("localize.yaml")["calibration"]["offset_pelvis_m"]
+    return np.asarray(v, dtype=float).reshape(3)
+
+
 def pelvis_points(depth_m: np.ndarray, K: np.ndarray, rot: np.ndarray, pos: np.ndarray) -> np.ndarray:
     """深度の各画素の 3 次元の位置 (H, W, 3)（pelvis 座標）。"""
     z = np.asarray(depth_m, dtype=np.float64)
@@ -262,11 +272,14 @@ class ButtonFinder:
     @classmethod
     def from_config(cls, robot_cfg: dict[str, Any], cfg: dict[str, Any],
                     detector: CandidateDetector | None = None) -> "ButtonFinder":
-        return cls(HeadCameraTransform(robot_cfg), detector or make_candidate_detector(cfg), cfg)
+        return cls(HeadCameraTransform(robot_cfg, calibration_offset(cfg)), detector or make_candidate_detector(cfg),
+                   cfg)
 
     def find(self, rgb: np.ndarray, depth_m: np.ndarray, K: np.ndarray, q_waist: np.ndarray) -> CallButtons:
         rot, pos = self.cam_tf.pelvis_from_optical(np.asarray(q_waist, dtype=float))
         depth = np.asarray(depth_m, dtype=np.float64)
+        # 較正の補正は pelvis_from_optical に含まれないので、ここで足す（柱の面の向きは変わらない）
+        pos = pos + np.asarray(getattr(self.cam_tf, "offset", np.zeros(3)), dtype=float)
         P = pelvis_points(depth, np.asarray(K, dtype=float), rot, pos)
         g = self.cfg["geometry"]
         valid = (depth > float(g["min_depth_m"])) & (depth < float(g["max_depth_m"]))
