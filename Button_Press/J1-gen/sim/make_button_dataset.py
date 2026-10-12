@@ -102,11 +102,23 @@ def render_one(seed: int, split: str, out_dir: str) -> tuple[int, int]:
         robot.close()
 
 
+def choose_val(seeds: list[int], every: int) -> set[int]:
+    """検証用にする種を選ぶ。評価セット（種の偶奇で決まる。render_one）ごとに、every 枚に 1 枚を選ぶ。
+
+    種を通しで every 枚おきに選ぶと、every が偶数なら検証用が片方の評価セットだけになる
+    （種 1000〜1299 を 10 枚おきに選ぶと、30 枚すべてが basic だった）。
+    """
+    val: set[int] = set()
+    for parity in (0, 1):
+        val.update([s for s in seeds if s % 2 == parity][::every])
+    return val
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--seeds", type=int, default=300, help="作る枚数（種の数）")
     ap.add_argument("--start", type=int, default=0, help="最初の種（評価に使う練習用の種 0〜19 と分けたいときに変える）")
-    ap.add_argument("--val-every", type=int, default=10, help="この枚数に 1 枚を検証用にする")
+    ap.add_argument("--val-every", type=int, default=10, help="この枚数に 1 枚を検証用にする（basic と realistic のそれぞれで）")
     ap.add_argument("--workers", type=int, default=0, help="並列数（0 なら使えるコアの数 − 1）")
     ap.add_argument("--out", default=str(OUT_DIR))
     args = ap.parse_args()
@@ -122,7 +134,8 @@ def main() -> int:
         f"path: {out}\ntrain: images/train\nval: images/val\nnames:\n"
         + "".join(f"  {i}: {c}\n" for i, c in enumerate(CLASSES)))
     seeds = list(range(args.start, args.start + args.seeds))
-    splits = ["val" if (s - args.start) % args.val_every == 0 else "train" for s in seeds]
+    val = choose_val(seeds, args.val_every)
+    splits = ["val" if s in val else "train" for s in seeds]
     workers = args.workers or max(1, (os.cpu_count() or 2) - 1)
     print(f"[dataset] {len(seeds)} 枚を作る（並列数 {workers}）: {out}")
     boxes = images = 0

@@ -129,6 +129,18 @@ class TestYoloCandidates(unittest.TestCase):
         # Perception の YoloDetector には BGR で渡す
         self.assertEqual(int(det._det.frames[0][0, 0, 2]), 200)
 
+    def test_val_split_has_both_sets(self) -> None:
+        """学習データの検証用に、basic（偶数の種）と realistic（奇数の種）が半分ずつ入る。"""
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "sim"))
+        from make_button_dataset import choose_val
+
+        val = choose_val(list(range(1000, 1300)), 10)
+        self.assertEqual(len(val), 30)
+        self.assertEqual(sum(s % 2 for s in val), 15)
+
 
 class TestSelectAndTrack(unittest.TestCase):
     def b(self, y: float, z: float, arrow: str | None = None) -> Button3D:
