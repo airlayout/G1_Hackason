@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RealSense RGB-D + 公開 YOLO 重みでボタンの3D目標を計測する（腕は動かさない）。"""
+"""J1-genのRGB-D配信 + YOLOでボタンの3D目標を計測する（腕は動かさない）。"""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ sys.path.insert(0, str(REPO_ROOT / "Perception"))
 from vision import (CameraIntrinsics, estimate_button_target,
                     validate_reachable_target)
 from alignment import TargetTracker
+from j1gen_camera import J1CameraRuntime, J1RgbdCamera, add_camera_arguments
 
 
 def load_transform(path: str | None) -> tuple[np.ndarray, str]:
@@ -37,48 +38,33 @@ class RgbdLocalizer:
 
     def __init__(self, weights: str, transform: np.ndarray | Callable[[], np.ndarray],
                  target_pixel: tuple[int, int] | None = None,
-                 confidence: float = 0.25):
-        import pyrealsense2 as rs
-        from common.detector.yolo_detector import YoloDetector
-
-        self.rs = rs
+                 confidence: float = 0.25, *, camera_config="camera.yaml", host=None,
+                 j1gen_root=None, runtime=None):
+        runtime = runtime or J1CameraRuntime(j1gen_root)
+        YoloDetector = runtime.module("perception_bridge").perception("detector.yolo_detector").YoloDetector
         self.transform = transform
         self.target_pixel = target_pixel
         self.detector = YoloDetector(model_name=weights, classes=["button"],
                                     confidence_threshold=confidence)
         self.tracker = TargetTracker()
-        self.pipe = rs.pipeline()
-        cfg = rs.config()
-        cfg.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 15)
-        cfg.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 15)
-        profile = self.pipe.start(cfg)
-        self.align = rs.align(rs.stream.color)
-        self.scale = profile.get_device().first_depth_sensor().get_depth_scale()
+        self.camera = J1RgbdCamera(runtime, camera_config, host)
         self.last_preview = None
         self.last_bbox = None
+        self.last_frame = None
 
     def close(self) -> None:
-        self.pipe.stop()
+        self.camera.close()
 
     def observe(self, timeout_s: float = 2.0):
         self.tracker.begin_measurement()
+        capture_after = time.time()
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            # 推論中に溜まった画像を捨て、次の新しいframesetを取得する。
-            while self.pipe.poll_for_frames():
-                pass
-            aligned = self.align.process(self.pipe.wait_for_frames(1000))
-            captured_at = time.monotonic()
+            frame, captured_at = self.camera.read_after(capture_after, deadline)
             transform = self.transform() if callable(self.transform) else self.transform
-            color = aligned.get_color_frame()
-            depth = aligned.get_depth_frame()
-            if not color or not depth:
-                self.tracker.samples.clear()
-                continue
-            intr = depth.profile.as_video_stream_profile().get_intrinsics()
-            intrinsics = CameraIntrinsics(intr.fx, intr.fy, intr.ppx, intr.ppy)
-            image = np.asanyarray(color.get_data())
-            depth_m = np.asanyarray(depth.get_data()).astype(np.float32) * self.scale
+            intr = frame.intrinsics
+            intrinsics = CameraIntrinsics(intr.fx, intr.fy, intr.cx, intr.cy)
+            image, depth_m = frame.color_bgr, frame.depth_m()
             candidates = []
             for detection in self.detector.detect(image):
                 if self.tracker.initial is None and self.target_pixel is not None:
@@ -94,6 +80,10 @@ class RgbdLocalizer:
                 except ValueError:
                     continue
                 candidates.append(target)
+            # 受信時には新しくても、推論に時間がかかった画像では動かさない。
+            if time.monotonic() - captured_at > self.camera.max_age_s:
+                self.tracker.samples.clear()
+                continue
             if self.tracker.previous is not None:
                 candidates = [t for t in candidates if np.linalg.norm(
                     np.array(t.face_xyz) - self.tracker.previous) <= self.tracker.association_m]
@@ -102,13 +92,14 @@ class RgbdLocalizer:
                 continue
             observation = self.tracker.update(candidates, captured_at)
             self.last_preview = image.copy()
+            self.last_frame = frame
             if observation is not None:
                 return observation
         self.tracker.samples.clear()
         raise RuntimeError("安定した新しいRGB-D計測を取得できません")
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights", required=True, help="エレベーターボタン用 YOLO .pt")
     parser.add_argument("--class-name", default="button", help="重み内のボタンクラス名")
@@ -117,47 +108,32 @@ def main() -> int:
     parser.add_argument("--target-pixel", type=int, nargs=2, metavar=("U", "V"),
                         help="複数ボタン時に押す候補を示すカラー画像上の画素")
     parser.add_argument("--frames", type=int, default=10)
-    parser.add_argument("--width", type=int, default=640)
-    parser.add_argument("--height", type=int, default=480)
-    parser.add_argument("--fps", type=int, default=15)
+    parser.add_argument("--timeout", type=float, default=5.0, help="1枚の新しいRGB-Dを待つ時間 [秒]")
     parser.add_argument("--output", help="計測結果を保存する JSON")
     parser.add_argument("--preview", help="検出枠と画素座標を描いた画像の保存先 PNG")
-    args = parser.parse_args()
-    if (args.frames < 3 or args.width <= 0 or args.height <= 0 or args.fps <= 0
+    add_camera_arguments(parser)
+    args = parser.parse_args(argv)
+    if (args.frames < 3 or not np.isfinite(args.timeout) or args.timeout <= 0
             or not 0 < args.confidence < 1):
-        parser.error("--frames は3以上、画像サイズとfpsは正、confidenceは0～1が必要です")
+        parser.error("--framesは3以上、timeoutは正、confidenceは0～1が必要です")
 
-    try:
-        import pyrealsense2 as rs
-    except ImportError as error:
-        raise SystemExit("pyrealsense2 が必要です。G1 PC2 のRealSense環境で実行してください") from error
-    from common.detector.yolo_detector import YoloDetector
+    runtime = J1CameraRuntime(args.j1gen_root)
+    YoloDetector = runtime.module("perception_bridge").perception("detector.yolo_detector").YoloDetector
 
     transform, frame_name = load_transform(args.base_transform)
     if args.preview:
         Path(args.preview).parent.mkdir(parents=True, exist_ok=True)
     detector = YoloDetector(model_name=args.weights, classes=[args.class_name],
                             confidence_threshold=args.confidence)
-    pipe = rs.pipeline()
-    cfg = rs.config()
-    cfg.enable_stream(rs.stream.color, args.width, args.height, rs.format.bgr8, args.fps)
-    cfg.enable_stream(rs.stream.depth, args.width, args.height, rs.format.z16, args.fps)
-    profile = pipe.start(cfg)
+    camera = J1RgbdCamera(runtime, args.camera_config, args.host)
     targets = []
     try:
-        align = rs.align(rs.stream.color)
-        depth_scale = profile.get_device().first_depth_sensor().get_depth_scale()
-        color_intr = profile.get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
-        intrinsics = CameraIntrinsics(color_intr.fx, color_intr.fy,
-                                      color_intr.ppx, color_intr.ppy)
+        capture_after = time.time()
         for _ in range(args.frames):
-            aligned = align.process(pipe.wait_for_frames())
-            color_frame = aligned.get_color_frame()
-            depth_frame = aligned.get_depth_frame()
-            if not color_frame or not depth_frame:
-                continue
-            image = np.asanyarray(color_frame.get_data())
-            depth_m = np.asanyarray(depth_frame.get_data()).astype(np.float32) * depth_scale
+            frame, captured_at = camera.read_after(capture_after, time.monotonic() + args.timeout)
+            intr = frame.intrinsics
+            intrinsics = CameraIntrinsics(intr.fx, intr.fy, intr.cx, intr.cy)
+            image, depth_m = frame.color_bgr, frame.depth_m()
             detections = detector.detect(image)
             if args.preview:
                 import cv2
@@ -186,6 +162,9 @@ def main() -> int:
                 except ValueError:
                     continue
                 candidates.append(candidate)
+            if time.monotonic() - captured_at > camera.max_age_s:
+                print("[skip] 推論中にRGB-D計測が古くなりました")
+                continue
             if len(candidates) != 1:
                 print(f"[skip] 有効なボタン候補数={len(candidates)}。対象を一意に選べません")
                 continue
@@ -194,7 +173,7 @@ def main() -> int:
             print(f"[target] {tuple(round(v, 4) for v in target.face_xyz)} "
                   f"depth={target.depth_m:.3f} m")
     finally:
-        pipe.stop()
+        camera.close()
 
     if len(targets) < 3:
         raise SystemExit("有効なRGB-D検出が3フレーム未満です。押下目標は出力しません")
@@ -213,7 +192,9 @@ def main() -> int:
         "press_direction": median_direction.tolist(),
         "valid_frames": len(targets),
         "max_position_spread_m": max_spread,
-        "source": "realsense-aligned-depth+yolo",
+        "source": "j1gen-rgbd-zmq+yolo",
+        "j1gen_root": str(runtime.root),
+        "camera_config": args.camera_config,
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
     if args.output:

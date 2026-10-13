@@ -331,13 +331,17 @@ YOLOの中心推定自体の真値誤差は上4.67mm・下5.25mm、計測目標�
 
 ### 実機の校正データ
 
-位置合わせ実行用のJSONは`g1-button-calibration-v1`を使用する。
+実機用カメラはJ1-genのRGB-D配信（5556）を受信する。PC2のvideohubは停止しない。
+初回の準備、PC2側の起動、接続先の指定は[CAMERA.md](CAMERA.md)を参照する。
+
+位置合わせ実行用のJSONは`g1-button-calibration-v2`を使用する。
 下記の値は**すべて実測値で埋める**。`null`や未校正の模擬値では実行できない。
 
 ```json
 {
-  "schema": "g1-button-calibration-v1",
-  "T_base_optical": null,
+  "schema": "g1-button-calibration-v2",
+  "camera_offset_m": null,
+  "camera_rpy_offset_rad": null,
   "camera_body": "torso_link",
   "pelvis_height_m": null,
   "tip_offset_m": null,
@@ -349,10 +353,10 @@ YOLOの中心推定自体の真値誤差は上4.67mm・下5.25mm、計測目標�
 }
 ```
 
-`T_base_optical`は従来と同じ4×4の変換。校正時の腰関節角とIMU姿勢も保存する。
-`camera_body`はカメラを固定したMenagerieモデル上の胴体・骨盤のbody名を実物に合わせて指定する。
-校正時の変換からカメラ取付先との固定変換を求め、実行時の腰角・骨盤のroll/pitchをFKに反映して
-カメラ変換と手先位置を更新する。腕や可動治具に取り付けたカメラは対象外。
+頭カメラはJ1-genの`HeadCameraTransform`と公式URDFで腰角度から計算する。
+`camera_body`は`torso_link`。2つの補正値は光学座標（右・下・前）の位置 [m] とRPY [rad] の3要素配列。
+IMUのroll/pitchと骨盤高で、押下処理の床基準へ変換する。腕や可動治具に取り付けたカメラは対象外。
+従来の`g1-button-calibration-v1`も読める。実測した`T_base_optical`を公式モデルへの固定補正として引き継ぐ。
 校正時から腰角が0.025rad、骨盤の傾きが2度を超えて変わった場合は再校正を要求する。
 `position_uncertainty_m`はカメラ・モデル・治具を含む位置誤差を実測して決める。
 ボタン半径から手先半径を引いた余裕が、不確かさと3mmの位置合わせ許容値を収めない場合は中止する。
@@ -391,8 +395,8 @@ python3 Manipulation/push_button/real/push_button.py --align \
 
 例の`--stroke`と画素座標は実物に合わせて変更する。
 同じ環境にSDKと画像処理が入っている場合は`--arm-socket`を省略して直接接続できる。
-カメラはカラー・深度を直接取得するので、既存のカラー配信サーバーが同じRealSenseを使っている場合は
-先に停止する。実行時JSONは従来のシミュレーション済み経路JSONとは別形式であり、
+カメラはJ1-genの`rgbd_server --source videohub`から取得する。接続先は`--camera-config`と`--host`で指定する。
+PC2と受信PCの時計を同期しておく。実行時JSONは従来のシミュレーション済み経路JSONとは別形式であり、
 実機の押下成功は自動認定しない。制御重み解除の失敗も記録する。
 
 **MuJoCo 実験は Menagerie の簡易モデルと関節位置サーボによる検証。**
@@ -470,9 +474,9 @@ Ultralytics 8.4.165で、今回の上下ボタンをそれぞれ検出・押下�
 ロボットの別部位の誤検出は3D位置・押下方向の検査で棄却した。
 YOLO推定位置を使った模擬押下量は上8.2 mm、下7.4 mm（設定ストローク8 mm）。
 
-実機ではRealSenseのカラーと深度を同一のframesetから取得し、深度をカラーへ位置合わせする。
-既存のLeRobot ZMQ配信はカラーのみなので、この試験はカメラを持つG1 PC2上で行う。
-カラー配信サーバーが同じRealSenseを使用中なら停止してから起動する。
+実機ではJ1-genのRGB-D配信を受信する。カラーに位置合わせ済みの深度と内部パラメータを使い、
+受信側はRealSenseを開かない。PC2側のvideohubは停止せず、深度付きの5556番を使う（5555番はカラーのみ）。
+起動・準備手順は[CAMERA.md](CAMERA.md)を参照する。
 
 ```bash
 python Manipulation/push_button/real/localize_button.py \

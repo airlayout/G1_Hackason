@@ -21,21 +21,32 @@ from alignment import (AlignmentController, CorrectionCadence, CorrectionTiming,
 from kinematics import ArmKinematics, load_robot
 from trajectory import interpolate, validate_arm_q
 from localize_button import RgbdLocalizer
+from j1gen_camera import CalibratedHeadCamera, J1CameraRuntime, add_camera_arguments
 from push_button import ArmSdk, CONTROL_HZ, STATE_TIMEOUT, TRACKING_LIMIT, check_speed
 
 
 def read_calibration(path):
     calibration = json.loads(Path(path).read_text())
-    if calibration.get("schema") != "g1-button-calibration-v1":
-        raise ValueError("g1-button-calibration-v1 の実測校正ファイルが必要です")
+    schema = calibration.get("schema")
+    if schema not in ("g1-button-calibration-v1", "g1-button-calibration-v2"):
+        raise ValueError("g1-button-calibration-v1/v2 の実測校正ファイルが必要です")
+    if schema == "g1-button-calibration-v2":
+        calibration.setdefault("camera_body", "torso_link")
     if calibration["camera_body"] not in ("pelvis", "waist_yaw_link", "waist_roll_link", "torso_link"):
         raise ValueError("骨盤または胴体に固定したカメラのbody名が必要です")
-    transform = np.asarray(calibration["T_base_optical"], dtype=float)
-    if (transform.shape != (4, 4) or not np.all(np.isfinite(transform))
-            or not np.allclose(transform[:3, :3].T @ transform[:3, :3], np.eye(3), atol=0.002)
-            or not np.isclose(np.linalg.det(transform[:3, :3]), 1, atol=0.002)
-            or not np.allclose(transform[3], [0, 0, 0, 1])):
-        raise ValueError("カメラ校正行列が不正です")
+    transform = None
+    if schema == "g1-button-calibration-v1":
+        transform = np.asarray(calibration["T_base_optical"], dtype=float)
+        if (transform.shape != (4, 4) or not np.all(np.isfinite(transform))
+                or not np.allclose(transform[:3, :3].T @ transform[:3, :3], np.eye(3), atol=0.002)
+                or not np.isclose(np.linalg.det(transform[:3, :3]), 1, atol=0.002)
+                or not np.allclose(transform[3], [0, 0, 0, 1])):
+            raise ValueError("カメラ校正行列が不正です")
+    else:
+        for key in ("camera_offset_m", "camera_rpy_offset_rad"):
+            vector = np.asarray(calibration[key], dtype=float)
+            if vector.shape != (3,) or not np.all(np.isfinite(vector)):
+                raise ValueError(f"カメラ取付補正 {key} が不正です")
     for key in ("reference_waist_q_rad", "reference_imu_rpy_rad"):
         vector = np.asarray(calibration[key], dtype=float)
         if vector.shape != (3,) or not np.all(np.isfinite(vector)):
@@ -357,6 +368,7 @@ def main(argv=None):
     parser.add_argument("--output", required=True)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--calibrated", action="store_true")
+    add_camera_arguments(parser)
     add_correction_arguments(parser)
     args = parser.parse_args(argv)
     camera = None
@@ -366,15 +378,15 @@ def main(argv=None):
         if (not np.isfinite(args.stroke) or not 0.0015 <= args.stroke <= 0.015
                 or not np.isfinite(args.clearance) or not 0.02 <= args.clearance <= 0.05):
             raise ValueError("strokeは1.5～15mm、clearanceは2～5cmが必要です")
-        calibration, transform = read_calibration(args.base_transform)
+        calibration, _ = read_calibration(args.base_transform)
         model, rest = load_robot(Path(args.model).resolve(), tuple(calibration["tip_offset_m"]),
                               float(calibration["pelvis_height_m"]), float(calibration["tip_radius_m"]))
         kin = ArmKinematics(model)
         reference_q = rest.copy()
         reference_q[12:15] = calibration["reference_waist_q_rad"]
         kin.update_fixed_base(reference_q, calibration["reference_imu_rpy_rad"])
-        camera_body = calibration["camera_body"]
-        T_body_optical = np.linalg.inv(kin.body_transform(camera_body)) @ transform
+        runtime = J1CameraRuntime(args.j1gen_root)
+        camera_geometry = CalibratedHeadCamera(runtime, kin, calibration)
         if args.execute and not args.calibrated:
             raise ValueError("実測校正後に --execute --calibrated を指定してください")
         if not args.execute and not args.state_json:
@@ -400,16 +412,15 @@ def main(argv=None):
                 validate_stationary_pose(configuration, calibration)
                 if time.monotonic()-configuration[2] > 0.10:
                     raise RuntimeError("カメラ計測に対応する実機状態が古すぎます")
-                kin.update_fixed_base(np.array(configuration[0]), configuration[1])
-                return kin.body_transform(camera_body) @ T_body_optical
+                return camera_geometry.transform(np.array(configuration[0]), configuration[1])
         else:
             state = json.loads(Path(args.state_json).read_text())
             validate_stationary_pose((state["motor_q_rad"], state["imu_rpy_rad"],
                                       time.monotonic(), 0, 0), calibration)
-            kin.update_fixed_base(np.array(state["motor_q_rad"]), state["imu_rpy_rad"])
-            current_transform = kin.body_transform(camera_body) @ T_body_optical
+            current_transform = camera_geometry.transform(np.array(state["motor_q_rad"]), state["imu_rpy_rad"])
         camera = RgbdLocalizer(args.weights, current_transform,
-                               tuple(args.target_pixel) if args.target_pixel else None)
+                               tuple(args.target_pixel) if args.target_pixel else None,
+                               runtime=runtime, camera_config=args.camera_config, host=args.host)
         if args.execute:
             report = execute_alignment(arm, camera, kin, calibration, args)
             if not report["completed"]:
