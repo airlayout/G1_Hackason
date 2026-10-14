@@ -415,6 +415,7 @@ class TestElevatorPlan(unittest.TestCase):
         self.ctl.reset("down", 0.02, np.full(17, 60.0))
         self.ctl.call = self.call()
         self.ctl._plan(self.q0, self.call())
+        self.ctl.q_hold = self.q0.copy()
         dark = np.zeros((480, 640, 3), np.uint8)
         self.ctl.baseline_brightness = 0.0
         depth0 = self.ctl.plan_.depth
@@ -423,7 +424,36 @@ class TestElevatorPlan(unittest.TestCase):
         self.assertAlmostEqual(self.ctl.plan_.depth, depth0 + 0.01)
         self.assertTrue(self.ctl._check(dark, 2.0))  # 押し直しは 1 回まで
         self.assertIn("確かめられない", self.ctl.outcome)
+        self.assertEqual(self.ctl.phase, "home")  # 確かめられなくても、腕を戻してから終わる
 
+    def test_returns_home_by_the_way_it_came(self) -> None:
+        """点灯を確かめたら、来た経路（手前の姿勢 → 経由の姿勢 → 始め）を逆にたどって戻してから終わる。"""
+        ctl = self.ctl
+        ctl.reset("down", 0.02, np.full(17, 60.0))
+        ctl.call = self.call()
+        ctl._plan(self.q0, self.call())
+        ctl.q_hold = self.q0.copy()
+        self.assertIsNotNone(ctl.plan_.q_via)  # この配置は経由の姿勢を通る（seed 1 の ▼）
+        arm = ctl.kin.arm_idx
+        ctl.q_ik[arm] = ctl.plan_.q_approach + 0.01  # 指先のずれの補正で、手前の姿勢から少しずれている
+        ctl.baseline_brightness = 0.0
+        self.assertTrue(ctl._check(np.full((480, 640, 3), 255, np.uint8), 0.0))
+        self.assertEqual((ctl.outcome, ctl.phase), ("点灯した", "home"))
+        # 今の姿勢 → 手前の姿勢 → 経由の姿勢 → 始め
+        pts = [ctl.home_legs[0][0]] + [b for _, b, _ in ctl.home_legs]
+        for got, want in zip(pts, [ctl.plan_.q_approach + 0.01, ctl.plan_.q_approach, ctl.plan_.q_via, self.q0[arm]]):
+            np.testing.assert_allclose(got, want, atol=1e-9)
+        self.assertFalse(ctl._path_hits(self.q0, pts))
+        img, depth, K0 = np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640)), np.eye(3)
+        q, t, done, phases = self.q0.copy(), 0.0, False, []
+        while not done and t < 30.0:
+            t += 0.02
+            _, done = ctl.step(img, depth, K0, q, t, 0.0)
+            phases.append(ctl.phase)
+        self.assertTrue(done)
+        self.assertEqual(list(dict.fromkeys(phases)), ["home", "done"])
+        np.testing.assert_allclose(ctl.q_ik[arm], self.q0[arm], atol=1e-9)
+        self.assertAlmostEqual(t, sum(T for _, _, T in ctl.home_legs), delta=0.05)
 
 if __name__ == "__main__":
     unittest.main()

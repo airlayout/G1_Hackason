@@ -16,7 +16,15 @@ J1-gen の部品をそのまま使う:
 段階:
   look → reach（関節空間で手前の姿勢へ。経由点があれば通る）→ settle（手前で止まり、指先のずれを補正）
   → press（押す向きに直線で押し込む）→ hold → retract（手前へ戻る）→ check（点灯したかを画像で見る。
-  点灯していなければ 1 回だけ深く押し直す）→ done
+  点灯していなければ 1 回だけ深く押し直す）→ home（来た経路を逆にたどって、始めの姿勢へ戻す）→ done
+
+終わる前に腕を戻す理由: 評価環境は点灯した瞬間に終わるが、実機・模擬 G1 では、エージェントが終わると腕の
+weight が 0 に戻り、腕が柱の数 cm 手前から元の姿勢へ動く。そのとき腕が柱に当たらないよう、エージェントの中で
+戻しておく（fungi-55 さんの push_button では、5 cm 手前から関節空間でまっすぐ戻すと、指先が弧を描いて壁に
+40 N で当たった。2026-10-08）。
+戻る経路は、来た経路（始め →（経由の姿勢 →）手前の姿勢）の逆。来るときに、腕が体にも柱・壁にも当たらないことを
+確かめてある。押す向きと逆にまっすぐ離れる方法は、肘がたたまれて右の手首が胴体に入った（柱まで 31 cm で、
+面から 10 cm 以上離れると当たる。2026-10-14）。
 
 指先のずれの補正（Yada の見本のエージェントと同じ考え方）: 実際の関節の角度から指先の位置を計算（FK）し、
 目標とのずれを少しずつ足し込む。押す向きの成分は、押している間は足し込まない（押し込む力を出すため）。
@@ -115,6 +123,8 @@ class ElevatorPressController:
         self.legs: list[tuple[np.ndarray, np.ndarray, float]] = []
         self.corr = np.zeros(3)
         self.retries = 0
+        self.wall: CollisionChecker | None = None
+        self.home_legs: list[tuple[np.ndarray, np.ndarray, float]] = []
         self.baseline_brightness: float | None = None
         self.outcome = ""
         self.log = []
@@ -164,7 +174,13 @@ class ElevatorPressController:
         elif self.phase == "check":
             q_des[arm] = self._servo(q, self.plan_.approach_point, integrate_push=False)
             if el >= float(c["check_wait_s"]) and fresh:
-                done = self._check(rgb, t)
+                self._check(rgb, t)
+        elif self.phase == "home":
+            q_des[arm] = self._play(self.home_legs, el)
+            if el >= sum(T for _, _, T in self.home_legs):
+                self.q_ik[arm] = self.home_legs[-1][1]
+                self._note("腕を始めの姿勢へ戻した")
+                self._enter("done", t)
         elif self.phase == "done":
             q_des[arm] = self.q_ik[arm] if self.q_ik is not None else q_des[arm]
             done = True
@@ -239,6 +255,7 @@ class ElevatorPressController:
             seed = r0.q
         wall = CollisionChecker(self.robot_cfg, "right", float(c["wall_clearance_m"]),
                                 [wall_obstacle(call, self.cfg["wall"])])
+        self.wall = wall
         errors: list[str] = []
         # 指の傾きは候補を順に試す（柱が近く面が斜めのとき、最初の傾きでは手首が胴体に近づきすぎた。
         # 2026-10-07、realistic の seed 8）
@@ -306,12 +323,31 @@ class ElevatorPressController:
         self.q_ik[arm] = plan.q_approach
 
     def _reach(self, el: float, t: float) -> np.ndarray:
-        for a, b, T in self.legs:
+        if el >= sum(T for _, _, T in self.legs):
+            self._enter("settle", t)
+        return self._play(self.legs, el)
+
+    @staticmethod
+    def _play(legs: list[tuple[np.ndarray, np.ndarray, float]], el: float) -> np.ndarray:
+        """関節空間の区間を順にたどる（各区間は smoothstep）。最後を過ぎたら最後の姿勢。"""
+        for a, b, T in legs:
             if el < T:
                 return a + smoothstep(el / T) * (b - a)
             el -= T
-        self._enter("settle", t)
-        return self.legs[-1][1]
+        return legs[-1][1]
+
+    def _path_hits(self, q: np.ndarray, pts: list[np.ndarray]) -> bool:
+        if self.wall is None:
+            return False
+        arm = self.kin.arm_idx
+        n = int(self.cfg["wall"]["path_samples"])
+        for a, b in zip(pts[:-1], pts[1:]):
+            for s in np.linspace(0.0, 1.0, n + 1)[1:]:
+                qq = q.copy()
+                qq[arm] = a + smoothstep(float(s)) * (b - a)
+                if self.wall.contacts(qq):
+                    return True
+        return False
 
     def _servo(self, q: np.ndarray, p_goal: np.ndarray, integrate_push: bool) -> np.ndarray:
         """指先を p_goal に合わせる右腕 7 関節。実際の指先とのずれを積分して目標に足す。"""
@@ -343,12 +379,12 @@ class ElevatorPressController:
         if rise >= float(c["lit_brightness_rise"]):
             self.outcome = "点灯した"
             self._note(f"点灯した（明るさ +{rise:.0f}）")
-            self._enter("done", t)
+            self._start_home(t)
             return True
         if self.retries >= int(c["max_retries"]):
             self.outcome = f"点灯を確かめられない（明るさ {rise:+.0f}）"
             self._note(self.outcome)
-            self._enter("done", t)
+            self._start_home(t)
             return True
         self.retries += 1
         depth = min(self.plan_.depth + float(c["retry_extra_depth_m"]), float(self.planner.cfg["max_press_depth_m"]))
@@ -357,6 +393,28 @@ class ElevatorPressController:
         self.plan_ = PressPlan(**{**p.__dict__, "end_point": p.target_point + depth * p.push_dir, "depth": depth})
         self._enter("press", t)
         return False
+
+    def _start_home(self, t: float) -> None:
+        """押し終わった（点灯した・確かめられない）。来た経路を逆にたどって、始めの姿勢へ戻す。
+
+        今の右腕（指先のずれの補正で、計画した手前の姿勢から少しずれている）から、まず計画した手前の姿勢へ戻り、
+        そのあと来た区間を逆にたどる。今の姿勢から手前の姿勢へ戻る区間も、柱・壁と体に当たらないことを確かめる。
+        当たるなら、今の姿勢のまま終わる。
+        """
+        arm = self.kin.arm_idx
+        speed = float(self.cfg["press"]["move_speed_rad_s"])
+        now = self.q_ik[arm].copy()
+        first = (now, self.legs[-1][1], max(float(self.cfg["press"]["min_move_s"]),
+                                           1.5 * float(np.abs(self.legs[-1][1] - now).max()) / speed))
+        q = self.q_hold.copy()
+        q[arm] = now
+        if self._path_hits(q, [now, self.legs[-1][1]]):
+            self._note("⚠️ 手前の姿勢へ戻ると腕が当たるので、今の姿勢のまま終わる")
+            self._enter("done", t)
+            return
+        self.home_legs = [first] + [(b, a, T) for a, b, T in reversed(self.legs)]
+        self._note(f"来た経路を逆にたどって、始めの姿勢へ戻す（{sum(T for _, _, T in self.home_legs):.1f} 秒）")
+        self._enter("home", t)
 
     def _gravity_offset(self, q_des: np.ndarray, imu_quat: np.ndarray | None) -> np.ndarray:
         """PD が重力で垂れる量（重力のトルク ÷ kp）だけ、上半身の目標をずらす。"""
