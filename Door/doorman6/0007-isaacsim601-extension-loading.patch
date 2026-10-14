@@ -1,0 +1,75 @@
+From 5defc4b7a1976c041747871c6c2fd015f7b82e48 Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Wed, 7 Oct 2026 09:29:18 +0900
+Subject: [PATCH] isaac sim 6.0.1: enable material.library at startup, load
+ scripting only when needed
+
+---
+ gr00t/rl/eval_agent_trl.py                         | 3 ++-
+ gr00t/rl/isaac_utils/playground/env_rand/door.py   | 4 +++-
+ gr00t/rl/isaac_utils/playground/utils/usd_utils.py | 5 ++++-
+ gr00t/rl/train_agent_trl.py                        | 3 ++-
+ 4 files changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/gr00t/rl/eval_agent_trl.py b/gr00t/rl/eval_agent_trl.py
+index 4d1902f..0427918 100644
+--- a/gr00t/rl/eval_agent_trl.py
++++ b/gr00t/rl/eval_agent_trl.py
+@@ -189,7 +189,8 @@ def main(override_config: OmegaConf):
+         # 3.0 の AppLauncher が headless ＋ カメラのとき isaaclab.python.headless.rendering.kit を自分で選ぶ。
+         # 拡張機能のオンラインの一覧（kit-extensions.ov.nvidia.com）に問い合わせて固まるのを止める（チームの記録 2026-08-11）。
+         # Hydra が知らない -- 引数を弾くので、コマンドの引数ではなくここで入れる
+-        kit_args = "--/app/extensions/registryEnabled=false"
++        # ドアの材質に使う omni.kit.material.library は、描画の無い kit では起動後に有効にすると止まるので最初から有効にする
++        kit_args = "--/app/extensions/registryEnabled=false --enable omni.kit.material.library"
+         args_cli.kit_args = f"{args_cli.kit_args} {kit_args}".strip() if getattr(args_cli, "kit_args", "") else kit_args
+ 
+         app_launcher = AppLauncher(args_cli)
+diff --git a/gr00t/rl/isaac_utils/playground/env_rand/door.py b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+index 0dc4c49..4317b6d 100644
+--- a/gr00t/rl/isaac_utils/playground/env_rand/door.py
++++ b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+@@ -143,7 +143,9 @@ def spawn_door(
+     **kwargs,
+ ) -> Usd.Prim:
+     global MR
+-    if MR is None:
++    # G1_Hackason: MR（omni.kit.scripting）を使うのは dynamic_material_randomization のときだけ。
++    # Isaac Sim 6.0.1 の pip 版の extscache には omni.kit.scripting が無く、読みに行くと止まる（10-07 実測）
++    if MR is None and cfg.dynamic_material_randomization:
+         MR = _get_material_randomization()
+     stage: Usd.Stage = omni.usd.get_context().get_stage()
+     # determine the door width
+diff --git a/gr00t/rl/isaac_utils/playground/utils/usd_utils.py b/gr00t/rl/isaac_utils/playground/utils/usd_utils.py
+index 39f9b5e..d37216e 100644
+--- a/gr00t/rl/isaac_utils/playground/utils/usd_utils.py
++++ b/gr00t/rl/isaac_utils/playground/utils/usd_utils.py
+@@ -9,7 +9,10 @@ from pxr import Usd, Sdf, Gf, UsdPhysics, UsdGeom, UsdLux
+ import omni.kit.commands
+ import omni.kit.app
+ manager = omni.kit.app.get_app().get_extension_manager()
+-manager.set_extension_enabled_immediate("omni.kit.material.library", True)
++# G1_Hackason: Isaac Sim 6.0.1 の描画の無い kit では、起動後にその場で有効にすると待ち続けて止まる（10-07 実測）。
++# 起動の引数（--enable omni.kit.material.library）で先に有効にしておき、有効ならここは飛ばす
++if not manager.is_extension_enabled("omni.kit.material.library"):
++    manager.set_extension_enabled_immediate("omni.kit.material.library", True)
+ import omni.kit.material.library
+ 
+ 
+diff --git a/gr00t/rl/train_agent_trl.py b/gr00t/rl/train_agent_trl.py
+index 4bf8ba5..03f7667 100644
+--- a/gr00t/rl/train_agent_trl.py
++++ b/gr00t/rl/train_agent_trl.py
+@@ -249,7 +249,8 @@ def main(config: OmegaConf):
+         # 3.0 の AppLauncher が headless ＋ カメラのとき isaaclab.python.headless.rendering.kit を自分で選ぶ。
+         # 拡張機能のオンラインの一覧（kit-extensions.ov.nvidia.com）に問い合わせて固まるのを止める（チームの記録 2026-08-11）。
+         # Hydra が知らない -- 引数を弾くので、コマンドの引数ではなくここで入れる
+-        kit_args = "--/app/extensions/registryEnabled=false"
++        # ドアの材質に使う omni.kit.material.library は、描画の無い kit では起動後に有効にすると止まるので最初から有効にする
++        kit_args = "--/app/extensions/registryEnabled=false --enable omni.kit.material.library"
+         args_cli.kit_args = f"{args_cli.kit_args} {kit_args}".strip() if getattr(args_cli, "kit_args", "") else kit_args
+ 
+         app_launcher = AppLauncher(args_cli)
+-- 
+2.50.1 (Apple Git-155)
+

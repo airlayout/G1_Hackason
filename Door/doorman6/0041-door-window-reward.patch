@@ -1,0 +1,48 @@
+From d58a8f2e45b8eb821520dd6e5766c11df5ac1a33 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Wed, 14 Oct 2026 09:16:10 +0900
+Subject: [PATCH] door: window reward options (push_door_hinge_max_deg caps the
+ hinge reward; door_overopen penalizes opening past door_overopen_start_deg
+ before the hold-open angle)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index a01b322..7738d3a 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -676,14 +676,27 @@ class DoorPregrasp(
+         # （10-08 03:20、立ったまま扉 約 20° で報酬 0.75・区間 4 で前へ 6 mm しか歩かない）。レバーの push_door_handle_pos_only と同じ
+         if self.config.get("push_door_hinge_pos_only", False):
+             hinge_vel_reward = torch.zeros_like(hinge_vel_reward)
++        # G1_Hackason（段 2-4）: 点が頭打ちになる角度を設定に（既定は元の 90°）。開いたまま止まる扉（90° を越えると失敗）では、
++        # 90° まで点が増えると押しすぎる（10-13 の段 2-4a で 90° までの押し切りが 18 → 54 回に増えた）ので、窓の中（例 80°）で頭打ちにする
++        hinge_max = float(self.config.get("push_door_hinge_max_deg", 90.0)) * torch.pi / 180.0
+         hinge_pos_reward = (
+             self.simulator.scene.articulations["door"]
+             .data.joint_pos.torch[:, 0]
+-            .clamp(min=0.0, max=1.5708)
+-            / 1.5708
++            .clamp(min=0.0, max=hinge_max)
++            / hinge_max
+         )
+         return (hinge_vel_reward + hinge_pos_reward).clamp(max=1.0, min=-1.0)
+ 
++    @StagedTaskBase.effective_in_stage([STAGE_SWING, STAGE_THROUGH])
++    def _reward_door_overopen(self):
++        # G1_Hackason（段 2-4）: 開いたまま止まる角度の手前（door_overopen_start_deg、既定 85°）を越えると 0 → 1 に増える量。
++        # 重みを負にして罰にする（++rewards.reward_scales.door_overopen=-6.0 など）。90° を越えたときの打ち切りの罰（termination）は
++        # 一度きりで大きいので、手前で連続に減らして「70〜85° の窓で押すのをやめる」手がかりにする。通り抜けの区間（体で扉を押し広げる）でも効かせる
++        hold = float(self.config.get("door_hold_open_angle_deg", 90.0) or 90.0)
++        start = float(self.config.get("door_overopen_start_deg", 85.0))
++        angle = self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 0]
++        return ((angle - start * torch.pi / 180.0) / ((hold - start) * torch.pi / 180.0)).clamp(min=0.0, max=1.0)
++
+     @StagedTaskBase.effective_in_stage([STAGE_SWING, STAGE_THROUGH])
+     def _reward_target_root_distance(self):
+         target_direction = F.normalize(
+-- 
+2.50.1 (Apple Git-155)
+

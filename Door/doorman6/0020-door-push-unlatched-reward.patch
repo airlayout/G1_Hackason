@@ -1,0 +1,56 @@
+From be5115d094e5db25d63a96044cc4f0bcaca34340 Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Wed, 7 Oct 2026 21:29:32 +0900
+Subject: [PATCH] door: push_door_unlatched reward (forward push on the lever
+ once it is pressed past the latch-clear angle); enabled for 29dof
+
+---
+ .../wbmanip/door_open_homie_29dof_lstm.yaml    |  2 ++
+ gr00t/rl/envs/door/door_open_homie.py          | 18 ++++++++++++++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index 8da4e9f..c52204d 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -120,6 +120,8 @@ rewards:
+     # G1_Hackason 段 2-2: 手でレバーを下へ押す力（0〜1、30 N で頭打ち）。区間 3（開ける）だけで出る
+     # reward_penalty_reward_names には入れていない（引き締めで小さくならない）
+     press_door_handle_down: 4.0
++    # G1_Hackason 段 2-2: レバーが 30° 以上下がっている間（ラッチが縁まで引っ込んだ後）に前へ押す力（0〜1、20 N で頭打ち）。区間 3 だけ
++    push_door_unlatched: 6.0
+ 
+ env:
+   config:
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 4ae005f..e91e327 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -556,6 +556,24 @@ class DoorPregrasp(
+         force_max = self.config.get("press_handle_force_max", 30.0)
+         return down_force.clamp(min=0.0, max=force_max) / force_max
+ 
++    @StagedTaskBase.effective_in_stage(STAGE_OPEN)
++    def _reward_push_door_unlatched(self):
++        # G1_Hackason（段 2-2）: レバーを下げてラッチが縁まで引っ込んだ後に、手でレバーを前（+x）へ押す力。
++        # press_door_handle_down を足すと方策は押し下げだけを覚え、前へ押す力（push_door_force）が 0 に落ちて扉が開かなかった
++        # （10-07、レバーは 45° まで下がりラッチは 30 mm 引っ込んでいた）。ラッチの先は閉じた扉で縁から 20 mm 出ていて、
++        # レバー約 30° で縁と揃う（ラッチの出 30 mm を 45° で引っ込める）
++        left_net_force = self.simulator.object_to_hand_contact_forces[
++            :, 0, self.left_hand_indices_tgt_ct_sensor, :
++        ].sum(dim=-2)
++        right_net_force = self.simulator.object_to_hand_contact_forces[
++            :, 0, self.right_hand_indices_tgt_ct_sensor, :
++        ].sum(dim=-2)
++        forward_force = torch.where(self.use_left_hand, left_net_force[:, 0], right_net_force[:, 0])
++        force_max = self.config.get("push_unlatched_force_max", 20.0)
++        unlatched_rad = self.config.get("push_unlatched_handle_deg", 30.0) * torch.pi / 180.0
++        handle_down = self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 1] >= unlatched_rad
++        return forward_force.clamp(min=0.0, max=force_max) / force_max * handle_down.float()
++
+     @StagedTaskBase.effective_in_stage(STAGE_OPEN)
+     def _reward_push_door_handle(self):
+         handle_vel_reward = self.simulator.scene.articulations["door"].data.joint_vel.torch[:, 1]
+-- 
+2.43.0
+

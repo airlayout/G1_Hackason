@@ -1,0 +1,75 @@
+From 76e9540dd6940dc6764071544dd68b9ca97c4900 Mon Sep 17 00:00:00 2001
+From: Inoue Reo <inoue@glocalist.co>
+Date: Wed, 7 Oct 2026 10:07:20 +0900
+Subject: [PATCH 9/9] state recorder: door body poses and env origins for port
+ checks; works on both 2.x and 3.0
+
+---
+ gr00t/rl/utils/state_recorder.py | 32 +++++++++++++++++++++++++++++++-
+ 1 file changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/utils/state_recorder.py b/gr00t/rl/utils/state_recorder.py
+index fe4095a..96d5601 100644
+--- a/gr00t/rl/utils/state_recorder.py
++++ b/gr00t/rl/utils/state_recorder.py
+@@ -14,6 +14,24 @@ import os
+ import numpy as np
+ 
+ 
++def _t(x):
++    return x.torch if hasattr(x, "torch") else x
++
++
++def _env_prim_translations(k: int) -> list:
++    """USD 上の /World/envs/env_i の世界の位置（入れ物が格子に置かれているか）。"""
++    import omni.usd
++    from pxr import UsdGeom
++
++    stage = omni.usd.get_context().get_stage()
++    out = []
++    for i in range(k):
++        prim = stage.GetPrimAtPath(f"/World/envs/env_{i}")
++        m = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(0) if prim.IsValid() else None
++        out.append(list(m.ExtractTranslation()) if m is not None else [float("nan")] * 3)
++    return out
++
++
+ class StateRecorder:
+     def __init__(self, cfg, env) -> None:
+         self.dir = str(cfg["dir"])
+@@ -38,12 +56,17 @@ class StateRecorder:
+             door_open_lr=env.door_open_lr[:k].cpu().numpy(),
+             dt=np.array(env.dt),
+             root_quat_order=np.array("xyzw"),
++            # 移植の確かめ用: 扉の部品の名前と、USD 上の入れ物（env_i）の位置・env_origins
++            door_body_names=np.array(list(env.simulator.scene.articulations["door"].body_names)),
++            env_prim_translate=np.array(_env_prim_translations(k)),
++            env_origins=env.env_origins[:k].cpu().numpy(),
+         )
+ 
+     def record(self, env) -> None:
+         k = self.num
+         root = env.simulator.robot_root_states[:k]
+-        door = env.simulator.scene.articulations["door"].data.joint_pos.torch[:k]
++        door_joint_pos = env.simulator.scene.articulations["door"].data.joint_pos
++        door = (door_joint_pos.torch if hasattr(door_joint_pos, "torch") else door_joint_pos)[:k]  # 3.0 は ProxyArray
+         row = {
+             "step": np.array([env.common_step_counter]),
+             "root_pos": (root[:, :3] - env.env_origins[:k]).cpu().numpy(),
+@@ -52,6 +75,13 @@ class StateRecorder:
+             "door_dof_pos": door.cpu().numpy(),
+             "stage": env.stage_buf[:k].cpu().numpy(),
+             "episode_length": env.episode_length_buf[:k].cpu().numpy(),
++            # 移植の確かめ用（台と扉の対応・座標の向き）。どれも env の原点からの位置
++            "door_root_pos": (env.simulator.get_task_root_state("door")[:k, :3] - env.env_origins[:k]).cpu().numpy(),
++            "grasp_target": (env._compute_grasp_target()[:k] - env.env_origins[:k]).cpu().numpy(),
++            "relative_door_pos": env.relative_door_pos_buf[:k].cpu().numpy(),
++            "right_hand_to_target": env.simulator.right_hand_transform_pos[:k, 0].cpu().numpy(),
++            "door_body_pos": (_t(env.simulator.scene.articulations["door"].data.body_pos_w)[:k]
++                              - env.env_origins[:k, None]).cpu().numpy(),
+         }
+         for key, value in row.items():
+             self.buf.setdefault(key, []).append(value.astype(np.float32))
+-- 
+2.50.1 (Apple Git-155)
+

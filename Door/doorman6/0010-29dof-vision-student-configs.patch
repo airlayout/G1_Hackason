@@ -1,0 +1,568 @@
+From 958d5ac197f921906bd1dec01fcfc7a19015c617 Mon Sep 17 00:00:00 2001
+From: Inoue Reo <inoue@glocalist.co>
+Date: Wed, 7 Oct 2026 10:14:36 +0900
+Subject: [PATCH] 29dof vision student (DAgger) configs; recorder can dump ego
+ camera RGB
+
+---
+ .../door_open_homie_29dof_dagger-lstm.yaml    | 197 ++++++++++++
+ .../wbmanip/door_open_homie_29dof_dagger.yaml | 293 ++++++++++++++++++
+ gr00t/rl/utils/state_recorder.py              |  21 ++
+ 3 files changed, 511 insertions(+)
+ create mode 100644 gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml
+ create mode 100644 gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_dagger.yaml
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml
+new file mode 100644
+index 0000000..0fe3792
+--- /dev/null
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml
+@@ -0,0 +1,197 @@
++# @package _global_
++#
++# G1_Hackason: 指の無い G1 29 関節のカメラ付き生徒（DAgger）。教師は door_open_homie_29dof_lstm。
++# door_open_homie_dagger-lstm.yaml（43 関節・Dex3）との違い:
++#   - 機体 g1/g1_29dof・観測 door_open_homie_29dof_dagger（teacher_obs は教師の actor_obs と同じ）
++#   - 方策の出力 3 + 14 = 17・全身の行動 29・指のプリミティブ無し（教師と同じ）
++#   - カメラは torso_link の直下に置く。29 関節の USD の d435_link は剛体でない Xform なので find_bodies が通らない。
++#     d435_link の取付（torso から (0.0576, 0.0175, 0.4299)、pitch 47.6°）と元のオフセット（y +0.035・pitch +3.4°）を合成した
++#   - ドームライトの乱択は切る（omni.kit.scripting が Kit 110 で omni.behavior.scripting.core に改名され、移植が要る）
++#   - teacher_actor_path は起動時に ++teacher_actor_path=<教師の last.pt の絶対パス> で渡す
++
++defaults:
++  - /algo: dagger_vision_distributed
++  - /env: door_open_homie
++  - /simulator: isaacsim
++  - /domain_rand: domain_rand_visual_ImageRand
++  - /rewards: wbmanip/reward_door_open_homie
++  - /robot: g1/g1_29dof
++  - /terrain: terrain_locomotion_plane
++  - /obs: wbmanip/door_open_homie_29dof_dagger
++  - /opt: wandb
++  - override /trainer: trl_distill_obj_pred_homie_api
++
++exp_base: ${hydra:runtime.choices.exp}
++exp_var: lstm
++experiment_name: ${exp_base}_${exp_var}
++experiment_dir: ${base_dir}/${project_name}/${experiment_name}-${timestamp}
++
++num_envs: 4096
++project_name: g1_open_door_homie
++
++enable_cameras: true
++headless: True
++
++teacher_actor_path: ???  # 必須。教師（door_open_homie_29dof_lstm）の last.pt
++
++callbacks:
++  model_save:
++    save_frequency: 500
++
++algo:
++  config:
++    entropy_coef: 0.01
++    use_new_actor_critic: True
++    num_steps_per_env: 8
++    num_learning_epochs: 1
++    num_mini_batches: 4
++    use_padding_mask: False
++    ppo_shuffle_every_epoch: True
++    sync_advantage_normalization: True
++    actor_learning_rate: 1e-4
++    critic_learning_rate: 1e-4
++    homie_walk_model_path: ./models/model_walk.pt
++    homie_stand_model_path: ./models/model_stand.pt
++    homie_command_dim: 3
++    non_homie_command_actions_dim: 14  # 14 upper body dofs（指のプリミティブ無し）
++    opt_homie: False
++
++    init_noise_std: 0.001
++    max_noise_std: 0.001
++    clamp_noise_std: True
++    freeze_noise_std: True
++
++    gamma: 0.9966
++    lam: 0.983
++
++    init_at_random_ep_len: True
++    rollout_with_teacher_num_steps: 0
++    teacher_rollout_ratio: 0.0
++
++    network_load_dict:
++      teacher_actor:
++        path: ${teacher_actor_path}
++
++    obj_pred_loss_coef: 0.0
++    obj_pred_loss_type: "l2"
++
++    module_dim:
++      actor_obs: -1
++      vision_feature_dim: 128
++
++    actor:
++      _target_: gr00t.rl.trl.modules.vision_actor_critic_modules_obj_pred_recurrent.VisionRecurrentActorObjPred
++      running_mean_std: True
++      rnn_type: "lstm"
++      rnn_hidden_dim: 256
++      rnn_num_layers: 2
++      backbone:
++        vision_module:
++          _target_: gr00t.rl.agents.modules.modules.BaseModule
++          process_output_dim: True
++          module_config_dict:
++            input_dim: [vision_obs]
++            output_dim: [vision_feature_dim]
++            layer_config:
++              type: ResNet
++              resnet_type: resnet18  # Options: resnet18, resnet34, resnet50, resnet101, resnet152
++              pretrained: true       # Use ImageNet pretrained weights
++              trainable: true       # Set to false to freeze ResNet parameters, true to make them trainable
++        mlp_module:
++          _target_: gr00t.rl.agents.modules.modules.BaseModule
++          process_output_dim: True
++          module_config_dict:
++            input_dim: [actor_obs]
++            output_dim:
++              - ${eval:'${algo.config.homie_command_dim} + ${algo.config.non_homie_command_actions_dim}'}
++            layer_config:
++              type: MLP
++              hidden_dims: [512, 256, 128]  # Match teacher architecture
++              activation: SiLU
++        obj_pred_mlp:
++          _target_: gr00t.rl.agents.modules.modules.BaseModule
++          process_output_dim: True
++          module_config_dict:
++            input_dim: [vision_feature_dim]
++            output_dim: [3]  # 3D object position
++            layer_config:
++              type: MLP
++              hidden_dims: [256, 128, 64]
++              activation: SiLU
++    teacher_actor:
++      _target_: gr00t.rl.trl.modules.actor_critic_modules_recurrent.RecurrentActor
++      running_mean_std: True
++      rnn_type: "lstm"
++      rnn_hidden_dim: 256
++      rnn_num_layers: 2
++      backbone:
++        _target_: gr00t.rl.agents.modules.modules.BaseModule
++        process_output_dim: True
++        module_config_dict:
++          input_dim: [teacher_obs]
++          output_dim:
++            - ${eval:'${algo.config.homie_command_dim} + ${algo.config.non_homie_command_actions_dim}'}
++          layer_config:
++            type: MLP
++            hidden_dims: [512, 256, 128]
++            activation: SiLU
++
++simulator:
++  config:
++    randomize_dome_light: False
++    cameras:
++      enable_cameras: true
++      camera_types:
++        - rgb: true 
++        - depth: false
++      camera_resolutions: [216, 384]
++      camera_attached_link: "torso_link"
++      camera_pos_offset: [0.0576, 0.0525, 0.4299]   # d435_link の取付 ∘ (0, 0.035, 0)
++      camera_rot_offset: [0.90244, 0.0, 0.43081, 0.0]  # wxyz。pitch 47.6° + 3.4° = 51.0°
++    scene:
++      replicate_physics: False
++      env_spacing: 100.0
++    sim:
++      physx:
++        num_position_iterations: 8
++        num_velocity_iterations: 4
++
++robot:
++  asset:
++    self_collisions: 0
++  use_primitive: False
++  actions_dim: 29
++  check_action_dim: True
++  terminate_after_contacts_on : ["head", "knee", "wrist"]
++
++env:
++  config:
++    enable_staged_reset: False
++    reset_on_overtime: True
++    reset_on_complete: True
++    reset_on_complete_delay: 25.0
++
++    # ここから下は教師（door_open_homie_29dof_lstm）と同じ
++    task:
++      name: door_nolatch
++    grasp_min_contact_links: 1
++    grasp_contact_force_threshold: 1.0
++    delta_action_indices: [
++      0, 1, 2,  # homie command
++      3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,  # upper body
++    ]
++    resting_dof_pos: [
++      -0.1, 0, 0, 0.3, -0.2, 0,  # l hip knee ankle
++      -0.1, 0, 0, 0.3, -0.2, 0,  # r hip knee ankle
++      0, 0, 0,  # waist
++      0.261799, 0.174533, 0, 0.261799,  # l shoulder elbow
++      1.5708, 0, 0,  # l wrist
++      0.261799, -0.174533, 0, 0.261799,  # r shoulder elbow
++      -1.5708, 0, 0,  # r wrist
++    ]
++
++rewards:
++  reward_scales:
++    pregrasp_finger_dof_pos_l1: 0.0
++    grasp_finger_dof_pos_l1: 0.0
++    limits_primitive_action: 0.0
+diff --git a/gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_dagger.yaml b/gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_dagger.yaml
+new file mode 100644
+index 0000000..aa8f7fc
+--- /dev/null
++++ b/gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_dagger.yaml
+@@ -0,0 +1,293 @@
++# @package _global_
++# 指の無い G1 29 関節版のカメラ付き生徒（DAgger）の観測（G1_Hackason/Door）。
++# door_open_homie_29dof.yaml（教師）をもとに、door_open_homie_dagger.yaml（43 関節の生徒）の作りを写した:
++#   - teacher_obs = 教師の actor_obs そのまま（並び・倍率・雑音も教師と同じ。教師のチェックポイントに合わせるため）
++#   - actor_obs（生徒）・vision_obs（RGB）・gt_obj_pos を足した。生徒の項目の倍率と雑音は 43 関節の生徒と同じ
++#   - door_open_homie_dagger.yaml が変えていた time_in_stage などの倍率（1.0 → 0.01）は写さない（critic だけが使う）
++
++# Be careful when using _raw, history
++obs:
++  obs_dict:
++    actor_obs: [
++      base_ang_vel,
++      projected_gravity,
++      dof_pos_non_finger,
++      dof_vel_non_finger,
++      actions,
++      delta_actions,
++
++      b_homie_commands,
++      complete
++    ]
++
++    vision_obs: [
++      rgb_image,
++    ]
++
++    gt_obj_pos: [
++      target_obj_pos,
++    ]
++
++    teacher_obs: [
++      dof_pos,
++      relative_to_door,
++      dof_vel,
++      actions,
++      projected_gravity,
++      door_dof_pos,
++      base_lin_vel,
++      base_ang_vel,
++      hand_force,
++      stage,
++      privileged_door_info,
++      delta_actions,
++      hand_handle_transform,
++      unwarped_actions,
++
++      b_homie_commands
++    ]
++
++    critic_obs: [
++      dof_pos,
++      relative_to_door,
++      dof_vel,
++      actions,
++      projected_gravity,
++      door_dof_pos,
++      base_lin_vel,
++      base_ang_vel,
++      hand_force,
++      stage,
++      privileged_door_info,
++      delta_actions,
++      hand_handle_transform,
++      unwarped_actions,
++
++      transition,
++      complete,
++
++      time_in_stage,
++      actual_time_in_stage,
++      total_time,
++
++      b_homie_commands
++    ]
++
++    homie_obs: [
++      a_history_homie,
++      b_homie_commands,
++      c_homie_base_ang_vel,
++      d_homie_projected_gravity,
++      # homie_torso_ang_vel,
++      # homie_torso_projected_gravity,
++      e_homie_dof_pos,
++      f_homie_dof_vel,
++      g_homie_body_actions,
++      # homie_clock_inputs,
++    ]
++
++  # define those coumpounds in obs_dict, for example, you can define different long/short history with different length
++  obs_auxiliary: 
++    history_long: {
++      dof_pos: 20,
++      relative_to_door: 20,
++      dof_vel: 2,
++      actions: 15,
++      projected_gravity: 15,
++      door_dof_pos: 15,
++      base_lin_vel: 15,
++      base_ang_vel: 15,
++      hand_force: 15,
++      stage: 15,
++      privileged_door_info: 15,
++      delta_actions: 15,
++      hand_handle_transform: 15,
++
++      transition: 15,
++      complete: 15,
++
++      time_in_stage: 15,
++      actual_time_in_stage: 15,
++    }
++
++    a_history_homie: {
++      b_homie_commands: 5,
++      c_homie_base_ang_vel: 5,
++      d_homie_projected_gravity: 5,
++      # homie_torso_ang_vel: 5,
++      # homie_torso_projected_gravity: 5,
++      e_homie_dof_pos: 5,
++      f_homie_dof_vel: 5,
++      g_homie_body_actions: 5,
++      # homie_clock_inputs: 5,
++    }
++
++    history_short: {
++      dof_pos: 3,
++      relative_to_door: 3,
++      dof_vel: 2,
++      actions: 1,
++      projected_gravity: 1,
++      door_dof_pos: 2,
++      base_lin_vel: 2,
++      base_ang_vel: 2,
++      hand_force: 2,
++      stage: 2,
++      privileged_door_info: 2,
++      delta_actions: 2,
++      hand_handle_transform: 2,
++
++      transition: 2,
++      complete: 2,
++
++      time_in_stage: 2,
++      actual_time_in_stage: 2,
++    }
++
++  homie_history_length: 5
++
++  obs_scales: {
++    dof_pos: 1.0,
++    relative_to_door: 1.0,
++    dof_vel: 0.05,
++    history: 1.0,
++    actions: 1.0,
++    projected_gravity: 1.0,
++    door_dof_pos: 1.0,
++    base_lin_vel: 1.0,
++    base_ang_vel: 0.5,
++    hand_force: 0.01,
++    stage: 1.0,
++    privileged_door_info: 1.0,
++    delta_actions: 1.0,
++    hand_handle_transform: 1.0,
++    unwarped_actions: 1.0,
++    rgb_image: 1.0,
++    dof_vel_non_finger: 0.05,
++    dof_pos_non_finger: 1.0,
++    target_obj_pos: 1.0,
++
++    transition: 1.0,
++    complete: 1.0,
++
++    time_in_stage: 1.0,
++    actual_time_in_stage: 1.0,
++    total_time: 1.0,
++
++    b_homie_commands: 1.0,
++    e_homie_dof_pos: 1.0,
++    f_homie_dof_vel: 0.05,
++    c_homie_base_ang_vel: 0.5,
++    d_homie_projected_gravity: 1.0,
++    # homie_torso_ang_vel: 0.5,
++    # homie_torso_projected_gravity: 1.0,
++    g_homie_body_actions: 1.0,
++    # homie_clock_inputs: 1.0,
++    a_history_homie: 1.0
++  }
++
++  noise_scales: {
++    dof_pos: 0.01,
++    relative_to_door: 0.0,
++    dof_vel: 0.2,
++    history: 0.0,
++    actions: 0.0,
++    projected_gravity: 0.0,
++    door_dof_pos: 0.0,
++    base_lin_vel: 0.0,
++    base_ang_vel: 0.0,
++    hand_force: 0.0,
++    stage: 0.0,
++    privileged_door_info: 0.0,
++    delta_actions: 0.0,
++    hand_handle_transform: 0.0,
++    unwarped_actions: 0.0,
++    rgb_image: 0.0,
++    dof_vel_non_finger: 0.2,
++    dof_pos_non_finger: 0.01,
++    target_obj_pos: 0.0,
++
++    transition: 0.0,
++    complete: 0.0,
++
++    time_in_stage: 0.0,
++    actual_time_in_stage: 0.0,
++    total_time: 0.0,
++
++    b_homie_commands: 0.0,
++    e_homie_dof_pos: 0.01,
++    f_homie_dof_vel: 0.2,
++    c_homie_base_ang_vel: 0.0,
++    d_homie_projected_gravity: 0.0,
++    # homie_torso_ang_vel: 0.0,
++    # homie_torso_projected_gravity: 0.0,
++    g_homie_body_actions: 0.0,
++    # homie_clock_inputs: 0.0,
++    a_history_homie: 0.0
++  }
++
++  add_noise_currculum: False
++  noise_initial_value: 0.05
++  noise_value_max: 1.00
++  noise_value_min: 0.00001
++  soft_dof_pos_curriculum_degree: 0.00001
++  soft_dof_pos_curriculum_level_down_threshold: 100
++  soft_dof_pos_curriculum_level_up_threshold: 900
++
++  obs_dims:
++    - dof_pos: ${robot.dof_obs_size}
++    - hand_force: 6  # 2 手 × 1 剛体 × 3
++    - relative_to_door: 9
++    - dof_vel: ${robot.dof_obs_size}
++    - actions: ${robot.actions_dim}
++    - projected_gravity: 3
++    - door_dof_pos: 2
++    - base_lin_vel: 3
++    - base_ang_vel: 3
++    - stage: ${eval:'len(${env.config.max_stage_time})'}
++    - privileged_door_info: 8
++    - hand_handle_transform: 18
++    - b_homie_commands: 7
++    - e_homie_dof_pos: ${robot.homie_dof_obs_size}
++    - f_homie_dof_vel: ${robot.homie_dof_obs_size}
++    - c_homie_base_ang_vel: 3
++    - d_homie_projected_gravity: 3
++    # - homie_torso_ang_vel: 3
++    # - homie_torso_projected_gravity: 3
++    - g_homie_body_actions: ${robot.lower_body_actions_dim}
++    #- homie_clock_inputs: 2
++    - transition: 1
++    - complete: 1
++    - time_in_stage: 1
++    - actual_time_in_stage: 1
++    - total_time: 1
++    - delta_actions: ${eval:'len(${env.config.delta_action_indices})'}
++    - unwarped_actions: ${eval:'len(${env.config.warped_action.indices})'}
++    - rgb_image: ${simulator.config.cameras.camera_resolutions[0]}*${simulator.config.cameras.camera_resolutions[1]}*3
++    - dof_vel_non_finger: 29
++    - dof_pos_non_finger: 29
++    - target_obj_pos: 3
++
++  homie_command_keys: {
++    # 'loco_vel', 'height', 'rpy', 'left_arm', 'right_arm'
++    'loco_vel', 'left_arm', 'right_arm'
++    #, 'left_arm'
++  }
++
++  homie_command_default: {
++    'loco_vel': [0.0, 0.0, 0.0],
++    'height': [0.0],
++    'rpy': [0.0, 0.0, 0.0],
++    'left_arm': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
++    'right_arm': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
++  }
++
++  homie_command_index: {
++    'loco_vel': [0, 1, 2],
++    'height': [3],
++    'rpy': [4, 5, 6],
++    'left_arm': [7, 8, 9, 10, 11, 12, 13],
++    'right_arm': [14, 15, 16, 17, 18, 19, 20],  # 7 + 14 = 21
++  }
++
++  homie_default_height: 0.74
+diff --git a/gr00t/rl/utils/state_recorder.py b/gr00t/rl/utils/state_recorder.py
+index 96d5601..320dcb5 100644
+--- a/gr00t/rl/utils/state_recorder.py
++++ b/gr00t/rl/utils/state_recorder.py
+@@ -7,6 +7,7 @@
+ #   dir: 書き出し先
+ #   num_envs: 先頭から何台を記録するか（既定 4）
+ #   chunk_steps: 何ステップごとにファイルを分けるか（既定 100。止められたときに失うのはこの分まで）
++#   rgb_every: カメラ（ego_camera）があるとき、何ステップごとに先頭 num_envs 台の RGB を PNG で書くか（既定 0 = 書かない）
+ 
+ import atexit
+ import os
+@@ -37,6 +38,8 @@ class StateRecorder:
+         self.dir = str(cfg["dir"])
+         self.num = int(min(cfg.get("num_envs", 4), env.num_envs))
+         self.chunk_steps = int(cfg.get("chunk_steps", 100))
++        self.rgb_every = int(cfg.get("rgb_every", 0))
++        self.rgb_count = 0
+         os.makedirs(self.dir, exist_ok=True)
+         self.chunk = 0
+         self.buf: dict[str, list[np.ndarray]] = {}
+@@ -85,9 +88,27 @@ class StateRecorder:
+         }
+         for key, value in row.items():
+             self.buf.setdefault(key, []).append(value.astype(np.float32))
++        if self.rgb_every > 0 and self.rgb_count % self.rgb_every == 0:
++            self._write_rgb(env)
++        self.rgb_count += 1
+         if len(self.buf["step"]) >= self.chunk_steps:
+             self.flush()
+ 
++    def _write_rgb(self, env) -> None:
++        """描画したままの RGB（正規化・画像の乱択の前）を env ごとに PNG で書く。"""
++        camera = getattr(env.simulator, "ego_camera", None)
++        if camera is None:
++            return
++        import cv2
++
++        rgb = _t(env.simulator.scene.sensors["ego_camera"].data.output["rgb"])[: self.num, ..., :3]
++        rgb = rgb.cpu().numpy().astype(np.uint8)
++        out_dir = os.path.join(self.dir, "rgb")
++        os.makedirs(out_dir, exist_ok=True)
++        for i in range(rgb.shape[0]):
++            path = os.path.join(out_dir, f"env{i:02d}_step{int(env.common_step_counter):06d}.png")
++            cv2.imwrite(path, rgb[i, :, :, ::-1])  # OpenCV は BGR
++
+     def flush(self) -> None:
+         if not self.buf or not self.buf.get("step"):
+             return
+-- 
+2.50.1 (Apple Git-155)
+

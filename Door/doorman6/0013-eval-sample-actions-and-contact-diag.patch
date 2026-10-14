@@ -1,0 +1,47 @@
+From 398860d9e311dc3e751077db174e7fa43b745249 Mon Sep 17 00:00:00 2001
+From: G1_Hackason <noreply@example.com>
+Date: Wed, 7 Oct 2026 13:21:57 +0900
+Subject: [PATCH] eval.sample_actions option; recorder hand-handle contact
+ force
+
+---
+ gr00t/rl/trl/trainer/ppo_trainer_homie_api.py | 5 ++++-
+ gr00t/rl/utils/state_recorder.py              | 6 ++++++
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+index 53f995c..1a092b3 100644
+--- a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
++++ b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+@@ -2102,7 +2102,10 @@ class TRLPPOTrainer(PPOTrainer):
+                     homie_actions = torch.where(
+                         m, walk_out["action_mean"], stand_out["action_mean"]
+                     )
+-                    step_actions = torch.cat([action_mean, homie_actions], dim=-1)
++                    # G1_Hackason: eval.sample_actions=True なら学習中と同じく分布から引いた行動で評価する
++                    # （平均の行動では届かないが、ばらつきのある行動では届いているかを切り分けるため）
++                    policy_actions = actions if self.config.eval.get("sample_actions", False) else action_mean
++                    step_actions = torch.cat([policy_actions, homie_actions], dim=-1)
+ 
+                     actor_state["actions"] = step_actions
+ 
+diff --git a/gr00t/rl/utils/state_recorder.py b/gr00t/rl/utils/state_recorder.py
+index fb148f2..435d002 100644
+--- a/gr00t/rl/utils/state_recorder.py
++++ b/gr00t/rl/utils/state_recorder.py
+@@ -117,6 +117,12 @@ class StateRecorder:
+             "hand_handle_orientation": env._reward_hand_handle_orientation()[:k].cpu().numpy(),
+             "homie_cmd_norm": torch.norm(env.get_physical_homie_commands()[:k, :3], dim=1).cpu().numpy(),
+             "cond_1_to_2": env._stage_1_to_2_advance_condition()[:k].float().cpu().numpy(),
++            # 使う手（の剛体）が把手から受けている力の大きさ [N]。下から把手に当たって上へ回れないかを見る
++            "hand_handle_contact_n": torch.where(
++                use_left,
++                env.simulator.object_to_hand_contact_forces[:k, 0, env.left_hand_indices_tgt_ct_sensor, :].norm(dim=-1).sum(dim=-1),
++                env.simulator.object_to_hand_contact_forces[:k, 0, env.right_hand_indices_tgt_ct_sensor, :].norm(dim=-1).sum(dim=-1),
++            ).cpu().numpy(),
+         }
+ 
+     def _write_rgb(self, env) -> None:
+-- 
+2.43.0
+

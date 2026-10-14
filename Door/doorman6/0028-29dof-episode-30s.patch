@@ -1,0 +1,27 @@
+From 994cdd8b766cee80dfb48ee43d260e472c0eb4d6 Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Thu, 8 Oct 2026 04:32:50 +0900
+Subject: [PATCH] 29dof: max_episode_length_s 20 -> 30 (time to walk through
+ after unlatching)
+
+---
+ gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index 4d92977..6489e94 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -132,6 +132,9 @@ env:
+       name: door_nolatch
+     grasp_min_contact_links: 1
+     grasp_contact_force_threshold: 1.0
++    # G1_Hackason 段 2-2: 1 回の上限を 20 → 30 秒。レバーを下げて腕で扉を押すと 10° まで約 250 ステップかかり、
++    # 区間 4 に入る 350〜400 ステップ目で残りが 100 ステップ前後しかなかった（10-08 04:30 の動画と記録）
++    max_episode_length_s: 30
+     lever_side_hand: True  # G1_Hackason: 把手と同じ側の手で取りに行く（door_open_homie.py の use_left_hand）
+     pregrasp_height: 0.0  # G1_Hackason: 把手の上でなく把手そのものに構える（指の無い手は下から当たって上へ回れない）
+     pregrasp_above_margin: null  # G1_Hackason: 区間 1→2 の「把手より 5 cm 上」を見ない
+-- 
+2.43.0
+

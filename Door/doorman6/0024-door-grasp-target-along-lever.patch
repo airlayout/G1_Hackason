@@ -1,0 +1,44 @@
+From 3b8835c1231e285e49a9cc182a19a32ccb71fb0f Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Wed, 7 Oct 2026 23:53:37 +0900
+Subject: [PATCH] door: grasp_target_offset_along_lever (toward the lever tip);
+ 29dof presses 4 cm further out
+
+---
+ gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml | 3 +++
+ gr00t/rl/envs/door/door_open_homie.py                       | 5 +++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index fab2f8a..d4aa417 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -139,6 +139,9 @@ env:
+     # 手を棒の手前で上げてから上から下ろす。指定すると pregrasp_height より優先）。どちらも world [m]
+     grasp_target_offset: [0.06, 0.0, 0.01]
+     push_door_force_penalize_pull: True  # G1_Hackason 段 2-2: レバーを手前へ引く力を push_door_force で負に数える
++    # G1_Hackason 段 2-2: 押す点をレバーの先の向きへ 4 cm（軸から約 10 cm。必要な力が約半分の 10〜20 N）。
++    # 中ほどのままだと 10-07 23:52 の評価でレバーの最大角は中央値 13.8°・45° に届いた回 0（前へ押す力は出ていた）
++    grasp_target_offset_along_lever: 0.04
+     pregrasp_offset: [-0.14, 0.0, 0.12]
+     delta_action_indices: [
+       0, 1, 2,  # homie command
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 6f85875..b085fb9 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -807,6 +807,11 @@ class DoorPregrasp(
+         offset = self.config.get("grasp_target_offset", None)
+         if offset is not None:
+             grasp_target_pos_w += torch.tensor(offset, dtype=grasp_target_pos_w.dtype, device=self.device)
++        # レバーの先の向きへずらす [m]。レバーは扉の y の -door_open_lr の向きへ伸びる（door.py の handle_inside）。
++        # 元の点はレバーの中ほど（軸から長さの半分）で、ばねの上限 1〜2 N·m を越えるには約 17〜33 N 要る。先へ寄せると力が減る
++        along = self.config.get("grasp_target_offset_along_lever", None)
++        if along is not None:
++            grasp_target_pos_w[:, 1] += float(along) * (-self.door_open_lr)
+         return grasp_target_pos_w
+ 
+     def _compute_pre_grasp_target(self):
+-- 
+2.43.0
+

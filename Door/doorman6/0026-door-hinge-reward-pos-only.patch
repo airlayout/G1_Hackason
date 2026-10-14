@@ -1,0 +1,41 @@
+From 0b4136a91a744271df1cacffcad751cd467f46e1 Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Thu, 8 Oct 2026 03:22:52 +0900
+Subject: [PATCH] door: push_door_hinge_pos_only (no velocity term; stops door
+ pumping); enabled for 29dof
+
+---
+ gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml | 1 +
+ gr00t/rl/envs/door/door_open_homie.py                       | 4 ++++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index 7dc3a12..dda24cf 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -143,6 +143,7 @@ env:
+     # 中ほどのままだと 10-07 23:52 の評価でレバーの最大角は中央値 13.8°・45° に届いた回 0（前へ押す力は出ていた）
+     grasp_target_offset_along_lever: 0.04
+     push_door_handle_pos_only: True  # G1_Hackason 段 2-2: レバーの報酬は角度だけ（小刻みに押し戻す動きで稼がせない）
++    push_door_hinge_pos_only: True  # G1_Hackason 段 2-2: 扉の報酬も角度だけ（押してはクローザーで戻される繰り返しで稼がせない）
+     pregrasp_offset: [-0.14, 0.0, 0.12]
+     delta_action_indices: [
+       0, 1, 2,  # homie command
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 1395f13..29abb46 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -612,6 +612,10 @@ class DoorPregrasp(
+     @StagedTaskBase.effective_in_stage([STAGE_OPEN, STAGE_SWING])
+     def _reward_push_door_hinge(self):
+         hinge_vel_reward = self.simulator.scene.articulations["door"].data.joint_vel.torch[:, 0] * 10
++        # G1_Hackason（段 2-2）: 角度だけを数える。速さの項（×10）があると、扉を少し押してはクローザーで戻される繰り返しで稼げる
++        # （10-08 03:20、立ったまま扉 約 20° で報酬 0.75・区間 4 で前へ 6 mm しか歩かない）。レバーの push_door_handle_pos_only と同じ
++        if self.config.get("push_door_hinge_pos_only", False):
++            hinge_vel_reward = torch.zeros_like(hinge_vel_reward)
+         hinge_pos_reward = (
+             self.simulator.scene.articulations["door"]
+             .data.joint_pos.torch[:, 0]
+-- 
+2.43.0
+

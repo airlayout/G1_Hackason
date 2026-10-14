@@ -1,0 +1,31 @@
+From a9f842908c0d02e0b1b3a39afb5c90a9121d079f Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Thu, 8 Oct 2026 13:25:10 +0900
+Subject: [PATCH] door: push_door_force_max (cap of the push force reward,
+ default 20 N; grades 3+ need more)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 29abb46..cd163e5 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -539,9 +539,12 @@ class DoorPregrasp(
+         # G1_Hackason（段 2-2）: 引く力（レバーを機体側へ）も負で数える。指の無い手はレバーを手前へ引きながら押し下げ、
+         # 扉を枠へ押し付けて開かなかった（10-07、閉じた扉で蝶番の速さが負のまま・この報酬は 0）。下限 0 だと引いても罰が無い
+         min_force = -20.0 if self.config.get("push_door_force_penalize_pull", False) else 0.0
++        # G1_Hackason（段 2-3）: 頭打ちを設定で変えられるようにする（既定は元の 20 N）。EN 1154 の等級 3 以上の扉は
++        # レバーの位置で 20 N を超える力が要り、20 N で頭打ちだと、それ以上強く押す手がかりが報酬に無い（10-08）
++        max_force = self.config.get("push_door_force_max", 20.0)
+         return (
+             torch.where(self.use_left_hand, left_net_force[:, 0], right_net_force[:, 0])
+-        ).clamp(min=min_force, max=20.0)
++        ).clamp(min=min_force, max=max_force)
+ 
+     @StagedTaskBase.effective_in_stage(STAGE_OPEN)
+     def _reward_press_door_handle_down(self):
+-- 
+2.43.0
+

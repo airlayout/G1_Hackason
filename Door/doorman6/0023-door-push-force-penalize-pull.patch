@@ -1,0 +1,44 @@
+From 37470d819246c3c81bc79a91bfc1896d12ddaf27 Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Wed, 7 Oct 2026 22:43:40 +0900
+Subject: [PATCH] door: push_door_force_penalize_pull (count pulling the lever
+ toward the robot as negative); enabled for 29dof
+
+---
+ gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml | 1 +
+ gr00t/rl/envs/door/door_open_homie.py                       | 5 ++++-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index 6e44f0d..fab2f8a 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -138,6 +138,7 @@ env:
+     # 構える点は当てる点から手前 14 cm・上 12 cm（＝元の点の手前 8 cm・上 13 cm。19:43 からの学習と同じ場所。
+     # 手を棒の手前で上げてから上から下ろす。指定すると pregrasp_height より優先）。どちらも world [m]
+     grasp_target_offset: [0.06, 0.0, 0.01]
++    push_door_force_penalize_pull: True  # G1_Hackason 段 2-2: レバーを手前へ引く力を push_door_force で負に数える
+     pregrasp_offset: [-0.14, 0.0, 0.12]
+     delta_action_indices: [
+       0, 1, 2,  # homie command
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index e91e327..6f85875 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -536,9 +536,12 @@ class DoorPregrasp(
+             :, 0, self.right_hand_indices_tgt_ct_sensor, :
+         ].sum(dim=-2)
+         # reward -x direction force (pushing the door)
++        # G1_Hackason（段 2-2）: 引く力（レバーを機体側へ）も負で数える。指の無い手はレバーを手前へ引きながら押し下げ、
++        # 扉を枠へ押し付けて開かなかった（10-07、閉じた扉で蝶番の速さが負のまま・この報酬は 0）。下限 0 だと引いても罰が無い
++        min_force = -20.0 if self.config.get("push_door_force_penalize_pull", False) else 0.0
+         return (
+             torch.where(self.use_left_hand, left_net_force[:, 0], right_net_force[:, 0])
+-        ).clamp(min=0.0, max=20.0)
++        ).clamp(min=min_force, max=20.0)
+ 
+     @StagedTaskBase.effective_in_stage(STAGE_OPEN)
+     def _reward_press_door_handle_down(self):
+-- 
+2.43.0
+

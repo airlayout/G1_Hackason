@@ -1,0 +1,35 @@
+From b9abc5ee7c6f68ee1b7d247d45191d639e2861e4 Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Wed, 7 Oct 2026 22:28:51 +0900
+Subject: [PATCH] 29dof: grasp target over the bar center (push forward-down
+ into the lever); same pre-grasp point
+
+---
+ .../exp/wbmanip/door_open_homie_29dof_lstm.yaml       | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index 8416200..6e44f0d 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -132,10 +132,13 @@ env:
+     lever_side_hand: True  # G1_Hackason: 把手と同じ側の手で取りに行く（door_open_homie.py の use_left_hand）
+     pregrasp_height: 0.0  # G1_Hackason: 把手の上でなく把手そのものに構える（指の無い手は下から当たって上へ回れない）
+     pregrasp_above_margin: null  # G1_Hackason: 区間 1→2 の「把手より 5 cm 上」を見ない
+-    # G1_Hackason 段 2-2: 手のひらを当てる点を 3 cm 上へ（棒の上から押す）。構える点はその手前 8 cm・上 10 cm
+-    # （手を棒の手前で上げてから上から下ろす。指定すると pregrasp_height より優先）。どちらも world [m]
+-    grasp_target_offset: [0.0, 0.0, 0.03]
+-    pregrasp_offset: [-0.08, 0.0, 0.10]
++    # G1_Hackason 段 2-2: 手のひらを当てる点を棒の中心の上へ（元の点は棒の約 5 cm 手前・軸の 2 cm 上）。届かない所に置いて、
++    # 手が近づこうとしてレバーを前下へ押し続けるようにする。点はレバーと扉に付いて動くので、開けば手も付いていく。
++    # 10-07 19:43〜22:28 は [0, 0, 0.03] で、押し下げは覚えたが前へ押す力が 0 のまま扉が開かなかった
++    # 構える点は当てる点から手前 14 cm・上 12 cm（＝元の点の手前 8 cm・上 13 cm。19:43 からの学習と同じ場所。
++    # 手を棒の手前で上げてから上から下ろす。指定すると pregrasp_height より優先）。どちらも world [m]
++    grasp_target_offset: [0.06, 0.0, 0.01]
++    pregrasp_offset: [-0.14, 0.0, 0.12]
+     delta_action_indices: [
+       0, 1, 2,  # homie command
+       3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,  # upper body
+-- 
+2.43.0
+

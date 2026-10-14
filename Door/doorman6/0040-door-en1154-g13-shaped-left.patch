@@ -1,0 +1,118 @@
+From 4f4e3adec50727fc3da97db53561365a510e138f Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Wed, 14 Oct 2026 09:14:40 +0900
+Subject: [PATCH] door: door_en1154_g13_shaped_left (stage 2-4a training door
+ in the real UIS Room 4 orientation: handle on the left, use with
+ mirror_left_doors)
+
+---
+ .../scenario_cfg/isaacsim.py                  | 97 +++++++++++++++++++
+ 1 file changed, 97 insertions(+)
+ create mode 100644 gr00t/rl/data/tasks/door_en1154_g13_shaped_left/scenario_cfg/isaacsim.py
+
+diff --git a/gr00t/rl/data/tasks/door_en1154_g13_shaped_left/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g13_shaped_left/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..3b348d7
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_en1154_g13_shaped_left/scenario_cfg/isaacsim.py
+@@ -0,0 +1,97 @@
++# G1_Hackason（段 2-4a の学習用）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。EN 1154 等級 1〜3（台 i は i % 3 + 1）・実物の形のクローザー・把手が左（door_open_lr=+1）。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    hinge_drive_max_force_range=(9.0, 13.0),  # EN 1154 等級 1 [N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
++    closer_shaped=True,  # 閉じ際が最大・90° で 1/3〜1/2・開ける向きは効率ぶん重い（env が毎物理ステップ力を掛ける）
++    closer_efficiency_range=(0.5, 0.65),  # EN 1154 等級 1 の最小〜+0.15
++    add_floors=True,
++    door_open_lr=["left"],  # 把手が機体の左（実物の UIS Room 4 の向き）
++    door_open_io=["out"],
++    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++door_spawner_cfg_g2 = door_spawner_cfg.replace(
++    hinge_drive_max_force_range=(13.0, 18.0),  # EN 1154 等級 2 [N·m]
++    closer_efficiency_range=(0.5, 0.65),
++)
++door_spawner_cfg_g3 = door_spawner_cfg.replace(
++    hinge_drive_max_force_range=(18.0, 26.0),  # EN 1154 等級 3 [N·m]
++    closer_efficiency_range=(0.55, 0.70),
++)
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    # 台 i に i 番目の扉（DoorMan の isaacsim.py が spawn_paths を env_i に明示する）。等級 1・2・3 を順に並べて 1/3 ずつ
++    assets_cfg=[door_spawner_cfg, door_spawner_cfg_g2, door_spawner_cfg_g3] * 1366,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+-- 
+2.50.1 (Apple Git-155)
+

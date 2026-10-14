@@ -1,0 +1,57 @@
+From 53d12a97f68933fc60954cd5ff5cd57efb1d490f Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Wed, 7 Oct 2026 19:43:29 +0900
+Subject: [PATCH] door: grasp_target_offset / pregrasp_offset (29dof: press the
+ lever from above, approach from the front)
+
+---
+ .../exp/wbmanip/door_open_homie_29dof_lstm.yaml     |  4 ++++
+ gr00t/rl/envs/door/door_open_homie.py               | 13 +++++++++++++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index 4ad8e09..8da4e9f 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -130,6 +130,10 @@ env:
+     lever_side_hand: True  # G1_Hackason: 把手と同じ側の手で取りに行く（door_open_homie.py の use_left_hand）
+     pregrasp_height: 0.0  # G1_Hackason: 把手の上でなく把手そのものに構える（指の無い手は下から当たって上へ回れない）
+     pregrasp_above_margin: null  # G1_Hackason: 区間 1→2 の「把手より 5 cm 上」を見ない
++    # G1_Hackason 段 2-2: 手のひらを当てる点を 3 cm 上へ（棒の上から押す）。構える点はその手前 8 cm・上 10 cm
++    # （手を棒の手前で上げてから上から下ろす。指定すると pregrasp_height より優先）。どちらも world [m]
++    grasp_target_offset: [0.0, 0.0, 0.03]
++    pregrasp_offset: [-0.08, 0.0, 0.10]
+     delta_action_indices: [
+       0, 1, 2,  # homie command
+       3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,  # upper body
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 475bd79..4ae005f 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -780,10 +780,23 @@ class DoorPregrasp(
+             .data.target_pos_w.torch[:, 0, :]
+             .clone()
+         )
++        # G1_Hackason（段 2-2）: 手のひらを当てる点をずらす [m]（world の x: 扉へ向かう向き・z: 上）。元の点はレバーの棒の
++        # 約 5 cm 手前・軸の 2 cm 上で、指で棒を包む構え。指の無い手は前の部分が棒の手前に当たって前へ押すだけになり、
++        # 下向きの力が 1 度も出なかった（10-07、press_door_handle_down が 200 反復とも 0）。上へずらして棒の上から押させる
++        offset = self.config.get("grasp_target_offset", None)
++        if offset is not None:
++            grasp_target_pos_w += torch.tensor(offset, dtype=grasp_target_pos_w.dtype, device=self.device)
+         return grasp_target_pos_w
+ 
+     def _compute_pre_grasp_target(self):
+         grasp_target_pos_w = self._compute_grasp_target()
++        # G1_Hackason（段 2-2）: 構える点を当てる点からずらす [m]（world）。指定すると pregrasp_height より優先。
++        # 手を棒の手前で上げてから上へ回し、上から下ろす（真上に構えると、下から上げる手の前が棒の下に当たる。10-07 の段 2-1）
++        pregrasp_offset = self.config.get("pregrasp_offset", None)
++        if pregrasp_offset is not None:
++            return grasp_target_pos_w + torch.tensor(
++                pregrasp_offset, dtype=grasp_target_pos_w.dtype, device=self.device
++            )
+         # G1_Hackason: 構える点の把手からの高さ（元は 0.1 m 上から下ろして握る）。指の無い手は下から把手に当たって
+         # 上へ回れず区間 1→2 で止まった（2026-10-07、手のひらは掴む点の約 6 cm 下まで来る）ので、29 関節版は 0.0
+         grasp_target_pos_w[:, 2] += self.config.get("pregrasp_height", 0.1)
+-- 
+2.43.0
+

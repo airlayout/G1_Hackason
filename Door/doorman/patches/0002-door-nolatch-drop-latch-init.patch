@@ -1,0 +1,25 @@
+From 5499745d55ddaadef778d30ca4d5385c6cc66a6d Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Tue, 6 Oct 2026 19:12:53 +0900
+Subject: [PATCH] door_nolatch: drop latch joint init
+
+---
+ gr00t/rl/data/tasks/door_nolatch/scenario_cfg/isaacsim.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/data/tasks/door_nolatch/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_nolatch/scenario_cfg/isaacsim.py
+index a5ad809..fd670c0 100644
+--- a/gr00t/rl/data/tasks/door_nolatch/scenario_cfg/isaacsim.py
++++ b/gr00t/rl/data/tasks/door_nolatch/scenario_cfg/isaacsim.py
+@@ -61,7 +61,7 @@ TaskObjCfgDict = {
+             joint_pos={
+                 ".*hinge.*": 0.0,
+                 ".*handle.*": 0.0,
+-                ".*latch.*": 0.0,
++                # ラッチ無しなので ".*latch.*" は置かない（一致しないと Isaac Lab が ValueError）
+             },
+             joint_vel={".*": 0.0},
+         ),
+-- 
+2.50.1 (Apple Git-155)
+

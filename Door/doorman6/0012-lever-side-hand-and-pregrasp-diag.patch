@@ -1,0 +1,220 @@
+From ededa911212f2aa01f29fb75f4f9a3454d8a7776 Mon Sep 17 00:00:00 2001
+From: G1_Hackason <noreply@example.com>
+Date: Wed, 7 Oct 2026 11:54:24 +0900
+Subject: [PATCH] door: lever_side_hand option (use the hand on the lever
+ side); recorder pregrasp diagnostics
+
+---
+ .../door_open_homie_29dof_dagger-lstm.yaml    |  1 +
+ .../wbmanip/door_open_homie_29dof_lstm.yaml   |  1 +
+ gr00t/rl/envs/door/door_open_homie.py         | 32 ++++++++++++-------
+ gr00t/rl/utils/state_recorder.py              | 25 +++++++++++++++
+ 4 files changed, 47 insertions(+), 12 deletions(-)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml
+index 7c2ee1d..951e88c 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml
+@@ -176,6 +176,7 @@ env:
+       name: door_nolatch
+     grasp_min_contact_links: 1
+     grasp_contact_force_threshold: 1.0
++    lever_side_hand: True  # G1_Hackason: 把手と同じ側の手で取りに行く（door_open_homie.py の use_left_hand）
+     delta_action_indices: [
+       0, 1, 2,  # homie command
+       3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,  # upper body
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index 3fb4c46..31eb414 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -123,6 +123,7 @@ env:
+       name: door_nolatch
+     grasp_min_contact_links: 1
+     grasp_contact_force_threshold: 1.0
++    lever_side_hand: True  # G1_Hackason: 把手と同じ側の手で取りに行く（door_open_homie.py の use_left_hand）
+     delta_action_indices: [
+       0, 1, 2,  # homie command
+       3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,  # upper body
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 52b30bb..8451f10 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -107,6 +107,14 @@ class DoorPregrasp(
+             self.door_weight[env_id] = door_metadata["doorWeight"]
+             self.door_open_lr[env_id] = door_metadata["doorOpenLR"]
+ 
++        # G1_Hackason: どちらの手で把手を取りに行くか。元の DoorMan は把手と反対の手（door_open_lr < 0 で左手。
++        # このとき把手は機体の右）で、体の前を横切って取りに行く。lever_side_hand: True なら把手と同じ側の手を使う
++        # （指の無い 29 関節版では左手が把手に届かず、区間 1→2 で止まった。2026-10-07 の評価で 0/121）
++        if self.config.get("lever_side_hand", False):
++            self.use_left_hand = self.door_open_lr > 0
++        else:
++            self.use_left_hand = self.door_open_lr < 0
++
+         # body indices
+         # G1_Hackason: palm の剛体名とオフセットは設定から（29 関節版は wrist_yaw_link＋オフセット）
+         robot_config = self.simulator.robot_config
+@@ -285,12 +293,12 @@ class DoorPregrasp(
+         left_vel = self.simulator.dof_vel[:, self._left_hand_dof_idx] * torch.sign(left_diff)
+         right_vel = self.simulator.dof_vel[:, self._right_hand_dof_idx] * torch.sign(right_diff)
+ 
+-        pos_diff = torch.where(self.door_open_lr[:, None] < 0, left_diff, right_diff)
++        pos_diff = torch.where(self.use_left_hand[:, None], left_diff, right_diff)
+         pos_track = self._tracking_reward_util(
+             pos_diff, std=0.3, target=0.0, scale=1.0, offset=0.0
+         ).mean(dim=-1)
+ 
+-        vel_diff = torch.where(self.door_open_lr[:, None] < 0, left_vel, right_vel)
++        vel_diff = torch.where(self.use_left_hand[:, None], left_vel, right_vel)
+         vel_track = self._tracking_reward_util(
+             vel_diff, std=0.2, target=0.6, scale=1.0, offset=0.0
+         ).mean(dim=-1)
+@@ -308,11 +316,11 @@ class DoorPregrasp(
+             self.simulator.dof_pos[:, self._right_arm_dof_idx]
+             - self.resting_dof_pos[:, self._right_arm_dof_idx]
+         )
+-        return torch.where(self.door_open_lr[:, None] < 0, right_diff, left_diff).abs().sum(dim=-1)
++        return torch.where(self.use_left_hand[:, None], right_diff, left_diff).abs().sum(dim=-1)
+ 
+     @StagedTaskBase.effective_in_stage([STAGE_PREGRASP, STAGE_GRASP, STAGE_OPEN, STAGE_SWING])
+     def _reward_hand_handle_orientation(self):
+-        mask = (self.door_open_lr < 0)[:, None]
++        mask = self.use_left_hand[:, None]
+         rot_90 = quat_from_euler_xyz(
+             torch.full((self.num_envs,), torch.pi / 2.0, device=self.device),
+             torch.zeros(self.num_envs, device=self.device),
+@@ -369,7 +377,7 @@ class DoorPregrasp(
+ 
+         pos_reward = self._tracking_reward_util(
+             torch.where(
+-                self.door_open_lr < 0,
++                self.use_left_hand,
+                 left_hand_pos_to_pre_grasp_target_norm,
+                 right_hand_pos_to_pre_grasp_target_norm,
+             ),
+@@ -391,7 +399,7 @@ class DoorPregrasp(
+ 
+         vel_reward = self._tracking_reward_util(
+             torch.where(
+-                self.door_open_lr < 0,
++                self.use_left_hand,
+                 torch.linalg.norm(left_palm_vel - left_target_vel, dim=-1),
+                 torch.linalg.norm(right_palm_vel - right_target_vel, dim=-1),
+             ),
+@@ -409,12 +417,12 @@ class DoorPregrasp(
+         left_vel = self.simulator.dof_vel[:, self._left_hand_dof_idx] * torch.sign(left_diff)
+         right_vel = self.simulator.dof_vel[:, self._right_hand_dof_idx] * torch.sign(right_diff)
+ 
+-        pos_diff = torch.where(self.door_open_lr[:, None] < 0, left_diff, right_diff)
++        pos_diff = torch.where(self.use_left_hand[:, None], left_diff, right_diff)
+         pos_track = self._tracking_reward_util(
+             pos_diff, std=0.3, target=0.0, scale=1.0, offset=0.0
+         ).mean(dim=-1)
+ 
+-        vel_diff = torch.where(self.door_open_lr[:, None] < 0, left_vel, right_vel)
++        vel_diff = torch.where(self.use_left_hand[:, None], left_vel, right_vel)
+         vel_track = self._tracking_reward_util(
+             vel_diff, std=0.2, target=0.6, scale=1.0, offset=0.0
+         ).mean(dim=-1)
+@@ -436,7 +444,7 @@ class DoorPregrasp(
+ 
+         return self._tracking_reward_util(
+             torch.where(
+-                self.door_open_lr < 0,
++                self.use_left_hand,
+                 left_hand_pos_to_grasp_target_norm,
+                 right_hand_pos_to_grasp_target_norm,
+             ),
+@@ -523,7 +531,7 @@ class DoorPregrasp(
+         ].sum(dim=-2)
+         # reward -x direction force (pushing the door)
+         return (
+-            torch.where(self.door_open_lr < 0, left_net_force[:, 0], right_net_force[:, 0])
++            torch.where(self.use_left_hand, left_net_force[:, 0], right_net_force[:, 0])
+         ).clamp(min=0.0, max=20.0)
+ 
+     @StagedTaskBase.effective_in_stage(STAGE_OPEN)
+@@ -917,7 +925,7 @@ class DoorPregrasp(
+             )
+             right_hand_cond &= right_hand_close_to_pre_grasp_dof_target
+ 
+-        cond = torch.where(self.door_open_lr < 0, left_hand_cond, right_hand_cond)
++        cond = torch.where(self.use_left_hand, left_hand_cond, right_hand_cond)
+ 
+         cond &= self._reward_hand_handle_orientation() > 0.2
+ 
+@@ -951,7 +959,7 @@ class DoorPregrasp(
+             > contact_force_threshold
+         ).sum(dim=-1)
+         right_hand_grasped = right_hand_handle_contact_count >= min_contact_links
+-        return torch.where(self.door_open_lr < 0, left_hand_grasped, right_hand_grasped)
++        return torch.where(self.use_left_hand, left_hand_grasped, right_hand_grasped)
+ 
+     def _stage_2_to_3_advance_condition(self):
+         # grasp the door handle
+diff --git a/gr00t/rl/utils/state_recorder.py b/gr00t/rl/utils/state_recorder.py
+index 320dcb5..fb148f2 100644
+--- a/gr00t/rl/utils/state_recorder.py
++++ b/gr00t/rl/utils/state_recorder.py
+@@ -7,12 +7,14 @@
+ #   dir: 書き出し先
+ #   num_envs: 先頭から何台を記録するか（既定 4）
+ #   chunk_steps: 何ステップごとにファイルを分けるか（既定 100。止められたときに失うのはこの分まで）
++#   pregrasp_diag: True で区間 1→2 の条件の各項目も書く（既定 False）
+ #   rgb_every: カメラ（ego_camera）があるとき、何ステップごとに先頭 num_envs 台の RGB を PNG で書くか（既定 0 = 書かない）
+ 
+ import atexit
+ import os
+ 
+ import numpy as np
++import torch
+ 
+ 
+ def _t(x):
+@@ -39,6 +41,7 @@ class StateRecorder:
+         self.num = int(min(cfg.get("num_envs", 4), env.num_envs))
+         self.chunk_steps = int(cfg.get("chunk_steps", 100))
+         self.rgb_every = int(cfg.get("rgb_every", 0))
++        self.pregrasp_diag = bool(cfg.get("pregrasp_diag", False))
+         self.rgb_count = 0
+         os.makedirs(self.dir, exist_ok=True)
+         self.chunk = 0
+@@ -86,6 +89,8 @@ class StateRecorder:
+             "door_body_pos": (_t(env.simulator.scene.articulations["door"].data.body_pos_w)[:k]
+                               - env.env_origins[:k, None]).cpu().numpy(),
+         }
++        if self.pregrasp_diag:
++            row.update(self._pregrasp_diag(env, k))
+         for key, value in row.items():
+             self.buf.setdefault(key, []).append(value.astype(np.float32))
+         if self.rgb_every > 0 and self.rgb_count % self.rgb_every == 0:
+@@ -94,6 +99,26 @@ class StateRecorder:
+         if len(self.buf["step"]) >= self.chunk_steps:
+             self.flush()
+ 
++    @staticmethod
++    def _pregrasp_diag(env, k: int) -> dict:
++        """区間 1→2（手を構える）の条件の各項目。手なしの機体でどれが満たせないかを見る（door_open_homie.py の
++        _stage_1_to_2_advance_condition と同じ式）。位置はどれも env の原点から。"""
++        origins = env.env_origins[:k]
++        target = env._compute_pre_grasp_target()[:k]
++        use_left = getattr(env, "use_left_hand", env.door_open_lr < 0)[:k]
++        palm = torch.where(use_left[:, None], env._palm_pos("left")[:k], env._palm_pos("right")[:k])
++        return {
++            "door_open_lr": env.door_open_lr[:k].float().cpu().numpy(),
++            "use_left_hand": use_left.float().cpu().numpy(),
++            "pregrasp_target": (target - origins).cpu().numpy(),
++            "palm_used": (palm - origins).cpu().numpy(),
++            "palm_to_pregrasp": (palm - target).norm(dim=-1).cpu().numpy(),
++            "palm_above_handle": (palm[:, 2] - env.door_handle_height[:k].reshape(-1)).cpu().numpy(),
++            "hand_handle_orientation": env._reward_hand_handle_orientation()[:k].cpu().numpy(),
++            "homie_cmd_norm": torch.norm(env.get_physical_homie_commands()[:k, :3], dim=1).cpu().numpy(),
++            "cond_1_to_2": env._stage_1_to_2_advance_condition()[:k].float().cpu().numpy(),
++        }
++
+     def _write_rgb(self, env) -> None:
+         """描画したままの RGB（正規化・画像の乱択の前）を env ごとに PNG で書く。"""
+         camera = getattr(env.simulator, "ego_camera", None)
+-- 
+2.43.0
+

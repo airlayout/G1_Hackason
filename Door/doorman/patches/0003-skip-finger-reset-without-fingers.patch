@@ -1,0 +1,49 @@
+From fa1a3b6dc1260578a4c265e408d26afa8c3d92be Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Tue, 6 Oct 2026 19:51:24 +0900
+Subject: [PATCH] door env: skip finger dof reset when there are no fingers
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 26 ++++++++++++++------------
+ 1 file changed, 14 insertions(+), 12 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 5a01023..c098f85 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -767,18 +767,20 @@ class DoorPregrasp(
+         )
+ 
+         # completely randomize finger dofs
+-        xx, yy = torch.meshgrid(env_ids, self.finger_dof_idx)
+-        upper_limit = torch.tensor(
+-            self.simulator.robot_config.dof_pos_upper_limit_list, device=str(self.device)
+-        )[None, self.finger_dof_idx]
+-        lower_limit = torch.tensor(
+-            self.simulator.robot_config.dof_pos_lower_limit_list, device=str(self.device)
+-        )[None, self.finger_dof_idx]
+-        self.target_robot_dof_state[xx, yy, 0] = lower_limit + (
+-            upper_limit - lower_limit
+-        ) * torch_rand_float(
+-            0.0, 1.0, (len(env_ids), len(self.finger_dof_idx)), device=str(self.device)
+-        )
++        # G1_Hackason: 指が 0 本だと torch_rand_float（TorchScript）が大きさ 0 で内部エラーになるので飛ばす
++        if len(self.finger_dof_idx) > 0:
++            xx, yy = torch.meshgrid(env_ids, self.finger_dof_idx)
++            upper_limit = torch.tensor(
++                self.simulator.robot_config.dof_pos_upper_limit_list, device=str(self.device)
++            )[None, self.finger_dof_idx]
++            lower_limit = torch.tensor(
++                self.simulator.robot_config.dof_pos_lower_limit_list, device=str(self.device)
++            )[None, self.finger_dof_idx]
++            self.target_robot_dof_state[xx, yy, 0] = lower_limit + (
++                upper_limit - lower_limit
++            ) * torch_rand_float(
++                0.0, 1.0, (len(env_ids), len(self.finger_dof_idx)), device=str(self.device)
++            )
+ 
+         # set velocities to 0
+         self.target_robot_dof_state[env_ids, :, 1] = 0.0
+-- 
+2.50.1 (Apple Git-155)
+

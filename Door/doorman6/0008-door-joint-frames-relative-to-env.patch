@@ -1,0 +1,31 @@
+From e04f23fb038a2c709c91decb558b8accfbe199ee Mon Sep 17 00:00:00 2001
+From: Inoue Reo <inoue@glocalist.co>
+Date: Wed, 7 Oct 2026 10:07:20 +0900
+Subject: [PATCH 8/9] door: compute joint frames relative to the env prim
+ (Isaac Lab 3.0 spawns inside translated env_i)
+
+---
+ gr00t/rl/isaac_utils/playground/env_rand/door.py | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/isaac_utils/playground/env_rand/door.py b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+index 4317b6d..c7a072f 100644
+--- a/gr00t/rl/isaac_utils/playground/env_rand/door.py
++++ b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+@@ -111,7 +111,12 @@ def _update_joint_transform(stage, joint_path, prim0_path, prim1_path):
+     xform_cache = UsdGeom.XformCache()
+ 
+     # Get the relative transform between the two prims
+-    prim1_to_prim0, _ = xform_cache.ComputeRelativeTransform(prim1, prim0)
++    # G1_Hackason: prim0 は prim1 の兄弟なので、元の ComputeRelativeTransform(prim1, prim0) はワールド座標を返す。
++    # Isaac Lab 2.x は扉を原点の /World/Template で作ってから env へ複製したので、それで扉からの相対と一致していた。
++    # 3.0 は平行移動済みの env_i の下に直接作るため、関節 1 段ごとに env の原点ぶん部品がずれた（10-07 実測: 把手が原点の 2 倍の所）。
++    # 扉を入れている env の prim からの相対で求め、2.x と同じ値にする
++    env_prim = prim1.GetParent().GetParent()
++    prim1_to_prim0, _ = xform_cache.ComputeRelativeTransform(prim1, env_prim)
+ 
+     # Get the joint's local position and orientation attributes
+     local_pos0_attr = joint_prim.GetAttribute("physics:localPos0")
+-- 
+2.50.1 (Apple Git-155)
+

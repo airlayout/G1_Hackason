@@ -1,0 +1,63 @@
+From 01630a4ecaf01ad5ca2476912b03939c2026688b Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Wed, 7 Oct 2026 18:36:21 +0900
+Subject: [PATCH] door: press_door_handle_down reward (downward hand force on
+ the lever in the open stage); enabled for 29dof
+
+---
+ .../exp/wbmanip/door_open_homie_29dof_lstm.yaml  |  4 ++++
+ gr00t/rl/envs/door/door_open_homie.py            | 16 ++++++++++++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index b224f4a..4ad8e09 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -8,6 +8,7 @@
+ #   - 区間 2 の完了は「手の剛体 1 個がハンドルに触れる」（元は指 4 か所）
+ #   - 指の報酬 3 項目を 0（指が無いと NaN になる・常に 0）
+ #   - ドアは door_nolatch（ラッチ無し。クローザーは元のまま弱い）
++#   - 段 2-2 から: レバーを下へ押す力の報酬 press_door_handle_down（ラッチ付きの扉は ++env.config.task.name=door で）
+ 
+ defaults:
+   - /algo: ppo
+@@ -116,6 +117,9 @@ rewards:
+     pregrasp_finger_dof_pos_l1: 0.0
+     grasp_finger_dof_pos_l1: 0.0
+     limits_primitive_action: 0.0
++    # G1_Hackason 段 2-2: 手でレバーを下へ押す力（0〜1、30 N で頭打ち）。区間 3（開ける）だけで出る
++    # reward_penalty_reward_names には入れていない（引き締めで小さくならない）
++    press_door_handle_down: 4.0
+ 
+ env:
+   config:
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index d73621e..475bd79 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -540,6 +540,22 @@ class DoorPregrasp(
+             torch.where(self.use_left_hand, left_net_force[:, 0], right_net_force[:, 0])
+         ).clamp(min=0.0, max=20.0)
+ 
++    @StagedTaskBase.effective_in_stage(STAGE_OPEN)
++    def _reward_press_door_handle_down(self):
++        # G1_Hackason（段 2-2）: 手でレバーを下へ押す力。センサーはレバー（door_handle）に付いていて、force_matrix_w は
++        # 手からレバーが受ける力（push_door_force が扉を +x へ押すと正になるのと同じ向き）なので、下へ押すと -z。
++        # DoorMan のレバーは閉位置からばねの上限（1〜2 N·m＝目標点で約 17〜33 N）で押さえていて、それを越えるまで全く動かない。
++        # レバーの角度と速さを見る push_door_handle だけでは手がかりが無く、段 2-1 の方策から 1,000 反復でレバーは 123 回とも 0° だった（10-07）
++        left_net_force = self.simulator.object_to_hand_contact_forces[
++            :, 0, self.left_hand_indices_tgt_ct_sensor, :
++        ].sum(dim=-2)
++        right_net_force = self.simulator.object_to_hand_contact_forces[
++            :, 0, self.right_hand_indices_tgt_ct_sensor, :
++        ].sum(dim=-2)
++        down_force = -torch.where(self.use_left_hand, left_net_force[:, 2], right_net_force[:, 2])
++        force_max = self.config.get("press_handle_force_max", 30.0)
++        return down_force.clamp(min=0.0, max=force_max) / force_max
++
+     @StagedTaskBase.effective_in_stage(STAGE_OPEN)
+     def _reward_push_door_handle(self):
+         handle_vel_reward = self.simulator.scene.articulations["door"].data.joint_vel.torch[:, 1]
+-- 
+2.43.0
+

@@ -1,0 +1,41 @@
+From b318946999e0fa68e7cdfdad79ef2d65d5117dc6 Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Thu, 8 Oct 2026 00:32:12 +0900
+Subject: [PATCH] door: push_door_handle_pos_only (no velocity term; stops
+ lever pumping); enabled for 29dof
+
+---
+ gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml | 1 +
+ gr00t/rl/envs/door/door_open_homie.py                       | 4 ++++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index d4aa417..7dc3a12 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -142,6 +142,7 @@ env:
+     # G1_Hackason 段 2-2: 押す点をレバーの先の向きへ 4 cm（軸から約 10 cm。必要な力が約半分の 10〜20 N）。
+     # 中ほどのままだと 10-07 23:52 の評価でレバーの最大角は中央値 13.8°・45° に届いた回 0（前へ押す力は出ていた）
+     grasp_target_offset_along_lever: 0.04
++    push_door_handle_pos_only: True  # G1_Hackason 段 2-2: レバーの報酬は角度だけ（小刻みに押し戻す動きで稼がせない）
+     pregrasp_offset: [-0.14, 0.0, 0.12]
+     delta_action_indices: [
+       0, 1, 2,  # homie command
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index b085fb9..1395f13 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -580,6 +580,10 @@ class DoorPregrasp(
+     @StagedTaskBase.effective_in_stage(STAGE_OPEN)
+     def _reward_push_door_handle(self):
+         handle_vel_reward = self.simulator.scene.articulations["door"].data.joint_vel.torch[:, 1]
++        # G1_Hackason（段 2-2）: 角度だけを数える。速さの項があると、レバーを小刻みに押しては戻すだけで稼げる
++        # （下げるのは遅く、ばねで戻るのは速いので平均が正）。10-07 の 5 回目で報酬 0.7〜0.86 なのに最大角の中央値は約 14°
++        if self.config.get("push_door_handle_pos_only", False):
++            handle_vel_reward = torch.zeros_like(handle_vel_reward)
+         handle_max = self.door_handle_max_angle  # G1_Hackason: 扉ごとのレバーの上限で割る（元は 45° 固定）
+         handle_pos_reward = (
+             torch.minimum(
+-- 
+2.43.0
+

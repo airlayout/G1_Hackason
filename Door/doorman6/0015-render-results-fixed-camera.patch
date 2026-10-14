@@ -1,0 +1,54 @@
+From c46dde2b3624b7bb7d96ff36275b9b047fe93528 Mon Sep 17 00:00:00 2001
+From: G1_Hackason <noreply@example.com>
+Date: Wed, 7 Oct 2026 14:44:55 +0900
+Subject: [PATCH] render_results: fixed camera (render_eye/render_target) and
+ resolution options
+
+---
+ gr00t/rl/envs/legged_base_task/legged_robot_base.py | 13 +++++++++++--
+ gr00t/rl/simulator/isaacsim/isaacsim.py             |  4 ++--
+ 2 files changed, 13 insertions(+), 4 deletions(-)
+
+diff --git a/gr00t/rl/envs/legged_base_task/legged_robot_base.py b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+index 647a31d..65fd88c 100644
+--- a/gr00t/rl/envs/legged_base_task/legged_robot_base.py
++++ b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+@@ -541,9 +541,18 @@ class LeggedRobotBase(BaseTask):
+                 self._draw_debug_vis()
+ 
+             root_pos = self.simulator._rigid_body_pos[:, 0]
+-            eye = root_pos + torch.tensor([2, 2, 1], device=self.device)
++            # G1_Hackason: render_eye・render_target（env の原点からの位置 [m]）があれば、その場所に固定したカメラで写す。
++            # 既定（元のまま）は機体の (2, 2, 1) 先から機体を追うが、ドアでは扉の向こうの壁の中に入って写らない
++            sim_cfg = self.config.simulator.config
++            if sim_cfg.get("render_eye", None) is not None:
++                origins = self.env_origins
++                eye = origins + torch.tensor(list(sim_cfg.render_eye), device=self.device, dtype=origins.dtype)
++                target = origins + torch.tensor(list(sim_cfg.render_target), device=self.device, dtype=origins.dtype)
++            else:
++                eye = root_pos + torch.tensor([2, 2, 1], device=self.device)
++                target = root_pos
+ 
+-            self.simulator.eval_camera.set_world_poses_from_view(eye, root_pos)
++            self.simulator.eval_camera.set_world_poses_from_view(eye, target)
+             rgb_viewer = self.simulator.eval_camera.data.output["rgb"].torch.clone()  # G1_Hackason: Isaac Lab 3.0 は ProxyArray
+ 
+             if "writers_rendering_results" not in self.__dict__:
+diff --git a/gr00t/rl/simulator/isaacsim/isaacsim.py b/gr00t/rl/simulator/isaacsim/isaacsim.py
+index bd9434d..7b418d5 100644
+--- a/gr00t/rl/simulator/isaacsim/isaacsim.py
++++ b/gr00t/rl/simulator/isaacsim/isaacsim.py
+@@ -1046,8 +1046,8 @@ class IsaacSim(BaseSimulator):
+                     horizontal_aperture=5,
+                     clipping_range=(0.1, 20.0),
+                 ),
+-                width=256,
+-                height=256,
++                width=int(getattr(self.simulator_config, "render_width", 256)),   # G1_Hackason: 解像度を設定で
++                height=int(getattr(self.simulator_config, "render_height", 256)),
+             )
+             self.eval_camera = TiledCamera(eval_camera_config)
+             self.scene.sensors["eval_camera"] = self.eval_camera
+-- 
+2.43.0
+

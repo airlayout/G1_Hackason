@@ -1,0 +1,145 @@
+From f3dca4222d732ebbd1b4a094b133b41039438fcd Mon Sep 17 00:00:00 2001
+From: Inoue Reo <inoue@glocalist.co>
+Date: Wed, 7 Oct 2026 10:39:50 +0900
+Subject: [PATCH] behavior scripts on Kit 110 (omni.behavior.scripting.core):
+ dome light and material randomization; student enables dome light
+ randomization
+
+---
+ .../door_open_homie_29dof_dagger-lstm.yaml    |  4 ++--
+ gr00t/rl/eval_agent_trl.py                    |  4 ++++
+ .../scripts/behavior_script_compat.py         | 24 +++++++++++++++++++
+ .../scripts/domelight_randomization.py        |  5 +++-
+ .../scripts/material_randomization.py         | 10 +++-----
+ gr00t/rl/train_agent_trl.py                   |  4 ++++
+ 6 files changed, 41 insertions(+), 10 deletions(-)
+ create mode 100644 gr00t/rl/isaac_utils/playground/scripts/behavior_script_compat.py
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml
+index 0fe3792..7c2ee1d 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_dagger-lstm.yaml
+@@ -6,7 +6,7 @@
+ #   - 方策の出力 3 + 14 = 17・全身の行動 29・指のプリミティブ無し（教師と同じ）
+ #   - カメラは torso_link の直下に置く。29 関節の USD の d435_link は剛体でない Xform なので find_bodies が通らない。
+ #     d435_link の取付（torso から (0.0576, 0.0175, 0.4299)、pitch 47.6°）と元のオフセット（y +0.035・pitch +3.4°）を合成した
+-#   - ドームライトの乱択は切る（omni.kit.scripting が Kit 110 で omni.behavior.scripting.core に改名され、移植が要る）
++#   - ドームライトの乱択は元の生徒と同じく入れる（Kit 110 の omni.behavior.scripting.core で動く。パッチ 0011）
+ #   - teacher_actor_path は起動時に ++teacher_actor_path=<教師の last.pt の絶対パス> で渡す
+ 
+ defaults:
+@@ -138,7 +138,7 @@ algo:
+ 
+ simulator:
+   config:
+-    randomize_dome_light: False
++    randomize_dome_light: True
+     cameras:
+       enable_cameras: true
+       camera_types:
+diff --git a/gr00t/rl/eval_agent_trl.py b/gr00t/rl/eval_agent_trl.py
+index 0427918..5b04d26 100644
+--- a/gr00t/rl/eval_agent_trl.py
++++ b/gr00t/rl/eval_agent_trl.py
+@@ -191,6 +191,10 @@ def main(override_config: OmegaConf):
+         # Hydra が知らない -- 引数を弾くので、コマンドの引数ではなくここで入れる
+         # ドアの材質に使う omni.kit.material.library は、描画の無い kit では起動後に有効にすると止まるので最初から有効にする
+         kit_args = "--/app/extensions/registryEnabled=false --enable omni.kit.material.library"
++        # 生徒のドームライトの乱択は BehaviorScript を prim に付ける。その USD のスキーマ（OmniScriptingAPI）は
++        # 起動後に拡張を有効にすると登録されず、付けられない（10-07 実測）。使うときだけ最初から有効にする
++        if config.simulator.config.get("randomize_dome_light", False):
++            kit_args += " --enable omni.behavior.scripting.core"
+         args_cli.kit_args = f"{args_cli.kit_args} {kit_args}".strip() if getattr(args_cli, "kit_args", "") else kit_args
+ 
+         app_launcher = AppLauncher(args_cli)
+diff --git a/gr00t/rl/isaac_utils/playground/scripts/behavior_script_compat.py b/gr00t/rl/isaac_utils/playground/scripts/behavior_script_compat.py
+new file mode 100644
+index 0000000..447f052
+--- /dev/null
++++ b/gr00t/rl/isaac_utils/playground/scripts/behavior_script_compat.py
+@@ -0,0 +1,24 @@
++# G1_Hackason: BehaviorScript（USD の prim に付ける Python のスクリプト）の基底クラスを、Kit の版によらず返す。
++#
++# Kit 110（Isaac Sim 6.0）で拡張 omni.kit.scripting は omni.behavior.scripting.core に改名された（中身の API と
++# prim の属性 omni:scripting:scripts は同じ）。無い拡張を有効にしようとすると、レジストリを見に行って固まる
++# （registryEnabled=false でも。10-07 実測）ので、手元にある方だけを有効にする。
++
++_CANDIDATES = ("omni.kit.scripting", "omni.behavior.scripting.core")  # 5.1 の名前を先に
++
++
++def get_behavior_script_base():
++    """拡張を有効にしてから BehaviorScript を返す。SimulationApp の起動後に呼ぶこと。"""
++    import importlib
++
++    import omni.kit.app
++
++    manager = omni.kit.app.get_app().get_extension_manager()
++    local = {ext["name"] for ext in manager.get_extensions()}
++    for name in _CANDIDATES:
++        if name not in local:
++            continue
++        if not manager.is_extension_enabled(name):
++            manager.set_extension_enabled_immediate(name, True)
++        return importlib.import_module(name).BehaviorScript
++    raise RuntimeError(f"BehaviorScript の拡張が見つからない（探した名前: {_CANDIDATES}）")
+diff --git a/gr00t/rl/isaac_utils/playground/scripts/domelight_randomization.py b/gr00t/rl/isaac_utils/playground/scripts/domelight_randomization.py
+index ae453aa..06f9bb0 100644
+--- a/gr00t/rl/isaac_utils/playground/scripts/domelight_randomization.py
++++ b/gr00t/rl/isaac_utils/playground/scripts/domelight_randomization.py
+@@ -8,12 +8,15 @@ import os
+ import numpy as np
+ from pxr import Usd, Sdf, UsdLux
+ import omni.kit.commands
+-from omni.kit.scripting import BehaviorScript
++from gr00t.rl.isaac_utils.playground.scripts.behavior_script_compat import get_behavior_script_base
+ 
+ from gr00t.rl.isaac_utils.playground.utils.usd_utils import get_custom_data_from_prim, write_custom_data_to_prim
+ from gr00t.rl.isaac_utils.playground.utils.math_utils import set_prim_transform
+ 
+ 
++# G1_Hackason: Kit 110 で omni.kit.scripting が改名された。読み込みは SimulationApp の起動後（isaacsim.py が遅れて import する）
++BehaviorScript = get_behavior_script_base()
++
+ DOME_LIGHT_RANDOMIZATION_SCRIPT_PATH = os.path.join(os.path.dirname(__file__), "domelight_randomization.py")
+ 
+ 
+diff --git a/gr00t/rl/isaac_utils/playground/scripts/material_randomization.py b/gr00t/rl/isaac_utils/playground/scripts/material_randomization.py
+index 3b58d88..eb69be2 100644
+--- a/gr00t/rl/isaac_utils/playground/scripts/material_randomization.py
++++ b/gr00t/rl/isaac_utils/playground/scripts/material_randomization.py
+@@ -22,14 +22,10 @@ MATERIAL_RANDOMIZATION_SCRIPT_PATH = os.path.join(
+ 
+ def _get_behavior_script_base():
+     """Lazy import: omni.kit.scripting requires its extension to be enabled first."""
+-    import omni.kit.app
++    # G1_Hackason: Kit 110 では omni.behavior.scripting.core に改名された。手元にある方を有効にする
++    from gr00t.rl.isaac_utils.playground.scripts.behavior_script_compat import get_behavior_script_base
+ 
+-    ext_manager = omni.kit.app.get_app().get_extension_manager()
+-    ext_manager.set_extension_enabled_immediate("omni.kit.scripting", True)
+-
+-    from omni.kit.scripting import BehaviorScript
+-
+-    return BehaviorScript
++    return get_behavior_script_base()
+ 
+ 
+ # Build the class lazily so that the module can be imported before SimulationApp init.
+diff --git a/gr00t/rl/train_agent_trl.py b/gr00t/rl/train_agent_trl.py
+index 03f7667..0e0d473 100644
+--- a/gr00t/rl/train_agent_trl.py
++++ b/gr00t/rl/train_agent_trl.py
+@@ -251,6 +251,10 @@ def main(config: OmegaConf):
+         # Hydra が知らない -- 引数を弾くので、コマンドの引数ではなくここで入れる
+         # ドアの材質に使う omni.kit.material.library は、描画の無い kit では起動後に有効にすると止まるので最初から有効にする
+         kit_args = "--/app/extensions/registryEnabled=false --enable omni.kit.material.library"
++        # 生徒のドームライトの乱択は BehaviorScript を prim に付ける。その USD のスキーマ（OmniScriptingAPI）は
++        # 起動後に拡張を有効にすると登録されず、付けられない（10-07 実測）。使うときだけ最初から有効にする
++        if config.simulator.config.get("randomize_dome_light", False):
++            kit_args += " --enable omni.behavior.scripting.core"
+         args_cli.kit_args = f"{args_cli.kit_args} {kit_args}".strip() if getattr(args_cli, "kit_args", "") else kit_args
+ 
+         app_launcher = AppLauncher(args_cli)
+-- 
+2.50.1 (Apple Git-155)
+

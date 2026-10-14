@@ -1,0 +1,35 @@
+From 7bdb83356b85cee2915ba87f10f29740a1587512 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Wed, 14 Oct 2026 09:19:15 +0900
+Subject: [PATCH] door: reset_from_dataset.enabled=False starts episodes from
+ the standing pose instead of LAFAN-G1 poses (for evaluation; real robot
+ starts standing)
+
+---
+ gr00t/rl/envs/door/reset_from_dataset.py | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/gr00t/rl/envs/door/reset_from_dataset.py b/gr00t/rl/envs/door/reset_from_dataset.py
+index ad20a1b..7471bba 100644
+--- a/gr00t/rl/envs/door/reset_from_dataset.py
++++ b/gr00t/rl/envs/door/reset_from_dataset.py
+@@ -33,6 +33,16 @@ class ResetFromDataset(LeggedRobotBase):
+ 
+     @override
+     def _reset_robot_states_callback(self, env_ids, target_states=None):
++        # G1_Hackason（段 2-4）: reset_from_dataset.enabled=False で、人の動きのデータ（LAFAN-G1）ではなく立った姿勢から始める。
++        # データには傾いた姿勢（24〜68°）もあり、評価の 128 台中 5 台は出発の直後に倒れて打ち切られていた（2026-10-14、毎回同じ台）。
++        # 実機は立った姿勢から始まるので評価で使う。学習は既定（データから）のまま。前後左右・向き・初速の乱数は _reset_root_states のまま
++        if not self.config.reset_from_dataset.get("enabled", True):
++            self.target_robot_root_states[env_ids] = self.base_init_state
++            self.target_robot_root_states[env_ids, :3] += self.env_origins[env_ids]
++            self.target_robot_dof_state[env_ids, :, 0] = self.default_dof_pos
++            self._reset_dofs(env_ids)
++            self._reset_root_states(env_ids)
++            return
+         sample_idx = torch.randint(0, len(self.reset_dataset), (len(env_ids),), device=self.device)
+         sample_idx_in_seq = torch.randint(
+             0, self.reset_dataset.num_per_sample, (len(env_ids),), device=self.device
+-- 
+2.50.1 (Apple Git-155)
+

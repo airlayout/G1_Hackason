@@ -1,0 +1,677 @@
+From 348b56d200c11536fb4764a8f2e57eaf5a86576a Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Tue, 13 Oct 2026 13:06:37 +0900
+Subject: [PATCH] door: mirror observations and teacher actions for left-handle
+ doors (stage 2-4; the policy only learned right-handle doors)
+
+---
+ .../scenario_cfg/isaacsim.py                  |  85 ++++++++++++++
+ .../scenario_cfg/isaacsim.py                  |  85 ++++++++++++++
+ .../scenario_cfg/isaacsim.py                  |  85 ++++++++++++++
+ .../scenario_cfg/isaacsim.py                  |  85 ++++++++++++++
+ gr00t/rl/envs/door/door_mirror.py             |  94 +++++++++++++++
+ gr00t/rl/envs/door/door_open_homie.py         |  49 ++++++++
+ tests/test_door_mirror.py                     | 108 ++++++++++++++++++
+ 7 files changed, 591 insertions(+)
+ create mode 100644 gr00t/rl/data/tasks/door_en1154_g1_left/scenario_cfg/isaacsim.py
+ create mode 100644 gr00t/rl/data/tasks/door_en1154_g2_left/scenario_cfg/isaacsim.py
+ create mode 100644 gr00t/rl/data/tasks/door_en1154_g3_left/scenario_cfg/isaacsim.py
+ create mode 100644 gr00t/rl/data/tasks/door_en1154_g4_left/scenario_cfg/isaacsim.py
+ create mode 100644 gr00t/rl/envs/door/door_mirror.py
+ create mode 100644 tests/test_door_mirror.py
+
+diff --git a/gr00t/rl/data/tasks/door_en1154_g1_left/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g1_left/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..abbab32
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_en1154_g1_left/scenario_cfg/isaacsim.py
+@@ -0,0 +1,85 @@
++# G1_Hackason（段 2-4 の評価用）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。EN 1154 等級 1・把手が左（door_open_lr=+1）。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    hinge_drive_max_force_range=(9.0, 13.0),  # EN 1154 等級 1 [N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
++    add_floors=True,
++    door_open_lr=["left"],  # 把手が機体の左（実物の UIS Room 4 の向き）
++    door_open_io=["out"],
++    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    assets_cfg=[door_spawner_cfg] * 4096,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+diff --git a/gr00t/rl/data/tasks/door_en1154_g2_left/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g2_left/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..dce15c8
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_en1154_g2_left/scenario_cfg/isaacsim.py
+@@ -0,0 +1,85 @@
++# G1_Hackason（段 2-4 の評価用）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。EN 1154 等級 2・把手が左（door_open_lr=+1）。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    hinge_drive_max_force_range=(13.0, 18.0),  # EN 1154 等級 2 [N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
++    add_floors=True,
++    door_open_lr=["left"],  # 把手が機体の左（実物の UIS Room 4 の向き）
++    door_open_io=["out"],
++    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    assets_cfg=[door_spawner_cfg] * 4096,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+diff --git a/gr00t/rl/data/tasks/door_en1154_g3_left/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g3_left/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..bfd9c3f
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_en1154_g3_left/scenario_cfg/isaacsim.py
+@@ -0,0 +1,85 @@
++# G1_Hackason（段 2-4 の評価用）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。EN 1154 等級 3・把手が左（door_open_lr=+1）。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    hinge_drive_max_force_range=(18.0, 26.0),  # EN 1154 等級 3 [N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
++    add_floors=True,
++    door_open_lr=["left"],  # 把手が機体の左（実物の UIS Room 4 の向き）
++    door_open_io=["out"],
++    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    assets_cfg=[door_spawner_cfg] * 4096,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+diff --git a/gr00t/rl/data/tasks/door_en1154_g4_left/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g4_left/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..e28afb8
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_en1154_g4_left/scenario_cfg/isaacsim.py
+@@ -0,0 +1,85 @@
++# G1_Hackason（段 2-4 の評価用）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。EN 1154 等級 4・把手が左（door_open_lr=+1）。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    hinge_drive_max_force_range=(26.0, 37.0),  # EN 1154 等級 4 [N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
++    add_floors=True,
++    door_open_lr=["left"],  # 把手が機体の左（実物の UIS Room 4 の向き）
++    door_open_io=["out"],
++    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    assets_cfg=[door_spawner_cfg] * 4096,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+diff --git a/gr00t/rl/envs/door/door_mirror.py b/gr00t/rl/envs/door/door_mirror.py
+new file mode 100644
+index 0000000..7e8b0ae
+--- /dev/null
++++ b/gr00t/rl/envs/door/door_mirror.py
+@@ -0,0 +1,94 @@
++# G1_Hackason（段 2-4）: 把手が左の扉（door_open_lr=+1）で、観測と行動を左右の鏡写しにする。
++#
++# 段 2-3 までの方策は把手が右の扉（−1）しか学んでいない（2026-10-13 の評価で +1 は 0/70）。G1 は左右対称で、扉も
++# door.py が y の符号だけを変えて作る（把手・目標点は回転なし、蝶番は開く向きが逆）ので、世界を y→−y に映せば
++# +1 の扉は −1 の扉になる。方策には映した観測を渡し、方策の行動は映し戻して機体に渡す。
++#
++# 鏡（y→−y）での変わり方:
++#   位置・速度・力（ベクトル）: y を反転        角速度（軸のベクトル）: x・z を反転
++#   向き（回転行列 R → M R M）: tan_norm の 2 本の軸ベクトルとも y を反転
++#   関節: left_ ↔ right_ を入れ替え、roll・yaw の関節は符号を反転（pitch・膝・肘はそのまま）
++#   左手 ↔ 右手の項目は入れ替える
++import torch
++
++# 教師の行動（HOMIE の指令の能動な部分）: 前後・横・旋回の速さ、左腕 7、右腕 7（obs.homie_command_keys の順）
++NUM_LOCO = 3
++
++
++def _joint_mirror(names: list[str]) -> tuple[list[int], torch.Tensor]:
++    """関節の並び names を鏡に映したときの (並べ替え, 符号)。y[i] = x[perm[i]] * sign[i]"""
++    def partner(name: str) -> str:
++        if name.startswith("left_"):
++            return "right_" + name[len("left_"):]
++        if name.startswith("right_"):
++            return "left_" + name[len("right_"):]
++        return name
++
++    perm = [names.index(partner(n)) for n in names]
++    sign = torch.tensor([-1.0 if ("_roll_" in n or "_yaw_" in n) else 1.0 for n in names])
++    return perm, sign
++
++
++def _flip_y(x: torch.Tensor) -> torch.Tensor:
++    """3 つずつ並んだベクトル（[N, 3k]）の y を反転"""
++    out = x.clone()
++    out[:, 1::3] = -out[:, 1::3]
++    return out
++
++
++def _swap_halves(x: torch.Tensor) -> torch.Tensor:
++    half = x.shape[1] // 2
++    return torch.cat([x[:, half:], x[:, :half]], dim=1)
++
++
++class DoorMirror:
++    """観測の項目ごとの鏡写しと、教師の行動の鏡写し。どれも 2 回掛けると元に戻る。"""
++
++    def __init__(self, dof_names: list[str], left_arm_names: list[str], right_arm_names: list[str]) -> None:
++        self._dof_perm, self._dof_sign = _joint_mirror(list(dof_names))
++        arm_names = list(left_arm_names) + list(right_arm_names)
++        self._arm_perm, self._arm_sign = _joint_mirror(arm_names)
++        self._terms = {
++            "dof_pos": self._joints,
++            "dof_vel": self._joints,
++            "actions": self._joints,  # 全身の行動（関節の並び）
++            "projected_gravity": _flip_y,
++            "base_lin_vel": _flip_y,
++            "base_ang_vel": lambda x: x * torch.tensor([-1.0, 1.0, -1.0], device=x.device),
++            "relative_to_door": _flip_y,  # 位置・tan・norm
++            "hand_force": lambda x: _flip_y(_swap_halves(x)),  # 左手・右手の力（ワールド）
++            "hand_handle_transform": lambda x: _flip_y(_swap_halves(x)),  # 手のひらから見た目標点（位置・tan・norm）× 左右
++            "privileged_door_info": self._door_info,
++            "delta_actions": self.teacher_actions,
++            "unwarped_actions": self._loco,
++            "b_homie_commands": lambda x: x * torch.tensor([1.0, -1.0, -1.0, 1.0, -1.0, 1.0, -1.0], device=x.device),
++        }
++
++    def has(self, term: str) -> bool:
++        return term in self._terms
++
++    def obs(self, term: str, x: torch.Tensor) -> torch.Tensor:
++        """観測の項目 term（[N, d]）を鏡に映す。左右の無い項目（区間・扉の関節の角度など）はそのまま返す"""
++        fn = self._terms.get(term)
++        return x if fn is None else fn(x)
++
++    def teacher_actions(self, a: torch.Tensor) -> torch.Tensor:
++        """教師の行動 [前後, 横, 旋回, 左腕 7, 右腕 7] を鏡に映す（映し戻すのも同じ）"""
++        arms = a[:, NUM_LOCO:]
++        return torch.cat([self._loco(a[:, :NUM_LOCO]), arms[:, self._arm_perm] * self._arm_sign.to(a.device)], dim=1)
++
++    def _joints(self, x: torch.Tensor) -> torch.Tensor:
++        return x[:, self._dof_perm] * self._dof_sign.to(x.device)
++
++    @staticmethod
++    def _loco(v: torch.Tensor) -> torch.Tensor:
++        return v * torch.tensor([1.0, -1.0, -1.0], device=v.device)
++
++    @staticmethod
++    def _door_info(x: torch.Tensor) -> torch.Tensor:
++        # [幅, 高さ, 把手の高さ, 把手の端からの距離, 重さ/100, door_open_lr, 1 − door_open_lr, door_open_io]
++        out = x.clone()
++        lr = x[:, 5]
++        out[:, 5] = -lr
++        out[:, 6] = 1.0 + lr
++        return out
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 55301bb..a01b322 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -25,6 +25,7 @@ from gr00t.rl.envs.base_task.finger_primitive_base import FingerPrimitiveBase
+ from gr00t.rl.envs.base_task.homie_base import HomieBase
+ from gr00t.rl.envs.base_task.staged_task_base import StagedTaskBase
+ from gr00t.rl.envs.base_task.warped_action_base import WarpedActionBase
++from gr00t.rl.envs.door.door_mirror import DoorMirror
+ from gr00t.rl.envs.door.reset_from_dataset import ResetFromDataset
+ from gr00t.rl.isaac_utils.playground.env_rand.door_closer import closer_torque
+ from gr00t.rl.isaac_utils.rotations import quat_to_tan_norm, wxyz_to_xyzw, xyzw_to_wxyz
+@@ -157,6 +158,20 @@ class DoorPregrasp(
+         else:
+             self.use_left_hand = self.door_open_lr < 0
+ 
++        # G1_Hackason（段 2-4）: 把手が左の扉（door_open_lr > 0）で、方策に渡す観測と方策の行動を左右の鏡写しにする
++        # （door_mirror.py）。段 2-3 までの方策は把手が右の扉しか学んでいない（2026-10-13 に +1 の扉で 0/70）。
++        # 機体と扉の物理・報酬・区間の判定は本当の向きのまま（把手が左なら左手を使う）
++        self._door_mirror = DoorMirror(
++            self.dof_names, self.config.robot.left_arm_dof_names, self.config.robot.right_arm_dof_names
++        )
++        if self.config.get("mirror_left_doors", False):
++            self._mirror_env = self.door_open_lr > 0
++        else:
++            self._mirror_env = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
++        self._any_mirror = bool(self._mirror_env.any())
++        if self._any_mirror and self._num_homie_active_commands != 3 + len(self.config.robot.left_arm_dof_names) * 2:
++            raise ValueError(f"鏡写しは教師の行動が [前後・横・旋回・左腕・右腕] の並びのときだけ（{self._num_homie_active_commands}）")
++
+         # body indices
+         # G1_Hackason: palm の剛体名とオフセットは設定から（29 関節版は wrist_yaw_link＋オフセット）
+         robot_config = self.simulator.robot_config
+@@ -964,6 +979,40 @@ class DoorPregrasp(
+         door_dof_target[:, 1] = DOOR_HANDLE_TENSION  # tension the door handle
+         self.simulator.apply_torques_at_task_dof(env_ids, {"door": door_dof_target})
+ 
++    @override
++    def step(self, actor_state):
++        # G1_Hackason（段 2-4）: 鏡に映した世界での教師の行動を、本当の向きに映し戻す（脚の HOMIE の行動は本当の向きのまま）
++        if getattr(self, "_any_mirror", False):
++            actions = actor_state["actions"].clone()
++            n = self._num_homie_active_commands
++            teacher = actions[:, :n]
++            actions[:, :n] = torch.where(
++                self._mirror_env[:, None], self._door_mirror.teacher_actions(teacher), teacher
++            )
++            actor_state["actions"] = actions
++        return super().step(actor_state)
++
++    @override
++    def _post_config_observation_callback(self):
++        if getattr(self, "_any_mirror", False):
++            self._mirror_policy_obs()
++        super()._post_config_observation_callback()
++
++    def _mirror_policy_obs(self):
++        # G1_Hackason（段 2-4）: 教師（actor）と critic の項目だけを鏡に映した値に差し替える。HOMIE の観測と履歴
++        # （hist_obs_dict は actor の項目と同じテンソルを指すことがある）は本当の値のまま残すため、先に写しを取る
++        for key in list(self.hist_obs_dict.keys()):
++            self.hist_obs_dict[key] = self.hist_obs_dict[key].clone()
++        mask = self._mirror_env[:, None]
++        for group in ("actor_obs", "critic_obs"):
++            if group not in self.obs_buf_dict_raw.keys():
++                continue
++            raw = self.obs_buf_dict_raw[group]
++            for term in list(raw.keys()):
++                if self._door_mirror.has(term):
++                    x = raw[term]
++                    raw[term] = torch.where(mask, self._door_mirror.obs(term, x), x)
++
+     @override
+     def _apply_force_in_physics_step(self):
+         super()._apply_force_in_physics_step()
+diff --git a/tests/test_door_mirror.py b/tests/test_door_mirror.py
+new file mode 100644
+index 0000000..8b260fc
+--- /dev/null
++++ b/tests/test_door_mirror.py
+@@ -0,0 +1,108 @@
++# G1_Hackason（段 2-4）: 把手が左の扉で、観測と行動を鏡写しにする関数（door_mirror.py）を確かめる。torch だけで動く。
++import pytest
++import torch
++
++from gr00t.rl.envs.door.door_mirror import DoorMirror
++
++DOF_NAMES = [
++    "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint",
++    "left_ankle_pitch_joint", "left_ankle_roll_joint",
++    "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint", "right_knee_joint",
++    "right_ankle_pitch_joint", "right_ankle_roll_joint",
++    "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
++    "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint",
++    "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint",
++    "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint",
++    "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint",
++]
++LEFT_ARM = DOF_NAMES[15:22]
++RIGHT_ARM = DOF_NAMES[22:29]
++TERM_DIMS = {
++    "dof_pos": 29, "dof_vel": 29, "actions": 29, "projected_gravity": 3, "base_lin_vel": 3, "base_ang_vel": 3,
++    "relative_to_door": 9, "hand_force": 6, "hand_handle_transform": 18, "privileged_door_info": 8,
++    "delta_actions": 17, "unwarped_actions": 3, "b_homie_commands": 7,
++}
++
++
++def mirror() -> DoorMirror:
++    return DoorMirror(DOF_NAMES, LEFT_ARM, RIGHT_ARM)
++
++
++def test_every_term_mirror_is_an_involution():
++    m = mirror()
++    for term, dim in TERM_DIMS.items():
++        x = torch.randn(4, dim)
++        if term == "privileged_door_info":
++            x[:, 5] = torch.tensor([1.0, -1.0, 1.0, -1.0])
++            x[:, 6] = 1.0 - x[:, 5]
++        assert torch.allclose(m.obs(term, m.obs(term, x)), x), term
++    a = torch.randn(4, 17)
++    assert torch.allclose(m.teacher_actions(m.teacher_actions(a)), a)
++
++
++def test_joints_swap_sides_and_negate_roll_and_yaw():
++    m = mirror()
++    x = torch.zeros(1, 29)
++    x[0, DOF_NAMES.index("left_hip_roll_joint")] = 0.3
++    x[0, DOF_NAMES.index("left_knee_joint")] = 0.5
++    x[0, DOF_NAMES.index("waist_yaw_joint")] = 0.2
++    x[0, DOF_NAMES.index("waist_pitch_joint")] = 0.1
++    x[0, DOF_NAMES.index("right_shoulder_yaw_joint")] = -0.4
++    y = m.obs("dof_pos", x)[0]
++    assert y[DOF_NAMES.index("right_hip_roll_joint")] == -0.3
++    assert y[DOF_NAMES.index("right_knee_joint")] == 0.5
++    assert y[DOF_NAMES.index("waist_yaw_joint")] == -0.2
++    assert y[DOF_NAMES.index("waist_pitch_joint")] == 0.1
++    assert y[DOF_NAMES.index("left_shoulder_yaw_joint")] == 0.4
++    assert y[DOF_NAMES.index("left_hip_roll_joint")] == 0.0
++
++
++def test_vectors_in_robot_and_world_frames():
++    m = mirror()
++    v = torch.tensor([[1.0, 2.0, 3.0]])
++    assert m.obs("base_lin_vel", v).tolist() == [[1.0, -2.0, 3.0]]
++    assert m.obs("projected_gravity", v).tolist() == [[1.0, -2.0, 3.0]]
++    # 角速度は軸のベクトル（鏡で x・z が反転し y が残る）
++    assert m.obs("base_ang_vel", v).tolist() == [[-1.0, 2.0, -3.0]]
++    # 扉との位置関係: 位置・向きの 2 本の軸ベクトルとも y を反転
++    r = torch.arange(1.0, 10.0)[None]
++    assert m.obs("relative_to_door", r).tolist() == [[1.0, -2.0, 3.0, 4.0, -5.0, 6.0, 7.0, -8.0, 9.0]]
++
++
++def test_hands_swap_and_mirror():
++    m = mirror()
++    f = torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]])  # 左手・右手の力
++    assert m.obs("hand_force", f).tolist() == [[4.0, -5.0, 6.0, 1.0, -2.0, 3.0]]
++    h = torch.arange(1.0, 19.0)[None]  # 左手（位置・軸 2 本）・右手
++    y = m.obs("hand_handle_transform", h)[0].tolist()
++    assert y[:9] == [10.0, -11.0, 12.0, 13.0, -14.0, 15.0, 16.0, -17.0, 18.0]
++    assert y[9:] == [1.0, -2.0, 3.0, 4.0, -5.0, 6.0, 7.0, -8.0, 9.0]
++
++
++def test_left_door_looks_like_a_right_door_to_the_policy():
++    m = mirror()
++    info = torch.tensor([[0.9, 2.0, 0.95, 0.1, 1.0, 1.0, 0.0, 1.0]])  # door_open_lr=+1・1−lr=0
++    y = m.obs("privileged_door_info", info)[0].tolist()
++    assert y[5] == -1.0 and y[6] == 2.0  # 学習した扉（−1）と同じ値
++    assert y[:5] == pytest.approx([0.9, 2.0, 0.95, 0.1, 1.0]) and y[7] == 1.0
++
++
++def test_teacher_actions_and_homie_commands():
++    m = mirror()
++    a = torch.zeros(1, 17)
++    a[0, :3] = torch.tensor([0.5, 0.2, 0.3])  # 前後・横・旋回
++    a[0, 3 + 1] = 0.7  # 左肩のロール
++    a[0, 10 + 0] = -0.6  # 右肩のピッチ
++    y = m.teacher_actions(a)[0]
++    assert y[:3].tolist() == pytest.approx([0.5, -0.2, -0.3])
++    assert y[10 + 1].item() == pytest.approx(-0.7) and y[3 + 1] == 0.0  # 右肩のロールへ・符号反転
++    assert y[3 + 0].item() == pytest.approx(-0.6)  # 左肩のピッチへ・符号そのまま
++    c = torch.tensor([[0.5, 0.2, 0.3, 0.75, 0.1, 0.2, 0.3]])  # 前後・横・旋回・高さ・胴の roll・pitch・yaw
++    assert m.obs("b_homie_commands", c)[0].tolist() == pytest.approx([0.5, -0.2, -0.3, 0.75, -0.1, 0.2, -0.3])
++
++
++def test_terms_without_sides_are_unchanged():
++    m = mirror()
++    x = torch.randn(2, 6)
++    assert torch.equal(m.obs("stage", x), x)
++    assert m.has("dof_pos") and not m.has("stage")
+-- 
+2.50.1 (Apple Git-155)
+

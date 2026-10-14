@@ -1,0 +1,858 @@
+From 9e2d8c4d098b964c268ff7ef4fde9475f0554368 Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Tue, 6 Oct 2026 20:11:43 +0900
+Subject: [PATCH 1/2] door: stage 2-2..2-4 options (EN 1154 closer grades,
+ square lever, latch throw/release, hold-open angle, per-door handle max)
+ [untested]
+
+---
+ .../door_en1154_g1/scenario_cfg/isaacsim.py   |  84 ++++++++++++
+ .../door_en1154_g2/scenario_cfg/isaacsim.py   |  84 ++++++++++++
+ .../door_en1154_g3/scenario_cfg/isaacsim.py   |  84 ++++++++++++
+ .../door_en1154_g4/scenario_cfg/isaacsim.py   |  84 ++++++++++++
+ .../door_en1154_g5/scenario_cfg/isaacsim.py   |  84 ++++++++++++
+ .../door_room4_wide/scenario_cfg/isaacsim.py  |  93 +++++++++++++
+ gr00t/rl/envs/door/door_open_homie.py         |  40 +++++-
+ .../isaac_utils/playground/env_rand/door.py   | 126 +++++++++++++-----
+ 8 files changed, 640 insertions(+), 39 deletions(-)
+ create mode 100644 gr00t/rl/data/tasks/door_en1154_g1/scenario_cfg/isaacsim.py
+ create mode 100644 gr00t/rl/data/tasks/door_en1154_g2/scenario_cfg/isaacsim.py
+ create mode 100644 gr00t/rl/data/tasks/door_en1154_g3/scenario_cfg/isaacsim.py
+ create mode 100644 gr00t/rl/data/tasks/door_en1154_g4/scenario_cfg/isaacsim.py
+ create mode 100644 gr00t/rl/data/tasks/door_en1154_g5/scenario_cfg/isaacsim.py
+ create mode 100644 gr00t/rl/data/tasks/door_room4_wide/scenario_cfg/isaacsim.py
+
+diff --git a/gr00t/rl/data/tasks/door_en1154_g1/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g1/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..e9cb671
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_en1154_g1/scenario_cfg/isaacsim.py
+@@ -0,0 +1,84 @@
++# G1_Hackason（段 2-3）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。EN 1154 等級 1。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    hinge_drive_max_force_range=(9.0, 13.0),  # EN 1154 等級 1 [N·m]
++    add_floors=True,
++    door_open_lr=["right"],
++    door_open_io=["out"],
++    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    assets_cfg=[door_spawner_cfg] * 4096,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(1.0, 0.0, 0.0, 0.0),
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+diff --git a/gr00t/rl/data/tasks/door_en1154_g2/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g2/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..22a1ebe
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_en1154_g2/scenario_cfg/isaacsim.py
+@@ -0,0 +1,84 @@
++# G1_Hackason（段 2-3）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。EN 1154 等級 2。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    hinge_drive_max_force_range=(13.0, 18.0),  # EN 1154 等級 2 [N·m]
++    add_floors=True,
++    door_open_lr=["right"],
++    door_open_io=["out"],
++    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    assets_cfg=[door_spawner_cfg] * 4096,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(1.0, 0.0, 0.0, 0.0),
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+diff --git a/gr00t/rl/data/tasks/door_en1154_g3/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g3/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..fbe213f
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_en1154_g3/scenario_cfg/isaacsim.py
+@@ -0,0 +1,84 @@
++# G1_Hackason（段 2-3）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。EN 1154 等級 3。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    hinge_drive_max_force_range=(18.0, 26.0),  # EN 1154 等級 3 [N·m]
++    add_floors=True,
++    door_open_lr=["right"],
++    door_open_io=["out"],
++    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    assets_cfg=[door_spawner_cfg] * 4096,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(1.0, 0.0, 0.0, 0.0),
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+diff --git a/gr00t/rl/data/tasks/door_en1154_g4/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g4/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..f086fb6
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_en1154_g4/scenario_cfg/isaacsim.py
+@@ -0,0 +1,84 @@
++# G1_Hackason（段 2-3）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。EN 1154 等級 4。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    hinge_drive_max_force_range=(26.0, 37.0),  # EN 1154 等級 4 [N·m]
++    add_floors=True,
++    door_open_lr=["right"],
++    door_open_io=["out"],
++    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    assets_cfg=[door_spawner_cfg] * 4096,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(1.0, 0.0, 0.0, 0.0),
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+diff --git a/gr00t/rl/data/tasks/door_en1154_g5/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g5/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..7c45e13
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_en1154_g5/scenario_cfg/isaacsim.py
+@@ -0,0 +1,84 @@
++# G1_Hackason（段 2-3）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。EN 1154 等級 5。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    hinge_drive_max_force_range=(37.0, 54.0),  # EN 1154 等級 5 [N·m]
++    add_floors=True,
++    door_open_lr=["right"],
++    door_open_io=["out"],
++    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    assets_cfg=[door_spawner_cfg] * 4096,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(1.0, 0.0, 0.0, 0.0),
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+diff --git a/gr00t/rl/data/tasks/door_room4_wide/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_room4_wide/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..8e1789a
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_room4_wide/scenario_cfg/isaacsim.py
+@@ -0,0 +1,93 @@
++# G1_Hackason（段 2-4）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。開いたまま止まる角度は exp の door_hold_open_angle_deg。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    # UIS Room 4: 幅 0.94 m・レバー左・蝶番右・押して開ける・バックセット 64 mm・レバー 約 142 mm・ラッチの出 11.5 mm
++    door_width=(0.8, 1.1),
++    door_weight=(15.0, 100.0),
++    hinge_drive_max_force_range=(9.0, 37.0),  # EN 1154 等級 1〜4（等級 5 の最低値まで）[N·m]
++    handle_drive_max_force_range=(0.2, 4.0),  # レバーを回す力 [N·m]（上限は G1 が手のひらで押し下げられる力の見込み）
++    handle_length_range=(0.10, 0.16),
++    handle_cross_section=["round", "square"],
++    handle_max_angle_deg_range=(30.0, 60.0),
++    latch_release_angle_deg_range=(30.0, 60.0),  # レバーの上限を超える分は上限で外れる
++    latch_throw_range=(0.008, 0.015),
++    add_floors=True,
++    door_open_lr=["left", "right"],
++    door_open_io=["out"],
++    door_handle_tblr=(1.10, 0.85, 0.03, 0.10),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    assets_cfg=[door_spawner_cfg] * 4096,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(1.0, 0.0, 0.0, 0.0),
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index daf5374..d73621e 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -95,6 +95,10 @@ class DoorPregrasp(
+         self.door_weight = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
+         self.door_open_lr = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
+         self.door_open_io = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
++        # G1_Hackason: レバーが回る角度の上限 [rad]。記録が無いドア（元の生成）は 45°
++        self.door_handle_max_angle = torch.full(
++            (self.num_envs,), 0.785398, dtype=torch.float32, device=self.device
++        )
+ 
+         for env_id in range(self.num_envs):
+             door_prim_path = f"/World/envs/env_{env_id}/door"
+@@ -106,6 +110,8 @@ class DoorPregrasp(
+             self.door_handle_width[env_id] = door_metadata["doorHandleWidth"]
+             self.door_weight[env_id] = door_metadata["doorWeight"]
+             self.door_open_lr[env_id] = door_metadata["doorOpenLR"]
++            if "handleMaxAngleDeg" in door_metadata:
++                self.door_handle_max_angle[env_id] = door_metadata["handleMaxAngleDeg"] * torch.pi / 180.0
+ 
+         # G1_Hackason: どちらの手で把手を取りに行くか。元の DoorMan は把手と反対の手（door_open_lr < 0 で左手。
+         # このとき把手は機体の右）で、体の前を横切って取りに行く。lever_side_hand: True なら把手と同じ側の手を使う
+@@ -537,20 +543,29 @@ class DoorPregrasp(
+     @StagedTaskBase.effective_in_stage(STAGE_OPEN)
+     def _reward_push_door_handle(self):
+         handle_vel_reward = self.simulator.scene.articulations["door"].data.joint_vel.torch[:, 1]
++        handle_max = self.door_handle_max_angle  # G1_Hackason: 扉ごとのレバーの上限で割る（元は 45° 固定）
+         handle_pos_reward = (
+-            self.simulator.scene.articulations["door"]
+-            .data.joint_pos.torch[:, 1]
+-            .clamp(min=0.0, max=0.785398)
+-            / 0.785398
++            torch.minimum(
++                self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 1].clamp(min=0.0),
++                handle_max,
++            )
++            / handle_max
+         )
+         return (handle_vel_reward + handle_pos_reward).clamp(max=1.0, min=-1.0)
+ 
+     @StagedTaskBase.effective_in_stage([STAGE_SWING, STAGE_THROUGH])
+     def _reward_dont_push_door_handle(self):
+         handle_vel_reward = -1.0 * self.simulator.scene.articulations["door"].data.joint_vel.torch[:, 1]
++        handle_max = self.door_handle_max_angle
+         handle_pos_reward = (
+-            0.785398 - self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 1]
+-        ).clamp(min=0.0, max=0.785398) / 0.785398
++            torch.minimum(
++                (handle_max - self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 1]).clamp(
++                    min=0.0
++                ),
++                handle_max,
++            )
++            / handle_max
++        )
+         return (handle_vel_reward + handle_pos_reward).clamp(max=1.0, min=-1.0)
+ 
+     @StagedTaskBase.effective_in_stage([STAGE_OPEN, STAGE_SWING])
+@@ -855,6 +870,12 @@ class DoorPregrasp(
+ 
+         self.reset_buf |= dof_overspeed & not_just_resetted
+ 
++        # G1_Hackason: 押し切ると開いたまま止まるクローザー（UIS Room 4 は約 90°）。届いたら閉まらないので失敗にする
++        hold_open_angle_deg = self.config.get("door_hold_open_angle_deg", None)
++        if hold_open_angle_deg is not None:
++            hinge_angle = self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 0]
++            self.reset_buf |= hinge_angle > hold_open_angle_deg * torch.pi / 180.0
++
+         # reset if the homie command is too large when grasping or opening the door
+         # is_grasping_or_opening = (self.stage_buf == DoorPregrasp.STAGE_GRASP) | (self.stage_buf == DoorPregrasp.STAGE_OPEN)
+         # homie_command_norm = torch.norm(self.get_physical_homie_commands()[:, :3], dim=1)
+@@ -993,7 +1014,12 @@ class DoorPregrasp(
+         walked_through_door = (
+             self.simulator.robot_root_states[:, 0] - self.env_origins[:, 0]
+         ) > 0.0
+-        door_opened = self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 0] > 1.0472
++        # G1_Hackason: 通り抜けに要る開き角を設定に（既定は元の 60°）。この扉は 70° 以上が目安
++        through_angle_deg = self.config.get("door_through_angle_deg", 60.0)
++        door_opened = (
++            self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 0]
++            > through_angle_deg * torch.pi / 180.0
++        )
+         handle_up = self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 1] < 0.2
+         return walked_through_door & handle_up & door_opened
+ 
+diff --git a/gr00t/rl/isaac_utils/playground/env_rand/door.py b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+index c7a072f..eba662d 100644
+--- a/gr00t/rl/isaac_utils/playground/env_rand/door.py
++++ b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+@@ -94,6 +94,22 @@ class DoorSpawnerCfg(sim_utils.RigidObjectSpawnerCfg):
+     rand_left_rear: Optional[bool] = None
+     rand_right_rear: Optional[bool] = None
+ 
++    # G1_Hackason（段 2-2〜2-4）: ドアを広くばらつかせるための範囲。None なら元の値・元の範囲
++    # 蝶番のばね（クローザー）の力の上限 [N·m]。元は (2.5, 4.5)。EN 1154 の等級ごとの範囲を入れる
++    hinge_drive_max_force_range: Optional[tuple[float, float]] = None
++    # レバーのばねの力の上限 [N·m]。元は (1.0, 2.0)
++    handle_drive_max_force_range: Optional[tuple[float, float]] = None
++    # レバーの長さ [m]（軸から先の棒の長さ）。元は (0.11, 0.14)
++    handle_length_range: Optional[tuple[float, float]] = None
++    # レバーの断面。"round"（元の丸い棒）か "square"（四角い棒・上が平ら）
++    handle_cross_section: list[Literal["round", "square"]] = ["round"]
++    # レバーが回る角度の上限 [deg]。元は 45
++    handle_max_angle_deg_range: Optional[tuple[float, float]] = None
++    # ラッチの出 [m]。元は 0.03
++    latch_throw_range: Optional[tuple[float, float]] = None
++    # ラッチが引っ込みきるレバーの角度 [deg]。元は 45（＝回しきると外れる）。レバーの上限を超えない
++    latch_release_angle_deg_range: Optional[tuple[float, float]] = None
++
+ 
+ def _update_joint_transform(stage, joint_path, prim0_path, prim1_path):
+     # Get the joint prim
+@@ -260,9 +276,13 @@ def spawn_door(
+     axle_length = (
+         np.random.uniform(0.18, 0.21) if cfg.rand_axle_length is None else cfg.rand_axle_length
+     )
++    handle_length_range = cfg.handle_length_range or (0.11, 0.14)
+     handle_length = (
+-        np.random.uniform(0.11, 0.14) if cfg.rand_handle_length is None else cfg.rand_handle_length
++        np.random.uniform(*handle_length_range)
++        if cfg.rand_handle_length is None
++        else cfg.rand_handle_length
+     )
++    handle_cross_section = np.random.choice(cfg.handle_cross_section)
+     hook_length = (
+         np.random.uniform(0.04, 0.06) if cfg.rand_hook_length is None else cfg.rand_hook_length
+     )
+@@ -380,36 +400,58 @@ def spawn_door(
+ 
+     # then, create the handle lever prim
+     handle_shape_inside_prim_path = os.path.join(handle_prim_path, "handle_inside")
+-    create_prim(handle_shape_inside_prim_path, "Capsule")
+-    set_prim_transform(
+-        stage,
+-        handle_shape_inside_prim_path,
+-        (-axle_length / 2, (-handle_length / 2) * door_open_lr, 0),
+-        (90, 0, 0),
+-        (1.0, 1.0, 1.0),
+-    )
+-    handle_shape_inside_geom: UsdGeom.Capsule = UsdGeom.Capsule.Define(
+-        stage, handle_shape_inside_prim_path
+-    )
+-    handle_shape_inside_geom.GetRadiusAttr().Set(handle_radius)
+-    handle_shape_inside_geom.GetHeightAttr().Set(handle_length)
++    if handle_cross_section == "square":
++        # G1_Hackason: 四角い棒（UNION の角棒の L 字のレバー）。丸い棒と同じ長さ（両端の丸み込み）
++        create_prim(handle_shape_inside_prim_path, "Cube")
++        set_prim_transform(
++            stage,
++            handle_shape_inside_prim_path,
++            (-axle_length / 2, (-handle_length / 2) * door_open_lr, 0),
++            (0, 0, 0),
++            (handle_radius, handle_length / 2 + handle_radius, handle_radius),
++        )
++    else:
++        create_prim(handle_shape_inside_prim_path, "Capsule")
++        set_prim_transform(
++            stage,
++            handle_shape_inside_prim_path,
++            (-axle_length / 2, (-handle_length / 2) * door_open_lr, 0),
++            (90, 0, 0),
++            (1.0, 1.0, 1.0),
++        )
++        handle_shape_inside_geom: UsdGeom.Capsule = UsdGeom.Capsule.Define(
++            stage, handle_shape_inside_prim_path
++        )
++        handle_shape_inside_geom.GetRadiusAttr().Set(handle_radius)
++        handle_shape_inside_geom.GetHeightAttr().Set(handle_length)
+     add_mass(stage, handle_shape_inside_prim_path, mass=0.1)
+     add_collider(stage, handle_shape_inside_prim_path)
+ 
+     handle_shape_outside_prim_path = os.path.join(handle_prim_path, "handle_outside")
+-    create_prim(handle_shape_outside_prim_path, "Capsule")
+-    set_prim_transform(
+-        stage,
+-        handle_shape_outside_prim_path,
+-        (axle_length / 2, (-handle_length / 2) * door_open_lr, 0),
+-        (90, 0, 0),
+-        (1.0, 1.0, 1.0),
+-    )
+-    handle_shape_outside_geom: UsdGeom.Capsule = UsdGeom.Capsule.Define(
+-        stage, handle_shape_outside_prim_path
+-    )
+-    handle_shape_outside_geom.GetRadiusAttr().Set(handle_radius)
+-    handle_shape_outside_geom.GetHeightAttr().Set(handle_length)
++    if handle_cross_section == "square":
++        # G1_Hackason: 四角い棒（UNION の角棒の L 字のレバー）。丸い棒と同じ長さ（両端の丸み込み）
++        create_prim(handle_shape_outside_prim_path, "Cube")
++        set_prim_transform(
++            stage,
++            handle_shape_outside_prim_path,
++            (axle_length / 2, (-handle_length / 2) * door_open_lr, 0),
++            (0, 0, 0),
++            (handle_radius, handle_length / 2 + handle_radius, handle_radius),
++        )
++    else:
++        create_prim(handle_shape_outside_prim_path, "Capsule")
++        set_prim_transform(
++            stage,
++            handle_shape_outside_prim_path,
++            (axle_length / 2, (-handle_length / 2) * door_open_lr, 0),
++            (90, 0, 0),
++            (1.0, 1.0, 1.0),
++        )
++        handle_shape_outside_geom: UsdGeom.Capsule = UsdGeom.Capsule.Define(
++            stage, handle_shape_outside_prim_path
++        )
++        handle_shape_outside_geom.GetRadiusAttr().Set(handle_radius)
++        handle_shape_outside_geom.GetHeightAttr().Set(handle_length)
+     add_mass(stage, handle_shape_outside_prim_path, mass=0.1)
+     add_collider(stage, handle_shape_outside_prim_path)
+ 
+@@ -486,7 +528,7 @@ def spawn_door(
+     hinge_drive = UsdPhysics.DriveAPI.Apply(hinge_joint.GetPrim(), "angular")
+     hinge_drive.GetTargetPositionAttr().Set(-10.0)
+     hinge_drive.GetMaxForceAttr().Set(
+-        np.random.uniform(2.5, 4.5)
++        np.random.uniform(*(cfg.hinge_drive_max_force_range or (2.5, 4.5)))
+         if cfg.rand_hinge_drive_max_force is None
+         else cfg.rand_hinge_drive_max_force
+     )
+@@ -508,12 +550,17 @@ def spawn_door(
+     )
+     if door_open_lr == -1:
+         handle_joint.CreateLocalRot0Attr().Set(Gf.Quatf(real=0.0, imaginary=(Gf.Vec3f(0, 0, 1))))
++    handle_max_angle_deg = (
++        np.random.uniform(*cfg.handle_max_angle_deg_range)
++        if cfg.handle_max_angle_deg_range is not None
++        else 45.0
++    )
+     handle_joint.GetLowerLimitAttr().Set(0.0)
+-    handle_joint.GetUpperLimitAttr().Set(45)
++    handle_joint.GetUpperLimitAttr().Set(handle_max_angle_deg)
+     handle_drive = UsdPhysics.DriveAPI.Apply(handle_joint.GetPrim(), "angular")
+     handle_drive.GetTargetPositionAttr().Set(-15.0)
+     handle_drive.GetMaxForceAttr().Set(
+-        np.random.uniform(1.0, 2.0)
++        np.random.uniform(*(cfg.handle_drive_max_force_range or (1.0, 2.0)))
+         if cfg.rand_handle_drive_max_force is None
+         else cfg.rand_handle_drive_max_force
+     )
+@@ -560,13 +607,23 @@ def spawn_door(
+         )
+         if door_open_lr == 1:
+             latch_joint.CreateLocalRot0Attr().Set(Gf.Quatf(real=0.0, imaginary=(Gf.Vec3f(0, 0, 1))))
++        latch_throw = (
++            np.random.uniform(*cfg.latch_throw_range) if cfg.latch_throw_range is not None else 0.03
++        )
++        # レバーの上限より先でしか外れないと開かないドアになるので、常に上限以下にする（10/6 のレビュー M7）
++        latch_release_angle_deg = min(
++            np.random.uniform(*cfg.latch_release_angle_deg_range)
++            if cfg.latch_release_angle_deg_range is not None
++            else 45.0,
++            handle_max_angle_deg,
++        )
+         latch_joint.GetLowerLimitAttr().Set(0.0)
+-        latch_joint.GetUpperLimitAttr().Set(0.03)
++        latch_joint.GetUpperLimitAttr().Set(latch_throw)
+         latch_mimic_joint = PhysxSchema.PhysxMimicJointAPI.Apply(
+             latch_joint.GetPrim(), UsdPhysics.Tokens.rotX
+         )
+         latch_mimic_joint.GetReferenceJointRel().AddTarget(handle_joint_prim_path)
+-        latch_mimic_joint.GetGearingAttr().Set(-1.0 * 0.03 / 45.0)
++        latch_mimic_joint.GetGearingAttr().Set(-1.0 * latch_throw / latch_release_angle_deg)
+         latch_mimic_joint.GetOffsetAttr().Set(0.0)
+         _update_joint_transform(stage, latch_joint_prim_path, panel_prim_path, latch_link_prim_path)
+ 
+@@ -945,7 +1002,12 @@ def spawn_door(
+         "hingeDriveMaxForce": hinge_drive.GetMaxForceAttr().Get(),
+         "hingeDriveStiffness": hinge_drive.GetStiffnessAttr().Get(),
+         "handleDriveMaxForce": handle_drive.GetMaxForceAttr().Get(),
++        "handleCrossSection": str(handle_cross_section),
++        "handleMaxAngleDeg": float(handle_max_angle_deg),
+     }
++    if cfg.build_latch:
++        metadata_value["latchThrow"] = float(latch_throw)
++        metadata_value["latchReleaseAngleDeg"] = float(latch_release_angle_deg)
+     if cfg.add_walls:
+         metadata_value["front"] = front
+         metadata_value["rear"] = rear
+-- 
+2.43.0
+

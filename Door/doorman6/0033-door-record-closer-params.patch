@@ -1,0 +1,56 @@
+From 43fd5ebd2fd3c80d0a5f0cc8a6dcdd4f68159137 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Thu, 8 Oct 2026 17:41:41 +0900
+Subject: [PATCH] door: record closer max force / stiffness / target per env in
+ static.npz (match door strength with success)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 7 +++++++
+ gr00t/rl/utils/state_recorder.py      | 6 ++++++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index cd163e5..9854b41 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -99,6 +99,10 @@ class DoorPregrasp(
+         self.door_handle_max_angle = torch.full(
+             (self.num_envs,), 0.785398, dtype=torch.float32, device=self.device
+         )
++        # G1_Hackason（段 2-3）: クローザーの上限 [N·m]・ばね [N·m/deg]・目標角 [deg]。記録して、扉の強さと成否を突き合わせる（学習には使わない）
++        self.door_hinge_max_force = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
++        self.door_hinge_stiffness = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
++        self.door_hinge_target_deg = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
+ 
+         for env_id in range(self.num_envs):
+             door_prim_path = f"/World/envs/env_{env_id}/door"
+@@ -112,6 +116,9 @@ class DoorPregrasp(
+             self.door_open_lr[env_id] = door_metadata["doorOpenLR"]
+             if "handleMaxAngleDeg" in door_metadata:
+                 self.door_handle_max_angle[env_id] = door_metadata["handleMaxAngleDeg"] * torch.pi / 180.0
++            self.door_hinge_max_force[env_id] = float(door_metadata.get("hingeDriveMaxForce", 0.0))
++            self.door_hinge_stiffness[env_id] = float(door_metadata.get("hingeDriveStiffness", 0.0))
++            self.door_hinge_target_deg[env_id] = float(door_metadata.get("hingeDriveTargetDeg", 0.0))
+ 
+         # G1_Hackason: どちらの手で把手を取りに行くか。元の DoorMan は把手と反対の手（door_open_lr < 0 で左手。
+         # このとき把手は機体の右）で、体の前を横切って取りに行く。lever_side_hand: True なら把手と同じ側の手を使う
+diff --git a/gr00t/rl/utils/state_recorder.py b/gr00t/rl/utils/state_recorder.py
+index 435d002..8bb3d22 100644
+--- a/gr00t/rl/utils/state_recorder.py
++++ b/gr00t/rl/utils/state_recorder.py
+@@ -66,6 +66,12 @@ class StateRecorder:
+             door_body_names=np.array(list(env.simulator.scene.articulations["door"].body_names)),
+             env_prim_translate=np.array(_env_prim_translations(k)),
+             env_origins=env.env_origins[:k].cpu().numpy(),
++            # G1_Hackason（段 2-3）: クローザーの上限・ばね・目標角（扉の強さと成否を突き合わせる。古い env には無い）
++            **{
++                name: getattr(env, name)[:k].cpu().numpy()
++                for name in ("door_hinge_max_force", "door_hinge_stiffness", "door_hinge_target_deg")
++                if hasattr(env, name)
++            },
+         )
+ 
+     def record(self, env) -> None:
+-- 
+2.43.0
+

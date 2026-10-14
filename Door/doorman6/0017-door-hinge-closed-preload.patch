@@ -1,0 +1,201 @@
+From 0cba00ea5e69dcbefe52a5938a7d5bb3b38a9d58 Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Wed, 7 Oct 2026 17:18:52 +0900
+Subject: [PATCH 2/2] door: hinge_closed_preload_range (closed-position
+ preload); EN 1154 grade doors keep DoorMan preload so the latch bevel does
+ not rotate the lever
+
+---
+ .../door_en1154_g1/scenario_cfg/isaacsim.py      |  3 ++-
+ .../door_en1154_g2/scenario_cfg/isaacsim.py      |  3 ++-
+ .../door_en1154_g3/scenario_cfg/isaacsim.py      |  3 ++-
+ .../door_en1154_g4/scenario_cfg/isaacsim.py      |  3 ++-
+ .../door_en1154_g5/scenario_cfg/isaacsim.py      |  3 ++-
+ .../door_room4_wide/scenario_cfg/isaacsim.py     |  3 ++-
+ gr00t/rl/isaac_utils/playground/env_rand/door.py | 16 ++++++++++++++++
+ 7 files changed, 28 insertions(+), 6 deletions(-)
+
+diff --git a/gr00t/rl/data/tasks/door_en1154_g1/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g1/scenario_cfg/isaacsim.py
+index e9cb671..c78d6e9 100644
+--- a/gr00t/rl/data/tasks/door_en1154_g1/scenario_cfg/isaacsim.py
++++ b/gr00t/rl/data/tasks/door_en1154_g1/scenario_cfg/isaacsim.py
+@@ -25,6 +25,7 @@ door_spawner_cfg = DoorSpawnerCfg(
+     activate_contact_sensors=True,
+     build_latch=True,
+     hinge_drive_max_force_range=(9.0, 13.0),  # EN 1154 等級 1 [N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
+     add_floors=True,
+     door_open_lr=["right"],
+     door_open_io=["out"],
+@@ -57,7 +58,7 @@ TaskObjCfgDict = {
+         spawn=multi_spawner_cfg,
+         init_state=ArticulationCfg.InitialStateCfg(
+             pos=(0.0, 0.0, 0.0),
+-            rot=(1.0, 0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
+             joint_pos={
+                 ".*hinge.*": 0.0,
+                 ".*handle.*": 0.0,
+diff --git a/gr00t/rl/data/tasks/door_en1154_g2/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g2/scenario_cfg/isaacsim.py
+index 22a1ebe..5648e3b 100644
+--- a/gr00t/rl/data/tasks/door_en1154_g2/scenario_cfg/isaacsim.py
++++ b/gr00t/rl/data/tasks/door_en1154_g2/scenario_cfg/isaacsim.py
+@@ -25,6 +25,7 @@ door_spawner_cfg = DoorSpawnerCfg(
+     activate_contact_sensors=True,
+     build_latch=True,
+     hinge_drive_max_force_range=(13.0, 18.0),  # EN 1154 等級 2 [N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
+     add_floors=True,
+     door_open_lr=["right"],
+     door_open_io=["out"],
+@@ -57,7 +58,7 @@ TaskObjCfgDict = {
+         spawn=multi_spawner_cfg,
+         init_state=ArticulationCfg.InitialStateCfg(
+             pos=(0.0, 0.0, 0.0),
+-            rot=(1.0, 0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
+             joint_pos={
+                 ".*hinge.*": 0.0,
+                 ".*handle.*": 0.0,
+diff --git a/gr00t/rl/data/tasks/door_en1154_g3/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g3/scenario_cfg/isaacsim.py
+index fbe213f..45e100f 100644
+--- a/gr00t/rl/data/tasks/door_en1154_g3/scenario_cfg/isaacsim.py
++++ b/gr00t/rl/data/tasks/door_en1154_g3/scenario_cfg/isaacsim.py
+@@ -25,6 +25,7 @@ door_spawner_cfg = DoorSpawnerCfg(
+     activate_contact_sensors=True,
+     build_latch=True,
+     hinge_drive_max_force_range=(18.0, 26.0),  # EN 1154 等級 3 [N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
+     add_floors=True,
+     door_open_lr=["right"],
+     door_open_io=["out"],
+@@ -57,7 +58,7 @@ TaskObjCfgDict = {
+         spawn=multi_spawner_cfg,
+         init_state=ArticulationCfg.InitialStateCfg(
+             pos=(0.0, 0.0, 0.0),
+-            rot=(1.0, 0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
+             joint_pos={
+                 ".*hinge.*": 0.0,
+                 ".*handle.*": 0.0,
+diff --git a/gr00t/rl/data/tasks/door_en1154_g4/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g4/scenario_cfg/isaacsim.py
+index f086fb6..5cefddf 100644
+--- a/gr00t/rl/data/tasks/door_en1154_g4/scenario_cfg/isaacsim.py
++++ b/gr00t/rl/data/tasks/door_en1154_g4/scenario_cfg/isaacsim.py
+@@ -25,6 +25,7 @@ door_spawner_cfg = DoorSpawnerCfg(
+     activate_contact_sensors=True,
+     build_latch=True,
+     hinge_drive_max_force_range=(26.0, 37.0),  # EN 1154 等級 4 [N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
+     add_floors=True,
+     door_open_lr=["right"],
+     door_open_io=["out"],
+@@ -57,7 +58,7 @@ TaskObjCfgDict = {
+         spawn=multi_spawner_cfg,
+         init_state=ArticulationCfg.InitialStateCfg(
+             pos=(0.0, 0.0, 0.0),
+-            rot=(1.0, 0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
+             joint_pos={
+                 ".*hinge.*": 0.0,
+                 ".*handle.*": 0.0,
+diff --git a/gr00t/rl/data/tasks/door_en1154_g5/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g5/scenario_cfg/isaacsim.py
+index 7c45e13..9f23dca 100644
+--- a/gr00t/rl/data/tasks/door_en1154_g5/scenario_cfg/isaacsim.py
++++ b/gr00t/rl/data/tasks/door_en1154_g5/scenario_cfg/isaacsim.py
+@@ -25,6 +25,7 @@ door_spawner_cfg = DoorSpawnerCfg(
+     activate_contact_sensors=True,
+     build_latch=True,
+     hinge_drive_max_force_range=(37.0, 54.0),  # EN 1154 等級 5 [N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
+     add_floors=True,
+     door_open_lr=["right"],
+     door_open_io=["out"],
+@@ -57,7 +58,7 @@ TaskObjCfgDict = {
+         spawn=multi_spawner_cfg,
+         init_state=ArticulationCfg.InitialStateCfg(
+             pos=(0.0, 0.0, 0.0),
+-            rot=(1.0, 0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
+             joint_pos={
+                 ".*hinge.*": 0.0,
+                 ".*handle.*": 0.0,
+diff --git a/gr00t/rl/data/tasks/door_room4_wide/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_room4_wide/scenario_cfg/isaacsim.py
+index 8e1789a..c8c1a20 100644
+--- a/gr00t/rl/data/tasks/door_room4_wide/scenario_cfg/isaacsim.py
++++ b/gr00t/rl/data/tasks/door_room4_wide/scenario_cfg/isaacsim.py
+@@ -28,6 +28,7 @@ door_spawner_cfg = DoorSpawnerCfg(
+     door_width=(0.8, 1.1),
+     door_weight=(15.0, 100.0),
+     hinge_drive_max_force_range=(9.0, 37.0),  # EN 1154 等級 1〜4（等級 5 の最低値まで）[N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
+     handle_drive_max_force_range=(0.2, 4.0),  # レバーを回す力 [N·m]（上限は G1 が手のひらで押し下げられる力の見込み）
+     handle_length_range=(0.10, 0.16),
+     handle_cross_section=["round", "square"],
+@@ -66,7 +67,7 @@ TaskObjCfgDict = {
+         spawn=multi_spawner_cfg,
+         init_state=ArticulationCfg.InitialStateCfg(
+             pos=(0.0, 0.0, 0.0),
+-            rot=(1.0, 0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
+             joint_pos={
+                 ".*hinge.*": 0.0,
+                 ".*handle.*": 0.0,
+diff --git a/gr00t/rl/isaac_utils/playground/env_rand/door.py b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+index eba662d..8953829 100644
+--- a/gr00t/rl/isaac_utils/playground/env_rand/door.py
++++ b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+@@ -85,6 +85,7 @@ class DoorSpawnerCfg(sim_utils.RigidObjectSpawnerCfg):
+     rand_spawn_hook: Optional[bool] = None
+     rand_hinge_drive_max_force: Optional[float] = None
+     rand_hinge_drive_stiffness: Optional[float] = None
++    rand_hinge_drive_target_deg: Optional[float] = None  # G1_Hackason: 蝶番のばねの目標角 [deg]（元は常に -10）
+     rand_handle_drive_max_force: Optional[float] = None
+     rand_front: Optional[bool] = None
+     rand_rear: Optional[bool] = None
+@@ -109,6 +110,11 @@ class DoorSpawnerCfg(sim_utils.RigidObjectSpawnerCfg):
+     latch_throw_range: Optional[tuple[float, float]] = None
+     # ラッチが引っ込みきるレバーの角度 [deg]。元は 45（＝回しきると外れる）。レバーの上限を超えない
+     latch_release_angle_deg_range: Optional[tuple[float, float]] = None
++    # 閉じた位置での押し付け [N·m]。元は目標 -10° × ばね（1〜10 /deg）を力の上限で切った値で、閉じた位置でも上限まで押す。
++    # 上限を EN 1154 の等級まで強くすると、押し付けがラッチの斜面を押してレバーが勝手に回る（2026-10-07、等級 1 で
++    # 16 台中 12 台が 85〜99° まで回った。蝶番は閉位置を 0.003〜0.046° 越えていた）。指定すると目標角を -押し付け/ばね にし、
++    # 閉じた位置では元の扉と同じ程度に押し、開けるほど強くなって力の上限（等級）で頭打ちになる
++    hinge_closed_preload_range: Optional[tuple[float, float]] = None
+ 
+ 
+ def _update_joint_transform(stage, joint_path, prim0_path, prim1_path):
+@@ -538,6 +544,14 @@ def spawn_door(
+         if cfg.rand_hinge_drive_stiffness is None
+         else cfg.rand_hinge_drive_stiffness
+     )
++    if cfg.rand_hinge_drive_target_deg is not None:
++        hinge_drive.GetTargetPositionAttr().Set(cfg.rand_hinge_drive_target_deg)
++    elif cfg.hinge_closed_preload_range is not None:
++        # 元の乱数の順（上限→ばね）を変えないよう、押し付けはばねの後に引く
++        hinge_drive.GetTargetPositionAttr().Set(
++            -float(np.random.uniform(*cfg.hinge_closed_preload_range))
++            / float(hinge_drive.GetStiffnessAttr().Get())
++        )
+     _update_joint_transform(stage, hinge_joint_prim_path, root_prim_path, panel_prim_path)
+ 
+     handle_joint_prim_path = os.path.join(panel_prim_path, "handle_joint")
+@@ -1001,6 +1015,7 @@ def spawn_door(
+         "spawnHook": spawn_hook,
+         "hingeDriveMaxForce": hinge_drive.GetMaxForceAttr().Get(),
+         "hingeDriveStiffness": hinge_drive.GetStiffnessAttr().Get(),
++        "hingeDriveTargetDeg": float(hinge_drive.GetTargetPositionAttr().Get()),
+         "handleDriveMaxForce": handle_drive.GetMaxForceAttr().Get(),
+         "handleCrossSection": str(handle_cross_section),
+         "handleMaxAngleDeg": float(handle_max_angle_deg),
+@@ -1151,6 +1166,7 @@ def get_deterministic_door_config(cfg: DoorSpawnerCfg, metadata: dict) -> DoorSp
+     cfg.rand_spawn_hook = metadata["spawnHook"]
+     cfg.rand_hinge_drive_max_force = metadata["hingeDriveMaxForce"]
+     cfg.rand_hinge_drive_stiffness = metadata["hingeDriveStiffness"]
++    cfg.rand_hinge_drive_target_deg = metadata.get("hingeDriveTargetDeg", None)
+     cfg.rand_handle_drive_max_force = metadata["handleDriveMaxForce"]
+ 
+     if cfg.add_walls:
+-- 
+2.43.0
+

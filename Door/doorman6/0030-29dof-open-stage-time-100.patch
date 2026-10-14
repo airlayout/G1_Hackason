@@ -1,0 +1,30 @@
+From 0d90496f8c540d038f5087d33f660e9310b56d8f Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Thu, 8 Oct 2026 07:10:16 +0900
+Subject: [PATCH] 29dof: max_stage_time back to 100 for the open stage (300
+ made lingering in stage 3 pay more than opening)
+
+---
+ gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index 19e6940..153df97 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -136,8 +136,10 @@ env:
+     # 区間 4 に入る 350〜400 ステップ目で残りが 100 ステップ前後しかなかった（10-08 04:30 の動画と記録）
+     max_episode_length_s: 30
+     # G1_Hackason 段 2-2: 区間ごとの持ち時間 [ステップ]。元は [250, 100, 100, 100, 100, 200] で、超えると打ち切り（残りは次の区間へ持ち越す）。
+-    # 指の無い手でレバーを上から押して扉を押し開ける区間 3、扉を押し広げて歩く区間 4 が 100 では足りず、1 回が約 400 ステップで打ち切られていた
+-    max_stage_time: [250, 100, 100, 300, 300, 200]
++    # 扉を押し広げて歩く区間 4 が 100 では足りず、1 回が約 400 ステップで打ち切られていた。区間 4 だけ 300 にする。
++    # 区間 3 も 300 にした間（10-08 05:04〜07:09）は、区間 3 の報酬（1 ステップ最大 約 19）の方が区間 4 の入り口（約 10）より多く、
++    # 扉を開けずに区間 3 に居続けて、扉 10° 以上が 99/122 → 23/126 に落ちた
++    max_stage_time: [250, 100, 100, 100, 300, 200]
+     lever_side_hand: True  # G1_Hackason: 把手と同じ側の手で取りに行く（door_open_homie.py の use_left_hand）
+     pregrasp_height: 0.0  # G1_Hackason: 把手の上でなく把手そのものに構える（指の無い手は下から当たって上へ回れない）
+     pregrasp_above_margin: null  # G1_Hackason: 区間 1→2 の「把手より 5 cm 上」を見ない
+-- 
+2.43.0
+

@@ -1,0 +1,113 @@
+From bf4e6219a911de8a0c729e673baa2a48b3adf96d Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 9 Oct 2026 16:07:04 +0900
+Subject: [PATCH] =?UTF-8?q?door:=20door=5Fen1154=5Fg4g5=5F82=20(env=20i%5?=
+ =?UTF-8?q?=3D=3D4=20gets=20grade=205=20closer=2037-54=20N=C2=B7m,=20other?=
+ =?UTF-8?q?s=20grade=204=2026-37=20N=C2=B7m;=20stage=202-3=20plan=202)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .../scenario_cfg/isaacsim.py                  | 89 +++++++++++++++++++
+ 1 file changed, 89 insertions(+)
+ create mode 100644 gr00t/rl/data/tasks/door_en1154_g4g5_82/scenario_cfg/isaacsim.py
+
+diff --git a/gr00t/rl/data/tasks/door_en1154_g4g5_82/scenario_cfg/isaacsim.py b/gr00t/rl/data/tasks/door_en1154_g4g5_82/scenario_cfg/isaacsim.py
+new file mode 100644
+index 0000000..7e48193
+--- /dev/null
++++ b/gr00t/rl/data/tasks/door_en1154_g4g5_82/scenario_cfg/isaacsim.py
+@@ -0,0 +1,89 @@
++# G1_Hackason（段 2-3 の学習用）: G1_Hackason/Door/tools/make_door_scenarios.py が door/scenario_cfg/isaacsim.py から生成した。
++# 手で直さず、生成し直すこと。台の 8 割が EN 1154 等級 4・2 割が等級 5（案 2）。
++# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++
++import logging
++
++logging.getLogger("asyncio").setLevel(logging.WARNING)
++
++import isaaclab.sim as sim_utils
++from isaaclab.actuators import ImplicitActuatorCfg
++from isaaclab.assets import ArticulationCfg
++
++from gr00t.rl.isaac_utils.playground.env_rand.door import DoorSpawnerCfg, spawn_door
++
++door_spawner_cfg = DoorSpawnerCfg(
++    func=spawn_door,
++    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
++        enabled_self_collisions=True,
++        solver_position_iteration_count=4,
++        solver_velocity_iteration_count=4,
++        fix_root_link=True,
++    ),
++    activate_contact_sensors=True,
++    build_latch=True,
++    hinge_drive_max_force_range=(26.0, 37.0),  # EN 1154 等級 4 [N·m]
++    hinge_closed_preload_range=(2.5, 4.5),  # 閉じた位置での押し付け [N·m]（DoorMan の既定と同じ）
++    add_floors=True,
++    door_open_lr=["right"],
++    door_open_io=["out"],
++    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),
++    randomize_material=True,
++    use_preloaded_materials=True,
++    preloaded_materials_num_transform=20,
++    preloaded_materials_num_color=100,
++    dynamic_material_randomization=False,
++    dynamic_material_randomization_interval=1.0,
++)
++
++# 等級 5 の扉（クローザーの上限だけが等級 4 の扉と違う）
++door_spawner_cfg_g5 = door_spawner_cfg.replace(hinge_drive_max_force_range=(37.0, 54.0))  # EN 1154 等級 5 [N·m]
++
++multi_spawner_cfg = sim_utils.MultiAssetSpawnerCfg(
++    # 台 i に i 番目の扉（DoorMan の isaacsim.py が spawn_paths を env_i に明示する）。4:1 で並べて等級 5 を 2 割
++    assets_cfg=([door_spawner_cfg] * 4 + [door_spawner_cfg_g5]) * 820,
++    random_choice=False,
++    activate_contact_sensors=True,
++    rigid_props=sim_utils.RigidBodyPropertiesCfg(
++        disable_gravity=False,
++        retain_accelerations=False,
++        linear_damping=0.0,
++        angular_damping=0.0,
++        max_linear_velocity=1000.0,
++        max_angular_velocity=1000.0,
++        max_depenetration_velocity=1.0,
++    ),
++)
++
++TaskObjCfgDict = {
++    "door": ArticulationCfg(
++        spawn=multi_spawner_cfg,
++        init_state=ArticulationCfg.InitialStateCfg(
++            pos=(0.0, 0.0, 0.0),
++            rot=(0.0, 0.0, 0.0, 1.0),  # G1_Hackason: Isaac Lab 3.0 は xyzw
++            joint_pos={
++                ".*hinge.*": 0.0,
++                ".*handle.*": 0.0,
++                ".*latch.*": 0.0,
++            },
++            joint_vel={".*": 0.0},
++        ),
++        soft_joint_pos_limit_factor=0.9,
++        actuators={
++            "hinge": ImplicitActuatorCfg(
++                joint_names_expr=[".*hinge.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++            "handle": ImplicitActuatorCfg(
++                joint_names_expr=[".*handle.*"],
++                velocity_limit_sim=100.0,
++                stiffness=None,
++                damping=None,
++            ),
++        },
++    )
++}
+-- 
+2.43.0
+

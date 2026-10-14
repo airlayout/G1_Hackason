@@ -1,0 +1,26 @@
+From 779914cbc36c82f08a8702c5c26ed4a26e37655d Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Wed, 7 Oct 2026 22:05:59 +0900
+Subject: [PATCH] 29dof: press_door_handle_down 4.0 -> 1.0 (pressing alone
+ saturated the reward)
+
+---
+ gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+index c52204d..8416200 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_lstm.yaml
+@@ -119,7 +119,7 @@ rewards:
+     limits_primitive_action: 0.0
+     # G1_Hackason 段 2-2: 手でレバーを下へ押す力（0〜1、30 N で頭打ち）。区間 3（開ける）だけで出る
+     # reward_penalty_reward_names には入れていない（引き締めで小さくならない）
+-    press_door_handle_down: 4.0
++    press_door_handle_down: 1.0  # 4.0 で押し下げを見つけた後、押し付けるだけで満点になる行き止まりになったので 1.0 に（10-07 22:05）
+     # G1_Hackason 段 2-2: レバーが 30° 以上下がっている間（ラッチが縁まで引っ込んだ後）に前へ押す力（0〜1、20 N で頭打ち）。区間 3 だけ
+     push_door_unlatched: 6.0
+ 
+-- 
+2.43.0
+

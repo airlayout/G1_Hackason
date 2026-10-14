@@ -1,0 +1,128 @@
+From c7fd8c53bd301e7dc176b8bc46f19cd3fbce051a Mon Sep 17 00:00:00 2001
+From: g1 <g1@local>
+Date: Tue, 6 Oct 2026 20:22:26 +0900
+Subject: [PATCH] state recorder for MuJoCo replay (env.config.record_states)
+ [untested]
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 14 ++++++
+ gr00t/rl/utils/state_recorder.py      | 68 +++++++++++++++++++++++++++
+ 2 files changed, 82 insertions(+)
+ create mode 100644 gr00t/rl/utils/state_recorder.py
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index c098f85..519dbd8 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -28,6 +28,7 @@ from gr00t.rl.envs.base_task.warped_action_base import WarpedActionBase
+ from gr00t.rl.envs.door.reset_from_dataset import ResetFromDataset
+ from gr00t.rl.isaac_utils.rotations import quat_to_tan_norm, wxyz_to_xyzw, xyzw_to_wxyz
+ from gr00t.rl.utils.hand_links import hand_contact_body_names, palm_body_name, palm_offset
++from gr00t.rl.utils.state_recorder import StateRecorder
+ from gr00t.rl.utils.torch_utils import torch_rand_float
+ 
+ 
+@@ -184,6 +185,12 @@ class DoorPregrasp(
+         self._right_arm_dof_idx = torch.tensor(self.right_arm_dof_indices, device=self.device)
+ 
+         self._register_task_state_to_track(self.simulator.scene.articulations["door"], "door")
++
++        # G1_Hackason: 状態の記録（env.config.record_states があるときだけ。描画の代わりに MuJoCo で再生する）
++        record_cfg = self.config.get("record_states", None)
++        self.state_recorder = (
++            StateRecorder(record_cfg, self) if record_cfg and record_cfg.get("dir") else None
++        )
+         self._register_buffer_to_track(
+             "delta_actions",
+             self._get_delta_actions_buffer_shape(),
+@@ -219,6 +226,13 @@ class DoorPregrasp(
+         )
+         self.door_root_state_buf[:, :3] += self.env_origins
+ 
++    @override
++    def _post_compute_observations_callback(self):
++        recorder = getattr(self, "state_recorder", None)  # 初期化の途中で呼ばれたときはまだ無い
++        if recorder is not None:
++            recorder.record(self)
++        return super()._post_compute_observations_callback()
++
+     def _pre_compute_observations_callback(self, env_ids=None):
+         super()._pre_compute_observations_callback(env_ids)
+         env_ids = torch.arange(self.num_envs, device=self.device) if env_ids is None else env_ids
+diff --git a/gr00t/rl/utils/state_recorder.py b/gr00t/rl/utils/state_recorder.py
+new file mode 100644
+index 0000000..1f9f738
+--- /dev/null
++++ b/gr00t/rl/utils/state_recorder.py
+@@ -0,0 +1,68 @@
++# G1_Hackason: 機体と扉の状態を毎ステップ npz に書き出す（カメラの描画を使わずに動きを見るため）。
++#
++# OMEN のドライバ（595.91）では Isaac Sim 5.1 の RTX 描画が落ちるので、評価の動画が撮れない。
++# 代わりに状態だけを記録し、Mac の MuJoCo で同じ動きを再生する（G1_Hackason/Door/sim2sim/replay_states.py）。
++#
++# 設定（env.config.record_states）。無ければ何もしない:
++#   dir: 書き出し先
++#   num_envs: 先頭から何台を記録するか（既定 4）
++#   chunk_steps: 何ステップごとにファイルを分けるか（既定 100。止められたときに失うのはこの分まで）
++
++import atexit
++import os
++
++import numpy as np
++
++
++class StateRecorder:
++    def __init__(self, cfg, env) -> None:
++        self.dir = str(cfg["dir"])
++        self.num = int(min(cfg.get("num_envs", 4), env.num_envs))
++        self.chunk_steps = int(cfg.get("chunk_steps", 100))
++        os.makedirs(self.dir, exist_ok=True)
++        self.chunk = 0
++        self.buf: dict[str, list[np.ndarray]] = {}
++        self._write_static(env)
++        atexit.register(self.flush)
++
++    def _write_static(self, env) -> None:
++        k = self.num
++        np.savez(
++            os.path.join(self.dir, "static.npz"),
++            dof_names=np.array(list(env.simulator.dof_names)),
++            door_width=env.door_width[:k].cpu().numpy(),
++            door_height=env.door_height[:k].cpu().numpy(),
++            door_handle_height=env.door_handle_height[:k].cpu().numpy(),
++            door_handle_width=env.door_handle_width[:k].cpu().numpy(),
++            door_weight=env.door_weight[:k].cpu().numpy(),
++            door_open_lr=env.door_open_lr[:k].cpu().numpy(),
++            dt=np.array(env.dt),
++            root_quat_order=np.array("xyzw"),
++        )
++
++    def record(self, env) -> None:
++        k = self.num
++        root = env.simulator.robot_root_states[:k]
++        door = env.simulator.scene.articulations["door"].data.joint_pos[:k]
++        row = {
++            "step": np.array([env.common_step_counter]),
++            "root_pos": (root[:, :3] - env.env_origins[:k]).cpu().numpy(),
++            "root_quat_xyzw": root[:, 3:7].cpu().numpy(),
++            "dof_pos": env.simulator.dof_pos[:k].cpu().numpy(),
++            "door_dof_pos": door.cpu().numpy(),
++            "stage": env.stage_buf[:k].cpu().numpy(),
++            "episode_length": env.episode_length_buf[:k].cpu().numpy(),
++        }
++        for key, value in row.items():
++            self.buf.setdefault(key, []).append(value.astype(np.float32))
++        if len(self.buf["step"]) >= self.chunk_steps:
++            self.flush()
++
++    def flush(self) -> None:
++        if not self.buf or not self.buf.get("step"):
++            return
++        path = os.path.join(self.dir, f"states_{self.chunk:04d}.npz")
++        np.savez(path, **{key: np.stack(values) for key, values in self.buf.items()})
++        print(f"[state_recorder] {path} を書いた（{len(self.buf['step'])} ステップ）")
++        self.buf = {}
++        self.chunk += 1
+-- 
+2.50.1 (Apple Git-155)
+
