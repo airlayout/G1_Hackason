@@ -8,7 +8,7 @@ arm: right
 
 # 実機（DDS）の設定。ラボ PC で G1 につないでいる有線 NIC の名前（`ip -br a` で確認する）
 # ⚠️ 実機日に設定すること。空のままだと実機経路は起動しない
-network_interface: ""
+network_interface: "enp129s0"
 domain_id: 0
 # lowstate の mode_machine がこの値でなければ中止する（g1_29dof_rev_1_0 = 5）
 expected_mode_machine: 5
@@ -51,7 +51,9 @@ safety:
   waist_max_deviation_rad: 0.05
 
 # 重力補償: 腕の重力トルク × scale を tau（フィードフォワード）として送る。
-# 既定はオフ（scale: 0.0）。実機日は 0 → 0.5 → 1.0 の順に試して腕の下がり方を比べる。
+# 2026-10-14 実機（arm_sdk、肩ピッチ −5°・肘 +5°）の最大の追従誤差: 0 → 1.38°、0.5 → 0.70°、1.0 → 0.49°。
+# 1.0 では終了後に機体が少しふらついたため、**実機では `--gravity-scale 0.5` を付けて実行する**。
+# 既定は 0.0 のまま（MuJoCo は sim.gravity_compensation で別に補償しているので、ここを上げると二重になる。テストもこの値を読む）。
 # 重力トルクは公式モデル（g1_29dof_rev_1_0.xml）と lowstate の IMU の姿勢から計算する。
 gravity_compensation:
   scale: 0.0

@@ -1,4 +1,24 @@
 # Button_Press / ティーチングで記録した姿勢（real/teach.py が書く）。
 # 押し込み姿勢は IK の初期値（q_seed）に使う。fingertip_pelvis_m は記録したときの FK の指先の位置。
 # 実機日のデータなので、終わったらコミットして残す。
-poses: {}
+poses:
+  press_bottle:
+    side: right
+    arm_q_rad:
+    - -0.082475
+    - 0.033772
+    - -0.248481
+    - 0.545522
+    - -0.172417
+    - -0.364153
+    - -0.040423
+    waist_q_rad:
+    - 0.160596
+    - -0.011033
+    - -0.102112
+    fingertip_pelvis_m:
+    - 0.39191
+    - -0.11925
+    - 0.05396
+    recorded_at: '2026-10-14 21:48:10'
+    note: ''

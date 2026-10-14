@@ -3,6 +3,8 @@
 コマンドはすべてラボ PC のリポジトリ直下（`G1_Hackason/`）で、1行ずつ実行する。
 `<NIC>` は G1 につないでいる有線 NIC の名前（`ip -br a` で確認し、`configs/arm.yaml` の `network_interface` にも書く）。
 
+> **最新の記録と再開手順: [DAILY_LOG_20261014_labpc.md](DAILY_LOG_20261014_labpc.md)**（ラボ PC・有線。段階0〜3の途中まで。arm_sdk が効く・実機では `--gravity-scale 0.5`）。同じ日のノート PC 側（無線）の記録は [DAILY_LOG_20261014_laptop.md](DAILY_LOG_20261014_laptop.md)。
+
 ## 時間の目安（2026-09-29 のリハーサル。ループバックの模擬ロボット）
 
 機械が動いている時間の実測。人の作業（接続、ロボットの姿勢を整える、腕を手で動かす、ボトルを置き直す）は含まない。
@@ -42,6 +44,13 @@
 | 7 | エレベーターの呼びボタン: 写真で確かめる → dry-run → 押す | 「段階7: エレベーターの呼びボタン」 | 見つけられなければ写真にラベルを付けて次の回に。arm_sdk が効かなければ行わない |
 
 ## 事前準備（ラボ PC）
+
+⚠️ ラボ PC では `~/.bashrc` が別の古い CycloneDDS を `CYCLONEDDS_HOME` に入れている。そのままだと DDS の初期化で
+`*** buffer overflow detected ***` で落ちるので、ターミナルを開くたびに最初に実行する（2026-10-14）:
+
+```bash
+export CYCLONEDDS_HOME=$PWD/G1_HuggingFace/cyclonedds/install
+```
 
 ラボ PC（x86_64）には SETUP.md のフルセット（lerobot 込み）が入っている前提。
 ボタン押し用のパッケージ（IK 用の Pinocchio = `pin` など）を追加で入れる:
