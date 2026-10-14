@@ -1,0 +1,12 @@
+# 専用のPython環境
+/.venv/
+
+# 再取得・再生成できるデータと実験成果物
+/datasets/
+/checkpoints/
+/runs/
+
+# 開発ツールのキャッシュ
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/

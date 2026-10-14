@@ -1,0 +1,10 @@
+[project]
+name = "g1-e2e"
+version = "0.1.0"
+description = "Unitree G1 の End to End ニューラルネットワーク制御"
+requires-python = ">=3.10"
+dependencies = []
+
+# 開発初期はディレクトリ構成のみ。パッケージ化は実装時に設定する。
+[tool.uv]
+package = false
