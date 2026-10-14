@@ -370,11 +370,32 @@ class ElevatorPressController:
         patch = np.asarray(rgb[y1:y2, x1:x2], dtype=float)
         return float(patch.mean()) if patch.size else float("nan")
 
+    def _current_bbox(self, rgb: np.ndarray, bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+        """見つけたときの枠に最も近い、今の画像のボタンの枠。無ければ、見つけたときの枠のまま。
+
+        腕を動かすと体が揺れて頭カメラの画像がずれ、見つけたときの枠がボタンから外れた（2026-10-14、realistic の
+        seed 10 で約 25 px ずれ、枠がボタンの半分しか覆わず、点灯していたのに明るさ +1 → 押し直し・見落とし）。
+        近さは中心の距離（lit_track.max_shift_px まで）、大きさは幅・高さの比（lit_track.max_size_ratio まで）で見る。
+        """
+        lt = self.cfg["press"]["lit_track"]
+        x1, y1, x2, y2 = bbox
+        cx, cy, w, h = (x1 + x2) / 2, (y1 + y2) / 2, max(x2 - x1, 1), max(y2 - y1, 1)
+        r = float(lt["max_size_ratio"])
+        best, best_d = None, float(lt["max_shift_px"])
+        for cand in self.finder.detector.detect(rgb):
+            a1, b1, a2, b2 = cand.bbox
+            if not (1 / r <= (a2 - a1) / w <= r and 1 / r <= (b2 - b1) / h <= r):
+                continue
+            d = float(np.hypot((a1 + a2) / 2 - cx, (b1 + b2) / 2 - cy))
+            if d <= best_d:
+                best, best_d = cand.bbox, d
+        return best if best is not None else bbox
+
     def _check(self, rgb: np.ndarray, t: float) -> bool:
         """押したボタンが点灯したか（同じ枠の明るさが上がったか）を見る。点灯していなければ深く押し直す。"""
         c = self.cfg["press"]
         b = self.call.button(self.target)
-        now = self._brightness(rgb, b.bbox)
+        now = self._brightness(rgb, self._current_bbox(rgb, b.bbox))
         rise = now - (self.baseline_brightness if self.baseline_brightness is not None else now)
         if rise >= float(c["lit_brightness_rise"]):
             self.outcome = "点灯した"
