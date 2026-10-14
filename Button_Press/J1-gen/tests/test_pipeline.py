@@ -42,6 +42,35 @@ def csv_rows(path: object) -> int:
         return sum(1 for _ in csv.reader(f)) - 1
 
 
+class TestStandAdvice(unittest.TestCase):
+    """立つ位置が勧める範囲（pipeline.yaml の stand）の外なら、どちらへ何 cm 動けばよいかを出す。"""
+
+    def pipe(self, side: str = "right", table_edge: float | None = None):  # type: ignore[no-untyped-def]
+        from common.pipeline import PressPipeline
+        from common.pipeline_cli import load_pipeline_config
+
+        cfg = load_pipeline_config(args())
+        cfg.press["obstacles"] = [] if table_edge is None else [
+            {"name": "table", "center": [table_edge + 0.2, -0.1, -0.25], "half_size": [0.2, 0.35, 0.2]}]
+        p = PressPipeline.__new__(PressPipeline)  # 計画や送信はしないので、設定と腕だけ持たせる
+        p.cfg, p.side = cfg, side
+        return p
+
+    def test_inside_is_empty(self) -> None:
+        self.assertEqual(self.pipe(table_edge=0.30).stand_advice(np.array([0.35, -0.20, 0.03])), "")
+
+    def test_far_left_and_table_too_close(self) -> None:
+        msg = self.pipe(table_edge=0.25).stand_advice(np.array([0.432, -0.08, 0.03]))
+        self.assertIn("押す点まで 43.2 cm と遠すぎる。あと 4 cm 以上近づく", msg)
+        self.assertIn("右に 8.0 cm（15〜25 cm がよい）。左へ 7 cm 以上寄る", msg)
+        self.assertIn("机の手前の縁まで 25.0 cm と近すぎる", msg)
+        self.assertIn("あと 4 cm 以上下がる", msg)
+
+    def test_left_arm_is_mirrored(self) -> None:
+        self.assertEqual(self.pipe(side="left").stand_advice(np.array([0.35, 0.20, 0.03])), "")
+        self.assertIn("左に 30.0 cm", self.pipe(side="left").stand_advice(np.array([0.35, 0.30, 0.03])))
+
+
 @needs('render', 'mujoco', 'pin')
 class TestPipelineSim(unittest.TestCase):
     def test_depth_target_full_run(self) -> None:

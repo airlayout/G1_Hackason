@@ -255,9 +255,56 @@ class PressPipeline:
             raise TargetError(f"経由の姿勢 {via!r} は {poses[via]['side']} 腕のもの（動かすのは {self.side}）")
         return np.asarray(poses[via]["arm_q_rad"], dtype=float)
 
+    def stand_advice(self, target: np.ndarray) -> str:
+        """立つ位置が勧める範囲（pipeline.yaml の stand）の外なら、どちらへ何 cm 動けばよいかの文。範囲の中なら空。
+
+        押す点（ボトルの手前の面）の前後・左右と、机の手前の縁（press.yaml / obstacles.yaml の障害物のうち、名前に
+        table を含む箱）までの距離を見る。左右の範囲は右腕の値で書き、左腕なら左右を反転する。範囲は MuJoCo で
+        確かめたもの（2026-10-15）。範囲の外でも押せることはあるので、これだけでは止めない（計画できなければ中止の
+        理由に添え、計画できれば注意として出す）。
+        """
+        stc = self.cfg.pipeline.get("stand")
+        if not stc:
+            return ""
+
+        def cm(m: float) -> int:  # 動く量は切り上げ（「あと 0 cm」と出さない）
+            return max(1, int(np.ceil(m * 100 - 1e-6)))
+
+        msgs = []
+        x, y = float(target[0]), float(target[1])
+        lo, hi = float(stc["target_min_m"]), float(stc["target_max_m"])
+        if x < lo:
+            msgs.append(f"押す点まで {x * 100:.1f} cm と近すぎる。あと {cm(lo - x)} cm 以上下がる")
+        elif x > hi:
+            msgs.append(f"押す点まで {x * 100:.1f} cm と遠すぎる。あと {cm(x - hi)} cm 以上近づく")
+        sgn = 1.0 if self.side == "right" else -1.0  # 右腕の値（右が −y）を、左腕なら反転
+        right = -sgn * y  # 押す腕の側へ何 m ずれているか
+        s_lo, s_hi = float(stc["side_min_m"]), float(stc["side_max_m"])
+        arm_side, other = ("右", "左") if self.side == "right" else ("左", "右")
+        if right < s_lo:
+            msgs.append(f"押す点が体の中心から{arm_side}に {right * 100:.1f} cm（{s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
+                        f"{other}へ {cm(s_lo - right)} cm 以上寄る")
+        elif right > s_hi:
+            msgs.append(f"押す点が体の中心から{arm_side}に {right * 100:.1f} cm（{s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
+                        f"{arm_side}へ {cm(right - s_hi)} cm 以上寄る")
+        edge_min = float(stc["table_edge_min_m"])
+        for ob in self.cfg.press.get("obstacles") or []:
+            if "table" not in str(ob.get("name", "")) or ob.get("x_axis") is not None:
+                continue
+            edge = float(ob["center"][0]) - float(ob["half_size"][0])
+            if edge < edge_min:
+                msgs.append(f"机の手前の縁まで {edge * 100:.1f} cm と近すぎる（経由の姿勢へ手を上げる途中で縁に当たる）。"
+                            f"あと {cm(edge_min - edge)} cm 以上下がる")
+        if not msgs:
+            return ""
+        return ("立つ位置が勧める範囲の外: " + "、".join(msgs)
+                + f"（勧める範囲: 押す点まで {lo * 100:.0f}〜{hi * 100:.0f} cm、{arm_side}に {s_lo * 100:.0f}〜"
+                  f"{s_hi * 100:.0f} cm、机の縁まで {edge_min * 100:.0f} cm 以上）")
+
     def make_plan(self, st: JointState, target: np.ndarray) -> PressPlan:
         push = resolve_push_dir(self.cfg.pipeline["push"]["direction"])
         via = self._via_pose()
+        advice = self.stand_advice(target)
         errors = []
         for label, q_seed in self._seeds(st):
             try:
@@ -270,8 +317,11 @@ class PressPipeline:
             self.logger.save_json("plan_initial.json", self._plan_dict(plan))
             self.logger.event("plan", summary=plan.summary(), seed=label)
             print(f"[pipeline] 計画（IK の初期値: {label}）: {plan.summary()}")
+            if advice:
+                self.logger.event("stand_advice", message=advice)
+                print(f"[pipeline] ⚠️ {advice}（計画は立ったので続ける）")
             return plan
-        raise UnreachableError("どの IK の初期値でも計画できない: " + " / ".join(errors))
+        raise UnreachableError((f"{advice}。" if advice else "") + "どの IK の初期値でも計画できない: " + " / ".join(errors))
 
     @staticmethod
     def _plan_dict(plan: PressPlan) -> dict[str, Any]:
