@@ -146,8 +146,12 @@ class ElevatorPressController:
             if t >= float(c["look_start_s"]) and fresh:
                 self._look(rgb, depth, K, q, t)
             if self.phase == "look" and t > float(c["look_start_s"]) + float(c["look_timeout_s"]):
+                st = c["stand"]
                 done = self._give_up(t, "時間内に一般用の ▲▼ を見つけられない"
-                                     + (f"（最後の理由: {self._last_reason}）" if getattr(self, "_last_reason", "") else ""))
+                                     + (f"（最後の理由: {self._last_reason}）" if getattr(self, "_last_reason", "") else "")
+                                     + f"。立つ位置を確かめる: 柱まで {float(st['min_dist_m']) * 100:.0f}〜"
+                                     f"{float(st['max_dist_m']) * 100:.0f} cm、左右 {float(st['max_side_m']) * 100:.0f} cm 以内"
+                                     "（遠いと高い ▲ が頭カメラの上に切れる）")
         elif self.phase == "reach":
             q_des[arm] = self._reach(el, t)
         elif self.phase == "settle":
@@ -238,12 +242,43 @@ class ElevatorPressController:
         self._note(f"見つけた: {merged.summary()}")
         b = merged.button(self.target)
         self.baseline_brightness = self._brightness(rgb, b.bbox)
+        advice = self._stand_advice(merged)
         try:
             self._plan(q, merged)
         except UnreachableError as e:
-            self._give_up(t, f"計画できない: {e}")
+            self._give_up(t, (f"{advice}。" if advice else "") + f"計画できない: {e}")
             return
+        if advice:
+            self._note(f"⚠️ {advice}（計画は立ったので押す）")
         self._enter("reach", t)
+
+    def _stand_advice(self, call: CallButtons) -> str:
+        """立っている位置が勧める範囲（press.stand）の外なら、どちらへ何 cm 動けばよいかの文。範囲の中なら空。
+
+        距離は pelvis から柱の面（▲▼ の中点を通り、押す向きに垂直な面）まで、押す向きに測る。左右は ▲▼ の中点の
+        pelvis の y（左が +）。範囲は、計画だけの網羅と評価環境での押し込みで確かめたもの（2026-10-15）。
+        範囲の外でも押せることは多い（推定の位置は realistic で押す向きに最大 19 mm ずれる）ので、この文で止めはしない。
+        計画できなかったときの理由に添え、計画できたときは注意として出す。
+        """
+        st = self.cfg["press"]["stand"]
+        mid = (call.up.center + call.down.center) / 2.0
+        dist, side = float(mid @ call.normal), float(mid[1])
+        lo, hi, w = float(st["min_dist_m"]), float(st["max_dist_m"]), float(st["max_side_m"])
+        def cm(m: float) -> int:  # 動く量は切り上げ（「あと 0 cm」と出さない）
+            return max(1, int(np.ceil(m * 100 - 1e-6)))
+
+        msgs = []
+        if dist < lo:
+            msgs.append(f"柱まで {dist * 100:.1f} cm と近すぎる。あと {cm(lo - dist)} cm 以上下がる")
+        elif dist > hi:
+            msgs.append(f"柱まで {dist * 100:.1f} cm と遠すぎる。あと {cm(dist - hi)} cm 以上近づく")
+        if abs(side) > w:
+            way = "左" if side > 0 else "右"
+            msgs.append(f"ボタンが体の中心から{way}に {abs(side) * 100:.1f} cm。{way}へ {cm(abs(side) - w)} cm 以上寄る")
+        if not msgs:
+            return ""
+        return ("立つ位置が勧める範囲の外: " + "、".join(msgs)
+                + f"（勧める範囲: 柱まで {lo * 100:.0f}〜{hi * 100:.0f} cm、左右 {w * 100:.0f} cm 以内）")
 
     def _plan(self, q: np.ndarray, call: CallButtons, depth: float | None = None) -> None:
         c = self.cfg["press"]

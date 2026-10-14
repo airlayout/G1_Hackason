@@ -455,6 +455,40 @@ class TestElevatorPlan(unittest.TestCase):
         np.testing.assert_allclose(ctl.q_ik[arm], self.q0[arm], atol=1e-9)
         self.assertAlmostEqual(t, sum(T for _, _, T in ctl.home_legs), delta=0.05)
 
+    def test_stand_advice(self) -> None:
+        """立つ位置が範囲の外なら、どちらへ何 cm 動けばよいかを出して、計画せずに終わる。"""
+        ctl = self.ctl
+        st = ctl.cfg["press"]["stand"]
+        ctl.reset("up", 0.02, np.full(17, 60.0))
+        self.assertEqual(ctl._stand_advice(self.call(x=0.33)), "")  # 範囲の中
+        near = ctl._stand_advice(self.call(x=float(st["min_dist_m"]) - 0.025))
+        self.assertIn("近すぎる。あと 3 cm 以上下がる", near)
+        far = ctl._stand_advice(self.call(x=float(st["max_dist_m"]) + 0.002))
+        self.assertIn("遠すぎる。あと 1 cm 以上近づく", far)  # 切り上げ（「0 cm」と出さない）
+        side = self.call(x=0.33)
+        for b in (side.up, side.down):
+            b.center = b.center + [0.0, -0.08, 0.0]
+        self.assertEqual(ctl._stand_advice(side), "")  # 左右 5.3 cm は範囲の中
+        for b in (side.up, side.down):
+            b.center = b.center + [0.0, -0.03, 0.0]
+        self.assertIn("右に 8.3 cm。右へ 3 cm 以上寄る", ctl._stand_advice(side))
+        # 計画できなければ、中止の理由に動く向きと量を添える
+        from unittest import mock
+
+        def look(call: CallButtons) -> None:
+            ctl.reset("up", 0.02, np.full(17, 60.0))
+            with mock.patch.object(ctl.finder, "find", return_value=call), \
+                    mock.patch.object(ctl.tracker, "add", return_value=call):
+                ctl._look(np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640)), np.eye(3), self.q0, 1.0)
+
+        look(self.call(x=0.6))
+        self.assertEqual(ctl.phase, "done")
+        self.assertRegex(ctl.outcome, "遠すぎる。あと 2[01] cm 以上近づく.*）。計画できない")
+        # 範囲の外でも計画が立てば、注意だけ出して押す（推定の距離は数 cm ずれることがあるため）
+        look(self.call(x=float(st["min_dist_m"]) - 0.01))
+        self.assertEqual(ctl.phase, "reach")
+        self.assertTrue(any("⚠️" in l.message and "近すぎる" in l.message for l in ctl.log))
+
     def test_press_stops_when_finger_is_blocked(self) -> None:
         """押し込みの途中で指先が止まったら（ボタンが底に着いた）、それ以上奥へ押さずに保持へ移る。"""
         ctl = self.ctl
