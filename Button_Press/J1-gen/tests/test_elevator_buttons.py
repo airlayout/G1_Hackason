@@ -455,5 +455,42 @@ class TestElevatorPlan(unittest.TestCase):
         np.testing.assert_allclose(ctl.q_ik[arm], self.q0[arm], atol=1e-9)
         self.assertAlmostEqual(t, sum(T for _, _, T in ctl.home_legs), delta=0.05)
 
+    def test_press_stops_when_finger_is_blocked(self) -> None:
+        """押し込みの途中で指先が止まったら（ボタンが底に着いた）、それ以上奥へ押さずに保持へ移る。"""
+        ctl = self.ctl
+        ctl.reset("down", 0.02, np.full(17, 60.0))
+        ctl.call = self.call()
+        ctl._plan(self.q0, self.call())
+        ctl.q_hold = self.q0.copy()
+        arm, p = ctl.kin.arm_idx, ctl.plan_
+        ctl.q_ik[arm] = p.q_approach
+        ctl._enter("press", 0.0)
+        img, depth, K0 = np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640)), np.eye(3)
+        cs = ctl.cfg["press"]["contact_stop"]
+        q, t, blocked = self.q0.copy(), 0.0, None
+        while ctl.phase == "press" and t < 5.0:
+            if blocked is None:
+                q[arm] = ctl.q_ik[arm]  # 遅れなく付いてくる
+                if float((ctl.kin.fk_pos(q) - p.target_point) @ p.push_dir) > 0.003:
+                    blocked = q.copy()  # 面の 3 mm 奥で止まる
+            t += 0.02
+            ctl.step(img, depth, K0, blocked if blocked is not None else q, t, 0.0)
+        self.assertIsNotNone(blocked)
+        self.assertEqual(ctl.phase, "hold")
+        self.assertLess(t, ctl.cfg["press"]["press_s"])  # 押し込みの終わりより前に止まる
+        n, tip = p.push_dir, ctl.kin.fk_pos(blocked)
+        # 押し込み終わりは、止まった指先の keep_m 先（計画の 15 mm 奥ではない）
+        self.assertAlmostEqual(float((ctl.plan_.end_point - tip) @ n), cs["keep_m"], delta=0.0015)
+        self.assertLess(float((ctl.plan_.end_point - p.target_point) @ n), p.depth - 0.005)
+        # 保持の間、指令した指先は止まった指先の少し先のまま
+        for _ in range(10):
+            t += 0.02
+            ctl.step(img, depth, K0, blocked, t, 0.0)
+        self.assertLess(ctl._push_lag(blocked), cs["lag_m"])
+        # 押し直しのときは、強めに押してから止める
+        ctl.retries = 1
+        self.assertEqual(ctl._stop_lag(), cs["retry_lag_m"])
+
+
 if __name__ == "__main__":
     unittest.main()

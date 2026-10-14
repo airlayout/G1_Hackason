@@ -15,7 +15,7 @@ J1-gen の部品をそのまま使う:
 
 段階:
   look → reach（関節空間で手前の姿勢へ。経由点があれば通る）→ settle（手前で止まり、指先のずれを補正）
-  → press（押す向きに直線で押し込む）→ hold → retract（手前へ戻る）→ check（点灯したかを画像で見る。
+  → press（押す向きに直線で押し込む。指先が進まなくなったらそこで止める）→ hold → retract（手前へ戻る）→ check（点灯したかを画像で見る。
   点灯していなければ 1 回だけ深く押し直す）→ home（来た経路を逆にたどって、始めの姿勢へ戻す）→ done
 
 終わる前に腕を戻す理由: 評価環境は点灯した瞬間に終わるが、実機・模擬 G1 では、エージェントが終わると腕の
@@ -158,9 +158,14 @@ class ElevatorPressController:
             T = float(c["press_s"])
             s = smoothstep(el / T)
             p = (1 - s) * self.plan_.approach_point + s * self.plan_.end_point
-            q_des[arm] = self._servo(q, p, integrate_push=False)
-            if s >= 1.0:
-                self._enter("hold", t)
+            lag = self._push_lag(q)
+            if lag > self._stop_lag():
+                p = self._stop_press(p, lag, t)
+                q_des[arm] = self._servo(q, p, integrate_push=False)
+            else:
+                q_des[arm] = self._servo(q, p, integrate_push=False)
+                if s >= 1.0:
+                    self._enter("hold", t)
         elif self.phase == "hold":
             q_des[arm] = self._servo(q, self.plan_.end_point, integrate_push=False)
             if el >= float(c["hold_s"]):
@@ -364,6 +369,31 @@ class ElevatorPressController:
         if np.isfinite(r.pos_err) and r.pos_err < float(c["accept_err_m"]):
             self.q_ik = r.q
         return self.q_ik[self.kin.arm_idx]
+
+    def _push_lag(self, q: np.ndarray) -> float:
+        """指令した指先（前の周期の目標の角度の FK）が、実際の指先より押す向きにどれだけ先にあるか [m]。"""
+        n = self.plan_.push_dir
+        return float((self.kin.fk_pos(self.q_ik) - self.kin.fk_pos(q)) @ n)
+
+    def _stop_lag(self) -> float:
+        """押し込みを止める遅れ [m]。押し直しのときは大きく（強く押す）。"""
+        cs = self.cfg["press"]["contact_stop"]
+        return float(cs["retry_lag_m"] if self.retries > 0 else cs["lag_m"])
+
+    def _stop_press(self, p: np.ndarray, lag: float, t: float) -> np.ndarray:
+        """指先が進まなくなった（ボタンが底に着いた・何かに当たった）。押し込み終わりを、実際の指先の
+        keep_m 先に置き直して保持へ移る。返すのは新しい押し込み終わり。
+
+        目標を奥に置いたまま押し続けると、遅れ（＝押す力）が増え続け、指先がボタンの面を横に滑って柱の穴の縁に
+        当たった（2026-10-15、realistic の seed 0 で 21.6 N。底に着いてから遅れが 26 mm まで増え、横に約 9 mm 滑った）。
+        """
+        keep = float(self.cfg["press"]["contact_stop"]["keep_m"])
+        n = self.plan_.push_dir
+        end = p - (lag - keep) * n
+        self.plan_ = PressPlan(**{**self.plan_.__dict__, "end_point": end})
+        self._note(f"指先が進まなくなった（遅れ {lag * 1000:.1f} mm）。押し込みを止めて保持する")
+        self._enter("hold", t)
+        return end
 
     def _brightness(self, rgb: np.ndarray, bbox: tuple[int, int, int, int]) -> float:
         x1, y1, x2, y2 = bbox
