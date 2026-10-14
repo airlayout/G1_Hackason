@@ -256,7 +256,8 @@ class ArmCommander:
             w = list(WAIST_IDX)
             self._cmd.tau[w] = np.clip(self.gc_waist_scale * g[w], -self.gc_waist_tau_max, self.gc_waist_tau_max)
 
-    def _send_tick(self) -> None:
+    def _send_tick(self) -> JointState | None:
+        """1 周期分を送る。送る前に読んだ lowstate を返す（終了処理中で届いていなければ None）。"""
         st = None
         if not self._stopping:
             st = self._fresh_state()
@@ -266,6 +267,7 @@ class ArmCommander:
         self._update_gravity_tau(st)
         self.backend.send(self._cmd)
         self.backend.tick(self.dt)
+        return st
 
     # ---- 開始 -----------------------------------------------------------------
 
@@ -384,10 +386,13 @@ class ArmCommander:
             self._send_tick()
         self.check_motion(q_before, q_cmd_start, q_arm)
 
-    def follow(self, waypoints_arm: Sequence[np.ndarray], label: str = "軌道") -> None:
-        """片腕 7 関節の点列を 1 周期に 1 点ずつ送る（タスク2の直線押し込み用）。
+    def follow(self, waypoints_arm: Sequence[np.ndarray], label: str = "軌道",
+               stop_when: Callable[[np.ndarray, np.ndarray], bool] | None = None) -> int:
+        """片腕 7 関節の点列を 1 周期に 1 点ずつ送る（タスク2の直線押し込み用）。送った点の数を返す。
 
         送る前に全点を確認する。隣り合う点の差が 1 ステップの上限を超える軌道は拒否する。
+        stop_when（指令の 29 関節, 実測の 29 関節）が True を返したら、残りの点は送らずに止まる
+        （押し込みで指先が進まなくなったとき）。実測は、その周期の指令を送る前に読んだ lowstate。
         """
         if not self._started or self._stopping:
             raise RuntimeError("start() の前、または終了処理中に follow() が呼ばれた")
@@ -406,12 +411,19 @@ class ArmCommander:
         self._confirm(f"{label}（{len(wps)} 点、{len(wps) * self.dt:.1f} 秒）")
         q_before = self._fresh_state().q[self.arm_idx].copy()
         q_cmd_start = self._cmd.q[self.arm_idx].copy()
+        sent = 0
         for w in wps:
+            q_prev_cmd = self._cmd.q.copy()
             self._cmd.q[self.arm_idx] = w
-            self._send_tick()
+            st = self._send_tick()  # 前の周期までの指令に対する実測
+            sent += 1
+            if stop_when is not None and st is not None and stop_when(q_prev_cmd, st.q.copy()):
+                print(f"[arm] {label}: {sent}/{len(wps)} 点目で止める")
+                break
         for _ in range(int(float(self.cfg["safety"]["settle_s"]) / self.dt)):
             self._send_tick()
-        self.check_motion(q_before, q_cmd_start, wps[-1])
+        self.check_motion(q_before, q_cmd_start, wps[sent - 1])
+        return sent
 
     # ---- 動いたかの確認 ----------------------------------------------------------
 

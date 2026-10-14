@@ -213,6 +213,24 @@ class TestMove(unittest.TestCase):
         for c in be.sent:
             np.testing.assert_allclose(c.q[ARM], be.q0[ARM])
 
+    def test_follow_stops_when_asked(self) -> None:
+        """stop_when が True を返したら、残りの点は送らない（押し込みで指先が進まなくなったとき）。"""
+        be = FakeBackend()
+        wps = [be.q0[ARM] + 0.005 * (k + 1) for k in range(20)]
+        seen = []
+
+        def stop(q_cmd: np.ndarray, q_meas: np.ndarray) -> bool:
+            seen.append((q_cmd.copy(), q_meas.copy()))
+            return q_cmd[ARM[0]] >= wps[5][0] - 1e-12  # 6 点目まで送った指令に対する実測で止める
+
+        with make(be) as arm:
+            sent = arm.follow(wps, stop_when=stop)
+            self.assertEqual(sent, 7)
+            np.testing.assert_allclose(arm.commanded_arm_q, wps[6])
+        # 渡す実測は、その周期の指令を送る前のもの（前の周期までの指令に対する実測）
+        np.testing.assert_allclose(seen[-1][0][ARM], wps[5])
+        self.assertFalse(any(np.allclose(c.q[ARM], wps[7]) for c in be.sent))
+
     def test_follow_rejects_big_step(self) -> None:
         be = FakeBackend()
         with self.assertRaises(UnsafeTargetError):

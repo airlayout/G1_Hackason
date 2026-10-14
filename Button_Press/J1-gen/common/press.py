@@ -32,6 +32,43 @@ def _replan_at_approach(arm: ArmCommander, planner: PressPlanner, plan: PressPla
     return new
 
 
+def _contact_stop(planner: PressPlanner, plan: PressPlan, attempt: int) -> Callable[[np.ndarray, np.ndarray], bool] | None:
+    """指令した指先（指令の角度の FK）が、実際の指先より押す向きに lag_m 以上先に出たら True を返す関数。
+
+    目標を奥に置いたまま押し続けると、押す力（＝遅れ）が増え続ける。MuJoCo の固いボトルでは遅れが 25 mm まで増え、
+    その反動で腰が 2.9° ねじれて安全確認（腰のずれ）で中止した（2026-10-15、机 0.79 m・ボトルが右 25 cm）。
+    触れる前の遅れは 2 mm 以下。押し直し（attempt 2 以降）は retry_lag_m まで押す。設定が無ければ None（止めない）。
+    """
+    cs = planner.cfg.get("contact_stop")
+    if not cs:
+        return None
+    lag_max = float(cs["retry_lag_m"] if attempt > 1 else cs["lag_m"])
+    n = plan.push_dir
+
+    def stop(q_cmd: np.ndarray, q_meas: np.ndarray) -> bool:
+        lag = float((planner.kin.fk_pos(q_cmd) - planner.kin.fk_pos(q_meas)) @ n)
+        if lag > lag_max:
+            print(f"[press] 指先が進まなくなった（遅れ {lag * 1000:.1f} mm）。押し込みを止める")
+            return True
+        return False
+
+    return stop
+
+
+def _hold_index(planner: PressPlanner, plan: PressPlan, sent: int, q_meas: np.ndarray) -> int:
+    """押し込みの直線の点のうち、実際の指先より押す向きに keep_m 先までにある最も奥の点の番号（sent より前）。"""
+    keep = float(planner.cfg["contact_stop"]["keep_m"])
+    n, arm = plan.push_dir, planner.kin.arm_idx
+    tip = float(planner.kin.fk_pos(q_meas) @ n)
+    q = q_meas.copy()
+    j = 0
+    for k in range(sent):
+        q[arm] = plan.press_in[k]
+        if float(planner.kin.fk_pos(q) @ n) - tip <= keep:
+            j = k
+    return j
+
+
 def execute_press(
     arm: ArmCommander,
     plan: PressPlan,
@@ -44,6 +81,7 @@ def execute_press(
     deeper_limit_m: float | None = None,
     grab_frame: Callable[[], Any] | None = None,
     replan: bool = True,
+    contact_stop: bool = True,
 ) -> tuple[PressPlan, list[PostPressResult]]:
     """（経由の姿勢 →）手前の姿勢へ移動 → 実測の腰の角度で計算し直す → 直線で押し込む → 止まる → 直線で戻る →
     押したあとの確認 →（必要なら深くして押し直す）→（与えれば）return_to へ戻る。
@@ -51,6 +89,8 @@ def execute_press(
     planner は必須（実測の腰の角度で計算し直す手順を、必ず通すため）。replan=False は MuJoCo の比較実験
     （sim/press_sim.py）専用。全体の流れ（common/pipeline.py）では渡さない（常に計算し直す）。
     押し直しは max_retries 回まで。深さは deeper_limit_m（無ければ press.max_press_depth_m）で頭打ち。
+    contact_stop（既定で有効、設定は press.contact_stop）: 押し込みの途中で指先が進まなくなったら、それ以上奥へ
+    押さず、実際の指先の少し先を押したまま保持する（_contact_stop）。
     計算し直した結果が届かない・ぶつかるなら UnreachableError で止まる（ArmCommander が安全に終了する）。
     実際に使った最後の計画と、確認の結果の一覧を返す。
     """
@@ -67,11 +107,22 @@ def execute_press(
     results: list[PostPressResult] = []
     attempt = 1
     while True:
-        arm.follow(plan.press_in, label=f"押し込み（{attempt} 回目、深さ {plan.depth * 1000:.1f} mm）")
+        stop = _contact_stop(planner, plan, attempt) if contact_stop else None
+        sent = arm.follow(plan.press_in, label=f"押し込み（{attempt} 回目、深さ {plan.depth * 1000:.1f} mm）",
+                          stop_when=stop)
+        q_hold, press_out = plan.press_in[-1], plan.press_out
+        if sent < len(plan.press_in):
+            j = _hold_index(planner, plan, sent, arm.measured_q())
+            # 止めた点から、保持する点まで直線をさかのぼる（1 周期の関節の動きの上限を守るため）
+            back = [w.copy() for w in reversed(plan.press_in[j:sent - 1])]
+            if back:
+                arm.follow(back, label="押し込みを少し戻す")
+            q_hold = plan.press_in[j]
+            press_out = [w.copy() for w in reversed(plan.press_in[:j])] + [plan.q_approach.copy()]
         if on_stage:
             on_stage("end", plan)
-        arm.follow([plan.press_in[-1]] * max(1, int(hold_s / arm.dt)), label="押し込んだまま保持")
-        arm.follow(plan.press_out, label="戻り")
+        arm.follow([q_hold] * max(1, int(hold_s / arm.dt)), label="押し込んだまま保持")
+        arm.follow(press_out, label="戻り")
         if on_stage:
             on_stage("retreated", plan)
         res = check(PostPressContext(attempt=attempt, depth_m=plan.depth, plan=plan,
