@@ -34,6 +34,7 @@ from .arm import (
 from .arm.backend import ArmBackend
 from .arm.gravity import GravityModel, needs_gravity_model
 from .arm.types import JointState
+from .body_motion import LegKinematics, analyze_run_dir, write_csv
 from .camera_geometry import HeadCameraTransform
 from .dds import PeerMismatchError
 from .localize import Detector, Locator
@@ -146,6 +147,7 @@ class PressPipeline:
             if f is None or st is None:
                 self.logger.event("locate_frame", index=k, ok=False, reason="フレームか lowstate が無い")
                 continue
+            self.logger.log_state(st)  # 押している間の体の動き（body_motion）の基準
             qw = st.q[list(WAIST_IDX)]
             found = locator.locate(f, qw)
             best = locator.best(found)
@@ -362,8 +364,24 @@ class PressPipeline:
             res = PipelineResult(EXIT_STATE, f"❌ {e}")
         print(f"[pipeline] 結果: {'成功' if res.code == EXIT_OK else res.message}（終了コード {res.code}）")
         self.logger.event("result", code=res.code, message=res.message)
+        self._report_body_motion()
         self.logger.close(code=res.code, message=res.message, target=res.target)
         return res
+
+    def _report_body_motion(self) -> None:
+        """押している間に体（pelvis）がどれだけ動いたか（実機では足側のバランス制御が腰を動かす。シミュレーションは
+        腰を固定しているので 0）。記録から求めて表示し、body_motion.csv と出来事に残す。失敗しても結果は変えない。"""
+        try:
+            self.logger.flush()
+            m = analyze_run_dir(self.logger.dir, LegKinematics(self.cfg.robot))
+            if len(m.t) < 2:
+                return
+            write_csv(self.logger.dir / "body_motion.csv", m)
+            self.logger.event("body_motion", **m.summary())
+            print("[pipeline] 体（pelvis）の動き:\n  " + m.text().replace("\n", "\n  "))
+        except Exception as e:  # noqa: BLE001 記録の後処理なので、失敗しても押した結果は変えない
+            print(f"[pipeline] ⚠️ 体の動きを求められなかった: {e}")
+            self.logger.event("warning", message=f"体の動きを求められなかった: {e}")
 
     def _run(self) -> PipelineResult:
         cfg = self.cfg
@@ -374,6 +392,7 @@ class PressPipeline:
         if st.mode_machine != expected:
             raise RuntimeError(f"mode_machine が {st.mode_machine}（期待値 {expected}）。機体構成が違うので中止する")
         self.logger.event("lowstate", mode_machine=st.mode_machine, waist_q=st.q[list(WAIST_IDX)])
+        self.logger.log_state(st)
 
         src = cfg.pipeline["target"]["source"]
         if src == "depth":

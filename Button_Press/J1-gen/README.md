@@ -297,6 +297,34 @@ manual: 設定の点、または教えた姿勢の中指の先 + 定規のずれ
     机の高さ 3 通り × 縁からボトルまで 3 通り × 押す点まで 26〜48 cm × 右に 15・20・25 cm の 621 通り。
     勧める範囲は 3 つの高さのどれでも押せる値（机が 0.74 m 前後なら、押す点 43 cm・縁 27 cm まで押せた）
 
+### 押している間の体（pelvis）の動き（実機で見る）
+
+実機の G1 は、腕を伸ばしたり押した反動を受けたりすると、**足側のバランス制御が腰の位置を直す**。シミュレーション
+（J1-gen も Yada さんの評価環境も）は腰を固定しているので、この動きは見えない。対象の位置は押す前に pelvis 座標で
+測っているので、そのあとに腰が動くと、そのぶん狙いがずれる（押した反動で体が後ろへ逃げると、腕は計画どおりでも
+部屋から見ると浅くしか押せない）。
+
+- 全体をつなぐスクリプトは、終わったときに体の動きを表示し、記録に `body_motion.csv` と出来事 `body_motion` を残す。
+  対象を測るときの lowstate も `lowstate.csv` に入れるようにした（基準にするため）
+- 求め方（`common/body_motion.py`）: 両足が床に着いて滑らないとして、**脚の関節角（lowstate の q0〜q11）の FK** で
+  足首から見た pelvis の位置と向きを出し、対象を測った時刻からの変化を見る。新しいトピックは使わない
+  （G1 の位置の推定 `sportmodestate` は PC2 の SDK に型が無く読めない。Mapping 班の記録）
+- 出すもの（基準の時刻の pelvis 座標）: pelvis の移動 [mm] と回転 [°]、**狙いのずれ** [mm]（測った対象の点が今の pelvis
+  から見てどこへ動いたか）、IMU の傾きの変化（脚の FK と大きく違えば、足が浮いたか滑った）、左右の足の位置関係の変化
+  （10 mm を超えたら足を踏み替えた。そのあとの値は当てにならない）
+- エレベーター（`contest_agent`）は、環境変数 `J1GEN_BODY_LOG` にフォルダを渡すと毎周期の関節角・IMU・段階を記録する
+  （基準は ▲▼ を探していた最後の周期）。Yada さんの `run_dds.py` には手を入れていない
+
+```bash
+P=G1_HuggingFace/venv/bin/python
+$P Button_Press/J1-gen/real/body_motion.py _local/button_press/runs/<日時>_<ラベル>        # ボトル（あとから読み直す）
+J1GEN_BODY_LOG=_local/button_press/body_log $P Button_Press/Yada/contest/run_dds.py --agent Button_Press/J1-gen/contest_agent ...
+$P Button_Press/J1-gen/real/body_motion.py _local/button_press/body_log/<日時>_<up|down>   # エレベーター
+```
+
+- シミュレーションでの値: ボトル（腰を固定）は 0 mm。評価環境は脚を PD で保つだけなので、腕の反動で 0.2 mm・0.07°。
+  評価環境の「体の揺れ」は腰を直接動かしているので、IMU には出るが脚の FK には出ない（実機では両方に出るはず）
+
 ### ループバックの模擬ロボット
 
 ```bash

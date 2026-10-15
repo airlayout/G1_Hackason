@@ -7,7 +7,8 @@
     frames/         段階ごとの RGB（PNG）と深度（16bit PNG）、検出結果を描いた画像
     plan_*.json     押し込みの計画（目標、手前・押し込み終わりの点、IK の結果の関節角、軌道の全点）
     commands.csv    送った（dry-run では送るはずだった）指令の全周期: 時刻、weight、q / kp / kd / tau（29 関節）
-    lowstate.csv    制御の周期ごとの lowstate（時刻、関節角、関節速度、IMU）
+    lowstate.csv    制御の周期ごとの lowstate（時刻、関節角、関節速度、IMU）。対象を測るときの lowstate も入る
+    body_motion.csv 押している間の体（pelvis）の動き（common/body_motion.py。脚の関節角から求める）
 """
 
 from __future__ import annotations
@@ -111,6 +112,10 @@ class RunLogger:
     def log_state(self, st: JointState) -> None:
         self._ls.writerow([f"{time.time():.6f}", st.mode_machine] + [f"{v:.6f}" for v in st.q]
                           + [f"{v:.6f}" for v in st.dq] + [f"{v:.6f}" for v in st.imu_quat])
+
+    def flush(self) -> None:
+        for f in (self._events, self._cmd_f, self._ls_f):
+            f.flush()
 
     def close(self, **result: Any) -> None:
         self.update_meta(result=result, n_commands=self.n_commands, closed=time.strftime("%Y%m%d_%H%M%S"))
