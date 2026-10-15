@@ -126,6 +126,7 @@ class ElevatorPressController:
         self.wall: CollisionChecker | None = None
         self.home_legs: list[tuple[np.ndarray, np.ndarray, float]] = []
         self.baseline_brightness: float | None = None
+        self.baseline_level: float | None = None
         self.outcome = ""
         self.log = []
 
@@ -242,6 +243,7 @@ class ElevatorPressController:
         self._note(f"見つけた: {merged.summary()}")
         b = merged.button(self.target)
         self.baseline_brightness = self._brightness(rgb, b.bbox)
+        self.baseline_level = self._lit_level(rgb, b.bbox)
         advice = self._stand_advice(merged)
         try:
             self._plan(q, merged)
@@ -435,6 +437,29 @@ class ElevatorPressController:
         patch = np.asarray(rgb[y1:y2, x1:x2], dtype=float)
         return float(patch.mean()) if patch.size else float("nan")
 
+    def _lit_level(self, rgb: np.ndarray, bbox: tuple[int, int, int, int]) -> float:
+        """ボタンの明るい部分の明るさ: 枠に内接する楕円を lit_check.radius 倍に広げた範囲の、明るい側から
+        lit_check.percentile % の値（0〜255）。
+
+        ラボのエレベーター（2026-10-15、スマホの写真 5 枚）は、点灯すると縁の細い輪だけが光り、面と矢印は変わらない。
+        枠全体の平均では輪の光が薄まり、上がり方が +21〜+31（以前のしきい値 +25 でぎりぎり）だった。明るい側の値なら
+        +51〜+95。評価環境（面全体が白くなる）では +39〜+55（点灯していないときは 1 以下）。縁の輪の平均は、
+        評価環境で黒い盤が混ざって +18〜+34 に薄まったので使わない。
+        """
+        lc = self.cfg["press"]["lit_check"]
+        x1, y1, x2, y2 = bbox
+        cx, cy, rx, ry = (x1 + x2) / 2, (y1 + y2) / 2, max((x2 - x1) / 2, 1), max((y2 - y1) / 2, 1)
+        ro = float(lc["radius"])
+        h, w = rgb.shape[:2]
+        a1, b1 = max(int(np.floor(cx - ro * rx)), 0), max(int(np.floor(cy - ro * ry)), 0)
+        a2, b2 = min(int(np.ceil(cx + ro * rx)), w), min(int(np.ceil(cy + ro * ry)), h)
+        if a2 <= a1 or b2 <= b1:
+            return float("nan")
+        v, u = np.mgrid[b1:b2, a1:a2]
+        inside = np.hypot((u + 0.5 - cx) / rx, (v + 0.5 - cy) / ry) <= ro
+        gray = np.asarray(rgb[b1:b2, a1:a2], dtype=float).mean(axis=2)
+        return float(np.percentile(gray[inside], float(lc["percentile"]))) if inside.any() else float("nan")
+
     def _current_bbox(self, rgb: np.ndarray, bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
         """見つけたときの枠に最も近い、今の画像のボタンの枠。無ければ、見つけたときの枠のまま。
 
@@ -457,24 +482,28 @@ class ElevatorPressController:
         return best if best is not None else bbox
 
     def _check(self, rgb: np.ndarray, t: float) -> bool:
-        """押したボタンが点灯したか（同じ枠の明るさが上がったか）を見る。点灯していなければ深く押し直す。"""
+        """押したボタンが点灯したか（明るい部分の明るさが、見つけたときより lit_check.min_rise 以上上がったか）を見る。
+        点灯していなければ深く押し直す。枠全体の明るさの上がり方も、比べるために表示する。"""
         c = self.cfg["press"]
         b = self.call.button(self.target)
-        now = self._brightness(rgb, self._current_bbox(rgb, b.bbox))
-        rise = now - (self.baseline_brightness if self.baseline_brightness is not None else now)
-        if rise >= float(c["lit_brightness_rise"]):
+        box = self._current_bbox(rgb, b.bbox)
+        level = self._lit_level(rgb, box)
+        rise = level - (self.baseline_level if self.baseline_level is not None else level)
+        whole = self._brightness(rgb, box) - (self.baseline_brightness if self.baseline_brightness is not None else 0.0)
+        shown = f"明るい部分 {rise:+.0f}、枠全体の平均 {whole:+.0f}"
+        if rise >= float(c["lit_check"]["min_rise"]):
             self.outcome = "点灯した"
-            self._note(f"点灯した（明るさ +{rise:.0f}）")
+            self._note(f"点灯した（{shown}）")
             self._start_home(t)
             return True
         if self.retries >= int(c["max_retries"]):
-            self.outcome = f"点灯を確かめられない（明るさ {rise:+.0f}）"
+            self.outcome = f"点灯を確かめられない（{shown}）"
             self._note(self.outcome)
             self._start_home(t)
             return True
         self.retries += 1
         depth = min(self.plan_.depth + float(c["retry_extra_depth_m"]), float(self.planner.cfg["max_press_depth_m"]))
-        self._note(f"点灯していない（明るさ {rise:+.0f}）。{depth * 1000:.0f} mm で押し直す")
+        self._note(f"点灯していない（{shown}）。{depth * 1000:.0f} mm で押し直す")
         p = self.plan_
         self.plan_ = PressPlan(**{**p.__dict__, "end_point": p.target_point + depth * p.push_dir, "depth": depth})
         self._enter("press", t)

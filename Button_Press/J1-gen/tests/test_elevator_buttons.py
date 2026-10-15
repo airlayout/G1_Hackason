@@ -417,7 +417,7 @@ class TestElevatorPlan(unittest.TestCase):
         self.ctl._plan(self.q0, self.call())
         self.ctl.q_hold = self.q0.copy()
         dark = np.zeros((480, 640, 3), np.uint8)
-        self.ctl.baseline_brightness = 0.0
+        self.ctl.baseline_brightness = self.ctl.baseline_level = 0.0
         depth0 = self.ctl.plan_.depth
         self.assertFalse(self.ctl._check(dark, 1.0))  # 点灯していない → 深く押し直す
         self.assertEqual(self.ctl.phase, "press")
@@ -425,6 +425,21 @@ class TestElevatorPlan(unittest.TestCase):
         self.assertTrue(self.ctl._check(dark, 2.0))  # 押し直しは 1 回まで
         self.assertIn("確かめられない", self.ctl.outcome)
         self.assertEqual(self.ctl.phase, "home")  # 確かめられなくても、腕を戻してから終わる
+
+    def test_lit_level_sees_a_thin_ring(self) -> None:
+        """縁の細い輪だけが光る点灯（ラボのエレベーター）でも、明るい部分の上がり方で点灯と分かる。枠全体の平均では薄まる。"""
+        import cv2
+
+        img = np.full((480, 640, 3), 30, np.uint8)  # 黒い盤
+        cv2.circle(img, (320, 240), 25, (150, 150, 150), -1)  # 灰色のボタン
+        lit = img.copy()
+        cv2.circle(lit, (320, 240), 27, (240, 240, 255), 2)  # 縁の細い輪だけが光る
+        box = (295, 215, 346, 266)
+        rise = self.ctl._lit_level(lit, box) - self.ctl._lit_level(img, box)
+        whole = self.ctl._brightness(lit, box) - self.ctl._brightness(img, box)
+        self.assertGreaterEqual(rise, self.ctl.cfg["press"]["lit_check"]["min_rise"])
+        self.assertLess(whole, rise / 2)
+        self.assertAlmostEqual(self.ctl._lit_level(img, box), self.ctl._lit_level(img.copy(), box))
 
     def test_returns_home_by_the_way_it_came(self) -> None:
         """点灯を確かめたら、来た経路（手前の姿勢 → 経由の姿勢 → 始め）を逆にたどって戻してから終わる。"""
@@ -436,7 +451,7 @@ class TestElevatorPlan(unittest.TestCase):
         self.assertIsNotNone(ctl.plan_.q_via)  # この配置は経由の姿勢を通る（seed 1 の ▼）
         arm = ctl.kin.arm_idx
         ctl.q_ik[arm] = ctl.plan_.q_approach + 0.01  # 指先のずれの補正で、手前の姿勢から少しずれている
-        ctl.baseline_brightness = 0.0
+        ctl.baseline_brightness = ctl.baseline_level = 0.0
         self.assertTrue(ctl._check(np.full((480, 640, 3), 255, np.uint8), 0.0))
         self.assertEqual((ctl.outcome, ctl.phase), ("点灯した", "home"))
         # 今の姿勢 → 手前の姿勢 → 経由の姿勢 → 始め
