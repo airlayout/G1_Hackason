@@ -11,6 +11,7 @@ from .backend import ArmBackend
 from .commander import (
     ArmCommander,
     NoMotionError,
+    RetreatStep,
     StateTimeoutError,
     StopRequested,
     WaistDeviationError,
@@ -21,6 +22,7 @@ __all__ = [
     "ArmBackend",
     "ArmCommander",
     "NoMotionError",
+    "RetreatStep",
     "StateTimeoutError",
     "StopRequested",
     "UnsafeTargetError",

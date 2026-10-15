@@ -11,6 +11,7 @@ from _env import needs
 from common.arm import (
     ArmCommander,
     NoMotionError,
+    RetreatStep,
     StateTimeoutError,
     StopRequested,
     UnsafeTargetError,
@@ -237,6 +238,103 @@ class TestMove(unittest.TestCase):
             with make(be) as arm:
                 arm.follow([be.q0[ARM] + 0.5])
 
+
+
+class TestRetreat(unittest.TestCase):
+    """途中で中止したら、その場で止めて、来た経路を逆にたどって開始姿勢へ戻ってから weight を下げる。"""
+
+    @staticmethod
+    def path(be: FakeBackend, via: np.ndarray, calls: list | None = None):  # type: ignore[no-untyped-def]
+        def retreat(q_meas: np.ndarray, q_cmd_arm: np.ndarray) -> list[RetreatStep]:
+            if calls is not None:
+                calls.append(q_meas.copy())
+            return [RetreatStep("経由", target=via.copy()),
+                    RetreatStep("開始", target=be.q0[ARM].copy(), check_workspace=False)]
+        return retreat
+
+    def test_waist_deviation_retreats_then_ramps_down(self) -> None:
+        be = FakeBackend()
+        via = be.q0[ARM] + np.radians([10, 0, 0, 0, 0, 0, 0])
+        with self.assertRaises(WaistDeviationError):
+            with make(be) as arm:
+                arm.set_retreat(self.path(be, via))
+                arm.move_to(via)
+                arm.move_to(via + np.radians([0, 10, 0, 0, 0, 0, 0]))
+                be.q[WAIST_IDX[2]] += 0.06  # 押した反動で腰がずれた
+                arm.move_to(via + np.radians([0, 20, 0, 0, 0, 0, 0]))
+        self.assertTrue(arm.retreated)
+        self.assertTrue(any(np.allclose(c.q[ARM], via) for c in be.sent))
+        ramp = [c for c in be.sent if c.weight < 1.0][-100:]
+        for c in ramp:  # weight を下げる間は開始姿勢
+            np.testing.assert_allclose(c.q[ARM], be.q0[ARM], atol=1e-9)
+        self.assertAlmostEqual(be.sent[-1].weight, 0.0)
+
+    def test_ctrl_c_retreats(self) -> None:
+        be = FakeBackend()
+        via = be.q0[ARM] + np.radians([10, 0, 0, 0, 0, 0, 0])
+        with make(be) as arm:
+            arm.set_retreat(self.path(be, via))
+            arm.move_to(via + np.radians([0, 10, 0, 0, 0, 0, 0]))
+            raise StopRequested("SIGINT")
+        self.assertTrue(arm.retreated)
+        np.testing.assert_allclose(be.sent[-1].q[ARM], be.q0[ARM], atol=1e-9)
+
+    def test_second_ctrl_c_stops_retreat(self) -> None:
+        import signal
+
+        be = FakeBackend()
+        via = be.q0[ARM] + np.radians([20, 0, 0, 0, 0, 0, 0])
+        arm = make(be)
+        n = {"sent": 0}
+        orig = be.send
+
+        def send(cmd: JointCommand) -> None:
+            orig(cmd)
+            if arm._retreating:  # noqa: SLF001
+                n["sent"] += 1
+                if n["sent"] == 60:
+                    arm._on_signal(signal.SIGINT, None)  # noqa: SLF001  戻る途中でもう一度 Ctrl+C
+
+        be.send = send  # type: ignore[method-assign]
+        with arm:
+            arm.set_retreat(self.path(be, be.q0[ARM]))
+            arm.move_to(via)
+            raise StopRequested("SIGINT")
+        self.assertFalse(arm.retreated)
+        q_stop = be.sent[-1].q[ARM]
+        self.assertGreater(float(np.max(np.abs(q_stop - be.q0[ARM]))), 0.05)  # 開始姿勢まで戻っていない
+        self.assertAlmostEqual(be.sent[-1].weight, 0.0)
+
+    def test_state_timeout_does_not_retreat(self) -> None:
+        be = FakeBackend()
+        calls: list = []
+        with self.assertRaises(StateTimeoutError):
+            with make(be) as arm:
+                arm.set_retreat(self.path(be, be.q0[ARM], calls))
+                be.stale = True
+                arm.move_to(be.q0[ARM] + 0.1)
+        self.assertEqual(calls, [])
+        self.assertFalse(arm.retreated)
+
+    def test_retreat_gives_up_when_arm_does_not_follow(self) -> None:
+        """戻る途中で腕が指令に付いてこない（何かに当たっている）なら、戻るのをやめてその場で weight を下げる。"""
+        be = FakeBackend()
+        via = be.q0[ARM] + np.radians([40, 0, 0, 0, 0, 0, 0])
+        with make(be) as arm:
+            arm.set_retreat(self.path(be, be.q0[ARM]))
+            arm.move_to(via)
+            be.follow = False  # ここから腕が動かない
+            raise StopRequested("SIGINT")
+        self.assertFalse(arm.retreated)
+        self.assertAlmostEqual(be.sent[-1].weight, 0.0)
+
+    def test_no_retreat_after_normal_end(self) -> None:
+        be = FakeBackend()
+        calls: list = []
+        with make(be) as arm:
+            arm.set_retreat(self.path(be, be.q0[ARM], calls))
+            arm.move_to(be.q0[ARM] + 0.05)
+        self.assertEqual(calls, [])
 
 
 class TestWaistSupportGravity(unittest.TestCase):

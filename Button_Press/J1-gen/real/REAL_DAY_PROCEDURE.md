@@ -622,6 +622,9 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/calibrate.py --arm right
    ```
 
 2. 確認モードで送る（各段階で Enter。危なければ q か Ctrl+C、さらに危なければ L2+B）。
+   q・Ctrl+C・安全確認での中止のあとは、**その場で止めて、来た経路を逆にたどって開始姿勢へ戻ってから** weight を下げる
+   （段階ごとの Enter は聞かない）。戻る動きが危ないと思ったら、**もう一度 Ctrl+C**（戻らずにその場で weight を下げる。
+   机のそばだと腕が下がって当たることがある）。lowstate が途切れたときは戻らない。
    「手前の姿勢まで行ければ成功」とする:
 
    ```bash
