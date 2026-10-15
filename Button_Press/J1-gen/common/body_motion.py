@@ -193,11 +193,20 @@ def write_csv(path: Path, m: BodyMotion) -> None:
 TARGET_EVENTS = ("target_depth", "target_manual")
 
 
+def stage_label(stage: str) -> str:
+    """stage の出来事（common/press.py の on_stage）を、そのあとに腕がしていることの名前にする。"""
+    if stage == "approach":
+        return "手前で計算し直す"
+    if stage.endswith("_replanned"):  # approach_replanned、retry_2_replanned …
+        return "押し込み"
+    return {"end": "保持・戻り", "retreated": "押したあとの確認"}.get(stage, stage)
+
+
 def run_labels(events: list[dict[str, Any]], t: np.ndarray) -> list[str]:
-    """行ごとに、その時刻までの最後の段階の名前（stage の出来事。対象を測る前は locate）。"""
-    marks = sorted((float(e["t"]), e["stage"] if e["event"] == "stage" else "対象を測った")
+    """行ごとに、腕がしていることの名前（対象を測るまでは「対象を測る」、そのあとは「手前へ移動」、以降は stage から）。"""
+    marks = sorted((float(e["t"]), stage_label(e["stage"]) if e["event"] == "stage" else "手前へ移動")
                    for e in events if e["event"] == "stage" or e["event"] in TARGET_EVENTS)
-    out, k, cur = [], 0, "locate"
+    out, k, cur = [], 0, "対象を測る"
     for ti in t:
         while k < len(marks) and marks[k][0] <= ti:
             cur = marks[k][1]

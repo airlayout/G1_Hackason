@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 
 from _env import needs
-from common.body_motion import analyze, gravity_in_body
+from common.body_motion import analyze, gravity_in_body, run_labels
 from common.config import load_config
 
 # 脚の関節（motor 番号）: 左 0〜5、右 6〜11。並びは hip_pitch, hip_roll, hip_yaw, knee, ankle_pitch, ankle_roll
@@ -73,6 +73,15 @@ class TestBodyMotion(unittest.TestCase):
         m = self.run_rows([np.zeros(29)] * 2, imus=[quat_about_y(0.0), quat_about_y(2.0)])
         self.assertAlmostEqual(m.imu_tilt_deg[1], 2.0, places=4)
         np.testing.assert_allclose(gravity_in_body(np.array([1.0, 0, 0, 0])), [0, 0, -1])
+
+
+class TestRunLabels(unittest.TestCase):
+    def test_labels_follow_stages(self) -> None:
+        ev = [{"t": 1.0, "event": "target_depth"}, {"t": 2.0, "event": "stage", "stage": "approach"},
+              {"t": 3.0, "event": "stage", "stage": "approach_replanned"}, {"t": 4.0, "event": "stage", "stage": "end"},
+              {"t": 5.0, "event": "stage", "stage": "retry_2_replanned"}]
+        self.assertEqual(run_labels(ev, np.array([0.5, 1.5, 2.5, 3.5, 4.5, 5.5])),
+                         ["対象を測る", "手前へ移動", "手前で計算し直す", "押し込み", "保持・戻り", "押し込み"])
 
 
 if __name__ == "__main__":

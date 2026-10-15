@@ -615,6 +615,15 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/calibrate.py --arm right
 3. ボトルの置き場所を変えて繰り返す（段階6）。**別のターミナルで `record.py` を動かしたまま**押し、全試行を収録する。
    各回の記録は `_local/button_press/runs/<日時>_<ラベル>/`（RGB・深度・lowstate・検出・IK・送った指令）。
 
+4. 各回の終わりに出る「体（pelvis）の動き」を書き留める（記録の `body_motion.csv` にも残る）。シミュレーションは腰を
+   固定しているので、**足側のバランス制御が腰をどれだけ動かすかは、実機でしか分からない**（README の
+   「押している間の体（pelvis）の動き」）。特に見るのは:
+   - **狙いのずれの最大**（mm）と、そのときの段階（「押し込み」「保持・戻り」なら押した反動、「手前へ移動」なら腕を伸ばしたことによる）。
+     x が + なら、押す向きに体が逃げて浅くしか押せていない。押せなかった回の原因を切り分けるのに使う
+   - 「足を踏み替えた ⚠️」が出た回は、そのあとの値は当てにならない
+   - 傾きの変化で IMU と脚の FK が大きく違う回は、足が浮いたか滑った
+   あとから読み直すとき: `G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/body_motion.py _local/button_press/runs/<日時>_<ラベル>`
+
 終了コード: 0 成功 / 2 目標を拒否（何も送っていない、または動かしたあと安全に止めた）/ 3 動いていない /
 4 lowstate・相手・mode_machine・モータの問題 / 5 腰が倒れた / 130 中止（q、Ctrl+C）
 
@@ -696,9 +705,21 @@ G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Butt
 `configs/elevator.yaml` の `press.max_retries` を 0 にする。
 
 ```bash
+J1GEN_BODY_LOG=_local/button_press/body_log \
 G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Button_Press/J1-gen/contest_agent \
     --network-interface <NIC> --camera-host <PC2 の IP> --target up --instruction "上の階" --no-loco
 ```
+
+- `J1GEN_BODY_LOG`: 毎周期の関節角・IMU・段階を `_local/button_press/body_log/<日時>_<up|down>/` に記録する
+  （押している間に足側のバランス制御が腰をどれだけ動かしたかを見るため。ボトルの段階5・6の 4. と同じ）。
+  終わったら、各回で次を実行して「狙いのずれの最大」とその段階を書き留める:
+
+  ```bash
+  G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/body_motion.py _local/button_press/body_log/<日時>_<up|down>
+  ```
+
+  点灯しなかった回で、狙いのずれの x が + に数 mm 以上あれば、押した反動で体が逃げて浅くしか押せていない
+  （較正のずれとは別の原因）
 
 - 動き（シミュレーションの実測）: 見る 0.3 秒 → 手前の姿勢へ 6 秒（経由の姿勢を通る）→ 止まって補正 1 秒 →
   押し込み 2.5 秒 → 0.6 秒保つ → 戻る 1 秒 → 点灯を確かめる →（押し直すなら、もう一度押し込みから）→
