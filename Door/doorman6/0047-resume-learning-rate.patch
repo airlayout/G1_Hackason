@@ -1,0 +1,35 @@
+From 3b7f11b088886d0c3d75286d6c71034216f84575 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Thu, 15 Oct 2026 15:53:18 +0900
+Subject: [PATCH] door: resume_learning_rate overrides the learning rate
+ restored from a checkpoint (stage 2.5)
+
+load_checkpoint() puts back the learning rate saved in the checkpoint, so changing actor_learning_rate had no effect
+when resuming. algo.config.resume_learning_rate sets it after loading (used to lower the DAgger student's rate from
+3e-4 to 1e-4 when its success swung 23 -> 52 -> 23% between rounds).
+---
+ gr00t/rl/trl/trainer/ppo_trainer.py | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/gr00t/rl/trl/trainer/ppo_trainer.py b/gr00t/rl/trl/trainer/ppo_trainer.py
+index 88369e5..8c63843 100644
+--- a/gr00t/rl/trl/trainer/ppo_trainer.py
++++ b/gr00t/rl/trl/trainer/ppo_trainer.py
+@@ -1785,6 +1785,14 @@ class TRLPPOTrainer(PPOTrainer):
+                 self.args.learning_rate = checkpoint["args"].learning_rate
+                 for param_group in self.optimizer.param_groups:
+                     param_group["lr"] = self.args.learning_rate
++            # G1_Hackason（段 2.5）: 続きから回すとき学習率を替える口。上の行で重みのファイルの値に戻るので、
++            # 設定の actor_learning_rate を替えても効かなかった。algo.config.resume_learning_rate があればそれにする
++            resume_lr = self.config.get("resume_learning_rate", None)
++            if resume_lr is not None:
++                self.args.learning_rate = float(resume_lr)
++                for param_group in self.optimizer.param_groups:
++                    param_group["lr"] = self.args.learning_rate
++                print(f"[G1_Hackason] resume_learning_rate={self.args.learning_rate}")
+ 
+         # Load learning rate scheduler state
+         if (
+-- 
+2.50.1 (Apple Git-155)
+

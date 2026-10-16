@@ -65,7 +65,17 @@ Door/
 │   ├── 0039-door-en1154-g13-shaped.patch      段 2-4a の学習用の扉（等級 1〜3・実物の形）
 │   ├── 0040-door-en1154-g13-shaped-left.patch その把手が左（実物の向き）の扉
 │   ├── 0041-door-window-reward.patch          窓の報酬（push_door_hinge_max_deg・door_overopen）
-│   └── 0042-door-reset-standing-option.patch  評価で立った姿勢から始める（reset_from_dataset.enabled=False）
+│   ├── 0042-door-reset-standing-option.patch  評価で立った姿勢から始める（reset_from_dataset.enabled=False）
+│   ├── 0043-door-en1154-g13-shaped-left-lever.patch  段 2-4b の学習用の扉（レバーの位置 _lpos → さらに形 _lever）
+│   ├── 0044-door-en1154-g13-shaped-left-weight.patch 段 2-4b-3 の学習用の扉（_lever ＋扉の重さ 15〜120 kg）
+│   ├── 0045-door-state-input-student.patch 段 2.5 の状態入力の生徒（DAgger・映像なし。LiDAR の扉の角度・測位の枠の位置・巻き尺の寸法を真似る）
+│   ├── 0046-door-dagger-eval-like-ppo-eval.patch 蒸留の評価を教師の評価と同じ始め方に（回の経過時間を乱数で進めない）
+│   ├── 0047-resume-learning-rate.patch       続きから回すときの学習率を resume_learning_rate で替える
+│   ├── 0048-door-state-student-arm-torque-teacher-mix.patch 生徒に腕のトルク（tau_est）・3 割の台は教師が運転
+│   ├── 0049-door-state-student-ppo-finetune.patch 生徒を強化学習で磨く観測と exp（critic は教師と同じ）
+│   ├── 0050-door-golden-trace.patch            段 5: 評価の毎ステップの方策・HOMIE の入出力を記録（real/check_golden.py の正解）
+│   └── 0051-door-clip-targets-to-limits.patch  段 5: 関節の目標を可動域の内側で切る（実機と同じ切り方を sim で測る）
+├── real/                     段 5: 実機用のコード（numpy の方策の計算・制御の輪・PC2 へ配る）。real/README.md
 ├── sim2sim/
 │   ├── homie_mujoco.py       HOMIE の脚だけを Unitree 公式の MuJoCo のモデルで歩かせる（段 3。Mac で動く）
 │   ├── replay_states.py      記録した状態を MuJoCo で再生して mp4 にする（DoorMan と同じ寸法・開き方の扉つき）
@@ -84,6 +94,8 @@ Door/
 | 2-3 | `++env.config.task.name=door_en1154_g1`（g1〜g5）。閉じた位置の押し付けは既定と同じ 2.5〜4.5 N·m で、開けるほど強くなり等級の上限で頭打ち（0017）。易しい扉を混ぜた `door_en1154_upto_g1`（〜g5。上限 2.5 N·m〜等級の上限、0032）もあるが、混ぜて学習すると等級 1 が落ちた（10-08） |
 | 2-4 | `++env.config.task.name=door_room4_g13 ++env.config.door_hold_open_angle_deg=90 ++env.config.door_through_angle_deg=70`（等級 1〜3・実物の形のクローザー、0037。旧版の `door_room4_wide` は PD のクローザーで等級 1〜4） |
 | 2-4a（10-14 合格） | `++env.config.task.name=door_en1154_g13_shaped_left ++env.config.mirror_left_doors=True ++env.config.door_through_angle_deg=70 ++env.config.door_hold_open_angle_deg=90 ++env.config.push_door_hinge_max_deg=80 ++env.config.door_overopen_start_deg=85 ++rewards.reward_scales.door_overopen=-3.0`（＋押す力の頭打ち 50 N）。評価は `++env.config.reset_from_dataset.enabled=False ++env.config.max_stage_time=[500,200,200,200,600,400] ++env.config.max_episode_length_s=60`（`exp_relaxtime_1014.sh`）。合格の重みは OMEN `ckpt/s24a_pass_it40600/` |
+| 2-4b | 学習の引数は 2-4a と同じで、扉だけ `door_en1154_g13_shaped_left_lpos`（b1: レバーの高さ 0.85〜1.10 m・バックセット 30〜100 mm）→ `door_en1154_g13_shaped_left_lever`（b2: さらに長さ 100〜160 mm・断面 丸／四角）。評価の条件は 2-4a と同じ（`stage_chain.sh` の `EVAL_EXTRA`）。起動は `exp_s24b_1014.sh`（各段で学習なしの評価 → 80% 未満なら 30 分 × 最大 4 回、最後に 2-4a の扉でも評価）。続けて扉の重さ `door_en1154_g13_shaped_left_weight`（b3: 15〜120 kg）を `exp_s24b3_1014.sh`。**10-15 合格**: 位置 87.5%・形 89.1%・重さ 82.4%、重みは OMEN `ckpt/s24b3_pass_it42200/`。分け方は `analyze_s24b_1014.py`（レバーの高さ・バックセット・重さ別） |
+| 2.5 | 状態入力の生徒（実機で取れる値だけ）。真似（DAgger）: `EXP=wbmanip/door_open_homie_29dof_state_dagger-lstm ./stage_chain.sh none "s25:<扉>:8:30:through:++teacher_actor_path=<教師>,..."`（`exp_s25_1015.sh`、試運転は `smoke_s25_1015.sh`。評価の前に `++algo.config.enforce_teacher_rollout=True` で教師に運転させて教師の率に戻るかを確かめる）。真似だけは 52% が天井だったので、最良から強化学習で磨く: `make_state_ppo_ckpt.py <生徒> <教師> <出力>`（actor＝生徒・critic＝教師）→ `exp_s25rl_1015.sh`（exp `door_open_homie_29dof_state_ppo-lstm`）。診断は `diag_s25_1015.sh`（種替え・計測器の誤差 0）。**10-15 合格** 73.8%（教師の 9 割）、重みは OMEN `ckpt/s25rl_pass_it43650/` |
 | 2-4 の評価 | `door_en1154_g1_shaped`〜`g4_shaped`（`door_en1154_g<k>` とクローザーの形だけが違う。学習の前に今の方策で崖が動くかを見る） |
 
 ⚠️ **等級の扉で、閉じた位置まで等級の力で押し付けると、ラッチの斜面が押されてレバーが勝手に回る**（2026-10-07、0017 の前の等級 1 で 16 台中 12 台が 85〜99° まで回った。

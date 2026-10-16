@@ -62,7 +62,7 @@ done
 $PIP install $C --extra-index-url "$CU128" --extra-index-url https://pypi.nvidia.com --no-build-isolation "${EDITABLE[@]}"
 torch_check
 
-step "5. DoorMan の作業ツリー VIRAL6（5.1 と共通の 0001〜0003・記録係 0005、6.0.1 への移植 0006〜0011、段 2-1 の修正 0012〜0015、段 2-2〜2-4 のドア 0016〜0042 を当てる）"
+step "5. DoorMan の作業ツリー VIRAL6（5.1 と共通の 0001〜0003・記録係 0005、6.0.1 への移植 0006〜0011、段 2-1 の修正 0012〜0015、段 2-2〜2-4 のドア 0016〜0044、段 2.5 の状態入力の生徒 0045〜0049、段 5 の実機用の確かめ 0050〜0051 を当てる）"
 # 0006: Isaac Lab 3.0 への移植（クォータニオンの境界・ProxyArray・API の改名）
 # 0007: 拡張の読み込み（omni.kit.material.library を起動時に有効にする。固まる対策）
 # 0008: 扉の関節の取付位置を env からの相対で求める（直さないと部品が env の原点ぶんずれ、扉に届かない。10-07 実測）
@@ -102,6 +102,16 @@ step "5. DoorMan の作業ツリー VIRAL6（5.1 と共通の 0001〜0003・記�
 # 0040: その実物の向き（把手が左）の扉 door_en1154_g13_shaped_left（mirror_left_doors と組で使う）
 # 0041: 窓の報酬（push_door_hinge_max_deg で扉を開ける点の頭打ちの角度、door_overopen で開いたまま止まる角度の手前から減点）。既定は元のまま
 # 0042: reset_from_dataset.enabled=False で、人の動きのデータではなく立った姿勢から始める（評価用。傾いた姿勢から始まり倒れる台をなくす）
+# 0043: 段 2-4b の学習用の扉 door_en1154_g13_shaped_left_lpos（レバーの位置を広く）・_lever（さらにレバーの形を広く）。実物のレバーを範囲に入れる
+# 0044: 段 2-4b-3 の学習用の扉 door_en1154_g13_shaped_left_weight（_lever に扉の重さ 15〜120 kg を足す。既定は 80〜120 kg）
+# 0045: 段 2.5 の状態入力の生徒（DAgger・映像なし）。扉の角度は頭の LiDAR、枠の位置は地図と測位、寸法は巻き尺の値を
+#       真似て雑音・遅れ・欠けを入れる（door_state_sensor.py）。教師の観測（teacher_obs）にも鏡写しを効かせる
+# 0046: 蒸留の評価を教師の評価と同じ始め方に（回の経過時間を乱数で進めない）。元のままだと教師に運転させても 25/64
+# 0047: 続きから回すときの学習率を algo.config.resume_learning_rate で替えられるように（元は重みのファイルの値に戻る）
+# 0048: 生徒に腕の関節のトルク（実機の tau_est）を見せ、3 割の台は教師に運転させる。評価は enforce_teacher_rollout=False で
+# 0049: 生徒を強化学習（PPO）で磨く観測と exp（actor は生徒の値・critic は教師と同じ）。出発の重みは doorman/make_state_ppo_ckpt.py
+# 0050: 評価の 1 ステップごとに方策・HOMIE の入出力と生の値を npz に書く（algo.config.eval.golden_trace_path）。real/check_golden.py で実機用のコードと突き合わせる
+# 0051: 関節の目標を可動域の内側で切る（env.config.clip_targets_to_limits_margin、既定は切らない）。実機と同じ切り方の成功率を測る用
 if [ ! -d VIRAL6 ]; then
   git -C "$OLD/VIRAL" worktree add -q "$BASE/VIRAL6" "$DOORMAN_COMMIT"
   for p in "$OLD/0001-g1-29dof-nofinger.patch" "$OLD/0002-door-nolatch-drop-latch-init.patch" \
@@ -121,7 +131,7 @@ if [ ! -d VIRAL6 ]; then
            "$BASE/0030-29dof-open-stage-time-100.patch" "$BASE/0031-door-push-force-max.patch" \
            "$BASE/0032-door-en1154-upto-grade-mix.patch" "$BASE/0033-door-record-closer-params.patch" \
            "$BASE/0034-recorder-hand-and-panel-force.patch" "$BASE/0035-door-en1154-g4g5.patch" \
-           "$BASE/0036-door-en1154-g4g5-82.patch" "$BASE/0037-door-closer-shaped.patch" "$BASE/0038-door-mirror-left-handle.patch" "$BASE/0039-door-en1154-g13-shaped.patch" "$BASE/0040-door-en1154-g13-shaped-left.patch" "$BASE/0041-door-window-reward.patch" "$BASE/0042-door-reset-standing-option.patch"; do
+           "$BASE/0036-door-en1154-g4g5-82.patch" "$BASE/0037-door-closer-shaped.patch" "$BASE/0038-door-mirror-left-handle.patch" "$BASE/0039-door-en1154-g13-shaped.patch" "$BASE/0040-door-en1154-g13-shaped-left.patch" "$BASE/0041-door-window-reward.patch" "$BASE/0042-door-reset-standing-option.patch" "$BASE/0043-door-en1154-g13-shaped-left-lever.patch" "$BASE/0044-door-en1154-g13-shaped-left-weight.patch" "$BASE/0045-door-state-input-student.patch" "$BASE/0046-door-dagger-eval-like-ppo-eval.patch" "$BASE/0047-resume-learning-rate.patch" "$BASE/0048-door-state-student-arm-torque-teacher-mix.patch" "$BASE/0049-door-state-student-ppo-finetune.patch" "$BASE/0050-door-golden-trace.patch" "$BASE/0051-door-clip-targets-to-limits.patch"; do
     git -C VIRAL6 am -q "$p"
   done
 fi

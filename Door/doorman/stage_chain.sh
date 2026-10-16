@@ -18,6 +18,10 @@
 # EVAL_N で評価の回数（既定 128。128 回の評価の揺れは ±3.5 ポイント）。PASS_RATE=1.1 にすると合格で止まらず決めた回数を回す（比べる用）
 # IDLE_GATE=0 で、学習も評価も画面の前の人の在席を見ない（既定 1＝離席中だけ回す。共用機なので 0 は人に確かめてから）
 # EVAL_FIRST=1 で、段ごとに学習の前に評価する（回 0。合格ならその段の学習を飛ばす。2026-10-08 に段 2-3 を短くするため足した）
+# EVAL_EXTRA で評価だけに足す hydra の引数（空白区切り）。10-14 から合否は立った姿勢から・時間 2 倍で見る（段 2-4a の成功値の条件）:
+#   EVAL_EXTRA="++env.config.reset_from_dataset.enabled=False ++env.config.max_stage_time=[500,200,200,200,600,400] ++env.config.max_episode_length_s=60" MINUTES=30
+# 最初の ckpt に none を渡すと、1 回目の学習は重みなしで始める（段 2.5 の生徒。EXP で exp を替え、教師は学習の引数で渡す）:
+#   EXP=wbmanip/door_open_homie_29dof_state_dagger-lstm ./stage_chain.sh none "s25:<扉>:8:30:through:++teacher_actor_path=<教師>,..."
 # 出力: chain/<日時>/chain.log・results.tsv（段・回・反復・成功・率・ckpt・記録）
 set -uo pipefail
 BASE="$HOME/work_inoue/doorman"
@@ -33,8 +37,12 @@ PY="$HOME/miniforge3/envs/doorman6/bin/python"
 cd "$BASE" || exit 1
 
 CK="$1"; shift
-[ -f "$CK" ] || { echo "最初の ckpt が無い: $CK"; exit 2; }
-CK="$(readlink -f "$CK")"
+if [ "$CK" = none ]; then
+  CK=""  # 1 回目は重みなしで学習を始める
+else
+  [ -f "$CK" ] || { echo "最初の ckpt が無い: $CK"; exit 2; }
+  CK="$(readlink -f "$CK")"
+fi
 OUTDIR="$BASE/chain/$(date +%m%d_%H%M)"; mkdir -p "$OUTDIR"
 RESULTS="$OUTDIR/results.tsv"
 printf 'stage\ttask\tround\titer\tsuccess\trate\tckpt\trecord\n' > "$RESULTS"
@@ -49,7 +57,7 @@ eval_and_keep() {
   local name="$1" task="$2" round="$3" it evlog rec rate succ keep
   it=$(ckpt_iter "$CK")
   evlog="$OUTDIR/eval_${name}_r${round}.log"
-  COUNT_ARGS="$COUNT_ARGS" EXTRA_ARGS="++env.config.task.name=$task" ./eval_from_start.sh "$CK" "${EVAL_N:-128}" > "$evlog" 2>&1
+  COUNT_ARGS="$COUNT_ARGS" EXTRA_ARGS="++env.config.task.name=$task ${EVAL_EXTRA:-}" ./eval_from_start.sh "$CK" "${EVAL_N:-128}" > "$evlog" 2>&1
   rec=$(grep -o 'out=[^ ]*' "$evlog" | tail -1 | cut -d= -f2)
   rate=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['success_rate'])" "$rec/summary.json" 2>/dev/null || echo 0)
   succ=$("$PY" -c "import json,sys; d=json.load(open(sys.argv[1])); print(f\"{d['success']}/{d['episodes_from_stage0']}\")" "$rec/summary.json" 2>/dev/null || echo none)
@@ -59,21 +67,22 @@ eval_and_keep() {
   keep="$BASE/ckpt/${name}_pass_it${it}"
   mkdir -p "$keep" && cp "$CK" "$keep/last.pt" && cp "$(dirname "$CK")"/{config,meta}.yaml "$keep/" && cp "$rec/summary.json" "$keep/summary_128.json"
   log "stage=$name PASS iter=$it rate=$rate kept=$keep"
-  COUNT_ARGS="$COUNT_ARGS" VIDEO=1 EXTRA_ARGS="++env.config.task.name=$task" ./eval_from_start.sh "$CK" 8 > "$OUTDIR/video_${name}.log" 2>&1
+  COUNT_ARGS="$COUNT_ARGS" VIDEO=1 EXTRA_ARGS="++env.config.task.name=$task ${EVAL_EXTRA:-}" ./eval_from_start.sh "$CK" 8 > "$OUTDIR/video_${name}.log" 2>&1
   log "stage=$name video: $(tail -1 "$OUTDIR/video_${name}.log")"
   return 0
 }
 
-log "chain start ckpt=$CK stages=$* pass_rate=$PASS_RATE pause_file=$PAUSE_FILE stop_file=$STOP_FILE"
+log "chain start ckpt=${CK:-none} exp=${EXP:-default} stages=$* pass_rate=$PASS_RATE pause_file=$PAUSE_FILE stop_file=$STOP_FILE eval_extra=${EVAL_EXTRA:-}"
 for SPEC in "$@"; do
   IFS=: read -r NAME TASK ROUNDS MIN CRIT EXTRA EVAL_TASK <<< "$SPEC"
   EVAL_TASK="${EVAL_TASK:-$TASK}"
   TRAIN_EXTRA="${EXTRA//,/ }"
+  TRAIN_EXTRA="${TRAIN_EXTRA//|/,}"  # リストの中のカンマは | で書く（例: ++env.config.staged_reset_ratios=[0.3|0.3|0.1|0.1|0.1|0.1]）
   COUNT_ARGS="--criterion ${CRIT:-through}"
   PROJECT="door_${NAME}"
   LOGROOT="$WORK6/VIRAL6/logs_rl/$PROJECT"
   PASSED=0
-  if [ "$EVAL_FIRST" = 1 ]; then
+  if [ "$EVAL_FIRST" = 1 ] && [ -n "$CK" ]; then
     if [ -e "$STOP_FILE" ]; then log "止め札（$STOP_FILE）があるので止める"; log "chain_done result=stopped_at_$NAME last_ckpt=$CK"; exit 1; fi
     log "stage=$NAME task=$TASK eval_task=$EVAL_TASK round=0（学習の前に評価） ckpt=$CK"
     eval_and_keep "$NAME" "$EVAL_TASK" 0 && PASSED=1
@@ -87,7 +96,7 @@ for SPEC in "$@"; do
       RESUME_CKPT="$CK" ./run_train_segments.sh "$NUM_ENVS" "$UNTIL" ++env.config.task.name="$TASK" $TRAIN_EXTRA \
       >> "$OUTDIR/train_${NAME}.log" 2>&1
     NEW=$(find "$LOGROOT" -name last.pt -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
-    if [ -z "$NEW" ] || [ "$NEW" = "$CK" ] || [ "$(stat -c %Y "$NEW")" -le "$(stat -c %Y "$CK")" ]; then
+    if [ -z "$NEW" ] || [ "$NEW" = "$CK" ] || { [ -n "$CK" ] && [ "$(stat -c %Y "$NEW")" -le "$(stat -c %Y "$CK")" ]; }; then
       log "stage=$NAME round=$R 学習のチェックポイントが増えていない（空かなかったか落ちた）。train_${NAME}.log を見る"
       tail -3 "$OUTDIR/train_${NAME}.log" | tee -a "$OUTDIR/chain.log"
       continue

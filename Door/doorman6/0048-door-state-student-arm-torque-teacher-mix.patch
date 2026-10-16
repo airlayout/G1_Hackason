@@ -1,0 +1,147 @@
+From 2be92847987da207a2ae35e49a14efa3829bb3af Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Thu, 15 Oct 2026 16:45:02 +0900
+Subject: [PATCH] door: state student sees arm joint torques; 30% of envs roll
+ out the teacher (stage 2.5)
+
+The first state student peaked at 52% (950 iterations) and fell to 16-23% as training went on; the failures alternated
+between not pushing the door and pushing it to 90 deg. With perfect door sensing it reached 59%, so most of the gap to
+the teacher (82%) is information the student cannot see (door weight, hand force, lever angle). Add arm_dof_torque
+(14 arm joints, the real robot's tau_est, +-1 N*m noise) and roll out the teacher in 30% of the envs
+(enforce_teacher_rollout / ratio_teacher_rollout) so the push/pass states stay in the data. Evaluation must pass
+++algo.config.enforce_teacher_rollout=False.
+---
+ .../door_open_homie_29dof_state_dagger-lstm.yaml |  5 +++++
+ .../door_open_homie_29dof_state_dagger.yaml      |  8 +++++++-
+ gr00t/rl/envs/door/door_mirror.py                |  4 ++++
+ gr00t/rl/envs/door/door_open_homie.py            |  4 ++++
+ tests/test_door_state_sensor.py                  | 16 ++++++++++++++++
+ 5 files changed, 36 insertions(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_state_dagger-lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_state_dagger-lstm.yaml
+index 0c54eb9..9a62bdc 100644
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_state_dagger-lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_state_dagger-lstm.yaml
+@@ -71,6 +71,11 @@ algo:
+     init_at_random_ep_len: True
+     rollout_with_teacher_num_steps: 0
+     teacher_rollout_ratio: 0.0
++    # 10-15 夕: 3 割の台（番号の小さい方）は教師の行動で動かす（DAgger の混ぜ方）。教師が運転する台は毎回扉を押して通るので、
++    # 生徒が押す・通る場面の手本を忘れない。混ぜる前の生徒は 950 反復の 52% から学習を続けるほど落ちた（16〜23%）。
++    # ⚠️ policy_step は評価でもこれを見るので、評価では ++algo.config.enforce_teacher_rollout=False を渡す
++    enforce_teacher_rollout: True
++    ratio_teacher_rollout: 0.3
+ 
+     network_load_dict:
+       teacher_actor:
+diff --git a/gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_state_dagger.yaml b/gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_state_dagger.yaml
+index 402ea44..c65d594 100644
+--- a/gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_state_dagger.yaml
++++ b/gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_state_dagger.yaml
+@@ -7,6 +7,8 @@
+ #     door_geometry（巻き尺で測る扉の寸法と向き。重さは無い）。後の 3 つは door_state_sensor.py が雑音・遅れ・欠けを入れる
+ #   - 関節は dof_pos・dof_vel（29 関節では dof_*_non_finger と同じ値）を使う。鏡写し（door_mirror.py）がこの名前で効くため
+ #   - vision_obs（RGB）は外した
++#   - 10-15 夕: arm_dof_torque（腕 14 関節のトルク。実機は rt/lowstate の tau_est、雑音 ±1 N·m）を足した。
++#     押す強さの手がかり（扉の重さ・手にかかる力は見えない）。足す前の生徒は押さない回と押し切る回が入れ替わった
+ 
+ # Be careful when using _raw, history
+ obs:
+@@ -24,7 +26,8 @@ obs:
+ 
+       door_angle_lidar,
+       door_frame_loc,
+-      door_geometry
++      door_geometry,
++      arm_dof_torque
+     ]
+ 
+     gt_obj_pos: [
+@@ -168,6 +171,7 @@ obs:
+     door_angle_lidar: 1.0,
+     door_frame_loc: 1.0,
+     door_geometry: 1.0,
++    arm_dof_torque: 0.05,  # 25 N·m ほどで 1 前後
+     dof_vel_non_finger: 0.05,
+     dof_pos_non_finger: 1.0,
+     target_obj_pos: 1.0,
+@@ -210,6 +214,7 @@ obs:
+     door_angle_lidar: 0.0,  # 雑音は door_state_sensor.py が入れる
+     door_frame_loc: 0.0,
+     door_geometry: 0.0,
++    arm_dof_torque: 1.0,  # ±1 N·m（tau_est の粗さの仮の値）
+     dof_vel_non_finger: 0.2,
+     dof_pos_non_finger: 0.01,
+     target_obj_pos: 0.0,
+@@ -273,6 +278,7 @@ obs:
+     - door_angle_lidar: 3
+     - door_frame_loc: 9
+     - door_geometry: 7
++    - arm_dof_torque: 14
+     - dof_vel_non_finger: 29
+     - dof_pos_non_finger: 29
+     - target_obj_pos: 3
+diff --git a/gr00t/rl/envs/door/door_mirror.py b/gr00t/rl/envs/door/door_mirror.py
+index 37e7356..307dbee 100644
+--- a/gr00t/rl/envs/door/door_mirror.py
++++ b/gr00t/rl/envs/door/door_mirror.py
+@@ -65,6 +65,7 @@ class DoorMirror:
+             # 段 2.5 の状態入力の生徒（door_state_sensor.py）。扉の角度（door_angle_lidar）は左右が無いのでそのまま
+             "door_frame_loc": _flip_y,  # 測位で求めた枠の位置・tan・norm（relative_to_door と同じ並び）
+             "door_geometry": self._door_geometry,
++            "arm_dof_torque": self._arms,  # 左腕 7・右腕 7 の関節のトルク（関節と同じく左右を入れ替え roll・yaw を反転）
+         }
+ 
+     def has(self, term: str) -> bool:
+@@ -80,6 +81,9 @@ class DoorMirror:
+         arms = a[:, NUM_LOCO:]
+         return torch.cat([self._loco(a[:, :NUM_LOCO]), arms[:, self._arm_perm] * self._arm_sign.to(a.device)], dim=1)
+ 
++    def _arms(self, x: torch.Tensor) -> torch.Tensor:
++        return x[:, self._arm_perm] * self._arm_sign.to(x.device)
++
+     def _joints(self, x: torch.Tensor) -> torch.Tensor:
+         return x[:, self._dof_perm] * self._dof_sign.to(x.device)
+ 
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 748f0cd..aeecbc0 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -927,6 +927,10 @@ class DoorPregrasp(
+     def _get_obs_door_geometry(self):
+         return self.door_sensor.geometry(self._get_obs_privileged_door_info())
+ 
++    def _get_obs_arm_dof_torque(self):
++        """腕の関節のトルク [N·m]（左腕 7・右腕 7）。実機は rt/lowstate の tau_est。扉を押した手応えが出る（段 2.5）"""
++        return self.torques[:, self._left_arm_dof_idx.tolist() + self._right_arm_dof_idx.tolist()]
++
+     def _get_obs_door_dof_pos(self):
+         return self.simulator.get_task_dof_pos("door")[:, :2]
+ 
+diff --git a/tests/test_door_state_sensor.py b/tests/test_door_state_sensor.py
+index ecd0936..5c93163 100644
+--- a/tests/test_door_state_sensor.py
++++ b/tests/test_door_state_sensor.py
+@@ -154,3 +154,19 @@ def test_new_terms_mirror():
+     assert torch.allclose(m.obs("door_geometry", mg), geo)
+     ang = torch.randn(4, 3)
+     assert torch.equal(m.obs("door_angle_lidar", ang), ang)  # 左右の無い項目
++
++
++def test_arm_torque_mirror_swaps_arms_and_negates_roll_yaw():
++    from test_door_mirror import DOF_NAMES, LEFT_ARM, RIGHT_ARM
++
++    m = DoorMirror(DOF_NAMES, LEFT_ARM, RIGHT_ARM)
++    x = torch.randn(3, 14)
++    y = m.obs("arm_dof_torque", x)
++    assert torch.allclose(m.obs("arm_dof_torque", y), x)
++    arms = LEFT_ARM + RIGHT_ARM
++    i = arms.index("left_shoulder_roll_joint")
++    j = arms.index("right_shoulder_roll_joint")
++    assert torch.allclose(y[:, j], -x[:, i])
++    i = arms.index("left_elbow_joint")
++    j = arms.index("right_elbow_joint")
++    assert torch.allclose(y[:, j], x[:, i])
+-- 
+2.50.1 (Apple Git-155)
+

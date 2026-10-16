@@ -1,0 +1,147 @@
+From 852489ec93c5db8b30204444a092446ec53a015f Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 16 Oct 2026 13:33:29 +0900
+Subject: [PATCH] door: golden trace of policy/HOMIE inputs and outputs for the
+ real-robot code (stage 5)
+
+---
+ gr00t/rl/trl/trainer/ppo_trainer_homie_api.py | 20 +++++
+ gr00t/rl/utils/golden_trace.py                | 78 +++++++++++++++++++
+ 2 files changed, 98 insertions(+)
+ create mode 100644 gr00t/rl/utils/golden_trace.py
+
+diff --git a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+index dfbfe57..3834ad7 100644
+--- a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
++++ b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+@@ -2070,6 +2070,18 @@ class TRLPPOTrainer(PPOTrainer):
+             f"Starting evaluation with {'one episode per environment' if eval_num_envs_episodes else f'{max_episodes} total episodes'}"
+         )
+ 
++        # G1_Hackason（段 5）: 実機用のコードと突き合わせる正解の記録（golden_trace.py）
++        golden = None
++        golden_path = self.config.get("eval", {}).get("golden_trace_path", None)
++        if golden_path:
++            from gr00t.rl.utils.golden_trace import GoldenTrace
++
++            golden = GoldenTrace(
++                golden_path,
++                self.config.eval.get("golden_trace_envs", 8),
++                self.config.eval.get("golden_trace_max_steps", 1500),
++            )
++
+         with torch.no_grad():
+             with unwrap_model_for_generation(
+                 self.model,
+@@ -2109,9 +2121,15 @@ class TRLPPOTrainer(PPOTrainer):
+ 
+                     actor_state["actions"] = step_actions
+ 
++                    if golden is not None:
++                        golden.before_step(self.env, obs_dict, action_mean, homie_actions, walk_mask)
++
+                     self.env.render_results()
+                     obs_dict, rewards, dones, infos = self.env.step(actor_state)
+ 
++                    if golden is not None:
++                        golden.after_step(self.env, dones)
++
+                     for obs_key in obs_dict.keys():
+                         obs_dict[obs_key] = obs_dict[obs_key].to(device)
+ 
+@@ -2150,6 +2168,8 @@ class TRLPPOTrainer(PPOTrainer):
+                         # Reset environment episode tracking
+                         self.env.reset_eval_episode_tracking(new_ids)
+ 
++        if golden is not None:
++            golden.save()
+         self.env.end_render_results()
+         self.policy_model.clear_rollout()
+         print(f"Evaluation completed - {completed_episodes} episodes finished")
+diff --git a/gr00t/rl/utils/golden_trace.py b/gr00t/rl/utils/golden_trace.py
+new file mode 100644
+index 0000000..6d926fc
+--- /dev/null
++++ b/gr00t/rl/utils/golden_trace.py
+@@ -0,0 +1,78 @@
++# G1_Hackason（段 5）: 実機用のコード（G1_Hackason/Door/real/door_core.py）と学習の環境が同じ計算をしているかを
++# 確かめるための「正解の記録」。評価のループの 1 ステップごとに、方策に入る前の生の値（関節・IMU・扉の計測器の値）と、
++# 方策・HOMIE の入出力、環境の中の積算の値を、先頭 K 台ぶん npz に書く。
++#
++# 使い方: ++algo.config.eval.golden_trace_path=<出力 .npz> （任意で golden_trace_envs=8・golden_trace_max_steps=1500）
++# 観測の雑音（評価でも入る）は再現できないので、比べるときは obs.noise_scales の dof_pos・dof_vel・arm_dof_torque・
++# e_homie_dof_pos・f_homie_dof_vel を 0 にして評価する（check_golden.py の説明を参照）。
++import numpy as np
++import torch
++
++
++def _np(x: torch.Tensor, k: int) -> np.ndarray:
++    return x[:k].detach().float().cpu().numpy().copy()
++
++
++class GoldenTrace:
++    def __init__(self, path: str, num_envs: int, max_steps: int) -> None:
++        self.path = str(path)
++        self.k = int(num_envs)
++        self.max_steps = int(max_steps)
++        self.rows: dict[str, list] = {}
++        self.static: dict[str, np.ndarray] = {}
++
++    def _add(self, key: str, value: np.ndarray) -> None:
++        self.rows.setdefault(key, []).append(value)
++
++    @property
++    def full(self) -> bool:
++        return len(self.rows.get("actor_obs", [])) >= self.max_steps
++
++    def before_step(self, env, obs_dict, action_mean, homie_actions, walk_mask) -> None:
++        """方策を回した直後・env.step の前。観測は前の env.step の物理の後に計算された値"""
++        if self.full:
++            return
++        k = min(self.k, env.num_envs)
++        if not self.static:
++            self.static = {
++                "default_dof_pos": _np(env.default_dof_pos, 1)[0],
++                "dof_names": np.array(list(env.config.robot.dof_names)),
++                "num_envs": np.array(k),
++            }
++        self._add("actor_obs", _np(obs_dict["actor_obs"], k))
++        self._add("homie_obs", _np(obs_dict["homie_obs"], k))
++        self._add("action_mean", _np(action_mean, k))
++        self._add("homie_actions", _np(homie_actions, k))
++        self._add("walk_mask", _np(walk_mask.reshape(walk_mask.shape[0], -1)[:, 0].float(), k))
++        # 実機の側で手に入る生の値（尺度・雑音・鏡写しの前）
++        self._add("dof_pos", _np(env.simulator.dof_pos, k))
++        self._add("dof_vel", _np(env.simulator.dof_vel, k))
++        self._add("base_ang_vel", _np(env.base_ang_vel, k))  # pelvis 座標の角速度 [rad/s]（×0.5 の前）
++        self._add("projected_gravity", _np(env.projected_gravity, k))
++        self._add("base_quat_xyzw", _np(env.base_quat, k))
++        self._add("door_angle_lidar", _np(env._get_obs_door_angle_lidar(), k))
++        self._add("door_frame_loc", _np(env._get_obs_door_frame_loc(), k))
++        self._add("door_geometry", _np(env._get_obs_door_geometry(), k))
++        self._add("complete", _np(env._get_obs_complete().reshape(env.num_envs, -1), k))
++        mirror = getattr(env, "_mirror_env", None)
++        self._add("mirror", _np(mirror.float(), k) if mirror is not None else np.zeros(k, np.float32))
++        self._add("episode_length", _np(env.episode_length_buf.float(), k))
++
++    def after_step(self, env, dones) -> None:
++        """env.step の直後。終わった台は環境の中でリセットされた後の値になる（比べるのは最初の 1 回の終わりまで）"""
++        if len(self.rows.get("dones", [])) >= len(self.rows.get("actor_obs", [])):
++            return
++        k = min(self.k, env.num_envs)
++        self._add("delta_actions_sum", _np(env._delta_actions, k))  # 積算 D（実の向き）
++        self._add("homie_commands", _np(env._homie_commands, k))  # [vx, vy, wz, 高さ, rpy]（実の単位）
++        self._add("whole_actions", _np(env.actions, k))  # 29（脚と腰は HOMIE、腕は D[3:17]）
++        self._add("dones", _np(dones.reshape(-1).float(), k))
++
++    def save(self) -> None:
++        n = len(self.rows.get("dones", []))
++        if n == 0:
++            return
++        out = {key: np.stack(v[:n]) for key, v in self.rows.items()}
++        out.update(self.static)
++        np.savez_compressed(self.path, **out)
++        print(f"[G1_Hackason] golden trace: {n} steps x {out['actor_obs'].shape[1]} envs -> {self.path}")
+-- 
+2.50.1 (Apple Git-155)
+

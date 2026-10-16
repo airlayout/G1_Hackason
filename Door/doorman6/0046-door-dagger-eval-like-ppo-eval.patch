@@ -1,0 +1,86 @@
+From 9e24582345dbe0b8bfabd72cbe9f473d54f9f2fd Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Thu, 15 Oct 2026 11:23:02 +0900
+Subject: [PATCH] door: DAgger eval starts episodes like the PPO eval (stage
+ 2.5)
+
+The distillation eval randomized the elapsed episode time and the stage-0 time like at the start of training, so the
+first counted episode often timed out in stage 0 (teacher rollout inside the DAgger env: 25/64 vs 82.4% in the PPO
+eval). Start from zero and call set_is_evaluating() as ppo_trainer_homie_api.eval does. Also do not crash on the
+door env's eval summary (no collected_episodes), make metrics_eval.json serializable, and flush the state recorder
+at the end (on a clean exit Isaac Sim closes the process before atexit, and the last partial chunk was lost).
+---
+ .../distill_trainer_obj_pred_homie_api.py     | 33 ++++++++-----------
+ 1 file changed, 14 insertions(+), 19 deletions(-)
+
+diff --git a/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py b/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py
+index 0856fec..156b388 100644
+--- a/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py
++++ b/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py
+@@ -586,20 +586,13 @@ class TRLDistillTrainerObjPredHomieAPI(TRLDistillTrainerObjPred):
+             ]
+ 
+         self._eval_mode()
++        # G1_Hackason（段 2.5）: 教師の評価（ppo_trainer_homie_api.eval）と同じ始め方にする。元は学習と同じく回の経過時間と
++        # 区間 0 の経過時間を乱数で進めてから始めていて、最初の回が区間 0 で時間切れになった（教師に運転させても 25/64、
++        # 教師だけの評価は 82.4%）。init_at_random_ep_len は学習の始めにだけ効かせる
++        self.env.set_is_evaluating()
+         self.policy_model.eval_mode()
+         self.policy_model.init_rollout()
+         obs_dict = self.env.reset_all()
+-        if self.config.get("init_at_random_ep_len", False):
+-            self.env.episode_length_buf = torch.randint_like(
+-                self.env.episode_length_buf, high=int(self.env.max_episode_length)
+-            )
+-            from gr00t.rl.envs.base_task.staged_task_base import StagedTaskBase
+-
+-            if isinstance(self.env, StagedTaskBase):
+-                self.env.time_in_stage_buf[:] = torch.randint_like(
+-                    self.env.time_in_stage_buf, high=int(self.env.max_stage_time[0])
+-                )
+-                self.env.actual_time_in_stage_buf[:] = self.env.time_in_stage_buf
+         device = (
+             self.accelerator.device
+             if hasattr(self, "accelerator") and self.accelerator
+@@ -801,6 +794,11 @@ class TRLDistillTrainerObjPredHomieAPI(TRLDistillTrainerObjPred):
+                     self.callback_handler.on_step_end(self.args, self.state, self.control)
+                     torch.cuda.empty_cache()
+         self.env.end_render_results()
++        # G1_Hackason: 状態の記録の残り（100 ステップ未満）をここで書き出す。正常に終わると Isaac Sim がプロセスを閉じて
++        # atexit の書き出しが走らず、最後まで走っていた回の終わりが記録から消えた（128 台中 6 回が「終わっていない」）
++        recorder = getattr(self.env, "state_recorder", None)
++        if recorder is not None:
++            recorder.flush()
+         pbar.close()
+         end_time = time.time()
+ 
+@@ -809,13 +807,10 @@ class TRLDistillTrainerObjPredHomieAPI(TRLDistillTrainerObjPred):
+         eval_dict["eval_time"] = end_time - start_time
+ 
+         print(f"Eval time: {end_time - start_time} seconds")
+-        print(f"Collected {eval_dict['collected_episodes']} episodes")
+-        print(f"Average goal reached rate: {eval_dict['goal_reached_rate']:.3f}")
+-        print(f"Average episode length: {eval_dict['episode_length']:.1f}")
+-        print(f"Average reward: {eval_dict['reward']:.1f}")
+-        print(f"Average DOF velocity: {eval_dict['eval_dof_vel']:.3f}")
+-        print(f"Average arm DOF velocity: {eval_dict['eval_arm_dof_vel']:.3f}")
+-        print(f"Average finger DOF velocity: {eval_dict['eval_finger_dof_vel']:.3f}")
++        # G1_Hackason: ドアの環境の集計には collected_episodes などが無い（KeyError で落ちていた）。成否は記録から数える
++        for key in ("collected_episodes", "goal_reached_rate", "episode_length", "reward"):
++            if key in eval_dict:
++                print(f"{key}: {eval_dict[key]}")
+ 
+         # save eval_dict to a file
+         import json
+@@ -825,7 +820,7 @@ class TRLDistillTrainerObjPredHomieAPI(TRLDistillTrainerObjPred):
+             os.makedirs(eval_output_dir, exist_ok=True)
+         metrics_eval_path = os.path.join(eval_output_dir, "metrics_eval.json")
+         with open(metrics_eval_path, "w") as f:
+-            json.dump(eval_dict, f, indent=4)
++            json.dump(eval_dict, f, indent=4, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
+ 
+         logger.info(f"Saved eval_dict to {metrics_eval_path}")  # self.args.eval_output_dir
+ 
+-- 
+2.50.1 (Apple Git-155)
+

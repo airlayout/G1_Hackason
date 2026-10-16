@@ -15,6 +15,9 @@ DoorSpawnerCfg の引数だけを差し替える。タスク名（＝ディレ�
 | door_en1154_g1〜g4_left | 2-4 の評価用 | door_en1154_g<k> と向きだけが違う（把手が機体の左＝door_open_lr=+1。実物の UIS Room 4 の向き）。鏡写し（0038）の確かめ |
 | door_en1154_g13_shaped | 2-4a の学習用 | 等級 1〜3 を台ごとに 1/3 ずつ・実物の形のクローザー。寸法・重さ・レバー・向きは door_en1154_g<k> のまま（ばらつきは 1 つずつ足す） |
 | door_en1154_g13_shaped_left | 2-4a の学習用 | door_en1154_g13_shaped と向きだけが違う（把手が機体の左＝実物の UIS Room 4 の向き。10-14 に写真で確かめた）。++env.config.mirror_left_doors=True と組で使う |
+| door_en1154_g13_shaped_left_lpos | 2-4b-1 の学習用 | door_en1154_g13_shaped_left とレバーの位置だけが違う（高さ 0.85〜1.10 m・バックセット 30〜100 mm。実物は約 1.0 m・64 mm） |
+| door_en1154_g13_shaped_left_lever | 2-4b-2 の学習用 | door_en1154_g13_shaped_left_lpos とレバーの形だけが違う（長さ 100〜160 mm・断面は丸と四角。実物は約 142 mm・四角） |
+| door_en1154_g13_shaped_left_weight | 2-4b-3 の学習用 | door_en1154_g13_shaped_left_lever と扉の重さだけが違う（15〜120 kg。既定は 80〜120 kg。上限は切り捨てない） |
 | door_room4_g13 | 2-4 の学習用 | door_room4_wide の範囲で、等級 1〜3 を台ごとに 1/3 ずつ・実物の形のクローザー・レバーの力の下限 0.5 N·m |
 
 使い方:
@@ -209,6 +212,44 @@ def main() -> None:
     left_body = body.replace(right_line, '    door_open_lr=["left"],  # 把手が機体の左（実物の UIS Room 4 の向き）\n')
     left_body = left_body.replace("EN 1154 等級 1〜3（台 i は i % 3 + 1）・実物の形のクローザー。", "EN 1154 等級 1〜3（台 i は i % 3 + 1）・実物の形のクローザー・把手が左（door_open_lr=+1）。", 1)
     write(tasks_dir, "door_en1154_g13_shaped_left", left_body)
+
+    # 段 2-4b の学習用（2026-10-14 のユーザー判断「2-4b を実施して」）: 実物のレバー（約 1.0 m・バックセット 64 mm・長さ 約 142 mm・
+    # 四角）は 2-4a の扉（0.85〜0.95 m・80〜150 mm・110〜140 mm・丸）の外にある。ばらつきは 1 つずつ足すので 2 段に分ける。
+    # 2-4b-1 は位置（教師は高さとバックセットを数値で見ている）、2-4b-2 は形（長さと断面は観測に無く、触って分かるだけ）
+    handle_pos_line = "    door_handle_tblr=(0.95, 0.85, 0.08, 0.15),\n"
+    if left_body.count(handle_pos_line) != 1:
+        raise ValueError("door_en1154_g13_shaped_left に door_handle_tblr の行が 1 つでない")
+    lpos_body = left_body.replace(
+        handle_pos_line,
+        "    door_handle_tblr=(1.10, 0.85, 0.03, 0.10),  # レバーの高さ 0.85〜1.10 m・バックセット 30〜100 mm（段 2-4b-1）\n",
+    ).replace("・把手が左（door_open_lr=+1）。", "・把手が左（door_open_lr=+1）・レバーの位置を広く（段 2-4b-1）。", 1).replace(
+        "（段 2-4a の学習用）", "（段 2-4b-1 の学習用）", 1
+    )
+    write(tasks_dir, "door_en1154_g13_shaped_left_lpos", lpos_body)
+
+    lpos_line = "    door_handle_tblr=(1.10, 0.85, 0.03, 0.10),  # レバーの高さ 0.85〜1.10 m・バックセット 30〜100 mm（段 2-4b-1）\n"
+    lever_body = lpos_body.replace(
+        lpos_line,
+        lpos_line
+        + "    handle_length_range=(0.10, 0.16),  # レバーの長さ [m]（段 2-4b-2。既定は 0.11〜0.14）\n"
+        + '    handle_cross_section=["round", "square"],  # レバーの断面（段 2-4b-2。既定は丸だけ）\n',
+    ).replace("・レバーの位置を広く（段 2-4b-1）。", "・レバーの位置と形を広く（段 2-4b-2）。", 1).replace(
+        "（段 2-4b-1 の学習用）", "（段 2-4b-2 の学習用）", 1
+    )
+    write(tasks_dir, "door_en1154_g13_shaped_left_lever", lever_body)
+
+    # 段 2-4b-3 の学習用（2026-10-14）: 扉の重さ。計画は 15〜100 kg だが、上限は今の既定（door.py の 80〜120 kg）の 120 を残す。
+    # b1 でバックセットを 80〜150 → 30〜100 mm に狭めたら、外した 100〜150 mm の扉で成功が 162 → 148 に落ちた（忘れた）ため、範囲は切り捨てずに広げる
+    lever_shape_line = '    handle_cross_section=["round", "square"],  # レバーの断面（段 2-4b-2。既定は丸だけ）\n'
+    if lever_body.count(lever_shape_line) != 1:
+        raise ValueError("door_en1154_g13_shaped_left_lever に handle_cross_section の行が 1 つでない")
+    weight_body = lever_body.replace(
+        lever_shape_line,
+        lever_shape_line + "    door_weight=(15.0, 120.0),  # 扉の板の重さ [kg]（段 2-4b-3。既定は 80〜120）\n",
+    ).replace("・レバーの位置と形を広く（段 2-4b-2）。", "・レバーの位置と形・扉の重さ 15〜120 kg を広く（段 2-4b-3）。", 1).replace(
+        "（段 2-4b-2 の学習用）", "（段 2-4b-3 の学習用）", 1
+    )
+    write(tasks_dir, "door_en1154_g13_shaped_left_weight", weight_body)
 
     # 段 2-4 の学習用（2026-10-13 のユーザー判断）: UIS Room 4 を含む広い範囲（door_room4_wide）で、クローザーは等級 1〜3 を
     # 実物の形で。台 i は i % 3 + 1 の等級（1/3 ずつ。等級ごとに効率の最小が違うので扉を 3 つ並べる）。等級 4 は評価だけ
