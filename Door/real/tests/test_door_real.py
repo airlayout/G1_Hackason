@@ -102,9 +102,13 @@ class _State:
         self.wireless_remote = [0, 0, keys & 0xFF, keys >> 8] + [0] * 36
 
 
-def _run(monkeypatch, tmp_path, script, *, held_at_start=(), freeze_after=None, nan_after=None, run_seconds="0.5"):
-    """偽の機体で door_run_real.main() を回す。script = [(秒, ボタン名 | "PC" | "HUP")]。
+SIGNALS = {"INT": "SIGINT", "TERM": "SIGTERM", "HUP": "SIGHUP"}
 
+
+def _run(monkeypatch, tmp_path, script, *, held_at_start=(), freeze_after=None, nan_after=None, run_seconds="0.5"):
+    """偽の機体で door_run_real.main() を回す。script = [(秒, ボタン名 | "L2+B" | "INT" | "TERM" | "HUP")]。
+
+    ボタンはその秒から 0.06 秒押す。INT・TERM・HUP はその秒に 1 回だけシグナルを送る（同じ名前を 2 回書けば 2 回）。
     held_at_start: 起動から 0.3 秒押しっぱなしのボタン／freeze_after: その秒から lowstate の時刻が止まる／
     nan_after: その秒から関節の角度が NaN。返り値: (段の並び（重複を除く）, 段の列, 送った (q, kp) の列)
     """
@@ -131,13 +135,14 @@ def _run(monkeypatch, tmp_path, script, *, held_at_start=(), freeze_after=None, 
             for name in held_at_start:
                 if el < 0.3:
                     keys |= 1 << drr.KEY[name]
-            for at, name in script:
-                if name in ("PC", "HUP"):
-                    if el >= at and name not in fired:
-                        fired.add(name)
-                        os.kill(os.getpid(), _signal.SIGTERM if name == "PC" else _signal.SIGHUP)
+            for k, (at, name) in enumerate(script):
+                if name in SIGNALS:
+                    if el >= at and k not in fired:
+                        fired.add(k)
+                        os.kill(os.getpid(), getattr(_signal, SIGNALS[name]))
                 elif at <= el < at + 0.06:
-                    keys |= 1 << drr.KEY[name]
+                    for b in name.split("+"):
+                        keys |= 1 << drr.KEY[b]
             st = _State(p.q_default, keys)
             if nan_after is not None and el >= nan_after:
                 st.motor_state[3].q = float("nan")
@@ -163,42 +168,73 @@ def _run(monkeypatch, tmp_path, script, *, held_at_start=(), freeze_after=None, 
     return seen, phases, sent
 
 
+# 段の時刻: start 0.4 → RAMP 3 秒 → HOLD 3.4〜 → A 3.7 で STAND → A 5.9 で DOOR
+
+
 @needs_policy
 def test_state_machine_runs_door_for_run_seconds(monkeypatch, tmp_path):
-    """start → A → （2 秒後）A → 扉の方策 0.5 秒 → POST → B で脱力。例外なく進み、記録が残る"""
-    seen, phases, sent = _run(monkeypatch, tmp_path, [(0.4, "start"), (3.7, "A"), (5.9, "A"), (7.2, "B"), (7.6, "PC")])
+    """start → A → （2 秒後）A → 扉の方策 0.5 秒 → POST → L2+B で脱力 → Ctrl+C で終わる"""
+    seen, phases, sent = _run(monkeypatch, tmp_path, [(0.4, "start"), (3.7, "A"), (5.9, "A"), (7.2, "L2+B"), (7.6, "INT")])
     assert seen == ["WAIT", "RAMP", "HOLD", "STAND", "DOOR", "POST", "DAMP"]
     assert 20 <= sum(ph == "DOOR" for ph in phases) <= 30  # 0.5 秒 × 50 Hz
     assert len(sent) > 300
-    # 脱力の後は kp が全部 0
     damp_from = phases.index("DAMP")
-    assert all(not kp.any() for _, kp in sent[damp_from + 1:])
+    assert all(not kp.any() for _, kp in sent[damp_from + 1:])  # 脱力の後は kp が全部 0
+
+
+@needs_policy
+def test_b_in_door_stands_instead_of_damping(monkeypatch, tmp_path):
+    """扉の方策の途中で B → 立ったまま（POST）。kp は 0 にならない。脱力は L2+B だけ"""
+    seen, phases, sent = _run(monkeypatch, tmp_path, [(0.4, "start"), (3.7, "A"), (5.9, "A"), (6.1, "B"), (6.8, "L2+B"), (7.2, "INT")],
+                              run_seconds="3.0")
+    assert seen == ["WAIT", "RAMP", "HOLD", "STAND", "DOOR", "POST", "DAMP"]
+    post = [k for k, ph in enumerate(phases) if ph == "POST"]
+    assert len(post) > 20 and all(sent[k][1].any() for k in post)  # POST の間は PD で立っている
+
+
+@needs_policy
+def test_b_in_hold_freezes(monkeypatch, tmp_path):
+    """HOMIE が動く前（HOLD）に B → 今の姿勢を固く保つ（FREEZE）。脱力しない"""
+    seen, phases, sent = _run(monkeypatch, tmp_path, [(0.4, "start"), (3.6, "B"), (4.5, "INT"), (4.8, "INT")])
+    assert seen == ["WAIT", "RAMP", "HOLD", "FREEZE", "DAMP"]
+    frz = [k for k, ph in enumerate(phases) if ph == "FREEZE"]
+    assert len(frz) > 20 and all(sent[k][1].any() for k in frz)
+    assert np.abs(sent[frz[-1]][0] - sent[frz[0]][0]).max() < 1e-12  # 同じ目標を保つ
+
+
+@needs_policy
+def test_first_ctrl_c_stands_second_damps(monkeypatch, tmp_path):
+    """Ctrl+C の 1 回目は立ったまま（終わらない）、2 回目で脱力して終わる"""
+    seen, phases, sent = _run(monkeypatch, tmp_path, [(0.4, "start"), (3.7, "A"), (4.8, "INT"), (5.6, "INT")])
+    assert seen == ["WAIT", "RAMP", "HOLD", "STAND", "POST", "DAMP"]
+    assert sum(ph == "POST" for ph in phases) > 30  # 1 回目と 2 回目の間は立っている
+    assert not sent[-1][1].any()
+
+
+@needs_policy
+def test_sighup_stands_and_keeps_running(monkeypatch, tmp_path):
+    """ssh が切れた（SIGHUP）ときは立ったまま止まり、プログラムは終わらない（終わると誰も支えない）"""
+    seen, phases, _ = _run(monkeypatch, tmp_path, [(0.4, "start"), (3.7, "A"), (4.8, "HUP"), (6.0, "L2+B"), (6.4, "INT")])
+    assert seen == ["WAIT", "RAMP", "HOLD", "STAND", "POST", "DAMP"]
+    assert sum(ph == "POST" for ph in phases) > 50  # SIGHUP の後 1.2 秒は立ち続けた
 
 
 @needs_policy
 def test_button_held_at_launch_does_not_start(monkeypatch, tmp_path):
     """起動時に start を押しっぱなしでも RAMP に進まない。離してから押すと進む"""
-    seen, _, _ = _run(monkeypatch, tmp_path, [(1.0, "start"), (1.5, "PC")], held_at_start=("start",))
+    seen, _, _ = _run(monkeypatch, tmp_path, [(1.0, "start"), (1.5, "L2+B"), (1.8, "INT")], held_at_start=("start",))
     assert seen[:2] == ["WAIT", "RAMP"]
-    seen2, phases2, _ = _run(monkeypatch, tmp_path / "b", [(0.6, "PC")], held_at_start=("start",))
-    assert seen2 == ["WAIT", "DAMP"]
+    seen2, _, _ = _run(monkeypatch, tmp_path / "b", [(0.6, "INT")], held_at_start=("start",))
+    assert seen2 == ["WAIT"]
 
 
 @needs_policy
 def test_stale_lowstate_damps(monkeypatch, tmp_path):
-    seen, _, _ = _run(monkeypatch, tmp_path, [(0.4, "start"), (5.0, "PC")], freeze_after=1.5)
+    seen, _, _ = _run(monkeypatch, tmp_path, [(0.4, "start"), (5.0, "INT")], freeze_after=1.5)
     assert seen == ["WAIT", "RAMP", "DAMP"]
 
 
 @needs_policy
 def test_nan_joint_damps(monkeypatch, tmp_path):
-    seen, _, _ = _run(monkeypatch, tmp_path, [(0.4, "start"), (3.7, "A"), (5.0, "PC")], nan_after=4.0)
+    seen, _, _ = _run(monkeypatch, tmp_path, [(0.4, "start"), (3.7, "A"), (5.0, "INT")], nan_after=4.0)
     assert seen == ["WAIT", "RAMP", "HOLD", "STAND", "DAMP"]
-
-
-@needs_policy
-def test_sighup_damps_and_exits(monkeypatch, tmp_path):
-    """ssh が切れた（SIGHUP）ときも脱力を送ってから終わる"""
-    seen, _, sent = _run(monkeypatch, tmp_path, [(0.4, "start"), (1.0, "HUP")])
-    assert seen == ["WAIT", "RAMP", "DAMP"]
-    assert not sent[-1][1].any()

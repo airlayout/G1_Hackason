@@ -3,17 +3,27 @@
 PC2 で動かす（unitree_sdk2py と numpy だけ。Python 3.8 でも動く）。rt/lowcmd を書くのはこのプロセス 1 本だけ。
 計算は door_core.py（Isaac Sim の正解の記録と一致を確かめ済み: check_golden.py）。
 
-流れ（リモコン。どこからでも B か select で脱力。PC で Enter でも脱力）:
+流れ（リモコン）:
   WAIT   脱力（kp=0・kd のみ）で待つ。start で次へ
   RAMP   3 秒かけて今の角度から学習の初めの姿勢（脚は少し曲げる・腕は 0＝真下）へ
   HOLD   その姿勢を PD で保つ。ここでウィンチを下ろして足を床に着ける。A で次へ
-  STAND  HOMIE だけで立つ（指令 0・腕は 0）。脚だけを見る。崩れたら B。2 秒以上たってから A で次へ
+  STAND  HOMIE だけで立つ（指令 0・腕は 0）。脚だけを見る。2 秒以上たってから A で次へ
   DOOR   生徒と HOMIE（--run-seconds 秒、既定 5）
-  POST   生徒を止める。HOMIE は指令 0 で立ったまま、腕はその場。B で脱力
-自動で脱力: 傾き > --max-tilt-deg・関節の速さ > --max-dq・rt/lowstate が 0.1 s 途切れる・機体の値が NaN／四元数が壊れている・
-  1 周期が 60 ms 空く・0.5 秒の周期の平均が 25 ms を超える・目標が NaN。ssh が切れた（SIGHUP）ときも脱力を送ってから終わる
-  ⚠️ それでも電源断・SIGKILL では脱力を送れない。tmux の中で起こし、最後の指令が残ったときの機体の振る舞いは吊った状態で一度確かめる
-start・A は、全部のボタンを離した後の押しだけを受け付ける（起動時に押しっぱなしでも進まない）。DOOR で odom が 0.5 s 途切れたら POST へ
+  POST   生徒を止める。HOMIE は指令 0 で立ったまま、腕はその場
+  FREEZE HOMIE が動く前（RAMP・HOLD）に止めたとき。最後の目標角を PD で固く保つ
+  DAMP   脱力
+
+止め方は 2 段（2026-10-16 ユーザー判断。脱力で床に崩れたことがあるので、ふだんの停止では脱力しない）:
+  立ったまま止まる  リモコンの B か select／PC の Enter／Ctrl+C の 1 回目／ssh の切断（SIGHUP）
+                    → STAND・DOOR からは POST（HOMIE で立つ）、RAMP・HOLD からは FREEZE（今の姿勢を保つ）
+                    自動: 1 周期が 60 ms 空く・0.5 秒の周期の平均が 25 ms 超・DOOR で odom が 0.5 s 途切れる・方策の計算で例外
+  脱力              リモコンの L2+B／Ctrl+C の 2 回目（脱力を 1 秒送って終わる）
+                    自動（制御できない・倒れている）: rt/lowstate が 0.1 s 途切れる・機体の値が NaN／四元数が壊れている・
+                    傾き > --max-tilt-deg・関節の速さ > --max-dq・目標が NaN
+  WAIT と DAMP では Ctrl+C（と Enter）で終わる
+  ⚠️ HOMIE 自体が実機で不安定なら「立ったまま止まる」でも立てない（L2+B で脱力し、ウィンチで受ける）。
+     電源断・SIGKILL では何も送れない。tmux の中で起こし、最初のうちはウィンチを外さない
+start・A は、全部のボタンを離した後の押しだけを受け付ける（起動時に押しっぱなしでも進まない）
 
 扉の値（最初の版）:
   枠の位置  巻き尺で測った最初の pelvis の姿勢（--start-x/-y/-yaw-deg）に、STAND に入ってからの odom（rt/dog_odom）の動きを足す
@@ -51,11 +61,11 @@ RAMP_S = 3.0
 STAND_MIN_S = 2.0
 STATE_STALE_S = 0.1
 ODOM_STALE_S = 0.2
-ODOM_LOST_S = 0.5  # DOOR で odom がこれ以上途切れたら POST へ（枠の位置が分からない）
+ODOM_LOST_S = 0.5  # DOOR で odom がこれ以上途切れたら立ったまま止まる（枠の位置が分からない）
 STAND_BLEND_S = 0.5  # STAND の初めに既定の姿勢から HOMIE の目標へ移す時間
-PERIOD_TRIP_S = 0.06  # 1 周期がこれ以上空いたら脱力
+PERIOD_TRIP_S = 0.06  # 1 周期がこれ以上空いたら立ったまま止まる
 PERIOD_AVG_N = 25
-PERIOD_AVG_TRIP_S = 0.025  # 0.5 秒の平均がこれを超えたら脱力（50 Hz を保てていない）
+PERIOD_AVG_TRIP_S = 0.025  # 0.5 秒の平均がこれを超えたら立ったまま止まる（50 Hz を保てていない）
 ARM_CYCLES = 10  # start・A は、全部のボタンが 10 周期離れた後の押しだけ受け付ける
 DAMP_KD = 8.0  # unitree_rl_gym の deploy_real と同じ
 MAX_TARGET_STEP = 0.7  # [rad/周期] シミュレータの最大 0.63（10-16 の正解の記録）。暴れた出力だけを止める
@@ -184,7 +194,7 @@ class Logger:
         print(f"[door_real] 記録を書いた: {path}（{n} 周期）", flush=True)
 
 
-PHASES = ("WAIT", "RAMP", "HOLD", "STAND", "DOOR", "POST", "DAMP")
+PHASES = ("WAIT", "RAMP", "HOLD", "STAND", "DOOR", "POST", "FREEZE", "DAMP")
 
 
 def main() -> int:
@@ -231,15 +241,25 @@ def main() -> int:
     print(f"[door_real] 29 関節・mode_machine={state0.mode_machine}・送る={'する' if not a.no_send else 'しない'}・"
           f"最初の姿勢 {start_pose}・扉 {geometry.tolist()}・鏡写し {p.mirror}")
 
-    stop = threading.Event()  # PC の Enter・Ctrl+C・SIGTERM・SIGHUP（ssh が切れた）で脱力
-    for sig in (signal.SIGINT, signal.SIGTERM, getattr(signal, "SIGHUP", None)):
-        if sig is not None:
-            signal.signal(sig, lambda *_: stop.set())
+    soft_req = threading.Event()  # 立ったまま止まる（Enter・Ctrl+C の 1 回目・SIGHUP）
+    hard_req = threading.Event()  # 脱力して終わる（Ctrl+C の 2 回目）
+    quit_count = [0]
+
+    def on_quit(*_) -> None:
+        quit_count[0] += 1
+        (soft_req if quit_count[0] == 1 else hard_req).set()
+
+    signal.signal(signal.SIGINT, on_quit)
+    signal.signal(signal.SIGTERM, on_quit)
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, lambda *_: soft_req.set())  # ssh が切れても終わらない（終わると誰も支えない）
 
     def watch_enter() -> None:
-        line = sys.stdin.readline()
-        if line:  # 空（EOF＝標準入力が無い）では止めない。Enter の "\n" だけで止める
-            stop.set()
+        while True:
+            line = sys.stdin.readline()
+            if not line:  # EOF＝標準入力が無い（nohup など）。止めない
+                return
+            soft_req.set()
 
     threading.Thread(target=watch_enter, daemon=True).start()
 
@@ -259,6 +279,7 @@ def main() -> int:
     odom_lost_t: Optional[float] = None
     complete = 0.0
     last_target: Optional[np.ndarray] = None
+    freeze_target: Optional[np.ndarray] = None
     periods: List[float] = []
     reason = ""
     next_t = time.monotonic()
@@ -267,19 +288,33 @@ def main() -> int:
     t_exit = None
 
     def go(new: str, why: str = "") -> None:
-        nonlocal phase, phase_t, reason
-        if phase == "DAMP":
+        nonlocal phase, phase_t, reason, freeze_target
+        if phase == "DAMP" or phase == new:
             return
         print(f"[door_real] {phase} → {new}" + (f"（{why}）" if why else ""), flush=True)
+        if new == "FREEZE":
+            freeze_target = last_target.copy() if last_target is not None else None
         phase, phase_t = new, time.monotonic()
         if new == "RAMP":
             periods.clear()
-        if new == "DAMP":
+        if new in ("POST", "FREEZE", "DAMP"):
             reason = why
+        if new == "DAMP":
             # SIGKILL や電源断でも記録が残るように、脱力に入った時点で別スレッドで一度書く
             snap = {k: list(v) for k, v in log.rows.items()}
             threading.Thread(target=Logger.save_rows, args=(snap, log_dir / f"door_real_{stamp}_damp.npz",
                                                             dict(meta, reason=why)), daemon=True).start()
+
+    def soft_stop(why: str, from_pc: bool = False) -> None:
+        """立ったまま止まる。HOMIE が動いていれば POST、動く前なら FREEZE。WAIT・DAMP では PC からのときだけ終わる"""
+        nonlocal t_exit
+        if phase in ("STAND", "DOOR"):
+            go("POST", why)
+        elif phase in ("RAMP", "HOLD"):
+            go("FREEZE", why)
+        elif from_pc and phase in ("WAIT", "DAMP") and t_exit is None:
+            print(f"[door_real] 終わる（{why}）", flush=True)
+            t_exit = time.monotonic() + 0.2
 
     try:
         while True:
@@ -301,15 +336,23 @@ def main() -> int:
             keys_prev = keys
             ready = released_cycles >= ARM_CYCLES  # この押しの前に、全部のボタンが ARM_CYCLES 周期離れていたか
             released_cycles = released_cycles + 1 if keys == 0 else 0
-            go_keys = edge if ready else 0  # start・A は、離した後の押しだけ受け付ける（B・select はいつでも）
+            go_keys = edge if ready else 0  # start・A は、離した後の押しだけ受け付ける（B・select・L2+B はいつでも）
 
             # --- 止める ---
-            if stop.is_set():
-                go("DAMP", "PC から（Enter・Ctrl+C・ssh の切断）")  # 脱力の後でも、ここから 1 秒脱力を送って終わる
+            if hard_req.is_set():
+                go("DAMP", "PC から（Ctrl+C の 2 回目）")
                 t_exit = now + 1.0 if t_exit is None else t_exit
-            if edge & ((1 << KEY["B"]) | (1 << KEY["select"])):
-                go("DAMP", "リモコン")
-            if phase in ("RAMP", "HOLD", "STAND", "DOOR", "POST"):
+            if soft_req.is_set():
+                soft_req.clear()
+                soft_stop("PC から（Enter・Ctrl+C の 1 回目・ssh の切断）", from_pc=True)
+                if phase in ("POST", "FREEZE"):
+                    print("[door_real] 立ったまま止めた。脱力はリモコンの L2+B か、もう一度 Ctrl+C（⚠️ 吊っていないと崩れる）", flush=True)
+            chord = (1 << KEY["L2"]) | (1 << KEY["B"])
+            if keys & chord == chord and edge & chord:
+                go("DAMP", "リモコンの L2+B")
+            elif edge & ((1 << KEY["B"]) | (1 << KEY["select"])):
+                soft_stop("リモコンの B／select")
+            if phase in ("RAMP", "HOLD", "STAND", "DOOR", "POST", "FREEZE"):
                 qn = float(np.linalg.norm(quat))
                 if now - state_t > STATE_STALE_S:
                     go("DAMP", f"rt/lowstate が {now - state_t:.2f} s 途切れた")
@@ -320,59 +363,71 @@ def main() -> int:
                 elif not (np.abs(dq).max() <= a.max_dq):
                     go("DAMP", f"関節 {int(np.abs(dq).argmax())} の速さ {np.abs(dq).max():.1f} rad/s")
                 elif period > PERIOD_TRIP_S:
-                    go("DAMP", f"周期が {period * 1000:.0f} ms 空いた")
+                    soft_stop(f"周期が {period * 1000:.0f} ms 空いた")
                 elif len(periods) >= PERIOD_AVG_N and sum(periods) / len(periods) > PERIOD_AVG_TRIP_S:
-                    go("DAMP", f"周期の平均が {1000 * sum(periods) / len(periods):.1f} ms（50 Hz を保てない）")
+                    soft_stop(f"周期の平均が {1000 * sum(periods) / len(periods):.1f} ms（50 Hz を保てない）")
 
             # --- 段ごとの目標 ---
             target, kp, kd = None, damp_kp, damp_kd
             out = None
             pose = None
             odom_ok = 0.0
-            if phase == "WAIT" and go_keys & (1 << KEY["start"]):
-                q_ramp0 = q.copy()
-                last_target = q_ramp0.copy()  # 変化の上限を今の角度から効かせる
-                go("RAMP")
-            if phase == "RAMP":
-                r = min(1.0, (now - phase_t) / RAMP_S)
-                r = r * r * (3.0 - 2.0 * r)
-                target, kp, kd = (1.0 - r) * q_ramp0 + r * p.q_default, p.kp, p.kd
-                if r >= 1.0:
-                    go("HOLD")
-            elif phase == "HOLD":
-                target, kp, kd = p.q_default.copy(), p.kp, p.kd
-                if go_keys & (1 << KEY["A"]):
-                    s = dc.initial_state(p)
-                    fresh = odom is not None and odom_t is not None and now - odom_t < ODOM_STALE_S
-                    odom_ref = dfr.PlanarPose(*odom) if fresh else None
-                    last_pose, odom_lost_t = start_pose, None
-                    go("STAND", "odom の基準を取った" if odom_ref else "⚠️ odom 無し（枠の位置は最初の姿勢のまま動かない）")
-            if phase in ("STAND", "DOOR", "POST"):
-                if odom_ref is not None and odom is not None and now - odom_t < ODOM_STALE_S:
-                    pose, odom_ok, odom_lost_t = dfr.compose_planar(start_pose, odom_ref, dfr.PlanarPose(*odom)), 1.0, None
-                else:
-                    pose = last_pose  # odom が途切れたら最後の姿勢を保つ（最初の姿勢へ跳ばない）
-                    if odom_ref is not None and odom_lost_t is None:
-                        odom_lost_t = now
-                last_pose = pose
-                if pose.x > 1.5:
-                    complete = 1.0
-                inp = dc.Inputs(q=q, dq=dq, gyro=gyro, gravity=gravity, door_angle=dfr.door_closed_angle_obs(),
-                                door_frame_loc=dfr.door_frame_loc(pose, quat), door_geometry=geometry, complete=complete)
-                if phase == "STAND" and go_keys & (1 << KEY["A"]) and now - phase_t >= STAND_MIN_S:
-                    s = dc.reset_actor(p, s)
-                    go("DOOR", f"{a.run_seconds:.1f} 秒")
-                if phase == "DOOR" and now - phase_t >= a.run_seconds:
-                    go("POST", "時間")
-                if phase == "DOOR" and odom_lost_t is not None and now - odom_lost_t > ODOM_LOST_S:
-                    go("POST", f"odom が {now - odom_lost_t:.1f} s 途切れた（枠の位置が分からない）")
+            try:
+                if phase == "WAIT" and go_keys & (1 << KEY["start"]):
+                    q_ramp0 = q.copy()
+                    last_target = q_ramp0.copy()  # 変化の上限を今の角度から効かせる
+                    go("RAMP")
+                if phase == "RAMP":
+                    r = min(1.0, (now - phase_t) / RAMP_S)
+                    r = r * r * (3.0 - 2.0 * r)
+                    target, kp, kd = (1.0 - r) * q_ramp0 + r * p.q_default, p.kp, p.kd
+                    if r >= 1.0:
+                        go("HOLD")
+                elif phase == "HOLD":
+                    target, kp, kd = p.q_default.copy(), p.kp, p.kd
+                    if go_keys & (1 << KEY["A"]):
+                        s = dc.initial_state(p)
+                        fresh = odom is not None and odom_t is not None and now - odom_t < ODOM_STALE_S
+                        odom_ref = dfr.PlanarPose(*odom) if fresh else None
+                        last_pose, odom_lost_t = start_pose, None
+                        go("STAND", "odom の基準を取った" if odom_ref else "⚠️ odom 無し（枠の位置は最初の姿勢のまま動かない）")
                 if phase in ("STAND", "DOOR", "POST"):
-                    s, out = dc.step(p, s, inp, mode="door" if phase == "DOOR" else "hold")
-                    target, kp, kd = out.q_target, p.kp, p.kd
-                    if phase == "STAND" and now - phase_t < STAND_BLEND_S:
-                        # HOMIE の最初の出力は空の履歴から出るので、0.5 秒かけて既定の姿勢から移す（シミュレータでは 0.07〜0.11 rad）
-                        r = (now - phase_t) / STAND_BLEND_S
-                        target = (1.0 - r) * p.q_default + r * target
+                    if odom_ref is not None and odom is not None and now - odom_t < ODOM_STALE_S:
+                        pose, odom_ok, odom_lost_t = dfr.compose_planar(start_pose, odom_ref, dfr.PlanarPose(*odom)), 1.0, None
+                    else:
+                        pose = last_pose  # odom が途切れたら最後の姿勢を保つ（最初の姿勢へ跳ばない）
+                        if odom_ref is not None and odom_lost_t is None:
+                            odom_lost_t = now
+                    last_pose = pose
+                    if pose.x > 1.5:
+                        complete = 1.0
+                    inp = dc.Inputs(q=q, dq=dq, gyro=gyro, gravity=gravity, door_angle=dfr.door_closed_angle_obs(),
+                                    door_frame_loc=dfr.door_frame_loc(pose, quat), door_geometry=geometry, complete=complete)
+                    if phase == "STAND" and go_keys & (1 << KEY["A"]) and now - phase_t >= STAND_MIN_S:
+                        s = dc.reset_actor(p, s)
+                        go("DOOR", f"{a.run_seconds:.1f} 秒")
+                    if phase == "DOOR" and now - phase_t >= a.run_seconds:
+                        go("POST", "時間")
+                    if phase == "DOOR" and odom_lost_t is not None and now - odom_lost_t > ODOM_LOST_S:
+                        go("POST", f"odom が {now - odom_lost_t:.1f} s 途切れた（枠の位置が分からない）")
+                    if phase in ("STAND", "DOOR", "POST"):
+                        s, out = dc.step(p, s, inp, mode="door" if phase == "DOOR" else "hold")
+                        target, kp, kd = out.q_target, p.kp, p.kd
+                        if phase == "STAND" and now - phase_t < STAND_BLEND_S:
+                            # HOMIE の最初の出力は空の履歴から出るので、0.5 秒かけて既定の姿勢から移す（シミュレータでは 0.07〜0.11 rad）
+                            r = (now - phase_t) / STAND_BLEND_S
+                            target = (1.0 - r) * p.q_default + r * target
+            except Exception as e:  # noqa: BLE001  方策の計算の誤りでは脱力せず、最後の目標を保つ
+                print(f"[door_real] 目標の計算で例外: {type(e).__name__}: {e}", flush=True)
+                out = None
+                if phase in ("RAMP", "HOLD", "STAND", "DOOR", "POST"):
+                    go("FREEZE", f"例外 {type(e).__name__}")
+                target = None
+            if phase == "FREEZE":
+                if freeze_target is None:
+                    go("DAMP", "保つ目標が無い")
+                else:
+                    target, kp, kd = freeze_target, p.kp, p.kd
 
             # --- 送る ---
             if target is not None and phase != "DAMP":
@@ -395,6 +450,7 @@ def main() -> int:
             loop_dt = time.monotonic() - now
             row = dict(t=now, phase=PHASES.index(phase), q=q, dq=dq, tau=tau, quat=quat, gyro=gyro, keys=keys,
                        q_sent=target if target is not None else np.full(dc.NUM_DOF, np.nan), loop_dt=loop_dt, period=period,
+                       kp_sent=kp if (target is not None and phase != "DAMP") else damp_kp,
                        odom=np.array(odom) if odom is not None else np.full(3, np.nan),
                        odom_age=(now - odom_t) if odom_t is not None else np.inf, odom_ok=odom_ok)
             if out is not None:
@@ -408,7 +464,7 @@ def main() -> int:
 
             if now - last_print > 0.5:
                 last_print = now
-                print(f"[door_real] {phase:5s} 傾き {math.degrees(tilt):4.1f}° |dq| {np.abs(dq).max():4.1f} "
+                print(f"[door_real] {phase:6s} 傾き {math.degrees(tilt):4.1f}° |dq| {np.abs(dq).max():4.1f} "
                       f"odom {'%.2fs' % (now - odom_t) if odom_t else '無し'} "
                       + (f"姿勢 ({pose.x:+.2f},{pose.y:+.2f},{math.degrees(pose.yaw):+.0f}°) 指令 {out.cmd[:3].round(2).tolist()}" if out is not None else "")
                       + f" 周期 {period * 1000:.1f} ms（計算 {loop_dt * 1000:.1f} ms）"
@@ -424,7 +480,8 @@ def main() -> int:
             else:
                 next_t = time.monotonic()
     finally:
-        for _ in range(25):  # 終わる前に 0.5 秒脱力を送り続ける（1 回失敗しても続ける）
+        # ここに来るのは WAIT・DAMP から終わるとき、Ctrl+C の 2 回目、輪の外側の例外だけ。脱力を 0.5 秒送り続ける
+        for _ in range(25):
             try:
                 st = io.snapshot()[0]
                 if st is not None:
