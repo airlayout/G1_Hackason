@@ -10,17 +10,19 @@
 """
 import argparse
 import json
+import os
 import queue
 import shlex
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from g1console.camera_proc import MockCameraCtl, SshCameraCtl, resolve_host
-from g1console.lidar_proc import MockLidarCtl, SshLidarCtl, forward_query
+from g1console.camera_proc import LocalCameraCtl, MockCameraCtl, SshCameraCtl, resolve_host
+from g1console.lidar_proc import LocalLidarCtl, MockLidarCtl, SshLidarCtl, forward_query
 from g1console.dds_catalog import SERVICES, TOPICS
 from g1console.replay import Replay
 from g1console.api_spec import openapi, render_yaml
@@ -34,6 +36,7 @@ READY_TIMEOUT_S = 30.0  # DDS 初期化待ち
 POLL_INTERVAL_S = 1.0
 POLL_INTERVAL_DOWN_S = 3.0  # Jetson に届かないときは ssh を叩きすぎない
 SSH_CONNECT_FAILED = 255  # ssh が接続自体に失敗したときの終了コード
+LOCAL_HOST = "127.0.0.1"  # --local（Jetson 上で動かす）のときの接続先。カメラ・lidar の配信も同じ機械にある
 CAMERAS = {"std": "標準カメラ", "d435i": "D435i（RGB）", "depth": "D435i（深度）"}  # camera_stream.py の --camera 名と揃える
 CAMERA_TIMEOUT_S = 5.0
 CAMERA_CHUNK = 16384
@@ -62,16 +65,21 @@ class SshHelper:
     def _start(self):
         src = (HERE / "jetson" / "remote_helper.py").read_text(encoding="utf-8")
         src = src.replace("__ALLOWED__", repr(sorted(ALLOWED_IDS)))
-        key = ["-i", self._key] if self._key else []
-        cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", *key, "--", self._host,
-               "cd ~/unitree_sdk2_python && python3 -u -c " + shlex.quote(src)]
+        cmd, cwd = self._command(src)
         self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                      stderr=subprocess.DEVNULL, text=True)
+                                      stderr=subprocess.DEVNULL, text=True, cwd=cwd)
         self._lines = queue.Queue()
         threading.Thread(target=self._pump, args=(self._proc, self._lines), daemon=True).start()
         ready = self._lines.get(timeout=READY_TIMEOUT_S)
         if ready is None or not json.loads(ready).get("ready"):
             raise RuntimeError("helper not ready")
+
+    def _command(self, src: str):
+        """ヘルパーを起動するコマンドと cwd。ssh 版は Jetson 側で cd してから python3 に src を渡す。"""
+        key = ["-i", self._key] if self._key else []
+        cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", *key, "--", self._host,
+               "cd ~/unitree_sdk2_python && python3 -u -c " + shlex.quote(src)]
+        return cmd, None
 
     @staticmethod
     def _pump(proc, out):
@@ -111,6 +119,24 @@ class SshHelper:
                 self._kill()
                 return {"ok": False, "offline": True, "ssh_exit": exit_code,
                         "error": "%s: %s" % (type(exc).__name__, exc)}
+
+
+class LocalHelper(SshHelper):
+    """Jetson 上でこのコンソールを動かすとき用。ssh を使わず、同じ remote_helper.py をローカルの子プロセスで動かす。"""
+
+    backend = "local"
+
+    def __init__(self, sdk_dir=None):
+        self._sdk_dir = Path(sdk_dir or os.environ.get("UNITREE_SDK_DIR") or "~/unitree_sdk2_python").expanduser()
+        super().__init__(LOCAL_HOST)
+
+    def reconfigure(self, host=None, key: str = ""):
+        """接続先の概念が無い（常に自分自身）。設定タブの変更では何も差し替えない。"""
+        self._host, self._key = LOCAL_HOST, ""
+        self._kill()
+
+    def _command(self, src: str):
+        return [sys.executable, "-u", "-c", src], str(self._sdk_dir)
 
 
 class MockHelper:
@@ -218,7 +244,7 @@ def _describe_links(raw: dict) -> dict:
         return {"jetson": {"state": "down", "detail": _jetson_detail(raw)},
                 "g1": {"state": "unknown", "detail": "Jetson に届かないため未確認"},
                 "mode": {"state": "none", "label": "—"}}
-    jetson = {"state": "ok", "detail": "ssh 接続中"}
+    jetson = {"state": "ok", "detail": "ヘルパー応答あり"}
     checkmode, fsm_code = raw.get("checkmode_code"), raw.get("fsm_code")
     if checkmode != 0 and fsm_code != 0:
         return {"jetson": jetson,
@@ -544,17 +570,26 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mock", action="store_true")
+    parser.add_argument("--local", action="store_true", help="Jetson 上で動かす（ssh を使わず自機でヘルパー・カメラ・lidar を扱う）")
     parser.add_argument("--host", help="Jetson の ssh 接続先（省略時は設定タブの値。~/.ssh/config の別名も可）")
     parser.add_argument("--port", type=int, default=18790)
     parser.add_argument("--camera-url", help="Jetson の camera_stream.py の URL 例: http://<Jetson の IP>:8081")
     args = parser.parse_args()
-    initial = {"jetson_host": args.host, "jetson_user": ""} if args.host else {}
+    if args.mock and args.local:
+        parser.error("--mock と --local は同時に指定できません")
+    initial = {"jetson_host": LOCAL_HOST, "jetson_user": ""} if args.local else (
+        {"jetson_host": args.host, "jetson_user": ""} if args.host else {})
     settings = Settings(None if args.mock else DEFAULT_PATH, initial)
-    helper = MockHelper() if args.mock else SshHelper(*settings.ssh_target())
+    lidar_port = lambda: settings.get()["lidar_port"]
+    if args.mock:
+        helper, camera_ctl, lidar_ctl = MockHelper(), MockCameraCtl(), MockLidarCtl()
+    elif args.local:
+        helper, camera_ctl, lidar_ctl = LocalHelper(), LocalCameraCtl(), LocalLidarCtl(lidar_port)
+    else:
+        helper = SshHelper(*settings.ssh_target())
+        camera_ctl, lidar_ctl = SshCameraCtl(settings.ssh_target), SshLidarCtl(settings.ssh_target, lidar_port)
     monitor = Monitor(helper)
     monitor.start()
-    camera_ctl = MockCameraCtl() if args.mock else SshCameraCtl(settings.ssh_target)
-    lidar_ctl = MockLidarCtl() if args.mock else SshLidarCtl(settings.ssh_target, lambda: settings.get()["lidar_port"])
     camera_base = args.camera_url.rstrip("/") if args.camera_url else None
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(helper, monitor, camera_base, settings, camera_ctl, lidar_ctl))
     print("[console] http://127.0.0.1:%d (%s)" % (args.port, helper.backend))

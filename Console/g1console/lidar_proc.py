@@ -7,7 +7,7 @@ import struct
 import time
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from g1console.camera_proc import SEP, SshCameraCtl, parse_status
+from g1console.camera_proc import SEP, LocalRunMixin, SshCameraCtl, parse_status
 
 REMOTE_DIR = "~/g1_console_lidar"
 ACTIONS = ("status", "start", "stop")
@@ -52,6 +52,11 @@ class SshLidarCtl(SshCameraCtl):
         out = self._run(("; echo %s; " % SEP).join(steps))
         message, status = (out.split(SEP + "\n") + [""])[:2]
         return {"ok": True, **parse_status(status), "message": message.strip()}
+
+
+class LocalLidarCtl(LocalRunMixin, SshLidarCtl):
+    def __init__(self, port_fn):
+        super().__init__(lambda: (None, ""), port_fn)
 
 
 class MockLidarCtl:

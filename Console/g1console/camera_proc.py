@@ -3,6 +3,7 @@
 Jetson の ~/g1_console_camera/camera_ctl.sh を ssh で 1 回ずつ叩く（常駐ヘルパーとは別。DDS には触れない）。
 holders は「映像デバイスを掴んでいるプロセス」。videohub_pc4 などが握っていると camera_stream は開けない。
 """
+import ipaddress
 import re
 import subprocess
 
@@ -19,7 +20,12 @@ _RESOLVED = {}
 
 def resolve_host(host: str) -> str:
     """ssh のエイリアス（~/.ssh/config の Host）を実ホスト名に直す。HTTP の宛先には別名が使えないため。
-    解決できなければそのまま返す。結果は覚えておく（ssh を毎回叩かない）。"""
+    解決できなければそのまま返す。結果は覚えておく（ssh を毎回叩かない）。IP リテラルは ssh に聞かずそのまま返す。"""
+    try:
+        ipaddress.ip_address(host)
+        return host
+    except ValueError:
+        pass
     if host not in _RESOLVED:
         try:
             done = subprocess.run(["ssh", "-G", "--", host], capture_output=True, text=True, timeout=5)
@@ -83,6 +89,21 @@ class SshCameraCtl:
         out = self._run(("; echo %s; " % SEP).join(steps))
         message, status, holders = (out.split(SEP + "\n") + ["", ""])[:3]
         return {**summarize(status, holders), "message": message.strip()}
+
+
+class LocalRunMixin:
+    """ssh を介さず、Jetson 上のこのプロセスから ctl スクリプトを直接実行する（コンソールを Jetson で動かす場合）。"""
+
+    backend = "local"
+
+    def _run(self, script: str) -> str:
+        done = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=CTL_TIMEOUT_S)
+        return done.stdout
+
+
+class LocalCameraCtl(LocalRunMixin, SshCameraCtl):
+    def __init__(self):
+        super().__init__(lambda: (None, ""))
 
 
 class MockCameraCtl:

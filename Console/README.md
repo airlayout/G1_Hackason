@@ -34,6 +34,11 @@ G1 の**現在の動作モードを表示**し、**ボタンでモードを切�
 # 実機（設定タブで Jetson の IP を入れる。Jetson 上でヘルパーが DDS に繋ぐ）
 python3 server.py
 
+# Jetson 上で動かす（ssh を使わない。ヘルパーは同じ機械の子プロセス、カメラ・lidar の起動・停止もローカル実行）
+# SDK の場所は環境変数 UNITREE_SDK_DIR（既定 ~/unitree_sdk2_python）。Jetson の Python 3.8 で動く。
+# 画面は 127.0.0.1 のみ待ち受け（認証が無いので外へは開けない。外部公開は別途）。
+python3 server.py --local
+
 # 実機なしで画面だけ確認（状態は作り物。画面右上の「模擬シナリオ」で
 # 正常 / G1 未応答 / Jetson に届かない / デバッグモード を切り替えて表示を確認できる）
 python3 server.py --mock
