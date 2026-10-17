@@ -157,7 +157,7 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  #tab-ops>.two{display:block}
  #tab-ops>section:last-child{grid-column:1/-1}
  #tab-dds{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 14px;align-items:start}
- #tab-dds>section:first-child{grid-row:span 3}
+ #tab-dds>section:first-child{grid-row:span 4}
  #tab-audio{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 14px;align-items:start}
 }
 @media (max-width:899px){
@@ -440,6 +440,16 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
   <h2>トピック受信状況（Jetson の購読）</h2>
   <table id="rates"><thead><tr><th>トピック</th><th>最終受信から [秒]</th></tr></thead><tbody></tbody></table>
   <p class="note">高頻度のトピックは 0.2 秒に 1 通へ間引いて読むので、頻度（Hz）は測れない。lidar・カメラは対象外。</p>
+ </section>
+
+ <section class="card" id="tp-card">
+  <h2>トピック通信<span class="tags" data-feature="topics"></span></h2>
+  <p id="tp-msg" class="res"></p>
+  <div class="arow"><input type="text" id="tp-topic" placeholder="購読するトピック（例 rt/rtc/state）" maxlength="120"><select id="tp-type" aria-label="型"></select><button id="tp-sub" type="button">購読</button></div>
+  <table class="dtable" id="tp-table"><thead><tr><th>トピック</th><th>受信</th><th>最新メッセージ</th><th></th></tr></thead><tbody></tbody></table>
+  <h3>送信（許可リストにあるものだけ）</h3>
+  <div id="tp-pub"></div>
+  <p class="note">購読は自由ですが、読める型だけです。送信は <code>--topics-file</code> に書かれた String_ トピックだけで、画面から増やせません。運動・関節・腕・RPC・リモコン入力は許可リストに書いても拒否します。<b>送信は G1 の DDS に出ます</b>。</p>
  </section>
  <section class="card">
   <h2>この画面について（機能の状態）</h2>
@@ -1250,6 +1260,46 @@ async function mpDelete(name){
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&tab==='map')mpPresence()});
 window.addEventListener('resize',()=>{if(tab==='map')mpDraw()});
 
+/* ---- トピック通信（DDS タブ内）。DDS から来た値は textContent だけで描く ---- */
+let tpT=null,tpInfo=null;
+function tpMsg(cls,text){const e=$('tp-msg');e.className='res '+cls;e.textContent=text}
+async function tpLoad(){
+  try{tpInfo=await tkApi('/api/topics')}catch(e){tpInfo=null;$('tp-card').hidden=/404|not found/i.test(e.message);tpMsg('warn','トピック通信は使えません: '+e.message);return}
+  $('tp-card').hidden=false;tpMsg('','');
+  const sel=$('tp-type');if(!sel.children.length)tpInfo.supported_types.forEach(t=>{const o=document.createElement('option');o.value=o.textContent=t;sel.append(o)});
+  const box=$('tp-pub');box.textContent='';
+  if(!tpInfo.publish.length){const p=document.createElement('p');p.className='note';p.textContent='送信の許可リストは空です（何も送れません）';box.append(p)}
+  tpInfo.publish.forEach(r=>{
+    const row=document.createElement('div'),nm=document.createElement('b'),inp=document.createElement('input'),btn=document.createElement('button');
+    row.className='arow';nm.textContent=r.topic;inp.type='text';inp.maxLength=r.max_bytes;inp.placeholder=`文字列（${r.max_bytes} バイトまで・${r.min_interval_s} 秒間隔）`;
+    btn.type='button';btn.textContent='送信';
+    btn.onclick=async()=>{
+      try{const j=await tkApi('/api/topics/publish',{topic:r.topic,data:inp.value});tpMsg('ok',`送信しました: ${j.published}（${j.bytes} バイト）`)}
+      catch(e){tpMsg('bad',e.message)}
+    };
+    row.append(nm,inp,btn);box.append(row);
+  });
+}
+async function tpTick(){
+  if(tab!=='dds'||!tpInfo||!tpInfo.subscribed.length&&!$('tp-table').querySelector('tbody').children.length)return;
+  let items;try{items=(await tkApi('/api/topics/received')).items}catch(e){tpMsg('bad',e.message);return}
+  const tb=$('tp-table').querySelector('tbody');tb.textContent='';
+  items.forEach(it=>{
+    const tr=document.createElement('tr');
+    td(tr,it.topic);td(tr,it.age_s==null?'受信なし':`${f(it.age_s,1)} 秒前（${it.count} 件）`,it.age_s==null?'live-none':'live-ok');
+    const m=td(tr,'');const pre=document.createElement('code');pre.textContent=it.message==null?'—':JSON.stringify(it.message).slice(0,300);m.append(pre);
+    const c=td(tr,'');const b=document.createElement('button');b.type='button';b.textContent='解除';b.className='sm';
+    b.onclick=async()=>{try{await tkApi('/api/topics/unsubscribe',{topic:it.topic});await tpLoad();tpTick()}catch(e){tpMsg('bad',e.message)}};
+    c.append(b);tb.append(tr);
+  });
+}
+$('tp-sub').onclick=async()=>{
+  try{const j=await tkApi('/api/topics/subscribe',{topic:$('tp-topic').value.trim(),type:$('tp-type').value});tpMsg('ok','購読しました: '+j.topic);await tpLoad();tpTick()}
+  catch(e){tpMsg('bad',e.message)}
+};
+function tpStart(){tpLoad().then(tpTick);if(!tpT)tpT=setInterval(tpTick,2000)}
+function tpStop(){clearInterval(tpT);tpT=null}
+
 /* 主ナビ 5 つ（操作／状態／マップ・タスク／センサ／開発）。画面が無いグループは出さない。
    タブ名 = #hash = API 名は従来どおり。画面を足すときは該当グループの配列に入れる。 */
 const GROUPS=[['ops','操作',['ops','motion','audio']],['state','状態',['state','joints']],['maptask','マップ・タスク',['map','tasks']],['sensor','センサ',['camera']],['dev','開発',['dds','settings']]];
@@ -1267,6 +1317,7 @@ function setTab(t){
   t==='camera'?(camProc('status'),loadCameras(),ldProc('status')):(stopCameras(),ldView(false));
   history.replaceState(null,'','#'+t);
   if(t==='dds'){if(!dds)loadDds();else renderDds()}
+  t==='dds'?tpStart():tpStop();
   if(t==='settings')loadSettings();
   if(t==='motion')moStatus();
   if(t==='tasks')tkRefresh();

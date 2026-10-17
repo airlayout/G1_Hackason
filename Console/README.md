@@ -73,6 +73,15 @@ python3 server.py --local --bind-iface wlan0 --nav-adapter http://127.0.0.1:<por
 - `--nav-adapter`: 同じ機体の ROS アダプタ（loopback の http のみ）。ハブは GET だけ読む。**Nav2 へ目的地・操作は送らない**（Nav2 の起動・停止ボタンも無い）。
 - Nav2 稼働中は手動操作が無効になる。一度稼働を見たら、アダプタが黙っても無効のまま（安全側）。
 - `--heartbeat-to`: 画面（マップタブ）が見ている間だけ Nav2 へ生存信号（UDP）を出す。未指定なら送らない。
+
+### トピック通信（DDS タブ）
+```
+python3 server.py --local --topics-file Console/data/topics.json   # 許可リスト（省略時は Console/data/topics.json。無ければ何も送れない）
+```
+- 購読は自由（読める型だけ。最大 8 件）。送信は許可リストにある String_ だけで、リストはサーバー側のファイルのみ（画面・API から増やせない）。
+- 許可リスト: `{"version":1,"publish":[{"topic":"rt/xxx","max_bytes":64,"min_interval_s":1.0}]}`。
+- `rt/lowcmd`・`rt/api/*`・`rt/arm_sdk`・リモコン入力・非常停止などは常に送信拒否（許可リストに書くと起動しない）。
+- Jetson の DDS での動作は未確認（`docs/REAL_ROBOT_CHECKLIST.md` J16・J17）。
 - 地点は `data/locations.json`。タスクの argv から `{loc:名前.x}` `{loc:名前.y}` `{loc:名前.yaw_deg}` で参照できる。
 - 未確認: 実アダプタとの結合、RViz との座標の一致、生存信号の受信側（`docs/REAL_ROBOT_CHECKLIST.md` J11〜J15）。
 

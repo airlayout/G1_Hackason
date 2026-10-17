@@ -302,6 +302,42 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/Locations"
+  "/api/topics":
+    get:
+      operationId: "getTopics"
+      tags:
+        - "dds"
+      summary: "トピック通信の方針（常に拒否・送信の許可リスト・購読中）"
+      x-effect: "read"
+      description: "--local / --mock のときだけ。受信は自由（型が読めるものだけ）、送信は許可リストにある String_ だけ。運動・関節・腕・RPC は常に拒否。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Topics"
+  "/api/topics/received":
+    get:
+      operationId: "getTopicsReceived"
+      tags:
+        - "dds"
+      summary: "購読中トピックの最新メッセージと受信状況"
+      x-effect: "read"
+      description: "購読が 0 件ならヘルパーを起動せず空を返す。age_s が null なら一度も受信していない（異常とは限らない）。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TopicsReceived"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/cameras":
     get:
       operationId: "getCameras"
@@ -665,6 +701,151 @@ paths:
                 "$ref": "#/components/schemas/Error"
         "500":
           description: "保存できない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/topics/subscribe":
+    post:
+      operationId: "postTopicSubscribe"
+      tags:
+        - "dds"
+      summary: "トピックを購読する（初回はヘルパーを起動する）"
+      x-effect: "settings"
+      description: "型は名前から推測しない。呼び出し側が GET /api/dds の type を見て、supported_types にあるものだけ指定する。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TopicSubscribePatch"
+            example:
+              topic: "rt/rtc/state"
+              type: "String_"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TopicSubscribed"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "購読の上限"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "422":
+          description: "型が読めない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/topics/unsubscribe":
+    post:
+      operationId: "postTopicUnsubscribe"
+      tags:
+        - "dds"
+      summary: "購読をやめる"
+      x-effect: "settings"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TopicNamePatch"
+            example:
+              topic: "rt/rtc/state"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TopicUnsubscribed"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "404":
+          description: "購読していない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/topics/publish":
+    post:
+      operationId: "postTopicPublish"
+      tags:
+        - "dds"
+      summary: "許可リストにあるトピックへ String_ を送る。**G1 の DDS に出る**"
+      x-effect: "robot_write"
+      description: "拒否リスト（運動・関節・腕・RPC など）は許可リストに書いても効かない。許可リストはサーバー側の --topics-file だけで、画面・API から増やせない。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TopicPublishPatch"
+            example:
+              topic: "rt/console_demo/say"
+              data: "hello"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TopicPublished"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "403":
+          description: "常に拒否するトピック、または許可リストにない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "413":
+          description: "max_bytes を超える"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "429":
+          description: "最小間隔より速い"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
           content:
             "application/json":
               schema:
@@ -2386,6 +2567,160 @@ components:
       type: "object"
       description: "本文は空でよい"
       properties: {}
+      additionalProperties: false
+    Topics:
+      type: "object"
+      properties:
+        enabled:
+          type: "boolean"
+        backend:
+          type: "string"
+          description: "local / mock"
+        deny:
+          type: "array"
+          items:
+            type: "string"
+          description: "常に送信を拒否するトピック（fnmatch）。許可リストより強い"
+        supported_types:
+          type: "array"
+          items:
+            type: "string"
+          description: "購読で読める型"
+        max_subscriptions:
+          type: "integer"
+        publish:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              topic:
+                type: "string"
+              type:
+                type: "string"
+              max_bytes:
+                type: "integer"
+              min_interval_s:
+                type: "number"
+              note:
+                type: "string"
+            required:
+              - "topic"
+              - "type"
+              - "max_bytes"
+              - "min_interval_s"
+              - "note"
+            additionalProperties: false
+          description: "送信の許可リスト（サーバー側ファイルだけ。画面から増やせない）"
+        subscribed:
+          type: "array"
+          items:
+            type: "string"
+      required:
+        - "enabled"
+        - "backend"
+        - "deny"
+        - "supported_types"
+        - "max_subscriptions"
+        - "publish"
+        - "subscribed"
+      additionalProperties: false
+    TopicsReceived:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              topic:
+                type: "string"
+              type:
+                type: "string"
+              count:
+                type: "integer"
+                description: "受信した件数"
+              age_s:
+                type: "number"
+                description: "最後の受信からの秒数。null=まだ受信なし"
+                nullable: true
+              message:
+                type: "object"
+                description: "最新メッセージ（配列は 16 要素、文字列は 512 文字まで）"
+                additionalProperties: true
+                nullable: true
+            required:
+              - "topic"
+              - "type"
+              - "count"
+              - "age_s"
+              - "message"
+            additionalProperties: false
+      required:
+        - "items"
+      additionalProperties: false
+    TopicSubscribePatch:
+      type: "object"
+      properties:
+        topic:
+          type: "string"
+          description: "rt/ で始まる名前"
+        type:
+          type: "string"
+          description: "GET /api/topics の supported_types のどれか"
+      required:
+        - "topic"
+        - "type"
+      additionalProperties: false
+    TopicNamePatch:
+      type: "object"
+      properties:
+        topic:
+          type: "string"
+      required:
+        - "topic"
+      additionalProperties: false
+    TopicPublishPatch:
+      type: "object"
+      properties:
+        topic:
+          type: "string"
+          description: "許可リストにあるトピック"
+        data:
+          type: "string"
+          description: "送る文字列（max_bytes まで）"
+      required:
+        - "topic"
+        - "data"
+      additionalProperties: false
+    TopicSubscribed:
+      type: "object"
+      properties:
+        topic:
+          type: "string"
+        type:
+          type: "string"
+      required:
+        - "topic"
+        - "type"
+      additionalProperties: false
+    TopicUnsubscribed:
+      type: "object"
+      properties:
+        unsubscribed:
+          type: "string"
+      required:
+        - "unsubscribed"
+      additionalProperties: false
+    TopicPublished:
+      type: "object"
+      properties:
+        published:
+          type: "string"
+        bytes:
+          type: "integer"
+      required:
+        - "published"
+        - "bytes"
       additionalProperties: false
     PresenceAck:
       type: "object"

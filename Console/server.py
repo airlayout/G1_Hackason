@@ -35,6 +35,8 @@ from g1console.heartbeat import OperatorHeartbeat, parse_target
 from g1console.locations import LocationStore
 from g1console.nav import NavProxy, NavWatcher, parse_adapter_url
 from g1console.navapi import NavApi
+from g1console.topic_backend import HelperTopicBackend
+from g1console.topics import MockTopicBackend, TopicService, default_allowlist_path, handle as topics_handle, load_allowlist
 from g1console.tasks import TaskError, TaskRunner, load_definitions
 from g1console.modes import (ACTIONS, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, JOINT_NAMES, PLANNED_ACTIONS, PLANNED_MODES, TABS,
                    validate_audio)
@@ -386,7 +388,7 @@ def fsm_source(monitor):
 
 
 def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=None, lidar_ctl=None, lidar_base=None,
-                 auth=None, motion=None, tasks=None, nav=None):
+                 auth=None, motion=None, tasks=None, nav=None, topics=None):
     def camera_url():
         return camera_base or (settings.camera_base(resolve_host) if settings else None)
 
@@ -461,6 +463,9 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
             hit = nav.get(self.path) if nav else None
             if hit:
                 return self._send(*hit)
+            hit = topics_handle(topics, "GET", self.path) if topics else None
+            if hit:
+                return self._json(*hit)
             if self.path == "/api":
                 self._json(200, openapi())
             elif self.path == "/openapi.yaml":
@@ -574,6 +579,8 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 return self._lidar_ctl(self.path.rsplit("/", 1)[1])
             if nav and self.path.startswith(("/api/nav/", "/api/locations/")):
                 return self._post_nav()
+            if topics and self.path.startswith("/api/topics/"):
+                return self._post_topics()
             if self.path in ("/api/tasks/start", "/api/tasks/stop") and tasks:
                 return self._post_task(self.path.rsplit("/", 1)[1])
             if self.path.startswith("/api/motion/") and motion:
@@ -641,6 +648,16 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
             if hit is None:
                 return self._json(404, {"error": "not found"})
             self._send(*hit)
+
+        def _post_topics(self):
+            try:
+                body = self._read_json()
+            except (ValueError, TypeError):
+                return self._json(400, {"error": "bad request"})
+            hit = topics_handle(topics, "POST", self.path, body)
+            if hit is None:
+                return self._json(404, {"error": "not found"})
+            self._json(*hit)
 
         def _post_task(self, kind: str):
             """タスクの起動・停止。受け取るのはタスク名だけ（argv やパスは定義ファイルにしかない）。"""
@@ -754,6 +771,7 @@ def main():
     parser.add_argument("--tasks-dir", default=str(HERE / "tasks"), help="タスク定義（*.json）のディレクトリ（既定は Console/tasks）")
     parser.add_argument("--nav-adapter", metavar="URL", help="Nav2 の ROS アダプタ（読み取り専用）の URL。http://127.0.0.1:<port> のみ")
     parser.add_argument("--heartbeat-to", metavar="HOST:PORT", help="Nav2 の操作者 heartbeat の送信先。画面を見ている間だけ送る")
+    parser.add_argument("--topics-file", default=default_allowlist_path(HERE), help="トピック送信の許可リスト（JSON）。無ければ何も送れない")
     parser.add_argument("--locations-file", default=str(HERE / "data" / "locations.json"), help="ロケーションの保存先")
     args = parser.parse_args()
     if args.mock and args.local:
@@ -787,14 +805,17 @@ def main():
         tasks = TaskRunner(load_definitions(args.tasks_dir, HERE), HERE, locations=locations)
         proxy = NavProxy(parse_adapter_url(args.nav_adapter)) if args.nav_adapter else None
         heartbeat = OperatorHeartbeat(*parse_target(args.heartbeat_to)) if args.heartbeat_to else None
+        allowlist = load_allowlist(args.topics_file)
     except (ValueError, OSError) as exc:
         parser.error("設定が不正です: %s" % exc)
+    topics = TopicService(MockTopicBackend() if args.mock else HelperTopicBackend(allowlist), allowlist) if (
+        args.mock or args.local) else None  # ssh 経由のときはトピックを扱わない（ヘルパーを Jetson 上で持てない）
     watcher = NavWatcher(proxy, motion) if proxy else None
     for service in (watcher, heartbeat):
         if service:
             service.start()
     handler = make_handler(helper, monitor, camera_base, settings, camera_ctl, lidar_ctl, auth=auth, motion=motion,
-                           tasks=tasks, nav=NavApi(locations, watcher, proxy, heartbeat))
+                           tasks=tasks, nav=NavApi(locations, watcher, proxy, heartbeat), topics=topics)
     servers = [ThreadingHTTPServer((b, args.port), handler) for b in binds]
     for b in binds:
         print("[console] http://%s:%d (%s)%s" % (b, args.port, helper.backend, "" if auth is None else " 認証あり"))
@@ -814,6 +835,8 @@ def main():
         motion.shutdown()
         sender.close()
         tasks.shutdown()
+        if topics:
+            topics.close()
         for service in (watcher, heartbeat):
             if service:
                 service.stop()

@@ -32,6 +32,8 @@
 | GET | `/api/nav/map.json` | getNavMapInfo | read | 地図の解像度・原点・大きさ |
 | GET | `/api/nav/map.png` | getNavMapPng | read | 地図の PNG（アダプタの画像を検証して中継） |
 | GET | `/api/locations` | getLocations | read | 登録済みの地点（名前つき座標） |
+| GET | `/api/topics` | getTopics | read | トピック通信の方針（常に拒否・送信の許可リスト・購読中） |
+| GET | `/api/topics/received` | getTopicsReceived | read | 購読中トピックの最新メッセージと受信状況 |
 | GET | `/api/cameras` | getCameras | read | カメラ一覧と、配信が設定済みか（映像は GET /camera/{name}） |
 | GET | `/api/camera/status` | getCameraStatus | read | camera_stream の起動状態と、映像デバイスを掴んでいるプロセス（foreign＝自前以外） |
 | GET | `/api/lidar/status` | getLidarStatus | read | lidar_stream（Jetson の点群配信）の起動状態 |
@@ -47,6 +49,9 @@
 | POST | `/api/nav/presence` | postNavPresence | settings | 『人が画面を見ている』を知らせる（0.5 秒ごと）。見ている間だけ Nav2 へ生存信号を出す ⚠実機未検証 |
 | POST | `/api/locations/save` | postLocationSave | settings | 地点を登録・上書きする |
 | POST | `/api/locations/delete` | postLocationDelete | settings | 地点を削除する |
+| POST | `/api/topics/subscribe` | postTopicSubscribe | settings | トピックを購読する（初回はヘルパーを起動する） ⚠実機未検証 |
+| POST | `/api/topics/unsubscribe` | postTopicUnsubscribe | settings | 購読をやめる ⚠実機未検証 |
+| POST | `/api/topics/publish` | postTopicPublish | robot_write | 許可リストにあるトピックへ String_ を送る。**G1 の DDS に出る** ⚠実機未検証 |
 | POST | `/api/camera/start` | postCameraStart | settings | Jetson で camera_stream.py を起動（再起動はしない。他が掴んでいれば失敗しうる） |
 | POST | `/api/camera/stop` | postCameraStop | settings | camera_stream.py だけを停止（videohub など他のプロセスは止めない） |
 | POST | `/api/lidar/start` | postLidarStart | settings | Jetson で lidar_stream.py を起動（DDS を購読するだけ。再起動はしない） |
@@ -110,6 +115,33 @@
 {"name": "example-spot"}
 ```
 スキーマ: `LocationNamePatch`。タスクがその地点を参照していると、次の起動時に 409 になる。
+
+### POST /api/topics/subscribe
+
+トピックを購読する（初回はヘルパーを起動する）
+
+```json
+{"topic": "rt/rtc/state", "type": "String_"}
+```
+スキーマ: `TopicSubscribePatch`。型は名前から推測しない。呼び出し側が GET /api/dds の type を見て、supported_types にあるものだけ指定する。
+
+### POST /api/topics/unsubscribe
+
+購読をやめる
+
+```json
+{"topic": "rt/rtc/state"}
+```
+スキーマ: `TopicNamePatch`
+
+### POST /api/topics/publish
+
+許可リストにあるトピックへ String_ を送る。**G1 の DDS に出る**
+
+```json
+{"topic": "rt/console_demo/say", "data": "hello"}
+```
+スキーマ: `TopicPublishPatch`。拒否リスト（運動・関節・腕・RPC など）は許可リストに書いても効かない。許可リストはサーバー側の --topics-file だけで、画面・API から増やせない。
 
 ### POST /api/monitor
 

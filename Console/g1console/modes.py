@@ -63,6 +63,8 @@ FEATURES = [
      "note": "--nav-adapter（loopback の ROS アダプタ）を読むだけ。Goal や巡回の操作は送らない。実アダプタ・RViz との位置合わせは未確認"},
     {"id": "locations", "label": "地点（名前つき座標）の登録・編集と、タスクからの参照", "implemented": True, "verified": False,
      "note": "Console/data/locations.json。タスクの argv の {loc:NAME.x} で参照。座標系が Nav2 の map と一致するかは実機で未確認"},
+    {"id": "topics", "label": "トピック通信（購読は自由、送信は許可リストだけ）", "implemented": True, "verified": False,
+     "note": "--local のときだけ。運動・関節・腕・RPC は常に送信拒否。許可リストは --topics-file（既定は空）。Jetson の DDS では未確認"},
     {"id": "battery", "label": "バッテリー表示", "implemented": True, "verified": False,
      "note": "rt/lf/bmsstate。電圧・電流の単位は推定"},
     {"id": "audio", "label": "音声・LED（音量・頭部 LED・読み上げ）", "implemented": True, "verified": False,

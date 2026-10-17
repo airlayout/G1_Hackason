@@ -20,6 +20,7 @@ from g1console.modes import validate_audio, ALLOWED_IDS, BUTTONS, FEATURES, FSM_
 from g1console.locations import LocationStore  # noqa: E402
 from g1console.navapi import NavApi  # noqa: E402
 from g1console.tasks import TaskRunner, load_definitions  # noqa: E402
+from g1console.topics import MockTopicBackend, TopicService  # noqa: E402
 from g1console.camera_proc import MockCameraCtl  # noqa: E402
 from g1console.lidar_proc import MockLidarCtl  # noqa: E402
 from server import MockHelper, Monitor, SshHelper, describe, make_handler  # noqa: E402
@@ -193,9 +194,11 @@ class HttpTest(unittest.TestCase):
         cls.tasks = TaskRunner(load_definitions(console / "tasks", console), console)
         cls.tmp = tempfile.mkdtemp(prefix="g1console-test-")
         cls.nav = NavApi(LocationStore(Path(cls.tmp) / "locations.json"))  # アダプタなし（地図は 404、地点は使える）
+        allow = {"rt/console_demo/say": {"topic": "rt/console_demo/say", "type": "String_", "max_bytes": 64, "min_interval_s": 0.1, "note": ""}}
+        cls.topics = TopicService(MockTopicBackend(), allow)
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.helper, cls.monitor, None, cls.settings, MockCameraCtl(), MockLidarCtl(),
                                                                    motion=MotionController(MockSender(), lambda: (501, 0.1)),
-                                                                   tasks=cls.tasks, nav=cls.nav))
+                                                                   tasks=cls.tasks, nav=cls.nav, topics=cls.topics))
         cls.port = cls.server.server_address[1]
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
@@ -258,7 +261,7 @@ class HttpTest(unittest.TestCase):
         self.assertTrue(d["services"])
         j = json.load(urllib.request.urlopen("http://127.0.0.1:%d/api/features" % self.port, timeout=5))
         self.assertEqual({f["id"] for f in j["features"]},
-                         {"connection", "reconnect", "mode", "action", "move", "tasks", "nav", "locations", "battery", "audio", "sensors"})
+                         {"connection", "reconnect", "mode", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "sensors"})
         self.assertTrue(j["planned_modes"] and j["actions"])
         self.assertEqual(j["planned_actions"], [])  # 未実装のアクションは無い（形は保つ）
 
