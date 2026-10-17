@@ -1,6 +1,6 @@
 # Console テスト仕様書（Jetson 常駐版）
 
-最終更新: 2026-10-18。要件は [REQUIREMENTS.md](REQUIREMENTS.md)、設計は [DESIGN.md](DESIGN.md)。実機の確認項目は [REAL_ROBOT_CHECKLIST.md](REAL_ROBOT_CHECKLIST.md)（A〜I）。
+最終更新: 2026-10-18。要件は [REQUIREMENTS.md](REQUIREMENTS.md)、設計は [DESIGN.md](DESIGN.md)。実機の確認項目は [REAL_ROBOT_CHECKLIST.md](REAL_ROBOT_CHECKLIST.md)（A〜J）。
 
 ## 1. テストの種類
 | 種類 | 実行方法 | 実機 | 状態の凡例 |
@@ -9,9 +9,9 @@
 | Mac 煙テスト（手動） | `server.py --local`・`--require-token` を起動して `curl` | 不要 | 済 / 未 |
 | 実機（人が実施） | Jetson で起動、スマホから操作 | 要 | 未（歩行を伴うものは物理リモコンを手元に置く） |
 
-現在の自動テスト: **124 件**（test_console 47 / test_lidar 20 / test_auth 28 / test_local 16 / test_camera_proc 7 / test_web 6）。通過確認は下の実行記録に日付つきで残す。
+現在の自動テスト: **148 件**（test_console 47 / test_lidar 20 / test_auth 28 / test_local 16 / test_camera_proc 7 / test_web 6 / test_motion 24）。通過確認は下の実行記録に日付つきで残す。
 
-実行記録: 2026-10-18 段階 2b 時点で 124 件通過（`run_tests.sh`）。
+実行記録: 2026-10-18 段階 2b 時点で 124 件通過、段階 3 時点で 148 件通過（`run_tests.sh`）。段階 3 は `--mock` ハブでも claim → 保持 → 0.8 秒の沈黙で `lost` → 同じ session は 409 → estop を確認。
 
 ## 2. 自動テスト（実施済み）
 | 要件 | 内容 | テスト |
@@ -29,6 +29,19 @@
 | R-14 | カメラ・lidar の起動停止、状態解析 | `test_camera_proc`、`test_lidar` |
 | 既存 | モード表示・切り替え、模擬シナリオ、API スキーマ | `test_console` |
 | R-07 | 主ナビ 5 グループの定義、全画面がちょうど 1 グループから到達できる、画面切り替えボタンの存在、`#hash` = タブ名、設定・DDS が「開発」、スマホ向け CSS の土台が残っている（ソース検査。JS 構文は node で確認） | `test_web.NavStructureTest`（6 件） |
+| R-08, R-11 | 指令が `duration` 付き速度で送られる／速度がクランプされ NaN・無限大・文字列・bool は拒否 | `test_motion.ControllerTest` T3-1, T3-2 |
+| R-09, NF-05 | 受信が 0.5 秒途絶するとゼロ速度で `lost`。自動再開しない。生存は受信時刻で判定 | `ControllerTest` T3-3, T3-3b |
+| R-12 | 緊急停止は常に `stop` を送り操作者を外す | `ControllerTest` T3-4 |
+| R-10 | 単独操作者・横取り | `ControllerTest` T3-5 |
+| R-11 | FSM 500/501 かつ状態が新しいときだけ運動 | `ControllerTest` T3-6 |
+| R-17 下地 | `disable_reason` で claim 拒否・操作者を外す | `ControllerTest` T3-7 |
+| R-09 | ゼロ目標は停止 1 回だけで、連続送信しない | `ControllerTest` T3-8 |
+| R-08 | 順序が逆の ctl は無視し、生存の根拠にしない（デッドロック回帰） | `ControllerTest` T3-9 |
+| R-09 | 送信 3 回連続失敗で操作者を外す | `ControllerTest` T3-10 |
+| R-12 | 停止後に古い判断を送らない（世代） | `ControllerTest` T3-11 |
+| R-13 | アクションは許可リスト・操作者・歩行 FSM が必要 | `ControllerTest` T3-12 |
+| R-08〜R-13 | HTTP 経由の claim / ctl / status / estop、400・409、blocked 理由、`fsm_source` | `test_motion.HttpMotionTest` T3-13 ほか |
+| NF-06, NF-09 | `motion_helper` は move/stop/task のみ・禁止名なし。偽の子プロセスで往復、無応答は破棄、拒否はエラー | `test_motion.HelperTest` T3-14 ほか |
 
 ## 3. Mac 煙テスト（実施済み）
 | 内容 | 期待 |
@@ -36,6 +49,7 @@
 | `server.py --local` を起動（loopback のみ、認証なし） | 画面と `/api/state` が返る |
 | `--require-token` で起動 | トークン無しは 401、`/login?token=…` で 302 と Cookie、Cookie で 200 |
 | `--mock` と `--local` の併用 | エラー終了 |
+| `--mock` で claim → ctl 保持 → 0.8 秒の沈黙 → `lost` → 同 session は 409 → estop（段階 3、2026-10-18） | `moving` 真→偽、`last_event.kind` が `lost` / `estop`、ハブのログに例外なし |
 
 未実施: `--bind-iface wlan0`（Mac に `ip` コマンドが無いため、Jetson で確認する）。
 
@@ -47,25 +61,6 @@ T2b-1・T2b-2 は §2 の `test_web` に移した。残り:
 | ID | 内容 | 期待 | 種類 |
 |---|---|---|---|
 | T2b-3 | 幅 360px で横スクロールなし、主ナビ 4 項目（マップ・タスクは空のため非表示）が押せる | スクロール幅 ≤ 画面幅 | ブラウザ／スマホ手動（未実施。実機 A3 に反映） |
-
-### 段階 3（運動制御、R-08〜R-13）
-`MotionController` はヘルパーを差し替えられる形にし、時刻も注入して、実機なしで検証する。
-| ID | 内容 | 期待 |
-|---|---|---|
-| T3-1 | 起動直後は `disarmed`。指令は拒否され、ヘルパーに何も送らない | 送信 0 件（R-11, NF-03） |
-| T3-2 | 認証済みでも、操作権を取っていないと指令は拒否 | 403 |
-| T3-3 | 2 人目の `claim` は拒否。解放後は取れる | R-10 |
-| T3-4 | 受信が 0.5 秒途絶するとゼロ速度、`lost` | R-09, NF-05 |
-| T3-5 | `lost` からは、指令が再び来ても自動再開しない。明示操作で復帰 | R-09 |
-| T3-6 | 速度がクランプされる（上限超過・NaN・無限大・文字列） | 上限値。不正値は拒否 |
-| T3-7 | FSM が 500/501 以外のとき指令を拒否 | R-11 |
-| T3-8 | `seq` が古い・重複した指令を捨てる | 逆戻り無し |
-| T3-9 | 緊急停止でゼロ速度 + `StopMove`。`lost` へ | R-12 |
-| T3-10 | `motion.disable_reason` が設定されると指令を拒否 | R-17 の下地 |
-| T3-11 | 許可リスト外のアクション名は拒否 | R-13 |
-| T3-12 | `motion_helper` は `SetVelocity` / `StopMove` 以外を実行しない | 他は拒否 |
-| T3-13 | `status` が重くても速度指令が遅れない（別プロセス） | 遅延が許容内 |
-| 実機 | E1（離したら止まる、遅れ数百 ms 以内）、E2（上限決定）、E3（通信断で止まる） | 吊り下げ・広い場所・物理リモコンを手元に |
 
 ### 段階 4（タスク、R-15）
 | ID | 内容 | 期待 |
@@ -98,11 +93,13 @@ T2b-1・T2b-2 は §2 の `test_web` に移した。残り:
 ## 5. 実機確認の対応表（人が実施。実施したら日付と測定値を残す）
 | 要件 | 確認 | チェックリスト |
 |---|---|---|
-| R-01, R-06 | Jetson で `--local` が Python 3.8 で動く。`--bind-iface wlan0` が IP を取れる。systemd 設置 | 新規（I 節へ追記予定） |
-| R-02 | スマホから `http://<wlan0 の IP>:18790/?token=…` が開く。eth0 側アドレスでは届かない | 新規 |
-| R-03〜R-05 | 別端末でトークン無し・誤りが拒否される | 新規 |
+| R-01, R-06 | Jetson で `--local` が Python 3.8 で動く。`--bind-iface wlan0` が IP を取れる。systemd 設置 | J1〜J3 |
+| R-02 | スマホから `http://<wlan0 の IP>:18790/?token=…` が開く。eth0 側アドレスでは届かない | J4, J5 |
+| R-03〜R-05 | 別端末でトークン無し・誤りが拒否される | J6 |
 | R-07 | 幅 360px 実機（スマホ）で崩れない | A3 |
-| R-08, R-09 | 離す・タブ非表示・Wi-Fi 切断で止まる。停止までの遅れ、止まるまでの歩行距離 | E1, E3 |
+| R-08, R-09 | 離す・タブ非表示・Wi-Fi 切断で止まる。停止までの遅れ、止まるまでの歩行距離。パッドのタッチ操作（マルチタッチ）と見た目 | E1, E3, E4, E5 |
+| R-10, R-12 | 2 台のスマホで操作者が 1 人。緊急停止の効き（物理リモコンを手元に） | E6 |
+| R-13 | アクション番号 0〜3 の実際の動作 | E7 |
 | R-11 | 上限速度、500 と 501 の違い | E2, B3 |
 
 ## 6. 更新ルール

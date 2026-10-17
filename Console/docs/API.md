@@ -25,6 +25,7 @@
 | GET | `/api/snapshot` | getSnapshot | read | state と joints を 1 回で取得（状況把握はこれ 1 本で足りる） |
 | GET | `/api/audio/volume` | getVolume | read | スピーカー音量を G1 から読む（Jetson 経由で実際に問い合わせる） |
 | POST | `/api/audio/volume` | postVolume | robot_write | 音量を設定し、読み戻して一致を確認する ⚠実機未検証 |
+| GET | `/api/motion/status` | getMotionStatus | read | 運動操作の状態（操作者・目標速度・動かせない理由・直近の出来事） |
 | GET | `/api/cameras` | getCameras | read | カメラ一覧と、配信が設定済みか（映像は GET /camera/{name}） |
 | GET | `/api/camera/status` | getCameraStatus | read | camera_stream の起動状態と、映像デバイスを掴んでいるプロセス（foreign＝自前以外） |
 | GET | `/api/lidar/status` | getLidarStatus | read | lidar_stream（Jetson の点群配信）の起動状態 |
@@ -43,6 +44,11 @@
 | POST | `/api/lidar/stop` | postLidarStop | settings | lidar_stream.py だけを停止 |
 | POST | `/api/monitor` | postMonitor | settings | 自動確認・自動再接続の停止／再開、または 1 回だけ確認 |
 | POST | `/api/mode` | postMode | robot_motion | G1 のモード（FSM）を切り替える。**ロボットが動く** ⚠実機未検証 |
+| POST | `/api/motion/claim` | postMotionClaim | robot_write | 操作権を取る（運動ヘルパーを起動する。初回は数秒かかる） ⚠実機未検証 |
+| POST | `/api/motion/ctl` | postMotionCtl | robot_motion | 目標速度を送る。**ロボットが動く**。10 Hz で送り続けること（0.5 秒途絶すると停止して操作権を解除） ⚠実機未検証 |
+| POST | `/api/motion/release` | postMotionRelease | robot_motion | 操作権を手放す（ゼロ速度にする） ⚠実機未検証 |
+| POST | `/api/motion/estop` | postMotionEstop | robot_motion | 緊急停止。ゼロ速度＋StopMove を送り、操作権を解除する（操作権が無くても誰でも押せる） ⚠実機未検証 |
+| POST | `/api/motion/action` | postMotionAction | robot_motion | アクション（手を振る・握手）。**ロボットが動く** ⚠実機未検証 |
 | POST | `/api/audio/led` | postLed | robot_write | 頭部 LED の色を設定 ⚠実機未検証 |
 | POST | `/api/audio/tts` | postTts | robot_write | テキストを読み上げる ⚠実機未検証 |
 | POST | `/api/scenario` | postScenario | settings | 模擬シナリオを切り替える （mock のみ） |
@@ -84,6 +90,42 @@ G1 のモード（FSM）を切り替える。**ロボットが動く**
 {"id": 3}
 ```
 スキーマ: `ModePatch`。受理（set_code=0）は到達ではない。実行後は GET /api/status を繰り返し読み、mode.fsm_id が目標になるか確認する（15 秒を目安）。歩行中（500/501）に切り替えると転倒の恐れがある。実行前に必ず人へ確認する。実機では未検証。
+
+### POST /api/motion/claim
+
+操作権を取る（運動ヘルパーを起動する。初回は数秒かかる）
+
+```json
+{}
+```
+スキーマ: `MotionClaimPatch`。操作者は 1 人。接続断・緊急停止・解放のあとは自動で再開しないので、もう一度 claim する。
+
+### POST /api/motion/ctl
+
+目標速度を送る。**ロボットが動く**。10 Hz で送り続けること（0.5 秒途絶すると停止して操作権を解除）
+
+```json
+{"session": "example", "seq": 1, "vx": 0.0, "vy": 0.0, "wz": 0.0}
+```
+スキーマ: `MotionCtlPatch`。FSM 500/501 以外では動かさない（blocked に理由）。速度は上限で丸める（実機未検証の初期値）。人が見ていないときに送らない。物理リモコンを手元に置く。
+
+### POST /api/motion/release
+
+操作権を手放す（ゼロ速度にする）
+
+```json
+{"session": "example"}
+```
+スキーマ: `MotionSessionPatch`
+
+### POST /api/motion/action
+
+アクション（手を振る・握手）。**ロボットが動く**
+
+```json
+{"session": "example", "name": "wave"}
+```
+スキーマ: `MotionActionPatch`。SetTaskId の番号と効果は実機未検証。握手は開始のあと shake_end で終える。
 
 ### POST /api/audio/led
 

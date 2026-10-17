@@ -110,6 +110,18 @@ button.sm{padding:5px 12px;font-size:calc(13px*var(--fs))}
 .subtabs{display:flex;gap:6px;margin:-6px 0 14px;flex-wrap:wrap}
 .subtabs button{padding:5px 14px;font-size:calc(13px*var(--fs))}
 .subtabs button[aria-selected=true]{background:var(--ok);color:var(--bg);font-weight:700}
+.pads{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;justify-content:center;margin:14px 0}
+.pads .note{text-align:center;margin-top:6px}
+.pad{position:relative;width:170px;height:170px;border:2px solid var(--line);border-radius:50%;background:var(--btn);touch-action:none;user-select:none;-webkit-user-select:none}
+.pad.wide{width:230px;height:84px;border-radius:42px}
+.pad i{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:var(--ok);opacity:.85;pointer-events:none}
+.pad.on{border-color:var(--ok)}
+.mo-row{display:flex;gap:10px;flex-wrap:wrap}
+.mo-row button{flex:1;min-width:110px}
+button.big{font-weight:700;color:var(--bad)}
+#mo-estop-float{position:fixed;top:8px;right:8px;z-index:30;padding:10px 16px;background:var(--card);border:2px solid var(--bad)}
+.mo-warn{color:var(--warn)}
+#mo-state.s-bad{color:var(--bad)}#mo-state.s-on{color:var(--ok)}#mo-state.s-warn{color:var(--warn)}
 #dds-sum{margin:0 0 10px;font-size:calc(14px*var(--fs))}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .filters button[aria-pressed=true]{outline:2px solid var(--ok);outline-offset:1px}
@@ -216,9 +228,11 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
   <span id="reconnect-note"></span></div>
 </section>
 
+<button id="mo-estop-float" class="danger big" type="button" hidden>緊急停止</button>
 <nav class="tabs" id="nav-main" role="tablist" aria-label="主ナビ"></nav>
 <div class="subtabs" id="nav-sub" role="tablist" aria-label="画面">
  <button role="tab" id="tab-b-ops" aria-selected="true">モード</button>
+ <button role="tab" id="tab-b-motion" aria-selected="false">運動</button>
  <button role="tab" id="tab-b-state" aria-selected="false">状態</button>
  <button role="tab" id="tab-b-joints" aria-selected="false">関節</button>
  <button role="tab" id="tab-b-audio" aria-selected="false">音声</button>
@@ -235,25 +249,31 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  <div id="pending" hidden></div>
 </section>
 
-<div class="two">
- <section class="card solo">
-  <h2>アクション<span class="tags" data-feature="action"></span></h2>
-  <div class="grid" id="planned-actions"></div>
-  <p class="note">リモコンの SELECT+Y / A / X 相当。</p>
- </section>
- <section class="card solo">
-  <h2>移動（矢印キー）<span class="tags" data-feature="move"></span></h2>
-  <div class="keygroups" aria-hidden="true">
-   <div class="keygroup"><div class="keys"><span></span><kbd>↑</kbd><span></span><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></div>前後左右</div>
-   <div class="keygroup"><div class="keys rot"><kbd>Q ↺</kbd><kbd>E ↻</kbd></div>回転（左 / 右）</div>
-  </div>
-  <p class="note">矢印キーで前後左右、Q / E で回転（案）。同時押しで斜め移動しながら回転もできる。キーを離す／画面を離れると停止する設計にする予定。</p>
- </section>
-</div>
-
 <section class="card">
  <h2>操作履歴（この画面）</h2>
  <ul id="log"><li class="note">まだ操作していません</li></ul>
+</section>
+</div>
+
+<div id="tab-motion" data-tab="motion" hidden>
+<section class="card" id="mo-card">
+ <div class="head"><h2>移動<span class="tags" data-feature="move"></span></h2><span id="mo-state"></span></div>
+ <p class="note mo-warn">ソフトの停止は安全規格を満たしません。<b>物理リモコンを手元に置き</b>、周囲を確認してから操作してください。通信が 0.5 秒途絶えるか、指を離す・画面を隠す・他のタブへ移ると停止し、操作権が外れます（自動では再開しません）。</p>
+ <div class="mo-row">
+  <button id="mo-claim" type="button">操作開始</button>
+  <button id="mo-release" type="button" disabled>操作終了</button>
+  <button id="mo-estop" class="danger big" type="button">緊急停止</button>
+ </div>
+ <div class="pads">
+  <div><div class="pad" id="pad-move" aria-label="前後左右"><i></i></div><div class="note">前後左右（上=前進）</div></div>
+  <div><div class="pad wide" id="pad-turn" aria-label="旋回"><i></i></div><div class="note">旋回（左=反時計回り）</div></div>
+ </div>
+ <p class="note">キーボード: 矢印キーで前後左右、Q / E で旋回。速度は <span id="mo-vel">—</span>。上限は <span id="mo-lim">—</span>（実機未検証の初期値）。</p>
+</section>
+<section class="card">
+ <h2>アクション<span class="tags" data-feature="action"></span></h2>
+ <div class="grid" id="mo-actions"></div>
+ <p class="note">リモコンの SELECT+Y / A / X 相当。操作中で、歩行モード（FSM 500/501）のときだけ押せます。番号と効果は実機未検証。</p>
 </section>
 </div>
 
@@ -863,7 +883,7 @@ async function loadFeatures(){
   const j=await (await fetch('/api/features',{cache:'no-store'})).json();
   document.querySelectorAll('.tags').forEach(el=>el.replaceChildren(...headTags(j.features.find(f=>f.id===el.dataset.feature))));
   renderPlanned($('planned-modes'),j.planned_modes);
-  renderPlanned($('planned-actions'),j.planned_actions);
+  renderActions(j.actions);
   $('features').replaceChildren(...j.features.map(f=>{
     const li=document.createElement('li'),b=document.createElement('b');
     b.textContent=f.label;li.append(b,...statusTags(f));
@@ -893,14 +913,135 @@ async function poll(once){
 const DDS_LABEL={displayed:['表示済み','done'],todo:['未購読（未実装）','unver'],excluded:['対象外','plan']};
 let dds=null,ddsFilter='all',tab='ops';
 function td(tr,x,cls){const c=document.createElement('td');c.textContent=x;if(cls)c.className=cls;tr.append(c);return c}
+
+/* ---- 運動（物理リモコン代替）。送るのは 10 Hz の ctl だけ。0.5 秒途絶するとハブが止めて操作権を外す。 ---- */
+const MO_MS=100;
+let moSession=null,moSeq=0,moTimer=null,moBusy=0,moLim={vx:[-0.2,0.3],vy:[-0.2,0.2],wz:[-0.4,0.4]},moKeys=new Set();
+function makePad(el,twoAxes){
+  const knob=el.firstElementChild,v={x:0,y:0};let id=null;
+  const draw=()=>{const r=el.clientWidth/2,h=el.clientHeight/2;knob.style.transform='translate('+(v.x*(r-29))+'px,'+(v.y*(h-29))+'px)'};
+  const at=e=>{
+    const b=el.getBoundingClientRect(),r=b.width/2,h=b.height/2;
+    let x=(e.clientX-b.left-r)/(r-29),y=twoAxes?(e.clientY-b.top-h)/(h-29):0;
+    const m=Math.hypot(x,y);if(m>1){x/=m;y/=m}
+    v.x=Math.abs(x)<0.08?0:x;v.y=Math.abs(y)<0.08?0:y;draw();
+  };
+  const end=e=>{if(id===null||(e&&e.pointerId!==id))return;id=null;v.x=v.y=0;el.classList.remove('on');draw()};
+  el.addEventListener('pointerdown',e=>{if(id!==null)return;id=e.pointerId;el.setPointerCapture(id);el.classList.add('on');at(e)});
+  el.addEventListener('pointermove',e=>{if(e.pointerId===id)at(e)});
+  ['pointerup','pointercancel','lostpointercapture'].forEach(n=>el.addEventListener(n,end));
+  return {v,reset:()=>{id=null;v.x=v.y=0;el.classList.remove('on');draw()}};
+}
+const padMove=makePad($('pad-move'),true),padTurn=makePad($('pad-turn'),false);
+const KEY_AXES={ArrowUp:['f',1],ArrowDown:['f',-1],ArrowLeft:['s',1],ArrowRight:['s',-1],q:['t',1],e:['t',-1]};
+const scale=(a,[lo,hi])=>a>=0?a*hi:a*-lo;
+function moTarget(){
+  let f=-padMove.v.y,s=-padMove.v.x,t=-padTurn.v.x;
+  moKeys.forEach(k=>{const [ax,sg]=KEY_AXES[k];if(ax==='f')f=sg;if(ax==='s')s=sg;if(ax==='t')t=sg});
+  return {vx:scale(f,moLim.vx),vy:scale(s,moLim.vy),wz:scale(t,moLim.wz)};
+}
+function moShow(j,note){
+  const el=$('mo-state');let txt,cls='';
+  if(!j){txt=note;cls='s-bad'}
+  else if(moSession){txt=j.blocked?'操作中（動かせません: '+j.blocked+'）':'操作中';cls=j.blocked?'s-warn':'s-on'}
+  else{
+    const ev=j.last_event,why={lost:'通信が途絶えたため停止しました',estop:'緊急停止しました',disabled:'手動操作が禁止されました',sender_error:'送信に失敗したため停止しました',takeover:'他の人に操作権を取られました'}[ev&&ev.kind];
+    txt=(why?why+'。':'')+(j.operator?'他の人が操作中です':(j.disable_reason?'手動操作できません: '+j.disable_reason:'操作していません'));
+    cls=why?'s-warn':'';
+  }
+  if(note&&j)txt+=' '+note;
+  el.textContent=txt;el.className=cls;
+  if(j){moLim=j.limits||moLim;$('mo-lim').textContent='前後 '+moLim.vx.join('〜')+' m/s・左右 '+moLim.vy.join('〜')+' m/s・旋回 '+moLim.wz.join('〜')+' rad/s'}
+  const on=!!moSession;
+  $('mo-claim').disabled=on;$('mo-release').disabled=!on;$('mo-estop-float').hidden=!on;
+  document.querySelectorAll('#mo-actions button').forEach(b=>b.disabled=!on||!!(j&&j.blocked));
+}
+async function moPost(kind,body){
+  const r=await fetch('/api/motion/'+kind,{method:'POST',body:JSON.stringify(body||{})});
+  return {ok:r.ok,status:r.status,j:await r.json().catch(()=>({error:'応答を読めません'}))};
+}
+function moLost(j,msg){
+  moSession=null;clearInterval(moTimer);moTimer=null;padMove.reset();padTurn.reset();moKeys.clear();
+  moShow(null,msg||(j&&j.error)||'操作権がありません');
+}
+async function moStatus(){
+  if(tab!=='motion'||moSession)return;
+  try{const r=await fetch('/api/motion/status',{cache:'no-store'});moShow(await r.json())}
+  catch(e){moShow(null,'ハブに届きません')}
+}
+async function moTick(){
+  if(!moSession||moBusy>=2)return;
+  const t=moTarget(),sid=moSession;moBusy++;
+  $('mo-vel').textContent='vx '+t.vx.toFixed(2)+' / vy '+t.vy.toFixed(2)+' / wz '+t.wz.toFixed(2);
+  try{
+    const r=await moPost('ctl',{session:sid,seq:++moSeq,...t});
+    if(sid!==moSession)return;
+    if(r.ok)moShow(r.j);else moLost(r.j);
+  }catch(e){if(sid===moSession)moShow(null,'ハブに届きません（ハブ側は 0.5 秒で停止します）')}
+  finally{moBusy--}
+}
+async function moClaim(){
+  $('mo-claim').disabled=true;moShow(null,'操作権を取っています…（初回は数秒かかります）');
+  try{
+    const r=await moPost('claim',{});
+    if(!r.ok){moSession=null;moShow(null,r.j.error||'操作を開始できません');$('mo-claim').disabled=false;return}
+    moSession=r.j.session;moSeq=0;moShow(r.j);
+    moTimer=setInterval(moTick,MO_MS);
+    addLog('運動: 操作開始','ok');
+  }catch(e){moShow(null,'ハブに届きません');$('mo-claim').disabled=false}
+}
+function moRelease(){
+  if(!moSession)return;
+  const sid=moSession;moLost(null,'操作を終了しました');
+  /* ページが消えかけていても届くよう sendBeacon（失敗してもハブは 0.5 秒で止める） */
+  if(!(navigator.sendBeacon&&navigator.sendBeacon('/api/motion/release',JSON.stringify({session:sid}))))
+    fetch('/api/motion/release',{method:'POST',body:JSON.stringify({session:sid}),keepalive:true}).catch(()=>{});
+}
+async function moEstop(){
+  moSession=null;clearInterval(moTimer);moTimer=null;padMove.reset();padTurn.reset();moKeys.clear();
+  let note='緊急停止を送りました';
+  try{const r=await moPost('estop');moShow(r.j);addLog('運動: 緊急停止','bad');return}
+  catch(e){note='緊急停止を送れませんでした。物理リモコンで止めてください'}
+  moShow(null,note);
+}
+async function moAction(a,b){
+  if(!moSession)return;
+  b.disabled=true;
+  try{
+    const r=await moPost('action',{session:moSession,name:a.id});
+    addLog('運動: '+a.label+(r.ok?'':'（失敗: '+(r.j.error||r.status)+'）'),r.ok?'ok':'bad');
+    if(r.status===409&&/操作権/.test(r.j.error||''))moLost(r.j);else if(r.ok)moShow(r.j);
+  }catch(e){addLog('運動: '+a.label+'（ハブに届きません）','bad')}
+  finally{if(moSession)b.disabled=false}
+}
+function renderActions(list){
+  $('mo-actions').replaceChildren(...list.map(a=>{
+    const b=document.createElement('button');b.type='button';b.disabled=true;b.textContent=a.label;b.onclick=()=>moAction(a,b);return b;
+  }));
+}
+$('mo-claim').onclick=moClaim;
+$('mo-release').onclick=moRelease;
+['mo-estop','mo-estop-float'].forEach(id=>$(id).addEventListener('pointerdown',e=>{e.preventDefault();moEstop()}));
+window.addEventListener('keydown',e=>{
+  if(!moSession||tab!=='motion'||e.repeat&&moKeys.has(e.key)||/INPUT|TEXTAREA|SELECT/.test((e.target||{}).tagName||''))return;
+  const k=e.key.length===1?e.key.toLowerCase():e.key;
+  if(KEY_AXES[k]){moKeys.add(k);e.preventDefault()}
+});
+window.addEventListener('keyup',e=>{moKeys.delete(e.key.length===1?e.key.toLowerCase():e.key)});
+window.addEventListener('blur',()=>moKeys.clear());
+document.addEventListener('visibilitychange',()=>{if(document.hidden)moRelease()});
+window.addEventListener('pagehide',moRelease);
+setInterval(moStatus,1000);
+
 /* 主ナビ 5 つ（操作／状態／マップ・タスク／センサ／開発）。画面が無いグループは出さない（マップ・タスクは段階 4・5 で入る）。
    タブ名 = #hash = API 名は従来どおり。画面を足すときは該当グループの配列に入れる。 */
-const GROUPS=[['ops','操作',['ops','audio']],['state','状態',['state','joints']],['maptask','マップ・タスク',[]],['sensor','センサ',['camera']],['dev','開発',['dds','settings']]];
+const GROUPS=[['ops','操作',['ops','motion','audio']],['state','状態',['state','joints']],['maptask','マップ・タスク',[]],['sensor','センサ',['camera']],['dev','開発',['dds','settings']]];
 const TABS=GROUPS.flatMap(g=>g[2]);
 const groupOf=t=>GROUPS.find(g=>g[2].includes(t));
 const lastTab={};
 function setTab(t){
   if(!TABS.includes(t))t='ops';
+  if(t!=='motion')moRelease();  /* 運動タブを離れたら操作権を手放す（ゼロ速度） */
   tab=t;
   const grp=groupOf(t);lastTab[grp[0]]=t;
   TABS.forEach(k=>{$('tab-'+k).hidden=k!==t;$('tab-b-'+k).setAttribute('aria-selected',k===t);$('tab-b-'+k).hidden=!grp[2].includes(k)});
@@ -910,6 +1051,7 @@ function setTab(t){
   history.replaceState(null,'','#'+t);
   if(t==='dds'){if(!dds)loadDds();else renderDds()}
   if(t==='settings')loadSettings();
+  if(t==='motion')moStatus();
   lastKey='';
 }
 async function loadDds(){

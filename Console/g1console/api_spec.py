@@ -9,6 +9,11 @@ API を変えたらここを直す（食い違うとテストが落ちる）。�
 """
 import json
 
+try:
+    from g1console.modes import ACTIONS
+except ImportError:  # `python3 Console/g1console/api_spec.py` で直接動かしたとき
+    from modes import ACTIONS
+
 ERRORS = "HTTP 400=入力不正 / 404=未定義 / 500=保存失敗 / 502=G1 または Jetson に届かない・G1 が拒否。本文はすべて Error。"
 
 # ---- スキーマの部品 -------------------------------------------------------------------------------------------
@@ -29,6 +34,18 @@ HEAD = {"jetson": ref("Link"), "g1": ref("Link"), "mode": ref("Mode"),
         "sampled_at": null(N("最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない")),
         "age_s": null(N("最後の確認から今までの秒数。大きければ古い値"))}
 HEAD_REQ = list(HEAD)
+
+MOTION_PROPS = {
+    "state": S(enum=["idle", "active"], desc="idle=操作者なし / active=操作者あり"), "operator": B("操作者がいるか"),
+    "moving": B("ハブが速度指令を送っている最中か"), "target": obj({"vx": N("m/s"), "vy": N("m/s"), "wz": N("rad/s")}, ["vx", "vy", "wz"], "いまの目標速度（上限で丸め済み）"),
+    "blocked": null(S("動かさない理由（歩行モードでない・状態が古い・Nav2 稼働中など）。null=動かせる")), "disable_reason": null(S("手動操作を禁止している理由（Nav2 稼働中など）")),
+    "last_rx_age_s": null(N("操作者の最後の ctl からの秒数。0.5 を超えると自動停止")),
+    "last_event": free("直近の出来事 {kind: claim/lost/estop/release/takeover/disabled/sender_error/shutdown, detail, at}。接続断で解除されたかはここで分かる"),
+    "sender": obj({"backend": S("local / mock / unavailable"), "error": null(S("直近の送信失敗"))}, ["backend", "error"]),
+    "limits": free("vx / vy / wz の [下限, 上限]。実機未検証の初期値"),
+    "timing": obj({"send_period_s": N(), "duration_s": N("SetVelocity の有効時間"), "liveness_s": N("この秒数 ctl が途絶えたら停止")}),
+}
+MOTION_REQ = ["state", "operator", "moving", "target", "blocked", "sender"]
 
 SCHEMAS = {
     "Error": obj({"error": S("平易な日本語の理由")}, ["error"], "エラー本文（全エンドポイント共通）。G1・Jetson に届かない 502 では ok=false・offline・ssh_exit などの生の情報も付く", extra=True),
@@ -67,7 +84,8 @@ SCHEMAS = {
                                 ["topic", "type", "status", "note"])),
                 "services": A(obj({"name": S(), "status": S(), "note": S()}, ["name", "status", "note"]))}, ["topics", "services"]),
     "Buttons": obj({"buttons": A(obj({"id": I("POST /api/mode の id"), "label": S(), "danger": B()}, ["id", "label", "danger"]))}, ["buttons"]),
-    "Features": obj({"features": A(obj({"id": S(), "label": S(), "implemented": B(), "verified": B("false=実機で未確認。結果を断定しない"), "note": S()},
+    "Features": obj({"actions": A(obj({"id": S(), "label": S(), "task_id": I()}, ["id", "label", "task_id"]), "実行できるアクション"),
+                     "features": A(obj({"id": S(), "label": S(), "implemented": B(), "verified": B("false=実機で未確認。結果を断定しない"), "note": S()},
                                        ["id", "label", "implemented", "verified"])),
                      "planned_modes": A({"type": "object", "additionalProperties": True}), "planned_actions": A({"type": "object", "additionalProperties": True})},
                     ["features"]),
@@ -84,13 +102,20 @@ SCHEMAS = {
     "Scenarios": obj({"scenarios": {"type": "object", "additionalProperties": S()}, "current": S()}, ["scenarios", "current"]),
     "ScenarioPatch": obj({"scenario": S()}, ["scenario"]),
     "Scenario": obj({"scenario": S()}, ["scenario"]),
+    "MotionStatus": obj(MOTION_PROPS, MOTION_REQ, "運動操作の状態", extra=True),
+    "MotionClaim": obj({**MOTION_PROPS, "session": S("以後の ctl / release / action に付ける操作権の ID")}, MOTION_REQ + ["session"], "操作権を取った結果", extra=True),
+    "MotionClaimPatch": obj({"takeover": B("true=他の人の操作権を奪う（相手は停止する）")}, desc="全て任意"),
+    "MotionCtlPatch": obj({"session": S(), "seq": I("増える番号。小さい・同じものは捨てる"), "vx": N("前後 m/s"), "vy": N("左右 m/s"), "wz": N("旋回 rad/s")},
+                          ["session", "seq", "vx", "vy", "wz"], "上限を超えた値はサーバーが丸める"),
+    "MotionSessionPatch": obj({"session": S()}, ["session"]),
+    "MotionActionPatch": obj({"session": S(), "name": S("GET /api/features の actions の id", enum=[a["id"] for a in ACTIONS])}, ["session", "name"]),
     "ModePatch": obj({"id": I("GET /api/buttons に載っている id のみ")}, ["id"]),
     "VolumePatch": obj({"volume": I(minimum=0, maximum=100)}, ["volume"]),
     "LedPatch": obj({"r": I(minimum=0, maximum=255), "g": I(minimum=0, maximum=255), "b": I(minimum=0, maximum=255)}, ["r", "g", "b"]),
     "TtsPatch": obj({"text": S("読み上げる文", minLength=1, maxLength=100), "speaker_id": I("話者 ID（意味は未確認）", enum=[0, 1])}, ["text", "speaker_id"]),
 }
 
-TAGS = {"ops": "操作タブ（接続・モード）", "state": "状態タブ", "joints": "関節タブ", "audio": "音声タブ",
+TAGS = {"ops": "操作タブ（接続・モード）", "motion": "運動タブ（物理リモコンの代替）", "state": "状態タブ", "joints": "関節タブ", "audio": "音声タブ",
         "camera": "カメラタブ", "dds": "DDS タブ", "settings": "設定タブ", "mock": "--mock のときだけ有効"}
 
 READ, SETTINGS, WRITE, MOTION = "read", "settings", "robot_write", "robot_motion"
@@ -113,6 +138,8 @@ ENDPOINTS = [
     ep("GET", "/api/joints", "getJoints", "joints", "29 関節の角度・速度・トルク推定・温度・指令値", READ, "Joints"),
     ep("GET", "/api/snapshot", "getSnapshot", "ops", "state と joints を 1 回で取得（状況把握はこれ 1 本で足りる）", READ, "Snapshot"),
     ep("GET", "/api/audio/volume", "getVolume", "audio", "スピーカー音量を G1 から読む（Jetson 経由で実際に問い合わせる）", READ, "Volume", errors=[(502, E502)]),
+    ep("GET", "/api/motion/status", "getMotionStatus", "motion", "運動操作の状態（操作者・目標速度・動かせない理由・直近の出来事）", READ, "MotionStatus",
+       notes="last_event.kind が lost なら接続断で停止・解除された。blocked が null でなければ、その理由で動かさない。"),
     ep("GET", "/api/cameras", "getCameras", "camera", "カメラ一覧と、配信が設定済みか（映像は GET /camera/{name}）", READ, "Cameras"),
     ep("GET", "/api/camera/status", "getCameraStatus", "camera", "camera_stream の起動状態と、映像デバイスを掴んでいるプロセス（foreign＝自前以外）", READ, None,
        errors=[(502, E502)]),
@@ -145,6 +172,19 @@ ENDPOINTS = [
        request="ModePatch", example={"id": 3}, errors=[(400, E400 + "（許可されていない id）"), (502, E502)], unverified=True,
        notes="受理（set_code=0）は到達ではない。実行後は GET /api/status を繰り返し読み、mode.fsm_id が目標になるか確認する（15 秒を目安）。"
              "歩行中（500/501）に切り替えると転倒の恐れがある。実行前に必ず人へ確認する。実機では未検証。"),
+    ep("POST", "/api/motion/claim", "postMotionClaim", "motion", "操作権を取る（運動ヘルパーを起動する。初回は数秒かかる）", WRITE, "MotionClaim",
+       request="MotionClaimPatch", example={}, errors=[(400, E400), (409, "他の人が操作中・手動操作が禁止されている"), (502, "運動ヘルパーが起動しない"), (503, "--local でないため使えない")], unverified=True,
+       notes="操作者は 1 人。接続断・緊急停止・解放のあとは自動で再開しないので、もう一度 claim する。"),
+    ep("POST", "/api/motion/ctl", "postMotionCtl", "motion", "目標速度を送る。**ロボットが動く**。10 Hz で送り続けること（0.5 秒途絶すると停止して操作権を解除）", MOTION, "MotionStatus",
+       request="MotionCtlPatch", example={"session": "example", "seq": 1, "vx": 0.0, "vy": 0.0, "wz": 0.0}, errors=[(400, E400 + "（数値でない・有限でない）"), (409, "操作権がない")], unverified=True,
+       notes="FSM 500/501 以外では動かさない（blocked に理由）。速度は上限で丸める（実機未検証の初期値）。人が見ていないときに送らない。物理リモコンを手元に置く。"),
+    ep("POST", "/api/motion/release", "postMotionRelease", "motion", "操作権を手放す（ゼロ速度にする）", MOTION, "MotionStatus",
+       request="MotionSessionPatch", example={"session": "example"}, errors=[(400, E400), (409, "操作権がない")], unverified=True),
+    ep("POST", "/api/motion/estop", "postMotionEstop", "motion", "緊急停止。ゼロ速度＋StopMove を送り、操作権を解除する（操作権が無くても誰でも押せる）", MOTION, "MotionStatus", unverified=True,
+       notes="ダンピングやゼロトルクにはしない（自律直立を保つ）。**ソフトの停止は安全規格を満たさない。最後の砦は物理リモコン。**"),
+    ep("POST", "/api/motion/action", "postMotionAction", "motion", "アクション（手を振る・握手）。**ロボットが動く**", MOTION, "MotionStatus",
+       request="MotionActionPatch", example={"session": "example", "name": "wave"}, errors=[(400, E400 + "（許可されていないアクション）"), (409, "操作権がない・歩行モードでない"), (502, E502)], unverified=True,
+       notes="SetTaskId の番号と効果は実機未検証。握手は開始のあと shake_end で終える。"),
     ep("POST", "/api/audio/volume", "postVolume", "audio", "音量を設定し、読み戻して一致を確認する", WRITE, "VolumeSet",
        request="VolumePatch", example={"volume": 40}, errors=[(400, E400), (502, E502)], unverified=True,
        notes="volume_after が指定値と一致していれば反映済み。"),

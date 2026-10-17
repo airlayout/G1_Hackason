@@ -54,9 +54,9 @@ Jetson（PC2）
 - 段階 3 以降は、画面を該当グループの配列へ足す（運動操作＝操作、タスク・地図＝マップ・タスク）。
 - ブラウザ拡張に接続できず、見た目（幅 360px で崩れないか）は目視していない。
 
-## 4. 段階 3: 運動制御（設計のみ・未確認）
+## 4. 段階 3: 運動制御（実装済み・実機未確認）
 ### 4.1 なぜ別プロセスか
-`remote_helper.py` は要求を 1 行ずつ直列に処理し、`SshHelper.call` も `threading.Lock` で直列化する。`status` が重いと速度指令が待たされるため、**運動専用の最小ヘルパー**（`jetson/motion_helper.py`）を分ける。`LocoClient` の `SetVelocity` と `StopMove` だけを許し、`SetFsmId` は持たない。
+`remote_helper.py` は要求を 1 行ずつ直列に処理し、`SshHelper.call` も `threading.Lock` で直列化する。`status` が重いと速度指令が待たされるため、**運動専用の最小ヘルパー**（`jetson/motion_helper.py`）を分ける。`LocoClient` の `SetVelocity` と `StopMove` だけを許し、`SetFsmId` は持たない（テストでも禁止名を検査）。
 
 ### 4.2 指令の流れと時間定数
 | 項目 | 値 | 根拠 |
@@ -79,7 +79,17 @@ Jetson（PC2）
 - 緊急停止ボタンを常時表示。「ソフトの停止は安全規格外。物理リモコンが最後の砦」と画面に書く。
 
 ### 4.5 アクション
-`WaveHand` / `ShakeHand` / `SetTaskId` を許可リストで実行する。`modes.py` の `PLANNED_ACTIONS` と `FEATURES` を同時に更新する。
+`SetTaskId` を許可リスト（`modes.py` の `ACTIONS`: wave 0 / wave_turn 1 / shake_start 2 / shake_end 3）で実行する。操作者であり FSM 500/501 のときだけ。番号と動作は SDK の資料からの推定で、実機未確認。`PLANNED_ACTIONS` は空。
+
+### 4.6 実装の要点（実装済み）
+- **構成**: `g1console/motion.py` の `MotionController`（送信器を差し替え可能。`HelperSender` = 子プロセス `motion_helper.py`、`MockSender`、ssh 時は `UnavailableSender` で 503）。ハブの tick スレッドが 20 Hz（`SEND_PERIOD_S=0.05`）で `duration=0.2` の `SetVelocity` を送る。
+- **操作権**: `claim` が `session` を返す。途絶・緊急停止・解放・横取り・無効化のあと操作者は空になり、再度 `claim` が要る（自動再開しない）。
+- **ロックと世代**: 判断は `_lock`、送信は別の `_send_lock`。停止のたびに世代 `_gen` を進め、停止前に決めた古い判断は送らない。`seq` が増えない遅延指令は反映せず、生存の根拠にもしない。
+- **ゼロ速度**: 停止を 1 回送ったあとは何も送らない（物理リモコンと取り合わない）。送信が 3 回連続で失敗したら操作者を外す。
+- **防御の二重化**: ハブ（`LIMITS`: vx −0.2〜0.3、vy ±0.2、wz ±0.4、`DEADBAND` 0.01）とヘルパー（同値で再クランプ、`duration` 上限 0.5 秒）。
+- **既知の限界**: ヘルパーは直列なので、緊急停止は送信中の `move` の後ろに並ぶ（最大 `HELPER_TIMEOUT_S`=1.0 秒）。バックストップはロボット側の `duration=0.2` 切れ。
+- **教訓**: 古い `seq` を `_lock` を持ったまま `status()`（同じロックを取る）に渡してデッドロックした。ロックの外で呼ぶ。
+- **Nav2 排他の差し込み口**: `set_disable_reason(reason)`（段階 5 が呼ぶ）。
 
 ## 5. 段階 4: タスク（設計のみ）
 - 定義 `Console/tasks/*.json`: 名前・表示名・説明・argv 配列・cwd・排他グループ・タイムアウト・前提条件。**シェル文字列は受け付けない**（NF-07）。

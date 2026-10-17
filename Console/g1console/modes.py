@@ -36,12 +36,15 @@ PLANNED_MODES = [
     {"label": "デバッグモード", "note": "切替手順が未確認"},
 ]
 
-# 未実装のアクション（リモコンの SELECT+Y/A/X 相当）。SDK では LocoClient.SetTaskId で実現する見込み。
-PLANNED_ACTIONS = [
-    {"label": "手を振る", "note": "SetTaskId(0)"},
-    {"label": "握手", "note": "SetTaskId(2/3)"},
-    {"label": "振り向いて手を振る", "note": "SetTaskId(1)"},
+# アクション（リモコンの SELECT+Y/A/X 相当）。LocoClient.SetTaskId で実行する。task_id と効果は実機未検証。
+# 握手は開始（2）と終了（3）の 2 段階。終了を送れるよう両方を載せる。
+ACTIONS = [
+    {"id": "wave", "label": "手を振る", "task_id": 0},
+    {"id": "wave_turn", "label": "振り向いて手を振る", "task_id": 1},
+    {"id": "shake_start", "label": "握手（開始）", "task_id": 2},
+    {"id": "shake_end", "label": "握手（終了）", "task_id": 3},
 ]
+PLANNED_ACTIONS = []  # 未実装のアクションは今は無い（API の形は保つ）
 
 # 基本機能の状態。REMOTE_CONTROLLER.md の表と同じ内容を保つこと。
 # implemented: 実装済みか / verified: 実機（G1 電源オン、コンソール経由）で試したか
@@ -50,8 +53,10 @@ FEATURES = [
     {"id": "reconnect", "label": "自動再接続", "implemented": True, "verified": False},
     {"id": "mode", "label": "モード変更", "implemented": True, "verified": False,
      "note": "ダンピング/ゼロトルク/座位/しゃがみ⇔起立/床から起立/通常歩行のみ"},
-    {"id": "action", "label": "アクション実行", "implemented": False, "verified": False},
-    {"id": "move", "label": "矢印キーで移動", "implemented": False, "verified": False},
+    {"id": "action", "label": "アクション実行", "implemented": True, "verified": False,
+     "note": "手を振る・握手。SetTaskId の番号と効果は実機未検証。--local のときだけ"},
+    {"id": "move", "label": "移動（ジョイスティック・矢印キー）", "implemented": True, "verified": False,
+     "note": "--local のときだけ。接続断は 0.5 秒で停止。速度上限・FSM 500/501 での動作は実機未検証"},
     {"id": "battery", "label": "バッテリー表示", "implemented": True, "verified": False,
      "note": "rt/lf/bmsstate。電圧・電流の単位は推定"},
     {"id": "audio", "label": "音声・LED（音量・頭部 LED・読み上げ）", "implemented": True, "verified": False,
@@ -99,4 +104,4 @@ JOINT_NAMES = [
 ]
 
 # タブ名 = URL ハッシュ = API 名。AI もこの名前で画面と API を対応づけられる。
-TABS = ("ops", "state", "joints", "audio", "camera", "dds", "settings")
+TABS = ("ops", "motion", "state", "joints", "audio", "camera", "dds", "settings")

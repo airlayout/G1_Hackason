@@ -12,6 +12,8 @@ servers:
 tags:
   - name: "ops"
     description: "操作タブ（接続・モード）"
+  - name: "motion"
+    description: "運動タブ（物理リモコンの代替）"
   - name: "state"
     description: "状態タブ"
   - name: "joints"
@@ -155,6 +157,21 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/motion/status":
+    get:
+      operationId: "getMotionStatus"
+      tags:
+        - "motion"
+      summary: "運動操作の状態（操作者・目標速度・動かせない理由・直近の出来事）"
+      x-effect: "read"
+      description: "last_event.kind が lost なら接続断で停止・解除された。blocked が null でなければ、その理由で動かさない。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionStatus"
   "/api/cameras":
     get:
       operationId: "getCameras"
@@ -547,6 +564,187 @@ paths:
                 "$ref": "#/components/schemas/ModeAck"
         "400":
           description: "入力不正（許可されていない id）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/motion/claim":
+    post:
+      operationId: "postMotionClaim"
+      tags:
+        - "motion"
+      summary: "操作権を取る（運動ヘルパーを起動する。初回は数秒かかる）"
+      x-effect: "robot_write"
+      description: "操作者は 1 人。接続断・緊急停止・解放のあとは自動で再開しないので、もう一度 claim する。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/MotionClaimPatch"
+            example: {}
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionClaim"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "他の人が操作中・手動操作が禁止されている"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "運動ヘルパーが起動しない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "503":
+          description: "--local でないため使えない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/motion/ctl":
+    post:
+      operationId: "postMotionCtl"
+      tags:
+        - "motion"
+      summary: "目標速度を送る。**ロボットが動く**。10 Hz で送り続けること（0.5 秒途絶すると停止して操作権を解除）"
+      x-effect: "robot_motion"
+      description: "FSM 500/501 以外では動かさない（blocked に理由）。速度は上限で丸める（実機未検証の初期値）。人が見ていないときに送らない。物理リモコンを手元に置く。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/MotionCtlPatch"
+            example:
+              session: "example"
+              seq: 1
+              vx: 0.0
+              vy: 0.0
+              wz: 0.0
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionStatus"
+        "400":
+          description: "入力不正（数値でない・有限でない）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "操作権がない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/motion/release":
+    post:
+      operationId: "postMotionRelease"
+      tags:
+        - "motion"
+      summary: "操作権を手放す（ゼロ速度にする）"
+      x-effect: "robot_motion"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/MotionSessionPatch"
+            example:
+              session: "example"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionStatus"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "操作権がない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/motion/estop":
+    post:
+      operationId: "postMotionEstop"
+      tags:
+        - "motion"
+      summary: "緊急停止。ゼロ速度＋StopMove を送り、操作権を解除する（操作権が無くても誰でも押せる）"
+      x-effect: "robot_motion"
+      description: "ダンピングやゼロトルクにはしない（自律直立を保つ）。**ソフトの停止は安全規格を満たさない。最後の砦は物理リモコン。**"
+      x-real-robot-verified: false
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionStatus"
+  "/api/motion/action":
+    post:
+      operationId: "postMotionAction"
+      tags:
+        - "motion"
+      summary: "アクション（手を振る・握手）。**ロボットが動く**"
+      x-effect: "robot_motion"
+      description: "SetTaskId の番号と効果は実機未検証。握手は開始のあと shake_end で終える。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/MotionActionPatch"
+            example:
+              session: "example"
+              name: "wave"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionStatus"
+        "400":
+          description: "入力不正（許可されていないアクション）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "操作権がない・歩行モードでない"
           content:
             "application/json":
               schema:
@@ -1125,6 +1323,23 @@ components:
     Features:
       type: "object"
       properties:
+        actions:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              id:
+                type: "string"
+              label:
+                type: "string"
+              task_id:
+                type: "integer"
+            required:
+              - "id"
+              - "label"
+              - "task_id"
+            additionalProperties: false
+          description: "実行できるアクション"
         features:
           type: "array"
           items:
@@ -1279,6 +1494,248 @@ components:
           type: "string"
       required:
         - "scenario"
+      additionalProperties: false
+    MotionStatus:
+      type: "object"
+      description: "運動操作の状態"
+      properties:
+        state:
+          type: "string"
+          description: "idle=操作者なし / active=操作者あり"
+          enum:
+            - "idle"
+            - "active"
+        operator:
+          type: "boolean"
+          description: "操作者がいるか"
+        moving:
+          type: "boolean"
+          description: "ハブが速度指令を送っている最中か"
+        target:
+          type: "object"
+          description: "いまの目標速度（上限で丸め済み）"
+          properties:
+            vx:
+              type: "number"
+              description: "m/s"
+            vy:
+              type: "number"
+              description: "m/s"
+            wz:
+              type: "number"
+              description: "rad/s"
+          required:
+            - "vx"
+            - "vy"
+            - "wz"
+          additionalProperties: false
+        blocked:
+          type: "string"
+          description: "動かさない理由（歩行モードでない・状態が古い・Nav2 稼働中など）。null=動かせる"
+          nullable: true
+        disable_reason:
+          type: "string"
+          description: "手動操作を禁止している理由（Nav2 稼働中など）"
+          nullable: true
+        last_rx_age_s:
+          type: "number"
+          description: "操作者の最後の ctl からの秒数。0.5 を超えると自動停止"
+          nullable: true
+        last_event:
+          type: "object"
+          description: "直近の出来事 {kind: claim/lost/estop/release/takeover/disabled/sender_error/shutdown, detail, at}。接続断で解除されたかはここで分かる"
+          additionalProperties: true
+          nullable: true
+        sender:
+          type: "object"
+          properties:
+            backend:
+              type: "string"
+              description: "local / mock / unavailable"
+            error:
+              type: "string"
+              description: "直近の送信失敗"
+              nullable: true
+          required:
+            - "backend"
+            - "error"
+          additionalProperties: false
+        limits:
+          type: "object"
+          description: "vx / vy / wz の [下限, 上限]。実機未検証の初期値"
+          additionalProperties: true
+          nullable: true
+        timing:
+          type: "object"
+          properties:
+            send_period_s:
+              type: "number"
+            duration_s:
+              type: "number"
+              description: "SetVelocity の有効時間"
+            liveness_s:
+              type: "number"
+              description: "この秒数 ctl が途絶えたら停止"
+          additionalProperties: false
+      required:
+        - "state"
+        - "operator"
+        - "moving"
+        - "target"
+        - "blocked"
+        - "sender"
+      additionalProperties: true
+    MotionClaim:
+      type: "object"
+      description: "操作権を取った結果"
+      properties:
+        state:
+          type: "string"
+          description: "idle=操作者なし / active=操作者あり"
+          enum:
+            - "idle"
+            - "active"
+        operator:
+          type: "boolean"
+          description: "操作者がいるか"
+        moving:
+          type: "boolean"
+          description: "ハブが速度指令を送っている最中か"
+        target:
+          type: "object"
+          description: "いまの目標速度（上限で丸め済み）"
+          properties:
+            vx:
+              type: "number"
+              description: "m/s"
+            vy:
+              type: "number"
+              description: "m/s"
+            wz:
+              type: "number"
+              description: "rad/s"
+          required:
+            - "vx"
+            - "vy"
+            - "wz"
+          additionalProperties: false
+        blocked:
+          type: "string"
+          description: "動かさない理由（歩行モードでない・状態が古い・Nav2 稼働中など）。null=動かせる"
+          nullable: true
+        disable_reason:
+          type: "string"
+          description: "手動操作を禁止している理由（Nav2 稼働中など）"
+          nullable: true
+        last_rx_age_s:
+          type: "number"
+          description: "操作者の最後の ctl からの秒数。0.5 を超えると自動停止"
+          nullable: true
+        last_event:
+          type: "object"
+          description: "直近の出来事 {kind: claim/lost/estop/release/takeover/disabled/sender_error/shutdown, detail, at}。接続断で解除されたかはここで分かる"
+          additionalProperties: true
+          nullable: true
+        sender:
+          type: "object"
+          properties:
+            backend:
+              type: "string"
+              description: "local / mock / unavailable"
+            error:
+              type: "string"
+              description: "直近の送信失敗"
+              nullable: true
+          required:
+            - "backend"
+            - "error"
+          additionalProperties: false
+        limits:
+          type: "object"
+          description: "vx / vy / wz の [下限, 上限]。実機未検証の初期値"
+          additionalProperties: true
+          nullable: true
+        timing:
+          type: "object"
+          properties:
+            send_period_s:
+              type: "number"
+            duration_s:
+              type: "number"
+              description: "SetVelocity の有効時間"
+            liveness_s:
+              type: "number"
+              description: "この秒数 ctl が途絶えたら停止"
+          additionalProperties: false
+        session:
+          type: "string"
+          description: "以後の ctl / release / action に付ける操作権の ID"
+      required:
+        - "state"
+        - "operator"
+        - "moving"
+        - "target"
+        - "blocked"
+        - "sender"
+        - "session"
+      additionalProperties: true
+    MotionClaimPatch:
+      type: "object"
+      description: "全て任意"
+      properties:
+        takeover:
+          type: "boolean"
+          description: "true=他の人の操作権を奪う（相手は停止する）"
+      additionalProperties: false
+    MotionCtlPatch:
+      type: "object"
+      description: "上限を超えた値はサーバーが丸める"
+      properties:
+        session:
+          type: "string"
+        seq:
+          type: "integer"
+          description: "増える番号。小さい・同じものは捨てる"
+        vx:
+          type: "number"
+          description: "前後 m/s"
+        vy:
+          type: "number"
+          description: "左右 m/s"
+        wz:
+          type: "number"
+          description: "旋回 rad/s"
+      required:
+        - "session"
+        - "seq"
+        - "vx"
+        - "vy"
+        - "wz"
+      additionalProperties: false
+    MotionSessionPatch:
+      type: "object"
+      properties:
+        session:
+          type: "string"
+      required:
+        - "session"
+      additionalProperties: false
+    MotionActionPatch:
+      type: "object"
+      properties:
+        session:
+          type: "string"
+        name:
+          type: "string"
+          description: "GET /api/features の actions の id"
+          enum:
+            - "wave"
+            - "wave_turn"
+            - "shake_start"
+            - "shake_end"
+      required:
+        - "session"
+        - "name"
       additionalProperties: false
     ModePatch:
       type: "object"

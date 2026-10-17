@@ -29,7 +29,8 @@ from g1console.dds_catalog import SERVICES, TOPICS
 from g1console.replay import Replay
 from g1console.api_spec import openapi, render_yaml
 from g1console.settings import DEFAULT_PATH, LABELS, Settings
-from g1console.modes import (ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, JOINT_NAMES, PLANNED_ACTIONS, PLANNED_MODES, TABS,
+from g1console.motion import (HelperSender, MockSender, MotionController, MotionError, UnavailableSender, start_ticker)
+from g1console.modes import (ACTIONS, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, JOINT_NAMES, PLANNED_ACTIONS, PLANNED_MODES, TABS,
                    validate_audio)
 
 HERE = Path(__file__).resolve().parent
@@ -369,8 +370,17 @@ LOGIN_PAGE = """<!doctype html><html lang="ja"><head><meta charset="utf-8">
 """
 
 
+def fsm_source(monitor):
+    """運動の可否判定に渡す (FSM ID, 確認からの秒数)。取れていなければ (None, None)。"""
+    def read():
+        snap = monitor.snapshot()
+        mode = snap["mode"]
+        return (mode.get("fsm_id") if mode["state"] == "ok" else None), snap["age_s"]
+    return read
+
+
 def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=None, lidar_ctl=None, lidar_base=None,
-                 auth=None):
+                 auth=None, motion=None):
     def camera_url():
         return camera_base or (settings.camera_base(resolve_host) if settings else None)
 
@@ -459,9 +469,11 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                                  "services": [dict(zip(("name", "status", "note"), v)) for v in SERVICES]})
             elif self.path == "/api/features":
                 self._json(200, {"features": FEATURES, "planned_modes": PLANNED_MODES,
-                                 "planned_actions": PLANNED_ACTIONS})
+                                 "planned_actions": PLANNED_ACTIONS, "actions": ACTIONS})
             elif self.path == "/api/scenarios" and hasattr(helper, "scenario"):
                 self._json(200, {"scenarios": helper.SCENARIOS, "current": helper.scenario})
+            elif self.path == "/api/motion/status" and motion:
+                self._json(200, motion.status())
             elif self.path == "/api/cameras":
                 self._json(200, {"enabled": bool(camera_url()), "cameras": CAMERAS})
             elif self.path == "/api/camera/status" and camera_ctl:
@@ -547,6 +559,8 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 return self._camera_ctl(self.path.rsplit("/", 1)[1])
             if self.path in ("/api/lidar/start", "/api/lidar/stop") and lidar_ctl:
                 return self._lidar_ctl(self.path.rsplit("/", 1)[1])
+            if self.path.startswith("/api/motion/") and motion:
+                return self._post_motion(self.path[len("/api/motion/"):])
             if self.path == "/api/monitor":
                 return self._post_monitor()
             if self.path == "/api/settings" and settings:
@@ -587,6 +601,37 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 return self._json(400, {"error": str(exc)})
             raw = helper.call(req)
             self._audio_reply(raw, *(("set_code", "read_code") if kind == "volume" else ("code",)))
+
+        def _post_motion(self, kind: str):
+            """運動操作。本文が空・不正なら 400（estop だけは本文なしでも止める）。"""
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                raw = self.rfile.read(length) if length else b""
+                body = json.loads(raw) if raw.strip() else {}
+                if not isinstance(body, dict):
+                    raise ValueError("本文は JSON オブジェクト")
+            except (ValueError, TypeError):
+                if kind == "estop":
+                    body = {}
+                else:
+                    return self._json(400, {"error": "bad request"})
+            try:
+                if kind == "estop":
+                    return self._json(200, motion.estop())
+                if kind == "claim":
+                    return self._json(200, motion.claim(body.get("takeover") is True))
+                if kind == "release":
+                    return self._json(200, motion.release(body.get("session")))
+                if kind == "ctl":
+                    return self._json(200, motion.ctl(body.get("session"), body.get("seq"),
+                                                      body.get("vx"), body.get("vy"), body.get("wz")))
+                if kind == "action":
+                    return self._json(200, motion.action(body.get("session"), body.get("name")))
+            except MotionError as exc:
+                return self._json(exc.status, {"error": exc.message})
+            except (ValueError, TypeError) as exc:
+                return self._json(400, {"error": str(exc)})
+            self._json(404, {"error": "not found"})
 
         def _post_monitor(self):
             """{"paused": bool} で自動確認を止める／再開。{"check": true} は 1 回だけ確認する。"""
@@ -669,6 +714,9 @@ def main():
         camera_ctl, lidar_ctl = SshCameraCtl(settings.ssh_target), SshLidarCtl(settings.ssh_target, lidar_port)
     monitor = Monitor(helper)
     monitor.start()
+    sender = MockSender() if args.mock else (HelperSender() if args.local else UnavailableSender())
+    motion = MotionController(sender, fsm_source(monitor))
+    start_ticker(motion)
     camera_base = args.camera_url.rstrip("/") if args.camera_url else None
     try:
         binds = resolve_binds(args.bind, args.bind_iface)
@@ -677,7 +725,7 @@ def main():
     auth = None
     if args.require_token or any(not is_loopback(b) for b in binds):
         auth = Auth(load_or_create_token(), binds + args.allow_host)
-    handler = make_handler(helper, monitor, camera_base, settings, camera_ctl, lidar_ctl, auth=auth)
+    handler = make_handler(helper, monitor, camera_base, settings, camera_ctl, lidar_ctl, auth=auth, motion=motion)
     servers = [ThreadingHTTPServer((b, args.port), handler) for b in binds]
     for b in binds:
         print("[console] http://%s:%d (%s)%s" % (b, args.port, helper.backend, "" if auth is None else " 認証あり"))
@@ -688,7 +736,11 @@ def main():
                     b, args.port, load_or_create_token(), TOKEN_PATH))
     for extra in servers[1:]:
         threading.Thread(target=extra.serve_forever, daemon=True).start()
-    servers[0].serve_forever()
+    try:
+        servers[0].serve_forever()
+    finally:  # 終了時は必ずゼロ速度にして、運動ヘルパーも閉じる
+        motion.shutdown()
+        sender.close()
 
 
 if __name__ == "__main__":
