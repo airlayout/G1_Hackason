@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from g1console.dds_catalog import DISPLAYED, SERVICES, TOPICS  # noqa: E402
 from g1console.motion import MockSender, MotionController  # noqa: E402
 from g1console.modes import validate_audio, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, PLANNED_MODES  # noqa: E402
+from g1console.tasks import TaskRunner, load_definitions  # noqa: E402
 from g1console.camera_proc import MockCameraCtl  # noqa: E402
 from g1console.lidar_proc import MockLidarCtl  # noqa: E402
 from server import MockHelper, Monitor, SshHelper, describe, make_handler  # noqa: E402
@@ -184,13 +185,17 @@ class HttpTest(unittest.TestCase):
         cls.settings = Settings(None)
         cls.monitor = Monitor(cls.helper)
         cls.monitor.poll_once()
+        console = Path(__file__).resolve().parent.parent
+        cls.tasks = TaskRunner(load_definitions(console / "tasks", console), console)
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.helper, cls.monitor, None, cls.settings, MockCameraCtl(), MockLidarCtl(),
-                                                                   motion=MotionController(MockSender(), lambda: (501, 0.1))))
+                                                                   motion=MotionController(MockSender(), lambda: (501, 0.1)),
+                                                                   tasks=cls.tasks))
         cls.port = cls.server.server_address[1]
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
     @classmethod
     def tearDownClass(cls):
+        cls.tasks.shutdown()
         cls.server.shutdown()
         cls.server.server_close()
 
@@ -246,7 +251,7 @@ class HttpTest(unittest.TestCase):
         self.assertTrue(d["services"])
         j = json.load(urllib.request.urlopen("http://127.0.0.1:%d/api/features" % self.port, timeout=5))
         self.assertEqual({f["id"] for f in j["features"]},
-                         {"connection", "reconnect", "mode", "action", "move", "battery", "audio", "sensors"})
+                         {"connection", "reconnect", "mode", "action", "move", "tasks", "battery", "audio", "sensors"})
         self.assertTrue(j["planned_modes"] and j["actions"])
         self.assertEqual(j["planned_actions"], [])  # 未実装のアクションは無い（形は保つ）
 
@@ -363,7 +368,7 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(joints["items"][0]["name"], "左股 pitch")
         self.assertIsNotNone(joints["items"][0]["cmd"])
         self.assertEqual(snap["state"]["battery"]["soc"], state["battery"]["soc"])
-        self.assertEqual(snap["tabs"], ["ops", "motion", "state", "joints", "audio", "camera", "dds", "settings"])
+        self.assertEqual(snap["tabs"], ["ops", "motion", "state", "joints", "audio", "tasks", "camera", "dds", "settings"])
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ import json
 import os
 import queue
 import shlex
+import signal
 import subprocess
 import sys
 import threading
@@ -30,6 +31,7 @@ from g1console.replay import Replay
 from g1console.api_spec import openapi, render_yaml
 from g1console.settings import DEFAULT_PATH, LABELS, Settings
 from g1console.motion import (HelperSender, MockSender, MotionController, MotionError, UnavailableSender, start_ticker)
+from g1console.tasks import TaskError, TaskRunner, load_definitions
 from g1console.modes import (ACTIONS, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, JOINT_NAMES, PLANNED_ACTIONS, PLANNED_MODES, TABS,
                    validate_audio)
 
@@ -380,7 +382,7 @@ def fsm_source(monitor):
 
 
 def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=None, lidar_ctl=None, lidar_base=None,
-                 auth=None, motion=None):
+                 auth=None, motion=None, tasks=None):
     def camera_url():
         return camera_base or (settings.camera_base(resolve_host) if settings else None)
 
@@ -472,6 +474,10 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                                  "planned_actions": PLANNED_ACTIONS, "actions": ACTIONS})
             elif self.path == "/api/scenarios" and hasattr(helper, "scenario"):
                 self._json(200, {"scenarios": helper.SCENARIOS, "current": helper.scenario})
+            elif self.path == "/api/tasks" and tasks:
+                self._json(200, tasks.list())
+            elif self.path.split("?", 1)[0] == "/api/tasks/logs" and tasks:
+                self._get_task_logs()
             elif self.path == "/api/motion/status" and motion:
                 self._json(200, motion.status())
             elif self.path == "/api/cameras":
@@ -559,6 +565,8 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 return self._camera_ctl(self.path.rsplit("/", 1)[1])
             if self.path in ("/api/lidar/start", "/api/lidar/stop") and lidar_ctl:
                 return self._lidar_ctl(self.path.rsplit("/", 1)[1])
+            if self.path in ("/api/tasks/start", "/api/tasks/stop") and tasks:
+                return self._post_task(self.path.rsplit("/", 1)[1])
             if self.path.startswith("/api/motion/") and motion:
                 return self._post_motion(self.path[len("/api/motion/"):])
             if self.path == "/api/monitor":
@@ -601,6 +609,32 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 return self._json(400, {"error": str(exc)})
             raw = helper.call(req)
             self._audio_reply(raw, *(("set_code", "read_code") if kind == "volume" else ("code",)))
+
+        def _get_task_logs(self):
+            query = parse_qs(urlsplit(self.path).query)
+            try:
+                since = int(query.get("since", ["0"])[0])
+                if since < 0:
+                    raise ValueError
+            except ValueError:
+                return self._json(400, {"error": "since は 0 以上の整数"})
+            try:
+                self._json(200, tasks.logs(query.get("name", [""])[0], since))
+            except TaskError as exc:
+                self._json(exc.status, {"error": exc.message})
+
+        def _post_task(self, kind: str):
+            """タスクの起動・停止。受け取るのはタスク名だけ（argv やパスは定義ファイルにしかない）。"""
+            try:
+                name = self._read_json().get("name")
+            except (ValueError, TypeError, AttributeError):
+                return self._json(400, {"error": "bad request"})
+            if not isinstance(name, str):
+                return self._json(400, {"error": "name（文字列）が必要です"})
+            try:
+                self._json(200, tasks.start(name) if kind == "start" else tasks.stop(name))
+            except TaskError as exc:
+                self._json(exc.status, {"error": exc.message})
 
         def _post_motion(self, kind: str):
             """運動操作。本文が空・不正なら 400（estop だけは本文なしでも止める）。"""
@@ -698,6 +732,7 @@ def main():
     parser.add_argument("--allow-host", action="append", default=[], metavar="NAME",
                         help="Host ヘッダに許す名前（mDNS 名など。待ち受け IP は自動で許す）")
     parser.add_argument("--require-token", action="store_true", help="ループバックだけでもトークン認証を要求する")
+    parser.add_argument("--tasks-dir", default=str(HERE / "tasks"), help="タスク定義（*.json）のディレクトリ（既定は Console/tasks）")
     args = parser.parse_args()
     if args.mock and args.local:
         parser.error("--mock と --local は同時に指定できません")
@@ -725,7 +760,12 @@ def main():
     auth = None
     if args.require_token or any(not is_loopback(b) for b in binds):
         auth = Auth(load_or_create_token(), binds + args.allow_host)
-    handler = make_handler(helper, monitor, camera_base, settings, camera_ctl, lidar_ctl, auth=auth, motion=motion)
+    try:
+        tasks = TaskRunner(load_definitions(args.tasks_dir, HERE), HERE)
+    except ValueError as exc:
+        parser.error("タスク定義が不正です: %s" % exc)
+    handler = make_handler(helper, monitor, camera_base, settings, camera_ctl, lidar_ctl, auth=auth, motion=motion,
+                           tasks=tasks)
     servers = [ThreadingHTTPServer((b, args.port), handler) for b in binds]
     for b in binds:
         print("[console] http://%s:%d (%s)%s" % (b, args.port, helper.backend, "" if auth is None else " 認証あり"))
@@ -736,11 +776,15 @@ def main():
                     b, args.port, load_or_create_token(), TOKEN_PATH))
     for extra in servers[1:]:
         threading.Thread(target=extra.serve_forever, daemon=True).start()
+    def on_sigterm(signum, frame):  # systemd の停止（SIGTERM）でも下の後始末を通す
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, on_sigterm)
     try:
         servers[0].serve_forever()
-    finally:  # 終了時は必ずゼロ速度にして、運動ヘルパーも閉じる
+    finally:  # 終了時は必ずゼロ速度にして、運動ヘルパーとタスクも止める
         motion.shutdown()
         sender.close()
+        tasks.shutdown()
 
 
 if __name__ == "__main__":

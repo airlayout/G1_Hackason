@@ -91,10 +91,20 @@ Jetson（PC2）
 - **教訓**: 古い `seq` を `_lock` を持ったまま `status()`（同じロックを取る）に渡してデッドロックした。ロックの外で呼ぶ。
 - **Nav2 排他の差し込み口**: `set_disable_reason(reason)`（段階 5 が呼ぶ）。
 
-## 5. 段階 4: タスク（設計のみ）
+## 5. 段階 4: タスク（実装済み・Jetson 未確認）
 - 定義 `Console/tasks/*.json`: 名前・表示名・説明・argv 配列・cwd・排他グループ・タイムアウト・前提条件。**シェル文字列は受け付けない**（NF-07）。
 - 実行: 新しいプロセスグループで子プロセスを起動し、ログはリングバッファ（`since` 付きポーリング）。停止は SIGTERM → SIGKILL（グループ）。排他グループのロックで同時起動を防ぐ。`exit_code` を返す。
 - API の形は erasers-app（`get_task` / `run_task` / `kill_task` / `task_running`）を参考にする。erasers は `template` がシェル文字列で、`get_xml` / `save_xml` が任意パスを読み書きできる。**どちらも採らない**。
+
+### 5.1 実装の要点
+- `g1console/tasks.py`: `load_definitions`（起動時に全 JSON を検証。1 つでも不正ならハブが起動しない）と `TaskRunner`。定義のキーは `title / description / argv / cwd / group / timeout_s` のみ（未知のキーは拒否）。`cwd` は Console からの相対で外に出られない。`timeout_s` は 1〜3600。
+- 実行: `shell=False`・`stdin=DEVNULL`・`start_new_session=True`。stdout と stderr は 1 本にまとめて行単位で 2000 行のリングバッファへ（1 行は 2000 字で切る）。結果は `ok / failed / stopped / timeout`、`exit_code`（負はシグナル）。
+- 停止: プロセスグループへ SIGTERM、猶予 3 秒で SIGKILL。リーダーが終わったあとも孫が残らないよう、終了時にグループへ SIGKILL を送る。
+- 排他: 同じタスクの二重起動、または同じ `group` のタスクがあれば 409。グループなしは自分自身とだけ排他。
+- API: `GET /api/tasks`、`GET /api/tasks/logs?name=&since=`（`next` を次回の `since` に渡せば欠落・重複なし）、`POST /api/tasks/start|stop`（受け取るのは `name` だけ。余分なキーは無視）。
+- ハブの終了: SIGTERM を `SystemExit` に変えて後始末（運動の停止・運動ヘルパー・タスク）を必ず通す。以前は SIGTERM で後始末が走らず、子が孤児になりえた。systemd 配下では cgroup ごと止まるが、手で起動した場合の備え。
+- 既知の限界: 子を reap したあとに `killpg` する経路があり、pid の再利用が極めて短時間に起きると無関係なグループへ送りうる（実運用では無視できる確率。必要なら `waitid(WNOWAIT)` へ）。タスクの中身がロボットを動かす場合の安全は、そのタスク側の責任（運動の指令元の排他は段階 5 の `disable_reason` で扱う）。
+
 
 ## 6. 段階 5: Nav2・地図・ロケーション（設計のみ・未確認）
 - `/map` は保存済みの固定地図。生きているのは現在地（TF map→base_link）、`/plan`、巡回ルート、`/g1/bridge_status`、`/g1/patrol/status`。

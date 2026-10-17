@@ -47,6 +47,15 @@ MOTION_PROPS = {
 }
 MOTION_REQ = ["state", "operator", "moving", "target", "blocked", "sender"]
 
+TASK_PROPS = {
+    "name": S("タスク名（Console/tasks/<name>.json）"), "title": S(), "description": S(),
+    "argv": A(S(), "実行されるコマンド（配列。シェルは経由しない）"), "group": null(S("排他グループ。同じグループは同時に走らせない")),
+    "timeout_s": N("この秒数で SIGTERM"), "state": S(enum=["idle", "running", "stopping"]),
+    "result": null(S("直近の実行の結果。ok / failed / stopped / timeout")), "exit_code": null(I("終了コード。負はシグナル")),
+    "started_at": null(N("epoch 秒")), "ended_at": null(N("epoch 秒。null=実行中または未実行")),
+}
+TASK_REQ = ["name", "title", "description", "argv", "group", "timeout_s", "state", "result", "exit_code", "started_at", "ended_at"]
+
 SCHEMAS = {
     "Error": obj({"error": S("平易な日本語の理由")}, ["error"], "エラー本文（全エンドポイント共通）。G1・Jetson に届かない 502 では ok=false・offline・ssh_exit などの生の情報も付く", extra=True),
     "Link": obj({"state": S(enum=["ok", "down", "unknown", "checking"], desc="ok=届いている / down=届かない / unknown=上流が切れていて見えていない"),
@@ -109,13 +118,18 @@ SCHEMAS = {
                           ["session", "seq", "vx", "vy", "wz"], "上限を超えた値はサーバーが丸める"),
     "MotionSessionPatch": obj({"session": S()}, ["session"]),
     "MotionActionPatch": obj({"session": S(), "name": S("GET /api/features の actions の id", enum=[a["id"] for a in ACTIONS])}, ["session", "name"]),
+    "Task": obj(TASK_PROPS, TASK_REQ, "タスクの定義と直近の実行状態"),
+    "Tasks": obj({"tasks": A(ref("Task"))}, ["tasks"]),
+    "TaskLogs": obj({"name": S(), "next": I("最後の行の seq。次回の since に使う"), "truncated": B("since 以降の一部がリングバッファから消えた"),
+                     "lines": A(obj({"seq": I(), "text": S()}, ["seq", "text"]))}, ["name", "next", "truncated", "lines"]),
+    "TaskNamePatch": obj({"name": S("GET /api/tasks の name。これ以外（argv・パス）は受け付けない")}, ["name"]),
     "ModePatch": obj({"id": I("GET /api/buttons に載っている id のみ")}, ["id"]),
     "VolumePatch": obj({"volume": I(minimum=0, maximum=100)}, ["volume"]),
     "LedPatch": obj({"r": I(minimum=0, maximum=255), "g": I(minimum=0, maximum=255), "b": I(minimum=0, maximum=255)}, ["r", "g", "b"]),
     "TtsPatch": obj({"text": S("読み上げる文", minLength=1, maxLength=100), "speaker_id": I("話者 ID（意味は未確認）", enum=[0, 1])}, ["text", "speaker_id"]),
 }
 
-TAGS = {"ops": "操作タブ（接続・モード）", "motion": "運動タブ（物理リモコンの代替）", "state": "状態タブ", "joints": "関節タブ", "audio": "音声タブ",
+TAGS = {"ops": "操作タブ（接続・モード）", "motion": "運動タブ（物理リモコンの代替）", "tasks": "タスクタブ（定義済みコマンドの実行）", "state": "状態タブ", "joints": "関節タブ", "audio": "音声タブ",
         "camera": "カメラタブ", "dds": "DDS タブ", "settings": "設定タブ", "mock": "--mock のときだけ有効"}
 
 READ, SETTINGS, WRITE, MOTION = "read", "settings", "robot_write", "robot_motion"
@@ -140,7 +154,12 @@ ENDPOINTS = [
     ep("GET", "/api/audio/volume", "getVolume", "audio", "スピーカー音量を G1 から読む（Jetson 経由で実際に問い合わせる）", READ, "Volume", errors=[(502, E502)]),
     ep("GET", "/api/motion/status", "getMotionStatus", "motion", "運動操作の状態（操作者・目標速度・動かせない理由・直近の出来事）", READ, "MotionStatus",
        notes="last_event.kind が lost なら接続断で停止・解除された。blocked が null でなければ、その理由で動かさない。"),
-    ep("GET", "/api/cameras", "getCameras", "camera", "カメラ一覧と、配信が設定済みか（映像は GET /camera/{name}）", READ, "Cameras"),
+    ep("GET", "/api/tasks", "getTasks", "tasks", "実行できるタスクの一覧と、それぞれの直近の実行状態", READ, "Tasks",
+       notes="定義は Console/tasks/*.json だけ。クライアントから増やせない。"),
+    ep("GET", "/api/tasks/logs", "getTaskLogs", "tasks", "タスクのログ（行単位）。クエリ name と since（最後に見た seq）", READ, "TaskLogs",
+       errors=[(400, E400 + "（since）"), (404, "定義にないタスク")],
+       notes="next を次回の since に渡すと、欠落・重複なく続きだけ読める。リングバッファは 2000 行で、溢れたら truncated=true。"),
+    ep("GET", "/api/cameras","getCameras", "camera", "カメラ一覧と、配信が設定済みか（映像は GET /camera/{name}）", READ, "Cameras"),
     ep("GET", "/api/camera/status", "getCameraStatus", "camera", "camera_stream の起動状態と、映像デバイスを掴んでいるプロセス（foreign＝自前以外）", READ, None,
        errors=[(502, E502)]),
     ep("GET", "/api/lidar/status", "getLidarStatus", "camera", "lidar_stream（Jetson の点群配信）の起動状態", READ, None, errors=[(502, E502)]),
@@ -172,7 +191,13 @@ ENDPOINTS = [
        request="ModePatch", example={"id": 3}, errors=[(400, E400 + "（許可されていない id）"), (502, E502)], unverified=True,
        notes="受理（set_code=0）は到達ではない。実行後は GET /api/status を繰り返し読み、mode.fsm_id が目標になるか確認する（15 秒を目安）。"
              "歩行中（500/501）に切り替えると転倒の恐れがある。実行前に必ず人へ確認する。実機では未検証。"),
-    ep("POST", "/api/motion/claim", "postMotionClaim", "motion", "操作権を取る（運動ヘルパーを起動する。初回は数秒かかる）", WRITE, "MotionClaim",
+    ep("POST", "/api/tasks/start", "postTaskStart", "tasks", "定義済みタスクを起動する（名前だけ渡す）。タスクの中身によってはロボットが動きうる", SETTINGS, "Task",
+       request="TaskNamePatch", example={"name": "sample-countdown"},
+       errors=[(400, E400), (404, "定義にないタスク"), (409, "同じタスク、または同じ排他グループが実行中"), (500, "起動できない")],
+       notes="シェルを経由しない。実行後は GET /api/tasks/logs と GET /api/tasks の state / result / exit_code で結果を確認する。"),
+    ep("POST", "/api/tasks/stop", "postTaskStop", "tasks", "実行中のタスクを止める（プロセスグループへ SIGTERM、猶予後に SIGKILL）", SETTINGS, "Task",
+       request="TaskNamePatch", example={"name": "sample-countdown"}, errors=[(400, E400), (404, "定義にないタスク"), (409, "実行中ではない")]),
+    ep("POST", "/api/motion/claim","postMotionClaim", "motion", "操作権を取る（運動ヘルパーを起動する。初回は数秒かかる）", WRITE, "MotionClaim",
        request="MotionClaimPatch", example={}, errors=[(400, E400), (409, "他の人が操作中・手動操作が禁止されている"), (502, "運動ヘルパーが起動しない"), (503, "--local でないため使えない")], unverified=True,
        notes="操作者は 1 人。接続断・緊急停止・解放のあとは自動で再開しないので、もう一度 claim する。"),
     ep("POST", "/api/motion/ctl", "postMotionCtl", "motion", "目標速度を送る。**ロボットが動く**。10 Hz で送り続けること（0.5 秒途絶すると停止して操作権を解除）", MOTION, "MotionStatus",

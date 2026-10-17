@@ -122,6 +122,11 @@ button.big{font-weight:700;color:var(--bad)}
 #mo-estop-float{position:fixed;top:8px;right:8px;z-index:30;padding:10px 16px;background:var(--card);border:2px solid var(--bad)}
 .mo-warn{color:var(--warn)}
 #mo-state.s-bad{color:var(--bad)}#mo-state.s-on{color:var(--ok)}#mo-state.s-warn{color:var(--warn)}
+.tk{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px}
+.tk[data-sel=true]{border-color:var(--ok)}
+.tk code{word-break:break-all;font-size:calc(12px*var(--fs));color:var(--sub)}
+.tk-st{font-size:calc(14px*var(--fs))}
+#tk-log{max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-all;background:var(--btn);padding:8px;border-radius:8px;font-size:calc(12px*var(--fs));margin:8px 0 0}
 #dds-sum{margin:0 0 10px;font-size:calc(14px*var(--fs))}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .filters button[aria-pressed=true]{outline:2px solid var(--ok);outline-offset:1px}
@@ -236,6 +241,7 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  <button role="tab" id="tab-b-state" aria-selected="false">状態</button>
  <button role="tab" id="tab-b-joints" aria-selected="false">関節</button>
  <button role="tab" id="tab-b-audio" aria-selected="false">音声</button>
+ <button role="tab" id="tab-b-tasks" aria-selected="false">タスク</button>
  <button role="tab" id="tab-b-camera" aria-selected="false">カメラ</button>
  <button role="tab" id="tab-b-dds" aria-selected="false">DDS</button>
  <button role="tab" id="tab-b-settings" aria-selected="false">設定</button>
@@ -379,6 +385,19 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  <div class="arow"><span id="ld-stats">停止中</span><button id="ld-reset" class="sm" type="button">視点リセット</button></div>
  <p class="note">Jetson の <code>lidar_stream.py</code>（<code>rt/utlidar/cloud_livox_mid360</code> を購読するだけ。モーターには触れません）の点群を中継して表示します。<b>1 フレーム（0.1 秒）は元々まばら</b>な走査なので、<b>直近の数枚を重ねる</b>と壁や床の形が見えてきます（G1 が静止しているとき向き。歩行中は尾を引きます）。生は約 20k 点（うち有効なのは約 11k）・10 Hz で、「点の細かさ」で Jetson 側の間引きを選べます（粗 0.4 MB/s・標準 0.9 MB/s・全点 1.8 MB/s）。ドラッグで回転、ホイールで拡大縮小。色は高さ（青＝低い、赤＝高い、重ねた全点での相対値）。座標は <code>livox_frame</code>（lidar 原点・単位 m）のままで、G1 の向きに対して傾いている可能性があります。円は距離（m）、赤線が x 軸・緑線が y 軸。タブを離れると取得を止めます。</p>
 </section>
+</div>
+
+<div id="tab-tasks" data-tab="tasks" hidden>
+ <section class="card">
+  <h2>タスク<span class="tags" data-feature="tasks"></span></h2>
+  <p id="tk-msg" class="note"></p>
+  <div id="tk-list"></div>
+  <p class="note">実行できるのは <code>Console/tasks/*.json</code> に書かれたものだけです（画面からコマンドは渡せません）。同じ排他グループのタスクは同時に実行できません。コンソールを止めると実行中のタスクも止まります。</p>
+ </section>
+ <section class="card" id="tk-log-card" hidden>
+  <h2 id="tk-log-h">ログ</h2>
+  <pre id="tk-log"></pre>
+ </section>
 </div>
 
 <div id="tab-dds" data-tab="dds" hidden>
@@ -1033,9 +1052,67 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)moRelease()
 window.addEventListener('pagehide',moRelease);
 setInterval(moStatus,1000);
 
-/* 主ナビ 5 つ（操作／状態／マップ・タスク／センサ／開発）。画面が無いグループは出さない（マップ・タスクは段階 4・5 で入る）。
+/* ---- タスクタブ（定義済みコマンドの実行。argv はサーバーの tasks/*.json にだけある） ---- */
+let tkSel=null,tkSince=0;
+const tkEls={},TK_RESULT={ok:'成功',failed:'失敗',stopped:'停止',timeout:'時間切れ'};
+async function tkApi(path,body){
+  const r=await fetch(path,body?{method:'POST',body:JSON.stringify(body)}:{cache:'no-store'});
+  let j={};try{j=await r.json()}catch(e){}
+  if(!r.ok)throw new Error(j.error||('失敗 '+r.status));
+  return j;
+}
+function tkCard(t){
+  const mk=(tag,txt,cls)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e};
+  const card=mk('div',null,'tk'),st=mk('span',null,'tk-st'),row=mk('div',null,'mo-row');
+  const go=mk('button','実行'),stop=mk('button','停止','danger'),lg=mk('button','ログを見る');
+  go.onclick=()=>tkAct('start',t.name);stop.onclick=()=>tkAct('stop',t.name);lg.onclick=()=>tkSelect(t.name);
+  row.append(go,stop,lg);
+  card.append(mk('b',t.title),st,mk('span',t.description,'note'),mk('code',t.argv.join(' ')),row);
+  $('tk-list').append(card);
+  return tkEls[t.name]={card,st,go,stop};
+}
+function renderTasks(list){
+  list.forEach(t=>{
+    const e=tkEls[t.name]||tkCard(t),run=t.state!=='idle';
+    e.go.disabled=run;e.stop.disabled=t.state!=='running';
+    e.st.textContent=run?(t.state==='stopping'?'停止中…':'実行中'):(t.result?`${TK_RESULT[t.result]||t.result}（終了コード ${t.exit_code}）`:'未実行');
+    e.card.dataset.sel=String(t.name===tkSel);
+  });
+}
+async function tkRefresh(){
+  if(tab!=='tasks')return;
+  try{renderTasks((await tkApi('/api/tasks')).tasks);$('tk-msg').textContent=''}
+  catch(e){$('tk-msg').textContent='取得できません: '+e.message}
+  if(tkSel)tkLogs();
+}
+async function tkAct(kind,name){
+  try{await tkApi('/api/tasks/'+kind,{name});if(kind==='start')tkSelect(name)}
+  catch(e){$('tk-msg').textContent=e.message}
+  tkRefresh();
+}
+function tkSelect(name){
+  tkSel=name;tkSince=0;$('tk-log').textContent='';$('tk-log-card').hidden=false;
+  $('tk-log-h').textContent='ログ: '+name;tkLogs();
+}
+async function tkLogs(){
+  const name=tkSel;if(!name)return;
+  try{
+    const j=await tkApi('/api/tasks/logs?name='+encodeURIComponent(name)+'&since='+tkSince);
+    if(name!==tkSel)return;
+    const pre=$('tk-log');
+    if(j.next<tkSince){tkSince=0;pre.textContent='';return}  /* 再実行でログが作り直された */
+    if(!j.lines.length)return;
+    const atEnd=pre.scrollTop+pre.clientHeight>=pre.scrollHeight-8;
+    pre.textContent=(j.truncated&&!pre.textContent?'…（古い行は省略）\n':'')+(pre.textContent+j.lines.map(l=>l.text+'\n').join('')).slice(-200000);
+    tkSince=j.next;
+    if(atEnd)pre.scrollTop=pre.scrollHeight;
+  }catch(e){}
+}
+setInterval(tkRefresh,1000);
+
+/* 主ナビ 5 つ（操作／状態／マップ・タスク／センサ／開発）。画面が無いグループは出さない（マップは段階 5 で入る）。
    タブ名 = #hash = API 名は従来どおり。画面を足すときは該当グループの配列に入れる。 */
-const GROUPS=[['ops','操作',['ops','motion','audio']],['state','状態',['state','joints']],['maptask','マップ・タスク',[]],['sensor','センサ',['camera']],['dev','開発',['dds','settings']]];
+const GROUPS=[['ops','操作',['ops','motion','audio']],['state','状態',['state','joints']],['maptask','マップ・タスク',['tasks']],['sensor','センサ',['camera']],['dev','開発',['dds','settings']]];
 const TABS=GROUPS.flatMap(g=>g[2]);
 const groupOf=t=>GROUPS.find(g=>g[2].includes(t));
 const lastTab={};
@@ -1052,6 +1129,7 @@ function setTab(t){
   if(t==='dds'){if(!dds)loadDds();else renderDds()}
   if(t==='settings')loadSettings();
   if(t==='motion')moStatus();
+  if(t==='tasks')tkRefresh();
   lastKey='';
 }
 async function loadDds(){

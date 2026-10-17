@@ -9,9 +9,9 @@
 | Mac 煙テスト（手動） | `server.py --local`・`--require-token` を起動して `curl` | 不要 | 済 / 未 |
 | 実機（人が実施） | Jetson で起動、スマホから操作 | 要 | 未（歩行を伴うものは物理リモコンを手元に置く） |
 
-現在の自動テスト: **148 件**（test_console 47 / test_lidar 20 / test_auth 28 / test_local 16 / test_camera_proc 7 / test_web 6 / test_motion 24）。通過確認は下の実行記録に日付つきで残す。
+現在の自動テスト: **170 件**（test_console 47 / test_lidar 20 / test_auth 28 / test_local 16 / test_camera_proc 7 / test_web 6 / test_motion 24 / test_tasks 22）。通過確認は下の実行記録に日付つきで残す。
 
-実行記録: 2026-10-18 段階 2b 時点で 124 件通過、段階 3 時点で 148 件通過（`run_tests.sh`）。段階 3 は `--mock` ハブでも claim → 保持 → 0.8 秒の沈黙で `lost` → 同じ session は 409 → estop を確認。
+実行記録: 2026-10-18 段階 2b 時点で 124 件通過、段階 3 時点で 148 件、段階 4 時点で 170 件通過（`run_tests.sh`）。段階 3 は `--mock` ハブでも claim → 保持 → 0.8 秒の沈黙で `lost` → 同じ session は 409 → estop を確認。
 
 ## 2. 自動テスト（実施済み）
 | 要件 | 内容 | テスト |
@@ -42,6 +42,16 @@
 | R-13 | アクションは許可リスト・操作者・歩行 FSM が必要 | `ControllerTest` T3-12 |
 | R-08〜R-13 | HTTP 経由の claim / ctl / status / estop、400・409、blocked 理由、`fsm_source` | `test_motion.HttpMotionTest` T3-13 ほか |
 | NF-06, NF-09 | `motion_helper` は move/stop/task のみ・禁止名なし。偽の子プロセスで往復、無応答は破棄、拒否はエラー | `test_motion.HelperTest` T3-14 ほか |
+| R-15 | 定義の検証（シェル文字列・空 argv・未知キー・cwd 逃げ・timeout 範囲・名前）。同梱の定義が読める。壊れた JSON は起動を止める | `test_tasks.DefinitionTest` T4-1 |
+| R-15, NF-07 | 定義にない名前・不正な型は 404 / 400。クライアントが argv・cwd・env を渡しても使われない | `RunnerTest` T4-1、`HttpTaskTest` T4-1b |
+| R-15, NF-07 | シェルのメタ文字が文字列のまま渡り、シェルを経由しない | `RunnerTest` T4-2 |
+| R-15 | 同じ排他グループ・同じタスクの二重起動は 409。解放後は起動できる | `RunnerTest` T4-3 |
+| R-15 | 停止で SIGTERM（`stopped`・-15）。無視されたら SIGKILL（-9）。孫プロセスも止まる | `RunnerTest` T4-4, 4b, 4c |
+| R-15 | タイムアウトで `timeout`。終了コードと結果（ok / failed） | `RunnerTest` T4-5, 5b |
+| R-15 | リングバッファの溢れ（`truncated`）、`since` の続き取得、長い行の切り詰め | `RunnerTest` T4-6, 6b |
+| R-15 | 起動失敗は 500 でタスクが固まらない。再実行でログが作り直される。`shutdown` が全部止める | `RunnerTest` T4-7, 7b, 7c |
+| R-15 | HTTP: 一覧・起動・409・ログ・停止、不正入力の 400 / 404 | `HttpTaskTest` T4-8, 8b |
+| R-15 | ハブへ SIGTERM を送ると実行中のタスクも止まる（ハブを子プロセスで実起動） | `HubShutdownTest` T4-9 |
 
 ## 3. Mac 煙テスト（実施済み）
 | 内容 | 期待 |
@@ -49,6 +59,7 @@
 | `server.py --local` を起動（loopback のみ、認証なし） | 画面と `/api/state` が返る |
 | `--require-token` で起動 | トークン無しは 401、`/login?token=…` で 302 と Cookie、Cookie で 200 |
 | `--mock` と `--local` の併用 | エラー終了 |
+| `--mock` でタスク: 一覧 → 起動 → ログ → 二重起動 409 → 停止（`stopped`・-15）→ 再起動してハブへ SIGTERM（段階 4、2026-10-18） | 子プロセス 0、ハブのログに例外なし |
 | `--mock` で claim → ctl 保持 → 0.8 秒の沈黙 → `lost` → 同 session は 409 → estop（段階 3、2026-10-18） | `moving` 真→偽、`last_event.kind` が `lost` / `estop`、ハブのログに例外なし |
 
 未実施: `--bind-iface wlan0`（Mac に `ip` コマンドが無いため、Jetson で確認する）。
@@ -61,16 +72,6 @@ T2b-1・T2b-2 は §2 の `test_web` に移した。残り:
 | ID | 内容 | 期待 | 種類 |
 |---|---|---|---|
 | T2b-3 | 幅 360px で横スクロールなし、主ナビ 4 項目（マップ・タスクは空のため非表示）が押せる | スクロール幅 ≤ 画面幅 | ブラウザ／スマホ手動（未実施。実機 A3 に反映） |
-
-### 段階 4（タスク、R-15）
-| ID | 内容 | 期待 |
-|---|---|---|
-| T4-1 | 定義に無いタスク名は拒否。クライアントから argv やパスを渡せない | NF-07 |
-| T4-2 | argv は配列。シェルメタ文字を含む値でもシェルを経由しない | 解釈されない |
-| T4-3 | 排他グループは同時に起動できない | 2 つ目は拒否 |
-| T4-4 | 停止で SIGTERM → 一定時間後に SIGKILL。子孫プロセスも止まる | プロセス残り 0 |
-| T4-5 | タイムアウトで停止。`exit_code` を返す | |
-| T4-6 | ログのリングバッファと `since` の取得 | 欠落・重複なし |
 
 ### 段階 5（Nav2・地図・ロケーション、R-16〜R-18）
 | ID | 内容 | 期待 |
@@ -101,6 +102,7 @@ T2b-1・T2b-2 は §2 の `test_web` に移した。残り:
 | R-10, R-12 | 2 台のスマホで操作者が 1 人。緊急停止の効き（物理リモコンを手元に） | E6 |
 | R-13 | アクション番号 0〜3 の実際の動作 | E7 |
 | R-11 | 上限速度、500 と 501 の違い | E2, B3 |
+| R-15 | Jetson 上でタスクが動く（sample-countdown、run-tests）。systemd 配下でハブを止めるとタスクも止まる | J9, J10 |
 
 ## 6. 更新ルール
 - 実装したテストは「§4」から「§2」へ移し、テスト名と件数を書く。件数は `run_tests.sh` の実行結果と一致させる。

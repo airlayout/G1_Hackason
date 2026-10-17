@@ -14,6 +14,8 @@ tags:
     description: "操作タブ（接続・モード）"
   - name: "motion"
     description: "運動タブ（物理リモコンの代替）"
+  - name: "tasks"
+    description: "タスクタブ（定義済みコマンドの実行）"
   - name: "state"
     description: "状態タブ"
   - name: "joints"
@@ -172,6 +174,48 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/MotionStatus"
+  "/api/tasks":
+    get:
+      operationId: "getTasks"
+      tags:
+        - "tasks"
+      summary: "実行できるタスクの一覧と、それぞれの直近の実行状態"
+      x-effect: "read"
+      description: "定義は Console/tasks/*.json だけ。クライアントから増やせない。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Tasks"
+  "/api/tasks/logs":
+    get:
+      operationId: "getTaskLogs"
+      tags:
+        - "tasks"
+      summary: "タスクのログ（行単位）。クエリ name と since（最後に見た seq）"
+      x-effect: "read"
+      description: "next を次回の since に渡すと、欠落・重複なく続きだけ読める。リングバッファは 2000 行で、溢れたら truncated=true。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TaskLogs"
+        "400":
+          description: "入力不正（since）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "404":
+          description: "定義にないタスク"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/cameras":
     get:
       operationId: "getCameras"
@@ -570,6 +614,93 @@ paths:
                 "$ref": "#/components/schemas/Error"
         "502":
           description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/tasks/start":
+    post:
+      operationId: "postTaskStart"
+      tags:
+        - "tasks"
+      summary: "定義済みタスクを起動する（名前だけ渡す）。タスクの中身によってはロボットが動きうる"
+      x-effect: "settings"
+      description: "シェルを経由しない。実行後は GET /api/tasks/logs と GET /api/tasks の state / result / exit_code で結果を確認する。"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TaskNamePatch"
+            example:
+              name: "sample-countdown"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Task"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "404":
+          description: "定義にないタスク"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "同じタスク、または同じ排他グループが実行中"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "500":
+          description: "起動できない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/tasks/stop":
+    post:
+      operationId: "postTaskStop"
+      tags:
+        - "tasks"
+      summary: "実行中のタスクを止める（プロセスグループへ SIGTERM、猶予後に SIGKILL）"
+      x-effect: "settings"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TaskNamePatch"
+            example:
+              name: "sample-countdown"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Task"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "404":
+          description: "定義にないタスク"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "実行中ではない"
           content:
             "application/json":
               schema:
@@ -1735,6 +1866,113 @@ components:
             - "shake_end"
       required:
         - "session"
+        - "name"
+      additionalProperties: false
+    Task:
+      type: "object"
+      description: "タスクの定義と直近の実行状態"
+      properties:
+        name:
+          type: "string"
+          description: "タスク名（Console/tasks/<name>.json）"
+        title:
+          type: "string"
+        description:
+          type: "string"
+        argv:
+          type: "array"
+          items:
+            type: "string"
+          description: "実行されるコマンド（配列。シェルは経由しない）"
+        group:
+          type: "string"
+          description: "排他グループ。同じグループは同時に走らせない"
+          nullable: true
+        timeout_s:
+          type: "number"
+          description: "この秒数で SIGTERM"
+        state:
+          type: "string"
+          enum:
+            - "idle"
+            - "running"
+            - "stopping"
+        result:
+          type: "string"
+          description: "直近の実行の結果。ok / failed / stopped / timeout"
+          nullable: true
+        exit_code:
+          type: "integer"
+          description: "終了コード。負はシグナル"
+          nullable: true
+        started_at:
+          type: "number"
+          description: "epoch 秒"
+          nullable: true
+        ended_at:
+          type: "number"
+          description: "epoch 秒。null=実行中または未実行"
+          nullable: true
+      required:
+        - "name"
+        - "title"
+        - "description"
+        - "argv"
+        - "group"
+        - "timeout_s"
+        - "state"
+        - "result"
+        - "exit_code"
+        - "started_at"
+        - "ended_at"
+      additionalProperties: false
+    Tasks:
+      type: "object"
+      properties:
+        tasks:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Task"
+      required:
+        - "tasks"
+      additionalProperties: false
+    TaskLogs:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+        next:
+          type: "integer"
+          description: "最後の行の seq。次回の since に使う"
+        truncated:
+          type: "boolean"
+          description: "since 以降の一部がリングバッファから消えた"
+        lines:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              seq:
+                type: "integer"
+              text:
+                type: "string"
+            required:
+              - "seq"
+              - "text"
+            additionalProperties: false
+      required:
+        - "name"
+        - "next"
+        - "truncated"
+        - "lines"
+      additionalProperties: false
+    TaskNamePatch:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+          description: "GET /api/tasks の name。これ以外（argv・パス）は受け付けない"
+      required:
         - "name"
       additionalProperties: false
     ModePatch:
