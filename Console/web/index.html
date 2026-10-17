@@ -107,6 +107,9 @@ button.sm{padding:5px 12px;font-size:calc(13px*var(--fs))}
 .node-st.s-paused{color:var(--sub)}
 .tabs button{padding:8px 18px;font-size:calc(14px*var(--fs))}
 .tabs button[aria-selected=true]{outline:2px solid var(--ok);outline-offset:1px;font-weight:700}
+.subtabs{display:flex;gap:6px;margin:-6px 0 14px;flex-wrap:wrap}
+.subtabs button{padding:5px 14px;font-size:calc(13px*var(--fs))}
+.subtabs button[aria-selected=true]{background:var(--ok);color:var(--bg);font-weight:700}
 #dds-sum{margin:0 0 10px;font-size:calc(14px*var(--fs))}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .filters button[aria-pressed=true]{outline:2px solid var(--ok);outline-offset:1px}
@@ -213,15 +216,16 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
   <span id="reconnect-note"></span></div>
 </section>
 
-<nav class="tabs" role="tablist">
- <button role="tab" id="tab-b-ops" aria-selected="true">操作</button>
+<nav class="tabs" id="nav-main" role="tablist" aria-label="主ナビ"></nav>
+<div class="subtabs" id="nav-sub" role="tablist" aria-label="画面">
+ <button role="tab" id="tab-b-ops" aria-selected="true">モード</button>
  <button role="tab" id="tab-b-state" aria-selected="false">状態</button>
  <button role="tab" id="tab-b-joints" aria-selected="false">関節</button>
  <button role="tab" id="tab-b-audio" aria-selected="false">音声</button>
  <button role="tab" id="tab-b-camera" aria-selected="false">カメラ</button>
  <button role="tab" id="tab-b-dds" aria-selected="false">DDS</button>
  <button role="tab" id="tab-b-settings" aria-selected="false">設定</button>
-</nav>
+</div>
 
 <div id="tab-ops" data-tab="ops">
 <section class="card">
@@ -889,11 +893,19 @@ async function poll(once){
 const DDS_LABEL={displayed:['表示済み','done'],todo:['未購読（未実装）','unver'],excluded:['対象外','plan']};
 let dds=null,ddsFilter='all',tab='ops';
 function td(tr,x,cls){const c=document.createElement('td');c.textContent=x;if(cls)c.className=cls;tr.append(c);return c}
-const TABS=['ops','state','joints','audio','camera','dds','settings'];
+/* 主ナビ 5 つ（操作／状態／マップ・タスク／センサ／開発）。画面が無いグループは出さない（マップ・タスクは段階 4・5 で入る）。
+   タブ名 = #hash = API 名は従来どおり。画面を足すときは該当グループの配列に入れる。 */
+const GROUPS=[['ops','操作',['ops','audio']],['state','状態',['state','joints']],['maptask','マップ・タスク',[]],['sensor','センサ',['camera']],['dev','開発',['dds','settings']]];
+const TABS=GROUPS.flatMap(g=>g[2]);
+const groupOf=t=>GROUPS.find(g=>g[2].includes(t));
+const lastTab={};
 function setTab(t){
   if(!TABS.includes(t))t='ops';
   tab=t;
-  TABS.forEach(k=>{$('tab-'+k).hidden=k!==t;$('tab-b-'+k).setAttribute('aria-selected',k===t)});
+  const grp=groupOf(t);lastTab[grp[0]]=t;
+  TABS.forEach(k=>{$('tab-'+k).hidden=k!==t;$('tab-b-'+k).setAttribute('aria-selected',k===t);$('tab-b-'+k).hidden=!grp[2].includes(k)});
+  $('nav-sub').hidden=grp[2].length<2;
+  GROUPS.forEach(g=>{const b=$('nav-b-'+g[0]);if(b)b.setAttribute('aria-selected',g===grp)});
   t==='camera'?(camProc('status'),loadCameras(),ldProc('status')):(stopCameras(),ldView(false));
   history.replaceState(null,'','#'+t);
   if(t==='dds'){if(!dds)loadDds();else renderDds()}
@@ -960,6 +972,10 @@ async function monitorCtl(body){
 $('mon-toggle').onclick=()=>monitorCtl({paused:!(S&&S.paused)});
 $('mon-once').onclick=()=>monitorCtl({check:true});
 TABS.forEach(k=>{$('tab-b-'+k).onclick=()=>setTab(k)});
+GROUPS.filter(g=>g[2].length).forEach(g=>{
+  const b=document.createElement('button');b.id='nav-b-'+g[0];b.setAttribute('role','tab');b.setAttribute('aria-selected','false');b.textContent=g[1];
+  b.onclick=()=>setTab(lastTab[g[0]]||g[2][0]);$('nav-main').append(b);
+});
 setTab(location.hash.slice(1)||'ops');  /* タブ名 = ハッシュ = API 名（#state ↔ /api/state） */
 
 setInterval(render,250);setInterval(renderDds,1000); /* 経過秒を進める。取得が途絶えても「古さ」が正しく増える */
