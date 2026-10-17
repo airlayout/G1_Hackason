@@ -20,7 +20,9 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
+from g1console.auth import Auth, TOKEN_PATH, iface_ipv4, is_loopback, load_or_create_token, parse_bind
 from g1console.camera_proc import LocalCameraCtl, MockCameraCtl, SshCameraCtl, resolve_host
 from g1console.lidar_proc import LocalLidarCtl, MockLidarCtl, SshLidarCtl, forward_query
 from g1console.dds_catalog import SERVICES, TOPICS
@@ -36,6 +38,7 @@ READY_TIMEOUT_S = 30.0  # DDS 初期化待ち
 POLL_INTERVAL_S = 1.0
 POLL_INTERVAL_DOWN_S = 3.0  # Jetson に届かないときは ssh を叩きすぎない
 SSH_CONNECT_FAILED = 255  # ssh が接続自体に失敗したときの終了コード
+LOOPBACK_BIND = "127.0.0.1"
 LOCAL_HOST = "127.0.0.1"  # --local（Jetson 上で動かす）のときの接続先。カメラ・lidar の配信も同じ機械にある
 CAMERAS = {"std": "標準カメラ", "d435i": "D435i（RGB）", "depth": "D435i（深度）"}  # camera_stream.py の --camera 名と揃える
 CAMERA_TIMEOUT_S = 5.0
@@ -354,7 +357,20 @@ def view(snap: dict, name: str) -> dict:
     return {**head, "tabs": list(TABS), "state": view(snap, "state"), "joints": view(snap, "joints")}
 
 
-def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=None, lidar_ctl=None, lidar_base=None):
+LOGIN_PAGE = """<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>G1 コンソール ログイン</title></head>
+<body style="font-family:sans-serif;max-width:420px;margin:12vh auto;padding:0 16px">
+<h1 style="font-size:20px">G1 開発コンソール</h1>
+<p>トークンを入力してください（Jetson の <code>~/.g1console/token</code>、または起動ログの URL）。</p>
+<form method="get" action="/login"><input name="token" type="password" autocomplete="off" autofocus
+ style="width:100%;font-size:18px;padding:10px;box-sizing:border-box">
+<button type="submit" style="margin-top:12px;font-size:18px;padding:10px 20px">ログイン</button></form>
+</body></html>
+"""
+
+
+def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=None, lidar_ctl=None, lidar_base=None,
+                 auth=None):
     def camera_url():
         return camera_base or (settings.camera_base(resolve_host) if settings else None)
 
@@ -378,7 +394,54 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
             length = int(self.headers.get("Content-Length", "0"))
             return json.loads(self.rfile.read(length))
 
+        def _gate(self, post: bool) -> bool:
+            """認証が有効なとき、通してよい要求か。通さない場合はここで応答を返して False。"""
+            if auth is None:
+                return True
+            host = self.headers.get("Host", "")
+            if not auth.check_host(host):
+                self._json(403, {"error": "このホスト名では開けません"})
+                return False
+            if post and not auth.check_origin(self.headers.get("Origin"), host):
+                self._json(403, {"error": "Origin が一致しません"})
+                return False
+            if self.path.split("?", 1)[0] == "/login":
+                self._login()
+                return False
+            if auth.authorized(self.headers):
+                return True
+            if self.path in ("/", "/index.html"):
+                self._send(401, "text/html; charset=utf-8", LOGIN_PAGE.encode("utf-8"))
+            else:
+                self._json(401, {"error": "認証が必要です（/login にトークンを入れてください）"})
+            return False
+
+        def _login(self):
+            """GET /login?token=… → Cookie を発行して / へ。トークン無しはログイン画面。"""
+            token = parse_qs(urlsplit(self.path).query).get("token", [""])[0]
+            client = self.client_address[0]
+            if not token:
+                return self._send(200, "text/html; charset=utf-8", LOGIN_PAGE.encode("utf-8"))
+            if auth.verify(token, client):
+                self.send_response(302)
+                self.send_header("Set-Cookie", auth.cookie_header())
+                self.send_header("Location", "/")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            code = 429 if auth.throttled(client) else 401
+            self._send(code, "text/html; charset=utf-8", LOGIN_PAGE.encode("utf-8"))
+
         def do_GET(self):
+            if self._gate(post=False):
+                self._route_get()
+
+        def do_POST(self):
+            if self._gate(post=True):
+                self._route_post()
+
+        def _route_get(self):
             if self.path == "/api":
                 self._json(200, openapi())
             elif self.path == "/openapi.yaml":
@@ -473,7 +536,7 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
             except (RuntimeError, subprocess.TimeoutExpired, OSError) as exc:
                 self._json(502, {"ok": False, "error": "lidar 操作に失敗しました: %s" % exc})
 
-        def do_POST(self):
+        def _route_post(self):
             if self.path == "/api/mode":
                 return self._post_mode()
             if self.path.startswith("/api/audio/"):
@@ -567,6 +630,16 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
     return Handler
 
 
+def resolve_binds(binds, iface=None, iface_fn=iface_ipv4) -> list:
+    """待ち受けアドレスの一覧。ループバックは常に先頭。重複は除く。不正なら ValueError。"""
+    out = [LOOPBACK_BIND]
+    extra = [parse_bind(b) for b in binds] + ([iface_fn(iface)] if iface else [])
+    for addr in extra:
+        if addr not in out:
+            out.append(addr)
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mock", action="store_true")
@@ -574,6 +647,12 @@ def main():
     parser.add_argument("--host", help="Jetson の ssh 接続先（省略時は設定タブの値。~/.ssh/config の別名も可）")
     parser.add_argument("--port", type=int, default=18790)
     parser.add_argument("--camera-url", help="Jetson の camera_stream.py の URL 例: http://<Jetson の IP>:8081")
+    parser.add_argument("--bind", action="append", default=[], metavar="IP",
+                        help="待ち受ける IPv4（複数可）。127.0.0.1 以外を指定するとトークン認証が必須になる。0.0.0.0 は不可")
+    parser.add_argument("--bind-iface", metavar="NAME", help="このインタフェース（例 wlan0）の IPv4 でも待ち受ける")
+    parser.add_argument("--allow-host", action="append", default=[], metavar="NAME",
+                        help="Host ヘッダに許す名前（mDNS 名など。待ち受け IP は自動で許す）")
+    parser.add_argument("--require-token", action="store_true", help="ループバックだけでもトークン認証を要求する")
     args = parser.parse_args()
     if args.mock and args.local:
         parser.error("--mock と --local は同時に指定できません")
@@ -591,9 +670,25 @@ def main():
     monitor = Monitor(helper)
     monitor.start()
     camera_base = args.camera_url.rstrip("/") if args.camera_url else None
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(helper, monitor, camera_base, settings, camera_ctl, lidar_ctl))
-    print("[console] http://127.0.0.1:%d (%s)" % (args.port, helper.backend))
-    server.serve_forever()
+    try:
+        binds = resolve_binds(args.bind, args.bind_iface)
+    except ValueError as exc:
+        parser.error(str(exc))
+    auth = None
+    if args.require_token or any(not is_loopback(b) for b in binds):
+        auth = Auth(load_or_create_token(), binds + args.allow_host)
+    handler = make_handler(helper, monitor, camera_base, settings, camera_ctl, lidar_ctl, auth=auth)
+    servers = [ThreadingHTTPServer((b, args.port), handler) for b in binds]
+    for b in binds:
+        print("[console] http://%s:%d (%s)%s" % (b, args.port, helper.backend, "" if auth is None else " 認証あり"))
+    if auth is not None:
+        for b in binds:
+            if not is_loopback(b):  # スマホはこの URL を一度開けば Cookie が付く
+                print("[console] ログイン用 URL: http://%s:%d/login?token=%s（トークン: %s）" % (
+                    b, args.port, load_or_create_token(), TOKEN_PATH))
+    for extra in servers[1:]:
+        threading.Thread(target=extra.serve_forever, daemon=True).start()
+    servers[0].serve_forever()
 
 
 if __name__ == "__main__":
