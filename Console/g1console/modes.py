@@ -59,6 +59,10 @@ FEATURES = [
      "note": "--local のときだけ。接続断は 0.5 秒で停止。速度上限・FSM 500/501 での動作は実機未検証"},
     {"id": "tasks", "label": "タスク実行（定義済みコマンドの起動・停止・ログ）", "implemented": True, "verified": False,
      "note": "Console/tasks/*.json の argv だけを実行する。Mac のテストでは確認済みだが、Jetson 上での実行は未確認"},
+    {"id": "nav", "label": "Nav2 の地図・現在地表示と、稼働中の手動操作の排他", "implemented": True, "verified": False,
+     "note": "--nav-adapter（loopback の ROS アダプタ）を読むだけ。Goal や巡回の操作は送らない。実アダプタ・RViz との位置合わせは未確認"},
+    {"id": "locations", "label": "地点（名前つき座標）の登録・編集と、タスクからの参照", "implemented": True, "verified": False,
+     "note": "Console/data/locations.json。タスクの argv の {loc:NAME.x} で参照。座標系が Nav2 の map と一致するかは実機で未確認"},
     {"id": "battery", "label": "バッテリー表示", "implemented": True, "verified": False,
      "note": "rt/lf/bmsstate。電圧・電流の単位は推定"},
     {"id": "audio", "label": "音声・LED（音量・頭部 LED・読み上げ）", "implemented": True, "verified": False,
@@ -106,4 +110,4 @@ JOINT_NAMES = [
 ]
 
 # タブ名 = URL ハッシュ = API 名。AI もこの名前で画面と API を対応づけられる。
-TABS = ("ops", "motion", "state", "joints", "audio", "tasks", "camera", "dds", "settings")
+TABS = ("ops", "motion", "state", "joints", "audio", "tasks", "map", "camera", "dds", "settings")

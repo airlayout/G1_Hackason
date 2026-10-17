@@ -28,6 +28,10 @@
 | GET | `/api/motion/status` | getMotionStatus | read | 運動操作の状態（操作者・目標速度・動かせない理由・直近の出来事） |
 | GET | `/api/tasks` | getTasks | read | 実行できるタスクの一覧と、それぞれの直近の実行状態 |
 | GET | `/api/tasks/logs` | getTaskLogs | read | タスクのログ（行単位）。クエリ name と since（最後に見た seq） |
+| GET | `/api/nav/state` | getNavState | read | Nav2 の現在地・目的地・経路と、手動操作を禁止している理由 |
+| GET | `/api/nav/map.json` | getNavMapInfo | read | 地図の解像度・原点・大きさ |
+| GET | `/api/nav/map.png` | getNavMapPng | read | 地図の PNG（アダプタの画像を検証して中継） |
+| GET | `/api/locations` | getLocations | read | 登録済みの地点（名前つき座標） |
 | GET | `/api/cameras` | getCameras | read | カメラ一覧と、配信が設定済みか（映像は GET /camera/{name}） |
 | GET | `/api/camera/status` | getCameraStatus | read | camera_stream の起動状態と、映像デバイスを掴んでいるプロセス（foreign＝自前以外） |
 | GET | `/api/lidar/status` | getLidarStatus | read | lidar_stream（Jetson の点群配信）の起動状態 |
@@ -40,6 +44,9 @@
 | GET | `/api/scenarios` | getScenarios | read | 模擬シナリオの一覧と現在値 （mock のみ） |
 | GET | `/camera/{name}` | getCamera | read | カメラ映像（MJPEG のストリーム）。name は GET /api/cameras のキー |
 | GET | `/openapi.yaml` | getOpenapiYaml | read | この API 定義（OpenAPI, YAML） |
+| POST | `/api/nav/presence` | postNavPresence | settings | 『人が画面を見ている』を知らせる（0.5 秒ごと）。見ている間だけ Nav2 へ生存信号を出す ⚠実機未検証 |
+| POST | `/api/locations/save` | postLocationSave | settings | 地点を登録・上書きする |
+| POST | `/api/locations/delete` | postLocationDelete | settings | 地点を削除する |
 | POST | `/api/camera/start` | postCameraStart | settings | Jetson で camera_stream.py を起動（再起動はしない。他が掴んでいれば失敗しうる） |
 | POST | `/api/camera/stop` | postCameraStop | settings | camera_stream.py だけを停止（videohub など他のプロセスは止めない） |
 | POST | `/api/lidar/start` | postLidarStart | settings | Jetson で lidar_stream.py を起動（DDS を購読するだけ。再起動はしない） |
@@ -76,6 +83,33 @@
 {"jetson_host": "192.168.123.164", "g1_ip": "192.168.123.161"}
 ```
 スキーマ: `SettingsPatch`
+
+### POST /api/nav/presence
+
+『人が画面を見ている』を知らせる（0.5 秒ごと）。見ている間だけ Nav2 へ生存信号を出す
+
+```json
+{}
+```
+スキーマ: `PresencePatch`。--heartbeat-to が設定されているときだけ意味を持つ。0.6 秒途絶えると生存信号は止まる。受信側が loopback を受け付けるかは実機で未確認。
+
+### POST /api/locations/save
+
+地点を登録・上書きする
+
+```json
+{"name": "example-spot", "x": 1.0, "y": 2.0, "yaw_deg": 90.0, "map_id": ""}
+```
+スキーマ: `LocationPatch`
+
+### POST /api/locations/delete
+
+地点を削除する
+
+```json
+{"name": "example-spot"}
+```
+スキーマ: `LocationNamePatch`。タスクがその地点を参照していると、次の起動時に 409 になる。
 
 ### POST /api/monitor
 

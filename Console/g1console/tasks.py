@@ -16,7 +16,10 @@ import threading
 import time
 from pathlib import Path
 
+from g1console.locations import LocationError
+
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
+LOC_RE = re.compile(r"\{loc:([\w\-]{1,40})\.(x|y|yaw_deg)\}")  # argv 内の地点参照（起動時に値へ置換）
 DEF_KEYS = {"title", "description", "argv", "cwd", "group", "timeout_s"}
 TIMEOUT_MAX_S = 3600
 DEFAULT_TIMEOUT_S = 600
@@ -49,6 +52,8 @@ def _parse_def(name: str, raw: dict, base_dir: Path) -> TaskDef:
     argv = raw.get("argv")
     if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a for a in argv):
         raise ValueError("%s: argv は空でない文字列の配列（シェル文字列は不可）" % name)
+    if any("{loc:" in LOC_RE.sub("", a) for a in argv):
+        raise ValueError("%s: 地点参照は {loc:名前.x|y|yaw_deg} の形だけ" % name)
     cwd = raw.get("cwd", ".")
     if not isinstance(cwd, str) or os.path.isabs(cwd):
         raise ValueError("%s: cwd は Console からの相対パス" % name)
@@ -91,8 +96,9 @@ class _Run:
 
 
 class TaskRunner:
-    def __init__(self, defs, base_dir, term_grace_s=TERM_GRACE_S, wall=time.time):
+    def __init__(self, defs, base_dir, term_grace_s=TERM_GRACE_S, wall=time.time, locations=None):
         self._defs, self._base = dict(defs), Path(base_dir)
+        self._locations = locations
         self._grace, self._wall = term_grace_s, wall
         self._lock = threading.Lock()
         self._runs = {}
@@ -130,8 +136,20 @@ class TaskRunner:
                     "lines": [{"seq": s, "text": t} for s, t in run.lines if s > since]}
 
     # ---- 起動・停止 ----------------------------------------------------------------------------------------
+    def _expand(self, argv) -> list:
+        """argv の `{loc:名前.x}` を登録済みの座標へ置換する。未登録なら 409。"""
+        def one(match):
+            if self._locations is None:
+                raise TaskError(500, "地点が使えない構成です")
+            try:
+                return self._locations.resolve(match.group(1), match.group(2))
+            except LocationError as exc:
+                raise TaskError(exc.status, exc.message)
+        return [LOC_RE.sub(one, a) for a in argv]
+
     def start(self, name) -> dict:
         d = self._def(name)
+        argv = self._expand(d.argv)
         with self._lock:
             for other in self._defs.values():
                 run = self._runs.get(other.name)
@@ -139,7 +157,7 @@ class TaskRunner:
                     raise TaskError(409, "実行中です: %s" % other.title)
             try:
                 proc = subprocess.Popen(
-                    list(d.argv), cwd=str((self._base / d.cwd).resolve()), stdin=subprocess.DEVNULL,
+                    argv, cwd=str((self._base / d.cwd).resolve()), stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False, start_new_session=True,
                     env={**os.environ, "PYTHONUNBUFFERED": "1"})
             except OSError as exc:

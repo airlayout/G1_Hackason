@@ -66,6 +66,16 @@ python3 server.py --local --bind-iface wlan0     # 個別の IP は --bind 192.1
   運動操作（段階 3 以降）は、トークンに加えて操作権の取得・接続断での自動停止を重ねる。**物理リモコンが最後の砦**で、ソフトの停止は安全規格を満たさない。
 - 常駐は任意。`jetson/g1-console.service`（雛形。パスと User を実環境に直す）を、ユーザーが `sudo` で設置・有効化する。
   常駐させるのはハブだけで、カメラ・lidar の配信は従来どおり常駐も自動再起動もしない（画面のボタンで起動・停止）。
+### Nav2 の地図・現在地・地点（任意）
+```bash
+python3 server.py --local --bind-iface wlan0 --nav-adapter http://127.0.0.1:<port> [--heartbeat-to 127.0.0.1:47311] [--locations-file <path>]
+```
+- `--nav-adapter`: 同じ機体の ROS アダプタ（loopback の http のみ）。ハブは GET だけ読む。**Nav2 へ目的地・操作は送らない**（Nav2 の起動・停止ボタンも無い）。
+- Nav2 稼働中は手動操作が無効になる。一度稼働を見たら、アダプタが黙っても無効のまま（安全側）。
+- `--heartbeat-to`: 画面（マップタブ）が見ている間だけ Nav2 へ生存信号（UDP）を出す。未指定なら送らない。
+- 地点は `data/locations.json`。タスクの argv から `{loc:名前.x}` `{loc:名前.y}` `{loc:名前.yaw_deg}` で参照できる。
+- 未確認: 実アダプタとの結合、RViz との座標の一致、生存信号の受信側（`docs/REAL_ROBOT_CHECKLIST.md` J11〜J15）。
+
 - 未確認（実機で確かめる）: `--bind-iface wlan0` の IP 取得、Jetson の Python 3.8 での動作、スマホからの到達と遅延。
 
 ## ディレクトリ構成

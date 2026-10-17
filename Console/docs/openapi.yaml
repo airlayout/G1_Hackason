@@ -16,6 +16,8 @@ tags:
     description: "運動タブ（物理リモコンの代替）"
   - name: "tasks"
     description: "タスクタブ（定義済みコマンドの実行）"
+  - name: "nav"
+    description: "マップタブ（Nav2 の表示・地点）"
   - name: "state"
     description: "状態タブ"
   - name: "joints"
@@ -216,6 +218,90 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/nav/state":
+    get:
+      operationId: "getNavState"
+      tags:
+        - "nav"
+      summary: "Nav2 の現在地・目的地・経路と、手動操作を禁止している理由"
+      x-effect: "read"
+      description: "読み取り専用（アダプタの GET だけ）。Nav2 へ送る口は無い。available=false は『アダプタが読めない』で、Nav2 の停止を意味しない。exclusive_reason が null でなければ手動操作は無効。一度 Nav2 の稼働を見たら、アダプタが黙っても解除しない（安全側）。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/NavState"
+  "/api/nav/map.json":
+    get:
+      operationId: "getNavMapInfo"
+      tags:
+        - "nav"
+      summary: "地図の解像度・原点・大きさ"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/NavMapInfo"
+        "404":
+          description: "--nav-adapter が未設定"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "アダプタに繋がらない・応答が不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/nav/map.png":
+    get:
+      operationId: "getNavMapPng"
+      tags:
+        - "nav"
+      summary: "地図の PNG（アダプタの画像を検証して中継）"
+      x-effect: "read"
+      description: "座標の対応は GET /api/nav/map.json。RViz との位置合わせは実機で未確認。"
+      responses:
+        "200":
+          description: "PNG 画像（バイナリ）"
+          content:
+            "image/png":
+              schema:
+                type: "string"
+                format: "binary"
+        "404":
+          description: "--nav-adapter が未設定"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "アダプタに繋がらない・PNG でない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/locations":
+    get:
+      operationId: "getLocations"
+      tags:
+        - "nav"
+      summary: "登録済みの地点（名前つき座標）"
+      x-effect: "read"
+      description: "タスク定義の argv から {loc:NAME.x} / {loc:NAME.y} / {loc:NAME.yaw_deg} で参照できる。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Locations"
   "/api/cameras":
     get:
       operationId: "getCameras"
@@ -469,6 +555,120 @@ paths:
             "application/yaml":
               schema:
                 type: "string"
+  "/api/nav/presence":
+    post:
+      operationId: "postNavPresence"
+      tags:
+        - "nav"
+      summary: "『人が画面を見ている』を知らせる（0.5 秒ごと）。見ている間だけ Nav2 へ生存信号を出す"
+      x-effect: "settings"
+      description: "--heartbeat-to が設定されているときだけ意味を持つ。0.6 秒途絶えると生存信号は止まる。受信側が loopback を受け付けるかは実機で未確認。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/PresencePatch"
+            example: {}
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/PresenceAck"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/locations/save":
+    post:
+      operationId: "postLocationSave"
+      tags:
+        - "nav"
+      summary: "地点を登録・上書きする"
+      x-effect: "settings"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/LocationPatch"
+            example:
+              name: "example-spot"
+              x: 1.0
+              y: 2.0
+              yaw_deg: 90.0
+              map_id: ""
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Location"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "地点が上限（200）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "500":
+          description: "保存できない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/locations/delete":
+    post:
+      operationId: "postLocationDelete"
+      tags:
+        - "nav"
+      summary: "地点を削除する"
+      x-effect: "settings"
+      description: "タスクがその地点を参照していると、次の起動時に 409 になる。"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/LocationNamePatch"
+            example:
+              name: "example-spot"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/LocationDeleted"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "404":
+          description: "その名前の地点がない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "500":
+          description: "保存できない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/camera/start":
     post:
       operationId: "postCameraStart"
@@ -1974,6 +2174,230 @@ components:
           description: "GET /api/tasks の name。これ以外（argv・パス）は受け付けない"
       required:
         - "name"
+      additionalProperties: false
+    Pose:
+      type: "object"
+      properties:
+        x:
+          type: "number"
+          description: "map フレームの x [m]"
+        y:
+          type: "number"
+          description: "map フレームの y [m]"
+        yaw_deg:
+          type: "number"
+          description: "向き [度]"
+      required:
+        - "x"
+        - "y"
+        - "yaw_deg"
+      additionalProperties: false
+    NavState:
+      type: "object"
+      description: "Nav2 の現在地・目的地・経路。値は検証済みのものだけ"
+      properties:
+        available:
+          type: "boolean"
+          description: "false=アダプタから読めていない（reason に理由）"
+        reason:
+          type: "string"
+          description: "読めない理由"
+        connected:
+          type: "boolean"
+          description: "Nav2 の bridge_status が生きている＝Nav2 稼働中とみなす"
+        pose:
+          "$ref": "#/components/schemas/Pose"
+          nullable: true
+        goal:
+          "$ref": "#/components/schemas/Pose"
+          nullable: true
+        plan:
+          type: "array"
+          items:
+            type: "array"
+            items:
+              type: "number"
+            description: "[x, y]"
+          description: "経路（/plan）"
+        route:
+          type: "array"
+          items:
+            type: "array"
+            items:
+              type: "number"
+            description: "[x, y]"
+          description: "巡回ルート"
+        bridge_state:
+          type: "string"
+          enum:
+            - "DISCONNECTED"
+            - "STANDBY"
+            - "READY"
+            - "NAVIGATING"
+            - "FAULT"
+            - "E_STOP"
+            - "UNKNOWN"
+        patrol:
+          type: "object"
+          properties:
+            state:
+              type: "string"
+            index:
+              type: "integer"
+            total:
+              type: "integer"
+          required:
+            - "state"
+            - "index"
+            - "total"
+          additionalProperties: false
+        message:
+          type: "string"
+        age_s:
+          type: "number"
+          description: "最後にアダプタを読んでからの秒数"
+          nullable: true
+        exclusive_reason:
+          type: "string"
+          description: "手動操作を禁止している理由。null=禁止していない"
+          nullable: true
+        heartbeat:
+          type: "object"
+          properties:
+            enabled:
+              type: "boolean"
+              description: "--heartbeat-to が設定済みか"
+            target:
+              type: "string"
+            present:
+              type: "boolean"
+              description: "画面が見ている（生存信号を送っている）か"
+            sent:
+              type: "integer"
+              description: "送った累計パケット数"
+          required:
+            - "enabled"
+          additionalProperties: false
+      required:
+        - "available"
+        - "heartbeat"
+      additionalProperties: false
+    NavMapInfo:
+      type: "object"
+      description: "地図 PNG の座標系。x = origin[0] + px*resolution、y = origin[1] + (height - py)*resolution"
+      properties:
+        resolution:
+          type: "number"
+          description: "m/pixel"
+        origin:
+          type: "array"
+          items:
+            type: "number"
+          description: "[x, y]。画像左下の map 座標 [m]"
+        width:
+          type: "integer"
+          description: "画素"
+        height:
+          type: "integer"
+          description: "画素"
+      required:
+        - "resolution"
+        - "origin"
+        - "width"
+        - "height"
+      additionalProperties: false
+    Location:
+      type: "object"
+      description: "名前つき座標"
+      properties:
+        name:
+          type: "string"
+          description: "英数字・日本語・_ - の 1〜40 文字"
+        x:
+          type: "number"
+          description: "m"
+        y:
+          type: "number"
+          description: "m"
+        yaw_deg:
+          type: "number"
+          description: "度（±180）"
+        map_id:
+          type: "string"
+          description: "地図の識別子（任意）"
+      required:
+        - "name"
+        - "x"
+        - "y"
+        - "yaw_deg"
+        - "map_id"
+      additionalProperties: false
+    Locations:
+      type: "object"
+      properties:
+        locations:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Location"
+      required:
+        - "locations"
+      additionalProperties: false
+    LocationPatch:
+      type: "object"
+      description: "同じ name があれば上書き"
+      properties:
+        name:
+          type: "string"
+        x:
+          type: "number"
+          description: "|x| ≤ 10000"
+        y:
+          type: "number"
+          description: "|y| ≤ 10000"
+        yaw_deg:
+          type: "number"
+          description: "±180"
+        map_id:
+          type: "string"
+          description: "省略可"
+      required:
+        - "name"
+        - "x"
+        - "y"
+        - "yaw_deg"
+      additionalProperties: false
+    LocationNamePatch:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+      required:
+        - "name"
+      additionalProperties: false
+    LocationDeleted:
+      type: "object"
+      properties:
+        deleted:
+          type: "string"
+      required:
+        - "deleted"
+      additionalProperties: false
+    PresencePatch:
+      type: "object"
+      description: "本文は空でよい"
+      properties: {}
+      additionalProperties: false
+    PresenceAck:
+      type: "object"
+      properties:
+        ok:
+          type: "boolean"
+        heartbeat:
+          type: "boolean"
+          description: "生存信号の送出が設定されているか"
+      required:
+        - "ok"
+        - "heartbeat"
       additionalProperties: false
     ModePatch:
       type: "object"

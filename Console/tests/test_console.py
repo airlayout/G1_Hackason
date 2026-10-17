@@ -1,6 +1,8 @@
 """Console のテスト。実機も ssh も要らない（MockHelper と標準ライブラリのみ）。"""
 import json
+import shutil
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -15,6 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from g1console.dds_catalog import DISPLAYED, SERVICES, TOPICS  # noqa: E402
 from g1console.motion import MockSender, MotionController  # noqa: E402
 from g1console.modes import validate_audio, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, PLANNED_MODES  # noqa: E402
+from g1console.locations import LocationStore  # noqa: E402
+from g1console.navapi import NavApi  # noqa: E402
 from g1console.tasks import TaskRunner, load_definitions  # noqa: E402
 from g1console.camera_proc import MockCameraCtl  # noqa: E402
 from g1console.lidar_proc import MockLidarCtl  # noqa: E402
@@ -187,15 +191,18 @@ class HttpTest(unittest.TestCase):
         cls.monitor.poll_once()
         console = Path(__file__).resolve().parent.parent
         cls.tasks = TaskRunner(load_definitions(console / "tasks", console), console)
+        cls.tmp = tempfile.mkdtemp(prefix="g1console-test-")
+        cls.nav = NavApi(LocationStore(Path(cls.tmp) / "locations.json"))  # アダプタなし（地図は 404、地点は使える）
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.helper, cls.monitor, None, cls.settings, MockCameraCtl(), MockLidarCtl(),
                                                                    motion=MotionController(MockSender(), lambda: (501, 0.1)),
-                                                                   tasks=cls.tasks))
+                                                                   tasks=cls.tasks, nav=cls.nav))
         cls.port = cls.server.server_address[1]
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
     @classmethod
     def tearDownClass(cls):
         cls.tasks.shutdown()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
         cls.server.shutdown()
         cls.server.server_close()
 
@@ -251,7 +258,7 @@ class HttpTest(unittest.TestCase):
         self.assertTrue(d["services"])
         j = json.load(urllib.request.urlopen("http://127.0.0.1:%d/api/features" % self.port, timeout=5))
         self.assertEqual({f["id"] for f in j["features"]},
-                         {"connection", "reconnect", "mode", "action", "move", "tasks", "battery", "audio", "sensors"})
+                         {"connection", "reconnect", "mode", "action", "move", "tasks", "nav", "locations", "battery", "audio", "sensors"})
         self.assertTrue(j["planned_modes"] and j["actions"])
         self.assertEqual(j["planned_actions"], [])  # 未実装のアクションは無い（形は保つ）
 
@@ -368,7 +375,7 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(joints["items"][0]["name"], "左股 pitch")
         self.assertIsNotNone(joints["items"][0]["cmd"])
         self.assertEqual(snap["state"]["battery"]["soc"], state["battery"]["soc"])
-        self.assertEqual(snap["tabs"], ["ops", "motion", "state", "joints", "audio", "tasks", "camera", "dds", "settings"])
+        self.assertEqual(snap["tabs"], ["ops", "motion", "state", "joints", "audio", "tasks", "map", "camera", "dds", "settings"])
 
 
 if __name__ == "__main__":

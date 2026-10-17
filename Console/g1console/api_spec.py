@@ -123,13 +123,35 @@ SCHEMAS = {
     "TaskLogs": obj({"name": S(), "next": I("最後の行の seq。次回の since に使う"), "truncated": B("since 以降の一部がリングバッファから消えた"),
                      "lines": A(obj({"seq": I(), "text": S()}, ["seq", "text"]))}, ["name", "next", "truncated", "lines"]),
     "TaskNamePatch": obj({"name": S("GET /api/tasks の name。これ以外（argv・パス）は受け付けない")}, ["name"]),
+    "Pose": obj({"x": N("map フレームの x [m]"), "y": N("map フレームの y [m]"), "yaw_deg": N("向き [度]")}, ["x", "y", "yaw_deg"]),
+    "NavState": obj({
+        "available": B("false=アダプタから読めていない（reason に理由）"), "reason": S("読めない理由"),
+        "connected": B("Nav2 の bridge_status が生きている＝Nav2 稼働中とみなす"), "pose": null(ref("Pose")), "goal": null(ref("Pose")),
+        "plan": A(A(N(), "[x, y]"), "経路（/plan）"), "route": A(A(N(), "[x, y]"), "巡回ルート"),
+        "bridge_state": S(enum=["DISCONNECTED", "STANDBY", "READY", "NAVIGATING", "FAULT", "E_STOP", "UNKNOWN"]),
+        "patrol": obj({"state": S(), "index": I(), "total": I()}, ["state", "index", "total"]), "message": S(),
+        "age_s": null(N("最後にアダプタを読んでからの秒数")), "exclusive_reason": null(S("手動操作を禁止している理由。null=禁止していない")),
+        "heartbeat": obj({"enabled": B("--heartbeat-to が設定済みか"), "target": S(), "present": B("画面が見ている（生存信号を送っている）か"),
+                          "sent": I("送った累計パケット数")}, ["enabled"]),
+    }, ["available", "heartbeat"], "Nav2 の現在地・目的地・経路。値は検証済みのものだけ"),
+    "NavMapInfo": obj({"resolution": N("m/pixel"), "origin": A(N(), "[x, y]。画像左下の map 座標 [m]"), "width": I("画素"), "height": I("画素")},
+                      ["resolution", "origin", "width", "height"], "地図 PNG の座標系。x = origin[0] + px*resolution、y = origin[1] + (height - py)*resolution"),
+    "Location": obj({"name": S("英数字・日本語・_ - の 1〜40 文字"), "x": N("m"), "y": N("m"), "yaw_deg": N("度（±180）"),
+                     "map_id": S("地図の識別子（任意）")}, ["name", "x", "y", "yaw_deg", "map_id"], "名前つき座標"),
+    "Locations": obj({"locations": A(ref("Location"))}, ["locations"]),
+    "LocationPatch": obj({"name": S(), "x": N("|x| ≤ 10000"), "y": N("|y| ≤ 10000"), "yaw_deg": N("±180"), "map_id": S("省略可")},
+                         ["name", "x", "y", "yaw_deg"], "同じ name があれば上書き"),
+    "LocationNamePatch": obj({"name": S()}, ["name"]),
+    "LocationDeleted": obj({"deleted": S()}, ["deleted"]),
+    "PresencePatch": obj({}, desc="本文は空でよい"),
+    "PresenceAck": obj({"ok": B(), "heartbeat": B("生存信号の送出が設定されているか")}, ["ok", "heartbeat"]),
     "ModePatch": obj({"id": I("GET /api/buttons に載っている id のみ")}, ["id"]),
     "VolumePatch": obj({"volume": I(minimum=0, maximum=100)}, ["volume"]),
     "LedPatch": obj({"r": I(minimum=0, maximum=255), "g": I(minimum=0, maximum=255), "b": I(minimum=0, maximum=255)}, ["r", "g", "b"]),
     "TtsPatch": obj({"text": S("読み上げる文", minLength=1, maxLength=100), "speaker_id": I("話者 ID（意味は未確認）", enum=[0, 1])}, ["text", "speaker_id"]),
 }
 
-TAGS = {"ops": "操作タブ（接続・モード）", "motion": "運動タブ（物理リモコンの代替）", "tasks": "タスクタブ（定義済みコマンドの実行）", "state": "状態タブ", "joints": "関節タブ", "audio": "音声タブ",
+TAGS = {"ops": "操作タブ（接続・モード）", "motion": "運動タブ（物理リモコンの代替）", "tasks": "タスクタブ（定義済みコマンドの実行）", "nav": "マップタブ（Nav2 の表示・地点）", "state": "状態タブ", "joints": "関節タブ", "audio": "音声タブ",
         "camera": "カメラタブ", "dds": "DDS タブ", "settings": "設定タブ", "mock": "--mock のときだけ有効"}
 
 READ, SETTINGS, WRITE, MOTION = "read", "settings", "robot_write", "robot_motion"
@@ -159,6 +181,16 @@ ENDPOINTS = [
     ep("GET", "/api/tasks/logs", "getTaskLogs", "tasks", "タスクのログ（行単位）。クエリ name と since（最後に見た seq）", READ, "TaskLogs",
        errors=[(400, E400 + "（since）"), (404, "定義にないタスク")],
        notes="next を次回の since に渡すと、欠落・重複なく続きだけ読める。リングバッファは 2000 行で、溢れたら truncated=true。"),
+    ep("GET", "/api/nav/state", "getNavState", "nav", "Nav2 の現在地・目的地・経路と、手動操作を禁止している理由", READ, "NavState",
+       notes="読み取り専用（アダプタの GET だけ）。Nav2 へ送る口は無い。available=false は『アダプタが読めない』で、Nav2 の停止を意味しない。"
+             "exclusive_reason が null でなければ手動操作は無効。一度 Nav2 の稼働を見たら、アダプタが黙っても解除しない（安全側）。"),
+    ep("GET", "/api/nav/map.json", "getNavMapInfo", "nav", "地図の解像度・原点・大きさ", READ, "NavMapInfo",
+       errors=[(404, "--nav-adapter が未設定"), (502, "アダプタに繋がらない・応答が不正")]),
+    ep("GET", "/api/nav/map.png", "getNavMapPng", "nav", "地図の PNG（アダプタの画像を検証して中継）", READ, None, content="image/png",
+       ok_status="PNG 画像（バイナリ）", errors=[(404, "--nav-adapter が未設定"), (502, "アダプタに繋がらない・PNG でない")],
+       notes="座標の対応は GET /api/nav/map.json。RViz との位置合わせは実機で未確認。"),
+    ep("GET", "/api/locations", "getLocations", "nav", "登録済みの地点（名前つき座標）", READ, "Locations",
+       notes="タスク定義の argv から {loc:NAME.x} / {loc:NAME.y} / {loc:NAME.yaw_deg} で参照できる。"),
     ep("GET", "/api/cameras","getCameras", "camera", "カメラ一覧と、配信が設定済みか（映像は GET /camera/{name}）", READ, "Cameras"),
     ep("GET", "/api/camera/status", "getCameraStatus", "camera", "camera_stream の起動状態と、映像デバイスを掴んでいるプロセス（foreign＝自前以外）", READ, None,
        errors=[(502, E502)]),
@@ -180,6 +212,15 @@ ENDPOINTS = [
 
     ep("POST", "/api/settings", "postSettings", "settings", "接続先を保存して反映（Jetson を変えると ssh を張り直す）", SETTINGS, "Settings",
        request="SettingsPatch", example={"jetson_host": "192.168.123.164", "g1_ip": "192.168.123.161"}, errors=[(400, E400 + "（IP かホスト名以外、範囲外など。理由が error に入る）"), (500, "保存できない")]),
+    ep("POST", "/api/nav/presence", "postNavPresence", "nav", "『人が画面を見ている』を知らせる（0.5 秒ごと）。見ている間だけ Nav2 へ生存信号を出す", SETTINGS, "PresenceAck",
+       request="PresencePatch", example={}, errors=[(400, E400)], unverified=True,
+       notes="--heartbeat-to が設定されているときだけ意味を持つ。0.6 秒途絶えると生存信号は止まる。受信側が loopback を受け付けるかは実機で未確認。"),
+    ep("POST", "/api/locations/save", "postLocationSave", "nav", "地点を登録・上書きする", SETTINGS, "Location",
+       request="LocationPatch", example={"name": "example-spot", "x": 1.0, "y": 2.0, "yaw_deg": 90.0, "map_id": ""},
+       errors=[(400, E400), (409, "地点が上限（200）"), (500, "保存できない")]),
+    ep("POST", "/api/locations/delete", "postLocationDelete", "nav", "地点を削除する", SETTINGS, "LocationDeleted",
+       request="LocationNamePatch", example={"name": "example-spot"}, errors=[(400, E400), (404, "その名前の地点がない"), (500, "保存できない")],
+       notes="タスクがその地点を参照していると、次の起動時に 409 になる。"),
     ep("POST", "/api/camera/start", "postCameraStart", "camera", "Jetson で camera_stream.py を起動（再起動はしない。他が掴んでいれば失敗しうる）", SETTINGS, None, errors=[(502, E502)]),
     ep("POST", "/api/camera/stop", "postCameraStop", "camera", "camera_stream.py だけを停止（videohub など他のプロセスは止めない）", SETTINGS, None, errors=[(502, E502)]),
     ep("POST", "/api/lidar/start", "postLidarStart", "camera", "Jetson で lidar_stream.py を起動（DDS を購読するだけ。再起動はしない）", SETTINGS, None, errors=[(502, E502)]),
@@ -230,7 +271,7 @@ def _operation(e):
     if e["response"]:
         resp_200["content"] = {"application/json": {"schema": ref(e["response"])}}
     elif e["content"]:
-        resp_200["content"] = {e["content"]: {"schema": {"type": "string", "format": "binary"} if "stream" in e["ok_status"] or "MJPEG" in e["ok_status"] else {"type": "string"}}}
+        resp_200["content"] = {e["content"]: {"schema": {"type": "string", "format": "binary"} if "stream" in e["ok_status"] or "MJPEG" in e["ok_status"] or e["content"].startswith("image/") else {"type": "string"}}}
     else:
         resp_200["content"] = {"application/json": {"schema": {"type": "object", "additionalProperties": True}}}
     responses = {"200": resp_200}

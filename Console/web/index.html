@@ -122,6 +122,10 @@ button.big{font-weight:700;color:var(--bad)}
 #mo-estop-float{position:fixed;top:8px;right:8px;z-index:30;padding:10px 16px;background:var(--card);border:2px solid var(--bad)}
 .mo-warn{color:var(--warn)}
 #mo-state.s-bad{color:var(--bad)}#mo-state.s-on{color:var(--ok)}#mo-state.s-warn{color:var(--warn)}
+#mp-canvas{width:100%;display:block;background:#2b2f35;border-radius:8px;touch-action:manipulation;cursor:crosshair}
+.mp-loc{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line)}
+.mp-loc b{flex:1;min-width:120px;word-break:break-all}
+.mp-loc button{padding:6px 10px;font-size:calc(13px*var(--fs))}
 .tk{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px}
 .tk[data-sel=true]{border-color:var(--ok)}
 .tk code{word-break:break-all;font-size:calc(12px*var(--fs));color:var(--sub)}
@@ -241,6 +245,7 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  <button role="tab" id="tab-b-state" aria-selected="false">状態</button>
  <button role="tab" id="tab-b-joints" aria-selected="false">関節</button>
  <button role="tab" id="tab-b-audio" aria-selected="false">音声</button>
+ <button role="tab" id="tab-b-map" aria-selected="false">マップ</button>
  <button role="tab" id="tab-b-tasks" aria-selected="false">タスク</button>
  <button role="tab" id="tab-b-camera" aria-selected="false">カメラ</button>
  <button role="tab" id="tab-b-dds" aria-selected="false">DDS</button>
@@ -385,6 +390,25 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  <div class="arow"><span id="ld-stats">停止中</span><button id="ld-reset" class="sm" type="button">視点リセット</button></div>
  <p class="note">Jetson の <code>lidar_stream.py</code>（<code>rt/utlidar/cloud_livox_mid360</code> を購読するだけ。モーターには触れません）の点群を中継して表示します。<b>1 フレーム（0.1 秒）は元々まばら</b>な走査なので、<b>直近の数枚を重ねる</b>と壁や床の形が見えてきます（G1 が静止しているとき向き。歩行中は尾を引きます）。生は約 20k 点（うち有効なのは約 11k）・10 Hz で、「点の細かさ」で Jetson 側の間引きを選べます（粗 0.4 MB/s・標準 0.9 MB/s・全点 1.8 MB/s）。ドラッグで回転、ホイールで拡大縮小。色は高さ（青＝低い、赤＝高い、重ねた全点での相対値）。座標は <code>livox_frame</code>（lidar 原点・単位 m）のままで、G1 の向きに対して傾いている可能性があります。円は距離（m）、赤線が x 軸・緑線が y 軸。タブを離れると取得を止めます。</p>
 </section>
+</div>
+
+<div id="tab-map" data-tab="map" hidden>
+ <section class="card">
+  <h2>マップ<span class="tags" data-feature="nav"></span></h2>
+  <p id="mp-excl" class="res"></p>
+  <canvas id="mp-canvas" width="300" height="200" aria-label="Nav2 の地図。クリックで地点を選ぶ"></canvas>
+  <p id="mp-msg" class="note"></p>
+  <p id="mp-info" class="note"></p>
+  <p class="note">▲=現在地、×=目的地、青線=経路、緑線=巡回ルート、黄点=登録済みの地点、赤丸=選んだ点。<b>この画面から Nav2 へ目的地や操作は送りません</b>（Goal・巡回・<code>enable_navigation</code> は現地で扱います）。座標の対応は RViz との見比べで未確認です。</p>
+ </section>
+ <section class="card">
+  <h2>地点（名前つき座標）<span class="tags" data-feature="locations"></span></h2>
+  <p id="mp-res" class="res"></p>
+  <div class="arow"><input type="text" id="mp-name" placeholder="名前（例 reception）" maxlength="40"><input type="text" id="mp-x" inputmode="decimal" placeholder="x [m]" size="7"><input type="text" id="mp-y" inputmode="decimal" placeholder="y [m]" size="7"><input type="text" id="mp-yaw" inputmode="decimal" placeholder="向き [度]" size="7"></div>
+  <div class="mo-row"><button id="mp-cur" type="button">現在地を入れる</button><button id="mp-save" type="button">登録（同名は上書き）</button></div>
+  <div id="mp-locs"></div>
+  <p class="note">地図をクリックすると x・y が入ります。登録した地点は、タスク定義の <code>{loc:名前.x}</code> <code>{loc:名前.y}</code> <code>{loc:名前.yaw_deg}</code> で参照できます。</p>
+ </section>
 </div>
 
 <div id="tab-tasks" data-tab="tasks" hidden>
@@ -1110,9 +1134,125 @@ async function tkLogs(){
 }
 setInterval(tkRefresh,1000);
 
-/* 主ナビ 5 つ（操作／状態／マップ・タスク／センサ／開発）。画面が無いグループは出さない（マップは段階 5 で入る）。
+/* ---- マップタブ（Nav2 の地図・現在地の表示と地点の編集。Nav2 へ送る操作は無い） ---- */
+const mpc=$('mp-canvas'),mpx=mpc.getContext('2d');
+let mpInfo=null,mpImg=null,mpState=null,mpLocs=[],mpPick=null,mpT=null,mpP=null,mpLoadAt=0;
+const MP_BRIDGE={DISCONNECTED:'未接続',STANDBY:'待機',READY:'準備完了',NAVIGATING:'走行中',FAULT:'異常',E_STOP:'非常停止',UNKNOWN:'不明'};
+function mpScale(){return mpInfo?mpc.width/mpInfo.width:1}
+function mpToPx(x,y){const s=mpScale();return[(x-mpInfo.origin[0])/mpInfo.resolution*s,(mpInfo.height-(y-mpInfo.origin[1])/mpInfo.resolution)*s]}
+function mpToWorld(cx,cy){const s=mpScale();return[mpInfo.origin[0]+cx/s*mpInfo.resolution,mpInfo.origin[1]+(mpInfo.height-cy/s)*mpInfo.resolution]}
+function mpLine(pts,color){
+  if(pts.length<2)return;
+  mpx.strokeStyle=color;mpx.lineWidth=2;mpx.beginPath();
+  pts.forEach((p,i)=>{const[a,b]=mpToPx(p[0],p[1]);i?mpx.lineTo(a,b):mpx.moveTo(a,b)});mpx.stroke();
+}
+function mpDot(x,y,r,color,fill){
+  const[a,b]=mpToPx(x,y);mpx.beginPath();mpx.arc(a,b,r,0,6.2832);
+  if(fill){mpx.fillStyle=color;mpx.fill()}else{mpx.strokeStyle=color;mpx.lineWidth=2;mpx.stroke()}
+  return[a,b];
+}
+function mpDraw(){
+  if(!mpInfo||!mpImg){mpc.height=Math.max(120,Math.round(mpc.width*0.4));mpx.clearRect(0,0,mpc.width,mpc.height);return}
+  mpc.width=Math.max(200,Math.round(mpc.clientWidth));mpc.height=Math.round(mpc.width*mpInfo.height/mpInfo.width);
+  mpx.drawImage(mpImg,0,0,mpc.width,mpc.height);
+  const st=mpState&&mpState.available?mpState:null;
+  if(st){mpLine(st.route,'#3ec96b');mpLine(st.plan,'#4a9eff')}
+  mpx.font='12px sans-serif';
+  mpLocs.forEach(l=>{const[a,b]=mpDot(l.x,l.y,4,'#f2c744',true);mpx.fillStyle='#f2c744';mpx.fillText(l.name,a+6,b-6)});
+  if(st&&st.goal){const[a,b]=mpToPx(st.goal.x,st.goal.y);mpx.strokeStyle='#ff9f43';mpx.lineWidth=3;mpx.beginPath();mpx.moveTo(a-7,b-7);mpx.lineTo(a+7,b+7);mpx.moveTo(a+7,b-7);mpx.lineTo(a-7,b+7);mpx.stroke()}
+  if(st&&st.pose){
+    const[a,b]=mpToPx(st.pose.x,st.pose.y),t=st.pose.yaw_deg*Math.PI/180,c=Math.cos(t),d=-Math.sin(t);  /* 画像の y は下向き */
+    mpx.fillStyle='#ff4d4d';mpx.beginPath();
+    mpx.moveTo(a+c*12,b+d*12);mpx.lineTo(a-c*7-d*6,b-d*7+c*6);mpx.lineTo(a-c*7+d*6,b-d*7-c*6);mpx.closePath();mpx.fill();
+  }
+  if(mpPick)mpDot(mpPick.x,mpPick.y,7,'#ff3b30',false);
+}
+function mpText(){
+  const st=mpState,ex=$('mp-excl');
+  if(!st){return}
+  ex.className='res '+(st.exclusive_reason?'warn':'');
+  ex.textContent=st.exclusive_reason?('手動操作は無効: '+st.exclusive_reason):'手動操作の排他: なし（Nav2 の稼働を検出していません）';
+  const hb=st.heartbeat||{};
+  const parts=[];
+  if(st.available){
+    parts.push('Nav2: '+(st.connected?'稼働中':'未接続'),'ブリッジ: '+(MP_BRIDGE[st.bridge_state]||st.bridge_state),
+      '巡回: '+st.patrol.state+(st.patrol.total?` (${st.patrol.index}/${st.patrol.total})`:''));
+    if(st.pose)parts.push(`現在地 x=${f(st.pose.x,2)} y=${f(st.pose.y,2)} 向き=${f(st.pose.yaw_deg,0)}°`);else parts.push('現在地: 未取得');
+    if(st.message)parts.push(st.message);
+    $('mp-msg').textContent='';
+  }else $('mp-msg').textContent='アダプタから読めません: '+(st.reason||'不明');
+  parts.push(hb.enabled?`生存信号: ${hb.present?'送信中':'停止中'}（累計 ${hb.sent}）`:'生存信号: 無効（--heartbeat-to 未設定）');
+  $('mp-info').textContent=parts.join(' ／ ');
+}
+async function mpLoadMap(){
+  mpLoadAt=Date.now();
+  try{
+    const info=await tkApi('/api/nav/map.json');
+    const r=await fetch('/api/nav/map.png',{cache:'no-store'});if(!r.ok)throw new Error('地図を取得できません '+r.status);
+    const url=URL.createObjectURL(await r.blob()),img=new Image();
+    img.onload=()=>{URL.revokeObjectURL(url);mpInfo=info;mpImg=img;mpDraw()};
+    img.onerror=()=>URL.revokeObjectURL(url);
+    img.src=url;
+  }catch(e){$('mp-msg').textContent='地図: '+e.message}
+}
+async function mpLocations(){
+  try{mpLocs=(await tkApi('/api/locations')).locations}catch(e){$('mp-res').textContent='地点を取得できません: '+e.message;return}
+  const box=$('mp-locs');box.textContent='';
+  if(!mpLocs.length){const p=document.createElement('p');p.className='note';p.textContent='登録済みの地点はありません';box.append(p)}
+  mpLocs.forEach(l=>{
+    const row=document.createElement('div'),nm=document.createElement('b'),pos=document.createElement('span'),pk=document.createElement('button'),del=document.createElement('button');
+    row.className='mp-loc';nm.textContent=l.name;pos.className='note';pos.textContent=`x=${f(l.x,2)} y=${f(l.y,2)} 向き=${f(l.yaw_deg,0)}°`;
+    pk.type=del.type='button';pk.textContent='編集に入れる';del.textContent='削除';del.className='danger';
+    pk.onclick=()=>{$('mp-name').value=l.name;$('mp-x').value=l.x;$('mp-y').value=l.y;$('mp-yaw').value=l.yaw_deg;mpPick={x:l.x,y:l.y};mpDraw()};
+    del.onclick=()=>mpDelete(l.name);
+    row.append(nm,pos,pk,del);box.append(row);
+  });
+  mpDraw();
+}
+async function mpTick(){
+  if(tab!=='map')return;
+  try{mpState=await tkApi('/api/nav/state')}catch(e){mpState={available:false,reason:e.message,heartbeat:{}}}
+  mpText();
+  if(mpState.available&&!mpImg&&Date.now()-mpLoadAt>5000)mpLoadMap();
+  mpDraw();
+}
+function mpPresence(){
+  if(tab!=='map'||document.hidden)return;
+  fetch('/api/nav/presence',{method:'POST',body:'{}'}).catch(()=>{});
+}
+function mpStart(){
+  if(mpT)return;
+  mpLocations();mpTick();mpT=setInterval(mpTick,1000);mpP=setInterval(mpPresence,500);mpPresence();
+}
+function mpStop(){clearInterval(mpT);clearInterval(mpP);mpT=mpP=null}
+mpc.onclick=ev=>{
+  if(!mpInfo)return;
+  const r=mpc.getBoundingClientRect(),[x,y]=mpToWorld((ev.clientX-r.left)*mpc.width/r.width,(ev.clientY-r.top)*mpc.height/r.height);
+  mpPick={x,y};$('mp-x').value=x.toFixed(3);$('mp-y').value=y.toFixed(3);if(!$('mp-yaw').value)$('mp-yaw').value='0';mpDraw();
+};
+$('mp-cur').onclick=()=>{
+  const p=mpState&&mpState.available&&mpState.pose;
+  if(!p){$('mp-res').className='res warn';$('mp-res').textContent='現在地を取得できていません';return}
+  $('mp-x').value=p.x.toFixed(3);$('mp-y').value=p.y.toFixed(3);$('mp-yaw').value=Math.max(-180,Math.min(180,p.yaw_deg)).toFixed(1);mpPick={x:p.x,y:p.y};mpDraw();
+};
+$('mp-save').onclick=async()=>{
+  const res=$('mp-res'),num=id=>$(id).value.trim()===''?NaN:Number($(id).value);
+  const body={name:$('mp-name').value.trim(),x:num('mp-x'),y:num('mp-y'),yaw_deg:num('mp-yaw')};
+  if(!body.name||[body.x,body.y,body.yaw_deg].some(v=>!Number.isFinite(v))){res.className='res bad';res.textContent='名前・x・y・向きを数値で入れてください';return}
+  try{const j=await tkApi('/api/locations/save',body);res.className='res ok';res.textContent='登録しました: '+j.name;mpLocations()}
+  catch(e){res.className='res bad';res.textContent=e.message}
+};
+async function mpDelete(name){
+  const res=$('mp-res');
+  try{await tkApi('/api/locations/delete',{name});res.className='res ok';res.textContent='削除しました: '+name;mpLocations()}
+  catch(e){res.className='res bad';res.textContent=e.message}
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&tab==='map')mpPresence()});
+window.addEventListener('resize',()=>{if(tab==='map')mpDraw()});
+
+/* 主ナビ 5 つ（操作／状態／マップ・タスク／センサ／開発）。画面が無いグループは出さない。
    タブ名 = #hash = API 名は従来どおり。画面を足すときは該当グループの配列に入れる。 */
-const GROUPS=[['ops','操作',['ops','motion','audio']],['state','状態',['state','joints']],['maptask','マップ・タスク',['tasks']],['sensor','センサ',['camera']],['dev','開発',['dds','settings']]];
+const GROUPS=[['ops','操作',['ops','motion','audio']],['state','状態',['state','joints']],['maptask','マップ・タスク',['map','tasks']],['sensor','センサ',['camera']],['dev','開発',['dds','settings']]];
 const TABS=GROUPS.flatMap(g=>g[2]);
 const groupOf=t=>GROUPS.find(g=>g[2].includes(t));
 const lastTab={};
@@ -1130,6 +1270,7 @@ function setTab(t){
   if(t==='settings')loadSettings();
   if(t==='motion')moStatus();
   if(t==='tasks')tkRefresh();
+  t==='map'?mpStart():mpStop();
   lastKey='';
 }
 async function loadDds(){

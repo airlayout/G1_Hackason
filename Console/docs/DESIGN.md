@@ -106,19 +106,29 @@ Jetson（PC2）
 - 既知の限界: 子を reap したあとに `killpg` する経路があり、pid の再利用が極めて短時間に起きると無関係なグループへ送りうる（実運用では無視できる確率。必要なら `waitid(WNOWAIT)` へ）。タスクの中身がロボットを動かす場合の安全は、そのタスク側の責任（運動の指令元の排他は段階 5 の `disable_reason` で扱う）。
 
 
-## 6. 段階 5: Nav2・地図・ロケーション（設計のみ・未確認）
-- `/map` は保存済みの固定地図。生きているのは現在地（TF map→base_link）、`/plan`、巡回ルート、`/g1/bridge_status`、`/g1/patrol/status`。
-- `G1_HuggingFace/UI/Adapter/ros_adapter.py`（rclpy）を流用し、pixi の Humble 環境で小さなアダプタを動かす。ハブとは localhost HTTP。
-- 起動は `g1up.sh`。停止手順は未確認で、先に調べる。`G1_ARM` と `enable_navigation` は自動化しない（NF-09）。
-- 操作セッションが生きている間だけ、UDP 47311 に 5 Hz でハートビートを送る（`operator_lost` の入力）。ループバック送信元の受理は未確認。
-- 地図表示: `static.pgm` と resolution・origin をハブが HTTP で渡し、ブラウザの canvas に描く。MappingData の `static.pgm`（780×431、resolution 0.1、origin (-12.696, -17.928)）は fixtures 候補。どの `stage_*` が現行かは未確認で、1.3 GB を repo に入れない。
-- ロケーション: `Console/data/locations.json`。保存先は固定で、パスをクライアントから受け取らない。
-
-  ```json
-  {"map_id": "uis", "rooms": [{"name": "...", "locations": [
-    {"name": "...", "x": 0.0, "y": 0.0, "yaw": 0.0, "is_door": false}]}]}
-  ```
-  RViz と見比べて座標系を検証するまで、座標系は未確認。
+## 6. 段階 5: Nav2・地図・ロケーション（実装済み・実機未確認）
+### 6.1 構成
+- ハブは ROS を持たない。同じ機体で動く ROS アダプタ（`G1_HuggingFace/UI/Adapter` 系、pixi の Humble）へ **loopback の HTTP で GET だけ**する（`g1console/nav.py` の `NavProxy`）。URL は `--nav-adapter http://127.0.0.1:<port>` のみ許す（`parse_adapter_url`。外のホスト・パス・認証情報は起動時に拒否）。環境変数のプロキシは使わない。
+- 読むのは `/api/state`・`/api/map.json`・`/api/map.png` だけ。応答は外部データとして検証する（サイズ上限、PNG 署名、型・範囲・点数の上限、ホワイトリスト）。不正は 502（`NavError`）。
+- **Nav2 へ送る口は無い**。`NavApi.post` が扱うのは presence とロケーションだけで、それ以外は `None`（404）。Goal・巡回操作・`enable_navigation`・`G1_ARM` は人が現地で扱う（NF-09）。Nav2 の起動・停止ボタンも作っていない（上記 R-16）。
+### 6.2 排他（R-17）
+- `NavWatcher` が 1 Hz で状態を読み、`connected`（アダプタの bridge_status が生きている）なら `motion.set_disable_reason(REASON_RUNNING)`。変化したときだけ呼ぶ。
+- fail-safe: 一度でも稼働を見たあと、アダプタが応答しなくなったら `REASON_UNKNOWN` で**無効のまま**。解除は「アダプタが応答し、かつ `connected` が偽」のときだけ。一度も稼働を見ていなければ排他なし。
+- 監視スレッドは例外で死なせない（死ぬと排他が外れたままになる）。
+### 6.3 生存信号（オプトイン）
+- `--heartbeat-to HOST:PORT`。形式は Nav2 側の `HeartbeatPacket`（`<IBQQQ`、29 バイト: magic 0x47314842・version 1・session_id・seq・monotonic_ns）。5 Hz。
+- **ハブが生きているだけでは送らない**。ブラウザが `POST /api/nav/presence` を 0.5 秒ごとに呼んでいる間（最後から 0.6 秒以内）だけ送る。そうしないと、スマホが切れてもハブが信号を出し続け、途絶検知が働かない。マップタブを表示中かつ画面が見えている間だけ呼ぶ。
+- 受信側（g1_cmd_router）がループバック送信元を受け付けるかは未確認（J8）。
+### 6.4 ロケーション（R-18）
+- `Console/data/locations.json`（`--locations-file` で変更可。パスはクライアントから受け取らない）。`{"version":1,"locations":[{name,x,y,yaw_deg,map_id}]}`。名前は `^[\w\-]{1,40}$`、最大 200 件、|x|・|y| ≤ 10000 m、yaw は ±180°。保存は一時ファイル → fsync → `os.replace`。保存に失敗したらメモリも変えない。壊れたファイルは起動を止め、上書きしない。
+- タスクの argv に `{loc:NAME.x|y|yaw_deg}` を書ける。構文は定義の読み込み時に検証、展開は起動時（ロックの前）。未登録は 409、地点ストアが無ければ 500。
+### 6.5 画面
+- 「マップ」タブ（マップ・タスク群）。canvas に地図 PNG・現在地（▲）・目的地・経路・巡回ルート・登録済みの地点を描く。座標変換は `x = origin[0] + px*resolution`、`y = origin[1] + (height - py)*resolution`（地図 PNG の左下が origin という前提。**RViz と見比べるまで未確認**）。クリックで x・y が入り、「現在地を入れる」「登録」「削除」ができる。表示は `textContent` のみ。
+### 6.6 未確認（推測で埋めない）
+- 実アダプタの `/api/state` の形（`pose`・`plan`・`route` の単位と並び）、`connected` が「Nav2 稼働中」の判定として十分か。
+- アダプタを pixi 環境で `--host 127.0.0.1` 固定で動かせるか。
+- 地図 PNG の向きと座標変換。MappingData の `static.pgm`（780×431、resolution 0.1、origin (-12.696, -17.928)）は fixtures 候補。どの `stage_*` が現行かは未確認で、1.3 GB を repo に入れない。
+- Nav2 の起動・停止手順（ボタンを作るかの判断は人）。画面はブラウザで目視していない（拡張が未接続だった）。
 
 ## 7. 段階 6: トピック通信（設計のみ）
 - 受信: 任意のトピック。IDL 型は `unitree_sdk2py` が持つものだけ。型が分からないものは名前と受信有無のみ。
