@@ -9,9 +9,9 @@
 | Mac 煙テスト（手動） | `server.py --local`・`--require-token` を起動して `curl` | 不要 | 済 / 未 |
 | 実機（人が実施） | Jetson で起動、スマホから操作 | 要 | 未（歩行を伴うものは物理リモコンを手元に置く） |
 
-現在の自動テスト: **260 件**（test_console 47 / test_lidar 20 / test_auth 28 / test_local 16 / test_camera_proc 7 / test_web 6 / test_motion 24 / test_tasks 22 / test_nav 34 / test_topics 19 / test_caution 21 / test_ctl_local 16）。通過確認は下の実行記録に日付つきで残す。
+現在の自動テスト: **266 件**（test_console 47 / test_lidar 20 / test_auth 34 / test_local 16 / test_camera_proc 7 / test_web 6 / test_motion 24 / test_tasks 22 / test_nav 34 / test_topics 19 / test_caution 21 / test_ctl_local 16）。通過確認は下の実行記録に日付つきで残す。
 
-実行記録: 2026-10-18 段階 2b 時点で 124 件通過、段階 3 時点で 148 件、段階 4 時点で 170 件、段階 5 時点で 204 件、段階 6 時点で 223 件、段階 7 時点で 244 件、段階 8 時点で 260 件通過（`run_tests.sh`。JS の構文検査 `node --check` も通過）。段階 3 は `--mock` ハブでも claim → 保持 → 0.8 秒の沈黙で `lost` → 同じ session は 409 → estop を確認。
+実行記録: 2026-10-18 段階 2b 時点で 124 件通過、段階 3 時点で 148 件、段階 4 時点で 170 件、段階 5 時点で 204 件、段階 6 時点で 223 件、段階 7 時点で 244 件、段階 8 時点で 260 件、`--no-auth` 追加後に 266 件通過（`run_tests.sh`。JS の構文検査 `node --check` も通過）。段階 3 は `--mock` ハブでも claim → 保持 → 0.8 秒の沈黙で `lost` → 同じ session は 409 → estop を確認。
 
 ## 2. 自動テスト（実施済み）
 | 要件 | 内容 | テスト |
@@ -25,6 +25,7 @@
 | R-03〜R-05 | 空トークン拒否、Host 判定、Origin 判定、Cookie / Bearer、5 回失敗でロック、失敗の失効、成功でクリア | `test_auth.AuthUnitTest` |
 | R-03 | 認証なしで API は 401。`/` はログイン画面。不正トークンは 401。正しいトークンで Cookie が付き通る。誤った Cookie は拒否 | `test_auth.AuthHttpTest` |
 | R-04 | 未知の Host は Cookie があっても拒否。許可した追加 Host は通る。別オリジンの POST は拒否、同一オリジンは通る | `test_auth.AuthHttpTest` |
+| R-05a | `--no-auth`: トークン無しで API と画面が開く。`/login` は 302 で Cookie なし。未知の Host・別オリジンの POST は拒否のまま。空トークンは `required=False` のときだけ許す。`--no-auth` と `--require-token` の併用は終了コード 2 | `test_auth.NoAuthHttpTest` / `NoAuthCommandLineTest` |
 | R-03 | 未認証ではモード変更が拒否され、ヘルパーに触れない | `test_auth.AuthHttpTest.test_mode_change_blocked_without_auth_and_helper_untouched` |
 | R-14 | カメラ・lidar の起動停止、状態解析 | `test_camera_proc`、`test_lidar` |
 | 既存 | モード表示・切り替え、模擬シナリオ、API スキーマ | `test_console` |

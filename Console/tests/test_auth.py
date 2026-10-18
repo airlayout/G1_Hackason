@@ -236,5 +236,66 @@ class AuthHttpTest(unittest.TestCase):
         helper.call.assert_not_called()
 
 
+class NoAuthHttpTest(unittest.TestCase):
+    """--no-auth: トークンは求めないが、Host・Origin の検査は残る。"""
+
+    @classmethod
+    def setUpClass(cls):
+        helper = server.MockHelper()
+        cls.auth = Auth("", [EXTRA_HOST], required=False)
+        handler = server.make_handler(helper, server.Monitor(helper), None, Settings(None), MockCameraCtl(), MockLidarCtl(),
+                                      auth=cls.auth)
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        cls.port = cls.server.server_address[1]
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def req(self, method, path, headers=None, body=None, host=None):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.request(method, path, body=body, headers={"Host": host or "127.0.0.1:%d" % self.port, **(headers or {})})
+        res = conn.getresponse()
+        out = (res.status, dict(res.getheaders()), res.read())
+        conn.close()
+        return out
+
+    def test_empty_token_allowed_only_when_not_required(self):
+        self.assertFalse(Auth("", required=False).required)
+        with self.assertRaises(ValueError):
+            Auth("", required=True)
+
+    def test_api_and_index_open_without_token(self):
+        self.assertEqual(self.req("GET", "/api/status")[0], 200)
+        status, _, body = self.req("GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn("モード切り替え", body.decode())
+
+    def test_login_redirects_and_sets_no_cookie(self):
+        status, headers, _ = self.req("GET", "/login?token=anything")
+        self.assertEqual(status, 302)
+        self.assertEqual(headers["Location"], "/")
+        self.assertNotIn("Set-Cookie", headers)
+
+    def test_unknown_host_still_rejected(self):
+        self.assertEqual(self.req("GET", "/api/status", host="evil.example")[0], 403)
+        self.assertEqual(self.req("GET", "/api/status", host=EXTRA_HOST + ":18790")[0], 200)
+
+    def test_cross_origin_post_still_rejected(self):
+        self.assertEqual(self.req("POST", "/api/monitor", headers={"Origin": "http://evil.example"}, body=b"{}")[0], 403)
+
+
+class NoAuthCommandLineTest(unittest.TestCase):
+    """起動オプションの組み合わせ（ハブを起動せず、引数の扱いだけを見る）。"""
+
+    def test_no_auth_and_require_token_conflict(self):
+        with mock.patch.object(sys, "argv", ["server.py", "--mock", "--no-auth", "--require-token"]):
+            with self.assertRaises(SystemExit) as cm:
+                server.main()
+        self.assertEqual(cm.exception.code, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

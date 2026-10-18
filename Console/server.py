@@ -438,6 +438,12 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
             """GET /login?token=… → Cookie を発行して / へ。トークン無しはログイン画面。"""
             token = parse_qs(urlsplit(self.path).query).get("token", [""])[0]
             client = self.client_address[0]
+            if not auth.required:  # 認証なし運用: ログインは不要。古いブックマークの /login は / へ
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             if not token:
                 return self._send(200, "text/html; charset=utf-8", LOGIN_PAGE.encode("utf-8"))
             if auth.verify(token, client):
@@ -768,6 +774,9 @@ def main():
     parser.add_argument("--allow-host", action="append", default=[], metavar="NAME",
                         help="Host ヘッダに許す名前（mDNS 名など。待ち受け IP は自動で許す）")
     parser.add_argument("--require-token", action="store_true", help="ループバックだけでもトークン認証を要求する")
+    parser.add_argument("--no-auth", action="store_true",
+                        help="ループバック以外に開いてもトークン認証を求めない。信頼できる閉じたネットワーク専用"
+                             "（Host・Origin の検査は残る）")
     parser.add_argument("--tasks-dir", default=str(HERE / "tasks"), help="タスク定義（*.json）のディレクトリ（既定は Console/tasks）")
     parser.add_argument("--nav-adapter", metavar="URL", help="Nav2 の ROS アダプタ（読み取り専用）の URL。http://127.0.0.1:<port> のみ")
     parser.add_argument("--heartbeat-to", metavar="HOST:PORT", help="Nav2 の操作者 heartbeat の送信先。画面を見ている間だけ送る")
@@ -799,7 +808,12 @@ def main():
     except ValueError as exc:
         parser.error(str(exc))
     auth = None
-    if args.require_token or any(not is_loopback(b) for b in binds):
+    if args.no_auth and args.require_token:
+        parser.error("--no-auth と --require-token は同時に指定できません")
+    if args.no_auth and any(not is_loopback(b) for b in binds):
+        auth = Auth("", binds + args.allow_host, required=False)  # Host・Origin の検査だけ残す
+        print("[console] 警告: --no-auth。同じネットワークの端末なら誰でも操作できる（トークン認証なし）")
+    elif args.require_token or any(not is_loopback(b) for b in binds):
         auth = Auth(load_or_create_token(), binds + args.allow_host)
     try:
         locations = LocationStore(args.locations_file)
@@ -819,8 +833,8 @@ def main():
                            tasks=tasks, nav=NavApi(locations, watcher, proxy, heartbeat), topics=topics)
     servers = [ThreadingHTTPServer((b, args.port), handler) for b in binds]
     for b in binds:
-        print("[console] http://%s:%d (%s)%s" % (b, args.port, helper.backend, "" if auth is None else " 認証あり"))
-    if auth is not None:
+        print("[console] http://%s:%d (%s)%s" % (b, args.port, helper.backend, "" if auth is None else (" 認証あり" if auth.required else " 認証なし")))
+    if auth is not None and auth.required:
         for b in binds:
             if not is_loopback(b):  # スマホはこの URL を一度開けば Cookie が付く
                 print("[console] ログイン用 URL: http://%s:%d/login?token=%s（トークン: %s）" % (

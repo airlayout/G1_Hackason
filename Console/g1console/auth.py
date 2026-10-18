@@ -88,10 +88,11 @@ def host_only(header: str) -> str:
 
 
 class Auth:
-    def __init__(self, token: str, allowed_hosts=()):
-        if not token:
+    def __init__(self, token: str, allowed_hosts=(), required: bool = True):
+        if required and not token:
             raise ValueError("token is empty")
-        self._token = token
+        self.required = required  # False = トークンを求めない（Host・Origin の検査だけ残す）
+        self._token = token or ""
         self._hosts = set(LOOPBACK_NAMES) | {h.lower() for h in allowed_hosts}
         self._lock = threading.Lock()
         self._fails = {}  # client ip -> [失敗時刻…]
@@ -112,6 +113,8 @@ class Auth:
 
     def authorized(self, headers) -> bool:
         """Cookie か Bearer に正しいトークンがあるか。ここでは失敗を数えない（画面の通常の読み込みで数えない）。"""
+        if not self.required:
+            return True
         bearer = headers.get("Authorization", "")
         if bearer.startswith("Bearer ") and self._same(bearer[len("Bearer "):].strip()):
             return True

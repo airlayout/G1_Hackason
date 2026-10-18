@@ -40,6 +40,7 @@ Jetson（PC2）
 - `Handler._gate(post)` の順序: Host 検証（403）→ POST なら Origin 検証（403）→ `/login` 処理 → 認可 → 未認証は `/` ならログイン画面つき 401、API なら JSON 401。
 - 失敗が 60 秒に 5 回で 30 秒ロック（429）。成功で履歴を消す。
 - `make_handler(..., auth=None)` が既定で、認証なし（従来動作）。
+- `--no-auth`（R-05a）: `Auth("", hosts, required=False)`。`authorized()` が常に真、`/login` は `/` へ 302（Cookie なし）。Host・Origin の検査（`_gate`）は残る。`--require-token` とは排他。起動ログに警告を出し、トークンファイルは作らない。
 - **限界**: 平文 HTTP なのでトークンは LAN で盗聴されうる。運動の安全はトークンだけに頼らない（NF-08）。
 
 ### 2.4 常駐（R-06）

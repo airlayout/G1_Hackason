@@ -42,6 +42,7 @@ python3 server.py --local --bind-iface wlan0
 
 - `--local` = ssh を使わず、ヘルパー・カメラ・lidar・タスクをこの Jetson 上で動かす。
 - `--bind-iface wlan0` = wlan0 の IPv4 でも待ち受ける（127.0.0.1 でも常に待ち受ける）。ループバック以外で待ち受けるので**トークン認証が必須**になる。
+- 閉じた信頼できるネットワークでだけ、`--no-auth` を足すとトークンを求めなくなる（スマホは URL を開くだけ）。同じネットワークの端末なら誰でも操作できる。既定は認証あり。
 - 起動ログに `ログイン用 URL: http://<IP>:18790/login?token=…` が出る。トークンは `~/.g1console/token`（初回に自動生成）。
 - 自機のブラウザだけでよいなら `python3 server.py --local`（`http://127.0.0.1:18790`、認証なし）。
 - SDK が別の場所なら `UNITREE_SDK_DIR=/path/to/unitree_sdk2_python python3 server.py --local …`。
