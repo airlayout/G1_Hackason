@@ -963,6 +963,42 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/hub/stop":
+    post:
+      operationId: "postHubStop"
+      tags:
+        - "settings"
+      summary: "ハブ（このコンソール）自体を止める。画面からは再起動できない"
+      x-effect: "settings"
+      description: "応答の後に終了する（終了コード 0。systemd の Restart=on-failure では再起動しない）。止まったあと、再起動は Jetson で行う。カメラ・lidar の配信は別プロセスで、止まらない見込み（未確認）。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/HubStopPatch"
+            example:
+              confirm: true
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/HubStopAck"
+        "400":
+          description: "入力不正（confirm が true でない）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "タスク実行中、または運動の操作権が取られている"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/mode":
     post:
       operationId: "postMode"
@@ -1978,6 +2014,26 @@ components:
           type: "boolean"
       required:
         - "paused"
+      additionalProperties: false
+    HubStopPatch:
+      type: "object"
+      properties:
+        confirm:
+          type: "boolean"
+          description: "true のときだけ停止する。無ければ 400"
+      required:
+        - "confirm"
+      additionalProperties: false
+    HubStopAck:
+      type: "object"
+      properties:
+        ok:
+          type: "boolean"
+        message:
+          type: "string"
+      required:
+        - "ok"
+        - "message"
       additionalProperties: false
     Scenarios:
       type: "object"

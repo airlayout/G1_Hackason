@@ -44,7 +44,7 @@ Jetson（PC2）
 - **限界**: 平文 HTTP なのでトークンは LAN で盗聴されうる。運動の安全はトークンだけに頼らない（NF-08）。
 
 ### 2.4 常駐（R-06）
-- **2026-10-18 決定: 自動起動はしない**。以下は将来 systemd で常駐させる場合の設計で、現在は設置していない（手動で起動・停止する。`docs/JETSON_SETUP.md` §4）。
+- 2026-10-18 決定: **ハブだけ自動起動する**（一度「しない」と決め、同日撤回）。設置は人が行う（`docs/JETSON_SETUP.md` §4）。設置前は手動で起動・停止する。
 - `jetson/g1-console.service`（雛形、未設置）。`ExecStart=python3 server.py --local --bind-iface wlan0`、`Restart=on-failure`。設置・有効化は人が `sudo` で行う。
 - カメラ・lidar の配信は常駐させず、自動再起動もしない。
 
@@ -174,6 +174,14 @@ Jetson（PC2）
 - ハブが止まったとき、実行中の `g1up.sh`（長時間）の子プロセスがどうなるか（systemd の cgroup では一緒に止まる。J10 と同じ確認）。
 - 走行中に `nav2-down` を押したときの停止距離。先に停止係が物理リモコンで止める。
 - ポップアップの見た目と操作（スマホ幅を含む）は、ブラウザで目視していない。
+
+## 11. 段階 9: ハブの停止ボタン（実装済み・Jetson 未確認）
+- `POST /api/hub/stop {"confirm": true}`（R-21）。`make_handler(..., hub_stop=callable)` が渡されたときだけ有効（無ければ 404）。GET では動かない。
+- 順序: 本文の検証（`confirm` が真の `true` でなければ 400）→ 忙しさの検査（タスクが idle 以外、または `motion.status()["operator"]` が真なら 409）→ 200 を返す → `HUB_STOP_DELAY_S`（0.3 秒）後に別スレッドで `hub_stop()`。応答を返し終えてから止めるための待ち。
+- `main()` の `hub_stop` は全ての `ThreadingHTTPServer.shutdown()`。`serve_forever` が戻り、既存の `finally`（ゼロ速度・運動ヘルパー・タスク・トピック・watcher の後始末）を通り、終了コード 0 で終わる。systemd の `Restart=on-failure` は終了コード 0 では再起動しないので、止まったままになる（再起動は Jetson で行う）。
+- 認証・Host・Origin の検査は他の POST と同じ（`_gate`）。認証なし（`--no-auth`）では、同じネットワークの誰でも止められる。
+- 画面: 設定タブ。`guard('hubstop', {always, needCheck, danger})` のポップアップを通ってから POST する。止められたあとは状態表示が切断になる。
+- **未確認**: Jetson の systemd 配下での挙動、停止後にカメラ・lidar の配信プロセスが残るか、スマホでの見た目。
 
 ## 10. 段階 8: カメラ・lidar の起動・停止を `--local` に対応（実装済み・実機未確認）
 要求: 「他の開発プロジェクトに迷惑をかけないよう、既定は停止、画面で起動したときだけポートを使う」。ボタンと既定停止は既にあったが、`--local` では ctl の場所・待ち受け範囲・pid の置き場が足りなかった。

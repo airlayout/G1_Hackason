@@ -212,6 +212,13 @@ class WebCautionTest(unittest.TestCase):
         self.assertLess(body.index("askCaution"), body.index("tkApi('/api/tasks/'"))
         self.assertIn("tag('実機未確認','unver')", self._func("tkCard"))
 
+    def test_hub_stop_button_asks_before_posting(self):
+        body = HTML[HTML.index("$('hub-stop').onclick"):]
+        body = body[:body.index("};") + 2]
+        self.assertIn("guard('hubstop'", body)
+        self.assertIn("needCheck:true", body)
+        self.assertLess(body.index("guard('hubstop'"), body.index("/api/hub/stop"))
+
     def test_t7_6_guarded_features_exist_and_are_unverified(self):
         by_id = {f["id"]: f for f in FEATURES}
         guarded = set(re.findall(r"guard\('(\w+)'", HTML))

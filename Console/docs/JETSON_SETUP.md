@@ -60,8 +60,8 @@ python3 server.py --local --bind-iface wlan0
 2. ⚠️ 平文 HTTP。認証なし（`--no-auth`）なら、同じネットワークの誰でも画面から**モード切替（ダンピング・ゼロトルク等）ができる**。認証ありでもトークンを知っていれば同じ。物理リモコンが最後の砦。
 3. eth0 側のアドレスでは届かない（意図どおり）。
 
-## 4. 常駐させる（2026-10-18 決定: **自動起動はしない**。手動で起動・停止する）
-他の開発メンバーの作業（運動試験・Nav2・DDS・カメラ）に影響しうるため、常駐も自動起動もしない。Jetson を再起動したらハブは止まったままなので、使うときに起動する。
+## 4. 常駐させる（2026-10-18 決定: **ハブだけ自動起動する**。人が sudo で設置する）
+まず手動の起動・停止（設置前、または一時的に止めたいとき）:
 ```bash
 # 起動（Jetson 上。認証なし・wlan0 でも待ち受け）
 cd ~/G1_Hackason/Console && setsid nohup env UNITREE_SDK_DIR=$HOME/unitree_sdk2_python \
@@ -69,13 +69,17 @@ cd ~/G1_Hackason/Console && setsid nohup env UNITREE_SDK_DIR=$HOME/unitree_sdk2_
 # 止める
 pkill -f "server.py --local --por[t] 18790"
 ```
-以下は、将来 systemd で常駐させたくなったときの手順（雛形は `jetson/g1-console.service`。`--no-auth` は付いていないので、認証なしにするなら設置時に `ExecStart` へ足す）。現在は使わない。
+自動起動の設置（雛形は `jetson/g1-console.service`。雛形には `--no-auth` が付いていないので、認証なしにするなら設置時に足す）。手動起動のハブが残っているとポートが衝突するので、先に上の「止める」を実行する。
 ```bash
 sudo cp ~/G1_Hackason/Console/jetson/g1-console.service /etc/systemd/system/
+sudo sed -i 's|--bind-iface wlan0$|--bind-iface wlan0 --no-auth|' /etc/systemd/system/g1-console.service   # 認証なしにする場合だけ
+grep ExecStart /etc/systemd/system/g1-console.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now g1-console
-journalctl -u g1-console -n 20      # ログイン用 URL を確認
+journalctl -u g1-console -n 20      # 起動ログを確認
 ```
+画面から止める: 設定タブの「ハブを停止する」（systemd 配下でも再起動しない。戻すには `sudo systemctl start g1-console`）。
+一時的に止める: `sudo systemctl stop g1-console`（次の起動で戻る）。自動起動をやめる: `sudo systemctl disable --now g1-console`。
 `User`・`WorkingDirectory`・`UNITREE_SDK_DIR` を実環境に合わせて直してから設置する。常駐するのはハブだけで、カメラ・lidar・Nav2・タスクは画面のボタンで起動・停止する（自動再起動しない）。
 
 ## 5. Nav2 を使うとき（任意）

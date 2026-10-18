@@ -42,6 +42,7 @@ from g1console.modes import (ACTIONS, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS
                    validate_audio)
 
 HERE = Path(__file__).resolve().parent
+HUB_STOP_DELAY_S = 0.3  # /api/hub/stop の応答を返してから止めるまでの待ち
 REPLY_TIMEOUT_S = 8.0
 READY_TIMEOUT_S = 30.0  # DDS 初期化待ち
 POLL_INTERVAL_S = 1.0
@@ -388,7 +389,7 @@ def fsm_source(monitor):
 
 
 def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=None, lidar_ctl=None, lidar_base=None,
-                 auth=None, motion=None, tasks=None, nav=None, topics=None):
+                 auth=None, motion=None, tasks=None, nav=None, topics=None, hub_stop=None):
     def camera_url():
         return camera_base or (settings.camera_base(resolve_host) if settings else None)
 
@@ -593,6 +594,8 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 return self._post_motion(self.path[len("/api/motion/"):])
             if self.path == "/api/monitor":
                 return self._post_monitor()
+            if self.path == "/api/hub/stop" and hub_stop:
+                return self._post_hub_stop()
             if self.path == "/api/settings" and settings:
                 return self._post_settings()
             self._json(404, {"error": "not found"})
@@ -721,6 +724,25 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 return self._json(400, {"error": "bad request"})
             self._json(200, {"paused": monitor.paused})
 
+        def _post_hub_stop(self):
+            """{"confirm": true} でハブ自体を止める。タスク実行中・操作権の保持中は止めない（子や運動指令を巻き込まない）。"""
+            try:
+                body = self._read_json()
+                confirmed = body.get("confirm") is True
+            except (ValueError, TypeError, AttributeError):
+                return self._json(400, {"error": "bad request"})
+            if not confirmed:
+                return self._json(400, {"error": "confirm: true が必要です"})
+            busy = []
+            if tasks and any(t["state"] != "idle" for t in tasks.list()["tasks"]):
+                busy.append("タスクが実行中です。先に停止してください")
+            if motion and motion.status()["operator"]:
+                busy.append("運動の操作権が取られています。先に解放してください")
+            if busy:
+                return self._json(409, {"error": "止められません: " + "。".join(busy)})
+            self._json(200, {"ok": True, "message": "ハブを停止します。再起動は Jetson から行ってください"})
+            threading.Timer(HUB_STOP_DELAY_S, hub_stop).start()  # 応答を返し終えてから止める
+
         def _post_settings(self):
             try:
                 saved = settings.update(self._read_json())
@@ -829,9 +851,11 @@ def main():
     for service in (watcher, heartbeat):
         if service:
             service.start()
+    servers = []
     handler = make_handler(helper, monitor, camera_base, settings, camera_ctl, lidar_ctl, auth=auth, motion=motion,
-                           tasks=tasks, nav=NavApi(locations, watcher, proxy, heartbeat), topics=topics)
-    servers = [ThreadingHTTPServer((b, args.port), handler) for b in binds]
+                           tasks=tasks, nav=NavApi(locations, watcher, proxy, heartbeat), topics=topics,
+                           hub_stop=lambda: [srv.shutdown() for srv in servers])  # 終了コード 0 = systemd の on-failure では再起動しない
+    servers.extend(ThreadingHTTPServer((b, args.port), handler) for b in binds)
     for b in binds:
         print("[console] http://%s:%d (%s)%s" % (b, args.port, helper.backend, "" if auth is None else (" 認証あり" if auth.required else " 認証なし")))
     if auth is not None and auth.required:

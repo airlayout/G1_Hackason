@@ -485,6 +485,11 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
   <div class="arow"><button type="submit" id="set-save">保存して反映</button><span id="set-res" class="res"></span></div>
  </form>
 </section>
+<section class="card">
+ <h2>ハブの停止</h2>
+ <p class="note">このコンソール（ハブ）自体を止めます。止めると<b>この画面から再起動できません</b>。再起動は Jetson で行います（<code>docs/JETSON_SETUP.md</code> §4）。タスク実行中と、運動の操作権が取られている間は止められません。</p>
+ <div class="arow"><button type="button" id="hub-stop" class="danger">ハブを停止する</button><span id="hub-res" class="res"></span></div>
+</section>
 </div>
 
 <p class="note" id="cadence"></p>
@@ -1445,6 +1450,16 @@ async function monitorCtl(body){
 }
 $('mon-toggle').onclick=()=>monitorCtl({paused:!(S&&S.paused)});
 $('mon-once').onclick=()=>monitorCtl({check:true});
+$('hub-stop').onclick=async()=>{
+  if(!await guard('hubstop',{title:'ハブを停止する',ok:'停止する',danger:true,always:true,needCheck:true,
+    lines:['このコンソール自体が止まり、この画面から再起動できなくなります','再起動は Jetson で行います（自動起動に設定していれば、Jetson の再起動で戻ります）','カメラ・lidar の配信プロセスは別のため止まらない見込みです（未確認）。必要なら先に停止してください']}))return;
+  setRes('hub-res','停止中…');
+  try{
+    const r=await fetch('/api/hub/stop',{method:'POST',body:JSON.stringify({confirm:true})}),j=await r.json();
+    if(!r.ok){setRes('hub-res',j.error||('失敗 '+r.status),'bad');return}
+    setRes('hub-res',j.message,'ok');$('hub-stop').disabled=true;
+  }catch(e){setRes('hub-res','サーバーに届きません（'+e+'）','bad')}
+};
 TABS.forEach(k=>{$('tab-b-'+k).onclick=()=>setTab(k)});
 GROUPS.filter(g=>g[2].length).forEach(g=>{
   const b=document.createElement('button');b.id='nav-b-'+g[0];b.setAttribute('role','tab');b.setAttribute('aria-selected','false');b.textContent=g[1];

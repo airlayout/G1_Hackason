@@ -198,7 +198,8 @@ class HttpTest(unittest.TestCase):
         cls.topics = TopicService(MockTopicBackend(), allow)
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.helper, cls.monitor, None, cls.settings, MockCameraCtl(), MockLidarCtl(),
                                                                    motion=MotionController(MockSender(), lambda: (501, 0.1)),
-                                                                   tasks=cls.tasks, nav=cls.nav, topics=cls.topics))
+                                                                   tasks=cls.tasks, nav=cls.nav, topics=cls.topics,
+                                                                   hub_stop=lambda: None))  # 例の送信で実際には止めない
         cls.port = cls.server.server_address[1]
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
@@ -261,7 +262,7 @@ class HttpTest(unittest.TestCase):
         self.assertTrue(d["services"])
         j = json.load(urllib.request.urlopen("http://127.0.0.1:%d/api/features" % self.port, timeout=5))
         self.assertEqual({f["id"] for f in j["features"]},
-                         {"connection", "reconnect", "mode", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "sensors", "camera", "lidar", "nav2ctl"})
+                         {"connection", "reconnect", "mode", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "sensors", "camera", "lidar", "nav2ctl", "hubstop"})
         self.assertTrue(j["planned_modes"] and j["actions"])
         self.assertEqual(j["planned_actions"], [])  # 未実装のアクションは無い（形は保つ）
 

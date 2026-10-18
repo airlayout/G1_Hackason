@@ -64,6 +64,8 @@ FEATURES = [
      "note": "--local のときだけ起動・停止できる。Jetson 上での起動・停止は未確認"},
     {"id": "lidar", "label": "lidar の点群表示と、配信の起動・停止", "implemented": True, "verified": False,
      "note": "--local のときだけ起動・停止できる。Jetson 上での起動・停止は未確認"},
+    {"id": "hubstop", "label": "ハブ（このコンソール）の停止", "implemented": True, "verified": False,
+     "note": "設定タブのボタン。止めると画面から再起動できない（Jetson で行う）。タスク実行中・操作権の保持中は止めない。実機（systemd 配下を含む）では未確認"},
     {"id": "nav2ctl", "label": "Nav2 の起動・停止（タスクとして g1up.sh と撤収の一部を実行）", "implemented": True, "verified": False,
      "note": "tasks/nav2-*.json。警備班の手順を呼ぶだけ。発進ゲート（G1_ARM）と enable_navigation は自動で行わない。コンソールからの実行は未確認"},
     {"id": "nav", "label": "Nav2 の地図・現在地表示と、稼働中の手動操作の排他", "implemented": True, "verified": False,

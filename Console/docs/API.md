@@ -57,6 +57,7 @@
 | POST | `/api/lidar/start` | postLidarStart | settings | Jetson で lidar_stream.py を起動（DDS を購読するだけ。再起動はしない） |
 | POST | `/api/lidar/stop` | postLidarStop | settings | lidar_stream.py だけを停止 |
 | POST | `/api/monitor` | postMonitor | settings | 自動確認・自動再接続の停止／再開、または 1 回だけ確認 |
+| POST | `/api/hub/stop` | postHubStop | settings | ハブ（このコンソール）自体を止める。画面からは再起動できない ⚠実機未検証 |
 | POST | `/api/mode` | postMode | robot_motion | G1 のモード（FSM）を切り替える。**ロボットが動く** ⚠実機未検証 |
 | POST | `/api/tasks/start` | postTaskStart | settings | 定義済みタスクを起動する（名前だけ渡す）。タスクの中身によってはロボットが動きうる ⚠実機未検証 |
 | POST | `/api/tasks/stop` | postTaskStop | settings | 実行中のタスクを止める（プロセスグループへ SIGTERM、猶予後に SIGKILL） |
@@ -151,6 +152,15 @@
 {"paused": true}
 ```
 スキーマ: `MonitorPatch`。停止中はサーバーが ssh も DDS も叩かない。停止中もモード切替などの明示操作は実行できる。
+
+### POST /api/hub/stop
+
+ハブ（このコンソール）自体を止める。画面からは再起動できない
+
+```json
+{"confirm": true}
+```
+スキーマ: `HubStopPatch`。応答の後に終了する（終了コード 0。systemd の Restart=on-failure では再起動しない）。止まったあと、再起動は Jetson で行う。カメラ・lidar の配信は別プロセスで、止まらない見込み（未確認）。
 
 ### POST /api/mode
 

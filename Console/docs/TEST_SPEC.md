@@ -9,9 +9,9 @@
 | Mac 煙テスト（手動） | `server.py --local`・`--require-token` を起動して `curl` | 不要 | 済 / 未 |
 | 実機（人が実施） | Jetson で起動、スマホから操作 | 要 | 未（歩行を伴うものは物理リモコンを手元に置く） |
 
-現在の自動テスト: **266 件**（test_console 47 / test_lidar 20 / test_auth 34 / test_local 16 / test_camera_proc 7 / test_web 6 / test_motion 24 / test_tasks 22 / test_nav 34 / test_topics 19 / test_caution 21 / test_ctl_local 16）。通過確認は下の実行記録に日付つきで残す。
+現在の自動テスト: **276 件**（test_console 47 / test_lidar 20 / test_auth 34 / test_local 16 / test_camera_proc 7 / test_web 6 / test_motion 24 / test_tasks 22 / test_nav 34 / test_topics 19 / test_caution 22 / test_ctl_local 16 / test_hub_stop 9）。通過確認は下の実行記録に日付つきで残す。
 
-実行記録: 2026-10-18 段階 2b 時点で 124 件通過、段階 3 時点で 148 件、段階 4 時点で 170 件、段階 5 時点で 204 件、段階 6 時点で 223 件、段階 7 時点で 244 件、段階 8 時点で 260 件、`--no-auth` 追加後に 266 件通過（`run_tests.sh`。JS の構文検査 `node --check` も通過）。段階 3 は `--mock` ハブでも claim → 保持 → 0.8 秒の沈黙で `lost` → 同じ session は 409 → estop を確認。
+実行記録: 2026-10-18 段階 2b 時点で 124 件通過、段階 3 時点で 148 件、段階 4 時点で 170 件、段階 5 時点で 204 件、段階 6 時点で 223 件、段階 7 時点で 244 件、段階 8 時点で 260 件、`--no-auth` 追加後に 266 件、ハブ停止ボタン追加後に 276 件通過（`run_tests.sh`。JS の構文検査 `node --check` も通過）。段階 3 は `--mock` ハブでも claim → 保持 → 0.8 秒の沈黙で `lost` → 同じ session は 409 → estop を確認。
 
 ## 2. 自動テスト（実施済み）
 | 要件 | 内容 | テスト |
@@ -124,6 +124,12 @@ T2b-1・T2b-2 は §2 の `test_web` に移した。残り:
 | T7-7 | ポップアップの目視（幅 360px も）: 「やめる」が既定、チェックを入れるまで実行できない、Esc で閉じる、未確認タグ | 描ける・操作できる | ブラウザ手動（未実施） |
 | T7-8 | Jetson で `nav2-up-dry`・`nav2-down-dry` がハブから通る（`ROS_DISTRO` 未設定の環境で） | 通る | 実機（J18・J19） |
 | T7-9 | 機体を立たせて `nav2-up` → Nav2 が起動し機体は動かない → `nav2-down` で止まる。ゲートを閉じたまま・開けたままの両方 | 止まる・開けたままは失敗表示 | 実機（J20・J21） |
+| T9-1 | `POST /api/hub/stop`: `confirm: true` で 200 の後に停止関数が 1 回だけ呼ばれる。`confirm` 無し・偽・文字列・数値・不正 JSON・配列は 400 で止まらない。GET は 404。`hub_stop` が無ければ 404 | 期待どおり | `test_hub_stop.HubStopTest` |
+| T9-2 | タスクが running / stopping のとき、または操作権が取られているとき 409 で止まらない。idle なら止まる | 期待どおり | `test_hub_stop.HubStopTest` |
+| T9-3 | 認証あり: トークン無しは 401、Bearer ありは 200、別オリジンの POST は 403 で止まらない | 期待どおり | `test_hub_stop.HubStopTest` |
+| T9-4 | 停止ボタンは `guard('hubstop')`（チェック必須）を通ってから POST する。機能 `hubstop` は実機未確認 | 期待どおり | `test_caution` |
+| T9-5 | `--mock` ハブで実際に停止要求 → 終了コード 0、ポートが閉じる（手動） | 済（2026-10-18 Mac） | 手動 |
+| T9-6 | Jetson で画面から停止 → 終了コード 0 でプロセスが消え、systemd 配下では再起動しない。カメラ・lidar の配信が残るか | 要確認 | 実機（J24） |
 | T8-6 | Jetson で画面から lidar・カメラを起動 → `ss -ltn` で `127.0.0.1:8082`/`8081` のみ（0.0.0.0 でない）。停止後は両ポートが空く。ハブ起動直後は両ポートが空 | 期待どおり | 実機（J23） |
 
 ## 5. 実機確認の対応表（人が実施。実施したら日付と測定値を残す）
