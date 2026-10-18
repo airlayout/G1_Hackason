@@ -261,7 +261,7 @@ class HttpTest(unittest.TestCase):
         self.assertTrue(d["services"])
         j = json.load(urllib.request.urlopen("http://127.0.0.1:%d/api/features" % self.port, timeout=5))
         self.assertEqual({f["id"] for f in j["features"]},
-                         {"connection", "reconnect", "mode", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "sensors"})
+                         {"connection", "reconnect", "mode", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "sensors", "camera", "lidar", "nav2ctl"})
         self.assertTrue(j["planned_modes"] and j["actions"])
         self.assertEqual(j["planned_actions"], [])  # 未実装のアクションは無い（形は保つ）
 

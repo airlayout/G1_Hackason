@@ -58,7 +58,7 @@
 | POST | `/api/lidar/stop` | postLidarStop | settings | lidar_stream.py だけを停止 |
 | POST | `/api/monitor` | postMonitor | settings | 自動確認・自動再接続の停止／再開、または 1 回だけ確認 |
 | POST | `/api/mode` | postMode | robot_motion | G1 のモード（FSM）を切り替える。**ロボットが動く** ⚠実機未検証 |
-| POST | `/api/tasks/start` | postTaskStart | settings | 定義済みタスクを起動する（名前だけ渡す）。タスクの中身によってはロボットが動きうる |
+| POST | `/api/tasks/start` | postTaskStart | settings | 定義済みタスクを起動する（名前だけ渡す）。タスクの中身によってはロボットが動きうる ⚠実機未検証 |
 | POST | `/api/tasks/stop` | postTaskStop | settings | 実行中のタスクを止める（プロセスグループへ SIGTERM、猶予後に SIGKILL） |
 | POST | `/api/motion/claim` | postMotionClaim | robot_write | 操作権を取る（運動ヘルパーを起動する。初回は数秒かかる） ⚠実機未検証 |
 | POST | `/api/motion/ctl` | postMotionCtl | robot_motion | 目標速度を送る。**ロボットが動く**。10 Hz で送り続けること（0.5 秒途絶すると停止して操作権を解除） ⚠実機未検証 |
@@ -168,7 +168,7 @@ G1 のモード（FSM）を切り替える。**ロボットが動く**
 ```json
 {"name": "sample-countdown"}
 ```
-スキーマ: `TaskNamePatch`。シェルを経由しない。実行後は GET /api/tasks/logs と GET /api/tasks の state / result / exit_code で結果を確認する。
+スキーマ: `TaskNamePatch`。シェルを経由しない。実行後は GET /api/tasks/logs と GET /api/tasks の state / result / exit_code で結果を確認する。タスクの verified=false は実機で未確認で、caution が注意書き（画面は実行前にポップアップで見せる）。nav2-up / nav2-down は警備班の g1up.sh と撤収手順を呼ぶ。発進ゲート（G1_ARM）と enable_navigation は行わない。
 
 ### POST /api/tasks/stop
 

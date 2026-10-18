@@ -70,7 +70,7 @@ python3 server.py --local --bind-iface wlan0     # 個別の IP は --bind 192.1
 ```bash
 python3 server.py --local --bind-iface wlan0 --nav-adapter http://127.0.0.1:<port> [--heartbeat-to 127.0.0.1:47311] [--locations-file <path>]
 ```
-- `--nav-adapter`: 同じ機体の ROS アダプタ（loopback の http のみ）。ハブは GET だけ読む。**Nav2 へ目的地・操作は送らない**（Nav2 の起動・停止ボタンも無い）。
+- `--nav-adapter`: 同じ機体の ROS アダプタ（loopback の http のみ）。ハブは GET だけ読む。**Nav2 へ目的地・操作は送らない**（Nav2 の起動・停止は、この項目とは別に、下の「Nav2 の起動・停止」のタスクで行う）。
 - Nav2 稼働中は手動操作が無効になる。一度稼働を見たら、アダプタが黙っても無効のまま（安全側）。
 - `--heartbeat-to`: 画面（マップタブ）が見ている間だけ Nav2 へ生存信号（UDP）を出す。未指定なら送らない。
 
@@ -82,6 +82,10 @@ python3 server.py --local --topics-file Console/data/topics.json   # 許可リ�
 - 許可リスト: `{"version":1,"publish":[{"topic":"rt/xxx","max_bytes":64,"min_interval_s":1.0}]}`。
 - `rt/lowcmd`・`rt/api/*`・`rt/arm_sdk`・リモコン入力・非常停止などは常に送信拒否（許可リストに書くと起動しない）。
 - Jetson の DDS での動作は未確認（`docs/REAL_ROBOT_CHECKLIST.md` J16・J17）。
+### Nav2 の起動・停止と、動作未確認の注意ポップアップ
+- タスクタブに `nav2-up-dry`・`nav2-up`・`nav2-down-dry`・`nav2-down` がある（`tasks/nav2-*.json`）。起動は警備班の `/home/unitree/g1_nav2/g1up.sh`（機体は動かない状態まで）、停止は警備班の撤収手順（runbook §10）の sudo が要らない部分（`jetson/nav2_down.sh`）。**発進ゲート（G1_ARM）の開閉・`enable_navigation`・sudo は自動で行わない**（人が現地で行う）。ゲートが開いたままなら、止めたうえで「失敗」と表示する。
+- まず `-dry` を押す。コンソールから実行するのは初めてで、実機・Jetson では未確認（`docs/REAL_ROBOT_CHECKLIST.md` J18〜J21）。
+- 動作未確認の機能のボタン（モード・音声・LED・カメラ・lidar・運動・アクション・トピック送信・未確認のタスク）は、押すと注意ポップアップが出る。既定は「やめる」で、注意書きのあるタスクは確認チェックを入れるまで実行できない。未確認かどうかは `g1console/modes.py` の `FEATURES` とタスク定義の `verified` で決まる（実機で確かめたら真にする）。
 - 地点は `data/locations.json`。タスクの argv から `{loc:名前.x}` `{loc:名前.y}` `{loc:名前.yaw_deg}` で参照できる。
 - 未確認: 実アダプタとの結合、RViz との座標の一致、生存信号の受信側（`docs/REAL_ROBOT_CHECKLIST.md` J11〜J15）。
 

@@ -1006,7 +1006,8 @@ paths:
         - "tasks"
       summary: "定義済みタスクを起動する（名前だけ渡す）。タスクの中身によってはロボットが動きうる"
       x-effect: "settings"
-      description: "シェルを経由しない。実行後は GET /api/tasks/logs と GET /api/tasks の state / result / exit_code で結果を確認する。"
+      description: "シェルを経由しない。実行後は GET /api/tasks/logs と GET /api/tasks の state / result / exit_code で結果を確認する。タスクの verified=false は実機で未確認で、caution が注意書き（画面は実行前にポップアップで見せる）。nav2-up / nav2-down は警備班の g1up.sh と撤収手順を呼ぶ。発進ゲート（G1_ARM）と enable_navigation は行わない。"
+      x-real-robot-verified: false
       requestBody:
         required: true
         content:
@@ -2272,6 +2273,14 @@ components:
         timeout_s:
           type: "number"
           description: "この秒数で SIGTERM"
+        verified:
+          type: "boolean"
+          description: "false=実機（Jetson・G1）で未確認。画面は実行・停止の前に注意ポップアップを出す。結果を断定しない"
+        caution:
+          type: "array"
+          items:
+            type: "string"
+          description: "実行・停止の前に画面が見せる注意書き（server 側の定義）"
         state:
           type: "string"
           enum:
@@ -2301,6 +2310,8 @@ components:
         - "argv"
         - "group"
         - "timeout_s"
+        - "verified"
+        - "caution"
         - "state"
         - "result"
         - "exit_code"

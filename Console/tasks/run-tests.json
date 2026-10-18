@@ -1,8 +1,12 @@
 {
   "title": "コンソールの自動テスト",
   "description": "Console の自動テストを実行する。ロボットには触れない（模擬のみ）。",
-  "argv": ["bash", "tests/run_tests.sh"],
+  "argv": [
+    "bash",
+    "tests/run_tests.sh"
+  ],
   "cwd": ".",
   "group": "dev",
-  "timeout_s": 300
+  "timeout_s": 300,
+  "verified": true
 }

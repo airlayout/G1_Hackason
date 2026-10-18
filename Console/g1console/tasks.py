@@ -20,7 +20,9 @@ from g1console.locations import LocationError
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 LOC_RE = re.compile(r"\{loc:([\w\-]{1,40})\.(x|y|yaw_deg)\}")  # argv 内の地点参照（起動時に値へ置換）
-DEF_KEYS = {"title", "description", "argv", "cwd", "group", "timeout_s"}
+DEF_KEYS = {"title", "description", "argv", "cwd", "group", "timeout_s", "verified", "caution"}
+CAUTION_MAX_ITEMS = 8
+CAUTION_MAX_CHARS = 200
 TIMEOUT_MAX_S = 3600
 DEFAULT_TIMEOUT_S = 600
 RING_LINES = 2000
@@ -36,9 +38,10 @@ class TaskError(Exception):
 
 
 class TaskDef:
-    def __init__(self, name, title, description, argv, cwd, group, timeout_s):
+    def __init__(self, name, title, description, argv, cwd, group, timeout_s, verified=False, caution=()):
         self.name, self.title, self.description = name, title, description
         self.argv, self.cwd, self.group, self.timeout_s = tuple(argv), cwd, group, timeout_s
+        self.verified, self.caution = verified, tuple(caution)
 
 
 def _parse_def(name: str, raw: dict, base_dir: Path) -> TaskDef:
@@ -69,7 +72,14 @@ def _parse_def(name: str, raw: dict, base_dir: Path) -> TaskDef:
     title, description = raw.get("title", name), raw.get("description", "")
     if not isinstance(title, str) or not isinstance(description, str):
         raise ValueError("%s: title / description は文字列" % name)
-    return TaskDef(name, title, description, argv, cwd, group, float(timeout_s))
+    verified = raw.get("verified", False)  # 既定は「実機で未確認」。確認できたものだけ true にする
+    if not isinstance(verified, bool):
+        raise ValueError("%s: verified は true / false" % name)
+    caution = raw.get("caution", [])
+    if (not isinstance(caution, list) or len(caution) > CAUTION_MAX_ITEMS
+            or not all(isinstance(c, str) and 0 < len(c) <= CAUTION_MAX_CHARS for c in caution)):
+        raise ValueError("%s: caution は %d 字以内の文字列を %d 件までの配列" % (name, CAUTION_MAX_CHARS, CAUTION_MAX_ITEMS))
+    return TaskDef(name, title, description, argv, cwd, group, float(timeout_s), verified, caution)
 
 
 def load_definitions(task_dir, base_dir) -> dict:
@@ -109,7 +119,7 @@ class TaskRunner:
         running = bool(run) and run.ended_at is None
         return {
             "name": d.name, "title": d.title, "description": d.description, "argv": list(d.argv),
-            "group": d.group, "timeout_s": d.timeout_s,
+            "group": d.group, "timeout_s": d.timeout_s, "verified": d.verified, "caution": list(d.caution),
             "state": "stopping" if running and run.stop_requested else ("running" if running else "idle"),
             "result": run.result if run else None, "exit_code": run.exit_code if run else None,
             "started_at": run.started_at if run else None, "ended_at": run.ended_at if run else None,

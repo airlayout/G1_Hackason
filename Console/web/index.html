@@ -64,6 +64,15 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* 状態バッジ：未実装 / 実機未確認 / 実装済み */
 .tag{display:inline-block;font-size:calc(11px*var(--fs));font-weight:600;line-height:1.5;padding:0 8px;margin-left:6px;border-radius:99px;border:1px solid;vertical-align:middle;white-space:nowrap}
 .tag.plan{color:var(--mute)}.tag.unver{color:var(--warn)}.tag.done{color:var(--ok)}
+/* 動作未確認の注意ポップアップ */
+dialog#caution{width:min(92vw,520px);max-height:88vh;overflow:auto;border:2px solid var(--warn);border-radius:12px;background:var(--card);color:var(--fg);padding:16px}
+dialog#caution::backdrop{background:rgba(0,0,0,.55)}
+#ca-title{margin:0 0 8px;font-size:calc(17px*var(--fs))}
+#ca-lines{margin:8px 0;padding-left:20px;font-size:calc(14px*var(--fs))}
+#ca-lines li{margin:4px 0}
+#ca-check{display:flex;gap:8px;align-items:center;margin:10px 0;font-size:calc(14px*var(--fs))}
+#ca-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
+#ca-ok.danger{border-color:var(--bad)}
 .planned{margin-top:10px}
 .planned button small{display:block;margin-top:2px}
 .two{display:grid;grid-template-columns:1fr;gap:14px}
@@ -480,6 +489,16 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
 
 <p class="note" id="cadence"></p>
 </main>
+<dialog id="caution" aria-labelledby="ca-title"><form method="dialog">
+  <h2 id="ca-title"></h2>
+  <div id="ca-unver"><span class="tag unver" style="margin-left:0">実機未確認</span>
+   <p class="note">この操作は、実機（G1 電源オン・コンソール経由）で動作を確認していません。結果を断定せず、物理リモコンを手元に置いて、機体の様子を目で見てください。</p>
+   <p class="note" id="ca-note"></p></div>
+  <ul id="ca-lines"></ul>
+  <label id="ca-check"><input type="checkbox" id="ca-checkbox">上の内容を確認した</label>
+  <div id="ca-btns"><button value="cancel" id="ca-cancel" type="submit" autofocus>やめる</button>
+   <button value="ok" id="ca-ok" type="submit">実行する</button></div>
+</form></dialog>
 <script>
 const $=id=>document.getElementById(id);
 const FRESH_S=2.5, STALE_S=8, GIVEUP_S=15, POLL_MS=1000;
@@ -725,7 +744,8 @@ function renderCamProc(j){
   $('cp-table').tBodies[0].replaceChildren(...rows);
 }
 async function camProc(action){
-  const get=action==='status';setRes('cp-res',get?'確認中…':(action==='start'?'起動中…':'停止中…'));
+  const get=action==='status';
+  if(!get&&!await guard('camera',{title:'カメラ配信を'+(action==='start'?'起動':'停止')+'する',lines:['Jetson 上のカメラ配信プロセスを'+(action==='start'?'起動':'停止')+'します','起動・停止の結果は、画面の状態表示と映像で確かめてください']}))return;setRes('cp-res',get?'確認中…':(action==='start'?'起動中…':'停止中…'));
   ['cp-refresh','cp-start','cp-stop','cv-start','cv-stop'].forEach(i=>$(i).disabled=true);
   try{
     const r=await fetch('/api/camera/'+(get?'status':action),{method:get?'GET':'POST'});
@@ -799,7 +819,8 @@ function renderLidarProc(j){
   if(j.running!==ld.running)ldView(j.running);
 }
 async function ldProc(action){
-  const get=action==='status';setRes('ld-res',get?'確認中…':(action==='start'?'起動中…':'停止中…'));
+  const get=action==='status';
+  if(!get&&!await guard('lidar',{title:'lidar 配信を'+(action==='start'?'起動':'停止')+'する',lines:['Jetson 上の lidar 配信プロセスを'+(action==='start'?'起動':'停止')+'します','起動・停止の結果は、画面の状態表示と点群で確かめてください']}))return;setRes('ld-res',get?'確認中…':(action==='start'?'起動中…':'停止中…'));
   ['ld-refresh','ld-start','ld-stop'].forEach(i=>$(i).disabled=true);
   try{
     const r=await fetch('/api/lidar/'+action,{method:get?'GET':'POST'}),j=await r.json();
@@ -839,6 +860,7 @@ async function setVolume(v){
   }catch(e){setRes('vol-res',`サーバーに届きません（${e}）`,'bad')}
 }
 async function setLed(r,g,b){
+  if(!await guard('audio',{title:'頭部 LED の色を変える',ok:'送信する',lines:[`色 (${r}, ${g}, ${b}) を送ります。読み戻せないので、色が変わったか目で確認してください`]}))return;
   setRes('led-res','送信中…');
   try{
     const {ok,j}=await audioPost('led',{r,g,b});
@@ -848,7 +870,7 @@ async function setLed(r,g,b){
 }
 async function speak(){
   const text=$('tts').value.trim();if(!text){setRes('tts-res','文を入力してください','warn');return}
-  if(!confirm(`実機のスピーカーから読み上げます：\n「${text}」\n周囲に問題ありませんか？`))return;
+  if(!await guard('audio',{title:'読み上げる',ok:'読み上げる',always:true,lines:[`実機のスピーカーから「${text}」を読み上げます`,'周囲に問題ありませんか？']}))return;
   setRes('tts-res','送信中…');
   try{
     const {ok,j}=await audioPost('tts',{text,speaker_id:+$('tts-spk').value});
@@ -886,7 +908,8 @@ function render(){
 async function setMode(b){
   const cur=S&&S.mode&&S.mode.state==='ok'?S.mode.fsm_id:null;
   const warn=b.danger&&(cur===500||cur===501)?'\n\n歩行中にこの操作をすると転倒する恐れがあります。':'';
-  if(!confirm(`「${b.label}」に切り替えます。周囲の安全を確認しましたか？${warn}`))return;
+  if(!await guard('mode',{title:`「${b.label}」に切り替える`,ok:'切り替える',always:true,danger:b.danger,
+    lines:['周囲の安全を確認してください',...(warn?['歩行中にこの操作をすると転倒する恐れがあります']:[]),'物理リモコンを手元に置く']}))return;
   busy=true;render();
   try{
     const r=await fetch('/api/mode',{method:'POST',body:JSON.stringify({id:b.id})});
@@ -917,6 +940,34 @@ async function loadScenarios(){
   sel.value=current;
   sel.onchange=async()=>{await fetch('/api/scenario',{method:'POST',body:JSON.stringify({scenario:sel.value})});await poll(true)};
   $('mockbar').hidden=false;
+}
+
+/* 動作未確認の注意ポップアップ。実機未確認の操作は、押したときに注意を出して確認を取る。
+   文面は textContent だけで描く（タスクの注意書きなどサーバー由来の文字列を HTML として解釈しない）。 */
+let featureList=[];
+async function featureInfo(id){
+  if(!featureList.length){try{featureList=(await (await fetch('/api/features',{cache:'no-store'})).json()).features}catch(e){}}
+  return featureList.find(f=>f.id===id)||null;
+}
+function askCaution(o){
+  return new Promise(resolve=>{
+    const d=$('caution'),lines=o.lines||[];
+    if(typeof d.showModal!=='function'){resolve(confirm([o.title,o.unverified?'（実機未確認）':'',...lines].filter(Boolean).join('\n')));return}
+    $('ca-title').textContent=o.title;
+    $('ca-unver').hidden=!o.unverified;$('ca-note').textContent=o.note||'';$('ca-note').hidden=!o.note;
+    $('ca-lines').replaceChildren(...lines.map(t=>{const li=document.createElement('li');li.textContent=t;return li}));
+    $('ca-check').hidden=!o.needCheck;$('ca-checkbox').checked=false;
+    const ok=$('ca-ok');ok.textContent=o.ok||'実行する';ok.className=o.danger?'danger':'';ok.disabled=!!o.needCheck;
+    $('ca-checkbox').onchange=e=>{ok.disabled=!e.target.checked};
+    d.onclose=()=>resolve(d.returnValue==='ok');
+    d.returnValue='';d.showModal();
+  });
+}
+/* 機能 id（FEATURES）が実機未確認なら注意を出す。verified なら、always のときだけ（安全確認の問い）出す。 */
+async function guard(fid,o){
+  const f=await featureInfo(fid),unverified=!f||!f.verified;
+  if(!unverified&&!o.always)return true;
+  return askCaution({...o,unverified,note:f&&f.note||''});
 }
 
 /* 状態バッジ。未実装＝まだ無い機能、実機未確認＝実装したが G1 で試していない機能 */
@@ -1034,6 +1085,8 @@ async function moTick(){
   finally{moBusy--}
 }
 async function moClaim(){
+  if(!await guard('move',{title:'運動の操作を始める',ok:'操作を始める',danger:true,
+    lines:['物理リモコンを手元に置く。この画面の緊急停止は安全規格を満たさない','周囲 2 m に人・物がないことを確認する','速度上限と、歩行モード（FSM 500/501）での動作は実機で確かめていない']}))return;
   $('mo-claim').disabled=true;moShow(null,'操作権を取っています…（初回は数秒かかります）');
   try{
     const r=await moPost('claim',{});
@@ -1059,6 +1112,7 @@ async function moEstop(){
 }
 async function moAction(a,b){
   if(!moSession)return;
+  if(!await guard('action',{title:`「${a.label}」を実行する`,lines:['SetTaskId の番号と効果は実機で確かめていない','周囲に人・物がないことを確認する']}))return;
   b.disabled=true;
   try{
     const r=await moPost('action',{session:moSession,name:a.id});
@@ -1101,9 +1155,10 @@ function tkCard(t){
   const go=mk('button','実行'),stop=mk('button','停止','danger'),lg=mk('button','ログを見る');
   go.onclick=()=>tkAct('start',t.name);stop.onclick=()=>tkAct('stop',t.name);lg.onclick=()=>tkSelect(t.name);
   row.append(go,stop,lg);
-  card.append(mk('b',t.title),st,mk('span',t.description,'note'),mk('code',t.argv.join(' ')),row);
+  const head=mk('b',t.title);if(!t.verified)head.append(tag('実機未確認','unver'));
+  card.append(head,st,mk('span',t.description,'note'),mk('code',t.argv.join(' ')),row);
   $('tk-list').append(card);
-  return tkEls[t.name]={card,st,go,stop};
+  return tkEls[t.name]={card,st,go,stop,def:t};
 }
 function renderTasks(list){
   list.forEach(t=>{
@@ -1120,6 +1175,12 @@ async function tkRefresh(){
   if(tkSel)tkLogs();
 }
 async function tkAct(kind,name){
+  const t=(tkEls[name]||{}).def;
+  if(t&&(!t.verified||t.caution.length)){
+    const run=kind==='start';
+    if(!await askCaution({title:`「${t.title}」を${run?'実行':'停止'}する`,ok:run?'実行する':'停止する',danger:true,unverified:!t.verified,
+      needCheck:t.caution.length>0,lines:[...t.caution,'コマンド: '+t.argv.join(' ')]}))return;
+  }
   try{await tkApi('/api/tasks/'+kind,{name});if(kind==='start')tkSelect(name)}
   catch(e){$('tk-msg').textContent=e.message}
   tkRefresh();
@@ -1274,6 +1335,7 @@ async function tpLoad(){
     row.className='arow';nm.textContent=r.topic;inp.type='text';inp.maxLength=r.max_bytes;inp.placeholder=`文字列（${r.max_bytes} バイトまで・${r.min_interval_s} 秒間隔）`;
     btn.type='button';btn.textContent='送信';
     btn.onclick=async()=>{
+      if(!await guard('topics',{title:'トピックを送信する',ok:'送信する',lines:[`${r.topic} へ「${inp.value}」（${new TextEncoder().encode(inp.value).length} バイト）を送ります`]}))return;
       try{const j=await tkApi('/api/topics/publish',{topic:r.topic,data:inp.value});tpMsg('ok',`送信しました: ${j.published}（${j.bytes} バイト）`)}
       catch(e){tpMsg('bad',e.message)}
     };

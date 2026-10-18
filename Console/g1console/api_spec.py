@@ -50,11 +50,14 @@ MOTION_REQ = ["state", "operator", "moving", "target", "blocked", "sender"]
 TASK_PROPS = {
     "name": S("タスク名（Console/tasks/<name>.json）"), "title": S(), "description": S(),
     "argv": A(S(), "実行されるコマンド（配列。シェルは経由しない）"), "group": null(S("排他グループ。同じグループは同時に走らせない")),
-    "timeout_s": N("この秒数で SIGTERM"), "state": S(enum=["idle", "running", "stopping"]),
+    "timeout_s": N("この秒数で SIGTERM"),
+    "verified": B("false=実機（Jetson・G1）で未確認。画面は実行・停止の前に注意ポップアップを出す。結果を断定しない"),
+    "caution": A(S(), "実行・停止の前に画面が見せる注意書き（server 側の定義）"),
+    "state": S(enum=["idle", "running", "stopping"]),
     "result": null(S("直近の実行の結果。ok / failed / stopped / timeout")), "exit_code": null(I("終了コード。負はシグナル")),
     "started_at": null(N("epoch 秒")), "ended_at": null(N("epoch 秒。null=実行中または未実行")),
 }
-TASK_REQ = ["name", "title", "description", "argv", "group", "timeout_s", "state", "result", "exit_code", "started_at", "ended_at"]
+TASK_REQ = ["name", "title", "description", "argv", "group", "timeout_s", "verified", "caution", "state", "result", "exit_code", "started_at", "ended_at"]
 
 SCHEMAS = {
     "Error": obj({"error": S("平易な日本語の理由")}, ["error"], "エラー本文（全エンドポイント共通）。G1・Jetson に届かない 502 では ok=false・offline・ssh_exit などの生の情報も付く", extra=True),
@@ -261,8 +264,10 @@ ENDPOINTS = [
              "歩行中（500/501）に切り替えると転倒の恐れがある。実行前に必ず人へ確認する。実機では未検証。"),
     ep("POST", "/api/tasks/start", "postTaskStart", "tasks", "定義済みタスクを起動する（名前だけ渡す）。タスクの中身によってはロボットが動きうる", SETTINGS, "Task",
        request="TaskNamePatch", example={"name": "sample-countdown"},
-       errors=[(400, E400), (404, "定義にないタスク"), (409, "同じタスク、または同じ排他グループが実行中"), (500, "起動できない")],
-       notes="シェルを経由しない。実行後は GET /api/tasks/logs と GET /api/tasks の state / result / exit_code で結果を確認する。"),
+       errors=[(400, E400), (404, "定義にないタスク"), (409, "同じタスク、または同じ排他グループが実行中"), (500, "起動できない")], unverified=True,
+       notes="シェルを経由しない。実行後は GET /api/tasks/logs と GET /api/tasks の state / result / exit_code で結果を確認する。"
+             "タスクの verified=false は実機で未確認で、caution が注意書き（画面は実行前にポップアップで見せる）。"
+             "nav2-up / nav2-down は警備班の g1up.sh と撤収手順を呼ぶ。発進ゲート（G1_ARM）と enable_navigation は行わない。"),
     ep("POST", "/api/tasks/stop", "postTaskStop", "tasks", "実行中のタスクを止める（プロセスグループへ SIGTERM、猶予後に SIGKILL）", SETTINGS, "Task",
        request="TaskNamePatch", example={"name": "sample-countdown"}, errors=[(400, E400), (404, "定義にないタスク"), (409, "実行中ではない")]),
     ep("POST", "/api/motion/claim","postMotionClaim", "motion", "操作権を取る（運動ヘルパーを起動する。初回は数秒かかる）", WRITE, "MotionClaim",

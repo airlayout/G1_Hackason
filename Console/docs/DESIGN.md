@@ -110,7 +110,7 @@ Jetson（PC2）
 ### 6.1 構成
 - ハブは ROS を持たない。同じ機体で動く ROS アダプタ（`G1_HuggingFace/UI/Adapter` 系、pixi の Humble）へ **loopback の HTTP で GET だけ**する（`g1console/nav.py` の `NavProxy`）。URL は `--nav-adapter http://127.0.0.1:<port>` のみ許す（`parse_adapter_url`。外のホスト・パス・認証情報は起動時に拒否）。環境変数のプロキシは使わない。
 - 読むのは `/api/state`・`/api/map.json`・`/api/map.png` だけ。応答は外部データとして検証する（サイズ上限、PNG 署名、型・範囲・点数の上限、ホワイトリスト）。不正は 502（`NavError`）。
-- **Nav2 へ送る口は無い**。`NavApi.post` が扱うのは presence とロケーションだけで、それ以外は `None`（404）。Goal・巡回操作・`enable_navigation`・`G1_ARM` は人が現地で扱う（NF-09）。Nav2 の起動・停止ボタンも作っていない（上記 R-16）。
+- **Nav2 へ送る口は無い**。`NavApi.post` が扱うのは presence とロケーションだけで、それ以外は `None`（404）。Goal・巡回操作・`enable_navigation`・`G1_ARM` は人が現地で扱う（NF-09）。Nav2 の起動・停止はこの画面とは別に、タスクとして行う（§7）。
 ### 6.2 排他（R-17）
 - `NavWatcher` が 1 Hz で状態を読み、`connected`（アダプタの bridge_status が生きている）なら `motion.set_disable_reason(REASON_RUNNING)`。変化したときだけ呼ぶ。
 - fail-safe: 一度でも稼働を見たあと、アダプタが応答しなくなったら `REASON_UNKNOWN` で**無効のまま**。解除は「アダプタが応答し、かつ `connected` が偽」のときだけ。一度も稼働を見ていなければ排他なし。
@@ -128,7 +128,7 @@ Jetson（PC2）
 - 実アダプタの `/api/state` の形（`pose`・`plan`・`route` の単位と並び）、`connected` が「Nav2 稼働中」の判定として十分か。
 - アダプタを pixi 環境で `--host 127.0.0.1` 固定で動かせるか。
 - 地図 PNG の向きと座標変換。MappingData の `static.pgm`（780×431、resolution 0.1、origin (-12.696, -17.928)）は fixtures 候補。どの `stage_*` が現行かは未確認で、1.3 GB を repo に入れない。
-- Nav2 の起動・停止手順（ボタンを作るかの判断は人）。画面はブラウザで目視していない（拡張が未接続だった）。
+- 画面はブラウザで目視していない（拡張が未接続だった）。Nav2 の起動・停止は §7。
 
 ## 7. 段階 6: トピック通信（実装済み・Jetson 未確認）
 - `g1console/topics.py`: 判定とサービス層（副作用なし）。`topic_backend.py`: Jetson の DDS ヘルパー（`jetson/topic_helper.py`）を子プロセスで持つ。ヘルパーは最初の購読・送信まで起動しない。`--mock` は偽メッセージを返し送信は記録するだけ。`--local` と `--mock` のときだけ有効（ssh 経由では 404）。
@@ -149,3 +149,26 @@ Jetson（PC2）
 
 ## 9. 更新ルール
 実装した節は「設計のみ」を外し、実機で確かめたら「未確認」を外して日付と測定値を書く。
+
+
+## 7. 段階 7: Nav2 の起動・停止タスクと、動作未確認の注意ポップアップ（実装済み・実機未確認）
+### 7.1 Nav2 の手順の出どころ（訂正）
+- 当初の記述「検証済みの停止手順が無い」は誤りだった。警備班の `Navigation/nav2_stable` に、起動（`g1up.sh` / `start_nav.sh`）と撤収（`safety/runbook_nav2_session.md` §10）の手順があり、2026-09-24・25 の実機で使われている。GitHub の `trcp`（`trcp/g1_ws`・`trcp/erasers-app`）にあるのは launch ファイルで、G1 の起動・停止手順は無い。
+- 無いのは「コンソール（ハブ）から実行した」実績である。
+### 7.2 構成
+- 新しいサーバーコードは足さない。既存の `TaskRunner`（argv のみ・shell なし・新プロセスグループ・排他グループ・ログ）に、定義ファイル 4 つを足した: `nav2-up-dry`・`nav2-up`・`nav2-down-dry`・`nav2-down`。全て排他グループ `nav2`（同時に 2 つ走らない）。
+- `nav2-up` = `/home/unitree/g1_nav2/g1up.sh`（姿勢検査 → ブリッジ（ゲート閉）→ 内蔵 SLAM 1801 → 記録 → Nav2 → 自己位置合わせ → 検収。ここで機体は動かない）。`-dry` は `--dry-run`。
+- `nav2-down` = `jetson/nav2_down.sh`（runbook §10: ①ゲートを閉じる（sudo・人）→ ②`ros2 bag record` を止める → Nav2・橋渡しノードを落とす → ③`send_slam_api.py 1901` → ④`systemctl stop g1-sdk-bridge`（sudo・人））。②③だけを同じ順で行い、①④は画面に表示するだけ。runbook は単一のコマンドではなく手順の列なので、この 1 ファイルだけ新規に書いた。
+- `nav2_down.sh` はゲートを開けない・閉じない・設定ファイルを書かない・sudo を呼ばない。ゲートが開いている（起動引数に `--arm`、または設定ファイルが `G1_ARM=--arm`）ときは、止められる部分は止めたうえで終了コード 3 → 画面は「失敗」。
+- 起動タスクは「機体が動かない状態」で終わる。ゲートを開ける・走行許可（`enable_navigation`）は人が現地で行う（NF-09）。
+### 7.3 注意ポップアップ
+- 目的: 動作未確認の機能のボタンを押したとき、結果を断定せず、確認を取ってから実行する。
+- 機能（FEATURES）: `verified` が偽（または一覧に無い）なら、モード・アクション・運動の開始・音声・LED・カメラ/lidar の起動停止・トピック送信の押下時に `guard(機能 id, …)` が `<dialog>` を出す。`verified` が真でも、安全確認の問い（モード切替・読み上げ）は `always` で毎回出す（従来の `confirm` の置き換え）。
+- タスク: 定義に `verified`（既定 false）と `caution`（文字列の配列。最大 8 件・各 200 字）を持たせる。未確認または注意書きありのタスクは、開始・停止の押下時にポップアップを出し、注意書きがあれば確認チェックを入れるまで「実行する」が押せない。カードに「実機未確認」タグを出す。`run-tests` と `sample-countdown` はロボットにも Jetson にも触れないので `verified: true`。
+- 文面は `textContent` だけで描く（注意書きはサーバー由来なので HTML として解釈しない）。`Esc`・「やめる」・背景は実行にならない。既定のフォーカスは「やめる」。`<dialog>` が使えない古いブラウザは `confirm` に落とす。
+- 実機で確認できたら、`modes.py` の `verified` やタスク定義の `verified` を真にすれば、その機能のポップアップは消える（安全確認の `always` は残る）。
+### 7.4 未確認（推測で埋めない）
+- コンソールから `g1up.sh` を実行したとき、ハブの環境で前提（`ROS_DISTRO` 未設定、pixi、地図、DDS 設定、`/home/unitree/g1_nav2/g1up.sh` の配置）が満たされるか。
+- ハブが止まったとき、実行中の `g1up.sh`（長時間）の子プロセスがどうなるか（systemd の cgroup では一緒に止まる。J10 と同じ確認）。
+- 走行中に `nav2-down` を押したときの停止距離。先に停止係が物理リモコンで止める。
+- ポップアップの見た目と操作（スマホ幅を含む）は、ブラウザで目視していない。
