@@ -44,6 +44,7 @@ Jetson（PC2）
 - **限界**: 平文 HTTP なのでトークンは LAN で盗聴されうる。運動の安全はトークンだけに頼らない（NF-08）。
 
 ### 2.4 常駐（R-06）
+- **2026-10-18 決定: 自動起動はしない**。以下は将来 systemd で常駐させる場合の設計で、現在は設置していない（手動で起動・停止する。`docs/JETSON_SETUP.md` §4）。
 - `jetson/g1-console.service`（雛形、未設置）。`ExecStart=python3 server.py --local --bind-iface wlan0`、`Restart=on-failure`。設置・有効化は人が `sudo` で行う。
 - カメラ・lidar の配信は常駐させず、自動再起動もしない。
 

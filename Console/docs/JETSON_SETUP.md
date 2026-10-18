@@ -56,11 +56,20 @@ python3 server.py --local --bind-iface wlan0
 | `--port <n>` | 既定 18790 |
 
 ## 3. スマホ・別 PC から開く
-1. 起動ログの `ログイン用 URL` を、同じ Wi-Fi のスマホで一度開く（Cookie が付き、以後トークン不要）。
-2. ⚠️ 平文 HTTP。トークンを知っていれば画面から**モード切替（ダンピング・ゼロトルク等）ができる**。物理リモコンが最後の砦。
+1. 同じ Wi-Fi のスマホで `http://<Jetson の wlan0 の IP>:18790/` を開く（`--no-auth` ならトークン不要）。認証ありで起動したときは、起動ログの `ログイン用 URL` を一度開く（Cookie が付き、以後トークン不要）。
+2. ⚠️ 平文 HTTP。認証なし（`--no-auth`）なら、同じネットワークの誰でも画面から**モード切替（ダンピング・ゼロトルク等）ができる**。認証ありでもトークンを知っていれば同じ。物理リモコンが最後の砦。
 3. eth0 側のアドレスでは届かない（意図どおり）。
 
-## 4. 常駐させる（任意。人が sudo で行う）
+## 4. 常駐させる（2026-10-18 決定: **自動起動はしない**。手動で起動・停止する）
+他の開発メンバーの作業（運動試験・Nav2・DDS・カメラ）に影響しうるため、常駐も自動起動もしない。Jetson を再起動したらハブは止まったままなので、使うときに起動する。
+```bash
+# 起動（Jetson 上。認証なし・wlan0 でも待ち受け）
+cd ~/G1_Hackason/Console && setsid nohup env UNITREE_SDK_DIR=$HOME/unitree_sdk2_python \
+  python3 -u server.py --local --port 18790 --bind-iface wlan0 --no-auth > ~/.g1console/hub.log 2>&1 < /dev/null &
+# 止める
+pkill -f "server.py --local --por[t] 18790"
+```
+以下は、将来 systemd で常駐させたくなったときの手順（雛形は `jetson/g1-console.service`。`--no-auth` は付いていないので、認証なしにするなら設置時に `ExecStart` へ足す）。現在は使わない。
 ```bash
 sudo cp ~/G1_Hackason/Console/jetson/g1-console.service /etc/systemd/system/
 sudo systemctl daemon-reload
