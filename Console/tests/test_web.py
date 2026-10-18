@@ -44,6 +44,14 @@ class NavStructureTest(unittest.TestCase):
         self.assertIn("@media (max-width:899px)", HTML)
         self.assertIn("@media (pointer:coarse)", HTML)
 
+    def test_two_round_sticks_side_by_side_even_on_phones(self):
+        # 左=前後左右、右=旋回。どちらも丸いスティックで、狭い画面でも折り返さず横に並べる
+        left, right = HTML.index('id="pad-move"'), HTML.index('id="pad-turn"')
+        self.assertLess(left, right)
+        self.assertNotIn("pad wide", HTML)
+        self.assertIn(".pads{display:flex;gap:16px;flex-wrap:nowrap", HTML)
+        self.assertIn("width:min(170px,40vw);aspect-ratio:1", HTML)
+
 
 if __name__ == "__main__":
     unittest.main()

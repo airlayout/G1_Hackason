@@ -119,10 +119,9 @@ button.sm{padding:5px 12px;font-size:calc(13px*var(--fs))}
 .subtabs{display:flex;gap:6px;margin:-6px 0 14px;flex-wrap:wrap}
 .subtabs button{padding:5px 14px;font-size:calc(13px*var(--fs))}
 .subtabs button[aria-selected=true]{background:var(--ok);color:var(--bg);font-weight:700}
-.pads{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;justify-content:center;margin:14px 0}
+.pads{display:flex;gap:16px;flex-wrap:nowrap;align-items:flex-end;justify-content:space-around;margin:14px 0}
 .pads .note{text-align:center;margin-top:6px}
-.pad{position:relative;width:170px;height:170px;border:2px solid var(--line);border-radius:50%;background:var(--btn);touch-action:none;user-select:none;-webkit-user-select:none}
-.pad.wide{width:230px;height:84px;border-radius:42px}
+.pad{position:relative;width:min(170px,40vw);aspect-ratio:1;border:2px solid var(--line);border-radius:50%;background:var(--btn);touch-action:none;user-select:none;-webkit-user-select:none}
 .pad i{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:var(--ok);opacity:.85;pointer-events:none}
 .pad.on{border-color:var(--ok)}
 .mo-row{display:flex;gap:10px;flex-wrap:wrap}
@@ -286,7 +285,7 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  </div>
  <div class="pads">
   <div><div class="pad" id="pad-move" aria-label="前後左右"><i></i></div><div class="note">前後左右（上=前進）</div></div>
-  <div><div class="pad wide" id="pad-turn" aria-label="旋回"><i></i></div><div class="note">旋回（左=反時計回り）</div></div>
+  <div><div class="pad" id="pad-turn" aria-label="旋回"><i></i></div><div class="note">旋回（左右のみ。左=反時計回り）</div></div>
  </div>
  <p class="note">キーボード: 矢印キーで前後左右、Q / E で旋回。速度は <span id="mo-vel">—</span>。上限は <span id="mo-lim">—</span>（実機未検証の初期値）。</p>
 </section>
