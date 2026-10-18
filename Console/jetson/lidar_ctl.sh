@@ -7,11 +7,15 @@
 # lidar_stream.py は DDS を購読するだけ（モーター・lidar 本体の設定には触れない）。
 set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
-PIDFILE="$DIR/lidar_stream.pid"
-LOG="$DIR/lidar_stream.log"
+# pid・ログの置き場（既定はこのスクリプトの隣。コンソールの --local は ~/.g1console/run を渡す）
+STATE="${G1_CTL_STATE_DIR:-$DIR}"
+mkdir -p "$STATE" 2>/dev/null
+PIDFILE="$STATE/lidar_stream.pid"
+LOG="$STATE/lidar_stream.log"
 STOP_WAIT_S=5
 START_WAIT_S=3
 PORT="${LIDAR_PORT:-8082}"
+BIND="${LIDAR_BIND:-0.0.0.0}"  # コンソールを同じ機械で動かすときは 127.0.0.1
 NIC="${LIDAR_NIC:-eth0}"
 PYTHON="${LIDAR_PYTHON:-python3}"  # システムの Python 3.8（cyclonedds / numpy が揃う）
 
@@ -28,10 +32,10 @@ cmd_start() {
   if pid="$(running_pid)"; then echo "[lidar] すでに起動中 (pid=$pid)"; return 0; fi
   rm -f "$PIDFILE"
   # setsid: ssh を切っても生き残らせる（ただし再起動はしない）
-  setsid nohup "$PYTHON" -u "$DIR/lidar_stream.py" --port "$PORT" --nic "$NIC" >"$LOG" 2>&1 < /dev/null &
+  setsid nohup "$PYTHON" -u "$DIR/lidar_stream.py" --port "$PORT" --bind "$BIND" --nic "$NIC" >"$LOG" 2>&1 < /dev/null &
   echo $! > "$PIDFILE"
   sleep "$START_WAIT_S"
-  if pid="$(running_pid)"; then echo "[lidar] 起動しました (pid=$pid, port=$PORT)"; else
+  if pid="$(running_pid)"; then echo "[lidar] 起動しました (pid=$pid, port=$PORT, bind=$BIND)"; else
     echo "[lidar] 起動に失敗しました。ログ:"; tail -n 10 "$LOG"; rm -f "$PIDFILE"; return 1
   fi
 }

@@ -1,13 +1,20 @@
 """カメラ配信プロセス（Jetson の camera_stream.py）の確認・起動・停止。
 
 Jetson の ~/g1_console_camera/camera_ctl.sh を ssh で 1 回ずつ叩く（常駐ヘルパーとは別。DDS には触れない）。
+--local のときは ssh を使わず、このリポジトリの jetson/camera_ctl.sh を直接呼ぶ（配信は 127.0.0.1 だけで待ち受ける）。
+ハブは起動しない限り配信を起動しない（ポートは画面で「起動」を押したときだけ使う）。
 holders は「映像デバイスを掴んでいるプロセス」。videohub_pc4 などが握っていると camera_stream は開けない。
 """
 import ipaddress
 import re
+import shlex
 import subprocess
+from pathlib import Path
 
 REMOTE_DIR = "~/g1_console_camera"
+LOCAL_CTL_DIR = Path(__file__).resolve().parent.parent / "jetson"  # --local のとき ctl スクリプトを呼ぶ場所
+LOCAL_STATE_DIR = "~/.g1console/run"  # --local のときの pid・ログの置き場
+LOOPBACK = "127.0.0.1"
 CTL_TIMEOUT_S = 30.0  # start は起動確認に約 2 秒待つ
 ACTIONS = ("status", "start", "stop")
 OWN_MARK = "camera_stream.py"
@@ -65,9 +72,22 @@ def summarize(status_text: str, holders_text: str) -> dict:
 
 class SshCameraCtl:
     backend = "ssh"
+    ENV = "CAMERA"  # 配信ポートを渡す環境変数 CAMERA_PORT の接頭辞（lidar は LIDAR）
 
-    def __init__(self, target_fn):
+    def __init__(self, target_fn, port_fn=None):
         self._target_fn = target_fn  # () -> (user@host or None, key)
+        self._port_fn = port_fn  # () -> 配信ポート（検証済みの整数）。None なら ctl スクリプトの既定
+
+    def _dir(self) -> str:
+        return REMOTE_DIR
+
+    def _extra_env(self) -> list:
+        return []
+
+    def _ctl(self, script: str) -> str:
+        """ctl スクリプトの呼び出し（環境変数つき）。入るのは固定の語・整数・このリポジトリ内のパスだけ。"""
+        env = ["%s_PORT=%d" % (self.ENV, int(self._port_fn()))] if self._port_fn else []
+        return " ".join(env + self._extra_env() + ["%s/%s" % (self._dir(), script)])
 
     def _run(self, script: str) -> str:
         host, key = self._target_fn()
@@ -84,7 +104,7 @@ class SshCameraCtl:
         """操作（status 以外）・status・holders を 1 回の ssh で実行し、SEP 行で 3 つに分ける。"""
         if action not in ACTIONS:
             raise ValueError("unknown action")  # script に入るのは許可リストの固定語だけ
-        ctl = "%s/camera_ctl.sh" % REMOTE_DIR
+        ctl = self._ctl("camera_ctl.sh")
         steps = ([ctl + " " + action] if action != "status" else ["true"]) + [ctl + " status", ctl + " holders"]
         out = self._run(("; echo %s; " % SEP).join(steps))
         message, status, holders = (out.split(SEP + "\n") + ["", ""])[:3]
@@ -96,14 +116,21 @@ class LocalRunMixin:
 
     backend = "local"
 
+    def _dir(self) -> str:
+        return shlex.quote(str(LOCAL_CTL_DIR))  # ~/g1_console_* へのコピーは要らない。このリポジトリの jetson/ をそのまま使う
+
+    def _extra_env(self) -> list:
+        # 配信は自機（ハブ）からだけ読ませる（wlan0 へ認証なしで開かない）。pid・ログはリポジトリの外に置く
+        return ["G1_CTL_STATE_DIR=%s" % shlex.quote(str(Path(LOCAL_STATE_DIR).expanduser())), "%s_BIND=%s" % (self.ENV, LOOPBACK)]
+
     def _run(self, script: str) -> str:
         done = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=CTL_TIMEOUT_S)
         return done.stdout
 
 
 class LocalCameraCtl(LocalRunMixin, SshCameraCtl):
-    def __init__(self):
-        super().__init__(lambda: (None, ""))
+    def __init__(self, port_fn=None):
+        super().__init__(lambda: (None, ""), port_fn)
 
 
 class MockCameraCtl:

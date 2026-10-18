@@ -9,9 +9,9 @@
 | Mac 煙テスト（手動） | `server.py --local`・`--require-token` を起動して `curl` | 不要 | 済 / 未 |
 | 実機（人が実施） | Jetson で起動、スマホから操作 | 要 | 未（歩行を伴うものは物理リモコンを手元に置く） |
 
-現在の自動テスト: **244 件**（test_console 47 / test_lidar 20 / test_auth 28 / test_local 16 / test_camera_proc 7 / test_web 6 / test_motion 24 / test_tasks 22 / test_nav 34 / test_topics 19 / test_caution 21）。通過確認は下の実行記録に日付つきで残す。
+現在の自動テスト: **259 件**（test_console 47 / test_lidar 20 / test_auth 28 / test_local 16 / test_camera_proc 7 / test_web 6 / test_motion 24 / test_tasks 22 / test_nav 34 / test_topics 19 / test_caution 21 / test_ctl_local 15）。通過確認は下の実行記録に日付つきで残す。
 
-実行記録: 2026-10-18 段階 2b 時点で 124 件通過、段階 3 時点で 148 件、段階 4 時点で 170 件、段階 5 時点で 204 件、段階 6 時点で 223 件、段階 7 時点で 244 件通過（`run_tests.sh`。JS の構文検査 `node --check` も通過）。段階 3 は `--mock` ハブでも claim → 保持 → 0.8 秒の沈黙で `lost` → 同じ session は 409 → estop を確認。
+実行記録: 2026-10-18 段階 2b 時点で 124 件通過、段階 3 時点で 148 件、段階 4 時点で 170 件、段階 5 時点で 204 件、段階 6 時点で 223 件、段階 7 時点で 244 件、段階 8 時点で 259 件通過（`run_tests.sh`。JS の構文検査 `node --check` も通過）。段階 3 は `--mock` ハブでも claim → 保持 → 0.8 秒の沈黙で `lost` → 同じ session は 409 → estop を確認。
 
 ## 2. 自動テスト（実施済み）
 | 要件 | 内容 | テスト |
@@ -69,6 +69,11 @@
 | R-20 | ポップアップの部品が揃う・既定は「やめる」・HTML として解釈しない・チェックで実行ボタンが有効になる・未知の機能は未確認扱い | `WebCautionTest` T7-4 |
 | R-20 | 実機に作用するボタン（モード・音声・LED・カメラ・lidar・運動・アクション・トピック）と、未確認・注意書きのタスクが、`fetch` の前にポップアップを出す | `WebCautionTest` T7-5 |
 | R-20 | ポップアップを出す機能 id が FEATURES に実在し、未確認である | `WebCautionTest` T7-6 |
+| R-14 | `--local` は `Console/jetson/` の ctl を呼び（`~/g1_console_*` を使わない）、`*_PORT`・`*_BIND=127.0.0.1`・`G1_CTL_STATE_DIR` を渡す。ssh 方式の文字列は従来どおり。camera も設定のポートを渡す。シェルに入るのは固定語と整数だけ | `CommandLineTest` T8-1 |
+| R-14 | 配信スクリプトが `--bind`（既定 0.0.0.0）を持ち、サーバーがそれを使う | `StreamBindTest` T8-2 |
+| R-14 | 本物の `camera_ctl.sh`・`lidar_ctl.sh` を偽の python/setsid で実行: `--port`・`--bind` が渡る、既定は従来どおり、pid・ログは指定ディレクトリ（リポジトリ内に作らない）、status/stop は何も起動しない | `ScriptRunTest` T8-3 |
+| R-14 | 既定は停止: 何も頼まなければ ctl は呼ばれない。ページ・状態の GET は `status` だけ。start/stop は POST のときだけ | `DefaultStoppedTest` T8-4 |
+| R-14, R-20 | カメラ・lidar の起動・停止ボタンは確認ポップアップ（guard）を通る | `DefaultStoppedTest` T8-5 |
 | R-16〜R-18 | API 定義（`/api/nav/*`・`/api/locations*`）がスキーマと実応答に一致。画面に `map` タブのボタンとパネルがある | `test_console`（既存の網羅テスト） |
 
 ## 3. Mac 煙テスト（実施済み）
@@ -118,6 +123,7 @@ T2b-1・T2b-2 は §2 の `test_web` に移した。残り:
 | T7-7 | ポップアップの目視（幅 360px も）: 「やめる」が既定、チェックを入れるまで実行できない、Esc で閉じる、未確認タグ | 描ける・操作できる | ブラウザ手動（未実施） |
 | T7-8 | Jetson で `nav2-up-dry`・`nav2-down-dry` がハブから通る（`ROS_DISTRO` 未設定の環境で） | 通る | 実機（J18・J19） |
 | T7-9 | 機体を立たせて `nav2-up` → Nav2 が起動し機体は動かない → `nav2-down` で止まる。ゲートを閉じたまま・開けたままの両方 | 止まる・開けたままは失敗表示 | 実機（J20・J21） |
+| T8-6 | Jetson で画面から lidar・カメラを起動 → `ss -ltn` で `127.0.0.1:8082`/`8081` のみ（0.0.0.0 でない）。停止後は両ポートが空く。ハブ起動直後は両ポートが空 | 期待どおり | 実機（J23） |
 
 ## 5. 実機確認の対応表（人が実施。実施したら日付と測定値を残す）
 | 要件 | 確認 | チェックリスト |
@@ -135,6 +141,7 @@ T2b-1・T2b-2 は §2 の `test_web` に移した。残り:
 | R-17 | 生存信号を実受信側が受け付ける。途絶で止まる | J8, J13 |
 | R-18 | 地点をタスクが参照して動く。座標系が map と一致 | J12, J15 |
 | R-19 | Jetson の DDS で購読・送信が動く。拒否リストのトピックへ送れない | J16, J17 |
+| R-14 | カメラ・lidar が画面から起動・停止できる。停止中はポートが空き、起動中も 127.0.0.1 だけ | J23 |
 | R-20 | Nav2 の起動・停止をコンソールから実行できる。ゲートが開いたままなら失敗表示。ポップアップが出る | J18〜J21 |
 
 ## 6. 更新ルール

@@ -53,7 +53,7 @@ python3 server.py --mock
 
 ## Jetson で常駐させ、スマホから開く
 
-**Jetson へ何を転送し、どう起動するかの手順は [docs/JETSON_SETUP.md](docs/JETSON_SETUP.md)。**（カメラ・lidar は `~/g1_console_camera`・`~/g1_console_lidar` への配置も要る）
+**Jetson へ何を転送し、どう起動するかの手順は [docs/JETSON_SETUP.md](docs/JETSON_SETUP.md)。**（カメラ・lidar は `--local` なら追加の配置は不要。既定は停止で、画面で「起動」を押したときだけ `127.0.0.1` のポートを使う）
 
 ```bash
 # Jetson 上。wlan0（同じ Wi-Fi）の IPv4 でも待ち受ける。ロボット内部 LAN（eth0）には開かない。

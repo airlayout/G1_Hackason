@@ -780,13 +780,14 @@ def main():
         {"jetson_host": args.host, "jetson_user": ""} if args.host else {})
     settings = Settings(None if args.mock else DEFAULT_PATH, initial)
     lidar_port = lambda: settings.get()["lidar_port"]
+    camera_port = lambda: settings.get()["camera_port"]
     if args.mock:
         helper, camera_ctl, lidar_ctl = MockHelper(), MockCameraCtl(), MockLidarCtl()
     elif args.local:
-        helper, camera_ctl, lidar_ctl = LocalHelper(), LocalCameraCtl(), LocalLidarCtl(lidar_port)
+        helper, camera_ctl, lidar_ctl = LocalHelper(), LocalCameraCtl(camera_port), LocalLidarCtl(lidar_port)
     else:
         helper = SshHelper(*settings.ssh_target())
-        camera_ctl, lidar_ctl = SshCameraCtl(settings.ssh_target), SshLidarCtl(settings.ssh_target, lidar_port)
+        camera_ctl, lidar_ctl = SshCameraCtl(settings.ssh_target, camera_port), SshLidarCtl(settings.ssh_target, lidar_port)
     monitor = Monitor(helper)
     monitor.start()
     sender = MockSender() if args.mock else (HelperSender() if args.local else UnavailableSender())

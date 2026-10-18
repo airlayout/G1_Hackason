@@ -1,6 +1,6 @@
 # Jetson へ置いて、動かす手順
 
-最終更新: 2026-10-18。**この手順の全体を Jetson 実機で通したことはまだ無い**（各手順の確認欄を参照）。
+最終更新: 2026-10-18（段階 8: カメラ・lidar の起動・停止を `--local` に対応）。**この手順の全体を Jetson 実機で通したことはまだ無い**（各手順の確認欄を参照）。
 実機で確かめる項目は [REAL_ROBOT_CHECKLIST.md](REAL_ROBOT_CHECKLIST.md) の J。
 
 ## 0. 前提（Jetson で先に確かめる）
@@ -24,18 +24,13 @@ rsync -av --exclude '__pycache__' --exclude 'tests/' --exclude 'docs/' \
 - `tests/` はタスク `run-tests` を使うときだけ要る。`docs/` と `tools/` は動作に不要（`tools/` は開発用の単発スクリプト）。
 - `data/`（地点 `locations.json`）は、無ければ地点が空で始まる。
 
-### 1.1 カメラと lidar を使うなら、もう 2 か所へ置く（⚠️ 見落としやすい）
-`--local` でも、カメラ・lidar の起動・停止は **`~/g1_console_camera/camera_ctl.sh`**、**`~/g1_console_lidar/lidar_ctl.sh`** を呼ぶ（`g1console/camera_proc.py` の `REMOTE_DIR`。`Console/jetson/` の中は見ない）。ctl スクリプトは自分と同じディレクトリの `*_stream.py` を起動する。
+### 1.1 カメラと lidar（追加の配置は要らない）
+`--local` のときは、`Console/jetson/` の `camera_ctl.sh`・`lidar_ctl.sh` をそのまま呼ぶ（`~/g1_console_*` へのコピーは不要。ssh 方式のときだけ従来どおり別 PC 側から `~/g1_console_camera` などを使う）。
 
-```bash
-# Jetson 上
-mkdir -p ~/g1_console_camera ~/g1_console_lidar
-cp ~/G1_Hackason/Console/jetson/camera_ctl.sh ~/G1_Hackason/Console/jetson/camera_stream.py ~/g1_console_camera/
-cp ~/G1_Hackason/Console/jetson/lidar_ctl.sh  ~/G1_Hackason/Console/jetson/lidar_stream.py  ~/g1_console_lidar/
-chmod +x ~/g1_console_camera/camera_ctl.sh ~/g1_console_lidar/lidar_ctl.sh
-```
-
-使わないなら不要（画面のカメラ・lidar のボタンが失敗するだけ）。
+- **既定は停止**。ハブを起動しても配信は起動しない。ポートを使うのは、画面でカメラ・lidar の「起動」を押して確認ポップアップを通したときだけ（「停止」で解放）。
+- 待ち受けは **`127.0.0.1` のみ**（`CAMERA_BIND` / `LIDAR_BIND` で渡す）。スマホはハブ経由（`/camera`・`/lidar`）で見るので、配信ポート（既定 8081 / 8082）は wlan0・eth0 に出ない。同じ Jetson の他の開発プロジェクトとのポート衝突も、起動したときだけに限られる。ポートは設定タブで変えられる。
+- pid とログは `~/.g1console/run/`（`camera_stream.log`・`lidar_stream.log`）。リポジトリの中には何も作らない。
+- ハブを止めても配信は止まらない（意図どおり。画面の「停止」で止める）。常駐させたハブを再起動しても、起動済みの配信はそのまま残る。
 
 ## 2. 起動コマンド
 Jetson 上で:
@@ -89,6 +84,6 @@ bash tests/run_tests.sh           # tests/ を転送した場合。ロボット�
 
 ## 7. 未確認（推測で埋めない）
 - Jetson（Python 3.8）で `--local` が起動すること、`--bind-iface wlan0` が IP を取れること（J1・J2）。
-- `~/g1_console_camera` `~/g1_console_lidar` の配置でカメラ・lidar が起動・停止できること（H の項目と同じ確認）。
+- Jetson 上でカメラ・lidar が画面から起動・停止できること、停止中は 8081/8082 を誰も使っていないこと、起動中も `127.0.0.1` だけで待ち受けること（`ss -ltn`。J23）。
 - Nav2 のタスクをコンソールから実行したときの挙動（J18〜J21）。
 - 上記 rsync のコマンド自体は実行していない（Jetson への ssh 接続先・ユーザー名は例）。
