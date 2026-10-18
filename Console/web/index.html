@@ -41,8 +41,19 @@ h2{font-size:calc(13px*var(--fs));font-weight:600;color:var(--sub);margin:0 0 10
 #mode.m-debug{color:var(--warn)}
 #mode.m-none{color:var(--mute)}
 #mode-sub{font-size:calc(14px*var(--fs));color:var(--sub);min-height:1.4em}
-#fresh{margin-top:10px;font-size:calc(13px*var(--fs));font-variant-numeric:tabular-nums}
-#fresh.f-fresh{color:var(--ok)}#fresh.f-slow{color:var(--warn)}#fresh.f-stale{color:var(--bad)}
+.ctl{font-size:calc(15px*var(--fs));font-weight:600;margin-top:4px}
+.ctl::before{margin-right:6px}
+.ctl.c-ok{color:var(--ok)}.ctl.c-ok::before{content:"●"}
+.ctl.c-warn{color:var(--warn)}.ctl.c-warn::before{content:"▲"}
+.ctl.c-mute{color:var(--mute)}.ctl.c-mute::before{content:"○"}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin:12px 0 8px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:0}
+.stat.wide{grid-column:span 2}
+.stat h3{margin:0 0 2px;font-size:calc(12px*var(--fs));font-weight:600;color:var(--sub)}
+.stat .ctl{font-size:calc(17px*var(--fs));margin-top:2px}
+.stat .sd{font-size:calc(12px*var(--fs));color:var(--sub);min-height:1.3em;overflow-wrap:anywhere}
+.stat .sv{font-size:calc(17px*var(--fs));font-weight:600;font-variant-numeric:tabular-nums}
+.stat .sv.f-fresh{color:var(--ok)}.stat .sv.f-slow{color:var(--warn)}.stat .sv.f-stale{color:var(--bad)}
 
 /* ボタン */
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:4px}
@@ -107,8 +118,6 @@ button.sm{padding:5px 12px;font-size:calc(13px*var(--fs))}
 #features li:first-child{border-top:0}
 #features .note{display:block}
 .tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
-.hrow{display:grid;grid-template-columns:1fr minmax(140px,220px);gap:14px;align-items:end;margin:12px 0 8px}
-#battery h2{margin-bottom:2px}
 .frow{display:flex;flex-direction:column;gap:4px;margin:14px 0}
 .frow input{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--btn);color:inherit;font:inherit;max-width:32em}
 #tab-settings details{margin:10px 0}
@@ -173,7 +182,7 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  h1{font-size:calc(17px*var(--fs))}
  header{margin-bottom:8px}
  #statusbar{padding:10px 12px;margin-bottom:10px;border-radius:0 0 12px 12px;margin-left:-16px;margin-right:-16px}
- #statusbar>h2,#statusbar .hrow h2,.node-sub,#reconnect-note{display:none}
+ #statusbar>h2,.node-sub,#reconnect-note{display:none}
  #statusbar>.note{font-size:calc(11px*var(--fs))}
  .chain{gap:0}
  .chain li{padding:6px 8px;text-align:center}
@@ -183,12 +192,14 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  .node-st{font-size:calc(13px*var(--fs));margin-top:0}
  #diag{font-size:calc(12px*var(--fs));margin-top:8px}
  #diag.ok{display:none}
- .hrow{grid-template-columns:1fr auto;margin:8px 0 4px;gap:10px}
+ .stats{grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0 4px}
+ .stat{padding:5px 8px}
+ .stat.wide{grid-column:span 3}
+ .stat .ctl,.stat .sv{font-size:calc(14px*var(--fs))}
+ .stat .sd{font-size:calc(11px*var(--fs))}
  #mode{font-size:calc(20px*var(--fs))}
  #mode-sub{font-size:calc(12px*var(--fs))}
- #fresh{font-size:calc(11px*var(--fs));margin-top:4px}
  #bat-soc{font-size:calc(24px*var(--fs))}
- #battery{min-width:96px}
  .tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;margin:0;gap:0;padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background:var(--card);border-top:1px solid var(--line);flex-wrap:nowrap}
  .tabs button{flex:1;min-width:0;border:0;border-radius:0;background:none;padding:10px 2px;font-size:calc(12px*var(--fs));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -228,17 +239,16 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
   <li id="n-g1"><div class="node-name">G1 本体</div><div class="node-sub">DDS · モーションサービス</div><div class="node-st" id="g1-st"></div></li>
  </ol>
  <p id="diag"></p>
- <div class="hrow">
-  <div>
-   <h2>現在のモード</h2>
-   <div id="mode" class="m-none">確認中…</div>
-   <div id="mode-sub"></div>
-   <div id="fresh"></div>
-  </div>
-  <div id="battery">
-   <h2>バッテリー<span class="tags" data-feature="battery"></span></h2>
-   <span id="bat-soc">—</span><div id="bat-bar"><i></i></div>
-  </div>
+ <div class="stats" id="stats">
+  <div class="stat wide"><h3>現在のモード</h3><div id="mode" class="m-none">確認中…</div><div id="mode-sub"></div></div>
+  <div class="stat"><h3>FSM ID</h3><div class="sv" id="st-fsm">—</div><div class="sd" id="st-fsm-d"></div></div>
+  <div class="stat"><h3>標準モーションサービス</h3><div class="ctl c-mute" id="st-svc">—</div><div class="sd" id="st-svc-d"></div></div>
+  <div class="stat"><h3>デバッグモード</h3><div class="ctl c-mute" id="st-dbg">—</div><div class="sd" id="st-dbg-d"></div></div>
+  <div class="stat"><h3>脚</h3><div class="ctl c-mute" id="st-legs">—</div><div class="sd" id="st-legs-d"></div></div>
+  <div class="stat"><h3>腕モータ</h3><div class="ctl c-mute" id="st-arm">—</div><div class="sd" id="st-arm-d"></div></div>
+  <div class="stat" id="battery"><h3>バッテリー<span class="tags" data-feature="battery"></span></h3><span id="bat-soc">—</span><div id="bat-bar"><i></i></div></div>
+  <div class="stat"><h3>最終取得</h3><div class="sv" id="st-last">—</div><div class="sd" id="st-last-d"></div></div>
+  <div class="stat"><h3>レイテンシ</h3><div class="sv" id="st-lat">—</div><div class="sd">G1 への往復</div></div>
  </div>
  <div class="note mon"><b>自動確認・再接続</b><span class="tags" data-feature="reconnect"></span>
   <button id="mon-toggle" class="sm" type="button">停止する</button><button id="mon-once" class="sm" type="button" hidden>今すぐ 1 回確認</button>
@@ -334,7 +344,7 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
 <section class="card">
  <h2>関節（29 軸）<span class="tags" data-feature="sensors"></span></h2>
  <div id="joint-sum" class="note">—</div>
- <div class="tscroll"><table id="joints"><thead><tr><th>関節</th><th>角度[°]</th><th>速度[rad/s]</th><th>トルク推定</th><th>温度[℃]</th><th>指令角度[°]</th><th>kp</th><th>kd</th></tr></thead><tbody></tbody></table></div>
+ <div class="tscroll"><table id="joints"><thead><tr><th>関節</th><th>角度[°]</th><th>速度[rad/s]</th><th>トルク推定</th><th>温度[℃]</th><th>指令角度[°]</th><th>kp</th><th>kd</th><th>状態 mode</th><th>指令 mode</th></tr></thead><tbody></tbody></table></div>
  <p class="note"><code>rt/lowstate</code>、指令は <code>rt/lowcmd</code>。関節名は SDK の並び順（脚 12・腰 3・腕 14）による対応で、実機での突き合わせは未確認。温度は 2 つの値（表面／巻線と推定）のうち高い方。</p>
 </section>
 </div>
@@ -562,12 +572,38 @@ function renderChain(n){
   $('reconnect-note').textContent=paused?RECONNECT_OFF:RECONNECT_ON;
 }
 
+/* ヘッダーのカード。値は ● 正常 / ▲ 注意 / ○ 不明 の記号つき。判定はサーバー（S.control / S.mode）。
+   腕は状態側 lowstate の mode で、指令側 lowcmd の mode ではない */
+function setStat(id,cls,text,detail){
+  const el=$(id);el.className='ctl '+cls;el.textContent=text;
+  const d=$(id+'-d');if(d)d.textContent=detail||'';
+}
+function renderStats(m,c){
+  const none=['c-mute','—',''];
+  const svc=!m?none:m.state==='ok'?['c-ok','稼働中','バランス・歩行を制御中']
+    :m.state==='debug'?['c-warn','解放中（停止）','バランス・歩行・リモコンは効かない']:['c-mute','不明',m.detail||''];
+  const dbg=!m?none:m.state==='ok'?['c-ok','いいえ','通常モード']
+    :m.state==='debug'?['c-warn','はい','低レベル指令を直接送れる状態。このコンソールからモード切替不可']:['c-mute','不明',''];
+  setStat('st-svc',...svc);setStat('st-dbg',...dbg);
+  const fsm=$('st-fsm');fsm.textContent=m&&m.state==='ok'&&m.fsm_id!=null?String(m.fsm_id):'—';
+  $('st-fsm-d').textContent=m&&m.state==='ok'?m.label:'';
+  const L=c&&c.legs,A=c&&c.arm;
+  const legs=!L?none:L.state==='autonomous'?['c-ok','自律',m&&m.label||'']
+    :L.state==='not_autonomous'?['c-warn','自律ではない',m&&m.state==='debug'?'デバッグモード':(m&&m.label||'')]:['c-mute','不明','モードを取得できていません'];
+  setStat('st-legs',...legs);
+  const nm=A?`${A.enabled_count}/${A.total}`:'';
+  const arm=!A?none:A.state==='enabled'?['c-ok','有効 '+nm,A.commanded?'指令を受信中':'指令なし']
+    :A.state==='disabled'?['c-warn','無効 '+nm,'ゼロトルク']:A.state==='partial'?['c-warn','一部のみ有効 '+nm,'']
+    :['c-mute','不明','関節の状態を受信できていません'];
+  setStat('st-arm',...arm);
+}
+
 function renderMode(n){
   const live=n.jetson.st==='ok'&&n.g1.st==='ok'&&S.mode;
   const m=live?S.mode:null;
   const mode=$('mode');
   if(m&&m.state==='ok'){mode.className='m-ok';mode.textContent=m.label;$('mode-sub').textContent=`ID ${m.fsm_id} · service=${m.service}`}
-  else if(m&&m.state==='debug'){mode.className='m-debug';mode.textContent='デバッグモード';$('mode-sub').textContent='標準モーションサービスが解放されています。このコンソールからは切り替えできません。'}
+  else if(m&&m.state==='debug'){mode.className='m-debug';mode.textContent='デバッグモード';$('mode-sub').textContent=''}
   else if(m&&m.state==='unknown'){mode.className='m-none';mode.textContent='状態不明';$('mode-sub').textContent=m.detail||''}
   else{
     mode.className='m-none';
@@ -575,12 +611,15 @@ function renderMode(n){
     const lm=S&&S.last_mode;
     $('mode-sub').textContent=lm?`最後に確認できたモード：${lm.label}${lm.fsm_id!=null?`（ID ${lm.fsm_id}）`:''} · ${clock(lm.at)}（${ago(Math.max(0,Date.now()/1000-lm.at))}）`:'';
   }
-  const age=ageNow(),f=$('fresh');
-  if(n.jetson.st==='paused'){f.className='';f.textContent=S.sampled_at?`最終取得 ${clock(S.sampled_at)}（停止中のため更新しません）`:'まだ取得していません'}
-  else if(age==null){f.className='';f.textContent='まだ取得できていません'}
+  renderStats(m,live?S.control:null);
+  const age=ageNow(),f=$('st-last'),fd=$('st-last-d');
+  $('st-lat').textContent=live&&S.latency_ms!=null?`${S.latency_ms} ms`:'—';
+  if(n.jetson.st==='paused'){f.className='sv';f.textContent=S.sampled_at?clock(S.sampled_at):'—';fd.textContent=S.sampled_at?'自動確認の停止中のため更新しません':'まだ取得していません'}
+  else if(age==null){f.className='sv';f.textContent='—';fd.textContent='まだ取得できていません'}
   else{
-    f.className=age<=FRESH_S?'f-fresh':(age<=STALE_S?'f-slow':'f-stale');
-    f.textContent=`最終取得 ${clock(S.sampled_at)} · ${age.toFixed(1)} 秒前`+(S.latency_ms!=null?` · G1 への往復 ${S.latency_ms} ms`:'')+(n.server.st==='stopped'?' · サーバー停止中（最後に受信した値）':'');
+    f.className='sv '+(age<=FRESH_S?'f-fresh':(age<=STALE_S?'f-slow':'f-stale'));
+    f.textContent=clock(S.sampled_at);
+    fd.textContent=`${age.toFixed(1)} 秒前`+(n.server.st==='stopped'?' · サーバー停止中（最後に受信した値）':'');
   }
 }
 
@@ -706,7 +745,7 @@ function renderTelemetry(n){
       const t=Math.max(...m.temperature);if(t>hot){hot=t;hotI=k}
       const tr=document.createElement('tr');
       const c=T.lowcmd&&T.lowcmd.items[k];
-      [JOINT_NAMES[k]||`#${k}`,f(m.q*RAD,1),f(m.dq),f(m.tau),String(t),c?f(c.q*RAD,1):'—',c?f(c.kp,0):'—',c?f(c.kd,1):'—'].forEach(x=>{const td=document.createElement('td');td.textContent=x;tr.append(td)});
+      [JOINT_NAMES[k]||`#${k}`,f(m.q*RAD,1),f(m.dq),f(m.tau),String(t),c?f(c.q*RAD,1):'—',c?f(c.kp,0):'—',c?f(c.kd,1):'—',m.mode==null?'—':String(m.mode),c&&c.mode!=null?String(c.mode):'—'].forEach(x=>{const td=document.createElement('td');td.textContent=x;tr.append(td)});
       tb.append(tr);
     });
     const lost=j.items.filter(m=>m.lost!==0).length;

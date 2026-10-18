@@ -30,7 +30,7 @@ def obj(props, required=(), desc=None, extra=False):
             **({"required": list(required)} if required else {}), "additionalProperties": extra}
 
 
-HEAD = {"jetson": ref("Link"), "g1": ref("Link"), "mode": ref("Mode"),
+HEAD = {"jetson": ref("Link"), "g1": ref("Link"), "mode": ref("Mode"), "control": ref("Control"),
         "sampled_at": null(N("最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない")),
         "age_s": null(N("最後の確認から今までの秒数。大きければ古い値"))}
 HEAD_REQ = list(HEAD)
@@ -66,6 +66,19 @@ SCHEMAS = {
     "Mode": obj({"state": S(enum=["ok", "debug", "unknown", "none"], desc="ok=通常モードで FSM ID が取れた / debug=デバッグモード / unknown=取得不可 / none=接続なし"),
                  "label": S("表示名"), "fsm_id": I("FSM ID（state=ok のときだけ）"), "service": S("モーションサービス名"), "detail": S()},
                 ["state", "label"], "現在のモード"),
+    "Control": obj({"arm": obj({"state": S(enum=["enabled", "disabled", "partial", "unknown"],
+                                           desc="enabled=腕 14 軸すべてモータ有効 / disabled=すべて無効（ゼロトルク） / partial=一部のみ / unknown=lowstate が古いか mode が無い"),
+                                "label": S("画面に大きく出す短い判定（有効 / 無効 / 一部のみ / 不明）"), "detail": S("判定の理由（画面に小さく添える）"),
+                                "enabled_count": null(I("rt/lowstate の motor_state.mode が 1 の腕関節数")),
+                                "total": I("腕関節の数（14）"), "commanded": null(B("rt/lowcmd が 1 秒以内に来ているか"))},
+                               ["state", "label", "detail", "total"], "腕の制御が有効か。指令側 lowcmd の mode ではなく状態側 lowstate の mode で判定"),
+                    "legs": obj({"state": S(enum=["autonomous", "not_autonomous", "unknown"],
+                                            desc="autonomous=モーションコントローラが脚を制御中 / not_autonomous=ゼロトルク・ダンピング・デバッグモード"),
+                                 "label": S("画面に大きく出す短い判定（自律 / 自律ではない / 不明）"), "detail": S("判定の理由（画面に小さく添える）"),
+                                 "fsm_id": null(I("state=ok のモードのときだけ")),
+                                 "enabled_count": null(I("脚関節 12 軸のうち motor_state.mode が 1 の数")), "total": I("脚関節の数（12）")},
+                                ["state", "label", "detail", "total"], "脚が自律（標準モーションサービスの制御下）か")},
+                   ["arm", "legs"], "腕の制御が有効か・脚は自律か（読み取りだけで算出）"),
     "Status": obj({**HEAD, "latency_ms": null(I("G1 への往復 ms")), "last_g1_ok_at": null(N()),
                    "last_mode": free("最後に確認できたモード（切断中の参考。現在値ではない）"),
                    "paused": B("true=自動確認・再接続を停止中（値は更新されない）"), "poll_interval_s": N(),
@@ -80,7 +93,8 @@ SCHEMAS = {
                  HEAD_REQ + ["notes"], "状態タブ。値が null のものは未受信または接続なし"),
     "Joints": obj({**HEAD, "mode_machine": null(I()), "age_s_joints": null(N()),
                    "items": A(obj({"index": I(), "name": S("SDK の並び順による名前（実機で未確認）"), "q": N("角度 rad"), "dq": N("速度 rad/s"),
-                                   "tau": N("トルク推定"), "temperature": A(N()), "cmd": null(free("lowcmd の指令値"))},
+                                   "tau": N("トルク推定"), "temperature": A(N()), "mode": I("rt/lowstate の motor_state.mode（1=有効 / 0=ゼロトルク）。古いヘルパーでは無い"),
+                                   "cmd": null(free("lowcmd の指令値。最後に流れた指令が残るだけで、今の有効状態ではない"))},
                                   ["index", "name"], extra=True), "関節 29 軸（未接続なら空）"),
                    "notes": obj({"unverified": A(S())})}, HEAD_REQ + ["items"], "関節タブ"),
     "Snapshot": obj({**HEAD, "tabs": A(S(), "タブ名の一覧（= URL ハッシュ = API 名）"), "state": ref("State"), "joints": ref("Joints")},

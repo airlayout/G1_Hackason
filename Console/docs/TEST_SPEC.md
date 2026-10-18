@@ -9,9 +9,9 @@
 | Mac 煙テスト（手動） | `server.py --local`・`--require-token` を起動して `curl` | 不要 | 済 / 未 |
 | 実機（人が実施） | Jetson で起動、スマホから操作 | 要 | 未（歩行を伴うものは物理リモコンを手元に置く） |
 
-現在の自動テスト: **277 件**（test_console 47 / test_lidar 20 / test_auth 34 / test_local 16 / test_camera_proc 7 / test_web 7 / test_motion 24 / test_tasks 22 / test_nav 34 / test_topics 19 / test_caution 22 / test_ctl_local 16 / test_hub_stop 9）。通過確認は下の実行記録に日付つきで残す。
+現在の自動テスト: **286 件**（test_console 47 / test_lidar 20 / test_auth 34 / test_local 16 / test_camera_proc 7 / test_web 8 / test_motion 24 / test_tasks 22 / test_nav 34 / test_topics 19 / test_caution 22 / test_ctl_local 16 / test_hub_stop 9 / test_control 8）。通過確認は下の実行記録に日付つきで残す。
 
-実行記録: 2026-10-18 段階 2b 時点で 124 件通過、段階 3 時点で 148 件、段階 4 時点で 170 件、段階 5 時点で 204 件、段階 6 時点で 223 件、段階 7 時点で 244 件、段階 8 時点で 260 件、`--no-auth` 追加後に 266 件、ハブ停止ボタン追加後に 276 件、スティック2つ化後に 277 件通過（`run_tests.sh`。JS の構文検査 `node --check` も通過）。段階 3 は `--mock` ハブでも claim → 保持 → 0.8 秒の沈黙で `lost` → 同じ session は 409 → estop を確認。
+実行記録: 2026-10-18 段階 2b 時点で 124 件通過、段階 3 時点で 148 件、段階 4 時点で 170 件、段階 5 時点で 204 件、段階 6 時点で 223 件、段階 7 時点で 244 件、段階 8 時点で 260 件、`--no-auth` 追加後に 266 件、ハブ停止ボタン追加後に 276 件、スティック2つ化後に 277 件、状態カード化・制御状態の追加後に 286 件通過（`run_tests.sh`。JS の構文検査 `node --check` も通過）。段階 3 は `--mock` ハブでも claim → 保持 → 0.8 秒の沈黙で `lost` → 同じ session は 409 → estop を確認。
 
 ## 2. 自動テスト（実施済み）
 | 要件 | 内容 | テスト |

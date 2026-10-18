@@ -26,6 +26,7 @@ from urllib.parse import parse_qs, urlsplit
 from g1console.auth import Auth, TOKEN_PATH, iface_ipv4, is_loopback, load_or_create_token, parse_bind
 from g1console.camera_proc import LocalCameraCtl, MockCameraCtl, SshCameraCtl, resolve_host
 from g1console.lidar_proc import LocalLidarCtl, MockLidarCtl, SshLidarCtl, forward_query
+from g1console.control import control_summary
 from g1console.dds_catalog import SERVICES, TOPICS
 from g1console.replay import Replay
 from g1console.api_spec import openapi, render_yaml
@@ -185,7 +186,7 @@ class MockHelper:
 
     @staticmethod
     def _telemetry():
-        joints = [{"q": 0.01 * i, "dq": 0.0, "tau": 0.1, "temperature": [30 + i % 7, 29 + i % 5], "lost": 0}
+        joints = [{"q": 0.01 * i, "dq": 0.0, "tau": 0.1, "temperature": [30 + i % 7, 29 + i % 5], "lost": 0, "mode": 1}
                   for i in range(29)]
         return {"battery": {"soc": 67, "current": -1970, "voltage": [48811, 48818, 0],
                             "temperature": [31, 27, 26, 32, 0, 0, 0, 0, 0, 0, 0, 0], "age_s": 0.1},
@@ -249,7 +250,8 @@ def _jetson_detail(raw: dict) -> str:
 def describe(raw: dict) -> dict:
     """ヘルパーの生の応答を、3 段の接続状態・現在のモード・テレメトリに変換する。"""
     telemetry = raw.get("telemetry") if raw.get("ok") else None
-    return {**_describe_links(raw), "telemetry": telemetry}
+    links = _describe_links(raw)
+    return {**links, "telemetry": telemetry, "control": control_summary(links["mode"], telemetry)}
 
 
 def _describe_links(raw: dict) -> dict:
@@ -292,6 +294,7 @@ class Monitor:
             "jetson": {"state": "unknown", "detail": "起動直後（初回の確認中）"},
             "g1": {"state": "unknown", "detail": "起動直後（初回の確認中）"},
             "mode": {"state": "none", "label": "—"}, "telemetry": None,
+            "control": control_summary({"state": "none"}, None),
         }
 
     def poll_once(self) -> dict:
@@ -353,7 +356,7 @@ def view(snap: dict, name: str) -> dict:
     """monitor.snapshot() から、タブ単位の JSON を作る（画面と同じ内容を AI が 1 回の取得で読める）。"""
     tele = snap.get("telemetry") or {}
     head = {"sampled_at": snap["sampled_at"], "age_s": snap["age_s"], "jetson": snap["jetson"],
-            "g1": snap["g1"], "mode": snap["mode"]}
+            "g1": snap["g1"], "mode": snap["mode"], "control": snap["control"]}
     if name == "state":
         return {**head, **{k: tele.get(k) for k in STATE_KEYS}, "notes": STATE_NOTES}
     if name == "joints":

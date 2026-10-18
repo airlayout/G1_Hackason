@@ -149,7 +149,8 @@ def telemetry():
         out["imu"] = {"rpy": list(imu.rpy), "gyro": list(imu.gyroscope), "accel": list(imu.accelerometer),
                       "temperature": imu.temperature, "age_s": age}
         out["joints"] = {"age_s": age, "mode_machine": low.mode_machine, "items": [
-            {"q": m.q, "dq": m.dq, "tau": m.tau_est, "temperature": list(m.temperature), "lost": m.motorstate}
+            {"q": m.q, "dq": m.dq, "tau": m.tau_est, "temperature": list(m.temperature), "lost": m.motorstate,
+             "mode": m.mode}
             for m in low.motor_state[:N_JOINTS]]}
     odom, age = _get("rt/odommodestate")
     out["odom"] = None if odom is None else {

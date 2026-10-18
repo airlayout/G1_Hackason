@@ -44,6 +44,15 @@ class NavStructureTest(unittest.TestCase):
         self.assertIn("@media (max-width:899px)", HTML)
         self.assertIn("@media (pointer:coarse)", HTML)
 
+    def test_status_is_shown_as_labelled_cards_not_sentences(self):
+        # モード・FSM・標準モーションサービス・デバッグモード・脚・腕モータ・バッテリー・最終取得・レイテンシを、項目名つきのカードで分けて出す
+        for label in ("現在のモード", "FSM ID", "標準モーションサービス", "デバッグモード", "脚", "腕モータ",
+                      "バッテリー", "最終取得", "レイテンシ"):
+            self.assertIn("<h3>%s" % label, HTML, label)
+        for el in ("st-svc", "st-dbg", "st-legs", "st-arm", "st-last", "st-lat", "st-fsm", "bat-soc"):
+            self.assertIn('id="%s"' % el, HTML, el)
+        self.assertNotIn("標準モーションサービスが解放されています", HTML)
+
     def test_two_round_sticks_side_by_side_even_on_phones(self):
         # 左=前後左右、右=旋回。どちらも丸いスティックで、狭い画面でも折り返さず横に並べる
         left, right = HTML.index('id="pad-move"'), HTML.index('id="pad-turn"')

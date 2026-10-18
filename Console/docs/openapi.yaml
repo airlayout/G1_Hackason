@@ -1466,6 +1466,83 @@ components:
         - "state"
         - "label"
       additionalProperties: false
+    Control:
+      type: "object"
+      description: "腕の制御が有効か・脚は自律か（読み取りだけで算出）"
+      properties:
+        arm:
+          type: "object"
+          description: "腕の制御が有効か。指令側 lowcmd の mode ではなく状態側 lowstate の mode で判定"
+          properties:
+            state:
+              type: "string"
+              description: "enabled=腕 14 軸すべてモータ有効 / disabled=すべて無効（ゼロトルク） / partial=一部のみ / unknown=lowstate が古いか mode が無い"
+              enum:
+                - "enabled"
+                - "disabled"
+                - "partial"
+                - "unknown"
+            label:
+              type: "string"
+              description: "画面に大きく出す短い判定（有効 / 無効 / 一部のみ / 不明）"
+            detail:
+              type: "string"
+              description: "判定の理由（画面に小さく添える）"
+            enabled_count:
+              type: "integer"
+              description: "rt/lowstate の motor_state.mode が 1 の腕関節数"
+              nullable: true
+            total:
+              type: "integer"
+              description: "腕関節の数（14）"
+            commanded:
+              type: "boolean"
+              description: "rt/lowcmd が 1 秒以内に来ているか"
+              nullable: true
+          required:
+            - "state"
+            - "label"
+            - "detail"
+            - "total"
+          additionalProperties: false
+        legs:
+          type: "object"
+          description: "脚が自律（標準モーションサービスの制御下）か"
+          properties:
+            state:
+              type: "string"
+              description: "autonomous=モーションコントローラが脚を制御中 / not_autonomous=ゼロトルク・ダンピング・デバッグモード"
+              enum:
+                - "autonomous"
+                - "not_autonomous"
+                - "unknown"
+            label:
+              type: "string"
+              description: "画面に大きく出す短い判定（自律 / 自律ではない / 不明）"
+            detail:
+              type: "string"
+              description: "判定の理由（画面に小さく添える）"
+            fsm_id:
+              type: "integer"
+              description: "state=ok のモードのときだけ"
+              nullable: true
+            enabled_count:
+              type: "integer"
+              description: "脚関節 12 軸のうち motor_state.mode が 1 の数"
+              nullable: true
+            total:
+              type: "integer"
+              description: "脚関節の数（12）"
+          required:
+            - "state"
+            - "label"
+            - "detail"
+            - "total"
+          additionalProperties: false
+      required:
+        - "arm"
+        - "legs"
+      additionalProperties: false
     Status:
       type: "object"
       description: "接続・モード・鮮度。まず最初に読む"
@@ -1476,6 +1553,8 @@ components:
           "$ref": "#/components/schemas/Link"
         mode:
           "$ref": "#/components/schemas/Mode"
+        control:
+          "$ref": "#/components/schemas/Control"
         sampled_at:
           type: "number"
           description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
@@ -1522,6 +1601,7 @@ components:
         - "jetson"
         - "g1"
         - "mode"
+        - "control"
         - "sampled_at"
         - "age_s"
         - "paused"
@@ -1537,6 +1617,8 @@ components:
           "$ref": "#/components/schemas/Link"
         mode:
           "$ref": "#/components/schemas/Mode"
+        control:
+          "$ref": "#/components/schemas/Control"
         sampled_at:
           type: "number"
           description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
@@ -1610,6 +1692,7 @@ components:
         - "jetson"
         - "g1"
         - "mode"
+        - "control"
         - "sampled_at"
         - "age_s"
         - "notes"
@@ -1624,6 +1707,8 @@ components:
           "$ref": "#/components/schemas/Link"
         mode:
           "$ref": "#/components/schemas/Mode"
+        control:
+          "$ref": "#/components/schemas/Control"
         sampled_at:
           type: "number"
           description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
@@ -1661,9 +1746,12 @@ components:
                 type: "array"
                 items:
                   type: "number"
+              mode:
+                type: "integer"
+                description: "rt/lowstate の motor_state.mode（1=有効 / 0=ゼロトルク）。古いヘルパーでは無い"
               cmd:
                 type: "object"
-                description: "lowcmd の指令値"
+                description: "lowcmd の指令値。最後に流れた指令が残るだけで、今の有効状態ではない"
                 additionalProperties: true
                 nullable: true
             required:
@@ -1683,6 +1771,7 @@ components:
         - "jetson"
         - "g1"
         - "mode"
+        - "control"
         - "sampled_at"
         - "age_s"
         - "items"
@@ -1697,6 +1786,8 @@ components:
           "$ref": "#/components/schemas/Link"
         mode:
           "$ref": "#/components/schemas/Mode"
+        control:
+          "$ref": "#/components/schemas/Control"
         sampled_at:
           type: "number"
           description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
@@ -1718,6 +1809,7 @@ components:
         - "jetson"
         - "g1"
         - "mode"
+        - "control"
         - "sampled_at"
         - "age_s"
         - "tabs"
