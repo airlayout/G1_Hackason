@@ -230,12 +230,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--nic", default=DEFAULT_NIC, help="DDS に使う NIC")
+    parser.add_argument("--bind", default="0.0.0.0", help="待ち受けるアドレス（コンソールを同じ機械で動かすなら 127.0.0.1）")
     args = parser.parse_args()
     reader = setup_dds(args.nic)
     latest = Latest()
     threading.Thread(target=receive_loop, args=(reader, latest), daemon=True).start()
-    server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(latest))
-    print("[lidar] 配信開始 http://0.0.0.0:%d/lidar?voxel=<m>&max=<点数> (nic=%s)" % (args.port, args.nic), flush=True)
+    server = ThreadingHTTPServer((args.bind, args.port), make_handler(latest))
+    print("[lidar] 配信開始 http://%s:%d/lidar?voxel=<m>&max=<点数> (nic=%s)" % (args.bind, args.port, args.nic), flush=True)
     server.serve_forever()
 
 

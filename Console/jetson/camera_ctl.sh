@@ -6,8 +6,13 @@
 #    起動は start を叩いたときだけ、止めるのは stop だけ。落ちたらそのまま落ちたままにする。
 set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
-PIDFILE="$DIR/camera_stream.pid"
-LOG="$DIR/camera_stream.log"
+# pid・ログの置き場（既定はこのスクリプトの隣。コンソールの --local は ~/.g1console/run を渡す）
+STATE="${G1_CTL_STATE_DIR:-$DIR}"
+mkdir -p "$STATE" 2>/dev/null
+PIDFILE="$STATE/camera_stream.pid"
+LOG="$STATE/camera_stream.log"
+PORT="${CAMERA_PORT:-8081}"
+BIND="${CAMERA_BIND:-0.0.0.0}"  # コンソールを同じ機械で動かすときは 127.0.0.1
 BYID=/dev/v4l/by-id
 STOP_WAIT_S=5
 VIDEO_NIC="${CAMERA_NIC:-eth0}"  # VideoClient が使う NIC
@@ -37,10 +42,10 @@ cmd_start() {
   args+=(--camera "depth=depth:realsense")
   [ ${#args[@]} -gt 0 ] || { echo "[camera] 配信できるカメラがありません"; return 1; }
   # setsid: ssh を切っても生き残らせる（ただし再起動はしない）
-  PYTHONPATH="$SDK_DIR" setsid nohup "$PYTHON" -u "$DIR/camera_stream.py" "${args[@]}" >"$LOG" 2>&1 < /dev/null &
+  PYTHONPATH="$SDK_DIR" setsid nohup "$PYTHON" -u "$DIR/camera_stream.py" --port "$PORT" --bind "$BIND" "${args[@]}" >"$LOG" 2>&1 < /dev/null &
   echo $! > "$PIDFILE"
   sleep 2
-  if pid="$(running_pid)"; then echo "[camera] 起動しました (pid=$pid)"; else
+  if pid="$(running_pid)"; then echo "[camera] 起動しました (pid=$pid, port=$PORT, bind=$BIND)"; else
     echo "[camera] 起動に失敗しました。ログ:"; tail -n 10 "$LOG"; rm -f "$PIDFILE"; return 1
   fi
 }

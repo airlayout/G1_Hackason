@@ -17,6 +17,9 @@ Console（G1 開発コンソール）の資料。リンクがあるものは、�
 ## Console の仕様
 | 文書 | 内容 |
 |---|---|
+| [REQUIREMENTS.md](REQUIREMENTS.md) | 要件書（Jetson 常駐版）。要件 ID、状態、決定の記録。段階ごとに更新 |
+| [DESIGN.md](DESIGN.md) | 設計書。構成、認証、運動制御・タスク・Nav2 の設計。実装済み／設計のみ／未確認を区別 |
+| [TEST_SPEC.md](TEST_SPEC.md) | テスト仕様書。自動テストと要件の対応、今後のテスト、実機確認の対応表 |
 | [API.md](API.md) / [openapi.yaml](openapi.yaml) | API 定義（`api_spec.py` から生成。手で編集しない） |
 | [REMOTE_CONTROLLER.md](REMOTE_CONTROLLER.md) | 物理リモコンの機能整理と、コンソールの位置づけ |
 | [../README.md](../README.md) | Console の使い方 |

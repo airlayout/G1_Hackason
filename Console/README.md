@@ -34,6 +34,11 @@ G1 の**現在の動作モードを表示**し、**ボタンでモードを切�
 # 実機（設定タブで Jetson の IP を入れる。Jetson 上でヘルパーが DDS に繋ぐ）
 python3 server.py
 
+# Jetson 上で動かす（ssh を使わない。ヘルパーは同じ機械の子プロセス、カメラ・lidar の起動・停止もローカル実行）
+# SDK の場所は環境変数 UNITREE_SDK_DIR（既定 ~/unitree_sdk2_python）。Jetson の Python 3.8 で動く。
+# 既定は 127.0.0.1 のみ待ち受け（認証なし）。スマホ等から開く方法は下の「Jetson で常駐させ、スマホから開く」。
+python3 server.py --local
+
 # 実機なしで画面だけ確認（状態は作り物。画面右上の「模擬シナリオ」で
 # 正常 / G1 未応答 / Jetson に届かない / デバッグモード を切り替えて表示を確認できる）
 python3 server.py --mock
@@ -45,6 +50,52 @@ python3 server.py --mock
 
 **PC の呼び分け:** 操作用 PC = このコンソール（`server.py`）とブラウザを動かす PC（OS は問わない）。開発用 PC = 開発作業用の別の PC（設定タブに IP を記録するだけ）。Jetson PC = ロボット搭載 PC。
 動作確認をした操作用 PC の OS は macOS だけで、Windows は未確認（`ssh` の引数のクォート、`tools/*.sh` の bash）。
+
+## Jetson で常駐させ、スマホから開く
+
+**Jetson へ何を転送し、どう起動するかの手順は [docs/JETSON_SETUP.md](docs/JETSON_SETUP.md)。**（カメラ・lidar は `--local` なら追加の配置は不要。既定は停止で、画面で「起動」を押したときだけ `127.0.0.1` のポートを使う）
+
+```bash
+# Jetson 上。wlan0（同じ Wi-Fi）の IPv4 でも待ち受ける。ロボット内部 LAN（eth0）には開かない。
+python3 server.py --local --bind-iface wlan0     # 個別の IP は --bind 192.168.0.23（0.0.0.0 は不可）
+```
+
+- ループバック以外で待ち受けると**トークン認証が必須**になる。トークンは `~/.g1console/token`（0600、初回に自動生成）。
+  起動ログに `ログイン用 URL: http://<IP>:18790/login?token=…` が出る。スマホはこの URL を一度開けば Cookie が付く（HttpOnly・SameSite=Strict）。
+- `Host` ヘッダは待ち受け IP・ループバック・`--allow-host` で足した名前だけ許す。POST は `Origin` が同じものだけ許す。
+  トークンの総当たりは 5 回失敗（60 秒内）で 30 秒ロックする。ループバックだけでも認証したいときは `--require-token`。
+- **`--no-auth`**: 信頼できる閉じたネットワーク（全員が信頼でき、他の人の Wi-Fi が混ざらない）でだけ使う。ループバック以外に開いてもトークンを求めない。
+  Host・Origin の検査は残る。同じネットワークの端末なら誰でも、モード切替や運動操作ができる。起動ログに警告が出る。`--require-token` とは同時に指定できない。
+- ハブ自体は設定タブの「ハブを停止する」で止められる（確認ポップアップあり。タスク実行中・操作権の保持中は止まらない。止めた後は Jetson で再起動する）。
+- ⚠️ **平文 HTTP**。同じ Wi-Fi で通信を覗ける人にはトークンが見える。トークンを知っていれば、画面から**モード切替（ダンピング・ゼロトルク等）ができる**。
+  運動操作（段階 3 以降）は、トークンに加えて操作権の取得・接続断での自動停止を重ねる。**物理リモコンが最後の砦**で、ソフトの停止は安全規格を満たさない。
+- **ハブだけ自動起動する（2026-10-18 決定）**。`jetson/g1-console.service` を人が `sudo` で設置する（`docs/JETSON_SETUP.md` §4。設置前は手動起動）。
+  他の開発メンバーの作業に影響しうるときは、`sudo systemctl stop g1-console` で一時的に止められる。
+  常駐させるのはハブだけで、カメラ・lidar の配信は従来どおり常駐も自動再起動もしない（画面のボタンで起動・停止）。
+### Nav2 の地図・現在地・地点（任意）
+```bash
+python3 server.py --local --bind-iface wlan0 --nav-adapter http://127.0.0.1:<port> [--heartbeat-to 127.0.0.1:47311] [--locations-file <path>]
+```
+- `--nav-adapter`: 同じ機体の ROS アダプタ（loopback の http のみ）。ハブは GET だけ読む。**Nav2 へ目的地・操作は送らない**（Nav2 の起動・停止は、この項目とは別に、下の「Nav2 の起動・停止」のタスクで行う）。
+- Nav2 稼働中は手動操作が無効になる。一度稼働を見たら、アダプタが黙っても無効のまま（安全側）。
+- `--heartbeat-to`: 画面（マップタブ）が見ている間だけ Nav2 へ生存信号（UDP）を出す。未指定なら送らない。
+
+### トピック通信（DDS タブ）
+```
+python3 server.py --local --topics-file Console/data/topics.json   # 許可リスト（省略時は Console/data/topics.json。無ければ何も送れない）
+```
+- 購読は自由（読める型だけ。最大 8 件）。送信は許可リストにある String_ だけで、リストはサーバー側のファイルのみ（画面・API から増やせない）。
+- 許可リスト: `{"version":1,"publish":[{"topic":"rt/xxx","max_bytes":64,"min_interval_s":1.0}]}`。
+- `rt/lowcmd`・`rt/api/*`・`rt/arm_sdk`・リモコン入力・非常停止などは常に送信拒否（許可リストに書くと起動しない）。
+- Jetson の DDS での動作は未確認（`docs/REAL_ROBOT_CHECKLIST.md` J16・J17）。
+### Nav2 の起動・停止と、動作未確認の注意ポップアップ
+- タスクタブに `nav2-up-dry`・`nav2-up`・`nav2-down-dry`・`nav2-down` がある（`tasks/nav2-*.json`）。起動は警備班の `/home/unitree/g1_nav2/g1up.sh`（機体は動かない状態まで）、停止は警備班の撤収手順（runbook §10）の sudo が要らない部分（`jetson/nav2_down.sh`）。**発進ゲート（G1_ARM）の開閉・`enable_navigation`・sudo は自動で行わない**（人が現地で行う）。ゲートが開いたままなら、止めたうえで「失敗」と表示する。
+- まず `-dry` を押す。コンソールから実行するのは初めてで、実機・Jetson では未確認（`docs/REAL_ROBOT_CHECKLIST.md` J18〜J21）。
+- 動作未確認の機能のボタン（モード・音声・LED・カメラ・lidar・運動・アクション・トピック送信・未確認のタスク）は、押すと注意ポップアップが出る。既定は「やめる」で、注意書きのあるタスクは確認チェックを入れるまで実行できない。未確認かどうかは `g1console/modes.py` の `FEATURES` とタスク定義の `verified` で決まる（実機で確かめたら真にする）。
+- 地点は `data/locations.json`。タスクの argv から `{loc:名前.x}` `{loc:名前.y}` `{loc:名前.yaw_deg}` で参照できる。
+- 未確認: 実アダプタとの結合、RViz との座標の一致、生存信号の受信側（`docs/REAL_ROBOT_CHECKLIST.md` J11〜J15）。
+
+- 未確認（実機で確かめる）: `--bind-iface wlan0` の IP 取得、Jetson の Python 3.8 での動作、スマホからの到達と遅延。
 
 ## ディレクトリ構成
 

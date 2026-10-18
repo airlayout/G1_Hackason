@@ -7,7 +7,7 @@ import struct
 import time
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from g1console.camera_proc import SEP, SshCameraCtl, parse_status
+from g1console.camera_proc import SEP, LocalRunMixin, SshCameraCtl, parse_status
 
 REMOTE_DIR = "~/g1_console_lidar"
 ACTIONS = ("status", "start", "stop")
@@ -40,18 +40,27 @@ def forward_query(path: str) -> str:
 
 
 class SshLidarCtl(SshCameraCtl):
+    ENV = "LIDAR"
+
     def __init__(self, target_fn, port_fn):
-        super().__init__(target_fn)
-        self._port_fn = port_fn  # () -> 配信ポート（検証済みの整数）
+        super().__init__(target_fn, port_fn)
+
+    def _dir(self) -> str:
+        return REMOTE_DIR
 
     def call(self, action: str) -> dict:
         if action not in ACTIONS:
             raise ValueError("unknown action")  # script に入るのは許可リストの固定語と整数だけ
-        ctl = "LIDAR_PORT=%d %s/lidar_ctl.sh" % (int(self._port_fn()), REMOTE_DIR)
+        ctl = self._ctl("lidar_ctl.sh")
         steps = ([ctl + " " + action] if action != "status" else ["true"]) + [ctl + " status"]
         out = self._run(("; echo %s; " % SEP).join(steps))
         message, status = (out.split(SEP + "\n") + [""])[:2]
         return {"ok": True, **parse_status(status), "message": message.strip()}
+
+
+class LocalLidarCtl(LocalRunMixin, SshLidarCtl):
+    def __init__(self, port_fn):
+        super().__init__(lambda: (None, ""), port_fn)
 
 
 class MockLidarCtl:

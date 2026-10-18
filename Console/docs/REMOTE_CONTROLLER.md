@@ -158,7 +158,7 @@ README の FSM 表では 501 を「腰 3 軸の通常歩行」としているの
 | 現在のモード表示 | `GetFsmId`（7001）、`MotionSwitcherClient.CheckMode` | ✅ 取得のみ確認 | 通常時 `501` / `ai`。デバッグモード中は `GetFsmId`=3102、`CheckMode`=`(0, {'form':'0','name':''})`（2026-09-30 実測） |
 | ゼロトルク / ダンピング / 座位 | `SetFsmId(0)` / `(1)` / `(3)` | ❌ | コンソールに実装済み |
 | しゃがみ | `SetFsmId(2)`（C++ 例の `Squat()`）。Python SDK には `Squat2StandUp` / `StandUp2Squat`（706）もある | ❌ | 2 と 706 の関係が未整理 |
-| 準備（固定立位） | C++ 例の `StandUp()` が `SetFsmId(4)`。**これが準備モードかは未確認** | ❌ | ID が不明。コンソールには未搭載 |
+| 準備（固定立位） | C++ 例の `StandUp()` が `SetFsmId(4)`。**2026-10-18 実機: リモコンで固定立位にした直後に `fsm_id`=4 を確認（1 回のみ）。画面は「固定立位（準備）」と表示** | ❌ | ID が不明。コンソールには未搭載 |
 | メイン操作（歩行可能） | `SetFsmId(500)`（`Start()`）／ 501（腰 3 軸の機体の実測値） | ❌ | 501 へ `SetFsmId` で入れるかは未確認 |
 | 寝姿勢から起立 | `SetFsmId(702)`（`Lie2StandUp`） | ❌ | 実装済み |
 | 移動（左スティック・右スティック） | `SetVelocity(vx, vy, omega, duration)`（7105）／ `Move` / `StopMove` | ❌ | 未実装。`duration` があるので、短い duration を送り続ければ「離したら止まる」を作れる |

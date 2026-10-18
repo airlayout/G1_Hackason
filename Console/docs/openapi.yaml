@@ -12,6 +12,12 @@ servers:
 tags:
   - name: "ops"
     description: "操作タブ（接続・モード）"
+  - name: "motion"
+    description: "運動タブ（物理リモコンの代替）"
+  - name: "tasks"
+    description: "タスクタブ（定義済みコマンドの実行）"
+  - name: "nav"
+    description: "マップタブ（Nav2 の表示・地点）"
   - name: "state"
     description: "状態タブ"
   - name: "joints"
@@ -149,6 +155,183 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/motion/status":
+    get:
+      operationId: "getMotionStatus"
+      tags:
+        - "motion"
+      summary: "運動操作の状態（操作者・目標速度・動かせない理由・直近の出来事）"
+      x-effect: "read"
+      description: "last_event.kind が lost なら接続断で停止・解除された。blocked が null でなければ、その理由で動かさない。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionStatus"
+  "/api/tasks":
+    get:
+      operationId: "getTasks"
+      tags:
+        - "tasks"
+      summary: "実行できるタスクの一覧と、それぞれの直近の実行状態"
+      x-effect: "read"
+      description: "定義は Console/tasks/*.json だけ。クライアントから増やせない。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Tasks"
+  "/api/tasks/logs":
+    get:
+      operationId: "getTaskLogs"
+      tags:
+        - "tasks"
+      summary: "タスクのログ（行単位）。クエリ name と since（最後に見た seq）"
+      x-effect: "read"
+      description: "next を次回の since に渡すと、欠落・重複なく続きだけ読める。リングバッファは 2000 行で、溢れたら truncated=true。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TaskLogs"
+        "400":
+          description: "入力不正（since）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "404":
+          description: "定義にないタスク"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/nav/state":
+    get:
+      operationId: "getNavState"
+      tags:
+        - "nav"
+      summary: "Nav2 の現在地・目的地・経路と、手動操作を禁止している理由"
+      x-effect: "read"
+      description: "読み取り専用（アダプタの GET だけ）。Nav2 へ送る口は無い。available=false は『アダプタが読めない』で、Nav2 の停止を意味しない。exclusive_reason が null でなければ手動操作は無効。一度 Nav2 の稼働を見たら、アダプタが黙っても解除しない（安全側）。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/NavState"
+  "/api/nav/map.json":
+    get:
+      operationId: "getNavMapInfo"
+      tags:
+        - "nav"
+      summary: "地図の解像度・原点・大きさ"
+      x-effect: "read"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/NavMapInfo"
+        "404":
+          description: "--nav-adapter が未設定"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "アダプタに繋がらない・応答が不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/nav/map.png":
+    get:
+      operationId: "getNavMapPng"
+      tags:
+        - "nav"
+      summary: "地図の PNG（アダプタの画像を検証して中継）"
+      x-effect: "read"
+      description: "座標の対応は GET /api/nav/map.json。RViz との位置合わせは実機で未確認。"
+      responses:
+        "200":
+          description: "PNG 画像（バイナリ）"
+          content:
+            "image/png":
+              schema:
+                type: "string"
+                format: "binary"
+        "404":
+          description: "--nav-adapter が未設定"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "アダプタに繋がらない・PNG でない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/locations":
+    get:
+      operationId: "getLocations"
+      tags:
+        - "nav"
+      summary: "登録済みの地点（名前つき座標）"
+      x-effect: "read"
+      description: "タスク定義の argv から {loc:NAME.x} / {loc:NAME.y} / {loc:NAME.yaw_deg} で参照できる。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Locations"
+  "/api/topics":
+    get:
+      operationId: "getTopics"
+      tags:
+        - "dds"
+      summary: "トピック通信の方針（常に拒否・送信の許可リスト・購読中）"
+      x-effect: "read"
+      description: "--local / --mock のときだけ。受信は自由（型が読めるものだけ）、送信は許可リストにある String_ だけ。運動・関節・腕・RPC は常に拒否。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Topics"
+  "/api/topics/received":
+    get:
+      operationId: "getTopicsReceived"
+      tags:
+        - "dds"
+      summary: "購読中トピックの最新メッセージと受信状況"
+      x-effect: "read"
+      description: "購読が 0 件ならヘルパーを起動せず空を返す。age_s が null なら一度も受信していない（異常とは限らない）。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TopicsReceived"
         "502":
           description: "G1 または Jetson に届かない・G1 が拒否"
           content:
@@ -408,6 +591,265 @@ paths:
             "application/yaml":
               schema:
                 type: "string"
+  "/api/nav/presence":
+    post:
+      operationId: "postNavPresence"
+      tags:
+        - "nav"
+      summary: "『人が画面を見ている』を知らせる（0.5 秒ごと）。見ている間だけ Nav2 へ生存信号を出す"
+      x-effect: "settings"
+      description: "--heartbeat-to が設定されているときだけ意味を持つ。0.6 秒途絶えると生存信号は止まる。受信側が loopback を受け付けるかは実機で未確認。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/PresencePatch"
+            example: {}
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/PresenceAck"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/locations/save":
+    post:
+      operationId: "postLocationSave"
+      tags:
+        - "nav"
+      summary: "地点を登録・上書きする"
+      x-effect: "settings"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/LocationPatch"
+            example:
+              name: "example-spot"
+              x: 1.0
+              y: 2.0
+              yaw_deg: 90.0
+              map_id: ""
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Location"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "地点が上限（200）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "500":
+          description: "保存できない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/locations/delete":
+    post:
+      operationId: "postLocationDelete"
+      tags:
+        - "nav"
+      summary: "地点を削除する"
+      x-effect: "settings"
+      description: "タスクがその地点を参照していると、次の起動時に 409 になる。"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/LocationNamePatch"
+            example:
+              name: "example-spot"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/LocationDeleted"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "404":
+          description: "その名前の地点がない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "500":
+          description: "保存できない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/topics/subscribe":
+    post:
+      operationId: "postTopicSubscribe"
+      tags:
+        - "dds"
+      summary: "トピックを購読する（初回はヘルパーを起動する）"
+      x-effect: "settings"
+      description: "型は名前から推測しない。呼び出し側が GET /api/dds の type を見て、supported_types にあるものだけ指定する。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TopicSubscribePatch"
+            example:
+              topic: "rt/rtc/state"
+              type: "String_"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TopicSubscribed"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "購読の上限"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "422":
+          description: "型が読めない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/topics/unsubscribe":
+    post:
+      operationId: "postTopicUnsubscribe"
+      tags:
+        - "dds"
+      summary: "購読をやめる"
+      x-effect: "settings"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TopicNamePatch"
+            example:
+              topic: "rt/rtc/state"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TopicUnsubscribed"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "404":
+          description: "購読していない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/topics/publish":
+    post:
+      operationId: "postTopicPublish"
+      tags:
+        - "dds"
+      summary: "許可リストにあるトピックへ String_ を送る。**G1 の DDS に出る**"
+      x-effect: "robot_write"
+      description: "拒否リスト（運動・関節・腕・RPC など）は許可リストに書いても効かない。許可リストはサーバー側の --topics-file だけで、画面・API から増やせない。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TopicPublishPatch"
+            example:
+              topic: "rt/console_demo/say"
+              data: "hello"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TopicPublished"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "403":
+          description: "常に拒否するトピック、または許可リストにない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "413":
+          description: "max_bytes を超える"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "429":
+          description: "最小間隔より速い"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/camera/start":
     post:
       operationId: "postCameraStart"
@@ -521,6 +963,42 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/hub/stop":
+    post:
+      operationId: "postHubStop"
+      tags:
+        - "settings"
+      summary: "ハブ（このコンソール）自体を止める。画面からは再起動できない"
+      x-effect: "settings"
+      description: "応答の後に終了する（終了コード 0。systemd の Restart=on-failure では再起動しない）。止まったあと、再起動は Jetson で行う。カメラ・lidar の配信は別プロセスで、止まらない見込み（未確認）。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/HubStopPatch"
+            example:
+              confirm: true
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/HubStopAck"
+        "400":
+          description: "入力不正（confirm が true でない）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "タスク実行中、または運動の操作権が取られている"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/mode":
     post:
       operationId: "postMode"
@@ -547,6 +1025,275 @@ paths:
                 "$ref": "#/components/schemas/ModeAck"
         "400":
           description: "入力不正（許可されていない id）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/tasks/start":
+    post:
+      operationId: "postTaskStart"
+      tags:
+        - "tasks"
+      summary: "定義済みタスクを起動する（名前だけ渡す）。タスクの中身によってはロボットが動きうる"
+      x-effect: "settings"
+      description: "シェルを経由しない。実行後は GET /api/tasks/logs と GET /api/tasks の state / result / exit_code で結果を確認する。タスクの verified=false は実機で未確認で、caution が注意書き（画面は実行前にポップアップで見せる）。nav2-up / nav2-down は警備班の g1up.sh と撤収手順を呼ぶ。発進ゲート（G1_ARM）と enable_navigation は行わない。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TaskNamePatch"
+            example:
+              name: "sample-countdown"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Task"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "404":
+          description: "定義にないタスク"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "同じタスク、または同じ排他グループが実行中"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "500":
+          description: "起動できない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/tasks/stop":
+    post:
+      operationId: "postTaskStop"
+      tags:
+        - "tasks"
+      summary: "実行中のタスクを止める（プロセスグループへ SIGTERM、猶予後に SIGKILL）"
+      x-effect: "settings"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TaskNamePatch"
+            example:
+              name: "sample-countdown"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Task"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "404":
+          description: "定義にないタスク"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "実行中ではない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/motion/claim":
+    post:
+      operationId: "postMotionClaim"
+      tags:
+        - "motion"
+      summary: "操作権を取る（運動ヘルパーを起動する。初回は数秒かかる）"
+      x-effect: "robot_write"
+      description: "操作者は 1 人。接続断・緊急停止・解放のあとは自動で再開しないので、もう一度 claim する。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/MotionClaimPatch"
+            example: {}
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionClaim"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "他の人が操作中・手動操作が禁止されている"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "運動ヘルパーが起動しない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "503":
+          description: "--local でないため使えない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/motion/ctl":
+    post:
+      operationId: "postMotionCtl"
+      tags:
+        - "motion"
+      summary: "目標速度を送る。**ロボットが動く**。10 Hz で送り続けること（0.5 秒途絶すると停止して操作権を解除）"
+      x-effect: "robot_motion"
+      description: "FSM 500/501 以外では動かさない（blocked に理由）。速度は上限で丸める（実機未検証の初期値）。人が見ていないときに送らない。物理リモコンを手元に置く。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/MotionCtlPatch"
+            example:
+              session: "example"
+              seq: 1
+              vx: 0.0
+              vy: 0.0
+              wz: 0.0
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionStatus"
+        "400":
+          description: "入力不正（数値でない・有限でない）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "操作権がない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/motion/release":
+    post:
+      operationId: "postMotionRelease"
+      tags:
+        - "motion"
+      summary: "操作権を手放す（ゼロ速度にする）"
+      x-effect: "robot_motion"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/MotionSessionPatch"
+            example:
+              session: "example"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionStatus"
+        "400":
+          description: "入力不正"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "操作権がない"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/motion/estop":
+    post:
+      operationId: "postMotionEstop"
+      tags:
+        - "motion"
+      summary: "緊急停止。ゼロ速度＋StopMove を送り、操作権を解除する（操作権が無くても誰でも押せる）"
+      x-effect: "robot_motion"
+      description: "ダンピングやゼロトルクにはしない（自律直立を保つ）。**ソフトの停止は安全規格を満たさない。最後の砦は物理リモコン。**"
+      x-real-robot-verified: false
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionStatus"
+  "/api/motion/action":
+    post:
+      operationId: "postMotionAction"
+      tags:
+        - "motion"
+      summary: "アクション（手を振る・握手）。**ロボットが動く**"
+      x-effect: "robot_motion"
+      description: "SetTaskId の番号と効果は実機未検証。握手は開始のあと shake_end で終える。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/MotionActionPatch"
+            example:
+              session: "example"
+              name: "wave"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/MotionStatus"
+        "400":
+          description: "入力不正（許可されていないアクション）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "409":
+          description: "操作権がない・歩行モードでない"
           content:
             "application/json":
               schema:
@@ -719,6 +1466,83 @@ components:
         - "state"
         - "label"
       additionalProperties: false
+    Control:
+      type: "object"
+      description: "腕の制御が有効か・脚は自律か（読み取りだけで算出）"
+      properties:
+        arm:
+          type: "object"
+          description: "腕の制御が有効か。指令側 lowcmd の mode ではなく状態側 lowstate の mode で判定"
+          properties:
+            state:
+              type: "string"
+              description: "enabled=腕 14 軸すべてモータ有効 / disabled=すべて無効（ゼロトルク） / partial=一部のみ / unknown=lowstate が古いか mode が無い"
+              enum:
+                - "enabled"
+                - "disabled"
+                - "partial"
+                - "unknown"
+            label:
+              type: "string"
+              description: "画面に大きく出す短い判定（有効 / 無効 / 一部のみ / 不明）"
+            detail:
+              type: "string"
+              description: "判定の理由（画面に小さく添える）"
+            enabled_count:
+              type: "integer"
+              description: "rt/lowstate の motor_state.mode が 1 の腕関節数"
+              nullable: true
+            total:
+              type: "integer"
+              description: "腕関節の数（14）"
+            commanded:
+              type: "boolean"
+              description: "rt/lowcmd が 1 秒以内に来ているか"
+              nullable: true
+          required:
+            - "state"
+            - "label"
+            - "detail"
+            - "total"
+          additionalProperties: false
+        legs:
+          type: "object"
+          description: "脚が自律（標準モーションサービスの制御下）か"
+          properties:
+            state:
+              type: "string"
+              description: "autonomous=モーションコントローラが脚を制御中 / not_autonomous=ゼロトルク・ダンピング・デバッグモード"
+              enum:
+                - "autonomous"
+                - "not_autonomous"
+                - "unknown"
+            label:
+              type: "string"
+              description: "画面に大きく出す短い判定（自律 / 自律ではない / 不明）"
+            detail:
+              type: "string"
+              description: "判定の理由（画面に小さく添える）"
+            fsm_id:
+              type: "integer"
+              description: "state=ok のモードのときだけ"
+              nullable: true
+            enabled_count:
+              type: "integer"
+              description: "脚関節 12 軸のうち motor_state.mode が 1 の数"
+              nullable: true
+            total:
+              type: "integer"
+              description: "脚関節の数（12）"
+          required:
+            - "state"
+            - "label"
+            - "detail"
+            - "total"
+          additionalProperties: false
+      required:
+        - "arm"
+        - "legs"
+      additionalProperties: false
     Status:
       type: "object"
       description: "接続・モード・鮮度。まず最初に読む"
@@ -729,6 +1553,8 @@ components:
           "$ref": "#/components/schemas/Link"
         mode:
           "$ref": "#/components/schemas/Mode"
+        control:
+          "$ref": "#/components/schemas/Control"
         sampled_at:
           type: "number"
           description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
@@ -775,6 +1601,7 @@ components:
         - "jetson"
         - "g1"
         - "mode"
+        - "control"
         - "sampled_at"
         - "age_s"
         - "paused"
@@ -790,6 +1617,8 @@ components:
           "$ref": "#/components/schemas/Link"
         mode:
           "$ref": "#/components/schemas/Mode"
+        control:
+          "$ref": "#/components/schemas/Control"
         sampled_at:
           type: "number"
           description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
@@ -863,6 +1692,7 @@ components:
         - "jetson"
         - "g1"
         - "mode"
+        - "control"
         - "sampled_at"
         - "age_s"
         - "notes"
@@ -877,6 +1707,8 @@ components:
           "$ref": "#/components/schemas/Link"
         mode:
           "$ref": "#/components/schemas/Mode"
+        control:
+          "$ref": "#/components/schemas/Control"
         sampled_at:
           type: "number"
           description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
@@ -914,9 +1746,12 @@ components:
                 type: "array"
                 items:
                   type: "number"
+              mode:
+                type: "integer"
+                description: "rt/lowstate の motor_state.mode（1=有効 / 0=ゼロトルク）。古いヘルパーでは無い"
               cmd:
                 type: "object"
-                description: "lowcmd の指令値"
+                description: "lowcmd の指令値。最後に流れた指令が残るだけで、今の有効状態ではない"
                 additionalProperties: true
                 nullable: true
             required:
@@ -936,6 +1771,7 @@ components:
         - "jetson"
         - "g1"
         - "mode"
+        - "control"
         - "sampled_at"
         - "age_s"
         - "items"
@@ -950,6 +1786,8 @@ components:
           "$ref": "#/components/schemas/Link"
         mode:
           "$ref": "#/components/schemas/Mode"
+        control:
+          "$ref": "#/components/schemas/Control"
         sampled_at:
           type: "number"
           description: "最後に G1 を確認した時刻（epoch 秒）。null=まだ確認していない"
@@ -971,6 +1809,7 @@ components:
         - "jetson"
         - "g1"
         - "mode"
+        - "control"
         - "sampled_at"
         - "age_s"
         - "tabs"
@@ -1125,6 +1964,23 @@ components:
     Features:
       type: "object"
       properties:
+        actions:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              id:
+                type: "string"
+              label:
+                type: "string"
+              task_id:
+                type: "integer"
+            required:
+              - "id"
+              - "label"
+              - "task_id"
+            additionalProperties: false
+          description: "実行できるアクション"
         features:
           type: "array"
           items:
@@ -1251,6 +2107,26 @@ components:
       required:
         - "paused"
       additionalProperties: false
+    HubStopPatch:
+      type: "object"
+      properties:
+        confirm:
+          type: "boolean"
+          description: "true のときだけ停止する。無ければ 400"
+      required:
+        - "confirm"
+      additionalProperties: false
+    HubStopAck:
+      type: "object"
+      properties:
+        ok:
+          type: "boolean"
+        message:
+          type: "string"
+      required:
+        - "ok"
+        - "message"
+      additionalProperties: false
     Scenarios:
       type: "object"
       properties:
@@ -1279,6 +2155,743 @@ components:
           type: "string"
       required:
         - "scenario"
+      additionalProperties: false
+    MotionStatus:
+      type: "object"
+      description: "運動操作の状態"
+      properties:
+        state:
+          type: "string"
+          description: "idle=操作者なし / active=操作者あり"
+          enum:
+            - "idle"
+            - "active"
+        operator:
+          type: "boolean"
+          description: "操作者がいるか"
+        moving:
+          type: "boolean"
+          description: "ハブが速度指令を送っている最中か"
+        target:
+          type: "object"
+          description: "いまの目標速度（上限で丸め済み）"
+          properties:
+            vx:
+              type: "number"
+              description: "m/s"
+            vy:
+              type: "number"
+              description: "m/s"
+            wz:
+              type: "number"
+              description: "rad/s"
+          required:
+            - "vx"
+            - "vy"
+            - "wz"
+          additionalProperties: false
+        blocked:
+          type: "string"
+          description: "動かさない理由（歩行モードでない・状態が古い・Nav2 稼働中など）。null=動かせる"
+          nullable: true
+        disable_reason:
+          type: "string"
+          description: "手動操作を禁止している理由（Nav2 稼働中など）"
+          nullable: true
+        last_rx_age_s:
+          type: "number"
+          description: "操作者の最後の ctl からの秒数。0.5 を超えると自動停止"
+          nullable: true
+        last_event:
+          type: "object"
+          description: "直近の出来事 {kind: claim/lost/estop/release/takeover/disabled/sender_error/shutdown, detail, at}。接続断で解除されたかはここで分かる"
+          additionalProperties: true
+          nullable: true
+        sender:
+          type: "object"
+          properties:
+            backend:
+              type: "string"
+              description: "local / mock / unavailable"
+            error:
+              type: "string"
+              description: "直近の送信失敗"
+              nullable: true
+          required:
+            - "backend"
+            - "error"
+          additionalProperties: false
+        limits:
+          type: "object"
+          description: "vx / vy / wz の [下限, 上限]。実機未検証の初期値"
+          additionalProperties: true
+          nullable: true
+        timing:
+          type: "object"
+          properties:
+            send_period_s:
+              type: "number"
+            duration_s:
+              type: "number"
+              description: "SetVelocity の有効時間"
+            liveness_s:
+              type: "number"
+              description: "この秒数 ctl が途絶えたら停止"
+          additionalProperties: false
+      required:
+        - "state"
+        - "operator"
+        - "moving"
+        - "target"
+        - "blocked"
+        - "sender"
+      additionalProperties: true
+    MotionClaim:
+      type: "object"
+      description: "操作権を取った結果"
+      properties:
+        state:
+          type: "string"
+          description: "idle=操作者なし / active=操作者あり"
+          enum:
+            - "idle"
+            - "active"
+        operator:
+          type: "boolean"
+          description: "操作者がいるか"
+        moving:
+          type: "boolean"
+          description: "ハブが速度指令を送っている最中か"
+        target:
+          type: "object"
+          description: "いまの目標速度（上限で丸め済み）"
+          properties:
+            vx:
+              type: "number"
+              description: "m/s"
+            vy:
+              type: "number"
+              description: "m/s"
+            wz:
+              type: "number"
+              description: "rad/s"
+          required:
+            - "vx"
+            - "vy"
+            - "wz"
+          additionalProperties: false
+        blocked:
+          type: "string"
+          description: "動かさない理由（歩行モードでない・状態が古い・Nav2 稼働中など）。null=動かせる"
+          nullable: true
+        disable_reason:
+          type: "string"
+          description: "手動操作を禁止している理由（Nav2 稼働中など）"
+          nullable: true
+        last_rx_age_s:
+          type: "number"
+          description: "操作者の最後の ctl からの秒数。0.5 を超えると自動停止"
+          nullable: true
+        last_event:
+          type: "object"
+          description: "直近の出来事 {kind: claim/lost/estop/release/takeover/disabled/sender_error/shutdown, detail, at}。接続断で解除されたかはここで分かる"
+          additionalProperties: true
+          nullable: true
+        sender:
+          type: "object"
+          properties:
+            backend:
+              type: "string"
+              description: "local / mock / unavailable"
+            error:
+              type: "string"
+              description: "直近の送信失敗"
+              nullable: true
+          required:
+            - "backend"
+            - "error"
+          additionalProperties: false
+        limits:
+          type: "object"
+          description: "vx / vy / wz の [下限, 上限]。実機未検証の初期値"
+          additionalProperties: true
+          nullable: true
+        timing:
+          type: "object"
+          properties:
+            send_period_s:
+              type: "number"
+            duration_s:
+              type: "number"
+              description: "SetVelocity の有効時間"
+            liveness_s:
+              type: "number"
+              description: "この秒数 ctl が途絶えたら停止"
+          additionalProperties: false
+        session:
+          type: "string"
+          description: "以後の ctl / release / action に付ける操作権の ID"
+      required:
+        - "state"
+        - "operator"
+        - "moving"
+        - "target"
+        - "blocked"
+        - "sender"
+        - "session"
+      additionalProperties: true
+    MotionClaimPatch:
+      type: "object"
+      description: "全て任意"
+      properties:
+        takeover:
+          type: "boolean"
+          description: "true=他の人の操作権を奪う（相手は停止する）"
+      additionalProperties: false
+    MotionCtlPatch:
+      type: "object"
+      description: "上限を超えた値はサーバーが丸める"
+      properties:
+        session:
+          type: "string"
+        seq:
+          type: "integer"
+          description: "増える番号。小さい・同じものは捨てる"
+        vx:
+          type: "number"
+          description: "前後 m/s"
+        vy:
+          type: "number"
+          description: "左右 m/s"
+        wz:
+          type: "number"
+          description: "旋回 rad/s"
+      required:
+        - "session"
+        - "seq"
+        - "vx"
+        - "vy"
+        - "wz"
+      additionalProperties: false
+    MotionSessionPatch:
+      type: "object"
+      properties:
+        session:
+          type: "string"
+      required:
+        - "session"
+      additionalProperties: false
+    MotionActionPatch:
+      type: "object"
+      properties:
+        session:
+          type: "string"
+        name:
+          type: "string"
+          description: "GET /api/features の actions の id"
+          enum:
+            - "wave"
+            - "wave_turn"
+            - "shake_start"
+            - "shake_end"
+      required:
+        - "session"
+        - "name"
+      additionalProperties: false
+    Task:
+      type: "object"
+      description: "タスクの定義と直近の実行状態"
+      properties:
+        name:
+          type: "string"
+          description: "タスク名（Console/tasks/<name>.json）"
+        title:
+          type: "string"
+        description:
+          type: "string"
+        argv:
+          type: "array"
+          items:
+            type: "string"
+          description: "実行されるコマンド（配列。シェルは経由しない）"
+        group:
+          type: "string"
+          description: "排他グループ。同じグループは同時に走らせない"
+          nullable: true
+        timeout_s:
+          type: "number"
+          description: "この秒数で SIGTERM"
+        verified:
+          type: "boolean"
+          description: "false=実機（Jetson・G1）で未確認。画面は実行・停止の前に注意ポップアップを出す。結果を断定しない"
+        caution:
+          type: "array"
+          items:
+            type: "string"
+          description: "実行・停止の前に画面が見せる注意書き（server 側の定義）"
+        state:
+          type: "string"
+          enum:
+            - "idle"
+            - "running"
+            - "stopping"
+        result:
+          type: "string"
+          description: "直近の実行の結果。ok / failed / stopped / timeout"
+          nullable: true
+        exit_code:
+          type: "integer"
+          description: "終了コード。負はシグナル"
+          nullable: true
+        started_at:
+          type: "number"
+          description: "epoch 秒"
+          nullable: true
+        ended_at:
+          type: "number"
+          description: "epoch 秒。null=実行中または未実行"
+          nullable: true
+      required:
+        - "name"
+        - "title"
+        - "description"
+        - "argv"
+        - "group"
+        - "timeout_s"
+        - "verified"
+        - "caution"
+        - "state"
+        - "result"
+        - "exit_code"
+        - "started_at"
+        - "ended_at"
+      additionalProperties: false
+    Tasks:
+      type: "object"
+      properties:
+        tasks:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Task"
+      required:
+        - "tasks"
+      additionalProperties: false
+    TaskLogs:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+        next:
+          type: "integer"
+          description: "最後の行の seq。次回の since に使う"
+        truncated:
+          type: "boolean"
+          description: "since 以降の一部がリングバッファから消えた"
+        lines:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              seq:
+                type: "integer"
+              text:
+                type: "string"
+            required:
+              - "seq"
+              - "text"
+            additionalProperties: false
+      required:
+        - "name"
+        - "next"
+        - "truncated"
+        - "lines"
+      additionalProperties: false
+    TaskNamePatch:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+          description: "GET /api/tasks の name。これ以外（argv・パス）は受け付けない"
+      required:
+        - "name"
+      additionalProperties: false
+    Pose:
+      type: "object"
+      properties:
+        x:
+          type: "number"
+          description: "map フレームの x [m]"
+        y:
+          type: "number"
+          description: "map フレームの y [m]"
+        yaw_deg:
+          type: "number"
+          description: "向き [度]"
+      required:
+        - "x"
+        - "y"
+        - "yaw_deg"
+      additionalProperties: false
+    NavState:
+      type: "object"
+      description: "Nav2 の現在地・目的地・経路。値は検証済みのものだけ"
+      properties:
+        available:
+          type: "boolean"
+          description: "false=アダプタから読めていない（reason に理由）"
+        reason:
+          type: "string"
+          description: "読めない理由"
+        connected:
+          type: "boolean"
+          description: "Nav2 の bridge_status が生きている＝Nav2 稼働中とみなす"
+        pose:
+          "$ref": "#/components/schemas/Pose"
+          nullable: true
+        goal:
+          "$ref": "#/components/schemas/Pose"
+          nullable: true
+        plan:
+          type: "array"
+          items:
+            type: "array"
+            items:
+              type: "number"
+            description: "[x, y]"
+          description: "経路（/plan）"
+        route:
+          type: "array"
+          items:
+            type: "array"
+            items:
+              type: "number"
+            description: "[x, y]"
+          description: "巡回ルート"
+        bridge_state:
+          type: "string"
+          enum:
+            - "DISCONNECTED"
+            - "STANDBY"
+            - "READY"
+            - "NAVIGATING"
+            - "FAULT"
+            - "E_STOP"
+            - "UNKNOWN"
+        patrol:
+          type: "object"
+          properties:
+            state:
+              type: "string"
+            index:
+              type: "integer"
+            total:
+              type: "integer"
+          required:
+            - "state"
+            - "index"
+            - "total"
+          additionalProperties: false
+        message:
+          type: "string"
+        age_s:
+          type: "number"
+          description: "最後にアダプタを読んでからの秒数"
+          nullable: true
+        exclusive_reason:
+          type: "string"
+          description: "手動操作を禁止している理由。null=禁止していない"
+          nullable: true
+        heartbeat:
+          type: "object"
+          properties:
+            enabled:
+              type: "boolean"
+              description: "--heartbeat-to が設定済みか"
+            target:
+              type: "string"
+            present:
+              type: "boolean"
+              description: "画面が見ている（生存信号を送っている）か"
+            sent:
+              type: "integer"
+              description: "送った累計パケット数"
+          required:
+            - "enabled"
+          additionalProperties: false
+      required:
+        - "available"
+        - "heartbeat"
+      additionalProperties: false
+    NavMapInfo:
+      type: "object"
+      description: "地図 PNG の座標系。x = origin[0] + px*resolution、y = origin[1] + (height - py)*resolution"
+      properties:
+        resolution:
+          type: "number"
+          description: "m/pixel"
+        origin:
+          type: "array"
+          items:
+            type: "number"
+          description: "[x, y]。画像左下の map 座標 [m]"
+        width:
+          type: "integer"
+          description: "画素"
+        height:
+          type: "integer"
+          description: "画素"
+      required:
+        - "resolution"
+        - "origin"
+        - "width"
+        - "height"
+      additionalProperties: false
+    Location:
+      type: "object"
+      description: "名前つき座標"
+      properties:
+        name:
+          type: "string"
+          description: "英数字・日本語・_ - の 1〜40 文字"
+        x:
+          type: "number"
+          description: "m"
+        y:
+          type: "number"
+          description: "m"
+        yaw_deg:
+          type: "number"
+          description: "度（±180）"
+        map_id:
+          type: "string"
+          description: "地図の識別子（任意）"
+      required:
+        - "name"
+        - "x"
+        - "y"
+        - "yaw_deg"
+        - "map_id"
+      additionalProperties: false
+    Locations:
+      type: "object"
+      properties:
+        locations:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Location"
+      required:
+        - "locations"
+      additionalProperties: false
+    LocationPatch:
+      type: "object"
+      description: "同じ name があれば上書き"
+      properties:
+        name:
+          type: "string"
+        x:
+          type: "number"
+          description: "|x| ≤ 10000"
+        y:
+          type: "number"
+          description: "|y| ≤ 10000"
+        yaw_deg:
+          type: "number"
+          description: "±180"
+        map_id:
+          type: "string"
+          description: "省略可"
+      required:
+        - "name"
+        - "x"
+        - "y"
+        - "yaw_deg"
+      additionalProperties: false
+    LocationNamePatch:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+      required:
+        - "name"
+      additionalProperties: false
+    LocationDeleted:
+      type: "object"
+      properties:
+        deleted:
+          type: "string"
+      required:
+        - "deleted"
+      additionalProperties: false
+    PresencePatch:
+      type: "object"
+      description: "本文は空でよい"
+      properties: {}
+      additionalProperties: false
+    Topics:
+      type: "object"
+      properties:
+        enabled:
+          type: "boolean"
+        backend:
+          type: "string"
+          description: "local / mock"
+        deny:
+          type: "array"
+          items:
+            type: "string"
+          description: "常に送信を拒否するトピック（fnmatch）。許可リストより強い"
+        supported_types:
+          type: "array"
+          items:
+            type: "string"
+          description: "購読で読める型"
+        max_subscriptions:
+          type: "integer"
+        publish:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              topic:
+                type: "string"
+              type:
+                type: "string"
+              max_bytes:
+                type: "integer"
+              min_interval_s:
+                type: "number"
+              note:
+                type: "string"
+            required:
+              - "topic"
+              - "type"
+              - "max_bytes"
+              - "min_interval_s"
+              - "note"
+            additionalProperties: false
+          description: "送信の許可リスト（サーバー側ファイルだけ。画面から増やせない）"
+        subscribed:
+          type: "array"
+          items:
+            type: "string"
+      required:
+        - "enabled"
+        - "backend"
+        - "deny"
+        - "supported_types"
+        - "max_subscriptions"
+        - "publish"
+        - "subscribed"
+      additionalProperties: false
+    TopicsReceived:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              topic:
+                type: "string"
+              type:
+                type: "string"
+              count:
+                type: "integer"
+                description: "受信した件数"
+              age_s:
+                type: "number"
+                description: "最後の受信からの秒数。null=まだ受信なし"
+                nullable: true
+              message:
+                type: "object"
+                description: "最新メッセージ（配列は 16 要素、文字列は 512 文字まで）"
+                additionalProperties: true
+                nullable: true
+            required:
+              - "topic"
+              - "type"
+              - "count"
+              - "age_s"
+              - "message"
+            additionalProperties: false
+      required:
+        - "items"
+      additionalProperties: false
+    TopicSubscribePatch:
+      type: "object"
+      properties:
+        topic:
+          type: "string"
+          description: "rt/ で始まる名前"
+        type:
+          type: "string"
+          description: "GET /api/topics の supported_types のどれか"
+      required:
+        - "topic"
+        - "type"
+      additionalProperties: false
+    TopicNamePatch:
+      type: "object"
+      properties:
+        topic:
+          type: "string"
+      required:
+        - "topic"
+      additionalProperties: false
+    TopicPublishPatch:
+      type: "object"
+      properties:
+        topic:
+          type: "string"
+          description: "許可リストにあるトピック"
+        data:
+          type: "string"
+          description: "送る文字列（max_bytes まで）"
+      required:
+        - "topic"
+        - "data"
+      additionalProperties: false
+    TopicSubscribed:
+      type: "object"
+      properties:
+        topic:
+          type: "string"
+        type:
+          type: "string"
+      required:
+        - "topic"
+        - "type"
+      additionalProperties: false
+    TopicUnsubscribed:
+      type: "object"
+      properties:
+        unsubscribed:
+          type: "string"
+      required:
+        - "unsubscribed"
+      additionalProperties: false
+    TopicPublished:
+      type: "object"
+      properties:
+        published:
+          type: "string"
+        bytes:
+          type: "integer"
+      required:
+        - "published"
+        - "bytes"
+      additionalProperties: false
+    PresenceAck:
+      type: "object"
+      properties:
+        ok:
+          type: "boolean"
+        heartbeat:
+          type: "boolean"
+          description: "生存信号の送出が設定されているか"
+      required:
+        - "ok"
+        - "heartbeat"
       additionalProperties: false
     ModePatch:
       type: "object"

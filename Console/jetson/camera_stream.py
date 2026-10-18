@@ -239,6 +239,7 @@ def main():
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--camera", action="append", default=[], metavar="名前=デバイス")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--bind", default="0.0.0.0", help="待ち受けるアドレス（コンソールを同じ機械で動かすなら 127.0.0.1）")
     args = parser.parse_args()
     if args.list:
         return list_devices()
@@ -252,8 +253,8 @@ def main():
         parser.error("--camera を 1 つ以上指定する（--list で候補を確認）")
     for grabber in grabbers.values():
         grabber.start()
-    print("[camera] :%d で配信: %s" % (args.port, ", ".join(grabbers)), flush=True)
-    ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(grabbers)).serve_forever()
+    print("[camera] %s:%d で配信: %s" % (args.bind, args.port, ", ".join(grabbers)), flush=True)
+    ThreadingHTTPServer((args.bind, args.port), make_handler(grabbers)).serve_forever()
 
 
 if __name__ == "__main__":

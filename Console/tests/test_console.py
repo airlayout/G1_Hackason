@@ -1,6 +1,8 @@
 """Console のテスト。実機も ssh も要らない（MockHelper と標準ライブラリのみ）。"""
 import json
+import shutil
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -13,7 +15,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from g1console.dds_catalog import DISPLAYED, SERVICES, TOPICS  # noqa: E402
+from g1console.motion import MockSender, MotionController  # noqa: E402
 from g1console.modes import validate_audio, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, PLANNED_MODES  # noqa: E402
+from g1console.locations import LocationStore  # noqa: E402
+from g1console.navapi import NavApi  # noqa: E402
+from g1console.tasks import TaskRunner, load_definitions  # noqa: E402
+from g1console.topics import MockTopicBackend, TopicService  # noqa: E402
 from g1console.camera_proc import MockCameraCtl  # noqa: E402
 from g1console.lidar_proc import MockLidarCtl  # noqa: E402
 from server import MockHelper, Monitor, SshHelper, describe, make_handler  # noqa: E402
@@ -73,9 +80,9 @@ class FeaturesTest(unittest.TestCase):
             if not f["implemented"]:
                 self.assertFalse(f["verified"], f["id"])
 
-    def test_nothing_is_marked_verified_before_a_real_robot_run(self):
-        # 実機（G1 電源オン・コンソール経由）で試すまでは、全機能を「実機未確認」に保つ。
-        self.assertFalse(any(f["verified"] for f in FEATURES))
+    def test_only_user_confirmed_features_are_marked_verified(self):
+        # 実機で利用者が確認したと申告した機能だけを verified にする。増やすときは日付つきで残す。
+        self.assertEqual({f["id"] for f in FEATURES if f["verified"]}, {"battery", "telemetry"})  # 2026-10-18
 
     def test_planned_modes_are_not_switchable(self):
         planned = {p["label"] for p in PLANNED_MODES}
@@ -183,12 +190,23 @@ class HttpTest(unittest.TestCase):
         cls.settings = Settings(None)
         cls.monitor = Monitor(cls.helper)
         cls.monitor.poll_once()
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.helper, cls.monitor, None, cls.settings, MockCameraCtl(), MockLidarCtl()))
+        console = Path(__file__).resolve().parent.parent
+        cls.tasks = TaskRunner(load_definitions(console / "tasks", console), console)
+        cls.tmp = tempfile.mkdtemp(prefix="g1console-test-")
+        cls.nav = NavApi(LocationStore(Path(cls.tmp) / "locations.json"))  # アダプタなし（地図は 404、地点は使える）
+        allow = {"rt/console_demo/say": {"topic": "rt/console_demo/say", "type": "String_", "max_bytes": 64, "min_interval_s": 0.1, "note": ""}}
+        cls.topics = TopicService(MockTopicBackend(), allow)
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.helper, cls.monitor, None, cls.settings, MockCameraCtl(), MockLidarCtl(),
+                                                                   motion=MotionController(MockSender(), lambda: (501, 0.1)),
+                                                                   tasks=cls.tasks, nav=cls.nav, topics=cls.topics,
+                                                                   hub_stop=lambda: None))  # 例の送信で実際には止めない
         cls.port = cls.server.server_address[1]
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
     @classmethod
     def tearDownClass(cls):
+        cls.tasks.shutdown()
+        shutil.rmtree(cls.tmp, ignore_errors=True)
         cls.server.shutdown()
         cls.server.server_close()
 
@@ -244,8 +262,9 @@ class HttpTest(unittest.TestCase):
         self.assertTrue(d["services"])
         j = json.load(urllib.request.urlopen("http://127.0.0.1:%d/api/features" % self.port, timeout=5))
         self.assertEqual({f["id"] for f in j["features"]},
-                         {"connection", "reconnect", "mode", "action", "move", "battery", "audio", "sensors"})
-        self.assertTrue(j["planned_modes"] and j["planned_actions"])
+                         {"connection", "reconnect", "mode", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "telemetry", "sensors", "camera", "lidar", "nav2ctl", "hubstop"})
+        self.assertTrue(j["planned_modes"] and j["actions"])
+        self.assertEqual(j["planned_actions"], [])  # 未実装のアクションは無い（形は保つ）
 
     def test_volume_set_is_read_back_and_verified(self):
         self.assertEqual(json.load(urllib.request.urlopen("http://127.0.0.1:%d/api/audio/volume" % self.port))["volume"], 85)
@@ -360,7 +379,7 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(joints["items"][0]["name"], "左股 pitch")
         self.assertIsNotNone(joints["items"][0]["cmd"])
         self.assertEqual(snap["state"]["battery"]["soc"], state["battery"]["soc"])
-        self.assertEqual(snap["tabs"], ["ops", "state", "joints", "audio", "camera", "dds", "settings"])
+        self.assertEqual(snap["tabs"], ["ops", "motion", "state", "joints", "audio", "tasks", "map", "camera", "dds", "settings"])
 
 
 if __name__ == "__main__":
