@@ -65,6 +65,14 @@ class CommandLineTest(unittest.TestCase):
             LocalLidarCtl(lambda: 8082).call("x")
 
 
+class ExecutableTest(unittest.TestCase):
+    def test_t8_1_ctl_scripts_are_executable(self):
+        # ハブは <dir>/<script> を直接実行する。git に実行権限が無いと clone した Jetson で黙って失敗する（実機で発生）
+        for script in ("camera_ctl.sh", "lidar_ctl.sh"):
+            with self.subTest(script):
+                self.assertTrue(os.access(JETSON / script, os.X_OK))
+
+
 class StreamBindTest(unittest.TestCase):
     def test_t8_2_streams_take_a_bind_address_and_use_it(self):
         for name in ("camera_stream.py", "lidar_stream.py"):
