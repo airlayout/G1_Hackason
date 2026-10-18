@@ -60,7 +60,7 @@ class Replay:
                 {k: m[k] for k in ("q", "dq", "tau", "kp", "kd", "mode")} for m in cmd["motor_cmd"][:JOINTS]]},
             "imu2": imu2 and {"rpy": imu2["rpy"], "gyro": imu2["gyroscope"], "accel": imu2["accelerometer"],
                               "age_s": 0.1},
-            "mainboard": mb and {k: mb[k] for k in ("fan_state", "state", "temperature", "value")} | {"age_s": 0.05},
+            "mainboard": mb and {**{k: mb[k] for k in ("fan_state", "state", "temperature", "value")}, "age_s": 0.05},
             "estop": None, "remote": None,
             "strings": strings,
             "ages": {"rt/lowstate": 0.0, "rt/lowcmd": 0.0, "rt/lf/bmsstate": 0.0,
