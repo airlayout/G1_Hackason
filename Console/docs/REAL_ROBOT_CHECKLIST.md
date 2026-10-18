@@ -14,15 +14,15 @@ PR #30（`Dev/UI` 向け）は、この一覧の **A〜C が済むまでマー�
 | A1 | ヘッダーの 3 段接続が「サーバー → Jetson → G1」で正しく出る。G1 電源を落とす／Jetson を切る／デバッグモードで表示が実状と一致する | 状態と診断文が実状どおり（切断の検知から表示反映まで 15 秒以内＝GIVEUP 閾値） | [ ] |
 | A2 | ヘッダーのバッテリー%が、G1 の実際の残量表示（リモコン／本体）と一致する。電圧・電流の単位（mV/mA）を電源側の表示と突き合わせる | SOC は表示と ±2 ポイント以内。電圧は電源側表示と ±1 V 以内（40 V 前後） | [ ] |
 | A3 | 主ナビ 4 項目（操作・状態・センサ・開発。マップ・タスクは画面ができるまで非表示）と、その中の画面切り替え（モード・音声／状態・関節／カメラ／DDS・設定）の見た目、`#hash` 直リンク、幅の狭い画面での崩れ（2026-10-18 に主ナビへ再編。目視は未実施） | 幅 360px で横スクロールなし・7 画面すべてに到達できる・`#hash` 直リンクで該当画面が開く | [ ] |
-| A4 | `GET /api/state` `/api/joints` `/api/snapshot` が画面と同じ値を返す | 値が一致 | [ ] |
-| A5 | 通常モードの `CheckMode` の返り値（`name` / `form`）と `GetFsmId`（デバッグ中は `CheckMode`=`(0,{'form':'0','name':''})`、`GetFsmId`=`(3102, None)`＝RPC の戻りコードで ID は取れなかった） | 記録する | [ ] |
+| A4 | `GET /api/state` `/api/joints` `/api/snapshot` が画面と同じ値を返す | 値が一致 | 2026-10-18 実機（Jetson `--local`、通常モード fsm_id=501、SOC 57%）: `/api/state` と `/api/snapshot` の mode が一致、`/api/joints` は 29 行。画面の表示との目視比較は未実施 [ ] |
+| A5 | 通常モードの `CheckMode` の返り値（`name` / `form`）と `GetFsmId`（デバッグ中は `CheckMode`=`(0,{'form':'0','name':''})`、`GetFsmId`=`(3102, None)`＝RPC の戻りコードで ID は取れなかった） | 記録する | 2026-10-18 実機（Jetson `--local`、通常モード fsm_id=501、SOC 57%）: ハブ経由の `GetFsmId` は固定立位で 4、リモコンで通常モードにした後は 501（コンソール経由で 501 を確認した最初の記録）。`service`=ai。`CheckMode` の `name`/`form` の生値は未記録 [ ] |
 | A6 | 関節名の対応: 1 関節ずつ手で動かし（電源オン・脱力 `L2+B` の状態で軽く）、どの行が動くか確認 | 動かした関節すべてで `JOINT_NAMES` と一致（不一致 0 件） | [ ] |
-| A7 | メインボード `value`（3 つ目 1.0〜1.7 の意味）、`state`=[32,…]、`temperature`=50、`fan_state` | 意味を記録 | [ ] |
-| A8 | 内部の lowcmd の出所と、通常モードでの lowcmd 有無（デバッグ中は 200 Hz で出ていた） | 記録する | [ ] |
+| A7 | メインボード `value`（3 つ目 1.0〜1.7 の意味）、`state`=[32,…]、`temperature`=50、`fan_state` | 意味を記録 | 2026-10-18 実機（Jetson `--local`、通常モード fsm_id=501、SOC 57%）: `mainboard.value`=[49.31, 49.01, 2.0, 0, 0, 0]（前回の 3 つ目 1.0〜1.7 とは異なる）、`state`=全て 0、`temperature`=[53,0,…]、`fan_state`=全て 0。意味は未確認（値 1・2 番目が電圧に近いが、推測） [ ] |
+| A8 | 内部の lowcmd の出所と、通常モードでの lowcmd 有無（デバッグ中は 200 Hz で出ていた） | 記録する | 2026-10-18 実機（Jetson `--local`、通常モード fsm_id=501、SOC 57%）: 通常モードで `rt/lowcmd` は受信している（age 0.0 s）。出所は未特定、周波数は未測定 [ ] |
 | A9 | `rt/lf/*` が低頻度コピーか（周波数と内容の一致） | 周波数・値とも `rt/lowstate` との差が 1% 以内 | [ ] |
 | A10 | リモコン入力（`wirelesscontroller`）と非常停止（`emergency_stop`）が画面に出る。リモコンを押して値が変わる | 押下から 1 秒以内に画面の値が変わる | [ ] |
 | A11 | 旧版／新版どちらのリモコン割当か（`L2+B` で脱力するか `L1+A` か。`ai_sport` 8.7.3.4） | 版を記録 | [ ] |
-| A12 | `battery_alarm` が低残量で出るか（SOC 0% でも出なかった）。`servicestateactivate` `multiplestate` `selftest` が何かで出るか | 記録する | [ ] |
+| A12 | `battery_alarm` が低残量で出るか（SOC 0% でも出なかった）。`servicestateactivate` `multiplestate` `selftest` が何かで出るか | 記録する | 2026-10-18 実機（Jetson `--local`、通常モード fsm_id=501、SOC 57%）: `battery_alarm`・`rt/servicestateactivate`・`multiplestate`・`selftest` は未受信（null）。`rt/servicestate` は 1 回受信（ai_sport version 8.7.3.4）。低残量での発報は未確認 [ ] |
 
 ## B. 通常モードでの操作
 
