@@ -80,9 +80,9 @@ class FeaturesTest(unittest.TestCase):
             if not f["implemented"]:
                 self.assertFalse(f["verified"], f["id"])
 
-    def test_nothing_is_marked_verified_before_a_real_robot_run(self):
-        # 実機（G1 電源オン・コンソール経由）で試すまでは、全機能を「実機未確認」に保つ。
-        self.assertFalse(any(f["verified"] for f in FEATURES))
+    def test_only_user_confirmed_features_are_marked_verified(self):
+        # 実機で利用者が確認したと申告した機能だけを verified にする。増やすときは日付つきで残す。
+        self.assertEqual({f["id"] for f in FEATURES if f["verified"]}, {"battery", "telemetry"})  # 2026-10-18
 
     def test_planned_modes_are_not_switchable(self):
         planned = {p["label"] for p in PLANNED_MODES}
@@ -262,7 +262,7 @@ class HttpTest(unittest.TestCase):
         self.assertTrue(d["services"])
         j = json.load(urllib.request.urlopen("http://127.0.0.1:%d/api/features" % self.port, timeout=5))
         self.assertEqual({f["id"] for f in j["features"]},
-                         {"connection", "reconnect", "mode", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "sensors", "camera", "lidar", "nav2ctl", "hubstop"})
+                         {"connection", "reconnect", "mode", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "telemetry", "sensors", "camera", "lidar", "nav2ctl", "hubstop"})
         self.assertTrue(j["planned_modes"] and j["actions"])
         self.assertEqual(j["planned_actions"], [])  # 未実装のアクションは無い（形は保つ）
 

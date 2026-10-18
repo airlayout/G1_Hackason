@@ -305,7 +305,7 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
   <p class="note">ロボット本体の残量（<code>rt/lf/bmsstate</code>）。電圧は mV、電流は mA として換算した<b>推定</b>（単位は資料で未確認）。電流が負のときは放電中とみている。</p>
  </section>
  <section class="card">
-  <h2>姿勢（IMU）<span class="tags" data-feature="sensors"></span></h2>
+  <h2>姿勢（IMU）<span class="tags" data-feature="telemetry"></span></h2>
   <dl class="kv" id="imu-kv"></dl>
   <p class="note"><code>rt/lowstate</code> の <code>imu_state</code>。角度は rad を度に換算。</p>
  </section>
@@ -313,19 +313,19 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
 
 <div class="two">
  <section class="card">
-  <h2>オドメトリ<span class="tags" data-feature="sensors"></span></h2>
+  <h2>オドメトリ<span class="tags" data-feature="telemetry"></span></h2>
   <dl class="kv" id="odom-kv"></dl>
   <p class="note"><code>rt/odommodestate</code>。位置は起動位置からの推定で、ドリフトする。</p>
  </section>
  <section class="card">
-  <h2>Jetson・メインボード<span class="tags" data-feature="sensors"></span></h2>
+  <h2>Jetson・メインボード<span class="tags" data-feature="telemetry"></span></h2>
   <dl class="kv" id="sys-kv"></dl>
   <p class="note">Jetson は <code>/proc</code>・<code>/sys</code> の読み取り、メインボードは <code>rt/lf/mainboardstate</code>。メインボードの <code>value</code> の意味は未確認（生の値を表示）。</p>
  </section>
 </div>
 
 <section class="card">
- <h2>リモコン・非常停止・サービス<span class="tags" data-feature="sensors"></span></h2>
+ <h2>リモコン・非常停止・サービス<span class="tags" data-feature="telemetry"></span></h2>
  <dl class="kv" id="misc-kv"></dl>
  <p class="note">イベント型のトピックは、何も起きていなければ「受信なし」。受信なしは異常を意味しない。</p>
 </section>
