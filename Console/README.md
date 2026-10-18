@@ -53,6 +53,8 @@ python3 server.py --mock
 
 ## Jetson で常駐させ、スマホから開く
 
+**Jetson へ何を転送し、どう起動するかの手順は [docs/JETSON_SETUP.md](docs/JETSON_SETUP.md)。**（カメラ・lidar は `~/g1_console_camera`・`~/g1_console_lidar` への配置も要る）
+
 ```bash
 # Jetson 上。wlan0（同じ Wi-Fi）の IPv4 でも待ち受ける。ロボット内部 LAN（eth0）には開かない。
 python3 server.py --local --bind-iface wlan0     # 個別の IP は --bind 192.168.0.23（0.0.0.0 は不可）
