@@ -5,10 +5,13 @@
     $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/<チーム名>                  # 試行回数は PC の設定
     $P Button_Press/Yada/contest/evaluate.py --agent ... --trials 100 --set realistic --report
     $P Button_Press/Yada/contest/evaluate.py --agent ... --seed 3 --view     # 1 試行を画面で見る
+    $P Button_Press/Yada/contest/evaluate.py --agent ... --trials 20 --target down  # ▼ を押す試行だけを 20 回
     bash Button_Press/Yada/contest/evaluate_isaac.sh --agent ... --seeds smoke  # Isaac Sim（evaluate_isaac.py）
 
 試行の決め方（上ほど優先）: --seed（種を直接）> --trials N（種 0〜N−1）> --seeds（seeds.yaml の組）>
 この PC の設定の試行回数（初めての PC では、性能を調べて見積もりの時間を示し、試行回数を聞く。contest/machine.py）。
+--target up / down を付けると、押すボタンがそれの試行だけにする（片方のボタンだけを押すエージェント用）。
+--seed / --seeds では、その中から選ぶ。--trials N と PC の設定の回数では、種 0 から順に、そのボタンの種を N 個選ぶ。
 練習用の種（practice）は 0〜19 なので、--trials 20 と同じ。
 
 MuJoCo は、試行を並列のプロセスで回す（並列数は PC の性能から決める。--workers で変えられる。--view のときは 1）。
@@ -31,9 +34,10 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.config import REPO_ROOT, load_config  # noqa: E402
+from common.press_force import summarize_press  # noqa: E402
 from contest.interface import load_agent  # noqa: E402
 from contest.runner import EpisodeResult, run_episode  # noqa: E402
-from contest.task import make_trial  # noqa: E402
+from contest.task import first_seeds_for_target, make_trial, seeds_for_target  # noqa: E402
 
 RESULTS_DIR = REPO_ROOT / "_local" / "button_press_yada" / "results"
 
@@ -57,6 +61,7 @@ def summarize(results: list[EpisodeResult]) -> dict:
         "mean_time_s_success": round(sum(r.time_s for r in ok) / len(ok), 2) if ok else None,
         "max_contact_force_n": max((r.max_contact_force_n for r in results if r.max_contact_force_n is not None),
                                    default=None),
+        "press_force": summarize_press([r.to_dict() for r in results]),
     }
 
 
@@ -67,6 +72,8 @@ def add_eval_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--seeds-file", default=str(Path(__file__).with_name("seeds.yaml")))
     ap.add_argument("--seed", type=int, action="append", help="種を直接指定する（複数可。いちばん優先）")
     ap.add_argument("--trials", type=int, default=0, help="試行回数（種 0〜N−1）。省略するとこの PC の設定")
+    ap.add_argument("--target", choices=["up", "down"], default=None,
+                    help="押すボタンがこれの試行だけにする（片方のボタンだけを押すエージェント用）")
     ap.add_argument("--out", default="", help="結果の JSON の保存先（既定は _local/button_press_yada/results/）")
     ap.add_argument("--ablation", action="store_true",
                     help="乱しを 1 種類ずつ入れて評価する（乱しなし・各種類だけ・すべて。評価セットは realistic）")
@@ -81,14 +88,24 @@ def resolve_seeds(args: argparse.Namespace, sim: str, multiplier: int) -> tuple[
 
     explicit = bool(args.seed or args.trials or args.seeds)
     profile = ensure_profile(sim, ask=not explicit, reset=args.reset_machine, multiplier=multiplier)
+    target = getattr(args, "target", None)
+    cfg = load_config("contest.yaml")
     if args.seed:
         seeds = list(args.seed)
     elif args.trials:
-        seeds = list(range(int(args.trials)))
+        n = int(args.trials)
+        seeds = first_seeds_for_target(n, target, cfg) if target else list(range(n))
     elif args.seeds:
         seeds = list(load_config(args.seeds_file)[args.seeds])
     else:
-        seeds = list(range(int(profile["default_trials"])))
+        n = int(profile["default_trials"])
+        seeds = first_seeds_for_target(n, target, cfg) if target else list(range(n))
+    if target and (args.seed or args.seeds):
+        picked = seeds_for_target(seeds, target, cfg)
+        print(f"[eval] --target {target}: {len(seeds)} 個の種のうち {len(picked)} 個を使う")
+        seeds = picked
+    if not seeds:
+        raise SystemExit("[eval] 評価する種が無い（--target で 1 つも残らなかった）")
     return seeds, profile
 
 
@@ -140,9 +157,13 @@ def _run_one(variant: str | None, seed: int, eval_set: str, cfg: dict, agent: An
 
 def _print_result(r: EpisodeResult, wall: float) -> None:
     force = "-" if r.max_contact_force_n is None else r.max_contact_force_n
+    press = "-" if r.max_press_force_n is None else r.max_press_force_n
+    mark = ""
+    if r.press_force_in_range is not None:
+        mark = ("適正" if r.press_force_in_range else "範囲外") + ("・離した" if r.released_after_press else "・離さない")
     tag = f"[{r.extra['ablation']}] " if r.extra.get("ablation") else ""
     print(f"[eval] {tag}seed {r.seed:>3}  {r.target:<4}  {r.outcome:<8} {r.stage:<20} "
-          f"時間 {r.time_s if r.time_s is not None else '-':>6}  接触力 {force:>6} N  "
+          f"時間 {r.time_s if r.time_s is not None else '-':>6}  接触力 {force:>6} N  押す力 {press:>6} N {mark}  "
           f"丸め {r.clipped_limit_steps}/{r.clipped_rate_steps}  （実時間 {wall:.1f} s）")
     if r.error:
         print(r.error)
@@ -225,12 +246,17 @@ def run(args: argparse.Namespace, sim: str, make_robot: Callable, parallel: bool
     record_run(sim, len(tasks), workers, time.time() - t_start)
     print(f"[eval] 成功率 {summary['success_rate'] * 100:.0f}%（{summary['outcomes']}）、"
           f"成功時の平均時間 {summary['mean_time_s_success']} s（実時間 {summary['wall_time_s']} s、並列数 {workers}）")
+    pf = summary["press_force"]
+    if pf.get("measured"):
+        print(f"[eval] 押す力（成功した試行）: 最大の平均 {pf['max_press_force_n_success_mean']} N、"
+              f"適正な範囲 {pf['in_range_rate']}、指を離した {pf['released_rate']}、押しすぎ {pf['over_max_trials']} 試行")
     out = Path(args.out) if args.out else RESULTS_DIR / (
         f"{Path(args.agent).resolve().stem}_{sim}_{args.set}{'_ablation' if args.ablation else ''}"
         f"_{time.strftime('%Y%m%d_%H%M%S')}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"agent": str(args.agent), "sim": sim, "eval_set": args.set,
-                               "ablation": bool(args.ablation), "summary": summary,
+                               "ablation": bool(args.ablation), "target": getattr(args, "target", None),
+                               "summary": summary,
                                "results": [r.to_dict() for r in results]}, ensure_ascii=False, indent=2))
     print(f"[eval] 保存した: {out}")
     if any(r.outcome == "error" for r in results):

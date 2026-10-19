@@ -46,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common.config import REPO_ROOT, load_config  # noqa: E402
 from common.j1gen_bridge import j1gen, j1gen_config  # noqa: E402
+from common.press_force import PressForceMeter, PressForceSpec  # noqa: E402
 from common.scene_spec import build_hall_scene  # noqa: E402
 from contest.task import make_trial  # noqa: E402
 from mujoco_hall import HallMujoco, build_hall_model  # noqa: E402
@@ -307,6 +308,10 @@ class SimG1Server:
         last_cmd_t: float | None = None
         t_start = time.monotonic()
         t_judged: float | None = None
+        # 目標のボタンを押す力（記録だけ。success のときは post_press_s だけ測り続けてから結果を書く）。
+        # 力は制御の周期の終わりの値（物理の 1 ステップごとではない。contest/runner.py より粗い）
+        meter = PressForceMeter(PressForceSpec.from_cfg(load_config("contest.yaml").get("press_force")))
+        post_end: float | None = None
         cam_thread = threading.Thread(target=self._camera_loop, daemon=True)
         cam_thread.start()
         next_log = time.monotonic() + 5.0
@@ -332,6 +337,14 @@ class SimG1Server:
                 tick += 1
                 self._publish_state(tick)
 
+                press_f = hall.press_forces().get(self.trial.target)
+                if result["outcome"] is None or post_end is not None:
+                    meter.update(press_f)
+                if post_end is not None and now >= post_end:
+                    meter.mark_end(press_f)
+                    post_end = None
+                    result.update(meter.summary())
+                    self._finish(result)
                 # 判定（最初に決まったものだけ）
                 if result["outcome"] is None:
                     result["max_contact_force_n"] = max(result["max_contact_force_n"], hall.max_robot_contact_force())
@@ -346,7 +359,12 @@ class SimG1Server:
                         result["outcome"] = "no_command"
                     if result["outcome"] is not None:
                         t_judged = now
-                        self._finish(result)
+                        if result["outcome"] == "success":
+                            meter.mark_lit()
+                            post_end = now + meter.spec.post_press_s
+                        else:
+                            result.update(meter.summary())
+                            self._finish(result)
                 elif not self.keep_running and t_judged is not None and now - t_judged > LINGER_S:
                     break
                 if lit:
@@ -363,6 +381,11 @@ class SimG1Server:
             be.close()
             if result["outcome"] is None:
                 result["outcome"] = "aborted"
+                result.update(meter.summary())
+                self._finish(result)
+            elif post_end is not None:
+                # 点灯のあとの時間の途中で止まった: そこまでの記録で結果を書く
+                result.update(meter.summary())
                 self._finish(result)
             print(f"[sim_g1] 終了: {self.counts}")
         return result
@@ -374,7 +397,7 @@ class SimG1Server:
         path = OUT_DIR / f"result_seed{self.trial.seed}.json"
         path.write_text(json.dumps(result, ensure_ascii=False, indent=2))
         print(f"[sim_g1] 判定: {result['outcome']}（時間 {result['time_s']} s、接触力の最大 "
-              f"{result['max_contact_force_n']} N）→ {path}")
+              f"{result['max_contact_force_n']} N、押す力の最大 {result.get('max_press_force_n')} N）→ {path}")
 
 
 def main() -> int:

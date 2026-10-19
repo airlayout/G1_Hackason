@@ -103,3 +103,25 @@ def make_trial(seed: int, contest_cfg: dict[str, Any], base_scene_cfg: dict[str,
         realism = sample_realism(seed, contest_cfg["realism"])
     return Trial(seed=int(seed), target=target, instruction=instruction, scene_cfg=scene, eval_set=eval_set,
                  realism=realism, params=params)
+
+
+def seeds_for_target(seeds: list[int], target: str, contest_cfg: dict[str, Any]) -> list[int]:
+    """種の一覧から、押すボタンが target（"up" / "down"）の種だけを残す（evaluate.py の --target）。"""
+    if target not in BUTTONS:
+        raise ValueError(f"target は {BUTTONS} のどれか: {target}")
+    base = load_config(contest_cfg.get("scene_file", "elevator_hall.yaml"))
+    return [int(s) for s in seeds if make_trial(int(s), contest_cfg, base).target == target]
+
+
+def first_seeds_for_target(n: int, target: str, contest_cfg: dict[str, Any]) -> list[int]:
+    """押すボタンが target の種を、0 から順に n 個。"""
+    if target not in BUTTONS:
+        raise ValueError(f"target は {BUTTONS} のどれか: {target}")
+    base = load_config(contest_cfg.get("scene_file", "elevator_hall.yaml"))
+    out: list[int] = []
+    s = 0
+    while len(out) < n:
+        if make_trial(s, contest_cfg, base).target == target:
+            out.append(s)
+        s += 1
+    return out

@@ -33,6 +33,18 @@ safety:
   # 1 周期に動かせる最大の量 = これ ÷ control_hz（目標が飛んでも腕が急に動かないように）
   max_joint_speed_rad_s: 1.0
 
+# 目標のボタンを押す力（記録だけ。成否の判定には使わない。common/press_force.py）。
+# 点灯したあとも post_press_s だけ試行を続け、押す力の最大と、指を離したかを記録する。
+# ⚠️ 値はエレベーターの規格（EN 81-70: 押す力 2.5〜5 N）からの目安。本番のボタンでは測っていない
+press_force:
+  # 適正な範囲 [N]。下限は、点灯に要る力（elevator_prod.yaml の ばね 1000 N/m × 2 mm = 2 N）より少し上
+  ok_range_n: [3.0, 8.0]
+  # これを超えたら押しすぎ [N]
+  max_n: 20.0
+  post_press_s: 0.5
+  # 点灯のあとの時間の終わりに、力がこれより小さければ「指を離した」[N]
+  release_n: 0.3
+
 # シーンの設定（configs/ 基準）。elevator_prod.yaml = 本番に似た乗り場（黒い柱）、elevator_hall.yaml = 壁に付いた盤（前の形）
 scene_file: elevator_prod.yaml
 

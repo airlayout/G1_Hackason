@@ -46,7 +46,7 @@ class IsaacRobot(Robot):
         self._physics_dt = PHYSICS_DT
         self.w = build_world(scene_cfg, device, gains_cfg=contest_cfg["gains"], cameras=True,
                              head_data_types=("rgb", "distance_to_image_plane"), overview=overview,
-                             new_stage=True)
+                             new_stage=True, press_sensor=True)
         self.scene = self.w.scene
         names = list(self.w.robot.joint_names)
         missing = [n for n in JOINT_NAMES if n not in names]
@@ -88,8 +88,9 @@ class IsaacRobot(Robot):
     def advance(self, dt: float) -> StepInfo:
         n = max(1, int(round(dt / self._physics_dt)))
         self.w.step(n)
-        # 壁や盤との接触力は、まだ測っていない（PhysX の接触の報告を足すまで None）
-        return StepInfo(lit={b.name: self.w.hall.lit(b.name) for b in self.scene.buttons}, max_contact_force=None)
+        # 壁や盤との接触力は、まだ測っていない（PhysX の接触の報告を足すまで None）。ボタンを押す力は測る
+        return StepInfo(lit={b.name: self.w.hall.lit(b.name) for b in self.scene.buttons}, max_contact_force=None,
+                        press_force=dict(self.w.press_max), press_force_end=dict(self.w.press_now))
 
     def close(self) -> None:
         self.w.close()

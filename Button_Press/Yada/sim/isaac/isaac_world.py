@@ -19,7 +19,7 @@ import warp as wp
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import Articulation, ArticulationCfg
-from isaaclab.sensors import Camera, CameraCfg
+from isaaclab.sensors import Camera, CameraCfg, ContactSensor, ContactSensorCfg
 from isaaclab.sim import SimulationContext
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common.config import REPO_ROOT  # noqa: E402
 from common.j1gen_bridge import j1gen, j1gen_config  # noqa: E402
 from common.scene_spec import HallScene, build_hall_scene  # noqa: E402
-from isaac_hall import HallIsaac, build_hall, hall_articulation_cfg  # noqa: E402
+from isaac_hall import BUTTONS_PATH, HallIsaac, build_hall, hall_articulation_cfg  # noqa: E402
 
 ROBOT_PATH = "/World/G1"
 OVERVIEW_CAMERA = "hall_overview"
@@ -91,11 +91,12 @@ def find_link_path(stage: Any, root: str, name: str) -> str:
     return fallback
 
 
-def add_fingertips(stage: Any, robot_cfg: dict, radius: float) -> None:
+def add_fingertips(stage: Any, robot_cfg: dict, radius: float, root: str = ROBOT_PATH) -> None:
+    """中指の先に衝突判定の球を足す。root は G1 の prim（学習環境では環境ごとの場所）。"""
     from pxr import Gf, UsdGeom, UsdPhysics
 
     for side, ee in robot_cfg["end_effector"].items():
-        link = find_link_path(stage, ROBOT_PATH, ee["link"])
+        link = find_link_path(stage, root, ee["link"])
         sphere = UsdGeom.Sphere.Define(stage, f"{link}/{side}_{FINGERTIP_NAME}")
         sphere.CreateRadiusAttr(radius)
         UsdGeom.XformCommonAPI(sphere).SetTranslate(Gf.Vec3d(*ee["offset"]))
@@ -199,10 +200,18 @@ class World:
     hall: HallIsaac
     cameras: dict[str, Camera] = field(default_factory=dict)
     pelvis_world: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    # ボタンを押す力を測るセンサ（build_world の press_sensor=True のとき）と、step() の間の最大・最後の値 [N]
+    press_sensor: ContactSensor | None = None
+    press_max: dict[str, float] = field(default_factory=dict)
+    press_now: dict[str, float] = field(default_factory=dict)
 
     def step(self, n: int) -> list[str]:
-        """物理を n ステップ進める（RENDER_EVERY ごとに描画してカメラを更新）。押されたボタンの名前を返す。"""
+        """物理を n ステップ進める（RENDER_EVERY ごとに描画してカメラを更新）。押されたボタンの名前を返す。
+
+        press_sensor があれば、この n ステップの間の押す力の最大を press_max に、最後の値を press_now に入れる。
+        """
         pressed: list[str] = []
+        self.press_max = {}
         for i in range(n):
             self.robot.write_data_to_sim()
             self.hall_art.write_data_to_sim()
@@ -211,10 +220,22 @@ class World:
             self.robot.update(PHYSICS_DT)
             self.hall_art.update(PHYSICS_DT)
             pressed += self.hall.update()
+            if self.press_sensor is not None:
+                self.press_sensor.update(PHYSICS_DT)
+                self.press_now = self.press_forces()
+                for k, v in self.press_now.items():
+                    self.press_max[k] = max(v, self.press_max.get(k, 0.0))
             if render:
                 for c in self.cameras.values():
                     c.update(PHYSICS_DT * RENDER_EVERY)
         return pressed
+
+    def press_forces(self) -> dict[str, float]:
+        """今の、各ボタンが受けている接触力の大きさ [N]（ボタンと盤の衝突は外してあるので、ほぼロボットが押す力）。"""
+        f = self.press_sensor.data.net_forces_w
+        t = f if isinstance(f, torch.Tensor) else (f.torch if hasattr(f, "torch") else wp.to_torch(f))
+        mag = torch.linalg.norm(t[0], dim=-1).cpu().numpy()
+        return {n.removeprefix("button_"): float(m) for n, m in zip(self.press_sensor.body_names, mag)}
 
     def close(self) -> None:
         """この世界を片付ける（同じアプリの中で、次の世界を作れるようにする）。"""
@@ -225,10 +246,12 @@ class World:
 
 def build_world(scene_cfg: dict, device: str, gains_cfg: dict | None = None, cameras: bool = True,
                 head_data_types: tuple[str, ...] = ("rgb",), overview: bool = True, new_stage: bool = False,
-                dome_intensity: float | None = None, sun_intensity: float | None = None) -> World:
+                dome_intensity: float | None = None, sun_intensity: float | None = None,
+                press_sensor: bool = False) -> World:
     """G1 + 乗り場 + 照明 + カメラを作り、sim.reset() して初期の姿勢にした World を返す。
 
     new_stage=True で新しいステージに作る（評価で試行ごとに作り直すとき）。
+    press_sensor=True で、ボタンを押す力を測る（World.press_max / press_now）。
     """
     if new_stage:
         sim_utils.create_new_stage()
@@ -257,11 +280,13 @@ def build_world(scene_cfg: dict, device: str, gains_cfg: dict | None = None, cam
         if overview:
             cams[OVERVIEW_CAMERA] = Camera(overview_camera_cfg(scene, pelvis_world))
 
+    sensor = ContactSensor(ContactSensorCfg(prim_path=f"{BUTTONS_PATH}/button_.*")) if press_sensor else None
+
     sim.reset()
     hold_initial_pose(robot)
     hall = HallIsaac(hall_art, scene, shaders)
     return World(sim=sim, scene=scene, robot_cfg=robot_cfg, robot=robot, hall_art=hall_art, hall=hall,
-                 cameras=cams, pelvis_world=pelvis_world)
+                 cameras=cams, pelvis_world=pelvis_world, press_sensor=sensor)
 
 
 def camera_rgb(c: Camera) -> np.ndarray:

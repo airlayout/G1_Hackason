@@ -143,7 +143,7 @@ def _carpet(stage: Any, scene: HallScene) -> None:
 
 def build_hall(stage: Any, scene: HallScene, pelvis_world: np.ndarray) -> dict[str, Any]:
     """乗り場を stage に作る。ボタンの面の材質の shader を {ボタン名: shader} で返す。"""
-    from pxr import Gf, Sdf, UsdGeom, UsdPhysics
+    from pxr import Gf, PhysxSchema, Sdf, UsdGeom, UsdPhysics
 
     hall = UsdGeom.Xform.Define(stage, HALL_PATH)
     UsdGeom.XformCommonAPI(hall).SetTranslate(Gf.Vec3d(*np.asarray(pelvis_world, dtype=float).tolist()))
@@ -175,6 +175,8 @@ def build_hall(stage: Any, scene: HallScene, pelvis_world: np.ndarray) -> dict[s
         UsdGeom.XformCommonAPI(link).SetTranslate(Gf.Vec3d(*b.face_center.tolist()))
         UsdPhysics.RigidBodyAPI.Apply(link.GetPrim())
         UsdPhysics.MassAPI.Apply(link.GetPrim()).CreateMassAttr(b.mass)
+        # 押す力を IsaacLab の ContactSensor で測るため、接触の報告を有効にする（isaac_world.py の press_sensor）
+        PhysxSchema.PhysxContactReportAPI.Apply(link.GetPrim()).CreateThresholdAttr(0.0)
 
         cap = UsdGeom.Cylinder.Define(stage, f"{link_path}/cap")
         cap.CreateAxisAttr("X")
