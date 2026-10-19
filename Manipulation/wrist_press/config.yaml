@@ -1,0 +1,68 @@
+mode: button
+detector: yolo
+refine_button_centers: false
+button_weights: _local/button_press/button_yolo/weights/best.pt
+bottle_weights: yolo26n.pt
+confidence: 0.4
+device: cpu
+use_wrist: true
+async_perception: false
+max_image_age_s: 0.35
+observation_timeout_s: 3.0
+alignment_timeout_s: 2.0
+max_corrections: 24
+cycle_timeout_s: 18.0
+cycle_target_s: 10.0
+joint_speed_rad_s: 1.0
+joint_acceleration_rad_s2: 3.0
+joint_jerk_rad_s3: 30.0
+joint_tracking_limit_rad: 0.25
+clearance_m: 0.006
+planning_padding_m: 0.0
+edge_resolution_rad: 0.015
+planning_timeout_s: 2.0
+approach_m: 0.02
+retreat_m: 0.025
+alignment_tolerance_m: 0.0035
+approach_speed_m_s: 0.045
+close_speed_m_s: 0.012
+press_speed_m_s: 0.006
+hold_s: 0.2
+gravity_scale: 1.0
+gravity_mode: torque
+# Robot dimensions are the official model's nominal values, NOT real calibration.
+tip_offset_m: [0.1733, 0.0283, 0.0067]
+tip_radius_m: 0.008
+finger_tilts_deg: [[0, 0], [20, 10], [10, 10], [35, 20], [45, 20], [35, 30], [55, 20]]
+# IK hints, not commanded poses. Every resulting pose/path is collision checked.
+ik_seeds:
+  - [-0.614, -0.011, 0.235, -0.890, 1.014, 1.352, -1.355]
+  - [-1.0, -0.5, 0.3, 0.3, 0.0, 0.0, 0.0]
+# Optical coordinates: +x right, +y down, +z forward, relative to wrist_yaw_link.
+# This is a SIMULATION mount. Replace/measure it before running the real robot.
+wrist:
+  parent: right_wrist_yaw_link
+  xyz: [0.035, -0.045, 0.055]
+  rpy_deg: [-90, 0, -90]
+  width: 320
+  height: 240
+  fovy_deg: 65
+  mount_size_m: [0.035, 0.025, 0.02]
+button:
+  stroke_m: 0.004
+  max_command_penetration_m: 0.006
+  max_measured_penetration_m: 0.006
+  surface_protrusion_m: 0.002
+  feedforward_force_n: 3.0
+bottle:
+  stroke_m: 0.003
+  max_command_penetration_m: 0.006
+  max_measured_penetration_m: 0.006
+  anchor: [0.5, 0.65]
+  radius_m: 0.035
+  depth_spread_m: 0.015
+  feedforward_force_n: 0.0
+  close_speed_m_s: 0.008
+  press_speed_m_s: 0.004
+# Additional measured boxes, in pelvis coordinates. center/size are full lengths.
+obstacles: []

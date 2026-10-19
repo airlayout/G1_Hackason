@@ -1,0 +1,4 @@
+# Alternative SIMULATION mount to inspect occlusion. Measure before real use.
+wrist:
+  xyz: [0.06, -0.07, 0.09]
+  rpy_deg: [-119.044993, 0, -49.0548271]

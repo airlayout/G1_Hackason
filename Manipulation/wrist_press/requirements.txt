@@ -1,0 +1,10 @@
+numpy>=1.26
+PyYAML>=6
+pin>=3
+coal>=3
+opencv-python>=4.8
+scipy>=1.10
+pyzmq>=26
+ultralytics>=8.4
+# Simulation only (not imported by the pressing agent):
+mujoco>=3.2
