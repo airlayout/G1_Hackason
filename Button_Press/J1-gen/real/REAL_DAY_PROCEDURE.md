@@ -744,6 +744,12 @@ G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Butt
   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/body_motion.py _local/button_press/body_log/<日時>_<up|down>
   ```
 
+  同じフォルダに、**押す前（見つけたとき）と点灯の確認のときの画像**も残る（`lit_00_before.png`、`lit_01_check.png`、
+  枠・明るさを描いた `*_annotated.jpg`、数値の `lit_log.json`）。確認のときは指先がボタンの 6 cm 手前にある。
+  **手が枠に被さっていないか、「点灯した」が本当に点灯か**（`*_annotated.jpg` の `LIT` / `not lit` と、画像の実際の見た目が
+  合っているか）を、各回で見る。合わない回は、元の画像（`lit_*.png`）を `_local/button_press/phone_photos/` と同じ扱いで取っておく
+  （点灯判定の回帰テスト `tests/test_lit_check.py` と、YOLO の学習に使える）
+
   点灯しなかった回で、狙いのずれの x が + に数 mm 以上あれば、押した反動で体が逃げて浅くしか押せていない
   （較正のずれとは別の原因）
 

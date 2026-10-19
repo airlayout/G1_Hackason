@@ -1,0 +1,148 @@
+{
+ "about": "ラボのエレベーター（2026-10-15、スマホ）の写真を幅 640 に縮め、ボタンの周り ±60 px を切り出したもの。点灯の判定（_lit_level）の回帰テスト用。kind: lit=▼ が点灯（縁の輪が光る）、unlit=消灯、glint=消灯だが金属面が反射で白い。bbox は切り出しの中の、YOLO が見つけた枠。",
+ "cases": [
+  {
+   "file": "lit_0951_down.png",
+   "kind": "lit",
+   "frame": "IMG_0951",
+   "bbox": [
+    60,
+    60,
+    92,
+    90
+   ]
+  },
+  {
+   "file": "lit_0952_down.png",
+   "kind": "lit",
+   "frame": "IMG_0952",
+   "bbox": [
+    60,
+    60,
+    93,
+    93
+   ]
+  },
+  {
+   "file": "lit_0977_down.png",
+   "kind": "lit",
+   "frame": "IMG_0977",
+   "bbox": [
+    60,
+    60,
+    97,
+    96
+   ]
+  },
+  {
+   "file": "lit_0978_down.png",
+   "kind": "lit",
+   "frame": "IMG_0978",
+   "bbox": [
+    60,
+    60,
+    98,
+    96
+   ]
+  },
+  {
+   "file": "lit_0979_down.png",
+   "kind": "lit",
+   "frame": "IMG_0979",
+   "bbox": [
+    60,
+    60,
+    92,
+    90
+   ]
+  },
+  {
+   "file": "lit_0980_down.png",
+   "kind": "lit",
+   "frame": "IMG_0980",
+   "bbox": [
+    60,
+    60,
+    139,
+    132
+   ]
+  },
+  {
+   "file": "unlit_0929_down.png",
+   "kind": "unlit",
+   "frame": "IMG_0929",
+   "bbox": [
+    60,
+    60,
+    87,
+    85
+   ]
+  },
+  {
+   "file": "unlit_0944_down.png",
+   "kind": "unlit",
+   "frame": "IMG_0944",
+   "bbox": [
+    60,
+    60,
+    81,
+    74
+   ]
+  },
+  {
+   "file": "unlit_0941_down.png",
+   "kind": "unlit",
+   "frame": "IMG_0941",
+   "bbox": [
+    60,
+    60,
+    120,
+    118
+   ]
+  },
+  {
+   "file": "unlit_0979_up.png",
+   "kind": "unlit",
+   "frame": "IMG_0979",
+   "bbox": [
+    60,
+    60,
+    92,
+    91
+   ]
+  },
+  {
+   "file": "unlit_0978_up.png",
+   "kind": "unlit",
+   "frame": "IMG_0978",
+   "bbox": [
+    60,
+    60,
+    97,
+    98
+   ]
+  },
+  {
+   "file": "glint_0937_up.png",
+   "kind": "glint",
+   "frame": "IMG_0937",
+   "bbox": [
+    60,
+    60,
+    99,
+    106
+   ]
+  },
+  {
+   "file": "glint_0975_down.png",
+   "kind": "glint",
+   "frame": "IMG_0975",
+   "bbox": [
+    60,
+    60,
+    92,
+    92
+   ]
+  }
+ ]
+}
