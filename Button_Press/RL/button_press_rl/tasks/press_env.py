@@ -214,7 +214,9 @@ class ButtonPressEnv(DirectRLEnv):
         released_event = post_end & (f_now < self.task.release_n)
         force_abort = f_tgt > self.cfg.force_abort_scale * self.task.press_max
 
-        terminated = wrong_event | force_abort | post_end
+        terminated = post_end
+        if self.cfg.terminate_on_failure:
+            terminated = terminated | wrong_event | force_abort
         truncated = self.episode_length_buf >= self.max_episode_length - 1
 
         c.update(depth=depth, f_tgt=f_tgt, f_now=f_now, unwanted=unwanted, lit_event=lit_event,
@@ -243,7 +245,8 @@ class ButtonPressEnv(DirectRLEnv):
             depth=c["depth"][:, self._tgt], press_depth=self.task.press_depth, force=c["f_tgt"],
             max_force_until_lit=self._max_f_until_lit, unwanted_force=c["unwanted"], in_post=c["in_post"],
             lit_event=c["lit_event"], wrong_event=c["wrong_event"], released_event=c["released_event"],
-            force_abort=c["force_abort"], action=self._actions, last_action=self._last_actions,
+            force_abort=c["force_abort"], wrong_lit=self._lit[:, self._others].any(-1),
+            action=self._actions, last_action=self._last_actions,
             dq=_t(self._robot.data.joint_vel)[:, self._arm_ids], at_limit=at_limit,
             press_ok=self.task.press_ok, release_n=self.task.release_n,
         )

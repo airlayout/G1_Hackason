@@ -57,6 +57,7 @@ class RewardWeights:
     success_quality: float = 20.0  # 点灯までの力の最大が適正な範囲なら、さらに足す
     released: float = 10.0
     wrong_button: float = 50.0
+    wrong_lit: float = 5.0  # 違うボタンが点灯している間の、毎周期の減点（打ち切らないので、押し得にならないように）
     force_abort: float = 20.0
 
     def to_dict(self) -> dict[str, float]:
@@ -81,7 +82,8 @@ class RewardInputs:
     lit_event: torch.Tensor  # (N,) bool この周期で目標のボタンが点灯した
     wrong_event: torch.Tensor  # (N,) bool この周期で目標以外のボタンが点灯した
     released_event: torch.Tensor  # (N,) bool 点灯のあとの時間の終わりに指を離していた
-    force_abort: torch.Tensor  # (N,) bool 押す力が大きすぎて試行を打ち切った
+    force_abort: torch.Tensor  # (N,) bool 押す力が大きすぎた（上限の倍を超えた）
+    wrong_lit: torch.Tensor  # (N,) bool 目標以外のボタンが点灯している
     action: torch.Tensor  # (N, 7)
     last_action: torch.Tensor  # (N, 7)
     dq: torch.Tensor  # (N, 7) 右腕の関節の速度 [rad/s]
@@ -136,6 +138,7 @@ def compute_rewards(x: RewardInputs, w: RewardWeights) -> tuple[torch.Tensor, di
     t["success"] = x.lit_event.float() * (w.success + w.success_quality * in_band)
     t["released"] = w.released * x.released_event.float()
     t["wrong_button"] = -w.wrong_button * x.wrong_event.float()
+    t["wrong_lit"] = -w.wrong_lit * x.wrong_lit.float()
     t["force_abort"] = -w.force_abort * x.force_abort.float()
     total = torch.stack(list(t.values()), 0).sum(0)
     return total, t

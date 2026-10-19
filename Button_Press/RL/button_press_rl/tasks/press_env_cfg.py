@@ -109,5 +109,8 @@ class ButtonPressEnvCfg(DirectRLEnvCfg):
     rand: DomainRandCfg = DomainRandCfg()
     viewer: ViewerCfg = ViewerCfg(eye=(-1.3, -1.1, 1.7), lookat=(0.3, 0.0, 0.9))
 
-    # 押す力がこれを超えたら試行を打ち切る（configs/contest.yaml の press_force.max_n の倍）
+    # 押す力がこれを超えたら大きく減点する（configs/contest.yaml の press_force.max_n の倍）
     force_abort_scale: float = 2.0
+    # 違うボタン・押しすぎで試行を打ち切るか。False（既定）では減点だけで続ける。
+    # 毎周期の項が減点だけなので、打ち切ると「わざと違うボタンを押して早く終える」ことを覚える（2026-10-19。FAILURES.md）
+    terminate_on_failure: bool = False

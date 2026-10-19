@@ -25,7 +25,7 @@ class TestRewards(unittest.TestCase):
             face=torch.tensor([[0.30, 0.0, 0.20]]), axis=torch.tensor([[1.0, 0.0, 0.0]]), tip_radius=0.008,
             depth=z.clone(), press_depth=0.002, force=z.clone(), max_force_until_lit=z.clone(),
             unwanted_force=z.clone(), in_post=f.clone(), lit_event=f.clone(), wrong_event=f.clone(),
-            released_event=f.clone(), force_abort=f.clone(), action=torch.zeros(n, 7),
+            released_event=f.clone(), force_abort=f.clone(), wrong_lit=f.clone(), action=torch.zeros(n, 7),
             last_action=torch.zeros(n, 7), dq=torch.zeros(n, 7), at_limit=z.clone(),
             press_ok=(3.0, 8.0), release_n=0.3,
         )
@@ -88,6 +88,20 @@ class TestRewards(unittest.TestCase):
         self.assertLess(hold["hold_after"].item(), 0.0)
         self.assertEqual(rel["hold_after"].item(), 0.0)
         self.assertEqual(rel["reach"].item(), 0.0)  # 点灯のあとは近づく項を止める
+
+    def test_wrong_button_never_pays(self) -> None:
+        """違うボタンを押すと、押さずに居続けるより必ず損（打ち切らないので、点灯している間は毎周期の減点が続く）。"""
+        import torch
+
+        from button_press_rl.rewards import RewardWeights, compute_rewards
+
+        w = RewardWeights()
+        on = torch.tensor([True])
+        stay, _ = compute_rewards(self._inputs(), w)
+        lit, _ = compute_rewards(self._inputs(wrong_lit=on), w)
+        event, _ = compute_rewards(self._inputs(wrong_lit=on, wrong_event=on), w)
+        self.assertLess(lit.item(), stay.item())
+        self.assertLess(event.item(), lit.item())
 
     def test_impact(self) -> None:
         """当たる直前に速いと減点。触れたあとは見ない。"""

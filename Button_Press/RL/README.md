@@ -52,7 +52,7 @@ bash Button_Press/RL/scripts/play.sh --num_envs 16             # 学習した方
 | `in_band_rate` | 点灯したとき、点灯までの押す力の最大が適正な範囲（3〜8 N）だった割合 |
 | `released_rate` | 点灯のあと 0.5 秒で指を離していた割合 |
 | `max_press_force_n` | 成功した試行の、押す力の最大の平均 |
-| `wrong_rate`、`force_abort_rate` | 違うボタンを点灯させた割合、押す力が 40 N を超えて打ち切った割合 |
+| `wrong_rate`、`force_abort_rate` | 違うボタンを点灯させた割合、押す力が 40 N を超えた割合 |
 
 `Episode_Reward/<項目>` は報酬の項ごとの値（1 秒あたり）。
 
@@ -107,7 +107,7 @@ bash Button_Press/RL/scripts/play.sh --num_envs 16             # 学習した方
 | 滑らかさ | 行動の変化、関節の速さ、目標が可動範囲の端に張りついた関節の数 |
 | 点灯（＋） | 30。点灯までの押す力の最大が 3〜8 N なら、さらに 20 |
 | 指を離した（＋） | 点灯のあと 0.5 秒で離していれば 10 |
-| 違うボタン・押す力 40 N 超 | 大きく減点して打ち切る |
+| 違うボタン・押す力 40 N 超 | 大きく減点する。違うボタンが点灯している間は毎周期も減点。**打ち切らない**（打ち切ると、わざと違うボタンを押して早く終えることを覚えた。[FAILURES.md](FAILURES.md)） |
 
 ### 乱し（`press_env_cfg.DomainRandCfg`。`contest.yaml` の `realism` を目安にした値）
 
