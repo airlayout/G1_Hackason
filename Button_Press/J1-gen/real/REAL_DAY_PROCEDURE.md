@@ -712,7 +712,7 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/check_button_photos.py \
 
 ```bash
 G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Button_Press/J1-gen/contest_agent \
-    --network-interface <NIC> --camera-host <PC2 の IP> --target up --instruction "上の階" --no-loco --dry-run
+    --network-interface <NIC> --camera-host <PC2 の IP> --target down --instruction "下の階" --no-loco --dry-run
 ```
 
 - `--no-loco`: J1-gen のエージェントは足を動かさないので、LocoClient につながない（立つのはリモコンで）
@@ -733,7 +733,7 @@ G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Butt
 ```bash
 J1GEN_BODY_LOG=_local/button_press/body_log \
 G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Button_Press/J1-gen/contest_agent \
-    --network-interface <NIC> --camera-host <PC2 の IP> --target up --instruction "上の階" --no-loco
+    --network-interface <NIC> --camera-host <PC2 の IP> --target down --instruction "下の階" --no-loco
 ```
 
 - `J1GEN_BODY_LOG`: 毎周期の関節角・IMU・段階を `_local/button_press/body_log/<日時>_<up|down>/` に記録する
@@ -763,7 +763,7 @@ G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Butt
   5 mm ずつ深くする（上限 `max_press_depth_m` 30 mm）
 - ボタンの端を押した・外したとき: 左右・上下のずれ。シミュレーションでも最大 13.5 mm ずれた。本物のボタンが
   小さい（半径 15 mm 未満）と外れやすい。較正で直す
-- `▼` も同じく `--target down` で試す
+- `▲`（`--target up`）も同じ。**ラボの写真で点灯を見たのは ▼ だけ**なので、最初は `--target down` で試す。▲ は実物の点灯を見ていないので、点灯の確認（明るい部分の上がり方）が働くかを特に見る。どちらを押すかが決まったら、上の 2 か所の `--target` を合わせる
 
 止めるとき: Ctrl+C（腕の weight を 2 秒で 0 に戻す）。動きがおかしいとき（腕が柱に向かって速く動く、腰が回る）は
 すぐ L2+B。
