@@ -8,3 +8,5 @@ torch: "2.10.0+cu128"
 python: "3.12"
 # NVIDIA ドライバの最低の版（RTX 50 系は 570 以上が要る）
 min_driver: 570
+# MuJoCo での採点に使う Python の mujoco の最低の版（J1-gen の requirements.txt と同じ）
+mujoco_min: "3.2"

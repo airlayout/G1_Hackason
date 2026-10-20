@@ -46,27 +46,46 @@ git checkout Dev/ButtonPress_RL
 
 以下のコマンドは、すべてリポジトリの直下（`G1_Hackason/`）で実行する。
 
-### 2.2 Isaac Sim・Isaac Lab・rsl_rl を入れる
+### 2.2 Isaac Sim・Isaac Lab・rsl_rl・MuJoCo を用意する
+
+まず、何が見つかり、何を入れることになるかを確かめる（何も入れない。数秒）。
+
+```bash
+bash Button_Press/RL/scripts/setup.sh --dry-run
+```
+
+問題が無ければ、本番を実行する。
 
 ```bash
 bash Button_Press/RL/scripts/setup.sh
 ```
 
-- 20〜40 分かかる（大半は Isaac Sim のダウンロード）。途中で止まっても、もう一度実行すれば、入っているものは飛ばして続きから入れる。
-- 入る場所は `~/NVIDIA/env_isaaclab`（Isaac Sim の Python 環境）と `~/NVIDIA/IsaacLab`。
-- 最後に `check_setup.sh` が動く。すべて `[OK]` なら成功。
+`setup.sh` は、次のように進む。
 
-別の場所に入れたいときは、場所を指定して実行する。
+1. **探す**：環境変数（`ISAAC_SIM`・`ISAACLAB`・`MUJOCO_PYTHON`）→ 前回の記録 → 既定の場所（`~/NVIDIA/env_isaaclab`、
+   `~/NVIDIA/IsaacLab`）→ よくある場所（`~/NVIDIA/*`、`~/*`、conda の環境）の順に探す。
+2. **あれば使う**：決めた版（[configs/versions.yaml](configs/versions.yaml)）のものが見つかれば、それをそのまま使う。何も入れ直さない。
+3. **無い・版が違うときは聞く**：
+
+   | 場面 | 聞くこと（既定の答え） |
+   |---|---|
+   | Isaac Sim が無い | 既定の場所に新しく入れるか（入れる。20〜40 分、約 33 GB） |
+   | 版の違う Isaac Sim しか無い | 1) 別の場所に新しく入れる（既定） 2) 見つかったものを使う 3) やめる |
+   | Isaac Lab が無い / 版が違う | 同じ（新しく取得する先は、既にあるものとは別の場所） |
+   | Isaac Sim の環境に Isaac Lab が入っていない | 入れるか（その環境を使っているほかの人に影響が出ることがある） |
+   | MuJoCo の採点に使える Python が無い | MuJoCo 用の小さな環境（`~/NVIDIA/env_mujoco`）を作るか |
+
+   **新しく入れるときは、見つかった環境には手を入れず、別の場所に入れる。** ほかの人や評価環境が使っている環境を壊さないため。
+4. **記録する**：選んだ場所を `_local/button_press_rl/paths.env` に記録する。以後のスクリプトは、この記録を読む。
+   別の場所を選んでも、毎回 `export` する必要は無い。記録を消すと、次の `setup.sh` で探し直す。
+5. 最後に `check_setup.sh` が動く。すべて `[OK]` なら成功。
+
+- 途中で止まっても、もう一度実行すれば、入っているものは飛ばして続きから入れる。
+- 聞かずに既定の答えで進めたいときは `--yes` を付ける。端末以外（ほかのスクリプトなど）から実行して確認が必要になると、何も入れずに止まる。
+- 場所を自分で決めたいときは、環境変数で渡す（見つかったものより優先される）。
 
 ```bash
 ISAAC_SIM=/path/to/env_isaaclab ISAACLAB=/path/to/IsaacLab bash Button_Press/RL/scripts/setup.sh
-```
-
-**別の場所にした場合は、このあとのコマンドを実行する前に、毎回同じ 2 つを `export` する。**
-（`~/.bashrc` に書いておくと楽。）
-
-```bash
-export ISAAC_SIM=/path/to/env_isaaclab ISAACLAB=/path/to/IsaacLab
 ```
 
 ### 2.3 版がそろっているかを確かめる（数秒）
@@ -75,7 +94,7 @@ export ISAAC_SIM=/path/to/env_isaaclab ISAACLAB=/path/to/IsaacLab
 bash Button_Press/RL/scripts/check_setup.sh
 ```
 
-GPU とドライバ、Isaac Sim・rsl_rl・torch の版、Isaac Lab のコミット、G1 のモデル、テストを確かめる。
+使っている場所、GPU とドライバ、Isaac Sim・rsl_rl・torch の版、Isaac Lab のコミット、MuJoCo の Python、G1 のモデル、テストを確かめる。
 すべて `[OK]` ならよい。`[NG]` があれば、その行に直し方が出る。
 
 ### 2.4 学習環境が動くかを確かめる（5 分ほど）
@@ -92,10 +111,10 @@ bash Button_Press/RL/scripts/train.sh --num_envs 16 --max_iterations 3
 
 学習済みの方策（`agent/policy.pt`）がリポジトリに入っているので、学習しなくても採点できる。
 
-MuJoCo（速い。20 試行で 1 分ほど）:
+MuJoCo（速い。20 試行で 1 分ほど。`setup.sh` が選んだ MuJoCo の Python で動く）:
 
 ```bash
-$HOME/NVIDIA/env_isaaclab/python.sh Button_Press/Yada/contest/evaluate.py --agent Button_Press/RL/agent --target down --trials 20
+bash Button_Press/RL/scripts/evaluate_mujoco.sh --agent Button_Press/RL/agent --target down --trials 20
 ```
 
 Isaac Sim（1 試行に 20〜50 秒）:
@@ -116,7 +135,8 @@ bash Button_Press/Yada/contest/evaluate_isaac.sh --agent Button_Press/RL/agent -
 |---|---|---|
 | 教師を一から学習する | `bash Button_Press/RL/scripts/train.sh` | 2500 回で約 3.5 時間 |
 | 続きから学習する | `bash Button_Press/RL/scripts/train.sh --resume --load_run <フォルダ名>` | |
-| 学習の経過を見る | `$HOME/NVIDIA/env_isaaclab/python.sh -m tensorboard.main --logdir _local/button_press_rl/logs` | |
+| MuJoCo で採点する | `bash Button_Press/RL/scripts/evaluate_mujoco.sh --agent Button_Press/RL/agent --target down --trials 40 --set realistic --report` | 1〜2 分 |
+| 学習の経過を見る | `source Button_Press/RL/scripts/env.sh` のあと `$ISAAC_SIM/python.sh -m tensorboard.main --logdir _local/button_press_rl/logs` | |
 | 成功率と押す力の分布を測る | `bash Button_Press/RL/scripts/eval_teacher.sh --episodes 2000` | 数分 |
 | 方策を評価用に書き出す | `bash Button_Press/RL/scripts/eval_teacher.sh --no-eval --export Button_Press/RL/agent/policy.pt` | 数分 |
 | 学習した方策を画面で見る | `bash Button_Press/RL/scripts/play.sh --num_envs 16` | 画面のあるマシンだけ |
@@ -140,16 +160,22 @@ bash Button_Press/Yada/contest/evaluate_isaac.sh --agent Button_Press/RL/agent -
 - うまく動いた値が分かったら、`configs/machines.yaml` を直してコミットしてほしい。
 - 並列の数を減らすと、1 回の学習で集める経験が減るので、同じ回数でも上達が遅くなる。
 
-## 5. setup.sh がすること
+## 5. setup.sh が入れるもの（新しく入れると答えたとき）
 
 1. GPU とドライバの版を確かめる。
 2. Python 3.12 の環境（venv）を作り、Isaac Sim（pip 版）を入れる。pip 版には `python.sh` が無いので、薄いラッパーを置く
    （[IsaacSim_Env/SETUP.md](../../IsaacSim_Env/SETUP.md) の「環境の例②」と同じ）。
 3. Isaac Lab を取得して決めたコミットにし、`./isaaclab.sh --install 'rl[rsl-rl]'` で入れる。torch は CUDA 12.8 版が入る。
-4. G1 の公式モデルを取得する（`Button_Press/J1-gen/sim/fetch_models.sh`。J1-gen・Yada と共通）。
+   MuJoCo と pinocchio も一緒に入るので、MuJoCo の採点もこの環境でできる。
+4. MuJoCo 用の環境を作ると答えたときは、`~/NVIDIA/env_mujoco` に mujoco・pinocchio・torch（CPU 版）などを入れる。
+5. G1 の公式モデルを取得する（`Button_Press/J1-gen/sim/fetch_models.sh`。J1-gen・Yada と共通）。
 
 ⚠️ `setup.sh` は、何も入っていない新しいマシンでの通しの実行を、まだ確かめていない。
-このマシンでは、すでに入っているものを飛ばして何も変えないことだけを確かめた。
+このマシンで確かめたのは次のことだけ。
+
+- すでにある環境を見つけて、何も変えずに使う。
+- 版が違う・何も無いときの判断と、聞く内容（`--dry-run` と、版を書き換えた写しで確認）。
+- 端末以外から実行して確認が必要になると、何も入れずに止まる。
 新しいマシンで試したら、結果（うまくいった・どこで止まった）を [FAILURES.md](FAILURES.md) に書いてほしい。
 
 ## 6. 守ること

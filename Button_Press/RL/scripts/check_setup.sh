@@ -13,6 +13,7 @@ REPO_ROOT="$(cd "$RL_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/env.sh" >/dev/null 2>&1 || true
 ISAAC_SIM="${ISAAC_SIM:-$HOME/NVIDIA/env_isaaclab}"
 ISAACLAB="${ISAACLAB:-$HOME/NVIDIA/IsaacLab}"
+echo "[check] Isaac Sim: $ISAAC_SIM、Isaac Lab: $ISAACLAB（変えるときは setup.sh か、環境変数 ISAAC_SIM / ISAACLAB）"
 PY="$ISAAC_SIM/bin/python"
 NG=0
 ok() { echo "[OK] $*"; }
@@ -33,6 +34,12 @@ done
 head="$(git -C "$ISAACLAB" rev-parse HEAD 2>/dev/null)"
 [[ "$head" == "$(want isaaclab_commit)" ]] && ok "Isaac Lab ${head:0:9}（$(want isaaclab_branch)）" || ng "Isaac Lab の版: ${head:-無い}（$(want isaaclab_commit) が要る）"
 out="$("$PY" -m pip show isaaclab_rl 2>/dev/null || true)"; [[ -n "$out" ]] && ok "isaaclab_rl が入っている" || ng "isaaclab_rl が無い（setup.sh を実行する）"
+MJ="${MUJOCO_PYTHON:-$ISAAC_SIM/bin/python}"
+if mjv="$("$MJ" -c "import mujoco, pinocchio, torch, yaml; print(mujoco.__version__)" 2>/dev/null)"; then
+    ok "MuJoCo $mjv（採点に使う Python: $MJ）"
+else
+    ng "MuJoCo の採点に使う Python で mujoco / pinocchio / torch が import できない: $MJ（setup.sh を実行する）"
+fi
 [[ -f "$REPO_ROOT/_local/button_press/models/g1_description/g1_29dof_rev_1_0.urdf" ]] && ok "G1 の公式モデル" || ng "G1 の公式モデルが無い（bash Button_Press/J1-gen/sim/fetch_models.sh）"
 
 # シミュレーターに依存しない部分のテスト（乱し幅・観測・報酬）
