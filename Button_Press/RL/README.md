@@ -75,6 +75,61 @@ bash Button_Press/RL/scripts/eval_teacher.sh --episodes 2000    # 成功率と�
 評価環境と同じにするため、乗り場・ボタン・G1 のモデル・PD の強さ・初期の姿勢・物理の刻み（0.002 s）・制御の周期（50 Hz）は
 複製せずに Yada / J1-gen から読み込む。
 
+## 学習の設定を自分で変える（報酬・乱し）
+
+報酬の重み、乱し、試行の設定は、各自の YAML で変えられる。共有のコード（`rewards.py` など）は変えなくてよい。
+
+1. 既定の設定をコピーして、自分の名前のファイルを作る。
+
+   ```bash
+   cp Button_Press/RL/configs/profiles/default.yaml Button_Press/RL/configs/profiles/<自分の名前>.yaml
+   ```
+
+2. 変えたい項目だけを残して、値を書き換える（書かなかった項目は既定の値になる）。例:
+
+   ```yaml
+   rewards:
+     force_over: 6.0      # 押しすぎをもっと強く減点
+     released: 20.0       # 指を離すほうを大きく
+   rand:
+     button_stiffness: [400.0, 2000.0]
+   ```
+
+3. その設定で学習する。ログのフォルダ名の最後に設定の名前が付き、使った値はログの `params/env.yaml` に残る。
+
+   ```bash
+   bash Button_Press/RL/scripts/train.sh --profile <自分の名前>
+   ```
+
+   評価（`eval_teacher.sh`）や動画（`record_progress.sh`）も同じ乱しで動かしたいときは、前に
+   `BUTTON_PRESS_PROFILE=<自分の名前>` を付ける。
+
+| 節 | 変えられるもの |
+|---|---|
+| `rewards` | 報酬の重みと尺度（[button_press_rl/rewards.py](button_press_rl/rewards.py) の `RewardWeights`） |
+| `rand` | 乱し（ボタンの硬さ、PD の強さ、関節のノイズ、立ち位置のずらし幅など） |
+| `env` | 1 試行の長さ、失敗で打ち切るか、押しすぎの基準、中指で押したとみなす範囲 |
+
+- 存在しない項目（打ち間違いなど）や、型の違う値があれば、Isaac Sim を起動する前にエラーで止まる。
+- 観測・行動の形、物理の刻み、PD の強さの公称値など、評価環境と合わせている値は変えられないようにしてある
+  （変えると、学習した方策が評価用の `Agent` で動かなくなる）。
+- `default.yaml` は直接変えない（全員の既定が変わる）。良い設定が見つかったら、相談して既定に入れる。
+- 自分の設定ファイルはコミットしてよい（ほかの人が結果を再現できる）。
+
+### 新しい報酬の項を足すとき
+
+重みを変えるだけでなく、新しい項（例: 肘を上げすぎない）を足したいときは、コードを変える。
+
+1. [button_press_rl/rewards.py](button_press_rl/rewards.py) の `RewardWeights` に重みを足す。**既定の値は 0 にする**
+   （ほかの人の学習が変わらないように）。
+2. `compute_rewards` に項を足す。毎周期の項は減点（0 以下）にする（＋だと、押して終えるよりボタンの前に居続けるのが得になる）。
+   項に要る値が `RewardInputs` に無ければ足し、`tasks/press_env.py` の `_get_rewards` で渡す。
+3. `configs/profiles/default.yaml` の `rewards` にも同じ名前と既定の値を足す（`tests/test_profiles.py` が一致を確かめる）。
+4. [tests/test_rewards.py](tests/test_rewards.py) に、その項が意図どおりに働くテストを足し、`bash Button_Press/RL/tests/run_tests.sh` で確かめる。
+5. 自分の設定ファイルで重みを 0 より大きくして学習する。
+
+報酬で失敗した例（抜け道を覚えた、勾配が無かったなど）は [FAILURES.md](FAILURES.md) にある。足す前に読む。
+
 ## 教師の学習環境（G1-ButtonPress-Teacher-v0）
 
 ### 乗り場の違いの作り方

@@ -5,6 +5,8 @@
 #   bash Button_Press/RL/scripts/train.sh --num_envs 64 --max_iterations 10   # 動作の確認
 #   bash Button_Press/RL/scripts/train.sh --machine rtx5060ti   # マシンの設定を指定（configs/machines.yaml）
 #   bash Button_Press/RL/scripts/train.sh --resume --load_run <フォルダ名>   # 続きから
+#   bash Button_Press/RL/scripts/train.sh --profile yada         # 自分の学習の設定（configs/profiles/yada.yaml）で学習
+#                                                                # ログのフォルダ名の最後に設定の名前が付く
 #
 # ログと checkpoint は _local/button_press_rl/logs/rsl_rl/button_press_teacher/<日時>/ に書く。
 # 起動に 2〜5 分かかる。
@@ -15,10 +17,12 @@ source "$SCRIPT_DIR/env.sh"
 
 TASK="G1-ButtonPress-Teacher-v0"
 MACHINE=""
+PROFILE="${BUTTON_PRESS_PROFILE:-}"
 ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --machine) MACHINE="$2"; shift 2 ;;
+        --profile) PROFILE="$2"; shift 2 ;;
         --task) TASK="$2"; shift 2 ;;
         *) ARGS+=("$1"); shift ;;
     esac
@@ -45,6 +49,26 @@ PY
 fi
 if ! printf '%s\n' "${ARGS[@]}" | grep -q -- "--kit_args"; then
     ARGS+=(--kit_args="$ISAAC_KIT_ARGS")
+fi
+
+if [[ -n "$PROFILE" ]]; then
+    # 学習を始める前に、設定ファイルを確かめる（打ち間違いで Isaac Sim の起動を待ってから落ちないように）
+    # 本物の設定（ButtonPressEnvCfg）に当てはめて確かめる。Isaac Lab の設定はシミュレーターを起動せずに読める
+    "$ISAAC_SIM/bin/python" -c "
+import sys
+from button_press_rl.profiles import ProfileError, apply_profile, profile_path
+from button_press_rl.tasks.press_env_cfg import ButtonPressEnvCfg
+try:
+    p = apply_profile(ButtonPressEnvCfg(), sys.argv[1])
+except ProfileError as e:
+    sys.exit(f'[NG] {e}')
+print(f'[train] 学習の設定: {profile_path(sys.argv[1])}（' + '、'.join(f'{k} {len(v)} 項目' for k, v in p.items()) + ' を変える）')
+" "$PROFILE" 2>&1 | grep -v "Warning"
+    if [[ "${PIPESTATUS[0]}" != 0 ]]; then exit 1; fi
+    export BUTTON_PRESS_PROFILE="$PROFILE"
+    if ! printf '%s\n' "${ARGS[@]}" | grep -q -- "--run_name"; then
+        ARGS+=(--run_name "$(basename "${PROFILE%.yaml}")")
+    fi
 fi
 
 LOG="$RL_OUT_DIR/train_$(date +%Y%m%d_%H%M%S).log"

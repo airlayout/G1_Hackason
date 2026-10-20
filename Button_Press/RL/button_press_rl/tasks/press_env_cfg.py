@@ -95,6 +95,11 @@ class DomainRandCfg:
     dq_noise: float = 0.01
     # 試行の始めの、右腕の角度のずれ [rad]
     init_q_noise: float = 0.03
+    # ボタンのばねの強さ [N/m] と、行き止まりまでの沈み [m]（評価は 1000 N/m・3 mm）。
+    # 固定だと「決まった深さまで押す」ことを覚え、行き止まりの硬さが違う MuJoCo では力が 2 倍以上になった
+    # （Isaac Sim 7 N → MuJoCo 14 N、2026-10-20）。ばらつかせて、手応え（目標と角度の差）で押す力を加減させる
+    button_stiffness: tuple[float, float] = (600.0, 1500.0)
+    button_travel: tuple[float, float] = (0.0025, 0.0045)
 
 
 @configclass
@@ -102,6 +107,8 @@ class ButtonPressEnvCfg(DirectRLEnvCfg):
     """右腕で一般用の ▼ を押す（教師。ボタンの位置を観測に入れる）。"""
 
     target: str = TARGET_BUTTON
+    # 使った学習の設定（configs/profiles/<名前>.yaml。環境変数 BUTTON_PRESS_PROFILE で選ぶ）。ログの params/env.yaml に残る
+    profile: str = "default"
     episode_length_s: float = 8.0
     decimation: int = DECIMATION
     action_space: int = NUM_ACTIONS
@@ -126,3 +133,6 @@ class ButtonPressEnvCfg(DirectRLEnvCfg):
     tip_lateral_m: float = 0.002
     # 終わった試行の記録を env.episode_records に残す（評価用。学習では False）
     record_episodes: bool = False
+    # 動画用のカメラ（scripts/record_progress.py が使う。学習では None）。環境の外の /World/VideoCamera に 1 台置き、
+    # set_world_poses_from_view で動かす。Isaac Lab の viewport のカメラは、毎コマ動かすと描画に遅れて反映されたため
+    video_camera_size: tuple[int, int] | None = None

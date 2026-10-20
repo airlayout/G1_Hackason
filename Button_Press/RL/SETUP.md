@@ -134,6 +134,7 @@ bash Button_Press/Yada/contest/evaluate_isaac.sh --agent Button_Press/RL/agent -
 | やりたいこと | コマンド | かかる時間（L40S） |
 |---|---|---|
 | 教師を一から学習する | `bash Button_Press/RL/scripts/train.sh` | 2500 回で約 3.5 時間 |
+| 自分の報酬・乱しの設定で学習する | `bash Button_Press/RL/scripts/train.sh --profile <名前>`（[README.md](README.md) の「学習の設定を自分で変える」） | |
 | 続きから学習する | `bash Button_Press/RL/scripts/train.sh --resume --load_run <フォルダ名>` | |
 | MuJoCo で採点する | `bash Button_Press/RL/scripts/evaluate_mujoco.sh --agent Button_Press/RL/agent --target down --trials 40 --set realistic --report` | 1〜2 分 |
 | 学習の経過を見る | `source Button_Press/RL/scripts/env.sh` のあと `$ISAAC_SIM/python.sh -m tensorboard.main --logdir _local/button_press_rl/logs` | |

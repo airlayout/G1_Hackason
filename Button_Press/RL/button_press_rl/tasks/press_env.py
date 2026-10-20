@@ -23,11 +23,12 @@ import torch
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
-from isaaclab.sensors import ContactSensor, ContactSensorCfg
+from isaaclab.sensors import Camera, CameraCfg, ContactSensor, ContactSensorCfg
 from isaaclab.utils.math import quat_apply, quat_apply_inverse, quat_from_euler_xyz, sample_uniform
 
 from ..hall_usd import BUTTONS_REL, SCENE_NAME, write_hall_usd
 from ..paths import use_yada
+from ..profiles import apply_profile, profile_name, profile_path, selected_profile
 from ..proprio import RIGHT_ARM_JOINTS, policy_obs, proprio, step_command
 from ..rewards import RewardInputs, compute_rewards
 from ..spec import TaskSpec, load_task_spec
@@ -56,6 +57,13 @@ class ButtonPressEnv(DirectRLEnv):
     cfg: ButtonPressEnvCfg
 
     def __init__(self, cfg: ButtonPressEnvCfg, render_mode: str | None = None, **kwargs):
+        # 各自の学習の設定（報酬の重み・乱し・試行の設定）。試行の長さは親の __init__ で使うので、その前に当てる
+        name = selected_profile()
+        if name is not None:
+            changed = apply_profile(cfg, name)
+            cfg.profile = profile_name(name)
+            n = sum(len(v) for v in changed.values())
+            print(f"[press_env] 学習の設定 {cfg.profile}（{profile_path(name)}）: {n} 項目を既定の値から変えた")
         self.task: TaskSpec = load_task_spec(cfg.target)
         super().__init__(cfg, render_mode, **kwargs)
         dev = self.device
@@ -97,6 +105,8 @@ class ButtonPressEnv(DirectRLEnv):
         self._lit_step = torch.full((n,), -1, dtype=torch.long, device=dev)
         self._max_f_ep = torch.zeros(n, device=dev)
         self._post_steps = int(round(self.task.post_press_s * self.task.control_hz))
+        # 試行ごとのボタンの行き止まりまでの沈み [m]（乱す。rewards の沈める項の目標）
+        self._travel = torch.full((n,), self.task.travel, device=dev)
         self._ep = {k: torch.zeros(n, device=dev) for k in
                     ("success", "wrong", "released", "in_band", "force_abort", "max_force", "tip_press")}
         # 試行の中での、指先の球の中心とボタンの面の中心の最も近い距離 [m]（学習が進んでいるかの目安）
@@ -154,6 +164,15 @@ class ButtonPressEnv(DirectRLEnv):
         self._arm_contacts = [link_sensor(n) for n in ARM_LINKS]
 
         self.scene.clone_environments(copy_from_source=False)
+        self.video_camera: Camera | None = None
+        if self.cfg.video_camera_size is not None:
+            w, h = self.cfg.video_camera_size
+            self.video_camera = Camera(CameraCfg(
+                prim_path="/World/VideoCamera", width=w, height=h, data_types=["rgb"],
+                spawn=sim_utils.PinholeCameraCfg(focal_length=18.0, horizontal_aperture=20.955,
+                                                 clipping_range=(0.05, 2000.0))))
+            # scene.sensors には入れない（環境ごとのセンサとして扱われ、リセットで環境の数の番号を渡されて落ちる）。
+            # 録画する側が video_camera.update() を呼ぶ
         self.scene.articulations["robot"] = self._robot
         self.scene.articulations["hall"] = self._hall
         self.scene.sensors["button_contact"] = self._button_contact
@@ -246,7 +265,7 @@ class ButtonPressEnv(DirectRLEnv):
         x = RewardInputs(
             tip=tip, tip_vel=tip_vel, face=face, axis=axis, tip_radius=self.task.fingertip_radius,
             button_radius=self.task.button_radius, button_protrusion=self.task.button_protrusion,
-            depth=c["depth"][:, self._tgt], travel=self.task.travel, force=c["f_tgt"],
+            depth=c["depth"][:, self._tgt], travel=self._travel, force=c["f_tgt"],
             max_force_ep=self._max_f_ep, unwanted_force=c["unwanted"], in_post=c["in_post"],
             lit_event=c["lit_event"], wrong_event=c["wrong_event"], released_event=c["released_event"],
             end_event=c["end_event"],
@@ -333,10 +352,17 @@ class ButtonPressEnv(DirectRLEnv):
         arm = sample_uniform(r.armature[0], r.armature[1], (k, len(self._arm_ids)), dev)
         self._robot.write_joint_armature_to_sim_index(armature=arm, joint_ids=arm32, env_ids=ids32)
 
-        # ボタン
-        zb = torch.zeros(k, self._hall.num_joints, device=dev)
+        # ボタン（ばねの強さと行き止まりまでの沈みを乱す。すべてのボタンで同じ値）
+        nj = self._hall.num_joints
+        zb = torch.zeros(k, nj, device=dev)
         self._hall.write_joint_position_to_sim_index(position=zb, env_ids=ids32)
         self._hall.write_joint_velocity_to_sim_index(velocity=zb, env_ids=ids32)
+        stiff = sample_uniform(r.button_stiffness[0], r.button_stiffness[1], (k, 1), dev).expand(k, nj)
+        self._hall.write_joint_stiffness_to_sim_index(stiffness=stiff.contiguous(), env_ids=ids32)
+        travel = sample_uniform(r.button_travel[0], r.button_travel[1], (k,), dev)
+        limits = torch.stack([zb, travel.unsqueeze(-1).expand(k, nj)], -1)
+        self._hall.write_joint_position_limit_to_sim_index(limits=limits.contiguous(), env_ids=ids32)
+        self._travel[env_ids] = travel
 
         # 試行ごとの状態
         self._q_cmd[env_ids] = q_arm

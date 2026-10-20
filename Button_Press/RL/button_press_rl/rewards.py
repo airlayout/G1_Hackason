@@ -90,7 +90,7 @@ class RewardInputs:
     button_radius: float  # ボタンの半径 [m]
     button_protrusion: float  # ボタンの面が柱の面より手前に出ている量 [m]
     depth: torch.Tensor  # (N,) 目標のボタンの沈み [m]
-    travel: float  # 行き止まりまでの沈み [m]
+    travel: float | torch.Tensor  # 行き止まりまでの沈み [m]（環境ごとに違えば (N,)）
     force: torch.Tensor  # (N,) 目標のボタンを押す力（周期の中の最大）[N]
     max_force_ep: torch.Tensor  # (N,) 試行の中の押す力の最大 [N]
     unwanted_force: torch.Tensor  # (N,) 指先以外の接触力 [N]

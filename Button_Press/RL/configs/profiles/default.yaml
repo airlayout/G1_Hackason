@@ -1,0 +1,73 @@
+# 学習の設定の既定の値（コードの既定の値と同じ。tests/test_profiles.py が一致を確かめる）。
+#
+# 自分の設定を作るときは、このファイルをコピーして configs/profiles/<自分の名前>.yaml にし、変えたい項目だけを残す
+# （書かなかった項目は既定の値になる）。存在しない項目を書くと、学習を始める前にエラーになる。
+#   cp Button_Press/RL/configs/profiles/default.yaml Button_Press/RL/configs/profiles/yada.yaml
+#   bash Button_Press/RL/scripts/train.sh --profile yada
+# 報酬の各項の意味は README.md の「報酬」と button_press_rl/rewards.py。
+# ⚠️ このファイル（default）は直接変えない。全員の学習の既定が変わる。
+
+# ---- 報酬（毎周期の項は減点。重みは 1 周期あたり。尺度は m / N / m/s） ----
+rewards:
+  # 近づく: 指先とボタンの手前 approach_m の点の距離（遠くは比例・reach_far_m で頭打ち、近くは tanh）
+  reach: 2.0
+  reach_far_m: 0.8
+  reach_scale_near_m: 0.05
+  approach_m: 0.03
+  # 手前に来たら（面から near_m 以内）横のずれを小さく
+  align: 1.0
+  align_scale_m: 0.01
+  near_m: 0.06
+  # 横がそろったら（lateral_ok_m 以内）面に近づける
+  close: 1.0
+  close_scale_m: 0.02
+  lateral_ok_m: 0.012
+  # 行き止まりまで沈める
+  depth: 2.0
+  # 押す力: 適正な範囲の上限を超えた分の 2 乗、当たる直前の速さ（impact_speed を超えた分の 2 乗）
+  force_over: 3.0
+  impact: 5.0
+  impact_speed: 0.1
+  impact_zone_m: 0.02
+  touch_n: 0.2
+  # 点灯のあとも押している
+  hold_after: 1.0
+  # 指先以外が乗り場や体に当たる力 / unwanted_scale_n（最大 1）
+  unwanted_contact: 2.0
+  unwanted_scale_n: 5.0
+  # ボタン以外のところで、柱の面の column_clearance_m 手前より奥に指先が入る
+  column_intrusion: 20.0
+  column_margin_m: 0.004
+  column_clearance_m: 0.015
+  # 滑らかさ
+  action_rate: 0.01
+  joint_vel: 0.001
+  joint_limit: 0.1
+  # 出来事（＋ / −）
+  success: 30.0           # 中指の先で押して点灯
+  success_quality: 20.0   # 試行の終わりに、押す力の最大が適正な範囲なら ＋、外なら −
+  not_fingertip: 20.0     # 中指の先以外で点灯させた
+  released: 10.0          # 点灯のあと指を離した
+  wrong_button: 50.0      # 違うボタンを点灯させた
+  wrong_lit: 5.0          # 違うボタンが点灯している間の、毎周期の減点
+  force_abort: 20.0       # 押す力が上限の force_abort_scale 倍を超えた
+
+# ---- 乱し（configs/contest.yaml の realism を目安にした値） ----
+rand:
+  offset_margin: 0.2                   # ロボットの立つ位置のずらし幅を、評価の範囲よりこの割合だけ広げる
+  kp_scale: [0.9, 1.1]                 # 右腕の PD の強さの倍率
+  armature: [0.001, 0.03]              # 回転子の見かけの慣性 [kg·m²]
+  command_delay_prob: 0.5              # 指令が 1 周期遅れる環境の割合
+  q_noise: 0.0005                      # 関節の角度のノイズ [rad]
+  dq_noise: 0.01                       # 関節の速度のノイズ [rad/s]
+  init_q_noise: 0.03                   # 試行の始めの右腕の角度のずれ [rad]
+  button_stiffness: [600.0, 1500.0]    # ボタンのばね [N/m]（評価は 1000）
+  button_travel: [0.0025, 0.0045]      # ボタンの行き止まりまでの沈み [m]（評価は 0.003）
+
+# ---- 試行の設定（観測・行動の形が変わらないものだけ） ----
+env:
+  episode_length_s: 8.0          # 1 試行の長さ [s]
+  terminate_on_failure: false    # 違うボタン・押しすぎで打ち切るか（true にすると、早く終えるために違うボタンを押すことを覚えた）
+  force_abort_scale: 2.0         # 押す力が上限（configs/contest.yaml の press_force.max_n）の何倍で「押しすぎ」の減点か
+  tip_gap_m: 0.004               # 中指の先で押したとみなす、球の表面と面のすき間
+  tip_lateral_m: 0.002           # 同じく、横のずれ（ボタンの半径に足す）
