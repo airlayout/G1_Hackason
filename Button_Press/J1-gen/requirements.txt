@@ -1,0 +1,10 @@
+# Button_Press/J1-gen の依存（タスクの進行に合わせて追加する）
+# G1_HuggingFace/venv/（Python 3.12）に入れる前提。SETUP_button_press.md を参照。
+numpy>=1.26
+PyYAML>=6.0
+mujoco>=3.2
+# カメラの受信・保存と、深度付きストリーム（Perception の requirements にもあるが、単独でも動くように書く）
+opencv-python>=4.9
+pyzmq>=26.0
+# IK（URDF の FK / ヤコビアン）。pip の配布名は pin（2026-09-28: pin 4.1.0、numpy は変わらない）
+pin>=3.0

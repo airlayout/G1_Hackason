@@ -1,0 +1,4 @@
+# Button_Press / 障害物の箱（real/teach.py --obstacle が書く）。pelvis 座標 [m]。
+# configs/press.yaml の obstacles に加えて、全体をつなぐスクリプトの衝突の確認に使う。
+# touch_points_m は中指の先で触った点。実機日のデータなので、終わったらコミットして残す。
+obstacles: []

@@ -1,0 +1,53 @@
+# Button_Press / 深度付きカメラサーバの設定（タスク3）。G1 の PC2 で動かす。
+# 本番では外付けカメラの配信（別のポート）とも同時に動かす可能性があるので、ポートはここで変える。
+
+camera:
+  # realsense（本番）| videohub（カラーは Unitree の videohub から、深度は RealSense から。videohub_pc4 が
+  # カラーを開いているとき用）| dummy（RealSense が無いマシンでの動作確認用。作り物の画像と深度を出す）
+  source: realsense
+  # RealSense のシリアル番号。空なら最初に見つかった 1 台を使う。
+  # 一覧は `python real/depth_server/rgbd_server.py --list-devices` で表示できる
+  serial: ""
+  # カラーと深度の大きさとフレームレート（深度はカラーに位置合わせするので、送る大きさはカラーと同じ）
+  width: 640
+  height: 480
+  fps: 30
+  # wait_for_frames のタイムアウト [ms]
+  timeout_ms: 5000
+
+  # source: videohub のときだけ使う。width / height / fps は深度の大きさになる（送るカラーの大きさは下の width）
+  videohub:
+    # DDS で videohub と話すネットワーク（/unitree/module/video_hub_pc4/cyclonedds.xml が eth0）
+    network_interface: eth0
+    # 1 枚を頼んでから待つ時間 [秒]（2026-09-29 は 1 枚 0.02〜0.03 秒で届いた）
+    timeout_s: 1.0
+    # videohub が返すカラーの大きさ（2026-09-29 は 1920x1080）。この大きさのカラーの内部パラメータを RealSense から読む
+    source_width: 1920
+    source_height: 1080
+    # 送るカラーの幅。高さは縦横比から決まる（1920x1080 → 640x360）
+    width: 640
+    # 起動直後に捨てる深度の枚数（明るさの調整が済むまで）
+    warmup_frames: 15
+
+publish:
+  # 受け付けるアドレス（"*" はすべてのネットワークの口）
+  bind_address: "*"
+  camera_name: head_camera
+  # 配信の上限 [fps]。カメラは camera.fps（30）で読み続け、送る回数だけをここまで間引く
+  # （PC2 の CPU とネットワークの負担を減らすため。ボタン押しは 10fps で足りる）。0 なら間引かない
+  max_fps: 10
+
+  # 深度付きストリーム（形式は common/rgbd_protocol.py）
+  rgbd:
+    enabled: true
+    port: 5556
+    jpeg_quality: 90
+    # 深度の圧縮: zlib（既定。640x480 で約 600KB → 数百 KB）| none
+    depth_compression: zlib
+
+  # RGB 互換ストリーム（run_g1_server.py --camera と同じ形式。既存の ZmqFrameSource がそのまま使える）
+  legacy_rgb:
+    enabled: true
+    port: 5555
+    # lerobot の ImageServer と同じ値
+    jpeg_quality: 80

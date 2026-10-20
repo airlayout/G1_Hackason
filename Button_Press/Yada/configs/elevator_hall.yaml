@@ -1,0 +1,105 @@
+# Button_Press / Yada：エレベーター乗り場（呼びボタン ▲▼）のシーン。MuJoCo と Isaac Sim で共通。
+#
+# 位置は pelvis 座標 [m]（x 前方、y 左、z 上）。J1-gen の configs/sim_scene.yaml と同じ決め方。
+# シミュレーションでは pelvis を固定しているので、ワールドの位置 = pelvis の位置 + この値。
+# 高さだけは床からの値で書く（実物の寸法と比べやすいため）。pelvis 座標への変換は common/scene_spec.py が行う。
+
+# 床から pelvis までの高さ。公式 XML（g1_29dof_rev_1_0.xml）の pelvis の初期位置 z と同じ値
+pelvis_height: 0.793
+
+# ロボットの初期の姿勢（29 関節のうち、ここに書いた関節だけを変える。motor 番号: 角度 [deg]）。
+# 両腕を下ろして頭カメラの視野から外す。値は J1-gen の configs/sim_scene.yaml の detection_pose_deg と同じ
+# （0 度のままだと肘が曲がっていて、手がボタン盤を隠す）
+initial_pose_deg:
+  15: 11.5   # left_shoulder_pitch
+  16: 20.0   # left_shoulder_roll
+  18: 86.0   # left_elbow
+  22: 11.5   # right_shoulder_pitch
+  23: -20.0  # right_shoulder_roll
+  25: 86.0   # right_elbow
+
+# 床の見た目（グレーの絨毯）。見た目だけで、衝突判定や摩擦は変えない。
+# テクスチャは common/scene_spec.py の carpet_texture() が作り、MuJoCo と Isaac Sim で同じ画像を使う
+floor:
+  rgb: [0.42, 0.42, 0.43]
+  # むらの強さ（明るさの標準偏差、0〜1）。fine は毛 1 本ずつの細かいむら、coarse は数 cm の大きめのむら
+  fine_noise: 0.06
+  coarse_noise: 0.025
+  # テクスチャ 1 枚が床の何 m 四方になるか。画像の画素数
+  tile_size: 0.5
+  texture_px: 256
+  seed: 0
+
+wall:
+  # 壁の表面（ロボット側の面）の x。ボタンの面は 0.02 m 手前の x = 0.40 になる。
+  # J1-gen の IK（右手の中指の先、指を +x に向ける）で、ボタンの高さ（床から 0.95〜1.1 m）に届くことを確認した
+  front_x: 0.42
+  thickness: 0.10
+  # 壁の左右の範囲（y）と高さ（床から）
+  y_range: [-1.2, 1.6]
+  height: 2.6
+  rgba: [0.86, 0.85, 0.82, 1.0]
+
+# 乗り場の扉（閉じた状態。開閉はまだ作らない）。ボタン盤の左側に置く
+door:
+  center_y: 0.60
+  # 開口の幅と高さ（床から）。2 枚の扉の合計
+  width: 0.90
+  height: 2.10
+  # 扉が壁の表面からどれだけ前に出ているか（2 枚の扉の間には暗い隙間を入れる）
+  protrusion: 0.005
+  gap: 0.004
+  # 三方枠（左右と上の枠）の幅と、壁から出ている量
+  frame_width: 0.05
+  frame_protrusion: 0.02
+  leaf_rgba: [0.70, 0.72, 0.74, 1.0]
+  frame_rgba: [0.55, 0.57, 0.60, 1.0]
+  gap_rgba: [0.05, 0.05, 0.05, 1.0]
+
+# 呼びボタンの盤（壁に付いた板）
+panel:
+  # y = −0.18 だと頭カメラの視野（水平 ±27.6°）の右端から外れるので、内側に寄せている
+  center_y: -0.10
+  # 板の中心の高さ（床から）。頭カメラは 47.6° 下向きで上下の画角が ±21.3° なので、壁に近づいた位置からは
+  # 床から約 1.1 m より上が映らない。1.05 m だと盤の上の端が切れたので下げた（車いす用の操作盤と同じくらいの高さ）
+  center_height: 1.00
+  width: 0.10
+  height: 0.20
+  # 壁の表面から出ている量（板の厚み）
+  thickness: 0.012
+  rgba: [0.62, 0.63, 0.65, 1.0]
+
+# 呼びボタン。盤の中心を基準に、上下にずらして並べる
+buttons:
+  # 共通の寸法と動き
+  common:
+    radius: 0.020
+    # 押していないとき、盤の表面からボタンの面までの出っ張り
+    protrusion: 0.008
+    # 押し込める深さ（これ以上は沈まない）と、押したと判定する深さ
+    travel: 0.004
+    press_depth: 0.0025
+    # ばねの強さ [N/m] と減衰 [N·s/m]。1000 N/m で、底まで押すのに 4 N（実物の押しボタンは 2.5〜5 N 程度）
+    stiffness: 1000.0
+    damping: 5.0
+    mass: 0.02
+    # 消灯時と点灯時の面の色。記号（▲▼）の色
+    off_rgba: [0.92, 0.92, 0.90, 1.0]
+    lit_rgba: [1.00, 0.55, 0.10, 1.0]
+    symbol_rgba: [0.15, 0.15, 0.15, 1.0]
+    # 記号の三角形の大きさ（一辺）と厚み
+    symbol_size: 0.016
+    symbol_thickness: 0.001
+  items:
+    - name: up
+      symbol: up        # ▲
+      offset_z: 0.035   # 盤の中心からの上下のずれ
+    - name: down
+      symbol: down      # ▼
+      offset_z: -0.035
+
+# 指の先の衝突判定（公式モデルのハンドは見た目だけで、衝突判定が無いため）。
+# 位置は J1-gen の configs/robot.yaml の end_effector（中指の先）を使う
+fingertip:
+  enabled: true
+  radius: 0.008

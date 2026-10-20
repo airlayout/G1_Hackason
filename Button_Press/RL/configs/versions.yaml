@@ -1,0 +1,12 @@
+# 動作を確かめた版（2026-10-19、L40S / ドライバ 570.211.01 / Ubuntu）。scripts/setup.sh と check_setup.sh が読む。
+# 版を上げるときは、ここを直し、teacher の学習と評価が通ることを確かめてから push する
+isaacsim: "6.0.1.0"
+isaaclab_branch: "release/3.0.0-beta2"
+isaaclab_commit: "2e44ddb2e19536579140496023b5ccb060bc4152"
+rsl_rl: "5.0.1"
+torch: "2.10.0+cu128"
+python: "3.12"
+# NVIDIA ドライバの最低の版（RTX 50 系は 570 以上が要る）
+min_driver: 570
+# MuJoCo での採点に使う Python の mujoco の最低の版（J1-gen の requirements.txt と同じ）
+mujoco_min: "3.2"
