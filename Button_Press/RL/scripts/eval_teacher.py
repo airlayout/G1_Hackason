@@ -27,6 +27,8 @@ parser.add_argument("--episodes", type=int, default=2000, help="集める試行�
 parser.add_argument("--load_run", default=".*", help="logs/rsl_rl/<experiment>/ の中のフォルダ（正規表現。既定は最新）")
 parser.add_argument("--checkpoint", default="model_.*.pt", help="checkpoint のファイル名（既定は最新）")
 parser.add_argument("--out", default="", help="結果の JSON（既定は checkpoint の横の eval_<日時>.json）")
+parser.add_argument("--export", default="", help="方策を TorchScript で書き出す先（評価用の Agent が読む。例: Button_Press/RL/agent/policy.pt）")
+parser.add_argument("--no-eval", action="store_true", help="書き出すだけ（試行は集めない）")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 app_launcher = AppLauncher(args)
@@ -60,6 +62,13 @@ def main() -> None:
     runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     runner.load(ckpt)
     policy = runner.get_inference_policy(device=env.unwrapped.device)
+    if args.export:
+        out = Path(args.export).resolve()
+        runner.export_policy_to_jit(path=str(out.parent), filename=out.name)
+        print(f"[eval] 方策を書き出した: {out}")
+        if args.no_eval:
+            env.close()
+            return
     raw = env.unwrapped
     # 作った直後の試行（途中から始まるもの）は数えない: 1 回全部をリセットしてから集める
     raw.episode_records.clear()

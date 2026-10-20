@@ -23,7 +23,7 @@ class TestRewards(unittest.TestCase):
         base = dict(
             tip=torch.tensor([[0.20, -0.05, 0.10]]), tip_vel=torch.zeros(n, 3),
             face=torch.tensor([[0.30, 0.0, 0.20]]), axis=torch.tensor([[1.0, 0.0, 0.0]]), tip_radius=0.008,
-            depth=z.clone(), press_depth=0.002, force=z.clone(), max_force_until_lit=z.clone(),
+            depth=z.clone(), travel=0.003, force=z.clone(), max_force_ep=z.clone(), end_event=f.clone(),
             unwanted_force=z.clone(), in_post=f.clone(), lit_event=f.clone(), wrong_event=f.clone(),
             released_event=f.clone(), force_abort=f.clone(), wrong_lit=f.clone(), tip_press=f.clone(),
             action=torch.zeros(n, 7),
@@ -60,19 +60,32 @@ class TestRewards(unittest.TestCase):
         _, b = compute_rewards(self._inputs(face=face, tip=torch.tensor([[-0.04, -0.27, -0.19]])), w)
         self.assertGreater(b["reach"].item() - a["reach"].item(), 0.05)
 
-    def test_success_quality_by_force(self) -> None:
-        """点灯したときまでの力の最大が適正な範囲なら、ボーナスが大きい。"""
+    def test_force_quality_at_end(self) -> None:
+        """試行の終わりに、押す力の最大が適正な範囲なら ＋、外（強すぎ・弱すぎ）なら −。"""
         import torch
 
         from button_press_rl.rewards import RewardWeights, compute_rewards
 
         w = RewardWeights()
         ev = torch.tensor([True])
-        _, ok = compute_rewards(self._inputs(lit_event=ev, tip_press=ev, max_force_until_lit=torch.tensor([5.0])), w)
-        _, strong = compute_rewards(self._inputs(lit_event=ev, tip_press=ev,
-                                                 max_force_until_lit=torch.tensor([15.0])), w)
-        self.assertAlmostEqual(ok["success"].item(), w.success + w.success_quality)
-        self.assertAlmostEqual(strong["success"].item(), w.success)
+        for force, sign in ((5.0, 1.0), (15.0, -1.0), (2.5, -1.0)):
+            _, t = compute_rewards(self._inputs(end_event=ev, max_force_ep=torch.tensor([force])), w)
+            self.assertAlmostEqual(t["force_quality"].item(), sign * w.success_quality, msg=str(force))
+        _, t = compute_rewards(self._inputs(max_force_ep=torch.tensor([5.0])), w)
+        self.assertEqual(t["force_quality"].item(), 0.0)  # 終わりの周期以外は 0
+
+    def test_depth_rewards_full_travel(self) -> None:
+        """沈める項は、点灯の深さ（2 mm）で止めるより行き止まり（3 mm）まで押すほうが良い。"""
+        import torch
+
+        from button_press_rl.rewards import RewardWeights, compute_rewards
+
+        w = RewardWeights()
+        tip = torch.tensor([[0.292, 0.0, 0.20]])
+        _, a = compute_rewards(self._inputs(tip=tip, depth=torch.tensor([0.002])), w)
+        _, b = compute_rewards(self._inputs(tip=tip, depth=torch.tensor([0.003])), w)
+        self.assertLess(a["depth"].item(), b["depth"].item())
+        self.assertEqual(b["depth"].item(), 0.0)
 
     def test_only_fingertip_gets_success(self) -> None:
         """中指の先以外で押して点灯させても、点灯のボーナスは無く、減点になる。"""
@@ -82,7 +95,7 @@ class TestRewards(unittest.TestCase):
 
         w = RewardWeights()
         ev, no = torch.tensor([True]), torch.tensor([False])
-        _, palm = compute_rewards(self._inputs(lit_event=ev, tip_press=no, max_force_until_lit=torch.tensor([5.0])), w)
+        _, palm = compute_rewards(self._inputs(lit_event=ev, tip_press=no), w)
         self.assertEqual(palm["success"].item(), 0.0)
         self.assertEqual(palm["not_fingertip"].item(), -w.not_fingertip)
 

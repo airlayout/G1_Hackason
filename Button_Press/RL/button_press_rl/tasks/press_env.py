@@ -28,7 +28,7 @@ from isaaclab.utils.math import quat_apply, quat_apply_inverse, quat_from_euler_
 
 from ..hall_usd import BUTTONS_REL, SCENE_NAME, write_hall_usd
 from ..paths import use_yada
-from ..proprio import RIGHT_ARM_JOINTS, proprio, step_command
+from ..proprio import RIGHT_ARM_JOINTS, policy_obs, proprio, step_command
 from ..rewards import RewardInputs, compute_rewards
 from ..spec import TaskSpec, load_task_spec
 
@@ -95,7 +95,6 @@ class ButtonPressEnv(DirectRLEnv):
         self._delay = torch.zeros(n, dtype=torch.bool, device=dev)
         self._lit = torch.zeros(n, len(names), dtype=torch.bool, device=dev)
         self._lit_step = torch.full((n,), -1, dtype=torch.long, device=dev)
-        self._max_f_until_lit = torch.zeros(n, device=dev)
         self._max_f_ep = torch.zeros(n, device=dev)
         self._post_steps = int(round(self.task.post_press_s * self.task.control_hz))
         self._ep = {k: torch.zeros(n, device=dev) for k in
@@ -103,6 +102,8 @@ class ButtonPressEnv(DirectRLEnv):
         # 試行の中での、指先の球の中心とボタンの面の中心の最も近い距離 [m]（学習が進んでいるかの目安）
         self._ep["min_dist"] = torch.full((n,), 10.0, device=dev)
         self._reward_sums: dict[str, torch.Tensor] = {}
+        # 終わった試行の記録（scripts/eval_teacher.py が分布を見る。cfg.record_episodes のときだけ）
+        self.episode_records: list[dict[str, float]] = []
         # _get_dones で求めて _get_rewards / _get_observations で使う値
         self._cache: dict[str, torch.Tensor] = {}
 
@@ -197,8 +198,6 @@ class ButtonPressEnv(DirectRLEnv):
         f_all = fh.max(1).values
         f_tgt = f_all[:, self._tgt]
         f_now = fh[:, 0, self._tgt]
-        self._max_f_until_lit = torch.where(tgt_before, self._max_f_until_lit,
-                                            torch.maximum(self._max_f_until_lit, f_tgt))
         self._max_f_ep = torch.maximum(self._max_f_ep, f_tgt)
 
         # 指先以外の接触力: 右腕のリンクの力 + 手の力のうちボタンを押す力を超えた分
@@ -223,7 +222,7 @@ class ButtonPressEnv(DirectRLEnv):
 
         c.update(depth=depth, f_tgt=f_tgt, f_now=f_now, unwanted=unwanted, lit_event=lit_event,
                  wrong_event=wrong_event, released_event=released_event, force_abort=force_abort,
-                 in_post=in_post, tip_press=tip_press)
+                 in_post=in_post, tip_press=tip_press, end_event=post_end)
         # 試行ごとの記録（ログ用）
         lo, hi = self.task.press_ok
         e = self._ep
@@ -231,8 +230,9 @@ class ButtonPressEnv(DirectRLEnv):
         e["wrong"] = torch.maximum(e["wrong"], wrong_event.float())
         e["released"] = torch.maximum(e["released"], released_event.float())
         e["force_abort"] = torch.maximum(e["force_abort"], force_abort.float())
-        band = (self._max_f_until_lit >= lo) & (self._max_f_until_lit <= hi)
-        e["in_band"] = torch.where(lit_event, band.float(), e["in_band"])
+        # 適正な範囲か: 試行全体の最大で見る（評価環境の press_force_in_range と同じ）。post_end で確定
+        band = (self._max_f_ep >= lo) & (self._max_f_ep <= hi)
+        e["in_band"] = torch.where(post_end, band.float(), e["in_band"])
         e["tip_press"] = torch.where(lit_event, tip_press.float(), e["tip_press"])
         e["max_force"] = self._max_f_ep
         return terminated, truncated
@@ -245,9 +245,10 @@ class ButtonPressEnv(DirectRLEnv):
         at_limit = ((self._q_cmd <= self._lo + 1e-4) | (self._q_cmd >= self._hi - 1e-4)).float().sum(-1)
         x = RewardInputs(
             tip=tip, tip_vel=tip_vel, face=face, axis=axis, tip_radius=self.task.fingertip_radius,
-            depth=c["depth"][:, self._tgt], press_depth=self.task.press_depth, force=c["f_tgt"],
-            max_force_until_lit=self._max_f_until_lit, unwanted_force=c["unwanted"], in_post=c["in_post"],
+            depth=c["depth"][:, self._tgt], travel=self.task.travel, force=c["f_tgt"],
+            max_force_ep=self._max_f_ep, unwanted_force=c["unwanted"], in_post=c["in_post"],
             lit_event=c["lit_event"], wrong_event=c["wrong_event"], released_event=c["released_event"],
+            end_event=c["end_event"],
             force_abort=c["force_abort"], wrong_lit=self._lit[:, self._others].any(-1),
             tip_press=c["tip_press"],
             action=self._actions, last_action=self._last_actions,
@@ -281,13 +282,14 @@ class ButtonPressEnv(DirectRLEnv):
         since = (self.episode_length_buf - self._lit_step).float()
         post = torch.where(self._lit[:, self._tgt], torch.clamp(since / max(self._post_steps, 1), 0.0, 1.0),
                            torch.zeros_like(since))
-        priv = torch.cat([face, tip, 10.0 * (tip - face),
-                          (depth[:, self._tgt] / self.task.press_depth).unsqueeze(-1),
-                          lit_tgt.unsqueeze(-1), post.unsqueeze(-1)], -1)
-        policy = torch.cat([prop, priv], -1)
+        # 方策: 体の感覚 + ボタンの面と指先の位置（腰の座標）。評価用の Agent（agent/agent.py）と同じ並び
+        policy = policy_obs(prop, face, tip, torch.cat)
         f = c.get("f_tgt", torch.zeros(self.num_envs, device=self.device))
         u = c.get("unwanted", torch.zeros(self.num_envs, device=self.device))
-        critic = torch.cat([policy, (f / 10.0).unsqueeze(-1), torch.clamp(u / 10.0, max=5.0).unsqueeze(-1),
+        critic = torch.cat([policy,
+                            (depth[:, self._tgt] / self.task.press_depth).unsqueeze(-1),
+                            lit_tgt.unsqueeze(-1), post.unsqueeze(-1),
+                            (f / 10.0).unsqueeze(-1), torch.clamp(u / 10.0, max=5.0).unsqueeze(-1),
                             self._lit[:, self._others].float()], -1)
         return {"policy": policy, "critic": critic}
 
@@ -343,7 +345,6 @@ class ButtonPressEnv(DirectRLEnv):
         self._delay[env_ids] = torch.rand(k, device=dev) < r.command_delay_prob
         self._lit[env_ids] = False
         self._lit_step[env_ids] = -1
-        self._max_f_until_lit[env_ids] = 0.0
         self._max_f_ep[env_ids] = 0.0
         for v in self._ep.values():
             v[env_ids] = 0.0
@@ -387,6 +388,10 @@ class ButtonPressEnv(DirectRLEnv):
             return
         log = self.extras.setdefault("log", {})
         e = self._ep
+        if self.cfg.record_episodes:
+            keys = list(e)
+            cols = torch.stack([e[k][env_ids] for k in keys], -1).cpu().tolist()
+            self.episode_records += [dict(zip(keys, row)) for row in cols]
         succ = e["success"][env_ids]
         log["Metrics/success_rate"] = succ.mean().item()
         log["Metrics/wrong_rate"] = e["wrong"][env_ids].mean().item()

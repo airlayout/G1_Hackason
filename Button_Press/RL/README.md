@@ -24,9 +24,9 @@ G1 の右腕で、エレベーター乗り場の呼びボタン（一般用の �
 |---|---|---|
 | 0 | 環境の土台（版の固定、setup.sh / check_setup.sh、マシンごとの並列数） | 済み（このマシンで確認。新しいマシンでの setup.sh は未確認） |
 | 1 | 評価環境に「押す力」と `--target` を足す（Yada） | 済み（MuJoCo・Isaac Sim・模擬 G1 で確認） |
-| 2 | 教師の学習環境 `G1-ButtonPress-Teacher-v0` | 作った。学習中 |
+| 2 | 教師の学習環境 `G1-ButtonPress-Teacher-v0` | 1000 回の学習で、点灯・中指・指を離す 100%。押す力の調整中（2026-10-20） |
 | 3 | 生徒（深度 + カラー、蒸留） | まだ |
-| 4 | 評価環境の `Agent` にする | まだ |
+| 4 | 評価環境の `Agent` にする | `agent/agent.py` を作った（教師 ＋ 画像の検出）。評価環境での採点はまだ |
 
 ## 使い方
 
@@ -35,6 +35,7 @@ bash Button_Press/RL/scripts/check_setup.sh                    # 版がそろっ
 bash Button_Press/RL/scripts/train.sh --num_envs 16 --max_iterations 3   # 動作の確認（起動に 2〜5 分）
 bash Button_Press/RL/scripts/train.sh                          # 教師を学習する（並列数は GPU から決める）
 bash Button_Press/RL/scripts/play.sh --num_envs 16             # 学習した方策を見る（最新の checkpoint）
+bash Button_Press/RL/scripts/eval_teacher.sh --episodes 2000    # 成功率と押す力の分布を測る（結果は JSON にも）
 ```
 
 - ログと checkpoint: `_local/button_press_rl/logs/rsl_rl/button_press_teacher/<日時>/`（git の対象外）
@@ -49,7 +50,8 @@ bash Button_Press/RL/scripts/play.sh --num_envs 16             # 学習した方
 |---|---|
 | `success_rate` | ▼ が点灯した試行の割合 |
 | `min_dist_m` | 試行の中での、指先の球とボタンの面の中心の最も近い距離（学習が進むと小さくなる） |
-| `in_band_rate` | 点灯したとき、点灯までの押す力の最大が適正な範囲（3〜8 N）だった割合 |
+| `in_band_rate` | 成功した試行のうち、試行全体の押す力の最大が適正な範囲（3〜8 N）だった割合 |
+| `tip_press_rate` | 成功した試行のうち、中指の先で押した割合 |
 | `released_rate` | 点灯のあと 0.5 秒で指を離していた割合 |
 | `max_press_force_n` | 成功した試行の、押す力の最大の平均 |
 | `wrong_rate`、`force_abort_rate` | 違うボタンを点灯させた割合、押す力が 40 N を超えた割合 |
@@ -65,7 +67,8 @@ bash Button_Press/RL/scripts/play.sh --num_envs 16             # 学習した方
   - `hall_usd.py` — 乗り場を USD に書き出す（Yada の `isaac_hall.build_hall` をそのまま使う）
   - `tasks/press_env.py`、`tasks/press_env_cfg.py` — 学習環境（Isaac Lab の DirectRLEnv）
   - `tasks/agents/rsl_rl_ppo_cfg.py` — PPO の設定
-- `scripts/` — `setup.sh`（新しいマシン）、`check_setup.sh`、`env.sh`、`train.sh`、`play.sh`、`run_isaaclab.py`
+- `agent/agent.py` — 評価環境の `Agent`（画像の検出 ＋ 教師の方策）。`evaluate.py --agent Button_Press/RL/agent --target down`
+- `scripts/` — `setup.sh`（新しいマシン）、`check_setup.sh`、`env.sh`、`train.sh`、`play.sh`、`eval_teacher.sh`（評価・方策の書き出し）、`run_isaaclab.py`
 - `configs/` — `versions.yaml`（版）、`machines.yaml`（並列数）
 - `tests/` — シミュレーターに依存しない部分のテスト（`bash Button_Press/RL/tests/run_tests.sh`）
 
@@ -83,14 +86,16 @@ bash Button_Press/RL/scripts/play.sh --num_envs 16             # 学習した方
 
 ### 観測
 
-| 方策（教師） | critic（方策には見せない値も見る） |
+| 方策（教師）44 個 | critic（方策には見せない値も見る） |
 |---|---|
 | 体の感覚 35（右腕の角度・速度、目標との差、目標、前の行動。`proprio.py`） | 方策と同じもの |
-| ▼ の面の位置、指先の位置、その差（腰の座標） | 押す力 |
-| ▼ の沈み、点灯したか、点灯のあとの時間 | 指先以外の接触力、ほかのボタンの点灯 |
+| ▼ の面の位置、指先の位置、その差 × 10（腰の座標） | ▼ の沈み、点灯したか、点灯のあとの時間 |
+| | 押す力、指先以外の接触力、ほかのボタンの点灯 |
 
-「目標との差」は、押すと大きくなる（PD で追っているため）。実機の手に力センサは無いが、これは実機でも取れるので、
-押す力の手がかりとして生徒にも渡せる。
+方策には**実機でも用意できるものだけ**を渡す。ボタンの沈み・点灯は実機では直接は取れないので critic だけに渡す
+（押した手応えは「目標との差」から分かる。PD で追っているので、押すと差が大きくなる。実機の lowstate からも取れる）。
+こうしておくと、教師を「画像でボタンを見つける（Yada の見本と同じ方法）＋ 方策」の形でそのまま評価環境の
+`Agent` にできる（`agent/agent.py`）。生徒は、面の位置を画像から推定する部分だけを置き換えればよい。
 
 ### 報酬（`rewards.py`）
 
@@ -99,13 +104,14 @@ bash Button_Press/RL/scripts/play.sh --num_envs 16             # 学習した方
 | 項目 | 内容 |
 |---|---|
 | 近づく | 指先とボタンの手前 3 cm の点の距離（遠くと近くの 2 つの尺度） |
-| 横をそろえる → 面に近づける → 沈める | 段階ごとの減点。段階に入る前は最大の減点 |
+| 横をそろえる → 面に近づける → 沈める | 段階ごとの減点。段階に入る前は最大の減点。沈めるのは行き止まり（3 mm）まで（点灯の 2 mm で止めると力が 3 N を割る） |
 | 押しすぎ | 押す力が 8 N を超えた分の 2 乗 |
 | 衝撃 | 面の 2 cm 手前から触れるまでの、押す向きの速さが 0.1 m/s を超えた分の 2 乗 |
 | 点灯のあとも押している | 点灯のあと 0.5 秒の間、力が 0.3 N 以上 |
 | 指先以外の接触 | 右腕のリンクと手のひらが、柱・壁・体に当たる力 |
 | 滑らかさ | 行動の変化、関節の速さ、目標が可動範囲の端に張りついた関節の数 |
-| 点灯（＋） | 30。点灯までの押す力の最大が 3〜8 N なら、さらに 20 |
+| 点灯（＋） | 30。中指の先で押したときだけ |
+| 押す力の良し悪し（±） | 点灯のあとの時間の終わりに、試行全体の押す力の最大が 3〜8 N なら ＋20、外なら −20（評価環境の `press_force_in_range` と同じ量） |
 | 指を離した（＋） | 点灯のあと 0.5 秒で離していれば 10 |
 | 違うボタン・押す力 40 N 超 | 大きく減点する。違うボタンが点灯している間は毎周期も減点。**打ち切らない**（打ち切ると、わざと違うボタンを押して早く終えることを覚えた。[FAILURES.md](FAILURES.md)） |
 

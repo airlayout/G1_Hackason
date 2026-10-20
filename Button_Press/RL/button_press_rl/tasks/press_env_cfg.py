@@ -16,16 +16,19 @@ from isaaclab.sim.converters import UrdfConverterCfg
 from isaaclab.utils.configclass import configclass
 
 from ..paths import REPO_ROOT, use_yada
-from ..proprio import NUM_ACTIONS, PROPRIO_DIM
+from ..proprio import NUM_ACTIONS, POLICY_OBS_DIM
 from ..rewards import RewardWeights
 from ..spec import TARGET_BUTTON, load_task_spec
 
 # 評価環境（Yada）と同じ物理の刻みと制御の周期（0.002 s × 10 = 50 Hz）
 PHYSICS_DT = 0.002
 DECIMATION = 10
-# 観測の数（教師の方策 / critic）。中身は press_env.py の _get_observations
-POLICY_OBS_DIM = PROPRIO_DIM + 12
-CRITIC_OBS_DIM = POLICY_OBS_DIM + 5
+# 観測の数（教師の方策 / critic）。中身は press_env.py の _get_observations。
+# 方策には、実機でも用意できるもの（体の感覚 + ボタンの面の位置・指先の位置）だけを渡す。ボタンの沈み・点灯・
+# 点灯のあとの時間は実機では直接は取れないので critic にだけ渡す（押した手応えは、目標と角度の差から分かる）。
+# こうしておくと、教師を「画像の検出 + 方策」の形でそのまま評価環境の Agent にでき、生徒は面の位置の推定だけを
+# 画像から学べばよい（2026-10-20）
+CRITIC_OBS_DIM = POLICY_OBS_DIM + 8
 
 # 関節の名前 → configs/contest.yaml の gains の組（Yada の sim/isaac/isaac_world.py の GAIN_GROUPS と同じ）
 GAIN_GROUPS: dict[str, list[str]] = {
@@ -117,3 +120,5 @@ class ButtonPressEnvCfg(DirectRLEnvCfg):
     # 中指の先で押したとみなす範囲: 指先の球の表面と面のすき間 [m]、横のずれ（ボタンの半径に足す）[m]
     tip_gap_m: float = 0.004
     tip_lateral_m: float = 0.002
+    # 終わった試行の記録を env.episode_records に残す（評価用。学習では False）
+    record_episodes: bool = False

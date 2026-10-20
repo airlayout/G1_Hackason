@@ -40,3 +40,11 @@ def step_command(q_cmd: Any, action: Any, lo: Any, hi: Any, clip: Any) -> Any:
 def proprio(q: Any, dq: Any, q_cmd: Any, q0: Any, last_action: Any, cat: Any) -> Any:
     """体の感覚の観測。最後の次元に並べる。cat は numpy.concatenate か torch.cat（axis / dim は −1）。"""
     return cat([q - q0, DQ_SCALE * dq, ERR_SCALE * (q_cmd - q), q_cmd - q0, last_action], -1)
+
+
+def policy_obs(prop: Any, face: Any, tip: Any, cat: Any) -> Any:
+    """方策（教師）の観測: 体の感覚 + ボタンの面の位置 + 指先の位置 + その差 × 10（腰の座標 [m]）。"""
+    return cat([prop, face, tip, 10.0 * (tip - face)], -1)
+
+
+POLICY_OBS_DIM = PROPRIO_DIM + 9
