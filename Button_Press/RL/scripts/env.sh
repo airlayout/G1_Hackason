@@ -8,6 +8,10 @@
 _RL_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RL_DIR="$(cd "$_RL_SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$RL_DIR/../.." && pwd)"
+# 既定の場所は各自のホームの下（setup.sh と同じ）。Yada の env.sh の既定はこのマシンのパスなので、先に決めておく
+export ISAAC_SIM="${ISAAC_SIM:-$HOME/NVIDIA/env_isaaclab}"
+export ISAACLAB="${ISAACLAB:-$HOME/NVIDIA/IsaacLab}"
+export TMPDIR="${TMPDIR:-$HOME/NVIDIA/.isaac_asset_cache}"
 source "$REPO_ROOT/Button_Press/Yada/sim/isaac/env.sh" || return 1 2>/dev/null || exit 1
 export ISAAC_SIM ISAACLAB
 export PYTHONPATH="$RL_DIR${PYTHONPATH:+:${PYTHONPATH}}"

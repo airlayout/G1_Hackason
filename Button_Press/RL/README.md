@@ -3,7 +3,7 @@
 G1 の右腕で、エレベーター乗り場の呼びボタン（一般用の ▼）を押す方策を、Isaac Lab の強化学習で作る。
 作った方策は、評価環境（[../Yada/](../Yada/README.md)）の `Agent` として、MuJoCo・Isaac Sim・模擬 G1 で採点する。
 
-- 環境の作り方（新しいマシン）: [SETUP.md](SETUP.md)
+- **環境の作り方（自分のマシンに作る）: [SETUP.md](SETUP.md)** ← はじめての人はここから
 - 失敗と反省: [FAILURES.md](FAILURES.md)
 
 ## 方針（2026-10-19 決定）
