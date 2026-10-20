@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import torch
-import yaml
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
@@ -16,37 +14,7 @@ from g1_e2e.contracts import JointCommand, Observation, StepResult
 from g1_e2e.robot import RobotSpec
 from sim.robots.g1 import make_robot_config
 
-
-@dataclass(frozen=True)
-class FlatConfig:
-    """特定のNNや学習方法に依存しない環境設定。"""
-
-    physics_dt: float = 0.005
-    control_dt: float = 0.02
-    episode_seconds: float = 20.0
-    minimum_base_height: float = 0.35
-    maximum_tilt_radians: float = 1.0
-    friction: float = 1.0
-
-    def __post_init__(self) -> None:
-        values = [
-            self.physics_dt,
-            self.control_dt,
-            self.episode_seconds,
-            self.minimum_base_height,
-            self.maximum_tilt_radians,
-            self.friction,
-        ]
-        if not np.isfinite(values).all() or min(values) <= 0:
-            raise ValueError("環境設定には有限の正数が必要です")
-        ratio = self.control_dt / self.physics_dt
-        if ratio < 1 or not np.isclose(ratio, round(ratio)):
-            raise ValueError("control_dtはphysics_dtの整数倍である必要があります")
-
-    @classmethod
-    def load(cls, path: Path) -> FlatConfig:
-        """未知のキーもエラーとして検出する。"""
-        return cls(**yaml.safe_load(path.read_text()))
+from .config import FlatConfig
 
 
 class G1FlatEnv:
