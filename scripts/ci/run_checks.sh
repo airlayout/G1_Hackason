@@ -17,4 +17,12 @@ fi
 
 echo
 echo "=== Markdownリンク検査 ==="
-python3 scripts/ci/check_markdown_links.py
+# PR では、変えた Markdown のリンクだけを検査する（CI_CHANGED_FILES。run_all_tests.sh と同じ考え。
+# 無ければすべて）。ほかの班の文書のリンク切れで自分の PR が赤にならないように
+if [ -n "${CI_CHANGED_FILES:-}" ]; then
+    mapfile -t MD_CHANGED < <(printf '%s\n' "$CI_CHANGED_FILES" | grep -E '\.md$' || true)
+    echo "[links] PR で変えた Markdown だけを検査する（${#MD_CHANGED[@]} ファイル）"
+    python3 scripts/ci/check_markdown_links.py --only "${MD_CHANGED[@]+"${MD_CHANGED[@]}"}"
+else
+    python3 scripts/ci/check_markdown_links.py
+fi
