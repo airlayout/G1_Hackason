@@ -245,6 +245,7 @@ class ButtonPressEnv(DirectRLEnv):
         at_limit = ((self._q_cmd <= self._lo + 1e-4) | (self._q_cmd >= self._hi - 1e-4)).float().sum(-1)
         x = RewardInputs(
             tip=tip, tip_vel=tip_vel, face=face, axis=axis, tip_radius=self.task.fingertip_radius,
+            button_radius=self.task.button_radius, button_protrusion=self.task.button_protrusion,
             depth=c["depth"][:, self._tgt], travel=self.task.travel, force=c["f_tgt"],
             max_force_ep=self._max_f_ep, unwanted_force=c["unwanted"], in_post=c["in_post"],
             lit_event=c["lit_event"], wrong_event=c["wrong_event"], released_event=c["released_event"],

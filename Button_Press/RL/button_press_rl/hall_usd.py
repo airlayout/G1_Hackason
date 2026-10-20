@@ -21,6 +21,9 @@ import numpy as np
 from .paths import LOCAL_DIR, use_yada
 
 USD_DIR = LOCAL_DIR / "usd"
+# 乗り場の作り方（Yada の isaac_hall.py）が変わったら上げる。ファイルの名前に入るので、古いファイルを使い続けない
+# （2026-10-20: 柱の摩擦の材質を足したとき、設定が同じなので古いファイルが使われた）
+BUILDER_VERSION = 2
 # 環境の中での、乗り場とボタンの関節機構の場所（<env> からの相対パス）
 SCENE_NAME = "Scene"
 HALL_REL = f"{SCENE_NAME}/Hall"
@@ -30,7 +33,7 @@ BUTTONS_REL = f"{HALL_REL}/Buttons"
 def hall_usd_path(scene_cfg: dict[str, Any]) -> Path:
     """乗り場の設定ごとのファイルの場所（設定が変われば別のファイル）。"""
     key = hashlib.sha1(json.dumps(scene_cfg, sort_keys=True).encode()).hexdigest()[:10]
-    return USD_DIR / f"hall_{key}.usda"
+    return USD_DIR / f"hall_v{BUILDER_VERSION}_{key}.usda"
 
 
 def write_hall_usd(scene_cfg: dict[str, Any], overwrite: bool = False) -> Path:

@@ -37,6 +37,8 @@ from button_press_rl.proprio import NUM_ACTIONS, POLICY_OBS_DIM, policy_obs, pro
 from button_press_rl.spec import load_task_spec  # noqa: E402
 
 DEFAULT_POLICY = Path(__file__).with_name("policy.pt")
+# BUTTON_PRESS_RL_DEBUG=1 で、指先と面の位置を 10 周期ごとに表示する（シミュレーターの違いを調べるため）
+DEBUG = bool(os.environ.get("BUTTON_PRESS_RL_DEBUG"))
 Locator = Callable[[Observation], np.ndarray | None]
 
 
@@ -109,6 +111,8 @@ class TeacherAgent(Agent):
         x = policy_obs(prop, self.face, tip, np.concatenate).astype(np.float32)
         assert x.shape == (POLICY_OBS_DIM,)
         action = np.clip(np.asarray(self.policy(x), dtype=float).reshape(-1), -1.0, 1.0)
+        if DEBUG and int(round(obs.t / self.task.control_dt)) % 10 == 0:
+            print(f"[rl_agent] t={obs.t:.2f} 指先−面={np.round(tip - self.face, 3).tolist()} 行動={np.round(action, 1).tolist()}")
         self.q_cmd = step_command(self.q_cmd, action, self.lo, self.hi, np.clip)
         self.last_action = action
         q_des = self.q_hold.copy()

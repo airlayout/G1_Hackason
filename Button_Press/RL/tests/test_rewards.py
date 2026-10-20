@@ -23,6 +23,7 @@ class TestRewards(unittest.TestCase):
         base = dict(
             tip=torch.tensor([[0.20, -0.05, 0.10]]), tip_vel=torch.zeros(n, 3),
             face=torch.tensor([[0.30, 0.0, 0.20]]), axis=torch.tensor([[1.0, 0.0, 0.0]]), tip_radius=0.008,
+            button_radius=0.019, button_protrusion=0.0015,
             depth=z.clone(), travel=0.003, force=z.clone(), max_force_ep=z.clone(), end_event=f.clone(),
             unwanted_force=z.clone(), in_post=f.clone(), lit_event=f.clone(), wrong_event=f.clone(),
             released_event=f.clone(), force_abort=f.clone(), wrong_lit=f.clone(), tip_press=f.clone(),
@@ -129,6 +130,21 @@ class TestRewards(unittest.TestCase):
         event, _ = compute_rewards(self._inputs(wrong_lit=on, wrong_event=on), w)
         self.assertLess(lit.item(), stay.item())
         self.assertLess(event.item(), lit.item())
+
+    def test_column_intrusion(self) -> None:
+        """ボタンの外で柱の面より奥に指先が入ると減点。ボタンの上（押している）なら減点しない。"""
+        import torch
+
+        from button_press_rl.rewards import RewardWeights, compute_rewards
+
+        w = RewardWeights()
+        # 面の 25 cm 下で、球の中心が面と同じ x（球の半分が柱に入っている）
+        _, below = compute_rewards(self._inputs(tip=torch.tensor([[0.30, 0.0, -0.05]])), w)
+        _, on_button = compute_rewards(self._inputs(tip=torch.tensor([[0.30, 0.0, 0.20]])), w)
+        _, in_front = compute_rewards(self._inputs(tip=torch.tensor([[0.27, 0.0, -0.05]])), w)
+        self.assertLess(below["column_intrusion"].item(), -0.5 * w.column_intrusion)
+        self.assertEqual(on_button["column_intrusion"].item(), 0.0)
+        self.assertEqual(in_front["column_intrusion"].item(), 0.0)
 
     def test_impact(self) -> None:
         """当たる直前に速いと減点。触れたあとは見ない。"""

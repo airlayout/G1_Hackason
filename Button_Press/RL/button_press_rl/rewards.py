@@ -48,8 +48,17 @@ class RewardWeights:
     touch_n: float = 0.2  # これより大きい力で「触れている」
     # 点灯のあとも押している（release_n 以上）
     hold_after: float = 1.0
-    # 指先以外が乗り場や体に当たる力 [N] / 10（最大 1）
-    unwanted_contact: float = 0.5
+    # 指先以外が乗り場や体に当たる力 [N] / unwanted_scale_n（最大 1）
+    unwanted_contact: float = 2.0
+    unwanted_scale_n: float = 5.0
+    # 指先の球が、ボタン以外のところで柱の面より奥に入っている量 [m] × 100（最大 1）。
+    # Isaac Sim では柱の面の摩擦が小さく（既定 0.5。MuJoCo は 1.0）、ボタンの下の面に指先を当てて滑らせて
+    # 上るのが得になり、MuJoCo では柱にぶつかって止まった（2026-10-20。FAILURES.md）。幾何で直接減点する
+    column_intrusion: float = 5.0
+    column_margin_m: float = 0.004  # ボタンの半径にこれを足した外側を「ボタン以外」とみなす
+    # 柱の面からこれだけ手前の面を越えたら減点を始める（面すれすれを通る動きは、シミュレーターの物理の
+    # わずかな違いで柱に当たる。MuJoCo で 10% しか成功しなかった方策は、Isaac Sim では 0.5〜5 cm 手前を通っていた）
+    column_clearance_m: float = 0.015
     # 滑らかさ: 行動の変化、関節の速さ、目標が可動範囲の端に張りついた関節の数
     action_rate: float = 0.01
     joint_vel: float = 1.0e-3
@@ -76,6 +85,8 @@ class RewardInputs:
     face: torch.Tensor  # (N, 3) 目標のボタンの面の中心（押していないとき）[m]
     axis: torch.Tensor  # (N, 3) 押す向き
     tip_radius: float  # 指先の球の半径 [m]
+    button_radius: float  # ボタンの半径 [m]
+    button_protrusion: float  # ボタンの面が柱の面より手前に出ている量 [m]
     depth: torch.Tensor  # (N,) 目標のボタンの沈み [m]
     travel: float  # 行き止まりまでの沈み [m]
     force: torch.Tensor  # (N,) 目標のボタンを押す力（周期の中の最大）[N]
@@ -135,7 +146,11 @@ def compute_rewards(x: RewardInputs, w: RewardWeights) -> tuple[torch.Tensor, di
     t["force_over"] = -w.force_over * (torch.clamp(x.force - hi, min=0.0) / hi) ** 2
     t["impact"] = -w.impact * in_zone * torch.clamp(v_along - w.impact_speed, min=0.0) ** 2
     t["hold_after"] = -w.hold_after * (x.in_post & (x.force >= x.release_n)).float()
-    t["unwanted_contact"] = -w.unwanted_contact * torch.clamp(x.unwanted_force / 10.0, max=1.0)
+    t["unwanted_contact"] = -w.unwanted_contact * torch.clamp(x.unwanted_force / w.unwanted_scale_n, max=1.0)
+    # 柱の面（ボタンの面より button_protrusion 奥）の column_clearance_m 手前より奥に球が入っている量。ボタンの上なら 0
+    off_button = (lateral > x.button_radius + w.column_margin_m).float()
+    intrusion = torch.clamp(along + x.tip_radius - x.button_protrusion + w.column_clearance_m, min=0.0)
+    t["column_intrusion"] = -w.column_intrusion * off_button * torch.clamp(100.0 * intrusion, max=1.0)
     t["action_rate"] = -w.action_rate * ((x.action - x.last_action) ** 2).sum(-1)
     t["joint_vel"] = -w.joint_vel * (x.dq ** 2).sum(-1)
     t["joint_limit"] = -w.joint_limit * x.at_limit
