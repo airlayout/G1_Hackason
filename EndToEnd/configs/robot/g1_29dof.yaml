@@ -1,0 +1,40 @@
+# G1_IO_SPECIFICATION.md付録AのSDK順。PR関節座標、rad / rad/s / N m。
+# 物理シミュレーション用の初期値。実機firmwareの保証値ではない。
+urdf: assets/cache/robot/g1_29dof_rev_1_0.urdf
+spawn_height: 0.8
+joint_names:
+  - left_hip_pitch_joint
+  - left_hip_roll_joint
+  - left_hip_yaw_joint
+  - left_knee_joint
+  - left_ankle_pitch_joint
+  - left_ankle_roll_joint
+  - right_hip_pitch_joint
+  - right_hip_roll_joint
+  - right_hip_yaw_joint
+  - right_knee_joint
+  - right_ankle_pitch_joint
+  - right_ankle_roll_joint
+  - waist_yaw_joint
+  - waist_roll_joint
+  - waist_pitch_joint
+  - left_shoulder_pitch_joint
+  - left_shoulder_roll_joint
+  - left_shoulder_yaw_joint
+  - left_elbow_joint
+  - left_wrist_roll_joint
+  - left_wrist_pitch_joint
+  - left_wrist_yaw_joint
+  - right_shoulder_pitch_joint
+  - right_shoulder_roll_joint
+  - right_shoulder_yaw_joint
+  - right_elbow_joint
+  - right_wrist_roll_joint
+  - right_wrist_pitch_joint
+  - right_wrist_yaw_joint
+default_position: [-0.1, 0, 0, 0.3, -0.2, 0, -0.1, 0, 0, 0.3, -0.2, 0, 0, 0, 0, 0.3, 0.25, 0, 0.97, 0.15, 0, 0, 0.3, -0.25, 0, 0.97, -0.15, 0, 0]
+stiffness: [100, 100, 100, 150, 40, 40, 100, 100, 100, 150, 40, 40, 200, 200, 200, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40]
+# 公開v0歩行モデルのdeploy設定と同じゲイン。
+damping: [2, 2, 2, 4, 2, 2, 2, 2, 2, 4, 2, 2, 5, 5, 5, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
+effort_limit: [88, 139, 88, 139, 35, 35, 88, 139, 88, 139, 35, 35, 88, 35, 35, 25, 25, 25, 25, 25, 5, 5, 25, 25, 25, 25, 25, 5, 5]
+velocity_limit: [32, 20, 32, 20, 30, 30, 32, 20, 32, 20, 30, 30, 32, 30, 30, 37, 37, 37, 37, 37, 22, 22, 37, 37, 37, 37, 37, 22, 22]

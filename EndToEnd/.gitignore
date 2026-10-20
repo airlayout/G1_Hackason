@@ -1,5 +1,8 @@
 # 専用のPython環境
 /.venv/
+/.env
+/assets/cache/
+*.egg-info/
 
 # 再取得・再生成できるデータと実験成果物
 /datasets/
