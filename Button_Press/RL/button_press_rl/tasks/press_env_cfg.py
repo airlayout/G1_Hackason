@@ -59,6 +59,10 @@ def robot_cfg(target: str = TARGET_BUTTON) -> ArticulationCfg:
             fix_base=True,
             merge_fixed_joints=True,
             self_collision=True,
+            # ⚠️ URDF の変換の self_collision=True は、変換した USD に反映されない（PhysX の自己衝突の属性が付かず、
+            #    腕が胴体を通り抜ける）。Isaac Lab が spawn のときに付ける articulation_props で有効にする。
+            #    これが無いと、方策は腕を胴体に通して振り上げる動きを覚え、MuJoCo では胴体に当たって止まった（2026-10-20）
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(enabled_self_collisions=True),
             # 接触の報告は、測るリンクにだけ press_env.py で付ける（入れ子のリンクには、この設定では付かない）
             activate_contact_sensors=False,
             joint_drive=UrdfConverterCfg.JointDriveCfg(

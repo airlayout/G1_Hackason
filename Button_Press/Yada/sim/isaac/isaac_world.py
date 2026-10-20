@@ -134,6 +134,9 @@ def make_robot(robot_cfg: dict, scene_cfg: dict, pelvis_world: np.ndarray, gains
             fix_base=True,
             merge_fixed_joints=True,
             self_collision=True,
+            # ⚠️ 上の self_collision=True は変換した USD に反映されない（PhysX の自己衝突の属性が付かない）。
+            #    腕が胴体を通り抜けるので、spawn のときに付ける articulation_props で有効にする（2026-10-20）
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(enabled_self_collisions=True),
             joint_drive=UrdfConverterCfg.JointDriveCfg(
                 gains=UrdfConverterCfg.JointDriveCfg.PDGainsCfg(stiffness=HOLD_STIFFNESS, damping=HOLD_DAMPING)
             ),
