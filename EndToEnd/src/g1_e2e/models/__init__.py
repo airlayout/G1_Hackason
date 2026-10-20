@@ -1,8 +1,10 @@
 """Isaacに依存しない、任意の入力・queryを構成できる再帰モデル。"""
 
 from .config import ModalityConfig, ModelConfig, QueryConfig
+from .inputs import ModelInputAdapter
 from .queries import QueryRequest
-from .recurrent_perceiver import MemoryState, MemoryUpdate, ModelOutput, RecurrentPerceiver
+from .memory import MemoryState, MemoryUpdate
+from .recurrent_perceiver import ModelOutput, RecurrentPerceiver
 from .tokens import SensorTokens, grid_queries, image_patches
 
 __all__ = [
@@ -10,6 +12,7 @@ __all__ = [
     "MemoryUpdate",
     "ModalityConfig",
     "ModelConfig",
+    "ModelInputAdapter",
     "ModelOutput",
     "QueryConfig",
     "QueryRequest",

@@ -1,17 +1,13 @@
 """再帰・欠損・query分割の意味を、Isaacに依存せずCPUで検証する。"""
 
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 
-torch = pytest.importorskip("torch", reason="NNの検証にはEndToEnd[model]が必要です")
+from .support import ROOT, config, history_state, observations, torch
 
-from g1_e2e.models import (  # noqa: E402
-    MemoryState,
-    ModalityConfig,
+from g1_e2e.models import (
     ModelConfig,
-    QueryConfig,
     QueryRequest,
     RecurrentPerceiver,
     SensorTokens,
@@ -20,39 +16,11 @@ from g1_e2e.models import (  # noqa: E402
 )
 
 
-@pytest.fixture(autouse=True)
-def cpu_threads():
-    previous = torch.get_num_threads()
-    torch.set_num_threads(1)
-    torch.manual_seed(10)
-    yield
-    torch.set_num_threads(previous)
-
-
-def config(**overrides):
-    return ModelConfig(
-        modalities={"points": ModalityConfig(3, 8, position_dim=3), "imu": ModalityConfig(4, 1)},
-        queries={
-            "velocity": QueryConfig(3),
-            "bev": QueryConfig(5, kind="coordinate", coordinate_dim=3),
-            "trajectory": QueryConfig(7, kind="coordinate", coordinate_dim=1, output_transform="pose3d"),
-        },
-        width=16,
-        memory_tokens=4,
-        layers=1,
-        heads=2,
-        ff_multiplier=2,
-        **overrides,
-    )
-
-
-def observations(batch_size=1, *, requires_grad=False):
-    features = torch.randn(batch_size, 5, 3, requires_grad=requires_grad)
-    return {"points": SensorTokens(features, positions=torch.randn(batch_size, 5, 3))}
-
-
 def test_default_definition_supports_all_modalities_and_three_readouts():
-    definition = ModelConfig.load(Path(__file__).parents[1] / "configs/model/recurrent_perceiver.yaml")
+    definition = ModelConfig.load(ROOT / "configs/model/recurrent_perceiver.yaml")
+    assert definition.recurrence_period == 2
+    assert definition.context_window == 4096
+    assert definition.memory_tokens == 1
     model = RecurrentPerceiver(definition).eval()
     obs = {
         "rgb": image_patches(torch.rand(1, 3, 128, 128)),
@@ -71,7 +39,8 @@ def test_default_definition_supports_all_modalities_and_three_readouts():
                 "trajectory": QueryRequest(torch.linspace(0.1, 2.0, 20).reshape(1, -1, 1)),
             },
         )
-    assert result.memory.state.tokens.shape == (1, 64, 256)
+    assert result.memory.latents.shape == (1, 1, 256)
+    assert result.memory.state.tokens.shape == (1, 1, 256)
     assert {name: value.shape for name, value in result.predictions.items()} == {
         "velocity": (1, 1, 3),
         "bev": (1, 11, 32),
@@ -110,65 +79,23 @@ def test_point_order_does_not_change_memory():
     torch.testing.assert_close(model(obs).memory.latents, model(permuted).memory.latents)
 
 
-def test_observation_only_phase_cannot_read_old_memory_but_preserves_it():
+@pytest.mark.parametrize("recurrent", [True, False])
+def test_neural_field_is_independent_of_query_set_order_and_chunks(recurrent):
     model = RecurrentPerceiver(config(recurrence_period=2)).eval()
-    obs = observations()
-    a = MemoryState(torch.randn(1, 4, 16), torch.ones(1, dtype=torch.long))
-    b = MemoryState(torch.randn(1, 4, 16), torch.ones(1, dtype=torch.long))
-    first, second = model(obs, a), model(obs, b)
-    assert not first.memory.recurrent.any()
-    torch.testing.assert_close(first.memory.latents, second.memory.latents)
-    torch.testing.assert_close(first.predictions["velocity"], second.predictions["velocity"])
-    torch.testing.assert_close(first.memory.state.tokens, a.tokens)
-    torch.testing.assert_close(second.memory.state.tokens, b.tokens)
-    continued_a = model(obs, first.memory.state)
-    continued_b = model(obs, second.memory.state)
-    assert continued_a.memory.recurrent.all()
-    assert not torch.allclose(continued_a.memory.latents, continued_b.memory.latents)
-    changed = model(observations(), a)
-    assert not torch.allclose(first.memory.latents, changed.memory.latents)
-
-
-def test_reset_is_per_environment_and_resets_phase():
-    model = RecurrentPerceiver(config(recurrence_period=2)).eval()
-    obs = observations(batch_size=2)
-    prior = MemoryState(torch.randn(2, 4, 16), torch.tensor([5, 5]))
-    reset = model(obs, prior, reset_mask=torch.tensor([True, False]))
-    fresh = model(obs)
-    torch.testing.assert_close(reset.memory.latents[0], fresh.memory.latents[0])
-    torch.testing.assert_close(reset.memory.state.tokens[1], prior.tokens[1])
-    assert reset.memory.state.step.tolist() == [1, 6]
-    assert reset.memory.recurrent.tolist() == [True, False]
-
-
-def test_neural_field_is_independent_of_query_set_order_and_chunks():
-    model = RecurrentPerceiver(config()).eval()
-    memory = model.encode_step(observations())
+    prior = model.initial_state(1) if recurrent else history_state(model, frames=1)
+    memory = model.encode_step(observations(), prior)
     saved_state = memory.state.tokens.clone()
     coordinates = torch.randn(1, 7, 3)
-    full = model.decode(memory.latents, {"bev": QueryRequest(coordinates)}, chunk_size=100)["bev"]
-    split = model.decode(memory.latents, {"bev": QueryRequest(coordinates)}, chunk_size=1)["bev"]
+    full = model.decode(memory, {"bev": QueryRequest(coordinates)}, chunk_size=100)["bev"]
+    split = model.decode(memory, {"bev": QueryRequest(coordinates)}, chunk_size=1)["bev"]
     permutation = torch.tensor([4, 2, 1, 6, 0, 3, 5])
-    permuted = model.decode(memory.latents, {"bev": QueryRequest(coordinates[:, permutation])})["bev"]
-    one = model.decode(memory.latents, {"bev": QueryRequest(coordinates[:, 3:4])})["bev"]
+    permuted = model.decode(memory, {"bev": QueryRequest(coordinates[:, permutation])})["bev"]
+    one = model.decode(memory, {"bev": QueryRequest(coordinates[:, 3:4])})["bev"]
     torch.testing.assert_close(full, split)
     torch.testing.assert_close(full[:, permutation], permuted)
     torch.testing.assert_close(full[:, 3:4], one)
     torch.testing.assert_close(memory.state.tokens, saved_state)
-    assert memory.state.step.tolist() == [1]
-
-
-def test_bptt_reaches_previous_observation_and_detach_cuts_history():
-    model = RecurrentPerceiver(config())
-    previous = observations(requires_grad=True)
-    first = model.encode_step(previous)
-    second = model(observations(), first.state)
-    second.predictions["velocity"].sum().backward()
-    assert previous["points"].features.grad.abs().sum() > 0
-    previous = observations(requires_grad=True)
-    first = model.encode_step(previous)
-    model(observations(), first.state.detach()).predictions["velocity"].sum().backward()
-    assert previous["points"].features.grad is None
+    assert memory.state.step.tolist() == ([1] if recurrent else [2])
 
 
 def test_time_queries_receive_gradients_and_quaternions_remain_finite():
@@ -239,9 +166,9 @@ def test_task_context_accepts_global_and_per_query_values():
     memory = model.encode_step(observations())
     coordinates = torch.randn(1, 5, 3)
     context = torch.randn(1, 2)
-    global_value = model.decode(memory.latents, {"bev": QueryRequest(coordinates, context)})["bev"]
+    global_value = model.decode(memory.state, {"bev": QueryRequest(coordinates, context)})["bev"]
     local_value = model.decode(
-        memory.latents,
+        memory.state,
         {
             "bev": QueryRequest(coordinates, context[:, None].expand(-1, 5, -1)),
         },

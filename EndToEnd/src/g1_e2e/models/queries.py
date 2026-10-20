@@ -116,7 +116,7 @@ class QueryHead(nn.Module):
 
 
 class QueryDecoder(nn.Module):
-    """task間でcross-attentionを共有し、query sourceとheadを差し替える。"""
+    """全taskでM履歴・今回のUへのcross-attentionを共有し、query sourceとheadを差し替える。"""
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
@@ -131,9 +131,10 @@ class QueryDecoder(nn.Module):
 
     def forward(
         self,
-        latents: Tensor,
+        context: Tensor,
         requests: Mapping[str, QueryRequest] | None = None,
         *,
+        valid: Tensor | None = None,
         chunk_size: int | None = None,
     ) -> dict[str, Tensor]:
         """出力[B,Q,C]。eval時はquery集合・順序・分割サイズに依存しない。"""
@@ -152,13 +153,13 @@ class QueryDecoder(nn.Module):
         outputs = {}
         for name, request in requests.items():
             source, head = self.sources[name], self.heads[name]
-            count = source.validate(request, latents.shape[0], latents.device)
+            count = source.validate(request, context.shape[0], context.device)
             if count == 0:
-                outputs[name] = latents.new_empty(latents.shape[0], 0, head.config.output_dim)
+                outputs[name] = context.new_empty(context.shape[0], 0, head.config.output_dim)
                 continue
             chunks = []
             for start in range(0, count, chunk_size):
-                query = source(request, latents.shape[0], start, min(start + chunk_size, count))
-                chunks.append(head(self.read(query, latents)))
+                query = source(request, context.shape[0], start, min(start + chunk_size, count))
+                chunks.append(head(self.read(query, context, valid)))
             outputs[name] = torch.cat(chunks, dim=1)
         return outputs

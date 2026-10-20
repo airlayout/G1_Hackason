@@ -1,11 +1,12 @@
-# 形状を決める初期設定。RGB-D/LiDARの実センサー取得・学習済み重みは含まない。
+# NNの形状と入出力。センサー取得はconfigs/sensors、入力変換はmodels/inputs.py。
 width: 256
-memory_tokens: 64
+memory_tokens: 1  # 再帰周期に履歴へ追加するMは1トークン。
 layers: 4
 heads: 8
 ff_multiplier: 4
 dropout: 0.0
-recurrence_period: 1  # 2にすると再帰→観測のみ→再帰…を実験できる。
+recurrence_period: 2  # Mの更新・履歴追加は2周期に1回。間の周期は観測だけを処理する。
+context_window: 4096  # 更新・読出しが参照するM履歴の上限。今回の観測トークンは別枠。
 query_chunk_size: 1024
 
 modalities:
@@ -43,7 +44,7 @@ queries:
     coordinate_dim: 3   # 現在のbase座標XYZ m
     coordinate_scale: [0.1, 0.1, 0.5]
     fourier_bands: 6
-    output_dim: 32       # 学習した特徴。occupancyやSDFではない
+    output_dim: 32       # LiDAR由来の障害物mapを再構築する特徴。占有head・lossは未実装
   trajectory:
     kind: coordinate
     coordinate_dim: 1   # 現在からの未来時間Δt s。初版は単一の予測軌跡

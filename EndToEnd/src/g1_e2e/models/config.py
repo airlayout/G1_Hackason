@@ -58,17 +58,18 @@ class QueryConfig:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    """時刻間で共有するモデル定義。周期カウンターはMemoryStateとして外へ返す。"""
+    """context_windowはM履歴のトークン上限。現在の観測トークンは別枠で取り込む。"""
 
     modalities: dict[str, ModalityConfig]
     queries: dict[str, QueryConfig]
     width: int = 256
-    memory_tokens: int = 64
+    memory_tokens: int = 1
     layers: int = 4
     heads: int = 8
     ff_multiplier: int = 4
     dropout: float = 0.0
-    recurrence_period: int = 1
+    recurrence_period: int = 2
+    context_window: int = 4096
     query_chunk_size: int = 1024
 
     def __post_init__(self) -> None:
@@ -80,6 +81,7 @@ class ModelConfig:
                 self.heads,
                 self.ff_multiplier,
                 self.recurrence_period,
+                self.context_window,
                 self.query_chunk_size,
             )
             < 1
@@ -87,6 +89,8 @@ class ModelConfig:
             raise ValueError("モデルのサイズ・周期は正数です")
         if self.width % self.heads:
             raise ValueError("widthはheadsの整数倍です")
+        if self.context_window < self.memory_tokens:
+            raise ValueError("context_windowは1周期のmemory_tokens以上にしてください")
         if not 0 <= self.dropout < 1:
             raise ValueError("dropoutは0以上1未満です")
         if not self.modalities or not self.queries:

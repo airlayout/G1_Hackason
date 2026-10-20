@@ -54,13 +54,14 @@ def main() -> None:
             }
             # query読出しの頻度は呼び出し側で選べる。stateだけを次周期へ渡す。
             memory = model.encode_step(observations, state)
-            predictions = model.decode(memory.latents, requests)
+            predictions = model.decode(memory, requests)
             state = memory.state
             print(
                 json.dumps(
                     {
                         "step": state.step.item(),
                         "recurrent": memory.recurrent.item(),
+                        "history_tokens": state.tokens.shape[1],
                         "outputs": {name: list(value.shape) for name, value in predictions.items()},
                     }
                 )

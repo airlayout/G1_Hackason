@@ -1,4 +1,4 @@
-"""観測へのcross-attentionと、小さい潜在集合内でのself-attention。"""
+"""観測・過去Mへのcross-attentionと、今回生成する小さいM内のself-attention。"""
 
 from __future__ import annotations
 
@@ -54,11 +54,11 @@ class CrossRead(nn.Module):
 
 
 class MemoryBlock(nn.Module):
-    """観測から情報を取り込み、潜在メモリ内で情報を交換する1層。"""
+    """観測と履歴から情報を取り込み、今回の出力トークン内で情報を交換する1層。"""
 
     def __init__(self, width: int, heads: int, multiplier: int, dropout: float) -> None:
         super().__init__()
-        self.observation_read = CrossRead(width, heads, multiplier, dropout)
+        self.context_read = CrossRead(width, heads, multiplier, dropout)
         self.self_norm = nn.LayerNorm(width)
         self.self_attention = Attention(width, heads, dropout)
         self.ff_norm = nn.LayerNorm(width)
@@ -69,9 +69,9 @@ class MemoryBlock(nn.Module):
             nn.Dropout(dropout),
         )
 
-    def forward(self, memory: Tensor, observations: Tensor, valid: Tensor) -> Tensor:
-        """観測全体のN×N self-attentionは計算しない。"""
-        memory = self.observation_read(memory, observations, valid)
+    def forward(self, memory: Tensor, context: Tensor, valid: Tensor) -> Tensor:
+        """観測・履歴全体のN×N self-attentionは計算しない。"""
+        memory = self.context_read(memory, context, valid)
         normalized = self.self_norm(memory)
         memory = memory + self.self_attention(normalized, normalized)
         return memory + self.ff(self.ff_norm(memory))
