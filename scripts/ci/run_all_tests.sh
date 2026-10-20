@@ -2,21 +2,25 @@
 # 各機能フォルダのテストを自動で見つけて実行する。
 # ローカルでも実行できる: bash scripts/ci/run_all_tests.sh
 #
-# 規約: テストを追加するときは <フォルダ>/tests/run_tests.sh を作る。
+# 規約: テストを追加するときは <フォルダ>/tests/run_tests.sh か <フォルダ>/<サブフォルダ>/tests/run_tests.sh を作る。
 # ここが自動で見つけて実行するので、CI設定(.github/workflows/ci.yml)を触る必要はない。
+# 1 つのフォルダに run_tests.sh が複数あれば、すべて実行する
+# （2026-10-02 まで最初の 1 つしか実行しておらず、Navigation/tests/ や Button_Press/ の 2 つ目以降が実行されていなかった）。
+#
+# 1 つが失敗しても止まらず、最後まで実行してから結果を一覧で出す。1 つでも失敗していれば、終了コードは 1
+# （2026-10-02 まで、途中で失敗すると残りのフォルダが実行されず、何が確かめられていないかが見えなかった）。
 #
 # テストが無いフォルダも一覧に出す。CIが緑でも「検証されていない」ことが
 # 見えるようにするため。緑＝安全ではない。
 #
 # PR では、変えたフォルダのテストだけを実行する（2026-10-20）:
-#   CI_CHANGED_FILES（変わったファイルの一覧。改行区切り）があれば、そのファイルが属する機能フォルダと、
-#   それに依存する機能フォルダ（下の DEPENDS_ON）のテストだけを実行する。共通の部分（scripts/、.github/、
-#   リポジトリ直下のファイル）が変わっていればすべて実行する。
-#   理由: ある班のフォルダが壊れていると全員の PR が赤になり、赤が常態化して CI を見なくなっていた
-#   （直近 8 件のマージのうち緑は 1 件）。「赤 = 自分の変更が原因」にする。
-#   環境変数が無ければ（ローカル、main への push、夜間の実行）すべて実行する。
+#   CI_CHANGED_FILES（変わったファイルの一覧。改行区切り。ci.yml が scripts/ci/changed_files.sh で作る）があれば、
+#   そのファイルが属する機能フォルダと、それに依存する機能フォルダ（下の DEPENDS_ON）のテストだけを実行する。
+#   共通の部分（scripts/、.github/、リポジトリ直下のファイル）が変わっていればすべて実行する。
+#   理由: ある班のフォルダが壊れていると全員の PR が赤になり、赤が常態化して CI を見なくなっていた。
+#   「赤 = 自分の変更が原因」にする。環境変数が無ければ（ローカル、main への push、毎日の実行）すべて実行する。
 #   ローカルで PR と同じ選び方を試す: CI_CHANGED_FILES="$(git diff --name-only origin/main...HEAD)" bash scripts/ci/run_all_tests.sh
-set -euo pipefail
+set -uo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -66,18 +70,16 @@ echo
 echo "=== テストの所在 ==="
 declare -a RUNNERS=()
 for dir in "${FEATURE_DIRS[@]}"; do
-    # フォルダの中の run_tests.sh をすべて実行する（以前は最初の 1 つだけで、Button_Press/Yada などが
-    # CI で動いていなかった。2026-10-19 に修正）
     mapfile -t found < <(git ls-files "$dir/tests/run_tests.sh" "$dir/*/tests/run_tests.sh")
     if [ ${#found[@]} -gt 0 ]; then
+        count=$(git ls-files "$dir/**/test_*.py" "$dir/test_*.py" | wc -l)
+        printf '  %-12s test_*.py %s ファイル\n' "$dir" "$count"
         for runner in "${found[@]}"; do
-            sub="$(dirname "$(dirname "$runner")")"
-            count=$(git ls-files "$sub/**/test_*.py" "$sub/test_*.py" | sort -u | wc -l)
             if [ "$SELECT_ALL" = 1 ] || [ -n "${SELECTED[$dir]:-}" ]; then
-                printf '  %-12s %s（test_*.py %s ファイル）\n' "$dir" "$runner" "$count"
+                printf '  %-12s   └ %s\n' "" "$runner"
                 RUNNERS+=("$runner")
             else
-                printf '  %-12s %s（この PR では変えていないので実行しない）\n' "$dir" "$runner"
+                printf '  %-12s   └ %s（この PR では変えていないので実行しない）\n' "" "$runner"
             fi
         done
     else
@@ -87,22 +89,27 @@ done
 
 if [ ${#RUNNERS[@]} -eq 0 ]; then
     echo
-    echo "実行するテストが無い（変えたフォルダにテストが無い、またはテストのあるフォルダを変えていない）。"
+    echo "実行するテストが無い（テストが無い、または PR でテストのあるフォルダを変えていない）。"
     exit 0
 fi
 
-# 1 つが失敗しても残りを実行し、最後に失敗したものをまとめて示す
-declare -a FAILED=()
+declare -a RESULTS=()
+failed=0
 for runner in "${RUNNERS[@]}"; do
     echo
     echo "=== 実行: $runner ==="
-    bash "$runner" || FAILED+=("$runner")
+    start=$(date +%s)
+    if bash "$runner"; then
+        RESULTS+=("  OK   $runner（$(( $(date +%s) - start )) 秒）")
+    else
+        code=$?
+        RESULTS+=("  NG   $runner（終了コード $code、$(( $(date +%s) - start )) 秒）")
+        failed=1
+    fi
 done
 
 echo
-if [ ${#FAILED[@]} -gt 0 ]; then
-    echo "=== 失敗: ${#FAILED[@]} / ${#RUNNERS[@]} ==="
-    printf '  %s\n' "${FAILED[@]}"
-    exit 1
-fi
-echo "=== すべて成功: ${#RUNNERS[@]} ==="
+echo "=== 結果 ==="
+printf '%s\n' "${RESULTS[@]}"
+echo "（スキップしたテストは確かめていない。各テストの出力の「skipped」「スキップ」を見ること）"
+exit $failed

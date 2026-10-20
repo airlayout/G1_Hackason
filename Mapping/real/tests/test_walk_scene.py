@@ -11,7 +11,13 @@ import unittest
 from collections import deque
 from pathlib import Path
 
-import numpy as np
+# walk_scene.py は numpy と open3d を使う。CI（.github/workflows/ci.yml）には入っていないので、無ければ理由を付けて
+# この試験をまるごと飛ばす（飛ばしたことは unittest の出力に「skipped」と出る = 確かめていないことが見える）
+_MISSING = [m for m in ("numpy", "open3d") if importlib.util.find_spec(m) is None]
+if _MISSING:
+    raise unittest.SkipTest(f"{', '.join(_MISSING)} が無い（walk_scene.py が使う）")
+
+import numpy as np  # noqa: E402
 
 QUICKSTART = Path(__file__).resolve().parents[1] / "quickstart"
 

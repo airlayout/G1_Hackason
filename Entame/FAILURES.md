@@ -20,3 +20,26 @@
 **再発防止策**
 （実際にコード/手順をどう変えたか）
 ```
+
+---
+
+## 2026-09-01: `LocoClient.WaveHand()`はcode=0でも腕が動かない
+
+**何が起きたか**
+実機G1に対して`LocoClient.WaveHand()`を呼んだところ、RPCの戻り値は`code=0`
+（成功）だったにもかかわらず、実際には腕が動かなかった。
+
+**原因**
+`WaveHand()`は歩行系の`LocoClient`（`sport_mode`）が持つAPIだが、腕の定型モーション
+再生は別サブシステムの`G1ArmActionClient.ExecuteAction()`が担っている。
+`LocoClient`側のAPIはRPC自体は成立する（＝`code=0`を返す）ため、一見成功したように
+見えてしまう。
+
+**反省**
+「戻り値code=0＝動作成功」と早合点し、実機での目視確認を後回しにしていた。
+RPCの成功とロボットの実際の物理的な動作は別レイヤーであり、実機を使う場合は
+戻り値だけでなく必ず目視で結果を確認する必要がある。
+
+**再発防止策**
+腕の定型モーション（"high wave"等）は`G1ArmActionClient.ExecuteAction()`を使うことに
+統一した。実装は`real/arm_wave_real.py`を参照。`LocoClient.WaveHand()`は使わない。
