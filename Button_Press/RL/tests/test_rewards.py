@@ -25,7 +25,8 @@ class TestRewards(unittest.TestCase):
             face=torch.tensor([[0.30, 0.0, 0.20]]), axis=torch.tensor([[1.0, 0.0, 0.0]]), tip_radius=0.008,
             depth=z.clone(), press_depth=0.002, force=z.clone(), max_force_until_lit=z.clone(),
             unwanted_force=z.clone(), in_post=f.clone(), lit_event=f.clone(), wrong_event=f.clone(),
-            released_event=f.clone(), force_abort=f.clone(), wrong_lit=f.clone(), action=torch.zeros(n, 7),
+            released_event=f.clone(), force_abort=f.clone(), wrong_lit=f.clone(), tip_press=f.clone(),
+            action=torch.zeros(n, 7),
             last_action=torch.zeros(n, 7), dq=torch.zeros(n, 7), at_limit=z.clone(),
             press_ok=(3.0, 8.0), release_n=0.3,
         )
@@ -67,10 +68,23 @@ class TestRewards(unittest.TestCase):
 
         w = RewardWeights()
         ev = torch.tensor([True])
-        _, ok = compute_rewards(self._inputs(lit_event=ev, max_force_until_lit=torch.tensor([5.0])), w)
-        _, strong = compute_rewards(self._inputs(lit_event=ev, max_force_until_lit=torch.tensor([15.0])), w)
+        _, ok = compute_rewards(self._inputs(lit_event=ev, tip_press=ev, max_force_until_lit=torch.tensor([5.0])), w)
+        _, strong = compute_rewards(self._inputs(lit_event=ev, tip_press=ev,
+                                                 max_force_until_lit=torch.tensor([15.0])), w)
         self.assertAlmostEqual(ok["success"].item(), w.success + w.success_quality)
         self.assertAlmostEqual(strong["success"].item(), w.success)
+
+    def test_only_fingertip_gets_success(self) -> None:
+        """中指の先以外で押して点灯させても、点灯のボーナスは無く、減点になる。"""
+        import torch
+
+        from button_press_rl.rewards import RewardWeights, compute_rewards
+
+        w = RewardWeights()
+        ev, no = torch.tensor([True]), torch.tensor([False])
+        _, palm = compute_rewards(self._inputs(lit_event=ev, tip_press=no, max_force_until_lit=torch.tensor([5.0])), w)
+        self.assertEqual(palm["success"].item(), 0.0)
+        self.assertEqual(palm["not_fingertip"].item(), -w.not_fingertip)
 
     def test_force_over_and_hold(self) -> None:
         import torch

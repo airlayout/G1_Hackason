@@ -55,6 +55,7 @@ class RewardWeights:
     # 出来事
     success: float = 30.0
     success_quality: float = 20.0  # 点灯までの力の最大が適正な範囲なら、さらに足す
+    not_fingertip: float = 20.0  # 中指の先以外（手のひら・ほかの指など）で押して点灯させた（点灯のボーナスは与えない）
     released: float = 10.0
     wrong_button: float = 50.0
     wrong_lit: float = 5.0  # 違うボタンが点灯している間の、毎周期の減点（打ち切らないので、押し得にならないように）
@@ -84,6 +85,7 @@ class RewardInputs:
     released_event: torch.Tensor  # (N,) bool 点灯のあとの時間の終わりに指を離していた
     force_abort: torch.Tensor  # (N,) bool 押す力が大きすぎた（上限の倍を超えた）
     wrong_lit: torch.Tensor  # (N,) bool 目標以外のボタンが点灯している
+    tip_press: torch.Tensor  # (N,) bool 中指の先がボタンの面に触れる位置にある（点灯した周期に見る）
     action: torch.Tensor  # (N, 7)
     last_action: torch.Tensor  # (N, 7)
     dq: torch.Tensor  # (N, 7) 右腕の関節の速度 [rad/s]
@@ -135,7 +137,9 @@ def compute_rewards(x: RewardInputs, w: RewardWeights) -> tuple[torch.Tensor, di
     t["joint_vel"] = -w.joint_vel * (x.dq ** 2).sum(-1)
     t["joint_limit"] = -w.joint_limit * x.at_limit
     in_band = ((x.max_force_until_lit >= lo) & (x.max_force_until_lit <= hi)).float()
-    t["success"] = x.lit_event.float() * (w.success + w.success_quality * in_band)
+    by_tip = (x.lit_event & x.tip_press).float()
+    t["success"] = by_tip * (w.success + w.success_quality * in_band)
+    t["not_fingertip"] = -w.not_fingertip * (x.lit_event & ~x.tip_press).float()
     t["released"] = w.released * x.released_event.float()
     t["wrong_button"] = -w.wrong_button * x.wrong_event.float()
     t["wrong_lit"] = -w.wrong_lit * x.wrong_lit.float()

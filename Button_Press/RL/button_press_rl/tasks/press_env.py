@@ -99,7 +99,7 @@ class ButtonPressEnv(DirectRLEnv):
         self._max_f_ep = torch.zeros(n, device=dev)
         self._post_steps = int(round(self.task.post_press_s * self.task.control_hz))
         self._ep = {k: torch.zeros(n, device=dev) for k in
-                    ("success", "wrong", "released", "in_band", "force_abort", "max_force")}
+                    ("success", "wrong", "released", "in_band", "force_abort", "max_force", "tip_press")}
         # 試行の中での、指先の球の中心とボタンの面の中心の最も近い距離 [m]（学習が進んでいるかの目安）
         self._ep["min_dist"] = torch.full((n,), 10.0, device=dev)
         self._reward_sums: dict[str, torch.Tensor] = {}
@@ -188,6 +188,8 @@ class ButtonPressEnv(DirectRLEnv):
         wrong_event = new_lit[:, self._others].any(-1)
         lit_event = new_lit[:, self._tgt] & ~wrong_event & ~tgt_before
         self._lit_step = torch.where(lit_event, self.episode_length_buf, self._lit_step)
+        # 中指の先で押したか（点灯した周期の指先の位置で決める。手の別の部分で押しても点灯はするため）
+        tip_press = self._fingertip_on_button()
 
         # 押す力（周期の中の最大と、最後の値）
         fh = torch.linalg.norm(_t(self._button_contact.data.net_forces_w_history), dim=-1)  # (N, T, B)
@@ -221,7 +223,7 @@ class ButtonPressEnv(DirectRLEnv):
 
         c.update(depth=depth, f_tgt=f_tgt, f_now=f_now, unwanted=unwanted, lit_event=lit_event,
                  wrong_event=wrong_event, released_event=released_event, force_abort=force_abort,
-                 in_post=in_post)
+                 in_post=in_post, tip_press=tip_press)
         # 試行ごとの記録（ログ用）
         lo, hi = self.task.press_ok
         e = self._ep
@@ -231,6 +233,7 @@ class ButtonPressEnv(DirectRLEnv):
         e["force_abort"] = torch.maximum(e["force_abort"], force_abort.float())
         band = (self._max_f_until_lit >= lo) & (self._max_f_until_lit <= hi)
         e["in_band"] = torch.where(lit_event, band.float(), e["in_band"])
+        e["tip_press"] = torch.where(lit_event, tip_press.float(), e["tip_press"])
         e["max_force"] = self._max_f_ep
         return terminated, truncated
 
@@ -246,6 +249,7 @@ class ButtonPressEnv(DirectRLEnv):
             max_force_until_lit=self._max_f_until_lit, unwanted_force=c["unwanted"], in_post=c["in_post"],
             lit_event=c["lit_event"], wrong_event=c["wrong_event"], released_event=c["released_event"],
             force_abort=c["force_abort"], wrong_lit=self._lit[:, self._others].any(-1),
+            tip_press=c["tip_press"],
             action=self._actions, last_action=self._last_actions,
             dq=_t(self._robot.data.joint_vel)[:, self._arm_ids], at_limit=at_limit,
             press_ok=self.task.press_ok, release_n=self.task.release_n,
@@ -347,6 +351,15 @@ class ButtonPressEnv(DirectRLEnv):
 
     # ---- 内部 ------------------------------------------------------------------
 
+    def _fingertip_on_button(self) -> torch.Tensor:
+        """(N,) bool 中指の先の球がボタンの面に触れる位置にあるか（すき間 tip_gap_m 以内、横のずれが半径 + tip_lateral_m 以内）。"""
+        tip, _, face, axis = self._geometry()
+        rel = tip - face
+        along = (rel * axis).sum(-1)
+        lateral = torch.linalg.norm(rel - along.unsqueeze(-1) * axis, dim=-1)
+        gap = -along - self.task.fingertip_radius
+        return (gap < self.cfg.tip_gap_m) & (lateral < self.task.button_radius + self.cfg.tip_lateral_m)
+
     def _geometry(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """(指先, 指先の速度, 目標のボタンの面（押していないとき）, 押す向き)。どれもロボットの腰の座標。"""
         rd = self._robot.data
@@ -382,6 +395,7 @@ class ButtonPressEnv(DirectRLEnv):
         if succ.sum() > 0:
             m = succ > 0
             log["Metrics/in_band_rate"] = e["in_band"][env_ids][m].mean().item()
+            log["Metrics/tip_press_rate"] = e["tip_press"][env_ids][m].mean().item()
             log["Metrics/released_rate"] = e["released"][env_ids][m].mean().item()
             log["Metrics/max_press_force_n"] = e["max_force"][env_ids][m].mean().item()
         for k, v in self._reward_sums.items():

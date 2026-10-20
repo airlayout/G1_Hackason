@@ -97,6 +97,7 @@ class TaskSpec:
     max_joint_speed: float
     press_depth: float
     travel: float
+    button_radius: float
     spring_stiffness: float
     initial_pose: dict[str, float]  # 関節の名前 → 初期の角度 [rad]
     fingertip_link: str
@@ -132,6 +133,7 @@ def load_task_spec(target: str = TARGET_BUTTON) -> TaskSpec:
         max_joint_speed=float(contest["safety"]["max_joint_speed_rad_s"]),
         press_depth=float(bc["press_depth"]),
         travel=float(bc["travel"]),
+        button_radius=float(bc["radius"]),
         spring_stiffness=float(bc["stiffness"]),
         initial_pose=pose,
         fingertip_link=str(ee["link"]),

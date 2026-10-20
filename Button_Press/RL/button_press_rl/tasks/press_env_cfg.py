@@ -114,3 +114,6 @@ class ButtonPressEnvCfg(DirectRLEnvCfg):
     # 違うボタン・押しすぎで試行を打ち切るか。False（既定）では減点だけで続ける。
     # 毎周期の項が減点だけなので、打ち切ると「わざと違うボタンを押して早く終える」ことを覚える（2026-10-19。FAILURES.md）
     terminate_on_failure: bool = False
+    # 中指の先で押したとみなす範囲: 指先の球の表面と面のすき間 [m]、横のずれ（ボタンの半径に足す）[m]
+    tip_gap_m: float = 0.004
+    tip_lateral_m: float = 0.002
