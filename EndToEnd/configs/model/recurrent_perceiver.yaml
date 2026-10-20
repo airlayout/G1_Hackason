@@ -1,0 +1,53 @@
+# 形状を決める初期設定。RGB-D/LiDARの実センサー取得・学習済み重みは含まない。
+width: 256
+memory_tokens: 64
+layers: 4
+heads: 8
+ff_multiplier: 4
+dropout: 0.0
+recurrence_period: 1  # 2にすると再帰→観測のみ→再帰…を実験できる。
+query_chunk_size: 1024
+
+modalities:
+  rgb:
+    feature_dim: 768     # 128x128 RGB、16x16パッチ、事前に値域を正規化
+    max_tokens: 64
+    position_dim: 2
+  depth:
+    feature_dim: 512     # 128x128、深度m + 画素validの2チャネル
+    max_tokens: 64
+    position_dim: 2
+  lidar:
+    feature_dim: 6       # base座標XYZ m、intensity、ring、フレーム内時刻s
+    max_tokens: 128      # 選択/集約は入力アダプター側
+    position_dim: 3      # 同じbase座標XYZ m
+  joints:
+    feature_dim: 3       # q rad、dq rad/s、tau N m。スケール調整は入力側
+    max_tokens: 29       # G1のSDK順
+    learned_positions: true
+  imu:
+    feature_dim: 10      # orientation xyzw、body gyro3、projected gravity3
+    max_tokens: 1
+  previous_action:
+    feature_dim: 1       # 前周期に実際に適用した29関節の位置目標rad
+    max_tokens: 29
+    learned_positions: true
+
+queries:
+  velocity:
+    kind: learned
+    num_queries: 1
+    output_dim: 3        # base座標 vx m/s、vy m/s、yaw_rate rad/s
+  bev:
+    kind: coordinate
+    coordinate_dim: 3   # 現在のbase座標XYZ m
+    coordinate_scale: [0.1, 0.1, 0.5]
+    fourier_bands: 6
+    output_dim: 32       # 学習した特徴。occupancyやSDFではない
+  trajectory:
+    kind: coordinate
+    coordinate_dim: 1   # 現在からの未来時間Δt s。初版は単一の予測軌跡
+    coordinate_scale: [0.5]
+    fourier_bands: 6
+    output_dim: 7        # 現在のbaseに対する未来のXYZ m + quaternion xyzw
+    output_transform: pose3d
