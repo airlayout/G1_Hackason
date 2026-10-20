@@ -36,6 +36,7 @@ bash Button_Press/RL/scripts/train.sh --num_envs 16 --max_iterations 3   # 動�
 bash Button_Press/RL/scripts/train.sh                          # 教師を学習する（並列数は GPU から決める）
 bash Button_Press/RL/scripts/play.sh --num_envs 16             # 学習した方策を見る（最新の checkpoint）
 bash Button_Press/RL/scripts/eval_teacher.sh --episodes 2000    # 成功率と押す力の分布を測る（結果は JSON にも）
+bash Button_Press/RL/scripts/record_progress.sh                # 学習していく様子の動画（約 1 分。各時点 + 2048 体を引いて見せる場面）
 ```
 
 - ログと checkpoint: `_local/button_press_rl/logs/rsl_rl/button_press_teacher/<日時>/`（git の対象外）
