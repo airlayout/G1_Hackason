@@ -61,3 +61,8 @@ def lidar_pattern(channels: int, columns: int, vertical_fov_deg: tuple[float, fl
 
 # Optical: X right, Y down, Z forward. Mount/base: X forward, Y left, Z up.
 MOUNT_FROM_OPTICAL = np.array([[0, 0, 1, 0], [-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, 0, 1]], dtype=np.float32)
+
+
+def base_pose(observation) -> np.ndarray:
+    """身体の基準リンクから世界座標への変換。IMU取り付け座標とは分ける。"""
+    return pose_matrix(observation.privileged["base_position_world_m"], observation.orientation_xyzw)

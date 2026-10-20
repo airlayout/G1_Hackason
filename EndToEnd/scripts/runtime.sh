@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # sourceしてIsaacのPythonとプロジェクト専用依存関係を組み合わせる。
-set -euo pipefail
-E2E_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [[ -f "$E2E_ROOT/.env" ]]; then
-    source "$E2E_ROOT/.env"
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/project_env.sh"
 ISAAC_SIM_PATH="${ISAAC_SIM_PATH:-/opt/isaac-sim}"
 ISAACLAB_PATH="${ISAACLAB_PATH:-$E2E_ROOT/../_local/IsaacLab}"
 export ISAAC_SIM_PATH ISAACLAB_PATH
@@ -24,11 +20,11 @@ for source_dir in "$ISAACLAB_PATH"/source/*; do
 done
 E2E_TORCH_BUNDLE="$ISAAC_SIM_PATH/extsDeprecated/omni.isaac.ml_archive/pip_prebundle"
 if [[ ! -d "$E2E_TORCH_BUNDLE/torch" ]]; then
-    echo '[NG] Isaac Sim同梱のPyTorchが必要です。docs/development.mdとconfigs/runtime.lock.jsonを確認してください' >&2
+    echo '[NG] Isaac Sim同梱のPyTorchが必要です。configs/runtime.lock.jsonを確認してください' >&2
     return 1
 fi
 E2E_NVIDIA_BUNDLE="$ISAAC_SIM_PATH/exts/isaacsim.pip.nv/pip_prebundle"
-export PYTHONPATH="$E2E_ROOT/src:$E2E_ROOT:${E2E_LAB_SOURCES}$E2E_SITE:$E2E_NVIDIA_BUNDLE:$E2E_TORCH_BUNDLE${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$E2E_PROJECT_PATH:${E2E_LAB_SOURCES}$E2E_SITE:$E2E_NVIDIA_BUNDLE:$E2E_TORCH_BUNDLE${PYTHONPATH:+:$PYTHONPATH}"
 # 6.2ではPyTorchとCUDAの共有ライブラリが別のpip archiveにある。
 for library_dir in "$E2E_NVIDIA_BUNDLE"/nvidia/*/lib; do
     [[ -d "$library_dir" ]] && export LD_LIBRARY_PATH="$library_dir:${LD_LIBRARY_PATH:-}"

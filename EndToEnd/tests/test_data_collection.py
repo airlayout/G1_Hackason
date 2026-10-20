@@ -69,10 +69,10 @@ def frames(episode=0, time_s=0.0):
     return camera, lidar
 
 
-def writer(path):
+def writer(path, **metadata):
     return DatasetWriter(
         path,
-        {"control_dt_s": 0.02},
+        {"control_dt_s": 0.02, **metadata},
         {
             "camera/intrinsics": CameraConfig().intrinsics,
             "lidar/ray_directions_sensor": np.tile([1, 0, 0], (3, 1)).astype(np.float32),
@@ -302,7 +302,7 @@ def test_angular_scan_and_optical_axes():
 
 
 def test_sensor_periods_must_align_with_control_clock():
-    config = SensorConfig.load(ROOT / "configs/sensors/g1_rgbd_lidar.yaml")
+    config = SensorConfig()
     assert config.periods_in_steps(0.02) == (2, 5)
     with pytest.raises(ValueError):
         replace(config, camera=replace(config.camera, period_s=0.033)).periods_in_steps(0.02)

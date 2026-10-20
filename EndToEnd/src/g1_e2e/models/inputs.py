@@ -84,6 +84,22 @@ class ModelInputAdapter:
         return self._tokens(joints)
 
     def _imu(self, sample: dict) -> SensorTokens:
+        if "imu" in sample:
+            frame = sample["imu"]
+            if frame is None:
+                return self._tokens(np.zeros((1, 10), np.float32), valid=np.zeros(1, bool))
+            age = self._age(sample["state"], frame)
+            features = np.concatenate(
+                [
+                    frame[key]
+                    for key in [
+                        "orientation_xyzw",
+                        "angular_velocity_sensor_rad_s",
+                        "projected_gravity_sensor",
+                    ]
+                ]
+            )
+            return self._tokens(features[None], age_s=age)
         state = sample["state"]
         imu = np.concatenate(
             [
@@ -143,13 +159,21 @@ class ModelInputAdapter:
                 # Beam順に全体へ分散させる決定的な間引き。保存した生の点群は削らない。
                 count = min(n, len(candidates))
                 chosen = candidates[np.linspace(0, len(candidates) - 1, count, dtype=np.int64)]
-                current_base_from_sensor = (
-                    np.linalg.inv(state["base_pose_world"]) @ lidar["world_from_sensor"]
-                )
-                xyz = transform_points(lidar["points_sensor_m"][chosen], current_base_from_sensor)
+                if lidar.get("points_world_m") is not None:
+                    xyz = transform_points(
+                        lidar["points_world_m"][chosen], np.linalg.inv(state["base_pose_world"])
+                    )
+                else:
+                    current_base_from_sensor = (
+                        np.linalg.inv(state["base_pose_world"]) @ lidar["world_from_sensor"]
+                    )
+                    xyz = transform_points(lidar["points_sensor_m"][chosen], current_base_from_sensor)
                 features[:count, :3] = xyz
                 features[:count, 3] = lidar["intensity"][chosen]
                 features[:count, 4] = calibration["ring"][chosen]
+                for column, key in [(3, "intensity_valid"), (4, "ring_valid")]:
+                    if lidar.get(key) is not None:
+                        features[:count, column] *= lidar[key][chosen]
                 features[:count, 5] = offsets[chosen]
                 ages[:count] = age - offsets[chosen]
                 valid[:count] = ages[:count] <= self.lidar_max_age_s

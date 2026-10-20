@@ -1,0 +1,7 @@
+{
+  "sdk_url": "https://github.com/unitreerobotics/unitree_sdk2_python.git",
+  "sdk_commit": "814556d15970dd2ecf1c9984e845ca02ab07e206",
+  "cyclonedds_url": "https://github.com/eclipse-cyclonedds/cyclonedds.git",
+  "cyclonedds_ref": "0.10.2",
+  "cyclonedds_commit": "9995905bce6c4cf9f740d6438bbf7fcfd1c83dfd"
+}

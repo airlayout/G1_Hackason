@@ -29,7 +29,7 @@ class G1FlatEnv:
         device: str = "cuda:0",
         fixed_base: bool = False,
     ) -> None:
-        self.robot_spec, self.config = robot_spec, config
+        self.root, self.robot_spec, self.config = root, robot_spec, config
         self.fixed_base = fixed_base
         self.sim = sim_utils.SimulationContext(
             sim_utils.SimulationCfg(
@@ -125,7 +125,7 @@ class G1FlatEnv:
         ]:
             setter(target=torch.tensor(value[None], device=self.device), joint_ids=self._indices)
 
-    def step(self, command: JointCommand) -> StepResult:
+    def step(self, command: JointCommand, *, render: bool = True, after_physics_step=None) -> StepResult:
         """1制御周期だけ物理を進める。終了後は呼び出し元にresetを要求する。"""
         if self._done:
             raise RuntimeError("stepの前にresetが必要です")
@@ -143,8 +143,13 @@ class G1FlatEnv:
         decimation = round(self.config.control_dt / self.config.physics_dt)
         for substep in range(decimation):
             self.robot.write_data_to_sim()
-            self.sim.step(render=substep == decimation - 1)
+            self.sim.step(render=render and substep == decimation - 1)
             self.robot.update(self.config.physics_dt)
+            if after_physics_step is not None:
+                after_physics_step(
+                    self._episode,
+                    self._step * self.config.control_dt + (substep + 1) * self.config.physics_dt,
+                )
         self._step += 1
         obs = self.observe()
         if not all(

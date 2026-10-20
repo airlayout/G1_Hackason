@@ -1,0 +1,7 @@
+# 30Hzカメラ・10HzLiDAR・50Hz制御を物理stepの整数境界で取得する。
+physics_dt: 0.0016666666666666668
+control_dt: 0.02
+episode_seconds: 20.0
+minimum_base_height: 0.35
+maximum_tilt_radians: 1.0
+friction: 1.0

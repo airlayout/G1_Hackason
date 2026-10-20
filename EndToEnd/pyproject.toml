@@ -13,6 +13,8 @@ sim = [
     "hidapi==0.15.0", "scipy==1.18.1", "pillow==12.3.0",
 ]
 demo = ["onnxruntime==1.24.2"]
+dds = ["cyclonedds==0.10.2"]
+video = ["imageio-ffmpeg==0.6.0"]
 model = ["torch==2.11.0"]
 dev = ["pytest==8.4.2", "ruff==0.14.1"]
 

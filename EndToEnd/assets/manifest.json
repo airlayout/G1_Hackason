@@ -1,9 +1,17 @@
 {
   "sources": {
     "unitree_ros": "5994d4faef0a9cadd3287f8de0199a67eeb2a259",
+    "livox_laser_simulation": "1cce1073633a062b92e30243a4c2920e45551bb5",
     "unitree_rl_lab": "4960b84732b0c2ec593dccbfe963fda1bcd7b1e3"
   },
   "files": [
+    {
+      "group": "sensor",
+      "path": "sensors/mid360.csv",
+      "url": "https://raw.githubusercontent.com/Livox-SDK/livox_laser_simulation/1cce1073633a062b92e30243a4c2920e45551bb5/scan_mode/mid360.csv",
+      "sha256": "aa1fc08b6a4400608dbd6ee832b7ea3a9c3c37197e734f60f58fe5abf762269a",
+      "bytes": 16809997
+    },
     {
       "group": "robot",
       "path": "robot/g1_29dof_rev_1_0.urdf",
