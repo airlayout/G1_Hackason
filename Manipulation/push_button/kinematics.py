@@ -86,7 +86,8 @@ def solve_ik(model: mujoco.MjModel, data: mujoco.MjData, target: np.ndarray,
 
 
 def load_robot(model_path: Path, tip_offset: tuple[float, float, float],
-               pelvis_height: float, tip_radius: float = 0.015) -> tuple[mujoco.MjModel, np.ndarray]:
+               pelvis_height: float, tip_radius: float = 0.015,
+               scene_builder=None) -> tuple[mujoco.MjModel, np.ndarray]:
     """固定骨盤のモデルを読み込む。床基準の高さは校正値を要求する。"""
     if not (np.isfinite(pelvis_height) and 0.65 < pelvis_height < 1.0):
         raise ValueError("実測した骨盤高 (0.65～1.0 m) が必要です")
@@ -112,8 +113,10 @@ def load_robot(model_path: Path, tip_offset: tuple[float, float, float],
     ET.SubElement(wrist, "site", name="button_tcp", pos=position, size="0.006")
     ET.SubElement(wrist, "geom", name="button_tip", type="sphere", pos=position,
                   size=str(tip_radius), mass="0.01")
+    if scene_builder is not None:
+        scene_builder(root)
     model = mujoco.MjModel.from_xml_string(ET.tostring(root, encoding="unicode"))
-    if model.nq != 29 or model.nu != 29:
+    if (model.nq != 29 and scene_builder is None) or model.nu != 29:
         raise ValueError("想定外の関節構成です")
     return model, rest
 

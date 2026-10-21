@@ -25,7 +25,7 @@ from j1gen_camera import CalibratedHeadCamera, J1CameraRuntime, add_camera_argum
 from push_button import ArmSdk, CONTROL_HZ, STATE_TIMEOUT, TRACKING_LIMIT, check_speed
 
 
-def read_calibration(path):
+def read_calibration(path, *, require_button=True):
     calibration = json.loads(Path(path).read_text())
     schema = calibration.get("schema")
     if schema not in ("g1-button-calibration-v1", "g1-button-calibration-v2"):
@@ -52,12 +52,12 @@ def read_calibration(path):
         if vector.shape != (3,) or not np.all(np.isfinite(vector)):
             raise ValueError(f"校正時の姿勢 {key} が必要です")
     tip_radius = float(calibration["tip_radius_m"])
-    button_radius = float(calibration["button_radius_m"])
+    button_radius = float(calibration["button_radius_m"]) if require_button else 0.06
     uncertainty = float(calibration["position_uncertainty_m"])
     if (not np.all(np.isfinite((tip_radius, button_radius, uncertainty)))
             or not 0 < tip_radius < 0.04 or not 0 < button_radius <= 0.06
             or not 0 <= uncertainty <= 0.02
-            or button_radius - tip_radius < uncertainty + 0.003):
+            or (require_button and button_radius - tip_radius < uncertainty + 0.003)):
         raise ValueError("ボタンと手先の寸法に対して位置の不確かさが大きすぎます")
     return calibration, transform
 

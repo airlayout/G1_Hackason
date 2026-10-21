@@ -401,7 +401,8 @@ class SmoothNormalSettings:
 class ContinuousNormalController:
     """法線方向に連続して進め、FK誤差から速度を調整する。撮影・区間停止は行わない。"""
 
-    def __init__(self, face, normal, radius, stroke, command_xyz, settings=None):
+    def __init__(self, face, normal, radius, stroke, command_xyz, settings=None,
+                 travel_validator=validate_button_stroke):
         self.settings = settings or SmoothNormalSettings()
         self.face, self.normal = np.asarray(face, dtype=float), np.asarray(normal, dtype=float)
         if (self.face.shape != (3,) or self.normal.shape != (3,)
@@ -409,7 +410,7 @@ class ContinuousNormalController:
                 or not np.isclose(np.linalg.norm(self.normal), 1.0)
                 or not 0 < radius < 0.04):
             raise ValueError("連続押下の目標・寸法が不正です")
-        self.radius, self.stroke = radius, validate_button_stroke(stroke)
+        self.radius, self.stroke = radius, travel_validator(stroke)
         self.overtravel_m = press_overtravel_allowance(stroke)
         self.compensation_m = press_compensation_allowance(stroke)
         self.completion_tolerance_m = min(self.settings.completion_tolerance_m, stroke / 30)

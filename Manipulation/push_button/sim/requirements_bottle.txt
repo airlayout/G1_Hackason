@@ -1,0 +1,5 @@
+# 既存SDK環境は変更せず、画像処理・MuJoCo用の環境へ導入する。
+-r ../../../Perception/requirements.txt
+mujoco>=3.3.7
+Pillow
+pytest

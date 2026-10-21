@@ -89,7 +89,7 @@ def yolo_bboxes(rgb: np.ndarray, weights: str,
     return [detection.bbox for detection in detections]
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True, help="Menagerie の unitree_g1/g1.xml")
     parser.add_argument("--weights", help="公開/追加学習済み YOLO の .pt")
@@ -111,7 +111,7 @@ def main() -> int:
     parser.add_argument("--snapshot", help="検出枠を描いた MuJoCo RGB 画像の保存先 PNG")
     parser.add_argument("--gif-out", help="押下動作をGIFで保存")
     parser.add_argument("--gif-fps", type=int, default=10)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     detector = args.detector or ("yolo" if args.weights else "oracle")
     if detector == "yolo" and not args.weights:
         parser.error("--detector yolo には --weights が必要です")
