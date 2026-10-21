@@ -6,6 +6,10 @@
 #
 # テストを追加するときは <フォルダ>/tests/run_tests.sh を作れば自動で拾われる。
 # このファイルを編集する必要はない。
+#
+# PR では、変えた機能フォルダ（とそれに依存するフォルダ）のテストと、変えた Markdown のリンクだけを検査する
+# （scripts/ci/run_all_tests.sh の CI_CHANGED_FILES）。ほかの班のフォルダが壊れていても自分の PR は赤にならない。
+# main への push と毎日の実行では、すべてを検査する（リポジトリ全体の状態は main の結果で見る）。
 
 name: CI
 
@@ -13,6 +17,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # 毎日 03:00 JST（18:00 UTC）に全体を検査する（PR では実行しなかったフォルダの壊れを拾う）
+    - cron: '0 18 * * *'
 
 jobs:
   tests:
@@ -20,13 +27,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # PR の変更を base ブランチと比べるため
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      # PR で変わったファイルの一覧（PR 以外では空 = すべてを対象にする）
+      - name: Changed files
+        id: changed
+        run: bash scripts/ci/changed_files.sh "${{ github.event.pull_request.base.sha || '' }}" >> "$GITHUB_OUTPUT"
+
       # 実機・ROS 2・LiDARは不要。各フォルダのtests/run_tests.shを自動で探して実行する。
       - name: Run tests
+        env:
+          CI_CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: bash scripts/ci/run_all_tests.sh
 
   checks:
@@ -34,12 +50,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      - name: Changed files
+        id: changed
+        run: bash scripts/ci/changed_files.sh "${{ github.event.pull_request.base.sha || '' }}" >> "$GITHUB_OUTPUT"
+
       # テストが無いフォルダにも効く共通検査。
-      # Python構文チェックとMarkdownの相対リンク切れ検査。
+      # Python構文チェック（常に全部）とMarkdownの相対リンク切れ検査（PR では変えた Markdown だけ）。
       - name: Run checks
+        env:
+          CI_CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: bash scripts/ci/run_checks.sh

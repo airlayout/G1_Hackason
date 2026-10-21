@@ -1,0 +1,44 @@
+# Button_Press / 機体モデルの設定
+# パスはリポジトリ直下からの相対パス（絶対パスも可）。
+
+model:
+  # 取得元（sim/fetch_models.sh の REPO_COMMIT と同じ値にそろえる）
+  repo: unitreerobotics/unitree_ros
+  commit: ccfc6fd8430a17ba3dacef9a1e2faf64ff3b0aee
+  # 機体構成。mode_machine=5 に対応する（unitree_ros の g1_description/README.md の表）
+  name: g1_29dof_rev_1_0
+  # IK（Pinocchio）用の URDF と、シミュレーション（MuJoCo）用の XML
+  urdf_path: _local/button_press/models/g1_description/g1_29dof_rev_1_0.urdf
+  mjcf_path: _local/button_press/models/g1_description/g1_29dof_rev_1_0.xml
+
+# 頭カメラ（RealSense D435i）の取り付け位置。torso_link 基準。
+# 公式 XML には頭カメラが無いため、読み込み時にこの値で追加する。
+# カメラの向きは URDF の d435_link と同じ（x 前方・y 左・z 上）。
+head_camera:
+  parent_body: torso_link
+  # 出典: unitree_ros（上記コミット）の g1_29dof_rev_1_0.urdf の d435_joint。
+  # IK と同じ版（mode_machine 5）にそろえるため、この値を使う（2026-09-28 決定）。
+  # SimEnv3D/src/g1_twin/sensor_rig.py は旧版 g1_29dof.urdf（mode_machine 2）基準で z = 0.41987
+  # と 1cm 違うが、他班のファイルなので変更しない。
+  # ⚠️ 実機日の較正で確認すること。
+  xyz: [0.0576235, 0.01753, 0.42987]
+  rpy: [0.0, 0.8307767239493009, 0.0]
+  # 画像サイズと垂直画角。D435 のカラー 640x480 で fy ≈ 615 px → 2*atan(240/615) ≈ 42.6°
+  width: 640
+  height: 480
+  fovy_deg: 42.6
+  name: head_camera
+
+# 押すときの手先の点 = 中指の先。{side}_wrist_yaw_link 基準 [m]（x: 指の向き、z: 指が並ぶ向き、y: 指の厚みの向き）。
+# 公式メッシュ（right/left_rubber_hand.STL）の頂点から求めた（2026-09-28、MuJoCo）:
+#   指の先は z の順に 親指（+0.055, x 0.130）、人差し指（+0.03, x 0.168）、中指（+0.007, x 0.1733 で最も長い）、
+#   薬指（−0.02, x 0.168）、小指（−0.04, x 0.161）。中指の先は y が約 +0.02〜+0.04（右手。左手は符号が逆）。
+# 2026-09-28 修正: 最初は y の符号を左右で取り違えていた（右手に −0.0283）。その点は手の外だった。
+# ⚠️ 実機のハンドと同じかは未確認。実機日に fk_check.py --overlay で実物の中指の先と比べ、ずれていればここを直す
+end_effector:
+  right:
+    link: right_wrist_yaw_link
+    offset: [0.1733, 0.0283, 0.0067]
+  left:
+    link: left_wrist_yaw_link
+    offset: [0.1733, -0.0283, 0.0067]

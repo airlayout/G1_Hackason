@@ -1,0 +1,12 @@
+# マシンごとの並列の環境の数（scripts/train.sh が GPU の名前から選ぶ。--machine で指定もできる）。
+# ⚠️ 値は目安。メモリが足りなければ減らす（学習の途中で CUDA out of memory が出たら半分にする）
+machines:
+  l40s:
+    match: "L40S"          # nvidia-smi の GPU の名前に含まれる文字
+    teacher_num_envs: 2048
+  rtx5060ti:
+    match: "5060 Ti"
+    teacher_num_envs: 1024
+  default:
+    match: ""
+    teacher_num_envs: 512
