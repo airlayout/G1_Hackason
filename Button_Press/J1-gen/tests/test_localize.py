@@ -125,8 +125,9 @@ class TestHeadCameraMount(unittest.TestCase):
         self.assertEqual(robot["head_camera"]["xyz"], load_config("robot.yaml")["head_camera"]["xyz"])
 
     def test_real_configs_agree(self) -> None:
-        self.assertEqual(load_config("camera.yaml")["head_camera_mount"],
-                         load_config("camera_wifi.yaml")["head_camera_mount"])
+        # 有線と無線で同じにする（既定は上書きしない = URDF のまま。首が傾いたときだけ両方に同じ値を入れる）
+        for key in ("head_camera_mount", "depth_anchor"):
+            self.assertEqual(load_config("camera.yaml").get(key), load_config("camera_wifi.yaml").get(key))
 
 
 class FakeDetector:
