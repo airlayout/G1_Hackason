@@ -5,6 +5,8 @@
 
 [REAL_DAY_PROCEDURE.md](REAL_DAY_PROCEDURE.md) の段階0〜3の途中まで進めた。**次回は「次回の再開手順」から始める。**
 
+> 続き（2026-10-21）は [DAILY_LOG_20261021_labpc.md](DAILY_LOG_20261021_labpc.md)。
+
 ## 結果のまとめ
 
 | 段階 | 結果 |
