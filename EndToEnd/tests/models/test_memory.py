@@ -15,7 +15,7 @@ from g1_e2e.models import (
 )
 
 
-def test_observation_only_phase_excludes_history_from_update_but_reads_it_for_queries():
+def test_nonwriting_phase_uses_history_and_observation_but_preserves_saved_m():
     model = RecurrentPerceiver(config(recurrence_period=2)).eval()
     obs = observations()
     a = history_state(model, frames=1)
@@ -27,8 +27,8 @@ def test_observation_only_phase_excludes_history_from_update_but_reads_it_for_qu
     }
     first, second = model(obs, a, queries), model(obs, b, queries)
     assert not first.memory.recurrent.any()
-    torch.testing.assert_close(first.memory.latents, second.memory.latents)
-    # Uの生成は履歴に依存しないが、全用途のqueryは履歴と今回のUの両方を読む。
+    assert not torch.allclose(first.memory.latents, second.memory.latents)
+    # 非保存周期も履歴を融合するが、次周期へ渡す履歴は変更しない。
     changed = model(observations(), a, queries)
     assert not torch.allclose(first.memory.latents, changed.memory.latents)
     for name in queries:
@@ -61,21 +61,24 @@ def test_query_gradients_reach_current_u_and_history_without_recurrence():
     assert obs["points"].features.grad.abs().sum() > 0
 
 
-def test_recurrent_readout_reads_current_m_once_and_ignores_transient_slot():
+@pytest.mark.parametrize("frames", [1, 2])
+def test_readout_uses_only_current_m_and_never_reads_saved_history_directly(frames):
     model = RecurrentPerceiver(config(recurrence_period=2)).eval()
-    memory = model.encode_step(observations(), history_state(model, frames=2))
-    assert memory.recurrent.all()
+    memory = model.encode_step(observations(), history_state(model, frames=frames))
     queries = {
         "velocity": QueryRequest(),
         "bev": QueryRequest(torch.randn(1, 2, 3)),
         "trajectory": QueryRequest(torch.ones(1, 3, 1)),
     }
-    history_only = model.decode(memory.state, queries)
     from_update = model.decode(memory, queries)
-    masked_nan = model.decode(replace(memory, latents=torch.full_like(memory.latents, float("nan"))), queries)
+    poisoned = replace(memory.state, tokens=torch.full_like(memory.state.tokens, float("nan")))
+    from_poisoned_history = model.decode(replace(memory, state=poisoned), queries)
+    from_current = model.decode(memory.latents, queries)
     for name in queries:
-        torch.testing.assert_close(from_update[name], history_only[name])
-        torch.testing.assert_close(masked_nan[name], history_only[name])
+        torch.testing.assert_close(from_update[name], from_poisoned_history[name])
+        torch.testing.assert_close(from_update[name], from_current[name])
+    with pytest.raises(TypeError, match="今回"):
+        model.decode(memory.state, queries)
 
 
 def test_mixed_phase_readout_matches_individual_episodes():
@@ -139,7 +142,7 @@ def test_bptt_reaches_previous_observation_and_detach_cuts_history():
     assert previous["points"].features.grad is None
 
 
-def test_both_update_and_queries_can_read_older_m_with_identical_latest_m():
+def test_older_m_affects_current_m_and_through_it_all_query_outputs():
     model = RecurrentPerceiver(config()).eval()
     a = history_state(model)
     altered = a.tokens.clone()
@@ -152,7 +155,8 @@ def test_both_update_and_queries_can_read_older_m_with_identical_latest_m():
         "bev": QueryRequest(torch.randn(1, 2, 3)),
         "trajectory": QueryRequest(torch.ones(1, 3, 1)),
     }
-    first, second = model.decode(a, queries), model.decode(b, queries)
+    first = model.decode(model.encode_step(obs, a), queries)
+    second = model.decode(model.encode_step(obs, b), queries)
     for name in queries:
         assert not torch.allclose(first[name], second[name])
 
@@ -161,12 +165,11 @@ def test_time_encoding_distinguishes_the_order_of_past_m():
     model = RecurrentPerceiver(config()).eval()
     a = history_state(model, frames=2)
     b = replace(a, token_steps=1 - a.token_steps)
-    assert not torch.allclose(model.decode(a)["velocity"], model.decode(b)["velocity"])
     obs = observations()
     assert not torch.allclose(model.encode_step(obs, a).latents, model.encode_step(obs, b).latents)
 
 
-def test_invalid_history_tokens_are_ignored_in_both_update_and_readout():
+def test_masked_nan_history_is_ignored_by_the_full_sequence():
     model = RecurrentPerceiver(config()).eval()
     a = history_state(model, frames=2)
     valid = a.valid.clone()
@@ -175,7 +178,6 @@ def test_invalid_history_tokens_are_ignored_in_both_update_and_readout():
     b = replace(a, tokens=torch.where(valid[..., None], a.tokens, float("nan")))
     obs = observations()
     torch.testing.assert_close(model.encode_step(obs, a).latents, model.encode_step(obs, b).latents)
-    torch.testing.assert_close(model.decode(a)["velocity"], model.decode(b)["velocity"])
 
 
 def test_only_recurrent_cycles_append_m_and_discard_oldest_tokens():
@@ -202,10 +204,10 @@ def test_only_recurrent_cycles_append_m_and_discard_oldest_tokens():
     assert state.token_steps.tolist() == [[4, 6, 8]]
 
 
-def test_full_size_model_updates_and_reads_4096_token_window():
+def test_full_size_model_updates_1024_token_window_and_reads_only_current_m():
     definition = ModelConfig.load(ROOT / "configs/model/recurrent_perceiver.yaml")
     model = RecurrentPerceiver(definition).eval()
-    prior = history_state(model, frames=4096)
+    prior = history_state(model, frames=1024)
     prior = replace(prior, token_steps=prior.token_steps * 2, step=prior.step * 2)
     original = prior.tokens.clone()
     queries = {
@@ -215,39 +217,39 @@ def test_full_size_model_updates_and_reads_4096_token_window():
     }
     with torch.inference_mode():
         output = model(
-            {"imu": SensorTokens(torch.randn(1, 1, 10))},
+            {"imu_pelvis": SensorTokens(torch.randn(1, 1, 14))},
             prior,
             queries=queries,
         )
-        off = model({"imu": SensorTokens(torch.randn(1, 1, 10))}, output.memory.state, queries)
-        history_only = model.decode(off.memory.state, queries)
+        off = model({"imu_pelvis": SensorTokens(torch.randn(1, 1, 14))}, output.memory.state, queries)
     assert output.memory.recurrent.all()
     state = output.memory.state
-    assert state.tokens.shape == (1, 4096, 256)
+    assert state.tokens.shape == (1, 1024, 256)
     assert output.memory.latents.shape == (1, 1, 256)
     torch.testing.assert_close(state.tokens[:, :-1], original[:, 1:])
     torch.testing.assert_close(state.tokens[:, -1:], output.memory.latents)
     assert state.token_steps[0, 0].item() == 2
-    assert state.token_steps[0, -1].item() == 8192
-    assert state.step.item() == 8193
+    assert state.token_steps[0, -1].item() == 2048
+    assert state.step.item() == 2049
     torch.testing.assert_close(prior.tokens, original)
     assert not off.memory.recurrent.any()
     torch.testing.assert_close(off.memory.state.tokens, state.tokens)
     torch.testing.assert_close(off.memory.state.token_steps, state.token_steps)
-    assert off.memory.state.step.tolist() == [8194]
+    assert off.memory.state.step.tolist() == [2050]
     for name in queries:
         assert torch.isfinite(output.predictions[name]).all()
         assert torch.isfinite(off.predictions[name]).all()
-        assert not torch.allclose(off.predictions[name], history_only[name], rtol=0, atol=1e-7)
 
 
-def test_query_gradients_reach_older_m_independently_of_latest_m():
+def test_query_has_no_direct_gradient_path_to_history_when_current_m_is_detached():
     model = RecurrentPerceiver(config()).eval()
     state = history_state(model)
     tokens = state.tokens.requires_grad_()
-    model.decode(state)["velocity"].square().sum().backward()
-    assert tokens.grad[:, :1].abs().sum() > 0
-    assert tokens.grad[:, -1:].abs().sum() > 0
+    memory = model.encode_step(observations(), state)
+    current = memory.latents.detach().requires_grad_()
+    model.decode(replace(memory, latents=current))["velocity"].square().sum().backward()
+    assert current.grad.abs().sum() > 0
+    assert tokens.grad is None
 
 
 def test_reset_after_window_wrap_keeps_other_episode_history_and_phase():
@@ -311,14 +313,14 @@ def test_empty_history_and_invalid_window_or_metadata_are_rejected():
     model = RecurrentPerceiver(config())
     with pytest.raises(ValueError, match="正数"):
         config(context_window=0)
-    with pytest.raises(ValueError, match="encode_step"):
+    with pytest.raises(TypeError, match="今回"):
         model.decode(model.initial_state(1))
     state = history_state(model)
     with pytest.raises(ValueError, match="state.valid"):
-        model.decode(replace(state, valid=state.valid.float()))
+        model.encode_step(observations(), replace(state, valid=state.valid.float()))
     with pytest.raises(ValueError, match="token_steps"):
-        model.decode(replace(state, token_steps=state.token_steps.float()))
-    with pytest.raises(TypeError, match="MemoryState"):
+        model.encode_step(observations(), replace(state, token_steps=state.token_steps.float()))
+    with pytest.raises(ValueError, match="今回のM"):
         model.decode(state.tokens)
     memory = model.encode_step(observations(), state)
     with pytest.raises(ValueError, match="latents"):

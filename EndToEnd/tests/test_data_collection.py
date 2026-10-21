@@ -120,13 +120,15 @@ def test_model_shapes_and_real_forward(dataset):
         "depth": (1, 64, 512),
         "lidar": (1, 128, 6),
         "joints": (1, 29, 3),
-        "imu": (1, 1, 10),
-        "previous_action": (1, 29, 1),
+        "imu_pelvis": (1, 1, 14),
+        "imu_torso": (1, 1, 14),
+        "imu_lidar": (1, 1, 14),
     }
     assert {key: tuple(value.features.shape) for key, value in inputs.items()} == expected
     assert inputs["rgb"].features.max() == 1
     assert inputs["lidar"].valid.sum() == 2
-    assert not inputs["previous_action"].valid.any()
+    assert not inputs["imu_torso"].valid.any()
+    assert not inputs["imu_lidar"].valid.any()
     with torch.inference_mode():
         model = RecurrentPerceiver(config).eval()
         result = model(inputs, queries={"velocity": QueryRequest()})
@@ -134,13 +136,12 @@ def test_model_shapes_and_real_forward(dataset):
     assert torch.isfinite(result.predictions["velocity"]).all()
 
 
-def test_previous_action_is_applied_previous_not_requested_or_current(dataset):
+def test_previous_actions_are_recorded_but_are_not_model_observations(dataset):
     with DatasetReader(dataset) as source:
         sample = source.sample(1)
         inputs = ModelInputAdapter(model_config())(sample)
-    np.testing.assert_allclose(inputs["previous_action"].features.numpy(), 0.25)
-    assert inputs["previous_action"].valid.all()
-    assert inputs["previous_action"].age_s[0, 0].item() == pytest.approx(0.02)
+    assert "previous_action" not in inputs
+    np.testing.assert_allclose(sample["previous_action"]["position_rad"], 0.25)
     assert sample["requested_action"]["position_rad"][0] == 9
 
 
@@ -151,6 +152,7 @@ def test_next_state_and_actions_never_affect_inputs(dataset):
         expected = adapter(sample)
         sample["next"] = {"poison": float("nan")}
         sample["requested_action"] = sample["applied_action"] = {"poison": float("nan")}
+        sample["previous_action"] = {"poison": float("nan")}
         actual = adapter(sample)
     for key in actual:
         torch.testing.assert_close(actual[key].features, expected[key].features)
@@ -223,7 +225,7 @@ def test_episode_reset_has_no_previous_action_or_old_sensor(tmp_path):
     with DatasetReader(path) as source:
         sample = source.sample(1)
     inputs = ModelInputAdapter(model_config())(sample)
-    assert not inputs["previous_action"].valid.any()
+    assert "previous_action" not in inputs
     assert sample["camera"] is None and sample["lidar"] is None
 
 
@@ -266,12 +268,14 @@ def test_point_timestamps_cannot_leak_future_measurements(dataset):
 def test_changed_model_contract_fails_explicitly():
     config = model_config()
     modalities = dict(config.modalities)
-    modalities["imu"] = replace(modalities["imu"], feature_dim=11)
+    modalities["imu_pelvis"] = replace(modalities["imu_pelvis"], feature_dim=11)
     with pytest.raises(ValueError, match="imu"):
         ModelInputAdapter(replace(config, modalities=modalities))
 
 
-@pytest.mark.parametrize("modality", ["rgb", "depth", "lidar", "joints", "imu", "previous_action"])
+@pytest.mark.parametrize(
+    "modality", ["rgb", "depth", "lidar", "joints", "imu_pelvis", "imu_torso", "imu_lidar"]
+)
 def test_modality_subset_does_not_require_unselected_sensor_data(dataset, modality):
     config = model_config()
     with DatasetReader(dataset) as source:
@@ -283,8 +287,6 @@ def test_modality_subset_does_not_require_unselected_sensor_data(dataset, modali
         minimal["camera"] = {name: sample["camera"][name] for name in ["episode_id", "time_s", *fields]}
     elif modality == "lidar":
         minimal.update(lidar=sample["lidar"], lidar_calibration=sample["lidar_calibration"])
-    elif modality == "previous_action":
-        minimal = {"previous_action": sample["previous_action"]}
     subset = replace(config, modalities={modality: config.modalities[modality]})
     actual = ModelInputAdapter(subset)(minimal)
     assert list(actual) == [modality]

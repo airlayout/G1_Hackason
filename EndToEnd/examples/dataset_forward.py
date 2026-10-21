@@ -1,4 +1,4 @@
-"""収集済みHDF5を最新モデルの6入力へ変換し、順にメモリ更新・query読出しする。"""
+"""収集済みHDF5の画像・点群・関節・全IMUからMを生成し、そのMだけをqueryで読む。"""
 
 from __future__ import annotations
 

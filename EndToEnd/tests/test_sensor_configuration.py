@@ -93,6 +93,7 @@ def test_mounts_follow_the_selected_urdf_instead_of_cached_numbers(urdf):
     assert standard(urdf).body_imus.mounts["pelvis"].position_m[0] == 0.06789
     assert standard(urdf).body_imus.mounts["torso"].body == "torso_link"
     assert standard(urdf).body_imus.primary == "pelvis"
+    assert standard(urdf).body_imus.mounts["lidar"] == standard(urdf).lidar.mount
     with pytest.raises(ValueError, match="fixed joint"):
         MountConfig.from_urdf(urdf, "moving_joint")
     with pytest.raises(ValueError, match="fixed joint"):

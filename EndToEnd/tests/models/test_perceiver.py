@@ -14,21 +14,26 @@ from g1_e2e.models import (
     grid_queries,
     image_patches,
 )
+from g1_e2e.models.feedforward import SwiGLU
 
 
 def test_default_definition_supports_all_modalities_and_three_readouts():
     definition = ModelConfig.load(ROOT / "configs/model/recurrent_perceiver.yaml")
     assert definition.recurrence_period == 2
-    assert definition.context_window == 4096
+    assert definition.context_window == 1024
     assert definition.memory_tokens == 1
+    assert definition.layers == 36
+    assert definition.ff_hidden_dim == 768
     model = RecurrentPerceiver(definition).eval()
+    assert len(model.blocks) == 36
+    assert all(isinstance(block.ff, SwiGLU) and block.ff.hidden_dim == 768 for block in model.blocks)
+    assert isinstance(model.decoder.read.ff, SwiGLU)
     obs = {
         "rgb": image_patches(torch.rand(1, 3, 128, 128)),
         "depth": image_patches(torch.rand(1, 2, 128, 128)),
         "lidar": SensorTokens(torch.rand(1, 128, 6), positions=torch.rand(1, 128, 3)),
         "joints": SensorTokens(torch.rand(1, 29, 3)),
-        "imu": SensorTokens(torch.rand(1, 1, 10)),
-        "previous_action": SensorTokens(torch.rand(1, 29, 1)),
+        **{name: SensorTokens(torch.rand(1, 1, 14)) for name in ["imu_pelvis", "imu_torso", "imu_lidar"]},
     }
     with torch.inference_mode():
         result = model(
@@ -166,9 +171,9 @@ def test_task_context_accepts_global_and_per_query_values():
     memory = model.encode_step(observations())
     coordinates = torch.randn(1, 5, 3)
     context = torch.randn(1, 2)
-    global_value = model.decode(memory.state, {"bev": QueryRequest(coordinates, context)})["bev"]
+    global_value = model.decode(memory, {"bev": QueryRequest(coordinates, context)})["bev"]
     local_value = model.decode(
-        memory.state,
+        memory,
         {
             "bev": QueryRequest(coordinates, context[:, None].expand(-1, 5, -1)),
         },

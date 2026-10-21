@@ -13,18 +13,27 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def config(**overrides):
     return ModelConfig(
-        modalities={"points": ModalityConfig(3, 8, position_dim=3), "imu": ModalityConfig(4, 1)},
-        queries={
-            "velocity": QueryConfig(3),
-            "bev": QueryConfig(5, kind="coordinate", coordinate_dim=3),
-            "trajectory": QueryConfig(7, kind="coordinate", coordinate_dim=1, output_transform="pose3d"),
-        },
-        width=16,
-        memory_tokens=1,
-        layers=1,
-        heads=2,
-        ff_multiplier=2,
-        **({"recurrence_period": 1, "context_window": 16} | overrides),
+        **(
+            {
+                "modalities": {"points": ModalityConfig(3, 8, position_dim=3), "imu": ModalityConfig(4, 1)},
+                "queries": {
+                    "velocity": QueryConfig(3),
+                    "bev": QueryConfig(5, kind="coordinate", coordinate_dim=3),
+                    "trajectory": QueryConfig(
+                        7, kind="coordinate", coordinate_dim=1, output_transform="pose3d"
+                    ),
+                },
+                "width": 16,
+                "memory_tokens": 1,
+                "layers": 1,
+                "heads": 2,
+                "ff_multiplier": 2,
+                "ff_multiple_of": 8,
+                "recurrence_period": 1,
+                "context_window": 16,
+            }
+            | overrides
+        )
     )
 
 

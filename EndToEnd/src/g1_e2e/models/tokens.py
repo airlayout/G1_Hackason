@@ -55,14 +55,15 @@ def grid_queries(bounds_xyz: Tensor, shape_zyx: tuple[int, int, int], batch_size
 
 
 class ModalityEncoder(nn.Module):
-    """内容・位置・age・modalityを共通幅へ写す。センサー列間のself-attentionは行わない。"""
+    """種類別の浅いMLPで内容・空間位置を共通幅へ写し、取得ageを別に返す。"""
 
     def __init__(self, config: ModalityConfig, width: int) -> None:
         super().__init__()
         self.config = config
-        self.features = nn.Linear(config.feature_dim, width)
+        self.features = nn.Sequential(
+            nn.Linear(config.feature_dim, width), nn.GELU(), nn.Linear(width, width)
+        )
         self.coordinates = nn.Linear(config.position_dim, width) if config.position_dim else None
-        self.age = nn.Sequential(nn.Linear(1, width), nn.SiLU(), nn.Linear(width, width))
         self.modality = nn.Parameter(torch.randn(1, 1, width) * 0.02)
         self.slot_positions = (
             nn.Parameter(torch.randn(1, config.max_tokens, width) * 0.02)
@@ -71,7 +72,7 @@ class ModalityEncoder(nn.Module):
         )
         self.norm = nn.LayerNorm(width)
 
-    def forward(self, stream: SensorTokens) -> tuple[Tensor, Tensor]:
+    def forward(self, stream: SensorTokens) -> tuple[Tensor, Tensor, Tensor]:
         """無効トークンのNaNを投影前に取り除き、attention用valid maskを返す。"""
         x = stream.features
         if x.ndim != 3 or x.shape[-1] != self.config.feature_dim or not x.is_floating_point():
@@ -99,10 +100,12 @@ class ModalityEncoder(nn.Module):
             age = x.new_zeros(b, n)
         elif age.shape == (b,):
             age = age[:, None].expand(-1, n)
-        if age.shape != (b, n):
+        if age.shape != (b, n) or age.device != x.device or not age.is_floating_point():
             raise ValueError("age_sは[B]または[B,N]です")
-        age = torch.where(valid, age, 0).clamp_min(0).log1p()
-        return self.norm(result + self.age(age[..., None])), valid
+        age = torch.where(valid, age, 0)
+        if not torch.isfinite(age).all() or (age < 0).any():
+            raise ValueError("有効トークンのage_sは有限の非負値です")
+        return torch.where(valid[..., None], self.norm(result), 0), valid, age
 
 
 class ObservationEncoder(nn.Module):
@@ -113,18 +116,22 @@ class ObservationEncoder(nn.Module):
         self.modalities = nn.ModuleDict({name: ModalityEncoder(cfg, width) for name, cfg in configs.items()})
         self.null = nn.Parameter(torch.randn(1, 1, width) * 0.02)
 
-    def forward(self, observations: Mapping[str, SensorTokens], batch_size: int) -> tuple[Tensor, Tensor]:
+    def forward(
+        self, observations: Mapping[str, SensorTokens], batch_size: int
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """モデルの設定順で連結し、attentionから参照可能なトークンを返す。"""
         unknown = set(observations) - set(self.modalities)
         if unknown:
             raise ValueError(f"未定義のmodality: {sorted(unknown)}")
         tokens = [self.null.expand(batch_size, -1, -1)]
         masks = [torch.ones((batch_size, 1), dtype=torch.bool, device=self.null.device)]
+        ages = [self.null.new_zeros(batch_size, 1)]
         for name, encoder in self.modalities.items():
             if name in observations:
-                value, valid = encoder(observations[name])
+                value, valid, age = encoder(observations[name])
                 if value.shape[0] != batch_size or value.device != self.null.device:
                     raise ValueError("全modalityのbatch・deviceをモデルと揃えてください")
                 tokens.append(value)
                 masks.append(valid)
-        return torch.cat(tokens, dim=1), torch.cat(masks, dim=1)
+                ages.append(age)
+        return torch.cat(tokens, dim=1), torch.cat(masks, dim=1), torch.cat(ages, dim=1)

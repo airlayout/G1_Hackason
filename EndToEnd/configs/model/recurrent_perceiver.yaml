@@ -1,13 +1,16 @@
 # NNの形状と入出力。センサー取得はconfigs/sensors、入力変換はmodels/inputs.py。
 width: 256
 memory_tokens: 1  # 再帰周期に履歴へ追加するMは1トークン。
-layers: 4
+layers: 36
 heads: 8
-ff_multiplier: 4
+ff_multiplier: 4       # 通常FFNの基準倍率。SwiGLUでは2/3を掛けて8D/3とする。
+ff_multiple_of: 256    # 中間幅を256単位に切り上げる。D=256では768、gate/up一括幅は1536。
 dropout: 0.0
-recurrence_period: 2  # Mの更新・履歴追加は2周期に1回。間の周期は観測だけを処理する。
-context_window: 4096  # 更新・読出しが参照するM履歴の上限。今回の観測トークンは別枠。
+recurrence_period: 2  # 全周期で履歴と観測からMを生成し、2周期に1回だけ履歴に追加。
+context_window: 1024  # 保存Mの上限。観測は別枠。queryは今回のMだけを読む。
 query_chunk_size: 1024
+control_dt_s: 0.02  # 観測のage秒とMの生成周期を共通時間軸に揃える。
+rope_base: 10000.0
 
 modalities:
   rgb:
@@ -26,13 +29,15 @@ modalities:
     feature_dim: 3       # q rad、dq rad/s、tau N m。スケール調整は入力側
     max_tokens: 29       # G1のSDK順
     learned_positions: true
-  imu:
-    feature_dim: 10      # orientation xyzw、body gyro3、projected gravity3
+  imu_pelvis:
+    feature_dim: 14      # 姿勢xyzw4、gyro3、比力3、重力方向3、加速度valid1
     max_tokens: 1
-  previous_action:
-    feature_dim: 1       # 前周期に実際に適用した29関節の位置目標rad
-    max_tokens: 29
-    learned_positions: true
+  imu_torso:
+    feature_dim: 14
+    max_tokens: 1
+  imu_lidar:
+    feature_dim: 14
+    max_tokens: 1
 
 queries:
   velocity:

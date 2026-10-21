@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 from typing import Literal
 
@@ -64,13 +65,16 @@ class ModelConfig:
     queries: dict[str, QueryConfig]
     width: int = 256
     memory_tokens: int = 1
-    layers: int = 4
+    layers: int = 36
     heads: int = 8
     ff_multiplier: int = 4
+    ff_multiple_of: int = 256
     dropout: float = 0.0
     recurrence_period: int = 2
-    context_window: int = 4096
+    context_window: int = 1024
     query_chunk_size: int = 1024
+    control_dt_s: float = 0.02
+    rope_base: float = 10000.0
 
     def __post_init__(self) -> None:
         if (
@@ -80,6 +84,7 @@ class ModelConfig:
                 self.layers,
                 self.heads,
                 self.ff_multiplier,
+                self.ff_multiple_of,
                 self.recurrence_period,
                 self.context_window,
                 self.query_chunk_size,
@@ -89,6 +94,12 @@ class ModelConfig:
             raise ValueError("モデルのサイズ・周期は正数です")
         if self.width % self.heads:
             raise ValueError("widthはheadsの整数倍です")
+        if (self.width // self.heads) % 2:
+            raise ValueError("時間RoPEのhead次元は偶数です")
+        if not math.isfinite(self.control_dt_s) or self.control_dt_s <= 0:
+            raise ValueError("control_dt_sは有限の正数です")
+        if not math.isfinite(self.rope_base) or self.rope_base <= 1:
+            raise ValueError("rope_baseは1より大きい有限値です")
         if self.context_window < self.memory_tokens:
             raise ValueError("context_windowは1周期のmemory_tokens以上にしてください")
         if not 0 <= self.dropout < 1:
@@ -97,6 +108,12 @@ class ModelConfig:
             raise ValueError("観測とqueryを1種類以上定義してください")
         if any(not name.isidentifier() for name in (*self.modalities, *self.queries)):
             raise ValueError("modality/query名はPythonの識別子にしてください")
+
+    @property
+    def ff_hidden_dim(self) -> int:
+        """通常FFNの幅を2/3にし、指定倍数へ切り上げる。既定は8D/3→256単位。"""
+        hidden_dim = 2 * self.width * self.ff_multiplier // 3
+        return self.ff_multiple_of * ((hidden_dim + self.ff_multiple_of - 1) // self.ff_multiple_of)
 
     @classmethod
     def load(cls, path: Path) -> ModelConfig:

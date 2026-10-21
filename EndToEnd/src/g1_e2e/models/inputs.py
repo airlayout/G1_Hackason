@@ -22,32 +22,37 @@ class ModelInputAdapter:
         config: ModelConfig,
         *,
         device: str = "cpu",
-        control_dt_s: float = 0.02,
+        control_dt_s: float | None = None,
         image_size: int = 128,
         patch_size: int = 16,
         camera_max_age_s: float = 0.2,
         lidar_max_age_s: float = 0.3,
     ):
         self.config, self.device = config, torch.device(device)
-        self.control_dt_s = control_dt_s
+        self.control_dt_s = config.control_dt_s if control_dt_s is None else control_dt_s
+        if not math.isclose(self.control_dt_s, config.control_dt_s):
+            raise ValueError("データのcontrol_dt_sとモデルの時間RoPEの制御周期が一致しません")
         self.image_size, self.patch_size = image_size, patch_size
         self.camera_max_age_s, self.lidar_max_age_s = camera_max_age_s, lidar_max_age_s
         if image_size < patch_size or image_size % patch_size:
             raise ValueError("入力画像サイズはpatch_sizeの正の整数倍です")
-        if not all(math.isfinite(x) and x > 0 for x in [control_dt_s, camera_max_age_s, lidar_max_age_s]):
+        if not all(
+            math.isfinite(x) and x > 0 for x in [self.control_dt_s, camera_max_age_s, lidar_max_age_s]
+        ):
             raise ValueError("制御周期と許容ageは有限の正数です")
         expected = {
             "rgb": (3 * patch_size**2, (image_size // patch_size) ** 2, 2),
             "depth": (2 * patch_size**2, (image_size // patch_size) ** 2, 2),
             "lidar": (6, 1, 3),
             "joints": (3, 29, 0),
-            "imu": (10, 1, 0),
-            "previous_action": (1, 29, 0),
         }
         for name, stream in config.modalities.items():
-            if name not in expected:
+            if name.startswith("imu_"):
+                features, minimum_tokens, positions = 14, 1, 0
+            elif name in expected:
+                features, minimum_tokens, positions = expected[name]
+            else:
                 raise ValueError(f"入力アダプター未対応のmodalityです: {name}")
-            features, minimum_tokens, positions = expected[name]
             if (
                 stream.feature_dim != features
                 or stream.position_dim != positions
@@ -83,39 +88,35 @@ class ModelInputAdapter:
         )
         return self._tokens(joints)
 
-    def _imu(self, sample: dict) -> SensorTokens:
-        if "imu" in sample:
-            frame = sample["imu"]
-            if frame is None:
-                return self._tokens(np.zeros((1, 10), np.float32), valid=np.zeros(1, bool))
-            age = self._age(sample["state"], frame)
-            features = np.concatenate(
-                [
-                    frame[key]
-                    for key in [
-                        "orientation_xyzw",
-                        "angular_velocity_sensor_rad_s",
-                        "projected_gravity_sensor",
-                    ]
-                ]
+    def _imu(self, sample: dict, name: str) -> SensorTokens:
+        """姿勢4・gyro3・比力3・重力方向3・加速度valid1。各IMUを独立に扱う。"""
+        frame = sample.get("imus", {}).get(name)
+        if "imus" not in sample and name == "pelvis":
+            # 旧データのbase IMUだけを救済する。胸部・LiDARの観測は補造しない。
+            state = sample["state"]
+            frame = dict(
+                episode_id=state["episode_id"],
+                time_s=state["time_s"],
+                orientation_xyzw=state["orientation_xyzw"],
+                angular_velocity_sensor_rad_s=state["angular_velocity_body_rad_s"],
+                specific_force_sensor_m_s2=state.get("specific_force_body_m_s2", np.zeros(3)),
+                projected_gravity_sensor=state["projected_gravity_body"],
+                acceleration_valid=state.get("specific_force_valid", False),
             )
-            return self._tokens(features[None], age_s=age)
-        state = sample["state"]
-        imu = np.concatenate(
-            [
-                state[key]
-                for key in ["orientation_xyzw", "angular_velocity_body_rad_s", "projected_gravity_body"]
-            ]
+        if frame is None:
+            return self._tokens(np.zeros((1, 14), np.float32), valid=np.zeros(1, bool))
+        age = self._age(sample["state"], frame)
+        acceleration_valid = bool(frame["acceleration_valid"])
+        features = np.concatenate(
+            (
+                frame["orientation_xyzw"],
+                frame["angular_velocity_sensor_rad_s"],
+                np.where(acceleration_valid, frame["specific_force_sensor_m_s2"], 0),
+                frame["projected_gravity_sensor"],
+                [float(acceleration_valid)],
+            )
         )
-        return self._tokens(imu[None])
-
-    def _previous_action(self, sample: dict) -> SensorTokens:
-        previous = sample["previous_action"]
-        return self._tokens(
-            previous["position_rad"][:, None],
-            valid=np.full(29, bool(previous["valid"])),
-            age_s=self.control_dt_s if previous["valid"] else 0.0,
-        )
+        return self._tokens(features[None], age_s=age)
 
     def _camera(self, sample: dict) -> dict[str, SensorTokens]:
         state, camera = sample["state"], sample["camera"]
@@ -183,12 +184,15 @@ class ModelInputAdapter:
         """設定したmodalityだけ変換し、保存データや他のmodalityへ依存させない。"""
         builders = {
             "joints": self._joints,
-            "imu": self._imu,
-            "previous_action": self._previous_action,
             "lidar": self._lidar,
         }
         observations = self._camera(sample) if self.config.modalities.keys() & {"rgb", "depth"} else {}
-        return {
-            name: observations[name] if name in observations else builders[name](sample)
-            for name in self.config.modalities
-        }
+        result = {}
+        for name in self.config.modalities:
+            if name in observations:
+                result[name] = observations[name]
+            elif name.startswith("imu_"):
+                result[name] = self._imu(sample, name.removeprefix("imu_"))
+            else:
+                result[name] = builders[name](sample)
+        return result

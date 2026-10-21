@@ -1,9 +1,12 @@
-"""観測・過去Mへのcross-attentionと、今回生成する小さいM内のself-attention。"""
+"""全入力系列の時間RoPE付きself-attentionと、今回のMを読むquery用attention。"""
 
 from __future__ import annotations
 
 from torch import Tensor, nn
 import torch.nn.functional as F
+
+from .position import RotaryTimeEmbedding
+from .feedforward import SwiGLU
 
 
 class Attention(nn.Module):
@@ -35,17 +38,12 @@ class Attention(nn.Module):
 class CrossRead(nn.Module):
     """PreNorm cross-attention + tokenごとのFFN。空間query間のself-attentionは持たない。"""
 
-    def __init__(self, width: int, heads: int, multiplier: int, dropout: float) -> None:
+    def __init__(self, width: int, heads: int, hidden_dim: int, dropout: float) -> None:
         super().__init__()
         self.query_norm, self.context_norm = nn.LayerNorm(width), nn.LayerNorm(width)
         self.attention = Attention(width, heads, dropout)
         self.ff_norm = nn.LayerNorm(width)
-        self.ff = nn.Sequential(
-            nn.Linear(width, width * multiplier),
-            nn.GELU(),
-            nn.Linear(width * multiplier, width),
-            nn.Dropout(dropout),
-        )
+        self.ff = SwiGLU(width, hidden_dim, dropout)
 
     def forward(self, queries: Tensor, context: Tensor, valid: Tensor | None = None) -> Tensor:
         """query単位で独立な読出しを行い、Neural Fieldの分割評価を可能にする。"""
@@ -53,25 +51,40 @@ class CrossRead(nn.Module):
         return result + self.ff(self.ff_norm(result))
 
 
-class MemoryBlock(nn.Module):
-    """観測と履歴から情報を取り込み、今回の出力トークン内で情報を交換する1層。"""
+class RotarySelfAttention(nn.Module):
+    """観測と履歴を区別せず、全有効トークン間の双方向attentionを計算する。"""
 
-    def __init__(self, width: int, heads: int, multiplier: int, dropout: float) -> None:
+    def __init__(self, width: int, heads: int, dropout: float, rope_base: float) -> None:
         super().__init__()
-        self.context_read = CrossRead(width, heads, multiplier, dropout)
-        self.self_norm = nn.LayerNorm(width)
-        self.self_attention = Attention(width, heads, dropout)
-        self.ff_norm = nn.LayerNorm(width)
-        self.ff = nn.Sequential(
-            nn.Linear(width, width * multiplier),
-            nn.GELU(),
-            nn.Linear(width * multiplier, width),
-            nn.Dropout(dropout),
-        )
+        self.heads, self.head_width, self.dropout = heads, width // heads, dropout
+        self.qkv = nn.Linear(width, 3 * width)
+        self.out = nn.Linear(width, width)
+        self.rope = RotaryTimeEmbedding(self.head_width, rope_base)
 
-    def forward(self, memory: Tensor, context: Tensor, valid: Tensor) -> Tensor:
-        """観測・履歴全体のN×N self-attentionは計算しない。"""
-        memory = self.context_read(memory, context, valid)
-        normalized = self.self_norm(memory)
-        memory = memory + self.self_attention(normalized, normalized)
-        return memory + self.ff(self.ff_norm(memory))
+    def forward(self, tokens: Tensor, valid: Tensor, times: Tensor) -> Tensor:
+        b, n, _ = tokens.shape
+        q, k, v = self.qkv(tokens).reshape(b, n, 3, self.heads, self.head_width).permute(2, 0, 3, 1, 4)
+        q, k = self.rope(q, times), self.rope(k, times)
+        result = F.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=valid[:, None, None, :],
+            dropout_p=self.dropout if self.training else 0.0,
+        )
+        return self.out(result.transpose(1, 2).contiguous().flatten(2))
+
+
+class TransformerBlock(nn.Module):
+    """PreNorm self-attention + SwiGLU。履歴を含む系列全体を各層で更新する。"""
+
+    def __init__(self, width: int, heads: int, hidden_dim: int, dropout: float, rope_base: float) -> None:
+        super().__init__()
+        self.attention_norm = nn.LayerNorm(width)
+        self.attention = RotarySelfAttention(width, heads, dropout, rope_base)
+        self.ff_norm = nn.LayerNorm(width)
+        self.ff = SwiGLU(width, hidden_dim, dropout)
+
+    def forward(self, tokens: Tensor, valid: Tensor, times: Tensor) -> Tensor:
+        tokens = tokens + self.attention(self.attention_norm(tokens), valid, times)
+        return tokens + self.ff(self.ff_norm(tokens))

@@ -1,4 +1,4 @@
-"""固定query・座標queryを共通メモリから読み出す。観測や再帰状態は変更しない。"""
+"""固定query・座標queryを今回のMだけから読み出す。再帰状態は変更しない。"""
 
 from __future__ import annotations
 
@@ -116,7 +116,7 @@ class QueryHead(nn.Module):
 
 
 class QueryDecoder(nn.Module):
-    """全taskでM履歴・今回のUへのcross-attentionを共有し、query sourceとheadを差し替える。"""
+    """全taskで今回のMへのcross-attentionを共有し、query sourceとheadを差し替える。"""
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
@@ -127,7 +127,7 @@ class QueryDecoder(nn.Module):
         self.heads = nn.ModuleDict(
             {name: QueryHead(cfg, config.width) for name, cfg in config.queries.items()}
         )
-        self.read = CrossRead(config.width, config.heads, config.ff_multiplier, config.dropout)
+        self.read = CrossRead(config.width, config.heads, config.ff_hidden_dim, config.dropout)
 
     def forward(
         self,

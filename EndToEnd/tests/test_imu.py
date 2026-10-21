@@ -81,10 +81,54 @@ def test_imu_roundtrip_selects_primary_sensor_and_rejects_future_or_other_episod
         writer.append_step(observation(1), transition(1), imu_indices={"torso": index})
     root = Path(__file__).resolve().parents[1]
     config = ModelConfig.load(root / "configs/model/recurrent_perceiver.yaml")
-    config = replace(config, modalities={"imu": config.modalities["imu"]})
+    config = replace(config, modalities={"imu_torso": config.modalities["imu_torso"]})
     with DatasetReader(path) as reader:
         sample = reader.sample(0)
-        tokens = ModelInputAdapter(config)(sample)["imu"]
+        tokens = ModelInputAdapter(config)(sample)["imu_torso"]
         np.testing.assert_allclose(tokens.features[0, 0, :4].numpy(), frame.orientation_xyzw)
         assert tokens.age_s[0, 0].item() == pytest.approx(0.01)
+        np.testing.assert_allclose(tokens.features[0, 0, 7:10].numpy(), frame.specific_force_sensor_m_s2)
+        np.testing.assert_allclose(tokens.features[0, 0, 10:13].numpy(), frame.projected_gravity_sensor)
         np.testing.assert_allclose(sample["imus"]["torso"]["world_from_sensor"], frame.world_from_sensor)
+
+
+def test_all_imu_components_and_each_sensors_own_timestamp_reach_the_model(tmp_path):
+    from tests.test_data_collection import writer
+
+    path = tmp_path / "all_imus.h5"
+    frames = {
+        name: measurement(
+            time_s=0.005 * index,
+            angular_velocity_world_rad_s=np.array([index + 1, 2, 3]),
+            com_acceleration_world_m_s2=np.array([index, 1, 2]),
+            acceleration_valid=name != "lidar",
+        )
+        for index, name in enumerate(["pelvis", "torso", "lidar"])
+    }
+    with writer(path, primary_imu="pelvis") as output:
+        indices = {name: output.append_imu(name, frame) for name, frame in frames.items()}
+        output.append_step(observation(1), transition(1), imu_indices=indices)
+    root = Path(__file__).resolve().parents[1]
+    config = ModelConfig.load(root / "configs/model/recurrent_perceiver.yaml")
+    config = replace(
+        config, modalities={name: cfg for name, cfg in config.modalities.items() if name.startswith("imu_")}
+    )
+    with DatasetReader(path) as reader:
+        sample = reader.sample(0)
+    inputs = ModelInputAdapter(config)(sample)
+    for name, frame in frames.items():
+        tokens = inputs[f"imu_{name}"]
+        assert tokens.valid.all()
+        assert tokens.features.shape == (1, 1, 14)
+        np.testing.assert_allclose(tokens.features[0, 0, :4], frame.orientation_xyzw)
+        np.testing.assert_allclose(tokens.features[0, 0, 4:7], frame.angular_velocity_sensor_rad_s)
+        expected_acceleration = frame.specific_force_sensor_m_s2 if frame.acceleration_valid else np.zeros(3)
+        np.testing.assert_allclose(tokens.features[0, 0, 7:10], expected_acceleration)
+        np.testing.assert_allclose(tokens.features[0, 0, 10:13], frame.projected_gravity_sensor)
+        assert tokens.features[0, 0, 13] == float(frame.acceleration_valid)
+        assert tokens.age_s.item() == pytest.approx(0.02 - frame.time_s)
+    sample["imus"].pop("torso")
+    assert not ModelInputAdapter(config)(sample)["imu_torso"].valid.any()
+    sample["imus"]["lidar"]["time_s"] = 0.03
+    with pytest.raises(ValueError, match="未来"):
+        ModelInputAdapter(config)(sample)

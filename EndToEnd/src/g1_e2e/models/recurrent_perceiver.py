@@ -1,4 +1,4 @@
-"""観測とM履歴から表現を生成し、M履歴と今回の表現をqueryで読むNN。"""
+"""観測・M履歴の単一系列をself-attentionし、最新M位置から今回のMを生成する。"""
 
 from __future__ import annotations
 
@@ -8,40 +8,47 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor, nn
 
-from .attention import MemoryBlock
+from .attention import TransformerBlock
 from .config import ModelConfig
-from .memory import HistoryEncoding, MemoryState, MemoryUpdate
+from .memory import MemoryState, MemoryUpdate
 from .queries import QueryDecoder, QueryRequest
 from .tokens import ObservationEncoder, SensorTokens
 
 
 @dataclass(frozen=True)
 class ModelOutput:
-    """M履歴と今回の表現から読んだquery別予測と、次周期へ渡す状態。"""
+    """今回のM、そのMだけから読んだquery別予測、次周期へ渡す状態。"""
 
     predictions: dict[str, Tensor]
     memory: MemoryUpdate
 
+    @property
+    def latents(self) -> Tensor:
+        return self.memory.latents
+
 
 class RecurrentPerceiver(nn.Module):
-    """H_t=[M_0,...,M_t]を保持し、更新時と読出し時の両方から参照する。"""
+    """全周期で履歴と観測を融合する。履歴追加だけをrecurrence_periodで間引く。"""
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
         self.config = config
         self.seed = nn.Parameter(torch.randn(1, config.memory_tokens, config.width) * 0.02)
+        self.memory_type = nn.Parameter(torch.randn(1, 1, config.width) * 0.02)
         self.observations = ObservationEncoder(config.modalities, config.width)
-        self.history = HistoryEncoding(config.width)
         self.blocks = nn.ModuleList(
             [
-                MemoryBlock(config.width, config.heads, config.ff_multiplier, config.dropout)
+                TransformerBlock(
+                    config.width, config.heads, config.ff_hidden_dim, config.dropout, config.rope_base
+                )
                 for _ in range(config.layers)
             ]
         )
+        self.output_norm = nn.LayerNorm(config.width)
         self.decoder = QueryDecoder(config)
 
     def initial_state(self, batch_size: int) -> MemoryState:
-        """履歴は空から開始する。seedは出力queryであり、履歴へは数えない。"""
+        """履歴は空から開始する。seedは履歴が空のepisodeだけで初期Mとして使う。"""
         if batch_size < 1:
             raise ValueError("batch_sizeは正数です")
         return MemoryState(
@@ -58,7 +65,7 @@ class RecurrentPerceiver(nn.Module):
         *,
         reset_mask: Tensor | None = None,
     ) -> MemoryUpdate:
-        """再帰周期だけMを追加する。観測のみの周期は一時表現を作り履歴を保持する。"""
+        """全系列を再計算し、最新の保存M位置を取り出す。保存周期以外も今回のMを返す。"""
         if state is None:
             if not observations:
                 raise ValueError("観測が空ならbatch_sizeを指定したinitial_stateを渡してください")
@@ -77,33 +84,58 @@ class RecurrentPerceiver(nn.Module):
             ):
                 raise ValueError("reset_maskはモデルと同じdeviceのbool[B]です")
             state = state.reset(reset_mask)
-        observation_tokens, observation_valid = self.observations(observations, batch_size)
+        observation_tokens, observation_valid, observation_ages = self.observations(observations, batch_size)
         recurrent = state.step.remainder(self.config.recurrence_period) == 0
-        history_tokens, history_valid = self.history(
-            *state.readout(reference_step=state.step, enabled=recurrent)
+        # seedと保存Mは同じ系列に置く。履歴があるepisodeのseedは無効にする。
+        seed_valid = (~state.valid.any(dim=1))[:, None].expand(batch_size, self.config.memory_tokens)
+        memory_valid = torch.cat((seed_valid, state.valid), dim=1)
+        memory_tokens = torch.cat((self.seed.expand(batch_size, -1, -1), state.tokens), dim=1)
+        memory_tokens = torch.where(memory_valid[..., None], memory_tokens + self.memory_type, 0)
+        memory_times = torch.cat(
+            (
+                self.seed.new_zeros(batch_size, self.config.memory_tokens),
+                (state.token_steps - state.step[:, None]).float(),
+            ),
+            dim=1,
         )
-        context = torch.cat((history_tokens, observation_tokens), dim=1)
-        valid = torch.cat((history_valid, observation_valid), dim=1)
-        # 過去Mをquery/residualへコピーせず、履歴はK/Vからだけ参照する。
-        current = self.seed.expand(batch_size, -1, -1)
+        memory_times = torch.where(memory_valid, memory_times, 0)
+        # 現在を原点にした共通の制御周期単位。点ごとの非同期取得時刻も保持する。
+        times = torch.cat((memory_times, -observation_ages / self.config.control_dt_s), dim=1)
+        sequence = torch.cat((memory_tokens, observation_tokens), dim=1)
+        valid = torch.cat((memory_valid, observation_valid), dim=1)
         for block in self.blocks:
-            current = block(current, context, valid)
-        current = current.to(self.seed.dtype)
+            sequence = block(sequence, valid, times)
+        # 過去Mの各出力で保存済み履歴を書き換えず、最新M位置の出力だけを採用する。
+        indices = torch.arange(memory_valid.shape[1], device=self.seed.device).expand(batch_size, -1)
+        latest = torch.where(memory_valid, indices, -1).topk(self.config.memory_tokens, dim=1).values.flip(1)
+        current = sequence.gather(1, latest[..., None].expand(-1, -1, self.config.width))
+        current = self.output_norm(current).to(self.seed.dtype)
         return MemoryUpdate(current, state.append(current, self.config.context_window, recurrent), recurrent)
 
     def decode(
         self,
-        memory: MemoryUpdate | MemoryState,
+        memory: MemoryUpdate | Tensor,
         queries: Mapping[str, QueryRequest] | None = None,
         *,
         chunk_size: int | None = None,
     ) -> dict[str, Tensor]:
-        """MemoryUpdateではM履歴と今回のUを、MemoryStateではM履歴だけを読む。"""
-        if not isinstance(memory, (MemoryState, MemoryUpdate)):
-            raise TypeError("MemoryUpdateまたはMemoryStateを渡してください")
-        memory.validate(self.seed, self.config.context_window)
-        context, valid = self.history(*memory.readout())
-        return self.decoder(context, queries, valid=valid, chunk_size=chunk_size)
+        """今回のMだけを読む。履歴だけを持つMemoryStateは読出しに使わない。"""
+        if isinstance(memory, MemoryUpdate):
+            memory.validate(self.seed, self.config.context_window)
+            current = memory.latents
+        elif isinstance(memory, Tensor):
+            current = memory
+            if (
+                current.ndim != 3
+                or current.shape[0] < 1
+                or current.shape[1:] != self.seed.shape[1:]
+                or current.device != self.seed.device
+                or current.dtype != self.seed.dtype
+            ):
+                raise ValueError("今回のMはモデルと同じdevice・dtypeの[B,memory_tokens,D]です")
+        else:
+            raise TypeError("decodeには今回のMemoryUpdateまたはMのTensorを渡してください")
+        return self.decoder(current, queries, chunk_size=chunk_size)
 
     def forward(
         self,

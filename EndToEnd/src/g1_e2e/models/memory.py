@@ -1,12 +1,11 @@
-"""生成したMを変更せず蓄積する履歴と、参照時の相対時刻符号。"""
+"""生成済みMとその生成周期を保持し、指定周期だけ履歴へ追加する。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-import math
 
 import torch
-from torch import Tensor, nn
+from torch import Tensor
 
 
 @dataclass(frozen=True)
@@ -40,17 +39,6 @@ class MemoryState:
             if value.shape != shape or value.dtype != dtype or value.device != reference.device:
                 raise ValueError(f"state.{name}のshape・dtype・deviceを確認してください")
         return b
-
-    def readout(
-        self, *, reference_step: Tensor | None = None, enabled: Tensor | None = None
-    ) -> tuple[Tensor, Tensor, Tensor]:
-        """内容・valid・経過周期を返す。既定の参照時刻は最後に処理した制御周期。"""
-        if reference_step is None:
-            if self.tokens.shape[1] == 0:
-                raise ValueError("decodeの前にencode_stepでMを生成してください")
-            reference_step = self.step - 1
-        valid = self.valid if enabled is None else self.valid & enabled[:, None]
-        return self.tokens, valid, reference_step[:, None] - self.token_steps
 
     def detach(self) -> MemoryState:
         """truncated BPTTの境界を学習側で指定する。履歴の内容は保つ。"""
@@ -89,7 +77,7 @@ class MemoryState:
 
 @dataclass(frozen=True)
 class MemoryUpdate:
-    """今回のMまたはUと、次周期へ渡すM履歴。Uは読み出すときだけ使う。"""
+    """今回のMと次周期へ渡す履歴。queryが読むのはlatentsだけ。"""
 
     latents: Tensor  # [B,memory_tokens,D]
     state: MemoryState
@@ -110,33 +98,3 @@ class MemoryUpdate:
         ):
             raise ValueError("recurrentはモデルと同じdeviceのbool[B]です")
         return batch_size
-
-    def readout(self) -> tuple[Tensor, Tensor, Tensor]:
-        """全M履歴と今回のUを返す。履歴にある今回のMは二重に数えない。"""
-        tokens, valid, ages = self.state.readout()
-        current_valid = (~self.recurrent)[:, None].expand(self.latents.shape[:2])
-        return (
-            torch.cat((tokens, self.latents), dim=1),
-            torch.cat((valid, current_valid), dim=1),
-            torch.cat((ages, torch.zeros_like(current_valid, dtype=torch.long)), dim=1),
-        )
-
-
-class HistoryEncoding(nn.Module):
-    """履歴を参照するときだけ時間符号を加える。保存されたMは変更しない。"""
-
-    def __init__(self, width: int) -> None:
-        super().__init__()
-        self.width = width
-        self.modality = nn.Parameter(torch.randn(1, 1, width) * 0.02)
-        frequencies = torch.exp(-math.log(10000.0) * torch.arange(0, width, 2).float() / width)
-        self.register_buffer("frequencies", frequencies)
-
-    def forward(self, tokens: Tensor, valid: Tensor, ages: Tensor) -> tuple[Tensor, Tensor]:
-        """MとUに共通の時間符号を加える。無効な内容・時刻は参照させない。"""
-        age = torch.where(valid, ages, 0).float()
-        phase = age[..., None] * self.frequencies.float()
-        temporal = torch.stack((phase.sin(), phase.cos()), dim=-1).flatten(2)[..., : self.width]
-        content = torch.where(valid[..., None], tokens, 0)
-        context = content + temporal.to(content.dtype) + self.modality
-        return torch.where(valid[..., None], context, 0), valid

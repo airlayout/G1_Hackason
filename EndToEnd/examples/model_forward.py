@@ -62,6 +62,7 @@ def main() -> None:
                         "step": state.step.item(),
                         "recurrent": memory.recurrent.item(),
                         "history_tokens": state.tokens.shape[1],
+                        "latents": list(memory.latents.shape),
                         "outputs": {name: list(value.shape) for name, value in predictions.items()},
                     }
                 )

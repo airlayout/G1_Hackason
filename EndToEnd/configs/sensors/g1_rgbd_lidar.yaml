@@ -7,6 +7,10 @@ body_imus:
       urdf_joint: imu_in_pelvis_joint
     torso:
       urdf_joint: imu_in_torso_joint
+    # MID-360内蔵IMUをLiDARの公称取り付け座標で取得する。
+    # 内部IMUとLiDAR光学原点の個体別外部校正は未取得。
+    lidar:
+      urdf_joint: mid360_joint
 camera:
   width: 640
   height: 480
