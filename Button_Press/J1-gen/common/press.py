@@ -32,27 +32,63 @@ def _replan_at_approach(arm: ArmCommander, planner: PressPlanner, plan: PressPla
     return new
 
 
-def _contact_stop(planner: PressPlanner, plan: PressPlan, attempt: int) -> Callable[[np.ndarray, np.ndarray], bool] | None:
-    """指令した指先（指令の角度の FK）が、実際の指先より押す向きに lag_m 以上先に出たら True を返す関数。
+class ContactStop:
+    """押し込みの途中で、指先が進まなくなったかを見る（ArmCommander.follow の stop_when に渡す）。
 
-    目標を奥に置いたまま押し続けると、押す力（＝遅れ）が増え続ける。MuJoCo の固いボトルでは遅れが 25 mm まで増え、
-    その反動で腰が 2.9° ねじれて安全確認（腰のずれ）で中止した（2026-10-15、机 0.79 m・ボトルが右 25 cm）。
-    触れる前の遅れは 2 mm 以下。押し直し（attempt 2 以降）は retry_lag_m まで押す。設定が無ければ None（止めない）。
+    指令した指先（指令の角度の FK）が実際の指先より押す向きに先にある量を「遅れ」とする。**押し込みを始めた周期の遅れ
+    （baseline_m）を基準にして、そこからの増え方が lag_max を超えたら**止める。押す前から遅れがある実機では、遅れの
+    絶対値で見ると、触れる前に止めてしまう（2026-10-21、重力補償 0.5 で押す前から 4.5 mm 遅れていて、約 1 mm 進んだだけで
+    lag_m 5 mm を超え、ボトルの約 5 cm 手前で止まった）。
+    MuJoCo の固いボトルでは、止めないと遅れが 25 mm まで増え、その反動で腰が 2.9° ねじれて安全確認（腰のずれ）で中止した
+    （2026-10-15、机 0.79 m・ボトルが右 25 cm）。押し直し（attempt 2 以降）は retry_lag_m まで押す。
+    記録（tip_start / tip_end / baseline_m / extra_m）は、押し込みの結果の表示に使う。
     """
-    cs = planner.cfg.get("contact_stop")
-    if not cs:
-        return None
-    lag_max = float(cs["retry_lag_m"] if attempt > 1 else cs["lag_m"])
-    n = plan.push_dir
 
-    def stop(q_cmd: np.ndarray, q_meas: np.ndarray) -> bool:
-        lag = float((planner.kin.fk_pos(q_cmd) - planner.kin.fk_pos(q_meas)) @ n)
-        if lag > lag_max:
-            print(f"[press] 指先が進まなくなった（遅れ {lag * 1000:.1f} mm）。押し込みを止める")
+    def __init__(self, planner: PressPlanner, plan: PressPlan, attempt: int) -> None:
+        cs = planner.cfg.get("contact_stop") or {}
+        self.kin, self.n = planner.kin, plan.push_dir
+        self.lag_max = float(cs["retry_lag_m"] if attempt > 1 else cs["lag_m"]) if cs else None
+        self.baseline_m: float | None = None  # 押し込みを始めた周期の遅れ
+        self.extra_m = 0.0                    # 最後に見た、基準からの遅れの増え方
+        self.tip_start: float | None = None   # 押し込みを始めたときの実際の指先（押す向きの座標）
+        self.tip_end: float | None = None     # 最後に見た実際の指先
+        self.stopped = False
+
+    def __call__(self, q_cmd: np.ndarray, q_meas: np.ndarray) -> bool:
+        tip = float(self.kin.fk_pos(q_meas) @ self.n)
+        lag = float((self.kin.fk_pos(q_cmd) - self.kin.fk_pos(q_meas)) @ self.n)
+        if self.baseline_m is None:
+            self.baseline_m, self.tip_start = lag, tip
+        self.tip_end = tip
+        self.extra_m = lag - self.baseline_m
+        if self.lag_max is not None and self.extra_m > self.lag_max:
+            print(f"[press] 指先が進まなくなった（遅れ {lag * 1000:.1f} mm、押す前から {self.baseline_m * 1000:.1f} mm、"
+                  f"増えた分 {self.extra_m * 1000:.1f} mm）。押し込みを止める")
+            self.stopped = True
             return True
         return False
 
-    return stop
+    def report(self, planned_m: float) -> dict[str, float | bool | None]:
+        """押し込みの結果（指先が実際にどれだけ進んだか）。planned_m は計画の押し込みの長さ。"""
+        adv = None if self.tip_start is None or self.tip_end is None else self.tip_end - self.tip_start
+        return {"stopped": self.stopped, "planned_m": planned_m, "tip_advance_m": adv,
+                "baseline_lag_m": self.baseline_m, "extra_lag_m": self.extra_m}
+
+
+def _report_press(stop: ContactStop, planner: PressPlanner, plan: PressPlan, q_meas: np.ndarray, attempt: int,
+                  sent: int, on_press: Callable[[dict[str, Any]], None] | None) -> None:
+    """押し込みの結果を表示し、on_press に渡す。「成功」だけでは、触れたかが分からない（ボトルには押したあとの確認が無い）。"""
+    n = plan.push_dir
+    planned = float((plan.end_point - plan.approach_point) @ n)
+    stop.tip_end = float(planner.kin.fk_pos(q_meas) @ n)  # 押し込みを送り終えて落ち着いたあとの指先
+    info = stop.report(planned)
+    info.update(attempt=attempt, sent=sent, total=len(plan.press_in))
+    adv = info["tip_advance_m"]
+    adv_s = "不明" if adv is None else f"{adv * 1000:.1f} mm"
+    print(f"[press] 押し込み（{attempt} 回目）の結果: 指先が実際に進んだ {adv_s}（計画 {planned * 1000:.1f} mm、"
+          f"{sent}/{len(plan.press_in)} 点、{'途中で止めた' if info['stopped'] else '最後まで押した'}）")
+    if on_press:
+        on_press(info)
 
 
 def _hold_index(planner: PressPlanner, plan: PressPlan, sent: int, q_meas: np.ndarray,
@@ -130,6 +166,7 @@ def execute_press(
     grab_frame: Callable[[], Any] | None = None,
     replan: bool = True,
     contact_stop: bool = True,
+    on_press: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[PressPlan, list[PostPressResult]]:
     """（経由の姿勢 →）手前の姿勢へ移動 → 実測の腰の角度で計算し直す → 直線で押し込む → 止まる → 直線で戻る →
     押したあとの確認 →（必要なら深くして押し直す）→（与えれば）return_to へ戻る。
@@ -138,7 +175,8 @@ def execute_press(
     （sim/press_sim.py）専用。全体の流れ（common/pipeline.py）では渡さない（常に計算し直す）。
     押し直しは max_retries 回まで。深さは deeper_limit_m（無ければ press.max_press_depth_m）で頭打ち。
     contact_stop（既定で有効、設定は press.contact_stop）: 押し込みの途中で指先が進まなくなったら、それ以上奥へ
-    押さず、実際の指先の少し先を押したまま保持する（_contact_stop）。
+    押さず、実際の指先の少し先を押したまま保持する（ContactStop。押す前からある遅れは基準にして、増え方で見る）。
+    on_press: 押し込みのたびに、結果（止めたか、指先が実際にどれだけ進んだか）を dict で受け取る関数。
     計算し直した結果が届かない・ぶつかるなら UnreachableError で止まる（ArmCommander が安全に終了する）。
     実際に使った最後の計画と、確認の結果の一覧を返す。
     """
@@ -161,9 +199,11 @@ def execute_press(
     results: list[PostPressResult] = []
     attempt = 1
     while True:
-        stop = _contact_stop(planner, plan, attempt) if contact_stop else None
+        stop = ContactStop(planner, plan, attempt) if contact_stop else None
         sent = arm.follow(plan.press_in, label=f"押し込み（{attempt} 回目、深さ {plan.depth * 1000:.1f} mm）",
                           stop_when=stop)
+        if stop is not None:
+            _report_press(stop, planner, plan, arm.measured_q(), attempt, sent, on_press)
         q_hold, press_out = plan.press_in[-1], plan.press_out
         if sent < len(plan.press_in):
             j = _hold_index(planner, plan, sent, arm.measured_q())

@@ -416,6 +416,7 @@ class PressPipeline:
                 arm, plan, hold_s=float(cfg.press["press"]["hold_s"]), planner=self.planner, return_to=q_start,
                 on_stage=self._on_stage, post_check=self.post_check,
                 max_retries=int(pc.get("max_retries", 0)), grab_frame=self.grab_frame,
+                on_press=lambda info: self.logger.event("press_result", **info),
             )
             for i, c in enumerate(checks, start=1):
                 self.logger.event("post_check", attempt=i, ok=c.ok, deeper_m=c.deeper_m, message=c.message, data=c.data)

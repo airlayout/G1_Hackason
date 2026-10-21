@@ -118,6 +118,7 @@ class ElevatorPressController:
         if self.kp.shape != (len(UPPER_IDX),):
             raise ValueError(f"upper_kp は 17 個: {self.kp.shape}")
         self.phase, self.t_phase = "look", 0.0
+        self.lag0: float | None = None  # 押し込みを始めた周期の指令の遅れ（_enter("press") で測り直す）
         self.tracker.reset()
         self.last_image_t = -np.inf
         self.q_hold: np.ndarray | None = None
@@ -168,7 +169,9 @@ class ElevatorPressController:
             s = smoothstep(el / T)
             p = (1 - s) * self.plan_.approach_point + s * self.plan_.end_point
             lag = self._push_lag(q)
-            if lag > self._stop_lag():
+            if self.lag0 is None:
+                self.lag0 = lag  # 押す前からある遅れ（実機の重力補償 0.5 で 4.5 mm）。増え方で止める
+            if lag - self.lag0 > self._stop_lag():
                 p = self._stop_press(p, lag, t)
                 q_des[arm] = self._servo(q, p, integrate_push=False)
             else:
@@ -226,6 +229,8 @@ class ElevatorPressController:
 
     def _enter(self, phase: str, t: float) -> None:
         self.phase, self.t_phase = phase, t
+        if phase == "press":
+            self.lag0 = None  # 押し込みを始めた周期の遅れを、次の step で測り直す
 
     def _give_up(self, t: float, why: str) -> bool:
         self.outcome = f"中止: {why}"
@@ -418,7 +423,7 @@ class ElevatorPressController:
         return float((self.kin.fk_pos(self.q_ik) - self.kin.fk_pos(q)) @ n)
 
     def _stop_lag(self) -> float:
-        """押し込みを止める遅れ [m]。押し直しのときは大きく（強く押す）。"""
+        """押し込みを止める遅れの増え方 [m]（押し込みを始めたときの遅れからの増分）。押し直しのときは大きく（強く押す）。"""
         cs = self.cfg["press"]["contact_stop"]
         return float(cs["retry_lag_m"] if self.retries > 0 else cs["lag_m"])
 
