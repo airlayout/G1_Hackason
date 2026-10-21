@@ -30,6 +30,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     add_run_arguments(parser, root, controller="unitree", velocity=(0.3, 0, 0))
     parser.add_argument("--num-envs", type=int, default=4)
+    parser.add_argument("--teacher", choices=["coverage", "local"], default="coverage")
     parser.add_argument("--scene-config", type=Path, default=root / "configs/scenes/office.yaml")
     parser.add_argument("--sensors-config", type=Path, default=root / "configs/sensors/g1_rgb_lidar.yaml")
     parser.add_argument("--camera-updates", type=int, default=1)
@@ -109,6 +110,7 @@ def main():
         from g1_e2e.data.fidelity import sensor_fidelity
         from g1_e2e.data.quality import patrol_quality
         from g1_e2e.navigation.patrol import PatrolTeacher
+        from g1_e2e.navigation.local import LocalPatrolTeacher
         from sim.batch.environment import VectorPatrolEnv, shared_controllers
         from sim.batch.recording import BatchRecorder
         from sim.batch.collection import ParallelCollector
@@ -120,7 +122,8 @@ def main():
         grid = navigation_grid(rig.vertices, rig.faces, office)
         grid.save(output / "navigation-grid.npz")
         np.savez(output / "scene-mesh.npz", vertices=rig.vertices, faces=rig.faces)
-        teachers = [PatrolTeacher(grid, office) for _ in range(args.num_envs)]
+        teacher_type = LocalPatrolTeacher if args.teacher == "local" else PatrolTeacher
+        teachers = [teacher_type(grid, office) for _ in range(args.num_envs)]
         controllers = shared_controllers(controller_config.create(spec, config.control_dt), args.num_envs)
         observations = env.reset([teacher.spawn(args.seed + i) for i, teacher in enumerate(teachers)])
         for _ in range(round(args.warmup_seconds / config.physics_dt)):
@@ -171,6 +174,8 @@ def main():
                 "teacher": "applied high-level velocity command",
             },
             "patrol_teacher": {
+                "kind": args.teacher,
+                "uses_global_map_for_commands": args.teacher == "coverage",
                 "uses_simulation_truth": True,
                 "model_inputs_include_teacher_map_or_goal": False,
             },

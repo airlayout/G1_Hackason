@@ -87,6 +87,12 @@ class ParallelCollector:
                     round((env.ticks - rig.scan_ticks) * env.config.physics_dt * rig.pattern.rate)
                 )
                 imu, poses = rig.imu.numpy(), rig.poses.numpy()
+                for i, teacher in enumerate(teachers):
+                    update_scan = getattr(teacher, "update_scan", None)
+                    if update_scan is not None:
+                        update_scan(
+                            scan[i, :, 2:5], scan[i, :, 1].astype(bool), env.ticks * env.config.physics_dt
+                        )
                 directions = rig.pattern.sample(
                     np.arange(
                         round((env.ticks - rig.scan_ticks) * env.config.physics_dt * rig.pattern.rate),

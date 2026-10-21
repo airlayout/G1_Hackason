@@ -137,7 +137,12 @@ class ModelConfig:
     @classmethod
     def load(cls, path: Path) -> ModelConfig:
         """YAMLを読み、未知のキーもコンストラクターで拒否する。"""
-        data = yaml.safe_load(path.read_text())
+        return cls.from_dict(yaml.safe_load(path.read_text()))
+
+    @classmethod
+    def from_dict(cls, values: dict) -> ModelConfig:
+        """YAMLとcheckpointで同じ構成検証を使う。渡されたdictは書き換えない。"""
+        data = dict(values)
         data["modalities"] = {name: ModalityConfig(**value) for name, value in data["modalities"].items()}
         queries = {}
         for name, value in data["queries"].items():

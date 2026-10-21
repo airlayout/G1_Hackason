@@ -46,6 +46,7 @@ class RecurrentPerceiver(nn.Module):
         )
         self.output_norm = nn.LayerNorm(config.width)
         self.decoder = QueryDecoder(config)
+        self.gradient_checkpointing = False
 
     def initial_state(self, batch_size: int) -> MemoryState:
         """履歴は空から開始する。seedは履歴が空のepisodeだけで初期Mとして使う。"""
@@ -104,7 +105,12 @@ class RecurrentPerceiver(nn.Module):
         sequence = torch.cat((memory_tokens, observation_tokens), dim=1)
         valid = torch.cat((memory_valid, observation_valid), dim=1)
         for block in self.blocks:
-            sequence = block(sequence, valid, times)
+            if self.training and self.gradient_checkpointing:
+                from torch.utils.checkpoint import checkpoint
+
+                sequence = checkpoint(block, sequence, valid, times, use_reentrant=False)
+            else:
+                sequence = block(sequence, valid, times)
         # 過去Mの各出力で保存済み履歴を書き換えず、最新M位置の出力だけを採用する。
         indices = torch.arange(memory_valid.shape[1], device=self.seed.device).expand(batch_size, -1)
         latest = torch.where(memory_valid, indices, -1).topk(self.config.memory_tokens, dim=1).values.flip(1)

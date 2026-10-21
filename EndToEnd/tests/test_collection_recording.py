@@ -153,3 +153,28 @@ def test_visualization_uses_camera_time_without_a_control_row_at_that_time(tmp_p
     assert capture.lidar["time_s"] == 0
     with DatasetReader(tmp_path / "dataset.h5") as source:
         assert source.sample(0)["state"]["time_s"] == 0
+
+
+def test_online_policy_sample_uses_only_acquired_causal_sensor_frames(tmp_path):
+    from g1_e2e.models import ModelInputAdapter
+    from tests.test_data_collection import model_config
+
+    env = SimpleNamespace(config=SimpleNamespace(control_dt=0.02))
+    env.observe = lambda: env.current
+    rig = FakeRig(env)
+    rig.lidar = SimpleNamespace(
+        calibration={
+            "ray_directions_sensor": np.tile([1, 0, 0], (3, 1)),
+            "ring": np.arange(3),
+            "point_time_offset_s": np.zeros(3),
+        }
+    )
+    with writer(tmp_path / "online.h5") as output:
+        recorder = CollectionRecorder(env, rig, output)
+        collect_episode(recorder, env, 0, 2)
+        sample = recorder.model_sample(env.current)
+        assert set(sample) == {"state", "camera", "lidar", "imus", "lidar_calibration"}
+        for frame in (sample["camera"], sample["lidar"], *sample["imus"].values()):
+            assert frame["time_s"] <= sample["state"]["time_s"] + 1e-9
+        inputs = ModelInputAdapter(model_config())(sample)
+        assert inputs["rgb"].valid.any() and inputs["lidar"].valid.any()

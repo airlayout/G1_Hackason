@@ -32,6 +32,7 @@ def main():
     parser.add_argument("--sensors-config", type=Path, default=root / "configs/sensors/g1_rgb_lidar.yaml")
     parser.add_argument("--scene-config", type=Path, help="公式OfficeのUSD・巡回設定")
     parser.add_argument("--patrol", action="store_true", help="通行領域を巡回する上位教師で速度指令を生成")
+    parser.add_argument("--policy-checkpoint", type=Path, help="学習済みMモデルの速度指令で巡回を評価")
     parser.add_argument("--profile", action="store_true", help="収集ループの処理時間をprofile.txtへ保存")
     parser.add_argument(
         "--repeat-lidar-pattern", action="store_true", help="公開4秒走査表の周期再生を明示的に許可"
@@ -54,6 +55,8 @@ def main():
     office = OfficeConfig.load(args.scene_config) if args.scene_config else None
     if args.patrol and (office is None or args.controller != "unitree"):
         parser.error("--patrolには--scene-configと--controller unitreeが必要です")
+    if args.policy_checkpoint and (office is None or args.controller != "unitree" or args.patrol):
+        parser.error("--policy-checkpointにはOfficeとunitreeが必要です。--patrolとは併用しません")
     if office is not None and not (office.directory(root) / "office-assets.lock.json").is_file():
         parser.error("先にbash EndToEnd/prepare-office.shでOfficeを取得してください")
     environment = FlatConfig.load(args.env_config)
@@ -99,18 +102,23 @@ def main():
 
         with ExitStack() as resources:
             controller = controller_config.create(robot, environment.control_dt)
+            policy = None
+            if args.policy_checkpoint:
+                from g1_e2e.inference.memory_policy import MemoryVelocityPolicy
+
+                policy = MemoryVelocityPolicy(args.policy_checkpoint, args.device)
             env = G1FlatEnv(root, robot, environment, device=args.device, office=office)
             resources.callback(env.close)
             rig = SensorRig(env, sensors)
             resources.callback(rig.close)
             teacher = None
-            if args.patrol:
-                from g1_e2e.navigation.patrol import PatrolTeacher
+            if args.patrol or policy:
+                from g1_e2e.navigation.patrol import PatrolTeacher, PatrolTracker
                 from sim.envs.office import navigation_grid
 
                 grid = navigation_grid(rig.scene_vertices, rig.scene_faces, office)
                 grid.save(output / "navigation-grid.npz")
-                teacher = PatrolTeacher(grid, office)
+                teacher = (PatrolTracker if policy else PatrolTeacher)(grid, office)
                 print(
                     f"[READY] Office patrol: {int(grid.walkable.sum())} free cells; {len(rig.scene_faces)} triangles",
                     flush=True,
@@ -128,7 +136,9 @@ def main():
                 "control_dt_s": environment.control_dt,
                 "scene": env.scene_metadata,
                 "patrol_teacher": {
-                    "kind": "coverage-grid A* and path-following velocity commands",
+                    "kind": "coverage measurement; actions from learned M"
+                    if policy
+                    else "coverage-grid A* and path-following velocity commands",
                     "uses_simulation_truth": True,
                     "model_inputs_include_teacher_map_or_goal": False,
                     "scene_config_yaml": args.scene_config.read_text(),
@@ -145,6 +155,7 @@ def main():
                 if observer
                 else None,
                 "hardware_fidelity": sensor_fidelity(sensors, environment),
+                "learned_policy": policy.metadata if policy else None,
             }
             if office:
                 shutil.copyfile(
@@ -175,7 +186,11 @@ def main():
             collection_started = time.monotonic()
             while rows < args.steps and app.is_running():
                 if teacher:
-                    controller.set_velocity(teacher.command(observation))
+                    if policy:
+                        teacher.observe(observation)
+                        controller.set_velocity(policy.command(recorder.model_sample(observation)))
+                    else:
+                        controller.set_velocity(teacher.command(observation))
                 recorder.prepare(observation)
                 command = controller.act(observation)
                 velocity_command = getattr(controller, "velocity_command", None)
@@ -198,6 +213,8 @@ def main():
                     observation = env.reset(seed=seed, spawn_xy_yaw=teacher.spawn(seed) if teacher else None)
                     recorder.start_episode(observation, args.steps - rows)
                     controller.reset()
+                    if policy:
+                        policy.reset()
             collection_seconds = time.monotonic() - collection_started
             if profile is not None:
                 profile.disable()

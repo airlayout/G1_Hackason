@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass, replace
 
+from g1_e2e.data.geometry import base_pose
+
 
 @dataclass
 class CaptureQuality:
@@ -35,6 +37,7 @@ class CollectionRecorder:
         self._prepared = None
 
     def start_episode(self, observation, remaining_steps):
+        self._latest_camera = self._latest_lidar = None
         self.rig.reset(observation)
         self._stop_time = observation.simulation_time_s + remaining_steps * self.env.config.control_dt
         self._camera_index = self._lidar_index = -1
@@ -50,11 +53,13 @@ class CollectionRecorder:
         for name, frame in self.rig.latest_imus.items():
             self._imu_indices[name] = self.writer.append_imu(name, frame)
         while (frame := self.rig.capture_lidar(episode_id, time_s)) is not None:
+            self._latest_lidar = frame
             self._lidar_index = self.writer.append_lidar(frame)
             self.quality.lidar_returns += int(frame.valid.sum())
         if time_s < self._stop_time - 1e-9 and self.rig.camera_due(time_s):
             current = replace(self.env.observe(), episode_id=episode_id, simulation_time_s=time_s)
             frame = self.rig.capture_camera(current)
+            self._latest_camera = frame
             self._camera_index = self.writer.append_camera(frame)
             self.quality.add_camera(frame)
             if self.observer is not None:
@@ -75,6 +80,32 @@ class CollectionRecorder:
                 specific_force_body_m_s2=self.rig.specific_force(observation).copy(),
             ),
         )
+
+    def model_sample(self, observation):
+        """保存と同じ取得済みframeだけを、オンライン方策へ渡す。actionや次状態は含めない。"""
+        camera, lidar = self._latest_camera, self._latest_lidar
+        return {
+            "state": {
+                "episode_id": observation.episode_id,
+                "time_s": observation.simulation_time_s,
+                "joint_position_rad": observation.joint_position_rad,
+                "joint_velocity_rad_s": observation.joint_velocity_rad_s,
+                "joint_torque_nm": observation.joint_torque_nm,
+                "orientation_xyzw": observation.orientation_xyzw,
+                "angular_velocity_body_rad_s": observation.angular_velocity_body_rad_s,
+                "projected_gravity_body": observation.projected_gravity_body,
+                "base_pose_world": base_pose(observation),
+            },
+            "camera": None if camera is None else camera.__dict__,
+            "lidar": None if lidar is None else lidar.__dict__,
+            "imus": {name: frame.__dict__ for name, frame in self.rig.latest_imus.items()},
+            "lidar_calibration": {
+                key: getattr(lidar, key)
+                if lidar is not None and getattr(lidar, key) is not None
+                else self.rig.lidar.calibration[key]
+                for key in ("ray_directions_sensor", "ring", "point_time_offset_s")
+            },
+        }
 
     def append_step(self, observation, result, *, velocity_command=None):
         stamp = (observation.episode_id, observation.step, observation.simulation_time_s)

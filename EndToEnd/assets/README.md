@@ -106,3 +106,77 @@ RGBは640×480・30Hz、LiDARは20,000点/scan・10Hz、3か所のIMUは600Hz、
 32環境では合計96秒分を84.05秒で保存した。短時間の試行なので初期化の負担は大きく、起動込みでは実時間未満。
 長時間収集の持続速度は別途測定が必要。結果は`runs/parallel-rgb-only-20261021/benchmark.json`に保存した。
 6入力・3出力モデルは33,551,628パラメータ。収集済みschema 5を使った実モデルforwardと3種類のlossも確認済み。
+
+## 時系列モデルの学習
+
+`--teacher local`は取得済みLiDARと姿勢から進行方向を選ぶ。地図はspawnと品質計測に用い、
+行動には非公開の目標位置を渡さない。従来の全体巡回教師は`--teacher coverage`で選べる。
+
+```bash
+bash EndToEnd/parallel-patrol.sh --teacher local --num-envs 16 --steps 500 --seed 1000 \
+  --device cuda:1 --path-samples 1 --output EndToEnd/datasets/patrol-pilot
+bash EndToEnd/check-parallel.sh EndToEnd/datasets/patrol-pilot
+bash EndToEnd/prepare-training.sh EndToEnd/datasets/patrol-pilot \
+  --workers 4 --output EndToEnd/datasets/training-cache
+bash EndToEnd/train.sh EndToEnd/datasets/training-cache/manifest.json \
+  --device cuda:1 --batch-size 4 --output EndToEnd/checkpoints/patrol
+```
+
+cacheは生データを保持し、50Hzの6入力トークン・速度指令と5Hzの補助教師を保存する。
+RGB等の特徴はfloat16でcacheし、モデルへ渡す際はfloat32へ戻す。3D場はLiDARの有効rayを20本に1本使い、
+0.2mの時刻付きworld voxelへ一度ずつ統合する。教師の観測済みmaskはこの間引いたray evidenceを表す。
+履歴窓は40.96秒。未知領域の占有lossは無効化する。未来情報を使うのは実測軌道のlabelだけ。
+
+episode単位でtrain/validation/testを分離し、同じ長さのepisodeをbatch化する。
+TBPTTは8制御周期、勾配蓄積は4区間。区間間もM履歴1024個と2周期ごとの追加は維持し、
+区間境界で勾配だけを切る。36層の全パラメータと3出力をAdamWで更新する。
+BF16とactivation checkpointingを使い、速度は各軸の出力範囲で正規化したHuber loss、
+場はBCE、軌道は位置のHuber lossとquaternionの符号不変な回転lossで学習する。
+補助lossの重みは各0.2。フレームを無作為にシャッフルして履歴を破壊しない。
+
+`last.pt`はepisode batch境界でoptimizerも保存し、同じmanifestとbatch設定で`--resume`できる。
+別の収集段階の重みを使う場合は`--initialize`を指定し、新しいoptimizerで開始する。
+`best.pt`は検証lossで選び、最後に未使用test episodeを評価する。
+`updates.jsonl`、`epochs.json`、`summary.json`に更新・評価・GPUメモリを残す。
+
+学習済みモデルでの巡回確認は、低位の公開歩行方策を固定して実行できる。
+
+```bash
+bash EndToEnd/collect.sh --policy-checkpoint EndToEnd/checkpoints/patrol/best.pt \
+  --controller unitree --scene-config EndToEnd/configs/scenes/office.yaml \
+  --env-config EndToEnd/configs/task/office_patrol.yaml --device cuda:1 \
+  --steps 500 --repeat-lidar-pattern --seed 3000 --output EndToEnd/runs/patrol-model-check
+```
+
+オンライン方策にも保存時と同じ取得済みframeだけを渡し、今回のMから速度を読む。
+学習lossの低下と、モデルによる長時間巡回の成功は別に評価する。
+
+## 重みの持ち出し
+
+コードと設定はGit、重みはcheckpointとして別に配布する。`checkpoints/`はGitの管理対象外。
+`best.pt`・`last.pt`には学習再開用のoptimizerも含まれる。現場への転送では、
+PyTorchを使えるPython環境で以下を実行し、重みとモデル設定だけを取り出せる。
+
+```bash
+PYTHONPATH=EndToEnd/src python -m g1_e2e.inference.export \
+  EndToEnd/checkpoints/patrol-batched-20261021/best.pt \
+  --output EndToEnd/checkpoints/patrol-batched-20261021/inference
+rsync -avP EndToEnd/checkpoints/patrol-batched-20261021/inference/ \
+  user@JETSON_IP:~/g1-models/patrol/
+```
+
+転送先の親ディレクトリ`~/g1-models/`は先に作成する。USB媒体でも同じフォルダー一式をコピーすればよい。
+`model.pt`には3出力の全重みと構成を格納し、量子化はしない。今回のモデルでは約128MiB。
+`manifest.json`に元checkpointのSHA-256、学習更新回数、書き出し時のコードcommitとEndToEndの変更有無を記録する。
+書き出しはEndToEndの変更をコミットした後に行い、現場にも対応するcommitのコードを用意する。
+`SHA256SUMS`で転送後のファイルの一致を確認できる。
+
+```bash
+cd ~/g1-models/patrol
+sha256sum -c SHA256SUMS
+```
+
+`MemoryVelocityPolicy(Path("model.pt"), "cuda:0")`はこの形式と元checkpointの両方を読み込める。
+学習再開にはoptimizerを含む`last.pt`を残しておく。
+重みの転送にはIsaac Simや学習データは不要だが、実機での実行には対応するPython/PyTorch環境、
+実センサーを入力形式へ合わせる接続、低位歩行方策が別途必要。Jetson上の50Hz実行と障害物回避は未検証。

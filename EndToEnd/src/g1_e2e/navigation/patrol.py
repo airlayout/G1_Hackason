@@ -5,8 +5,8 @@ import numpy as np
 from g1_e2e.data.geometry import rotation_xyzw
 
 
-class PatrolTeacher:
-    """真値地図・姿勢を使う収集専用教師。目標や経路はモデルの入力へ混ぜない。"""
+class PatrolTracker:
+    """開始位置の選択と巡回品質の計測。行動の選択とは分離する。"""
 
     def __init__(self, grid, config):
         self.grid, self.config = grid, config
@@ -19,9 +19,6 @@ class PatrolTeacher:
 
     def reset(self):
         self.visits = np.zeros(len(self.candidates), np.int64)
-        self.route = np.empty((0, 2), np.float32)
-        self.route_index = self.goals_reached = self.replans = 0
-        self.goal = None
         self.distance_m = 0.0
         self.previous_xy = None
         self.minimum_clearance_m = float("inf")
@@ -36,6 +33,36 @@ class PatrolTeacher:
         # 同じseedで同じ開始位置・向きになり、episodeごとには場所を変えられる。
         xy = self.grid.xy(suitable[rng.integers(len(suitable))])
         return float(xy[0]), float(xy[1]), float(rng.uniform(-np.pi, np.pi))
+
+    def observe(self, observation):
+        xy = observation.privileged["base_position_world_m"][:2].astype(float)
+        rotation = rotation_xyzw(observation.orientation_xyzw)
+        yaw = float(np.arctan2(rotation[1, 0], rotation[0, 0]))
+        if self.previous_xy is not None:
+            self.distance_m += float(np.linalg.norm(xy - self.previous_xy))
+        self.previous_xy = xy.copy()
+        self.visits[np.linalg.norm(self.candidates - xy, axis=1) < 1.25] += 1
+        self.minimum_clearance_m = min(self.minimum_clearance_m, self.grid.clearance(xy))
+        return xy, yaw
+
+    @property
+    def summary(self):
+        return {
+            "distance_m": self.distance_m,
+            "visited_regions": int((self.visits > 0).sum()),
+            "total_regions": len(self.visits),
+            "minimum_map_clearance_m": self.minimum_clearance_m if self.previous_xy is not None else None,
+        }
+
+
+class PatrolTeacher(PatrolTracker):
+    """真値地図と未訪問領域へのA*経路を使う、収集用の幾何教師。"""
+
+    def reset(self):
+        super().reset()
+        self.route = np.empty((0, 2), np.float32)
+        self.route_index = self.goals_reached = self.replans = 0
+        self.goal = None
 
     def _plan(self, xy, yaw):
         offset = self.candidates - xy
@@ -53,14 +80,7 @@ class PatrolTeacher:
         self.replans += 1
 
     def command(self, observation):
-        xy = observation.privileged["base_position_world_m"][:2].astype(float)
-        rotation = rotation_xyzw(observation.orientation_xyzw)
-        yaw = float(np.arctan2(rotation[1, 0], rotation[0, 0]))
-        if self.previous_xy is not None:
-            self.distance_m += float(np.linalg.norm(xy - self.previous_xy))
-        self.previous_xy = xy.copy()
-        self.visits[np.linalg.norm(self.candidates - xy, axis=1) < 1.25] += 1
-        self.minimum_clearance_m = min(self.minimum_clearance_m, self.grid.clearance(xy))
+        xy, yaw = self.observe(observation)
         if self.goal is None or np.linalg.norm(self.goal - xy) < self.config.goal_tolerance_m:
             self.goals_reached += int(self.goal is not None)
             self._plan(xy, yaw)
@@ -90,11 +110,4 @@ class PatrolTeacher:
 
     @property
     def summary(self):
-        return {
-            "distance_m": self.distance_m,
-            "goals_reached": self.goals_reached,
-            "replans": self.replans,
-            "visited_regions": int((self.visits > 0).sum()),
-            "total_regions": len(self.visits),
-            "minimum_map_clearance_m": self.minimum_clearance_m if self.previous_xy is not None else None,
-        }
+        return {**super().summary, "goals_reached": self.goals_reached, "replans": self.replans}
