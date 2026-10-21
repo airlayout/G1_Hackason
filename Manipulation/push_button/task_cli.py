@@ -4,10 +4,12 @@ import argparse
 import sys
 
 
-def dispatch(button_main, bottle_main, argv=None):
+def dispatch(button_main, bottle_main, argv=None, *, extra_tasks=None):
+    handlers = {"button": button_main, "bottle": bottle_main}
+    handlers.update(extra_tasks or {})
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--task", choices=("button", "bottle"), default="button")
+    parser.add_argument("--task", choices=tuple(handlers), default="button")
     args, remaining = parser.parse_known_args(sys.argv[1:] if argv is None else argv)
     if "--help" in remaining or "-h" in remaining:
-        print("対象の選択: --task button|bottle (既定: button)\n")
-    return (button_main if args.task == "button" else bottle_main)(remaining)
+        print(f"対象の選択: --task {'|'.join(handlers)} (既定: button)\n")
+    return handlers[args.task](remaining)

@@ -108,6 +108,17 @@ class ArmSdk:
         self._hold = list(current)
         self._last_right = tuple(current[7:])
 
+    def connection_info(self):
+        """腕の接続確認用。状態受信と歩行FSMの照会のみで、運動指令を送らない。"""
+        self.current_arm()
+        with self._lock:
+            mode_machine = int(self._state.mode_machine)
+            motor_count = len(self._state.motor_state)
+        code, fsm = self._loco.GetFsmId()
+        if code != 0:
+            raise RuntimeError(f"歩行FSMを取得できません (code={code})")
+        return {"mode_machine": mode_machine, "motor_count": motor_count, "fsm_id": int(fsm)}
+
     def publish(self, right: tuple[float, ...], weight: float,
                 require_fresh_state: bool = True) -> None:
         if self._hold is None:
@@ -126,7 +137,8 @@ class ArmSdk:
             motor.kd = 1.5
         self._cmd.motor_cmd[29].q = max(0.0, min(1.0, weight))
         self._cmd.crc = self._crc.Crc(self._cmd)
-        self._publisher.Write(self._cmd)
+        if self._publisher.Write(self._cmd) is False:
+            raise RuntimeError("rt/arm_sdkへの腕指令送信に失敗しました")
         self._last_right = right
         self._last_weight = weight
 
@@ -143,6 +155,15 @@ class ArmSdk:
                 print(f"[release] 指令送信に失敗: {error}", file=sys.stderr, flush=True)
                 break
             time.sleep(0.02)
+
+    def close(self):
+        try:
+            self.release()
+        finally:
+            try:
+                self._publisher.Close()
+            finally:
+                self._subscriber.Close()
 
 
 def execute(plan: dict, interface: str) -> None:

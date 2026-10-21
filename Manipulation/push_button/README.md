@@ -11,6 +11,49 @@ G1 にボタンを押させる動作の開発場所。
 シミュレーションのボタンのストロークは上下とも既定 **1.5mm**（`--stroke 0.0015`）。
 押下前に1回だけ再計測し、最後は停止区間を挟まず連続して接近・押下する。
 
+## 実機の接続確認：右腕を少し上げて戻す
+
+SDK環境だけで使える接続確認を追加した。カメラ・YOLO・MuJoCoモデル・校正JSONは不要。
+右肩のpitch（関節22）だけを現在位置から前方へ **5度**、**2秒**で上げ、
+0.5秒保持して2秒で開始姿勢へ戻す。制御重みの上げ下げを含め、約10秒の動作。
+実機への指令は `--execute` と実行時の `YES` 入力がある場合だけ送る。
+
+```bash
+# 実機の状態受信・立位モード・計画の確認だけ。NIC名は接続に合わせる。
+python3 Manipulation/push_button/real/run_push.py --task check-arm \
+  --network-interface enp3s0
+
+# 右腕を5度上げて戻す。
+python3 Manipulation/push_button/real/run_push.py --task check-arm \
+  --network-interface enp3s0 --execute
+
+# SDKを別のPython環境で動かす場合は既存の腕ブリッジを使える。
+python3 Manipulation/push_button/real/run_push.py --task check-arm \
+  --arm-socket /tmp/g1_button_arm.sock --execute
+```
+
+単独の入口 `real/check_arm_connection.py` でも同じ引数で使える。
+`--angle-deg` は2～10度、`--duration` は上げる／戻す各片道2～5秒。
+別プロセスのNavigation指令を止め、腕の周囲が空いた停止・直立状態で使う。
+実行時に歩行停止を要求するが、歩行モードの切り替え・腰や脚への関節指令は送らない。
+29DoF G1（`mode_machine=5`）と安定立位FSM 501を確認し、腕の現在姿勢から始める。
+右肩の開始角は-0.5～0.8radの範囲に限定する。
+
+実測で指令角度の40%以上（既定5度では2度以上）上がり、両腕が開始姿勢から2度以内へ
+戻った場合だけ成功とする。送信できても腕が動かなければ成功にしない。
+250msを超える状態途絶、脚・骨盤の動き、腕の追従差、100msを超える指令更新の遅れは中止する。
+異常時は最後の腕目標を保って制御重みの解除を試み、無条件の復帰や再試行はしない。
+
+記録は既定で `_local/button_press/arm_connection_check.json`。
+`--output` で変更でき、`movement_confirmed`・`return_confirmed`・`release_sent` と
+実測角度、最終状態、中止理由を残す。`release_sent` は解除指令の送信であり、
+機体側の解除確認を示すものではない。
+`--execute` なしは受信確認のみで、送信経路と実際の動作の確認は実行時に行う。
+`--state-json /tmp/button_state.json` は保存状態でのオフライン計画専用で、実機接続の確認には数えない。
+更新前から腕ブリッジを起動している場合は、新しい `info` 照会を使うため、停止中に更新版で再起動する。
+今回の追加後に実機は動かしていない。過去の12度試験の中断記録は
+[2026-10-14のログ](LOG/g1-arm-check-20261014/result.json) を参照。
+
 ## 現在の実装
 
 - `trajectory.py`: 右腕7軸の関節角検証と滑らかな補間。

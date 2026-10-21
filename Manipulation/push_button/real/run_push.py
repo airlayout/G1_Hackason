@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""--task button|bottle で対象を選ぶ。既定は実機指令を送らない計画表示。"""
+"""--task button|bottle|check-arm で対象を選ぶ。既定は実機指令を送らない計画表示。"""
 
 import sys
 from pathlib import Path
@@ -10,9 +10,20 @@ from task_cli import dispatch
 
 
 def main(argv=None):
-    from align_button import main as button_main
-    from push_bottle import main as bottle_main
-    return dispatch(button_main, bottle_main, argv)
+    # 接続確認はSDKだけのPython環境でも使えるようにする。
+    def button_main(args):
+        from align_button import main
+        return main(args)
+
+    def bottle_main(args):
+        from push_bottle import main
+        return main(args)
+
+    def check_main(args):
+        from check_arm_connection import main
+        return main(args)
+
+    return dispatch(button_main, bottle_main, argv, extra_tasks={"check-arm": check_main})
 
 
 if __name__ == "__main__":

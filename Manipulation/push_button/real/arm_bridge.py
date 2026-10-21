@@ -50,6 +50,9 @@ class ArmProxy:
     def current_arm(self):
         return tuple(self.current_configuration()[0][15:29])
 
+    def connection_info(self):
+        return self._rpc("info")
+
     def stop_walking(self):
         self._rpc("stop")
 
@@ -100,6 +103,10 @@ def serve_connection(connection, arm, timeout_s=0.5):
                     result = None
                     if op == "state":
                         result = arm.current_configuration()
+                    elif op == "info":
+                        if active:
+                            raise ValueError("腕制御中は接続情報を照会できません")
+                        result = arm.connection_info()
                     elif op == "stop":
                         if active:
                             raise ValueError("腕制御中は停止要求を再実行できません")

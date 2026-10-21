@@ -24,6 +24,9 @@ class FakeArm:
     def current_arm(self):
         return (0.0,)*14
 
+    def connection_info(self):
+        return {"mode_machine": 5, "motor_count": 35, "fsm_id": 501}
+
     def set_hold(self, current):
         pass
 
@@ -79,3 +82,14 @@ def test_invalid_or_fast_commands_are_rejected_before_publish():
     finally:
         proxy.socket.close()
         thread.join(timeout=1)
+
+
+def test_connection_info_is_passive_and_available_over_bridge():
+    proxy, arm, errors, thread = connection()
+    try:
+        assert proxy.connection_info() == {"mode_machine": 5, "motor_count": 35, "fsm_id": 501}
+        assert arm.writes == 0
+    finally:
+        proxy.close()
+        thread.join(timeout=1)
+    assert not errors
