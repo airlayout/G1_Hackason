@@ -540,6 +540,45 @@ class TestElevatorPlan(unittest.TestCase):
         ctl.retries = 1
         self.assertEqual(ctl._stop_lag(), cs["retry_lag_m"])
 
+    def _lagging_press(self, lag0: float, block_after: float | None) -> tuple[bool, float]:
+        """押す前から指先が lag0 [m] 遅れている（実機の重力補償 0.5）状態で押し込みを回す。
+        block_after を与えると、面の block_after [m] 奥で指先が止まる。(保持へ移ったか, 経過時間) を返す。"""
+        ctl = self.ctl
+        ctl.reset("down", 0.02, np.full(17, 60.0))
+        ctl.call = self.call()
+        ctl._plan(self.q0, self.call())
+        ctl.q_hold = self.q0.copy()
+        arm, p = ctl.kin.arm_idx, ctl.plan_
+        ctl.q_ik[arm] = p.q_approach
+        ctl._enter("press", 0.0)
+        img, depth, K0 = np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640)), np.eye(3)
+        axis, n = p.finger_axis, p.push_dir
+        t, frozen = 0.0, None
+        while ctl.phase == "press" and t < 5.0:
+            tip_cmd = ctl.kin.fk_pos(ctl.q_ik)
+            if frozen is None:
+                q = ctl.kin.ik(tip_cmd - lag0 * n, ctl.q_ik, axis, max_iter=50).q  # 指令より lag0 手前に付いてくる
+                if block_after is not None and float((ctl.kin.fk_pos(q) - p.target_point) @ n) > block_after:
+                    frozen = q.copy()
+            else:
+                q = frozen
+            t += 0.02
+            ctl.step(img, depth, K0, q, t, 0.0)
+        return ctl.phase == "hold", t
+
+    def test_constant_lag_before_pushing_does_not_stop(self) -> None:
+        """押す前から 6 mm 遅れていても（実機は 4.5 mm に、押し始めの遅れが足されて 5 mm を超えた）、増えなければ止めず、押し込みの終わりまで押す。"""
+        held, t = self._lagging_press(0.006, None)
+        self.assertTrue(held)
+        self.assertGreaterEqual(t, self.ctl.cfg["press"]["press_s"] - 0.05)  # 途中で止めていない
+        self.assertAlmostEqual(self.ctl.lag0, 0.006, delta=0.0015)
+
+    def test_lagging_press_still_stops_when_blocked(self) -> None:
+        """押す前の遅れがあっても、指先が止まって遅れが増えたら止める。"""
+        held, t = self._lagging_press(0.006, 0.003)
+        self.assertTrue(held)
+        self.assertLess(t, self.ctl.cfg["press"]["press_s"])
+
 
 if __name__ == "__main__":
     unittest.main()

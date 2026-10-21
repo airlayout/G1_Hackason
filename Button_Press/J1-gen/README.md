@@ -76,6 +76,8 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `pipeline.yaml` — 全体の流れ: 対象の与え方（depth / manual）、押す方向、経由の姿勢、IK の初期値、記録の保存先
   - `camera_sim.yaml` — 模擬ロボット用のカメラの接続先（127.0.0.1）
   - `elevator.yaml` — エレベーターの呼びボタン: 探し方（classic / yolo）、大きさ・間隔、押し方、壁の箱
+- `real/check_head_tilt.py` — 頭カメラの向き（首の傾き）を、深度の床・机の面から確かめる（実機日の最初。10/14 の深度で 46.8°）
+- `real/make_table_boxes.py` — 立った状態の深度から、机の障害物の箱を左右 9 cm ごとに作る（既定は確認だけ。`--save` で保存）
 - `tests/` — `run_tests.sh`（CI が自動で見つけて実行する）
 
 ## 機体モデル
