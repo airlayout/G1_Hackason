@@ -9,12 +9,12 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from g1_e2e.contracts import JointCommand, Observation, StepResult
+from g1_e2e.contracts import JointCommand, Observation, StepResult, VelocityCommand
 
 from .frames import CameraFrame, ImuFrame, LidarFrame
 from .geometry import base_pose
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 
 def _check_reference(frame_episode, frame_time, episode, time_s):
@@ -25,7 +25,18 @@ def _check_reference(frame_episode, frame_time, episode, time_s):
 class DatasetWriter:
     """保存済みのcontrol行数をcommitとして持つ。異常終了時も完了行を読み出せる。"""
 
-    def __init__(self, path: Path, metadata: dict, calibration: dict[str, np.ndarray]):
+    def __init__(
+        self,
+        path: Path,
+        metadata: dict,
+        calibration: dict[str, np.ndarray],
+        *,
+        flush_interval: int = 1,
+        compression: str | None = "lzf",
+    ):
+        if flush_interval < 1 or compression not in {None, "lzf"}:
+            raise ValueError("flush_intervalは正数、compressionはNoneまたはlzfです")
+        self.flush_interval, self.compression = flush_interval, compression
         path.parent.mkdir(parents=True, exist_ok=True)
         self.file = h5py.File(path, "x")
         self.file.attrs.update(
@@ -40,27 +51,52 @@ class DatasetWriter:
             self.file.create_dataset(f"calibration/{key}", data=value)
         self._sensor_stamps: dict[str, list[tuple[int, float]]] = {"camera": [], "lidar": []}
         self._frame_fields: dict[str, set[str]] = {}
+        self._datasets: dict[str, h5py.Dataset] = {}
+        self._dataset_specs = {}
+        self._imu_buffers: dict[str, list[dict[str, np.ndarray]]] = {}
+        self._control_buffer = []
+        self._row_count = 0
         self._previous: tuple[int, int, float] | None = None
         self.file.flush()
 
-    def _append(self, path: str, index: int, value) -> None:
+    def _dataset(self, path: str, value) -> h5py.Dataset:
         value = np.asarray(value)
-        if path not in self.file:
-            self.file.create_dataset(
+        if path not in self._datasets:
+            self._datasets[path] = self.file.create_dataset(
                 path,
                 shape=(0, *value.shape),
                 maxshape=(None, *value.shape),
-                chunks=(1, *value.shape),
+                chunks=(64 if value.nbytes <= 4096 else 1, *value.shape),
                 dtype=value.dtype,
-                compression="lzf",
+                compression=self.compression,
             )
-        dataset = self.file[path]
-        if dataset.shape[1:] != value.shape or dataset.dtype != value.dtype:
+            self._dataset_specs[path] = value.shape, value.dtype
+        dataset = self._datasets[path]
+        if self._dataset_specs[path] != (value.shape, value.dtype):
             raise ValueError(f"収集中にshape/dtypeが変わりました: {path}")
+        return dataset
+
+    def _append(self, path: str, index: int, value) -> None:
+        dataset = self._dataset(path, value)
         dataset.resize(index + 1, axis=0)
         dataset[index] = value
 
-    def _append_frame(self, name: str, frame) -> int:
+    def _flush_imus(self, name: str | None = None) -> None:
+        names = self._imu_buffers if name is None else (name,)
+        for sensor in names:
+            pending = self._imu_buffers[sensor]
+            if not pending:
+                continue
+            end = len(self._sensor_stamps[sensor])
+            start = end - len(pending)
+            for key, first in pending[0].items():
+                dataset = self._dataset(f"sensors/{sensor}/{key}", first)
+                dataset.resize(end, axis=0)
+                dataset[start:end] = np.stack([values[key] for values in pending])
+            self.file.attrs.modify(f"committed_{sensor}_frames", end)
+            pending.clear()
+
+    def _append_frame(self, name: str, frame, *, buffered: bool = False) -> int:
         if not np.isfinite(frame.time_s) or frame.time_s < 0:
             raise ValueError("frameの時刻は有限の非負値です")
         stamps = self._sensor_stamps.setdefault(name, [])
@@ -75,19 +111,25 @@ class DatasetWriter:
         if name in self._frame_fields and self._frame_fields[name] != values.keys():
             raise ValueError(f"収集中にframeのフィールドが変わりました: {name}")
         self._frame_fields[name] = set(values)
-        for key, value in values.items():
-            self._append(f"sensors/{name}/{key}", index, value)
+        if buffered:
+            for key, value in values.items():
+                self._dataset(f"sensors/{name}/{key}", value)
+            pending = self._imu_buffers.setdefault(name, [])
+            pending.append({key: np.asarray(value).copy() for key, value in values.items()})
+        else:
+            for key, value in values.items():
+                self._append(f"sensors/{name}/{key}", index, value)
         stamps.append((frame.episode_id, frame.time_s))
-        self.file.attrs.modify(f"committed_{name}_frames", index + 1)
+        if buffered:
+            if len(pending) >= 64:
+                self._flush_imus(name)
+        else:
+            self.file.attrs.modify(f"committed_{name}_frames", index + 1)
         return index
 
     def append_camera(self, frame: CameraFrame) -> int:
-        if frame.rgb.dtype != np.uint8 or frame.rgb.shape != (*frame.depth_m.shape, 3):
-            raise ValueError("RGBはuint8[H,W,3]、depthは同じ画素格子です")
-        if frame.depth_valid.shape != frame.depth_m.shape or frame.depth_valid.dtype != np.bool_:
-            raise ValueError("深度には画素ごとのbool valid maskが必要です")
-        if np.any(frame.depth_valid & (~np.isfinite(frame.depth_m) | (frame.depth_m <= 0))):
-            raise ValueError("有効な深度は有限の正数です")
+        if frame.rgb.dtype != np.uint8 or frame.rgb.ndim != 3 or frame.rgb.shape[-1] != 3:
+            raise ValueError("RGBはuint8[H,W,3]です")
         return self._append_frame("camera", frame)
 
     def append_lidar(self, frame: LidarFrame) -> int:
@@ -120,7 +162,57 @@ class DatasetWriter:
             np.linalg.norm(frame.orientation_xyzw), 1, atol=1e-5
         ):
             raise ValueError("IMU姿勢は単位xyzw四元数です")
-        return self._append_frame(f"imu_{name}", frame)
+        return self._append_frame(f"imu_{name}", frame, buffered=True)
+
+    def append_imu_batch(self, name: str, values: dict[str, np.ndarray]) -> None:
+        """取得時刻を保ったIMU列を一括保存する。制御行のcommit前に呼ぶ。"""
+        if not name.isidentifier() or set(values) != {field.name for field in fields(ImuFrame)}:
+            raise ValueError("IMU batchにはImuFrameの全フィールドが必要です")
+        times, episodes = np.asarray(values["time_s"]), np.asarray(values["episode_id"])
+        if not len(times) or any(len(value) != len(times) for value in values.values()):
+            raise ValueError("IMU batchの行数が一致しません")
+        if (
+            not np.isfinite(times).all()
+            or np.any(times < 0)
+            or np.any(np.diff(times) <= 0)
+            or np.any(episodes != episodes[0])
+        ):
+            raise ValueError("IMU batchの時刻は同じepisode内で単調増加です")
+        for key in (
+            "angular_velocity_sensor_rad_s",
+            "specific_force_sensor_m_s2",
+            "projected_gravity_sensor",
+        ):
+            if values[key].shape != (len(times), 3) or not np.isfinite(values[key]).all():
+                raise ValueError(f"IMU batchの{key}は有限の3成分です")
+        if values["orientation_xyzw"].shape != (len(times), 4) or not np.allclose(
+            np.linalg.norm(values["orientation_xyzw"], axis=1), 1, atol=1e-5
+        ):
+            raise ValueError("IMU batchの姿勢は単位xyzwです")
+        sensor = f"imu_{name}"
+        self._flush_imus()
+        stamps = self._sensor_stamps.setdefault(sensor, [])
+        if stamps and stamps[-1][0] == episodes[0] and times[0] <= stamps[-1][1]:
+            raise ValueError("IMU batchの時刻が既存のframeと重複します")
+        start = len(stamps)
+        for key, value in values.items():
+            dataset = self._dataset(f"sensors/{sensor}/{key}", value[0])
+            dataset.resize(start + len(times), axis=0)
+            dataset[start:] = value
+        stamps.extend(zip(episodes.tolist(), times.tolist()))
+        self.file.attrs.modify(f"committed_{sensor}_frames", len(stamps))
+
+    def _flush_control(self):
+        if not self._control_buffer:
+            return
+        start = self._row_count - len(self._control_buffer)
+        for key, first in self._control_buffer[0].items():
+            dataset = self._dataset(key, first)
+            dataset.resize(self._row_count, axis=0)
+            dataset[start:] = np.stack([row[key] for row in self._control_buffer])
+        self.file.attrs.modify("committed_steps", self._row_count)
+        self.file.flush()
+        self._control_buffer.clear()
 
     def append_step(
         self,
@@ -132,6 +224,7 @@ class DatasetWriter:
         previous_command: JointCommand | None = None,
         specific_force_body_m_s2: np.ndarray | None = None,
         imu_indices: dict[str, int] | None = None,
+        velocity_command: VelocityCommand | None = None,
     ) -> None:
         stamp = (observation.episode_id, observation.step, observation.simulation_time_s)
         if not np.isfinite(stamp[2]) or min(stamp) < 0:
@@ -159,7 +252,16 @@ class DatasetWriter:
             _check_reference(*stamps[index], observation.episode_id, observation.simulation_time_s)
         if observation.step == 0 and previous_command is not None:
             raise ValueError("episodeの最初には前回適用actionがありません")
+        if velocity_command is not None:
+            velocity_command = velocity_command.validated()
         row = {
+            "velocity_command/requested": np.zeros(3, np.float32)
+            if velocity_command is None
+            else velocity_command.requested,
+            "velocity_command/applied": np.zeros(3, np.float32)
+            if velocity_command is None
+            else velocity_command.applied,
+            "velocity_command/valid": velocity_command is not None,
             **{f"state/imu_{name}_index": index for name, index in (imu_indices or {}).items()},
             "state/episode_id": observation.episode_id,
             "state/step": observation.step,
@@ -196,16 +298,18 @@ class DatasetWriter:
         ]:
             for key, value in asdict(command).items():
                 row[f"{prefix}/{key}"] = value
-        index = len(self)
+        # 制御行が参照するIMUは、行のcommitより先に一括保存する。
+        self._flush_imus()
         for key, value in row.items():
-            self._append(key, index, value)
+            self._dataset(key, value)
+        self._control_buffer.append({key: np.asarray(value).copy() for key, value in row.items()})
+        self._row_count += 1
         self._previous = stamp
-        self.file.attrs.modify("committed_steps", index + 1)
-        # A committed row and its source sensor frames reach disk together.
-        self.file.flush()
+        if self._row_count % self.flush_interval == 0:
+            self._flush_control()
 
     def __len__(self):
-        return int(self.file.attrs["committed_steps"])
+        return self._row_count
 
     @property
     def frame_counts(self) -> dict[str, int]:
@@ -213,6 +317,8 @@ class DatasetWriter:
 
     def close(self, *, complete: bool = False):
         if self.file:
+            self._flush_imus()
+            self._flush_control()
             self.file.attrs.modify("complete", complete)
             self.file.flush()
             self.file.close()
@@ -229,7 +335,7 @@ class DatasetReader:
 
     def __init__(self, path: Path):
         self.file = h5py.File(path, "r")
-        if self.file.attrs.get("schema_version") not in {1, 2, SCHEMA_VERSION}:
+        if self.file.attrs.get("schema_version") not in {1, 2, 3, 4, SCHEMA_VERSION}:
             self.file.close()
             raise ValueError("未対応のdataset schemaです")
         self.metadata = json.loads(self.file.attrs["metadata_json"])
@@ -264,6 +370,18 @@ class DatasetReader:
         candidates = np.flatnonzero((episodes == episode_id) & (times <= time_s + 1e-9))
         return self.sensor_frame(name, int(candidates[-1])) if len(candidates) else None
 
+    def sensor_frames_between(self, name: str, episode_id: int, start_s: float, end_s: float):
+        """教師生成用の過去frame列。未commit、別episode、指定時刻後のframeは返さない。"""
+        self.latest_sensor_frame(name, episode_id, end_s)
+        timeline = self._sensor_timeline[name]
+        if timeline is None:
+            return
+        episodes, times = timeline
+        for index in np.flatnonzero(
+            (episodes == episode_id) & (times >= start_s - 1e-9) & (times <= end_s + 1e-9)
+        ):
+            yield self.sensor_frame(name, int(index))
+
     def sample(self, index: int) -> dict:
         if not 0 <= index < len(self):
             raise IndexError(index)
@@ -271,6 +389,8 @@ class DatasetReader:
             name: self._row(name, index)
             for name in ["state", "previous_action", "requested_action", "applied_action", "next"]
         }
+        if "velocity_command" in self.file:
+            result["velocity_command"] = self._row("velocity_command", index)
         state = result["state"]
         for name in ["camera", "lidar"]:
             ref = int(state[f"{name}_index"])

@@ -15,7 +15,7 @@ camera:
   width: 640
   height: 480
   period_s: 0.03333333333333333
-  # G1_IO_SPECIFICATION.md付録B: 個体の640×480 RGB校正。深度FOV 87×58°とは別。
+  # G1_IO_SPECIFICATION.md付録B: 個体の640×480 RGB校正。
   pinhole:
     width: 640
     height: 480
@@ -24,21 +24,6 @@ camera:
     cx: 318.624329
     cy: 254.776291
     source: G1_IO_SPECIFICATION.md Appendix B, stream.color 640x480
-  depth:
-    pinhole:
-      width: 640
-      height: 480
-      fx: 384.808441
-      fy: 384.808441
-      cx: 325.35614
-      cy: 242.072098
-      source: G1_IO_SPECIFICATION.md Appendix B, stream.depth 640x480
-    color_from_depth_rotation:
-      - [0.999722302, 0.0229402985, -0.00538707944]
-      - [-0.0229862183, 0.999698579, -0.00862260535]
-      - [0.00518765068, 0.00874403957, 0.999948323]
-    color_from_depth_translation_m: [0.0149587858, -0.000382615894, 0.000263101188]
-    scale_m: 0.0010000000474974513
   near_m: 0.05
   far_m: 30.0
   exposure_iso: 100.0
@@ -58,5 +43,5 @@ lidar:
   far_m: 70.0
   mount:
     urdf_joint: mid360_joint
-# 歩行経路の外側に静的な箱を置き、RGB-D/LiDARに空間的な変化を持たせる。
+# 歩行経路の外側に静的な箱を置き、RGB/LiDARに空間的な変化を持たせる。
 landmarks: true

@@ -87,7 +87,8 @@ def run_metadata(root: Path, args: argparse.Namespace, controller: ControllerCon
 
     isaac = Path(os.environ.get("ISAAC_SIM_PATH", "/opt/isaac-sim"))
     lab = Path(os.environ.get("ISAACLAB_PATH", root / "../_local/IsaacLab"))
-    files = [root / name for name in ["pyproject.toml", "uv.lock", "run.sh", "collect.sh", "setup.sh"]]
+    files = [root / name for name in ["pyproject.toml", "uv.lock"]]
+    files.extend(root.glob("*.sh"))
     for name in ["src", "sim", "scripts", "configs", "examples"]:
         files.extend(
             path for path in (root / name).rglob("*") if path.is_file() and "__pycache__" not in path.parts

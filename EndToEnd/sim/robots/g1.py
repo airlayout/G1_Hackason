@@ -7,8 +7,16 @@ from pathlib import Path
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
+from isaaclab.utils import configclass
 
 from g1_e2e.robot import RobotSpec
+
+
+@configclass
+class PhysxUrdfFileCfg(sim_utils.UrdfFileCfg):
+    """Importer 3は物理variantを未選択で返すため、使用するbackendを明示する。"""
+
+    variants: dict[str, str] = {"Physics": "physx"}
 
 
 def make_robot_config(root: Path, robot: RobotSpec, *, fixed_base: bool = False) -> ArticulationCfg:
@@ -18,7 +26,7 @@ def make_robot_config(root: Path, robot: RobotSpec, *, fixed_base: bool = False)
         raise FileNotFoundError("ロボットアセットがありません。bash EndToEnd/setup.shを実行してください")
     return ArticulationCfg(
         prim_path="/World/G1",
-        spawn=sim_utils.UrdfFileCfg(
+        spawn=PhysxUrdfFileCfg(
             asset_path=str(urdf),
             usd_dir=str(root / "assets/cache/usd" / ("fixed" if fixed_base else "floating")),
             fix_base=fixed_base,

@@ -57,6 +57,19 @@ class JointCommand:
 
 
 @dataclass(frozen=True)
+class VelocityCommand:
+    """上位方策の速度指令。各3成分はbase座標vx m/s、vy m/s、yaw_rate rad/s。"""
+
+    requested: FloatArray
+    applied: FloatArray
+
+    def validated(self):
+        return VelocityCommand(
+            vector(self.requested, 3, "requested velocity"), vector(self.applied, 3, "applied velocity")
+        )
+
+
+@dataclass(frozen=True)
 class StepResult:
     """環境遷移。タスク固有の報酬は環境の外で計算する。"""
 

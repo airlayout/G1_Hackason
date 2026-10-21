@@ -132,3 +132,29 @@ def test_all_imu_components_and_each_sensors_own_timestamp_reach_the_model(tmp_p
     sample["imus"]["lidar"]["time_s"] = 0.03
     with pytest.raises(ValueError, match="未来"):
         ModelInputAdapter(config)(sample)
+
+
+def test_imu_batches_preserve_values_and_flush_before_committing_a_control_row(tmp_path):
+    from tests.test_data_collection import writer
+
+    path = tmp_path / "batched-imu.h5"
+    with writer(path, primary_imu="pelvis") as output:
+        for index in range(81):
+            frame = measurement(time_s=index / 1000)
+            frame.specific_force_sensor_m_s2[:] = index
+            imu_index = output.append_imu("pelvis", frame)
+            # 呼び出し元のbufferが再利用されても、取得時の値を保存する。
+            frame.specific_force_sensor_m_s2[:] = -999
+        output.append_step(observation(5), transition(5), imu_indices={"pelvis": imu_index})
+        with DatasetReader(path) as reader:
+            assert len(reader) == 1
+            np.testing.assert_allclose(reader.sample(0)["imu"]["specific_force_sensor_m_s2"], 80)
+            np.testing.assert_allclose(reader.file["sensors/imu_pelvis/time_s"][:], np.arange(81) / 1000)
+            np.testing.assert_allclose(
+                reader.file["sensors/imu_pelvis/specific_force_sensor_m_s2"][:, 0], np.arange(81)
+            )
+        # 最後の制御行の後に取得したIMUも、正常なcloseで保存する。
+        output.append_imu("pelvis", measurement(time_s=0.101))
+    with DatasetReader(path) as reader:
+        assert reader.file.attrs["committed_imu_pelvis_frames"] == 82
+        assert reader.latest_sensor_frame("imu_pelvis", 0, 0.101)["time_s"] == pytest.approx(0.101)

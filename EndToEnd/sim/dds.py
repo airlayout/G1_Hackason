@@ -52,7 +52,7 @@ def main():
         effort_spec = replace(spec, stiffness=np.zeros(29, np.float32), damping=np.zeros(29, np.float32))
         config = FlatConfig(physics_dt=args.dt, control_dt=args.dt, episode_seconds=args.steps * args.dt + 1)
         env = G1FlatEnv(root, effort_spec, config, device=args.device, fixed_base=args.fixed_base)
-        sensors = SensorConfig.load(root / "configs/sensors/g1_rgbd_lidar.yaml", robot_urdf=root / spec.urdf)
+        sensors = SensorConfig.load(root / "configs/sensors/g1_rgb_lidar.yaml", robot_urdf=root / spec.urdf)
         imus = UrdfImuRig(env, sensors.body_imus)
         observation = env.reset()
         timeline = omni.timeline.get_timeline_interface()

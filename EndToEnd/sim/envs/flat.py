@@ -28,6 +28,7 @@ class G1FlatEnv:
         *,
         device: str = "cuda:0",
         fixed_base: bool = False,
+        office=None,
     ) -> None:
         self.root, self.robot_spec, self.config = root, robot_spec, config
         self.fixed_base = fixed_base
@@ -43,18 +44,24 @@ class G1FlatEnv:
                 ),
             )
         )
-        # 単純な平地はローカル生成し、外部USD・テクスチャの取得を不要にする。
-        ground = sim_utils.CuboidCfg(
-            size=(200.0, 200.0, 0.1),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.35, 0.38, 0.42)),
-            physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=config.friction,
-                dynamic_friction=config.friction,
-                restitution=0.0,
-            ),
-        )
-        ground.func("/World/Ground", ground, translation=(0.0, 0.0, -0.05))
+        self.office, self.scene_metadata = office, {"kind": "flat"}
+        if office is None:
+            ground = sim_utils.CuboidCfg(
+                size=(200.0, 200.0, 0.1),
+                collision_props=sim_utils.CollisionPropertiesCfg(),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.35, 0.38, 0.42)),
+                physics_material=sim_utils.RigidBodyMaterialCfg(
+                    static_friction=config.friction,
+                    dynamic_friction=config.friction,
+                    restitution=0.0,
+                ),
+            )
+            ground.func("/World/Ground", ground, translation=(0.0, 0.0, -0.05))
+        else:
+            from .office import spawn_office
+
+            self.scene_metadata = {"kind": "office", **spawn_office(root, office)}
+            self.static_roots = [self.scene_metadata["root_prim"]]
         light = sim_utils.DomeLightCfg(intensity=2000.0)
         light.func("/World/Light", light)
         self.robot = Articulation(make_robot_config(root, robot_spec, fixed_base=fixed_base))
@@ -81,11 +88,20 @@ class G1FlatEnv:
         """外部からシミュレーターの状態を変更できないコピーを返す。"""
         return self._tensor(value)[0].detach().cpu().numpy().astype(np.float32, copy=True)
 
-    def reset(self, *, seed: int = 0) -> Observation:
+    def reset(self, *, seed: int = 0, spawn_xy_yaw=None) -> Observation:
         """root・全関節・内部バッファ・episode時計を初期化する。"""
         self._rng = np.random.default_rng(seed)
         data = self.robot.data
-        self.robot.write_root_pose_to_sim_index(root_pose=self._tensor(data.default_root_pose).clone())
+        root_pose = self._tensor(data.default_root_pose).clone()
+        if spawn_xy_yaw is not None:
+            x, y, yaw = spawn_xy_yaw
+            if not np.isfinite([x, y, yaw]).all():
+                raise ValueError("spawnのXY・yawは有限値です")
+            root_pose[0, :3] = root_pose.new_tensor(
+                [x, y, self.robot_spec.spawn_height + (self.office.floor_height_m if self.office else 0)]
+            )
+            root_pose[0, 3:] = root_pose.new_tensor([0, 0, np.sin(yaw / 2), np.cos(yaw / 2)])
+        self.robot.write_root_pose_to_sim_index(root_pose=root_pose)
         self.robot.write_root_velocity_to_sim_index(root_velocity=self._tensor(data.default_root_vel).clone())
         self.robot.write_joint_position_to_sim_index(position=self._tensor(data.default_joint_pos).clone())
         self.robot.write_joint_velocity_to_sim_index(velocity=self._tensor(data.default_joint_vel).clone())

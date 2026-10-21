@@ -55,7 +55,12 @@ def static_mesh(stage, root_paths: list[str]):
         root = stage.GetPrimAtPath(path)
         if not root.IsValid():
             raise ValueError(f"LiDARの静的シーンがありません: {path}")
-        for prim in Usd.PrimRange(root):
+        for prim in Usd.PrimRange(root, Usd.TraverseInstanceProxies()):
+            imageable = UsdGeom.Imageable(prim)
+            if imageable and (
+                imageable.ComputeVisibility() == "invisible" or imageable.ComputePurpose() == "guide"
+            ):
+                continue
             if prim.IsA(UsdGeom.Cube):
                 points = cube_vertices * (UsdGeom.Cube(prim).GetSizeAttr().Get() / 2)
                 faces = cube_triangles
@@ -73,7 +78,8 @@ def static_mesh(stage, root_paths: list[str]):
                 faces = np.asarray(faces, dtype=np.int32)
             else:
                 continue
-            matrix = np.asarray(UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default()))
+            world = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+            matrix = np.asarray(world)
             points = points @ matrix[:3, :3] + matrix[3, :3]
             vertices.append(points)
             triangles.append(faces + offset)

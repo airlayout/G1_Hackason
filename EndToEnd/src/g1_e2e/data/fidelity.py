@@ -27,30 +27,9 @@ def sensor_fidelity(sensors, environment):
             "rate_matches_reference_calibration_profile": abs(1 / sensors.camera.period_s - 30) < 1e-6,
             "timing_note": "simulation sampling is configured independently; real acquisition timing is unmeasured",
         },
-        "depth": {
-            "reference_sections": ["3.1", "3.2", "Appendix B"],
-            "reference_model": "active stereo; native Z16, measured depth scale 0.0010000000474974513 m/unit",
-            "reference_native_intrinsics_640x480": [
-                [384.808441, 0, 325.35614],
-                [0, 384.808441, 242.072098],
-                [0, 0, 1],
-            ],
-            "simulation_model": "separate native-depth pinhole, Z16 quantization, calibrated depth-to-color projection; native depth Z as in RealSense align"
-            if sensors.camera.depth
-            else "ideal ray-traced float32 Z on RGB optical grid",
-            "native_geometry_and_z16_enabled": sensors.camera.depth is not None,
-            "simulation_clip_limits_m": [sensors.camera.near_m, sensors.camera.far_m],
-            "reference_typical_operating_range_m": [0.3, 3.0],
-            "reference_range_note": "typical working range, not a hard near/far cutoff",
-            "mismatches": [
-                "no active-stereo matching, texture-dependent failures or IR emitter",
-                "pixel validity is renderer visibility, not physical stereo confidence",
-                "alignment follows generic librealsense pixel-corner rectangles and minimum native Z16; optional filtering unmodeled",
-            ],
-        },
         "body_imu": {
             "reference_sections": ["5.3", "15"],
-            "simulation_source": "URDF-mounted pelvis and torso IMUs; rigid-body lever-arm acceleration",
+            "simulation_source": "URDF-mounted pelvis, torso and nominal LiDAR-frame IMUs; rigid-body lever-arm acceleration",
             "simulation_rate_hz": 1 / environment.physics_dt,
             "model_input_rate_hz": 1 / environment.control_dt,
             "mount_joints": {name: mount.urdf_joint for name, mount in sensors.body_imus.mounts.items()},
@@ -104,10 +83,10 @@ def sensor_fidelity(sensors, environment):
         },
         "additional_imus_not_simulated": [
             "D435i accelerometer 100/200Hz and gyro 200/400Hz",
-            "MID-360 ICM40609 at nominal 200Hz; real route may retain g units",
+            *([] if "lidar" in sensors.body_imus.mounts else ["MID-360 ICM40609 at nominal 200Hz"]),
         ],
         "requires_for_device_equivalence": [
-            "synchronized raw real-device RGB/depth/IMU/LowState/point-cloud logs with original timestamps",
+            "synchronized raw real-device RGB/IMU/LowState/point-cloud logs with original timestamps",
             "individual sensor-to-body and optical-frame calibration",
             "measured noise, latency, dropout and actuator response under representative motion/materials",
             "held-out real-device evaluation",

@@ -7,13 +7,11 @@ from dataclasses import dataclass, replace
 class CaptureQuality:
     rgb_mean: float = 0.0
     rgb_saturated: float = 0.0
-    depth_valid: float = 0.0
     lidar_returns: int = 0
 
     def add_camera(self, frame):
         self.rgb_mean += float(frame.rgb.mean())
         self.rgb_saturated += float((frame.rgb >= 254).all(axis=-1).mean())
-        self.depth_valid += float(frame.depth_valid.mean())
 
     def summary(self, counts):
         camera, lidar = counts["camera"], counts["lidar"]
@@ -23,7 +21,6 @@ class CaptureQuality:
             "imu_frames": {name[4:]: count for name, count in counts.items() if name.startswith("imu_")},
             "rgb_mean_u8": self.rgb_mean / camera if camera else None,
             "rgb_saturated_pixel_fraction": self.rgb_saturated / camera if camera else None,
-            "depth_valid_fraction": self.depth_valid / camera if camera else None,
             "lidar_valid_returns_mean": self.lidar_returns / lidar if lidar else None,
         }
 
@@ -79,11 +76,17 @@ class CollectionRecorder:
             ),
         )
 
-    def append_step(self, observation, result):
+    def append_step(self, observation, result, *, velocity_command=None):
         stamp = (observation.episode_id, observation.step, observation.simulation_time_s)
         if self._prepared is None or self._prepared[0] != stamp:
             raise RuntimeError("制御行の保存前に同じ観測のprepareが必要です")
-        self.writer.append_step(observation, result, previous_command=self._previous, **self._prepared[1])
+        self.writer.append_step(
+            observation,
+            result,
+            previous_command=self._previous,
+            velocity_command=velocity_command,
+            **self._prepared[1],
+        )
         self._previous, self._prepared = result.applied_command, None
 
     @property

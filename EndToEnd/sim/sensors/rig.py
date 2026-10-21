@@ -1,4 +1,4 @@
-"""URDF取り付けに追従するRGB-D・LiDAR・身体IMUを取得する。"""
+"""URDF取り付けに追従するRGB・LiDAR・身体IMUを取得する。"""
 
 from __future__ import annotations
 
@@ -8,23 +8,20 @@ from g1_e2e.data.config import SensorConfig
 from g1_e2e.data.geometry import MOUNT_FROM_OPTICAL, base_pose, mount_matrix, pose_matrix
 
 from .imu import UrdfImuRig
-from .camera import CalibratedRgbdCamera
+from .camera import CalibratedRgbCamera, PinholeRenderer
 from .scene import add_landmarks, static_mesh
 from .lidar import StaticRaycaster, make_lidar
 
 
 class SensorRig:
     def __init__(self, env, config: SensorConfig):
-        import carb
-        import omni.kit.app
         import omni.replicator.core as rep
         import omni.timeline
         import omni.usd
         from isaaclab.utils.warp import convert_to_warp_mesh
         from pxr import Gf, UsdGeom, UsdLux
 
-        manager = omni.kit.app.get_app().get_extension_manager()
-        manager.set_extension_enabled_immediate("isaacsim.sensors.experimental.rtx", True)
+        PinholeRenderer.prepare_runtime()
         self.env, self.config = env, config
         if not config.body_imus.mounts:
             raise ValueError("収集する身体IMUのURDF取り付け定義が必要です")
@@ -36,8 +33,11 @@ class SensorRig:
             for name in {config.camera.mount.body, config.lidar.mount.body, "pelvis"}
         }
         stage = omni.usd.get_context().get_stage()
-        self.static_roots = add_landmarks() if config.landmarks else ["/World/Ground"]
+        self.static_roots = getattr(env, "static_roots", None)
+        if self.static_roots is None:
+            self.static_roots = add_landmarks() if config.landmarks else ["/World/Ground"]
         points, faces, self.mesh_paths = static_mesh(stage, self.static_roots)
+        self.scene_vertices, self.scene_faces = points, faces
         self.mesh = convert_to_warp_mesh(points, faces.reshape(-1), device=str(env.device))
         self.camera_mount = mount_matrix(config.camera.mount.position_m, config.camera.mount.rpy_deg)
         self.lidar_mount = mount_matrix(config.lidar.mount.position_m, config.lidar.mount.rpy_deg)
@@ -48,13 +48,12 @@ class SensorRig:
             lambda: self._body_world(config.lidar.mount.body) @ self.lidar_mount,
             lambda: self._body_world("pelvis"),
         )
-        self.rgbd = CalibratedRgbdCamera(config.camera)
+        self.camera = CalibratedRgbCamera(config.camera)
         # Explicit illumination also works in the headless experience.
         sun = UsdLux.DistantLight.Define(stage, "/World/CollectionSun")
         sun.CreateIntensityAttr(1500.0)
         UsdGeom.Xformable(sun).AddRotateXYZOp().Set(Gf.Vec3f(-45, -25, -30))
         rep.orchestrator.set_capture_on_play(True)
-        carb.settings.get_settings().set("/rtx/rendermode", "PathTracing")
         timeline = omni.timeline.get_timeline_interface()
         timeline.set_auto_update(False)
         timeline.commit()
@@ -74,15 +73,6 @@ class SensorRig:
                 for name, transform in self.imus.transforms.items()
             },
         }
-        native = self.config.camera.depth
-        if native is not None:
-            common.update(
-                {
-                    "depth/intrinsics": native.pinhole.resized(native.pinhole.width, native.pinhole.height),
-                    "depth/color_from_depth": native.color_from_depth,
-                    "depth/scale_m": np.asarray(native.scale_m),
-                }
-            )
         return {**common, **{f"lidar/{key}": value for key, value in self.lidar.calibration.items()}}
 
     @property
@@ -91,13 +81,8 @@ class SensorRig:
             "sensor_config": self.config.to_dict(),
             "calibration_status": "URDF nominal mounts; RGB K from physical-device IO specification; base-to-sensor extrinsics not calibrated to the individual robot",
             "camera": {
-                "model": "separate calibrated RGB and native-depth pinholes"
-                if self.config.camera.depth
-                else "ideal aligned RGB-D pinhole",
+                "model": "calibrated RGB pinhole",
                 "color_order": "RGB",
-                "depth": "native optical Z in metres on RGB grid (RealSense align convention); missing pixels have valid=false"
-                if self.config.camera.depth
-                else "optical Z in metres; missing pixels have valid=false",
                 "optical_axes": "X right, Y down, Z forward",
                 "pixel_coordinates": "RealSense integer pixel centers; USD half-pixel convention corrected",
                 "renderer": "PathTracing",
@@ -105,17 +90,17 @@ class SensorRig:
                 "intrinsics_source": self.config.camera.pinhole.source
                 if self.config.camera.pinhole
                 else "synthetic horizontal FOV",
-                "depth_alignment": "native pixel corners projected using measured depth-to-color extrinsics; rectangle transfer with minimum Z16"
-                if self.config.camera.depth
-                else "ideal Z on RGB optical grid",
-                "depth_alignment_source": "https://github.com/realsenseai/librealsense/blob/c84fe6438bd14a4cc69f46deae92c993268232c6/src/proc/align.cpp",
-                "depth_physics": "ideal geometric depth; active stereo matching and IR failures unmodeled",
             },
             "lidar": self.lidar.metadata,
             "imu": self.imus.metadata,
             "primary_imu": self.config.body_imus.primary,
             "gravity_world_m_s2": self.gravity_world.tolist(),
             "joint_torque": "Isaac applied_torque; implicit PD estimate, not measured force",
+            "static_scene": {
+                "roots": self.static_roots,
+                "mesh_count": len(self.mesh_paths),
+                "triangles": len(self.scene_faces),
+            },
             "clock": "simulation time in seconds, relative to episode reset",
             "transforms": "world_from_sensor maps column vectors; base X forward/Y left/Z up",
         }
@@ -124,6 +109,9 @@ class SensorRig:
     def reset(self, observation):
         self.latest_imus = self.imus.capture(observation.episode_id, observation.simulation_time_s)
         self.lidar.reset(observation.episode_id)
+        # 最初のRGB bufferは材質・描画履歴の初期化前の値になり得る。同じ物理時刻で
+        # 一度描画して捨て、収集行には準備完了後のframeだけを渡す。
+        self.capture_camera(observation)
 
     def after_physics_step(self, episode_id, time_s):
         self.latest_imus = self.imus.capture(episode_id, time_s)
@@ -136,7 +124,7 @@ class SensorRig:
     def capture_camera(self, observation):
         world_from_mount = self._body_world(self.config.camera.mount.body) @ self.camera_mount
         self.env.sim.forward()
-        return self.rgbd.capture(
+        return self.camera.capture(
             observation.episode_id,
             observation.simulation_time_s,
             world_from_mount @ MOUNT_FROM_OPTICAL,
@@ -156,4 +144,4 @@ class SensorRig:
         return (frame.base_from_sensor[:3, :3] @ frame.specific_force_sensor_m_s2).astype(np.float32)
 
     def close(self):
-        self.rgbd.close()
+        self.camera.close()

@@ -40,7 +40,7 @@ def urdf(tmp_path):
 
 
 def standard(urdf):
-    return SensorConfig.load(ROOT / "configs/sensors/g1_rgbd_lidar.yaml", robot_urdf=urdf)
+    return SensorConfig.load(ROOT / "configs/sensors/g1_rgb_lidar.yaml", robot_urdf=urdf)
 
 
 def test_camera_optical_axis_points_down_at_urdf_angle(urdf):
@@ -77,6 +77,7 @@ def test_rgb_uses_measured_color_intrinsics_and_resizing_keeps_full_fov(urdf):
     fx, fy, cx, cy = map(float, row.split("|")[3:7])
     np.testing.assert_allclose(camera.intrinsics, [[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
     assert (camera.width, camera.height) == (640, 480)
+    assert standard(urdf).periods_in_steps(1 / 600) == (20, 60)
     assert 55 < camera.fov_deg[0] < 56 and 43 < camera.fov_deg[1] < 44
     smaller = replace(camera, width=128, height=128)
     np.testing.assert_allclose(smaller.fov_deg, camera.fov_deg, atol=1e-5)
@@ -102,7 +103,7 @@ def test_mounts_follow_the_selected_urdf_instead_of_cached_numbers(urdf):
 
 @pytest.mark.parametrize("conflict", ["mount", "pinhole"])
 def test_ambiguous_configuration_is_rejected(urdf, tmp_path, conflict):
-    data = yaml.safe_load((ROOT / "configs/sensors/g1_rgbd_lidar.yaml").read_text())
+    data = yaml.safe_load((ROOT / "configs/sensors/g1_rgb_lidar.yaml").read_text())
     if conflict == "mount":
         data["camera"]["mount"]["position_m"] = [0, 0, 0]
     else:

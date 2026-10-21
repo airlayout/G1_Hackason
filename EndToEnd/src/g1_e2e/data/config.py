@@ -73,37 +73,6 @@ class PinholeCalibration:
 
 
 @dataclass(frozen=True)
-class DepthCalibration:
-    pinhole: PinholeCalibration
-    color_from_depth_rotation: tuple[tuple[float, ...], ...]
-    color_from_depth_translation_m: tuple[float, float, float]
-    scale_m: float = 0.0010000000474974513
-
-    def __post_init__(self):
-        rotation = np.asarray(self.color_from_depth_rotation)
-        if (
-            rotation.shape != (3, 3)
-            or not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-6)
-            or not np.isclose(np.linalg.det(rotation), 1, atol=1e-6)
-        ):
-            raise ValueError("depth→colorは正規直交回転行列です")
-        if (
-            not np.isfinite(self.color_from_depth_translation_m).all()
-            or len(self.color_from_depth_translation_m) != 3
-            or not np.isfinite(self.scale_m)
-            or self.scale_m <= 0
-        ):
-            raise ValueError("depthのtranslationとscaleが不正です")
-
-    @property
-    def color_from_depth(self):
-        result = np.eye(4)
-        result[:3, :3] = self.color_from_depth_rotation
-        result[:3, 3] = self.color_from_depth_translation_m
-        return result
-
-
-@dataclass(frozen=True)
 class CameraConfig:
     width: int = 128
     height: int = 128
@@ -117,7 +86,6 @@ class CameraConfig:
     render_updates: int = 3
     mount: MountConfig = field(default_factory=MountConfig)
     pinhole: PinholeCalibration | None = None
-    depth: DepthCalibration | None = None
 
     def __post_init__(self):
         if min(self.width, self.height, self.render_updates) < 1:
@@ -221,10 +189,6 @@ class SensorConfig:
                 if "horizontal_fov_deg" in value:
                     raise ValueError("pinhole校正と手動画角は併用できません")
                 value["pinhole"] = PinholeCalibration(**value["pinhole"])
-            if name == "camera" and "depth" in value:
-                depth = dict(value["depth"])
-                depth["pinhole"] = PinholeCalibration(**depth["pinhole"])
-                value["depth"] = DepthCalibration(**depth)
             data[name] = kind(**value)
         imus = dict(data.pop("body_imus", {}))
         imus["mounts"] = {name: resolve_mount(mount) for name, mount in imus.get("mounts", {}).items()}

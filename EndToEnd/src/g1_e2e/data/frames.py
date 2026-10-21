@@ -10,13 +10,8 @@ class CameraFrame:
     episode_id: int
     time_s: float
     rgb: np.ndarray
-    depth_m: np.ndarray
-    depth_valid: np.ndarray
     world_from_optical: np.ndarray
     base_from_optical: np.ndarray
-    native_depth_z16: np.ndarray | None = None
-    native_depth_valid: np.ndarray | None = None
-    world_from_depth_optical: np.ndarray | None = None
 
 
 @dataclass(frozen=True)

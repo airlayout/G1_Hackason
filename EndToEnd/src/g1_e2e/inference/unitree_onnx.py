@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from g1_e2e.contracts import JointCommand, Observation, vector
+from g1_e2e.contracts import JointCommand, Observation, VelocityCommand, vector
 from g1_e2e.robot import RobotSpec
 
 
@@ -46,8 +46,13 @@ class UnitreeOnnxController:
     def set_velocity(self, command: np.ndarray) -> None:
         """公開モデルが定義した範囲内に希望速度を制限する。"""
         command = vector(command, 3, "velocity")
+        self.requested_velocity = command.copy()
         limits = np.asarray([self.ranges[k] for k in ["lin_vel_x", "lin_vel_y", "ang_vel_z"]])
         self.command = np.clip(command, limits[:, 0], limits[:, 1]).astype(np.float32)
+
+    @property
+    def velocity_command(self):
+        return VelocityCommand(self.requested_velocity.copy(), self.command.copy())
 
     def reset(self) -> None:
         """履歴は最初の観測で埋める。前episodeのactionを引き継がない。"""

@@ -12,6 +12,7 @@ import time
 import numpy as np
 
 from g1_e2e.robot import RobotSpec
+from g1_e2e.data.scene import OfficeConfig
 from sim.envs.config import FlatConfig
 from sim.runtime import ControllerConfig, add_run_arguments, configure_app, run_metadata
 
@@ -25,6 +26,10 @@ def main() -> None:
     add_run_arguments(parser, root, controller="hold", velocity=(0.0, 0.0, 0.0))
     parser.add_argument("--fixed-base", action="store_true", help="基部を固定して関節指令だけを検証")
     parser.add_argument("--real-time", action="store_true", help="実時間に合わせて表示")
+    parser.add_argument("--scene-config", type=Path, help="公式Officeでの物理検証")
+    parser.add_argument(
+        "--patrol", action="store_true", help="カメラ・LiDARを取得せず巡回教師と歩行方策を検証"
+    )
     AppLauncher.add_app_launcher_args(parser)
     parser.set_defaults(device=f"cuda:{os.environ.get('G1_E2E_SELECTED_GPU', '0')}")
     args = parser.parse_args()
@@ -32,6 +37,9 @@ def main() -> None:
         parser.error("--stepsは1以上を指定してください")
     spec = RobotSpec.load(args.robot_config)
     config = FlatConfig.load(args.env_config)
+    office = OfficeConfig.load(args.scene_config) if args.scene_config else None
+    if args.patrol and (office is None or args.controller != "unitree"):
+        parser.error("--patrolには--scene-configと--controller unitreeが必要です")
     try:
         controller_config = ControllerConfig.from_args(args, root)
     except ValueError as error:
@@ -49,24 +57,38 @@ def main() -> None:
         from sim.envs.flat import G1FlatEnv
 
         controller = controller_config.create(spec, config.control_dt)
-        env = G1FlatEnv(root, spec, config, device=args.device, fixed_base=args.fixed_base)
+        env = G1FlatEnv(root, spec, config, device=args.device, fixed_base=args.fixed_base, office=office)
+        teacher = None
+        if args.patrol:
+            from g1_e2e.navigation.patrol import PatrolTeacher
+            from sim.envs.office import navigation_grid
+            from sim.sensors.scene import static_mesh
+
+            points, faces, _ = static_mesh(env.sim.stage, env.static_roots)
+            grid = navigation_grid(points, faces, office)
+            grid.save(output / "navigation-grid.npz")
+            teacher = PatrolTeacher(grid, office)
         provenance = run_metadata(root, args, controller_config) | {"fixed_base": args.fixed_base}
         (output / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
-        summary = run(app, env, controller, args, output)
+        summary = run(app, env, controller, args, output, teacher=teacher)
         print(f"[RESULT] {json.dumps(summary)}", flush=True)
         print(f"[SAVED] {output}", flush=True)
     finally:
         if env is not None:
             env.close()
         app.close()
-    if summary["falls"] or summary["completed_steps"] != args.steps:
+    if (
+        summary["falls"]
+        or summary["completed_steps"] != args.steps
+        or not summary.get("patrol_quality", {}).get("accepted", True)
+    ):
         raise SystemExit(1)
 
 
-def run(app, env, controller, args: argparse.Namespace, output: Path) -> dict:
+def run(app, env, controller, args: argparse.Namespace, output: Path, *, teacher=None) -> dict:
     """環境とcontrollerを接続し、動作検証用の遷移と集計を保存する。"""
     config = env.config
-    obs = env.reset(seed=args.seed)
+    obs = env.reset(seed=args.seed, spawn_xy_yaw=teacher.spawn(args.seed) if teacher else None)
     controller.reset()
     rows: dict[str, list] = {}
     falls = 0
@@ -75,12 +97,15 @@ def run(app, env, controller, args: argparse.Namespace, output: Path) -> dict:
     distance = 0.0
     previous_position = obs.privileged["base_position_world_m"].copy()
     result = None
+    patrol_episodes = []
     start = time.monotonic()
     for _ in range(args.steps):
         if not app.is_running():
             break
+        if teacher:
+            controller.set_velocity(teacher.command(obs))
         command = controller.act(obs)
-        result = env.step(command)
+        result = env.step(command, render=not args.headless)
         next_obs = result.observation
         position = next_obs.privileged["base_position_world_m"]
         distance += float(np.linalg.norm((position - previous_position)[:2]))
@@ -108,6 +133,9 @@ def run(app, env, controller, args: argparse.Namespace, output: Path) -> dict:
             "terminated": result.terminated,
             "truncated": result.truncated,
         }
+        if hasattr(controller, "velocity_command"):
+            row["velocity_command_requested"] = controller.velocity_command.requested
+            row["velocity_command_applied"] = controller.velocity_command.applied
         for key, value in row.items():
             rows.setdefault(key, []).append(value)
         elapsed += 1
@@ -120,7 +148,11 @@ def run(app, env, controller, args: argparse.Namespace, output: Path) -> dict:
             print(f"[EPISODE] {result.info['termination_reason']}", flush=True)
             if not args.reset_on_done:
                 break
-            obs = env.reset(seed=args.seed + obs.episode_id + 1)
+            seed = args.seed + obs.episode_id + 1
+            if teacher:
+                patrol_episodes.append(teacher.summary)
+                teacher.reset()
+            obs = env.reset(seed=seed, spawn_xy_yaw=teacher.spawn(seed) if teacher else None)
             previous_position = obs.privileged["base_position_world_m"].copy()
             controller.reset()
         if args.real_time:
@@ -141,7 +173,12 @@ def run(app, env, controller, args: argparse.Namespace, output: Path) -> dict:
         .tolist(),
         "joint_count": len(env.robot.joint_names),
         "termination_reason": result.info["termination_reason"] if result else "app_closed",
+        "patrol_episodes": [*patrol_episodes, teacher.summary] if teacher else [],
     }
+    if teacher:
+        from g1_e2e.data.quality import patrol_quality
+
+        summary["patrol_quality"] = patrol_quality(summary, env.office)
     (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary
 

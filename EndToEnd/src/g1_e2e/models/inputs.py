@@ -42,7 +42,6 @@ class ModelInputAdapter:
             raise ValueError("制御周期と許容ageは有限の正数です")
         expected = {
             "rgb": (3 * patch_size**2, (image_size // patch_size) ** 2, 2),
-            "depth": (2 * patch_size**2, (image_size // patch_size) ** 2, 2),
             "lidar": (6, 1, 3),
             "joints": (3, 29, 0),
         }
@@ -123,27 +122,14 @@ class ModelInputAdapter:
         camera_age = self._age(state, camera) if camera is not None else 0.0
         camera_valid = camera is not None and camera_age <= self.camera_max_age_s
         size = (self.image_size, self.image_size)
-        observations = {}
-        for name, channels in [("rgb", 3), ("depth", 2)]:
-            if name not in self.config.modalities:
-                continue
-            if camera is None:
-                image = torch.zeros(1, channels, *size, device=self.device)
-            elif name == "rgb":
-                image = self._tensor(camera["rgb"]).permute(2, 0, 1).unsqueeze(0) / 255.0
-                image = F.interpolate(image, size=size, mode="bilinear", align_corners=False)
-            else:
-                valid = np.asarray(camera["depth_valid"], dtype=bool)
-                depth_m = np.where(valid, camera["depth_m"], 0)
-                image = self._tensor(np.stack((depth_m, valid), axis=0)).unsqueeze(0)
-                image = F.interpolate(image, size=size, mode="nearest")
-            patches = image_patches(image, self.patch_size, age_s=self._tensor([camera_age]))
-            valid = torch.full(patches.features.shape[:2], camera_valid, dtype=torch.bool, device=self.device)
-            if name == "depth":
-                pixel_valid = F.unfold(image[:, 1:2], self.patch_size, stride=self.patch_size)
-                valid = valid & pixel_valid.any(dim=1)
-            observations[name] = SensorTokens(patches.features, valid, patches.positions, patches.age_s)
-        return observations
+        if camera is None:
+            image = torch.zeros(1, 3, *size, device=self.device)
+        else:
+            image = self._tensor(camera["rgb"]).permute(2, 0, 1).unsqueeze(0) / 255.0
+            image = F.interpolate(image, size=size, mode="bilinear", align_corners=False)
+        patches = image_patches(image, self.patch_size, age_s=self._tensor([camera_age]))
+        valid = torch.full(patches.features.shape[:2], camera_valid, dtype=torch.bool, device=self.device)
+        return {"rgb": SensorTokens(patches.features, valid, patches.positions, patches.age_s)}
 
     def _lidar(self, sample: dict) -> SensorTokens:
         state, lidar = sample["state"], sample["lidar"]
@@ -186,7 +172,7 @@ class ModelInputAdapter:
             "joints": self._joints,
             "lidar": self._lidar,
         }
-        observations = self._camera(sample) if self.config.modalities.keys() & {"rgb", "depth"} else {}
+        observations = self._camera(sample) if "rgb" in self.config.modalities else {}
         result = {}
         for name in self.config.modalities:
             if name in observations:

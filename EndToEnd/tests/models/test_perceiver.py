@@ -30,11 +30,11 @@ def test_default_definition_supports_all_modalities_and_three_readouts():
     assert all(isinstance(head.ff, SwiGLU) for head in model.decoder.heads.values())
     obs = {
         "rgb": image_patches(torch.rand(1, 3, 128, 128)),
-        "depth": image_patches(torch.rand(1, 2, 128, 128)),
         "lidar": SensorTokens(torch.rand(1, 128, 6), positions=torch.rand(1, 128, 3)),
         "joints": SensorTokens(torch.rand(1, 29, 3)),
         **{name: SensorTokens(torch.rand(1, 1, 14)) for name in ["imu_pelvis", "imu_torso", "imu_lidar"]},
     }
+    assert set(model.observations.modalities) == set(obs)
     with torch.inference_mode():
         result = model(
             obs,

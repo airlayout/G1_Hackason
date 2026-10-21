@@ -51,8 +51,6 @@ def frames(episode=0, time_s=0.0):
         episode,
         time_s,
         rgb,
-        np.full((128, 128), 2.0, np.float32),
-        np.ones((128, 128), bool),
         transform.copy(),
         transform.copy(),
     )
@@ -114,10 +112,17 @@ def test_model_shapes_and_real_forward(dataset):
     torch.set_num_threads(1)
     config = model_config()
     with DatasetReader(dataset) as source:
+        assert source.file.attrs["schema_version"] == 5
+        assert set(source.file["sensors/camera"]) == {
+            "episode_id",
+            "time_s",
+            "rgb",
+            "world_from_optical",
+            "base_from_optical",
+        }
         inputs = ModelInputAdapter(config)(source.sample(0))
     expected = {
         "rgb": (1, 64, 768),
-        "depth": (1, 64, 512),
         "lidar": (1, 128, 6),
         "joints": (1, 29, 3),
         "imu_pelvis": (1, 1, 14),
@@ -179,24 +184,19 @@ def test_adapter_rejects_future_or_other_episode(dataset, sensor):
         ModelInputAdapter(model_config())(sample)
 
 
-def test_missing_stale_and_invalid_depth_are_masked(dataset):
+def test_missing_and_stale_observations_are_masked(dataset):
     adapter = ModelInputAdapter(model_config())
     with DatasetReader(dataset) as source:
         sample = source.sample(0)
-    sample["camera"]["depth_valid"][:] = False
-    sample["camera"]["depth_m"][:] = np.inf
-    inputs = adapter(sample)
-    assert not inputs["depth"].valid.any()
-    assert torch.isfinite(inputs["depth"].features).all()
     sample["camera"] = sample["lidar"] = None
     inputs = adapter(sample)
-    for key in ["rgb", "depth", "lidar"]:
+    for key in ["rgb", "lidar"]:
         assert not inputs[key].valid.any()
         assert torch.isfinite(inputs[key].features).all()
     camera, lidar = frames()
     sample["state"]["time_s"] = 0.5
     sample["camera"], sample["lidar"] = camera.__dict__, lidar.__dict__
-    for key in ["rgb", "depth", "lidar"]:
+    for key in ["rgb", "lidar"]:
         assert not adapter(sample)[key].valid.any()
 
 
@@ -273,17 +273,15 @@ def test_changed_model_contract_fails_explicitly():
         ModelInputAdapter(replace(config, modalities=modalities))
 
 
-@pytest.mark.parametrize(
-    "modality", ["rgb", "depth", "lidar", "joints", "imu_pelvis", "imu_torso", "imu_lidar"]
-)
+@pytest.mark.parametrize("modality", ["rgb", "lidar", "joints", "imu_pelvis", "imu_torso", "imu_lidar"])
 def test_modality_subset_does_not_require_unselected_sensor_data(dataset, modality):
     config = model_config()
     with DatasetReader(dataset) as source:
         sample = source.sample(1)
     expected = ModelInputAdapter(config)(sample)[modality]
     minimal = {"state": sample["state"]}
-    if modality in {"rgb", "depth"}:
-        fields = ["rgb"] if modality == "rgb" else ["depth_m", "depth_valid"]
+    if modality == "rgb":
+        fields = ["rgb"]
         minimal["camera"] = {name: sample["camera"][name] for name in ["episode_id", "time_s", *fields]}
     elif modality == "lidar":
         minimal.update(lidar=sample["lidar"], lidar_calibration=sample["lidar_calibration"])

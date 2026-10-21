@@ -1,0 +1,6 @@
+physics_dt: 0.0016666666666666668
+control_dt: 0.02
+episode_seconds: 120.0
+minimum_base_height: 0.35
+maximum_tilt_radians: 1.0
+friction: 1.0

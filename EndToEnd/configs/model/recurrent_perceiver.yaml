@@ -17,10 +17,6 @@ modalities:
     feature_dim: 768     # 128x128 RGB、16x16パッチ、事前に値域を正規化
     max_tokens: 64
     position_dim: 2
-  depth:
-    feature_dim: 512     # 128x128、深度m + 画素validの2チャネル
-    max_tokens: 64
-    position_dim: 2
   lidar:
     feature_dim: 6       # base座標XYZ m、intensity、ring、フレーム内時刻s
     max_tokens: 128      # 選択/集約は入力アダプター側

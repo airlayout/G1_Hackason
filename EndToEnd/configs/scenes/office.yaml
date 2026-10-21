@@ -1,0 +1,16 @@
+# NVIDIA公式Office。元のUSD・物理collision・テクスチャを依存関係ごとローカル保存する。
+asset_root_url: https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2/
+asset_path: Isaac/Environments/Office/office.usd
+asset_sha256: df8e2c83c92049a34b2bd10dc8a4b0e0c9acda4b63971b09e488dbfcf340a964
+cache_directory: assets/cache/environments/isaac-6.2
+source_documentation: https://docs.isaacsim.omniverse.nvidia.com/6.2.0/assets/usd_assets_environments.html
+floor_height_m: 0.0
+# Officeには屋外背景と上下階も含まれる。初期タスクは高さ0mの室内フロアに限定。
+navigation_bounds_xy_m: [[-24.0, 6.0], [-30.0, 60.0]]
+grid_resolution_m: 0.1
+obstacle_height_range_m: [0.12, 1.7]
+robot_radius_m: 0.4
+tracking_margin_m: 0.1  # 公開歩行方策の速度追従誤差を見込んで追加する経路側の余白。
+cruise_speed_m_s: 0.3
+lookahead_m: 0.8
+goal_tolerance_m: 0.55
