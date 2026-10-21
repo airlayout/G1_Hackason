@@ -34,6 +34,7 @@ weight が 0 に戻り、腕が柱の数 cm 手前から元の姿勢へ動く。
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -91,6 +92,9 @@ class ElevatorPressController:
         self.cfg = cfg
         self.tracker = ButtonTracker(cfg["tracking"])
         self.log: list[StepLog] = []
+        # 押す前（見つけたとき）と点灯の確認のときの画像を、外へ渡す口（agent.py が記録に使う）。
+        # on_snapshot(種類 "before" / "check", 画像 RGB, 内容の辞書)。無ければ何もしない
+        self.on_snapshot: Callable[[str, np.ndarray, dict[str, Any]], None] | None = None
 
     @classmethod
     def from_config(cls, robot_cfg: dict[str, Any], press_cfg: dict[str, Any], arm_cfg: dict[str, Any],
@@ -244,6 +248,7 @@ class ElevatorPressController:
         b = merged.button(self.target)
         self.baseline_brightness = self._brightness(rgb, b.bbox)
         self.baseline_level = self._lit_level(rgb, b.bbox)
+        self._snapshot("before", rgb, b.bbox, t, level=self.baseline_level, retry=0)
         advice = self._stand_advice(merged)
         try:
             self._plan(q, merged)
@@ -481,6 +486,17 @@ class ElevatorPressController:
                 best, best_d = cand.bbox, d
         return best if best is not None else bbox
 
+    def _snapshot(self, kind: str, rgb: np.ndarray, bbox: tuple[int, int, int, int], t: float, **info: Any) -> None:
+        """on_snapshot があれば、そのときの画像と、使った枠・明るさなどを渡す（実機で、手が枠に被さって点灯の確認が
+        狂っていないかを、あとで画像で見るため）。記録の失敗で押す動きを止めない。"""
+        if self.on_snapshot is None:
+            return
+        try:
+            self.on_snapshot(kind, rgb, {"t": float(t), "target": self.target, "bbox": [int(v) for v in bbox],
+                                         "baseline_level": self.baseline_level, **info})
+        except Exception as e:  # noqa: BLE001
+            print(f"[elevator] ⚠️ 画像の記録に失敗（続ける）: {e}")
+
     def _check(self, rgb: np.ndarray, t: float) -> bool:
         """押したボタンが点灯したか（明るい部分の明るさが、見つけたときより lit_check.min_rise 以上上がったか）を見る。
         点灯していなければ深く押し直す。枠全体の明るさの上がり方も、比べるために表示する。"""
@@ -491,6 +507,8 @@ class ElevatorPressController:
         rise = level - (self.baseline_level if self.baseline_level is not None else level)
         whole = self._brightness(rgb, box) - (self.baseline_brightness if self.baseline_brightness is not None else 0.0)
         shown = f"明るい部分 {rise:+.0f}、枠全体の平均 {whole:+.0f}"
+        self._snapshot("check", rgb, box, t, level=level, retry=self.retries, rise=rise, whole=whole,
+                       lit=rise >= float(c["lit_check"]["min_rise"]), found_box=b.bbox, moved=box != b.bbox)
         if rise >= float(c["lit_check"]["min_rise"]):
             self.outcome = "点灯した"
             self._note(f"点灯した（{shown}）")

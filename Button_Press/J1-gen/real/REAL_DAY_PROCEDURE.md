@@ -712,7 +712,7 @@ G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/check_button_photos.py \
 
 ```bash
 G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Button_Press/J1-gen/contest_agent \
-    --network-interface <NIC> --camera-host <PC2 の IP> --target up --instruction "上の階" --no-loco --dry-run
+    --network-interface <NIC> --camera-host <PC2 の IP> --target down --instruction "下の階" --no-loco --dry-run
 ```
 
 - `--no-loco`: J1-gen のエージェントは足を動かさないので、LocoClient につながない（立つのはリモコンで）
@@ -733,7 +733,7 @@ G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Butt
 ```bash
 J1GEN_BODY_LOG=_local/button_press/body_log \
 G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Button_Press/J1-gen/contest_agent \
-    --network-interface <NIC> --camera-host <PC2 の IP> --target up --instruction "上の階" --no-loco
+    --network-interface <NIC> --camera-host <PC2 の IP> --target down --instruction "下の階" --no-loco
 ```
 
 - `J1GEN_BODY_LOG`: 毎周期の関節角・IMU・段階を `_local/button_press/body_log/<日時>_<up|down>/` に記録する
@@ -743,6 +743,12 @@ G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Butt
   ```bash
   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/body_motion.py _local/button_press/body_log/<日時>_<up|down>
   ```
+
+  同じフォルダに、**押す前（見つけたとき）と点灯の確認のときの画像**も残る（`lit_00_before.png`、`lit_01_check.png`、
+  枠・明るさを描いた `*_annotated.jpg`、数値の `lit_log.json`）。確認のときは指先がボタンの 6 cm 手前にある。
+  **手が枠に被さっていないか、「点灯した」が本当に点灯か**（`*_annotated.jpg` の `LIT` / `not lit` と、画像の実際の見た目が
+  合っているか）を、各回で見る。合わない回は、元の画像（`lit_*.png`）を `_local/button_press/phone_photos/` と同じ扱いで取っておく
+  （点灯判定の回帰テスト `tests/test_lit_check.py` と、YOLO の学習に使える）
 
   点灯しなかった回で、狙いのずれの x が + に数 mm 以上あれば、押した反動で体が逃げて浅くしか押せていない
   （較正のずれとは別の原因）
@@ -763,7 +769,7 @@ G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Butt
   5 mm ずつ深くする（上限 `max_press_depth_m` 30 mm）
 - ボタンの端を押した・外したとき: 左右・上下のずれ。シミュレーションでも最大 13.5 mm ずれた。本物のボタンが
   小さい（半径 15 mm 未満）と外れやすい。較正で直す
-- `▼` も同じく `--target down` で試す
+- `▲`（`--target up`）も同じ。**ラボの写真で点灯を見たのは ▼ だけ**なので、最初は `--target down` で試す。▲ は実物の点灯を見ていないので、点灯の確認（明るい部分の上がり方）が働くかを特に見る。どちらを押すかが決まったら、上の 2 か所の `--target` を合わせる
 
 止めるとき: Ctrl+C（腕の weight を 2 秒で 0 に戻す）。動きがおかしいとき（腕が柱に向かって速く動く、腰が回る）は
 すぐ L2+B。

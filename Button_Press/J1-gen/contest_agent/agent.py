@@ -18,6 +18,10 @@ J1-gen の部品は、Yada の j1gen_bridge で別名（j1gen_common）として
 
     J1GEN_BODY_LOG=_local/button_press/body_log $P Button_Press/Yada/contest/run_dds.py --agent ... （実機の引数）
     $P Button_Press/J1-gen/real/body_motion.py _local/button_press/body_log/<日時>_<up|down>
+
+同じフォルダに、押す前（ボタンを見つけたとき）と点灯の確認のときの画像も保存する（lit_00_before.png、
+lit_01_check.png … と、枠・明るさを描いた *_annotated.jpg、lit_log.json）。手が枠に被さって点灯の確認が
+狂っていないか（点灯していないのに「点灯した」、点灯したのに「していない」）を、あとで見るため。
 """
 
 from __future__ import annotations
@@ -46,6 +50,7 @@ class J1genElevatorAgent(Agent):
     def reset(self, task: TaskInfo) -> None:
         self.ctl.reset(task.target, task.control_dt, task.upper_kp)
         self.body_log = BodyLog.open(task.target)
+        self.ctl.on_snapshot = self.body_log.save_snapshot if self.body_log is not None else None
 
     def act(self, obs: Observation) -> Action:
         q29, done = self.ctl.step(obs.rgb, obs.depth, obs.K, obs.q, obs.t, obs.image_t, obs.imu_quat)
@@ -73,6 +78,32 @@ class BodyLog:
         if not root:
             return None
         return cls(Path(root) / f"{time.strftime('%Y%m%d_%H%M%S')}_{target}")
+
+    def save_snapshot(self, kind: str, rgb: np.ndarray, info: dict) -> None:
+        """押す前（kind="before"）・点灯の確認（"check"）の画像を、元の画像と、枠・値を描いた画像で保存し、
+        内容を lit_log.json に足す。元の画像は、あとで点灯判定の回帰テストや学習に使える。"""
+        import cv2  # 実機でも入っている（評価環境が使う）。記録を使わないときは読み込まない
+
+        self._shots = getattr(self, "_shots", 0)
+        stem = f"lit_{self._shots:02d}_{kind}"
+        self._shots += 1
+        bgr = cv2.cvtColor(np.asarray(rgb, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+        cv2.imwrite(str(self.dir / f"{stem}.png"), bgr)
+        vis = bgr.copy()
+        x1, y1, x2, y2 = info["bbox"]
+        cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 255, 0), 1)
+        if info.get("found_box") and info.get("moved"):  # 見つけ直して枠が動いたとき、元の枠を青で
+            a1, b1, a2, b2 = info["found_box"]
+            cv2.rectangle(vis, (a1, b1), (a2, b2), (255, 128, 0), 1)
+        label = f"{kind} {info['target']} level={info['level']:.0f}"
+        if "rise" in info:
+            label += f" rise={info['rise']:+.0f} {'LIT' if info['lit'] else 'not lit'}"
+        cv2.putText(vis, label, (4, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
+        cv2.imwrite(str(self.dir / f"{stem}_annotated.jpg"), vis)
+        path = self.dir / "lit_log.json"
+        rows = json.loads(path.read_text()) if path.exists() else []
+        rows.append({"image": f"{stem}.png", "kind": kind, **info})
+        path.write_text(json.dumps(rows, ensure_ascii=False, indent=1, default=float))
 
     def write(self, obs: Observation, ctl: object) -> None:
         phase = getattr(ctl, "phase", "")
