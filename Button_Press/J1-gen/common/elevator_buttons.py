@@ -13,7 +13,8 @@
    - yolo: 自分で学習した YOLO（クラス up / down。sim/train_button_yolo.py）。重みは _local/ に置く
 2. 丸の中の黒い記号から、▲ か ▼ かを読む（三角形の重心は、底辺の側に寄る。▲ なら下に寄る）
 3. 深度で 3 次元の位置（pelvis 座標）にし、まわりの柱の面に平面を当てはめて、押す向き（面の法線）を求める
-4. 柱ごとに上から並べ、「いちばん上の 2 つ」の間隔と記号が一般用の ▲▼ に合うときだけ採用する
+4. 柱ごとに上から並べ、「いちばん上の 2 つ」（geometry.button_set が wheelchair なら「いちばん下の 2 つ」）の間隔と記号が
+   ▲▼ に合うときだけ採用する
    - ▲ が画面の外に切れていると、▼ と車いす用の ▲ が上の 2 つになるが、間隔が合わないので採用しない
    - 記号が読めたのに順番と合わない（上が ▼ など）ときも採用しない
 
@@ -334,7 +335,11 @@ class ButtonFinder:
 
 
 def select_call_pair(buttons: list[Button3D], g: dict[str, Any]) -> tuple[Button3D, Button3D]:
-    """柱ごとに上から並べ、いちばん上の 2 つが一般用の ▲▼ の並びに合えば返す。"""
+    """柱ごとに上から並べ、いちばん上の 2 つが一般用の ▲▼ の並びに合えば返す。
+
+    geometry.button_set が wheelchair なら、いちばん下の 2 つ（車いす用の ▲▼）を返す（ラボのエレベーターは、
+    車いす用の下のボタンを押す。2026-10-22）。名前は同じく up / down（--target はそのまま使える）。
+    """
     if len(buttons) < 2:
         raise ButtonNotFound(f"ボタンが {len(buttons)} 個しか見つからない")
     col_tol = float(g["column_tolerance_m"])
@@ -349,10 +354,20 @@ def select_call_pair(buttons: list[Button3D], g: dict[str, Any]) -> tuple[Button
             columns.append([b])
     reasons = []
     pairs = []
+    wheelchair = str(g.get("button_set", "general")) == "wheelchair"
+    min_col = int(g.get("wheelchair_min_column", 4))
     for col in columns:
         if len(col) < 2:
             continue
-        top, second = col[0], col[1]
+        if wheelchair:
+            # 車いす用は、柱でいちばん下の 2 つ（一般用の下。間にある車いすの印を YOLO が「up」と囲んでも、その下の 2 つではない）。
+            # 一般用の組を車いす用と取り違えないよう、柱に min_col 個以上並んでいるときだけ
+            if len(col) < min_col:
+                reasons.append(f"車いす用を選ぶには柱に {min_col} 個以上要る（{len(col)} 個）")
+                continue
+            top, second = col[-2], col[-1]
+        else:
+            top, second = col[0], col[1]
         dz = float(top.center[2] - second.center[2])
         if not (dz_lo <= dz <= dz_hi):
             reasons.append(f"上の 2 つの間隔 {dz * 100:.1f} cm が {dz_lo * 100:.0f}〜{dz_hi * 100:.0f} cm の外")

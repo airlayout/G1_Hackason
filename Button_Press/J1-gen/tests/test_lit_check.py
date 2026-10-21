@@ -51,11 +51,25 @@ class TestLitCheckOnRealPhotos(unittest.TestCase):
         self.assertGreaterEqual(min(self.levels["lit"]) - max(self.levels["unlit"]), 2 * self.min_rise)
 
     def test_glint_baseline_is_a_known_limit(self) -> None:
-        """現状の限界を固定する: 消灯でも金属の面が反射で白いと 190〜220 になり、押す前の値がこれだと、点灯しても
-        上がり方がしきい値に届かない。実機の画像で直すことにしたら、このテストを直す。"""
+        """消灯でも金属の面が反射で白いと 190〜220 になり、押す前の値がこれだと、点灯しても上がり方が min_rise に届かない
+        （第 2 の条件 _is_lit で救う。下のテスト）。"""
         self.assertGreaterEqual(min(self.levels["glint"]), 190)
         self.assertLessEqual(max(self.levels["glint"]), 220)
         self.assertLess(min(self.levels["lit"]) - max(self.levels["glint"]), self.min_rise)
+
+    def test_glint_baseline_lit_is_still_recognized(self) -> None:
+        """押す前が反射で白い（最大 215）ボタンが点灯したら、上がり方が +10 でも「点灯した」とする。"""
+        for base in self.levels["glint"]:
+            for lit in self.levels["lit"]:
+                self.assertTrue(self.ctl._is_lit(lit, lit - base), (base, lit))
+
+    def test_glint_without_change_is_not_lit(self) -> None:
+        """反射で白いままで上がらない（消灯のまま、押す前と同じ・写り方の揺れ）は、点灯としない。"""
+        for base in self.levels["glint"]:
+            for other in self.levels["glint"]:
+                self.assertFalse(self.ctl._is_lit(other, other - base), (base, other))
+        for base in self.levels["unlit"]:  # 普通の消灯が少し明るくなっただけ
+            self.assertFalse(self.ctl._is_lit(base + 10, 10))
 
 
 @needs("mujoco", "pin")

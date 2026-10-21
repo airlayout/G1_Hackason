@@ -317,6 +317,40 @@ class TestSelectAndTrack(unittest.TestCase):
         up, down = select_call_pair([self.b(0.0, 0.22), self.b(0.0, 0.3)], g)
         self.assertEqual((up.center[2], down.center[2]), (0.3, 0.22))
 
+    def lab_column(self) -> list[Button3D]:
+        """ラボのエレベーターの柱: 一般用 ▲▼、車いすの印（YOLO が up と囲む）、車いす用 ▲▼（8 cm 間隔）。"""
+        return [self.b(0, 0.35, "up"), self.b(0, 0.27, "down"), self.b(0, 0.20, "up"),
+                self.b(0, 0.12, "up"), self.b(0, 0.04, "down")]
+
+    def test_wheelchair_set_picks_the_bottom_pair(self) -> None:
+        g = dict(load_config("elevator.yaml")["geometry"])
+        up, down = select_call_pair(self.lab_column(), g)  # 既定は一般用（柱の上の 2 つ）
+        self.assertEqual((up.center[2], down.center[2]), (0.35, 0.27))
+        g["button_set"] = "wheelchair"
+        up, down = select_call_pair(self.lab_column(), g)
+        self.assertEqual((up.center[2], down.center[2]), (0.12, 0.04))  # 車いすの印（0.20）は選ばない
+        self.assertEqual((up.name, down.name), ("up", "down"))
+
+    def test_wheelchair_set_needs_four_in_the_column(self) -> None:
+        """一般用の 2 つしか見えていないとき（車いす用が画面の外）に、一般用を車いす用と取り違えない。"""
+        g = dict(load_config("elevator.yaml")["geometry"])
+        g["button_set"] = "wheelchair"
+        with self.assertRaises(ButtonNotFound) as cm:
+            select_call_pair(self.lab_column()[:2], g)
+        self.assertIn("4 個以上", str(cm.exception))
+
+    def test_wheelchair_set_checks_spacing_and_order(self) -> None:
+        g = dict(load_config("elevator.yaml")["geometry"])
+        g["button_set"] = "wheelchair"
+        col = self.lab_column()
+        col[-1] = self.b(0, -0.10, "down")  # 下の間隔 22 cm
+        with self.assertRaises(ButtonNotFound):
+            select_call_pair(col, g)
+        col = self.lab_column()
+        col[-2], col[-1] = self.b(0, 0.12, "down"), self.b(0, 0.04, "up")  # 順番が逆
+        with self.assertRaises(ButtonNotFound):
+            select_call_pair(col, g)
+
     def test_tracker(self) -> None:
         cfg = {"frames": 3, "max_spread_m": 0.005, "max_normal_spread_deg": 5.0}
         tr = ButtonTracker(cfg)
@@ -373,6 +407,17 @@ class TestElevatorPlan(unittest.TestCase):
             front = wall["center"][0] - wall["half_size"][0]
             self.assertAlmostEqual(front, face[0] + self.ctl.cfg["wall"]["margin_m"], places=9)
             self.assertLess(p.approach_point[0], front)
+
+    def test_plans_low_wheelchair_buttons(self) -> None:
+        """車いす用の低いボタン（ボトルの押す点とほぼ同じ高さ、pelvis から z +0.04〜+0.15）にも手前の姿勢まで計画が立つ（2026-10-22）。"""
+        for z in (0.15, 0.10, 0.04):
+            for y in (0.027, -0.05):
+                c = CallButtons(Button3D(np.array([0.309, y, z + 0.08]), 0.03, "up", (0, 0, 1, 1), 100, "up"),
+                                Button3D(np.array([0.309, y, z]), 0.03, "down", (0, 0, 1, 1), 100, "down"),
+                                np.array([1.0, 0.0, 0.0]))
+                self.ctl.reset("down", 0.02, np.full(17, 60.0))
+                self.ctl._plan(self.q0, c)
+                np.testing.assert_allclose(self.ctl.plan_.target_point[2], z, atol=1e-9)
 
     def test_tilted_wall_box_follows_the_face(self) -> None:
         """面が斜め（3°）でも、箱の前面はボタンの面に沿う（手前に出っ張らない）。"""

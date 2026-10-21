@@ -5,7 +5,8 @@
     $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent --seed 1 --view
     J1GEN_BUTTON_DETECTOR=yolo $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent
 
-ボタンを探す方法は configs/elevator.yaml の detector（classic / yolo）。環境変数 J1GEN_BUTTON_DETECTOR で上書きできる
+ボタンを探す方法は configs/elevator.yaml の detector（classic / yolo）。環境変数 J1GEN_BUTTON_DETECTOR で上書きできる。
+押す組は geometry.button_set（general = 柱の上の 2 つ / wheelchair = 下の 2 つ）。環境変数 J1GEN_BUTTON_SET で上書きできる
 （yolo は sim/train_button_yolo.py で学習した重みを使う）。
 
 中身は common/elevator_press.py（見つける・計画・押す）。ここは評価環境の決まり（Agent / Observation / Action）に
@@ -43,9 +44,11 @@ class J1genElevatorAgent(Agent):
         elevator = j1gen_config("elevator.yaml")
         if os.environ.get("J1GEN_BUTTON_DETECTOR"):
             elevator["detector"] = os.environ["J1GEN_BUTTON_DETECTOR"]
+        if os.environ.get("J1GEN_BUTTON_SET"):
+            elevator["geometry"]["button_set"] = os.environ["J1GEN_BUTTON_SET"]
         self.ctl = j1gen("elevator_press").ElevatorPressController.from_config(
             j1gen_config("robot.yaml"), j1gen_config("press.yaml"), j1gen_config("arm.yaml"), elevator)
-        print(f"[j1gen-agent] ボタンを探す方法: {elevator['detector']}")
+        print(f"[j1gen-agent] ボタンを探す方法: {elevator['detector']}、押す組: {elevator['geometry'].get('button_set', 'general')}")
 
     def reset(self, task: TaskInfo) -> None:
         self.ctl.reset(task.target, task.control_dt, task.upper_kp)

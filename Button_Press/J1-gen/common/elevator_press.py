@@ -502,8 +502,21 @@ class ElevatorPressController:
         except Exception as e:  # noqa: BLE001
             print(f"[elevator] ⚠️ 画像の記録に失敗（続ける）: {e}")
 
+    def _is_lit(self, level: float, rise: float) -> bool:
+        """点灯したか: 押す前からの上がり方が min_rise 以上、または、明るさが abs_level 以上で上がり方が abs_min_rise 以上。
+
+        後ろは、押す前から金属の面が反射で白い（194〜215）ボタン用。上がり方が +10〜15 にしかならず、前だけだと点灯しても
+        「点灯していない」になる（2026-10-19、スマホの写真 57 枚: 点灯 224〜230、消灯でも反射で 215 まで）。
+        押す前から abs_level 以上のままで上がらない（rise が abs_min_rise 未満）なら、点灯とは見ない。
+        """
+        lc = self.cfg["press"]["lit_check"]
+        if rise >= float(lc["min_rise"]):
+            return True
+        return bool(level >= float(lc["abs_level"]) and rise >= float(lc["abs_min_rise"]))
+
     def _check(self, rgb: np.ndarray, t: float) -> bool:
-        """押したボタンが点灯したか（明るい部分の明るさが、見つけたときより lit_check.min_rise 以上上がったか）を見る。
+        """押したボタンが点灯したか（明るい部分の明るさが、見つけたときより lit_check.min_rise 以上上がったか。
+        反射で白いボタンは _is_lit の第 2 の条件）を見る。
         点灯していなければ深く押し直す。枠全体の明るさの上がり方も、比べるために表示する。"""
         c = self.cfg["press"]
         b = self.call.button(self.target)
@@ -513,8 +526,8 @@ class ElevatorPressController:
         whole = self._brightness(rgb, box) - (self.baseline_brightness if self.baseline_brightness is not None else 0.0)
         shown = f"明るい部分 {rise:+.0f}、枠全体の平均 {whole:+.0f}"
         self._snapshot("check", rgb, box, t, level=level, retry=self.retries, rise=rise, whole=whole,
-                       lit=rise >= float(c["lit_check"]["min_rise"]), found_box=b.bbox, moved=box != b.bbox)
-        if rise >= float(c["lit_check"]["min_rise"]):
+                       lit=self._is_lit(level, rise), found_box=b.bbox, moved=box != b.bbox)
+        if self._is_lit(level, rise):
             self.outcome = "点灯した"
             self._note(f"点灯した（{shown}）")
             self._start_home(t)
