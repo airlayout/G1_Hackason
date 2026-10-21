@@ -4,6 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 export PYTHONPATH="$REAL_DIR/python${PYTHONPATH:+:$PYTHONPATH}"
+TEST_RUNTIME="$(python3 -c 'from g1_mapping.config import Settings; print(Settings.load().runtime)')"
+if [[ "$TEST_RUNTIME" == native && "${G1_MAPPING_NATIVE_TESTS:-0}" != 1 ]]; then
+    exec env G1_MAPPING_NATIVE_TESTS=1 bash "$REAL_DIR/native/exec.sh" bash "$SCRIPT_DIR/run_tests.sh"
+fi
 
 python3 -m unittest discover -s "$SCRIPT_DIR" -p 'test_*.py' -v
 
@@ -28,5 +32,8 @@ else
 fi
 
 bash -n "$REAL_DIR/mapctl" "$REAL_DIR"/docker/*.sh "$REAL_DIR"/scripts/*.sh
-docker compose --env-file "$REAL_DIR/.env.example" \
-    -f "$REAL_DIR/compose.yaml" --profile onboard --profile raw --profile sim config --quiet
+if [[ "$TEST_RUNTIME" == docker ]]; then
+    docker compose --env-file "$REAL_DIR/.env.example" \
+        -f "$REAL_DIR/compose.yaml" --profile onboard --profile raw --profile sim config --quiet
+fi
+bash -n "$REAL_DIR"/native/*.sh

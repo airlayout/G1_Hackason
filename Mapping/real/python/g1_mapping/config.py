@@ -79,6 +79,14 @@ class Settings:
     octomap_clamp_max: float = 0.97
     octomap_keep_unknown: bool = True
     map_max_points: int = 2_000_000
+    runtime: str = "docker"
+    native_root: Path | None = None
+    transport: str = "dds"
+    ssh_user: str = "unitree"
+    ssh_host: str = ""
+    sensor_remote_dir: str = "/home/unitree/mapping_tools/wireless"
+    sensor_iface: str = "eth0"
+    sensor_sdk_path: str = "/home/unitree/unitree_sdk2_python"
 
     def occupancy_parameters(self) -> dict[str, float | int | bool]:
         return {
@@ -157,6 +165,14 @@ class Settings:
             octomap_clamp_max=float(value("OCTOMAP_CLAMP_MAX", "0.97")),
             octomap_keep_unknown=_as_bool(value("OCTOMAP_KEEP_UNKNOWN", "true")),
             map_max_points=int(value("MAP_MAX_POINTS", "2000000")),
+            runtime=value("MAPPING_RUNTIME", "docker"),
+            native_root=Path(value("MAPPING_NATIVE_ROOT", str(root.parents[1] / "_local" / "mapping"))).expanduser().resolve(),
+            transport=value("MAPPING_TRANSPORT", "dds"),
+            ssh_user=value("G1_SSH_USER", "unitree"),
+            ssh_host=value("G1_SSH_HOST", ""),
+            sensor_remote_dir=value("G1_SENSOR_REMOTE_DIR", "/home/unitree/mapping_tools/wireless"),
+            sensor_iface=value("G1_SENSOR_IFACE", "eth0"),
+            sensor_sdk_path=value("G1_SENSOR_SDK_PATH", "/home/unitree/unitree_sdk2_python"),
         )
 
     def compose_environment(

@@ -27,6 +27,7 @@ setup(
             "save_occupancy_map = g1_mapping_tools.save_occupancy_map:main",
             "zmq_camera_bridge = g1_mapping_tools.zmq_camera_bridge:main",
             "zmq_camera_probe = g1_mapping_tools.zmq_camera_probe:main",
+            "ssh_sensor_bridge = g1_mapping_tools.sensor_stream:main",
         ]
     },
 )

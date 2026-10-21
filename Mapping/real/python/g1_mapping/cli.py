@@ -9,13 +9,14 @@ import os
 import subprocess
 import sys
 
-from .compose import ComposeError, ComposeRuntime
+from .compose import ComposeError
 from .config import Settings
 from .doctor import DiagnosticReport, diagnose, print_report
 from .mock import write_mock_artifacts
 from .pcd import validate_session
 from .rebuild import rebuild_map
 from .session import MappingSession, SessionManager
+from .runtime import get_runtime
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -24,7 +25,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("build", help="onboard/raw Docker imageを構築する")
+    subparsers.add_parser("build", help="選択した実行環境を構築する（Docker/native）")
 
     doctor = subparsers.add_parser("doctor", help="接続・センサー・backendを非破壊診断する")
     doctor.add_argument(
@@ -143,7 +144,7 @@ def _start(settings: Settings, arguments: argparse.Namespace) -> int:
     )
     try:
         if backend != "mock":
-            ComposeRuntime(settings).start(session)
+            get_runtime(settings).start(session)
         manager.update(session, "running", f"{backend} backendでMapping中です")
     except Exception as exc:
         manager.finish(session, success=False, message=f"開始失敗: {exc}")
@@ -170,7 +171,7 @@ def _stop(settings: Settings, arguments: argparse.Namespace) -> int:
     if session.backend == "mock":
         write_mock_artifacts(session)
     else:
-        runtime = ComposeRuntime(settings)
+        runtime = get_runtime(settings)
         try:
             runtime.save_and_stop(session)
         except Exception as exc:
@@ -227,7 +228,7 @@ def _status(settings: Settings) -> int:
     print(f"[BACKEND] {session.backend}")
     print(f"[STATUS] {state['status']}: {state['message']}")
     if session.backend != "mock":
-        print(ComposeRuntime(settings).ps(session))
+        print(get_runtime(settings).ps(session))
     return 0
 
 
@@ -268,7 +269,7 @@ def _view(settings: Settings, arguments: argparse.Namespace) -> int:
         if not session.map_path.is_file():
             raise RuntimeError(f"PCDがありません: {session.map_path}")
         mode = "saved"
-        pcd_path = f"/runs/{session.session_id}/map/map_raw.pcd"
+        pcd_path = str(session.map_path) if settings.runtime == "native" else f"/runs/{session.session_id}/map/map_raw.pcd"
         fixed_frame = arguments.fixed_frame or "map"
         map_topic = arguments.map_topic or "/g1_mapping/map"
 
@@ -289,7 +290,7 @@ def _view(settings: Settings, arguments: argparse.Namespace) -> int:
     if mode == "saved":
         print(f"[PCD] {session.map_path}", flush=True)
     try:
-        ComposeRuntime(settings).view(
+        get_runtime(settings).view(
             mode=mode,
             pcd_path=pcd_path,
             fixed_frame=fixed_frame,
@@ -321,7 +322,7 @@ def _rebuild(settings: Settings, arguments: argparse.Namespace) -> int:
         method = "octomap" if session.backend in {"raw", "sim"} else "accumulate"
     print(f"[REBUILD] method={method} topic={topic}")
     if method == "octomap":
-        ComposeRuntime(settings).rebuild_occupancy(
+        get_runtime(settings).rebuild_occupancy(
             session, output_path, voxel_size=arguments.voxel,
             bag_dir=arguments.bag_dir, cloud_topic=topic,
         )
@@ -359,8 +360,8 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings.load()
     try:
         if arguments.command == "build":
-            ComposeRuntime(settings).build()
-            print("[OK] Mapping imagesを構築しました")
+            get_runtime(settings).build()
+            print(f"[OK] Mapping環境を構築しました: {settings.runtime}")
             return 0
         if arguments.command == "doctor":
             report = diagnose(
@@ -387,6 +388,8 @@ def main(argv: list[str] | None = None) -> int:
         if arguments.command == "rebuild":
             return _rebuild(settings, arguments)
         if arguments.command == "bundle":
+            if settings.runtime == "native":
+                raise RuntimeError("bundleはDocker配備用です。native環境はnative/setup.shで構築してください")
             script = settings.project_dir / "scripts" / "make-field-kit.sh"
             command = [str(script)]
             if arguments.output:

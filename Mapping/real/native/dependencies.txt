@@ -1,0 +1,9 @@
+ros-jazzy-rmw-cyclonedds-cpp=2.2.4-1noble.20260911.095700
+ros-jazzy-cyclonedds=0.10.5-1noble.20260225.142613
+ros-jazzy-iceoryx-binding-c=2.0.6-1noble.20260225.140829
+ros-jazzy-iceoryx-hoofs=2.0.6-1noble.20260225.055330
+ros-jazzy-iceoryx-posh=2.0.6-1noble.20260225.135341
+ros-jazzy-pcl-ros=2.6.5-1noble.20260916.065720
+ros-jazzy-tf2-eigen=0.36.23-1noble.20260915.174549
+ros-jazzy-tf2-geometry-msgs=0.36.23-1noble.20260915.174516
+python3-zmq=24.0.1-5build1

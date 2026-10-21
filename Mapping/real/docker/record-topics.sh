@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SESSION_ID="${MAPPING_SESSION_ID:?MAPPING_SESSION_ID is required}"
-OUTPUT_DIR="/runs/$SESSION_ID/raw/rosbag2"
+OUTPUT_DIR="${MAPPING_RUNS_DIR:-/runs}/$SESSION_ID/raw/rosbag2"
 
 TOPICS=(
     "${RAW_POINTS_TOPIC:?RAW_POINTS_TOPIC is required}"

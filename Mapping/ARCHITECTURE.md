@@ -137,6 +137,14 @@ runs/<timestamp>_<name>/
 
 ## 依存関係と再現性
 
+`.env`の`MAPPING_RUNTIME`は配備方式を選び、`backend`はLIOの計算方式を選ぶ。
+`docker`は以下のコンテナ構成、`native`はUbuntu 24.04 x86_64のROS 2 Jazzyへ
+ローカルoverlayを重ねる。nativeも同じadapter・FAST-LIO2・OctoMap・recorderを使い、
+`mapctl`のセッション管理と成果物形式を共用する。追加依存・固定commitのソース・
+ビルド成果物は`_local/mapping/`へ置く。nativeが対応するbackendは`raw`と`sim`。
+LiDARはG1が配信するため、nativeではLivoxドライバ本体を起動せず、固定版の
+`CustomMsg`/`CustomPoint`だけをビルドする。
+
 - ホスト: Docker Engine、Docker Compose、SSH client、Python 3.10以上
 - コンテナ: Ubuntu 22.04、ROS 2 Humble、CycloneDDS
 - 外部ソース: `real/vendor/mapping.repos`とDocker build argsでcommitを固定

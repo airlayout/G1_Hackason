@@ -105,12 +105,15 @@ class SessionManager:
             "session_id": session_id,
             "name": name,
             "backend": backend,
+            "runtime": self.settings.runtime,
+            "transport": self.settings.transport,
             "created_at": now,
             "git_revision": _git_revision(self.settings.project_dir),
             "robot": {
                 "host": None if backend == "sim" else self.settings.g1_host,
                 "network_interface": "lo" if backend == "sim" else self.settings.g1_iface,
                 "ros_domain_id": self.settings.ros_domain_id,
+                "sensor_ssh_host": (self.settings.ssh_host or self.settings.g1_host) if self.settings.transport == "ssh" else None,
             },
             "topics": {
                 "raw_points": self.settings.raw_points_topic,

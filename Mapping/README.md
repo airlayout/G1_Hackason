@@ -18,14 +18,17 @@ RViz2は可視化専用コンテナへ分離している。Mapping中のライ�
 
 ## 構成
 
+- [`MAPPING_QUICKSTART.md`](MAPPING_QUICKSTART.md) — このPCでの無線手動計測・完了保存・浮遊点除去の短い手順
 - [`real/`](real/README.md) — 実機用の共通CLI、2つのbackend、Docker配備、テスト
 - [`sim/`](sim/README.md) — Isaac Simから実機と同じtopic契約でFAST-LIO2へ入れる経路
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — システム境界と成果物契約
 - [`FIELD_RUNBOOK.md`](FIELD_RUNBOOK.md) — 現場で上から順に実行する手順
 - [`FAILURES.md`](FAILURES.md) — 実測で判明した失敗と再発防止策
 
-MappingのROS 2環境はDocker内へ隔離する。LeRobotによる歩行環境
-`G1_HuggingFace/venv/`とは依存関係を共有しない。
+Mappingの実行環境はDocker、または既存のUbuntu 24.04＋ROS 2 Jazzyを使う
+`native`から選べる。nativeで追加する依存とビルド成果物は`_local/mapping/`へ置く。
+LeRobotによる歩行環境`G1_HuggingFace/venv/`とは依存関係を共有しない。
+純正リモコンで手動計測する手順は[`real/README.md`](real/README.md)を参照。
 
 ## 現在の状態
 
@@ -53,8 +56,9 @@ G1内蔵LIOサービスの応答とセンサートピックを確認できた。
 - **`stop`の正常完了とG1側へのPCD書き出し**。試験では2回とも停止時に通信が切れており、
   G1へ`kEndMapping`が届かなかった。そのため`/home/unitree/maps/`にPCDは生成されていない
   （実機を全探索して確認済み）。この経路は次回の試験で確かめる。
-- **`raw` backendの実走**。`doctor`はPASSするが、FAST-LIO2で実際に地図を作ってはいない。
-  LiDAR–IMU外部パラメータと時刻同期の詰めはこの段階で必要になる。
+- **移動計測の定量精度**。2026-10-21にnative・無線で実機移動計測を行い、
+  記録済み3,443スキャンからのOctoMap再生成・床基準化・3D表示まで確認した。
+  絶対位置の精度、SLAMドリフト、LiDAR–IMU外部パラメータ・時刻同期の詰めは未評価。
 
 Isaac Simでは`sim` backendとして、Mid-360形式点群、200Hz IMU、RGB、CameraInfoを
 同一simulation clockで配信し、実機rawと同じFAST-LIO2・recorderへ接続できる。

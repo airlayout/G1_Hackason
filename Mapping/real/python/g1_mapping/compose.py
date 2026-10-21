@@ -71,6 +71,10 @@ class ComposeRuntime:
         )
         return result.returncode == 0
 
+    def backend_available(self, backend: str) -> bool:
+        image = "g1-mapping-raw:local" if backend == "sim" else f"g1-mapping-{backend}:local"
+        return self.image_exists(image)
+
     def build(self) -> None:
         result = self.run(
             "--profile",

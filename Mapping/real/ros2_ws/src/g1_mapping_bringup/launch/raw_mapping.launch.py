@@ -19,7 +19,7 @@ def _boolean_environment(name: str, default: str) -> bool:
 def generate_launch_description() -> LaunchDescription:
     session_id = os.environ.get("MAPPING_SESSION_ID", "unknown")
     use_sim_time = _boolean_environment("USE_SIM_TIME", "false")
-    output_path = Path("/runs") / session_id / "map" / "map_raw.pcd"
+    output_path = Path(os.environ.get("MAPPING_RUNS_DIR", "/runs")) / session_id / "map" / "map_raw.pcd"
     config_path = (
         Path(get_package_share_directory("g1_mapping_bringup"))
         / "config"
