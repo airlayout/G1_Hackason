@@ -23,7 +23,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.arm import make_backend  # noqa: E402
-from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
+from common.camera_cfg import (  # noqa: E402
+    add_camera_args,
+    apply_depth_anchor,
+    apply_head_camera_mount,
+    load_camera_config,
+)
 from common.config import load_config  # noqa: E402
 from common.dds import peer_label  # noqa: E402
 from common.localize import make_detector  # noqa: E402
@@ -43,6 +48,9 @@ def main() -> int:
     args = p.parse_args()
 
     cfg = load_pipeline_config(args)
+    cam_cfg = load_camera_config(args, quiet=True)
+    apply_head_camera_mount(cfg.robot, cam_cfg)
+    apply_depth_anchor(cfg.localize, cam_cfg)
     if args.network_interface:
         cfg.arm["network_interface"] = args.network_interface
     iface = cfg.arm["network_interface"]

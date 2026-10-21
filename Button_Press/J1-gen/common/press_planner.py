@@ -182,12 +182,19 @@ class PressPlanner:
             self.check_pose(q_via_full, "経由の姿勢")
             legs = [(q_now[arm], np.asarray(q_via_arm, dtype=float), "経由の姿勢へ移動する途中"),
                     (np.asarray(q_via_arm, dtype=float), q_app[arm], "経由の姿勢から手前の姿勢へ移動する途中")]
-        for a, b, what in legs:
+        # 開始姿勢ですでに近い組（実機の立った姿勢では、下ろした手が股関節の 1 cm 以内。ハンドの衝突形状は
+        # メッシュを包む箱なので実物より大きい）は、開始より近づかない間は許す（離れていく動きまで拒否しないため）
+        q_start = q_app.copy()
+        q_start[arm] = q_now[arm]
+        start_dist = {(h.body1, h.body2): h.dist for h in self.collision.contacts(q_start)}
+        for i, (a, b, what) in enumerate(legs):
             path = interpolate_joint(a, b, 1.0, 1.0 / self.joint_path_samples)
             for k, qa in enumerate(path):
                 q = q_app.copy()
                 q[arm] = qa
                 hits = self.collision.contacts(q)
+                if i == 0:
+                    hits = [h for h in hits if h.dist < start_dist.get((h.body1, h.body2), np.inf) - 1e-3]
                 if hits:
                     raise UnreachableError(
                         f"{what}（{k + 1}/{len(path)}）で腕が体にぶつかる: " + "; ".join(str(h) for h in hits[:3])

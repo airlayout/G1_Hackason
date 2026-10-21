@@ -16,3 +16,21 @@ legacy_rgb:
   port: 5555
   camera_name: head_camera
   timeout_ms: 5000
+
+# 実機の頭カメラの取り付け（configs/robot.yaml の head_camera を上書きする。読み込みは common/camera_cfg.py）。
+# 2026-10-21 に立った状態（IMU で骨盤の傾き 0.5° 以内、腰 0.5° 以内）で、床と机の面が pelvis 座標で水平になる
+# 角度を深度から求めた: pitch 70.65°（床）・71.45°（机）、roll −0.8°・−1.9° → 平均。URDF（robot.yaml）は
+# pitch 47.6° で、24° 違う。この角度で求めたボトルの位置（前 37 cm）が実物と合うことを確かめた。
+# robot.yaml は MuJoCo のカメラの置き場所にも使うので書き換えない（camera_sim.yaml にはこれを書かない）。
+# 残る一定のずれは段階4の較正（localize.yaml の calibration.offset_pelvis_m）で補正する。
+head_camera_mount:
+  # [roll, pitch, yaw] [deg]（URDF の rpy と同じ回転の決まり）
+  rpy_deg: [-1.4, 71.0, 0.0]
+  # 取り付け位置 [m]。null なら robot.yaml の値（URDF）のまま
+  xyz: null
+
+# 深度を取る基準点（枠の幅・高さに対する割合。localize.yaml の depth.anchor を上書きする）。
+# 実機の頭カメラは 71° 下を向いていて、押す位置（pelvis から前 30〜40 cm）のボトルは上半分が画像の外に出る。
+# localize.yaml の [0.5, 0.7] では天板から 3〜4 cm の低い所を押すことになり、手前の姿勢で手が机の箱に当たった
+# （2026-10-21 の dry-run、11 mm）。0.45 なら天板から約 9.5 cm（お茶とラベルのあたり）で、深度も取れた
+depth_anchor: [0.5, 0.45]

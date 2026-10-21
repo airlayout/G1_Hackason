@@ -11,6 +11,8 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+import numpy as np
+
 from .config import load_config
 
 
@@ -35,3 +37,36 @@ def load_camera_config(args: argparse.Namespace, quiet: bool = False) -> dict[st
         src = "--host" if host else (getattr(args, "camera_config", None) or "camera.yaml")
         print(f"[camera] 接続先: {cfg['rgbd']['server_address']}（{src}）")
     return cfg
+
+
+def apply_head_camera_mount(robot_cfg: dict[str, Any], cam_cfg: dict[str, Any], quiet: bool = False) -> None:
+    """カメラの設定に head_camera_mount があれば、robot_cfg の head_camera の取り付け（xyz / rpy）をその値にする。
+
+    実機の頭カメラの向きは URDF（robot.yaml）と違う（2026-10-21 実測、camera.yaml）。robot.yaml は MuJoCo の
+    カメラの置き場所にも使うので書き換えず、実機用のカメラ設定でだけ上書きする（camera_sim.yaml には書かない）。
+    """
+    mount = cam_cfg.get("head_camera_mount")
+    if not mount:
+        return
+    cam = robot_cfg["head_camera"]
+    if mount.get("xyz") is not None:
+        cam["xyz"] = [float(v) for v in mount["xyz"]]
+    if mount.get("rpy_deg") is not None:
+        cam["rpy"] = [float(np.radians(v)) for v in mount["rpy_deg"]]
+    if not quiet:
+        rpy = ", ".join(f"{np.degrees(v):.1f}" for v in cam["rpy"])
+        print(f"[camera] 頭カメラの取り付け: rpy [{rpy}]°、xyz {cam['xyz']} m（カメラ設定の head_camera_mount）")
+
+
+def apply_depth_anchor(loc_cfg: dict[str, Any], cam_cfg: dict[str, Any], quiet: bool = False) -> None:
+    """カメラの設定に depth_anchor があれば、localize.yaml の depth.anchor（深度を取る枠の中の点）をその値にする。
+
+    基準点の良い位置は見下ろす角度で変わる。実機の頭カメラは MuJoCo より 24° 下を向いていて、ボトルの上半分が
+    画像の外に出るため、localize.yaml の値（MuJoCo の視点に合わせた値）を実機用のカメラ設定でだけ上書きする。
+    """
+    anchor = cam_cfg.get("depth_anchor")
+    if anchor is None:
+        return
+    loc_cfg["depth"]["anchor"] = [float(v) for v in anchor]
+    if not quiet:
+        print(f"[camera] 深度を取る基準点: 枠の {loc_cfg['depth']['anchor']}（カメラ設定の depth_anchor）")

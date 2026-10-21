@@ -24,7 +24,8 @@ def add_common_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--detector", choices=["yolo", "color"], help="検出器（既定は localize.yaml）")
     p.add_argument("--gravity-scale", type=float, help="腕の重力補償の倍率（既定は arm.yaml）")
     p.add_argument("--log-dir", help="記録の保存先（既定は pipeline.yaml の log_dir）")
-    p.add_argument("--obstacles-file", help="teach.py --obstacle で作った箱のファイル（既定は configs/obstacles.yaml）")
+    p.add_argument("--obstacles-file", help="teach.py --obstacle で作った箱のファイル（既定は configs/obstacles.yaml。"
+                                            "--sim-scene-obstacles のときは指定しなければ読まない）")
     p.add_argument("--sim-scene-obstacles", action="store_true",
                    help="configs/sim_scene.yaml の机を障害物に足す（模擬ロボットで試すとき）")
 
@@ -55,11 +56,14 @@ def load_pipeline_config(args: argparse.Namespace) -> PipelineConfig:
         cfg.arm["gravity_compensation"]["scale"] = args.gravity_scale
     if getattr(args, "log_dir", None):
         pl["log_dir"] = args.log_dir
-    # teach.py --obstacle で作った箱（configs/obstacles.yaml）も、衝突の確認に使う
+    # teach.py --obstacle で作った箱（configs/obstacles.yaml）も、衝突の確認に使う。
+    # シミュレーションの机を使うとき（--sim-scene-obstacles）は、実機の机の箱は --obstacles-file で指定したときだけ読む
     from .realday import OBSTACLES, load_obstacles
 
-    obs_file = getattr(args, "obstacles_file", None) or OBSTACLES
-    extra = load_obstacles(obs_file)
+    obs_file = getattr(args, "obstacles_file", None)
+    if obs_file is None and not getattr(args, "sim_scene_obstacles", False):
+        obs_file = OBSTACLES
+    extra = load_obstacles(obs_file) if obs_file else []
     if extra:
         cfg.press["obstacles"] = list(cfg.press.get("obstacles") or []) + extra
         print(f"[pipeline] 障害物の箱（{obs_file}）: " + ", ".join(o.get("name", "?") for o in extra))

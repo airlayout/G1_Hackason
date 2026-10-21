@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from _env import needs
+from common.camera_cfg import apply_head_camera_mount
 from common.camera_geometry import R_LINK_OPTICAL, HeadCameraTransform
 from common.config import FEATURE_DIR, load_config
 from common.localize import Locator, anchor_pixel, bbox_depth, deproject, make_detector
@@ -109,6 +110,23 @@ class TestSimCamera(unittest.TestCase):
         self.assertLess(r["err_ray"], 0.002)
         self.assertLess(abs(r["err_front_x"]), 0.005)  # 胴の前面から 5 mm 以内
         self.assertLess(abs(r["err_center_y"]), 0.010)  # 左右はボトルの中心から 1 cm 以内
+
+
+class TestHeadCameraMount(unittest.TestCase):
+    """実機用のカメラ設定の head_camera_mount が robot.yaml の頭カメラの取り付けを上書きする（2026-10-21）。"""
+
+    def test_override_and_sim_untouched(self) -> None:
+        robot = load_config("robot.yaml")
+        urdf_rpy = list(robot["head_camera"]["rpy"])
+        apply_head_camera_mount(robot, load_config("camera_sim.yaml"), quiet=True)
+        self.assertEqual(robot["head_camera"]["rpy"], urdf_rpy)  # 模擬ロボット・MuJoCo は URDF のまま
+        apply_head_camera_mount(robot, {"head_camera_mount": {"rpy_deg": [-1.0, 70.0, 0.0], "xyz": None}}, quiet=True)
+        np.testing.assert_allclose(robot["head_camera"]["rpy"], np.radians([-1.0, 70.0, 0.0]))
+        self.assertEqual(robot["head_camera"]["xyz"], load_config("robot.yaml")["head_camera"]["xyz"])
+
+    def test_real_configs_agree(self) -> None:
+        self.assertEqual(load_config("camera.yaml")["head_camera_mount"],
+                         load_config("camera_wifi.yaml")["head_camera_mount"])
 
 
 class FakeDetector:
