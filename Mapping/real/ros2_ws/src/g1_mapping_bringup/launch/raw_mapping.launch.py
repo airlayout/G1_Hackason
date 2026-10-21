@@ -7,6 +7,8 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
 
@@ -61,36 +63,11 @@ def generate_launch_description() -> LaunchDescription:
             ("/Odometry", "/g1_mapping/backend/odom"),
             ("/cloud_registered", "/g1_mapping/backend/cloud_registered"),
             ("/Laser_map", "/g1_mapping/backend/map"),
+            ("/sensor_pose", "/g1_mapping/backend/sensor_pose"),
         ],
     )
-    normalizer = Node(
-        package="g1_mapping_tools",
-        executable="mapping_adapter",
-        name="g1_mapping_adapter",
-        output="screen",
-        parameters=[
-            {
-                "source_odom": "/g1_mapping/backend/odom",
-                "source_cloud": "/g1_mapping/backend/cloud_registered",
-                "global_frame": "map",
-                "fallback_child_frame": "lio_body",
-                "use_sim_time": use_sim_time,
-            }
-        ],
+    occupancy = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(str(config_path.parent.parent / "launch" / "occupancy_mapping.launch.py")),
+        launch_arguments={"use_sim_time": str(use_sim_time).lower(), "output_path": str(output_path)}.items(),
     )
-    accumulator = Node(
-        package="g1_mapping_tools",
-        executable="map_accumulator",
-        name="g1_map_accumulator",
-        output="screen",
-        parameters=[
-            {
-                "use_sim_time": use_sim_time,
-                "voxel_size": float(os.environ.get("MAP_VOXEL_SIZE", "0.05")),
-                "target_scan_count": int(
-                    os.environ.get("DENSITY_TARGET_SCANS", "10")
-                ),
-            }
-        ],
-    )
-    return LaunchDescription([adapter, fast_lio, normalizer, accumulator])
+    return LaunchDescription([adapter, fast_lio, occupancy])

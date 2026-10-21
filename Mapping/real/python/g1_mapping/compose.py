@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -323,7 +324,7 @@ class ComposeRuntime:
                     (
                         "source /opt/ros/humble/setup.bash && "
                         "source /opt/g1_ws/install/setup.bash && "
-                        "ros2 service call /map_save std_srvs/srv/Trigger '{}'"
+                        "ros2 run g1_mapping_tools save_occupancy_map --timeout 45"
                     ),
                     session_id=session.session_id,
                     backend=session.backend,
@@ -338,6 +339,42 @@ class ComposeRuntime:
             return
 
         raise ValueError(f"未知のbackendです: {session.backend}")
+
+    def rebuild_occupancy(
+        self, session: MappingSession, output_path: Path, *,
+        voxel_size: float | None = None, bag_dir: Path | None = None,
+        cloud_topic: str = "/g1_mapping/cloud_registered",
+    ) -> None:
+        """Re-run the same C++ OctoMap core with recorded exact scan/pose pairs."""
+        source = (bag_dir or session.directory / "raw" / "rosbag2").resolve()
+        if not source.is_dir():
+            raise RuntimeError(f"rosbagディレクトリがありません: {source}")
+        output_path = output_path.resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest = json.loads(session.manifest_path.read_text(encoding="utf-8"))
+        parameters = manifest.get("occupancy_map") or self.settings.occupancy_parameters()
+        replay_config = source.parent / "occupancy.json"
+        if bag_dir is not None and replay_config.is_file():
+            parameters = json.loads(replay_config.read_text(encoding="utf-8"))["parameters"]
+        if voxel_size is not None:
+            parameters["voxel_size"] = voxel_size
+        options: list[str] = []
+        for name, value in parameters.items():
+            options.extend([f"--{name.replace('_', '-')}", str(value).lower()])
+        result = self.run(
+            "--profile", "raw", "run", "--rm", "-T",
+            "-e", "G1_IFACE=lo",
+            "-e", "CYCLONEDDS_URI=<CycloneDDS><Domain><General><Interfaces>"
+            '<NetworkInterface name="lo" /></Interfaces></General></Domain></CycloneDDS>',
+            "-v", f"{source}:/bag-input:ro",
+            "-v", f"{output_path.parent}:/map-output",
+            "raw_tools", "ros2", "run", "g1_mapping_octomap", "rebuild_occupancy",
+            "--bag-dir", "/bag-input", "--output", f"/map-output/{output_path.name}",
+            "--cloud-topic", cloud_topic, *options,
+            session_id=session.session_id, backend="raw",
+        )
+        if result.stdout:
+            print(result.stdout, end="")
 
     def collect_logs(self, session: MappingSession) -> None:
         profile = session.backend

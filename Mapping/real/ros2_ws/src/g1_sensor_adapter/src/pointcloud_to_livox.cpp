@@ -3,6 +3,7 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/point_field.hpp>
+#include "timestamp_validation.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -157,9 +158,7 @@ class PointCloudToLivox final : public rclcpp::Node {
   // かえって歪む。** 7% 落としても 10Hz が 9.3Hz になるだけで済む。
   bool has_valid_stamp(const PointCloud2& cloud) {
     const std::int64_t stamp_ns = rclcpp::Time(cloud.header.stamp).nanoseconds();
-    // 2001-09-09 より前の時刻は「打たれていない」とみなす
-    constexpr std::int64_t kMinimumPlausibleNs = 1000000000LL * 1000000000LL;
-    if (stamp_ns >= kMinimumPlausibleNs) {
+    if (g1_sensor_adapter::valid_scan_stamp(stamp_ns, get_parameter("use_sim_time").as_bool())) {
       return true;
     }
     ++dropped_scans_;

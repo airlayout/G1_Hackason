@@ -26,6 +26,9 @@ jobs:
           python-version: '3.12'
 
       # 実機・ROS 2・LiDARは不要。各フォルダのtests/run_tests.shを自動で探して実行する。
+      - name: Install occupancy mapping test dependency
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends liboctomap-dev
+
       - name: Run tests
         run: bash scripts/ci/run_all_tests.sh
 

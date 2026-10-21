@@ -119,6 +119,7 @@ class SessionManager:
                 "onboard_odom": self.settings.onboard_odom_topic,
                 "canonical_odom": "/g1_mapping/odom",
                 "canonical_registered_cloud": "/g1_mapping/cloud_registered",
+                "canonical_sensor_pose": "/g1_mapping/sensor_pose",
                 "canonical_map": "/g1_mapping/map",
                 "camera_image": "/g1_camera/color/image/compressed",
                 "camera_info": "/g1_camera/color/camera_info",
@@ -145,10 +146,12 @@ class SessionManager:
                 ),
             },
             "live_map": {
+                "method": "octomap" if backend in {"raw", "sim"} else "accumulate",
                 "voxel_size": self.settings.map_voxel_size,
                 "density_definition": "unique_scan_count",
                 "density_target_scans": self.settings.density_target_scans,
             },
+            "occupancy_map": self.settings.occupancy_parameters() if backend in {"raw", "sim"} else None,
             "remote_map_path": remote_map_path,
             "diagnostic": diagnostic,
         }

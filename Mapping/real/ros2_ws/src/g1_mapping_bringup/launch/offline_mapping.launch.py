@@ -35,6 +35,8 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
 RAW_POINTS_DEFAULT = "/utlidar/cloud_livox_mid360"
@@ -127,10 +129,15 @@ def generate_launch_description() -> LaunchDescription:
             },
         ],
         remappings=[
-            ("/Odometry", "/g1_mapping/odom"),
-            ("/cloud_registered", "/g1_mapping/cloud_registered"),
-            ("/Laser_map", "/g1_mapping/map"),
+            ("/Odometry", "/g1_mapping/backend/odom"),
+            ("/cloud_registered", "/g1_mapping/backend/cloud_registered"),
+            ("/Laser_map", "/g1_mapping/backend/map"),
+            ("/sensor_pose", "/g1_mapping/backend/sensor_pose"),
         ],
     ))
 
+    nodes.append(IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(str(share / "launch" / "occupancy_mapping.launch.py")),
+        launch_arguments={"use_sim_time": "true", "output_path": str(output_path)}.items(),
+    ))
     return LaunchDescription(nodes)

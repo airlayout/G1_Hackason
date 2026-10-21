@@ -4,10 +4,14 @@ G1の3D LiDAR・IMU・頭部RGBを使い、部屋の点群地図・軌跡・再�
 実機用は次の2方式を、同じ操作と成果物形式で切り替えられる。
 
 - `onboard` — G1内蔵のUnitree LIO/SLAMサービスを利用
-- `raw` — G1の生LiDAR・IMUをROS 2版FAST-LIO2で処理
+- `raw` — G1の生LiDAR・IMUをROS 2版FAST-LIO2で処理し、OctoMapで占有・空きを更新
 
 どちらの方式でも、生LiDAR・IMU・RGB・CameraInfoと正規化済みLIO出力を同じrosbag2へ
 記録する。現場ではライブ地図・自己位置・RGBを確認し、3DGSは持ち帰ってから処理する。
+
+`raw` / `sim` は、同時刻の登録点群とLiDAR姿勢から作ったOctoMapを表示・保存する。
+`mapctl rebuild` でも同じ処理を実行する。後の光線が通過した場所の点は削除される。
+GLIMによる全体最適化は含まない。起動・古い記録の移行は [`real/`](real/README.md) を参照。
 
 RViz2は可視化専用コンテナへ分離している。Mapping中のライブ点群と、保存後の
 `map_raw.pcd`を同じ表示設定で確認できる。

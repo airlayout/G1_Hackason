@@ -239,6 +239,16 @@ def validate_session(
             )
         ),
     )
+    if isinstance(manifest.get("occupancy_map"), dict):
+        required_topics += (str(topics.get("canonical_sensor_pose", "/g1_mapping/sensor_pose")),)
+        metadata_path = map_path.with_suffix(".octomap.json")
+        try:
+            occupancy = json.loads(metadata_path.read_text(encoding="utf-8"))
+            complete = occupancy.get("algorithm") == "octomap" and occupancy.get("scans", 0) > 0
+            checks.append(ValidationCheck("map.occupancy", "PASS" if complete else "FAIL",
+                                          f"OctoMap {occupancy.get('scans', 0)} scans"))
+        except (OSError, ValueError) as error:
+            checks.append(ValidationCheck("map.occupancy", "WARN" if allow_partial else "FAIL", str(error)))
     for topic in required_topics:
         count = topic_counts.get(topic, 0)
         checks.append(

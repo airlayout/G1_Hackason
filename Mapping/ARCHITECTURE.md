@@ -11,7 +11,8 @@ Mapping中にproviderを切り替えることはせず、失敗時は新しい�
 G1内蔵LIO ─ onboard adapter ─┐
                              ├─ canonical odom / registered cloud
 FAST-LIO2 ─ raw adapter ─────┘              │
-                                            ├─ map accumulator ─ RViz2
+                                            ├─ onboard: map accumulator ─ RViz2
+                                            ├─ raw/sim: OctoMap + sensor pose ─ RViz2 / PCD
 RGB camera ─ camera adapter ────────────────┼─ rosbag2 recorder
                                             ├─ trajectory writer
                                             └─ PCD/session validator
@@ -45,8 +46,10 @@ Isaac Simでは`--backend sim`を使い、実機rawと同じFAST-LIO2を実行�
 ./mapctl rebuild [session_id]
 ```
 
-これはrosbagに記録済みの地図点群を蓄積して`map/map_raw.pcd`を書き出す**オフライン
-経路**であり、G1にもDockerにもROS 2にも依存しない。`db3`だけを読むため、異常終了で
+`onboard` は記録済みの地図点群を蓄積するPython経路で、G1にもDockerにもROS 2にも
+依存しない。`raw` / `sim` はDocker内の `g1_mapping_octomap/rebuild_occupancy` が、
+記録済みの登録点群とセンサ姿勢からオンラインと同じOctoMapを再生成する。
+いずれも `db3` を直接読むため、異常終了で
 `metadata.yaml`が欠けたセッションからも復旧できる。「生データを並行記録しておけば
 現場で地図が完成しなくても持ち帰れる」という前提を、実際に成立させるための実装。
 
@@ -78,7 +81,15 @@ Mappingプロセスには影響せず、Mappingが停止しても可視化プロ
 - `PointCloud2`をLivox `CustomMsg`へ変換し、各点時刻を保持してFAST-LIO2へ渡す。
 - 各点時刻が無い場合は、点の並び順から1スキャン内の時刻を推定する縮退モードを持つ。
   縮退モードは診断レポートで明示し、正常扱いにはしない。
-- FAST-LIO2の`map_save`サービスで、セッション配下へPCDを保存する。
+- FAST-LIO2へ固定commit用patchを適用し、スキャン終端時刻のLiDAR姿勢を配信する。
+  原点には推定中のLiDAR–IMU外部パラメータを含める。
+- adapterが登録点群とセンサ姿勢を同じ`map`基底へ正規化する。`lio_body`をcanonical
+  child frameに使い、FAST-LIO2自身の`camera_init -> body` TFと競合させない。
+- `g1_mapping_octomap` は完全一致のスキャン時刻で点群とセンサ姿勢を組み合わせ、
+  占有・空きを更新する。空きに分類された候補点を地図から削除する。
+  削除はスキャン更新時に実行し、表示や保存の周期に結果を依存させない。
+- `/g1_mapping/save_map` が表示と同じ地図をPCDとOctoMapへ保存する。
+  保存失敗時の復旧も同じOctoMap処理を使い、単純蓄積へは自動で戻さない。
 
 ## 標準トピック
 
@@ -88,6 +99,7 @@ Mappingプロセスには影響せず、Mappingが停止しても可視化プロ
 | 正規化済みIMU | `/g1_mapping/imu` | `sensor_msgs/msg/Imu` |
 | LIO odometry | `/g1_mapping/odom` | `nav_msgs/msg/Odometry` |
 | 登録済み点群 | `/g1_mapping/cloud_registered` | `sensor_msgs/msg/PointCloud2` |
+| raw/simのLiDAR姿勢 | `/g1_mapping/sensor_pose` | `geometry_msgs/msg/PoseStamped` |
 | 地図点群 | `/g1_mapping/map` | `sensor_msgs/msg/PointCloud2` |
 | 移動軌跡 | `/g1_mapping/path` | `nav_msgs/msg/Path` |
 | RGB画像 | `/g1_camera/color/image/compressed` | `sensor_msgs/msg/CompressedImage` |
@@ -97,7 +109,10 @@ Mappingプロセスには影響せず、Mappingが停止しても可視化プロ
 `/g1_mapping/map`は表示用のボクセル地図で、通常の`x/y/z/intensity`に加えて
 `density`、`hit_count`、`scan_count`を持つ。`scan_count`は同一スキャン内の重複を
 1回として数え、`density=min(scan_count/DENSITY_TARGET_SCANS, 1)`とする。
-この地図は派生データなのでrosbagへ重複保存せず、登録済み点群から再生成する。
+raw/simではさらに`occupancy`を持つ。OctoMapで未知の候補点は既定で残し、占有確率の
+表示値を0.5とする。`density`は採否の判定には使わない。
+地図は派生データなのでrosbagへ重複保存せず、登録済み点群とセンサ姿勢から再生成する。
+OctoMap設定はmanifestとPCDと同名の`.octomap.json`へ保存する。
 
 実機入力・内蔵LIO出力のトピック名は`.env`で変更できる。ファームウェア差をソースコードに
 埋め込まない。

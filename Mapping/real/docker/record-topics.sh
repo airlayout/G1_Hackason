@@ -13,6 +13,7 @@ TOPICS=(
     /g1_mapping/imu
     /g1_mapping/odom
     /g1_mapping/cloud_registered
+    /g1_mapping/sensor_pose
     /g1_camera/color/image/compressed
     /g1_camera/color/camera_info
     /g1_camera/frame_metadata

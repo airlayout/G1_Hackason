@@ -34,6 +34,10 @@ MASK_MAX_Z=1.2
 EXTRINSIC_EST=false
 TIME_SYNC=false
 TIME_OFFSET=0.0
+SETTINGS_TOPICS="$(PYTHONPATH="$REAL_DIR/python${PYTHONPATH:+:$PYTHONPATH}" python3 -c \
+    'from g1_mapping.config import Settings; s=Settings.load(); print(s.raw_points_topic); print(s.raw_imu_topic)')"
+POINTS_TOPIC="${SETTINGS_TOPICS%%$'\n'*}"
+IMU_TOPIC="${SETTINGS_TOPICS#*$'\n'}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --no-crop)  CROP=false; OUTPUT_NAME=map_fastlio_nocrop.pcd; shift ;;
@@ -53,16 +57,10 @@ while [[ $# -gt 0 ]]; do
         *) echo "不明な引数: $1" >&2; exit 2 ;;
     esac
 done
+REPLAY_RECORD="${OUTPUT_NAME%.pcd}_$(date -u +%Y%m%dT%H%M%SZ)"
 
 BAG_DIR="$REAL_DIR/runs/$SESSION/raw/rosbag2"
 [[ -d "$BAG_DIR" ]] || { echo "[ERROR] bag が無い: $BAG_DIR" >&2; exit 1; }
-
-PLAY_ARGS=(--clock 200 --rate "$RATE")
-[[ -n "$START" ]] && PLAY_ARGS+=(--start-offset "$START")
-# ROS 2 Humble の rosbag2 には --playback-duration が無い（2026-09-04 に実測）。
-# 途中で止めたいときはコンテナ内の timeout で切る。
-PLAY_PREFIX=""
-[[ -n "$DURATION" ]] && PLAY_PREFIX="timeout --signal=INT $DURATION"
 
 echo "session : $SESSION"
 echo "CropBox : $CROP"
@@ -72,12 +70,20 @@ echo "再生    : rate=$RATE ${DURATION:+duration=${DURATION}s}"
 echo "FAST-LIO: extrinsic_est=$EXTRINSIC_EST time_sync=$TIME_SYNC offset=$TIME_OFFSET"
 echo "------------------------------------------------------------"
 
-# --clock はシミュレーション時刻を配信する。これが無いと use_sim_time のノードが
-# 時刻 0 のまま止まる。200 は配信レート[Hz]で、既定の 10Hz だと 10Hz の
-# スキャンに対して粗すぎる。
+MAP_ENV_ARGS=()
+[[ -f "$REAL_DIR/.env" ]] && MAP_ENV_ARGS+=(--env-file "$REAL_DIR/.env")
+for key in MAP_VOXEL_SIZE MAP_MAX_POINTS DENSITY_TARGET_SCANS \
+    OCTOMAP_RESOLUTION OCTOMAP_MIN_RANGE OCTOMAP_MAX_RANGE OCTOMAP_PROB_HIT \
+    OCTOMAP_PROB_MISS OCTOMAP_CLAMP_MIN OCTOMAP_CLAMP_MAX OCTOMAP_KEEP_UNKNOWN; do
+    if value="$(printenv "$key")"; then MAP_ENV_ARGS+=(-e "$key=$value"); fi
+done
+
+# 記録に /clock があればそれを再生し、無ければbagの再生時計を生成する。
+# センサヘッダーの時刻とdb3の記録時刻が異なるシミュレーションにも対応する。
 docker run --rm -i \
+    "${MAP_ENV_ARGS[@]}" \
     -v "$REAL_DIR/runs:/runs" \
-    -v "$REAL_DIR/ros2_ws/src/g1_mapping_bringup/launch/offline_mapping.launch.py:/opt/g1_ws/install/share/g1_mapping_bringup/launch/offline_mapping.launch.py:ro" \
+    -v "$REAL_DIR/ros2_ws/src/g1_mapping_bringup/launch:/opt/g1_ws/install/share/g1_mapping_bringup/launch:ro" \
     -v "$REAL_DIR/ros2_ws/src/g1_mapping_bringup/config/follower_crop.yaml:/opt/g1_ws/install/share/g1_mapping_bringup/config/follower_crop.yaml:ro" \
     -e MAPPING_SESSION_ID="$SESSION" \
     -e ENABLE_FOLLOWER_CROP="$CROP" \
@@ -91,49 +97,18 @@ docker run --rm -i \
     -e FASTLIO_EXTRINSIC_EST="$EXTRINSIC_EST" \
     -e FASTLIO_TIME_SYNC="$TIME_SYNC" \
     -e FASTLIO_TIME_OFFSET="$TIME_OFFSET" \
+    -e RAW_POINTS_TOPIC="$POINTS_TOPIC" \
+    -e RAW_IMU_TOPIC="$IMU_TOPIC" \
+    -e REPLAY_RECORD="$REPLAY_RECORD" \
     -e RCUTILS_LOGGING_BUFFERED_STREAM=1 \
-    -e PLAY_PREFIX="$PLAY_PREFIX" \
-    "$IMAGE" bash -c "
-set -eo pipefail
-ros2 launch g1_mapping_bringup offline_mapping.launch.py &
-LAUNCH_PID=\$!
-
-# 各A/B地図と同じ座標系の軌跡を残す。内蔵SLAMのodomをFAST-LIO2地図へ
-# そのまま重ねると座標系が違い、ゴースト指標を誤判定するため。
-mkdir -p /runs/$SESSION/trajectory
-ODOM_CSV=/runs/$SESSION/trajectory/\${MAP_OUTPUT_NAME%.pcd}_odom.csv
-ros2 topic echo --csv /g1_mapping/odom > \$ODOM_CSV &
-ODOM_PID=\$!
-
-# ノードが購読を張る前に再生を始めると先頭のスキャンを取りこぼす。
-# トピックが現れるまで待つ（固定の sleep では機械の速さに依存して不安定）。
-for i in \$(seq 60); do
-    ros2 topic list 2>/dev/null | grep -q '/g1_mapping/livox' && break
-    sleep 1
-done
-
-${PLAY_PREFIX} ros2 bag play /runs/$SESSION/raw/rosbag2 ${PLAY_ARGS[*]} || true
-
-# **PCD は /map_save サービスで書かせる。**
-# FAST-LIO2 が終了時に書く先は map_file_path ではなく
-# ROOT_DIR/PCD/scans.pcd（= /opt/g1_ws/src/fast_lio/PCD/、コンテナ内でマウント外）
-# なので、そのまま終わらせると地図が消える。laserMapping.cpp:1173 で確認した。
-# map_file_path を使うのは save_to_pcd() だけで、それを呼ぶのは /map_save のみ。
-echo '[replay] 再生完了。/map_save で PCD を書き出します ...'
-ros2 service call /map_save std_srvs/srv/Trigger
-
-kill -INT \$ODOM_PID 2>/dev/null || true
-wait \$ODOM_PID 2>/dev/null || true
-
-echo '[replay] 終了します ...'
-kill -INT \$LAUNCH_PID 2>/dev/null || true
-# FAST-LIO2 の ROS2 版は別スレッドを回しており SIGINT で素直に落ちないことがある。
-# PCD は既に書けているので、待ちすぎずに打ち切る。
-for i in \$(seq 20); do kill -0 \$LAUNCH_PID 2>/dev/null || break; sleep 1; done
-kill -9 \$LAUNCH_PID 2>/dev/null || true
-"
+    -e REPLAY_RATE="$RATE" \
+    -e REPLAY_START="$START" \
+    -e REPLAY_DURATION="$DURATION" \
+    -v "$REAL_DIR/docker/replay-occupancy.sh:/opt/g1/bin/replay-occupancy.sh:ro" \
+    "$IMAGE" bash /opt/g1/bin/replay-occupancy.sh
 
 OUT="$REAL_DIR/runs/$SESSION/map/$OUTPUT_NAME"
+echo "[REBUILD] ./mapctl rebuild $SESSION --method octomap --bag-dir runs/$SESSION/derived/$REPLAY_RECORD/rosbag2 --output runs/$SESSION/map/${OUTPUT_NAME%.pcd}_rebuilt.pcd"
 echo "------------------------------------------------------------"
 if [[ -f "$OUT" ]]; then
     echo "[OK] $OUT  ($(du -h "$OUT" | cut -f1))"

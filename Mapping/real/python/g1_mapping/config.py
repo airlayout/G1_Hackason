@@ -70,6 +70,30 @@ class Settings:
     density_target_scans: int
     min_free_gib: float
     min_map_points: int
+    octomap_resolution: float = 0.10
+    octomap_min_range: float = 0.30
+    octomap_max_range: float = 3.0
+    octomap_prob_hit: float = 0.7
+    octomap_prob_miss: float = 0.4
+    octomap_clamp_min: float = 0.12
+    octomap_clamp_max: float = 0.97
+    octomap_keep_unknown: bool = True
+    map_max_points: int = 2_000_000
+
+    def occupancy_parameters(self) -> dict[str, float | int | bool]:
+        return {
+            "resolution": self.octomap_resolution,
+            "voxel_size": self.map_voxel_size,
+            "min_range": self.octomap_min_range,
+            "max_range": self.octomap_max_range,
+            "prob_hit": self.octomap_prob_hit,
+            "prob_miss": self.octomap_prob_miss,
+            "clamp_min": self.octomap_clamp_min,
+            "clamp_max": self.octomap_clamp_max,
+            "keep_unknown": self.octomap_keep_unknown,
+            "max_points": self.map_max_points,
+            "target_scans": self.density_target_scans,
+        }
 
     @classmethod
     def load(cls, project_dir: Path | None = None) -> "Settings":
@@ -124,6 +148,15 @@ class Settings:
             density_target_scans=int(value("DENSITY_TARGET_SCANS", "10")),
             min_free_gib=float(value("MIN_FREE_GIB", "5")),
             min_map_points=int(value("MIN_MAP_POINTS", "1000")),
+            octomap_resolution=float(value("OCTOMAP_RESOLUTION", "0.10")),
+            octomap_min_range=float(value("OCTOMAP_MIN_RANGE", "0.30")),
+            octomap_max_range=float(value("OCTOMAP_MAX_RANGE", "3.0")),
+            octomap_prob_hit=float(value("OCTOMAP_PROB_HIT", "0.7")),
+            octomap_prob_miss=float(value("OCTOMAP_PROB_MISS", "0.4")),
+            octomap_clamp_min=float(value("OCTOMAP_CLAMP_MIN", "0.12")),
+            octomap_clamp_max=float(value("OCTOMAP_CLAMP_MAX", "0.97")),
+            octomap_keep_unknown=_as_bool(value("OCTOMAP_KEEP_UNKNOWN", "true")),
+            map_max_points=int(value("MAP_MAX_POINTS", "2000000")),
         )
 
     def compose_environment(
@@ -157,6 +190,11 @@ class Settings:
                 "DENSITY_TARGET_SCANS": str(self.density_target_scans),
             }
         )
+        for name, parameter in self.occupancy_parameters().items():
+            if name in {"voxel_size", "target_scans", "max_points"}:
+                continue
+            env[f"OCTOMAP_{name.upper()}"] = str(parameter).lower()
+        env["MAP_MAX_POINTS"] = str(self.map_max_points)
         if session_id:
             env["MAPPING_SESSION_ID"] = session_id
         return env

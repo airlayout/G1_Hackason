@@ -39,11 +39,12 @@
     publish:
       path_en: true
       effect_map_en: false
-      map_en: true
+      # The canonical map is maintained by g1_mapping_octomap, not append-only Laser_map.
+      map_en: false
       scan_publish_en: true
-      dense_publish_en: false
+      dense_publish_en: true
       scan_bodyframe_pub_en: true
 
     pcd_save:
-      pcd_save_en: true
+      pcd_save_en: false
       interval: -1

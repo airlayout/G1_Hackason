@@ -1,0 +1,40 @@
+--- a/src/laserMapping.cpp
++++ b/src/laserMapping.cpp
+@@ -932,6 +932,7 @@
+         pubLaserCloudEffect_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_effected", 20);
+         pubLaserCloudMap_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/Laser_map", 20);
+         pubOdomAftMapped_ = this->create_publisher<nav_msgs::msg::Odometry>("/Odometry", 20);
++        pubSensorPose_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/sensor_pose", 20);
+         pubPath_ = this->create_publisher<nav_msgs::msg::Path>("/path", 20);
+         tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+@@ -1062,6 +1063,21 @@
+
+             /******* Publish odometry *******/
+             publish_odometry(pubOdomAftMapped_, tf_broadcaster_);
++            // LiDAR origin at the same scan-end stamp as cloud_registered.
++            // Include the current estimated LiDAR/IMU extrinsic, not just IMU odometry.
++            geometry_msgs::msg::PoseStamped sensor_pose;
++            sensor_pose.header.stamp = get_ros_time(lidar_end_time);
++            sensor_pose.header.frame_id = "camera_init";
++            sensor_pose.pose.position.x = pos_lid.x();
++            sensor_pose.pose.position.y = pos_lid.y();
++            sensor_pose.pose.position.z = pos_lid.z();
++            const Eigen::Quaterniond sensor_rotation(
++                state_point.rot.toRotationMatrix() * state_point.offset_R_L_I.toRotationMatrix());
++            sensor_pose.pose.orientation.x = sensor_rotation.x();
++            sensor_pose.pose.orientation.y = sensor_rotation.y();
++            sensor_pose.pose.orientation.z = sensor_rotation.z();
++            sensor_pose.pose.orientation.w = sensor_rotation.w();
++            pubSensorPose_->publish(sensor_pose);
+
+             /*** add the feature points to map kdtree ***/
+             t3 = omp_get_wtime();
+@@ -1134,6 +1150,7 @@
+     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudEffect_;
+     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudMap_;
+     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomAftMapped_;
++    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pubSensorPose_;
+     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath_;
+     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
+     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;

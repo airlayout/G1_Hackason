@@ -73,14 +73,17 @@ def _parser() -> argparse.ArgumentParser:
         "rebuild", help="rosbagの地図点群からmap_raw.pcdを再構成する"
     )
     rebuild.add_argument("session_id", nargs="?")
+    rebuild.add_argument("--method", choices=("auto", "octomap", "accumulate"), default="auto",
+                         help="raw/simは既定でOctoMap。accumulateは訂正なしの旧式蓄積")
+    rebuild.add_argument("--bag-dir", type=Path, help="OctoMap再生成用の別の記録ディレクトリ")
     rebuild.add_argument(
         "--topic", help="使うPointCloud2トピック（既定: 共通の登録済み点群）"
     )
     rebuild.add_argument(
         "--voxel",
         type=float,
-        default=0.05,
-        help="ボクセル一辺[m]。0で間引きなし（既定: 0.05）",
+        default=None,
+        help="ボクセル一辺[m]（OctoMapは計測時の設定。accumulateは既定0.05、0で間引きなし）",
     )
     rebuild.add_argument("--output", type=Path, help="出力先PCD（既定: セッションのmap/）")
     rebuild.add_argument(
@@ -178,12 +181,15 @@ def _stop(settings: Settings, arguments: argparse.Namespace) -> int:
             errors.append(f"ログ回収: {exc}")
         if not session.map_path.is_file():
             try:
-                rebuild_map(
-                    session.directory,
-                    topic="/g1_mapping/cloud_registered",
-                    output_path=session.map_path,
-                    voxel_size=0.05,
-                )
+                if session.backend in {"raw", "sim"}:
+                    runtime.rebuild_occupancy(session, session.map_path)
+                else:
+                    rebuild_map(
+                        session.directory,
+                        topic="/g1_mapping/cloud_registered",
+                        output_path=session.map_path,
+                        voxel_size=0.05,
+                    )
             except Exception as exc:
                 errors.append(f"共通登録点群からのPCD再構成: {exc}")
 
@@ -310,7 +316,19 @@ def _rebuild(settings: Settings, arguments: argparse.Namespace) -> int:
         )
     topic = arguments.topic or "/g1_mapping/cloud_registered"
     print(f"[REBUILD] session={session.session_id} backend={session.backend}")
-    print(f"[REBUILD] topic={topic} voxel={arguments.voxel}m")
+    method = arguments.method
+    if method == "auto":
+        method = "octomap" if session.backend in {"raw", "sim"} else "accumulate"
+    print(f"[REBUILD] method={method} topic={topic}")
+    if method == "octomap":
+        ComposeRuntime(settings).rebuild_occupancy(
+            session, output_path, voxel_size=arguments.voxel,
+            bag_dir=arguments.bag_dir, cloud_topic=topic,
+        )
+        print(f"[OUTPUT] {output_path}")
+        return 0
+    if arguments.bag_dir:
+        raise ValueError("--bag-dirは--method octomapで使用してください")
 
     def report(messages: int, raw_points: int, kept: int) -> None:
         print(
@@ -322,7 +340,7 @@ def _rebuild(settings: Settings, arguments: argparse.Namespace) -> int:
         session.directory,
         topic=topic,
         output_path=output_path,
-        voxel_size=arguments.voxel,
+        voxel_size=0.05 if arguments.voxel is None else arguments.voxel,
         progress=report,
     )
     extent = [
