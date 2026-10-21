@@ -26,7 +26,7 @@ class ModalityConfig:
 
 @dataclass(frozen=True)
 class QueryConfig:
-    """固定の学習可能query、または任意座標から生成するquery。"""
+    """Mと結合するquery、およびtask固有の出力の意味・範囲。"""
 
     output_dim: int
     kind: Literal["learned", "coordinate"] = "learned"
@@ -34,11 +34,12 @@ class QueryConfig:
     coordinate_dim: int = 0
     coordinate_scale: tuple[float, ...] = ()
     fourier_bands: int = 6
-    context_dim: int = 0
-    output_transform: Literal["identity", "pose3d"] = "identity"
+    output_transform: Literal["identity", "occupancy", "bounded", "pose3d"] = "identity"
+    output_min: tuple[float, ...] = ()
+    output_max: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.output_dim < 1 or self.num_queries < 1 or self.context_dim < 0 or self.fourier_bands < 0:
+        if self.output_dim < 1 or self.num_queries < 1 or self.fourier_bands < 0:
             raise ValueError("queryの次元が不正です")
         if self.kind not in {"learned", "coordinate"}:
             raise ValueError(f"未知のquery kind: {self.kind}")
@@ -51,10 +52,28 @@ class QueryConfig:
             or any(not 0 < value < float("inf") for value in self.coordinate_scale)
         ):
             raise ValueError("coordinate_scaleは座標ごとの有限の正数です")
-        if self.output_transform not in {"identity", "pose3d"}:
+        if self.output_transform not in {"identity", "occupancy", "bounded", "pose3d"}:
             raise ValueError("未知のoutput_transformです")
-        if self.output_transform == "pose3d" and self.output_dim != 7:
-            raise ValueError("pose3dはXYZ + quaternion xyzwの7次元です")
+        if self.output_transform == "occupancy" and (
+            self.kind != "coordinate" or self.coordinate_dim != 3 or self.output_dim != 2
+        ):
+            raise ValueError("occupancyはXYZ queryから占有・観測済みの2成分を返します")
+        if self.output_transform == "pose3d" and (
+            self.output_dim != 7 or self.kind != "coordinate" or self.coordinate_dim != 1
+        ):
+            raise ValueError("pose3dは未来時刻queryからXYZ + quaternion xyzwの7次元を返します")
+        if self.output_transform == "bounded":
+            if (
+                len(self.output_min) != self.output_dim
+                or len(self.output_max) != self.output_dim
+                or any(
+                    not math.isfinite(low) or not math.isfinite(high) or low >= high
+                    for low, high in zip(self.output_min, self.output_max)
+                )
+            ):
+                raise ValueError("boundedには出力次元ごとの有限なoutput_min < output_maxが必要です")
+        elif self.output_min or self.output_max:
+            raise ValueError("出力範囲を設定できるのはboundedだけです")
 
 
 @dataclass(frozen=True)
@@ -123,8 +142,9 @@ class ModelConfig:
         queries = {}
         for name, value in data["queries"].items():
             value = dict(value)
-            if "coordinate_scale" in value:
-                value["coordinate_scale"] = tuple(value["coordinate_scale"])
+            for key in ["coordinate_scale", "output_min", "output_max"]:
+                if key in value:
+                    value[key] = tuple(value[key])
             queries[name] = QueryConfig(**value)
         data["queries"] = queries
         return cls(**data)

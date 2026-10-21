@@ -118,8 +118,9 @@ class RecurrentPerceiver(nn.Module):
         queries: Mapping[str, QueryRequest] | None = None,
         *,
         chunk_size: int | None = None,
+        raw: bool = False,
     ) -> dict[str, Tensor]:
-        """今回のMだけを読む。履歴だけを持つMemoryStateは読出しに使わない。"""
+        """今回のMだけを読む。raw=Trueなら各headの出力変換前（場はlogits）を返す。"""
         if isinstance(memory, MemoryUpdate):
             memory.validate(self.seed, self.config.context_window)
             current = memory.latents
@@ -135,7 +136,7 @@ class RecurrentPerceiver(nn.Module):
                 raise ValueError("今回のMはモデルと同じdevice・dtypeの[B,memory_tokens,D]です")
         else:
             raise TypeError("decodeには今回のMemoryUpdateまたはMのTensorを渡してください")
-        return self.decoder(current, queries, chunk_size=chunk_size)
+        return self.decoder(current, queries, chunk_size=chunk_size, raw=raw)
 
     def forward(
         self,
@@ -144,6 +145,7 @@ class RecurrentPerceiver(nn.Module):
         queries: Mapping[str, QueryRequest] | None = None,
         *,
         reset_mask: Tensor | None = None,
+        raw: bool = False,
     ) -> ModelOutput:
         memory = self.encode_step(observations, state, reset_mask=reset_mask)
-        return ModelOutput(self.decode(memory, queries), memory)
+        return ModelOutput(self.decode(memory, queries, raw=raw), memory)

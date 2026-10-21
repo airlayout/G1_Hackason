@@ -1,4 +1,4 @@
-"""合成トークンでモデルのforwardを確認する。物理制御・学習・速度計測は行わない。"""
+"""今回のMから、占有・観測済み確率、速度指令、監査用未来軌道を並列に読み出す。"""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def main() -> None:
     torch.manual_seed(0)
     config = ModelConfig.load(args.config)
     model = RecurrentPerceiver(config).eval()
-    # 20cm間隔の一例。出力は[B,Z,Y,X,C]にreshapeできる。
+    # 出力[B,Q,2]は[B,Z,Y,X,2]へreshapeできる。成分順は占有・観測済み確率。
     xyz = grid_queries(torch.tensor([[-2.0, 2.0], [-2.0, 2.0], [-0.5, 0.5]]), (5, 20, 20))
     requests = {
         "velocity": QueryRequest(),
@@ -55,6 +55,7 @@ def main() -> None:
             # query読出しの頻度は呼び出し側で選べる。stateだけを次周期へ渡す。
             memory = model.encode_step(observations, state)
             predictions = model.decode(memory, requests)
+            # 学習ではdecode(memory, {"bev": requests["bev"]}, raw=True)で場のlogitsを取得できる。
             state = memory.state
             print(
                 json.dumps(
@@ -64,6 +65,7 @@ def main() -> None:
                         "history_tokens": state.tokens.shape[1],
                         "latents": list(memory.latents.shape),
                         "outputs": {name: list(value.shape) for name, value in predictions.items()},
+                        "velocity_command_vx_vy_wz": predictions["velocity"][0, 0].tolist(),
                     }
                 )
             )

@@ -43,16 +43,21 @@ queries:
   velocity:
     kind: learned
     num_queries: 1
-    output_dim: 3        # base座標 vx m/s、vy m/s、yaw_rate rad/s
+    output_dim: 3        # base座標での速度指令 vx m/s、vy m/s、yaw_rate rad/s
+    output_transform: bounded
+    # assets/cache/demo/deploy.yaml の公開歩行モデルの指令範囲。
+    output_min: [-0.5, -0.3, -0.2]
+    output_max: [1.0, 0.3, 0.2]
   bev:
     kind: coordinate
     coordinate_dim: 3   # 現在のbase座標XYZ m
     coordinate_scale: [0.1, 0.1, 0.5]
     fourier_bands: 6
-    output_dim: 32       # LiDAR由来の障害物mapを再構築する特徴。占有head・lossは未実装
+    output_dim: 2        # [占有確率, 観測済み確率]。未知は空き空間として扱わない。
+    output_transform: occupancy
   trajectory:
     kind: coordinate
-    coordinate_dim: 1   # 現在からの未来時間Δt s。初版は単一の予測軌跡
+    coordinate_dim: 1   # 現在からの未来時間Δt s。自方策の将来軌道を今回のMだけから予測。
     coordinate_scale: [0.5]
     fourier_bands: 6
     output_dim: 7        # 現在のbaseに対する未来のXYZ m + quaternion xyzw

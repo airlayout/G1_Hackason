@@ -17,8 +17,13 @@ def config(**overrides):
             {
                 "modalities": {"points": ModalityConfig(3, 8, position_dim=3), "imu": ModalityConfig(4, 1)},
                 "queries": {
-                    "velocity": QueryConfig(3),
-                    "bev": QueryConfig(5, kind="coordinate", coordinate_dim=3),
+                    "velocity": QueryConfig(
+                        3,
+                        output_transform="bounded",
+                        output_min=(-0.5, -0.3, -0.2),
+                        output_max=(1.0, 0.3, 0.2),
+                    ),
+                    "bev": QueryConfig(2, kind="coordinate", coordinate_dim=3, output_transform="occupancy"),
                     "trajectory": QueryConfig(
                         7, kind="coordinate", coordinate_dim=1, output_transform="pose3d"
                     ),

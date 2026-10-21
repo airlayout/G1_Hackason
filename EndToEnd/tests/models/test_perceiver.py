@@ -27,7 +27,7 @@ def test_default_definition_supports_all_modalities_and_three_readouts():
     model = RecurrentPerceiver(definition).eval()
     assert len(model.blocks) == 36
     assert all(isinstance(block.ff, SwiGLU) and block.ff.hidden_dim == 768 for block in model.blocks)
-    assert isinstance(model.decoder.read.ff, SwiGLU)
+    assert all(isinstance(head.ff, SwiGLU) for head in model.decoder.heads.values())
     obs = {
         "rgb": image_patches(torch.rand(1, 3, 128, 128)),
         "depth": image_patches(torch.rand(1, 2, 128, 128)),
@@ -48,11 +48,15 @@ def test_default_definition_supports_all_modalities_and_three_readouts():
     assert result.memory.state.tokens.shape == (1, 1, 256)
     assert {name: value.shape for name, value in result.predictions.items()} == {
         "velocity": (1, 1, 3),
-        "bev": (1, 11, 32),
+        "bev": (1, 11, 2),
         "trajectory": (1, 20, 7),
     }
     for value in result.predictions.values():
         assert torch.isfinite(value).all()
+    assert (result.predictions["bev"] >= 0).all() and (result.predictions["bev"] <= 1).all()
+    velocity = result.predictions["velocity"]
+    assert (velocity >= torch.tensor(definition.queries["velocity"].output_min)).all()
+    assert (velocity <= torch.tensor(definition.queries["velocity"].output_max)).all()
     torch.testing.assert_close(result.predictions["trajectory"][..., 3:].norm(dim=-1), torch.ones(1, 20))
 
 
@@ -164,22 +168,11 @@ def test_patches_and_grid_use_documented_coordinate_order():
     torch.testing.assert_close(volume[0, 2, 1, 1], torch.tensor([1.5, 3.0, 5.0]))
 
 
-def test_task_context_accepts_global_and_per_query_values():
-    definition = config()
-    definition.queries["bev"] = replace(definition.queries["bev"], context_dim=2)
-    model = RecurrentPerceiver(definition).eval()
-    memory = model.encode_step(observations())
-    coordinates = torch.randn(1, 5, 3)
-    context = torch.randn(1, 2)
-    global_value = model.decode(memory, {"bev": QueryRequest(coordinates, context)})["bev"]
-    local_value = model.decode(
-        memory,
-        {
-            "bev": QueryRequest(coordinates, context[:, None].expand(-1, 5, -1)),
-        },
-        chunk_size=2,
-    )["bev"]
-    torch.testing.assert_close(global_value, local_value)
+def test_queries_cannot_accept_external_context_or_velocity_commands():
+    with pytest.raises(TypeError):
+        QueryRequest(torch.ones(1, 2, 1), context=torch.zeros(1, 3))
+    with pytest.raises(TypeError):
+        replace(config().queries["trajectory"], context_dim=3)
 
 
 @pytest.mark.parametrize(
@@ -191,7 +184,7 @@ def test_task_context_accepts_global_and_per_query_values():
         ({"velocity": QueryRequest(torch.randn(1, 1, 3))}, "learned query"),
     ],
 )
-def test_invalid_queries_fail_before_attention(query_requests, message):
+def test_invalid_queries_fail_before_decoding(query_requests, message):
     model = RecurrentPerceiver(config())
     with pytest.raises(ValueError, match=message):
         model(observations(), queries=query_requests)
@@ -214,4 +207,4 @@ def test_invalid_observation_masks_and_dimensions_are_rejected():
 def test_empty_coordinate_request_is_supported():
     model = RecurrentPerceiver(config())
     result = model(observations(), queries={"bev": QueryRequest(torch.empty(1, 0, 3))})
-    assert result.predictions["bev"].shape == (1, 0, 5)
+    assert result.predictions["bev"].shape == (1, 0, 2)
