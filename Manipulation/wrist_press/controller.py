@@ -13,6 +13,7 @@ from .model import ARM, RobotModel
 from .perception import LatestPerception, Localizer, StableTarget
 from .planning import Planner, PlanningError, Trajectory
 from .types import Command, Report
+from .wrist_servo import WristTargetFilter, bounded_correction, tangent_error
 
 
 class CommandLimiter:
@@ -78,6 +79,17 @@ class PressController:
         self.plan_collision = CollisionChecker(self.plan_robot,cfg) if self.plan_pool else self.collision
         self.plan_planner = Planner(self.plan_robot,self.plan_collision,cfg) if self.plan_pool else self.planner
         self.plan_future = None
+        self.wrist_servo_enabled = bool(cfg.get("wrist_servo", {}).get("enabled", False)
+                                       and cfg["use_wrist"] and cfg["mode"] == "button")
+        servo = cfg.get("wrist_servo", {})
+        self.wrist_filter = WristTargetFilter(servo.get("window", 3), servo.get("spread_m", .003),
+                                             cfg["max_image_age_s"])
+        self.wrist_completed_key = None
+        self.wrist_lost_since = None
+        self.wrist_settle_after = None
+        self.wrist_confirmations = 0
+        self.previous_wrist_step = None
+        self.servo_diagnostic = {}
 
     def reset(self, name, kp=None):
         self.name = name if self.cfg["mode"] == "button" else "bottle"
@@ -126,6 +138,121 @@ class PressController:
             self.report.cameras.append(target.camera)
         self.last_accepted_image_t = target.captured_at
         return target
+
+    def _reset_wrist_track(self):
+        reset = getattr(self.localizer, "reset_track", None)
+        if reset:
+            reset("wrist")
+
+    def _wrist_event(self, obs, event, **values):
+        target = self.wrist_filter.latest
+        tip = self.robot.tip(obs.q)
+        self.servo_diagnostic = {
+            "t": float(obs.t), "event": event, "status": self.wrist_filter.reason,
+            "phase": self.phase, "alignment_camera": "wrist", "surface_camera": "head",
+            "image_t": None if not self.wrist_filter.items else float(self.wrist_filter.items[-1].captured_at),
+            "window_image_t": [float(item.captured_at) for item in self.wrist_filter.items],
+            "tip_computed_m": tip.tolist(),
+            "arm_speed_rad_s": float(np.max(np.abs(obs.dq[ARM]))),
+            "target_m": None if target is None else target.point.tolist(),
+            "error_vector_m": None if target is None else tangent_error(target, tip).tolist(),
+            "correction_vector_m": [0., 0., 0.],
+            "confirmations": self.wrist_confirmations, **values}
+        self.report.alignment_diagnostics.append(deepcopy(self.servo_diagnostic))
+
+    def _observe_wrist(self, obs):
+        """Poll wrist only. A failed exposure is distinct from inference in flight."""
+        old_reason = self.wrist_filter.reason
+        frame = obs.wrist if self._fresh(obs.wrist, obs.t) and obs.wrist.camera == "wrist" else None
+        target = self.vision.update(frame, self.name, self.target)
+        key = self.vision.completed_key
+        completed = key is not None and key != self.wrist_completed_key and key[0] == "wrist"
+        stable = None
+        if completed:
+            self.wrist_completed_key = key
+            if target is None:
+                self.wrist_filter.reject(self.vision.error or "wrist target missing")
+                self._reset_wrist_track()
+            else:
+                stable = self.wrist_filter.add(target, obs.t, self.reference_target)
+                if stable is not None:
+                    if "wrist" not in self.report.cameras:
+                        self.report.cameras.append("wrist")
+                elif self.wrist_filter.reason != "collecting wrist images":
+                    self._reset_wrist_track()
+        if frame is None:
+            self.wrist_filter.reject("wrist image missing or stale")
+        self.wrist_filter.fresh(obs.t)
+        if self.wrist_filter.latest is None:
+            self.wrist_settle_after = None
+            self.wrist_confirmations = 0
+        if completed or self.wrist_filter.reason != old_reason:
+            self._wrist_event(obs, "observation", accepted=stable is not None,
+                              raw_point_m=None if target is None else target.point.tolist(),
+                              completed_image_t=None if not completed else float(key[1]))
+        return stable if self.wrist_filter.latest is not None else None
+
+    def _align_wrist(self, obs):
+        if (obs.t-self.phase_t > self.cfg["alignment_timeout_s"] or
+                self.report.corrections >= self.cfg["max_corrections"]):
+            raise RuntimeError("wrist alignment did not converge within its budget: " + self.wrist_filter.reason)
+        settled = np.max(np.abs(obs.dq[ARM])) < .2
+        # Motion between image updates also invalidates the stopped-image count.
+        # In async mode the returned exposure may predate the actual stop.
+        if not settled:
+            self.wrist_settle_after = None
+            self.wrist_confirmations = 0
+        target = self._observe_wrist(obs)
+        if self.wrist_filter.latest is None:
+            if self.wrist_lost_since is None:
+                self.wrist_lost_since = obs.t
+            if obs.t-self.wrist_lost_since >= self.cfg["wrist_servo"]["lost_timeout_s"]:
+                raise RuntimeError("wrist reacquisition timeout: " + self.wrist_filter.reason)
+            return self.alignment_goal
+        self.wrist_lost_since = None
+        if target is None:
+            return self.alignment_goal  # Never correct/confirm twice from one exposure.
+        self.target = target
+        tip = self.robot.tip(obs.q)
+        error_vector = tangent_error(target, tip)
+        error = float(np.linalg.norm(error_vector))
+        self.report.phases[-1]["last_error_m"] = error
+        if error <= self.cfg["alignment_tolerance_m"]:
+            if not settled:
+                self.wrist_confirmations = 0
+            elif self.wrist_settle_after is None:
+                self.wrist_settle_after = obs.t
+                self.wrist_confirmations = 0
+            elif target.captured_at > self.wrist_settle_after:
+                self.wrist_confirmations += 1
+            else:
+                self.wrist_confirmations = 0
+            gap = float((target.point-tip) @ target.normal-self.cfg["tip_radius_m"])
+            confirmed = settled and self.wrist_confirmations >= self.cfg["wrist_servo"]["confirm_frames"] and gap > .008
+            self._wrist_event(obs, "confirmation", status="confirmed" if confirmed else "settling",
+                              accepted=True, error_m=error)
+            if confirmed:
+                self.press_goal = self.robot.tip(self.alignment_goal).copy()
+                self.freeze_target = deepcopy(target)
+                self._phase("press", obs.t)
+            return self.alignment_goal
+        self.wrist_settle_after = None
+        self.wrist_confirmations = 0
+        servo = self.cfg["wrist_servo"]
+        step = bounded_correction(error_vector, servo["gain"], servo["max_step_m"])
+        # No integral bias, no advance into the button plane. The next image
+        # updates this bounded position goal while CommandLimiter keeps it smooth.
+        goal = self.robot.solve(tip+step, obs.q, self.axis)
+        if not self.collision.edge(obs.q, goal, target):
+            raise PlanningError("unsafe wrist visual correction: " + self.collision.last_reason)
+        if self.previous_wrist_step is not None and step @ self.previous_wrist_step < 0:
+            self.report.correction_reversals += 1
+        self.previous_wrist_step = step.copy()
+        self.alignment_goal = goal
+        self.report.corrections += 1
+        self._wrist_event(obs, "correction", status="correcting", accepted=True, error_m=error,
+                          correction_vector_m=step.tolist())
+        return goal
 
     def _plan_approach(self, obs):
         started = perf_counter()
@@ -212,15 +339,25 @@ class PressController:
         if self.phase in ("transit", "retract", "return"):
             if self.phase=="transit":
                 # Keep the image track alive while approaching; do not queue old views.
-                observation=self._observe(obs)
-                if observation is not None and np.linalg.norm(observation.point-self.target.point)<.01:
-                    self.target=observation
+                if self.wrist_servo_enabled:
+                    self._observe_wrist(obs)
+                else:
+                    observation=self._observe(obs)
+                    if observation is not None and np.linalg.norm(observation.point-self.target.point)<.01:
+                        self.target=observation
             goal = self._path_goal(obs)
             if t-self.path_started >= self.trajectory.duration and self._tracking_ok(obs, goal):
                 if self.phase == "transit":
                     self._phase("align", t)
                     self.alignment_goal = goal.copy()
                     self.last_correction_t = t
+                    if self.wrist_servo_enabled:
+                        self.alignment_bias.fill(0)
+                        self.wrist_settle_after = None
+                        self.wrist_confirmations = 0
+                        self.wrist_lost_since = t if self.wrist_filter.latest is None else None
+                        self.report.alignment_camera = "wrist"
+                        self.report.surface_camera = self.reference_target.camera
                 elif self.phase == "retract":
                     # Replan from MEASURED pose; reversing an old path is not assumed safe.
                     if self.plan_pool:
@@ -236,6 +373,8 @@ class PressController:
                     self._phase("verify", t)
             return goal
         if self.phase == "align":
+            if self.wrist_servo_enabled:
+                return self._align_wrist(obs)
             target = self._observe(obs)
             if target is not None:
                 if np.linalg.norm(target.point-self.target.point) > 0.025 or target.normal @ self.target.normal < np.cos(np.radians(8)):
@@ -260,6 +399,8 @@ class PressController:
                 if error < self.cfg["alignment_tolerance_m"] and gap>.008 and np.max(np.abs(obs.dq[ARM])) < .2:
                     self.press_goal = self.robot.tip(goal).copy()
                     self.freeze_target = target
+                    self.report.alignment_camera = target.camera
+                    self.report.surface_camera = target.camera
                     self._phase("press", t)
             if self.phase == "align" and (t-self.phase_t > self.cfg["alignment_timeout_s"] or
                                           self.report.corrections >= self.cfg["max_corrections"]):

@@ -5,6 +5,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from time import perf_counter
+from threading import Lock
 import numpy as np
 
 from .runtime import j1_module, source_root
@@ -140,10 +141,21 @@ class Localizer:
         self.previous = None
         self.timings = []
         self.tracks = {}
+        self._track_reset_lock = Lock()
+        self._track_resets = set()
+
+    def reset_track(self, camera):
+        # Reset on the inference thread, including when perception is asynchronous.
+        with self._track_reset_lock:
+            self._track_resets.add(camera)
 
     def locate(self, frame, name, previous=None):
         started = perf_counter()
         try:
+            with self._track_reset_lock:
+                if frame.camera in self._track_resets:
+                    self.tracks.pop(frame.camera, None)
+                    self._track_resets.discard(frame.camera)
             return self._button(frame, name, previous) if self.cfg["mode"] == "button" else self._bottle(frame,previous)
         finally:
             self.timings.append(1000 * (perf_counter()-started))
@@ -178,7 +190,10 @@ class Localizer:
         matches = []
         candidates = self._tracked_candidates(frame)
         for c in candidates:
-            if c.arrow is not None and c.arrow != name:
+            # Head selects up/down. With the new servo, wrist association uses
+            # the locked 3-D corridor below: camera roll can invert arrow labels.
+            spatial_wrist = frame.camera == "wrist" and self.cfg.get("wrist_servo", {}).get("enabled", False)
+            if not spatial_wrist and c.arrow is not None and c.arrow != name:
                 continue
             refined=refine_button(frame.rgb,c.bbox) if self.cfg["refine_button_centers"] else None
             if self.cfg["refine_button_centers"] and frame.camera=="wrist" and refined is None:
@@ -308,23 +323,26 @@ class LatestPerception:
         self.result = None
         self.error = ""
         self.last_keys = {}
+        self.completed_key = None
+        self.future_key = None
 
     def update(self, frame, name, previous=None):
-        if frame is None:
-            return None
-        key = (frame.camera, frame.captured_at, frame.sequence)
         if self.future is not None and self.future.done():
             self._collect(self.future)
             self.future = None
-        if key != self.last_keys.get(frame.camera):
-            self.pending = (frame, name, previous)
-            self.last_keys[frame.camera] = key
+        if frame is not None:
+            key = (frame.camera, frame.captured_at, frame.sequence)
+            if key != self.last_keys.get(frame.camera):
+                self.pending = (frame, name, previous)
+                self.last_keys[frame.camera] = key
         if self.pending and self.future is None:
             args, self.pending = self.pending, None
             if self.pool:
+                self.future_key = (args[0].camera, args[0].captured_at, args[0].sequence)
                 self.future = self.pool.submit(self.localizer.locate, *args)
             else:
                 self.result = None
+                self.completed_key = (args[0].camera, args[0].captured_at, args[0].sequence)
                 try:
                     self.result = self.localizer.locate(*args)
                     self.error = ""
@@ -335,6 +353,7 @@ class LatestPerception:
 
     def _collect(self, f):
         self.result = None
+        self.completed_key = self.future_key
         try:
             self.result = f.result()
             self.error = ""

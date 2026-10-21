@@ -36,6 +36,10 @@ def run_episode(robot, cfg, task, control_dt=.02, snapshots=None, recorder=None)
         while t <= cfg["cycle_timeout_s"]+.2:
             obs = robot.observe(t)
             command = controller.act(builder.build(obs))
+            # Optional read-only diagnostics; existing video-only recorders keep
+            # their original capture interface.
+            if recorder is not None and hasattr(recorder, "observe_control_state"):
+                recorder.observe_control_state(controller, obs, command)
             if command.phase != last_phase:
                 print(f"[cycle] {t:.2f}s {command.phase}",flush=True)
                 if snapshots:

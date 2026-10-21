@@ -111,3 +111,7 @@ class Report:
     elapsed_s: float = 0.0
     perception_ms: list = field(default_factory=list)
     planning_ms: list = field(default_factory=list)
+    alignment_camera: str | None = None
+    surface_camera: str | None = None
+    correction_reversals: int = 0
+    alignment_diagnostics: list = field(default_factory=list)

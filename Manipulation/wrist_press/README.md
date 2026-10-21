@@ -89,6 +89,45 @@ MUJOCO_GL=egl $P -m Manipulation.wrist_press.evaluate --mode bottle --weights _l
 全工程10秒は評価目標で、達成した試行だけ`within_time_target`を立てる。
 `full_cycle_s`はシミュレーション時間、`wall_time_s`は描画・推論・計画も含むPC上の実時間。
 実機で同じ秒数になると確認した結果ではない。
+
+## A案：手首カメラで位置合わせを安定させる
+
+`wrist_servo.enabled`で新方式と現行方式を切り替える。初期値は`false`。
+`button`モードかつ`use_wrist: true`のときだけ新方式を利用する。
+頭でボタンを選んだ後、接近中に手首の観測を集め、近接の位置合わせは手首に固定する。
+手首で見失っても頭へ自動切り替えしない。既存の頭のみの動作とボトル動作は維持する。
+
+画像の撮影姿勢で共通座標へ変換した直近3枚の位置を使う。3枚とも0.35秒以内で、
+最大の位置差が3mm以内なら中央値を採用する。指先は関節角から計算する。
+ボタン面の法線・奥行きは最初の頭の推定を保持し、上下左右のみを手首で直す。
+補正は現在のずれの半分、1更新あたり最大3mm。積分補正は使わない。
+移動中も画像を更新し、各更新で停止・3枚撮り直しはしない。
+ずれ3.5mm以内になった後、新しい画像2枚と腕の速度0.2rad/s未満を確認して押下する。
+
+認識失敗時は直前の安全確認済み目標を保持し、画像追跡をリセットして再検出する。
+再検出には再び3枚の安定した観測が必要。見失い1秒、位置合わせ全体2秒、全工程18秒が上限。
+既存の衝突検査、指令制限、押下深さ・力は変更しない。
+
+同じ20ケースを両方式で録画し、ログと映像を比較する:
+
+```bash
+MUJOCO_GL=egl OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 $P -m Manipulation.wrist_press.record_realistic --servo off --out _local/wrist_press/results/servo_baseline
+MUJOCO_GL=egl OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 $P -m Manipulation.wrist_press.record_realistic --servo on --out _local/wrist_press/results/servo_candidate
+$P -m Manipulation.wrist_press.compare_servo --baseline _local/wrist_press/results/servo_baseline --candidate _local/wrist_press/results/servo_candidate --out _local/wrist_press/results/servo_comparison
+```
+
+`--seeds 1001 1002 1010 1013 1015`で重点ケースだけ試すこともできる。
+出力先の`index.html`で全試行を再生できる。緑丸は画像のボタン中心、紫十字は撮影時の
+関節角から計算した指先。両者の画素位置の一致を直接の制御目標にはしない。
+新方式では観測の採否・理由、ずれと補正、確認枚数、位置合わせと押下面のカメラを記録する。
+`states.jsonl.gz`の採点診断は記録専用で、制御には渡さない。
+
+新方式を標準ONにする条件は、時間切れだった1002・1010・1013のうち少なくとも1件が
+位置合わせを通過し、同条件の現行方式以上かつ最低1件の全工程成功数で、非対象接触が増えないこと。
+比較コマンドは設定・ケース・ソースSHA・依存版の一致も確認し、ONの条件を判定する。
+設定ファイルを自動で書き換えず、未達ならOFFを維持する。
+11〜13秒の復帰完了は既存成功例からの見積もりで、成功・時間とも録画評価で確認する。
+現在の拡張MuJoCo環境は関節状態と手首RGB-Dが理想的で、実機のノイズや取付誤差は未検証。
 Isaacで接触力を取得できない場合は`null`とし、無接触を確認した扱いにしない。
 
 ## 既存Yadaの入口を使う

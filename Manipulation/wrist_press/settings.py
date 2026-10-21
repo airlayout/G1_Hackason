@@ -30,6 +30,17 @@ def load_settings(path=None, **overrides):
         raise ValueError("bottle mode requires the bottle YOLO")
     if cfg["gravity_mode"] not in ("position","torque"):
         raise ValueError("gravity_mode must be position or torque")
+    servo = cfg["wrist_servo"]
+    if not isinstance(servo["enabled"], bool):
+        raise ValueError("wrist_servo.enabled must be boolean")
+    for key in ("window", "confirm_frames"):
+        if isinstance(servo[key], bool) or not isinstance(servo[key], int) or servo[key] < 2:
+            raise ValueError(f"wrist_servo.{key} must be an integer >= 2")
+    for key in ("spread_m", "gain", "max_step_m", "lost_timeout_s"):
+        if not math.isfinite(float(servo[key])) or float(servo[key]) <= 0:
+            raise ValueError(f"wrist_servo.{key} must be finite and positive")
+    if servo["gain"] > 1 or servo["max_step_m"] > .003:
+        raise ValueError("wrist servo gain must be <= 1 and step <= 3 mm")
     for k in ("joint_speed_rad_s", "joint_acceleration_rad_s2", "joint_jerk_rad_s3",
               "clearance_m", "edge_resolution_rad", "planning_timeout_s", "approach_m",
               "retreat_m", "max_image_age_s", "cycle_timeout_s", "alignment_timeout_s"):

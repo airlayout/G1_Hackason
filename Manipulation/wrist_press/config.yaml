@@ -6,6 +6,15 @@ bottle_weights: yolo26n.pt
 confidence: 0.4
 device: cpu
 use_wrist: true
+# Opt-in until the recorded realistic comparison meets the acceptance criteria.
+wrist_servo:
+  enabled: false
+  window: 3
+  spread_m: 0.003
+  gain: 0.5
+  max_step_m: 0.003
+  confirm_frames: 2
+  lost_timeout_s: 1.0
 async_perception: false
 max_image_age_s: 0.35
 observation_timeout_s: 3.0
