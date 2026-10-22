@@ -8,7 +8,8 @@ runner に見せず（MuJoCo の点灯の状態は記録だけする）、エー
     $P Button_Press/J1-gen/sim/lit_check_diag.py --set basic --detector classic --seeds 0 1 2
 
 1 試行 1 行（LITDIAG）: 評価セット、検出器、種、押すボタン、エージェントの結論、確認したときの本当の点灯と
-明るさの上がり方（押したボタン・もう一方。それぞれ 枠全体の平均, 明るい部分）、エージェントの表示。
+明るさの上がり方（押したボタン・もう一方。それぞれ 枠全体の平均, 明るい部分）、エージェントの表示、
+壁・柱との接触力の最大（点灯のあとの保持と戻りも含む。評価環境は点灯で終わるので、評価の結果には出ない）。
 最後に「本当に点灯していたのに点灯していないとした」「点灯していないのに点灯したとした」の数を出す。
 並列で動かすときは、メモリー 15 GB のノート PC で 4 つまで（8 つで残り 1 GB になった）。
 """
@@ -93,6 +94,7 @@ def main() -> int:
     type(ctl)._look, type(ctl)._check = look, check
 
     missed = false_lit = n_checks = 0
+    forces: list[float] = []  # 試行ごとの壁・柱との接触力の最大（点灯のあとの保持・戻りも含む）
     for seed in parse_seeds(a.seeds):
         trial = make_trial(seed, cfg, eval_set=a.set)
         state.clear()
@@ -109,10 +111,11 @@ def main() -> int:
             false_lit += int(said and not truly)
         notes = [s.message for s in ctl.log if "点灯" in s.message]
         shown = [f"{'点' if c[0] else '消'}→{'点' if c[1] else '消'} 押{c[2]} 他{c[3]}" for c in checks]
+        forces.append(r.max_contact_force_n or 0.0)
         print(f"LITDIAG\t{a.set}\t{a.detector}\t{seed}\t{trial.target}\t{ctl.outcome}\t{' | '.join(shown)}\t"
-              f"{' / '.join(notes)}", flush=True)
+              f"{' / '.join(notes)}\t接触 {r.max_contact_force_n} N", flush=True)
     print(f"[lit_check_diag] 確認 {n_checks} 回: 点灯していたのに「点灯していない」{missed} 回、"
-          f"点灯していないのに「点灯した」{false_lit} 回", flush=True)
+          f"点灯していないのに「点灯した」{false_lit} 回。壁・柱との接触力の最大 {max(forces, default=0.0):.1f} N", flush=True)
     return 0
 
 
