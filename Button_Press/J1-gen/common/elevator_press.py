@@ -429,12 +429,14 @@ class ElevatorPressController:
 
     def _stop_press(self, p: np.ndarray, lag: float, t: float) -> np.ndarray:
         """指先が進まなくなった（ボタンが底に着いた・何かに当たった）。押し込み終わりを、実際の指先の
-        keep_m 先に置き直して保持へ移る。返すのは新しい押し込み終わり。
+        keep_m + 押す前からある遅れ（lag0）先に置き直して保持へ移る。返すのは新しい押し込み終わり。
 
         目標を奥に置いたまま押し続けると、遅れ（＝押す力）が増え続け、指先がボタンの面を横に滑って柱の穴の縁に
         当たった（2026-10-15、realistic の seed 0 で 21.6 N。底に着いてから遅れが 26 mm まで増え、横に約 9 mm 滑った）。
         """
-        keep = float(self.cfg["press"]["contact_stop"]["keep_m"])
+        # 押す前からある遅れ（lag0）の分も先に置く。腕は目標よりその分だけずれて止まるので、keep_m だけだと指先が
+        # 止めた所より手前へ下がり、ボタンから離れる（2026-10-21 の実機、重力補償 0.5 で 4.1〜4.7 mm）。負なら手前に置く
+        keep = float(self.cfg["press"]["contact_stop"]["keep_m"]) + (self.lag0 or 0.0)
         n = self.plan_.push_dir
         end = p - (lag - keep) * n
         self.plan_ = PressPlan(**{**self.plan_.__dict__, "end_point": end})

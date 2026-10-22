@@ -778,6 +778,41 @@ G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Butt
 止めるとき: Ctrl+C（腕の weight を 2 秒で 0 に戻す）。動きがおかしいとき（腕が柱に向かって速く動く、腰が回る）は
 すぐ L2+B。
 
+## Enter なしで最後まで流す（`auto_press.py`、2026-10-22）
+
+段階5・6（ボトル）・段階7（ボタン）を一度ずつ確かめたあと、繰り返すときに使う。押す側（`press_bottle.py --execute --no-confirm` /
+`run_dds.py`）を Enter 待ちなしで最後まで動かす。
+
+**前提（その日に 1 回。スクリプトでは見ない）:**
+- 接続: `check_connection.py --rgbd`（`mode_machine`・lowstate の頻度・深度付きの画像）
+- 頭カメラの向き: `check_head_tilt.py --live --frames 5`（首が傾いていないか）
+- ボトル: 机の箱 `make_table_boxes.py --live --save`（机を動かしたら作り直す）。dry-run で計画が立つこと
+- ボタン: `camera.yaml` の `head_camera_mount` を使っていないこと（エレベーターのエージェントは `robot.yaml` の向きのまま）
+
+**毎回の事前確認（スクリプトが押す前に見る。そのつど変わりうることだけ）:** モーションコントローラ（arm_sdk の受け手）、
+立っているか（IMU・腰）、カラーが止まっていないか、ボタンのときはモータの mode（ボトルは押す側が見る）。
+1 つでもだめなら何も送らない（終了コード 10）。
+
+まず dry-run（既定。何も送らない）:
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target bottle
+```
+
+送る（**人がリモコンを持つ。危なければ L2+B。Ctrl+C で押す側がその場で止めて戻る**）:
+
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target bottle --execute
+```
+```bash
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair --detector yolo --execute
+```
+
+- ボトルは重力補償 0.5（`--gravity-scale`）。`--` のあとの引数は押す側にそのまま渡す（例: `-- --seed-pose press_bottle`）
+- 記録: 事前確認・コマンド・終了コードは `_local/button_press/auto/`、押した記録は今までどおり（ボトルは `runs/`、ボタンは `body_log/`）
+- 模擬ロボット（`sim/sim_robot_server.py`）では、事前確認のうち lowstate の頻度（100 Hz）・モーションコントローラ（無い）・
+  カラーの変化（描画なのでノイズが無い）が通らないので、`--skip-prechecks` で流れだけを試す（ファイルの先頭のコメント）
+
 ## 前日までのリハーサル
 
 手元の PC かラボ PC で、この手順書の流れを模擬ロボットで通しで確かめられる（約 8 分。G1 はつながなくてよい）:
