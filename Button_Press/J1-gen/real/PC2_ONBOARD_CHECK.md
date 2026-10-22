@@ -52,6 +52,10 @@ ssh -o PubkeyAuthentication=yes -o PreferredAuthentications=publickey -i ~/.ssh/
 
 ### 3. YOLO が PC2 で動くかを確かめる（人の認識）
 
+**手順とコマンドは `Perception/real/README.md` の「G1 の PC2 の上で YOLO を動かす（check_yolo.py）」**（2026-10-22 に準備した。
+ONNX と、PC2 用の配布物はラボ PC で用意済み: `_local/perception/models/yolo26n.onnx`、`_local/perception/pc2_wheels/`）。
+次の実機日は、まず G1 の頭カメラで確かめる（Web カメラが使えるかは当日次第）。人はかがんで、G1 の前 0.5〜1 m で写り込む。
+
 PC2 の頭カメラの配信（`rgbd_server.py`、5555 / 5556）はそのまま使う。YOLO は**配信を localhost で受け取って**動かす。
 見るもの: 1 枚にかかる時間（ms）、毎秒の枚数、CPU の使用率、人（`person`）の検出がラボ PC と同じように出るか。
 
