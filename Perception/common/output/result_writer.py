@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..detector.yolo_detector import Detection
+from ..detector.types import Detection
 
 
 def build_detection_record(
