@@ -39,9 +39,12 @@ geometry:
   # 同じ柱とみなす左右のずれ
   column_tolerance_m: 0.04
   # 押す組: general（柱でいちばん上の 2 つ。評価環境）/ wheelchair（いちばん下の 2 つ。ラボのエレベーターは車いす用の下の
-  # ボタンを押す）。環境変数 J1GEN_BUTTON_SET で上書きできる。wheelchair は、柱に wheelchair_min_column 個以上並んでいるときだけ
+  # ボタンを押す）。環境変数 J1GEN_BUTTON_SET で上書きできる。
+  # wheelchair は、いちばん下の 2 つが pelvis から wheelchair_max_z_m 以下のときだけ（一般用の組を取り違えない）。
+  # ラボ（2026-10-22 にメジャーで測定。床から）: 一般用 ▲ 約 124 cm・▼ 約 117 cm、車いすの印 約 103 cm、車いす用 ▲ 約 93.5 cm・
+  # ▼ 約 87 cm（間隔 約 7 cm、直径 約 3.5 cm）。pelvis は床から約 0.73 m なので z は 車いす用 +0.14〜+0.21、一般用 +0.44〜+0.51
   button_set: general
-  wheelchair_min_column: 4
+  wheelchair_max_z_m: 0.32
   # 一般用の ▲ と ▼ の上下の間隔（評価環境は 7〜9 cm。▼ と車いす用の ▲ は 20 cm 以上離れている）
   pair_spacing_m: [0.05, 0.12]
   # 押す向き: ボタンのまわりのこの範囲の柱の面に平面を当てはめる

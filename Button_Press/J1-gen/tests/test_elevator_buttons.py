@@ -318,36 +318,44 @@ class TestSelectAndTrack(unittest.TestCase):
         self.assertEqual((up.center[2], down.center[2]), (0.3, 0.22))
 
     def lab_column(self) -> list[Button3D]:
-        """ラボのエレベーターの柱: 一般用 ▲▼、車いすの印（YOLO が up と囲む）、車いす用 ▲▼（8 cm 間隔）。"""
-        return [self.b(0, 0.35, "up"), self.b(0, 0.27, "down"), self.b(0, 0.20, "up"),
-                self.b(0, 0.12, "up"), self.b(0, 0.04, "down")]
+        """ラボのエレベーターの柱（2026-10-22 の測定、pelvis 座標の z）: 一般用 ▲▼、車いすの印（YOLO が up と囲む）、車いす用 ▲▼。"""
+        return [self.b(0, 0.51, "up"), self.b(0, 0.44, "down"), self.b(0, 0.30, "up"),
+                self.b(0, 0.21, "up"), self.b(0, 0.14, "down")]
 
     def test_wheelchair_set_picks_the_bottom_pair(self) -> None:
         g = dict(load_config("elevator.yaml")["geometry"])
         up, down = select_call_pair(self.lab_column(), g)  # 既定は一般用（柱の上の 2 つ）
-        self.assertEqual((up.center[2], down.center[2]), (0.35, 0.27))
+        self.assertEqual((up.center[2], down.center[2]), (0.51, 0.44))
         g["button_set"] = "wheelchair"
         up, down = select_call_pair(self.lab_column(), g)
-        self.assertEqual((up.center[2], down.center[2]), (0.12, 0.04))  # 車いすの印（0.20）は選ばない
+        self.assertEqual((up.center[2], down.center[2]), (0.21, 0.14))  # 車いすの印（0.30）は選ばない
         self.assertEqual((up.name, down.name), ("up", "down"))
 
-    def test_wheelchair_set_needs_four_in_the_column(self) -> None:
-        """一般用の 2 つしか見えていないとき（車いす用が画面の外）に、一般用を車いす用と取り違えない。"""
+    def test_wheelchair_set_works_when_only_that_pair_is_in_view(self) -> None:
+        """頭カメラには、ラボでは車いす用の組（と印）しか写らない（一般用は画像の上に切れる）。"""
+        g = dict(load_config("elevator.yaml")["geometry"])
+        g["button_set"] = "wheelchair"
+        for col in (self.lab_column()[3:], self.lab_column()[2:]):  # 2 つだけ / 印も up として囲まれた 3 つ
+            up, down = select_call_pair(col, g)
+            self.assertEqual((up.center[2], down.center[2]), (0.21, 0.14))
+
+    def test_wheelchair_set_refuses_the_general_pair(self) -> None:
+        """一般用の 2 つしか見えていないとき（車いす用が画面の外）に、一般用を車いす用と取り違えない（高さで見る）。"""
         g = dict(load_config("elevator.yaml")["geometry"])
         g["button_set"] = "wheelchair"
         with self.assertRaises(ButtonNotFound) as cm:
             select_call_pair(self.lab_column()[:2], g)
-        self.assertIn("4 個以上", str(cm.exception))
+        self.assertIn("高すぎる", str(cm.exception))
 
     def test_wheelchair_set_checks_spacing_and_order(self) -> None:
         g = dict(load_config("elevator.yaml")["geometry"])
         g["button_set"] = "wheelchair"
         col = self.lab_column()
-        col[-1] = self.b(0, -0.10, "down")  # 下の間隔 22 cm
+        col[-1] = self.b(0, -0.10, "down")  # 下の間隔 31 cm
         with self.assertRaises(ButtonNotFound):
             select_call_pair(col, g)
         col = self.lab_column()
-        col[-2], col[-1] = self.b(0, 0.12, "down"), self.b(0, 0.04, "up")  # 順番が逆
+        col[-2], col[-1] = self.b(0, 0.21, "down"), self.b(0, 0.14, "up")  # 順番が逆
         with self.assertRaises(ButtonNotFound):
             select_call_pair(col, g)
 

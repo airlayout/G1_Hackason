@@ -355,17 +355,18 @@ def select_call_pair(buttons: list[Button3D], g: dict[str, Any]) -> tuple[Button
     reasons = []
     pairs = []
     wheelchair = str(g.get("button_set", "general")) == "wheelchair"
-    min_col = int(g.get("wheelchair_min_column", 4))
+    max_z = float(g.get("wheelchair_max_z_m", 0.32))
     for col in columns:
         if len(col) < 2:
             continue
         if wheelchair:
             # 車いす用は、柱でいちばん下の 2 つ（一般用の下。間にある車いすの印を YOLO が「up」と囲んでも、その下の 2 つではない）。
-            # 一般用の組を車いす用と取り違えないよう、柱に min_col 個以上並んでいるときだけ
-            if len(col) < min_col:
-                reasons.append(f"車いす用を選ぶには柱に {min_col} 個以上要る（{len(col)} 個）")
-                continue
+            # 頭カメラ（床から 1.2 m、約 48° 下向き）には、ラボでは車いす用の組しか写らない（一般用は画像の上に切れる）ので、
+            # 個数ではなく高さで一般用と取り違えないようにする: 2 つとも pelvis から wheelchair_max_z_m 以下
             top, second = col[-2], col[-1]
+            if top.center[2] > max_z:
+                reasons.append(f"いちばん下の組が高すぎる（上のボタン z {top.center[2]:+.2f} m > {max_z:+.2f} m。一般用の組かもしれない）")
+                continue
         else:
             top, second = col[0], col[1]
         dz = float(top.center[2] - second.center[2])
