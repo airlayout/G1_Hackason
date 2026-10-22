@@ -5,7 +5,8 @@
 生LiDAR・IMU・RGBをrosbag2へ保存したものを正本とし、LIOの実行部分だけを
 pose providerとして交換する。provider固有topicはadapterで正規化し、記録・軌跡・
 ライブ地図・RViz・成果物検証は共通topicだけを使う。
-Mapping中にproviderを切り替えることはせず、失敗時は新しいセッションとして再開する。
+Mapping中にproviderを切り替えることはしない。native/ssh/rawの通信断ではG1記録を
+継続し、同じセッションの保存済みデータから配信を再開する。
 
 ```text
 G1内蔵LIO ─ onboard adapter ─┐
@@ -54,6 +55,19 @@ Isaac Simでは`--backend sim`を使い、実機rawと同じFAST-LIO2を実行�
 現場で地図が完成しなくても持ち帰れる」という前提を、実際に成立させるための実装。
 
 ## 可視化境界
+
+native/ssh/rawではG1の独立プロセスが生LiDAR・IMU・RGBをSQLite rosbag2へ記録する。
+SSH中継は確定済みの行だけを読み、最後にPCへ送った行IDの次から再接続する。
+送信待ちやSSH切断は記録プロセスに伝播させない。PCのFAST-LIO2は最大1.5倍速で
+未送信分を処理し、RGB表示は別のZeroMQ接続で最新フレームを受け取る。
+通信中断中は画面の更新が止まり、地図は追いつくまで遅延する。
+
+`mapctl stop`はG1記録を閉じ、再開可能な転送とSHA-256照合で原本を回収した後、
+別ROS domainで全生データをFAST-LIO2へ再入力する。登録点群・姿勢の組が一致し、
+開始時の初期化分を除いてスキャンが揃っていることを検査し、同じC++ OctoMap実装で
+最終PCDを生成する。最終地図だけを`map_raw.*`へ採用し、ライブ版は`map_preview.*`に残す。
+回収・再生成が失敗した場合はセッションを完了せず、`mapctl recover [session_id]`で再開する。
+G1原本は自動削除しない。`mapctl rebuild`は完了済みセッションの最終登録点群・姿勢を使う。
 
 可視化は`g1-mapping-visualization` imageへ分離し、Mapping backendのコンテナへGUI、
 X11ソケット、RViz依存を持ち込まない。

@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+import fcntl
 import os
 import shlex
 import signal
 import subprocess
+import shutil
 import time
 from contextlib import contextmanager
 from pathlib import Path
 
 from .config import Settings
 from .session import MappingSession
+from .remote import RemoteRecording, remote_enabled
 
 
 def _identity(pid: int) -> str | None:
@@ -111,18 +114,22 @@ class NativeRuntime:
                 "IPQoS=none",
                 "-o",
                 "BatchMode=yes",
-                str(
-                    self.settings.project_dir
-                    / "ros2_ws/src/g1_mapping_tools/g1_mapping_tools/sensor_stream.py"
-                ),
+                *[str(self.settings.project_dir / "ros2_ws/src/g1_mapping_tools/g1_mapping_tools" / name)
+                  for name in ("sensor_stream.py", "remote_record.py", "camera_wire.py")],
                 str(self.settings.project_dir / "quickstart/idl_imu.py"),
                 f"{target}:{destination}/",
             ],
             check=True,
         )
+        subprocess.run(
+            ["ssh", "-o", "IPQoS=none", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", target,
+             shlex.join(["python3", f"{destination}/remote_record.py", "prepare", "--directory", destination,
+                         "--config", json.dumps({"camera_enabled": self.settings.camera_enabled})])],
+            check=True,
+        )
 
-    def sensor_command(self) -> list[str]:
-        return [
+    def sensor_command(self, session: MappingSession | None = None) -> list[str]:
+        command = [
             "python3",
             "-m",
             "g1_mapping_tools.sensor_stream",
@@ -139,6 +146,12 @@ class NativeRuntime:
             "--imu-topic",
             self.settings.raw_imu_topic,
         ]
+        if session is not None:
+            recording = RemoteRecording(self.settings, session)
+            command += ["--session-dir", recording.directory, "--journal-script", recording.script,
+                        "--status-path", str(session.directory / "logs" / "connection.json"),
+                        "--catchup-rate", str(self.settings.sensor_catchup_rate)]
+        return command
 
     @contextmanager
     def sensor_probe(self, backend: str):
@@ -244,7 +257,9 @@ class NativeRuntime:
             ],
         }
         if self.settings.transport == "ssh" and session.backend != "sim":
-            roles["sensors"] = self.sensor_command()
+            # Start acquisition independently of SSH before launching any live consumer.
+            RemoteRecording(self.settings, session).start()
+            roles["sensors"] = self.sensor_command(session)
         if self.settings.camera_enabled and session.backend != "sim":
             roles["camera"] = [
                 "ros2",
@@ -299,6 +314,11 @@ class NativeRuntime:
                 )
         except BaseException:
             self._stop_processes(session)
+            if remote_enabled(self.settings, session.backend):
+                try:
+                    RemoteRecording(self.settings, session).stop()
+                except RuntimeError as error:
+                    print(f"[WARN] G1記録が継続している可能性があります。mapctl recover {session.session_id}: {error}")
             raise
 
     @staticmethod
@@ -341,6 +361,16 @@ class NativeRuntime:
             )
 
     def save_and_stop(self, session: MappingSession) -> None:
+        if "remote_recording" in json.loads(session.manifest_path.read_text()):
+            # The final map is rebuilt from G1 originals, independent of preview health.
+            try:
+                self.run("ros2", "run", "g1_mapping_tools", "save_occupancy_map", "--timeout", "10",
+                         backend=session.backend, session=session, timeout=15)
+            except (RuntimeError, subprocess.SubprocessError) as error:
+                print(f"[WARN] ライブ地図の保存: {error}")
+            finally:
+                self._stop_processes(session)
+            return
         try:
             self.run(
                 "ros2",
@@ -363,10 +393,79 @@ class NativeRuntime:
     def ps(self, session: MappingSession) -> str:
         path = self._process_file(session)
         processes = json.loads(path.read_text()) if path.exists() else {}
-        return "\n".join(
+        result = "\n".join(
             f"{role}: {'running' if self._alive(process) else 'exited'} (pid={process['pid']})"
             for role, process in processes.items()
         )
+        connection = session.directory / "logs" / "connection.json"
+        if connection.exists():
+            result += "\nconnection: " + connection.read_text().strip()
+        return result
+
+    def finalize_remote(self, session: MappingSession) -> None:
+        with (session.directory / ".recovery.lock").open("a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise RuntimeError("このセッションの回収・再生成は既に実行中です") from error
+            self._finalize_remote(session)
+
+    def _finalize_remote(self, session: MappingSession) -> None:
+        manifest = json.loads(session.manifest_path.read_text())
+        if manifest.get("final_replay", {}).get("complete") and session.map_path.is_file():
+            return
+        recording = RemoteRecording(self.settings, session)
+        print("[G1] 記録を停止し、原本を回収します", flush=True)
+        recording.stop()
+        bag = recording.collect()
+        replay_dir = session.directory / "derived" / f"final_{time.time_ns()}"
+        replay_dir.mkdir(parents=True)
+        env = self.environment("sim", session)
+        env.update(manifest.get("replay_environment", {}))
+        # Keep playback clock and replay nodes away from an open live RViz session.
+        env["ROS_DOMAIN_ID"] = str((self.settings.ros_domain_id + 1) % 233)
+        env["ENABLE_FOLLOWER_CROP"] = "false"
+        env["MAP_OUTPUT_PATH"] = str(replay_dir / "map_raw.pcd")
+        for key, value in manifest["occupancy_map"].items():
+            variable = {"voxel_size": "MAP_VOXEL_SIZE", "target_scans": "DENSITY_TARGET_SCANS",
+                        "max_points": "MAP_MAX_POINTS"}.get(key, "OCTOMAP_" + key.upper())
+            env[variable] = str(value).lower()
+        config = manifest["remote_recording"]["config"]
+        env["RAW_POINTS_TOPIC"], env["RAW_IMU_TOPIC"] = config["points_topic"], config["imu_topic"]
+        print("[FINAL] G1の全LiDAR・IMUをFAST-LIO2 → OctoMapで再処理します", flush=True)
+        with (replay_dir / "replay.log").open("w") as log:
+            result = subprocess.run(self.command("python3", "-m", "g1_mapping_tools.replay_session",
+                                                "--bag-dir", str(bag), "--output-dir", str(replay_dir),
+                                                "--points-topic", config["points_topic"],
+                                                "--imu-topic", config["imu_topic"]),
+                                    env=env, stdout=log, stderr=log, check=False)
+        if result.returncode:
+            raise RuntimeError(f"最終地図の再生成に失敗しました: {replay_dir / 'replay.log'}。原本は回収済みです")
+        from .pcd import inspect_pcd
+        info = inspect_pcd(replay_dir / "map_raw.pcd")
+        if info["points"] < self.settings.min_map_points or info["finite_ratio"] < 0.99:
+            raise RuntimeError(f"最終地図の品質確認に失敗しました: {info}")
+        for suffix in (".pcd", ".bt", ".octomap.json"):
+            source = (replay_dir / "map_raw.pcd").with_suffix(suffix)
+            if not source.is_file():
+                raise RuntimeError(f"最終地図の成果物がありません: {source}")
+        for suffix in (".pcd", ".bt", ".octomap.json"):
+            output = session.map_path.with_suffix(suffix)
+            preview = output.with_name("map_preview" + suffix)
+            if output.exists() and not preview.exists():
+                shutil.copy2(output, preview)
+            temporary = output.with_suffix(output.suffix + ".tmp")
+            shutil.copy2((replay_dir / "map_raw.pcd").with_suffix(suffix), temporary)
+            temporary.replace(output)
+        trajectory = session.directory / "trajectory" / "trajectory.tum"
+        if trajectory.exists() and not trajectory.with_name("preview.tum").exists():
+            shutil.copy2(trajectory, trajectory.with_name("preview.tum"))
+        shutil.copy2(replay_dir / "trajectory.tum", trajectory)
+        manifest["final_replay"] = {"complete": True, "directory": str(replay_dir.relative_to(session.directory)),
+                                    "source": "raw/g1/rosbag2", "points": info["points"]}
+        temporary = session.manifest_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+        temporary.replace(session.manifest_path)
 
     def rebuild_occupancy(
         self,
@@ -377,7 +476,11 @@ class NativeRuntime:
         bag_dir: Path | None = None,
         cloud_topic: str = "/g1_mapping/cloud_registered",
     ) -> None:
-        source = (bag_dir or session.directory / "raw" / "rosbag2").resolve()
+        manifest = json.loads(session.manifest_path.read_text())
+        final = manifest.get("final_replay", {})
+        default_bag = (session.directory / final["directory"] / "rosbag2" if final.get("complete")
+                       else session.directory / "raw" / "rosbag2")
+        source = (bag_dir or default_bag).resolve()
         if not source.is_dir():
             raise RuntimeError(f"rosbagディレクトリがありません: {source}")
         manifest = json.loads(session.manifest_path.read_text())

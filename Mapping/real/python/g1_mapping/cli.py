@@ -54,6 +54,9 @@ def _parser() -> argparse.ArgumentParser:
     stop = subparsers.add_parser("stop", help="地図を保存してセッションを停止する")
     stop.add_argument("--allow-partial", action="store_true")
 
+    recover = subparsers.add_parser("recover", help="G1記録の停止・回収・最終地図の再生成を再開する")
+    recover.add_argument("session_id", nargs="?")
+
     validate = subparsers.add_parser("validate", help="PCD・rosbag・軌跡を検証する")
     validate.add_argument("session_id", nargs="?")
     validate.add_argument("--allow-partial", action="store_true")
@@ -180,6 +183,8 @@ def _stop(settings: Settings, arguments: argparse.Namespace) -> int:
             runtime.collect_logs(session)
         except Exception as exc:
             errors.append(f"ログ回収: {exc}")
+        if "remote_recording" in json.loads(session.manifest_path.read_text()):
+            return _finish_remote(settings, session, errors)
         if not session.map_path.is_file():
             try:
                 if session.backend in {"raw", "sim"}:
@@ -209,6 +214,42 @@ def _stop(settings: Settings, arguments: argparse.Namespace) -> int:
     manager.finish(session, success=success, message=message)
     print(f"[OUTPUT] {session.directory}")
     return 0 if success else 1
+
+
+def _finish_remote(settings: Settings, session: MappingSession, errors: list[str]) -> int:
+    manager = SessionManager(settings)
+    try:
+        if errors:
+            raise RuntimeError("; ".join(errors))
+        get_runtime(settings).finalize_remote(session)
+        valid, report = validate_session(session.directory, min_map_points=settings.min_map_points,
+                                         allow_partial=False)
+        _print_validation(report)
+        if not valid:
+            raise RuntimeError("最終地図の検証に失敗しました。report/quality.jsonを確認してください")
+    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+        manager.update(session, "stopping", f"回収・再生成待ち: {error}")
+        print(f"[PENDING] {error}")
+        print(f"[NEXT] G1との接続を回復して ./mapctl recover {session.session_id}")
+        return 1
+    manager.finish(session, success=True, message="G1原本を回収し、最終地図を再生成しました")
+    print(f"[COMPLETED] {session.session_id}")
+    print(f"[OUTPUT] {session.directory}")
+    return 0
+
+
+def _recover(settings: Settings, arguments: argparse.Namespace) -> int:
+    manager = SessionManager(settings)
+    session = manager.resolve(arguments.session_id)
+    if settings.runtime != "native" or "remote_recording" not in json.loads(session.manifest_path.read_text()):
+        raise RuntimeError("recoverはG1側に記録したnative/ssh/rawセッション用です")
+    active = manager.active()
+    if active is not None and active.session_id != session.session_id:
+        raise RuntimeError("別セッションが実行中です。先にそのセッションを停止してください")
+    manager.update(session, "stopping", "G1原本の回収と再生成を再開します")
+    runtime = get_runtime(settings)
+    runtime._stop_processes(session)
+    return _finish_remote(settings, session, [])
 
 
 def _status(settings: Settings) -> int:
@@ -381,6 +422,8 @@ def main(argv: list[str] | None = None) -> int:
             return _status(settings)
         if arguments.command == "stop":
             return _stop(settings, arguments)
+        if arguments.command == "recover":
+            return _recover(settings, arguments)
         if arguments.command == "validate":
             return _validate(settings, arguments)
         if arguments.command == "view":

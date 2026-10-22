@@ -19,13 +19,17 @@ cd /home/ubuntu/dev/G1_Sodai/Mapping/real && ./mapctl start --backend raw --name
 
 5〜10秒静止した後に純正コントローラで低速移動する。終了時はG1を止め、
 端末でCtrl+Cを押して表示を閉じ、`./mapctl stop`、`./mapctl validate`を実行する。
-完了までWi-Fi接続を維持する。
+停止時にはG1との接続を戻して原本を回収する。回収待ちになった場合は`./mapctl recover`で再開する。
 
 無線方式は`MAPPING_TRANSPORT=ssh`、`MAPPING_RUNTIME=native`を使用する。
 LiDAR/IMUはG1内部`eth0`のDDS domain 0からCDRのままSSHで中継し、
 PC内はループバック・domain 46でFAST-LIO2へ入力する。RGBもG1のWi-Fi IPへ接続する。
-中継は診断・計測に合わせて自動起動・終了し、G1へ歩行指令は送らない。
-SSH鍵で接続できることが前提。初回の`./mapctl build`で中継スクリプトをG1へ配置する。
+計測ではG1上でLiDAR・IMU・RGBの記録を独立起動する。Wi-FiやSSHが切れても
+G1内の記録は続く。PCへの地図用中継は自動再接続し、保存済みデータの続きから
+元の時刻順に最大`SENSOR_CATCHUP_RATE`倍速で追いつく。追いつくまでは地図表示が遅れる。
+RGBはPCへ最新フレームを配信し、通信復帰後は自動で受信を再開する。
+G1へ歩行指令は送らない。SSH鍵で接続できることが前提。
+初回と今回の更新後に`./mapctl build`を実行し、中継・記録スクリプトをG1へ配置する。
 G1のDHCPアドレスが変わった場合は`.env`の`G1_HOST`と`CAMERA_HOST`を更新する。
 
 ### 初回構築と共通操作
@@ -70,9 +74,40 @@ G1上のカメラ配信が起動済みなら、そのまま利用する。未起
 ```
 
 成果物は`runs/<session>/`にまとまる。`map/map_raw.pcd`、`map/map_raw.bt`、
-`map/map_raw.octomap.json`、`raw/rosbag2/`、軌跡とログを保存する。
-停止時は地図を保存した後に各プロセスを正常終了し、rosbagを最後に閉じる。
+`map/map_raw.octomap.json`、rosbag、軌跡とログを保存する。
+native/ssh/rawでは`stop`がG1記録の停止、SHA-256照合付き回収、全LiDAR・IMUの
+FAST-LIO2 → OctoMap再処理を続けて実行する。再処理は元の計測時間の約1.25倍以上を要する。
+PCのライブ記録は`raw/rosbag2/`、回収した完全な原本は`raw/g1/rosbag2/`、
+再処理した登録点群・センサ姿勢は`derived/final_<ID>/rosbag2/`に残る。
+最終地図は`map/map_raw.*`、ライブ地図は`map/map_preview.*`として保存し、軌跡も更新する。
+G1原本は`G1_MAPPING_RUNS_DIR/<session>/`にも残し、自動では削除しない。
+その他の方式では地図を保存した後に各プロセスを正常終了し、rosbagを最後に閉じる。
 端末を閉じても記録は続くため、必ず`./mapctl stop`を使う。
+
+### 通信断・回収失敗から再開する
+
+接続が戻るまではPC画面の地図とRGBは更新されない。地図の遅延・接続状態は
+`./mapctl status`の`connection`で確認できる（`connected` / `disconnected` / `catching_up`）。
+RGBはRVizの`Camera`パネルに表示する。既存のG1 LeRobot ImageServerを使用し、
+G1側の記録は同じ機体内の`127.0.0.1:CAMERA_ZMQ_PORT`を購読する。
+
+停止時にもG1へ接続できない場合、セッションは完了せず回収待ちになる。
+G1は停止要求が届くまで記録を続けるため、接続を戻して次を実行する。
+
+```bash
+./mapctl recover                 # 回収待ちのセッションを再開
+./mapctl recover <session_id>    # セッションIDを指定して再開
+./mapctl validate
+./mapctl view                    # 完全な原本から作った最終地図
+```
+
+回収途中の再切断では`.part`から再開し、全ファイルのサイズとSHA-256を照合する。
+記録バッファ超過、G1空き容量不足、必須センサーの停止、再生成失敗を完了扱いにしない。
+G1の空き容量下限は`G1_MIN_FREE_GIB`（既定2GiB）。G1側にPython 3とUnitree SDK2 Pythonが必要。
+カメラ記録用pyzmqがG1のSDK用Pythonに無い場合、`build`が固定版のwheelを
+中継スクリプトの`deps/`へ配置する（初回のみG1からPyPIへ接続できることとpipが必要）。
+G1のシステムやLeRobot環境へはインストールしない。
+機体の電源断やストレージ障害への保証は含まない。
 
 再生成はDocker版と同じC++実装・計測時の設定を使う。
 

@@ -7,6 +7,9 @@ timestamps, point fields and CDR bytes cross the wire without modification.
 from __future__ import annotations
 
 import argparse
+import json
+import math
+from pathlib import Path
 import queue
 import shlex
 import signal
@@ -15,6 +18,11 @@ import subprocess
 import sys
 import threading
 import time
+
+try:
+    from .remote_record import JOURNAL_HEADER, JOURNAL_MAGIC
+except ImportError:
+    from remote_record import JOURNAL_HEADER, JOURNAL_MAGIC
 
 HEADER = struct.Struct("!4sBI")
 MAGIC = b"G1S1"
@@ -60,6 +68,19 @@ def write_frame(stream, kind, payload):
                 raise BrokenPipeError("sensor stream closed")
             view = view[written:]
     stream.flush()
+
+
+def read_journal_frame(stream):
+    header = _read_exact(stream, JOURNAL_HEADER.size)
+    if header is None:
+        return None
+    magic, kind, sequence, stamp, size = JOURNAL_HEADER.unpack(header)
+    if magic != JOURNAL_MAGIC or kind not in (POINTS, IMU) or sequence <= 0 or stamp <= 0 or not 0 < size <= MAX_PAYLOAD:
+        raise ValueError("invalid journal frame")
+    payload = _read_exact(stream, size)
+    if payload is None:
+        raise EOFError("missing journal payload")
+    return kind, sequence, stamp, payload
 
 
 def remote_main(args):
@@ -135,8 +156,9 @@ def host_main(args):
     from rclpy.qos import QoSProfile, ReliabilityPolicy
     from rclpy.serialization import deserialize_message
     from sensor_msgs.msg import Imu, PointCloud2
+    from std_msgs.msg import String
 
-    remote_command = shlex.join(
+    remote_arguments = (
         [
             "python3",
             "-u",
@@ -161,12 +183,15 @@ def host_main(args):
         IMU: node.create_publisher(Imu, args.imu_topic, qos),
     }
     message_types = {POINTS: PointCloud2, IMU: Imu}
+    status_publisher = node.create_publisher(String, "/g1_mapping/connection", 1)
     stopped = threading.Event()
-    errors = []
     last_received = [time.monotonic()]
     counts = {POINTS: 0, IMU: 0}
-    process = subprocess.Popen(
-        [
+    active = [None]
+    cursor = [0]
+    status = {"state": "connecting", "sequence": 0, "reconnections": 0}
+    status_lock = threading.Lock()
+    ssh_arguments = [
             "ssh",
             "-T",
             "-o",
@@ -180,39 +205,94 @@ def host_main(args):
             "-o",
             "ServerAliveCountMax=2",
             args.host,
-            remote_command,
-        ],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-    )
+        ]
+
+    def publish_status(state, **values):
+        with status_lock:
+            status.update(state=state, sequence=cursor[0], updated_ns=time.time_ns(), **values)
 
     def read_sensors():
-        try:
-            while not stopped.is_set():
-                frame = read_frame(process.stdout)
-                if frame is None:
-                    raise EOFError("SSH sensor stream ended")
-                kind, payload = frame
-                message = deserialize_message(payload, message_types[kind])
-                if stopped.is_set() or not rclpy.ok():
-                    break
-                publishers[kind].publish(message)
+        # Do not consume the start of the journal before FAST-LIO's input adapter joins.
+        while args.session_dir and not stopped.is_set():
+            if all(any(info.node_name == "g1_sensor_adapter" for info in node.get_subscriptions_info_by_topic(topic))
+                   for topic in (args.points_topic, args.imu_topic)):
+                break
+            stopped.wait(0.1)
+        while not stopped.is_set():
+            process = None
+            try:
+                arguments = remote_arguments
+                if args.session_dir:
+                    arguments = ["python3", "-u", args.journal_script, "stream",
+                                 "--directory", args.session_dir, "--after", str(cursor[0])]
+                process = subprocess.Popen(ssh_arguments + [shlex.join(arguments)],
+                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                active[0] = process
                 last_received[0] = time.monotonic()
-                counts[kind] += 1
-        except Exception as error:  # noqa: BLE001 -- surface all reader-thread failures to the watchdog
-            if not stopped.is_set():
-                errors.append(str(error))
+                previous_stamp, previous_wall = None, None
+                while not stopped.is_set():
+                    frame = read_journal_frame(process.stdout) if args.session_dir else read_frame(process.stdout)
+                    if frame is None:
+                        raise EOFError("SSH sensor stream ended")
+                    if args.session_dir:
+                        kind, sequence, stamp, payload = frame
+                        if sequence <= cursor[0]:
+                            raise ValueError("journal sequence moved backwards")
+                        # Bound catch-up speed so a reconnection does not flood FAST-LIO queues.
+                        now = time.monotonic()
+                        if previous_stamp is not None:
+                            delay = max(0., (stamp - previous_stamp) / 1e9 / args.catchup_rate - (now - previous_wall))
+                            if stopped.wait(min(delay, 1.0)):
+                                break
+                        previous_stamp, previous_wall = stamp, time.monotonic()
+                    else:
+                        kind, payload = frame
+                    message = deserialize_message(payload, message_types[kind])
+                    if stopped.is_set() or not rclpy.ok():
+                        break
+                    publishers[kind].publish(message)
+                    last_received[0] = time.monotonic()
+                    counts[kind] += 1
+                    if args.session_dir:
+                        cursor[0] = sequence
+                        lag = max(0., (time.time_ns() - stamp) / 1e9)
+                        publish_status("catching_up" if lag > 2 else "connected", lag_seconds=round(lag, 2))
+                    else:
+                        publish_status("connected")
+            except Exception as error:
+                if not stopped.is_set():
+                    publish_status("disconnected", error=str(error), reconnections=status["reconnections"] + 1)
+                    node.get_logger().warning(f"{error}; reconnecting, journal cursor={cursor[0]}")
+            finally:
+                active[0] = None
+                if process is not None:
+                    process.stdin.close()
+                    if process.poll() is None:
+                        process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    process.stdout.close()
+            stopped.wait(1.0)
 
     reader = threading.Thread(target=read_sensors, daemon=True)
     reader.start()
 
     def watchdog():
-        if not errors and time.monotonic() - last_received[0] > 10:
-            errors.append("no sensor frames for 10 seconds")
-        if errors:
-            node.get_logger().error(errors[-1])
-            stopped.set()
-            rclpy.try_shutdown()
+        message = String()
+        with status_lock:
+            message.data = json.dumps(status)
+        if args.status_path:
+            path = Path(args.status_path)
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(message.data + "\n")
+            temporary.replace(path)
+        status_publisher.publish(message)
+        process = active[0]
+        if process is not None and time.monotonic() - last_received[0] > 10:
+            process.terminate()  # unblock pipe read; the reader reconnects without exiting ROS
 
     node.create_timer(0.5, watchdog)
     node.get_logger().info(f"G1 {args.host} -> SSH -> local LiDAR/IMU")
@@ -222,25 +302,17 @@ def host_main(args):
         pass
     finally:
         stopped.set()
-        # SSH stdin EOF stops only this remote reader, without a daemon or pkill.
-        try:
-            process.stdin.close()
-        except BrokenPipeError:
-            pass
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
+        process = active[0]
+        if process is not None:
             process.terminate()
-            process.wait(timeout=5)
-        reader.join(timeout=2)
-        process.stdout.close()
+        reader.join(timeout=10)
         print(
             f"[SENSORS] local closed: lidar={counts[POINTS]} imu={counts[IMU]}",
             file=sys.stderr,
         )
         node.destroy_node()
         rclpy.try_shutdown()
-    return 1 if errors else 0
+    return 0
 
 
 def main():
@@ -255,9 +327,15 @@ def main():
     parser.add_argument("--sdk-path", default="/home/unitree/unitree_sdk2_python")
     parser.add_argument("--points-topic", default="/utlidar/cloud_livox_mid360")
     parser.add_argument("--imu-topic", default="/utlidar/imu_livox_mid360")
+    parser.add_argument("--session-dir", help="G1 detached recording directory; resume from committed rows")
+    parser.add_argument("--journal-script")
+    parser.add_argument("--status-path")
+    parser.add_argument("--catchup-rate", type=float, default=1.5)
     args = parser.parse_args()
     if not args.remote and not args.host:
         parser.error("--host is required on the mapping PC")
+    if not math.isfinite(args.catchup_rate) or args.catchup_rate <= 0 or (args.session_dir and not args.journal_script):
+        parser.error("positive --catchup-rate and --journal-script are required")
     return remote_main(args) if args.remote else host_main(args)
 
 

@@ -10,6 +10,8 @@ G1の3D LiDAR・IMU・頭部RGBを使い、部屋の点群地図・軌跡・再�
 記録する。現場ではライブ地図・自己位置・RGBを確認し、3DGSは持ち帰ってから処理する。
 
 `raw` / `sim` は、同時刻の登録点群とLiDAR姿勢から作ったOctoMapを表示・保存する。
+無線のnative/ssh/rawではG1内でも生LiDAR・IMU・RGBを記録し、通信断後は自動再接続する。
+`mapctl stop`で原本回収と最終地図の再生成まで実行し、途中失敗は`mapctl recover`で再開する。
 `mapctl rebuild` でも同じ処理を実行する。後の光線が通過した場所の点は削除される。
 GLIMによる全体最適化は含まない。起動・古い記録の移行は [`real/`](real/README.md) を参照。
 

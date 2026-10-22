@@ -87,6 +87,9 @@ class Settings:
     sensor_remote_dir: str = "/home/unitree/mapping_tools/wireless"
     sensor_iface: str = "eth0"
     sensor_sdk_path: str = "/home/unitree/unitree_sdk2_python"
+    g1_runs_dir: str = "/home/unitree/mapping_runs"
+    g1_min_free_gib: float = 2.0
+    sensor_catchup_rate: float = 1.5
 
     def occupancy_parameters(self) -> dict[str, float | int | bool]:
         return {
@@ -173,6 +176,9 @@ class Settings:
             sensor_remote_dir=value("G1_SENSOR_REMOTE_DIR", "/home/unitree/mapping_tools/wireless"),
             sensor_iface=value("G1_SENSOR_IFACE", "eth0"),
             sensor_sdk_path=value("G1_SENSOR_SDK_PATH", "/home/unitree/unitree_sdk2_python"),
+            g1_runs_dir=value("G1_MAPPING_RUNS_DIR", "/home/unitree/mapping_runs").rstrip("/"),
+            g1_min_free_gib=float(value("G1_MIN_FREE_GIB", "2")),
+            sensor_catchup_rate=float(value("SENSOR_CATCHUP_RATE", "1.5")),
         )
 
     def compose_environment(
