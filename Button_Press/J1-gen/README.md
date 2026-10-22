@@ -28,11 +28,12 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `localize.py` — 検出（YoloDetector）→ 枠の中の深度の中央値 → 逆投影 → pelvis 座標
   - `rgbd_io.py` — RgbdFrame のファイルへの保存と読み込み（カラー PNG、深度 16bit PNG、JSON）
   - `dds.py` — DDS の初期化（1 プロセス 1 回）と lowstate の受信
-  - `sim_scene.py` / `sim_camera.py` — MuJoCo の机とボトル、頭カメラの RGB + 深度、セグメンテーションの検出器
+  - `sim_scene.py` / `sim_camera.py` — MuJoCo の机とボトル（倒れる自由物体にもできる）、頭カメラの RGB + 深度、セグメンテーションの検出器
   - `recording.py` / `recorder.py` — 収録（RGB・深度・lowstate を時刻付きで保存）と再生
   - `realday.py` — 実機日用のツールの部品（指先の FK、画像への投影、教えた姿勢、支持の確認）
   - `pipeline.py` / `pipeline_cli.py` — 全体をつなぐ流れ（検出 → 目標 → IK → 手前の姿勢 → 押し込み → 戻る）
   - `run_logger.py` — 1 回分の記録（RGB・深度・lowstate・検出・IK・送った指令。dry-run でも）
+  - `tip_check.py` — ボトルが倒れたかの自動判定（いちばん高い点の高さの変化。深度）
   - `post_press.py` — 押したあとの確認の差し込み口（ボタン版で「点灯しなければ深く押し直す」に使う）
   - `elevator_buttons.py` — エレベーターの呼びボタン（一般用の ▲▼）を見つける。画像の候補 → ▲▼ の記号 → 3D → 柱の面の向き → 上の 2 つ
   - `elevator_press.py` — 呼びボタンを押す制御（50 Hz で 1 歩ずつ）。Yada の評価環境のエージェントの中身
@@ -42,6 +43,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `press_sim.py` — 指定した点（pelvis 座標）を押す
   - `locate_sim.py` — 頭カメラの画像と深度からボトルの位置を求め、正解と比べる
   - `press_bottle_sim.py` — 全体をつなぐスクリプト（MuJoCo、同じプロセス）
+  - `knock_bottle_sim.py` / `knock_sweep.py` — ボトルを倒す動作（MuJoCo）と、その条件の掃引（自動判定との一致も見る）
   - `sim_robot_server.py` — ループバックの模擬ロボット（実機と同じ DDS とカメラ。故障をわざと起こせる）
   - `make_button_dataset.py` — ボタンの YOLO の学習データを、Yada の評価環境の画像から作る（正解の枠は自動）
   - `train_button_yolo.py` — ボタンの YOLO（クラス up / down）を学習する
@@ -61,6 +63,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `fk_check.py` — FK の確認（指先の位置の表示、頭カメラの画像への投影、指先の点を試しに変える）
   - `calibrate.py` — 較正（カメラで求めた位置と、指先で触れた位置の差を複数か所で取る）
   - `press_bottle.py` — 全体をつなぐスクリプト（実機。既定は dry-run）
+  - `knock_bottle.py` — ボトルを倒す（実機）。`press_bottle.py` に `configs/knock.yaml` を重ねる
   - `check_button_photos.py` — 撮った写真で、呼びボタンを classic と YOLO で見つけられるかを並べて比べる
   - `label_button_photos.py` — 撮った写真に、呼びボタンの正解の枠を付ける（YOLO の結果を下書きにして直す）
 - `configs/` — 設定ファイル。当日はコードを編集せず、ここだけを変える
@@ -377,6 +380,43 @@ lowstate の途切れ、押し込み中に腰が倒れる）を、実機用の�
 
 2026-09-29 の結果: 26 / 26 件が期待どおり。1 回目は、経由の姿勢（肩ピッチ 17.2°）で手を上げる途中に机の 4〜8 mm まで
 近づき、計画の段階で拒否された（何も送っていない）ので、肩ピッチを 28.6° にした（180 mm 以上離れる）。
+
+## ボトルを倒す（`real/knock_bottle.py`、`sim/knock_bottle_sim.py`）
+
+机の手前の縁に置いた 500 mL の PET ボトル（水 50 mL ほど）を、立った状態の右腕で前方（机の奥）へ押して倒す。
+流れは「全体をつなぐスクリプト」と同じ（`common/pipeline.py`）で、設定の上書き `configs/knock.yaml`（`--overlay`）だけが違う。
+
+```bash
+# シミュレーション（倒れるボトルは configs/sim_scene_knock.yaml）
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/knock_bottle_sim.py [--view] [--water-ml 100 --friction 0.3]
+# 条件の掃引（深さ・押す高さ・水・摩擦。1 回約 10 秒）
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/sim/knock_sweep.py --depth-mm 100 125 --raise-mm 40 58 --friction 0.3 0.5
+# 実機（dry-run が既定。送るときは --execute）
+G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/knock_bottle.py --path arm_sdk --gravity-scale 0.5
+```
+
+- 実機日の手順書: [real/KNOCK_PROCEDURE.md](real/KNOCK_PROCEDURE.md)。
+- **倒れたかの自動判定**（`common/tip_check.py`）: 頭カメラの深度で、ボトルの**いちばん高い点の高さ**を押す前と押したあとで比べる
+  （約 6 cm 以上下がれば倒れた、3 cm 以内なら立っている、間は傾いている）。終了コードは 倒れた 0 / 倒れなかった 20 / 判定できない 21。
+  枠の縦横比は使えない（ボトルは机の奥へ倒れるので、寝ても画像の上では縦に長いまま。MuJoCo の画像で確かめた）。
+  シミュレーションでは、MuJoCo のボトルの傾き（最後に 60° 以上）が正解で、自動判定と食い違わないかを `knock_sweep.py` の最後の列で見る
+  （2026-10-22、深さ・高さ・水・摩擦を振った 16 通りで、ボトルが見えなくなった 2 通り（机から落ちた。判定できない）を除いて一致）。
+  実機の YOLO が寝たボトルを検出できるか、PET の深度が取れるかは未確認（取れなければ「判定できない」で、目で見る）。dry-run では判定しない。
+- 手の動かし方: 測った面の点から `pipeline.target.depth.offset_m` だけ上を、水平に前方へ `press_depth_m` 押す
+  （`--target-offset X Y Z`、`--depth-mm`、`--speed-mm-s` で上書き）。押し込みの上限は腕が届く約 13 cm。
+
+### 分かったこと（2026-10-22、MuJoCo、机の手前の縁のボトル、右腕）
+
+- **倒れきる角度は、重心の高さで決まる。** 水 50 mL は底にたまり、重心が底から約 3 cm まで下がる。倒れきる角度は約 45°（空のボトルは約 20°）。
+  手先は 9 cm 以上進める必要がある。最初の見積もり（22°・5 cm）は誤りで、押し込み 8 cm では最大 44° まで傾いて戻った。
+- **押す点が低いと滑る。** 底から `r/μ`（半径 3.25 cm、摩擦 0.4 で約 8 cm）より低いと、倒れずに机の上を滑る。
+  ハンドの当たり判定（手を包む箱）は、中指の先より約 4.5 cm 下まで広がるため、指先を胴の中ほどに合わせると滑った。
+- **窓が狭い。** 押し込み 125 mm・押す点の上げ 58 mm（既定）は、摩擦 0.3〜1.0、水 25〜100 mL ですべて倒れた。
+  一方、摩擦 0.25 では滑り、上げが 65 mm だと届かず倒れない（高く押すほど、倒すのに必要な押し込みが増える）。± 5 mm で外れる。
+- **滑り止めのマット（摩擦 0.8 以上）を敷くと窓が広がる**: 上げ 0〜40 mm・押し込み 100 mm で倒れた。実機ではこれを勧める。
+- 押し込みが 14 cm 以上は、腕が伸びきって計画できない。
+- ⚠️ 実機のハンドの当たる高さ・机の摩擦は未確認。dry-run と実機で、上げの量を調整する。
+  押し込みを止める条件（`contact_stop`）は残してある（固い物に当たったときの安全装置。ボトルでは遅れが出ない）。
 
 ## エレベーターの呼びボタン（Yada の評価環境）
 

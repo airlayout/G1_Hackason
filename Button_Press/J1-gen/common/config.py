@@ -30,3 +30,13 @@ def resolve_repo_path(path: str | Path) -> Path:
     """設定ファイル内のパスを解決する。相対パスはリポジトリ直下基準。"""
     p = Path(path)
     return p if p.is_absolute() else REPO_ROOT / p
+
+
+def deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    """base に over を重ねる（辞書は中まで重ね、それ以外は over の値で置き換える）。base を書き換えて返す。"""
+    for k, v in over.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            deep_merge(base[k], v)
+        else:
+            base[k] = v
+    return base
