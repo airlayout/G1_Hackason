@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 import math
+import time
 
 from .safe_stop import Command, Observation
 
@@ -14,25 +15,45 @@ class ButtonSource(abc.ABC):
         """True=ボタンは解除状態で配線も健全。**読めない・不明は False**（フェイルセーフ）。"""
 
 
-class SerialLoopSource(ButtonSource):
-    """USB-シリアル変換器で NC 接点をループ検出する。
+SEND_PERIOD_S = 0.05   # 確認バイトを送る周期
+ECHO_TIMEOUT_S = 0.2   # この時間、正しい返りが無ければ停止
+BAUD = 9600
+_NONCE_MAX = 0x7F      # 0x01〜0x7F を順に使う。0x00/0xFF は浮いた線の誤読と区別するため避ける
 
-    配線: 変換器の CTS# ピン ── NC接点(ZB2-BE102 の NC 端子) ── GND。
-    接点が閉じると CTS# が GND に落ちて cts=True。押下・断線では CTS# が
-    プルアップで HIGH になり cts=False、USB 抜けは例外になり、どれも停止側に倒れる。
-    CTS# にプルアップが無い変換器は外付け(10kΩ で VCC)が要る。実機で押下前後を必ず測ること。
+
+class SerialEchoSource(ButtonSource):
+    """USB-シリアル変換器の TXD → NC接点 → RXD で、送った 1 バイトが戻るかを見る。
+
+    配線: 変換器の TXD ── NC接点(ZB2-BE102) ── RXD。5V ピンは使わない。
+    接点が閉じている間だけ送信バイトが RXD に戻る。押下・断線・USB 抜け・変換器の故障は
+    返りが途絶えて停止側に倒れる。毎回違う値を使うので、RXD が HIGH/LOW に固着しても
+    「正常」と誤読しない。電圧の極性やプルアップに依存しない。
     """
 
-    def __init__(self, port: str) -> None:
-        import serial  # 関数内 import: pyserial の無い Mac でもモジュールを読めるように
+    def __init__(self, port: str, ser=None, clock=time.monotonic) -> None:
+        if ser is None:
+            import serial  # 関数内 import: pyserial の無い Mac でもモジュールを読めるように
 
-        self._ser = serial.Serial(port)
+            ser = serial.Serial(port, BAUD, timeout=0)
+        self._ser = ser
+        self._clock = clock
+        self._nonce = 0
+        self._t_sent = float("-inf")
+        self._t_echo = float("-inf")
 
     def is_ok(self) -> bool:
+        now = self._clock()
         try:
-            return bool(self._ser.cts)
+            for b in self._ser.read(self._ser.in_waiting or 0):
+                if b == self._nonce:
+                    self._t_echo = now
+            if now - self._t_sent >= SEND_PERIOD_S:
+                self._nonce = self._nonce % _NONCE_MAX + 1
+                self._ser.write(bytes([self._nonce]))
+                self._t_sent = now
         except (OSError, ValueError):
             return False
+        return now - self._t_echo <= ECHO_TIMEOUT_S
 
 
 class RobotPort(abc.ABC):

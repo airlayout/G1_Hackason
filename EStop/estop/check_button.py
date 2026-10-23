@@ -8,9 +8,9 @@ from __future__ import annotations
 import argparse
 import time
 
-from .io import SerialLoopSource
+from .io import SerialEchoSource
 
-POLL_S = 0.2
+POLL_S = 0.01  # SEND_PERIOD_S より十分短くする
 
 
 def main() -> None:
@@ -18,7 +18,7 @@ def main() -> None:
     ap.add_argument("--port", required=True, help="USB-シリアル (例 /dev/ttyUSB0)")
     args = ap.parse_args()
 
-    source = SerialLoopSource(args.port)
+    source = SerialEchoSource(args.port)
     last: bool | None = None
     print("[check] 開始。押す前 → 押す → 戻す → USBを抜く の順に確認。Ctrl+C で終了")
     while True:

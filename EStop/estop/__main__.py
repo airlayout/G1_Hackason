@@ -10,7 +10,7 @@ import queue
 import sys
 import threading
 
-from .io import G1Port, SerialLoopSource
+from .io import G1Port, SerialEchoSource
 from .monitor import OPERATOR_COMMANDS, run
 from .safe_stop import SafeStop
 
@@ -33,7 +33,7 @@ def main() -> None:
     operator: queue.Queue[str] = queue.Queue()
     threading.Thread(target=_read_operator, args=(operator,), daemon=True).start()
     print("[estop] 起動。reset=復帰 damp=ダンピング")
-    run(SerialLoopSource(args.port), G1Port(args.iface), SafeStop(), operator)
+    run(SerialEchoSource(args.port), G1Port(args.iface), SafeStop(), operator)
 
 
 if __name__ == "__main__":
