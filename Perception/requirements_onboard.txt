@@ -1,0 +1,10 @@
+# G1 の PC2(Jetson Orin NX、Ubuntu 20.04、aarch64、glibc 2.31)で YOLO を動かすときだけ使う(torch/ultralytics を使わない)。
+# Python 3.12 の venv に入れる(PC2 のシステムの Python 3.8 では numpy などが足りない)。
+# 2026-10-22 にラボPCで aarch64・Python 3.12 用の配布物の中を調べ、要求する glibc が 2.28 以下・GLIBCXX が 3.4.22 以下で
+# PC2 で動く見込みと確かめた(onnxruntime 1.31.0、numpy 2.2.6、opencv-python-headless、pyzmq)。
+# PC2 がインターネットにつながらないときは、ラボPCで real/fetch_pc2_wheels.sh で集めて持っていく。
+numpy>=1.26
+opencv-python-headless>=4.9
+onnxruntime>=1.20
+pyzmq>=26.0
+PyYAML>=6.0

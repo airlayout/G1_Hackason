@@ -45,6 +45,7 @@ from .realday import FingertipFK, load_taught_poses, project_to_image, taught_q_
 from .rgbd_protocol import RgbdFrame
 from .robot_model import WAIST_IDX
 from .run_logger import LoggingBackend, RunLogger
+from .tip_check import TipOverCheck, TipResult
 
 # 終了コード
 EXIT_OK = 0
@@ -75,6 +76,7 @@ class PipelineResult:
     target: np.ndarray | None = None
     plan: PressPlan | None = None
     checks: list[Any] = field(default_factory=list)
+    tip: TipResult | None = None  # ボトルを倒す動作のときだけ（倒れたかの自動判定）
 
 
 def fmt(v: Any, scale: float = 1.0, digits: int = 3) -> str:
@@ -102,6 +104,7 @@ class PressPipeline:
         confirm: bool,
         input_fn: Callable[[str], str] = input,
         post_check: PostPressCheck | None = None,
+        tip_check: TipOverCheck | None = None,
     ) -> None:
         self.cfg = cfg
         self.side = cfg.pipeline.get("arm") or cfg.arm["arm"]
@@ -113,6 +116,9 @@ class PressPipeline:
         self.confirm = confirm
         self.input = input_fn
         self.post_check = post_check or NoCheck()
+        self.tip_check = tip_check
+        # 対象を測ったときのフレーム（RgbdFrame, 腰の角度）。倒れたかの判定で、押す前の高さを求めるのに使う
+        self._locate_frames: list[tuple[RgbdFrame, np.ndarray]] = []
         self.planner = PressPlanner.from_config(cfg.robot, cfg.press, cfg.arm, self.side)
         self.fk = FingertipFK(cfg.robot, cfg.press["ik"])
         self.calib = np.asarray(cfg.localize["calibration"]["offset_pelvis_m"], dtype=float)
@@ -161,14 +167,20 @@ class PressPipeline:
             self._check_hand_in_view(best.bbox, st, f, c["hand_in_view"])
             self._save_detection_image(f, found, k)
             pts.append(best.p_pelvis)
+            self._locate_frames.append((f, np.asarray(qw, dtype=float).copy()))
         if len(pts) < int(c["min_valid_frames"]):
             raise TargetError(f"対象の位置が求まったフレームが {len(pts)} 枚（必要 {c['min_valid_frames']} 枚）")
         arr = np.array(pts)
         spread = arr.max(axis=0) - arr.min(axis=0)
         target = np.median(arr, axis=0)
-        self.logger.event("target_depth", target=target, spread_m=spread, n=len(pts), calibration_offset=self.calib)
+        # 測った面の点から、押す点をずらす量（ボトルを倒すとき、胴の上のほうを押すために上へ上げる、など）
+        offset = np.asarray(c.get("offset_m") or [0.0, 0.0, 0.0], dtype=float)
+        target = target + offset
+        self.logger.event("target_depth", target=target, spread_m=spread, n=len(pts), calibration_offset=self.calib,
+                          offset_m=offset)
         print(f"[pipeline] 対象（深度）: {fmt(target)} m（{len(pts)} 枚、ばらつき {fmt(spread, 1000, 1)} mm、"
-              f"較正値 {fmt(self.calib, 1000, 1)} mm を含む）")
+              f"較正値 {fmt(self.calib, 1000, 1)} mm を含む"
+              + (f"、押す点のずらし {fmt(offset, 1000, 1)} mm を含む" if np.any(offset) else "") + "）")
         if np.any(spread > float(c["max_spread_m"])):
             raise TargetError(f"フレームごとの位置のばらつきが大きい: {fmt(spread, 1000, 1)} mm"
                               f"（上限 {float(c['max_spread_m']) * 1000:.0f} mm）")
@@ -402,6 +414,10 @@ class PressPipeline:
         else:
             raise TargetError(f"target.source は depth か manual: {src}")
 
+        if self.tip_check is not None:
+            # depth で測ったときのフレーム。manual（測っていない）なら、ここで撮る（腕はまだ開始姿勢で、手は視野の外）
+            self.tip_check.observe_before(self._locate_frames[-3:] or self._grab_frames(3))
+
         st = self.wait_state()
         plan = self.make_plan(st, target)
         lower, upper = joint_limits(cfg.robot)
@@ -420,6 +436,34 @@ class PressPipeline:
             )
             for i, c in enumerate(checks, start=1):
                 self.logger.event("post_check", attempt=i, ok=c.ok, deeper_m=c.deeper_m, message=c.message, data=c.data)
+            tip = self._evaluate_tip() if not arm.stop_reason else None  # 腕は開始姿勢へ戻っていて、手は視野の外
         if arm.stop_reason:
             raise StopRequested(arm.stop_reason)
-        return PipelineResult(EXIT_OK, "成功", target=target, plan=plan, checks=checks)
+        return PipelineResult(EXIT_OK, "成功", target=target, plan=plan, checks=checks, tip=tip)
+
+    def _grab_frames(self, n: int) -> list[tuple[RgbdFrame, np.ndarray]]:
+        """今のフレームを n 枚（RgbdFrame, 腰の角度）。カメラ・lowstate が無ければ空。"""
+        frames: list[tuple[RgbdFrame, np.ndarray]] = []
+        if self.grab_frame is None:
+            return frames
+        for _ in range(n):
+            f, st = self.grab_frame(), self.backend.read_state()
+            if f is not None and st is not None:
+                frames.append((f, np.asarray(st.q[list(WAIST_IDX)], dtype=float).copy()))
+        return frames
+
+    def _evaluate_tip(self) -> TipResult | None:
+        """倒れたかの自動判定（ボトルを倒す動作のときだけ）。dry-run は何も動かしていないので判定しない。"""
+        if self.tip_check is None or self.grab_frame is None:
+            return None
+        if self.backend.dry_run:
+            print("[tip] dry-run なので、倒れたかの判定はしない")
+            return None
+        frames = self._grab_frames(3)
+        res = self.tip_check.evaluate(frames)
+        print(f"[tip] 倒れたかの判定: {res.message}")
+        self.logger.event("tip_check", state=res.state, message=res.message, top_before_m=res.top_before_m,
+                          top_after_m=res.top_after_m, drop_m=res.drop_m)
+        if frames:
+            self.logger.save_frame("tip_after", frames[-1][0], waist_q=frames[-1][1])
+        return res

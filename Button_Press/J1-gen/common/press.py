@@ -91,10 +91,23 @@ def _report_press(stop: ContactStop, planner: PressPlanner, plan: PressPlan, q_m
         on_press(info)
 
 
+def _hold_keep(planner: PressPlanner, stop: ContactStop | None) -> float:
+    """保持する点を、実際の指先より押す向きにどれだけ先に置くか: keep_m + 押す前からある遅れ（baseline_m）。
+
+    腕は目標より押す前の遅れの分だけずれて止まる（2026-10-21 の実機、重力補償 0.5 で押す前も保持中も 4.1〜4.7 mm 手前）。
+    keep_m だけ先に置くと、指先は止めた所より手前へ下がり、ボトル・ボタンから離れる（押す力がほぼ 0 になる）。
+    遅れが負（腕が指令より先に出る。模擬ロボットで −4.9 mm）なら、その分だけ手前に置く（置かないと keep_m より深く押す）。
+    """
+    keep = float(planner.cfg["contact_stop"]["keep_m"])
+    if stop is None or stop.baseline_m is None:
+        return keep
+    return keep + stop.baseline_m
+
+
 def _hold_index(planner: PressPlanner, plan: PressPlan, sent: int, q_meas: np.ndarray,
                 keep: float | None = None) -> int:
-    """押し込みの直線の点のうち、実際の指先より押す向きに keep（既定は contact_stop.keep_m）先までにある最も奥の点の
-    番号（sent より前）。"""
+    """押し込みの直線の点のうち、実際の指先より押す向きに keep（既定は contact_stop.keep_m。execute_press は
+    _hold_keep で押す前の遅れを足して渡す）先までにある最も奥の点の番号（sent より前）。"""
     keep = float(planner.cfg["contact_stop"]["keep_m"]) if keep is None else keep
     n, arm = plan.push_dir, planner.kin.arm_idx
     tip = float(planner.kin.fk_pos(q_meas) @ n)
@@ -206,7 +219,7 @@ def execute_press(
             _report_press(stop, planner, plan, arm.measured_q(), attempt, sent, on_press)
         q_hold, press_out = plan.press_in[-1], plan.press_out
         if sent < len(plan.press_in):
-            j = _hold_index(planner, plan, sent, arm.measured_q())
+            j = _hold_index(planner, plan, sent, arm.measured_q(), _hold_keep(planner, stop))
             # 止めた点から、保持する点まで直線をさかのぼる（1 周期の関節の動きの上限を守るため）
             back = [w.copy() for w in reversed(plan.press_in[j:sent - 1])]
             if back:
