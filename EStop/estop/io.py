@@ -17,16 +17,16 @@ class ButtonSource(abc.ABC):
 class SerialLoopSource(ButtonSource):
     """USB-シリアル変換器で NC 接点をループ検出する。
 
-    配線: 変換器の DTR 出力 → NC接点(ZB2-BE102 の NC 端子) → CTS 入力。
-    押下・断線・USB抜けのどれでも CTS が落ちる/例外になり、停止側に倒れる。
-    DTR/CTS の極性と無接続時の読みは変換器で違うので、実機で押下前後を必ず測ること。
+    配線: 変換器の CTS# ピン ── NC接点(ZB2-BE102 の NC 端子) ── GND。
+    接点が閉じると CTS# が GND に落ちて cts=True。押下・断線では CTS# が
+    プルアップで HIGH になり cts=False、USB 抜けは例外になり、どれも停止側に倒れる。
+    CTS# にプルアップが無い変換器は外付け(10kΩ で VCC)が要る。実機で押下前後を必ず測ること。
     """
 
     def __init__(self, port: str) -> None:
         import serial  # 関数内 import: pyserial の無い Mac でもモジュールを読めるように
 
         self._ser = serial.Serial(port)
-        self._ser.dtr = True
 
     def is_ok(self) -> bool:
         try:
