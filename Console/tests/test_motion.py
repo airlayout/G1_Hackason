@@ -217,19 +217,19 @@ class ControllerTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             ctl.action("x", "SetFsmId")
         with self.assertRaises(MotionError) as cm:
-            ctl.action("nobody", "wave")
+            ctl.action("nobody", "wave_above_head")
         self.assertEqual(cm.exception.status, 409)
         sid = claimed(ctl)
         ctl.ctl(sid, 1, 0.2, 0, 0)
         ctl.tick()
-        ctl.action(sid, "wave")
-        self.assertEqual(sender.calls[-1], ("task", 0))
+        ctl.action(sid, "wave_above_head")
+        self.assertEqual(sender.calls[-1], ("arm", 26))
         ctl.tick()
         self.assertEqual(sender.calls[-1], ("stop",))  # アクション中は歩行指令を止める
         fsm.fsm_id = 1
         with self.assertRaises(MotionError):
-            ctl.action(sid, "wave")
-        self.assertEqual({c[1] for c in sender.calls if c[0] == "task"}, {0})
+            ctl.action(sid, "wave_above_head")
+        self.assertEqual({c[1] for c in sender.calls if c[0] == "arm"}, {26})
 
     def test_unavailable_sender_refuses_claim(self):
         ctl = MotionController(UnavailableSender(), Fsm())
@@ -247,17 +247,35 @@ class ControllerTest(unittest.TestCase):
 class HelperTest(unittest.TestCase):
     def test_motion_helper_source_is_valid_and_limited(self):
         src = (Path(__file__).resolve().parent.parent / "jetson" / "motion_helper.py").read_text(encoding="utf-8")
-        ast.parse(src.replace("__LIMITS__", "{}").replace("__TASKS__", "[]"))
+        ast.parse(src.replace("__LIMITS__", "{}"))
         for forbidden in ("SetFsmId", "SetStandHeight", "Damp", "ZeroTorque", "lowcmd", "LowCmd", "arm_sdk"):
             self.assertNotIn(forbidden, src)
-        self.assertEqual(sum(src.count(op) for op in ('op == "move"', 'op == "stop"', 'op == "task"')), 3)
+        self.assertEqual(sum(src.count(op) for op in ('op == "move"', 'op == "stop"')), 2)
+        self.assertNotIn("SetTaskId", src)
         self.assertIn("MAX_DURATION_S", src)
 
-    def test_helper_sender_substitutes_limits_and_tasks(self):
+    def test_helper_sender_substitutes_limits(self):
         src = HelperSender()._source()
         self.assertNotIn("__LIMITS__", src)
         self.assertNotIn("__TASKS__", src)
-        self.assertIn("[0, 1, 2, 3]", src)
+
+    def test_arm_accepts_real_banner_output_and_rejects_error_text(self):
+        import os, stat, tempfile
+        ok = " --- Unitree Robotics --- \n     G1 Arm Action Example      \n\n"
+        for out, rc, good in ((ok, 0, True), (ok + "INVALID_FSM_ID\n", 0, False), (ok, 1, False)):
+            with tempfile.TemporaryDirectory() as d:
+                exe = Path(d) / "arm"
+                exe.write_text("#!/bin/sh\nprintf '%s' '" + out + "'\nexit " + str(rc) + "\n")
+                exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+                os.environ["G1_ARM_ACTION_BIN"] = str(exe)
+                try:
+                    if good:
+                        HelperSender().arm(99)
+                    else:
+                        with self.assertRaises(MotionError):
+                            HelperSender().arm(99)
+                finally:
+                    del os.environ["G1_ARM_ACTION_BIN"]
 
     def test_t3_14_helper_sender_with_fake_child(self):  # T3-14
         fake = ("import sys, json\nprint(json.dumps({'ready': True}), flush=True)\n"
@@ -269,7 +287,7 @@ class HelperTest(unittest.TestCase):
         sender.prepare()
         sender.move(0.1, 0.0, 0.0, 0.2)
         sender.stop()
-        sender.task(0)
+        sender.stop()
         sender.close()
         self.assertIsNone(sender._proc)
 

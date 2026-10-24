@@ -1369,9 +1369,9 @@ paths:
       operationId: "postMotionAction"
       tags:
         - "motion"
-      summary: "アクション（手を振る・握手）。**ロボットが動く**"
+      summary: "アクション（手を振る・握手・投げキス・拍手など）。**ロボットが動く**"
       x-effect: "robot_motion"
-      description: "SetTaskId の番号と効果は実機未検証。握手は開始のあと shake_end で終える。"
+      description: "G1 本体のアーム動作に arm_id を送る。番号は実機の一覧で確認済み、リモコンとの対応は未確認。握手などで腕が保持されたら release_arm で戻す。"
       x-real-robot-verified: false
       requestBody:
         required: true
@@ -1381,7 +1381,7 @@ paths:
               "$ref": "#/components/schemas/MotionActionPatch"
             example:
               session: "example"
-              name: "wave"
+              name: "wave_above_head"
       responses:
         "200":
           description: "成功"
@@ -2118,12 +2118,12 @@ components:
                 type: "string"
               label:
                 type: "string"
-              task_id:
+              arm_id:
                 type: "integer"
             required:
               - "id"
               - "label"
-              - "task_id"
+              - "arm_id"
             additionalProperties: false
           description: "実行できるアクション"
         features:
@@ -2535,10 +2535,13 @@ components:
           type: "string"
           description: "GET /api/features の actions の id"
           enum:
-            - "wave"
-            - "wave_turn"
-            - "shake_start"
-            - "shake_end"
+            - "wave_under_head"
+            - "wave_above_head"
+            - "turn_back_wave"
+            - "shake_hand"
+            - "blow_kiss_right"
+            - "clap"
+            - "release_arm"
       required:
         - "session"
         - "name"

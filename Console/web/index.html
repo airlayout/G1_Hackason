@@ -1235,7 +1235,7 @@ async function moEstop(){
 }
 async function moAction(a,b){
   if(!moSession)return;
-  if(!await guard('action',{title:`「${a.label}」を実行する`,lines:['SetTaskId の番号と効果は実機で確かめていない','周囲に人・物がないことを確認する']}))return;
+  if(!await guard('action',{title:`「${a.label}」を実行する`,lines:['G1 の腕が動きます。番号は実機の一覧で確認済みですが、実際の動きは未確認です','周囲に人・物がないことを確認する','腕が止まったままなら「腕を戻す」を押す']}))return;
   b.disabled=true;
   try{
     const r=await moPost('action',{session:moSession,name:a.id});

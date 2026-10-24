@@ -29,6 +29,10 @@ LIVENESS_S = 0.5  # この間 ctl が来なければ停止して操作権を解�
 FSM_MAX_AGE_S = 5.0  # FSM の確認がこれより古ければ動かさない
 HELPER_TIMEOUT_S = 1.0  # ヘルパーの応答待ち。長くすると停止が遅れる
 HELPER_READY_S = 30.0  # DDS 初期化待ち
+ARM_START_WAIT_S = 4.0  # アーム動作の実行ファイルを待つ時間。受理されれば動作中は戻らない（最大約 10 秒）ので、超えたら実行中として返す
+ARM_IFACE = "eth0"
+ARM_BIN_DEFAULT = "~/work/unitree_sdk2/build/bin/g1_arm_action_example"  # 実機の GetActionList で動作を確認した実行ファイル
+ARM_BANNER = ("Unitree Robotics", "G1 Arm Action Example")  # 実機の正常時の出力（--- を除いた形）。これ以外はエラーの説明として扱う
 SEND_FAIL_LIMIT = 3  # 連続で送信に失敗したら操作権を解除する
 ZERO = (0.0, 0.0, 0.0)
 
@@ -81,8 +85,8 @@ class MockSender:
     def stop(self):
         self._rec("stop")
 
-    def task(self, task_id):
-        self._rec("task", task_id)
+    def arm(self, arm_id):
+        self._rec("arm", arm_id)
 
     def close(self):
         pass
@@ -99,7 +103,7 @@ class UnavailableSender:
     def move(self, *_):
         self.prepare()
 
-    stop = task = move
+    stop = arm = move
 
     def close(self):
         pass
@@ -120,10 +124,8 @@ class HelperSender:
         return [sys.executable, "-u", "-c", src], str(self._sdk_dir)
 
     def _source(self) -> str:
-        from g1console.modes import ACTIONS
         src = HELPER_SRC.read_text(encoding="utf-8")
-        src = src.replace("__LIMITS__", repr({k: list(v) for k, v in LIMITS.items()}))
-        return src.replace("__TASKS__", repr(sorted(a["task_id"] for a in ACTIONS)))
+        return src.replace("__LIMITS__", repr({k: list(v) for k, v in LIMITS.items()}))
 
     @staticmethod
     def _pump(proc, out):
@@ -186,8 +188,22 @@ class HelperSender:
         if self._alive():  # 動いていないヘルパーを止めるためだけに起動しない（指令は duration で自然に切れる）
             self._call({"op": "stop"})
 
-    def task(self, task_id):
-        self._call({"op": "task", "id": task_id})
+    def arm(self, arm_id):
+        """G1 本体のアーム動作を実行する。実行ファイルは受理されれば動作の終わり（最大約 10 秒）まで戻らない。"""
+        binary = Path(os.environ.get("G1_ARM_ACTION_BIN") or ARM_BIN_DEFAULT).expanduser()
+        if not binary.is_file():
+            raise MotionError(502, "アーム動作の実行ファイルがありません（%s）" % binary)
+        proc = subprocess.Popen([str(binary), "--id", str(int(arm_id)), "-n", ARM_IFACE],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        try:
+            out, _ = proc.communicate(timeout=ARM_START_WAIT_S)
+        except subprocess.TimeoutExpired:
+            threading.Thread(target=proc.communicate, daemon=True).start()  # 動作中。出力を回収して終わらせる
+            return
+        lines = [ln.strip() for ln in (out or "").splitlines() if ln.strip()]
+        problems = [ln for ln in lines if ln.strip("- ").strip() not in ARM_BANNER]
+        if proc.returncode != 0 or problems:
+            raise MotionError(502, "アーム動作が受理されませんでした（%s）" % (" / ".join(problems)[:200] or "code=%s" % proc.returncode))
 
     def close(self):
         with self._lock:
@@ -324,8 +340,8 @@ class MotionController:
 
     def action(self, session, name: str) -> dict:
         from g1console.modes import ACTIONS
-        task = next((a["task_id"] for a in ACTIONS if a["id"] == name), None)
-        if task is None:
+        arm_id = next((a["arm_id"] for a in ACTIONS if a["id"] == name), None)
+        if arm_id is None:
             raise ValueError("許可されていないアクション")
         self._require(session)
         with self._lock:
@@ -339,7 +355,7 @@ class MotionController:
             with self._lock:
                 if gen != self._gen:
                     raise MotionError(409, "操作権が解除されました")
-            self._sender.task(task)
+            self._sender.arm(arm_id)
         return self.status()
 
     # -- 20 Hz の周期処理 --

@@ -81,7 +81,7 @@ Jetson（PC2）
 - 緊急停止ボタンを常時表示。「ソフトの停止は安全規格外。物理リモコンが最後の砦」と画面に書く。
 
 ### 4.5 アクション
-`SetTaskId` を許可リスト（`modes.py` の `ACTIONS`: wave 0 / wave_turn 1 / shake_start 2 / shake_end 3）で実行する。操作者であり FSM 500/501 のときだけ。番号と動作は SDK の資料からの推定で、実機未確認。`PLANNED_ACTIONS` は空。
+G1 本体のアーム動作サービスに許可リスト（`modes.py` の `ACTIONS`、`arm_id`）で送る（`g1_arm_action_example --id N`、2026-10-24 の GetActionList で番号を確認）。操作者であり FSM 500/501 のときだけ。動作とリモコン表記の対応は実機未確認。`PLANNED_ACTIONS` は空。
 
 ### 4.6 実装の要点（実装済み）
 - **構成**: `g1console/motion.py` の `MotionController`（送信器を差し替え可能。`HelperSender` = 子プロセス `motion_helper.py`、`MockSender`、ssh 時は `UnavailableSender` で 503）。ハブの tick スレッドが 20 Hz（`SEND_PERIOD_S=0.05`）で `duration=0.2` の `SetVelocity` を送る。
