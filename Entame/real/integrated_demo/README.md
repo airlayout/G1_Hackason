@@ -11,6 +11,10 @@
 
 両方とも`recovery/hackathon-runtime-20260929`指定。Git履歴・submoduleは含めず、ソース・設定・必要資産を直接収録。差分はパス可搬性、統合説明、生成物除外です。詳細は[INTEGRATION_REPORT.md](INTEGRATION_REPORT.md)と[SNAPSHOT_MANIFEST.json](SNAPSHOT_MANIFEST.json)を参照。
 
+2026-10-24にUbuntu残存環境とGitHubを再照合した結果は
+[UBUNTU_RUNTIME_AUDIT_2026-10-24.md](UBUNTU_RUNTIME_AUDIT_2026-10-24.md)を参照してください。
+固定SHAのruntimeコードは変更していません。
+
 ## 主要機能
 
 - G1 camera、YOLO、person detection、banana detection、plushie detection。
