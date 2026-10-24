@@ -196,8 +196,8 @@ README の FSM 表では 501 を「腰 3 軸の通常歩行」としているの
 | 足上げ高さ（B / A） | `SetSwingHeight`（7103）、`GetSwingHeight`（7004） | ❌ | 未実装 |
 | 連続歩行 ⇔ 立位（START） | `SetBalanceMode`（7102）／ `ContinuousGait(flag)` | ❌ | 対応は名前からの推定 |
 | 低速 / 高速モード | `SetSpeedMode`（7107） | ❌ | 対応は名前からの推定 |
-| 手を振る / 振り向いて手を振る | `WaveHand(turn_flag)` ＝ `SetTaskId(0 / 1)` | ❌ | 未実装 |
-| 握手 | `ShakeHand(stage)` ＝ `SetTaskId(2 / 3)`（2 段階） | ❌ | 未実装 |
+| 手を振る / 振り向いて手を振る | アーム動作 25 / 26 / 1（リモコンとの対応は未確認） | 🔶 | 実装済み・動作未確認 |
+| 握手 | アーム動作 27、戻すのは 99 | 🔶 | 実装済み・動作未確認 |
 | Run（R2+X） | `SetFsmId(801)` の情報が資料 1 件のみ | ❌ | 公式では未確認 |
 | デバッグモードへの切替 | `MotionSwitcherClient.ReleaseMode` | ❌ | 失敗すると復帰が面倒。慎重に |
 | 腰の制御（SELECT+右スティック） | 未調査（腕・腰は別 API か低レベル制御の可能性） | — | 未調査 |

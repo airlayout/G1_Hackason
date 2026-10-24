@@ -69,7 +69,7 @@
 | POST | `/api/motion/ctl` | postMotionCtl | robot_motion | 目標速度を送る。**ロボットが動く**。10 Hz で送り続けること（0.5 秒途絶すると停止して操作権を解除） ⚠実機未検証 |
 | POST | `/api/motion/release` | postMotionRelease | robot_motion | 操作権を手放す（ゼロ速度にする） ⚠実機未検証 |
 | POST | `/api/motion/estop` | postMotionEstop | robot_motion | 緊急停止。ゼロ速度＋StopMove を送り、操作権を解除する（操作権が無くても誰でも押せる） ⚠実機未検証 |
-| POST | `/api/motion/action` | postMotionAction | robot_motion | アクション（手を振る・握手）。**ロボットが動く** ⚠実機未検証 |
+| POST | `/api/motion/action` | postMotionAction | robot_motion | アクション（手を振る・握手・投げキス・拍手など）。**ロボットが動く** ⚠実機未検証 |
 | POST | `/api/audio/led` | postLed | robot_write | 頭部 LED の色を設定 ⚠実機未検証 |
 | POST | `/api/audio/tts` | postTts | robot_write | テキストを読み上げる ⚠実機未検証 |
 | POST | `/api/scenario` | postScenario | settings | 模擬シナリオを切り替える （mock のみ） |
@@ -231,12 +231,12 @@ G1 のモード（FSM）を切り替える。**ロボットが動く**
 
 ### POST /api/motion/action
 
-アクション（手を振る・握手）。**ロボットが動く**
+アクション（手を振る・握手・投げキス・拍手など）。**ロボットが動く**
 
 ```json
-{"session": "example", "name": "wave"}
+{"session": "example", "name": "wave_above_head"}
 ```
-スキーマ: `MotionActionPatch`。SetTaskId の番号と効果は実機未検証。握手は開始のあと shake_end で終える。
+スキーマ: `MotionActionPatch`。G1 本体のアーム動作に arm_id を送る。番号は実機の一覧で確認済み、リモコンとの対応は未確認。握手などで腕が保持されたら release_arm で戻す。
 
 ### POST /api/audio/led
 

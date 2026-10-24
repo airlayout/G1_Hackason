@@ -68,13 +68,19 @@ PLANNED_MODES = [
     {"label": "デバッグモード", "note": "切替手順が未確認"},
 ]
 
-# アクション（リモコンの SELECT+Y/A/X 相当）。LocoClient.SetTaskId で実行する。task_id と効果は実機未検証。
-# 握手は開始（2）と終了（3）の 2 段階。終了を送れるよう両方を載せる。
+# アクション。G1 本体のアーム動作サービスに action_id を送って実行する（腕の動作を再生するだけで、歩行は止めない）。
+# 番号は実機の GetActionList（2026-10-24）で確認した。SDK ヘッダの対応表は right kiss を 12 としているが、実機は 13。
+# 純正リモコン（handshake / wave hand / face wave / right kiss / clap）との対応: right kiss=13・clap=17・handshake=27 は名前が一致。
+# wave hand と face wave は候補が複数あり、どれが同じ動きかは実機で確かめる（未確認）。
+# 握手などは動作後に腕を保持することがある。release_arm（99）で戻す。
 ACTIONS = [
-    {"id": "wave", "label": "手を振る", "task_id": 0},
-    {"id": "wave_turn", "label": "振り向いて手を振る", "task_id": 1},
-    {"id": "shake_start", "label": "握手（開始）", "task_id": 2},
-    {"id": "shake_end", "label": "握手（終了）", "task_id": 3},
+    {"id": "wave_under_head", "label": "手を振る（胸の前・wave_under_head）", "arm_id": 25},
+    {"id": "wave_above_head", "label": "手を振る（頭の上・wave_above_head）", "arm_id": 26},
+    {"id": "turn_back_wave", "label": "振り向いて手を振る（turn_back_wave）", "arm_id": 1},
+    {"id": "shake_hand", "label": "握手（shake_hand）", "arm_id": 27},
+    {"id": "blow_kiss_right", "label": "右手の投げキス（blow_kiss_with_right_hand）", "arm_id": 13},
+    {"id": "clap", "label": "拍手（clamp）", "arm_id": 17},
+    {"id": "release_arm", "label": "腕を戻す（release_arm）", "arm_id": 99},
 ]
 PLANNED_ACTIONS = []  # 未実装のアクションは今は無い（API の形は保つ）
 
@@ -88,7 +94,7 @@ FEATURES = [
     {"id": "speed", "label": "速度モード（Speed 0 / Speed 1）", "implemented": True, "verified": False,
      "note": "SetSpeedMode の値の意味（低速・高速）は資料が無く未確認。2026-10-24 の試験は、ボタンを押しても反応が無く、中断（サーバーのログに送信の記録なし）。読み戻しの手段は無い"},
     {"id": "action", "label": "アクション実行", "implemented": True, "verified": False,
-     "note": "手を振る・握手。SetTaskId の番号と効果は実機未検証。--local のときだけ"},
+     "note": "手を振る・握手・投げキス・拍手など。番号は実機の一覧で確認済み。動作とリモコンの対応は未確認。--local のときだけ"},
     {"id": "move", "label": "移動（ジョイスティック・矢印キー）", "implemented": True, "verified": True,
      "note": "--local のときだけ。2026-10-24 利用者が実機（Regular Mode）で移動の成功を確認。接続断は 0.5 秒で停止。速度上限は未検証"},
     {"id": "tasks", "label": "タスク実行（定義済みコマンドの起動・停止・ログ）", "implemented": True, "verified": False,

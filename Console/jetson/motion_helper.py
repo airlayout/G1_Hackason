@@ -1,7 +1,7 @@
 # Jetson (Python 3.8) 上で動く運動専用ヘルパー。g1console/motion.py の HelperSender が子プロセスとして起動する。
-# 許す操作は move / stop / task だけ。モード切替や姿勢変更の指令は持たない（モード切替は remote_helper 側）。
+# 許す操作は move / stop だけ。アクションは G1 本体のアーム動作サービスへハブが直接送る（motion.py の arm）。モード切替や姿勢変更の指令は持たない（モード切替は remote_helper 側）。
 # stdin に JSON 1 行を受け、stdout に JSON 1 行を返す。EOF になったら停止指令を出して終わる。
-# __LIMITS__ と __TASKS__ は HelperSender が置換する（ハブ側と同じ上限で二重にクランプする）。
+# __LIMITS__ は HelperSender が置換する（ハブ側と同じ上限で二重にクランプする）。
 import json
 import math
 import sys
@@ -14,7 +14,6 @@ from unitree_sdk2py.core.channel import ChannelFactoryInitialize
 from unitree_sdk2py.g1.loco.g1_loco_client import LocoClient
 
 LIMITS = __LIMITS__
-TASKS = set(__TASKS__)
 MAX_DURATION_S = 0.5  # ハブが送る値は 0.2。これより長い指令は受けない（暴走時に歩き続けないように）
 RPC_TIMEOUT_S = 0.8
 
@@ -50,10 +49,6 @@ def handle(req):
             clamp("vx", req["vx"]), clamp("vy", req["vy"]), clamp("wz", req["wz"]), duration))}
     if op == "stop":
         return {"ok": True, "code": code_of(loco.StopMove())}
-    if op == "task":
-        if req.get("id") not in TASKS:
-            raise ValueError("task")
-        return {"ok": True, "code": code_of(loco.SetTaskId(int(req["id"])))}
     raise ValueError("op")
 
 
