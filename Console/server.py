@@ -26,6 +26,7 @@ from urllib.parse import parse_qs, urlsplit
 from g1console.auth import Auth, TOKEN_PATH, iface_ipv4, is_loopback, load_or_create_token, parse_bind
 from g1console.camera_proc import LocalCameraCtl, MockCameraCtl, SshCameraCtl, resolve_host
 from g1console.lidar_proc import LocalLidarCtl, MockLidarCtl, SshLidarCtl, forward_query
+from g1console.lidar_sensor import LivoxSensorCtl, MockSensorCtl
 from g1console.control import control_summary
 from g1console.dds_catalog import SERVICES, TOPICS
 from g1console.replay import Replay
@@ -394,7 +395,7 @@ def fsm_source(monitor):
 
 
 def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=None, lidar_ctl=None, lidar_base=None,
-                 auth=None, motion=None, tasks=None, nav=None, topics=None, hub_stop=None):
+                 auth=None, motion=None, tasks=None, nav=None, topics=None, hub_stop=None, lidar_sensor=None):
     def camera_url():
         return camera_base or (settings.camera_base(resolve_host) if settings else None)
 
@@ -512,6 +513,8 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 self._camera_ctl("status")
             elif self.path == "/api/lidar/status" and lidar_ctl:
                 self._lidar_ctl("status")
+            elif self.path == "/api/lidar/sensor" and lidar_sensor:
+                self._lidar_sensor("status")
             elif self.path.split("?", 1)[0] == "/lidar" and lidar_ctl:
                 self._proxy_lidar()
             elif self.path == "/api/settings" and settings:
@@ -580,6 +583,12 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
             except (RuntimeError, subprocess.TimeoutExpired, OSError) as exc:
                 self._json(502, {"ok": False, "error": "lidar 操作に失敗しました: %s" % exc})
 
+        def _lidar_sensor(self, action: str):
+            try:
+                self._json(200, lidar_sensor.call(action))
+            except (RuntimeError, OSError) as exc:
+                self._json(502, {"ok": False, "error": "LiDAR 本体の操作に失敗しました: %s" % exc})
+
         def _route_post(self):
             if self.path == "/api/mode":
                 return self._post_mode()
@@ -593,6 +602,8 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 return self._camera_ctl(self.path.rsplit("/", 1)[1])
             if self.path in ("/api/lidar/start", "/api/lidar/stop") and lidar_ctl:
                 return self._lidar_ctl(self.path.rsplit("/", 1)[1])
+            if self.path in ("/api/lidar/sensor/idle", "/api/lidar/sensor/sampling") and lidar_sensor:
+                return self._lidar_sensor(self.path.rsplit("/", 1)[1])
             if nav and self.path.startswith(("/api/nav/", "/api/locations/")):
                 return self._post_nav()
             if topics and self.path.startswith("/api/topics/"):
@@ -877,6 +888,7 @@ def main():
     servers = []
     handler = make_handler(helper, monitor, camera_base, settings, camera_ctl, lidar_ctl, auth=auth, motion=motion,
                            tasks=tasks, nav=NavApi(locations, watcher, proxy, heartbeat), topics=topics,
+                           lidar_sensor=MockSensorCtl() if args.mock else (LivoxSensorCtl() if args.local else None),  # LiDAR 本体へ直接送れるのは Jetson 上だけ
                            hub_stop=lambda: [srv.shutdown() for srv in servers])  # 終了コード 0 = systemd の on-failure では再起動しない
     servers.extend(ThreadingHTTPServer((b, args.port), handler) for b in binds)
     for b in binds:
