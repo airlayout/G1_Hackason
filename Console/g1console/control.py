@@ -3,7 +3,7 @@
 腕: rt/lowstate の motor_state[i].mode（1=有効 / 0=ゼロトルク）。指令側 rt/lowcmd の mode ではない
     （lowcmd は最後に流れた指令が残るだけで、今の有効状態を表さない）。
 脚: 標準モーションサービス（モーションコントローラ）が稼働して脚を制御しているか。
-    ゼロトルク・ダンピングはサービスが動いていても自律ではない。デバッグモードは自律ではない。
+    Zero Torque・Damping はサービスが動いていても自律ではない。デバッグモードは自律ではない。
 
 label は画面に大きく出す短い判定、detail はその理由（小さく添える）。
 """
@@ -12,7 +12,7 @@ from g1console.modes import FSM_LABELS
 
 LEG_JOINTS = range(0, 12)
 ARM_JOINTS = range(15, 29)
-NOT_AUTONOMOUS_FSM = frozenset((0, 1))  # ゼロトルク・ダンピング
+NOT_AUTONOMOUS_FSM = frozenset((0, 1))  # Zero Torque・Damping
 JOINTS_STALE_S = 3.0  # これより古い lowstate は判定に使わない
 CMD_LIVE_S = 1.0  # この秒数以内に lowcmd が来ていれば「指令が流れている」
 
@@ -45,7 +45,7 @@ def _arm(telemetry):
         detail = "モータ %d/%d · %s" % (enabled, total, "指令を受信中" if commanded else "指令なし")
     elif enabled == 0:
         state, label = "disabled", "無効"
-        detail = "ゼロトルク。リモコンでダンピングに入れると有効になります"
+        detail = "Zero Torque。リモコンで Damping に入れると有効になります"
     else:
         state, label, detail = "partial", "一部のみ", "モータ %d/%d が有効" % (enabled, total)
     return {"state": state, "label": label, "detail": detail,

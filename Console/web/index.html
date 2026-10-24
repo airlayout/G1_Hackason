@@ -235,7 +235,6 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  <h2>接続状態</h2>
  <ol class="chain">
   <li id="n-server"><div class="node-name">コンソールサーバー</div><div class="node-sub" id="server-sub"></div><div class="node-st" id="server-st"></div></li>
-  <li id="n-jetson"><div class="node-name">Jetson</div><div class="node-sub" id="jetson-sub"></div><div class="node-st" id="jetson-st"></div></li>
   <li id="n-g1"><div class="node-name">G1 本体</div><div class="node-sub">DDS · モーションサービス</div><div class="node-st" id="g1-st"></div></li>
  </ol>
  <p id="diag"></p>
@@ -483,11 +482,8 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  <p class="note">環境（ネットワーク）によって変わる値です。保存すると <code>Console/settings.json</code> に書かれ、次回起動時にも使われます（git には入りません）。</p>
  <form id="set-form" autocomplete="off">
   <label class="frow"><b>開発用 PC の IP</b><input type="text" name="dev_pc" placeholder="例 192.168.123.99"><span class="note">コンソールを動かす操作用 PC とは別の、開発作業用 PC のアドレス。今は表示・記録のみで、接続には使いません。</span></label>
-  <label class="frow"><b>Jetson PC の IP</b><input type="text" name="jetson_host" placeholder="例 192.168.123.164 または Tailscale の IP"><span class="note">ssh の接続先（Tailscale の IP でも可）。変更すると Jetson への接続を張り直します。カメラ映像もここから取得します。</span></label>
   <label class="frow"><b>G1 本体の IP</b><input type="text" name="g1_ip" placeholder="例 192.168.123.161"><span class="note">G1 本体のアドレス。今は表示・記録のみです（G1 とは Jetson の DDS 経由で通信します）。</span></label>
-  <details><summary>詳細（ssh ユーザー・鍵・カメラ／lidar ポート）</summary>
-   <label class="frow"><b>Jetson の ssh ユーザー</b><input type="text" name="jetson_user"><span class="note">空欄なら ssh の設定（<code>~/.ssh/config</code>）に任せます。</span></label>
-   <label class="frow"><b>ssh 秘密鍵のパス</b><input type="text" name="jetson_key" placeholder="例 ~/.ssh/id_ed25519_g1"><span class="note">空欄なら ssh の既定の鍵。</span></label>
+  <details><summary>詳細（カメラ／lidar ポート）</summary>
    <label class="frow"><b>カメラ配信ポート</b><input type="text" name="camera_port" inputmode="numeric"></label>
    <label class="frow"><b>lidar 配信ポート</b><input type="text" name="lidar_port" inputmode="numeric"></label>
   </details>
@@ -518,8 +514,8 @@ const $=id=>document.getElementById(id);
 const FRESH_S=2.5, STALE_S=8, GIVEUP_S=15, POLL_MS=1000;
 const ST_LABEL={ok:'接続中',down:'未接続',unknown:'未確認',stale:'更新停止',checking:'確認中',stopped:'停止',paused:'確認停止'};
 let S=null, recvAt=0, fails=0, busy=false, pending=null, buttons=[], logs=[], featuresLoaded=false;
-const RECONNECT_ON=`サーバーが止まっても、この画面は ${POLL_MS/1000} 秒ごとに再試行し、復帰すると自動で更新されます。Jetson に届かないときは、サーバーが数秒ごとに ssh を張り直します。`;
-const RECONNECT_OFF='停止中：サーバーは G1 を確認せず、ssh も張り直しません。最後に取得した値をそのまま表示します。';
+const RECONNECT_ON=`サーバーが止まっても、この画面は ${POLL_MS/1000} 秒ごとに再試行し、復帰すると自動で更新されます。`;
+const RECONNECT_OFF='停止中：サーバーは G1 を確認しません。最後に取得した値をそのまま表示します。';
 let lastKey='',lastDiag='';
 
 const ageNow=()=>S&&S.age_s!=null?S.age_s+(performance.now()-recvAt)/1000:null;
@@ -545,8 +541,8 @@ function diagnose(n){
   else if(n.jetson.st==='paused')out.push('自動確認・再接続を停止しています。再開するか「今すぐ 1 回確認」を押すと確認します。');
   else if(n.server.st==='checking')out.push('サーバーに問い合わせています…');
   else if(n.jetson.st==='checking')out.push('サーバーは起動しました。G1 側の初回確認中です（数秒かかります）。');
-  else if(n.jetson.st==='stale')out.push('サーバーは応答していますが、G1 側の確認が止まっています。ssh が詰まっている可能性があります（',n.jetson.detail,'）。');
-  else if(n.jetson.st==='down')out.push('Jetson に届きません：'+n.jetson.detail+'。Wi-Fi / Tailscale と、',code('設定'),' タブの Jetson の IP を確認してください。');
+  else if(n.jetson.st==='stale')out.push('サーバーは応答していますが、G1 側の確認が止まっています。通信ヘルパーが詰まっている可能性があります（',n.jetson.detail,'）。');
+  else if(n.jetson.st==='down')out.push('G1 との通信ヘルパー（Jetson 内）が応答しません：'+n.jetson.detail+'。ネットワークケーブル（eth0）と DDS の設定を確認してください。');
   else if(n.g1.st==='down')out.push('Jetson には繋がっていますが、G1 のモーションサービスが応答しません。G1 の電源と起動完了を確認してください。（'+n.g1.detail+'）');
   else out.push('正常：サーバー → Jetson → G1 まで届いています。');
   const key=out.map(x=>typeof x==='string'?x:x.textContent).join('');
@@ -557,15 +553,16 @@ function diagnose(n){
 }
 
 function renderChain(n){
-  for(const k of ['server','jetson','g1']){
-    const el=$(k+'-st'),cls='node-st s-'+n[k].st,txt=ST_LABEL[n[k].st];
+  /* コンソールは Jetson 上で動かす前提（Mac 側 server.py は廃止）。ヘルパー（Jetson 内）が不調なら G1 も見えないので、G1 ノードにその状態を出す */
+  const view={server:n.server,g1:n.jetson.st==='ok'?n.g1:n.jetson};
+  for(const k of ['server','g1']){
+    const el=$(k+'-st'),cls='node-st s-'+view[k].st,txt=ST_LABEL[view[k].st];
     if(el.className!==cls)el.className=cls;
     if(el.textContent!==txt)el.textContent=txt;
-    $('n-'+k).classList.toggle('is-bad',n[k].st==='down'||n[k].st==='stopped');
-    if($('n-'+k).title!==(n[k].detail||''))$('n-'+k).title=n[k].detail||'';
+    $('n-'+k).classList.toggle('is-bad',view[k].st==='down'||view[k].st==='stopped');
+    if($('n-'+k).title!==(view[k].detail||''))$('n-'+k).title=view[k].detail||'';
   }
   $('server-sub').textContent=location.host;
-  $('jetson-sub').textContent=S&&S.server.backend?S.server.backend.replace(/^ssh /,''):'';
   const paused=!!(S&&S.paused);
   $('mon-toggle').textContent=paused?'再開する':'停止する';
   $('mon-once').hidden=!paused;
@@ -593,7 +590,7 @@ function renderStats(m,c){
   setStat('st-legs',...legs);
   const nm=A?`${A.enabled_count}/${A.total}`:'';
   const arm=!A?none:A.state==='enabled'?['c-ok','有効 '+nm,A.commanded?'指令を受信中':'指令なし']
-    :A.state==='disabled'?['c-warn','無効 '+nm,'ゼロトルク']:A.state==='partial'?['c-warn','一部のみ有効 '+nm,'']
+    :A.state==='disabled'?['c-warn','無効 '+nm,'Zero Torque']:A.state==='partial'?['c-warn','一部のみ有効 '+nm,'']
     :['c-mute','不明','関節の状態を受信できていません'];
   setStat('st-arm',...arm);
 }
