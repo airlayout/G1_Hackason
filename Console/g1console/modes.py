@@ -15,6 +15,9 @@ FSM_LABELS = {
     501: "Regular Mode (3-axis waist)",
     702: "Lie -> Stand",
     706: "Squat <-> Stand",
+    # 2026-10-24 リモコン R1+R2+X（キー値 1041）で入り、約 1 秒で Damping に戻った。ロボットが「robot rising」「damp mode」と発音。
+    # 名前は Abra Robotics の表の「Adapt rise」による推定。吊り下げ中のため、実際の起き上がりは未観測。ボタンは置かない
+    1001: "Adapt rise",
 }
 
 # 切り替えボタン（順序どおりに表示）。danger=True は歩行中に押すと警告を出す。

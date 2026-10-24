@@ -245,6 +245,7 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
   <div class="stat"><h3>デバッグモード</h3><div class="ctl c-mute" id="st-dbg">—</div><div class="sd" id="st-dbg-d"></div></div>
   <div class="stat"><h3>脚</h3><div class="ctl c-mute" id="st-legs">—</div><div class="sd" id="st-legs-d"></div></div>
   <div class="stat"><h3>腕モータ</h3><div class="ctl c-mute" id="st-arm">—</div><div class="sd" id="st-arm-d"></div></div>
+  <div class="stat"><h3>リモコン</h3><div class="ctl c-mute" id="st-rc">—</div><div class="sd" id="st-rc-d"></div></div>
   <div class="stat" id="battery"><h3>バッテリー<span class="tags" data-feature="battery"></span></h3><span id="bat-soc">—</span><div id="bat-bar"><i></i></div></div>
   <div class="stat"><h3>最終取得</h3><div class="sv" id="st-last">—</div><div class="sd" id="st-last-d"></div></div>
   <div class="stat"><h3>レイテンシ</h3><div class="sv" id="st-lat">—</div><div class="sd">G1 への往復</div></div>
@@ -584,6 +585,16 @@ function setStat(id,cls,text,detail){
   const el=$(id);el.className='ctl '+cls;el.textContent=text;
   const d=$(id+'-d');if(d)d.textContent=detail||'';
 }
+/* リモコンの受信。rt/wirelesscontroller の最終受信からの秒数。途絶・再開は操作履歴に残す（受け付けなくなる原因調べ用） */
+const RC_LIVE_S=3;let rcWas=null;
+function renderRemote(T){
+  const r=T&&T.remote,age=r&&r.age_s!=null?r.age_s+(performance.now()-recvAt)/1000:null;
+  if(age==null){setStat('st-rc','c-mute',T?'受信なし':'—',T?'電源・G1 との接続を確認':'');return}
+  const live=age<=RC_LIVE_S;
+  setStat('st-rc',live?'c-ok':'c-warn',live?'受信中':'途絶 '+Math.round(age)+' 秒',live?(r.keys?'キー入力あり':'入力なし'):'電源・G1 との接続を確認');
+  if(rcWas!==null&&rcWas!==live)addLog(live?'リモコン: 受信を再開':'リモコン: 受信が途絶（最後の受信から '+Math.round(age)+' 秒）',live?'ok':'bad');
+  rcWas=live;
+}
 function renderStats(m,c){
   const none=['c-mute','—',''];
   const svc=!m?none:m.state==='ok'?['c-ok','稼働中','バランス・歩行を制御中']
@@ -618,6 +629,7 @@ function renderMode(n){
     $('mode-sub').textContent=lm?`最後に確認できたモード：${lm.label}${lm.fsm_id!=null?`（ID ${lm.fsm_id}）`:''} · ${clock(lm.at)}（${ago(Math.max(0,Date.now()/1000-lm.at))}）`:'';
   }
   renderStats(m,live?S.control:null);
+  renderRemote(live?S.telemetry:null);
   const age=ageNow(),f=$('st-last'),fd=$('st-last-d');
   $('st-lat').textContent=live&&S.latency_ms!=null?`${S.latency_ms} ms`:'—';
   if(n.jetson.st==='paused'){f.className='sv';f.textContent=S.sampled_at?clock(S.sampled_at):'—';fd.textContent=S.sampled_at?'自動確認の停止中のため更新しません':'まだ取得していません'}
