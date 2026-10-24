@@ -32,7 +32,7 @@ HELPER_READY_S = 30.0  # DDS 初期化待ち
 ARM_START_WAIT_S = 4.0  # アーム動作の実行ファイルを待つ時間。受理されれば動作中は戻らない（最大約 10 秒）ので、超えたら実行中として返す
 ARM_IFACE = "eth0"
 ARM_BIN_DEFAULT = "~/work/unitree_sdk2/build/bin/g1_arm_action_example"  # 実機の GetActionList で動作を確認した実行ファイル
-ARM_BANNER = ("--- Unitree Robotics ---", "G1 Arm Action Example")  # これ以外の出力はエラーの説明として扱う
+ARM_BANNER = ("Unitree Robotics", "G1 Arm Action Example")  # 実機の正常時の出力（--- を除いた形）。これ以外はエラーの説明として扱う
 SEND_FAIL_LIMIT = 3  # 連続で送信に失敗したら操作権を解除する
 ZERO = (0.0, 0.0, 0.0)
 

@@ -259,6 +259,24 @@ class HelperTest(unittest.TestCase):
         self.assertNotIn("__LIMITS__", src)
         self.assertNotIn("__TASKS__", src)
 
+    def test_arm_accepts_real_banner_output_and_rejects_error_text(self):
+        import os, stat, tempfile
+        ok = " --- Unitree Robotics --- \n     G1 Arm Action Example      \n\n"
+        for out, rc, good in ((ok, 0, True), (ok + "INVALID_FSM_ID\n", 0, False), (ok, 1, False)):
+            with tempfile.TemporaryDirectory() as d:
+                exe = Path(d) / "arm"
+                exe.write_text("#!/bin/sh\nprintf '%s' '" + out + "'\nexit " + str(rc) + "\n")
+                exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+                os.environ["G1_ARM_ACTION_BIN"] = str(exe)
+                try:
+                    if good:
+                        HelperSender().arm(99)
+                    else:
+                        with self.assertRaises(MotionError):
+                            HelperSender().arm(99)
+                finally:
+                    del os.environ["G1_ARM_ACTION_BIN"]
+
     def test_t3_14_helper_sender_with_fake_child(self):  # T3-14
         fake = ("import sys, json\nprint(json.dumps({'ready': True}), flush=True)\n"
                 "for line in sys.stdin:\n    r = json.loads(line)\n    print(json.dumps({'ok': True, 'code': 0, 'echo': r}), flush=True)\n")
