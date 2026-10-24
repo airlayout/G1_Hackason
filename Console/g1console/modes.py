@@ -19,10 +19,11 @@ FSM_LABELS = {
 
 # 切り替えボタン（順序どおりに表示）。danger=True は歩行中に押すと警告を出す。
 # モード名は公式の英語表記のまま使う（翻訳しない）。
-# 「Locked Standing（ID 4）」は送信が未確認、「Running Mode(801)」「デバッグ」は ID/手順が未確認のため未搭載。
+# 「Running Mode(801)」「デバッグ」は ID/手順が未確認のため未搭載。
 BUTTONS = [
     {"id": 1, "label": "Damping", "danger": True},
     {"id": 0, "label": "Zero Torque", "danger": True},
+    {"id": 4, "label": "Locked Standing", "danger": False},  # ID はリモコン経由で確認。コンソールからの送信は未確認
     {"id": 3, "label": "Seated Mode", "danger": False},
     {"id": 706, "label": "Squat <-> Stand", "danger": False},
     {"id": 702, "label": "Lie -> Stand", "danger": False},
@@ -33,7 +34,6 @@ ALLOWED_IDS = frozenset(b["id"] for b in BUTTONS)
 
 # 未実装のモード切替（画面に「未実装」で無効表示する）。理由は docs/REMOTE_CONTROLLER.md 参照。
 PLANNED_MODES = [
-    {"label": "Locked Standing", "note": "FSM ID は 4（リモコン経由で 2 回確認）。コンソールからの送信は未確認"},
     {"label": "Running Mode", "note": "FSM ID が未確認（801 は資料 1 件のみ）"},
     {"label": "デバッグモード", "note": "切替手順が未確認"},
 ]

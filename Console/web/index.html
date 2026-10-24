@@ -948,7 +948,7 @@ function render(){
 async function setMode(b){
   const cur=S&&S.mode&&S.mode.state==='ok'?S.mode.fsm_id:null;
   const warn=b.danger&&(cur===500||cur===501)?'\n\n歩行中にこの操作をすると転倒する恐れがあります。':'';
-  if(!await guard('mode',{title:`「${b.label}」に切り替える`,ok:'切り替える',always:true,danger:b.danger,
+  if(!await guard('mode',{title:`「${b.label}」に切り替える`,ok:'切り替える',always:true,quiet:true,danger:b.danger,
     lines:['周囲の安全を確認してください',...(warn?['歩行中にこの操作をすると転倒する恐れがあります']:[]),'物理リモコンを手元に置く']}))return;
   busy=true;render();
   try{
@@ -1007,7 +1007,8 @@ function askCaution(o){
 async function guard(fid,o){
   const f=await featureInfo(fid),unverified=!f||!f.verified;
   if(!unverified&&!o.always)return true;
-  return askCaution({...o,unverified,note:f&&f.note||''});
+  /* quiet: 実機確認が済んだ操作。「実機未確認」の表示は出さず、安全確認の問いだけ出す */
+  return askCaution({...o,unverified:unverified&&!o.quiet,note:o.quiet?'':f&&f.note||''});
 }
 
 /* 状態バッジ。未実装＝まだ無い機能、実機未確認＝実装したが G1 で試していない機能 */
