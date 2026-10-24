@@ -81,6 +81,7 @@
     showPreferences();
     text('ui-connection',state.connection);by('ui-connection').className=state.fresh?'connected':'unavailable';
     text('home-connection',state.connection);text('ui-mode',state.mode);text('home-mode',state.mode);
+    text('ops-mode',state.mode);text('ops-mode-sub',state.fresh&&S?.mode?.fsm_id!=null?'FSM ID '+S.mode.fsm_id:'');
     text('ui-battery',state.soc==null?'—':state.soc+'%');text('home-battery',state.soc==null?'—':state.soc+'%');
     by('home-battery-bar').style.width=state.soc==null?'0%':state.soc+'%';
     text('home-freshness',age==null?'状態を取得しています。':`最後の確認 ${f(age,1)} 秒前${S?.paused?' · 自動確認を停止中':''}`);

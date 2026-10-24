@@ -295,7 +295,7 @@ function renderCamProc(j){
 }
 async function camProc(action){
   const get=action==='status';
-  if(!get&&!await guard('camera',{title:'カメラ配信を'+(action==='start'?'起動':'停止')+'する',lines:['Jetson 上のカメラ配信プロセスを'+(action==='start'?'起動':'停止')+'します','起動・停止の結果は、画面の状態表示と映像で確かめてください']}))return;setRes('cp-res',get?'確認中…':(action==='start'?'起動中…':'停止中…'));
+  if(!get&&!await guard('camera',{quiet:true,title:'カメラ配信を'+(action==='start'?'起動':'停止')+'する',lines:['Jetson 上のカメラ配信プロセスを'+(action==='start'?'起動':'停止')+'します','起動・停止の結果は、画面の状態表示と映像で確かめてください']}))return;setRes('cp-res',get?'確認中…':(action==='start'?'起動中…':'停止中…'));
   ['cp-refresh','cp-start','cp-stop','cv-start','cv-stop'].forEach(i=>$(i).disabled=true);
   try{
     const r=await fetch('/api/camera/'+(get?'status':action),{method:get?'GET':'POST'});
@@ -372,7 +372,7 @@ function renderLidarProc(j){
 }
 async function ldProc(action){
   const get=action==='status';
-  if(!get&&!await guard('lidar',{title:'lidar 配信を'+(action==='start'?'起動':'停止')+'する',lines:['Jetson 上の lidar 配信プロセスを'+(action==='start'?'起動':'停止')+'します','起動・停止の結果は、画面の状態表示と点群で確かめてください']}))return;setRes('ld-res',get?'確認中…':(action==='start'?'起動中…':'停止中…'));
+  if(!get&&!await guard('lidar',{quiet:true,title:'lidar 配信を'+(action==='start'?'起動':'停止')+'する',lines:['Jetson 上の lidar 配信プロセスを'+(action==='start'?'起動':'停止')+'します','起動・停止の結果は、画面の状態表示と点群で確かめてください']}))return;setRes('ld-res',get?'確認中…':(action==='start'?'起動中…':'停止中…'));
   ['ld-refresh','ld-start','ld-stop'].forEach(i=>$(i).disabled=true);
   try{
     const r=await fetch('/api/lidar/'+action,{method:get?'GET':'POST'}),j=await r.json();

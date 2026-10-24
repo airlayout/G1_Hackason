@@ -269,6 +269,10 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  <a class="home-voice-link" href="#voice"><svg><use href="#i-mic"/></svg>音声・読み上げ <span>↗</span></a>
 </div>
 <div id="tab-ops" data-tab="ops" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">ROBOT MODE</span><h2>動き方を選ぶ。</h2><p>現在のモードと、切り替えられるモードを確認。</p></div>
+<section class="card" aria-live="polite">
+ <h2>現在のモード</h2>
+ <div id="ops-mode" class="sv">確認中</div><div class="sd" id="ops-mode-sub"></div>
+</section>
 <section class="card">
  <div class="head"><h2>モード切り替え<span class="tags" data-feature="mode"></span></h2><span id="why"></span></div>
  <div class="grid" id="btns"></div>
