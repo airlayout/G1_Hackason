@@ -360,7 +360,7 @@ class HttpTest(unittest.TestCase):
 
     def test_index_html_is_served(self):
         html = urllib.request.urlopen("http://127.0.0.1:%d/" % self.port, timeout=5).read().decode()
-        self.assertIn("G1 開発コンソール", html)
+        self.assertIn("G1 Control", html)
 
     def test_every_tab_has_button_and_panel_in_html(self):
         from g1console.modes import TABS

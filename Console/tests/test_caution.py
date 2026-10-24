@@ -17,7 +17,8 @@ from g1console.tasks import load_definitions  # noqa: E402
 
 CONSOLE = Path(__file__).resolve().parent.parent
 SCRIPT = CONSOLE / "jetson" / "nav2_down.sh"
-HTML = (CONSOLE / "web" / "index.html").read_text(encoding="utf-8")
+from web_source import source
+HTML = source()
 NAV2 = ("nav2-up", "nav2-up-dry", "nav2-down", "nav2-down-dry")
 ROBOT_FREE = {"run-tests", "sample-countdown"}  # ロボットにも Jetson にも触れないので verified=true にしてある
 

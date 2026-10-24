@@ -396,6 +396,14 @@ def fsm_source(monitor):
 
 def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=None, lidar_ctl=None, lidar_base=None,
                  auth=None, motion=None, tasks=None, nav=None, topics=None, hub_stop=None, lidar_sensor=None):
+    web_files = {
+        "/": ("index.html", "text/html; charset=utf-8"),
+        "/index.html": ("index.html", "text/html; charset=utf-8"),
+        "/legacy.html": ("legacy.html", "text/html; charset=utf-8"),
+        "/mobile.css": ("mobile.css", "text/css; charset=utf-8"),
+        "/ui-core.js": ("ui-core.js", "application/javascript; charset=utf-8"),
+        "/mobile.js": ("mobile.js", "application/javascript; charset=utf-8"),
+    }
     def camera_url():
         return camera_base or (settings.camera_base(resolve_host) if settings else None)
 
@@ -521,8 +529,9 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
                 self._json(200, {"settings": settings.get(), "labels": LABELS})
             elif self.path.startswith("/camera/"):
                 self._proxy_camera(self.path[len("/camera/"):])
-            elif self.path in ("/", "/index.html"):
-                self._send(200, "text/html; charset=utf-8", (HERE / "web" / "index.html").read_bytes())
+            elif urlsplit(self.path).path in web_files:
+                name, content_type = web_files[urlsplit(self.path).path]
+                self._send(200, content_type, (HERE / "web" / name).read_bytes())
             else:
                 self._json(404, {"error": "not found"})
 
