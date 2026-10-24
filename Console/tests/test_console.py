@@ -23,6 +23,7 @@ from g1console.tasks import TaskRunner, load_definitions  # noqa: E402
 from g1console.topics import MockTopicBackend, TopicService  # noqa: E402
 from g1console.camera_proc import MockCameraCtl  # noqa: E402
 from g1console.lidar_proc import MockLidarCtl  # noqa: E402
+from g1console.lidar_sensor import MockSensorCtl  # noqa: E402
 from server import MockHelper, Monitor, SshHelper, describe, make_handler  # noqa: E402
 from g1console.settings import Settings, validate  # noqa: E402
 
@@ -199,6 +200,7 @@ class HttpTest(unittest.TestCase):
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cls.helper, cls.monitor, None, cls.settings, MockCameraCtl(), MockLidarCtl(),
                                                                    motion=MotionController(MockSender(), lambda: (501, 0.1)),
                                                                    tasks=cls.tasks, nav=cls.nav, topics=cls.topics,
+                                                                   lidar_sensor=MockSensorCtl(),
                                                                    hub_stop=lambda: None))  # 例の送信で実際には止めない
         cls.port = cls.server.server_address[1]
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
@@ -262,7 +264,7 @@ class HttpTest(unittest.TestCase):
         self.assertTrue(d["services"])
         j = json.load(urllib.request.urlopen("http://127.0.0.1:%d/api/features" % self.port, timeout=5))
         self.assertEqual({f["id"] for f in j["features"]},
-                         {"connection", "reconnect", "mode", "speed", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "telemetry", "sensors", "camera", "lidar", "nav2ctl", "hubstop"})
+                         {"connection", "reconnect", "mode", "speed", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "telemetry", "sensors", "camera", "lidar", "lidar_sensor", "nav2ctl", "hubstop"})
         self.assertTrue(j["planned_modes"] and j["actions"])
         self.assertEqual(j["planned_actions"], [])  # 未実装のアクションは無い（形は保つ）
 

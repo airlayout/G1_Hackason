@@ -103,6 +103,8 @@ FEATURES = [
      "note": "--local のときだけ起動・停止できる。Jetson 上での起動・停止は未確認"},
     {"id": "lidar", "label": "lidar の点群表示と、配信の起動・停止", "implemented": True, "verified": False,
      "note": "--local のときだけ起動・停止できる。Jetson 上での起動・停止は未確認"},
+    {"id": "lidar_sensor", "label": "LiDAR 本体の停止（待機）・起動（計測）", "implemented": True, "verified": False,
+     "note": "--local のときだけ。Jetson から LiDAR(192.168.123.120) へ Livox 制御で work_tgt_mode を IDLE/SAMPLING に切り替える。待機中は点群が来ないので Nav2・マッピングは使えない。電源を入れ直すと計測に戻る。ハブ経由の操作は未確認（Jetson からの直接送信は 2026-10-24 に確認）"},
     {"id": "hubstop", "label": "ハブ（このコンソール）の停止", "implemented": True, "verified": False,
      "note": "設定タブのボタン。止めると画面から再起動できない（Jetson で行う）。タスク実行中・操作権の保持中は止めない。実機（systemd 配下を含む）では未確認"},
     {"id": "nav2ctl", "label": "Nav2 の起動・停止（タスクとして g1up.sh と撤収の一部を実行）", "implemented": True, "verified": False,

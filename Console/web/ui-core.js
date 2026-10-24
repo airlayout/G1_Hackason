@@ -381,7 +381,37 @@ async function ldProc(action){
   }catch(e){setRes('ld-res','取得できません: '+e,'bad')}
   $('ld-refresh').disabled=false;
 }
-$('ld-refresh').onclick=()=>ldProc('status');$('ld-start').onclick=()=>ldProc('start');$('ld-stop').onclick=()=>ldProc('stop');
+const LS_POLL_MS=5000, LS_BADGE={1:['SAMPLING（計測中）','done'],2:['IDLE（待機・レーザー停止）','unver'],9:['READY（準備中）','plan']};
+let lsBusy=false;
+function lsBadge(text,cls){const b=$('ls-badge');b.textContent=text;b.className='tag '+cls}
+function renderLidarSensor(j){
+  $('ld-sensor-row').hidden=false;
+  const[text,cls]=LS_BADGE[j.mode]||['不明（mode='+j.mode+'）','plan'];
+  lsBadge(text,cls);$('ls-time').textContent=new Date().toLocaleTimeString('ja-JP')+' 確認';
+  $('ls-idle').disabled=j.mode===2;$('ls-sampling').disabled=j.mode===1;
+}
+function lsUnknown(){lsBadge('状態を確認できません','plan');$('ls-idle').disabled=$('ls-sampling').disabled=false}
+setInterval(()=>{if(!lsBusy&&!document.hidden&&tab==='camera')lsSensor('status',true)},LS_POLL_MS);  // 見ている間だけ 5 秒ごとに読み直す
+async function lsSensor(action,quiet){
+  const get=action==='status',idle=action==='idle';
+  if(lsBusy)return;
+  if(!get&&!await guard('lidar_sensor',{quiet:true,title:'LiDAR 本体を'+(idle?'停止（待機）':'起動（計測）')+'する',lines:idle
+    ?['LiDAR のレーザーが止まり、点群が来なくなります','Nav2・マッピングは使えなくなります','電源を入れ直すと計測に戻ります']
+    :['LiDAR が計測を再開し、点群が来ます']}))return;
+  if(lsBusy)return;  // 確認ダイアログの待ち中に定期読み直しが入った場合
+  lsBusy=true;
+  if(!quiet){setRes('ls-res',get?'確認中…':'切り替え中…');['ls-idle','ls-sampling'].forEach(i=>$(i).disabled=true)}
+  try{
+    const r=await fetch(get?'/api/lidar/sensor':'/api/lidar/sensor/'+action,{method:get?'GET':'POST',cache:'no-store'});
+    if(r.status===404){$('ld-sensor-row').hidden=true;setRes('ls-res','');return}  // --local でないときは出さない
+    const j=await r.json();
+    if(!r.ok){setRes('ls-res',j.error||('失敗 '+r.status),'bad');lsUnknown()}
+    else{renderLidarSensor(j);setRes('ls-res','')}
+  }catch(e){setRes('ls-res','取得できません: '+e,'bad');lsUnknown()}
+  finally{lsBusy=false}
+}
+$('ls-idle').onclick=()=>lsSensor('idle');$('ls-sampling').onclick=()=>lsSensor('sampling');
+$('ld-refresh').onclick=()=>{ldProc('status');lsSensor('status')};$('ld-start').onclick=()=>ldProc('start');$('ld-stop').onclick=()=>ldProc('stop');
 $('ld-reset').onclick=()=>{Object.assign(ld,LD_VIEW0);ldDraw()};
 {const c=$('ld-canvas');let drag=null;
  c.onpointerdown=e=>{drag=[e.clientX,e.clientY];c.setPointerCapture(e.pointerId);c.style.cursor='grabbing'};

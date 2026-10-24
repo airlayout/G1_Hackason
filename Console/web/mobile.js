@@ -69,7 +69,7 @@
     document.querySelectorAll('[data-sensor-panel]').forEach(panel=>panel.hidden=panel.dataset.sensorPanel!==root.uiSensor);
     if(tab!=='camera'||document.hidden)return;
     if(root.uiSensor==='camera'){camProc('status');loadCameras()}
-    if(root.uiSensor==='lidar')ldProc('status');
+    if(root.uiSensor==='lidar'){ldProc('status');lsSensor('status')}
   };
   document.querySelectorAll('[data-sensor]').forEach(button=>button.onclick=()=>{root.uiSensor=button.dataset.sensor;uiRouteEpoch++;document.querySelectorAll('[data-sensor]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));root.openSensorView()});
   document.addEventListener('visibilitychange',()=>{if(document.hidden){stopCameras();ldView(false)}else if(tab==='camera')root.openSensorView()});

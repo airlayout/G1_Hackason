@@ -427,6 +427,10 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
   <button id="ld-start" class="sm" type="button">起動</button>
   <button id="ld-stop" class="sm" type="button">停止</button></div>
  <p class="res" id="ld-res"></p>
+ <div class="arow" id="ld-sensor-row" hidden><b>LiDAR 本体</b><span id="ls-badge" class="tag plan">確認中…</span><small id="ls-time"></small>
+  <button id="ls-idle" class="sm" type="button">LiDAR 本体を停止</button>
+  <button id="ls-sampling" class="sm" type="button">LiDAR 本体を起動</button></div>
+ <p class="res" id="ls-res"></p>
  <div class="arow">
   <label>点の細かさ <select id="ld-density">
    <option value="0.1,5000">粗（約 2.5k 点・軽い）</option>

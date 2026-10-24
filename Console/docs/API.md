@@ -56,6 +56,9 @@
 | POST | `/api/camera/stop` | postCameraStop | settings | camera_stream.py だけを停止（videohub など他のプロセスは止めない） |
 | POST | `/api/lidar/start` | postLidarStart | settings | Jetson で lidar_stream.py を起動（DDS を購読するだけ。再起動はしない） |
 | POST | `/api/lidar/stop` | postLidarStop | settings | lidar_stream.py だけを停止 |
+| GET | `/api/lidar/sensor` | getLidarSensor | read | LiDAR 本体の動作モード（Livox work_tgt_mode）を読む |
+| POST | `/api/lidar/sensor/idle` | postLidarSensorIdle | settings | LiDAR 本体を待機（IDLE）にする。**レーザーが止まり、点群が来なくなる** ⚠実機未検証 |
+| POST | `/api/lidar/sensor/sampling` | postLidarSensorSampling | settings | LiDAR 本体を計測（SAMPLING）に戻す ⚠実機未検証 |
 | POST | `/api/monitor` | postMonitor | settings | 自動確認・自動再接続の停止／再開、または 1 回だけ確認 |
 | POST | `/api/hub/stop` | postHubStop | settings | ハブ（このコンソール）自体を止める。画面からは再起動できない ⚠実機未検証 |
 | POST | `/api/mode` | postMode | robot_motion | G1 のモード（FSM）を切り替える。**ロボットが動く** ⚠実機未検証 |
