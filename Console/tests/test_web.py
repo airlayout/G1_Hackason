@@ -1,65 +1,85 @@
-"""web/index.html の画面構成の検査（T2b-1, T2b-2）。ブラウザは使わず、ソースの整合だけを見る。"""
+"""新UIの到達性と、既存の制御要素を失わないことの検査。ブラウザは使わない。"""
 import re
 import unittest
-from pathlib import Path
+from html.parser import HTMLParser
+from web_source import WEB, source
 
-HTML = (Path(__file__).resolve().parent.parent / "web" / "index.html").read_text(encoding="utf-8")
-
-
-def _groups():
-    m = re.search(r"const GROUPS=\[(.*?)\];\nconst TABS", HTML, re.S)
-    assert m, "GROUPS の定義が見つからない"
-    return re.findall(r"\['(\w+)','([^']+)',\[([^\]]*)\]\]", m.group(1))
+HTML = (WEB / "index.html").read_text(encoding="utf-8")
+JS = source()
 
 
-def _grouped_tabs():
-    return [t for _, _, ts in _groups() for t in re.findall(r"'(\w+)'", ts)]
+class Elements(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.ids = []
+        self.screens = []
+        self.scripts = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if "id" in a:
+            self.ids.append(a["id"])
+        if "data-tab" in a:
+            self.screens.append(a["data-tab"])
+        if tag == "script" and "src" in a:
+            self.scripts.append(a["src"])
+
+    handle_startendtag = handle_starttag
 
 
 class NavStructureTest(unittest.TestCase):
-    def test_five_main_nav_groups(self):
-        self.assertEqual([g[1] for g in _groups()],
-                         ["操作", "状態", "マップ・タスク", "センサ", "開発"])
+    def setUp(self):
+        self.elements = Elements()
+        self.elements.feed(HTML)
 
-    def test_every_screen_is_reachable_from_exactly_one_group(self):
-        screens = re.findall(r'<div id="tab-(\w+)" data-tab="\1"', HTML)
-        tabs = _grouped_tabs()
-        self.assertEqual(sorted(screens), sorted(tabs))
-        self.assertEqual(len(tabs), len(set(tabs)), "同じ画面が複数のグループにある")
+    def test_twelve_screens_and_a_single_id_for_every_control(self):
+        expected = {"home", "ops", "motion", "action", "state", "joints", "audio", "camera", "map", "tasks", "dds", "settings"}
+        self.assertEqual(set(self.elements.screens), expected)
+        self.assertEqual(len(self.elements.ids), len(set(self.elements.ids)))
+        for screen in expected:
+            self.assertIn("tab-b-" + screen, self.elements.ids)
 
-    def test_every_screen_has_a_subtab_button(self):
-        for t in _grouped_tabs():
-            self.assertIn(f'id="tab-b-{t}"', HTML, t)
+    def test_every_original_control_is_preserved(self):
+        old = Elements()
+        old.feed((WEB / "legacy.html").read_text(encoding="utf-8"))
+        self.assertFalse(set(old.ids) - set(self.elements.ids))
 
-    def test_hash_is_still_the_tab_name(self):
-        self.assertIn("history.replaceState(null,'','#'+t)", HTML)
-        self.assertIn("setTab(location.hash.slice(1)||'ops')", HTML)
+    def test_routes_are_keyboard_focusable(self):
+        for screen in self.elements.screens:
+            self.assertIn('id="tab-%s" data-tab="%s" tabindex="-1"' % (screen, screen), HTML)
+        self.assertIn("window.addEventListener('popstate'", JS)
+        self.assertIn("window.addEventListener('hashchange'", JS)
+        self.assertIn("history.pushState", JS)
+        self.assertIn("||'home'", JS)
 
-    def test_settings_and_dds_live_under_dev(self):
-        dev = [g for g in _groups() if g[0] == "dev"][0]
-        self.assertEqual(re.findall(r"'(\w+)'", dev[2]), ["dds", "settings"])
+    def test_full_screen_status_and_preferences_have_a_home(self):
+        state = HTML.index('id="tab-state"')
+        status = HTML.index('id="statusbar"')
+        joints = HTML.index('id="tab-joints"')
+        self.assertLess(state, status)
+        self.assertLess(status, joints)
+        self.assertGreater(HTML.index('id="mon-toggle"'), HTML.index('id="tab-settings"'))
 
-    def test_phone_layout_foundations_kept(self):
+    def test_scripts_are_local_files_and_legacy_remains_available(self):
+        self.assertEqual(self.elements.scripts, ["/ui-core.js", "/mobile.js"])
+        for name in self.elements.scripts:
+            self.assertTrue((WEB / name.lstrip("/")).is_file())
+        self.assertIn('href="/legacy.html"', HTML)
+
+    def test_actual_features_not_mock_placeholders(self):
+        for i in ("st-rc", "pending", "planned-modes", "speed-btns", "vol-restore", "led-set", "tts-go", "cp-stop", "ld-density", "mp-save", "tk-log", "tp-sub", "tp-pub", "hub-stop"):
+            self.assertIn(i, self.elements.ids)
+        for sample in ("data-voice-prompt", "task-percent", "setting-domain", "data-destination"):
+            self.assertNotIn(sample, HTML)
+
+    def test_phone_inputs_and_simultaneous_axes(self):
+        for name in ("forward", "backward", "left", "right", "turn-left", "turn-right"):
+            self.assertIn('data-drive="%s"' % name, HTML)
         self.assertIn('name="viewport"', HTML)
-        self.assertIn("@media (max-width:899px)", HTML)
-        self.assertIn("@media (pointer:coarse)", HTML)
-
-    def test_status_is_shown_as_labelled_cards_not_sentences(self):
-        # モード・FSM・標準モーションサービス・デバッグモード・脚・腕モータ・バッテリー・最終取得・レイテンシを、項目名つきのカードで分けて出す
-        for label in ("現在のモード", "FSM ID", "標準モーションサービス", "デバッグモード", "脚", "腕モータ",
-                      "バッテリー", "最終取得", "レイテンシ"):
-            self.assertIn("<h3>%s" % label, HTML, label)
-        for el in ("st-svc", "st-dbg", "st-legs", "st-arm", "st-last", "st-lat", "st-fsm", "bat-soc"):
-            self.assertIn('id="%s"' % el, HTML, el)
-        self.assertNotIn("標準モーションサービスが解放されています", HTML)
-
-    def test_two_round_sticks_side_by_side_even_on_phones(self):
-        # 左=前後左右、右=旋回。どちらも丸いスティックで、狭い画面でも折り返さず横に並べる
-        left, right = HTML.index('id="pad-move"'), HTML.index('id="pad-turn"')
-        self.assertLess(left, right)
-        self.assertNotIn("pad wide", HTML)
-        self.assertIn(".pads{display:flex;gap:16px;flex-wrap:nowrap", HTML)
-        self.assertIn("width:min(170px,40vw);aspect-ratio:1", HTML)
+        self.assertIn('id="pad-move"', HTML)
+        self.assertIn('id="pad-turn"', HTML)
+        self.assertIn("pointercancel", JS)
+        self.assertIn("lostpointercapture", JS)
 
 
 if __name__ == "__main__":

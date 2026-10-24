@@ -187,7 +187,8 @@ class DefaultStoppedTest(unittest.TestCase):
         self.assertEqual(self.calls["camera"][-2:], ["start", "stop"])
 
     def test_t8_5_start_buttons_ask_first_in_the_page(self):
-        html = (Path(__file__).resolve().parent.parent / "web" / "index.html").read_text(encoding="utf-8")
+        from web_source import source
+        html = source()
         self.assertIn("guard('camera'", html)
         self.assertIn("guard('lidar'", html)
 
