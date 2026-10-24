@@ -93,7 +93,7 @@ FEATURES = [
      "note": "Damping / Zero Torque / Seated Mode / Squat <-> Stand / Lie -> Stand / Regular Mode のみ。2026-10-24 Zero Torque→Damping をコンソール経由で実機確認（1.1 秒）。他の遷移は未確認"},
     {"id": "speed", "label": "速度モード（Speed 0 / Speed 1）", "implemented": True, "verified": False,
      "note": "SetSpeedMode の値の意味（低速・高速）は資料が無く未確認。2026-10-24 の試験は、ボタンを押しても反応が無く、中断（サーバーのログに送信の記録なし）。読み戻しの手段は無い"},
-    {"id": "action", "label": "アクション実行", "implemented": True, "verified": True,
+    {"id": "action", "label": "アクション実行", "implemented": True, "verified": False,
      "note": "手を振る・握手・投げキス・拍手など。番号は実機の一覧で確認済み。2026-10-24 実機で全7項目（25/26/1/27/13/17/99）の動作を確認。リモコン表記（wave hand / face wave）との対応は未整理。--local のときだけ"},
     {"id": "move", "label": "移動（ジョイスティック・矢印キー）", "implemented": True, "verified": True,
      "note": "--local のときだけ。2026-10-24 利用者が実機（Regular Mode）で移動の成功を確認。接続断は 0.5 秒で停止。速度上限は未検証"},
