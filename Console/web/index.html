@@ -66,7 +66,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 #pending[hidden]{display:none}
 
 /* 操作履歴 */
-#log{list-style:none;margin:0;padding:0;font-size:calc(13px*var(--fs));font-variant-numeric:tabular-nums}
+#log{max-height:40vh;overflow:auto;word-break:break-all;list-style:none;margin:0;padding:0;font-size:calc(13px*var(--fs));font-variant-numeric:tabular-nums}
 #log li{padding:3px 0;border-top:1px solid var(--line)}
 #log li:first-child{border-top:0}
 #log .t{color:var(--sub);margin-right:8px}
@@ -258,7 +258,8 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
 <nav class="tabs" id="nav-main" role="tablist" aria-label="主ナビ"></nav>
 <div class="subtabs" id="nav-sub" role="tablist" aria-label="画面">
  <button role="tab" id="tab-b-ops" aria-selected="true">モード</button>
- <button role="tab" id="tab-b-motion" aria-selected="false">運動</button>
+ <button role="tab" id="tab-b-motion" aria-selected="false">移動</button>
+ <button role="tab" id="tab-b-action" aria-selected="false">アクション</button>
  <button role="tab" id="tab-b-state" aria-selected="false">状態</button>
  <button role="tab" id="tab-b-joints" aria-selected="false">関節</button>
  <button role="tab" id="tab-b-audio" aria-selected="false">音声</button>
@@ -273,6 +274,8 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
 <section class="card">
  <div class="head"><h2>モード切り替え<span class="tags" data-feature="mode"></span></h2><span id="why"></span></div>
  <div class="grid" id="btns"></div>
+ <p class="note" id="speed-head">歩行速度（Regular Mode のときだけ押せます。どちらが低速かは試験で確認中）<span class="tags" data-feature="speed"></span></p>
+ <div class="grid" id="speed-btns"></div>
  <div class="grid planned" id="planned-modes"></div>
  <div id="pending" hidden></div>
 </section>
@@ -298,10 +301,16 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
  </div>
  <p class="note">キーボード: 矢印キーで前後左右、Q / E で旋回。速度は <span id="mo-vel">—</span>。上限は <span id="mo-lim">—</span>（実機未検証の初期値）。</p>
 </section>
+</div>
+<div id="tab-action" data-tab="action" hidden>
 <section class="card">
- <h2>アクション<span class="tags" data-feature="action"></span></h2>
+ <div class="head"><h2>アクション<span class="tags" data-feature="action"></span></h2><span id="ac-state"></span></div>
+ <div class="mo-row">
+  <button id="ac-claim" type="button">操作開始</button>
+  <button id="ac-release" type="button" disabled>操作終了</button>
+ </div>
  <div class="grid" id="mo-actions"></div>
- <p class="note">リモコンの SELECT+Y / A / X 相当。操作中で、歩行モード（FSM 500/501）のときだけ押せます。番号と効果は実機未検証。</p>
+ <p class="note">リモコンの SELECT+Y / A / X 相当。操作中で、歩行モード（FSM 500/501）のときだけ押せます。番号と効果は実機未検証。通信が 0.5 秒途絶えるか、他のタブへ移ると操作権が外れます。</p>
 </section>
 </div>
 
@@ -513,7 +522,7 @@ input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡
 const $=id=>document.getElementById(id);
 const FRESH_S=2.5, STALE_S=8, GIVEUP_S=15, POLL_MS=1000;
 const ST_LABEL={ok:'接続中',down:'未接続',unknown:'未確認',stale:'更新停止',checking:'確認中',stopped:'停止',paused:'確認停止'};
-let S=null, recvAt=0, fails=0, busy=false, pending=null, buttons=[], logs=[], featuresLoaded=false;
+let S=null, recvAt=0, fails=0, busy=false, pending=null, buttons=[], transitions={}, fallbackTo=[1], speedFsm=[], logs=[], featuresLoaded=false;
 const RECONNECT_ON=`サーバーが止まっても、この画面は ${POLL_MS/1000} 秒ごとに再試行し、復帰すると自動で更新されます。`;
 const RECONNECT_OFF='停止中：サーバーは G1 を確認しません。最後に取得した値をそのまま表示します。';
 let lastKey='',lastDiag='';
@@ -636,9 +645,18 @@ function renderButtons(n){
   const why=switchBlockReason(n);
   $('why').textContent=why?'切り替え無効：'+why:'';
   const cur=!why?S.mode.fsm_id:null;
+  /* 押せるのは、現在のモードから遷移できるものだけ（公式の遷移図）。現在値が表に無ければ Damping だけ */
+  const ok=cur==null?[]:(transitions[cur]||fallbackTo);
   document.querySelectorAll('#btns button').forEach(b=>{
-    b.classList.toggle('current',Number(b.dataset.id)===cur);
-    b.disabled=!!why||busy;
+    const id=Number(b.dataset.id),isCur=id===cur,reach=ok.includes(id);
+    b.classList.toggle('current',isCur);
+    b.disabled=!!why||busy||!reach;
+    b.title=why||isCur?'':reach?'':'現在のモードからは直接切り替えられません（Damping を経由）';
+  });
+  const walking=cur!=null&&speedFsm.includes(cur);
+  document.querySelectorAll('#speed-btns button').forEach(b=>{
+    b.disabled=!walking||busy;
+    b.title=walking?'':'Regular Mode（歩行）のときだけ送れます';
   });
 }
 
@@ -655,7 +673,7 @@ function renderPending(){
 }
 
 function addLog(text,cls){
-  logs=[{t:new Date().toLocaleTimeString('ja-JP',{hour12:false}),text,cls},...logs].slice(0,8);
+  logs=[{t:new Date().toLocaleTimeString('ja-JP',{hour12:false}),text,cls},...logs].slice(0,30);
   $('log').replaceChildren(...logs.map(l=>{
     const li=document.createElement('li'),t=document.createElement('span'),s=document.createElement('span');
     t.className='t';t.textContent=l.t;s.className=l.cls||'';s.textContent=l.text;li.append(t,s);return li;
@@ -954,15 +972,32 @@ async function setMode(b){
   try{
     const r=await fetch('/api/mode',{method:'POST',body:JSON.stringify({id:b.id})});
     const j=await r.json();
-    if(r.ok){pending={id:b.id,label:b.label,at:performance.now()};addLog(`「${b.label}」を送信（受理 code=${j.set_code}）· 到達待ち`,'')}
-    else addLog(`「${b.label}」失敗：${j.error||r.status}`,'bad');
+    const resp=JSON.stringify(j);  /* G1 からの応答をそのまま履歴に残す（受理されたか、断られたかの切り分け用） */
+    if(r.ok){pending={id:b.id,label:b.label,at:performance.now()};addLog(`「${b.label}」を送信（現在：${cur==null?'不明':cur}）· 応答 ${resp} · 到達待ち`,'')}
+    else addLog(`「${b.label}」失敗（HTTP ${r.status}）：${j.error||'理由なし'} · 応答 ${resp}`,'bad');
+  }catch(e){addLog(`「${b.label}」失敗：サーバーに届きません（${e}）`,'bad')}
+  busy=false;render();
+}
+
+async function setSpeed(b){
+  if(!await guard('speed',{title:`「${b.label}」に切り替える`,ok:'切り替える',always:true,
+    lines:['周囲の安全を確認してください','歩行速度が変わります。意味（低速・高速）は未確認です','物理リモコンを手元に置く']}))return;
+  busy=true;render();
+  try{
+    const r=await fetch('/api/speed',{method:'POST',body:JSON.stringify({value:b.value})});
+    const j=await r.json(),resp=JSON.stringify(j);
+    if(r.ok)addLog(`「${b.label}」を送信 · 応答 ${resp}`,'');
+    else addLog(`「${b.label}」失敗（HTTP ${r.status}）：${j.error||'理由なし'} · 応答 ${resp}`,'bad');
   }catch(e){addLog(`「${b.label}」失敗：サーバーに届きません（${e}）`,'bad')}
   busy=false;render();
 }
 
 async function loadButtons(){
-  const {buttons:list}=await (await fetch('/api/buttons',{cache:'no-store'})).json();
-  buttons=list;
+  const j=await (await fetch('/api/buttons',{cache:'no-store'})).json();
+  const list=j.buttons;buttons=list;transitions=j.transitions||{};fallbackTo=j.fallback||[1];speedFsm=j.speed_fsm_ids||[];
+  $('speed-btns').replaceChildren(...(j.speed||[]).map(b=>{
+    const el=document.createElement('button');el.textContent=b.label;el.disabled=true;el.onclick=()=>setSpeed(b);return el;
+  }));
   $('btns').replaceChildren(...list.map(b=>{
     const el=document.createElement('button');
     el.textContent=b.label;el.dataset.id=b.id;el.disabled=true;
@@ -1059,7 +1094,7 @@ const DDS_LABEL={displayed:['表示済み','done'],todo:['未購読（未実装�
 let dds=null,ddsFilter='all',tab='ops';
 function td(tr,x,cls){const c=document.createElement('td');c.textContent=x;if(cls)c.className=cls;tr.append(c);return c}
 
-/* ---- 運動（物理リモコン代替）。送るのは 10 Hz の ctl だけ。0.5 秒途絶するとハブが止めて操作権を外す。 ---- */
+/* ---- 移動・アクション（物理リモコン代替）。送るのは 10 Hz の ctl だけ。0.5 秒途絶するとハブが止めて操作権を外す。 ---- */
 const MO_MS=100;
 let moSession=null,moSeq=0,moTimer=null,moBusy=0,moLim={vx:[-0.2,0.3],vy:[-0.2,0.2],wz:[-0.4,0.4]},moKeys=new Set();
 function makePad(el,twoAxes){
@@ -1099,6 +1134,7 @@ function moShow(j,note){
   if(j){moLim=j.limits||moLim;$('mo-lim').textContent='前後 '+moLim.vx.join('〜')+' m/s・左右 '+moLim.vy.join('〜')+' m/s・旋回 '+moLim.wz.join('〜')+' rad/s'}
   const on=!!moSession;
   $('mo-claim').disabled=on;$('mo-release').disabled=!on;$('mo-estop-float').hidden=!on;
+  $('ac-claim').disabled=on;$('ac-release').disabled=!on;$('ac-state').textContent=txt;$('ac-state').className=cls;
   document.querySelectorAll('#mo-actions button').forEach(b=>b.disabled=!on||!!(j&&j.blocked));
 }
 async function moPost(kind,body){
@@ -1110,7 +1146,7 @@ function moLost(j,msg){
   moShow(null,msg||(j&&j.error)||'操作権がありません');
 }
 async function moStatus(){
-  if(tab!=='motion'||moSession)return;
+  if(!['motion','action'].includes(tab)||moSession)return;
   try{const r=await fetch('/api/motion/status',{cache:'no-store'});moShow(await r.json())}
   catch(e){moShow(null,'ハブに届きません')}
 }
@@ -1126,7 +1162,7 @@ async function moTick(){
   finally{moBusy--}
 }
 async function moClaim(){
-  if(!await guard('move',{title:'運動の操作を始める',ok:'操作を始める',danger:true,
+  if(!await guard('move',{title:'移動・アクションの操作を始める',ok:'操作を始める',danger:true,always:true,quiet:true,
     lines:['物理リモコンを手元に置く。この画面の緊急停止は安全規格を満たさない','周囲 2 m に人・物がないことを確認する','速度上限と、歩行モード（FSM 500/501）での動作は実機で確かめていない']}))return;
   $('mo-claim').disabled=true;moShow(null,'操作権を取っています…（初回は数秒かかります）');
   try{
@@ -1134,7 +1170,7 @@ async function moClaim(){
     if(!r.ok){moSession=null;moShow(null,r.j.error||'操作を開始できません');$('mo-claim').disabled=false;return}
     moSession=r.j.session;moSeq=0;moShow(r.j);
     moTimer=setInterval(moTick,MO_MS);
-    addLog('運動: 操作開始','ok');
+    addLog('移動・アクション: 操作開始','ok');
   }catch(e){moShow(null,'ハブに届きません');$('mo-claim').disabled=false}
 }
 function moRelease(){
@@ -1147,7 +1183,7 @@ function moRelease(){
 async function moEstop(){
   moSession=null;clearInterval(moTimer);moTimer=null;padMove.reset();padTurn.reset();moKeys.clear();
   let note='緊急停止を送りました';
-  try{const r=await moPost('estop');moShow(r.j);addLog('運動: 緊急停止','bad');return}
+  try{const r=await moPost('estop');moShow(r.j);addLog('移動・アクション: 緊急停止','bad');return}
   catch(e){note='緊急停止を送れませんでした。物理リモコンで止めてください'}
   moShow(null,note);
 }
@@ -1157,9 +1193,9 @@ async function moAction(a,b){
   b.disabled=true;
   try{
     const r=await moPost('action',{session:moSession,name:a.id});
-    addLog('運動: '+a.label+(r.ok?'':'（失敗: '+(r.j.error||r.status)+'）'),r.ok?'ok':'bad');
+    addLog('アクション: '+a.label+(r.ok?'':'（失敗: '+(r.j.error||r.status)+'）'),r.ok?'ok':'bad');
     if(r.status===409&&/操作権/.test(r.j.error||''))moLost(r.j);else if(r.ok)moShow(r.j);
-  }catch(e){addLog('運動: '+a.label+'（ハブに届きません）','bad')}
+  }catch(e){addLog('アクション: '+a.label+'（ハブに届きません）','bad')}
   finally{if(moSession)b.disabled=false}
 }
 function renderActions(list){
@@ -1169,6 +1205,8 @@ function renderActions(list){
 }
 $('mo-claim').onclick=moClaim;
 $('mo-release').onclick=moRelease;
+$('ac-claim').onclick=moClaim;
+$('ac-release').onclick=moRelease;
 ['mo-estop','mo-estop-float'].forEach(id=>$(id).addEventListener('pointerdown',e=>{e.preventDefault();moEstop()}));
 window.addEventListener('keydown',e=>{
   if(!moSession||tab!=='motion'||e.repeat&&moKeys.has(e.key)||/INPUT|TEXTAREA|SELECT/.test((e.target||{}).tagName||''))return;
@@ -1405,13 +1443,13 @@ function tpStop(){clearInterval(tpT);tpT=null}
 
 /* 主ナビ 5 つ（操作／状態／マップ・タスク／センサ／開発）。画面が無いグループは出さない。
    タブ名 = #hash = API 名は従来どおり。画面を足すときは該当グループの配列に入れる。 */
-const GROUPS=[['ops','操作',['ops','motion','audio']],['state','状態',['state','joints']],['maptask','マップ・タスク',['map','tasks']],['sensor','センサ',['camera']],['dev','開発',['dds','settings']]];
+const GROUPS=[['ops','操作',['ops','motion','action','audio']],['state','状態',['state','joints']],['maptask','マップ・タスク',['map','tasks']],['sensor','センサ',['camera']],['dev','開発',['dds','settings']]];
 const TABS=GROUPS.flatMap(g=>g[2]);
 const groupOf=t=>GROUPS.find(g=>g[2].includes(t));
 const lastTab={};
 function setTab(t){
   if(!TABS.includes(t))t='ops';
-  if(t!=='motion')moRelease();  /* 運動タブを離れたら操作権を手放す（ゼロ速度） */
+  if(t!=='motion'&&t!=='action')moRelease();  /* 移動・アクション以外のタブへ移ったら操作権を手放す（ゼロ速度） */
   tab=t;
   const grp=groupOf(t);lastTab[grp[0]]=t;
   TABS.forEach(k=>{$('tab-'+k).hidden=k!==t;$('tab-b-'+k).setAttribute('aria-selected',k===t);$('tab-b-'+k).hidden=!grp[2].includes(k)});
@@ -1422,7 +1460,7 @@ function setTab(t){
   if(t==='dds'){if(!dds)loadDds();else renderDds()}
   t==='dds'?tpStart():tpStop();
   if(t==='settings')loadSettings();
-  if(t==='motion')moStatus();
+  if(t==='motion'||t==='action')moStatus();
   if(t==='tasks')tkRefresh();
   t==='map'?mpStart():mpStop();
   lastKey='';

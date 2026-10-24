@@ -223,7 +223,7 @@ class WebCautionTest(unittest.TestCase):
         by_id = {f["id"]: f for f in FEATURES}
         guarded = set(re.findall(r"guard\('(\w+)'", HTML))
         self.assertTrue(guarded <= set(by_id), guarded - set(by_id))
-        for fid in guarded | {"nav2ctl"}:
+        for fid in (guarded | {"nav2ctl"}) - {"move"}:  # move は 2026-10-24 に実機で確認済み
             self.assertIs(by_id[fid]["verified"], False, fid)
             self.assertTrue(by_id[fid]["implemented"], fid)
 

@@ -39,7 +39,7 @@ from g1console.navapi import NavApi
 from g1console.topic_backend import HelperTopicBackend
 from g1console.topics import MockTopicBackend, TopicService, default_allowlist_path, handle as topics_handle, load_allowlist
 from g1console.tasks import TaskError, TaskRunner, load_definitions
-from g1console.modes import (ACTIONS, ALLOWED_IDS, BUTTONS, FEATURES, FSM_LABELS, JOINT_NAMES, PLANNED_ACTIONS, PLANNED_MODES, TABS,
+from g1console.modes import (ACTIONS, ALLOWED_IDS, BUTTONS, FALLBACK_TRANSITION, SPEED_BUTTONS, SPEED_FSM_IDS, SPEED_VALUES, TRANSITIONS, FEATURES, FSM_LABELS, JOINT_NAMES, PLANNED_ACTIONS, PLANNED_MODES, TABS,
                    validate_audio)
 
 HERE = Path(__file__).resolve().parent
@@ -78,7 +78,7 @@ class SshHelper:
 
     def _start(self):
         src = (HERE / "jetson" / "remote_helper.py").read_text(encoding="utf-8")
-        src = src.replace("__ALLOWED__", repr(sorted(ALLOWED_IDS)))
+        src = src.replace("__ALLOWED__", repr(sorted(ALLOWED_IDS))).replace("__ALLOWED_SPEED__", repr(sorted(SPEED_VALUES)))
         cmd, cwd = self._command(src)
         self._proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                       stderr=subprocess.DEVNULL, text=True, cwd=cwd)
@@ -234,6 +234,8 @@ class MockHelper:
                     "telemetry": tele}
         if req["op"] == "set":
             self._target, self._due = int(req["id"]), time.time() + self.TRANSITION_S
+            return {"ok": True, "set_code": 0}
+        if req["op"] == "speed":
             return {"ok": True, "set_code": 0}
         return {"ok": True, "checkmode_code": 0, "service": "ai", "fsm_code": 0,
                 "fsm_id": self._current_fsm(), "telemetry": self._telemetry()}
@@ -487,7 +489,9 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
             elif self.path == "/api/audio/volume":
                 self._audio_reply(helper.call({"op": "audio_get"}), "code")
             elif self.path == "/api/buttons":
-                self._json(200, {"buttons": BUTTONS})
+                self._json(200, {"buttons": BUTTONS, "transitions": {str(k): list(v) for k, v in TRANSITIONS.items()},
+                                 "fallback": list(FALLBACK_TRANSITION), "speed": SPEED_BUTTONS,
+                                 "speed_fsm_ids": list(SPEED_FSM_IDS)})
             elif self.path == "/api/dds":
                 self._json(200, {"topics": [dict(zip(("topic", "type", "status", "note"), t)) for t in TOPICS],
                                  "services": [dict(zip(("name", "status", "note"), v)) for v in SERVICES]})
@@ -579,6 +583,8 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
         def _route_post(self):
             if self.path == "/api/mode":
                 return self._post_mode()
+            if self.path == "/api/speed":
+                return self._post_speed()
             if self.path.startswith("/api/audio/"):
                 return self._post_audio(self.path[len("/api/audio/"):])
             if self.path == "/api/scenario" and hasattr(helper, "scenario"):
@@ -617,8 +623,22 @@ def make_handler(helper, monitor, camera_base=None, settings=None, camera_ctl=No
             if fsm_id not in ALLOWED_IDS:
                 return self._json(400, {"error": "許可されていない FSM ID"})
             raw = helper.call({"op": "set", "id": fsm_id})
+            print("[console] モード切替 id=%s 応答=%s" % (fsm_id, json.dumps(raw, ensure_ascii=False)))
             if raw.get("ok") and raw.get("set_code") != 0:
-                return self._json(502, {"error": "G1 が要求を受理しませんでした（code=%s）" % raw.get("set_code")})
+                return self._json(502, {**raw, "error": "G1 が要求を受理しませんでした（code=%s）" % raw.get("set_code")})
+            self._json(200 if raw.get("ok") else 502, raw)
+
+        def _post_speed(self):
+            try:
+                value = int(self._read_json()["value"])
+            except (ValueError, KeyError, TypeError):
+                return self._json(400, {"error": "bad request"})
+            if value not in SPEED_VALUES:
+                return self._json(400, {"error": "許可されていない速度モード"})
+            raw = helper.call({"op": "speed", "value": value})
+            print("[console] 速度モード value=%s 応答=%s" % (value, json.dumps(raw, ensure_ascii=False)))
+            if raw.get("ok") and raw.get("set_code") != 0:
+                return self._json(502, {**raw, "error": "G1 が要求を受理しませんでした（code=%s）" % raw.get("set_code")})
             self._json(200 if raw.get("ok") else 502, raw)
 
         def _audio_reply(self, raw: dict, *code_keys: str):

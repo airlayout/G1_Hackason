@@ -34,6 +34,7 @@ from unitree_sdk2py.g1.audio.g1_audio_client import AudioClient
 from unitree_sdk2py.g1.loco.g1_loco_client import LocoClient
 
 ALLOWED = set(__ALLOWED__)
+ALLOWED_SPEED = set(__ALLOWED_SPEED__)
 
 ChannelFactoryInitialize(0, "eth0")
 msc = MotionSwitcherClient()
@@ -220,6 +221,12 @@ for line in sys.stdin:
                 res = {"ok": False, "error": "許可されていない FSM ID: %d" % fsm_id}
             else:
                 res = {"ok": True, "set_code": loco.SetFsmId(fsm_id)}
+        elif req["op"] == "speed":
+            value = int(req["value"])
+            if value not in ALLOWED_SPEED:
+                res = {"ok": False, "error": "許可されていない速度モード: %d" % value}
+            else:
+                res = {"ok": True, "set_code": loco.SetSpeedMode(value)}
         elif req["op"].startswith("audio_"):
             res = audio_op(req)
         else:

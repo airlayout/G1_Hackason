@@ -82,7 +82,7 @@ class FeaturesTest(unittest.TestCase):
 
     def test_only_user_confirmed_features_are_marked_verified(self):
         # 実機で利用者が確認したと申告した機能だけを verified にする。増やすときは日付つきで残す。
-        self.assertEqual({f["id"] for f in FEATURES if f["verified"]}, {"battery", "telemetry"})  # 2026-10-18
+        self.assertEqual({f["id"] for f in FEATURES if f["verified"]}, {"battery", "telemetry", "move"})  # 2026-10-18（move は 2026-10-24 に利用者が実機で成功を確認）
 
     def test_planned_modes_are_not_switchable(self):
         planned = {p["label"] for p in PLANNED_MODES}
@@ -262,7 +262,7 @@ class HttpTest(unittest.TestCase):
         self.assertTrue(d["services"])
         j = json.load(urllib.request.urlopen("http://127.0.0.1:%d/api/features" % self.port, timeout=5))
         self.assertEqual({f["id"] for f in j["features"]},
-                         {"connection", "reconnect", "mode", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "telemetry", "sensors", "camera", "lidar", "nav2ctl", "hubstop"})
+                         {"connection", "reconnect", "mode", "speed", "action", "move", "tasks", "nav", "locations", "topics", "battery", "audio", "telemetry", "sensors", "camera", "lidar", "nav2ctl", "hubstop"})
         self.assertTrue(j["planned_modes"] and j["actions"])
         self.assertEqual(j["planned_actions"], [])  # 未実装のアクションは無い（形は保つ）
 
@@ -379,7 +379,7 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(joints["items"][0]["name"], "左股 pitch")
         self.assertIsNotNone(joints["items"][0]["cmd"])
         self.assertEqual(snap["state"]["battery"]["soc"], state["battery"]["soc"])
-        self.assertEqual(snap["tabs"], ["ops", "motion", "state", "joints", "audio", "tasks", "map", "camera", "dds", "settings"])
+        self.assertEqual(snap["tabs"], ["ops", "motion", "action", "state", "joints", "audio", "tasks", "map", "camera", "dds", "settings"])
 
 
 if __name__ == "__main__":

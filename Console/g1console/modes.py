@@ -32,6 +32,33 @@ BUTTONS = [
 
 ALLOWED_IDS = frozenset(b["id"] for b in BUTTONS)
 
+# 速度モード（LocoClient.SetSpeedMode）。値の意味（どちらが低速か）は資料が無く未確認。
+# 試験で確かめるまで、中立な名前で出す。確かめたら label だけ書き換える。読み戻しの手段は無い。
+SPEED_BUTTONS = [
+    {"value": 0, "label": "Speed 0（試験）"},
+    {"value": 1, "label": "Speed 1（試験）"},
+]
+SPEED_VALUES = frozenset(b["value"] for b in SPEED_BUTTONS)
+SPEED_FSM_IDS = (500, 501)  # 歩行（Regular Mode）のときだけ押せる
+
+# 現在の FSM → 画面で押せるボタン。公式の状態遷移図（2026-10-24 利用者提示）に沿う。
+# Zero Torque へは Damping からだけ、Zero Torque からは Damping だけ。基本は Damping から他のモードへ。
+# 緊急用に、どの状態からでも Damping は押せる。図に無い遷移は載せない。
+# 706 は Damping から送っても動かない（実機）。Regular Mode から送ると動く（2026-10-24。POST 数からの読みで、画面の遷移表示は未確認）。
+# 図の「Squat」(L1+DOWN) の FSM ID は未確認のため、ボタンが無い。ここに無い現在値は Damping だけ押せる。
+TRANSITIONS = {
+    0: (1,),
+    1: (0, 4, 3, 702),  # 706 は Damping からは何度送っても動かなかった（2026-10-24）。Regular Mode から動く
+
+    4: (1, 3, 501),
+    3: (1, 4),
+    501: (1, 3, 706),  # 2026-10-24 コンソールで Damping→4→501→706 を確認（706 は最後に Damping へ自動遷移）
+    500: (1, 3, 706),
+    706: (1, 501),
+    702: (1, 501),
+}
+FALLBACK_TRANSITION = (1,)
+
 # 未実装のモード切替（画面に「未実装」で無効表示する）。理由は docs/REMOTE_CONTROLLER.md 参照。
 PLANNED_MODES = [
     {"label": "Running Mode", "note": "FSM ID が未確認（801 は資料 1 件のみ）"},
@@ -55,10 +82,12 @@ FEATURES = [
     {"id": "reconnect", "label": "自動再接続", "implemented": True, "verified": False},
     {"id": "mode", "label": "モード変更", "implemented": True, "verified": False,
      "note": "Damping / Zero Torque / Seated Mode / Squat <-> Stand / Lie -> Stand / Regular Mode のみ。2026-10-24 Zero Torque→Damping をコンソール経由で実機確認（1.1 秒）。他の遷移は未確認"},
+    {"id": "speed", "label": "速度モード（Speed 0 / Speed 1）", "implemented": True, "verified": False,
+     "note": "SetSpeedMode の値の意味（低速・高速）は資料が無く未確認。2026-10-24 の試験は、ボタンを押しても反応が無く、中断（サーバーのログに送信の記録なし）。読み戻しの手段は無い"},
     {"id": "action", "label": "アクション実行", "implemented": True, "verified": False,
      "note": "手を振る・握手。SetTaskId の番号と効果は実機未検証。--local のときだけ"},
-    {"id": "move", "label": "移動（ジョイスティック・矢印キー）", "implemented": True, "verified": False,
-     "note": "--local のときだけ。接続断は 0.5 秒で停止。速度上限・FSM 500/501 での動作は実機未検証"},
+    {"id": "move", "label": "移動（ジョイスティック・矢印キー）", "implemented": True, "verified": True,
+     "note": "--local のときだけ。2026-10-24 利用者が実機（Regular Mode）で移動の成功を確認。接続断は 0.5 秒で停止。速度上限は未検証"},
     {"id": "tasks", "label": "タスク実行（定義済みコマンドの起動・停止・ログ）", "implemented": True, "verified": False,
      "note": "Console/tasks/*.json の argv だけを実行する。Mac のテストでは確認済みだが、Jetson 上での実行は未確認"},
     {"id": "camera", "label": "カメラの映像表示と、配信の起動・停止", "implemented": True, "verified": False,
@@ -124,4 +153,4 @@ JOINT_NAMES = [
 ]
 
 # タブ名 = URL ハッシュ = API 名。AI もこの名前で画面と API を対応づけられる。
-TABS = ("ops", "motion", "state", "joints", "audio", "tasks", "map", "camera", "dds", "settings")
+TABS = ("ops", "motion", "action", "state", "joints", "audio", "tasks", "map", "camera", "dds", "settings")

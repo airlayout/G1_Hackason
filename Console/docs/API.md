@@ -59,6 +59,7 @@
 | POST | `/api/monitor` | postMonitor | settings | 自動確認・自動再接続の停止／再開、または 1 回だけ確認 |
 | POST | `/api/hub/stop` | postHubStop | settings | ハブ（このコンソール）自体を止める。画面からは再起動できない ⚠実機未検証 |
 | POST | `/api/mode` | postMode | robot_motion | G1 のモード（FSM）を切り替える。**ロボットが動く** ⚠実機未検証 |
+| POST | `/api/speed` | postSpeed | robot_motion | 速度モード（SetSpeedMode）を切り替える。**ロボットの歩行速度が変わる** ⚠実機未検証 |
 | POST | `/api/tasks/start` | postTaskStart | settings | 定義済みタスクを起動する（名前だけ渡す）。タスクの中身によってはロボットが動きうる ⚠実機未検証 |
 | POST | `/api/tasks/stop` | postTaskStop | settings | 実行中のタスクを止める（プロセスグループへ SIGTERM、猶予後に SIGKILL） |
 | POST | `/api/motion/claim` | postMotionClaim | robot_write | 操作権を取る（運動ヘルパーを起動する。初回は数秒かかる） ⚠実機未検証 |
@@ -170,6 +171,15 @@ G1 のモード（FSM）を切り替える。**ロボットが動く**
 {"id": 3}
 ```
 スキーマ: `ModePatch`。受理（set_code=0）は到達ではない。実行後は GET /api/status を繰り返し読み、mode.fsm_id が目標になるか確認する（15 秒を目安）。歩行中（500/501）に切り替えると転倒の恐れがある。実行前に必ず人へ確認する。実機では未検証。
+
+### POST /api/speed
+
+速度モード（SetSpeedMode）を切り替える。**ロボットの歩行速度が変わる**
+
+```json
+{"value": 0}
+```
+スキーマ: `SpeedPatch`。value の意味（どちらが低速か）は資料が無く未確認。読み戻しの手段が無い。歩行中（500/501）のときだけ送る。
 
 ### POST /api/tasks/start
 

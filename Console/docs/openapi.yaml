@@ -1035,6 +1035,42 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/speed":
+    post:
+      operationId: "postSpeed"
+      tags:
+        - "ops"
+      summary: "速度モード（SetSpeedMode）を切り替える。**ロボットの歩行速度が変わる**"
+      x-effect: "robot_motion"
+      description: "value の意味（どちらが低速か）は資料が無く未確認。読み戻しの手段が無い。歩行中（500/501）のときだけ送る。"
+      x-real-robot-verified: false
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/SpeedPatch"
+            example:
+              value: 0
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ModeAck"
+        "400":
+          description: "入力不正（許可されていない value）"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/tasks/start":
     post:
       operationId: "postTaskStart"
@@ -1958,8 +1994,50 @@ components:
               - "label"
               - "danger"
             additionalProperties: false
+        transitions:
+          type: "object"
+          description: "現在の FSM ID（文字列）→ 画面で押せるボタンの id。公式の状態遷移図に沿う"
+          additionalProperties: true
+          nullable: true
+        fallback:
+          type: "array"
+          items:
+            type: "integer"
+          description: "transitions に無い現在値のとき押せるボタンの id"
+        speed:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              value:
+                type: "integer"
+                description: "POST /api/speed の value"
+              label:
+                type: "string"
+            required:
+              - "value"
+              - "label"
+            additionalProperties: false
+        speed_fsm_ids:
+          type: "array"
+          items:
+            type: "integer"
+          description: "速度モードを送れる現在の FSM ID（歩行中のみ）"
       required:
         - "buttons"
+        - "transitions"
+        - "fallback"
+        - "speed"
+        - "speed_fsm_ids"
+      additionalProperties: false
+    SpeedPatch:
+      type: "object"
+      properties:
+        value:
+          type: "integer"
+          description: "GET /api/buttons の speed に載っている value のみ"
+      required:
+        - "value"
       additionalProperties: false
     Features:
       type: "object"
