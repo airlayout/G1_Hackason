@@ -71,11 +71,11 @@ PLANNED_MODES = [
 # アクション。G1 本体のアーム動作サービスに action_id を送って実行する（腕の動作を再生するだけで、歩行は止めない）。
 # 番号は実機の GetActionList（2026-10-24）で確認した。SDK ヘッダの対応表は right kiss を 12 としているが、実機は 13。
 # 純正リモコン（handshake / wave hand / face wave / right kiss / clap）との対応: right kiss=13・clap=17・handshake=27 は名前が一致。
-# wave hand と face wave は候補が複数あり、どれが同じ動きかは実機で確かめる（未確認）。
+# face wave=25（顔の前で横に振る。ユーザーが実機で確認、SDK の対応表も 25）。wave hand=26 は SDK の high wave と消去法による推定で、ユーザー確認待ち。
 # 握手などは動作後に腕を保持することがある。release_arm（99）で戻す。
 ACTIONS = [
-    {"id": "wave_under_head", "label": "手を振る（胸の前・wave_under_head）", "arm_id": 25},
-    {"id": "wave_above_head", "label": "手を振る（頭の上・wave_above_head）", "arm_id": 26},
+    {"id": "wave_under_head", "label": "顔の前で手を振る（face wave・wave_under_head）", "arm_id": 25},
+    {"id": "wave_above_head", "label": "手を振る（wave hand・wave_above_head）", "arm_id": 26},
     {"id": "turn_back_wave", "label": "振り向いて手を振る（turn_back_wave）", "arm_id": 1},
     {"id": "shake_hand", "label": "握手（shake_hand）", "arm_id": 27},
     {"id": "blow_kiss_right", "label": "右手の投げキス（blow_kiss_with_right_hand）", "arm_id": 13},
