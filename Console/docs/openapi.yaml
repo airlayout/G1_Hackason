@@ -934,6 +934,73 @@ paths:
             "application/json":
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/lidar/sensor":
+    get:
+      operationId: "getLidarSensor"
+      tags:
+        - "camera"
+      summary: "LiDAR 本体の動作モード（Livox work_tgt_mode）を読む"
+      x-effect: "read"
+      description: "--local / --mock のときだけ。mode: 1=計測（SAMPLING） / 2=待機（IDLE・レーザー停止） / 9=準備（READY）。laser_off は mode=2 のとき true。"
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/lidar/sensor/idle":
+    post:
+      operationId: "postLidarSensorIdle"
+      tags:
+        - "camera"
+      summary: "LiDAR 本体を待機（IDLE）にする。**レーザーが止まり、点群が来なくなる**"
+      x-effect: "settings"
+      description: "設定後に読み戻した mode を返す。Nav2・マッピングは使えなくなる。電源を入れ直すと計測に戻る。"
+      x-real-robot-verified: false
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/lidar/sensor/sampling":
+    post:
+      operationId: "postLidarSensorSampling"
+      tags:
+        - "camera"
+      summary: "LiDAR 本体を計測（SAMPLING）に戻す"
+      x-effect: "settings"
+      x-real-robot-verified: false
+      responses:
+        "200":
+          description: "成功"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+        "502":
+          description: "G1 または Jetson に届かない・G1 が拒否"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/monitor":
     post:
       operationId: "postMonitor"
