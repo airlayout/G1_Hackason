@@ -1,0 +1,79 @@
+From e7ca6a2510c094478b1de8327946f26a7736a270 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 26 Oct 2026 10:13:26 +0900
+Subject: [PATCH] sim: joint dynamic friction equal to the static one when
+ joint_friction_scale > 0 (Isaac Sim 5+ static friction only acts at rest);
+ probe: count target jumps only on limited steps (10-26)
+
+---
+ gr00t/rl/simfix_probe.py                | 19 +++++++++++++------
+ gr00t/rl/simulator/isaacsim/isaacsim.py | 12 ++++++++++++
+ 2 files changed, 25 insertions(+), 6 deletions(-)
+
+diff --git a/gr00t/rl/simfix_probe.py b/gr00t/rl/simfix_probe.py
+index 503cf1b..060bcfd 100644
+--- a/gr00t/rl/simfix_probe.py
++++ b/gr00t/rl/simfix_probe.py
+@@ -395,23 +395,30 @@ def probe_clip(env, out, steps=300, scale=5.0, seed=0):
+     lim = env.simulator.hard_dof_pos_limits.cpu().numpy()
+     margin = env.config.get("clip_targets_to_limits_margin", None)
+     step_limit = env.config.get("target_step_limit", None)
+-    over, n, jumps = 0, 0, 0.0
++    over, n, jumps, n_jump, n_viol, n_reset = 0, 0, 0.0, 0, 0, 0
+     prev = None
++    lim_step = None if step_limit is None else float(step_limit)
+     for _ in range(steps):
+         pol = (torch.rand(env.num_envs, 17, generator=g) * 2 - 1).to(env.device) * scale
+         pol[:, :3] = 0.0
+         reset = drv.step(pol)
++        n_reset += int(_np(reset).astype(bool).sum())
+         tgt = _np(env.simulator._robot.data.joint_pos_target)[:, env.simulator.dof_ids][:, :29]
+         m = 0.0 if margin is None else float(margin)
+         over += int(((tgt < lim[:, 0] + m - 1e-5) | (tgt > lim[:, 1] - m + 1e-5)).sum())
+         n += tgt.size
+-        if prev is not None:
+-            keep = ~_np(reset).astype(bool)
+-            if keep.any():
+-                jumps = max(jumps, float(np.abs(tgt[keep] - prev[keep]).max()))
++        # 上限を掛けた周期だけ比べる: この周期の物理の間 episode_length_buf > 0（＝ステップの後で 2 以上）の台
++        limited = _np(env.episode_length_buf) >= 2
++        if prev is not None and limited.any():
++            d = np.abs(tgt[limited] - prev[limited])
++            jumps = max(jumps, float(d.max()))
++            n_jump += d.size
++            if lim_step is not None:
++                n_viol += int((d > lim_step + 1e-4).sum())
+         prev = tgt
+     return {"margin": margin, "target_step_limit": step_limit, "targets_outside": over, "targets_total": n,
+-            "max_target_jump_per_step": jumps}
++            "max_target_jump_per_limited_step": jumps, "jumps_over_limit": n_viol, "jumps_counted": n_jump,
++            "resets": n_reset}
+ 
+ 
+ # ---------------------------------------------------------------------------------------------------- HOMIE
+diff --git a/gr00t/rl/simulator/isaacsim/isaacsim.py b/gr00t/rl/simulator/isaacsim/isaacsim.py
+index e4f27ad..fe8b41c 100644
+--- a/gr00t/rl/simulator/isaacsim/isaacsim.py
++++ b/gr00t/rl/simulator/isaacsim/isaacsim.py
+@@ -902,6 +902,18 @@ class IsaacSim(BaseSimulator):
+                 * float(self.simulator_config.get("joint_friction_scale", 0.0))
+                 for i in range(len(dof_names_list))
+             },
++            # Isaac Sim 5 以降の friction は止まっている間だけ効く静止の摩擦（力）。動いている間の摩擦（dynamic）も同じ値に
++            # しないと、MuJoCo の frictionloss（動いている間も一定の力で逆らう）と同じにならない（V9 の 1 回目で、摩擦を入れた方が
++            # 速く動いた）。joint_friction_scale が 0（既定）なら元どおり何も入れない
++            dynamic_friction=(
++                {
++                    dof_names_list[i]: dof_joint_friction_list[i]
++                    * float(self.simulator_config.get("joint_friction_scale", 0.0))
++                    for i in range(len(dof_names_list))
++                }
++                if float(self.simulator_config.get("joint_friction_scale", 0.0)) > 0.0
++                else None
++            ),
+         )
+         logger.warning(f"dof_armature_list {dof_armature_list}")
+         logger.warning(f"dof_joint_friction_list {dof_joint_friction_list}")
+-- 
+2.50.1 (Apple Git-155)
+

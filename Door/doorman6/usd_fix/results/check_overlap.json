@@ -1,0 +1,1058 @@
+{
+ "fixed/true": {
+  "poses": {
+   "default": [],
+   "default_added_min": {
+    "pair": "＋left_elbow_link[left_elbow_link/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+    "dist_mm": 9.50674413136565
+   },
+   "zero": [],
+   "zero_added_min": {
+    "pair": "＋left_elbow_link[left_elbow_link/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+    "dist_mm": 9.50674413136565
+   }
+  },
+  "golden": {
+   "n": 5596,
+   "over5_all": 0.05235882773409578,
+   "over10_all": 0.021801286633309505,
+   "over5_new": 0.0407433881343817,
+   "over10_new": 0.02126518942101501,
+   "over5_old": 0.011615439599714082,
+   "over10_old": 0.000536097212294496,
+   "max_mm": 44.08746078578967,
+   "pairs": [
+    {
+     "pair": "＋right_hip_roll_link[right_hip_roll_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 44.08746078578967,
+     "t": 96,
+     "env_or_log": 3,
+     "frames_over5": 30
+    },
+    {
+     "pair": "　left_wrist_yaw_link[left_rubber_hand/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 33.8702663710008,
+     "t": 0,
+     "env_or_log": 0,
+     "frames_over5": 3
+    },
+    {
+     "pair": "＋left_hip_roll_link[left_hip_roll_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 23.69967170360978,
+     "t": 12,
+     "env_or_log": 5,
+     "frames_over5": 32
+    },
+    {
+     "pair": "＋left_hip_roll_link[left_hip_roll_link/mesh] ↔ left_wrist_yaw_link[left_rubber_hand/mesh]",
+     "max_mm": 23.377140926264108,
+     "t": 13,
+     "env_or_log": 5,
+     "frames_over5": 15
+    },
+    {
+     "pair": "＋pelvis[pelvis_contour_link/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+     "max_mm": 12.635695359005549,
+     "t": 649,
+     "env_or_log": 6,
+     "frames_over5": 153
+    },
+    {
+     "pair": "＋torso_link[head_link/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+     "max_mm": 11.335836353984305,
+     "t": 174,
+     "env_or_log": 6,
+     "frames_over5": 6
+    },
+    {
+     "pair": "＋left_elbow_link[left_elbow_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 10.991497278333414,
+     "t": 687,
+     "env_or_log": 4,
+     "frames_over5": 5
+    },
+    {
+     "pair": "＋left_hip_roll_link[left_hip_roll_link/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+     "max_mm": 10.97718741774565,
+     "t": 13,
+     "env_or_log": 5,
+     "frames_over5": 5
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 8.039304233291691,
+     "t": 244,
+     "env_or_log": 1,
+     "frames_over5": 25
+    },
+    {
+     "pair": "＋left_hip_pitch_link[left_hip_pitch_link/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+     "max_mm": 7.860285369493005,
+     "t": 15,
+     "env_or_log": 5,
+     "frames_over5": 17
+    },
+    {
+     "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_roll_link[mesh_0/cylinder]",
+     "max_mm": 5.567803704779798,
+     "t": 686,
+     "env_or_log": 7,
+     "frames_over5": 11
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_shoulder_yaw_link[left_shoulder_yaw_link/mesh]",
+     "max_mm": 5.429192372893406,
+     "t": 94,
+     "env_or_log": 2,
+     "frames_over5": 34
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_wrist_yaw_link[right_wrist_yaw_link/mesh]",
+     "max_mm": 5.253574207282517,
+     "t": 168,
+     "env_or_log": 7,
+     "frames_over5": 3
+    },
+    {
+     "pair": "　pelvis[pelvis_contour_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 4.9532099513695105,
+     "t": 633,
+     "env_or_log": 7,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　pelvis[pelvis_contour_link/mesh] ↔ left_wrist_roll_link[left_wrist_roll_link/mesh]",
+     "max_mm": 4.759975550585612,
+     "t": 696,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "max_mm": 4.439833763338653,
+     "t": 558,
+     "env_or_log": 7,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_hip_pitch_link[left_hip_pitch_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 3.879026073442554,
+     "t": 14,
+     "env_or_log": 5,
+     "frames_over5": 0
+    },
+    {
+     "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ left_shoulder_roll_link[mesh_0/cylinder]",
+     "max_mm": 3.6613169835567354,
+     "t": 175,
+     "env_or_log": 6,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_wrist_roll_link[left_wrist_roll_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 2.8520963674579343,
+     "t": 690,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　torso_link[head_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 1.6147593735136028,
+     "t": 128,
+     "env_or_log": 3,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_wrist_yaw_link[left_wrist_yaw_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 1.6014597886327557,
+     "t": 145,
+     "env_or_log": 3,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_wrist_roll_link[left_wrist_roll_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 1.2140333971575914,
+     "t": 635,
+     "env_or_log": 6,
+     "frames_over5": 0
+    },
+    {
+     "pair": "＋left_wrist_pitch_link[left_wrist_pitch_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 1.0958711537822472,
+     "t": 610,
+     "env_or_log": 3,
+     "frames_over5": 0
+    }
+   ]
+  },
+  "real": {
+   "n": 13647,
+   "over5_all": 0.488092621088884,
+   "over10_all": 0.0049827800981900785,
+   "over5_new": 0.06272440829486334,
+   "over10_new": 0.003883637429471679,
+   "over5_old": 0.45834249285557266,
+   "over10_old": 0.0012456950245475196,
+   "max_mm": 14.06654801491964,
+   "pairs": [
+    {
+     "pair": "　right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 14.06654801491964,
+     "t": 5865,
+     "env_or_log": 3,
+     "frames_over5": 3018
+    },
+    {
+     "pair": "＋right_hip_roll_link[right_hip_roll_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 13.712042088398848,
+     "t": 1990,
+     "env_or_log": 2,
+     "frames_over5": 842
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_wrist_roll_link[left_wrist_roll_link/mesh]",
+     "max_mm": 11.022796532679068,
+     "t": 5200,
+     "env_or_log": 4,
+     "frames_over5": 17
+    },
+    {
+     "pair": "　left_ankle_roll_link[mesh_0/box] ↔ right_ankle_roll_link[mesh_1/sphere]",
+     "max_mm": 9.241433248354223,
+     "t": 21070,
+     "env_or_log": 0,
+     "frames_over5": 6
+    },
+    {
+     "pair": "　right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_yaw_link[right_wrist_yaw_link/mesh]",
+     "max_mm": 8.579776151687478,
+     "t": 4360,
+     "env_or_log": 0,
+     "frames_over5": 6204
+    },
+    {
+     "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+     "max_mm": 7.8785759198397605,
+     "t": 5230,
+     "env_or_log": 4,
+     "frames_over5": 12
+    },
+    {
+     "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ left_elbow_link[left_elbow_link/mesh]",
+     "max_mm": 7.836335264351925,
+     "t": 5205,
+     "env_or_log": 4,
+     "frames_over5": 14
+    },
+    {
+     "pair": "　left_hip_yaw_link[left_hip_yaw_link/mesh] ↔ left_wrist_yaw_link[left_rubber_hand/mesh]",
+     "max_mm": 6.316582606737101,
+     "t": 23410,
+     "env_or_log": 0,
+     "frames_over5": 4
+    },
+    {
+     "pair": "＋left_hip_roll_link[left_hip_roll_link/mesh] ↔ left_wrist_yaw_link[left_rubber_hand/mesh]",
+     "max_mm": 4.511114445357575,
+     "t": 23415,
+     "env_or_log": 0,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_shoulder_yaw_link[left_shoulder_yaw_link/mesh]",
+     "max_mm": 4.218927978503401,
+     "t": 5385,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_hip_pitch_link[left_hip_pitch_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 3.6325224777696667,
+     "t": 4105,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "＋right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_pitch_link[right_wrist_pitch_link/mesh]",
+     "max_mm": 3.0700910144938534,
+     "t": 4110,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　right_hip_yaw_link[right_hip_yaw_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 2.932118677450563,
+     "t": 4370,
+     "env_or_log": 0,
+     "frames_over5": 0
+    },
+    {
+     "pair": "＋right_hip_roll_link[right_hip_roll_link/mesh] ↔ right_wrist_yaw_link[right_wrist_yaw_link/mesh]",
+     "max_mm": 2.8739131034630248,
+     "t": 4120,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "max_mm": 1.7271213070753015,
+     "t": 7080,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_hip_yaw_link[left_hip_yaw_link/mesh] ↔ right_hip_yaw_link[right_hip_yaw_link/mesh]",
+     "max_mm": 0.7631656039266996,
+     "t": 5530,
+     "env_or_log": 0,
+     "frames_over5": 0
+    }
+   ]
+  }
+ },
+ "orig/true": {
+  "poses": {
+   "default": [],
+   "default_added_min": null,
+   "zero": [],
+   "zero_added_min": null
+  },
+  "golden": {
+   "n": 5596,
+   "over5_all": 0.011615439599714082,
+   "over10_all": 0.000536097212294496,
+   "over5_new": 0.0,
+   "over10_new": 0.0,
+   "over5_old": 0.011615439599714082,
+   "over10_old": 0.000536097212294496,
+   "max_mm": 33.8702663710008,
+   "pairs": [
+    {
+     "pair": "　left_wrist_yaw_link[left_rubber_hand/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 33.8702663710008,
+     "t": 0,
+     "env_or_log": 0,
+     "frames_over5": 3
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 8.039304233291691,
+     "t": 244,
+     "env_or_log": 1,
+     "frames_over5": 25
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_shoulder_yaw_link[left_shoulder_yaw_link/mesh]",
+     "max_mm": 5.429192372893406,
+     "t": 94,
+     "env_or_log": 2,
+     "frames_over5": 34
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_wrist_yaw_link[right_wrist_yaw_link/mesh]",
+     "max_mm": 5.253574207282517,
+     "t": 168,
+     "env_or_log": 7,
+     "frames_over5": 3
+    },
+    {
+     "pair": "　pelvis[pelvis_contour_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 4.9532099513695105,
+     "t": 633,
+     "env_or_log": 7,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　pelvis[pelvis_contour_link/mesh] ↔ left_wrist_roll_link[left_wrist_roll_link/mesh]",
+     "max_mm": 4.759975550585612,
+     "t": 696,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "max_mm": 4.439833763338653,
+     "t": 558,
+     "env_or_log": 7,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_hip_pitch_link[left_hip_pitch_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 3.879026073442554,
+     "t": 14,
+     "env_or_log": 5,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_wrist_roll_link[left_wrist_roll_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 2.8520963674579343,
+     "t": 690,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　torso_link[head_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 1.6147593735136028,
+     "t": 128,
+     "env_or_log": 3,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_wrist_yaw_link[left_wrist_yaw_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 1.6014597886327557,
+     "t": 145,
+     "env_or_log": 3,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_wrist_roll_link[left_wrist_roll_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 1.2140333971575914,
+     "t": 635,
+     "env_or_log": 6,
+     "frames_over5": 0
+    }
+   ]
+  },
+  "real": {
+   "n": 13647,
+   "over5_all": 0.45834249285557266,
+   "over10_all": 0.0012456950245475196,
+   "over5_new": 0.0,
+   "over10_new": 0.0,
+   "over5_old": 0.45834249285557266,
+   "over10_old": 0.0012456950245475196,
+   "max_mm": 14.06654801491964,
+   "pairs": [
+    {
+     "pair": "　right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 14.06654801491964,
+     "t": 5865,
+     "env_or_log": 3,
+     "frames_over5": 3018
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_wrist_roll_link[left_wrist_roll_link/mesh]",
+     "max_mm": 11.022796532679068,
+     "t": 5200,
+     "env_or_log": 4,
+     "frames_over5": 17
+    },
+    {
+     "pair": "　left_ankle_roll_link[mesh_0/box] ↔ right_ankle_roll_link[mesh_1/sphere]",
+     "max_mm": 9.241433248354223,
+     "t": 21070,
+     "env_or_log": 0,
+     "frames_over5": 6
+    },
+    {
+     "pair": "　right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_yaw_link[right_wrist_yaw_link/mesh]",
+     "max_mm": 8.579776151687478,
+     "t": 4360,
+     "env_or_log": 0,
+     "frames_over5": 6204
+    },
+    {
+     "pair": "　left_hip_yaw_link[left_hip_yaw_link/mesh] ↔ left_wrist_yaw_link[left_rubber_hand/mesh]",
+     "max_mm": 6.316582606737101,
+     "t": 23410,
+     "env_or_log": 0,
+     "frames_over5": 4
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_shoulder_yaw_link[left_shoulder_yaw_link/mesh]",
+     "max_mm": 4.218927978503401,
+     "t": 5385,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_hip_pitch_link[left_hip_pitch_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 3.6325224777696667,
+     "t": 4105,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　right_hip_yaw_link[right_hip_yaw_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 2.932118677450563,
+     "t": 4370,
+     "env_or_log": 0,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "max_mm": 1.7271213070753015,
+     "t": 7080,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_hip_yaw_link[left_hip_yaw_link/mesh] ↔ right_hip_yaw_link[right_hip_yaw_link/mesh]",
+     "max_mm": 0.7631656039266996,
+     "t": 5530,
+     "env_or_log": 0,
+     "frames_over5": 0
+    }
+   ]
+  }
+ },
+ "fixed/physx": {
+  "poses": {
+   "default": [
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "dist_mm": 1.1699388940807487
+    }
+   ],
+   "default_added_min": {
+    "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_roll_link[mesh_0/cylinder]",
+    "dist_mm": 9.167864359487828
+   },
+   "zero": [
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "dist_mm": 1.1699388940807487
+    }
+   ],
+   "zero_added_min": {
+    "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_roll_link[mesh_0/cylinder]",
+    "dist_mm": 9.167864359487828
+   }
+  },
+  "golden": {
+   "n": 5596,
+   "over5_all": 0.2773409578270193,
+   "over10_all": 0.0630807719799857,
+   "over5_new": 0.08345246604717656,
+   "over10_new": 0.02555396711937098,
+   "over5_old": 0.2516082916368835,
+   "over10_old": 0.03752680486061472,
+   "max_mm": 45.23790743691826,
+   "pairs": [
+    {
+     "pair": "＋right_hip_roll_link[right_hip_roll_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 45.23790743691826,
+     "t": 96,
+     "env_or_log": 3,
+     "frames_over5": 30
+    },
+    {
+     "pair": "　left_wrist_yaw_link[left_rubber_hand/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 36.13632118501325,
+     "t": 0,
+     "env_or_log": 0,
+     "frames_over5": 3
+    },
+    {
+     "pair": "＋left_hip_roll_link[left_hip_roll_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 25.338628919955656,
+     "t": 13,
+     "env_or_log": 5,
+     "frames_over5": 32
+    },
+    {
+     "pair": "＋left_hip_roll_link[left_hip_roll_link/mesh] ↔ left_wrist_yaw_link[left_rubber_hand/mesh]",
+     "max_mm": 24.64196849990201,
+     "t": 13,
+     "env_or_log": 5,
+     "frames_over5": 15
+    },
+    {
+     "pair": "＋pelvis[pelvis_contour_link/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+     "max_mm": 14.535952844781947,
+     "t": 642,
+     "env_or_log": 2,
+     "frames_over5": 179
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "max_mm": 13.5697384709066,
+     "t": 538,
+     "env_or_log": 7,
+     "frames_over5": 428
+    },
+    {
+     "pair": "＋torso_link[head_link/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+     "max_mm": 11.58830981063737,
+     "t": 174,
+     "env_or_log": 6,
+     "frames_over5": 7
+    },
+    {
+     "pair": "＋left_elbow_link[left_elbow_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 11.13198537556383,
+     "t": 687,
+     "env_or_log": 4,
+     "frames_over5": 5
+    },
+    {
+     "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ left_elbow_link[left_elbow_link/mesh]",
+     "max_mm": 11.09901925918378,
+     "t": 584,
+     "env_or_log": 3,
+     "frames_over5": 25
+    },
+    {
+     "pair": "＋left_hip_roll_link[left_hip_roll_link/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+     "max_mm": 10.97718741774565,
+     "t": 13,
+     "env_or_log": 5,
+     "frames_over5": 5
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 9.706354487936945,
+     "t": 245,
+     "env_or_log": 1,
+     "frames_over5": 331
+    },
+    {
+     "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_roll_link[mesh_0/cylinder]",
+     "max_mm": 9.687210111834162,
+     "t": 688,
+     "env_or_log": 7,
+     "frames_over5": 340
+    },
+    {
+     "pair": "＋left_hip_pitch_link[left_hip_pitch_link/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+     "max_mm": 9.504037776305328,
+     "t": 15,
+     "env_or_log": 5,
+     "frames_over5": 21
+    },
+    {
+     "pair": "　pelvis[pelvis_contour_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 8.68548621579344,
+     "t": 633,
+     "env_or_log": 7,
+     "frames_over5": 96
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_wrist_roll_link[left_wrist_roll_link/mesh]",
+     "max_mm": 8.297468003258263,
+     "t": 584,
+     "env_or_log": 3,
+     "frames_over5": 11
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_shoulder_yaw_link[left_shoulder_yaw_link/mesh]",
+     "max_mm": 8.07863993001524,
+     "t": 790,
+     "env_or_log": 5,
+     "frames_over5": 579
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_wrist_yaw_link[right_wrist_yaw_link/mesh]",
+     "max_mm": 7.9688026624699235,
+     "t": 204,
+     "env_or_log": 2,
+     "frames_over5": 46
+    },
+    {
+     "pair": "　pelvis[pelvis_contour_link/mesh] ↔ left_wrist_roll_link[left_wrist_roll_link/mesh]",
+     "max_mm": 5.727945374167864,
+     "t": 696,
+     "env_or_log": 4,
+     "frames_over5": 3
+    },
+    {
+     "pair": "　left_hip_pitch_link[left_hip_pitch_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 5.548344744544951,
+     "t": 15,
+     "env_or_log": 5,
+     "frames_over5": 4
+    },
+    {
+     "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ left_shoulder_roll_link[mesh_0/cylinder]",
+     "max_mm": 5.334392598810444,
+     "t": 37,
+     "env_or_log": 2,
+     "frames_over5": 5
+    },
+    {
+     "pair": "　left_wrist_roll_link[left_wrist_roll_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 4.553319302549233,
+     "t": 690,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_wrist_yaw_link[left_wrist_yaw_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 4.28230071372031,
+     "t": 172,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　torso_link[head_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 3.79292383684686,
+     "t": 127,
+     "env_or_log": 3,
+     "frames_over5": 0
+    },
+    {
+     "pair": "＋left_wrist_pitch_link[left_wrist_pitch_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 3.5908078650790722,
+     "t": 625,
+     "env_or_log": 0,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_wrist_roll_link[left_wrist_roll_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 2.9200215262188673,
+     "t": 650,
+     "env_or_log": 6,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 1.0144326569159594,
+     "t": 124,
+     "env_or_log": 2,
+     "frames_over5": 0
+    },
+    {
+     "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ right_wrist_pitch_link[right_wrist_pitch_link/mesh]",
+     "max_mm": 0.5307381250500214,
+     "t": 211,
+     "env_or_log": 0,
+     "frames_over5": 0
+    }
+   ]
+  },
+  "real": {
+   "n": 13647,
+   "over5_all": 0.6076793434454459,
+   "over10_all": 0.009819007840551036,
+   "over5_new": 0.06587528394518942,
+   "over10_new": 0.006521579834395838,
+   "over5_old": 0.6021103539239393,
+   "over10_old": 0.0049827800981900785,
+   "max_mm": 22.8408621263537,
+   "pairs": [
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_wrist_roll_link[left_wrist_roll_link/mesh]",
+     "max_mm": 22.8408621263537,
+     "t": 5175,
+     "env_or_log": 4,
+     "frames_over5": 20
+    },
+    {
+     "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ left_elbow_link[left_elbow_link/mesh]",
+     "max_mm": 18.38013899249518,
+     "t": 5205,
+     "env_or_log": 4,
+     "frames_over5": 16
+    },
+    {
+     "pair": "　right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 15.70699912708241,
+     "t": 5855,
+     "env_or_log": 3,
+     "frames_over5": 3029
+    },
+    {
+     "pair": "＋right_hip_roll_link[right_hip_roll_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 14.37717838478737,
+     "t": 1990,
+     "env_or_log": 2,
+     "frames_over5": 877
+    },
+    {
+     "pair": "＋torso_link[torso_link_rev_1_0/mesh] ↔ left_wrist_pitch_link[left_wrist_pitch_link/mesh]",
+     "max_mm": 14.34870168460343,
+     "t": 5165,
+     "env_or_log": 4,
+     "frames_over5": 19
+    },
+    {
+     "pair": "　right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_yaw_link[right_wrist_yaw_link/mesh]",
+     "max_mm": 10.999010509853198,
+     "t": 4115,
+     "env_or_log": 4,
+     "frames_over5": 6445
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "max_mm": 9.54547687339198,
+     "t": 7080,
+     "env_or_log": 4,
+     "frames_over5": 1521
+    },
+    {
+     "pair": "　left_ankle_roll_link[mesh_0/box] ↔ right_ankle_roll_link[mesh_1/sphere]",
+     "max_mm": 9.241433248354223,
+     "t": 21070,
+     "env_or_log": 0,
+     "frames_over5": 6
+    },
+    {
+     "pair": "　left_hip_yaw_link[left_hip_yaw_link/mesh] ↔ left_wrist_yaw_link[left_rubber_hand/mesh]",
+     "max_mm": 8.827322491979816,
+     "t": 23405,
+     "env_or_log": 0,
+     "frames_over5": 18
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_shoulder_yaw_link[left_shoulder_yaw_link/mesh]",
+     "max_mm": 8.74536585834048,
+     "t": 5750,
+     "env_or_log": 4,
+     "frames_over5": 212
+    },
+    {
+     "pair": "　left_hip_pitch_link[left_hip_pitch_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 6.756901890142539,
+     "t": 4120,
+     "env_or_log": 4,
+     "frames_over5": 825
+    },
+    {
+     "pair": "＋left_hip_roll_link[left_hip_roll_link/mesh] ↔ left_wrist_yaw_link[left_rubber_hand/mesh]",
+     "max_mm": 5.9667312346993295,
+     "t": 23415,
+     "env_or_log": 0,
+     "frames_over5": 3
+    },
+    {
+     "pair": "　right_hip_yaw_link[right_hip_yaw_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 4.332554484121796,
+     "t": 4370,
+     "env_or_log": 0,
+     "frames_over5": 0
+    },
+    {
+     "pair": "＋right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_pitch_link[right_wrist_pitch_link/mesh]",
+     "max_mm": 4.243104038406143,
+     "t": 4110,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "＋right_hip_roll_link[right_hip_roll_link/mesh] ↔ right_wrist_yaw_link[right_wrist_yaw_link/mesh]",
+     "max_mm": 3.643792296779207,
+     "t": 4115,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_hip_yaw_link[left_hip_yaw_link/mesh] ↔ right_hip_yaw_link[right_hip_yaw_link/mesh]",
+     "max_mm": 1.3719572750950517,
+     "t": 5530,
+     "env_or_log": 0,
+     "frames_over5": 0
+    }
+   ]
+  }
+ },
+ "orig/physx": {
+  "poses": {
+   "default": [
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "dist_mm": 1.1699388940807487
+    }
+   ],
+   "default_added_min": null,
+   "zero": [
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "dist_mm": 1.1699388940807487
+    }
+   ],
+   "zero_added_min": null
+  },
+  "golden": {
+   "n": 5596,
+   "over5_all": 0.2516082916368835,
+   "over10_all": 0.03752680486061472,
+   "over5_new": 0.0,
+   "over10_new": 0.0,
+   "over5_old": 0.2516082916368835,
+   "over10_old": 0.03752680486061472,
+   "max_mm": 36.13632118501325,
+   "pairs": [
+    {
+     "pair": "　left_wrist_yaw_link[left_rubber_hand/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 36.13632118501325,
+     "t": 0,
+     "env_or_log": 0,
+     "frames_over5": 3
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "max_mm": 13.5697384709066,
+     "t": 538,
+     "env_or_log": 7,
+     "frames_over5": 428
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 9.706354487936945,
+     "t": 245,
+     "env_or_log": 1,
+     "frames_over5": 331
+    },
+    {
+     "pair": "　pelvis[pelvis_contour_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 8.68548621579344,
+     "t": 633,
+     "env_or_log": 7,
+     "frames_over5": 96
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_wrist_roll_link[left_wrist_roll_link/mesh]",
+     "max_mm": 8.297468003258263,
+     "t": 584,
+     "env_or_log": 3,
+     "frames_over5": 11
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_shoulder_yaw_link[left_shoulder_yaw_link/mesh]",
+     "max_mm": 8.07863993001524,
+     "t": 790,
+     "env_or_log": 5,
+     "frames_over5": 579
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_wrist_yaw_link[right_wrist_yaw_link/mesh]",
+     "max_mm": 7.9688026624699235,
+     "t": 204,
+     "env_or_log": 2,
+     "frames_over5": 46
+    },
+    {
+     "pair": "　pelvis[pelvis_contour_link/mesh] ↔ left_wrist_roll_link[left_wrist_roll_link/mesh]",
+     "max_mm": 5.727945374167864,
+     "t": 696,
+     "env_or_log": 4,
+     "frames_over5": 3
+    },
+    {
+     "pair": "　left_hip_pitch_link[left_hip_pitch_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 5.548344744544951,
+     "t": 15,
+     "env_or_log": 5,
+     "frames_over5": 4
+    },
+    {
+     "pair": "　left_wrist_roll_link[left_wrist_roll_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 4.553319302549233,
+     "t": 690,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_wrist_yaw_link[left_wrist_yaw_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 4.28230071372031,
+     "t": 172,
+     "env_or_log": 4,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　torso_link[head_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 3.79292383684686,
+     "t": 127,
+     "env_or_log": 3,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_wrist_roll_link[left_wrist_roll_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 2.9200215262188673,
+     "t": 650,
+     "env_or_log": 6,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 1.0144326569159594,
+     "t": 124,
+     "env_or_log": 2,
+     "frames_over5": 0
+    }
+   ]
+  },
+  "real": {
+   "n": 13647,
+   "over5_all": 0.6021103539239393,
+   "over10_all": 0.0049827800981900785,
+   "over5_new": 0.0,
+   "over10_new": 0.0,
+   "over5_old": 0.6021103539239393,
+   "over10_old": 0.0049827800981900785,
+   "max_mm": 22.8408621263537,
+   "pairs": [
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_wrist_roll_link[left_wrist_roll_link/mesh]",
+     "max_mm": 22.8408621263537,
+     "t": 5175,
+     "env_or_log": 4,
+     "frames_over5": 20
+    },
+    {
+     "pair": "　right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 15.70699912708241,
+     "t": 5855,
+     "env_or_log": 3,
+     "frames_over5": 3029
+    },
+    {
+     "pair": "　right_hip_pitch_link[right_hip_pitch_link/mesh] ↔ right_wrist_yaw_link[right_wrist_yaw_link/mesh]",
+     "max_mm": 10.999010509853198,
+     "t": 4115,
+     "env_or_log": 4,
+     "frames_over5": 6445
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ right_shoulder_yaw_link[right_shoulder_yaw_link/mesh]",
+     "max_mm": 9.54547687339198,
+     "t": 7080,
+     "env_or_log": 4,
+     "frames_over5": 1521
+    },
+    {
+     "pair": "　left_ankle_roll_link[mesh_0/box] ↔ right_ankle_roll_link[mesh_1/sphere]",
+     "max_mm": 9.241433248354223,
+     "t": 21070,
+     "env_or_log": 0,
+     "frames_over5": 6
+    },
+    {
+     "pair": "　left_hip_yaw_link[left_hip_yaw_link/mesh] ↔ left_wrist_yaw_link[left_rubber_hand/mesh]",
+     "max_mm": 8.827322491979816,
+     "t": 23405,
+     "env_or_log": 0,
+     "frames_over5": 18
+    },
+    {
+     "pair": "　torso_link[torso_link_rev_1_0/mesh] ↔ left_shoulder_yaw_link[left_shoulder_yaw_link/mesh]",
+     "max_mm": 8.74536585834048,
+     "t": 5750,
+     "env_or_log": 4,
+     "frames_over5": 212
+    },
+    {
+     "pair": "　left_hip_pitch_link[left_hip_pitch_link/mesh] ↔ left_wrist_yaw_link[left_wrist_yaw_link/mesh]",
+     "max_mm": 6.756901890142539,
+     "t": 4120,
+     "env_or_log": 4,
+     "frames_over5": 825
+    },
+    {
+     "pair": "　right_hip_yaw_link[right_hip_yaw_link/mesh] ↔ right_wrist_yaw_link[right_rubber_hand/mesh]",
+     "max_mm": 4.332554484121796,
+     "t": 4370,
+     "env_or_log": 0,
+     "frames_over5": 0
+    },
+    {
+     "pair": "　left_hip_yaw_link[left_hip_yaw_link/mesh] ↔ right_hip_yaw_link[right_hip_yaw_link/mesh]",
+     "max_mm": 1.3719572750950517,
+     "t": 5530,
+     "env_or_log": 0,
+     "frames_over5": 0
+    }
+   ]
+  }
+ }
+}

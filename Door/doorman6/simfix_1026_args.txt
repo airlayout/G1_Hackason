@@ -1,0 +1,58 @@
+# シミュレータと実機の食い違いの直し（10-26、計画書 2026-10-26-g1-door-stand-foot-load-check.md の追記の章）。
+# VIRAL6 にパッチ 0069・0070 を当てた上で、Hydra の上書きとして渡す（# の行と空行は読む側で捨てる）。
+# 行の頭の [記号] は直しの番号。V の確かめでは 1 つだけ入れる／外すことがあるので、記号で選べる形にしてある
+#   例: grep -v '^#' simfix_1026_args.txt | grep -v '^$' | sed 's/^\[[^]]*\] *//' | xargs
+# 学習済みの条件（armature ×3・摩擦 ×0・乱択なし・遅れ 0・膝 139）が既定のまま。ここに書いた値で上書きして初めて直る
+
+# [B] 腕の積み上げを今の角度 ±0.3 rad・可動域の端から 0.05 rad 内側に収める（実機の door_core と同じ関数）
+[B] ++env.config.arm_accum_guard_delta=0.3
+[B] ++env.config.arm_accum_guard_margin=0.05
+
+# [2] 送る目標を可動域の端から 0.05 rad 内側に切る（0051）・全関節の 1 制御ステップの変化を 0.7 rad まで（実機の MAX_TARGET_STEP）
+[2] ++env.config.clip_targets_to_limits_margin=0.05
+[2] ++env.config.target_step_limit=0.7
+
+# [1] armature: 右腕を左腕と同じ値に（元は 43 関節版の表の列ずれで 0.01）。×3 を外す（公式の根拠なし）
+[1] ++robot.dof_armature_list=[0.01017752004,0.025101925,0.01017752004,0.025101925,0.00721945,0.00721945,0.01017752004,0.025101925,0.01017752004,0.025101925,0.00721945,0.00721945,0.01017752004,0.00721945,0.00721945,0.003609725,0.003609725,0.003609725,0.003609725,0.003609725,0.00425,0.00425,0.003609725,0.003609725,0.003609725,0.003609725,0.003609725,0.00425,0.00425]
+[1] ++simulator.config.armature_scale=1.0
+
+# [5] 指令の遅れ 0〜1 制御ステップ（0〜20 ms。実機は平均 15 ms・最大 32 ms）
+[5] ++domain_rand.randomize_ctrl_delay=True
+[5] ++domain_rand.ctrl_delay_step_range=[0,1]
+
+# [6] 関節の摩擦: 公式の MuJoCo の frictionloss（0.2 N·m、手首 pitch・yaw は 0.1）を基準に、台ごとに ×0.5〜1.5
+[6] ++robot.dof_joint_friction_list=[0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.1,0.1,0.2,0.2,0.2,0.2,0.2,0.1,0.1]
+[6] ++simulator.config.joint_friction_scale=1.0
+[6] ++domain_rand.randomize_joint_friction=True
+[6] ++domain_rand.joint_friction_scale_range=[0.5,1.5]
+
+# [7] 膝の力の上限 139 → 120 N·m（電動機の曲線 111／131 の間。機体の版を確かめてから確定）
+[7] ++robot.dof_effort_limit_list=[88.0,139.0,88.0,120.0,35.0,35.0,88.0,139.0,88.0,120.0,35.0,35.0,88.0,35.0,35.0,25.0,25.0,25.0,25.0,25.0,5.0,5.0,25.0,25.0,25.0,25.0,25.0,5.0,5.0]
+
+# [4] 乱択: 手足と床の摩擦 0.3〜1.5・胴の質量 ±2 kg・胴の重心 ±3 cm・PD の固さ ×0.9〜1.1（押すは [4p]）
+[4] ++domain_rand.randomize_friction=True
+[4] ++domain_rand.friction_range=[0.3,1.5]
+[4] ++domain_rand.randomize_torso_mass=True
+[4] ++domain_rand.torso_mass_range=[-2.0,2.0]
+[4] ++domain_rand.randomize_base_com=True
+[4] ++domain_rand.base_com_range={x:[-0.03,0.03],y:[-0.03,0.03],z:[-0.03,0.03]}
+[4] ++domain_rand.randomize_actuator_gains=True
+[4] ++domain_rand.actuator_kp_range=[0.9,1.1]
+[4] ++domain_rand.actuator_kd_range=[0.9,1.1]
+# [4p] 押す（0.5 m/s を 8〜10 秒おき。評価では押さない）。push_isaacsim=True が要る（既定の学習の条件を変えないため。0074）
+[4p] ++domain_rand.push_robots=True
+[4p] ++domain_rand.push_isaacsim=True
+[4p] ++domain_rand.push_interval_s=[8,11]
+[4p] ++domain_rand.max_push_vel_xy=0.5
+
+# [3] 腕の力が上限の 9 割以上の時間に罰（物理 1 回ごとに PhysX の力を読む。self.torques は Isaac Sim では 0 のまま）
+[3] ++env.config.substep_monitor=True
+[3] ++rewards.reward_scales.penalty_arm_torque_saturation=-0.2
+
+# [C] 前腕・手首・手と胴・骨盤・脚の当たりに罰（[A] の当たりの形が要る）
+[C] ++env.config.substep_monitor=True
+[C] ++simulator.config.arm_body_contact_sensor=True
+[C] ++rewards.reward_scales.penalty_arm_body_contact=-0.2
+
+# [A] 当たりの形を足した USD（usd_fix/ で作り、VIRAL6 の gr00t/rl/data/robots/g1/ に置く）
+[A] ++robot.asset.usd_file=g1/g1_29dof_rev_1_0_col/g1_29dof_rev_1_0_col.usd

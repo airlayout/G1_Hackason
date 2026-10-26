@@ -8,13 +8,16 @@
   2. 生徒: 観測 151 → 鏡写し（把手が左の扉）→ 正規化 → LSTM 2 層 → MLP → 増分 17（鏡写しの側）→ 映し戻す
   3. HOMIE: 1 ステップ 86 を作り、履歴 5 と合わせた 516 → 歩く／立つの方策 → 脚と腰 15
      ⚠️ HOMIE が見る指令は前のステップのもの（生徒の出力は 1 ステップ遅れて脚に届く）
-  4. 増分を積算 D（±15）→ 指令 = clip(0.25·D[0:3], ±0.5)、腕の目標角 = 0.25·D[3:17]
+  4. 増分を積算 D（±15）→ 腕の D を今の角度 ±0.3 rad・可動域の端から 0.05 rad 内側に収める（直し B、10-26）
+     → 指令 = clip(0.25·D[0:3], ±0.5)、腕の目標角 = 0.25·D[3:17]
   5. 関節の目標角 = 0.25·[HOMIE 15, D[3:17]] + 既定の角度
 
 落とし穴（spec_actor.md・spec_homie.md）:
   - 観測の項目は設定の並びでなく名前の辞書順につながる（params.layout が持つ）
   - 腕のトルク（arm_dof_torque）はシミュレータでは常に 0 だった（＋雑音）。実機でも 0 を入れる
   - 鏡写しは項目ごとに、尺度を掛けた後・正規化の前。HOMIE の観測は鏡写しにしない
+  - 腕の D の切り方（B）と立つ HOMIE の指令の消し方（8）は target_guard.py。学習（VIRAL6、パッチ 0069）と同じファイル。
+    10-16 の正解の記録（golden_45150）はどちらも無い評価で取ったので、check_golden.py は両方を切って比べる
 """
 from __future__ import annotations
 
@@ -24,6 +27,8 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+import target_guard as tg
+
 NUM_DOF = 29
 NUM_ACT = 17  # [前後, 横, 旋回, 左腕 7, 右腕 7]
 NUM_HOMIE = 15  # 脚 12＋腰 3（SDK 0〜14）
@@ -31,6 +36,9 @@ HOMIE_STEP = 86
 HOMIE_HIST = 5
 LSTM_LAYERS = 2
 LSTM_HIDDEN = 256
+ARM_GUARD_DELTA = 0.3  # [rad] 腕の目標は今の角度からここまで（直し B。シミュレータの 1 周期の腕の動きの p99 から決めた）
+ARM_GUARD_MARGIN = 0.05  # [rad] 可動域の端からの余裕（door_run_real.py の送る目標の切り方と同じ）
+ARM_GUARD = (ARM_GUARD_DELTA, ARM_GUARD_MARGIN)
 
 
 @dataclass(frozen=True)
@@ -276,16 +284,18 @@ def homie_one_step(p: Params, s: CoreState, inp: Inputs) -> np.ndarray:
     )
 
 
-def homie_forward(p: Params, s: CoreState, one: np.ndarray, zero_stand_cmd: bool = False):
-    """歩く／立つを今のステップの指令の大きさ（観測の尺度）で切り替える。評価のコードは立つ方策にも指令をそのまま渡していた"""
+def homie_forward(p: Params, s: CoreState, one: np.ndarray, zero_stand_cmd: bool = True):
+    """歩く／立つを今のステップの指令の大きさ（観測の尺度）で切り替える。
+
+    立つ方策には全フレームの指令の欄を 0 にして渡す（学習と同じ。直し 8、10-26）。
+    zero_stand_cmd=False は 10-16 の評価（立つ方策にも指令をそのまま渡していた）と比べる用。返す obs は消す前の値
+    """
     obs = np.concatenate([s.homie_hist.reshape(-1), one])
     walk = bool(np.linalg.norm(one[0:3]) > p.c["homie_switch_threshold"])
     if walk:
         return p.homie_walk(obs), obs, walk
     if zero_stand_cmd:
-        z = obs.reshape(HOMIE_HIST + 1, HOMIE_STEP).copy()
-        z[:, 0:3] = 0.0
-        return p.homie_stand(z.reshape(-1)), obs, walk
+        return p.homie_stand(tg.zero_stand_command(obs, HOMIE_HIST + 1)), obs, walk
     return p.homie_stand(obs), obs, walk
 
 
@@ -296,9 +306,21 @@ def command_from_D(p: Params, D: np.ndarray) -> np.ndarray:
     return cmd
 
 
-def step(p: Params, s: CoreState, inp: Inputs, mode: str = "door", zero_stand_cmd: bool = False):
+def guard_arm_D(p: Params, D: np.ndarray, q: np.ndarray, arm_guard: Tuple[float, float]) -> np.ndarray:
+    """腕の積み上げ D[3:17] を今の角度 ±delta・可動域の端から margin 内側に収めた D を返す（直し B）"""
+    delta, margin = arm_guard
+    arm = p.arm_dof
+    D_arm = tg.guard_arm_accumulator(D[3:], q[arm], p.q_default[arm], p.q_lower[arm], p.q_upper[arm],
+                                     p.c["action_scale"], delta, margin)
+    return np.concatenate([D[:3], D_arm])
+
+
+def step(p: Params, s: CoreState, inp: Inputs, mode: str = "door", zero_stand_cmd: bool = True,
+         arm_guard: Optional[Tuple[float, float]] = ARM_GUARD):
     """1 制御ステップ。mode: "door"＝生徒と HOMIE／"hold"＝生徒を止める（指令 0・腕は今の目標のまま）
 
+    arm_guard: (delta, margin)。腕の D を積んだ直後に今の角度 ±delta・可動域の端から margin 内側へ収める（B）。
+               None は切らない（10-16 の正解の記録と比べる用）
     返り値: (次の状態, StepOut)
     """
     obs = build_actor_obs(p, s, inp)
@@ -306,6 +328,8 @@ def step(p: Params, s: CoreState, inp: Inputs, mode: str = "door", zero_stand_cm
         a_pol, h, cell = actor_forward(p, obs, s.h, s.cell)
         a_real = p.act_mirror @ a_pol if p.mirror else a_pol
         D = np.clip(s.D + p.c["delta_action_scale"] * a_real, -p.c["delta_action_clip"], p.c["delta_action_clip"])
+        if arm_guard is not None:
+            D = guard_arm_D(p, D, inp.q, arm_guard)
     elif mode == "hold":
         a_pol = np.zeros(NUM_ACT)
         a_real = np.zeros(NUM_ACT)

@@ -14,6 +14,7 @@
 # VIDEO=1: Isaac Sim の描画で台ごとに mp4 を書く（DoorMan の render_results。カメラは扉の手前の右後ろに固定）。
 #   描画はメモリを食うので台数は 8 程度にする（例: VIDEO=1 ./eval_from_start.sh "" 8）。動画は records/<日時>/video/ に
 #   env<番号>_ok.mp4（通り抜けた）・env<番号>_stage<届いた区間>.mp4 の名前で置く
+# EVAL_REPO=<~/work_inoue/doorman6 の下の作業ツリー>（既定 VIRAL6。10-26: 直しの確かめは VIRAL6_fix）
 # 出力: records/start_<日時>/（記録・eval.log・summary.json）。最後の行は「=== ... eval_from_start success=a/b rate=r」
 set -uo pipefail
 BASE="$HOME/work_inoue/doorman"
@@ -47,7 +48,7 @@ else
   for _ in 1 2 3; do ./pause_training.sh on && break; done  # 走り始めて 5 分以内の区切りは止めるのが遅れる
 fi
 
-WORK="$WORK6" REPO=VIRAL6 ENV_NAME=doorman6 IGNORE_PAUSE=1 IDLE_GATE="${IDLE_GATE:-1}" MAX_WAIT_MIN="${MAX_WAIT_MIN:-30}" MEM_MAX="${MEM_MAX:-8G}" \
+WORK="$WORK6" REPO="${EVAL_REPO:-VIRAL6}" ENV_NAME=doorman6 IGNORE_PAUSE=1 IDLE_GATE="${IDLE_GATE:-1}" MAX_WAIT_MIN="${MAX_WAIT_MIN:-30}" MEM_MAX="${MEM_MAX:-8G}" \
   ./run_eval_record.sh "$BASE/ckpt/$TAG/last.pt" "$OUT" "$NUM_ENVS" "$NUM_ENVS" "${MINUTES:-20}" \
   ++env.config.enable_staged_reset=False ++algo.config.eval.eval_num_envs_episodes=True ${EXTRA_ARGS:-} \
   ${VIDEO_ARGS:+$VIDEO_ARGS ++env.config.save_rendering_dir=$OUT/video}

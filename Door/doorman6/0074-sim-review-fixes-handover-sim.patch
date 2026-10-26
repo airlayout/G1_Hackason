@@ -1,0 +1,697 @@
+From bf8545275a86ed379f5f01101810c9cc5cab12bd Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 26 Oct 2026 10:31:50 +0900
+Subject: [PATCH] sim: arm-to-body contact sensors one per arm body (a single
+ sensor with 8 bodies fails with 2+ envs), push only with
+ domain_rand.push_isaacsim, per-joint arm guard delta list, golden trace keeps
+ delta 0, startup log of active fixes; tools: handover_sim.py (E1-E3: rope,
+ contact truth, door_core HOMIE loop, door_run_real in the loop) (10-26)
+
+---
+ gr00t/rl/envs/base_task/delta_action_base.py |  23 +-
+ gr00t/rl/handover_sim.py                     | 507 +++++++++++++++++++
+ gr00t/rl/simfix_probe.py                     |   5 +
+ gr00t/rl/simulator/isaacsim/isaacsim.py      |  34 +-
+ gr00t/rl/utils/golden_trace.py               |  14 +-
+ 5 files changed, 564 insertions(+), 19 deletions(-)
+ create mode 100644 gr00t/rl/handover_sim.py
+
+diff --git a/gr00t/rl/envs/base_task/delta_action_base.py b/gr00t/rl/envs/base_task/delta_action_base.py
+index c5c00ac..8501dd7 100644
+--- a/gr00t/rl/envs/base_task/delta_action_base.py
++++ b/gr00t/rl/envs/base_task/delta_action_base.py
+@@ -21,6 +21,15 @@ class DeltaActionBase(LeggedRobotBase):
+         )
+         self._delta_action_scale = config.delta_action_scale
+         super().__init__(config, device)
++        # G1_Hackason（10-26）: 綴り違いで直しが黙って効かないまま走らないよう、効いている直しを 1 行出す
++        logger.info(
++            "G1_Hackason 直し: B arm_accum_guard_delta={} margin={}・2 clip_targets_to_limits_margin={} "
++            "target_step_limit={}・3/C substep_monitor={}".format(
++                config.get("arm_accum_guard_delta", None), config.get("arm_accum_guard_margin", None),
++                config.get("clip_targets_to_limits_margin", None), config.get("target_step_limit", None),
++                config.get("substep_monitor", False),
++            )
++        )
+ 
+     @override
+     def _init_buffers(self):
+@@ -72,7 +81,7 @@ class DeltaActionBase(LeggedRobotBase):
+         guard_delta = self.config.get("arm_accum_guard_delta", None)
+         if guard_delta is not None:
+             self._guard_arm_accumulator(
+-                float(guard_delta), float(self.config.get("arm_accum_guard_margin", 0.05))
++                self._arm_guard_delta(guard_delta), float(self.config.get("arm_accum_guard_margin", 0.05))
+             )
+ 
+         # Configration - 0
+@@ -135,7 +144,17 @@ class DeltaActionBase(LeggedRobotBase):
+             logger.warning(f"stage: {self.stage_buf}")
+         return super().step(actor_state)
+ 
+-    def _guard_arm_accumulator(self, delta: float, margin: float) -> None:
++    def _arm_guard_delta(self, value):
++        """δ は 1 つの値か、腕 14 関節の一覧（関節ごと。例: 0.8×力の上限÷kp と 0.3 の小さい方）"""
++        if isinstance(value, (int, float)):
++            return float(value)
++        if not hasattr(self, "_arm_guard_delta_t"):
++            v = torch.tensor([float(x) for x in value], device=self.device)
++            assert v.shape == (NUM_ARM,), f"arm_accum_guard_delta の一覧は {NUM_ARM} 個（{v.shape}）"
++            self._arm_guard_delta_t = v
++        return self._arm_guard_delta_t
++
++    def _guard_arm_accumulator(self, delta, margin: float) -> None:
+         assert len(self._delta_action_indices) == ARM_ACCUM_START + NUM_ARM, (
+             "arm_accum_guard_delta は積み上げが [前後, 横, 旋回, 腕 14] の並びのときだけ使える"
+         )
+diff --git a/gr00t/rl/handover_sim.py b/gr00t/rl/handover_sim.py
+new file mode 100644
+index 0000000..2b232fc
+--- /dev/null
++++ b/gr00t/rl/handover_sim.py
+@@ -0,0 +1,507 @@
++# G1_Hackason（10-26、計画書 2026-10-26-g1-door-stand-foot-load-check.md の段 3・4）:
++# 吊った機体を HOMIE に渡す場面を Isaac Sim で作り、足の力の逆算（E1）・渡した後に HOMIE が立つか（E2）・
++# 実機用の制御の輪をそのまま回す（E3）を確かめる。simfix_probe.py から probe=e1・e2・e3 で呼ぶ。
++#
++# 場面は扉の環境（DoorMan の学習と同じ設定・同じ USD・同じ PD・同じ周期）をそのまま使い、物理の値は自分で作らない。
++#   綱     胴（torso_link）に上向きの力。const: 体重の share の一定の力／spring: 長さのある綱（ばね・減衰・たるむと 0・
++#          ウィンチで付け根を下げる）。付け根を横（世界の y）にずらすと片足を軽くできる
++#   真値   足（ankle_roll_link）が受ける接触の力（ContactSensor の net_forces_w）
++#   制御   実機と同じ door_core.py（numpy の HOMIE）を 50 Hz で回す。HOLD は全関節を既定の姿勢へ PD（行動 0）
++#   逆算   実機と同じ door_foot_load.py。トルクは PhysX の中の PD の力の見積もり（applied_torque）＝実機の tau_est に当たる
++# 実機用のコード（G1_Hackason/Door/real）は環境変数 DOOR_REAL_DIR の場所から読む。重みの npz は DOOR_POLICY。
++import math
++import os
++import sys
++from pathlib import Path
++
++import numpy as np
++
++DT = 0.02
++G = 9.81
++STAND_BLEND_S = 0.5  # 実機の door_run_real.py と同じ（HOMIE の最初の出力を既定の姿勢から 0.5 秒で移す）
++
++
++def _t(x):
++    import torch
++
++    if hasattr(x, "torch"):
++        return x.torch
++    if isinstance(x, torch.Tensor):
++        return x
++    import warp as wp
++
++    return wp.to_torch(x)
++
++
++def door_real():
++    """実機用のコード（door_core・door_foot_load ほか）を import できるようにして、モジュールを返す"""
++    d = os.environ.get("DOOR_REAL_DIR")
++    if not d or not Path(d).is_dir():
++        raise RuntimeError("DOOR_REAL_DIR（G1_Hackason/Door/real の写し）が要る")
++    if d not in sys.path:
++        sys.path.insert(0, d)
++    import door_core as dc
++    import door_foot_load as dfl
++
++    return dc, dfl
++
++
++class Rope:
++    """胴に掛ける綱。物理 1 回ごとに apply() で力を書き直す（PhysX は書いた力を毎回使う）"""
++
++    def __init__(self, env, share, offset_y, mode="const", length=None, k=6000.0, c=300.0, attach_up=0.25):
++        import torch
++
++        self.env = env
++        self.robot = env.simulator._robot
++        self.torch = torch
++        self.dev = env.device
++        self.idx = self.robot.find_bodies("torso_link", preserve_order=True)[0][0]
++        self.mass = _t(self.robot.data.body_mass).sum(-1).to(self.dev).float()  # [N] 乱択の後の体重
++        self.share = torch.as_tensor(share, device=self.dev, dtype=torch.float).expand(env.num_envs).clone()
++        self.offset_y = torch.as_tensor(offset_y, device=self.dev, dtype=torch.float).expand(env.num_envs).clone()
++        self.mode = mode
++        self.k, self.c, self.attach_up = float(k), float(c), float(attach_up)
++        self.anchor_z = None  # spring: 付け根の高さ（世界）
++        self.length = length
++        self.last_force = torch.zeros(env.num_envs, device=self.dev)
++
++    def _torso(self):
++        pose = _t(self.robot.data.body_link_pose_w)[:, self.idx]  # [N, 7] 位置・xyzw
++        vel = _t(self.robot.data.body_link_vel_w)[:, self.idx]  # [N, 6]
++        return pose[:, :3], vel[:, 2]
++
++    def attach_spring_here(self, slack=0.0):
++        """今の胴の高さで綱がちょうど張る（＋slack のたるみ）ように付け根を決める"""
++        pos, _ = self._torso()
++        self.length = 0.5
++        self.anchor_z = pos[:, 2] + self.attach_up + self.length + slack
++
++    def apply(self):
++        torch = self.torch
++        pos, vz = self._torso()
++        if self.mode == "const":
++            f = self.share * self.mass * G
++        else:
++            z = pos[:, 2] + self.attach_up
++            stretch = (self.anchor_z - z) - self.length
++            f = torch.clamp(self.k * stretch - self.c * vz, min=0.0) * (stretch > 0).float()
++        self.last_force = f
++        n = self.env.num_envs
++        forces = torch.zeros(n, 1, 3, device=self.dev)
++        forces[:, 0, 2] = f
++        at = pos.clone()
++        at[:, 1] += self.offset_y
++        at[:, 2] += self.attach_up
++        self.robot.permanent_wrench_composer.set_forces_and_torques_index(
++            forces=forces, positions=at[:, None, :], body_ids=torch.tensor([self.idx], device=self.dev),
++            is_global=True,
++        )
++
++    def release(self):
++        self.share = self.share * 0.0
++        if self.anchor_z is not None:
++            self.anchor_z = self.anchor_z - 10.0
++
++
++class Truth:
++    """足（ankle_roll_link）が受ける接触の力の鉛直の成分 [N]（世界）"""
++
++    def __init__(self, env):
++        cs = env.simulator.contact_sensor
++        self.cs = cs
++        self.ids = [cs.find_bodies(n, preserve_order=True)[0][0] for n in ("left_ankle_roll_link", "right_ankle_roll_link")]
++
++    def fz(self):
++        f = _t(self.cs.data.net_forces_w)  # [N, 部品, 3]
++        return f[:, self.ids, 2].detach().cpu().numpy()  # [N, 2]
++
++
++def _hook_substep(env, fn):
++    """物理 1 回ごとに fn() を呼ぶ（綱の力を書き直す）。元の _after_physics_substep も呼ぶ"""
++    orig = env._after_physics_substep
++
++    def hook():
++        orig()
++        fn()
++
++    env._after_physics_substep = hook
++
++
++def _state_np(env):
++    q = _t(env.simulator.dof_pos).detach().cpu().numpy().astype(float)
++    dq = _t(env.simulator.dof_vel).detach().cpu().numpy().astype(float)
++    tau = _t(env.simulator.applied_dof_torque).detach().cpu().numpy().astype(float)
++    quat_xyzw = _t(env.simulator.base_quat).detach().cpu().numpy().astype(float)
++    quat = quat_xyzw[:, [3, 0, 1, 2]]  # 実機の IMU と同じ w, x, y, z
++    gyro = _t(env.base_ang_vel).detach().cpu().numpy().astype(float)
++    grav = _t(env.projected_gravity).detach().cpu().numpy().astype(float)
++    return q, dq, tau, quat, gyro, grav
++
++
++def _tilt_deg(grav):
++    return np.degrees(np.arccos(np.clip(-grav[:, 2], -1, 1)))
++
++
++def _hold_step(env):
++    import torch
++
++    env._delta_actions[:] = 0.0
++    act = torch.zeros(env.num_envs, 17 + 15, device=env.device)
++    _, _, reset, _ = env.step({"actions": act})
++    return reset
++
++
++def _grid(shares, offsets):
++    s = [a for a in shares for _ in offsets]
++    o = [b for _ in shares for b in offsets]
++    return s, o
++
++
++# ---------------------------------------------------------------------------------------------------- E1
++
++
++def probe_e1(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.06), settle_s=3.0, measure_s=1.0):
++    """E1: 綱 shares × 付け根の横のずれ offsets の格子（台ごとに 1 条件）で HOLD を保ち、逆算と接触の真値を比べる"""
++    _, dfl = door_real()
++    model = dfl.load_leg_model(Path(os.environ["DOOR_REAL_DIR"]) / "leg_model_g1_29dof_rev_1_0.npz")
++    s, o = _grid(shares, offsets)
++    assert env.num_envs >= len(s), f"台数 {env.num_envs} < 条件 {len(s)}"
++    s += [s[-1]] * (env.num_envs - len(s))
++    o += [o[-1]] * (env.num_envs - len(o))
++    env.reset_all()
++    rope = Rope(env, s, o, "const")
++    _hook_substep(env, rope.apply)
++    truth = Truth(env)
++    est, tru, tilt, falls = [], [], [], 0
++    for k in range(int((settle_s + measure_s) / DT)):
++        reset = _hold_step(env)
++        falls += int(_t(reset).sum())
++        if k * DT >= settle_s:
++            q, dq, tau, quat, gyro, grav = _state_np(env)
++            f = [dfl.foot_forces(model, q[i], tau[i], quat[i]) for i in range(env.num_envs)]
++            est.append([[x.fz_left, x.fz_right] for x in f])
++            tru.append(truth.fz())
++            tilt.append(_tilt_deg(grav))
++    est, tru, tilt = np.mean(est, 0), np.mean(tru, 0), np.mean(tilt, 0)
++    weight = _t(rope.mass).cpu().numpy() * G
++    rows = []
++    for i in range(len(_grid(shares, offsets)[0])):
++        rows.append({
++            "share": s[i], "offset_y": o[i],
++            "true_L": float(tru[i, 0]), "true_R": float(tru[i, 1]), "est_L": float(est[i, 0]), "est_R": float(est[i, 1]),
++            "true_total_ratio": float(tru[i].sum() / weight[i]), "est_total_ratio_model": float(est[i].sum() / model.weight),
++            "total_err_ratio": float(abs(est[i].sum() - tru[i].sum()) / weight[i]),
++            "foot_err_N": float(np.abs(est[i] - tru[i]).max()), "tilt_deg": float(tilt[i]),
++        })
++    np.savez_compressed(out / "e1.npz", est=est, tru=tru, tilt=tilt, share=np.array(s), offset=np.array(o), weight=weight)
++    return {
++        "rows": rows, "falls": falls,
++        "sim_body_mass_kg": float(np.mean(weight) / G), "model_body_mass_kg": float(model.total_mass),
++        "max_total_err_ratio": max(r["total_err_ratio"] for r in rows),
++        "max_foot_err_N": max(r["foot_err_N"] for r in rows),
++    }
++
++
++# ---------------------------------------------------------------------------------------------------- E2
++
++
++class CoreLoop:
++    """door_core（numpy）の HOMIE を台ごとに回す。mode="hold"（生徒を止め、腕は既定の姿勢）で、実機の STAND と同じ"""
++
++    def __init__(self, env, policy_path, delay_steps=0):
++        dc, _ = door_real()
++        self.dc = dc
++        self.p = dc.load_params(policy_path)
++        self.env = env
++        self.states = [dc.initial_state(self.p) for _ in range(env.num_envs)]
++        self.delay = int(delay_steps)
++        self.queue = []
++        self.t0 = None
++
++    def inputs(self, i, q, dq, gyro, grav):
++        dc = self.dc
++        z3, z9 = np.zeros(3), np.zeros(9)
++        return dc.Inputs(q=q[i], dq=dq[i], gyro=gyro[i], gravity=grav[i], door_angle=z3, door_frame_loc=z9,
++                         door_geometry=np.zeros(7))
++
++    def step(self, t_stand):
++        """STAND の t_stand 秒目。HOMIE の脚の行動 [N, 15] を返す（最初の 0.5 秒は既定の姿勢から移す。遅れの列を通す）"""
++        import torch
++
++        q, dq, tau, quat, gyro, grav = _state_np(self.env)
++        acts = []
++        for i in range(self.env.num_envs):
++            self.states[i], out = self.dc.step(self.p, self.states[i], self.inputs(i, q, dq, gyro, grav), mode="hold")
++            a = out.homie_a.copy()
++            if t_stand < STAND_BLEND_S:
++                a = a * (t_stand / STAND_BLEND_S)  # 目標 = 既定 + 0.25·a なので、a を縮めると既定の姿勢から移る
++            acts.append(a)
++        acts = np.stack(acts)
++        self.queue.append(acts)
++        use = self.queue.pop(0) if len(self.queue) > self.delay else np.zeros_like(acts)
++        return torch.as_tensor(use, device=self.env.device, dtype=torch.float)
++
++
++def probe_e2(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.06), extra=(), hold_s=3.0,
++             stand_rope_s=30.0, release_s=2.0, stand_free_s=30.0, delay_steps=0):
++    """E2: 綱の条件の格子で HOLD → STAND（綱そのまま 30 秒）→ 綱を 2 秒で緩める → さらに 30 秒。転倒・揺れを数える。
++    extra: [(share, offset_y), ...] を格子の後に足す（10-23 の再現の条件など）"""
++    import torch
++
++    _, dfl = door_real()
++    model = dfl.load_leg_model(Path(os.environ["DOOR_REAL_DIR"]) / "leg_model_g1_29dof_rev_1_0.npz")
++    s, o = _grid(shares, offsets)
++    for a, b in extra:
++        s.append(float(a))
++        o.append(float(b))
++    n_cond = len(s)
++    assert env.num_envs >= n_cond, f"台数 {env.num_envs} < 条件 {n_cond}"
++    s += [s[-1]] * (env.num_envs - n_cond)
++    o += [o[-1]] * (env.num_envs - n_cond)
++    env.reset_all()
++    rope = Rope(env, s, o, "const")
++    share0 = rope.share.clone()
++    _hook_substep(env, rope.apply)
++    truth = Truth(env)
++    loop = CoreLoop(env, os.environ["DOOR_POLICY"], delay_steps)
++    fell = np.zeros(env.num_envs, bool)
++    fell_t = np.full(env.num_envs, np.nan)
++    rec = {"t": [], "phase": [], "q": [], "dq": [], "tau": [], "quat": [], "fz_true": [], "rope": []}
++    hold_load = []
++    t = 0.0
++    total = hold_s + stand_rope_s + release_s + stand_free_s
++    while t < total:
++        q, dq, tau, quat, gyro, grav = _state_np(env)
++        if t < hold_s:
++            phase = 2  # HOLD
++            reset = _hold_step(env)
++            if t >= hold_s - 1.0:
++                f = [dfl.foot_forces(model, q[i], tau[i], quat[i]) for i in range(env.num_envs)]
++                hold_load.append([[x.fz_left, x.fz_right] for x in f])
++        else:
++            phase = 3  # STAND
++            ts = t - hold_s
++            if stand_rope_s <= ts < stand_rope_s + release_s:
++                rope.share = share0 * (1.0 - (ts - stand_rope_s) / release_s)
++            elif ts >= stand_rope_s + release_s:
++                rope.share = share0 * 0.0
++            leg = loop.step(ts)
++            env._delta_actions[:] = 0.0
++            act = torch.cat([torch.zeros(env.num_envs, 17, device=env.device), leg], dim=-1)
++            _, _, reset, _ = env.step({"actions": act})
++        r = _t(reset).detach().cpu().numpy().astype(bool) & ~_t(env.time_out_buf).detach().cpu().numpy().astype(bool)
++        new = r & ~fell
++        fell_t[new] = t
++        fell |= r
++        for key, v in (("t", t), ("phase", phase), ("q", q), ("dq", dq), ("tau", tau), ("quat", quat),
++                       ("fz_true", truth.fz()), ("rope", _t(rope.last_force).cpu().numpy())):
++            rec[key].append(v)
++        t += DT
++    arr = {k: np.asarray(v) for k, v in rec.items()}
++    np.savez_compressed(out / "e2.npz", share=np.array(s), offset=np.array(o), fell=fell, fell_t=fell_t, **arr)
++    hl = np.mean(hold_load, 0) if hold_load else np.full((env.num_envs, 2), np.nan)
++    t_arr = arr["t"]
++    leg = np.abs(arr["dq"][:, :, :12])  # [時刻, 台, 12]
++    rows = []
++    for i in range(n_cond):
++        st = (arr["phase"] == 3)
++        alive = st & (np.isnan(fell_t[i]) | (t_arr < fell_t[i]))
++        tilt = np.degrees(np.arccos(np.clip(1 - 2 * (arr["quat"][:, i, 1] ** 2 + arr["quat"][:, i, 2] ** 2), -1, 1)))
++        first = st & (t_arr < hold_s + 1.5)
++        later = st & (t_arr >= hold_s + 1.5) & (t_arr < hold_s + 6.0)
++        rows.append({
++            "share": s[i], "offset_y": o[i],
++            "hold_est_L": float(hl[i, 0]), "hold_est_R": float(hl[i, 1]),
++            "hold_total_ratio": float(hl[i].sum() / model.weight), "hold_light_ratio": float(hl[i].min() / model.weight),
++            "fell": bool(fell[i]), "fell_at_s_after_stand": None if np.isnan(fell_t[i]) else float(fell_t[i] - hold_s),
++            "max_leg_speed": float(leg[alive, i].max()) if alive.any() else None,
++            "leg_speed_rms_0_1p5s": float(np.sqrt((leg[first, i] ** 2).mean())) if first.any() else None,
++            "leg_speed_rms_1p5_6s": float(np.sqrt((leg[later, i] ** 2).mean())) if later.any() else None,
++            "max_tilt_deg_stand": float(tilt[alive].max()) if alive.any() else None,
++        })
++    return {"rows": rows, "delay_steps": delay_steps, "falls": int(fell[:n_cond].sum()), "conditions": n_cond}
++
++
++# ---------------------------------------------------------------------------------------------------- E3
++
++
++class _Motor:
++    def __init__(self, q=0.0, dq=0.0, tau=0.0):
++        self.q, self.dq, self.tau_est, self.vol, self.temperature = q, dq, tau, 30.0, [30, 30]
++
++
++class SimRobotIO:
++    """door_run_real.RobotIO の代わり。snapshot は Isaac Sim の機体の状態を lowstate の形で返し、write は目標と PD を書いて
++    物理を 1 制御ステップ（20 ms）進める。リモコンのボタンは台本 script = [(秒, "start" | "A" | "B" | "L2+B" | "INT")]、
++    綱の体重の割合は rope_share(秒) で決める（秒は run の始めからの壁時計）"""
++
++    def __init__(self, env, rope, script, rope_share, key_bits, gain_ratio):
++        import time
++
++        import torch
++
++        self.env, self.rope, self.script, self.rope_share, self.key_bits = env, rope, script, rope_share, key_bits
++        self.robot = env.simulator._robot
++        self.ids = torch.as_tensor(env.simulator.dof_ids, device=env.device)
++        self.torch = torch
++        self.time = time
++        self.t0 = time.monotonic()
++        self.fired = set()
++        self.kp_kd = None
++        self.gain_ratio = gain_ratio  # 乱択の PD の倍率（設定の kp に対する比）。書くときに掛けて乱択を保つ
++        self.step_ms = []
++
++    def elapsed(self):
++        return self.time.monotonic() - self.t0
++
++    def _keys(self, el):
++        import signal
++
++        keys = 0
++        for k, (at, name) in enumerate(self.script):
++            if name == "INT":
++                if el >= at and k not in self.fired:
++                    self.fired.add(k)
++                    os.kill(os.getpid(), signal.SIGINT)
++            elif at <= el < at + 0.06:
++                for b in name.split("+"):
++                    keys |= 1 << self.key_bits[b]
++        return keys
++
++    def snapshot(self):
++        import types
++
++        el = self.elapsed()
++        q, dq, tau, quat, _, _ = _state_np(self.env)
++        gyro = _t(self.robot.data.root_ang_vel_b)[0].detach().cpu().numpy().astype(float)
++        keys = self._keys(el)
++        st = types.SimpleNamespace(
++            motor_state=[_Motor(float(q[0, j]), float(dq[0, j]), float(tau[0, j])) for j in range(29)] + [_Motor() for _ in range(6)],
++            imu_state=types.SimpleNamespace(quaternion=[float(v) for v in quat[0]], gyroscope=[float(v) for v in gyro]),
++            mode_machine=5,
++            wireless_remote=[0, 0, keys & 0xFF, keys >> 8] + [0] * 36,
++        )
++        now = self.time.monotonic()
++        return st, now, (0.0, 0.0, 0.0), now
++
++    def write(self, state, q, kp, kd):
++        torch = self.torch
++        t_start = self.time.monotonic()
++        key = (tuple(np.round(kp, 6)), tuple(np.round(kd, 6)))
++        if key != self.kp_kd:
++            self.kp_kd = key
++            self.robot.write_joint_stiffness_to_sim_index(
++                stiffness=torch.as_tensor(kp[None, :] * self.gain_ratio[0], device=self.env.device, dtype=torch.float),
++                joint_ids=self.ids)
++            self.robot.write_joint_damping_to_sim_index(
++                damping=torch.as_tensor(kd[None, :] * self.gain_ratio[1], device=self.env.device, dtype=torch.float),
++                joint_ids=self.ids)
++        self.robot.set_joint_position_target(torch.as_tensor(q[None, :], device=self.env.device, dtype=torch.float),
++                                             joint_ids=self.env.simulator.dof_ids)
++        self.rope.share = self.rope.share * 0.0 + float(self.rope_share(self.elapsed()))
++        for _ in range(int(self.env.config.simulator.config.sim.control_decimation)):
++            self.rope.apply()
++            self.env.simulator.simulate_at_each_physics_step()
++        self.step_ms.append(1000 * (self.time.monotonic() - t_start))
++
++
++def _phase_times(log_path, phases):
++    with np.load(log_path, allow_pickle=False) as z:
++        t = z["t"] - z["t"][0]
++        ph = [phases[int(v)] for v in z["phase"]]
++        fz = z["foot_fz"] if "foot_fz" in z.files else None
++    seq = []
++    for k, p in enumerate(ph):
++        if k == 0 or p != ph[k - 1]:
++            seq.append((float(t[k]), p))
++    return seq, t, ph, fz
++
++
++def probe_e3(env, out, runs=10, seed=0, a_first=5.5, lower_from=6.5, a_second=15.0, stand_s=60.0, extra_args=()):
++    """E3: door_run_real.main() を Isaac Sim の機体につなぎ、台本で HOLD（綱が体重の 8 割以上・片足が軽い）→ A（拒むはず）→
++    ウィンチを下ろす → A（受け付けて STAND）→ stand_s 秒立つ → B（POST）→ L2+B（DAMP）→ 終わる、を runs 回"""
++    import contextlib
++    import gc
++    import io
++    import signal
++    import time
++
++    import torch
++
++    dc, dfl = door_real()
++    import door_run_real as drr
++
++    assert env.num_envs == 1, "E3 は 1 台で回す"
++    rng = np.random.default_rng(seed)
++    robot = env.simulator._robot
++    p = dc.load_params(os.environ["DOOR_POLICY"])
++    ids = env.simulator.dof_ids
++    gain_ratio = (
++        (_t(robot.data.joint_stiffness)[:, ids].cpu().numpy() / p.kp[None, :]),
++        (_t(robot.data.joint_damping)[:, ids].cpu().numpy() / np.maximum(p.kd[None, :], 1e-9)),
++    )
++    results = []
++    old_handlers = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM, getattr(signal, "SIGHUP", signal.SIGINT))}
++    for r in range(runs):
++        env.reset_all()
++        share0 = float(rng.uniform(0.80, 0.90))
++        offset = float(rng.uniform(-0.05, -0.02))  # 右（−y）に付ける → 右の足が軽くなる
++        lower_s = float(rng.uniform(4.0, 8.0))
++        rope = Rope(env, share0, offset, "const")
++        end_stand = a_second + stand_s
++
++        def share(t, s0=share0, lo=lower_s):
++            if t < lower_from:
++                return s0
++            return max(0.0, s0 * (1.0 - (t - lower_from) / lo))
++
++        script = [(0.5, "start"), (a_first, "A"), (a_second, "A"), (end_stand, "B"), (end_stand + 3.0, "L2+B"),
++                  (end_stand + 4.0, "INT")]
++        sim_io = SimRobotIO(env, rope, script, share, drr.KEY, gain_ratio)
++        log_dir = out / f"e3_run{r:02d}"
++        log_dir.mkdir(parents=True, exist_ok=True)
++        saved = (drr.RobotIO, drr.check_29dof, drr.motion_mode_name, sys.argv, sys.stdin)
++        drr.RobotIO = lambda iface, send, use_odom, _io=sim_io: _io
++        drr.check_29dof = lambda st: None
++        drr.motion_mode_name = lambda: ""
++        sys.argv = ["door_run_real.py", "--policy", os.environ["DOOR_POLICY"], "--start-x=-1.0", "--start-y=0.0",
++                    "--start-yaw-deg=0", "--door", "0.94,2.05,1.0,0.064", "--stand-only", "--odom", "none",
++                    "--log-dir", str(log_dir), *extra_args]
++        sys.stdin = open(os.devnull)
++        buf = io.StringIO()
++        t_run = time.monotonic()
++        try:
++            with contextlib.redirect_stdout(buf):
++                rc = drr.main()
++        finally:
++            drr.RobotIO, drr.check_29dof, drr.motion_mode_name, sys.argv, sys.stdin = saved
++            for s, h in old_handlers.items():
++                signal.signal(s, h)
++            gc.enable()
++        text = buf.getvalue()
++        (log_dir / "console.txt").write_text(text)
++        logs = sorted(log_dir.glob("door_real_*[0-9].npz"))
++        seq, t, ph, fz = _phase_times(logs[-1], drr.PHASES) if logs else ([], None, [], None)
++        stand_start = next((tt for tt, pp in seq if pp == "STAND"), None)
++        stand_end = next((tt for tt, pp in seq if stand_start is not None and tt > stand_start and pp != "STAND"), None)
++        after_stand = [pp for tt, pp in seq if stand_start is not None and tt > stand_start]
++        refused_first = "A を受け付けない" in text.split("\n", 1)[-1] and (stand_start is None or stand_start > a_first + 0.5)
++        res = {
++            "run": r, "rc": rc, "share0": share0, "offset_y": offset, "lower_s": lower_s,
++            "phases": seq, "refused_first_a": bool(refused_first),
++            "refusal_lines": [ln for ln in text.splitlines() if "A を受け付けない" in ln][:4],
++            "stand_start_s": stand_start, "stand_held_s": None if stand_start is None else ((stand_end or t[-1]) - stand_start),
++            "restand_triggered": "立ち直し" in text, "period_trip": "周期" in "".join(ln for ln in text.splitlines() if "→" in ln),
++            "after_stand": after_stand, "wall_s": time.monotonic() - t_run,
++            "sim_step_ms_p99": float(np.percentile(sim_io.step_ms, 99)) if sim_io.step_ms else None,
++        }
++        if fz is not None and stand_start is not None:
++            k = int(np.searchsorted(t, stand_start))
++            res["foot_fz_at_a"] = fz[max(0, k - 25):k].mean(0).round(1).tolist()
++        results.append(res)
++    ok_refuse = sum(r["refused_first_a"] for r in results)
++    ok_accept = sum(r["stand_start_s"] is not None and r["stand_start_s"] >= a_second - 0.1 for r in results)
++    held = sum((r["stand_held_s"] or 0.0) >= stand_s - 1.0 and not r["restand_triggered"] for r in results)
++    return {"runs": results, "refused_first_a": f"{ok_refuse}/{runs}", "accepted_after_lowering": f"{ok_accept}/{runs}",
++            "stood_full_time_without_restand": f"{held}/{runs}"}
+diff --git a/gr00t/rl/simfix_probe.py b/gr00t/rl/simfix_probe.py
+index 060bcfd..71a3cfc 100644
+--- a/gr00t/rl/simfix_probe.py
++++ b/gr00t/rl/simfix_probe.py
+@@ -469,6 +469,11 @@ def probe_homie(env, out, stand_s=60.0, walk_s=30.0):
+ 
+ PROBES = {"readback": probe_readback, "sweep": probe_sweep, "step": probe_step, "press": probe_press,
+           "clip": probe_clip, "homie": probe_homie}
++# 段 3・4（10-26）: 吊った機体を HOMIE に渡す場面（handover_sim.py）
++from gr00t.rl import handover_sim as _handover  # noqa: E402
++
++PROBES.update({"e1": _handover.probe_e1, "e2": _handover.probe_e2, "e3": _handover.probe_e3})
++
+ 
+ 
+ @hydra.main(config_path="config", config_name="base_eval")
+diff --git a/gr00t/rl/simulator/isaacsim/isaacsim.py b/gr00t/rl/simulator/isaacsim/isaacsim.py
+index fe8b41c..41a5f65 100644
+--- a/gr00t/rl/simulator/isaacsim/isaacsim.py
++++ b/gr00t/rl/simulator/isaacsim/isaacsim.py
+@@ -400,8 +400,9 @@ class IsaacSim(BaseSimulator):
+             )
+             self.event_types.add("startup")
+ 
+-        # G1_Hackason（直し 4、10-26）: 押す。元は事象の登録が注釈になっていて、push_robots=True でも Isaac Sim では何も起きなかった
+-        if self.domain_rand_config.get("push_robots", False):
++        # G1_Hackason（直し 4、10-26）: 押す。元は事象の登録が注釈になっていて、push_robots=True でも Isaac Sim では何も起きなかった。
++        # 既定の学習の条件を変えないよう、push_isaacsim=True を明示したときだけ登録する（push_robots=True のレシピが黙って押されない）
++        if self.domain_rand_config.get("push_robots", False) and self.domain_rand_config.get("push_isaacsim", False):
+             v = float(self.domain_rand_config["max_push_vel_xy"])
+             w = float(self.domain_rand_config.get("max_push_ang_vel", 0.0))
+             push_range = {"x": (-v, v), "y": (-v, v)}
+@@ -1075,7 +1076,10 @@ class IsaacSim(BaseSimulator):
+         self.scene.sensors["contact_sensor"] = self.contact_sensor
+         # G1_Hackason（直し C、10-26）: 前腕・手首・手（左右）と、胴・骨盤・脚の間の接触の力（相手を絞った測り具）。
+         # 当たりの形の無い剛体は力が出ないので、当たりの形を足した USD（直し A）と組で使う
+-        self.arm_body_contact_sensor = None
++        # PhysX の相手を絞った測り具は「測る部品 1 つに相手の型ごとに 1 つ」の対応なので、腕の部品ごとに 1 つずつ作る
++        # （まとめて 1 つにすると 2 台以上で「相手の数が合わない」で落ちる。10-26 に 1 台では通って気づかなかった）
++        self.arm_body_contact_sensors = []
++        self.arm_body_contact_names = []
+         if self.simulator_config.get("arm_body_contact_sensor", False):
+             arm_parts = ("elbow", "wrist_roll", "wrist_pitch", "wrist_yaw")
+             body_parts = ("pelvis", "torso", "waist", "hip", "knee", "ankle")
+@@ -1083,14 +1087,16 @@ class IsaacSim(BaseSimulator):
+                 n for n in self.robot_config.body_names if any(f"_{k}_link" in n for k in arm_parts)
+             ]
+             others = [n for n in self.robot_config.body_names if any(k in n for k in body_parts)]
+-            arm_body_contact_config = ContactSensorCfg(
+-                prim_path="/World/envs/env_.*/Robot/(" + "|".join(self.arm_body_contact_names) + ")",
+-                filter_prim_paths_expr=["/World/envs/env_.*/Robot/" + n for n in others],
+-                history_length=int(self.simulator_config.sim.control_decimation),
+-                update_period=0.0,
+-            )
+-            self.arm_body_contact_sensor = ContactSensor(arm_body_contact_config)
+-            self.scene.sensors["arm_body_contact_sensor"] = self.arm_body_contact_sensor
++            for name in self.arm_body_contact_names:
++                sensor = ContactSensor(
++                    ContactSensorCfg(
++                        prim_path=f"/World/envs/env_.*/Robot/{name}",
++                        filter_prim_paths_expr=["/World/envs/env_.*/Robot/" + n for n in others],
++                        update_period=0.0,
++                    )
++                )
++                self.arm_body_contact_sensors.append(sensor)
++                self.scene.sensors[f"arm_body_contact_{name}"] = sensor
+         if hasattr(self.simulator_config, "heightmap"):
+             if self.simulator_config.heightmap.enable_heightmap:
+                 self._height_scanner = RayCaster(height_scanner_config)
+@@ -2264,10 +2270,10 @@ class IsaacSim(BaseSimulator):
+ 
+     def arm_body_contact_force(self):
+         """G1_Hackason（直し C）: 腕の部品ごとの、体からの接触の力の大きさ [N, 腕の部品]（直近の物理 1 回）。測り具が無ければ None"""
+-        if self.arm_body_contact_sensor is None:
++        if not self.arm_body_contact_sensors:
+             return None
+-        m = _t(self.arm_body_contact_sensor.data.force_matrix_w)  # [N, 腕の部品, 相手, 3]
+-        return m.norm(dim=-1).amax(dim=-1)
++        cols = [_t(s.data.force_matrix_w)[:, 0].norm(dim=-1).amax(dim=-1) for s in self.arm_body_contact_sensors]
++        return torch.stack(cols, dim=-1)  # [N, 腕の部品]
+ 
+     def simulate_at_each_physics_step(self):
+         self._sim_step_counter += 1
+diff --git a/gr00t/rl/utils/golden_trace.py b/gr00t/rl/utils/golden_trace.py
+index 3669239..6cab170 100644
+--- a/gr00t/rl/utils/golden_trace.py
++++ b/gr00t/rl/utils/golden_trace.py
+@@ -9,6 +9,15 @@ import numpy as np
+ import torch
+ 
+ 
++def _first_or_nan(v) -> float:
++    if v is None:
++        return float("nan")
++    try:
++        return float(v)
++    except (TypeError, ValueError):
++        return float(list(v)[0])
++
++
+ def _np(x: torch.Tensor, k: int) -> np.ndarray:
+     return x[:k].detach().float().cpu().numpy().copy()
+ 
+@@ -41,9 +50,8 @@ class GoldenTrace:
+                 "num_envs": np.array(k),
+                 # G1_Hackason（10-26）: 直し 8・B の有無（check_golden.py が door_core の側を同じにして比べる。無ければ 10-16 の評価とみなす）
+                 "zero_stand_cmd": np.array(1.0 if self.zero_stand_cmd else 0.0),
+-                "arm_accum_guard_delta": np.array(
+-                    float(env.config.get("arm_accum_guard_delta", None) or np.nan)
+-                ),
++                # 関節ごとの一覧なら先頭の値（check_golden は 1 つの値で比べる）。無ければ NaN（0 も「有り」として残す）
++                "arm_accum_guard_delta": np.array(_first_or_nan(env.config.get("arm_accum_guard_delta", None))),
+                 "arm_accum_guard_margin": np.array(float(env.config.get("arm_accum_guard_margin", 0.05))),
+             }
+         self._add("actor_obs", _np(obs_dict["actor_obs"], k))
+-- 
+2.50.1 (Apple Git-155)
+

@@ -1,0 +1,12 @@
+# F2 の 2 回目（10-26）: 当たりの形（A）を入れた確かめと、1 回目で落ちた・怪しかった回の測り直し
+rb_all readback 16 ++robot.asset.fix_base_link=True @1,4,5,6,7,A,C,3
+step_fr0 step 4 ++robot.asset.fix_base_link=True @1 +probe_args={joint:wrist_roll,amp:0.02}
+step_fr1 step 4 ++robot.asset.fix_base_link=True @1 ++robot.dof_joint_friction_list=[0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.1,0.1,0.2,0.2,0.2,0.2,0.2,0.1,0.1] ++simulator.config.joint_friction_scale=1.0 +probe_args={joint:wrist_roll,amp:0.02}
+clip_fix2 clip 8 ++robot.asset.fix_base_link=True @2
+sweep_old sweep 1 ++robot.asset.fix_base_link=True @C
+sweep_fix sweep 1 ++robot.asset.fix_base_link=True @A,C
+press_noB press 1 ++robot.asset.fix_base_link=True @A,C,3
+press_B press 1 ++robot.asset.fix_base_link=True @A,C,3,B
+press_B2 press 1 ++robot.asset.fix_base_link=True @A,C,3,B,2
+homie_old homie 64
+homie_fix homie 64 @1,4,5,6,7,A

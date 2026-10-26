@@ -1,0 +1,40 @@
+From a59e1c051ef839952d11d193aadc224e86c27c5e Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 23 Oct 2026 18:34:14 +0900
+Subject: [PATCH] door: optional robot start range
+ (env.config.robot_start_range); default unchanged (arms-only dry run check,
+ 10-23)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index aa2f848..3d40679 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -1318,15 +1318,18 @@ class DoorPregrasp(
+         )  # [7:10]: lin vel, [10:13]: ang vel
+ 
+         r, p, _ = euler_xyz_from_quat(self.target_robot_root_states[env_ids, 3:7])
++        # G1_Hackason（10-23、腕だけの空振り）: 始めの位置の範囲 [x0, x1, y0, y1, 向き0°, 向き1°] を設定で替えられる。既定は元のまま
++        rng = self.config.get("robot_start_range", None)
++        x0, x1, y0, y1, w0, w1 = (-1.5, -0.6, -0.5, 0.5, -45.0, 45.0) if rng is None else (float(v) for v in rng)
+         self.target_robot_root_states[env_ids, 0:1] = torch_rand_float(
+-            -1.5, -0.6, (len(env_ids), 1), device=str(self.device)
++            x0, x1, (len(env_ids), 1), device=str(self.device)
+         )
+         self.target_robot_root_states[env_ids, 1:2] = torch_rand_float(
+-            -0.5, 0.5, (len(env_ids), 1), device=str(self.device)
++            y0, y1, (len(env_ids), 1), device=str(self.device)
+         )
+         self.target_robot_root_states[env_ids, 0:2] += self.env_origins[env_ids, 0:2]
+         random_yaw = torch_rand_float(
+-            -torch.pi / 4, torch.pi / 4, (len(env_ids), 1), device=str(self.device)
++            w0 * torch.pi / 180.0, w1 * torch.pi / 180.0, (len(env_ids), 1), device=str(self.device)
+         )[:, 0]
+         self.target_robot_root_states[env_ids, 3:7] = quat_from_euler_xyz(r, p, random_yaw)
+ 
+-- 
+2.43.0
+

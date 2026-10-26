@@ -12,30 +12,53 @@
   通しで（実機と同じ）: 記録の生の値（関節・IMU・扉の計測器）だけを入れ、door_core が自分の状態で回る。
                      積算 D に差が溜まるので許容は緩く（既定 0.05＝腕の目標で 0.0125 rad）。歩く／立つの切替は全ステップ一致を求める
 
+直し B（腕の積み上げを今の角度 ±δ に収める）と 8（立つ HOMIE の指令を 0）は、記録を取った評価の設定に合わせる。
+記録にその設定（golden_trace.py が 10-26 から書く zero_stand_cmd・arm_accum_guard_delta・arm_accum_guard_margin）が
+無ければ、どちらも無かった頃（10-16 の golden_45150）の記録とみなして、door_core の側も切って比べる。
+
 使い方: python check_golden.py <door_policy.npz> <golden.npz> [--tol-loop 0.05]
 """
 from __future__ import annotations
 
 import argparse
+import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional, Tuple
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import door_core as dc  # noqa: E402
+import target_guard as tg  # noqa: E402
 
 CHECKS = ("obs", "a_pol", "homie_obs", "homie_a", "D", "cmd", "whole", "walk")
 
 
-def run_env(p: dc.Params, g, i: int, n_steps: int):
+@dataclass(frozen=True)
+class GoldenOptions:
+    """記録を取った評価の設定（直し B・8 の有無）"""
+    zero_stand_cmd: bool
+    arm_guard: Optional[Tuple[float, float]]  # (delta, margin)。None は切らない
+
+
+def golden_options(g) -> GoldenOptions:
+    """記録に設定が無ければ 10-16 の評価（B も 8 も無い）とみなす"""
+    zero = bool(float(g["zero_stand_cmd"]) > 0.5) if "zero_stand_cmd" in g else False
+    delta = float(g["arm_accum_guard_delta"]) if "arm_accum_guard_delta" in g else math.nan
+    margin = float(g["arm_accum_guard_margin"]) if "arm_accum_guard_margin" in g else math.nan
+    return GoldenOptions(zero, None if math.isnan(delta) else (delta, margin))
+
+
+def run_env(p: dc.Params, g, i: int, n_steps: int, opts: GoldenOptions):
     """台 i を最初の 1 回の終わりまで回し、項目ごとの差の最大と、最初に大きく外れたステップを返す"""
     s = dc.initial_state(p, first_height=0.0)  # 評価のプロセスの最初の観測は指令の高さが 0
     worst = {k: 0.0 for k in CHECKS}
     first_bad = {}
     for t in range(n_steps):
         inp = inputs_at(g, t, i)
-        s, out = dc.step(p, s, inp, mode="door")
+        s, out = dc.step(p, s, inp, mode="door", zero_stand_cmd=opts.zero_stand_cmd, arm_guard=opts.arm_guard)
         if t == 0:
             # シミュレータはリセット直後の最初の観測を HOMIE の履歴に入れない（t=1 の履歴は全部 0 だった）。
             # リセットの作り物なので実機の door_core には入れず、ここでだけ真似る
@@ -71,7 +94,7 @@ def inputs_at(g, t: int, i: int) -> dc.Inputs:
     )
 
 
-def check_parts(p: dc.Params, g, i: int, n_steps: int) -> dict:
+def check_parts(p: dc.Params, g, i: int, n_steps: int, opts: GoldenOptions) -> dict:
     """前のステップの値を記録から入れて、部品ごとに差の最大を見る"""
     worst = {"obs_build": 0.0, "homie_step": 0.0, "homie_net": 0.0, "actor_net": 0.0}
     h = np.zeros((dc.LSTM_LAYERS, dc.LSTM_HIDDEN))
@@ -91,8 +114,11 @@ def check_parts(p: dc.Params, g, i: int, n_steps: int) -> dict:
         one = dc.homie_one_step(p, s, inp)
         worst["homie_step"] = max(worst["homie_step"], float(np.abs(one - g["homie_obs"][t, i][-dc.HOMIE_STEP:]).max()))
         ho = g["homie_obs"][t, i].astype(float)
-        net = p.homie_walk if g["walk_mask"][t, i] > 0.5 else p.homie_stand
-        worst["homie_net"] = max(worst["homie_net"], float(np.abs(net(ho) - g["homie_actions"][t, i]).max()))
+        if g["walk_mask"][t, i] > 0.5:
+            a_homie = p.homie_walk(ho)
+        else:
+            a_homie = p.homie_stand(tg.zero_stand_command(ho, dc.HOMIE_HIST + 1) if opts.zero_stand_cmd else ho)
+        worst["homie_net"] = max(worst["homie_net"], float(np.abs(a_homie - g["homie_actions"][t, i]).max()))
         a, h, c = dc.actor_forward(p, g["actor_obs"][t, i].astype(float), h, c)
         worst["actor_net"] = max(worst["actor_net"], float(np.abs(a - g["action_mean"][t, i]).max()))
     return worst
@@ -118,13 +144,16 @@ def main() -> int:
         return 1
     if not (g["mirror"] > 0.5).all() == p.mirror:
         print(f"[golden] ⚠️ 鏡写しの有無が違う（記録 {g['mirror'][0]}・npz {p.mirror}）")
+    opts = golden_options(g)
+    print(f"[golden] 記録の評価の設定: 立つ HOMIE の指令を 0 に {'する' if opts.zero_stand_cmd else 'しない'}・"
+          f"腕の積み上げの切り方 {opts.arm_guard if opts.arm_guard else '無し'}（door_core も同じにして比べる）")
     n_env = g["actor_obs"].shape[1]
     total_ok = True
     for i in range(n_env):
         d = g["dones"][:, i]
         n = int(np.argmax(d > 0.5)) + 1 if (d > 0.5).any() else d.shape[0]
-        parts = check_parts(p, g, i, n)
-        worst, first_bad = run_env(p, g, i, n)
+        parts = check_parts(p, g, i, n, opts)
+        worst, first_bad = run_env(p, g, i, n, opts)
         ok_parts = max(parts["obs_build"], parts["homie_step"], parts["homie_net"]) <= a.tol_parts
         ok_net = parts["actor_net"] <= a.tol_actor_net
         ok_loop = worst["walk"] == 0.0 and all(v <= a.tol_loop for k, v in worst.items() if k != "walk")

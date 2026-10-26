@@ -41,3 +41,22 @@ def test_no_difference_when_odometry_is_exact():
     s = A.summarize(_fake_log(lat_scale=1.0))
     assert s["DOOR から"]["当て直し−odometry 最大 cm"] < 1e-6
     assert math.isfinite(s["電文の古さ"]["最大ms"])
+
+
+def test_foot_forces_before_a_and_in_stand():
+    """10-26: 記録の foot_fz（左右の足の鉛直の力 [N]）から、A を押す直前の HOLD の 1 秒と STAND の平均を出す"""
+    z = _fake_log()
+    n = len(z["t"])
+    hold = np.full(100, A.PHASES.index("HOLD"))
+    z = {k: (np.r_[v[:1].repeat(100, axis=0), v] if isinstance(v, np.ndarray) and v.shape[0] == n else v) for k, v in z.items()}
+    z["t"] = np.arange(n + 100) * 0.02
+    z["phase"] = np.r_[hold, z["phase"][100:]]
+    z["foot_fz"] = np.r_[np.tile([50.0, 5.0], (100, 1)), np.tile([150.0, 140.0], (n, 1))]
+    s = A.summarize(z)
+    f = s["足の力"]
+    assert f["A の前 1 秒 左 N"] == pytest.approx(50.0) and f["A の前 1 秒 右 N"] == pytest.approx(5.0)
+    assert f["STAND 左 N"] == pytest.approx(150.0) and f["STAND 右 N"] == pytest.approx(140.0)
+
+
+def test_no_foot_forces_in_old_logs():
+    assert "足の力" not in A.summarize(_fake_log())

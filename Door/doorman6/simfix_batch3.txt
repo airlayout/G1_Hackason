@@ -1,0 +1,11 @@
+# F2 の 3 回目と段 4（10-26）
+rb_all readback 16 ++robot.asset.fix_base_link=True @1,4,4p,5,6,7,A,C,3
+press_d02 press 1 ++robot.asset.fix_base_link=True @A,C,3 ++env.config.arm_accum_guard_delta=0.2 ++env.config.arm_accum_guard_margin=0.05
+press_dj press 1 ++robot.asset.fix_base_link=True @A,C,3 ++env.config.arm_accum_guard_delta=[0.2,0.2,0.3,0.3,0.3,0.2,0.2,0.2,0.2,0.3,0.3,0.3,0.2,0.2] ++env.config.arm_accum_guard_margin=0.05
+homie_old_push homie 64 @4p
+homie_fix homie 64 @1,4,5,6,7,A
+homie_fix_push homie 64 @1,4,4p,5,6,7,A
+e1 e1 15 @1,4,6,7,A
+e2_d0 e2 18 @1,4,6,7,A +probe_args={delay_steps:0,extra:[[0.84,-0.04],[0.84,-0.08],[0.5,0.0]]}
+e2_d1 e2 18 @1,4,6,7,A +probe_args={delay_steps:1,extra:[[0.84,-0.04],[0.84,-0.08],[0.5,0.0]]}
+e3 e3 1 @1,4,6,7,A +probe_args={runs:10}

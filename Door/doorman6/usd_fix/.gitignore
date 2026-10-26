@@ -1,0 +1,5 @@
+# 元の USD の写し（VIRAL6 の gr00t/rl/data/robots/g1/ にある）と、元と同じ中身の形の本体（28 MB）は置かない。
+# build_fixed_usd.py が orig/ を取り直して fixed/ を作る（使い方は build_fixed_usd.py の先頭）
+orig/
+fixed/*/configuration/*_base.usd
+__pycache__/

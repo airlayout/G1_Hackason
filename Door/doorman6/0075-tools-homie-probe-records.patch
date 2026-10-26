@@ -1,0 +1,110 @@
+From f4106a82b9ece11c0aa355089b51b339520cc0af Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 26 Oct 2026 10:33:04 +0900
+Subject: [PATCH] tools: homie probe records per env tilt, height, reset, push
+ for each step (10-26)
+
+---
+ gr00t/rl/simfix_probe.py | 73 +++++++++++++++++++++++++---------------
+ 1 file changed, 46 insertions(+), 27 deletions(-)
+
+diff --git a/gr00t/rl/simfix_probe.py b/gr00t/rl/simfix_probe.py
+index 71a3cfc..0a3da52 100644
+--- a/gr00t/rl/simfix_probe.py
++++ b/gr00t/rl/simfix_probe.py
+@@ -425,46 +425,65 @@ def probe_clip(env, out, steps=300, scale=5.0, seed=0):
+ 
+ 
+ def probe_homie(env, out, stand_s=60.0, walk_s=30.0):
++    """HOMIE だけで立つ stand_s 秒と、歩く walk_s 秒（前後・横・旋回しながら前）。台ごと・時刻ごとの傾き・高さ・回の終わり・
++    押されたかを homie.npz に残す（10-26 の 2 回目で「立つ間の傾き 169°・転倒 0」と食い違ったので数え方を確かめる）"""
+     import torch
+ 
+     homie = Homie(env.config.get("homie_walk_model_path_probe", "./models/model_walk.pt"),
+                   env.config.get("homie_stand_model_path_probe", "./models/model_stand.pt"), env.device)
+     drv = Driver(env, homie)
+     zero_arms = _arm_pose_tensor(env, [0.0] * 7, [0.0] * 7)
+-    fell = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+-    falls_stand = 0
+-    tilt_max = 0.0
+-    for _ in range(int(stand_s / DT)):
+-        drv.set_arm_targets(zero_arms)
+-        drv.set_walk_command([0.0, 0.0, 0.0])
+-        reset = drv.step()
+-        bad = reset.bool() & ~env.time_out_buf.bool()
+-        falls_stand += int(bad.sum())
+-        fell |= bad
+-        g = env.projected_gravity
+-        tilt_max = max(tilt_max, float(torch.rad2deg(torch.acos((-g[:, 2]).clamp(-1, 1))).max()))
+     segments = [((-0.3, 0.0, 0.0), 5), ((0.3, 0.0, 0.0), 5), ((0.0, 0.3, 0.0), 5), ((0.0, -0.3, 0.0), 5),
+                 ((0.3, 0.0, 0.5), 5), ((0.3, 0.0, -0.5), 5)]
+     scale = walk_s / sum(s for _, s in segments)
+-    seg_res, falls_walk = [], 0
+-    for cmd, sec in segments:
+-        vel = []
+-        n = int(sec * scale / DT)
+-        for k in range(n):
++    plan = [("stand", (0.0, 0.0, 0.0), int(stand_s / DT))] + [(f"walk{k}", c, int(s * scale / DT)) for k, (c, s) in enumerate(segments)]
++    rec = {"tilt": [], "height": [], "reset": [], "timeout": [], "pushed": [], "vel": [], "seg": []}
++    for k_seg, (name, cmd, n) in enumerate(plan):
++        for _ in range(n):
+             drv.set_arm_targets(zero_arms)
+-            drv.set_walk_command(cmd)
++            drv.set_walk_command(list(cmd))
++            # 傾きと高さは step の前（＝前の step の物理の後・リセットの後）に読む。リセットされた台は立った姿勢から数え直す
++            g = env.projected_gravity
++            rec["tilt"].append(torch.rad2deg(torch.acos((-g[:, 2]).clamp(-1, 1))).cpu().numpy())
++            rec["height"].append(_np(env.simulator.robot_root_states[:, 2]))
+             reset = drv.step()
+-            bad = reset.bool() & ~env.time_out_buf.bool()
+-            falls_walk += int(bad.sum())
+-            fell |= bad
+-            if k >= n // 2:
+-                vel.append(torch.cat([env.base_lin_vel[:, :2], env.base_ang_vel[:, 2:3]], dim=-1).cpu().numpy())
+-        v = np.stack(vel).mean(0)  # [N, 3]
++            rec["reset"].append(_np(reset).astype(bool))
++            rec["timeout"].append(_np(env.time_out_buf).astype(bool))
++            rec["pushed"].append(_np(env.push_robot_plot_counter) == 0 if hasattr(env, "push_robot_plot_counter") else np.zeros(env.num_envs, bool))
++            rec["vel"].append(torch.cat([env.base_lin_vel[:, :2], env.base_ang_vel[:, 2:3]], dim=-1).cpu().numpy())
++            rec["seg"].append(k_seg)
++    arr = {k: np.asarray(v) for k, v in rec.items()}
++    np.savez_compressed(out / "homie.npz", **arr)
++    bad = arr["reset"] & ~arr["timeout"]  # [T, N] 倒れて回が終わった
++    seg = arr["seg"]
++    falls = []
++    for e in np.unique(np.nonzero(bad)[1]):
++        for k in np.nonzero(bad[:, e])[0]:
++            pushed_before = bool(arr["pushed"][max(0, k - 100):k + 1, e].any())
++            falls.append({"env": int(e), "t": float(k * DT), "part": plan[seg[k]][0], "pushed_within_2s": pushed_before,
++                          "height_min_last_1s": float(arr["height"][max(0, k - 50):k + 1, e].min())})
++    stand = seg == 0
++    # 倒れていない間の傾き（倒れた台は倒れる 1 秒前まで）
++    alive = np.ones_like(bad)
++    for f in falls:
++        k = int(round(f["t"] / DT))
++        alive[max(0, k - 50):, f["env"]] = False
++    tilt_alive = np.where(alive, arr["tilt"], np.nan)
++    seg_res = []
++    for k_seg, (name, cmd, n) in enumerate(plan[1:], start=1):
++        idx = np.nonzero(seg == k_seg)[0]
++        half = idx[len(idx) // 2:]
++        ok = alive[half].all(0)
++        v = arr["vel"][half][:, ok].mean(0)
+         c = np.array(cmd)
+-        err = [float(np.abs(v[:, i].mean() - c[i]) / abs(c[i])) if c[i] != 0 else None for i in range(3)]
++        err = [float(abs(v[:, i].mean() - c[i]) / abs(c[i])) if c[i] != 0 else None for i in range(3)]
+         seg_res.append({"cmd": list(cmd), "mean_vel": v.mean(0).round(3).tolist(), "rel_err": err})
+-    return {"num_envs": env.num_envs, "falls_stand": falls_stand, "falls_walk": falls_walk,
+-            "envs_that_fell": int(fell.sum()), "stand_tilt_max_deg": tilt_max, "walk_segments": seg_res}
++    return {"num_envs": env.num_envs,
++            "falls_stand": sum(f["part"] == "stand" for f in falls), "falls_walk": sum(f["part"] != "stand" for f in falls),
++            "envs_that_fell": len({f["env"] for f in falls}), "falls": falls[:20],
++            "stand_tilt_max_deg_alive": float(np.nanmax(tilt_alive[stand])),
++            "stand_tilt_p99_deg_alive": float(np.nanpercentile(tilt_alive[stand], 99)),
++            "pushes": int(arr["pushed"].sum()), "walk_segments": seg_res}
+ 
+ 
+ PROBES = {"readback": probe_readback, "sweep": probe_sweep, "step": probe_step, "press": probe_press,
+-- 
+2.50.1 (Apple Git-155)
+

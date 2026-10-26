@@ -7,6 +7,10 @@ PC2 で動かす（unitree_sdk2py と numpy だけ。Python 3.8 でも動く）�
   WAIT   脱力（kp=0・kd のみ）で待つ。start で次へ
   RAMP   3 秒かけて今の角度から学習の初めの姿勢（脚は少し曲げる・腕は 0＝真下）へ
   HOLD   その姿勢を PD で保つ。ここでウィンチを下ろして足を床に着ける。A で次へ（体の傾きが --max-stand-tilt-deg 以下のときだけ）
+         10-26（door_foot_load.py）: 脚の関節の角度・トルクと IMU から左右の足が床から受ける力を毎周期逆算し、画面に
+         「足 L ○ N・R ○ N（体重の ○%）」を出す。1 秒の平均で両足の合計が体重の --min-load-total（0.85）以上・軽い方の足が
+         --min-load-each（0.35）以上でなければ A を受け付けない（脚が 0.2 rad/s 以上で動いている間は判定しない）。
+         10-23 は綱が体重の 8 割以上を受け、右足が浮いたまま HOMIE に渡して暴れた。--legs hold（吊ったまま）では見ない
   STAND  HOMIE だけで立つ（指令 0・腕は 0）。脚だけを見る。2 秒以上たってから A で次へ（--stand-only なら進まない）
          10-23 の再発防止（door_stand_guard.py）: 0.5〜1.5 s の足首の力で両足に体重が乗っているかを確かめ、乗っていない・
          足の関節が 6 rad/s か傾きが 10° を越えたら、脱力せずに立ち直し（RAMP → HOLD）へ戻す。もう一度 A で STAND
@@ -67,9 +71,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 if Path("/home/unitree/unitree_sdk2_python").is_dir():  # PC2 の SDK は site-packages に入っていない（record_dds_to_bag.py と同じ）
     sys.path.insert(0, "/home/unitree/unitree_sdk2_python")
 import door_core as dc  # noqa: E402
+import door_foot_load as dfl  # noqa: E402
 import door_frame as dfr  # noqa: E402
 import door_lidar_msg as dlm  # noqa: E402
 import door_stand_guard as dsg  # noqa: E402
+import target_guard as tg  # noqa: E402
 
 DT = 0.02  # 50 Hz（学習と同じ）
 RAMP_S = 3.0
@@ -170,6 +176,29 @@ class RobotIO:
         self.pub.Write(self.cmd)
 
 
+NAN_FORCES = dfl.FootForces(left=np.full(6, np.nan), right=np.full(6, np.nan))
+
+
+def foot_forces_now(model: dfl.LegModel, q: np.ndarray, tau: np.ndarray, quat: np.ndarray) -> dfl.FootForces:
+    """左右の足が床から受ける力（10-26）。関節・トルク・IMU の値が壊れていれば NaN（判定は「判定しない」になる）"""
+    if not (np.isfinite(q[:dfl.NUM_LEG]).all() and np.isfinite(tau[:dfl.NUM_LEG]).all() and np.isfinite(quat).all()):
+        return NAN_FORCES
+    try:
+        return dfl.foot_forces(model, q, tau, quat)
+    except Exception:  # noqa: BLE001  表示と A の判定にしか使わない。どんな例外でも輪を止めず「判定しない」にする
+        return NAN_FORCES
+
+
+def hold_refusals(tilt: float, max_stand_tilt: float, load: Optional[dfl.GateVerdict]) -> List[str]:
+    """HOLD で A を押した時に受け付けない理由（空なら受け付ける）。load は足の確かめの判定（None は見ない）"""
+    out = []
+    if not (tilt <= max_stand_tilt):
+        out.append(f"傾き {math.degrees(tilt):.1f}° > {math.degrees(max_stand_tilt):.0f}°")
+    if load is not None and not load.passed:
+        out.append(f"足の力: {load.reason}")
+    return out
+
+
 def motion_mode_name() -> str:
     """純正の歩行（モーションコントローラ）の名前。照会に失敗したら例外（黙って「止まっている」とみなさない）"""
     from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
@@ -254,6 +283,14 @@ def main() -> int:
     ap.add_argument("--max-dq", type=float, default=20.0, help="[rad/s] シミュレータの最大は 11.7")
     ap.add_argument("--max-stand-tilt-deg", type=float, default=8.0,
                     help="HOLD でこれより傾いていたら A を受け付けない（10-16 の実機: 15.6° から立たせて暴れた）")
+    ap.add_argument("--load-check", choices=("on", "off"), default="on",
+                    help="HOLD で両足に体重が乗っているかを確かめてから A を受け付ける（off は比べる用だけ。10-26）")
+    ap.add_argument("--min-load-total", type=float, default=dfl.MIN_TOTAL, help="両足の合計 ÷ 体重の線（10-26 の決定 0.85）")
+    ap.add_argument("--min-load-each", type=float, default=dfl.MIN_EACH, help="軽い方の足 ÷ 体重の線（10-26 の決定 0.35）")
+    ap.add_argument("--leg-model", default=str(Path(__file__).resolve().parent / "leg_model_g1_29dof_rev_1_0.npz"),
+                    help="export_leg_model.py が書いた脚のモデル（公式の g1_29dof_rev_1_0）")
+    ap.add_argument("--body-mass-kg", type=float, default=None,
+                    help="体重の分母 [kg]。既定はモデルの値（33.34 kg）。機体の日に綱を緩めて立てたときの逆算の合計から直す")
     ap.add_argument("--stand-only", action="store_true", help="STAND で止まる（A で扉の方策へ進まない）。脚だけの試し")
     ap.add_argument("--no-send", action="store_true", help="rt/lowcmd を送らない（読むだけ。純正の歩行のままでもよい）")
     ap.add_argument("--door-source", choices=("tape", "lidar"), default="tape", help="枠の位置と扉の角度の出どころ")
@@ -287,9 +324,17 @@ def main() -> int:
         lidar = LidarDoorSource(a.lidar_port, mode=a.lidar_mode)
     w, h, lh, bs = (float(v) for v in a.door.split(","))
     geometry = dfr.door_geometry(w, h, lh, bs, lever_left=not a.lever_right)
-    q_lo, q_hi = p.q_lower + a.clip_margin, p.q_upper - a.clip_margin
     damp_kp, damp_kd = np.zeros(dc.NUM_DOF), np.full(dc.NUM_DOF, DAMP_KD)
     max_tilt = math.radians(a.max_tilt_deg)
+    if "arm_accum_guard_delta" not in p.c:
+        print("[door_real] ⚠️ この方策は腕の積み上げの切り方（直し B）なしで学習した。実機の door_core は B ありで回す"
+              "（シミュレータの評価 V12 の B2 の数字を見てから使う）", flush=True)
+    leg_model = dfl.load_leg_model(a.leg_model)
+    body_weight = (a.body_mass_kg if a.body_mass_kg else leg_model.total_mass) * leg_model.gravity
+    use_load_check = a.load_check == "on" and a.legs == "homie"
+
+    def new_load_gate() -> dfl.HoldLoadGate:
+        return dfl.HoldLoadGate(weight=body_weight, min_total=a.min_load_total, min_each=a.min_load_each)
 
     io = RobotIO(a.iface, send=not a.no_send, use_odom=(a.odom == "dog"))
     t_wait = time.monotonic()
@@ -307,6 +352,8 @@ def main() -> int:
             return 1
     print(f"[door_real] 29 関節・mode_machine={state0.mode_machine}・送る={'する' if not a.no_send else 'しない'}・"
           f"最初の姿勢 {start_pose if lidar is None else 'ライダー（' + a.lidar_mode + '）'}・扉 {geometry.tolist()}・鏡写し {p.mirror}"
+          + (f"・足の確かめ 合計 {100 * a.min_load_total:.0f}%・片足 {100 * a.min_load_each:.0f}%（体重 {body_weight / leg_model.gravity:.2f} kg）"
+             if use_load_check else ("・⚠️ 足の確かめ off" if a.legs == "homie" else ""))
           + ("・⚠️ 立つだけ（--stand-only）" if a.stand_only else "")
           + ("・⚠️ 腕だけ（--legs hold: 脚は HOLD の姿勢のまま・HOMIE を使わない・HOLD で A を押すと扉の方策へ）" if a.legs == "hold" else ""))
     print(f"[door_real] 方策の空回し: {warm_up(p, state0, geometry, start_pose):.0f} ms（最初の計算の遅さを先に済ませた）", flush=True)
@@ -352,6 +399,7 @@ def main() -> int:
     lidar_note = 0.0
     lidar_ref_t: Optional[float] = None  # REF を送った時刻（STAND の体重の確かめに通ってから送る）
     stand_check = dsg.StandLoadCheck()
+    load_gate = new_load_gate()
     lidar_angle = dfr.door_closed_angle_obs()
     q_waist, roll, pitch, odom_fresh = (0.0, 0.0, 0.0), 0.0, 0.0, None
     complete = 0.0
@@ -414,6 +462,7 @@ def main() -> int:
             gyro = np.array(state.imu_state.gyroscope, dtype=float)
             gravity = dc.quat_wxyz_to_gravity(quat)
             tilt = math.acos(max(-1.0, min(1.0, -gravity[2]))) if np.isfinite(gravity).all() else float("nan")
+            forces = foot_forces_now(leg_model, q, tau, quat)  # 左右の足が床から受ける力（10-26）。壊れた値なら NaN
             keys = parse_keys(state.wireless_remote)
             edge = keys & ~keys_prev
             keys_prev = keys
@@ -450,6 +499,9 @@ def main() -> int:
                 elif len(periods) >= PERIOD_AVG_N and sum(periods) / len(periods) > PERIOD_AVG_TRIP_S:
                     soft_stop(f"周期の平均が {1000 * sum(periods) / len(periods):.1f} ms（50 Hz を保てない）")
 
+            if phase != "HOLD":
+                load_gate = new_load_gate()
+
             # --- 段ごとの目標 ---
             target, kp, kd = None, damp_kp, damp_kd
             out = None
@@ -468,9 +520,12 @@ def main() -> int:
                         go("HOLD")
                 elif phase == "HOLD":
                     target, kp, kd = p.q_default.copy(), p.kp, p.kd
-                    if go_keys & (1 << KEY["A"]) and not (tilt <= max_stand_tilt):
-                        print(f"[door_real] 傾き {math.degrees(tilt):.1f}° > {a.max_stand_tilt_deg:.0f}°: A を受け付けない"
-                              "（ウィンチで体をまっすぐにし、両足を床に着けてからもう一度 A）", flush=True)
+                    load_gate = load_gate.push(now, forces, dq)
+                    refuse = hold_refusals(tilt, max_stand_tilt, load_gate.verdict() if use_load_check else None) \
+                        if go_keys & (1 << KEY["A"]) else []
+                    if refuse:
+                        print("[door_real] A を受け付けない: " + "・".join(refuse)
+                              + "（ウィンチを下ろして両足を床に平らに着け、表示が線を越えて落ち着いてからもう一度 A）", flush=True)
                     elif go_keys & (1 << KEY["A"]) and a.legs == "hold":
                         s = dc.reset_actor(p, dc.initial_state(p))
                         fresh = odom is not None and odom_t is not None and now - odom_t < ODOM_STALE_S
@@ -592,10 +647,10 @@ def main() -> int:
                     go("DAMP", "目標が NaN")
                     target = None
                 else:
-                    if phase != "RAMP":  # RAMP は今の角度と既定の姿勢の間なので切らない（可動域の外から内へ跳ばない）
-                        target = np.clip(target, q_lo, q_hi)
-                    if last_target is not None:
-                        target = last_target + np.clip(target - last_target, -MAX_TARGET_STEP, MAX_TARGET_STEP)
+                    # 可動域の内側に切り → 前の目標から 1 周期 MAX_TARGET_STEP まで（学習も同じ関数。直し 2、10-26）。
+                    # RAMP は今の角度と既定の姿勢の間なので可動域では切らない（可動域の外から内へ跳ばない）
+                    target = tg.limit_sent_target(target, last_target, p.q_lower, p.q_upper,
+                                                  margin=None if phase == "RAMP" else a.clip_margin, max_step=MAX_TARGET_STEP)
                     last_target = target
             if phase == "DAMP" or target is None:
                 io.write(state, q, damp_kp, damp_kd)
@@ -609,7 +664,8 @@ def main() -> int:
                        q_sent=target if target is not None else np.full(dc.NUM_DOF, np.nan), loop_dt=loop_dt, period=period,
                        kp_sent=kp if (target is not None and phase != "DAMP") else damp_kp,
                        odom=np.array(odom) if odom is not None else np.full(3, np.nan),
-                       odom_age=(now - odom_t) if odom_t is not None else np.inf, odom_ok=odom_ok)
+                       odom_age=(now - odom_t) if odom_t is not None else np.inf, odom_ok=odom_ok,
+                       foot_fz=np.array([forces.fz_left, forces.fz_right]))
             if lidar is not None:
                 lm, lrx = lidar.snapshot()
                 row.update(lidar_msg=np.array([lm.stamp, lm.x, lm.y, lm.yaw, lm.angle, lm.state, lm.rms_m, lm.tilt_deg, lm.seq])
@@ -628,7 +684,8 @@ def main() -> int:
                 last_print = now
                 # 10-23: 足首の pitch の力（左・右）。両足に体重が乗っていれば 10-16 は +10〜+12 N·m。片方が 0 近くなら足が床に着いていない
                 print(f"[door_real] {phase:6s} 傾き {math.degrees(tilt):4.1f}° |dq| {np.abs(dq).max():4.1f} 足首 L{tau[4]:+5.1f} R{tau[10]:+5.1f} "
-                      f"odom {'%.2fs' % (now - odom_t) if odom_t else '無し'} "
+                      + (dfl.format_load(forces.fz_left, forces.fz_right, body_weight) + " " if phase in ("RAMP", "HOLD", "STAND", "POST") else "")
+                      + f"odom {'%.2fs' % (now - odom_t) if odom_t else '無し'} "
                       + (f"姿勢 ({pose.x:+.2f},{pose.y:+.2f},{math.degrees(pose.yaw):+.0f}°) 指令 {out.cmd[:3].round(2).tolist()}" if out is not None else "")
                       + f" 周期 {period * 1000:.1f} ms（計算 {loop_dt * 1000:.1f} ms）"
                       + ("" if ready or phase != "WAIT" else " ボタンを全部離して待つ"), flush=True)

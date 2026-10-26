@@ -1,0 +1,84 @@
+From f4c32b5d2493333800e20257ab0b504289955a21 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 26 Oct 2026 10:11:10 +0900
+Subject: [PATCH] sim: COM randomization with the Isaac Lab 3.0 built-in
+ randomize_rigid_body_com (the old randomize_body_com fails on warp arrays);
+ probe: reset flags as bool (10-26)
+
+---
+ gr00t/rl/simfix_probe.py                |  4 +--
+ gr00t/rl/simulator/isaacsim/isaacsim.py | 33 +++++--------------------
+ 2 files changed, 8 insertions(+), 29 deletions(-)
+
+diff --git a/gr00t/rl/simfix_probe.py b/gr00t/rl/simfix_probe.py
+index 0b3a6de..503cf1b 100644
+--- a/gr00t/rl/simfix_probe.py
++++ b/gr00t/rl/simfix_probe.py
+@@ -431,7 +431,7 @@ def probe_homie(env, out, stand_s=60.0, walk_s=30.0):
+         drv.set_arm_targets(zero_arms)
+         drv.set_walk_command([0.0, 0.0, 0.0])
+         reset = drv.step()
+-        bad = reset & ~env.time_out_buf
++        bad = reset.bool() & ~env.time_out_buf.bool()
+         falls_stand += int(bad.sum())
+         fell |= bad
+         g = env.projected_gravity
+@@ -447,7 +447,7 @@ def probe_homie(env, out, stand_s=60.0, walk_s=30.0):
+             drv.set_arm_targets(zero_arms)
+             drv.set_walk_command(cmd)
+             reset = drv.step()
+-            bad = reset & ~env.time_out_buf
++            bad = reset.bool() & ~env.time_out_buf.bool()
+             falls_walk += int(bad.sum())
+             fell |= bad
+             if k >= n // 2:
+diff --git a/gr00t/rl/simulator/isaacsim/isaacsim.py b/gr00t/rl/simulator/isaacsim/isaacsim.py
+index 9a2c81b..e4f27ad 100644
+--- a/gr00t/rl/simulator/isaacsim/isaacsim.py
++++ b/gr00t/rl/simulator/isaacsim/isaacsim.py
+@@ -415,36 +415,15 @@ class IsaacSim(BaseSimulator):
+             self.event_types.add("on_push_by_setting_velocity")
+ 
+         if self.domain_rand_config.get("randomize_base_com", False):
+-
++            # G1_Hackason（直し 4、10-26）: 元の randomize_body_com（events.py）は Isaac Lab 3.0 の get_coms() が warp の配列を返すので
++            # 代入で落ちる（学習ではずっと off だったので気づかれなかった）。Isaac Lab 3.0 既製の randomize_rigid_body_com に替える
++            r = self.domain_rand_config["base_com_range"]
+             self.events_cfg.random_base_com = EventTerm(
+-                func=randomize_body_com,
++                func=mdp.randomize_rigid_body_com,
+                 mode="startup",
+                 params={
+-                    "asset_cfg": SceneEntityCfg(
+-                        "robot",
+-                        body_names=[
+-                            "torso_link",
+-                        ],
+-                    ),
+-                    "distribution_params": (
+-                        torch.tensor(
+-                            [
+-                                float(self.domain_rand_config["base_com_range"]["x"][0]),
+-                                float(self.domain_rand_config["base_com_range"]["y"][0]),
+-                                float(self.domain_rand_config["base_com_range"]["z"][0]),
+-                            ]
+-                        ),
+-                        torch.tensor(
+-                            [
+-                                float(self.domain_rand_config["base_com_range"]["x"][1]),
+-                                float(self.domain_rand_config["base_com_range"]["y"][1]),
+-                                float(self.domain_rand_config["base_com_range"]["z"][1]),
+-                            ]
+-                        ),
+-                    ),
+-                    "operation": "add",
+-                    "distribution": "uniform",
+-                    "num_envs": self.simulator_config.scene.num_envs,
++                    "asset_cfg": SceneEntityCfg("robot", body_names=["torso_link"]),
++                    "com_range": {k: (float(r[k][0]), float(r[k][1])) for k in ("x", "y", "z")},
+                 },
+             )
+             self.event_types.add("startup")
+-- 
+2.50.1 (Apple Git-155)
+

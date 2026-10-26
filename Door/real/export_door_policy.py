@@ -181,6 +181,10 @@ def main() -> int:
         "rms_eps": 1e-5,
         "rms_clip": 5.0,
     }
+    # 10-26: 腕の積み上げの切り方（直し B）を入れて学習した方策なら、その値を残す（door_run_real.py が無ければ知らせる）
+    if envc.get("arm_accum_guard_delta") is not None:
+        consts["arm_accum_guard_delta"] = float(envc["arm_accum_guard_delta"])
+        consts["arm_accum_guard_margin"] = float(envc.get("arm_accum_guard_margin", 0.05))
     thr = [envc[k] for k in ("clip_homie_linvel_x_threshold", "clip_homie_linvel_y_threshold", "clip_homie_angvel_threshold")]
     if len(set(thr)) != 1:
         raise ValueError(f"指令の頭打ちが前後・横・旋回で違う: {thr}（door_core は 1 つの値しか持たない）")

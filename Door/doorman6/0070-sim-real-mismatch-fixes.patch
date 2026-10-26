@@ -1,0 +1,291 @@
+From ea9ec73c73c4bd3637d1087f701d64ca7630d3a0 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 26 Oct 2026 09:51:05 +0900
+Subject: [PATCH] sim: armature/joint friction multipliers in config
+ (simulator.config.armature_scale/joint_friction_scale, defaults 3/0 as
+ before, fixes 1 and 6), Isaac Lab events for torso mass, actuator gains,
+ joint friction and pushing (push was a no-op in Isaac Sim, fix 4), per
+ physics step monitor of arm torque saturation and arm-to-body contact with
+ penalties (fixes 3 and C); all default off (10-26)
+
+---
+ gr00t/rl/envs/base_task/substep_monitor.py    | 34 +++++++
+ gr00t/rl/envs/door/door_open_homie.py         |  2 +
+ .../legged_base_task/legged_robot_base.py     | 57 ++++++++++-
+ gr00t/rl/simulator/isaacsim/isaacsim.py       | 96 ++++++++++++++++++-
+ 4 files changed, 185 insertions(+), 4 deletions(-)
+ create mode 100644 gr00t/rl/envs/base_task/substep_monitor.py
+
+diff --git a/gr00t/rl/envs/base_task/substep_monitor.py b/gr00t/rl/envs/base_task/substep_monitor.py
+new file mode 100644
+index 0000000..9e84e5a
+--- /dev/null
++++ b/gr00t/rl/envs/base_task/substep_monitor.py
+@@ -0,0 +1,34 @@
++# G1_Hackason（直し 3・C、10-26）: 物理 1 回（200 Hz）ごとに、腕の力の張り付きと、腕と体の当たりを数える。
++#
++# 制御の 1 ステップ（物理 4 回）の終わりの写しだけを読むと、間の山を見落とす（10-19 のレバーの当たりと同じ。0057）。
++# - 力の張り付き（直し 3）: PhysX の中の PD の力の見積もり（Isaac Lab の robot.data.applied_torque。力の上限で切った値）が
++#   上限の saturation_ratio 倍以上だった物理の回の割合を、腕の関節ごとに出す。self.torques は Isaac Sim では計算されず
++#   常に 0（FingerPrimitiveBase が _apply_force_in_physics_step を上書きしている）ので使わない。生徒の観測 arm_dof_torque も
++#   0 のまま（実機も 0 を入れる）
++# - 腕と体の当たり（直し C）: 前腕・手首・手（左右）と、胴・骨盤・脚の間の接触の力の最大 [N]（相手を絞った測り具）
++import torch
++
++
++class SubstepMonitor:
++    def __init__(self, num_envs: int, num_arm: int, num_contact_bodies: int, device, saturation_ratio: float = 0.9):
++        self.ratio = float(saturation_ratio)
++        self.sat_count = torch.zeros(num_envs, num_arm, device=device)
++        self.contact_peak = torch.zeros(num_envs, max(num_contact_bodies, 0), device=device)
++        self.n = 0
++
++    def begin(self) -> None:
++        """制御の 1 ステップの始め（物理 1 回目の前）に数え直す"""
++        self.sat_count.zero_()
++        self.contact_peak.zero_()
++        self.n = 0
++
++    def after_substep(self, arm_torque: torch.Tensor, arm_limit: torch.Tensor, contact_force=None) -> None:
++        """物理 1 回の後。arm_torque [N, 腕]・arm_limit [腕]・contact_force [N, 部品]（無ければ None）"""
++        self.sat_count += (arm_torque.abs() >= self.ratio * arm_limit).float()
++        if contact_force is not None and self.contact_peak.shape[1] > 0:
++            self.contact_peak = torch.maximum(self.contact_peak, contact_force)
++        self.n += 1
++
++    def saturated_fraction(self) -> torch.Tensor:
++        """[N, 腕] 張り付いていた物理の回の割合（0〜1）"""
++        return self.sat_count / max(self.n, 1)
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 3d40679..b99705a 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -1428,6 +1428,7 @@ class DoorPregrasp(
+         if not self.config.get("lever_force_substeps", False):
+             return super()._physics_step()
+         self.render()
++        self._substep_monitor_begin()  # G1_Hackason（直し 3・C、10-26）
+         n = self.config.simulator.config.sim.control_decimation
+         peak = torch.zeros(self.num_envs, device=self.device)
+         total = torch.zeros_like(peak)
+@@ -1435,6 +1436,7 @@ class DoorPregrasp(
+             self._update_meta_pd_scale(sim_sub_t)
+             self._apply_force_in_physics_step()
+             self.simulator.simulate_at_each_physics_step()
++            self._after_physics_substep()
+             f = self._hand_lever_force_from_sensor()
+             peak = torch.maximum(peak, f)
+             total += f
+diff --git a/gr00t/rl/envs/legged_base_task/legged_robot_base.py b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+index 11c777f..ee5e30c 100644
+--- a/gr00t/rl/envs/legged_base_task/legged_robot_base.py
++++ b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+@@ -624,10 +624,62 @@ class LeggedRobotBase(BaseTask):
+ 
+     def _physics_step(self):
+         self.render()
++        self._substep_monitor_begin()
+         for sim_sub_t in range(self.config.simulator.config.sim.control_decimation):
+             self._update_meta_pd_scale(sim_sub_t)
+             self._apply_force_in_physics_step()
+             self.simulator.simulate_at_each_physics_step()
++            self._after_physics_substep()
++
++    # G1_Hackason（直し 3・C、10-26）: 物理 1 回ごとに腕の力の張り付きと腕と体の当たりを数える（substep_monitor.py）。
++    # substep_monitor=True のときだけ。罰は penalty_arm_torque_saturation・penalty_arm_body_contact、記録は log_dict
++    def _substep_monitor_begin(self):
++        if not self.config.get("substep_monitor", False):
++            return
++        if getattr(self, "_substep_monitor", None) is None:
++            from gr00t.rl.envs.base_task.substep_monitor import SubstepMonitor
++
++            names = list(self.config.robot.dof_names)
++            self._monitor_arm_idx = torch.tensor(
++                [i for i, n in enumerate(names) if any(k in n for k in ("shoulder", "elbow", "wrist"))],
++                device=self.device,
++            )
++            n_parts = len(getattr(self.simulator, "arm_body_contact_names", []) or [])
++            self._substep_monitor = SubstepMonitor(
++                self.num_envs,
++                len(self._monitor_arm_idx),
++                n_parts,
++                self.device,
++                float(self.config.get("arm_torque_saturation_ratio", 0.9)),
++            )
++        self._substep_monitor.begin()
++
++    def _after_physics_substep(self):
++        mon = getattr(self, "_substep_monitor", None)
++        if mon is None:
++            return
++        tau = self.simulator.applied_dof_torque[:, self._monitor_arm_idx]
++        lim = self.simulator.torque_limits[self._monitor_arm_idx]
++        mon.after_substep(tau, lim, self.simulator.arm_body_contact_force())
++
++    def _reward_penalty_arm_torque_saturation(self):
++        """腕の関節のうち、力が上限の 9 割以上だった物理の回の割合の和（0〜14）"""
++        mon = getattr(self, "_substep_monitor", None)
++        if mon is None:
++            return torch.zeros(self.num_envs, device=self.device)
++        frac = mon.saturated_fraction()
++        self.log_dict["arm_torque_sat_frac"] = frac.mean()
++        return frac.sum(dim=-1)
++
++    def _reward_penalty_arm_body_contact(self):
++        """前腕・手首・手のうち、体（胴・骨盤・脚）と 1 N を越えて当たった部品の数"""
++        mon = getattr(self, "_substep_monitor", None)
++        if mon is None or mon.contact_peak.shape[1] == 0:
++            return torch.zeros(self.num_envs, device=self.device)
++        hit = mon.contact_peak > float(self.config.get("arm_body_contact_threshold", 1.0))
++        self.log_dict["arm_body_contact_frac"] = hit.any(dim=-1).float().mean()
++        self.log_dict["arm_body_contact_peak"] = mon.contact_peak.max()
++        return hit.float().sum(dim=-1)
+ 
+     def _compute_perturbation_forces(self):
+         """
+@@ -833,8 +885,9 @@ class LeggedRobotBase(BaseTask):
+         #     self._push_robots(torch.arange(self.num_envs, device=self.device))
+ 
+         if (
+-            self.config.domain_rand.push_robots and not self.is_evaluating
+-        ):  # don't push robots when evaluating
++            self.config.domain_rand.push_robots
++            and (not self.is_evaluating or self.config.domain_rand.get("push_in_eval", False))
++        ):  # don't push robots when evaluating（G1_Hackason 10-26: push_in_eval=True なら評価でも押す。HOMIE の確かめ V10 用）
+             self.push_robot_recovery_counter[self.push_robot_recovery_counter > 0] -= 1
+             push_robot_env_ids = self.push_robot_counter == (self.push_interval_s / self.dt).int()
+             push_at_episode_start = self.config.domain_rand.get("push_at_episode_start", False)
+diff --git a/gr00t/rl/simulator/isaacsim/isaacsim.py b/gr00t/rl/simulator/isaacsim/isaacsim.py
+index abe108d..7d2c720 100644
+--- a/gr00t/rl/simulator/isaacsim/isaacsim.py
++++ b/gr00t/rl/simulator/isaacsim/isaacsim.py
+@@ -357,6 +357,63 @@ class IsaacSim(BaseSimulator):
+ 
+             self.event_types.add("startup")
+ 
++        # G1_Hackason（直し 4、10-26）: 胴（torso_link）だけの質量を足し算で変える。randomize_link_mass は全部の剛体を倍率で変える
++        if self.domain_rand_config.get("randomize_torso_mass", False):
++            self.events_cfg.random_torso_mass = EventTerm(
++                func=mdp.randomize_rigid_body_mass,
++                mode="startup",
++                params={
++                    "asset_cfg": SceneEntityCfg("robot", body_names=["torso_link"]),
++                    "mass_distribution_params": tuple(self.domain_rand_config["torso_mass_range"]),
++                    "operation": "add",
++                },
++            )
++            self.event_types.add("startup")
++
++        # G1_Hackason（直し 4、10-26）: PD の固さの乱択。randomize_pd_gain は自分でトルクを計算する経路（_compute_torques）でしか
++        # 使われず、PhysX の中の PD（ImplicitActuator）には効かない。Isaac Lab 既製の randomize_actuator_gains で PhysX に書く
++        # （CPU を通るので起動時に 1 回）
++        if self.domain_rand_config.get("randomize_actuator_gains", False):
++            self.events_cfg.random_actuator_gains = EventTerm(
++                func=mdp.randomize_actuator_gains,
++                mode="startup",
++                params={
++                    "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
++                    "stiffness_distribution_params": tuple(self.domain_rand_config["actuator_kp_range"]),
++                    "damping_distribution_params": tuple(self.domain_rand_config["actuator_kd_range"]),
++                    "operation": "scale",
++                },
++            )
++            self.event_types.add("startup")
++
++        # G1_Hackason（直し 6、10-26）: 関節の摩擦 [N·m]（Isaac Sim 5 以降は係数でなく力）を、設定の値（×joint_friction_scale）の
++        # 倍率で台ごとに変える
++        if self.domain_rand_config.get("randomize_joint_friction", False):
++            self.events_cfg.random_joint_friction_coeff = EventTerm(
++                func=mdp.randomize_joint_parameters,
++                mode="startup",
++                params={
++                    "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
++                    "friction_distribution_params": tuple(self.domain_rand_config["joint_friction_scale_range"]),
++                    "operation": "scale",
++                },
++            )
++            self.event_types.add("startup")
++
++        # G1_Hackason（直し 4、10-26）: 押す。元は事象の登録が注釈になっていて、push_robots=True でも Isaac Sim では何も起きなかった
++        if self.domain_rand_config.get("push_robots", False):
++            v = float(self.domain_rand_config["max_push_vel_xy"])
++            w = float(self.domain_rand_config.get("max_push_ang_vel", 0.0))
++            push_range = {"x": (-v, v), "y": (-v, v)}
++            if w > 0.0:
++                push_range.update({"roll": (-w, w), "pitch": (-w, w), "yaw": (-w, w)})
++            self.events_cfg.push_robots = EventTerm(
++                func=mdp.push_by_setting_velocity,
++                mode="on_push_by_setting_velocity",
++                params={"velocity_range": push_range},
++            )
++            self.event_types.add("on_push_by_setting_velocity")
++
+         if self.domain_rand_config.get("randomize_base_com", False):
+ 
+             self.events_cfg.random_base_com = EventTerm(
+@@ -852,11 +909,16 @@ class IsaacSim(BaseSimulator):
+             # damping=0,
+             stiffness=stiffness_dict,
+             damping=damping_dict,
++            # G1_Hackason（直し 1・6、10-26）: armature の ×3 と関節の摩擦の ×0 は公式のどこにも根拠が無い
++            # （unitree_rl_lab の電動機の表は今の値の ×1、MuJoCo の frictionloss は 0.2・手首 pitch/yaw 0.1 N·m）。
++            # 倍率を simulator.config.armature_scale・joint_friction_scale に出す。既定は元の 3・0（学習済みの条件のまま）
+             armature={
+-                dof_names_list[i]: dof_armature_list[i] * 3 for i in range(len(dof_names_list))
++                dof_names_list[i]: dof_armature_list[i] * float(self.simulator_config.get("armature_scale", 3.0))
++                for i in range(len(dof_names_list))
+             },
+             friction={
+-                dof_names_list[i]: dof_joint_friction_list[i] * 0
++                dof_names_list[i]: dof_joint_friction_list[i]
++                * float(self.simulator_config.get("joint_friction_scale", 0.0))
+                 for i in range(len(dof_names_list))
+             },
+         )
+@@ -1018,6 +1080,24 @@ class IsaacSim(BaseSimulator):
+         self.scene.articulations["robot"] = self._robot
+         self.contact_sensor = ContactSensor(contact_sensor_config)
+         self.scene.sensors["contact_sensor"] = self.contact_sensor
++        # G1_Hackason（直し C、10-26）: 前腕・手首・手（左右）と、胴・骨盤・脚の間の接触の力（相手を絞った測り具）。
++        # 当たりの形の無い剛体は力が出ないので、当たりの形を足した USD（直し A）と組で使う
++        self.arm_body_contact_sensor = None
++        if self.simulator_config.get("arm_body_contact_sensor", False):
++            arm_parts = ("elbow", "wrist_roll", "wrist_pitch", "wrist_yaw")
++            body_parts = ("pelvis", "torso", "waist", "hip", "knee", "ankle")
++            self.arm_body_contact_names = [
++                n for n in self.robot_config.body_names if any(f"_{k}_link" in n for k in arm_parts)
++            ]
++            others = [n for n in self.robot_config.body_names if any(k in n for k in body_parts)]
++            arm_body_contact_config = ContactSensorCfg(
++                prim_path="/World/envs/env_.*/Robot/(" + "|".join(self.arm_body_contact_names) + ")",
++                filter_prim_paths_expr=["/World/envs/env_.*/Robot/" + n for n in others],
++                history_length=int(self.simulator_config.sim.control_decimation),
++                update_period=0.0,
++            )
++            self.arm_body_contact_sensor = ContactSensor(arm_body_contact_config)
++            self.scene.sensors["arm_body_contact_sensor"] = self.arm_body_contact_sensor
+         if hasattr(self.simulator_config, "heightmap"):
+             if self.simulator_config.heightmap.enable_heightmap:
+                 self._height_scanner = RayCaster(height_scanner_config)
+@@ -2184,6 +2264,18 @@ class IsaacSim(BaseSimulator):
+                         print(f"Error accessing shader at {valid_shader_path}: {str(e)}")
+                         continue
+ 
++    @property
++    def applied_dof_torque(self):
++        """G1_Hackason（直し 3）: PhysX の中の PD の力の見積もり（力の上限で切った値）[N, 関節]（設定の関節の順）"""
++        return _t(self._robot.data.applied_torque)[:, self.dof_ids]
++
++    def arm_body_contact_force(self):
++        """G1_Hackason（直し C）: 腕の部品ごとの、体からの接触の力の大きさ [N, 腕の部品]（直近の物理 1 回）。測り具が無ければ None"""
++        if self.arm_body_contact_sensor is None:
++            return None
++        m = _t(self.arm_body_contact_sensor.data.force_matrix_w)  # [N, 腕の部品, 相手, 3]
++        return m.norm(dim=-1).amax(dim=-1)
++
+     def simulate_at_each_physics_step(self):
+         self._sim_step_counter += 1
+         is_rendering = self.sim.is_rendering  # G1_Hackason: 3.0 で has_gui はプロパティ、has_rtx_sensors は無い
+-- 
+2.50.1 (Apple Git-155)
+

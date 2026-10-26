@@ -71,6 +71,19 @@ def summarize(z) -> dict:
                            "最後 cm": float(d[np.isfinite(d)][-1] * 100) if np.isfinite(d).any() else None,
                            "向きの差の最大°": float(np.nanmax(dyaw))}
         out["_curve"] = (t[after], d, pose[after], carried[after])
+    if _has(z, "foot_fz"):
+        # 10-26: 左右の足の鉛直の力 [N]（door_foot_load.py の逆算）。A を押す直前の HOLD の 1 秒と、STAND の平均
+        fz = z["foot_fz"]
+        f = {}
+        hold = np.nonzero(ph == PHASES.index("HOLD"))[0]
+        if len(hold):
+            last = hold[t[hold] >= t[hold[-1]] - 1.0]
+            f["A の前 1 秒 左 N"], f["A の前 1 秒 右 N"] = (float(v) for v in np.nanmean(fz[last], axis=0))
+        stand = ph == PHASES.index("STAND")
+        if stand.any():
+            f["STAND 左 N"], f["STAND 右 N"] = (float(v) for v in np.nanmean(fz[stand], axis=0))
+        if f:
+            out["足の力"] = f
     if _has(z, "door_angle_obs"):
         a = z["door_angle_obs"]
         m = ph >= PHASES.index("STAND")
@@ -91,7 +104,7 @@ def main() -> None:
     print(f"== {a.log.name}・止めた理由: {meta.get('reason', '（無し）')}")
     for name, v in s["phases"].items():
         print(f"  {name:6s} {v['秒']:6.1f} s・傾き最大 {v['傾き最大°']:4.1f}°・周期 最大 {v['周期最大ms']:5.1f} ms・99% {v['周期99%ms']:5.1f} ms")
-    for key in ("電文の古さ", "DOOR から", "扉の角度"):
+    for key in ("足の力", "電文の古さ", "DOOR から", "扉の角度"):
         if s.get(key):
             print(f"  {key}: " + "・".join(f"{k} {v:.2f}" if isinstance(v, float) else f"{k} {v}" for k, v in s[key].items()))
     if a.png and "_curve" in s:

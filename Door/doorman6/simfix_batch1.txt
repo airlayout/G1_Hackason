@@ -1,0 +1,15 @@
+# F2 の 1 回目（10-26）: 当たりの形（A）が要らない確かめ
+rb_fix readback 16 ++robot.asset.fix_base_link=True @1,4,5,6,7
+step_el_old step 4 ++robot.asset.fix_base_link=True +probe_args={joint:elbow,amp:0.2}
+step_el_fix1 step 4 ++robot.asset.fix_base_link=True @1 +probe_args={joint:elbow,amp:0.2}
+step_sp_old step 4 ++robot.asset.fix_base_link=True +probe_args={joint:shoulder_pitch,amp:0.2}
+step_sp_fix1 step 4 ++robot.asset.fix_base_link=True @1 +probe_args={joint:shoulder_pitch,amp:0.2}
+step_wp_old step 4 ++robot.asset.fix_base_link=True +probe_args={joint:wrist_pitch,amp:0.2}
+step_wp_fix1 step 4 ++robot.asset.fix_base_link=True @1 +probe_args={joint:wrist_pitch,amp:0.2}
+step_delay step 16 ++robot.asset.fix_base_link=True @1,5 +probe_args={joint:elbow,amp:0.2}
+step_fr0 step 4 ++robot.asset.fix_base_link=True @1 +probe_args={joint:wrist_roll,amp:0.02}
+step_fr1 step 4 ++robot.asset.fix_base_link=True @1 ++robot.dof_joint_friction_list=[0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.2,0.1,0.1,0.2,0.2,0.2,0.2,0.2,0.1,0.1] ++simulator.config.joint_friction_scale=1.0 +probe_args={joint:wrist_roll,amp:0.02}
+clip_old clip 8 ++robot.asset.fix_base_link=True
+clip_fix2 clip 8 ++robot.asset.fix_base_link=True @2
+homie_old homie 64
+homie_fix homie 64 @1,4,5,6,7

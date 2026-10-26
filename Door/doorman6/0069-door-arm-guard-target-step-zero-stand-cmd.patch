@@ -1,0 +1,318 @@
+From a2b8425a4bd65384c10d3cf046ee8bf41697d50b Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 26 Oct 2026 09:44:18 +0900
+Subject: [PATCH] door: arm accumulator guard
+ (env.config.arm_accum_guard_delta/margin, fix B), per control step target
+ limit for all joints (env.config.target_step_limit, fix 2), stand HOMIE gets
+ zero walk command in eval and DAgger too (fix 8, eval.zero_stand_cmd=False
+ restores the 10-16 eval); one shared file target_guard.py with the real robot
+ code; B and 2 default off (10-26)
+
+---
+ gr00t/rl/envs/base_task/delta_action_base.py  | 32 ++++++++++++
+ .../envs/base_task/finger_primitive_base.py   | 22 ++++++++
+ gr00t/rl/envs/base_task/target_guard.py       | 51 +++++++++++++++++++
+ .../distill_trainer_obj_pred_homie_api.py     |  6 ++-
+ gr00t/rl/trl/trainer/ppo_trainer_homie_api.py | 27 ++++------
+ gr00t/rl/utils/golden_trace.py                |  9 +++-
+ 6 files changed, 128 insertions(+), 19 deletions(-)
+ create mode 100644 gr00t/rl/envs/base_task/target_guard.py
+
+diff --git a/gr00t/rl/envs/base_task/delta_action_base.py b/gr00t/rl/envs/base_task/delta_action_base.py
+index 0ee01c8..c5c00ac 100644
+--- a/gr00t/rl/envs/base_task/delta_action_base.py
++++ b/gr00t/rl/envs/base_task/delta_action_base.py
+@@ -6,8 +6,13 @@ import torch
+ from loguru import logger
+ from typing_extensions import override
+ 
++from gr00t.rl.envs.base_task.target_guard import guard_arm_accumulator
+ from gr00t.rl.envs.legged_base_task.legged_robot_base import LeggedRobotBase
+ 
++# G1_Hackason（直し B、10-26）: 積み上げの並び [前後, 横, 旋回, 腕 14]。腕の積み上げは関節の lower_body_actions_dim から 14 個
++ARM_ACCUM_START = 3
++NUM_ARM = 14
++
+ 
+ class DeltaActionBase(LeggedRobotBase):
+     def __init__(self, config, device):
+@@ -61,6 +66,14 @@ class DeltaActionBase(LeggedRobotBase):
+         self._delta_actions = torch.clamp(
+             self._delta_actions, -delta_actions_clip, delta_actions_clip
+         )
++        # G1_Hackason（直し B、10-26）: 止められた腕の前で積み上げがたまらないよう、腕の積み上げを
++        # 「今の角度 ±arm_accum_guard_delta」と「可動域の端から arm_accum_guard_margin 内側」に収める値へ書き戻す。
++        # 実機（G1_Hackason/Door/real/door_core.py）と同じ関数（target_guard.py）。既定 None＝切らない
++        guard_delta = self.config.get("arm_accum_guard_delta", None)
++        if guard_delta is not None:
++            self._guard_arm_accumulator(
++                float(guard_delta), float(self.config.get("arm_accum_guard_margin", 0.05))
++            )
+ 
+         # Configration - 0
+         # self._delta_actions[:, :3] *= 0.0
+@@ -122,6 +135,25 @@ class DeltaActionBase(LeggedRobotBase):
+             logger.warning(f"stage: {self.stage_buf}")
+         return super().step(actor_state)
+ 
++    def _guard_arm_accumulator(self, delta: float, margin: float) -> None:
++        assert len(self._delta_action_indices) == ARM_ACCUM_START + NUM_ARM, (
++            "arm_accum_guard_delta は積み上げが [前後, 横, 旋回, 腕 14] の並びのときだけ使える"
++        )
++        lower = int(self.config.robot.lower_body_actions_dim)
++        dof = slice(lower, lower + NUM_ARM)
++        lim = self.simulator.hard_dof_pos_limits[dof]
++        arm = slice(ARM_ACCUM_START, ARM_ACCUM_START + NUM_ARM)
++        self._delta_actions[:, arm] = guard_arm_accumulator(
++            self._delta_actions[:, arm],
++            self.simulator.dof_pos[:, dof],
++            self.default_dof_pos[:, dof],
++            lim[:, 0],
++            lim[:, 1],
++            float(self.config.robot.control.action_scale),
++            delta,
++            margin,
++        )
++
+     def _reward_penalty_delta_action_rate(self):
+         return torch.sum(torch.square(self._last_delta_actions), dim=-1)
+ 
+diff --git a/gr00t/rl/envs/base_task/finger_primitive_base.py b/gr00t/rl/envs/base_task/finger_primitive_base.py
+index 814fa51..73dc996 100644
+--- a/gr00t/rl/envs/base_task/finger_primitive_base.py
++++ b/gr00t/rl/envs/base_task/finger_primitive_base.py
+@@ -5,6 +5,7 @@
+ import torch
+ from typing_extensions import override
+ 
++from gr00t.rl.envs.base_task.target_guard import limit_sent_target
+ from gr00t.rl.envs.legged_base_task.legged_robot_base import LeggedRobotBase
+ 
+ 
+@@ -97,6 +98,12 @@ class FingerPrimitiveBase(LeggedRobotBase):
+                     min=lim[:, 0] + float(margin),
+                     max=lim[:, 1] - float(margin),
+                 )
++            # G1_Hackason（直し 2、10-26）: 全関節の目標の 1 制御ステップの変化を target_step_limit [rad] までにする
++            # （実機の door_run_real.py の MAX_TARGET_STEP と同じ。同じ関数 target_guard.limit_sent_target）。既定 None＝かけない
++            step_limit = self.config.get("target_step_limit", None)
++            if step_limit is not None:
++                n = self._num_non_primitive_dof
++                combined_target[:, :n] = self._limit_target_step(combined_target[:, :n], float(step_limit))
+             # G1_Hackason（段 5、10-19）: 腕の目標の変化に上限 [rad/s] をかける（レバーに勢いよくぶつけないため。実機の制御でも同じにする）。
+             # 1 制御ステップ（4 回の物理の小ステップ）の間は同じ目標を使い、制御ステップが進んだときだけ前の目標から上限まで動かす。
+             # どの台にかけるかは _arm_rate_limit_mask()（既定は全部。扉の環境は「手がレバーの近く」だけにできる）。既定 None＝かけない
+@@ -137,6 +144,21 @@ class FingerPrimitiveBase(LeggedRobotBase):
+                 f"Simulator {self.config.simulator.config.name} not implemented"
+             )
+ 
++    def _limit_target_step(self, target: torch.Tensor, max_step: float) -> torch.Tensor:
++        """制御ステップが進んだ時（物理の小ステップの 1 回目）だけ、前の制御ステップに送った目標から ±max_step まで動かす。
++        回の最初の制御ステップ（リセットの直後、episode_length_buf == 0）は掛けない（前の回の目標から動かさない）"""
++        step = int(self.common_step_counter)
++        if getattr(self, "_tsl_step", None) != step:
++            prev = getattr(self, "_tsl_prev", None)
++            if prev is None:
++                new = target
++            else:
++                limited = limit_sent_target(target, prev, max_step=max_step)
++                new = torch.where((self.episode_length_buf > 0)[:, None], limited, target)
++            self._tsl_prev = new.clone()
++            self._tsl_step = step
++        return self._tsl_prev.clone()
++
+     def _arm_rate_limit_mask(self) -> torch.Tensor:
+         """腕の目標の変化に上限をかける台（[N] bool）。扉の環境で上書きする"""
+         return torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+diff --git a/gr00t/rl/envs/base_task/target_guard.py b/gr00t/rl/envs/base_task/target_guard.py
+new file mode 100644
+index 0000000..ebd55dc
+--- /dev/null
++++ b/gr00t/rl/envs/base_task/target_guard.py
+@@ -0,0 +1,51 @@
++"""腕の指令の積み上げ・送る目標・立つ HOMIE の指令の扱い（G1_Hackason の直し B・2・8、2026-10-26）。
++
++学習（VIRAL6、torch）と実機（Door/real、numpy・PC2 の Python 3.8）に、1 字も違わない同じファイルを置く。
++  学習: gr00t/rl/envs/base_task/target_guard.py（パッチ 0069）
++  実機: G1_Hackason/Door/real/target_guard.py（こちらが元。試験 tests/test_target_guard.py が 2 つが同じことを確かめる）
++numpy の配列と torch の tensor のどちらを渡しても動くよう、両方にある書き方（.clip・*・reshape）だけを使う。
++torch は import しない（PC2 には無い）。
++
++B: 腕の目標は「前の積み上げ D に増分を足す」だけなので、腕が胴や扉に止められると D がたまり続け、
++   その後ずっと力の上限で押し付ける（10-23 の腕だけの空振りで 28.8 N·m）。積み上げ D そのものを
++   「今の角度 ±delta」と「可動域の端から margin 内側」に収まる値へ書き戻す（送る目標だけ切っても D はたまる）。
++2: 送る目標を可動域の内側に切り、1 周期の変化を max_step までにする（実機の door_run_real.py と同じ）。
++8: 立つ HOMIE には歩く指令（各フレームの先頭 3 つ）を 0 にして渡す（学習ではそうしていた）。
++"""
++
++
++def guard_arm_accumulator(D_arm, q_arm, q_default_arm, q_lower_arm, q_upper_arm, action_scale, delta, margin):
++    """腕の積み上げ D を、目標の角度（action_scale·D＋既定の角度）が次の範囲に入る値へ切る。
++
++    範囲は [今の角度 − delta, 今の角度 + delta] と [可動域の下端 + margin, 上端 − margin] の重なり。
++    重ならない（今の角度が可動域の端の margin の外にある）ときは、可動域の側が勝つ。
++    切られない要素は入力の値をそのまま返す（割り算の丸めで D が動かない）。入力は書き換えない。
++
++    D_arm・q_arm: [..., 14]、q_default_arm・q_lower_arm・q_upper_arm: [14]（後ろの次元で揃う形なら何でも）
++    """
++    lim_lo = q_lower_arm + margin
++    lim_hi = q_upper_arm - margin
++    lo = (q_arm - delta).clip(lim_lo, None).clip(None, lim_hi)  # min(max(q − δ, 下端), 上端)
++    hi = (q_arm + delta).clip(None, lim_hi).clip(lim_lo, None)  # max(min(q + δ, 上端), 下端)
++    return D_arm.clip((lo - q_default_arm) / action_scale, (hi - q_default_arm) / action_scale)
++
++
++def limit_sent_target(target, last_target, q_lower=None, q_upper=None, margin=None, max_step=None):
++    """送る目標の角度を切る。margin があれば可動域の端から内側へ、max_step があれば前の目標から ±max_step まで。
++
++    last_target が None（最初の周期）なら変化の上限は掛けない。入力は書き換えない。
++    """
++    out = target
++    if margin is not None:
++        out = out.clip(q_lower + margin, q_upper - margin)
++    if max_step is not None and last_target is not None:
++        out = last_target + (out - last_target).clip(-max_step, max_step)
++    return out
++
++
++def zero_stand_command(homie_obs, n_frames=6, n_cmd=3):
++    """HOMIE の観測（履歴 5＋今の 1 の n_frames フレームを後ろの次元につないだもの）の、各フレームの先頭 n_cmd を 0 にした写しを返す"""
++    frame = homie_obs.shape[-1] // n_frames
++    frames = (homie_obs * 1).reshape(tuple(homie_obs.shape[:-1]) + (n_frames, frame))  # * 1 で写しを作る
++    frames[..., :n_cmd] = 0
++    return frames.reshape(homie_obs.shape)
+diff --git a/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py b/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py
+index 156b388..bfba125 100644
+--- a/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py
++++ b/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py
+@@ -26,6 +26,7 @@ from trl.trainer.ppo_trainer import (
+     unwrap_model_for_generation,
+ )
+ 
++from gr00t.rl.envs.base_task.target_guard import zero_stand_command
+ from gr00t.rl.trl.modules.homie_modules import (
+     HIMActorCritic,
+     HomieActorModule,
+@@ -104,7 +105,8 @@ class PolicyAndValueWrapperObjPredHomie(nn.Module):
+                 original_dones = kwargs["original_dones"]
+                 homie_obs = unsplit_trajectories(homie_obs, masks, original_dones)
+             walk_out = self.homie_walk_model(homie_obs)
+-            stand_out = self.homie_stand_model(homie_obs)
++            # G1_Hackason（直し 8、10-26）: PPO の学習と同じく、立つ方策には歩く指令を 0 にして渡す
++            stand_out = self.homie_stand_model(zero_stand_command(homie_obs, n_frames=6))
+             homie_one_step_obs = init_actor_critic_dict[
+                 "num_one_step_obs"
+             ]  # default value from homie modules
+@@ -323,7 +325,7 @@ class TRLDistillTrainerObjPredHomieAPI(TRLDistillTrainerObjPred):
+         homie_obs = obs_dict["homie_obs"]
+         # Use unwrapped_model to access homie models (model might be wrapped in DDP)
+         walk_out = self.unwrapped_model.homie_walk_model(homie_obs)
+-        stand_out = self.unwrapped_model.homie_stand_model(homie_obs)
++        stand_out = self.unwrapped_model.homie_stand_model(zero_stand_command(homie_obs, n_frames=6))  # G1_Hackason（直し 8）
+         homie_one_step_obs = init_actor_critic_dict[
+             "num_one_step_obs"
+         ]  # Default value from init_actor_critic_dict
+diff --git a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+index 9b93159..afed134 100644
+--- a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
++++ b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+@@ -16,6 +16,7 @@ from transformers.trainer import *
+ from trl.trainer.ppo_trainer import *
+ 
+ from gr00t.rl.agents.modules.data_utils import RolloutStorage
++from gr00t.rl.envs.base_task.target_guard import zero_stand_command
+ from gr00t.rl.trl.callbacks.hv_callback_handler import HVCallbackHandler
+ from gr00t.rl.trl.utils.common import wandb_run_exists
+ from gr00t.rl.trl.utils.rl import compute_episode_attnmask
+@@ -79,15 +80,7 @@ class PolicyAndValueWrapper(nn.Module):
+         if mode == "policy":
+             self.policy.act(**kwargs)
+             homie_obs = kwargs["obs_dict"]["homie_obs"]
+-            stand_homie_obs = homie_obs.clone()
+-            reshaped_obs = stand_homie_obs.view(
+-                stand_homie_obs.shape[0],
+-                stand_homie_obs.shape[1],
+-                6,
+-                stand_homie_obs.shape[-1] // 6,
+-            )
+-            reshaped_obs[..., :3] = 0.0
+-            stand_homie_obs = reshaped_obs.view_as(stand_homie_obs)
++            stand_homie_obs = zero_stand_command(homie_obs, n_frames=6)  # G1_Hackason（直し 8）: 学習・評価・DAgger・実機で同じ関数
+ 
+             # If recurrent policy, unsplit observations for homie models
+             if (
+@@ -781,12 +774,7 @@ class TRLPPOTrainer(PPOTrainer):
+         )
+ 
+         homie_obs = obs_dict["homie_obs"]
+-        stand_homie_obs = homie_obs.clone()
+-        reshaped_obs = stand_homie_obs.view(
+-            stand_homie_obs.shape[0], 6, stand_homie_obs.shape[-1] // 6
+-        )
+-        reshaped_obs[..., :3] = 0.0
+-        stand_homie_obs = reshaped_obs.view_as(stand_homie_obs)
++        stand_homie_obs = zero_stand_command(homie_obs, n_frames=6)  # G1_Hackason（直し 8）
+         walk_out = self.homie_walk_model(homie_obs)
+         stand_out = self.homie_stand_model(stand_homie_obs)
+         homie_one_step_obs = init_actor_critic_dict["num_one_step_obs"]
+@@ -2070,6 +2058,7 @@ class TRLPPOTrainer(PPOTrainer):
+             f"Starting evaluation with {'one episode per environment' if eval_num_envs_episodes else f'{max_episodes} total episodes'}"
+         )
+ 
++        zero_stand_eval = bool(self.config.get("eval", {}).get("zero_stand_cmd", True))  # G1_Hackason（直し 8）
+         # G1_Hackason（段 5）: 実機用のコードと突き合わせる正解の記録（golden_trace.py）
+         golden = None
+         golden_path = self.config.get("eval", {}).get("golden_trace_path", None)
+@@ -2080,6 +2069,7 @@ class TRLPPOTrainer(PPOTrainer):
+                 golden_path,
+                 self.config.eval.get("golden_trace_envs", 8),
+                 self.config.eval.get("golden_trace_max_steps", 1500),
++                zero_stand_cmd=zero_stand_eval,
+             )
+         # G1_Hackason（V2）: 頭のカメラの画像と扉の状態の正解を書く（vision_dataset.py）
+         vision_ds = None
+@@ -2113,7 +2103,12 @@ class TRLPPOTrainer(PPOTrainer):
+ 
+                     homie_obs = obs_dict["homie_obs"]
+                     walk_out = homie_walk_model(homie_obs)
+-                    stand_out = homie_stand_model(homie_obs)
++                    # G1_Hackason（直し 8、10-26）: 評価でも学習と同じく、立つ方策には歩く指令を 0 にして渡す。
++                    # eval.zero_stand_cmd=False で 10-16 までの評価（指令をそのまま渡す）に戻せる（昔の数字と比べる用）。
++                    # 10-16 の正解の記録 golden_45150 は False で取った。記録に zero_stand_cmd を書いて区別する
++                    stand_out = homie_stand_model(
++                        zero_stand_command(homie_obs, n_frames=6) if zero_stand_eval else homie_obs
++                    )
+                     homie_one_step_obs = init_actor_critic_dict["num_one_step_obs"]
+                     commands = homie_obs[..., -homie_one_step_obs : -(homie_one_step_obs - 3)]
+                     walk_mask = (
+diff --git a/gr00t/rl/utils/golden_trace.py b/gr00t/rl/utils/golden_trace.py
+index 6d926fc..3669239 100644
+--- a/gr00t/rl/utils/golden_trace.py
++++ b/gr00t/rl/utils/golden_trace.py
+@@ -14,8 +14,9 @@ def _np(x: torch.Tensor, k: int) -> np.ndarray:
+ 
+ 
+ class GoldenTrace:
+-    def __init__(self, path: str, num_envs: int, max_steps: int) -> None:
++    def __init__(self, path: str, num_envs: int, max_steps: int, zero_stand_cmd: bool = False) -> None:
+         self.path = str(path)
++        self.zero_stand_cmd = bool(zero_stand_cmd)  # 立つ HOMIE に歩く指令を 0 にして渡したか（直し 8、10-26）
+         self.k = int(num_envs)
+         self.max_steps = int(max_steps)
+         self.rows: dict[str, list] = {}
+@@ -38,6 +39,12 @@ class GoldenTrace:
+                 "default_dof_pos": _np(env.default_dof_pos, 1)[0],
+                 "dof_names": np.array(list(env.config.robot.dof_names)),
+                 "num_envs": np.array(k),
++                # G1_Hackason（10-26）: 直し 8・B の有無（check_golden.py が door_core の側を同じにして比べる。無ければ 10-16 の評価とみなす）
++                "zero_stand_cmd": np.array(1.0 if self.zero_stand_cmd else 0.0),
++                "arm_accum_guard_delta": np.array(
++                    float(env.config.get("arm_accum_guard_delta", None) or np.nan)
++                ),
++                "arm_accum_guard_margin": np.array(float(env.config.get("arm_accum_guard_margin", 0.05))),
+             }
+         self._add("actor_obs", _np(obs_dict["actor_obs"], k))
+         self._add("homie_obs", _np(obs_dict["homie_obs"], k))
+-- 
+2.50.1 (Apple Git-155)
+

@@ -31,6 +31,8 @@ if [ "${1:-}" != check ]; then
   POLICY="${1:?door_policy_*.npz を渡す}"
   [ -f "$POLICY" ] || { say "無い: $POLICY"; exit 1; }
   FILES=("$HERE/door_core.py" "$HERE/door_frame.py" "$HERE/door_run_real.py" "$POLICY"
+         "$HERE/target_guard.py"  # 10-26: 腕の積み上げ・送る目標・立つ HOMIE の指令の切り方（学習と同じファイル）
+         "$HERE/door_foot_load.py" "$HERE/leg_model_g1_29dof_rev_1_0.npz"  # 10-26: HOLD で両足に体重が乗っているかの確かめ
          # 10-23: ライダーだけの本線（L1）。推定器と、制御の側の受け取り・電文・点群の当て方
          "$HERE/door_lidar_msg.py" "$HERE/door_lidar_source.py" "$HERE/door_lidar_node.py" "$HERE/lidar_door_est.py"
          "$HERE/door_lidar_angle.py" "$HERE/door_lidar_frame.py" "$HERE/door_lidar_geometry.py" "$HERE/lidar_offset_from_tape.py"

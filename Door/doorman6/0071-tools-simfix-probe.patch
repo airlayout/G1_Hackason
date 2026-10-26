@@ -1,0 +1,562 @@
+From a834bc399778450e23c2dc746259361862241f2d Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 26 Oct 2026 09:56:44 +0900
+Subject: [PATCH] tools: simfix_probe.py (scripted Isaac Sim checks V1-V10 for
+ the sim/real mismatch fixes: readback, shoulder roll sweep, step response and
+ delay, press, target clip, HOMIE stand/walk) and robot.asset.fix_base_link
+ for fixed base probes; default unchanged (10-26)
+
+---
+ gr00t/rl/simfix_probe.py                | 526 ++++++++++++++++++++++++
+ gr00t/rl/simulator/isaacsim/isaacsim.py |   2 +
+ 2 files changed, 528 insertions(+)
+ create mode 100644 gr00t/rl/simfix_probe.py
+
+diff --git a/gr00t/rl/simfix_probe.py b/gr00t/rl/simfix_probe.py
+new file mode 100644
+index 0000000..0b3a6de
+--- /dev/null
++++ b/gr00t/rl/simfix_probe.py
+@@ -0,0 +1,526 @@
++# G1_Hackason（10-26）: シミュレータと実機の食い違いの直し（パッチ 0069・0070、Door/doorman6/simfix_1026_args.txt）を、
++# 直し 1 つずつ Isaac Sim で確かめる道具（計画書 2026-10-26-g1-door-stand-foot-load-check.md の V1〜V10）。
++#
++# 評価（eval_agent_trl.py）と同じく、ckpt の隣の config.yaml に上書きを足して扉の環境を作り、方策の代わりに台本で動かす。
++#   python gr00t/rl/simfix_probe.py +checkpoint=<ckpt> +probe=<名前> +probe_out=<出力の場所> [上書き...]
++# 名前:
++#   readback  当たりの形・armature・関節の摩擦・力の上限・PD・質量・重心・材質の摩擦・遅れを読み戻す（V1①・V2①・V7・V8・V9①・V10）
++#   sweep     台に固定した機体で、肩 roll を外から内へゆっくり動かし、腕と体の当たりが出る角度と止まる角度を測る（V1②・V5）
++#   step      台に固定した機体で、左右の腕の同じ関節に同じ段差の目標を与え、応答と遅れを測る（V2②・V8・V9②）
++#   press     台に固定した機体で、方策の代わりに左肩 roll を内へ押し続け、目標と角度の差・力の張り付き・罰を測る（V3③・V5・V6）
++#   clip      でたらめな大きい行動で、送った目標が可動域の端から margin の内側に収まるかを数える（V4）
++#   homie     HOMIE だけで立つ 60 秒と歩く 30 秒（乱択・押す・遅れあり）。転倒と速さの追従を数える（V10）
++# 結果は <出力の場所>/<名前>.json（数字のまとめ）と <名前>.npz（時系列）。
++import json
++import logging
++import os
++import sys
++from pathlib import Path
++
++import hydra
++import numpy as np
++from hydra.core.hydra_config import HydraConfig
++from hydra.utils import instantiate
++from loguru import logger
++from omegaconf import OmegaConf
++
++from gr00t.rl.utils.config_utils import register_rl_resolvers
++
++register_rl_resolvers()
++
++DT = 0.02
++ARM0 = 15  # 腕の関節の始まり（設定の関節の順）
++NUM_ARM = 14
++ARM_NAMES = ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_roll", "wrist_pitch", "wrist_yaw"]
++# 10-23 の腕だけの空振りで、実機の左腕が胴に 28.8 N·m で押し付けた時の腕の角度（door_real_20261023_174544.npz の 5170 周期目）
++REAL_PRESS_POSE_LEFT = [0.249, 0.043, -0.638, 0.152, 1.507, 0.396, 0.095]
++MIRROR_SIGN = [1, -1, -1, 1, -1, 1, -1]  # 左 → 右の鏡写し（pitch はそのまま、roll・yaw は符号を変える）
++
++
++def _t(x):
++    import torch
++
++    if hasattr(x, "torch"):
++        return x.torch
++    if isinstance(x, torch.Tensor):
++        return x
++    import warp as wp
++
++    return wp.to_torch(x)
++
++
++def _np(x):
++    return _t(x).detach().float().cpu().numpy()
++
++
++def _right_from_left(left):
++    return [v * s for v, s in zip(left, MIRROR_SIGN)]
++
++
++class Driver:
++    """方策の代わりに積み上げ D を直接書いて env.step を回す（D[3:17] の腕の目標＝0.25·D＋既定の角度、D[0:3] は歩く指令）"""
++
++    def __init__(self, env, homie=None):
++        import torch
++
++        self.env = env
++        self.torch = torch
++        self.n = env.num_envs
++        self.scale = float(env.config.robot.control.action_scale)
++        self.default = env.default_dof_pos[0].clone()
++        self.homie = homie
++        self.obs = env.reset_all()
++
++    def set_arm_targets(self, arm_targets):
++        """arm_targets [N, 14] の目標の角度にする"""
++        D = (arm_targets - self.default[ARM0:ARM0 + NUM_ARM]) / self.scale
++        self.env._delta_actions[:, 3:17] = D
++
++    def set_walk_command(self, cmd3):
++        """[vx, vy, wz] の実の単位の指令（homie_command_scale 0.25 で D に直す）"""
++        s = float(self.env.config.homie_command_scale)
++        self.env._delta_actions[:, 0:3] = self.torch.as_tensor(cmd3, device=self.env.device, dtype=self.torch.float) / s
++
++    def step(self, policy_actions=None):
++        torch = self.torch
++        pol = torch.zeros(self.n, 17, device=self.env.device) if policy_actions is None else policy_actions
++        if self.homie is None:
++            leg = torch.zeros(self.n, 15, device=self.env.device)
++        else:
++            leg = self.homie(self.obs["homie_obs"])
++        self.obs, rew, reset, extras = self.env.step({"actions": torch.cat([pol, leg], dim=-1)})
++        return reset
++
++
++class Homie:
++    """評価と同じ HOMIE（歩く／立つの切替は観測の尺度の指令の大きさ 0.5。立つ方策には指令 0 を渡す、直し 8）"""
++
++    def __init__(self, walk_path, stand_path, device, threshold=0.5):
++        import torch
++
++        from gr00t.rl.envs.base_task.target_guard import zero_stand_command
++        from gr00t.rl.trl.modules.homie_modules import HIMActorCritic, HomieActorModule, init_actor_critic_dict
++
++        def load(path):
++            m = HIMActorCritic(**init_actor_critic_dict)
++            m.load_state_dict(torch.load(path, map_location=device)["model_state_dict"])
++            return HomieActorModule(m).to(device).eval()
++
++        self.walk, self.stand = load(walk_path), load(stand_path)
++        self.zero = zero_stand_command
++        self.n1 = init_actor_critic_dict["num_one_step_obs"]
++        self.threshold = threshold
++        self.torch = torch
++
++    def __call__(self, homie_obs):
++        torch = self.torch
++        with torch.no_grad():
++            a_walk = self.walk(homie_obs)["action_mean"]
++            a_stand = self.stand(self.zero(homie_obs, n_frames=6))["action_mean"]
++            cmd = homie_obs[..., -self.n1 : -(self.n1 - 3)]
++            walk = torch.norm(cmd, dim=-1, keepdim=True) > self.threshold
++            return torch.where(walk, a_walk, a_stand)
++
++
++# ---------------------------------------------------------------------------------------------------- 読み戻し
++
++
++def probe_readback(env, out):
++    import torch
++    from pxr import Usd, UsdPhysics
++
++    import omni.usd
++
++    sim, robot = env.simulator, env.simulator._robot
++    res, arrays = {}, {}
++    stage = omni.usd.get_context().get_stage()
++    coll = {}
++    for body in env.config.robot.body_names:
++        prim = stage.GetPrimAtPath(f"/World/envs/env_0/Robot/{body}")
++        n = 0
++        if prim.IsValid():
++            for p in Usd.PrimRange(prim, Usd.TraverseInstanceProxies()):
++                if p.HasAPI(UsdPhysics.CollisionAPI):
++                    n += 1
++        coll[body] = n
++    res["collision_shapes_per_body"] = coll
++    res["bodies_without_collision"] = [b for b, n in coll.items() if n == 0]
++    names = list(env.config.robot.dof_names)
++    ids = sim.dof_ids
++
++    def per_joint(key, attr):
++        try:
++            v = _np(getattr(robot.data, attr))[:, ids]
++            arrays[key] = v
++            res[key] = {
++                "env0": dict(zip(names, v[0].round(6).tolist())),
++                "min": dict(zip(names, v.min(0).round(6).tolist())),
++                "max": dict(zip(names, v.max(0).round(6).tolist())),
++            }
++        except Exception as e:  # noqa: BLE001  読めない口は理由を残して先へ進む
++            res[key] = f"読めない: {type(e).__name__}: {e}"
++
++    for key, attr in (("armature", "joint_armature"), ("joint_friction", "joint_friction_coeff"),
++                      ("effort_limit", "joint_effort_limits"), ("stiffness", "joint_stiffness"),
++                      ("damping", "joint_damping")):
++        per_joint(key, attr)
++    # 左右の対応する腕の関節の armature が同じか（V2①）
++    if isinstance(res.get("armature"), dict):
++        a = res["armature"]["env0"]
++        res["armature_left_right_diff"] = {
++            j: a[f"left_{j}_joint"] - a[f"right_{j}_joint"] for j in ARM_NAMES
++        }
++    # 胴の質量・重心（V7）
++    body_names = list(robot.body_names)
++    t_idx = body_names.index("torso_link")
++    try:
++        mass = _np(robot.data.body_mass)[:, t_idx]
++        arrays["torso_mass"] = mass
++        res["torso_mass"] = {"min": float(mass.min()), "max": float(mass.max()), "mean": float(mass.mean())}
++    except Exception as e:  # noqa: BLE001
++        res["torso_mass"] = f"読めない: {e}"
++    try:
++        coms = _np(robot.root_view.get_coms())  # [N, 剛体, 7]
++        d = coms[:, t_idx, :3] - _np(sim.default_coms)[:, t_idx, :3]
++        arrays["torso_com_offset"] = d
++        res["torso_com_offset"] = {"min": d.min(0).round(4).tolist(), "max": d.max(0).round(4).tolist()}
++    except Exception as e:  # noqa: BLE001
++        res["torso_com_offset"] = f"読めない: {e}"
++    try:
++        mat = _np(robot.root_view.get_material_properties())  # [N, 形, 3]（静止・動・反発）
++        arrays["material"] = mat
++        res["material_static_friction"] = {"min": float(mat[..., 0].min()), "max": float(mat[..., 0].max())}
++    except Exception as e:  # noqa: BLE001
++        res["material_static_friction"] = f"読めない: {e}"
++    # PD の固さの倍率（V7）: 設定の kp に対する比
++    if isinstance(res.get("stiffness"), dict):
++        k = arrays["stiffness"]
++        ratio = k / np.maximum(np.median(k, axis=0, keepdims=True), 1e-9)
++        res["stiffness_ratio_to_median"] = {"min": float(ratio.min()), "max": float(ratio.max())}
++    if hasattr(env, "action_delay_idx"):
++        d = env.action_delay_idx.cpu().numpy()
++        arrays["action_delay_idx"] = d
++        res["action_delay_idx_counts"] = {int(v): int((d == v).sum()) for v in np.unique(d)}
++    np.savez_compressed(out / "readback.npz", **arrays)
++    return res
++
++
++# ---------------------------------------------------------------------------------------------------- 掃引
++
++
++def _arm_pose_tensor(env, left, right):
++    import torch
++
++    t = torch.tensor(left + right, device=env.device, dtype=torch.float)
++    return t[None, :].repeat(env.num_envs, 1)
++
++
++def probe_sweep(env, out, rate=0.2, start=0.4, end=-0.5):
++    """左右の肩 roll を start → end（左の符号。右は鏡写し）へ rate [rad/s] で動かす。ほかの腕の関節は 10-23 の実機の姿勢"""
++    drv = Driver(env)
++    left, right = list(REAL_PRESS_POSE_LEFT), _right_from_left(REAL_PRESS_POSE_LEFT)
++    left[1], right[1] = start, -start
++    pose = _arm_pose_tensor(env, left, right)
++    for _ in range(100):  # 2 秒で姿勢に着く
++        drv.set_arm_targets(pose)
++        drv.step()
++    n_steps = int(abs(end - start) / rate / DT)
++    rows = {"target_roll": [], "q_roll_l": [], "q_roll_r": [], "contact_l": [], "contact_r": [], "tau_roll_l": [], "tau_roll_r": []}
++    mon_names = list(getattr(env.simulator, "arm_body_contact_names", []) or [])
++    li = [i for i, n in enumerate(mon_names) if n.startswith("left")]
++    ri = [i for i, n in enumerate(mon_names) if n.startswith("right")]
++    for k in range(n_steps + 50):
++        roll = start + (end - start) * min(k / n_steps, 1.0)
++        p = pose.clone()
++        p[:, 1] = roll
++        p[:, 7 + 1] = -roll
++        drv.set_arm_targets(p)
++        drv.step()
++        q = _np(env.simulator.dof_pos)
++        tau = _np(env.simulator.applied_dof_torque)
++        mon = getattr(env, "_substep_monitor", None)
++        cp = _np(mon.contact_peak) if mon is not None and mon.contact_peak.shape[1] else np.zeros((env.num_envs, 0))
++        rows["target_roll"].append(roll)
++        rows["q_roll_l"].append(q[0, ARM0 + 1])
++        rows["q_roll_r"].append(q[0, ARM0 + 8])
++        rows["contact_l"].append(cp[0, li].max() if li else 0.0)
++        rows["contact_r"].append(cp[0, ri].max() if ri else 0.0)
++        rows["tau_roll_l"].append(tau[0, ARM0 + 1])
++        rows["tau_roll_r"].append(tau[0, ARM0 + 8])
++    arr = {k: np.asarray(v) for k, v in rows.items()}
++    np.savez_compressed(out / "sweep.npz", **arr)
++
++    def onset(q, c, sign):
++        hit = np.nonzero(c > 1.0)[0]
++        return None if len(hit) == 0 else float(q[hit[0]] * sign)
++
++    lag_l = arr["q_roll_l"] - arr["target_roll"]
++    lag_r = arr["q_roll_r"] + arr["target_roll"]
++    return {
++        "contact_onset_roll_left": onset(arr["q_roll_l"], arr["contact_l"], 1),
++        "contact_onset_roll_right_mirrored": onset(arr["q_roll_r"], arr["contact_r"], -1),
++        "stop_roll_left": float(arr["q_roll_l"].min()),
++        "stop_roll_right_mirrored": float(-arr["q_roll_r"].max()),
++        "max_lag_left": float(lag_l.max()),
++        "max_lag_right": float(-lag_r.min()),
++        "max_contact_left_N": float(arr["contact_l"].max()),
++        "max_contact_right_N": float(arr["contact_r"].max()),
++        "contact_bodies": mon_names,
++    }
++
++
++# ---------------------------------------------------------------------------------------------------- 段差の応答・遅れ
++
++
++def probe_step(env, out, joint="elbow", amp=0.2, settle=50, hold=75):
++    """左右の腕の同じ関節（鏡写しの向き）に amp [rad] の段差を同時に与え、物理 1 回ごとの角度を記録する"""
++    import torch
++
++    drv = Driver(env)
++    j = ARM_NAMES.index(joint)
++    base = _arm_pose_tensor(env, [0.0] * 7, [0.0] * 7)
++    base[:, 3] = base[:, 10] = 0.6  # 肘を少し曲げる（重力で垂れない姿勢）
++    for _ in range(settle):
++        drv.set_arm_targets(base)
++        drv.step()
++    rec_q, rec_tgt = [], []
++    orig = env._after_physics_substep
++
++    def rec():
++        orig()
++        rec_q.append(_np(env.simulator.dof_pos)[:, [ARM0 + j, ARM0 + 7 + j]])
++        tgt = _np(env.simulator._robot.data.joint_pos_target)[:, env.simulator.dof_ids]
++        rec_tgt.append(tgt[:, [ARM0 + j, ARM0 + 7 + j]])
++
++    env._after_physics_substep = rec
++    q0 = _np(env.simulator.dof_pos)[:, [ARM0 + j, ARM0 + 7 + j]]
++    stepped = base.clone()
++    stepped[:, j] += amp
++    stepped[:, 7 + j] += amp * MIRROR_SIGN[j]
++    for _ in range(hold):
++        drv.set_arm_targets(stepped)
++        drv.step()
++    env._after_physics_substep = orig
++    q = np.stack(rec_q)  # [物理の回, N, 2]
++    tgt = np.stack(rec_tgt)
++    sign = np.array([1.0, MIRROR_SIGN[j]])
++    y = (q - q0[None]) * sign[None, None, :] / amp  # 0 → 1 に正規化
++    sub_dt = DT / int(env.config.simulator.config.sim.control_decimation)
++
++    def metrics(yk):
++        t10 = np.argmax(yk >= 0.1) if (yk >= 0.1).any() else None
++        t90 = np.argmax(yk >= 0.9) if (yk >= 0.9).any() else None
++        t50 = np.argmax(yk >= 0.5) if (yk >= 0.5).any() else None
++        rise = None if t10 is None or t90 is None else float((t90 - t10) * sub_dt)
++        return {"rise_s": rise, "t50_s": None if t50 is None else float(t50 * sub_dt),
++                "overshoot": float(yk.max() - 1.0), "final": float(yk[-1])}
++
++    per_env = [{"left": metrics(y[:, e, 0]), "right": metrics(y[:, e, 1])} for e in range(env.num_envs)]
++    # 遅れ: 目標が段差の半分を越えた最初の物理の回（制御ステップに直す）
++    moved = (tgt - tgt[0:1]) * sign[None, None, :] > amp * 0.5
++    delay_steps = [int(np.argmax(moved[:, e, 0])) // int(env.config.simulator.config.sim.control_decimation) for e in range(env.num_envs)]
++    np.savez_compressed(out / "step.npz", y=y, tgt=tgt)
++    res = {"joint": joint, "amp": amp, "per_env": per_env[:8], "target_delay_steps": delay_steps}
++    if hasattr(env, "action_delay_idx"):
++        res["action_delay_idx"] = env.action_delay_idx.cpu().numpy().tolist()
++    lr = [(p["left"]["rise_s"], p["right"]["rise_s"]) for p in per_env if p["left"]["rise_s"] and p["right"]["rise_s"]]
++    if lr:
++        res["rise_left_right_rel_diff_max"] = float(max(abs(a - b) / max(a, b) for a, b in lr))
++    ov = [(p["left"]["overshoot"], p["right"]["overshoot"]) for p in per_env]
++    res["overshoot_left_right_abs_diff_max"] = float(max(abs(a - b) for a, b in ov))
++    return res
++
++
++# ---------------------------------------------------------------------------------------------------- 押し付け
++
++
++def probe_press(env, out, push=1.0, seconds=6.0):
++    """10-23 の実機の姿勢から、方策の代わりに左肩 roll の増分 push（内向き）を出し続ける。胴が止める（直し A の形が要る）"""
++    import torch
++
++    drv = Driver(env)
++    left, right = list(REAL_PRESS_POSE_LEFT), _right_from_left(REAL_PRESS_POSE_LEFT)
++    pose = _arm_pose_tensor(env, left, right)
++    for _ in range(100):
++        drv.set_arm_targets(pose)
++        drv.step()
++    pol = torch.zeros(env.num_envs, 17, device=env.device)
++    pol[:, 3 + 1] = -push  # 左肩 roll を内へ（行動の 3＋腕の並び）
++    limit = float(env.simulator.torque_limits[ARM0 + 1])
++    rows = {"target": [], "q": [], "tau": [], "sat_frac": [], "rew_sat": [], "rew_contact": [], "contact": []}
++    for _ in range(int(seconds / DT)):
++        drv.step(pol)
++        q = _np(env.simulator.dof_pos)[:, ARM0 + 1]
++        tgt = _np(env.simulator._robot.data.joint_pos_target)[:, env.simulator.dof_ids][:, ARM0 + 1]
++        tau = _np(env.simulator.applied_dof_torque)[:, ARM0 + 1]
++        rows["target"].append(tgt)
++        rows["q"].append(q)
++        rows["tau"].append(tau)
++        mon = getattr(env, "_substep_monitor", None)
++        if mon is not None:
++            rows["sat_frac"].append(_np(mon.saturated_fraction())[:, 1])
++            rows["rew_sat"].append(_np(env._reward_penalty_arm_torque_saturation()))
++            rows["rew_contact"].append(_np(env._reward_penalty_arm_body_contact()))
++            rows["contact"].append(_np(mon.contact_peak).max(-1) if mon.contact_peak.shape[1] else np.zeros(env.num_envs))
++    arr = {k: np.stack(v) for k, v in rows.items() if v}
++    np.savez_compressed(out / "press.npz", **arr)
++    gap = arr["target"] - arr["q"]
++    sat_time = float((np.abs(arr["tau"]) >= 0.9 * limit).mean())
++    res = {
++        "max_abs_target_minus_q": float(np.abs(gap).max()),
++        "final_target": float(arr["target"][-1].mean()),
++        "final_q": float(arr["q"][-1].mean()),
++        "saturated_time_fraction_end_sampled": sat_time,
++        "torque_limit": limit,
++        "max_abs_torque": float(np.abs(arr["tau"]).max()),
++    }
++    if "sat_frac" in arr:
++        res["saturated_time_fraction_substeps"] = float(arr["sat_frac"].mean())
++        res["reward_sat_mean"] = float(arr["rew_sat"].mean())
++        res["reward_contact_mean"] = float(arr["rew_contact"].mean())
++        res["contact_peak_max_N"] = float(arr["contact"].max())
++        res["steps_with_contact"] = int((arr["contact"] > 1.0).any(-1).sum())
++    return res
++
++
++# ---------------------------------------------------------------------------------------------------- 送る目標
++
++
++def probe_clip(env, out, steps=300, scale=5.0, seed=0):
++    """でたらめな大きい行動（腕の増分 ±scale）で、送った目標が可動域の端から margin の内側に収まるか"""
++    import torch
++
++    g = torch.Generator(device="cpu").manual_seed(seed)
++    drv = Driver(env)
++    lim = env.simulator.hard_dof_pos_limits.cpu().numpy()
++    margin = env.config.get("clip_targets_to_limits_margin", None)
++    step_limit = env.config.get("target_step_limit", None)
++    over, n, jumps = 0, 0, 0.0
++    prev = None
++    for _ in range(steps):
++        pol = (torch.rand(env.num_envs, 17, generator=g) * 2 - 1).to(env.device) * scale
++        pol[:, :3] = 0.0
++        reset = drv.step(pol)
++        tgt = _np(env.simulator._robot.data.joint_pos_target)[:, env.simulator.dof_ids][:, :29]
++        m = 0.0 if margin is None else float(margin)
++        over += int(((tgt < lim[:, 0] + m - 1e-5) | (tgt > lim[:, 1] - m + 1e-5)).sum())
++        n += tgt.size
++        if prev is not None:
++            keep = ~_np(reset).astype(bool)
++            if keep.any():
++                jumps = max(jumps, float(np.abs(tgt[keep] - prev[keep]).max()))
++        prev = tgt
++    return {"margin": margin, "target_step_limit": step_limit, "targets_outside": over, "targets_total": n,
++            "max_target_jump_per_step": jumps}
++
++
++# ---------------------------------------------------------------------------------------------------- HOMIE
++
++
++def probe_homie(env, out, stand_s=60.0, walk_s=30.0):
++    import torch
++
++    homie = Homie(env.config.get("homie_walk_model_path_probe", "./models/model_walk.pt"),
++                  env.config.get("homie_stand_model_path_probe", "./models/model_stand.pt"), env.device)
++    drv = Driver(env, homie)
++    zero_arms = _arm_pose_tensor(env, [0.0] * 7, [0.0] * 7)
++    fell = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
++    falls_stand = 0
++    tilt_max = 0.0
++    for _ in range(int(stand_s / DT)):
++        drv.set_arm_targets(zero_arms)
++        drv.set_walk_command([0.0, 0.0, 0.0])
++        reset = drv.step()
++        bad = reset & ~env.time_out_buf
++        falls_stand += int(bad.sum())
++        fell |= bad
++        g = env.projected_gravity
++        tilt_max = max(tilt_max, float(torch.rad2deg(torch.acos((-g[:, 2]).clamp(-1, 1))).max()))
++    segments = [((-0.3, 0.0, 0.0), 5), ((0.3, 0.0, 0.0), 5), ((0.0, 0.3, 0.0), 5), ((0.0, -0.3, 0.0), 5),
++                ((0.3, 0.0, 0.5), 5), ((0.3, 0.0, -0.5), 5)]
++    scale = walk_s / sum(s for _, s in segments)
++    seg_res, falls_walk = [], 0
++    for cmd, sec in segments:
++        vel = []
++        n = int(sec * scale / DT)
++        for k in range(n):
++            drv.set_arm_targets(zero_arms)
++            drv.set_walk_command(cmd)
++            reset = drv.step()
++            bad = reset & ~env.time_out_buf
++            falls_walk += int(bad.sum())
++            fell |= bad
++            if k >= n // 2:
++                vel.append(torch.cat([env.base_lin_vel[:, :2], env.base_ang_vel[:, 2:3]], dim=-1).cpu().numpy())
++        v = np.stack(vel).mean(0)  # [N, 3]
++        c = np.array(cmd)
++        err = [float(np.abs(v[:, i].mean() - c[i]) / abs(c[i])) if c[i] != 0 else None for i in range(3)]
++        seg_res.append({"cmd": list(cmd), "mean_vel": v.mean(0).round(3).tolist(), "rel_err": err})
++    return {"num_envs": env.num_envs, "falls_stand": falls_stand, "falls_walk": falls_walk,
++            "envs_that_fell": int(fell.sum()), "stand_tilt_max_deg": tilt_max, "walk_segments": seg_res}
++
++
++PROBES = {"readback": probe_readback, "sweep": probe_sweep, "step": probe_step, "press": probe_press,
++          "clip": probe_clip, "homie": probe_homie}
++
++
++@hydra.main(config_path="config", config_name="base_eval")
++def main(override_config: OmegaConf):
++    logger.remove()
++    logger.add(os.path.join(HydraConfig.get().runtime.output_dir, "probe.log"), level="DEBUG")
++    logger.add(sys.stdout, level=os.environ.get("LOGURU_LEVEL", "INFO").upper())
++    logging.basicConfig(level=logging.INFO)
++    os.chdir(hydra.utils.get_original_cwd())
++    probe = str(override_config.probe)
++    out = Path(str(override_config.probe_out))
++    out.mkdir(parents=True, exist_ok=True)
++    pa = override_config.get("probe_args", None)
++    probe_args = OmegaConf.to_container(pa, resolve=True) if pa is not None else {}
++
++    checkpoint = Path(override_config.checkpoint)
++    train_config = OmegaConf.load(checkpoint.parent / "config.yaml")
++    if train_config.eval_overrides is not None:
++        train_config = OmegaConf.merge(train_config, train_config.eval_overrides)
++    config = OmegaConf.merge(train_config, override_config)
++    config.experiment_dir = checkpoint.parent
++
++    from isaaclab.app import AppLauncher
++    import argparse
++
++    parser = argparse.ArgumentParser()
++    AppLauncher.add_app_launcher_args(parser)
++    args_cli, hydra_args = parser.parse_known_args()
++    sys.argv = [sys.argv[0]] + hydra_args
++    args_cli.num_envs = config.num_envs
++    args_cli.seed = config.seed
++    args_cli.env_spacing = config.env.config.env_spacing
++    args_cli.output_dir = config.output_dir
++    args_cli.enable_cameras = False
++    args_cli.headless = True
++    kit_args = "--/app/extensions/registryEnabled=false --enable omni.kit.material.library"
++    args_cli.kit_args = f"{args_cli.kit_args} {kit_args}".strip() if getattr(args_cli, "kit_args", "") else kit_args
++    app_launcher = AppLauncher(args_cli)
++    simulation_app = app_launcher.app  # noqa: F841
++
++    import torch
++
++    from gr00t.rl.utils.common import seeding
++    from gr00t.rl.utils.helpers import pre_process_config
++
++    pre_process_config(config)
++    config.env.config.ckpt_dir = str(checkpoint.parent)
++    seeding(config.seed)
++    device = "cuda:0" if torch.cuda.is_available() else "cpu"
++    env = instantiate(config=config.env, device=device)
++    logger.info(f"[simfix_probe] {probe} を始める（台 {env.num_envs}）")
++    with torch.no_grad():
++        res = PROBES[probe](env, out, **probe_args)
++    res["overrides"] = [a for a in sys.argv[1:]]
++    (out / f"{probe}.json").write_text(json.dumps(res, ensure_ascii=False, indent=1, default=float))
++    logger.info(f"[simfix_probe] 終わり: {out / (probe + '.json')}")
++    print("[simfix_probe] RESULT " + json.dumps(res, ensure_ascii=False, default=float)[:4000], flush=True)
++    os._exit(0)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/gr00t/rl/simulator/isaacsim/isaacsim.py b/gr00t/rl/simulator/isaacsim/isaacsim.py
+index 7d2c720..9a2c81b 100644
+--- a/gr00t/rl/simulator/isaacsim/isaacsim.py
++++ b/gr00t/rl/simulator/isaacsim/isaacsim.py
+@@ -793,6 +793,8 @@ class IsaacSim(BaseSimulator):
+             ),
+             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                 enabled_self_collisions=not bool(self.env_config.robot.asset.self_collisions),
++                # G1_Hackason（10-26）: 確かめの道具（simfix_probe.py）で機体を台に固定する。既定 False（元のまま）
++                fix_root_link=bool(self.env_config.robot.asset.get("fix_base_link", False)) or None,
+                 solver_position_iteration_count=self.simulator_config.sim.physx.num_position_iterations,
+                 solver_velocity_iteration_count=self.simulator_config.sim.physx.num_velocity_iterations,
+             ),
+-- 
+2.50.1 (Apple Git-155)
+
