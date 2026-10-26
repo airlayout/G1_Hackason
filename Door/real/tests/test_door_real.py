@@ -316,22 +316,45 @@ def _still_inputs(p: dc.Params, q: np.ndarray) -> dc.Inputs:
 
 @needs_policy
 def test_door_step_keeps_arm_targets_near_a_stalled_arm():
-    """腕が既定の姿勢のまま動かない（止められている）とき、扉の方策を 300 周期回しても腕の目標は今の角度 ±0.3 rad の中"""
+    """腕が既定の姿勢のまま動かない（止められている）とき、扉の方策を 300 周期回しても腕の目標は今の角度 ±δ（関節ごと）の中"""
     p = dc.load_params(POLICY)
     s = dc.reset_actor(p, dc.initial_state(p))
     inp = _still_inputs(p, p.q_default.copy())
-    worst = 0.0
+    worst = np.zeros(14)
     for _ in range(300):
         s, out = dc.step(p, s, inp, mode="door")
-        worst = max(worst, float(np.abs(out.q_target[p.arm_dof] - inp.q[p.arm_dof]).max()))
-    assert worst <= dc.ARM_GUARD_DELTA + 1e-9
+        worst = np.maximum(worst, np.abs(out.q_target[p.arm_dof] - inp.q[p.arm_dof]))
+    assert np.all(worst <= dc.ARM_GUARD_DELTA + 1e-9)
     # 切らなければ、同じ状況で目標は今の角度から 0.3 rad より遠くへたまる（この試験が B を見ている証拠）
     s = dc.reset_actor(p, dc.initial_state(p))
     worst_off = 0.0
     for _ in range(300):
         s, out = dc.step(p, s, inp, mode="door", arm_guard=None)
         worst_off = max(worst_off, float(np.abs(out.q_target[p.arm_dof] - inp.q[p.arm_dof]).max()))
-    assert worst_off > dc.ARM_GUARD_DELTA
+    assert worst_off > dc.ARM_GUARD_DELTA.max()
+
+
+def test_arm_guard_delta_is_per_joint():
+    """10-26 ユーザー決定: δ は関節ごと（肩 pitch・roll と手首 pitch・yaw は 0.2、肩 yaw・肘・手首 roll は 0.3）。左右同じ"""
+    want = np.array([0.2, 0.2, 0.3, 0.3, 0.3, 0.2, 0.2] * 2)
+    np.testing.assert_array_equal(dc.ARM_GUARD_DELTA, want)
+
+
+def test_policy_npz_delta_overrides_default(tmp_path):
+    """書き出しの npz に学習の δ（arm_guard_delta）があれば、door_core はそれを使う（学習と実機の δ をずらさない）"""
+    if not (POLICY and Path(POLICY).exists()):
+        pytest.skip("DOOR_POLICY が無い")
+    with np.load(POLICY) as z:
+        data = {k: z[k] for k in z.files}
+    data["arm_guard_delta"] = np.full(14, 0.1)
+    path = tmp_path / "policy_with_delta.npz"
+    np.savez(path, **data)
+    p = dc.load_params(str(path))
+    np.testing.assert_array_equal(p.arm_guard_delta, np.full(14, 0.1))
+    assert dc.resolve_arm_guard(p, dc.ARM_GUARD)[0].max() == 0.1
+    p0 = dc.load_params(POLICY)
+    assert p0.arm_guard_delta is None
+    np.testing.assert_array_equal(dc.resolve_arm_guard(p0, dc.ARM_GUARD)[0], dc.ARM_GUARD_DELTA)
 
 
 @needs_policy
@@ -416,6 +439,10 @@ def test_golden_options_reads_new_records():
     g = {"zero_stand_cmd": np.array(1.0), "arm_accum_guard_delta": np.array(0.3), "arm_accum_guard_margin": np.array(0.05)}
     opts = cg.golden_options(g)
     assert opts.zero_stand_cmd is True and opts.arm_guard == (0.3, 0.05)
+    per = np.array([0.2, 0.2, 0.3, 0.3, 0.3, 0.2, 0.2] * 2)
+    g["arm_accum_guard_delta"] = per  # 関節ごとの δ（10-26 から）
+    d, m = cg.golden_options(g).arm_guard
+    np.testing.assert_array_equal(d, per)
     g["arm_accum_guard_delta"] = np.array(np.nan)
     assert cg.golden_options(g).arm_guard is None
 

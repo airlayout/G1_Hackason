@@ -182,3 +182,13 @@ def test_sim_arm_guard_per_joint_delta_list():
     want = _door_core_guard_arm_D(D.double().numpy(), q.double().numpy(), qd.double().numpy(),
                                   lower.double().numpy(), upper.double().numpy(), np.array(per), 0.05)
     assert np.abs(env._delta_actions.numpy() - want).max() <= 1e-6
+
+
+def test_golden_trace_records_per_joint_delta(tmp_path):
+    """10-26: δ が関節ごとの一覧なら 14 個そのまま書く（check_golden が door_core に同じ δ を渡す）"""
+    from gr00t.rl.utils.golden_trace import _delta_or_nan
+
+    per = [0.2, 0.2, 0.3, 0.3, 0.3, 0.2, 0.2] * 2
+    assert np.array_equal(_delta_or_nan(per), np.array(per))
+    assert float(_delta_or_nan(0.3)) == pytest.approx(0.3)
+    assert np.isnan(_delta_or_nan(None))

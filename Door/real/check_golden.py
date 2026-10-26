@@ -40,15 +40,17 @@ CHECKS = ("obs", "a_pol", "homie_obs", "homie_a", "D", "cmd", "whole", "walk")
 class GoldenOptions:
     """記録を取った評価の設定（直し B・8 の有無）"""
     zero_stand_cmd: bool
-    arm_guard: Optional[Tuple[float, float]]  # (delta, margin)。None は切らない
+    arm_guard: Optional[Tuple[object, float]]  # (delta〔1 つか関節ごとの 14〕, margin)。None は切らない
 
 
 def golden_options(g) -> GoldenOptions:
     """記録に設定が無ければ 10-16 の評価（B も 8 も無い）とみなす"""
     zero = bool(float(g["zero_stand_cmd"]) > 0.5) if "zero_stand_cmd" in g else False
-    delta = float(g["arm_accum_guard_delta"]) if "arm_accum_guard_delta" in g else math.nan
+    delta = np.asarray(g["arm_accum_guard_delta"], dtype=float) if "arm_accum_guard_delta" in g else np.array(math.nan)
     margin = float(g["arm_accum_guard_margin"]) if "arm_accum_guard_margin" in g else math.nan
-    return GoldenOptions(zero, None if math.isnan(delta) else (delta, margin))
+    if np.isnan(delta).all():
+        return GoldenOptions(zero, None)
+    return GoldenOptions(zero, (float(delta) if delta.size == 1 else delta, margin))  # 10-26 から δ は関節ごとの 14 個
 
 
 def run_env(p: dc.Params, g, i: int, n_steps: int, opts: GoldenOptions):

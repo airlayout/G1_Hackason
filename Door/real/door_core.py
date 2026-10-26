@@ -36,7 +36,9 @@ HOMIE_STEP = 86
 HOMIE_HIST = 5
 LSTM_LAYERS = 2
 LSTM_HIDDEN = 256
-ARM_GUARD_DELTA = 0.3  # [rad] 腕の目標は今の角度からここまで（直し B。シミュレータの 1 周期の腕の動きの p99 から決めた）
+# [rad] 腕の目標は今の角度からここまで（直し B）。関節ごと（10-26 ユーザー決定）: [肩 pitch, 肩 roll, 肩 yaw, 肘, 手首 roll, pitch, yaw]×左右。
+# 0.8×力の上限÷kp と 0.3（シミュレータの 1 周期の腕の動きの p99）の小さい方。0.3 一律だと肩は kp 100×0.3=30>25 N·m で押し付けが減らない（V3）
+ARM_GUARD_DELTA = np.array([0.2, 0.2, 0.3, 0.3, 0.3, 0.2, 0.2] * 2)
 ARM_GUARD_MARGIN = 0.05  # [rad] 可動域の端からの余裕（door_run_real.py の送る目標の切り方と同じ）
 ARM_GUARD = (ARM_GUARD_DELTA, ARM_GUARD_MARGIN)
 
@@ -89,6 +91,7 @@ class Params:
     q_upper: np.ndarray
     effort_limit: np.ndarray
     c: Dict[str, float]  # 定数（尺度・頭打ち・閾値）。export_door_policy.py が設定から写す
+    arm_guard_delta: Optional[np.ndarray] = None  # [14] 学習で使った腕の積み上げの δ（無ければ door_core の既定 ARM_GUARD_DELTA）
 
     @property
     def arm_dof(self) -> slice:
@@ -180,6 +183,7 @@ def load_params(path: str, mirror: Optional[bool] = None) -> Params:
         q_upper=z["q_upper"],
         effort_limit=z["effort_limit"],
         c={k: float(v) for k, v in meta["constants"].items()},
+        arm_guard_delta=np.asarray(z["arm_guard_delta"], dtype=float) if "arm_guard_delta" in z.files else None,
     )
 
 
@@ -306,7 +310,14 @@ def command_from_D(p: Params, D: np.ndarray) -> np.ndarray:
     return cmd
 
 
-def guard_arm_D(p: Params, D: np.ndarray, q: np.ndarray, arm_guard: Tuple[float, float]) -> np.ndarray:
+def resolve_arm_guard(p: Params, arm_guard):
+    """既定（ARM_GUARD）を渡されたときは、npz に学習の δ があればそれを使う（学習と実機の δ をずらさない）"""
+    if arm_guard is ARM_GUARD and p.arm_guard_delta is not None:
+        return (p.arm_guard_delta, ARM_GUARD_MARGIN)
+    return arm_guard
+
+
+def guard_arm_D(p: Params, D: np.ndarray, q: np.ndarray, arm_guard) -> np.ndarray:
     """腕の積み上げ D[3:17] を今の角度 ±delta・可動域の端から margin 内側に収めた D を返す（直し B）"""
     delta, margin = arm_guard
     arm = p.arm_dof
@@ -328,6 +339,7 @@ def step(p: Params, s: CoreState, inp: Inputs, mode: str = "door", zero_stand_cm
         a_pol, h, cell = actor_forward(p, obs, s.h, s.cell)
         a_real = p.act_mirror @ a_pol if p.mirror else a_pol
         D = np.clip(s.D + p.c["delta_action_scale"] * a_real, -p.c["delta_action_clip"], p.c["delta_action_clip"])
+        arm_guard = resolve_arm_guard(p, arm_guard)
         if arm_guard is not None:
             D = guard_arm_D(p, D, inp.q, arm_guard)
     elif mode == "hold":

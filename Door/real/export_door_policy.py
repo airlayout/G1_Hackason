@@ -182,8 +182,9 @@ def main() -> int:
         "rms_clip": 5.0,
     }
     # 10-26: 腕の積み上げの切り方（直し B）を入れて学習した方策なら、その値を残す（door_run_real.py が無ければ知らせる）
+    guard_delta = None
     if envc.get("arm_accum_guard_delta") is not None:
-        consts["arm_accum_guard_delta"] = float(envc["arm_accum_guard_delta"])
+        guard_delta = np.broadcast_to(np.asarray(envc["arm_accum_guard_delta"], dtype=float), (14,)).copy()  # 1 つか関節ごと
         consts["arm_accum_guard_margin"] = float(envc.get("arm_accum_guard_margin", 0.05))
     thr = [envc[k] for k in ("clip_homie_linvel_x_threshold", "clip_homie_linvel_y_threshold", "clip_homie_angvel_threshold")]
     if len(set(thr)) != 1:
@@ -202,6 +203,8 @@ def main() -> int:
         "q_upper": np.array(robot["dof_pos_upper_limit_list"], dtype=float),
         "effort_limit": np.array(robot["dof_effort_limit_list"], dtype=float),
     }
+    if guard_delta is not None:
+        arrays["arm_guard_delta"] = guard_delta  # door_core が既定の δ の代わりに使う
     for i in range(door_core.LSTM_LAYERS):
         for k in ("w_ih", "w_hh", "b_ih", "b_hh"):
             src = f"memory.rnn.{k.replace('w_', 'weight_').replace('b_', 'bias_')}_l{i}"

@@ -326,7 +326,7 @@ def main() -> int:
     geometry = dfr.door_geometry(w, h, lh, bs, lever_left=not a.lever_right)
     damp_kp, damp_kd = np.zeros(dc.NUM_DOF), np.full(dc.NUM_DOF, DAMP_KD)
     max_tilt = math.radians(a.max_tilt_deg)
-    if "arm_accum_guard_delta" not in p.c:
+    if p.arm_guard_delta is None:
         print("[door_real] ⚠️ この方策は腕の積み上げの切り方（直し B）なしで学習した。実機の door_core は B ありで回す"
               "（シミュレータの評価 V12 の B2 の数字を見てから使う）", flush=True)
     leg_model = dfl.load_leg_model(a.leg_model)

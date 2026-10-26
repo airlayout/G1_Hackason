@@ -34,6 +34,8 @@ export PAUSE_FILE="${PAUSE_FILE:-$HOME/work_inoue/PAUSE_DOOR_STAGE2}"
 export STOP_FILE="${STOP_FILE:-$HOME/work_inoue/STOP_DOOR_CHAIN}"
 rm -f "$STOP_FILE"
 PY="$HOME/miniforge3/envs/doorman6/bin/python"
+# CHAIN_REPO: 学習と評価の作業ツリー（~/work_inoue/doorman6 の下。既定 VIRAL6。10-26 の学習し直しは VIRAL6_fix）
+CHAIN_REPO="${CHAIN_REPO:-VIRAL6}"
 cd "$BASE" || exit 1
 
 CK="$1"; shift
@@ -57,7 +59,7 @@ eval_and_keep() {
   local name="$1" task="$2" round="$3" it evlog rec rate succ keep
   it=$(ckpt_iter "$CK")
   evlog="$OUTDIR/eval_${name}_r${round}.log"
-  COUNT_ARGS="$COUNT_ARGS" EXTRA_ARGS="++env.config.task.name=$task ${EVAL_EXTRA:-}" ./eval_from_start.sh "$CK" "${EVAL_N:-128}" > "$evlog" 2>&1
+  EVAL_REPO="$CHAIN_REPO" COUNT_ARGS="$COUNT_ARGS" EXTRA_ARGS="++env.config.task.name=$task ${EVAL_EXTRA:-}" ./eval_from_start.sh "$CK" "${EVAL_N:-128}" > "$evlog" 2>&1
   rec=$(grep -o 'out=[^ ]*' "$evlog" | tail -1 | cut -d= -f2)
   rate=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['success_rate'])" "$rec/summary.json" 2>/dev/null || echo 0)
   succ=$("$PY" -c "import json,sys; d=json.load(open(sys.argv[1])); print(f\"{d['success']}/{d['episodes_from_stage0']}\")" "$rec/summary.json" 2>/dev/null || echo none)
@@ -67,12 +69,12 @@ eval_and_keep() {
   keep="$BASE/ckpt/${name}_pass_it${it}"
   mkdir -p "$keep" && cp "$CK" "$keep/last.pt" && cp "$(dirname "$CK")"/{config,meta}.yaml "$keep/" && cp "$rec/summary.json" "$keep/summary_128.json"
   log "stage=$name PASS iter=$it rate=$rate kept=$keep"
-  COUNT_ARGS="$COUNT_ARGS" VIDEO=1 EXTRA_ARGS="++env.config.task.name=$task ${EVAL_EXTRA:-}" ./eval_from_start.sh "$CK" 8 > "$OUTDIR/video_${name}.log" 2>&1
+  EVAL_REPO="$CHAIN_REPO" COUNT_ARGS="$COUNT_ARGS" VIDEO=1 EXTRA_ARGS="++env.config.task.name=$task ${EVAL_EXTRA:-}" ./eval_from_start.sh "$CK" 8 > "$OUTDIR/video_${name}.log" 2>&1
   log "stage=$name video: $(tail -1 "$OUTDIR/video_${name}.log")"
   return 0
 }
 
-log "chain start ckpt=${CK:-none} exp=${EXP:-default} stages=$* pass_rate=$PASS_RATE pause_file=$PAUSE_FILE stop_file=$STOP_FILE eval_extra=${EVAL_EXTRA:-}"
+log "chain start repo=$CHAIN_REPO ckpt=${CK:-none} exp=${EXP:-default} stages=$* pass_rate=$PASS_RATE pause_file=$PAUSE_FILE stop_file=$STOP_FILE eval_extra=${EVAL_EXTRA:-}"
 for SPEC in "$@"; do
   IFS=: read -r NAME TASK ROUNDS MIN CRIT EXTRA EVAL_TASK <<< "$SPEC"
   EVAL_TASK="${EVAL_TASK:-$TASK}"
@@ -80,7 +82,7 @@ for SPEC in "$@"; do
   TRAIN_EXTRA="${TRAIN_EXTRA//|/,}"  # リストの中のカンマは | で書く（例: ++env.config.staged_reset_ratios=[0.3|0.3|0.1|0.1|0.1|0.1]）
   COUNT_ARGS="--criterion ${CRIT:-through}"
   PROJECT="door_${NAME}"
-  LOGROOT="$WORK6/VIRAL6/logs_rl/$PROJECT"
+  LOGROOT="$WORK6/$CHAIN_REPO/logs_rl/$PROJECT"
   PASSED=0
   if [ "$EVAL_FIRST" = 1 ] && [ -n "$CK" ]; then
     if [ -e "$STOP_FILE" ]; then log "止め札（$STOP_FILE）があるので止める"; log "chain_done result=stopped_at_$NAME last_ckpt=$CK"; exit 1; fi
@@ -92,7 +94,7 @@ for SPEC in "$@"; do
     if [ -e "$STOP_FILE" ]; then log "止め札（$STOP_FILE）があるので止める"; log "chain_done result=stopped_at_$NAME last_ckpt=$CK"; exit 1; fi
     UNTIL=$(date -d "+${MIN} min" +%H:%M)
     log "stage=$NAME task=$TASK round=$R/$ROUNDS train until=$UNTIL resume=$CK${TRAIN_EXTRA:+ extra=$TRAIN_EXTRA}"
-    WORK="$WORK6" REPO=VIRAL6 ENV_NAME=doorman6 IDLE_GATE="${IDLE_GATE:-1}" PROJECT="$PROJECT" KIND="${NAME}_601" MEM_MAX="${MEM_MAX:-9G}" \
+    WORK="$WORK6" REPO="$CHAIN_REPO" ENV_NAME=doorman6 IDLE_GATE="${IDLE_GATE:-1}" PROJECT="$PROJECT" KIND="${NAME}_601" MEM_MAX="${MEM_MAX:-9G}" \
       RESUME_CKPT="$CK" ./run_train_segments.sh "$NUM_ENVS" "$UNTIL" ++env.config.task.name="$TASK" $TRAIN_EXTRA \
       >> "$OUTDIR/train_${NAME}.log" 2>&1
     NEW=$(find "$LOGROOT" -name last.pt -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)

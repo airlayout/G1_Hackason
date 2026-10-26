@@ -4,8 +4,10 @@
 #   例: grep -v '^#' simfix_1026_args.txt | grep -v '^$' | sed 's/^\[[^]]*\] *//' | xargs
 # 学習済みの条件（armature ×3・摩擦 ×0・乱択なし・遅れ 0・膝 139）が既定のまま。ここに書いた値で上書きして初めて直る
 
-# [B] 腕の積み上げを今の角度 ±0.3 rad・可動域の端から 0.05 rad 内側に収める（実機の door_core と同じ関数）
-[B] ++env.config.arm_accum_guard_delta=0.3
+# [B] 腕の積み上げを今の角度 ±δ・可動域の端から 0.05 rad 内側に収める（実機の door_core と同じ関数）。
+#     δ は関節ごと（10-26 ユーザー決定）: 肩 pitch・roll と手首 pitch・yaw は 0.2、肩 yaw・肘・手首 roll は 0.3
+#     （0.8×力の上限÷kp と 0.3 の小さい方。0.3 一律だと肩は kp 100×0.3=30>25 N·m で押し付けの力が減らない。V3）
+[B] ++env.config.arm_accum_guard_delta=[0.2,0.2,0.3,0.3,0.3,0.2,0.2,0.2,0.2,0.3,0.3,0.3,0.2,0.2]
 [B] ++env.config.arm_accum_guard_margin=0.05
 
 # [2] 送る目標を可動域の端から 0.05 rad 内側に切る（0051）・全関節の 1 制御ステップの変化を 0.7 rad まで（実機の MAX_TARGET_STEP）

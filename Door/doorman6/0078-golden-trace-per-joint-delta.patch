@@ -1,0 +1,47 @@
+From bd40abd98a4644146c0149d2e6a0b3ef8d7d5097 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 26 Oct 2026 14:08:20 +0900
+Subject: [PATCH] golden trace: keep the per-joint arm guard delta (14 values)
+ (10-26)
+
+---
+ gr00t/rl/utils/golden_trace.py | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/gr00t/rl/utils/golden_trace.py b/gr00t/rl/utils/golden_trace.py
+index 6cab170..5b6f60c 100644
+--- a/gr00t/rl/utils/golden_trace.py
++++ b/gr00t/rl/utils/golden_trace.py
+@@ -9,13 +9,14 @@ import numpy as np
+ import torch
+ 
+ 
+-def _first_or_nan(v) -> float:
++def _delta_or_nan(v) -> np.ndarray:
++    """腕の積み上げの δ（1 つか関節ごとの 14）。無ければ NaN。check_golden.py がそのまま door_core に渡す"""
+     if v is None:
+-        return float("nan")
++        return np.array(float("nan"))
+     try:
+-        return float(v)
++        return np.array(float(v))
+     except (TypeError, ValueError):
+-        return float(list(v)[0])
++        return np.array([float(x) for x in v])
+ 
+ 
+ def _np(x: torch.Tensor, k: int) -> np.ndarray:
+@@ -50,8 +51,8 @@ class GoldenTrace:
+                 "num_envs": np.array(k),
+                 # G1_Hackason（10-26）: 直し 8・B の有無（check_golden.py が door_core の側を同じにして比べる。無ければ 10-16 の評価とみなす）
+                 "zero_stand_cmd": np.array(1.0 if self.zero_stand_cmd else 0.0),
+-                # 関節ごとの一覧なら先頭の値（check_golden は 1 つの値で比べる）。無ければ NaN（0 も「有り」として残す）
+-                "arm_accum_guard_delta": np.array(_first_or_nan(env.config.get("arm_accum_guard_delta", None))),
++                # 1 つか関節ごとの 14 個（10-26 から関節ごと）。無ければ NaN（0 も「有り」として残す）
++                "arm_accum_guard_delta": _delta_or_nan(env.config.get("arm_accum_guard_delta", None)),
+                 "arm_accum_guard_margin": np.array(float(env.config.get("arm_accum_guard_margin", 0.05))),
+             }
+         self._add("actor_obs", _np(obs_dict["actor_obs"], k))
+-- 
+2.50.1 (Apple Git-155)
+
