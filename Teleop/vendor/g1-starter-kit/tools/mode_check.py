@@ -22,7 +22,8 @@
     python3 tools/mode_check.py --iface enp129s0 --release       # 解除してデバッグ状態へ
     python3 tools/mode_check.py --iface enp129s0 --restore       # ai モードへ戻す
 
---print の出力:        debug / <名前>（例: ai） / unknown
+--print の出力:        debug / <名前>（例: ai） / running / unknown
+                       running は「RPC は応答しないが、誰かが指令を書いている」
 --print-motors の出力: enabled / disabled / unknown
 
 なぜリトライするのか:
@@ -30,6 +31,18 @@
     失敗する。xr_teleoperate 同梱の MotionSwitcher は SetTimeout(1.0) かつ
     リトライ無しで、例外を握りつぶして (None, None) を返すため、実際には解除
     できる状況でも「Enter debug mode: Failed」と誤表示される。
+
+RPC が最後まで応答しないとき:
+    モーションコントローラを止めた機体では、motion_switcher サービス自体が
+    応答しなくなる（status=3104 = 送信は成功したが返事が来ない。3102 は
+    送信自体の失敗で、こちらは機体が居ないときに出る）。
+    RPC だけに頼ると「判定できませんでした」しか言えないので、配信を観測して
+    推定する。誰かが腕を制御しているなら rt/lowcmd か rt/arm_sdk に指令が
+    流れ続けるため、次のように切り分けられる。
+
+      rt/lowstate が来ない            → 機体が居ない（有線・電源を確認）
+      rt/lowstate だけが来る          → コントローラは停止（デバッグ状態）
+      rt/lowcmd / rt/arm_sdk も来る   → 誰かが制御中（稼働中）
 """
 
 import argparse
@@ -42,6 +55,12 @@ CHECK_INTERVAL = 0.6
 RELEASE_ATTEMPTS = 8
 RPC_TIMEOUT = 5.0
 STATE_WAIT = 5.0
+
+# RPC が応答しないときに配信を観測する時間（秒）と、
+# 「誰かが指令を書き続けている」と見なすレート（Hz）。
+# モーションコントローラは 1000Hz 前後、teleop は 250Hz で書く。
+OBSERVE_WINDOW = 1.5
+CMD_ACTIVE_HZ = 50.0
 
 # 23DoF / 29DoF の両方に存在する腕関節（肩 3 + 肘 + 手首ロール）。
 # 29DoF だけにある手首ピッチ/ヨー(20,21,27,28)は判定に使わない。
@@ -77,6 +96,57 @@ def check_mode(msc, attempts=CHECK_ATTEMPTS, verbose=False):
     return None
 
 
+OBSERVE_TOPICS = ("rt/lowstate", "rt/lowcmd", "rt/arm_sdk")
+
+
+def observe_traffic(window=OBSERVE_WINDOW):
+    """主要トピックの受信レート(Hz)を測る。購読のみで、指令は一切送らない。"""
+    from unitree_sdk2py.core.channel import ChannelSubscriber
+    from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_, LowCmd_
+
+    counts, lock = {}, threading.Lock()
+
+    def make_counter(topic):
+        def cb(_msg):
+            with lock:
+                counts[topic] = counts.get(topic, 0) + 1
+        return cb
+
+    subs = []
+    try:
+        for topic, msg_type in (("rt/lowstate", LowState_),
+                                ("rt/lowcmd", LowCmd_),
+                                ("rt/arm_sdk", LowCmd_)):
+            sub = ChannelSubscriber(topic, msg_type)
+            sub.Init(make_counter(topic), 10)
+            subs.append(sub)
+        time.sleep(window)
+    finally:
+        for sub in subs:
+            try:
+                sub.Close()
+            except Exception:
+                pass
+    with lock:
+        return {t: counts.get(t, 0) / window for t in OBSERVE_TOPICS}
+
+
+def infer_mode(window=OBSERVE_WINDOW):
+    """RPC が応答しないときに、配信からモードを推定する。
+
+    戻り値は (推定, 観測結果)。推定は check_mode と同じ規約:
+      ""        … コントローラ停止（デバッグ状態）
+      "running" … 誰かが腕を制御中（名前は RPC 無しでは分からない）
+      None      … 機体が居ないので判定不能
+    """
+    obs = observe_traffic(window)
+    if obs["rt/lowstate"] <= 0:
+        return None, obs
+    if obs["rt/lowcmd"] >= CMD_ACTIVE_HZ or obs["rt/arm_sdk"] >= CMD_ACTIVE_HZ:
+        return "running", obs
+    return "", obs
+
+
 def motor_state(wait=STATE_WAIT):
     """腕モータの有効状態を返す。'enabled' / 'disabled' / 'unknown'。
 
@@ -105,7 +175,18 @@ def motor_state(wait=STATE_WAIT):
 def release(msc):
     name = check_mode(msc, verbose=True)
     if name is None:
-        print("  モードを判定できませんでした。")
+        name, obs = infer_mode()
+        if name is None:
+            print("  モードを判定できませんでした（rt/lowstate も受信できません）。")
+            return False
+        print(f"  RPC が応答しないので、配信から推定しました"
+              f"（lowstate {obs['rt/lowstate']:.0f}Hz / "
+              f"lowcmd {obs['rt/lowcmd']:.0f}Hz / arm_sdk {obs['rt/arm_sdk']:.0f}Hz）。")
+        if name == "":
+            print("  既にデバッグ状態です。解除の必要はありません。")
+            return True
+        print("  誰かが制御中ですが、RPC が応答しないので解除できません。")
+        print("  リモコン側で操作してください。")
         return False
     if name == "":
         print("  既にデバッグ状態です。解除の必要はありません。")
@@ -185,6 +266,10 @@ def main():
         return 0 if restore(msc) else 1
 
     name = check_mode(msc, verbose=not args.print_only)
+    observed = None
+    if name is None:
+        # RPC が応答しない。配信を観測して推定する（購読のみ）。
+        name, observed = infer_mode()
     if args.print_only:
         print("unknown" if name is None else (name or "debug"))
         return 0
@@ -193,10 +278,24 @@ def main():
 
     print("\n腕の指令を受け付ける状態か\n")
     print("1. モーションコントローラ")
+    if observed is not None:
+        print("   RPC は応答しませんでした（status=3104 = 送信は成功・返事が来ない）。")
+        print(f"   配信を {OBSERVE_WINDOW} 秒観測して推定します:")
+        for topic in OBSERVE_TOPICS:
+            print(f"     {topic:12s} {observed[topic]:7.1f} Hz")
     if name is None:
-        print("   判定できませんでした（RPC が応答しません）。有線接続と電源を確認してください。")
+        print("   判定できませんでした（rt/lowstate も受信できません）。")
+        print("   有線接続と電源を確認してください。")
+    elif name == "running":
+        print("   誰かが腕を制御中と推定（指令が流れ続けています）。")
+        print("   → 規格上の経路: rt/arm_sdk（--motion）")
+        print("   他のプロセスが動いていないか確認してください（teleop の二重起動など）。")
     elif name == "":
-        print("   停止（デバッグ状態） → 有効な経路: rt/lowcmd")
+        if observed is not None:
+            print("   → 停止（デバッグ状態）と判断。誰も指令を書いていません。")
+        else:
+            print("   停止（デバッグ状態）")
+        print("   有効な経路: rt/lowcmd")
         print("   テレオペ: ./scripts/teleop.sh              （--motion を付けない）")
     else:
         print(f"   '{name}' が稼働中 → 規格上の経路: rt/arm_sdk（--motion）")

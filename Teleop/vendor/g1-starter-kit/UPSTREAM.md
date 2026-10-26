@@ -65,3 +65,31 @@ diff -ru --exclude=.git --exclude=UPSTREAM.md \
 - `.git/` — 残すと親リポジトリが embedded repository として扱い、壊れた gitlink になる
 - `config/g1.env` — キットの `.gitignore` に入っている環境固有設定。
   OMEN 用の値は `Teleop/config/g1.env.omen` にあり、`Teleop/setup.sh` がここへコピーする
+
+## 取り込み後に足した変更（上流 45ead40 との差）
+
+`diff -ru` で出る差は次の 2 つだけ。どちらも上流には送っていない。
+
+### 1. OMEN の `~/g1-starter-kit` にあった手元の変更（2026-10-26 に取り込み）
+
+OMEN（`ubuntu@192.168.123.200`）のキットは 45ead40 のまま、コミットされていない変更が
+8 ファイル・343 行あった。リポジトリの写しに無かったので、新しい機械に入れると当たらなかった。
+
+| ファイル | 中身 |
+|---|---|
+| `setup/apply_patches.py` | 修正 `state-watchdog`（lowstate が 0.2 秒途切れたら送信を止めて強制終了。2026-09-30 に有線の抜き差しで全 29 関節が飽和トルクで跳ねた事故の対策） |
+| `tools/state_watchdog_selftest.py` | 上の修正の自己テスト（新規・実機不要） |
+| `tools/mode_check.py` | RPC が応答しないとき、配信を観測してモードを推定する |
+| `scripts/quest_ap.sh`・`scripts/lib.sh`・`config/g1.env.example` | AP の PC の IP・SSID・パスワードを設定で固定できるように（パスワードは空欄のまま） |
+| `README.md`・`docs/02-network.md`・`docs/06-troubleshooting.md` | 上の 3 つの説明 |
+
+### 2. `[G1_Hackason 改変]` の印をつけた変更（2026-10-26）
+
+| ファイル | 中身 |
+|---|---|
+| `setup/apply_patches.py` | 修正 `record-loco-cmd`（手なしでも `--motion` の歩きの指令を記録に残す）と `stick-pause`（両スティック 0.5 秒長押しで一時停止／再開。上流の `loco_wrapper.Damp()` は存在しない関数で、押すと teleop が落ちて腕を勝手に下ろしていた）。当てる順・外す順の決まりと、見出しの表示の直し |
+| `tools/stick_pause_selftest.py` | 上の 2 つの自己テスト（新規・実機不要） |
+
+確かめ方: 上流の xr_teleoperate（817fb00）の素の写しに全部当てた結果が、OMEN で動いている
+`~/xr_teleoperate` の 3 ファイルと 1 文字違わず一致すること、全部外すと素の版に戻ること、
+自己テスト 2 本が合格することを 2026-10-26 に確かめた。

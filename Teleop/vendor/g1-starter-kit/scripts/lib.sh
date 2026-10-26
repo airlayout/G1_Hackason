@@ -47,6 +47,9 @@ load_config() {
   : "${G1_LIDAR_FLIP:=true}"
   : "${G1_ALLOW_WIRELESS_CONTROL:=false}"
   : "${G1_WIFI_IFACE:=}"
+  : "${G1_AP_ADDRESS:=}"
+  : "${G1_AP_SSID:=}"
+  : "${G1_AP_PASSWORD:=}"
   : "${ROS_DOMAIN_ID:=42}"
   export ROS_DOMAIN_ID
 
