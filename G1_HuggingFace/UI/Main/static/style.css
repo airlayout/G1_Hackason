@@ -55,7 +55,10 @@ main {
   /* ⚠️ 操作とログを `auto` にすると、ログが1行増えたときに**操作パネルの下が
      切れる**（中身より小さく潰される）。`min-content` にして潰れないようにし、
      余りは地図が引き受ける。それでも入らないときは main 全体が縦スクロールする */
-  grid-template-rows: minmax(200px, 1fr) min-content min-content;
+  /* ⚠️ 地図の行も `min-content` より小さくしない。注意書きと地図の警告を足したので、
+     ログが伸びて地図の行が 200px まで潰れると**中身が下の操作パネルに重なった**
+     （2026-10-26 に実測）。canvas の min-height ぶんは必ず確保される */
+  grid-template-rows: minmax(min-content, 1fr) min-content min-content;
   overflow-y: auto;
   gap: 12px; padding: 12px;
   height: calc(100vh - 77px);
