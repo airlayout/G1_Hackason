@@ -93,6 +93,12 @@ main {
 
 /* --- 地図 --- */
 #map { flex: 1; min-height: 160px; width: 100%; }
+.mapwarn {
+  margin: 6px 0 0; padding: 6px 9px; font-size: 12px; line-height: 1.5;
+  background: #3a2f12; color: var(--warn); border-left: 3px solid var(--warn); border-radius: 3px;
+}
+.legend .where { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; }
+.legend .where.bad { color: var(--alert); }
 .legend { display: flex; gap: 14px; color: var(--dim); font-size: 11px; padding-top: 6px; }
 .legend i { display: inline-block; width: 12px; height: 3px; margin-right: 5px; vertical-align: middle; }
 .sw.route { background: var(--route); }
@@ -122,6 +128,25 @@ button.halt:not(:disabled) { border-color: #6b3330; }
 .msg.ok  { border-left-color: var(--accent); color: var(--text); }
 .msg.bad { border-left-color: var(--alert);  color: #f0b4ae; }
 .note { margin: 8px 0 0; font-size: 11px; color: var(--dim); line-height: 1.5; }
+.ro {
+  margin: 0 0 8px; padding: 7px 9px; font-size: 12px; line-height: 1.5;
+  background: #11161d; border-left: 3px solid var(--warn); border-radius: 3px; color: var(--warn);
+}
+
+/* --- 人を検知したときの全画面の点滅 ---
+   ⚠️ 点滅は 1 秒に 1 回にとどめる。光過敏の目安（1 秒に 3 回を超える点滅を避ける）を
+   守るため。速くしたくなっても 3Hz を超えないこと */
+.alarm {
+  position: fixed; inset: 0; z-index: 50; pointer-events: none;
+  box-shadow: inset 0 0 0 10px var(--alert);
+  background: rgba(224, 87, 74, .22);
+  animation: alarm-flash 1s steps(1) infinite;
+}
+@keyframes alarm-flash { 50% { opacity: 0; } }
+/* 動きを減らす設定の人には、点滅させず赤い枠を出し続ける */
+@media (prefers-reduced-motion: reduce) {
+  .alarm { animation: none; background: rgba(224, 87, 74, .12); }
+}
 
 /* --- 検知ログ --- */
 .log { max-height: 160px; }

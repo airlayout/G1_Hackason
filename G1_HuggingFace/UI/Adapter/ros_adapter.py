@@ -24,11 +24,21 @@ UI 経由で機体が歩き出す経路を存在させない、という設計�
 呼ぶもの:
     /g1/enable_navigation (SetBool)   /g1/stop /g1/clear_fault (Trigger)
     /g1/patrol/{start,pause,stop,skip} (Trigger)
+
+置き場所は2つ（コードは同じ）:
+    有線 … 操作PC の Docker 内（`run.sh`）。127.0.0.1 で待ち受ける
+    無線 … PC2 の pixi 環境（`../run.sh --wifi`）。**`--read-only` で起動する。**
+           PC2 は Wi-Fi 上の誰からでも叩けるので、操作の口を閉じて「見るだけ」にする
+           （Navigation の map_web.py と同じ判断）
+
+⚠️ **依存は ROS と標準ライブラリだけ。** PC2 の pixi 環境に OpenCV / numpy がある保証が
+無いので、地図の PNG 化は `Main/nav/grid.py`（標準ライブラリだけ）で行う。
 """
 from __future__ import annotations
 
 import json
 import math
+import signal
 import sys
 import threading
 import time
@@ -36,8 +46,6 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import cv2
-import numpy as np
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import PoseStamped
@@ -46,6 +54,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.signals import SignalHandlerOptions
 from std_msgs.msg import String
 from std_srvs.srv import SetBool, Trigger
 from tf2_ros import Buffer, TransformListener
@@ -53,6 +62,7 @@ from tf2_ros import Buffer, TransformListener
 # ⚠️ 契約は UI 側と同じものを使う。コピーするとどちらかが古くなる
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Main"))
 from nav.base import COMMANDS, CommandResult, NavState, Pose  # noqa: E402
+from nav.grid import cells_digest, cells_from_occupancy, png_from_cells  # noqa: E402
 
 # 操作名 -> ROS サービス
 _TRIGGERS: dict[str, str] = {
@@ -83,9 +93,11 @@ def _yaw_deg(q) -> float:
 class RosAdapter(Node):
     """ROS を読み、UI の契約に詰め替える。"""
 
-    def __init__(self, stale_s: float = 3.0, plan_stale_s: float = 5.0) -> None:
+    def __init__(self, stale_s: float = 3.0, plan_stale_s: float = 5.0,
+                 read_only: bool = False) -> None:
         super().__init__("g1_ui_adapter")
         self._stale = float(stale_s)
+        self.read_only = bool(read_only)
         # Nav2 の BT は既定で 1Hz で経路を立て直すので、5 秒あれば十分に余裕がある
         self._plan_stale = float(plan_stale_s)
         self._lock = threading.Lock()
@@ -144,19 +156,15 @@ class RosAdapter(Node):
             self.get_logger().warn(
                 f"地図の原点が回転している（yaw={_yaw_deg(q):.1f}°）。UI の描画がずれる")
 
-        grid = np.asarray(msg.data, dtype=np.int16).reshape(h, w)
-        canvas = np.full((h, w, 3), 0x44, dtype=np.uint8)            # 未知(-1 を含む)
-        canvas[(grid >= 0) & (grid < 20)] = (0xE8, 0xE8, 0xE4)       # 自由
-        canvas[grid > 65] = (0x1A, 0x1A, 0x1A)                       # 占有
-        # ⚠️ OccupancyGrid の 0 行目は**下端**（原点側）。PNG は 0 行目が上端なので反転する
-        canvas = np.flipud(canvas)
-
-        ok, buf = cv2.imencode(".png", canvas)
-        if not ok:
-            self.get_logger().error("地図の PNG 変換に失敗した")
+        if len(msg.data) != w * h:
+            self.get_logger().error(f"地図のセル数が合わない: {len(msg.data)} != {w}x{h}")
             return
+        # 自由 / 占有 / 未知の3値にそろえる。⚠️ OccupancyGrid の 0 行目は**下端**
+        # （原点側）。PNG は 0 行目が上端なので、上下の反転は png_from_cells がする
+        cells = cells_from_occupancy(msg.data)
+        png = png_from_cells(cells, w, h)
         with self._lock:
-            self._map_png = buf.tobytes()
+            self._map_png = png
             self._map_info = {
                 # ⚠️ `resolution` は float32 なので、そのまま float にすると
                 # 0.05 が 0.05000000074505806 になる。計算上は無視できる差だが、
@@ -168,6 +176,8 @@ class RosAdapter(Node):
                            float(msg.info.origin.position.y)],
                 "width": int(w),
                 "height": int(h),
+                # UI が地図ファイルを描いているとき、同じ地図かを中身で確かめるため
+                "digest": cells_digest(cells, w, h),
             }
         self.get_logger().info(
             f"地図を受け取った: {w}x{h}px "
@@ -276,6 +286,7 @@ class RosAdapter(Node):
                 patrol_index=int(patrol.get("index", 0)),
                 patrol_total=int(patrol.get("waypoints", 0)),
                 message=self._last_message,
+                read_only=self.read_only,
             )
         # 状況の説明は「困っていること」を優先して1行にする
         notes = []
@@ -379,6 +390,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": False, "message": f"知らない操作です: {name}"},
                        HTTPStatus.BAD_REQUEST)
             return
+        if self.adapter.read_only:
+            # ⚠️ 見るだけで起動している。サービスを呼ぶ前に断る
+            print(f"[操作] {name} -> 拒否: 見るだけで起動している", flush=True)
+            self._json({"ok": False, "message": "見るだけで起動しています（無線）。操作はできません"},
+                       HTTPStatus.FORBIDDEN)
+            return
         result = self.adapter.call(name)
         print(f"[操作] {name} -> {'受理' if result.ok else '拒否'}: {result.message}",
               flush=True)
@@ -395,10 +412,22 @@ def main() -> None:
                         help="これより古い TF・状態は「取れていない」として扱う")
     parser.add_argument("--plan-stale-s", type=float, default=5.0,
                         help="これより古い経路・目的地は「もう向かっていない」として消す")
+    parser.add_argument("--read-only", action="store_true",
+                        help="操作を受け付けない（見るだけ）。無線で PC2 に置くときは必ず付ける")
     args = parser.parse_args()
 
-    rclpy.init()
-    adapter = RosAdapter(stale_s=args.stale_s, plan_stale_s=args.plan_stale_s)
+    # ⚠️ **rclpy にシグナルを握らせない。** 既定では rclpy が SIGINT/SIGTERM を横取りして
+    #    ROS 側だけを畳み、HTTP の待ち受けは生き残る（2026-10-26 に踏んだ。pkill しても
+    #    ポートが空かず、無線の run.sh の後片付けで PC2 にアダプタが残り続ける）。
+    #    SIGTERM は Ctrl-C と同じ扱いにして、下の finally で全部畳む
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
+
+    def _on_term(signum: int, frame: object) -> None:
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _on_term)
+    adapter = RosAdapter(stale_s=args.stale_s, plan_stale_s=args.plan_stale_s,
+                         read_only=args.read_only)
     executor = MultiThreadedExecutor()
     executor.add_node(adapter)
     spin = threading.Thread(target=executor.spin, name="rclpy", daemon=True)
@@ -407,17 +436,21 @@ def main() -> None:
     handler = type("BoundHandler", (Handler,), {"adapter": adapter})
     httpd = ThreadingHTTPServer((args.host, args.port), handler)
     httpd.daemon_threads = True
-    print(f"[アダプタ] http://{args.host}:{args.port} で待ち受け中。Ctrl-C で止める",
-          flush=True)
+    print(f"[アダプタ] http://{args.host}:{args.port} で待ち受け中"
+          f"{'（見るだけ）' if args.read_only else ''}。Ctrl-C で止める", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\n[アダプタ] 停止します", flush=True)
     finally:
+        # ⚠️ **順番を守る。** spin のスレッドが回っているうちにノードを壊すと、C++ 側が
+        #    `terminate called without an active exception` で落ちる（2026-10-26 に踏んだ）。
+        #    executor を止め、spin が抜けるのを待ってから壊す
         httpd.server_close()
-        executor.shutdown()
+        executor.shutdown(timeout_sec=2.0)
+        spin.join(timeout=2.0)
         adapter.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

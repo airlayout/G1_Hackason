@@ -42,12 +42,16 @@
       </small>
     </h2>
     <canvas id="map"></canvas>
+    <p class="mapwarn" id="mapwarn" hidden></p>
     <div class="legend">
       <span><i class="sw route"></i>巡回路</span>
       <span><i class="sw plan"></i>経路</span>
       <span><i class="sw goal"></i>目的地</span>
       <span><i class="sw robot"></i>G1</span>
+      <span class="where" id="where">—</span>
     </div>
+    <p class="note">⚠️ 現在地は機体自身の推定値です。推定がずれていても画面上は正常に見えるので、
+      カメラ映像と見比べてください。</p>
   </section>
 
   <!-- 右下: 操作 -->
@@ -63,6 +67,10 @@
       <button data-cmd="patrol_stop" class="halt">巡回停止</button>
       <button data-cmd="patrol_skip">次の点へ</button>
     </div>
+    <p class="ro" id="ro-note" hidden>
+      無線（見るだけ）で接続しています。この画面からは操作できません。
+      止めるときはリモコンか有線の手順を使ってください。
+    </p>
     <p class="msg" id="msg">—</p>
     <p class="note">
       ⚠️ 目的地の指定はこの画面からは行えません。UI 経由で機体が歩き出す経路を作らない
@@ -76,6 +84,10 @@
     <ul id="events"><li class="empty">まだ何も検知していません</li></ul>
   </section>
 </main>
+
+<!-- 人を検知している間、画面全体を赤く点滅させる。操作の邪魔をしないよう
+     クリックは下へ素通しする（pointer-events: none） -->
+<div class="alarm" id="alarm" hidden></div>
 
 <div class="mockbar" id="mockbar" hidden>
   ⚠️ モックで動作中 — 航法の情報は作り物です。実機には繋がっていません

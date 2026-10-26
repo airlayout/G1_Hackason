@@ -13,6 +13,7 @@
 起動:
     ../../venv/bin/python server.py            # 既定は config.yaml
     ../../venv/bin/python server.py --nav http # ROS アダプタに繋ぐ
+    ../../venv/bin/python server.py --wifi     # 無線: 映像も航法も PC2 から（見るだけ）
 """
 from __future__ import annotations
 
@@ -121,8 +122,18 @@ def build_nav_source(cfg: dict) -> NavSource:
     if kind == "http":
         from nav.http_source import HttpNavSource
         c = cfg.get("http", {})
+        # "nav2" なら Nav2 が使っている /map をそのまま描く。パスなら地図ファイルを描く
+        #（Nav2 の地図と照合し、食い違えば画面に警告を出す）
+        chosen = str(cfg.get("map", "nav2"))
+        map_yaml = None
+        if chosen != "nav2":
+            map_yaml = (HERE / chosen).resolve()
+            if not map_yaml.exists():
+                raise SystemExit(f"[設定] 地図が見つかりません: {map_yaml}")
         return HttpNavSource(str(c.get("url", "http://127.0.0.1:8081")),
-                             timeout_s=float(c.get("timeout_s", 0.5)))
+                             timeout_s=float(c.get("timeout_s", 0.5)),
+                             read_only=bool(c.get("read_only", False)),
+                             map_yaml=map_yaml)
     raise SystemExit(f"[設定] 知らない航法ソースです: {kind}")
 
 
@@ -212,6 +223,10 @@ class Handler(BaseHTTPRequestHandler):
         state = self.navsrc.get_state().as_dict()
         state["vision"] = self.vision.status
         state["mock"] = self.navsrc.is_mock
+        state["map_warning"] = self.navsrc.map_warning()
+        # 画面はこれが変わったら地図を読み直す（Nav2 を別の地図で上げ直したとき）
+        info = self.navsrc.map_info()
+        state["map_digest"] = info.get("digest") if info else None
         state["ts"] = time.time()
         return state
 
@@ -247,6 +262,30 @@ class Handler(BaseHTTPRequestHandler):
             print(f"[映像] 配信で例外: {exc}")
 
 
+def apply_wifi(cfg: dict, ip: str) -> None:
+    """無線用に設定を上書きする。
+
+    ⚠️ **DDS は無線に通さない**（Navigation の WIRELESS.md）。航法は PC2 で動く
+    アダプタに HTTP で聞き、映像は PC2 の ZMQ に Wi-Fi で繋ぐ。どちらも ROS を通らない。
+    ⚠️ **操作は必ず止める。** アダプタも --read-only で上げるが、こちらでも止める。
+    """
+    w = cfg.get("wifi", {})
+    ip = ip or str(w.get("pc2_ip", ""))
+    if not ip:
+        raise SystemExit("[設定] --wifi に PC2 の IP が要ります（config.yaml の wifi.pc2_ip でも可）")
+    port = int(w.get("adapter_port", 8081))
+    cfg["video"]["source"] = "zmq"
+    cfg["video"]["zmq"]["server_address"] = ip
+    cfg["nav"]["source"] = "http"
+    cfg["nav"].setdefault("http", {})
+    cfg["nav"]["http"]["url"] = f"http://{ip}:{port}"
+    cfg["nav"]["http"]["read_only"] = True
+    # 無線は遅れやすい。有線の既定(0.5 秒)のままだと切断と誤判定しやすい
+    cfg["nav"]["http"]["timeout_s"] = float(w.get("timeout_s", 1.5))
+    print(f"[設定] 無線: 映像 {ip}:{cfg['video']['zmq'].get('port', 5555)} / "
+          f"航法 http://{ip}:{port}（見るだけ）")
+
+
 def make_handler(vision: VisionWorker, navsrc: NavSource, events: EventLog) -> type[Handler]:
     return type("BoundHandler", (Handler,),
                 {"vision": vision, "navsrc": navsrc, "events": events})
@@ -258,9 +297,14 @@ def main() -> None:
     parser.add_argument("--nav", choices=("mock", "http"), help="設定より優先する航法ソース")
     parser.add_argument("--video", help="設定より優先する動画ファイル")
     parser.add_argument("--port", type=int, help="設定より優先する待ち受けポート")
+    parser.add_argument("--wifi", nargs="?", const="", metavar="PC2_IP",
+                        help="無線で使う。映像も航法も PC2 の Wi-Fi 側から取り、操作は止める"
+                             "（IP を省くと config.yaml の wifi.pc2_ip）")
     args = parser.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
+    if args.wifi is not None:
+        apply_wifi(cfg, args.wifi)
     if args.nav:
         cfg["nav"]["source"] = args.nav
     if args.video:

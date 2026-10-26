@@ -48,7 +48,7 @@ class NavStateTest(unittest.TestCase):
         self.assertEqual(
             set(d),
             {"connected", "pose", "goal", "plan", "route",
-             "bridge_state", "patrol", "message"})
+             "bridge_state", "patrol", "message", "read_only"})
         self.assertEqual(d["pose"], {"x": 1.0, "y": 2.0, "yaw_deg": 30.0})
         self.assertEqual(set(d["patrol"]), {"state", "index", "total"})
 

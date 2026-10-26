@@ -17,6 +17,8 @@ import cv2
 import numpy as np
 import yaml
 
+from nav.grid import FREE, OCCUPIED, UNKNOWN, cells_digest
+
 
 @dataclass
 class MapImage:
@@ -28,6 +30,8 @@ class MapImage:
     origin_y: float
     width: int
     height: int
+    # 3値の中身の指紋（nav/grid.py）。Nav2 が配る地図と同じかを確かめるのに使う
+    digest: str = ""
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -35,6 +39,7 @@ class MapImage:
             "origin": [self.origin_x, self.origin_y],
             "width": self.width,
             "height": self.height,
+            "digest": self.digest,
         }
 
     def world_to_px(self, x: float, y: float) -> tuple[int, int]:
@@ -66,13 +71,21 @@ def load_map(yaml_path: Path) -> MapImage:
     free_thresh = float(meta.get("free_thresh", 0.196))
 
     # ROS の規約: p = (255 - value) / 255。negate なら反転しない
-    value = raw.astype(np.float32) / 255.0
+    # ⚠️ float64 で計算する。map_server は double で閾値と比べるので、float32 だと
+    #    閾値ちょうどの画素で3値が食い違い、同じ地図なのに指紋がずれうる
+    value = raw.astype(np.float64) / 255.0
     p = value if negate else (1.0 - value)
 
     height, width = raw.shape
     canvas = np.full((height, width, 3), 0x44, dtype=np.uint8)      # 未知
     canvas[p < free_thresh] = (0xE8, 0xE8, 0xE4)                     # 自由
     canvas[p > occupied_thresh] = (0x1A, 0x1A, 0x1A)                 # 占有
+
+    # map_server（trinary）と同じ3値にして指紋を取る。OccupancyGrid は 0 行目が下端なので反転する
+    cells = np.full((height, width), UNKNOWN, dtype=np.uint8)
+    cells[p < free_thresh] = FREE
+    cells[p > occupied_thresh] = OCCUPIED
+    digest = cells_digest(np.flipud(cells).tobytes(), width, height)
 
     ok, buf = cv2.imencode(".png", canvas)
     if not ok:
@@ -88,4 +101,5 @@ def load_map(yaml_path: Path) -> MapImage:
         origin_y=float(origin[1]),
         width=width,
         height=height,
+        digest=digest,
     )

@@ -5,9 +5,14 @@
 #   bash run.sh --no-browser     # URL を出すだけ
 #   bash run.sh --device <名前>  # by-id の安定名を自分で指定する
 #   bash run.sh --port 9000      # 以降の引数は UI 本体(Main/run.sh)へ渡す
+#   bash run.sh --wifi [PC2_IP]  # 無線: 映像も現在地も Wi-Fi で PC2 から（見るだけ）
 #
-# ⚠️ **航法はモックのまま。** 実機の Nav2 には繋がない（映像だけが本物）。
-#    実 Nav2 に繋ぐときは README の「② ROS に繋ぐ」を使うこと。
+# ⚠️ **有線のときの航法はモックのまま。** 実機の Nav2 には繋がない（映像だけが本物）。
+#    実 Nav2 に繋ぐときは README の「② ROS に繋ぐ」か --wifi を使うこと。
+#
+# ⚠️ **--wifi は Nav2 が PC2 で動いている前提。** PC2 に ROS アダプタを置いて
+#    `--read-only`（見るだけ）で上げ、Nav2 の現在地・地図・巡回路を HTTP で受け取る。
+#    DDS は無線に通さない（Navigation の WIRELESS.md）。PC2 の IP は DHCP で変わりうる。
 #
 # ⚠️ **Ctrl-C で G1 側のカメラ配信も止める。** 2026-09-23 に「操作PC 側だけ落として
 #    機体に配信が残り、その後リンクが切れて止められなくなる」のを踏んだため。
@@ -31,17 +36,25 @@ OPEN_BROWSER=1
 DEVICE=""
 PORT_OVERRIDE=""
 UI_ARGS=()
+WIFI=0
+WIFI_IP=""
+HOST_SET=0
+ADAPTER_DIR=/home/unitree/g1_ui_adapter
+# ⚠️ パターンは括弧付きのまま使う（CAM_PATTERN と同じ理由）
+ADAPTER_PATTERN='g1_ui_adapte[r]/Adapter'
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-browser) OPEN_BROWSER=0; shift ;;
     --device)     DEVICE="${2:?--device には名前が要る}"; shift 2 ;;
-    --host)       HOST="${2:?--host には宛先が要る}"; shift 2 ;;
+    --host)       HOST="${2:?--host には宛先が要る}"; HOST_SET=1; shift 2 ;;
+    --wifi)       WIFI=1; shift
+                  if [[ $# -gt 0 && "$1" != -* ]]; then WIFI_IP="$1"; shift; fi ;;
     # ⚠️ **UI 本体へ素通しするだけでは足りない**(2026-09-24 に発見)。
     #    待ち受けの確認・ポートの空き検査・片付けが config.yaml の値のままになり、
     #    「UI は 9000 で立っているのに 8090 を 60 秒叩いて die する」になっていた。
     --port)       UI_ARGS+=("$1" "${2:?--port には番号が要る}")
                   PORT_OVERRIDE="$2"; shift 2 ;;
-    -h|--help)    sed -n '2,18p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help)    sed -n '2,21p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *)            UI_ARGS+=("$1"); shift ;;
   esac
 done
@@ -70,6 +83,13 @@ cleanup() {
     printf '  機体側には何も触っていない\n'
     return
   fi
+  if [[ "$WIFI" == "1" ]]; then
+    if timeout 20 "${SSH[@]}" "$HOST" "pkill -f '$ADAPTER_PATTERN'" >/dev/null 2>&1; then
+      ok "PC2 の ROS アダプタを止めた"
+    elif timeout 20 "${SSH[@]}" "$HOST" "pgrep -f '$ADAPTER_PATTERN' >/dev/null" >/dev/null 2>&1; then
+      warn "PC2 の ROS アダプタが残っている: ssh $HOST 'pkill -f $ADAPTER_PATTERN'"
+    fi
+  fi
   # ⚠️ ここでリンクが既に切れていることがある（ケーブルを抜かれた等）。
   #    そのときは止められないので、**黙って成功したことにしない**。
   if timeout 20 "${SSH[@]}" "$HOST" "pkill -f '$CAM_PATTERN'" >/dev/null 2>&1; then
@@ -80,7 +100,9 @@ cleanup() {
   else
     ok "G1 のカメラ配信は動いていない"
   fi
-  printf '  有線リンク(%s)は上げたままにしてある。切るなら nmcli connection down %s\n' "$LINK" "$LINK"
+  if [[ "$WIFI" != "1" ]]; then
+    printf '  有線リンク(%s)は上げたままにしてある。切るなら nmcli connection down %s\n' "$LINK" "$LINK"
+  fi
 }
 trap cleanup INT TERM EXIT
 
@@ -94,27 +116,46 @@ step "0. 前提の確認"
 # ⚠️ **`|| true` を外さないこと。** set -e 下では read が EOF で 1 を返した時点で
 #    スクリプトが即死し、下の die に**到達しない**。config が壊れていると
 #    「無言で終了コード 1」になって原因が分からなくなる(2026-09-24 に実測)。
-VIDEO_SOURCE=""; UI_HOST=""; UI_PORT=""
-read -r VIDEO_SOURCE UI_HOST UI_PORT < <("$VENV" - "$HERE/Main/config.yaml" <<'PY'
+VIDEO_SOURCE=""; UI_HOST=""; UI_PORT=""; CFG_WIFI_IP=""; ADAPTER_PORT=""
+read -r VIDEO_SOURCE UI_HOST UI_PORT CFG_WIFI_IP ADAPTER_PORT < <("$VENV" - "$HERE/Main/config.yaml" <<'PY'
 import sys, yaml
 cfg = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
-print(cfg["video"]["source"], cfg["server"]["host"], cfg["server"]["port"])
+w = cfg.get("wifi", {})
+print(cfg["video"]["source"], cfg["server"]["host"], cfg["server"]["port"],
+      w.get("pc2_ip", "-"), w.get("adapter_port", 8081))
 PY
 ) || true
 [[ -n "$VIDEO_SOURCE" && -n "$UI_HOST" && -n "$UI_PORT" ]] \
   || die "config.yaml を読めなかった: $HERE/Main/config.yaml"
 # ①の --port はここで効かせる(UI_URL とポート検査より前)
 UI_PORT="${PORT_OVERRIDE:-$UI_PORT}"
-if [[ "$VIDEO_SOURCE" != "zmq" ]]; then
+if [[ "$WIFI" == "1" ]]; then
+  # 無線では映像の接続先を UI 本体が --wifi で上書きするので、video.source は問わない
+  WIFI_IP="${WIFI_IP:-$CFG_WIFI_IP}"
+  [[ -n "$WIFI_IP" && "$WIFI_IP" != "-" ]] || die "--wifi に PC2 の IP が要る（config.yaml の wifi.pc2_ip でも可）"
+  [[ "$HOST_SET" == "1" ]] || HOST="unitree@$WIFI_IP"
+  UI_ARGS+=(--wifi "$WIFI_IP")
+elif [[ "$VIDEO_SOURCE" != "zmq" ]]; then
   die "config.yaml の video.source が '$VIDEO_SOURCE' になっている。実機に繋ぐなら 'zmq' にすること"
 fi
 UI_URL="http://$UI_HOST:$UI_PORT"
 if ss -lnt 2>/dev/null | grep -q ":$UI_PORT "; then
   die "$UI_PORT が既に使われている（UI が二重に上がる）。先に止めるか --port で変えること"
 fi
-ok "venv・ultralytics・video.source=zmq"
+if [[ "$WIFI" == "1" ]]; then
+  ok "venv・ultralytics・無線（PC2 $WIFI_IP、アダプタ :$ADAPTER_PORT）"
+else
+  ok "venv・ultralytics・video.source=zmq"
+fi
 
-# --- 1. 有線リンク ----------------------------------------------------------
+# --- 1. リンク --------------------------------------------------------------
+if [[ "$WIFI" == "1" ]]; then
+step "1. 無線リンク"
+# ⚠️ 2.4GHz の Physical_AI は遅延が最大 1.4 秒（WIRELESS.md）。Physical_AI_5G に繋ぐこと
+ping -c3 -W2 "$WIFI_IP" >/dev/null 2>&1 \
+  || die "$WIFI_IP に届かない。操作PC の Wi-Fi と PC2 の IP（DHCP で変わる）を確かめること"
+ok "$WIFI_IP に届いている"
+else
 # ⚠️ ケーブルを挿しただけでは IP が付かない。2026-09-23 は 1 セッション中に 2 回落ちた。
 step "1. 有線リンク"
 if ping -c1 -W2 "$PC2_IP" >/dev/null 2>&1; then
@@ -132,6 +173,7 @@ else
   ping -c3 -W2 "$PC2_IP" >/dev/null 2>&1 \
     || die "$PC2_IP に届かない。ケーブルと $LINK を確認すること（ip -br addr）"
   ok "$LINK を上げた（$PC2_IP に届いた）"
+fi
 fi
 timeout 20 "${SSH[@]}" "$HOST" true >/dev/null 2>&1 || die "ssh $HOST に入れない"
 REMOTE_READY=1
@@ -180,6 +222,53 @@ else
   die "配信が立たなかった（上は $REMOTE_DIR/camera.log の末尾）"
 fi
 
+# --- 2b. ROS アダプタ（無線のときだけ。PC2 で Nav2 を購読して HTTP で配る） --------
+if [[ "$WIFI" == "1" ]]; then
+  step "2b. PC2 の ROS アダプタ（見るだけ）"
+  # 契約（Main/nav）ごと送る。アダプタは ../Main/nav を import するので同じ並びに置く
+  timeout 30 "${SSH[@]}" "$HOST" "mkdir -p $ADAPTER_DIR/Adapter $ADAPTER_DIR/Main/nav"
+  scp -q "$HERE/Adapter/ros_adapter.py" "$HOST:$ADAPTER_DIR/Adapter/"
+  scp -q "$HERE/Main/nav/__init__.py" "$HERE/Main/nav/base.py" "$HERE/Main/nav/grid.py" \
+      "$HOST:$ADAPTER_DIR/Main/nav/"
+  # 前のアダプタを止めてから上げる。⚠️ 止まる前に上げるとポートが埋まっていて起動に失敗する。
+  #    SIGTERM で止まらない古い版（2026-10-26 より前）が残っていたら強制終了する
+  timeout 30 "${SSH[@]}" "$HOST" "pkill -f '$ADAPTER_PATTERN'; \
+    for i in 1 2 3 4 5 6 7 8 9 10; do pgrep -f '$ADAPTER_PATTERN' >/dev/null || exit 0; sleep 0.3; done; \
+    pkill -9 -f '$ADAPTER_PATTERN'; sleep 0.5" >/dev/null 2>&1 || true
+  # ⚠️ Nav2 と同じ pixi 環境・同じ DDS 設定（eth0 固定）で上げる。start_nav.sh と同じ作法
+  # ⚠️ **--read-only を外さないこと。** Wi-Fi 上の誰からでも叩ける口に操作を置かない
+  timeout 30 "${SSH[@]}" "$HOST" "cd /home/unitree/g1_nav2/pc2_humble && \
+    setsid nohup /home/unitree/.pixi/bin/pixi run bash -lc '
+      source /home/unitree/g1_nav2/g1_ws/install/setup.bash
+      export ROS_DOMAIN_ID=0 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      export CYCLONEDDS_URI=file:///home/unitree/g1_nav2/cyclonedds_eth0.xml PYTHONUNBUFFERED=1
+      exec python3 $ADAPTER_DIR/Adapter/ros_adapter.py --host 0.0.0.0 --port $ADAPTER_PORT --read-only' \
+    > $ADAPTER_DIR/adapter.log 2>&1 < /dev/null & echo ok" >/dev/null
+  ADAPTER_URL="http://$WIFI_IP:$ADAPTER_PORT"
+  for _ in $(seq 40); do
+    curl -sf -m 2 "$ADAPTER_URL/healthz" >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+  if curl -sf -m 3 "$ADAPTER_URL/healthz" >/dev/null 2>&1; then
+    ok "$ADAPTER_URL で応答している"
+  else
+    timeout 10 "${SSH[@]}" "$HOST" "tail -5 $ADAPTER_DIR/adapter.log" || true
+    die "アダプタが立たなかった（上は $ADAPTER_DIR/adapter.log の末尾）"
+  fi
+  # 走らせる前に「Nav2 が見えているか」を出す。見えていなくても UI は上げる（切断と描く）
+  NAVSTAT="$(curl -sf -m 3 "$ADAPTER_URL/api/state" | "$VENV" -c '
+import json, sys
+s = json.load(sys.stdin)
+print(s.get("bridge_state"), "pose" if s.get("pose") else "no-pose")
+' 2>/dev/null || true)"
+  case "$NAVSTAT" in
+    *DISCONNECTED*) warn "Nav2 の状態が来ていない（PC2 で Nav2 が動いているか）: $NAVSTAT" ;;
+    *no-pose*)      warn "現在地（TF map→base_link）がまだ取れていない: $NAVSTAT" ;;
+    "")             warn "アダプタの状態を読めなかった" ;;
+    *)              ok "Nav2 が見えている: $NAVSTAT" ;;
+  esac
+fi
+
 # --- 3. UI 本体 -------------------------------------------------------------
 step "3. UI"
 bash "$HERE/Main/run.sh" "${UI_ARGS[@]+"${UI_ARGS[@]}"}" &
@@ -217,5 +306,9 @@ if [[ "$OPEN_BROWSER" == "1" ]] && command -v xdg-open >/dev/null 2>&1; then
 fi
 
 printf '\n\033[1m%s\033[0m を開く。Ctrl-C で UI と G1 の配信をまとめて止める\n' "$UI_URL"
-printf '\033[33m⚠️\033[0m  航法はモック。画面の地図・現在地・巡回路・状態は**作り物**（本物は映像だけ）\n'
+if [[ "$WIFI" == "1" ]]; then
+  printf '\033[33m⚠️\033[0m  無線・見るだけ。操作はリモコンか有線の手順で行うこと。現在地は機体の推定値\n'
+else
+  printf '\033[33m⚠️\033[0m  航法はモック。画面の地図・現在地・巡回路・状態は**作り物**（本物は映像だけ）\n'
+fi
 wait "$UI_PID"

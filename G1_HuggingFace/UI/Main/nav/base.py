@@ -51,6 +51,9 @@ class NavState:
     patrol_total: int = 0
     # 直近の一言（断り文やエラーをそのまま出す）
     message: str = ""
+    # 操作を受け付けない（見るだけ）。無線で PC2 のアダプタに繋いでいるときに立つ。
+    # ⚠️ PC2 のアダプタは Wi-Fi 上の誰からでも叩けるので、操作の口を閉じて動かす
+    read_only: bool = False
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -66,6 +69,7 @@ class NavState:
                 "total": self.patrol_total,
             },
             "message": self.message,
+            "read_only": self.read_only,
         }
 
 
@@ -110,8 +114,20 @@ class NavSource(ABC):
         raise NotImplementedError
 
     def map_info(self) -> dict[str, object] | None:
-        """地図のメタ情報（resolution / origin / width / height）。無ければ None。"""
+        """地図のメタ情報（resolution / origin / width / height / digest）。無ければ None。
+
+        `digest` は `nav/grid.py` の `cells_digest`。表示中の地図と Nav2 の地図が
+        同じかを中身で確かめるのに使う。
+        """
         return None
+
+    def map_warning(self) -> str:
+        """表示中の地図が航法側の地図と食い違っていれば、その説明。問題なければ空。
+
+        ⚠️ **食い違いを黙って描かないこと。** 地図が違うと現在地は**正しい値のまま
+        間違った場所に描かれる**ので、画面の見た目からは気づけない。
+        """
+        return ""
 
     def map_png(self) -> bytes | None:
         """地図を PNG にしたもの。無ければ None。"""

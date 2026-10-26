@@ -12,18 +12,29 @@ let mapInfo = null;           // {resolution, origin:[x,y], width, height}
 let mapImg = null;            // 地図の PNG
 let latest = null;            // 直近の /api/state
 let busy = false;             // 操作の二重押し防止
+let mapLoading = false;       // 地図の読み込み中（重ねて取りに行かない）
+let mapTriedAt = 0;           // 最後に地図を取りに行った時刻。無いときに 5Hz で叩かないため
 
-// --- 地図の読み込み（起動時に1回だけ。地図は静的） ---------------------------
+// --- 地図の読み込み ----------------------------------------------------------
+// ⚠️ **起動時の1回で済ませない。** 実機では Nav2 より先に画面が開くことがあり、
+//    そのときは地図がまだ無い（1回で諦めると最後まで地図が出ない）。また Nav2 を
+//    別の地図で上げ直すと中身が変わる。状態の `map_digest` が変わったら読み直す。
 async function loadMap() {
+  if (mapLoading || Date.now() - mapTriedAt < 2000) return;
+  mapLoading = true;
+  mapTriedAt = Date.now();
   try {
-    const res = await fetch('/api/map.json');
+    const res = await fetch('/api/map.json', { cache: 'no-store' });
     if (!res.ok) return;
-    mapInfo = await res.json();
-    mapImg = new Image();
-    mapImg.onload = draw;
-    mapImg.src = '/api/map.png';
+    const info = await res.json();
+    const img = new Image();
+    img.onload = () => { mapInfo = info; mapImg = img; draw(); };
+    // 指紋をつけてブラウザのキャッシュに古い地図を出させない
+    img.src = '/api/map.png?d=' + encodeURIComponent(info.digest || Date.now());
   } catch (e) {
     console.warn('地図を読めませんでした', e);
+  } finally {
+    mapLoading = false;
   }
 }
 
@@ -182,13 +193,35 @@ function apply(state) {
   const patrolText = p.total ? `${p.state} ${p.index + 1}/${p.total}` : p.state;
   setChip('chip-patrol', patrolText, p.state === 'RUNNING' ? 'ok' : '');
   setChip('chip-vision', v.alive ? `${v.fps} fps` : '途絶', v.alive ? 'ok' : 'bad');
-  setChip('chip-link', state.connected ? '正常' : '切断', state.connected ? 'ok' : 'bad');
+  setChip('chip-link', state.connected ? (state.read_only ? '正常（見るだけ）' : '正常') : '切断',
+          state.connected ? 'ok' : 'bad');
+
+  // 地図が無い・変わったら読み直す
+  const wantDigest = state.map_digest || null;
+  if (!mapInfo || (wantDigest && wantDigest !== (mapInfo.digest || null))) loadMap();
+
+  // 現在地。取れていなければ理由を出す（アダプタは古い TF を null にして返す）
+  const where = document.getElementById('where');
+  if (state.pose) {
+    where.textContent = `x ${state.pose.x.toFixed(2)}  y ${state.pose.y.toFixed(2)}  ` +
+                        `向き ${Math.round(state.pose.yaw_deg)}°`;
+    where.className = 'where';
+  } else {
+    where.textContent = '現在地が取れていません' + (state.message ? `（${state.message}）` : '');
+    where.className = 'where bad';
+  }
+  const warn = document.getElementById('mapwarn');
+  warn.hidden = !state.map_warning;
+  warn.textContent = state.map_warning ? '⚠️ ' + state.map_warning : '';
 
   document.getElementById('cam-note').textContent =
     (v.error ? v.error : `${v.device || '-'} / 検知 ${v.count || 0} 人`);
   const alert = document.getElementById('alert');
   alert.hidden = !v.present;              // 生の count はちらつくので使わない
   if (v.present) alert.textContent = `人を検知 ${v.count}（信頼度 ${v.max_confidence}）`;
+  // 人を検知している間は画面全体を赤く点滅させる。検知ログと同じ判定（present）を使うので、
+  // 1 フレームの見落としで点いたり消えたりしない
+  document.getElementById('alarm').hidden = !v.present;
 
   // 押せないボタンは押せなくする。断られる操作を押させない方が親切
   const nav = state.bridge_state;
@@ -205,9 +238,12 @@ function apply(state) {
       default:                   return true;   // 停止はいつでも押せる
     }
   };
+  // ⚠️ 見るだけ（無線）のときは全部押せなくする。サーバ側でも断るが、押せる見た目に
+  //    しておくと「押したのに止まらない」と取り違える
   document.querySelectorAll('button[data-cmd]').forEach((b) => {
-    b.disabled = busy || !state.connected || !en(b.dataset.cmd);
+    b.disabled = busy || !state.connected || state.read_only || !en(b.dataset.cmd);
   });
+  document.getElementById('ro-note').hidden = !state.read_only;
 
   document.getElementById('mockbar').hidden = !state.mock;
 
@@ -290,7 +326,7 @@ function tick() {
 }
 
 applyBoxes();   // 映像の接続はここで始まる
-loadMap();
+loadMap();      // 無ければ poll のたびに取り直す
 poll();
 pollEvents();
 tick();

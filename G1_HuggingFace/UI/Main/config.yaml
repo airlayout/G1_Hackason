@@ -44,8 +44,15 @@ detector:
 nav:
   # "mock" | "http"
   #   mock … 実機も ROS も無しで UI を組む（いまはこれ）
-  #   http … Docker 内の ROS アダプタに繋ぐ（アダプタはまだ未実装）
+  #   http … ROS アダプタに繋ぐ（有線: 操作PC の Docker / 無線: PC2。--wifi で後者）
   source: mock
+
+  # 描く地図（http のときだけ効く。モックは mock.map_yaml を使う）
+  #   nav2 … Nav2 が使っている /map をそのまま描く（推奨。現在地と必ず噛み合う）
+  #   パス … その地図ファイル（.yaml）を描く。Nav2 の地図と大きさ・原点・中身を照合し、
+  #          食い違えば画面に警告を出す（⚠️ 違う地図だと現在地がずれた場所に描かれる）
+  #   例: ../../../Navigation/nav2_stable/maps/grids/room_a_map_20261021.yaml
+  map: nav2
 
   mock:
     # ⚠️ Navigation トラックの既定地図。手で書き換えないこと
@@ -54,6 +61,17 @@ nav:
   http:
     url: http://127.0.0.1:8081
     timeout_s: 0.5
+    # true なら操作ボタンを無効にし、操作をアダプタへ送らない（--wifi では必ず true）
+    read_only: false
+
+# 無線で使うとき（server.py --wifi / ../run.sh --wifi）。DDS は無線に通さない
+wifi:
+  # PC2 の Wi-Fi 側の IP。DHCP なので変わりうる（Navigation の WIRELESS.md）
+  pc2_ip: 192.168.0.82
+  # PC2 で動かす ROS アダプタの待ち受けポート
+  adapter_port: 8081
+  # アダプタへの問い合わせの待ち時間。無線は有線より遅れる
+  timeout_s: 1.5
 
 server:
   host: 127.0.0.1
