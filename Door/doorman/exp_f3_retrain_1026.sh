@@ -33,7 +33,16 @@ for a in sys.stdin.read().split():
     out.append(k + "=" + v.replace(",", "|"))
 print(",".join(out))')
 case "$FIX" in *:*) echo "直しの上書きに「:」が残っている: $FIX"; exit 1 ;; esac
-TRAIN="$CAP3,$RULES,$MIRROR,$WINDOW,$FIX"
+# 反復の上限（algo.trl.num_total_batches、既定 50,000）。10-26 21 時に 50,000 に届き、以後は始めるたびにすぐ終わっていた（10-27 に気づいた）
+LIMIT="++algo.trl.num_total_batches=${NUM_TOTAL_BATCHES:-1000000}"
+TRAIN="$CAP3,$RULES,$MIRROR,$WINDOW,$FIX,$LIMIT"
+# 始める前に、重みの反復が上限に届いていないかを確かめる（届いていると学習は始まるたびにすぐ終わる）
+PY="$HOME/miniforge3/envs/doorman6/bin/python"
+IT=$("$PY" -c "import torch,sys; print(torch.load(sys.argv[1], map_location='cpu', weights_only=False)['state'].global_step)" "$CK" 2>/dev/null || echo -1)
+if [ "$IT" -ge "${NUM_TOTAL_BATCHES:-1000000}" ]; then
+  echo "=== [$(date '+%m-%d %T')] 重みの反復 $IT が上限 ${NUM_TOTAL_BATCHES:-1000000}（algo.trl.num_total_batches）に届いている。NUM_TOTAL_BATCHES を上げてから始める"
+  exit 1
+fi
 export EXP=wbmanip/door_open_homie_29dof_state_ppo-lstm
 export EVAL_EXTRA="++env.config.reset_from_dataset.enabled=False ++env.config.max_stage_time=[500,200,200,200,600,400] ++env.config.max_episode_length_s=60"
 export MINUTES=30 MEM_MAX="${MEM_MAX:-9G}" NEED_MARGIN_MB=1024 PASS_RATE="${PASS_RATE:-0.80}" EVAL_N=256 EVAL_FIRST=0

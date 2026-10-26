@@ -14,6 +14,9 @@
 #   7 つ目の欄は合否を見る扉（省くと学習と同じ扉）。段 2-3 は、易しい扉を混ぜた扉で学習し、純粋な等級の扉で合否を見る:
 #     m1:door_en1154_upto_g1:3:60:door30::door_en1154_g1
 # 札は PAUSE_FILE（既定 ~/work_inoue/PAUSE_DOOR_STAGE2）。段 2-1 のキューの札（PAUSE_DOORMAN_TRAINING）とは別にしてある。
+# STALL_MAX（既定 3）: 学習は始まったのに重みが増えない回がこれだけ続いたら止める（result=stalled_at_<段>）。
+#   10-26 21 時〜10-27 07:30 に、反復の上限（algo.trl.num_total_batches）に届いた学習が始まるたび 40 秒で終わり、
+#   「増えていない」と書いて次の回へ進むだけの空回りを 10 時間続けた。空くのを待っただけの回（学習が始まらない）は数えない
 # 止め札 STOP_FILE（既定 ~/work_inoue/STOP_DOOR_CHAIN）を置くと、次の回の前で止まる（評価は最後まで済ませる）。始めるときに残っていたら消す
 # EVAL_N で評価の回数（既定 128。128 回の評価の揺れは ±3.5 ポイント）。PASS_RATE=1.1 にすると合格で止まらず決めた回数を回す（比べる用）
 # IDLE_GATE=0 で、学習も評価も画面の前の人の在席を見ない（既定 1＝離席中だけ回す。共用機なので 0 は人に確かめてから）
@@ -28,6 +31,7 @@ BASE="$HOME/work_inoue/doorman"
 WORK6="$HOME/work_inoue/doorman6"
 NUM_ENVS="${NUM_ENVS:-512}"
 PASS_RATE="${PASS_RATE:-0.8}"
+STALL_MAX="${STALL_MAX:-3}"
 # 1: 段ごとに、学習の前にまず評価する（回 0）。合格ならその段は学習しない（段 2-3 の等級で、前の等級の方策がそのまま通るときの 60 分を省く）
 EVAL_FIRST="${EVAL_FIRST:-0}"
 export PAUSE_FILE="${PAUSE_FILE:-$HOME/work_inoue/PAUSE_DOOR_STAGE2}"
@@ -84,25 +88,37 @@ for SPEC in "$@"; do
   PROJECT="door_${NAME}"
   LOGROOT="$WORK6/$CHAIN_REPO/logs_rl/$PROJECT"
   PASSED=0
+  STALL=0
   if [ "$EVAL_FIRST" = 1 ] && [ -n "$CK" ]; then
-    if [ -e "$STOP_FILE" ]; then log "止め札（$STOP_FILE）があるので止める"; log "chain_done result=stopped_at_$NAME last_ckpt=$CK"; exit 1; fi
+    if [ -e "$STOP_FILE" ]; then log "止め札（${STOP_FILE}）があるので止める"; log "chain_done result=stopped_at_$NAME last_ckpt=$CK"; exit 1; fi
     log "stage=$NAME task=$TASK eval_task=$EVAL_TASK round=0（学習の前に評価） ckpt=$CK"
     eval_and_keep "$NAME" "$EVAL_TASK" 0 && PASSED=1
   fi
   for R in $(seq 1 "$ROUNDS"); do
     [ "$PASSED" -eq 1 ] && break
-    if [ -e "$STOP_FILE" ]; then log "止め札（$STOP_FILE）があるので止める"; log "chain_done result=stopped_at_$NAME last_ckpt=$CK"; exit 1; fi
+    if [ -e "$STOP_FILE" ]; then log "止め札（${STOP_FILE}）があるので止める"; log "chain_done result=stopped_at_$NAME last_ckpt=$CK"; exit 1; fi
     UNTIL=$(date -d "+${MIN} min" +%H:%M)
     log "stage=$NAME task=$TASK round=$R/$ROUNDS train until=$UNTIL resume=$CK${TRAIN_EXTRA:+ extra=$TRAIN_EXTRA}"
+    TRAIN_LINES=$(cat "$OUTDIR/train_${NAME}.log" 2>/dev/null | wc -l | tr -d ' ')
     WORK="$WORK6" REPO="$CHAIN_REPO" ENV_NAME=doorman6 IDLE_GATE="${IDLE_GATE:-1}" PROJECT="$PROJECT" KIND="${NAME}_601" MEM_MAX="${MEM_MAX:-9G}" \
       RESUME_CKPT="$CK" ./run_train_segments.sh "$NUM_ENVS" "$UNTIL" ++env.config.task.name="$TASK" $TRAIN_EXTRA \
       >> "$OUTDIR/train_${NAME}.log" 2>&1
     NEW=$(find "$LOGROOT" -name last.pt -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
     if [ -z "$NEW" ] || [ "$NEW" = "$CK" ] || { [ -n "$CK" ] && [ "$(stat -c %Y "$NEW")" -le "$(stat -c %Y "$CK")" ]; }; then
-      log "stage=$NAME round=$R 学習のチェックポイントが増えていない（空かなかったか落ちた）。train_${NAME}.log を見る"
-      tail -3 "$OUTDIR/train_${NAME}.log" | tee -a "$OUTDIR/chain.log"
+      if tail -n +"$((TRAIN_LINES + 1))" "$OUTDIR/train_${NAME}.log" | grep -q "start seg="; then
+        STALL=$((STALL + 1))
+        log "stage=$NAME round=$R 学習は始まったのに重みが増えていない（${STALL}/${STALL_MAX} 回目）。反復の上限（algo.trl.num_total_batches）に届いたか、起動で落ちている。train_${NAME}.log を見る"
+        tail -3 "$OUTDIR/train_${NAME}.log" | tee -a "$OUTDIR/chain.log"
+        if [ "$STALL" -ge "$STALL_MAX" ]; then
+          log "chain_done result=stalled_at_$NAME last_ckpt=$CK"
+          exit 1
+        fi
+      else
+        log "stage=$NAME round=$R 空くのを待っていて学習は始まらなかった（画面の前の人・他の人の GPU・札）。数えずに次の回へ"
+      fi
       continue
     fi
+    STALL=0
     CK="$NEW"
     eval_and_keep "$NAME" "$EVAL_TASK" "$R" && { PASSED=1; break; }
   done
