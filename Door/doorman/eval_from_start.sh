@@ -27,7 +27,8 @@ log() { echo "=== [$(date +%T)] $*"; }
 VIDEO_ARGS=""
 if [ "${VIDEO:-0}" = 1 ]; then
   : "${MEM_MAX:=11G}"; export NEED_MARGIN_MB="${NEED_MARGIN_MB:-512}"  # 描画あり。共用機は RAM 15 GiB なので余裕は小さめ
-  VIDEO_ARGS="++simulator.config.render_results=True ++simulator.config.render_width=640 ++simulator.config.render_height=480 ++simulator.config.render_eye=[-2.6,-1.4,1.7] ++simulator.config.render_target=[-0.2,-0.1,0.9]"
+  # 描画の大きさとカメラは RENDER_W・RENDER_H・RENDER_EYE・RENDER_TARGET で替えられる（10-20。レバーの周りを拡大して見せるため）
+  VIDEO_ARGS="++simulator.config.render_results=True ++simulator.config.render_width=${RENDER_W:-640} ++simulator.config.render_height=${RENDER_H:-480} ++simulator.config.render_eye=${RENDER_EYE:-[-2.6,-1.4,1.7]} ++simulator.config.render_target=${RENDER_TARGET:-[-0.2,-0.1,0.9]}"
 fi
 SRC="${1:-$(find "$LOGROOT" -name last.pt -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)}"
 [ -f "$SRC" ] || { log "checkpoint が無い: ${SRC:-（見つからない）}"; exit 2; }
@@ -38,8 +39,13 @@ cp "$SRC" "$BASE/ckpt/$TAG/last.pt"   # 学習が書き換えても評価の対�
 cp "$(dirname "$SRC")"/{config,meta}.yaml "$BASE/ckpt/$TAG/" || { log "config.yaml・meta.yaml が無い（評価は隣の設定を読む）"; exit 2; }
 log "eval_from_start ckpt=$SRC copied=$BASE/ckpt/$TAG/last.pt n=$NUM_ENVS"
 
-trap './pause_training.sh off >/dev/null; log "札を外した（学習は空きを確かめて再開する）"' EXIT
-for _ in 1 2 3; do ./pause_training.sh on && break; done  # 走り始めて 5 分以内の区切りは止めるのが遅れる
+if [ "${KEEP_PAUSE:-0}" = 1 ]; then
+  # 10-23: 呼ぶ側が札を持つ（何本もまとめて回す実験・人が置いた札）。置くだけで、終わっても外さない
+  for _ in 1 2 3; do ./pause_training.sh on && break; done
+else
+  trap './pause_training.sh off >/dev/null; log "札を外した（学習は空きを確かめて再開する）"' EXIT
+  for _ in 1 2 3; do ./pause_training.sh on && break; done  # 走り始めて 5 分以内の区切りは止めるのが遅れる
+fi
 
 WORK="$WORK6" REPO=VIRAL6 ENV_NAME=doorman6 IGNORE_PAUSE=1 IDLE_GATE="${IDLE_GATE:-1}" MAX_WAIT_MIN="${MAX_WAIT_MIN:-30}" MEM_MAX="${MEM_MAX:-8G}" \
   ./run_eval_record.sh "$BASE/ckpt/$TAG/last.pt" "$OUT" "$NUM_ENVS" "$NUM_ENVS" "${MINUTES:-20}" \

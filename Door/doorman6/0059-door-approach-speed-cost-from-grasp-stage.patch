@@ -1,0 +1,27 @@
+From 354cec54802da9c535f0ea677be6e2f3f5849f96 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Tue, 20 Oct 2026 06:52:17 +0900
+Subject: [PATCH] door: optionally apply the approach-speed cost only from the
+ grasp stage (stage 5)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index facc022..a459302 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -1173,6 +1173,9 @@ class DoorPregrasp(
+         # 近づく速さの上限: 触れる距離（contact_dist_m）で v_touch、そこから遠いほど slope [m/s / m] で緩める。zone_m より遠くは見ない
+         v_max = float(cfg.get("v_touch", 0.2)) + float(cfg.get("slope", 2.0)) * (dist - float(cfg.get("contact_dist_m", 0.07))).clamp(min=0.0)
+         approach = (age < 0) & (dist < float(cfg.get("zone_m", 0.30)))
++        # 10-19 深夜: 速さの罰を掛ける区間の下限（既定 0＝全区間）。2 にすると構えた後（区間 2＝掴む）だけ。
++        # 構える点は把持目標から約 18 cm で 30 cm の範囲の中にあり、構える点へ向かう途中から遅くなって区間 1 の時間切れが 3→31〜49 回に増えた
++        approach &= self.stage_buf >= int(cfg.get("speed_from_stage", 0))
+         speed_cost = (speed - v_max).clamp(min=0.0) * approach.float()
+         window = (age >= 0) & (age < n_imp)
+         impact_cost = (f - f_max).clamp(min=0.0) / f_max * window.float()
+-- 
+2.43.0
+

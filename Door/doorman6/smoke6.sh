@@ -5,6 +5,7 @@
 #   生徒（カメラ）: STUDENT=1 ./smoke6.sh s29 10 12G +exp=wbmanip/door_open_homie_29dof_dagger-lstm ++num_envs=16 \
 #                     ++teacher_actor_path=<教師の last.pt の絶対パス>
 #   STUDENT=1 のときは教師の学習専用の上書き（entropy・num_steps_per_env）を付けない。delta_action_scale は教師に合わせて付ける
+# REPO=<作業場所>（既定 VIRAL6）で、~/work_inoue/doorman6/ の下の別の写しで回せる（10-23: 試し用の VIRAL6_speed）
 # 出力: ~/work_inoue/doorman6/tests/<名前>_<時刻>/train.log。STACK_EVERY=秒 で全スレッドの呼び出しの履歴を stacks.txt に書く
 # ⚠️ 書き出しは診断のときだけ使う。10-07 に 90 秒の書き出しの直後に Segmentation fault で落ちた（faulthandler の時間指定はスレッドの多い処理で危うい）
 set -uo pipefail
@@ -12,9 +13,9 @@ NAME="$1"; MINUTES="$2"; MEM_MAX="$3"; shift 3
 B="$HOME/work_inoue/doorman6"
 OUT="$B/tests/${NAME}_$(date +%m%d_%H%M)"; mkdir -p "$OUT" "$B/tmp"
 export PATH="$HOME/miniforge3/envs/doorman6/bin:$PATH" TMPDIR="$B/tmp" OMNI_KIT_ACCEPT_EULA=YES HYDRA_FULL_ERROR=1 \
-  PYTHONUNBUFFERED=1 XDG_RUNTIME_DIR="/run/user/$(id -u)" PYTHONPATH="$B/VIRAL6"
+  PYTHONUNBUFFERED=1 XDG_RUNTIME_DIR="/run/user/$(id -u)" PYTHONPATH="$B/${REPO:-VIRAL6}"
 source "$HOME/work_inoue/doorman/gate.sh"   # SIGINT_DEFAULT_EXEC
-cd "$B/VIRAL6" || exit 1
+cd "$B/${REPO:-VIRAL6}" || exit 1
 TEACHER_ONLY=(++algo.config.entropy_coef=0.001 ++algo.config.num_steps_per_env=32)
 [ "${STUDENT:-0}" = 1 ] && TEACHER_ONLY=()
 echo "=== [$(date +%T)] start $OUT"

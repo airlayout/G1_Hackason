@@ -1,0 +1,160 @@
+From 26cb7efefad96c3c081579e4ab415d200dfd9b64 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 23 Oct 2026 16:34:44 +0900
+Subject: [PATCH] door: optional carried door frame for the state student
+ (measure once at the start, then carry with an odometry model: scale per
+ axis, yaw scale, random walk); default off (LiDAR-only line L3, 10-23)
+
+---
+ gr00t/rl/envs/door/door_carry.py      | 94 +++++++++++++++++++++++++++
+ gr00t/rl/envs/door/door_open_homie.py | 19 ++++++
+ 2 files changed, 113 insertions(+)
+ create mode 100644 gr00t/rl/envs/door/door_carry.py
+
+diff --git a/gr00t/rl/envs/door/door_carry.py b/gr00t/rl/envs/door/door_carry.py
+new file mode 100644
+index 0000000..fe6e472
+--- /dev/null
++++ b/gr00t/rl/envs/door/door_carry.py
+@@ -0,0 +1,94 @@
++# G1_Hackason（10-23、ライダーだけの本線 L3）: 状態入力の生徒に渡す扉の枠を「回の始めに一度測り、以後は体の動き（odometry）で運ぶ」に替える。
++#
++# 実機の作り（計画書 2026-10-21-g1-door-odom-measurement.md の L1）: 止まっている間にライダーで枠を測り、歩き出した後は
++# 脚の odometry（/dog_odom）か FAST_LIO で運ぶ。その誤差が成功率をどれだけ下げるかを、学習し直さずに評価だけで測る。
++# 既定は何もしない（door_sensor.carry.enabled=True で入れる）。測位の誤差（door_sensor.loc_*）は別に足されるので、
++# この模型を使うときは 0 にして切る。
++#
++# 誤差（回ごとに引き直す）:
++#   start_pos_bias_m / start_yaw_bias_deg  最初の測定の片寄り（扉の座標・σ）
++#   scale_fwd_mean / scale_lat_mean        体の前後・横の動きの倍率の平均（純正の歩行の /dog_odom は 0.955・0.92、10-21）
++#   scale_sigma                             その倍率の回ごとの散らばり（前後・横で別々に引く）
++#   yaw_scale_sigma                         向きの動きの倍率の散らばり（/dog_odom は 90° で 0.1〜0.5°）
++#   yaw_rate_bias_deg                       向きの片寄りの速さ [°/s]（σ）
++#   pos_rw_m                                位置の酔歩 [m/√s]
++# 0 なら本当の動きをそのまま運ぶ（本当の値と一致する。carry0 の評価で作りを確かめる）。
++import math
++
++import torch
++
++from gr00t.rl.envs.door.door_vision import wrap
++from gr00t.rl.envs.door.door_vision_push import _get, se2_compose, se2_inv
++
++DEG = math.pi / 180.0
++
++
++class CarriedDoorPose:
++    """扉の座標での pelvis の [x, y, yaw] を、最初の測定＋odometry の模型で作る。env の 1 制御ステップごとに step を呼ぶ"""
++
++    def __init__(self, num_envs: int, device, dt: float, cfg):
++        self.enabled = bool(_get(cfg, "enabled", False))
++        self.start_pos_bias = float(_get(cfg, "start_pos_bias_m", 0.0))
++        self.start_yaw_bias = float(_get(cfg, "start_yaw_bias_deg", 0.0)) * DEG
++        self.scale_fwd_mean = float(_get(cfg, "scale_fwd_mean", 1.0))
++        self.scale_lat_mean = float(_get(cfg, "scale_lat_mean", 1.0))
++        self.scale_sigma = float(_get(cfg, "scale_sigma", 0.0))
++        self.yaw_scale_sigma = float(_get(cfg, "yaw_scale_sigma", 0.0))
++        self.yaw_rate_sigma = float(_get(cfg, "yaw_rate_bias_deg", 0.0)) * DEG
++        self.pos_rw = float(_get(cfg, "pos_rw_m", 0.0))
++        self.dt = float(dt)
++        self.device = device
++        self.gen = torch.Generator(device=device)
++        self.gen.manual_seed(int(_get(cfg, "seed", 0)))
++        n = num_envs
++        z = lambda *s: torch.zeros(*s, device=device)  # noqa: E731
++        self.odom, self.prev_true, self.door_in_odom = z(n, 3), z(n, 3), z(n, 3)
++        self.start_bias = z(n, 3)
++        self.scale = torch.ones(n, 2, device=device)
++        self.yaw_scale = torch.ones(n, device=device)
++        self.yaw_rate = z(n)
++        self.needs_init = torch.ones(n, dtype=torch.bool, device=device)
++
++    def _randn(self, *shape) -> torch.Tensor:
++        return torch.randn(*shape, device=self.device, generator=self.gen)
++
++    def reset(self, env_ids: torch.Tensor) -> None:
++        k = len(env_ids)
++        if k == 0:
++            return
++        bias = torch.cat([self._randn(k, 2) * self.start_pos_bias, self._randn(k, 1) * self.start_yaw_bias], dim=-1)
++        self.start_bias[env_ids] = bias
++        mean = torch.tensor([self.scale_fwd_mean, self.scale_lat_mean], device=self.device)
++        self.scale[env_ids] = mean + self._randn(k, 2) * self.scale_sigma
++        self.yaw_scale[env_ids] = 1.0 + self._randn(k) * self.yaw_scale_sigma
++        self.yaw_rate[env_ids] = self._randn(k) * self.yaw_rate_sigma
++        self.needs_init[env_ids] = True
++
++    def _init(self, ids: torch.Tensor, pose_true: torch.Tensor) -> None:
++        """その台の odometry の原点を今の本当の姿勢に置き、最初の測定（本当の値＋片寄り）で扉の枠を決める"""
++        p = pose_true[ids]
++        meas = torch.cat([p[:, :2] + self.start_bias[ids, :2], wrap(p[:, 2:] + self.start_bias[ids, 2:])], dim=-1)
++        self.odom[ids] = p
++        self.prev_true[ids] = p
++        self.door_in_odom[ids] = se2_compose(p, se2_inv(meas))
++
++    def step(self, pose_true: torch.Tensor, env_ids: torch.Tensor | None = None) -> torch.Tensor:
++        """生徒に渡す [x, y, yaw] を返す。env_ids を渡すと（リセット直後の観測）その台だけ今の値で初め直す。
++        リセット直後は物理に書き戻される前のことがあるので、needs_init は残して次の step でもう一度初め直す（DoorStateSensor と同じ）"""
++        if env_ids is not None:
++            self._init(env_ids, pose_true)
++            return self.carried()
++        d = se2_compose(se2_inv(self.prev_true), pose_true)  # 前のステップの体の座標で見た動き
++        n = d.shape[0]
++        dxy = d[:, :2] * self.scale + self._randn(n, 2) * self.pos_rw * math.sqrt(self.dt)
++        dyaw = d[:, 2] * self.yaw_scale + self.yaw_rate * self.dt
++        self.odom = se2_compose(self.odom, torch.cat([dxy, dyaw[:, None]], dim=-1))
++        self.prev_true = pose_true.clone()
++        init = self.needs_init.nonzero(as_tuple=False).flatten()
++        if len(init) > 0:
++            self._init(init, pose_true)
++            self.needs_init[init] = False
++        return self.carried()
++
++    def carried(self) -> torch.Tensor:
++        return se2_compose(se2_inv(self.door_in_odom), self.odom)
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index e16010e..aa2f848 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -295,6 +295,14 @@ class DoorPregrasp(
+             self._door_frame_loc_pos = self.relative_door_pos_buf.clone()
+             self._door_frame_loc_rot = self.relative_door_rot_buf.clone()
+             self.door_sensor.reset(self._all_env_ids)  # 最初の観測の前に reset_all → _pre_compute で今の値から初め直す
++            # G1_Hackason（10-23、ライダーの本線 L3）: 枠を「回の始めに測り、以後は odometry で運ぶ」に替える（door_carry.py）。既定は何もしない
++            self._door_carry = None
++            carry_cfg = sensor_cfg.get("carry", None) if sensor_cfg else None
++            if carry_cfg and bool(carry_cfg.get("enabled", False)):
++                from gr00t.rl.envs.door.door_carry import CarriedDoorPose
++
++                self._door_carry = CarriedDoorPose(self.num_envs, self.device, self.dt, carry_cfg)
++                self._door_carry.reset(self._all_env_ids)
+             # G1_Hackason（V2、10-16）: 扉の角度と枠の位置を、頭のカメラの画像からの推定に替える（door_vision.py）。
+             # 計測器の遅れ・10 Hz の間引きはそのまま使い、値の出どころだけを替える（誤差は door_sensor.* を 0 にして切る）
+             self._door_vision = None
+@@ -383,6 +391,15 @@ class DoorPregrasp(
+         else:
+             visible, near_hand = self._door_lidar_visibility()
+             self.door_sensor.step(hinge, visible, near_hand)
++        if getattr(self, "_door_carry", None) is not None and getattr(self, "_door_vision", None) is None:
++            from gr00t.rl.envs.door.door_vision import door_rel_from_planar, planar_pose_in_door
++
++            root = self.simulator.robot_root_states
++            door = self.simulator.get_task_root_state("door")
++            pose_true = planar_pose_in_door(root[:, :3], root[:, 3:7], door[:, :3], door[:, 3:7])
++            pose = self._door_carry.step(pose_true, env_ids=env_ids)
++            self._door_carry_err = (pose - pose_true).detach()  # 記録・確かめ用（運んだ値 − 本当の値）
++            rel_pos, rel_rot = door_rel_from_planar(pose, root[:, 3:7], door[:, 3:7])
+         pos, rot = self.door_sensor.localize(rel_pos, rel_rot)
+         if env_ids is None:
+             self._door_frame_loc_pos, self._door_frame_loc_rot = pos, rot
+@@ -1283,6 +1300,8 @@ class DoorPregrasp(
+         super()._reset_buffers_callback(env_ids, target_buf)
+         if getattr(self, "_use_door_sensor", False):
+             self.door_sensor.reset(env_ids)  # 段 2.5: 回ごとの片寄りを引き直す
++            if getattr(self, "_door_carry", None) is not None:
++                self._door_carry.reset(env_ids)  # 10-23: 運ぶ模型の片寄り・倍率を引き直す
+         if getattr(self, "_door_vision", None) is not None:
+             self._door_push.reset(env_ids)  # 10-20: 押す間の値の出どころ（odometry・ライダーの片寄りを引き直す）
+         if getattr(self, "_use_palm_lever", False) and hasattr(self, "_plr_bias"):
+-- 
+2.43.0
+

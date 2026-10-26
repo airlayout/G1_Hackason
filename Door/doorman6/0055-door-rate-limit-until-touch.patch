@@ -1,0 +1,32 @@
+From d32a8d5e25d821a71d50fd72bb40cdd491aa3296 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 19 Oct 2026 12:17:47 +0900
+Subject: [PATCH] door: rate limit only until the first touch (stage 5)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index c15d044..9ece33a 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -1016,8 +1016,13 @@ class DoorPregrasp(
+         near_m = self.config.get("arm_target_rate_limit_near_m", None)
+         if near_m is None:
+             return super()._arm_rate_limit_mask()
+-        _, dist, _ = self._touch_state()
+-        return dist < float(near_m)
++        _, dist, age = self._touch_state()
++        mask = dist < float(near_m)
++        # 初めて触れるまでだけ（当てる点はレバーと一緒に動くので、距離だけで決めると押している間もずっと遅くなる。
++        # 10-19 に 15 cm・0.3 rad/s で成功が 82 → 20% に落ちた）。実機では触れたことを映像（手とレバーの位置の差）で判断する前提
++        if self.config.get("arm_target_rate_limit_until_touch", False):
++            mask &= age < 0
++        return mask
+ 
+     def _reward_palm_speed_near_lever(self):
+         """レバーの当てる点から palm_speed_near_m（既定 0.10 m）以内で、初めて触れるまでの手のひらの速さの超過 [m/s]（重みは負）"""
+-- 
+2.43.0
+

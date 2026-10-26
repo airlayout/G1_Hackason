@@ -1,0 +1,157 @@
+From a92397e81d81f590a57eb0c1110e06ab6b1d1e2d Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 19 Oct 2026 11:36:21 +0900
+Subject: [PATCH] door: approach the lever slowly - arm target rate limit and
+ touch rewards (stage 5)
+
+---
+ .../wbmanip/reward_door_open_homie.yaml       |  4 ++
+ .../envs/base_task/finger_primitive_base.py   | 33 ++++++++++
+ gr00t/rl/envs/door/door_open_homie.py         | 65 +++++++++++++++++++
+ 3 files changed, 102 insertions(+)
+
+diff --git a/gr00t/rl/config/rewards/wbmanip/reward_door_open_homie.yaml b/gr00t/rl/config/rewards/wbmanip/reward_door_open_homie.yaml
+index c13268d..8eabc8e 100644
+--- a/gr00t/rl/config/rewards/wbmanip/reward_door_open_homie.yaml
++++ b/gr00t/rl/config/rewards/wbmanip/reward_door_open_homie.yaml
+@@ -36,6 +36,10 @@ rewards:
+       grasp_target_distance: 3.0
+       grasp: 0.2
+ 
++      # G1_Hackason（段 5、10-19）: レバーにゆっくり近づける。既定は 0（使わない）。学習で ++rewards.reward_scales.<名前>=<負の値>
++      palm_speed_near_lever: 0.0
++      lever_impact: 0.0
++      lever_press_speed: 0.0
+       # open
+       push_door_handle: 6.0
+       push_door_hinge: 6.0
+diff --git a/gr00t/rl/envs/base_task/finger_primitive_base.py b/gr00t/rl/envs/base_task/finger_primitive_base.py
+index 9376ded..814fa51 100644
+--- a/gr00t/rl/envs/base_task/finger_primitive_base.py
++++ b/gr00t/rl/envs/base_task/finger_primitive_base.py
+@@ -97,6 +97,12 @@ class FingerPrimitiveBase(LeggedRobotBase):
+                     min=lim[:, 0] + float(margin),
+                     max=lim[:, 1] - float(margin),
+                 )
++            # G1_Hackason（段 5、10-19）: 腕の目標の変化に上限 [rad/s] をかける（レバーに勢いよくぶつけないため。実機の制御でも同じにする）。
++            # 1 制御ステップ（4 回の物理の小ステップ）の間は同じ目標を使い、制御ステップが進んだときだけ前の目標から上限まで動かす。
++            # どの台にかけるかは _arm_rate_limit_mask()（既定は全部。扉の環境は「手がレバーの近く」だけにできる）。既定 None＝かけない
++            rate = self.config.get("arm_target_rate_limit", None)
++            if rate is not None:
++                combined_target = self._limit_arm_target_rate(combined_target, float(rate))
+             for i, primitive_cfg in enumerate(self._primitive_action_map):
+                 inheritrange = primitive_cfg["inheritrange"]
+                 p0 = primitive_cfg["pos_0"]
+@@ -131,6 +137,33 @@ class FingerPrimitiveBase(LeggedRobotBase):
+                 f"Simulator {self.config.simulator.config.name} not implemented"
+             )
+ 
++    def _arm_rate_limit_mask(self) -> torch.Tensor:
++        """腕の目標の変化に上限をかける台（[N] bool）。扉の環境で上書きする"""
++        return torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
++
++    def _limit_arm_target_rate(self, combined_target: torch.Tensor, rate: float) -> torch.Tensor:
++        if not hasattr(self, "_arm_rl_idx"):
++            names = list(self.config.robot.dof_names)
++            self._arm_rl_idx = torch.tensor(
++                [i for i, n in enumerate(names) if any(k in n for k in ("shoulder", "elbow", "wrist"))], device=self.device
++            )
++            self._arm_rl_prev = None
++            self._arm_rl_step = None
++        step = int(self.common_step_counter)
++        if self._arm_rl_step != step:  # 制御ステップが進んだ（小ステップの 1 回目）
++            target = combined_target[:, self._arm_rl_idx]
++            if self._arm_rl_prev is None:
++                new = target
++            else:
++                d = float(rate) * float(self.dt)
++                limited = self._arm_rl_prev + (target - self._arm_rl_prev).clamp(min=-d, max=d)
++                use = self._arm_rate_limit_mask() & (self.episode_length_buf > 1)  # 回の初め（リセットの直後）はかけない
++                new = torch.where(use[:, None], limited, target)
++            self._arm_rl_prev = new.clone()
++            self._arm_rl_step = step
++        combined_target[:, self._arm_rl_idx] = self._arm_rl_prev
++        return combined_target
++
+     @override
+     def _action_backmap(self):
+         action = torch.zeros(
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 1e178d5..c15d044 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -973,6 +973,71 @@ class DoorPregrasp(
+     def _get_obs_dof_vel_non_finger(self):
+         return self.simulator.dof_vel[:, self.non_finger_dof_idx]
+ 
++    # ---- G1_Hackason（段 5、10-19）: レバーにゆっくり近づける（勢いよくぶつけて傷めないため） ----
++    # 測るもの: 使う手のひらの速さ・手のひらからレバーの当てる点までの距離・手がレバーから受ける力・初めて触れてからのステップ数。
++    # どれも 1 制御ステップに 1 回だけ計算して、同じステップの中では使い回す（報酬の関数から何度呼ばれてもよい）
++
++    def _used_palm(self) -> torch.Tensor:
++        return torch.where(self.use_left_hand[:, None], self._palm_pos("left"), self._palm_pos("right"))
++
++    def _hand_lever_force_n(self) -> torch.Tensor:
++        """使う手がレバーから受けている力の大きさ [N]"""
++        f = self.simulator.object_to_hand_contact_forces[:, 0]
++        left = f[:, self.left_hand_indices_tgt_ct_sensor, :].sum(dim=-2)
++        right = f[:, self.right_hand_indices_tgt_ct_sensor, :].sum(dim=-2)
++        return torch.where(self.use_left_hand[:, None], left, right).norm(dim=-1)
++
++    def _touch_state(self):
++        """(手のひらの速さ [m/s], レバーまでの距離 [m], 初めて触れてからのステップ数（まだなら -1）)"""
++        step = int(self.common_step_counter)
++        if getattr(self, "_touch_state_step", None) == step:
++            return self._touch_state_val
++        palm = self._used_palm()
++        fresh = self.episode_length_buf <= 1  # 回の初め（リセットの直後）
++        prev = getattr(self, "_touch_palm_prev", None)
++        speed = torch.zeros(self.num_envs, device=self.device) if prev is None else (palm - prev).norm(dim=-1) / self.dt
++        speed = torch.where(fresh, torch.zeros_like(speed), speed)
++        self._touch_palm_prev = palm.clone()
++        if not hasattr(self, "_touch_start"):
++            self._touch_start = torch.full((self.num_envs,), -1, dtype=torch.long, device=self.device)
++        self._touch_start[fresh] = -1
++        touching = self._hand_lever_force_n() > float(self.config.get("lever_touch_force_n", 1.0))
++        first = (self._touch_start < 0) & touching & ~fresh
++        self._touch_start[first] = self.episode_length_buf[first].long()
++        age = torch.where(self._touch_start >= 0, self.episode_length_buf.long() - self._touch_start, -torch.ones_like(self._touch_start))
++        dist = (palm - self._compute_grasp_target()).norm(dim=-1)
++        self._touch_state_val = (speed, dist, age)
++        self._touch_state_step = step
++        return self._touch_state_val
++
++    def _arm_rate_limit_mask(self) -> torch.Tensor:
++        """腕の目標の変化の上限（arm_target_rate_limit）をかける台。arm_target_rate_limit_near_m を渡すと、
++        手のひらがレバーの当てる点から その距離以内の台だけ（実機ではレバーまでの距離を映像で測る前提。シミュレータは本当の値）"""
++        near_m = self.config.get("arm_target_rate_limit_near_m", None)
++        if near_m is None:
++            return super()._arm_rate_limit_mask()
++        _, dist, _ = self._touch_state()
++        return dist < float(near_m)
++
++    def _reward_palm_speed_near_lever(self):
++        """レバーの当てる点から palm_speed_near_m（既定 0.10 m）以内で、初めて触れるまでの手のひらの速さの超過 [m/s]（重みは負）"""
++        speed, dist, age = self._touch_state()
++        near = (dist < float(self.config.get("palm_speed_near_m", 0.10))) & (age < 0)
++        return (speed - float(self.config.get("palm_speed_near_max", 0.2))).clamp(min=0.0) * near.float()
++
++    def _reward_lever_impact(self):
++        """初めて触れてから lever_impact_window_steps（既定 5＝0.1 秒）の間、手がレバーから受ける力の超過 [N]（重みは負）"""
++        _, _, age = self._touch_state()
++        window = (age >= 0) & (age < int(self.config.get("lever_impact_window_steps", 5)))
++        f = self._hand_lever_force_n()
++        return (f - float(self.config.get("lever_impact_force_max", 15.0))).clamp(min=0.0) * window.float()
++
++    def _reward_lever_press_speed(self):
++        """レバーを下げる角速度の超過 [rad/s]（既定の上限 80°/s＝40° を 0.5 秒。重みは負）"""
++        vel = self.simulator.scene.articulations["door"].data.joint_vel.torch[:, 1]
++        vmax = float(self.config.get("lever_press_speed_max_deg", 80.0)) * torch.pi / 180.0
++        return (vel - vmax).clamp(min=0.0)
++
+     def _palm_pos(self, side: str) -> torch.Tensor:
+         """palm の原点のワールド位置。29 関節版は wrist_yaw_link にオフセットを足す（43 関節版はオフセット 0）。"""
+         idx = self.left_palm_idx if side == "left" else self.right_palm_idx
+-- 
+2.43.0
+

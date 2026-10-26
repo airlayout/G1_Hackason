@@ -1,0 +1,154 @@
+From e44e1c49e3bb16b8b0f5e07d86324acf88ee6e46 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 23 Oct 2026 16:26:06 +0900
+Subject: [PATCH] door: optional door pool (env i >= pool rebuilds the door of
+ env i % pool by replaying the RNG state, checked by a fingerprint); default
+ off (stage 6, 10-23)
+
+---
+ .../isaac_utils/playground/env_rand/door.py   | 65 +++++++++++++++++++
+ gr00t/rl/simulator/isaacsim/isaacsim.py       | 16 ++++-
+ 2 files changed, 80 insertions(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/isaac_utils/playground/env_rand/door.py b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+index 7f8ae44..cf40a44 100644
+--- a/gr00t/rl/isaac_utils/playground/env_rand/door.py
++++ b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+@@ -2,7 +2,9 @@
+ # SPDX-License-Identifier: Apache-2.0
+ 
+ 
++import hashlib
+ import os
++import re
+ from typing import Literal, Optional
+ 
+ import isaaclab.sim as sim_utils
+@@ -68,6 +70,8 @@ class DoorSpawnerCfg(sim_utils.RigidObjectSpawnerCfg):
+ 
+     dynamic_material_randomization: bool = False
+     dynamic_material_randomization_interval: float = 1.0
++    # G1_Hackason（0066）: 扉の数を絞る。台 i（i ≥ door_pool_size）は台 i % door_pool_size と同じ扉を作る（None は今までどおり）
++    door_pool_size: Optional[int] = None
+ 
+     # deterministic generation
+     rand_door_width: Optional[float] = None
+@@ -208,6 +212,60 @@ def _update_joint_transform(stage, joint_path, prim0_path, prim1_path):
+     local_orient1_attr.Set(Gf.Quatf(relative_transform.ExtractRotationQuat()))
+ 
+ 
++# G1_Hackason（0066）: 扉の数を絞る口（door_pool_size）。台 i（i ≥ pool）は台 i % pool と同じ扉を作る。
++# 扉の形・材質は作るときに np.random で引くので、対の台が引いたときの乱数の状態を再生する。材質の下ごしらえ
++# （preload_door_materials）は最初の 1 回だけ乱数を引くので、その直後の状態も覚えて合わせる。作り終えたら、乱数の
++# 状態が対の台を作り終えたときと同じかで一致を確かめ（違えば止める）、np.random を再生の前に戻す（再生は乱数を消費しない）
++_DOOR_POOL_STATES: dict[int, dict] = {}
++
++
++def _door_rng_fingerprint() -> str:
++    _, keys, pos, has_gauss, cached = np.random.get_state()
++    return hashlib.md5(keys.tobytes() + f"{pos},{has_gauss},{cached}".encode()).hexdigest()[:12]
++
++
++def _door_pool_begin(prim_path: str, cfg: "DoorSpawnerCfg") -> Optional[dict]:
++    pool = getattr(cfg, "door_pool_size", None)
++    m = re.search(r"/env_(\d+)(?:/|$)", prim_path)
++    if not pool or m is None:
++        return None
++    i = int(m.group(1))
++    if i < pool:
++        _DOOR_POOL_STATES[i] = {"start": np.random.get_state()}
++        return {"i": i, "src": None}
++    src = i % pool
++    if "end" not in _DOOR_POOL_STATES.get(src, {}):
++        raise RuntimeError(f"[G1_Hackason] door_pool_size: 台 {i} の対の台 {src} の扉がまだ作られていない")
++    ctx = {"i": i, "src": src, "saved": np.random.get_state()}
++    np.random.set_state(_DOOR_POOL_STATES[src]["start"])
++    return ctx
++
++
++def _door_pool_after_preload(ctx: Optional[dict]) -> None:
++    if ctx is None:
++        return
++    if ctx["src"] is None:
++        _DOOR_POOL_STATES[ctx["i"]]["after_preload"] = np.random.get_state()
++    else:
++        np.random.set_state(_DOOR_POOL_STATES[ctx["src"]]["after_preload"])
++
++
++def _door_pool_end(ctx: Optional[dict], params: dict) -> None:
++    if ctx is None:
++        return
++    fp = _door_rng_fingerprint()
++    desc = "・".join(f"{k} {float(v):.4f}" for k, v in params.items())
++    if ctx["src"] is None:
++        _DOOR_POOL_STATES[ctx["i"]]["end"] = fp
++        print(f"[G1_Hackason] 扉 台 {ctx['i']}: {desc}（乱数 {fp}）")
++        return
++    same = fp == _DOOR_POOL_STATES[ctx["src"]]["end"]
++    np.random.set_state(ctx["saved"])
++    print(f"[G1_Hackason] 扉 台 {ctx['i']} ← 台 {ctx['src']}: {desc}（乱数 {fp}・{'一致' if same else '不一致'}）")
++    if not same:
++        raise RuntimeError(f"[G1_Hackason] door_pool_size: 台 {ctx['i']} の扉が台 {ctx['src']} と一致しない")
++
++
+ @clone
+ def spawn_door(
+     prim_path: str,
+@@ -222,6 +280,7 @@ def spawn_door(
+     if MR is None and cfg.dynamic_material_randomization:
+         MR = _get_material_randomization()
+     stage: Usd.Stage = omni.usd.get_context().get_stage()
++    pool_ctx = _door_pool_begin(prim_path, cfg)  # G1_Hackason（0066）
+     # determine the door width
+     door_width = (
+         np.random.uniform(cfg.door_width[0], cfg.door_width[1])
+@@ -298,6 +357,7 @@ def spawn_door(
+             wall_material_prim_paths = cfg.wall_material_prim_paths
+ 
+     # spawn the prims
++    _door_pool_after_preload(pool_ctx)  # G1_Hackason（0066）: 材質の下ごしらえの後の乱数を対の台に合わせる
+     create_prim(prim_path, "Xform")
+     root_prim_path = os.path.join(prim_path, "root")
+     create_prim(root_prim_path, "Xform")
+@@ -1096,6 +1156,11 @@ def spawn_door(
+         scale=(1.0, 1.0, 1.0),
+     )
+ 
++    _door_pool_end(  # G1_Hackason（0066）
++        pool_ctx,
++        {"幅": door_width, "高さ": door_height, "レバーの高さ": door_handle_height,
++         "バックセット": door_handle_width, "重さ": door_weight},
++    )
+     return prim_utils.get_prim_at_path(root_prim_path)
+ 
+ 
+diff --git a/gr00t/rl/simulator/isaacsim/isaacsim.py b/gr00t/rl/simulator/isaacsim/isaacsim.py
+index a4fb664..abe108d 100644
+--- a/gr00t/rl/simulator/isaacsim/isaacsim.py
++++ b/gr00t/rl/simulator/isaacsim/isaacsim.py
+@@ -1233,7 +1233,21 @@ class IsaacSim(BaseSimulator):
+                 obj_cfg = obj_cfg.replace(prim_path=f"/World/envs/env_.*/{name}")
+                 if isinstance(obj_cfg.spawn, sim_utils.MultiAssetSpawnerCfg):
+                     n = self.scene.cfg.num_envs
+-                    obj_cfg.spawn.assets_cfg = obj_cfg.spawn.assets_cfg[:n]
++                    # G1_Hackason（0066）: env.config.door_pool_size があれば、台 i に i % pool 番目の部品を置き、
++                    # 扉を作る関数にも pool を渡す（台 i ≥ pool は台 i % pool と同じ扉。door.py が乱数を再生する）
++                    pool = self.env_config.get("door_pool_size", None)
++                    if pool:
++                        pool = int(pool)
++                        base = obj_cfg.spawn.assets_cfg
++                        obj_cfg.spawn.assets_cfg = [
++                            base[i % pool].replace(door_pool_size=pool)
++                            if hasattr(base[i % pool], "door_pool_size")
++                            else base[i % pool]
++                            for i in range(n)
++                        ]
++                        print(f"[G1_Hackason] door_pool_size={pool}: {n} 台に {min(pool, n)} 種類の扉")
++                    else:
++                        obj_cfg.spawn.assets_cfg = obj_cfg.spawn.assets_cfg[:n]
+                     # G1_Hackason: 3.0 の MultiAssetSpawnerCfg は env ごとに配らなくなった。置き場所を明示する
+                     obj_cfg.spawn.spawn_paths = [f"/World/envs/env_{i}/{name}" for i in range(n)]
+                 # import ipdb; ipdb.set_trace()
+-- 
+2.43.0
+

@@ -81,6 +81,37 @@
 
 脱力は kp 0・kd 8（unitree_rl_gym の deploy_real と同じ）。
 
+## 10-16 の 1 回目の結果と、立つだけの試し
+
+1 回目（扉の 1 m 手前・`pc2/run_first.sh`）は扉の方策まで進まなかった（記録 `logs_real/door_real_20261016_173324_damp.npz`）:
+
+- HOLD の 20 秒で、吊られた体の傾きが 9.6 → 15.7° に増えた。その姿勢から A で HOMIE に任せた
+- STAND の 2 周期目で 1 周期が 91 ms 空き、自動で POST へ。POST の 1.6 秒、HOMIE（指令 0）は立て直そうとして
+  後ろへ 0.54 m・横へ 0.23 m・向き ±30°・傾き最大 22°。右の股の向き（関節 8）が 21.9 rad/s で自動の脱力
+- 周期の乱れの元は計算ではなく、DDS の受け取り（lowstate・dog_odom が約 1000 回/秒ずつ Python の callback を呼ぶ）と
+  BLAS の糸。`--no-send` で WAIT を 20 秒ずつ比べると、最長の周期は odom あり・BLAS 既定 48.4 ms → odom なし・BLAS 1 本 23.1 ms
+
+直したこと:
+
+| 何を | どうしたか |
+|---|---|
+| 傾いたまま立たせない | HOLD で傾きが `--max-stand-tilt-deg`（既定 8°）を越えている間は A を受け付けない |
+| 最初の計算の遅さ | 起動時に方策を空回しする（`warm_up`、hold と door を 3 回ずつ） |
+| 立つだけの試し | `--stand-only`: STAND で A を押しても扉の方策へ進まない |
+| 周期の乱れ | PC2 の起動スクリプトで `OPENBLAS_NUM_THREADS=1`。立つだけの試しは `--odom none` |
+
+PC2 の起動スクリプトは `pc2/`（`~/door_real/` に置く）。PC2 には tmux が無いので、`door_start.sh` が接続から切り離して起こす:
+
+```bash
+cd ~/door_real && ./door_start.sh run_stand.sh   # 立つだけ（傾き 20° で脱力）
+cd ~/door_real && ./door_start.sh                # 扉の試し（run_first.sh）
+./door_stop.sh                                   # 立ったまま止める（PC の Enter と同じ。何度送っても脱力しない）
+```
+
+⚠️ 機体が再起動するとリモコンがつながるまで時間がかかる（10-16 は 2 回とも数分届かなかった）。届いているかは
+`rt/lowstate` の `wireless_remote[2:4]` で確かめる。通常運転（FSM 501）から純正を外すのは SDK でもできる
+（`LocoClient.Damp()` → `MotionSwitcherClient.ReleaseMode()`。吊ってから）。
+
 ## まだ無いもの
 
 - LiDAR で扉の角度を測る部分（最初の試しで頭の LiDAR の記録を取り、それで作る）

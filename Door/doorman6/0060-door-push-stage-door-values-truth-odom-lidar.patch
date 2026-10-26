@@ -1,0 +1,218 @@
+From e808370a6b4ba92d9b993b7c6bafc1e3f82654f4 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Tue, 20 Oct 2026 19:28:11 +0900
+Subject: [PATCH] door: switch the door values during the push stage to truth,
+ odometry-carried estimate, or a LiDAR angle model (V2 eval, 10-20)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py  |  14 +++
+ gr00t/rl/envs/door/door_vision_push.py | 143 +++++++++++++++++++++++++
+ gr00t/rl/utils/vision_dataset.py       |   3 +
+ 3 files changed, 160 insertions(+)
+ create mode 100644 gr00t/rl/envs/door/door_vision_push.py
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index a459302..e16010e 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -306,6 +306,11 @@ class DoorPregrasp(
+                 self._door_vision = DoorVisionEstimator(vis_cfg["estimator_path"], self.device)
+                 self._door_vision_truth_pose = bool(vis_cfg.get("truth_pose", False))  # 切り分け用: 姿勢だけ本当の値
+                 self._door_vision_truth_angle = bool(vis_cfg.get("truth_angle", False))  # 切り分け用: 角度だけ本当の値
++                # G1_Hackason（10-20）: 押す間だけ値の出どころを替える試験（E1〜E3、door_vision_push.py）。既定は何もしない
++                from gr00t.rl.envs.door.door_vision_push import PushStageDoorValues
++
++                self._door_push = PushStageDoorValues(self.num_envs, self.device, self.dt, vis_cfg)
++                self._door_vision_used = None
+ 
+     def _init_buffers(self):
+         super()._init_buffers()
+@@ -399,6 +404,13 @@ class DoorPregrasp(
+         if self._door_vision_truth_pose:
+             pose = planar_pose_in_door(root[:, :3], root[:, 3:7], door[:, :3], door[:, 3:7])
+         angle = hinge_true if self._door_vision_truth_angle else est[:, 3]
++        if self._door_push.active:
++            pose_true = planar_pose_in_door(root[:, :3], root[:, 3:7], door[:, :3], door[:, 3:7])
++            visible = near_hand = None
++            if self._door_push.lidar_from >= 0:
++                visible, near_hand = self._door_lidar_visibility()
++            pose, angle = self._door_push.apply(self.stage_buf, pose, angle, pose_true, hinge_true, visible, near_hand)
++        self._door_vision_used = torch.cat([pose, angle[:, None]], dim=-1)  # 生徒に実際に渡した値（記録用）
+         rel_pos, rel_rot = door_rel_from_planar(pose, root[:, 3:7], door[:, 3:7])
+         return angle, rel_pos, rel_rot
+ 
+@@ -1271,6 +1283,8 @@ class DoorPregrasp(
+         super()._reset_buffers_callback(env_ids, target_buf)
+         if getattr(self, "_use_door_sensor", False):
+             self.door_sensor.reset(env_ids)  # 段 2.5: 回ごとの片寄りを引き直す
++        if getattr(self, "_door_vision", None) is not None:
++            self._door_push.reset(env_ids)  # 10-20: 押す間の値の出どころ（odometry・ライダーの片寄りを引き直す）
+         if getattr(self, "_use_palm_lever", False) and hasattr(self, "_plr_bias"):
+             self._plr_reset(env_ids)
+ 
+diff --git a/gr00t/rl/envs/door/door_vision_push.py b/gr00t/rl/envs/door/door_vision_push.py
+new file mode 100644
+index 0000000..6d3aaa3
+--- /dev/null
++++ b/gr00t/rl/envs/door/door_vision_push.py
+@@ -0,0 +1,143 @@
++# G1_Hackason（10-20）: 押して開ける間（区間 N 以降）だけ、生徒に渡す扉の値の出どころを替える試験（E1〜E3）。
++#
++# 頭のカメラは押す間に扉をほとんど見ていない（作業ログ 2026-10-20 の先行調査）。それが成功率をどれだけ下げているかを、
++# 学習し直さずに評価だけで測る。どれも既定では何もしない（door_vision.* で入れる）。
++#   truth_from_stage       区間 N 以降は姿勢も角度も本当の値（E1: 押す間の見え方を完全に直した上限）
++#   hold_pose_from_stage   区間 N に入った時点で扉の枠の位置を固定し、以後は体の動き（odometry）で運ぶ（E2）。
++#                          枠は区間 hold_ema_from_stage〜N−1 の推定を指数平均して決める
++#   lidar_angle_from_stage 区間 N 以降の扉の角度を、ライダーの計器の模型（10 Hz・片寄り・揺れ・欠け・見える角度）に替える（E3）
++# odometry の誤差（odom.*）: 回ごとの距離の倍率の誤差 scale_sigma、回ごとの旋回の速さの片寄り yaw_rate_bias_deg [°/s]、
++# 位置の酔歩 pos_rw_m [m/√s]。0 なら本当の動きをそのまま運ぶ。
++import math
++
++import torch
++
++from gr00t.rl.envs.door.door_vision import wrap
++
++DEG = math.pi / 180.0
++
++
++def se2_compose(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
++    """[x, y, yaw] の合成 a ⊕ b（b は a の座標で表した姿勢）"""
++    c, s = torch.cos(a[:, 2]), torch.sin(a[:, 2])
++    x = a[:, 0] + c * b[:, 0] - s * b[:, 1]
++    y = a[:, 1] + s * b[:, 0] + c * b[:, 1]
++    return torch.stack([x, y, wrap(a[:, 2] + b[:, 2])], dim=-1)
++
++
++def se2_inv(a: torch.Tensor) -> torch.Tensor:
++    c, s = torch.cos(a[:, 2]), torch.sin(a[:, 2])
++    x = -(c * a[:, 0] + s * a[:, 1])
++    y = -(-s * a[:, 0] + c * a[:, 1])
++    return torch.stack([x, y, -a[:, 2]], dim=-1)
++
++
++def _get(cfg, key, default):
++    if cfg is None:
++        return default
++    v = cfg.get(key, default)
++    return default if v is None else v
++
++
++class PushStageDoorValues:
++    """区間で切り替える扉の値。env の 1 制御ステップごとに apply を呼ぶ。回の始めに reset"""
++
++    def __init__(self, num_envs: int, device, dt: float, cfg):
++        self.truth_from = int(_get(cfg, "truth_from_stage", -1))
++        self.hold_from = int(_get(cfg, "hold_pose_from_stage", -1))
++        self.lidar_from = int(_get(cfg, "lidar_angle_from_stage", -1))
++        self.ema_from = int(_get(cfg, "hold_ema_from_stage", 1))
++        self.ema_alpha = float(_get(cfg, "hold_ema_alpha", 0.05))
++        odom = _get(cfg, "odom", None)
++        self.scale_sigma = float(_get(odom, "scale_sigma", 0.0))
++        self.yaw_rate_sigma = float(_get(odom, "yaw_rate_bias_deg", 0.0)) * DEG
++        self.pos_rw = float(_get(odom, "pos_rw_m", 0.0))
++        lid = _get(cfg, "lidar", None)
++        self.l_bias = float(_get(lid, "angle_bias_deg", 2.0)) * DEG
++        self.l_noise = float(_get(lid, "angle_noise_deg", 1.5)) * DEG
++        self.l_drop = float(_get(lid, "dropout", 0.05))
++        self.l_drop_hand = float(_get(lid, "dropout_near_hand", 0.3))
++        self.period = max(1, round(1.0 / (float(_get(lid, "rate_hz", 10.0)) * float(dt))))
++        self.dt = float(dt)
++        self.device = device
++        self.active = self.truth_from >= 0 or self.hold_from >= 0 or self.lidar_from >= 0
++        self.gen = torch.Generator(device=device)
++        self.gen.manual_seed(int(_get(cfg, "push_seed", 0)))
++        n = num_envs
++        z = lambda *s: torch.zeros(*s, device=device)  # noqa: E731
++        b = lambda: torch.zeros(n, dtype=torch.bool, device=device)  # noqa: E731
++        self.odom, self.prev_true, self.door_in_odom = z(n, 3), z(n, 3), z(n, 3)
++        self.scale, self.yaw_rate = torch.ones(n, device=device), z(n)
++        self.have_door, self.latched, self.needs_init = b(), b(), ~b()
++        self.l_bias_e, self.l_held, self.l_started = z(n), z(n), b()
++        self.l_counter = torch.zeros(n, dtype=torch.long, device=device)
++
++    def _randn(self, *shape):
++        return torch.randn(*shape, device=self.device, generator=self.gen)
++
++    def _rand(self, *shape):
++        return torch.rand(*shape, device=self.device, generator=self.gen)
++
++    def reset(self, env_ids: torch.Tensor) -> None:
++        k = len(env_ids)
++        if k == 0:
++            return
++        self.needs_init[env_ids] = True
++        self.have_door[env_ids] = False
++        self.latched[env_ids] = False
++        self.l_started[env_ids] = False
++        self.scale[env_ids] = 1.0 + self._randn(k) * self.scale_sigma
++        self.yaw_rate[env_ids] = self._randn(k) * self.yaw_rate_sigma
++        self.l_bias_e[env_ids] = (2.0 * self._rand(k) - 1.0) * self.l_bias
++        self.l_counter[env_ids] = 0
++
++    def _advance_odom(self, pose_true: torch.Tensor) -> None:
++        init = self.needs_init[:, None]
++        self.prev_true = torch.where(init, pose_true, self.prev_true)
++        self.odom = torch.where(init, pose_true, self.odom)  # 原点はどこでもよい。誤差 0 なら本当の値と一致して確かめやすい
++        self.needs_init[:] = False
++        d = se2_compose(se2_inv(self.prev_true), pose_true)  # 前のステップの体の座標で見た動き
++        n = d.shape[0]
++        dxy = d[:, :2] * self.scale[:, None] + self._randn(n, 2) * self.pos_rw * math.sqrt(self.dt)
++        dyaw = d[:, 2] + self.yaw_rate * self.dt
++        self.odom = se2_compose(self.odom, torch.cat([dxy, dyaw[:, None]], dim=-1))
++        self.prev_true = pose_true
++
++    def apply(self, stage, pose_est, angle_est, pose_true, hinge_true, visible=None, near_hand=None):
++        """生徒に渡す [x, y, yaw]（扉の座標での pelvis）と扉の角度を返す"""
++        pose, angle = pose_est, angle_est
++        self._advance_odom(pose_true)
++        if self.truth_from >= 0:
++            m = stage >= self.truth_from
++            pose = torch.where(m[:, None], pose_true, pose)
++            angle = torch.where(m, hinge_true, angle)
++        if self.hold_from >= 0:
++            d_now = se2_compose(self.odom, se2_inv(pose_est))  # odometry の座標での扉の枠（今の推定から）
++            pre = ~self.latched
++            upd = pre & (stage >= self.ema_from) & (stage < self.hold_from)
++            a = self.ema_alpha
++            blend = torch.stack([
++                (1 - a) * self.door_in_odom[:, 0] + a * d_now[:, 0],
++                (1 - a) * self.door_in_odom[:, 1] + a * d_now[:, 1],
++                wrap(self.door_in_odom[:, 2] + a * wrap(d_now[:, 2] - self.door_in_odom[:, 2])),
++            ], dim=-1)
++            first = (upd | (pre & (stage >= self.hold_from))) & ~self.have_door
++            self.door_in_odom = torch.where(first[:, None], d_now, torch.where(upd[:, None], blend, self.door_in_odom))
++            self.have_door |= first | upd
++            self.latched |= pre & (stage >= self.hold_from)
++            held = se2_compose(se2_inv(self.door_in_odom), self.odom)
++            pose = torch.where(self.latched[:, None], held, pose)
++        if self.lidar_from >= 0:
++            n = angle.shape[0]
++            m = stage >= self.lidar_from
++            start = m & ~self.l_started
++            self.l_held = torch.where(start, angle, self.l_held)  # 測れるまでは直前の値のまま
++            self.l_started |= m
++            self.l_counter += 1
++            scan = (self.l_counter % self.period) == 0
++            p = torch.where(near_hand, torch.full_like(angle, self.l_drop_hand), torch.full_like(angle, self.l_drop))
++            got = scan & visible & (self._rand(n) >= p)
++            meas = hinge_true + self.l_bias_e + self._randn(n) * self.l_noise
++            self.l_held = torch.where(got & m, meas, self.l_held)
++            angle = torch.where(m, self.l_held, angle)
++        return pose, angle
+diff --git a/gr00t/rl/utils/vision_dataset.py b/gr00t/rl/utils/vision_dataset.py
+index 9bc7f20..c1ac640 100644
+--- a/gr00t/rl/utils/vision_dataset.py
++++ b/gr00t/rl/utils/vision_dataset.py
+@@ -66,6 +66,9 @@ class VisionDataset:
+         est = getattr(env, "_door_vision_est", None)
+         if est is not None:
+             row["est"] = _np(est[:k])
++        used = getattr(env, "_door_vision_used", None)  # 10-20: 生徒に実際に渡した値（押す間に出どころを替える試験）
++        if used is not None:
++            row["used"] = _np(used[:k])
+         for key, v in row.items():
+             self.rows.setdefault(key, []).append(v)
+         self.n_samples += k
+-- 
+2.43.0
+

@@ -1,0 +1,71 @@
+From 71dddc88d558a92b9234bd79a8c2a13d321f1e6f Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 19 Oct 2026 17:58:08 +0900
+Subject: [PATCH 1/2] door: read the lever contact force at every physics
+ substep and record its peak and mean (stage 5)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 29 +++++++++++++++++++++++++++
+ gr00t/rl/utils/state_recorder.py      |  6 ++++++
+ 2 files changed, 35 insertions(+)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index b1c5322..f63aa0f 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -1285,6 +1285,35 @@ class DoorPregrasp(
+                     x = raw[term]
+                     raw[term] = torch.where(mask, self._door_mirror.obs(term, x), x)
+ 
++    @override
++    def _physics_step(self):
++        # G1_Hackason（段 5、10-19 夜）: 物理 1 回（200 Hz）ごとに、使う手がレバーから受ける力を読み、制御の 1 ステップ（4 回）の
++        # 最大と平均を残す（lever_force_substeps=True のとき）。object_to_hand_contact_forces は 4 回目の後に 1 度だけ読まれる写しで、
++        # ぶつかった瞬間が 1〜3 回目だと残らない。10-19 の記録では近づく速さと「当たりの山」の相関が 0.04 だった
++        if not self.config.get("lever_force_substeps", False):
++            return super()._physics_step()
++        self.render()
++        n = self.config.simulator.config.sim.control_decimation
++        peak = torch.zeros(self.num_envs, device=self.device)
++        total = torch.zeros_like(peak)
++        for sim_sub_t in range(n):
++            self._update_meta_pd_scale(sim_sub_t)
++            self._apply_force_in_physics_step()
++            self.simulator.simulate_at_each_physics_step()
++            f = self._hand_lever_force_from_sensor()
++            peak = torch.maximum(peak, f)
++            total += f
++        self.lever_force_substep_peak = peak
++        self.lever_force_substep_mean = total / n
++
++    def _hand_lever_force_from_sensor(self) -> torch.Tensor:
++        """使う手がレバーから受けている力の大きさ [N]。センサーを直接読む（物理 1 回ごとに呼べる）"""
++        m = self.simulator.object_to_hand_contact_sensor.data.force_matrix_w
++        f = (m.torch if hasattr(m, "torch") else m)[:, 0]
++        left = f[:, self.left_hand_indices_tgt_ct_sensor, :].sum(dim=-2)
++        right = f[:, self.right_hand_indices_tgt_ct_sensor, :].sum(dim=-2)
++        return torch.where(self.use_left_hand[:, None], left, right).norm(dim=-1)
++
+     @override
+     def _apply_force_in_physics_step(self):
+         super()._apply_force_in_physics_step()
+diff --git a/gr00t/rl/utils/state_recorder.py b/gr00t/rl/utils/state_recorder.py
+index eee2f3d..3fa4df9 100644
+--- a/gr00t/rl/utils/state_recorder.py
++++ b/gr00t/rl/utils/state_recorder.py
+@@ -121,6 +121,12 @@ class StateRecorder:
+         right = forces[:, env.right_hand_indices_tgt_ct_sensor, :].sum(dim=-2)
+         net = torch.where(env.use_left_hand[:k, None], left, right)
+         out = {"hand_lever_force": net.cpu().numpy()}
++        # 段 5（10-19 夜）: 物理 1 回ごとに読んだ力の、制御の 1 ステップの最大と平均 [N]（lever_force_substeps=True のとき）
++        # 最初の記録は物理を回す前なので 0 で埋める（埋めないと、この項目だけ 1 行少なくなり後ろがずれる）
++        if env.config.get("lever_force_substeps", False):
++            zeros = torch.zeros(k, device=env.device)
++            out["hand_lever_force_peak"] = getattr(env, "lever_force_substep_peak", zeros)[:k].cpu().numpy()
++            out["hand_lever_force_mean"] = getattr(env, "lever_force_substep_mean", zeros)[:k].cpu().numpy()
+         # 扉の板が受ける接触の力の合計 [N]（ワールド座標）。閉じている間は枠からの押し返しも入る。開いていれば機体が板を押す力
+         sensors = env.simulator.scene.sensors
+         if "door_panel_unwanted_contact_sensor" in sensors:
+-- 
+2.43.0
+

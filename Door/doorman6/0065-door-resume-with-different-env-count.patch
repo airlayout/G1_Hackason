@@ -1,0 +1,30 @@
+From b1b5c651ff4d2bc96032f7ee46b73ea367ac70cd Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 23 Oct 2026 13:28:53 +0900
+Subject: [PATCH 65/65] door: resume with a different env count by skipping
+ per-env reward/length counters whose shape does not match (stage 6, 10-23)
+
+---
+ gr00t/rl/trl/trainer/ppo_trainer.py | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/gr00t/rl/trl/trainer/ppo_trainer.py b/gr00t/rl/trl/trainer/ppo_trainer.py
+index 8c63843..2c5f3a1 100644
+--- a/gr00t/rl/trl/trainer/ppo_trainer.py
++++ b/gr00t/rl/trl/trainer/ppo_trainer.py
+@@ -1807,6 +1807,12 @@ class TRLPPOTrainer(PPOTrainer):
+         if "state" in checkpoint:
+             for key, value in checkpoint["state"].__dict__.items():
+                 if key in ["cur_reward_sum", "cur_episode_length"]:
++                    # G1_Hackason（0065）: 台ごとの数なので、台数を替えて続きから回すと形が合わない。
++                    # 合わないときは読まずに 0 から数え直す（self と self.state の両方。重み・最適化の状態は読む）
++                    cur = getattr(self, key, None)
++                    if torch.is_tensor(cur) and torch.is_tensor(value) and cur.shape != value.shape:
++                        print(f"[G1_Hackason] {key}: 重みの形 {tuple(value.shape)} が今の台数 {tuple(cur.shape)} と違うので読まない")
++                        continue
+                     setattr(self, key, value)
+                 if key not in [
+                     "stateful_callbacks",
+-- 
+2.43.0
+

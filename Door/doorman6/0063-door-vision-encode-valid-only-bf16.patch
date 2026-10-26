@@ -1,0 +1,62 @@
+From c8f32c027b52a60516fcc376cd76b459a21f0b03 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 23 Oct 2026 13:28:52 +0900
+Subject: [PATCH 63/65] door: in the learning phase, skip zero-padded images in
+ the ResNet (vision_encode_valid_only) and run the ResNet in bf16
+ (vision_bf16); both default off (stage 6 vision student, 10-23)
+
+---
+ ...actor_critic_modules_obj_pred_recurrent.py | 26 ++++++++++++++++++-
+ 1 file changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/trl/modules/vision_actor_critic_modules_obj_pred_recurrent.py b/gr00t/rl/trl/modules/vision_actor_critic_modules_obj_pred_recurrent.py
+index 3590520..bd1131b 100644
+--- a/gr00t/rl/trl/modules/vision_actor_critic_modules_obj_pred_recurrent.py
++++ b/gr00t/rl/trl/modules/vision_actor_critic_modules_obj_pred_recurrent.py
+@@ -93,10 +93,34 @@ class VisionRecurrentActorObjPred(VisionRecurrentActor):
+                 _recursive_=False,
+             )
+ 
++        # G1_Hackason（10-23、学習のメモリを減らして台数を増やすため）: 既定は切＝今までと同じ計算
++        #   vision_encode_valid_only: 学習の段で、回の区切りごとに 0 で詰めた画像（masks が False）を ResNet に通さない
++        #   vision_bf16: 学習の段の ResNet を bf16 で通す（逆伝播のために取っておく量が約半分）
++        self.encode_valid_only = bool(algo_config.get("vision_encode_valid_only", False))
++        self.vision_bf16 = bool(algo_config.get("vision_bf16", False))
++
+         print(f"VisionRecurrentActorObjPred RNN: {self.memory}")
+         print(f"VisionRecurrentActorObjPred MLP: {self.mlp_module}")
+         print(f"VisionRecurrentActorObjPred ObjPred MLP: {self.obj_pred_mlp}")
+ 
++    def _encode_images(self, images, masks, seq_len, n):
++        """images [n, C, H, W] → 特徴 [n, D]。masks（[軌跡, 長さ]）が True の画像だけ ResNet に通し、詰め物の位置は 0 にする
++        （vision_encode_valid_only）。学習中は bf16 で通せる（vision_bf16）。BatchNorm も本物の画像だけで平均を取る"""
++        use_bf16 = self.vision_bf16 and images.is_cuda and self.training
++        valid = None
++        if self.encode_valid_only and seq_len is not None and masks is not None:
++            valid = masks.reshape(-1).to(device=images.device, dtype=torch.bool)
++            if valid.shape[0] != n or bool(valid.all()):
++                valid = None
++        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=use_bf16):
++            out = self.vision_module(images if valid is None else images[valid])
++        out = out.float().reshape(out.shape[0], -1)
++        if valid is None:
++            return out
++        latent = out.new_zeros(n, out.shape[-1])
++        latent[valid] = out
++        return latent
++
+     def forward(self, obs_dict, masks=None, hidden_states=None, episode_attnmask=None, **kwargs):
+         """
+         Forward pass that returns both action predictions and object position predictions.
+@@ -148,7 +172,7 @@ class VisionRecurrentActorObjPred(VisionRecurrentActor):
+ 
+         if encoder_type in ["CNN", "ResNet"]:
+             image_permuted = image_reshaped.permute(0, 3, 1, 2)
+-            latent = self.vision_module(image_permuted).reshape(effective_batch_size, -1)
++            latent = self._encode_images(image_permuted, masks, seq_len, effective_batch_size)
+         else:
+             flat_image = image_reshaped.reshape(effective_batch_size, -1).contiguous()
+             latent = self.vision_module(flat_image).reshape(effective_batch_size, -1)
+-- 
+2.43.0
+

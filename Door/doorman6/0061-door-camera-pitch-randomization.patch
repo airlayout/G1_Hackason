@@ -1,0 +1,148 @@
+From e4a6d1a9e0fcac988583b8a5744fc534a61494c0 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Wed, 21 Oct 2026 16:44:37 +0900
+Subject: [PATCH 1/2] door: randomize the head camera pitch per env at every
+ reset, with an optional debug dump (stage 6 vision student, 10-21)
+
+---
+ .../rl/config/domain_rand/NO_domain_rand.yaml | 10 ++-
+ .../legged_base_task/legged_robot_base.py     | 66 +++++++++++++++++++
+ gr00t/rl/simulator/isaacsim/isaacsim.py       | 19 ++++++
+ 3 files changed, 94 insertions(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/config/domain_rand/NO_domain_rand.yaml b/gr00t/rl/config/domain_rand/NO_domain_rand.yaml
+index acf0a97..280ee66 100755
+--- a/gr00t/rl/config/domain_rand/NO_domain_rand.yaml
++++ b/gr00t/rl/config/domain_rand/NO_domain_rand.yaml
+@@ -234,4 +234,12 @@ domain_rand:
+   randomize_table_material : False
+   table_material_folder_paths : [
+     "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/4.5/NVIDIA/Materials/Base/Wood/",
+-  ]
+\ No newline at end of file
++  ]
++
++  # G1_Hackason（0061）: カメラの俯角（torso_link から見た取付の pitch、下向きが正）を回ごと・台ごとに一様に引く
++  randomize_camera_pitch: False
++  camera_pitch_range_deg: [35.0, 70.0]
++  camera_pitch_eval_deg: null      # 評価の間だけ固めるならその値（度）
++  camera_pitch_debug_dir: null     # 確かめの記録（画像と CSV）を書く場所
++  camera_pitch_debug_every: 25
++  camera_pitch_debug_max: 40
+diff --git a/gr00t/rl/envs/legged_base_task/legged_robot_base.py b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+index 65fd88c..6a54b44 100644
+--- a/gr00t/rl/envs/legged_base_task/legged_robot_base.py
++++ b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+@@ -1644,6 +1644,71 @@ class LeggedRobotBase(BaseTask):
+                 requires_grad=False,
+             )
+ 
++        self._randomize_camera_pitch(env_ids)
++
++    def _randomize_camera_pitch(self, env_ids):
++        """G1_Hackason（0061）: カメラの俯角（torso_link から見た取付の pitch、下向きが正）を回ごと・台ごとに一様に引く。
++
++        実機の頭カメラの俯角は日によって 32〜68° 動く（10-21）。camera_rot_offset は起動時に 1 回しか効かないので、
++        リセットのたびに局所の向きを書き直す。camera_pitch_eval_deg を入れると評価の間はその値に固める
++        """
++        dr = self.config.domain_rand
++        if not dr.get("randomize_camera_pitch", False) or getattr(self.simulator, "ego_camera", None) is None:
++            return
++        if not hasattr(self, "camera_pitch_deg"):
++            self.camera_pitch_deg = torch.full((self.num_envs,), float("nan"), device=self.device)
++        fixed = dr.get("camera_pitch_eval_deg", None)
++        if self.is_evaluating and fixed is not None:
++            deg = torch.full((len(env_ids),), float(fixed), device=self.device)
++        else:
++            lo, hi = dr.camera_pitch_range_deg
++            deg = torch_rand_float(lo, hi, (len(env_ids), 1), device=self.device).squeeze(1)
++        self.camera_pitch_deg[env_ids] = deg
++        self.simulator.set_ego_camera_local_pitch(env_ids, torch.deg2rad(deg))
++
++    def _camera_pitch_debug(self, rgb_image):
++        """G1_Hackason（0061）: 俯角の乱択が効いているかを確かめる記録。domain_rand.camera_pitch_debug_dir を入れた時だけ。
++
++        every ステップごとに、最初の 4 台の画像（PNG）と、引いた俯角・カメラのプリムから読み戻した局所の俯角・
++        局所の位置（camera_pos_offset のままのはず）を CSV に書く。
++        ⚠️ cam.data.pos_w / quat_w_world は書き込んだ時（リセット）の値のまま胴に追従しない（10-21 に確かめた。
++        描画は胴に付いて動く）ので使わない
++        """
++        dr = self.config.domain_rand
++        out = dr.get("camera_pitch_debug_dir", None)
++        if not out or not hasattr(self, "camera_pitch_deg"):
++            return
++        self._cam_dbg_calls = getattr(self, "_cam_dbg_calls", 0) + 1
++        every, max_dumps = int(dr.get("camera_pitch_debug_every", 25)), int(dr.get("camera_pitch_debug_max", 40))
++        if self._cam_dbg_calls % every or self._cam_dbg_calls // every > max_dumps:
++            return
++        from isaaclab.utils.math import convert_camera_frame_orientation_convention
++
++        out = Path(out)
++        out.mkdir(parents=True, exist_ok=True)
++        cam = self.simulator.ego_camera
++        n = min(4, self.num_envs)
++        l_pos, l_rot = cam._view.get_local_poses(cam._resolve_env_ids_wp(torch.arange(n, device=self.device)))
++        q_w = convert_camera_frame_orientation_convention(l_rot.torch.clone().float(), origin="opengl", target="world")
++        meas = torch.rad2deg(2 * torch.atan2(q_w[:, 1], q_w[:, 3]))  # xyzw の y まわり
++        meas = torch.remainder(meas + 180.0, 360.0) - 180.0  # q と -q は同じ向き
++        q_xz = q_w[:, 0].abs() + q_w[:, 2].abs()  # 純粋な pitch なら 0
++        off = l_pos.torch.clone().float()
++        mean = torch.tensor(self.config.simulator.config.cameras.image_mean, device=rgb_image.device)
++        std = torch.tensor(self.config.simulator.config.cameras.image_std, device=rgb_image.device)
++        img = ((rgb_image[:n] * std + mean).clamp(0, 1) * 255).to(torch.uint8).cpu().numpy()
++        csv = out / "camera_pitch.csv"
++        new = not csv.exists()
++        with open(csv, "a") as f:
++            if new:
++                f.write("call,env,episode_step,pitch_sampled_deg,pitch_local_deg,q_xz,off_x,off_y,off_z\n")
++            for i in range(n):
++                step = int(self.episode_length_buf[i])
++                f.write(f"{self._cam_dbg_calls},{i},{step},{float(self.camera_pitch_deg[i]):.3f},{float(meas[i]):.3f},"
++                        f"{float(q_xz[i]):.5f},"
++                        f"{float(off[i, 0]):.4f},{float(off[i, 1]):.4f},{float(off[i, 2]):.4f}\n")
++                imageio.imwrite(out / f"c{self._cam_dbg_calls:05d}_e{i}_p{float(self.camera_pitch_deg[i]):.0f}.png", img[i])
++
+     def _push_robots(self, env_ids=None):
+         """Random pushes the robots. Emulates an impulse by setting a randomized base velocity."""
+         if env_ids is None:
+@@ -1896,6 +1961,7 @@ class LeggedRobotBase(BaseTask):
+             # ----------- Image Augmentation (see domain_rand.image_augmentation) -----------
+ 
+             rgb_image = self._image_augmentation(rgb_image)
++            self._camera_pitch_debug(rgb_image)  # G1_Hackason（0061）
+ 
+             # ----------------------- Uncomment to show rgb image -----------------------
+             if self.config.get("show_rgb_image", False):
+diff --git a/gr00t/rl/simulator/isaacsim/isaacsim.py b/gr00t/rl/simulator/isaacsim/isaacsim.py
+index 7b418d5..442139f 100644
+--- a/gr00t/rl/simulator/isaacsim/isaacsim.py
++++ b/gr00t/rl/simulator/isaacsim/isaacsim.py
+@@ -1711,6 +1711,25 @@ class IsaacSim(BaseSimulator):
+ 
+         # return self.num_dof, self.num_bodies, self.dof_names, self.body_names
+ 
++    def set_ego_camera_local_pitch(self, env_ids, pitch_rad):
++        """G1_Hackason（0061）: 台ごとにカメラの取付の向きを torso_link の y 軸まわり pitch_rad にする。
++
++        位置は camera_pos_offset のまま。局所の姿勢を書くので親（torso_link）に付いたまま体と一緒に動く。
++        起動時の OffsetCfg と同じく world の表し方（前 +x・上 +z）で作り、USD の opengl の表し方に直して書く
++        """
++        if self.ego_camera is None or len(env_ids) == 0:
++            return
++        from isaaclab.utils.math import convert_camera_frame_orientation_convention
++
++        half = 0.5 * pitch_rad.to(device=self.sim_device, dtype=torch.float32).reshape(-1)
++        zero = torch.zeros_like(half)
++        q_world = torch.stack([zero, torch.sin(half), zero, torch.cos(half)], dim=-1)  # xyzw
++        q_gl = convert_camera_frame_orientation_convention(q_world, origin="world", target="opengl")
++        self.ego_camera._view.set_local_poses(
++            orientations=wp.from_torch(q_gl.contiguous(), dtype=wp.vec4f),
++            indices=self.ego_camera._resolve_env_ids_wp(env_ids),
++        )
++
+     def set_ego_camera_pose(self, base_pos, base_quat_wxyz):
+         if self.ego_camera is not None:
+             self.ego_camera.set_world_poses(base_pos, base_quat_wxyz[..., [1, 2, 3, 0]], convention="world")  # 3.0 は xyzw
+-- 
+2.43.0
+

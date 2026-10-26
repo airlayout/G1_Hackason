@@ -1,0 +1,48 @@
+From 8f8a713e92e7f9bfde4137b73db62443f02ac57b Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 23 Oct 2026 13:28:52 +0900
+Subject: [PATCH 64/65] door: optional gc.freeze before training
+ (algo.config.gc_freeze) and camera update period
+ (cameras.camera_update_period); both default off (stage 6, 10-23)
+
+---
+ gr00t/rl/simulator/isaacsim/isaacsim.py | 3 +++
+ gr00t/rl/train_agent_trl.py             | 8 ++++++++
+ 2 files changed, 11 insertions(+)
+
+diff --git a/gr00t/rl/simulator/isaacsim/isaacsim.py b/gr00t/rl/simulator/isaacsim/isaacsim.py
+index 442139f..a4fb664 100644
+--- a/gr00t/rl/simulator/isaacsim/isaacsim.py
++++ b/gr00t/rl/simulator/isaacsim/isaacsim.py
+@@ -1445,6 +1445,9 @@ class IsaacSim(BaseSimulator):
+                 width=self.simulator_config.cameras.camera_resolutions[1],
+                 height=self.simulator_config.cameras.camera_resolutions[0],
+                 debug_vis=True,
++                # G1_Hackason（10-23）: カメラの更新の間隔 [秒]。0 は毎物理刻み（既定・今まで）。制御 1 回（0.02）に合わせると、
++                # Isaac Lab 3.0 のカメラが毎刻み自分で描画を頼むのを止められるかを確かめる
++                update_period=float(self.simulator_config.cameras.get("camera_update_period", 0.0)),
+             )
+ 
+             self.ego_camera = TiledCamera(ego_camera_config)
+diff --git a/gr00t/rl/train_agent_trl.py b/gr00t/rl/train_agent_trl.py
+index 0e0d473..e8bd30c 100644
+--- a/gr00t/rl/train_agent_trl.py
++++ b/gr00t/rl/train_agent_trl.py
+@@ -441,6 +441,14 @@ def main(config: OmegaConf):
+     )
+ 
+     # --- Training loop ---
++    # G1_Hackason（10-23）: 学習の 1 回ごとに 3 か所で呼ぶ gc.collect() が時間の約 16% を使っていた（py-spy）。
++    # Isaac Sim の起動までに溜まった大量の Python オブジェクトを毎回見回るため。始める前に凍らせて見回りから外す
++    if bool(config.algo.config.get("gc_freeze", False)):
++        import gc
++
++        gc.collect()
++        gc.freeze()
++        print(f"[G1_Hackason] gc.freeze: {gc.get_freeze_count()} 個を見回りから外した")
+     trainer.train()
+ 
+     if simulator_type == "IsaacSim":
+-- 
+2.43.0
+

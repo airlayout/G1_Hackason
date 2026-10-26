@@ -4,6 +4,8 @@
 # 記録係（patches/untested/0005-state-recorder.patch）を当てた作業ツリー（既定 VIRAL29rec）で動かす。
 #
 # 使い方: REPO=VIRAL29rec MEM_MAX=8G ./run_eval_record.sh <checkpoint.pt> <出力先> [台数 4] [エピソード数 8] [分 15] [追加の hydra 引数...]
+# STOP_WHEN_EPISODES=<回数>: 1 分ごとに count_success_cutoff.py で数え、数えられる回がこの数に届いたら（分の上限より前でも）止める
+#   （1 回の起動で台ごとに何回も回す評価用。10-22 に足した。機械が遅い時間に当たると決まった分では回数が足りなくなったため）
 set -uo pipefail
 CKPT="$1"; OUT="$2"; NUM_ENVS="${3:-4}"; EPISODES="${4:-8}"; MINUTES="${5:-15}"; shift 5 2>/dev/null || shift $#
 BASE="$HOME/work_inoue/doorman"                    # LAFAN-G1 と gate.sh はここ
@@ -44,6 +46,14 @@ for ATTEMPT in 1 2; do
     AVAIL=$(awk "/MemAvailable/{print int(\$2/1024)}" /proc/meminfo)
     if [ "$AVAIL" -lt 1500 ]; then REASON="low_mem_${AVAIL}MB"; break; fi
     if [ "$(date +%s)" -ge "$END" ]; then break; fi
+    if [ -n "${STOP_WHEN_EPISODES:-}" ] && [ $(( $(date +%s) - ${LAST_COUNT:-0} )) -ge 60 ]; then
+      LAST_COUNT=$(date +%s)
+      # 書きかけの npz に当たると読めずに失敗する。そのときは次の 1 分で数え直す
+      if "$ENV_BIN/python" "$BASE/count_success_cutoff.py" "$OUT" --json "$OUT/.partial_count.json" > /dev/null 2>&1; then
+        N_EP=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['episodes'])" "$OUT/.partial_count.json" 2>/dev/null)
+        if [ -n "$N_EP" ] && [ "$N_EP" -ge "$STOP_WHEN_EPISODES" ]; then REASON="enough_episodes_${N_EP}"; break; fi
+      fi
+    fi
     if [ $(( $(date +%s) - START )) -ge $(( STARTUP_MIN*60 )) ] && ! grep -aq "Setting Env is evaluating" "$OUT/eval.log"; then
       REASON="startup_hang"; break
     fi

@@ -1,0 +1,50 @@
+From e0f7b85afb6bd601dd23fee1d8ebb0774bcbc020 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 16 Oct 2026 16:04:37 +0900
+Subject: [PATCH] door: reset the policy memory of finished envs during
+ evaluation; flush the vision dataset at exit (V2)
+
+---
+ gr00t/rl/trl/trainer/ppo_trainer_homie_api.py | 5 +++++
+ gr00t/rl/utils/vision_dataset.py              | 2 ++
+ 2 files changed, 7 insertions(+)
+
+diff --git a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+index d314a6f..9b93159 100644
+--- a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
++++ b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+@@ -2149,6 +2149,11 @@ class TRLPPOTrainer(PPOTrainer):
+ 
+                     rewards, dones = rewards.to(device), dones.to(device)
+ 
++                    # G1_Hackason（V2）: 終わった台の方策の記憶（LSTM）を消す。学習中と同じ。既定は消さない（元の評価のまま）。
++                    # 1 回の起動で台ごとに何回も評価して数えるとき（count_success_cutoff.py）に使う
++                    if self.config.eval.get("reset_policy_on_done", False):
++                        policy_model.reset(dones)
++
+                     self.cur_reward_sum += rewards
+                     self.cur_episode_length += 1
+ 
+diff --git a/gr00t/rl/utils/vision_dataset.py b/gr00t/rl/utils/vision_dataset.py
+index e4edb72..9bc7f20 100644
+--- a/gr00t/rl/utils/vision_dataset.py
++++ b/gr00t/rl/utils/vision_dataset.py
+@@ -3,6 +3,7 @@
+ # 使い方: ++algo.config.eval.vision_dataset_dir=<出力先> （任意で vision_dataset_every=5・vision_dataset_envs=16・vision_dataset_shard=2000）
+ # カメラは simulator.config.cameras で有効にしておく。閉ループの評価（door_vision.estimator_path を渡したとき）では、
+ # 推定した値（est）も一緒に書くので、推定の誤差を同じ記録で見られる。
++import atexit
+ import os
+ 
+ import numpy as np
+@@ -28,6 +29,7 @@ class VisionDataset:
+         self.n_shards = 0
+         self.n_samples = 0
+         self.episode = None  # 台ごとの回の番号
++        atexit.register(self.flush)  # 時間切れで止めたとき（SIGINT）も残りを書く
+ 
+     def maybe_record(self, env) -> None:
+         self.count += 1
+-- 
+2.50.1 (Apple Git-155)
+

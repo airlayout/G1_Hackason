@@ -1,0 +1,59 @@
+From 5bd11b0b433b903279d3caa89f68ef6b59ed36d6 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Wed, 21 Oct 2026 16:44:37 +0900
+Subject: [PATCH 2/2] door: optional grayscale image for the vision student
+ (the G1 head camera exposes only IR) (stage 6, 10-21)
+
+---
+ gr00t/rl/config/domain_rand/NO_domain_rand.yaml  |  3 +++
+ .../envs/legged_base_task/legged_robot_base.py   | 16 ++++++++++++++++
+ 2 files changed, 19 insertions(+)
+
+diff --git a/gr00t/rl/config/domain_rand/NO_domain_rand.yaml b/gr00t/rl/config/domain_rand/NO_domain_rand.yaml
+index 280ee66..5e5cba6 100755
+--- a/gr00t/rl/config/domain_rand/NO_domain_rand.yaml
++++ b/gr00t/rl/config/domain_rand/NO_domain_rand.yaml
+@@ -243,3 +243,6 @@ domain_rand:
+   camera_pitch_debug_dir: null     # 確かめの記録（画像と CSV）を書く場所
+   camera_pitch_debug_every: 25
+   camera_pitch_debug_max: 40
++
++  # G1_Hackason（0062）: 画像を灰色にする（実機の頭カメラは赤外線だけ）。明るさなどの加工の後にかける
++  image_grayscale: False
+diff --git a/gr00t/rl/envs/legged_base_task/legged_robot_base.py b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+index 6a54b44..11c777f 100644
+--- a/gr00t/rl/envs/legged_base_task/legged_robot_base.py
++++ b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+@@ -1666,6 +1666,21 @@ class LeggedRobotBase(BaseTask):
+         self.camera_pitch_deg[env_ids] = deg
+         self.simulator.set_ego_camera_local_pitch(env_ids, torch.deg2rad(deg))
+ 
++    def _grayscale_image(self, rgb_image):
++        """G1_Hackason（0062）: 正規化済みの RGB [N, H, W, 3] を灰色にして 3 チャンネルに戻し、同じ正規化をかけ直す。
++
++        G1 の頭カメラ（D435i）はカラーを純正の videohub が使っていて、空いているのは赤外線（灰色）だけ。
++        灰色は BT.601（door_vision.rgb_to_gray_u8 と同じ）。実機では灰色の 1 チャンネルを 3 つ並べて同じ正規化をする
++        """
++        if not self.config.domain_rand.get("image_grayscale", False):
++            return rgb_image
++        cams = self.config.simulator.config.cameras
++        mean = torch.tensor(cams.image_mean, device=rgb_image.device)
++        std = torch.tensor(cams.image_std, device=rgb_image.device)
++        x = (rgb_image * std + mean).clamp(0, 1)
++        g = 0.299 * x[..., 0:1] + 0.587 * x[..., 1:2] + 0.114 * x[..., 2:3]
++        return (g.expand_as(x) - mean) / std
++
+     def _camera_pitch_debug(self, rgb_image):
+         """G1_Hackason（0061）: 俯角の乱択が効いているかを確かめる記録。domain_rand.camera_pitch_debug_dir を入れた時だけ。
+ 
+@@ -1961,6 +1976,7 @@ class LeggedRobotBase(BaseTask):
+             # ----------- Image Augmentation (see domain_rand.image_augmentation) -----------
+ 
+             rgb_image = self._image_augmentation(rgb_image)
++            rgb_image = self._grayscale_image(rgb_image)  # G1_Hackason（0062）
+             self._camera_pitch_debug(rgb_image)  # G1_Hackason（0061）
+ 
+             # ----------------------- Uncomment to show rgb image -----------------------
+-- 
+2.43.0
+

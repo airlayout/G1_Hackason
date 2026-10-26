@@ -95,9 +95,10 @@ class _Motor:
 
 
 class _State:
-    def __init__(self, q_default: np.ndarray, keys: int) -> None:
+    def __init__(self, q_default: np.ndarray, keys: int, pitch_deg: float = 0.0) -> None:
         self.motor_state = [_Motor(float(v)) for v in q_default] + [_Motor(0.0) for _ in range(6)]
-        self.imu_state = types.SimpleNamespace(quaternion=[1.0, 0.0, 0.0, 0.0], gyroscope=[0.0, 0.0, 0.0])
+        h = math.radians(pitch_deg) / 2  # y 軸まわりに pitch_deg 傾いた姿勢（w, x, y, z）
+        self.imu_state = types.SimpleNamespace(quaternion=[math.cos(h), 0.0, math.sin(h), 0.0], gyroscope=[0.0, 0.0, 0.0])
         self.mode_machine = 5
         self.wireless_remote = [0, 0, keys & 0xFF, keys >> 8] + [0] * 36
 
@@ -105,12 +106,14 @@ class _State:
 SIGNALS = {"INT": "SIGINT", "TERM": "SIGTERM", "HUP": "SIGHUP"}
 
 
-def _run(monkeypatch, tmp_path, script, *, held_at_start=(), freeze_after=None, nan_after=None, run_seconds="0.5"):
+def _run(monkeypatch, tmp_path, script, *, held_at_start=(), freeze_after=None, nan_after=None, run_seconds="0.5",
+         pitch_deg=0.0, extra_args=()):
     """偽の機体で door_run_real.main() を回す。script = [(秒, ボタン名 | "L2+B" | "INT" | "TERM" | "HUP")]。
 
     ボタンはその秒から 0.06 秒押す。INT・TERM・HUP はその秒に 1 回だけシグナルを送る（同じ名前を 2 回書けば 2 回）。
     held_at_start: 起動から 0.3 秒押しっぱなしのボタン／freeze_after: その秒から lowstate の時刻が止まる／
-    nan_after: その秒から関節の角度が NaN。返り値: (段の並び（重複を除く）, 段の列, 送った (q, kp) の列)
+    nan_after: その秒から関節の角度が NaN／pitch_deg: 体の傾き（ずっと同じ）／extra_args: door_run_real.py に足す引数。
+    返り値: (段の並び（重複を除く）, 段の列, 送った (q, kp) の列)
     """
     import signal as _signal
     import time as _time
@@ -143,7 +146,7 @@ def _run(monkeypatch, tmp_path, script, *, held_at_start=(), freeze_after=None, 
                 elif at <= el < at + 0.06:
                     for b in name.split("+"):
                         keys |= 1 << drr.KEY[b]
-            st = _State(p.q_default, keys)
+            st = _State(p.q_default, keys, pitch_deg)
             if nan_after is not None and el >= nan_after:
                 st.motor_state[3].q = float("nan")
             stamp = now if freeze_after is None or el < freeze_after else t0[0] + freeze_after
@@ -158,7 +161,7 @@ def _run(monkeypatch, tmp_path, script, *, held_at_start=(), freeze_after=None, 
     monkeypatch.setattr(sys, "stdin", open(os.devnull))
     monkeypatch.setattr(sys, "argv", ["door_run_real.py", "--policy", POLICY, "--start-x=-1.0", "--start-y=0.0",
                                       "--start-yaw-deg=0", "--door", "0.94,2.05,1.0,0.064", "--run-seconds", run_seconds,
-                                      "--log-dir", str(tmp_path)])
+                                      "--log-dir", str(tmp_path), *extra_args])
     assert drr.main() == 0
     logs = sorted(tmp_path.glob("door_real_*[0-9].npz"))
     assert len(logs) == 1
@@ -238,3 +241,46 @@ def test_stale_lowstate_damps(monkeypatch, tmp_path):
 def test_nan_joint_damps(monkeypatch, tmp_path):
     seen, _, _ = _run(monkeypatch, tmp_path, [(0.4, "start"), (3.7, "A"), (5.0, "INT")], nan_after=4.0)
     assert seen == ["WAIT", "RAMP", "HOLD", "STAND", "DAMP"]
+
+
+@needs_policy
+def test_tilted_body_refuses_stand(monkeypatch, tmp_path):
+    """体が 12° 傾いたまま（吊られて傾いている）では A を押しても HOMIE に任せない（10-16 の実機: 15.6° から立たせて暴れた）"""
+    seen, _, _ = _run(monkeypatch, tmp_path, [(0.4, "start"), (3.7, "A"), (4.5, "INT"), (4.8, "INT")], pitch_deg=12.0)
+    assert seen == ["WAIT", "RAMP", "HOLD", "FREEZE", "DAMP"]
+    seen2, _, _ = _run(monkeypatch, tmp_path / "b", [(0.4, "start"), (3.7, "A"), (4.5, "INT"), (4.8, "INT")], pitch_deg=5.0)
+    assert seen2 == ["WAIT", "RAMP", "HOLD", "STAND", "POST", "DAMP"]  # 5° なら立つ
+
+
+@needs_policy
+def test_stand_only_ignores_second_a(monkeypatch, tmp_path):
+    """--stand-only では、STAND で A を押しても扉の方策へ進まない"""
+    seen, _, _ = _run(monkeypatch, tmp_path, [(0.4, "start"), (3.7, "A"), (5.9, "A"), (6.5, "INT"), (6.8, "INT")],
+                      extra_args=("--stand-only",))
+    assert seen == ["WAIT", "RAMP", "HOLD", "STAND", "POST", "DAMP"]
+
+
+@needs_policy
+def test_warm_up_runs_both_modes_without_touching_state():
+    """起動時の空回しは、脚だけ（hold）と扉（door）の両方を回し、方策の記憶（LSTM の状態など）を持ち越さない"""
+    import door_run_real as drr
+
+    p = dc.load_params(POLICY)
+    st = _State(p.q_default, 0)
+    modes = []
+    real_step = dc.step
+
+    def spy(p_, s_, inp_, mode="hold"):
+        modes.append(mode)
+        return real_step(p_, s_, inp_, mode=mode)
+
+    s0 = dc.initial_state(p)
+    before = {k: np.array(v, copy=True) for k, v in vars(s0).items() if isinstance(v, np.ndarray)}
+    dc.step = spy
+    try:
+        ms = drr.warm_up(p, st, dfr.door_geometry(0.94, 2.05, 1.0, 0.064), dfr.PlanarPose(-1.0, 0.0, 0.0))
+    finally:
+        dc.step = real_step
+    assert {"hold", "door"} <= set(modes) and ms >= 0.0
+    for k, v in before.items():  # 空回しは自分の状態を使う（呼び出し側の状態を書き換えない）
+        np.testing.assert_array_equal(getattr(s0, k), v)

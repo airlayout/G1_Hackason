@@ -1,0 +1,173 @@
+From 2a2f68feb47f2497818e339ec2c3078c0cf91ca8 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 19 Oct 2026 18:12:47 +0900
+Subject: [PATCH 2/2] door: cap the pull on the lever before unlatching (1) and
+ an auto-tuned penalty weight for the lever impact (2) (stage 5)
+
+---
+ .../wbmanip/reward_door_open_homie.yaml       |   4 +
+ gr00t/rl/envs/door/door_open_homie.py         | 104 +++++++++++++++++-
+ 2 files changed, 104 insertions(+), 4 deletions(-)
+
+diff --git a/gr00t/rl/config/rewards/wbmanip/reward_door_open_homie.yaml b/gr00t/rl/config/rewards/wbmanip/reward_door_open_homie.yaml
+index 8eabc8e..5cbe02c 100644
+--- a/gr00t/rl/config/rewards/wbmanip/reward_door_open_homie.yaml
++++ b/gr00t/rl/config/rewards/wbmanip/reward_door_open_homie.yaml
+@@ -40,6 +40,10 @@ rewards:
+       palm_speed_near_lever: 0.0
+       lever_impact: 0.0
+       lever_press_speed: 0.0
++      # 段 5（10-19 夜）: ② 罰の重みを自動で上げる。使うときは 1.0（中で −λ·cost を返す。設定は env.config.lever_lagrange）
++      lever_touch_lagrange: 0.0
++      # 段 5（10-19 夜）: ① 掛け金が外れる前にレバーを 25 N 超で押した分（重みは負）
++      lever_force_over_cap: 0.0
+       # open
+       push_door_handle: 6.0
+       push_door_hinge: 6.0
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index f63aa0f..facc022 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -2,7 +2,9 @@
+ # SPDX-License-Identifier: Apache-2.0
+ 
+ 
++import json
+ import math
++import os
+ 
+ import omni.usd
+ import torch
+@@ -702,9 +704,23 @@ class DoorPregrasp(
+         # G1_Hackason（段 2-3）: 頭打ちを設定で変えられるようにする（既定は元の 20 N）。EN 1154 の等級 3 以上の扉は
+         # レバーの位置で 20 N を超える力が要り、20 N で頭打ちだと、それ以上強く押す手がかりが報酬に無い（10-08）
+         max_force = self.config.get("push_door_force_max", 20.0)
+-        return (
+-            torch.where(self.use_left_hand, left_net_force[:, 0], right_net_force[:, 0])
+-        ).clamp(min=min_force, max=max_force)
++        forward = torch.where(self.use_left_hand, left_net_force[:, 0], right_net_force[:, 0])
++        # G1_Hackason（段 5、10-19 夜）: ① 引っ張る力に上限（GentleHumanoid の考え方）。掛け金が外れる前（レバーが
++        # push_unlatched_handle_deg 未満）は頭打ちを push_door_force_latched_max にする。掛け金が掛かった扉は強く押しても開かないのに、
++        # 触れた次のステップ（区間 3）から 50 N まで点が入るので、方策は腕の目標を奥へ置いて当たっていた（10-19、速さ 0 でも約 23 N）
++        latched_max = self.config.get("push_door_force_latched_max", None)
++        if latched_max is not None:
++            return torch.where(
++                self._lever_unlatched(),
++                forward.clamp(min=min_force, max=max_force),
++                forward.clamp(min=min_force, max=float(latched_max)),
++            )
++        return forward.clamp(min=min_force, max=max_force)
++
++    def _lever_unlatched(self) -> torch.Tensor:
++        """レバーが push_unlatched_handle_deg（既定 30°）以上＝掛け金が縁まで引っ込んでいる"""
++        unlatched_rad = self.config.get("push_unlatched_handle_deg", 30.0) * torch.pi / 180.0
++        return self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 1] >= unlatched_rad
+ 
+     @StagedTaskBase.effective_in_stage(STAGE_OPEN)
+     def _reward_press_door_handle_down(self):
+@@ -719,6 +735,13 @@ class DoorPregrasp(
+             :, 0, self.right_hand_indices_tgt_ct_sensor, :
+         ].sum(dim=-2)
+         down_force = -torch.where(self.use_left_hand, left_net_force[:, 2], right_net_force[:, 2])
++        # G1_Hackason（段 5、10-19 夜）: ① 山型にする（press_handle_force_peak_n を渡したとき）。peak まで増え、
++        # press_handle_force_over_n（既定 peak＋10 N）を超えた分は減らす。元の形は 30 N まで増え続け、強く押すほど得だった
++        peak = self.config.get("press_handle_force_peak_n", None)
++        if peak is not None:
++            peak = float(peak)
++            over = float(self.config.get("press_handle_force_over_n", peak + 10.0))
++            return down_force.clamp(min=0.0, max=peak) / peak - (down_force - over).clamp(min=0.0) / peak
+         force_max = self.config.get("press_handle_force_max", 30.0)
+         return down_force.clamp(min=0.0, max=force_max) / force_max
+ 
+@@ -1047,7 +1070,10 @@ class DoorPregrasp(
+         return torch.where(self.use_left_hand[:, None], self._palm_pos("left"), self._palm_pos("right"))
+ 
+     def _hand_lever_force_n(self) -> torch.Tensor:
+-        """使う手がレバーから受けている力の大きさ [N]"""
++        """使う手がレバーから受けている力の大きさ [N]。lever_force_substeps=True なら物理 1 回ごとの最大（10-19 夜）"""
++        peak = getattr(self, "lever_force_substep_peak", None)
++        if peak is not None and self.config.get("lever_force_substeps", False):
++            return peak
+         f = self.simulator.object_to_hand_contact_forces[:, 0]
+         left = f[:, self.left_hand_indices_tgt_ct_sensor, :].sum(dim=-2)
+         right = f[:, self.right_hand_indices_tgt_ct_sensor, :].sum(dim=-2)
+@@ -1109,6 +1135,76 @@ class DoorPregrasp(
+         vmax = float(self.config.get("lever_press_speed_max_deg", 80.0)) * torch.pi / 180.0
+         return (vel - vmax).clamp(min=0.0)
+ 
++    def _reward_lever_force_over_cap(self):
++        """① 掛け金が外れる前に、手がレバーから受ける力が lever_force_cap_n＋lever_force_cap_margin_n（既定 15＋10 N）を
++        超えた分を lever_force_cap_n で割った値（重みは負）。GentleHumanoid の「上限＋10 N を越えたら罰」。
++        力は物理 1 回ごとの最大を使う（lever_force_substeps=True が要る）"""
++        f = self._hand_lever_force_n()
++        cap = float(self.config.get("lever_force_cap_n", 15.0))
++        margin = float(self.config.get("lever_force_cap_margin_n", 10.0))
++        return (f - cap - margin).clamp(min=0.0) / cap * (~self._lever_unlatched()).float()
++
++    # ---- G1_Hackason（段 5、10-19 夜）: ② 罰の重みを自動で上げる（ラグランジュ乗数。PPO-Lagrangian の双対上昇） ----
++    # 制約: 「当たりの山」＝初めて触れた impact_steps ステップの力（物理 1 回ごとの最大、lever_force_substeps=True が要る）が
++    # impact_max_n を超えた回の割合を target_rate 以下に。割合が目標より多い間は重み λ を上げ、少なければ下げる（0 で止まる）。
++    # 罰の中身（cost）は 2 つの和: 近づく速さの超過 [m/s]（上限は目標に近いほど下がる）と、当たりの山の超過（impact_max_n で割る）。
++    # 固定の重みの罰（0054）は、速さを見る区間が触れる直前の約 2.5 ステップしかなく、力は物理 4 回目の後の写しで当たりを見落としていた。
++    # 報酬の重みは 1.0 で使う（rewards.reward_scales.lever_touch_lagrange=1.0。中で −λ·cost を返す）。設定は env.config.lever_lagrange
++
++    def _lever_lagrange(self) -> dict:
++        cfg = dict(self.config.get("lever_lagrange", None) or {})
++        if not hasattr(self, "_lag"):
++            self._lag = {"lambda": float(cfg.get("lambda_init", 100.0)), "rate": float(cfg.get("rate_init", 1.0)), "events": 0, "violations": 0}
++            path = cfg.get("state_path", None)
++            if path and os.path.exists(path):
++                with open(path) as fp:
++                    saved = json.load(fp)
++                self._lag.update({k: saved[k] for k in ("lambda", "rate") if k in saved})
++                print(f"[lever_lagrange] 続きから: λ={self._lag['lambda']:.2f} 割合={self._lag['rate']:.3f}（{path}）")
++            self._lag_imp_max = torch.zeros(self.num_envs, device=self.device)
++        return cfg
++
++    def _reward_lever_touch_lagrange(self):
++        cfg = self._lever_lagrange()
++        speed, dist, age = self._touch_state()
++        f = self._hand_lever_force_n()
++        f_max = float(cfg.get("impact_max_n", 15.0))
++        n_imp = int(cfg.get("impact_steps", 2))
++        # 近づく速さの上限: 触れる距離（contact_dist_m）で v_touch、そこから遠いほど slope [m/s / m] で緩める。zone_m より遠くは見ない
++        v_max = float(cfg.get("v_touch", 0.2)) + float(cfg.get("slope", 2.0)) * (dist - float(cfg.get("contact_dist_m", 0.07))).clamp(min=0.0)
++        approach = (age < 0) & (dist < float(cfg.get("zone_m", 0.30)))
++        speed_cost = (speed - v_max).clamp(min=0.0) * approach.float()
++        window = (age >= 0) & (age < n_imp)
++        impact_cost = (f - f_max).clamp(min=0.0) / f_max * window.float()
++        # 当たりの山（窓の間の最大）。窓の最後のステップで 1 回ぶんの違反を数える
++        self._lag_imp_max = torch.where(age == 0, f, torch.where(window, torch.maximum(self._lag_imp_max, f), self._lag_imp_max))
++        done = age == n_imp - 1
++        if cfg.get("update", True) and bool(done.any()):
++            self._lever_lagrange_update(cfg, (self._lag_imp_max[done] > f_max).float())
++        lam = self._lag["lambda"]
++        self.log_dict["lever_lagrange_lambda"] = torch.tensor(lam, device=self.device)
++        self.log_dict["lever_lagrange_rate"] = torch.tensor(self._lag["rate"], device=self.device)
++        return -lam * (speed_cost + impact_cost)
++
++    def _lever_lagrange_update(self, cfg: dict, viol: torch.Tensor) -> None:
++        """違反の割合を回ごとの指数移動平均で数え、λ ← clip(λ + lr·(割合 − 目標)·回数, 0, lambda_max)"""
++        n = int(viol.numel())
++        keep = (1.0 - float(cfg.get("rate_ema", 0.002))) ** n
++        lag = self._lag
++        lag["rate"] = lag["rate"] * keep + float(viol.mean()) * (1.0 - keep)
++        step = float(cfg.get("lr", 0.02)) * (lag["rate"] - float(cfg.get("target_rate", 0.1))) * n
++        lag["lambda"] = min(max(lag["lambda"] + step, 0.0), float(cfg.get("lambda_max", 2000.0)))
++        lag["events"] += n
++        lag["violations"] += int(viol.sum())
++        path = cfg.get("state_path", None)
++        every = int(cfg.get("save_every_events", 200))
++        if path and lag["events"] // every != (lag["events"] - n) // every:
++            row = {"lambda": lag["lambda"], "rate": lag["rate"], "events": lag["events"], "violations": lag["violations"], "step": int(self.common_step_counter)}
++            with open(path, "w") as fp:
++                json.dump(row, fp)
++            with open(path + ".log", "a") as fp:
++                fp.write(json.dumps(row) + "\n")
++
+     def _palm_pos(self, side: str) -> torch.Tensor:
+         """palm の原点のワールド位置。29 関節版は wrist_yaw_link にオフセットを足す（43 関節版はオフセット 0）。"""
+         idx = self.left_palm_idx if side == "left" else self.right_palm_idx
+-- 
+2.43.0
+

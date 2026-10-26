@@ -1,0 +1,400 @@
+From c1b646bbb9778621e6027bc6919b016e7ddae6e8 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 16 Oct 2026 15:42:17 +0900
+Subject: [PATCH] door: estimate the door state from the head camera for the
+ state student (V2)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py         |  35 +++++-
+ gr00t/rl/envs/door/door_vision.py             | 102 ++++++++++++++++++
+ gr00t/rl/trl/trainer/ppo_trainer_homie_api.py |  16 +++
+ gr00t/rl/utils/vision_dataset.py              |  81 ++++++++++++++
+ tests/test_door_vision.py                     |  74 +++++++++++++
+ 5 files changed, 307 insertions(+), 1 deletion(-)
+ create mode 100644 gr00t/rl/envs/door/door_vision.py
+ create mode 100644 gr00t/rl/utils/vision_dataset.py
+ create mode 100644 tests/test_door_vision.py
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index aeecbc0..1e178d5 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -291,6 +291,17 @@ class DoorPregrasp(
+             self._door_frame_loc_pos = self.relative_door_pos_buf.clone()
+             self._door_frame_loc_rot = self.relative_door_rot_buf.clone()
+             self.door_sensor.reset(self._all_env_ids)  # 最初の観測の前に reset_all → _pre_compute で今の値から初め直す
++            # G1_Hackason（V2、10-16）: 扉の角度と枠の位置を、頭のカメラの画像からの推定に替える（door_vision.py）。
++            # 計測器の遅れ・10 Hz の間引きはそのまま使い、値の出どころだけを替える（誤差は door_sensor.* を 0 にして切る）
++            self._door_vision = None
++            self._door_vision_est = None
++            vis_cfg = self.config.get("door_vision", None)
++            if vis_cfg and vis_cfg.get("estimator_path", None):
++                from gr00t.rl.envs.door.door_vision import DoorVisionEstimator
++
++                self._door_vision = DoorVisionEstimator(vis_cfg["estimator_path"], self.device)
++                self._door_vision_truth_pose = bool(vis_cfg.get("truth_pose", False))  # 切り分け用: 姿勢だけ本当の値
++                self._door_vision_truth_angle = bool(vis_cfg.get("truth_angle", False))  # 切り分け用: 角度だけ本当の値
+ 
+     def _init_buffers(self):
+         super()._init_buffers()
+@@ -351,18 +362,40 @@ class DoorPregrasp(
+         """G1_Hackason（段 2.5）: 扉の角度の LiDAR と、測位で求めた枠の位置を 1 ステップ進める。
+         env_ids を渡すと（リセット直後の観測）その台だけ今の値で初め直す"""
+         hinge = self.simulator.get_task_dof_pos("door")[:, 0]
++        rel_pos, rel_rot = self.relative_door_pos_buf, self.relative_door_rot_buf
+         if env_ids is not None:
+             self.door_sensor.step(hinge, env_ids=env_ids)
++        elif getattr(self, "_door_vision", None) is not None:
++            hinge, rel_pos, rel_rot = self._door_vision_step(hinge)
++            ones = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
++            self.door_sensor.step(hinge, ones, ~ones)
+         else:
+             visible, near_hand = self._door_lidar_visibility()
+             self.door_sensor.step(hinge, visible, near_hand)
+-        pos, rot = self.door_sensor.localize(self.relative_door_pos_buf, self.relative_door_rot_buf)
++        pos, rot = self.door_sensor.localize(rel_pos, rel_rot)
+         if env_ids is None:
+             self._door_frame_loc_pos, self._door_frame_loc_rot = pos, rot
+         else:
+             self._door_frame_loc_pos[env_ids] = pos[env_ids]
+             self._door_frame_loc_rot[env_ids] = rot[env_ids]
+ 
++    def _door_vision_step(self, hinge_true):
++        """G1_Hackason（V2）: 画像から [x, y, yaw, angle] を推定し、扉の角度と pelvis から見た扉の位置・向きを返す"""
++        from gr00t.rl.envs.door.door_vision import door_rel_from_planar, planar_pose_in_door, rgb_to_gray_u8
++
++        rgb = _t(self.simulator.scene.sensors["ego_camera"].data.output["rgb"])
++        proprio = torch.cat([self.simulator.dof_pos[:, 12:15], self.projected_gravity], dim=-1)
++        est = self._door_vision(rgb_to_gray_u8(rgb), proprio)
++        self._door_vision_est = est
++        root = self.simulator.robot_root_states
++        door = self.simulator.get_task_root_state("door")
++        pose = est[:, :3]
++        if self._door_vision_truth_pose:
++            pose = planar_pose_in_door(root[:, :3], root[:, 3:7], door[:, :3], door[:, 3:7])
++        angle = hinge_true if self._door_vision_truth_angle else est[:, 3]
++        rel_pos, rel_rot = door_rel_from_planar(pose, root[:, 3:7], door[:, 3:7])
++        return angle, rel_pos, rel_rot
++
+     def _door_lidar_visibility(self):
+         """頭の LiDAR から扉の板が測れるか（斜めすぎない・近すぎず遠すぎない）と、手のひらが板の面の近くにあるか（腕で隠れる）"""
+         cfg = self.door_sensor.cfg
+diff --git a/gr00t/rl/envs/door/door_vision.py b/gr00t/rl/envs/door/door_vision.py
+new file mode 100644
+index 0000000..f87a6c4
+--- /dev/null
++++ b/gr00t/rl/envs/door/door_vision.py
+@@ -0,0 +1,102 @@
++# G1_Hackason（V2、2026-10-16）: 頭のカメラの画像から扉の状態（扉の開いた角度・扉の座標での pelvis の床の上の姿勢）を推定し、
++# 状態入力の生徒に「LiDAR と測位の代わり」として渡す。torch だけ（Isaac Sim なしで試験できる）。
++#
++# 推定するもの（4 つ）: [x, y, yaw, angle]
++#   x, y, yaw  扉の座標（原点＝開口の中心の床・+x＝押して入る向き）での pelvis の位置と向き（実機の door_frame.py の PlanarPose と同じ）
++#   angle      扉の開いた角度 [rad]（閉じて 0、押し開けると正）
++# 推定のモデルに入れるもの: 灰色の画像（uint8 [N, H, W]）と、関節で分かる値 6 つ（腰の 3 関節の角度・pelvis で見た重力の向き）
++# 生徒に渡すときは、推定した x, y, yaw と pelvis の傾き（IMU。実機でも分かる）から door_frame_loc の向きと位置を作り直す。
++import math
++
++import torch
++
++PROPRIO_DIM = 6  # 腰 yaw・roll・pitch（SDK 12〜14）＋ projected_gravity 3
++TARGET_NAMES = ("x", "y", "yaw", "angle")
++
++
++def quat_mul_xyzw(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
++    ax, ay, az, aw = a.unbind(-1)
++    bx, by, bz, bw = b.unbind(-1)
++    return torch.stack(
++        [
++            aw * bx + ax * bw + ay * bz - az * by,
++            aw * by - ax * bz + ay * bw + az * bx,
++            aw * bz + ax * by - ay * bx + az * bw,
++            aw * bw - ax * bx - ay * by - az * bz,
++        ],
++        dim=-1,
++    )
++
++
++def quat_conj_xyzw(q: torch.Tensor) -> torch.Tensor:
++    return torch.cat([-q[..., :3], q[..., 3:]], dim=-1)
++
++
++def quat_rotate_xyzw(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
++    """q（xyzw）で v を回す"""
++    qv = torch.cat([v, torch.zeros_like(v[..., :1])], dim=-1)
++    return quat_mul_xyzw(quat_mul_xyzw(q, qv), quat_conj_xyzw(q))[..., :3]
++
++
++def yaw_of_xyzw(q: torch.Tensor) -> torch.Tensor:
++    x, y, z, w = q.unbind(-1)
++    return torch.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
++
++
++def quat_z(yaw: torch.Tensor) -> torch.Tensor:
++    zero = torch.zeros_like(yaw)
++    return torch.stack([zero, zero, torch.sin(yaw / 2), torch.cos(yaw / 2)], dim=-1)
++
++
++def wrap(a: torch.Tensor) -> torch.Tensor:
++    return torch.atan2(torch.sin(a), torch.cos(a))
++
++
++def planar_pose_in_door(root_pos, root_quat_xyzw, door_pos, door_quat_xyzw) -> torch.Tensor:
++    """扉の座標での pelvis の [x, y, yaw]（[N, 3]）。扉の root の向きは yaw だけとみなす"""
++    door_yaw = yaw_of_xyzw(door_quat_xyzw)
++    d = root_pos[:, :2] - door_pos[:, :2]
++    c, s = torch.cos(-door_yaw), torch.sin(-door_yaw)
++    x = c * d[:, 0] - s * d[:, 1]
++    y = s * d[:, 0] + c * d[:, 1]
++    yaw = wrap(yaw_of_xyzw(root_quat_xyzw) - door_yaw)
++    return torch.stack([x, y, yaw], dim=-1)
++
++
++def door_rel_from_planar(pose: torch.Tensor, root_quat_xyzw: torch.Tensor, door_quat_xyzw: torch.Tensor):
++    """推定した pelvis の床の上の姿勢と、本当の pelvis の傾き（IMU で分かる）から、pelvis の座標で見た扉の位置と向き。
++
++    door_open_homie.py の relative_door_pos_buf・relative_door_rot_buf と同じ定義（扉の点の高さは pelvis に合わせる）:
++      pos = R^T (p_door' − p_pelvis)、rot = R^T R_door。R は pelvis の向き（yaw は推定・傾きは本当の値）
++    """
++    door_yaw = yaw_of_xyzw(door_quat_xyzw)
++    q_rel_true = quat_mul_xyzw(quat_conj_xyzw(quat_z(door_yaw)), root_quat_xyzw)  # 扉の座標での pelvis の向き
++    tilt = quat_mul_xyzw(quat_conj_xyzw(quat_z(yaw_of_xyzw(q_rel_true))), q_rel_true)  # yaw を除いた傾き
++    q_est = quat_mul_xyzw(quat_z(pose[:, 2]), tilt)  # 扉の座標での pelvis の向き（推定）
++    offset = torch.stack([-pose[:, 0], -pose[:, 1], torch.zeros_like(pose[:, 0])], dim=-1)
++    pos = quat_rotate_xyzw(quat_conj_xyzw(q_est), offset)
++    rot = quat_conj_xyzw(q_est)  # 扉の座標で R_door は単位
++    return pos, rot
++
++
++def rgb_to_gray_u8(rgb: torch.Tensor) -> torch.Tensor:
++    """[N, H, W, 3 か 4] の uint8 か 0〜255 の float → [N, H, W] uint8（ITU-R BT.601）"""
++    x = rgb[..., :3].float()
++    g = 0.299 * x[..., 0] + 0.587 * x[..., 1] + 0.114 * x[..., 2]
++    return g.clamp(0, 255).round().to(torch.uint8)
++
++
++class DoorVisionEstimator:
++    """TorchScript の推定のモデル（door_vision_train.py が書く）を読み、画像と関節の値から [x, y, yaw, angle] を出す"""
++
++    def __init__(self, path: str, device) -> None:
++        self.model = torch.jit.load(path, map_location=device).eval()
++        self.device = device
++
++    @torch.no_grad()
++    def __call__(self, gray_u8: torch.Tensor, proprio: torch.Tensor) -> torch.Tensor:
++        return self.model(gray_u8.to(self.device), proprio.to(self.device).float())
++
++
++def angle_deg(x: torch.Tensor) -> torch.Tensor:
++    return x * (180.0 / math.pi)
+diff --git a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+index 3834ad7..d314a6f 100644
+--- a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
++++ b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+@@ -2081,6 +2081,18 @@ class TRLPPOTrainer(PPOTrainer):
+                 self.config.eval.get("golden_trace_envs", 8),
+                 self.config.eval.get("golden_trace_max_steps", 1500),
+             )
++        # G1_Hackason（V2）: 頭のカメラの画像と扉の状態の正解を書く（vision_dataset.py）
++        vision_ds = None
++        vision_dir = self.config.get("eval", {}).get("vision_dataset_dir", None)
++        if vision_dir:
++            from gr00t.rl.utils.vision_dataset import VisionDataset
++
++            vision_ds = VisionDataset(
++                vision_dir,
++                self.config.eval.get("vision_dataset_every", 5),
++                self.config.eval.get("vision_dataset_envs", 16),
++                self.config.eval.get("vision_dataset_shard", 2000),
++            )
+ 
+         with torch.no_grad():
+             with unwrap_model_for_generation(
+@@ -2129,6 +2141,8 @@ class TRLPPOTrainer(PPOTrainer):
+ 
+                     if golden is not None:
+                         golden.after_step(self.env, dones)
++                    if vision_ds is not None:
++                        vision_ds.maybe_record(self.env)
+ 
+                     for obs_key in obs_dict.keys():
+                         obs_dict[obs_key] = obs_dict[obs_key].to(device)
+@@ -2170,6 +2184,8 @@ class TRLPPOTrainer(PPOTrainer):
+ 
+         if golden is not None:
+             golden.save()
++        if vision_ds is not None:
++            vision_ds.flush()
+         self.env.end_render_results()
+         self.policy_model.clear_rollout()
+         print(f"Evaluation completed - {completed_episodes} episodes finished")
+diff --git a/gr00t/rl/utils/vision_dataset.py b/gr00t/rl/utils/vision_dataset.py
+new file mode 100644
+index 0000000..e4edb72
+--- /dev/null
++++ b/gr00t/rl/utils/vision_dataset.py
+@@ -0,0 +1,81 @@
++# G1_Hackason（V2、2026-10-16）: 評価のループで、頭のカメラの灰色の画像と、扉の状態の正解を npz に書く（推定のモデルの学習用）。
++#
++# 使い方: ++algo.config.eval.vision_dataset_dir=<出力先> （任意で vision_dataset_every=5・vision_dataset_envs=16・vision_dataset_shard=2000）
++# カメラは simulator.config.cameras で有効にしておく。閉ループの評価（door_vision.estimator_path を渡したとき）では、
++# 推定した値（est）も一緒に書くので、推定の誤差を同じ記録で見られる。
++import os
++
++import numpy as np
++import torch
++
++from gr00t.rl.envs.door.door_vision import planar_pose_in_door, rgb_to_gray_u8
++from gr00t.rl.utils.state_recorder import _t
++
++
++def _np(x: torch.Tensor) -> np.ndarray:
++    return x.detach().cpu().numpy().copy()
++
++
++class VisionDataset:
++    def __init__(self, out_dir: str, every: int, num_envs: int, shard: int) -> None:
++        self.dir = str(out_dir)
++        os.makedirs(self.dir, exist_ok=True)
++        self.every = max(1, int(every))
++        self.k = int(num_envs)
++        self.shard = int(shard)
++        self.rows: dict[str, list] = {}
++        self.count = 0
++        self.n_shards = 0
++        self.n_samples = 0
++        self.episode = None  # 台ごとの回の番号
++
++    def maybe_record(self, env) -> None:
++        self.count += 1
++        k = min(self.k, env.num_envs)
++        ep_len = env.episode_length_buf[:k]
++        if self.episode is None:
++            self.episode = torch.zeros(k, dtype=torch.long, device=ep_len.device)
++            self._last_len = ep_len.clone()
++        self.episode += (ep_len < self._last_len).long()  # 回の長さが減った＝新しい回
++        self._last_len = ep_len.clone()
++        if self.count % self.every:
++            return
++        cam = getattr(env.simulator, "ego_camera", None)
++        if cam is None:
++            raise RuntimeError("vision_dataset: カメラが無い（simulator.config.cameras.enable_cameras=True にする）")
++        rgb = _t(env.simulator.scene.sensors["ego_camera"].data.output["rgb"])[:k]
++        root = env.simulator.robot_root_states[:k]
++        door = env.simulator.get_task_root_state("door")[:k]
++        door_dof = env.simulator.get_task_dof_pos("door")[:k]
++        pose = planar_pose_in_door(root[:, :3], root[:, 3:7], door[:, :3], door[:, 3:7])
++        row = {
++            "img": _np(rgb_to_gray_u8(rgb)),
++            "pose": _np(pose),
++            "angle": _np(door_dof[:, 0]),
++            "lever": _np(door_dof[:, 1]) if door_dof.shape[1] > 1 else np.zeros(k, np.float32),
++            "waist": _np(env.simulator.dof_pos[:k, 12:15]),
++            "gravity": _np(env.projected_gravity[:k]),
++            "stage": _np(env.stage_buf[:k]),
++            "ep_len": _np(ep_len),
++            "episode": _np(self.episode),
++            "env": np.arange(k),
++            "step": np.full(k, env.common_step_counter),
++        }
++        est = getattr(env, "_door_vision_est", None)
++        if est is not None:
++            row["est"] = _np(est[:k])
++        for key, v in row.items():
++            self.rows.setdefault(key, []).append(v)
++        self.n_samples += k
++        if len(self.rows["img"]) * k >= self.shard:
++            self.flush()
++
++    def flush(self) -> None:
++        if not self.rows:
++            return
++        out = {key: np.concatenate(v) for key, v in self.rows.items()}
++        path = os.path.join(self.dir, f"shard_{self.n_shards:04d}.npz")
++        np.savez_compressed(path, **out)
++        self.n_shards += 1
++        self.rows = {}
++        print(f"[G1_Hackason] vision dataset: {path}（{out['img'].shape[0]} 枚、累計 {self.n_samples}）", flush=True)
+diff --git a/tests/test_door_vision.py b/tests/test_door_vision.py
+new file mode 100644
+index 0000000..f5b667e
+--- /dev/null
++++ b/tests/test_door_vision.py
+@@ -0,0 +1,74 @@
++# G1_Hackason（V2）: 推定した姿勢から扉の位置と向きを作り直す計算が、環境の relative_door_pos_buf と同じになるかを確かめる。torch だけ。
++import math
++
++import torch
++
++from gr00t.rl.envs.door.door_vision import (
++    door_rel_from_planar,
++    planar_pose_in_door,
++    quat_mul_xyzw,
++    quat_z,
++    rgb_to_gray_u8,
++    wrap,
++)
++from gr00t.rl.isaac_utils.isaaclab_math_wxyz import subtract_frame_transforms
++from gr00t.rl.isaac_utils.rotations import wxyz_to_xyzw, xyzw_to_wxyz
++
++
++def random_tilted_pose(n: int, g: torch.Generator):
++    """傾き（±15°）と向きと位置がばらばらの pelvis、向きのある扉"""
++    roll = (torch.rand(n, generator=g) - 0.5) * math.radians(30)
++    pitch = (torch.rand(n, generator=g) - 0.5) * math.radians(30)
++    yaw = (torch.rand(n, generator=g) - 0.5) * 2 * math.pi
++    qx = torch.stack([torch.sin(roll / 2), torch.zeros(n), torch.zeros(n), torch.cos(roll / 2)], -1)
++    qy = torch.stack([torch.zeros(n), torch.sin(pitch / 2), torch.zeros(n), torch.cos(pitch / 2)], -1)
++    root_q = quat_mul_xyzw(quat_z(yaw), quat_mul_xyzw(qy, qx))
++    root_p = torch.randn(n, 3, generator=g)
++    root_p[:, 2] = 0.75
++    door_yaw = (torch.rand(n, generator=g) - 0.5) * 2 * math.pi
++    door_q = quat_z(door_yaw)
++    door_p = torch.randn(n, 3, generator=g)
++    door_p[:, 2] = 0.0
++    return root_p, root_q, door_p, door_q
++
++
++def env_relative(root_p, root_q, door_p, door_q):
++    """door_open_homie.py の _pre_compute_observations_callback と同じ計算"""
++    door_p = door_p.clone()
++    door_p[:, 2] = root_p[:, 2]
++    pos, rot = subtract_frame_transforms(root_p, xyzw_to_wxyz(root_q), door_p, xyzw_to_wxyz(door_q))
++    return pos, wxyz_to_xyzw(rot)
++
++
++def same_rotation(a, b):
++    """四元数の符号の違いを無視して比べる"""
++    return torch.minimum((a - b).abs().amax(-1), (a + b).abs().amax(-1))
++
++
++def test_rel_from_true_planar_pose_matches_env():
++    g = torch.Generator().manual_seed(0)
++    root_p, root_q, door_p, door_q = random_tilted_pose(256, g)
++    pose = planar_pose_in_door(root_p, root_q, door_p, door_q)
++    pos, rot = door_rel_from_planar(pose, root_q, door_q)
++    want_pos, want_rot = env_relative(root_p, root_q, door_p, door_q)
++    assert (pos - want_pos).abs().max() < 1e-5
++    assert same_rotation(rot, want_rot).max() < 1e-5
++
++
++def test_yaw_error_rotates_door_direction_by_the_same_angle():
++    """推定の yaw が 5° ずれると、扉の +x 軸（tan）も pelvis の座標で 5° ずれる（傾きなしのとき）"""
++    n = 8
++    root_q = quat_z(torch.zeros(n))
++    pose = torch.tensor([[-1.0, 0.2, 0.0]]).repeat(n, 1)
++    pose_err = pose.clone()
++    pose_err[:, 2] += math.radians(5)
++    _, r0 = door_rel_from_planar(pose, root_q, quat_z(torch.zeros(n)))
++    _, r1 = door_rel_from_planar(pose_err, root_q, quat_z(torch.zeros(n)))
++    d = wrap(2 * torch.atan2(r1[:, 2], r1[:, 3]) - 2 * torch.atan2(r0[:, 2], r0[:, 3]))
++    assert torch.allclose(d, torch.full((n,), -math.radians(5)), atol=1e-6)
++
++
++def test_gray_conversion():
++    rgb = torch.tensor([[[[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 255]]]], dtype=torch.uint8)
++    g = rgb_to_gray_u8(rgb)
++    assert g.dtype == torch.uint8 and g.tolist() == [[[76, 150, 29, 255]]]
+-- 
+2.50.1 (Apple Git-155)
+
