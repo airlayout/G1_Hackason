@@ -11,7 +11,23 @@
 | `export_door_policy.py` | ckpt と HOMIE の重みを npz に書き出す（Mac、torch）。torch と numpy の出力の一致を確かめてから書く |
 | `check_golden.py` | Isaac Sim の正解の記録（VIRAL6 パッチ 0050）と `door_core.py` を突き合わせる |
 | `deploy_to_pc2.sh` | PC2 の `~/door_real/` へ配り md5 で確かめ、PC2 の Python を調べる |
-| `tests/` | 機体なしの試験 15 件（扉の値・リモコン・段の進み方・B で立ったまま・L2+B で脱力・Ctrl+C の 1 回目と 2 回目・ssh の切断・ボタンの押しっぱなし・lowstate の途切れ・NaN。重みと正解の記録は環境変数 `DOOR_POLICY`・`DOOR_GOLDEN` で渡す） |
+| `target_guard.py` | 10-26: 腕の積み上げを今の角度 ±δ に収める（直し B）・送る目標を切る・立つ HOMIE の指令を 0（直し 8）。学習（VIRAL6 パッチ 0069）と 1 字も違わない同じファイル |
+| `door_foot_load.py`・`leg_model_g1_29dof_rev_1_0.npz` | 10-26: 脚の関節の角度・トルクと IMU から左右の足の鉛直の力を逆算する（numpy だけ）。モデルは公式の g1_29dof_rev_1_0（`export_leg_model.py` が Mac の MuJoCo で書き出す） |
+| `tests/` | 機体なしの試験（10-26 に 103 件。扉の値・リモコン・段の進み方・B で立ったまま・L2+B で脱力・Ctrl+C の 1 回目と 2 回目・ssh の切断・ボタンの押しっぱなし・lowstate の途切れ・NaN。重みと正解の記録は環境変数 `DOOR_POLICY`・`DOOR_GOLDEN` で渡す） |
+
+## 10-26 に足したこと（計画書 `docs/plan/2026-10-26-g1-door-stand-foot-load-check.md`）
+
+- **HOLD で両足に体重が乗っているかを確かめてから A を受け付ける**。画面に「足 L ○ N・R ○ N（体重の ○%）」が出る。
+  1 秒の平均で両足の合計が体重の 85% 以上・軽い方の足が 35% 以上でなければ、A を押すと理由が出て受け付けない
+  （脚が 0.2 rad/s 以上で動いている間・1 秒たまっていない間・値が壊れている間も受け付けない）。
+  HOLD に入ってから 1 秒以上待つ。引数: `--load-check {on,off}`（off は比べる用）・`--min-load-total 0.85`・`--min-load-each 0.35`・
+  `--body-mass-kg`（体重の分母。既定はモデルの 33.34 kg。機体の日に綱を緩めて立てたときの逆算の合計から直す）。記録に `foot_fz`
+- ⚠️ **全体重を足に乗せると HOLD の体は前へ 8〜10° 傾く**（足首 pitch の kp 40 のたわみ。10-16・10-23 の記録）。
+  A の条件「傾き 8° 以下」（`--max-stand-tilt-deg`）と同時に満たせないことがある。傾きの線は Isaac Sim の E2 の結果を見て決める
+- **腕の積み上げを今の角度 ±0.3 rad に収める**（直し B、`door_core.step` の既定）。止められた腕の前で目標がたまらない。
+  ただし肩 pitch・roll（kp 100・上限 25 N·m）は差 0.3 rad でも 30 N·m で上限に張り付くので、押し付けの力は減らない（Isaac Sim の V3）
+- **立つ HOMIE に歩く指令 0**（直し 8、`door_core.step` の既定）。10-16 の正解の記録は両方の無い評価で取ったので、`check_golden.py` が記録の設定を見て切る
+- 方策の npz に `arm_accum_guard_delta` が無い（B なしで学習した）ときは、起動の表示で知らせる
 
 ## 機体に載せる前にしたこと（2026-10-16）
 

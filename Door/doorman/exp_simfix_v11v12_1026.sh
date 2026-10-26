@@ -27,7 +27,7 @@ FIX="$HOME/work_inoue/doorman6/simfix_args.sh"
 fix() { "$FIX" "$@" | tr ' ' '\n' | grep -v '^++env.config.clip_targets_to_limits_margin=' | tr '\n' ' '; }
 echo "=== [$(date +%T)] exp_simfix_v11v12_1026 start"
 run() {
-  case " ${RUNS:-old z8 A B2 phys dr4 all golden} " in *" $1 "*) ;; *) return 0 ;; esac
+  case " ${RUNS:-old z8 A B2 phys dr4 all golden Bonly 2only Bj p1 p5 p6 p7} " in *" $1 "*) ;; *) return 0 ;; esac
   echo "=== [$(date +%T)] $1"
   EVAL_REPO=VIRAL6_fix KEEP_PAUSE=1 IDLE_GATE="${IDLE_GATE:-1}" COUNT_ARGS="--criterion through" MINUTES=20 EXTRA_ARGS="$BASE_ARGS $2" \
     ./eval_from_start.sh "$CK" "${3:-256}" 2>&1 | grep -E "eval_from_start out|成功|失敗の内訳|Traceback|Error" | sed "s/^/[$1] /"
@@ -39,6 +39,14 @@ run B2 "$(fix B 2)"
 run phys "$(fix 1 5 6 7)"
 run dr4 "$(fix 4)"
 run all "$(fix)"
+# 10-26 追加: B と 2 の切り分け（δ の判断材料）と、物理の 4 項目の切り分け（学習し直しの見込み）
+run Bonly "$(fix B)"
+run 2only "$(fix 2)"
+run Bj "++env.config.arm_accum_guard_delta=[0.2,0.2,0.3,0.3,0.3,0.2,0.2,0.2,0.2,0.3,0.3,0.3,0.2,0.2] ++env.config.arm_accum_guard_margin=0.05"
+run p1 "$(fix 1)"
+run p5 "$(fix 5)"
+run p6 "$(fix 6)"
+run p7 "$(fix 7)"
 GOLDEN="$HOME/work_inoue/doorman/records/golden_simfix_1026.npz"
 NOISE0="++obs.noise_scales.dof_pos=0.0 ++obs.noise_scales.dof_vel=0.0 ++obs.noise_scales.arm_dof_torque=0.0 ++obs.noise_scales.e_homie_dof_pos=0.0 ++obs.noise_scales.f_homie_dof_vel=0.0"
 run golden "$(fix B) $NOISE0 ++algo.config.eval.golden_trace_path=$GOLDEN" 8

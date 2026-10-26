@@ -1,0 +1,41 @@
+From e6e4c120038cb6a2c1ef1bda297243012bf38ff7 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 26 Oct 2026 11:13:55 +0900
+Subject: [PATCH] tools: E3 winch can stop at share_end (the sim HOLD tips
+ forward when the rope is fully paid out) (10-26)
+
+---
+ gr00t/rl/handover_sim.py | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/gr00t/rl/handover_sim.py b/gr00t/rl/handover_sim.py
+index 366bb1b..5041500 100644
+--- a/gr00t/rl/handover_sim.py
++++ b/gr00t/rl/handover_sim.py
+@@ -436,7 +436,7 @@ def _phase_times(log_path, phases):
+     return seq, t, ph, fz
+ 
+ 
+-def probe_e3(env, out, runs=10, seed=0, a_first=5.5, lower_from=6.5, a_second=15.0, stand_s=60.0, extra_args=()):
++def probe_e3(env, out, runs=10, seed=0, a_first=5.5, lower_from=6.5, a_second=15.0, stand_s=60.0, extra_args=(), share_end=0.0):
+     """E3: door_run_real.main() を Isaac Sim の機体につなぎ、台本で HOLD（綱が体重の 8 割以上・片足が軽い）→ A（拒むはず）→
+     ウィンチを下ろす → A（受け付けて STAND）→ stand_s 秒立つ → B（POST）→ L2+B（DAMP）→ 終わる、を runs 回"""
+     import contextlib
+@@ -469,10 +469,12 @@ def probe_e3(env, out, runs=10, seed=0, a_first=5.5, lower_from=6.5, a_second=15
+         rope = Rope(env, share0, offset)
+         end_stand = a_second + stand_s
+ 
+-        def share(t, s0=share0, lo=lower_s):
++        def share(t, s0=share0, lo=lower_s, s1=float(share_end)):
++            # ウィンチ: lower_from から lo 秒で share_end まで綱を伸ばす（シムの HOLD は綱を緩めきると前へ倒れるので、
++            # 受け付けた後の道筋を確かめる回では途中で止める）
+             if t < lower_from:
+                 return s0
+-            return max(0.0, s0 * (1.0 - (t - lower_from) / lo))
++            return s0 + (s1 - s0) * min(1.0, (t - lower_from) / lo)
+ 
+         script = [(0.5, "start"), (a_first, "A"), (a_second, "A"), (end_stand, "B"), (end_stand + 3.0, "L2+B"),
+                   (end_stand + 4.0, "INT")]
+-- 
+2.50.1 (Apple Git-155)
+

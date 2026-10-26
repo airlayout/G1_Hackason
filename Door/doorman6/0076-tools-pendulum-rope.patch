@@ -1,0 +1,216 @@
+From cac084c42b419c5ce89c89153a19bc994c454734 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 26 Oct 2026 10:57:23 +0900
+Subject: [PATCH] tools: rope pulls toward an overhead anchor (spring, damper,
+ slack; share set by rope length) instead of a constant upward force that
+ could not hold the HOLD pose; E1 rope share and feet+rope check; E2 collapse
+ after release by rope catch, tilt, reset; E3 int32 joint ids (10-26)
+
+---
+ gr00t/rl/handover_sim.py | 104 +++++++++++++++++++++++----------------
+ 1 file changed, 61 insertions(+), 43 deletions(-)
+
+diff --git a/gr00t/rl/handover_sim.py b/gr00t/rl/handover_sim.py
+index 2b232fc..366bb1b 100644
+--- a/gr00t/rl/handover_sim.py
++++ b/gr00t/rl/handover_sim.py
+@@ -3,7 +3,7 @@
+ # 実機用の制御の輪をそのまま回す（E3）を確かめる。simfix_probe.py から probe=e1・e2・e3 で呼ぶ。
+ #
+ # 場面は扉の環境（DoorMan の学習と同じ設定・同じ USD・同じ PD・同じ周期）をそのまま使い、物理の値は自分で作らない。
+-#   綱     胴（torso_link）に上向きの力。const: 体重の share の一定の力／spring: 長さのある綱（ばね・減衰・たるむと 0・
++#   綱     胴（torso_link）に付けて上の吊り点へ引く（ばね・減衰・たるむと 0）。受ける割合は綱の長さで決め、ウィンチは綱を伸ばす。
+ #          ウィンチで付け根を下げる）。付け根を横（世界の y）にずらすと片足を軽くできる
+ #   真値   足（ankle_roll_link）が受ける接触の力（ContactSensor の net_forces_w）
+ #   制御   実機と同じ door_core.py（numpy の HOMIE）を 50 Hz で回す。HOLD は全関節を既定の姿勢へ PD（行動 0）
+@@ -47,9 +47,14 @@ def door_real():
+ 
+ 
+ class Rope:
+-    """胴に掛ける綱。物理 1 回ごとに apply() で力を書き直す（PhysX は書いた力を毎回使う）"""
++    """胴（torso_link）に付けた綱。上の吊り点へ向かって引く（体が横にずれると引き戻す。実物の綱と同じ）。
+ 
+-    def __init__(self, env, share, offset_y, mode="const", length=None, k=6000.0, c=300.0, attach_up=0.25):
++    受ける割合 share は綱の長さで決める: 長さ L0 = length − share·体重/k（share が 0.05 未満では slack だけたるませる）。
++    ウィンチを下ろす＝share を下げる（綱を伸ばす）。物理 1 回ごとに apply() で力を書き直す。
++    10-26 の 1 回目は上向きの一定の力にしたが、関節を固めただけの HOLD の姿勢を支えられず E1・E2 の HOLD でほぼ倒れた
++    """
++
++    def __init__(self, env, share, offset_y, length=1.5, k=3000.0, c=300.0, slack=0.05, attach_up=0.25):
+         import torch
+ 
+         self.env = env
+@@ -60,49 +65,46 @@ class Rope:
+         self.mass = _t(self.robot.data.body_mass).sum(-1).to(self.dev).float()  # [N] 乱択の後の体重
+         self.share = torch.as_tensor(share, device=self.dev, dtype=torch.float).expand(env.num_envs).clone()
+         self.offset_y = torch.as_tensor(offset_y, device=self.dev, dtype=torch.float).expand(env.num_envs).clone()
+-        self.mode = mode
+-        self.k, self.c, self.attach_up = float(k), float(c), float(attach_up)
+-        self.anchor_z = None  # spring: 付け根の高さ（世界）
+-        self.length = length
+-        self.last_force = torch.zeros(env.num_envs, device=self.dev)
++        self.length, self.k, self.c, self.slack, self.attach_up = float(length), float(k), float(c), float(slack), float(attach_up)
++        self.anchor = None  # [N, 3] 吊り点（世界）。最初の apply の胴の位置の真上
++        self.last_force = torch.zeros(env.num_envs, device=self.dev)  # 綱の張力 [N]
++        self.last_vertical = torch.zeros(env.num_envs, device=self.dev)  # 張力の鉛直の成分 [N]
+ 
+-    def _torso(self):
++    def _attach(self):
+         pose = _t(self.robot.data.body_link_pose_w)[:, self.idx]  # [N, 7] 位置・xyzw
+         vel = _t(self.robot.data.body_link_vel_w)[:, self.idx]  # [N, 6]
+-        return pose[:, :3], vel[:, 2]
++        at = pose[:, :3].clone()
++        at[:, 1] += self.offset_y
++        at[:, 2] += self.attach_up
++        return at, vel[:, :3]
+ 
+-    def attach_spring_here(self, slack=0.0):
+-        """今の胴の高さで綱がちょうど張る（＋slack のたるみ）ように付け根を決める"""
+-        pos, _ = self._torso()
+-        self.length = 0.5
+-        self.anchor_z = pos[:, 2] + self.attach_up + self.length + slack
++    def rest_length(self):
++        torch = self.torch
++        weight = self.mass * G
++        taut = self.length - self.share * weight / self.k
++        loose = self.length + self.slack * torch.clamp(1.0 - self.share / 0.05, min=0.0)
++        return torch.where(self.share >= 0.05, taut, loose.clamp(max=self.length + self.slack))
+ 
+     def apply(self):
+         torch = self.torch
+-        pos, vz = self._torso()
+-        if self.mode == "const":
+-            f = self.share * self.mass * G
+-        else:
+-            z = pos[:, 2] + self.attach_up
+-            stretch = (self.anchor_z - z) - self.length
+-            f = torch.clamp(self.k * stretch - self.c * vz, min=0.0) * (stretch > 0).float()
+-        self.last_force = f
+-        n = self.env.num_envs
+-        forces = torch.zeros(n, 1, 3, device=self.dev)
+-        forces[:, 0, 2] = f
+-        at = pos.clone()
+-        at[:, 1] += self.offset_y
+-        at[:, 2] += self.attach_up
++        at, v = self._attach()
++        if self.anchor is None:
++            self.anchor = at.clone()
++            self.anchor[:, 2] += self.length
++        d = self.anchor - at
++        dist = d.norm(dim=-1).clamp(min=1e-6)
++        u = d / dist[:, None]
++        stretch = dist - self.rest_length()
++        rate = -(v * u).sum(-1)  # 伸びる速さ
++        tension = torch.clamp(self.k * stretch + self.c * rate, min=0.0) * (stretch > 0).float()
++        self.last_force = tension
++        self.last_vertical = tension * u[:, 2]
++        forces = (tension[:, None] * u)[:, None, :]
+         self.robot.permanent_wrench_composer.set_forces_and_torques_index(
+-            forces=forces, positions=at[:, None, :], body_ids=torch.tensor([self.idx], device=self.dev),
++            forces=forces, positions=at[:, None, :], body_ids=torch.tensor([self.idx], device=self.dev, dtype=torch.int32),
+             is_global=True,
+         )
+ 
+-    def release(self):
+-        self.share = self.share * 0.0
+-        if self.anchor_z is not None:
+-            self.anchor_z = self.anchor_z - 10.0
+-
+ 
+ class Truth:
+     """足（ankle_roll_link）が受ける接触の力の鉛直の成分 [N]（世界）"""
+@@ -170,10 +172,10 @@ def probe_e1(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.
+     s += [s[-1]] * (env.num_envs - len(s))
+     o += [o[-1]] * (env.num_envs - len(o))
+     env.reset_all()
+-    rope = Rope(env, s, o, "const")
++    rope = Rope(env, s, o)
+     _hook_substep(env, rope.apply)
+     truth = Truth(env)
+-    est, tru, tilt, falls = [], [], [], 0
++    est, tru, tilt, ropev, falls = [], [], [], [], 0
+     for k in range(int((settle_s + measure_s) / DT)):
+         reset = _hold_step(env)
+         falls += int(_t(reset).sum())
+@@ -183,7 +185,8 @@ def probe_e1(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.
+             est.append([[x.fz_left, x.fz_right] for x in f])
+             tru.append(truth.fz())
+             tilt.append(_tilt_deg(grav))
+-    est, tru, tilt = np.mean(est, 0), np.mean(tru, 0), np.mean(tilt, 0)
++            ropev.append(_t(rope.last_vertical).cpu().numpy())
++    est, tru, tilt, ropev = np.mean(est, 0), np.mean(tru, 0), np.mean(tilt, 0), np.mean(ropev, 0)
+     weight = _t(rope.mass).cpu().numpy() * G
+     rows = []
+     for i in range(len(_grid(shares, offsets)[0])):
+@@ -193,8 +196,11 @@ def probe_e1(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.
+             "true_total_ratio": float(tru[i].sum() / weight[i]), "est_total_ratio_model": float(est[i].sum() / model.weight),
+             "total_err_ratio": float(abs(est[i].sum() - tru[i].sum()) / weight[i]),
+             "foot_err_N": float(np.abs(est[i] - tru[i]).max()), "tilt_deg": float(tilt[i]),
++            "rope_ratio": float(ropev[i] / weight[i]),
++            # 足（真値）＋綱 が体重に足りなければ、足以外（膝・手）が床に着いている
++            "feet_plus_rope_ratio": float((tru[i].sum() + ropev[i]) / weight[i]),
+         })
+-    np.savez_compressed(out / "e1.npz", est=est, tru=tru, tilt=tilt, share=np.array(s), offset=np.array(o), weight=weight)
++    np.savez_compressed(out / "e1.npz", est=est, tru=tru, tilt=tilt, rope=ropev, share=np.array(s), offset=np.array(o), weight=weight)
+     return {
+         "rows": rows, "falls": falls,
+         "sim_body_mass_kg": float(np.mean(weight) / G), "model_body_mass_kg": float(model.total_mass),
+@@ -260,7 +266,7 @@ def probe_e2(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.
+     s += [s[-1]] * (env.num_envs - n_cond)
+     o += [o[-1]] * (env.num_envs - n_cond)
+     env.reset_all()
+-    rope = Rope(env, s, o, "const")
++    rope = Rope(env, s, o)
+     share0 = rope.share.clone()
+     _hook_substep(env, rope.apply)
+     truth = Truth(env)
+@@ -310,6 +316,13 @@ def probe_e2(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.
+         tilt = np.degrees(np.arccos(np.clip(1 - 2 * (arr["quat"][:, i, 1] ** 2 + arr["quat"][:, i, 2] ** 2), -1, 1)))
+         first = st & (t_arr < hold_s + 1.5)
+         later = st & (t_arr >= hold_s + 1.5) & (t_arr < hold_s + 6.0)
++        # 綱を緩めた 1 秒後から終わりまで: 綱が受け止めた力（体重比）・傾き・胴の沈み（綱が受け止めるので回は終わらない）
++        free = t_arr >= hold_s + stand_rope_s + release_s + 1.0
++        weight_i = float(_t(rope.mass)[i]) * G
++        rope_free = float(arr["rope"][free, i].max() / weight_i) if free.any() else None
++        tilt_free = float(tilt[free].max()) if free.any() else None
++        stand_rope = st & (t_arr < hold_s + stand_rope_s)
++        rope_stand = float(arr["rope"][stand_rope, i].mean() / weight_i) if stand_rope.any() else None
+         rows.append({
+             "share": s[i], "offset_y": o[i],
+             "hold_est_L": float(hl[i, 0]), "hold_est_R": float(hl[i, 1]),
+@@ -319,8 +332,13 @@ def probe_e2(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.
+             "leg_speed_rms_0_1p5s": float(np.sqrt((leg[first, i] ** 2).mean())) if first.any() else None,
+             "leg_speed_rms_1p5_6s": float(np.sqrt((leg[later, i] ** 2).mean())) if later.any() else None,
+             "max_tilt_deg_stand": float(tilt[alive].max()) if alive.any() else None,
++            "rope_ratio_during_stand_with_rope": rope_stand,
++            "rope_catch_ratio_after_release": rope_free, "max_tilt_deg_after_release": tilt_free,
++            # 崩れた: 回が終わった・緩めた後に綱が体重の 2 割を越えて受け止めた・傾き 25° を越えた
++            "collapsed": bool(fell[i] or (rope_free is not None and rope_free > 0.2) or (tilt_free is not None and tilt_free > 25.0)),
+         })
+-    return {"rows": rows, "delay_steps": delay_steps, "falls": int(fell[:n_cond].sum()), "conditions": n_cond}
++    return {"rows": rows, "delay_steps": delay_steps, "falls": int(fell[:n_cond].sum()), "conditions": n_cond,
++            "collapsed": int(sum(r["collapsed"] for r in rows))}
+ 
+ 
+ # ---------------------------------------------------------------------------------------------------- E3
+@@ -343,7 +361,7 @@ class SimRobotIO:
+ 
+         self.env, self.rope, self.script, self.rope_share, self.key_bits = env, rope, script, rope_share, key_bits
+         self.robot = env.simulator._robot
+-        self.ids = torch.as_tensor(env.simulator.dof_ids, device=env.device)
++        self.ids = torch.as_tensor(env.simulator.dof_ids, device=env.device, dtype=torch.int32)
+         self.torch = torch
+         self.time = time
+         self.t0 = time.monotonic()
+@@ -448,7 +466,7 @@ def probe_e3(env, out, runs=10, seed=0, a_first=5.5, lower_from=6.5, a_second=15
+         share0 = float(rng.uniform(0.80, 0.90))
+         offset = float(rng.uniform(-0.05, -0.02))  # 右（−y）に付ける → 右の足が軽くなる
+         lower_s = float(rng.uniform(4.0, 8.0))
+-        rope = Rope(env, share0, offset, "const")
++        rope = Rope(env, share0, offset)
+         end_stand = a_second + stand_s
+ 
+         def share(t, s0=share0, lo=lower_s):
+-- 
+2.50.1 (Apple Git-155)
+

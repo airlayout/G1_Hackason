@@ -1,0 +1,4 @@
+# E1 の逆算の片寄りが関節の摩擦から来るかを確かめる（10-26）
+e1_nofric e1 15 @1,7,A +probe_args={settle_s:6.0}
+# E3 の受け付けた後の道筋（シムの HOLD は綱を緩めきると前へ倒れ、足に 85% 乗らないので、綱を半分まで下ろし線を下げて輪を通す。10-26）
+e3_low e3 1 @1,6,7,A +probe_args={runs:5,share_end:0.5,extra_args:['--min-load-total=0.4','--min-load-each=0.15','--max-stand-tilt-deg=20']}
