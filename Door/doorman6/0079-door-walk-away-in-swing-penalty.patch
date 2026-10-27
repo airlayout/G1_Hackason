@@ -1,0 +1,69 @@
+From 8494f70c3611341310713426fa996c48a5178bc1 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Tue, 27 Oct 2026 15:56:54 +0900
+Subject: [PATCH] door: penalty for walking away beyond the door (1.2 m) while
+ still in the swing stage, i.e. before the door reaches the through angle
+ (10-27)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 12 ++++++++++++
+ gr00t/rl/envs/door/walk_away.py       | 17 +++++++++++++++++
+ 2 files changed, 29 insertions(+)
+ create mode 100644 gr00t/rl/envs/door/walk_away.py
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index b99705a..be7fc62 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -32,6 +32,7 @@ from gr00t.rl.envs.base_task.warped_action_base import WarpedActionBase
+ from gr00t.rl.envs.door.door_mirror import DoorMirror
+ from gr00t.rl.envs.door.door_state_sensor import DoorStateSensor
+ from gr00t.rl.envs.door.reset_from_dataset import ResetFromDataset
++from gr00t.rl.envs.door.walk_away import walk_away_amount
+ from gr00t.rl.isaac_utils.playground.env_rand.door_closer import closer_torque
+ from gr00t.rl.isaac_utils.rotations import quat_to_tan_norm, wxyz_to_xyzw, xyzw_to_wxyz
+ from gr00t.rl.utils.hand_links import hand_contact_body_names, palm_body_name, palm_offset
+@@ -842,6 +843,17 @@ class DoorPregrasp(
+         )
+         return (hinge_vel_reward + hinge_pos_reward).clamp(max=1.0, min=-1.0)
+ 
++    @StagedTaskBase.effective_in_stage([STAGE_SWING])
++    def _reward_walk_away_in_swing(self):
++        # G1_Hackason（10-27・F3 の型 B）: 押し開けの区間（段階 4。扉が door_through_angle_deg に届けば段階 5 へ進む）のまま、
++        # 扉の面から walk_away_start_m（既定 1.2 m）より先へ歩き去ると 0 → 1 に増える量（walk_away_span_m、既定 0.5 m で 1）。
++        # 重みを負にして罰にする（++rewards.reward_scales.walk_away_in_swing=-12.0。target_root_distance と同じ大きさ）。
++        # 成功の回は 70° に届いた時に扉の面の +1.15 m より手前にいるので、成功の動きは罰さない。詳しくは walk_away.py
++        x = self.simulator.robot_root_states[:, 0] - self.env_origins[:, 0]
++        return walk_away_amount(
++            x, float(self.config.get("walk_away_start_m", 1.2)), float(self.config.get("walk_away_span_m", 0.5))
++        )
++
+     @StagedTaskBase.effective_in_stage([STAGE_SWING, STAGE_THROUGH])
+     def _reward_door_overopen(self):
+         # G1_Hackason（段 2-4）: 開いたまま止まる角度の手前（door_overopen_start_deg、既定 85°）を越えると 0 → 1 に増える量。
+diff --git a/gr00t/rl/envs/door/walk_away.py b/gr00t/rl/envs/door/walk_away.py
+new file mode 100644
+index 0000000..1d12143
+--- /dev/null
++++ b/gr00t/rl/envs/door/walk_away.py
+@@ -0,0 +1,17 @@
++"""G1_Hackason（10-27・F3 の型 B）: 押し開けの区間のまま扉の先へ歩き去る近道を罰する量。
++
++F3（直した条件で 45,150 を PPO で仕上げ直す）の評価で、失敗の約 4 割は「扉を 60° 前後まで押した後、70° に届く前に
++扉の先 +1.8〜2.0 m まで歩き去る」形だった（段階 4 のまま時間切れ）。成功の回は扉が 70° に届いた（段階 5 に入った）時に
++扉の面の +0.58〜0.74 m（最大 1.15 m）にいる。段階 4 にも target_root_distance（扉の先の目標へ歩く報酬・重み 12）が効くので、
++扉を押し広げ続けるより先へ歩く方が点が入っていた。
++"""
++from __future__ import annotations
++
++import torch
++
++
++def walk_away_amount(x_from_door: torch.Tensor, start_m: float, span_m: float) -> torch.Tensor:
++    """扉の面からの距離 x [m]（+ が扉の先）が start_m を越えると 0 から増え、start_m + span_m で 1 になる量"""
++    if span_m <= 0.0:
++        raise ValueError(f"walk_away_span_m は正の値にする: {span_m}")
++    return ((x_from_door - start_m) / span_m).clamp(min=0.0, max=1.0)
+-- 
+2.43.0
+

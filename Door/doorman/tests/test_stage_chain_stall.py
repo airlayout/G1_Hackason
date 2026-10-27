@@ -65,6 +65,7 @@ case "${STUB_MODE:-progress}" in
     n=$(ls "$LOGROOT" 2>/dev/null | wc -l | tr -d " "); d="$LOGROOT/run_$n"; mkdir -p "$d"
     prev=$(cat "$HOME/last_iter" 2>/dev/null || echo 45150); it=$((prev + 400)); echo "$it" > "$HOME/last_iter"
     sleep 1; touch "$d/last.pt"; echo "$it" > "$d/last.pt.iter"; cp "$HOME/config.yaml" "$HOME/meta.yaml" "$d/"
+    [ -n "${STUB_STOP_AFTER:-}" ] && touch "$STUB_STOP_AFTER"  # 学習の途中で人が止め札を置いた
     echo "=== start seg=0 out=x"; echo "=== all_done reason=deadline" ;;
   stall) echo "=== start seg=0 out=x"; echo "=== end seg=0 reason=exited"; echo "=== all_done reason=exited" ;;
   wait) echo "=== wait machine free (need 1MB) seg=0"; echo "=== all_done reason=deadline segments=0" ;;
@@ -90,7 +91,7 @@ def omen(tmp_path):
     home = tmp_path / "home"
     base = home / "work_inoue" / "doorman"
     base.mkdir(parents=True)
-    for name in ("stage_chain.sh", "exp_f3_retrain_1026.sh", "f3_keepalive_1026.sh"):
+    for name in ("stage_chain.sh", "exp_f3_retrain_1026.sh", "f3_keepalive_1026.sh", "exp_f3bc_1027.sh"):
         shutil.copy(HERE / name, base / name)
         (base / name).chmod(0o755)
     _write(base / "run_train_segments.sh", STUB_TRAIN, True)
@@ -167,3 +168,63 @@ def test_keepalive_does_not_restart_after_a_stall(omen):
     assert r.returncode == 1
     assert "進まない" in r.stdout
     assert len(list((omen["base"] / "chain").iterdir())) == 1  # 新しい連鎖を始めていない
+
+
+# --- 10-27 夕: 直し 2・3 を順に試す台本（exp_f3bc_1027.sh）と、学習の引数を足す TRAIN_MORE -------------------------------------
+def _all_chain_logs(omen) -> str:
+    return "".join(p.read_text(encoding="utf-8") for p in sorted((omen["base"] / "chain").glob("*/chain.log")))
+
+
+def test_exp_f3_appends_train_more_to_the_training_args(omen):
+    """TRAIN_MORE に書いた引数が学習に渡る（stage_chain の extra= に出る）"""
+    env = dict(omen["env"], CK=str(omen["ck"]), STUB_MODE="progress", ROUNDS="1", PASS_RATE="1.1", NAME="f3b",
+               TRAIN_MORE="++algo.config.max_noise_std=0.26")
+    r = subprocess.run(["bash", "./exp_f3_retrain_1026.sh"], cwd=omen["base"], env=env, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=120, check=False)
+    log = _all_chain_logs(omen)
+    assert "stage=f3b" in log
+    assert "++algo.config.max_noise_std=0.26" in log
+    assert "name=f3b" in r.stdout and "more=++algo.config.max_noise_std=0.26" in r.stdout
+
+
+def test_exp_f3_refuses_train_more_with_a_colon(omen):
+    """「:」は段の区切りなので、TRAIN_MORE に入っていたら始めない"""
+    env = dict(omen["env"], CK=str(omen["ck"]), STUB_MODE="progress", TRAIN_MORE="++a.b=c:d")
+    r = subprocess.run(["bash", "./exp_f3_retrain_1026.sh"], cwd=omen["base"], env=env, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=120, check=False)
+    assert r.returncode == 1
+    assert "TRAIN_MORE" in r.stdout
+    assert not (omen["base"] / "chain").exists()
+
+
+def test_f3bc_runs_noise_cap_then_noise_cap_plus_walk_away_from_the_same_best(omen):
+    """段 A（雑音の上限だけ）→ 段 B（上限＋歩き去りの罰）の順に、どちらも控えた最良の重みから始める"""
+    best_dir = omen["base"] / "ckpt" / "f3_best"
+    env = dict(omen["env"], STUB_MODE="progress", BEST_SRC=str(omen["ck"]), BEST_DIR=str(best_dir),
+               ROUNDS_A="1", ROUNDS_B="1", NO_KEEPALIVE="1")
+    r = subprocess.run(["bash", "./exp_f3bc_1027.sh"], cwd=omen["base"], env=env, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=240, check=False)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (best_dir / "last.pt").exists() and (best_dir / "config.yaml").exists()
+    log = _all_chain_logs(omen)
+    a = log.index("chain start")
+    b = log.index("chain start", a + 1)  # 段 B の連鎖の始めの行（段の指定がそのまま書かれる）
+    assert "stage=f3b" in log[a:b] and "stage=f3c" in log[b:]
+    assert a < b
+    assert "walk_away_in_swing" not in log[a:b]  # 段 A には罰を入れない
+    assert "++algo.config.max_noise_std=0.26" in log[a:b]
+    assert "++algo.config.max_noise_std=0.26" in log[b:] and "++rewards.reward_scales.walk_away_in_swing=-12.0" in log[b:]
+    assert log.count(f"resume={best_dir}/last.pt") == 2  # 2 つの段とも最良の重みから
+    assert "見張りを始めずに終わる" in r.stdout
+
+
+def test_f3bc_does_not_start_stage_b_when_stopped(omen):
+    """段 A の途中で止め札が置かれたら、段 B を始めない（始めるときに残っている札は stage_chain.sh が消すので、途中で置く）"""
+    stop = omen["home"] / "work_inoue" / "STOP_DOOR_F3"
+    env = dict(omen["env"], STUB_MODE="progress", BEST_SRC=str(omen["ck"]), BEST_DIR=str(omen["base"] / "ckpt" / "f3_best"),
+               ROUNDS_A="2", ROUNDS_B="1", NO_KEEPALIVE="1", STUB_STOP_AFTER=str(stop))
+    r = subprocess.run(["bash", "./exp_f3bc_1027.sh"], cwd=omen["base"], env=env, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=240, check=False)
+    assert r.returncode == 0
+    assert "段 B を始めずに終わる" in r.stdout
+    assert "stage=f3c" not in _all_chain_logs(omen)

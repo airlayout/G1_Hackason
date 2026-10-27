@@ -35,7 +35,9 @@ print(",".join(out))')
 case "$FIX" in *:*) echo "直しの上書きに「:」が残っている: $FIX"; exit 1 ;; esac
 # 反復の上限（algo.trl.num_total_batches、既定 50,000）。10-26 21 時に 50,000 に届き、以後は始めるたびにすぐ終わっていた（10-27 に気づいた）
 LIMIT="++algo.trl.num_total_batches=${NUM_TOTAL_BATCHES:-1000000}"
-TRAIN="$CAP3,$RULES,$MIRROR,$WINDOW,$FIX,$LIMIT"
+# TRAIN_MORE（10-27）: 学習の引数を足す（例 ++algo.config.max_noise_std=0.26）。区切りは「,」・値の中のカンマは「|」・「:」と空白は使えない
+case "${TRAIN_MORE:-}" in *:*|*" "*) echo "TRAIN_MORE に「:」か空白がある: $TRAIN_MORE"; exit 1 ;; esac
+TRAIN="$CAP3,$RULES,$MIRROR,$WINDOW,$FIX,$LIMIT${TRAIN_MORE:+,$TRAIN_MORE}"
 # 始める前に、重みの反復が上限に届いていないかを確かめる（届いていると学習は始まるたびにすぐ終わる）
 PY="$HOME/miniforge3/envs/doorman6/bin/python"
 IT=$("$PY" -c "import torch,sys; print(torch.load(sys.argv[1], map_location='cpu', weights_only=False)['state'].global_step)" "$CK" 2>/dev/null || echo -1)
@@ -48,7 +50,7 @@ export EVAL_EXTRA="++env.config.reset_from_dataset.enabled=False ++env.config.ma
 export MINUTES=30 MEM_MAX="${MEM_MAX:-9G}" NEED_MARGIN_MB=1024 PASS_RATE="${PASS_RATE:-0.80}" EVAL_N=256 EVAL_FIRST=0
 export PAUSE_FILE="$HOME/work_inoue/PAUSE_DOOR_F3" STOP_FILE="$HOME/work_inoue/STOP_DOOR_F3" CHAIN_REPO=VIRAL6_fix
 log() { echo "=== [$(date '+%m-%d %T')] $*"; }
-log "exp_f3 start ck=$CK rounds=${ROUNDS:-96} pass_rate=$PASS_RATE overopen=${OVR:--6.0} repo=$CHAIN_REPO"
+log "exp_f3 start name=${NAME:-f3} ck=$CK rounds=${ROUNDS:-96} pass_rate=$PASS_RATE overopen=${OVR:--6.0} repo=$CHAIN_REPO${TRAIN_MORE:+ more=$TRAIN_MORE}"
 log "fix=$FIX"
 ./stage_chain.sh "$CK" "${NAME:-f3}:$TASK:${ROUNDS:-96}:30:through:$TRAIN"
 L=$(ls -td chain/*/ | head -1)
