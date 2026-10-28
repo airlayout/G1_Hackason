@@ -81,6 +81,13 @@
   11 並列で WSL2 ごと落ちた（2026-10-12）
 - **GPU が複数ある PC では、nvidia-smi と PyTorch で GPU の番号が逆になることがある。**
   `CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=<nvidia-smi の番号> ... --device 0` で選ぶ。RTX 50 系は `cu128` の torch
+- **main への PR の流れ（2026-10-28、PR #57）**: main は「各自でレビューする」方針で、CI が唯一の機械的な確認。CI は変えたフォルダ
+  （と依存するフォルダ。Button_Press は Perception に依存）のテストだけを実行する。出す前に main を `git merge origin/main` で取り込み、
+  `CI_CHANGED_FILES="$(git diff --name-only origin/main...HEAD)" PYTHON=G1_HuggingFace/venv/bin/python bash scripts/ci/run_all_tests.sh` と
+  `scripts/ci/run_checks.sh`（構文・変えた Markdown のリンク）を手元で通す。`rebase` は共有している履歴を書き換えるので使わない。
+  競合は `git merge-tree --write-tree --name-only origin/main HEAD` で先に試算できる。マージは PR を作った本人が画面で押す
+- この PC のシステムの Python は `pip install` が PEP 668 で止まるので、`Perception/tests/run_tests.sh` は NG になる（コードの問題ではない）。
+  venv の Python で `PYTHONPATH=Perception python -m unittest discover -s Perception/tests` を直接回す。`gh` は別の端末で `sudo apt install gh` と `gh auth login`
 - YOLO の最初の 1 回の推論は遅い（ノート PC の CPU で 1.1 秒、2 回目から約 0.17 秒）。実時間で動く模擬 G1・実機では
   その間ロボットが待つので、`YoloButtonDetector` は読み込み時に 1 回推論しておく
 
