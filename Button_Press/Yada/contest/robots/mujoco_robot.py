@@ -145,6 +145,8 @@ class MujocoRobot(Robot):
         max_f = 0.0
         t0 = time.time()
         diag = {"tip_dist": {}, "depth": {}, "touched": {}}
+        press: dict[str, float] = {}
+        press_now: dict[str, float] = {}
         for _ in range(n):
             while self._cmd_queue and self._cmd_queue[0][0] <= d.time:
                 self.q_des = self._cmd_queue.popleft()[1]
@@ -157,6 +159,9 @@ class MujocoRobot(Robot):
             self._mj.mj_step(m, d)
             self.hall.update()
             max_f = max(max_f, self.hall.max_robot_contact_force())
+            press_now = self.hall.press_forces()
+            for k, v in press_now.items():
+                press[k] = max(v, press.get(k, 0.0))
             # 周期の中の最小の距離・最大の沈み・触れたか（物理の 1 ステップごとに見る。押した瞬間を逃さないように）
             dg = self.hall.diagnostics()
             for k, v in dg["tip_dist"].items():
@@ -171,7 +176,7 @@ class MujocoRobot(Robot):
             self._viewer.sync()
             time.sleep(max(0.0, dt - (time.time() - t0)))
         return StepInfo(lit={b.name: self.hall.lit(b.name) for b in self.scene.buttons}, max_contact_force=max_f,
-                        diag=diag)
+                        diag=diag, press_force=press, press_force_end=press_now)
 
     def close(self) -> None:
         self._rgb.close()

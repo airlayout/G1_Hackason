@@ -6,6 +6,9 @@
 
 外部URL（http/https/mailto）は対象外。到達性はネットワーク状態に左右され、
 CIを不安定にするため検査しない。
+
+`--only <md> ...` で、そのファイルだけを検査する（PR で変えたものだけを見るため。git 管理下に無いもの・
+除外フォルダのものは飛ばす。`--only` だけで 1 つも無ければ何も検査しない）。引数が無ければ git 管理下の全部。
 """
 from __future__ import annotations
 
@@ -16,15 +19,31 @@ from pathlib import Path
 
 # 棚上げ中のフォルダと外部クローンは対象外
 EXCLUDED = ("IsaacSim_Env/", "SimEnv3D/", "G1_HuggingFace/")
+# 外部から取り込んだコード（vendor/ の下）の文書も対象外。元のリポジトリにある画像・動画・別のパッケージへの
+# リンクなので、このリポジトリでは切れているのが正常（例: Navigation/nav2_stable/vendor/fast_lio_localization_humanoid）
+EXCLUDED_PARTS = ("/vendor/",)
 
 LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 
 
-def tracked_markdown() -> list[Path]:
+def tracked_markdown(only: list[str] | None = None) -> list[Path]:
     out = subprocess.run(
         ["git", "ls-files", "*.md"], capture_output=True, text=True, check=True
     ).stdout.split()
-    return [Path(p) for p in out if not p.startswith(EXCLUDED)]
+    tracked = [p for p in out if not p.startswith(EXCLUDED) and not any(x in f"/{p}" for x in EXCLUDED_PARTS)]
+    if only is not None:
+        tracked = [p for p in tracked if p in set(only)]
+    return [Path(p) for p in tracked]
+
+
+def looks_like_path(target: str) -> bool:
+    """リンクの行き先が、ファイルやフォルダのパスらしいか。
+
+    「[m](G1の機体半径)」（単位の [m] のあとに、かっこ書きの説明）のように、リンクではない文も
+    [..](..) の形になる。ファイルやフォルダへのリンクは、ふつう「/」か「.」（拡張子）を含むので、
+    どちらも含まないものはリンクとみなさない。
+    """
+    return "/" in target or "." in target
 
 
 def tracked_paths() -> set[str]:
@@ -51,12 +70,21 @@ def main() -> int:
     total = 0
     broken: list[str] = []
     known = tracked_paths()
+    only = None
+    if len(sys.argv) > 1:
+        if sys.argv[1] != "--only":
+            print(f"使い方: {sys.argv[0]} [--only <md> ...]", file=sys.stderr)
+            return 2
+        only = sys.argv[2:]
+        if not only:
+            print("[links] 検査する Markdown が無い（PR で Markdown を変えていない）")
+            return 0
 
-    for md in tracked_markdown():
+    for md in tracked_markdown(only):
         text = md.read_text(encoding="utf-8", errors="replace")
         for match in LINK.finditer(text):
             target = match.group(2).split("#")[0].strip()
-            if not target or target.startswith(("http://", "https://", "mailto:")):
+            if not target or target.startswith(("http://", "https://", "mailto:")) or not looks_like_path(target):
                 continue
             total += 1
             resolved = (md.parent / target).as_posix().rstrip("/")

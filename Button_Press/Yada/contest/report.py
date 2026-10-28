@@ -8,7 +8,8 @@
 1. 成功率と、どこで失敗したか（runner.classify_stage の分類）
 2. 乱しを 1 種類ずつ入れた評価（evaluate.py --ablation の結果があれば）: 種類ごとの成功率と、乱しなしとの差
 3. 条件ごとの成功率: 条件の値で試行を半分に分け（中央値で）、小さい側と大きい側の成功率を比べる。差が大きい順
-4. 失敗した試行の一覧: 目立って厳しかった条件と、再現のコマンド
+4. 押す力: 成功した試行の、押す力の最大・適正な範囲に入った割合・点灯のあと指を離した割合（common/press_force.py）
+5. 失敗した試行の一覧: 目立って厳しかった条件と、再現のコマンド
 
 注意: 3 は「一緒に変わった条件」の影響も混ざる（相関であって原因とは限らない）。原因を確かめるには 2 を使う。
 試行が少ないと差はたまたまのことがある（目安として、条件 1 つにつき数十試行）。
@@ -27,7 +28,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common.config import REPO_ROOT  # noqa: E402
+from common.config import REPO_ROOT, load_config  # noqa: E402
+from common.press_force import PressForceSpec, summarize_press  # noqa: E402
 from common.realism import FEATURES, GROUP_LABELS  # noqa: E402
 
 REPORT_DIR = REPO_ROOT / "_local" / "button_press_yada" / "reports"
@@ -247,8 +249,10 @@ def build_report(results: list[dict[str, Any]], meta: dict[str, Any]) -> str:
                          f"{_pct(e['rate_high'])}（{e['n_high']}） | {100 * e['diff']:+.0f} pt{mark} |")
     L.append("")
 
+    L += press_force_section(main or results, sec + 1)
+
     fails = [r for r in (main or results) if r["outcome"] != "success"]
-    L.append(f"## {sec + 1}. 失敗した試行")
+    L.append(f"## {sec + 2}. 失敗した試行")
     L.append("")
     if not fails:
         L.append("なし。")
@@ -274,6 +278,40 @@ def build_report(results: list[dict[str, Any]], meta: dict[str, Any]) -> str:
             L.append(f"- ほか {len(fails) - 30} 試行")
     L.append("")
     return "\n".join(L)
+
+
+def press_force_section(results: list[dict[str, Any]], sec: int) -> list[str]:
+    """押す力の節（成功した試行の、押す力の最大・適正な範囲・指を離したか）。"""
+    spec = PressForceSpec.from_cfg(load_config("contest.yaml").get("press_force"))
+    L = [f"## {sec}. 押す力", ""]
+    pf = summarize_press(results)
+    if not pf.get("measured"):
+        L += ["押す力を測れなかった（このシミュレーター・実機では測っていない）。", ""]
+        return L
+    ok = [r for r in results if r.get("outcome") == "success" and r.get("max_press_force_n") is not None]
+    L.append(f"適正な範囲は {spec.ok_lo:g}〜{spec.ok_hi:g} N、押しすぎは {spec.max_n:g} N より大きい力。"
+             f"点灯のあと {spec.post_press_s:g} 秒たったときに力が {spec.release_n:g} N より小さければ「指を離した」。"
+             "成否の判定には使わない（記録だけ）。")
+    L.append("")
+    if not ok:
+        L += ["成功した試行が無いので、集計していない。", ""]
+        return L
+    forces = np.array([float(r["max_press_force_n"]) for r in ok])
+    L.append("| 項目 | 値 |")
+    L.append("|---|---|")
+    L.append(f"| 押す力の最大（成功した {len(ok)} 試行） | 平均 {forces.mean():.1f} N、"
+             f"最小 {forces.min():.1f} N、最大 {forces.max():.1f} N |")
+    L.append(f"| 適正な範囲に入った | {_pct(pf['in_range_rate'])} |")
+    L.append(f"| 点灯のあと指を離した | {_pct(pf['released_rate']) if pf['released_rate'] is not None else '-'} |")
+    L.append(f"| 押しすぎ（全試行） | {pf['over_max_trials']} 試行 |")
+    L.append("")
+    if forces.mean() > spec.ok_hi:
+        L += ["押す力が強すぎる。押し込みの深さ（目標を面の奥に置く量）を浅くするか、面に当たったら止める。", ""]
+    elif forces.mean() < spec.ok_lo:
+        L += ["押す力が弱め。点灯はしたが、本番のボタンでは押し切れない恐れがある。", ""]
+    if pf["released_rate"] is not None and pf["released_rate"] < 0.5:
+        L += ["点灯のあとも押し続けていることが多い。点灯を見たら（画像で分かる）指を戻す。", ""]
+    return L
 
 
 def main() -> int:

@@ -31,6 +31,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.config import FEATURE_DIR, REPO_ROOT, load_config  # noqa: E402
+from common.press_force import summarize_press  # noqa: E402
+from contest.task import seeds_for_target  # noqa: E402
 
 SERVER = FEATURE_DIR / "sim" / "mujoco" / "g1_sim_server.py"
 SERVER_DIR = REPO_ROOT / "_local" / "button_press_yada" / "sim_server"
@@ -99,12 +101,18 @@ def main() -> int:
     ap.add_argument("--seeds", default="practice", help="seeds.yaml の組の名前")
     ap.add_argument("--seeds-file", default=str(Path(__file__).with_name("seeds.yaml")))
     ap.add_argument("--seed", type=int, action="append", help="種を直接指定する（複数可。--seeds より優先）")
+    ap.add_argument("--target", choices=["up", "down"], default=None,
+                    help="押すボタンがこれの種だけを使う（片方のボタンだけを押すエージェント用）")
     ap.add_argument("--server-python", default=sys.executable, help="模擬 G1 を動かす Python（既定はこの Python）")
     ap.add_argument("--view", action="store_true", help="模擬 G1 の画面を開く")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
 
     seeds = args.seed if args.seed else load_config(args.seeds_file)[args.seeds]
+    if args.target:
+        picked = seeds_for_target(list(seeds), args.target, load_config("contest.yaml"))
+        print(f"[eval_dds] --target {args.target}: {len(seeds)} 個の種のうち {len(picked)} 個を使う")
+        seeds = picked
     time_limit = float(load_config("contest.yaml")["time_limit_s"])
     print(f"[eval_dds] コマンド: {args.client}")
     print(f"[eval_dds] 試行: {len(seeds)}（ログは {LOG_DIR}）")
@@ -114,7 +122,8 @@ def main() -> int:
         r = run_trial(seed, args.client, args.server_python, args.view, time_limit)
         results.append(r)
         print(f"[eval_dds] seed {seed:>3}  {r.get('target', '-'):<4}  {r['outcome']:<12}  時間 {r.get('time_s') or '-':>6}  "
-              f"接触力 {r.get('max_contact_force_n', '-'):>6} N  （実時間 {time.time() - t0:.1f} s）"
+              f"接触力 {r.get('max_contact_force_n', '-'):>6} N  押す力 {r.get('max_press_force_n') or '-':>6} N  "
+              f"（実時間 {time.time() - t0:.1f} s）"
               + (f"  {r['error']}" if r.get("error") else ""))
     ok = [r for r in results if r["outcome"] == "success"]
     counts: dict[str, int] = {}
@@ -122,7 +131,8 @@ def main() -> int:
         counts[r["outcome"]] = counts.get(r["outcome"], 0) + 1
     summary = {"trials": len(results), "success_rate": round(len(ok) / len(results), 3) if results else 0.0,
                "outcomes": counts,
-               "mean_time_s_success": round(sum(r["time_s"] for r in ok) / len(ok), 2) if ok else None}
+               "mean_time_s_success": round(sum(r["time_s"] for r in ok) / len(ok), 2) if ok else None,
+               "press_force": summarize_press(results)}
     print(f"[eval_dds] 成功率 {summary['success_rate'] * 100:.0f}%（{counts}）、成功時の平均時間 {summary['mean_time_s_success']} s")
     out = Path(args.out) if args.out else RESULTS_DIR / f"dds_{time.strftime('%Y%m%d_%H%M%S')}.json"
     out.parent.mkdir(parents=True, exist_ok=True)

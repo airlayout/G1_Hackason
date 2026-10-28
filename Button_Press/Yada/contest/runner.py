@@ -7,6 +7,9 @@
 - gave_up     エージェントが done を返したが、点灯していない
 - error       エージェントが例外を出した、または出力の形が違う
 
+success のときは、点灯のあとも configs/contest.yaml の press_force.post_press_s だけ試行を続け、押す力の最大と、
+指を離したかを記録する（max_press_force_n など。成否は変えない。common/press_force.py）。
+
 どこで失敗したか（stage。弱点のレポート用。シミュレーターから見て分かることだけで分ける。classify_stage）:
 - success / wrong_button / error
 - no_motion            腕をほとんど動かさなかった
@@ -25,6 +28,8 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import numpy as np
+
+from common.press_force import PressForceMeter, PressForceSpec
 
 from .interface import UPPER_BODY_IDX, Action, Agent, TaskInfo
 from .robots.base import Robot
@@ -49,6 +54,11 @@ class EpisodeResult:
     clipped_limit_steps: int = 0  # 可動範囲で丸めた周期の数
     clipped_rate_steps: int = 0  # 1 周期の最大移動量で丸めた周期の数
     ignored_base_cmd_steps: int = 0  # 下半身の指令が効かない環境で、0 でない指令を返した周期の数
+    # 目標のボタンを押す力（記録だけ。成否には使わない。common/press_force.py。測れないロボットでは None）
+    max_press_force_n: float | None = None  # 押す力の最大（点灯のあとの post_press_s も含む）
+    press_force_in_range: bool | None = None  # 押す力の最大が適正な範囲か（success のときだけ）
+    press_force_over_max: bool | None = None  # 押しすぎたか
+    released_after_press: bool | None = None  # 点灯のあとの時間の終わりに、指を離していたか（success のときだけ）
     act_time_mean_ms: float = 0.0  # act() にかかった時間の平均
     error: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
@@ -158,13 +168,18 @@ def run_episode(robot: Robot, agent: Agent, trial: Any, contest_cfg: dict[str, A
     other: list[str] = []  # 目標以外のボタン（車いす用も含む。最初の記録で決める）
     diag: dict[str, Any] = {"max_arm_motion_rad": 0.0, "touched_target": False, "touched_other": False,
                             "max_depth_target_mm": 0.0, "max_depth_other_mm": 0.0}
-    while t < limit:
+    meter = PressForceMeter(PressForceSpec.from_cfg(contest_cfg.get("press_force")))
+    # 目標のボタンが点灯したら、押す力の最大と指を離したかを見るため post_press_s だけ続ける（成否は変えない）
+    post_end: float | None = None
+    while t < limit or post_end is not None:
         try:
             t0 = time.perf_counter()
             action = _check_action(agent.act(obs))
             act_times.append(time.perf_counter() - t0)
         except Exception:
-            res.outcome, res.error = "error", traceback.format_exc()
+            if post_end is None:
+                res.outcome = "error"
+            res.error = traceback.format_exc()
             break
         q_safe, by_limit, by_rate = safety(action.q_target)
         res.clipped_limit_steps += int(by_limit)
@@ -184,20 +199,35 @@ def run_episode(robot: Robot, agent: Agent, trial: Any, contest_cfg: dict[str, A
             if not other:
                 other = [b for b in info.diag.get("depth", {}) if b != trial.target]
             _update_diag(diag, info.diag, trial.target, other)
-        lit = [n for n, on in info.lit.items() if on]
-        if lit:
-            res.outcome = "success" if lit == [trial.target] else "wrong"
-            res.time_s = round(t, 3)
-            if verbose:
-                print(f"[run] seed {trial.seed}: {lit} が点灯（t = {t:.2f} s）")
-            break
-        if action.done:
-            res.outcome = "gave_up"
-            break
+        meter.update((info.press_force or {}).get(trial.target) if info.press_force is not None else None)
+        end_force = (info.press_force_end or {}).get(trial.target) if info.press_force_end is not None else None
+        if post_end is not None:
+            if t >= post_end - 1e-9 or action.done:
+                meter.mark_end(end_force)
+                break
+        else:
+            lit = [n for n, on in info.lit.items() if on]
+            if lit:
+                res.outcome = "success" if lit == [trial.target] else "wrong"
+                res.time_s = round(t, 3)
+                if verbose:
+                    print(f"[run] seed {trial.seed}: {lit} が点灯（t = {t:.2f} s）")
+                if res.outcome != "success":
+                    break
+                meter.mark_lit()
+                post_end = t + meter.spec.post_press_s
+                if meter.spec.post_press_s <= 0.0:
+                    meter.mark_end(end_force)
+                    break
+            elif action.done:
+                res.outcome = "gave_up"
+                break
         obs = robot.observe(t)
         diag["max_arm_motion_rad"] = max(diag["max_arm_motion_rad"],
                                          float(np.max(np.abs(obs.q[list(UPPER_BODY_IDX)] - q_upper0))))
 
+    for k, v in meter.summary().items():
+        setattr(res, k, v)
     res.extra["diag"] = {k: (round(v, 4) if isinstance(v, float) else v) for k, v in diag.items()}
     res.max_contact_force_n = round(max_f, 2) if measured_force else None
     res.act_time_mean_ms = round(1000.0 * float(np.mean(act_times)), 2) if act_times else 0.0

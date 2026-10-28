@@ -27,6 +27,9 @@ from common.config import REPO_ROOT  # noqa: E402
 from common.scene_spec import ButtonSpec, CallButtonState, HallScene, carpet_texture  # noqa: E402
 
 HALL_PATH = "/World/Hall"
+# 乗り場の固定の箱（壁・扉・柱）の摩擦。MuJoCo の geom の既定（1.0）に合わせる。PhysX の既定は 0.5 で、
+# 柱の面に指先を当てて滑らせる動きが MuJoCo より楽にできてしまう（2026-10-20、RL の学習で判明）
+HALL_FRICTION = 1.0
 BUTTONS_PATH = f"{HALL_PATH}/Buttons"
 LOOKS_PATH = f"{HALL_PATH}/Looks"
 CARPET_PATH = f"{HALL_PATH}/carpet"
@@ -66,8 +69,22 @@ def _bind(prim: Any, mat: Any) -> None:
     UsdShade.MaterialBindingAPI.Apply(prim).Bind(mat)
 
 
-def _box(stage: Any, path: str, center: np.ndarray, half: np.ndarray, mat: Any, collide: bool = True) -> Any:
-    from pxr import Gf, UsdGeom, UsdPhysics
+def _physics_material(stage: Any, friction: float) -> Any:
+    """接触の材質（摩擦）。乗り場の箱で共有する。"""
+    from pxr import UsdPhysics, UsdShade
+
+    path = f"{LOOKS_PATH}/physics_hall"
+    mat = UsdShade.Material.Define(stage, path)
+    api = UsdPhysics.MaterialAPI.Apply(mat.GetPrim())
+    api.CreateStaticFrictionAttr(float(friction))
+    api.CreateDynamicFrictionAttr(float(friction))
+    api.CreateRestitutionAttr(0.0)
+    return mat
+
+
+def _box(stage: Any, path: str, center: np.ndarray, half: np.ndarray, mat: Any, collide: bool = True,
+         physics_mat: Any = None) -> Any:
+    from pxr import Gf, UsdGeom, UsdPhysics, UsdShade
 
     cube = UsdGeom.Cube.Define(stage, path)
     cube.CreateSizeAttr(2.0)
@@ -77,6 +94,9 @@ def _box(stage: Any, path: str, center: np.ndarray, half: np.ndarray, mat: Any, 
     _bind(cube.GetPrim(), mat)
     if collide:
         UsdPhysics.CollisionAPI.Apply(cube.GetPrim())
+        if physics_mat is not None:
+            UsdShade.MaterialBindingAPI.Apply(cube.GetPrim()).Bind(physics_mat, UsdShade.Tokens.weakerThanDescendants,
+                                                                    "physics")
     return cube.GetPrim()
 
 
@@ -143,7 +163,7 @@ def _carpet(stage: Any, scene: HallScene) -> None:
 
 def build_hall(stage: Any, scene: HallScene, pelvis_world: np.ndarray) -> dict[str, Any]:
     """乗り場を stage に作る。ボタンの面の材質の shader を {ボタン名: shader} で返す。"""
-    from pxr import Gf, Sdf, UsdGeom, UsdPhysics
+    from pxr import Gf, PhysxSchema, Sdf, UsdGeom, UsdPhysics
 
     hall = UsdGeom.Xform.Define(stage, HALL_PATH)
     UsdGeom.XformCommonAPI(hall).SetTranslate(Gf.Vec3d(*np.asarray(pelvis_world, dtype=float).tolist()))
@@ -152,10 +172,11 @@ def build_hall(stage: Any, scene: HallScene, pelvis_world: np.ndarray) -> dict[s
         _carpet(stage, scene)
 
     box_paths: dict[str, str] = {}
+    phys = _physics_material(stage, HALL_FRICTION)
     for i, box in enumerate(scene.boxes):
         mat, _ = _material(stage, f"mat_{box.name}", box.rgba)
         path = f"{HALL_PATH}/{box.name}"
-        _box(stage, path, box.center, box.half_size, mat)
+        _box(stage, path, box.center, box.half_size, mat, physics_mat=phys)
         box_paths[box.name] = path
 
     # ボタンの関節機構
@@ -175,6 +196,8 @@ def build_hall(stage: Any, scene: HallScene, pelvis_world: np.ndarray) -> dict[s
         UsdGeom.XformCommonAPI(link).SetTranslate(Gf.Vec3d(*b.face_center.tolist()))
         UsdPhysics.RigidBodyAPI.Apply(link.GetPrim())
         UsdPhysics.MassAPI.Apply(link.GetPrim()).CreateMassAttr(b.mass)
+        # 押す力を IsaacLab の ContactSensor で測るため、接触の報告を有効にする（isaac_world.py の press_sensor）
+        PhysxSchema.PhysxContactReportAPI.Apply(link.GetPrim()).CreateThresholdAttr(0.0)
 
         cap = UsdGeom.Cylinder.Define(stage, f"{link_path}/cap")
         cap.CreateAxisAttr("X")

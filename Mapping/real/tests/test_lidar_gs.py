@@ -6,13 +6,21 @@
 
 from __future__ import annotations
 
+import importlib.util
 import math
 import sys
 import unittest
 from pathlib import Path
 
-import numpy as np
-import torch
+# lidar_gs.py は numpy・torch・gsplat を使う。CI（.github/workflows/ci.yml）には入っていないので、無ければ理由を付けて
+# この試験をまるごと飛ばす（飛ばしたことは unittest の出力に「skipped」と出る = 確かめていないことが見える）。
+# torch は、CI では先に動く Perception のテストが入れることがある（YOLO が使う）ので、gsplat まで確かめる
+_MISSING = [m for m in ("numpy", "torch", "gsplat") if importlib.util.find_spec(m) is None]
+if _MISSING:
+    raise unittest.SkipTest(f"{', '.join(_MISSING)} が無い（g1_mapping/lidar_gs.py が使う）")
+
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
 

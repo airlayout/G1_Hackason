@@ -1,0 +1,134 @@
+#editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+#editor-toolbar,
+#editor-modes,
+#editor-path-controls,
+#editor-fields,
+#editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+#editor-actions button {
+  font-family: monospace;
+  font-size: 14px;
+  padding: 8px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #1b1f24;
+  color: #e8eaed;
+  border: 2px solid #aab0b8;
+}
+
+#btn-test-play {
+  color: #3ddc84;
+  border-color: #3ddc84;
+}
+#btn-test-play:hover {
+  background: #3ddc84;
+  color: #10131a;
+}
+
+#btn-save {
+  color: #4cc9f0;
+  border-color: #4cc9f0;
+}
+#btn-save:hover {
+  background: #4cc9f0;
+  color: #10131a;
+}
+
+#play-overlay {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
+
+#play-overlay-title {
+  font-size: 22px;
+  font-weight: bold;
+  min-width: 140px;
+  text-align: right;
+}
+
+#btn-stop-play {
+  font-family: monospace;
+  font-size: 14px;
+  padding: 8px 20px;
+  background: #1b1f24;
+  color: #e8eaed;
+  border: 2px solid #aab0b8;
+  border-radius: 4px;
+  cursor: pointer;
+}
+#btn-stop-play:hover {
+  background: #aab0b8;
+  color: #10131a;
+}
+
+.mode-button {
+  font-family: monospace;
+  font-size: 13px;
+  padding: 6px 12px;
+  background: #1b1f24;
+  color: #e8eaed;
+  border: 2px solid #555c66;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mode-button.active {
+  border-color: #4cc9f0;
+  color: #4cc9f0;
+}
+
+#editor-fields input {
+  font-family: monospace;
+  background: #1b1f24;
+  color: #e8eaed;
+  border: 1px solid #555c66;
+  border-radius: 4px;
+  padding: 4px 8px;
+  width: 80px;
+}
+
+#editor-fields input[type="text"] {
+  width: 140px;
+}
+
+#validation-messages {
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  min-height: 1em;
+}
+
+.validation-ok {
+  color: #3ddc84;
+}
+
+.validation-error {
+  color: #e63946;
+}
+
+#export-output {
+  width: 760px;
+  max-width: 90vw;
+  font-family: monospace;
+  font-size: 12px;
+  background: #1b1f24;
+  color: #e8eaed;
+  border: 1px solid #555c66;
+  border-radius: 4px;
+  padding: 8px;
+}

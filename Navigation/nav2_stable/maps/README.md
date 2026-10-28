@@ -17,6 +17,7 @@ maps/
 | `room_a_map_20260911` | room_a | 9/11 の rosbag の `/unitree/slam_mapping/odom` + `map_wireless_dualcam_01_cleaned_no_ceiling.pcd` | 手編集なし。未知 27.4% / 最大連結 438.7m² |
 | `room_a_map_20260911_denoised` | room_a | 上から 2 セル以下の孤立点 589 個を消したもの | **未使用。**通れる面積が +4%(289.6→302.0m²)しか増えず、既定にする意味が薄いと判断 |
 | `room_a_map` | room_a | 9/07 の `map_20260907.pcd` | 旧。未知 40.5% / 最大連結 397.2m² |
+| `room_a_map_20261021` | room_a | 10/21 の FAST-LIO2＋オンライン OctoMap（`e2e_nn` ブランチ）の `map_floor_aligned.pcd` と、その軌跡で生成（`--bounds -17.4 16.5 -15.3 12.4 --resolution 0.05`） | **未使用・手編集なし。**未知 30.2% / 最大連結 462.5m²（0.3m 膨張後 214.6m²）。⚠️ **南の小部屋群（9/11 版の y=−11〜−18）は歩いておらず、ほぼ写っていない。**遠くの斑点も未処理。座標系は 9/11 版と違う（9/11 版へは yaw +120.2°, t=(3.18, 1.07)m で重なり、10/21 の壁の 93% が 9/11 の壁から 0.5m 以内）。既定にする前に南側を含めて取り直すこと |
 | `room_b_map_Sorasta_20260923` | **Sorasta** | 9/23 の計測（⚠️ **内蔵SLAM の軌跡が無く `/dog_odom` で代用**） | 壁が点線状。[../findings/map_from_dog_odom_20260923.md](../findings/map_from_dog_odom_20260923.md) |
 | `synthetic_room` | （合成） | 手書き | モックの配線確認用。自由空間が連結していることを保証 |
 | `test_room` | （合成） | A-7 の初期出力 | ⚠️ レイトレーシング前なので**経路が引けない**。デモに使わない |

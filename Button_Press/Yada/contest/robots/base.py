@@ -38,6 +38,9 @@ class StepInfo:
     max_contact_force: float | None = None
     # 弱点のレポート用（HallMujoco.diagnostics() の形）。測れなければ None
     diag: dict[str, Any] | None = None
+    # ロボットがボタンを押す力 [N]（ボタンの名前 → 周期の中の最大と、周期の終わりの値）。測れなければ None
+    press_force: dict[str, float] | None = None
+    press_force_end: dict[str, float] | None = None
 
 
 class Robot(ABC):

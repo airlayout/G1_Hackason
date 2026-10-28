@@ -300,6 +300,22 @@ class HallMujoco:
                 best = max(best, abs(float(self._f6[0])))
         return best
 
+    def press_forces(self) -> dict[str, float]:
+        """ロボットが各ボタンを押す力 [N]（ボタンの面とロボットの接触の、法線方向の力の和）。"""
+        import mujoco
+
+        d = self.data
+        cap_to_name = {g: n for n, g in self._caps.items()}
+        out = {n: 0.0 for n in self._caps}
+        for i in range(d.ncon):
+            c = d.contact[i]
+            g1, g2 = int(c.geom1), int(c.geom2)
+            for a, b in ((g1, g2), (g2, g1)):
+                if a in cap_to_name and b in self._robot_geoms:
+                    mujoco.mj_contactForce(self.model, d, i, self._f6)
+                    out[cap_to_name[a]] += abs(float(self._f6[0]))
+        return out
+
     def diagnostics(self) -> dict[str, dict[str, float | bool]]:
         """弱点のレポート用の、今の状態（エージェントには渡さない）。
 
