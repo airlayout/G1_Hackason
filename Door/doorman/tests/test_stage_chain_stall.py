@@ -60,6 +60,7 @@ def load(path, map_location=None, weights_only=None):
 # 学習の代わり: STUB_MODE で振る舞いを選ぶ。progress＝新しい last.pt を作る／stall＝始まるが重みは増えない／wait＝空くのを待つだけ
 STUB_TRAIN = r'''#!/usr/bin/env bash
 LOGROOT="$WORK/$REPO/logs_rl/$PROJECT"
+echo "n=$1 mem_max=${MEM_MAX:-}" >> "$HOME/train_calls"  # 台数とメモリの上限が届いたか（10-28）
 case "${STUB_MODE:-progress}" in
   progress)
     n=$(ls "$LOGROOT" 2>/dev/null | wc -l | tr -d " "); d="$LOGROOT/run_$n"; mkdir -p "$d"
@@ -270,6 +271,22 @@ def test_phases_stop_before_the_next_phase(omen):
     assert "次の段も見張りも始めずに終わる" in r.stdout
     log = _all_chain_logs(omen)
     assert "stage=f3d" in log and "stage=f3e" not in log
+
+
+@pytest.mark.parametrize(("extra", "want", "sfx"), [({}, "n=512 mem_max=9G", ""),
+                                                     ({"NUM_ENVS": "4096", "MEM_MAX": "12G"}, "n=4096 mem_max=12G", "n4096")])
+def test_phases_pass_the_number_of_envs_to_every_training(omen, extra, want, sfx):
+    """台数とメモリの上限は、段 C〜E のどの学習にも届き、512 台でなければ段の名前に台数が付く（10-28。省くと元の 512 台・9G）"""
+    r = _phases(omen, **extra)
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = (omen["home"] / "train_calls").read_text(encoding="utf-8").splitlines()
+    assert calls == [want] * 3
+    assert want in r.stdout  # 段の始めの行にも出す
+    c, d, e = _chain_parts(_all_chain_logs(omen))
+    assert f"stage=f3d{sfx} " in c and f"stage=f3e{sfx} " in d and f"stage=f3f{sfx} " in e
+    # 重みの置き場も段の名前で分かれる（512 台の回の door_f3d と混ざらない）
+    logs = omen["home"] / "work_inoue" / "doorman6" / "VIRAL6_fix" / "logs_rl"
+    assert sorted(p.name for p in logs.iterdir()) == [f"door_f3d{sfx}", f"door_f3e{sfx}", f"door_f3f{sfx}"]
 
 
 def test_phases_refuse_to_start_without_the_best_checkpoint(omen):

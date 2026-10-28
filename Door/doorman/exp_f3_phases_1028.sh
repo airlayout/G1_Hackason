@@ -8,8 +8,12 @@
 # 段 C・D は ROUNDS_C・ROUNDS_D 回（既定 6 回＝約 3.4 時間ずつ）。段 E は ROUNDS_E 回（既定 9999＝止めるまで）で、
 # 終わったら f3_keepalive_1026.sh が段 E の続きを始め直す。
 #
+# 台数（10-28 11 時〜）: NUM_ENVS（既定 512）と MEM_MAX（既定 9G）は stage_chain.sh・run_train_segments.sh・見張りがそのまま受け継ぐ。
+#   評価は台数に依らず 256 回（eval_from_start.sh）。台数を変えた段どうしは、学習の量（30 分で集める歩数）も変わる
+#
 # 止め方: ~/work_inoue/STOP_DOOR_F3 を置く（今の回の評価まで済ませて止まり、次の段も見張りも始めない）
 # 使い方（OMEN の ~/work_inoue/doorman で）: setsid nohup ./exp_f3_phases_1028.sh >> logs_f3_phases_1028.log 2>&1 < /dev/null &
+#   台数を変えるとき: NUM_ENVS=1024 MEM_MAX=12G setsid nohup ./exp_f3_phases_1028.sh …
 set -uo pipefail
 cd "$HOME/work_inoue/doorman" || exit 1
 BEST="${BEST:-$HOME/work_inoue/doorman/ckpt/f3_best_it53750/last.pt}"
@@ -21,17 +25,19 @@ WALK="++env.config.walk_away_start_m=${WALK_START:-1.0},++rewards.reward_scales.
 # 段の持ち時間の並びの中のカンマは「|」で書く（stage_chain.sh がカンマに戻す）
 LONG="++env.config.max_stage_time=[250|100|100|100|${SWING_STEPS:-600}|200]"
 NOPULL="++env.config.target_root_distance_swing_scale=0.0"
+# 512 台でないときは段の名前に台数を付ける（f3d → f3dn4096。重みの置き場 logs_rl/door_<名前> と記録を 512 台の回と混ぜない）
+SFX=""; [ "${NUM_ENVS:-512}" != 512 ] && SFX="n${NUM_ENVS}"
 # 名前;回数;足す引数（「;」で区切る。引数の側は「,」区切り）
 PHASES=(
-  "f3d;${ROUNDS_C:-6};$CAP,$WALK"
-  "f3e;${ROUNDS_D:-6};$CAP,$WALK,$LONG"
-  "f3f;${ROUNDS_E:-9999};$CAP,$WALK,$LONG,$NOPULL"
+  "f3d${SFX};${ROUNDS_C:-6};$CAP,$WALK"
+  "f3e${SFX};${ROUNDS_D:-6};$CAP,$WALK,$LONG"
+  "f3f${SFX};${ROUNDS_E:-9999};$CAP,$WALK,$LONG,$NOPULL"
 )
 
 [ -f "$BEST" ] || { log "出発点の重みが無い: $BEST"; exit 1; }
 for P in "${PHASES[@]}"; do
   IFS=';' read -r PNAME PROUNDS PMORE <<< "$P"
-  log "段 ${PNAME} を始める ck=$BEST rounds=${PROUNDS} more=${PMORE}"
+  log "段 ${PNAME} を始める ck=$BEST rounds=${PROUNDS} n=${NUM_ENVS:-512} mem_max=${MEM_MAX:-9G} more=${PMORE}"
   # 最後の段の名前と引数は、見張り（f3_keepalive_1026.sh）が続きを始めるときに受け継ぐ
   export NAME="$PNAME" TRAIN_MORE="$PMORE"
   CK="$BEST" ROUNDS="$PROUNDS" PASS_RATE=1.1 ./exp_f3_retrain_1026.sh < /dev/null
