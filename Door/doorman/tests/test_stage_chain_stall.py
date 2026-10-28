@@ -159,6 +159,16 @@ def test_exp_f3_refuses_to_start_at_the_iteration_cap(omen):
     assert not (omen["base"] / "chain").exists()
 
 
+def test_two_chains_started_in_the_same_minute_keep_their_own_results(omen):
+    """同じ分に始めた 2 つの連鎖が、同じ置き場の results.tsv を上書きしない（10-28。段 C〜E は results.tsv から回を数え直す）"""
+    _chain(omen, "progress", rounds=1)
+    _chain(omen, "progress", rounds=1)
+    dirs = sorted((omen["base"] / "chain").iterdir())
+    assert len(dirs) == 2
+    for d in dirs:
+        assert len((d / "results.tsv").read_text(encoding="utf-8").splitlines()) == 2  # 見出し＋1 回
+
+
 def test_keepalive_does_not_restart_after_a_stall(omen):
     """連鎖が「学習が進まない」で止まったときは、見張りは始め直さずに終わる"""
     chain = omen["base"] / "chain" / "1027_0000"
@@ -287,6 +297,75 @@ def test_phases_pass_the_number_of_envs_to_every_training(omen, extra, want, sfx
     # 重みの置き場も段の名前で分かれる（512 台の回の door_f3d と混ざらない）
     logs = omen["home"] / "work_inoue" / "doorman6" / "VIRAL6_fix" / "logs_rl"
     assert sorted(p.name for p in logs.iterdir()) == [f"door_f3d{sfx}", f"door_f3e{sfx}", f"door_f3f{sfx}"]
+
+
+def _rounds(omen) -> dict[str, list[list[str]]]:
+    """全部の連鎖の results.tsv の回を、段の名前ごとに（連鎖の置き場の名前の順に）"""
+    out: dict[str, list[list[str]]] = {}
+    for p in sorted((omen["base"] / "chain").glob("*/results.tsv")):
+        for row in p.read_text(encoding="utf-8").splitlines()[1:]:
+            cols = row.split("\t")
+            out.setdefault(cols[0], []).append(cols)
+    return out
+
+
+def _prior_chain(omen, stage: str, rates: list[float]) -> Path:
+    """前に回して止めた段の回を、古い名前の連鎖の置き場に置く（重みも作る）。いちばん新しい回の重みを返す"""
+    d = omen["base"] / "chain" / "0101_0000"
+    d.mkdir(parents=True)
+    rows = ["stage\ttask\tround\titer\tsuccess\trate\tckpt\trecord"]
+    ck = omen["ck"]
+    for i, rate in enumerate(rates, 1):
+        ck = omen["base"] / "ckpt" / f"prior{i}" / "last.pt"
+        _write(ck, "")
+        _write(Path(f"{ck}.iter"), str(40000 + i))  # 続き（作り物の学習は 45,150 から）より小さい反復
+        rows.append(f"{stage}\tdoor\t{i}\t{40000 + i}\t0/256\t{rate}\t{ck}\tnone")
+    (d / "results.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return ck
+
+
+def test_phases_move_on_after_three_rounds_when_the_difference_is_clear(omen):
+    """3 回の平均が比べる相手から 5 ポイント以上離れていれば、最大の回数を待たずに次の段へ（10-28 ユーザー「おすすめで進めて」）"""
+    r = _phases(omen, ROUNDS_C="6", ROUNDS_D="1")  # 作り物の評価は 50%。段 C は 512 台の段 C の 74.7% と比べる
+    assert r.returncode == 0, r.stdout + r.stderr
+    rounds = _rounds(omen)
+    assert [len(rounds[s]) for s in ("f3d", "f3e", "f3f")] == [3, 1, 1]
+    assert "判定 f3d: 3 回の平均 50.0% 対 74.7%（差 24.7）→ 次の段へ" in r.stdout
+
+
+def test_phases_extend_to_the_max_rounds_when_the_difference_is_unclear(omen):
+    """差が 5 ポイントより小さければ、その段の最後の重みから最大の回数まで続ける"""
+    r = _phases(omen, ROUNDS_C="4", ROUNDS_D="1", REF_C="52")
+    assert r.returncode == 0, r.stdout + r.stderr
+    rounds = _rounds(omen)
+    assert len(rounds["f3d"]) == 4
+    parts = _chain_parts(_all_chain_logs(omen))
+    assert len(parts) == 4  # 段 C の 3 回・その続きの 1 回・段 D・段 E
+    assert f"resume={rounds['f3d'][2][6]}" in parts[1]  # 続きは 3 回目の重みから
+    assert "判定 f3d: 3 回の平均 50.0% 対 52%（差 2.0）→ 4 回まで続ける" in r.stdout
+
+
+def test_phases_continue_a_stopped_phase_from_its_last_checkpoint(omen):
+    """止めて組み直したときは前の連鎖の回も数え、足りない回だけを前の最後の重みから回す（10-28 に 4,096 台の段 C を組み直した）"""
+    last = _prior_chain(omen, "f3d", [0.95, 0.95])
+    r = _phases(omen, ROUNDS_C="6", ROUNDS_D="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert len(_rounds(omen)["f3d"]) == 3  # 前の 2 回＋1 回。平均 80.0% は 74.7% から 5.3 離れているので次の段へ
+    parts = _chain_parts(_all_chain_logs(omen))
+    assert f"resume={last}" in parts[0]
+    assert f"resume={omen['ck']}" in parts[1]  # 段 D は最良の重みから
+    assert "→ 次の段へ" in r.stdout
+
+
+def test_phases_from_phase_d_compare_with_the_rounds_of_phase_c(omen):
+    """FROM_PHASE=D なら段 C は回さず、段 D の 3 回を段 C の回の平均と比べる"""
+    _prior_chain(omen, "f3d", [0.5, 0.5, 0.5])
+    r = _phases(omen, FROM_PHASE="D", ROUNDS_D="4")
+    assert r.returncode == 0, r.stdout + r.stderr
+    rounds = _rounds(omen)
+    assert [len(rounds[s]) for s in ("f3d", "f3e", "f3f")] == [3, 4, 1]
+    assert "段 f3d を" not in r.stdout
+    assert "判定 f3e: 3 回の平均 50.0% 対 f3d の 50.0%（差 0.0）→ 4 回まで続ける" in r.stdout
 
 
 def test_phases_refuse_to_start_without_the_best_checkpoint(omen):

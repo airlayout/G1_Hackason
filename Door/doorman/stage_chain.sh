@@ -49,7 +49,10 @@ else
   [ -f "$CK" ] || { echo "最初の ckpt が無い: $CK"; exit 2; }
   CK="$(readlink -f "$CK")"
 fi
-OUTDIR="$BASE/chain/$(date +%m%d_%H%M)"; mkdir -p "$OUTDIR"
+OUTDIR="$BASE/chain/$(date +%m%d_%H%M)"
+# 同じ分に始めた連鎖が前の連鎖の results.tsv を上書きしないように、あれば _01・_02… を付ける（10-28。並べると元の名前の後に来る）
+k=0; while [ -e "$OUTDIR" ]; do k=$((k + 1)); OUTDIR="$BASE/chain/$(date +%m%d_%H%M)_$(printf %02d "$k")"; done
+mkdir -p "$OUTDIR"
 RESULTS="$OUTDIR/results.tsv"
 printf 'stage\ttask\tround\titer\tsuccess\trate\tckpt\trecord\n' > "$RESULTS"
 log() { echo "=== [$(date '+%m-%d %T')] $*" | tee -a "$OUTDIR/chain.log"; }
