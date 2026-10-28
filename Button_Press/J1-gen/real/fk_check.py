@@ -24,7 +24,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.camera_geometry import HeadCameraTransform  # noqa: E402
-from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
+from common.camera_cfg import add_camera_args, apply_head_camera_mount, load_camera_config  # noqa: E402
 from common.config import REPO_ROOT, load_config  # noqa: E402
 from common.dds import LowStateReader  # noqa: E402
 from common.realday import FingertipFK, project_to_image  # noqa: E402
@@ -48,6 +48,7 @@ def main() -> int:
         x, y, z = args.ee_offset
         robot_cfg["end_effector"]["right"]["offset"] = [x, y, z]
         robot_cfg["end_effector"]["left"]["offset"] = [x, -y, z]
+    apply_head_camera_mount(robot_cfg, load_camera_config(args, quiet=True))
     for side in ("right", "left"):
         print(f"[fk_check] 指先の点（{side}）: {robot_cfg['end_effector'][side]['link']} から "
               f"{robot_cfg['end_effector'][side]['offset']} m（中指の先。configs/robot.yaml の end_effector）")

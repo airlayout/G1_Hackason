@@ -38,7 +38,12 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
+from common.camera_cfg import (  # noqa: E402
+    add_camera_args,
+    apply_depth_anchor,
+    apply_head_camera_mount,
+    load_camera_config,
+)
 from common.config import CONFIG_DIR, REPO_ROOT, load_config  # noqa: E402
 from common.dds import LowStateReader  # noqa: E402
 from common.localize import Locator, make_detector  # noqa: E402
@@ -93,8 +98,11 @@ def main() -> int:
     from common.camera_rgbd import RgbdZmqSource
 
     robot_cfg = load_config("robot.yaml")
+    cam_cfg = load_camera_config(args, quiet=True)
+    apply_head_camera_mount(robot_cfg, cam_cfg)
     arm_cfg = load_config("arm.yaml")
     loc_cfg = load_config("localize.yaml")
+    apply_depth_anchor(loc_cfg, cam_cfg)
     if args.detector:
         loc_cfg["detector"]["type"] = args.detector
     old_offset = np.asarray(loc_cfg["calibration"]["offset_pelvis_m"], dtype=float)

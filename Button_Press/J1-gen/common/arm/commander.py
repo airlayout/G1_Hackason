@@ -8,7 +8,11 @@
 1. weight を急に切り替えない → start() / safe_stop() で weight_ramp_s 秒かけて上げ下げする。
    上げる間は、開始時に読んだ関節角を目標にして姿勢を保つ
 2. SIGINT / SIGTERM / 例外のすべてで安全に終了 → __exit__ と シグナルハンドラ → safe_stop()。
-   プランA: 現在の姿勢を保ったまま weight を 1→0。プランB: 現在の姿勢を保持してから送信をやめる
+   プランA: 現在の姿勢を保ったまま weight を 1→0。プランB: 現在の姿勢を保持してから送信をやめる。
+   途中で中止したとき（lowstate の途切れ以外）は、その前に「その場で止めて、来た経路を逆にたどって開始姿勢へ
+   戻る」（retreat。経路は呼び出し側が set_retreat で渡す）。weight を下げると腕は内蔵コントローラの姿勢へ
+   まっすぐ下がるので、机やボタンのそばで下げると当たるため。戻る途中でもう一度 Ctrl+C を押すと、戻るのを
+   やめてその場で weight を下げる。lowstate が途切れたときは腕の位置が分からないので戻らない
 3. 関節リミット、1ステップの最大移動量、作業空間の箱 → safety.py。外れる目標は送らずに拒否する
 4. （IK が届かない場合の拒否は、タスク2の IK 側で行う）
 5. dry-run（backend.dry_run）と確認モード（confirm=True で各段階で Enter を待つ）
@@ -24,6 +28,7 @@ from __future__ import annotations
 import signal
 import time
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from types import FrameType
 from typing import Any
 
@@ -59,6 +64,31 @@ class StateTimeoutError(RuntimeError):
 
 class WaistDeviationError(RuntimeError):
     """腰の角度が開始時からずれた（腕の動きで上体が引っ張られている、など）。"""
+
+
+class RetreatAborted(Exception):
+    """戻る途中でもう一度 Ctrl+C / SIGTERM を受けた（戻るのをやめて、その場で weight を下げる）。"""
+
+
+class RetreatGuardError(RuntimeError):
+    """戻る途中で、腰のずれが増えた・腕が指令に付いてこない（戻るのをやめる）。"""
+
+
+@dataclass
+class RetreatStep:
+    """中止したときに腕を戻す 1 段。target なら関節空間で補間して動く（move_to）、line なら 1 周期に 1 点ずつ送る（follow）。
+    hold=True の段（最初の段だけ）は、止める前に送る段（押し当てているとき、押す力が抜ける点まで直線をさかのぼる）。
+    そのあと、その場で hold_s 秒保持してから、残りの段を送る。"""
+
+    label: str
+    target: np.ndarray | None = None
+    line: list[np.ndarray] | None = None
+    check_workspace: bool = True
+    hold: bool = False
+
+
+# （実測の 29 関節, 今の指令の片腕 7 関節）→ 戻る段の並び（来た経路を逆にたどる）
+RetreatPath = Callable[[np.ndarray, np.ndarray], list[RetreatStep]]
 
 
 class ArmCommander:
@@ -124,6 +154,11 @@ class ArmCommander:
         self._started = False
         self._stopping = False
         self._stopped = False
+        self._retreating = False
+        self._retreat: RetreatPath | None = None
+        self._retreat_waist_max = 0.0
+        #: 中止したときに開始姿勢まで戻れたか（戻らなかった・途中でやめたなら False）
+        self.retreated = False
         #: Ctrl+C / SIGTERM / 確認モードで中止したときの理由（中止していなければ None）
         self.stop_reason: str | None = None
         self._old_handlers: dict[int, Any] = {}
@@ -190,7 +225,8 @@ class ArmCommander:
         elif exc is not None:
             print(f"[arm] 例外で終了する: {type(exc).__name__}: {exc}")
         try:
-            self.safe_stop()
+            # 途中で中止したら戻る。lowstate が途切れたときは、腕の位置が分からないので戻らない
+            self.safe_stop(retreat=exc is not None and not isinstance(exc, StateTimeoutError))
         finally:
             for sig, h in self._old_handlers.items():
                 signal.signal(sig, h)
@@ -200,6 +236,9 @@ class ArmCommander:
 
     def _on_signal(self, signum: int, frame: FrameType | None) -> None:
         name = signal.Signals(signum).name
+        if self._retreating:
+            print(f"[arm] {name} をもう一度受信。戻るのをやめて、その場で weight を下げる")
+            raise RetreatAborted(name)
         if self._stopping:
             print(f"[arm] {name} を受信したが、安全終了の途中なので続ける")
             return
@@ -207,7 +246,7 @@ class ArmCommander:
         raise StopRequested(name)
 
     def _confirm(self, label: str) -> None:
-        if not self.confirm:
+        if not self.confirm or self._retreating:  # 戻るときは止まらない（やめるのは Ctrl+C）
             return
         ans = self._input(f"[confirm] {label} → Enter で実行 / q で中止: ")
         if ans.strip().lower() == "q":
@@ -234,6 +273,17 @@ class ArmCommander:
                 f"（上限 {np.degrees(self.waist_max_dev):.1f}°）。中止する"
             )
 
+    def _check_retreat(self, st: JointState) -> None:
+        """戻る途中の確認。腰のずれが戻り始めより増えた、または腕が指令に付いてこない（何かに当たっている）ならやめる。"""
+        dev = float(np.max(np.abs(st.q[list(WAIST_IDX)] - self._waist_start)))
+        if dev > self._retreat_waist_max:
+            raise RetreatGuardError(f"腰のずれが {np.degrees(dev):.2f}° に増えた"
+                                    f"（上限 {np.degrees(self._retreat_waist_max):.2f}°）")
+        lag = float(np.max(np.abs(st.q[self.arm_idx] - self._cmd.q[self.arm_idx])))
+        lim = float(self.cfg["safety"]["retreat"]["max_tracking_rad"])
+        if lag > lim:
+            raise RetreatGuardError(f"腕が指令に付いてこない（差 {np.degrees(lag):.1f}°、上限 {np.degrees(lim):.1f}°）")
+
     @property
     def _waist_gc_active(self) -> bool:
         # 腰の重力補償はプランB（lowcmd）のときだけ。arm_sdk では内蔵コントローラと二重になるため送らない
@@ -256,9 +306,13 @@ class ArmCommander:
             w = list(WAIST_IDX)
             self._cmd.tau[w] = np.clip(self.gc_waist_scale * g[w], -self.gc_waist_tau_max, self.gc_waist_tau_max)
 
-    def _send_tick(self) -> None:
+    def _send_tick(self) -> JointState | None:
+        """1 周期分を送る。送る前に読んだ lowstate を返す（終了処理中で届いていなければ None）。"""
         st = None
-        if not self._stopping:
+        if self._retreating:
+            st = self._fresh_state()
+            self._check_retreat(st)
+        elif not self._stopping:
             st = self._fresh_state()
             self._check_waist(st)
         else:
@@ -266,6 +320,7 @@ class ArmCommander:
         self._update_gravity_tau(st)
         self.backend.send(self._cmd)
         self.backend.tick(self.dt)
+        return st
 
     # ---- 開始 -----------------------------------------------------------------
 
@@ -351,6 +406,10 @@ class ArmCommander:
             self.workspace.check(self.fk(q_full), f"{what}の手先")
         return q_full
 
+    def set_retreat(self, path: RetreatPath | None) -> None:
+        """中止したときに戻る経路（(実測の 29 関節, 今の指令の片腕 7 関節) → 戻る段の並び）。進み具合に合わせて呼び出し側が更新する。"""
+        self._retreat = path
+
     @property
     def started(self) -> bool:
         """start() が済み、指令を送り始めたか（エラーの表示を分けるため）。"""
@@ -359,7 +418,7 @@ class ArmCommander:
     def move_to(self, q_arm: np.ndarray, duration: float | None = None, label: str = "移動",
                 check_workspace: bool = True) -> None:
         """片腕 7 関節を、関節空間で smoothstep 補間して目標へ動かし、動いたかを確認する。"""
-        if not self._started or self._stopping:
+        if not self._started or (self._stopping and not self._retreating):
             raise RuntimeError("start() の前、または終了処理中に move_to() が呼ばれた")
         self.validate_arm_target(q_arm, check_workspace=check_workspace)
         q_arm = np.asarray(q_arm, dtype=float)
@@ -384,12 +443,15 @@ class ArmCommander:
             self._send_tick()
         self.check_motion(q_before, q_cmd_start, q_arm)
 
-    def follow(self, waypoints_arm: Sequence[np.ndarray], label: str = "軌道") -> None:
-        """片腕 7 関節の点列を 1 周期に 1 点ずつ送る（タスク2の直線押し込み用）。
+    def follow(self, waypoints_arm: Sequence[np.ndarray], label: str = "軌道",
+               stop_when: Callable[[np.ndarray, np.ndarray], bool] | None = None) -> int:
+        """片腕 7 関節の点列を 1 周期に 1 点ずつ送る（タスク2の直線押し込み用）。送った点の数を返す。
 
         送る前に全点を確認する。隣り合う点の差が 1 ステップの上限を超える軌道は拒否する。
+        stop_when（指令の 29 関節, 実測の 29 関節）が True を返したら、残りの点は送らずに止まる
+        （押し込みで指先が進まなくなったとき）。実測は、その周期の指令を送る前に読んだ lowstate。
         """
-        if not self._started or self._stopping:
+        if not self._started or (self._stopping and not self._retreating):
             raise RuntimeError("start() の前、または終了処理中に follow() が呼ばれた")
         wps = [np.asarray(w, dtype=float) for w in waypoints_arm]
         if not wps:
@@ -406,12 +468,19 @@ class ArmCommander:
         self._confirm(f"{label}（{len(wps)} 点、{len(wps) * self.dt:.1f} 秒）")
         q_before = self._fresh_state().q[self.arm_idx].copy()
         q_cmd_start = self._cmd.q[self.arm_idx].copy()
+        sent = 0
         for w in wps:
+            q_prev_cmd = self._cmd.q.copy()
             self._cmd.q[self.arm_idx] = w
-            self._send_tick()
+            st = self._send_tick()  # 前の周期までの指令に対する実測
+            sent += 1
+            if stop_when is not None and st is not None and stop_when(q_prev_cmd, st.q.copy()):
+                print(f"[arm] {label}: {sent}/{len(wps)} 点目で止める")
+                break
         for _ in range(int(float(self.cfg["safety"]["settle_s"]) / self.dt)):
             self._send_tick()
-        self.check_motion(q_before, q_cmd_start, wps[-1])
+        self.check_motion(q_before, q_cmd_start, wps[sent - 1])
+        return sent
 
     # ---- 動いたかの確認 ----------------------------------------------------------
 
@@ -453,14 +522,57 @@ class ArmCommander:
 
     # ---- 安全な終了 ----------------------------------------------------------------
 
-    def safe_stop(self) -> None:
-        """安全に終了する。何度呼んでもよい。"""
+    def _retreat_to_start(self) -> None:
+        """その場で止めて、来た経路（set_retreat）を逆にたどって戻る。やめたときは表示して、その場で終わる。"""
+        rc = self.cfg["safety"].get("retreat", {})
+        if not rc.get("enabled", False) or self._retreat is None or self.backend.dry_run:
+            return
+        try:
+            st = self._fresh_state()
+        except StateTimeoutError as e:
+            print(f"[arm] ⚠️ {e}。腕の位置が分からないので戻らない")
+            return
+        steps = self._retreat(st.q.copy(), self.commanded_arm_q)
+        if not steps:
+            return
+        # その場で止める: 既定は今の指令のまま（実測の姿勢を指令にすると、重力で下がっている分だけさらに下がる）。
+        # 押し当てているときは、呼び出し側が止める姿勢（hold の段。押す力が抜ける点）を渡す
+        hold = steps.pop(0) if steps[0].hold else None
+        dev = float(np.max(np.abs(st.q[list(WAIST_IDX)] - self._waist_start)))
+        self._retreat_waist_max = max(self.waist_max_dev, dev) + float(rc["waist_extra_rad"])
+        self._retreating = True
+        print("[arm] 中止: その場で止めてから、来た経路を逆にたどって開始姿勢へ戻る"
+              "（もう一度 Ctrl+C で、戻らずにその場で weight を下げる）")
+        try:
+            for s in ([hold] if hold is not None else []) + [None] + steps:  # None: その場で保持
+                if s is None:
+                    for _ in range(max(1, int(float(rc["hold_s"]) / self.dt))):
+                        self._send_tick()
+                    continue
+                if s.line is not None:
+                    print(f"[arm] 戻る: {s.label}（{len(s.line)} 点、{len(s.line) * self.dt:.1f} 秒）")
+                    self.follow(s.line, label=f"戻る: {s.label}")
+                else:
+                    self.move_to(s.target, label=f"戻る: {s.label}", check_workspace=s.check_workspace)
+            self.retreated = True
+            print("[arm] 開始姿勢へ戻った")
+        except RetreatAborted:
+            pass
+        except Exception as e:  # noqa: BLE001  戻れなければ、その場で weight を下げる（元の例外を隠さない）
+            print(f"[arm] ⚠️ 戻るのをやめた（{type(e).__name__}: {e}）。その場で weight を下げる")
+        finally:
+            self._retreating = False
+
+    def safe_stop(self, retreat: bool = False) -> None:
+        """安全に終了する。何度呼んでもよい。retreat=True（途中で中止したとき）なら、先に開始姿勢へ戻る。"""
         if self._stopped or self._stopping:
             return
         self._stopping = True
         try:
             if not self._started:
                 return
+            if retreat:
+                self._retreat_to_start()
             st = self.backend.read_state()
             if st is not None and np.all(np.isfinite(st.q)):
                 # 今いる姿勢を目標にする（古い目標へ戻ろうとして動かないように）

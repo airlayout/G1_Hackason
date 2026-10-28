@@ -138,6 +138,70 @@ def box_from_touch_points(
             "edge_tilt_deg": round(tilt_deg, 1), "warning": warning}
 
 
+def table_boxes_from_points(
+    points: np.ndarray, margin_m: float = 0.03, depth_m: float = 0.6, below_m: float = 0.8, strip_m: float = 0.09,
+    z_search: tuple[float, float] = (-0.35, 0.35), x_range: tuple[float, float] = (0.15, 0.70),
+    y_range: tuple[float, float] = (-0.55, 0.55), z_band_m: float = 0.015, min_points: int = 30,
+    edge_percentile: float = 2.0,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """立った状態の深度から求めた点群（pelvis 座標、(N, 3)）から、机の箱を左右 strip_m ごとに作る。
+
+    触って作る方法（box_from_touch_points）は、吊り下げると机の位置が変わって使えない（2026-10-21、約 4 cm 手前・5 cm
+    低く出た）。立った状態で深度から作る。斜めの机を 1 つの箱にすると、手が通る側でも縁が手前に扱われるので、
+    左右に strip_m ごとの箱に分け、それぞれの手前の縁（x の下位 edge_percentile %）で作る。
+    - 天板の高さ: z_search の範囲で、1 cm きざみの z の度数が最も多い所（床は範囲の外）。その ±z_band_m の点だけ使う
+      （ボトルなど天板より高い物は入らない）
+    - 箱: x は手前の縁 − margin から奥へ depth_m + margin、y は strip の幅 ± margin、z は天板 − below_m から天板 + margin
+    返すのは (箱の一覧（名前なし）, 情報（天板の高さ・使った点の数・各 strip の手前の縁）)。点が足りなければ ValueError。
+    """
+    p = np.asarray(points, dtype=float).reshape(-1, 3)
+    p = p[np.isfinite(p).all(axis=1)]
+    m = (p[:, 0] >= x_range[0]) & (p[:, 0] <= x_range[1]) & (p[:, 1] >= y_range[0]) & (p[:, 1] <= y_range[1])
+    cand = p[m & (p[:, 2] >= z_search[0]) & (p[:, 2] <= z_search[1])]
+    if len(cand) < min_points:
+        raise ValueError(f"机の天板の候補の点が少ない（{len(cand)} 点）。机が画像に写っているか確かめる")
+    edges = np.arange(z_search[0], z_search[1] + 0.01, 0.01)
+    hist, _ = np.histogram(cand[:, 2], bins=edges)
+    z_top = float(np.median(cand[np.abs(cand[:, 2] - (edges[int(np.argmax(hist))] + 0.005)) <= z_band_m][:, 2]))
+    top = cand[np.abs(cand[:, 2] - z_top) <= z_band_m]
+    boxes: list[dict[str, Any]] = []
+    strips: list[dict[str, Any]] = []
+    y0 = float(np.floor(top[:, 1].min() / strip_m) * strip_m)
+    k = 0
+    while y0 < top[:, 1].max():
+        sel = top[(top[:, 1] >= y0) & (top[:, 1] < y0 + strip_m)]
+        if len(sel) >= min_points:
+            x_front = float(np.percentile(sel[:, 0], edge_percentile))
+            lo = np.array([x_front - margin_m, y0 - margin_m, z_top - below_m])
+            hi = np.array([x_front + depth_m + margin_m, y0 + strip_m + margin_m, z_top + margin_m])
+            boxes.append({"center": [round(float(v), 4) for v in (lo + hi) / 2],
+                          "half_size": [round(float(v), 4) for v in (hi - lo) / 2], "edge_tilt_deg": 0.0, "warning": ""})
+            strips.append({"y_lo": round(y0, 3), "y_hi": round(y0 + strip_m, 3), "x_front": round(x_front, 3), "n": int(len(sel))})
+        k += 1
+        y0 = float(np.floor(top[:, 1].min() / strip_m) * strip_m) + k * strip_m
+    if not boxes:
+        raise ValueError(f"どの strip にも点が足りない（天板 z {z_top:+.3f} m、{len(top)} 点）")
+    return boxes, {"z_top": round(z_top, 4), "n_top_points": int(len(top)), "strips": strips}
+
+
+def replace_obstacle_group(prefix: str, boxes: list[dict[str, Any]], note: str = "", path: Path = OBSTACLES) -> list[str]:
+    """名前が prefix_N の箱をすべて消して、boxes を prefix_1…prefix_n として保存する。名前の一覧を返す。"""
+    header = (
+        "# Button_Press / 障害物の箱（real/teach.py --obstacle、real/make_table_boxes.py が書く）。pelvis 座標 [m]。\n"
+        "# configs/press.yaml の obstacles に加えて、全体をつなぐスクリプトの衝突の確認に使う。\n"
+        "# touch_points_m は中指の先で触った点（深度から作った箱では空）。実機日のデータなので、終わったらコミットして残す。\n"
+    )
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    obs = [o for o in load_obstacles(path) if not str(o.get("name", "")).startswith(prefix + "_")]
+    names = []
+    for i, b in enumerate(boxes, start=1):
+        names.append(f"{prefix}_{i}")
+        obs.append({"name": names[-1], "center": b["center"], "half_size": b["half_size"],
+                    "edge_tilt_deg": b.get("edge_tilt_deg", 0.0), "touch_points_m": [], "recorded_at": stamp, "note": note})
+    path.write_text(header + yaml.safe_dump({"obstacles": obs}, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return names
+
+
 def load_obstacles(path: Path | str = OBSTACLES) -> list[dict[str, Any]]:
     path = Path(path)
     if not path.exists():

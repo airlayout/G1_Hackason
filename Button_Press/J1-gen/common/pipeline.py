@@ -34,6 +34,7 @@ from .arm import (
 from .arm.backend import ArmBackend
 from .arm.gravity import GravityModel, needs_gravity_model
 from .arm.types import JointState
+from .body_motion import LegKinematics, analyze_run_dir, write_csv
 from .camera_geometry import HeadCameraTransform
 from .dds import PeerMismatchError
 from .localize import Detector, Locator
@@ -44,6 +45,7 @@ from .realday import FingertipFK, load_taught_poses, project_to_image, taught_q_
 from .rgbd_protocol import RgbdFrame
 from .robot_model import WAIST_IDX
 from .run_logger import LoggingBackend, RunLogger
+from .tip_check import TipOverCheck, TipResult
 
 # 終了コード
 EXIT_OK = 0
@@ -74,6 +76,7 @@ class PipelineResult:
     target: np.ndarray | None = None
     plan: PressPlan | None = None
     checks: list[Any] = field(default_factory=list)
+    tip: TipResult | None = None  # ボトルを倒す動作のときだけ（倒れたかの自動判定）
 
 
 def fmt(v: Any, scale: float = 1.0, digits: int = 3) -> str:
@@ -101,6 +104,7 @@ class PressPipeline:
         confirm: bool,
         input_fn: Callable[[str], str] = input,
         post_check: PostPressCheck | None = None,
+        tip_check: TipOverCheck | None = None,
     ) -> None:
         self.cfg = cfg
         self.side = cfg.pipeline.get("arm") or cfg.arm["arm"]
@@ -112,6 +116,9 @@ class PressPipeline:
         self.confirm = confirm
         self.input = input_fn
         self.post_check = post_check or NoCheck()
+        self.tip_check = tip_check
+        # 対象を測ったときのフレーム（RgbdFrame, 腰の角度）。倒れたかの判定で、押す前の高さを求めるのに使う
+        self._locate_frames: list[tuple[RgbdFrame, np.ndarray]] = []
         self.planner = PressPlanner.from_config(cfg.robot, cfg.press, cfg.arm, self.side)
         self.fk = FingertipFK(cfg.robot, cfg.press["ik"])
         self.calib = np.asarray(cfg.localize["calibration"]["offset_pelvis_m"], dtype=float)
@@ -146,6 +153,7 @@ class PressPipeline:
             if f is None or st is None:
                 self.logger.event("locate_frame", index=k, ok=False, reason="フレームか lowstate が無い")
                 continue
+            self.logger.log_state(st)  # 押している間の体の動き（body_motion）の基準
             qw = st.q[list(WAIST_IDX)]
             found = locator.locate(f, qw)
             best = locator.best(found)
@@ -159,14 +167,20 @@ class PressPipeline:
             self._check_hand_in_view(best.bbox, st, f, c["hand_in_view"])
             self._save_detection_image(f, found, k)
             pts.append(best.p_pelvis)
+            self._locate_frames.append((f, np.asarray(qw, dtype=float).copy()))
         if len(pts) < int(c["min_valid_frames"]):
             raise TargetError(f"対象の位置が求まったフレームが {len(pts)} 枚（必要 {c['min_valid_frames']} 枚）")
         arr = np.array(pts)
         spread = arr.max(axis=0) - arr.min(axis=0)
         target = np.median(arr, axis=0)
-        self.logger.event("target_depth", target=target, spread_m=spread, n=len(pts), calibration_offset=self.calib)
+        # 測った面の点から、押す点をずらす量（ボトルを倒すとき、胴の上のほうを押すために上へ上げる、など）
+        offset = np.asarray(c.get("offset_m") or [0.0, 0.0, 0.0], dtype=float)
+        target = target + offset
+        self.logger.event("target_depth", target=target, spread_m=spread, n=len(pts), calibration_offset=self.calib,
+                          offset_m=offset)
         print(f"[pipeline] 対象（深度）: {fmt(target)} m（{len(pts)} 枚、ばらつき {fmt(spread, 1000, 1)} mm、"
-              f"較正値 {fmt(self.calib, 1000, 1)} mm を含む）")
+              f"較正値 {fmt(self.calib, 1000, 1)} mm を含む"
+              + (f"、押す点のずらし {fmt(offset, 1000, 1)} mm を含む" if np.any(offset) else "") + "）")
         if np.any(spread > float(c["max_spread_m"])):
             raise TargetError(f"フレームごとの位置のばらつきが大きい: {fmt(spread, 1000, 1)} mm"
                               f"（上限 {float(c['max_spread_m']) * 1000:.0f} mm）")
@@ -255,9 +269,56 @@ class PressPipeline:
             raise TargetError(f"経由の姿勢 {via!r} は {poses[via]['side']} 腕のもの（動かすのは {self.side}）")
         return np.asarray(poses[via]["arm_q_rad"], dtype=float)
 
+    def stand_advice(self, target: np.ndarray) -> str:
+        """立つ位置が勧める範囲（pipeline.yaml の stand）の外なら、どちらへ何 cm 動けばよいかの文。範囲の中なら空。
+
+        押す点（ボトルの手前の面）の前後・左右と、机の手前の縁（press.yaml / obstacles.yaml の障害物のうち、名前に
+        table を含む箱）までの距離を見る。左右の範囲は右腕の値で書き、左腕なら左右を反転する。範囲は MuJoCo で
+        確かめたもの（2026-10-15）。範囲の外でも押せることはあるので、これだけでは止めない（計画できなければ中止の
+        理由に添え、計画できれば注意として出す）。
+        """
+        stc = self.cfg.pipeline.get("stand")
+        if not stc:
+            return ""
+
+        def cm(m: float) -> int:  # 動く量は切り上げ（「あと 0 cm」と出さない）
+            return max(1, int(np.ceil(m * 100 - 1e-6)))
+
+        msgs = []
+        x, y = float(target[0]), float(target[1])
+        lo, hi = float(stc["target_min_m"]), float(stc["target_max_m"])
+        if x < lo:
+            msgs.append(f"押す点まで {x * 100:.1f} cm と近すぎる。あと {cm(lo - x)} cm 以上下がる")
+        elif x > hi:
+            msgs.append(f"押す点まで {x * 100:.1f} cm と遠すぎる。あと {cm(x - hi)} cm 以上近づく")
+        sgn = 1.0 if self.side == "right" else -1.0  # 右腕の値（右が −y）を、左腕なら反転
+        right = -sgn * y  # 押す腕の側へ何 m ずれているか
+        s_lo, s_hi = float(stc["side_min_m"]), float(stc["side_max_m"])
+        arm_side, other = ("右", "左") if self.side == "right" else ("左", "右")
+        if right < s_lo:
+            msgs.append(f"押す点が体の中心から{arm_side}に {right * 100:.1f} cm（{s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
+                        f"{other}へ {cm(s_lo - right)} cm 以上寄る")
+        elif right > s_hi:
+            msgs.append(f"押す点が体の中心から{arm_side}に {right * 100:.1f} cm（{s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
+                        f"{arm_side}へ {cm(right - s_hi)} cm 以上寄る")
+        edge_min = float(stc["table_edge_min_m"])
+        for ob in self.cfg.press.get("obstacles") or []:
+            if "table" not in str(ob.get("name", "")) or ob.get("x_axis") is not None:
+                continue
+            edge = float(ob["center"][0]) - float(ob["half_size"][0])
+            if edge < edge_min:
+                msgs.append(f"机の手前の縁まで {edge * 100:.1f} cm と近すぎる（経由の姿勢へ手を上げる途中で縁に当たる）。"
+                            f"あと {cm(edge_min - edge)} cm 以上下がる")
+        if not msgs:
+            return ""
+        return ("立つ位置が勧める範囲の外: " + "、".join(msgs)
+                + f"（勧める範囲: 押す点まで {lo * 100:.0f}〜{hi * 100:.0f} cm、{arm_side}に {s_lo * 100:.0f}〜"
+                  f"{s_hi * 100:.0f} cm、机の縁まで {edge_min * 100:.0f} cm 以上）")
+
     def make_plan(self, st: JointState, target: np.ndarray) -> PressPlan:
         push = resolve_push_dir(self.cfg.pipeline["push"]["direction"])
         via = self._via_pose()
+        advice = self.stand_advice(target)
         errors = []
         for label, q_seed in self._seeds(st):
             try:
@@ -270,8 +331,11 @@ class PressPipeline:
             self.logger.save_json("plan_initial.json", self._plan_dict(plan))
             self.logger.event("plan", summary=plan.summary(), seed=label)
             print(f"[pipeline] 計画（IK の初期値: {label}）: {plan.summary()}")
+            if advice:
+                self.logger.event("stand_advice", message=advice)
+                print(f"[pipeline] ⚠️ {advice}（計画は立ったので続ける）")
             return plan
-        raise UnreachableError("どの IK の初期値でも計画できない: " + " / ".join(errors))
+        raise UnreachableError((f"{advice}。" if advice else "") + "どの IK の初期値でも計画できない: " + " / ".join(errors))
 
     @staticmethod
     def _plan_dict(plan: PressPlan) -> dict[str, Any]:
@@ -312,8 +376,24 @@ class PressPipeline:
             res = PipelineResult(EXIT_STATE, f"❌ {e}")
         print(f"[pipeline] 結果: {'成功' if res.code == EXIT_OK else res.message}（終了コード {res.code}）")
         self.logger.event("result", code=res.code, message=res.message)
+        self._report_body_motion()
         self.logger.close(code=res.code, message=res.message, target=res.target)
         return res
+
+    def _report_body_motion(self) -> None:
+        """押している間に体（pelvis）がどれだけ動いたか（実機では足側のバランス制御が腰を動かす。シミュレーションは
+        腰を固定しているので 0）。記録から求めて表示し、body_motion.csv と出来事に残す。失敗しても結果は変えない。"""
+        try:
+            self.logger.flush()
+            m = analyze_run_dir(self.logger.dir, LegKinematics(self.cfg.robot))
+            if len(m.t) < 2:
+                return
+            write_csv(self.logger.dir / "body_motion.csv", m)
+            self.logger.event("body_motion", **m.summary())
+            print("[pipeline] 体（pelvis）の動き:\n  " + m.text().replace("\n", "\n  "))
+        except Exception as e:  # noqa: BLE001 記録の後処理なので、失敗しても押した結果は変えない
+            print(f"[pipeline] ⚠️ 体の動きを求められなかった: {e}")
+            self.logger.event("warning", message=f"体の動きを求められなかった: {e}")
 
     def _run(self) -> PipelineResult:
         cfg = self.cfg
@@ -324,6 +404,7 @@ class PressPipeline:
         if st.mode_machine != expected:
             raise RuntimeError(f"mode_machine が {st.mode_machine}（期待値 {expected}）。機体構成が違うので中止する")
         self.logger.event("lowstate", mode_machine=st.mode_machine, waist_q=st.q[list(WAIST_IDX)])
+        self.logger.log_state(st)
 
         src = cfg.pipeline["target"]["source"]
         if src == "depth":
@@ -332,6 +413,10 @@ class PressPipeline:
             target = self.locate_manual()
         else:
             raise TargetError(f"target.source は depth か manual: {src}")
+
+        if self.tip_check is not None:
+            # depth で測ったときのフレーム。manual（測っていない）なら、ここで撮る（腕はまだ開始姿勢で、手は視野の外）
+            self.tip_check.observe_before(self._locate_frames[-3:] or self._grab_frames(3))
 
         st = self.wait_state()
         plan = self.make_plan(st, target)
@@ -347,9 +432,38 @@ class PressPipeline:
                 arm, plan, hold_s=float(cfg.press["press"]["hold_s"]), planner=self.planner, return_to=q_start,
                 on_stage=self._on_stage, post_check=self.post_check,
                 max_retries=int(pc.get("max_retries", 0)), grab_frame=self.grab_frame,
+                on_press=lambda info: self.logger.event("press_result", **info),
             )
             for i, c in enumerate(checks, start=1):
                 self.logger.event("post_check", attempt=i, ok=c.ok, deeper_m=c.deeper_m, message=c.message, data=c.data)
+            tip = self._evaluate_tip() if not arm.stop_reason else None  # 腕は開始姿勢へ戻っていて、手は視野の外
         if arm.stop_reason:
             raise StopRequested(arm.stop_reason)
-        return PipelineResult(EXIT_OK, "成功", target=target, plan=plan, checks=checks)
+        return PipelineResult(EXIT_OK, "成功", target=target, plan=plan, checks=checks, tip=tip)
+
+    def _grab_frames(self, n: int) -> list[tuple[RgbdFrame, np.ndarray]]:
+        """今のフレームを n 枚（RgbdFrame, 腰の角度）。カメラ・lowstate が無ければ空。"""
+        frames: list[tuple[RgbdFrame, np.ndarray]] = []
+        if self.grab_frame is None:
+            return frames
+        for _ in range(n):
+            f, st = self.grab_frame(), self.backend.read_state()
+            if f is not None and st is not None:
+                frames.append((f, np.asarray(st.q[list(WAIST_IDX)], dtype=float).copy()))
+        return frames
+
+    def _evaluate_tip(self) -> TipResult | None:
+        """倒れたかの自動判定（ボトルを倒す動作のときだけ）。dry-run は何も動かしていないので判定しない。"""
+        if self.tip_check is None or self.grab_frame is None:
+            return None
+        if self.backend.dry_run:
+            print("[tip] dry-run なので、倒れたかの判定はしない")
+            return None
+        frames = self._grab_frames(3)
+        res = self.tip_check.evaluate(frames)
+        print(f"[tip] 倒れたかの判定: {res.message}")
+        self.logger.event("tip_check", state=res.state, message=res.message, top_before_m=res.top_before_m,
+                          top_after_m=res.top_after_m, drop_m=res.drop_m)
+        if frames:
+            self.logger.save_frame("tip_after", frames[-1][0], waist_q=frames[-1][1])
+        return res

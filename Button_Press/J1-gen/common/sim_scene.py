@@ -11,7 +11,7 @@ BOTTLE = "scene_bottle"
 
 
 def add_scene(spec: Any, scene_cfg: dict[str, Any]) -> None:
-    """机とボトルをワールドに置く（どちらも固定。ボトルは押しても動かない）。"""
+    """机とボトルをワールドに置く。ボトルは既定では固定（押しても動かない）。bottle.free: true なら、倒れる自由物体にする。"""
     import mujoco
 
     pelvis = np.asarray(spec.body("pelvis").pos, dtype=float)
@@ -23,19 +23,40 @@ def add_scene(spec: Any, scene_cfg: dict[str, Any]) -> None:
     table = world.add_body(name=TABLE, pos=list(pelvis + top - [0, 0, half[2]]))
     g = table.add_geom(name=TABLE, type=mujoco.mjtGeom.mjGEOM_BOX, size=list(half))
     g.rgba = list(t["rgba"])
+    if "friction" in t:
+        g.friction = [float(t["friction"]), 0.005, 0.0001]
 
     b = scene_cfg["bottle"]
-    base = pelvis + np.array([b["xy"][0], b["xy"][1], top[2]])
+    free = bool(b.get("free", False))
+    # 自由物体は、天板にちょうど接する位置から置くと初期の貫通で跳ねるので、わずかに浮かせて落とす
+    base = pelvis + np.array([b["xy"][0], b["xy"][1], top[2] + (0.0005 if free else 0.0)])
     bottle = world.add_body(name=BOTTLE, pos=list(base))
     parts = [
         ("body", b["radius"], 0.0, b["body_height"], b["body_rgba"]),
         ("neck", b["neck_radius"], b["body_height"], b["neck_height"], b["neck_rgba"]),
         ("cap", b["neck_radius"] * 1.2, b["body_height"] + b["neck_height"], b["cap_height"], b["cap_rgba"]),
     ]
-    for name, r, z0, hgt, rgba in parts:
+    # 空のボトルの質量は、各部分の体積に比例して割り振る（中の水は別の geom で足す）
+    volumes = [np.pi * r * r * hgt for _, r, _, hgt, _ in parts]
+    for (name, r, z0, hgt, rgba), vol in zip(parts, volumes, strict=True):
         g = bottle.add_geom(name=f"{BOTTLE}_{name}", type=mujoco.mjtGeom.mjGEOM_CYLINDER,
                             size=[r, hgt / 2, 0], pos=[0, 0, z0 + hgt / 2])
         g.rgba = list(rgba)
+        if free:
+            g.mass = float(b["shell_mass_kg"]) * vol / sum(volumes)
+            g.friction = [float(b["friction"]), 0.005, 0.0001]
+    if free:
+        bottle.add_freejoint()
+        # 水は底にたまる円柱。当たり判定は無し（外側のボトルの geom が当たる）で、質量と重心だけを足す
+        ml = float(b.get("water_ml", 0.0))
+        if ml > 0:
+            r_in = b["radius"] * 0.95
+            h = ml * 1e-6 / (np.pi * r_in * r_in)
+            w = bottle.add_geom(name=f"{BOTTLE}_water", type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+                                size=[r_in, h / 2, 0], pos=[0, 0, h / 2])
+            w.contype, w.conaffinity = 0, 0
+            w.mass = ml * 1e-3  # 水 1 mL = 1 g
+            w.rgba = [0.4, 0.6, 0.9, 0.5]
 
 
 def bottle_front_point(scene_cfg: dict[str, Any], height_fraction: float = 0.5) -> np.ndarray:
@@ -69,3 +90,14 @@ def build_scene_model(robot_cfg: dict[str, Any], scene_cfg: dict[str, Any], fixe
     spec = build_spec(robot_cfg, fixed_base=fixed_base)
     add_scene(spec, scene_cfg)
     return spec.compile()
+
+
+def bottle_tilt_deg(model: Any, data: Any) -> float:
+    """ボトルの軸が鉛直から傾いている角度 [deg]（立っていれば 0、横に寝ていれば 90）。bottle.free: true のシーン用。"""
+    cos = float(data.body(BOTTLE).xmat.reshape(3, 3)[2, 2])
+    return float(np.degrees(np.arccos(np.clip(cos, -1.0, 1.0))))
+
+
+def bottle_position(model: Any, data: Any) -> np.ndarray:
+    """ボトルの底の中心（物体の原点）のワールド座標。"""
+    return np.asarray(data.body(BOTTLE).xpos, dtype=float).copy()
