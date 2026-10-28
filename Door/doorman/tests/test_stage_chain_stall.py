@@ -91,7 +91,7 @@ def omen(tmp_path):
     home = tmp_path / "home"
     base = home / "work_inoue" / "doorman"
     base.mkdir(parents=True)
-    for name in ("stage_chain.sh", "exp_f3_retrain_1026.sh", "f3_keepalive_1026.sh", "exp_f3bc_1027.sh"):
+    for name in ("stage_chain.sh", "exp_f3_retrain_1026.sh", "f3_keepalive_1026.sh", "exp_f3bc_1027.sh", "exp_f3_phases_1028.sh"):
         shutil.copy(HERE / name, base / name)
         (base / name).chmod(0o755)
     _write(base / "run_train_segments.sh", STUB_TRAIN, True)
@@ -228,3 +228,53 @@ def test_f3bc_does_not_start_stage_b_when_stopped(omen):
     assert r.returncode == 0
     assert "段 B を始めずに終わる" in r.stdout
     assert "stage=f3c" not in _all_chain_logs(omen)
+
+
+# --- 10-28: 候補 1〜3 を 1 つずつ足す台本（exp_f3_phases_1028.sh） ----------------------------------------------------------------
+def _phases(omen, **extra):
+    env = dict(omen["env"], STUB_MODE="progress", BEST=str(omen["ck"]), ROUNDS_C="1", ROUNDS_D="1", ROUNDS_E="1", NO_KEEPALIVE="1")
+    env.update(extra)
+    return subprocess.run(["bash", "./exp_f3_phases_1028.sh"], cwd=omen["base"], env=env, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=360, check=False)
+
+
+def _chain_parts(log: str) -> list[str]:
+    """chain.log をつないだ文字列を、連鎖の始めの行ごとに切る"""
+    idx = [i for i in range(len(log)) if log.startswith("chain start", i)]
+    return [log[a:b] for a, b in zip(idx, [*idx[1:], len(log)])]
+
+
+def test_phases_add_one_fix_at_a_time_from_the_same_best(omen):
+    """段 C（罰を早く強く）→ 段 D（＋持ち時間 600）→ 段 E（＋近づく報酬を止める）の順に、どれも同じ重みから始める"""
+    r = _phases(omen)
+    assert r.returncode == 0, r.stdout + r.stderr
+    c, d, e = _chain_parts(_all_chain_logs(omen))
+    assert "stage=f3d" in c and "stage=f3e" in d and "stage=f3f" in e
+    for part in (c, d, e):
+        assert "++algo.config.max_noise_std=0.26" in part
+        assert "++env.config.walk_away_start_m=1.0" in part and "++rewards.reward_scales.walk_away_in_swing=-40.0" in part
+        assert f"resume={omen['ck']}" in part  # どの段も同じ出発点から
+    # 持ち時間の並びのカンマは「|」で渡し、学習の引数ではカンマに戻る
+    assert "max_stage_time=[250" not in c  # 評価の持ち時間（[500,…]）は連鎖の始めの行にいつも出るので、学習の方だけ見る
+    assert "++env.config.max_stage_time=[250,100,100,100,600,200]" in d and "++env.config.max_stage_time=[250,100,100,100,600,200]" in e
+    assert "target_root_distance_swing_scale" not in c + d
+    assert "++env.config.target_root_distance_swing_scale=0.0" in e
+    assert "見張りを始めずに終わる" in r.stdout
+
+
+def test_phases_stop_before_the_next_phase(omen):
+    """段 C の途中で止め札が置かれたら、段 D も見張りも始めない"""
+    stop = omen["home"] / "work_inoue" / "STOP_DOOR_F3"
+    r = _phases(omen, ROUNDS_C="2", STUB_STOP_AFTER=str(stop))
+    assert r.returncode == 0
+    assert "次の段も見張りも始めずに終わる" in r.stdout
+    log = _all_chain_logs(omen)
+    assert "stage=f3d" in log and "stage=f3e" not in log
+
+
+def test_phases_refuse_to_start_without_the_best_checkpoint(omen):
+    """出発点の重みが無ければ、連鎖を始めずに終わる"""
+    r = _phases(omen, BEST=str(omen["base"] / "ckpt" / "none" / "last.pt"))
+    assert r.returncode == 1
+    assert "出発点の重みが無い" in r.stdout
+    assert not (omen["base"] / "chain").exists()

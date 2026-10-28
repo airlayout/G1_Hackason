@@ -1,0 +1,28 @@
+From 9b018e2d62617535a52c7a87707b7ef1712d7e1f Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Wed, 28 Oct 2026 09:03:03 +0900
+Subject: [PATCH] door: read the target_root_distance scale in the swing stage
+ from config (default 0.5 as before; 0 removes the pull past the door) (10-28)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index be7fc62..2b82c37 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -885,7 +885,9 @@ class DoorPregrasp(
+             root_pos_diff, std=0.2, target=0.0, scale=1.0, offset=0.0
+         )
+         reward = (root_vel_reward + root_pos_reward).clamp(max=1.0)
+-        reward[self.stage_buf == DoorPregrasp.STAGE_SWING] *= 0.5
++        # G1_Hackason（10-28・F3 の型 B の候補 2）: 押し開けの区間（段階 4）に掛ける倍率を設定から読む（元は 0.5 の決め打ち）。
++        # 0 にすると、押し開けの間は扉の先の目標へ近づいても点が入らない（扉を 70° まで開けずに先へ歩き去る引き寄せを外す）
++        reward[self.stage_buf == DoorPregrasp.STAGE_SWING] *= float(self.config.get("target_root_distance_swing_scale", 0.5))
+         return reward
+ 
+     @override
+-- 
+2.43.0
+
