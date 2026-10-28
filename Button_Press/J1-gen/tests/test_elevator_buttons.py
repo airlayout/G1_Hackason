@@ -416,6 +416,20 @@ class TestElevatorPlan(unittest.TestCase):
             self.assertAlmostEqual(front, face[0] + self.ctl.cfg["wall"]["margin_m"], places=9)
             self.assertLess(p.approach_point[0], front)
 
+    def test_plans_from_the_real_standing_pose(self) -> None:
+        """実機の立った姿勢（2026-10-21 の lowstate）は、下ろした手が股関節の当たり判定に入っている（−7 mm）。
+        開始姿勢ですでに近い組は、最初の区間で開始より近づかない間は許す（PressPlanner.plan と同じ）。許さないと、
+        どの位置でも「手前の姿勢へ動く途中で柱・壁に当たる」と断られた（sim/elevator_stand_map.py で気づいた、2026-10-29）。"""
+        q = np.array([-0.290485, -0.004960, -0.002531, 0.593250, -0.318594, 0.008501, -0.271123, 0.003017,
+                      -0.002223, 0.601994, -0.338352, -0.005524, -0.000576, 0.000470, -0.002349, 0.291049,
+                      0.129657, 0.015711, 0.981556, 0.087161, 0.076807, 0.015232, 0.286950, -0.125894,
+                      0.024520, 0.982035, -0.096293, 0.058938, -0.020649])
+        for target in ("up", "down"):
+            self.ctl.reset(target, 0.02, np.full(17, 60.0))
+            self.assertTrue(any("hip" in h.body1 + h.body2 for h in self.ctl.planner.collision.contacts(q)))  # 開始で当たり判定に入っている
+            self.ctl._plan(q, self.call())
+            self.assertIsNotNone(self.ctl.plan_)
+
     def test_plans_low_wheelchair_buttons(self) -> None:
         """車いす用の低いボタン（ボトルの押す点とほぼ同じ高さ、pelvis から z +0.04〜+0.15）にも手前の姿勢まで計画が立つ（2026-10-22）。"""
         for z in (0.15, 0.10, 0.04):

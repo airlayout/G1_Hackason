@@ -354,11 +354,17 @@ class ElevatorPressController:
         arm = self.kin.arm_idx
         pts = [q[arm]] + ([plan.q_via] if plan.q_via is not None else []) + [plan.q_approach]
         n = int(self.cfg["wall"]["path_samples"])
+        # 開始姿勢ですでに近い組（実機の立った姿勢では、下ろした手が股関節の当たり判定に入っている。ハンドの衝突形状は
+        # メッシュを包む箱で実物より大きい。2026-10-21 の実機で −7.4 mm）は、最初の区間では開始より近づかない間は許す
+        # （PressPlanner.plan と同じ。許さないと、実機の立った姿勢ではどの位置でも「柱・壁に当たる」で断られる）
+        start_dist = {(h.body1, h.body2): h.dist for h in wall.contacts(q)}
         for leg, (a, b) in enumerate(zip(pts[:-1], pts[1:]), start=1):
             for k, s in enumerate(np.linspace(0.0, 1.0, n + 1)[1:], start=1):
                 qq = q.copy()
                 qq[arm] = a + smoothstep(float(s)) * (b - a)
                 hits = wall.contacts(qq)
+                if leg == 1:
+                    hits = [h for h in hits if h.dist < start_dist.get((h.body1, h.body2), np.inf) - 1e-3]
                 if hits:
                     raise UnreachableError(f"手前の姿勢へ動く途中（区間 {leg}/{len(pts) - 1} の {k}/{n}）で腕が柱・壁に"
                                            "当たる: " + "; ".join(str(h) for h in hits[:2]))
