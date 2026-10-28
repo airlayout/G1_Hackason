@@ -20,6 +20,8 @@
 # 止め方: ~/work_inoue/STOP_DOOR_F3 を置く（今の回の評価まで済ませて止まり、次の段も見張りも始めない）
 # 使い方（OMEN の ~/work_inoue/doorman で）: setsid nohup ./exp_f3_phases_1028.sh >> logs_f3_phases_1028.log 2>&1 < /dev/null &
 #   台数を変えるとき: NUM_ENVS=4096 MEM_MAX=12G setsid nohup ./exp_f3_phases_1028.sh …
+#   4,096 台は GPU の余りが 1 GB を切る。10-28 23 時に 11 回回した後、PyTorch の断片化（確保したまま使っていない 1.25 GiB）で
+#   始めて 3〜4 分の CUDA out of memory が 2 回続いた。PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True を前に足して起こす
 set -uo pipefail
 cd "$HOME/work_inoue/doorman" || exit 1
 BEST="${BEST:-$HOME/work_inoue/doorman/ckpt/f3_best_it53750/last.pt}"
