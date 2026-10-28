@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.camera_geometry import HeadCameraTransform  # noqa: E402
 from common.collision import CollisionChecker  # noqa: E402
 from common.config import REPO_ROOT, load_config  # noqa: E402
-from common.press_planner import PressPlanner, UnreachableError  # noqa: E402
+from common.press_planner import PressPlanner, UnreachableError, finger_axis_for  # noqa: E402
 from common.realday import load_taught_poses  # noqa: E402
 
 # 段階の順（大きいほど先まで進んだ）
@@ -118,7 +118,7 @@ def classify(msg: str) -> tuple[str, str]:
 
 
 def init_worker(side: str, start: str, start_q: list[float] | None, clearance: float | None = None,
-                via_deg: list[float] | None = None) -> None:
+                via_deg: list[float] | None = None, tilts: list[tuple[float, float]] | None = None) -> None:
     robot_cfg = load_config("robot.yaml")
     press_cfg = load_config("press.yaml")
     if clearance is not None:
@@ -145,10 +145,12 @@ def init_worker(side: str, start: str, start_q: list[float] | None, clearance: f
     zero[arm] = 0.0
     seeds.append(("zero", zero))
     _G.update(robot_cfg=robot_cfg, press_cfg=press_cfg, planner=planner, q0=q0, via=via, seeds=seeds, side=side,
-              tf=HeadCameraTransform(robot_cfg), desk_key=None)
+              tf=HeadCameraTransform(robot_cfg), desk_key=None, tilts=tilts)
 
 
-def run_cell(cell: tuple[float, float, float, float, float], via: np.ndarray | None = None) -> dict[str, Any]:
+def run_cell(cell: tuple[float, float, float, float, float], via: np.ndarray | None = None,
+             tilts: list[tuple[float, float]] | None = None) -> dict[str, Any]:
+    """tilts: 指の向きの候補 [(左 deg, 上 deg), ...]。無ければ押す向きに合わせる（今の動き）。"""
     """1 通りを計画する。via（片腕 7 関節 [rad]）を与えると、その経由の姿勢を使う（無ければ pipeline.yaml の via_pose）。"""
     edge, gap, y, top, slope = cell
     G = _G
@@ -162,16 +164,21 @@ def run_cell(cell: tuple[float, float, float, float, float], via: np.ndarray | N
     push = np.array([1.0, 0.0, 0.0])
     best: tuple[int, str, str, str] | None = None
     ok_seed = ""
-    for label, q_seed in G["seeds"]:
-        try:
-            G["planner"].plan(G["q0"], target, push, q_seed=q_seed, q_via_arm=G["via"] if via is None else via)
-            ok_seed = label
+    for tilt in (tilts if tilts is not None else G["tilts"] or [None]):
+        axis = None if tilt is None or tuple(tilt) == (0.0, 0.0) else finger_axis_for(push, *tilt)
+        for label, q_seed in G["seeds"]:
+            try:
+                G["planner"].plan(G["q0"], target, push, q_seed=q_seed, q_via_arm=G["via"] if via is None else via,
+                                  finger_axis=axis)
+                ok_seed = label if tilt is None else f"{label}/{tilt[0]:g}-{tilt[1]:g}"
+                break
+            except UnreachableError as e:
+                st, who = classify(str(e))
+                rank = STAGES.index(st)
+                if best is None or rank > best[0]:
+                    best = (rank, st, who, str(e)[:160])
+        if ok_seed:
             break
-        except UnreachableError as e:
-            st, who = classify(str(e))
-            rank = STAGES.index(st)
-            if best is None or rank > best[0]:
-                best = (rank, st, who, str(e)[:160])
     vis = bottle_visible(G["tf"], x_face, y, top)
     row = {"edge": edge, "gap": gap, "y": y, "top": top, "slope": slope, "plan_ok": int(bool(ok_seed)), "seed": ok_seed,
            "visible": int(vis), "stage": "" if ok_seed else best[1], "partner": "" if ok_seed else best[2],
@@ -213,6 +220,8 @@ def main() -> int:
     ap.add_argument("--start", choices=["real", "zero"], default="real")
     ap.add_argument("--start-q", type=float, nargs=7, help="開始の腕 7 関節 [rad]（実機の lowstate）")
     ap.add_argument("--clearance", type=float, help="腕と体・机の余裕 [m]（既定は press.yaml の collision.clearance_m = 0.01）")
+    ap.add_argument("--tilts", type=float, nargs="+", metavar="L U",
+                    help="指の向きの候補（左 deg, 上 deg を組で並べる。例: 0 0 30 -15）。先に通ったものを使う。無ければ前方に合わせる")
     ap.add_argument("--via", type=float, nargs=7, help="経由の姿勢（右腕 7 関節 [deg]）。既定は pipeline.yaml の via_pose")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out", type=Path)
@@ -222,7 +231,8 @@ def main() -> int:
     t0 = time.time()
     print(f"[map] {len(cells)} 通りを計画する（{args.workers} プロセス）")
     with ProcessPoolExecutor(args.workers, initializer=init_worker,
-                             initargs=(args.side, args.start, args.start_q, args.clearance, args.via)) as ex:
+                             initargs=(args.side, args.start, args.start_q, args.clearance, args.via,
+                                       None if not args.tilts else list(zip(args.tilts[::2], args.tilts[1::2])))) as ex:
         rows = []
         for i, r in enumerate(ex.map(run_cell, cells, chunksize=8), start=1):
             rows.append(r)

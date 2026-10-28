@@ -155,6 +155,33 @@ class TestPressPlanner(unittest.TestCase):
         plan = self.pl.plan(q, np.array([0.33, -0.19, 0.11]), np.array([1.0, 0, 0]), q_via_arm=via)
         self.assertEqual(len(plan.press_out), len(plan.press_in))
 
+    def test_tilted_finger_reaches_bottle_near_the_body_center(self) -> None:
+        """ボトルが体の正面寄り（右 5 cm）だと、指を前方に合わせた手前の姿勢で腕が胴体に当たって断られる。指を左へ傾けると通る
+        （sim/approach_search.py、2026-10-29）。実機 10/21 の立った姿勢と、探索で見つけた経由の姿勢を使う。"""
+        from common.press_planner import finger_axis_for
+
+        q = np.array([-0.290485, -0.004960, -0.002531, 0.593250, -0.318594, 0.008501, -0.271123, 0.003017,
+                      -0.002223, 0.601994, -0.338352, -0.005524, -0.000576, 0.000470, -0.002349, 0.291049,
+                      0.129657, 0.015711, 0.981556, 0.087161, 0.076807, 0.015232, 0.286950, -0.125894,
+                      0.024520, 0.982035, -0.096293, 0.058938, -0.020649])
+        via = np.radians([68.3, -11.1, -40.9, -43.9, 0.0, -4.1, 0.0])
+        target, push = np.array([0.34, -0.05, 0.10]), np.array([1.0, 0, 0])
+        with self.assertRaisesRegex(UnreachableError, "ぶつかる"):
+            self.pl.plan(q, target, push, q_via_arm=via)
+        plan = self.pl.plan(q, target, push, q_via_arm=via, finger_axis=finger_axis_for(push, 30.0, -15.0))
+        np.testing.assert_allclose(plan.target_point, target)
+        self.assertEqual(len(plan.press_out), len(plan.press_in))
+
+    def test_finger_axis_for(self) -> None:
+        from common.press_planner import finger_axis_for
+
+        np.testing.assert_allclose(finger_axis_for([1, 0, 0], 0, 0), [1, 0, 0], atol=1e-12)
+        f = finger_axis_for([2.0, 0, 0], 30.0, -15.0)          # 長さは問わない。左（+y）・下（−z）へ傾く
+        self.assertAlmostEqual(float(np.linalg.norm(f)), 1.0)
+        self.assertGreater(f[1], 0.0)
+        self.assertLess(f[2], 0.0)
+        self.assertAlmostEqual(float(np.degrees(np.arccos(np.clip(f @ [1, 0, 0], -1, 1)))), np.degrees(np.arccos(np.cos(np.radians(30)) * np.cos(np.radians(15)))), places=6)
+
     def test_rejects_bad_input(self) -> None:
         with self.assertRaises(UnreachableError):
             self.pl.plan(np.zeros(29), np.array([np.nan, 0, 0]), np.array([1.0, 0, 0]))

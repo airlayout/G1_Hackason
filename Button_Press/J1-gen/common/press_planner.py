@@ -61,6 +61,22 @@ class PressPlan:
         )
 
 
+def finger_axis_for(push_dir: np.ndarray, left_deg: float, up_deg: float) -> np.ndarray:
+    """押す向きから、指の向きを決める（左へ left_deg、上へ up_deg 傾ける。0, 0 なら押す向きそのまま）。
+
+    手先は押す向きにまっすぐ動き、指だけが傾く。ボトルが体の正面寄りのとき、指を前方に合わせると、手前の姿勢で腕・手首が
+    胴体に近づきすぎる。左へ傾けると肘を外に張れて通る（sim/approach_search.py、2026-10-29）。エレベーターの指の傾きと同じ考え方。
+    """
+    n = np.asarray(push_dir, dtype=float)
+    n = n / np.linalg.norm(n)
+    left = np.cross([0.0, 0.0, 1.0], n)
+    left /= np.linalg.norm(left)
+    up = np.cross(n, left)
+    a, b = np.radians(left_deg), np.radians(up_deg)
+    f = np.cos(b) * (np.cos(a) * n + np.sin(a) * left) + np.sin(b) * up
+    return f / np.linalg.norm(f)
+
+
 class PressPlanner:
     def __init__(
         self,

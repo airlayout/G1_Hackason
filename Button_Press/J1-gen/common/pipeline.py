@@ -40,7 +40,7 @@ from .dds import PeerMismatchError
 from .localize import Detector, Locator
 from .post_press import NoCheck, PostPressCheck
 from .press import execute_press
-from .press_planner import PressPlan, PressPlanner, UnreachableError
+from .press_planner import PressPlan, PressPlanner, UnreachableError, finger_axis_for
 from .realday import FingertipFK, load_taught_poses, project_to_image, taught_q_seed
 from .rgbd_protocol import RgbdFrame
 from .robot_model import WAIST_IDX
@@ -320,22 +320,29 @@ class PressPipeline:
         via = self._via_pose()
         advice = self.stand_advice(target)
         errors = []
-        for label, q_seed in self._seeds(st):
-            try:
-                plan = self.planner.plan(st.q, target, push, q_seed=q_seed, q_via_arm=via)
-            except UnreachableError as e:
-                errors.append(f"{label}: {e}")
-                self.logger.event("plan_failed", seed=label, reason=str(e))
-                print(f"[pipeline] IK の初期値「{label}」では計画できない: {e}")
-                continue
-            self.logger.save_json("plan_initial.json", self._plan_dict(plan))
-            self.logger.event("plan", summary=plan.summary(), seed=label)
-            print(f"[pipeline] 計画（IK の初期値: {label}）: {plan.summary()}")
-            if advice:
-                self.logger.event("stand_advice", message=advice)
-                print(f"[pipeline] ⚠️ {advice}（計画は立ったので続ける）")
-            return plan
-        raise UnreachableError((f"{advice}。" if advice else "") + "どの IK の初期値でも計画できない: " + " / ".join(errors))
+        # 指の向きの候補（pipeline.yaml の finger_tilts_deg。既定は [[0, 0]] = 押す向きに合わせる）を順に試し、
+        # 先の候補で通ればあとは試さない。IK の初期値の候補は、向きごとに順に試す
+        tilts = [tuple(float(v) for v in t) for t in (self.cfg.pipeline.get("finger_tilts_deg") or [[0, 0]])]
+        for tilt in tilts:
+            axis = None if tilt == (0.0, 0.0) else finger_axis_for(push, *tilt)
+            tilt_s = "" if axis is None else f"、指 左{tilt[0]:g}°・上{tilt[1]:g}°"
+            for label, q_seed in self._seeds(st):
+                label = label + tilt_s
+                try:
+                    plan = self.planner.plan(st.q, target, push, q_seed=q_seed, q_via_arm=via, finger_axis=axis)
+                except UnreachableError as e:
+                    errors.append(f"{label}: {e}")
+                    self.logger.event("plan_failed", seed=label, reason=str(e))
+                    print(f"[pipeline] IK の初期値「{label}」では計画できない: {e}")
+                    continue
+                self.logger.save_json("plan_initial.json", self._plan_dict(plan))
+                self.logger.event("plan", summary=plan.summary(), seed=label)
+                print(f"[pipeline] 計画（IK の初期値: {label}）: {plan.summary()}")
+                if advice:
+                    self.logger.event("stand_advice", message=advice)
+                    print(f"[pipeline] ⚠️ {advice}（計画は立ったので続ける）")
+                return plan
+        raise UnreachableError((f"{advice}。" if advice else "") + "どの IK の初期値・指の向きでも計画できない: " + " / ".join(errors))
 
     @staticmethod
     def _plan_dict(plan: PressPlan) -> dict[str, Any]:
