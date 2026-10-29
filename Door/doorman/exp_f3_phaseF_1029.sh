@@ -22,6 +22,10 @@
 #   後ろへ 11 cm 押し戻され、レバーの段階で 146 回が持ち時間切れ）。USE_LATCH=0 で G2 を外し、G1 だけを回す。
 #   段の名前は NAME1・NAME2 で替える（G1 だけの 2 本は f3i・f3j。G2 ありの f3g・f3h の回と混ぜない）:
 #   USE_LATCH=0 NAME1=f3i NAME2=f3j setsid nohup ./exp_f3_phaseF_1029.sh …
+# 10-29 11 時半（ユーザー「(a) 罰に変える」）: G2 を、構える・つかむの段階で歩く HOMIE に入ったら罰（パッチ 0083、
+#   penalty_walk_in_hold）に作り直した。HOLD_W（例 −0.3）を渡すと、1・2 本目のよい方の引数に罰を足した 3 本目（NAME3、既定 f3k）を
+#   同じ出発点から MIN_ROUNDS 回回し、3 本目の平均が選んだ方より HOLD_DROP（既定 5.0）pt 以上落ちなければ 3 本目を続ける。
+#   足の上下が減ったかは別に測る（jitter3.py）
 set -uo pipefail
 cd "$HOME/work_inoue/doorman" || exit 1
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
@@ -78,6 +82,18 @@ IFS=';' read -r N2 M2 <<< "${PHASES[1]}"
 A1=$(phase_mean "$N1"); A2=$(phase_mean "$N2")
 if awk -v a="$A2" -v b="$A1" 'BEGIN { exit !(a > b) }'; then CN="$N2"; CM="$M2"; else CN="$N1"; CM="$M1"; fi
 log "比べた: ${N1} $(phase_n "$N1") 回の平均 ${A1}%・${N2} $(phase_n "$N2") 回の平均 ${A2}% → 続ける段: ${CN}"
+if [ -n "${HOLD_W:-}" ]; then
+  N3="${NAME3:-f3k}${SFX}"; M3="$CM,++rewards.reward_scales.penalty_walk_in_hold=${HOLD_W}"
+  N=$(phase_n "$N3")
+  [ "$N" -lt "$MIN_ROUNDS" ] && run_rounds "$N3" $(( MIN_ROUNDS - N )) "$(phase_ck "$N3")" "$M3"
+  A3=$(phase_mean "$N3"); AC=$(phase_mean "$CN")
+  if awk -v a="$A3" -v b="$AC" -v t="${HOLD_DROP:-5.0}" 'BEGIN { exit !(a > b - t) }'; then
+    log "比べた: ${N3}（罰 ${HOLD_W}）$(phase_n "$N3") 回の平均 ${A3}% 対 ${CN} の ${AC}% → 落ちが ${HOLD_DROP:-5.0} pt より小さいので 続ける段: ${N3}"
+    CN="$N3"; CM="$M3"
+  else
+    log "比べた: ${N3}（罰 ${HOLD_W}）$(phase_n "$N3") 回の平均 ${A3}% 対 ${CN} の ${AC}% → ${HOLD_DROP:-5.0} pt 以上落ちたので 続ける段: ${CN}"
+  fi
+fi
 run_rounds "$CN" "${ROUNDS_CONT:-9999}" "$(phase_ck "$CN")" "$CM"
 [ "${NO_KEEPALIVE:-0}" = 1 ] && { log "NO_KEEPALIVE=1 なので見張りを始めずに終わる"; exit 0; }
 log "続きは見張り（f3_keepalive_1026.sh）に任せる（name=${NAME:-} more=${TRAIN_MORE:-}）"

@@ -1,0 +1,34 @@
+From 165f5bef4c0a922b9807e0868a6ba6cc3f6e5b4b Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Thu, 29 Oct 2026 11:27:50 +0900
+Subject: [PATCH] door: penalty for entering the walking HOMIE (same command
+ norm as the trainer switch, > 0.5) in the pregrasp and grasp stages only; the
+ lever stage may step in (the stand latch broke the lever press) (10-29)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 63aacf9..997b864 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -894,6 +894,15 @@ class DoorPregrasp(
+         reward[self.stage_buf == DoorPregrasp.STAGE_SWING] *= float(self.config.get("target_root_distance_swing_scale", 0.5))
+         return reward
+ 
++    @StagedTaskBase.effective_in_stage([STAGE_PREGRASP, STAGE_GRASP])
++    def _reward_penalty_walk_in_hold(self):
++        # G1_Hackason（G2 の作り直し (a)、10-29）: 構える・つかむの段階で、歩く HOMIE に入る指令を出したら 1（重みは負）。
++        # 学習器の切り替え（ppo_trainer_homie_api.py: HOMIE の観測の指令の大きさ > homie_switch_threshold 0.5 なら歩く方策）と
++        # 同じ量で数える。レバーの段階は数えない（レバーを押し下げる間に足で前へ踏み込むのは要る動き。10-29 に脚を立つ方策へ
++        # 固める掛け金を入れたら、ここで押し戻されて 88.7% → 2.3% に崩れた）。報酬だけなので、実機のコードは変えない
++        cmd = self._get_obs_b_homie_commands()[:, :3]
++        return (torch.norm(cmd, dim=-1) > float(self.config.get("walk_in_hold_threshold", 0.5))).float()
++
+     @override
+     def _reward_limits_dof_pos(self):
+         # Penalize dof positions too close to the limit
+-- 
+2.43.0
+

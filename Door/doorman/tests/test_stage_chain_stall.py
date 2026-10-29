@@ -74,7 +74,7 @@ esac
 '''
 STUB_EVAL = r'''#!/usr/bin/env bash
 out="$HOME/work_inoue/doorman/records/r_$RANDOM$RANDOM"; mkdir -p "$out"
-rate="${STUB_RATE:-0.5}"; case "$1" in */door_f3h*|*/door_f3j*) rate="${STUB_RATE_F3H:-$rate}" ;; esac  # 段 F2 だけ率を変えられる（10-29）
+rate="${STUB_RATE:-0.5}"; case "$1" in */door_f3h*|*/door_f3j*) rate="${STUB_RATE_F3H:-$rate}" ;; */door_f3k*) rate="${STUB_RATE_F3K:-$rate}" ;; esac  # 段 F2 だけ率を変えられる（10-29）
 echo "{\"success_rate\": $rate, \"success\": 128, \"episodes_from_stage0\": 256}" > "$out/summary.json"
 echo "=== eval_from_start out=$out success=128/256 rc=0"
 '''
@@ -438,3 +438,17 @@ def test_phase_f_without_the_latch_uses_its_own_names(omen):
     assert "stage=f3i " in log and "stage=f3j " in log and "stage=f3g" not in log
     assert "続ける段: f3j" in r.stdout
     assert "++rewards.reward_scales.penalty_arm_action_change=-0.2" in log
+
+
+@pytest.mark.parametrize(("rate_k", "cont"), [("0.66", "f3k"), ("0.64", "f3j")])
+def test_phase_f_hold_penalty_is_added_to_the_better_and_kept_unless_it_drops(omen, rate_k, cont):
+    """HOLD_W を渡すと、よい方（f3j、70%）に罰を足した f3k を同じ出発点から回し、5 pt 以上落ちなければ f3k を続ける"""
+    r = _phase_f(omen, USE_LATCH="0", NAME1="f3i", NAME2="f3j", STUB_RATE_F3H="0.7", STUB_RATE_F3K=rate_k, HOLD_W="-0.3")
+    assert r.returncode == 0, r.stdout + r.stderr
+    parts = _chain_parts(_all_chain_logs(omen))
+    k = next(p for p in parts if "stage=f3k " in p)
+    assert f"resume={omen['ck']}" in k  # 3 本目も同じ出発点から
+    assert "++rewards.reward_scales.penalty_walk_in_hold=-0.3" in k
+    assert "++rewards.reward_scales.penalty_arm_action_change=-0.5" in k  # よい方（f3j）の引数に足す
+    assert f"stage={cont} " in parts[-1]  # 最後の続きの段
+    assert ("落ちが 5.0 pt より小さい" in r.stdout) == (cont == "f3k")
