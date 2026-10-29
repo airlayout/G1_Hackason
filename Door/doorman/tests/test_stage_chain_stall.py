@@ -74,7 +74,8 @@ esac
 '''
 STUB_EVAL = r'''#!/usr/bin/env bash
 out="$HOME/work_inoue/doorman/records/r_$RANDOM$RANDOM"; mkdir -p "$out"
-echo "{\"success_rate\": ${STUB_RATE:-0.5}, \"success\": 128, \"episodes_from_stage0\": 256}" > "$out/summary.json"
+rate="${STUB_RATE:-0.5}"; case "$1" in */door_f3h*) rate="${STUB_RATE_F3H:-$rate}" ;; esac  # 段 F2 だけ率を変えられる（10-29）
+echo "{\"success_rate\": $rate, \"success\": 128, \"episodes_from_stage0\": 256}" > "$out/summary.json"
 echo "=== eval_from_start out=$out success=128/256 rc=0"
 '''
 
@@ -92,7 +93,7 @@ def omen(tmp_path):
     home = tmp_path / "home"
     base = home / "work_inoue" / "doorman"
     base.mkdir(parents=True)
-    for name in ("stage_chain.sh", "exp_f3_retrain_1026.sh", "f3_keepalive_1026.sh", "exp_f3bc_1027.sh", "exp_f3_phases_1028.sh"):
+    for name in ("stage_chain.sh", "exp_f3_retrain_1026.sh", "f3_keepalive_1026.sh", "exp_f3bc_1027.sh", "exp_f3_phases_1028.sh", "exp_f3_phaseF_1029.sh"):
         shutil.copy(HERE / name, base / name)
         (base / name).chmod(0o755)
     _write(base / "run_train_segments.sh", STUB_TRAIN, True)
@@ -374,3 +375,55 @@ def test_phases_refuse_to_start_without_the_best_checkpoint(omen):
     assert r.returncode == 1
     assert "出発点の重みが無い" in r.stdout
     assert not (omen["base"] / "chain").exists()
+
+
+# --- 10-29: 段 F（G1 腕の出力の変化への罰・G2 脚の掛け金）を段 E の 8 回目から（exp_f3_phaseF_1029.sh） --------------------------
+def _phase_f(omen, **extra):
+    env = dict(omen["env"], STUB_MODE="progress", BEST=str(omen["ck"]), MIN_ROUNDS="1", ROUNDS_CONT="1", NO_KEEPALIVE="1",
+               NUM_ENVS="512")
+    env.update(extra)
+    return subprocess.run(["bash", "./exp_f3_phaseF_1029.sh"], cwd=omen["base"], env=env, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=360, check=False)
+
+
+def test_phase_f_runs_both_weights_from_the_same_best_then_continues_the_better(omen):
+    """F1（−0.2）と F2（−0.5）をどちらも同じ重みから回し、平均の成功率が高い F2 をその最後の重みから続ける"""
+    r = _phase_f(omen, STUB_RATE="0.5", STUB_RATE_F3H="0.7")
+    assert r.returncode == 0, r.stdout + r.stderr
+    f1, f2, cont = _chain_parts(_all_chain_logs(omen))
+    assert "stage=f3g " in f1 and "stage=f3h " in f2 and "stage=f3h " in cont
+    assert f"resume={omen['ck']}" in f1 and f"resume={omen['ck']}" in f2
+    last_f2 = _rounds(omen)["f3h"][0][6]
+    assert f"resume={last_f2}" in cont
+    for part in (f1, f2, cont):
+        # 段 E の条件（雑音の上限・歩き去りの罰・持ち時間 600・押し開けの引き寄せ 0）に G2 の掛け金を足す
+        for arg in ("++algo.config.max_noise_std=0.26", "++rewards.reward_scales.walk_away_in_swing=-40.0",
+                    "++env.config.max_stage_time=[250,100,100,100,600,200]", "++env.config.target_root_distance_swing_scale=0.0",
+                    "++env.config.stand_latch=True", "++env.config.stand_latch_enter_m=0.3", "++env.config.stand_latch_exit_m=0.5",
+                    "++env.config.stand_latch_door_deg=10.0", "++env.config.stand_latch_once_opened=True"):
+            assert arg in part, arg
+    assert "++rewards.reward_scales.penalty_arm_action_change=-0.2" in f1
+    assert "++rewards.reward_scales.penalty_arm_action_change=-0.5" in f2 + cont
+    assert "続ける段: f3h" in r.stdout
+
+
+def test_phase_f_tie_goes_to_the_lighter_weight(omen):
+    """平均が同じなら F1（−0.2）を続ける"""
+    r = _phase_f(omen)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "続ける段: f3g" in r.stdout
+    assert [len(v) for k, v in sorted(_rounds(omen).items())] == [2, 1]  # f3g は 1 回＋続き 1 回、f3h は 1 回
+
+
+def test_phase_f_counts_rounds_already_done_and_stops_on_the_flag(omen):
+    """止めて組み直したら、済んだ回は回さない。途中で止め札が置かれたら F2 も続きも始めない"""
+    stop = omen["home"] / "work_inoue" / "STOP_DOOR_F3"
+    r = _phase_f(omen, MIN_ROUNDS="2", STUB_STOP_AFTER=str(stop))
+    assert r.returncode == 0
+    assert "次の段も見張りも始めずに終わる" in r.stdout
+    assert set(_rounds(omen)) == {"f3g"}
+    stop.unlink()
+    r = _phase_f(omen, MIN_ROUNDS="2")
+    assert r.returncode == 0, r.stdout + r.stderr
+    rounds = _rounds(omen)
+    assert len(rounds["f3g"]) == 3 and len(rounds["f3h"]) == 2  # f3g は前の 1 回＋1 回＋続き 1 回

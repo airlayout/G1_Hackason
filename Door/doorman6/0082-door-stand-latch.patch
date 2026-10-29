@@ -1,0 +1,148 @@
+From 45d39c5caf2da9d14f65a46aa33595222e790abb Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Thu, 29 Oct 2026 09:58:37 +0900
+Subject: [PATCH 2/2] door: stand latch - while near the handle with the door
+ still closed, zero the walking command so HOMIE stays on the standing policy
+ (same function as the real robot; enter 0.3 m, leave at 10 deg or 0.5 m,
+ never again once the door has opened) (10-29)
+
+---
+ gr00t/rl/envs/base_task/delta_action_base.py | 13 ++++++++
+ gr00t/rl/envs/base_task/stand_latch.py       | 32 ++++++++++++++++++++
+ gr00t/rl/envs/door/door_open_homie.py        | 29 ++++++++++++++++++
+ 3 files changed, 74 insertions(+)
+ create mode 100644 gr00t/rl/envs/base_task/stand_latch.py
+
+diff --git a/gr00t/rl/envs/base_task/delta_action_base.py b/gr00t/rl/envs/base_task/delta_action_base.py
+index f1e4336..0b7c18d 100644
+--- a/gr00t/rl/envs/base_task/delta_action_base.py
++++ b/gr00t/rl/envs/base_task/delta_action_base.py
+@@ -88,6 +88,15 @@ class DeltaActionBase(LeggedRobotBase):
+             self._guard_arm_accumulator(
+                 self._arm_guard_delta(guard_delta), float(self.config.get("arm_accum_guard_margin", 0.05))
+             )
++        # G1_Hackason（G2、10-29）: 止まるはずの場面（掛け金。stand_latch.py）では、歩く指令の積み上げ（前後・横・旋回）を 0 にする。
++        # HOMIE は指令の大きさが 0.5 以下なら立つ方策になるので、学習器（ppo_trainer_homie_api.py）の切り替えはそのまま。
++        # 実機の door_core.py も同じ関数で同じことをする。掛け金を使わない環境は None を返す
++        latch = self._stand_latch_mask()
++        if latch is not None:
++            assert len(self._delta_action_indices) == ARM_ACCUM_START + NUM_ARM, (
++                "stand_latch は積み上げが [前後, 横, 旋回, 腕 14] の並びのときだけ使える"
++            )
++            self._delta_actions[latch, :ARM_ACCUM_START] = 0.0
+ 
+         # Configration - 0
+         # self._delta_actions[:, :3] *= 0.0
+@@ -189,6 +198,10 @@ class DeltaActionBase(LeggedRobotBase):
+         change = self._last_delta_actions[:, arm] - self._prev_delta_actions[:, arm]
+         return torch.sum(torch.square(change), dim=-1)
+ 
++    def _stand_latch_mask(self):
++        """脚を立つ HOMIE に固定する台（bool、[num_envs]）。使わない環境は None（扉の環境が上書きする）"""
++        return None
++
+     def _get_obs_delta_actions(self):
+         return self._last_delta_actions
+ 
+diff --git a/gr00t/rl/envs/base_task/stand_latch.py b/gr00t/rl/envs/base_task/stand_latch.py
+new file mode 100644
+index 0000000..838d874
+--- /dev/null
++++ b/gr00t/rl/envs/base_task/stand_latch.py
+@@ -0,0 +1,32 @@
++"""止まるはずの場面では、脚を立つ HOMIE に固定する掛け金（G1_Hackason の G2、2026-10-29）。
++
++学習（VIRAL6、torch）と実機（Door/real、numpy・PC2 の Python 3.8）に、1 字も違わない同じファイルを置く。
++  学習: gr00t/rl/envs/base_task/stand_latch.py（パッチ 0082）
++  実機: G1_Hackason/Door/real/stand_latch.py（こちらが元。試験 tests/test_stand_latch.py が 2 つが同じことを確かめる）
++numpy の bool 配列と torch の bool の tensor のどちらを渡しても動くよう、両方にある書き方（| & ~ < >=）だけを使う。
++Python の bool をそのまま渡さない（~True は -2 になる）。torch は import しない（PC2 には無い）。
++
++実機は段階（近づく・構える…）を知らないので、実機でも測れる 2 つの値だけで「止める場面」を決める:
++  胴と把手の水平距離（ライダーの扉の位置から）と、扉の開いた角度（ライダー）。
++入る: 距離が enter_m 未満、かつ扉が door_deg 未満（構える・つかむ・レバーの間）。
++抜ける: 扉が door_deg 以上（押し開けが始まった）、または距離が exit_m より遠い（入る線より遠い所で抜けて、境目で揺れない）。
++once_opened: その回で扉が一度 door_deg 以上に開いたら、もう入らない。押し開けの途中で扉が 10° 未満に戻ったときに
++  止めない（10-29 に段 C・4,096 台の記録 256 回へ当てはめた: 段階 1〜3 の歩の 99.2% を止めるのはどちらも同じで、
++  押し開けの段階で止まる台が 6 → 0）。
++止めている間、呼ぶ側は歩く指令（前後・横・旋回）を 0 にする。HOMIE は指令の大きさが 0.5 以下なら立つ方策になる。
++"""
++
++
++def update_stand_latch(latched, opened, dist_xy, door_deg, enter_m=0.3, exit_m=0.5, door_deg_max=10.0,
++                       once_opened=True):
++    """掛け金を 1 周期進める。新しい (latched, opened) を返す。入力は書き換えない。
++
++    latched・opened: [...] の bool（前の周期の値。回の始めは False）
++    dist_xy: [...] 胴と把手の水平距離 [m]、door_deg: [...] 扉の開いた角度 [度]（向きは問わない大きさ）
++    """
++    opened = opened | (door_deg >= door_deg_max)
++    enter = (dist_xy < enter_m) & (door_deg < door_deg_max)
++    if once_opened:
++        enter = enter & ~opened
++    leave = (door_deg >= door_deg_max) | (dist_xy > exit_m)
++    return (latched | enter) & ~leave, opened
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 2b82c37..63aacf9 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -28,6 +28,7 @@ from gr00t.rl.envs.base_task.delta_action_base import DeltaActionBase
+ from gr00t.rl.envs.base_task.finger_primitive_base import FingerPrimitiveBase
+ from gr00t.rl.envs.base_task.homie_base import HomieBase
+ from gr00t.rl.envs.base_task.staged_task_base import StagedTaskBase
++from gr00t.rl.envs.base_task.stand_latch import update_stand_latch
+ from gr00t.rl.envs.base_task.warped_action_base import WarpedActionBase
+ from gr00t.rl.envs.door.door_mirror import DoorMirror
+ from gr00t.rl.envs.door.door_state_sensor import DoorStateSensor
+@@ -323,6 +324,9 @@ class DoorPregrasp(
+ 
+     def _init_buffers(self):
+         super()._init_buffers()
++        # G1_Hackason（G2、10-29）: 脚を立つ HOMIE に固定する掛け金と、その回で扉が一度開いたか（stand_latch.py）
++        self._stand_latched = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
++        self._door_opened_once = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+         self.relative_door_pos_buf = torch.zeros(
+             self.num_envs, 3, device=self.device, requires_grad=False
+         )
+@@ -1268,6 +1272,28 @@ class DoorPregrasp(
+             .clone()
+         )
+ 
++    @override
++    def _stand_latch_mask(self):
++        # G1_Hackason（G2、10-29）: 止まるはずの場面（構える・つかむ・レバーの間）は、実機でも測れる 2 つの値で決める:
++        # 胴（腰）と把手の水平距離・扉の開いた角度。段階（stage_buf）は実機に無いので使わない。実機の door_core.py と同じ関数。
++        # シミュレータは本当の値を渡す（実機はライダーの値。誤差は角度 σ0.07〜0.18°・位置 数 cm で、線 10°・0.3/0.5 m より十分小さい）
++        if not self.config.get("stand_latch", False):
++            return None
++        dist = torch.norm(self.simulator.robot_root_states[:, :2] - self._compute_grasp_target()[:, :2], dim=-1)
++        door_deg = torch.rad2deg(torch.abs(self.simulator.get_task_dof_pos("door")[:, 0]))
++        self._stand_latched, self._door_opened_once = update_stand_latch(
++            self._stand_latched,
++            self._door_opened_once,
++            dist,
++            door_deg,
++            enter_m=float(self.config.get("stand_latch_enter_m", 0.3)),
++            exit_m=float(self.config.get("stand_latch_exit_m", 0.5)),
++            door_deg_max=float(self.config.get("stand_latch_door_deg", 10.0)),
++            once_opened=bool(self.config.get("stand_latch_once_opened", True)),
++        )
++        self.log_dict["stand_latch_frac"] = self._stand_latched.float().mean()
++        return self._stand_latched
++
+     def _compute_grasp_target(self):
+         grasp_target_pos_w = (
+             self.simulator.scene.sensors["right_hand_frame_transformer"]
+@@ -1312,6 +1338,9 @@ class DoorPregrasp(
+     @override
+     def _reset_buffers_callback(self, env_ids, target_buf=None):
+         super()._reset_buffers_callback(env_ids, target_buf)
++        if hasattr(self, "_stand_latched"):  # G2: 回の始めは止めていない・扉はまだ開いていない
++            self._stand_latched[env_ids] = False
++            self._door_opened_once[env_ids] = False
+         if getattr(self, "_use_door_sensor", False):
+             self.door_sensor.reset(env_ids)  # 段 2.5: 回ごとの片寄りを引き直す
+             if getattr(self, "_door_carry", None) is not None:
+-- 
+2.43.0
+

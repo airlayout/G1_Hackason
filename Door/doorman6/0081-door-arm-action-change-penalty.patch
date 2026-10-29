@@ -1,0 +1,60 @@
+From 031965a82443624e34b088801f28b58dbbca83d7 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Thu, 29 Oct 2026 09:58:22 +0900
+Subject: [PATCH 1/2] door: penalty on the per-step change of the arm actions
+ (sum over 14 arm joints of (a_t - a_{t-1})^2, i.e. on the target acceleration
+ rather than its speed) (10-29)
+
+---
+ gr00t/rl/envs/base_task/delta_action_base.py | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/gr00t/rl/envs/base_task/delta_action_base.py b/gr00t/rl/envs/base_task/delta_action_base.py
+index 8501dd7..f1e4336 100644
+--- a/gr00t/rl/envs/base_task/delta_action_base.py
++++ b/gr00t/rl/envs/base_task/delta_action_base.py
+@@ -40,6 +40,10 @@ class DeltaActionBase(LeggedRobotBase):
+         self._last_delta_actions = torch.zeros(
+             self.num_envs, len(self._delta_action_indices), device=self.device, requires_grad=False
+         )
++        # G1_Hackason（G1、10-29）: 1 歩前の出力（腕の出力の変化への罰 penalty_arm_action_change に使う）
++        self._prev_delta_actions = torch.zeros(
++            self.num_envs, len(self._delta_action_indices), device=self.device, requires_grad=False
++        )
+ 
+     # @override
+     # def step(self, actor_state):
+@@ -70,6 +74,7 @@ class DeltaActionBase(LeggedRobotBase):
+     def step(self, actor_state):
+         actions = actor_state["actions"]
+         delta_actions_clip = self.config.get("delta_action_clip", 100.0)
++        self._prev_delta_actions[:] = self._last_delta_actions
+         self._last_delta_actions[:] = actions[:, self._delta_action_indices]
+         self._delta_actions += actions[:, self._delta_action_indices] * self._delta_action_scale
+         self._delta_actions = torch.clamp(
+@@ -176,6 +181,14 @@ class DeltaActionBase(LeggedRobotBase):
+     def _reward_penalty_delta_action_rate(self):
+         return torch.sum(torch.square(self._last_delta_actions), dim=-1)
+ 
++    def _reward_penalty_arm_action_change(self):
++        # G1_Hackason（G1、10-29）: 腕 14 の出力の 1 歩ごとの変化の 2 乗の和。腕の出力は「1 歩ごとに目標を動かす量」なので、
++        # 今の penalty_delta_action_rate（出力そのものの 2 乗）は目標の動く速さへの罰で、揺れの正体の「1 歩ごとに向きが
++        # 入れ替わる」を直接は罰さない。これは目標の加速度への罰（狙った向きへ一定に動かすのは罰さない）
++        arm = slice(ARM_ACCUM_START, ARM_ACCUM_START + NUM_ARM)
++        change = self._last_delta_actions[:, arm] - self._prev_delta_actions[:, arm]
++        return torch.sum(torch.square(change), dim=-1)
++
+     def _get_obs_delta_actions(self):
+         return self._last_delta_actions
+ 
+@@ -191,6 +204,7 @@ class DeltaActionBase(LeggedRobotBase):
+     def _reset_buffers_callback(self, env_ids, target_buf=None):
+         self._delta_actions[env_ids] = 0.0
+         self._last_delta_actions[env_ids] = 0.0
++        self._prev_delta_actions[env_ids] = 0.0
+         return super()._reset_buffers_callback(env_ids, target_buf)
+ 
+     def _post_reset_callback(self, env_ids):
+-- 
+2.43.0
+
