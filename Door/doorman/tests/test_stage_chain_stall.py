@@ -74,7 +74,7 @@ esac
 '''
 STUB_EVAL = r'''#!/usr/bin/env bash
 out="$HOME/work_inoue/doorman/records/r_$RANDOM$RANDOM"; mkdir -p "$out"
-rate="${STUB_RATE:-0.5}"; case "$1" in */door_f3h*) rate="${STUB_RATE_F3H:-$rate}" ;; esac  # 段 F2 だけ率を変えられる（10-29）
+rate="${STUB_RATE:-0.5}"; case "$1" in */door_f3h*|*/door_f3j*) rate="${STUB_RATE_F3H:-$rate}" ;; esac  # 段 F2 だけ率を変えられる（10-29）
 echo "{\"success_rate\": $rate, \"success\": 128, \"episodes_from_stage0\": 256}" > "$out/summary.json"
 echo "=== eval_from_start out=$out success=128/256 rc=0"
 '''
@@ -427,3 +427,14 @@ def test_phase_f_counts_rounds_already_done_and_stops_on_the_flag(omen):
     assert r.returncode == 0, r.stdout + r.stderr
     rounds = _rounds(omen)
     assert len(rounds["f3g"]) == 3 and len(rounds["f3h"]) == 2  # f3g は前の 1 回＋1 回＋続き 1 回
+
+
+def test_phase_f_without_the_latch_uses_its_own_names(omen):
+    """USE_LATCH=0 なら G2 の掛け金を渡さず、G1 の 2 本を別の名前（f3i・f3j）で回す（10-29 に G2 が崩れたため）"""
+    r = _phase_f(omen, USE_LATCH="0", NAME1="f3i", NAME2="f3j", STUB_RATE_F3H="0.7")
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = _all_chain_logs(omen)
+    assert "stand_latch" not in log
+    assert "stage=f3i " in log and "stage=f3j " in log and "stage=f3g" not in log
+    assert "続ける段: f3j" in r.stdout
+    assert "++rewards.reward_scales.penalty_arm_action_change=-0.2" in log

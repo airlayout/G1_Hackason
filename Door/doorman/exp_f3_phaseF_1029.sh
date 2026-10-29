@@ -17,6 +17,11 @@
 #   PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True を既定で付ける
 # 止め方: ~/work_inoue/STOP_DOOR_F3 を置く（今の回の評価まで済ませて止まり、次の段も見張りも始めない）
 # 使い方（OMEN の ~/work_inoue/doorman で）: setsid nohup ./exp_f3_phaseF_1029.sh >> logs_f3_phaseF_1029.log 2>&1 < /dev/null &
+#
+# 10-29 11 時: G2 は崩れた（F1 の 1 回目 2.3%。レバーを押す間に足で 9 cm 前へ踏み込んでいた方策が、立つ方策に固められて
+#   後ろへ 11 cm 押し戻され、レバーの段階で 146 回が持ち時間切れ）。USE_LATCH=0 で G2 を外し、G1 だけを回す。
+#   段の名前は NAME1・NAME2 で替える（G1 だけの 2 本は f3i・f3j。G2 ありの f3g・f3h の回と混ぜない）:
+#   USE_LATCH=0 NAME1=f3i NAME2=f3j setsid nohup ./exp_f3_phaseF_1029.sh …
 set -uo pipefail
 cd "$HOME/work_inoue/doorman" || exit 1
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
@@ -34,12 +39,13 @@ NOPULL="++env.config.target_root_distance_swing_scale=0.0"
 # G2 脚の掛け金（パッチ 0082）
 LATCH="++env.config.stand_latch=True,++env.config.stand_latch_enter_m=0.3,++env.config.stand_latch_exit_m=0.5"
 LATCH="$LATCH,++env.config.stand_latch_door_deg=10.0,++env.config.stand_latch_once_opened=True"
-BASE_MORE="$CAP,$WALK,$LONG,$NOPULL,$LATCH"
+BASE_MORE="$CAP,$WALK,$LONG,$NOPULL"
+[ "${USE_LATCH:-1}" = 1 ] && BASE_MORE="$BASE_MORE,$LATCH"
 SFX=""; [ "$NUM_ENVS" != 512 ] && SFX="n${NUM_ENVS}"
 # 名前;足す引数（「,」区切り）
 PHASES=(
-  "f3g${SFX};$BASE_MORE,++rewards.reward_scales.penalty_arm_action_change=${ARM_W1:--0.2}"
-  "f3h${SFX};$BASE_MORE,++rewards.reward_scales.penalty_arm_action_change=${ARM_W2:--0.5}"
+  "${NAME1:-f3g}${SFX};$BASE_MORE,++rewards.reward_scales.penalty_arm_action_change=${ARM_W1:--0.2}"
+  "${NAME2:-f3h}${SFX};$BASE_MORE,++rewards.reward_scales.penalty_arm_action_change=${ARM_W2:--0.5}"
 )
 
 # 段の全部の回の成功率（%、1 行 1 回）。results.tsv の 1 列目が段の名前の行を集める
@@ -61,7 +67,7 @@ run_rounds() {
 }
 
 [ -f "$BEST" ] || { log "出発点の重みが無い: $BEST"; exit 1; }
-log "段 F start best=$BEST n=$NUM_ENVS min_rounds=$MIN_ROUNDS alloc=$PYTORCH_CUDA_ALLOC_CONF"
+log "段 F start best=$BEST n=$NUM_ENVS min_rounds=$MIN_ROUNDS use_latch=${USE_LATCH:-1} alloc=$PYTORCH_CUDA_ALLOC_CONF"
 for P in "${PHASES[@]}"; do
   IFS=';' read -r PNAME PMORE <<< "$P"
   N=$(phase_n "$PNAME")
