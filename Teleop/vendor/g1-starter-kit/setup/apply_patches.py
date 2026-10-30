@@ -61,6 +61,36 @@ patch ファイルではなく文字列置換にしてあるのは、上流が�
                   Damp は無く（Enter_Damp_Mode のみ）AttributeError で teleop ごと落ち、後始末の
                   ctrl_dual_arm_go_home で腕を勝手に下ろしていた。
                   ⚠️ record-loco-cmd の loco_cmd_sent を使うので対で当てる（自動で補完する）。
+
+  record-timestamp [G1_Hackason 改変] 記録（data.json）の 1 コマごとに time_ns（time.time_ns()）を足す。
+                  上流は idx（番号）しか残さず、ライダー・odometry など別のプロセスの記録と
+                  突き合わせられなかった。PC2 の記録係（rec_take.sh）と同じ時刻の形式。
+
+  xr-stale-stamp  [G1_Hackason 改変] televuer で、手かコントローラのデータが届くたびに
+                  その時刻（time.monotonic()）を残す（last_motion_time）。
+  xr-stale-stop   [G1_Hackason 改変] 最後に届いてから 0.3 秒過ぎたら一時停止にする（歩きは 0・
+                  腕は今の角度で固める）。届き始めても自動では戻らず、スティックを一度離して
+                  両スティック 0.5 秒で再開する。上流の motion_data_ready は一度真になると戻らず、
+                  Quest の無線が切れると最後のスティックの値のまま歩き続けていた。
+                  ⚠️ stick-pause と xr-stale-stamp の上に当たる（自動で補完する）。
+
+  xr-stale-log    [G1_Hackason 改変] Quest のデータの届く間隔が 0.1 秒を超えたら、その長さをログに残す
+                  （[xr-gap]）。一時停止の線 0.3 秒がその場の無線に合うかを決め直すため。
+                  ⚠️ xr-stale-stop の上に当たる（自動で補完する）。
+
+  safe-exit       [G1_Hackason 改変] 終わるとき（q・A・例外）の後始末で、腕を戻す前に速さを 2 rad/s に絞る。
+                  上流は追従を始めた後は 30 rad/s のまま戻すので、腕が 0.1 秒ほどで振り下ろされた（10-27）。
+
+  go-home-release [G1_Hackason 改変] G1_29_ArmController の腕を戻す処理で、5 秒で戻りきれなくても
+                  制御（arm_sdk の重み）を 2 秒かけて純正へ返す。上流は返さずに終わり、送信が止まった瞬間に
+                  純正が腕をいきなり取り返していた（10-27 に 1 回）。
+
+  arm-tau-getter・record-arm-effort
+                  [G1_Hackason 改変] 記録（data.json）の左右の腕に、速さ（qvel）と推定トルク（torque＝tau_est）を
+                  入れる（上流は空欄）。左右の移動量・トルクの差と、扉を押す力の目安を記録から見るため（10-27）。
+                  トルクを読む口は G1_29_ArmController にだけ足す（ほかの腕では空欄のまま）。
+                  ⚠️ 10-29 の実機で、受け取った状態を写す自前の入れ物（MotorState）に tau_est が無く
+                  AttributeError で遠隔操作が落ちた → arm-tau-store で入れ物に足して写す（自動で補完する）。
 """
 
 import argparse
@@ -314,6 +344,106 @@ PATCHES = {
              "sol_q, sol_tauff = stick_pause_q, stick_pause_tauff"),
         ],
     },
+    # [G1_Hackason 改変] 上流 45ead40 には無い。別のプロセスの記録と時刻で突き合わせるため。
+    "record-timestamp": {
+        "desc": "記録の 1 コマごとに時刻（time_ns）を残す",
+        "file": "utils/episode_writer.py",
+        "plain": [
+            ("            'idx': self.item_id,\n"
+             "            'colors': colors,\n",
+             "            'idx': self.item_id,\n"
+             "            # PATCH(record-timestamp): ライダー・odometry（PC2 の time.time_ns()）と突き合わせる時刻\n"
+             "            'time_ns': time.time_ns(),\n"
+             "            'colors': colors,\n",
+             "PATCH(record-timestamp)"),
+        ],
+    },
+    # [G1_Hackason 改変] 上流 45ead40 には無い。Quest の無線が切れたときに歩き続けないため。
+    "xr-stale-stamp": {
+        "desc": "televuer がデータの届いた時刻を残す（xr-stale-stop が使う）",
+        "file": "televuer/src/televuer/televuer.py",
+        # どれも挿入型なので、置換後に置換元が残らないよう元の行に印のコメントを付けている。
+        "plain": [
+            ("import asyncio\n",
+             "import asyncio  # PATCH(xr-stale-stamp): 下で time を使う\n"
+             "import time\n",
+             "import asyncio  # PATCH(xr-stale-stamp)"),
+            ("        self.motion_data_ready_shared = Value('b', False, lock=True)\n",
+             "        self.motion_data_ready_shared = Value('b', False, lock=True)  # PATCH(xr-stale-stamp)\n"
+             "        self.last_motion_time_shared = Value('d', 0.0, lock=True)     # 最後に届いた time.monotonic()\n",
+             "self.last_motion_time_shared = Value('d', 0.0, lock=True)"),
+            # コントローラと手の追跡の 2 か所（全件置換）
+            ("            with self.motion_data_ready_shared.get_lock():\n"
+             "                self.motion_data_ready_shared.value = True\n",
+             "            with self.motion_data_ready_shared.get_lock():\n"
+             "                self.motion_data_ready_shared.value = True  # PATCH(xr-stale-stamp): 届いた時刻も残す\n"
+             "                self.last_motion_time_shared.value = time.monotonic()\n",
+             "self.last_motion_time_shared.value = time.monotonic()"),
+            ("            return self.motion_data_ready_shared.value\n",
+             "            return self.motion_data_ready_shared.value  # PATCH(xr-stale-stamp) の直後に下を足した\n"
+             "\n"
+             "    @property\n"
+             "    def last_motion_time(self):\n"
+             "        \"\"\"float, 最後に手かコントローラのデータが届いた time.monotonic()（まだ届いていなければ 0.0）。\"\"\"\n"
+             "        return self.last_motion_time_shared.value\n",
+             "def last_motion_time(self):"),
+        ],
+    },
+    # [G1_Hackason 改変] 上流 45ead40 には無い。stick-pause の切り替えの前に「途切れ」を見る。
+    "xr-stale-stop": {
+        "desc": "Quest のデータが 0.3 秒途切れたら一時停止（自動では戻らない）",
+        "file": "teleop_hand_and_arm.py",
+        "plain": [
+            ("        stick_resume_slow_until = None\n"
+             "        # main loop. robot start to follow VR user's motion（stick-pause の状態は直前で用意）\n",
+             "        stick_resume_slow_until = None\n"
+             "        XR_STALE_S = 0.3                # PATCH(xr-stale-stop): これだけ Quest のデータが届かなければ一時停止\n"
+             "        # main loop. robot start to follow VR user's motion（stick-pause の状態は直前で用意）\n",
+             "XR_STALE_S = 0.3"),
+            ("                stick_now = time.time()\n"
+             "                if not (tele_data.left_ctrl_thumbstick and tele_data.right_ctrl_thumbstick):\n",
+             "                stick_now = time.time()\n"
+             "                # PATCH(xr-stale-stop): 上流の motion_data_ready は一度真になると戻らず、Quest の無線が\n"
+             "                # 切れると最後のスティックの値のまま歩き続けていた。最初のデータが届いた後に\n"
+             "                # XR_STALE_S 途切れたら一時停止にする。届き始めても自動では戻らず、スティックを\n"
+             "                # 一度離してから両スティック長押しで再開する（届かない間の値は古いので使わない）。\n"
+             "                xr_age = time.monotonic() - tv_wrapper.tvuer.last_motion_time\n"
+             "                if tele_data.motion_data_ready and xr_age > XR_STALE_S:\n"
+             "                    if not stick_paused:\n"
+             "                        stick_paused = True\n"
+             "                        stick_pause_q = arm_ctrl.get_current_dual_arm_q().copy()\n"
+             "                        stick_pause_tauff = None\n"
+             "                        logger_mp.warning(f\"⏸  Quest のデータが {xr_age:.1f} 秒届かないので一時停止しました（届き始めたら、スティックを離して両スティック 0.5 秒で再開）\")\n"
+             "                    stick_pause_since = None\n"
+             "                    stick_pause_armed = False\n"
+             "                elif not (tele_data.left_ctrl_thumbstick and tele_data.right_ctrl_thumbstick):\n",
+             "xr_age = time.monotonic() - tv_wrapper.tvuer.last_motion_time"),
+        ],
+    },
+    # [G1_Hackason 改変] 上流 45ead40 には無い。xr-stale-stop が入れた行の上に当たる。
+    "xr-stale-log": {
+        "desc": "Quest のデータの間隔が 0.1 秒を超えたら長さをログに残す",
+        "file": "teleop_hand_and_arm.py",
+        "plain": [
+            ("        XR_STALE_S = 0.3                # PATCH(xr-stale-stop): これだけ Quest のデータが届かなければ一時停止\n"
+             "        # main loop. robot start to follow VR user's motion（stick-pause の状態は直前で用意）\n",
+             "        XR_STALE_S = 0.3                # PATCH(xr-stale-stop): これだけ Quest のデータが届かなければ一時停止\n"
+             "        xr_prev_seen = 0.0              # PATCH(xr-stale-log): 前の周期に見た「データの届いた時刻」\n"
+             "        # main loop. robot start to follow VR user's motion（stick-pause の状態は直前で用意）\n",
+             "xr_prev_seen = 0.0              # PATCH(xr-stale-log)"),
+            ("                xr_age = time.monotonic() - tv_wrapper.tvuer.last_motion_time\n"
+             "                if tele_data.motion_data_ready and xr_age > XR_STALE_S:\n",
+             "                xr_age = time.monotonic() - tv_wrapper.tvuer.last_motion_time\n"
+             "                # PATCH(xr-stale-log): データの届く間隔が 0.1 秒を超えたら、その長さを残す\n"
+             "                xr_seen = tv_wrapper.tvuer.last_motion_time\n"
+             "                if xr_seen != xr_prev_seen:\n"
+             "                    if xr_prev_seen > 0 and xr_seen - xr_prev_seen > 0.1:\n"
+             "                        logger_mp.info(f\"[xr-gap] Quest のデータが {xr_seen - xr_prev_seen:.2f} 秒あいた\")\n"
+             "                    xr_prev_seen = xr_seen\n"
+             "                if tele_data.motion_data_ready and xr_age > XR_STALE_S:\n",
+             "[xr-gap] Quest のデータが"),
+        ],
+    },
     "state-watchdog": {
         "desc": "lowstate が 0.2 秒途切れたら送信を停止して強制終了（fail-closed）",
         "file": "robot_control/robot_arm.py",
@@ -426,6 +556,88 @@ G1_29_Num_Motors = 35''',
             for anchor in ("class G1_29_ArmController",
                            "class G1_29_Arm_Internal_Dex1_Controller",
                            "class G1_23_ArmController")
+        ],
+    },
+    # [G1_Hackason 改変] 上流 45ead40 には無い。追従を始めた後の終了で腕が振り下ろされないため。
+    "safe-exit": {
+        "desc": "終わるときの後始末で、腕を戻す前に速さを 2 rad/s に絞る",
+        "file": "teleop_hand_and_arm.py",
+        "plain": [
+            ("        try:\n"
+             "            arm_ctrl.ctrl_dual_arm_go_home()\n",
+             "        try:\n"
+             "            # PATCH(safe-exit): 追従を始めた後は 30 rad/s のままなので、戻す前に起動時と同じ 2 rad/s に絞る\n"
+             "            arm_ctrl.set_arm_velocity_limit(2.0)\n"
+             "            arm_ctrl.ctrl_dual_arm_go_home()\n",
+             "PATCH(safe-exit)"),
+        ],
+    },
+    # [G1_Hackason 改変] 上流 45ead40 には無い。戻りきれなくても制御をゆっくり純正へ返す。
+    "go-home-release": {
+        "desc": "腕を戻しきれなくても制御を 2 秒かけて純正へ返す（G1_29）",
+        "file": "robot_control/robot_arm.py",
+        # 挿入型なので、置換後に置換元が続いて残らないよう元の行に印のコメントを付ける。
+        "scoped": [
+            ("class G1_29_ArmController",
+             "            current_attempts += 1\n"
+             "            time.sleep(0.05)\n",
+             "            current_attempts += 1  # PATCH(go-home-release): 下に while の else を足した\n"
+             "            time.sleep(0.05)\n"
+             "        else:\n"
+             "            # 5 秒で戻りきれなかった（上流はここで何もせず終わり、送信が止まった瞬間に純正が腕を\n"
+             "            # いきなり取り返していた）。今の姿勢のまま、戻りきったときと同じく 2 秒かけて返す\n"
+             "            logger_mp.warning(\"[G1_29_ArmController] 5 秒で戻りきれなかったので、制御を 2 秒かけて純正へ返します\")\n"
+             "            if self.motion_mode:\n"
+             "                for weight in np.linspace(1, 0, num=101):\n"
+             "                    self.msg.motor_cmd[G1_29_JointIndex.kNotUsedJoint0].q = weight\n"
+             "                    time.sleep(0.02)\n",
+             "PATCH(go-home-release)"),
+        ],
+    },
+    # [G1_Hackason 改変] 上流 45ead40 には無い。腕の速さとトルクを記録に残すため（10-27）。
+    'arm-tau-getter': {
+        "desc": 'G1_29_ArmController に腕の推定トルク（tau_est）を読む口を足す',
+        "file": 'robot_control/robot_arm.py',
+        "scoped": [
+            ('class G1_29_ArmController',
+             "    def get_current_dual_arm_dq(self):\n        '''Return current state dq of the left and right arm motors.'''\n",
+             "    def get_current_dual_arm_tau(self):\n        '''PATCH(arm-tau-getter): Return current estimated torque (tau_est) of the left and right arm motors.'''\n        return np.array([self.lowstate_buffer.GetData().motor_state[id].tau_est for id in G1_29_JointArmIndex])\n\n    def get_current_dual_arm_dq(self):\n        '''Return current state dq of the left and right arm motors.'''  # PATCH(arm-tau-getter): 上に tau を足した\n",
+             'def get_current_dual_arm_tau(self):'),
+        ],
+    },
+    # [G1_Hackason 改変] 10-29 の実機で arm-tau-getter が落ちた（下の説明）。その直し。
+    "arm-tau-store": {
+        "desc": "受け取った状態を写す入れ物（MotorState）に tau_est を足し、G1_29 で写す",
+        "file": "robot_control/robot_arm.py",
+        # 10-29: xr_teleoperate は rt/lowstate を自前の MotorState（q と dq だけ）へ写して持つので、
+        # arm-tau-getter が tau_est を読むと AttributeError で遠隔操作ごと落ちた（追従の開始の直後）。
+        "plain": [
+            ("class MotorState:\n    def __init__(self):\n        self.q = None\n        self.dq = None\n",
+             "class MotorState:\n    def __init__(self):\n        self.q = None\n        self.dq = None  # PATCH(arm-tau-store): 下に tau_est を足した\n        self.tau_est = None\n",
+             "self.dq = None  # PATCH(arm-tau-store)"),
+        ],
+        "scoped": [
+            ("class G1_29_ArmController",
+             "                    lowstate.motor_state[id].dq = msg.motor_state[id].dq\n",
+             "                    lowstate.motor_state[id].dq = msg.motor_state[id].dq  # PATCH(arm-tau-store): 下で tau_est も写す\n"
+             "                    lowstate.motor_state[id].tau_est = msg.motor_state[id].tau_est\n",
+             "lowstate.motor_state[id].tau_est = msg.motor_state[id].tau_est"),
+        ],
+    },
+    # [G1_Hackason 改変] 上流 45ead40 には無い。腕の速さとトルクを記録に残すため（10-27）。
+    'record-arm-effort': {
+        "desc": '記録の左右の腕に速さ（qvel）と推定トルク（torque）を入れる（上流は空欄）',
+        "file": 'teleop_hand_and_arm.py',
+        "plain": [
+            ('                left_arm_action, right_arm_action = sol_q[:half], sol_q[half:]\n                if RECORD_RUNNING:\n',
+             '                left_arm_action, right_arm_action = sol_q[:half], sol_q[half:]\n                # PATCH(record-arm-effort): 腕の速さと推定トルク（tau_est）も記録に残す（上流は空欄）。\n                # 左右の比べと押す力の目安に使う。速さは角度と同じ周期の始めに読んだ値\n                left_arm_dq, right_arm_dq = current_lr_arm_dq[:half], current_lr_arm_dq[half:]\n                if hasattr(arm_ctrl, "get_current_dual_arm_tau"):\n                    _arm_tau = arm_ctrl.get_current_dual_arm_tau()\n                    left_arm_tau, right_arm_tau = _arm_tau[:half].tolist(), _arm_tau[half:].tolist()\n                else:\n                    left_arm_tau, right_arm_tau = [], []\n                if RECORD_RUNNING:\n',
+             'PATCH(record-arm-effort): 腕の速さと'),
+            ('                            "qpos":   left_arm_state.tolist(),    # numpy.array -> list\n                            "qvel":   [],                          \n                            "torque": [],                        \n',
+             '                            "qpos":   left_arm_state.tolist(),    # numpy.array -> list\n                            "qvel":   left_arm_dq.tolist(),   # PATCH(record-arm-effort)\n                            "torque": left_arm_tau,\n',
+             'left_arm_dq.tolist(),   # PATCH(record-arm-effort)'),
+            ('                            "qpos":   right_arm_state.tolist(),       \n                            "qvel":   [],                          \n                            "torque": [],                         \n',
+             '                            "qpos":   right_arm_state.tolist(),       \n                            "qvel":   right_arm_dq.tolist(),  # PATCH(record-arm-effort)\n                            "torque": right_arm_tau,\n',
+             'right_arm_dq.tolist(),  # PATCH(record-arm-effort)'),
         ],
     },
 }
@@ -555,18 +767,40 @@ def main():
         missing = "speed-restore" if "safe-startup" in names else "safe-startup"
         print(f"  注意: {missing} は対で当てる必要があるため自動的に追加します。")
         names = names + [missing]
-    # [G1_Hackason 改変] stick-pause は record-loco-cmd が作る loco_cmd_sent の上に当たる。
-    # 当てるときは record-loco-cmd を先に、外すときは stick-pause を先にする。
-    if "stick-pause" in names and "record-loco-cmd" not in names and not args.revert:
-        print("  注意: stick-pause は record-loco-cmd の上に当たるため自動的に追加します。")
-        names = names + ["record-loco-cmd"]
-    if "record-loco-cmd" in names and "stick-pause" not in names and args.revert:
-        print("  注意: record-loco-cmd を外す前に stick-pause を外すため自動的に追加します。")
-        names = names + ["stick-pause"]
-    names = [n for n in PATCHES if n in names]      # 当てる順は PATCHES の並び
-    if args.revert:
-        names = list(reversed(names))               # 外す順は逆
+    names = resolve_order(names, args.revert)
     sys.exit(run(names, args.dry_run, args.revert))
+
+
+# [G1_Hackason 改変] 他の修正が書き換えた文字列の上に当たる修正の前提。
+# 当てるときは前提も一緒に（先に）当て、外すときはそれに乗っている修正も一緒に（先に）外す。
+DEPENDS = {
+    "stick-pause": ["record-loco-cmd"],             # loco_cmd_sent の上に当たる
+    "xr-stale-stop": ["stick-pause", "xr-stale-stamp"],  # 一時停止の状態と、届いた時刻を使う
+    "xr-stale-log": ["xr-stale-stop"],              # xr-stale-stop が入れた行の上に当たる
+    "record-arm-effort": ["arm-tau-getter", "arm-tau-store"],  # 腕の制御の部品に足したトルクの口と、その写しを使う
+}
+
+
+def resolve_order(names: list, revert: bool) -> list:
+    """前提を補い、当てる順（PATCHES の並び）か外す順（その逆）に並べる。"""
+    chosen = set(names)
+    changed = True
+    while changed:
+        changed = False
+        for name, deps in DEPENDS.items():
+            if not revert and name in chosen:
+                extra = [d for d in deps if d not in chosen]
+            elif revert and name not in chosen and any(d in chosen for d in deps):
+                extra = [name]
+            else:
+                continue
+            for e in extra:
+                why = "の前提" if not revert else "が乗っている修正"
+                print(f"  注意: {e} を自動的に追加します（{name if not revert else '外す修正'}{why}）。")
+            chosen.update(extra)
+            changed = changed or bool(extra)
+    ordered = [n for n in PATCHES if n in chosen]
+    return list(reversed(ordered)) if revert else ordered
 
 
 if __name__ == "__main__":

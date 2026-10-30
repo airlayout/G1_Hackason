@@ -88,7 +88,11 @@ OMEN（`ubuntu@192.168.123.200`）のキットは 45ead40 のまま、コミッ�
 | ファイル | 中身 |
 |---|---|
 | `setup/apply_patches.py` | 修正 `record-loco-cmd`（手なしでも `--motion` の歩きの指令を記録に残す）と `stick-pause`（両スティック 0.5 秒長押しで一時停止／再開。上流の `loco_wrapper.Damp()` は存在しない関数で、押すと teleop が落ちて腕を勝手に下ろしていた）。当てる順・外す順の決まりと、見出しの表示の直し |
-| `tools/stick_pause_selftest.py` | 上の 2 つの自己テスト（新規・実機不要） |
+| `tools/stick_pause_selftest.py` | 上の 2 つと xr-stale-stop の自己テスト（新規・実機不要） |
+| `setup/apply_patches.py`（10-26 午後） | 修正 `record-timestamp`（data.json の 1 コマごとに time_ns）・`xr-stale-stamp`（televuer がデータの届いた時刻を残す）・`xr-stale-stop`（Quest のデータが 0.3 秒途切れたら一時停止。上流は無線が切れると最後のスティックの値で歩き続けた）。修正どうしの前提（DEPENDS）と当てる順・外す順の決まり |
+| `tools/record_timestamp_selftest.py` | record-timestamp の自己テスト（新規・実機不要） |
+| `setup/apply_patches.py`（10-27） | 修正 `xr-stale-log`（途切れの長さを残す）・`safe-exit`（終了で腕を 2 rad/s で下ろす）・`go-home-release`（戻しきれなくても制御を 2 秒で返す）・`arm-tau-getter`＋`record-arm-effort`（記録の左右の腕に速さとトルクを入れる。上流は空欄） |
+| `tools/go_home_selftest.py`・`tools/arm_effort_selftest.py` | 上の自己テスト（新規・実機不要） |
 
 確かめ方: 上流の xr_teleoperate（817fb00）の素の写しに全部当てた結果が、OMEN で動いている
 `~/xr_teleoperate` の 3 ファイルと 1 文字違わず一致すること、全部外すと素の版に戻ること、

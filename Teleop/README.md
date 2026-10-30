@@ -101,3 +101,46 @@ Phase 0 が済んだところ。**キットを取り込んだだけで、まだ�
   `setup.sh` が不在を検知して復旧手順を印字すること（`config/README.md`）
 - 実演4 は **ROS 2 に依存しない**（キットで ROS を使うのは `lidar_view.sh` と
   `record_bag.sh` だけ。テレオペと再生は conda 環境 `tv` の素の Python）
+
+## `scripts/pc2_teleop.sh` — 遠隔操作を PC2 で動かす（案 A、2026-10-26）
+
+有線が扉まで届かないので、xr_teleoperate を**機体の中のパソコン（PC2）**で動かす。
+無線は Quest ↔ PC2 と Mac ↔ PC2（ssh）だけで、機体の制御は PC2 の中の有線（eth0）のまま。
+構成図・何がどこで動くか・切れたときの振る舞いは `docs/plan/2026-10-26-g1-door-teleop-demos.md` の 9 章。
+
+```bash
+./scripts/pc2_teleop.sh setup                  # 初回だけ: 配ってから PC2 に環境を作る（切り離して流す）
+./scripts/pc2_teleop.sh setup-log              #   その進み具合
+./scripts/pc2_teleop.sh deploy                 # 道具を直したら配り直す（PC2 の ~/teleop_tools/）
+./scripts/pc2_teleop.sh check                  # 機体のモードを見る（動かさない）
+./scripts/pc2_teleop.sh sensors t0_1027_s 1800  # 先にセンサー（ライダー・IMU・/dog_odom・赤外線）を録り始める
+./scripts/pc2_teleop.sh start door_room4_1027  # 切り離して起こす（--motion・記録あり・素通し）。⚠️ 直後に両腕が下ろした形へ動く
+#   → Quest で https://192.168.0.82:8012/?ws=wss://192.168.0.82:8012 →「Pass-through」
+#     （「Virtual Reality」は全面グレーで周りが見えない。キットの 03-teleop.md の記述は古い）
+#   → 操作者はロボットの後ろでロボットと同じ向き・Meta ボタン長押しで「ビューをリセット」・腕を体の横に下ろす
+./scripts/pc2_teleop.sh go                     # 追従の開始（r）
+./scripts/pc2_teleop.sh rec                    # 記録の開始（s）… もう一度で保存
+./scripts/pc2_teleop.sh check-ep door_room4_1027 # 録った 1 本を点検（歩きの値・時刻・センサー・扉の角度）。✗ なら録り直し
+./scripts/pc2_teleop.sh quit                   # 終える（q）。腕を 2 rad/s で下ろしてから、制御を 2 秒かけて純正へ返す
+./scripts/pc2_teleop.sh sensors-stop t0_1027_s # センサーの記録を止める
+```
+
+2026-10-27 の T0 で分かったこと:
+- 機体は R1+Y（純正の状態 501）で `rt/arm_sdk` を借りられた（`probe` で 0.05 rad の指令に 0.033 rad）
+- Quest の電池が切れかけると音が鳴って没入の画面が止まる → データが途切れ、`xr-stale-stop` が 0.3 秒で一時停止した（設計どおり）。始める前に Quest を充電しておく
+- 終了で腕が 30 rad/s で振り下ろされる・戻りきれないと純正がいきなり腕を取り返す、の 2 つは `safe-exit`・`go-home-release` で直した
+- 強制終了（プロセスを kill）すると、純正がそのときの形で腕を保持する（力は抜けない）
+- ssh 越しの `pgrep -f 名前` は、命令の中に同じ文字列があると運び役のシェル自身に当たる。`^[^ ]*python[^ ]* (-u )?teleop_hand_and_arm.py` のように行の先頭から絞る
+
+- PC2 に tmux も screen も無いので、遠隔操作は `setsid nohup` で切り離し、操作は IPC（`--ipc`）で送る。
+  **ssh が切れても遠隔操作は止まらない**（止めるのは Quest の両スティック 0.5 秒か `quit`）
+- 起動役（`pc2/teleop_start.sh`）は、修正（`record-loco-cmd`・`stick-pause`・`xr-stale-stop`・
+  `record-timestamp`・`state-watchdog`）が当たっていなければ起こさない
+- Mac が `Physical_AI_5G` に居ないときは `G1_PC2_JUMP=ubuntu@100.99.102.70`（OMEN の Tailscale）を付けると中継できる
+- 環境づくり（`pc2/setup_pc2_tv.sh`）は既存の物に書き込まない: 既存の `~/miniforge3` に環境 `tv` を足すだけ・
+  `~/.bashrc` は触らない・`~/unitree_sdk2_python` は `.pth` でつなぐだけ。DDS の C の部品は機械全体の
+  `/usr/local`（0.10.2。Python 3.8 側もこれで動いている）を使い、`~/cyclonedds`（0.10.5）は使わない。
+  部品の版は OMEN の動いている環境から作った `pc2/tv_constraints.txt` に固定。手の部品（dex-retargeting）は入れない
+  （torch と pip の pin を引き込み、conda の pinocchio とぶつかる。手なしでは読み込まれない）
+- 記録（data.json）の左右の腕には、角度に加えて速さ（qvel）と推定トルク（torque＝tau_est）が入る（修正 `record-arm-effort`、10-27）。`check-ep` が左右別に動きの合計・速さとトルクの最大（関節つき）・上限への張り付きを出す
+- `pc2/ik_bench.py`: 腕の逆運動学の時間を機体なしで測る（OMEN では中央 1.1 ms・95% 1.3 ms、2026-10-27）
