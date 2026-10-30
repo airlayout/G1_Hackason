@@ -88,6 +88,20 @@ class J1RgbdCamera:
     def close(self):
         self.source.close()
 
+    def poll(self):
+        """制御ループから待機せず、新しい撮影時刻のフレームだけを取得する。"""
+        frame = self.source.read_rgbd(timeout_ms=0)
+        if frame is None:
+            return None
+        self.validate_frame(frame)
+        age = time.time()-frame.timestamp
+        if age < -.05:
+            raise RuntimeError("RGB-Dの撮影時刻が未来です")
+        if (age > self.max_age_s or frame.frame_id <= self.last_id or frame.timestamp <= self.last_timestamp):
+            return None
+        self.last_id,self.last_timestamp,self.last = frame.frame_id,frame.timestamp,frame
+        return frame,time.monotonic()-max(0.,age)
+
     @staticmethod
     def validate_frame(frame):
         intr = frame.intrinsics

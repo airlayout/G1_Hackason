@@ -1,0 +1,62 @@
+{
+  "about": "ラボのエレベーター（2026-10-15、スマホ）の写真を幅 640 に縮め、ボタンの周り ±60 px を切り出したもの。点灯の判定（_lit_level）の回帰テスト用。kind: lit=▼ が点灯（縁の輪が光る）、unlit=消灯、glint=消灯だが金属面が反射で白い。bbox は切り出しの中の、YOLO が見つけた枠。 この実機用テストには5枚を抜粋。撮影条件の異なる写真の比較であり、同一試行の前後画像ではない。",
+  "cases": [
+    {
+      "file": "lit_0951_down.png",
+      "kind": "lit",
+      "frame": "IMG_0951",
+      "bbox": [
+        60,
+        60,
+        92,
+        90
+      ]
+    },
+    {
+      "file": "lit_0952_down.png",
+      "kind": "lit",
+      "frame": "IMG_0952",
+      "bbox": [
+        60,
+        60,
+        93,
+        93
+      ]
+    },
+    {
+      "file": "unlit_0929_down.png",
+      "kind": "unlit",
+      "frame": "IMG_0929",
+      "bbox": [
+        60,
+        60,
+        87,
+        85
+      ]
+    },
+    {
+      "file": "unlit_0944_down.png",
+      "kind": "unlit",
+      "frame": "IMG_0944",
+      "bbox": [
+        60,
+        60,
+        81,
+        74
+      ]
+    },
+    {
+      "file": "glint_0975_down.png",
+      "kind": "glint",
+      "frame": "IMG_0975",
+      "bbox": [
+        60,
+        60,
+        92,
+        92
+      ]
+    }
+  ],
+  "source_commit": "72451a9",
+  "source_path": "Button_Press/J1-gen/tests/data/lab_elevator"
+}

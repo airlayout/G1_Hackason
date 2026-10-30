@@ -70,3 +70,24 @@ def test_visual_confirmation_failure_still_returns_arm_home(monkeypatch, tmp_pat
     assert report["visual_success"] is None
     assert report["physical_push_success"] is False
     assert report["verification_error"] == "対象消失"
+
+
+def test_loss_before_push_reverses_approach_and_returns_home(monkeypatch, tmp_path):
+    model = os.environ.get('G1_MUJOCO_MODEL')
+    if not model:
+        pytest.skip('G1_MUJOCO_MODELを指定してください')
+    from run_bottle_mujoco import main
+    from bottle import BottleLocalizer
+    original = BottleLocalizer.observe
+    def lose_on_remeasurement(self, *args, **kwargs):
+        if self.measurements:
+            raise RuntimeError('接近後の対象消失')
+        return original(self,*args,**kwargs)
+    monkeypatch.setattr(BottleLocalizer,'observe',lose_on_remeasurement)
+    output = tmp_path/'lost_before_push.json'
+    assert main(['--model',model,'--detector','oracle','--report-out',str(output)]) == 1
+    report = json.loads(output.read_text())
+    assert report['error'] == '接近後の対象消失'
+    assert report['home_completed'] and report['release_completed']
+    assert not report['motion_completed']
+    assert report['evaluation']['max_unwanted_table_force_n'] < .1

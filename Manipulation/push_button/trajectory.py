@@ -31,6 +31,8 @@ ARM_JOINTS = (
     "right_wrist_pitch_joint",
     "right_wrist_yaw_joint",
 )
+# Menagerie g1_29dof_rev_1_0 の jnt_actfrcrange [Nm]。SDK側も追加依存なしで検査する。
+ARM_TORQUE_LIMITS_NM = (25.0, 25.0, 25.0, 25.0, 25.0, 5.0, 5.0)
 PHASES = ("approach", "contact", "press", "retract", "home")
 DEFAULT_DURATIONS = {
     "approach": 4.0,
@@ -62,6 +64,19 @@ def validate_arm_q(values: object) -> tuple[float, ...]:
     for name, q, (lower, upper) in zip(ARM_JOINTS, result, JOINT_LIMITS):
         if not math.isfinite(q) or not lower + 0.02 <= q <= upper - 0.02:
             raise ValueError(f"{name} が関節範囲外です: {q}")
+    return result
+
+
+def validate_arm_tau(values: object) -> tuple[float, ...]:
+    if not isinstance(values, (list, tuple)) or len(values) != 7:
+        raise ValueError("右腕のトルクは7個必要です")
+    try:
+        result = tuple(float(value) for value in values)
+    except (TypeError, ValueError) as error:
+        raise ValueError("トルクは数値で指定してください") from error
+    for name, tau, limit in zip(ARM_JOINTS, result, ARM_TORQUE_LIMITS_NM):
+        if not math.isfinite(tau) or abs(tau) > limit:
+            raise ValueError(f"{name} のトルクが上限外です: {tau}")
     return result
 
 

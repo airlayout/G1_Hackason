@@ -21,7 +21,8 @@ git -C _local/bottle_push/menagerie sparse-checkout set unitree_g1
 COCO学習済み `yolo26n.pt` の `bottle` クラスだけを検出する。
 既定はリポジトリ直下にある同名の重み。無い場合はUltralytics経由で公式から取得する。
 `--weights /path/to/model.pt` でローカルの重みも指定できる。クラス名 `bottle` が必要。
-信頼度は既定0.25、`--device auto|cpu|cuda` は既存検出器に渡す。
+信頼度は既定0.25、ボトルの入力サイズは既定960（`--detector-imgsz`、32の倍数）。
+`--device auto|cpu|cuda` は既存検出器に渡す。共通検出器の既定640は変更しない。
 
 ## MuJoCoで実行
 
@@ -90,19 +91,46 @@ python Manipulation/push_button/real/run_push.py --task bottle \
 `real/align_button.py` の引数（`--weights`・`--stroke` 等）を渡す。
 実機接触試験は今回実施していない。
 
+### 任意の重力補償と台基準の追跡
+
+`--gravity-scale 0..1` は右腕7軸へ送る重力補償の倍率。既定0で、
+校正済みrealistic評価では明示的に1を指定する。計測関節角・IMUのroll/pitchを
+画像処理と独立したMuJoCoモデルへ入れ、重力項を求める。
+kp=40（手首15）、kd=1.5は維持し、有効化・解除で補償も増減する。
+軸別トルク上限は25/25/25/25/25/5/5Nm。解除完了時にはトルクも0にする。
+SDK側のPythonにはMuJoCo・NumPy・SciPyは不要。画像処理側に依存を入れる。
+トルクを渡す場合は新しい腕ブリッジが必要で、未対応サーバーへの接続は解除して中止する。
+
+追加の切り分け用オプションは次のとおり。実機側では両方とも既定無効。
+
+- `--dynamics-feedforward`: 重力補償とともに、公称モデルの摩擦とkd×指令速度も補う。
+  シミュレーションで生じた移動中の遅れへの対策。モータばらつきの真値は使わない。
+- `--track-table`: 校正済みRGB-Dの台面・直交する二辺から機体の並進を求める。
+  撮影時の関節角・IMUを状態履歴から補間し、現在のIMUと組み合わせる。
+  台高・台範囲・カメラ外部パラメータの実測値が前提。二辺が見えない計測は棄却し、
+  新しい機体位置を0.5秒以内に得られなければ押し動作を止める。
+
+これらは静止再現で確認した重力補償だけでは残った移動遅れ・機体の揺れへの追加対策。
+実機の頭カメラで台の二辺が見えるか、自由立位、実測校正の妥当性は未検証。
+
 ## 計測・動作・結果
 
 1. YOLO枠内の深度を床基準へ変換し、接触高さ付近の胴体を鉛直円筒として推定する。
    台・キャップ・背景を除外し、深度欠損・曲面不足・背景混入は拒否する。
 2. 撮影時刻とIDが異なる新しい3枚で位置ばらつき4mm以内を確認する。
    計測は取得時と推論後に0.5秒以内の鮮度を検査する。
-3. 全段階と復帰の経路を事前検査し、台の手前で腕を持ち上げてから5cm手前へ接近する。
-   接近後に一度だけ、新しい3枚で再計測する。
+3. 全段階と復帰の経路を事前検査し、接触直前から押し終点までは5mm以下に分割する。
+   直前の解を次の初期値に使い、位置0.1mm・方向10度・関節限界・衝突検査を維持する。
+   台の手前で腕を持ち上げてから5cm手前へ接近し、新しい3枚で再計測して経路を再検査する。
 4. 以降は目標を固定し、FKを使って連続接近・押し動作を行う。
-   接近は最大25mm/s、押す間は最大5mm/s、関節速度0.8rad/s・加速度2rad/s²。
+   接近は最大10mm/s、押す間は最大4mm/s、関節速度0.8rad/s・加速度2rad/s²。
+   7軸の速度・加速度・関節範囲を同時に制約した手先速度制御を使う。
    横・高さのFK誤差だけを最大5mm補償し、ボトル中心線から8mmを超えたら中止する。
 5. 元の手前位置へ後退して手を横へ退避し、予測移動先の同じボトルを新しい3枚で再認識する。
    移動誤差は前方・左右各1cm以内。未確認でも腕の復帰を試み、成功には数えない。
+6. 接近後・押す前の失敗では、実測姿勢から記録経路への接続を検査し、正常な状態でだけ
+   接近経路を逆順に戻す。押した後は後退・持ち上げ・homeを使う。
+   通信・姿勢監視異常では追加動作を中止して解除する。
 
 透明容器などで深度が得られなければ押さない。
 `bottle` クラスは材質を判別しないため、対象にはペットボトルを配置する。
@@ -116,6 +144,50 @@ JSONは `motion_completed`（押す動作）、`home_completed`（復帰）、
 実機の `physical_push_success` は常に `null`。模擬環境では物理評価を記録する。
 動作と画像確認の両方を満たした場合だけ終了コード0。
 引数・初期化エラーは2、動作・検証失敗は1、中断は130。
+`retreat_completed`・`release_completed`、失敗理由・復帰エラー・解除エラーも個別に保存する。
+認識ログは未検出・深度/幾何棄却・不安定・鮮度超過・取得期限超過を区別する。
+
+## 校正済みrealistic評価
+
+```bash
+MUJOCO_GL=egl OPENBLAS_NUM_THREADS=2 OMP_NUM_THREADS=2 \
+python Manipulation/push_button/sim/run_realistic_bottle.py \
+  --seeds 0 1 2 3 4 --gravity-scale 1 --detector-imgsz 960 \
+  --out _local/bottle_push/calibrated_new
+
+MUJOCO_GL=egl OPENBLAS_NUM_THREADS=2 OMP_NUM_THREADS=2 \
+python Manipulation/push_button/sim/run_realistic_bottle.py \
+  --seeds {100..119} --min-successes 18 --out _local/bottle_push/holdout_new
+
+# 異常試験。誤校正は相応する不確かさを校正JSONへ入れ、腕有効化前に拒否する。
+python Manipulation/push_button/sim/run_realistic_bottle.py \
+  --seeds 0 --profile miscalibrated --out _local/bottle_push/miscalibration_new
+# --fault target-loss|stale-images|unreachable|state-disconnect も指定できる。
+```
+
+出力先は毎回新しくする。既存結果を上書きしない。
+元の5試行は `_local/bottle_push/realistic_20261030/batch_02/` に保存したまま。
+評価条件はYadaのseed付きノイズ・遅延・モータばらつき・機体揺れを使い、
+`calibrated`では合成した取付誤差を外部パラメータへ反映する。
+`uncalibrated`は誤差を未反映、`miscalibrated`は位置不確かさ50mmを入力する異常試験。
+
+実機入口の認識・IK・補間・監視条件・トルク・解除を使い、DDS・カメラ通信はプロセス内で置換する。
+RGB-Dのワイヤ形式と鮮度検査は通すが、実ネットワークや実スレッドの検証ではない。
+評価では台追跡と動的補償も有効。`--no-track-table`・`--no-dynamics-feedforward`で個別に比較できる。
+`--gravity-scale 0`・`--detector-imgsz 640`・`--preview-step-m 1`も切り分け用に使える。
+推論・深度推定・IK・衝突検査・台追跡・制約付き手先速度計算の実測時間だけ物理を進める。
+描画の実時間はセンサ生成のコストなので遅延へ加えない。
+
+各seedにはRGB-Dパケットと撮影時の関節・IMU、50Hzの指令・トルク・状態、
+IK残差、処理時間、認識の棄却理由、真値による評価を保存する。
+実行ソースのコピー・ハッシュ、モデル・重みのハッシュ、引数はmanifestに保存する。
+真値の位置・接触力は評価専用。台基準の推定はRGB-Dだけを使う。
+合格には5cm±1cm、横ずれ1cm以内、最終傾き15度以内、画像確認、home誤差0.05rad以内、
+不要な腕・台・自己接触0.1N未満、制御重み・トルク0までの解除がすべて必要。
+固定骨盤の理想試験と異なり、自由立位は6軸の支持サーボで近似している。
+
+2026-10-30時点の実装・中断時の試験結果・未達条件は
+[REALISTIC_RESULTS_20261030.md](REALISTIC_RESULTS_20261030.md) を参照。
 
 ## 検証
 

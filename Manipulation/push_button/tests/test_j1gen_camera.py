@@ -68,7 +68,7 @@ def fake_receiver(monkeypatch, frames):
         def close(self):
             self.closed = True
 
-        def read_rgbd(self):
+        def read_rgbd(self, timeout_ms=None):
             clock.advance()
             return pending.popleft() if pending else None
 
@@ -110,6 +110,15 @@ def test_unsynchronized_future_timestamp_aborts(monkeypatch, runtime):
         camera.close()
 
 
+def test_nonblocking_poll_rejects_duplicate_and_stale_frames(monkeypatch,runtime):
+    fake,_=fake_receiver(monkeypatch,[frame(runtime,100.1,1),frame(runtime,100.1,1),frame(runtime,99.,2)])
+    camera=J1RgbdCamera(fake)
+    assert camera.poll()[0].frame_id==1
+    assert camera.poll() is None
+    assert camera.poll() is None
+    assert camera.poll() is None
+
+
 def test_live_localizer_keeps_bgr_depth_scale_and_three_frame_policy(monkeypatch, runtime):
     frames = [frame(runtime, 100.31, 1, scale=0.00025),
               frame(runtime, 100.32, 2, scale=0.00025),
@@ -139,8 +148,45 @@ def test_live_localizer_keeps_bgr_depth_scale_and_three_frame_policy(monkeypatch
         np.testing.assert_allclose(observation.target.face_xyz, [0.35, -0.25, 1.0], atol=1e-6)
         np.testing.assert_allclose(observation.target.press_direction, [1, 0, 0], atol=1e-6)
         assert localizer.last_frame.frame_id == 3
+        assert localizer.last_lamp_frame.frame_id == 3
+        assert localizer.last_bbox == (300, 160, 340, 200)
+        np.testing.assert_array_equal(localizer.last_lamp_frame.image, localizer.last_frame.color_bgr)
     finally:
         localizer.close()
+
+
+@pytest.mark.parametrize("candidates, accepted", [(1, True), (0, False), (2, False)])
+def test_lamp_reidentifies_unique_target_without_updating_press_goal(monkeypatch, runtime, candidates, accepted):
+    from alignment import TargetTracker
+    from vision import ButtonTarget
+
+    clock = SimpleNamespace(t=10.0)
+    localizer = localize_button.RgbdLocalizer.__new__(localize_button.RgbdLocalizer)
+    localizer.tracker = TargetTracker()
+    localizer.tracker.previous = np.array([0.35, -0.25, 1.0])
+    initial = localizer.tracker.previous.copy()
+
+    class Camera:
+        max_age_s = 0.5
+
+        def read_after(self, after, deadline):
+            clock.t += 0.05
+            f = frame(runtime, 100+clock.t, int(clock.t*100))
+            return f, clock.t
+
+    localizer.camera = Camera()
+    target = ButtonTarget(tuple(initial+[0.001, 0, 0]), (1, 0, 0), 0.5, 1, 1)
+    localizer._candidates = lambda f: [(target, (300, 160, 340, 200))]*candidates
+    monkeypatch.setattr(localize_button, "time", SimpleNamespace(monotonic=lambda: clock.t, time=lambda: 100+clock.t))
+    iterator = localizer.lamp_frames(after=10.0, timeout_s=0.2)
+    if accepted:
+        sample = next(iterator)
+        assert sample.captured_at > 10.0
+        assert sample.bbox == (300, 160, 340, 200)
+    else:
+        with pytest.raises(RuntimeError, match="点灯確認"):
+            next(iterator)
+    np.testing.assert_array_equal(localizer.tracker.previous, initial)
 
 
 def test_real_zmq_accepts_j1gen_wire_format_with_videohub_resolution(monkeypatch, runtime, tmp_path):

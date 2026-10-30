@@ -19,7 +19,11 @@ class YoloDetector:
         classes: list[str] | None = None,
         confidence_threshold: float = 0.5,
         device: str = "auto",
+        imgsz: int = 640,
     ) -> None:
+        if not isinstance(imgsz, int) or imgsz <= 0 or imgsz % 32:
+            raise ValueError("imgszは32の正の倍数が必要です")
+        self._imgsz = imgsz
         self._confidence_threshold = confidence_threshold
         self._device = self._resolve_device(device)
 
@@ -58,6 +62,7 @@ class YoloDetector:
             conf=self._confidence_threshold,
             device=self._device,
             verbose=False,
+            imgsz=self._imgsz,
         )
 
         detections: list[Detection] = []

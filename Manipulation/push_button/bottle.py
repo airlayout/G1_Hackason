@@ -10,9 +10,11 @@ import math
 
 import numpy as np
 
-from alignment import (ContinuousNormalController, JointCommandFilter,
+from alignment import (ContinuousNormalController,
                        SmoothNormalSettings, run_continuous_normal)
 from vision import CameraIntrinsics, _points
+from return_path import validate_return_path
+from cartesian import CartesianJointController
 
 
 DEFAULT_TABLE_BOUNDS = (0.20, 0.85, -0.60, 0.02)
@@ -51,6 +53,11 @@ def add_bottle_arguments(parser, *, simulation=False):
     parser.add_argument("--weights", default=None, help="ボトル用YOLO重み。既定: yolo26n.pt (無ければ公式から取得)")
     parser.add_argument("--confidence", type=float, default=0.25)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--detector-imgsz", type=int, default=960, help="YOLO入力サイズ（32の正の倍数）")
+    if not simulation:
+        parser.add_argument("--gravity-scale", type=float, default=0.0, help="右腕の重力補償倍率（0〜1、既定は無効）")
+        parser.add_argument("--track-table", action="store_true", help="台面と二辺のRGB-Dから機体の並進を追跡する")
+        parser.add_argument("--dynamics-feedforward",action="store_true",help="重力補償と併せて公称の摩擦・速度補償も使う")
     parser.add_argument("--push-distance", type=float, default=0.05, help="前方への移動距離[m] (0より大きく0.10以下)")
     parser.add_argument("--table-height", type=float, default=0.75 if simulation else None,
                         required=not simulation, help="床基準の台上面高さ[m]")
@@ -64,11 +71,16 @@ def add_bottle_arguments(parser, *, simulation=False):
 def settings_from_args(args):
     if not np.isfinite(args.confidence) or not 0 < args.confidence < 1:
         raise ValueError("confidenceは0～1の間が必要です")
+    if args.detector_imgsz <= 0 or args.detector_imgsz % 32:
+        raise ValueError("detector-imgszは32の正の倍数が必要です")
+    scale = getattr(args, "gravity_scale", 0.0)
+    if not np.isfinite(scale) or not 0 <= scale <= 1:
+        raise ValueError("gravity-scaleは0〜1が必要です")
     return BottleSettings(args.table_height, args.push_distance, args.contact_height,
                           args.clearance, tuple(args.table_bounds))
 
 
-def make_bottle_detector(weights=None, confidence=0.25, device="auto", *, runtime=None):
+def make_bottle_detector(weights=None, confidence=0.25, device="auto", *, runtime=None, imgsz=960):
     # J1-genとPerceptionのcommonパッケージ名を衝突させない。
     from real.j1gen_camera import J1CameraRuntime
 
@@ -76,7 +88,7 @@ def make_bottle_detector(weights=None, confidence=0.25, device="auto", *, runtim
     detector = runtime.module("perception_bridge").perception("detector.yolo_detector").YoloDetector
     local = Path(__file__).resolve().parents[2] / "yolo26n.pt"
     model = str(local) if weights is None and local.is_file() else (weights or "yolo26n.pt")
-    return detector(model_name=model, classes=["bottle"], confidence_threshold=confidence, device=device)
+    return detector(model_name=model, classes=["bottle"], confidence_threshold=confidence, device=device, imgsz=imgsz)
 
 
 def add_table(root, settings):
@@ -222,6 +234,7 @@ class BottleLocalizer:
         self.measurements = []
         self.after_push = False
         self.rejections = Counter()
+        self.diagnostics = []
 
     def expect_translation(self):
         if self.previous is None:
@@ -234,15 +247,29 @@ class BottleLocalizer:
         deadline = after+timeout_s
         samples = deque(maxlen=3)
         while self.now() < deadline:
-            frame = self.read_frame(after, deadline)
+            try:
+                frame = self.read_frame(after, deadline)
+            except RuntimeError:
+                self.rejections["フレーム取得期限超過"] += 1
+                raise
             if (not np.isfinite(frame.captured_at) or frame.sequence <= self.last_sequence
                     or frame.captured_at <= max(after, self.last_capture)
                     or not 0 <= self.now()-frame.captured_at <= 0.5):
                 samples.clear()
+                self.rejections["古い時刻または重複フレーム"] += 1
                 continue
             self.last_capture, self.last_sequence = frame.captured_at, frame.sequence
             candidates = []
-            for detection in self.detector.detect(frame.color_bgr):
+            detections = self.detector.detect(frame.color_bgr)
+            row = {"sequence": frame.sequence, "captured_at_s": frame.captured_at,
+                   "age_before_fit_s": self.now()-frame.captured_at,
+                   "geometry_rejections": [], "targets": [],
+                   "detections": [{"class": d.class_name, "bbox": list(d.bbox),
+                                   "confidence": getattr(d, "confidence", None)} for d in detections]}
+            self.diagnostics.append(row)
+            if not any(d.class_name == "bottle" for d in detections):
+                self.rejections["ボトル未検出"] += 1
+            for detection in detections:
                 if detection.class_name != "bottle":
                     continue
                 if self.previous is None and self.target_pixel is not None:
@@ -255,8 +282,11 @@ class BottleLocalizer:
                                                     frame.transform, self.settings)
                     validate_bottle_target(target, self.settings, require_travel=not self.after_push)
                 except ValueError as exc:
+                    self.rejections["深度または対象幾何の棄却"] += 1
                     self.rejections[str(exc)] += 1
+                    row["geometry_rejections"].append(str(exc))
                     continue
+                row["targets"].append(asdict(target))
                 if self.previous is not None:
                     expected = self.expected_xy if self.expected_xy is not None else self.previous.center_xy
                     if (np.linalg.norm(np.array(target.center_xy)-expected) > 0.025
@@ -267,7 +297,10 @@ class BottleLocalizer:
             # 推論後にも鮮度検査。古い画像を3枚の安定計測へ数えない。
             if not 0 <= self.now()-frame.captured_at <= 0.5:
                 samples.clear()
+                self.rejections["処理後の画像鮮度超過"] += 1
                 continue
+            row["candidate_count"] = len(candidates)
+            row["age_after_fit_s"] = self.now()-frame.captured_at
             if len(candidates) > 1:
                 raise ValueError("ボトルを一意に選べません。--target-pixelを指定してください")
             if not candidates:
@@ -280,6 +313,7 @@ class BottleLocalizer:
                 center = np.median(positions, axis=0)
                 if (np.max(np.linalg.norm(positions-center, axis=1)) > 0.004
                         or np.ptp([s.radius_m for s in samples]) > 0.003):
+                    self.rejections["フレーム間の位置または半径が不安定"] += 1
                     continue
                 radius = float(np.median([s.radius_m for s in samples]))
                 stable = replace(samples[-1], center_xy=tuple(center), radius_m=radius,
@@ -289,6 +323,7 @@ class BottleLocalizer:
                 self.measurements.append({"captured_at_s": frame.captured_at, "sequence": frame.sequence,
                                           "after_push": self.after_push, "target": asdict(stable)})
                 return obs
+        self.rejections["安定計測の期限超過"] += 1
         raise RuntimeError("安定した新しい3フレームのボトル計測を取得できません（対象消失・深度・鮮度を確認）")
 
 
@@ -296,15 +331,18 @@ class BottlePushRoutine:
     """motionは既存のArmMotionと同じAPI。シミュレーションも同じ制御を通る。"""
 
     def __init__(self, kin, motion, localizer, refresh, now, settings, tip_radius,
-                 position_uncertainty_m=0.):
+                 position_uncertainty_m=0., *, tracking_check=None):
         self.kin, self.motion, self.localizer = kin, motion, localizer
         self.refresh, self.now, self.settings = refresh, now, settings
         self.radius = tip_radius
+        self.preview_step_m = 0.005
         self.position_uncertainty_m = position_uncertainty_m
+        self.tracking_check = tracking_check
         self.report = {"schema": "g1-bottle-push-v1", "task": "bottle", "settings": asdict(settings),
                        "completed": False, "motion_completed": False, "home_completed": False,
                        "visual_success": None, "measured_displacement_m": None,
                        "physical_push_success": None, "phases": [], "normal_steps": []}
+        self.report.update(retreat_completed=False, release_completed=False, ik_checks=[])
 
     def move(self, xyz, face, duration=2., contact=False):
         self.refresh()
@@ -339,29 +377,121 @@ class BottlePushRoutine:
                                  ("contact", -0.003), ("push", self.settings.push_distance),
                                  ("retract", -self.settings.clearance), ("return_raise", None)):
                 xyz = self.raised_point(face) if offset is None else face + (offset-self.radius)*FORWARD
-                goal = self.kin.solve(xyz, FORWARD).joint_angles
-                self.kin.validate_path(goal, face, FORWARD, name in ("push", "retract"))
+                start = self.kin.tip_position()
+                count = max(1, math.ceil(np.linalg.norm(xyz-start)/self.preview_step_m)) if name == "push" else 1
+                for point in np.linspace(start, xyz, count+1)[1:]:
+                    solution = self.kin.solve(point, FORWARD)
+                    goal = solution.joint_angles
+                    self.kin.validate_path(goal, face, FORWARD, name in ("push", "retract"))
+                    self.report["ik_checks"].append({"phase": name, "target_xyz_m": point.tolist(),
+                        "position_error_m": solution.position_error_m, "axis_error_deg": solution.axis_error_deg,
+                        "min_joint_margin_rad": solution.min_joint_margin_rad})
+                    q = self.kin.data.qpos.copy()
+                    q[self.kin.qadr] = goal
+                    self.kin.update(q)
                 poses[name] = goal.tolist()
-                q = self.kin.data.qpos.copy()
-                q[self.kin.qadr] = goal
-                self.kin.update(q)
-            self.kin.validate_path(original[self.kin.qadr])
-            poses["home"] = original[self.kin.qadr].tolist()
+            home = np.array(self.motion.home) if self.motion is not None else original[self.kin.qadr]
+            self.kin.validate_path(home)
+            poses["home"] = home.tolist()
         finally:
             self.kin.update(original)
         return {"schema": "g1-bottle-preview-v1", "task": "bottle", "settings": asdict(self.settings),
                 "target": asdict(observation.target), "poses": poses,
                 "requires_mid_approach_remeasurement": True, "physical_push_success": None}
 
+    def check_home(self):
+        self.refresh()
+        if np.max(np.abs(self.kin.data.qpos[self.kin.qadr]-self.motion.home)) > 0.05:
+            raise ValueError("腕が初期姿勢へ復帰していません")
+        self.report["home_completed"] = True
+
+    def return_after_contact(self, face):
+        self.phase("retract")
+        self.move(face-(self.radius+self.settings.clearance)*FORWARD, face, contact=True)
+        self.report["retreat_completed"] = True
+        self.move(self.raised_point(face), face, 3.)
+
+    def return_home(self):
+        self.phase("home")
+        self.refresh()
+        self.kin.validate_path(self.motion.home)
+        delta = np.max(np.abs(np.array(self.motion.home)-self.motion.current_target()))
+        self.motion.move(self.motion.home, max(4., math.sqrt(6*delta/2.)), settle_s=0.3)
+        self.check_home()
+
+    def settle_before_push(self, face, settings):
+        """停止後の1サンプルだけでなく、実測TCPの収束を確認してから接触へ進む。"""
+        goal = face-(self.radius+self.settings.clearance)*FORWARD
+        controller = CartesianJointController(self.motion.current_target(), settings)
+        started = previous = self.now()
+        correction = np.zeros(3)
+        settled = 0
+        rows = self.report.setdefault('alignment_steps', [])
+        while self.now()-started < 8.:
+            self.refresh()
+            self.motion.check()
+            if self.tracking_check is not None:
+                self.tracking_check()
+            stamp = self.now()
+            dt = settings.period_s if not rows else stamp-previous
+            previous = stamp
+            error = goal-self.kin.tip_position()
+            if np.linalg.norm(error) > .008:
+                raise ValueError('ボトル手前のFK位置合わせ誤差が8mmを超えました')
+            settled = settled+1 if np.linalg.norm(error) <= .003 else 0
+            if settled >= 3:
+                return controller
+            correction += 2.*dt*error
+            size = np.linalg.norm(correction)
+            if size > .005:
+                correction *= .005/size
+            target = goal+correction
+            if np.linalg.norm(target-self.kin.tip_position()) > .01:
+                raise ValueError('手先の指令と実測の差が1cmを超えました')
+            joints = controller.next_goal(self.kin, target, FORWARD, dt)
+            self.kin.validate_path(joints, face, FORWARD)
+            self.motion.stream(joints, velocity=controller.velocity)
+            rows.append({'time_s': stamp, 'error_xyz_m': error.tolist(),
+                         'command_xyz_m': target.tolist(), **controller.diagnostics})
+            self.motion.wait(max(.002, settings.period_s-(self.now()-stamp)))
+        raise ValueError('接触前のFK位置合わせが制限時間内に収束しません')
+
+    def reverse_approach(self, face):
+        self.phase("abort_return")
+        self.refresh()
+        self.motion.check()
+        path = self.motion.approach
+        if len(path.samples) == 1:
+            self.check_home()
+            return
+        if not path.frozen:
+            self.motion.freeze_approach()
+        targets = path.reversed_targets()
+        validate_return_path(self.kin, targets, face, FORWARD)
+        delta = np.max(np.abs(np.array(targets[0])-self.kin.data.qpos[self.kin.qadr]))
+        self.motion.move(targets[0], max(0.3, 1.5*delta/0.8, math.sqrt(6*delta/2.)), settle_s=0.3)
+
+        def validate(goal):
+            self.refresh()
+            self.kin.validate_path(np.asarray(goal), face, FORWARD)
+
+        self.motion.replay(targets, validate)
+        self.motion.wait(0.3)
+        self.check_home()
+        self.report["retreat_completed"] = True
+
     def execute(self):
         started = self.now()
         face = None
+        enabled = pushing = False
         try:
             self.phase("measure")
             first = self.localizer.observe()
             self.preview(first)  # 腕を有効化する前に全段階と復帰経路を検査する。
             face = self.check_observation(first)
             self.motion.enable()
+            enabled = True
+            self.motion.start_approach()
             self.phase("approach")
             self.move(self.raised_point(face), face, 4.)
             self.move(face-(self.radius+0.10)*FORWARD, face, 4.)
@@ -370,21 +500,42 @@ class BottlePushRoutine:
             observation = self.localizer.observe()
             face = self.check_observation(observation)
             before = np.array(observation.target.center_xy)
+            self.preview(observation)
             self.move(face-(self.radius+self.settings.clearance)*FORWARD, face)
             self.refresh()
-            if np.linalg.norm(self.kin.tip_position()-(face-(self.radius+self.settings.clearance)*FORWARD)) > 0.008:
+            alignment_error = self.kin.tip_position()-(face-(self.radius+self.settings.clearance)*FORWARD)
+            self.report["alignment_error_xyz_m"] = alignment_error.tolist()
+            if np.linalg.norm(alignment_error) > 0.008:
                 raise ValueError("ボトル手前のFK位置合わせ誤差が8mmを超えました")
+            # ボトルは5cm±1cmで評価する。ノイズのあるFKにボタン用0.1mmの
+            # 静止精度を要求せず、終点の1.5mm手前から低速停止を確認する。
+            settings = SmoothNormalSettings(approach_speed_m_s=0.01, press_speed_m_s=0.004,
+                                            completion_tolerance_m=0.0015, completion_hold_s=0.04)
+            joint_filter = self.settle_before_push(face, settings)
+            self.motion.freeze_approach()
+            pushing = True
             self.phase("push")
-            settings = SmoothNormalSettings(press_speed_m_s=0.005, completion_tolerance_m=0.0005)
+            initial_command = self.kin.tip_position()
+            # 法線方向は実測位置から開始し、横・高さは実際に送る中心線指令と
+            # 一致させる。鮮度監視の指令差に古い横位置を残さない。
+            initial_command[1:] = face[1:]
             servo = ContinuousNormalController(face, FORWARD, self.radius, self.settings.push_distance,
-                                                face-(self.radius+self.settings.clearance)*FORWARD, settings,
-                                                travel_validator=validate_push_distance)
-            joint_filter = JointCommandFilter(self.motion.current_target(), settings)
+                                                initial_command, settings,
+                                                travel_validator=validate_push_distance,
+                                                position_gain=.8, tracking_lead_m=.007, latch_completion=True)
             lateral_correction = np.zeros(3)
+            command_diagnostics = {}
 
             def read_tip():
                 self.refresh()
-                return self.kin.tip_position()
+                if self.tracking_check is not None:
+                    self.tracking_check()
+                tip = self.kin.tip_position()
+                self.report['last_control_state'] = {'time_s':self.now(),'tip_xyz_m':tip.tolist(),
+                    'base_transform':self.kin.body_transform('pelvis').tolist(),
+                    'motor_q_rad':self.kin.data.qpos.tolist(),
+                    'command_xyz_m':servo.command_xyz.tolist()}
+                return tip
 
             def send_goal(xyz, dt, phase):
                 # 画像の目標は固定し、重力で生じる横・高さのFK誤差だけを補償する。
@@ -397,19 +548,25 @@ class BottlePushRoutine:
                 size = np.linalg.norm(lateral_correction)
                 if size > 0.005:
                     lateral_correction[:] *= 0.005/size
-                solution = self.kin.solve(xyz+lateral_correction, FORWARD)
-                goal = joint_filter.next_goal(solution.joint_angles, dt)
-                self.kin.validate_path(goal, face, FORWARD, phase == "press")
-                self.motion.stream(goal)
+                centerline_goal = np.asarray(xyz).copy()
+                centerline_goal[1:] = face[1:]
+                goal = joint_filter.next_goal(self.kin,centerline_goal+lateral_correction,FORWARD,dt)
+                command_diagnostics.update(joint_filter.diagnostics,
+                    lateral_correction_m=lateral_correction.tolist())
+                # 追従差の範囲内で実測TCPが先に接触域へ入った場合も、
+                # 許可する接触は手先球だけ。腕・台・自己衝突の検査は継続する。
+                near_contact = servo.penetration(self.kin.tip_position()) >= -.003
+                self.kin.validate_path(goal, face, FORWARD, phase == "press" or near_contact)
+                self.motion.stream(goal,velocity=joint_filter.velocity)
                 return goal
 
+            def record_step(row):
+                self.report["normal_steps"].append(dict(row, **command_diagnostics))
+
             self.report["normal_result"] = run_continuous_normal(
-                servo, self.now, self.motion.wait, read_tip, send_goal, 60., self.report["normal_steps"].append)
+                servo, self.now, self.motion.wait, read_tip, send_goal, 60., record_step)
             self.report["motion_completed"] = True
-            self.phase("retract")
-            self.move(face-(self.radius+self.settings.clearance)*FORWARD, face, contact=True)
-            # 再認識の前に手を横へ退避させ、対象付近から腕を除く。
-            self.move(self.raised_point(face), face, 3.)
+            self.return_after_contact(face)
             self.phase("verify")
             self.localizer.expect_translation()
             try:
@@ -423,27 +580,25 @@ class BottlePushRoutine:
                     self.report["verification_error"] = "画像で確認したボトルの移動量が許容範囲外です"
             except (ValueError, RuntimeError) as exc:
                 self.report["verification_error"] = str(exc)
-            self.phase("home")
-            self.refresh()
-            self.kin.validate_path(self.motion.home)
-            delta = np.max(np.abs(np.array(self.motion.home)-self.motion.current_target()))
-            self.motion.move(self.motion.home, max(4., math.sqrt(6*delta/2.)), settle_s=0.3)
-            self.refresh()
-            if np.max(np.abs(self.kin.data.qpos[self.kin.qadr]-self.motion.home)) > 0.05:
-                raise ValueError("腕が初期姿勢へ復帰していません")
-            self.report["home_completed"] = True
+            self.return_home()
             self.report["completed"] = True
             self.phase("done")
         except Exception as exc:
             self.report["error"] = str(exc)
-            if face is not None:
+            if face is not None and enabled:
                 try:
-                    self.phase("abort_retract")
-                    self.move(face-(self.radius+self.settings.clearance)*FORWARD, face, contact=True)
+                    self.refresh()
+                    self.motion.check()
+                    if not pushing:
+                        self.reverse_approach(face)
+                    else:
+                        self.return_after_contact(face)
+                        self.return_home()
                 except Exception as retreat_error:
-                    self.report["retreat_error"] = str(retreat_error)
+                    self.report["recovery_error"] = str(retreat_error)
         finally:
             self.motion.close()
+            self.report["release_completed"] = not bool(self.motion.release_error)
             if self.motion.release_error:
                 self.report["release_error"] = self.motion.release_error
                 self.report["completed"] = False
@@ -451,4 +606,5 @@ class BottlePushRoutine:
             self.report["measurements"] = self.localizer.measurements
             self.report["measurement_count"] = len(self.localizer.measurements)
             self.report["perception_rejections"] = dict(self.localizer.rejections)
+            self.report["perception_frames"] = self.localizer.diagnostics
         return self.report

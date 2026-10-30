@@ -20,6 +20,7 @@ sys.path.insert(0, str(REPO_ROOT / "Perception"))
 from vision import (CameraIntrinsics, estimate_button_target,
                     validate_reachable_target)
 from alignment import TargetTracker
+from button_feedback import LampFrame
 from j1gen_camera import J1CameraRuntime, J1RgbdCamera, add_camera_arguments
 
 
@@ -51,9 +52,35 @@ class RgbdLocalizer:
         self.last_preview = None
         self.last_bbox = None
         self.last_frame = None
+        self.last_lamp_frame = None
 
     def close(self) -> None:
         self.camera.close()
+
+    def _candidates(self, frame):
+        transform = self.transform() if callable(self.transform) else self.transform
+        intr = frame.intrinsics
+        intrinsics = CameraIntrinsics(intr.fx, intr.fy, intr.cx, intr.cy)
+        depth_m = frame.depth_m()
+        candidates = []
+        for detection in self.detector.detect(frame.color_bgr):
+            if self.tracker.initial is None and self.target_pixel is not None:
+                u, v = self.target_pixel
+                x1, y1, x2, y2 = detection.bbox
+                if not x1 <= u <= x2 or not y1 <= v <= y2:
+                    continue
+            try:
+                target = estimate_button_target(depth_m, detection.bbox,
+                                                intrinsics, transform,
+                                                expected_face_xyz=self.tracker.previous)
+                validate_reachable_target(target)
+            except ValueError:
+                continue
+            if self.tracker.previous is not None and np.linalg.norm(
+                    np.array(target.face_xyz)-self.tracker.previous) > self.tracker.association_m:
+                continue
+            candidates.append((target, tuple(detection.bbox)))
+        return candidates
 
     def observe(self, timeout_s: float = 2.0):
         self.tracker.begin_measurement()
@@ -61,42 +88,40 @@ class RgbdLocalizer:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             frame, captured_at = self.camera.read_after(capture_after, deadline)
-            transform = self.transform() if callable(self.transform) else self.transform
-            intr = frame.intrinsics
-            intrinsics = CameraIntrinsics(intr.fx, intr.fy, intr.cx, intr.cy)
-            image, depth_m = frame.color_bgr, frame.depth_m()
-            candidates = []
-            for detection in self.detector.detect(image):
-                if self.tracker.initial is None and self.target_pixel is not None:
-                    u, v = self.target_pixel
-                    x1, y1, x2, y2 = detection.bbox
-                    if not x1 <= u <= x2 or not y1 <= v <= y2:
-                        continue
-                try:
-                    target = estimate_button_target(depth_m, detection.bbox,
-                                                    intrinsics, transform,
-                                                    expected_face_xyz=self.tracker.previous)
-                    validate_reachable_target(target)
-                except ValueError:
-                    continue
-                candidates.append(target)
+            candidates = self._candidates(frame)
             # 受信時には新しくても、推論に時間がかかった画像では動かさない。
             if time.monotonic() - captured_at > self.camera.max_age_s:
                 self.tracker.samples.clear()
                 continue
-            if self.tracker.previous is not None:
-                candidates = [t for t in candidates if np.linalg.norm(
-                    np.array(t.face_xyz) - self.tracker.previous) <= self.tracker.association_m]
             if not candidates:
                 self.tracker.samples.clear()
                 continue
-            observation = self.tracker.update(candidates, captured_at)
-            self.last_preview = image.copy()
+            observation = self.tracker.update([target for target, _ in candidates], captured_at)
+            self.last_preview = frame.color_bgr.copy()
             self.last_frame = frame
+            self.last_bbox = candidates[0][1]
+            self.last_lamp_frame = LampFrame(self.last_preview.copy(), self.last_bbox,
+                                             captured_at, frame.frame_id)
             if observation is not None:
                 return observation
         self.tracker.samples.clear()
         raise RuntimeError("安定した新しいRGB-D計測を取得できません")
+
+    def lamp_frames(self, after, timeout_s=2.0):
+        """再検出は確認のためだけに使い、押下目標・追跡位置を更新しない。"""
+        if self.tracker.previous is None:
+            raise RuntimeError("点灯確認の対象ボタンが確定していません")
+        capture_after = time.time()
+        deadline = time.monotonic()+timeout_s
+        while time.monotonic() < deadline:
+            frame, captured_at = self.camera.read_after(capture_after, deadline)
+            candidates = self._candidates(frame)
+            if (time.monotonic() >= deadline or captured_at <= after
+                    or time.monotonic()-captured_at > self.camera.max_age_s
+                    or len(candidates) != 1):
+                continue
+            yield LampFrame(frame.color_bgr.copy(), candidates[0][1], captured_at, frame.frame_id)
+        raise RuntimeError("対象ボタンの点灯確認用画像を取得できません")
 
 
 def main(argv=None) -> int:

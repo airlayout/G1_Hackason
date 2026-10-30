@@ -3,3 +3,4 @@
 mujoco>=3.3.7
 Pillow
 pytest
+scipy>=1.10

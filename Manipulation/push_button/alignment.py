@@ -402,7 +402,8 @@ class ContinuousNormalController:
     """法線方向に連続して進め、FK誤差から速度を調整する。撮影・区間停止は行わない。"""
 
     def __init__(self, face, normal, radius, stroke, command_xyz, settings=None,
-                 travel_validator=validate_button_stroke):
+                 travel_validator=validate_button_stroke, *, position_gain=3., velocity_feedback=0.,
+                 tracking_lead_m=None, latch_completion=False):
         self.settings = settings or SmoothNormalSettings()
         self.face, self.normal = np.asarray(face, dtype=float), np.asarray(normal, dtype=float)
         if (self.face.shape != (3,) or self.normal.shape != (3,)
@@ -417,6 +418,15 @@ class ContinuousNormalController:
         self.command_xyz = np.array(command_xyz, dtype=float).copy()
         self.velocity = 0.0
         self.settled_s = 0.0
+        if not np.isfinite(position_gain) or position_gain <= 0 or not np.isfinite(velocity_feedback) or velocity_feedback < 0:
+            raise ValueError("法線方向のフィードバック係数が不正です")
+        self.position_gain,self.velocity_feedback = position_gain,velocity_feedback
+        self.previous_penetration,self.measured_velocity = None,0.
+        if tracking_lead_m is not None and (not np.isfinite(tracking_lead_m) or not 0 < tracking_lead_m < .01):
+            raise ValueError("指令の先行量が不正です")
+        self.tracking_lead_m = tracking_lead_m
+        self.latch_completion = latch_completion
+        self.finishing = False
 
     def penetration(self, tip):
         tip = np.asarray(tip, dtype=float)
@@ -428,6 +438,10 @@ class ContinuousNormalController:
         if not np.isfinite(dt) or not 0 < dt <= 0.10:
             raise ValueError("連続押下の状態更新が遅すぎる、または時刻が不正です")
         penetration = self.penetration(tip)
+        if self.previous_penetration is not None and self.velocity_feedback:
+            measured = (penetration-self.previous_penetration)/dt
+            self.measured_velocity += dt/(.1+dt)*(measured-self.measured_velocity)
+        self.previous_penetration = penetration
         if penetration > self.stroke + self.overtravel_m:
             raise ValueError("手先の押込量が設定値を超えました")
         if np.linalg.norm(self.command_xyz - np.asarray(tip)) > 0.01:
@@ -442,9 +456,16 @@ class ContinuousNormalController:
             speed = float(np.interp(-penetration, [0.0, 0.005],
                                     [min(settings.press_speed_m_s, self.stroke / 2),
                                      settings.close_speed_m_s]))
-        desired_velocity = float(np.clip(3.0 * error, -speed, speed))
-        if abs(error) <= self.completion_tolerance_m:
-            desired_velocity = 0.0
+        desired_velocity = float(np.clip(self.position_gain*error-self.velocity_feedback*self.measured_velocity, -speed, speed))
+        if self.tracking_lead_m is not None and np.linalg.norm(self.command_xyz-np.asarray(tip)) >= self.tracking_lead_m:
+            desired_velocity = min(0.,desired_velocity)
+        if self.latch_completion and abs(error) <= self.completion_tolerance_m:
+            self.finishing = True
+        if self.finishing and abs(error) > 3*self.completion_tolerance_m:
+            self.finishing = False
+        if abs(error) <= self.completion_tolerance_m or self.finishing:
+            desired_velocity = (0. if self.finishing else
+                                float(np.clip(-self.velocity_feedback*self.measured_velocity,-speed,speed)))
             self.settled_s += dt
         else:
             self.settled_s = 0.0

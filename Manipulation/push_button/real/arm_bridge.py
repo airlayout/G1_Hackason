@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from push_button import ArmSdk
-from trajectory import validate_arm_q
+from trajectory import validate_arm_q, validate_arm_tau
 
 
 class ArmProxy:
@@ -59,9 +59,13 @@ class ArmProxy:
     def set_hold(self, current):
         self._rpc("hold", joints=list(current))
 
-    def publish(self, right, weight, require_fresh_state=True):
-        self._rpc("publish", joints=list(right), weight=weight)
+    def publish(self, right, weight, require_fresh_state=True, *, right_tau=None):
+        kwargs = {} if right_tau is None else {"right_tau": list(validate_arm_tau(right_tau))}
         self.weight = weight
+        result = self._rpc("publish", joints=list(right), weight=weight, **kwargs)
+        if right_tau is not None and result != {"torque_supported": True}:
+            self.release()
+            raise RuntimeError("腕ブリッジがトルク送信に未対応です。SDK側も更新してください")
 
     def release(self):
         if self.weight > 0:
@@ -132,7 +136,12 @@ def serve_connection(connection, arm, timeout_s=0.5):
                             allowed = 0.8 * (now-last_publish) + 0.005
                             if max(abs(a-b) for a, b in zip(joints, last_target)) > allowed:
                                 raise ValueError("腕指令の変化速度が上限を超えました")
-                        arm.publish(joints, weight)
+                        if "right_tau" in request:
+                            tau = validate_arm_tau(request["right_tau"])
+                            arm.publish(joints, weight, right_tau=tau)
+                            result = {"torque_supported": True}
+                        else:
+                            arm.publish(joints, weight)
                         last_publish, last_target = now, joints
                         active = weight > 0
                     elif op == "release":

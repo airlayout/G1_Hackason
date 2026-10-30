@@ -32,14 +32,16 @@ class RgbdZmqSource(FrameSource):
         self._socket.setsockopt(zmq.CONFLATE, True)
         self._socket.connect(f"tcp://{self._address}:{self._port}")
 
-    def read_rgbd(self) -> RgbdFrame | None:
+    def read_rgbd(self, timeout_ms: int | None = None) -> RgbdFrame | None:
         """最新の RGBD フレーム。タイムアウトまでに届かなければ None。"""
         if self._socket is None:
             raise RuntimeError("open() を呼び出す前に read_rgbd() が呼ばれた")
         import zmq
 
         try:
-            msg = self._socket.recv()
+            if timeout_ms is not None and not self._socket.poll(timeout_ms, zmq.POLLIN):
+                return None
+            msg = self._socket.recv(flags=zmq.NOBLOCK) if timeout_ms == 0 else self._socket.recv()
         except zmq.Again:
             return None
         self.last = decode_rgbd(msg)

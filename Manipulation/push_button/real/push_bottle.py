@@ -35,6 +35,8 @@ def main(argv=None):
     add_camera_arguments(parser)
     args = parser.parse_args(argv)
     camera = arm = routine = None
+    table_reference = None
+    table_rejections = []
     report = {"schema": "g1-bottle-push-v1", "task": "bottle", "completed": False,
               "physical_push_success": None}
     try:
@@ -53,7 +55,24 @@ def main(argv=None):
         kin.update_fixed_base(reference, calibration["reference_imu_rpy_rad"])
         runtime = J1CameraRuntime(args.j1gen_root)
         geometry = CalibratedHeadCamera(runtime, kin, calibration)
-        detector = make_bottle_detector(args.weights, args.confidence, args.device, runtime=runtime)
+        if args.track_table:
+            from table_reference import TableReference
+            from pose_history import PoseHistory
+            table_reference = TableReference(settings, float(calibration["pelvis_height_m"]))
+            pose_history=PoseHistory()
+
+            def table_observation(frame,stamp,configuration):
+                q,rpy=pose_history.at(stamp,configuration)
+                nominal=geometry.transform(q,rpy)
+                base=kin.body_transform('pelvis')
+                yaw=rpy[2]-calibration['reference_imu_rpy_rad'][2]
+                cy,sy=np.cos(yaw),np.sin(yaw)
+                heading=np.eye(4);heading[:2,:2]=[[cy,-sy],[sy,cy]]
+                nominal,base=heading@nominal,heading@base
+                delta=table_reference.update(frame.depth_m(),frame.intrinsics,nominal,base,stamp)
+                return delta@nominal
+        detector = make_bottle_detector(args.weights, args.confidence, args.device, runtime=runtime,
+                                        imgsz=args.detector_imgsz)
         if args.execute:
             if args.arm_socket:
                 from arm_bridge import ArmProxy
@@ -62,21 +81,43 @@ def main(argv=None):
                 arm = ArmSdk(args.network_interface)
             arm.stop_walking()
             for _ in range(6):
-                validate_stationary_pose(arm.current_configuration(), calibration)
+                observed=arm.current_configuration()
+                validate_stationary_pose(observed, calibration)
+                if table_reference is not None:
+                    pose_history.append(observed)
                 time.sleep(0.1)
             print("Navigationを停止し、台の寸法・移動先の空き・手先校正を確認してください。")
             if input("実機の右腕を動かす場合だけ YES と入力: ").strip() != "YES":
                 report["cancelled"] = True
                 return 0
 
-            def refresh():
+            last_table_poll = [-np.inf]
+
+            def refresh(poll_table=True):
                 configuration = arm.current_configuration()
                 validate_stationary_pose(configuration, calibration)
-                kin.update_fixed_base(np.array(configuration[0]), configuration[1])
+                if table_reference is not None:
+                    pose_history.append(configuration)
+                # 記録関節経路の逆再生とhomeでは画像待ちを追加しない。
+                # 関節・IMU・通信の監視は継続し、最後の台位置で経路を検査する。
+                returning = routine is not None and routine.report.get('phase') in ('abort_return', 'home', 'done')
+                if (poll_table and not returning and table_reference is not None and camera is not None
+                        and time.monotonic()-last_table_poll[0] >= .05):
+                    last_table_poll[0] = time.monotonic()
+                    delivered = camera.poll()
+                    if delivered is not None:
+                        frame,stamp = delivered
+                        try:
+                            table_observation(frame,stamp,configuration)
+                        except ValueError as exc:
+                            table_rejections.append({'time_s':time.monotonic(),'reason':str(exc)})
+                offset = None if table_reference is None else table_reference.predict(time.monotonic(),strict=False)
+                yaw = 0. if table_reference is None else configuration[1][2]-calibration['reference_imu_rpy_rad'][2]
+                kin.update_fixed_base(np.array(configuration[0]), configuration[1],base_offset=offset,yaw=yaw)
                 return configuration
 
             def current_transform():
-                configuration = refresh()
+                configuration = refresh(False)
                 if time.monotonic()-configuration[2] > 0.10:
                     raise RuntimeError("画像計測に対応する実機状態が古すぎます")
                 return geometry.transform(np.array(configuration[0]), configuration[1])
@@ -94,15 +135,29 @@ def main(argv=None):
             epoch_after = time.time()-(time.monotonic()-after)
             frame, captured_at = camera.read_after(epoch_after, deadline)
             intr = frame.intrinsics
+            transform = current_transform()
+            if table_reference is not None:
+                observed=arm.current_configuration() if args.execute else configuration
+                transform=table_observation(frame,captured_at,observed)
+                if args.execute:
+                    refresh(False)
             return BottleFrame(frame.color_bgr, frame.depth_m(),
                                CameraIntrinsics(intr.fx, intr.fy, intr.cx, intr.cy),
-                               current_transform(), captured_at, frame.frame_id)
+                               transform, captured_at, frame.frame_id)
 
         localizer = BottleLocalizer(read_frame, detector, settings, time.monotonic, args.target_pixel)
         if args.execute:
-            motion = ArmMotion(arm, calibration)
+            if args.gravity_scale:
+                from gravity import GravityCompensation
+                motion = ArmMotion(arm, calibration, gravity=GravityCompensation(args.model, calibration, args.gravity_scale,
+                                                                             dynamics=args.dynamics_feedforward),
+                                   state_sink=pose_history.append if table_reference is not None else None)
+            else:
+                motion = (ArmMotion(arm, calibration,state_sink=pose_history.append)
+                          if table_reference is not None else ArmMotion(arm,calibration))
             routine = BottlePushRoutine(kin, motion, localizer, refresh, time.monotonic,
-                                        settings, calibration["tip_radius_m"], calibration["position_uncertainty_m"])
+                                        settings, calibration["tip_radius_m"], calibration["position_uncertainty_m"],
+                                        tracking_check=None if table_reference is None else lambda:table_reference.predict(time.monotonic()))
             report = routine.execute()
             return 0 if report["completed"] and report["visual_success"] is True else 1
         routine = BottlePushRoutine(kin, None, localizer, refresh, time.monotonic,
@@ -124,7 +179,10 @@ def main(argv=None):
     finally:
         release_failed = False
         if camera is not None:
-            camera.close()
+            try:
+                camera.close()
+            except (RuntimeError,OSError) as exc:
+                report['camera_close_error'] = str(exc)
         if arm is not None:
             try:
                 arm.release()
@@ -133,8 +191,12 @@ def main(argv=None):
             except (OSError, RuntimeError) as exc:
                 report["release_error"] = str(exc)
                 report["completed"] = False
+                report["release_completed"] = False
                 release_failed = True
         output = Path(args.output)
+        if table_reference is not None:
+            report['table_reference'] = table_reference.measurements
+            report['table_rejections'] = table_rejections
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, ensure_ascii=False, indent=2)+"\n")
         if release_failed:

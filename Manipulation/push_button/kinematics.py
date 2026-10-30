@@ -129,6 +129,7 @@ class ArmKinematics:
         self.data = mujoco.MjData(model)
         self.qadr, self.dadr, self.actuator = arm_addresses(model)
         self.site_id = model.site("button_tcp").id
+        self.base_position = model.body_pos[model.body("pelvis").id].copy()
         self.tip_id = model.geom("button_tip").id
         shoulder = model.body("right_shoulder_pitch_link").id
         bodies = {shoulder}
@@ -149,16 +150,23 @@ class ArmKinematics:
     def tip_position(self) -> np.ndarray:
         return self.data.site_xpos[self.site_id].copy()
 
-    def update_fixed_base(self, qpos: np.ndarray, imu_rpy: tuple[float, float, float]):
+    def update_fixed_base(self, qpos: np.ndarray, imu_rpy: tuple[float, float, float], *, base_offset=None, yaw=0.):
         """停止時の床座標で骨盤のroll/pitchを反映する。yawは基準の前方を0とする。"""
         if self.model.nq != 29:
             raise ValueError("固定骨盤の29軸モデルだけが対象です")
         rpy = np.asarray(imu_rpy, dtype=float)
         if rpy.shape != (3,) or not np.all(np.isfinite(rpy)):
             raise ValueError("骨盤IMU姿勢が不正です")
+        offset = np.zeros(3) if base_offset is None else np.asarray(base_offset,dtype=float)
+        if offset.shape != (3,) or not np.all(np.isfinite(offset)) or np.linalg.norm(offset) > .05 or not np.isfinite(yaw):
+            raise ValueError("骨盤位置の補正が不正です")
+        pelvis = self.model.body("pelvis").id
+        self.model.body_pos[pelvis] = self.base_position+offset
         roll, pitch = rpy[:2] / 2
         cr, sr, cp, sp = np.cos(roll), np.sin(roll), np.cos(pitch), np.sin(pitch)
-        self.model.body_quat[self.model.body("pelvis").id] = (cr*cp, sr*cp, cr*sp, -sr*sp)
+        cy,sy = np.cos(yaw/2),np.sin(yaw/2)
+        self.model.body_quat[pelvis] = (cr*cp*cy+sr*sp*sy, sr*cp*cy-cr*sp*sy,
+                                       cr*sp*cy+sr*cp*sy, cr*cp*sy-sr*sp*cy)
         self.update(qpos)
 
     def body_transform(self, name: str) -> np.ndarray:

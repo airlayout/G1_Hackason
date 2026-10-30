@@ -30,8 +30,9 @@ class FakeArm:
     def set_hold(self, current):
         pass
 
-    def publish(self, joints, weight):
+    def publish(self, joints, weight, *, right_tau=None):
         self.writes += 1
+        self.last_tau = right_tau
 
     def release(self):
         self.releases += 1
@@ -93,3 +94,29 @@ def test_connection_info_is_passive_and_available_over_bridge():
         proxy.close()
         thread.join(timeout=1)
     assert not errors
+
+
+def test_torque_round_trip_and_invalid_packet_releases_before_publish():
+    proxy, arm, errors, thread = connection()
+    try:
+        proxy.set_hold(proxy.current_arm())
+        tau = (1., -1., .5, -.5, 0., .2, -.2)
+        proxy.publish((0.,)*7, .1, right_tau=tau)
+        assert arm.last_tau == tau and arm.writes == 1
+        with pytest.raises(RuntimeError, match="トルクが上限"):
+            proxy._rpc('publish', joints=[0.]*7, weight=.1, right_tau=[0.]*6+[6.])
+        assert arm.writes == 1 and arm.releases >= 1
+    finally:
+        proxy.socket.close()
+        thread.join(timeout=1)
+
+
+def test_old_bridge_without_torque_ack_is_released(monkeypatch):
+    proxy = ArmProxy.__new__(ArmProxy)
+    proxy.weight = 0.
+    calls = []
+    monkeypatch.setattr(proxy, '_rpc', lambda op, **kwargs: calls.append(op))
+    with pytest.raises(RuntimeError, match="トルク送信に未対応"):
+        proxy.publish((0.,)*7, .5, right_tau=(0.,)*7)
+    assert calls == ['publish', 'release']
+    assert proxy.weight == 0.

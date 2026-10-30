@@ -20,6 +20,7 @@ from bottle import (BottleFrame, BottleLocalizer, BottlePushRoutine, add_bottle_
                     add_table, make_bottle_detector, settings_from_args)
 from kinematics import ArmKinematics, arm_addresses, load_robot
 from trajectory import interpolate, validate_arm_q
+from return_path import ApproachPath
 from vision import CameraIntrinsics
 
 
@@ -97,6 +98,8 @@ class Simulation:
         self.next_video_t = 0.
         self.max_table_force = 0.
         self.snapshots = []
+        self.approach = None
+        self.record_approach = False
         if args.video_out:
             import cv2
             path = Path(args.video_out)
@@ -150,8 +153,27 @@ class Simulation:
             self.wait(0.02)
         self.wait(settle_s)
 
-    def stream(self, goal):
+    def stream(self, goal, *, velocity=None):
         self.target = np.array(validate_arm_q(np.asarray(goal).tolist()))
+        if self.record_approach:
+            self.approach.append(self.target, 0.02)
+
+    def check(self):
+        pass
+
+    def start_approach(self):
+        self.approach = ApproachPath(self.current_target())
+        self.record_approach = True
+
+    def freeze_approach(self):
+        self.approach.freeze()
+        self.record_approach = False
+
+    def replay(self, targets, validate):
+        for goal in targets:
+            validate(goal)
+            self.stream(goal)
+            self.wait(0.02)
 
     def close(self):
         # Routineのfinallyから呼ばれる。画像・動画は評価と保存後に閉じる。
@@ -232,7 +254,8 @@ def main(argv=None):
         if (not 1 <= args.video_fps <= 30 or not np.all(np.isfinite([args.bottle_x, args.bottle_y]))):
             raise ValueError("ボトル座標または動画fpsが不正です")
         # 検出器の初期化は物理時間の進行前に行う。
-        detector = make_bottle_detector(args.weights, args.confidence, args.device) if args.detector == "yolo" else None
+        detector = make_bottle_detector(args.weights, args.confidence, args.device,
+                                         imgsz=args.detector_imgsz) if args.detector == "yolo" else None
         sim = Simulation(args, settings)
         if detector is None:
             detector = SimpleNamespace(detect=sim.oracle_detect)

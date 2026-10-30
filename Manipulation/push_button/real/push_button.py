@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from trajectory import (ALL_ARM_INDICES, ARM_INDICES, ARM_JOINTS, PHASES,
-                        interpolate, load_plan, validate_arm_q)
+                        interpolate, load_plan, validate_arm_q, validate_arm_tau)
 
 
 CONTROL_HZ = 50.0
@@ -60,6 +60,7 @@ class ArmSdk:
         self._hold = None
         self._last_right = None
         self._last_weight = 0.0
+        self._last_right_tau = (0.0,) * 7
 
     def _on_state(self, message) -> None:
         with self._lock:
@@ -120,10 +121,15 @@ class ArmSdk:
         return {"mode_machine": mode_machine, "motor_count": motor_count, "fsm_id": int(fsm)}
 
     def publish(self, right: tuple[float, ...], weight: float,
-                require_fresh_state: bool = True) -> None:
+                require_fresh_state: bool = True, *, right_tau=None) -> None:
         if self._hold is None:
             raise RuntimeError("現在姿勢が未取得です")
         validate_arm_q(right)
+        torques = validate_arm_tau((0.0,) * 7 if right_tau is None else right_tau)
+        if not math.isfinite(weight) or not 0.0 <= weight <= 1.0:
+            raise ValueError("腕の制御重みが不正です")
+        if weight == 0:
+            torques = (0.0,) * 7
         if require_fresh_state:
             self.current_arm(timeout=STATE_TIMEOUT)
         targets = self._hold.copy()
@@ -132,7 +138,7 @@ class ArmSdk:
             motor = self._cmd.motor_cmd[index]
             motor.q = target
             motor.dq = 0.0
-            motor.tau = 0.0
+            motor.tau = torques[index-22] if index >= 22 else 0.0
             motor.kp = 15.0 if index in (19, 20, 21, 26, 27, 28) else 40.0
             motor.kd = 1.5
         self._cmd.motor_cmd[29].q = max(0.0, min(1.0, weight))
@@ -141,19 +147,23 @@ class ArmSdk:
             raise RuntimeError("rt/arm_sdkへの腕指令送信に失敗しました")
         self._last_right = right
         self._last_weight = weight
+        self._last_right_tau = torques
 
     def release(self) -> None:
         """最後の目標姿勢を維持しながら腕の重みを徐々に解除する。"""
         if self._last_right is None or self._last_weight <= 0:
             return
         start = self._last_weight
+        start_tau = getattr(self, "_last_right_tau", (0.0,) * 7)
         for step in range(101):
-            weight = start * (1.0 - step / 100.0)
+            fraction = 1.0 - step / 100.0
+            weight = start * fraction
             try:
-                self.publish(self._last_right, weight, require_fresh_state=False)
+                kwargs = {"right_tau": tuple(tau*fraction for tau in start_tau)} if any(start_tau) else {}
+                self.publish(self._last_right, weight, require_fresh_state=False, **kwargs)
             except Exception as error:  # 通信障害でも解除を試みた事実をログに残す
                 print(f"[release] 指令送信に失敗: {error}", file=sys.stderr, flush=True)
-                break
+                raise RuntimeError("腕の制御解除指令を送信できませんでした") from error
             time.sleep(0.02)
 
     def close(self):

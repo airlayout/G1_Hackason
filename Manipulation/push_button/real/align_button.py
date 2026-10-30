@@ -20,6 +20,8 @@ from alignment import (AlignmentController, CorrectionCadence, CorrectionTiming,
                        press_overtravel_allowance, run_continuous_normal)
 from kinematics import ArmKinematics, load_robot
 from trajectory import interpolate, validate_arm_q
+from button_feedback import LampCheck, lamp_level
+from return_path import ApproachPath, validate_return_path
 from localize_button import RgbdLocalizer
 from j1gen_camera import CalibratedHeadCamera, J1CameraRuntime, add_camera_arguments
 from push_button import ArmSdk, CONTROL_HZ, STATE_TIMEOUT, TRACKING_LIMIT, check_speed
@@ -80,15 +82,20 @@ def validate_stationary_pose(configuration, calibration):
 class ArmMotion:
     """画像推論に依存せず50Hzで保持・補間指令を送り、状態を監視する。"""
 
-    def __init__(self, arm, calibration):
+    def __init__(self, arm, calibration, *, gravity=None, state_sink=None):
         self.arm, self.calibration = arm, calibration
+        self.gravity = gravity
+        self.state_sink = state_sink
         current = arm.current_arm()
         arm.set_hold(current)
         self.home = tuple(current[7:])
         self.target = self.home
+        self.target_velocity = np.zeros(7)
         self.weight = 0.0
         self.error = None
         self.release_error = None
+        self.approach = None
+        self.record_approach = False
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
@@ -102,6 +109,7 @@ class ArmMotion:
                 validate_stationary_pose(configuration, self.calibration)
                 with self.lock:
                     target, weight = self.target, self.weight
+                    velocity = self.target_velocity.copy()
                 observed = configuration[0][22:29]
                 tracking = max(abs(a-b) for a, b in zip(observed, target))
                 if tracking > TRACKING_LIMIT:
@@ -110,7 +118,7 @@ class ArmMotion:
                         raise RuntimeError("腕の追従誤差が継続しています")
                 else:
                     bad_since = None
-                self.arm.publish(target, weight)
+                self.publish(configuration, target, weight, velocity=velocity)
                 next_tick += 1 / CONTROL_HZ
                 self.stop.wait(max(0, next_tick - time.monotonic()))
         except Exception as exc:
@@ -125,6 +133,18 @@ class ArmMotion:
     def check(self):
         if self.error is not None:
             raise RuntimeError(f"腕の状態監視で中止: {self.error}") from self.error
+
+    def publish(self, configuration, target, weight, *, velocity=None):
+        if self.state_sink is not None:
+            self.state_sink(configuration)
+        if self.gravity is None:
+            self.arm.publish(target, weight)
+        else:
+            if velocity is None:
+                with self.lock:
+                    velocity=self.target_velocity.copy()
+            tau = tuple(float(value)*weight for value in self.gravity(configuration,velocity=velocity))
+            self.arm.publish(target, weight, right_tau=tau)
 
     def wait(self, seconds):
         deadline = time.monotonic() + seconds
@@ -146,23 +166,54 @@ class ArmMotion:
             start = self.target
         duration = max(duration, 1.5 * max(abs(a-b) for a, b in zip(start, goal)) / 0.8)
         check_speed(start, goal, duration)
+        previous=np.array(start)
         for target in interpolate(start, goal, duration, CONTROL_HZ):
             self.check()
             with self.lock:
                 self.target = target
+                self.target_velocity=(np.array(target)-previous)*CONTROL_HZ
+            previous=np.array(target)
+            if self.record_approach:
+                self.approach.append(target, 1/CONTROL_HZ)
             self.wait(1 / CONTROL_HZ)
+        with self.lock:
+            self.target_velocity=np.zeros(7)
         self.wait(settle_s)
+
+    def start_approach(self):
+        self.approach = ApproachPath(self.current_target())
+        self.record_approach = True
+
+    def freeze_approach(self):
+        self.approach.freeze()
+        self.record_approach = False
+
+    def replay(self, targets, validate):
+        """記録した隣接区間だけをたどる。遅れを取り戻す高速送信はしない。"""
+        last_tick = time.monotonic()
+        for target in targets:
+            self.check()
+            validate(target)
+            now = time.monotonic()
+            if now-last_tick > 0.1:
+                raise RuntimeError("腕の逆再生の更新が100ms以上途絶えました")
+            self.stream(target)
+            last_tick = now
+            self.wait(1/CONTROL_HZ)
 
     def current_target(self):
         with self.lock:
             return np.array(self.target)
 
-    def stream(self, goal):
+    def stream(self, goal, *, velocity=None):
         """検査済みの50Hz指令を更新する。区間補間や静止待ちは入れない。"""
         self.check()
         goal = validate_arm_q(np.asarray(goal).tolist())
         with self.lock:
+            self.target_velocity=(np.array(goal)-np.array(self.target))*CONTROL_HZ if velocity is None else np.array(velocity)
             self.target = goal
+        if self.record_approach:
+            self.approach.append(goal, 1/CONTROL_HZ)
 
     def close(self):
         self.stop.set()
@@ -190,10 +241,55 @@ def execute_alignment(arm, camera, kin, calibration, args):
               "stroke_m": args.stroke,
               "press_limits": {"overtravel_allowance_m": press_overtravel_allowance(args.stroke),
                                "compensation_allowance_m": press_compensation_allowance(args.stroke)},
-              "normal_steps": [], "completed": False}
+              "normal_steps": [], "completed": False,
+              "lamp_confirmed": None, "retry_count": 0, "arm_returned": False,
+              "lamp_checks": [], "lamp_settings": {"min_rise": getattr(args, "lamp_min_rise", 30.0),
+                  "ellipse_scale": 1.15, "percentile": 90, "frames": 3, "timeout_s": 2.0}}
     controller = AlignmentController(tip_radius=calibration["tip_radius_m"],
                                      clearance=args.clearance)
     last_target = None
+    return_started = False
+
+    def snapshot(frame, name, row):
+        # 画像の保存失敗は、腕の復帰や確認結果を妨げない。
+        try:
+            import cv2
+
+            folder = Path(args.output).with_suffix("").with_name(Path(args.output).stem+"_lamp")
+            folder.mkdir(parents=True, exist_ok=True)
+            raw = folder / f"{name}.png"
+            annotated = folder / f"{name}_annotated.jpg"
+            image = frame.image.copy()
+            x1, y1, x2, y2 = (int(v) for v in frame.bbox)
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(image, f"level={row['level']:.1f} rise={row.get('rise', 0):.1f}",
+                        (max(0, x1), max(15, y1-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            if not cv2.imwrite(str(raw), frame.image) or not cv2.imwrite(str(annotated), image):
+                raise OSError("点灯確認画像を書き込めません")
+            row.update(image_path=str(raw), annotated_path=str(annotated))
+        except Exception as exc:
+            report.setdefault("snapshot_errors", []).append(str(exc))
+
+    def check_lamp(baseline, attempt):
+        motion.wait(0.3)
+        after = time.monotonic()
+        check = LampCheck(baseline, after, report["lamp_settings"]["min_rise"])
+        result = {"attempt": attempt, "frames": check.frames, "lamp_confirmed": None}
+        report["lamp_checks"].append(result)
+        try:
+            for frame in camera.lamp_frames(after, timeout_s=2.0):
+                motion.check()
+                if check.observe(frame, time.monotonic()):
+                    snapshot(frame, f"attempt_{attempt}_{len(check.frames)}", check.frames[-1])
+                if check.finished:
+                    break
+        except (ValueError, RuntimeError, OSError) as exc:
+            result["reason"] = str(exc)
+        motion.check()  # 通信や姿勢の異常は画像の判定不能に丸めない。
+        result["lamp_confirmed"] = check.result
+        result.setdefault("reason", "点灯" if check.result is True else
+                          "増光なし" if check.result is False else "画像不足または3フレームの結果が不一致")
+        return check.result
 
     def refresh():
         motion.check()
@@ -260,6 +356,7 @@ def execute_alignment(arm, camera, kin, calibration, args):
 
     try:
         motion.enable()
+        motion.start_approach()
         observation = camera.observe()
         report["measurement_count"] += 1
         # 最初の目標も鮮度を検査する。大きな移動の前に古い画像を使わない。
@@ -320,21 +417,57 @@ def execute_alignment(arm, camera, kin, calibration, args):
         radius = calibration["tip_radius_m"]
         bias = controller.command_xyz - (face - (radius + args.clearance) * normal)
         bias -= (bias @ normal) * normal
-        if smooth:
-            move_smooth(face, normal, bias)
-        else:
-            move_normal(face, normal, -0.003, bias, last_target, "contact", False)
-            move_normal(face, normal, args.stroke, bias, last_target, "press", True)
-        move_xyz(face - (radius + args.clearance) * normal + bias, last_target, 2.0, True)
+        baseline_frame = camera.last_lamp_frame
+        baseline = lamp_level(baseline_frame.image, baseline_frame.bbox)
+        report["lamp_baseline"] = {"level": baseline, "bbox": [float(v) for v in baseline_frame.bbox],
+                                   "captured_at_s": float(baseline_frame.captured_at),
+                                   "frame_id": int(baseline_frame.frame_id)}
+        snapshot(baseline_frame, "before", report["lamp_baseline"])
+        motion.freeze_approach()
+        for attempt in (1, 2):
+            if smooth:
+                move_smooth(face, normal, bias)
+            else:
+                move_normal(face, normal, -0.003, bias, last_target, "contact", False)
+                move_normal(face, normal, args.stroke, bias, last_target, "press", True)
+            move_xyz(face - (radius + args.clearance) * normal + bias, last_target, 2.0, True)
+            report["lamp_confirmed"] = check_lamp(baseline, attempt)
+            if report["lamp_confirmed"] is not False or attempt == 2:
+                break
+            report["retry_count"] += 1
+        return_started = True
         refresh()
-        kin.validate_path(np.array(motion.home), face, normal)
-        motion.move(motion.home, 4.0)
+        targets = motion.approach.reversed_targets(CONTROL_HZ)
+        validate_return_path(kin, [motion.current_target(), *targets], face, normal)
+        # 点灯確認の5cm退避位置と、行きの終点の関節角の差を検査してつなぐ。
+        motion.move(targets[0], 1.0)
+
+        def validate_return_step(target):
+            refresh()
+            kin.validate_path(np.asarray(target), face, normal)
+
+        motion.replay(targets, validate_return_step)
+        deadline, settled = time.monotonic()+2.0, 0
+        while time.monotonic() < deadline:
+            refresh()
+            joints = arm.current_configuration()[0][22:29]
+            error = float(np.max(np.abs(np.array(joints)-motion.home)))
+            report["return_error_rad"] = error
+            settled = settled+1 if error <= np.deg2rad(2) else 0
+            if settled >= 3:
+                break
+            motion.wait(1/CONTROL_HZ)
+        if settled < 3:
+            raise RuntimeError("腕が開始姿勢へ戻ったことを確認できません")
+        report["arm_returned"] = True
+        report["return_samples"] = len(targets)
         report["completed"] = True
-        print("位置合わせと押下動作を完了しました。点灯や反応で押下成否を確認してください。")
+        report["result_reason"] = report["lamp_checks"][-1]["reason"]
+        print(f"押下・復帰を完了しました。点灯確認: {report['result_reason']}")
     except Exception as exc:
         report["error"] = str(exc)
         # 状態が正常で、無接触と確認できる経路だけで後退する。
-        if last_target is not None:
+        if last_target is not None and not return_started:
             try:
                 retreat = np.array(last_target.face_xyz) - (calibration["tip_radius_m"] + args.clearance) * np.array(last_target.press_direction)
                 move_xyz(retreat, last_target, 2.0, True)
@@ -362,6 +495,8 @@ def main(argv=None):
     parser.add_argument("--target-pixel", type=int, nargs=2)
     parser.add_argument("--stroke", required=True, type=float, help="実物に合わせた押込量 [m]")
     parser.add_argument("--clearance", type=float, default=0.05)
+    parser.add_argument("--lamp-min-rise", type=float, default=30.0,
+                        help="押下前後の明るい部分の増光しきい値（0～255の値）")
     parser.add_argument("--network-interface", default="enp3s0")
     parser.add_argument("--arm-socket", help="SDKを別のPython環境で実行する場合のUnixソケット")
     parser.add_argument("--state-json", help="計画表示用。motor_q_rad (29個) を持つ状態JSON")
@@ -375,6 +510,8 @@ def main(argv=None):
     try:
         timing = CorrectionTiming.from_args(args)
         single_timing = SingleCorrectionTiming.from_args(args)
+        if not np.isfinite(args.lamp_min_rise) or not 0 < args.lamp_min_rise <= 255:
+            raise ValueError("lamp-min-riseは0より大きく255以下が必要です")
         if (not np.isfinite(args.stroke) or not 0.0015 <= args.stroke <= 0.015
                 or not np.isfinite(args.clearance) or not 0.02 <= args.clearance <= 0.05):
             raise ValueError("strokeは1.5～15mm、clearanceは2～5cmが必要です")
@@ -424,7 +561,9 @@ def main(argv=None):
         if args.execute:
             report = execute_alignment(arm, camera, kin, calibration, args)
             if not report["completed"]:
-                raise RuntimeError(f"制御重みの解除に失敗: {report.get('release_error')}")
+                raise RuntimeError(report.get("release_error", "腕の復帰・処理を完了できません"))
+            if report["lamp_confirmed"] is not True or not report["arm_returned"]:
+                raise RuntimeError(f"押下の成功を確認できません: {report.get('result_reason')}")
         else:
             observation = camera.observe()
             if time.monotonic() - observation.captured_at > 0.5:
@@ -444,6 +583,8 @@ def main(argv=None):
                 kin.update(qpos)
             report = {"schema": "g1-live-button-preview-v1", "poses": poses,
                       "target_xyz_m": list(target.face_xyz), "physical_press_success": None,
+                      "lamp_confirmed": None, "lamp_check": "not_run",
+                      "lamp_min_rise": args.lamp_min_rise, "return_method": "reverse_approach",
                       "alignment_mode": args.alignment_mode,
                       "normal_motion": args.normal_motion if args.alignment_mode == "single" else "stepped",
                       "requires_mid_approach_remeasurement": args.alignment_mode == "single",

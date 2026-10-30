@@ -20,6 +20,8 @@ from alignment import (AlignmentController, CorrectionCadence, CorrectionTiming,
 import align_button
 from align_button import ArmMotion, read_calibration, validate_stationary_pose
 from vision import ButtonTarget
+from button_feedback import LampFrame
+from return_path import ApproachPath
 
 
 def button(x=0.35, y=-0.25, z=1.0, normal=(1.0, 0.0, 0.0)):
@@ -159,7 +161,16 @@ def test_live_alignment_measurement_policy_and_failed_retarget_abort(monkeypatch
         home = (0.0,)*7
 
         def __init__(self, arm, calibration):
-            pass
+            self.approach = None
+            self.record_approach = False
+
+        def start_approach(self):
+            self.approach = ApproachPath(self.home)
+            self.record_approach = True
+
+        def freeze_approach(self):
+            self.approach.freeze()
+            self.record_approach = False
 
         def check(self):
             pass
@@ -172,6 +183,8 @@ def test_live_alignment_measurement_policy_and_failed_retarget_abort(monkeypatch
 
         def move(self, goal, duration, settle_s=0.1):
             movements.append((clock.now(), duration, settle_s))
+            if self.record_approach:
+                self.approach.append(goal, duration)
             if not freeze_retarget or len(movements) < 3:
                 kin.position = np.array(goal[:3])
             clock.wait(duration + settle_s)
@@ -185,13 +198,27 @@ def test_live_alignment_measurement_policy_and_failed_retarget_abort(monkeypatch
         def stream(self, goal):
             kin.position = np.array(goal[:3])
 
+        def replay(self, targets, validate):
+            for goal in targets:
+                self.stream(goal)
+
+    monkeypatch.setattr(align_button, "validate_return_path", lambda *args: None)
+
     class FakeCamera:
         def observe(self):
             # 撮影は間隔待ちの後。画像はその場で取得し、古い画像を返さない。
             captures.append(clock.now())
             clock.wait(0.2)
             target = button(y=-0.25 if len(captures) == 1 else -0.23)
+            self.last_lamp_frame = LampFrame(np.full((20, 20, 3), 100, dtype=np.uint8),
+                                             (5, 5, 15, 15), clock.now(), len(captures))
             return Observation(target, clock.now(), len(captures))
+
+        def lamp_frames(self, after, timeout_s):
+            for i in range(3):
+                clock.wait(0.02)
+                yield LampFrame(np.full((20, 20, 3), 180, dtype=np.uint8),
+                                (5, 5, 15, 15), clock.now(), 100+i)
 
     arm = SimpleNamespace(current_configuration=lambda: ((0.0,)*29, (0, 0, 0), clock.now(), 0, 0))
     calibration = {"tip_radius_m": 0.015, "reference_waist_q_rad": [0, 0, 0],
