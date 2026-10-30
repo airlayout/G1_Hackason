@@ -74,7 +74,7 @@ esac
 '''
 STUB_EVAL = r'''#!/usr/bin/env bash
 out="$HOME/work_inoue/doorman/records/r_$RANDOM$RANDOM"; mkdir -p "$out"
-rate="${STUB_RATE:-0.5}"; case "$1" in */door_f3h*|*/door_f3j*) rate="${STUB_RATE_F3H:-$rate}" ;; */door_f3k*) rate="${STUB_RATE_F3K:-$rate}" ;; esac  # 段 F2 だけ率を変えられる（10-29）
+rate="${STUB_RATE:-0.5}"; case "$1" in */door_f3h*|*/door_f3j*) rate="${STUB_RATE_F3H:-$rate}" ;; */door_f3k*) rate="${STUB_RATE_F3K:-$rate}" ;; */door_f3l*) rate="${STUB_RATE_F3L:-$rate}" ;; esac  # 段 F2・F3'・CAPS の率を変えられる（10-29・10-30）
 echo "{\"success_rate\": $rate, \"success\": 128, \"episodes_from_stage0\": 256}" > "$out/summary.json"
 echo "=== eval_from_start out=$out success=128/256 rc=0"
 '''
@@ -93,7 +93,8 @@ def omen(tmp_path):
     home = tmp_path / "home"
     base = home / "work_inoue" / "doorman"
     base.mkdir(parents=True)
-    for name in ("stage_chain.sh", "exp_f3_retrain_1026.sh", "f3_keepalive_1026.sh", "exp_f3bc_1027.sh", "exp_f3_phases_1028.sh", "exp_f3_phaseF_1029.sh"):
+    for name in ("stage_chain.sh", "exp_f3_retrain_1026.sh", "f3_keepalive_1026.sh", "exp_f3bc_1027.sh", "exp_f3_phases_1028.sh", "exp_f3_phaseF_1029.sh",
+                 "exp_f3_caps_1030.sh"):
         shutil.copy(HERE / name, base / name)
         (base / name).chmod(0o755)
     _write(base / "run_train_segments.sh", STUB_TRAIN, True)
@@ -452,3 +453,66 @@ def test_phase_f_hold_penalty_is_added_to_the_better_and_kept_unless_it_drops(om
     assert "++rewards.reward_scales.penalty_arm_action_change=-0.5" in k  # よい方（f3j）の引数に足す
     assert f"stage={cont} " in parts[-1]  # 最後の続きの段
     assert ("落ちが 5.0 pt より小さい" in r.stdout) == (cont == "f3k")
+
+
+# --- 10-30: 段 CAPS（パッチ 0084 の時間の項）を F3' のいちばん新しい回から（exp_f3_caps_1030.sh） -----------------------------------
+CAPS_ARGS = ("++algo.config.caps_temporal_coef=0.1", "++algo.config.caps_temporal_start=3", "++algo.config.caps_temporal_end=17")
+
+
+def _caps(omen, **extra):
+    env = dict(omen["env"], STUB_MODE="progress", CAPS_W="0.1", MIN_ROUNDS="1", ROUNDS_CONT="1", NO_KEEPALIVE="1", NUM_ENVS="512")
+    env.update(extra)
+    return subprocess.run(["bash", "./exp_f3_caps_1030.sh"], cwd=omen["base"], env=env, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=240, check=False)
+
+
+def test_caps_starts_from_the_latest_f3k_and_adds_only_the_caps_term(omen):
+    """F3'（f3k）のいちばん新しい回の重みから、F3' と同じ引数に CAPS の 3 つだけを足して回し、落ちなければ CAPS を続ける"""
+    last_k = _prior_chain(omen, "f3k", [0.5, 0.5, 0.5])
+    r = _caps(omen)
+    assert r.returncode == 0, r.stdout + r.stderr
+    first, cont = _chain_parts(_all_chain_logs(omen))
+    assert "stage=f3l " in first and f"resume={last_k}" in first
+    for arg in ("++algo.config.max_noise_std=0.26", "++rewards.reward_scales.walk_away_in_swing=-40.0",
+                "++env.config.max_stage_time=[250,100,100,100,600,200]", "++env.config.target_root_distance_swing_scale=0.0",
+                "++rewards.reward_scales.penalty_arm_action_change=-0.2", "++rewards.reward_scales.penalty_walk_in_hold=-0.3",
+                *CAPS_ARGS):
+        assert arg in first, arg
+    assert "stage=f3l " in cont and f"resume={_rounds(omen)['f3l'][0][6]}" in cont
+    assert "落ちが 5.0 pt より小さいので 続ける段: f3l" in r.stdout
+
+
+def test_caps_goes_back_to_f3k_when_it_drops_five_points(omen):
+    """CAPS の平均が F3' の最後の回より 5 pt 以上落ちたら、F3' をその最後の重みから CAPS なしで続ける"""
+    last_k = _prior_chain(omen, "f3k", [0.5, 0.5, 0.5])
+    r = _caps(omen, STUB_RATE_F3L="0.44")
+    assert r.returncode == 0, r.stdout + r.stderr
+    first, cont = _chain_parts(_all_chain_logs(omen))
+    assert "stage=f3l " in first
+    assert "stage=f3k " in cont and f"resume={last_k}" in cont
+    assert "caps_temporal" not in cont
+    assert "以上落ちたので 続ける段: f3k" in r.stdout
+
+
+def test_caps_compares_with_the_last_rounds_of_f3k_only(omen):
+    """比べる相手は F3' の反復の新しい REF_N 回だけ（古い回の高い率は数えない）"""
+    _prior_chain(omen, "f3k", [0.9, 0.9, 0.5, 0.5])
+    r = _caps(omen, STUB_RATE_F3L="0.46", REF_N="2")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "1 回の平均 46.0% 対 f3k の最後の 2 回の 50.0%" in r.stdout
+    assert "続ける段: f3l" in r.stdout
+
+
+def test_caps_refuses_without_a_weight_and_stops_on_the_flag(omen):
+    """重み（CAPS_W）が無ければ始めない。途中で止め札が置かれたら、比べる段も続きも始めない"""
+    _prior_chain(omen, "f3k", [0.5])
+    env_no_w = {k: v for k, v in omen["env"].items() if k != "CAPS_W"}
+    r = subprocess.run(["bash", "./exp_f3_caps_1030.sh"], cwd=omen["base"], env=env_no_w, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=60, check=False)
+    assert r.returncode == 1 and "CAPS_W" in r.stdout
+    assert len(list((omen["base"] / "chain").glob("*/chain.log"))) == 0
+    stop = omen["home"] / "work_inoue" / "STOP_DOOR_F3"
+    r = _caps(omen, MIN_ROUNDS="2", STUB_STOP_AFTER=str(stop))
+    assert r.returncode == 0
+    assert "次の段も見張りも始めずに終わる" in r.stdout
+    assert len(_rounds(omen)["f3l"]) == 1 and "比べた" not in r.stdout

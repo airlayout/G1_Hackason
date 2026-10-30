@@ -1,0 +1,119 @@
+From c79d6fb3a243e62b90d197ddcbb3ad9a954ac4e2 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 30 Oct 2026 10:19:55 +0900
+Subject: [PATCH] door: CAPS temporal term on the policy action mean (sum over
+ the arm outputs 3..16 of the squared change between consecutive steps of the
+ same episode, pairs across episode ends and padding are skipped;
+ algo.config.caps_temporal_coef, default 0 = logged only, no gradient) and
+ write the loss terms, KL and the KL-adjusted learning rate to train.log
+ (10-30)
+
+---
+ gr00t/rl/trl/trainer/ppo_trainer_homie_api.py | 49 +++++++++++++++++++
+ 1 file changed, 49 insertions(+)
+
+diff --git a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+index afed134..796b64b 100644
+--- a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
++++ b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+@@ -221,6 +221,11 @@ class PrinterHVCallback(TrainerCallback):
+                     else:
+                         new_key = k.replace("objective/", "")
+                         log_string += f"""{f'Mean {new_key}:':>{pad}} {v:.5f}\n"""
++            # G1_Hackason（CAPS、10-30）: 損失の各項・KL・学習率も train.log に出す（wandb を使っていないので、
++            # これまでどこにも残っていなかった。CAPS の重みを他の項と比べて決めるため）
++            for k, v in logs.items():
++                if k.startswith(("loss/", "policy/")):
++                    log_string += f"""{f'{k}:':>{pad}} {v:.6g}\n"""
+ 
+             env_log_string = ""
+             ep_string = ""
+@@ -685,6 +690,16 @@ class TRLPPOTrainer(PPOTrainer):
+         self.imgaug_bc_loss_coef = self.config.get("imgaug_bc_loss_coef", 1.0)
+         self.imgaug_bc_loss_fn = torch.nn.MSELoss()
+ 
++        # G1_Hackason（CAPS の時間の項、10-30）: 同じ回の隣り合う時刻の出力の平均の差の 2 乗の和を損失に足す
++        # （Mysore ら 2021「Regularizing Action Policies for Smooth Control with Reinforcement Learning」）。
++        # 報酬の罰（penalty_arm_action_change）と違い、雑音を抜いた出力の平均そのものに効く。並びは方策の出力の
++        # [caps_temporal_start, caps_temporal_end)（扉の生徒は 3〜16 番の腕 14）。係数 0（既定）なら損失に足さず、記録にだけ出す
++        self.caps_temporal_coef = float(self.config.get("caps_temporal_coef", 0.0))
++        self.caps_temporal_start = int(self.config.get("caps_temporal_start", 0))
++        self.caps_temporal_end = int(
++            self.config.get("caps_temporal_end", self.policy_model.num_actions)
++        )
++
+     def _setup_storage(self):
+         self.storage = RolloutStorage(
+             self.env.num_envs, self.num_steps_per_env, device=self.accelerator.device
+@@ -1029,6 +1044,8 @@ class TRLPPOTrainer(PPOTrainer):
+         if self.compute_imgaug_bc_loss:
+             self.imgaug_bc_loss_stats = imgaug_bc_loss_stats
+             self.weighted_imgaug_bc_loss_stats = weighted_imgaug_bc_loss_stats
++        # G1_Hackason（CAPS、10-30）: 係数 0 でも測って記録に出す（入れる前に、今の方策の出力の揺れの大きさを知るため）
++        self.caps_temporal_stats = torch.zeros(stats_shape, device=device)
+ 
+     def _get_rollout_data(self, obs_keys):
+         device = self.accelerator.device
+@@ -1350,6 +1367,13 @@ class TRLPPOTrainer(PPOTrainer):
+             loss += imgaug_bc_loss_dict["imgaug_bc_loss"] * self.config.imgaug_bc_loss_coef
+             ret_dict["imgaug_bc_loss_dict"] = imgaug_bc_loss_dict
+ 
++        # G1_Hackason（CAPS、10-30）: 係数 0 なら勾配を作らずに測るだけ
++        with torch.set_grad_enabled(self.caps_temporal_coef > 0):
++            caps_temporal_loss = self._compute_caps_temporal_loss(forward_results, mb_rollout_data)
++        if self.caps_temporal_coef > 0:
++            loss += caps_temporal_loss * self.caps_temporal_coef
++        ret_dict["caps_temporal_loss"] = caps_temporal_loss.detach()
++
+         ret_dict["loss"] = loss
+ 
+         return ret_dict
+@@ -1442,6 +1466,20 @@ class TRLPPOTrainer(PPOTrainer):
+             imgaug_bc_loss=imgaug_bc_loss,
+         )
+ 
++    def _compute_caps_temporal_loss(self, forward_results, mb_rollout_data):
++        # G1_Hackason（CAPS の時間の項、10-30）: 出力の平均の、隣り合う時刻の差の 2 乗を並びの方向に足し、組で平均する。
++        # 組は [台, 時刻] の行の中だけで作る（行は 1 台の続いた num_steps_per_env 歩）。回の切れ目（dones[t] が真なら
++        # t+1 は次の回の始め）と詰め物（padding_mask）にかかる組は数えない
++        mu = forward_results["policy_results"]["action_mean"][
++            ..., self.caps_temporal_start : self.caps_temporal_end
++        ]
++        dones = mb_rollout_data["mb_dones"].bool()
++        padding_mask = mb_rollout_data["mb_padding_mask"].bool()
++        diff_sq = torch.square(mu[:, 1:] - mu[:, :-1]).sum(dim=-1)
++        valid = ~dones[:, :-1] & ~padding_mask[:, :-1] & ~padding_mask[:, 1:]
++        # 組が 1 つも無いとき（全部の台が毎歩終わる）は 0。GPU を待たせないように any() で分けない
++        return (diff_sq * valid).sum() / valid.sum().clamp(min=1)
++
+     def _update_stats_buffer(
+         self,
+         ppo_epoch_idx,
+@@ -1483,6 +1521,9 @@ class TRLPPOTrainer(PPOTrainer):
+         )
+         self.vf_clipfrac_stats[ppo_epoch_idx, minibatch_idx, microbatch_idx] = vf_clipfrac
+         self.ratio_stats[ppo_epoch_idx, minibatch_idx, microbatch_idx] = ratio.mean()
++        self.caps_temporal_stats[ppo_epoch_idx, minibatch_idx, microbatch_idx] = loss_dict[
++            "caps_temporal_loss"
++        ]
+ 
+     def _get_train_metrics(self):
+         metrics = {}
+@@ -1522,6 +1563,14 @@ class TRLPPOTrainer(PPOTrainer):
+             self.accelerator.gather_for_metrics(self.ratio_stats).var().item()
+         )
+         metrics["objective/entropy"] = metrics["loss/entropy_avg"]
++        # G1_Hackason（CAPS、10-30）: 重みを掛ける前と後。学習率は KL で変わった実際の値（metrics["lr"] は計画の値のまま）
++        metrics["loss/caps_temporal_avg"] = (
++            self.accelerator.gather_for_metrics(self.caps_temporal_stats).mean().item()
++        )
++        metrics["loss/weighted_caps_temporal_avg"] = (
++            self.caps_temporal_coef * metrics["loss/caps_temporal_avg"]
++        )
++        metrics["policy/learning_rate"] = self.optimizer.param_groups[0]["lr"]
+ 
+         return metrics
+ 
+-- 
+2.43.0
+
