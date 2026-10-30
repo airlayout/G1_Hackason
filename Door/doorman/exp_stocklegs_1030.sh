@@ -44,6 +44,10 @@ PY="$HOME/miniforge3/envs/doorman6/bin/python"
 eval_cond() {
   local name="$1" more="$2" evlog rec rate succ
   evlog="$HOME/work_inoue/doorman/logs_stocklegs_eval_${name}.log"
+  # 始め直し（10-30 夜に OMEN の電源が切れた）: 済んだ条件は測り直さない
+  if awk -F'\t' -v n="$name" '$1 == n && $3 != "none" { found = 1 } END { exit !found }' "$RESULTS"; then
+    log "段 A 評価 ${name} は済んでいる（$RESULTS）"; return 0
+  fi
   log "段 A 評価 ${name} ck=$CK more=$more"
   # 評価は 256 台なので 9 GB（10-26〜29 の評価と同じ）。再起動の後は空きが 12.5 GB で、12 GB＋余裕では始まらない
   EVAL_REPO=VIRAL6_fix COUNT_ARGS="--criterion through" MAX_WAIT_MIN="${MAX_WAIT_MIN:-240}" MEM_MAX="${EVAL_MEM_MAX:-9G}" \
@@ -56,6 +60,10 @@ eval_cond() {
 }
 
 rm -f "$STOP_FILE"
+# 電源が切れると、評価が置いた札（PAUSE_DOOR_F3）が外れずに残り、段 B の学習が札で止まり続ける。評価が動いていなければ外す
+if [ -e "$PAUSE_FILE" ] && ! pgrep -f "[e]val_from_start.sh" > /dev/null; then
+  log "残っていた札を外す: $PAUSE_FILE"; rm -f "$PAUSE_FILE"
+fi
 log "純正に似せた脚 start ck=$CK n=$NUM_ENVS stock=$STOCK_MORE mask=$MASK_MORE"
 if [ "${SKIP_A:-0}" != 1 ]; then
   [ -f "$RESULTS" ] || printf 'cond\tsuccess\trate\trecord\tmore\n' > "$RESULTS"
