@@ -34,6 +34,9 @@ class TestReachMapParts(unittest.TestCase):
         self.assertEqual(rm.classify("押し込みの直線の 12/90 点目で関節が 1 周期に 0.05 rad 動く"), ("J", ""))
         self.assertEqual(rm.classify("手前の点の手先が作業空間の外"), ("W", ""))
         self.assertEqual(rm.classify("手前の姿勢に届かない: 収束しない"), ("R", ""))
+        # 経由の姿勢なしの直接の移動（「経由の姿勢から手前の姿勢へ移動する途中」と取り違えない）
+        self.assertEqual(rm.classify("手前の姿勢へ移動する途中（16/30）で腕が体にぶつかる: torso_link ↔ right_elbow_link（距離 -3.0 mm）"), ("D", "body"))
+        self.assertEqual(rm.classify("経由の姿勢から手前の姿勢へ移動する途中（17/30）で腕が体にぶつかる: right_wrist_yaw_link ↔ obstacle_3_table（距離 -1.0 mm）"), ("2", "desk"))
 
     @needs("pin")
     def test_bottle_visibility(self) -> None:

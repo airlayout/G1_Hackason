@@ -17,7 +17,7 @@
 出力: _local/button_press/reach_map/<日時>/map.csv（1 通り 1 行）と map.txt（見やすい地図）
 記号: # = 計画が通り、画像にも入る / o = 計画は通るが、ボトルが画像から出る / 英字 = 断られた段階
   W 作業空間の外 / R 手前の姿勢に届かない / A 手前の姿勢で体か机に当たる / V 経由の姿勢で当たる
-  1 開始→経由の途中で当たる / 2 経由→手前の途中で当たる / P 押し込みの直線で届かない / Q 押し込みの直線で当たる / J 関節が急に動く
+  1 開始→経由の途中で当たる / 2 経由→手前の途中で当たる / D 開始→手前の途中で当たる（--no-via）/ P 押し込みの直線で届かない / Q 押し込みの直線で当たる / J 関節が急に動く
   大文字は「当たった相手が体」、小文字は「当たった相手が机」（当たりを伴う段階だけ）
 """
 
@@ -43,7 +43,7 @@ from common.press_planner import PressPlanner, UnreachableError, finger_axis_for
 from common.realday import load_taught_poses  # noqa: E402
 
 # 段階の順（大きいほど先まで進んだ）
-STAGES = ["W", "R", "A", "V", "1", "2", "P", "Q", "J"]
+STAGES = ["W", "R", "A", "V", "1", "2", "D", "P", "Q", "J"]
 BOTTLE_R = 0.033   # 500 ml の茶の半径 [m]
 BOTTLE_H = 0.21    # ボトルの高さ [m]
 PRESS_H = 0.10     # 押す点の、天板からの高さ [m]
@@ -108,6 +108,8 @@ def classify(msg: str) -> tuple[str, str]:
         return "1", partner
     if "経由の姿勢から手前の姿勢へ移動する途中" in msg:
         return "2", partner
+    if "手前の姿勢へ移動する途中" in msg:   # 経由の姿勢なし（上の 2 も同じ文を含むので、その後で見る）
+        return "D", partner
     if "押し込みの直線" in msg and "関節が 1 周期" in msg:
         return "J", partner
     if "押し込みの直線" in msg and "届かない" in msg:
@@ -118,7 +120,8 @@ def classify(msg: str) -> tuple[str, str]:
 
 
 def init_worker(side: str, start: str, start_q: list[float] | None, clearance: float | None = None,
-                via_deg: list[float] | None = None, tilts: list[tuple[float, float]] | None = None) -> None:
+                via_deg: list[float] | None = None, tilts: list[tuple[float, float]] | None = None,
+                no_via: bool = False) -> None:
     robot_cfg = load_config("robot.yaml")
     press_cfg = load_config("press.yaml")
     if clearance is not None:
@@ -133,7 +136,7 @@ def init_worker(side: str, start: str, start_q: list[float] | None, clearance: f
         q0[arm] = np.asarray(start_q, dtype=float)
     elif start == "zero":
         q0 = np.zeros(29)
-    via = np.radians(np.asarray(pipe["via_pose"] if via_deg is None else via_deg, dtype=float))
+    via = None if no_via else np.radians(np.asarray(pipe["via_pose"] if via_deg is None else via_deg, dtype=float))
     seeds: list[tuple[str, np.ndarray | None]] = []
     poses = load_taught_poses()
     if pipe.get("seed_pose") in poses:
@@ -223,6 +226,7 @@ def main() -> int:
     ap.add_argument("--tilts", type=float, nargs="+", metavar="L U",
                     help="指の向きの候補（左 deg, 上 deg を組で並べる。例: 0 0 30 -15）。先に通ったものを使う。無ければ前方に合わせる")
     ap.add_argument("--via", type=float, nargs=7, help="経由の姿勢（右腕 7 関節 [deg]）。既定は pipeline.yaml の via_pose")
+    ap.add_argument("--no-via", action="store_true", help="経由の姿勢を使わず、開始から手前の姿勢へ直接動く（via_pose: null）")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
@@ -232,7 +236,8 @@ def main() -> int:
     print(f"[map] {len(cells)} 通りを計画する（{args.workers} プロセス）")
     with ProcessPoolExecutor(args.workers, initializer=init_worker,
                              initargs=(args.side, args.start, args.start_q, args.clearance, args.via,
-                                       None if not args.tilts else list(zip(args.tilts[::2], args.tilts[1::2])))) as ex:
+                                       None if not args.tilts else list(zip(args.tilts[::2], args.tilts[1::2])),
+                                       args.no_via)) as ex:
         rows = []
         for i, r in enumerate(ex.map(run_cell, cells, chunksize=8), start=1):
             rows.append(r)
