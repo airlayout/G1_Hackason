@@ -1,0 +1,11 @@
+# Button_Press / reach_wide.yaml の経由の姿勢を探し直した候補（--overlay reach_wide2.yaml）。pipeline.yaml に重ねる。【候補・実機未確認】
+#
+# sim/via_wide_search.py（2026-10-30、計画だけ）で、指の向きの候補は reach_wide.yaml のまま、経由の姿勢を肩 roll −90° まで広げて探した最良。
+# reach_wide.yaml より肩をさらに前へ上げ（+12°）、肘をもう少し曲げ（−7°）、手首を少し下げた形（肩 roll はほぼ同じ）。
+# 頭カメラに入る配置で 770 → 818、探索に使っていない机の高さ 6 通りで 1,852 → 2,083。reach_wide.yaml で通る配置のうち通らなくなったものは 0。
+# MuJoCo（sim/reach_verify.py）では、reach_wide.yaml で通る 10 配置と、新しく通る 5 配置がすべて成功。経由の姿勢へは最大 107°、約 11 秒。
+# 詳しくは docs/reports/press_reach_maps.md の 5 章。10/31 の実機日では使わない（既定と reach_wide.yaml の 2 つに絞る）。
+# 実機で使う前に、reach_wide.yaml と同じく、押さずに経由 → 手前の姿勢まで動かして確かめる。
+pipeline:
+  via_pose: [80.4, -10.3, -46.0, -51.1, 0.0, -12.7, 0.0]
+  finger_tilts_deg: [[0, 0], [15, 0], [30, 0], [45, 0]]

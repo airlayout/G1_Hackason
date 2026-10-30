@@ -19,7 +19,7 @@
 - **経由の姿勢を広く探し直した（案 A、10/30 追加）**: 肩を横へ大きく開く（肩 roll を −90° まで）候補も含めて 301 通り試した。
   **腕を大きく横へ開く姿勢は良くならず**、見つかったのは今の広げた設定を少し変えた姿勢（肩をさらに前へ上げ、肘をもう少し曲げる）だった。
   頭カメラに入る配置で 770 → 818。探索に使っていない机の高さ 6 通りでは 1,852 → 2,083（+231）で、**通らなくなった配置は 0**。高い机ほど効く（0.81 m で 105 → 214）。
-  **候補のまま**で、`configs/` には入れていない。
+  **候補のまま**。`configs/reach_wide2.yaml` に置いた（`--overlay reach_wide2.yaml` で試せる。10/31 の実機日では使わない）。
 - **まだやっていないこと**: 実機での確認（ボトルの広げた設定の dry-run、エレベーターを実機で押すこと）。
   ボトルの広げた設定は既定にしていない（`--overlay reach_wide.yaml` で選ぶ）。
 
@@ -182,7 +182,7 @@
 1. **実機で、ボトルの広げた設定を dry-run する**: `--overlay reach_wide.yaml --dry-run` で、押さずに経由の姿勢 → 手前の姿勢まで動かし、周りに当たらないかを見る（`real/REAL_DAY_PROCEDURE.md` の段階5・6）。
 2. 問題なければ、机の縁を 32 cm より近づけた配置で、実際に押す。
 3. 実機で通ることを確かめてから、`configs/pipeline.yaml` の既定の `via_pose` と `finger_tilts_deg` を置き換える。
-4. 探索した経由の姿勢（5 章）は、実機で広げた設定を確かめたあと、`reach_wide.yaml` の `via_pose` を置き換えるかを決める。
+4. 探索した経由の姿勢（5 章、`configs/reach_wide2.yaml`）は、実機で広げた設定を確かめたあと、`reach_wide.yaml` を置き換えるかを決める。
 5. 案 B（経由の姿勢を 2 つ以上）を検討する（5 章の「分かったこと」）。
 6. **エレベーター**: 実機で `git pull` してから dry-run する（股関節の不具合を直したコミットが要る）。勧める範囲の真ん中（32 cm 前後）から試す。
 
@@ -195,7 +195,7 @@
   - `sim/elevator_stand_map.py`（エレベーターの地図）
   - `sim/reach_report.py`（地図を上から見た図と表にまとめる。[press_reach_maps.html](press_reach_maps.html) を作った）
   - `sim/via_wide_search.py`（指の向きの候補を入れたまま、経由の姿勢を広く探す。5 章）
-- 設定: `configs/reach_wide.yaml`（広げた設定。`--overlay reach_wide.yaml` で使う）。既定の `configs/pipeline.yaml` は変えていない。
+- 設定: `configs/reach_wide.yaml`（広げた設定。`--overlay reach_wide.yaml` で使う）、`configs/reach_wide2.yaml`（5 章で探し直した経由の姿勢。候補・実機未確認）。既定の `configs/pipeline.yaml` は変えていない。
 - 地図の出力（`_local/`、git の管理外）。`map.txt` が見やすい地図、`map.csv` が 1 通り 1 行:
   - `_local/button_press/reach_map/20261029_001221/`（ボトル、今の設定、249/1456）
   - `_local/button_press/reach_map/20261030_wide/`（ボトル、広げた設定、1,089/1456）
