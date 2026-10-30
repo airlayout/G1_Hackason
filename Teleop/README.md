@@ -121,6 +121,8 @@ Phase 0 が済んだところ。**キットを取り込んだだけで、まだ�
 ./scripts/pc2_teleop.sh go                     # 追従の開始（r）
 ./scripts/pc2_teleop.sh rec                    # 記録の開始（s）… もう一度で保存
 ./scripts/pc2_teleop.sh check-ep door_room4_1027 # 録った 1 本を点検（歩きの値・時刻・センサー・扉の角度）。✗ なら録り直し
+#   10-30 から: 向きごとの「指令どおりに進んだ割合」（/dog_odom）と、その課題で扉が 30° を超えた本数（関門 5/10）も出す
+./scripts/pc2_teleop.sh push-force door_room4_1027 # 手が扉を押した力と、前へ歩けの区間ごとの押し方（check-ep の後に。pinocchio）
 ./scripts/pc2_teleop.sh quit                   # 終える（q）。腕を 2 rad/s で下ろしてから、制御を 2 秒かけて純正へ返す
 ./scripts/pc2_teleop.sh sensors-stop t0_1027_s # センサーの記録を止める
 ```

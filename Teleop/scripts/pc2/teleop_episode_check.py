@@ -6,14 +6,19 @@
   1. 遠隔操作の記録（data.json）: コマ数・1 コマごとの時刻（time_ns）・周期の乱れ・歩きの指令・腕
      ＋左右の腕の動きの合計・速さの最大・推定トルクの最大（関節つき）・上限（URDF）への張り付き
   2. センサーの記録（rec_take.sh）: その 1 本の時間にライダー・/dog_odom・赤外線の画像が入っているか
-  3. 扉の角度: 記録を始める直前の 4 秒（開始位置で止まっている間・扉は閉じている）で扉と地図を作り、
-     記録の間を追う（Door/real/lidar_door_est.py）。扉の角度の最大と、どの段階まで行ったか（S0〜S4）
+  3. 指令どおりに進んだ割合（10-30 追加）: 歩きの指令の向き（前・後ろ・左・右）ごとに、指令が 0.1 を超えて 0.6 秒以上
+     続いた区間で、指令どおりなら進む距離と /dog_odom で実際に進んだ距離（区間の終わりの 1 秒後まで）を比べる。
+     扉に押し返されて前へ出ないかを見る（10-29 の 1 本目は前 12%・後ろ 41%・左 41%・右 31%）
+  4. 扉の角度: 記録を始める直前の 4 秒（開始位置で止まっている間・扉は閉じている）で扉と地図を作り、
+     記録の間を追う（Door/real/lidar_door_est.py）。扉の角度の最大と、どの段階まで行ったか（S0〜S4）。
+     1 回ずつの扉の角度と頭の位置は 1 本のフォルダの door_track.npz に残す（押す力の計算 door_push_force.py が使う）
 
     python3 teleop_episode_check.py --task door_room4_1027            # いちばん新しい 1 本
     python3 teleop_episode_check.py --task door_room4_1027 --episode 3
     python3 teleop_episode_check.py --episode-dir <episode_0003> --runs <mapping_runs>   # 場所を直接
 
-結果は課題のフォルダの episode_checks.csv に 1 行ずつ足す（記録表の下書き）。
+結果は課題のフォルダの episode_checks.csv に 1 行ずつ足す（記録表の下書き）。足した後に、その課題で S2 以上まで
+行った本数を数えて出す（関門: 10 本中 5 本。同じ 1 本を何度点検しても、新しい方の 1 行だけを数える）。
 録り直しが要るもの（✗）が 1 つでもあれば終了コード 1。
 段階: S1 扉角 2° 超（ラッチが外れた）／S2 30° 以上／S3 70° 以上 85° 以下で止めた／S4 頭が扉の座標で x ≥ 1.5 m
 （扉の座標: 原点＝開口の中心の床・+x＝押して入る向き。頭は pelvis より約 5 cm 前なので S4 は目安）
@@ -51,6 +56,12 @@ ARM_JOINTS = ("肩 pitch", "肩 roll", "肩 yaw", "肘", "手首 roll", "手首 
 ARM_TAU_LIMIT = np.array([25.0, 25.0, 25.0, 25.0, 25.0, 5.0, 5.0])  # G1 29DoF の URDF の上限 [N·m]
 NEAR_LIMIT = 0.8              # 上限のこの割合を超えたら「張り付き」と数える
 WARN_LR_RATIO = 2.0           # 左右のトルクの最大がこの倍率以上違ったら注意
+# 指令どおりに進んだ割合（10-30 の改善策の調査と同じ数え方。OMEN の analysis/code/cmd_compliance.py）
+CMD_MIN = 0.1                 # 指令がこれを超えて
+CMD_MIN_LEN_S = 0.6           # この秒以上続いた所を 1 区間とする
+ODOM_TAIL_S = 1.0             # 進んだ距離は区間の終わりのこの秒後までを入れる（純正の歩行は止まるまで遅れる）
+DIRECTIONS = (("前", "fwd", 0, +1), ("後ろ", "back", 0, -1), ("左", "left", 1, +1), ("右", "right", 1, -1))
+GATE_STAGES = ("S2", "S3", "S4")  # 関門で数える段階（扉 30° 以上）
 
 
 @dataclass
@@ -211,7 +222,9 @@ def find_session(runs: Path, suffix: str, t0: int, t1: int, name: Optional[str])
     return None
 
 
-def check_sensors(runs: Path, t0: int, t1: int, name: Optional[str], rep: Report) -> Optional[Path]:
+def check_sensors(runs: Path, t0: int, t1: int, name: Optional[str],
+                  rep: Report) -> Tuple[Optional[Path], Optional[Path]]:
+    """ライダー・/dog_odom・赤外線の画像の回数を見て、(ライダーの記録, /dog_odom の記録) を返す"""
     dur = max((t1 - t0) / 1e9, 1e-3)
     li = find_session(runs, "_li", t0, t1, name)
     if li is None:
@@ -235,7 +248,96 @@ def check_sensors(runs: Path, t0: int, t1: int, name: Optional[str], rep: Report
         fps = int(((tn >= t0) & (tn <= t1)).sum()) / dur
         rep.row["ir_fps"] = round(fps, 1)
         (rep.ok if fps >= MIN_IR_FPS else rep.ng)(f"赤外線の画像 {fps:.1f} 枚/秒（{ir.name}）")
-    return li
+    return li, od
+
+
+# ---------------------------------------------------------------- 指令どおりに進んだ割合
+def command_segments(t: np.ndarray, v: np.ndarray, min_cmd: float = CMD_MIN,
+                     min_len_s: float = CMD_MIN_LEN_S) -> List[Tuple[int, int]]:
+    """v が min_cmd を超えて min_len_s 秒以上続いた区間（始めのコマ, 終わった次のコマ）"""
+    out, start = [], None
+    for i, on in enumerate(v > min_cmd):
+        if on and start is None:
+            start = i
+        if not on and start is not None:
+            out.append((start, i))
+            start = None
+    if start is not None:
+        out.append((start, len(v) - 1))
+    return [(a, b) for a, b in out if t[b] - t[a] >= min_len_s]
+
+
+def body_displacement(ot: np.ndarray, oxy: np.ndarray, oyaw: np.ndarray, t0: float, t1: float) -> Tuple[float, float]:
+    """t0 の向きで見た、t0 から t1 までに前・左へ進んだ距離 [m]（odometry の世界の座標から直す）"""
+    i0, i1 = (min(int(i), len(ot) - 1) for i in np.searchsorted(ot, [t0, t1]))
+    c, s = math.cos(oyaw[i0]), math.sin(oyaw[i0])
+    dx, dy = oxy[i1] - oxy[i0]
+    return c * dx + s * dy, -s * dx + c * dy
+
+
+def cmd_compliance(ft: np.ndarray, cmd: np.ndarray, ot: np.ndarray, oxy: np.ndarray, oyaw: np.ndarray,
+                   tail_s: float = ODOM_TAIL_S) -> dict:
+    """歩きの指令の向きごとに {区間の数, 指令どおりなら進む距離, 実際に進んだ距離}。時刻はどちらも同じ基点の秒"""
+    res = {}
+    for name, _, k, sgn in DIRECTIONS:
+        n, expected, got = 0, 0.0, 0.0
+        for a, b in command_segments(ft, sgn * cmd[:, k]):
+            t0, t1 = float(ft[a]), float(ft[b])
+            expected += abs(float(cmd[a:b, k].mean())) * (t1 - t0)
+            got += body_displacement(ot, oxy, oyaw, t0, t1 + tail_s)[k] * sgn
+            n += 1
+        res[name] = {"segments": n, "expected_m": expected, "got_m": got}
+    return res
+
+
+def load_odom_parser(door_real: Path) -> Callable[[bytes], tuple]:
+    """/dog_odom の CDR の読み方（Door/real/dog_odom_bag.py。PC2 では deploy で ~/teleop_tools/ にも置く）"""
+    if str(door_real) not in sys.path:
+        sys.path.insert(0, str(door_real))
+    import dog_odom_bag  # noqa: E402
+    return dog_odom_bag.parse_odom_cdr
+
+
+def read_odom(od: Path, t0: int, t1: int, parse: Callable[[bytes], tuple]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """db3 の受け取った時刻 [ns]・世界の xy・yaw"""
+    rows = list(db3_rows(od, ODOM_TOPIC, t0, t1, True))
+    t = np.array([r[0] for r in rows], dtype=np.int64)
+    p = np.array([parse(r[1])[2:] for r in rows], dtype=float).reshape(-1, 7)   # x y z qx qy qz qw
+    yaw = np.arctan2(2 * (p[:, 6] * p[:, 5] + p[:, 3] * p[:, 4]), 1 - 2 * (p[:, 4] ** 2 + p[:, 5] ** 2))
+    return t, p[:, :2], yaw
+
+
+def check_compliance(od: Path, frames: Sequence[dict], t0: int, t1: int, door_real: Path, rep: Report) -> None:
+    """扉に押し返されて前へ出ないかを、向きごとの「指令どおりに進んだ割合」で見る（見るだけ。✗ にはしない）"""
+    rep.row.update({f"{key}_pct": "" for _, key, _, _ in DIRECTIONS}, fwd_cmd_m="", fwd_got_m="")
+    try:
+        cmd = np.array([f["actions"]["body"]["qpos"] for f in frames], dtype=float).reshape(-1, 3)
+    except (KeyError, TypeError, ValueError):
+        return                                             # 歩きの指令が無いことは check_frames が ✗ にしている
+    try:
+        ot_ns, oxy, oyaw = read_odom(od, t0, t1 + int(ODOM_TAIL_S * 1e9), load_odom_parser(door_real))
+    except Exception as e:  # noqa: BLE001
+        rep.warn(f"/dog_odom を読めず、指令どおりに進んだ割合を出せない: {type(e).__name__}: {e}")
+        return
+    if len(ot_ns) < 2:
+        rep.warn("この 1 本の間の /dog_odom が無く、指令どおりに進んだ割合を出せない")
+        return
+    ft = (np.array([f["time_ns"] for f in frames], dtype=np.int64) - t0) / 1e9
+    res = cmd_compliance(ft, cmd, (ot_ns - t0) / 1e9, oxy, oyaw)
+    parts = []
+    for name, key, _, _ in DIRECTIONS:
+        c = res[name]
+        if c["segments"] == 0 or c["expected_m"] <= 0:
+            continue
+        pct = 100.0 * c["got_m"] / c["expected_m"]
+        rep.row[f"{key}_pct"] = round(pct)
+        parts.append(f"{name} {pct:.0f}%（{c['segments']} 区間・{c['expected_m']:.2f} m の指令に {c['got_m']:+.2f} m）")
+    if res["前"]["segments"]:
+        rep.row.update(fwd_cmd_m=round(res["前"]["expected_m"], 2), fwd_got_m=round(res["前"]["got_m"], 2))
+    if not parts:
+        rep.ok(f"指令どおりに進んだ割合: {CMD_MIN_LEN_S} 秒以上続いた歩きの指令が無い")
+        return
+    rep.ok(f"指令どおりに進んだ割合（/dog_odom・区間の終わりの {ODOM_TAIL_S:.0f} 秒後まで）: " + "・".join(parts))
 
 
 # ---------------------------------------------------------------- 扉の角度
@@ -272,9 +374,11 @@ def stage_of(max_angle: float, max_x: float) -> str:
 
 def track_door(est, ref_scans: Sequence[np.ndarray], scans: Sequence[Tuple[float, np.ndarray]],
                lever_side: int = +1, thickness: float = DOOR_THICKNESS_M) -> dict:
-    """止まっている間の点群で扉と地図を作り、記録の間を追う。結果を辞書で（記録が無くても試せるよう点群を直接受ける）"""
+    """止まっている間の点群で扉と地図を作り、記録の間を追う。結果を辞書で（記録が無くても試せるよう点群を直接受ける）。
+    track は 1 回ずつの値（時刻 t [s]・扉の角度・受け入れたか・扉の座標での頭の x・y・yaw。捨てた回の姿勢は予測の値）"""
     tracker = est.DoorTracker.from_still(list(ref_scans), thickness, lever_side)
     angles, xs, acc, lost = [], [], 0, False
+    track = {k: [] for k in ("t", "angle", "accepted", "x", "y", "yaw")}
     for t, xyz in scans:
         e = tracker.step(t, xyz)
         acc += int(e.accepted)
@@ -282,6 +386,9 @@ def track_door(est, ref_scans: Sequence[np.ndarray], scans: Sequence[Tuple[float
         angles.append(e.angle_deg)
         if e.accepted:
             xs.append(e.lidar.x)
+        for k, v in (("t", t), ("angle", e.angle_deg), ("accepted", e.accepted), ("x", e.lidar.x), ("y", e.lidar.y),
+                     ("yaw", e.lidar.yaw)):
+            track[k].append(v)
     a = np.array(angles, dtype=float)
     fin = np.isfinite(a)
     max_angle = float(a[fin].max()) if fin.any() else float("nan")
@@ -289,10 +396,12 @@ def track_door(est, ref_scans: Sequence[np.ndarray], scans: Sequence[Tuple[float
     return {"start_x": tracker.door.lidar_in_door.x, "start_y": tracker.door.lidar_in_door.y,
             "width": tracker.door.width, "max_angle": max_angle, "max_x": max_x,
             "accepted_frac": acc / max(len(scans), 1), "lost": lost, "stage": stage_of(max_angle, max_x),
-            "angle_measured_frac": float(fin.mean()) if len(a) else 0.0}
+            "angle_measured_frac": float(fin.mean()) if len(a) else 0.0,
+            "track": {k: np.array(v, dtype=bool if k == "accepted" else float) for k, v in track.items()}}
 
 
-def check_door(li: Path, t0: int, t1: int, door_real: Path, lever_side: int, rep: Report) -> None:
+def check_door(li: Path, t0: int, t1: int, door_real: Path, lever_side: int, rep: Report,
+               ep_dir: Optional[Path] = None) -> None:
     try:
         node, est = load_door_modules(door_real)
         decode = make_decoder(node)
@@ -319,6 +428,8 @@ def check_door(li: Path, t0: int, t1: int, door_real: Path, lever_side: int, rep
                    max_x=round(r["max_x"], 2) if math.isfinite(r["max_x"]) else "",
                    track_frac=round(r["accepted_frac"], 2), stage=r["stage"])
     rep.ok(f"扉と地図を作れた（幅 {r['width']:.3f} m・開始位置 x {r['start_x']:+.2f} y {r['start_y']:+.2f} m）")
+    if ep_dir is not None:
+        np.savez(ep_dir / "door_track.npz", width=r["width"], lever_side=lever_side, **r["track"])
     ang = f"{r['max_angle']:.1f}°" if math.isfinite(r["max_angle"]) else "測れない"
     (rep.ok if r["angle_measured_frac"] > 0.5 else rep.warn)(
         f"扉の角度の最大 {ang}（測れた回 {r['angle_measured_frac'] * 100:.0f}%）・頭の x の最大 {r['max_x']:+.2f} m → 段階 {r['stage']}")
@@ -345,21 +456,42 @@ def pick_episode(data_dir: Path, task: Optional[str], episode: Optional[int], ep
     return want
 
 
-def append_csv(path: Path, row: dict) -> None:
-    keys = ["episode", "start_jst", "seconds", "frames", "dt_median_ms", "dt_p95_ms", "dt_max_ms", "walk_frac",
+CSV_KEYS = ["episode", "start_jst", "seconds", "frames", "dt_median_ms", "dt_p95_ms", "dt_max_ms", "walk_frac",
             "vx_min", "vx_max", "vyaw_absmax", "L_travel_rad", "R_travel_rad", "L_dq_max", "R_dq_max",
-            "L_tau_max", "L_tau_joint", "R_tau_max", "R_tau_joint", "L_near_limit_frac", "R_near_limit_frac", "lidar_hz", "odom_hz", "ir_fps", "door_width", "start_x", "start_y",
+            "L_tau_max", "L_tau_joint", "R_tau_max", "R_tau_joint", "L_near_limit_frac", "R_near_limit_frac", "lidar_hz", "odom_hz", "ir_fps",
+            "fwd_pct", "back_pct", "left_pct", "right_pct", "fwd_cmd_m", "fwd_got_m", "door_width", "start_x", "start_y",
             "max_angle_deg", "max_x", "track_frac", "stage", "problems"]
+
+
+def append_csv(path: Path, row: dict) -> None:
+    """1 行足す。前の版の見出しで書かれた表なら、今の見出しで書き直してから足す（欄がずれないように）"""
+    if path.exists():
+        with path.open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            old = list(reader)
+            head = reader.fieldnames or []
+        if head != CSV_KEYS:
+            with path.open("w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=CSV_KEYS, extrasaction="ignore")
+                w.writeheader()
+                w.writerows(old)
     new = not path.exists()
     with path.open("a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
+        w = csv.DictWriter(f, fieldnames=CSV_KEYS, extrasaction="ignore")
         if new:
             w.writeheader()
         w.writerow(row)
 
 
+def gate_tally(path: Path) -> Tuple[int, int]:
+    """記録表の 1 本ごとの新しい方の行で、S2 以上まで行った本数と全部の本数（段階が出なかった 1 本も分母に入れる）"""
+    with path.open(newline="", encoding="utf-8") as f:
+        latest = {r["episode"]: r.get("stage") or "" for r in csv.DictReader(f)}
+    return sum(s in GATE_STAGES for s in latest.values()), len(latest)
+
+
 def default_door_real() -> Path:
-    for p in (Path.home() / "door_real", HERE.parents[2] / "Door" / "real"):
+    for p in [Path.home() / "door_real"] + [q / "Door" / "real" for q in HERE.parents[1:3]]:
         if (p / "lidar_door_est.py").exists():
             return p
     return Path.home() / "door_real"
@@ -390,9 +522,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     span = check_frames(frames, rep)
     if span:
         t0, t1 = span
-        li = check_sensors(a.runs, t0, t1, a.sensors, rep)
+        door_real = a.door_real or default_door_real()
+        li, od = check_sensors(a.runs, t0, t1, a.sensors, rep)
+        if od is not None:
+            check_compliance(od, frames, t0, t1, door_real, rep)
         if li is not None and not a.no_door:
-            check_door(li, t0, t1, a.door_real or default_door_real(), -1 if a.lever_right else +1, rep)
+            check_door(li, t0, t1, door_real, -1 if a.lever_right else +1, rep, ep_dir=ep)
     rep.row["problems"] = rep.bad
     print("\n".join(rep.lines))
     print(f"[点検] {'✓ 録り直し不要' if rep.bad == 0 else f'✗ 録り直しが要る所 {rep.bad} 件'}")
@@ -400,6 +535,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         out = ep.parent / "episode_checks.csv"
         append_csv(out, rep.row)
         print(f"[点検] 記録表の下書きに 1 行足した: {out}")
+        reached, total = gate_tally(out)
+        print(f"[点検] この課題で扉が 30° を超えた（S2 以上）本数: {reached} / {total}（関門の線は 10 本中 5 本）")
     return 0 if rep.bad == 0 else 1
 
 

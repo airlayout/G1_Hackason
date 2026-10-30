@@ -14,7 +14,9 @@
 #   ./scripts/pc2_teleop.sh start <課題名>     遠隔操作を切り離して起こす（--motion・記録あり・素通し）
 #   ./scripts/pc2_teleop.sh go                追従の開始（キーボードの r）
 #   ./scripts/pc2_teleop.sh rec               記録の開始／保存（s）。1 回ごとに 2 度押す
-#   ./scripts/pc2_teleop.sh check-ep <課題名> [番号]  録った 1 本を点検する（歩きの値・時刻・センサー・扉の角度）。既定は最新
+#   ./scripts/pc2_teleop.sh check-ep <課題名> [番号]  録った 1 本を点検する（歩きの値・時刻・センサー・指令どおりに進んだ割合・
+#                                             扉の角度）。既定は最新。終わりに、その課題で扉が 30° を超えた本数（関門）を出す
+#   ./scripts/pc2_teleop.sh push-force <課題名> [番号]  手が扉を押した力と、前へ歩けの区間ごとの押し方（check-ep の後に）
 #   ./scripts/pc2_teleop.sh state             状態（追従中・記録中）
 #   ./scripts/pc2_teleop.sh log               ログを流し見る（Ctrl+C で抜けても遠隔操作は止まらない）
 #   ./scripts/pc2_teleop.sh quit              終える（q）。⚠️ 後始末で腕を下ろす。扉から手を離してから
@@ -50,6 +52,8 @@ case "$cmd" in
       "$KIT/setup/apply_patches.py" "$KIT/tools/stick_pause_selftest.py" \
       "$KIT/tools/record_timestamp_selftest.py" "$KIT/tools/state_watchdog_selftest.py" \
       "$KIT/tools/go_home_selftest.py" "$KIT/tools/arm_effort_selftest.py" "$HERE/pc2/ik_bench.py" "$HERE/pc2/teleop_episode_check.py" \
+      "$HERE/../../Door/real/dog_odom_bag.py" "$HERE/pc2/door_push_force.py" \
+      "$HERE/../../Door/doorman6/usd_fix/urdf_src/g1_29dof_rev_1_0.urdf" \
       "$PC2:$TOOLS/" || exit 1
     pc2 "chmod +x ~/$TOOLS/*.sh ~/$TOOLS/*.py" && say "配った: PC2 の ~/${TOOLS}/"
     if [ "$cmd" = setup ]; then
@@ -80,6 +84,13 @@ case "$cmd" in
     task="${1:?課題名を渡す}"; num="${2:-}"
     [[ "$task" =~ ^[A-Za-z0-9_-]+$ && ( -z "$num" || "$num" =~ ^[0-9]+$ ) ]] || { say "課題名は英数字と _ -、番号は整数"; exit 1; }
     pc2 "$PY ~/$TOOLS/teleop_episode_check.py --task $task ${num:+--episode $num}"
+    ;;
+  push-force)
+    task="${1:?課題名を渡す}"; num="${2:-}"
+    [[ "$task" =~ ^[A-Za-z0-9_-]+$ && ( -z "$num" || "$num" =~ ^[0-9]+$ ) ]] || { say "課題名は英数字と _ -、番号は整数"; exit 1; }
+    sel=$(if [ -n "$num" ]; then printf 'episode_%04d' "$((10#$num))"; else echo 'episode_*'; fi)   # 既定は最新
+    pc2 "e=\$(ls -d ~/teleop_data/$task/$sel 2>/dev/null | tail -1); [ -n \"\$e\" ] || { echo '[pc2_teleop] 記録が無い'; exit 1; }
+         nice -n 10 $PY ~/$TOOLS/door_push_force.py --episode-dir \"\$e\""
     ;;
   go)    pc2 "$PY ~/$TOOLS/teleop_ipc.py start" ;;
   rec)   pc2 "$PY ~/$TOOLS/teleop_ipc.py record" ;;
