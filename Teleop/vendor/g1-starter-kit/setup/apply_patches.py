@@ -91,6 +91,12 @@ patch ファイルではなく文字列置換にしてあるのは、上流が�
                   トルクを読む口は G1_29_ArmController にだけ足す（ほかの腕では空欄のまま）。
                   ⚠️ 10-29 の実機で、受け取った状態を写す自前の入れ物（MotorState）に tau_est が無く
                   AttributeError で遠隔操作が落ちた → arm-tau-store で入れ物に足して写す（自動で補完する）。
+
+  loco-fwd-max    [G1_Hackason 改変] 左スティックを前へ倒したときの歩きの上限を --loco-fwd-max [m/s] で変えられる
+                  ようにする（0 より大きく 1.0 以下。既定は上流と同じ 0.3）。後ろ・横・旋回は 0.3 のまま。
+                  10-29 の 1 本目で、扉の前で前への指令に 12% しか進まなかったため、関門の試しで上げて確かめる（10-30）。
+                  上流のコメントの issue #135 はスティックの符号の質問で、0.3 にした理由は書かれていない。
+                  ⚠️ record-loco-cmd の loco_cmd_sent の行の上に当たる（自動で補完する）。
 """
 
 import argparse
@@ -640,6 +646,29 @@ G1_29_Num_Motors = 35''',
              'right_arm_dq.tolist(),  # PATCH(record-arm-effort)'),
         ],
     },
+    # [G1_Hackason 改変] 上流 817fb00 には無い。扉を押して前へ出られるかの関門で、前への上限を上げて試すため（10-30）。
+    "loco-fwd-max": {
+        "desc": "前（左スティックを前へ）の歩きの上限を --loco-fwd-max で変えられるようにする（既定 0.3 のまま）",
+        "file": "teleop_hand_and_arm.py",
+        "plain": [
+            ("    parser.add_argument('--motion', action = 'store_true', help = 'Enable motion control mode')\n",
+             "    parser.add_argument('--motion', action = 'store_true', help = 'Enable motion control mode')\n"
+             "    # PATCH(loco-fwd-max): 前（扉を押す向き）への歩きの上限 [m/s]。既定は上流と同じ 0.3（後ろ・横・旋回は 0.3 のまま）。\n"
+             "    # 上流のコメントの issue #135 はスティックの符号の質問で、0.3 にした理由は書かれていない（10-30 に確認）。\n"
+             "    def _loco_fwd_max(value):\n"
+             "        v = float(value)\n"
+             "        if not 0.0 < v <= 1.0:\n"
+             "            raise argparse.ArgumentTypeError(f\"--loco-fwd-max は 0 より大きく 1.0 以下にする（{value}）\")\n"
+             "        return v\n"
+             "    parser.add_argument('--loco-fwd-max', type = _loco_fwd_max, default = 0.3, help = 'max forward walking speed [m/s] of the left stick (backward, sideways and turning stay 0.3)')\n",
+             "PATCH(loco-fwd-max): 前（扉を押す向き）"),
+            ("                loco_cmd_sent = [-tele_data.left_ctrl_thumbstickValue[1] * 0.3,\n",
+             "                # PATCH(loco-fwd-max): 前へ倒したときだけ上限を --loco-fwd-max にする（後ろは 0.3 のまま）\n"
+             "                loco_vx = -tele_data.left_ctrl_thumbstickValue[1]\n"
+             "                loco_cmd_sent = [loco_vx * (args.loco_fwd_max if loco_vx > 0 else 0.3),\n",
+             "loco_vx * (args.loco_fwd_max if loco_vx > 0 else 0.3)"),
+        ],
+    },
 }
 
 
@@ -778,6 +807,7 @@ DEPENDS = {
     "xr-stale-stop": ["stick-pause", "xr-stale-stamp"],  # 一時停止の状態と、届いた時刻を使う
     "xr-stale-log": ["xr-stale-stop"],              # xr-stale-stop が入れた行の上に当たる
     "record-arm-effort": ["arm-tau-getter", "arm-tau-store"],  # 腕の制御の部品に足したトルクの口と、その写しを使う
+    "loco-fwd-max": ["record-loco-cmd"],            # record-loco-cmd が作った loco_cmd_sent の行の上に当たる
 }
 
 

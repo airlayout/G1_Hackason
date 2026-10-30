@@ -45,6 +45,14 @@ LOG="$LOGDIR/teleop_$(date +%Y%m%dT%H%M%S)_${TASK}.log"
 ARGS=(--input-mode=controller --arm=G1_29 --display-mode=pass-through
       --network-interface="$IFACE" --motion --record --headless --ipc
       --frequency="$FREQ" --task-name="$TASK" --task-dir="$DATA")
+# 10-30: 前（左スティックを前へ）の歩きの上限を上げて試すとき（修正 loco-fwd-max。後ろ・横・旋回は 0.3 のまま）
+if [ -n "${TELEOP_FWD_MAX:-}" ]; then
+  grep -qF "PATCH(loco-fwd-max)" "$MAIN" || die "TELEOP_FWD_MAX を使うには PATCH(loco-fwd-max) が要る（pc2_teleop.sh setup を先に流す）"
+  awk -v v="$TELEOP_FWD_MAX" 'BEGIN { exit !(v + 0 > 0 && v + 0 <= 1.0 && v ~ /^[0-9.]+$/) }' ||
+    die "TELEOP_FWD_MAX は 0 より大きく 1.0 以下の数: ${TELEOP_FWD_MAX}"
+  ARGS+=(--loco-fwd-max="$TELEOP_FWD_MAX")
+  echo "[start] 前への歩きの上限 ${TELEOP_FWD_MAX} m/s（後ろ・横・旋回は 0.3 のまま）"
+fi
 
 if [ -n "${TELEOP_DRY:-}" ]; then
   echo "[start] （試し）修正は全部当たっている。起こすなら:"

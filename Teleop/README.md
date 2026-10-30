@@ -115,6 +115,7 @@ Phase 0 が済んだところ。**キットを取り込んだだけで、まだ�
 ./scripts/pc2_teleop.sh check                  # 機体のモードを見る（動かさない）
 ./scripts/pc2_teleop.sh sensors t0_1027_s 1800  # 先にセンサー（ライダー・IMU・/dog_odom・赤外線）を録り始める
 ./scripts/pc2_teleop.sh start door_room4_1027  # 切り離して起こす（--motion・記録あり・素通し）。⚠️ 直後に両腕が下ろした形へ動く
+#   10-30 から: TELEOP_FWD_MAX=0.5 ./scripts/pc2_teleop.sh start … で、前への歩きの上限だけを上げる（0〜1.0。既定 0.3。修正 loco-fwd-max）
 #   → Quest で https://192.168.0.82:8012/?ws=wss://192.168.0.82:8012 →「Pass-through」
 #     （「Virtual Reality」は全面グレーで周りが見えない。キットの 03-teleop.md の記述は古い）
 #   → 操作者はロボットの後ろでロボットと同じ向き・Meta ボタン長押しで「ビューをリセット」・腕を体の横に下ろす

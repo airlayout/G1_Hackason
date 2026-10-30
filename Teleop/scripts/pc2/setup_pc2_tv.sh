@@ -128,4 +128,5 @@ PY
 "$PY" "$HERE/record_timestamp_selftest.py" | tail -1
 "$PY" "$HERE/go_home_selftest.py" | tail -1
 "$PY" "$HERE/arm_effort_selftest.py" | tail -1
+"$PY" "$HERE/loco_fwd_max_selftest.py" | tail -1
 log "✓ 終わり"

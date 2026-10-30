@@ -153,7 +153,7 @@ def main() -> int:
     ns = {
         "time": clock, "arm_ctrl": arm, "loco_wrapper": loco, "arm_ik": FakeIK(),
         "tv_wrapper": types.SimpleNamespace(tvuer=tvuer),
-        "args": types.SimpleNamespace(input_mode="controller", motion=True),
+        "args": types.SimpleNamespace(input_mode="controller", motion=True, loco_fwd_max=0.3),  # 前の上限は loco-fwd-max の既定
         "logger_mp": types.SimpleNamespace(warning=lambda m: print(f"    （記録係）{m}"),
                                            info=lambda m: (infos.append(m), print(f"    （記録係）{m}")),
                                            debug=lambda m: None),

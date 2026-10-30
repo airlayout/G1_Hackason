@@ -51,7 +51,8 @@ case "$cmd" in
       "$KIT/tools/mode_check.py" "$KIT/tools/armsdk_probe.py" \
       "$KIT/setup/apply_patches.py" "$KIT/tools/stick_pause_selftest.py" \
       "$KIT/tools/record_timestamp_selftest.py" "$KIT/tools/state_watchdog_selftest.py" \
-      "$KIT/tools/go_home_selftest.py" "$KIT/tools/arm_effort_selftest.py" "$HERE/pc2/ik_bench.py" "$HERE/pc2/teleop_episode_check.py" \
+      "$KIT/tools/go_home_selftest.py" "$KIT/tools/arm_effort_selftest.py" "$KIT/tools/loco_fwd_max_selftest.py" \
+      "$HERE/pc2/ik_bench.py" "$HERE/pc2/teleop_episode_check.py" \
       "$HERE/../../Door/real/dog_odom_bag.py" "$HERE/pc2/door_push_force.py" \
       "$HERE/../../Door/doorman6/usd_fix/urdf_src/g1_29dof_rev_1_0.urdf" \
       "$PC2:$TOOLS/" || exit 1
@@ -67,7 +68,9 @@ case "$cmd" in
   start)
     task="${1:?課題名を渡す（例 door_room4_1027）}"
     [[ "$task" =~ ^[A-Za-z0-9_-]+$ ]] || { say "課題名は英数字と _ - だけ"; exit 1; }
-    pc2 "~/$TOOLS/teleop_start.sh $task"
+    fwd="${TELEOP_FWD_MAX:-}"                 # 前への歩きの上限 [m/s]（修正 loco-fwd-max）。空なら上流と同じ 0.3
+    [[ -z "$fwd" || "$fwd" =~ ^(0?\.[0-9]+|1(\.0+)?)$ ]] || { say "TELEOP_FWD_MAX は 0 より大きく 1.0 以下の数（例 0.5）"; exit 1; }
+    pc2 "${fwd:+TELEOP_FWD_MAX=$fwd }~/$TOOLS/teleop_start.sh $task"
     ;;
   sensors)
     name="${1:?名前を渡す（例 t0_1027_sensors）}"; secs="${2:-1800}"

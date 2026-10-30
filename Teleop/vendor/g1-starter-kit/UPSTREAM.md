@@ -93,6 +93,8 @@ OMEN（`ubuntu@192.168.123.200`）のキットは 45ead40 のまま、コミッ�
 | `tools/record_timestamp_selftest.py` | record-timestamp の自己テスト（新規・実機不要） |
 | `setup/apply_patches.py`（10-27） | 修正 `xr-stale-log`（途切れの長さを残す）・`safe-exit`（終了で腕を 2 rad/s で下ろす）・`go-home-release`（戻しきれなくても制御を 2 秒で返す）・`arm-tau-getter`＋`record-arm-effort`（記録の左右の腕に速さとトルクを入れる。上流は空欄） |
 | `tools/go_home_selftest.py`・`tools/arm_effort_selftest.py` | 上の自己テスト（新規・実機不要） |
+| `setup/apply_patches.py`（10-30） | 修正 `loco-fwd-max`（左スティックを前へ倒したときの歩きの上限を `--loco-fwd-max` で 0〜1.0 m/s に。既定は上流と同じ 0.3、後ろ・横・旋回は 0.3 のまま）。扉を押して前へ出られるかの関門で上げて試すため |
+| `tools/loco_fwd_max_selftest.py` | 上の自己テスト（新規・実機不要。16 項目） |
 
 確かめ方: 上流の xr_teleoperate（817fb00）の素の写しに全部当てた結果が、OMEN で動いている
 `~/xr_teleoperate` の 3 ファイルと 1 文字違わず一致すること、全部外すと素の版に戻ること、
