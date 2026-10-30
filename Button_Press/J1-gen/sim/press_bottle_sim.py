@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -22,21 +23,30 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.arm import make_backend  # noqa: E402
-from common.config import load_config  # noqa: E402
+from common.config import deep_merge, load_config  # noqa: E402
 from common.localize import make_detector  # noqa: E402
 from common.pipeline import PipelineResult, PressPipeline  # noqa: E402
 from common.pipeline_cli import add_common_args, load_pipeline_config, make_logger  # noqa: E402
 from common.post_press import PostPressCheck  # noqa: E402
 from common.sim_camera import SegmentationDetector, SimHeadCamera  # noqa: E402
 from common.sim_scene import BOTTLE, detection_pose  # noqa: E402
+from common.tip_check import TipOverCheck  # noqa: E402
 
 
 def run_sim(args: argparse.Namespace, post_check: PostPressCheck | None = None,
-            arm_overrides: dict[str, Any] | None = None) -> tuple[PipelineResult, Any, Any]:
-    """MuJoCo で全体の流れを実行する。(結果, バックエンド, 記録) を返す（テストで手先の位置を測るため）。"""
+            arm_overrides: dict[str, Any] | None = None, scene_name: str = "sim_scene.yaml",
+            scene_overrides: dict[str, Any] | None = None,
+            on_backend: Callable[[Any], None] | None = None, tip_check: bool = False) -> tuple[PipelineResult, Any, Any]:
+    """MuJoCo で全体の流れを実行する。(結果, バックエンド, 記録) を返す（テストで手先の位置を測るため）。
+
+    scene_name: シーンの設定（configs/ 内）。scene_overrides: その一部を重ねる（bottle の質量を変える、など）。
+    on_backend: バックエンドを開いた直後に呼ぶ（tick にフックして、途中のボトルの傾きを記録する、など）。
+    tip_check: 倒れたかの自動判定（common/tip_check.py）を使う。結果は PipelineResult.tip。
+    """
     args.sim_scene_obstacles = True  # シーンの机を障害物として衝突の確認に入れる
+    args.sim_scene_name = scene_name
     cfg = load_pipeline_config(args)
-    scene = load_config("sim_scene.yaml")
+    scene = deep_merge(load_config(scene_name), scene_overrides or {})
     sim = dict(cfg.arm["sim"])
     view = bool(getattr(args, "view", False))
     # 画面で見るときは実時間で進める（そうしないと一瞬で終わる）
@@ -46,12 +56,15 @@ def run_sim(args: argparse.Namespace, post_check: PostPressCheck | None = None,
         cfg.arm[k] = v
     backend = make_backend(cfg.arm, cfg.robot, dry_run=False, path="sim")
     backend.open()
+    if on_backend:
+        on_backend(backend)
     camera = SimHeadCamera(backend.model, backend.data, cfg.robot)
     det_type = getattr(args, "sim_detector", "segmentation")
     detector = SegmentationDetector(camera, BOTTLE) if det_type == "segmentation" else make_detector(cfg.localize)
     logger = make_logger(cfg, args.label or "sim", {"kind": "sim", "detector": det_type})
+    tip = TipOverCheck(cfg.robot, cfg.localize, detector, cfg.pipeline["tip_check"]) if tip_check else None
     pipe = PressPipeline(cfg, backend, logger, camera.render, detector, confirm=getattr(args, "confirm", False),
-                         post_check=post_check)
+                         post_check=post_check, tip_check=tip)
     try:
         res = pipe.run()
     finally:

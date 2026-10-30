@@ -23,16 +23,24 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.arm import make_backend  # noqa: E402
-from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
+from common.camera_cfg import (  # noqa: E402
+    add_camera_args,
+    apply_depth_anchor,
+    apply_head_camera_mount,
+    load_camera_config,
+)
 from common.config import load_config  # noqa: E402
 from common.dds import peer_label  # noqa: E402
 from common.localize import make_detector  # noqa: E402
 from common.pipeline import PressPipeline  # noqa: E402
 from common.pipeline_cli import add_common_args, load_pipeline_config, make_logger  # noqa: E402
+from common.tip_check import TipOverCheck  # noqa: E402
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def main(default_overlay: str | None = None, description: str | None = None, tip_check: bool = False) -> int:
+    """default_overlay: 既定の設定の上書き（real/knock_bottle.py が knock.yaml を渡す）。
+    tip_check: 倒れたかの自動判定を使う（real/knock_bottle.py）。終了コードは、倒れた 0 / 倒れなかった 20 / 判定できない 21。"""
+    p = argparse.ArgumentParser(description=description or __doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--path", choices=["arm_sdk", "lowcmd"], required=True, help="プランA（arm_sdk）/ プランB（lowcmd）")
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml。lo なら模擬ロボット）")
     add_camera_args(p)
@@ -40,9 +48,13 @@ def main() -> int:
     p.add_argument("--execute", action="store_true", help="実際に送信する（付けなければ dry-run）")
     p.add_argument("--no-confirm", action="store_true", help="各段階の Enter 待ちを省く")
     add_common_args(p)
+    p.set_defaults(overlay=default_overlay)
     args = p.parse_args()
 
     cfg = load_pipeline_config(args)
+    cam_cfg = load_camera_config(args, quiet=True)
+    apply_head_camera_mount(cfg.robot, cam_cfg)
+    apply_depth_anchor(cfg.localize, cam_cfg)
     if args.network_interface:
         cfg.arm["network_interface"] = args.network_interface
     iface = cfg.arm["network_interface"]
@@ -62,13 +74,18 @@ def main() -> int:
         src.open()
         grab = src.read_rgbd
     detector = make_detector(cfg.localize) if cfg.pipeline["target"]["source"] == "depth" else None
+    if tip_check and not args.no_camera and detector is None:
+        detector = make_detector(cfg.localize)
+    tip = (TipOverCheck(cfg.robot, cfg.localize, detector, cfg.pipeline["tip_check"])
+           if tip_check and detector is not None else None)
     backend = make_backend(cfg.arm, cfg.robot, dry_run=not args.execute, path=args.path)
     logger = make_logger(cfg, args.label, {"kind": "real", "path": args.path, "network_interface": iface,
                                            "peer": peer_label(iface) if iface else None,
                                            "execute": args.execute, "camera_config": args.camera_config})
     try:
         backend.open()
-        pipe = PressPipeline(cfg, backend, logger, grab, detector, confirm=args.execute and not args.no_confirm)
+        pipe = PressPipeline(cfg, backend, logger, grab, detector, confirm=args.execute and not args.no_confirm,
+                             tip_check=tip)
         res = pipe.run()
     except ValueError as e:  # NIC 名が空、など
         print(f"[press_bottle] 設定の誤り: {e}")
@@ -79,6 +96,8 @@ def main() -> int:
         if src is not None:
             src.close()
     print(f"[press_bottle] 記録: {logger.dir}")
+    if res.code == 0 and res.tip is not None:
+        return res.tip.exit_code
     return res.code
 
 

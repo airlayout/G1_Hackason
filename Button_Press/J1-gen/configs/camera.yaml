@@ -16,3 +16,24 @@ legacy_rgb:
   port: 5555
   camera_name: head_camera
   timeout_ms: 5000
+
+# 実機の頭カメラの取り付け（configs/robot.yaml の head_camera を上書きする。読み込みは common/camera_cfg.py）。
+# 【既定は上書きしない（URDF の pitch 47.6° のまま）】。実機の頭カメラの向きは首の傾きで変わる:
+#   - 2026-10-14: 深度から求めた角度は 45.9°（URDF とほぼ同じ。首は傾いていなかったと思われる）
+#   - 2026-10-21: 首が傾いていて 71°（立った状態、床と机の面から pitch 70.65°・71.45°、roll −0.8°・−1.9°。
+#     FK の指先の投影でも 71.7° で中指の先に重なった）
+# 毎回、最初に首の傾きを確かめること（real/DAILY_LOG_20261021_labpc.md の「次回の再開手順」）。
+# 首が傾いたまま作業するときだけ、下の例を有効にする。
+# robot.yaml は MuJoCo のカメラの置き場所にも使うので書き換えない（camera_sim.yaml にはこれを書かない）。
+# 残る一定のずれは段階4の較正（localize.yaml の calibration.offset_pelvis_m）で補正する。
+# head_camera_mount:
+#   # [roll, pitch, yaw] [deg]（URDF の rpy と同じ回転の決まり）
+#   rpy_deg: [-1.4, 71.0, 0.0]
+#   # 取り付け位置 [m]。null なら robot.yaml の値（URDF）のまま
+#   xyz: null
+
+# 深度を取る基準点（枠の幅・高さに対する割合。localize.yaml の depth.anchor を上書きする）。
+# 既定は上書きしない（localize.yaml の [0.5, 0.7]）。首が 71° 傾いていたときは、ボトルの上半分が画像の外に出て
+# 天板から 3〜4 cm の低い所を押すことになり、手前の姿勢で手が机の箱に当たった（2026-10-21 の dry-run、11 mm）。
+# そのときは [0.5, 0.45]（天板から約 9.5 cm）にする。
+# depth_anchor: [0.5, 0.45]

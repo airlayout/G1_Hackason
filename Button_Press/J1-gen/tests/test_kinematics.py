@@ -142,6 +142,19 @@ class TestPressPlanner(unittest.TestCase):
         with self.assertRaisesRegex(UnreachableError, "ぶつかる"):
             self.pl.plan(np.zeros(29), np.array([0.30, 0.10, 0.0]), np.array([1.0, 0, 0]))
 
+    def test_start_contact_moving_away_is_allowed(self) -> None:
+        """実機の立った姿勢（2026-10-21 の lowstate）は、下ろした手が股関節の当たり判定に入っている。
+        そこから離れていく動きは拒否しない。"""
+        q = np.array([-0.290485, -0.004960, -0.002531, 0.593250, -0.318594, 0.008501, -0.271123, 0.003017,
+                      -0.002223, 0.601994, -0.338352, -0.005524, -0.000576, 0.000470, -0.002349, 0.291049,
+                      0.129657, 0.015711, 0.981556, 0.087161, 0.076807, 0.015232, 0.286950, -0.125894,
+                      0.024520, 0.982035, -0.096293, 0.058938, -0.020649])
+        hits = self.pl.collision.contacts(q)
+        self.assertTrue(any("hip" in h.body1 + h.body2 for h in hits))  # 開始姿勢で当たり判定に入っている
+        via = np.radians(load_config("pipeline.yaml")["via_pose"])
+        plan = self.pl.plan(q, np.array([0.33, -0.19, 0.11]), np.array([1.0, 0, 0]), q_via_arm=via)
+        self.assertEqual(len(plan.press_out), len(plan.press_in))
+
     def test_rejects_bad_input(self) -> None:
         with self.assertRaises(UnreachableError):
             self.pl.plan(np.zeros(29), np.array([np.nan, 0, 0]), np.array([1.0, 0, 0]))

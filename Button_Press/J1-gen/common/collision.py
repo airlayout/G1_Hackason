@@ -89,13 +89,27 @@ def add_hand_boxes(spec: Any, boxes: dict[str, tuple[np.ndarray, np.ndarray]]) -
 
 
 def add_obstacles(spec: Any, obstacles: list[dict[str, Any]]) -> None:
-    """障害物の箱（机など。pelvis 座標の中心 center と半分の大きさ half_size）をワールドに置く。"""
+    """障害物の箱（机など。pelvis 座標の中心 center と半分の大きさ half_size）をワールドに置く。
+
+    x_axis（任意）: 箱の x 軸の向き（pelvis 座標）。与えると、箱をその向きに回して置く（y 軸は水平に取る）。
+    柱の面のように、少し斜めの面を表すときに使う。無ければ pelvis の軸にそろえる。
+    """
     import mujoco
 
     pelvis = np.asarray(spec.body("pelvis").pos, dtype=float)
     for i, ob in enumerate(obstacles):
+        quat = [1.0, 0.0, 0.0, 0.0]
+        if ob.get("x_axis") is not None:
+            x = np.asarray(ob["x_axis"], dtype=float)
+            x = x / np.linalg.norm(x)
+            y = np.cross([0.0, 0.0, 1.0], x)
+            y = y / np.linalg.norm(y)
+            rot = np.column_stack([x, y, np.cross(x, y)])
+            q = np.zeros(4)
+            mujoco.mju_mat2Quat(q, rot.reshape(-1))
+            quat = q.tolist()
         b = spec.worldbody.add_body(name=f"obstacle_{i}_{ob.get('name', '')}",
-                                    pos=list(pelvis + np.asarray(ob["center"], dtype=float)))
+                                    pos=list(pelvis + np.asarray(ob["center"], dtype=float)), quat=quat)
         g = b.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=list(ob["half_size"]))
         g.contype = 1
         g.conaffinity = 1

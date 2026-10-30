@@ -1,26 +1,21 @@
 import time
 
 from .camera import build_frame_source
-from .detector import YoloDetector
+from .detector import build_detector
 from .output import ResultWriter
 from .timing import Timer
 
 
 def run_pipeline(config: dict, max_frames: int | None = None) -> None:
-    """FrameSource -> YoloDetector -> ResultWriter を繋いでループ実行する
+    """FrameSource -> 検出器(YoloDetector / OnnxYoloDetector) -> ResultWriter を繋いでループ実行する
 
     sim/・real/どちらの設定(config["source"]["type"])でも共通で使う。
     max_frames: 指定した場合、そのフレーム数で処理を打ち切る(動作確認用)
     """
     source = build_frame_source(config)
 
-    detector_cfg = config["detector"]
-    detector = YoloDetector(
-        model_name=detector_cfg.get("model", "yolo26n.pt"),
-        classes=detector_cfg.get("classes"),
-        confidence_threshold=detector_cfg.get("confidence_threshold", 0.5),
-        device=detector_cfg.get("device", "auto"),
-    )
+    # backend: "ultralytics"(既定) | "onnx"(G1のPC2など、torchが無い環境。common/detector/onnx_yolo.py)
+    detector = build_detector(config["detector"])
     print(f"[pipeline] detector device = {detector.device}")
 
     output_cfg = config["output"]

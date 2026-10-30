@@ -29,7 +29,7 @@ from types import FrameType
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
+from common.camera_cfg import add_camera_args, apply_head_camera_mount, load_camera_config  # noqa: E402
 from common.config import load_config, resolve_repo_path  # noqa: E402
 from common.recorder import Recorder  # noqa: E402
 from common.recording import RecordingWriter  # noqa: E402
@@ -54,6 +54,8 @@ def main() -> int:
 
     cfg = load_config("record.yaml")
     cam_cfg = load_camera_config(args)
+    robot_cfg = load_config("robot.yaml")
+    apply_head_camera_mount(robot_cfg, cam_cfg)
     root = resolve_repo_path(args.output_dir or cfg["output_dir"])
     root.mkdir(parents=True, exist_ok=True)
     free_gb = shutil.disk_usage(root).free / 1e9
@@ -97,7 +99,7 @@ def main() -> int:
 
     meta = {"label": args.label, "note": args.note, "mode": args.mode, "rgb_only": args.rgb_only,
             "argv": sys.argv, "camera": cam_cfg, "lowstate": not args.no_lowstate,
-            "robot": load_config("robot.yaml"), "localize": load_config("localize.yaml")}
+            "robot": robot_cfg, "localize": load_config("localize.yaml")}
     writer = RecordingWriter(root, args.label, meta, cfg["color_format"], int(cfg["jpeg_quality"]))
     print(f"[record] 収録フォルダ: {writer.dir}")
 

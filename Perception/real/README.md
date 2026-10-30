@@ -4,6 +4,8 @@
 
 - `run_real.py` — `common/`のYOLO検出パイプライン一式(FrameSource -> YoloDetector ->
   ResultWriter)を、ZMQストリーム経由で実機G1に接続して動かすもの
+- `check_yolo.py` — YOLO(人の検出)がそのマシンで動くか・速さを確かめる。G1のPC2の上で、torchを使わずONNXで動かす
+  (`export_onnx.py` で書き出し、PC2用の配布物は `fetch_pc2_wheels.sh`)
 - `probe_zmq_camera.py` — 認識処理を含まない、画像取得だけの動作確認スクリプト
 
 ## run_real.py（YOLO検出パイプライン）
@@ -34,6 +36,84 @@ python run_real.py --server-address 192.168.123.164
 
 検出結果は`outputs/`にJSON Lines(`run.jsonl`)・CSV(`run.csv`)として出力される
 （`.gitignore`で追跡対象外）。
+
+## G1 の PC2 の上で YOLO を動かす（check_yolo.py） ※2026-10-22 に準備、実機未確認
+
+人の認識を G1 の中（PC2: Jetson Orin NX、Ubuntu 20.04、aarch64、glibc 2.31）で動かすための確認。
+PC2 には torch を入れず、ラボPCで書き出した ONNX を **onnxruntime（CPU）** で動かす（`common/detector/onnx_yolo.py`。
+同じ ONNX を ultralytics で動かした結果と一致することを確かめてある）。カメラはまず **G1 の頭カメラ**（PC2 で動いている配信の
+5555 番を、PC2 の中から localhost で受け取る）。頭カメラは約 45° 下を向いているので、**人はかがんで、G1 の前 0.5〜1 m で写り込む**。
+あとで Web カメラ（前向き）を PC2 の USB に挿したら `--webcam <番号>` で同じことを確かめる。
+
+> ⚠️ PC2 の OS は書き換えない（`sudo apt` をしない）。入れるのは `~/perception/` の下の venv だけ。conda の `lerobot` 環境には足さない。
+> ⚠️ `run_g1_server.py` は起動時に歩行の制御を解除する（立っていると倒れるおそれ）。カメラの配信は ButtonPress の
+> `rgbd_server.py`（5555 番に同じ形式で出す。`Button_Press/J1-gen/real/depth_server/README.md`）を使う。
+
+### 事前（ラボPC。実機なしでできる）
+
+```bash
+G1_HuggingFace/venv/bin/python Perception/real/export_onnx.py
+```
+
+→ `_local/perception/models/yolo26n.onnx`（約 10 MB、end-to-end）。サンプル画像で ultralytics と一致するかも確かめる。
+PC2 がインターネットにつながらない場合（`Button_Press/J1-gen/real/pc2_survey.sh` の結果で分かる）は、配布物も集める:
+
+```bash
+bash Perception/real/fetch_pc2_wheels.sh
+```
+
+→ `_local/perception/pc2_wheels/`（約 73 MB。PC2 の glibc 2.31 / GLIBCXX 3.4.28 で動くかも確かめる。2026-10-22 はすべて OK）
+
+### 当日 1. PC2 へ写す（ラボPC、有線）
+
+```bash
+ssh g1 'mkdir -p ~/perception/real'
+```
+```bash
+scp -r Perception/common Perception/requirements_onboard.txt _local/perception/models/yolo26n.onnx g1:~/perception/
+```
+```bash
+scp Perception/real/check_yolo.py g1:~/perception/real/
+```
+
+インターネットにつながらないときは、配布物も: `scp -r _local/perception/pc2_wheels g1:~/perception/`
+（サンプル画像も写しておくと、まず 1 枚で確かめられる: `G1_HuggingFace/venv/lib/python3.12/site-packages/ultralytics/assets/bus.jpg`）
+
+### 当日 2. PC2 で venv を作る（PC2。conda の環境から抜けた状態で）
+
+Python 3.12 は conda の `lerobot` 環境のものを借りて venv を作る（`lerobot` 自体には何も足さない）。場所は `pc2_survey.sh` の
+「conda の場所」で分かる（例: `~/miniconda3`）:
+
+```bash
+~/miniconda3/envs/lerobot/bin/python -m venv ~/perception/venv
+```
+```bash
+~/perception/venv/bin/pip install -r ~/perception/requirements_onboard.txt
+```
+
+インターネットにつながらないときは `~/perception/venv/bin/pip install --no-index --find-links ~/perception/pc2_wheels -r ~/perception/requirements_onboard.txt`。
+
+### 当日 3. 動かす（PC2）
+
+画像 1 枚で動くか → 頭カメラの配信で連続、の順:
+
+```bash
+cd ~/perception && venv/bin/python real/check_yolo.py --image bus.jpg --model yolo26n.onnx
+```
+```bash
+cd ~/perception && venv/bin/python real/check_yolo.py --zmq localhost:5555 --model yolo26n.onnx --frames 100 --threads 4
+```
+
+- 配信（`rgbd_server.py --source videohub`）を動かしたままで測る（PC2 の CPU を分け合うので）。人は G1 の前 0.5〜1 m でかがむ
+- `--threads` を 2・4・6 と変えて、1 枚の時間と CPU 使用率（1 コア = 100%）を比べる。ラボPC では 4 スレッドで約 19 ms・325%
+- 結果: `~/perception/_local/perception/check_yolo/<日時>/`（`summary.json` と、人が写った画像）。ラボPC に持ち帰る:
+  `scp -r g1:~/perception/_local/perception/check_yolo _local/perception/pc2_check_yolo`
+- 比べるため、同じ配信をラボPC から受け取っても測る: `G1_HuggingFace/venv/bin/python Perception/real/check_yolo.py --zmq 192.168.123.164:5555 --model _local/perception/models/yolo26n.onnx --frames 100`
+
+### 記録すること
+
+1 枚の時間（平均・90%）、毎秒の枚数、CPU 使用率（スレッド数ごと）、かがんだ人が `person` と出たか（距離と姿勢）、配信サーバの
+CPU 使用率が変わったか（`top`）。うまくいかなければ `FAILURES.md` に書く。
 
 ## probe_zmq_camera.py（画像取得のみの動作確認） ※実機未検証(2026-09-01時点)
 

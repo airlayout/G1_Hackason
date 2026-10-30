@@ -8,7 +8,8 @@ G1のカメラ映像を取得し、YOLOによる物体検出を行う機能。
   - `camera/` — 画像取得元。`ZmqFrameSource`（ZMQストリーム、sim/real共通）・
     `VideoFileSource`（動画ファイル、テスト/フォールバック用）・
     `WebcamSource`（Webカメラ、手元確認用）
-  - `detector/` — `YoloDetector`（ultralytics YOLO26による物体検出）
+  - `detector/` — `YoloDetector`（ultralytics YOLO26による物体検出）・`OnnxYoloDetector`（同じモデルをONNXに書き出し、
+    onnxruntimeで動かす。torch不要。G1のPC2用）。設定の `detector.backend`（`ultralytics` / `onnx`）で選ぶ
   - `output/` — `ResultWriter`（検出結果をconsole/JSON/CSVへ出力）
   - `pipeline.py` — `FrameSource -> YoloDetector -> ResultWriter` を繋いでループ実行する
 - `sim/` — MuJoCoシムの`head_camera`が配信するZMQストリームに接続して動作確認

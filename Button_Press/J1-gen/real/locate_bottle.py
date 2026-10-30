@@ -35,7 +35,12 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
+from common.camera_cfg import (  # noqa: E402
+    add_camera_args,
+    apply_depth_anchor,
+    apply_head_camera_mount,
+    load_camera_config,
+)
 from common.config import REPO_ROOT, load_config  # noqa: E402
 from common.localize import Located, Locator, make_detector  # noqa: E402
 from common.rgbd_io import load_rgbd  # noqa: E402
@@ -75,7 +80,10 @@ def main() -> int:
     args = p.parse_args()
 
     robot_cfg = load_config("robot.yaml")
+    cam_cfg = load_camera_config(args, quiet=True)
+    apply_head_camera_mount(robot_cfg, cam_cfg)
     loc_cfg = load_config("localize.yaml")
+    apply_depth_anchor(loc_cfg, cam_cfg)
     if args.detector:
         loc_cfg["detector"]["type"] = args.detector
     locator = Locator(robot_cfg, loc_cfg, make_detector(loc_cfg))
