@@ -42,6 +42,15 @@ class TestReachReportParts(unittest.TestCase):
         self.assertIn("<svg", page)
         self.assertIn("| 中央 | 30〜32 cm | 30〜32 cm |", md)
 
+    def test_height_block_appears_with_three_or_more_tops(self) -> None:
+        rows = [{"edge": "0.30", "gap": "0.0", "y": "0.0", "top": t, "slope": "0.0", "plan_ok": "1", "visible": v,
+                 "partner": "", "stage": "", "reason": ""} for t, v in (("-0.04", "1"), ("0.0", "1"), ("0.04", "0"))]
+        md: list[str] = []
+        page = rr.bottle_section("試し", rows, md)
+        self.assertIn("机の高さごと", page)
+        self.assertIn("| 通る数 | 1/1（カメラ外 0） | 1/1（カメラ外 0） | 0/1（カメラ外 1） |", md)
+        self.assertNotIn("机の高さごと", rr.bottle_section("試し", rows[:2], []))
+
 
 if __name__ == "__main__":
     unittest.main()

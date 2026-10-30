@@ -74,9 +74,10 @@ def svg_grid(xs: list[float], ys: list[float], cell: Callable[[float, float], tu
         for j, y in enumerate(ys_d):
             color, text, tip = cell(x, y)
             xx = left + j * CELL
-            out.append(f'<g><title>{html.escape(tip)}</title><rect x="{xx}" y="{yy}" width="{CELL - 2}" height="{CELL - 2}" '
-                       f'rx="3" fill="{color}"/><text x="{xx + (CELL - 2) / 2}" y="{yy + CELL / 2 + 3}" text-anchor="middle" '
-                       f'class="cv">{html.escape(text)}</text></g>')
+            # マスは数が多い（1 万個ほど）ので、大きさ・角の丸み・文字の位置は CSS（.c・.cv）に任せて短く書く
+            out.append(f'<rect class="c" x="{xx}" y="{yy}" fill="{color}"><title>{html.escape(tip)}</title></rect>')
+            if text:
+                out.append(f'<text class="cv" x="{xx + (CELL - 2) // 2}" y="{yy + CELL // 2 + 3}">{html.escape(text)}</text>')
     by = top + CELL * len(xs_d)
     for j, y in enumerate(ys_d):
         out.append(f'<text x="{left + j * CELL + CELL / 2 - 1}" y="{by + 14}" text-anchor="middle" class="ax">{side(y).replace(" cm", "").replace(" ", "")}</text>')
@@ -162,8 +163,12 @@ def bottle_section(name: str, rows: list[dict[str, str]], md: list[str]) -> str:
              "".join(f"<tr><td>{html.escape(k)}</td><td class='n'>{v}</td></tr>" for k, v in reason_counts(rows)) +
              "</table><h4>ボトルの左右ごとの範囲（机の縁）</h4><table><tr><th>ボトル</th><th>全部の条件で通る</th><th>どれかで通る</th></tr>" +
              "".join(f"<tr><td>{side(y)}</td><td>{a}</td><td>{b}</td></tr>" for y, a, b in ranges_by_y(rows, "edge", ys, len(conds))) +
-             "</table></div></div>",
-             f"<details><summary>条件ごとの図（{len(conds)} 枚）</summary>{legend()}<div class='grid'>"]
+             "</table></div></div>"]
+    tops = sorted({c[1] for c in conds})
+    md_out: list[str] = []
+    if len(tops) > 2:
+        parts.append(height_block(rows, idx, conds, edges, ys, tops, md_out))
+    parts.append(f"<details><summary>条件ごとの図（{len(conds)} 枚）</summary>{legend()}<div class='grid'>")
     for c in conds:
         slope, top, gap = c
 
@@ -173,14 +178,47 @@ def bottle_section(name: str, rows: list[dict[str, str]], md: list[str]) -> str:
                 return "#fff", "", ""
             s = status(r)
             text = "" if s == "ok" else ("o" if s == "novis" else r["stage"])
-            return COLORS[s], text, f"縁 {x * 100:.0f} cm・{side(y)}: {LABELS[s]}。{r['reason'][:160]}"
+            return COLORS[s], text, f"縁 {x * 100:.0f} cm・{side(y)}: {LABELS[s]}。{r['reason'][:90]}"
         parts.append(f"<div><h5>縁の傾き {slope:+.3f}・天板 z {top:+.2f} m・縁からボトル {gap * 100:.0f} cm</h5>"
                      f"{svg_grid(edges, ys, cell, '机の縁 [cm]', 'ボトルの左右 [cm]')}</div>")
     parts.append("</div></details>")
     md += [f"### ボトル: {name}", "", f"- 通る: **{ok} / {len(rows)}**（計画が通るのは {plan}。差はカメラの画像から出る分）", "",
            "| ボトルの左右 | 全部の条件で通る机の縁 | どれかで通る机の縁 |", "|---|---|---|"]
     md += [f"| {side(y)} | {a} | {b} |" for y, a, b in ranges_by_y(rows, "edge", ys, len(conds))]
-    md += ["", "断られた理由: " + "、".join(f"{k} {v}" for k, v in reason_counts(rows)), ""]
+    md += ["", "断られた理由: " + "、".join(f"{k} {v}" for k, v in reason_counts(rows)), ""] + md_out
+    return "".join(parts)
+
+
+def height_block(rows: list[dict[str, str]], idx: dict, conds: list[tuple[float, float, float]], edges: list[float],
+                 ys: list[float], tops: list[float], md: list[str]) -> str:
+    """机の高さ（天板）ごとの全体の図と、高さ × 左右の範囲の表。床からの高さは pelvis が床から約 0.73 m として換算する。"""
+    parts = ["<h4>机の高さごと</h4><p class='note'>床からの高さは、pelvis が床から約 0.73 m として換算。"
+             "各図は、その高さでの条件（縁からボトルまでの距離 × 縁の傾き）のうち通った数。</p><div class='grid'>"]
+    head = "".join(f"<th>{t + 0.73:.2f} m</th>" for t in tops)
+    count_row, rng_rows = [], {y: [] for y in sorted(ys, reverse=True)}
+    for t in tops:
+        sub = [c for c in conds if c[1] == t]
+        rs = [r for r in rows if float(r["top"]) == t]
+
+        def overview(x: float, y: float, sub=sub) -> tuple[str, str, str]:
+            n = sum(status(idx[(x, y, *c)]) == "ok" for c in sub if (x, y, *c) in idx)
+            return fraction_color(n, len(sub)), str(n), f"縁 {x * 100:.0f} cm・ボトル {side(y)}: {n}/{len(sub)} 条件で通る"
+        ok = sum(status(r) == "ok" for r in rs)
+        nov = sum(status(r) == "novis" for r in rs)
+        parts.append(f"<div><h5>床から {t + 0.73:.2f} m（天板 z {t:+.2f}）: {ok}/{len(rs)}</h5>"
+                     f"{svg_grid(edges, ys, overview, '机の縁 [cm]', 'ボトルの左右 [cm]')}</div>")
+        count_row.append(f"{ok}/{len(rs)}（カメラ外 {nov}）")
+        for y, _a, b in ranges_by_y(rs, "edge", ys, len(sub)):
+            rng_rows[y].append(b)
+    parts.append("</div><h4>机の高さ × ボトルの左右: どれかの条件で通る机の縁</h4><table><tr><th></th>" + head + "</tr>"
+                 + "<tr><td>通る数</td>" + "".join(f"<td>{c}</td>" for c in count_row) + "</tr>"
+                 + "".join(f"<tr><td>{side(y)}</td>" + "".join(f"<td>{v}</td>" for v in vs) + "</tr>" for y, vs in rng_rows.items())
+                 + "</table>")
+    md += ["#### 机の高さごと（床から。どれかの条件で通る机の縁）", "",
+           "| | " + " | ".join(f"{t + 0.73:.2f} m" for t in tops) + " |", "|---" * (len(tops) + 1) + "|",
+           "| 通る数 | " + " | ".join(count_row) + " |"]
+    md += [f"| {side(y)} | " + " | ".join(vs) + " |" for y, vs in rng_rows.items()]
+    md.append("")
     return "".join(parts)
 
 
@@ -217,7 +255,7 @@ def elevator_section(rows: list[dict[str, str]], md: list[str]) -> str:
                     return "#fff", "", ""
                 s = status(r)
                 text = "" if s == "ok" else ("o" if s == "novis" else r["stage"])
-                return COLORS[s], text, f"柱まで {x * 100:.0f} cm・{side(y)}: {LABELS[s]}。{r['reason'][:160]}"
+                return COLORS[s], text, f"柱まで {x * 100:.0f} cm・{side(y)}: {LABELS[s]}。{r['reason'][:90]}"
             parts.append(f"<div><h5>柱の面の傾き {t:+.0f}°</h5>{svg_grid(xs, ys, cell, '柱までの距離 [cm]', 'ボタンの左右 [cm]')}</div>")
         parts.append("</div></details>")
         md += [f"#### {tname}", "", f"- 通る: **{ok} / {len(rs)}**", "",
@@ -235,7 +273,7 @@ h2{border-bottom:1px solid var(--line);padding-bottom:4px;margin-top:40px}h5{mar
 .row{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}.grid{display:flex;flex-wrap:wrap;gap:16px}
 .num{font-size:1.1em}.num b{font-size:1.5em}
 table{border-collapse:collapse;font-size:.92em}td,th{border:1px solid var(--line);padding:3px 8px;text-align:left}td.n{text-align:right}
-.ax{font-size:11px;fill:var(--mut)}.axl{font-size:12px;fill:var(--fg)}.cv{font-size:11px;fill:#111;pointer-events:none}
+.ax{font-size:11px;fill:var(--mut)}.axl{font-size:12px;fill:var(--fg)}.c{width:32px;height:32px;rx:3px}.cv{font-size:11px;fill:#111;pointer-events:none;text-anchor:middle}
 .legend{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0;font-size:.9em}.legend i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .note{color:var(--mut);font-size:.92em}details{margin:12px 0}summary{cursor:pointer;font-weight:600}
 """
