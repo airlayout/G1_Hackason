@@ -66,6 +66,17 @@ class TestStandAdvice(unittest.TestCase):
         self.assertIn("机の手前の縁まで 25.0 cm と近すぎる", msg)
         self.assertIn("あと 4 cm 以上下がる", msg)
 
+    def test_table_split_into_boxes_is_reported_once(self) -> None:
+        # make_table_boxes.py の机は高さ違いの箱に分かれる。縁の注意は、いちばん近い縁で 1 回だけ
+        p = self.pipe()
+        p.cfg.press["obstacles"] = [
+            {"name": f"table_{i}", "center": [edge + 0.2, -0.1, -0.05 - 0.09 * i], "half_size": [0.2, 0.35, 0.045]}
+            for i, edge in enumerate([0.24, 0.22, 0.23])]
+        msg = p.stand_advice(np.array([0.35, -0.20, 0.03]))
+        self.assertEqual(msg.count("机の手前の縁まで"), 1, msg)
+        self.assertIn("机の手前の縁まで 22.0 cm と近すぎる", msg)
+        self.assertIn("あと 7 cm 以上下がる", msg)
+
     def test_left_arm_is_mirrored(self) -> None:
         self.assertEqual(self.pipe(side="left").stand_advice(np.array([0.35, 0.20, 0.03])), "")
         self.assertIn("左に 30.0 cm", self.pipe(side="left").stand_advice(np.array([0.35, 0.30, 0.03])))

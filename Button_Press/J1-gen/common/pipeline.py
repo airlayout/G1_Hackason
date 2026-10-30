@@ -302,13 +302,13 @@ class PressPipeline:
             msgs.append(f"押す点が体の中心から{arm_side}に {right * 100:.1f} cm（{s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
                         f"{arm_side}へ {cm(right - s_hi)} cm 以上寄る")
         edge_min = float(stc["table_edge_min_m"])
-        for ob in self.cfg.press.get("obstacles") or []:
-            if "table" not in str(ob.get("name", "")) or ob.get("x_axis") is not None:
-                continue
-            edge = float(ob["center"][0]) - float(ob["half_size"][0])
-            if edge < edge_min:
-                msgs.append(f"机の手前の縁まで {edge * 100:.1f} cm と近すぎる（経由の姿勢へ手を上げる途中で縁に当たる）。"
-                            f"あと {cm(edge_min - edge)} cm 以上下がる")
+        # 机は高さ違いの箱に分かれている（make_table_boxes.py）ので、いちばん近い縁で 1 回だけ出す
+        edges = [float(ob["center"][0]) - float(ob["half_size"][0]) for ob in self.cfg.press.get("obstacles") or []
+                 if "table" in str(ob.get("name", "")) and ob.get("x_axis") is None]
+        if edges and min(edges) < edge_min:
+            edge = min(edges)
+            msgs.append(f"机の手前の縁まで {edge * 100:.1f} cm と近すぎる（経由の姿勢へ手を上げる途中で縁に当たる）。"
+                        f"あと {cm(edge_min - edge)} cm 以上下がる")
         if not msgs:
             return ""
         return ("立つ位置が勧める範囲の外: " + "、".join(msgs)
