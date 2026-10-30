@@ -6,7 +6,7 @@
         --bottle 広げた設定=_local/button_press/reach_map/20261030_wide \\
         --elevator _local/button_press/stand_map/20261029_005937
 
-出力: _local/button_press/reach_report/<日時>/report.html（ブラウザで開く。マスにマウスを乗せると理由が出る）と summary.md（数字だけ）。
+出力: _local/button_press/reach_report/<日時>/report.html（ブラウザで開く）と summary.md（数字だけ）。
 図はどれも「上から見た図」。ロボットは図の下にいて、上（前）を向いている。左右は見たままの向き（図の左がロボットの左）。
 - ボトル: 縦 = 机の手前の縁までの距離、横 = ボトルの左右。全体の図は、縁からボトルまでの距離・天板の高さ・縁の傾きの
   組み合わせ（既定の格子で 16 通り）のうち、いくつで「計画が通り、頭カメラの画像にも入る」かを数で出す
@@ -60,10 +60,10 @@ def side(y: float) -> str:
     return "中央" if abs(y) < 1e-9 else (f"左 {y * 100:.0f} cm" if y > 0 else f"右 {-y * 100:.0f} cm")
 
 
-def svg_grid(xs: list[float], ys: list[float], cell: Callable[[float, float], tuple[str, str, str]],
+def svg_grid(xs: list[float], ys: list[float], cell: Callable[[float, float], tuple[str, str]],
              xlabel: str, ylabel: str) -> str:
     """上から見た図（縦 = 前方 x、上ほど遠い。横 = 左右 y、左ほどロボットの左）を SVG で書く。
-    cell(x, y) は (色, マスの中の文字, マウスを乗せたときの説明)。"""
+    cell(x, y) は (色, マスの中の文字)。"""
     xs_d, ys_d = sorted(xs, reverse=True), sorted(ys, reverse=True)
     left, top = 58, 8
     w, h = left + CELL * len(ys_d) + 8, top + CELL * len(xs_d) + 56
@@ -72,10 +72,10 @@ def svg_grid(xs: list[float], ys: list[float], cell: Callable[[float, float], tu
         yy = top + i * CELL
         out.append(f'<text x="{left - 6}" y="{yy + CELL / 2 + 4}" text-anchor="end" class="ax">{x * 100:.0f}</text>')
         for j, y in enumerate(ys_d):
-            color, text, tip = cell(x, y)
+            color, text = cell(x, y)
             xx = left + j * CELL
             # マスは数が多い（1 万個ほど）ので、大きさ・角の丸み・文字の位置は CSS（.c・.cv）に任せて短く書く
-            out.append(f'<rect class="c" x="{xx}" y="{yy}" fill="{color}"><title>{html.escape(tip)}</title></rect>')
+            out.append(f'<rect class="c" x="{xx}" y="{yy}" fill="{color}"/>')
             if text:
                 out.append(f'<text class="cv" x="{xx + (CELL - 2) // 2}" y="{yy + CELL // 2 + 3}">{html.escape(text)}</text>')
     by = top + CELL * len(xs_d)
@@ -150,9 +150,9 @@ def bottle_section(name: str, rows: list[dict[str, str]], md: list[str]) -> str:
     plan = sum(r["plan_ok"] == "1" for r in rows)
     idx = {(float(r["edge"]), float(r["y"]), float(r.get("slope", 0) or 0), float(r["top"]), float(r["gap"])): r for r in rows}
 
-    def overview(x: float, y: float) -> tuple[str, str, str]:
+    def overview(x: float, y: float) -> tuple[str, str]:
         n = sum(status(idx[(x, y, *c)]) == "ok" for c in conds if (x, y, *c) in idx)
-        return fraction_color(n, len(conds)), str(n), f"縁 {x * 100:.0f} cm・ボトル {side(y)}: {n}/{len(conds)} 条件で通る"
+        return fraction_color(n, len(conds)), str(n)
 
     parts = [f"<h3>{html.escape(name)}</h3>",
              f'<p class="num"><b>{ok}</b> / {len(rows)} 通りで通る（計画が通るのは {plan}。差の {plan - ok} はボトルが頭カメラの画像から出る）</p>',
@@ -172,13 +172,13 @@ def bottle_section(name: str, rows: list[dict[str, str]], md: list[str]) -> str:
     for c in conds:
         slope, top, gap = c
 
-        def cell(x: float, y: float, c=c) -> tuple[str, str, str]:
+        def cell(x: float, y: float, c=c) -> tuple[str, str]:
             r = idx.get((x, y, *c))
             if r is None:
-                return "#fff", "", ""
+                return "#fff", ""
             s = status(r)
             text = "" if s == "ok" else ("o" if s == "novis" else r["stage"])
-            return COLORS[s], text, f"縁 {x * 100:.0f} cm・{side(y)}: {LABELS[s]}。{r['reason'][:90]}"
+            return COLORS[s], text
         parts.append(f"<div><h5>縁の傾き {slope:+.3f}・天板 z {top:+.2f} m・縁からボトル {gap * 100:.0f} cm</h5>"
                      f"{svg_grid(edges, ys, cell, '机の縁 [cm]', 'ボトルの左右 [cm]')}</div>")
     parts.append("</div></details>")
@@ -200,9 +200,9 @@ def height_block(rows: list[dict[str, str]], idx: dict, conds: list[tuple[float,
         sub = [c for c in conds if c[1] == t]
         rs = [r for r in rows if float(r["top"]) == t]
 
-        def overview(x: float, y: float, sub=sub) -> tuple[str, str, str]:
+        def overview(x: float, y: float, sub=sub) -> tuple[str, str]:
             n = sum(status(idx[(x, y, *c)]) == "ok" for c in sub if (x, y, *c) in idx)
-            return fraction_color(n, len(sub)), str(n), f"縁 {x * 100:.0f} cm・ボトル {side(y)}: {n}/{len(sub)} 条件で通る"
+            return fraction_color(n, len(sub)), str(n)
         ok = sum(status(r) == "ok" for r in rs)
         nov = sum(status(r) == "novis" for r in rs)
         parts.append(f"<div><h5>床から {t + 0.73:.2f} m（天板 z {t:+.2f}）: {ok}/{len(rs)}</h5>"
@@ -235,11 +235,10 @@ def elevator_section(rows: list[dict[str, str]], md: list[str]) -> str:
         idx = {(float(r["x"]), float(r["y"]), float(r["tilt"])): r for r in rs}
         ok = sum(status(r) == "ok" for r in rs)
 
-        def overview(x: float, y: float) -> tuple[str, str, str]:
+        def overview(x: float, y: float) -> tuple[str, str]:
             n = sum(status(idx[(x, y, t)]) == "ok" for t in tilts if (x, y, t) in idx)
             rec = 0.29 <= x <= 0.40 and abs(y) <= 0.06 + 1e-9
-            return (fraction_color(n, len(tilts)), str(n) + ("*" if rec else ""),
-                    f"柱まで {x * 100:.0f} cm・ボタンが {side(y)}: {n}/{len(tilts)} の傾きで通る" + ("（勧める範囲）" if rec else ""))
+            return fraction_color(n, len(tilts)), str(n) + ("*" if rec else "")
         parts += [f"<h3>{tname}</h3>", f'<p class="num"><b>{ok}</b> / {len(rs)} 通りで通る</p>', '<div class="row"><div>',
                   f"<h4>全体（柱の面の傾き {len(tilts)} 通りのうち通った数。* は今の勧める範囲）</h4>",
                   svg_grid(xs, ys, overview, "柱（ボタン）までの距離 [cm]", "ボタンが体の中心からどちらか [cm]"),
@@ -249,13 +248,13 @@ def elevator_section(rows: list[dict[str, str]], md: list[str]) -> str:
                   "".join(f"<tr><td>{side(y)}</td><td>{a}</td><td>{b}</td></tr>" for y, a, b in ranges_by_y(rs, "x", ys, len(tilts))) +
                   "</table></div></div>", f"<details><summary>傾きごとの図（{len(tilts)} 枚）</summary>{legend()}<div class='grid'>"]
         for t in tilts:
-            def cell(x: float, y: float, t=t) -> tuple[str, str, str]:
+            def cell(x: float, y: float, t=t) -> tuple[str, str]:
                 r = idx.get((x, y, t))
                 if r is None:
-                    return "#fff", "", ""
+                    return "#fff", ""
                 s = status(r)
                 text = "" if s == "ok" else ("o" if s == "novis" else r["stage"])
-                return COLORS[s], text, f"柱まで {x * 100:.0f} cm・{side(y)}: {LABELS[s]}。{r['reason'][:90]}"
+                return COLORS[s], text
             parts.append(f"<div><h5>柱の面の傾き {t:+.0f}°</h5>{svg_grid(xs, ys, cell, '柱までの距離 [cm]', 'ボタンの左右 [cm]')}</div>")
         parts.append("</div></details>")
         md += [f"#### {tname}", "", f"- 通る: **{ok} / {len(rs)}**", "",
@@ -292,7 +291,7 @@ def main() -> None:
           "MuJoCo・実機では未確認。図は report.html。", ""]
     body = [f"<h1>押せる範囲のまとめ</h1><p class='note'>作成 {time.strftime('%Y-%m-%d %H:%M')}。計画だけ（IK・腕と体・机の衝突・経由の姿勢）と、"
             "頭カメラ（URDF の約 48° 下向き、640×360）に入るかで判定。MuJoCo・実機では未確認。"
-            "図はどれも上から見た図で、ロボットは図の下から上（前）を向いている。マスにマウスを乗せると理由が出る。</p>"]
+            "図はどれも上から見た図で、ロボットは図の下から上（前）を向いている。マスの中の英字は断られた段階（凡例は条件ごとの図の上）。</p>"]
     if args.bottle:
         body.append("<h2>ボトル（机の縁とボトルの位置）</h2><p class='note'>縦 = pelvis から机の手前の縁まで（ボトルの手前の面は縁から 0〜12 cm 奥）。"
                     "横 = ボトルの左右。条件 = 縁からボトルまでの距離 × 天板の高さ × 縁の傾き。</p>")
