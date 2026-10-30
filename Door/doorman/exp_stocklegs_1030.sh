@@ -67,5 +67,8 @@ fi
 
 log "段 B: f3sn4096 を学習し直す ck=$CK"
 export NAME=f3sn4096 TRAIN_MORE="$CAPS_MORE,$STOCK_MORE,$MASK_MORE"
-CK="$CK" ROUNDS="${ROUNDS:-9999}" PASS_RATE=1.1 ./exp_f3_retrain_1026.sh < /dev/null
+# 学習（と各回の評価）の上限は 10 GB（10-30 17〜19 時の sar で 4,096 台の学習は 8.5 GB。再起動の後は空きが 12.5 GB で、
+# 12 GB＋余裕 1 GB〔exp_f3_retrain_1026.sh で固定〕では空き待ちから出られない）
+MEM_MAX="${TRAIN_MEM_MAX:-10G}" \
+  CK="$CK" ROUNDS="${ROUNDS:-9999}" PASS_RATE=1.1 ./exp_f3_retrain_1026.sh < /dev/null
 log "段 B が終わった"
