@@ -107,7 +107,8 @@ def main() -> int:
             side.update_scene(d, camera=cam)
             head.update_scene(d, camera=head_name)
             img = np.hstack([side.render(), head.render()])[:, :, ::-1].copy()
-            _text(img, f"t = {d.time - st['t0']:5.2f} s   {tee.step}", (12, 30))
+            t0 = d.time if st["t0"] is None else st["t0"]   # 計画が断られると一度も進めずに終わる
+            _text(img, f"t = {d.time - t0:5.2f} s   {tee.step}", (12, 30))
             _text(img, args.title or caption, (12, H - 16), 0.6)
             _text(img, "head camera", (W + 12, 30))
             return img
@@ -138,7 +139,8 @@ def main() -> int:
         ok = res.code == 0
         _text(last, "SUCCESS" if ok else "NOT PRESSED (plan rejected or stopped)", (12, 70), 1.0,
               (0, 255, 0) if ok else (0, 0, 255))
-        for _ in range(int(2.0 * FPS)):   # 最後の画を 2 秒保つ
+        hold = 2.0 if st["frames"] else 5.0   # 最後の画を保つ秒数（動かなかったときは、読めるように長め）
+        for _ in range(int(hold * FPS)):
             st["writer"].write(last)
         st["writer"].release()
         st["side"].close()
