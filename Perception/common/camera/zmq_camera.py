@@ -41,11 +41,15 @@ class ZmqFrameSource(FrameSource):
         port: int = 5555,
         camera_name: str = "head_camera",
         timeout_ms: int = 5000,
+        rgb: bool = True,
     ) -> None:
+        # rgb: 配信側がRGB順でエンコードしているか(lerobot/シムはRGB)。OpenCVの画像をそのままエンコードする配信
+        # (G1の mapping_tools/innomaker_camera_server.py など)はBGRなので False にする
         self._server_address = server_address
         self._port = port
         self._camera_name = camera_name
         self._timeout_ms = timeout_ms
+        self._rgb = rgb
         self._context = None
         self._socket = None
 
@@ -91,7 +95,7 @@ class ZmqFrameSource(FrameSource):
         frame = cv2.imdecode(np.frombuffer(img_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
         if frame is None:
             return None
-        return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) if self._rgb else frame
 
     def close(self) -> None:
         if self._socket is not None:

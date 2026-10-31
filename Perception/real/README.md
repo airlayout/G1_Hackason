@@ -18,9 +18,18 @@ G1 の PC2 で動かす。人が 3 フレーム続けて写ったら「出来事
 `Perception/docs/report/2026-10-31_g1_webcam_yolo.md` を参照。
 
 ```bash
-# G1（PC2）: GPU 版。Web カメラ（/dev/video6、横向きなので --rotate cw）
-cd ~/perception && /usr/bin/python3 real/person_alert.py --webcam 6 --rotate cw --backend tensorrt --model yolo26n.engine
+# G1（PC2）: GPU 版。前方のカメラ（Innomaker）を Mapping の配信（5555 番）から受け取る。Mapping を止めずに使える（5 枚/秒）
+cd ~/perception && /usr/bin/python3 real/person_alert.py --zmq localhost:5555 --zmq-bgr --rotate 180 --backend tensorrt --model yolo26n.engine
 ```
+
+**PC2 の Web カメラは 2 つある**（2026-10-31）: 前方の **Innomaker U20CAM** と、腕の**リストカメラ**（SunplusIT の Full HD webcam）。
+`/dev/videoN` の番号は再起動で入れ替わる（再起動の前は Innomaker が video6、後はリストカメラが video6 になり、
+`--webcam 6` のままリストカメラの映像を配信していた）。直接開くときは `--webcam /dev/v4l/by-id/...` で指定する（`ls /dev/v4l/by-id/`）。
+
+| 前方のカメラの取り方 | オプション | 速さ |
+|---|---|---|
+| Mapping の `~/mapping_tools/innomaker_camera_server.py` の配信から（BGR・反時計回りに回し済み） | `--zmq localhost:5555 --zmq-bgr --rotate 180` | 5 枚/秒（Mapping の設定） |
+| 直接（Mapping の配信が止まっているときだけ） | `--webcam /dev/v4l/by-id/usb-Innomaker_Innomaker-U20CAM-1080p-S1_SN0001-video-index0 --rotate cw` | 約 30 枚/秒 |
 ```bash
 # PC: 受け取って _local/perception/person_alert_received/ に保存し、表示する（PC から G1 へつなぐので WSL でも設定は要らない）
 G1_HuggingFace/venv/bin/python Perception/real/person_alert_receiver.py --host 192.168.0.82

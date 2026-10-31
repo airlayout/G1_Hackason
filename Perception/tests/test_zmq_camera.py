@@ -64,6 +64,19 @@ class ZmqFrameSourceDecodeTest(unittest.TestCase):
         self.assertAlmostEqual(mean_pixel[1], 50, delta=10)
         self.assertAlmostEqual(mean_pixel[2], 200, delta=10)
 
+    def test_read_keeps_bgr_when_rgb_false(self) -> None:
+        # OpenCVの画像をそのまま送る配信(G1の innomaker_camera_server.py)は BGR なので、変換しない
+        bgr = np.zeros((16, 16, 3), dtype=np.uint8)
+        bgr[..., 0] = 200
+        bgr[..., 2] = 10
+        source = ZmqFrameSource(server_address="localhost", camera_name="head_camera", rgb=False)
+        source._socket = MagicMock()
+        source._socket.recv_string.return_value = encode_message("head_camera", bgr)
+
+        mean_pixel = source.read().reshape(-1, 3).mean(axis=0)
+        self.assertAlmostEqual(mean_pixel[0], 200, delta=10)
+        self.assertAlmostEqual(mean_pixel[2], 10, delta=10)
+
     def test_read_returns_none_when_camera_name_unknown_and_no_images(self) -> None:
         source = ZmqFrameSource(server_address="localhost", camera_name="head_camera")
         source._socket = MagicMock()

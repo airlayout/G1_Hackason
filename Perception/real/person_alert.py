@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """人を検出したら、写真を G1 に保存し、PC へも配信する(G1 の PC2 で動かす)。
 
+    # 前方のカメラ(Innomaker)を、Mapping の配信(innomaker_camera_server.py、5555 番、BGR・反時計回りに回し済み・5 枚/秒)から受け取る。
     # GPU(TensorRT)で。システムの Python 3.8 で動かす(エンジンの作り方は common/detector/trt_yolo.py)
-    cd ~/perception && /usr/bin/python3 real/person_alert.py --webcam 6 --rotate cw --backend tensorrt --model yolo26n.engine
+    cd ~/perception && /usr/bin/python3 real/person_alert.py --zmq localhost:5555 --zmq-bgr --rotate 180 --backend tensorrt --model yolo26n.engine --stream 8080
+    # 前方のカメラを直接開く(Mapping の配信が止まっているときだけ。カメラは 1 つのプロセスしか開けない)。約 30 枚/秒
+    cd ~/perception && /usr/bin/python3 real/person_alert.py --webcam /dev/v4l/by-id/usb-Innomaker_Innomaker-U20CAM-1080p-S1_SN0001-video-index0 \
+        --rotate cw --backend tensorrt --model yolo26n.engine --stream 8080
     # CPU(onnxruntime)で
-    cd ~/perception && ~/miniforge3/envs/lerobot/bin/python real/person_alert.py --webcam 6 --rotate cw --model yolo26n.onnx --threads 4
+    cd ~/perception && ~/miniforge3/envs/lerobot/bin/python real/person_alert.py --zmq localhost:5555 --zmq-bgr --rotate 180 --model yolo26n.onnx --threads 4
+
+PC2 には Web カメラが 2 つある(2026-10-31): 前方の Innomaker U20CAM と、腕のリストカメラ(SunplusIT の Full HD webcam)。
+/dev/videoN の番号は再起動で入れ替わるので、--webcam には /dev/v4l/by-id/ のパスを渡す(ls /dev/v4l/by-id/ で一覧が出る)。
 
 人が --min-frames フレーム続けて写ったら「出来事」にし、そのあと --cooldown 秒は出さない(人がいる間は --cooldown 秒ごとに出し直す)。
 出来事ごとに、枠を描いた写真と記録を --out-dir(既定 _local/perception/person_alert)に保存する。写真は --max-photos 枚まで
@@ -33,6 +40,7 @@ import cv2
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from common.alert import AlertStore, EventJudge, draw_detections, make_record  # noqa: E402
+from common.camera.webcam import WebcamSource, parse_device  # noqa: E402
 from common.detector import build_detector  # noqa: E402
 
 # リポジトリの中(Perception/real/)ならリポジトリ直下、PC2 に写した ~/perception/real/ なら ~/perception を基準にする
@@ -45,10 +53,14 @@ ROTATIONS = {"cw": cv2.ROTATE_90_CLOCKWISE, "ccw": cv2.ROTATE_90_COUNTERCLOCKWIS
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = p.add_mutually_exclusive_group(required=True)
-    src.add_argument("--webcam", type=int, metavar="INDEX", help="Webカメラ(OpenCVのデバイス番号。PC2 に挿したものは 6)")
-    src.add_argument("--zmq", metavar="HOST:PORT", help="ZMQのRGB配信(run_g1_server.py --camera と同じ形式)")
+    src.add_argument("--webcam", type=parse_device, metavar="DEVICE",
+                     help="Webカメラ。/dev/v4l/by-id/... のパス(番号は再起動で入れ替わるのでこちらを使う)か、OpenCVのデバイス番号")
+    src.add_argument("--zmq", metavar="HOST:PORT", help="ZMQの画像配信(run_g1_server.py --camera と同じ形式)")
     p.add_argument("--camera-name", default="head_camera", help="--zmq の画像の名前")
-    p.add_argument("--rotate", choices=list(ROTATIONS), help="検出の前に画像を回す(PC2 の Web カメラは cw)")
+    p.add_argument("--zmq-bgr", action="store_true",
+                   help="--zmq の配信がBGR順(OpenCVの画像をそのまま送るもの。Mapping の innomaker_camera_server.py)のとき")
+    p.add_argument("--rotate", choices=list(ROTATIONS),
+                   help="検出の前に画像を回す(前方の Innomaker は、直接なら cw、Mapping の配信からなら 180)")
     p.add_argument("--backend", choices=["onnx", "tensorrt"], default="onnx")
     p.add_argument("--model", required=True, help="onnx なら .onnx、tensorrt なら .engine(隣に .names.json が要る)")
     p.add_argument("--threads", type=int, help="onnxruntime のスレッド数(onnx のときだけ)")
@@ -72,9 +84,8 @@ def build_source(args: argparse.Namespace):
         from common.camera.zmq_camera import ZmqFrameSource
 
         host, port = args.zmq.rsplit(":", 1)
-        return ZmqFrameSource(server_address=host, port=int(port), camera_name=args.camera_name, timeout_ms=5000)
-    from common.camera.webcam import WebcamSource
-
+        return ZmqFrameSource(server_address=host, port=int(port), camera_name=args.camera_name, timeout_ms=5000,
+                              rgb=not args.zmq_bgr)
     return WebcamSource(device_index=args.webcam)
 
 

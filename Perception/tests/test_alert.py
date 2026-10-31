@@ -6,7 +6,15 @@ from pathlib import Path
 import numpy as np
 
 from common.alert import AlertStore, EventJudge, draw_detections, make_record
+from common.camera.webcam import parse_device
 from common.detector.types import Detection
+
+
+class TestParseDevice(unittest.TestCase):
+    def test_number_and_path(self) -> None:
+        self.assertEqual(parse_device("6"), 6)
+        path = "/dev/v4l/by-id/usb-Innomaker_Innomaker-U20CAM-1080p-S1_SN0001-video-index0"
+        self.assertEqual(parse_device(path), path)
 
 
 class TestEventJudge(unittest.TestCase):
