@@ -9,8 +9,8 @@
   どの重みもこの 4 本では学習していない。再学習した重みは 250/250 の枠をすべて正しく読んだ（今の YOLO は 240/250）。
   **点灯した ▲ は、今の YOLO も再学習した重みも 29/29**。再学習で「光っていれば ▼」と読む癖は付いていない。
 - **10/31 追記**: 8 本すべての動画で最終版（`runs/final8/weights/best.pt`）を学習した（11 章）。
-- **10/31 追記**: 評価環境（realistic・basic、練習用の 20 試行）でも、最終版で 20/20 だった（12 章）。
-- **まだやっていないこと**: G1 の頭カメラの画像での確認。模擬 G1（DDS）での評価。
+- **10/31 追記**: 評価環境（realistic・basic・模擬 G1（DDS）、練習用の 20 試行）でも、最終版ですべて 20/20 だった（12 章）。
+- **まだやっていないこと**: G1 の頭カメラの画像での確認。
   既定の重み（`_local/button_press/button_yolo/weights/best.pt`）は置き換えていない。
 
 ## 1. 使った素材
@@ -92,7 +92,7 @@
 
 ## 8. まだやっていないこと（次の手順）
 1. ~~8 本すべての動画で最終版を学習する。~~ → 10/31 に済み（11 章）。既定の `best.pt` は置き換えていない。
-2. ~~エレベーターの評価環境で確かめる。~~ → 10/31 に realistic・basic で済み（12 章）。模擬 G1（DDS）はまだ。
+2. ~~エレベーターの評価環境で確かめる。~~ → 10/31 に realistic・basic・模擬 G1（DDS）で済み（12 章）。
 3. **実機日に G1 の頭カメラで、今の重みと新しい重みを並べて比べる**。良ければ `localize.yaml` / `elevator.yaml` の重みを切り替える。
 4. ~~点灯した ▲ の写真を撮れたら、データに足して確かめ直す。~~ → 10/31 に済み（10 章）。
 
@@ -180,8 +180,11 @@ J1GEN_BUTTON_DETECTOR=yolo J1GEN_BUTTON_WEIGHTS=_local/button_press/yolo_ft/runs
 |---|---|---|---|---|
 | realistic | **20/20** | 9.07 秒 | 19 試行 0 N、seed 10 だけ 2.69 N | 約 6 分 |
 | basic | **20/20** | 8.49 秒 | すべて 0 N | 約 11 分 |
+| 模擬 G1（DDS + ZMQ、実機と同じ口） | **20/20** | 10.13 秒 | すべて 0 N | 約 12 分 |
 
-- 平均の時間は、10/12 の今の重み（realistic 9.05 秒、basic 8.49 秒）とほぼ同じ。
+- 平均の時間は、10/12 の今の重み（realistic 9.05 秒、basic 8.49 秒、模擬 G1 10.19 秒）とほぼ同じ。
+- 模擬 G1 は `evaluate_dds.py --seeds practice --client "$P .../run_dds.py --agent Button_Press/J1-gen/contest_agent"` に、
+  同じ環境変数を付けて回した。20 試行すべてのクライアントのログ（`_local/button_press_yada/logs/evaluate_dds/client_seed*.log`）で、final8 の重みを読んだことを確かめた。
 - **seed 10 の 2.69 N は、新しい重みのせいではない**。今のコードで seed 10 だけ回し直すと、次のとおりだった。
   YOLO の枠の位置が classic と少し違うことによるものと見ている。押す力はどれも適正な範囲で、点灯までの時間も同じ（9.12 秒）。
 
@@ -192,4 +195,4 @@ J1GEN_BUTTON_DETECTOR=yolo J1GEN_BUTTON_WEIGHTS=_local/button_press/yolo_ft/runs
   | YOLO（最終版 final8） | 2.69 N | 4.92 N |
 
 - 評価環境のボタンには点字が無い。なので、10 章で見つかった点字への余分な枠の影響は、ここでは確かめられない。
-- 結果: `_local/button_press_yada/results/contest_agent_mujoco_{realistic_20261031_181021,basic_20261031_182107}.json`
+- 結果: `_local/button_press_yada/results/contest_agent_mujoco_{realistic_20261031_181021,basic_20261031_182107}.json`、`dds_20261031_183629.json`
