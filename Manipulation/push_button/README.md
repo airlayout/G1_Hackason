@@ -5,6 +5,10 @@ G1 にボタンを押させる動作の開発場所。
 ボタン／台上のペットボトルを `--task button|bottle` で切り替えて押す入口を追加した。
 ボトルの準備・実行方法・検証結果は [BOTTLE.md](BOTTLE.md) を参照。
 
+実機の呼びボタンにもボトル側の段階接近・保持・再開・記録を追加した。
+`--task button --profile field`の設定と実行例は[BUTTON_FIELD.md](BUTTON_FIELD.md)を参照。
+接近時のFK収束幅はfieldで既定5mm、中止幅は10mm。CLI・JSONで調整できる。
+
 リーダーのYada採点環境で評価する入口は [YADA.md](YADA.md)。
 実機用のコマンドと設定を残し、Python API / DDS + ZMQ の模擬G1接続を追加した。
 

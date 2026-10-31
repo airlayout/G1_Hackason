@@ -40,14 +40,17 @@ class RgbdLocalizer:
     def __init__(self, weights: str, transform: np.ndarray | Callable[[], np.ndarray],
                  target_pixel: tuple[int, int] | None = None,
                  confidence: float = 0.25, *, camera_config="camera.yaml", host=None,
-                 j1gen_root=None, runtime=None):
+                 j1gen_root=None, runtime=None, detector=None, position_stability_m=.004,
+                 device='auto', imgsz=640):
         runtime = runtime or J1CameraRuntime(j1gen_root)
-        YoloDetector = runtime.module("perception_bridge").perception("detector.yolo_detector").YoloDetector
         self.transform = transform
         self.target_pixel = target_pixel
-        self.detector = YoloDetector(model_name=weights, classes=["button"],
-                                    confidence_threshold=confidence)
-        self.tracker = TargetTracker()
+        if detector is None:
+            YoloDetector = runtime.module("perception_bridge").perception("detector.yolo_detector").YoloDetector
+            detector = YoloDetector(model_name=weights, classes=["button"], confidence_threshold=confidence,
+                                    device=device, imgsz=imgsz)
+        self.detector = detector
+        self.tracker = TargetTracker(spread_m=position_stability_m)
         self.camera = J1RgbdCamera(runtime, camera_config, host)
         self.last_preview = None
         self.last_bbox = None
@@ -57,8 +60,9 @@ class RgbdLocalizer:
     def close(self) -> None:
         self.camera.close()
 
-    def _candidates(self, frame):
-        transform = self.transform() if callable(self.transform) else self.transform
+    def _candidates(self, frame, *, transform=None):
+        if transform is None:
+            transform = self.transform() if callable(self.transform) else self.transform
         intr = frame.intrinsics
         intrinsics = CameraIntrinsics(intr.fx, intr.fy, intr.cx, intr.cy)
         depth_m = frame.depth_m()

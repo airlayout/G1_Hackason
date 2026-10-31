@@ -117,12 +117,22 @@ class SingleCorrectionTiming:
                    phase_timeout_s=getattr(args, "feedback_timeout", 20.0))
 
 
+class AlignmentNotSettled(ValueError):
+    """硬い異常とは区別し、段階接近の追加確認で扱える収束待ち。"""
+
+
 class FixedTargetAlignment:
     """1回の新しい計測で目標を固定し、その後は関節角のFKだけで追従を確認する。"""
 
     tolerance_m = 0.003
 
-    def __init__(self, observation, tip, radius, clearance, now):
+    def __init__(self, observation, tip, radius, clearance, now, *, tolerance_m=.003,
+                 abort_error_m=None):
+        if (not np.isfinite(tolerance_m) or not .001 <= tolerance_m <= .01
+                or (abort_error_m is not None and
+                    (not np.isfinite(abort_error_m) or not tolerance_m < abort_error_m <= .02))):
+            raise ValueError('FKの許容誤差・中止誤差が不正です')
+        self.tolerance_m, self.abort_error_m = tolerance_m, abort_error_m
         if not 0 <= now - observation.captured_at <= 0.5:
             raise ValueError("ボタン計測が古い、または時刻が不正です")
         validate_reachable_target(observation.target)
@@ -150,9 +160,11 @@ class FixedTargetAlignment:
         tip = self._check_tip(tip)
         self.iterations += 1
         if self.iterations > 80:
-            raise ValueError("固定目標への追従が収束しません")
+            raise AlignmentNotSettled("固定目標への追従が収束しません")
         error = self.goal - tip
         distance = float(np.linalg.norm(error))
+        if self.abort_error_m is not None and distance > self.abort_error_m:
+            raise ValueError(f'補正後のFK誤差が{self.abort_error_m*1000:g}mmを超えました')
         self.settled = self.settled + 1 if distance <= self.tolerance_m else 0
         if self.settled >= 3:
             return None
@@ -168,16 +180,17 @@ class FixedTargetAlignment:
 
 
 def align_fixed_target(observation, radius, clearance, timing,
-                       now, wait, read_tip, move):
+                       now, wait, read_tip, move, *, tolerance_m=.003, abort_error_m=None):
     """moveはIK/経路検査と移動を担当する。画像取得は呼び出し元の1回だけ。"""
     started = now()
-    servo = FixedTargetAlignment(observation, read_tip(), radius, clearance, now())
+    servo = FixedTargetAlignment(observation, read_tip(), radius, clearance, now(),
+                                tolerance_m=tolerance_m, abort_error_m=abort_error_m)
     initial_error = float(np.linalg.norm(servo.goal - read_tip()))
     move(servo.command_xyz, timing.retarget_move_s, timing.capture_settle_s)
     feedback_steps = []
     while True:
         if now() - started >= timing.phase_timeout_s:
-            raise ValueError("固定目標への追従が制限時間内に収束しません")
+            raise AlignmentNotSettled("固定目標への追従が制限時間内に収束しません")
         tip = read_tip()
         goal = servo.next_goal(tip)
         if goal is None:

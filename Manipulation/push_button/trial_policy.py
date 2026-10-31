@@ -69,11 +69,33 @@ class TrialPolicy:
             raise ValueError('姿勢・速度監視の調整には--profile fieldを指定してください')
 
 
-def add_trial_arguments(parser: argparse.ArgumentParser) -> None:
+@dataclass(frozen=True)
+class ButtonTrialPolicy(TrialPolicy):
+    """共通の監視設定を使う。台の項目はボタンの入力には公開しない。"""
+    table_x_edge: str = 'x_min'
+    table_y_edge: str = 'y_min'
+    fk_tolerance_m: float = .003
+    fk_abort_m: float = .008
+
+    def __post_init__(self):
+        super().__post_init__()
+        if (not all(math.isfinite(v) for v in (self.fk_tolerance_m, self.fk_abort_m))
+                or not .001 <= self.fk_tolerance_m <= .01
+                or not self.fk_tolerance_m < self.fk_abort_m <= .02):
+            raise ValueError('FK許容誤差は1〜10mm、中止誤差は許容誤差より大きく20mm以下が必要です')
+
+
+def add_trial_arguments(parser: argparse.ArgumentParser, *, task='bottle') -> None:
     parser.add_argument('--profile', choices=('strict', 'field'), default='strict')
     parser.add_argument('--trial-config', help='現場の設定を保存したJSON。CLI指定を優先する')
-    parser.add_argument('--table-x-edge', choices=('auto', 'x_min', 'x_max'))
-    parser.add_argument('--table-y-edge', choices=('auto', 'y_min', 'y_max'))
+    if task == 'bottle':
+        parser.add_argument('--table-x-edge', choices=('auto', 'x_min', 'x_max'))
+        parser.add_argument('--table-y-edge', choices=('auto', 'y_min', 'y_max'))
+    else:
+        parser.add_argument('--fk-tolerance-m', type=float,
+                            help='接近時のFK収束幅[m]。field既定0.005、strict既定0.003')
+        parser.add_argument('--fk-abort-m', type=float,
+                            help='補正後のFK中止幅[m]。field既定0.010、strict既定0.008')
     parser.add_argument('--position-stability-m', type=float)
     parser.add_argument('--waist-delta-deg', type=float)
     parser.add_argument('--imu-delta-deg', type=float)
@@ -85,10 +107,10 @@ def add_trial_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('--approach-mode', choices=('single', 'staged'),
                         help='single: 従来の1回再計測。staged: 10/7/5/3cmで再計測（fieldの既定）')
     parser.add_argument('--approach-extra-retries', type=int,
-                        help='段階接近1回あたりの追加確認上限（0〜2、既定2）')
+                        help='4段階全体での追加確認上限（0〜2、既定2）')
 
 
-def resolve_trial_arguments(parser, argv=None):
+def resolve_trial_arguments(parser, argv=None, *, task='bottle'):
     """CLI > JSON > プロファイル。未指定のCLI既定値でJSONを上書きしない。"""
     raw = list(sys.argv[1:] if argv is None else argv)
     pre = argparse.ArgumentParser(add_help=False)
@@ -102,16 +124,24 @@ def resolve_trial_arguments(parser, argv=None):
             raise ValueError('trial-configはJSONオブジェクトが必要です')
     explicit = {token.split('=', 1)[0] for token in raw if token.startswith('--')}
     profile = probe.profile if '--profile' in explicit else values.get('profile', probe.profile)
-    preset = asdict(TrialPolicy())
+    policy_type = ButtonTrialPolicy if task == 'button' else TrialPolicy
+    preset = asdict(policy_type())
     if profile == 'field':
         preset.update(profile='field', table_edge_tolerance=.015, table_x_edge='x_min', table_y_edge='y_min',
                       position_stability_m=.008, waist_delta_deg=3., imu_delta_deg=3., record_rgbd=True,
                       approach_mode='staged')
+        if task == 'button':
+            preset.update(position_stability_m=.004, fk_tolerance_m=.005, fk_abort_m=.010)
     elif profile != 'strict':
         raise ValueError('profileはstrictまたはfieldです')
     configurable = set(preset) | {'push_distance', 'table_height', 'table_bounds', 'contact_height',
         'clearance', 'target_pixel', 'track_table', 'gravity_scale', 'dynamics_feedforward',
         'confidence', 'detector_imgsz', 'device', 'weights', 'camera_config', 'host'}
+    if task == 'button':
+        configurable -= {key for key in configurable if key.startswith('table_')}
+        configurable -= {'push_distance', 'contact_height', 'track_table'}
+        configurable |= {'stroke', 'lamp_min_rise', 'stop_before_contact', 'alignment_mode', 'normal_motion',
+                         'remeasure_settle', 'feedback_timeout'}
     unknown = set(values)-configurable
     if unknown:
         raise ValueError(f'trial-configの未知の項目: {sorted(unknown)}')
@@ -135,8 +165,8 @@ def resolve_trial_arguments(parser, argv=None):
                 raise ValueError(f'{action.dest}は真偽値が必要です')
         if action.choices is not None and values[action.dest] not in action.choices:
             raise ValueError(f'{action.dest}の値が不正です')
-    defaults = {**preset, 'push_distance': .02 if profile == 'field' else .05,
-                'track_table': False, **values, 'profile': profile}
+    task_defaults = {'push_distance': .02 if profile == 'field' else .05, 'track_table': False} if task == 'bottle' else {}
+    defaults = {**preset, **task_defaults, **values, 'profile': profile}
     # JSONで台高を指定できる。指定必須のままの引数にはset_defaultsだけでは効かない。
     original = [(action, action.required, action.default) for action in parser._actions]
     parser_defaults = parser._defaults.copy()
@@ -150,7 +180,7 @@ def resolve_trial_arguments(parser, argv=None):
         for action, required, default in original:
             action.required, action.default = required, default
         parser._defaults = parser_defaults
-    policy = TrialPolicy(**{key: getattr(args, key) for key in preset})
+    policy = policy_type(**{key: getattr(args, key) for key in preset})
     return args, policy
 
 

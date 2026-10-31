@@ -1,0 +1,19 @@
+{
+  "profile": "field",
+  "stroke": 0.0015,
+  "clearance": 0.05,
+  "approach_mode": "staged",
+  "approach_extra_retries": 2,
+  "fk_tolerance_m": 0.005,
+  "fk_abort_m": 0.010,
+  "position_stability_m": 0.004,
+  "waist_delta_deg": 3.0,
+  "imu_delta_deg": 3.0,
+  "leg_speed_rad_s": 0.15,
+  "gyro_rad_s": 0.1,
+  "motion_persistence_s": 0.1,
+  "stable_hold_s": 0.3,
+  "gravity_scale": 0.0,
+  "dynamics_feedforward": false,
+  "record_rgbd": true
+}

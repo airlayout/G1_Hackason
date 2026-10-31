@@ -2,6 +2,7 @@
 
 import json
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -194,11 +195,13 @@ def test_cli_success_requires_lamp_return_and_release(monkeypatch, confirmed, re
         stop_walking=lambda: None, current_configuration=lambda: None))
     monkeypatch.setattr(align_button, "validate_stationary_pose", lambda *args: None)
     monkeypatch.setattr(align_button, "RgbdLocalizer", lambda *args, **kw: SimpleNamespace(close=lambda: None))
-    monkeypatch.setattr(align_button, "time", SimpleNamespace(sleep=lambda _: None))
+    monkeypatch.setattr(align_button, "time", SimpleNamespace(sleep=lambda _: None,
+                        time=time.time, monotonic=time.monotonic))
     monkeypatch.setattr("builtins.input", lambda _: "YES")
     report = {"lamp_confirmed": confirmed, "arm_returned": returned, "completed": completed,
-              "result_reason": "test result", "release_error": "test release"}
-    monkeypatch.setattr(align_button, "execute_alignment", lambda *args: report)
+              "release_completed": completed,
+              "result_reason": "test result", "release_error": None if completed else "test release"}
+    monkeypatch.setattr(align_button, "execute_alignment", lambda *args, **kwargs: report)
     assert align_button.main(["--model", "unused", "--weights", "unused", "--base-transform", "unused",
                               "--stroke", ".0015", "--output", "/tmp/unused.json",
                               "--execute", "--calibrated"]) == code
