@@ -242,6 +242,22 @@ private:
     std::vector<rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr> sub_goal_status_;
     std::map<std::string, bool> goal_active_by_topic_;
     bool cmd_timeout_requires_goal_ = true;   // false にすると 2026-09-24 以前の挙動
+
+    // --- 「意図して黙っている」Nav2 の動作（2026-10-31、Dev/Nav2Proper）-------
+    // BT の Wait は Goal の実行中に**指令を 1 件も出さずに** 5 秒待つ。上の仕組みでは
+    // Goal が ACTIVE なので cmd_timeout が数えられ、Wait のたびに FAULT になる。
+    // Wait の action status が EXECUTING の間だけ cmd_timeout を止める。
+    // ⚠️ **上限を付ける**(`max_silent_suspend_s`)。status は最後に受け取った値を
+    // 覚えているだけなので、Wait の途中で Nav2 が死ぬと「実行中」のまま残り、
+    // cmd_timeout が永久に止まってしまう。上限を超えたら止めるのをやめる。
+    // 📌 止まる速さは変わらない。指令が途切れれば SDK 側(--cmd-timeout 0.30)が
+    // 機体を 0 速度にする。ここで変わるのは「FAULT にして Goal ごと捨てるか」だけ。
+    bool AnySilentActive() const;
+    std::vector<rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr> sub_silent_status_;
+    std::map<std::string, bool> silent_active_by_topic_;
+    std::optional<rclcpp::Time> silent_since_;
+    double max_silent_suspend_s_ = 10.0;
+    bool warned_silent_too_long_ = false;
     bool logged_goal_status_ = false;
     // NAVIGATING から異常系へ抜けたことを検知するために前回の状態を覚えておく
     g1_sdk_bridge::NavState prev_state_ = g1_sdk_bridge::NavState::kDisconnected;

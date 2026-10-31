@@ -188,15 +188,15 @@ CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
                                  "status");
             }
         }
-        // ⚠️ **復帰動作(spin / backup / wait)も「Nav2 は生きている」に数える。**
-        // とくに `wait` は**指令を1件も publish しない**まま既定 5 秒待つので、
-        // これを入れないと復帰のたびに cmd_timeout で FAULT に落ちる(2026-09-24)。
-        // 📌 代償: 復帰動作が走っている間は cmd_timeout が効かない。その窓で
-        // Nav2 が死んだ場合は TF 鮮度(0.5秒)とセンサー鮮度(1.0秒)が受け持つ。
+        // 復帰動作(spin / backup)も「Goal が走っている」に数える。BT の外から
+        // 直接呼ばれたときも cmd_timeout を効かせるため。
+        // 📌 2026-10-31 に `wait` をここから外し、下の nav2_silent_status_topics へ移した。
+        // ここに入れても Wait 中は navigate_to_pose が ACTIVE なので cmd_timeout は
+        // 数えられ続け、**Wait のたびに FAULT になっていた**(意図と逆の効き方だった)。
+        // 📌 G1 用 BT は spin / backup を使わないが、残しておいても害は無い。
         for (const auto& extra : declare_parameter<std::vector<std::string>>(
                  "nav2_activity_status_topics",
-                 std::vector<std::string>{"/spin/_action/status", "/backup/_action/status",
-                                          "/wait/_action/status"})) {
+                 std::vector<std::string>{"/spin/_action/status", "/backup/_action/status"})) {
             if (!extra.empty()) {
                 topics.push_back(extra);
             }
@@ -212,6 +212,33 @@ CmdRouterNode::CmdRouterNode() : rclcpp::Node("g1_cmd_router") {
         RCLCPP_INFO(get_logger(), "Nav2 の生死を %zu 本の status で見る"
                                   "(cmd_timeout は Goal か復帰動作が走っている間だけ)",
                     topics.size());
+
+        // 意図して黙る動作(BT の Wait)。実行中だけ cmd_timeout を止める。ヘッダの注記を参照。
+        max_silent_suspend_s_ = declare_parameter<double>("max_silent_suspend_s", 10.0);
+        for (const auto& topic : declare_parameter<std::vector<std::string>>(
+                 "nav2_silent_status_topics",
+                 std::vector<std::string>{"/wait/_action/status"})) {
+            if (topic.empty()) {
+                continue;
+            }
+            silent_active_by_topic_[topic] = false;
+            sub_silent_status_.push_back(create_subscription<action_msgs::msg::GoalStatusArray>(
+                topic, status_qos,
+                [this, topic](const action_msgs::msg::GoalStatusArray::SharedPtr msg) {
+                    bool active = false;
+                    for (const auto& status : msg->status_list) {
+                        if (status.status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED ||
+                            status.status == action_msgs::msg::GoalStatus::STATUS_EXECUTING) {
+                            active = true;
+                            break;
+                        }
+                    }
+                    silent_active_by_topic_[topic] = active;
+                }));
+        }
+        RCLCPP_INFO(get_logger(), "黙って待つ動作を %zu 本の status で見る"
+                                  "(実行中は最長 %.1f 秒まで cmd_timeout を止める)",
+                    sub_silent_status_.size(), max_silent_suspend_s_);
     } else {
         RCLCPP_WARN(get_logger(), "cmd_timeout_requires_goal=false。"
                                   "**Goal 到達のたびに FAULT に落ちる**(2026-09-24 以前の挙動)");
@@ -306,6 +333,16 @@ void CmdRouterNode::OnNavTwist(double vx, double vy, double omega, bool stamped)
     mgr_->OnNavTwist(vx, vy, omega);
 }
 
+bool CmdRouterNode::AnySilentActive() const {
+    for (const auto& [topic, active] : silent_active_by_topic_) {
+        (void)topic;
+        if (active) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool CmdRouterNode::AnyGoalActive() const {
     for (const auto& [topic, active] : goal_active_by_topic_) {
         (void)topic;
@@ -390,7 +427,24 @@ void CmdRouterNode::OnTimer() {
 
     // D1: Goal が走っていない間は cmd_timeout を数えない(2026-09-24)。
     // ⚠️ **Tick() の前に呼ぶこと。** 後に置くと、この周期の判定には間に合わない。
-    if (cmd_timeout_requires_goal_ && !AnyGoalActive()) {
+    // 2026-10-31: BT の Wait の実行中も止める(上限 max_silent_suspend_s)。
+    bool silent_ok = false;
+    if (AnySilentActive()) {
+        if (!silent_since_.has_value()) {
+            silent_since_ = now();
+            warned_silent_too_long_ = false;
+        }
+        silent_ok = (now() - *silent_since_).seconds() <= max_silent_suspend_s_;
+        if (!silent_ok && !warned_silent_too_long_) {
+            warned_silent_too_long_ = true;
+            RCLCPP_WARN(get_logger(), "Wait が %.1f 秒を超えて実行中のまま。"
+                                      "Nav2 が死んだとみなし、cmd_timeout を再び数える",
+                        max_silent_suspend_s_);
+        }
+    } else {
+        silent_since_.reset();
+    }
+    if (cmd_timeout_requires_goal_ && (!AnyGoalActive() || silent_ok)) {
         mgr_->SuspendCmdTimeout();
     }
     mgr_->Tick();

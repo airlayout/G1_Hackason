@@ -1,0 +1,68 @@
+<!--
+  G1 用の NavigateToPose の Behavior Tree（2026-10-31、Dev/Nav2Proper）。
+
+  元は Humble 既定の navigate_to_pose_w_replanning_and_recovery.xml。
+  差分は「復帰動作から Spin と BackUp を外した」ことだけで、ほかは既定のまま。
+
+  ## なぜ Spin を外すのか
+  その場旋回は内蔵 SLAM のドリフトを一気に進める（2026-09-25 実機。
+  ゴール付近で回り続けた結果、自己位置が最終的に 10.8m ずれた）。
+  findings/goal_orbit_and_drift_20260925.md を参照。
+  さらに collision ahead の状況では Spin 自体も
+  「Collision Ahead - Exiting Spin」で失敗するので、復帰の役に立っていなかった。
+
+  ## なぜ BackUp を外すのか
+  後退は歩行ポリシーの学習範囲外（-0.3 m/s 以上で転倒）で、停止距離も実測していない。
+  既定の backup_speed=0.05 は歩容の成立下限を下回るので物理的にもほぼ動かない。
+  以前は「BT が BackUp を使うので behavior_server から backup を外せない」状態だった
+  （HANDOVER の落とし穴 8）。BT を差し替えたので、behavior_server からも外せる。
+
+  ## costmap の消し残り（collision ahead）はここで消す
+  local costmap の消し残り（LiDAR の死角に立った格子が消えない。
+  findings/collision_ahead_cause_20260925.md）は、以前は 20 秒ごとに消すループを
+  手で回して凌いでいた。Nav2 の作法では「経路追従が失敗したら local costmap を消して
+  やり直す」で、下の ClearLocalCostmap-Context がそれに当たる（既定 BT にも在る）。
+  消すのは失敗したときだけなので、本物の障害物を定期的に消してしまうことが無い。
+
+  ## Wait と g1_cmd_router
+  Wait は 5 秒間、速度指令を 1 件も出さない。g1_cmd_router は Goal 実行中に
+  指令が cmd_timeout（2.0 秒）途切れると FAULT にするので、そのままでは
+  Wait のたびに FAULT になる。g1_cmd_router は wait の action status を見て、
+  Wait の実行中だけ cmd_timeout を止める（nav2_silent_status_topics）。
+  機体は SDK 側の --cmd-timeout 0.30 で止まるので、止まる速さは変わらない。
+
+  ## 書き方の制約（Humble と Jazzy の両方で読めること）
+  Humble は BehaviorTree.CPP v3、Jazzy は v4。v4 は root に BTCPP_format="4" が要り、
+  v3 は未知の属性を読み飛ばすので、属性は書いておく。
+  WouldAPlannerRecoveryHelp などの Jazzy 専用ノードは使わない
+  （Dev/Navigation の navigate_g1.xml で確かめた制約）。
+  XML のコメントにはハイフン 2 つを書けない。
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Sequence name="ClearingActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </Sequence>
+          <Wait wait_duration="5"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

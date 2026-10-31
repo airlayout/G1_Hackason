@@ -1,7 +1,11 @@
 # 引き継ぎ — 次にこれを触る人へ
 
-最終更新: **2026-09-25 夜**（⭐ **巡回を1周完走した。** そして `collision ahead` の
-原因が確定した → [findings/collision_ahead_cause_20260925.md](findings/collision_ahead_cause_20260925.md)）
+最終更新: **2026-10-31**（ブランチ `Dev/Nav2Proper`: **Nav2 の機能を正しい使い方に直した。**
+`collision ahead` の恒久対処を含む。モックでのみ確認済み →
+[findings/nav2_proper_usage_20261031.md](findings/nav2_proper_usage_20261031.md)）
+
+前回: 2026-09-25 夜（⭐ 巡回を1周完走。`collision ahead` の原因が確定 →
+[findings/collision_ahead_cause_20260925.md](findings/collision_ahead_cause_20260925.md)）
 
 ⚠️ 会場は **room_a**（9/24 に一時 Sorasta を既定にしたが 9/25 に戻した）。
 
@@ -29,6 +33,30 @@
 ---
 
 ## 2. 次にやること（この順で）
+
+### ⓪★ 2026-10-31 の変更（`Dev/Nav2Proper`）を実機で確かめる ← **最優先**
+
+Nav2 を正しい使い方に直した。詳細と戻し方は
+[findings/nav2_proper_usage_20261031.md](findings/nav2_proper_usage_20261031.md)。要点:
+
+- local costmap を **ObstacleLayer** に替えた → 消し残り（下の ⓪）が**構造的に溜まらない**はず。
+  ⚠️ **20 秒ごとに costmap を消すループはもう回さない**（効いているか分からなくなる）
+- **G1 用の BT**（Spin / BackUp なし）。behavior_server は `wait` だけ
+- **Collision Monitor**（前方 0.35〜1.0m・左右 ±0.25m に点が入ったら 0 速度）。
+  巡回路では壁にかからないことを地図で確認済み（`tools/check_stop_zone_on_route.py`）
+- g1_cmd_router は BT の Wait 中だけ `cmd_timeout` を止める（上限 10 秒）
+- 点群は `cloud_gate.py` で 1 点だけのフレームを捨てた `/g1/cloud_dense` を使う
+
+**PC2 へ配るもの**: いつもの `g1_ws/src/` と `tools/` の rsync で足りる（新しいファイルはその中）。
+ビルド後、`ros2 pkg prefix nav2_collision_monitor` が通ることを確かめる
+（`ros-humble-navigation2` に含まれるはずだが、PC2 の pixi 環境では未確認）。
+
+**当日見ること**（findings §5）:
+1. 武装前に、機体の前に人が立って `Robot to stop due to StopZone polygon` が出るか
+   （停止範囲は LiDAR の死角とほぼ重なる。RViz に `/g1/collision_stop_zone` と `/g1/cloud_dense`）
+2. `[cloud_gate] 直近30秒: 通過 N / 破棄 M` の通過が約 150 か
+3. ループ無しで巡回させ、`collision ahead` の回数を見る
+4. 止まりすぎたら `collision_monitor:=false` で切り分け
 
 ### ⓪' 次の実機セッションの目標: **巡回を通す**（2026-09-24 に決めた）
 
@@ -144,7 +172,7 @@ rsync -a g1_ws/src/g1_navigation/config/nav2_params.yaml \
    **オフラインで自己位置を再計算できず、ドリフト説を確証できなかった。**
 4. **巡回を start する前に costmap 消去が動いているか確認する。**（下の ⓪ 参照）
 
-### ⓪ `collision ahead` を**恒久的に**直す ← **最優先**
+### ⓪ `collision ahead` を**恒久的に**直す — ⭐ **2026-10-31 に対処した（実機未確認。上の ⓪★）**
 
 ⭐ **2026-09-25 に原因が確定した** → [findings/collision_ahead_cause_20260925.md](findings/collision_ahead_cause_20260925.md)
 
@@ -169,7 +197,9 @@ costmap を消す→ 0 セル。静止14秒では戻らない。約100秒歩く�
 `/local_costmap/clear_entirely_local_costmap` を呼ぶループを併走させる。
 ⚠️⚠️ **本物の障害物も一瞬消える。死角(〜1.6m)の中のものは立ち直らない。人が見ている場でのみ。**
 
-**次にやること（この順で）:**
+**次にやること（この順で）:** 📌 2026-10-31 に 2. を「層を ObstacleLayer に替える」形で実施した。
+消えなかったのは VoxelLayer が 3 次元でレイトレースするためで、2 次元で消せば死角の中も消える
+（モックで、旧設定では残り新設定では消えることを確認。findings/nav2_proper_usage_20261031.md §2）。
 
 1. **記録 `runs/20260925_182814_nav2`（106MB）を再生して、消し残りの正体を見る。**
    機体自身の脚（`min_obstacle_height: 0.05`）なのか、通り過ぎた人なのか。

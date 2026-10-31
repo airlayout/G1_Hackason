@@ -3,7 +3,7 @@ project(g1_navigation)
 
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY config launch scripts DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config launch scripts behavior_trees DESTINATION share/${PROJECT_NAME})
 
 # ⚠️ **地図の実体は `nav2_stable/maps/` に集約してある**(2026-09-24)。
 # 占有格子・点群・軌跡が4か所に散っていたのをまとめたため、ここからは相対参照する。
@@ -25,6 +25,7 @@ endif()
 install(PROGRAMS
   scripts/fake_sensor_publisher.py
   scripts/patrol_node.py
+  scripts/cloud_gate.py
   ${G1_TOOLS_DIR}/g1_slam_odom_tf.py
   DESTINATION lib/${PROJECT_NAME}
 )

@@ -31,7 +31,16 @@ controller_server:
     # 📌 `cmd_timeout` は「ROS 側が死んだ」を捕まえる番人であって、
     # **プランナが意図的に止まっている状態まで捕まえるべきではない**、という切り分け。
     # ⚠️ 代償: 本当に道が塞がっているときは、この秒数だけ棒立ちしてから復帰動作に移る。
-    failure_tolerance: 10.0
+    #
+    # 📌 **2026-10-31 に 10.0 → 5.0（Dev/Nav2Proper）。** `collision ahead` の主因は
+    # 人ではなく **local costmap の消し残り**だと分かった
+    # (findings/collision_ahead_cause_20260925.md)。G1 用 BT
+    # (behavior_trees/navigate_to_pose_g1.xml)は FollowPath が失敗した時点で
+    # local costmap を消してやり直すので、ここが短いほど早く立ち直る。
+    # 人の前で止まるのは Collision Monitor が受け持つ(下の collision_monitor)。
+    # それでも 0.3 に戻さないのは、人が横切るたびに costmap を消し直すのを避けるため。
+    # ⚠️ 5.0 は実機で詰めた値ではない。
+    failure_tolerance: 5.0
     progress_checker_plugins: ["progress_checker"]
     goal_checker_plugins: ["goal_checker"]
     controller_plugins: ["FollowPath"]
@@ -138,7 +147,25 @@ controller_server:
       max_angular_accel: 6.0
       max_robot_pose_search_dist: 5.0
 
-# D-21: Local costmapは3D点群ベース(voxel_layer)。2D /scan はGlobal専用にする
+# D-21: Local costmapは3D点群ベース。2D /scan はGlobal専用にする
+#
+# ⭐ **2026-10-31 に voxel_layer → obstacle_layer へ替えた（Dev/Nav2Proper）。**
+# `collision ahead` の原因だった「死角に立った格子が消えない」
+# (findings/collision_ahead_cause_20260925.md)は、**VoxelLayer が 3 次元で
+# レイトレースする**ことから来ている。センサーは高さ 1.213m にあるので、
+# 遠くの壁へ向かうレイは機体の足元付近では高い位置を通り、**床近くのボクセルを
+# 一度も通らない**。だから低い位置に立ったマークは永久に残る。
+#
+# ObstacleLayer は**レイを床に投影して 2 次元で消す**。足元の格子も、その先の
+# 壁へ向かうレイが通過するたびに消える。findings §5 の案 (a)「死角の中は信用しない」
+# を、Nav2 標準の層の選び方だけで実現したことになる。
+# 消してから付けるので（ObstacleLayer は clearing → marking の順に処理する）、
+# **いま見えている障害物は消えない**。消えるのは「その方向に何も見えていない」格子だけ。
+#
+# 📌 失うもの: 3 次元の情報（机の天板の下をくぐれる、など）。2 次元の歩行計画では
+# もともと使っていない（最終的には列ごとに 2D へ潰している）。
+# 📌 戻すときは `plugins` の obstacle_layer を voxel_layer に書き換えるだけ
+# （voxel_layer の設定は下に残してある）。
 local_costmap:
   local_costmap:
     ros__parameters:
@@ -152,7 +179,30 @@ local_costmap:
       height: 6
       resolution: 0.05
       footprint: "[[0.25, 0.20], [0.25, -0.20], [-0.25, -0.20], [-0.25, 0.20]]"
-      plugins: ["voxel_layer", "inflation_layer"]
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        max_obstacle_height: 1.8
+        # 機体自身の脚を障害物として立てないため（voxel_layer の注記と同じ理由）
+        footprint_clearing_enabled: true
+        observation_sources: "pointcloud"
+        pointcloud:
+          # ⚠️ **cloud_gate.py が 1 点だけのフレームを捨てた後のトピック。**
+          # ObservationBuffer は最新の 1 通しか持たない（observation_persistence 0）ので、
+          # 生のトピックだと更新周期によっては 1 点のフレームしか見ずにマークも消去も
+          # しない回が出る。モックでは cloud_gate が 0 点でも通すので挙動は変わらない。
+          topic: /g1/cloud_dense
+          data_type: "PointCloud2"
+          min_obstacle_height: 0.05
+          max_obstacle_height: 1.8
+          obstacle_max_range: 5.0
+          obstacle_min_range: 0.9   # 理由は voxel_layer の注記を参照
+          raytrace_max_range: 5.5
+          raytrace_min_range: 0.0
+          clearing: true
+          marking: true
+      # 📌 2026-10-31 まで使っていた設定。plugins から外したので読み込まれない（戻すとき用）
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: true
@@ -201,7 +251,7 @@ local_costmap:
         inflation_radius: 0.40  # 姉妹Navigation班の実測根拠(肩幅+定位誤差+歩容の揺れ)を踏襲
       always_send_full_costmap: true
 
-# D-21: Global costmapは既知地図(A-7で生成)+ 2D scanでの壁検出のみ
+# D-21: Global costmapは既知地図(A-7で生成)+ 点群での障害物検出
 global_costmap:
   global_costmap:
     ros__parameters:
@@ -213,25 +263,40 @@ global_costmap:
       footprint: "[[0.25, 0.20], [0.25, -0.20], [-0.25, -0.20], [-0.25, 0.20]]"
       resolution: 0.05
       track_unknown_space: true  # 未観測を自由と誤判定しない(A-7の設計方針と整合)
-      # ⚠️ **`obstacle_layer` を外してある。** 実機に `/scan`(LaserScan)は存在せず、
+      # （2026-10-31 までの経緯）**`obstacle_layer` を外してあった。** 実機に `/scan`(LaserScan)は存在せず、
       # 残しても**データが永久に来ない層**になるため(A-10b の検証済み構成に合わせた)。
       #
       # 📌 **その結果、global costmap は保存地図しか知らない。** 通路が新しい障害物で
       # 塞がれても global planner はそこを通る経路を引き続け、local costmap で避けられず
       # controller が失敗する形になる。MVP は適用環境を限定する(D-24)前提なので許容し、
       # 動的障害物への対応は Phase 4 の作業項目1で扱う。
-      plugins: ["static_layer", "inflation_layer"]
+      #
+      # ⭐ **2026-10-31 に obstacle_layer を戻した（Dev/Nav2Proper）。** `/scan` は無いが、
+      # local costmap と同じ点群（/g1/cloud_dense）なら在る。これで通路が塞がれたとき
+      # global planner が**迂回経路を引き直せる**（BT が 1Hz で経路を引き直している）。
+      # 設定は local の obstacle_layer と同じ。2 次元で消すので、死角の消し残りも
+      # local と同じ理屈で溜まらない。
+      # ⚠️ 引き直した経路が巡回路から大きく外れることはありうる。経路は RViz の
+      # /plan で見えるので、最初の数周は人がついて見ること。
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
-        observation_sources: "scan"
-        scan:
-          topic: /scan
-          data_type: "LaserScan"
-          max_obstacle_height: 2.0
+        max_obstacle_height: 1.8
+        footprint_clearing_enabled: true
+        observation_sources: "pointcloud"
+        pointcloud:
+          topic: /g1/cloud_dense
+          data_type: "PointCloud2"
+          min_obstacle_height: 0.05
+          max_obstacle_height: 1.8
+          obstacle_max_range: 5.0
+          obstacle_min_range: 0.9
+          raytrace_max_range: 5.5
+          raytrace_min_range: 0.0
           clearing: true
           marking: true
       inflation_layer:
@@ -269,24 +334,16 @@ planner_server:
 behavior_server:
   ros__parameters:
     use_sim_time: false
-    # ⚠️ **`backup` を外してはいけない**(2026-09-15 実機で踏んだ)。
-    # 既定の behavior tree(navigate_*_w_replanning_and_recovery.xml)が backup の
-    # アクションサーバを前提にしており、リストから外すと bt_navigator が
-    # 「Action server backup not available」で起動に失敗し、lifecycle_manager が
-    # bringup ごと中断する。
-    #
-    # ⚠️ **ただし後退そのものは未検証の動作である。** 経路追従に詰まると Nav2 は
-    # 人の合図なしに後退する。後退方向の停止距離も歩容の成立性も実測していない。
-    # 救いは既定の BT が backup_speed=0.05 m/s を渡すことで、これは歩容の成立下限
-    # (0.1〜0.2 m/s、U-12)を下回るため**物理的にはほぼ動かない**。
-    # 塞ぐなら、backup を含まない BT XML を本パッケージに置いて
-    # bt_navigator の default_nav_to_pose_bt_xml / default_nav_through_poses_bt_xml
-    # で差し替えること。**プラグインリストだけ削っても動かない。**
-    behavior_plugins: ["spin", "backup", "wait"]
-    spin:
-      plugin: "nav2_behaviors/Spin"
-    backup:
-      plugin: "nav2_behaviors/BackUp"
+    # ⭐ **2026-10-31 に spin と backup を外した（Dev/Nav2Proper）。**
+    # 以前は「外すと bt_navigator が起動しない」ので外せなかった
+    # (2026-09-15 実機。既定の BT が backup / spin のアクションサーバを前提にしていた)。
+    # G1 用の BT(behavior_trees/navigate_*_g1.xml)に差し替え、BT から Spin と BackUp を
+    # 消したので、ここからも外せる。外した理由は BT の冒頭に書いた。
+    #   - spin  : その場旋回で内蔵SLAM が一気にずれる（2026-09-25 に 10.8m）
+    #   - backup: 後退は歩行ポリシーの学習範囲外で、停止距離も未測定
+    # ⚠️ **BT を既定に戻すときは、ここにも spin / backup を戻すこと。**
+    # 戻さないと bt_navigator が「Action server spin not available」で止まる。
+    behavior_plugins: ["wait"]
     wait:
       plugin: "nav2_behaviors/Wait"
     global_frame: odom
@@ -298,6 +355,10 @@ bt_navigator:
     global_frame: map
     robot_base_frame: base_link
     odom_topic: /odom
+    # ⭐ G1 用の BT。**launch が絶対パスに置き換える**（share/g1_navigation/behavior_trees/）。
+    # ここに書いたファイル名は launch を通さずに読ませたときの目印でしかない。
+    default_nav_to_pose_bt_xml: "navigate_to_pose_g1.xml"
+    default_nav_through_poses_bt_xml: "navigate_through_poses_g1.xml"
 
 velocity_smoother:
   ros__parameters:
@@ -324,6 +385,75 @@ velocity_smoother:
     odom_topic: "/odom"
     odom_duration: 0.1
 
+# ⭐ **Collision Monitor（2026-10-31 追加、Dev/Nav2Proper）。**
+# velocity_smoother と g1_cmd_router の間に入り、**機体の前に点があれば速度を 0 にする**。
+#
+#   controller → /cmd_vel_nav → velocity_smoother → /cmd_vel_smoothed
+#     → collision_monitor → /cmd_vel_safe → g1_cmd_router → SDK
+#
+# 以前は「人が横切ったら RPP の collision ahead で止まり、failure_tolerance の間
+# 粘る」ことで代用していた。RPP の衝突判定は costmap（消し残りを含む）を見ており、
+# 止まる・止まらないが経路追従の失敗と区別できなかった。Collision Monitor は
+# **生の点群だけ**を見て止めるので、安全のための停止を経路追従から切り離せる。
+#
+# 📌 **使うのは stop だけ。** slowdown / approach は使わない。G1 は 0.25 m/s 未満では
+# 歩容が成立しない（2026-09-09 実測）ので、減速させると「止まる」でも「進む」でもない
+# 半端な指令になる。
+# 📌 `launch` の `collision_monitor:=false` で丸ごと外せる（g1_cmd_router は
+# /cmd_vel_smoothed を直接読む元の配線に戻る）。
+collision_monitor:
+  ros__parameters:
+    use_sim_time: false
+    base_frame_id: base_link
+    odom_frame_id: odom
+    cmd_vel_in_topic: /cmd_vel_smoothed
+    cmd_vel_out_topic: /cmd_vel_safe
+    # 内蔵SLAM の odom が 4Hz に落ちることがある（2026-09-25）ので、TF の待ちは長めに取る
+    transform_tolerance: 0.5
+    # これより古い点群は使わない。⚠️ Humble では古いときに「止める」のではなく
+    # 「見なかったことにする」。点群が途絶したときの停止は g1_cmd_router の
+    # センサー鮮度（require_sensor）が受け持つ（/g1/cloud_dense を見ている）。
+    source_timeout: 1.0
+    base_shift_correction: true
+    # ⚠️⚠️ **既定 1.0 のままだと人の前で止まった 1 秒後に FAULT になる。**
+    # Humble の Collision Monitor は、止めてから `stop_pub_timeout` 秒たつと
+    # **0 速度の publish もやめる**。g1_cmd_router は Goal の実行中に指令が
+    # `cmd_timeout`（2.0 秒）途切れると FAULT にするので、人が 3 秒立っているだけで
+    # Goal ごと捨てられる。上流（velocity_smoother）が指令を出している限り 0 を
+    # 出し続けるよう、実質無限にする。上流が黙れば、こちらも黙る（入力が来たときしか
+    # 処理しないため）。
+    stop_pub_timeout: 3600.0
+    polygons: ["StopZone"]
+    StopZone:
+      type: polygon
+      action_type: stop
+      # ⚠️ **Humble は x,y を平らに並べた数値の配列**（Jazzy の "[[x, y], ...]" 文字列とは違う）。
+      # 前方 0.35〜1.0m、左右 ±0.25m の箱（base_link 基準）。
+      #   - 後ろ端 0.35m: footprint の前端 0.25m の少し先。脚や腕を拾わないため
+      #   - 前端 1.0m  : 0.28 m/s で約 3.5 秒分。止まるまでの遅れ（SDK 0.3 秒＋歩容）に足りる
+      #   - 左右 0.25m : 機体の半幅 0.20m＋余裕。壁沿いの通路で止まりすぎないよう狭めにした
+      # ⚠️ **LiDAR の死角（床の高さで半径 0.91〜1.12m）とほぼ重なる。** 床近くの
+      # 低い物はこの箱の中では見えない。人の胴や脚の上の方は見える想定だが、
+      # **実機の点群で確かめていない。** RViz の /g1/collision_stop_zone と点群を重ねて、
+      # 人が箱に入ったときに点が入ることを最初に確かめること。
+      points: [1.0, 0.25, 1.0, -0.25, 0.35, -0.25, 0.35, 0.25]
+      # この点数を「超えたら」止める（Humble は max_points。Jazzy で min_points に改名）。
+      # ノイズの数点では止まらないようにする
+      max_points: 5
+      visualize: true
+      polygon_pub_topic: /g1/collision_stop_zone
+    observation_sources: ["livox"]
+    livox:
+      type: pointcloud
+      # cloud_gate.py を通した後のトピック（1 点だけのフレームを捨ててある）。
+      # Collision Monitor は**最新の 1 通しか見ない**ので、生のトピックだと
+      # 約 5Hz で「見える／見えない」を繰り返す
+      topic: /g1/cloud_dense
+      # base_link（床の高さ）基準。上限 1.0m は、センサーの高さ（1.2〜1.3m）に出る
+      # 機体自身の反射を拾わないため（2026-09-15 実機で 6,500 点あった）
+      min_height: 0.15
+      max_height: 1.0
+
 lifecycle_manager_navigation:
   ros__parameters:
     use_sim_time: false
@@ -335,3 +465,4 @@ lifecycle_manager_navigation:
       - behavior_server
       - bt_navigator
       - velocity_smoother
+      - collision_monitor  # launch は collision_monitor:=false のとき外す

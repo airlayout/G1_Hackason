@@ -12,6 +12,13 @@ Nav2のライフサイクル・経路計画・制御ループを検証した。
 - `maps/synthetic_room.yaml`: Nav2の配線検証用の合成地図(12m×12m、中央に短い仕切り壁)。
   連結した自由空間を保証するために合成した(下記「既知の課題」参照)
 - `maps/test_room.yaml`: A-7ツールで生成した実点群由来の地図(参考用。経路計画のデモには使えない)
+- `behavior_trees/navigate_*_g1.xml`: **G1 用の BT**(2026-10-31)。Humble 既定から復帰動作の
+  Spin と BackUp を外したもの。launch が `bt_navigator` に絶対パスで渡す
+- `scripts/cloud_gate.py`: 点の少ない(実機では1点だけの)フレームを捨てて `/g1/cloud_dense` に
+  中継する(2026-10-31)。costmap・Collision Monitor・g1_cmd_router の鮮度監視はこちらを見る
+- Collision Monitor(`nav2_params.yaml` の `collision_monitor`): velocity_smoother と
+  g1_cmd_router の間で、前方の箱に点があれば 0 速度にする。`collision_monitor:=false` で外せる。
+  設計と検証は [findings/nav2_proper_usage_20261031.md](../../../findings/nav2_proper_usage_20261031.md)
 - `scripts/fake_sensor_publisher.py`: 空の`/scan`・`/g1/points_local`を配信(costmapが詰まらないように)
 - `launch/navigation.launch.py`: 上記一式 + `g1_state_bridge`/`g1_cmd_router` + `map→odom`の
   静的TF(dry-run専用のスタンドイン)をまとめて起動する

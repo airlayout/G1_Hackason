@@ -74,6 +74,10 @@ from nav2_common.launch import RewrittenYaml
 # `fake_sensor_publisher` の側がこの名前に合わせている。
 SENSOR_TOPIC = "/utlidar/cloud_livox_mid360"
 
+# 1 点だけのフレームを捨てた後の点群（`scripts/cloud_gate.py`）。costmap と
+# Collision Monitor と g1_cmd_router のセンサー鮮度監視は、みなこちらを見る。
+DENSE_CLOUD_TOPIC = "/g1/cloud_dense"
+
 LIFECYCLE_NODES = [
     "map_server",
     "controller_server",
@@ -108,15 +112,23 @@ def _launch_setup(context, *args, **kwargs):
     # 「未来を要求している」と判定されて Nav2 も鮮度監視も成立しない。
     # `ros2 bag play --clock` と対で使う。
     use_sim_time = flag("use_sim_time")
+    use_collision_monitor = flag("collision_monitor")
 
     # 記録済み bag での再生検証のため `use_sim_time` を全ノードに行き渡らせる。
     # ⚠️ `param_rewrites` の**キーはパラメータ名**であって、値の文字列置換ではない
     # (一度そう誤解して観測源のトピックが書き換わらなかった。2026-09-13)。
     # 観測源のトピック名は YAML 側を実機に合わせてあるので書き換え不要。
+    # ⭐ G1 用の BT(behavior_trees/)を絶対パスで渡す。yaml にはファイル名しか書けない
+    # (インストール先は環境で変わる)ので、ここで置き換える。
+    bt_dir = os.path.join(share, "behavior_trees")
     configured_params = RewrittenYaml(
         source_file=params_file,
         root_key="",
-        param_rewrites={"use_sim_time": str(use_sim_time)},
+        param_rewrites={
+            "use_sim_time": str(use_sim_time),
+            "default_nav_to_pose_bt_xml": os.path.join(bt_dir, "navigate_to_pose_g1.xml"),
+            "default_nav_through_poses_bt_xml": os.path.join(bt_dir, "navigate_through_poses_g1.xml"),
+        },
         convert_types=True,
     )
 
@@ -171,6 +183,22 @@ def _launch_setup(context, *args, **kwargs):
             executable="fake_sensor_publisher.py",
             name="fake_sensor_publisher",
         ))
+
+    # --- 点群の前処理 ---------------------------------------------------------
+    # 実機の MID-360 は「満杯のフレーム」と「1点だけのフレーム」を交互に出す。
+    # 最新の 1 通しか見ない Collision Monitor と costmap のために、1点のほうを捨てる。
+    # ⚠️ モックの fake_sensor_publisher は**常に 0 点**なので、下限を 0 にしないと
+    # 何も通らず、センサー鮮度で READY にならない。
+    raw_min_points = LaunchConfiguration("cloud_min_points").perform(context).strip()
+    min_points = int(raw_min_points) if raw_min_points else (100 if is_real else 0)
+    nodes.append(Node(
+        package="g1_navigation",
+        executable="cloud_gate.py",
+        name="cloud_gate",
+        output="screen",
+        parameters=[{"input_topic": sensor_topic, "output_topic": DENSE_CLOUD_TOPIC,
+                     "min_points": min_points, "use_sim_time": use_sim_time}],
+    ))
 
     # --- SDK 側との橋渡し -----------------------------------------------------
     # ⚠️ **ソケットの置き場は systemd ユニット(D-07)が /run/g1_bridge を指定している。**
@@ -230,8 +258,12 @@ def _launch_setup(context, *args, **kwargs):
             # (max_vx 0.30 なので +0.5 秒 ≒ +0.15m 余分に進む)。
             "tf_timeout_s": float(LaunchConfiguration("tf_timeout_s").perform(context)),
             "require_sensor": flag("require_sensor"),
-            # 鮮度監視の対象も backend に合わせる(見ていないトピックを監視しても無意味)
-            "sensor_topic": sensor_topic,
+            # 鮮度監視の対象は **Nav2 が実際に読んでいる点群**(cloud_gate の出力)。
+            # 生のトピックを見ていると、cloud_gate が落ちて costmap と Collision Monitor が
+            # 目隠しになっても READY のままになる(2026-10-31 に変更)。
+            "sensor_topic": DENSE_CLOUD_TOPIC,
+            # ⭐ Collision Monitor を通した後の指令を読む(collision_monitor:=false なら元の配線)
+            "cmd_vel_topic": "/cmd_vel_safe" if use_collision_monitor else "/cmd_vel_smoothed",
             "use_sim_time": use_sim_time,
             "cmd_sock_path": f"{sock_dir}/cmd.sock",
         }],
@@ -264,11 +296,20 @@ def _launch_setup(context, *args, **kwargs):
         Node(package="nav2_velocity_smoother", executable="velocity_smoother", name="velocity_smoother",
              parameters=[configured_params],
              remappings=[("cmd_vel", "/cmd_vel_nav"), ("cmd_vel_smoothed", "/cmd_vel_smoothed")]),
-        Node(package="nav2_lifecycle_manager", executable="lifecycle_manager",
-             name="lifecycle_manager_navigation",
-             parameters=[{"autostart": True, "node_names": LIFECYCLE_NODES,
-                          "use_sim_time": use_sim_time}]),
     ]
+    lifecycle_nodes = list(LIFECYCLE_NODES)
+    if use_collision_monitor:
+        # ⭐ velocity_smoother の出力を受けて、機体の前に点があれば 0 にする。
+        # 設定と配線の理由は nav2_params.yaml の collision_monitor の冒頭を参照。
+        nodes.append(Node(
+            package="nav2_collision_monitor", executable="collision_monitor",
+            name="collision_monitor", output="screen", parameters=[configured_params]))
+        lifecycle_nodes.append("collision_monitor")
+    nodes.append(Node(
+        package="nav2_lifecycle_manager", executable="lifecycle_manager",
+        name="lifecycle_manager_navigation",
+        parameters=[{"autostart": True, "node_names": lifecycle_nodes,
+                     "use_sim_time": use_sim_time}]))
 
     # --- 巡回モード -----------------------------------------------------------
     # ⚠️ **ここで巡回が始まるわけではない。** ノードは IDLE で待つだけで、
@@ -327,6 +368,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "sensor_topic", default_value="",
             description=f"空なら {SENSOR_TOPIC}。モックも実機も同じ名前を使う"),
+        DeclareLaunchArgument(
+            "collision_monitor", default_value="true",
+            description="Collision Monitor を挟む。false で /cmd_vel_smoothed を直接"
+                        " g1_cmd_router に渡す元の配線に戻す"),
+        DeclareLaunchArgument(
+            "cloud_min_points", default_value="",
+            description="cloud_gate がこれ未満の点数のフレームを捨てる。"
+                        "空なら backend で決まる（real→100, mock→0）"),
         DeclareLaunchArgument(
             "use_sim_time", default_value="false",
             description="記録済み bag の再生検証で true。`ros2 bag play --clock` と対で使う"),
