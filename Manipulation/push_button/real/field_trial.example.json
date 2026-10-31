@@ -1,0 +1,20 @@
+{
+  "profile": "field",
+  "table_height": 0.76,
+  "table_bounds": [0.31, 0.61, -0.36, 0.04],
+  "push_distance": 0.02,
+  "contact_height": 0.08,
+  "clearance": 0.05,
+  "track_table": true,
+  "table_x_edge": "x_min",
+  "table_y_edge": "y_min",
+  "table_edge_tolerance": 0.015,
+  "position_stability_m": 0.008,
+  "waist_delta_deg": 3.0,
+  "imu_delta_deg": 3.0,
+  "leg_speed_rad_s": 0.15,
+  "gyro_rad_s": 0.1,
+  "motion_persistence_s": 0.1,
+  "stable_hold_s": 0.3,
+  "record_rgbd": true
+}

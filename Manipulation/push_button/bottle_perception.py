@@ -14,6 +14,7 @@ import os
 import numpy as np
 
 from bottle import BottleLocalizer
+from trial_policy import ObservationUnavailable, TrialPause
 
 
 @dataclass(frozen=True)
@@ -26,7 +27,7 @@ class TableEstimate:
         age = now-self.captured_at
         if not 0 <= age <= .5:
             if strict:
-                raise RuntimeError('新しい台基準の機体位置を取得できません')
+                raise ObservationUnavailable('新しい台基準の機体位置を取得できません')
             return np.array(self.offset)
         return np.array(self.offset)+np.clip(np.array(self.velocity)*min(.15, age),
                                               [-.003, -.003, -.0005], [.003, .003, .0005])
@@ -35,9 +36,12 @@ class TableEstimate:
 class PerceptionEngine:
     """Nonblocking input, at most 10Hz geometry and 5Hz bottle detection."""
 
-    def __init__(self, read_frame, detector, settings, now, target_pixel=None, *, table_snapshot=None, close=None):
+    def __init__(self, read_frame, detector, settings, now, target_pixel=None, *, table_snapshot=None, close=None,
+                 position_stability_m=.004, recoverable=False):
         self.read_frame, self.now = read_frame, now
-        self.localizer = BottleLocalizer(None, detector, settings, now, target_pixel)
+        self.localizer = BottleLocalizer(None, detector, settings, now, target_pixel,
+                                        position_stability_m=position_stability_m)
+        self.recoverable = recoverable
         self.table_snapshot, self.close_reader = table_snapshot, close
         self.mode = 'idle'
         self.next_frame = self.next_detection = -np.inf
@@ -67,7 +71,7 @@ class PerceptionEngine:
                 observation = self.localizer.consume(frame)
         except ValueError as exc:
             # Geometry/pose failures are temporary; last good results expire normally.
-            if '一意' in str(exc):
+            if '一意' in str(exc) and not self.recoverable:
                 raise
             self.rejections[str(exc)] += 1
             self.localizer.samples.clear()
@@ -142,7 +146,8 @@ class PerceptionMailbox:
                 return result
             self.wait(.01)
         self.engine.localizer.rejections['安定計測の期限超過'] += 1
-        raise RuntimeError('安定した新しい3フレームのボトル計測を取得できません（対象消失・深度・鮮度を確認）')
+        error = TrialPause if getattr(self.engine, 'recoverable', False) else RuntimeError
+        raise error('安定した新しい3フレームのボトル計測を取得できません（対象消失・深度・鮮度を確認）')
 
     def observe(self, timeout_s=5.):
         return self._await_observation(self.request('measure'), timeout_s)
@@ -158,11 +163,19 @@ class PerceptionMailbox:
             self.progress = float(np.clip(progress_m, 0., self.engine.localizer.settings.push_distance))
             result = self.latest
         if result is None or not 0 <= self.now()-result.captured_at <= .75:
-            raise RuntimeError('押下中のボトル追跡が古すぎる、または対象を確認できません')
+            raise ObservationUnavailable('押下中のボトル追跡が古すぎる、または対象を確認できません')
         return result
 
     def stop_tracking(self):
         self.request('idle')
+
+    def reset_measurement_reference(self):
+        """現場で置き直した対象を新しい3枚で選ぶ。異常は解除しない。"""
+        with self.lock:
+            self.generation += 1
+            self.reference = self.anchor = self.latest = None
+            self.progress, self.after_push, self.mode = 0., False, 'idle'
+            self.pending = ('idle', self.now(), None, None, False)
 
     def expect_translation(self):
         if self.anchor is None:
@@ -174,7 +187,7 @@ class PerceptionMailbox:
             estimate = self.table
         if estimate is None:
             if strict:
-                raise RuntimeError('新しい台基準の機体位置を取得できません')
+                raise ObservationUnavailable('新しい台基準の機体位置を取得できません')
             return np.zeros(3)
         return estimate.predict(self.now(), strict=strict)
 

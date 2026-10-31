@@ -8,6 +8,7 @@ from pathlib import Path
 from itertools import product
 from xml.etree import ElementTree as ET
 import math
+import argparse
 from time import perf_counter
 
 import numpy as np
@@ -17,6 +18,7 @@ from alignment import (ContinuousNormalController,
 from vision import CameraIntrinsics, _points
 from return_path import validate_return_path
 from cartesian import CartesianJointController
+from trial_policy import ObservationUnavailable, TrialPause
 
 
 DEFAULT_TABLE_BOUNDS = (0.20, 0.85, -0.60, 0.02)
@@ -58,7 +60,8 @@ def add_bottle_arguments(parser, *, simulation=False):
     parser.add_argument("--detector-imgsz", type=int, default=960, help="YOLO入力サイズ（32の正の倍数）")
     if not simulation:
         parser.add_argument("--gravity-scale", type=float, default=0.0, help="右腕の重力補償倍率（0〜1、既定は無効）")
-        parser.add_argument("--track-table", action="store_true", help="台面と二辺のRGB-Dから機体の並進を追跡する")
+        parser.add_argument("--track-table", action=argparse.BooleanOptionalAction, default=False,
+                            help="台面と二辺のRGB-Dから機体の並進を追跡する")
         parser.add_argument("--dynamics-feedforward",action="store_true",help="重力補償と併せて公称の摩擦・速度補償も使う")
         parser.add_argument("--stop-before-contact", action="store_true", help="接触前の位置合わせ後、押さずに復帰・解除する診断")
     parser.add_argument("--push-distance", type=float, default=0.05, help="前方への移動距離[m] (0より大きく0.10以下)")
@@ -232,7 +235,7 @@ class BottleObservation:
 class BottleLocalizer:
     """各計測で新しい3枚を要求し、押した後は予測移動先の同じ対象を追う。"""
 
-    def __init__(self, read_frame, detector, settings, now, target_pixel=None):
+    def __init__(self, read_frame, detector, settings, now, target_pixel=None, *, position_stability_m=.004):
         self.read_frame, self.detector, self.settings, self.now = read_frame, detector, settings, now
         self.target_pixel = target_pixel
         self.previous = None
@@ -248,6 +251,9 @@ class BottleLocalizer:
         self.after = -np.inf
         self.tracking = False
         self.progress_m = 0.
+        if not np.isfinite(position_stability_m) or not .001 <= position_stability_m <= .02:
+            raise ValueError('位置の安定許容幅は1〜20mmが必要です')
+        self.position_stability_m = position_stability_m
 
     def begin(self, after, *, tracking=False):
         self.after, self.tracking = after, tracking
@@ -323,7 +329,7 @@ class BottleLocalizer:
             return None
         positions = np.array([s.center_xy for s in samples])
         center = np.median(positions, axis=0)
-        if (np.max(np.linalg.norm(positions-center, axis=1)) > 0.004
+        if (np.max(np.linalg.norm(positions-center, axis=1)) > self.position_stability_m
                 or np.ptp([s.radius_m for s in samples]) > 0.003):
             self.rejections["フレーム間の位置または半径が不安定"] += 1
             return None
@@ -367,7 +373,8 @@ class BottlePushRoutine:
     initial_plan_max_age_s = 0.5
 
     def __init__(self, kin, motion, localizer, refresh, now, settings, tip_radius,
-                 position_uncertainty_m=0., *, tracking_check=None, live_tracking=False, stop_before_contact=False):
+                 position_uncertainty_m=0., *, tracking_check=None, live_tracking=False, stop_before_contact=False,
+                 pause_handler=None):
         self.kin, self.motion, self.localizer = kin, motion, localizer
         self.refresh, self.now, self.settings = refresh, now, settings
         self.radius = tip_radius
@@ -376,6 +383,9 @@ class BottlePushRoutine:
         self.tracking_check = tracking_check
         self.live_tracking = live_tracking
         self.stop_before_contact = stop_before_contact
+        self.pause_handler = pause_handler
+        self.arm_enabled = False
+        self.last_face = None
         self.report = {"schema": "g1-bottle-push-v1", "task": "bottle", "settings": asdict(settings),
                        "completed": False, "motion_completed": False, "home_completed": False,
                        "visual_success": None, "measured_displacement_m": None,
@@ -438,7 +448,8 @@ class BottlePushRoutine:
 
     def check_observation(self, observation, *, max_age_s=0.5):
         if not 0 <= self.now()-observation.captured_at <= max_age_s:
-            raise ValueError("ボトル計測が古すぎます")
+            error = TrialPause if self.pause_handler is not None else ValueError
+            raise error("ボトル計測が古すぎます")
         return np.array(observation.target.face_xyz)
 
     def preview(self, observation):
@@ -561,42 +572,103 @@ class BottlePushRoutine:
         self.check_home()
         self.report["retreat_completed"] = True
 
+    def prepare_contact(self):
+        """再開のたびに新しい対象と実測姿勢から接近区間を計画する。"""
+        self.phase('measure')
+        first = self.localizer.observe()
+        self.preview(first)
+        face = self.check_observation(first, max_age_s=self.initial_plan_max_age_s)
+        self.last_face = face
+        if not self.arm_enabled:
+            self.motion.enable()
+            self.arm_enabled = True
+            self.motion.start_approach()
+        self.phase('approach')
+        self.move(self.raised_point(face), face, 4.)
+        self.move(face-(self.radius+0.10)*FORWARD, face, 4.)
+        self.move(face-(self.radius+self.settings.clearance)*FORWARD, face)
+        self.phase('remeasure')
+        observation = self.localizer.observe()
+        face = self.check_observation(observation)
+        self.last_face = face
+        before = np.array(observation.target.center_xy)
+        self.preview(observation)
+        self.move(face-(self.radius+self.settings.clearance)*FORWARD, face)
+        self.refresh()
+        alignment_error = self.kin.tip_position()-(face-(self.radius+self.settings.clearance)*FORWARD)
+        self.report['alignment_error_xyz_m'] = alignment_error.tolist()
+        if np.linalg.norm(alignment_error) > .008:
+            raise ValueError('ボトル手前のFK位置合わせ誤差が8mmを超えました')
+        settings = SmoothNormalSettings(approach_speed_m_s=.01, press_speed_m_s=.004,
+                                        completion_tolerance_m=.0015, completion_hold_s=.04)
+        if self.live_tracking and not self.stop_before_contact:
+            self.localizer.start_tracking(observation)
+        return before, settings, self.settle_before_push(face, settings)
+
+    def field_return(self, *, after_push=False):
+        """古い監視エラーを再送出せず、現在姿勢から復帰を検査する。"""
+        self.refresh()
+        self.motion.check()
+        if not self.arm_enabled:
+            self.check_home()
+            return
+        if self.last_face is not None:
+            if after_push and not self.report.get('retreat_completed'):
+                self.return_after_contact(self.last_face)
+            else:
+                self.phase('abort_return')
+                self.move(self.raised_point(self.last_face), self.last_face, 3.)
+        self.return_home()
+
+    def field_action(self, error, *, after_push=False):
+        if self.live_tracking:
+            self.localizer.stop_tracking()
+        pause = error if isinstance(error, TrialPause) else TrialPause(str(error), code='observation')
+        action = self.pause_handler(pause, allow_resume=not after_push)
+        # 押下後はハンドラーが誤ってresumeを返しても再押下しない。
+        if action == 'resume' and not after_push:
+            if hasattr(self.localizer, 'reset_measurement_reference'):
+                self.localizer.reset_measurement_reference()
+            return True
+        if action == 'return':
+            self.field_finish_return(after_push=after_push)
+        self.report['cancelled'] = True
+        return False
+
+    def field_finish_return(self, *, after_push=False):
+        while True:
+            try:
+                self.field_return(after_push=after_push)
+                self.report['operator_returned'] = True
+                return True
+            except (TrialPause, ObservationUnavailable) as exc:
+                pause = exc if isinstance(exc, TrialPause) else TrialPause(str(exc), code='observation')
+                action = self.pause_handler(pause, allow_resume=False)
+                if action != 'return':
+                    self.report['cancelled'] = True
+                    return False
+
     def execute(self):
         started = self.now()
         face = None
-        enabled = pushing = False
+        pushing = False
         try:
-            self.phase("measure")
-            first = self.localizer.observe()
-            self.preview(first)  # 腕を有効化する前に全段階と復帰経路を検査する。
-            face = self.check_observation(first, max_age_s=self.initial_plan_max_age_s)
-            self.motion.enable()
-            enabled = True
-            self.motion.start_approach()
-            self.phase("approach")
-            self.move(self.raised_point(face), face, 4.)
-            self.move(face-(self.radius+0.10)*FORWARD, face, 4.)
-            self.move(face-(self.radius+self.settings.clearance)*FORWARD, face)
-            self.phase("remeasure")
-            observation = self.localizer.observe()
-            face = self.check_observation(observation)
-            before = np.array(observation.target.center_xy)
-            self.preview(observation)
-            self.move(face-(self.radius+self.settings.clearance)*FORWARD, face)
-            self.refresh()
-            alignment_error = self.kin.tip_position()-(face-(self.radius+self.settings.clearance)*FORWARD)
-            self.report["alignment_error_xyz_m"] = alignment_error.tolist()
-            if np.linalg.norm(alignment_error) > 0.008:
-                raise ValueError("ボトル手前のFK位置合わせ誤差が8mmを超えました")
-            # ボトルは5cm±1cmで評価する。ノイズのあるFKにボタン用0.1mmの
-            # 静止精度を要求せず、終点の1.5mm手前から低速停止を確認する。
-            settings = SmoothNormalSettings(approach_speed_m_s=0.01, press_speed_m_s=0.004,
-                                            completion_tolerance_m=0.0015, completion_hold_s=0.04)
-            if self.live_tracking and not self.stop_before_contact:
-                self.localizer.start_tracking(observation)
-            joint_filter = self.settle_before_push(face, settings)
+            while True:
+                try:
+                    before, settings, joint_filter = self.prepare_contact()
+                    break
+                except (TrialPause, ObservationUnavailable) as exc:
+                    if self.pause_handler is None:
+                        raise
+                    if not self.field_action(exc):
+                        return self.report
+            face = self.last_face
             if self.stop_before_contact:
-                self.reverse_approach(face)
+                if self.pause_handler is not None:
+                    if not self.field_finish_return():
+                        return self.report
+                else:
+                    self.reverse_approach(face)
                 self.report['diagnostic_completed'] = True
                 self.phase('done')
                 return self.report
@@ -695,6 +767,9 @@ class BottlePushRoutine:
                 if not self.report["visual_success"]:
                     self.report["verification_error"] = "画像で確認したボトルの移動量が許容範囲外です"
             except (ValueError, RuntimeError) as exc:
+                if self.pause_handler is not None:
+                    self.motion.fatal_check()
+                    self.localizer.check()
                 self.report["verification_error"] = str(exc)
             self.report["completed"] = True
             self.phase("done")
@@ -702,7 +777,18 @@ class BottlePushRoutine:
             self.report["error"] = str(exc)
             if self.live_tracking:
                 self.localizer.stop_tracking()
-            if face is not None and enabled:
+            face = self.last_face
+            if self.pause_handler is not None:
+                if isinstance(exc, (TrialPause, ObservationUnavailable)):
+                    try:
+                        self.field_action(exc, after_push=pushing)
+                    except Exception as recovery_error:
+                        self.report['recovery_error'] = str(recovery_error)
+                        self.report['fatal_error'] = True
+                else:
+                    self.report['fatal_error'] = True
+                # 通信・指令・衝突などの異常では追加の復帰動作を送らない。
+            elif face is not None and self.arm_enabled:
                 try:
                     self.refresh()
                     self.motion.check()
@@ -715,6 +801,10 @@ class BottlePushRoutine:
                     self.report["recovery_error"] = str(retreat_error)
         finally:
             self.motion.close()
+            if self.pause_handler is not None and getattr(self.motion, 'error', None) is not None:
+                self.report['error'] = str(self.motion.error)
+                self.report['fatal_error'] = True
+                self.report['completed'] = self.report['diagnostic_completed'] = False
             self.report["release_completed"] = not bool(self.motion.release_error)
             if self.motion.release_error:
                 self.report["release_error"] = self.motion.release_error

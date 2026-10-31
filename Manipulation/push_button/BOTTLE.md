@@ -58,6 +58,71 @@ MUJOCO_GL=egl python Manipulation/push_button/sim/run_push_mujoco.py \
 
 ## 実機の計画表示・実行入口
 
+### 現場で調整して試す `field` モード
+
+`--profile field` は頭カメラのボトル入口専用の試行設定。省略時の `strict` は従来の設定を使う。
+現場設定は `real/field_trial.example.json` をコピーして編集できる。例の台高・範囲は
+2026-10-31の台の値なので、使用する台と配置に合わせる。JSON内の `profile` でも選べる。
+優先順は **明示したCLI引数 > JSON > プロファイル**。適用値は起動時に表示し、結果JSONにも保存する。
+
+`field` の初期値は20mm押下、台の対辺許容差15mm、ボトルの位置安定幅8mm（新しい3枚）。
+台追跡を有効にし、手前の `x_min` と右側の `y_min` を基準に固定する。
+`--table-x-edge x_max` / `--table-y-edge y_max` またはJSONで変更できる。
+見えない辺へ自動で切り替えず、計測を取り直す。台追跡を使わない切り分けは `--no-track-table`。
+
+腰とIMUの傾きは、カメラ校正とは別に保存する試行開始姿勢から3度で一時停止する。
+脚速度0.15rad/s・ジャイロ0.10rad/sの超過を検出すると移動指令を止めて保持する。
+100ms未満で戻り、300ms安定した場合は計測・接近中に限り再計測から自動で再開する。
+継続する変動、姿勢差、5秒以内に安定3枚を取れない場合は、次の操作を選ぶ。
+
+- `r`: 現在姿勢を監視基準に取り直し、新しい計測と現在姿勢から接近を再計画する。
+- `b`: 現在姿勢から経路を確認して復帰する。
+- `q` または入力のEOF: 試行を終了して解除する。
+
+入力待ちでも50Hzの状態監視・保持を継続する。再開・復帰には下半身の300msの安定が必要。
+押下開始後の中断では `r` を表示せず、その試行の押下を打ち切る。復帰してから次の試行とする。
+通信断、状態の不正値・鮮度異常、指令・追従・衝突の異常は終了する。
+新しい試行基準を取っても、カメラ・手先の校正値は書き換えない。
+
+```bash
+# コピー先のJSONで台高・範囲などを編集する。
+cp Manipulation/push_button/real/field_trial.example.json _local/bottle_field.json
+
+# 初回は接触前まで。校正・モデル・ブリッジは従来のものを指定する。
+python Manipulation/push_button/real/run_push.py --task bottle \
+  --trial-config _local/bottle_field.json \
+  --model _local/bottle_push/menagerie/unitree_g1/g1.xml \
+  --base-transform /path/to/calibration.json --arm-socket /tmp/g1_button_arm.sock \
+  --stop-before-contact --execute --calibrated --output _local/bottle_field_approach_01.json
+
+# 接触前確認後、20mmの押下を試す。各試行の出力名を変えて3回記録する。
+python Manipulation/push_button/real/run_push.py --task bottle \
+  --trial-config _local/bottle_field.json \
+  --model _local/bottle_push/menagerie/unitree_g1/g1.xml \
+  --base-transform /path/to/calibration.json --arm-socket /tmp/g1_button_arm.sock \
+  --execute --calibrated --output _local/bottle_field_push_01.json
+```
+
+対象を選ぶ場合は `--target-pixel U V`、押す量を変える場合は `--push-distance 0.03` を追加する。
+監視条件を調整するCLIは `--position-stability-m`、`--waist-delta-deg`、`--imu-delta-deg`、
+`--leg-speed-rad-s`、`--gyro-rad-s`、`--motion-persistence-s`、`--stable-hold-s`。
+姿勢・速度監視の変更は `field` で指定する。共有のボタン制御には反映しない。
+
+`field` の終了コード0は押下指令・home復帰・解除の処理完了（接触前診断は診断・home・解除の完了）を示す。
+1は未完了・操作者終了、2は異常、Ctrl+Cは130。移動量の厳密な画像判定は別に残すため、
+`visual_success: false/null` でも処理が完了すれば0になり得る。
+ボトルが動いたか・直立を保ったかは解除後の入力で `operator_assessment` へ保存する。
+`physical_push_success` は実機では常にnullであり、人の確認を物理計測と混同しない。
+
+記録には適用設定・校正の内容とハッシュ・Gitのコミット（取得できる場合）・実行ソースとモデルのハッシュ・時計対応・29軸の実測角・
+実際に送信できた腕目標とトルク・監視基準・停止再開イベントを含む。
+RGB-Dは結果名に `_rgbd` を付けた別ディレクトリへ非同期で保存し、同名の過去記録は上書きしない。
+各NPZは `color_bgr`、メートル単位の `depth_m`、時刻・内部パラメータ・撮影姿勢の `metadata_json` を持つ。
+`np.load(path, allow_pickle=False)` で読める。保存キューの欠落数・保存エラーも結果へ記録する。
+保存を切る場合は `--no-record-rgbd`、strictで保存する場合は `--record-rgbd` を指定する。
+
+以下の従来コマンドは、プロファイルを省略すると引き続きstrictとして動作する。
+
 カメラ配信・腕ブリッジの準備は既存の [CAMERA.md](CAMERA.md) と
 [README.md](README.md) の手順を使う。
 座標は停止時の骨盤の床上投影を原点とし、前方+X、左+Y、床上+Z。

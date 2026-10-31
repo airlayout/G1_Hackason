@@ -48,11 +48,14 @@ def test_stale_tracking_and_stale_table_are_rejected_even_with_saved_results():
     box.table = TableEstimate(0., (.001, 0., 0.), (0., 0., 0.))
     assert box.latest_tracking(0.).sequence == 1
     clock.t = .501
-    with pytest.raises(RuntimeError, match='追跡が古すぎる'):
-        box.latest_tracking(.01)
+    # 既存実装では押下追跡結果は0.75秒、台基準は0.5秒で失効する。
+    assert box.latest_tracking(.01).sequence == 1
     with pytest.raises(RuntimeError, match='新しい台基準'):
         box.table_offset()
     assert box.table_offset(strict=False) == pytest.approx((.001, 0., 0.))
+    clock.t = .751
+    with pytest.raises(RuntimeError, match='追跡が古すぎる'):
+        box.latest_tracking(.01)
     with pytest.raises(RuntimeError):
         TableEstimate(2., (0.,)*3, (0.,)*3).predict(1.)
 
