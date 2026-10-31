@@ -11,7 +11,7 @@
 # 段 B: 同じ重みから、A3＋隠すで学習し直す（段の名前 f3sn4096。F3' と CAPS の引数はそのまま）。評価は重みの隣の設定を読むので、
 #   純正に似せた脚のまま測る。止め札（~/work_inoue/STOP_DOOR_F3）を置くまで続ける
 # 使い方（OMEN の ~/work_inoue/doorman で）: setsid nohup ./exp_stocklegs_1030.sh >> logs_stocklegs_1030.log 2>&1 < /dev/null &
-#   段 A を飛ばす: SKIP_A=1
+#   段 A を飛ばす: SKIP_A=1。生徒から脚と腰を隠さずに学習し直す: MASK=0（段の名前 f3sl4096）
 set -uo pipefail
 cd "$HOME/work_inoue/doorman" || exit 1
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
@@ -73,8 +73,15 @@ if [ "${SKIP_A:-0}" != 1 ]; then
   if [ -e "$STOP_FILE" ]; then log "止め札があるので、段 B を始めずに終わる"; exit 0; fi
 fi
 
-log "段 B: f3sn4096 を学習し直す ck=$CK"
-export NAME=f3sn4096 TRAIN_MORE="$CAPS_MORE,$STOCK_MORE,$MASK_MORE"
+# 生徒から脚と腰を隠すか（11-01: 隠すと 1 回目で 0% に崩れ、16 回・8 時間でレバーまでしか戻らず、押し開けは 0 のまま。
+# 隠さない A3 は学習なしで 52% なので、まず MASK=0 で純正に似せた脚だけに慣らす。段の名前は f3sl4096）
+if [ "${MASK:-1}" = 1 ]; then
+  B_NAME=f3sn4096 B_MORE="$CAPS_MORE,$STOCK_MORE,$MASK_MORE"
+else
+  B_NAME=f3sl4096 B_MORE="$CAPS_MORE,$STOCK_MORE"
+fi
+log "段 B: $B_NAME を学習し直す ck=$CK mask=${MASK:-1}"
+export NAME="$B_NAME" TRAIN_MORE="$B_MORE"
 # 学習（と各回の評価）の上限は 10 GB（10-30 17〜19 時の sar で 4,096 台の学習は 8.5 GB。再起動の後は空きが 12.5 GB で、
 # 12 GB＋余裕 1 GB〔exp_f3_retrain_1026.sh で固定〕では空き待ちから出られない）
 MEM_MAX="${TRAIN_MEM_MAX:-10G}" \
