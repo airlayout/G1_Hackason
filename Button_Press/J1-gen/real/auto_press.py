@@ -57,7 +57,7 @@ from common.robot_model import JOINT_NAMES, LEFT_ARM_IDX, RIGHT_ARM_IDX, WAIST_I
 EXIT_PRECHECK = 10
 
 # 事前確認のしきい値
-MAX_PELVIS_TILT_DEG = 3.0
+MAX_PELVIS_TILT_DEG = 5.0
 MAX_WAIST_DEG = 3.0
 MIN_COLOR_CHANGE = 0.05  # 2 枚のカラーの差（画素の平均）。止まっていると 0.00、動いていれば 1 前後（2026-10-21）
 
