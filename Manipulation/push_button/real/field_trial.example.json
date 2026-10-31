@@ -5,6 +5,8 @@
   "push_distance": 0.02,
   "contact_height": 0.08,
   "clearance": 0.05,
+  "approach_mode": "staged",
+  "approach_extra_retries": 2,
   "track_table": true,
   "table_x_edge": "x_min",
   "table_y_edge": "y_min",

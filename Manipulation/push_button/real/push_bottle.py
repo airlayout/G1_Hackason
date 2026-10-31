@@ -295,7 +295,8 @@ def main(argv=None):
                                         settings, calibration["tip_radius_m"], calibration["position_uncertainty_m"],
                                         tracking_check=None if table_reference is None else worker.table_offset,
                                         live_tracking=True, stop_before_contact=args.stop_before_contact,
-                                        pause_handler=pause_handler)
+                                        pause_handler=pause_handler, approach_mode=policy.approach_mode,
+                                        approach_extra_retries=policy.approach_extra_retries)
             report = routine.execute()
             code = trial_exit_code(report, policy, args.stop_before_contact)
             if policy.field:
@@ -315,7 +316,9 @@ def main(argv=None):
                     report['operator_assessment'] = assessment
             return code
         routine = BottlePushRoutine(kin, None, localizer, refresh, time.monotonic,
-                                    settings, calibration["tip_radius_m"], calibration["position_uncertainty_m"])
+                                    settings, calibration["tip_radius_m"], calibration["position_uncertainty_m"],
+                                    approach_mode=policy.approach_mode,
+                                    approach_extra_retries=policy.approach_extra_retries)
         observation = localizer.observe()
         report = routine.preview(observation)
         report["measurements"] = localizer.measurements

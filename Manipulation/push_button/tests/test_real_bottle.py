@@ -27,7 +27,8 @@ def test_execution_requires_existing_calibration_gate_before_dds(monkeypatch, tm
     assert "--calibrated" in json.loads(path.read_text())["error"]
 
 
-def test_real_preview_uses_camera_depth_and_plans_all_phases_without_dds(monkeypatch, tmp_path):
+@pytest.mark.parametrize('profile', ['strict', 'field'])
+def test_real_preview_uses_camera_depth_and_plans_all_phases_without_dds(monkeypatch, tmp_path, profile):
     model = os.environ.get("G1_MUJOCO_MODEL")
     if not model:
         pytest.skip("G1_MUJOCO_MODELを指定してください")
@@ -46,6 +47,11 @@ def test_real_preview_uses_camera_depth_and_plans_all_phases_without_dds(monkeyp
     clock = Camera()
     clock.x = .33
     monkeypatch.setattr(push_bottle.time, "monotonic", clock.now)
+    if profile == 'field':
+        import field_motion
+        monitor_type = field_motion.FieldMonitor
+        monkeypatch.setattr(field_motion, 'FieldMonitor',
+                            lambda policy, state: monitor_type(policy, state, now=clock.now))
 
     class Frames:
         closed = False
@@ -68,11 +74,14 @@ def test_real_preview_uses_camera_depth_and_plans_all_phases_without_dds(monkeyp
     output = tmp_path / "preview.json"
     assert push_bottle.main(["--model", model, "--base-transform", str(cal_path),
                              "--state-json", str(state_path), "--table-height", ".75",
+                             "--profile", profile, "--no-track-table", "--no-record-rgbd",
                              "--output", str(output)]) == 0
     report = json.loads(output.read_text())
     assert report["schema"] == "g1-bottle-preview-v1"
     assert {"raise", "approach", "push", "retract", "return_raise", "home"} <= report["poses"].keys()
     assert report["physical_push_success"] is None
+    assert report['approach_mode'] == ('staged' if profile == 'field' else 'single')
+    assert report['approach_clearances_m'] == ([.10, .07, .05, .03] if profile == 'field' else [.05])
     assert len(report["measurements"]) == 1
     assert frames.closed
 

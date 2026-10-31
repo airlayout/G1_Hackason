@@ -33,6 +33,8 @@ class TrialPolicy:
     motion_persistence_s: float = .10
     stable_hold_s: float = .30
     record_rgbd: bool = False
+    approach_mode: str = 'single'
+    approach_extra_retries: int = 2
 
     @property
     def field(self) -> bool:
@@ -57,6 +59,10 @@ class TrialPolicy:
             raise ValueError('試行の許容幅・監視時間が範囲外です')
         if type(self.record_rgbd) is not bool:
             raise ValueError('record_rgbdは真偽値が必要です')
+        if self.approach_mode not in ('single', 'staged'):
+            raise ValueError('approach-modeはsingleまたはstagedです')
+        if type(self.approach_extra_retries) is not int or not 0 <= self.approach_extra_retries <= 2:
+            raise ValueError('approach-extra-retriesは0〜2の整数が必要です')
         if not self.field and (self.waist_delta_deg != math.degrees(.025) or self.imu_delta_deg != 2.
                 or self.leg_speed_rad_s != .15 or self.gyro_rad_s != .1
                 or self.motion_persistence_s != .1 or self.stable_hold_s != .3):
@@ -76,6 +82,10 @@ def add_trial_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('--motion-persistence-s', type=float)
     parser.add_argument('--stable-hold-s', type=float)
     parser.add_argument('--record-rgbd', action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument('--approach-mode', choices=('single', 'staged'),
+                        help='single: 従来の1回再計測。staged: 10/7/5/3cmで再計測（fieldの既定）')
+    parser.add_argument('--approach-extra-retries', type=int,
+                        help='段階接近1回あたりの追加確認上限（0〜2、既定2）')
 
 
 def resolve_trial_arguments(parser, argv=None):
@@ -95,7 +105,8 @@ def resolve_trial_arguments(parser, argv=None):
     preset = asdict(TrialPolicy())
     if profile == 'field':
         preset.update(profile='field', table_edge_tolerance=.015, table_x_edge='x_min', table_y_edge='y_min',
-                      position_stability_m=.008, waist_delta_deg=3., imu_delta_deg=3., record_rgbd=True)
+                      position_stability_m=.008, waist_delta_deg=3., imu_delta_deg=3., record_rgbd=True,
+                      approach_mode='staged')
     elif profile != 'strict':
         raise ValueError('profileはstrictまたはfieldです')
     configurable = set(preset) | {'push_distance', 'table_height', 'table_bounds', 'contact_height',
@@ -108,6 +119,8 @@ def resolve_trial_arguments(parser, argv=None):
         if action.dest not in values or action.dest == 'profile':
             continue
         value = values[action.dest]
+        if action.dest == 'approach_extra_retries' and type(value) is not int:
+            raise ValueError('approach_extra_retriesは整数が必要です')
         if action.type is not None:
             if action.nargs is not None:
                 if not isinstance(value, list) or len(value) != action.nargs:

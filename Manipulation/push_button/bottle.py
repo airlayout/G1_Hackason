@@ -23,6 +23,11 @@ from trial_policy import ObservationUnavailable, TrialPause
 
 DEFAULT_TABLE_BOUNDS = (0.20, 0.85, -0.60, 0.02)
 FORWARD = np.array([1., 0., 0.])
+STAGED_CLEARANCES_M = (0.10, 0.07, 0.05, 0.03)
+
+
+class AlignmentNotSettled(ValueError):
+    """FK誤差は監視範囲内だが、接触前の位置合わせがまだ収束していない。"""
 
 
 def validate_push_distance(value):
@@ -374,7 +379,11 @@ class BottlePushRoutine:
 
     def __init__(self, kin, motion, localizer, refresh, now, settings, tip_radius,
                  position_uncertainty_m=0., *, tracking_check=None, live_tracking=False, stop_before_contact=False,
-                 pause_handler=None):
+                 pause_handler=None, approach_mode='single', approach_extra_retries=2):
+        if approach_mode not in ('single', 'staged'):
+            raise ValueError('approach-modeはsingleまたはstagedです')
+        if type(approach_extra_retries) is not int or not 0 <= approach_extra_retries <= 2:
+            raise ValueError('approach-extra-retriesは0〜2の整数が必要です')
         self.kin, self.motion, self.localizer = kin, motion, localizer
         self.refresh, self.now, self.settings = refresh, now, settings
         self.radius = tip_radius
@@ -384,6 +393,8 @@ class BottlePushRoutine:
         self.live_tracking = live_tracking
         self.stop_before_contact = stop_before_contact
         self.pause_handler = pause_handler
+        self.approach_mode = approach_mode
+        self.approach_extra_retries = approach_extra_retries
         self.arm_enabled = False
         self.last_face = None
         self.report = {"schema": "g1-bottle-push-v1", "task": "bottle", "settings": asdict(settings),
@@ -395,6 +406,10 @@ class BottlePushRoutine:
                            stop_before_contact=stop_before_contact, tracking_steps=[],
                            initial_plan_max_age_s=self.initial_plan_max_age_s)
         self.report['ik_searches'] = []
+        self.report.update(approach_mode=approach_mode, approach_extra_retries=approach_extra_retries,
+                           approach_clearances_m=list(STAGED_CLEARANCES_M) if approach_mode == 'staged'
+                           else [settings.clearance], approach_runs=[], approach_steps=[],
+                           approach_remeasurement_count=0, approach_extra_retry_count=0)
 
     def solve_pose(self, xyz, face, *, contact=False):
         """Try bounded numerical seeds, validating every path from the real start."""
@@ -429,13 +444,13 @@ class BottlePushRoutine:
             self.kin.update(original)
         raise ValueError(f'経路検査付きIKが{len(offsets)}候補で失敗しました: {row["attempts"][-1]["reason"]}')
 
-    def move(self, xyz, face, duration=2., contact=False):
+    def move(self, xyz, face, duration=2., contact=False, *, settle_s=0.3):
         self.refresh()
         solution = self.solve_pose(xyz, face, contact=contact)
         self.refresh()
         self.kin.validate_path(solution.joint_angles, face, FORWARD, contact)
         delta = np.max(np.abs(solution.joint_angles-self.motion.current_target()))
-        self.motion.move(solution.joint_angles, max(duration, math.sqrt(6*delta/2.)), settle_s=0.3)
+        self.motion.move(solution.joint_angles, max(duration, math.sqrt(6*delta/2.)), settle_s=settle_s)
 
     def phase(self, name):
         self.report["phase"] = name
@@ -459,10 +474,12 @@ class BottlePushRoutine:
             raise ValueError("ボトルと手先の寸法に対して位置の不確かさが大きすぎます")
         original = self.kin.data.qpos.copy()
         poses = {}
+        approach = ([('approach_7cm', -.07), ('approach_5cm', -.05), ('approach', -.03)]
+                    if self.approach_mode == 'staged' else [('approach', -self.settings.clearance)])
         try:
-            for name, offset in (("raise", None), ("transit", -0.10), ("approach", -self.settings.clearance),
-                                 ("contact", -0.003), ("push", self.settings.push_distance),
-                                 ("retract", -self.settings.clearance), ("return_raise", None)):
+            for name, offset in ([('raise', None), ('transit', -.10)] + approach +
+                                 [('contact', -.003), ('push', self.settings.push_distance),
+                                  ('retract', -self.settings.clearance), ('return_raise', None)]):
                 xyz = self.raised_point(face) if offset is None else face + (offset-self.radius)*FORWARD
                 start = self.kin.tip_position()
                 count = max(1, math.ceil(np.linalg.norm(xyz-start)/self.preview_step_m)) if name == "push" else 1
@@ -483,6 +500,9 @@ class BottlePushRoutine:
             self.kin.update(original)
         return {"schema": "g1-bottle-preview-v1", "task": "bottle", "settings": asdict(self.settings),
                 "target": asdict(observation.target), "poses": poses,
+                "approach_mode": self.approach_mode,
+                "approach_clearances_m": self.report['approach_clearances_m'],
+                "approach_extra_retries": self.approach_extra_retries,
                 "ik_searches": self.report['ik_searches'],
                 "requires_mid_approach_remeasurement": True, "physical_push_success": None}
 
@@ -506,13 +526,15 @@ class BottlePushRoutine:
         self.motion.move(self.motion.home, max(4., math.sqrt(6*delta/2.)), settle_s=0.3)
         self.check_home()
 
-    def settle_before_push(self, face, settings):
+    def settle_before_push(self, face, settings, *, clearance=None):
         """停止後の1サンプルだけでなく、実測TCPの収束を確認してから接触へ進む。"""
-        goal = face-(self.radius+self.settings.clearance)*FORWARD
+        clearance = self.settings.clearance if clearance is None else clearance
+        goal = face-(self.radius+clearance)*FORWARD
         controller = CartesianJointController(self.motion.current_target(), settings)
         started = previous = self.now()
         correction = np.zeros(3)
         settled = 0
+        first_sample = True
         rows = self.report.setdefault('alignment_steps', [])
         while self.now()-started < 8.:
             self.refresh()
@@ -520,10 +542,11 @@ class BottlePushRoutine:
             if self.tracking_check is not None:
                 self.tracking_check()
             stamp = self.now()
-            dt = settings.period_s if not rows else stamp-previous
+            dt = settings.period_s if first_sample else stamp-previous
+            first_sample = False
             previous = stamp
             error = goal-self.kin.tip_position()
-            rows.append({'time_s': stamp, 'dt_s': dt, 'error_xyz_m': error.tolist(),
+            rows.append({'time_s': stamp, 'dt_s': dt, 'error_xyz_m': error.tolist(), 'clearance_m': clearance,
                          'base_transform': self.kin.body_transform('pelvis').tolist()})
             if not 0 < dt <= .1:
                 raise ValueError('接触前の状態更新が100ms以上途絶えました')
@@ -546,7 +569,74 @@ class BottlePushRoutine:
             self.motion.stream(joints, velocity=controller.velocity)
             rows[-1].update(command_xyz_m=target.tolist(), sent_at_s=self.now(), **controller.diagnostics)
             self.motion.wait(max(.002, settings.period_s-(self.now()-stamp)))
-        raise ValueError('接触前のFK位置合わせが制限時間内に収束しません')
+        raise AlignmentNotSettled('接触前のFK位置合わせが制限時間内に収束しません')
+
+    def prepare_staged_contact(self, observation, settings):
+        """静止後の新しい計測とFK収束を各距離で確認し、不安定なら同じ段階を繰り返す。"""
+        run = {'run': len(self.report['approach_runs'])+1, 'extra_retry_count': 0,
+               'started_at_s': self.now(), 'completed': False}
+        self.report['approach_runs'].append(run)
+        try:
+            for index, clearance in enumerate(STAGED_CLEARANCES_M, 1):
+                is_extra, retry_reason = False, []
+                while True:
+                    row = {'run': run['run'], 'stage': index, 'clearance_m': clearance,
+                           'is_extra': is_extra, 'retry_reason': retry_reason,
+                           'started_at_s': self.now(), 'accepted': False}
+                    self.report['approach_steps'].append(row)
+                    try:
+                        self.phase('approach')
+                        face = self.last_face
+                        if is_extra:
+                            self.motion.wait(.6)
+                        else:
+                            self.move(face-(self.radius+clearance)*FORWARD, face,
+                                      4. if index == 1 else 2., settle_s=.6)
+                        self.phase('remeasure')
+                        updated = self.localizer.observe()
+                        face = self.check_observation(updated)
+                        self.last_face = face
+                        shift = float(np.linalg.norm(np.array(updated.target.center_xy)
+                                                     - observation.target.center_xy))
+                        observation = updated
+                        self.report['approach_remeasurement_count'] += 1
+                        row.update(captured_at_s=updated.captured_at, sequence=updated.sequence,
+                                   center_xy_m=list(updated.target.center_xy), face_xyz_m=face.tolist(),
+                                   target_shift_m=shift)
+                        self.preview(updated)
+                        self.move(face-(self.radius+clearance)*FORWARD, face)
+                        reasons = ['target_shift'] if shift > .008 else []
+                        try:
+                            controller = self.settle_before_push(face, settings, clearance=clearance)
+                        except AlignmentNotSettled:
+                            reasons.append('fk_unsettled')
+                        self.refresh()
+                        error = self.kin.tip_position()-(face-(self.radius+clearance)*FORWARD)
+                        self.report['alignment_error_xyz_m'] = error.tolist()
+                        row.update(fk_error_xyz_m=error.tolist(), fk_error_m=float(np.linalg.norm(error)),
+                                   retry_required=reasons)
+                        if np.linalg.norm(error) > .008:
+                            raise ValueError('ボトル手前のFK位置合わせ誤差が8mmを超えました')
+                        if np.linalg.norm(error) > .003 and 'fk_unsettled' not in reasons:
+                            reasons.append('fk_unsettled')
+                        if not reasons:
+                            row['accepted'] = True
+                            break
+                        if run['extra_retry_count'] >= self.approach_extra_retries:
+                            raise TrialPause('接近の追加確認を使い切りました。保持して位置と姿勢を確認してください',
+                                             code='alignment')
+                        run['extra_retry_count'] += 1
+                        self.report['approach_extra_retry_count'] += 1
+                        is_extra, retry_reason = True, reasons
+                    except Exception as exc:
+                        row['error'] = str(exc)
+                        raise
+                    finally:
+                        row['duration_s'] = self.now()-row['started_at_s']
+            run['completed'] = True
+            return observation, controller
+        finally:
+            run['duration_s'] = self.now()-run['started_at_s']
 
     def reverse_approach(self, face):
         self.phase("abort_return")
@@ -585,11 +675,19 @@ class BottlePushRoutine:
             self.motion.start_approach()
         self.phase('approach')
         self.move(self.raised_point(face), face, 4.)
+        settings = SmoothNormalSettings(approach_speed_m_s=.01, press_speed_m_s=.004,
+                                        completion_tolerance_m=.0015, completion_hold_s=.04)
+        if self.approach_mode == 'staged':
+            observation, controller = self.prepare_staged_contact(first, settings)
+            if self.live_tracking and not self.stop_before_contact:
+                self.localizer.start_tracking(observation)
+            return np.array(observation.target.center_xy), settings, controller
         self.move(face-(self.radius+0.10)*FORWARD, face, 4.)
         self.move(face-(self.radius+self.settings.clearance)*FORWARD, face)
         self.phase('remeasure')
         observation = self.localizer.observe()
         face = self.check_observation(observation)
+        self.report['approach_remeasurement_count'] += 1
         self.last_face = face
         before = np.array(observation.target.center_xy)
         self.preview(observation)
@@ -599,8 +697,6 @@ class BottlePushRoutine:
         self.report['alignment_error_xyz_m'] = alignment_error.tolist()
         if np.linalg.norm(alignment_error) > .008:
             raise ValueError('ボトル手前のFK位置合わせ誤差が8mmを超えました')
-        settings = SmoothNormalSettings(approach_speed_m_s=.01, press_speed_m_s=.004,
-                                        completion_tolerance_m=.0015, completion_hold_s=.04)
         if self.live_tracking and not self.stop_before_contact:
             self.localizer.start_tracking(observation)
         return before, settings, self.settle_before_push(face, settings)

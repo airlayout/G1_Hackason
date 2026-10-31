@@ -49,15 +49,30 @@ def test_field_defaults_and_explicit_cli_over_json_over_profile(tmp_path):
     assert not policy.record_rgbd and policy.table_edge_tolerance == .015
     args, policy = parse(['--profile', 'field'])
     assert args.push_distance == .02 and policy.position_stability_m == .008
+    assert policy.approach_mode == 'staged' and policy.approach_extra_retries == 2
     args, policy = parse([])
     assert args.push_distance == .05 and not args.track_table
     assert policy == TrialPolicy()
+
+
+def test_approach_cli_over_json_over_profile_and_strict_default(tmp_path):
+    config = tmp_path/'approach.json'
+    config.write_text(json.dumps({'profile': 'field', 'table_height': .76,
+                                 'approach_mode': 'single', 'approach_extra_retries': 1}))
+    _, policy = parse([], config)
+    assert policy.approach_mode == 'single' and policy.approach_extra_retries == 1
+    _, policy = parse(['--approach-mode', 'staged', '--approach-extra-retries', '0'], config)
+    assert policy.approach_mode == 'staged' and policy.approach_extra_retries == 0
+    _, policy = parse([])
+    assert policy.approach_mode == 'single'
 
 
 @pytest.mark.parametrize('values', [
     {'unknown': 1}, {'record_rgbd': 'false'}, {'track_table': 'false'},
     {'position_stability_m': float('nan')}, {'table_x_edge': 'y_min'},
     {'table_bounds': [0, 1]}, {'motion_persistence_s': 0}, {'profile': 'other'},
+    {'approach_mode': 'other'}, {'approach_extra_retries': -1}, {'approach_extra_retries': 3},
+    {'approach_extra_retries': True}, {'approach_extra_retries': 1.5},
 ])
 def test_invalid_json_is_rejected_before_runtime_setup(tmp_path, values):
     config = tmp_path/'trial.json'
@@ -510,6 +525,7 @@ def test_real_field_entry_records_inputs_commands_frames_and_human_result(monkey
         def __init__(self, kin, motion, localizer, *args, **kwargs):
             self.motion, self.localizer = motion, localizer
             assert kwargs['pause_handler'] is not None
+            assert kwargs['approach_mode'] == 'staged' and kwargs['approach_extra_retries'] == 2
         def execute(self):
             self.localizer.observe()
             # 入口の送信記録を模擬I/Oで通す。実機成功の判定は意図的にfalse。
