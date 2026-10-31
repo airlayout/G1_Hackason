@@ -295,11 +295,13 @@ class PressPipeline:
         right = -sgn * y  # 押す腕の側へ何 m ずれているか
         s_lo, s_hi = float(stc["side_min_m"]), float(stc["side_max_m"])
         arm_side, other = ("右", "左") if self.side == "right" else ("左", "右")
+        # 押す点が腕と反対の側にあるときは「右に −3.0 cm」でなく「左に 3.0 cm」と書く
+        where = f"{arm_side}に {right * 100:.1f} cm" if right >= 0 else f"{other}に {-right * 100:.1f} cm"
         if right < s_lo:
-            msgs.append(f"押す点が体の中心から{arm_side}に {right * 100:.1f} cm（{s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
+            msgs.append(f"押す点が体の中心から{where}（{arm_side}に {s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
                         f"{other}へ {cm(s_lo - right)} cm 以上寄る")
         elif right > s_hi:
-            msgs.append(f"押す点が体の中心から{arm_side}に {right * 100:.1f} cm（{s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
+            msgs.append(f"押す点が体の中心から{where}（{arm_side}に {s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
                         f"{arm_side}へ {cm(right - s_hi)} cm 以上寄る")
         edge_min = float(stc["table_edge_min_m"])
         # 机は高さ違いの箱に分かれている（make_table_boxes.py）ので、いちばん近い縁で 1 回だけ出す

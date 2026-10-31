@@ -1,9 +1,12 @@
 # Button_Press / ボトルを押せる机の位置の範囲を広げる設定（--overlay reach_wide.yaml）。pipeline.yaml に重ねる。
 #
+# 【2026-10-31 から、この値が configs/pipeline.yaml の既定になった】重ねても何も変わらない。前の手順・記録のコマンド
+# （--overlay reach_wide.yaml）がそのまま動くように残している。前の既定に戻すときは --overlay reach_legacy.yaml。
+#
 # 計画だけの探索（sim/via_refine.py・sim/approach_search.py、2026-10-29）で見つけた、経由の姿勢と指の向きの候補。
 # 1,456 通り（机の縁・縁からボトルまで・左右・天板の高さ・縁の傾き）のうち、通る数が 249 → 1,089（4.4 倍）、
 # 机の縁は 32 cm 以上 → 18 cm 以上、ボトルは体の右 10 cm より外側だけ → 右 20 cm〜左 5 cm。
-# MuJoCo での確認は sim/reach_verify.py。実機では未確認（実機で使う前に、押さずに経由→手前の姿勢まで動かして確かめる）。
+# MuJoCo での確認は sim/reach_verify.py。実機では dry-run（計画まで）だけ確認（2026-10-31）。
 pipeline:
   via_pose: [68.3, -11.1, -40.9, -43.9, 0.0, -4.1, 0.0]
   # 左へ傾けるだけの候補を、小さい順に試す。下向き（上 −15°）を足すと通る数は増える（1089 → 1127 / 1456）が、MuJoCo では

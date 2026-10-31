@@ -59,11 +59,25 @@ class TestStandAdvice(unittest.TestCase):
     def test_inside_is_empty(self) -> None:
         self.assertEqual(self.pipe(table_edge=0.30).stand_advice(np.array([0.35, -0.20, 0.03])), "")
 
+    def test_body_center_and_close_table_are_inside(self) -> None:
+        # 2026-10-31 からの既定（広げた経由の姿勢と指の向き）では、体の正面のボトルと縁 22 cm の机も勧める範囲の中
+        self.assertEqual(self.pipe(table_edge=0.22).stand_advice(np.array([0.32, 0.0, 0.11])), "")
+
     def test_far_left_and_table_too_close(self) -> None:
-        msg = self.pipe(table_edge=0.25).stand_advice(np.array([0.432, -0.08, 0.03]))
+        msg = self.pipe(table_edge=0.18).stand_advice(np.array([0.432, 0.03, 0.03]))
         self.assertIn("押す点まで 43.2 cm と遠すぎる。あと 4 cm 以上近づく", msg)
-        self.assertIn("右に 8.0 cm（15〜25 cm がよい）。左へ 7 cm 以上寄る", msg)
-        self.assertIn("机の手前の縁まで 25.0 cm と近すぎる", msg)
+        self.assertIn("左に 3.0 cm（右に 0〜25 cm がよい）。左へ 3 cm 以上寄る", msg)
+        self.assertIn("机の手前の縁まで 18.0 cm と近すぎる", msg)
+        self.assertIn("あと 2 cm 以上下がる", msg)
+
+    def test_legacy_range_with_overlay(self) -> None:
+        # 前の既定（configs/reach_legacy.yaml）を重ねると、前の範囲で見る
+        from common.config import deep_merge, load_config
+
+        p = self.pipe(table_edge=0.25)
+        deep_merge(p.cfg.pipeline, load_config("reach_legacy.yaml")["pipeline"])
+        msg = p.stand_advice(np.array([0.35, -0.08, 0.03]))
+        self.assertIn("右に 8.0 cm（右に 15〜25 cm がよい）。左へ 7 cm 以上寄る", msg)
         self.assertIn("あと 4 cm 以上下がる", msg)
 
     def test_table_split_into_boxes_is_reported_once(self) -> None:
@@ -71,11 +85,11 @@ class TestStandAdvice(unittest.TestCase):
         p = self.pipe()
         p.cfg.press["obstacles"] = [
             {"name": f"table_{i}", "center": [edge + 0.2, -0.1, -0.05 - 0.09 * i], "half_size": [0.2, 0.35, 0.045]}
-            for i, edge in enumerate([0.24, 0.22, 0.23])]
+            for i, edge in enumerate([0.17, 0.15, 0.16])]
         msg = p.stand_advice(np.array([0.35, -0.20, 0.03]))
         self.assertEqual(msg.count("机の手前の縁まで"), 1, msg)
-        self.assertIn("机の手前の縁まで 22.0 cm と近すぎる", msg)
-        self.assertIn("あと 7 cm 以上下がる", msg)
+        self.assertIn("机の手前の縁まで 15.0 cm と近すぎる", msg)
+        self.assertIn("あと 5 cm 以上下がる", msg)
 
     def test_left_arm_is_mirrored(self) -> None:
         self.assertEqual(self.pipe(side="left").stand_advice(np.array([0.35, 0.20, 0.03])), "")
