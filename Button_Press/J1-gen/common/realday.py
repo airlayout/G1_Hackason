@@ -139,7 +139,7 @@ def box_from_touch_points(
 
 
 def table_boxes_from_points(
-    points: np.ndarray, margin_m: float = 0.03, depth_m: float = 0.6, below_m: float = 0.8, strip_m: float = 0.09,
+    points: np.ndarray, margin_m: float = 0.01, depth_m: float = 0.6, below_m: float = 0.8, strip_m: float = 0.09,
     z_search: tuple[float, float] = (-0.35, 0.35), x_range: tuple[float, float] = (0.15, 0.70),
     y_range: tuple[float, float] = (-0.55, 0.55), z_band_m: float = 0.015, min_points: int = 30,
     edge_percentile: float = 2.0,
