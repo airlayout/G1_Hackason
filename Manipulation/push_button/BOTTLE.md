@@ -65,10 +65,17 @@ MUJOCO_GL=egl python Manipulation/push_button/sim/run_push_mujoco.py \
 2026-10-31の台の値なので、使用する台と配置に合わせる。JSON内の `profile` でも選べる。
 優先順は **明示したCLI引数 > JSON > プロファイル**。適用値は起動時に表示し、結果JSONにも保存する。
 
-`field` の初期値は20mm押下、台の対辺許容差15mm、ボトルの位置安定幅8mm（新しい3枚）。
-台追跡を有効にし、手前の `x_min` と右側の `y_min` を基準に固定する。
-`--table-x-edge x_max` / `--table-y-edge y_max` またはJSONで変更できる。
-見えない辺へ自動で切り替えず、計測を取り直す。台追跡を使わない切り分けは `--no-track-table`。
+`field` の初期値は20mm押下、ボトルの位置安定幅8mm（新しい3枚）。
+台追跡は既定で無効。台の二辺の認識を必要とせず、台基準の機体位置補正も行わない。
+台との衝突予測とボトルの移動先の余裕の検査には、引き続き実測の台高・台範囲が必要。
+自己衝突、腰姿勢・脚速度などの監視も維持する。
+
+台追跡を使う場合は `--track-table` またはJSONの `"track_table": true` を指定する。
+有効時は台の対辺許容差15mm、手前の `x_min` と右側の `y_min` を基準に固定する。
+`--table-x-edge x_max` / `--table-y-edge y_max` またはJSONで基準辺を変更できる。
+見えない辺へ自動で切り替えず、計測を取り直す。
+既存JSONの `"track_table": true` は引き続き有効なので、無効化する場合は `false` に変更するか
+CLIに `--no-track-table` を追加する。
 
 ### 4段階で接近・再計測する
 
