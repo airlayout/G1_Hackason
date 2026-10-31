@@ -160,3 +160,12 @@ cd ~/perception && /usr/bin/python3 real/person_alert.py --zmq localhost:5555 --
 
 - `_local/perception/webcam/20261031_152244_raw.jpg`（撮ったまま）・`_rotated.jpg`（回したもの）・`_yolo.jpg`（ラボPC の ultralytics で検出）
 - `_local/perception/pc2_check_yolo/<日時>/`（PC2 の `check_yolo.py` の結果。日時は PC2 の時計で、ラボPC より約 1 時間遅れている）
+
+## 追記（同日夜）: ONNX の書き出し方を直し、エンジンを作り直した
+
+上で使った ONNX（end-to-end の出力、`nms=False`）は、元の `.pt` と確からしさが少しずれていた（bus.jpg の人が `.pt` 0.855 → 0.92）。
+ここでの「GPU と CPU の結果は同じ」は同じ ONNX どうしの比べで、`.pt` とのずれには気づけなかった。
+`real/export_onnx.py` を従来型の出力（`end2end=False`、NMS は `onnx_yolo.py`）に直して書き出し直し、PC2 のエンジンも作り直した。
+直したあとは、TensorRT・ONNX とも `.pt` との差が 0.005 以下。GPU の 1 枚は約 20 ms（NMS を Python で行う分、17 ms から増えた）。
+前のファイルは PC2 の `~/perception/old_end2end_20261031/` にある。詳しくは
+`Button_Press/J1-gen/docs/reports/onboard_pc2_20261031.md` の 7 章。

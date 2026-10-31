@@ -69,7 +69,8 @@ class TorchFreeImportTest(unittest.TestCase):
 @unittest.skipUnless(all(importlib.util.find_spec(m) for m in ("ultralytics", "onnx", "onnxruntime", "cv2")),
                      "ultralytics・onnx・onnxruntime が無い")
 class SameAsUltralyticsTest(unittest.TestCase):
-    def test_matches_ultralytics_on_same_onnx(self) -> None:
+    def test_matches_ultralytics_pt(self) -> None:
+        """書き出した ONNX を onnx_yolo.py で動かした結果が、元の .pt と一致する（同じ ONNX どうしでは書き出しのずれを見逃す）。"""
         import os
 
         os.environ.setdefault("YOLO_AUTOINSTALL", "False")
@@ -85,15 +86,15 @@ class SameAsUltralyticsTest(unittest.TestCase):
             repo_pt = PERCEPTION_DIR.parent / "yolo26n.pt"
             if repo_pt.exists():
                 pt.write_bytes(repo_pt.read_bytes())
-            onnx = YOLO(str(pt) if pt.exists() else "yolo26n.pt").export(format="onnx", imgsz=640, simplify=False,
-                                                                         opset=17, nms=False)
+            ref = YOLO(str(pt) if pt.exists() else "yolo26n.pt")
+            # export_onnx.py と同じ書き出し方（従来型の出力）。.pt を正方形に入れた結果と比べる
+            onnx = ref.export(format="onnx", imgsz=640, opset=17, end2end=False)
             mine = OnnxYoloDetector(onnx, classes=["person"], confidence_threshold=0.25)
-            ref = YOLO(onnx, task="detect")
             for name in ("bus.jpg", "zidane.jpg"):
                 img = cv2.imread(str(assets / name))
                 a = sorted((d.confidence for d in mine.detect(img)), reverse=True)
-                b = sorted((float(c) for c in ref.predict(img, classes=[0], conf=0.25, verbose=False,
-                                                           device="cpu")[0].boxes.conf), reverse=True)
+                b = sorted((float(c) for c in ref.predict(img, imgsz=640, rect=False, classes=[0], conf=0.25,
+                                                          verbose=False, device="cpu")[0].boxes.conf), reverse=True)
                 self.assertEqual(len(a), len(b), name)
                 np.testing.assert_allclose(a, b, atol=0.01, err_msg=name)
 

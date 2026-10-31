@@ -94,7 +94,8 @@ PC2 には torch を入れず、ラボPCで書き出した ONNX を **onnxruntim
 G1_HuggingFace/venv/bin/python Perception/real/export_onnx.py
 ```
 
-→ `_local/perception/models/yolo26n.onnx`（約 10 MB、end-to-end）。サンプル画像で ultralytics と一致するかも確かめる。
+→ `_local/perception/models/yolo26n.onnx`（約 10 MB、従来型の出力。NMS は `onnx_yolo.py` が行う）。サンプル画像で `.pt` と一致するかも確かめる
+（2026-10-31 までの end-to-end の書き出しは `.pt` とずれていた: `Button_Press/J1-gen/docs/reports/onboard_pc2_20261031.md` の 7 章）。
 PC2 がインターネットにつながらない場合（`Button_Press/J1-gen/real/pc2_survey.sh` の結果で分かる）は、配布物も集める:
 
 ```bash
