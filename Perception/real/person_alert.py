@@ -14,7 +14,11 @@ PC へは ZMQ の PUB で配信する(--port、既定 5560)。PC から G1 へ�
 受け取りは real/person_alert_receiver.py。PC がつないでいない間の出来事は配信されず、G1 にだけ残る。
 送るもの(どちらも 2 つの部分に分けた multipart):
   - 出来事: [b"event", 記録のJSON] + [JPEG]
-  - 生きている合図(--heartbeat 秒ごと): [b"heartbeat", {"time", "fps", "frames", "events", "detector"} のJSON]
+  - 生きている合図(--heartbeat 秒ごと): [b"heartbeat", {"time", "fps", "frames", "events", "detector", "viewers"} のJSON]
+
+--stream <port> を付けると、枠を描いた映像を HTTP の MJPEG で配信する(ブラウザで http://<G1のアドレス>:<port>/ を開く。
+common/mjpeg.py)。カメラは 1 つのプロセスしか開けないので、別のスクリプトにせずここで配る。見ている人がいるときだけ、
+--stream-fps 枚/秒まで JPEG を作る(Wi-Fi の通信量と CPU を抑えるため。2026-10-31 実測: 480x640・画質 70 で 1 枚約 52 KB、10 枚/秒で約 0.5 MB/s)。
 """
 from __future__ import annotations
 
@@ -55,7 +59,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out-dir", type=Path)
     p.add_argument("--port", type=int, default=5560, help="PC へ配信する ZMQ の PUB のポート")
     p.add_argument("--heartbeat", type=float, default=5.0, help="生きている合図を送る間隔(秒)")
-    p.add_argument("--jpeg-quality", type=int, default=85)
+    p.add_argument("--jpeg-quality", type=int, default=85, help="出来事の写真の画質")
+    p.add_argument("--stream", type=int, metavar="PORT", help="認識した映像を HTTP(MJPEG)で配信するポート(例 8080。既定は配信しない)")
+    p.add_argument("--stream-fps", type=float, default=10.0, help="配信する映像の上限の枚数/秒")
+    p.add_argument("--stream-quality", type=int, default=70, help="配信する映像の画質")
     p.add_argument("--max-seconds", type=float, help="この秒数で終える(動作確認用。既定は Ctrl-C まで)")
     return p.parse_args()
 
@@ -106,11 +113,20 @@ def main() -> int:
     judge = EventJudge(min_frames=args.min_frames, cooldown_s=args.cooldown)
     store = AlertStore(out_dir, max_photos=args.max_photos)
     sock = build_publisher(args.port)
+    stream = None
+    if args.stream:
+        from common.mjpeg import MjpegServer
+
+        stream = MjpegServer(args.stream)
     print(f"[person_alert] 検出器 {detector.device}、保存先 {out_dir}（写真 {args.max_photos} 枚まで）、配信 tcp://*:{args.port}")
+    if stream:
+        print(f"[person_alert] 映像の配信: http://<G1のアドレス>:{args.stream}/（{args.stream_fps:.0f} 枚/秒まで、画質 {args.stream_quality}）")
     print(f"[person_alert] 人が {args.min_frames} フレーム続いたら出来事、そのあと {args.cooldown:.0f} 秒は出さない。Ctrl-C で終了")
 
     frames = events = 0
     t_start = t_beat = t_last_frame = time.time()
+    t_stream = 0.0
+    fps = 0.0
     frames_at_beat = 0
     try:
         with build_source(args) as source:
@@ -128,6 +144,16 @@ def main() -> int:
                 dets = detector.detect(img)
                 frames += 1
                 now = time.time()
+                if stream and stream.viewers and now - t_stream >= 1.0 / args.stream_fps:
+                    view = draw_detections(img, dets)
+                    cv2.putText(view, f"person {len(dets)}  {fps:.0f} fps", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                                (0, 255, 255), 2)
+                    ok, buf = cv2.imencode(".jpg", view, [cv2.IMWRITE_JPEG_QUALITY, args.stream_quality])
+                    if ok:
+                        stream.publish(buf.tobytes())
+                    # 前回から刻む(t_stream = now だとカメラの 1 フレーム分ずつ遅れて 10 → 8.8 枚/秒になった)。大きく遅れたら今から刻み直す
+                    period = 1.0 / args.stream_fps
+                    t_stream = t_stream + period if now - t_stream < 2 * period else now
                 if judge.update(bool(dets), now):
                     events += 1
                     record = make_record(dets, now, frames)
@@ -140,13 +166,16 @@ def main() -> int:
                           + ("" if sent else "（配信があふれて送れなかった）"))
                 if now - t_beat >= args.heartbeat:
                     fps = (frames - frames_at_beat) / (now - t_beat)
-                    beat = {"time": now, "fps": round(fps, 1), "frames": frames, "events": events, "detector": detector.device}
+                    beat = {"time": now, "fps": round(fps, 1), "frames": frames, "events": events, "detector": detector.device,
+                            "viewers": stream.viewers if stream else 0}
                     send(sock, [b"heartbeat", json.dumps(beat).encode()])
                     t_beat, frames_at_beat = now, frames
     except KeyboardInterrupt:
         pass
     finally:
         sock.close()
+        if stream:
+            stream.close()
     print(f"[person_alert] 終了: {frames} フレーム、出来事 {events} 件、保存先 {out_dir}")
     return 0
 

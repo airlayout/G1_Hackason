@@ -26,6 +26,12 @@ cd ~/perception && /usr/bin/python3 real/person_alert.py --webcam 6 --rotate cw 
 G1_HuggingFace/venv/bin/python Perception/real/person_alert_receiver.py --host 192.168.0.82
 ```
 
+**認識した映像をブラウザで見る**: G1 側に `--stream 8080` を足し、ブラウザ（Windows でよい）で `http://192.168.0.82:8080/` を開く。
+枠・人数・fps を描いた映像が、見ている人がいるときだけ 10 枚/秒（`--stream-fps`）で届く。VLC などでは `/stream`、最新の 1 枚は `/snapshot.jpg`。
+同じネットワークにいる人なら誰でも見られる（人が写るので注意）。
+
+- 2026-10-31 の確認（Wi-Fi）: 10.0 枚/秒、1 枚約 52 KB、約 0.5 MB/s、届く間隔の最大 155 ms。2 人同時に見ても同じ。
+  配信しながらでも検出は約 28 fps のまま（PC2 の CPU はこのプロセスで約 50%）
 - G1 は 5 秒ごとに生きている合図を送り、PC は 15 秒届かなければ警告する
 - 2026-10-31 の確認: GPU 版で約 28 fps（カメラの 30 fps でほぼ頭打ち）。60 秒で出来事 4 件、PC に 4 件とも届いた。PC を止めた状態でも
   G1 に保存され、`--max-photos 3` で古い写真から消えた
