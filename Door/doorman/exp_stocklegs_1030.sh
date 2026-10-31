@@ -11,7 +11,7 @@
 # 段 B: 同じ重みから、A3＋隠すで学習し直す（段の名前 f3sn4096。F3' と CAPS の引数はそのまま）。評価は重みの隣の設定を読むので、
 #   純正に似せた脚のまま測る。止め札（~/work_inoue/STOP_DOOR_F3）を置くまで続ける
 # 使い方（OMEN の ~/work_inoue/doorman で）: setsid nohup ./exp_stocklegs_1030.sh >> logs_stocklegs_1030.log 2>&1 < /dev/null &
-#   段 A を飛ばす: SKIP_A=1。生徒から脚と腰を隠さずに学習し直す: MASK=0（段の名前 f3sl4096）
+#   段 A を飛ばす: SKIP_A=1。生徒から脚と腰を隠さずに学習し直す: MASK=0（段の名前 f3sl4096）・隠す回の割合: MASK=0.5（f3sm4096、パッチ 0086）
 set -uo pipefail
 cd "$HOME/work_inoue/doorman" || exit 1
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
@@ -75,11 +75,16 @@ fi
 
 # 生徒から脚と腰を隠すか（11-01: 隠すと 1 回目で 0% に崩れ、16 回・8 時間でレバーまでしか戻らず、押し開けは 0 のまま。
 # 隠さない A3 は学習なしで 52% なので、まず MASK=0 で純正に似せた脚だけに慣らす。段の名前は f3sl4096）
-if [ "${MASK:-1}" = 1 ]; then
-  B_NAME=f3sn4096 B_MORE="$CAPS_MORE,$STOCK_MORE,$MASK_MORE"
-else
-  B_NAME=f3sl4096 B_MORE="$CAPS_MORE,$STOCK_MORE"
-fi
+# MASK=0.5 のような 0〜1 の数は、隠す回の割合（パッチ 0086。台の戻しごとに引く）。段の名前は f3sm4096（B_NAME で替えられる）
+case "${MASK:-1}" in
+  1) B_NAME="${B_NAME:-f3sn4096}" B_MORE="$CAPS_MORE,$STOCK_MORE,$MASK_MORE" ;;
+  0) B_NAME="${B_NAME:-f3sl4096}" B_MORE="$CAPS_MORE,$STOCK_MORE" ;;
+  0.[0-9]*)
+    grep -qF "_mask_lower_prob" "$HOME/work_inoue/doorman6/VIRAL6_fix/gr00t/rl/envs/base_task/homie_base.py" ||
+      { log "パッチ 0086 が VIRAL6_fix に当たっていない"; exit 1; }
+    B_NAME="${B_NAME:-f3sm4096}" B_MORE="$CAPS_MORE,$STOCK_MORE,++env.config.actor_obs_mask_lower_body_prob=$MASK" ;;
+  *) log "MASK は 0・1・0〜1 の小数のどれか: ${MASK}"; exit 1 ;;
+esac
 log "段 B: $B_NAME を学習し直す ck=$CK mask=${MASK:-1}"
 export NAME="$B_NAME" TRAIN_MORE="$B_MORE"
 # 学習（と各回の評価）の上限は 10 GB（10-30 17〜19 時の sar で 4,096 台の学習は 8.5 GB。再起動の後は空きが 12.5 GB で、

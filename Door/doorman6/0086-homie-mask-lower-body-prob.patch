@@ -1,0 +1,68 @@
+From abdba391d0dfd9a066f2825a8de38bb894c671a3 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Sun, 1 Nov 2026 08:19:47 +0900
+Subject: [PATCH] homie: mix masked and unmasked episodes for the student lower
+ body (env.config.actor_obs_mask_lower_body_prob=p draws per env reset whether
+ the 15 HOMIE-driven joints are zeroed in the student dof_pos, dof_vel and
+ actions; actor_obs_mask_lower_body=True is p=1; default 0 = unchanged).
+ Masking every episode at once dropped the policy to 0% and the push-open did
+ not come back in 8 hours (11-01)
+
+---
+ gr00t/rl/envs/base_task/homie_base.py | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/gr00t/rl/envs/base_task/homie_base.py b/gr00t/rl/envs/base_task/homie_base.py
+index fc80456..67d36bf 100644
+--- a/gr00t/rl/envs/base_task/homie_base.py
++++ b/gr00t/rl/envs/base_task/homie_base.py
+@@ -219,6 +219,9 @@ class HomieBase(LeggedRobotBase):
+     #   遅れと倍率は脚の観測（homie_obs の b_homie_commands とその履歴）にだけ入る。生徒と critic は自分が出した指令を見る
+     #   env.config.actor_obs_mask_lower_body=True: 生徒の観測の dof_pos・dof_vel・actions の脚と腰（HOMIE が動かす先頭
+     #     lower_body_actions_dim 個）を 0 にする。実機で純正が動かす脚の値はシムの HOMIE と違うので見せない（critic と HOMIE はそのまま）
++    #   env.config.actor_obs_mask_lower_body_prob=p（パッチ 0086、11-01）: 隠す回の割合。台の戻しごとに p の確率で隠す回にする。
++    #     いきなり全部隠すと 0% に崩れ、8 時間で押し開けが戻らなかったので、隠す回と隠さない回を混ぜて慣らす。
++    #     actor_obs_mask_lower_body=True は p=1 と同じ
+     #   歩くと立つの切り替え（学習器の algo.config.homie_switch_threshold、既定 0.5）は設定で変える（純正は小さな指令でも歩く）
+     def _init_stock_legs(self):
+         lo, hi = (int(v) for v in self.config.get("loco_cmd_delay_steps_range", [0, 0]))
+@@ -228,7 +231,12 @@ class HomieBase(LeggedRobotBase):
+         self._loco_delay_range = (lo, hi)
+         self._loco_gain_range = (glo, ghi)
+         self._stock_legs_on = hi > 0 or (glo, ghi) != (1.0, 1.0)
+-        self._mask_lower_obs = bool(self.config.get("actor_obs_mask_lower_body", False))
++        mask_all = bool(self.config.get("actor_obs_mask_lower_body", False))
++        p = 1.0 if mask_all else float(self.config.get("actor_obs_mask_lower_body_prob", 0.0) or 0.0)
++        assert 0.0 <= p <= 1.0, f"actor_obs_mask_lower_body_prob は 0〜1 にする: {p}"
++        self._mask_lower_prob = p
++        self._mask_lower_obs = p > 0.0
++        self._mask_lower_env = torch.full((self.num_envs,), p >= 1.0, dtype=torch.bool, device=self.device)  # 隠す台
+         self._homie_commands_legs = self._homie_commands.clone()
+         self._loco_cmd_buf = torch.zeros(self.num_envs, hi + 1, 3, device=self.device)
+         self._loco_cmd_ptr = 0
+@@ -237,7 +245,12 @@ class HomieBase(LeggedRobotBase):
+         self._reset_stock_legs(torch.arange(self.num_envs, device=self.device))
+ 
+     def _reset_stock_legs(self, env_ids):
+-        if not getattr(self, "_stock_legs_on", False) or len(env_ids) == 0:
++        if len(env_ids) == 0:
++            return
++        p = getattr(self, "_mask_lower_prob", 0.0)
++        if 0.0 < p < 1.0:  # 隠す回かどうかを、戻した台だけ引き直す（0086）
++            self._mask_lower_env[env_ids] = torch.rand(len(env_ids), device=self.device) < p
++        if not getattr(self, "_stock_legs_on", False):
+             return
+         lo, hi = self._loco_delay_range
+         glo, ghi = self._loco_gain_range
+@@ -270,7 +283,7 @@ class HomieBase(LeggedRobotBase):
+             for key in ("dof_pos", "dof_vel", "actions"):
+                 if key in raw["actor_obs"].keys():
+                     masked = raw["actor_obs"][key].clone()  # 写しを作る（履歴と critic の値は元のまま）
+-                    masked[:, : self._num_lower_dof] = 0.0
++                    masked[self._mask_lower_env, : self._num_lower_dof] = 0.0  # 隠す回の台だけ（0086）
+                     raw["actor_obs"][key] = masked
+ 
+     @override
+-- 
+2.43.0
+

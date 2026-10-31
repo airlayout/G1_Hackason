@@ -9,6 +9,7 @@ OMEN で: cd ~/work_inoue/doorman6/VIRAL6_fix && PYTHONPATH=. ~/miniforge3/envs/
 - 遅れと倍率は HOMIE の観測とその履歴にだけ入り、生徒（actor_obs）の指令は変えない
 - 脚と腰の値を隠すのは生徒の dof_pos・dof_vel・actions の先頭 15 だけ。critic と履歴の値は元のまま
 - 呼ぶ場所: __init__ の終わり・回の戻し・step の頭打ちの後（物理の前）・観測の連結の前
+- 0086（11-01）: 隠す回の割合 p。台の戻しごとに引き直し、隠す回の台だけ脚と腰を 0 にする。True は p=1 と同じ
 """
 from __future__ import annotations
 
@@ -181,6 +182,53 @@ def test_bad_ranges_are_rejected():
         _make_env({"loco_cmd_delay_steps_range": [3, 1]})
     with pytest.raises(AssertionError):
         _make_env({"loco_cmd_gain_range": [0.0, 1.0]})
+
+
+# ---- パッチ 0086（11-01）: 脚と腰を隠す回の割合 actor_obs_mask_lower_body_prob ----
+
+
+def test_mask_all_equals_prob_one():
+    env, torch = _make_env({"actor_obs_mask_lower_body": True}, num_envs=8)
+    assert env._mask_lower_prob == 1.0 and bool(env._mask_lower_env.all())
+    env._reset_stock_legs(torch.arange(8))
+    assert bool(env._mask_lower_env.all())  # 全部隠すときは引き直さない
+
+
+def test_mask_prob_hides_only_the_sampled_envs():
+    torch = pytest.importorskip("torch")
+    torch.manual_seed(0)
+    env, torch = _make_env({"actor_obs_mask_lower_body_prob": 0.5}, num_envs=4000)
+    assert 0.45 < env._mask_lower_env.float().mean().item() < 0.55
+    dof = torch.arange(29.0).repeat(4000, 1)
+    env.obs_buf_dict_raw = {"actor_obs": {"dof_pos": dof}}
+    env.hist_obs_dict = {}
+    env._apply_stock_legs_obs()
+    out = env.obs_buf_dict_raw["actor_obs"]["dof_pos"]
+    hidden = env._mask_lower_env
+    assert out[hidden, :N_LOWER].abs().sum().item() == 0.0
+    assert torch.equal(out[~hidden], dof[~hidden])  # 隠さない回はそのまま
+    assert torch.equal(out[:, N_LOWER:], dof[:, N_LOWER:])  # 腕は隠さない
+    assert dof[0, 1].item() == 1.0  # 元の値は書き換えない
+
+
+def test_mask_prob_is_resampled_only_for_reset_envs():
+    torch = pytest.importorskip("torch")
+    torch.manual_seed(1)
+    env, torch = _make_env({"actor_obs_mask_lower_body_prob": 0.5}, num_envs=64)
+    before = env._mask_lower_env.clone()
+    changed = False
+    for _ in range(20):
+        env._reset_stock_legs(torch.arange(0, 64, 2))
+        assert torch.equal(env._mask_lower_env[1::2], before[1::2])  # 戻していない台はそのまま
+        changed |= not torch.equal(env._mask_lower_env[::2], before[::2])
+    assert changed
+
+
+def test_mask_prob_zero_is_off_and_bad_values_are_rejected():
+    env, _ = _make_env({"actor_obs_mask_lower_body_prob": 0.0})
+    assert env._mask_lower_obs is False and not bool(env._mask_lower_env.any())
+    with pytest.raises(AssertionError):
+        _make_env({"actor_obs_mask_lower_body_prob": 1.5})
 
 
 def test_wiring():
