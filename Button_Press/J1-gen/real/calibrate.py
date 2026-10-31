@@ -88,7 +88,7 @@ def main() -> int:
     p.add_argument("--write", action="store_true", help="最後に、差の平均を localize.yaml に書き込む")
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
     add_camera_args(p)
-    p.add_argument("--detector", choices=["yolo", "color"], help="検出器（既定は configs/localize.yaml）")
+    p.add_argument("--detector", choices=["yolo", "onnx", "color"], help="検出器（既定は configs/localize.yaml。onnx は G1 の PC2 用）")
     p.add_argument("--out-dir", type=Path, help="画像などの保存先（既定は _local/button_press/ の下）")
     args = p.parse_args()
 

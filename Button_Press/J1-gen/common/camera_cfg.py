@@ -3,6 +3,7 @@
 接続先（PC2 の IP）は、設定ファイルの先頭の pc2_host の 1 か所で決める。--host を付けると、その場で上書きできる。
     有線（ラボ PC）: configs/camera.yaml       pc2_host: 192.168.123.164
     無線（ノート PC）: configs/camera_wifi.yaml  pc2_host: 192.168.0.82（DHCP なので変わることがある）
+    PC2 の中（onboard）: configs/camera_onboard.yaml  pc2_host: 127.0.0.1
     模擬ロボット:    configs/camera_sim.yaml   pc2_host: 127.0.0.1
 """
 

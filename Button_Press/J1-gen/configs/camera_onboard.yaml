@@ -1,0 +1,17 @@
+# Button_Press / カメラの受信側の設定（G1 の PC2 の中で押す処理を動かすとき。onboard）。
+# 実機用のスクリプトに --camera-config camera_onboard.yaml を付けると、こちらを使う。
+# 配信サーバ（real/depth_server/rgbd_server.py）も同じ PC2 で動くので、localhost で受け取る。DDS は PC2 の eth0（--network-interface eth0）。
+
+pc2_host: 127.0.0.1
+
+rgbd:
+  port: 5556
+  timeout_ms: 5000
+
+legacy_rgb:
+  # PC2 の 5555 は Mapping 班の配信（innomaker_camera_server.py）が使っていることがある（2026-10-31）。押す処理は rgbd（5556）だけを使う
+  port: 5555
+  camera_name: head_camera
+  timeout_ms: 5000
+
+# 頭カメラの取り付けの上書き・深度を取る基準点は camera.yaml と同じ（既定は上書きしない）。首が傾いていたら camera.yaml の例を見て書く

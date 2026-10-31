@@ -75,7 +75,7 @@ def main() -> int:
                    help="lowstate を読まない（DDS が届かない無線など）。腰の角度は 0° と仮定し、その旨を警告・記録する")
     p.add_argument("--frames", type=int, default=1, help="--live で処理するフレーム数")
     add_camera_args(p)
-    p.add_argument("--detector", choices=["yolo", "color"], help="検出器（既定は configs/localize.yaml）")
+    p.add_argument("--detector", choices=["yolo", "onnx", "color"], help="検出器（既定は configs/localize.yaml。onnx は G1 の PC2 用）")
     p.add_argument("--out-dir", type=Path, help="画像などの保存先（既定は _local/button_press/ の下）")
     args = p.parse_args()
 
