@@ -14,7 +14,7 @@
 | PC2 | Jetson Orin NX、Ubuntu 20.04.6、aarch64、glibc 2.31、システムの Python 3.8 | 10/14 の記録、`depth_server/README.md` |
 | conda の `lerobot` 環境 | Python 3.12（中身は未確認） | `depth_server/README.md` |
 | 押す処理のライブラリ（aarch64・Python 3.12 用） | numpy・opencv（headless）・pyzmq・MuJoCo 3.3.7・Pinocchio 4.1.0（関連 14 個）・onnxruntime は、要求する glibc が 2.28 以下・GLIBCXX が 3.4.22 以下で **PC2 で動く見込み**（ラボ PC で配布物の中を調べた） | 2026-10-22 |
-| cyclonedds 0.10.2 | **aarch64・Python 3.12 用の配布物が無い**。PC2 の `lerobot` 環境にあるものを使うか、PC2 で組み立てる | 2026-10-22 |
+| cyclonedds 0.10.2 | **aarch64・Python 3.12 用の配布物が無い**。PC2 の `lerobot` 環境にあるものを使うか、PC2 で組み立てる → **10/31: `lerobot` に入っていた**（下の「2026-10-31 の調査の結果」） | 2026-10-22 |
 | torch | Jetson の GPU 用は JetPack ごとの Python 3.8 用だけ。Python 3.12 なら CPU 用 | — |
 | 無線 | PC2 の無線は 192.168.0.82（DHCP。変わることがある）。DDS（lowstate・腕）は無線に流れない | `real_robot_notes.md` |
 
@@ -87,7 +87,55 @@ PC2 の頭カメラの配信（`rgbd_server.py`、5555 / 5556）はそのまま�
 
 見積もりは下の「見積もり」。この日の調査で、cyclonedds と YOLO の分の幅が決まる。
 
-## 見積もり（2026-10-22。調査の結果で幅を狭める）
+## 2026-10-31 の調査の結果（ノート PC から Wi-Fi の ssh で）
+
+ノート PC（WSL2）から `ssh unitree@192.168.0.82`（無線）で入り、1. の `pc2_survey.sh` を流した（結果 `_local/pc2_survey/20261031_1727_laptop.txt`）。
+そのあと PC2 に自分用の venv を作り、**計画だけ**と **lowstate の受け取りだけ**を試した（腕には何も送っていない）。
+
+| 項目 | 結果 |
+|---|---|
+| DDS のライブラリ | `lerobot`（Python 3.12）・`tv`（3.10）・システムの 3.8 の**どれにも cyclonedds 0.10.2 と unitree_sdk2py 1.0.1（`~/unitree_sdk2_python`）が入っている**。押す処理が使う import（`ChannelPublisher`・`LowCmd_`・`LowState_`・`CRC` など）はすべて通る。**PC2 で組み立てる必要はない** |
+| インターネット | `pypi.org: HTTP 200`。PC2 で直接 `pip install` できる |
+| venv | `~/button_press/venv`（`lerobot` の Python から `--system-site-packages` で作った。`lerobot` 自体には何も足していない）。足したのは **pin 4.1.0・mujoco 3.14.0**（ノート PC と同じ版）と、その関連だけ（519 MB）。numpy は `lerobot` の 2.2.6 のまま |
+| コード | `~/button_press/repo/` にリポジトリと同じ形で置いた（`Button_Press/J1-gen/{common,configs,sim/reach_map.py}`、`_local/button_press/models`。コミット 467a708 の時点）。10/14 に置いた `~/button_press/{common,configs,real}` は古いまま |
+| 計画の時間（`real/plan_bench.py`、10/31 の配置 A〜F） | **PC2 で 1 回 0.17〜0.32 秒**（ノート PC は 0.06〜0.14 秒。約 2.5 倍遅いが十分速い）。準備（モデルの読み込み）は 1.0 秒。通る / 断るは両方で同じ（A・F は通る、B〜E は断る。10/31 の地図の予想どおり） |
+| lowstate（`common/dds.py` の `LowStateReader`、受け取るだけ） | PC2 の eth0 で **約 1,040 通 / 秒**届く。**それだけで 1 コアの約 73% を使う**（1 通ごとに `parse_lowstate` で変換しているため）。送る周期は 50 Hz なので、最新の 1 通だけを残して読むときに変換すれば減らせる（段階 2 で直す） |
+| 同時に動いていたもの | 別の班の地図づくりの記録（`record_onboard_with_camera.py` 50%・`sensor_stream.py` 46%・`innomaker_camera_server.py` 23%）、`videohub_pc4` 21%。メモリの空き 11 GB、ディスクの空き 1.7 TB |
+| カメラ | 頭の RealSense（video0〜5）のほかに、Web カメラが 2 台（video6 `Full HD webcam`、video8 `Innomaker-U20CAM-1080p-S1`）。10/31 の Perception の記録とは番号が変わっている |
+| 時計 | PC2 の時間帯は `Asia/Shanghai`（CST、日本より 1 時間遅い）。NTP で合っている |
+
+PC2 で計画の時間を測る手順（ノート PC から。venv とコードは上のとおり置いてある。コードを更新したら `rsync` からやり直す）:
+
+```bash
+rsync -a --exclude __pycache__ Button_Press/J1-gen/common Button_Press/J1-gen/configs unitree@192.168.0.82:button_press/repo/Button_Press/J1-gen/
+```
+```bash
+rsync -a Button_Press/J1-gen/sim/reach_map.py Button_Press/J1-gen/real/plan_bench.py --relative unitree@192.168.0.82:button_press/repo/
+```
+```bash
+ssh unitree@192.168.0.82 'OPENBLAS_NUM_THREADS=1 ~/button_press/venv/bin/python ~/button_press/repo/Button_Press/J1-gen/real/plan_bench.py'
+```
+
+（2 つ目の `--relative` は、リポジトリの根で実行したときのパスをそのまま PC2 の `~/button_press/repo/` の下に作る）
+
+## 見積もり（2026-10-31 に更新。10/22 の見積もりは 4.5〜8 日・3〜4 回だった）
+
+10/31 の調査で、cyclonedds を組み立てる必要がないこと、計画が PC2 で十分速いことが分かり、段階 0・1 はほぼ済んだ。
+残りは、PC2 の中で実際に腕を動かすこと（段階 2）と、PC から指示する仕組み（段階 3）。
+
+| 段階 | 内容 | 作業 | 実機 |
+|---|---|---|---|
+| 0・1. 調査・Python 環境 | **10/31 に済んだ**（上の表） | — | — |
+| 2. PC2 の中で押す | lowstate の受け取りを軽くする（上の 73%）。通信先（eth0・カメラは localhost）の設定、`auto_press.py` を PC2 の venv で通す。ボタンの YOLO を ultralytics から ONNX へ（ボトルの方は `detector.backend: onnx` で済む）。PC2 で 50 Hz の送信が乱れないかを測る。dry-run → ボトル | 1〜1.5 日 | 1 回 |
+| 3. 常駐サービスと PC からの操作 | `press_service.py`・`press_ctl.py`（Perception の `person_alert` の ZMQ・心拍、`mjpeg.py` の映像の配信を流用）。模擬ロボットで二重の開始・停止・心拍切れ、実機で Wi-Fi を切って止まるか | 1.5〜2 日 | 1 回 |
+| 4. エレベーター | 同じサービスから `run_dds.py` の経路も（Yada さんのコードは変えずに置く） | 0.5〜1 日 | 0.5〜1 回 |
+| （任意）ブラウザの操作画面 | 開始・停止のボタンを MJPEG の画面に付ける | +0.5〜1 日 | — |
+| 合計 | | **3〜4.5 日**（任意を入れて 3.5〜5.5 日） | **約 3 回** |
+
+ずれやすいところ: PC2 で別の班の処理（地図づくり・カメラの配信）と同時に動かしたときの CPU の取り合い（+0.5〜1 日）、
+押す処理で GPU（TensorRT）を使いたくなったとき（システムの Python 3.8 でしか動かないので、検出だけ別のプロセスにする。+1 日）。
+
+## 見積もり（2026-10-22 の版。上の 10/31 の版に置き換えた）
 
 ### 押す処理を PC2 で動かし、ノート PC から無線で開始・停止・状態を指示する
 
