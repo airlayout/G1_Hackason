@@ -35,6 +35,7 @@ class TrialPolicy:
     record_rgbd: bool = False
     approach_mode: str = 'single'
     approach_extra_retries: int = 2
+    fk_tolerance_m: float = .003
 
     @property
     def field(self) -> bool:
@@ -63,6 +64,8 @@ class TrialPolicy:
             raise ValueError('approach-modeはsingleまたはstagedです')
         if type(self.approach_extra_retries) is not int or not 0 <= self.approach_extra_retries <= 2:
             raise ValueError('approach-extra-retriesは0〜2の整数が必要です')
+        if not math.isfinite(self.fk_tolerance_m) or not .001 <= self.fk_tolerance_m <= .01:
+            raise ValueError('FK許容誤差は1〜10mmが必要です')
         if not self.field and (self.waist_delta_deg != math.degrees(.025) or self.imu_delta_deg != 2.
                 or self.leg_speed_rad_s != .15 or self.gyro_rad_s != .1
                 or self.motion_persistence_s != .1 or self.stable_hold_s != .3):
@@ -74,7 +77,6 @@ class ButtonTrialPolicy(TrialPolicy):
     """共通の監視設定を使う。台の項目はボタンの入力には公開しない。"""
     table_x_edge: str = 'x_min'
     table_y_edge: str = 'y_min'
-    fk_tolerance_m: float = .003
     fk_abort_m: float = .008
 
     def __post_init__(self):
@@ -88,12 +90,12 @@ class ButtonTrialPolicy(TrialPolicy):
 def add_trial_arguments(parser: argparse.ArgumentParser, *, task='bottle') -> None:
     parser.add_argument('--profile', choices=('strict', 'field'), default='strict')
     parser.add_argument('--trial-config', help='現場の設定を保存したJSON。CLI指定を優先する')
+    parser.add_argument('--fk-tolerance-m', type=float,
+                        help='接近時のFK収束幅[m]。field既定0.007、strict既定0.003')
     if task == 'bottle':
         parser.add_argument('--table-x-edge', choices=('auto', 'x_min', 'x_max'))
         parser.add_argument('--table-y-edge', choices=('auto', 'y_min', 'y_max'))
     else:
-        parser.add_argument('--fk-tolerance-m', type=float,
-                            help='接近時のFK収束幅[m]。field既定0.005、strict既定0.003')
         parser.add_argument('--fk-abort-m', type=float,
                             help='補正後のFK中止幅[m]。field既定0.010、strict既定0.008')
     parser.add_argument('--position-stability-m', type=float)
@@ -129,9 +131,9 @@ def resolve_trial_arguments(parser, argv=None, *, task='bottle'):
     if profile == 'field':
         preset.update(profile='field', table_edge_tolerance=.015, table_x_edge='x_min', table_y_edge='y_min',
                       position_stability_m=.008, waist_delta_deg=3., imu_delta_deg=3., record_rgbd=True,
-                      approach_mode='staged')
+                      approach_mode='staged', fk_tolerance_m=.007)
         if task == 'button':
-            preset.update(position_stability_m=.004, fk_tolerance_m=.005, fk_abort_m=.010)
+            preset.update(position_stability_m=.004, fk_abort_m=.010)
     elif profile != 'strict':
         raise ValueError('profileはstrictまたはfieldです')
     configurable = set(preset) | {'push_distance', 'table_height', 'table_bounds', 'contact_height',

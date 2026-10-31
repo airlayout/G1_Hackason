@@ -32,7 +32,7 @@ def parse(extra, config=None):
 
 def test_field_defaults_relax_fk_without_copying_bottle_distance_or_table_settings(tmp_path):
     args, policy = parse(['--profile', 'field'])
-    assert policy.fk_tolerance_m == .005 and policy.fk_abort_m == .010
+    assert policy.fk_tolerance_m == .007 and policy.fk_abort_m == .010
     assert policy.approach_mode == 'staged' and policy.record_rgbd
     assert policy.position_stability_m == .004 and args.stroke == .0015
     assert not hasattr(args, 'push_distance') and not hasattr(args, 'table_height')
@@ -44,6 +44,11 @@ def test_field_defaults_relax_fk_without_copying_bottle_distance_or_table_settin
     args, policy = parse(['--fk-tolerance-m', '.007', '--record-rgbd'], config)
     assert args.stroke == .003 and policy.fk_tolerance_m == .007 and policy.fk_abort_m == .012
     assert policy.record_rgbd
+
+
+def test_field_example_uses_relaxed_fk_tolerance():
+    _, policy = parse([], ROOT/'real'/'button_field_trial.example.json')
+    assert policy.fk_tolerance_m == .007
 
 
 @pytest.mark.parametrize('values', [
@@ -58,16 +63,15 @@ def test_invalid_or_bottle_only_settings_are_rejected(tmp_path, values):
         parse([], config)
 
 
-def test_relaxed_fk_accepts_4mm_for_three_samples_but_abort_is_separate():
+def test_relaxed_fk_accepts_6mm_for_three_samples_but_abort_is_separate():
     observation = Observation(button(), 0., 1)
     goal = np.array(button().face_xyz)-np.array([.065, 0., 0.])
-    tip = goal+np.array([0., .004, 0.])
-    loose = FixedTargetAlignment(observation, tip, .015, .05, 0., tolerance_m=.005, abort_error_m=.010)
+    tip = goal+np.array([0., .006, 0.])
+    loose = FixedTargetAlignment(observation, tip, .015, .05, 0., tolerance_m=.007, abort_error_m=.010)
     assert loose.next_goal(tip) is not None
     assert loose.next_goal(tip) is not None
     assert loose.next_goal(tip) is None
     strict = FixedTargetAlignment(observation, tip, .015, .05, 0.)
-    assert strict.next_goal(tip) is not None
     with pytest.raises(ValueError, match='1cm'):
         strict.next_goal(tip)
     with pytest.raises(ValueError, match='10mm'):
@@ -350,7 +354,7 @@ def test_field_entry_records_real_localizer_frames_state_and_commands(monkeypatc
         YoloDetector=lambda **kwargs: detector)))
 
     def execute(arm, camera, kin, calibration, args, *, motion, policy):
-        assert policy.field and policy.fk_tolerance_m == .005 and policy.fk_abort_m == .010
+        assert policy.field and policy.fk_tolerance_m == .007 and policy.fk_abort_m == .010
         assert kin is not geometries[0].kin and kin.model is not geometries[0].kin.model
         observation = camera.observe()
         np.testing.assert_allclose(observation.target.face_xyz, [.35, -.25, 1.], atol=1e-5)

@@ -50,10 +50,22 @@ def test_field_defaults_and_explicit_cli_over_json_over_profile(tmp_path):
     args, policy = parse(['--profile', 'field'])
     assert args.push_distance == .05 and policy.position_stability_m == .008
     assert policy.approach_mode == 'staged' and policy.approach_extra_retries == 2
+    assert policy.fk_tolerance_m == .007
     assert args.push_distance == .05 and policy.position_stability_m == .008 and not args.track_table
     args, policy = parse([])
     assert args.push_distance == .05 and not args.track_table
     assert policy == TrialPolicy()
+
+
+def test_bottle_fk_tolerance_cli_over_json_over_profile(tmp_path):
+    config = tmp_path/'trial.json'
+    config.write_text(json.dumps({'profile': 'field', 'table_height': .76, 'fk_tolerance_m': .006}))
+    _, policy = parse([], config)
+    assert policy.fk_tolerance_m == .006
+    _, policy = parse(['--fk-tolerance-m', '.008'], config)
+    assert policy.fk_tolerance_m == .008
+    with pytest.raises(ValueError, match='FK許容誤差'):
+        parse(['--fk-tolerance-m', '.011'], config)
 
 
 def test_approach_cli_over_json_over_profile_and_strict_default(tmp_path):

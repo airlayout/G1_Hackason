@@ -379,11 +379,13 @@ class BottlePushRoutine:
 
     def __init__(self, kin, motion, localizer, refresh, now, settings, tip_radius,
                  position_uncertainty_m=0., *, tracking_check=None, live_tracking=False, stop_before_contact=False,
-                 pause_handler=None, approach_mode='single', approach_extra_retries=2):
+                 pause_handler=None, approach_mode='single', approach_extra_retries=2, fk_tolerance_m=.003):
         if approach_mode not in ('single', 'staged'):
             raise ValueError('approach-modeはsingleまたはstagedです')
         if type(approach_extra_retries) is not int or not 0 <= approach_extra_retries <= 2:
             raise ValueError('approach-extra-retriesは0〜2の整数が必要です')
+        if not np.isfinite(fk_tolerance_m) or not .001 <= fk_tolerance_m <= .01:
+            raise ValueError('FK許容誤差は1〜10mmが必要です')
         self.kin, self.motion, self.localizer = kin, motion, localizer
         self.refresh, self.now, self.settings = refresh, now, settings
         self.radius = tip_radius
@@ -395,6 +397,7 @@ class BottlePushRoutine:
         self.pause_handler = pause_handler
         self.approach_mode = approach_mode
         self.approach_extra_retries = approach_extra_retries
+        self.fk_tolerance_m = fk_tolerance_m
         self.arm_enabled = False
         self.last_face = None
         self.report = {"schema": "g1-bottle-push-v1", "task": "bottle", "settings": asdict(settings),
@@ -407,6 +410,7 @@ class BottlePushRoutine:
                            initial_plan_max_age_s=self.initial_plan_max_age_s)
         self.report['ik_searches'] = []
         self.report.update(approach_mode=approach_mode, approach_extra_retries=approach_extra_retries,
+                           fk_tolerance_m=fk_tolerance_m,
                            approach_clearances_m=list(STAGED_CLEARANCES_M) if approach_mode == 'staged'
                            else [settings.clearance], approach_runs=[], approach_steps=[],
                            approach_remeasurement_count=0, approach_extra_retry_count=0)
@@ -550,7 +554,7 @@ class BottlePushRoutine:
                          'base_transform': self.kin.body_transform('pelvis').tolist()})
             if not 0 < dt <= .1:
                 raise ValueError('接触前の状態更新が100ms以上途絶えました')
-            settled = settled+1 if np.linalg.norm(error) <= .003 else 0
+            settled = settled+1 if np.linalg.norm(error) <= self.fk_tolerance_m else 0
             if settled >= 3:
                 return controller
             correction += 2.*dt*error
@@ -613,7 +617,7 @@ class BottlePushRoutine:
                         self.report['alignment_error_xyz_m'] = error.tolist()
                         row.update(fk_error_xyz_m=error.tolist(), fk_error_m=float(np.linalg.norm(error)),
                                    retry_required=reasons)
-                        if np.linalg.norm(error) > .003 and 'fk_unsettled' not in reasons:
+                        if np.linalg.norm(error) > self.fk_tolerance_m and 'fk_unsettled' not in reasons:
                             reasons.append('fk_unsettled')
                         if not reasons:
                             row['accepted'] = True

@@ -213,6 +213,16 @@ def test_fk_confirmation_requires_three_consecutive_samples(monkeypatch):
     assert len(r.report['alignment_steps']) == 6
 
 
+def test_field_fk_tolerance_accepts_6mm_only_after_three_samples(monkeypatch):
+    r, _, _ = staged_routine(monkeypatch)
+    r.fk_tolerance_m = .007
+    face = np.array([.336, -.25, .83])
+    goal = face-(r.radius+.07)*bottle.FORWARD
+    r.refresh = lambda: setattr(r.kin, 'tip', goal+np.array([0., .006, 0.]))
+    r.settle_before_push(face, SmoothNormalSettings(), clearance=.07)
+    assert len(r.report['alignment_steps']) == 3
+
+
 @pytest.mark.parametrize('mode', ['staged', 'single'])
 @pytest.mark.parametrize('offset,should_finish', [(.009, True), (.011, False)])
 def test_alignment_allows_9mm_but_limits_command_tracking_error(monkeypatch, mode, offset, should_finish):
@@ -257,6 +267,27 @@ def test_staged_rechecks_unsettled_fk_after_alignment(monkeypatch):
     assert report['completed']
     assert report['approach_steps'][0]['retry_required'] == ['fk_unsettled']
     assert report['approach_steps'][1]['is_extra']
+
+
+def test_staged_accepts_6mm_after_alignment_with_field_tolerance(monkeypatch):
+    r, _, _ = staged_routine(monkeypatch)
+    r.fk_tolerance_m = .007
+    original_settle = r.settle_before_push
+    injected = False
+
+    def settle_with_late_error(*args, **kwargs):
+        nonlocal injected
+        controller = original_settle(*args, **kwargs)
+        if not injected:
+            r.kin.tip[1] += .006
+            injected = True
+        return controller
+
+    r.settle_before_push = settle_with_late_error
+    report = r.execute()
+    assert report['completed']
+    assert report['approach_steps'][0]['accepted']
+    assert report['approach_extra_retry_count'] == 0
 
 
 def test_diagnostic_finishes_all_stages_without_contact_or_tracking(monkeypatch):
