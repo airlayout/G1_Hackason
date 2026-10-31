@@ -8,6 +8,11 @@ ChannelFactoryInitialize は 1 つのプロセスで 1 回しか呼べないの�
 - 口が lo なら domain を 1 にする（設定の domain_id は使わない）。実機の口なら設定の domain（G1 は 0）を使う
 - 模擬ロボットは lowstate の reserve[0] に目印（SIM_MARKER）を入れる。最初に受け取った lowstate で、
   口と目印が食い違っていたら中止する（check_peer）
+
+lowstate は実機で約 1,000 通 / 秒届く。SDK の ChannelSubscriber のコールバックで全部受けると、それだけで 1 コアの約 72%
+を使う（2026-10-31、PC2 で実測。変換の parse_lowstate の分は 2% ほどで、ほとんどは 1 通ごとの Python の呼び出しと
+受信データの変換）。そこで、最新の 1 通だけを持つ DataReader を作り、読むときに取りに行く（LatestLowState。
+50 Hz で読んで約 10%）。全部の数を数えたいとき（受け取り頻度の確認）だけ、コールバックで受ける。
 """
 
 from __future__ import annotations
@@ -98,17 +103,77 @@ def parse_lowstate(msg: Any) -> JointState:
                       stamp=time.monotonic(), imu_quat=imu, sim_marker=int(msg.reserve[0]) == SIM_MARKER)
 
 
-class LowStateReader:
-    """rt/lowstate を受信して、最新の JointState を保持する。"""
+_participant: Any = None
 
-    def __init__(self, domain_id: int, network_interface: str) -> None:
-        self._domain_id = domain_id
-        self._iface = network_interface
+
+def _shared_participant() -> Any:
+    """init_dds の後に、このプロセスで 1 つの DomainParticipant を作って使い回す（ChannelFactory と同じ domain・口）。"""
+    global _participant
+    with _lock:
+        if _initialized is None:
+            raise RuntimeError("init_dds を先に呼ぶこと")
+        if _participant is None:
+            from cyclonedds.domain import DomainParticipant
+
+            _participant = DomainParticipant(_initialized[0])
+        return _participant
+
+
+class LatestLowState:
+    """rt/lowstate の最新の 1 通だけを持つ受け口。latest() を呼んだときに新しい 1 通があれば取り込む。
+
+    stamp は取り込んだ時刻（届いてから、読む間隔ぶん遅れることがある）。lowstate が途切れると新しい 1 通が来ないので、
+    stamp は古いまま残り、今までどおり「何秒途切れているか」で見分けられる。count は取り込んだ数（届いた数ではない）。
+    """
+
+    def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._reader: Any = None
         self._state: JointState | None = None
         self.count = 0
 
+    def open(self, domain_id: int, network_interface: str) -> None:
+        from cyclonedds.qos import Policy, Qos
+        from cyclonedds.sub import DataReader
+        from cyclonedds.topic import Topic
+        from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_
+
+        init_dds(domain_id, network_interface)
+        dp = _shared_participant()
+        self._reader = DataReader(dp, Topic(dp, TOPIC_LOWSTATE, LowState_), Qos(Policy.History.KeepLast(1)))
+
+    def latest(self) -> JointState | None:
+        from cyclonedds.internal import InvalidSample
+
+        with self._lock:
+            if self._reader is not None:
+                for msg in self._reader.take(N=1):
+                    if not isinstance(msg, InvalidSample):
+                        self._state = parse_lowstate(msg)
+                        self.count += 1
+            return self._state
+
+
+class LowStateReader:
+    """rt/lowstate を受信して、最新の JointState を保持する。
+
+    every_message=False（既定）: 読むときに最新の 1 通を取りに行く（LatestLowState）。count は取り込んだ数
+    every_message=True: SDK のコールバックで全部受ける（CPU を多く使う）。count は届いた数（受け取り頻度の確認用）
+    """
+
+    def __init__(self, domain_id: int, network_interface: str, every_message: bool = False) -> None:
+        self._domain_id = domain_id
+        self._iface = network_interface
+        self._every = every_message
+        self._lock = threading.Lock()
+        self._state: JointState | None = None
+        self._latest = LatestLowState()
+        self._count = 0
+
     def open(self) -> None:
+        if not self._every:
+            self._latest.open(self._domain_id, self._iface)
+            return
         from unitree_sdk2py.core.channel import ChannelSubscriber
         from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_
 
@@ -120,9 +185,15 @@ class LowStateReader:
         st = parse_lowstate(msg)
         with self._lock:
             self._state = st
-            self.count += 1
+            self._count += 1
+
+    @property
+    def count(self) -> int:
+        return self._count if self._every else self._latest.count
 
     def latest(self) -> JointState | None:
+        if not self._every:
+            return self._latest.latest()
         with self._lock:
             return self._state
 

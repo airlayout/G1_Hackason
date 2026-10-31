@@ -42,7 +42,7 @@ def main() -> int:
     from common.dds import peer_label
 
     print(f"[check] ネットワークの口: {iface or '（未設定）'}、想定する相手: {peer_label(iface) if iface else '?'}")
-    reader = LowStateReader(int(arm_cfg.get("domain_id", 0)), iface)
+    reader = LowStateReader(int(arm_cfg.get("domain_id", 0)), iface, every_message=True)
     ok = True
     try:
         reader.open()
