@@ -44,14 +44,35 @@ def test_field_defaults_and_explicit_cli_over_json_over_profile(tmp_path):
                                  'table_x_edge': 'x_max', 'position_stability_m': .006}))
     args, policy = parse(['--push-distance=.04', '--table-x-edge', 'x_min', '--no-record-rgbd'], config)
     assert args.push_distance == .04 and args.table_height == .76
-    assert args.track_table and policy.field
+    assert not args.track_table and policy.field
     assert policy.table_x_edge == 'x_min' and policy.position_stability_m == .006
     assert not policy.record_rgbd and policy.table_edge_tolerance == .015
     args, policy = parse(['--profile', 'field'])
-    assert args.push_distance == .02 and policy.position_stability_m == .008
+    assert args.push_distance == .02 and policy.position_stability_m == .008 and not args.track_table
     args, policy = parse([])
     assert args.push_distance == .05 and not args.track_table
     assert policy == TrialPolicy()
+
+
+@pytest.mark.parametrize('profile', ['strict', 'field'])
+@pytest.mark.parametrize('configured,flag,expected', [
+    (True, None, True), (False, None, False),
+    (None, '--track-table', True), (None, '--no-track-table', False),
+    (True, '--no-track-table', False), (False, '--track-table', True),
+])
+def test_table_tracking_is_opt_in_with_cli_over_json(tmp_path, profile, configured, flag, expected):
+    values = {'profile': profile, 'table_height': .76}
+    if configured is not None:
+        values['track_table'] = configured
+    config = tmp_path/'trial.json'
+    config.write_text(json.dumps(values))
+    args, _ = parse([flag] if flag else [], config)
+    assert args.track_table is expected
+
+
+def test_field_example_defaults_to_no_table_tracking():
+    args, policy = parse([], ROOT/'real'/'field_trial.example.json')
+    assert policy.field and not args.track_table
 
 
 @pytest.mark.parametrize('values', [
@@ -466,6 +487,7 @@ def test_field_diagnostic_can_wait_during_return_without_restarting_approach(mon
 
 def test_real_field_entry_records_inputs_commands_frames_and_human_result(monkeypatch, tmp_path):
     import push_bottle
+    import table_reference
     from kinematics import load_robot
     from test_bottle import cylinder_image, INTRINSICS, TRANSFORM
     model = os.environ.get('G1_MUJOCO_MODEL')
@@ -510,6 +532,8 @@ def test_real_field_entry_records_inputs_commands_frames_and_human_result(monkey
         def __init__(self, kin, motion, localizer, *args, **kwargs):
             self.motion, self.localizer = motion, localizer
             assert kwargs['pause_handler'] is not None
+            assert kwargs['tracking_check'] is None
+            assert kin.model.geom('push_table').id >= 0
         def execute(self):
             self.localizer.observe()
             # 入口の送信記録を模擬I/Oで通す。実機成功の判定は意図的にfalse。
@@ -526,15 +550,17 @@ def test_real_field_entry_records_inputs_commands_frames_and_human_result(monkey
         detect=lambda _: [SimpleNamespace(class_name='bottle', bbox=bbox)]))
     monkeypatch.setattr(push_bottle, 'ArmSdk', Arm)
     monkeypatch.setattr(push_bottle, 'BottlePushRoutine', Routine)
+    monkeypatch.setattr(table_reference, 'TableReference', lambda *a, **k: pytest.fail('台認識を呼んではいけません'))
     monkeypatch.setattr(sys.modules[FieldOperator.__module__], 'FieldOperator', Operator)
     output = tmp_path/'field.json'
-    code = push_bottle.main(['--profile', 'field', '--no-track-table', '--model', model,
+    code = push_bottle.main(['--profile', 'field', '--model', model,
         '--base-transform', str(cal), '--table-height', '.75', '--execute', '--calibrated', '--output', str(output)])
     assert code == 0
     report = json.loads(output.read_text())
     assert report['calibration']['reference_waist_q_rad'] == calibration['reference_waist_q_rad']
     assert not np.allclose(report['monitor_references'][0]['waist_q_rad'], calibration['reference_waist_q_rad'])
     assert report['applied_settings']['profile'] == 'field' and report['arm_commands']
+    assert report['applied_settings']['arguments']['track_table'] is False
     assert len(report['monitor_samples'][0]['motor_q_rad']) == 29
     assert report['rgbd_recording']['saved_frames'] >= 3
     assert report['operator_assessment'] == {'moved': True, 'upright': False}
