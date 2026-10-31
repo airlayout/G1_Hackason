@@ -4,7 +4,7 @@ set -euo pipefail
 SESSION_ID="${MAPPING_SESSION_ID:?MAPPING_SESSION_ID is required}"
 REPLAY_ID="${REPLAY_RECORD:?REPLAY_RECORD is required}"
 OUTPUT_NAME="${MAP_OUTPUT_NAME:?MAP_OUTPUT_NAME is required}"
-SESSION_DIR="/runs/$SESSION_ID"
+SESSION_DIR="${MAPPING_RUNS_DIR:-/runs}/$SESSION_ID"
 REPLAY_DIR="$SESSION_DIR/derived/$REPLAY_ID"
 mkdir -p "$SESSION_DIR/trajectory" "$REPLAY_DIR"
 
@@ -67,9 +67,9 @@ sleep 2
 ros2 run g1_mapping_tools save_occupancy_map --timeout 45
 cp "$SESSION_DIR/map/${OUTPUT_NAME%.pcd}.octomap.json" "$REPLAY_DIR/occupancy.json"
 
-kill -INT "$RECORD_PID" "$ODOM_PID" 2>/dev/null || true
+kill -TERM "$RECORD_PID" "$ODOM_PID" 2>/dev/null || true
 wait "$RECORD_PID" 2>/dev/null || true
 wait "$ODOM_PID" 2>/dev/null || true
-kill -INT "$LAUNCH_PID" 2>/dev/null || true
+kill -TERM "$LAUNCH_PID" 2>/dev/null || true
 for attempt in $(seq 20); do kill -0 "$LAUNCH_PID" 2>/dev/null || break; sleep 1; done
 kill -9 "$LAUNCH_PID" 2>/dev/null || true

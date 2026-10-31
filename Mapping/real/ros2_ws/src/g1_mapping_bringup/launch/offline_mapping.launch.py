@@ -56,7 +56,7 @@ def generate_launch_description() -> LaunchDescription:
     session_id = os.environ.get("MAPPING_SESSION_ID", "unknown")
     share = Path(get_package_share_directory("g1_mapping_bringup"))
     output_name = os.environ.get("MAP_OUTPUT_NAME", "map_fastlio.pcd")
-    output_path = Path("/runs") / session_id / "map" / output_name
+    output_path = Path(os.environ.get("MAPPING_RUNS_DIR", "/runs")) / session_id / "map" / output_name
 
     raw_points = os.environ.get("RAW_POINTS_TOPIC", RAW_POINTS_DEFAULT)
     crop_enabled = _boolean_environment("ENABLE_FOLLOWER_CROP", "true")

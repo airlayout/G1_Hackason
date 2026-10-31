@@ -15,9 +15,16 @@ from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
 )
-from sensor_msgs.msg import CameraInfo, CompressedImage
+from sensor_msgs.msg import CameraInfo, CompressedImage, Image
 from std_msgs.msg import String
 import zmq
+
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    cv2 = None
+    np = None
 
 
 def jpeg_dimensions(data: bytes) -> tuple[int, int] | None:
@@ -100,6 +107,11 @@ class ZmqCameraBridge(Node):
         self._image_pub = self.create_publisher(
             CompressedImage, "/g1_camera/color/image/compressed", sensor_qos
         )
+        self._raw_image_pub = self.create_publisher(
+            Image, "/g1_camera/color/image", sensor_qos
+        )
+        if cv2 is None:
+            self.get_logger().warning("OpenCVがないためRViz用の画像を配信できません")
         self._info_pub = self.create_publisher(
             CameraInfo, "/g1_camera/color/camera_info", info_qos
         )
@@ -151,6 +163,21 @@ class ZmqCameraBridge(Node):
         image.format = "rgb8; jpeg compressed rgb8"
         image.data = jpeg
         self._image_pub.publish(image)
+
+        # RViz can display raw images even without the compressed transport plugin.
+        if cv2 is not None and self._raw_image_pub.get_subscription_count():
+            frame = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if frame is not None:
+                # RViz表示の上下・左右を補正する。記録するJPEGは変更しない。
+                frame = cv2.flip(frame, -1)
+                raw = Image()
+                raw.header = image.header
+                raw.height, raw.width = frame.shape[:2]
+                raw.encoding = "bgr8"
+                raw.is_bigendian = False
+                raw.step = raw.width * 3
+                raw.data = frame.tobytes()
+                self._raw_image_pub.publish(raw)
 
         info = self._camera_info(width, height)
         info.header = image.header
