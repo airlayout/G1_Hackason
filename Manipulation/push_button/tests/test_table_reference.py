@@ -131,6 +131,9 @@ def test_inconsistent_opposite_edges_are_rejected(monkeypatch):
     monkeypatch.setattr(table_reference, '_edge', disagree)
     with pytest.raises(ValueError, match='対辺'):
         estimate_table_transform(*table_depth())
+    estimate_table_transform(*table_depth(), opposite_edge_tolerance_m=.015)
+    with pytest.raises(ValueError, match='4〜15mm'):
+        estimate_table_transform(*table_depth(), opposite_edge_tolerance_m=.05)
 
 
 def test_interior_occlusion_is_not_used_as_a_table_edge():

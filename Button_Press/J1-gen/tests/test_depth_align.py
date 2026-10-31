@@ -334,6 +334,30 @@ class TestVideohubCamera(unittest.TestCase):
         self.assertEqual((ci.width, ci.height), (640, 360))
         self.assertAlmostEqual(ci.fx, 460.0)
 
+    def test_empty_success_sample_is_skipped_and_next_frame_recovers(self) -> None:
+        cam = self._cam()
+        jpeg = self.client.jpeg
+        self.client.jpeg = b""
+        frame = cam.read()
+        assert frame is not None
+        self.assertIsNone(cam.complete(frame))
+        self.assertEqual(cam._fail, 1)
+        self.client.jpeg = jpeg
+        recovered = cam.complete(frame)
+        self.assertIsNotNone(recovered)
+        self.assertEqual(cam._fail, 0)
+
+    def test_decode_error_is_skipped_and_next_frame_recovers(self) -> None:
+        from unittest.mock import patch
+
+        cam = self._cam()
+        frame = cam.read()
+        assert frame is not None
+        with patch.object(cv2, "imdecode", side_effect=cv2.error("invalid image")):
+            self.assertIsNone(cam.complete(frame))
+        self.assertIsNotNone(cam.complete(frame))
+        self.assertEqual(cam._fail, 0)
+
     def test_server_publishes_aligned_frames(self) -> None:
         """サーバの配信ループで complete() が呼ばれ、受け取る側に 640x360 のカラーと深度が届く。"""
         cfg = load_config("depth_server.yaml")

@@ -29,7 +29,10 @@ def _edge(points, axis, side='min'):
     return points, normal, span
 
 
-def estimate_table_transform(depth_m, intrinsics, nominal_transform, settings, *, diagnostics=None):
+def estimate_table_transform(depth_m, intrinsics, nominal_transform, settings, *, diagnostics=None,
+                             opposite_edge_tolerance_m=.004):
+    if not np.isfinite(opposite_edge_tolerance_m) or not .004 <= opposite_edge_tolerance_m <= .015:
+        raise ValueError('台の対辺許容差は4〜15mmが必要です')
     details = diagnostics if diagnostics is not None else {}
     details.update(edges={}, selected_edges=[])
     depth = np.asarray(depth_m)
@@ -123,7 +126,7 @@ def estimate_table_transform(depth_m, intrinsics, nominal_transform, settings, *
         if not names:
             raise ValueError('台の二辺を確認できません')
         rows = details['edges']
-        if np.ptp([rows[name]['offset_m'] for name in names]) > .004:
+        if np.ptp([rows[name]['offset_m'] for name in names]) > opposite_edge_tolerance_m:
             raise ValueError('台の対辺から求めた補正量が一致しません')
         name = min(names, key=lambda n: (rows[n]['residual_m'], -rows[n]['span_m'],
                                          -rows[n]['point_count'], n))
@@ -137,8 +140,11 @@ def estimate_table_transform(depth_m, intrinsics, nominal_transform, settings, *
 
 
 class TableReference:
-    def __init__(self, settings, pelvis_height):
+    def __init__(self, settings, pelvis_height, *, opposite_edge_tolerance_m=.004):
+        if not np.isfinite(opposite_edge_tolerance_m) or not .004 <= opposite_edge_tolerance_m <= .015:
+            raise ValueError('台の対辺許容差は4〜15mmが必要です')
         self.settings,self.pelvis_height = settings,pelvis_height
+        self.opposite_edge_tolerance_m = opposite_edge_tolerance_m
         self.stamp = None
         self.offset = self.velocity = None
         self.measurements = []
@@ -160,7 +166,8 @@ class TableReference:
 
     def _update(self, depth, intrinsics, nominal_transform, nominal_base, captured_at, details):
         transform = estimate_table_transform(depth,intrinsics,nominal_transform,self.settings,
-                                             diagnostics=details)
+                                             diagnostics=details,
+                                             opposite_edge_tolerance_m=self.opposite_edge_tolerance_m)
         offset = (transform@nominal_base)[:3,3]-[0.,0.,self.pelvis_height]
         if self.stamp is not None:
             dt = captured_at-self.stamp

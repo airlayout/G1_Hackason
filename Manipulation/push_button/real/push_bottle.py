@@ -33,6 +33,8 @@ def main(argv=None):
     parser.add_argument("--output", required=True)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--calibrated", action="store_true")
+    parser.add_argument("--table-edge-tolerance", type=float, default=.004,
+                        help="台の対辺から求めた補正量の許容差[m]。0.004〜0.015")
     add_bottle_arguments(parser)
     add_camera_arguments(parser)
     args = parser.parse_args(argv)
@@ -67,7 +69,8 @@ def main(argv=None):
         pose_history = PoseHistory()
         if args.track_table:
             from table_reference import TableReference
-            table_reference = TableReference(settings, float(calibration["pelvis_height_m"]))
+            table_reference = TableReference(settings, float(calibration["pelvis_height_m"]),
+                                             opposite_edge_tolerance_m=args.table_edge_tolerance)
 
         def table_snapshot():
             if table_reference is None or table_reference.stamp is None:
@@ -256,6 +259,7 @@ def main(argv=None):
         if routine is not None and 'ik_searches' in routine.report:
             report['ik_searches'] = routine.report['ik_searches']
         if table_reference is not None:
+            report['table_edge_tolerance_m'] = table_reference.opposite_edge_tolerance_m
             report['table_reference'] = table_reference.measurements
             report['table_diagnostics'] = table_reference.diagnostics
             report['table_rejections'] = table_rejections
