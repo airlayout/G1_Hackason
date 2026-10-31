@@ -9,7 +9,7 @@ import pytest
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parents[1]/'sim')]
 from bottle import BottlePushRoutine, BottleSettings
 from bottle_layout import project_bottle_bounds, project_table_edges, validate_layout_xy
-from run_realistic_bottle import bottle_world_xy, build_argument_parser, main
+from run_realistic_bottle import bottle_world_xy, build_argument_parser, main, resolve_layout_defaults
 
 
 class FakeKin:
@@ -91,12 +91,90 @@ def test_move_revalidates_after_refresh_before_publishing():
 def test_layout_arguments_preserve_defaults_and_stance_perturbations():
     parser = build_argument_parser()
     defaults = parser.parse_args(['--out', '/tmp/unused'])
+    resolve_layout_defaults(defaults)
     assert (defaults.bottle_x, defaults.bottle_y) == (.33, -.25)
     args = parser.parse_args(['--out', '/tmp/unused', '--bottle-x', '.36', '--bottle-y', '-.13'])
     r = SimpleNamespace(stance_yaw=np.pi/2, stance_xy=np.array([.01, -.02]))
     assert bottle_world_xy(args, r) == pytest.approx((-.12, -.38))
     args.fault = 'unreachable'
     assert bottle_world_xy(args, r) == pytest.approx((.45, -.25))
+
+
+@pytest.mark.parametrize('extra,expected', [
+    ([], (.36, -.12)),
+    (['--bottle-x', '.35'], (.35, -.12)),
+    (['--bottle-y', '-.14'], (.36, -.14)),
+    (['--bottle-x', '.33', '--bottle-y', '-.25'], (.33, -.25)),
+])
+def test_head_layout_defaults_and_independent_overrides(extra, expected):
+    args = build_argument_parser().parse_args(['--out', '/tmp/unused', '--camera-profile', 'head', *extra])
+    resolve_layout_defaults(args)
+    assert (args.bottle_x, args.bottle_y) == expected
+
+
+@pytest.mark.parametrize('saved,expected', [({}, (.33, -.25)),
+                                          ({'bottle_x': .35, 'bottle_y': -.14}, (.35, -.14))])
+def test_replay_omitted_layout_uses_saved_values_or_historical_defaults(tmp_path, saved, expected):
+    import json
+    (tmp_path/'manifest.json').write_text(json.dumps({'options': saved}))
+    args = build_argument_parser().parse_args(['--out', '/tmp/unused', '--camera-profile', 'head',
+        '--timing-mode', 'replay', '--timing-log', str(tmp_path)])
+    resolve_layout_defaults(args)
+    assert (args.bottle_x, args.bottle_y) == expected
+    args.bottle_x, args.bottle_y = .34, None
+    resolve_layout_defaults(args)
+    assert (args.bottle_x, args.bottle_y) == (.34, expected[1])
+
+
+def test_unready_seed_never_starts_physics_or_arm_io_and_is_counted(monkeypatch, tmp_path):
+    import json
+    import run_realistic_bottle as harness
+    from bottle_results import outcome_counts
+    monkeypatch.setattr(harness, 'World', lambda *a: pytest.fail('physics must not start'))
+    monkeypatch.setattr(harness, 'run', lambda *a: pytest.fail('arm entrypoint must not run'))
+    args = build_argument_parser().parse_args(['--out', str(tmp_path)])
+    layout = {'ready': False, 'seed': 7, 'reason': '画角外', 'bottle_xy_m': [.33, -.25]}
+    result = harness.evaluate_seed(7, tmp_path/'seed_7', args, layout)
+    assert result['failure_category'] == 'setup_failed'
+    assert result['evaluation']['publish_count'] == 0
+    assert result['evaluation']['bottle_displacement_m'] is None
+    assert not result['success'] and not result['expected_outcome']
+    assert json.loads((tmp_path/'seed_7/result.json').read_text()) == result
+    counts = outcome_counts([result])
+    assert counts['failure_counts']['setup_failed'] == 1 and counts['contact_reached'] == 0
+
+
+def test_normal_batch_preflights_every_seed_and_keeps_rejected_trials(monkeypatch, tmp_path):
+    import json
+    import run_realistic_bottle as harness
+    monkeypatch.setitem(sys.modules, 'torch', SimpleNamespace(set_num_threads=lambda n: None,
+                                                            get_num_threads=lambda: 2))
+    monkeypatch.setattr(harness, 'World', lambda *a: pytest.fail('physics must not start'))
+    seeds_checked = []
+
+    def reject_layouts(args):
+        seeds_checked.extend(args.seeds)
+        return {'ready': False, 'checks': [
+            {'ready': False, 'seed': seed, 'reason': '画角外', 'bottle_xy_m': [.33, -.25]}
+            for seed in args.seeds]}
+
+    monkeypatch.setattr(harness, 'check_layouts', reject_layouts)
+    model, weights = tmp_path/'model.xml', tmp_path/'weights.pt'
+    model.write_bytes(b'fixture')
+    weights.write_bytes(b'fixture')
+    out = tmp_path/'run'
+    assert main(['--out', str(out), '--model', str(model), '--weights', str(weights),
+                 '--camera-profile', 'head', '--seeds', '0', '1']) == 1
+    assert seeds_checked == [0, 1]
+    results = json.loads((out/'results.json').read_text())
+    assert [row['seed'] for row in results] == [0, 1]
+    assert all(row['evaluation']['publish_count'] == 0 for row in results)
+    summary = json.loads((out/'summary.json').read_text())
+    assert summary['trials'] == 2 and summary['successes'] == summary['contact_reached'] == 0
+    assert summary['failure_counts']['setup_failed'] == 2
+    assert (out/'layout_checks.json').is_file()
+    options = json.loads((out/'manifest.json').read_text())['options']
+    assert (options['bottle_x'], options['bottle_y']) == (.36, -.12)
 
 
 @pytest.mark.parametrize('x,y', [(np.nan, -.2), (.33, np.inf), (.7, -.2), (.33, -.01)])

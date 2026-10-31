@@ -157,7 +157,7 @@ class PerceptionMailbox:
         with self.lock:
             self.progress = float(np.clip(progress_m, 0., self.engine.localizer.settings.push_distance))
             result = self.latest
-        if result is None or not 0 <= self.now()-result.captured_at <= .5:
+        if result is None or not 0 <= self.now()-result.captured_at <= .75:
             raise RuntimeError('押下中のボトル追跡が古すぎる、または対象を確認できません')
         return result
 

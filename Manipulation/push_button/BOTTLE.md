@@ -165,16 +165,28 @@ JSONは `motion_completed`（押す動作）、`home_completed`（復帰）、
 ## 校正済みrealistic評価
 
 頭部カメラ向けの四辺認識・経路検査付きIK再探索・配置検査を追加した。
-実装後の配置探索・シミュレーションは未実施。
-後日のコマンドと保存結果の認識映像・集計方法は
+頭カメラ用の標準配置は `(0.36, -0.12)` m。seed 0〜9の押下前後の画角、
+台の直交する二辺、接近・押下・復帰の静的経路検査を通過した（最小画角余裕約25px）。
+動的な評価結果は [画角内開始の試験記録](reports/VISIBLE_START_20261031.md) を参照。
+保存結果の認識映像・集計方法は
 [頭部カメラ改善の実装と評価手順](reports/CAMERA_RECOGNITION_IMPLEMENTATION_20261031.md) を参照。
 realistic入口の `--bottle-x/--bottle-y` で配置を指定し、`--check-layout` で
-描画・物理ステップなしの画角と全経路の静的検査を行える。既定配置は従来どおり。
+描画・物理ステップなしの画角と全経路の静的検査だけを行える。
+通常試験（`--fault none`）でもこの検査を行い、`layout_checks.json` に保存する。
+不成立のseedは腕・シミュレーションを起動せず失敗として残し、再抽選しない。
+明示したX/Yは各軸で優先し、省略した軸だけカメラ別の既定値を使う。
+legacyの既定は従来の `(0.33, -0.25)` m。replayで配置を省略した場合は保存値を使い、
+座標のない旧ログはカメラ指定によらず従来配置として扱う（ソース等の一致検査も必要）。
+
+realistic評価では、初回の全経路計算後から腕を有効化する直前の計測期限を0.75秒とする。
+実機入口の同じ判定は0.5秒。画像の受信・位置推定・押下中の追跡・台追跡は0.5秒を維持する。
+使用値はmanifestと`controller.json`の`initial_plan_max_age_s`に記録する。
+既存の画角内開始の20試行は変更前の0.5秒であり、0.75秒での動的評価は未実施。
 
 ```bash
 MUJOCO_GL=egl OPENBLAS_NUM_THREADS=2 OMP_NUM_THREADS=2 \
 python Manipulation/push_button/sim/run_realistic_bottle.py \
-  --seeds 0 1 2 3 4 --gravity-scale 1 --detector-imgsz 960 \
+  --seeds 0 1 2 3 4 5 6 7 8 9 --camera-profile head --gravity-scale 1 --detector-imgsz 960 --video \
   --out _local/bottle_push/calibrated_new
 
 MUJOCO_GL=egl OPENBLAS_NUM_THREADS=2 OMP_NUM_THREADS=2 \
@@ -210,6 +222,12 @@ RGB-Dのワイヤ形式と鮮度検査は通すが、実ネットワークや実
 
 各seedにはRGB-Dパケットと撮影時の関節・IMU、50Hzの指令・トルク・状態、
 IK残差、処理時間、認識の棄却理由、真値による評価を保存する。
+最初の配信画像は `initial_rgb.jpg`、最初のYOLO結果の枠付き画像は
+`initial_detection.jpg`、各回の検出枠は `detections.json` に保存する。
+`summary.json` と後処理のレポートは成功数と手先の接触到達数を全試行数に対して表示し、
+開始条件不成立・認識失敗・接触未到達・押下失敗・復帰失敗に分類する。
+接触到達は採点用の手先接触力が0.1Nを超えたことを表し、押下成功とは別。
+配置検査で止めたseedの移動量・home誤差はnullで、映像は生成しない。
 実行ソースのコピー・ハッシュ、モデル・重みのハッシュ、引数はmanifestに保存する。
 真値の位置・接触力は評価専用。台基準の推定はRGB-Dだけを使う。
 合格には5cm±1cm、横ずれ1cm以内、最終傾き15度以内、画像確認、home誤差0.05rad以内、

@@ -42,10 +42,12 @@ from run_bottle_mujoco import build_scene
 from trajectory import validate_arm_tau
 from cartesian import CartesianJointController
 from bottle_perception import PerceptionMailbox
+from bottle_results import contact_reached, failure_category, outcome_counts
 
 MODEL = REPO/'_local/bottle_push/menagerie/unitree_g1/g1.xml'
 WEIGHTS = REPO/'yolo26n.pt'
 BASE = ['bottle_eval_'+s for s in ('x', 'y', 'z', 'roll', 'pitch', 'yaw')]
+INITIAL_PLAN_MAX_AGE_S = 0.75
 
 
 class VirtualPerception(PerceptionMailbox):
@@ -137,8 +139,19 @@ def bottle_world_xy(options, realism):
     return np.array([.45, -.25]) if options.fault == 'unreachable' else xy
 
 
+def resolve_layout_defaults(options):
+    defaults = (.36, -.12) if options.camera_profile == 'head' else (.33, -.25)
+    if options.timing_mode == 'replay':
+        saved = json.loads((options.timing_log/'manifest.json').read_text())['options']
+        # Missing coordinates in historical logs always meant the old placement.
+        defaults = (saved.get('bottle_x', .33), saved.get('bottle_y', -.25))
+    for name, value in zip(('bottle_x', 'bottle_y'), defaults):
+        if getattr(options, name) is None:
+            setattr(options, name, value)
+
+
 def check_layouts(options):
-    """Optional static diagnostic; no World, Renderer, DDS, or mj_step calls."""
+    """Static start-condition checks; no World, Renderer, DDS, or mj_step calls."""
     from bottle import add_table
     settings = bottle.BottleSettings(.75)
     model, rest = load_robot(options.model, (.110, -.003, 0), .79, .015,
@@ -297,6 +310,7 @@ class World:
         self.decoded = None
         self.inference, self.detections = [], []
         self.max_table_force = self.max_self_force = self.max_bottle_force = self.max_tilt = 0.
+        self.max_tip_bottle_force = 0.
         self.max_non_tip_bottle_force = self.max_other_force = 0.
         self.last_observed_t, self.observed = -1., None
         self.trace = []
@@ -425,6 +439,8 @@ class World:
                     self.max_bottle_force = max(self.max_bottle_force, n)
                     if self.tip_geom not in pair:
                         self.max_non_tip_bottle_force = max(self.max_non_tip_bottle_force, n)
+                    else:
+                        self.max_tip_bottle_force = max(self.max_tip_bottle_force, n)
                 elif all(self.model.geom_bodyid[g] != 0 for g in pair):
                     self.max_self_force = max(self.max_self_force, n)
                 else:
@@ -463,6 +479,8 @@ class World:
             protocol.Intrinsics(640, 480, fy, fy, 319.5, 239.5), 1800000000.+stamp, idx)
         packet = protocol.encode_rgbd(frame)
         self.decoded = protocol.decode_rgbd(packet)
+        if self.last_packet_id == -1:
+            cv2.imwrite(str(self.out/'initial_rgb.jpg'), self.decoded.color_bgr)
         self.last_packet_id = idx
         frame_dir = self.out/'frames'
         frame_dir.mkdir(exist_ok=True)
@@ -598,11 +616,17 @@ def run(seed, out, options):
             world.detections.append({'time_s': world.now()-world.origin,
                 'detections': [{'class': d.class_name, 'confidence': d.confidence, 'bbox': list(d.bbox)} for d in detections]})
             if len(world.detections) == 1:
-                cv2.imwrite(str(out/'initial_rgb.jpg'), image)
+                annotated = image.copy()
+                for detection in detections:
+                    x0, y0, x1, y1 = map(int, detection.bbox)
+                    cv2.rectangle(annotated, (x0, y0), (x1, y1), (0, 255, 0), 2)
+                cv2.imwrite(str(out/'initial_detection.jpg'), annotated)
             world.charge('detector', duration)
             return detections
 
     class Routine(bottle.BottlePushRoutine):
+        initial_plan_max_age_s = INITIAL_PLAN_MAX_AGE_S
+
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             self.preview_step_m = options.preview_step_m
@@ -696,9 +720,12 @@ def run(seed, out, options):
             'max_non_tip_bottle_contact_n': world.max_non_tip_bottle_force,
             'max_other_arm_contact_n': world.max_other_force,
             'max_arm_bottle_contact_n': world.max_bottle_force, 'home_joint_error_rad': home_error,
+            'max_tip_bottle_contact_n': world.max_tip_bottle_force,
             'released': world.weight == 0. and bool(np.all(world.torque == 0)), 'publish_count': world.publish_count,
             'inference_count': len(world.inference), 'max_inference_s': max(world.inference, default=0)},
-        'artifacts': {'video': str(out/'motion.webm'), 'final': str(out/'final.jpg')}}
+        'artifacts': {'video': str(out/'motion.webm') if options.video else None,
+                      'final': str(out/'final.jpg'), 'initial_rgb': str(out/'initial_rgb.jpg'),
+                      'initial_detection': str(out/'initial_detection.jpg') if world.detections else None}}
     if options.stop_before_contact and options.profile == 'calibrated' and options.fault == 'none':
         expected = (code == 0 and report.get('diagnostic_completed') is True
                     and report.get('home_completed') is True and not report.get('motion_completed')
@@ -729,6 +756,39 @@ def run(seed, out, options):
     return result
 
 
+def record_setup_failure(seed, out, options, layout):
+    """Record a rejected seed without constructing physics, a detector, or arm I/O."""
+    out.mkdir(parents=True)
+    report = {'phase': 'setup', 'error': layout['reason'], 'completed': False,
+              'motion_completed': False, 'home_completed': False, 'visual_success': None}
+    result = {'seed': seed, 'set': 'bottle_realistic', 'profile': options.profile,
+              'camera_profile': options.camera_profile, 'timing_mode': options.timing_mode,
+              'fault': options.fault, 'exit_code': 1, 'success': False, 'expected_outcome': False,
+              'layout_check': layout, 'bottle_initial_xy_m': layout['bottle_xy_m'],
+              'phases': [], 'controller': report, 'harness_error': None,
+              'evaluation': {'ground_truth_used_for_control': False, 'bottle_displacement_m': None,
+                             'home_joint_error_rad': None, 'released': True, 'publish_count': 0,
+                             'max_tip_bottle_contact_n': 0.},
+              'artifacts': {}}
+    dump(out/'controller.json', report)
+    dump(out/'processing_times.json', [])
+    dump(out/'detections.json', [])
+    return result
+
+
+def evaluate_seed(seed, out, options, layout=None):
+    if layout is not None and not layout['ready']:
+        result = record_setup_failure(seed, out, options, layout)
+    else:
+        result = run(seed, out, options)
+        if layout is not None:
+            result['layout_check'] = layout
+    result['contact_reached'] = contact_reached(result)
+    result['failure_category'] = failure_category(result)
+    dump(out/'result.json', result)
+    return result
+
+
 def build_argument_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--seeds', type=int, nargs='+', default=list(range(5)))
@@ -745,8 +805,8 @@ def build_argument_parser():
     parser.add_argument('--timing-mode', choices=['measured', 'replay'], default='measured')
     parser.add_argument('--timing-log', type=Path, help='replay用の過去の評価出力ディレクトリ')
     parser.add_argument('--stop-before-contact', action='store_true')
-    parser.add_argument('--bottle-x', type=float, default=.33, help='立ち位置の乱れ適用前のボトル中心X[m]')
-    parser.add_argument('--bottle-y', type=float, default=-.25, help='立ち位置の乱れ適用前のボトル中心Y[m]')
+    parser.add_argument('--bottle-x', type=float, help='立ち位置の乱れ適用前の中心X[m]。head既定0.36、legacy既定0.33')
+    parser.add_argument('--bottle-y', type=float, help='立ち位置の乱れ適用前の中心Y[m]。head既定-0.12、legacy既定-0.25')
     parser.add_argument('--check-layout', action='store_true', help='描画・物理ステップなしの配置/IK検査だけを行う')
     parser.add_argument('--track-table', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--dynamics-feedforward',action=argparse.BooleanOptionalAction,default=True)
@@ -761,8 +821,9 @@ def main(argv=None):
     if args.timing_mode == 'replay' and (args.timing_log is None or not args.timing_log.is_dir()):
         parser.error('replayには既存の--timing-logディレクトリが必要です')
     try:
+        resolve_layout_defaults(args)
         validate_layout_xy(args.bottle_x, args.bottle_y, bottle.BottleSettings(.75))
-    except ValueError as exc:
+    except (OSError, ValueError, KeyError) as exc:
         parser.error(str(exc))
     if args.check_layout and (args.timing_mode != 'measured' or args.fault != 'none' or args.video
                              or args.stop_before_contact):
@@ -790,7 +851,8 @@ def main(argv=None):
               'Perception/common/detector/yolo_detector.py', 'Manipulation/push_button/sim/run_realistic_bottle.py']
     paths += ['Manipulation/push_button/bottle_perception.py', 'Button_Press/J1-gen/configs/robot.yaml',
               'Button_Press/J1-gen/common/camera_geometry.py', 'Manipulation/push_button/bottle_layout.py',
-              'Manipulation/push_button/sim/run_bottle_mujoco.py']
+              'Manipulation/push_button/sim/run_bottle_mujoco.py',
+              'Manipulation/push_button/sim/bottle_results.py']
     try:
         validate_replay(args, paths)
     except (OSError, ValueError, KeyError) as exc:
@@ -801,6 +863,7 @@ def main(argv=None):
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes((REPO/source).read_bytes())
     manifest = {'seeds': args.seeds, 'mujoco': mujoco.__version__, 'numpy': np.__version__,
+        'initial_plan_max_age_s': INITIAL_PLAN_MAX_AGE_S,
         'source_sha256': {p: hashlib.sha256((REPO/p).read_bytes()).hexdigest() for p in paths},
         'model_sha256': hashlib.sha256(args.model.read_bytes()).hexdigest(),
         'weights_sha256': hashlib.sha256(args.weights.read_bytes()).hexdigest(),
@@ -827,16 +890,22 @@ def main(argv=None):
             'The calibrated profile supplies the known synthetic camera extrinsics; it does not validate a real calibration procedure.',
             'Thread scheduling uses simulation time. Computation durations are measured on this host and are not deterministic.']}
     dump(args.out/'manifest.json', manifest)
+    layouts = {}
+    if args.fault == 'none':
+        checked = check_layouts(args)
+        dump(args.out/'layout_checks.json', checked)
+        layouts = {row['seed']: row for row in checked['checks']}
     results = []
     for seed in args.seeds:
         print(f'START seed={seed}', flush=True)
-        result = run(seed, args.out/f'seed_{seed}', args)
+        result = evaluate_seed(seed, args.out/f'seed_{seed}', args, layouts.get(seed))
         results.append(result)
         dump(args.out/'results.json', results)
     passed = sum(r['expected_outcome'] for r in results)
     required = len(results) if args.min_successes is None else args.min_successes
     summary = {'successes': sum(r['success'] for r in results), 'expected_outcomes': passed,
-               'trials': len(results), 'required': required, 'passed': passed >= required}
+               'trials': len(results), 'required': required, 'passed': passed >= required,
+               **outcome_counts(results)}
     dump(args.out/'summary.json', summary)
     print(json.dumps(summary), flush=True)
     return 0 if summary['passed'] else 1

@@ -363,6 +363,9 @@ class BottleLocalizer:
 class BottlePushRoutine:
     """motionは既存のArmMotionと同じAPI。シミュレーションも同じ制御を通る。"""
 
+    # Only the first post-plan check uses this age limit; image/track checks stay independent.
+    initial_plan_max_age_s = 0.5
+
     def __init__(self, kin, motion, localizer, refresh, now, settings, tip_radius,
                  position_uncertainty_m=0., *, tracking_check=None, live_tracking=False, stop_before_contact=False):
         self.kin, self.motion, self.localizer = kin, motion, localizer
@@ -379,7 +382,8 @@ class BottlePushRoutine:
                        "physical_push_success": None, "phases": [], "normal_steps": []}
         self.report.update(retreat_completed=False, release_completed=False, ik_checks=[])
         self.report.update(live_tracking=live_tracking, diagnostic_completed=False,
-                           stop_before_contact=stop_before_contact, tracking_steps=[])
+                           stop_before_contact=stop_before_contact, tracking_steps=[],
+                           initial_plan_max_age_s=self.initial_plan_max_age_s)
         self.report['ik_searches'] = []
 
     def solve_pose(self, xyz, face, *, contact=False):
@@ -432,8 +436,8 @@ class BottlePushRoutine:
         return np.array([min(self.settings.table_bounds[0]-0.02, face[0]-0.10),
                          face[1]-0.10, max(0.95, face[2]+0.12)])
 
-    def check_observation(self, observation):
-        if not 0 <= self.now()-observation.captured_at <= 0.5:
+    def check_observation(self, observation, *, max_age_s=0.5):
+        if not 0 <= self.now()-observation.captured_at <= max_age_s:
             raise ValueError("ボトル計測が古すぎます")
         return np.array(observation.target.face_xyz)
 
@@ -565,7 +569,7 @@ class BottlePushRoutine:
             self.phase("measure")
             first = self.localizer.observe()
             self.preview(first)  # 腕を有効化する前に全段階と復帰経路を検査する。
-            face = self.check_observation(first)
+            face = self.check_observation(first, max_age_s=self.initial_plan_max_age_s)
             self.motion.enable()
             enabled = True
             self.motion.start_approach()

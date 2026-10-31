@@ -6,14 +6,16 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path[:0] = [str(Path(__file__).resolve().parents[1]),
+                str(Path(__file__).resolve().parents[1]/'sim')]
 import bottle
 from alignment import ContinuousNormalController, SmoothNormalSettings, run_continuous_normal
 from bottle import BottleObservation, BottlePushRoutine, BottleSettings
 from test_bottle import target_at
 
 
-def routine(monkeypatch, *, diagnostic=False, lost=False, bad_state=False):
+def routine(monkeypatch, *, diagnostic=False, lost=False, bad_state=False,
+            initial_age_limit=None, observation_age_s=0., preview_delay_s=0.):
     target = target_at(.37)
     clock = SimpleNamespace(t=1.)
     events, goals = [], []
@@ -42,7 +44,7 @@ def routine(monkeypatch, *, diagnostic=False, lost=False, bad_state=False):
                 assert 'home' in events
                 moved = target_at(.42)
                 return BottleObservation(moved, clock.t, 3)
-            return BottleObservation(target, clock.t, events.count('observe'))
+            return BottleObservation(target, clock.t-observation_age_s, events.count('observe'))
 
         def start_tracking(self, observation):
             events.append('tracking')
@@ -93,6 +95,8 @@ def routine(monkeypatch, *, diagnostic=False, lost=False, bad_state=False):
 
     class Routine(BottlePushRoutine):
         def preview(self, observation):
+            self.check_observation(observation)
+            clock.t += preview_delay_s
             return {}
 
         def move(self, xyz, *args, **kwargs):
@@ -124,6 +128,8 @@ def routine(monkeypatch, *, diagnostic=False, lost=False, bad_state=False):
         return {}
 
     monkeypatch.setattr(bottle, 'run_continuous_normal', normal)
+    if initial_age_limit is not None:
+        Routine.initial_plan_max_age_s = initial_age_limit
     r = Routine(Kin(), Motion(), Localizer(), refresh, lambda: clock.t, BottleSettings(.75), .015,
                 live_tracking=True, stop_before_contact=diagnostic)
     return r, events, goals
@@ -148,6 +154,39 @@ def test_approach_only_returns_without_tracking_or_contact_or_push_success(monke
     assert report['visual_success'] is None
     assert 'reverse' in events and 'pushing' not in events and 'tracking' not in events
     assert not goals
+
+
+@pytest.mark.parametrize('preview_delay_s', [.252, .302, .5])
+def test_simulated_planning_delay_allows_up_to_075s_before_enabling(monkeypatch, preview_delay_s):
+    from run_realistic_bottle import INITIAL_PLAN_MAX_AGE_S
+    r, events, _ = routine(monkeypatch, initial_age_limit=INITIAL_PLAN_MAX_AGE_S,
+                          observation_age_s=.25, preview_delay_s=preview_delay_s)
+    report = r.execute()
+    assert report['initial_plan_max_age_s'] == .75
+    assert 'enable' in events and report['completed'] and report['visual_success']
+
+
+def test_planning_delay_over_075s_releases_without_enabling_arm(monkeypatch):
+    from run_realistic_bottle import INITIAL_PLAN_MAX_AGE_S
+    r, events, goals = routine(monkeypatch, initial_age_limit=INITIAL_PLAN_MAX_AGE_S,
+                              observation_age_s=.25, preview_delay_s=.501)
+    report = r.execute()
+    assert report['error'] == 'ボトル計測が古すぎます'
+    assert 'enable' not in events and not goals and report['release_completed']
+
+
+def test_real_default_still_rejects_measurement_aged_during_planning(monkeypatch):
+    r, events, _ = routine(monkeypatch, observation_age_s=.25, preview_delay_s=.302)
+    report = r.execute()
+    assert report['initial_plan_max_age_s'] == .5
+    assert report['error'] == 'ボトル計測が古すぎます' and 'enable' not in events
+
+
+def test_extended_post_plan_limit_does_not_accept_an_already_stale_measurement(monkeypatch):
+    from run_realistic_bottle import INITIAL_PLAN_MAX_AGE_S
+    r, events, _ = routine(monkeypatch, initial_age_limit=INITIAL_PLAN_MAX_AGE_S, observation_age_s=.501)
+    report = r.execute()
+    assert report['error'] == 'ボトル計測が古すぎます' and 'enable' not in events
 
 
 @pytest.mark.parametrize('bad_state', [False, True])

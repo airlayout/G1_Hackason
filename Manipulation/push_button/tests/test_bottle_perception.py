@@ -260,6 +260,11 @@ def test_replay_requires_matching_settings_sources_and_assets(monkeypatch, tmp_p
     (tmp_path/'seed_0').mkdir()
     (tmp_path/'seed_0/processing_times.json').write_text('[]')
     harness.validate_replay(options, ['source.py'])
+    options.bottle_x, options.bottle_y = .36, -.12
+    with pytest.raises(ValueError, match='bottle_x'):
+        harness.validate_replay(options, ['source.py'])
+    options.bottle_x, options.bottle_y = .33, -.25
+    harness.validate_replay(options, ['source.py'])
     options.camera_profile = 'legacy'
     with pytest.raises(ValueError, match='camera_profile'):
         harness.validate_replay(options, ['source.py'])

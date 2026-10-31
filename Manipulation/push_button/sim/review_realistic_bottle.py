@@ -10,6 +10,8 @@ import struct
 
 import numpy as np
 
+from bottle_results import FAILURE_LABELS, contact_reached, failure_category, outcome_counts
+
 
 def timing_summary(rows):
     groups = defaultdict(list)
@@ -34,8 +36,10 @@ def summarize(root):
         if path.is_file():
             timings.extend(json.loads(path.read_text()))
         trials.append({'seed': result['seed'], 'success': result['success'],
-            'phase': controller.get('phase'), 'error': controller.get('error'),
-            'displacement_mm': [v*1000 for v in displacement],
+            'phase': controller.get('phase'),
+            'error': controller.get('error') or controller.get('verification_error') or result.get('harness_error'),
+            'failure_category': failure_category(result), 'contact_reached': contact_reached(result),
+            'displacement_mm': None if displacement is None else [v*1000 for v in displacement],
             'visual_success': controller.get('visual_success'),
             'home_completed': controller.get('home_completed'), 'released': evaluation['released'],
             'home_error_rad': evaluation['home_joint_error_rad'],
@@ -45,6 +49,7 @@ def summarize(root):
                 for row in controller.get('table_diagnostics', []) if row['status'] == 'accepted'))})
     return {'trials': trials, 'successes': sum(row['success'] for row in trials),
             'trial_count': len(trials), 'charged_processing_times': timing_summary(timings),
+            **outcome_counts(results),
             'perception_rejections': dict(rejections),
             'manifest': json.loads((root/'manifest.json').read_text())}
 
@@ -52,13 +57,20 @@ def summarize(root):
 def write_report(out, report):
     (out/'review.json').write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')
     lines = [f'# ボトルrealistic評価: {report["successes"]}/{report["trial_count"]}', '',
+             f'実際の手先接触到達: {report["contact_reached"]}/{report["trial_count"]}', '',
              '元の採点結果を集計したもの。配置・カメラ条件はreview.jsonのmanifestを参照。', '',
-             '| seed | 成功 | 停止段階 | 前方/横 mm | 画像確認 | home | 解除 | 理由 |',
-             '| --- | --- | --- | --- | --- | --- | --- | --- |']
+             '| 分類 | 件数 |', '| --- | ---: |']
+    for category, label in FAILURE_LABELS.items():
+        lines.append(f'| {label} | {report["failure_counts"][category]} |')
+    lines.extend(['', '| seed | 成功 | 接触 | 分類 | 停止段階 | 前方/横 mm | 画像確認 | home | 解除 | 理由 |',
+                  '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'])
     for row in report['trials']:
-        dx, dy = row['displacement_mm'][:2]
+        displacement = row['displacement_mm']
+        movement = '-' if displacement is None else f'{displacement[0]:.2f}/{displacement[1]:.2f}'
         error = str(row['error'] or '').replace('|', '\\|').replace('\n', ' ')
-        lines.append(f'| {row["seed"]} | {row["success"]} | {row["phase"]} | {dx:.2f}/{dy:.2f} '
+        category = FAILURE_LABELS.get(row['failure_category'], '-')
+        lines.append(f'| {row["seed"]} | {row["success"]} | {row["contact_reached"]} | {category} '
+                     f'| {row["phase"]} | {movement} '
                      f'| {row["visual_success"]} | {row["home_completed"]} | {row["released"]} | {error} |')
     lines.extend(['', '## 評価の経過時間に加算された処理時間（秒）', '',
                   '| 処理 | 件数 | 中央値 | 95%点 | 最大 |', '| --- | --- | --- | --- | --- |'])
@@ -186,8 +198,10 @@ def main(argv=None):
     write_report(args.out, report)
     if args.videos:
         results = json.loads((args.run/'results.json').read_text())
-        montage(args.run, args.out/'ten_trials.webm', results)
-        for result in results:
+        simulated = [row for row in results if failure_category(row) != 'setup_failed']
+        if simulated:
+            montage(args.run, args.out/'ten_trials.webm', simulated)
+        for result in simulated:
             recognition_video(args.run/f'seed_{result["seed"]}',
                               args.out/f'seed_{result["seed"]}_recognition.webm', result)
     return 0
