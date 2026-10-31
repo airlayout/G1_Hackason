@@ -32,6 +32,7 @@ sys.path[:0] = [str(REPO/'Manipulation/push_button/real'),
 from common.config import load_config
 from common.realism import SensorModel, sample_realism, sway_offset
 import bottle
+from bottle_layout import inspect_layout, validate_layout_xy
 import push_bottle
 import align_button
 import push_button as sdk
@@ -130,14 +131,69 @@ def camera_profile_geometry(model, data, rest, profile, runtime=None):
     return base@optical, float(config['head_camera']['fovy_deg'])
 
 
+def bottle_world_xy(options, realism):
+    xy = rotation([0, 0, -realism.stance_yaw])[:2, :2] @ np.array([options.bottle_x, options.bottle_y]) \
+        + realism.stance_xy
+    return np.array([.45, -.25]) if options.fault == 'unreachable' else xy
+
+
+def check_layouts(options):
+    """Optional static diagnostic; no World, Renderer, DDS, or mj_step calls."""
+    from bottle import add_table
+    settings = bottle.BottleSettings(.75)
+    model, rest = load_robot(options.model, (.110, -.003, 0), .79, .015,
+                             scene_builder=lambda root: add_table(root, settings))
+    kin = ArmKinematics(model)
+    kin.update(rest)
+    rows = []
+    for seed in options.seeds:
+        realism = sample_realism(seed, load_config('contest.yaml')['realism'])
+        xy = bottle_world_xy(options, realism)
+        geometry_model, geometry_rest = model, rest
+        if options.camera_profile == 'legacy':
+            geometry_model, geometry_rest = load_robot(options.model, (.110, -.003, 0), .79, .015,
+                scene_builder=lambda root: build_scene(root, settings, *xy))
+        data = mujoco.MjData(geometry_model)
+        data.qpos[:29] = geometry_rest
+        mujoco.mj_forward(geometry_model, data)
+        optical, fovy = camera_profile_geometry(geometry_model, data, geometry_rest, options.camera_profile)
+        torso = geometry_model.body('torso_link').id
+        torso_transform = np.eye(4)
+        torso_transform[:3, :3] = data.xmat[torso].reshape(3, 3)
+        torso_transform[:3, 3] = data.xpos[torso]
+        local = np.linalg.inv(torso_transform)@optical
+        local[:3, :3] = local[:3, :3]@rotation(realism.camera_rpy_offset)
+        local[:3, 3] += realism.camera_xyz_offset
+        actual_optical = torso_transform@local
+        fy = 240/math.tan(math.radians(fovy)/2)
+        intrinsics = SimpleNamespace(width=640, height=480, fx=fy, fy=fy, cx=319.5, cy=239.5)
+        row = inspect_layout(kin, rest, xy, settings, actual_optical, intrinsics,
+                             preview_step_m=options.preview_step_m)
+        row.update(seed=seed, camera_profile=options.camera_profile, realism=realism.summary())
+        rows.append(row)
+    return {'static_only': True, 'dynamic_success_rate': None, 'checks': rows,
+            'nominal_bottle_xy_m': [options.bottle_x, options.bottle_y],
+            'preview_step_m': options.preview_step_m,
+            'model_sha256': hashlib.sha256(options.model.read_bytes()).hexdigest(),
+            'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(),
+            'source_sha256': {name: hashlib.sha256((REPO/name).read_bytes()).hexdigest() for name in (
+                'Manipulation/push_button/bottle_layout.py', 'Manipulation/push_button/bottle.py',
+                'Manipulation/push_button/kinematics.py', 'Manipulation/push_button/sim/run_realistic_bottle.py')},
+            'ready': all(row['ready'] for row in rows),
+            'limitations': ['Static rest pose and sampled mount/stance errors only; sway, arm occlusion, '
+                            'RGB-D recognition, motor tracking and dynamic push success are untested.']}
+
+
 def validate_replay(options, sources):
     if options.timing_mode != 'replay':
         return
     manifest = json.loads((options.timing_log/'manifest.json').read_text())
     comparable = ('camera_profile', 'profile', 'fault', 'gravity_scale', 'detector_imgsz',
-                  'preview_step_m', 'track_table', 'dynamics_feedforward', 'stop_before_contact')
+                  'preview_step_m', 'track_table', 'dynamics_feedforward', 'stop_before_contact',
+                  'bottle_x', 'bottle_y')
     for name in comparable:
-        if manifest['options'].get(name) != getattr(options, name):
+        defaults = {'bottle_x': .33, 'bottle_y': -.25}
+        if manifest['options'].get(name, defaults.get(name)) != getattr(options, name, defaults.get(name)):
             raise ValueError(f'replayの実行条件が一致しません: {name}')
     for source in sources:
         if manifest['source_sha256'].get(source) != hashlib.sha256((REPO/source).read_bytes()).hexdigest():
@@ -157,10 +213,8 @@ class World:
         self.sensor = SensorModel(self.r)
         self.sensor.rng = np.random.default_rng([seed, 2, 1])
         self.settings = bottle.BottleSettings(.75)
-        xy = rotation([0, 0, -self.r.stance_yaw])[:2, :2] @ np.array([.33, -.25]) + self.r.stance_xy
+        xy = bottle_world_xy(options, self.r)
         self.xy = xy
-        if options.fault == "unreachable":
-            self.xy = xy = np.array([.45, -.25])
         m, self.rest = load_robot(options.model, (.110, -.003, 0), .79, .015,
                                  scene_builder=lambda root: build_scene(root, self.settings, *xy))
         d = mujoco.MjData(m)
@@ -675,7 +729,7 @@ def run(seed, out, options):
     return result
 
 
-if __name__ == '__main__':
+def build_argument_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--seeds', type=int, nargs='+', default=list(range(5)))
     parser.add_argument('--out', type=Path, required=True)
@@ -691,19 +745,39 @@ if __name__ == '__main__':
     parser.add_argument('--timing-mode', choices=['measured', 'replay'], default='measured')
     parser.add_argument('--timing-log', type=Path, help='replay用の過去の評価出力ディレクトリ')
     parser.add_argument('--stop-before-contact', action='store_true')
+    parser.add_argument('--bottle-x', type=float, default=.33, help='立ち位置の乱れ適用前のボトル中心X[m]')
+    parser.add_argument('--bottle-y', type=float, default=-.25, help='立ち位置の乱れ適用前のボトル中心Y[m]')
+    parser.add_argument('--check-layout', action='store_true', help='描画・物理ステップなしの配置/IK検査だけを行う')
     parser.add_argument('--track-table', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--dynamics-feedforward',action=argparse.BooleanOptionalAction,default=True)
     parser.add_argument('--min-successes', type=int, help='必要な期待結果達成数。省略時は全試行')
-    args = parser.parse_args()
+    return parser
+
+
+def main(argv=None):
+    parser = build_argument_parser()
+    args = parser.parse_args(argv)
     args.model, args.weights = args.model.resolve(), args.weights.resolve()
     if args.timing_mode == 'replay' and (args.timing_log is None or not args.timing_log.is_dir()):
         parser.error('replayには既存の--timing-logディレクトリが必要です')
-    import torch
-    torch.set_num_threads(2)
+    try:
+        validate_layout_xy(args.bottle_x, args.bottle_y, bottle.BottleSettings(.75))
+    except ValueError as exc:
+        parser.error(str(exc))
+    if args.check_layout and (args.timing_mode != 'measured' or args.fault != 'none' or args.video
+                             or args.stop_before_contact):
+        parser.error('--check-layoutはreplay・故障注入・録画・接触前診断と併用できません')
     if args.out.exists():
         parser.error('既存の試験結果は上書きしません。新しい--outを指定してください')
     if not np.isfinite(args.preview_step_m) or args.preview_step_m <= 0:
         parser.error('preview-step-mは正の有限値が必要です')
+    if args.check_layout:
+        result = check_layouts(args)
+        args.out.mkdir(parents=True)
+        dump(args.out/'layout_checks.json', result)
+        return 0 if result['ready'] else 1
+    import torch
+    torch.set_num_threads(2)
     paths = ['Manipulation/push_button/bottle.py', 'Manipulation/push_button/real/push_bottle.py',
              'Manipulation/push_button/real/align_button.py', 'Manipulation/push_button/alignment.py',
              'Manipulation/push_button/real/j1gen_camera.py', 'Manipulation/push_button/real/push_button.py',
@@ -715,7 +789,8 @@ if __name__ == '__main__':
               'Button_Press/J1-gen/common/camera_rgbd.py', 'Button_Press/J1-gen/common/rgbd_protocol.py',
               'Perception/common/detector/yolo_detector.py', 'Manipulation/push_button/sim/run_realistic_bottle.py']
     paths += ['Manipulation/push_button/bottle_perception.py', 'Button_Press/J1-gen/configs/robot.yaml',
-              'Button_Press/J1-gen/common/camera_geometry.py']
+              'Button_Press/J1-gen/common/camera_geometry.py', 'Manipulation/push_button/bottle_layout.py',
+              'Manipulation/push_button/sim/run_bottle_mujoco.py']
     try:
         validate_replay(args, paths)
     except (OSError, ValueError, KeyError) as exc:
@@ -732,6 +807,10 @@ if __name__ == '__main__':
         'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(),
         'git_status_before': subprocess.check_output(['git', 'status', '--porcelain=v1'], cwd=REPO, text=True),
         'host': {'cpu_count': os.cpu_count(), 'affinity': sorted(os.sched_getaffinity(0)),
+                 'python': sys.version, 'executable': sys.executable,
+                 'preloaded_triton': getattr(sys.modules.get('triton'), '__version__', None),
+                 'render_environment': {k: os.environ.get(k) for k in ('MUJOCO_GL', 'LIBGL_ALWAYS_SOFTWARE',
+                     '__EGL_VENDOR_LIBRARY_FILENAMES', 'CUDA_VISIBLE_DEVICES')},
                  'load_average': list(os.getloadavg()), 'torch_threads': torch.get_num_threads(),
                  'thread_environment': {k: os.environ.get(k) for k in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS')}},
         'options': {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
@@ -760,4 +839,8 @@ if __name__ == '__main__':
                'trials': len(results), 'required': required, 'passed': passed >= required}
     dump(args.out/'summary.json', summary)
     print(json.dumps(summary), flush=True)
-    raise SystemExit(0 if summary['passed'] else 1)
+    return 0 if summary['passed'] else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

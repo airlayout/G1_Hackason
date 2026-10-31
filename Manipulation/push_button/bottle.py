@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter, deque
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from itertools import product
 from xml.etree import ElementTree as ET
 import math
 from time import perf_counter
@@ -379,10 +380,45 @@ class BottlePushRoutine:
         self.report.update(retreat_completed=False, release_completed=False, ik_checks=[])
         self.report.update(live_tracking=live_tracking, diagnostic_completed=False,
                            stop_before_contact=stop_before_contact, tracking_steps=[])
+        self.report['ik_searches'] = []
+
+    def solve_pose(self, xyz, face, *, contact=False):
+        """Try bounded numerical seeds, validating every path from the real start."""
+        original = self.kin.data.qpos.copy()
+        row = {'phase': self.report.get('phase', 'preview'), 'target_xyz_m': np.asarray(xyz).tolist(),
+               'allow_tip_contact': contact, 'attempts': [], 'accepted': False}
+        self.report['ik_searches'].append(row)
+        offsets = [(0., 0., 0.)]+[v for v in product((-.4, 0., .4), (-.4, 0., .4), (-.6, 0., .6))
+                                   if v != (0., 0., 0.)]
+        try:
+            for index, offset in enumerate(offsets):
+                attempt = {'shoulder_seed_offset_rad': list(offset)}
+                row['attempts'].append(attempt)
+                try:
+                    if index == 0:
+                        solution = self.kin.solve(np.asarray(xyz), FORWARD)
+                    else:
+                        seed = original[self.kin.qadr].copy()
+                        seed[:3] += offset
+                        solution = self.kin.solve(np.asarray(xyz), FORWARD, seed=seed)
+                    # A numerical seed is not an executed waypoint.
+                    self.kin.update(original)
+                    self.kin.validate_path(solution.joint_angles, face, FORWARD, contact)
+                except ValueError as exc:
+                    attempt['reason'] = str(exc)
+                else:
+                    attempt['accepted'] = row['accepted'] = True
+                    return solution
+                finally:
+                    self.kin.update(original)
+        finally:
+            self.kin.update(original)
+        raise ValueError(f'経路検査付きIKが{len(offsets)}候補で失敗しました: {row["attempts"][-1]["reason"]}')
 
     def move(self, xyz, face, duration=2., contact=False):
         self.refresh()
-        solution = self.kin.solve(np.asarray(xyz), FORWARD)
+        solution = self.solve_pose(xyz, face, contact=contact)
+        self.refresh()
         self.kin.validate_path(solution.joint_angles, face, FORWARD, contact)
         delta = np.max(np.abs(solution.joint_angles-self.motion.current_target()))
         self.motion.move(solution.joint_angles, max(duration, math.sqrt(6*delta/2.)), settle_s=0.3)
@@ -416,9 +452,8 @@ class BottlePushRoutine:
                 start = self.kin.tip_position()
                 count = max(1, math.ceil(np.linalg.norm(xyz-start)/self.preview_step_m)) if name == "push" else 1
                 for point in np.linspace(start, xyz, count+1)[1:]:
-                    solution = self.kin.solve(point, FORWARD)
+                    solution = self.solve_pose(point, face, contact=name in ("push", "retract"))
                     goal = solution.joint_angles
-                    self.kin.validate_path(goal, face, FORWARD, name in ("push", "retract"))
                     self.report["ik_checks"].append({"phase": name, "target_xyz_m": point.tolist(),
                         "position_error_m": solution.position_error_m, "axis_error_deg": solution.axis_error_deg,
                         "min_joint_margin_rad": solution.min_joint_margin_rad})
@@ -433,6 +468,7 @@ class BottlePushRoutine:
             self.kin.update(original)
         return {"schema": "g1-bottle-preview-v1", "task": "bottle", "settings": asdict(self.settings),
                 "target": asdict(observation.target), "poses": poses,
+                "ik_searches": self.report['ik_searches'],
                 "requires_mid_approach_remeasurement": True, "physical_push_success": None}
 
     def check_home(self):

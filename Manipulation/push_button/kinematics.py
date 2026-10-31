@@ -177,11 +177,18 @@ class ArmKinematics:
         return transform
 
     def solve(self, target: np.ndarray, normal: np.ndarray,
-              position_tolerance_m: float = 0.0001) -> IkSolution:
+              position_tolerance_m: float = 0.0001, *, seed=None) -> IkSolution:
         if not np.isfinite(position_tolerance_m) or not 0 < position_tolerance_m <= IK_POSITION_TOLERANCE_M:
             raise ValueError("IKの位置許容誤差が不正です")
         original = self.data.qpos.copy()
-        seed = original[self.qadr].copy()
+        if seed is None:
+            seed = original[self.qadr].copy()
+        else:
+            seed = np.asarray(seed, dtype=float)
+            if seed.shape != (7,) or not np.all(np.isfinite(seed)):
+                raise ValueError('IK初期値は有限な右腕7軸の角度が必要です')
+            limits = self.model.jnt_range[[self.model.joint(name).id for name in ARM_JOINTS]]
+            seed = np.clip(seed, limits[:, 0]+.025, limits[:, 1]-.025)
         try:
             solution = solve_ik(self.model, self.data, np.asarray(target), seed,
                                 seed, self.qadr, self.dadr, np.asarray(normal),

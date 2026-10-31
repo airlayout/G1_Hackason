@@ -253,8 +253,11 @@ def main(argv=None):
                 report['diagnostic_completed'] = False
                 release_failed = True
         output = Path(args.output)
+        if routine is not None and 'ik_searches' in routine.report:
+            report['ik_searches'] = routine.report['ik_searches']
         if table_reference is not None:
             report['table_reference'] = table_reference.measurements
+            report['table_diagnostics'] = table_reference.diagnostics
             report['table_rejections'] = table_rejections
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, ensure_ascii=False, indent=2)+"\n")

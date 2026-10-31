@@ -164,6 +164,13 @@ JSONは `motion_completed`（押す動作）、`home_completed`（復帰）、
 
 ## 校正済みrealistic評価
 
+頭部カメラ向けの四辺認識・経路検査付きIK再探索・配置検査を追加した。
+実装後の配置探索・シミュレーションは未実施。
+後日のコマンドと保存結果の認識映像・集計方法は
+[頭部カメラ改善の実装と評価手順](reports/CAMERA_RECOGNITION_IMPLEMENTATION_20261031.md) を参照。
+realistic入口の `--bottle-x/--bottle-y` で配置を指定し、`--check-layout` で
+描画・物理ステップなしの画角と全経路の静的検査を行える。既定配置は従来どおり。
+
 ```bash
 MUJOCO_GL=egl OPENBLAS_NUM_THREADS=2 OMP_NUM_THREADS=2 \
 python Manipulation/push_button/sim/run_realistic_bottle.py \
