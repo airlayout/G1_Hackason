@@ -135,7 +135,7 @@ def resolve_trial_arguments(parser, argv=None):
                 raise ValueError(f'{action.dest}は真偽値が必要です')
         if action.choices is not None and values[action.dest] not in action.choices:
             raise ValueError(f'{action.dest}の値が不正です')
-    defaults = {**preset, 'push_distance': .02 if profile == 'field' else .05,
+    defaults = {**preset, 'push_distance': .05,
                 'track_table': False, **values, 'profile': profile}
     # JSONで台高を指定できる。指定必須のままの引数にはset_defaultsだけでは効かない。
     original = [(action, action.required, action.default) for action in parser._actions]

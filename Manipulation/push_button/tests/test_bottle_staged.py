@@ -17,7 +17,7 @@ from trial_policy import TrialPause
 
 
 def staged_routine(monkeypatch, *, positions=(), pending=(), diagnostic=False, retries=2,
-                   mode='staged', observe_fault=None):
+                   mode='staged', observe_fault=None, push_distance=.02):
     camera = Camera()
     events = []
 
@@ -43,7 +43,7 @@ def staged_routine(monkeypatch, *, positions=(), pending=(), diagnostic=False, r
             if observe_fault is not None:
                 observe_fault(self)
             if self.after_push:
-                camera.x = (positions[-1] if positions else .37)+.02
+                camera.x = (positions[-1] if positions else .37)+push_distance
             elif positions:
                 camera.x = positions[min(self.observation_index-1, len(positions)-1)]
             return super().observe()
@@ -54,7 +54,7 @@ def staged_routine(monkeypatch, *, positions=(), pending=(), diagnostic=False, r
             return bottle.BottleObservation(self.previous, camera.t, self.last_sequence)
         def reset_measurement_reference(self): self.previous = None
 
-    settings = BottleSettings(.75, push_distance=.02)
+    settings = BottleSettings(.75, push_distance=push_distance)
     localizer = Localizer(camera.read, camera, settings, camera.now)
 
     class Motion:
@@ -122,8 +122,9 @@ def staged_routine(monkeypatch, *, positions=(), pending=(), diagnostic=False, r
     return r, events, camera
 
 
-def test_four_checkpoints_each_use_three_fresh_frames_and_final_push_starts_at_3cm(monkeypatch):
-    r, events, camera = staged_routine(monkeypatch)
+@pytest.mark.parametrize('push_distance', [.02, .05])
+def test_four_checkpoints_each_use_three_fresh_frames_and_final_push_starts_at_3cm(monkeypatch, push_distance):
+    r, events, camera = staged_routine(monkeypatch, push_distance=push_distance)
     report = r.execute()
     assert report['completed'] and report['visual_success'] and report['home_completed']
     rows = report['approach_steps']
@@ -139,7 +140,7 @@ def test_four_checkpoints_each_use_three_fresh_frames_and_final_push_starts_at_3
         assert len(alignment) >= 3 and all(np.linalg.norm(row['error_xyz_m']) <= .003 for row in alignment[-3:])
     assert all(event[5] == .6 for event in [e for e in events if e[0] == 'move'][1:9:2])
     push = next(event for event in events if event[0] == 'push')
-    assert push[2:] == pytest.approx((-.03, .02))
+    assert push[2:] == pytest.approx((-.03, push_distance))
     retract = next(event for event in events if event[0] == 'move' and event[3])
     assert retract[2] == pytest.approx(.05)
     assert events[-1][0] == 'release'

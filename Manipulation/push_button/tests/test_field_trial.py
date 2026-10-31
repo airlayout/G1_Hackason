@@ -48,9 +48,9 @@ def test_field_defaults_and_explicit_cli_over_json_over_profile(tmp_path):
     assert policy.table_x_edge == 'x_min' and policy.position_stability_m == .006
     assert not policy.record_rgbd and policy.table_edge_tolerance == .015
     args, policy = parse(['--profile', 'field'])
-    assert args.push_distance == .02 and policy.position_stability_m == .008
+    assert args.push_distance == .05 and policy.position_stability_m == .008
     assert policy.approach_mode == 'staged' and policy.approach_extra_retries == 2
-    assert args.push_distance == .02 and policy.position_stability_m == .008 and not args.track_table
+    assert args.push_distance == .05 and policy.position_stability_m == .008 and not args.track_table
     args, policy = parse([])
     assert args.push_distance == .05 and not args.track_table
     assert policy == TrialPolicy()
@@ -84,7 +84,7 @@ def test_table_tracking_is_opt_in_with_cli_over_json(tmp_path, profile, configur
 
 def test_field_example_defaults_to_no_table_tracking():
     args, policy = parse([], ROOT/'real'/'field_trial.example.json')
-    assert policy.field and not args.track_table
+    assert policy.field and not args.track_table and args.push_distance == .05
 
 
 @pytest.mark.parametrize('values', [

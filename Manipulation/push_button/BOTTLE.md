@@ -65,7 +65,9 @@ MUJOCO_GL=egl python Manipulation/push_button/sim/run_push_mujoco.py \
 2026-10-31の台の値なので、使用する台と配置に合わせる。JSON内の `profile` でも選べる。
 優先順は **明示したCLI引数 > JSON > プロファイル**。適用値は起動時に表示し、結果JSONにも保存する。
 
-`field` の初期値は20mm押下、ボトルの位置安定幅8mm（新しい3枚）。
+`field` の初期値は50mm押下、ボトルの位置安定幅8mm（新しい3枚）。
+以前コピーした試行JSONに `"push_distance": 0.02` が残っている場合は、`0.05` に変更するか
+CLIで `--push-distance 0.05` を指定する。明示したJSON・CLIの値は初期値より優先される。
 台追跡は既定で無効。台の二辺の認識を必要とせず、台基準の機体位置補正も行わない。
 台との衝突予測とボトルの移動先の余裕の検査には、引き続き実測の台高・台範囲が必要。
 自己衝突、腰姿勢・脚速度などの監視も維持する。
@@ -99,9 +101,9 @@ CLIに `--no-track-table` を追加する。
 `strict`とシミュレーションの既定は従来どおり。試行JSONでは`approach_mode`と
 `approach_extra_retries`を指定でき、CLIの明示指定を優先する。
 
-20mm押しの時間は、初回計測から押下・腕の復帰・画像確認まで**通常約45〜65秒**、
-追加確認を2回使う場合は**約55〜80秒**を見込む。内訳は接近・計測・補正20〜30秒、
-最後の3cmの接近と押し12〜18秒、後退・復帰・結果確認11〜16秒。
+50mm押しの時間は、初回計測から押下・腕の復帰・画像確認まで**通常約52〜72秒**、
+追加確認を2回使う場合は**約62〜87秒**を見込む。内訳は接近・計測・補正20〜30秒、
+最後の3cmの接近と押し18〜25秒、後退・復帰・結果確認11〜16秒。
 制御設定と保存ログからの概算で、実機の完走実績ではない。起動時のモデル読込みと人の入力待ちは含めない。
 画像取得の遅れやFK収束待ちが続く場合はこの目安を超える。実機の成功率と時間は次の試行で確認する。
 再計測は対象位置の変化を補う処理であり、カメラ・手先の系統的な校正誤差は別に確認する。
@@ -109,7 +111,7 @@ CLIに `--no-track-table` を追加する。
 結果JSONの`approach_steps`に段階・距離・計測位置とフレームID・FK誤差・所要時間・追加理由を保存する。
 `approach_remeasurement_count`は採用した接近時の計測数、`approach_extra_retry_count`は追加確認数。
 `approach_runs`には再開ごとの結果と追加確認数を残す。`measurements`には従来どおり追跡等の計測も含まれる。
-実機確認は接触前診断1回、その後20mm押しを3回記録する。前方20±10mm・横ずれ10mm以内、
+実機確認は接触前診断1回、その後50mm押しを3回記録する。前方50±10mm・横ずれ10mm以内、
 直立維持、home復帰と解除を確認し、段階別時間も比較する。処理完了だけを押下成功とは数えない。
 
 ### 保持・再開・復帰
@@ -139,7 +141,7 @@ python Manipulation/push_button/real/run_push.py --task bottle \
   --base-transform /path/to/calibration.json --arm-socket /tmp/g1_button_arm.sock \
   --stop-before-contact --execute --calibrated --output _local/bottle_field_approach_01.json
 
-# 接触前確認後、20mmの押下を試す。各試行の出力名を変えて3回記録する。
+# 接触前確認後、50mmの押下を試す。各試行の出力名を変えて3回記録する。
 python Manipulation/push_button/real/run_push.py --task bottle \
   --trial-config _local/bottle_field.json \
   --model _local/bottle_push/menagerie/unitree_g1/g1.xml \
