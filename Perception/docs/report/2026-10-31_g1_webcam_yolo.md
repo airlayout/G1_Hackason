@@ -25,7 +25,7 @@ G1 の PC2 に挿した Web カメラの画像に、PC2 の中で YOLO（`yolo26
 | GPU まわり | CUDA 11.4、cuDNN 8.6、TensorRT 8.5.2（`/usr/src/tensorrt/bin/trtexec`） |
 | CPU 版の Python | conda の `lerobot` 環境（Python 3.12、onnxruntime 1.29.0（CPU のみ）、cv2 4.13、numpy 2.2.6） |
 | GPU 版の Python | システムの `/usr/bin/python3`（Python 3.8.10、tensorrt 8.5.2.2、cv2 5.0.0、numpy 1.24.4） |
-| Web カメラ | Innomaker U20CAM-1080p（USB `0c45:6366`）。**`/dev/video6`**（video7 は同じカメラの付属ノード。video0〜5 は頭の RealSense） |
+| Web カメラ | **前方**の Innomaker U20CAM-1080p（USB `0c45:6366`）。測ったときは `/dev/video6`（video7 は同じカメラの付属ノード。video0〜5 は頭の RealSense）。**番号は再起動で変わる**（下の追記） |
 | モデル | `yolo26n.pt` → ONNX（end-to-end、出力 (1, 300, 6)、入力 640×640） |
 | つなぎ方 | ラボPC から Wi-Fi で `ssh unitree@192.168.0.82`（有線の 192.168.123.164 ではない） |
 
@@ -126,6 +126,33 @@ cd ~/perception && /usr/bin/python3 real/check_yolo.py --webcam 6 --rotate cw --
 - GPU 版の前処理（約 11 ms）を減らす（縮小を GPU でする、など）
 - `trt_yolo.py` のテストは無い（TensorRT のある PC2 でしか動かないため）。既存の `Perception/tests` の 3 ファイルは、
   変更後にラボPC で通ることを確かめた（`test_onnx_detector` 6 件、`test_zmq_camera` 3 件、`test_pipeline`）
+
+## 追記: 人を検出したら知らせる・認識した映像を配信する（person_alert.py）
+
+同じ日に、上の GPU 版を使って `real/person_alert.py` を作った。**前方のカメラで人を認識し、その映像をブラウザで見られることを
+確認した**（ブラウザでの表示は、班のメンバーが目で見て確かめた）。使い方は `Perception/real/README.md` の person_alert の節。
+
+| 機能 | 確かめたこと |
+|---|---|
+| 人を検出したら写真を残す | 人が 3 フレーム続いたら、枠を描いた写真と記録を G1 に保存。10 秒は出さない。写真は 1000 枚まで（`--max-photos 3` で古いものから消え、記録は残った） |
+| PC へ送る | ZMQ 5560 番。60 秒で出来事 4 件、PC（`person_alert_receiver.py`）に 4 件とも届いた。PC が受け取っていなくても G1 には残った |
+| 映像の配信 | `--stream 8080` → ブラウザで `http://192.168.0.82:8080/`。Wi-Fi で 10.0 枚/秒、1 枚約 52 KB、約 0.5 MB/s、2 人同時でも同じ。配信しながらでも検出は約 28 fps |
+| **前方のカメラでの認識** | Mapping の配信（5555 番）から受け取り、40 秒で約 4.7 枚/秒、出来事 3 件。座っている 2 人を person 0.61・0.64 で検出。向き・色とも正しい |
+
+前方のカメラは、Mapping の `~/mapping_tools/innomaker_camera_server.py` が開いている。そのため、カメラを直接は開かず、その配信を受け取る
+（Mapping を止めずに使える。速さは Mapping の設定の 5 枚/秒）:
+
+```bash
+cd ~/perception && /usr/bin/python3 real/person_alert.py --zmq localhost:5555 --zmq-bgr --rotate 180 --backend tensorrt --model yolo26n.engine --stream 8080
+```
+
+### つまずいたこと（追記）
+
+| 起きたこと | 原因 | どうしたか |
+|---|---|---|
+| ブラウザの映像が、前方ではなく腕のリストカメラだった | G1 の再起動（15:35）で `/dev/video` の番号が入れ替わった。腕のリストカメラ（SunplusIT の Full HD webcam）が video6 に、前方の Innomaker が video8 になり、`--webcam 6` のままだった | `--webcam` に `/dev/v4l/by-id/...` のパスを渡せるようにした |
+| Mapping の配信をそのまま使うと、上下が逆さで色も逆になる | Mapping の配信は反時計回りに回してあり（正しい向きは時計回り）、色は OpenCV のままの BGR（`ZmqFrameSource` は RGB の前提） | `--rotate 180` と `--zmq-bgr`（BGR のまま使う）を足した |
+| G1 に Wi-Fi で SSH できなくなった | 再起動のあと、G1 が先に見つかった `Fujitsu_free_Wi-Fi` に自動でつながった（Physical_AI_5G は優先度 100 だが、起動直後にまだ見えていなかったとみられる。一度つながると乗り換えない）。その間も Tailscale ではつながっていた | `Fujitsu_free_Wi-Fi` の自動接続を切った（`nmcli connection modify Fujitsu_free_Wi-Fi connection.autoconnect no`）。再起動での確認はまだ |
 
 ## 画像の置き場所
 
