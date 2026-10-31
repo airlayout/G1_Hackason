@@ -106,6 +106,8 @@ class ArmMotion:
         try:
             while not self.stop.is_set():
                 configuration = self.arm.current_configuration()
+                if self.state_sink is not None:
+                    self.state_sink(configuration)
                 validate_stationary_pose(configuration, self.calibration)
                 with self.lock:
                     target, weight = self.target, self.weight
@@ -135,8 +137,6 @@ class ArmMotion:
             raise RuntimeError(f"腕の状態監視で中止: {self.error}") from self.error
 
     def publish(self, configuration, target, weight, *, velocity=None):
-        if self.state_sink is not None:
-            self.state_sink(configuration)
         if self.gravity is None:
             self.arm.publish(target, weight)
         else:

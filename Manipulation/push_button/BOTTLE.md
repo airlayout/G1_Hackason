@@ -22,7 +22,8 @@ COCO学習済み `yolo26n.pt` の `bottle` クラスだけを検出する。
 既定はリポジトリ直下にある同名の重み。無い場合はUltralytics経由で公式から取得する。
 `--weights /path/to/model.pt` でローカルの重みも指定できる。クラス名 `bottle` が必要。
 信頼度は既定0.25、ボトルの入力サイズは既定960（`--detector-imgsz`、32の倍数）。
-`--device auto|cpu|cuda` は既存検出器に渡す。共通検出器の既定640は変更しない。
+`--device auto|cpu|cuda` は既存検出器に渡す。ボトル入口の既定はCPU、Torchは2スレッド。
+共通検出器の既定640は変更しない。
 
 ## MuJoCoで実行
 
@@ -77,6 +78,13 @@ python Manipulation/push_button/real/run_push.py --task bottle \
   --base-transform /path/to/calibration.json --arm-socket /tmp/g1_button_arm.sock \
   --table-height 0.75 --table-bounds 0.20 0.85 -0.60 0.02 \
   --execute --calibrated --output /tmp/bottle_execution.json
+
+# 接触前までの診断。同じ実測校正・台設定を指定し、押さずに復帰・解除する。
+python Manipulation/push_button/real/run_push.py --task bottle \
+  --model _local/bottle_push/menagerie/unitree_g1/g1.xml \
+  --base-transform /path/to/calibration.json --arm-socket /tmp/g1_button_arm.sock \
+  --table-height 0.75 --table-bounds 0.20 0.85 -0.60 0.02 \
+  --stop-before-contact --execute --calibrated --output /tmp/bottle_approach_check.json
 ```
 
 `--table-height` は実機側で必須。`--table-bounds X_MIN X_MAX Y_MIN Y_MAX` は台の実測平面範囲。
@@ -122,11 +130,12 @@ SDK側のPythonにはMuJoCo・NumPy・SciPyは不要。画像処理側に依存�
 3. 全段階と復帰の経路を事前検査し、接触直前から押し終点までは5mm以下に分割する。
    直前の解を次の初期値に使い、位置0.1mm・方向10度・関節限界・衝突検査を維持する。
    台の手前で腕を持ち上げてから5cm手前へ接近し、新しい3枚で再計測して経路を再検査する。
-4. 以降は目標を固定し、FKを使って連続接近・押し動作を行う。
+4. 前方の終点と接触高さを固定し、FKを使って連続接近・押し動作を行う。
    接近は最大10mm/s、押す間は最大4mm/s、関節速度0.8rad/s・加速度2rad/s²。
    7軸の速度・加速度・関節範囲を同時に制約した手先速度制御を使う。
-   横・高さのFK誤差だけを最大5mm補償し、ボトル中心線から8mmを超えたら中止する。
-5. 元の手前位置へ後退して手を横へ退避し、予測移動先の同じボトルを新しい3枚で再認識する。
+   実機入口では押下中も胴体上部を画像で追跡し、横目標を「現在の中心＋開始直線からのずれ」にする。
+   画像補正と横・高さのFK補償の合計は最大5mm。中心線誤差8mm・指令差1cmを超えたら中止する。
+5. 元の手前位置へ後退し、持ち上げてhomeへ戻してから、予測移動先の同じボトルを新しい3枚で再認識する。
    移動誤差は前方・左右各1cm以内。未確認でも腕の復帰を試み、成功には数えない。
 6. 接近後・押す前の失敗では、実測姿勢から記録経路への接続を検査し、正常な状態でだけ
    接近経路を逆順に戻す。押した後は後退・持ち上げ・homeを使う。
@@ -134,7 +143,11 @@ SDK側のPythonにはMuJoCo・NumPy・SciPyは不要。画像処理側に依存�
 
 透明容器などで深度が得られなければ押さない。
 `bottle` クラスは材質を判別しないため、対象にはペットボトルを配置する。
-押している間は画像を更新しないので、その間の横滑りは押した後に判定する。
+実機入口では独立した画像処理ワーカーが台推定を最大10Hz、ボトル検出を最大5Hzで行う。
+制御側は完成した最新結果だけを読み、撮影時刻の関節角・IMUとの対応を検査する。
+画像が0.5秒より古い場合や対象が消失した場合は押し動作を止める。
+制御更新・状態取得・指令計算には100msの上限を維持する。
+従来の固定骨盤試験 `run_bottle_mujoco.py` は同期計測・固定目標を使う比較用である。
 自己衝突・台・推定した手前面への腕の侵入を経路で検査する。
 ボタンと同じく、実機の接触力制御は行わない。
 
@@ -143,6 +156,8 @@ JSONは `motion_completed`（押す動作）、`home_completed`（復帰）、
 `visual_success: null` は確認不能、`false` は計測できたが移動量が不適合。
 実機の `physical_push_success` は常に `null`。模擬環境では物理評価を記録する。
 動作と画像確認の両方を満たした場合だけ終了コード0。
+`--stop-before-contact` は例外として、`diagnostic_completed`・home・解除の成立で終了コード0となる。
+この診断の `completed`・`motion_completed` はfalse、`visual_success`はnullで、押下成功には数えない。
 引数・初期化エラーは2、動作・検証失敗は1、中断は130。
 `retreat_completed`・`release_completed`、失敗理由・復帰エラー・解除エラーも個別に保存する。
 認識ログは未検出・深度/幾何棄却・不安定・鮮度超過・取得期限超過を区別する。
@@ -177,6 +192,14 @@ RGB-Dのワイヤ形式と鮮度検査は通すが、実ネットワークや実
 `--gravity-scale 0`・`--detector-imgsz 640`・`--preview-step-m 1`も切り分け用に使える。
 推論・深度推定・IK・衝突検査・台追跡・制約付き手先速度計算の実測時間だけ物理を進める。
 描画の実時間はセンサ生成のコストなので遅延へ加えない。
+画像処理は完了時刻付きのキューで再現し、その間も物理と50Hzの腕監視・送信を進める。
+制御側へ画像処理時間を重ねて加算しない。
+
+`--camera-profile legacy|head` は既定legacy。headはJ1-genの頭カメラ取り付け位置・画角を使う。
+`--timing-mode measured|replay` は既定measured。replayは同一コード・モデル・重み・条件の
+過去出力を `--timing-log` に指定する診断専用で、正式な成功率へ混ぜない。
+接触前診断は `--stop-before-contact`。実行手順とDeepSeekへの引き継ぎは
+[REALISTIC_IMPLEMENTATION_20261031.md](reports/REALISTIC_IMPLEMENTATION_20261031.md) を参照。
 
 各seedにはRGB-Dパケットと撮影時の関節・IMU、50Hzの指令・トルク・状態、
 IK残差、処理時間、認識の棄却理由、真値による評価を保存する。

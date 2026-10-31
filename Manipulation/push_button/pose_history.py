@@ -17,14 +17,18 @@ class PoseHistory:
             if not self.samples or stamp>self.samples[-1][2]:
                 self.samples.append((np.array(q),np.array(rpy),float(stamp)))
 
-    def at(self, stamp, fallback):
+    def at(self, stamp, fallback, *, max_distance_s=None):
         with self.lock:
             rows=list(self.samples)
         if not rows or stamp<rows[0][2] or stamp>rows[-1][2]:
+            if max_distance_s is not None and (not rows or min(abs(r[2]-stamp) for r in rows) > max_distance_s):
+                raise ValueError('撮影時刻に対応する状態履歴がありません')
             q,rpy,*_=min(rows,key=lambda r:abs(r[2]-stamp)) if rows else fallback
             return np.array(q),np.array(rpy)
         for a,b in zip(rows,rows[1:]):
             if a[2]<=stamp<=b[2]:
+                if max_distance_s is not None and b[2]-a[2] > max_distance_s:
+                    raise ValueError('撮影時刻の状態履歴に空白があります')
                 ratio=(stamp-a[2])/(b[2]-a[2])
                 angles=np.arctan2(np.sin(b[1]-a[1]),np.cos(b[1]-a[1]))
                 return a[0]+ratio*(b[0]-a[0]),a[1]+ratio*angles

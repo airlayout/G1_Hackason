@@ -5,6 +5,7 @@
 """
 
 import math
+from time import perf_counter
 
 import cv2
 import numpy as np
@@ -30,10 +31,14 @@ def _edge(points, axis):
 
 def estimate_table_transform(depth_m, intrinsics, nominal_transform, settings):
     depth = np.asarray(depth_m)
+    # The plane/edges are centimetre-scale features. Sample at 2px rather than
+    # building and transforming 307,200 points at every update on a CPU.
+    stride = 2 if min(depth.shape) >= 400 else 1
+    depth = depth[::stride, ::stride]
     vv, uu = np.mgrid[0:depth.shape[0],0:depth.shape[1]]
     z = depth.ravel()
-    optical = np.column_stack(((uu.ravel()-intrinsics.cx)*z/intrinsics.fx,
-                               (vv.ravel()-intrinsics.cy)*z/intrinsics.fy,z))
+    optical = np.column_stack(((uu.ravel()*stride-intrinsics.cx)*z/intrinsics.fx,
+                               (vv.ravel()*stride-intrinsics.cy)*z/intrinsics.fy,z))
     points = optical@nominal_transform[:3,:3].T+nominal_transform[:3,3]
     x0,x1,y0,y1 = settings.table_bounds
     mask = ((z > .1)&np.all(np.isfinite(points),axis=1)
@@ -81,6 +86,7 @@ class TableReference:
         self.measurements = []
 
     def update(self, depth, intrinsics, nominal_transform, nominal_base, captured_at):
+        started = perf_counter()
         transform = estimate_table_transform(depth,intrinsics,nominal_transform,self.settings)
         offset = (transform@nominal_base)[:3,3]-[0.,0.,self.pelvis_height]
         if self.stamp is not None:
@@ -96,7 +102,8 @@ class TableReference:
             self.velocity = np.zeros(3)
         self.offset,self.stamp = offset,captured_at
         self.measurements.append({'captured_at_s': captured_at, 'base_offset_m': offset.tolist(),
-                                   'base_velocity_m_s': self.velocity.tolist()})
+                                   'base_velocity_m_s': self.velocity.tolist(),
+                                   'estimate_wall_s': perf_counter()-started})
         return transform
 
     def predict(self, now, *, strict=True):

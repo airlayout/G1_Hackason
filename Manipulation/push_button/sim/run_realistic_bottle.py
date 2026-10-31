@@ -13,6 +13,7 @@ from dataclasses import asdict
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -39,10 +40,57 @@ from kinematics import ArmKinematics, load_robot
 from run_bottle_mujoco import build_scene
 from trajectory import validate_arm_tau
 from cartesian import CartesianJointController
+from bottle_perception import PerceptionMailbox
 
 MODEL = REPO/'_local/bottle_push/menagerie/unitree_g1/g1.xml'
 WEIGHTS = REPO/'yolo26n.pt'
 BASE = ['bottle_eval_'+s for s in ('x', 'y', 'z', 'roll', 'pitch', 'yaw')]
+
+
+class VirtualPerception(PerceptionMailbox):
+    """Run the production engine, but expose its outputs only at job completion.
+
+    Physics/arm publication continue while the sensor job is pending. Measured
+    costs are charged once to the sensor job, never to the control caller.
+    """
+    def __init__(self, engine, now, wait, world):
+        super().__init__(engine, now, wait)
+        self.world, self.pending_result = world, None
+        engine.now = engine.localizer.now = lambda: world.now()+(world.perception_cost if world.perception_busy else 0.)
+        world.perception = self
+
+    def tick(self):
+        world = self.world
+        if self.error is not None:
+            return
+        if self.pending_result is not None:
+            ready, generation, observation, table, error = self.pending_result
+            if world.now()+1e-9 < ready:
+                return
+            self.publish(generation, observation, table, error)
+            self.pending_result = None
+            if error is not None:
+                return
+        with self.lock:
+            requested = self.pending is not None
+        if not requested and world.now()+1e-9 < self.engine.next_frame:
+            return
+        generation, request, progress = self.take_request()
+        if request is not None:
+            self.engine.configure(request)
+        world.perception_busy, world.perception_cost = True, 0.
+        observation = table = error = None
+        try:
+            observation, table = self.engine.step(progress)
+        except Exception as exc:
+            error = exc
+        finally:
+            world.perception_busy = False
+        self.pending_result = (world.now()+world.perception_cost, generation, observation, table, error)
+
+    def close(self):
+        self.world.perception = None
+        self.engine.close()
 
 
 def rotation(rpy):
@@ -63,6 +111,45 @@ def dump(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2)+'\n')
 
 
+def camera_profile_geometry(model, data, rest, profile, runtime=None):
+    if profile == 'legacy':
+        camera = model.camera('bottle_rgbd').id
+        optical = np.eye(4)
+        optical[:3, :3] = data.cam_xmat[camera].reshape(3, 3)@np.diag([1, -1, -1])
+        optical[:3, 3] = data.cam_xpos[camera]
+        return optical, 48.
+    runtime = runtime or j1gen_camera.J1CameraRuntime()
+    config = runtime.module('config').load_config('robot.yaml')
+    head = runtime.module('camera_geometry').HeadCameraTransform(config)
+    rotation, position = head.pelvis_from_optical(rest[12:15])
+    pelvis = model.body('pelvis').id
+    base = np.eye(4)
+    base[:3, :3], base[:3, 3] = data.xmat[pelvis].reshape(3, 3), data.xpos[pelvis]
+    optical = np.eye(4)
+    optical[:3, :3], optical[:3, 3] = rotation, position
+    return base@optical, float(config['head_camera']['fovy_deg'])
+
+
+def validate_replay(options, sources):
+    if options.timing_mode != 'replay':
+        return
+    manifest = json.loads((options.timing_log/'manifest.json').read_text())
+    comparable = ('camera_profile', 'profile', 'fault', 'gravity_scale', 'detector_imgsz',
+                  'preview_step_m', 'track_table', 'dynamics_feedforward', 'stop_before_contact')
+    for name in comparable:
+        if manifest['options'].get(name) != getattr(options, name):
+            raise ValueError(f'replayの実行条件が一致しません: {name}')
+    for source in sources:
+        if manifest['source_sha256'].get(source) != hashlib.sha256((REPO/source).read_bytes()).hexdigest():
+            raise ValueError(f'replayのソースが一致しません: {source}')
+    for name in ('model', 'weights'):
+        if manifest[f'{name}_sha256'] != hashlib.sha256(getattr(options, name).read_bytes()).hexdigest():
+            raise ValueError(f'replayの{name}が一致しません')
+    for seed in options.seeds:
+        if not (options.timing_log/f'seed_{seed}'/'processing_times.json').is_file():
+            raise ValueError(f'replayの処理時間がありません: seed {seed}')
+
+
 class World:
     def __init__(self, seed, out, options):
         self.seed, self.out, self.options = seed, out, options
@@ -79,10 +166,7 @@ class World:
         d = mujoco.MjData(m)
         d.qpos[:29] = self.rest
         mujoco.mj_forward(m, d)
-        c = m.camera('bottle_rgbd').id
-        self.nominal_optical = np.eye(4)
-        self.nominal_optical[:3, :3] = d.cam_xmat[c].reshape(3, 3) @ np.diag([1, -1, -1])
-        self.nominal_optical[:3, 3] = d.cam_xpos[c]
+        self.nominal_optical, self.camera_fovy = camera_profile_geometry(m, d, self.rest, options.camera_profile)
         torso = m.body('torso_link').id
         torso_transform = np.eye(4)
         torso_transform[:3, :3] = d.xmat[torso].reshape(3, 3)
@@ -107,7 +191,7 @@ class World:
         self.calibrated_optical = torso_transform @ actual_local
         mujoco.mju_mat2Quat(quat, actual_rotation.ravel())
         spec.body('torso_link').add_camera(name='evaluation_rgbd',
-            pos=local[:3, 3]+self.r.camera_xyz_offset, quat=quat, fovy=48.)
+            pos=local[:3, 3]+self.r.camera_xyz_offset, quat=quat, fovy=self.camera_fovy)
         self.model = spec.compile()
         self.data = mujoco.MjData(self.model)
         self.render_data = mujoco.MjData(self.model)
@@ -146,6 +230,13 @@ class World:
         self.frame_id, self.publish_count, self.read_count = 0, 0, 0
         self.phase, self.phases = 'setup', []
         self.costs = []
+        self.perception, self.perception_busy, self.perception_cost = None, False, 0.
+        self.replay_costs = {}
+        self.replay_indices = {}
+        if options.timing_mode == 'replay':
+            rows = json.loads((options.timing_log/f'seed_{seed}'/'processing_times.json').read_text())
+            for row in rows:
+                self.replay_costs.setdefault(row['stage'], []).append(float(row['duration_s']))
         self.monitor_errors = []
         self.fault_events = []
         self.last_packet_id = -1
@@ -167,6 +258,25 @@ class World:
 
     def now(self):
         return float(self.data.time)
+
+    def charge(self, stage, measured):
+        duration = measured
+        if self.options.timing_mode == 'replay':
+            index = self.replay_indices.get(stage, 0)
+            values = self.replay_costs.get(stage, [])
+            if index >= len(values):
+                raise RuntimeError(f'保存した処理時間が不足しています: {stage} #{index}')
+            duration = values[index]
+            self.replay_indices[stage] = index+1
+        if not np.isfinite(duration) or duration < 0:
+            raise ValueError('処理時間は0以上の有限値が必要です')
+        self.costs.append({'stage': stage, 'time_s': self.now()-self.origin+self.perception_cost if self.perception_busy else self.now()-self.origin,
+                           'duration_s': duration, 'measured_duration_s': measured,
+                           'worker': 'perception' if self.perception_busy else 'control'})
+        if self.perception_busy:
+            self.perception_cost += duration
+        else:
+            self.advance(duration)
 
     def observe(self):
         if self.options.fault == 'state-disconnect' and self.phase == 'approach' and self.now()-self.phases[-1]['time_s']-self.origin > 1.:
@@ -202,6 +312,8 @@ class World:
             return
         try:
             config = self.observe()
+            if self.motion.state_sink is not None:
+                self.motion.state_sink(config)
             align_button.validate_stationary_pose(config, self.motion.calibration)
             tracking = np.max(np.abs(config[0][22:29]-self.motion.current_target()))
             if tracking > sdk.TRACKING_LIMIT:
@@ -221,6 +333,8 @@ class World:
     def advance(self, duration):
         end = self.now()+max(float(duration), self.model.opt.timestep)
         while self.now() < end-1e-9:
+            if self.perception is not None:
+                self.perception.tick()
             if self.now()-self.origin > 150:
                 raise RuntimeError('Evaluation exceeded 150 simulated seconds')
             if self.now()+1e-9 >= self.next_tick:
@@ -289,7 +403,7 @@ class World:
         self.rgbd_renderer.enable_depth_rendering()
         depth = noise.depth(self.rgbd_renderer.render().copy())
         self.rgbd_renderer.disable_depth_rendering()
-        fy = 240/math.tan(math.radians(48.)/2)
+        fy = 240/math.tan(math.radians(self.camera_fovy)/2)
         frame = protocol.RgbdFrame(cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
             np.round(depth*1000).clip(0, 65535).astype(np.uint16), .001,
             protocol.Intrinsics(640, 480, fy, fy, 319.5, 239.5), 1800000000.+stamp, idx)
@@ -338,7 +452,8 @@ def run(seed, out, options):
     world = World(seed, out, options)
     original = (push_bottle.ArmSdk, push_bottle.ArmMotion, push_bottle.J1RgbdCamera,
                 push_bottle.make_bottle_detector, push_bottle.BottlePushRoutine,
-                push_bottle.time, align_button.time, j1gen_camera.time, sdk.time, builtins.input)
+                push_bottle.time, align_button.time, j1gen_camera.time, sdk.time, builtins.input,
+                push_bottle.make_perception_worker)
     original_motion = push_bottle.ArmMotion
     virtual = SimpleNamespace(monotonic=world.now, time=lambda: 1800000000.+world.now(), sleep=world.advance)
     runtime = j1gen_camera.J1CameraRuntime()
@@ -346,6 +461,8 @@ def run(seed, out, options):
     detector = bottle.make_bottle_detector(str(options.weights), .25, 'cpu', runtime=runtime, imgsz=options.detector_imgsz)
     # Warm up model before the simulation starts. Timed inference remains active in trials.
     detector.detect(np.zeros((480, 640, 3), np.uint8))
+    import torch
+    torch.set_num_threads(2)
 
     class Arm(sdk.ArmSdk):
         def __init__(self, interface):
@@ -413,19 +530,22 @@ def run(seed, out, options):
 
     class Detector:
         def detect(self, image):
+            if world.arm is None:
+                # The production entrypoint also warms up before opening the SDK.
+                # Keep initialization outside trial costs and the initial RGB artifact.
+                return detector.detect(image)
             start = wall_time.perf_counter()
             if options.fault == 'target-loss' and world.phase == 'remeasure':
                 world.injected('target-loss')
             detections = ([] if options.fault == 'target-loss' and world.phase == 'remeasure'
                           else detector.detect(image))
             duration = wall_time.perf_counter()-start
-            world.costs.append({'stage': 'detector', 'time_s': world.now()-world.origin, 'duration_s': duration})
             world.inference.append(duration)
             world.detections.append({'time_s': world.now()-world.origin,
                 'detections': [{'class': d.class_name, 'confidence': d.confidence, 'bbox': list(d.bbox)} for d in detections]})
             if len(world.detections) == 1:
                 cv2.imwrite(str(out/'initial_rgb.jpg'), image)
-            world.advance(duration)
+            world.charge('detector', duration)
             return detections
 
     class Routine(bottle.BottlePushRoutine):
@@ -445,8 +565,7 @@ def run(seed, out, options):
                 return function(*args, **kwargs)
             finally:
                 elapsed = wall_time.perf_counter()-started
-                world.costs.append({'stage': name, 'time_s': world.now()-world.origin, 'duration_s': elapsed})
-                world.advance(elapsed)
+                world.charge(name, elapsed)
         return call
     start_wall = wall_time.perf_counter()
     try:
@@ -455,6 +574,7 @@ def run(seed, out, options):
         push_bottle.J1RgbdCamera = camera
         push_bottle.make_bottle_detector = lambda *args, **kwargs: Detector()
         push_bottle.BottlePushRoutine = Routine
+        push_bottle.make_perception_worker = lambda engine, now, wait: VirtualPerception(engine, now, wait, world)
         for owner, name in [(bottle, 'estimate_bottle_target'), (ArmKinematics, 'solve'),
                             (ArmKinematics, 'validate_path'),
                             (CartesianJointController, 'next_goal')]:
@@ -484,6 +604,8 @@ def run(seed, out, options):
             command.append('--track-table')
         if options.dynamics_feedforward:
             command.append('--dynamics-feedforward')
+        if options.stop_before_contact:
+            command.append('--stop-before-contact')
         code = push_bottle.main(command)
         world.advance(.1)  # Deliver the final zero-weight command.
     except Exception as exc:
@@ -495,7 +617,8 @@ def run(seed, out, options):
             p.stop()
         (push_bottle.ArmSdk, push_bottle.ArmMotion, push_bottle.J1RgbdCamera,
          push_bottle.make_bottle_detector, push_bottle.BottlePushRoutine,
-         push_bottle.time, align_button.time, j1gen_camera.time, sdk.time, builtins.input) = original
+         push_bottle.time, align_button.time, j1gen_camera.time, sdk.time, builtins.input,
+         push_bottle.make_perception_worker) = original
     report = json.loads((out/'controller.json').read_text()) if (out/'controller.json').exists() else {}
     displacement = world.data.xpos[world.body]-world.initial_position if world.initial_position is not None else np.zeros(3)
     tilt = math.degrees(math.acos(float(np.clip(world.data.xmat[world.body].reshape(3, 3)[2, 2], -1, 1))))
@@ -506,6 +629,7 @@ def run(seed, out, options):
         and world.max_non_tip_bottle_force < .1 and world.max_other_force < .1
         and home_error is not None and home_error <= .05 and world.weight == 0. and np.all(world.torque == 0))
     result = {'seed': seed, 'set': 'bottle_realistic', 'profile': options.profile,
+        'camera_profile': options.camera_profile, 'timing_mode': options.timing_mode,
         'fault': options.fault, 'exit_code': code, 'success': success,
         'realism': world.r.summary(), 'bottle_initial_xy_m': world.xy.tolist(),
         'simulation_duration_s': world.now()-world.origin, 'wall_duration_s': wall_time.perf_counter()-start_wall,
@@ -521,7 +645,11 @@ def run(seed, out, options):
             'released': world.weight == 0. and bool(np.all(world.torque == 0)), 'publish_count': world.publish_count,
             'inference_count': len(world.inference), 'max_inference_s': max(world.inference, default=0)},
         'artifacts': {'video': str(out/'motion.webm'), 'final': str(out/'final.jpg')}}
-    if options.profile == 'miscalibrated':
+    if options.stop_before_contact and options.profile == 'calibrated' and options.fault == 'none':
+        expected = (code == 0 and report.get('diagnostic_completed') is True
+                    and report.get('home_completed') is True and not report.get('motion_completed')
+                    and float(np.linalg.norm(displacement)) < .001 and world.max_bottle_force < .1)
+    elif options.profile == 'miscalibrated':
         expected = code == 2 and '不確かさ' in report.get('error','') and world.publish_count == 0
     elif options.fault == 'unreachable':
         expected = code != 0 and any(word in report.get('error','') for word in ('IK','到達','範囲')) and world.publish_count == 0
@@ -559,18 +687,23 @@ if __name__ == '__main__':
     parser.add_argument('--preview-step-m', type=float, default=.005, help='事前検査の刻み幅。比較試験のみ変更する')
     parser.add_argument('--fault', choices=['none', 'target-loss', 'stale-images', 'unreachable', 'state-disconnect'], default='none')
     parser.add_argument('--video', action='store_true')
+    parser.add_argument('--camera-profile', choices=['legacy', 'head'], default='legacy')
+    parser.add_argument('--timing-mode', choices=['measured', 'replay'], default='measured')
+    parser.add_argument('--timing-log', type=Path, help='replay用の過去の評価出力ディレクトリ')
+    parser.add_argument('--stop-before-contact', action='store_true')
     parser.add_argument('--track-table', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--dynamics-feedforward',action=argparse.BooleanOptionalAction,default=True)
     parser.add_argument('--min-successes', type=int, help='必要な期待結果達成数。省略時は全試行')
     args = parser.parse_args()
     args.model, args.weights = args.model.resolve(), args.weights.resolve()
+    if args.timing_mode == 'replay' and (args.timing_log is None or not args.timing_log.is_dir()):
+        parser.error('replayには既存の--timing-logディレクトリが必要です')
     import torch
     torch.set_num_threads(2)
     if args.out.exists():
         parser.error('既存の試験結果は上書きしません。新しい--outを指定してください')
     if not np.isfinite(args.preview_step_m) or args.preview_step_m <= 0:
         parser.error('preview-step-mは正の有限値が必要です')
-    args.out.mkdir(parents=True)
     paths = ['Manipulation/push_button/bottle.py', 'Manipulation/push_button/real/push_bottle.py',
              'Manipulation/push_button/real/align_button.py', 'Manipulation/push_button/alignment.py',
              'Manipulation/push_button/real/j1gen_camera.py', 'Manipulation/push_button/real/push_button.py',
@@ -581,6 +714,13 @@ if __name__ == '__main__':
               'Manipulation/push_button/table_reference.py', 'Manipulation/push_button/return_path.py',
               'Button_Press/J1-gen/common/camera_rgbd.py', 'Button_Press/J1-gen/common/rgbd_protocol.py',
               'Perception/common/detector/yolo_detector.py', 'Manipulation/push_button/sim/run_realistic_bottle.py']
+    paths += ['Manipulation/push_button/bottle_perception.py', 'Button_Press/J1-gen/configs/robot.yaml',
+              'Button_Press/J1-gen/common/camera_geometry.py']
+    try:
+        validate_replay(args, paths)
+    except (OSError, ValueError, KeyError) as exc:
+        parser.error(str(exc))
+    args.out.mkdir(parents=True)
     for source in paths:
         destination = args.out/'source'/source
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -591,14 +731,17 @@ if __name__ == '__main__':
         'weights_sha256': hashlib.sha256(args.weights.read_bytes()).hexdigest(),
         'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(),
         'git_status_before': subprocess.check_output(['git', 'status', '--porcelain=v1'], cwd=REPO, text=True),
+        'host': {'cpu_count': os.cpu_count(), 'affinity': sorted(os.sched_getaffinity(0)),
+                 'load_average': list(os.getloadavg()), 'torch_threads': torch.get_num_threads(),
+                 'thread_environment': {k: os.environ.get(k) for k in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS')}},
         'options': {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
-        'method': 'Production real/push_bottle.main with in-process ArmSdk transport, calibrated camera geometry, RGB-D wire format and validation, YOLO bottle detections and BottlePushRoutine. Virtual scheduling replaces the ArmMotion thread; production interpolation, monitoring predicates, torque calculation and release ramp are reused. Physics advances during measured detection, depth fitting, IK and collision-checking time. Exposure states are sampled at camera FPS; only consumed frames are rendered, with independent frame-indexed and joint-sensor noise streams.',
+        'method': 'Production real/push_bottle.main with in-process ArmSdk transport, calibrated camera geometry, RGB-D wire format and validation, YOLO and BottlePushRoutine. Virtual scheduling replaces the ArmMotion thread and perception worker; interpolation, monitoring, torque and release are reused. Sensor jobs expose completed outputs after their measured or replayed costs while physics and 50Hz publication continue. Control computations advance physics independently. Only consumed frames are rendered, with frame-indexed and joint-sensor noise streams.',
         'motor_profile': {'major_joint_kp': 40, 'wrist_kp': 15, 'kd': 1.5, 'gravity_scale': args.gravity_scale,
             'kp_scale': [.9, 1.1], 'armature': 'Menagerie baseline plus sampled Yada increment',
             'friction': 'Menagerie baseline plus sampled Yada increment',
             'release': 'Production 101-step ramp; weight=0 stand hold approximates proprietary robot behavior'},
         'limitations': ['Adaptation of Yada realistic disturbance distribution to the bottle scene; not the Yada button benchmark.',
-            'Same virtual camera viewpoint as existing bottle simulation, attached to torso; not the physical head-camera field of view.',
+            'legacy uses the old virtual viewpoint; head uses J1-gen model mounting and field of view. Neither validates measured physical calibration.',
             'Base sway is driven by six compliant servos; free-standing balance and walking are not modeled.',
             'Bottle is rigid; PET deformation and transparent-surface depth physics are not modeled.',
             'SDK/DDS and camera networking are replaced in process; RGB-D packet encoding/decoding is exercised.',

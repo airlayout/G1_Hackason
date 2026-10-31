@@ -510,19 +510,24 @@ def run_continuous_normal(servo, now, wait, read_tip, send_goal, timeout_s, on_s
     started = previous = now()
     first = True
     while True:
+        cycle_started = now()
+        tip = read_tip()
         stamp = now()
         if stamp - started >= timeout_s:
             raise ValueError("連続押下が制限時間内に収束しません")
         dt = servo.settings.period_s if first else stamp - previous
         first, previous = False, stamp
-        tip = read_tip()
+        if stamp-cycle_started > .1:
+            raise ValueError("連続押下の状態取得が100msを超えました")
         goal = servo.next_goal(tip, dt)
         if goal is None:
             return {"duration_s": now() - started,
                     "final_penetration_m": servo.penetration(tip)}
         phase = "press" if servo.penetration(goal) >= -0.003 else "contact"
         actual_goal = send_goal(goal, dt, phase)
-        on_step({"phase": phase, "time_s": stamp, "motion_started_s": stamp,
+        if now()-stamp > .1:
+            raise ValueError("連続押下の指令計算が100msを超えました")
+        on_step({"phase": phase, "time_s": stamp, "motion_started_s": stamp, "sent_at_s": now(),
                  "dt_s": dt,
                  "tip_goal_xyz_m": goal.tolist(), "tip_xyz_m": tip.tolist(),
                  "command_speed_m_s": servo.velocity, "joint_goal_rad": np.asarray(actual_goal).tolist()})
