@@ -9,6 +9,7 @@ end-to-end(YOLO26 のNMSを使わない出力 (1, 300, 6))で書き出す(common
 サンプル画像(bus.jpg・zidane.jpg、人が写っている)で確かめる。ONNX(約 9 MB)は git に入れない(_local/ に置く)。
 """
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -41,6 +42,10 @@ def main() -> int:
     print(f"[export] 書き出した: {onnx}（{onnx.stat().st_size / 1e6:.1f} MB）")
 
     mine = OnnxYoloDetector(str(onnx), classes=["person"], confidence_threshold=0.25)
+    # TensorRT のエンジン(PC2で作る)にはクラス名が入らないので、別のファイルにしておく(common/detector/trt_yolo.py が読む)
+    names = onnx.with_suffix(".names.json")
+    names.write_text(json.dumps(mine.names, ensure_ascii=False))
+    print(f"[export] クラス名: {names}")
     ref = YOLO(str(onnx), task="detect")
     assets = Path(ultralytics.__file__).parent / "assets"
     ok = True

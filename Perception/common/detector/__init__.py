@@ -18,8 +18,18 @@ def build_detector(detector_cfg: dict):
     """config["detector"] の内容から検出器を組み立てる。
 
     backend: "ultralytics"(既定。YoloDetector、.ptの重み) | "onnx"(OnnxYoloDetector、.onnxの重み。torch不要)
+             | "tensorrt"(TrtYoloDetector、PC2で作った.engine。GPUで動かす。torch・onnxruntime不要)
     """
     backend = detector_cfg.get("backend", "ultralytics")
+    if backend == "tensorrt":
+        from .trt_yolo import TrtYoloDetector
+
+        return TrtYoloDetector(
+            engine_path=detector_cfg.get("model", "yolo26n.engine"),
+            classes=detector_cfg.get("classes"),
+            confidence_threshold=detector_cfg.get("confidence_threshold", 0.5),
+            iou_threshold=detector_cfg.get("iou_threshold", 0.7),
+        )
     if backend == "onnx":
         return OnnxYoloDetector(
             model_path=detector_cfg.get("model", "yolo26n.onnx"),
