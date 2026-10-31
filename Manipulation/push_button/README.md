@@ -1,5 +1,8 @@
 # Push Button
 
+RGB-Dから環境を再現してMuJoCoで事前探索し、途中の撮り直し停止なしで押す任意方式は
+[ROBUST.md](ROBUST.md)を参照。`--motion-planner robust` で選択し、省略時の従来方式は維持する。
+
 G1 にボタンを押させる動作の開発場所。
 
 ボタン／台上のペットボトルを `--task button|bottle` で切り替えて押す入口を追加した。

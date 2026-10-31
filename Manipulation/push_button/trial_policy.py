@@ -136,7 +136,7 @@ def resolve_trial_arguments(parser, argv=None, *, task='bottle'):
             preset.update(position_stability_m=.004, fk_abort_m=.010)
     elif profile != 'strict':
         raise ValueError('profileはstrictまたはfieldです')
-    configurable = set(preset) | {'push_distance', 'table_height', 'table_bounds', 'contact_height',
+    configurable = set(preset) | {'motion_planner', 'push_distance', 'table_height', 'table_bounds', 'contact_height',
         'clearance', 'target_pixel', 'track_table', 'gravity_scale', 'dynamics_feedforward',
         'confidence', 'detector_imgsz', 'device', 'weights', 'camera_config', 'host'}
     if task == 'button':

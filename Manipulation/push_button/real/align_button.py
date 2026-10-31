@@ -715,6 +715,10 @@ def button_exit_code(report, diagnostic=False):
 
 
 def main(argv=None):
+    from robust_options import selected
+    if selected(argv):
+        from robust_push import main as robust_main
+        return robust_main(argv, task='button')
     from dataclasses import asdict
     from pose_history import PoseHistory
     from trial_recording import TrialRecorder

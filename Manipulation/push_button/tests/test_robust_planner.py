@@ -1,0 +1,209 @@
+"""Robust opt-in contracts and real B geometry; no hardware connection."""
+import argparse
+from dataclasses import replace
+import json
+from pathlib import Path
+import sys
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+pytest.importorskip('mujoco')
+sys.path[:0] = [str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parents[1]/'real')]
+from robust_scene import SceneSnapshot, build_scene_model, estimate_bottle, contact_metrics
+from robust_perception import Observation, ObservationWindow, CorrectionGate
+from robust_planner import SearchSettings, search, uncertainty_scenarios
+from robust_options import add_arguments, parse, selected
+from robust_execution import validate_start, execute
+from kinematics import load_robot
+
+
+def scene(**kwargs):
+    return SceneSnapshot('bottle',(.326,-.12,.84),(1.,0.,0.),.034,(0.,)*29,(0.,0.,0.),1.,
+                         base_height=.76,**kwargs)
+
+
+def observation(s=None, *, frame=1, stamp=1., offset=(0,0,0)):
+    s = s or scene()
+    g = dict(face=tuple(np.array(s.face)+offset),normal=s.normal,radius=s.radius,base_height=s.base_height)
+    return Observation(g,s.q,s.imu,stamp,frame)
+
+
+def test_window_requires_three_unique_fresh_frames_and_rejects_identity_jump():
+    w = ObservationWindow()
+    assert w.consume(observation(frame=1,stamp=1),1) is None
+    with pytest.raises(ValueError,match='duplicate'):
+        w.consume(observation(frame=1,stamp=1),1)
+    for i in (2,3):
+        stamp = 1.+(i-1)*.1
+        assert w.consume(observation(frame=i,stamp=stamp),stamp) is None
+    assert w.consume(observation(frame=4,stamp=1.3),1.3) is not None
+    with pytest.raises(ValueError,match='identity'):
+        w.consume(observation(frame=5,stamp=1.4,offset=(0,.04,0)),1.4)
+    with pytest.raises(ValueError,match='Stale'):
+        w.consume(observation(frame=6,stamp=6),7)
+
+
+def test_small_jitter_does_not_retarget_and_consistent_shift_is_bounded():
+    s = scene(); gate = CorrectionGate(s)
+    np.testing.assert_array_equal(gate.update(observation(offset=(0,.0005,0)),0),[0,0,0])
+    out = gate.update(observation(frame=2,offset=(0,.003,0)),0)
+    assert 0 < out[1] <= .0005
+    np.testing.assert_array_equal(gate.update(observation(frame=3,offset=(0,.004,0)),0,freeze=True),out)
+    with pytest.raises(RuntimeError,match='envelope'):
+        gate.update(observation(frame=4,offset=(0,.01,0)),0)
+    with pytest.raises(RuntimeError,match='press direction'):
+        gate.update(observation(frame=5,offset=(.02,0,0)),0,freeze=True)
+
+
+def test_snapshot_age_is_not_execution_expiry_but_movement_invalidates():
+    s = scene()
+    config = (s.q,s.imu,100.,0.,0.)
+    validate_start(s,config,observation(stamp=100))
+    changed = np.array(s.q); changed[22] += .02
+    with pytest.raises(RuntimeError,match='moved'):
+        validate_start(s,(changed,s.imu,100.,0.,0.),observation(stamp=100))
+    observed = observation()
+    lifted = replace(observed,geometry=dict(observed.geometry,object_height=s.object_height+.02))
+    with pytest.raises(RuntimeError,match='vertical'):
+        validate_start(s,config,lifted)
+    with pytest.raises(RuntimeError,match='vertical'):
+        CorrectionGate(s).update(lifted,0)
+
+
+def test_missing_bottom_and_transparent_depth_reject_without_table_fallback():
+    from vision import CameraIntrinsics
+    with pytest.raises(ValueError,match='depth'):
+        estimate_bottle(np.zeros((100,100)),(20,20,80,90),CameraIntrinsics(100,100,50,50),np.eye(4))
+    with pytest.raises(ValueError,match='bottom'):
+        replace(scene(),base_height=None)
+
+
+def test_trial_config_cli_precedence_and_opt_in(tmp_path):
+    path = tmp_path/'trial.json'
+    path.write_text(json.dumps(dict(motion_planner='robust',planning_budget_s=6,planning_scenarios=2)))
+    parser = argparse.ArgumentParser(); add_arguments(parser)
+    args, settings = parse(parser,['--trial-config',str(path),'--planning-budget-s','3'])
+    assert selected(['--trial-config',str(path)])
+    assert not selected(['--trial-config',str(path),'--motion-planner','legacy'])
+    assert args.planning_budget_s == settings.budget_s == 3 and settings.scenarios == 2
+    assert not selected([])
+    with pytest.raises(ValueError):
+        SearchSettings(budget_s=float('nan'))
+    with pytest.raises(ValueError,match='integers'):
+        SearchSettings(scenarios=1.5)
+
+
+def test_uncertainty_is_deterministic_nominal_first_and_bias_fixed_per_trial():
+    rows = uncertainty_scenarios(SearchSettings(seed=123),scene())
+    assert rows == uncertainty_scenarios(SearchSettings(seed=123),scene())
+    assert rows[0]['position'] == [0,0,0]
+    assert rows[1]['position'] != [0,0,0]
+    assert len(rows) == 20
+
+
+@pytest.fixture
+def robot():
+    path = Path(__file__).resolve().parents[3]/'_local/bottle_push/menagerie/unitree_g1/g1.xml'
+    if not path.exists():
+        pytest.skip('Menagerie asset not installed')
+    cal = dict(tip_offset_m=(.1,0,0),pelvis_height_m=.79)
+    _,q = load_robot(path,(.1,0,0),.79)
+    return path,cal,replace(scene(),q=tuple(q))
+
+
+def test_b_wall_is_fixed_low_front_is_free_but_back_is_blocked(robot):
+    import mujoco
+    path,cal,s = robot
+    kin = build_scene_model(path,cal,s)
+    wall = kin.model.geom('robust_wall').id
+    wall_pos = ' '.join(map(str,kin.model.geom_pos[wall]))
+    wall_size = ' '.join(map(str,kin.model.geom_size[wall]))
+    # Probe the actual generated wall, independently of the robot's starting pose.
+    model = mujoco.MjModel.from_xml_string(f'''<mujoco><worldbody>
+      <geom name="wall" type="box" pos="{wall_pos}" size="{wall_size}"/>
+      <body name="probe"><freejoint/><geom name="tip" type="sphere" size=".015"/></body>
+      </worldbody></mujoco>''')
+    data = mujoco.MjData(model)
+    for position,blocked in [((s.wall_x-.05,0,.60),False),((s.wall_x+.05,0,.60),True),
+                             ((s.wall_x+.05,0,.84),False)]:
+        data.qpos[:3] = position; mujoco.mj_forward(model,data)
+        dist = mujoco.mj_geomDistance(model,data,0,1,1.,None)
+        assert (dist < 0) == blocked
+    frozen = kin.model.geom_pos[wall].copy()
+    adr = kin.model.joint('robust_object_joint').qposadr[0]
+    kin.data.qpos[adr] += .05; mujoco.mj_forward(kin.model,kin.data)
+    np.testing.assert_array_equal(kin.model.geom_pos[wall],frozen)
+
+
+def test_absolute_imu_yaw_is_not_floor_frame_heading(robot):
+    path,cal,s = robot
+    kin = build_scene_model(path,cal,replace(s,imu=(0.,0.,1.2)))
+    np.testing.assert_allclose(kin.model.body_quat[kin.model.body('pelvis').id],[1.,0.,0.,0.])
+
+
+def test_deadline_returns_no_plan_and_never_commands_hardware(robot):
+    path,cal,s = robot
+    plan = search(path,cal,s,SearchSettings(budget_s=.00001,scenarios=1))
+    assert plan.candidate is None and plan.report['completed_rollouts'] == 0
+    with pytest.raises(RuntimeError,match='No fully verified'):
+        execute(plan,path,cal,SimpleNamespace(),lambda:pytest.fail('no IO'),lambda:None,SearchSettings())
+
+
+def test_real_robust_parser_is_importable_without_sdk():
+    import robust_push
+    assert callable(robust_push.main)
+
+
+def test_search_compares_all_accepted_candidates_and_breaks_ties_by_duration(monkeypatch):
+    import robust_planner as planner
+    from concurrent.futures import Future
+    dummy = SimpleNamespace(data=SimpleNamespace(qpos=np.zeros(29)),update=lambda q:None)
+    monkeypatch.setattr(planner,'build_scene_model',lambda *a:dummy)
+    monkeypatch.setattr(planner,'generate_candidate',lambda kin,s,index,*a:SimpleNamespace(
+        index=index,min_joint_margin_rad=.1,duration_s=100-index))
+    class Pool:
+        def __init__(self,**kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def submit(self,fn,s,c,condition,deadline):
+            result = Future()
+            result.set_result(dict(completed=True,success=True,min_clearance_m=.004 if c.index==0 else .02,
+                                   target_margin_m=.02,min_joint_margin_rad=.1))
+            return result
+    monkeypatch.setattr(planner,'ProcessPoolExecutor',Pool)
+    result = planner.search('unused',{},scene(),SearchSettings(max_candidates=3,scenarios=2,max_rollouts=6))
+    assert result.candidate.index == 2
+    assert result.report['completed_rollouts'] == 6 and not result.report['target_1000_met']
+
+
+def test_preview_uses_no_arm_or_execute_path(monkeypatch,tmp_path):
+    import robust_push as rp
+    calibration = dict(tip_offset_m=(.1,0,0),tip_radius_m=.015,pelvis_height_m=.79,
+                       position_uncertainty_m=.001,reference_imu_rpy_rad=[0,0,0])
+    monkeypatch.setattr(rp,'read_calibration',lambda *a,**k:(calibration,None))
+    class Detector:
+        def __init__(self,**kwargs): pass
+        def detect(self,image): return []
+    runtime = SimpleNamespace(module=lambda n:SimpleNamespace(perception=lambda n:SimpleNamespace(YoloDetector=Detector)))
+    monkeypatch.setattr(rp,'J1CameraRuntime',lambda *a:runtime)
+    monkeypatch.setattr(rp,'load_robot',lambda *a:(object(),np.zeros(29)))
+    monkeypatch.setattr(rp,'ArmKinematics',lambda m:SimpleNamespace(update_fixed_base=lambda *a:None))
+    monkeypatch.setattr(rp,'CalibratedHeadCamera',lambda *a:object())
+    monkeypatch.setattr(rp,'J1RgbdCamera',lambda *a:SimpleNamespace(close=lambda:None))
+    class Observer:
+        frames,rejections = [],{}
+        def __init__(self,*a): pass
+        def initial(self): return observation()
+        def close(self): pass
+    monkeypatch.setattr(rp,'ContinuousObserver',Observer)
+    monkeypatch.setattr(rp,'search',lambda *a,**k:SimpleNamespace(candidate=object(),to_dict=lambda:dict(accepted=True)))
+    monkeypatch.setattr(rp,'ArmMotion',lambda *a,**k:pytest.fail('preview opened arm'))
+    state = tmp_path/'state.json'
+    state.write_text(json.dumps(dict(motor_q_rad=[0]*29,imu_rpy_rad=[0]*3)))
+    output = tmp_path/'result.json'
+    assert rp.main(['--task','bottle','--model','unused','--base-transform','unused','--weights','unused',
+                    '--state-json',str(state),'--output',str(output)]) == 0
+    data = json.loads(output.read_text())
+    assert data['planning_completed'] and not data['completed'] and data['physical_push_success'] is None

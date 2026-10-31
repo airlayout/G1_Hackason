@@ -56,6 +56,7 @@ def estimate_button_target(
     min_depth_m: float = 0.15,
     max_depth_m: float = 2.0,
     expected_face_xyz: np.ndarray | None = None,
+    tracking: bool = False,
 ) -> ButtonTarget:
     """カラー画素に位置合わせ済みの深度と、同じ画像の検出枠を使う。
 
@@ -87,10 +88,14 @@ def estimate_button_target(
     ys, xs = np.mgrid[:height, :width]
     central = ((np.abs(xs - center_u) <= 0.35 * half_w)
                & (np.abs(ys - center_v) <= 0.35 * half_h))
+    if tracking and expected_face_xyz is not None:
+        # Track the visible face around an occluding fingertip, not its depth.
+        central = ((xs-center_u)/(.85*half_w))**2 + ((ys-center_v)/(.85*half_h))**2 <= 1
+    min_visible_fraction = .20 if tracking else .6
     valid = np.isfinite(depth) & (depth >= min_depth_m) & (depth <= max_depth_m)
     central_valid = central & valid
     valid_fraction = float(central_valid.sum() / central.sum())
-    if central_valid.sum() < 12 or valid_fraction < 0.6:
+    if central_valid.sum() < 12 or valid_fraction < min_visible_fraction:
         raise ValueError("ボタン中央の有効深度が不足しています")
     face_depth = float(np.median(depth[central_valid]))
     face_optical = _points(np.array([[center_u, center_v]]),
@@ -142,7 +147,7 @@ def estimate_button_target(
         if expected.shape != (3,) or not np.all(np.isfinite(expected)):
             raise ValueError("追跡中のボタン位置が不正です")
         expected_optical = rotation.T @ (expected-transform[:3, 3])
-        keep = np.abs((face_points-expected_optical) @ inward_optical) <= 0.008
+        keep = np.abs((face_points-expected_optical) @ inward_optical) <= (.002 if tracking else .008)
         face_points = face_points[keep]
     if len(face_points) < 12:
         raise ValueError("遮蔽によりボタン表面の有効深度が不足しています")
@@ -150,13 +155,17 @@ def estimate_button_target(
     inliers = np.abs(offsets-np.median(offsets)) <= 0.002
     face_points = face_points[inliers]
     valid_fraction = float(len(face_points) / central.sum())
-    if len(face_points) < 12 or valid_fraction < 0.6:
+    if len(face_points) < 12 or valid_fraction < min_visible_fraction:
         raise ValueError("遮蔽によりボタン表面の有効深度が不足しています")
     face_center = face_points.mean(axis=0)
     _, _, face_vh = np.linalg.svd(face_points - face_center, full_matrices=False)
     face_normal = face_vh[-1]
     if face_normal @ inward_optical < 0:
         face_normal = -face_normal
+    if tracking:
+        # The freshly fitted surrounding panel fixes orientation when the centre
+        # is covered. Do not fit an oblique plane through fingertip boundary pixels.
+        face_normal = inward_optical
     if (face_normal @ inward_optical < np.cos(np.deg2rad(15))
             or np.max(np.abs((face_points-face_center) @ face_normal)) > 0.002):
         raise ValueError("ボタン表面が不均一または手先に遮蔽されています")

@@ -59,6 +59,7 @@ class BottleSettings:
 
 
 def add_bottle_arguments(parser, *, simulation=False):
+    parser.add_argument('--motion-planner', choices=('legacy',), default='legacy')
     parser.add_argument("--weights", default=None, help="ボトル用YOLO重み。既定: yolo26n.pt (無ければ公式から取得)")
     parser.add_argument("--confidence", type=float, default=0.25)
     parser.add_argument("--device", default="cpu")

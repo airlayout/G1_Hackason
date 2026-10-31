@@ -47,6 +47,10 @@ def build_argument_parser():
 
 
 def main(argv=None):
+    from robust_options import selected
+    if selected(argv):
+        from robust_push import main as robust_main
+        return robust_main(argv, task='bottle')
     parser = build_argument_parser()
     try:
         args, policy = resolve_trial_arguments(parser, argv)

@@ -35,6 +35,7 @@ class CorrectionTiming:
 
 
 def add_correction_arguments(parser):
+    parser.add_argument('--motion-planner', choices=('legacy',), default='legacy')
     parser.add_argument("--alignment-mode", choices=("single", "iterative"), default="single",
                         help="single: 手前で1回だけ再計測。iterative: 従来の反復再計測")
     parser.add_argument("--normal-motion", choices=("smooth", "stepped"), default="smooth",

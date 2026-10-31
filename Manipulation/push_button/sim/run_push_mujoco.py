@@ -10,6 +10,10 @@ from task_cli import dispatch
 
 
 def main(argv=None):
+    from robust_options import selected
+    if selected(argv):
+        from run_robust_push_mujoco import main as robust_main
+        return robust_main(argv)
     from run_vision_mujoco import main as button_main
     from run_bottle_mujoco import main as bottle_main
     return dispatch(button_main, bottle_main, argv)
