@@ -615,6 +615,8 @@ J1GEN_BUTTON_DETECTOR=yolo OMP_NUM_THREADS=2 $P Button_Press/Yada/contest/evalua
     --agent Button_Press/J1-gen/contest_agent --seeds practice --set realistic --report --workers 4
 ```
 
+- 既定（`elevator.yaml` の `yolo.weights`）と違う重みを試すときは、`J1GEN_BUTTON_WEIGHTS=<.pt のパス>` を付ける（2026-10-31）。
+
 #### 撮った写真で確かめる（`real/check_button_photos.py`）
 
 実機の日に撮った写真で、classic と YOLO がボタンを見つけられるかを並べて比べる。シミュレーションの画像だけで
@@ -674,3 +676,27 @@ $P Button_Press/J1-gen/real/check_button_photos.py _local/button_press/button_yo
 
 試したこと（2026-10-12）: 実機の写真はまだ無いので、シミュレーションの写真で、枠の下書き・保存・読み直し・
 混ぜ方をテストで確かめた（画面の操作は未確認）。
+
+#### PC2 で動かす（ONNX、`real/export_button_onnx.py`）
+
+G1 の PC2 の Python（3.12）では torch で GPU を使えず、ultralytics も入っていない。そこで重みを ONNX に書き出し、
+onnxruntime（CPU）で動かす。`configs/elevator.yaml` の `yolo.weights` に `.onnx` を書くと、`YoloButtonDetector` が
+Perception の `OnnxYoloDetector` で動く（torch・ultralytics を読み込まない）。
+
+```bash
+$P Button_Press/J1-gen/real/export_button_onnx.py      # .pt の隣に best.onnx を書き出し、.pt と比べる
+```
+
+- 書き出しは `end2end=False`（従来型の出力。重なりの間引きは `onnx_yolo.py` が行う）、opset 17（PC2 の TensorRT 8.5 でも読める）。
+  **YOLO26 の end-to-end の出力（`nms=False`。Perception の `export_onnx.py` の書き方）だと、このボタンのモデルでは `.pt` と
+  結果が大きく変わった**（確からしさが 1.0 に張り付き、4 個が 2 個になる。`.pt` の推論は従来型の出口を使っている）
+- 比べ方は 2 つ。1. 同じモデルか（`.pt` も 640×640 の正方形に入れて比べる。合否）、2. 今の使い方との差（ultralytics は
+  `.pt` を横長のまま入れるので、確からしさが少し変わる。記録だけ）
+- PC2 では `yolo.threads: 4` がよい（全コアより速い）
+
+結果（2026-10-31、検証用 30 枚と、ラボのエレベーターのスマホの写真 15 枚）:
+- 1. 同じモデルか: **45 / 45 で一致**（確からしさの差 0.000）
+- 2. 今の使い方との差: 個数と矢印が同じ 44 / 45（確からしさの差は最大 0.18）。残りの 1 枚は、確からしさが境目（0.4）に近い
+  ボタンが 1 つ ONNX 側で出なかった
+- 1 枚の時間（候補づくりを含む）: ノート PC の CPU で `.pt` 289 ms / `.onnx` 96 ms。**PC2 で 4 スレッド 179 ms**（全コアだと 397 ms）、
+  準備 0.2 秒。PC2 で torch・ultralytics を読み込まないことも確かめた

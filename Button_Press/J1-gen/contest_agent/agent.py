@@ -46,9 +46,12 @@ class J1genElevatorAgent(Agent):
             elevator["detector"] = os.environ["J1GEN_BUTTON_DETECTOR"]
         if os.environ.get("J1GEN_BUTTON_SET"):
             elevator["geometry"]["button_set"] = os.environ["J1GEN_BUTTON_SET"]
+        if os.environ.get("J1GEN_BUTTON_WEIGHTS"):  # 候補の重みを、既定を変えずに評価するとき
+            elevator["yolo"]["weights"] = os.environ["J1GEN_BUTTON_WEIGHTS"]
         self.ctl = j1gen("elevator_press").ElevatorPressController.from_config(
             j1gen_config("robot.yaml"), j1gen_config("press.yaml"), j1gen_config("arm.yaml"), elevator)
-        print(f"[j1gen-agent] ボタンを探す方法: {elevator['detector']}、押す組: {elevator['geometry'].get('button_set', 'general')}")
+        weights = f"（重み: {elevator['yolo']['weights']}）" if elevator["detector"] == "yolo" else ""
+        print(f"[j1gen-agent] ボタンを探す方法: {elevator['detector']}{weights}、押す組: {elevator['geometry'].get('button_set', 'general')}")
 
     def reset(self, task: TaskInfo) -> None:
         self.ctl.reset(task.target, task.control_dt, task.upper_kp)
