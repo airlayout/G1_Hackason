@@ -7,6 +7,30 @@
 - `check_yolo.py` — YOLO(人の検出)がそのマシンで動くか・速さを確かめる。G1のPC2の上で、torchを使わずONNXで動かす
   (`export_onnx.py` で書き出し、PC2用の配布物は `fetch_pc2_wheels.sh`)
 - `probe_zmq_camera.py` — 認識処理を含まない、画像取得だけの動作確認スクリプト
+- `person_alert.py` / `person_alert_receiver.py` — 人を検出したら写真を G1 に残し、PC へも送る（下記）
+
+## person_alert.py（人を検出したら写真を残して PC へ送る） ※2026-10-31 実機で確認
+
+G1 の PC2 で動かす。人が 3 フレーム続けて写ったら「出来事」にして、枠を描いた写真と記録（`events.jsonl`）を
+`~/perception/_local/perception/person_alert/` に保存し、ZMQ（5560 番）で配信する。そのあと 10 秒は出さない（人がいる間は 10 秒ごと）。
+写真は 1000 枚まで（超えたら古いものから消す。記録は消さない）。**PC がつないでいなくても G1 には必ず残る**
+（つないでいなかった間の写真は PC には届かないので、要るなら `scp` で持ってくる）。準備（エンジン・`~/perception/` への配置）は
+`Perception/docs/report/2026-10-31_g1_webcam_yolo.md` を参照。
+
+```bash
+# G1（PC2）: GPU 版。Web カメラ（/dev/video6、横向きなので --rotate cw）
+cd ~/perception && /usr/bin/python3 real/person_alert.py --webcam 6 --rotate cw --backend tensorrt --model yolo26n.engine
+```
+```bash
+# PC: 受け取って _local/perception/person_alert_received/ に保存し、表示する（PC から G1 へつなぐので WSL でも設定は要らない）
+G1_HuggingFace/venv/bin/python Perception/real/person_alert_receiver.py --host 192.168.0.82
+```
+
+- G1 は 5 秒ごとに生きている合図を送り、PC は 15 秒届かなければ警告する
+- 2026-10-31 の確認: GPU 版で約 28 fps（カメラの 30 fps でほぼ頭打ち）。60 秒で出来事 4 件、PC に 4 件とも届いた。PC を止めた状態でも
+  G1 に保存され、`--max-photos 3` で古い写真から消えた
+- 写真の時刻は G1 の時計（その日はラボPC より約 1 時間遅れていた）
+- カメラは同時に 1 つのプロセスしか開けない。`check_yolo.py` などと同時には動かせない
 
 ## run_real.py（YOLO検出パイプライン）
 

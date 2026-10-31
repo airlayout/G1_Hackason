@@ -30,6 +30,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from common.alert import draw_detections  # noqa: E402
 from common.detector import build_detector  # noqa: E402
 
 # リポジトリの中(Perception/real/)ならリポジトリ直下、PC2 に写した ~/perception/real/ なら ~/perception を基準にする
@@ -88,16 +89,6 @@ def frames(args: argparse.Namespace):
             yield f"{i:05d}", img
 
 
-def draw(img: np.ndarray, dets: list) -> np.ndarray:
-    out = img.copy()
-    for d in dets:
-        x1, y1, x2, y2 = (int(v) for v in d.bbox)
-        cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(out, f"{d.class_name} {d.confidence:.2f}", (x1, max(y1 - 4, 12)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                    (0, 255, 0), 1)
-    return out
-
-
 def main() -> int:
     args = parse_args()
     out_dir = args.out_dir or REPO_ROOT / "_local" / "perception" / "check_yolo" / time.strftime("%Y%m%d_%H%M%S")
@@ -126,7 +117,7 @@ def main() -> int:
         times_ms.append((time.perf_counter() - t) * 1000.0)
         counts.append(len(dets))
         if dets and saved < args.save_max:
-            cv2.imwrite(str(out_dir / f"{name}_n{len(dets)}.jpg"), draw(img, dets))
+            cv2.imwrite(str(out_dir / f"{name}_n{len(dets)}.jpg"), draw_detections(img, dets))
             saved += 1
         if args.image or len(times_ms) % 10 == 0:
             print(f"[check_yolo] {name}: {times_ms[-1]:.1f} ms、検出 {len(dets)}"
