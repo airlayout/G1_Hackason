@@ -183,7 +183,11 @@ class ClassicButtonDetector:
 
 
 class YoloButtonDetector:
-    """自分で学習した YOLO（クラス up / down）。ボタンの面は、枠に内接する楕円とする。"""
+    """自分で学習した YOLO（クラス up / down）。ボタンの面は、枠に内接する楕円とする。
+
+    重みが .pt なら ultralytics（torch を使う）、.onnx なら onnxruntime（torch・ultralytics なし。G1 の PC2 向け。
+    real/export_button_onnx.py で .pt から書き出す）で動かす。
+    """
 
     def __init__(self, cfg: dict[str, Any]) -> None:
         from .config import resolve_repo_path
@@ -191,11 +195,18 @@ class YoloButtonDetector:
 
         weights = resolve_repo_path(cfg["weights"])
         if not weights.is_file():
-            raise FileNotFoundError(f"ボタンの YOLO の重みが無い: {weights}（sim/train_button_yolo.py で作る）")
-        yolo = perception("detector.yolo_detector")
-        self._det = yolo.YoloDetector(model_name=str(weights), classes=None,
-                                      confidence_threshold=float(cfg.get("confidence", 0.4)),
-                                      device=str(cfg.get("device", "auto")))
+            hint = "real/export_button_onnx.py で .pt から書き出す" if weights.suffix == ".onnx" else "sim/train_button_yolo.py で作る"
+            raise FileNotFoundError(f"ボタンの YOLO の重みが無い: {weights}（{hint}）")
+        conf = float(cfg.get("confidence", 0.4))
+        if weights.suffix == ".onnx":
+            threads = cfg.get("threads")
+            self._det = perception("detector.onnx_yolo").OnnxYoloDetector(
+                model_path=str(weights), classes=None, confidence_threshold=conf,
+                num_threads=int(threads) if threads else None)
+        else:
+            yolo = perception("detector.yolo_detector")
+            self._det = yolo.YoloDetector(model_name=str(weights), classes=None, confidence_threshold=conf,
+                                          device=str(cfg.get("device", "auto")))
         # 最初の 1 回の推論だけが遅い（2026-10-12、ノート PC の CPU で 1.1 秒。2 回目からは約 0.17 秒）。
         # 実時間で動く模擬 G1・実機では、その間ロボットが前の指令のまま待つので、試行の前に済ませておく
         self._det.detect(np.zeros((480, 640, 3), np.uint8))

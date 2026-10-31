@@ -148,6 +148,41 @@ class TestYoloCandidates(unittest.TestCase):
         # Perception の YoloDetector には BGR で渡す
         self.assertEqual(int(det._det.frames[0][0, 0, 2]), 200)
 
+    def test_backend_follows_weights_suffix(self) -> None:
+        """重みが .onnx なら onnxruntime（OnnxYoloDetector）、.pt なら ultralytics（YoloDetector）で作る。"""
+        import tempfile
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from common.elevator_buttons import YoloButtonDetector
+
+        made: list[tuple[str, dict]] = []
+
+        class Fake:
+            def __init__(self, kind: str, **kw: object) -> None:
+                made.append((kind, kw))
+
+            def detect(self, frame: np.ndarray) -> list:
+                return []
+
+        modules = {"detector.onnx_yolo": SimpleNamespace(OnnxYoloDetector=lambda **kw: Fake("onnx", **kw)),
+                   "detector.yolo_detector": SimpleNamespace(YoloDetector=lambda **kw: Fake("pt", **kw))}
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch("common.perception_bridge.perception", side_effect=lambda name: modules[name]):
+            for suffix in (".onnx", ".pt"):
+                (Path(d) / f"best{suffix}").write_bytes(b"")
+            YoloButtonDetector({"weights": str(Path(d) / "best.onnx"), "confidence": 0.5, "threads": 4})
+            YoloButtonDetector({"weights": str(Path(d) / "best.pt"), "confidence": 0.5, "device": "cpu"})
+            YoloButtonDetector({"weights": str(Path(d) / "best.onnx"), "threads": None})
+            with self.assertRaisesRegex(FileNotFoundError, "export_button_onnx"):
+                YoloButtonDetector({"weights": str(Path(d) / "none.onnx")})
+        self.assertEqual([k for k, _ in made], ["onnx", "pt", "onnx"])
+        self.assertEqual((made[0][1]["num_threads"], made[0][1]["confidence_threshold"]), (4, 0.5))
+        self.assertEqual(made[1][1]["device"], "cpu")
+        self.assertIsNone(made[2][1]["num_threads"])
+        self.assertEqual(made[2][1]["confidence_threshold"], 0.4)
+
     def test_val_split_has_both_sets(self) -> None:
         """学習データの検証用に、basic（偶数の種）と realistic（奇数の種）が半分ずつ入る。"""
         import sys

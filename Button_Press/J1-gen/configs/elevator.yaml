@@ -18,9 +18,14 @@ classic:
 
 yolo:
   # sim/train_button_yolo.py で学習した重み（git の対象外）。クラスは up / down
+  # .onnx を書くと onnxruntime で動かす（torch・ultralytics なし。G1 の PC2 向け）。.onnx は real/export_button_onnx.py で
+  # .pt の隣に書き出す（例: _local/button_press/button_yolo/weights/best.onnx）
   weights: _local/button_press/button_yolo/weights/best.pt
   confidence: 0.4
+  # .pt のときだけ使う（auto / cpu / 0 など）
   device: auto
+  # .onnx のときだけ使う。onnxruntime のスレッド数（null = 全コア。PC2 では 4 がよい: Perception/docs/report/2026-10-31_g1_webcam_yolo.md）
+  threads: null
 
 # 頭カメラの位置の補正（pelvis 座標で足す [m]）。null なら configs/localize.yaml の calibration.offset_pelvis_m
 # （実機日の段階4の較正の結果。ボトルと同じ頭カメラなので同じ値を使う）。ボタンだけ別の値にするときは [x, y, z] を書く

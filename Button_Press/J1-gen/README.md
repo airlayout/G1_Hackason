@@ -700,3 +700,9 @@ $P Button_Press/J1-gen/real/export_button_onnx.py      # .pt の隣に best.onnx
   ボタンが 1 つ ONNX 側で出なかった
 - 1 枚の時間（候補づくりを含む）: ノート PC の CPU で `.pt` 289 ms / `.onnx` 96 ms。**PC2 で 4 スレッド 179 ms**（全コアだと 397 ms）、
   準備 0.2 秒。PC2 で torch・ultralytics を読み込まないことも確かめた
+- 評価環境（realistic、練習用の 20 試行、`.onnx`）: **20 / 20**、点灯までの平均 9.07 秒（`.pt` と同じ）、壁・柱との接触力は最大 2.0 N（1 試行だけ）
+
+```bash
+J1GEN_BUTTON_DETECTOR=yolo J1GEN_BUTTON_WEIGHTS=_local/button_press/button_yolo/weights/best.onnx OMP_NUM_THREADS=2 \
+    $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent --seeds practice --set realistic --report --workers 4
+```

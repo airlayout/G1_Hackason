@@ -132,6 +132,15 @@ ssh unitree@192.168.0.82 'OPENBLAS_NUM_THREADS=1 ~/button_press/venv/bin/python 
 | （任意）ブラウザの操作画面 | 開始・停止のボタンを MJPEG の画面に付ける | +0.5〜1 日 | — |
 | 合計 | | **3〜4.5 日**（任意を入れて 3.5〜5.5 日） | **約 3 回** |
 
+### 段階 2 のうち、実機なしで進めたこと（2026-10-31）
+
+| 項目 | 結果 |
+|---|---|
+| lowstate の受け取りを軽くする | 測り分けると、CPU を使っていたのは変換（`parse_lowstate`、約 2%）ではなく、**1 通ごとに Python のコールバックが呼ばれて受信データを変換すること**（何もしないコールバックでも 72%）だった。そこで `common/dds.py` に `LatestLowState`（最新の 1 通だけを持つ `DataReader` を作り、読むときに取りに行く）を足し、`DdsBackend`（押す処理）と `LowStateReader` で使う。**PC2 の実機（受け取るだけ、dry-run）で 75% → 10%**、読んだ値の古さは最大 0.3 ms。全部の数を数える受け取り頻度の確認（`check_connection.py`）だけ、今までのコールバック（`every_message=True`）のまま |
+| ボタンの YOLO を ONNX で | `configs/elevator.yaml` の `yolo.weights` に `.onnx` を書くと onnxruntime で動く。書き出しと `.pt` との比べ方は `real/export_button_onnx.py`（README の「PC2 で動かす（ONNX）」）。45 枚で `.pt` と同じモデルになることを確かめ、**PC2 で 1 枚 179 ms（4 スレッド）**、torch・ultralytics なしで動いた |
+| シミュレーションでの確認 | 模擬ロボットのテスト（lowstate が途切れたら止まる を含む）を含め 255 件 OK。評価環境（realistic、20 試行）で ONNX でも **20 / 20**、平均 9.07 秒（`.pt` と同じ） |
+| まだ | PC2 の中で実際に腕を動かすこと（次の実機日）。エレベーターの `run_dds.py`（Yada さんの `real_g1.py`）は自分の lowstate の受け取り（コールバック）を持っていて、今回の変更は届かない（段階 4 で見る） |
+
 ずれやすいところ: PC2 で別の班の処理（地図づくり・カメラの配信）と同時に動かしたときの CPU の取り合い（+0.5〜1 日）、
 押す処理で GPU（TensorRT）を使いたくなったとき（システムの Python 3.8 でしか動かないので、検出だけ別のプロセスにする。+1 日）。
 
