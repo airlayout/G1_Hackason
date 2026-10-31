@@ -27,7 +27,7 @@ STAGED_CLEARANCES_M = (0.10, 0.07, 0.05, 0.03)
 
 
 class AlignmentNotSettled(ValueError):
-    """FK誤差は監視範囲内だが、接触前の位置合わせがまだ収束していない。"""
+    """接触前の位置合わせが制限時間内に収束していない。"""
 
 
 def validate_push_distance(value):
@@ -550,8 +550,6 @@ class BottlePushRoutine:
                          'base_transform': self.kin.body_transform('pelvis').tolist()})
             if not 0 < dt <= .1:
                 raise ValueError('接触前の状態更新が100ms以上途絶えました')
-            if np.linalg.norm(error) > .008:
-                raise ValueError('ボトル手前のFK位置合わせ誤差が8mmを超えました')
             settled = settled+1 if np.linalg.norm(error) <= .003 else 0
             if settled >= 3:
                 return controller
@@ -615,8 +613,6 @@ class BottlePushRoutine:
                         self.report['alignment_error_xyz_m'] = error.tolist()
                         row.update(fk_error_xyz_m=error.tolist(), fk_error_m=float(np.linalg.norm(error)),
                                    retry_required=reasons)
-                        if np.linalg.norm(error) > .008:
-                            raise ValueError('ボトル手前のFK位置合わせ誤差が8mmを超えました')
                         if np.linalg.norm(error) > .003 and 'fk_unsettled' not in reasons:
                             reasons.append('fk_unsettled')
                         if not reasons:
@@ -695,8 +691,6 @@ class BottlePushRoutine:
         self.refresh()
         alignment_error = self.kin.tip_position()-(face-(self.radius+self.settings.clearance)*FORWARD)
         self.report['alignment_error_xyz_m'] = alignment_error.tolist()
-        if np.linalg.norm(alignment_error) > .008:
-            raise ValueError('ボトル手前のFK位置合わせ誤差が8mmを超えました')
         if self.live_tracking and not self.stop_before_contact:
             self.localizer.start_tracking(observation)
         return before, settings, self.settle_before_push(face, settings)

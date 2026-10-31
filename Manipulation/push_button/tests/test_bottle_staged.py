@@ -213,18 +213,50 @@ def test_fk_confirmation_requires_three_consecutive_samples(monkeypatch):
     assert len(r.report['alignment_steps']) == 6
 
 
-def test_fk_error_above_8mm_is_fatal_instead_of_using_extra_budget(monkeypatch):
-    r, events, _ = staged_routine(monkeypatch)
-    r.pause_handler = lambda *args, **kwargs: pytest.fail('fatal FK error must not offer resume')
+@pytest.mark.parametrize('mode', ['staged', 'single'])
+@pytest.mark.parametrize('offset,should_finish', [(.009, True), (.011, False)])
+def test_alignment_allows_9mm_but_limits_command_tracking_error(monkeypatch, mode, offset, should_finish):
+    r, events, _ = staged_routine(monkeypatch, mode=mode)
+    original_move = r.move
+    injected = False
 
-    def bad_alignment(*args, **kwargs):
-        raise ValueError('ボトル手前のFK位置合わせ誤差が8mmを超えました')
+    def move_with_offset(*args, **kwargs):
+        nonlocal injected
+        original_move(*args, **kwargs)
+        if r.localizer.observation_index == 2 and not injected:
+            r.kin.tip[1] += offset
+            injected = True
 
-    r.settle_before_push = bad_alignment
+    r.move = move_with_offset
     report = r.execute()
-    assert report['fatal_error'] and report['approach_extra_retry_count'] == 0
-    assert len(report['approach_steps']) == 1 and not report['motion_completed']
-    assert not any(event[0] == 'push' for event in events)
+    assert injected
+    assert report['motion_completed'] == should_finish
+    if should_finish:
+        assert any(event[0] == 'push' for event in events)
+        assert any(np.linalg.norm(row['error_xyz_m']) > .008 for row in report['alignment_steps'])
+    else:
+        assert '指令と実測の差が1cm' in report['error']
+        assert not any(event[0] == 'push' for event in events)
+
+
+def test_staged_rechecks_unsettled_fk_after_alignment(monkeypatch):
+    r, _, _ = staged_routine(monkeypatch)
+    original_settle = r.settle_before_push
+    injected = False
+
+    def settle_with_late_error(*args, **kwargs):
+        nonlocal injected
+        controller = original_settle(*args, **kwargs)
+        if not injected:
+            r.kin.tip[1] += .009
+            injected = True
+        return controller
+
+    r.settle_before_push = settle_with_late_error
+    report = r.execute()
+    assert report['completed']
+    assert report['approach_steps'][0]['retry_required'] == ['fk_unsettled']
+    assert report['approach_steps'][1]['is_extra']
 
 
 def test_diagnostic_finishes_all_stages_without_contact_or_tracking(monkeypatch):
