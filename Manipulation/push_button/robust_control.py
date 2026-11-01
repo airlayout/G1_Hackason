@@ -4,6 +4,20 @@ import numpy as np
 
 from motion_limits import CONTROL_PERIOD_S
 from trajectory import ARM_TORQUE_LIMITS_NM
+from upper_body_control import WAIST_INDICES, WAIST_TORQUE_LIMIT_NM
+
+
+def waist_support_torque(kin, right_q=None):
+    """Bounded gravity feedforward at the held waist and nominal arm target."""
+    original = kin.data.qpos.copy()
+    try:
+        if right_q is not None:
+            pose = original.copy(); pose[kin.qadr] = right_q; kin.update(pose)
+        addresses = [int(kin.model.joint(index).dofadr[0]) for index in WAIST_INDICES]
+        return np.clip(kin.data.qfrc_bias[addresses],-WAIST_TORQUE_LIMIT_NM,WAIST_TORQUE_LIMIT_NM).copy()
+    finally:
+        if right_q is not None:
+            kin.update(original)
 
 
 class BottleFeedback:

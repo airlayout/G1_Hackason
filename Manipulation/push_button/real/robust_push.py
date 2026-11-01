@@ -23,6 +23,7 @@ from align_button import read_calibration, validate_stationary_pose, ArmMotion
 from pose_history import PoseHistory
 from button_feedback import lamp_level
 from button_detector import make_button_detector, DEFAULT_CONFIDENCE, DEFAULT_IMAGE_SIZE
+from motion_limits import CONTROL_PERIOD_S
 
 
 def main(argv=None, *, task=None):
@@ -43,6 +44,10 @@ def main(argv=None, *, task=None):
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--calibrated', action='store_true')
     parser.add_argument('--stop-before-contact', action='store_true')
+    parser.add_argument('--static-target', action='store_true',
+        help='ボトルの接触手前診断のみ: 初回の静止計測後は画像の経過時間で停止しない')
+    parser.add_argument('--execute-after-plan',action='store_true',
+        help='ボトルのデータ収集: 3条件合格後に即実行し、姿勢差・FK誤差は記録のみ')
     add_arguments(parser); add_camera_arguments(parser)
     parser.set_defaults(motion_planner='robust')
     args, settings = parse(parser, argv)
@@ -58,6 +63,13 @@ def main(argv=None, *, task=None):
         args.detector_imgsz = DEFAULT_IMAGE_SIZE if args.task == 'button' else 960
     report = dict(schema='g1-robust-trial-v1', task=args.task, completed=False, physical_push_success=None,
                   settings=asdict(settings), arguments=vars(args))
+    report['image_policy'] = dict(static_target_assumed=args.static_target,
+        initial_three_fresh_frames_required=True,continuous_age_check=not args.static_target,
+        capture_pose='current_stationary_state' if args.static_target else 'capture_time_history')
+    report['execute_after_plan'] = args.execute_after_plan
+    report['pose_history_policy'] = dict(sample_period_s=CONTROL_PERIOD_S,
+        warmup_s=.6,max_gap_s=.1,on_unmatched_frame='discard_and_recapture')
+    report['pose_history_rejections'] = []
     arm = motion = observer = camera = None
     state_stop = threading.Event()
     state_thread = None
@@ -65,6 +77,10 @@ def main(argv=None, *, task=None):
     if output.exists():
         parser.error('Use a new --output; previous trial will not be overwritten')
     try:
+        if args.static_target and (args.task != 'bottle' or not args.stop_before_contact):
+            raise ValueError('--static-target requires bottle --stop-before-contact')
+        if args.execute_after_plan and (not args.execute or args.task != 'bottle' or settings.scenarios != 3):
+            raise ValueError('--execute-after-plan requires bottle --execute and 3 scenarios')
         raw = list(sys.argv[1:] if argv is None else argv)
         supplied = any(v == '--stroke' or v.startswith('--stroke=') for v in raw)
         if args.trial_config:
@@ -102,22 +118,32 @@ def main(argv=None, *, task=None):
                 from push_button import ArmSdk
                 arm = ArmSdk(args.network_interface)
             arm.stop_walking()
+            report['state_samples'] = []
+            def record_state(value):
+                history.append(value)
+                report['state_samples'].append(dict(sampled_at_s=time.monotonic(),received_at_s=value[2],
+                    motor_q_rad=list(value[0]),imu_rpy_rad=list(value[1]),
+                    leg_speed_rad_s=float(value[3]),gyro_rad_s=float(value[4])))
             def read_configuration():
                 value = arm.current_configuration()
-                validate_stationary_pose(value, calibration)
-                history.append(value)
+                record_state(value)
+                validate_stationary_pose(value,calibration,allow_pose_drift=args.execute_after_plan)
                 return value
             state_lock = threading.Lock()
             state_cache = dict(value=None,error=None)
-            for _ in range(6):
-                state_cache['value'] = read_configuration(); time.sleep(.1)
+            # Populate the same 0.6s window at the running 50Hz cadence. The
+            # old 100ms cadence exceeded the 100ms interpolation limit with
+            # even small RPC/scheduling overheads and rejected the first image.
+            for _ in range(round(.6/CONTROL_PERIOD_S)):
+                state_cache['value'] = read_configuration()
+                time.sleep(CONTROL_PERIOD_S)
             def sample_state():
                 try:
                     while not state_stop.is_set():
                         value = read_configuration()
                         with state_lock:
                             state_cache['value'] = value
-                        state_stop.wait(.02)
+                        state_stop.wait(CONTROL_PERIOD_S)
                 except Exception as exc:
                     with state_lock:
                         state_cache['error'] = exc
@@ -128,8 +154,9 @@ def main(argv=None, *, task=None):
                     value,error = state_cache['value'],state_cache['error']
                 if error is not None:
                     raise RuntimeError(f'State sampler stopped: {error}') from error
-                if value is None or not 0 <= time.monotonic()-value[2] <= .1:
-                    raise RuntimeError('Robot state older than 100ms')
+                max_age = .4 if args.execute_after_plan else .1
+                if value is None or not 0 <= time.monotonic()-value[2] <= max_age:
+                    raise RuntimeError(f'Robot state older than {max_age*1000:.0f}ms')
                 return value
         else:
             state = json.loads(Path(args.state_json).read_text())
@@ -148,7 +175,18 @@ def main(argv=None, *, task=None):
             if not 0 <= time.monotonic()-stamp <= .5:
                 return None
             config = configuration()
-            q, imu = history.at(stamp, config, max_distance_s=.1) if args.execute else config[:2]
+            # The camera is torso-fixed. A stationary-target diagnostic uses the
+            # fresh, stationary torso state rather than an image-time history lookup.
+            try:
+                q, imu = (history.at(stamp, config, max_distance_s=.1)
+                          if args.execute and not args.static_target else config[:2])
+            except ValueError as exc:
+                # This image cannot be paired with a measured robot pose.
+                # Discard it and let the normal camera loop take a newer one;
+                # never substitute the current pose or stop on a single gap.
+                report['pose_history_rejections'].append(dict(frame_id=frame.frame_id,
+                    captured_at_s=float(stamp),rejected_at_s=time.monotonic(),reason=str(exc)))
+                return None
             transform = geometry.transform(q,imu)
             intr = frame.intrinsics
             intr = CameraIntrinsics(intr.fx,intr.fy,intr.cx,intr.cy)
@@ -187,8 +225,12 @@ def main(argv=None, *, task=None):
         if args.task == 'bottle':
             stable_base[0] = initial.geometry['base_height']
         scene = snapshot(args.task,initial,calibration,args)
+        def latest_observation():
+            if args.static_target:
+                return observer.latest(allow_stale=True)
+            return observer.latest()
         def monitor():
-            validate_start(scene,configuration(),observer.latest())
+            validate_start(scene,configuration(),latest_observation(),record_deviations=args.execute_after_plan)
         plan = search(args.model,calibration,scene,settings,monitor=monitor)
         report['plan'] = plan.to_dict()
         if plan.candidate is None:
@@ -196,17 +238,28 @@ def main(argv=None, *, task=None):
         if not args.execute:
             report['planning_completed'] = True
             return 0
-        monitor()
-        print('Navigationを停止し、Bモデルの配置条件と校正を確認してください。')
-        if input('実機の右腕を動かす場合だけ YES と入力: ').strip() != 'YES':
-            report['cancelled'] = True
-            return 1
-        monitor()
-        torque = {'value':np.zeros(7)}
+        if args.execute_after_plan:
+            action = '接触手前の確認' if args.stop_before_contact else f'{scene.push_distance*100:.1f}cmの押し込み'
+            print('シミュレーション3条件合格。直ちに'+action+'動作を開始します。',flush=True)
+        else:
+            monitor()
+            print('Navigationを停止し、Bモデルの配置条件と校正を確認してください。')
+            if input('実機の右腕を動かす場合だけ YES と入力: ').strip() != 'YES':
+                report['cancelled'] = True
+                return 1
+            monitor()
+        torque = {'value':np.zeros(7),'waist':np.zeros(3)}
         motion = ArmMotion(arm,calibration,gravity=lambda config,velocity=None: torque['value'].copy(),
-                           state_sink=history.append,limits=settings.motion_limits)
-        report['execution'] = execute(plan,args.model,calibration,motion,configuration,observer.latest,settings,
-            set_torque=lambda value: torque.update(value=np.array(value)),diagnostic=args.stop_before_contact)
+                           waist_gravity=lambda config: torque['waist'].copy(),
+                           state_sink=record_state,limits=settings.motion_limits,
+                           allow_pose_drift=args.execute_after_plan,synchronous_stream=args.execute_after_plan)
+        report['upper_body_hold'] = motion.upper_body_hold
+        report['execution'] = execute(plan,args.model,calibration,motion,configuration,latest_observation,settings,
+            set_torque=lambda value: torque.update(value=np.array(value)),diagnostic=args.stop_before_contact,
+            record_deviations=args.execute_after_plan,set_waist_torque=lambda value: torque.update(waist=np.array(value)))
+        report['command_publications'] = motion.command_publications
+        if motion.error is not None:
+            report['motion_thread_error'] = str(motion.error)
         report['completed'] = report['execution']['completed']
         if report['completed'] and not args.stop_before_contact:
             # Outcome measurements do not update an execution target or restart the push.

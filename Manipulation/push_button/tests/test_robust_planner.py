@@ -12,7 +12,7 @@ import pytest
 pytest.importorskip('mujoco')
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parents[1]/'real')]
 from robust_scene import SceneSnapshot, build_scene_model, estimate_bottle, contact_metrics
-from robust_perception import Observation, ObservationWindow, CorrectionGate, LatestFrameSampler
+from robust_perception import Observation, ObservationWindow, CorrectionGate, LatestFrameSampler, ContinuousObserver
 from robust_planner import SearchSettings, search, uncertainty_scenarios
 from robust_options import add_arguments, parse, selected
 from robust_execution import validate_start, execute
@@ -43,6 +43,37 @@ def test_window_requires_three_unique_fresh_frames_and_rejects_identity_jump():
         w.consume(observation(frame=5,stamp=1.4,offset=(0,.04,0)),1.4)
     with pytest.raises(ValueError,match='Stale'):
         w.consume(observation(frame=6,stamp=6),7)
+
+
+def test_static_target_read_keeps_original_time_and_does_not_hide_missing_data_or_errors():
+    import threading
+    observer = ContinuousObserver.__new__(ContinuousObserver)
+    observer.lock = threading.Lock()
+    observer.error = None
+    observer.now = lambda: 100.
+    observer.value = observation(stamp=1.)
+    with pytest.raises(RuntimeError, match='fresh'):
+        observer.latest()
+    held = observer.latest(allow_stale=True)
+    assert held is observer.value and held.captured_at == 1.
+    observer.value = None
+    with pytest.raises(RuntimeError, match='observation'):
+        observer.latest(allow_stale=True)
+    observer.value = held
+    observer.error = ValueError('camera failed')
+    with pytest.raises(RuntimeError, match='camera failed'):
+        observer.latest(allow_stale=True)
+
+
+@pytest.mark.parametrize('immediate',[False,True])
+def test_static_target_cannot_be_used_for_a_full_push(tmp_path,immediate):
+    from robust_push import main
+    output = tmp_path/'trial.json'
+    code = main(['--task','bottle','--model','unused','--base-transform','unused',
+        '--weights','unused','--static-target','--output',str(output)]+
+        (['--execute','--calibrated','--execute-after-plan'] if immediate else []))
+    assert code == 2
+    assert '--stop-before-contact' in json.loads(output.read_text())['error']
 
 
 def test_five_hz_frame_jitter_does_not_drop_every_other_image():

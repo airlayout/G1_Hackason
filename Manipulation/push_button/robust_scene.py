@@ -165,11 +165,14 @@ def build_scene_model(path, calibration, scene):
     xyzw = Rotation.from_euler('xyz', (scene.imu[0],scene.imu[1],0.)).as_quat()
     model.body_quat[pelvis] = xyzw[[3, 0, 1, 2]]
     kin.update(q)
-    # Same gains as rt/arm_sdk. Preserve actuator force limits.
-    gains = np.array([40., 40., 40., 40., 15., 15., 15.])
-    model.actuator_gainprm[kin.actuator, 0] = gains
-    model.actuator_biasprm[kin.actuator, 1] = -gains
-    model.actuator_biasprm[kin.actuator, 2] = -1.5
+    # rt/arm_sdk owns waist + both arms. Match all 17 gains, including the
+    # holding joints; leaving the model's kp=500 hides waist sag on hardware.
+    from upper_body_control import UPPER_BODY_JOINTS, UPPER_BODY_KP, UPPER_BODY_KD
+    actuators = np.array([model.actuator(name).id for name in UPPER_BODY_JOINTS])
+    gains = np.array(UPPER_BODY_KP)
+    model.actuator_gainprm[actuators, 0] = gains
+    model.actuator_biasprm[actuators, 1] = -gains
+    model.actuator_biasprm[actuators, 2] = -np.array(UPPER_BODY_KD)
     return kin
 
 

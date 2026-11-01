@@ -113,12 +113,12 @@ class ContinuousObserver:
         finally:
             self.close_reader()
 
-    def latest(self):
+    def latest(self, *, allow_stale=False):
         if self.error is not None:
             raise RuntimeError(f'Perception stopped: {self.error}') from self.error
         with self.lock:
             value = self.value
-        if value is None or not 0 <= self.now()-value.captured_at <= .5:
+        if value is None or (not allow_stale and not 0 <= self.now()-value.captured_at <= .5):
             raise RuntimeError('No fresh continuous observation')
         return value
 
