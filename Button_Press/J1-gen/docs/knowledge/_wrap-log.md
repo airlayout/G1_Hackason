@@ -57,3 +57,9 @@
 対象: G1 の Web カメラで YOLO（CPU・TensorRT）、person_alert（写真を残して PC へ・映像の配信）、カメラの番号の入れ替わり、Wi-Fi の自動接続
 - real_robot_notes.md: 「2026-10-31 に分かったこと（PC2 の Web カメラ・人の検出・Wi-Fi）」（カメラ 2 つと by-id、Mapping の配信の受け取り方、GPU の速さ、Fujitsu_free_Wi-Fi の自動接続を切った件）
 - 提案したが保存しなかった: なし
+
+## 2026-11-01 / G1 ボタン押し（Button_Press/J1-gen、10/31 の前日準備）
+
+対象: 配置 A〜F の予想とシミュ、模擬ロボットで auto_press、判定基準、動画、reach_wide2.yaml、経由なしの地図
+- real_robot_notes.md: 経由なしの地図（経由の姿勢は今も必要）、reach_wide2.yaml、「指先が実際に進んだ距離」の読み方（50 mm が上限、判定は当たって止まった＋動画）
+- 提案したが保存しなかった: なし
