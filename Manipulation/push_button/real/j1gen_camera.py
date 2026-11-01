@@ -70,7 +70,8 @@ class J1RgbdCamera:
             SimpleNamespace(camera_config=camera_config, host=host))
         rgbd = cfg["rgbd"]
         port, timeout_ms = int(rgbd.get("port", 5556)), int(rgbd.get("timeout_ms", 5000))
-        if not 1 <= port <= 65535 or timeout_ms <= 0 or not np.isfinite(max_age_s) or max_age_s <= 0:
+        if (not 1 <= port <= 65535 or timeout_ms <= 0
+                or (max_age_s is not None and (not np.isfinite(max_age_s) or max_age_s <= 0))):
             raise ValueError("RGB-Dのポート・待機時間・画像の有効時間が不正です")
         # 計測全体の期限はread_afterで管理する。単発のrecvで数秒間止まらないようにする。
         self.source = runtime.module("camera_rgbd").RgbdZmqSource(
@@ -95,12 +96,13 @@ class J1RgbdCamera:
             return None
         self.validate_frame(frame)
         age = time.time()-frame.timestamp
-        if age < -.05:
+        if self.max_age_s is not None and age < -.05:
             raise RuntimeError("RGB-Dの撮影時刻が未来です")
-        if (age > self.max_age_s or frame.frame_id <= self.last_id or frame.timestamp <= self.last_timestamp):
+        if ((self.max_age_s is not None and age > self.max_age_s)
+                or frame.frame_id <= self.last_id or frame.timestamp <= self.last_timestamp):
             return None
         self.last_id,self.last_timestamp,self.last = frame.frame_id,frame.timestamp,frame
-        return frame,time.monotonic()-max(0.,age)
+        return frame,time.monotonic()-(max(0., age) if self.max_age_s is not None else age)
 
     @staticmethod
     def validate_frame(frame):
@@ -122,14 +124,14 @@ class J1RgbdCamera:
             self.validate_frame(frame)
             now, epoch = time.monotonic(), time.time()
             age = epoch - frame.timestamp
-            if age < -0.05:
+            if self.max_age_s is not None and age < -0.05:
                 raise RuntimeError("RGB-Dの撮影時刻が未来です。PC2と受信PCの時計同期を確認してください")
-            if (now >= deadline or age > self.max_age_s or frame.timestamp <= capture_after
+            if (now >= deadline or (self.max_age_s is not None and age > self.max_age_s) or frame.timestamp <= capture_after
                     or frame.frame_id <= self.last_id or frame.timestamp <= self.last_timestamp):
                 continue
             self.last_id, self.last_timestamp = frame.frame_id, frame.timestamp
             self.last = frame
-            return frame, now - max(0.0, age)
+            return frame, now - (max(0.0, age) if self.max_age_s is not None else age)
         raise RuntimeError("新しいRGB-Dを受信できません。5556の配信・接続先・PC間の時計同期を確認してください")
 
 

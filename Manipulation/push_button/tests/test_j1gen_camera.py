@@ -119,6 +119,16 @@ def test_nonblocking_poll_rejects_duplicate_and_stale_frames(monkeypatch,runtime
     assert camera.poll() is None
 
 
+def test_nonblocking_poll_can_ignore_image_age_but_not_duplicate_ids(monkeypatch, runtime):
+    fake, _ = fake_receiver(monkeypatch, [frame(runtime, 90., 1), frame(runtime, 90., 1),
+                                           frame(runtime, 90.1, 2)])
+    camera = J1RgbdCamera(fake, max_age_s=None)
+    assert camera.poll()[0].frame_id == 1
+    assert camera.poll() is None
+    assert camera.poll()[0].frame_id == 2
+    camera.close()
+
+
 def test_live_localizer_keeps_bgr_depth_scale_and_three_frame_policy(monkeypatch, runtime):
     frames = [frame(runtime, 100.31, 1, scale=0.00025),
               frame(runtime, 100.32, 2, scale=0.00025),

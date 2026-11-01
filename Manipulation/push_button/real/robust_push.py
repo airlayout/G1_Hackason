@@ -135,7 +135,7 @@ def main(argv=None, *, task=None):
             state = json.loads(Path(args.state_json).read_text())
             def configuration():
                 return (state['motor_q_rad'],state['imu_rpy_rad'],time.monotonic(),0.,0.)
-        camera = J1RgbdCamera(runtime,args.camera_config,args.host)
+        camera = J1RgbdCamera(runtime,args.camera_config,args.host,max_age_s=None)
         reference = [None]
         stable_base = [args.bottle_base_height]
         perception_rejections = []
@@ -145,10 +145,8 @@ def main(argv=None, *, task=None):
             if delivered is None:
                 return None
             frame, stamp = delivered
-            if not 0 <= time.monotonic()-stamp <= .5:
-                return None
             config = configuration()
-            q, imu = history.at(stamp, config, max_distance_s=.1) if args.execute else config[:2]
+            q, imu = history.at(stamp, config) if args.execute else config[:2]
             transform = geometry.transform(q,imu)
             intr = frame.intrinsics
             intr = CameraIntrinsics(intr.fx,intr.fy,intr.cx,intr.cy)
@@ -218,7 +216,7 @@ def main(argv=None, *, task=None):
                     results.append(final); last_id = final.frame_id
                 time.sleep(.02)
             if len(results) != 3:
-                raise RuntimeError('Three fresh outcome frames unavailable')
+                raise RuntimeError('Three distinct outcome frames unavailable')
             if args.task == 'button':
                 report['visual_success'] = bool(initial.lamp is not None and all(
                     v.lamp is not None and v.lamp-initial.lamp >= 30 for v in results))

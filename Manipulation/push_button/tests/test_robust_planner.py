@@ -12,7 +12,7 @@ import pytest
 pytest.importorskip('mujoco')
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parents[1]/'real')]
 from robust_scene import SceneSnapshot, build_scene_model, estimate_bottle, contact_metrics
-from robust_perception import Observation, ObservationWindow, CorrectionGate, LatestFrameSampler
+from robust_perception import Observation, ObservationWindow, ContinuousObserver, CorrectionGate, LatestFrameSampler
 from robust_planner import SearchSettings, search, uncertainty_scenarios
 from robust_options import add_arguments, parse, selected
 from robust_execution import validate_start, execute
@@ -30,10 +30,10 @@ def observation(s=None, *, frame=1, stamp=1., offset=(0,0,0)):
     return Observation(g,s.q,s.imu,stamp,frame)
 
 
-def test_window_requires_three_unique_fresh_frames_and_rejects_identity_jump():
+def test_window_accepts_delayed_frames_but_rejects_duplicates_and_identity_jump():
     w = ObservationWindow()
     assert w.consume(observation(frame=1,stamp=1),1) is None
-    with pytest.raises(ValueError,match='duplicate'):
+    with pytest.raises(ValueError,match='Duplicate'):
         w.consume(observation(frame=1,stamp=1),1)
     for i in (2,3):
         stamp = 1.+(i-1)*.1
@@ -41,8 +41,20 @@ def test_window_requires_three_unique_fresh_frames_and_rejects_identity_jump():
     assert w.consume(observation(frame=4,stamp=1.3),1.3) is not None
     with pytest.raises(ValueError,match='identity'):
         w.consume(observation(frame=5,stamp=1.4,offset=(0,.04,0)),1.4)
-    with pytest.raises(ValueError,match='Stale'):
-        w.consume(observation(frame=6,stamp=6),7)
+    # Delayed processing and capture gaps do not invalidate the observations.
+    assert w.consume(observation(frame=6,stamp=6),100) is None
+    assert w.consume(observation(frame=7,stamp=7),100) is None
+    assert w.consume(observation(frame=8,stamp=8),100) is not None
+
+
+def test_latest_observation_does_not_expire():
+    import threading
+    observer = ContinuousObserver.__new__(ContinuousObserver)
+    observer.error = None
+    observer.lock = threading.Lock()
+    observer.value = observation(stamp=1.)
+    observer.now = lambda: 100.
+    assert observer.latest() is observer.value
 
 
 def test_five_hz_frame_jitter_does_not_drop_every_other_image():
@@ -266,7 +278,7 @@ def test_preview_uses_no_arm_or_execute_path(monkeypatch,tmp_path):
     monkeypatch.setattr(rp,'load_robot',lambda *a:(object(),np.zeros(29)))
     monkeypatch.setattr(rp,'ArmKinematics',lambda m:SimpleNamespace(update_fixed_base=lambda *a:None))
     monkeypatch.setattr(rp,'CalibratedHeadCamera',lambda *a:object())
-    monkeypatch.setattr(rp,'J1RgbdCamera',lambda *a:SimpleNamespace(close=lambda:None))
+    monkeypatch.setattr(rp,'J1RgbdCamera',lambda *a,**kw:SimpleNamespace(close=lambda:None))
     class Observer:
         frames,rejections = [],{}
         def __init__(self,*a): pass
