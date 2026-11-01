@@ -103,6 +103,12 @@ def main() -> int:
     args = ap.parse_args()
     env = PressEnv()
     random_rollouts(env, args.episodes)
+    try:
+        import pinocchio  # noqa: F401
+    except ImportError:
+        # 学習だけの PC（メンバーの PC）には pin を入れていない。学習には要らない
+        print("[check_env] pin（Pinocchio）が無いので、IK で作った動きの確認は飛ばす")
+        return 0
     outs = scripted_rollouts(env, args.episodes)
     return 0 if outs.get("success", 0) > 0 else 1
 
