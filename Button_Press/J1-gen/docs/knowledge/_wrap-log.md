@@ -45,3 +45,9 @@
 - tech/shell_and_ssh.md: `pkill -f` が自分を止める件の再発（ssh 先の `bash -c`）
 - real_robot_notes.md: 「2026-10-31 に分かったこと（PC2 で動かす準備）」（PC2 の中なら DDS が届く、DDS のライブラリは lerobot にある、計画・YOLO の時間）
 - 提案したが保存しなかった: なし
+
+## 2026-11-01 / G1 ボタン押し（Button_Press/J1-gen）
+
+対象: 10/31 の YOLO の撮り足し（点灯した ▲）、自動ラベルの直し、8 本での最終版、評価環境の 3 つ
+- real_robot_notes.md: 点灯した ▲ の動画で確かめた結果、最終版 final8 の候補と `J1GEN_BUTTON_WEIGHTS`、点字を拾う注意
+- 提案したが保存しなかった: なし
