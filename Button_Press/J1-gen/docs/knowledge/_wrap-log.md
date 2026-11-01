@@ -74,3 +74,9 @@
 - real_robot_notes.md: 2026-11-01 に分かったこと（onboard、送る間隔、別の班の VLA、置ける範囲）
 - 提案したが保存しなかった: （domain・mine は個人の知識の方で確認中）
 
+## 2026-11-01 / G1 ボタン押し（Button_Press/J1-gen、エレベーターの実機日・午後）
+
+対象: ノート PC から有線（WSL2 mirrored）、エレベーターの車いす用 ▼ を 5 回、ボタン用の補正、押す力の不足、テストと mirrored
+- patterns/robot_arm_control.md: 当たったと見る遅れのしきい値は実機の空中の動きで超えない値に。押す力は遅れ × 腕の硬さで頭打ち
+- real_robot_notes.md: 2026-11-01 午後に分かったこと（WSL2 の mirrored、`lo` のテスト、rgbd_server の Python、YOLO 15/15、補正、押す力の不足）
+- 提案したが保存しなかった: （domain・mine は個人の知識の方で確認中）
