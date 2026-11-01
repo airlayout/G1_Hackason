@@ -16,7 +16,8 @@
 # （ArmCommander は腕を動かしている間 SIGINT / SIGTERM を自分で受けるので、Ctrl+C と同じに止まる）。緊急停止はリモコンの L2+B。
 #
 # 環境変数: PC2（既定 unitree@192.168.0.82。DHCP で変わることがある）、SSH_OPTS（ssh に足すオプション）、
-#           OBSTACLES（PC2 の机の箱のファイル。既定は PC2 の ~/button_press/obstacles_*.yaml のうち一番新しいもの）
+#           OBSTACLES（PC2 の机の箱のファイル。既定は PC2 の ~/button_press/obstacles_*.yaml のうち一番新しいもの）、
+#           ONBOARD_ALLOW_OTHERS=1（別の班の g1_e2e が動いていても送る。既定は断る）
 set -uo pipefail
 
 PC2="${PC2:-unitree@192.168.0.82}"
@@ -68,6 +69,14 @@ obs="\${OBSTACLES:-${OBSTACLES:-}}"
 [ -n "\$obs" ] || obs=\$(ls -t ~/button_press/obstacles_*.yaml 2>/dev/null | head -1)
 [ -n "\$obs" ] && [ -f "\$obs" ] || { echo "[onboard] ❌ 机の箱のファイルが無い（PC2 で make_table_boxes.py --save --obstacles-file ~/button_press/obstacles_<日付>.yaml）"; exit 1; }
 pgrep -f "depth_server/rgbd_serve[r].py" >/dev/null || echo "[onboard] ⚠️ カメラの配信（rgbd_server）が動いていない。事前確認で止まる"
+# 別の班の G1 を動かすプログラム（2026-11-01: g1_e2e.vla.robot --execute。同時に動いていた回で NoMotionError）。送るときは断る
+others=\$(pgrep -fa "g1_e2[e]" | cut -c1-100)
+if [ -n "\$others" ]; then
+    echo "[onboard] ⚠️ 別の班のプログラムが動いている: \$others"
+    if [ -n "$execute" ] && [ -z "${ONBOARD_ALLOW_OTHERS:-}" ]; then
+        echo "[onboard] ❌ 送らない（指令が重なるおそれ）。止まってから、またはどうしても送るなら ONBOARD_ALLOW_OTHERS=1 を前に付ける"; exit 1
+    fi
+fi
 mkdir -p $LOGDIR
 log=$LOGDIR/\$(date +%Y%m%d_%H%M%S)_$label.log
 cd $REMOTE_REPO || exit 1
