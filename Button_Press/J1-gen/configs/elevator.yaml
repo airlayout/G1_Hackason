@@ -17,10 +17,10 @@ classic:
   max_aspect: 2.5
 
 yolo:
-  # sim/train_button_yolo.py で学習した重み（git の対象外）。クラスは up / down
-  # .onnx を書くと onnxruntime で動かす（torch・ultralytics なし。G1 の PC2 向け）。.onnx は real/export_button_onnx.py で
-  # .pt の隣に書き出す（例: _local/button_press/button_yolo/weights/best.onnx）
-  weights: _local/button_press/button_yolo/weights/best.pt
+  # 学習した重み。クラスは up / down。2026-11-01 から、8 本の動画で学習した最終版（リポジトリの weights/。README.md）。
+  # 前の既定は _local/button_press/button_yolo/weights/best.pt（sim/train_button_yolo.py、git の対象外）。
+  # .onnx を書くと onnxruntime で動かす（torch・ultralytics なし。G1 の PC2 向け）: Button_Press/J1-gen/weights/button_final8.onnx
+  weights: Button_Press/J1-gen/weights/button_final8.pt
   confidence: 0.4
   # .pt のときだけ使う（auto / cpu / 0 など）
   device: auto

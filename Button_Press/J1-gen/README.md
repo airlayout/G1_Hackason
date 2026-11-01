@@ -552,6 +552,9 @@ $P Button_Press/Yada/contest/evaluate_dds.py --seeds practice \
 学習データの Roboflow のデータセット `acc-stwam/elevator-button-jinxe-qb0gs` は CC BY 4.0）。
 代わりに、評価環境の画像から自分で学習する（元にするのはリポジトリの `yolo26n.pt`。Ultralytics、AGPL-3.0）。
 
+**2026-11-01 から、既定の重みは最終版の [weights/button_final8.pt](weights/README.md)**（8 本のラボの動画とシミュで学習。`.onnx` も同じ場所。
+リポジトリに入っているので `git pull` で届く）。下の手順・結果のうち `_local/button_press/button_yolo/weights/best.pt` は前の既定の重み。
+
 ```bash
 $P Button_Press/J1-gen/sim/make_button_dataset.py      # 学習データ（正解の枠は MuJoCo のセグメンテーションから自動）
 $P Button_Press/J1-gen/sim/train_button_yolo.py        # 学習 → _local/button_press/button_yolo/weights/best.pt
