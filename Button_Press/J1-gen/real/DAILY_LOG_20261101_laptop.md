@@ -2,6 +2,7 @@
 
 この日は、**ラボ PC を使わず、ノート PC（WSL2）から Wi-Fi の ssh で G1 の PC2 に入り、押す処理を PC2 の上で動かした**（onboard の段階 2）。
 ここには細かいこと・技術的なことをほぼすべて書く。人が読む用の要約は [REPORT_20261101.md](../docs/reports/REPORT_20261101.md)。
+午後（12:34 に G1 が起動し直したあと）は、**ノート PC を有線で G1 につなぎ、エレベーターの呼びボタン（車いす用 ▼）を 5 回押した**（「エレベーター」の節）。
 前回は [DAILY_LOG_20261031_labpc.md](DAILY_LOG_20261031_labpc.md)。時刻は PC2 の時計（中国時間 CST。日本時間より 1 時間遅い）。runs のフォルダ名も同じ。
 
 ## 結果のまとめ
@@ -18,6 +19,9 @@
 | `stop` の確認 | PC2 の dry-run の途中で SIGINT → 安全に終了（dry-run は戻らない）。模擬ロボットの `--execute` で、戻る動きを確かめた |
 | 送った（前の既定） | **成功**。当たって止まった 43.1 mm、開始姿勢まで戻った、体の動き 1.0 mm |
 | 送った（広げた設定） | 当たって止まった 40.4 mm の直後に `NoMotionError`（終了コード 3）、来た経路を戻った。体が前へ 10 mm。別の班の VLA（`--execute`）が同時に動いていた |
+| エレベーター：つなぐ | ノート PC から有線（WSL2 を mirrored にして `eth1` = 192.168.123.99）。lowstate 1042 Hz、深度付きの画像 OK |
+| エレベーター：見つける | **YOLO の最終版で車いす用の ▲▼ を 15 / 15 枚**（classic は 5 / 15 で、選んだ組も床の模様で誤り） |
+| エレベーター：送った（5 回） | 位置は 3 回目で合った（ボタン用の補正 x −2〜−3 cm・y +2 cm）。**押す力が足りず、5 回とも点灯しなかった**。押し込みを 30 mm にした 5 回目で体の傾きが 1.13° 変わったので、そこでやめた |
 
 ## 時刻順の記録（PC2 の時計）
 
@@ -47,6 +51,13 @@
 | 12:05〜12:25 | 置ける範囲（P1〜P6、dry-run だけ）。P2 の広げた設定の dry-run は、12:09 に止まった配信（下の 12:09:20 の行）で事前確認止まり → 空・壊れたカラーで落ちないように直した（`a0d69a7`）、12:11 に起動し直してやり直した |
 | 12:06〜12:10 | 胸のカメラを見た（見るだけ。別の会話の Claude）。**胸のカメラは無い**（「胸のカメラ」の節） |
 | 12:09:20 | 頭の `videohub_pc4` が止まり、12:09:26 に `rgbd_server` が落ちた（10:56 と同じ `imdecode` の例外）。videohub は 12:09:51 に master_service が起動し直した |
+| 12:34ごろ | G1 が起動し直された（12:56 に uptime 22 分）。ホールへ移動 |
+| 12:5x | ノート PC を有線でつないだ。WSL2 が NAT のままでは lowstate が届かず、ユーザーが `.wslconfig` を mirrored にして `wsl --shutdown` |
+| 12:56〜12:57 | 接続確認（`eth1`）。`rgbd_server` が止まっていたので起動し直した（最初に venv の Python で起動して pyrealsense2 が無く失敗 → システムの Python 3.8 で）。別の班の `g1_e2e.vla.robot`（`--execute` なし）が動いていた |
+| 12:59〜13:02 | ホールで写真（`record.py`）→ `check_button_photos.py`。立つ位置を直して撮り直し |
+| 13:02〜13:04 | dry-run（柱まで 41 cm で「遠すぎる」→ 前へ動かして 32 cm）。`max_retries` を 0 に |
+| 13:05〜13:17 | **エレベーターの回 1〜5 を送った**（ユーザーが自分のターミナルで。各回の前に Claude が dry-run と `g1_e2e` の確認） |
+| 13:21 | `rgbd_server` を止めた（7177 フレーム）。`max_retries` を 1 に戻した |
 
 ## 回 4 の `NoMotionError` の細かいこと
 
@@ -131,6 +142,77 @@ cv2.error: ... (-215:Assertion failed) !buf.empty() in function 'imdecode_'
 - `rt/api/videohub_chest` に `VideoClient` と同じ形（API 1001）で 3 回頼んだ → 3 回とも code 3102（送れない＝受け取る相手がいない）。画像は無し
 - 10/21 に「再起動後は `videohub_pc4_chest` が無かった」としたのは、`ps -C videohub_pc4_chest` の見落とし（コマンド名が 15 文字
   `videohub_pc4_ch` で切れて一致しない）。`real/pc2_survey.sh` の同じ行を pgrep で探す形に直した
+
+## エレベーター（午後。ノート PC から有線。12:56〜13:21）
+
+ラボのエレベーターのホールで、車いす用の呼びボタン ▼（床から約 87 cm）を押した。押す側は手順書の段階 7 と同じ
+`run_dds.py` + `contest_agent`（`auto_press.py --target down --button-set wheelchair --detector yolo`）。onboard ではなく、ノート PC から DDS で直接送った。
+
+### つなぎ方（ノート PC・WSL2 から有線で DDS）
+
+- WSL2 の既定（NAT）では、ping は届くが **lowstate が届かない**（`check_connection.py --network-interface eth0` で 10 秒待って何も来ない）
+- `C:\Users\tvdue\.wslconfig` に `[wsl2]` / `networkingMode=mirrored`、Hyper-V のファイアウォールで受信を許可（`Set-NetFirewallHyperVVMSetting ... -DefaultInboundAction Allow`）、
+  Windows の有線を 192.168.123.99/24 に固定 → `wsl --shutdown`。WSL の中では有線が `eth1` になった（Wi-Fi は `eth2`、Tailscale は `eth0`）
+- その後は lowstate 1042 Hz・深度付きの画像も OK。**コマンドには毎回 `--network-interface eth1`**（`arm.yaml` の既定はラボ PC の `enp129s0`）
+- PC2 の有線（192.168.123.164）への ssh は初めてで、known_hosts に足した
+- `rgbd_server` は PC2 の **システムの Python 3.8** で動かす（`~/button_press/venv` には pyrealsense2 が無く、`ModuleNotFoundError`）。ログ `~/button_press/rgbd_server_20261101d.log`
+
+### 見つける（写真）
+
+| 収録 | 立つ位置 | classic | YOLO（`button_final8.pt`） |
+|---|---|---|---|
+| `recordings/20261101_135943_button_hall`（9 枚） | ▼ が前 49.2・右 16.6 cm | 1 組を選べた 5 / 9（選んだ組は z −0.56 m の床の模様で誤り） | **9 / 9**（▲ 0.96・▼ 0.97、ばらつき 1 mm 以内） |
+| `recordings/20261101_140209_button_hall2`（6 枚） | ▼ が前 40.0・右 1.7 cm | 0 / 6 | **6 / 6** |
+
+- ▲ と ▼ の間隔 6.8 cm（メジャーで約 6.5 cm）。高さは pelvis から +23 / +16 cm（床からに直して約 96 / 89 cm。メジャーで 93.5 / 87 cm）。一般用の組と取り違えていない
+- 画像の左半分に大きなぬいぐるみが写っていたが、ボタンは隠れなかった
+- 比べた画像：`_local/button_press/button_check/20261101_140013/`・`20261101_140217/`（`J1GEN_BUTTON_SET=wheelchair`）
+
+### 回ごと（時刻はノート PC の日本時間。body_log・auto のフォルダ名と同じ）
+
+指先の位置は、`body_log.csv` の関節角から FK で求めた（pelvis 座標）。「当たった x」は、押す向きに指先が止まった位置。
+
+| 回 | 変えた設定 | 狙う表面 x / y | 結果（ユーザーの目） | 記録から |
+|---|---|---|---|---|
+| 1（14:05） | `lag_m` 0.005、深さ 15 mm、補正なし | 0.314 / −0.020 | 約 1.5 cm 足りない（触れていない） | 押し込みを始めて 0.7 秒・13 mm で「進まなくなった（遅れ 5.6 mm）」。**空中で加速しているだけで止まった**。体 3.1 mm・0.35° |
+| 2（14:08） | `lag_m` 0.010 | 0.315 / −0.019 | 壁に当たった。**ボタンの右 2 cm**。上下は完ぺき | 当たった x ≈ 0.288（狙いより 27 mm 手前）、遅れ 12.4 mm で止まった。y は狙いどおり −0.020 |
+| 3（14:11） | 補正 `[-0.020, 0.020, 0]` | 0.295 / +0.001 | **位置はよかった。押し込みが弱い** | 当たった x ≈ 0.284（狙いより 11 mm 手前）、遅れ 9.9 mm で止まった。保持は実際の指先 + 2 mm で弱い |
+| 4（14:14） | `lag_m` 0.020、`keep_m` 0.008、補正 x −0.030 | 0.281 / +0.001 | 点灯せず。ユーザーが手で押しても「だいぶ強く押さないとだめ」 | 止めずに最後まで。指先は x 0.285 で止まり、沈まなかった（目標は約 11 mm 先）。体 5.8 mm・0.55° |
+| 5（14:17） | 深さ 30 mm、`lag_m` 0.040 | 0.287 / +0.001 | 点灯せず | 指先は x 0.301 まで（触れてから 16 mm、左へ約 6 mm・下へ約 4 mm）。**骨盤が後ろへ 4.9 mm・傾き 1.13°**（送る前に決めた「1° 以上ならやめる」を超えた）。指が曲がったか滑ったかは【要確認：動画】 |
+
+- 5 回とも、点灯の確認は「点灯を確かめられない」（明るい部分 −5〜+8）。人の目でも点灯なし
+- 5 回とも腕は来た経路を戻り、終了コード 0。腕が柱や体に当たる・腰が回ることはなかった
+- 各回の前に dry-run し、別の班の `g1_e2e.vla.robot` が `--execute` なしであることを確かめた（13:05〜13:17 ずっと pid 4230 で動いていた）
+
+### 分かったこと
+
+1. **ボタンの位置の推定は、ボタン用の一定の補正で合う。** 柱まで約 32 cm で、推定は実際より約 2.7 cm 奥・2 cm 右だった（上下は合っていた）。
+   `localize.yaml` の `calibration.offset_pelvis_m` は [0, 0, 0] のまま（一度も較正していない）。ボトルは的が大きく、当たって止まるので目立たなかった
+2. **ラボの呼びボタンは硬く、今の腕の PD（kp 60）では押せない。** 目標を本物のボタンの約 26 mm 先に置いても（回 5）沈まず、先に体が反った。
+   ざっと、肩から指先まで約 0.4 m なら指先の硬さは 60 / 0.4² ≈ 375 N/m で、16 mm の遅れで約 6 N
+3. 止める判定（遅れの増え方）は、実機では 5 mm だと空中で働く。10 mm で当たって止まるようになった（ボトルと同じ）
+4. 頭カメラの最終版の YOLO は、ホールの本物のボタンでも確実（15 / 15）。classic は使えない
+
+### `elevator.yaml` に残した設定（家で見直したあと）
+
+| 項目 | 前 | 今 |
+|---|---|---|
+| `calibration.offset_pelvis_m` | null（`localize.yaml` の [0, 0, 0]） | **[-0.030, 0.020, 0.0]**（柱まで約 32 cm で合わせた値。立つ位置が変わると合わないかもしれない） |
+| `press.planner.press_depth_m` | 0.015 | 0.015（回 5 の 0.030 から戻した） |
+| `press.contact_stop.lag_m` / `retry_lag_m` / `keep_m` | 0.005 / 0.008 / 0.002 | **0.010 / 0.013** / 0.002（回 5 の 0.040 / 0.023 / 0.008 から戻した） |
+| `press.max_retries` | 1 | 1（送った 5 回は 0。終わって戻した） |
+
+深さ 30 mm・`lag_m` 0.040（回 5）は点灯せず体が 1.13° 傾き、指先が塞がれても早めに止まる守り（シミュで、柱の穴の縁を 21.6 N で押した対策）も
+働かないので、家で戻した。残したのは、実機で確かめた補正と、当たって止まる 10 mm（ボトルと同じ）。テスト 2 件をこの値に合わせた
+（`test_calibration_offset_shifts_buttons`、`test_lagging_press_still_stops_when_blocked` は面の 4 mm 手前で止める）。
+WSL を mirrored にしたままだと、`lo` でマルチキャストが使えず、模擬ロボットのテスト 7 件が落ちる（送信回数 0。G1 には何も送っていない）。
+
+### 次に試すこと（案）
+
+- 動画で、回 5 の指が曲がったか・ボタンの上で滑ったかを見る
+- 押す力を上げる方法: 腕の kp を上げる（`Yada/configs/contest.yaml` の `gains.arm`。シミュの評価にも関わるので Yada さんと相談）／
+  指を伸ばしたまま手の硬いところで押す（指の関節が曲がらない分、力が伝わる）／ 押す向きに体重を乗せる姿勢
+- ボタンを押すのに要る力を測る（ばねばかり・キッチンスケールで）。何 N 出せばよいかが分かれば、kp・深さを計算で決められる
 
 ## 始める前に決めること（10/31 からの持ち越し）
 
@@ -343,6 +425,9 @@ cv2.error: ... (-215:Assertion failed) !buf.empty() in function 'imdecode_'
   - Claude に任せたこと（記録から）：PC2 へのコードの送り込み、カメラの配信の起動、接続確認・頭カメラの向き・机の箱、dry-run、`stop` の確認、`onboard.sh`・ONNX の検出・`send_timing.py` のコード、
     前の既定で送った回（回 3。ユーザーが「送ってよい」と確認したあと）、記録の読み取り
   - 自分が実行したこと：広げた設定の dry-run と送る操作（回 4。`onboard.sh` を自分で打った）、リモコンを持って立ち会い
+- エレベーター（午後）：【要記入】（例: 有線でノート PC から送ると決めた。WSL を mirrored にした。各回の結果を目で見て、足りない向き・cm を伝えた。5 回目で今日はやめると決めた）
+  - Claude に任せたこと：接続確認・カメラの配信の起動、写真と検出の比較、dry-run、記録の解析（FK で指先の位置）、設定の変更案
+  - 自分が実行したこと：`.wslconfig` と有線の IP の設定、G1 を歩かせて立たせる、エレベーターの 5 回を送る（自分のターミナル）、点灯・当たった位置を見る
 
 ## 10/31 から変えたこと
 
@@ -356,13 +441,16 @@ cv2.error: ... (-215:Assertion failed) !buf.empty() in function 'imdecode_'
 | onboard の準備: ボトルの検出を ONNX で（`--detector onnx`）、PC2 用のカメラの設定（`camera_onboard.yaml`）、送った間隔を調べる `send_timing.py` | ユーザー（onboard を今日やると決めた） | `ddb298d` |
 | エレベーターのボタンの YOLO の最終版（`weights/button_final8.{pt,onnx}`）をリポジトリに入れ、既定にした | ユーザー（メンバー・ラボ PC に渡すため） | `8bcbbd7` |
 | ノート PC から無線で PC2 の押す処理を起動・監視・停止する `real/onboard.sh`（11/1 のうちに 3 回直した） | ユーザー（無線で送る形にすると決めた） | `14828ed`・`d55a4ab`・`6ecc110` |
+| エレベーター：ボタン用の補正 `[-0.030, 0.020, 0]`、止める遅れ 10 mm（押し込み 30 mm・遅れ 40 mm は試したあと戻した。「エレベーター」の節） | ユーザー（Claude の案を各回で承認。戻すのも） | エレベーターの記録と同じコミット |
 
 ## 証拠の場所
 
 - 動画・写真：【要記入：Google Drive などのリンク】
 - 実行の記録（ノート PC）：`_local/button_press/runs_pc2/20261101_*`（PC2 の `runs/`）、`auto_pc2/`（`auto_press.py` の結果）、`onboard_logs_pc2/`（PC2 の上の出力）、
   端末の出力 `_local/button_press/terminal_logs/20261101_laptop_onboard_terminal.log`（回 4 の前後。ユーザーが貼ったもの）
-- 録画：`record.py` は使っていない
+- 録画：午前は `record.py` を使っていない。エレベーターの写真は `_local/button_press/recordings/20261101_135943_button_hall`・`20261101_140209_button_hall2`
+- エレベーター：`_local/button_press/auto/20261101_14*_down.json`（dry-run 6 回・送った 5 回）、`body_log/20261101_14*_down/`（各回の関節角・IMU と、点灯の確認の画像 `lit_*`）、
+  端末の出力 `_local/button_press/terminal_logs/20261101_laptop_elevator_terminal.log`（送った 5 回。ユーザーが貼ったもの）
 - 机の箱：PC2 の `~/button_press/obstacles_20261101.yaml`（ノート PC に `_local/button_press/table_boxes/obstacles_20261101.yaml`）、図 `_local/button_press/table_boxes/20261101_100954.png`。
   頭カメラの向き：PC2 の `~/button_press/repo/_local/button_press/head_tilt/20261101_100948.json`
 - 写真（頭カメラ）：`_local/button_press/probe/20261101_color.jpg`（立つ前）・`20261101_pre_exec.jpg`（回 3 の前）、`table_boxes/20261101_color_standing.jpg`

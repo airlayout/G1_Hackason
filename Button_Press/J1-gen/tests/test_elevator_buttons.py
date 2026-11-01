@@ -108,10 +108,10 @@ class TestFindButtons(unittest.TestCase):
         base = self.find([(0.0, 0.10, "up"), (0.0, 0.02, "down")])
         np.testing.assert_allclose(call.up.center - base.up.center, cam.offset, atol=1e-9)
         np.testing.assert_allclose(call.normal, base.normal, atol=1e-9)
-        # 設定が null なら localize.yaml（ボトルと同じ較正）の値
-        self.assertIsNone(self.cfg["calibration"]["offset_pelvis_m"])
-        np.testing.assert_allclose(calibration_offset(self.cfg),
+        # 設定が null なら localize.yaml（ボトルと同じ較正）の値。elevator.yaml はボタンだけの値（2026-11-01 のラボ）を持つ
+        np.testing.assert_allclose(calibration_offset({"calibration": {"offset_pelvis_m": None}}),
                                    load_config("localize.yaml")["calibration"]["offset_pelvis_m"])
+        np.testing.assert_allclose(calibration_offset(self.cfg), self.cfg["calibration"]["offset_pelvis_m"])
         np.testing.assert_allclose(calibration_offset({"calibration": {"offset_pelvis_m": [0.0, 0.01, 0.0]}}),
                                    [0.0, 0.01, 0.0])
 
@@ -676,8 +676,10 @@ class TestElevatorPlan(unittest.TestCase):
         self.assertAlmostEqual(self.ctl.lag0, 0.006, delta=0.0015)
 
     def test_lagging_press_still_stops_when_blocked(self) -> None:
-        """押す前の遅れがあっても、指先が止まって遅れが増えたら止める。"""
-        held, t = self._lagging_press(0.006, 0.003)
+        """押す前の遅れがあっても、指先が止まって遅れが増えたら止める。
+        面の 4 mm 手前で止める（2026-11-01 の実機でも、推定した面より手前で当たった）。止める遅れ 10 mm が、押し込みの
+        残り（15 mm − 押す前の遅れ 6 mm − 止まった位置）を超えないと、終わりまで止まらないため。"""
+        held, t = self._lagging_press(0.006, -0.004)
         self.assertTrue(held)
         self.assertLess(t, self.ctl.cfg["press"]["press_s"])
 
