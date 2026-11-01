@@ -1,6 +1,8 @@
 # 専用のPython環境
 /.venv/
 /.venv-model/
+/.venv-arm/
+/.venv-vla/
 /.env
 /assets/cache/
 *.egg-info/

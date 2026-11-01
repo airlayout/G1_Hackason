@@ -13,10 +13,13 @@ def main() -> None:
     """--with-demoの指定時だけONNXモデルを取得する。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--with-demo", action="store_true")
+    parser.add_argument("--urdf-only", action="store_true", help="腕の順運動学に必要なURDFだけを取得")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     manifest = json.loads((root / "assets/manifest.json").read_text())
     for item in manifest["files"]:
+        if args.urdf_only and not (item["group"] == "robot" and item["path"].endswith(".urdf")):
+            continue
         if item["group"] == "demo" and not args.with_demo:
             continue
         path = root / "assets/cache" / item["path"]

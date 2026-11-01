@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#131717" />
+    <title>G1 — Arm</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="G1 アームコンソール"
+        >G1<span>/ ARM</span></a
+      >
+      <div class="top-status">
+        <span id="connection" class="badge"><i></i>接続中</span
+        ><span id="mode" class="badge">—</span>
+      </div>
+      <span class="model-name">GR00T <span>N1.7 · 3B</span></span>
+    </header>
+    <main>
+      <section class="vision" aria-labelledby="vision-title">
+        <div class="panel-header">
+          <h1 id="vision-title">視野</h1>
+          <span id="camera-age" class="muted">—</span>
+        </div>
+        <div class="viewfinder">
+          <img id="camera" alt="G1の頭部カメラ" hidden />
+          <div id="camera-placeholder">
+            <span class="crosshair">＋</span><span>カメラ待機中</span>
+          </div>
+          <span class="frame-corner tl"></span
+          ><span class="frame-corner tr"></span>
+          <span class="frame-corner bl"></span
+          ><span class="frame-corner br"></span>
+          <div class="view-label">
+            <span id="camera-state" class="live-dot"></span>D435i / RGB
+          </div>
+          <span id="demo-label" hidden>DEMO · VLA未使用</span>
+        </div>
+        <div class="telemetry">
+          <div>
+            <span class="label">推論</span
+            ><span id="latency">—<small>ms</small></span>
+          </div>
+          <div>
+            <span class="label">制御率</span><span>50<small>Hz</small></span>
+          </div>
+          <div>
+            <span class="label">腕</span><span>14<small>DoF</small></span>
+          </div>
+          <div>
+            <span class="label">重み</span
+            ><span id="weight">0<small>%</small></span>
+          </div>
+        </div>
+      </section>
+      <aside>
+        <section class="command-panel" aria-labelledby="command-title">
+          <div class="panel-header">
+            <h2 id="command-title">指示</h2>
+            <span id="phase" class="muted" role="status" aria-live="polite"
+              >待機</span
+            >
+          </div>
+          <form id="command-form">
+            <label for="instruction" class="sr-only">アームへの指示</label>
+            <textarea
+              id="instruction"
+              name="instruction"
+              rows="4"
+              maxlength="512"
+              placeholder="右手で正面のボタンを押して"
+              required
+            ></textarea>
+            <div class="presets" aria-label="指示の例">
+              <button
+                type="button"
+                data-prompt="Press the button in front of you with your right hand."
+              >
+                右手で押す<span>↗</span>
+              </button>
+              <button
+                type="button"
+                data-prompt="Reach toward the red button with your left hand."
+              >
+                左手を伸ばす<span>↗</span>
+              </button>
+            </div>
+            <button id="run" class="run-button" type="submit" disabled>
+              <span>▶</span>実行<span class="key-hint">⌘ / Ctrl ↵</span>
+            </button>
+          </form>
+          <button id="stop" class="stop-button" type="button">
+            <span>■</span>停止<span class="key-hint">Esc</span>
+          </button>
+          <p class="limit">最大<span id="time-limit">30</span>秒 · 腕のみ</p>
+          <p id="notice" class="notice" role="alert" hidden></p>
+        </section>
+        <section class="joint-panel" aria-labelledby="joints-title">
+          <div class="panel-header">
+            <h2 id="joints-title">関節</h2>
+            <span class="muted">rad</span>
+          </div>
+          <div class="joint-head">
+            <span></span><span>L</span><span>R</span>
+          </div>
+          <div id="joints"></div>
+        </section>
+      </aside>
+      <section class="activity" aria-labelledby="activity-title">
+        <div class="panel-header">
+          <h2 id="activity-title">履歴</h2>
+          <span id="count" class="muted">0</span>
+        </div>
+        <ol id="events">
+          <li class="empty">指示を入力して実行</li>
+        </ol>
+      </section>
+    </main>
+    <footer>
+      <span>G1 / VISION → LANGUAGE → ACTION</span
+      ><span>停止は制御を返還 · 実機の非常停止はリモコン</span>
+    </footer>
+  </body>
+</html>

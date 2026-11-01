@@ -1,0 +1,33 @@
+{
+  "model_id": "nvidia/GR00T-N1.7-3B",
+  "model_revision": "2fc962b973bccdd5d8ce4f67cc63b264d6886495",
+  "source_url": "https://github.com/NVIDIA/Isaac-GR00T.git",
+  "source_commit": "c56f54128d92f743889b7e4cecfc1ceafd88739e",
+  "backbone_id": "nvidia/Cosmos-Reason2-2B",
+  "backbone_revision": "9ce19a195e423419c349abfc86fd07178b230561",
+  "embodiment": "REAL_G1",
+  "device": "cuda:0",
+  "action_hz": 30,
+  "execute_steps": 8,
+  "max_task_s": 30,
+  "urdf": "assets/cache/robot/g1_29dof_rev_1_0.urdf",
+  "eef_base_link": "pelvis",
+  "eef_links": ["left_wrist_yaw_link", "right_wrist_yaw_link"],
+  "video_history_s": 0.6666666666666666,
+  "fixed_hand_state": [[0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0]],
+  "arm": {
+    "control_hz": 50,
+    "state_timeout_s": 0.25,
+    "camera_timeout_s": 1.0,
+    "command_timeout_s": 3.0,
+    "prediction_timeout_s": 3.0,
+    "ramp_s": 1.0,
+    "max_velocity_rad_s": 0.4,
+    "max_excursion_rad": 0.8,
+    "max_tracking_error_rad": 0.5,
+    "kp": [40, 40, 40, 40, 20, 15, 15, 40, 40, 40, 40, 20, 15, 15],
+    "kd": [1.5, 1.5, 1.5, 1.5, 1, 1, 1, 1.5, 1.5, 1.5, 1.5, 1, 1, 1],
+    "lower_rad": [-3.0492, -1.5482, -2.578, -1.0072, -1.9322, -1.5744, -1.5744, -3.0492, -2.2115, -2.578, -1.0072, -1.9322, -1.5744, -1.5744],
+    "upper_rad": [2.6304, 2.2115, 2.578, 2.0544, 1.9322, 1.5744, 1.5744, 2.6304, 1.5482, 2.578, 2.0544, 1.9322, 1.5744, 1.5744]
+  }
+}
