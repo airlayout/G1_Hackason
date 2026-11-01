@@ -1,5 +1,7 @@
 # 強化学習でボトルを押す（範囲 A）
 
+進み具合と引き継ぎは [docs/reports/rl_press_log_20261101.md](../docs/reports/rl_press_log_20261101.md)。
+
 右腕 7 関節だけを強化学習の方策で動かし、ボトルの手前の面を押す。ボトルの位置は今の検出（YOLO と深度）で出す前提で、
 方策には位置を数値で渡す（画像は渡さない）。計画と比べ方・見積もりは [docs/reports/rl_press_plan.md](../docs/reports/rl_press_plan.md)。
 
