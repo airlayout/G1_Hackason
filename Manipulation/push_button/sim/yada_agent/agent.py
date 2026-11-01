@@ -14,7 +14,10 @@ from yada import YadaButtonController
 
 class PushButtonAgent(Agent):
     def __init__(self):
-        self.controller = YadaButtonController(os.environ.get("G1_YADA_WEIGHTS") or None)
+        self.controller = YadaButtonController(os.environ.get("G1_YADA_WEIGHTS") or None,
+            confidence=float(os.environ.get("G1_YADA_CONFIDENCE", ".4")),
+            device=os.environ.get("G1_YADA_DEVICE", "cpu"),
+            imgsz=int(os.environ.get("G1_YADA_IMGSZ", "640")))
 
     def reset(self, task):
         # 採点用の寸法・押込量を実機へ持ち込まない。実機は従来の real/ を使う。

@@ -22,6 +22,7 @@ from j1gen_camera import J1CameraRuntime, J1RgbdCamera, CalibratedHeadCamera, ad
 from align_button import read_calibration, validate_stationary_pose, ArmMotion
 from pose_history import PoseHistory
 from button_feedback import lamp_level
+from button_detector import make_button_detector, DEFAULT_CONFIDENCE, DEFAULT_IMAGE_SIZE
 
 
 def main(argv=None, *, task=None):
@@ -31,11 +32,12 @@ def main(argv=None, *, task=None):
     parser.add_argument('--base-transform', required=True)
     parser.add_argument('--state-json')
     parser.add_argument('--output', required=True)
-    parser.add_argument('--weights', required=True)
+    parser.add_argument('--weights', help='ボタンは省略時に同梱final8を使う')
+    parser.add_argument('--button-direction', choices=('up', 'down'))
     parser.add_argument('--target-pixel', type=int, nargs=2)
-    parser.add_argument('--confidence', type=float, default=.25)
+    parser.add_argument('--confidence', type=float)
     parser.add_argument('--device', default='cpu')
-    parser.add_argument('--detector-imgsz', type=int, default=960)
+    parser.add_argument('--detector-imgsz', type=int)
     parser.add_argument('--network-interface', default='enp3s0')
     parser.add_argument('--arm-socket')
     parser.add_argument('--execute', action='store_true')
@@ -48,6 +50,12 @@ def main(argv=None, *, task=None):
         parser.error('Use real/run_push.py for the legacy planner')
     if task is not None:
         args.task = task
+    if args.task == 'bottle' and not args.weights:
+        parser.error('ボトルには--weightsが必要です')
+    if args.confidence is None:
+        args.confidence = DEFAULT_CONFIDENCE if args.task == 'button' else .25
+    if args.detector_imgsz is None:
+        args.detector_imgsz = DEFAULT_IMAGE_SIZE if args.task == 'button' else 960
     report = dict(schema='g1-robust-trial-v1', task=args.task, completed=False, physical_push_success=None,
                   settings=asdict(settings), arguments=vars(args))
     arm = motion = observer = camera = None
@@ -71,10 +79,14 @@ def main(argv=None, *, task=None):
         report['calibration'] = calibration
         runtime = J1CameraRuntime(args.j1gen_root)
         # Model warm-up occurs before the initial capture and search deadline.
-        detector_type = runtime.module('perception_bridge').perception('detector.yolo_detector').YoloDetector
-        detector = detector_type(model_name=args.weights, classes=[args.task],
-            confidence_threshold=args.confidence, device=args.device, imgsz=args.detector_imgsz)
-        detector.detect(np.zeros((480,640,3), dtype=np.uint8))
+        if args.task == 'button':
+            detector = make_button_detector(args.weights, args.confidence, args.device, runtime=runtime,
+                imgsz=args.detector_imgsz, direction=args.button_direction)
+        else:
+            detector_type = runtime.module('perception_bridge').perception('detector.yolo_detector').YoloDetector
+            detector = detector_type(model_name=args.weights, classes=['bottle'],
+                confidence_threshold=args.confidence, device=args.device, imgsz=args.detector_imgsz)
+            detector.detect(np.zeros((480,640,3), dtype=np.uint8))
         model, rest = load_robot(Path(args.model).resolve(), tuple(calibration['tip_offset_m']),
             calibration['pelvis_height_m'],calibration['tip_radius_m'])
         sensor_kin = ArmKinematics(model)

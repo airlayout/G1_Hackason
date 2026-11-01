@@ -349,7 +349,8 @@ def test_field_entry_records_real_localizer_frames_state_and_commands(monkeypatc
         def read(self, *args, **kwargs): return 'yes'
         def __call__(self, *args, **kwargs): pytest.fail('unexpected pause')
 
-    detector = SimpleNamespace(detect=lambda _: [SimpleNamespace(class_name='button', bbox=BBOX)])
+    detector = SimpleNamespace(class_names=('button',),
+        detect=lambda _: [SimpleNamespace(class_name='button', bbox=BBOX)])
     runtime = SimpleNamespace(module=lambda _: SimpleNamespace(perception=lambda _: SimpleNamespace(
         YoloDetector=lambda **kwargs: detector)))
 
@@ -372,7 +373,7 @@ def test_field_entry_records_real_localizer_frames_state_and_commands(monkeypatc
     monkeypatch.setattr(localize_button, 'J1RgbdCamera', Camera)
     monkeypatch.setattr(field_motion, 'FieldOperator', Operator)
     output = tmp_path/'trial.json'
-    code = align_button.main(['--profile', 'field', '--model', model, '--weights', 'unused',
+    code = align_button.main(['--profile', 'field', '--model', model,
         '--base-transform', str(cal), '--stroke', '.0015', '--gravity-scale', '.2', '--dynamics-feedforward',
         '--execute', '--calibrated', '--output', str(output)])
     assert code == (2 if cleanup_failure else 0)

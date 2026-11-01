@@ -23,6 +23,7 @@ from trajectory import interpolate, validate_arm_q
 from button_feedback import LampCheck, lamp_level
 from return_path import ApproachPath, validate_return_path
 from localize_button import RgbdLocalizer
+from button_detector import make_button_detector, DEFAULT_CONFIDENCE
 from j1gen_camera import CalibratedHeadCamera, J1CameraRuntime, add_camera_arguments
 from push_button import ArmSdk, CONTROL_HZ, STATE_TIMEOUT, TRACKING_LIMIT, check_speed
 from button_control import STAGED_CLEARANCES_M, preview_button_path, solve_checked, validate_fk_margin
@@ -678,7 +679,8 @@ def execute_alignment(arm, camera, kin, calibration, args, *, motion=None, polic
 def build_argument_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True, help="Menagerie の29DoF g1.xml")
-    parser.add_argument("--weights", required=True)
+    parser.add_argument("--weights", help="省略時は同梱のbutton_final8.pt")
+    parser.add_argument("--button-direction", choices=("up", "down"))
     parser.add_argument("--base-transform", required=True, help="カメラ・手先・停止姿勢を実測した校正JSON")
     parser.add_argument("--target-pixel", type=int, nargs=2)
     parser.add_argument("--stroke", required=True, type=float, help="実物に合わせた押込量 [m]")
@@ -694,7 +696,7 @@ def build_argument_parser():
     parser.add_argument('--stop-before-contact', action='store_true')
     parser.add_argument('--gravity-scale', type=float, default=0.)
     parser.add_argument('--dynamics-feedforward', action='store_true')
-    parser.add_argument('--confidence', type=float, default=.25)
+    parser.add_argument('--confidence', type=float, default=DEFAULT_CONFIDENCE)
     parser.add_argument('--detector-imgsz', type=int, default=640)
     parser.add_argument('--device', default='auto')
     add_camera_arguments(parser)
@@ -806,10 +808,8 @@ def main(argv=None):
 
         detector = None
         if policy.field:
-            YoloDetector = runtime.module('perception_bridge').perception('detector.yolo_detector').YoloDetector
-            detector = YoloDetector(model_name=args.weights, classes=['button'],
-                confidence_threshold=args.confidence, device=args.device, imgsz=args.detector_imgsz)
-            detector.detect(np.zeros((480, 640, 3), dtype=np.uint8))
+            detector = make_button_detector(args.weights, args.confidence, args.device, runtime=runtime,
+                imgsz=args.detector_imgsz, direction=args.button_direction)
             if args.device == 'cpu':
                 import torch
                 torch.set_num_threads(2)
@@ -893,7 +893,7 @@ def main(argv=None):
                 return RgbdLocalizer(args.weights, np.eye(4), tuple(args.target_pixel) if args.target_pixel else None,
                     confidence=args.confidence, runtime=runtime, camera_config=args.camera_config, host=args.host,
                     detector=detector, position_stability_m=policy.position_stability_m,
-                    device=args.device, imgsz=args.detector_imgsz)
+                    device=args.device, imgsz=args.detector_imgsz, button_direction=args.button_direction)
 
             def perception_wait(seconds):
                 if motion is not None:
@@ -909,7 +909,7 @@ def main(argv=None):
             camera = RgbdLocalizer(args.weights, current_transform,
                 tuple(args.target_pixel) if args.target_pixel else None,
                 confidence=args.confidence, runtime=runtime, camera_config=args.camera_config, host=args.host,
-                position_stability_m=policy.position_stability_m, device=args.device, imgsz=args.detector_imgsz)
+                position_stability_m=policy.position_stability_m, device=args.device, imgsz=args.detector_imgsz, button_direction=args.button_direction)
         if args.execute:
             report = execute_alignment(arm, camera, kin, calibration, args, motion=motion, policy=policy)
             code = button_exit_code(report, args.stop_before_contact)

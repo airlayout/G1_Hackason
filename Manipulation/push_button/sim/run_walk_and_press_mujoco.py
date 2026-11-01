@@ -281,7 +281,8 @@ def main():
     parser.add_argument("--offset", type=float, nargs=3, default=[0, 0, 0])
     parser.add_argument("--yaw-deg", type=float, default=0)
     parser.add_argument("--drift-after-approach", type=float, nargs=3, default=[0, 0, 0])
-    parser.add_argument("--weights")
+    from button_detector import add_sim_detector_arguments, resolve_sim_weights
+    add_sim_detector_arguments(parser)
     parser.add_argument("--clearance", type=float, default=0.05)
     parser.add_argument("--video-out")
     parser.add_argument("--video-fps", dest="gif_fps", type=int, default=12)
@@ -291,6 +292,7 @@ def main():
     args.fixed_base, args.gif_out, args.elevator_front = False, None, True
     args.demo_title = "G1 / walk + button press"
     try:
+        args.weights = resolve_sim_weights(args)
         validate_button_stroke(args.stroke)
         if (not np.all(np.isfinite([*args.start_pose, *args.offset, *args.drift_after_approach,
                                    args.yaw_deg, args.clearance, args.navigation_timeout]))

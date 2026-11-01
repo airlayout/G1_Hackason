@@ -11,6 +11,7 @@ from dataclasses import replace
 import numpy as np
 
 from vision import CameraIntrinsics, estimate_button_target
+from button_detector import make_button_detector, DEFAULT_CONFIDENCE, DEFAULT_IMAGE_SIZE
 from yada_press import (ButtonLampCheck, MAX_COMMAND_DEPTH_M, MAX_RETRIES,
                         PRESS_COMMAND_DEPTH_M, PressCommandController, PressJointCommandFilter,
                         RETRY_EXTRA_DEPTH_M)
@@ -23,8 +24,8 @@ RETRACT_CLEARANCE = 0.18  # 点灯確認後は壁から十分離れてから腕�
 RAISE_CLEARANCE = 0.18
 RAISE_SIDE_OFFSET = 0.12
 RAISE_MIN_HEIGHT = 0.24  # pelvis基準。低いボタンでも手首を折りすぎない持ち上げ高さ。
-# 公開40配置で上下を検出できた最小の比較解像度。重み内の512を継承しない。
-YOLO_IMAGE_SIZE = 1024
+# final8の標準入力。コマンドラインで変更できる。
+YOLO_IMAGE_SIZE = DEFAULT_IMAGE_SIZE
 POSE_HISTORY_S = 0.75  # 画像の許容遅延500msを含む姿勢履歴。
 
 
@@ -177,7 +178,8 @@ def raised_approach_point(face, normal):
 
 
 class YadaButtonController:
-    def __init__(self, weights=None):
+    def __init__(self, weights=None, *, confidence=DEFAULT_CONFIDENCE,
+                 device="cpu", imgsz=YOLO_IMAGE_SIZE):
         from common.j1gen_bridge import j1gen, j1gen_config
 
         robot = j1gen_config("robot.yaml")
@@ -188,9 +190,7 @@ class YadaButtonController:
         self.camera_tf = j1gen("camera_geometry").HeadCameraTransform(robot)
         self.detector = None
         if weights:
-            from ultralytics import YOLO
-
-            self.detector = YOLO(weights)
+            self.detector = make_button_detector(weights, confidence, device, imgsz=imgsz)
         else:
             # DDSの動作開始後に初回importで制御を止めない。
             from scipy import ndimage  # noqa: F401
@@ -234,14 +234,14 @@ class YadaButtonController:
         capture_rotation = imu_rotation(imu_capture)
         # previousは補正前の点を、IMUで向きを固定した基準に保存している。
         previous_capture = None if self.previous is None else capture_rotation.T @ self.previous
+        arrows = {}
         if self.detector is None:
             boxes = color_boxes(obs.rgb)
         else:
-            # 既存の重みはBGR画像で使う。API観測はRGBなので明示的に変換する。
-            result = self.detector.predict(obs.rgb[:, :, ::-1].copy(),
-                                           imgsz=YOLO_IMAGE_SIZE, verbose=False)[0]
-            boxes = [tuple(b.xyxy[0].cpu().numpy()) for b in result.boxes
-                     if self.detector.names[int(b.cls[0])] == "button"]
+            # 上下ペアの幾何検査には両クラスを残す。観測のRGBをBGRへ変換する。
+            detections = self.detector.detect(obs.rgb[:, :, ::-1].copy())
+            boxes = [d.bbox for d in detections]
+            arrows = {tuple(d.bbox): d.class_name for d in detections}
         transform = np.eye(4)
         transform[:3, :3], transform[:3, 3] = self.camera_tf.pelvis_from_optical(q_capture)
         intr = CameraIntrinsics(obs.K[0, 0], obs.K[1, 1], obs.K[0, 2], obs.K[1, 2])
@@ -256,6 +256,9 @@ class YadaButtonController:
                 continue
         try:
             target = select_target(candidates, self.task.target, previous_capture)
+            arrow = arrows.get(tuple(candidate_boxes[id(target)])) if arrows else None
+            if arrow in ("up", "down") and arrow != self.task.target:
+                raise ValueError("上下ペアの位置とYOLOの方向が一致しません")
         except ValueError as exc:
             self.last_measurement_error = f"{exc}（検出枠 {len(boxes)} 個、有効な3D候補 {len(candidates)} 個）"
             self.samples.clear()

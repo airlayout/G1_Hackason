@@ -54,6 +54,11 @@ class YoloDetector:
     def device(self) -> str:
         return self._device
 
+    @property
+    def class_names(self) -> tuple[str, ...]:
+        """重みが持つクラス名。モデルを読み直さず用途別のフィルタを作る。"""
+        return tuple(self._model.names.values())
+
     def detect(self, frame: np.ndarray) -> list[Detection]:
         """1フレームに対して推論を行い、Detectionのリストを返す"""
         results = self._model.predict(

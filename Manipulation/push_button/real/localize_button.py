@@ -20,6 +20,7 @@ sys.path.insert(0, str(REPO_ROOT / "Perception"))
 from vision import (CameraIntrinsics, estimate_button_target,
                     validate_reachable_target)
 from alignment import TargetTracker
+from button_detector import make_button_detector, DEFAULT_CONFIDENCE, DEFAULT_IMAGE_SIZE
 from button_feedback import LampFrame
 from j1gen_camera import J1CameraRuntime, J1RgbdCamera, add_camera_arguments
 
@@ -39,16 +40,15 @@ class RgbdLocalizer:
 
     def __init__(self, weights: str, transform: np.ndarray | Callable[[], np.ndarray],
                  target_pixel: tuple[int, int] | None = None,
-                 confidence: float = 0.25, *, camera_config="camera.yaml", host=None,
+                 confidence: float = DEFAULT_CONFIDENCE, *, camera_config="camera.yaml", host=None,
                  j1gen_root=None, runtime=None, detector=None, position_stability_m=.004,
-                 device='auto', imgsz=640):
+                 device='auto', imgsz=DEFAULT_IMAGE_SIZE, button_direction=None):
         runtime = runtime or J1CameraRuntime(j1gen_root)
         self.transform = transform
         self.target_pixel = target_pixel
         if detector is None:
-            YoloDetector = runtime.module("perception_bridge").perception("detector.yolo_detector").YoloDetector
-            detector = YoloDetector(model_name=weights, classes=["button"], confidence_threshold=confidence,
-                                    device=device, imgsz=imgsz)
+            detector = make_button_detector(weights, confidence, device, runtime=runtime,
+                                            imgsz=imgsz, direction=button_direction)
         self.detector = detector
         self.tracker = TargetTracker(spread_m=position_stability_m)
         self.camera = J1RgbdCamera(runtime, camera_config, host)
@@ -130,9 +130,12 @@ class RgbdLocalizer:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--weights", required=True, help="エレベーターボタン用 YOLO .pt")
-    parser.add_argument("--class-name", default="button", help="重み内のボタンクラス名")
-    parser.add_argument("--confidence", type=float, default=0.25)
+    parser.add_argument("--weights", help="エレベーターボタン用 YOLO .pt（省略時は同梱final8）")
+    parser.add_argument("--class-name", help="重み内のクラス名を明示指定（省略時はup/downまたはbutton）")
+    parser.add_argument("--button-direction", choices=("up", "down"))
+    parser.add_argument("--device", default="auto")
+    parser.add_argument("--detector-imgsz", type=int, default=DEFAULT_IMAGE_SIZE)
+    parser.add_argument("--confidence", type=float, default=DEFAULT_CONFIDENCE)
     parser.add_argument("--base-transform", help="校正済み T_base_optical の JSON")
     parser.add_argument("--target-pixel", type=int, nargs=2, metavar=("U", "V"),
                         help="複数ボタン時に押す候補を示すカラー画像上の画素")
@@ -147,13 +150,13 @@ def main(argv=None) -> int:
         parser.error("--framesは3以上、timeoutは正、confidenceは0～1が必要です")
 
     runtime = J1CameraRuntime(args.j1gen_root)
-    YoloDetector = runtime.module("perception_bridge").perception("detector.yolo_detector").YoloDetector
 
     transform, frame_name = load_transform(args.base_transform)
     if args.preview:
         Path(args.preview).parent.mkdir(parents=True, exist_ok=True)
-    detector = YoloDetector(model_name=args.weights, classes=[args.class_name],
-                            confidence_threshold=args.confidence)
+    detector = make_button_detector(args.weights, args.confidence, args.device, runtime=runtime,
+                                    imgsz=args.detector_imgsz, direction=args.button_direction,
+                                    class_name=args.class_name)
     camera = J1RgbdCamera(runtime, args.camera_config, args.host)
     targets = []
     try:

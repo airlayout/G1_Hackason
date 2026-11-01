@@ -25,6 +25,8 @@ from vision import CameraIntrinsics, estimate_button_target, validate_reachable_
 from run_mujoco import (BUTTON_HALF_DEPTH, BUTTON_VERTICAL_SPACING, DEFAULT_TIP_OFFSET,
                         TIP_RADIUS, build_model)
 from run_vision_mujoco import oracle_bbox
+from button_detector import (make_button_detector, direction_detections,
+                             add_sim_detector_arguments, resolve_sim_weights)
 
 
 class Experiment:
@@ -83,10 +85,8 @@ class Experiment:
         if args.weights:
             import torch
             torch.set_num_threads(1)
-            sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "Perception"))
-            from common.detector.yolo_detector import YoloDetector
-            self.detector = YoloDetector(args.weights, classes=["button"],
-                                         confidence_threshold=0.25, device="cpu")
+            self.detector = make_button_detector(args.weights, getattr(args, "confidence", .4),
+                getattr(args, "device", "cpu"), imgsz=getattr(args, "detector_imgsz", 640))
         self.tracker = TargetTracker()
         self.controller = AlignmentController(clearance=args.clearance)
         self.frames = []
@@ -215,7 +215,8 @@ class Experiment:
                 self.sensor.disable_segmentation_rendering()
                 boxes = [oracle_bbox(segmentation, self.face_id)]
             else:
-                boxes = [d.bbox for d in self.detector.detect(rgb[:, :, ::-1].copy())]
+                boxes = [d.bbox for d in direction_detections(
+                    self.detector.detect(rgb[:, :, ::-1].copy()), self.args.button_direction)]
             camera = self.model.camera("button_rgbd").id
             transform = np.eye(4)
             transform[:3, :3] = self.data.cam_xmat[camera].reshape(3, 3) @ np.diag([1, -1, -1])
@@ -478,7 +479,7 @@ class Experiment:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True)
-    parser.add_argument("--weights", help="指定時は実際のYOLO推論を使う。省略時は検出器を切り分ける")
+    add_sim_detector_arguments(parser)
     parser.add_argument("--offset", type=float, nargs=3, default=[0.03, -0.03, 0.0], metavar=("X", "Y", "Z"))
     parser.add_argument("--yaw-deg", type=float, default=0.0)
     parser.add_argument("--drift-after-approach", type=float, nargs=3, default=[0, 0, 0],
@@ -496,6 +497,7 @@ def main():
     add_correction_arguments(parser)
     args = parser.parse_args()
     try:
+        args.weights = resolve_sim_weights(args)
         CorrectionTiming.from_args(args)
         SingleCorrectionTiming.from_args(args)
     except ValueError as exc:

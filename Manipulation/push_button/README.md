@@ -525,28 +525,30 @@ python Manipulation/push_button/sim/run_mujoco.py \
 
 ### YOLO + 深度画像で押す
 
-公開済みの[エレベーターボタンYOLOv8nモデル](https://github.com/Kshaw17-web/End-to-end-elevator-button-detection)
-の `models/best.pt` を重みとして使える。ライブラリは `mujoco`、`numpy`、
-`ultralytics`、`opencv-python`（画像保存時は `Pillow`）が必要。
-既存の `Perception/common/detector/yolo_detector.py` で推論するため、
-モデルをこのリポジトリへコピーする必要はない。
+ボタン用YOLOの標準モデルは、Jigenの最終版
+[`button_final8.pt`](../../Button_Press/J1-gen/weights/README.md)（`up` / `down` の2クラス）。
+GitHubの `Dev/ButtonPress`、コミット `8bcbbd7275cd4545d8abd14279226b3fd91b78fc` から
+取り込み、実機・MuJoCo・歩行後押下・Yadaで共用する。再学習や別途の重みダウンロードは不要。
+標準は640画素・信頼度0.4。`--weights PATH`、`--confidence`、`--detector-imgsz`、`--device` で変更できる。
+従来の `button` 単一クラスのモデルも明示した重みで使える。
+ライブラリは `mujoco`、`numpy`、`ultralytics`、`opencv-python`（画像保存時は `Pillow`）が必要。
+
+実機の計測・位置合わせ・robust押下では `--weights` 省略時にfinal8を使う。
+シミュレーションは `--detector yolo` でfinal8を選ぶ。従来通り `--weights PATH` だけでもYOLOを選べる。
+検出方式・重みとも省略した場合は、MuJoCoは正解枠、Yadaはカラー画像の検出を使う。
 
 ```bash
-git clone --filter=blob:none --sparse \
-  https://github.com/Kshaw17-web/End-to-end-elevator-button-detection.git \
-  /tmp/elevator-button-yolo
-git -C /tmp/elevator-button-yolo sparse-checkout set models
 MUJOCO_GL=egl python Manipulation/push_button/sim/run_vision_mujoco.py \
   --model /tmp/mujoco_menagerie/unitree_g1/g1.xml \
-  --weights /tmp/elevator-button-yolo/models/best.pt \
-  --button-direction down \
+  --detector yolo \
+  --button-direction up \
   --snapshot /tmp/button_detection.png --gif-out /tmp/button_demo.gif \
   --plan-out /tmp/button_vision_plan.json
 ```
 
 `--gif-out` は腕とボタンが見える視点から、待機→接触→押下→後退をGIFに保存する。
 
-検出器を切り分けたい場合だけ `--detector oracle` を指定する。
+検出器を切り分けるときは `--detector oracle` を指定する（検出方式・重みの省略時も同じ）。
 このモードはMuJoCoのセグメンテーションIDから正解枠を作るため、YOLOの精度試験にはならない。
 シミュレーションのカメラ位置・照明・ボタン形状は仮のもの。RGB-D カメラは
 パネルが見える仮想位置にあり、G1 実機の搭載カメラ位置を再現していない。
@@ -554,9 +556,25 @@ MuJoCoで成功しても、
 実機のカメラでの検出精度とボタン位置精度は別途測定が必要。
 2026-09-29の実測では、Menagerie `2cd6b7b`、MuJoCo 3.3.7、公開重み `536e894`、
 Ultralytics 8.4.165で、今回の上下ボタンをそれぞれ検出・押下できた。
-公開モデルは `button` 1クラスなので、上下の指定は既知のパネル高さに基づいて行う。
+この過去の公開モデルは `button` 1クラスのため、上下を既知のパネル高さで選択していた。
+現在のfinal8ではクラス名と指定方向を照合し、既存の3D条件も検査する。
 ロボットの別部位の誤検出は3D位置・押下方向の検査で棄却した。
 YOLO推定位置を使った模擬押下量は上8.2 mm、下7.4 mm（設定ストローク8 mm）。
+
+2026-11-01のfinal8取り込み時の確認（MuJoCo 3.14.0、Ultralytics 8.4.182、CPU）:
+
+| 試験 | 結果 |
+| --- | --- |
+| Yada basic、smoke seed 0/1（上・下） | 2/2 success |
+| Yada realistic、smoke seed 0/1（上・下） | 2/2 success。上は押す力10.12 Nで評価の適正範囲外 |
+| 固定骨盤の単発RGB-D MuJoCo、上、ストローク1.5 mm | YOLOで検出し、1.5 mm押下 |
+| 同じ単発MuJoCo、下、ストローク1.5 mm | YOLOの方向・3D計測は得られたが、押下量0 mm。正解枠でも0 mmで再現 |
+| 再計測するMuJoCo、下、ずれなし | final8では安定したRGB-D計測を取得できず中止 |
+
+成功率はこの4試行に限る。単発MuJoCoの下ボタンと再計測シムの認識は未解決であり、
+既存の試験用シーン全体での成功やG1実機の押下成功を示す結果ではない。
+同時に、外部Menagerieモデルを指定した回帰テスト475件がすべて成功した。
+実機入口はカメラ・SDKの代替で確認し、ローカルZMQ通信・追跡・点灯確認・ボトル処理も検査した。
 
 実機ではJ1-genのRGB-D配信を受信する。カラーに位置合わせ済みの深度と内部パラメータを使い、
 受信側はRealSenseを開かない。PC2側のvideohubは停止せず、深度付きの5556番を使う（5555番はカラーのみ）。
@@ -564,13 +582,33 @@ YOLO推定位置を使った模擬押下量は上8.2 mm、下7.4 mm（設定ス�
 
 ```bash
 python Manipulation/push_button/real/localize_button.py \
-  --weights /path/to/elevator-model/models/best.pt --frames 10 \
+  --button-direction down --frames 10 \
   --preview /tmp/button_preview.png --output /tmp/button_target_camera.json
 ```
 
 複数ボタンが写る場合は、プレビュー画像に描かれた候補中心の画素座標を確認し、
 `--target-pixel U V` で押すボタンを指定して再実行する。
 指定した画素を含む候補が複数ある場合や、3D条件を満たす候補が複数ある場合は中止する。
+実機では `--button-direction up|down` でも絞り込める。同じ向きのボタンが複数あれば画素指定も必要。
+方向を省略すれば上下両方を候補にする。方向指定はup/downを識別するモデル専用で、
+旧buttonモデルでは画素で選ぶ。Yadaは上下ペアの検査に両クラスを使う。
+
+```bash
+# 到着後の再計測・押下。下ボタン、標準モデル（実機送信はしない）
+python Manipulation/push_button/real/align_button.py \
+  --model /path/to/unitree_g1/g1.xml --base-transform /path/to/calibration.json \
+  --state-json /path/to/state.json --button-direction down --target-pixel 320 240 \
+  --stroke 0.0015 --output /tmp/button_preview_plan.json
+
+# Yada採点環境。既存の準備手順・専用Python環境を使う
+python Manipulation/push_button/sim/evaluate_yada.py \
+  --detector yolo --seeds smoke --set basic --workers 1
+```
+
+実機のrobust方式は同じ引数に `--motion-planner robust` を加えて選ぶ（[ROBUST.md](ROBUST.md)）。
+模擬環境のrobust方式も `--detector yolo` に対応するが、単純な記号なしの試験用ボタンは
+学習対象の呼びボタンとは見え方が異なるため、未検出や方向の不一致を成功として扱わない。
+
 本実装は階数文字の自動選択にはまだ対応しない。
 
 この出力の `frame` は `camera_optical` であり、腕の経路には渡せない。

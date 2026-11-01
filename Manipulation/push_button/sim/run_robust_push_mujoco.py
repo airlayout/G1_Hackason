@@ -151,10 +151,9 @@ class Observer:
             if args.task == 'bottle':
                 self.detector = make_bottle_detector(args.weights)
             else:
-                from j1gen_camera import J1CameraRuntime
-                runtime = J1CameraRuntime()
-                cls = runtime.module('perception_bridge').perception('detector.yolo_detector').YoloDetector
-                self.detector = cls(model_name=args.weights,classes=['button'],confidence_threshold=.25,device='cpu',imgsz=640)
+                from button_detector import make_button_detector
+                self.detector = make_button_detector(args.weights, args.confidence, args.device,
+                                                     imgsz=args.detector_imgsz)
 
     def capture(self):
         w = self.w
@@ -177,7 +176,10 @@ class Observer:
                     self.initial_box = box
                 box = self.initial_box
         else:
-            detections = self.detector.detect(rgb[:,:,::-1])
+            detections = self.detector.detect(rgb[:,:,::-1].copy())
+            if self.args.task == "button":
+                from button_detector import direction_detections
+                detections = direction_detections(detections, self.args.button_direction)
             if len(detections) != 1:
                 raise RuntimeError('Detector did not select exactly one target')
             box = detections[0].bbox
@@ -228,7 +230,8 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--task',choices=('button','bottle'),default='button')
     p.add_argument('--model',default='_local/bottle_push/menagerie/unitree_g1/g1.xml')
-    p.add_argument('--weights')
+    from button_detector import add_sim_detector_arguments, resolve_sim_weights
+    add_sim_detector_arguments(p)
     p.add_argument('--button-direction',choices=('up','down'),default='up')
     p.add_argument('--report-out',required=True)
     p.add_argument('--video-out')
@@ -246,6 +249,13 @@ def main(argv=None):
     add_arguments(p)
     p.set_defaults(motion_planner='robust')
     args,settings = parse(p,argv)
+    try:
+        if args.task == "button":
+            args.weights = resolve_sim_weights(args)
+        elif args.detector == "yolo" and not args.weights:
+            p.error("ボトルのYOLOには--weightsが必要です")
+    except ValueError as exc:
+        p.error(str(exc))
     report = dict(schema='g1-robust-sim-v1',completed=False,arguments=vars(args),settings=asdict(settings),
                   detector='yolo' if args.weights else 'oracle-bbox',limitations=[
                   'Fixed pelvis; no free-standing balance validation',

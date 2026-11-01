@@ -63,7 +63,8 @@ def parse(parser, argv=None):
                 action.required = False
     args = parser.parse_args(argv)
     for action in parser._actions:
-        if action.choices is not None and getattr(args,action.dest,None) not in action.choices:
+        if (action.choices is not None and getattr(args,action.dest,None) is not None
+                and getattr(args,action.dest) not in action.choices):
             parser.error(f'Invalid {action.dest}')
     settings = SearchSettings(budget_s=args.planning_budget_s, max_rollouts=args.planning_max_rollouts,
         scenarios=args.planning_scenarios, workers=args.planning_workers,

@@ -142,7 +142,7 @@ def resolve_trial_arguments(parser, argv=None, *, task='bottle'):
     if task == 'button':
         configurable -= {key for key in configurable if key.startswith('table_')}
         configurable -= {'push_distance', 'contact_height', 'track_table'}
-        configurable |= {'stroke', 'lamp_min_rise', 'stop_before_contact', 'alignment_mode', 'normal_motion',
+        configurable |= {'stroke', 'button_direction', 'lamp_min_rise', 'stop_before_contact', 'alignment_mode', 'normal_motion',
                          'remeasure_settle', 'feedback_timeout'}
     unknown = set(values)-configurable
     if unknown:

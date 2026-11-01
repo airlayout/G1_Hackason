@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 
 from yada_paths import AGENT, REPO_ROOT, find_yada_root
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from button_detector import add_sim_detector_arguments, resolve_sim_weights
 
 
 def build_command(root, backend, evaluation_args):
@@ -29,11 +31,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--backend", choices=("api", "dds"), default="api")
     parser.add_argument("--yada-root", help="Yadaディレクトリ（省略時は通常配置か準備済みのスナップショット）")
-    parser.add_argument("--weights", help="YOLO重み。省略時はカラー画像から検出する")
+    add_sim_detector_arguments(parser, fallback="color")
     args, evaluation_args = parser.parse_known_args()
     try:
+        args.weights = resolve_sim_weights(args, fallback="color")
         root = find_yada_root(args.yada_root)
         env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+        for key, value in (("G1_YADA_CONFIDENCE", args.confidence), ("G1_YADA_DEVICE", args.device),
+                           ("G1_YADA_IMGSZ", args.detector_imgsz)):
+            env[key] = str(value)
         if args.weights:
             weights = Path(args.weights).expanduser().resolve()
             if not weights.is_file():

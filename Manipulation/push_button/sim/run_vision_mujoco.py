@@ -14,6 +14,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from vision import CameraIntrinsics, estimate_button_target, validate_reachable_target
 from trajectory import DEFAULT_BUTTON_STROKE_M
+from button_detector import (make_button_detector, direction_detections,
+                             add_sim_detector_arguments, resolve_sim_weights)
 
 from run_mujoco import (BUTTON_HALF_DEPTH, BUTTON_VERTICAL_SPACING,
                         DEFAULT_TIP_OFFSET, build_model, run)
@@ -74,28 +76,21 @@ def oracle_bbox(segmentation: np.ndarray, model_geom_id: int) -> tuple[float, fl
 
 
 def yolo_bboxes(rgb: np.ndarray, weights: str,
-                confidence: float) -> list[tuple[float, float, float, float]]:
-    # 既存の Perception 検出器を利用する。モデルは同じ Ultralytics 形式の .pt。
-    repo_root = Path(__file__).resolve().parents[3]
-    sys.path.insert(0, str(repo_root / "Perception"))
-    from common.detector.yolo_detector import YoloDetector
-
-    detector = YoloDetector(model_name=weights, classes=["button"],
-                            confidence_threshold=confidence)
+                confidence: float, direction=None, device="cpu", imgsz=640) -> list[tuple[float, float, float, float]]:
+    detector = make_button_detector(weights, confidence, device, imgsz=imgsz)
     # YoloDetector は OpenCV の BGR 入力を受ける。
     detections = detector.detect(rgb[:, :, ::-1].copy())
+    if direction is not None:
+        detections = direction_detections(detections, direction)
     if not detections:
-        raise ValueError("公開 YOLO モデルはこの MuJoCo 画像でボタンを検出できません")
+        raise ValueError("YOLOはこのMuJoCo画像で指定方向のボタンを検出できません")
     return [detection.bbox for detection in detections]
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True, help="Menagerie の unitree_g1/g1.xml")
-    parser.add_argument("--weights", help="公開/追加学習済み YOLO の .pt")
-    parser.add_argument("--detector", choices=("oracle", "yolo"),
-                        help="省略時は --weights があれば yolo、なければ oracle")
-    parser.add_argument("--confidence", type=float, default=0.25)
+    add_sim_detector_arguments(parser)
     parser.add_argument("--button-x", type=float, default=0.36)
     parser.add_argument("--button-y", type=float, default=-0.25)
     parser.add_argument("--height", type=float, default=1.0)
@@ -113,8 +108,10 @@ def main(argv=None) -> int:
     parser.add_argument("--gif-fps", type=int, default=10)
     args = parser.parse_args(argv)
     detector = args.detector or ("yolo" if args.weights else "oracle")
-    if detector == "yolo" and not args.weights:
-        parser.error("--detector yolo には --weights が必要です")
+    try:
+        args.weights = resolve_sim_weights(args)
+    except ValueError as exc:
+        parser.error(str(exc))
     if not 1 <= args.gif_fps <= 30:
         parser.error("--gif-fps は1～30で指定してください")
 
@@ -129,7 +126,8 @@ def main(argv=None) -> int:
         bboxes = [oracle_bbox(segmentation,
                               model.geom(f"button_face_{args.button_direction}").id)]
     else:
-        bboxes = yolo_bboxes(rgb, args.weights, args.confidence)
+        bboxes = yolo_bboxes(rgb, args.weights, args.confidence, args.button_direction,
+                              args.device, args.detector_imgsz)
 
     valid_targets = []
     for candidate_bbox in bboxes:
@@ -140,7 +138,7 @@ def main(argv=None) -> int:
             print(f"[vision] 候補棄却 bbox={candidate_bbox}: {error}")
             continue
         valid_targets.append((candidate_bbox, candidate))
-    # YOLO の button 1クラスには上下の意味がない。既知のパネル配置と
+    # 旧buttonモデルの上下選択も維持する。既知のパネル配置と
     # 指定した上/下の大まかな高さから候補を分ける。3D座標そのものは画像から推定する。
     target_height = (args.height if args.button_direction == "up"
                      else args.height - BUTTON_VERTICAL_SPACING)

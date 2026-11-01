@@ -129,18 +129,21 @@ def test_live_localizer_keeps_bgr_depth_scale_and_three_frame_policy(monkeypatch
     seen = []
 
     class Detector:
+        class_names = ("button",)
+
         def __init__(self, **kwargs):
             pass
 
         def detect(self, image):
             seen.append(image[180, 320].copy())
-            return [SimpleNamespace(bbox=(300, 160, 340, 200))]
+            return [SimpleNamespace(class_name="button", bbox=(300, 160, 340, 200))]
 
     fake.module = lambda name: SimpleNamespace(perception=lambda name: SimpleNamespace(YoloDetector=Detector))
     # カメラの前方Zをロボットの前方Xへ変換し、作業範囲内のボタンを作る。
     transform = np.array([[0, 0, 1, -0.65], [-1, 0, 0, -0.25],
                           [0, -1, 0, 1.0], [0, 0, 0, 1]])
-    localizer = localize_button.RgbdLocalizer("unused.pt", transform, runtime=fake)
+    localizer = localize_button.RgbdLocalizer(None, transform, runtime=fake)
+    seen.clear()  # 起動時のウォームアップ画像は計測に含めない。
     try:
         observation = localizer.observe()
         assert len(seen) == 3
