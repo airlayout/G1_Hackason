@@ -54,8 +54,11 @@ start)
         shift
     done
     label="onboard${execute:+_exec}"
-    # 引数を PC2 の bash にそのまま渡すために、1 つずつクォートする
-    extra_q=$(printf ' %q' "${extra[@]+"${extra[@]}"}")
+    # 引数を PC2 の bash にそのまま渡すために、1 つずつクォートする（無いときに printf が '' を 1 つ作らないように、あるときだけ）
+    extra_q=""
+    if [ ${#extra[@]} -gt 0 ]; then
+        extra_q=$(printf ' %q' "${extra[@]}")
+    fi
     remote "bash -s" <<EOF
 set -u
 if [ -f $PIDFILE ] && kill -0 \$(head -1 $PIDFILE) 2>/dev/null; then
