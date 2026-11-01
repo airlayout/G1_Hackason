@@ -9,7 +9,7 @@ import yaml
 
 from g1_e2e.vla.config import ROOT, load_config
 from g1_e2e.vla.kinematics import WristKinematics
-from g1_e2e.vla.policy import ObservationAdapter, arm_chunk
+from g1_e2e.vla.backends.groot import ObservationAdapter, arm_chunk
 
 
 def make_observation(color=(255, 0, 0)):
@@ -33,7 +33,7 @@ def test_fk_named_joint_order_and_rotation_rows(tmp_path):
 
 @pytest.fixture
 def adapter():
-    config = load_config()
+    config = load_config(ROOT / "configs/vla/groot.json")
     if not (ROOT / config["urdf"]).exists():
         pytest.skip("公式URDFはasset準備後に検証します")
     names = yaml.safe_load((ROOT / "configs/robot/g1_29dof.yaml").read_text())["joint_names"]

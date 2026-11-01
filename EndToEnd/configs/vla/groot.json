@@ -1,4 +1,7 @@
 {
+  "backend": "groot",
+  "model_label": "GR00T · N1.7 3B",
+  "model_directory": "assets/cache/vla/model",
   "model_id": "nvidia/GR00T-N1.7-3B",
   "model_revision": "2fc962b973bccdd5d8ce4f67cc63b264d6886495",
   "source_url": "https://github.com/NVIDIA/Isaac-GR00T.git",

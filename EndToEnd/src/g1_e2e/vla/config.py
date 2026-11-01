@@ -9,7 +9,7 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_CONFIG = ROOT / "configs/vla/groot.json"
+DEFAULT_CONFIG = ROOT / "configs/vla/pi05.json"
 
 
 def finite_array(value, shape: tuple, name: str) -> np.ndarray:
@@ -21,6 +21,11 @@ def finite_array(value, shape: tuple, name: str) -> np.ndarray:
 
 def load_config(path: str | Path = DEFAULT_CONFIG) -> dict:
     config = json.loads(Path(path).read_text())
+    config.setdefault("backend", "groot")
+    config.setdefault("model_label", config["model_id"])
+    config.setdefault("model_directory", "assets/cache/vla/model")
+    if config["backend"] not in {"pi05", "groot"}:
+        raise ValueError("backendはpi05またはgrootです")
     arm = config["arm"]
     for key in ["lower_rad", "upper_rad", "kp", "kd"]:
         finite_array(arm[key], (14,), key)
@@ -39,12 +44,22 @@ def load_config(path: str | Path = DEFAULT_CONFIG) -> dict:
     ]:
         if not np.isfinite(arm[key]) or arm[key] <= 0:
             raise ValueError(f"{key}は有限の正数です")
-    for key in ["action_hz", "execute_steps", "max_task_s", "video_history_s"]:
+    for key in ["action_hz", "execute_steps", "max_task_s"]:
         if not np.isfinite(config[key]) or config[key] <= 0:
             raise ValueError(f"{key}は有限の正数です")
     if type(config["execute_steps"]) is not int or config["execute_steps"] > 40:
         raise ValueError("execute_stepsは1..40の整数です")
     if np.any(np.asarray(arm["kp"]) < 0) or np.any(np.asarray(arm["kd"]) < 0):
         raise ValueError("PDゲインは非負です")
-    finite_array(config["fixed_hand_state"], (2, 7), "fixed_hand_state")
+    if config["backend"] == "groot":
+        finite_array(config["fixed_hand_state"], (2, 7), "fixed_hand_state")
+        if not np.isfinite(config["video_history_s"]) or config["video_history_s"] <= 0:
+            raise ValueError("video_history_sは有限の正数です")
+    else:
+        if config["action_hz"] != 30 or config["image_key"] != "observation.images.global_view":
+            raise ValueError("π0.5 G1は30Hz・global_view単眼の設定を使います")
+        if type(config["num_inference_steps"]) is not int or not 1 <= config["num_inference_steps"] <= 100:
+            raise ValueError("num_inference_stepsは1..100の整数です")
+        if config["model_id"] == "lerobot/pi05_base":
+            raise ValueError("G1向けFT済みcheckpointを指定してください")
     return config

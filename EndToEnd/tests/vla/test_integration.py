@@ -13,7 +13,7 @@ from g1_e2e.vla.app import Application
 from g1_e2e.vla.config import ROOT, load_config
 from g1_e2e.vla.demo import DemoBridge, HoldPolicy
 from g1_e2e.vla.http import ApiClient, serve
-from g1_e2e.vla.policy import ObservationAdapter
+from g1_e2e.vla.policy import create_adapter
 from g1_e2e.vla.session import ArmSession
 
 
@@ -26,10 +26,10 @@ def wait_until(predicate, timeout=3):
     raise AssertionError("待機条件を満たしませんでした")
 
 
-@pytest.fixture
-def system():
-    config = load_config()
-    if not (ROOT / config["urdf"]).exists():
+@pytest.fixture(params=["pi05", "groot"])
+def system(request):
+    config = load_config(ROOT / f"configs/vla/{request.param}.json")
+    if config["backend"] == "groot" and not (ROOT / config["urdf"]).exists():
         pytest.skip("公式URDFがありません")
     bridge = DemoBridge(config)
     robot_server = serve(bridge, "127.0.0.1", 0, token="test-token")
@@ -37,7 +37,7 @@ def system():
     robot_thread.start()
     robot_client = ApiClient(f"http://127.0.0.1:{robot_server.server_port}", token="test-token")
     names = yaml.safe_load((ROOT / "configs/robot/g1_29dof.yaml").read_text())["joint_names"]
-    session = ArmSession(robot_client, HoldPolicy(), ObservationAdapter(config, names), config)
+    session = ArmSession(robot_client, HoldPolicy(), create_adapter(config, names), config)
     ui_server = serve(Application(session, demo=True), "127.0.0.1", 0)
     ui_thread = threading.Thread(target=ui_server.serve_forever, daemon=True)
     ui_thread.start()
@@ -56,6 +56,8 @@ def test_http_instruction_to_arm_and_stop(system):
     bridge, session, client, _ = system
     status = client.request("/api/status")
     assert status["demo"] and status["connected"]
+    assert status["backend"] == session.config["backend"]
+    assert status["model_label"] == session.config["model_label"]
     assert not status["robot"]["execute"]
     client.request("/api/task", {"instruction": "Hold position."})
     wait_until(lambda: client.request("/api/status")["steps"] >= 1)

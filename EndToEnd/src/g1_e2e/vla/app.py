@@ -12,7 +12,7 @@ import yaml
 
 from .config import DEFAULT_CONFIG, ROOT, load_config
 from .http import ApiClient, serve
-from .policy import GrootPolicy, ObservationAdapter
+from .policy import create_policy, create_adapter
 from .session import ArmSession
 
 
@@ -54,7 +54,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="G1アームのVLAコンソール")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--robot", default="http://127.0.0.1:8766")
-    parser.add_argument("--model-path", help="REAL_G1形式の追加学習済みcheckpointも指定可能")
+    parser.add_argument("--model-path", help="設定と同じ入出力のFT済みcheckpointディレクトリ")
     parser.add_argument("--device", help="例: cuda:0（16GBのGPUを指定）")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--demo", action="store_true", help="機体・VLAなしで通信とUIを確認する")
@@ -63,7 +63,7 @@ def main() -> None:
     if args.device:
         config["device"] = args.device
     names = yaml.safe_load((ROOT / "configs/robot/g1_29dof.yaml").read_text())["joint_names"]
-    adapter = ObservationAdapter(config, names)
+    adapter = create_adapter(config, names)
     bridge = None
     if args.demo:
         from .demo import DemoBridge, HoldPolicy
@@ -72,7 +72,7 @@ def main() -> None:
         client, policy = DemoClient(bridge), HoldPolicy()
     else:
         client = ApiClient(args.robot, token=os.environ.get("G1_ARM_TOKEN", ""))
-        policy = GrootPolicy(config, args.model_path)
+        policy = create_policy(config, args.model_path)
     session = ArmSession(client, policy, adapter, config)
     server = serve(Application(session, demo=args.demo), "127.0.0.1", args.port)
 

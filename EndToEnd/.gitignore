@@ -3,6 +3,7 @@
 /.venv-model/
 /.venv-arm/
 /.venv-vla/
+/.venv-pi05/
 /.env
 /assets/cache/
 *.egg-info/

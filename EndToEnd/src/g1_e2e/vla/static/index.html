@@ -17,7 +17,7 @@
         <span id="connection" class="badge"><i></i>接続中</span
         ><span id="mode" class="badge">—</span>
       </div>
-      <span class="model-name">GR00T <span>N1.7 · 3B</span></span>
+      <span id="model-name" class="model-name">π0.5 · G1 FT</span>
     </header>
     <main>
       <section class="vision" aria-labelledby="vision-title">
@@ -71,21 +71,21 @@
               name="instruction"
               rows="4"
               maxlength="512"
-              placeholder="右手で正面のボタンを押して"
+              placeholder="青い箱をテーブル間で往復させて"
               required
             ></textarea>
             <div class="presets" aria-label="指示の例">
               <button
                 type="button"
-                data-prompt="Press the button in front of you with your right hand."
+                data-prompt="move blue box back and forth between tables"
               >
-                右手で押す<span>↗</span>
+                箱を往復<span>↗</span>
               </button>
               <button
                 type="button"
-                data-prompt="Reach toward the red button with your left hand."
+                data-prompt="Place the blue box on the table."
               >
-                左手を伸ばす<span>↗</span>
+                箱を置く<span>↗</span>
               </button>
             </div>
             <button id="run" class="run-button" type="submit" disabled>

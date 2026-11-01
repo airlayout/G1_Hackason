@@ -55,6 +55,8 @@ function notice(message) {
 }
 function render(state) {
   latestState = state;
+  $("model-name").textContent = state.model_label;
+  $("model-name").title = state.model;
   $("connection").classList.toggle("online", state.connected);
   $("connection").lastChild.textContent = state.connected ? "接続" : "未接続";
   $("mode").textContent = state.demo

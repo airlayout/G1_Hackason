@@ -45,8 +45,11 @@ class HoldPolicy:
         pass
 
     def predict(self, observation: dict) -> np.ndarray:
-        state = observation["state"]
-        q = np.concatenate([state["left_arm"][0, 0], state["right_arm"][0, 0]])
+        if "observation.state" in observation:
+            q = observation["observation.state"][15:29]
+        else:
+            state = observation["state"]
+            q = np.concatenate([state["left_arm"][0, 0], state["right_arm"][0, 0]])
         return np.repeat(q[None], 8, axis=0)
 
     def metrics(self) -> dict:

@@ -18,7 +18,7 @@ def main() -> None:
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--device")
     parser.add_argument("--robot", default="http://127.0.0.1:8766")
-    parser.add_argument("--instruction", default="Press the button in front of you with your right hand.")
+    parser.add_argument("--instruction")
     args = parser.parse_args()
     config = load_config(args.config)
     if args.device:
@@ -30,7 +30,20 @@ def main() -> None:
         return
     if args.command == "doctor":
         import torch
+        from .policy import model_directory
 
+        directory = model_directory(config)
+        model_error = ""
+        if config["backend"] == "pi05":
+            from .backends.pi05 import validate_runtime_files
+
+            try:
+                validate_runtime_files(directory)
+            except (ValueError, OSError, KeyError) as error:
+                model_error = str(error)
+            model_ready = not model_error
+        else:
+            model_ready = (directory / "processor_config.json").is_file()
         print(
             json.dumps(
                 {
@@ -47,7 +60,10 @@ def main() -> None:
                         for i in range(torch.cuda.device_count())
                     ],
                     "disk_free_gb": round(shutil.disk_usage(ROOT).free / 1024**3, 2),
-                    "model_ready": (ROOT / "assets/cache/vla/model/processor_config.json").is_file(),
+                    "backend": config["backend"],
+                    "model": config["model_id"],
+                    "model_ready": model_ready,
+                    "model_error": model_error,
                 },
                 indent=2,
             )
@@ -55,19 +71,20 @@ def main() -> None:
         return
     import os
     from .http import ApiClient
-    from .policy import GrootPolicy, ObservationAdapter
+    from .policy import create_policy, create_adapter
 
     client = ApiClient(args.robot, token=os.environ.get("G1_ARM_TOKEN", ""))
     names = yaml.safe_load((ROOT / "configs/robot/g1_29dof.yaml").read_text())["joint_names"]
-    adapter = ObservationAdapter(config, names)
-    policy = GrootPolicy(config)
+    adapter = create_adapter(config, names)
+    policy = create_policy(config)
     policy.load()
     for _ in range(9):
         observation = client.request("/api/observation")
         adapter.record(observation)
         time.sleep(0.1)
     begin = time.monotonic()
-    chunk = policy.predict(adapter.build(observation, args.instruction))
+    instruction = args.instruction or config.get("default_instruction", "Move the blue box.")
+    chunk = policy.predict(adapter.build(observation, instruction))
     print(
         json.dumps(
             {
