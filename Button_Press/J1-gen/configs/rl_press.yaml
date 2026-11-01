@@ -1,0 +1,89 @@
+# Button_Press / 強化学習でボトルを押す（範囲 A: 右腕だけ、状態を入力）の設定。rl/press_env.py が読む。
+# 座標はすべて pelvis 基準 [m]（x 前方、y 左、z 上）。シミュレーションでは pelvis を固定している。
+#
+# 用語:
+# - エピソード: 開始の姿勢から、成功・失敗・時間切れのどれかで終わるまでの 1 回の試行
+# - 観測（observation）: 方策（policy、学習するネットワーク）に渡す数値。実機でも得られる値だけを使う
+# - 行動（action）: 方策が出す数値。ここでは右腕 7 関節の目標角の変化量（−1〜1 を max_step_rad 倍する）
+# - 報酬（reward）: 1 周期ごとに方策に与える点数。これの合計が大きくなるように学習する
+
+# 動かす腕（今は right だけ）
+arm: right
+
+# 制御の周期 [Hz]。configs/arm.yaml の control_hz と同じ
+control_hz: 50
+# 1 エピソードの最大の長さ [秒]。経由の姿勢（約 113°）へ 0.5 rad/s で上げるだけで約 4 秒かかる
+episode_s: 10.0
+
+action:
+  # 1 周期に目標角を動かせる最大量 [rad]。configs/arm.yaml の safety.max_joint_speed_rad_s（0.5 rad/s）÷ 50 Hz
+  max_step_rad: 0.01
+  # 関節リミットからこれより内側に目標を収める [rad]（configs/arm.yaml の safety.limit_margin_rad）
+  limit_margin_rad: 0.05
+
+# 腕の PD ゲイン（configs/arm.yaml の gains と同じ）。腕以外（脚・腰・左腕）は開始の姿勢で保持する
+gains:
+  arm: {kp: 60.0, kd: 1.5}
+  wrist: {kp: 40.0, kd: 1.5}
+  # 腰は arm_sdk の waist_hold、脚は lowcmd の hold_kp / hold_kd（胴体固定なので脚はほぼ関係ない）
+  waist: {kp: 60.0, kd: 1.5}
+  leg: {kp: 60.0, kd: 1.0}
+  # 左腕（動かさない）
+  other_arm: {kp: 40.0, kd: 1.0}
+
+# 配置のランダム化（エピソードごと）。sim/reach_verify.py と同じ作り: 机は縁が体の正面に平行、
+# ボトルは天板の上で、押す点は手前の面の天板から press_height_m 上。
+# 範囲は configs/pipeline.yaml の stand（押す点 30〜40 cm、右 0〜25 cm、机の縁 20 cm 以上）に合わせる
+scene:
+  # 押す点（ボトルの手前の面）の x
+  target_x: [0.30, 0.40]
+  # ボトルの左右 y（右が負）
+  bottle_y: [-0.25, 0.0]
+  # 机の縁からボトルの手前の面まで
+  gap: [0.02, 0.12]
+  # 机の縁の x の下限（これより近い配置は引き直す）
+  table_edge_min_m: 0.20
+  # 天板の上面の z（pelvis から。0.0 で床から約 0.73 m。±5 cm で 0.69〜0.79 m の机）
+  top_z: [-0.05, 0.05]
+  press_height_m: 0.10
+  # 机の大きさ（半分）。z は天板の厚さで、下に below_m の箱を足して「天板の下をくぐる」経路を塞ぐ
+  # （実機の計画の障害物 reach_map.desk_boxes と同じ考え方）
+  table_half_xy: [0.20, 0.30]
+  table_half_z: 0.02
+  table_below_m: 0.40
+  # 机の中心の y
+  table_y: -0.15
+
+# 成功の条件: 指先（中指の先）が押す点の近くにあり、ボトルを押す力が範囲に入った状態が hold_s 続く
+success:
+  # 押す点からの、押す向きに直交する向き（y, z）のずれの上限 [m]
+  lateral_tol_m: 0.02
+  # 押す力（ボトルとハンド・腕の接触力の合計の、押す向きの成分）の範囲 [N]
+  force_min_n: 2.0
+  force_max_n: 15.0
+  hold_s: 0.3
+
+reward:
+  # 指先と押す点の距離が縮んだ分 × progress（[1/m]）
+  progress: 10.0
+  # 指の向きが押す向きにそろっている分（cos）× align を毎周期
+  align: 0.01
+  # 行動の変化の 2 乗 × action_rate（急な動きを抑える）
+  action_rate: 0.01
+  # 成功
+  success: 10.0
+  # 腕・ハンドが机や体に当たった（エピソードはそこで終わる）
+  collision: -5.0
+  # 押す力が force_max_n を超えた分 [N] × over_force（毎周期）
+  over_force: 0.05
+
+# 開始の姿勢 [rad]（motor 番号順の 29）: 10/21 の実機の立った姿勢（両腕を下ろす。sim/reach_map.py の REAL_STAND_1021 と同じ値）
+start_q: [-0.290485, -0.004960, -0.002531, 0.593250, -0.318594, 0.008501,
+          -0.271123, 0.003017, -0.002223, 0.601994, -0.338352, -0.005524,
+          -0.000576, 0.000470, -0.002349,
+          0.291049, 0.129657, 0.015711, 0.981556, 0.087161, 0.076807, 0.015232,
+          0.286950, -0.125894, 0.024520, 0.982035, -0.096293, 0.058938, -0.020649]
+
+collision:
+  # 開始の姿勢ですでにめり込んでいる組（下ろした手と股関節）は、開始よりこれだけ深くなったら「当たった」とする [m]
+  start_extra_m: 0.003

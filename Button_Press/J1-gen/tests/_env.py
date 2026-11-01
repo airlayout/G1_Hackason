@@ -29,6 +29,7 @@ REASONS = {
     "render": "描画環境（OpenGL）が無い（MuJoCo のカメラの画像を作れない）",
     "sdk": "unitree_sdk2py が無い",
     "yolo": "ultralytics（YOLO）が無い",
+    "gym": "gymnasium が無い（強化学習の環境。rl/requirements.txt）",
 }
 
 
@@ -76,6 +77,8 @@ def available(what: str) -> bool:
         return _imports("unitree_sdk2py")
     if what == "yolo":
         return _imports("ultralytics")
+    if what == "gym":
+        return _imports("gymnasium")
     raise ValueError(what)
 
 
