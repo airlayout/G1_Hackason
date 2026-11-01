@@ -12,6 +12,8 @@
 #   純正に似せた脚のまま測る。止め札（~/work_inoue/STOP_DOOR_F3）を置くまで続ける
 # 使い方（OMEN の ~/work_inoue/doorman で）: setsid nohup ./exp_stocklegs_1030.sh >> logs_stocklegs_1030.log 2>&1 < /dev/null &
 #   段 A を飛ばす: SKIP_A=1。生徒から脚と腰を隠さずに学習し直す: MASK=0（段の名前 f3sl4096）・隠す回の割合: MASK=0.5（f3sm4096、パッチ 0086）
+#   完了に段階 5 を要する: COMPLETE_THROUGH=1（パッチ 0088）。GPU の空きで回ごとに台数を選ぶ: AUTO_ENVS=1（stage_chain.sh）
+#   11-01 の続き: SKIP_A=1 MASK=0 COMPLETE_THROUGH=1 B_NAME=f3sc AUTO_ENVS=1 IDLE_GATE=0 CK=<f3sl4096 の last.pt>
 set -uo pipefail
 cd "$HOME/work_inoue/doorman" || exit 1
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
@@ -46,7 +48,7 @@ eval_cond() {
   evlog="$HOME/work_inoue/doorman/logs_stocklegs_eval_${name}.log"
   # 始め直し（10-30 夜に OMEN の電源が切れた）: 済んだ条件は測り直さない
   if awk -F'\t' -v n="$name" '$1 == n && $3 != "none" { found = 1 } END { exit !found }' "$RESULTS"; then
-    log "段 A 評価 ${name} は済んでいる（$RESULTS）"; return 0
+    log "段 A 評価 ${name} は済んでいる（${RESULTS}）"; return 0
   fi
   log "段 A 評価 ${name} ck=$CK more=$more"
   # 評価は 256 台なので 9 GB（10-26〜29 の評価と同じ）。再起動の後は空きが 12.5 GB で、12 GB＋余裕では始まらない
@@ -85,7 +87,14 @@ case "${MASK:-1}" in
     B_NAME="${B_NAME:-f3sm4096}" B_MORE="$CAPS_MORE,$STOCK_MORE,++env.config.actor_obs_mask_lower_body_prob=$MASK" ;;
   *) log "MASK は 0・1・0〜1 の小数のどれか: ${MASK}"; exit 1 ;;
 esac
-log "段 B: $B_NAME を学習し直す ck=$CK mask=${MASK:-1}"
+# COMPLETE_THROUGH=1（11-01 ユーザー了承「抜け道を塞ぐ」、パッチ 0088）: 完了に段階 5（通り抜け）を要する。
+# 扉を 70° 未満しか開けずに扉の先 1.5 m へ出ても完了にしない（評価の成功と同じ決め方）。段の名前は B_NAME で替える（例 f3sc）
+if [ "${COMPLETE_THROUGH:-0}" = 1 ]; then
+  grep -qF "complete_requires_through_stage" "$HOME/work_inoue/doorman6/VIRAL6_fix/gr00t/rl/envs/door/door_open_homie.py" ||
+    { log "パッチ 0088 が VIRAL6_fix に当たっていない"; exit 1; }
+  B_MORE="$B_MORE,++env.config.complete_requires_through_stage=True"
+fi
+log "段 B: $B_NAME を学習し直す ck=$CK mask=${MASK:-1} complete_through=${COMPLETE_THROUGH:-0} auto_envs=${AUTO_ENVS:-0}"
 export NAME="$B_NAME" TRAIN_MORE="$B_MORE"
 # 学習（と各回の評価）の上限は 10 GB（10-30 17〜19 時の sar で 4,096 台の学習は 8.5 GB。再起動の後は空きが 12.5 GB で、
 # 12 GB＋余裕 1 GB〔exp_f3_retrain_1026.sh で固定〕では空き待ちから出られない）

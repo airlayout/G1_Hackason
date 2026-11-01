@@ -60,7 +60,7 @@ def load(path, map_location=None, weights_only=None):
 # 学習の代わり: STUB_MODE で振る舞いを選ぶ。progress＝新しい last.pt を作る／stall＝始まるが重みは増えない／wait＝空くのを待つだけ
 STUB_TRAIN = r'''#!/usr/bin/env bash
 LOGROOT="$WORK/$REPO/logs_rl/$PROJECT"
-echo "n=$1 mem_max=${MEM_MAX:-}" >> "$HOME/train_calls"  # 台数とメモリの上限が届いたか（10-28）
+echo "n=$1 mem_max=${MEM_MAX:-} others=${OTHERS_GPU_MB:-}" >> "$HOME/train_calls"  # 台数・メモリの上限・門番の線が届いたか（10-28・11-01）
 case "${STUB_MODE:-progress}" in
   progress)
     n=$(ls "$LOGROOT" 2>/dev/null | wc -l | tr -d " "); d="$LOGROOT/run_$n"; mkdir -p "$d"
@@ -73,10 +73,23 @@ case "${STUB_MODE:-progress}" in
 esac
 '''
 STUB_EVAL = r'''#!/usr/bin/env bash
+echo "mem_max=${MEM_MAX:-} others=${OTHERS_GPU_MB:-}" >> "$HOME/eval_calls"  # 評価のメモリの上限と門番の線（11-01）
 out="$HOME/work_inoue/doorman/records/r_$RANDOM$RANDOM"; mkdir -p "$out"
 rate="${STUB_RATE:-0.5}"; case "$1" in */door_f3h*|*/door_f3j*) rate="${STUB_RATE_F3H:-$rate}" ;; */door_f3k*) rate="${STUB_RATE_F3K:-$rate}" ;; */door_f3l*) rate="${STUB_RATE_F3L:-$rate}" ;; esac  # 段 F2・F3'・CAPS の率を変えられる（10-29・10-30）
 echo "{\"success_rate\": $rate, \"success\": 128, \"episodes_from_stage0\": 256}" > "$out/summary.json"
 echo "=== eval_from_start out=$out success=128/256 rc=0"
+'''
+
+
+# nvidia-smi の代わり（11-01・AUTO_ENVS の台数選び）: 全体は NV_TOTAL、他人の使用は NV_OTHERS（1 本の計算のプロセスとして表に出す）
+SHIM_NVIDIA_SMI = r'''#!/usr/bin/env python3
+import os, sys
+if any(a.startswith("--query-gpu=memory.total") for a in sys.argv[1:]):
+    print(os.environ.get("NV_TOTAL", "16311")); sys.exit(0)
+used = int(os.environ.get("NV_OTHERS", "0"))
+print("| Processes:                                                                |")
+if used:
+    print(f"|    0   N/A  N/A          508571      C   /x/python    {used}MiB |")
 '''
 
 
@@ -93,7 +106,7 @@ def omen(tmp_path):
     home = tmp_path / "home"
     base = home / "work_inoue" / "doorman"
     base.mkdir(parents=True)
-    for name in ("stage_chain.sh", "exp_f3_retrain_1026.sh", "f3_keepalive_1026.sh", "exp_f3bc_1027.sh", "exp_f3_phases_1028.sh", "exp_f3_phaseF_1029.sh",
+    for name in ("stage_chain.sh", "gate.sh", "exp_f3_retrain_1026.sh", "f3_keepalive_1026.sh", "exp_f3bc_1027.sh", "exp_f3_phases_1028.sh", "exp_f3_phaseF_1029.sh",
                  "exp_f3_caps_1030.sh"):
         shutil.copy(HERE / name, base / name)
         (base / name).chmod(0o755)
@@ -104,6 +117,7 @@ def omen(tmp_path):
     _write(shim / "date", SHIM_DATE, True)
     _write(shim / "find", SHIM_FIND, True)
     _write(shim / "stat", SHIM_STAT, True)
+    _write(shim / "nvidia-smi", SHIM_NVIDIA_SMI, True)
     fake = tmp_path / "fake_torch"
     _write(fake / "torch" / "__init__.py", FAKE_TORCH)
     py = home / "miniforge3" / "envs" / "doorman6" / "bin" / "python"
@@ -292,7 +306,7 @@ def test_phases_pass_the_number_of_envs_to_every_training(omen, extra, want, sfx
     r = _phases(omen, **extra)
     assert r.returncode == 0, r.stdout + r.stderr
     calls = (omen["home"] / "train_calls").read_text(encoding="utf-8").splitlines()
-    assert calls == [want] * 3
+    assert calls == [f"{want} others=2048"] * 3  # 門番の線は既定のまま（11-01）
     assert want in r.stdout  # 段の始めの行にも出す
     c, d, e = _chain_parts(_all_chain_logs(omen))
     assert f"stage=f3d{sfx} " in c and f"stage=f3e{sfx} " in d and f"stage=f3f{sfx} " in e
@@ -516,3 +530,58 @@ def test_caps_refuses_without_a_weight_and_stops_on_the_flag(omen):
     assert r.returncode == 0
     assert "次の段も見張りも始めずに終わる" in r.stdout
     assert len(_rounds(omen)["f3l"]) == 1 and "比べた" not in r.stdout
+
+
+# --- AUTO_ENVS（11-01 ユーザー「GPU のメモリの空きに応じて学習を継続して」）: 回ごとに GPU と RAM の空きから台数を選ぶ ---------------
+
+
+def _auto(omen, others_mib: int, avail_mb: int):
+    meminfo = omen["home"] / "meminfo"
+    _write(meminfo, f"MemAvailable:   {avail_mb * 1024} kB\n")
+    r, log = _chain(omen, "progress", rounds=1, AUTO_ENVS="1", NV_TOTAL="16311", NV_OTHERS=str(others_mib),
+                    MEMINFO_FILE=str(meminfo), NEED_MARGIN_MB="1024")
+    assert (omen["home"] / "train_calls").exists(), r.stdout + r.stderr + log
+    train = (omen["home"] / "train_calls").read_text(encoding="utf-8").split()
+    evals = (omen["home"] / "eval_calls").read_text(encoding="utf-8").split()
+    return r, log, train, evals
+
+
+def test_auto_envs_fits_beside_another_users_gpu_process(omen):
+    """他人が 9.4 GB 持っている（11-01 の pi05）と、空き 6.6 GB に入る 512 台。譲る線は全体 − 要る量、評価は 7 GB と評価の線"""
+    r, log, train, evals = _auto(omen, others_mib=9734, avail_mb=9000)
+    assert train == ["n=512", "mem_max=6G", f"others={16311 - 5750}"]
+    assert evals == ["mem_max=7G", f"others={16311 - 5000}"]
+    assert "台数を選んだ n=512" in log
+
+
+def test_auto_envs_uses_4096_when_the_gpu_is_free(omen):
+    r, log, train, evals = _auto(omen, others_mib=300, avail_mb=14000)
+    assert train == ["n=4096", "mem_max=10G", f"others={16311 - 11800}"]
+
+
+def test_auto_envs_lowers_the_count_when_ram_is_short(omen):
+    """GPU が空いていても、RAM の空き 8 GB では 4,096（10G＋余裕）と 2,048（8G＋余裕）は入らず 1,024"""
+    r, log, train, evals = _auto(omen, others_mib=300, avail_mb=8000)
+    assert train[:2] == ["n=1024", "mem_max=6G"]
+
+
+def test_auto_envs_waits_with_512_when_nothing_fits(omen):
+    """どれも入らなければ 512 台で、門番が空きを待つ"""
+    r, log, train, evals = _auto(omen, others_mib=12000, avail_mb=9000)
+    assert train == ["n=512", "mem_max=6G", f"others={16311 - 5750}"]
+
+
+def test_without_auto_envs_the_count_and_the_gate_are_unchanged(omen):
+    r, log = _chain(omen, "progress", rounds=1, NUM_ENVS="4096", MEM_MAX="10G")
+    assert (omen["home"] / "train_calls").read_text(encoding="utf-8").split() == ["n=4096", "mem_max=10G", "others=2048"]
+    assert (omen["home"] / "eval_calls").read_text(encoding="utf-8").split() == ["mem_max=10G", "others=2048"]
+    assert "台数を選んだ" not in log
+
+
+def test_chain_stops_when_gate_sh_is_missing(omen):
+    (omen["base"] / "gate.sh").unlink()
+    env = dict(omen["env"], CHAIN_REPO="R", PAUSE_FILE=str(omen["home"] / "P"), STOP_FILE=str(omen["home"] / "S"))
+    r = subprocess.run(["bash", "./stage_chain.sh", str(omen["ck"]), "f3:door:1:1:through:++a=1"],
+                       cwd=omen["base"], env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, check=False)
+    assert r.returncode == 2
+    assert "gate.sh が読めない" in r.stdout

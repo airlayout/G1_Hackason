@@ -38,7 +38,8 @@ others_gpu_mb() {
     END { print s+0 }'
 }
 
-mem_avail_mb() { awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo; }
+# MEMINFO_FILE は試験用（stage_chain の台数選びの試験で RAM の空きを作り物にする）
+mem_avail_mb() { awk '/MemAvailable/{print int($2/1024)}' "${MEMINFO_FILE:-/proc/meminfo}"; }
 
 wait_machine_free() {
   local ok=0 waited=0

@@ -1,0 +1,37 @@
+From 8e970c7e571b523775b60300aaa03241da1b6eb8 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Sun, 1 Nov 2026 17:30:30 +0900
+Subject: [PATCH] door: optionally require the walk-through stage for
+ completion (env.config.complete_requires_through_stage=True completes only in
+ stage 5; the original completion is 1.5 m past the door whatever the stage,
+ so walking past a door opened less than door_through_angle_deg also
+ completed, without the termination penalty and with the completion rewards,
+ while the evaluation counts it as a failure; default off = unchanged) (11-01)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ gr00t/rl/envs/door/door_open_homie.py | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 997b864..b0e8b18 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -1690,7 +1690,13 @@ class DoorPregrasp(
+         return self._stage_4_to_5_advance_condition()
+ 
+     def _stage_5_to_complete_condition(self):
+-        return (self.simulator.robot_root_states[:, 0] - self.env_origins[:, 0]) > 1.5
++        walked_far = (self.simulator.robot_root_states[:, 0] - self.env_origins[:, 0]) > 1.5
++        # G1_Hackason（パッチ 0088、11-01）: 元の完了は扉の先 1.5 m だけで段階を見ない。扉を door_through_angle_deg 未満しか
++        # 開けずに抜けても完了になり、打ち切りの罰が無く完了の報酬が入っていた（評価の成功 count_success.py は段階 5 を要する）。
++        # complete_requires_through_stage=True で、段階 5（通り抜け）にいるときだけ完了にする
++        if not self.config.get("complete_requires_through_stage", False):
++            return walked_far
++        return walked_far & (self.stage_buf == self.STAGE_THROUGH)
+ 
+     def scene_creation_callback(self, simulator):
+         door_frame_unwanted_contact_sensor_config: ContactSensorCfg = ContactSensorCfg(
+-- 
+2.43.0
+
