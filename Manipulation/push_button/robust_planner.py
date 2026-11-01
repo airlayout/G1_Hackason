@@ -3,6 +3,7 @@ from dataclasses import dataclass, field, asdict, replace
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
 from itertools import product
+from collections import deque
 import time
 import math
 
@@ -15,6 +16,8 @@ from mujoco import rollout
 from robust_scene import SceneSnapshot, build_scene_model, clone_kin, contact_metrics
 from trajectory import ARM_JOINTS, ARM_TORQUE_LIMITS_NM
 from alignment import press_compensation_allowance, press_overtravel_allowance
+from alignment import JointCommandFilter
+from robust_control import BottleFeedback, bottle_contact_margin, fade_return_offset, reference_command
 from motion_limits import (JointMotionLimits, CONTROL_PERIOD_S, MOTION_OVERHEAD_S,
                            PLANNED_LIMIT_FRACTION, MOTION_TOLERANCE_S)
 
@@ -191,8 +194,10 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     raised = face-(r+.12)*normal + [0, waypoint_offset[0], (.10 if scene.task=='bottle' else 0.)+waypoint_offset[1]]
     depth = (scene.stroke+press_compensation_allowance(scene.stroke)
              if scene.task == 'button' else scene.push_distance)
+    contact_clearance = (.005+scene.uncertainty_m+settings.position_error_m
+                         if scene.task == 'bottle' else .005)
     target_points = [(raised, 'approach'), (face-(r+.05)*normal, 'approach'),
-                     (face-(r+.005)*normal, 'close'), (face-r*normal, 'contact')]
+                     (face-(r+contact_clearance)*normal, 'close'), (face-r*normal, 'contact')]
     for d in np.linspace(0, depth, max(2, math.ceil(depth/.005)+1))[1:]:
         target_points.append((face+(d-r)*normal, 'press'))
     target_points += [(face-(r+.05)*normal, 'retract'), (raised, 'return')]
@@ -218,7 +223,7 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     for i in range(1, len(points)):
         if scene.task == 'bottle':
             # Keep time for stable sliding contact; use the faster arm limits in free space.
-            speed = dict(press=.005, contact=.02, close=.04, retract=.1).get(labels[i], .2)
+            speed = dict(press=.005, contact=.005, close=.04, retract=.1).get(labels[i], .2)
         else:
             speed = min(.003, scene.stroke/2) if labels[i] == 'press' else (
                      .005 if labels[i] == 'contact' else .01 if labels[i] == 'close' else
@@ -230,6 +235,10 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
              if scene.task == 'bottle' else np.r_[0., np.cumsum(durations)])
     times, spline, t, metrics = retime_reference(times, points, settings)
     qs = spline(t)
+    if scene.task == 'bottle':
+        metrics['bottle_feedback'] = dict(offset_limit_m=scene.uncertainty_m+.005,
+            observation_period_s=.2, observation_delay_s=.2, window_frames=3,
+            observation_noise_m=settings.position_error_m, gravity_scale=settings.gravity_scale)
     intervals = np.minimum(np.searchsorted(times, t, side='left'), len(labels)-1)
     phases = [labels[i] for i in intervals]
     limits = kin.model.jnt_range[[kin.model.joint(n).id for n in ARM_JOINTS]]
@@ -255,11 +264,13 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
                      margin, clearance, np.array(taus), metrics)
 
 
-def uncertainty_scenarios(settings, scene):
+def uncertainty_scenarios(settings, scene, *, include_corners=True):
     rng = np.random.default_rng(settings.seed)
     rows = []
     for i in range(settings.scenarios):
         position = np.zeros(3) if i == 0 else rng.uniform(-1, 1, 3)*(settings.position_error_m+scene.uncertainty_m)
+        if include_corners and settings.scenarios >= 9 and 1 <= i <= 8:
+            position = np.array(list(product((-1., 1.), repeat=3))[i-1])*(settings.position_error_m+scene.uncertainty_m)
         angles = np.zeros(3) if i == 0 else rng.uniform(-1, 1, 3)*np.deg2rad(settings.normal_error_deg)
         tracking = np.zeros(7) if i == 0 else rng.uniform(-1, 1, 7)*settings.tracking_error_rad
         rows.append(dict(index=i, position=position.tolist(), angles=angles.tolist(), tracking=tracking.tolist(),
@@ -302,6 +313,7 @@ def physical_trial(base_kin, scene, c, condition, deadline):
     mujoco.mj_forward(m, d)
     initial_object = d.xpos[m.body('robust_target').id].copy()
     clearance, lateral_max, peak_press, tracking_max = .05, 0., 0., 0.
+    target_margin = float('inf')
     peak_force = 0.
     limits = m.jnt_range[[m.joint(name).id for name in ARM_JOINTS]]
     dynamic_joint_margin = float('inf')
@@ -311,6 +323,14 @@ def physical_trial(base_kin, scene, c, condition, deadline):
     state = np.empty(mujoco.mj_stateSize(m, state_spec))
     target_id = m.body('robust_target').id
     gains = m.actuator_gainprm[kin.actuator, 0]
+    feedback = BottleFeedback(scene) if scene.task == 'bottle' else None
+    if feedback is not None:
+        command_filter = JointCommandFilter(c.q[0], JointMotionLimits(**c.motion_metrics['limits']))
+        reference_kin = clone_kin(base_kin)
+        observation_history = deque([np.zeros(3) for _ in range(4)], maxlen=4)
+        feedback_settings = c.motion_metrics['bottle_feedback']
+        sensor_rng = np.random.default_rng(condition['index']+731)
+    max_feedback_offset = 0.
     # Blocks are bounded to 0.2 simulated seconds, so a deadline never waits for a whole trajectory.
     for first in range(0, len(c.q), 10):
         if time.perf_counter() >= deadline:
@@ -320,6 +340,27 @@ def physical_trial(base_kin, scene, c, condition, deadline):
         inputs[:, :m.nu] = scene.q
         inputs[:, kin.actuator] = c.q[first:last]+np.array(condition['tracking'])
         inputs[:, m.nu+kin.dadr] = c.tau[first:last]
+        reference_tcp = c.tcp[first:last].copy()
+        if feedback is not None:
+            # Fixed calibration translation cancels in object displacement.
+            # Use a three-frame median and a full camera-period delivery delay.
+            noise = sensor_rng.uniform(-1., 1., 3)*feedback_settings['observation_noise_m']
+            observation_history.append(d.xpos[target_id]-initial_object+noise)
+            observed_delta = np.median(list(observation_history)[:-1], axis=0)
+            try:
+                for j, i in enumerate(range(first, last)):
+                    progress = max(0., float((c.tcp[min(i,c.press_end)]-scene.face)@n+scene.tip_radius))
+                    offset = feedback.update(observed_delta, progress, first//10,
+                        freeze=i < c.press_start or i > c.press_end)
+                    offset = fade_return_offset(offset, c, i)
+                    max_feedback_offset = max(max_feedback_offset, float(np.linalg.norm(offset)))
+                    goal, torque, tcp = reference_command(reference_kin,c,i,offset,command_filter,
+                                                          feedback_settings['gravity_scale'])
+                    inputs[j, kin.actuator] = goal+np.array(condition['tracking'])
+                    inputs[j, m.nu+kin.dadr] = torque
+                    reference_tcp[j] = tcp
+            except (ValueError, RuntimeError) as exc:
+                return dict(completed=False, reason=str(exc), wall_s=time.perf_counter()-started)
         controls = np.repeat(inputs, 10, axis=0)
         mujoco.mj_getState(m, d, state, state_spec)
         states, _ = rollout.rollout(m, d, state, controls, control_spec=ctrl_spec)
@@ -339,7 +380,7 @@ def physical_trial(base_kin, scene, c, condition, deadline):
                     contact=c.phases[i] in ('contact','press','retract')))
             except ValueError as exc:
                 return dict(completed=False, reason=str(exc), wall_s=time.perf_counter()-started)
-            tracking_max = max(tracking_max, float(np.linalg.norm(kin.tip_position()-c.tcp[i])))
+            tracking_max = max(tracking_max, float(np.linalg.norm(kin.tip_position()-reference_tcp[j])))
             dynamic_joint_margin = min(dynamic_joint_margin,float(np.min(np.minimum(
                 d.qpos[kin.qadr]-limits[:,0],limits[:,1]-d.qpos[kin.qadr]))))
             if c.press_start <= i <= c.press_end:
@@ -351,6 +392,10 @@ def physical_trial(base_kin, scene, c, condition, deadline):
                     actual_contact = d.xpos[target_id]+[0,0,scene.face[2]-scene.base_height-scene.object_height/2]
                 delta = kin.tip_position()-actual_contact
                 lateral_max = max(lateral_max,float(np.linalg.norm(delta-actual_normal*(delta@actual_normal))))
+                if scene.task == 'bottle':
+                    bottom = d.xpos[target_id][2]-scene.object_height/2
+                    target_margin = min(target_margin, bottle_contact_margin(
+                        scene,kin.tip_position(),d.xpos[target_id],bottom))
             if scene.task == 'button':
                 peak_press = max(peak_press, float(d.qpos[m.joint('robust_object_joint').qposadr[0]]))
                 for contact_index, collision in enumerate(d.contact):
@@ -367,14 +412,15 @@ def physical_trial(base_kin, scene, c, condition, deadline):
     success = (.9*scene.stroke <= peak_press <= scene.stroke+press_overtravel_allowance(scene.stroke)
                and peak_force <= 40. if scene.task == 'button' else
                abs(displacement[0]-scene.push_distance) <= .01 and abs(displacement[1]) <= .01)
-    target_margin = scene.radius-scene.tip_radius-scene.uncertainty_m-lateral_max
+    if scene.task == 'button':
+        target_margin = scene.radius-scene.tip_radius-scene.uncertainty_m-lateral_max
     success = bool(success and clearance >= .003 and target_margin > .003
                    and tracking_max <= .01 and dynamic_joint_margin >= .02
                    and np.max(np.abs(d.qpos[kin.qadr]-scene.q[22:29])) <= np.deg2rad(2))
     return dict(completed=True, success=success, min_clearance_m=clearance, target_margin_m=target_margin,
         tracking_max_m=tracking_max, min_joint_margin_rad=dynamic_joint_margin,
         peak_press_m=peak_press, peak_force_n=peak_force if scene.task=='button' else None,
-        displacement_m=displacement.tolist(),
+        displacement_m=displacement.tolist(), max_feedback_offset_m=max_feedback_offset,
         wall_s=time.perf_counter()-started)
 
 
@@ -470,7 +516,7 @@ def evaluate_holdout(path, calibration, plan, settings, *, seed=10000, count=20,
     if not 1 <= count <= 100:
         raise ValueError('holdout count must be 1..100')
     evaluation = replace(settings,seed=seed,scenarios=count+1,max_rollouts=max(count+1,settings.max_rollouts))
-    conditions = uncertainty_scenarios(evaluation,plan.scene)[1:]  # exclude the reused nominal condition
+    conditions = uncertainty_scenarios(evaluation,plan.scene,include_corners=False)[1:]
     with ProcessPoolExecutor(max_workers=settings.workers,
             mp_context=multiprocessing.get_context('spawn'),initializer=_init_worker,
             initargs=(str(path),calibration,plan.scene)) as pool:

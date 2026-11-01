@@ -1,0 +1,16 @@
+{
+  "command": [
+    "_local/bottle_push/venv/bin/python",
+    "-m",
+    "pytest",
+    "Manipulation/push_button/tests/test_robust_planner.py",
+    "Manipulation/push_button/tests/test_motion_limits.py",
+    "Manipulation/push_button/tests/test_j1gen_camera.py",
+    "-q",
+    "--junitxml=Manipulation/push_button/LOG/robust-lab-20261101/validation/pytest.xml"
+  ],
+  "exit_code": 1,
+  "recorded_at_epoch_s": 1793502766.1920455,
+  "work_in_progress": true,
+  "archive_normalization": "Removed trailing whitespace from pytest.log and pytest.xml; test result unchanged"
+}

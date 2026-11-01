@@ -1,0 +1,53 @@
+{
+  "mode": "feedback",
+  "source": "/home/ubuntu/dev/G1_Kanto/Manipulation/push_button",
+  "total_wall_s": 0.8501908250036649,
+  "trial": {
+    "completed": true,
+    "success": false,
+    "min_clearance_m": 0.04797737045558312,
+    "target_margin_m": 0.00473545399659684,
+    "tracking_max_m": 0.017494839587773908,
+    "min_joint_margin_rad": 0.3993574357328078,
+    "peak_press_m": 0.0,
+    "peak_force_n": null,
+    "displacement_m": [
+      0.04941692219914923,
+      0.003871583904098752,
+      -3.621971388145795e-06
+    ],
+    "max_feedback_offset_m": 0.020635113051384178,
+    "wall_s": 0.8443305300024804
+  },
+  "timers": {
+    "copy_model_and_data": {
+      "calls": 2,
+      "wall_s": 0.07811038798536174
+    },
+    "full_forward_subcalls": {
+      "calls": 4006,
+      "wall_s": 0.11936910523218103
+    },
+    "feedback_command_generation": {
+      "calls": 1335,
+      "wall_s": 0.18647676904220134
+    },
+    "physics_integration": {
+      "calls": 134,
+      "wall_s": 0.39263006797409616
+    },
+    "forward_position_checks": {
+      "calls": 1335,
+      "wall_s": 0.027062701774411835
+    },
+    "geometry_distance_subcalls": {
+      "calls": 10680,
+      "wall_s": 0.006958703452255577
+    },
+    "collision_clearance_checks": {
+      "calls": 1335,
+      "wall_s": 0.09811031926074065
+    }
+  },
+  "other_setup_python_metrics_and_cleanup_s": 0.06780057896685321
+}

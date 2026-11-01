@@ -20,6 +20,23 @@ class Observation:
     frame_ids: tuple = ()
 
 
+class LatestFrameSampler:
+    """Rate-limit processing without discarding a frame arriving just before a tick."""
+    def __init__(self, period_s=.2):
+        self.period_s = period_s
+        self.last_sample = -np.inf
+        self.pending = None
+
+    def consume(self, delivered, now):
+        if delivered is not None:
+            self.pending = delivered
+        if self.pending is None or now-self.last_sample < self.period_s:
+            return None
+        result, self.pending = self.pending, None
+        self.last_sample = now
+        return result
+
+
 class ObservationWindow:
     def __init__(self, stability_m=.004):
         self.stability_m = stability_m

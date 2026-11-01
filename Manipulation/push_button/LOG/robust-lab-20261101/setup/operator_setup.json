@@ -1,0 +1,9 @@
+{
+  "confirmed_at_epoch_s": 1793499261.078557,
+  "source": "user",
+  "table_surface_height_m": 0.72,
+  "right_hand": "standard fixed stock hand",
+  "robot": "upright and stationary",
+  "bottle_at_front_edge_confirmed": true,
+  "support_and_clear_path_for_5cm_push_confirmed": true
+}

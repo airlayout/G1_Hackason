@@ -12,7 +12,7 @@ import pytest
 pytest.importorskip('mujoco')
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parents[1]/'real')]
 from robust_scene import SceneSnapshot, build_scene_model, estimate_bottle, contact_metrics
-from robust_perception import Observation, ObservationWindow, CorrectionGate
+from robust_perception import Observation, ObservationWindow, CorrectionGate, LatestFrameSampler
 from robust_planner import SearchSettings, search, uncertainty_scenarios
 from robust_options import add_arguments, parse, selected
 from robust_execution import validate_start, execute
@@ -43,6 +43,22 @@ def test_window_requires_three_unique_fresh_frames_and_rejects_identity_jump():
         w.consume(observation(frame=5,stamp=1.4,offset=(0,.04,0)),1.4)
     with pytest.raises(ValueError,match='Stale'):
         w.consume(observation(frame=6,stamp=6),7)
+
+
+def test_five_hz_frame_jitter_does_not_drop_every_other_image():
+    sampler = LatestFrameSampler()
+    frames = [('first', .85), ('second', 1.045), ('third', 1.249)]
+    assert sampler.consume(frames[0], 1.) is frames[0]
+    assert sampler.consume(frames[1], 1.195) is None
+    # Reuse the original capture time, even when no new packet arrives at the tick.
+    assert sampler.consume(None, 1.205) is frames[1]
+    assert sampler.consume(frames[2], 1.399) is None
+    assert sampler.consume(None, 1.410) is frames[2]
+    assert sampler.consume(None, 1.7) is None
+    assert sampler.consume(('older', 1.8), 1.8) == ('older', 1.8)
+    assert sampler.consume(('pending', 1.9), 1.9) is None
+    assert sampler.consume(('newest', 1.99), 1.99) is None
+    assert sampler.consume(None, 2.01) == ('newest', 1.99)
 
 
 def test_small_jitter_does_not_retarget_and_consistent_shift_is_bounded():
@@ -78,6 +94,53 @@ def test_missing_bottom_and_transparent_depth_reject_without_table_fallback():
         estimate_bottle(np.zeros((100,100)),(20,20,80,90),CameraIntrinsics(100,100,50,50),np.eye(4))
     with pytest.raises(ValueError,match='bottom'):
         replace(scene(),base_height=None)
+
+
+@pytest.mark.parametrize('centre_y', [-.215, .215])
+@pytest.mark.parametrize('narrow_neck', [False, True])
+def test_measured_bottom_separates_oblique_bottle_from_support(centre_y, narrow_neck):
+    from vision import CameraIntrinsics
+    # Independent ray intersections: the projected cylinder is diagonal, leaving
+    # more than half its axis-aligned detector box occupied by the support plane.
+    v, u = np.mgrid[:360, :640]
+    intrinsics = CameraIntrinsics(454., 454., 319., 191.)
+    angle = .83
+    transform = np.array([[0., -np.sin(angle), np.cos(angle), .06],
+                          [-1., 0., 0., 0.],
+                          [0., -np.cos(angle), -np.sin(angle), 1.24],
+                          [0., 0., 0., 1.]])
+    directions = np.stack(((u-319)/454., (v-191)/454., np.ones_like(u)), axis=-1)
+    directions = directions @ transform[:3, :3].T
+    origin = transform[:3, 3]
+    a = np.sum(directions[:, :, :2]**2, axis=-1)
+    b = 2*((origin[0]-.4)*directions[:, :, 0]+(origin[1]-centre_y)*directions[:, :, 1])
+    support = (.72-origin[2])/directions[:, :, 2]
+    support[support <= 0] = np.inf
+    depth = np.minimum(support, 1.5)
+    visible = np.zeros_like(depth, dtype=bool)
+    surfaces = [(.034, .72, .88), (.012, .88, .94)] if narrow_neck else [(.034, .72, .94)]
+    for radius, lower, upper in surfaces:
+        c = (origin[0]-.4)**2+(origin[1]-centre_y)**2-radius**2
+        discriminant = b*b-4*a*c
+        distance = (-b-np.sqrt(np.maximum(discriminant, 0)))/(2*a)
+        height = origin[2]+distance*directions[:, :, 2]
+        hit = ((discriminant > 0) & (distance > 0) & (height > lower)
+               & (height < upper) & (distance < depth))
+        depth[hit] = distance[hit]
+        visible |= hit
+    yy, xx = np.where(visible)
+    bbox = (xx.min(), yy.min(), xx.max()+1, yy.max()+1)
+    x0, y0, x1, y1 = bbox
+    assert np.mean(~visible[y0:y1, x0:x1]) > .5
+    observed = estimate_bottle(depth, bbox, intrinsics, transform, base_height=.72)
+    assert observed['face'] == pytest.approx((.366, centre_y, .8), abs=.001)
+    assert observed['radius'] == pytest.approx(.034, abs=.001)
+    assert observed['object_height'] == pytest.approx(.22, abs=.01)
+    # A measured support height alone never provides evidence of a bottle.
+    with pytest.raises(ValueError):
+        estimate_bottle(np.minimum(support, 1.5), bbox, intrinsics, transform, base_height=.72)
+    with pytest.raises(ValueError):
+        estimate_bottle(np.full_like(depth, .37), bbox, intrinsics, transform, base_height=.72)
 
 
 def test_trial_config_cli_precedence_and_opt_in(tmp_path):

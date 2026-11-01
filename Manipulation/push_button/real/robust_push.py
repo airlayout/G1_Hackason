@@ -14,7 +14,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from robust_options import add_arguments, parse
 from robust_scene import estimate_bottle
 from robust_planner import search
-from robust_perception import ContinuousObserver, Observation, snapshot
+from robust_perception import ContinuousObserver, LatestFrameSampler, Observation, snapshot
 from robust_execution import execute, validate_start
 from vision import CameraIntrinsics, estimate_button_target
 from kinematics import load_robot, ArmKinematics
@@ -138,15 +138,14 @@ def main(argv=None, *, task=None):
         reference = [None]
         stable_base = [args.bottle_base_height]
         perception_rejections = []
-        last_detection = [-np.inf]
+        sampler = LatestFrameSampler()
         def read():
-            delivered = camera.poll()
+            delivered = sampler.consume(camera.poll(), time.monotonic())
             if delivered is None:
                 return None
             frame, stamp = delivered
-            if time.monotonic()-last_detection[0] < .2:
+            if not 0 <= time.monotonic()-stamp <= .5:
                 return None
-            last_detection[0] = time.monotonic()
             config = configuration()
             q, imu = history.at(stamp, config, max_distance_s=.1) if args.execute else config[:2]
             transform = geometry.transform(q,imu)

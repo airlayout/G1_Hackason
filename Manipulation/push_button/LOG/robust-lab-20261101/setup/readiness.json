@@ -1,0 +1,108 @@
+{
+  "checked_at_epoch_s": 1793500148.2247944,
+  "git_head": "95f2afcffac22ab0f0a12ebeee398b2198a37af7",
+  "git_branch": "push-button",
+  "software_prepared": true,
+  "ready_for_robot_motion": false,
+  "robot_motion_commands_sent": false,
+  "ssh_host": "g1",
+  "remote_temporary_sdk": "/tmp/g1-robust-bottle-20261101",
+  "camera": {
+    "host": "192.168.123.164",
+    "port": 5556,
+    "shape": [
+      360,
+      640,
+      3
+    ],
+    "observed_age_s": 0.16879677772521973,
+    "depth_valid_fraction": 0.9066362847222222
+  },
+  "connection": {
+    "mode_machine": 5,
+    "motor_count": 35,
+    "fsm_id": 501
+  },
+  "state_samples": 100,
+  "max_state_age_s": 0.004049004000080458,
+  "max_leg_speed_rad_s": 0.07526732236146927,
+  "max_gyro_rad_s": 0.013848436065018177,
+  "sdk_bridge": {
+    "connection": {
+      "mode_machine": 5,
+      "motor_count": 35,
+      "fsm_id": 501
+    },
+    "limits": {
+      "joint_speed_rad_s": 1.2,
+      "joint_acceleration_rad_s2": 4.0
+    },
+    "state_age_s": 0.0005658860027324408,
+    "robot_commands_sent": false
+  },
+  "simulation_fixture": {
+    "report_path": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/final_environment_benchmark.json",
+    "detector": "oracle-bbox",
+    "accepted": true,
+    "completed_rollouts": 60,
+    "aborted_rollouts": 0,
+    "holdout_successes": 1,
+    "holdout_completed": 1
+  },
+  "live_preview": {
+    "report_path": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/diagnostic_20261101_112438/result.json",
+    "accepted": false,
+    "completed_rollouts": 45,
+    "aborted_rollouts": 15,
+    "candidate_count": 3,
+    "perception_windows": 49,
+    "error": null,
+    "bottle_geometry": {
+      "face_m": [
+        0.3443246424465203,
+        -0.1727130375718684,
+        0.7999999999999999
+      ],
+      "centre_xy_m": [
+        0.3796973276018733,
+        -0.1727130375718684
+      ],
+      "radius_m": 0.035372685155353016,
+      "base_height_m": 0.72,
+      "object_height_m": 0.2046186131694927
+    },
+    "best_completed_target_margin_m": -0.000588702193679941,
+    "required_target_margin_m": 0.003,
+    "early_tip_contact_count": 11
+  },
+  "remaining": [
+    "Independently measure the camera target and the stock-hand middle fingertip positions to establish justified calibration offsets and position uncertainty.",
+    "Require an accepted live RGB-D robust plan with all 20 error conditions before precontact or push execution."
+  ],
+  "sha256": {
+    "Manipulation/push_button/real/arm_bridge.py": "0c29b4626fe216ae966b4b5029a50def270f9f00218b1843642f18cfc4db74bd",
+    "Manipulation/push_button/real/push_button.py": "b8b948e17aaa3783ded39675b9afb8dc2fdef04821073c1a07bdfe63474d34ef",
+    "Manipulation/push_button/motion_limits.py": "1f4599135fca7be9023436e91ed643bfc57f6f658331da32fe3550a7c151bef3",
+    "Manipulation/push_button/real/robust_push.py": "2bb9929c165e1324c9e90274a1f1860a042be0ec45980535c44dbed9caafa1a6",
+    "Manipulation/push_button/robust_execution.py": "b115e3755fd5a7346d0d0ad4d9c5d41d77f0c1f4f842cfa49ac38f799e19bdb1",
+    "Manipulation/push_button/robust_planner.py": "888b05a1b6a2c01b1f6f76bc168d47d6ebed677c6945833c8959b26feed278f3",
+    "_local/robust_push/lab_20261101/trial.json": "7e73faa32a8dbf1659be3dff34f4f6a90b2846d90155b79e6e90e38935529bfb",
+    "_local/robust_push/lab_20261101/calibration_previous.json": "54a5ae5d1a6e86d7db1636b096445bc38aff222576f26e52faeb0e33c5f868e2",
+    "Manipulation/push_button/ROBUST.md": "f9f8ef003d665c4b2b863f307d340ec3723f7c1a4da09b9fbc07ea53d6051e41",
+    "Manipulation/push_button/robust_perception.py": "2b2652c10e9c165924462ebddbb9d137e455c3dd3b78be5ae4fd45aedf8476e3",
+    "Manipulation/push_button/robust_scene.py": "40be64cf665801c424f6777e7138f054894ed201ef5bcaf16daf33638f2532c4",
+    "Manipulation/push_button/tests/test_robust_planner.py": "2f87a2109e71e9e43d3c68d7073bf5952dc7bcd2e8165aa482558aab6f19d27b"
+  },
+  "operator_setup": {
+    "confirmed_at_epoch_s": 1793499261.078557,
+    "source": "user",
+    "table_surface_height_m": 0.72,
+    "right_hand": "standard fixed stock hand",
+    "robot": "upright and stationary",
+    "bottle_at_front_edge_confirmed": true,
+    "support_and_clear_path_for_5cm_push_confirmed": true
+  },
+  "source_has_uncommitted_changes": true,
+  "applied_planning_workers": 4,
+  "calibration_position_uncertainty_m": 0.015
+}

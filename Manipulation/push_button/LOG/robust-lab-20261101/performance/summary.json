@@ -1,0 +1,122 @@
+{
+  "provenance": {
+    "baseline_git_head": "95f2afcffac22ab0f0a12ebeee398b2198a37af7",
+    "scene_report": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/diagnostic_20261101_112438/result.json",
+    "worktree_has_unfinished_feedback_changes": true,
+    "robot_connected": false
+  },
+  "original_live_search": {
+    "total_wall_s": 9.756423671991797,
+    "stages": [
+      {
+        "stage": "scene_model",
+        "wall_s": 0.10809665000124369,
+        "percent": 1.1079536276346997
+      },
+      {
+        "stage": "candidate_and_static",
+        "wall_s": 0.8252736249996815,
+        "percent": 8.458771910129647
+      },
+      {
+        "stage": "parallel_trials_including_startup_and_waiting",
+        "wall_s": 8.722604295006022,
+        "percent": 89.40370558165071
+      },
+      {
+        "stage": "other_and_shutdown",
+        "wall_s": 0.10044910198485013,
+        "percent": 1.0295688805849408
+      }
+    ],
+    "completed_rollouts": 45,
+    "aborted_rollouts": 15,
+    "candidate_batches": 3,
+    "accepted": false
+  },
+  "single_condition": {
+    "total_wall_s": 0.5792964959982783,
+    "simulated_trajectory_s": 26.7,
+    "physics_steps": 13350,
+    "control_and_check_samples": 1335,
+    "geometry_distance_calls": 10680,
+    "stages": [
+      {
+        "stage": "physics_integration",
+        "calls": 134,
+        "wall_s": 0.38894671098387334,
+        "percent": 67.14121588352043
+      },
+      {
+        "stage": "collision_clearance_checks",
+        "calls": 1335,
+        "wall_s": 0.09265176285407506,
+        "percent": 15.993841408346862
+      },
+      {
+        "stage": "copy_model_and_data",
+        "calls": 1,
+        "wall_s": 0.038244924013270065,
+        "percent": 6.601960184027029
+      },
+      {
+        "stage": "forward_position_checks",
+        "calls": 1335,
+        "wall_s": 0.026426440963405184,
+        "percent": 4.561816124550446
+      },
+      {
+        "stage": "other_setup_python_metrics_and_cleanup",
+        "wall_s": 0.033026657183654606,
+        "percent": 5.701166399555222
+      }
+    ]
+  },
+  "parallel_comparison": [
+    {
+      "workers": 4,
+      "total_wall_s": 9.74887799199496,
+      "completed_rollouts": 49,
+      "aborted_rollouts": 11,
+      "candidate_batches": 3,
+      "first_dispatch_latency_s": 0.496303951003938,
+      "mean_complete_trial_wall_s": 0.5922675719193649,
+      "notes": "One run per worker count, same saved live scene; no robot or camera connection"
+    },
+    {
+      "workers": 8,
+      "total_wall_s": 9.801402023993433,
+      "completed_rollouts": 65,
+      "aborted_rollouts": 35,
+      "candidate_batches": 5,
+      "first_dispatch_latency_s": 0.735980801997357,
+      "mean_complete_trial_wall_s": 0.7010753224765022,
+      "notes": "One run per worker count, same saved live scene; no robot or camera connection"
+    }
+  ],
+  "pre_search_observation": {
+    "instrumented_start_to_scene_build_s": 1.899831467992044,
+    "first_detector_call_s": 0.6270148680050625,
+    "excludes_python_import_and_sdk_preflight": true
+  },
+  "unfinished_feedback_comparison": {
+    "baseline_trial_wall_s": 0.5792964959982783,
+    "feedback_trial_wall_s": 0.8501908250036649,
+    "ratio": 1.4676263897273631,
+    "added_feedback_commands_s": 0.18647676904220134,
+    "added_model_copy_s": 0.039865463972091675,
+    "control_samples": 1335,
+    "full_forward_calls": 4006,
+    "trial_success": false,
+    "tracking_error_m": 0.017494839587773908,
+    "allowed_tracking_error_m": 0.01,
+    "not_ready_for_hardware": true
+  },
+  "hardware": "Intel Core Ultra 7 265F, 20 CPU cores, CPU MuJoCo rollout",
+  "robot_motion_commands_sent": false,
+  "worktree_source_hashes": {
+    "Manipulation/push_button/robust_planner.py": "05ad4ae31812b285076507e6d82a5babf8cc80c4a6b7ec593872dc5bc71db859",
+    "Manipulation/push_button/robust_execution.py": "65d29537e9db9c9e7f77cfe898b29cbfe5b50c473df636694addb719dbc61991",
+    "Manipulation/push_button/robust_control.py": "170a75f598f47557d12debf2505b87a342ed7db81e3be7fa104a3eec223ee47c"
+  }
+}

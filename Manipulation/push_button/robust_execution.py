@@ -7,6 +7,7 @@ from alignment import JointCommandFilter
 from robust_scene import build_scene_model, update_robot, contact_metrics
 from robust_planner import PERIOD, reference_torque
 from robust_perception import CorrectionGate
+from robust_control import BottleFeedback, fade_return_offset, reference_command
 
 
 def validate_start(scene, configuration, observed):
@@ -34,7 +35,7 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
     check = build_scene_model(model_path, calibration, s)
     start = configuration()
     validate_start(s, start, observe())
-    gate = CorrectionGate(s)
+    gate = BottleFeedback(s) if s.task == 'bottle' else CorrectionGate(s)
     command_filter = JointCommandFilter(c.q[0], settings.motion_limits)
     n = np.array(s.normal)
     started = now()
@@ -64,22 +65,35 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
             observation = observe()
             progress = max(0., float((c.tcp[min(i,c.press_end)]-np.array(s.face))@n+s.tip_radius))
             freeze = s.task == 'button' and (c.tcp[i]-s.face)@n+s.tip_radius >= -.005
-            offset = gate.update(observation, progress, freeze=freeze or i > c.press_end)
+            if s.task == 'bottle':
+                if abs(observation.geometry.get('object_height',s.object_height)-s.object_height) > .01:
+                    raise RuntimeError('Bottle vertical extent changed')
+                displacement = np.array(observation.geometry['face'])-s.face
+                offset = gate.update(displacement,progress,observation.frame_id,
+                                     freeze=i < c.press_start or i > c.press_end)
+                offset = fade_return_offset(offset,c,i)
+            else:
+                offset = gate.update(observation, progress, freeze=freeze or i > c.press_end)
             pose = update_robot(check,q,imu)
             if s.task == 'bottle':
                 adr = check.model.joint('robust_object_joint').qposadr[0]
                 face = observation.geometry['face']
                 pose[adr:adr+3] = (face[0]+s.radius,face[1],s.base_height+s.object_height/2)
                 check.update(pose)
-            if np.linalg.norm(check.tip_position()-c.tcp[i]) > .01:
-                raise RuntimeError('Measured FK tracking error exceeds 10mm')
+            measured_tip = check.tip_position().copy()
             # Compute bounded correction about the certified reference, not the last IK solution.
-            ref_pose = pose.copy(); ref_pose[check.qadr] = c.q[i]; check.update(ref_pose)
-            jac = np.zeros((3, check.model.nv))
-            mujoco.mj_jacSite(check.model, check.data, jac, None, check.site_id)
-            dq = np.linalg.lstsq(jac[:, check.dadr], offset, rcond=.01)[0]
             previous_velocity = command_filter.velocity.copy()
-            goal = command_filter.next_goal(c.q[i]+dq, PERIOD)
+            if s.task == 'bottle':
+                goal, tau, target_tcp = reference_command(check,c,i,offset,command_filter,settings.gravity_scale)
+            else:
+                ref_pose = pose.copy(); ref_pose[check.qadr] = c.q[i]; check.update(ref_pose)
+                jac = np.zeros((3, check.model.nv))
+                mujoco.mj_jacSite(check.model, check.data, jac, None, check.site_id)
+                dq = np.linalg.lstsq(jac[:, check.dadr], offset, rcond=.01)[0]
+                goal = command_filter.next_goal(c.q[i]+dq, PERIOD)
+                target_tcp = c.tcp[i]
+            if np.linalg.norm(measured_tip-target_tcp) > .01:
+                raise RuntimeError('Measured FK tracking error exceeds 10mm')
             peak_speed = max(peak_speed, float(np.max(np.abs(command_filter.velocity))))
             peak_acceleration = max(peak_acceleration, float(np.max(np.abs(
                 command_filter.velocity-previous_velocity)))/PERIOD)
@@ -93,7 +107,8 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
             check.update(pose)
             if i == 0:
                 motion.start_approach()
-            tau = reference_torque(check, goal, command_filter.velocity, settings.gravity_scale)
+            if s.task != 'bottle':
+                tau = reference_torque(check, goal, command_filter.velocity, settings.gravity_scale)
             set_torque(tau)
             motion.stream(goal, velocity=command_filter.velocity)
             report['commands'].append(dict(time_s=now()-started, phase=c.phases[i], q=goal.tolist(),

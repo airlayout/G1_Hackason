@@ -80,6 +80,19 @@ def estimate_bottle(depth, bbox, intrinsics, transform, *, base_height=None, con
     xyz = xyz @ transform[:3, :3].T + transform[:3, 3]
     pixels_y = yy[valid]
     body = (pixels_y > y0+(y1-y0)*.3) & (pixels_y < y0+(y1-y0)*.85)
+    # An oblique view makes the cylinder diagonal within its axis-aligned bbox.
+    # Avoid mixed silhouette pixels and, when measured, the support surface and
+    # tapered shoulder. Use the same physical body band as the existing bottle
+    # localizer; the measured height does not replace curved-depth evidence.
+    pixels_x = xx[valid]
+    body &= (pixels_x > x0+(x1-x0)*.08) & (pixels_x < x1-(x1-x0)*.08)
+    if base_height is not None:
+        if not np.isfinite(base_height) or not .4 <= base_height <= 1.2:
+            raise ValueError('Invalid measured bottle bottom height')
+        body &= ((xyz[:, 2] > base_height+.025)
+                 & (xyz[:, 2] < base_height+contact_height+.055))
+    if body.sum() < 30:
+        raise ValueError('Insufficient bottle body depth above the support surface')
     centre, radius, _ = _fit_circle(xyz[body])
     cylinder = np.abs(np.linalg.norm(xyz[:, :2]-centre, axis=1)-radius) < .004
     lower = cylinder & (pixels_y >= y1-max(4, (y1-y0)*.06))
@@ -95,7 +108,10 @@ def estimate_bottle(depth, bbox, intrinsics, transform, *, base_height=None, con
         base_height = float(np.percentile(xyz[envelope,2],10))
         if np.percentile(xyz[envelope, 2], 90)-base_height > .015:
             raise ValueError('Bottle bottom height is uncertain')
-    top = float(np.percentile(xyz[cylinder, 2], 98))
+    # Include the narrower shoulder/cap inside the fitted cylinder; its outer
+    # surface alone ends at the body and underestimates a PET bottle's height.
+    inside = np.linalg.norm(xyz[:, :2]-centre, axis=1) <= radius+.004
+    top = float(np.percentile(xyz[inside, 2], 98))
     height = top-base_height
     if not .10 <= height <= .40:
         raise ValueError('Bottle height or bottom is inconsistent')

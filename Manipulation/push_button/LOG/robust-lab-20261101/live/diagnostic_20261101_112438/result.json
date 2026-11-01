@@ -1,0 +1,2772 @@
+{
+  "schema": "g1-robust-trial-v1",
+  "task": "bottle",
+  "completed": false,
+  "physical_push_success": null,
+  "settings": {
+    "budget_s": 10.0,
+    "max_rollouts": 1000,
+    "scenarios": 20,
+    "workers": 4,
+    "max_candidates": 50,
+    "seed": 0,
+    "position_error_m": 0.001,
+    "normal_error_deg": 1.0,
+    "tracking_error_rad": 0.001,
+    "mass_range": [
+      0.28,
+      0.42
+    ],
+    "friction_range": [
+      0.24,
+      0.36
+    ],
+    "gravity_scale": 1.0,
+    "motion_duration_s": 30.0,
+    "joint_speed_rad_s": 1.2,
+    "joint_acceleration_rad_s2": 4.0
+  },
+  "arguments": {
+    "task": "bottle",
+    "model": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+    "base_transform": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/calibration_previous.json",
+    "state_json": "_local/robust_push/lab_20261101/preview_20261101_112349_RVjmES/state.json",
+    "output": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/diagnostic_20261101_112438/result.json",
+    "weights": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/models/yolo26n.pt",
+    "button_direction": null,
+    "target_pixel": null,
+    "confidence": 0.25,
+    "device": "cpu",
+    "detector_imgsz": 960,
+    "network_interface": "enp129s0",
+    "arm_socket": null,
+    "execute": false,
+    "calibrated": false,
+    "stop_before_contact": false,
+    "motion_planner": "robust",
+    "trial_config": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/trial.json",
+    "planning_budget_s": 10.0,
+    "planning_max_rollouts": 1000,
+    "planning_scenarios": 20,
+    "planning_workers": 4,
+    "planning_max_candidates": 50,
+    "planning_seed": 0,
+    "position_error_m": 0.001,
+    "normal_error_deg": 1.0,
+    "tracking_error_rad": 0.001,
+    "mass_range": [
+      0.28,
+      0.42
+    ],
+    "friction_range": [
+      0.24,
+      0.36
+    ],
+    "bottle_base_height": 0.72,
+    "contact_height": 0.08,
+    "stroke": 0.0015,
+    "push_distance": 0.05,
+    "gravity_scale": 1.0,
+    "motion_duration_s": 30.0,
+    "joint_speed_rad_s": 1.2,
+    "joint_acceleration_rad_s2": 4.0,
+    "j1gen_root": null,
+    "camera_config": "camera.yaml",
+    "host": "192.168.123.164"
+  },
+  "calibration": {
+    "schema": "g1-button-calibration-v2",
+    "camera_body": "torso_link",
+    "camera_offset_m": [
+      -0.008196056063758783,
+      -0.00827976001704056,
+      0.018840695320078482
+    ],
+    "camera_rpy_offset_rad": [
+      -0.048594911386863636,
+      -0.0031263843534105554,
+      -0.014836240570040656
+    ],
+    "pelvis_height_m": 0.77,
+    "tip_offset_m": [
+      0.1583,
+      0.0283,
+      0.0067
+    ],
+    "tip_radius_m": 0.015,
+    "position_uncertainty_m": 0.015,
+    "reference_waist_q_rad": [
+      -0.001607027486898005,
+      -0.0016876553418114781,
+      -0.038732390850782394
+    ],
+    "reference_imu_rpy_rad": [
+      0.00037252751644700766,
+      0.03764556720852852,
+      -0.24314935505390167
+    ],
+    "provenance": {
+      "camera": "Fitted to user-measured horizontal 40x30 cm tabletop at z=0.76 m, x=[0.31,0.61], y=[-0.36,0.04]",
+      "camera_height_independent_check_m": {
+        "measured": 1.24,
+        "estimated": 1.2357050696013938
+      },
+      "bottle_center_independent_check_m": {
+        "placed_by_user": [
+          0.38,
+          -0.2
+        ],
+        "estimated": [
+          0.38325007293855406,
+          -0.20633615871110703
+        ]
+      },
+      "hand": "Operator confirmed unactuated fixed five-finger stock hand; nominal geometry from pinned official model",
+      "hand_mesh_commit": "ccfc6fd8430a17ba3dacef9a1e2faf64ff3b0aee",
+      "middle_fingertip_surface_m": [
+        0.1733,
+        0.0283,
+        0.0067
+      ],
+      "sphere_center_definition": "15 mm inward from nominal middle-fingertip surface along hand +X",
+      "uncertainty": "Conservative 15 mm planning allowance; not a precision metrology certificate",
+      "path": "Full stock-hand meshes vs measured tabletop/robot checked offline; minimum predicted clearance about 51 mm"
+    },
+    "validation_status": "Camera/table and nominal stock-hand profile established; actual precontact trajectory and tip projection validation pending"
+  },
+  "plan": {
+    "schema": "g1-robust-plan-v1",
+    "settings": {
+      "budget_s": 10.0,
+      "max_rollouts": 1000,
+      "scenarios": 20,
+      "workers": 4,
+      "max_candidates": 50,
+      "seed": 0,
+      "position_error_m": 0.001,
+      "normal_error_deg": 1.0,
+      "tracking_error_rad": 0.001,
+      "mass_range": [
+        0.28,
+        0.42
+      ],
+      "friction_range": [
+        0.24,
+        0.36
+      ],
+      "gravity_scale": 1.0,
+      "motion_duration_s": 30.0,
+      "joint_speed_rad_s": 1.2,
+      "joint_acceleration_rad_s2": 4.0
+    },
+    "static_checks": 3,
+    "completed_rollouts": 45,
+    "aborted_rollouts": 15,
+    "candidates": [
+      {
+        "index": 0,
+        "trials": [
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04985888193196582,
+            "target_margin_m": -0.0012257481539200551,
+            "tracking_max_m": 0.006739779073360953,
+            "min_joint_margin_rad": 0.3967283952393341,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04737738334209857,
+              -0.0025909419017120794,
+              -3.629622712497671e-06
+            ],
+            "wall_s": 0.6014949280070141
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.0175677693669017,
+            "tracking_max_m": 0.006725558823212932,
+            "min_joint_margin_rad": 0.3975958434832748,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03977727253854424,
+              -0.009614747405678609,
+              -4.384126214063144e-06
+            ],
+            "wall_s": 0.6207310070021776
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.13000802299939096
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.013604856516975478,
+            "tracking_max_m": 0.007027489653745233,
+            "min_joint_margin_rad": 0.3964624986816857,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04002075161596419,
+              -0.007753084428909152,
+              -3.2775460757639152e-06
+            ],
+            "wall_s": 0.6017571499978658
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.0484833846894351,
+            "target_margin_m": -0.016193240595843365,
+            "tracking_max_m": 0.007005060161540209,
+            "min_joint_margin_rad": 0.3964089102744758,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.0313963208418071,
+              -0.010207970348189405,
+              -2.3745917463458e-06
+            ],
+            "wall_s": 0.5835092869965592
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.024026195780634453,
+            "tracking_max_m": 0.0070573910557566975,
+            "min_joint_margin_rad": 0.39595839857642856,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04265633504499772,
+              -0.015265968769360039,
+              -3.609603003829065e-06
+            ],
+            "wall_s": 0.5979976700036786
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.03389882108979801,
+            "target_margin_m": -0.01847360222795237,
+            "tracking_max_m": 0.006743543349655733,
+            "min_joint_margin_rad": 0.3965647518591193,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04829008655200079,
+              0.008846703963258873,
+              -4.386525395250196e-06
+            ],
+            "wall_s": 0.5942332799895667
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.025057557542229658,
+            "tracking_max_m": 0.006990034265314414,
+            "min_joint_margin_rad": 0.39739058913311476,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.025600056137334404,
+              0.011740561388840443,
+              -2.929997913403426e-06
+            ],
+            "wall_s": 0.5998609499947634
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.0365108193535889,
+            "target_margin_m": -0.015207678492487862,
+            "tracking_max_m": 0.0067126476283023125,
+            "min_joint_margin_rad": 0.39724435825126203,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.045430684270446664,
+              -0.008487766401079844,
+              -2.4050562057453817e-06
+            ],
+            "wall_s": 0.5951822699862532
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.00031837346946675393,
+            "target_margin_m": -0.018730770121396848,
+            "tracking_max_m": 0.006697625635244379,
+            "min_joint_margin_rad": 0.3962903092512422,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.05019222735236312,
+              -0.012008098139988849,
+              -2.9845723295007787e-06
+            ],
+            "wall_s": 0.5991921390086645
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04603282054289764,
+            "target_margin_m": -0.02254997634400959,
+            "tracking_max_m": 0.006913640078037741,
+            "min_joint_margin_rad": 0.3965438278879173,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.042776706410270926,
+              0.014697524141532387,
+              -4.747033994112471e-06
+            ],
+            "wall_s": 0.5933331490086857
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.12718297299579717
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.0003379905277970108,
+            "target_margin_m": -0.0247631379918973,
+            "tracking_max_m": 0.007313327773944463,
+            "min_joint_margin_rad": 0.3974656724054313,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.046398626745612126,
+              -0.015749759211779485,
+              -4.449283166674256e-06
+            ],
+            "wall_s": 0.5912601470045047
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.015312838737317785,
+            "tracking_max_m": 0.006810447047990881,
+            "min_joint_margin_rad": 0.396895853915897,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.033196564668631134,
+              -0.007283395905887835,
+              -5.334283676883267e-06
+            ],
+            "wall_s": 0.580982749001123
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04140295401625248,
+            "target_margin_m": -0.02991711700171029,
+            "tracking_max_m": 0.006721750164847387,
+            "min_joint_margin_rad": 0.39688613803015516,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03328167191104264,
+              -0.014796814825910137,
+              -4.43864945265382e-06
+            ],
+            "wall_s": 0.5881791319989134
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.12041524300002493
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.011911979710629197,
+            "tracking_max_m": 0.007168769459300163,
+            "min_joint_margin_rad": 0.395926073240047,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04296353606952086,
+              0.0001488253608171175,
+              -5.356248927945728e-06
+            ],
+            "wall_s": 0.5886588050052524
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.12151857999560889
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.028020273876026056,
+            "tracking_max_m": 0.006946146863048748,
+            "min_joint_margin_rad": 0.396460114647083,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.039553464330418675,
+              0.018047233633796983,
+              -2.2530930556818873e-06
+            ],
+            "wall_s": 0.5932538560009561
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.020272811783837136,
+            "tracking_max_m": 0.007175427932370248,
+            "min_joint_margin_rad": 0.39766970039870553,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03307650947876434,
+              0.01162264435023308,
+              -4.858043374356136e-06
+            ],
+            "wall_s": 0.5799478490080219
+          }
+        ],
+        "accepted": false
+      },
+      {
+        "index": 1,
+        "trials": [
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.048658889665290625,
+            "target_margin_m": -0.000588702193679941,
+            "tracking_max_m": 0.006646817634284653,
+            "min_joint_margin_rad": 0.17589039800282746,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04741071878616632,
+              -5.55227214898979e-06,
+              -3.6195921914172757e-06
+            ],
+            "wall_s": 0.6236107440054184
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.016748546846713258,
+            "tracking_max_m": 0.006804481331719316,
+            "min_joint_margin_rad": 0.17677176533295957,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.0397803634058872,
+              -0.009641591163049718,
+              -4.397920543852685e-06
+            ],
+            "wall_s": 0.6236732129909797
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.14183130500896368
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.012974097608489246,
+            "tracking_max_m": 0.006460518291201013,
+            "min_joint_margin_rad": 0.17563320666876436,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04003088351254208,
+              -0.007806380110293415,
+              -3.290744901129905e-06
+            ],
+            "wall_s": 0.6202351480023935
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04739912958996281,
+            "target_margin_m": -0.01608413751903934,
+            "tracking_max_m": 0.006404149287546671,
+            "min_joint_margin_rad": 0.17555856169760164,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03145875963664785,
+              -0.010135982689673917,
+              -2.364287105760532e-06
+            ],
+            "wall_s": 0.6019689870008733
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.023273017525921088,
+            "tracking_max_m": 0.006491515811523499,
+            "min_joint_margin_rad": 0.17511024341063908,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.043174878359654334,
+              -0.014586539560460965,
+              -3.6300936355759816e-06
+            ],
+            "wall_s": 0.6275352270022267
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.032688598241709124,
+            "target_margin_m": -0.019074058751870515,
+            "tracking_max_m": 0.006645509574001672,
+            "min_joint_margin_rad": 0.17573068224601995,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.047990277177996254,
+              0.009758489445579,
+              -4.380765126432706e-06
+            ],
+            "wall_s": 0.6197201970062451
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.025149915872888378,
+            "tracking_max_m": 0.006414148855405352,
+            "min_joint_margin_rad": 0.1765680864931296,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.02556033214826592,
+              0.01180191839354472,
+              -2.9256029906443715e-06
+            ],
+            "wall_s": 0.6098159499961184
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.035323478622092674,
+            "target_margin_m": -0.01491627598321887,
+            "tracking_max_m": 0.0065256410948719415,
+            "min_joint_margin_rad": 0.1764012292640582,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04555300756162539,
+              -0.008049803016047852,
+              -2.4092481006876554e-06
+            ],
+            "wall_s": 0.6141888980055228
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.0002895569838333237,
+            "target_margin_m": -0.017571984681991427,
+            "tracking_max_m": 0.006808220383577189,
+            "min_joint_margin_rad": 0.17544135015764672,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.050758228005712,
+              -0.010316689463206685,
+              -2.988694929761948e-06
+            ],
+            "wall_s": 0.6207115279976279
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04477348568199471,
+            "target_margin_m": -0.023174432407341638,
+            "tracking_max_m": 0.006419624279731655,
+            "min_joint_margin_rad": 0.1757000200211586,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.042364976059338255,
+              0.015282432250024847,
+              -4.746127442945003e-06
+            ],
+            "wall_s": 0.6107028829865158
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.12858337399666198
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.00039930936308345266,
+            "target_margin_m": -0.02346229932254328,
+            "tracking_max_m": 0.0073933817410304975,
+            "min_joint_margin_rad": 0.17663517148025443,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04727535630338375,
+              -0.01439372787832896,
+              -4.451366292235193e-06
+            ],
+            "wall_s": 0.6126167819893453
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.014351975866737556,
+            "tracking_max_m": 0.0066089627343821665,
+            "min_joint_margin_rad": 0.17606443073477707,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03317011328675984,
+              -0.0073895180346627565,
+              -5.3443742871195354e-06
+            ],
+            "wall_s": 0.6068646700005047
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04025324414536318,
+            "target_margin_m": -0.029773330843134875,
+            "tracking_max_m": 0.006497308081371616,
+            "min_joint_margin_rad": 0.17604367630209838,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.033412104116465224,
+              -0.014698683190564638,
+              -4.428480456786232e-06
+            ],
+            "wall_s": 0.6184546379954554
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.1305895830009831
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.011584815232315141,
+            "tracking_max_m": 0.006492611752880451,
+            "min_joint_margin_rad": 0.17508201153103709,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04294360434139538,
+              0.0005137178813521825,
+              -5.3439434106739014e-06
+            ],
+            "wall_s": 0.6084858809917932
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.0004624763028189885,
+            "target_margin_m": -0.035074955436189444,
+            "tracking_max_m": 0.00687244079973244,
+            "min_joint_margin_rad": 0.17656082609451995,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04050620963702217,
+              0.02030050907245079,
+              -3.5721962540202767e-06
+            ],
+            "wall_s": 0.6208232380013214
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.028658038734024942,
+            "tracking_max_m": 0.006420500495168077,
+            "min_joint_margin_rad": 0.17561489319067802,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03894545606409411,
+              0.018699451161542813,
+              -2.249946290611149e-06
+            ],
+            "wall_s": 0.6186378410056932
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.020355979272442787,
+            "tracking_max_m": 0.007239328737807676,
+            "min_joint_margin_rad": 0.17685693018567483,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03301801145387767,
+              0.011665380946254272,
+              -4.8775329303252235e-06
+            ],
+            "wall_s": 0.5867613900045399
+          }
+        ],
+        "accepted": false
+      },
+      {
+        "index": 2,
+        "trials": [
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04756292452447207,
+            "target_margin_m": -0.0031049185396316986,
+            "tracking_max_m": 0.009833947292448759,
+            "min_joint_margin_rad": 0.17838584309529648,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04693599779933488,
+              0.006024110930635707,
+              -3.6271691383760185e-06
+            ],
+            "wall_s": 0.6269013599958271
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.017555658962806114,
+            "tracking_max_m": 0.010117550742472586,
+            "min_joint_margin_rad": 0.17925708749705227,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04036937013064995,
+              -0.009023975631418074,
+              -4.378860321119227e-06
+            ],
+            "wall_s": 0.6227333339920733
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.14557449700077996
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.014209991758741256,
+            "tracking_max_m": 0.010012887879632996,
+            "min_joint_margin_rad": 0.1781184385376009,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04029756853750599,
+              -0.007165525143325885,
+              -3.282891012812428e-06
+            ],
+            "wall_s": 0.6264073619968258
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04642100136394586,
+            "target_margin_m": -0.014927632616196104,
+            "tracking_max_m": 0.009471989589956846,
+            "min_joint_margin_rad": 0.17806069702708327,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03194021790873641,
+              -0.00986459919639801,
+              -2.369825618298016e-06
+            ],
+            "wall_s": 0.6087068550114054
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.020936545068609275,
+            "tracking_max_m": 0.009526751782014595,
+            "min_joint_margin_rad": 0.17760752965657012,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04451963370950629,
+              -0.013010060649244704,
+              -3.6177897618783206e-06
+            ],
+            "wall_s": 0.6232915300060995
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.03137599090189421,
+            "target_margin_m": -0.021854473979754586,
+            "tracking_max_m": 0.010033407303855513,
+            "min_joint_margin_rad": 0.1782233873734701,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.046523537921122626,
+              0.012818443872917945,
+              -4.3913950399376844e-06
+            ],
+            "wall_s": 0.6181104879942723
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.02596467519834058,
+            "tracking_max_m": 0.010035778959138117,
+            "min_joint_margin_rad": 0.17904322682421525,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.02495749917949014,
+              0.011478406485029735,
+              -2.9247506910801135e-06
+            ],
+            "wall_s": 0.6105556589900516
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.03438599118339709,
+            "target_margin_m": -0.013187201194101605,
+            "tracking_max_m": 0.009415040980468043,
+            "min_joint_margin_rad": 0.17889264266152927,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04616868466120627,
+              -0.005392227655841658,
+              -2.4086571491777065e-06
+            ],
+            "wall_s": 0.6221457560022827
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.00040390214954341003,
+            "target_margin_m": -0.013935921915381254,
+            "tracking_max_m": 0.009869284304745988,
+            "min_joint_margin_rad": 0.17795490313356865,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.052214735631978426,
+              -0.0021956913919185528,
+              -2.997632946866169e-06
+            ],
+            "wall_s": 0.6281221029930748
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04329231646818801,
+            "target_margin_m": -0.02568073114137324,
+            "tracking_max_m": 0.009716488743194624,
+            "min_joint_margin_rad": 0.17820164928184357,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04063888874287519,
+              0.016623464825444995,
+              -4.748817575173092e-06
+            ],
+            "wall_s": 0.6163193520042114
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.13523558399174362
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.0004397196677389942,
+            "target_margin_m": -0.019701500866082054,
+            "tracking_max_m": 0.01035685589456386,
+            "min_joint_margin_rad": 0.17913481215678417,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04937783339901014,
+              -0.01099211654281218,
+              -4.449151139396257e-06
+            ],
+            "wall_s": 0.6231479489943013
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.014933294139882806,
+            "tracking_max_m": 0.009882959356035637,
+            "min_joint_margin_rad": 0.17855080297082604,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.033603476351760364,
+              -0.006998473587966236,
+              -5.327336628391244e-06
+            ],
+            "wall_s": 0.6071366770047462
+          },
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.6073360689915717
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.13670508298673667
+          },
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.4768757900019409
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.13822659400466364
+          },
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.46309309799107723
+          },
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.3248750509956153
+          }
+        ],
+        "accepted": false
+      }
+    ],
+    "stages_wall_s": {
+      "scene": 0.10809665000124369,
+      "candidate_and_static": 0.8252736249996815,
+      "physics_and_scoring": 8.722604295006022
+    },
+    "stopped_for_measurement": 0,
+    "runtime": {
+      "mujoco_version": "3.14.0",
+      "physics_timestep_s": 0.002,
+      "control_period_s": 0.02,
+      "workers": 4,
+      "shutdown_reserve_s": 0.35
+    },
+    "conditions": [
+      {
+        "index": 0,
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angles": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tracking": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "mass": 0.35,
+        "friction": 0.3
+      },
+      {
+        "index": 1,
+        "position": [
+          0.004382773994286538,
+          -0.00736682515955615,
+          -0.01468884723404177
+        ],
+        "angles": [
+          -0.016876369204858445,
+          0.010935194245109922,
+          0.014407887658932274
+        ],
+        "tracking": [
+          0.00021327155153435973,
+          0.00045899312196799683,
+          8.724998293084574e-05,
+          0.0008701448475755364,
+          0.0006317071082430644,
+          -0.0009945229996597038,
+          0.0007148085531751387
+        ],
+        "mass": 0.284701980542765,
+        "friction": 0.3275586535715933
+      },
+      {
+        "index": 2,
+        "position": [
+          -0.010379020140718112,
+          0.011621725515196371,
+          0.0013267590479709348
+        ],
+        "angles": [
+          -0.006991373925434892,
+          -0.0026987250879338767,
+          -0.01646474951080257
+        ],
+        "tracking": [
+          -0.0007514334470008721,
+          0.00034124882938726064,
+          0.0002943790231485002,
+          0.0002307702229625077,
+          -0.00023264489147623314,
+          0.0009944198715784221,
+          0.0009616706775524602
+        ],
+        "mass": 0.37597587782729724,
+        "friction": 0.31805511315213797
+      },
+      {
+        "index": 3,
+        "position": [
+          0.0060302953782700825,
+          -0.003554514432668679,
+          -0.011676911839282841
+        ],
+        "angles": [
+          0.007731401582328044,
+          0.0008850328136276336,
+          -0.006623808107810696
+        ],
+        "tracking": [
+          -2.8329282336421846e-05,
+          0.0007789756686980005,
+          0.0008680870319124994,
+          -0.00028440960658185956,
+          0.00014305966145952188,
+          -0.0003562612178481157,
+          0.00018860006039939358
+        ],
+        "mass": 0.32730757157099866,
+        "friction": 0.28699428006337935
+      },
+      {
+        "index": 4,
+        "position": [
+          0.012488779264153354,
+          -0.008730957006931848,
+          0.003941988629953357
+        ],
+        "angles": [
+          -0.01452060378452949,
+          0.011611471228083921,
+          0.010021621485161235
+        ],
+        "tracking": [
+          -0.0005212611140140957,
+          0.0007529684616214077,
+          -0.0008828639303896113,
+          -0.0003277658789086793,
+          -0.0006994410662103219,
+          -9.932126670142605e-05,
+          0.0005926485405745885
+        ],
+        "mass": 0.31228990925912464,
+        "friction": 0.24624255612772913
+      },
+      {
+        "index": 5,
+        "position": [
+          -0.0030543411257110977,
+          -0.00964758257570383,
+          -0.0130959025401881
+        ],
+        "angles": [
+          0.0028041292629069968,
+          -0.007026830558614314,
+          0.006003753833808574
+        ],
+        "tracking": [
+          -0.0006009691120635734,
+          0.0008842262210129957,
+          -0.0002697796635103429,
+          -0.000789009440859541,
+          0.00025821630307941846,
+          0.0008543091061357349,
+          -0.00011924569056843204
+        ],
+        "mass": 0.4136426691167032,
+        "friction": 0.29998749764251764
+      },
+      {
+        "index": 6,
+        "position": [
+          -0.002392684004829583,
+          0.00384683046449209,
+          0.015843088167530373
+        ],
+        "angles": [
+          0.015671090567334307,
+          -0.0013946877424638598,
+          0.00899643385598565
+        ],
+        "tracking": [
+          -5.154609024762058e-06,
+          5.862432039354082e-05,
+          0.000571571401427615,
+          -0.0001706883012886584,
+          0.0004689671435774587,
+          0.0004222857559794997,
+          0.0008641193732267565
+        ],
+        "mass": 0.29609056865932676,
+        "friction": 0.3274818140491571
+      },
+      {
+        "index": 7,
+        "position": [
+          0.013677565715985917,
+          0.014973638077588685,
+          -0.015529398241108184
+        ],
+        "angles": [
+          0.012693433734069224,
+          0.016796875586847483,
+          0.01595964601569192
+        ],
+        "tracking": [
+          -0.0007024719755350042,
+          0.00094525762764591,
+          0.0007798711114410413,
+          0.0006447476550861408,
+          -4.0024152384335654e-05,
+          -0.0005352541607213923,
+          0.0006037611574366158
+        ],
+        "mass": 0.4092942223696857,
+        "friction": 0.2719356326750751
+      },
+      {
+        "index": 8,
+        "position": [
+          0.0012459010439099813,
+          -0.001831909472814992,
+          0.01379255411139696
+        ],
+        "angles": [
+          -0.016039201934817917,
+          0.008098543998466306,
+          0.003992379470913101
+        ],
+        "tracking": [
+          -0.0009432692697729579,
+          0.00043843954565348067,
+          -0.0009680165409528561,
+          0.0005159020047128562,
+          2.5517446524156107e-05,
+          0.0008582084415940124,
+          -0.0008678350065518505
+        ],
+        "mass": 0.39778441914573365,
+        "friction": 0.24800280105205216
+      },
+      {
+        "index": 9,
+        "position": [
+          -0.0049820806782679946,
+          -0.0022304405776693344,
+          0.014913986585090246
+        ],
+        "angles": [
+          0.00217230109293644,
+          -0.008417213584606504,
+          -0.009017218653833725
+        ],
+        "tracking": [
+          0.0007762366413183597,
+          -0.0005482611431653513,
+          -0.0007508905883294331,
+          -0.0004233384859848448,
+          0.00017224612962546558,
+          0.00010818100434653566,
+          0.0006194215518255555
+        ],
+        "mass": 0.35846663328086603,
+        "friction": 0.27461054573174526
+      },
+      {
+        "index": 10,
+        "position": [
+          -0.0027873170342114337,
+          0.010179871071069133,
+          0.004048206797432112
+        ],
+        "angles": [
+          0.01602483277472894,
+          -0.0045586460300623115,
+          0.0018364881660882
+        ],
+        "tracking": [
+          0.00018784840322633655,
+          0.00069658241655012,
+          -0.0007090529236269365,
+          -0.00018697932650374671,
+          0.000819917923324594,
+          -0.0009138662228635917,
+          0.0006454125603630039
+        ],
+        "mass": 0.33815376523197144,
+        "friction": 0.33957647823337234
+      },
+      {
+        "index": 11,
+        "position": [
+          -0.015681454054166658,
+          -0.004318522951735339,
+          -0.013483838810699525
+        ],
+        "angles": [
+          0.005327253687221134,
+          -0.007894155671581565,
+          0.0070738917379949365
+        ],
+        "tracking": [
+          0.0008876028538841816,
+          -0.0007463657954775045,
+          0.0007295565908015482,
+          -0.0008810716967993231,
+          -0.00023845898337822115,
+          -0.00014045187764284673,
+          -2.230090633307147e-05
+        ],
+        "mass": 0.4167047250710462,
+        "friction": 0.3330829425722194
+      },
+      {
+        "index": 12,
+        "position": [
+          -0.006116564392983648,
+          -0.007365222863974396,
+          0.011619846534058169
+        ],
+        "angles": [
+          0.013310131251486898,
+          0.0003737275462392709,
+          -0.005435104308236975
+        ],
+        "tracking": [
+          0.0009898346963218357,
+          -0.0003681129092645996,
+          -0.0006345752421468751,
+          0.0007601962426081395,
+          0.000624670796222508,
+          0.0003357788111427025,
+          0.0009168272635559038
+        ],
+        "mass": 0.4096000408100186,
+        "friction": 0.32978982039621046
+      },
+      {
+        "index": 13,
+        "position": [
+          0.011542445105525687,
+          -0.00809130430969256,
+          -0.011480110179166989
+        ],
+        "angles": [
+          0.005936278405152191,
+          0.007491600200875143,
+          -0.011622045255242793
+        ],
+        "tracking": [
+          -0.00020888545379024804,
+          0.0008205115324321095,
+          0.0001228015351004459,
+          0.00015667182985254537,
+          -0.0006117404542184128,
+          5.2044497235750335e-05,
+          4.6869454789839836e-05
+        ],
+        "mass": 0.2924509896344781,
+        "friction": 0.3578331231752047
+      },
+      {
+        "index": 14,
+        "position": [
+          0.0022846592145847814,
+          -0.015794915754742074,
+          0.008724774439212435
+        ],
+        "angles": [
+          0.01669462281182311,
+          0.003137055786122274,
+          -0.006294298297352355
+        ],
+        "tracking": [
+          -0.0006249845685444302,
+          0.0003450532678337386,
+          -0.00060978520308639,
+          0.00015537578503571847,
+          0.00020447835275925154,
+          0.0009248461862487621,
+          -0.0008554694689402464
+        ],
+        "mass": 0.3499961953122066,
+        "friction": 0.3292916975139178
+      },
+      {
+        "index": 15,
+        "position": [
+          -0.010328744304810919,
+          -0.003581864582895385,
+          -0.013987344049440917
+        ],
+        "angles": [
+          0.00788472958027219,
+          -0.014389615317002134,
+          -0.0036619902035918282
+        ],
+        "tracking": [
+          0.0007470452622414643,
+          -5.5399326499977034e-05,
+          0.0008252438672817713,
+          0.0005318342354777447,
+          0.0008306479202235317,
+          -0.0007451939819021874,
+          -0.000852874189338736
+        ],
+        "mass": 0.28984567549969054,
+        "friction": 0.3442625153216783
+      },
+      {
+        "index": 16,
+        "position": [
+          0.0042902393391181836,
+          -0.00010970579843670336,
+          -0.010766610681712632
+        ],
+        "angles": [
+          0.00606444101829892,
+          -0.0063523915269413506,
+          0.007361095880292361
+        ],
+        "tracking": [
+          -7.928934226535045e-05,
+          1.493972108905428e-05,
+          0.0005793314649197407,
+          -0.0008145090489532385,
+          0.00015751700664700508,
+          -0.0006055301054082629,
+          0.0006162735036271363
+        ],
+        "mass": 0.3484384450580964,
+        "friction": 0.35864344000413834
+      },
+      {
+        "index": 17,
+        "position": [
+          -0.010145813610377,
+          0.014816612483976553,
+          0.00962934517147549
+        ],
+        "angles": [
+          -0.0006541320699006329,
+          0.010944403474187707,
+          0.003590104057058265
+        ],
+        "tracking": [
+          0.0003102421279827605,
+          0.0008273815254147778,
+          -0.0008694591671774173,
+          0.0006699764079168011,
+          -0.0002363704400675224,
+          -0.00034890876779859113,
+          0.0009880535424199686
+        ],
+        "mass": 0.38936667029069294,
+        "friction": 0.2982642166535505
+      },
+      {
+        "index": 18,
+        "position": [
+          -0.002475891314407001,
+          0.012080924987897475,
+          -0.013221924089123387
+        ],
+        "angles": [
+          0.007275187062121316,
+          0.010093400462040086,
+          0.010443923872186761
+        ],
+        "tracking": [
+          -0.00035542655052033645,
+          0.0005932783654921093,
+          -0.0005493431162486697,
+          -0.0002753840990308618,
+          -0.00016510377559124034,
+          8.281996726032915e-05,
+          -0.0007747726689188856
+        ],
+        "mass": 0.33697269208950287,
+        "friction": 0.24003608281283073
+      },
+      {
+        "index": 19,
+        "position": [
+          0.00782018324311677,
+          0.011260029191496223,
+          -0.011554186268153679
+        ],
+        "angles": [
+          0.007113465284830185,
+          0.011208612261617679,
+          0.016818981326950203
+        ],
+        "tracking": [
+          0.0006875811247374535,
+          -0.0001517870291119743,
+          0.000959377417019313,
+          0.0009479688097047104,
+          7.353958401157934e-06,
+          0.0005068930771678105,
+          0.0008276753353463257
+        ],
+        "mass": 0.34666059007562544,
+        "friction": 0.34365434893165014
+      }
+    ],
+    "total_wall_s": 9.756423671991797,
+    "target_1000_met": false,
+    "reason": "No candidate completed and passed every required uncertainty condition",
+    "scene": {
+      "task": "bottle",
+      "face": [
+        0.3443246424465203,
+        -0.1727130375718684,
+        0.7999999999999999
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "radius": 0.035372685155353016,
+      "q": [
+        -0.34725064039230347,
+        -0.01576591283082962,
+        0.014744477346539497,
+        0.6052917838096619,
+        -0.27591413259506226,
+        0.016167189925909042,
+        -0.35643747448921204,
+        0.02153538540005684,
+        -0.012802652083337307,
+        0.6304831504821777,
+        -0.31061598658561707,
+        -0.004209601785987616,
+        -0.0014597165863960981,
+        0.004425872582942247,
+        -0.043427277356386185,
+        0.29210349917411804,
+        0.21705828607082367,
+        -0.02123604714870453,
+        0.980884850025177,
+        0.08693356812000275,
+        0.017952369526028633,
+        0.015172028914093971,
+        0.28955087065696716,
+        -0.2236616015434265,
+        0.022949790582060814,
+        0.9804414510726929,
+        -0.1721174418926239,
+        0.051292482763528824,
+        0.025730131193995476
+      ],
+      "imu": [
+        0.006508364342153072,
+        0.04244241490960121,
+        -0.1322374790906906
+      ],
+      "captured_at": 79694.96690834101,
+      "tip_radius": 0.015,
+      "uncertainty_m": 0.015,
+      "base_height": 0.72,
+      "object_height": 0.2046186131694927,
+      "stroke": 0.0015,
+      "push_distance": 0.05,
+      "frame_ids": [
+        8763,
+        8764,
+        8765
+      ]
+    },
+    "accepted": false,
+    "score": null
+  },
+  "perception_frames": [
+    {
+      "frame_id": 8765,
+      "captured_at_s": 79694.96690834101,
+      "frame_ids": [
+        8763,
+        8764,
+        8765
+      ],
+      "geometry": {
+        "face": [
+          0.3443246424465203,
+          -0.1727130375718684,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035372685155353016,
+        "base_height": 0.72,
+        "object_height": 0.2046186131694927
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8766,
+      "captured_at_s": 79695.16825898679,
+      "frame_ids": [
+        8764,
+        8765,
+        8766
+      ],
+      "geometry": {
+        "face": [
+          0.3443858555359864,
+          -0.1731051683205398,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03586784327497834,
+        "base_height": 0.72,
+        "object_height": 0.20450470678577426
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8767,
+      "captured_at_s": 79695.36612969993,
+      "frame_ids": [
+        8765,
+        8766,
+        8767
+      ],
+      "geometry": {
+        "face": [
+          0.3443246424465203,
+          -0.1732224456983906,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03609152237821594,
+        "base_height": 0.72,
+        "object_height": 0.20424919738257863
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8768,
+      "captured_at_s": 79695.56799921859,
+      "frame_ids": [
+        8766,
+        8767,
+        8768
+      ],
+      "geometry": {
+        "face": [
+          0.3443858555359864,
+          -0.17338732640450488,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03618004886001328,
+        "base_height": 0.72,
+        "object_height": 0.20377743958254557
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8769,
+      "captured_at_s": 79695.76798048241,
+      "frame_ids": [
+        8767,
+        8768,
+        8769
+      ],
+      "geometry": {
+        "face": [
+          0.34439871878928696,
+          -0.17341561989563803,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.036373656100613105,
+        "base_height": 0.72,
+        "object_height": 0.20351365556790868
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8770,
+      "captured_at_s": 79695.96650164554,
+      "frame_ids": [
+        8768,
+        8769,
+        8770
+      ],
+      "geometry": {
+        "face": [
+          0.34439871878928696,
+          -0.17341561989563803,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.036373656100613105,
+        "base_height": 0.72,
+        "object_height": 0.20422958350292086
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8771,
+      "captured_at_s": 79696.16828493415,
+      "frame_ids": [
+        8769,
+        8770,
+        8771
+      ],
+      "geometry": {
+        "face": [
+          0.34404965962139644,
+          -0.17300869681632133,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035695584513338104,
+        "base_height": 0.72,
+        "object_height": 0.20372473596823282
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8772,
+      "captured_at_s": 79696.36970655518,
+      "frame_ids": [
+        8770,
+        8771,
+        8772
+      ],
+      "geometry": {
+        "face": [
+          0.34404965962139644,
+          -0.17300869681632133,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03561111416184514,
+        "base_height": 0.72,
+        "object_height": 0.20350492445010204
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8773,
+      "captured_at_s": 79696.56735663794,
+      "frame_ids": [
+        8771,
+        8772,
+        8773
+      ],
+      "geometry": {
+        "face": [
+          0.34412432249207386,
+          -0.17312316339291828,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03561111416184514,
+        "base_height": 0.72,
+        "object_height": 0.20366844476924584
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8774,
+      "captured_at_s": 79696.77761958097,
+      "frame_ids": [
+        8772,
+        8773,
+        8774
+      ],
+      "geometry": {
+        "face": [
+          0.34426126196928775,
+          -0.17321898133372426,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.036153612008047786,
+        "base_height": 0.72,
+        "object_height": 0.20447956977590864
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8775,
+      "captured_at_s": 79696.97654519237,
+      "frame_ids": [
+        8773,
+        8774,
+        8775
+      ],
+      "geometry": {
+        "face": [
+          0.34426126196928775,
+          -0.1732671374332373,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.036153612008047786,
+        "base_height": 0.72,
+        "object_height": 0.20450807442345964
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8776,
+      "captured_at_s": 79697.16674467863,
+      "frame_ids": [
+        8774,
+        8775,
+        8776
+      ],
+      "geometry": {
+        "face": [
+          0.34435998885508756,
+          -0.1736579943177477,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03733608324400959,
+        "base_height": 0.72,
+        "object_height": 0.20461585328441056
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8777,
+      "captured_at_s": 79697.36974449673,
+      "frame_ids": [
+        8775,
+        8776,
+        8777
+      ],
+      "geometry": {
+        "face": [
+          0.3439593016071268,
+          -0.1732671374332373,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03611571086215708,
+        "base_height": 0.72,
+        "object_height": 0.20490502213193518
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8778,
+      "captured_at_s": 79697.57200979548,
+      "frame_ids": [
+        8776,
+        8777,
+        8778
+      ],
+      "geometry": {
+        "face": [
+          0.3441613897464551,
+          -0.1734747725802083,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03584833209448758,
+        "base_height": 0.72,
+        "object_height": 0.20398522813262632
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8779,
+      "captured_at_s": 79697.76659505462,
+      "frame_ids": [
+        8777,
+        8778,
+        8779
+      ],
+      "geometry": {
+        "face": [
+          0.3439508122910092,
+          -0.17345466184207742,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03584833209448758,
+        "base_height": 0.72,
+        "object_height": 0.2047324280409044
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8780,
+      "captured_at_s": 79697.96604228865,
+      "frame_ids": [
+        8778,
+        8779,
+        8780
+      ],
+      "geometry": {
+        "face": [
+          0.3441613897464551,
+          -0.17345466184207742,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.036026275699575706,
+        "base_height": 0.72,
+        "object_height": 0.2042525962415731
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8781,
+      "captured_at_s": 79698.16613864596,
+      "frame_ids": [
+        8779,
+        8780,
+        8781
+      ],
+      "geometry": {
+        "face": [
+          0.3441770860644044,
+          -0.17335479060104914,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03644322512093262,
+        "base_height": 0.72,
+        "object_height": 0.20386696900847268
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8782,
+      "captured_at_s": 79698.37289591909,
+      "frame_ids": [
+        8780,
+        8781,
+        8782
+      ],
+      "geometry": {
+        "face": [
+          0.3441770860644044,
+          -0.17335479060104914,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03605567416702205,
+        "base_height": 0.72,
+        "object_height": 0.20481734329459378
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8783,
+      "captured_at_s": 79698.56908142146,
+      "frame_ids": [
+        8781,
+        8782,
+        8783
+      ],
+      "geometry": {
+        "face": [
+          0.3441770860644044,
+          -0.17337128984111042,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03644322512093262,
+        "base_height": 0.72,
+        "object_height": 0.2038047442791998
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8784,
+      "captured_at_s": 79698.7700536996,
+      "frame_ids": [
+        8782,
+        8783,
+        8784
+      ],
+      "geometry": {
+        "face": [
+          0.3441830694240614,
+          -0.17337489546694895,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03646105770032772,
+        "base_height": 0.72,
+        "object_height": 0.20351773419488273
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8785,
+      "captured_at_s": 79698.96640643838,
+      "frame_ids": [
+        8783,
+        8784,
+        8785
+      ],
+      "geometry": {
+        "face": [
+          0.3442282142238445,
+          -0.17337128984111042,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03646105770032772,
+        "base_height": 0.72,
+        "object_height": 0.2031950685670334
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8786,
+      "captured_at_s": 79699.16985741425,
+      "frame_ids": [
+        8784,
+        8785,
+        8786
+      ],
+      "geometry": {
+        "face": [
+          0.34429315701546465,
+          -0.17320641612603374,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.0361487619684271,
+        "base_height": 0.72,
+        "object_height": 0.20368282333789922
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8787,
+      "captured_at_s": 79699.36904724977,
+      "frame_ids": [
+        8785,
+        8786,
+        8787
+      ],
+      "geometry": {
+        "face": [
+          0.3443621353840238,
+          -0.17320641612603374,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.0361487619684271,
+        "base_height": 0.72,
+        "object_height": 0.20412930115063677
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8788,
+      "captured_at_s": 79699.57019406039,
+      "frame_ids": [
+        8786,
+        8787,
+        8788
+      ],
+      "geometry": {
+        "face": [
+          0.34443581647062543,
+          -0.17320641612603374,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03600366090314473,
+        "base_height": 0.72,
+        "object_height": 0.20388537074296764
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8789,
+      "captured_at_s": 79699.76972117124,
+      "frame_ids": [
+        8787,
+        8788,
+        8789
+      ],
+      "geometry": {
+        "face": [
+          0.34443581647062543,
+          -0.17275117570032308,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03538620217134638,
+        "base_height": 0.72,
+        "object_height": 0.2043576406883899
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8790,
+      "captured_at_s": 79699.96838713509,
+      "frame_ids": [
+        8788,
+        8789,
+        8790
+      ],
+      "geometry": {
+        "face": [
+          0.34448845995040406,
+          -0.17275117570032308,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03538620217134638,
+        "base_height": 0.72,
+        "object_height": 0.20366741772862773
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8791,
+      "captured_at_s": 79700.16650710414,
+      "frame_ids": [
+        8789,
+        8790,
+        8791
+      ],
+      "geometry": {
+        "face": [
+          0.34424640024871095,
+          -0.1728298037283033,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03587861955589024,
+        "base_height": 0.72,
+        "object_height": 0.20370088716994694
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8792,
+      "captured_at_s": 79700.36922567699,
+      "frame_ids": [
+        8790,
+        8791,
+        8792
+      ],
+      "geometry": {
+        "face": [
+          0.34424640024871095,
+          -0.17330285315783678,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.0360556068626945,
+        "base_height": 0.72,
+        "object_height": 0.20306539933308487
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8793,
+      "captured_at_s": 79700.57934727162,
+      "frame_ids": [
+        8791,
+        8792,
+        8793
+      ],
+      "geometry": {
+        "face": [
+          0.34424640024871095,
+          -0.17336328124660869,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03606006001504704,
+        "base_height": 0.72,
+        "object_height": 0.20359600591020244
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8794,
+      "captured_at_s": 79700.77779559958,
+      "frame_ids": [
+        8792,
+        8793,
+        8794
+      ],
+      "geometry": {
+        "face": [
+          0.3441052748551347,
+          -0.17352193376387787,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03666886048617563,
+        "base_height": 0.72,
+        "object_height": 0.20363143507447212
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8795,
+      "captured_at_s": 79700.96992232227,
+      "frame_ids": [
+        8793,
+        8794,
+        8795
+      ],
+      "geometry": {
+        "face": [
+          0.3441052748551347,
+          -0.17352193376387787,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03666886048617563,
+        "base_height": 0.72,
+        "object_height": 0.20424078427934578
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8796,
+      "captured_at_s": 79701.16962876415,
+      "frame_ids": [
+        8794,
+        8795,
+        8796
+      ],
+      "geometry": {
+        "face": [
+          0.3441052748551347,
+          -0.17335747663206932,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035823673919685134,
+        "base_height": 0.72,
+        "object_height": 0.20367442577049244
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8797,
+      "captured_at_s": 79701.3667373435,
+      "frame_ids": [
+        8795,
+        8796,
+        8797
+      ],
+      "geometry": {
+        "face": [
+          0.34420390843254745,
+          -0.17291049563386432,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03573129185500419,
+        "base_height": 0.72,
+        "object_height": 0.20436023252493762
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8798,
+      "captured_at_s": 79701.57142020512,
+      "frame_ids": [
+        8796,
+        8797,
+        8798
+      ],
+      "geometry": {
+        "face": [
+          0.3442071288957896,
+          -0.17335747663206932,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035823673919685134,
+        "base_height": 0.72,
+        "object_height": 0.2035522866187014
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8799,
+      "captured_at_s": 79701.77658670917,
+      "frame_ids": [
+        8797,
+        8798,
+        8799
+      ],
+      "geometry": {
+        "face": [
+          0.3442071288957896,
+          -0.17317877862889863,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03573129185500419,
+        "base_height": 0.72,
+        "object_height": 0.20402866632391836
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8800,
+      "captured_at_s": 79701.96880642475,
+      "frame_ids": [
+        8798,
+        8799,
+        8800
+      ],
+      "geometry": {
+        "face": [
+          0.3441906687268868,
+          -0.1734396735120763,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03688957135968034,
+        "base_height": 0.72,
+        "object_height": 0.20318572590040773
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8801,
+      "captured_at_s": 79702.1699111171,
+      "frame_ids": [
+        8799,
+        8800,
+        8801
+      ],
+      "geometry": {
+        "face": [
+          0.3440774188333349,
+          -0.17335352366749704,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035831566560743155,
+        "base_height": 0.72,
+        "object_height": 0.2044952052365906
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8802,
+      "captured_at_s": 79702.3690182326,
+      "frame_ids": [
+        8800,
+        8801,
+        8802
+      ],
+      "geometry": {
+        "face": [
+          0.34387532130923515,
+          -0.17335352366749704,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035831566560743155,
+        "base_height": 0.72,
+        "object_height": 0.20425506666684956
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8803,
+      "captured_at_s": 79702.56779546675,
+      "frame_ids": [
+        8801,
+        8802,
+        8803
+      ],
+      "geometry": {
+        "face": [
+          0.34387532130923515,
+          -0.17306686729215057,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03557036536131613,
+        "base_height": 0.72,
+        "object_height": 0.20374833974825102
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8804,
+      "captured_at_s": 79702.76926879634,
+      "frame_ids": [
+        8802,
+        8803,
+        8804
+      ],
+      "geometry": {
+        "face": [
+          0.3438729803836646,
+          -0.17305601970151563,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03556172135260593,
+        "base_height": 0.72,
+        "object_height": 0.203914536890778
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8805,
+      "captured_at_s": 79702.96987163422,
+      "frame_ids": [
+        8803,
+        8804,
+        8805
+      ],
+      "geometry": {
+        "face": [
+          0.3440827997393911,
+          -0.17302612155264008,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03556172135260593,
+        "base_height": 0.72,
+        "object_height": 0.20379811399965908
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8806,
+      "captured_at_s": 79703.17610174042,
+      "frame_ids": [
+        8804,
+        8805,
+        8806
+      ],
+      "geometry": {
+        "face": [
+          0.3438729803836646,
+          -0.17285087507724348,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035236206521755194,
+        "base_height": 0.72,
+        "object_height": 0.20398510813762272
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8807,
+      "captured_at_s": 79703.3703256336,
+      "frame_ids": [
+        8805,
+        8806,
+        8807
+      ],
+      "geometry": {
+        "face": [
+          0.34377073296262023,
+          -0.17281955629056217,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035139864747513405,
+        "base_height": 0.72,
+        "object_height": 0.2043578295702314
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8808,
+      "captured_at_s": 79703.57801139192,
+      "frame_ids": [
+        8806,
+        8807,
+        8808
+      ],
+      "geometry": {
+        "face": [
+          0.34377073296262023,
+          -0.17281955629056217,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03518645406343786,
+        "base_height": 0.72,
+        "object_height": 0.20351013215008285
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8809,
+      "captured_at_s": 79703.76788321695,
+      "frame_ids": [
+        8807,
+        8808,
+        8809
+      ],
+      "geometry": {
+        "face": [
+          0.34407794302327277,
+          -0.17289144654786076,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03518645406343786,
+        "base_height": 0.72,
+        "object_height": 0.20353641358603125
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8810,
+      "captured_at_s": 79703.97022474237,
+      "frame_ids": [
+        8808,
+        8809,
+        8810
+      ],
+      "geometry": {
+        "face": [
+          0.34411245938113677,
+          -0.17311722856596684,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035880405527743145,
+        "base_height": 0.72,
+        "object_height": 0.20405416114523056
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8811,
+      "captured_at_s": 79704.16939391538,
+      "frame_ids": [
+        8809,
+        8810,
+        8811
+      ],
+      "geometry": {
+        "face": [
+          0.34407944133224305,
+          -0.17333304177634334,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03610855944481937,
+        "base_height": 0.72,
+        "object_height": 0.20377671627932303
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8812,
+      "captured_at_s": 79704.36734266786,
+      "frame_ids": [
+        8810,
+        8811,
+        8812
+      ],
+      "geometry": {
+        "face": [
+          0.34407944133224305,
+          -0.17317093600374156,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.0359966894265054,
+        "base_height": 0.72,
+        "object_height": 0.2038008263867439
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8813,
+      "captured_at_s": 79704.5792818904,
+      "frame_ids": [
+        8811,
+        8812,
+        8813
+      ],
+      "geometry": {
+        "face": [
+          0.34407944133224305,
+          -0.17324737775377094,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.0359966894265054,
+        "base_height": 0.72,
+        "object_height": 0.20401504689101324
+      },
+      "lamp": null
+    }
+  ],
+  "perception_rejections": {},
+  "geometry_rejections": []
+}

@@ -1,0 +1,61 @@
+............................F.............                               [100%]
+=================================== FAILURES ===================================
+_____ test_short_bottle_motion_keeps_contact_stable_under_placement_error ______
+
+    def test_short_bottle_motion_keeps_contact_stable_under_placement_error():
+        import time
+        from kinematics import load_robot
+        from robust_scene import SceneSnapshot, build_scene_model
+        from robust_planner import generate_candidate, physical_trial, uncertainty_scenarios
+        path = ROOT.parents[1]/'_local/bottle_push/menagerie/unitree_g1/g1.xml'
+        if not path.exists():
+            pytest.skip('Menagerie asset not installed')
+        _, q = load_robot(path, (.1, 0, 0), .79)
+        scene = SceneSnapshot('bottle', (.326, -.12, .84), (1., 0., 0.), .034,
+                              tuple(q), (0., 0., 0.), 0., base_height=.76, uncertainty_m=.001)
+        kin = build_scene_model(path, dict(tip_offset_m=(.1, 0, 0), pelvis_height_m=.79), scene)
+        settings = SearchSettings()
+>       candidate = generate_candidate(kin, scene, 0, (0, 0, 0), (0, 0), settings, time.perf_counter()+30)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Manipulation/push_button/tests/test_motion_limits.py:108:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+Manipulation/push_button/robust_planner.py:236: in generate_candidate
+    times, spline, t, metrics = retime_reference(times, points, settings)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+times = array([ 0.        ,  3.19786228,  4.54267694,  5.05864061,  7.30064643,
+        9.05605626, 10.81470735, 12.58122724, ...
+       17.86121629, 19.62120949, 21.3812002 , 23.14118752, 24.90117106,
+       25.94416065, 27.24691877, 30.43368259])
+points = array([[ 0.2       , -0.2       ,  0.        ,  1.28      ,  0.        ,
+         0.        ,  0.        ],
+       [ 0...41640434],
+       [ 0.2       , -0.2       ,  0.        ,  1.28      ,  0.        ,
+         0.        ,  0.        ]])
+settings = SearchSettings(budget_s=10.0, max_rollouts=1000, scenarios=20, workers=8, max_candidates=50, seed=0, position_error_m=...on_range=(0.24, 0.36), gravity_scale=1.0, motion_duration_s=30.0, joint_speed_rad_s=1.2, joint_acceleration_rad_s2=4.0)
+
+    def retime_reference(times, points, settings):
+        """Keep the geometric spline; fit the motion budget with 20% command headroom."""
+        derivatives = PchipInterpolator(times, points, axis=0).derivative()(times)
+        derivatives[0] = derivatives[-1] = 0.
+        spline = CubicHermiteSpline(times, points, derivatives, axis=0)
+        speed, acceleration = spline_peaks(spline)
+        limits = settings.motion_limits
+        minimum_scale = max(speed/(PLANNED_LIMIT_FRACTION*limits.joint_speed_rad_s),
+                            math.sqrt(acceleration/(PLANNED_LIMIT_FRACTION*limits.joint_acceleration_rad_s2)))
+        # Each sample is held for PERIOD, including the final home command.
+        desired_end = max(PERIOD, settings.motion_duration_s-MOTION_OVERHEAD_S-PERIOD)
+        end = max(desired_end, times[-1]*minimum_scale)
+        ticks = max(1, math.ceil(end/PERIOD-1e-9))
+        end = ticks*PERIOD
+        duration = (ticks+1)*PERIOD
+        if duration+MOTION_OVERHEAD_S > settings.motion_duration_s+MOTION_TOLERANCE_S+1e-9:
+>           raise ValueError('Motion budget cannot retain 20% joint speed/acceleration headroom')
+E           ValueError: Motion budget cannot retain 20% joint speed/acceleration headroom
+
+Manipulation/push_button/robust_planner.py:161: ValueError
+=========================== short test summary info ============================
+FAILED Manipulation/push_button/tests/test_motion_limits.py::test_short_bottle_motion_keeps_contact_stable_under_placement_error
+1 failed, 41 passed in 1.33s

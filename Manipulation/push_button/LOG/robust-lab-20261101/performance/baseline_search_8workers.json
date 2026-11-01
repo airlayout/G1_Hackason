@@ -1,0 +1,2803 @@
+{
+  "mode": "search",
+  "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button",
+  "settings": {
+    "budget_s": 10.0,
+    "max_rollouts": 1000,
+    "scenarios": 20,
+    "workers": 8,
+    "max_candidates": 50,
+    "seed": 0,
+    "position_error_m": 0.001,
+    "normal_error_deg": 1.0,
+    "tracking_error_rad": 0.001,
+    "mass_range": [
+      0.28,
+      0.42
+    ],
+    "friction_range": [
+      0.24,
+      0.36
+    ],
+    "gravity_scale": 1.0,
+    "motion_duration_s": 30.0,
+    "joint_speed_rad_s": 1.2,
+    "joint_acceleration_rad_s2": 4.0
+  },
+  "robot_connected": false,
+  "started_s": 81321.629739352,
+  "elapsed_s": 9.805689199987683,
+  "plan": {
+    "schema": "g1-robust-plan-v1",
+    "settings": {
+      "budget_s": 10.0,
+      "max_rollouts": 1000,
+      "scenarios": 20,
+      "workers": 8,
+      "max_candidates": 50,
+      "seed": 0,
+      "position_error_m": 0.001,
+      "normal_error_deg": 1.0,
+      "tracking_error_rad": 0.001,
+      "mass_range": [
+        0.28,
+        0.42
+      ],
+      "friction_range": [
+        0.24,
+        0.36
+      ],
+      "gravity_scale": 1.0,
+      "motion_duration_s": 30.0,
+      "joint_speed_rad_s": 1.2,
+      "joint_acceleration_rad_s2": 4.0
+    },
+    "static_checks": 5,
+    "completed_rollouts": 65,
+    "aborted_rollouts": 35,
+    "candidates": [
+      {
+        "index": 0,
+        "profile_submitted_at_s": 81322.001355334,
+        "trials": [
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04985888193196582,
+            "target_margin_m": -0.0012257481539200551,
+            "tracking_max_m": 0.006739779073360953,
+            "min_joint_margin_rad": 0.3967283952393341,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04737738334209857,
+              -0.0025909419017120794,
+              -3.629622712497671e-06
+            ],
+            "wall_s": 0.6826560710032936,
+            "profile": {
+              "pid": 368831,
+              "started_s": 81322.737336136,
+              "finished_s": 81323.421671911,
+              "import_started_s": 81322.046927721,
+              "import_finished_s": 81322.30733444,
+              "initializer_started_s": 81322.307437483,
+              "ready_s": 81322.735154955
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.0175677693669017,
+            "tracking_max_m": 0.006725558823212932,
+            "min_joint_margin_rad": 0.3975958434832748,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03977727253854424,
+              -0.009614747405678609,
+              -4.384126214063144e-06
+            ],
+            "wall_s": 0.6604321630002232,
+            "profile": {
+              "pid": 368836,
+              "started_s": 81322.748065491,
+              "finished_s": 81323.410230689,
+              "import_started_s": 81322.046138325,
+              "import_finished_s": 81322.31012015,
+              "initializer_started_s": 81322.31031373,
+              "ready_s": 81322.746497896
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.1524360629991861,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81322.781315411,
+              "finished_s": 81322.93604389,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.013604856516975478,
+            "tracking_max_m": 0.007027489653745233,
+            "min_joint_margin_rad": 0.3964624986816857,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04002075161596419,
+              -0.007753084428909152,
+              -3.2775460757639152e-06
+            ],
+            "wall_s": 0.6931942640076159,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81322.782033236,
+              "finished_s": 81323.477384897,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.0484833846894351,
+            "target_margin_m": -0.016193240595843365,
+            "tracking_max_m": 0.007005060161540209,
+            "min_joint_margin_rad": 0.3964089102744758,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.0313963208418071,
+              -0.010207970348189405,
+              -2.3745917463458e-06
+            ],
+            "wall_s": 0.7059127690008609,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81322.785257249,
+              "finished_s": 81323.493441287,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.024026195780634453,
+            "tracking_max_m": 0.0070573910557566975,
+            "min_joint_margin_rad": 0.39595839857642856,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04265633504499772,
+              -0.015265968769360039,
+              -3.609603003829065e-06
+            ],
+            "wall_s": 0.6830418949975865,
+            "profile": {
+              "pid": 368838,
+              "started_s": 81322.788010736,
+              "finished_s": 81323.473349456,
+              "import_started_s": 81322.04670298,
+              "import_finished_s": 81322.305149209,
+              "initializer_started_s": 81322.305237742,
+              "ready_s": 81322.787603471
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.03389882108979801,
+            "target_margin_m": -0.01847360222795237,
+            "tracking_max_m": 0.006743543349655733,
+            "min_joint_margin_rad": 0.3965647518591193,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04829008655200079,
+              0.008846703963258873,
+              -4.386525395250196e-06
+            ],
+            "wall_s": 0.6772578389936825,
+            "profile": {
+              "pid": 368835,
+              "started_s": 81322.788921922,
+              "finished_s": 81323.46855254,
+              "import_started_s": 81322.046268271,
+              "import_finished_s": 81322.313429464,
+              "initializer_started_s": 81322.31356539,
+              "ready_s": 81322.788532489
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.025057557542229658,
+            "tracking_max_m": 0.006990034265314414,
+            "min_joint_margin_rad": 0.39739058913311476,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.025600056137334404,
+              0.011740561388840443,
+              -2.929997913403426e-06
+            ],
+            "wall_s": 0.6757567929889774,
+            "profile": {
+              "pid": 368834,
+              "started_s": 81322.789285015,
+              "finished_s": 81323.467509797,
+              "import_started_s": 81322.045312948,
+              "import_finished_s": 81322.304676198,
+              "initializer_started_s": 81322.304761926,
+              "ready_s": 81322.788922896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.0365108193535889,
+            "target_margin_m": -0.015207678492487862,
+            "tracking_max_m": 0.0067126476283023125,
+            "min_joint_margin_rad": 0.39724435825126203,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.045430684270446664,
+              -0.008487766401079844,
+              -2.4050562057453817e-06
+            ],
+            "wall_s": 0.691364769008942,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81322.936315385,
+              "finished_s": 81323.629816392,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.00031837346946675393,
+            "target_margin_m": -0.018730770121396848,
+            "tracking_max_m": 0.006697625635244379,
+            "min_joint_margin_rad": 0.3962903092512422,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.05019222735236312,
+              -0.012008098139988849,
+              -2.9845723295007787e-06
+            ],
+            "wall_s": 0.6648989139939658,
+            "profile": {
+              "pid": 368836,
+              "started_s": 81323.410869462,
+              "finished_s": 81324.077395357,
+              "import_started_s": 81322.046138325,
+              "import_finished_s": 81322.31012015,
+              "initializer_started_s": 81322.31031373,
+              "ready_s": 81322.746497896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04603282054289764,
+            "target_margin_m": -0.02254997634400959,
+            "tracking_max_m": 0.006913640078037741,
+            "min_joint_margin_rad": 0.3965438278879173,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.042776706410270926,
+              0.014697524141532387,
+              -4.747033994112471e-06
+            ],
+            "wall_s": 0.6731888259964762,
+            "profile": {
+              "pid": 368831,
+              "started_s": 81323.422023223,
+              "finished_s": 81324.096832973,
+              "import_started_s": 81322.046927721,
+              "import_finished_s": 81322.30733444,
+              "initializer_started_s": 81322.307437483,
+              "ready_s": 81322.735154955
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.14290035600424744,
+            "profile": {
+              "pid": 368834,
+              "started_s": 81323.468054172,
+              "finished_s": 81323.613194302,
+              "import_started_s": 81322.045312948,
+              "import_finished_s": 81322.304676198,
+              "initializer_started_s": 81322.304761926,
+              "ready_s": 81322.788922896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.0003379905277970108,
+            "target_margin_m": -0.0247631379918973,
+            "tracking_max_m": 0.007313327773944463,
+            "min_joint_margin_rad": 0.3974656724054313,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.046398626745612126,
+              -0.015749759211779485,
+              -4.449283166674256e-06
+            ],
+            "wall_s": 0.668236112993327,
+            "profile": {
+              "pid": 368835,
+              "started_s": 81323.468908051,
+              "finished_s": 81324.139132302,
+              "import_started_s": 81322.046268271,
+              "import_finished_s": 81322.313429464,
+              "initializer_started_s": 81322.31356539,
+              "ready_s": 81322.788532489
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.015312838737317785,
+            "tracking_max_m": 0.006810447047990881,
+            "min_joint_margin_rad": 0.396895853915897,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.033196564668631134,
+              -0.007283395905887835,
+              -5.334283676883267e-06
+            ],
+            "wall_s": 0.6576712319947546,
+            "profile": {
+              "pid": 368838,
+              "started_s": 81323.47366389,
+              "finished_s": 81324.133525792,
+              "import_started_s": 81322.04670298,
+              "import_finished_s": 81322.305149209,
+              "initializer_started_s": 81322.305237742,
+              "ready_s": 81322.787603471
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04140295401625248,
+            "target_margin_m": -0.02991711700171029,
+            "tracking_max_m": 0.006721750164847387,
+            "min_joint_margin_rad": 0.39688613803015516,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03328167191104264,
+              -0.014796814825910137,
+              -4.43864945265382e-06
+            ],
+            "wall_s": 0.6727397359936731,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81323.477688655,
+              "finished_s": 81324.152255883,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.13794858900655527,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81323.493844838,
+              "finished_s": 81323.634028203,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.011911979710629197,
+            "tracking_max_m": 0.007168769459300163,
+            "min_joint_margin_rad": 0.395926073240047,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04296353606952086,
+              0.0001488253608171175,
+              -5.356248927945728e-06
+            ],
+            "wall_s": 0.6464009549963521,
+            "profile": {
+              "pid": 368834,
+              "started_s": 81323.613668962,
+              "finished_s": 81324.26198936,
+              "import_started_s": 81322.045312948,
+              "import_finished_s": 81322.304676198,
+              "initializer_started_s": 81322.304761926,
+              "ready_s": 81322.788922896
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.13830761800636537,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81323.630205943,
+              "finished_s": 81323.770749376,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.028020273876026056,
+            "tracking_max_m": 0.006946146863048748,
+            "min_joint_margin_rad": 0.396460114647083,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.039553464330418675,
+              0.018047233633796983,
+              -2.2530930556818873e-06
+            ],
+            "wall_s": 0.6663670709967846,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81323.634390634,
+              "finished_s": 81324.302972255,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.020272811783837136,
+            "tracking_max_m": 0.007175427932370248,
+            "min_joint_margin_rad": 0.39766970039870553,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03307650947876434,
+              0.01162264435023308,
+              -4.858043374356136e-06
+            ],
+            "wall_s": 0.6246579500002554,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81323.771260903,
+              "finished_s": 81324.397886861,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          }
+        ],
+        "accepted": false,
+        "dispatch_summary": {
+          "first_task_start_after_submit_s": 0.735980801997357,
+          "last_task_end_after_submit_s": 2.39653152700339,
+          "worker_compute_sum_s": 11.356844209047267,
+          "workers": 8
+        }
+      },
+      {
+        "index": 1,
+        "profile_submitted_at_s": 81324.665580187,
+        "trials": [
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.048658889665290625,
+            "target_margin_m": -0.000588702193679941,
+            "tracking_max_m": 0.006646817634284653,
+            "min_joint_margin_rad": 0.17589039800282746,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04741071878616632,
+              -5.55227214898979e-06,
+              -3.6195921914172757e-06
+            ],
+            "wall_s": 0.7123343760031275,
+            "profile": {
+              "pid": 368836,
+              "started_s": 81324.666935572,
+              "finished_s": 81325.381920052,
+              "import_started_s": 81322.046138325,
+              "import_finished_s": 81322.31012015,
+              "initializer_started_s": 81322.31031373,
+              "ready_s": 81322.746497896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.016748546846713258,
+            "tracking_max_m": 0.006804481331719316,
+            "min_joint_margin_rad": 0.17677176533295957,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.0397803634058872,
+              -0.009641591163049718,
+              -4.397920543852685e-06
+            ],
+            "wall_s": 0.7088070669997251,
+            "profile": {
+              "pid": 368831,
+              "started_s": 81324.66718405,
+              "finished_s": 81325.377744606,
+              "import_started_s": 81322.046927721,
+              "import_finished_s": 81322.30733444,
+              "initializer_started_s": 81322.307437483,
+              "ready_s": 81322.735154955
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.16717627200705465,
+            "profile": {
+              "pid": 368838,
+              "started_s": 81324.667863895,
+              "finished_s": 81324.837916393,
+              "import_started_s": 81322.04670298,
+              "import_finished_s": 81322.305149209,
+              "initializer_started_s": 81322.305237742,
+              "ready_s": 81322.787603471
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.012974097608489246,
+            "tracking_max_m": 0.006460518291201013,
+            "min_joint_margin_rad": 0.17563320666876436,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04003088351254208,
+              -0.007806380110293415,
+              -3.290744901129905e-06
+            ],
+            "wall_s": 0.734547735992237,
+            "profile": {
+              "pid": 368835,
+              "started_s": 81324.668570558,
+              "finished_s": 81325.405376638,
+              "import_started_s": 81322.046268271,
+              "import_finished_s": 81322.313429464,
+              "initializer_started_s": 81322.31356539,
+              "ready_s": 81322.788532489
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04739912958996281,
+            "target_margin_m": -0.01608413751903934,
+            "tracking_max_m": 0.006404149287546671,
+            "min_joint_margin_rad": 0.17555856169760164,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03145875963664785,
+              -0.010135982689673917,
+              -2.364287105760532e-06
+            ],
+            "wall_s": 0.7207121350074885,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81324.668926453,
+              "finished_s": 81325.391977862,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.023273017525921088,
+            "tracking_max_m": 0.006491515811523499,
+            "min_joint_margin_rad": 0.17511024341063908,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.043174878359654334,
+              -0.014586539560460965,
+              -3.6300936355759816e-06
+            ],
+            "wall_s": 0.7269214650004869,
+            "profile": {
+              "pid": 368834,
+              "started_s": 81324.669188932,
+              "finished_s": 81325.398866829,
+              "import_started_s": 81322.045312948,
+              "import_finished_s": 81322.304676198,
+              "initializer_started_s": 81322.304761926,
+              "ready_s": 81322.788922896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.032688598241709124,
+            "target_margin_m": -0.019074058751870515,
+            "tracking_max_m": 0.006645509574001672,
+            "min_joint_margin_rad": 0.17573068224601995,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.047990277177996254,
+              0.009758489445579,
+              -4.380765126432706e-06
+            ],
+            "wall_s": 0.7455294979881728,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81324.669446747,
+              "finished_s": 81325.418815946,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.025149915872888378,
+            "tracking_max_m": 0.006414148855405352,
+            "min_joint_margin_rad": 0.1765680864931296,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.02556033214826592,
+              0.01180191839354472,
+              -2.9256029906443715e-06
+            ],
+            "wall_s": 0.7097342380002374,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81324.669777813,
+              "finished_s": 81325.381772998,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.035323478622092674,
+            "target_margin_m": -0.01491627598321887,
+            "tracking_max_m": 0.0065256410948719415,
+            "min_joint_margin_rad": 0.1764012292640582,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04555300756162539,
+              -0.008049803016047852,
+              -2.4092481006876554e-06
+            ],
+            "wall_s": 0.6883721659978619,
+            "profile": {
+              "pid": 368838,
+              "started_s": 81324.83842053,
+              "finished_s": 81325.529418818,
+              "import_started_s": 81322.04670298,
+              "import_finished_s": 81322.305149209,
+              "initializer_started_s": 81322.305237742,
+              "ready_s": 81322.787603471
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.0002895569838333237,
+            "target_margin_m": -0.017571984681991427,
+            "tracking_max_m": 0.006808220383577189,
+            "min_joint_margin_rad": 0.17544135015764672,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.050758228005712,
+              -0.010316689463206685,
+              -2.988694929761948e-06
+            ],
+            "wall_s": 0.7042208909988403,
+            "profile": {
+              "pid": 368831,
+              "started_s": 81325.377975532,
+              "finished_s": 81326.084071193,
+              "import_started_s": 81322.046927721,
+              "import_finished_s": 81322.30733444,
+              "initializer_started_s": 81322.307437483,
+              "ready_s": 81322.735154955
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04477348568199471,
+            "target_margin_m": -0.023174432407341638,
+            "tracking_max_m": 0.006419624279731655,
+            "min_joint_margin_rad": 0.1757000200211586,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.042364976059338255,
+              0.015282432250024847,
+              -4.746127442945003e-06
+            ],
+            "wall_s": 0.7145773959928192,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81325.382006302,
+              "finished_s": 81326.098489103,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.15006463500321843,
+            "profile": {
+              "pid": 368836,
+              "started_s": 81325.382409285,
+              "finished_s": 81325.53444431,
+              "import_started_s": 81322.046138325,
+              "import_finished_s": 81322.31012015,
+              "initializer_started_s": 81322.31031373,
+              "ready_s": 81322.746497896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.00039930936308345266,
+            "target_margin_m": -0.02346229932254328,
+            "tracking_max_m": 0.0073933817410304975,
+            "min_joint_margin_rad": 0.17663517148025443,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04727535630338375,
+              -0.01439372787832896,
+              -4.451366292235193e-06
+            ],
+            "wall_s": 0.7208220250031445,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81325.392228098,
+              "finished_s": 81326.115362838,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.014351975866737556,
+            "tracking_max_m": 0.0066089627343821665,
+            "min_joint_margin_rad": 0.17606443073477707,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03317011328675984,
+              -0.0073895180346627565,
+              -5.3443742871195354e-06
+            ],
+            "wall_s": 0.694881326999166,
+            "profile": {
+              "pid": 368834,
+              "started_s": 81325.399114381,
+              "finished_s": 81326.096592108,
+              "import_started_s": 81322.045312948,
+              "import_finished_s": 81322.304676198,
+              "initializer_started_s": 81322.304761926,
+              "ready_s": 81322.788922896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04025324414536318,
+            "target_margin_m": -0.029773330843134875,
+            "tracking_max_m": 0.006497308081371616,
+            "min_joint_margin_rad": 0.17604367630209838,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.033412104116465224,
+              -0.014698683190564638,
+              -4.428480456786232e-06
+            ],
+            "wall_s": 0.7140612350049196,
+            "profile": {
+              "pid": 368835,
+              "started_s": 81325.405615191,
+              "finished_s": 81326.122232771,
+              "import_started_s": 81322.046268271,
+              "import_finished_s": 81322.313429464,
+              "initializer_started_s": 81322.31356539,
+              "ready_s": 81322.788532489
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.14529234300425742,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81325.419340236,
+              "finished_s": 81325.567428434,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.011584815232315141,
+            "tracking_max_m": 0.006492611752880451,
+            "min_joint_margin_rad": 0.17508201153103709,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04294360434139538,
+              0.0005137178813521825,
+              -5.3439434106739014e-06
+            ],
+            "wall_s": 0.679665946008754,
+            "profile": {
+              "pid": 368838,
+              "started_s": 81325.529635548,
+              "finished_s": 81326.211920013,
+              "import_started_s": 81322.04670298,
+              "import_finished_s": 81322.305149209,
+              "initializer_started_s": 81322.305237742,
+              "ready_s": 81322.787603471
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.0004624763028189885,
+            "target_margin_m": -0.035074955436189444,
+            "tracking_max_m": 0.00687244079973244,
+            "min_joint_margin_rad": 0.17656082609451995,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04050620963702217,
+              0.02030050907245079,
+              -3.5721962540202767e-06
+            ],
+            "wall_s": 0.6812812849966576,
+            "profile": {
+              "pid": 368836,
+              "started_s": 81325.534790294,
+              "finished_s": 81326.217747364,
+              "import_started_s": 81322.046138325,
+              "import_finished_s": 81322.31012015,
+              "initializer_started_s": 81322.31031373,
+              "ready_s": 81322.746497896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.028658038734024942,
+            "tracking_max_m": 0.006420500495168077,
+            "min_joint_margin_rad": 0.17561489319067802,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03894545606409411,
+              0.018699451161542813,
+              -2.249946290611149e-06
+            ],
+            "wall_s": 0.7047530739946524,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81325.56794278,
+              "finished_s": 81326.2752203,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.020355979272442787,
+            "tracking_max_m": 0.007239328737807676,
+            "min_joint_margin_rad": 0.17685693018567483,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03301801145387767,
+              0.011665380946254272,
+              -4.8775329303252235e-06
+            ],
+            "wall_s": 0.5807439269992756,
+            "profile": {
+              "pid": 368831,
+              "started_s": 81326.08430582,
+              "finished_s": 81326.666447479,
+              "import_started_s": 81322.046927721,
+              "import_finished_s": 81322.30733444,
+              "initializer_started_s": 81322.307437483,
+              "ready_s": 81322.735154955
+            }
+          }
+        ],
+        "accepted": false,
+        "dispatch_summary": {
+          "first_task_start_after_submit_s": 0.0013553850003518164,
+          "last_task_end_after_submit_s": 2.000867292008479,
+          "worker_compute_sum_s": 12.452088038000511,
+          "workers": 8
+        }
+      },
+      {
+        "index": 2,
+        "profile_submitted_at_s": 81326.928462647,
+        "trials": [
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04756292452447207,
+            "target_margin_m": -0.0031049185396316986,
+            "tracking_max_m": 0.009833947292448759,
+            "min_joint_margin_rad": 0.17838584309529648,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04693599779933488,
+              0.006024110930635707,
+              -3.6271691383760185e-06
+            ],
+            "wall_s": 0.7152480510121677,
+            "profile": {
+              "pid": 368834,
+              "started_s": 81326.92976133,
+              "finished_s": 81327.647179558,
+              "import_started_s": 81322.045312948,
+              "import_finished_s": 81322.304676198,
+              "initializer_started_s": 81322.304761926,
+              "ready_s": 81322.788922896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.017555658962806114,
+            "tracking_max_m": 0.010117550742472586,
+            "min_joint_margin_rad": 0.17925708749705227,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04036937013064995,
+              -0.009023975631418074,
+              -4.378860321119227e-06
+            ],
+            "wall_s": 0.7131175280082971,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81326.930248277,
+              "finished_s": 81327.645534029,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.17292071299743839,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81326.930718739,
+              "finished_s": 81327.106363815,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.014209991758741256,
+            "tracking_max_m": 0.010012887879632996,
+            "min_joint_margin_rad": 0.1781184385376009,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04029756853750599,
+              -0.007165525143325885,
+              -3.282891012812428e-06
+            ],
+            "wall_s": 0.7420269089925569,
+            "profile": {
+              "pid": 368835,
+              "started_s": 81326.931321757,
+              "finished_s": 81327.675995382,
+              "import_started_s": 81322.046268271,
+              "import_finished_s": 81322.313429464,
+              "initializer_started_s": 81322.31356539,
+              "ready_s": 81322.788532489
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04642100136394586,
+            "target_margin_m": -0.014927632616196104,
+            "tracking_max_m": 0.009471989589956846,
+            "min_joint_margin_rad": 0.17806069702708327,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03194021790873641,
+              -0.00986459919639801,
+              -2.369825618298016e-06
+            ],
+            "wall_s": 0.7048684879991924,
+            "profile": {
+              "pid": 368838,
+              "started_s": 81326.931567311,
+              "finished_s": 81327.638640515,
+              "import_started_s": 81322.04670298,
+              "import_finished_s": 81322.305149209,
+              "initializer_started_s": 81322.305237742,
+              "ready_s": 81322.787603471
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.020936545068609275,
+            "tracking_max_m": 0.009526751782014595,
+            "min_joint_margin_rad": 0.17760752965657012,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04451963370950629,
+              -0.013010060649244704,
+              -3.6177897618783206e-06
+            ],
+            "wall_s": 0.7289174080069643,
+            "profile": {
+              "pid": 368836,
+              "started_s": 81326.932313802,
+              "finished_s": 81327.663716558,
+              "import_started_s": 81322.046138325,
+              "import_finished_s": 81322.31012015,
+              "initializer_started_s": 81322.31031373,
+              "ready_s": 81322.746497896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.03137599090189421,
+            "target_margin_m": -0.021854473979754586,
+            "tracking_max_m": 0.010033407303855513,
+            "min_joint_margin_rad": 0.1782233873734701,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.046523537921122626,
+              0.012818443872917945,
+              -4.3913950399376844e-06
+            ],
+            "wall_s": 0.7479846830101451,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81326.932579783,
+              "finished_s": 81327.686766359,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.02596467519834058,
+            "tracking_max_m": 0.010035778959138117,
+            "min_joint_margin_rad": 0.17904322682421525,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.02495749917949014,
+              0.011478406485029735,
+              -2.9247506910801135e-06
+            ],
+            "wall_s": 0.7101752890011994,
+            "profile": {
+              "pid": 368831,
+              "started_s": 81326.933189947,
+              "finished_s": 81327.645534222,
+              "import_started_s": 81322.046927721,
+              "import_finished_s": 81322.30733444,
+              "initializer_started_s": 81322.307437483,
+              "ready_s": 81322.735154955
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.03438599118339709,
+            "target_margin_m": -0.013187201194101605,
+            "tracking_max_m": 0.009415040980468043,
+            "min_joint_margin_rad": 0.17889264266152927,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04616868466120627,
+              -0.005392227655841658,
+              -2.4086571491777065e-06
+            ],
+            "wall_s": 0.7053598400088958,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81327.106618353,
+              "finished_s": 81327.814408411,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.00040390214954341003,
+            "target_margin_m": -0.013935921915381254,
+            "tracking_max_m": 0.009869284304745988,
+            "min_joint_margin_rad": 0.17795490313356865,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.052214735631978426,
+              -0.0021956913919185528,
+              -2.997632946866169e-06
+            ],
+            "wall_s": 0.705809050006792,
+            "profile": {
+              "pid": 368838,
+              "started_s": 81327.638963925,
+              "finished_s": 81328.347106085,
+              "import_started_s": 81322.04670298,
+              "import_finished_s": 81322.305149209,
+              "initializer_started_s": 81322.305237742,
+              "ready_s": 81322.787603471
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04329231646818801,
+            "target_margin_m": -0.02568073114137324,
+            "tracking_max_m": 0.009716488743194624,
+            "min_joint_margin_rad": 0.17820164928184357,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04063888874287519,
+              0.016623464825444995,
+              -4.748817575173092e-06
+            ],
+            "wall_s": 0.7000242369977059,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81327.645856919,
+              "finished_s": 81328.347926822,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.15206219100218732,
+            "profile": {
+              "pid": 368831,
+              "started_s": 81327.646006228,
+              "finished_s": 81327.800229102,
+              "import_started_s": 81322.046927721,
+              "import_finished_s": 81322.30733444,
+              "initializer_started_s": 81322.307437483,
+              "ready_s": 81322.735154955
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.0004397196677389942,
+            "target_margin_m": -0.019701500866082054,
+            "tracking_max_m": 0.01035685589456386,
+            "min_joint_margin_rad": 0.17913481215678417,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04937783339901014,
+              -0.01099211654281218,
+              -4.449151139396257e-06
+            ],
+            "wall_s": 0.7019458729919279,
+            "profile": {
+              "pid": 368834,
+              "started_s": 81327.647670339,
+              "finished_s": 81328.351634753,
+              "import_started_s": 81322.045312948,
+              "import_finished_s": 81322.304676198,
+              "initializer_started_s": 81322.304761926,
+              "ready_s": 81322.788922896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.014933294139882806,
+            "tracking_max_m": 0.009882959356035637,
+            "min_joint_margin_rad": 0.17855080297082604,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.033603476351760364,
+              -0.006998473587966236,
+              -5.327336628391244e-06
+            ],
+            "wall_s": 0.6932546729949536,
+            "profile": {
+              "pid": 368836,
+              "started_s": 81327.664102229,
+              "finished_s": 81328.359515582,
+              "import_started_s": 81322.046138325,
+              "import_finished_s": 81322.31012015,
+              "initializer_started_s": 81322.31031373,
+              "ready_s": 81322.746497896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.03946241234655558,
+            "target_margin_m": -0.02886772471969215,
+            "tracking_max_m": 0.009458795846183558,
+            "min_joint_margin_rad": 0.1785366724501961,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03412782215975285,
+              -0.014680421015590667,
+              -4.432823300093425e-06
+            ],
+            "wall_s": 0.7100417140027275,
+            "profile": {
+              "pid": 368835,
+              "started_s": 81327.676542744,
+              "finished_s": 81328.38897853,
+              "import_started_s": 81322.046268271,
+              "import_finished_s": 81322.313429464,
+              "initializer_started_s": 81322.31356539,
+              "ready_s": 81322.788532489
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.14697284100111574,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81327.687414682,
+              "finished_s": 81327.836802092,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.01344167738265635,
+            "tracking_max_m": 0.009873652308374264,
+            "min_joint_margin_rad": 0.17758217015388,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.042825893462147435,
+              0.0019799478416949456,
+              -5.356703040360067e-06
+            ],
+            "wall_s": 0.6848985090036876,
+            "profile": {
+              "pid": 368831,
+              "started_s": 81327.800844517,
+              "finished_s": 81328.487140311,
+              "import_started_s": 81322.046927721,
+              "import_finished_s": 81322.30733444,
+              "initializer_started_s": 81322.307437483,
+              "ready_s": 81322.735154955
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.1503539749974152,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81327.814746836,
+              "finished_s": 81327.96771982,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.030731775645549138,
+            "tracking_max_m": 0.009373002252056086,
+            "min_joint_margin_rad": 0.1781115616391723,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03711953388697309,
+              0.019719253883555915,
+              -2.2564651551704173e-06
+            ],
+            "wall_s": 0.7040544199990109,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81327.837186153,
+              "finished_s": 81328.543195348,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.021585343799346374,
+            "tracking_max_m": 0.010601456678254679,
+            "min_joint_margin_rad": 0.17933707262874987,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.032265696678894895,
+              0.01162482556268421,
+              -4.856812294007362e-06
+            ],
+            "wall_s": 0.6552577879920136,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81327.968136357,
+              "finished_s": 81328.625470132,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          }
+        ],
+        "accepted": false,
+        "dispatch_summary": {
+          "first_task_start_after_submit_s": 0.0012986829970031977,
+          "last_task_end_after_submit_s": 1.6970074849959929,
+          "worker_compute_sum_s": 11.994067197971162,
+          "workers": 8
+        }
+      },
+      {
+        "index": 3,
+        "profile_submitted_at_s": 81328.895535557,
+        "trials": [
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04795737408225764,
+            "target_margin_m": -0.00321108786963069,
+            "tracking_max_m": 0.010458461038325937,
+            "min_joint_margin_rad": 0.05809785427029002,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04694418745944401,
+              0.006260612511665042,
+              -3.625931242146052e-06
+            ],
+            "wall_s": 0.7325704449904151,
+            "profile": {
+              "pid": 368838,
+              "started_s": 81328.896933408,
+              "finished_s": 81329.631862242,
+              "import_started_s": 81322.04670298,
+              "import_finished_s": 81322.305149209,
+              "initializer_started_s": 81322.305237742,
+              "ready_s": 81322.787603471
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.017217627780117418,
+            "tracking_max_m": 0.01068931228443247,
+            "min_joint_margin_rad": 0.05897397654819447,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04034173390754503,
+              -0.009007190910507668,
+              -4.36447653762162e-06
+            ],
+            "wall_s": 0.736863034995622,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81328.897610572,
+              "finished_s": 81329.636315161,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.1795217600010801,
+            "profile": {
+              "pid": 368834,
+              "started_s": 81328.898042034,
+              "finished_s": 81329.079327132,
+              "import_started_s": 81322.045312948,
+              "import_finished_s": 81322.304676198,
+              "initializer_started_s": 81322.304761926,
+              "ready_s": 81322.788922896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.013989117352363193,
+            "tracking_max_m": 0.010659860017692192,
+            "min_joint_margin_rad": 0.05784227458191349,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04029930455673575,
+              -0.00713956597908022,
+              -3.2887786414192988e-06
+            ],
+            "wall_s": 0.7362919080042047,
+            "profile": {
+              "pid": 368836,
+              "started_s": 81328.898819409,
+              "finished_s": 81329.637660905,
+              "import_started_s": 81322.046138325,
+              "import_finished_s": 81322.31012015,
+              "initializer_started_s": 81322.31031373,
+              "ready_s": 81322.746497896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.04682878568181766,
+            "target_margin_m": -0.015024585258783162,
+            "tracking_max_m": 0.010116009770505831,
+            "min_joint_margin_rad": 0.05776420615038125,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.0318870607812915,
+              -0.009925620630547055,
+              -2.3793436920716005e-06
+            ],
+            "wall_s": 0.7597644630004652,
+            "profile": {
+              "pid": 368835,
+              "started_s": 81328.898958337,
+              "finished_s": 81329.661136147,
+              "import_started_s": 81322.046268271,
+              "import_finished_s": 81322.313429464,
+              "initializer_started_s": 81322.31356539,
+              "ready_s": 81322.788532489
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.00016689613952767385,
+            "target_margin_m": -0.020596634135079072,
+            "tracking_max_m": 0.0101478031188748,
+            "min_joint_margin_rad": 0.057317590249381545,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.044698872906314024,
+              -0.012584298932126314,
+              -3.622404911141075e-06
+            ],
+            "wall_s": 0.7319886180048343,
+            "profile": {
+              "pid": 368831,
+              "started_s": 81328.899700008,
+              "finished_s": 81329.633755158,
+              "import_started_s": 81322.046927721,
+              "import_finished_s": 81322.30733444,
+              "initializer_started_s": 81322.307437483,
+              "ready_s": 81322.735154955
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.0317774340565059,
+            "target_margin_m": -0.021908789203795975,
+            "tracking_max_m": 0.010719776606288518,
+            "min_joint_margin_rad": 0.057940711885708596,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.046476962551133705,
+              0.012919224960347586,
+              -4.366290798918371e-06
+            ],
+            "wall_s": 0.7401672340056393,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81328.899961239,
+              "finished_s": 81329.642721427,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.02606057670709859,
+            "tracking_max_m": 0.010747658564793027,
+            "min_joint_margin_rad": 0.058766486309153265,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.024947871539070243,
+              0.011547034846030285,
+              -2.9236378175090394e-06
+            ],
+            "wall_s": 0.7392203929921379,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81328.900831824,
+              "finished_s": 81329.642754508,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.034734466625825425,
+            "target_margin_m": -0.013144882014552325,
+            "tracking_max_m": 0.010001506024605998,
+            "min_joint_margin_rad": 0.058595571172439076,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.046147651909291765,
+              -0.0054399334792437914,
+              -2.40831044262535e-06
+            ],
+            "wall_s": 0.7021601790038403,
+            "profile": {
+              "pid": 368834,
+              "started_s": 81329.079754179,
+              "finished_s": 81329.783732171,
+              "import_started_s": 81322.045312948,
+              "import_finished_s": 81322.304676198,
+              "initializer_started_s": 81322.304761926,
+              "ready_s": 81322.788922896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.0004394648687866612,
+            "target_margin_m": -0.014092786741743225,
+            "tracking_max_m": 0.010447028657053216,
+            "min_joint_margin_rad": 0.05765751809039665,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.05219608327900199,
+              0.0052355686779129995,
+              -2.9835618954310306e-06
+            ],
+            "wall_s": 0.7235934880009154,
+            "profile": {
+              "pid": 368838,
+              "started_s": 81329.632122564,
+              "finished_s": 81330.357687323,
+              "import_started_s": 81322.04670298,
+              "import_finished_s": 81322.305149209,
+              "initializer_started_s": 81322.305237742,
+              "ready_s": 81322.787603471
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.043693547062378525,
+            "target_margin_m": -0.02587882090344608,
+            "tracking_max_m": 0.010387423924618442,
+            "min_joint_margin_rad": 0.05790915615489134,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04050038491483349,
+              0.01688054544693654,
+              -4.727844954866001e-06
+            ],
+            "wall_s": 0.7163466089987196,
+            "profile": {
+              "pid": 368831,
+              "started_s": 81329.63396655,
+              "finished_s": 81330.353129415,
+              "import_started_s": 81322.046927721,
+              "import_finished_s": 81322.30733444,
+              "initializer_started_s": 81322.307437483,
+              "ready_s": 81322.735154955
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.17355514100927394,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81329.636529531,
+              "finished_s": 81329.812044459,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": -0.0004803515333541286,
+            "target_margin_m": -0.01938892680532308,
+            "tracking_max_m": 0.010849508452870981,
+            "min_joint_margin_rad": 0.0588423237999216,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04951051733239614,
+              -0.010625756555091431,
+              -4.447894403902808e-06
+            ],
+            "wall_s": 0.7335786379990168,
+            "profile": {
+              "pid": 368836,
+              "started_s": 81329.637886631,
+              "finished_s": 81330.373458392,
+              "import_started_s": 81322.046138325,
+              "import_finished_s": 81322.31012015,
+              "initializer_started_s": 81322.31031373,
+              "ready_s": 81322.746497896
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.014490658613481974,
+            "tracking_max_m": 0.01051000197620764,
+            "min_joint_margin_rad": 0.05826743019550684,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.03354018393793451,
+              -0.007045331876198491,
+              -5.344647816318826e-06
+            ],
+            "wall_s": 0.7203639289946295,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81329.642991658,
+              "finished_s": 81330.365414568,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.039806303622049184,
+            "target_margin_m": -0.028744855656799635,
+            "tracking_max_m": 0.010035268185506816,
+            "min_joint_margin_rad": 0.05824311825594053,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.034209500230959755,
+              -0.014545012936265533,
+              -4.437141182811466e-06
+            ],
+            "wall_s": 0.7361340190109331,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81329.643401617,
+              "finished_s": 81330.381347896,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.16304322599899024,
+            "profile": {
+              "pid": 368835,
+              "started_s": 81329.661429584,
+              "finished_s": 81329.827049542,
+              "import_started_s": 81322.046268271,
+              "import_finished_s": 81322.313429464,
+              "initializer_started_s": 81322.31356539,
+              "ready_s": 81322.788532489
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.013430375591114908,
+            "tracking_max_m": 0.010515639425973571,
+            "min_joint_margin_rad": 0.057297970665713405,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.04277954613634233,
+              0.0023253859514198727,
+              -5.373837298483508e-06
+            ],
+            "wall_s": 0.6809244399919407,
+            "profile": {
+              "pid": 368834,
+              "started_s": 81329.784045033,
+              "finished_s": 81330.466402364,
+              "import_started_s": 81322.045312948,
+              "import_finished_s": 81322.304676198,
+              "initializer_started_s": 81322.304761926,
+              "ready_s": 81322.788922896
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.15655567099747714,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81329.81249604,
+              "finished_s": 81329.971152265,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.030814337143196327,
+            "tracking_max_m": 0.01006660309462679,
+            "min_joint_margin_rad": 0.0578195068525309,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.037071020366454654,
+              0.01984612385202969,
+              -2.2432515734971403e-06
+            ],
+            "wall_s": 0.7145382559974678,
+            "profile": {
+              "pid": 368835,
+              "started_s": 81329.827414388,
+              "finished_s": 81330.543968387,
+              "import_started_s": 81322.046268271,
+              "import_finished_s": 81322.313429464,
+              "initializer_started_s": 81322.31356539,
+              "ready_s": 81322.788532489
+            }
+          },
+          {
+            "completed": true,
+            "success": false,
+            "min_clearance_m": 0.05,
+            "target_margin_m": -0.02162477396519291,
+            "tracking_max_m": 0.01125562100621756,
+            "min_joint_margin_rad": 0.059061705444149126,
+            "peak_press_m": 0.0,
+            "peak_force_n": null,
+            "displacement_m": [
+              0.0322823580931067,
+              0.011688041987818337,
+              -4.870730312744875e-06
+            ],
+            "wall_s": 0.6566626999992877,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81329.971662467,
+              "finished_s": 81330.62999037,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          }
+        ],
+        "accepted": false,
+        "dispatch_summary": {
+          "first_task_start_after_submit_s": 0.001397850995999761,
+          "last_task_end_after_submit_s": 1.7344548129913164,
+          "worker_compute_sum_s": 12.27635275904322,
+          "workers": 8
+        }
+      },
+      {
+        "index": 4,
+        "profile_submitted_at_s": 81330.89069569,
+        "trials": [
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.3917451090092072,
+            "profile": {
+              "pid": 368831,
+              "started_s": 81330.89190587,
+              "finished_s": 81331.286944657,
+              "import_started_s": 81322.046927721,
+              "import_finished_s": 81322.30733444,
+              "initializer_started_s": 81322.307437483,
+              "ready_s": 81322.735154955
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.3916412270045839,
+            "profile": {
+              "pid": 368838,
+              "started_s": 81330.892502001,
+              "finished_s": 81331.287472587,
+              "import_started_s": 81322.04670298,
+              "import_finished_s": 81322.305149209,
+              "initializer_started_s": 81322.305237742,
+              "ready_s": 81322.787603471
+            }
+          },
+          {
+            "completed": false,
+            "reason": "Unexpected arm contact: [72, 73]",
+            "wall_s": 0.16049968601146247,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81330.892908899,
+              "finished_s": 81331.055789224,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.3906284660042729,
+            "profile": {
+              "pid": 368836,
+              "started_s": 81330.893136576,
+              "finished_s": 81331.287710848,
+              "import_started_s": 81322.046138325,
+              "import_finished_s": 81322.31012015,
+              "initializer_started_s": 81322.31031373,
+              "ready_s": 81322.746497896
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.3873433929984458,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81330.893547971,
+              "finished_s": 81331.283759507,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.3900549950049026,
+            "profile": {
+              "pid": 368834,
+              "started_s": 81330.893901817,
+              "finished_s": 81331.287698398,
+              "import_started_s": 81322.045312948,
+              "import_finished_s": 81322.304676198,
+              "initializer_started_s": 81322.304761926,
+              "ready_s": 81322.788922896
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.38744669599691406,
+            "profile": {
+              "pid": 368835,
+              "started_s": 81330.894529999,
+              "finished_s": 81331.284938095,
+              "import_started_s": 81322.046268271,
+              "import_finished_s": 81322.313429464,
+              "initializer_started_s": 81322.31356539,
+              "ready_s": 81322.788532489
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.38497268699575216,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81330.895083437,
+              "finished_s": 81331.282038897,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline",
+            "wall_s": 0.2268717089900747,
+            "profile": {
+              "pid": 368837,
+              "started_s": 81331.056337958,
+              "finished_s": 81331.286457377,
+              "import_started_s": 81322.045307697,
+              "import_finished_s": 81322.312857205,
+              "initializer_started_s": 81322.312962546,
+              "ready_s": 81322.784761962
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline before model copy",
+            "wall_s": 0.0,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81331.282584136,
+              "finished_s": 81331.282585537,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline before model copy",
+            "wall_s": 0.0,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81331.283007725,
+              "finished_s": 81331.283008799,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline before model copy",
+            "wall_s": 0.0,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81331.283393354,
+              "finished_s": 81331.283395001,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline before model copy",
+            "wall_s": 0.0,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81331.283541514,
+              "finished_s": 81331.28354237,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline before model copy",
+            "wall_s": 0.0,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81331.283682032,
+              "finished_s": 81331.283682631,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline before model copy",
+            "wall_s": 0.0,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81331.283824105,
+              "finished_s": 81331.283824698,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline before model copy",
+            "wall_s": 0.0,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81331.284138022,
+              "finished_s": 81331.284139464,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline before model copy",
+            "wall_s": 0.0,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81331.28426545,
+              "finished_s": 81331.284266366,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline before model copy",
+            "wall_s": 0.0,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81331.284492733,
+              "finished_s": 81331.284493544,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline before model copy",
+            "wall_s": 0.0,
+            "profile": {
+              "pid": 368840,
+              "started_s": 81331.284659065,
+              "finished_s": 81331.284659774,
+              "import_started_s": 81322.046932315,
+              "import_finished_s": 81322.304439863,
+              "initializer_started_s": 81322.304527341,
+              "ready_s": 81322.781201256
+            }
+          },
+          {
+            "completed": false,
+            "reason": "deadline before model copy",
+            "wall_s": 0.0,
+            "profile": {
+              "pid": 368839,
+              "started_s": 81331.284797779,
+              "finished_s": 81331.284798542,
+              "import_started_s": 81322.04687963,
+              "import_finished_s": 81322.303920806,
+              "initializer_started_s": 81322.304015031,
+              "ready_s": 81322.780567965
+            }
+          }
+        ],
+        "accepted": false,
+        "dispatch_summary": {
+          "first_task_start_after_submit_s": 0.0012101799948140979,
+          "last_task_end_after_submit_s": 0.39701515799970366,
+          "worker_compute_sum_s": 3.13896587297495,
+          "workers": 8
+        }
+      }
+    ],
+    "stages_wall_s": {
+      "scene": 0.12345209499471821,
+      "candidate_and_static": 1.2983790399739519,
+      "physics_and_scoring": 8.238065838973853
+    },
+    "stopped_for_measurement": 0,
+    "runtime": {
+      "mujoco_version": "3.14.0",
+      "physics_timestep_s": 0.002,
+      "control_period_s": 0.02,
+      "workers": 8,
+      "shutdown_reserve_s": 0.35
+    },
+    "conditions": [
+      {
+        "index": 0,
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angles": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tracking": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "mass": 0.35,
+        "friction": 0.3
+      },
+      {
+        "index": 1,
+        "position": [
+          0.004382773994286538,
+          -0.00736682515955615,
+          -0.01468884723404177
+        ],
+        "angles": [
+          -0.016876369204858445,
+          0.010935194245109922,
+          0.014407887658932274
+        ],
+        "tracking": [
+          0.00021327155153435973,
+          0.00045899312196799683,
+          8.724998293084574e-05,
+          0.0008701448475755364,
+          0.0006317071082430644,
+          -0.0009945229996597038,
+          0.0007148085531751387
+        ],
+        "mass": 0.284701980542765,
+        "friction": 0.3275586535715933
+      },
+      {
+        "index": 2,
+        "position": [
+          -0.010379020140718112,
+          0.011621725515196371,
+          0.0013267590479709348
+        ],
+        "angles": [
+          -0.006991373925434892,
+          -0.0026987250879338767,
+          -0.01646474951080257
+        ],
+        "tracking": [
+          -0.0007514334470008721,
+          0.00034124882938726064,
+          0.0002943790231485002,
+          0.0002307702229625077,
+          -0.00023264489147623314,
+          0.0009944198715784221,
+          0.0009616706775524602
+        ],
+        "mass": 0.37597587782729724,
+        "friction": 0.31805511315213797
+      },
+      {
+        "index": 3,
+        "position": [
+          0.0060302953782700825,
+          -0.003554514432668679,
+          -0.011676911839282841
+        ],
+        "angles": [
+          0.007731401582328044,
+          0.0008850328136276336,
+          -0.006623808107810696
+        ],
+        "tracking": [
+          -2.8329282336421846e-05,
+          0.0007789756686980005,
+          0.0008680870319124994,
+          -0.00028440960658185956,
+          0.00014305966145952188,
+          -0.0003562612178481157,
+          0.00018860006039939358
+        ],
+        "mass": 0.32730757157099866,
+        "friction": 0.28699428006337935
+      },
+      {
+        "index": 4,
+        "position": [
+          0.012488779264153354,
+          -0.008730957006931848,
+          0.003941988629953357
+        ],
+        "angles": [
+          -0.01452060378452949,
+          0.011611471228083921,
+          0.010021621485161235
+        ],
+        "tracking": [
+          -0.0005212611140140957,
+          0.0007529684616214077,
+          -0.0008828639303896113,
+          -0.0003277658789086793,
+          -0.0006994410662103219,
+          -9.932126670142605e-05,
+          0.0005926485405745885
+        ],
+        "mass": 0.31228990925912464,
+        "friction": 0.24624255612772913
+      },
+      {
+        "index": 5,
+        "position": [
+          -0.0030543411257110977,
+          -0.00964758257570383,
+          -0.0130959025401881
+        ],
+        "angles": [
+          0.0028041292629069968,
+          -0.007026830558614314,
+          0.006003753833808574
+        ],
+        "tracking": [
+          -0.0006009691120635734,
+          0.0008842262210129957,
+          -0.0002697796635103429,
+          -0.000789009440859541,
+          0.00025821630307941846,
+          0.0008543091061357349,
+          -0.00011924569056843204
+        ],
+        "mass": 0.4136426691167032,
+        "friction": 0.29998749764251764
+      },
+      {
+        "index": 6,
+        "position": [
+          -0.002392684004829583,
+          0.00384683046449209,
+          0.015843088167530373
+        ],
+        "angles": [
+          0.015671090567334307,
+          -0.0013946877424638598,
+          0.00899643385598565
+        ],
+        "tracking": [
+          -5.154609024762058e-06,
+          5.862432039354082e-05,
+          0.000571571401427615,
+          -0.0001706883012886584,
+          0.0004689671435774587,
+          0.0004222857559794997,
+          0.0008641193732267565
+        ],
+        "mass": 0.29609056865932676,
+        "friction": 0.3274818140491571
+      },
+      {
+        "index": 7,
+        "position": [
+          0.013677565715985917,
+          0.014973638077588685,
+          -0.015529398241108184
+        ],
+        "angles": [
+          0.012693433734069224,
+          0.016796875586847483,
+          0.01595964601569192
+        ],
+        "tracking": [
+          -0.0007024719755350042,
+          0.00094525762764591,
+          0.0007798711114410413,
+          0.0006447476550861408,
+          -4.0024152384335654e-05,
+          -0.0005352541607213923,
+          0.0006037611574366158
+        ],
+        "mass": 0.4092942223696857,
+        "friction": 0.2719356326750751
+      },
+      {
+        "index": 8,
+        "position": [
+          0.0012459010439099813,
+          -0.001831909472814992,
+          0.01379255411139696
+        ],
+        "angles": [
+          -0.016039201934817917,
+          0.008098543998466306,
+          0.003992379470913101
+        ],
+        "tracking": [
+          -0.0009432692697729579,
+          0.00043843954565348067,
+          -0.0009680165409528561,
+          0.0005159020047128562,
+          2.5517446524156107e-05,
+          0.0008582084415940124,
+          -0.0008678350065518505
+        ],
+        "mass": 0.39778441914573365,
+        "friction": 0.24800280105205216
+      },
+      {
+        "index": 9,
+        "position": [
+          -0.0049820806782679946,
+          -0.0022304405776693344,
+          0.014913986585090246
+        ],
+        "angles": [
+          0.00217230109293644,
+          -0.008417213584606504,
+          -0.009017218653833725
+        ],
+        "tracking": [
+          0.0007762366413183597,
+          -0.0005482611431653513,
+          -0.0007508905883294331,
+          -0.0004233384859848448,
+          0.00017224612962546558,
+          0.00010818100434653566,
+          0.0006194215518255555
+        ],
+        "mass": 0.35846663328086603,
+        "friction": 0.27461054573174526
+      },
+      {
+        "index": 10,
+        "position": [
+          -0.0027873170342114337,
+          0.010179871071069133,
+          0.004048206797432112
+        ],
+        "angles": [
+          0.01602483277472894,
+          -0.0045586460300623115,
+          0.0018364881660882
+        ],
+        "tracking": [
+          0.00018784840322633655,
+          0.00069658241655012,
+          -0.0007090529236269365,
+          -0.00018697932650374671,
+          0.000819917923324594,
+          -0.0009138662228635917,
+          0.0006454125603630039
+        ],
+        "mass": 0.33815376523197144,
+        "friction": 0.33957647823337234
+      },
+      {
+        "index": 11,
+        "position": [
+          -0.015681454054166658,
+          -0.004318522951735339,
+          -0.013483838810699525
+        ],
+        "angles": [
+          0.005327253687221134,
+          -0.007894155671581565,
+          0.0070738917379949365
+        ],
+        "tracking": [
+          0.0008876028538841816,
+          -0.0007463657954775045,
+          0.0007295565908015482,
+          -0.0008810716967993231,
+          -0.00023845898337822115,
+          -0.00014045187764284673,
+          -2.230090633307147e-05
+        ],
+        "mass": 0.4167047250710462,
+        "friction": 0.3330829425722194
+      },
+      {
+        "index": 12,
+        "position": [
+          -0.006116564392983648,
+          -0.007365222863974396,
+          0.011619846534058169
+        ],
+        "angles": [
+          0.013310131251486898,
+          0.0003737275462392709,
+          -0.005435104308236975
+        ],
+        "tracking": [
+          0.0009898346963218357,
+          -0.0003681129092645996,
+          -0.0006345752421468751,
+          0.0007601962426081395,
+          0.000624670796222508,
+          0.0003357788111427025,
+          0.0009168272635559038
+        ],
+        "mass": 0.4096000408100186,
+        "friction": 0.32978982039621046
+      },
+      {
+        "index": 13,
+        "position": [
+          0.011542445105525687,
+          -0.00809130430969256,
+          -0.011480110179166989
+        ],
+        "angles": [
+          0.005936278405152191,
+          0.007491600200875143,
+          -0.011622045255242793
+        ],
+        "tracking": [
+          -0.00020888545379024804,
+          0.0008205115324321095,
+          0.0001228015351004459,
+          0.00015667182985254537,
+          -0.0006117404542184128,
+          5.2044497235750335e-05,
+          4.6869454789839836e-05
+        ],
+        "mass": 0.2924509896344781,
+        "friction": 0.3578331231752047
+      },
+      {
+        "index": 14,
+        "position": [
+          0.0022846592145847814,
+          -0.015794915754742074,
+          0.008724774439212435
+        ],
+        "angles": [
+          0.01669462281182311,
+          0.003137055786122274,
+          -0.006294298297352355
+        ],
+        "tracking": [
+          -0.0006249845685444302,
+          0.0003450532678337386,
+          -0.00060978520308639,
+          0.00015537578503571847,
+          0.00020447835275925154,
+          0.0009248461862487621,
+          -0.0008554694689402464
+        ],
+        "mass": 0.3499961953122066,
+        "friction": 0.3292916975139178
+      },
+      {
+        "index": 15,
+        "position": [
+          -0.010328744304810919,
+          -0.003581864582895385,
+          -0.013987344049440917
+        ],
+        "angles": [
+          0.00788472958027219,
+          -0.014389615317002134,
+          -0.0036619902035918282
+        ],
+        "tracking": [
+          0.0007470452622414643,
+          -5.5399326499977034e-05,
+          0.0008252438672817713,
+          0.0005318342354777447,
+          0.0008306479202235317,
+          -0.0007451939819021874,
+          -0.000852874189338736
+        ],
+        "mass": 0.28984567549969054,
+        "friction": 0.3442625153216783
+      },
+      {
+        "index": 16,
+        "position": [
+          0.0042902393391181836,
+          -0.00010970579843670336,
+          -0.010766610681712632
+        ],
+        "angles": [
+          0.00606444101829892,
+          -0.0063523915269413506,
+          0.007361095880292361
+        ],
+        "tracking": [
+          -7.928934226535045e-05,
+          1.493972108905428e-05,
+          0.0005793314649197407,
+          -0.0008145090489532385,
+          0.00015751700664700508,
+          -0.0006055301054082629,
+          0.0006162735036271363
+        ],
+        "mass": 0.3484384450580964,
+        "friction": 0.35864344000413834
+      },
+      {
+        "index": 17,
+        "position": [
+          -0.010145813610377,
+          0.014816612483976553,
+          0.00962934517147549
+        ],
+        "angles": [
+          -0.0006541320699006329,
+          0.010944403474187707,
+          0.003590104057058265
+        ],
+        "tracking": [
+          0.0003102421279827605,
+          0.0008273815254147778,
+          -0.0008694591671774173,
+          0.0006699764079168011,
+          -0.0002363704400675224,
+          -0.00034890876779859113,
+          0.0009880535424199686
+        ],
+        "mass": 0.38936667029069294,
+        "friction": 0.2982642166535505
+      },
+      {
+        "index": 18,
+        "position": [
+          -0.002475891314407001,
+          0.012080924987897475,
+          -0.013221924089123387
+        ],
+        "angles": [
+          0.007275187062121316,
+          0.010093400462040086,
+          0.010443923872186761
+        ],
+        "tracking": [
+          -0.00035542655052033645,
+          0.0005932783654921093,
+          -0.0005493431162486697,
+          -0.0002753840990308618,
+          -0.00016510377559124034,
+          8.281996726032915e-05,
+          -0.0007747726689188856
+        ],
+        "mass": 0.33697269208950287,
+        "friction": 0.24003608281283073
+      },
+      {
+        "index": 19,
+        "position": [
+          0.00782018324311677,
+          0.011260029191496223,
+          -0.011554186268153679
+        ],
+        "angles": [
+          0.007113465284830185,
+          0.011208612261617679,
+          0.016818981326950203
+        ],
+        "tracking": [
+          0.0006875811247374535,
+          -0.0001517870291119743,
+          0.000959377417019313,
+          0.0009479688097047104,
+          7.353958401157934e-06,
+          0.0005068930771678105,
+          0.0008276753353463257
+        ],
+        "mass": 0.34666059007562544,
+        "friction": 0.34365434893165014
+      }
+    ],
+    "total_wall_s": 9.801402023993433,
+    "target_1000_met": false,
+    "reason": "No candidate completed and passed every required uncertainty condition",
+    "scene": {
+      "task": "bottle",
+      "face": [
+        0.3443246424465203,
+        -0.1727130375718684,
+        0.7999999999999999
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "radius": 0.035372685155353016,
+      "q": [
+        -0.34725064039230347,
+        -0.01576591283082962,
+        0.014744477346539497,
+        0.6052917838096619,
+        -0.27591413259506226,
+        0.016167189925909042,
+        -0.35643747448921204,
+        0.02153538540005684,
+        -0.012802652083337307,
+        0.6304831504821777,
+        -0.31061598658561707,
+        -0.004209601785987616,
+        -0.0014597165863960981,
+        0.004425872582942247,
+        -0.043427277356386185,
+        0.29210349917411804,
+        0.21705828607082367,
+        -0.02123604714870453,
+        0.980884850025177,
+        0.08693356812000275,
+        0.017952369526028633,
+        0.015172028914093971,
+        0.28955087065696716,
+        -0.2236616015434265,
+        0.022949790582060814,
+        0.9804414510726929,
+        -0.1721174418926239,
+        0.051292482763528824,
+        0.025730131193995476
+      ],
+      "imu": [
+        0.006508364342153072,
+        0.04244241490960121,
+        -0.1322374790906906
+      ],
+      "captured_at": 79694.96690834101,
+      "tip_radius": 0.015,
+      "uncertainty_m": 0.015,
+      "base_height": 0.72,
+      "object_height": 0.2046186131694927,
+      "stroke": 0.0015,
+      "push_distance": 0.05,
+      "frame_ids": [
+        8763,
+        8764,
+        8765
+      ]
+    },
+    "accepted": false,
+    "score": null
+  }
+}
