@@ -241,3 +241,15 @@
 - 動きの計画: PC2 で 1 回 0.17〜0.32 秒（ノート PC の約 2.5 倍）。結果はノート PC と同じ
 - YOLO: ボタンの ONNX は CPU 4 スレッドで 1 枚 179 ms（全コアより速い）。人の検出は TensorRT で約 20 ms
 - PC2 では別の班の処理（地図づくりの記録・カメラの配信）も動いていることがある（この日は合わせて 1 コアの約 120%）
+
+## 2026-10-31 に分かったこと（PC2 の Web カメラ・人の検出・Wi-Fi、Perception の person_alert）
+
+経緯と数値は [../../../../Perception/docs/report/2026-10-31_g1_webcam_yolo.md](../../../../Perception/docs/report/2026-10-31_g1_webcam_yolo.md)、使い方は `Perception/real/README.md`。
+
+- **PC2 の USB の Web カメラは 2 つ**: 前方の Innomaker U20CAM と、腕のリストカメラ（SunplusIT の Full HD webcam、640×480・30 fps）。
+  **`/dev/videoN` の番号は再起動で入れ替わる**（再起動のあと `--webcam 6` で腕のカメラが開かれていた）。`/dev/v4l/by-id/usb-...-video-index0` のパスで開く
+- 前方のカメラは横向きに付いている（直接開くなら時計回りに 90°）。Mapping の `~/mapping_tools/innomaker_camera_server.py` が開いて 5555 番で配っている
+  （BGR・反時計回りに回し済み・5 枚/秒）。カメラは同時に 1 つのプロセスしか開けないので、使うときはその配信を受け取る（`--zmq localhost:5555 --zmq-bgr --rotate 180`）
+- 人の検出（yolo26n）は PC2 の GPU で 1 枚 17 ms（JetPack の TensorRT 8.5 をシステムの Python 3.8 から。conda の torch では GPU が使えない）、CPU 4 スレッドで 101 ms
+- **Wi-Fi**: 10/31 の再起動のあと、PC2 が `Fujitsu_free_Wi-Fi` に自動でつながり、Physical_AI_5G（192.168.0.82）から見えなくなった（Tailscale ではつながっていた）。
+  `Fujitsu_free_Wi-Fi` の自動接続を切った（`nmcli connection modify Fujitsu_free_Wi-Fi connection.autoconnect no`。その Wi-Fi を使うときは `nmcli connection up` で手で）。再起動での確認はまだ

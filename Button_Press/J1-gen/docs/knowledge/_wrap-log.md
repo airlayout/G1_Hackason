@@ -51,3 +51,9 @@
 対象: 10/31 の YOLO の撮り足し（点灯した ▲）、自動ラベルの直し、8 本での最終版、評価環境の 3 つ
 - real_robot_notes.md: 点灯した ▲ の動画で確かめた結果、最終版 final8 の候補と `J1GEN_BUTTON_WEIGHTS`、点字を拾う注意
 - 提案したが保存しなかった: なし
+
+## 2026-11-01 / G1（Perception の人の検出、PC2 の Web カメラ）
+
+対象: G1 の Web カメラで YOLO（CPU・TensorRT）、person_alert（写真を残して PC へ・映像の配信）、カメラの番号の入れ替わり、Wi-Fi の自動接続
+- real_robot_notes.md: 「2026-10-31 に分かったこと（PC2 の Web カメラ・人の検出・Wi-Fi）」（カメラ 2 つと by-id、Mapping の配信の受け取り方、GPU の速さ、Fujitsu_free_Wi-Fi の自動接続を切った件）
+- 提案したが保存しなかった: なし
