@@ -5,6 +5,66 @@ G1の部屋Mappingを、内蔵LIOと生LiDAR＋IMUの2方式で実行する現�
 
 ## Dockerなしで実機を手動計測する
 
+### G1上に生センサとカメラを記録する試験経路
+
+`record_dds_to_bag.py`と`onboard_record_ctl.py`をG1に配置し、systemd user
+サービスとして記録する。SSHを切ってもサービスは残る（`loginctl show-user
+unitree -p Linger`が`yes`であること）。生LiDAR・IMUはG1内のrosbagに、
+回転済みJPEGと各画像のG1時刻は同じセッションの`raw/camera/`に保存する。
+rosbagには画像を含めない。画像の時刻は露光時刻ではない。
+
+```bash
+scp quickstart/record_dds_to_bag.py unitree@100.78.135.14:~/mapping_tools/record_onboard_with_camera.py
+scp quickstart/onboard_record_ctl.py unitree@100.78.135.14:~/mapping_tools/
+scp quickstart/innomaker_camera_server.py unitree@100.78.135.14:~/mapping_tools/
+# G1のカメラサービスがまだない場合だけ起動する。
+ssh unitree@100.78.135.14 'systemd-run --user --unit=g1-mapping-camera --property=Type=exec /usr/bin/python3 -u /home/unitree/mapping_tools/innomaker_camera_server.py'
+ssh unitree@100.78.135.14 'python3 ~/mapping_tools/onboard_record_ctl.py start --name room'
+ssh unitree@100.78.135.14 'python3 ~/mapping_tools/onboard_record_ctl.py status'
+ssh unitree@100.78.135.14 'python3 ~/mapping_tools/onboard_record_ctl.py stop'
+```
+
+G1のサービスはG1の再起動後は再起動が必要。記録中はカメラサービスを停止しない。
+終了時`state.json`の状態、各トピック件数、`lidar_imu_dropped`、カメラの
+フレーム数と最大間隔を確認する。これらはDDSで受信する前の欠落を保証しない。
+記録先はG1の`~/mapping_runs/<session_id>/`。PC上の`mapctl`は別セッションであり、
+ライブ表示に利用できるが接続断で停止する。G1記録から完成地図を作るには、
+PCとの接続復旧後に次を実行する。生データはG1に残り、PCでFAST-LIO再処理後、
+生成地図・軌跡・派生rosbagをG1にもコピーする。
+
+```bash
+./quickstart/reconstruct_onboard.sh <session_id>
+```
+
+完成地図は`~/mapping_runs/<session_id>/map/map_fastlio.pcd`に戻る。この再処理には
+PCのnative環境が必要で、G1単体では完成地図を自動生成しない。再生後の地図の精度や
+画像との同期は別途検証する。
+
+### Innomakerヘッドカメラ
+
+`quickstart/innomaker_camera_server.py`はInnomaker U20CAMを安定した
+`/dev/v4l/by-id/`名で開き、映像を反時計回りに90度回転して、Mappingの
+`head_camera`形式でポート5555へ配信する。G1上のPython 3、OpenCV、pyzmqが必要。
+実機への配置と起動例（配信はこのSSH端末を開いている間だけ動作する）:
+
+```bash
+scp quickstart/innomaker_camera_server.py unitree@100.78.135.14:~/mapping_tools/
+ssh -t unitree@100.78.135.14 'python3 -u ~/mapping_tools/innomaker_camera_server.py'
+```
+
+別端末のMapping設定は`CAMERA_HOST`をG1の到達可能なアドレスにし、
+`CAMERA_WIDTH=720`、`CAMERA_HEIGHT=1280`とする。標準では1280×720で取得し、
+回転後720×1280、約5fpsのJPEGを送る。`./mapctl doctor --backend raw`で受信を
+確認してから通常どおり開始する。起動時の設定やカメラの個体によっては
+by-idパスを`--device`で指定する。
+
+画像時刻はG1のホスト時計でフレーム取得直後に付けた近似値であり、露光時刻の
+ハードウェア同期ではない。既存ブリッジのmetadataにある
+`lerobot_camera_capture_realtime`は互換形式上の表示で、このサーバーでは
+上記の近似時刻を意味する。カメラ内部・歪み・LiDARとの外部校正、時計のずれ、
+画像ごとのカメラ姿勢は別途確認が必要。画像を回転しているため校正もその向きと
+解像度で扱う。記録成功はRGB Gaussian Splattingの完成を意味しない。
+
 ### このPCで無線計測する
 
 PCとG1を5GHzの`Physical_AI_5G`へ接続する。現在の`.env`はPCの
