@@ -27,11 +27,14 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
     if plan.candidate is None:
         raise RuntimeError('No fully verified robust plan; no motion allowed')
     s, c = plan.scene, plan.candidate
+    if s.task == 'bottle' and c.motion_metrics.get('bottle_feedback_mode', 'off') != settings.bottle_feedback:
+        raise RuntimeError('Bottle feedback mode differs from the verified plan')
     report = dict(schema='g1-robust-execution-v1', task=s.task, completed=False, motion_completed=False,
                   home_completed=False, release_completed=False, physical_push_success=None,
                   stopped_for_measurement=0, remeasurement_count=0, commands=[], correction_steps=[])
     report['limits'] = settings.motion_limits.to_dict()
     report['target_motion_s'] = settings.motion_duration_s
+    report['bottle_feedback'] = settings.bottle_feedback
     check = build_scene_model(model_path, calibration, s)
     start = configuration()
     validate_start(s, start, observe())
@@ -70,7 +73,7 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
                     raise RuntimeError('Bottle vertical extent changed')
                 displacement = np.array(observation.geometry['face'])-s.face
                 offset = gate.update(displacement,progress,observation.frame_id,
-                                     freeze=i < c.press_start or i > c.press_end)
+                                     freeze=settings.bottle_feedback == 'off' or i < c.press_start or i > c.press_end)
                 offset = fade_return_offset(offset,c,i)
             else:
                 offset = gate.update(observation, progress, freeze=freeze or i > c.press_end)
@@ -99,10 +102,10 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
                 command_filter.velocity-previous_velocity)))/PERIOD)
             check.update(pose)
             # Revalidate the actual adjacent path, retaining the initial B wall.
-            check.validate_path(goal, allow_tip_contact=c.phases[i] in ('contact','press','retract'),
+            check.validate_path(goal, allow_tip_contact=not diagnostic,
                                 allowed_tip_geoms={check.model.geom('robust_target_geom').id})
             commanded_pose = pose.copy(); commanded_pose[check.qadr] = goal; check.update(commanded_pose)
-            if contact_metrics(check,s,contact=c.phases[i] in ('contact','press','retract')) < .003:
+            if contact_metrics(check,s,contact=not diagnostic) < .003:
                 raise RuntimeError('Corrected command has less than 3mm obstacle clearance')
             check.update(pose)
             if i == 0:
@@ -124,6 +127,10 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
                 config = configuration(); pose = update_robot(check,config[0],config[1])
                 goal = command_filter.next_goal(goal,PERIOD)
                 check.validate_path(goal)
+                commanded_pose = pose.copy(); commanded_pose[check.qadr] = goal; check.update(commanded_pose)
+                if contact_metrics(check,s,contact=False) < .003:
+                    raise RuntimeError('Diagnostic return has less than 3mm obstacle clearance')
+                check.update(pose)
                 set_torque(reference_torque(check,goal,command_filter.velocity,settings.gravity_scale))
                 motion.stream(goal,velocity=command_filter.velocity); motion.wait(PERIOD)
         report['trajectory_s'] = now()-trajectory_started

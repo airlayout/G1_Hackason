@@ -16,7 +16,9 @@ def main():
     p.add_argument('--video',action='store_true')
     p.add_argument('--controllers',choices=('staged','robust'),nargs='+',default=['staged','robust'])
     p.add_argument('--planning-budget-s',type=float,default=10.)
-    p.add_argument('--planning-scenarios',type=int,default=20)
+    p.add_argument('--planning-scenarios',type=int,default=3)
+    p.add_argument('--planning-position-span-m',type=float,default=.003)
+    p.add_argument('--bottle-feedback',choices=('off','relative'),default='off')
     p.add_argument('--holdout-scenarios',type=int,default=0)
     p.add_argument('--motion-duration-s',type=float,default=30.)
     p.add_argument('--joint-speed-rad-s',type=float,default=1.2)
@@ -40,6 +42,8 @@ def main():
                 command = [sys.executable,str(entry),'--task',task,'--button-direction',direction,
                     '--controller',controller,'--model',args.model,'--report-out',str(path),
                     '--planning-budget-s',str(args.planning_budget_s),'--planning-scenarios',str(args.planning_scenarios),
+                    '--planning-position-span-m',str(args.planning_position_span_m),
+                    '--bottle-feedback',args.bottle_feedback,
                     '--holdout-scenarios',str(args.holdout_scenarios),
                     '--motion-duration-s',str(args.motion_duration_s),
                     '--joint-speed-rad-s',str(args.joint_speed_rad_s),

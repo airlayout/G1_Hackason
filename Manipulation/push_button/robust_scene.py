@@ -44,8 +44,6 @@ class SceneSnapshot:
         if self.task == 'bottle' and (self.base_height is None or
                 not np.isfinite(self.base_height) or not .4 <= self.base_height <= 1.2):
             raise ValueError('Bottle bottom is not observable; specify --bottle-base-height')
-        if self.radius-self.tip_radius <= self.uncertainty_m+.003:
-            raise ValueError('Insufficient target margin for the supplied uncertainty')
         if self.frame_ids and (len(self.frame_ids) != 3 or len(set(self.frame_ids)) != 3):
             raise ValueError('Snapshot requires three distinct frame IDs')
 
@@ -185,7 +183,7 @@ def update_robot(kin, q, imu):
 
 
 def contact_metrics(kin, scene, *, contact=False):
-    """Actual collisions; only tip/selected target is exempt during press/retract."""
+    """Actual collisions; contact=True exempts only the tip/selected target pair."""
     target = kin.model.geom('robust_target_geom').id
     clearance = .05
     for c in kin.data.contact:

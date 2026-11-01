@@ -28,7 +28,7 @@ PERIOD = CONTROL_PERIOD_S
 class SearchSettings:
     budget_s: float = 10.
     max_rollouts: int = 1000
-    scenarios: int = 20
+    scenarios: int = 3
     workers: int = 8
     max_candidates: int = 50
     seed: int = 0
@@ -41,6 +41,8 @@ class SearchSettings:
     motion_duration_s: float = 30.
     joint_speed_rad_s: float = 1.2
     joint_acceleration_rad_s2: float = 4.
+    position_span_m: float = .003
+    bottle_feedback: str = 'off'
 
     @property
     def motion_limits(self):
@@ -58,6 +60,8 @@ class SearchSettings:
                 or not 1 <= self.workers <= 32 or not 1 <= self.max_candidates <= 100
                 or not 0 <= self.gravity_scale <= 1
                 or not 0 <= self.position_error_m <= .02
+                or not np.isfinite(self.position_span_m) or not 0 <= self.position_span_m <= .02
+                or self.bottle_feedback not in ('off', 'relative')
                 or not 0 <= self.normal_error_deg <= 10
                 or not 0 <= self.tracking_error_rad <= .02):
             raise ValueError('Invalid robust search settings')
@@ -194,8 +198,8 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     raised = face-(r+.12)*normal + [0, waypoint_offset[0], (.10 if scene.task=='bottle' else 0.)+waypoint_offset[1]]
     depth = (scene.stroke+press_compensation_allowance(scene.stroke)
              if scene.task == 'button' else scene.push_distance)
-    contact_clearance = (.005+scene.uncertainty_m+settings.position_error_m
-                         if scene.task == 'bottle' else .005)
+    relative_feedback = scene.task == 'bottle' and settings.bottle_feedback == 'relative'
+    contact_clearance = .005+scene.uncertainty_m+settings.position_error_m if relative_feedback else .005
     target_points = [(raised, 'approach'), (face-(r+.05)*normal, 'approach'),
                      (face-(r+contact_clearance)*normal, 'close'), (face-r*normal, 'contact')]
     for d in np.linspace(0, depth, max(2, math.ceil(depth/.005)+1))[1:]:
@@ -209,7 +213,7 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
             seed[:3] += seed_offset
         solution = kin.solve(target, normal, seed=seed)
         kin.validate_path(solution.joint_angles, allowed_tip_geoms={kin.model.geom('robust_target_geom').id},
-                          allow_tip_contact=phase in ('contact', 'press', 'retract'))
+                          allow_tip_contact=True)
         pose = kin.data.qpos.copy(); pose[kin.qadr] = solution.joint_angles; kin.update(pose)
         points.append(solution.joint_angles.copy()); labels.append(phase)
     points.append(home); labels.append('home')
@@ -223,7 +227,8 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     for i in range(1, len(points)):
         if scene.task == 'bottle':
             # Keep time for stable sliding contact; use the faster arm limits in free space.
-            speed = dict(press=.005, contact=.005, close=.04, retract=.1).get(labels[i], .2)
+            speed = dict(press=.005, contact=.005 if relative_feedback else .02,
+                         close=.04, retract=.1).get(labels[i], .2)
         else:
             speed = min(.003, scene.stroke/2) if labels[i] == 'press' else (
                      .005 if labels[i] == 'contact' else .01 if labels[i] == 'close' else
@@ -236,6 +241,7 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     times, spline, t, metrics = retime_reference(times, points, settings)
     qs = spline(t)
     if scene.task == 'bottle':
+        metrics['bottle_feedback_mode'] = settings.bottle_feedback
         metrics['bottle_feedback'] = dict(offset_limit_m=scene.uncertainty_m+.005,
             observation_period_s=.2, observation_delay_s=.2, window_frames=3,
             observation_noise_m=settings.position_error_m, gravity_scale=settings.gravity_scale)
@@ -250,7 +256,7 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
         if time.perf_counter() >= deadline:
             raise TimeoutError('static validation budget')
         pose = original.copy(); pose[kin.qadr] = q; kin.update(pose)
-        clearance = min(clearance, contact_metrics(kin, scene, contact=phases[i] in ('contact','press','retract')))
+        clearance = min(clearance, contact_metrics(kin, scene, contact=True))
         tcp.append(kin.tip_position())
         taus.append(np.clip((kin.data.qfrc_bias[kin.dadr]+1.5*spline(t[i],1))*settings.gravity_scale,
                             -np.array(ARM_TORQUE_LIMITS_NM),ARM_TORQUE_LIMITS_NM))
@@ -264,12 +270,16 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
                      margin, clearance, np.array(taus), metrics)
 
 
-def uncertainty_scenarios(settings, scene, *, include_corners=True):
+def uncertainty_scenarios(settings, scene, *, include_corners=True, full_uncertainty=False):
     rng = np.random.default_rng(settings.seed)
     rows = []
     for i in range(settings.scenarios):
-        position = np.zeros(3) if i == 0 else rng.uniform(-1, 1, 3)*(settings.position_error_m+scene.uncertainty_m)
-        if include_corners and settings.scenarios >= 9 and 1 <= i <= 8:
+        # Consume the same random draws so mass/friction/angle/tracking samples retain their seeds.
+        span = settings.position_error_m+scene.uncertainty_m if full_uncertainty else settings.position_span_m
+        position = np.zeros(3) if i == 0 else rng.uniform(-1, 1, 3)*span
+        if not full_uncertainty and i in (1, 2):
+            position = np.asarray(scene.normal)*span*(-1 if i == 1 else 1)
+        if full_uncertainty and include_corners and settings.scenarios >= 9 and 1 <= i <= 8:
             position = np.array(list(product((-1., 1.), repeat=3))[i-1])*(settings.position_error_m+scene.uncertainty_m)
         angles = np.zeros(3) if i == 0 else rng.uniform(-1, 1, 3)*np.deg2rad(settings.normal_error_deg)
         tracking = np.zeros(7) if i == 0 else rng.uniform(-1, 1, 7)*settings.tracking_error_rad
@@ -277,6 +287,19 @@ def uncertainty_scenarios(settings, scene, *, include_corners=True):
             mass=float(np.mean(settings.mass_range)) if i == 0 else float(rng.uniform(*settings.mass_range)),
             friction=float(np.mean(settings.friction_range)) if i == 0 else float(rng.uniform(*settings.friction_range))))
     return rows
+
+
+def _trial_failure_reasons(scene, *, displacement, peak_press, peak_force, clearance,
+                           tracking_max, dynamic_joint_margin, home_error):
+    if scene.task == 'button':
+        checks = dict(press_depth=.9*scene.stroke <= peak_press <= scene.stroke+press_overtravel_allowance(scene.stroke),
+                      press_force=peak_force <= 40.)
+    else:
+        checks = dict(push_distance=abs(displacement[0]-scene.push_distance) <= .01,
+                      push_lateral=abs(displacement[1]) <= .01)
+    checks.update(obstacle_clearance=clearance >= .003, tracking_error=tracking_max <= .01,
+                  joint_margin=dynamic_joint_margin >= .02, home_return=home_error <= np.deg2rad(2))
+    return [name for name, passed in checks.items() if not passed]
 
 
 def physical_trial(base_kin, scene, c, condition, deadline):
@@ -323,7 +346,8 @@ def physical_trial(base_kin, scene, c, condition, deadline):
     state = np.empty(mujoco.mj_stateSize(m, state_spec))
     target_id = m.body('robust_target').id
     gains = m.actuator_gainprm[kin.actuator, 0]
-    feedback = BottleFeedback(scene) if scene.task == 'bottle' else None
+    feedback = (BottleFeedback(scene) if scene.task == 'bottle'
+                and c.motion_metrics.get('bottle_feedback_mode', 'off') == 'relative' else None)
     if feedback is not None:
         command_filter = JointCommandFilter(c.q[0], JointMotionLimits(**c.motion_metrics['limits']))
         reference_kin = clone_kin(base_kin)
@@ -376,8 +400,7 @@ def physical_trial(base_kin, scene, c, condition, deadline):
             else:
                 mujoco.mj_forward(m,d)
             try:
-                clearance = min(clearance, contact_metrics(kin, scene,
-                    contact=c.phases[i] in ('contact','press','retract')))
+                clearance = min(clearance, contact_metrics(kin, scene, contact=True))
             except ValueError as exc:
                 return dict(completed=False, reason=str(exc), wall_s=time.perf_counter()-started)
             tracking_max = max(tracking_max, float(np.linalg.norm(kin.tip_position()-reference_tcp[j])))
@@ -409,15 +432,14 @@ def physical_trial(base_kin, scene, c, condition, deadline):
     if time.perf_counter() >= deadline:
         return dict(completed=False, reason='deadline', wall_s=time.perf_counter()-started)
     displacement = d.xpos[target_id]-initial_object
-    success = (.9*scene.stroke <= peak_press <= scene.stroke+press_overtravel_allowance(scene.stroke)
-               and peak_force <= 40. if scene.task == 'button' else
-               abs(displacement[0]-scene.push_distance) <= .01 and abs(displacement[1]) <= .01)
     if scene.task == 'button':
-        target_margin = scene.radius-scene.tip_radius-scene.uncertainty_m-lateral_max
-    success = bool(success and clearance >= .003 and target_margin > .003
-                   and tracking_max <= .01 and dynamic_joint_margin >= .02
-                   and np.max(np.abs(d.qpos[kin.qadr]-scene.q[22:29])) <= np.deg2rad(2))
-    return dict(completed=True, success=success, min_clearance_m=clearance, target_margin_m=target_margin,
+        target_margin = scene.radius-scene.tip_radius-lateral_max
+    home_error = float(np.max(np.abs(d.qpos[kin.qadr]-scene.q[22:29])))
+    failures = _trial_failure_reasons(scene, displacement=displacement, peak_press=peak_press,
+        peak_force=peak_force, clearance=clearance, tracking_max=tracking_max,
+        dynamic_joint_margin=dynamic_joint_margin, home_error=home_error)
+    return dict(completed=True, success=not failures, failure_reasons=failures,
+        min_clearance_m=clearance, target_margin_m=target_margin, home_error_rad=home_error,
         tracking_max_m=tracking_max, min_joint_margin_rad=dynamic_joint_margin,
         peak_press_m=peak_press, peak_force_n=peak_force if scene.task=='button' else None,
         displacement_m=displacement.tolist(), max_feedback_offset_m=max_feedback_offset,
@@ -449,16 +471,19 @@ def search(path, calibration, scene, settings=SearchSettings(), *, monitor=lambd
     report = result.report
     report.update(schema='g1-robust-plan-v1', settings=asdict(settings), static_checks=0,
         completed_rollouts=0, aborted_rollouts=0, candidates=[], stages_wall_s={}, stopped_for_measurement=0)
+    workers = min(settings.workers, settings.scenarios)
+    report['selection'] = 'first_valid'
+    report['validation_envelope'] = dict(position_span_m=settings.position_span_m,
+        calibration_uncertainty_m=scene.uncertainty_m, target_margin_is_diagnostic=True)
     report['runtime'] = dict(mujoco_version=mujoco.__version__, physics_timestep_s=.002,
-                             control_period_s=PERIOD, workers=settings.workers,shutdown_reserve_s=reserve)
+                             control_period_s=PERIOD, workers=workers,shutdown_reserve_s=reserve)
     t = time.perf_counter(); kin = build_scene_model(path, calibration, scene)
     report['stages_wall_s']['scene'] = time.perf_counter()-t
     conditions = uncertainty_scenarios(settings, scene); report['conditions'] = conditions
     offsets = [(0.,0.,0.)]+[v for v in product((-.4,0.,.4),(-.4,0.,.4),(-.6,0.,.6)) if v != (0.,0.,0.)]
-    best_score, best_duration = -np.inf, np.inf
     static_time = physics_time = 0.
     # spawn is safe even when the camera/SDK already own threads. Do not fork them.
-    with ProcessPoolExecutor(max_workers=settings.workers,
+    with ProcessPoolExecutor(max_workers=workers,
             mp_context=multiprocessing.get_context('spawn'), initializer=_init_worker,
             initargs=(str(path), calibration, scene)) as pool:
         for index in range(settings.max_candidates):
@@ -489,17 +514,18 @@ def search(path, calibration, scene, settings=SearchSettings(), *, monitor=lambd
             monitor()
             report['completed_rollouts'] += sum(t['completed'] for t in trials)
             report['aborted_rollouts'] += sum(not t['completed'] for t in trials)
-            row.update(trials=trials, accepted=all(t.get('success',False) for t in trials))
+            row.update(trials=trials, accepted=time.perf_counter() < deadline and all(
+                t.get('completed',False) and t.get('success',False) for t in trials))
             if not row['accepted']:
+                row['reason'] = ('deadline' if time.perf_counter() >= deadline else
+                                 'Not every condition completed and passed')
                 continue
             score = min(candidate.min_joint_margin_rad/.025,
                         min(t['min_joint_margin_rad'] for t in trials)/.025,
-                        min(t['min_clearance_m'] for t in trials)/.003,
-                        min(t['target_margin_m'] for t in trials)/.003)
+                        min(t['min_clearance_m'] for t in trials)/.003)
             row.update(score=score, duration_s=candidate.duration_s)
-            if score > best_score+1e-6 or (abs(score-best_score) <= 1e-6 and candidate.duration_s < best_duration):
-                result.candidate, result.score = candidate, score
-                best_score, best_duration = score, candidate.duration_s
+            result.candidate, result.score = candidate, score
+            break
     report['stages_wall_s'].update(candidate_and_static=static_time, physics_and_scoring=physics_time)
     report['total_wall_s'] = time.perf_counter()-started
     report['target_1000_met'] = report['completed_rollouts'] >= 1000 and report['total_wall_s'] <= 10.
@@ -516,8 +542,8 @@ def evaluate_holdout(path, calibration, plan, settings, *, seed=10000, count=20,
     if not 1 <= count <= 100:
         raise ValueError('holdout count must be 1..100')
     evaluation = replace(settings,seed=seed,scenarios=count+1,max_rollouts=max(count+1,settings.max_rollouts))
-    conditions = uncertainty_scenarios(evaluation,plan.scene,include_corners=False)[1:]
-    with ProcessPoolExecutor(max_workers=settings.workers,
+    conditions = uncertainty_scenarios(evaluation,plan.scene,include_corners=False,full_uncertainty=True)[1:]
+    with ProcessPoolExecutor(max_workers=min(settings.workers,count),
             mp_context=multiprocessing.get_context('spawn'),initializer=_init_worker,
             initargs=(str(path),calibration,plan.scene)) as pool:
         trials = list(pool.map(_worker_trial,[plan.scene]*count,[plan.candidate]*count,

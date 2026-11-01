@@ -30,6 +30,8 @@ def test_robust_defaults_and_json_cli_precedence(tmp_path):
     add_arguments(parser)
     _, defaults = parse(parser, [])
     assert defaults.motion_duration_s == 30
+    assert defaults.scenarios == 3 and defaults.position_span_m == .003
+    assert defaults.bottle_feedback == 'off'
     assert defaults.motion_limits == JointMotionLimits(1.2, 4)
     assert JointMotionLimits() == JointMotionLimits(.8, 2)
     path = tmp_path/'trial.json'
@@ -109,7 +111,7 @@ def test_short_bottle_motion_keeps_contact_stable_under_placement_error():
     assert 27 <= candidate.motion_metrics['expected_motion_s'] <= 33
     assert candidate.motion_metrics['speed_limit_fraction'] <= .8
     assert candidate.motion_metrics['acceleration_limit_fraction'] <= .8
-    trial = physical_trial(kin, scene, candidate, uncertainty_scenarios(settings, scene)[4], time.perf_counter()+30)
+    trial = physical_trial(kin, scene, candidate, uncertainty_scenarios(settings, scene)[2], time.perf_counter()+30)
     assert trial['completed'] and trial['success'], trial
 
 

@@ -1,0 +1,182 @@
+{
+  "baseline_ref": "95f2afc",
+  "scene_log": "Manipulation/push_button/LOG/robust-lab-20261101/live/diagnostic_20261101_112438/result.json",
+  "model": "_local/bottle_push/menagerie/unitree_g1/g1.xml",
+  "robot_connected": false,
+  "baseline": {
+    "accepted": false,
+    "wall_s": 9.786836972000856,
+    "candidate_count": 2,
+    "completed": 24,
+    "aborted": 16,
+    "reason": "No candidate completed and passed every required uncertainty condition",
+    "workers": 4
+  },
+  "relaxed": {
+    "accepted": true,
+    "wall_s": 2.4226245039999412,
+    "candidate_count": 1,
+    "completed": 3,
+    "aborted": 0,
+    "reason": null,
+    "workers": 3
+  },
+  "calibration_uncertainty_m": 0.015,
+  "planning_position_span_m": 0.003,
+  "replay_successes": 3,
+  "replay_forward_mm": [
+    47.37738334209857,
+    50.36485073256919,
+    44.333696817093646
+  ],
+  "limitations": [
+    "Saved scene; no live perception, SDK startup or free-standing balance validation",
+    "Both searches use the current shared scene model; baseline planner is loaded from git"
+  ],
+  "tests": {
+    "full_suite": {
+      "tests": "519",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "40",
+      "time": "75.254"
+    },
+    "after_calibration_change": {
+      "tests": "92",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "15.512"
+    }
+  },
+  "simulation_cases": [
+    {
+      "case": "button_up_10000_robust",
+      "success": true,
+      "error": null,
+      "planning_wall_s": 2.176392276000115,
+      "motion_s": 29.999999999993918,
+      "evaluation": {
+        "physical_success": true,
+        "peak_press_m": 0.0015201288397416642,
+        "displacement_m": [
+          3.3584246494910985e-14,
+          0.0,
+          0.0
+        ],
+        "max_tilt_deg": 0.0,
+        "max_unexpected_arm_force_n": 0.0,
+        "min_sampled_obstacle_clearance_m": 0.020788282617829397,
+        "unexpected_collision": false,
+        "simulation_s": 30.59999999999392
+      }
+    },
+    {
+      "case": "button_down_10000_robust",
+      "success": true,
+      "error": null,
+      "planning_wall_s": 4.56735295999988,
+      "motion_s": 29.999999999993918,
+      "evaluation": {
+        "physical_success": true,
+        "peak_press_m": 0.001517845182137323,
+        "displacement_m": [
+          5.551115123125783e-17,
+          0.0,
+          0.0
+        ],
+        "max_tilt_deg": 0.0,
+        "max_unexpected_arm_force_n": 0.0,
+        "min_sampled_obstacle_clearance_m": 0.02056691483548194,
+        "unexpected_collision": false,
+        "simulation_s": 30.59999999999392
+      }
+    },
+    {
+      "case": "bottle_up_10000_robust",
+      "success": true,
+      "error": null,
+      "planning_wall_s": 6.639503619999232,
+      "motion_s": 32.65999999999468,
+      "evaluation": {
+        "physical_success": true,
+        "peak_press_m": 0.0,
+        "displacement_m": [
+          0.0469085444294533,
+          0.004258385396790548,
+          -3.6069436998298343e-06
+        ],
+        "max_tilt_deg": 0.03743269236315957,
+        "max_unexpected_arm_force_n": 0.0,
+        "min_sampled_obstacle_clearance_m": 0.045993180442096486,
+        "unexpected_collision": false,
+        "simulation_s": 33.25999999999468
+      }
+    },
+    {
+      "case": "button_up_10001_robust",
+      "success": true,
+      "error": null,
+      "planning_wall_s": 2.1150533650006764,
+      "motion_s": 29.999999999993918,
+      "evaluation": {
+        "physical_success": true,
+        "peak_press_m": 0.0015219898803227343,
+        "displacement_m": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max_tilt_deg": 0.0,
+        "max_unexpected_arm_force_n": 0.0,
+        "min_sampled_obstacle_clearance_m": 0.020799793639184223,
+        "unexpected_collision": false,
+        "simulation_s": 30.59999999999392
+      }
+    },
+    {
+      "case": "button_down_10001_robust",
+      "success": true,
+      "error": null,
+      "planning_wall_s": 2.084235694000199,
+      "motion_s": 29.999999999993918,
+      "evaluation": {
+        "physical_success": true,
+        "peak_press_m": 0.0015192484021413477,
+        "displacement_m": [
+          4.0967229608668276e-14,
+          0.0,
+          0.0
+        ],
+        "max_tilt_deg": 0.0,
+        "max_unexpected_arm_force_n": 0.0,
+        "min_sampled_obstacle_clearance_m": 0.02063545207767324,
+        "unexpected_collision": false,
+        "simulation_s": 30.59999999999392
+      }
+    },
+    {
+      "case": "bottle_up_10001_robust",
+      "success": true,
+      "error": null,
+      "planning_wall_s": 2.3271698210000977,
+      "motion_s": 32.95999999999505,
+      "evaluation": {
+        "physical_success": true,
+        "peak_press_m": 0.0,
+        "displacement_m": [
+          0.04749952675894342,
+          -0.0027211840871946003,
+          -3.623388347140377e-06
+        ],
+        "max_tilt_deg": 0.034038763802513805,
+        "max_unexpected_arm_force_n": 0.0,
+        "min_sampled_obstacle_clearance_m": 0.045274490652936206,
+        "unexpected_collision": false,
+        "simulation_s": 33.55999999999505
+      }
+    }
+  ],
+  "raw_output_directory": "_local/robust_push/three_conditions_20261101",
+  "baseline_comparison_runs": 1
+}

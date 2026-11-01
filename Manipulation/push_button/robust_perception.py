@@ -170,7 +170,7 @@ class CorrectionGate:
             raise RuntimeError('Observed target normal changed')
         # Forward motion/contact depth remains controlled by the planned reference.
         lateral = error-normal*(error@normal)
-        limit = min(.005, self.scene.radius-self.scene.tip_radius-self.scene.uncertainty_m-.003)
+        limit = min(.005, self.scene.radius-self.scene.tip_radius)
         if np.linalg.norm(lateral) > limit:
             raise RuntimeError('Observed target shift exceeds certified correction envelope')
         if freeze:

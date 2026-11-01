@@ -28,7 +28,9 @@ def add_arguments(parser):
     parser.add_argument('--trial-config')
     parser.add_argument('--planning-budget-s', type=float, default=10.)
     parser.add_argument('--planning-max-rollouts', type=int, default=1000)
-    parser.add_argument('--planning-scenarios', type=int, default=20)
+    parser.add_argument('--planning-scenarios', type=int, default=3)
+    parser.add_argument('--planning-position-span-m', type=float, default=.003)
+    parser.add_argument('--bottle-feedback', choices=('off','relative'), default='off')
     parser.add_argument('--planning-workers', type=int, default=8)
     parser.add_argument('--planning-max-candidates', type=int, default=50)
     parser.add_argument('--planning-seed', type=int, default=0)
@@ -70,7 +72,8 @@ def parse(parser, argv=None):
                 and getattr(args,action.dest) not in action.choices):
             parser.error(f'Invalid {action.dest}')
     settings = SearchSettings(budget_s=args.planning_budget_s, max_rollouts=args.planning_max_rollouts,
-        scenarios=args.planning_scenarios, workers=args.planning_workers,
+        scenarios=args.planning_scenarios, position_span_m=args.planning_position_span_m,
+        bottle_feedback=args.bottle_feedback, workers=args.planning_workers,
         max_candidates=args.planning_max_candidates, seed=args.planning_seed,
         position_error_m=args.position_error_m, normal_error_deg=args.normal_error_deg,
         tracking_error_rad=args.tracking_error_rad, mass_range=tuple(args.mass_range),

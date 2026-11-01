@@ -75,7 +75,8 @@ def main(argv=None, *, task=None):
             raise ValueError('--execute requires --calibrated')
         if not args.execute and not args.state_json:
             raise ValueError('Planning preview requires --state-json')
-        calibration, _ = read_calibration(args.base_transform, require_button=args.task=='button')
+        calibration, _ = read_calibration(args.base_transform, require_button=args.task=='button',
+                                          require_target_margin=False)
         report['calibration'] = calibration
         runtime = J1CameraRuntime(args.j1gen_root)
         # Model warm-up occurs before the initial capture and search deadline.

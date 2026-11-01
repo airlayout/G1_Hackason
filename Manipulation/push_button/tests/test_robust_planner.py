@@ -162,8 +162,9 @@ def test_uncertainty_is_deterministic_nominal_first_and_bias_fixed_per_trial():
     rows = uncertainty_scenarios(SearchSettings(seed=123),scene())
     assert rows == uncertainty_scenarios(SearchSettings(seed=123),scene())
     assert rows[0]['position'] == [0,0,0]
-    assert rows[1]['position'] != [0,0,0]
-    assert len(rows) == 20
+    assert rows[1]['position'] == [-.003,0,0]
+    assert rows[2]['position'] == [.003,0,0]
+    assert len(rows) == 3
 
 
 @pytest.fixture
@@ -219,26 +220,37 @@ def test_real_robust_parser_is_importable_without_sdk():
     assert callable(robust_push.main)
 
 
-def test_search_compares_all_accepted_candidates_and_breaks_ties_by_duration(monkeypatch):
+@pytest.mark.parametrize('incomplete,expired', [(False,False),(True,False),(False,True)])
+def test_search_stops_at_first_complete_success_and_caps_workers(monkeypatch,incomplete,expired):
     import robust_planner as planner
     from concurrent.futures import Future
     dummy = SimpleNamespace(data=SimpleNamespace(qpos=np.zeros(29)),update=lambda q:None)
     monkeypatch.setattr(planner,'build_scene_model',lambda *a:dummy)
     monkeypatch.setattr(planner,'generate_candidate',lambda kin,s,index,*a:SimpleNamespace(
         index=index,min_joint_margin_rad=.1,duration_s=100-index))
+    clock = [0.]
+    monkeypatch.setattr(planner.time,'perf_counter',lambda:clock[0])
     class Pool:
-        def __init__(self,**kwargs): pass
+        def __init__(self,**kwargs): assert kwargs['max_workers'] == 2
         def __enter__(self): return self
         def __exit__(self,*args): pass
         def submit(self,fn,s,c,condition,deadline):
+            if expired:
+                clock[0] = 11.
             result = Future()
-            result.set_result(dict(completed=True,success=True,min_clearance_m=.004 if c.index==0 else .02,
-                                   target_margin_m=.02,min_joint_margin_rad=.1))
+            result.set_result(dict(completed=not incomplete,success=True,min_clearance_m=.004,
+                                   target_margin_m=-.01,min_joint_margin_rad=.1))
             return result
     monkeypatch.setattr(planner,'ProcessPoolExecutor',Pool)
     result = planner.search('unused',{},scene(),SearchSettings(max_candidates=3,scenarios=2,max_rollouts=6))
-    assert result.candidate.index == 2
-    assert result.report['completed_rollouts'] == 6 and not result.report['target_1000_met']
+    if incomplete or expired:
+        assert result.candidate is None
+    else:
+        assert result.candidate.index == 0
+        assert len(result.report['candidates']) == 1
+        assert result.report['completed_rollouts'] == 2
+        assert result.report['runtime']['workers'] == 2
+    assert not result.report['target_1000_met']
 
 
 def test_preview_uses_no_arm_or_execute_path(monkeypatch,tmp_path):
