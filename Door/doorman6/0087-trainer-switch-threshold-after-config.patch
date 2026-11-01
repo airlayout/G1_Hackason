@@ -1,0 +1,33 @@
+From b48449d2e23368322d90004becd008dd92f00888 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Sun, 1 Nov 2026 13:46:43 +0900
+Subject: [PATCH] trainer: copy the HOMIE walk/stand switch threshold after it
+ is set from the config (algo.config.homie_switch_threshold reached only the
+ wrapper; the rollout and the evaluation compare against the trainer's own
+ copy, which was taken before the config was applied and so stayed 0.5
+ whatever the config said, since the initial release). An evaluation with the
+ threshold at 0.1 matched the default run failure for failure, which is how
+ this was found (11-01)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ gr00t/rl/trl/trainer/ppo_trainer_homie_api.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+index 796b64b..e100984 100644
+--- a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
++++ b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+@@ -530,6 +530,9 @@ class TRLPPOTrainer(PPOTrainer):
+             self.model.module.homie_switch_threshold = self.config.get(
+                 "homie_switch_threshold", 0.5
+             )
++        # G1_Hackason（パッチ 0087、11-01）: 試行と評価は学習器の self.homie_switch_threshold で歩くと立つを切り替える。
++        # 上で包みの線を写すのは設定を包みに書く前なので、設定に何を書いても 0.5 のままだった（元の公開版から）。書いた後に写し直す
++        self.homie_switch_threshold = self.config.get("homie_switch_threshold", 0.5)
+ 
+         # self.homie_policy = load_onnx_policy(path=config.homie_policy_path, device=self.device)
+ 
+-- 
+2.43.0
+
