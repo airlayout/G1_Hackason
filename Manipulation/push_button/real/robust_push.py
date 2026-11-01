@@ -26,6 +26,18 @@ from button_detector import make_button_detector, DEFAULT_CONFIDENCE, DEFAULT_IM
 from motion_limits import CONTROL_PERIOD_S
 
 
+def collect_outcome_observations(observer, *, now=time.monotonic, sleep=time.sleep):
+    """Wait briefly for three new measurements without treating held images as results."""
+    results, last_id = [], observer.latest(allow_stale=True).frame_id
+    deadline = now()+2.
+    while len(results) < 3 and now() < deadline:
+        final = observer.latest(allow_stale=True)
+        if final.frame_id > last_id and 0 <= now()-final.captured_at <= .5:
+            results.append(final); last_id = final.frame_id
+        sleep(.02)
+    return results
+
+
 def main(argv=None, *, task=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--task', choices=('button','bottle'), default=task or 'button')
@@ -46,6 +58,8 @@ def main(argv=None, *, task=None):
     parser.add_argument('--stop-before-contact', action='store_true')
     parser.add_argument('--static-target', action='store_true',
         help='ボトルの接触手前診断のみ: 初回の静止計測後は画像の経過時間で停止しない')
+    parser.add_argument('--allow-stale-observation', action='store_true',
+        help='ボトル・画像補正offのみ: 初回3枚以降は画像の経過時間で停止せず、古い間は検証済み軌道の推定位置を使う')
     parser.add_argument('--execute-after-plan',action='store_true',
         help='ボトルのデータ収集: 3条件合格後に即実行し、姿勢差・FK誤差は記録のみ')
     add_arguments(parser); add_camera_arguments(parser)
@@ -62,9 +76,13 @@ def main(argv=None, *, task=None):
     if args.detector_imgsz is None:
         args.detector_imgsz = DEFAULT_IMAGE_SIZE if args.task == 'button' else 960
     report = dict(schema='g1-robust-trial-v1', task=args.task, completed=False, physical_push_success=None,
+                  visual_success=None,
                   settings=asdict(settings), arguments=vars(args))
     report['image_policy'] = dict(static_target_assumed=args.static_target,
-        initial_three_fresh_frames_required=True,continuous_age_check=not args.static_target,
+        initial_three_fresh_frames_required=True,
+        continuous_age_check=not (args.static_target or args.allow_stale_observation),
+        stale_bottle_pose='verified_reference_prediction' if args.allow_stale_observation else None,
+        outcome_frames_required=not (args.stop_before_contact or args.allow_stale_observation),
         capture_pose='current_stationary_state' if args.static_target else 'capture_time_history')
     report['execute_after_plan'] = args.execute_after_plan
     report['pose_history_policy'] = dict(sample_period_s=CONTROL_PERIOD_S,
@@ -79,6 +97,8 @@ def main(argv=None, *, task=None):
     try:
         if args.static_target and (args.task != 'bottle' or not args.stop_before_contact):
             raise ValueError('--static-target requires bottle --stop-before-contact')
+        if args.allow_stale_observation and (args.task != 'bottle' or settings.bottle_feedback != 'off'):
+            raise ValueError('--allow-stale-observation requires bottle with --bottle-feedback off')
         if args.execute_after_plan and (not args.execute or args.task != 'bottle' or settings.scenarios != 3):
             raise ValueError('--execute-after-plan requires bottle --execute and 3 scenarios')
         raw = list(sys.argv[1:] if argv is None else argv)
@@ -226,7 +246,7 @@ def main(argv=None, *, task=None):
             stable_base[0] = initial.geometry['base_height']
         scene = snapshot(args.task,initial,calibration,args)
         def latest_observation():
-            if args.static_target:
+            if args.static_target or args.allow_stale_observation:
                 return observer.latest(allow_stale=True)
             return observer.latest()
         def monitor():
@@ -256,32 +276,39 @@ def main(argv=None, *, task=None):
         report['upper_body_hold'] = motion.upper_body_hold
         report['execution'] = execute(plan,args.model,calibration,motion,configuration,latest_observation,settings,
             set_torque=lambda value: torque.update(value=np.array(value)),diagnostic=args.stop_before_contact,
-            record_deviations=args.execute_after_plan,set_waist_torque=lambda value: torque.update(waist=np.array(value)))
+            record_deviations=args.execute_after_plan,set_waist_torque=lambda value: torque.update(waist=np.array(value)),
+            allow_stale_observation=args.allow_stale_observation)
         report['command_publications'] = motion.command_publications
         if motion.error is not None:
             report['motion_thread_error'] = str(motion.error)
         report['completed'] = report['execution']['completed']
         if report['completed'] and not args.stop_before_contact:
             # Outcome measurements do not update an execution target or restart the push.
-            results, last_id = [], observer.latest().frame_id
-            deadline = time.monotonic()+2.
-            while len(results) < 3 and time.monotonic() < deadline:
-                final = observer.latest()
-                if final.frame_id > last_id:
-                    results.append(final); last_id = final.frame_id
-                time.sleep(.02)
+            try:
+                results = collect_outcome_observations(observer)
+            except RuntimeError as exc:
+                if not args.allow_stale_observation:
+                    raise
+                results = []
+                report['outcome_error'] = str(exc)
+            report['outcome_frame_count'] = len(results)
+            report['outcome_available'] = len(results) == 3
             if len(results) != 3:
-                raise RuntimeError('Three fresh outcome frames unavailable')
-            if args.task == 'button':
+                report['outcome_error'] = report.get('outcome_error','Three fresh outcome frames unavailable')
+                if not args.allow_stale_observation:
+                    raise RuntimeError(report['outcome_error'])
+            elif args.task == 'button':
                 report['visual_success'] = bool(initial.lamp is not None and all(
                     v.lamp is not None and v.lamp-initial.lamp >= 30 for v in results))
-            else:
+            elif args.task == 'bottle':
                 deltas = np.array([v.geometry['face'] for v in results])-scene.face
                 delta = np.median(deltas,axis=0)
                 report['measured_displacement_m'] = delta.tolist()
                 report['visual_success'] = bool(np.all(np.abs(deltas[:,0]-scene.push_distance) <= .01)
                                                 and np.all(np.abs(deltas[:,1]) <= .01))
-        return 0 if report['completed'] and (args.stop_before_contact or report.get('visual_success')) else 1
+        outcome_ok = (args.stop_before_contact or report.get('visual_success') is True
+                      or (args.allow_stale_observation and report.get('visual_success') is None))
+        return 0 if report['completed'] and outcome_ok else 1
     except KeyboardInterrupt:
         report['error'] = 'Interrupted'; return 130
     except (ValueError,RuntimeError,OSError,KeyError,ImportError) as exc:

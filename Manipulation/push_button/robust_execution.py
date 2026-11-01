@@ -7,7 +7,8 @@ from alignment import JointCommandFilter
 from robust_scene import build_scene_model, update_robot, contact_metrics
 from robust_planner import PERIOD, reference_torque
 from robust_perception import CorrectionGate
-from robust_control import BottleFeedback, fade_return_offset, reference_command, waist_support_torque
+from robust_control import (BottleFeedback, fade_return_offset, reference_command,
+                            waist_support_torque, bottle_runtime_state)
 
 
 # Only the right arm is commanded by this task. The held left arm may settle
@@ -38,10 +39,12 @@ def validate_start(scene, configuration, observed, *, record_deviations=False):
 
 def execute(plan, model_path, calibration, motion, configuration, observe, settings,
             *, now=time.monotonic, set_torque=lambda tau: None, diagnostic=False,
-            record_deviations=False, set_waist_torque=None):
+            record_deviations=False, set_waist_torque=None, allow_stale_observation=False):
     if plan.candidate is None:
         raise RuntimeError('No fully verified robust plan; no motion allowed')
     s, c = plan.scene, plan.candidate
+    if allow_stale_observation and (s.task != 'bottle' or settings.bottle_feedback != 'off'):
+        raise ValueError('Stale observations require bottle feedback off')
     if s.task == 'bottle' and c.motion_metrics.get('bottle_feedback_mode', 'off') != settings.bottle_feedback:
         raise RuntimeError('Bottle feedback mode differs from the verified plan')
     report = dict(schema='g1-robust-execution-v1', task=s.task, completed=False, motion_completed=False,
@@ -50,6 +53,7 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
     report['limits'] = settings.motion_limits.to_dict()
     report['target_motion_s'] = settings.motion_duration_s
     report['bottle_feedback'] = settings.bottle_feedback
+    report.update(allow_stale_observation=allow_stale_observation,stale_observation_commands=0)
     report.update(record_deviations=record_deviations,warnings=[],tracking_samples=[],max_fk_error_m=0.)
     def deviation(reason):
         if not record_deviations:
@@ -105,18 +109,25 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
             progress = max(0., float((c.tcp[min(i,c.press_end)]-np.array(s.face))@n+s.tip_radius))
             freeze = s.task == 'button' and (c.tcp[i]-s.face)@n+s.tip_radius >= -.005
             if s.task == 'bottle':
-                if abs(observation.geometry.get('object_height',s.object_height)-s.object_height) > .01:
-                    deviation('Bottle vertical extent changed')
-                displacement = np.array(observation.geometry['face'])-s.face
-                offset = gate.update(displacement,progress,observation.frame_id,
-                                     freeze=settings.bottle_feedback == 'off' or i < c.press_start or i > c.press_end)
+                face,progress,observation_age,predicted = bottle_runtime_state(
+                    s,c,i,observation,now(),allow_stale=allow_stale_observation)
+                if predicted:
+                    # Feedback is off: follow the verified path. An old image
+                    # cannot measure progress or prove that the bottle stopped.
+                    offset = np.zeros(3)
+                    report['stale_observation_commands'] += 1
+                else:
+                    if abs(observation.geometry.get('object_height',s.object_height)-s.object_height) > .01:
+                        deviation('Bottle vertical extent changed')
+                    displacement = face-s.face
+                    offset = gate.update(displacement,progress,observation.frame_id,
+                                         freeze=settings.bottle_feedback == 'off' or i < c.press_start or i > c.press_end)
                 offset = fade_return_offset(offset,c,i)
             else:
                 offset = gate.update(observation, progress, freeze=freeze or i > c.press_end)
             pose = update_robot(check,q,imu)
             if s.task == 'bottle':
                 adr = check.model.joint('robust_object_joint').qposadr[0]
-                face = observation.geometry['face']
                 pose[adr:adr+3] = (face[0]+s.radius,face[1],s.base_height+s.object_height/2)
                 check.update(pose)
             measured_tip = check.tip_position().copy()
@@ -167,6 +178,10 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
                 measured_q=np.array(q).tolist(), observation_frame_id=observation.frame_id,
                 waist_tau_nm=waist_tau.tolist(),
                 observation_captured_at=observation.captured_at))
+            if s.task == 'bottle':
+                report['commands'][-1].update(observation_age_s=float(observation_age),
+                    bottle_pose_source='reference_prediction' if predicted else 'observation',
+                    bottle_face_m=face.tolist())
             report['correction_steps'].append(dict(frame_id=observation.frame_id, offset_m=offset.tolist()))
             motion.wait(max(0., PERIOD-(now()-cycle)))
             last_tick = cycle

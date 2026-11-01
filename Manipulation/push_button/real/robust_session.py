@@ -42,6 +42,8 @@ def motion_arguments(mode,trial,output,socket_path=None,state_path=None):
         args += ['--arm-socket',str(socket_path),'--execute','--calibrated']
     if mode != 'push':
         args += ['--stop-before-contact','--static-target']
+    else:
+        args += ['--allow-stale-observation']
     if state_path is None and mode in ('precontact','push'):
         args += ['--execute-after-plan','--planning-scenarios','3']
     return args
@@ -287,6 +289,8 @@ def main(argv=None):
         print('動作データを保存しました。制御解除:',execution.get('release_completed'),
             '帰還確認:',execution.get('home_completed'),
             'FK誤差最大:',round(execution.get('max_fk_error_m',0.)*1000,1),'mm',flush=True)
+        if args.mode == 'push' and actual.get('visual_success') is None:
+            print('新しい結果画像が揃わないため、実際の押し込み量は未確認です。',flush=True)
         return 0 if report['completed'] else 1
     except KeyboardInterrupt:
         report['error'] = '操作者による中断'

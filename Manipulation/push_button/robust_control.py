@@ -63,6 +63,19 @@ def fade_return_offset(offset, candidate, index):
     return offset*max(0., remaining/max(1, len(candidate.q)-1-candidate.retract_end))
 
 
+def bottle_runtime_state(scene, candidate, index, observed, current_time, *, allow_stale=False):
+    """Keep stale measurements distinct from the verified nominal object motion."""
+    normal = np.asarray(scene.normal)
+    progress = float(np.clip((candidate.tcp[min(index,candidate.press_end)]-scene.face)@normal
+                             +scene.tip_radius,0.,scene.push_distance))
+    age = current_time-observed.captured_at
+    predicted = allow_stale and not 0 <= age <= .5
+    # The object stays displaced while the hand retracts and returns home.
+    face = (np.asarray(scene.face)+progress*normal if predicted
+            else np.asarray(observed.geometry['face']))
+    return face, progress, age, predicted
+
+
 def reference_command(kin, candidate, index, offset, command_filter, gravity_scale):
     """Identical Jacobian correction, limits, torque and FK in simulation and real execution."""
     original = kin.data.qpos.copy()

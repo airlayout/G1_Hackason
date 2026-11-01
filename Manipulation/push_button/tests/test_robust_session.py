@@ -122,6 +122,7 @@ def test_one_command_orders_checks_and_never_arms_after_failed_preparation(tmp_p
         assert '--execute-after-plan' in armed[0][0]
         assert ('--stop-before-contact' in armed[0][0]) == (mode=='precontact')
         assert ('--static-target' in armed[0][0]) == (mode=='precontact')
+        assert ('--allow-stale-observation' in armed[0][0]) == (mode=='push')
     assert result == (1 if failure else 0)
 
 
@@ -129,4 +130,5 @@ def test_full_push_does_not_inherit_static_observation_mode():
     command = session.motion_arguments('push','trial','out',socket_path='sock')
     assert '--execute' in command
     assert '--static-target' not in command and '--stop-before-contact' not in command
+    assert '--allow-stale-observation' in command
     assert '--execute-after-plan' in command and command[command.index('--planning-scenarios')+1]=='3'

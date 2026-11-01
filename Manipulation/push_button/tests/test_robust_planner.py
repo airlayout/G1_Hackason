@@ -76,6 +76,49 @@ def test_static_target_cannot_be_used_for_a_full_push(tmp_path,immediate):
     assert '--stop-before-contact' in json.loads(output.read_text())['error']
 
 
+def test_stale_bottle_prediction_follows_push_and_stays_displaced_during_return():
+    from robust_control import bottle_runtime_state
+    s = scene()
+    tcp = np.array(s.face)+np.array([[-.05,0,0],[-s.tip_radius,0,0],
+                                    [.05-s.tip_radius,0,0],[-.1,0,0]])
+    candidate = SimpleNamespace(tcp=tcp,press_end=2)
+    old = observation(s,stamp=1.)
+    for index,progress in enumerate((0.,0.,.05,.05)):
+        face,actual_progress,age,predicted = bottle_runtime_state(s,candidate,index,old,100.,allow_stale=True)
+        np.testing.assert_allclose(face,np.array(s.face)+[progress,0,0])
+        assert actual_progress == pytest.approx(progress)
+        assert age == 99. and predicted and old.captured_at == 1.
+    fresh = observation(s,stamp=99.9,offset=(.047,.002,0))
+    face,_,_,predicted = bottle_runtime_state(s,candidate,2,fresh,100.,allow_stale=True)
+    np.testing.assert_array_equal(face,fresh.geometry['face'])
+    assert not predicted
+
+
+def test_stale_observation_option_rejects_visual_feedback_before_connecting(tmp_path):
+    from robust_push import main
+    output = tmp_path/'trial.json'
+    assert main(['--task','bottle','--model','unused','--base-transform','unused',
+        '--weights','unused','--allow-stale-observation','--bottle-feedback','relative',
+        '--output',str(output)]) == 2
+    assert '--bottle-feedback off' in json.loads(output.read_text())['error']
+
+
+def test_optional_outcome_does_not_count_stale_or_repeated_frames():
+    from robust_push import collect_outcome_observations
+    clock = [100.]
+    def sleep(dt): clock[0] += dt
+    held = observation(stamp=1.)
+    observer = SimpleNamespace(latest=lambda **kwargs:held)
+    assert collect_outcome_observations(observer,now=lambda:clock[0],sleep=sleep) == []
+    started = clock[0]
+    def latest(**kwargs):
+        index = int((clock[0]-started)/.2)
+        return observation(frame=index+1,stamp=clock[0])
+    observer.latest = latest
+    results = collect_outcome_observations(observer,now=lambda:clock[0],sleep=sleep)
+    assert len(results) == 3 and len({v.frame_id for v in results}) == 3
+
+
 def test_five_hz_frame_jitter_does_not_drop_every_other_image():
     sampler = LatestFrameSampler()
     frames = [('first', .85), ('second', 1.045), ('third', 1.249)]
