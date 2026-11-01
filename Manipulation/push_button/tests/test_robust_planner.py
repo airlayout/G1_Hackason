@@ -12,7 +12,7 @@ import pytest
 pytest.importorskip('mujoco')
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parents[1]/'real')]
 from robust_scene import SceneSnapshot, build_scene_model, estimate_bottle, contact_metrics
-from robust_perception import Observation, ObservationWindow, ContinuousObserver, CorrectionGate, LatestFrameSampler
+from robust_perception import Observation, ObservationWindow, CorrectionGate, LatestFrameSampler, ContinuousObserver
 from robust_planner import SearchSettings, search, uncertainty_scenarios
 from robust_options import add_arguments, parse, selected
 from robust_execution import validate_start, execute
@@ -30,10 +30,10 @@ def observation(s=None, *, frame=1, stamp=1., offset=(0,0,0)):
     return Observation(g,s.q,s.imu,stamp,frame)
 
 
-def test_window_accepts_delayed_frames_but_rejects_duplicates_and_identity_jump():
+def test_window_requires_three_unique_fresh_frames_and_rejects_identity_jump():
     w = ObservationWindow()
     assert w.consume(observation(frame=1,stamp=1),1) is None
-    with pytest.raises(ValueError,match='Duplicate'):
+    with pytest.raises(ValueError,match='duplicate'):
         w.consume(observation(frame=1,stamp=1),1)
     for i in (2,3):
         stamp = 1.+(i-1)*.1
@@ -41,20 +41,82 @@ def test_window_accepts_delayed_frames_but_rejects_duplicates_and_identity_jump(
     assert w.consume(observation(frame=4,stamp=1.3),1.3) is not None
     with pytest.raises(ValueError,match='identity'):
         w.consume(observation(frame=5,stamp=1.4,offset=(0,.04,0)),1.4)
-    # Delayed processing and capture gaps do not invalidate the observations.
-    assert w.consume(observation(frame=6,stamp=6),100) is None
-    assert w.consume(observation(frame=7,stamp=7),100) is None
-    assert w.consume(observation(frame=8,stamp=8),100) is not None
+    with pytest.raises(ValueError,match='Stale'):
+        w.consume(observation(frame=6,stamp=6),7)
 
 
-def test_latest_observation_does_not_expire():
+def test_static_target_read_keeps_original_time_and_does_not_hide_missing_data_or_errors():
     import threading
     observer = ContinuousObserver.__new__(ContinuousObserver)
-    observer.error = None
     observer.lock = threading.Lock()
-    observer.value = observation(stamp=1.)
+    observer.error = None
     observer.now = lambda: 100.
-    assert observer.latest() is observer.value
+    observer.value = observation(stamp=1.)
+    with pytest.raises(RuntimeError, match='fresh'):
+        observer.latest()
+    held = observer.latest(allow_stale=True)
+    assert held is observer.value and held.captured_at == 1.
+    observer.value = None
+    with pytest.raises(RuntimeError, match='observation'):
+        observer.latest(allow_stale=True)
+    observer.value = held
+    observer.error = ValueError('camera failed')
+    with pytest.raises(RuntimeError, match='camera failed'):
+        observer.latest(allow_stale=True)
+
+
+@pytest.mark.parametrize('immediate',[False,True])
+def test_static_target_cannot_be_used_for_a_full_push(tmp_path,immediate):
+    from robust_push import main
+    output = tmp_path/'trial.json'
+    code = main(['--task','bottle','--model','unused','--base-transform','unused',
+        '--weights','unused','--static-target','--output',str(output)]+
+        (['--execute','--calibrated','--execute-after-plan'] if immediate else []))
+    assert code == 2
+    assert '--stop-before-contact' in json.loads(output.read_text())['error']
+
+
+def test_stale_bottle_prediction_follows_push_and_stays_displaced_during_return():
+    from robust_control import bottle_runtime_state
+    s = scene()
+    tcp = np.array(s.face)+np.array([[-.05,0,0],[-s.tip_radius,0,0],
+                                    [.05-s.tip_radius,0,0],[-.1,0,0]])
+    candidate = SimpleNamespace(tcp=tcp,press_end=2)
+    old = observation(s,stamp=1.)
+    for index,progress in enumerate((0.,0.,.05,.05)):
+        face,actual_progress,age,predicted = bottle_runtime_state(s,candidate,index,old,100.,allow_stale=True)
+        np.testing.assert_allclose(face,np.array(s.face)+[progress,0,0])
+        assert actual_progress == pytest.approx(progress)
+        assert age == 99. and predicted and old.captured_at == 1.
+    fresh = observation(s,stamp=99.9,offset=(.047,.002,0))
+    face,_,_,predicted = bottle_runtime_state(s,candidate,2,fresh,100.,allow_stale=True)
+    np.testing.assert_array_equal(face,fresh.geometry['face'])
+    assert not predicted
+
+
+def test_stale_observation_option_rejects_visual_feedback_before_connecting(tmp_path):
+    from robust_push import main
+    output = tmp_path/'trial.json'
+    assert main(['--task','bottle','--model','unused','--base-transform','unused',
+        '--weights','unused','--allow-stale-observation','--bottle-feedback','relative',
+        '--output',str(output)]) == 2
+    assert '--bottle-feedback off' in json.loads(output.read_text())['error']
+
+
+def test_optional_outcome_does_not_count_stale_or_repeated_frames():
+    from robust_push import collect_outcome_observations
+    clock = [100.]
+    def sleep(dt): clock[0] += dt
+    held = observation(stamp=1.)
+    observer = SimpleNamespace(latest=lambda **kwargs:held)
+    assert collect_outcome_observations(observer,now=lambda:clock[0],sleep=sleep) == []
+    started = clock[0]
+    def latest(**kwargs):
+        index = int((clock[0]-started)/.2)
+        return observation(frame=index+1,stamp=clock[0])
+    observer.latest = latest
+    results = collect_outcome_observations(observer,now=lambda:clock[0],sleep=sleep)
+    assert len(results) == 3 and len({v.frame_id for v in results}) == 3
 
 
 def test_five_hz_frame_jitter_does_not_drop_every_other_image():
@@ -278,7 +340,7 @@ def test_preview_uses_no_arm_or_execute_path(monkeypatch,tmp_path):
     monkeypatch.setattr(rp,'load_robot',lambda *a:(object(),np.zeros(29)))
     monkeypatch.setattr(rp,'ArmKinematics',lambda m:SimpleNamespace(update_fixed_base=lambda *a:None))
     monkeypatch.setattr(rp,'CalibratedHeadCamera',lambda *a:object())
-    monkeypatch.setattr(rp,'J1RgbdCamera',lambda *a,**kw:SimpleNamespace(close=lambda:None))
+    monkeypatch.setattr(rp,'J1RgbdCamera',lambda *a:SimpleNamespace(close=lambda:None))
     class Observer:
         frames,rejections = [],{}
         def __init__(self,*a): pass

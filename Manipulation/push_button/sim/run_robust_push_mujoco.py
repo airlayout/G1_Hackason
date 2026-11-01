@@ -234,8 +234,8 @@ class Observer:
                 self.capture()
             except ValueError:
                 self.last_capture = self.w.now()
-        if self.value is None:
-            raise RuntimeError('No simulated perception')
+        if self.value is None or not 0 <= self.w.now()-self.value.captured_at <= .5:
+            raise RuntimeError('Stale simulated perception')
         return self.value
 
 

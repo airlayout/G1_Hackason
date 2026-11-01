@@ -5,6 +5,83 @@
 右腕と頭RGB-Dカメラ、既存の実測カメラ・手先校正を使用する。
 実機の呼びボタンへの接触試験は、この変更では実施していない。
 
+## ボトル版と同じ一括起動で押す（robust）
+
+`run_robust_button.sh` は、成功したボトル版とSSH・頭RGB-D・腕ブリッジの準備、
+腰と左腕の保持、入出力確認を共用する。対象は乗り場の上下呼びボタン。
+歩行やかご内の階数認識は含まない。G1を停止させ、ボタンを画角と右腕の到達範囲に入れて使う。
+
+```bash
+mkdir -p _local/robust_button
+cp Manipulation/push_button/real/robust_button_setup.example.json _local/robust_button/active_setup.json
+cp Manipulation/push_button/real/robust_button_trial.example.json _local/robust_button/trial.json
+```
+
+`active_setup.json` のSDK用・画像処理用Pythonのパスを実際の環境へ変更する。
+現在のボトル版設定にあるPython、SSH接続先、カメラ配信元を再利用できる。
+`trial.json` のモデル・重み・校正JSON・NIC・カメラ接続先も実際の環境に合わせる。
+相対のモデル・重み・校正・trialパスはリポジトリ直下を基準に解決する。
+
+カメラと手先の校正は既存のv1/v2形式を使い、ボタン用のコピーを
+`_local/robust_button/calibration.json` に用意する。実測の `button_radius_m` を追加し、
+`tip_radius_m` と `position_uncertainty_m` も確認する。
+`button_radius_m - tip_radius_m - position_uncertainty_m` が3mm以上必要。
+例えば半径25mm・手先半径15mm・不確かさ15mmのままでは開始しない。
+採用させる目的で不確かさを小さく書き換えず、実測校正または手先を見直す。
+首の向きを変えた場合はカメラ校正も更新する。ボトル用の設定・校正は上書きしない。
+
+`trial.json` の `stroke` は実測ストローク[m]を設定する（1.5〜15mm）。
+ひな形のnullは未測定を示し、動作開始前にエラーになる。
+`button_direction` を `up` / `down` に設定するか、起動時に指定する。
+同梱 `button_final8.pt` を使い、複数候補を一意に選べない場合は開始しない。
+`--target-pixel U V` で対象を絞ることもできる。
+
+```bash
+# 認識・シミュレーション3条件・実機DDSまでを確認。制御重み0で腕は動かさない。
+bash Manipulation/push_button/real/run_robust_button.sh check --button-direction up
+
+# 接触手前まで接近して復帰・解除する。
+bash Manipulation/push_button/real/run_robust_button.sh precontact --button-direction up
+
+# 本押し。シミュレーション3条件が合格したら追加のYES入力なしで開始する。
+bash Manipulation/push_button/real/run_robust_button_press.sh --button-direction up
+```
+
+下ボタンは `--button-direction down`。
+`--stroke-mm` でその回の実測ストロークをmm単位で上書きできる。
+CLIの指定は、その回の設定コピーへ反映し、元の設定は変更しない。
+`--setup` で別の設定ファイルを選べる。
+
+本押しは接近中に同じボタンを追跡し、最後5mmから5cm退避までは目標と補正量を固定する。
+この区間は手で対象が隠れても最後の有効な観測と検証済み経路で進み、
+**固定区間専用の時間制限は設けない**。区間の開始には0.5秒以内の観測が必要。
+新しい観測が得られた場合は対象位置・法線の変化を監視するが、目標は更新しない。
+5cm退避後は再び新しい観測が必要。固定区間中はボタンとパネルが動かないことが前提。
+カメラ処理の異常終了は画像の遮蔽として扱わない。
+
+ボタンが想定より奥にある条件への追従余裕として、既存の追従補償に最大1mmの
+法線方向補償を追加する。実測ストローク、過押し・接触力・追従誤差の合否基準は維持し、
+適用した補償量は計画の `motion_metrics.button_press` に保存する。
+
+全区間で状態受信100ms・制御更新100ms・姿勢・FK追従・関節上限・衝突の監視を維持する。
+ボトル用の姿勢差を記録して続行する設定は使わない。
+子プロセスの既存の100秒上限、ブリッジの通信監視、Ctrl+C時の解除は維持する。
+
+復帰・解除後の新しい画像3枚を最大2秒待ち、押下前からの増光を確認する。
+3枚とも `lamp_min_rise`（既定30）以上なら `lit`、3枚とも未満なら `no_rise`、
+判定混在・画像不足は `unknown`。`no_rise` は新しい増光を確認しなかったことを示し、
+既に点灯していたボタンの消灯を証明するものではない。自動では押し直さない。
+
+ログは `_local/robust_button/runs/日時_モード_ID/` に保存する。
+設定・校正・ソースhash・3条件の評価・指令と実測角・固定区間と観測の経過時間・
+点灯判定・復帰・解除を分けて記録する。実機の `physical_press_success` はnull。
+ボトル版と共通のロックで同時実行を防ぐ。
+
+本押しの終了コード0は動作・復帰・解除・増光確認の成立、1は未完了または増光未確認、
+2は準備・通信・処理のエラー、130は中断。接触前診断は診断・復帰・解除で0。
+`check` の0は入力・計画・重み0の出力確認の成立を示す。
+実機での押下成功は、ソフトウェア試験とは別に接触前診断と本押しで確認する。
+
 ## 設定と対象選択
 
 `real/button_field_trial.example.json` をコピーし、`stroke` を使用するボタンの実測値にする。

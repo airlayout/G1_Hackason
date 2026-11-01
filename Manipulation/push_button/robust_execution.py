@@ -7,26 +7,58 @@ from alignment import JointCommandFilter
 from robust_scene import build_scene_model, update_robot, contact_metrics
 from robust_planner import PERIOD, reference_torque
 from robust_perception import CorrectionGate
-from robust_control import BottleFeedback, fade_return_offset, reference_command
+from robust_control import (BottleFeedback, fade_return_offset, reference_command,
+                            waist_support_torque, bottle_runtime_state)
 
 
-def validate_start(scene, configuration, observed):
+# Only the right arm is commanded by this task. The held left arm may settle
+# during the SDK handover; its measured pose is still used for collision checks.
+START_MONITORED_JOINTS = tuple(range(15)) + tuple(range(22,29))
+
+
+def button_fixed_interval(scene, candidate):
+    """The verified path, rather than elapsed time, bounds contact occlusion."""
+    depth = (np.asarray(candidate.tcp)-scene.face) @ np.asarray(scene.normal)+scene.tip_radius
+    close = np.flatnonzero(depth[:candidate.press_end+1] >= -.005-1e-9)
+    retreat = np.flatnonzero(depth[candidate.press_end+1:] <= -.05+1e-9)
+    if not len(close) or not len(retreat):
+        raise ValueError('Button trajectory must include final 5mm approach and 5cm retreat')
+    return int(close[0]), int(candidate.press_end+1+retreat[0])
+
+
+def validate_start(scene, configuration, observed, *, record_deviations=False):
     q, imu, _, leg, gyro = configuration
-    if (np.max(np.abs(np.array(q)-scene.q)) > .01
-            or np.max(np.abs(np.array(imu)-scene.imu)) > np.deg2rad(.5)
-            or leg > .15 or gyro > .10):
+    delta = np.abs(np.array(q)-scene.q)
+    if leg > (.5 if record_deviations else .15) or gyro > (.3 if record_deviations else .10):
         raise RuntimeError('Robot moved while planning; discard snapshot')
-    if np.linalg.norm(np.array(observed.geometry['face'])-scene.face) > max(.003, scene.uncertainty_m):
-        raise RuntimeError('Target moved while planning; discard snapshot')
-    if scene.task == 'bottle' and abs(observed.geometry.get('object_height',scene.object_height)-scene.object_height) > .01:
-        raise RuntimeError('Bottle vertical extent changed while planning')
+    warnings = []
+    checks = [(np.max(delta[list(START_MONITORED_JOINTS)]) > .01
+        or np.max(np.abs(np.array(imu)-scene.imu)) > np.deg2rad(.5),
+        'Robot moved while planning; discard snapshot'),
+        (np.linalg.norm(np.array(observed.geometry['face'])-scene.face) > max(.003,scene.uncertainty_m),
+        'Target moved while planning; discard snapshot'),
+        (scene.task == 'bottle' and abs(observed.geometry.get('object_height',scene.object_height)-scene.object_height) > .01,
+        'Bottle vertical extent changed while planning')]
+    for changed,reason in checks:
+        if changed:
+            if not record_deviations:
+                raise RuntimeError(reason)
+            warnings.append(reason)
+    return warnings
 
 
 def execute(plan, model_path, calibration, motion, configuration, observe, settings,
-            *, now=time.monotonic, set_torque=lambda tau: None, diagnostic=False):
+            *, now=time.monotonic, set_torque=lambda tau: None, diagnostic=False,
+            record_deviations=False, set_waist_torque=None, allow_stale_observation=False,
+            observe_held=None):
     if plan.candidate is None:
         raise RuntimeError('No fully verified robust plan; no motion allowed')
     s, c = plan.scene, plan.candidate
+    if allow_stale_observation and (s.task != 'bottle' or settings.bottle_feedback != 'off'):
+        raise ValueError('Stale observations require bottle feedback off')
+    if observe_held is not None and (s.task != 'button' or diagnostic or record_deviations):
+        raise ValueError('Contact occlusion requires a monitored full button press')
+    fixed_interval = button_fixed_interval(s,c) if observe_held is not None else None
     if s.task == 'bottle' and c.motion_metrics.get('bottle_feedback_mode', 'off') != settings.bottle_feedback:
         raise RuntimeError('Bottle feedback mode differs from the verified plan')
     report = dict(schema='g1-robust-execution-v1', task=s.task, completed=False, motion_completed=False,
@@ -35,9 +67,19 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
     report['limits'] = settings.motion_limits.to_dict()
     report['target_motion_s'] = settings.motion_duration_s
     report['bottle_feedback'] = settings.bottle_feedback
+    report.update(allow_stale_observation=allow_stale_observation,stale_observation_commands=0)
+    report.update(record_deviations=record_deviations,warnings=[],tracking_samples=[],max_fk_error_m=0.)
+    if fixed_interval is not None:
+        report['button_fixed_target'] = dict(start_index=fixed_interval[0],end_index=fixed_interval[1],
+            interval_timeout_s=None,stale_observation_commands=0)
+    def deviation(reason):
+        if not record_deviations:
+            raise RuntimeError(reason)
+        if reason not in report['warnings']:
+            report['warnings'].append(reason)
     check = build_scene_model(model_path, calibration, s)
     start = configuration()
-    validate_start(s, start, observe())
+    report['warnings'].extend(validate_start(s,start,observe(),record_deviations=record_deviations))
     gate = BottleFeedback(s) if s.task == 'bottle' else CorrectionGate(s)
     command_filter = JointCommandFilter(c.q[0], settings.motion_limits)
     n = np.array(s.normal)
@@ -46,41 +88,81 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
     peak_speed = peak_acceleration = 0.
     try:
         set_torque(c.tau[0])
+        if set_waist_torque is not None:
+            set_waist_torque(c.waist_tau[0] if c.waist_tau is not None else waist_support_torque(check,c.q[0]))
         enabled = True  # A partially failed enable still needs release.
         motion.enable()
         report['enable_s'] = now()-started
         # Enabling must not invalidate the observed state used to select the path.
-        validate_start(s, configuration(), observe())
+        enabled_state = configuration()
+        joint_delta = np.array(enabled_state[0])-np.array(s.q)
+        peak_index = max(START_MONITORED_JOINTS,key=lambda index:abs(joint_delta[index]))
+        report['post_enable_state'] = dict(motor_q_rad=list(map(float,enabled_state[0])),
+            imu_rpy_rad=list(map(float,enabled_state[1])),state_age_s=now()-enabled_state[2],
+            leg_speed_rad_s=float(enabled_state[3]),gyro_rad_s=float(enabled_state[4]))
+        report['post_enable_delta'] = dict(max_joint_index=int(peak_index),
+            max_joint_rad=float(abs(joint_delta[peak_index])),
+            monitored_joint_indices=list(START_MONITORED_JOINTS),
+            left_arm_delta_rad=joint_delta[15:22].tolist(),left_arm_excluded_from_start_check=True,
+            imu_rpy_rad=(np.array(enabled_state[1])-np.array(s.imu)).tolist())
+        report['warnings'].extend(validate_start(s,enabled_state,observe(),record_deviations=record_deviations))
         last_tick = now()
         trajectory_started = now()
         end = c.press_start if diagnostic else len(c.q)
         for i in range(end):
             cycle = now()
-            if cycle-last_tick > .1:
-                raise RuntimeError('Control update exceeded 100ms')
+            max_age = .4 if record_deviations else .1
+            if cycle-last_tick > max_age:
+                raise RuntimeError(f'Control update exceeded {max_age*1000:.0f}ms')
             q, imu, stamp, leg, gyro = configuration()
-            if not 0 <= now()-stamp <= .1 or leg > .15 or gyro > .10:
+            if (not 0 <= now()-stamp <= max_age or leg > (.5 if record_deviations else .15)
+                    or gyro > (.3 if record_deviations else .10)):
                 raise RuntimeError('Stale or moving robot state')
             if np.max(np.abs(np.array(imu)-s.imu)) > np.deg2rad(3) or np.max(np.abs(np.array(q)[12:15]-np.array(s.q)[12:15])) > np.deg2rad(3):
-                raise RuntimeError('Body posture changed')
+                deviation('Body posture changed')
             if np.max(np.abs(np.array(q)[:12]-np.array(s.q)[:12])) > .025:
-                raise RuntimeError('Leg posture changed')
-            observation = observe()
+                deviation('Leg posture changed')
+            locked = fixed_interval is not None and fixed_interval[0] <= i <= fixed_interval[1]
+            # Require a fresh measurement at lock entry. Later occlusion may
+            # reuse the measured target, while camera-worker errors still raise.
+            observation = (observe_held() if locked and i > fixed_interval[0] else observe())
+            observation_age = now()-observation.captured_at
+            if fixed_interval is not None and (observation_age < 0 or
+                    ((not locked or i == fixed_interval[0]) and observation_age > .5)):
+                raise RuntimeError('No fresh button observation outside contact interval')
             progress = max(0., float((c.tcp[min(i,c.press_end)]-np.array(s.face))@n+s.tip_radius))
             freeze = s.task == 'button' and (c.tcp[i]-s.face)@n+s.tip_radius >= -.005
             if s.task == 'bottle':
-                if abs(observation.geometry.get('object_height',s.object_height)-s.object_height) > .01:
-                    raise RuntimeError('Bottle vertical extent changed')
-                displacement = np.array(observation.geometry['face'])-s.face
-                offset = gate.update(displacement,progress,observation.frame_id,
-                                     freeze=settings.bottle_feedback == 'off' or i < c.press_start or i > c.press_end)
+                face,progress,observation_age,predicted = bottle_runtime_state(
+                    s,c,i,observation,now(),allow_stale=allow_stale_observation)
+                if predicted:
+                    # Feedback is off: follow the verified path. An old image
+                    # cannot measure progress or prove that the bottle stopped.
+                    offset = np.zeros(3)
+                    report['stale_observation_commands'] += 1
+                else:
+                    if abs(observation.geometry.get('object_height',s.object_height)-s.object_height) > .01:
+                        deviation('Bottle vertical extent changed')
+                    displacement = face-s.face
+                    offset = gate.update(displacement,progress,observation.frame_id,
+                                         freeze=settings.bottle_feedback == 'off' or i < c.press_start or i > c.press_end)
                 offset = fade_return_offset(offset,c,i)
             else:
-                offset = gate.update(observation, progress, freeze=freeze or i > c.press_end)
+                if locked and observation_age > .5:
+                    offset = gate.offset.copy()
+                    report['button_fixed_target']['stale_observation_commands'] += 1
+                else:
+                    offset = gate.update(observation, progress, freeze=locked or freeze or i > c.press_end)
+                if fixed_interval is not None and i == fixed_interval[0]:
+                    report['button_fixed_target'].update(face_m=list(observation.geometry['face']),
+                        normal=list(observation.geometry['normal']),offset_m=offset.tolist(),
+                        frame_id=observation.frame_id,captured_at_s=observation.captured_at)
+                if fixed_interval is not None and i > fixed_interval[1]:
+                    remaining = len(c.q)-1-i
+                    offset = offset*max(0.,remaining/max(1,len(c.q)-1-fixed_interval[1]))
             pose = update_robot(check,q,imu)
             if s.task == 'bottle':
                 adr = check.model.joint('robust_object_joint').qposadr[0]
-                face = observation.geometry['face']
                 pose[adr:adr+3] = (face[0]+s.radius,face[1],s.base_height+s.object_height/2)
                 check.update(pose)
             measured_tip = check.tip_position().copy()
@@ -95,8 +177,17 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
                 dq = np.linalg.lstsq(jac[:, check.dadr], offset, rcond=.01)[0]
                 goal = command_filter.next_goal(c.q[i]+dq, PERIOD)
                 target_tcp = c.tcp[i]
-            if np.linalg.norm(measured_tip-target_tcp) > .01:
-                raise RuntimeError('Measured FK tracking error exceeds 10mm')
+            command_tracking_error = float(np.linalg.norm(measured_tip-target_tcp))
+            initial_target_tcp = c.tcp[i]+offset
+            tracking_error = float(np.linalg.norm(measured_tip-initial_target_tcp))
+            report['max_fk_error_m'] = max(report['max_fk_error_m'],tracking_error)
+            report['tracking_samples'].append(dict(time_s=now()-started,
+                state_received_at_s=float(stamp),measured_imu_rpy_rad=list(map(float,imu)),
+                error_m=tracking_error,measured_xyz_m=measured_tip.tolist(),reference_xyz_m=initial_target_tcp.tolist(),
+                command_reference_xyz_m=target_tcp.tolist(),command_tracking_error_m=command_tracking_error,
+                waist_q_rad=list(map(float,np.array(q)[12:15])),leg_speed_rad_s=float(leg),gyro_rad_s=float(gyro)))
+            if tracking_error > .01:
+                deviation('Measured FK tracking error exceeds 10mm')
             peak_speed = max(peak_speed, float(np.max(np.abs(command_filter.velocity))))
             peak_acceleration = max(peak_acceleration, float(np.max(np.abs(
                 command_filter.velocity-previous_velocity)))/PERIOD)
@@ -113,11 +204,23 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
             if s.task != 'bottle':
                 tau = reference_torque(check, goal, command_filter.velocity, settings.gravity_scale)
             set_torque(tau)
+            waist_tau = c.waist_tau[i] if c.waist_tau is not None else waist_support_torque(check,goal)
+            if set_waist_torque is not None:
+                set_waist_torque(waist_tau)
             motion.stream(goal, velocity=command_filter.velocity)
             report['commands'].append(dict(time_s=now()-started, phase=c.phases[i], q=goal.tolist(),
                 velocity_rad_s=command_filter.velocity.tolist(), tau=tau.tolist(),
                 measured_q=np.array(q).tolist(), observation_frame_id=observation.frame_id,
+                waist_tau_nm=waist_tau.tolist(),
                 observation_captured_at=observation.captured_at))
+            if s.task == 'bottle':
+                report['commands'][-1].update(observation_age_s=float(observation_age),
+                    bottle_pose_source='reference_prediction' if predicted else 'observation',
+                    bottle_face_m=face.tolist())
+            elif fixed_interval is not None:
+                report['commands'][-1].update(button_target_locked=locked,
+                    observation_age_s=float(observation_age),
+                    button_observation_source='held' if observation_age > .5 else 'fresh')
             report['correction_steps'].append(dict(frame_id=observation.frame_id, offset_m=offset.tolist()))
             motion.wait(max(0., PERIOD-(now()-cycle)))
             last_tick = cycle
@@ -132,7 +235,11 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
                     raise RuntimeError('Diagnostic return has less than 3mm obstacle clearance')
                 check.update(pose)
                 set_torque(reference_torque(check,goal,command_filter.velocity,settings.gravity_scale))
+                if set_waist_torque is not None:
+                    set_waist_torque(waist_support_torque(check,goal))
                 motion.stream(goal,velocity=command_filter.velocity); motion.wait(PERIOD)
+        if hasattr(motion,'finish_stream'):
+            motion.finish_stream()
         report['trajectory_s'] = now()-trajectory_started
         home_started = now()
         motion.wait(.3)
@@ -144,7 +251,7 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
         report.update(motion_completed=not diagnostic, diagnostic_completed=diagnostic,
                       home_completed=bool(home_confirmed), home_confirmation_s=now()-home_started)
         if not report['home_completed']:
-            raise RuntimeError('Home return not confirmed')
+            deviation('Home return not confirmed')
         report['completed'] = True
     except Exception as exc:
         report['error'] = str(exc)

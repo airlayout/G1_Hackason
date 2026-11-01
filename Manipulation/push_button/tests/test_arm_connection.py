@@ -153,6 +153,7 @@ def test_stationarity_guard_reports_body_motion_and_bad_telemetry():
 def test_failed_dds_write_does_not_mark_command_as_sent():
     arm = ArmSdk.__new__(ArmSdk)
     arm._hold = [0.]*14
+    arm._waist_hold = (0.,)*3
     arm._last_right = (0.,)*7
     arm._last_weight = .25
     arm._cmd = SimpleNamespace(motor_cmd=[SimpleNamespace(q=0.) for _ in range(35)], crc=0)

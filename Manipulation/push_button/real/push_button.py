@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""停止した29DoF G1の右腕だけで、調整済みのボタン押下経路を実行する。
+"""停止した29DoF G1で腰と左腕を保持し、右腕で調整済みの押下経路を実行する。
 
 既定は計画表示のみ。実機指令には --execute --calibrated が両方必要。
 歩行モードは事前に有効であること。ここではモード変更、Damp、ReleaseMode を行わない。
@@ -18,6 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from trajectory import (ALL_ARM_INDICES, ARM_INDICES, ARM_JOINTS, PHASES,
                         interpolate, load_plan, validate_arm_q, validate_arm_tau)
 from motion_limits import JointMotionLimits, WEIGHT_RAMP_STEPS
+from upper_body_control import (WAIST_INDICES, UPPER_BODY_INDICES, UPPER_BODY_KP, UPPER_BODY_KD,
+                                control_contract, validate_waist_tau)
 
 
 CONTROL_HZ = 50.0
@@ -34,7 +36,7 @@ def check_speed(start: tuple[float, ...], end: tuple[float, ...],
 
 
 class ArmSdk:
-    """歩行モードを維持して rt/arm_sdk へ腕関節だけを送る。"""
+    """歩行モードを維持し、腰と左腕を保持して右腕の目標を送る。"""
 
     def __init__(self, interface: str) -> None:
         # dry-run は SDK を import しないため、開発PC上でも経路を確認できる。
@@ -59,9 +61,11 @@ class ArmSdk:
         self._cmd = unitree_hg_msg_dds__LowCmd_()
         self._crc = CRC()
         self._hold = None
+        self._waist_hold = None
         self._last_right = None
         self._last_weight = 0.0
         self._last_right_tau = (0.0,) * 7
+        self._last_waist_tau = (0.0,) * 3
 
     def _on_state(self, message) -> None:
         with self._lock:
@@ -106,9 +110,17 @@ class ArmSdk:
             raise RuntimeError("実機状態が古すぎます")
         return joints, rpy, received_at, leg_speed, gyro
 
-    def set_hold(self, current: tuple[float, ...]) -> None:
+    def set_hold(self, current: tuple[float, ...]):
+        if self._last_weight > 0:
+            raise RuntimeError('制御中は上半身の保持姿勢を変更できません')
+        if len(current) != 14 or not all(math.isfinite(value) for value in current):
+            raise ValueError('保持する腕の角度は有限な14個の値が必要です')
+        configuration = self.current_configuration()
+        self._waist_hold = tuple(configuration[0][index] for index in WAIST_INDICES)
         self._hold = list(current)
         self._last_right = tuple(current[7:])
+        return dict(**control_contract(), waist_q_rad=list(self._waist_hold),
+                    held_upper_body_q_rad=list(self._waist_hold)+list(current))
 
     def connection_info(self):
         """腕の接続確認用。状態受信と歩行FSMの照会のみで、運動指令を送らない。"""
@@ -119,7 +131,8 @@ class ArmSdk:
         code, fsm = self._loco.GetFsmId()
         if code != 0:
             raise RuntimeError(f"歩行FSMを取得できません (code={code})")
-        return {"mode_machine": mode_machine, "motor_count": motor_count, "fsm_id": int(fsm)}
+        return {"mode_machine": mode_machine, "motor_count": motor_count, "fsm_id": int(fsm),
+                "upper_body_control": control_contract()}
 
     def configure_motion_limits(self, limits):
         if self._last_weight > 0:
@@ -128,26 +141,28 @@ class ArmSdk:
         return self.motion_limits.to_dict()
 
     def publish(self, right: tuple[float, ...], weight: float,
-                require_fresh_state: bool = True, *, right_tau=None) -> None:
-        if self._hold is None:
-            raise RuntimeError("現在姿勢が未取得です")
+                require_fresh_state: bool = True, *, right_tau=None, waist_tau=None) -> None:
+        if self._hold is None or self._waist_hold is None:
+            raise RuntimeError("腕と腰の現在姿勢が未取得です")
         validate_arm_q(right)
         torques = validate_arm_tau((0.0,) * 7 if right_tau is None else right_tau)
+        waist_torques = validate_waist_tau((0.,)*3 if waist_tau is None else waist_tau)
         if not math.isfinite(weight) or not 0.0 <= weight <= 1.0:
             raise ValueError("腕の制御重みが不正です")
         if weight == 0:
             torques = (0.0,) * 7
+            waist_torques = (0.,)*3
         if require_fresh_state:
             self.current_arm(timeout=STATE_TIMEOUT)
-        targets = self._hold.copy()
-        targets[7:] = right
-        for index, target in zip(ALL_ARM_INDICES, targets):
+        targets = list(self._waist_hold)+self._hold.copy()
+        targets[10:] = right
+        for index, target, kp, kd in zip(UPPER_BODY_INDICES, targets, UPPER_BODY_KP, UPPER_BODY_KD):
             motor = self._cmd.motor_cmd[index]
             motor.q = target
             motor.dq = 0.0
-            motor.tau = torques[index-22] if index >= 22 else 0.0
-            motor.kp = 15.0 if index in (19, 20, 21, 26, 27, 28) else 40.0
-            motor.kd = 1.5
+            motor.tau = torques[index-22] if index >= 22 else waist_torques[index-12] if index < 15 else 0.
+            motor.kp = kp
+            motor.kd = kd
         self._cmd.motor_cmd[29].q = max(0.0, min(1.0, weight))
         self._cmd.crc = self._crc.Crc(self._cmd)
         if self._publisher.Write(self._cmd) is False:
@@ -155,6 +170,7 @@ class ArmSdk:
         self._last_right = right
         self._last_weight = weight
         self._last_right_tau = torques
+        self._last_waist_tau = waist_torques
 
     def release(self) -> None:
         """最後の目標姿勢を維持しながら腕の重みを徐々に解除する。"""
@@ -162,11 +178,14 @@ class ArmSdk:
             return
         start = self._last_weight
         start_tau = getattr(self, "_last_right_tau", (0.0,) * 7)
+        start_waist_tau = getattr(self, '_last_waist_tau', (0.,)*3)
         for step in range(WEIGHT_RAMP_STEPS):
             fraction = 1.0 - step / (WEIGHT_RAMP_STEPS-1)
             weight = start * fraction
             try:
                 kwargs = {"right_tau": tuple(tau*fraction for tau in start_tau)} if any(start_tau) else {}
+                if any(start_waist_tau):
+                    kwargs['waist_tau'] = tuple(tau*fraction for tau in start_waist_tau)
                 self.publish(self._last_right, weight, require_fresh_state=False, **kwargs)
             except Exception as error:  # 通信障害でも解除を試みた事実をログに残す
                 print(f"[release] 指令送信に失敗: {error}", file=sys.stderr, flush=True)

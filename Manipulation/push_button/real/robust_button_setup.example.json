@@ -1,0 +1,10 @@
+{
+  "schema": "g1-robust-session-v1",
+  "sdk_python": "/path/to/sdk/venv/bin/python",
+  "vision_python": "/path/to/vision/venv/bin/python",
+  "trial_config": "_local/robust_button/trial.json",
+  "ssh_host": "g1",
+  "remote_camera_root": "~/button_press/repo/Button_Press/J1-gen",
+  "remote_sdk_python": "/home/unitree/miniforge3/envs/lerobot/bin/python",
+  "remote_network_interface": "eth0"
+}

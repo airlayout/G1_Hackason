@@ -69,12 +69,16 @@ def read_calibration(path, *, require_button=True, require_target_margin=True):
     return calibration, transform
 
 
-def validate_stationary_pose(configuration, calibration):
+def validate_stationary_pose(configuration, calibration, *, allow_pose_drift=False):
     joints, rpy, received_at, leg_speed, gyro = configuration
     if time.monotonic() - received_at > STATE_TIMEOUT:
         raise RuntimeError("実機状態が古すぎます")
-    if leg_speed > 0.15 or gyro > 0.10:
-        raise RuntimeError("脚または骨盤が動いています。押下を中止します")
+    if leg_speed > (0.5 if allow_pose_drift else 0.15) or gyro > (0.3 if allow_pose_drift else 0.10):
+        raise RuntimeError(f'脚または骨盤が動いています (leg={leg_speed:.3f}rad/s, gyro={gyro:.3f}rad/s)')
+    if allow_pose_drift:
+        if np.max(np.abs(np.asarray(rpy)[:2])) > .15:
+            raise RuntimeError('骨盤の傾きが直立範囲を超えています')
+        return
     waist = np.array(joints[12:15])
     if np.max(np.abs(waist - calibration["reference_waist_q_rad"])) > 0.025:
         raise RuntimeError("腰姿勢が校正時から変化しました。再校正が必要です")
@@ -87,16 +91,24 @@ def validate_stationary_pose(configuration, calibration):
 class ArmMotion:
     """画像推論に依存せず50Hzで保持・補間指令を送り、状態を監視する。"""
 
-    def __init__(self, arm, calibration, *, gravity=None, state_sink=None, limits=None):
+    def __init__(self, arm, calibration, *, gravity=None, state_sink=None, limits=None,
+                 allow_pose_drift=False, synchronous_stream=False, waist_gravity=None):
         self.arm, self.calibration = arm, calibration
         self.limits = limits or JointMotionLimits()
         self.enforce_stream_limits = limits is not None
         if limits is not None and arm.configure_motion_limits(limits) != limits.to_dict():
             raise RuntimeError('腕の関節制限を適用できません')
         self.gravity = gravity
+        self.waist_gravity = waist_gravity
+        self.allow_pose_drift = allow_pose_drift
+        self.command_publications = []
+        self.synchronous_stream = synchronous_stream
+        self.streaming = False
+        self.publish_lock = threading.Lock()
+        self.last_publication_at = 0.
         self.state_sink = state_sink
         current = arm.current_arm()
-        arm.set_hold(current)
+        self.upper_body_hold = arm.set_hold(current)
         self.home = tuple(current[7:])
         self.target = self.home
         self.target_velocity = np.zeros(7)
@@ -117,7 +129,7 @@ class ArmMotion:
                 configuration = self.arm.current_configuration()
                 if self.state_sink is not None:
                     self.state_sink(configuration)
-                validate_stationary_pose(configuration, self.calibration)
+                validate_stationary_pose(configuration, self.calibration,allow_pose_drift=self.allow_pose_drift)
                 with self.lock:
                     target, weight = self.target, self.weight
                     velocity = self.target_velocity.copy()
@@ -129,15 +141,25 @@ class ArmMotion:
                         raise RuntimeError("腕の追従誤差が継続しています")
                 else:
                     bad_since = None
-                self.publish(configuration, target, weight, velocity=velocity)
+                if not (self.synchronous_stream and self.streaming):
+                    with self.publish_lock:
+                        if not (self.synchronous_stream and self.streaming):
+                            with self.lock:
+                                target,weight = self.target,self.weight
+                                velocity = self.target_velocity.copy()
+                            self.publish(configuration,target,weight,velocity=velocity)
                 next_tick += 1 / CONTROL_HZ
-                self.stop.wait(max(0, next_tick - time.monotonic()))
+                current = time.monotonic()
+                if next_tick <= current:
+                    next_tick = current + 1 / CONTROL_HZ
+                self.stop.wait(next_tick-current)
         except Exception as exc:
             self.error = exc
             self.stop.set()
         finally:
             try:
-                self.arm.release()
+                with self.publish_lock:
+                    self.arm.release()
             except Exception as exc:
                 self.release_error = str(exc)
 
@@ -146,14 +168,24 @@ class ArmMotion:
             raise RuntimeError(f"腕の状態監視で中止: {self.error}") from self.error
 
     def publish(self, configuration, target, weight, *, velocity=None):
-        if self.gravity is None:
-            self.arm.publish(target, weight)
-        else:
+        tau = None
+        kwargs = {}
+        if self.gravity is not None:
             if velocity is None:
                 with self.lock:
                     velocity=self.target_velocity.copy()
             tau = tuple(float(value)*weight for value in self.gravity(configuration,velocity=velocity))
-            self.arm.publish(target, weight, right_tau=tau)
+            kwargs['right_tau'] = tau
+        waist_tau = None
+        if self.waist_gravity is not None:
+            waist_tau = tuple(float(value)*weight for value in self.waist_gravity(configuration))
+            kwargs['waist_tau'] = waist_tau
+        self.arm.publish(target,weight,**kwargs)
+        self.command_publications.append(dict(acknowledged_at_s=time.monotonic(),
+            q=list(map(float,target)),weight=float(weight),
+            right_tau_nm=None if tau is None else list(tau),
+            waist_tau_nm=None if waist_tau is None else list(waist_tau)))
+        self.last_publication_at = self.command_publications[-1]['acknowledged_at_s']
 
     def wait(self, seconds):
         deadline = time.monotonic() + seconds
@@ -190,8 +222,16 @@ class ArmMotion:
         self.wait(settle_s)
 
     def start_approach(self):
+        with self.publish_lock:
+            self.streaming = True
         self.approach = ApproachPath(self.current_target())
         self.record_approach = True
+
+    def finish_stream(self):
+        with self.publish_lock:
+            with self.lock:
+                self.target_velocity = np.zeros(7)
+            self.streaming = False
 
     def freeze_approach(self):
         self.approach.freeze()
@@ -228,6 +268,15 @@ class ArmMotion:
                     raise ValueError('腕ストリームが関節速度・加速度の上限を超えました')
             self.target_velocity=next_velocity
             self.target = goal
+        if self.synchronous_stream and self.streaming:
+            with self.publish_lock:
+                # One checked sample produces one actual publication. No second
+                # 50Hz loop may overwrite/skip samples or send a catch-up burst.
+                self.wait(max(0.,self.last_publication_at+CONTROL_PERIOD_S-time.monotonic()))
+                config = self.arm.current_configuration()
+                validate_stationary_pose(config,self.calibration,allow_pose_drift=self.allow_pose_drift)
+                self.check()
+                self.publish(config,goal,self.weight,velocity=next_velocity)
         if self.record_approach:
             self.approach.append(goal, 1/CONTROL_HZ)
 

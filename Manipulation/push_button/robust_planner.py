@@ -17,7 +17,7 @@ from robust_scene import SceneSnapshot, build_scene_model, clone_kin, contact_me
 from trajectory import ARM_JOINTS, ARM_TORQUE_LIMITS_NM
 from alignment import press_compensation_allowance, press_overtravel_allowance
 from alignment import JointCommandFilter
-from robust_control import BottleFeedback, bottle_contact_margin, fade_return_offset, reference_command
+from robust_control import BottleFeedback, bottle_contact_margin, fade_return_offset, reference_command, waist_support_torque
 from motion_limits import (JointMotionLimits, CONTROL_PERIOD_S, MOTION_OVERHEAD_S,
                            PLANNED_LIMIT_FRACTION, MOTION_TOLERANCE_S)
 
@@ -84,6 +84,7 @@ class Candidate:
     min_clearance_m: float
     tau: np.ndarray
     motion_metrics: dict = field(default_factory=dict)
+    waist_tau: np.ndarray | None = None
 
 
 @dataclass
@@ -102,6 +103,7 @@ class PlanResult:
                 tcp=c.tcp.tolist(), phases=c.phases, press_start=c.press_start,
                 press_end=c.press_end, retract_end=c.retract_end, duration_s=c.duration_s,
                 motion_metrics=c.motion_metrics)
+            result['trajectory']['waist_tau_nm'] = None if c.waist_tau is None else c.waist_tau.tolist()
         return result
 
 
@@ -196,7 +198,10 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     points, labels = [home], ['approach']
     tip = kin.tip_position()
     raised = face-(r+.12)*normal + [0, waypoint_offset[0], (.10 if scene.task=='bottle' else 0.)+waypoint_offset[1]]
-    depth = (scene.stroke+press_compensation_allowance(scene.stroke)
+    # Reserve up to 1mm for residual normal tracking at the farther position
+    # scenario. Larger feedforward increases contact tracking error; rollouts
+    # still enforce the measured stroke, overtravel, tracking and force bounds.
+    depth = (scene.stroke+press_compensation_allowance(scene.stroke)+min(.001,settings.position_span_m)
              if scene.task == 'button' else scene.push_distance)
     relative_feedback = scene.task == 'bottle' and settings.bottle_feedback == 'relative'
     contact_clearance = .005+scene.uncertainty_m+settings.position_error_m if relative_feedback else .005
@@ -240,6 +245,10 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
              if scene.task == 'bottle' else np.r_[0., np.cumsum(durations)])
     times, spline, t, metrics = retime_reference(times, points, settings)
     qs = spline(t)
+    if scene.task == 'button':
+        metrics['button_press'] = dict(measured_stroke_m=scene.stroke,
+            compliance_compensation_m=press_compensation_allowance(scene.stroke),
+            normal_tracking_reserve_m=min(.001,settings.position_span_m),reference_depth_m=depth)
     if scene.task == 'bottle':
         metrics['bottle_feedback_mode'] = settings.bottle_feedback
         metrics['bottle_feedback'] = dict(offset_limit_m=scene.uncertainty_m+.005,
@@ -251,13 +260,14 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     margin = float(np.min(np.minimum(qs-limits[:, 0], limits[:, 1]-qs)))
     if margin < .025:
         raise ValueError('Interpolated joint limit')
-    tcp, taus, clearance = [], [], .05
+    tcp, taus, waist_taus, clearance = [], [], [], .05
     for i, q in enumerate(qs):
         if time.perf_counter() >= deadline:
             raise TimeoutError('static validation budget')
         pose = original.copy(); pose[kin.qadr] = q; kin.update(pose)
         clearance = min(clearance, contact_metrics(kin, scene, contact=True))
         tcp.append(kin.tip_position())
+        waist_taus.append(waist_support_torque(kin))
         taus.append(np.clip((kin.data.qfrc_bias[kin.dadr]+1.5*spline(t[i],1))*settings.gravity_scale,
                             -np.array(ARM_TORQUE_LIMITS_NM),ARM_TORQUE_LIMITS_NM))
     kin.update(original)
@@ -267,7 +277,7 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     end = max(i for i, p in enumerate(phases) if p == 'press')
     retract = max(i for i, p in enumerate(phases) if p == 'retract')
     return Candidate(index, qs, np.array(tcp), phases, start, end, retract, len(qs)*PERIOD,
-                     margin, clearance, np.array(taus), metrics)
+                     margin, clearance, np.array(taus), metrics, np.array(waist_taus))
 
 
 def uncertainty_scenarios(settings, scene, *, include_corners=True, full_uncertainty=False):
@@ -346,6 +356,10 @@ def physical_trial(base_kin, scene, c, condition, deadline):
     state = np.empty(mujoco.mj_stateSize(m, state_spec))
     target_id = m.body('robust_target').id
     gains = m.actuator_gainprm[kin.actuator, 0]
+    waist_dadr = np.array([int(m.joint(index).dofadr[0]) for index in (12,13,14)])
+    waist_taus = c.waist_tau
+    if waist_taus is None:
+        waist_taus = np.array([waist_support_torque(base_kin,q) for q in c.q])
     feedback = (BottleFeedback(scene) if scene.task == 'bottle'
                 and c.motion_metrics.get('bottle_feedback_mode', 'off') == 'relative' else None)
     if feedback is not None:
@@ -364,6 +378,7 @@ def physical_trial(base_kin, scene, c, condition, deadline):
         inputs[:, :m.nu] = scene.q
         inputs[:, kin.actuator] = c.q[first:last]+np.array(condition['tracking'])
         inputs[:, m.nu+kin.dadr] = c.tau[first:last]
+        inputs[:, m.nu+waist_dadr] = waist_taus[first:last]
         reference_tcp = c.tcp[first:last].copy()
         if feedback is not None:
             # Fixed calibration translation cancels in object displacement.
@@ -382,6 +397,7 @@ def physical_trial(base_kin, scene, c, condition, deadline):
                                                           feedback_settings['gravity_scale'])
                     inputs[j, kin.actuator] = goal+np.array(condition['tracking'])
                     inputs[j, m.nu+kin.dadr] = torque
+                    inputs[j, m.nu+waist_dadr] = waist_support_torque(reference_kin,goal)
                     reference_tcp[j] = tcp
             except (ValueError, RuntimeError) as exc:
                 return dict(completed=False, reason=str(exc), wall_s=time.perf_counter()-started)
@@ -473,6 +489,9 @@ def search(path, calibration, scene, settings=SearchSettings(), *, monitor=lambd
         completed_rollouts=0, aborted_rollouts=0, candidates=[], stages_wall_s={}, stopped_for_measurement=0)
     workers = min(settings.workers, settings.scenarios)
     report['selection'] = 'first_valid'
+    from upper_body_control import control_contract
+    report['upper_body_control'] = control_contract()
+    report['base_model'] = 'fixed_pelvis; locomotion balance is not simulated'
     report['validation_envelope'] = dict(position_span_m=settings.position_span_m,
         calibration_uncertainty_m=scene.uncertainty_m, target_margin_is_diagnostic=True)
     report['runtime'] = dict(mujoco_version=mujoco.__version__, physics_timestep_s=.002,

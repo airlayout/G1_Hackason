@@ -45,10 +45,13 @@ class ObservationWindow:
         self.reference = None
 
     def consume(self, value, now):
-        if value.frame_id <= self.last_id or value.captured_at <= self.last_stamp:
+        if (value.frame_id <= self.last_id or value.captured_at <= self.last_stamp
+                or not 0 <= now-value.captured_at <= .5):
             self.samples.clear()
-            raise ValueError('Duplicate or out-of-order perception frame')
+            raise ValueError('Stale or duplicate perception frame')
         self.last_id, self.last_stamp = value.frame_id, value.captured_at
+        if self.samples and value.captured_at-self.samples[-1].captured_at > .5:
+            self.samples.clear()  # a disappearance must not reuse pre-loss stability samples
         g = value.geometry
         if self.reference is not None:
             if (np.linalg.norm(np.array(g['face'])-self.reference['face']) > .025
@@ -110,13 +113,13 @@ class ContinuousObserver:
         finally:
             self.close_reader()
 
-    def latest(self):
+    def latest(self, *, allow_stale=False):
         if self.error is not None:
             raise RuntimeError(f'Perception stopped: {self.error}') from self.error
         with self.lock:
             value = self.value
-        if value is None:
-            raise RuntimeError('No continuous observation')
+        if value is None or (not allow_stale and not 0 <= self.now()-value.captured_at <= .5):
+            raise RuntimeError('No fresh continuous observation')
         return value
 
     def initial(self, timeout_s=5.):

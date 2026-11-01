@@ -4,6 +4,20 @@ import numpy as np
 
 from motion_limits import CONTROL_PERIOD_S
 from trajectory import ARM_TORQUE_LIMITS_NM
+from upper_body_control import WAIST_INDICES, WAIST_TORQUE_LIMIT_NM
+
+
+def waist_support_torque(kin, right_q=None):
+    """Bounded gravity feedforward at the held waist and nominal arm target."""
+    original = kin.data.qpos.copy()
+    try:
+        if right_q is not None:
+            pose = original.copy(); pose[kin.qadr] = right_q; kin.update(pose)
+        addresses = [int(kin.model.joint(index).dofadr[0]) for index in WAIST_INDICES]
+        return np.clip(kin.data.qfrc_bias[addresses],-WAIST_TORQUE_LIMIT_NM,WAIST_TORQUE_LIMIT_NM).copy()
+    finally:
+        if right_q is not None:
+            kin.update(original)
 
 
 class BottleFeedback:
@@ -47,6 +61,19 @@ def fade_return_offset(offset, candidate, index):
         return offset
     remaining = len(candidate.q)-1-index
     return offset*max(0., remaining/max(1, len(candidate.q)-1-candidate.retract_end))
+
+
+def bottle_runtime_state(scene, candidate, index, observed, current_time, *, allow_stale=False):
+    """Keep stale measurements distinct from the verified nominal object motion."""
+    normal = np.asarray(scene.normal)
+    progress = float(np.clip((candidate.tcp[min(index,candidate.press_end)]-scene.face)@normal
+                             +scene.tip_radius,0.,scene.push_distance))
+    age = current_time-observed.captured_at
+    predicted = allow_stale and not 0 <= age <= .5
+    # The object stays displaced while the hand retracts and returns home.
+    face = (np.asarray(scene.face)+progress*normal if predicted
+            else np.asarray(observed.geometry['face']))
+    return face, progress, age, predicted
 
 
 def reference_command(kin, candidate, index, offset, command_filter, gravity_scale):
