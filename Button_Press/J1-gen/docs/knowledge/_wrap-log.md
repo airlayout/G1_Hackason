@@ -35,3 +35,13 @@
 - real_robot_notes.md: 「2026-10-31 に分かったこと」（モード切り替えで PC2 が再起動しカメラ配信が消える、立ち直すと位置関係が変わる、
   骨盤の傾きの上限、追従の遅れ・押し込みの結果、広げた設定の初回、頭カメラの向き 50.2°、録画の大きさ）
 - 提案したが保存しなかった: なし
+
+## 2026-11-01 / G1 ボタン押し（Button_Press/J1-gen）
+
+対象: 2026-10-31〜11-01 のセッション全体（ノート PC から Wi-Fi で PC2 に ssh。onboard の見積もり、PC2 の調査・計画の時間、lowstate の受け取り、ボタンと人の YOLO の ONNX）
+
+- tech/pc2_onboard.md（新規）: YOLO26 の ONNX は `end2end=False` で書き出し、元の `.pt` と比べる
+- tech/pc2_onboard.md（新規）: lowstate をコールバックで全部受けると 1 コアの 7 割（最新 1 件だけ持つ DataReader で 10%）
+- tech/shell_and_ssh.md: `pkill -f` が自分を止める件の再発（ssh 先の `bash -c`）
+- real_robot_notes.md: 「2026-10-31 に分かったこと（PC2 で動かす準備）」（PC2 の中なら DDS が届く、DDS のライブラリは lerobot にある、計画・YOLO の時間）
+- 提案したが保存しなかった: なし

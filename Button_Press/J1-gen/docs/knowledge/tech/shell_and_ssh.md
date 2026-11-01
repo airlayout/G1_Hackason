@@ -13,6 +13,10 @@
 - **対処**: 起動と停止を別のコマンドに分ける。止めるときは PID（`$!` を保存する、`pgrep` で確かめてから `kill <PID>`）か、
   バックグラウンドのタスクを止める仕組みを使う。止めたあとは `pgrep -af ... | grep -v pgrep` で残っていないかを確かめる
 - **教訓**: `pkill -f` のパターンは、それを書いたシェルのコマンドラインにも一致しうる。同じコマンドの中で起動と pkill をしない
+- **再発（2026-10-31）**: ssh 先で `while pgrep -f "trtexec --onnx"; do sleep 15; done` と待ったら、待つシェル自身に一致して終わらなかった。
+  片付けに `ssh unitree@... 'pkill -f "while pgrep -f"; 続きのコマンド'` と送ると、ssh が起こした `bash -c` のコマンドラインにもその文字があり、
+  自分ごと止めて何も出力されなかった。**ssh 先に送ったコマンドは全体が 1 つの `bash -c` になるので、同じ行の `pgrep -f`・`pkill -f` は必ず自分に一致する。**
+  待つなら `pgrep -x trtexec`（名前の完全一致）か PID、止めるなら `ps` で PID を見てから `kill <PID>`
 
 ## `~/.ssh/config` の `PubkeyAuthentication no` で、登録した鍵が使われない
 
