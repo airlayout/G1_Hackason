@@ -79,3 +79,18 @@
   Claude はそこから結果（終了コード・進んだ距離・中止の理由・体の動き）を読める。ターミナルの文面そのものが要るときは、
   貼ってもらい、`_local/button_press/terminal_logs/<日付>_*.log` に保存する（その日の全体を 1 つのファイルに追記する）
 - **教訓**: 実機日は「何を見たか」を人が口頭で言うので、Claude の側では、保存されたログで裏を取ってから答える
+
+## 無線の ssh から、PC2 の上の押す処理を切り離して動かす（`real/onboard.sh`）
+
+- **日付**: 2026-11-01
+- **プロジェクト**: G1 ボタン押し（`real/onboard.sh`）
+- **前提バージョン**: bash、`setsid`（util-linux）、OpenSSH。ノート PC（WSL2）→ PC2 `unitree@192.168.0.82`（Wi-Fi）
+- **状況**: `ssh host 'auto_press.py --execute'` のままだと、Wi-Fi の ssh が切れたとき SIGHUP で押す処理が終わり、来た経路を戻らずに止まる
+- **対処**: `start` は `setsid -f bash -c "echo \$\$ > pidfile; exec python ... > log 2>&1 < /dev/null"` で切り離す（bash の PID = プロセスグループ番号）。
+  `stop` は別の ssh から `kill -INT -- -<番号>`（Ctrl+C と同じ。`ArmCommander` は腕を動かしている間 SIGINT / SIGTERM を自分で受けて、安全に終了して戻る）。
+  `follow` は `tail -f`（ここで Ctrl+C しても押す処理は止まらない）。別の班の `g1_e2e` が動いている間は `--execute` を断る
+- **はまった点**（3 つとも手元の偽の ssh の試験では通っていた）:
+  1. ヒアドキュメントの中で手元の変数（ノート PC のリポジトリのパス）を使い、PC2 で `cd` に失敗した（手元の試験ではそのパスが実在した）
+  2. 子の `press_bottle.py` の出力がファイルにバッファされ、ログに出るのが終わってからだった → `PYTHONUNBUFFERED=1`（`python -u` は親だけ）
+  3. `printf ' %q' "${arr[@]}"` は配列が空でも `''` を 1 つ作る → `press_bottle.py` が知らない引数として終了コード 2
+- **教訓**: 偽物で試すときは、本物と違う条件（手元にだけあるファイル、いつも同じ引数）が混ざっていないかを見る。実機では、まず dry-run で「起動 → 止める」まで通す

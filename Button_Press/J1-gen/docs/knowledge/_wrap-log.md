@@ -63,3 +63,14 @@
 対象: 配置 A〜F の予想とシミュ、模擬ロボットで auto_press、判定基準、動画、reach_wide2.yaml、経由なしの地図
 - real_robot_notes.md: 経由なしの地図（経由の姿勢は今も必要）、reach_wide2.yaml、「指先が実際に進んだ距離」の読み方（50 mm が上限、判定は当たって止まった＋動画）
 - 提案したが保存しなかった: なし
+
+
+## 2026-11-01 / G1 ボタン押し（Button_Press/J1-gen、onboard の実機日）
+
+対象: 広げた設定を既定に、机の箱の余裕 1 cm、無線の ssh で PC2 の上で押す（onboard.sh）、NoMotionError の誤判定、置ける範囲の dry-run
+- patterns/robot_arm_control.md: 「指令どおりに動いたか」の確認は、指令を実際の位置へ寄せるだけの動きでは外す
+- patterns/robot_arm_control.md: dry-run では、中止して戻る動きは確かめられない（模擬ロボットで確かめる）
+- tech/shell_and_ssh.md: 無線の ssh から、PC2 の上の押す処理を切り離して動かす（`real/onboard.sh`）
+- real_robot_notes.md: 2026-11-01 に分かったこと（onboard、送る間隔、別の班の VLA、置ける範囲）
+- 提案したが保存しなかった: （domain・mine は個人の知識の方で確認中）
+

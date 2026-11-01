@@ -266,3 +266,19 @@
 - 人の検出（yolo26n）は PC2 の GPU で 1 枚 17 ms（JetPack の TensorRT 8.5 をシステムの Python 3.8 から。conda の torch では GPU が使えない）、CPU 4 スレッドで 101 ms
 - **Wi-Fi**: 10/31 の再起動のあと、PC2 が `Fujitsu_free_Wi-Fi` に自動でつながり、Physical_AI_5G（192.168.0.82）から見えなくなった（Tailscale ではつながっていた）。
   `Fujitsu_free_Wi-Fi` の自動接続を切った（`nmcli connection modify Fujitsu_free_Wi-Fi connection.autoconnect no`。その Wi-Fi を使うときは `nmcli connection up` で手で）。再起動での確認はまだ
+
+## 2026-11-01 に分かったこと（ノート PC から無線で、PC2 の上で押した。onboard）
+
+細かい記録は `real/DAILY_LOG_20261101_laptop.md`、要約は `docs/reports/REPORT_20261101.md`。
+
+- **押す処理を PC2 の上で動かし、ノート PC から無線で指示するだけでボトルを押せた**（`real/onboard.sh`。前の既定・広げた設定とも）。
+  DDS は PC2 の eth0、カメラは localhost:5556（`--camera-config camera_onboard.yaml`）、ボトルの検出は ONNX（`--detector onnx`。PC2 には ultralytics が無い）
+- ノート PC は、ラボの Wi-Fi（`Physical_AI_5G`）につなぐ。iPhone のテザリングでは PC2 に届かない
+- 机の箱は PC2 で作り、`~/button_press/obstacles_<日付>.yaml` に保存する（`onboard.sh sync` で PC2 の `configs/obstacles.yaml` は上書きされる）。
+  `onboard.sh start` は、その中で一番新しいものを使う
+- PC2 の上でも、腕の指令は中央値 20.0 ms ごと（50 回 / 秒）に送れる。長くなるのは、手前の姿勢で計画し直す一瞬（約 0.2 秒）だけ（`real/send_timing.py`）
+- 送った 8 回は、すべてボトル（テープで固定）に当たって止まった。指先が進んだ距離は 40〜46 mm（表面まで 50 mm）、体の動き 1〜10 mm・傾き 1° 以下
+- **別の班の VLA（`python3 -m g1_e2e.vla.robot --execute`）が PC2 で動いていることがある。** `onboard.sh start --execute` は、動いている間は送らない
+- 置ける範囲（机の縁 約 37 cm、dry-run）: 前の既定は右 11 cm まで、広げた設定は体の正面まで（指を左へ 15〜30°）。左 5 cm は両方とも断る
+  （広げた設定の指 45° は、押し込みの終わりで関節がわずかに速すぎるだけ）
+- PC2 の時計は中国時間（日本時間より 1 時間遅い）
