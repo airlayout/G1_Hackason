@@ -21,6 +21,12 @@ ROOT = Path(__file__).resolve().parents[3]
 REAL = Path(__file__).resolve().parent
 
 
+class PhaseFailure(RuntimeError):
+    def __init__(self,name,code):
+        super().__init__(name+' が完了しませんでした')
+        self.code = code
+
+
 def write_json(path,value):
     path.write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n')
 
@@ -33,27 +39,35 @@ def local_path(value,*,resolve_symlinks=True):
     return path.resolve() if resolve_symlinks else Path(os.path.abspath(path))
 
 
-def motion_arguments(mode,trial,output,socket_path=None,state_path=None):
-    args = [str(REAL/'run_push.py'),'--task','bottle','--motion-planner','robust',
+def motion_arguments(mode,trial,output,socket_path=None,state_path=None,*,task='bottle'):
+    args = [str(REAL/'run_push.py'),'--task',task,'--motion-planner','robust',
         '--trial-config',str(trial),'--output',str(output)]
     if state_path is not None:
         args += ['--state-json',str(state_path)]
     else:
         args += ['--arm-socket',str(socket_path),'--execute','--calibrated']
     if mode != 'push':
-        args += ['--stop-before-contact','--static-target']
-    else:
+        args += ['--stop-before-contact']
+        if task == 'bottle':
+            args += ['--static-target']
+    elif task == 'bottle':
         args += ['--allow-stale-observation']
     if state_path is None and mode in ('precontact','push'):
-        args += ['--execute-after-plan','--planning-scenarios','3']
+        args += ['--execute-after-plan' if task == 'bottle' else '--execute-verified-plan',
+                 '--planning-scenarios','3']
     return args
 
 
-def validate_preview(report,expected_xy,uncertainty):
+def validate_preview(report,expected_xy,uncertainty,*,task='bottle'):
     plan = report.get('plan',{})
     if not plan.get('accepted') or not report.get('planning_completed'):
         raise RuntimeError('経路を採用できません: '+str(report.get('error') or plan.get('reason')))
     scene = plan['scene']
+    if task == 'button':
+        if scene.get('task') != 'button' or plan.get('completed_rollouts') != 3:
+            raise RuntimeError('ボタン用のシミュレーション3条件が必要です')
+        return dict(face_xyz_m=scene['face'],normal=scene['normal'],stroke_m=scene['stroke'],
+            completed_conditions=plan['completed_rollouts'],trajectory_samples=len(plan['trajectory']['q']))
     centre = [scene['face'][0]+scene['radius'],scene['face'][1]]
     distance = sum((a-b)**2 for a,b in zip(centre,expected_xy))**.5
     if distance > uncertainty:
@@ -61,6 +75,53 @@ def validate_preview(report,expected_xy,uncertainty):
     return dict(centre_xy_m=centre,measured_reference_xy_m=expected_xy,
         reference_difference_m=distance,completed_conditions=plan['completed_rollouts'],
         trajectory_samples=len(plan['trajectory']['q']))
+
+
+def validate_button_trial(trial,calibration):
+    """Reject missing measurements and bottle-only modes before opening SSH/DDS."""
+    if trial.get('task','button') != 'button':
+        raise ValueError('ボタン用のtrial_configを指定してください')
+    stroke = trial.get('stroke')
+    if isinstance(stroke,bool) or not isinstance(stroke,(int,float)) or not math.isfinite(stroke) or not .0015 <= stroke <= .015:
+        raise ValueError('実測したstroke（1.5〜15mm）を設定するか--stroke-mmで指定してください')
+    direction,pixel = trial.get('button_direction'),trial.get('target_pixel')
+    if direction not in (None,'up','down'):
+        raise ValueError('button_directionはup/downで指定してください')
+    if pixel is not None and (not isinstance(pixel,(list,tuple)) or len(pixel)!=2 or
+            any(isinstance(v,bool) or not isinstance(v,int) or v<0 for v in pixel)):
+        raise ValueError('target_pixelは画像内の整数座標[U,V]で指定してください')
+    if direction is None and pixel is None:
+        raise ValueError('--button-direction up/downまたは--target-pixel U Vで対象を指定してください')
+    for key in ('static_target','allow_stale_observation','execute_after_plan'):
+        if trial.get(key):
+            raise ValueError('ボタンではボトル用の'+key+'を使用できません')
+    if trial.get('execute') or trial.get('execute_verified_plan'):
+        raise ValueError('実行指定はtrialではなくランチャーのモードで選択してください')
+    dimensions = [calibration.get(k) for k in ('button_radius_m','tip_radius_m','position_uncertainty_m')]
+    if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in dimensions):
+        raise ValueError('校正JSONに実測button_radius_m・tip_radius_m・position_uncertainty_mが必要です')
+    button,tip,uncertainty = dimensions
+    if not (0 < tip < .04 and tip < button <= .06 and 0 <= uncertainty <= .02):
+        raise ValueError('ボタン・手先の半径または校正の不確かさが範囲外です')
+    if button-tip-uncertainty < .003:
+        raise ValueError('ボタン半径から手先半径と校正不確かさを引いた余裕が3mm未満です。実測校正を確認してください')
+    trial['task'] = 'button'
+    trial['planning_scenarios'] = 3
+
+
+def button_result_summary(actual,mode):
+    execution = actual.get('execution',{})
+    returned = (bool(actual.get('completed')) and execution.get('home_completed') is True
+                and execution.get('release_completed') is True and not actual.get('cleanup_errors'))
+    completed = returned and (execution.get('diagnostic_completed') is True if mode=='precontact'
+                              else actual.get('visual_success') is True and execution.get('motion_completed') is True)
+    return dict(completed=bool(completed),motion_completed=bool(execution.get('motion_completed')),
+        diagnostic_completed=bool(execution.get('diagnostic_completed')),
+        home_completed=execution.get('home_completed'),release_completed=execution.get('release_completed'),
+        visual_success=actual.get('visual_success'),lamp_status=actual.get('lamp_check',{}).get('status'),
+        physical_press_success=None,
+        policy=dict(accepted=actual.get('plan',{}).get('accepted'),
+                    completed_conditions=actual.get('plan',{}).get('completed_rollouts')))
 
 
 def execute_child(command,log_path,env,*,input_text=None,timeout=100):
@@ -168,7 +229,7 @@ def print_execution_failure(run):
     if reason:
         print('停止理由:',reason)
     elif execution.get('completed') and report.get('visual_success') is False:
-        print('腕の動作・復帰は完了しましたが、画像で目標の押し込み量を確認できませんでした。')
+        print('腕の動作・復帰は完了しましたが、画像で押下結果を確認できませんでした。')
         if 'measured_displacement_m' in report:
             print('画像で測ったボトル移動量:',report['measured_displacement_m'],'m')
     else:
@@ -191,20 +252,33 @@ def print_execution_failure(run):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--task',choices=('bottle','button'),default='bottle')
     parser.add_argument('mode',choices=('check','precontact','push'),
         help='check: 重み0で入出力確認 / precontact: 接触手前往復 / push: 本押し')
-    parser.add_argument('--setup',type=Path,default=ROOT/'_local/robust_push/active_setup.json')
+    parser.add_argument('--setup',type=Path)
     parser.add_argument('--push-distance',type=float,
         help='ボトルの押し込み量[m]。シミュレーション・実機の両方へ同じ値を適用する')
+    parser.add_argument('--stroke-mm',type=float,help='ボタンの実測ストローク[mm]（1.5〜15）')
+    parser.add_argument('--button-direction',choices=('up','down'))
+    parser.add_argument('--target-pixel',type=int,nargs=2,metavar=('U','V'))
     args = parser.parse_args(argv)
+    if args.setup is None:
+        args.setup = ROOT/('_local/robust_push' if args.task=='bottle' else '_local/robust_button')/'active_setup.json'
+    if args.task == 'button' and args.push_distance is not None:
+        parser.error('ボタンには--push-distanceではなく--stroke-mmを指定してください')
+    if args.task == 'bottle' and any(v is not None for v in (args.stroke_mm,args.button_direction,args.target_pixel)):
+        parser.error('ボタン用の引数には--task buttonが必要です')
+    if args.stroke_mm is not None and (not math.isfinite(args.stroke_mm) or not 1.5 <= args.stroke_mm <= 15):
+        parser.error('--stroke-mm must be between 1.5 and 15mm')
     if args.push_distance is not None and (not math.isfinite(args.push_distance) or not 0 < args.push_distance <= .1):
         parser.error('--push-distance must be finite and between 0 and 0.1m')
     try:
         setup = json.loads(args.setup.read_text())
     except (OSError,ValueError) as exc:
         parser.error('実機設定を読めません: '+str(exc))
-    required = {'sdk_python','vision_python','trial_config','ssh_host','remote_camera_root',
-                'remote_sdk_python','measured_bottle_xy_m'}
+    required = {'sdk_python','vision_python','trial_config','ssh_host','remote_camera_root','remote_sdk_python'}
+    if args.task == 'bottle':
+        required.add('measured_bottle_xy_m')
     if not isinstance(setup,dict):
         parser.error('実機設定はJSONオブジェクトで指定してください')
     if required-set(setup):
@@ -213,16 +287,19 @@ def main(argv=None):
         setup[key] = str(local_path(setup[key],resolve_symlinks=key=='trial_config'))
         if not Path(setup[key]).is_file():
             parser.error('見つかりません: '+setup[key])
-    base = ROOT/'_local/robust_push/runs'
+    base = ROOT/('_local/robust_push' if args.task=='bottle' else '_local/robust_button')/'runs'
     base.mkdir(parents=True,exist_ok=True)
     run = base/(datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+args.mode+'_'+uuid.uuid4().hex[:6])
     run.mkdir()
     print('ログ:',run,flush=True)
-    report = dict(mode=args.mode,completed=False,io_passed=None,setup_file=str(args.setup),phases=[],
+    report = dict(task=args.task,mode=args.mode,completed=False,io_passed=None,setup_file=str(args.setup),phases=[],
         flow='check-input-policy-output' if args.mode == 'check' else 'initialize-single-live-plan-execute')
     env = dict(os.environ,OPENBLAS_NUM_THREADS='1',OMP_NUM_THREADS='1',MUJOCO_GL='egl',
                YOLO_CONFIG_DIR=str(ROOT/'_local/bottle_push/ultralytics'))
-    lock = (base/'robot.lock').open('a')
+    # Both tasks control the same robot; keep the original bottle lock shared.
+    lock_path = ROOT/'_local/robust_push/runs/robot.lock'
+    lock_path.parent.mkdir(parents=True,exist_ok=True)
+    lock = lock_path.open('a')
     try:
         try:
             fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -231,18 +308,26 @@ def main(argv=None):
         trial = json.loads(Path(setup['trial_config']).read_text())
         if args.push_distance is not None:
             trial['push_distance'] = args.push_distance
-        report['push_distance_m'] = trial.get('push_distance',.05)
+        if args.task == 'bottle':
+            report['push_distance_m'] = trial.get('push_distance',.05)
         for key in ('model','weights','base_transform'):
             trial[key] = str(local_path(trial[key]))
             if not Path(trial[key]).is_file():
                 raise RuntimeError('必要なファイルがありません: '+trial[key])
         calibration = json.loads(Path(trial['base_transform']).read_text())
+        if args.task == 'button':
+            for key,value in (('stroke',None if args.stroke_mm is None else args.stroke_mm/1000),
+                              ('button_direction',args.button_direction),('target_pixel',args.target_pixel)):
+                if value is not None:
+                    trial[key] = value
+            validate_button_trial(trial,calibration)
+            report['stroke_m'] = trial['stroke']
         write_json(run/'calibration.json',calibration)
         trial['base_transform'] = str(run/'calibration.json')
         trial_path = run/'trial.json'
         write_json(trial_path,trial)
         write_json(run/'setup.json',setup)
-        source_files = sorted(REAL.glob('*.py'))+sorted(REAL.parent.glob('*.py'))
+        source_files = sorted(REAL.glob('*.py'))+sorted(REAL.glob('*.sh'))+sorted(REAL.parent.glob('*.py'))
         write_json(run/'source_sha256.json',{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest()
             for p in source_files})
         def phase(name,command,*,input_text=None):
@@ -253,7 +338,7 @@ def main(argv=None):
             row['log'] = str(log_path)
             row['exit_code'] = execute_child(command,log_path,env,input_text=input_text)
             if row['exit_code']:
-                raise RuntimeError(name+' が完了しませんでした')
+                raise PhaseFailure(name,row['exit_code'])
         print('1. SSH・RGB-D配信を準備',flush=True)
         report['camera'] = ensure_camera(setup,run)
         phase('2. 関節入力・立位・他の制御を確認', [setup['sdk_python'],str(REAL/'check_robust_readiness.py'),
@@ -262,9 +347,9 @@ def main(argv=None):
         if args.mode == 'check':
             preview = run/'preview.json'
             phase('3. RGB-D入力・認識・経路生成を確認',[setup['vision_python'],
-                *motion_arguments(args.mode,trial_path,preview,state_path=run/'state/state.json')])
-            report['policy'] = validate_preview(json.loads(preview.read_text()),setup['measured_bottle_xy_m'],
-                float(calibration['position_uncertainty_m']))
+                *motion_arguments(args.mode,trial_path,preview,state_path=run/'state/state.json',task=args.task)])
+            report['policy'] = validate_preview(json.loads(preview.read_text()),setup.get('measured_bottle_xy_m'),
+                float(calibration['position_uncertainty_m']),task=args.task)
             with sdk_bridge(setup['sdk_python'],trial['network_interface'],run,'io',env) as sock:
                 phase('4. 方策出力→SDK→DDSを重み0で確認',[setup['sdk_python'],str(REAL/'check_arm_output.py'),
                     '--socket',str(sock),'--network-interface',trial['network_interface'],
@@ -276,21 +361,28 @@ def main(argv=None):
             print('入力・方策生成・出力の疎通確認が完了しました。腕の制御は有効にしていません。',flush=True)
             return 0
         print('このコマンドの指定に従い、'+('接触手前確認' if args.mode=='precontact' else '本押し')+'を開始します。',flush=True)
-        if args.mode == 'push':
+        if args.mode == 'push' and args.task == 'bottle':
             print(f'ボトルの目標移動量: {report["push_distance_m"]*100:.1f}cm（計画・実機共通）',flush=True)
+        elif args.task == 'button':
+            print(f'ボタンの実測ストローク: {trial["stroke"]*1000:g}mm（計画・実機共通）',flush=True)
         with sdk_bridge(setup['sdk_python'],trial['network_interface'],run,'motion',env) as sock:
             phase('3. シミュレーション3条件が通過したら即実行',[setup['vision_python'],
-                *motion_arguments(args.mode,trial_path,run/'result.json',socket_path=sock)])
+                *motion_arguments(args.mode,trial_path,run/'result.json',socket_path=sock,task=args.task)])
         actual = json.loads((run/'result.json').read_text())
         report['completed'] = bool(actual.get('completed'))
+        if args.task == 'button':
+            report.update(button_result_summary(actual,args.mode))
         report['policy'] = dict(accepted=actual.get('plan',{}).get('accepted'),
             completed_conditions=actual.get('plan',{}).get('completed_rollouts'))
         execution = actual.get('execution',{})
         print('動作データを保存しました。制御解除:',execution.get('release_completed'),
             '帰還確認:',execution.get('home_completed'),
             'FK誤差最大:',round(execution.get('max_fk_error_m',0.)*1000,1),'mm',flush=True)
-        if args.mode == 'push' and actual.get('visual_success') is None:
+        if args.mode == 'push' and args.task == 'bottle' and actual.get('visual_success') is None:
             print('新しい結果画像が揃わないため、実際の押し込み量は未確認です。',flush=True)
+        elif args.task == 'button' and args.mode == 'push':
+            print('点灯確認:',{'lit':'増光を確認','no_rise':'増光なし','unknown':'判定不能'}.get(
+                report.get('lamp_status'),'判定不能'),'（自動の押し直しは行いません）',flush=True)
         return 0 if report['completed'] else 1
     except KeyboardInterrupt:
         report['error'] = '操作者による中断'
@@ -300,8 +392,16 @@ def main(argv=None):
         report['error'] = str(exc)
         print(str(exc),file=sys.stderr,flush=True)
         print_execution_failure(run)
+        if args.task == 'button':
+            return exc.code if isinstance(exc,PhaseFailure) and exc.code in (1,2,130) else 2
         return 1
     finally:
+        if args.task == 'button' and (run/'result.json').is_file():
+            try:
+                actual = json.loads((run/'result.json').read_text())
+                report.update(button_result_summary(actual,args.mode))
+            except (OSError,ValueError,TypeError) as exc:
+                report.update(completed=False,result_read_error=str(exc))
         write_json(run/'session.json',report)
         lock.close()
 

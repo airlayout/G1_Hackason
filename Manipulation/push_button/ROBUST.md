@@ -185,6 +185,11 @@ MUJOCO_GL=egl OPENBLAS_NUM_THREADS=1 \
 
 ## 実機の一括起動
 
+乗り場の上下ボタン用の一括起動は [BUTTON_FIELD.md](BUTTON_FIELD.md) の
+「ボトル版と同じ一括起動で押す（robust）」を参照。
+`run_robust_button_press.sh --button-direction up|down` で選択し、実測ストロークと
+ボタン寸法を設定する。ボタン版の固定区間には専用の期限を設けない。
+
 このPCの現在の配置は `_local/robust_push/active_setup.json` に保存している。
 台高72cm、標準固定ハンド。ボトルの位置は毎回RGB-Dから再認識する。
 初期校正時の実測位置（前41cm・右22cm）は校正の記録であり、実行位置の固定値ではない。

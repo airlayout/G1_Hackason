@@ -16,6 +16,16 @@ from robust_control import (BottleFeedback, fade_return_offset, reference_comman
 START_MONITORED_JOINTS = tuple(range(15)) + tuple(range(22,29))
 
 
+def button_fixed_interval(scene, candidate):
+    """The verified path, rather than elapsed time, bounds contact occlusion."""
+    depth = (np.asarray(candidate.tcp)-scene.face) @ np.asarray(scene.normal)+scene.tip_radius
+    close = np.flatnonzero(depth[:candidate.press_end+1] >= -.005-1e-9)
+    retreat = np.flatnonzero(depth[candidate.press_end+1:] <= -.05+1e-9)
+    if not len(close) or not len(retreat):
+        raise ValueError('Button trajectory must include final 5mm approach and 5cm retreat')
+    return int(close[0]), int(candidate.press_end+1+retreat[0])
+
+
 def validate_start(scene, configuration, observed, *, record_deviations=False):
     q, imu, _, leg, gyro = configuration
     delta = np.abs(np.array(q)-scene.q)
@@ -39,12 +49,16 @@ def validate_start(scene, configuration, observed, *, record_deviations=False):
 
 def execute(plan, model_path, calibration, motion, configuration, observe, settings,
             *, now=time.monotonic, set_torque=lambda tau: None, diagnostic=False,
-            record_deviations=False, set_waist_torque=None, allow_stale_observation=False):
+            record_deviations=False, set_waist_torque=None, allow_stale_observation=False,
+            observe_held=None):
     if plan.candidate is None:
         raise RuntimeError('No fully verified robust plan; no motion allowed')
     s, c = plan.scene, plan.candidate
     if allow_stale_observation and (s.task != 'bottle' or settings.bottle_feedback != 'off'):
         raise ValueError('Stale observations require bottle feedback off')
+    if observe_held is not None and (s.task != 'button' or diagnostic or record_deviations):
+        raise ValueError('Contact occlusion requires a monitored full button press')
+    fixed_interval = button_fixed_interval(s,c) if observe_held is not None else None
     if s.task == 'bottle' and c.motion_metrics.get('bottle_feedback_mode', 'off') != settings.bottle_feedback:
         raise RuntimeError('Bottle feedback mode differs from the verified plan')
     report = dict(schema='g1-robust-execution-v1', task=s.task, completed=False, motion_completed=False,
@@ -55,6 +69,9 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
     report['bottle_feedback'] = settings.bottle_feedback
     report.update(allow_stale_observation=allow_stale_observation,stale_observation_commands=0)
     report.update(record_deviations=record_deviations,warnings=[],tracking_samples=[],max_fk_error_m=0.)
+    if fixed_interval is not None:
+        report['button_fixed_target'] = dict(start_index=fixed_interval[0],end_index=fixed_interval[1],
+            interval_timeout_s=None,stale_observation_commands=0)
     def deviation(reason):
         if not record_deviations:
             raise RuntimeError(reason)
@@ -105,7 +122,14 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
                 deviation('Body posture changed')
             if np.max(np.abs(np.array(q)[:12]-np.array(s.q)[:12])) > .025:
                 deviation('Leg posture changed')
-            observation = observe()
+            locked = fixed_interval is not None and fixed_interval[0] <= i <= fixed_interval[1]
+            # Require a fresh measurement at lock entry. Later occlusion may
+            # reuse the measured target, while camera-worker errors still raise.
+            observation = (observe_held() if locked and i > fixed_interval[0] else observe())
+            observation_age = now()-observation.captured_at
+            if fixed_interval is not None and (observation_age < 0 or
+                    ((not locked or i == fixed_interval[0]) and observation_age > .5)):
+                raise RuntimeError('No fresh button observation outside contact interval')
             progress = max(0., float((c.tcp[min(i,c.press_end)]-np.array(s.face))@n+s.tip_radius))
             freeze = s.task == 'button' and (c.tcp[i]-s.face)@n+s.tip_radius >= -.005
             if s.task == 'bottle':
@@ -124,7 +148,18 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
                                          freeze=settings.bottle_feedback == 'off' or i < c.press_start or i > c.press_end)
                 offset = fade_return_offset(offset,c,i)
             else:
-                offset = gate.update(observation, progress, freeze=freeze or i > c.press_end)
+                if locked and observation_age > .5:
+                    offset = gate.offset.copy()
+                    report['button_fixed_target']['stale_observation_commands'] += 1
+                else:
+                    offset = gate.update(observation, progress, freeze=locked or freeze or i > c.press_end)
+                if fixed_interval is not None and i == fixed_interval[0]:
+                    report['button_fixed_target'].update(face_m=list(observation.geometry['face']),
+                        normal=list(observation.geometry['normal']),offset_m=offset.tolist(),
+                        frame_id=observation.frame_id,captured_at_s=observation.captured_at)
+                if fixed_interval is not None and i > fixed_interval[1]:
+                    remaining = len(c.q)-1-i
+                    offset = offset*max(0.,remaining/max(1,len(c.q)-1-fixed_interval[1]))
             pose = update_robot(check,q,imu)
             if s.task == 'bottle':
                 adr = check.model.joint('robust_object_joint').qposadr[0]
@@ -182,6 +217,10 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
                 report['commands'][-1].update(observation_age_s=float(observation_age),
                     bottle_pose_source='reference_prediction' if predicted else 'observation',
                     bottle_face_m=face.tolist())
+            elif fixed_interval is not None:
+                report['commands'][-1].update(button_target_locked=locked,
+                    observation_age_s=float(observation_age),
+                    button_observation_source='held' if observation_age > .5 else 'fresh')
             report['correction_steps'].append(dict(frame_id=observation.frame_id, offset_m=offset.tolist()))
             motion.wait(max(0., PERIOD-(now()-cycle)))
             last_tick = cycle

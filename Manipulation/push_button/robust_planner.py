@@ -198,7 +198,10 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     points, labels = [home], ['approach']
     tip = kin.tip_position()
     raised = face-(r+.12)*normal + [0, waypoint_offset[0], (.10 if scene.task=='bottle' else 0.)+waypoint_offset[1]]
-    depth = (scene.stroke+press_compensation_allowance(scene.stroke)
+    # Reserve up to 1mm for residual normal tracking at the farther position
+    # scenario. Larger feedforward increases contact tracking error; rollouts
+    # still enforce the measured stroke, overtravel, tracking and force bounds.
+    depth = (scene.stroke+press_compensation_allowance(scene.stroke)+min(.001,settings.position_span_m)
              if scene.task == 'button' else scene.push_distance)
     relative_feedback = scene.task == 'bottle' and settings.bottle_feedback == 'relative'
     contact_clearance = .005+scene.uncertainty_m+settings.position_error_m if relative_feedback else .005
@@ -242,6 +245,10 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
              if scene.task == 'bottle' else np.r_[0., np.cumsum(durations)])
     times, spline, t, metrics = retime_reference(times, points, settings)
     qs = spline(t)
+    if scene.task == 'button':
+        metrics['button_press'] = dict(measured_stroke_m=scene.stroke,
+            compliance_compensation_m=press_compensation_allowance(scene.stroke),
+            normal_tracking_reserve_m=min(.001,settings.position_span_m),reference_depth_m=depth)
     if scene.task == 'bottle':
         metrics['bottle_feedback_mode'] = settings.bottle_feedback
         metrics['bottle_feedback'] = dict(offset_limit_m=scene.uncertainty_m+.005,

@@ -38,6 +38,15 @@ def collect_outcome_observations(observer, *, now=time.monotonic, sleep=time.sle
     return results
 
 
+def button_lamp_outcome(baseline, observations, min_rise):
+    """Mixed/absent measurements cannot confirm either lamp state."""
+    if (baseline is None or not np.isfinite(baseline) or len(observations) != 3
+            or any(v.lamp is None or not np.isfinite(v.lamp) for v in observations)):
+        return None
+    lit = [v.lamp-baseline >= min_rise for v in observations]
+    return True if all(lit) else False if not any(lit) else None
+
+
 def main(argv=None, *, task=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--task', choices=('button','bottle'), default=task or 'button')
@@ -62,6 +71,9 @@ def main(argv=None, *, task=None):
         help='ボトル・画像補正offのみ: 初回3枚以降は画像の経過時間で停止せず、古い間は検証済み軌道の推定位置を使う')
     parser.add_argument('--execute-after-plan',action='store_true',
         help='ボトルのデータ収集: 3条件合格後に即実行し、姿勢差・FK誤差は記録のみ')
+    parser.add_argument('--execute-verified-plan',action='store_true',
+        help='ボタン: 3条件合格後に即実行。最後5mmから5cm退避まで目標を固定する')
+    parser.add_argument('--lamp-min-rise',type=float,default=30.,help='ボタンの点灯判定に必要な増光量')
     add_arguments(parser); add_camera_arguments(parser)
     parser.set_defaults(motion_planner='robust')
     args, settings = parse(parser, argv)
@@ -84,7 +96,11 @@ def main(argv=None, *, task=None):
         stale_bottle_pose='verified_reference_prediction' if args.allow_stale_observation else None,
         outcome_frames_required=not (args.stop_before_contact or args.allow_stale_observation),
         capture_pose='current_stationary_state' if args.static_target else 'capture_time_history')
+    if args.execute_verified_plan:
+        report['image_policy'].update(button_contact_occlusion=not args.stop_before_contact,
+            fixed_interval_timeout_s=None)
     report['execute_after_plan'] = args.execute_after_plan
+    report['execute_verified_plan'] = args.execute_verified_plan
     report['pose_history_policy'] = dict(sample_period_s=CONTROL_PERIOD_S,
         warmup_s=.6,max_gap_s=.1,on_unmatched_frame='discard_and_recapture')
     report['pose_history_rejections'] = []
@@ -95,6 +111,14 @@ def main(argv=None, *, task=None):
     if output.exists():
         parser.error('Use a new --output; previous trial will not be overwritten')
     try:
+        if not np.isfinite(args.lamp_min_rise) or args.lamp_min_rise <= 0:
+            raise ValueError('--lamp-min-rise must be finite and positive')
+        if args.execute_verified_plan and (not args.execute or args.task != 'button' or
+                settings.scenarios != 3 or args.execute_after_plan):
+            raise ValueError('--execute-verified-plan requires button --execute and 3 scenarios, without --execute-after-plan')
+        if args.task == 'button' and (not isinstance(args.stroke,(int,float)) or isinstance(args.stroke,bool)
+                or not np.isfinite(args.stroke) or not .0015 <= args.stroke <= .015):
+            raise ValueError('Button mode requires a measured stroke between 1.5 and 15mm')
         if args.static_target and (args.task != 'bottle' or not args.stop_before_contact):
             raise ValueError('--static-target requires bottle --stop-before-contact')
         if args.allow_stale_observation and (args.task != 'bottle' or settings.bottle_feedback != 'off'):
@@ -112,7 +136,7 @@ def main(argv=None, *, task=None):
         if not args.execute and not args.state_json:
             raise ValueError('Planning preview requires --state-json')
         calibration, _ = read_calibration(args.base_transform, require_button=args.task=='button',
-                                          require_target_margin=False)
+                                          require_target_margin=args.execute_verified_plan)
         report['calibration'] = calibration
         runtime = J1CameraRuntime(args.j1gen_root)
         # Model warm-up occurs before the initial capture and search deadline.
@@ -258,8 +282,12 @@ def main(argv=None, *, task=None):
         if not args.execute:
             report['planning_completed'] = True
             return 0
-        if args.execute_after_plan:
-            action = '接触手前の確認' if args.stop_before_contact else f'{scene.push_distance*100:.1f}cmの押し込み'
+        if args.execute_after_plan or args.execute_verified_plan:
+            if args.execute_verified_plan:
+                monitor()
+            action = ('接触手前の確認' if args.stop_before_contact else
+                f'{scene.stroke*1000:g}mmのボタン押下' if args.task == 'button' else
+                f'{scene.push_distance*100:.1f}cmの押し込み')
             print('シミュレーション3条件合格。直ちに'+action+'動作を開始します。',flush=True)
         else:
             monitor()
@@ -277,17 +305,21 @@ def main(argv=None, *, task=None):
         report['execution'] = execute(plan,args.model,calibration,motion,configuration,latest_observation,settings,
             set_torque=lambda value: torque.update(value=np.array(value)),diagnostic=args.stop_before_contact,
             record_deviations=args.execute_after_plan,set_waist_torque=lambda value: torque.update(waist=np.array(value)),
-            allow_stale_observation=args.allow_stale_observation)
+            allow_stale_observation=args.allow_stale_observation,
+            observe_held=(lambda:observer.latest(allow_stale=True))
+                if args.execute_verified_plan and not args.stop_before_contact else None)
         report['command_publications'] = motion.command_publications
         if motion.error is not None:
             report['motion_thread_error'] = str(motion.error)
         report['completed'] = report['execution']['completed']
+        if args.execute_verified_plan and report['execution'].get('error'):
+            return 2
         if report['completed'] and not args.stop_before_contact:
             # Outcome measurements do not update an execution target or restart the push.
             try:
                 results = collect_outcome_observations(observer)
             except RuntimeError as exc:
-                if not args.allow_stale_observation:
+                if not args.allow_stale_observation and args.task != 'button':
                     raise
                 results = []
                 report['outcome_error'] = str(exc)
@@ -295,12 +327,17 @@ def main(argv=None, *, task=None):
             report['outcome_available'] = len(results) == 3
             if len(results) != 3:
                 report['outcome_error'] = report.get('outcome_error','Three fresh outcome frames unavailable')
-                if not args.allow_stale_observation:
+                if not args.allow_stale_observation and args.task != 'button':
                     raise RuntimeError(report['outcome_error'])
-            elif args.task == 'button':
-                report['visual_success'] = bool(initial.lamp is not None and all(
-                    v.lamp is not None and v.lamp-initial.lamp >= 30 for v in results))
-            elif args.task == 'bottle':
+            if args.task == 'button':
+                report['visual_success'] = button_lamp_outcome(initial.lamp,results,args.lamp_min_rise)
+                report['lamp_check'] = dict(baseline=initial.lamp,min_rise=args.lamp_min_rise,
+                    levels=[v.lamp for v in results],frame_ids=[v.frame_id for v in results],
+                    status='lit' if report['visual_success'] is True else
+                        'no_rise' if report['visual_success'] is False else 'unknown')
+                report['motion_completed'] = bool(report['execution'].get('motion_completed'))
+                report['physical_press_success'] = None
+            elif args.task == 'bottle' and len(results) == 3:
                 deltas = np.array([v.geometry['face'] for v in results])-scene.face
                 delta = np.median(deltas,axis=0)
                 report['measured_displacement_m'] = delta.tolist()
