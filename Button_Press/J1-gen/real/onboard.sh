@@ -67,9 +67,9 @@ obs="\${OBSTACLES:-${OBSTACLES:-}}"
 pgrep -f "depth_server/rgbd_serve[r].py" >/dev/null || echo "[onboard] ⚠️ カメラの配信（rgbd_server）が動いていない。事前確認で止まる"
 mkdir -p $LOGDIR
 log=$LOGDIR/\$(date +%Y%m%d_%H%M%S)_$label.log
-cd $REPO_ROOT || exit 1
+cd $REMOTE_REPO || exit 1
 # setsid -f: 新しいセッション（端末なし）で起動する。bash の pid がそのままプロセスグループの番号になり、exec でも変わらない
-setsid -f bash -c "echo \\\$\\\$ > $PIDFILE; echo \$log >> $PIDFILE; exec env OPENBLAS_NUM_THREADS=1 ~/button_press/venv/bin/python -u \
+setsid -f bash -c "echo \\\$\\\$ > $PIDFILE; echo \$log >> $PIDFILE; exec env OPENBLAS_NUM_THREADS=1 PYTHONUNBUFFERED=1 ~/button_press/venv/bin/python -u \
     Button_Press/J1-gen/real/auto_press.py --target bottle $execute --network-interface eth0 --camera-config camera_onboard.yaml \
     --label $label -- --detector onnx --obstacles-file \$obs$extra_q > \$log 2>&1 < /dev/null"
 sleep 1
