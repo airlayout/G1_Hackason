@@ -204,7 +204,7 @@ def main(argv=None, *, task=None):
         monitor()
         torque = {'value':np.zeros(7)}
         motion = ArmMotion(arm,calibration,gravity=lambda config,velocity=None: torque['value'].copy(),
-                           state_sink=history.append)
+                           state_sink=history.append,limits=settings.motion_limits)
         report['execution'] = execute(plan,args.model,calibration,motion,configuration,observer.latest,settings,
             set_torque=lambda value: torque.update(value=np.array(value)),diagnostic=args.stop_before_contact)
         report['completed'] = report['execution']['completed']

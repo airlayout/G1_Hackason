@@ -9,13 +9,16 @@ import math
 import mujoco
 import numpy as np
 from scipy.interpolate import CubicHermiteSpline, PchipInterpolator
+from scipy.optimize import minimize
 from mujoco import rollout
 
 from robust_scene import SceneSnapshot, build_scene_model, clone_kin, contact_metrics
 from trajectory import ARM_JOINTS, ARM_TORQUE_LIMITS_NM
 from alignment import press_compensation_allowance, press_overtravel_allowance
+from motion_limits import (JointMotionLimits, CONTROL_PERIOD_S, MOTION_OVERHEAD_S,
+                           PLANNED_LIMIT_FRACTION, MOTION_TOLERANCE_S)
 
-PERIOD = .02
+PERIOD = CONTROL_PERIOD_S
 
 
 @dataclass(frozen=True)
@@ -32,8 +35,18 @@ class SearchSettings:
     mass_range: tuple = (.28, .42)
     friction_range: tuple = (.24, .36)
     gravity_scale: float = 1.
+    motion_duration_s: float = 30.
+    joint_speed_rad_s: float = 1.2
+    joint_acceleration_rad_s2: float = 4.
+
+    @property
+    def motion_limits(self):
+        return JointMotionLimits(self.joint_speed_rad_s, self.joint_acceleration_rad_s2)
 
     def __post_init__(self):
+        self.motion_limits
+        if not np.isfinite(self.motion_duration_s) or not MOTION_OVERHEAD_S + PERIOD < self.motion_duration_s <= 300:
+            raise ValueError('Motion duration must allow time for enable, home confirmation and release')
         counts = (self.max_rollouts,self.scenarios,self.workers,self.max_candidates,self.seed)
         if any(not isinstance(v,int) or isinstance(v,bool) for v in counts) or self.seed < 0:
             raise ValueError('Search counts and seed must be integers')
@@ -63,6 +76,7 @@ class Candidate:
     min_joint_margin_rad: float
     min_clearance_m: float
     tau: np.ndarray
+    motion_metrics: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -79,8 +93,80 @@ class PlanResult:
             c = self.candidate
             result['trajectory'] = dict(candidate=c.index, period_s=PERIOD, q=c.q.tolist(),
                 tcp=c.tcp.tolist(), phases=c.phases, press_start=c.press_start,
-                press_end=c.press_end, retract_end=c.retract_end, duration_s=c.duration_s)
+                press_end=c.press_end, retract_end=c.retract_end, duration_s=c.duration_s,
+                motion_metrics=c.motion_metrics)
         return result
+
+
+def spline_extrema(spline):
+    """Per-segment, per-joint extrema, including between control ticks."""
+    a, b, c = spline.c[:3]
+    h = np.diff(spline.x)[:, None]
+    root = np.divide(-b, 3*a, out=np.zeros_like(b), where=a != 0)
+    interior = (a != 0) & (root > 0) & (root < h)
+    velocity = np.maximum(np.abs(c), np.abs(3*a*h*h+2*b*h+c))
+    velocity = np.maximum(velocity, np.where(interior, np.abs(3*a*root*root+2*b*root+c), 0))
+    acceleration = np.maximum(np.abs(2*b), np.abs(6*a*h+2*b))
+    return velocity, acceleration
+
+
+def spline_peaks(spline):
+    velocity, acceleration = spline_extrema(spline)
+    return float(velocity.max()), float(acceleration.max())
+
+
+def allocate_bottle_phases(points, durations, labels, settings, deadline):
+    """Reserve sliding-contact time and minimize free-motion time within joint headroom."""
+    lower = np.array([1.1*d if phase == 'press' else d if phase == 'contact' else PERIOD
+                      for d, phase in zip(durations, labels[1:])])
+    limits = settings.motion_limits
+
+    def constraints(values):
+        if time.perf_counter() >= deadline:
+            raise TimeoutError('phase allocation budget')
+        times = np.r_[0., np.cumsum(values)]
+        derivatives = PchipInterpolator(times, points, axis=0).derivative()(times)
+        derivatives[0] = derivatives[-1] = 0.
+        velocity, acceleration = spline_extrema(CubicHermiteSpline(times, points, derivatives, axis=0))
+        return np.r_[1-velocity.ravel()/(PLANNED_LIMIT_FRACTION*limits.joint_speed_rad_s),
+                     1-acceleration.ravel()/(PLANNED_LIMIT_FRACTION*limits.joint_acceleration_rad_s2)]
+
+    result = minimize(np.sum, np.maximum(durations, lower), jac=lambda values: np.ones_like(values),
+        bounds=[(float(v), None) for v in lower], method='SLSQP',
+        constraints={'type': 'ineq', 'fun': constraints}, options={'maxiter': 80, 'ftol': 1e-8})
+    if not result.success or np.min(constraints(result.x)) < -1e-6:
+        raise ValueError('Unable to allocate stable contact time within joint headroom')
+    return np.r_[0., np.cumsum(result.x)]
+
+
+def retime_reference(times, points, settings):
+    """Keep the geometric spline; fit the motion budget with 20% command headroom."""
+    derivatives = PchipInterpolator(times, points, axis=0).derivative()(times)
+    derivatives[0] = derivatives[-1] = 0.
+    spline = CubicHermiteSpline(times, points, derivatives, axis=0)
+    speed, acceleration = spline_peaks(spline)
+    limits = settings.motion_limits
+    minimum_scale = max(speed/(PLANNED_LIMIT_FRACTION*limits.joint_speed_rad_s),
+                        math.sqrt(acceleration/(PLANNED_LIMIT_FRACTION*limits.joint_acceleration_rad_s2)))
+    # Each sample is held for PERIOD, including the final home command.
+    desired_end = max(PERIOD, settings.motion_duration_s-MOTION_OVERHEAD_S-PERIOD)
+    end = max(desired_end, times[-1]*minimum_scale)
+    ticks = max(1, math.ceil(end/PERIOD-1e-9))
+    end = ticks*PERIOD
+    duration = (ticks+1)*PERIOD
+    if duration+MOTION_OVERHEAD_S > settings.motion_duration_s+MOTION_TOLERANCE_S+1e-9:
+        raise ValueError('Motion budget cannot retain 20% joint speed/acceleration headroom')
+    scale = end/times[-1]
+    times = times*scale
+    spline = CubicHermiteSpline(times, points, derivatives/scale, axis=0)
+    speed, acceleration = spline_peaks(spline)
+    metrics = dict(trajectory_s=duration, expected_motion_s=duration+MOTION_OVERHEAD_S,
+                   target_motion_s=settings.motion_duration_s, overhead_s=MOTION_OVERHEAD_S,
+                   max_joint_speed_rad_s=speed, max_joint_acceleration_rad_s2=acceleration,
+                   speed_limit_fraction=speed/limits.joint_speed_rad_s,
+                   acceleration_limit_fraction=acceleration/limits.joint_acceleration_rad_s2,
+                   planned_limit_fraction=PLANNED_LIMIT_FRACTION, limits=limits.to_dict())
+    return times, spline, np.arange(ticks+1)*PERIOD, metrics
 
 
 def reference_torque(kin, q, velocity, scale):
@@ -123,30 +209,26 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
         points.append(solution.joint_angles.copy()); labels.append(phase)
     points.append(home); labels.append('home')
     points = np.array(points)
-    # One continuous interpolation; no holds or zero-velocity stops at approach waypoints.
+    # These durations are relative phase weights, not minimum execution times.
     node_tcp = []
     for q in points:
         pose = original.copy(); pose[kin.qadr] = q; kin.update(pose); node_tcp.append(kin.tip_position())
     node_tcp = np.array(node_tcp)
     durations = []
     for i in range(1, len(points)):
-        speed = (.004 if scene.task == 'bottle' else min(.003, scene.stroke/2)) if labels[i] == 'press' else (
-                 .005 if labels[i] == 'contact' else .01 if labels[i] == 'close' else
-                 .025 if labels[i] == 'retract' else .05)
+        if scene.task == 'bottle':
+            # Keep time for stable sliding contact; use the faster arm limits in free space.
+            speed = dict(press=.005, contact=.02, close=.04, retract=.1).get(labels[i], .2)
+        else:
+            speed = min(.003, scene.stroke/2) if labels[i] == 'press' else (
+                     .005 if labels[i] == 'contact' else .01 if labels[i] == 'close' else
+                     .025 if labels[i] == 'retract' else .05)
         durations.append(max(.3, 1.6*np.linalg.norm(node_tcp[i]-node_tcp[i-1])/speed,
-                             2*np.max(np.abs(points[i]-points[i-1]))/.8,
-                             math.sqrt(8*np.max(np.abs(points[i]-points[i-1]))/2)))
-    times = np.r_[0., np.cumsum(durations)]
-    derivatives = PchipInterpolator(times, points, axis=0).derivative()(times)
-    derivatives[0] = derivatives[-1] = 0.
-    spline = CubicHermiteSpline(times, points, derivatives, axis=0)
-    t = np.arange(0, times[-1]+PERIOD, PERIOD); t[-1] = times[-1]
-    velocity, acceleration = spline(t, 1), spline(t, 2)
-    scale = max(1., np.max(np.abs(velocity))/.8, np.sqrt(np.max(np.abs(acceleration))/2))
-    times *= scale
-    derivatives /= scale
-    spline = CubicHermiteSpline(times, points, derivatives, axis=0)
-    t = np.linspace(0, times[-1], math.ceil(times[-1]/PERIOD)+1)
+                             2*np.max(np.abs(points[i]-points[i-1]))/settings.joint_speed_rad_s,
+                             math.sqrt(8*np.max(np.abs(points[i]-points[i-1]))/settings.joint_acceleration_rad_s2)))
+    times = (allocate_bottle_phases(points, durations, labels, settings, deadline)
+             if scene.task == 'bottle' else np.r_[0., np.cumsum(durations)])
+    times, spline, t, metrics = retime_reference(times, points, settings)
     qs = spline(t)
     intervals = np.minimum(np.searchsorted(times, t, side='left'), len(labels)-1)
     phases = [labels[i] for i in intervals]
@@ -170,7 +252,7 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     end = max(i for i, p in enumerate(phases) if p == 'press')
     retract = max(i for i, p in enumerate(phases) if p == 'retract')
     return Candidate(index, qs, np.array(tcp), phases, start, end, retract, len(qs)*PERIOD,
-                     margin, clearance, np.array(taus))
+                     margin, clearance, np.array(taus), metrics)
 
 
 def uncertainty_scenarios(settings, scene):

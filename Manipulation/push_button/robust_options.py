@@ -42,6 +42,9 @@ def add_arguments(parser):
     parser.add_argument('--stroke', type=float, default=.0015)
     parser.add_argument('--push-distance', type=float, default=.05)
     parser.add_argument('--gravity-scale', type=float, default=1.)
+    parser.add_argument('--motion-duration-s', type=float, default=30.)
+    parser.add_argument('--joint-speed-rad-s', type=float, default=1.2)
+    parser.add_argument('--joint-acceleration-rad-s2', type=float, default=4.)
 
 
 def parse(parser, argv=None):
@@ -71,5 +74,7 @@ def parse(parser, argv=None):
         max_candidates=args.planning_max_candidates, seed=args.planning_seed,
         position_error_m=args.position_error_m, normal_error_deg=args.normal_error_deg,
         tracking_error_rad=args.tracking_error_rad, mass_range=tuple(args.mass_range),
-        friction_range=tuple(args.friction_range), gravity_scale=args.gravity_scale)
+        friction_range=tuple(args.friction_range), gravity_scale=args.gravity_scale,
+        motion_duration_s=args.motion_duration_s, joint_speed_rad_s=args.joint_speed_rad_s,
+        joint_acceleration_rad_s2=args.joint_acceleration_rad_s2)
     return args, settings

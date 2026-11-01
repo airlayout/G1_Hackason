@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from trajectory import (ALL_ARM_INDICES, ARM_INDICES, ARM_JOINTS, PHASES,
                         interpolate, load_plan, validate_arm_q, validate_arm_tau)
+from motion_limits import JointMotionLimits, WEIGHT_RAMP_STEPS
 
 
 CONTROL_HZ = 50.0
@@ -26,9 +27,9 @@ MAX_JOINT_SPEED = 0.8  # [rad/s] smoothstep の最大速度で評価
 
 
 def check_speed(start: tuple[float, ...], end: tuple[float, ...],
-                duration: float) -> None:
+                duration: float, *, max_joint_speed=MAX_JOINT_SPEED) -> None:
     peak = max(abs(a - b) for a, b in zip(start, end)) * 1.5 / duration
-    if peak > MAX_JOINT_SPEED:
+    if peak > max_joint_speed:
         raise ValueError(f"関節の計画速度 {peak:.2f} rad/s が上限を超えます")
 
 
@@ -120,6 +121,12 @@ class ArmSdk:
             raise RuntimeError(f"歩行FSMを取得できません (code={code})")
         return {"mode_machine": mode_machine, "motor_count": motor_count, "fsm_id": int(fsm)}
 
+    def configure_motion_limits(self, limits):
+        if self._last_weight > 0:
+            raise RuntimeError('腕制御中は関節制限を変更できません')
+        self.motion_limits = JointMotionLimits(**limits.to_dict())
+        return self.motion_limits.to_dict()
+
     def publish(self, right: tuple[float, ...], weight: float,
                 require_fresh_state: bool = True, *, right_tau=None) -> None:
         if self._hold is None:
@@ -155,8 +162,8 @@ class ArmSdk:
             return
         start = self._last_weight
         start_tau = getattr(self, "_last_right_tau", (0.0,) * 7)
-        for step in range(101):
-            fraction = 1.0 - step / 100.0
+        for step in range(WEIGHT_RAMP_STEPS):
+            fraction = 1.0 - step / (WEIGHT_RAMP_STEPS-1)
             weight = start * fraction
             try:
                 kwargs = {"right_tau": tuple(tau*fraction for tau in start_tau)} if any(start_tau) else {}

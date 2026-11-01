@@ -14,5 +14,8 @@
   "contact_height": 0.08,
   "push_distance": 0.05,
   "stroke": 0.0015,
-  "gravity_scale": 1.0
+  "gravity_scale": 1.0,
+  "motion_duration_s": 30.0,
+  "joint_speed_rad_s": 1.2,
+  "joint_acceleration_rad_s2": 4.0
 }

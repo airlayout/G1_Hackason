@@ -29,20 +29,26 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
     report = dict(schema='g1-robust-execution-v1', task=s.task, completed=False, motion_completed=False,
                   home_completed=False, release_completed=False, physical_push_success=None,
                   stopped_for_measurement=0, remeasurement_count=0, commands=[], correction_steps=[])
+    report['limits'] = settings.motion_limits.to_dict()
+    report['target_motion_s'] = settings.motion_duration_s
     check = build_scene_model(model_path, calibration, s)
     start = configuration()
     validate_start(s, start, observe())
     gate = CorrectionGate(s)
-    command_filter = JointCommandFilter(c.q[0])
+    command_filter = JointCommandFilter(c.q[0], settings.motion_limits)
     n = np.array(s.normal)
     started = now()
     enabled = False
+    peak_speed = peak_acceleration = 0.
     try:
         set_torque(c.tau[0])
-        motion.enable(); enabled = True
+        enabled = True  # A partially failed enable still needs release.
+        motion.enable()
+        report['enable_s'] = now()-started
         # Enabling must not invalidate the observed state used to select the path.
         validate_start(s, configuration(), observe())
         last_tick = now()
+        trajectory_started = now()
         end = c.press_start if diagnostic else len(c.q)
         for i in range(end):
             cycle = now()
@@ -72,7 +78,11 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
             jac = np.zeros((3, check.model.nv))
             mujoco.mj_jacSite(check.model, check.data, jac, None, check.site_id)
             dq = np.linalg.lstsq(jac[:, check.dadr], offset, rcond=.01)[0]
+            previous_velocity = command_filter.velocity.copy()
             goal = command_filter.next_goal(c.q[i]+dq, PERIOD)
+            peak_speed = max(peak_speed, float(np.max(np.abs(command_filter.velocity))))
+            peak_acceleration = max(peak_acceleration, float(np.max(np.abs(
+                command_filter.velocity-previous_velocity)))/PERIOD)
             check.update(pose)
             # Revalidate the actual adjacent path, retaining the initial B wall.
             check.validate_path(goal, allow_tip_contact=c.phases[i] in ('contact','press','retract'),
@@ -86,7 +96,8 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
             tau = reference_torque(check, goal, command_filter.velocity, settings.gravity_scale)
             set_torque(tau)
             motion.stream(goal, velocity=command_filter.velocity)
-            report['commands'].append(dict(time_s=now()-started, phase=c.phases[i], q=goal.tolist(), tau=tau.tolist(),
+            report['commands'].append(dict(time_s=now()-started, phase=c.phases[i], q=goal.tolist(),
+                velocity_rad_s=command_filter.velocity.tolist(), tau=tau.tolist(),
                 measured_q=np.array(q).tolist(), observation_frame_id=observation.frame_id,
                 observation_captured_at=observation.captured_at))
             report['correction_steps'].append(dict(frame_id=observation.frame_id, offset_m=offset.tolist()))
@@ -100,6 +111,8 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
                 check.validate_path(goal)
                 set_torque(reference_torque(check,goal,command_filter.velocity,settings.gravity_scale))
                 motion.stream(goal,velocity=command_filter.velocity); motion.wait(PERIOD)
+        report['trajectory_s'] = now()-trajectory_started
+        home_started = now()
         motion.wait(.3)
         home_confirmed = True
         for _ in range(3):
@@ -107,7 +120,7 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
             home_confirmed &= error <= np.deg2rad(2)
             motion.wait(PERIOD)
         report.update(motion_completed=not diagnostic, diagnostic_completed=diagnostic,
-                      home_completed=bool(home_confirmed), duration_s=now()-started)
+                      home_completed=bool(home_confirmed), home_confirmation_s=now()-home_started)
         if not report['home_completed']:
             raise RuntimeError('Home return not confirmed')
         report['completed'] = True
@@ -115,9 +128,18 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
         report['error'] = str(exc)
     finally:
         if enabled:
-            motion.close()
+            release_started = now()
+            try:
+                motion.close()
+            except Exception as exc:
+                motion.release_error = str(exc)
+            report['release_s'] = now()-release_started
             report['release_completed'] = not bool(getattr(motion,'release_error',None))
             if not report['release_completed']:
                 report['completed'] = False
                 report['release_error'] = motion.release_error
+        report.update(duration_s=now()-started, motion_s=now()-started,
+                      max_joint_speed_rad_s=peak_speed, max_joint_acceleration_rad_s2=peak_acceleration,
+                      speed_limit_fraction=peak_speed/settings.joint_speed_rad_s,
+                      acceleration_limit_fraction=peak_acceleration/settings.joint_acceleration_rad_s2)
     return report

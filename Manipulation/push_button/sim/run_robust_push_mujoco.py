@@ -23,6 +23,7 @@ from robust_perception import Observation, ObservationWindow, snapshot
 from robust_execution import execute, validate_start
 from robust_options import add_arguments, parse
 from vision import CameraIntrinsics, estimate_button_target
+from motion_limits import ENABLE_DURATION_S, RELEASE_DURATION_S
 
 
 class World:
@@ -40,6 +41,9 @@ class World:
         self.min_obstacle_clearance = .05
         self.unexpected_collision = False
         self.physics_ticks = 0
+        self.observer = None
+        self.sample_perception = False
+        self.enabled = self.released = False
         self.target_body = self.model.body('robust_target').id
         if fixture.task == 'button':
             self.model.geom_rgba[self.model.geom('robust_target_geom').id,:3] = .15
@@ -78,7 +82,8 @@ class World:
         return self.data.qpos[:29].copy(),self.fixture.imu,self.now(),0.,0.
 
     def enable(self):
-        pass
+        self.enabled = True
+        self.wait(ENABLE_DURATION_S)
 
     def start_approach(self):
         pass
@@ -122,9 +127,15 @@ class World:
                 cv2.putText(frame,f'press={1000*self.peak_press:.2f}mm',(8,38),
                             cv2.FONT_HERSHEY_SIMPLEX,.4,(255,255,255),1)
                 self.writer.write(frame); self.video_next = self.now()+.2
+            if self.sample_perception and self.physics_ticks % 10 == 0:
+                self.observer.latest()
 
     def close(self):
-        pass  # release in the shared runner; render resources remain for outcome images
+        if self.enabled and not self.released:
+            # Perception failure must never prevent control release.
+            self.sample_perception = False
+            self.wait(RELEASE_DURATION_S)
+            self.released = True
 
     def finish(self):
         if self.writer is not None:
@@ -136,6 +147,7 @@ class Observer:
     """Deterministic simulated camera sampling; no pause/settle requests during execution."""
     def __init__(self,world,args,calibration):
         self.w,self.args,self.calibration = world,args,calibration
+        world.observer = self
         self.window = ObservationWindow()
         self.value = None
         self.last_capture = -np.inf
@@ -213,6 +225,7 @@ class Observer:
             raise RuntimeError('Initial RGB-D not stable')
         if self.args.task == 'bottle':
             self.base = self.value.geometry['base_height']
+        self.w.sample_perception = True
         return self.value
 
     def latest(self):

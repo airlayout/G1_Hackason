@@ -28,6 +28,7 @@ from j1gen_camera import CalibratedHeadCamera, J1CameraRuntime, add_camera_argum
 from push_button import ArmSdk, CONTROL_HZ, STATE_TIMEOUT, TRACKING_LIMIT, check_speed
 from button_control import STAGED_CLEARANCES_M, preview_button_path, solve_checked, validate_fk_margin
 from trial_policy import ButtonTrialPolicy, TrialPause, ObservationUnavailable, add_trial_arguments, resolve_trial_arguments
+from motion_limits import JointMotionLimits, WEIGHT_RAMP_STEPS, CONTROL_PERIOD_S
 
 
 def read_calibration(path, *, require_button=True):
@@ -85,8 +86,12 @@ def validate_stationary_pose(configuration, calibration):
 class ArmMotion:
     """画像推論に依存せず50Hzで保持・補間指令を送り、状態を監視する。"""
 
-    def __init__(self, arm, calibration, *, gravity=None, state_sink=None):
+    def __init__(self, arm, calibration, *, gravity=None, state_sink=None, limits=None):
         self.arm, self.calibration = arm, calibration
+        self.limits = limits or JointMotionLimits()
+        self.enforce_stream_limits = limits is not None
+        if limits is not None and arm.configure_motion_limits(limits) != limits.to_dict():
+            raise RuntimeError('腕の関節制限を適用できません')
         self.gravity = gravity
         self.state_sink = state_sink
         current = arm.current_arm()
@@ -157,18 +162,18 @@ class ArmMotion:
 
     def enable(self):
         self.thread.start()
-        for step in range(101):
+        for step in range(WEIGHT_RAMP_STEPS):
             self.check()
             with self.lock:
-                self.weight = step / 100
+                self.weight = step / (WEIGHT_RAMP_STEPS-1)
             self.wait(0.02)
 
     def move(self, goal, duration, settle_s=0.1):
         goal = validate_arm_q(np.asarray(goal).tolist())
         with self.lock:
             start = self.target
-        duration = max(duration, 1.5 * max(abs(a-b) for a, b in zip(start, goal)) / 0.8)
-        check_speed(start, goal, duration)
+        duration = max(duration, 1.5 * max(abs(a-b) for a, b in zip(start, goal)) / self.limits.joint_speed_rad_s)
+        check_speed(start, goal, duration, max_joint_speed=self.limits.joint_speed_rad_s)
         previous=np.array(start)
         for target in interpolate(start, goal, duration, CONTROL_HZ):
             self.check()
@@ -213,7 +218,14 @@ class ArmMotion:
         self.check()
         goal = validate_arm_q(np.asarray(goal).tolist())
         with self.lock:
-            self.target_velocity=(np.array(goal)-np.array(self.target))*CONTROL_HZ if velocity is None else np.array(velocity)
+            next_velocity=(np.array(goal)-np.array(self.target))*CONTROL_HZ if velocity is None else np.array(velocity)
+            if self.enforce_stream_limits:
+                if (next_velocity.shape != (7,) or not np.all(np.isfinite(next_velocity))
+                        or np.max(np.abs(next_velocity)) > self.limits.joint_speed_rad_s+1e-9
+                        or np.max(np.abs(next_velocity-self.target_velocity))/CONTROL_PERIOD_S > self.limits.joint_acceleration_rad_s2+1e-9
+                        or np.max(np.abs(np.array(goal)-self.target)) > self.limits.joint_speed_rad_s*CONTROL_PERIOD_S+.005):
+                    raise ValueError('腕ストリームが関節速度・加速度の上限を超えました')
+            self.target_velocity=next_velocity
             self.target = goal
         if self.record_approach:
             self.approach.append(goal, 1/CONTROL_HZ)

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "real"))
 from arm_bridge import ArmProxy, serve_connection
+from motion_limits import JointMotionLimits
 
 
 class FakeArm:
@@ -120,3 +121,49 @@ def test_old_bridge_without_torque_ack_is_released(monkeypatch):
         proxy.publish((0.,)*7, .5, right_tau=(0.,)*7)
     assert calls == ['publish', 'release']
     assert proxy.weight == 0.
+
+
+def test_configured_bridge_accepts_faster_commands_and_resets_on_release(monkeypatch):
+    import arm_bridge
+    from types import SimpleNamespace
+    clock = [0.]
+    monkeypatch.setattr(arm_bridge, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
+    proxy, arm, errors, thread = connection()
+    try:
+        limits = JointMotionLimits(1.2, 4.)
+        assert proxy.configure_motion_limits(limits) == limits.to_dict()
+        assert arm.writes == 0
+        proxy.publish((0.,)*7, .1)
+        clock[0] = .02
+        proxy.publish((.025,)*7, .1)  # Above the old .8rad/s receive guard.
+        assert arm.writes == 2
+        proxy.release()
+        proxy.publish((0.,)*7, .1)
+        clock[0] = .04
+        with pytest.raises(RuntimeError, match='変化速度'):
+            proxy.publish((.025,)*7, .1)
+        assert arm.writes == 3
+    finally:
+        proxy.socket.close()
+        thread.join(timeout=1)
+
+
+def test_bridge_rejects_limit_change_while_active():
+    proxy, arm, errors, thread = connection()
+    try:
+        proxy.publish((0.,)*7, .1)
+        with pytest.raises(RuntimeError, match='腕制御中'):
+            proxy.configure_motion_limits(JointMotionLimits(1.2, 4.))
+        assert arm.writes == 1
+    finally:
+        proxy.socket.close()
+        thread.join(timeout=1)
+
+
+def test_old_bridge_without_limits_ack_cannot_start_motion(monkeypatch):
+    proxy = ArmProxy.__new__(ArmProxy)
+    calls = []
+    monkeypatch.setattr(proxy, '_rpc', lambda op, **kwargs: calls.append(op))
+    with pytest.raises(RuntimeError, match='設定に未対応'):
+        proxy.configure_motion_limits(JointMotionLimits(1.2, 4.))
+    assert calls == ['configure_limits']

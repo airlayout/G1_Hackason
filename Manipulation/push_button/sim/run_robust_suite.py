@@ -17,6 +17,10 @@ def main():
     p.add_argument('--controllers',choices=('staged','robust'),nargs='+',default=['staged','robust'])
     p.add_argument('--planning-budget-s',type=float,default=10.)
     p.add_argument('--planning-scenarios',type=int,default=20)
+    p.add_argument('--holdout-scenarios',type=int,default=0)
+    p.add_argument('--motion-duration-s',type=float,default=30.)
+    p.add_argument('--joint-speed-rad-s',type=float,default=1.2)
+    p.add_argument('--joint-acceleration-rad-s2',type=float,default=4.)
     args = p.parse_args()
     if args.out.exists():
         p.error('Use a new output directory')
@@ -36,6 +40,10 @@ def main():
                 command = [sys.executable,str(entry),'--task',task,'--button-direction',direction,
                     '--controller',controller,'--model',args.model,'--report-out',str(path),
                     '--planning-budget-s',str(args.planning_budget_s),'--planning-scenarios',str(args.planning_scenarios),
+                    '--holdout-scenarios',str(args.holdout_scenarios),
+                    '--motion-duration-s',str(args.motion_duration_s),
+                    '--joint-speed-rad-s',str(args.joint_speed_rad_s),
+                    '--joint-acceleration-rad-s2',str(args.joint_acceleration_rad_s2),
                     '--evaluation-seed',str(seed),'--sensor-noise-m','.0005',
                     '--offset',*map(str,offset),'--calibration-offset',*map(str,calibration)]
                 if args.video:
@@ -49,6 +57,12 @@ def main():
                     stopped_for_measurement=execution.get('stopped_for_measurement'),
                     planning_wall_s=plan.get('total_wall_s',0),total_wall_s=data.get('total_wall_s'),
                     simulation_s=evaluation.get('simulation_s'),completed_rollouts=plan.get('completed_rollouts',0),
+                    motion_s=execution.get('motion_s'),trajectory_s=execution.get('trajectory_s'),
+                    enable_s=execution.get('enable_s'),release_s=execution.get('release_s'),
+                    speed_limit_fraction=execution.get('speed_limit_fraction'),
+                    acceleration_limit_fraction=execution.get('acceleration_limit_fraction'),
+                    planned_motion_metrics=plan.get('trajectory',{}).get('motion_metrics'),
+                    holdout=data.get('holdout'),
                     aborted_rollouts=plan.get('aborted_rollouts',0),
                     min_sampled_obstacle_clearance_m=evaluation.get('min_sampled_obstacle_clearance_m'),
                     max_visual_correction_m=max((float(np.linalg.norm(v['offset_m']))

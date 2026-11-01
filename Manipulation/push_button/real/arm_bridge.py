@@ -14,6 +14,7 @@ from pathlib import Path
 
 from push_button import ArmSdk
 from trajectory import validate_arm_q, validate_arm_tau
+from motion_limits import JointMotionLimits
 
 
 class ArmProxy:
@@ -59,6 +60,12 @@ class ArmProxy:
     def set_hold(self, current):
         self._rpc("hold", joints=list(current))
 
+    def configure_motion_limits(self, limits):
+        result = self._rpc('configure_limits', limits=limits.to_dict())
+        if result != limits.to_dict():
+            raise RuntimeError('腕ブリッジが関節制限の設定に未対応です。SDK側も更新してください')
+        return result
+
     def publish(self, right, weight, require_fresh_state=True, *, right_tau=None):
         kwargs = {} if right_tau is None else {"right_tau": list(validate_arm_tau(right_tau))}
         self.weight = weight
@@ -86,6 +93,7 @@ def serve_connection(connection, arm, timeout_s=0.5):
     last_publish = None
     last_target = None
     active = False
+    limits = JointMotionLimits()
     try:
         while True:
             try:
@@ -124,6 +132,11 @@ def serve_connection(connection, arm, timeout_s=0.5):
                                 or max(abs(a-b) for a, b in zip(joints, current)) > 0.025):
                             raise ValueError("保持姿勢が実機の現在角と一致しません")
                         arm.set_hold(current)
+                    elif op == 'configure_limits':
+                        if active:
+                            raise ValueError('腕制御中は関節制限を変更できません')
+                        limits = JointMotionLimits(**request['limits'])
+                        result = limits.to_dict()
                     elif op == "publish":
                         joints = validate_arm_q(request["joints"])
                         weight = float(request["weight"])
@@ -133,7 +146,7 @@ def serve_connection(connection, arm, timeout_s=0.5):
                         if last_target is None and max(abs(a-b) for a, b in zip(joints, arm.current_arm()[7:])) > 0.025:
                             raise ValueError("初回の腕指令が現在姿勢と一致しません")
                         if last_target is not None:
-                            allowed = 0.8 * (now-last_publish) + 0.005
+                            allowed = limits.joint_speed_rad_s * (now-last_publish) + 0.005
                             if max(abs(a-b) for a, b in zip(joints, last_target)) > allowed:
                                 raise ValueError("腕指令の変化速度が上限を超えました")
                         if "right_tau" in request:
@@ -148,6 +161,7 @@ def serve_connection(connection, arm, timeout_s=0.5):
                         arm.release()
                         active = False
                         last_target = last_publish = None
+                        limits = JointMotionLimits()
                     else:
                         raise ValueError("未対応の腕指令です")
                     reply = {"result": result}
