@@ -44,6 +44,8 @@
 | 11:49 | **回 6: 前の既定で送った**（VLA なし）。当たって止まった（44.4 mm）直後に `NoMotionError`（0.04 倍）→ 戻った。**VLA でも広げた設定でもないと分かった** |
 | 11:55 | 原因（「押し込みを少し戻す」の誤判定）を直した（`d6215b1`）。テスト 265 件 OK、PC2 に送った |
 | 11:57〜12:01 | **回 7〜10: 直したコードで、前の既定と広げた設定を交互に 2 回ずつ送った。4 回とも成功**（中止なし） |
+| 12:06〜12:10 | 胸のカメラを見た（見るだけ。別の会話の Claude）。**胸のカメラは無い**（「胸のカメラ」の節） |
+| 12:09:20 | 頭の `videohub_pc4` が止まり、12:09:26 に `rgbd_server` が落ちた（10:56 と同じ `imdecode` の例外）。videohub は 12:09:51 に master_service が起動し直した |
 
 ## 回 4 の `NoMotionError` の細かいこと
 
@@ -82,6 +84,30 @@ cv2.error: ... (-215:Assertion failed) !buf.empty() in function 'imdecode_'
 ```
 - videohub の RPC が時間切れ（3104）になり、空のデータを `imdecode` に渡して落ちた。1 回の失敗で落ちるのは `rgbd_server.py` の弱いところ（直すなら、空なら飛ばして続ける）
 - PC2 の wlan0 はつながったまま。`journalctl` に Wi-Fi が切れた記録は無かった（ssh の切断だけ）
+
+### 12:09 にもう一度止まった（videohub は約 72 分ごとに止まる？）
+
+- `~/button_press/rgbd_server_20261101b.log`: 7518 フレームのあと code 3104 → 終了（7539 フレーム）→ 10:56 と同じ `imdecode` の例外。
+  その前に 1 回だけ code 0 で中身が無い失敗もあった（落ちなかった）
+- `master_service.LOG`（`/unitree/var/log/master_service/`）: `check current service protect count. name:video_hub_pc4` が
+  10:56:43〜10:57:09 と 12:09:20〜12:09:51 に出ている（止まった videohub を起動し直している）。videohub の起動と止まった時刻:
+  09:44:36 → 10:56:43（72 分 7 秒）、10:57:08 → 12:09:20（72 分 12 秒）。**どちらも約 72 分**
+- 12:09 は、胸の窓口に 3 回・頭の videohub に 1 回、画像を頼んだ時刻（12:09 ごろ、頭は code 3104）と重なる。10:56 のときは頼んでいないので、
+  周期の癖と考えるが、頼んだこととの関係は否定しきれない。次に止まるのが 13:21 ごろなら周期
+- `rgbd_server` は起動し直していない（本線の会話に任せた）。空のカラーを飛ばす修正は `a0d69a7`
+
+## 胸のカメラ（12:06〜12:10、見るだけ）
+
+- `videohub_pc4_chest /dev/video10`（pid 2057）は 09:44:36 から動いている（CPU 0%）。起動の設定
+  `/unitree/etc/master_service/service/video_hub_pc4_chest` に `--exec .../videohub_pc4_chest /dev/video10` と書いてあり、起動のたびに同じ引数で起動される。
+  `master_service.LOG` では 10/21 も含め毎回 `start service success. name:video_hub_pc4_chest`
+- **`/dev/video10` は無い。** あるのは video0〜5（頭の D435i）と video8・9（前方の Innomaker U20CAM、`0c45:6366`、Mapping 班が使う）。
+  腕の Full HD webcam（`1bcf:2283`、usb 1-2.2.2）は 09:44 に認識され、10:18:28 に USB が抜けた
+- プログラムの文字列: `video device not work, wait 30 seconds, and then try again`、`rt/api/videohub_chest/request`、
+  `v4l2src device=` と `1920x1080 YUY2 15fps → nvjpegenc`。デバイスが現れるのを待っているだけ
+- `rt/api/videohub_chest` に `VideoClient` と同じ形（API 1001）で 3 回頼んだ → 3 回とも code 3102（送れない＝受け取る相手がいない）。画像は無し
+- 10/21 に「再起動後は `videohub_pc4_chest` が無かった」としたのは、`ps -C videohub_pc4_chest` の見落とし（コマンド名が 15 文字
+  `videohub_pc4_ch` で切れて一致しない）。`real/pc2_survey.sh` の同じ行を pgrep で探す形に直した
 
 ## 始める前に決めること（10/31 からの持ち越し）
 
@@ -200,7 +226,7 @@ cv2.error: ... (-215:Assertion failed) !buf.empty() in function 'imdecode_'
 
 ### 時間があれば（10/31 から移した）
 
-- [ ] 胸のカメラの有無（PC2 で `ls /dev/video*` など。見るだけ）→ 09:50 に Unitree のサービス `videohub_pc4_chest /dev/video10` が動いていた（10/21 の再起動後は無かった）。画像はまだ見ていない
+- [x] 胸のカメラの有無（PC2 で `ls /dev/video*` など。見るだけ）→ **無い**。`videohub_pc4_chest` は `/dev/video10` を待っているだけで、`/dev/video10` は無い（「胸のカメラ」の節）
 - [ ] ボトルを倒す動作（[KNOCK_PROCEDURE.md](KNOCK_PROCEDURE.md)）
 - [ ] 10/31 の横の動画で、すき間を測る（`measure_gap.py`）
 

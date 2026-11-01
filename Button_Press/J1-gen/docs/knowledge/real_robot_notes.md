@@ -20,8 +20,13 @@
   （立った状態で IMU も記録しながら、深度から床と机の面の pitch を求める）。首が傾いたままのときだけ、
   `configs/camera.yaml` の `head_camera_mount`・`depth_anchor` のコメントを外す（既定は上書きしない）。71° のときは
   天板の高さで見えるのは pelvis から前 約 40 cm まで（`real/DAILY_LOG_20261021_labpc.md`）
-- 実機に**胸のカメラは見当たらない**（10/14 に `videohub_pc4_chest /dev/video10` のサービスは動いていたが、10/21 の再起動後は
-  無かった。窓口だけだった可能性が高い。未確認）。カメラは頭の D435i だけと考える
+- **胸のカメラは無い**（2026-11-01 に確認）。Unitree の `videohub_pc4_chest /dev/video10` は起動のたびに master_service が
+  起動する（設定 `/unitree/etc/master_service/service/video_hub_pc4_chest` に `/dev/video10` が書いてある）が、`/dev/video10` は無く、
+  デバイスが現れるのを待っているだけ。窓口 `rt/api/videohub_chest` に頼んでも code 3102（受け取る相手がいない）。カメラは頭の D435i
+  と USB の Web カメラ（下の 10/31）だけ。10/21 に「再起動後は無かった」としたのは `ps -C` の見落とし（コマンド名が 15 文字
+  `videohub_pc4_ch` で切れるので `-C videohub_pc4_chest` では出ない。`pgrep -af videohub` で見る）
+- **頭の `videohub_pc4` は、起動から約 72 分で止まる**ことがある（2026-11-01 に 2 回: 09:44 起動 → 10:56、10:57 起動 → 12:09）。
+  master_service が 30 秒ほどで起動し直すが、その間はカラーが code 3104（時間切れ）になる
 - **videohub のカラーが古い画像のまま止まることがある**（2026-10-21）。深度は動くので、位置合わせがずれて YOLO も外れる。
   配信サーバの起動し直し・USB の差し直しでは直らず、G1 の再起動で直った。配信を始めたら、カラーが動いているかを最初に見る
 - videohub がカラーを使っていても、**深度だけなら RealSense から開ける**（USB のインタフェースが分かれている）。
