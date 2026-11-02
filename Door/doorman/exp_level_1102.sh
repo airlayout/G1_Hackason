@@ -5,6 +5,9 @@
 # 使い方（OMEN の ~/work_inoue/doorman で）: setsid -f nohup ./exp_level_1102.sh >> logs_level_1102.log 2>&1 < /dev/null
 set -uo pipefail
 cd "$HOME/work_inoue/doorman" || exit 1
+# 札は自分の PAUSE_DOOR_F3（連鎖の学習もこれを見る）。gate.sh の既定 PAUSE_DOORMAN_TRAINING はユーザーの札と同じ名前なので使わない
+# （11-02 14:25〜16:09 の評価は渡し忘れて、ユーザーの札を置いては外していた）
+export PAUSE_FILE="$HOME/work_inoue/PAUSE_DOOR_F3"
 log() { echo "=== [$(date '+%m-%d %T')] $*"; }
 PY="$HOME/miniforge3/envs/doorman6/bin/python"
 TASK=door_en1154_g13_shaped_left_weight

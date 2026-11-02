@@ -13,6 +13,9 @@
 # DLSS の準備が失敗した（NGX CreateFeature failed）ので 480×360（7,680×5,760）にする
 set -uo pipefail
 cd "$HOME/work_inoue/doorman" || exit 1
+# 札は自分の PAUSE_DOOR_F3（連鎖の学習もこれを見る）。gate.sh の既定 PAUSE_DOORMAN_TRAINING はユーザーの札と同じ名前なので使わない
+# （11-02 14:25〜16:09 の評価は渡し忘れて、ユーザーの札を置いては外していた）
+export PAUSE_FILE="$HOME/work_inoue/PAUSE_DOOR_F3"
 log() { echo "=== [$(date '+%m-%d %T')] $*"; }
 TASK=door_en1154_g13_shaped_left_weight
 EVAL_EXTRA="++env.config.reset_from_dataset.enabled=False ++env.config.max_stage_time=[500,200,200,200,600,400] ++env.config.max_episode_length_s=60"
