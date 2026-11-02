@@ -14,6 +14,7 @@
 #   段 A を飛ばす: SKIP_A=1。生徒から脚と腰を隠さずに学習し直す: MASK=0（段の名前 f3sl4096）・隠す回の割合: MASK=0.5（f3sm4096、パッチ 0086）
 #   完了に段階 5 を要する: COMPLETE_THROUGH=1（パッチ 0088）。GPU の空きで回ごとに台数を選ぶ: AUTO_ENVS=1（stage_chain.sh）
 #   11-01 の続き: SKIP_A=1 MASK=0 COMPLETE_THROUGH=1 B_NAME=f3sc AUTO_ENVS=1 IDLE_GATE=0 CK=<f3sl4096 の last.pt>
+#   打ち切りの線を締め始める学習中の成功の割合: TERM_UP=0.9（既定は設定の 0.7。11-02 ユーザー「成功率は 90% で上限に学習を続けて」）
 set -uo pipefail
 cd "$HOME/work_inoue/doorman" || exit 1
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
@@ -94,7 +95,16 @@ if [ "${COMPLETE_THROUGH:-0}" = 1 ]; then
     { log "パッチ 0088 が VIRAL6_fix に当たっていない"; exit 1; }
   B_MORE="$B_MORE,++env.config.complete_requires_through_stage=True"
 fi
-log "段 B: $B_NAME を学習し直す ck=$CK mask=${MASK:-1} complete_through=${COMPLETE_THROUGH:-0} auto_envs=${AUTO_ENVS:-0}"
+# TERM_UP（11-02）: 打ち切りの線（上半身の関節の速さの上限 = termination_level × 20 rad/s）は、学習中の成功の割合
+# （average_goal_reached。回の半分を途中から始めるので評価より低い）がこの値を超えると戻すたびに 0.9999 倍に締まる。
+# 締める仕組みは残し、締め始める割合だけを変える（線の値そのものは重みに保存されていて、そこから続く）
+if [ -n "${TERM_UP:-}" ]; then
+  case "$TERM_UP" in
+    0.[0-9]*) B_MORE="$B_MORE,++env.config.termination_curriculum.level_up_ave_goal_reached_rate=$TERM_UP" ;;
+    *) log "TERM_UP は 0〜1 の小数: ${TERM_UP}"; exit 1 ;;
+  esac
+fi
+log "段 B: $B_NAME を学習し直す ck=$CK mask=${MASK:-1} complete_through=${COMPLETE_THROUGH:-0} auto_envs=${AUTO_ENVS:-0} term_up=${TERM_UP:-設定のまま}"
 export NAME="$B_NAME" TRAIN_MORE="$B_MORE"
 # 学習（と各回の評価）の上限は 10 GB（10-30 17〜19 時の sar で 4,096 台の学習は 8.5 GB。再起動の後は空きが 12.5 GB で、
 # 12 GB＋余裕 1 GB〔exp_f3_retrain_1026.sh で固定〕では空き待ちから出られない）
