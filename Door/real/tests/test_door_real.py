@@ -352,7 +352,10 @@ def test_policy_npz_delta_overrides_default(tmp_path):
     p = dc.load_params(str(path))
     np.testing.assert_array_equal(p.arm_guard_delta, np.full(14, 0.1))
     assert dc.resolve_arm_guard(p, dc.ARM_GUARD)[0].max() == 0.1
-    p0 = dc.load_params(POLICY)
+    data.pop("arm_guard_delta")  # δ なしで学習した重み（45,150 など）の形。11-02 以降の重みは δ を持つので、試験の中で作る
+    path0 = tmp_path / "policy_without_delta.npz"
+    np.savez(path0, **data)
+    p0 = dc.load_params(str(path0))
     assert p0.arm_guard_delta is None
     np.testing.assert_array_equal(dc.resolve_arm_guard(p0, dc.ARM_GUARD)[0], dc.ARM_GUARD_DELTA)
 

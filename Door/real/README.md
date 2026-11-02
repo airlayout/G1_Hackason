@@ -13,6 +13,8 @@
 | `deploy_to_pc2.sh` | PC2 の `~/door_real/` へ配り md5 で確かめ、PC2 の Python を調べる |
 | `target_guard.py` | 10-26: 腕の積み上げを今の角度 ±δ に収める（直し B）・送る目標を切る・立つ HOMIE の指令を 0（直し 8）。学習（VIRAL6 パッチ 0069）と 1 字も違わない同じファイル |
 | `door_foot_load.py`・`leg_model_g1_29dof_rev_1_0.npz` | 10-26: 脚の関節の角度・トルクと IMU から左右の足の鉛直の力を逆算する（numpy だけ）。モデルは公式の g1_29dof_rev_1_0（`export_leg_model.py` が Mac の MuJoCo で書き出す） |
+| `door_run_stock.py`・`door_stock_io.py` | 11-02: **純正の脚の口**。純正の歩行のまま腕だけ `rt/arm_sdk` で借り、歩きは生徒の指令を `SetVelocity` で渡す（下の「純正の脚で動かす」） |
+| `analyze_stock.py` | 11-02: `door_run_stock.py` の記録の解析（段・扉の角度・指令に対して進んだ割合・RPC・腕の追従・観測が学習の範囲か・押す試し） |
 | `tests/` | 機体なしの試験（10-26 に 103 件。扉の値・リモコン・段の進み方・B で立ったまま・L2+B で脱力・Ctrl+C の 1 回目と 2 回目・ssh の切断・ボタンの押しっぱなし・lowstate の途切れ・NaN。重みと正解の記録は環境変数 `DOOR_POLICY`・`DOOR_GOLDEN` で渡す） |
 
 ## 10-26 に足したこと（計画書 `docs/plan/2026-10-26-g1-door-stand-foot-load-check.md`）
@@ -132,3 +134,41 @@ cd ~/door_real && ./door_start.sh                # 扉の試し（run_first.sh�
 
 - LiDAR で扉の角度を測る部分（最初の試しで頭の LiDAR の記録を取り、それで作る）
 - 事前地図と測位から枠の位置を取る部分（最初は巻き尺＋odom）
+
+## 純正の脚で動かす（11-02、`door_run_stock.py`）
+
+計画 `docs/plan/2026-11-02-g1-door-real-stock-legs.md`。脚は HOMIE を使わず、純正の歩行（通常運転 500/501）のまま動かす。
+`rt/lowcmd` は送らない。腕 14 関節だけを `rt/arm_sdk` で借り（重み 0 ↔ 1 を 2 秒）、歩きは別の糸から `SetVelocity`（有効 0.5 秒）を 20 回/秒。
+生徒の観測の脚と腰の行動には、HOMIE を計算だけ回した出力（影の HOMIE、`--leg-actions shadow`）を入れる。
+
+⚠️ 生徒は脚と腰の観測に強く頼っている。Isaac Sim で脚と腰の観測を隠すと 0/256（11-02、反復 65,350）。
+純正の歩き方の関節の値が学習の範囲に入っているかを、記録の後に `analyze_stock.py --policy` の「観測」で必ず見る。
+
+| 段 | すること | PC の指示（`./stock_cmd.sh`） |
+|---|---|---|
+| WAIT | 純正が全身を持つ | `a` で腕を借りる |
+| ARMS_IN | 重みを 2 秒で 0 → 1、腕を学習の初めの姿勢へ 1 rad/s | — |
+| READY | 腕を保つ。影の HOMIE を回し、ライダーへ REF。傾き 8° 以下・両足に体重 85%（片足 35%）・ライダーの準備で `d` を受け付ける | `d` で扉の方策 |
+| DOOR | 生徒が腕と歩きを動かす。時間（`SECS`）・扉の先 1.5 m・扉の角度（`STOP_DEG`）で POST | `stop` で止める |
+| POST | 歩き 0・腕はその場で保つ（純正が立つ） | `p`（押す試し）・`a`（構え直す）・`r`（腕を戻す） |
+| PROBE | 手順 11: 腕は止めた姿勢のまま、前へ 0.3 m/s（`p0.5` で 0.5）を 2 秒 | — |
+| ARMS_OUT | 腕を借りる前の角度へ戻し、重みを 2 秒で 0 へ | — |
+
+止め方: ふだんは立ったまま（`stop`・Enter・Ctrl+C の 1 回目・ssh の切断・リモコンの B／select・傾き 10°・関節 20 rad/s・
+lowstate の途切れ・周期の遅れ・SetVelocity の失敗 5 回・ライダーの見張り）。脱力はリモコンの L2+B（純正のもの）・Ctrl+C の 2 回目・傾き 30° だけ。
+プログラムが落ちても、純正はその時の形で腕を保ち（10-27 に確認）、速度は 0.5 秒で切れる。
+
+```bash
+# Mac: 配る（重みは logs_real/policy/ に置いてある。リポジトリには入れない）
+bash Door/real/deploy_to_pc2.sh Door/real/logs_real/policy/door_policy_f3sc_r4_it65350.npz
+# PC2: 推定器 → 純正の口（機体は吊って綱を緩め、リモコンで通常運転に入れてから）
+cd ~/door_real && THICK=<板の厚み m（巻き尺）> ./lidar_start.sh   # 扉の高さ・厚みはその日に巻き尺で測る
+DOOR=0.94,2.05,0.99,0.064 SECS=5 CENTER="0.047 -0.016" ./door_start.sh run_stock.sh
+./stock_cmd.sh a     # 腕を借りる → READY（画面に「足 L ○ N・R ○ N（体重の ○%）」）
+./stock_cmd.sh d     # 扉の方策
+./stock_cmd.sh stop  # 立ったまま止める（いつでも）
+./stock_cmd.sh r     # 腕を戻す → WAIT
+./stock_cmd.sh q     # 終わる
+# Mac: 記録を読む
+Navigation/.venv/bin/python Door/real/analyze_stock.py <door_stock_*.npz> --policy Door/real/logs_real/policy/door_policy_f3sc_r4_it65350.npz
+```

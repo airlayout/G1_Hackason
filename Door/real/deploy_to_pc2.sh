@@ -37,6 +37,7 @@ if [ "${1:-}" != check ]; then
          "$HERE/door_lidar_msg.py" "$HERE/door_lidar_source.py" "$HERE/door_lidar_node.py" "$HERE/lidar_door_est.py"
          "$HERE/door_lidar_angle.py" "$HERE/door_lidar_frame.py" "$HERE/door_lidar_geometry.py" "$HERE/lidar_offset_from_tape.py"
          "$HERE/door_stand_guard.py" "$HERE/pc2/release_native.py"  # 10-23 の再発防止（STAND の見張り・純正の制御を SDK で外す）
+         "$HERE/door_run_stock.py" "$HERE/door_stock_io.py" "$HERE/pc2/run_stock.sh" "$HERE/pc2/stock_cmd.sh"  # 11-02: 純正の脚の口
          # PC2 で起こす・止める・録るスクリプト
          "$HERE/pc2/door_start.sh" "$HERE/pc2/door_stop.sh" "$HERE/pc2/lidar_start.sh" "$HERE/pc2/lidar_stop.sh"
          "$HERE/pc2/run_door_lidar.sh" "$HERE/pc2/run_arms_dry.sh" "$HERE/pc2/rec_take.sh" "$HERE/pc2/rec_stop.sh" "$HERE/pc2/watch_remote.py")
@@ -65,6 +66,8 @@ try:
     from unitree_sdk2py.idl.nav_msgs.msg.dds_ import Odometry_
     from unitree_sdk2py.idl.sensor_msgs.msg.dds_ import PointCloud2_  # ライダーの推定器（door_lidar_node.py）
     from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
+    from unitree_sdk2py.g1.loco.g1_loco_client import LocoClient  # 11-02: 純正の脚の口（door_run_stock.py）
+    assert hasattr(LocoClient, "GetFsmId") and hasattr(LocoClient, "SetVelocity"), "LocoClient に GetFsmId・SetVelocity が無い"
     print("OK python %s numpy %s sdk %s" % (sys.version.split()[0], numpy.__version__, unitree_sdk2py.__file__))
 except Exception as e:
     print("NG %s: %s" % (type(e).__name__, e))
