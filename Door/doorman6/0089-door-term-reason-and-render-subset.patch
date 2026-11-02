@@ -1,0 +1,216 @@
+From 7b36ed12849d20c27b15c160e2845f1cebdb43a8 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 2 Nov 2026 15:32:51 +0900
+Subject: [PATCH] door: record why each episode ended and write evaluation
+ videos only for chosen envs (when the state recorder is on,
+ _check_termination keeps per env the reason bits of the last end (stage
+ overtime, completion or episode limit, base termination, 4 m from the door,
+ upper-body joint overspeed, door at door_hold_open_angle_deg), the stage, and
+ the fastest upper-body joint and its speed, carried over until the next end
+ because the recorder writes the state after the reset; reset_buf is an
+ integer buffer, so it is turned into a mask first;
+ simulator.config.render_env_ids writes videos only for those envs while the
+ camera still covers every env, since Isaac Lab 3.0 needs one camera per env;
+ judgments unchanged, default off = unchanged) (11-02)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ gr00t/rl/envs/door/door_open_homie.py         | 59 +++++++++++++++++++
+ .../legged_base_task/legged_robot_base.py     | 11 +++-
+ gr00t/rl/utils/render_subset.py               | 14 +++++
+ gr00t/rl/utils/state_recorder.py              | 21 +++++++
+ 4 files changed, 102 insertions(+), 3 deletions(-)
+ create mode 100644 gr00t/rl/utils/render_subset.py
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index b0e8b18..a0ad9d2 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -324,6 +324,13 @@ class DoorPregrasp(
+ 
+     def _init_buffers(self):
+         super()._init_buffers()
++        # G1_Hackason（パッチ 0089、11-02）: 回が終わった理由と、終わった歩の段階・上半身の関節の速さの最大（_note_term_reason）。
++        # 記録するときだけ書く。−1 はまだ一度も終わっていない
++        self.term_reason_buf = torch.full((self.num_envs,), -1.0, device=self.device)
++        self.term_stage_buf = torch.full((self.num_envs,), -1.0, device=self.device)
++        self.term_upper_vel_buf = torch.zeros(self.num_envs, device=self.device)
++        self.term_upper_joint_buf = torch.full((self.num_envs,), -1.0, device=self.device)
++        self.term_count_buf = torch.zeros(self.num_envs, device=self.device)
+         # G1_Hackason（G2、10-29）: 脚を立つ HOMIE に固定する掛け金と、その回で扉が一度開いたか（stand_latch.py）
+         self._stand_latched = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+         self._door_opened_once = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+@@ -1521,6 +1528,9 @@ class DoorPregrasp(
+     @override
+     def _check_termination(self):
+         super()._check_termination()
++        # G1_Hackason（パッチ 0089）: 記録するときだけ、ここまでの打ち切り（倒れ・持ち時間・完了）を控えて理由を分ける
++        # reset_buf は整数（0/1）の入れ物（base_task.py）。整数のまま台を選ぶと「0 番と 1 番の台」を指すので真偽にする（11-02 に踏んだ）
++        base_reset = self.reset_buf.bool() if getattr(self, "state_recorder", None) is not None else None
+         self.reset_buf |= self.relative_door_pos_buf.norm(dim=-1) > 4.0
+ 
+         dof_overspeed = torch.any(
+@@ -1538,11 +1548,60 @@ class DoorPregrasp(
+             hinge_angle = self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 0]
+             self.reset_buf |= hinge_angle > hold_open_angle_deg * torch.pi / 180.0
+ 
++        if base_reset is not None:
++            self._note_term_reason(base_reset, dof_overspeed & not_just_resetted)
++
+         # reset if the homie command is too large when grasping or opening the door
+         # is_grasping_or_opening = (self.stage_buf == DoorPregrasp.STAGE_GRASP) | (self.stage_buf == DoorPregrasp.STAGE_OPEN)
+         # homie_command_norm = torch.norm(self.get_physical_homie_commands()[:, :3], dim=1)
+         # self.reset_buf |= (homie_command_norm > self.termination_level) & is_grasping_or_opening
+ 
++    # G1_Hackason（パッチ 0089）: 回が終わった理由のビット。1 つの回で複数立つことがある
++    TERM_OVERTIME = 1  # 段階の持ち時間切れ
++    TERM_TIMEOUT = 2  # 完了（reset_on_complete の遅れの後）か、回の長さの上限
++    TERM_BASE = 4  # 上の 2 つ以外の土台の打ち切り（この設定では胴が低すぎる＝倒れだけ）
++    TERM_FAR = 8  # 扉から 4 m より遠い
++    TERM_OVERSPEED = 16  # 上半身（指を除く）の関節の速さが termination_level × 20 rad/s を越えた
++    TERM_HOLD_OPEN = 32  # 扉が door_hold_open_angle_deg に届いた
++
++    def _note_term_reason(self, base_reset, overspeed):
++        """G1_Hackason（パッチ 0089、11-02）: この歩で回が終わった台に、理由のビット・段階・上半身の関節の速さの最大と
++        その関節の番号を残す。記録（state_recorder）は回が終わった歩を写さず、戻された後の姿を次の行に書くので、
++        次に終わるまで値を持ち越す。判定は変えない（_check_termination が記録するときだけ呼ぶ）
++
++        base_reset: 土台と段階の _check_termination が立てた打ち切り（扉の 3 つの条件の前）
++        overspeed: この歩の関節の速さの打ち切り（最初の 20 歩を除いた後）"""
++        ended = self.reset_buf.bool()  # 整数（0/1）の入れ物なので真偽にしてから台を選ぶ
++        if not bool(ended.any()):
++            return
++        # 段階の持ち時間切れは staged_task_base と同じ式（最後の段階で完了しているときは数えない）
++        is_last = self.stage_buf == self.num_stages - 1
++        is_complete = self.stage_complete_cond_func() & (self.episode_length_buf >= 2)
++        overtime = (self.time_in_stage_buf >= self.max_stage_time[self.stage_buf]) & ~(is_last & is_complete)
++        timeout = self.time_out_buf.bool()
++        base = base_reset & ~overtime & ~timeout
++        far = self.relative_door_pos_buf.norm(dim=-1) > 4.0
++        hold_open = torch.zeros_like(ended)
++        hold_open_angle_deg = self.config.get("door_hold_open_angle_deg", None)
++        if hold_open_angle_deg is not None:
++            hinge_angle = self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 0]
++            hold_open = hinge_angle > hold_open_angle_deg * torch.pi / 180.0
++        bits = (
++            overtime.int() * self.TERM_OVERTIME
++            + timeout.int() * self.TERM_TIMEOUT
++            + base.int() * self.TERM_BASE
++            + far.int() * self.TERM_FAR
++            + overspeed.int() * self.TERM_OVERSPEED
++            + hold_open.int() * self.TERM_HOLD_OPEN
++        )
++        upper_idx = torch.tensor(self._upper_non_finger_dof_idx, device=self.device)
++        vel_max, arg = torch.abs(self.simulator.dof_vel[:, upper_idx]).max(dim=-1)
++        self.term_reason_buf[ended] = bits[ended].float()
++        self.term_stage_buf[ended] = self.stage_buf[ended].float()
++        self.term_upper_vel_buf[ended] = vel_max[ended]
++        self.term_upper_joint_buf[ended] = upper_idx[arg][ended].float()
++        self.term_count_buf[ended] += 1
++
+     @property
+     def ground_height(self):
+         return 0.0
+diff --git a/gr00t/rl/envs/legged_base_task/legged_robot_base.py b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+index ee5e30c..13e55ef 100644
+--- a/gr00t/rl/envs/legged_base_task/legged_robot_base.py
++++ b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+@@ -555,21 +555,26 @@ class LeggedRobotBase(BaseTask):
+             self.simulator.eval_camera.set_world_poses_from_view(eye, target)
+             rgb_viewer = self.simulator.eval_camera.data.output["rgb"].torch.clone()  # G1_Hackason: Isaac Lab 3.0 は ProxyArray
+ 
++            # G1_Hackason（パッチ 0089、11-02）: render_env_ids があれば、その台の動画だけを書く（render_subset.py）。
++            # Isaac Lab 3.0 のカメラは台の数だけ要るので、描くのは全部の台のまま。動画の名前は台の番号のまま
++            from gr00t.rl.utils.render_subset import render_view_env_ids
++
++            view_env_ids = render_view_env_ids(sim_cfg.get("render_env_ids", None), self.num_envs)
+             if "writers_rendering_results" not in self.__dict__:
+ 
+                 os.makedirs(self.config.save_rendering_dir, exist_ok=True)
+                 self.writers_rendering_results = []
+                 time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+ 
+-                for i in range(self.num_envs):
++                for i in view_env_ids:
+                     file_name = f"{self.config.save_rendering_dir}/{time_str}_viewer_{i}.mp4"
+                     print(f"Saving rendering to {file_name}")
+                     writer = imageio.get_writer(file_name, fps=int(1 / self.dt))
+                     writer.append_data(rgb_viewer[i].cpu().numpy())
+                     self.writers_rendering_results.append(writer)
+             else:
+-                for i in range(self.num_envs):
+-                    self.writers_rendering_results[i].append_data(rgb_viewer[i].cpu().numpy())
++                for i, writer in zip(view_env_ids, self.writers_rendering_results):
++                    writer.append_data(rgb_viewer[i].cpu().numpy())
+ 
+     def end_render_results(self):
+         if (
+diff --git a/gr00t/rl/utils/render_subset.py b/gr00t/rl/utils/render_subset.py
+new file mode 100644
+index 0000000..ff7be6d
+--- /dev/null
++++ b/gr00t/rl/utils/render_subset.py
+@@ -0,0 +1,14 @@
++# G1_Hackason（パッチ 0089、11-02）: 評価の動画を選んだ台だけ書く（simulator.config.render_env_ids）。
++# 256 台の評価のまま、失敗した台だけを Isaac Sim の画で見るため。Isaac Lab 3.0 のカメラは台の数だけ要るので、
++# 描くのは全部の台のままで、書く動画を絞る。動画の名前は台の番号のまま
++
++
++def render_view_env_ids(render_env_ids, num_envs: int) -> list[int]:
++    """動画を書く台の番号（小さい順・重なりなし）。render_env_ids が空なら全部の台（元のまま）"""
++    if not render_env_ids:
++        return list(range(num_envs))
++    ids = sorted({int(i) for i in render_env_ids})
++    bad = [i for i in ids if not 0 <= i < num_envs]
++    if bad:
++        raise ValueError(f"render_env_ids に台の数（{num_envs}）の外の番号がある: {bad}")
++    return ids
+diff --git a/gr00t/rl/utils/state_recorder.py b/gr00t/rl/utils/state_recorder.py
+index 3fa4df9..7b4964f 100644
+--- a/gr00t/rl/utils/state_recorder.py
++++ b/gr00t/rl/utils/state_recorder.py
+@@ -9,6 +9,9 @@
+ #   chunk_steps: 何ステップごとにファイルを分けるか（既定 100。止められたときに失うのはこの分まで）
+ #   pregrasp_diag: True で区間 1→2 の条件の各項目も書く（既定 False）
+ #   rgb_every: カメラ（ego_camera）があるとき、何ステップごとに先頭 num_envs 台の RGB を PNG で書くか（既定 0 = 書かない）
++# 扉の環境（パッチ 0089 の後）では、回が終わった理由 term_reason（door_open_homie の TERM_* のビット。−1 はまだ終わっていない）・
++# 終わった歩の段階 term_stage・上半身の関節の速さの最大 term_upper_vel とその関節 term_upper_joint（dof の番号）・終わった回数
++# term_count と、今の歩の上半身の関節の速さの最大 upper_vel_max・upper_vel_joint も書く。term_* は次に終わるまで持ち越す
+ 
+ import atexit
+ import os
+@@ -102,6 +105,8 @@ class StateRecorder:
+         }
+         # G1_Hackason（段 2-3）: 使う手がレバーから受ける力 [N]（[:, 0]＝前へ押す・[:, 2]＝上下）。押す力の報酬と同じ量で、頭打ちの前の値
+         row.update(self._hand_lever_force(env, k))
++        if hasattr(env, "term_reason_buf"):  # G1_Hackason（パッチ 0089）
++            row.update(self._term_reason(env, k))
+         if self.pregrasp_diag:
+             row.update(self._pregrasp_diag(env, k))
+         for key, value in row.items():
+@@ -134,6 +139,22 @@ class StateRecorder:
+             out["door_panel_contact_force"] = panel.reshape(k, -1, 3).sum(dim=1).cpu().numpy()
+         return out
+ 
++    @staticmethod
++    def _term_reason(env, k: int) -> dict:
++        """G1_Hackason（パッチ 0089、11-02）: 回が終わった理由（door_open_homie._note_term_reason が持ち越す値）と、
++        今の歩の上半身（指を除く）の関節の速さの最大 [rad/s] とその関節の dof の番号"""
++        upper_idx = torch.tensor(env._upper_non_finger_dof_idx, device=env.device)
++        vel_max, arg = torch.abs(env.simulator.dof_vel[:k, upper_idx]).max(dim=-1)
++        return {
++            "term_reason": env.term_reason_buf[:k].cpu().numpy(),
++            "term_stage": env.term_stage_buf[:k].cpu().numpy(),
++            "term_upper_vel": env.term_upper_vel_buf[:k].cpu().numpy(),
++            "term_upper_joint": env.term_upper_joint_buf[:k].cpu().numpy(),
++            "term_count": env.term_count_buf[:k].cpu().numpy(),
++            "upper_vel_max": vel_max.cpu().numpy(),
++            "upper_vel_joint": upper_idx[arg].float().cpu().numpy(),
++        }
++
+     @staticmethod
+     def _pregrasp_diag(env, k: int) -> dict:
+         """区間 1→2（手を構える）の条件の各項目。手なしの機体でどれが満たせないかを見る（door_open_homie.py の
+-- 
+2.43.0
+
