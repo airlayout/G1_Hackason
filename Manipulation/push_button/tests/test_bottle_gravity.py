@@ -23,6 +23,7 @@ def sdk_packet():
         packets.append((cmd.motor_cmd[29].q, tuple(cmd.motor_cmd[i].tau for i in range(22, 29))))
     arm._publisher = SimpleNamespace(Write=write)
     arm._hold, arm._last_right, arm._last_weight = [0.]*14, None, 0.
+    arm._waist_hold = [0.]*3
     return arm, packets
 
 
@@ -34,12 +35,13 @@ def test_invalid_torque_is_never_published(tau):
     assert not packets
 
 
-def test_right_torque_and_release_ramp_leave_other_motors_untouched(monkeypatch):
+def test_right_torque_and_release_ramp_hold_upper_body_without_commanding_legs(monkeypatch):
     arm, packets = sdk_packet()
     tau = (1., -2., .5, -.5, .1, .2, -.2)
     arm.publish((0.,)*7, 1., require_fresh_state=False, right_tau=tau)
     assert packets[-1][1] == tau
-    assert all(not hasattr(arm._cmd.motor_cmd[i], 'tau') for i in range(15))
+    assert all(not hasattr(arm._cmd.motor_cmd[i], 'tau') for i in range(12))
+    assert all(arm._cmd.motor_cmd[i].tau==0 for i in range(12,15))
     assert all(arm._cmd.motor_cmd[i].tau == 0 for i in range(15,22))
     monkeypatch.setattr(push_button, 'time', SimpleNamespace(sleep=lambda _: None))
     arm.release()

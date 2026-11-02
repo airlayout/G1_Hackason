@@ -60,7 +60,7 @@ def test_rejects_fast_motion() -> None:
         check_speed((0.0,) * 7, (1.0,) * 7, 0.5)
 
 
-def test_arm_packet_does_not_command_legs_or_waist() -> None:
+def test_arm_packet_holds_waist_and_arms_without_commanding_legs() -> None:
     class FakePublisher:
         def __init__(self) -> None:
             self.writes = 0
@@ -73,10 +73,12 @@ def test_arm_packet_does_not_command_legs_or_waist() -> None:
     arm._crc = SimpleNamespace(Crc=lambda _command: 123)
     arm._publisher = FakePublisher()
     arm._hold = [0.1] * 14
+    arm._waist_hold = [0.05] * 3
     arm._last_right = None
     arm._last_weight = 0.0
     arm.publish((0.2,) * 7, 1.0, require_fresh_state=False)
-    assert all(arm._cmd.motor_cmd[index].q == 0.0 for index in range(15))
+    assert all(arm._cmd.motor_cmd[index].q == 0.0 for index in range(12))
+    assert all(arm._cmd.motor_cmd[index].q == 0.05 for index in range(12,15))
     assert all(arm._cmd.motor_cmd[index].q == 0.1 for index in range(15, 22))
     assert all(arm._cmd.motor_cmd[index].q == 0.2 for index in range(22, 29))
     assert arm._cmd.motor_cmd[29].q == 1.0

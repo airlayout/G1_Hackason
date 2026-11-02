@@ -24,6 +24,9 @@ from pose_history import PoseHistory
 from button_feedback import lamp_level
 from button_detector import make_button_detector, DEFAULT_CONFIDENCE, DEFAULT_IMAGE_SIZE
 from motion_limits import CONTROL_PERIOD_S
+from robust_policy import execution_policy
+from robust_conditions import (BUTTON_CONDITION_COUNT,validate_button_plan,
+                               validate_button_scenario_settings)
 
 
 def collect_outcome_observations(observer, *, now=time.monotonic, sleep=time.sleep):
@@ -72,11 +75,11 @@ def main(argv=None, *, task=None):
     parser.add_argument('--execute-after-plan',action='store_true',
         help='ボトルのデータ収集: 3条件合格後に即実行し、姿勢差・FK誤差は記録のみ')
     parser.add_argument('--execute-verified-plan',action='store_true',
-        help='ボタン: 3条件合格後に即実行。最後5mmから5cm退避まで目標を固定する')
+        help='ボタン: 4条件合格後、ボトルと同じ監視・同期送信で即実行。最後5mmから5cm退避まで目標固定')
     parser.add_argument('--lamp-min-rise',type=float,default=30.,help='ボタンの点灯判定に必要な増光量')
     add_arguments(parser); add_camera_arguments(parser)
     parser.set_defaults(motion_planner='robust')
-    args, settings = parse(parser, argv)
+    args, settings = parse(parser, argv, task=task)
     if args.motion_planner != 'robust':
         parser.error('Use real/run_push.py for the legacy planner')
     if task is not None:
@@ -87,6 +90,7 @@ def main(argv=None, *, task=None):
         args.confidence = DEFAULT_CONFIDENCE if args.task == 'button' else .25
     if args.detector_imgsz is None:
         args.detector_imgsz = DEFAULT_IMAGE_SIZE if args.task == 'button' else 960
+    policy = execution_policy(args.execute_after_plan or args.execute_verified_plan)
     report = dict(schema='g1-robust-trial-v1', task=args.task, completed=False, physical_push_success=None,
                   visual_success=None,
                   settings=asdict(settings), arguments=vars(args))
@@ -101,6 +105,8 @@ def main(argv=None, *, task=None):
             fixed_interval_timeout_s=None)
     report['execute_after_plan'] = args.execute_after_plan
     report['execute_verified_plan'] = args.execute_verified_plan
+    report['execution_policy'] = policy.to_dict()
+    report['planning_warnings'] = []
     report['pose_history_policy'] = dict(sample_period_s=CONTROL_PERIOD_S,
         warmup_s=.6,max_gap_s=.1,on_unmatched_frame='discard_and_recapture')
     report['pose_history_rejections'] = []
@@ -114,8 +120,10 @@ def main(argv=None, *, task=None):
         if not np.isfinite(args.lamp_min_rise) or args.lamp_min_rise <= 0:
             raise ValueError('--lamp-min-rise must be finite and positive')
         if args.execute_verified_plan and (not args.execute or args.task != 'button' or
-                settings.scenarios != 3 or args.execute_after_plan):
-            raise ValueError('--execute-verified-plan requires button --execute and 3 scenarios, without --execute-after-plan')
+                settings.scenarios != BUTTON_CONDITION_COUNT or args.execute_after_plan):
+            raise ValueError('--execute-verified-plan requires button --execute and 4 scenarios, without --execute-after-plan')
+        if args.task=='button' and args.execute:
+            validate_button_scenario_settings(settings.scenarios,settings.position_span_m)
         if args.task == 'button' and (not isinstance(args.stroke,(int,float)) or isinstance(args.stroke,bool)
                 or not np.isfinite(args.stroke) or not .0015 <= args.stroke <= .015):
             raise ValueError('Button mode requires a measured stroke between 1.5 and 15mm')
@@ -125,12 +133,6 @@ def main(argv=None, *, task=None):
             raise ValueError('--allow-stale-observation requires bottle with --bottle-feedback off')
         if args.execute_after_plan and (not args.execute or args.task != 'bottle' or settings.scenarios != 3):
             raise ValueError('--execute-after-plan requires bottle --execute and 3 scenarios')
-        raw = list(sys.argv[1:] if argv is None else argv)
-        supplied = any(v == '--stroke' or v.startswith('--stroke=') for v in raw)
-        if args.trial_config:
-            supplied = supplied or 'stroke' in json.loads(Path(args.trial_config).read_text())
-        if args.task == 'button' and not supplied:
-            raise ValueError('Button mode requires an explicit measured --stroke (CLI or trial JSON)')
         if args.execute and not args.calibrated:
             raise ValueError('--execute requires --calibrated')
         if not args.execute and not args.state_json:
@@ -171,7 +173,7 @@ def main(argv=None, *, task=None):
             def read_configuration():
                 value = arm.current_configuration()
                 record_state(value)
-                validate_stationary_pose(value,calibration,allow_pose_drift=args.execute_after_plan)
+                validate_stationary_pose(value,calibration,allow_pose_drift=policy.record_deviations)
                 return value
             state_lock = threading.Lock()
             state_cache = dict(value=None,error=None)
@@ -198,7 +200,7 @@ def main(argv=None, *, task=None):
                     value,error = state_cache['value'],state_cache['error']
                 if error is not None:
                     raise RuntimeError(f'State sampler stopped: {error}') from error
-                max_age = .4 if args.execute_after_plan else .1
+                max_age = policy.state_timeout_s
                 if value is None or not 0 <= time.monotonic()-value[2] <= max_age:
                     raise RuntimeError(f'Robot state older than {max_age*1000:.0f}ms')
                 return value
@@ -274,11 +276,17 @@ def main(argv=None, *, task=None):
                 return observer.latest(allow_stale=True)
             return observer.latest()
         def monitor():
-            validate_start(scene,configuration(),latest_observation(),record_deviations=args.execute_after_plan)
+            warnings = validate_start(scene,configuration(),latest_observation(),
+                                      record_deviations=policy.record_deviations)
+            for warning in warnings:
+                if warning not in report['planning_warnings']:
+                    report['planning_warnings'].append(warning)
         plan = search(args.model,calibration,scene,settings,monitor=monitor)
         report['plan'] = plan.to_dict()
         if plan.candidate is None:
             return 1
+        if args.task=='button' and args.execute:
+            validate_button_plan(report['plan'])
         if not args.execute:
             report['planning_completed'] = True
             return 0
@@ -288,7 +296,7 @@ def main(argv=None, *, task=None):
             action = ('接触手前の確認' if args.stop_before_contact else
                 f'{scene.stroke*1000:g}mmのボタン押下' if args.task == 'button' else
                 f'{scene.push_distance*100:.1f}cmの押し込み')
-            print('シミュレーション3条件合格。直ちに'+action+'動作を開始します。',flush=True)
+            print(f'シミュレーション{settings.scenarios}条件合格。直ちに'+action+'動作を開始します。',flush=True)
         else:
             monitor()
             print('Navigationを停止し、Bモデルの配置条件と校正を確認してください。')
@@ -300,11 +308,11 @@ def main(argv=None, *, task=None):
         motion = ArmMotion(arm,calibration,gravity=lambda config,velocity=None: torque['value'].copy(),
                            waist_gravity=lambda config: torque['waist'].copy(),
                            state_sink=record_state,limits=settings.motion_limits,
-                           allow_pose_drift=args.execute_after_plan,synchronous_stream=args.execute_after_plan)
+                           allow_pose_drift=policy.record_deviations,synchronous_stream=policy.synchronous_stream)
         report['upper_body_hold'] = motion.upper_body_hold
         report['execution'] = execute(plan,args.model,calibration,motion,configuration,latest_observation,settings,
             set_torque=lambda value: torque.update(value=np.array(value)),diagnostic=args.stop_before_contact,
-            record_deviations=args.execute_after_plan,set_waist_torque=lambda value: torque.update(waist=np.array(value)),
+            record_deviations=policy.record_deviations,set_waist_torque=lambda value: torque.update(waist=np.array(value)),
             allow_stale_observation=args.allow_stale_observation,
             observe_held=(lambda:observer.latest(allow_stale=True))
                 if args.execute_verified_plan and not args.stop_before_contact else None)

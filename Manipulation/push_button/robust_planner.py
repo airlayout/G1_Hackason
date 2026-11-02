@@ -14,6 +14,8 @@ from scipy.optimize import minimize
 from mujoco import rollout
 
 from robust_scene import SceneSnapshot, build_scene_model, clone_kin, contact_metrics
+from robust_conditions import (BUTTON_CONDITION_NAMES,BUTTON_CONDITION_COUNT,
+                               button_condition_positions,validate_button_scenario_settings)
 from trajectory import ARM_JOINTS, ARM_TORQUE_LIMITS_NM
 from alignment import press_compensation_allowance, press_overtravel_allowance
 from alignment import JointCommandFilter
@@ -281,6 +283,14 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
 
 
 def uncertainty_scenarios(settings, scene, *, include_corners=True, full_uncertainty=False):
+    if scene.task=='button' and settings.scenarios==BUTTON_CONDITION_COUNT and not full_uncertainty:
+        validate_button_scenario_settings(settings.scenarios,settings.position_span_m)
+        # Preserve old samples 0/2 for nominal/far. Samples 3/4 add lateral errors;
+        # consume the removed near sample too, keeping all previous random draws.
+        samples = uncertainty_scenarios(replace(settings,scenarios=5),scene,include_corners=include_corners)
+        return [dict(samples[source],index=index,name=name,source_random_sample=source,position=list(position))
+            for index,(name,source,position) in enumerate(zip(BUTTON_CONDITION_NAMES,(0,2,3,4),
+                button_condition_positions(scene.normal)))]
     rng = np.random.default_rng(settings.seed)
     rows = []
     for i in range(settings.scenarios):
@@ -299,10 +309,21 @@ def uncertainty_scenarios(settings, scene, *, include_corners=True, full_uncerta
     return rows
 
 
+def button_press_depth_bounds(scene, condition=None):
+    """Only a 15mm button shifted exactly 3mm along its normal gets the lower bound."""
+    lower = .9*scene.stroke
+    if scene.task == 'button' and math.isclose(scene.stroke,.015,rel_tol=0.,abs_tol=1e-12) and condition is not None:
+        shift = np.asarray(condition.get('position',()),dtype=float)
+        if shift.shape == (3,) and np.allclose(shift,.003*np.asarray(scene.normal),rtol=0.,atol=1e-9):
+            lower = .01175
+    return lower, scene.stroke+press_overtravel_allowance(scene.stroke)
+
+
 def _trial_failure_reasons(scene, *, displacement, peak_press, peak_force, clearance,
-                           tracking_max, dynamic_joint_margin, home_error):
+                           tracking_max, dynamic_joint_margin, home_error, condition=None):
     if scene.task == 'button':
-        checks = dict(press_depth=.9*scene.stroke <= peak_press <= scene.stroke+press_overtravel_allowance(scene.stroke),
+        lower,upper = button_press_depth_bounds(scene,condition)
+        checks = dict(press_depth=lower <= peak_press <= upper,
                       press_force=peak_force <= 40.)
     else:
         checks = dict(push_distance=abs(displacement[0]-scene.push_distance) <= .01,
@@ -453,11 +474,14 @@ def physical_trial(base_kin, scene, c, condition, deadline):
     home_error = float(np.max(np.abs(d.qpos[kin.qadr]-scene.q[22:29])))
     failures = _trial_failure_reasons(scene, displacement=displacement, peak_press=peak_press,
         peak_force=peak_force, clearance=clearance, tracking_max=tracking_max,
-        dynamic_joint_margin=dynamic_joint_margin, home_error=home_error)
+        dynamic_joint_margin=dynamic_joint_margin, home_error=home_error, condition=condition)
+    press_bounds = button_press_depth_bounds(scene,condition) if scene.task=='button' else (None,None)
     return dict(completed=True, success=not failures, failure_reasons=failures,
         min_clearance_m=clearance, target_margin_m=target_margin, home_error_rad=home_error,
         tracking_max_m=tracking_max, min_joint_margin_rad=dynamic_joint_margin,
         peak_press_m=peak_press, peak_force_n=peak_force if scene.task=='button' else None,
+        condition_position_m=list(condition['position']),press_depth_lower_m=press_bounds[0],
+        press_depth_upper_m=press_bounds[1],condition_name=condition.get('name'),
         displacement_m=displacement.tolist(), max_feedback_offset_m=max_feedback_offset,
         wall_s=time.perf_counter()-started)
 
@@ -476,19 +500,25 @@ def _init_worker(path, calibration, scene):
 
 
 def _worker_trial(scene, candidate, condition, deadline):
-    return physical_trial(_worker_kin, scene, candidate, condition, deadline)
+    result = physical_trial(_worker_kin, scene, candidate, condition, deadline)
+    if 'name' in condition:
+        # Keep the condition identity even when a rollout exits at its deadline.
+        result.update(condition_name=condition['name'],condition_position_m=list(condition['position']))
+    return result
 
 
-def search(path, calibration, scene, settings=SearchSettings(), *, monitor=lambda: None):
+def search(path, calibration, scene, settings=SearchSettings(), *, monitor=lambda: None, evaluate_all=False):
     started = time.perf_counter()
     reserve = min(.35,settings.budget_s*.05)
     deadline = started+settings.budget_s-reserve
     result = PlanResult(scene)
     report = result.report
     report.update(schema='g1-robust-plan-v1', settings=asdict(settings), static_checks=0,
-        completed_rollouts=0, aborted_rollouts=0, candidates=[], stages_wall_s={}, stopped_for_measurement=0)
+        completed_rollouts=0, aborted_rollouts=0, candidates=[], stages_wall_s={}, stopped_for_measurement=0,
+        candidates_attempted=0,physically_evaluated_candidates=0,condition_trials_started=0,
+        first_accepted_s=None,accepted_conditions=0)
     workers = min(settings.workers, settings.scenarios)
-    report['selection'] = 'first_valid'
+    report['selection'] = 'evaluate_all_keep_first_valid' if evaluate_all else 'first_valid'
     from upper_body_control import control_contract
     report['upper_body_control'] = control_contract()
     report['base_model'] = 'fixed_pelvis; locomotion balance is not simulated'
@@ -512,6 +542,7 @@ def search(path, calibration, scene, settings=SearchSettings(), *, monitor=lambd
             original = kin.data.qpos.copy(); t = time.perf_counter()
             row = {'index': index}; report['candidates'].append(row)
             report['static_checks'] += 1
+            report['candidates_attempted'] += 1
             try:
                 waypoint = [(0.,0.),(-.04,.04),(.04,.04),(0.,.08)][index % 4]
                 candidate = generate_candidate(kin, scene, index, offsets[index % len(offsets)], waypoint, settings, deadline)
@@ -522,6 +553,8 @@ def search(path, calibration, scene, settings=SearchSettings(), *, monitor=lambd
                 static_time += time.perf_counter()-t
                 kin.update(original)
             t = time.perf_counter()
+            report['physically_evaluated_candidates'] += 1
+            report['condition_trials_started'] += len(conditions)
             futures = [pool.submit(_worker_trial, scene, candidate, cond, deadline) for cond in conditions]
             trials = []
             for future in futures:
@@ -543,8 +576,12 @@ def search(path, calibration, scene, settings=SearchSettings(), *, monitor=lambd
                         min(t['min_joint_margin_rad'] for t in trials)/.025,
                         min(t['min_clearance_m'] for t in trials)/.003)
             row.update(score=score, duration_s=candidate.duration_s)
-            result.candidate, result.score = candidate, score
-            break
+            if result.candidate is None:
+                result.candidate, result.score = candidate, score
+                report['first_accepted_s'] = time.perf_counter()-started
+                report['accepted_conditions'] = len(trials)
+            if not evaluate_all:
+                break
     report['stages_wall_s'].update(candidate_and_static=static_time, physics_and_scoring=physics_time)
     report['total_wall_s'] = time.perf_counter()-started
     report['target_1000_met'] = report['completed_rollouts'] >= 1000 and report['total_wall_s'] <= 10.

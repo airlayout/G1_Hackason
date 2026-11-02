@@ -2,8 +2,10 @@
 import argparse
 import json
 import sys
+from robust_conditions import BUTTON_CONDITION_COUNT,BUTTON_POSITION_SPAN_M
 
-
+BUTTON_DEFAULTS = dict(stroke=.015, planning_budget_s=30., planning_max_candidates=50,
+    planning_scenarios=BUTTON_CONDITION_COUNT,planning_position_span_m=BUTTON_POSITION_SPAN_M)
 
 def selected(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -49,11 +51,13 @@ def add_arguments(parser):
     parser.add_argument('--joint-acceleration-rad-s2', type=float, default=4.)
 
 
-def parse(parser, argv=None):
+def parse(parser, argv=None, *, task=None):
     from robust_planner import SearchSettings
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument('--trial-config')
+    pre.add_argument('--task')
     initial, _ = pre.parse_known_args(argv)
+    values = {}
     if initial.trial_config:
         with open(initial.trial_config) as f:
             values = json.load(f)
@@ -62,6 +66,10 @@ def parse(parser, argv=None):
         allowed = {a.dest for a in parser._actions}
         if set(values)-allowed:
             parser.error('Unknown robust settings: '+str(sorted(set(values)-allowed)))
+    effective_task = task or initial.task or values.get('task',parser.get_default('task'))
+    if effective_task == 'button':
+        parser.set_defaults(**BUTTON_DEFAULTS)
+    if initial.trial_config:
         parser.set_defaults(**values)
         for action in parser._actions:
             if action.dest in values:

@@ -19,7 +19,17 @@ import robust_execution as execution
 from robust_push import button_lamp_outcome
 from robust_perception import Observation
 from robust_scene import SceneSnapshot
-from robust_planner import SearchSettings
+from robust_planner import SearchSettings,uncertainty_scenarios
+
+
+def verified_plan(stroke=.002,face=(.36,-.12,1.05),normal=(1.,0.,0.)):
+    scene=SceneSnapshot('button',tuple(face),tuple(normal),.035,(0.,)*29,(0.,)*3,0.,stroke=stroke)
+    conditions=uncertainty_scenarios(SearchSettings(scenarios=4),scene)
+    trials=[dict(completed=True,success=True,condition_name=c['name'],condition_position_m=c['position'])
+        for c in conditions]
+    return dict(accepted=True,accepted_conditions=4,completed_rollouts=4,scene=scene.to_dict(),
+        conditions=conditions,trajectory=dict(candidate=0,q=[[0.]*7]),
+        candidates=[dict(index=0,accepted=True,trials=trials)])
 
 
 @pytest.fixture
@@ -33,7 +43,7 @@ def launcher(tmp_path,monkeypatch):
     calibration.write_text(json.dumps(dict(button_radius_m=.035,tip_radius_m=.015,position_uncertainty_m=.002)))
     trial=tmp_path/'trial.json'
     values=dict(task='button',stroke=.0015,button_direction='up',model=str(model),weights=str(weights),
-        base_transform=str(calibration),network_interface='lo')
+        base_transform=str(calibration),network_interface='lo',planning_scenarios=3)
     trial.write_text(json.dumps(values))
     setup=tmp_path/'setup.json'
     setup.write_text(json.dumps(dict(sdk_python=sys.executable,vision_python=sys.executable,
@@ -53,14 +63,15 @@ def launcher(tmp_path,monkeypatch):
             assert not {'--execute-after-plan','--static-target','--allow-stale-observation'} & set(command)
             copied=json.loads(Path(command[command.index('--trial-config')+1]).read_text())
             assert copied['stroke']==.002 and copied['button_direction']=='down'
+            assert copied['planning_scenarios']==4
+            assert command[command.index('--planning-scenarios')+1]=='4'
             if '--execute' in command:
                 assert '--execute-verified-plan' in command and input_text is None
-                result=dict(completed=True,visual_success=True,plan=dict(accepted=True,completed_rollouts=3),
+                result=dict(completed=True,visual_success=True,plan=verified_plan(),
                     lamp_check=dict(status='lit'),execution=dict(motion_completed=True,
                         diagnostic_completed='--stop-before-contact' in command,home_completed=True,release_completed=True))
             else:
-                result=dict(planning_completed=True,plan=dict(accepted=True,completed_rollouts=3,
-                    scene=dict(task='button',face=[.36,-.12,1.05],normal=[1,0,0],stroke=.002),trajectory=dict(q=[[0]*7])))
+                result=dict(planning_completed=True,plan=verified_plan())
             Path(command[command.index('--output')+1]).write_text(json.dumps(result))
         return 0
     monkeypatch.setattr(session,'execute_child',fake_execute)
@@ -74,6 +85,7 @@ def test_button_launcher_uses_measured_overrides_without_touching_originals(laun
     commands=[v for v in launcher.calls if isinstance(v,list)]
     assert len([c for c in commands if '--execute' in c])==(0 if mode=='check' else 1)
     assert json.loads(launcher.trial.read_text())['stroke']==.0015
+    assert json.loads(launcher.trial.read_text())['planning_scenarios']==3
     run=next((launcher.root/'_local/robust_button/runs').iterdir())
     assert json.loads((run/'session.json').read_text())['completed']
 
@@ -141,12 +153,14 @@ def test_lamp_requires_three_consistent_finite_measurements(levels,expected):
     assert button_lamp_outcome(100,[SimpleNamespace(lamp=v) for v in levels],30) is expected
 
 
-def test_release_or_home_failure_cannot_be_success():
+def test_home_warning_can_complete_but_release_failure_cannot():
     actual=dict(completed=True,visual_success=True,execution=dict(motion_completed=True,
-        home_completed=True,release_completed=True))
-    for key in ('home_completed','release_completed'):
-        changed=dict(actual,execution=dict(actual['execution'],**{key:False}))
-        assert not session.button_result_summary(changed,'push')['completed']
+        home_completed=True,release_completed=True),plan=verified_plan())
+    changed=dict(actual,execution=dict(actual['execution'],home_completed=False))
+    summary=session.button_result_summary(changed,'push')
+    assert summary['completed'] and summary['home_completed'] is False
+    changed=dict(actual,execution=dict(actual['execution'],release_completed=False))
+    assert not session.button_result_summary(changed,'push')['completed']
 
 
 @pytest.fixture
@@ -160,7 +174,8 @@ def contact_run(monkeypatch):
     state=SimpleNamespace(step=0,time=100.,fault=None,released=False,commands=[],strict=[],held=[])
     kin=SimpleNamespace(model=SimpleNamespace(nv=7,geom=lambda n:SimpleNamespace(id=0)),
         data=SimpleNamespace(qpos=np.zeros(29)),qadr=np.arange(7),dadr=np.arange(7),site_id=0,
-        update=lambda p:None,tip_position=lambda:c.tcp[min(state.step,len(depths)-1)].copy())
+        update=lambda p:None,tip_position=lambda:c.tcp[min(state.step,len(depths)-1)].copy()+
+            ([.011,0,0] if state.fault=='fk' and state.step==10 else [0,0,0]))
     def path(*a,**k):
         if state.fault=='collision' and state.step==10: raise ValueError('Unexpected arm contact')
     kin.validate_path=path
@@ -170,7 +185,15 @@ def contact_run(monkeypatch):
     monkeypatch.setattr(execution,'reference_torque',lambda *a:np.zeros(7))
     monkeypatch.setattr(execution.mujoco,'mj_jacSite',lambda *a:None)
     def config():
-        return s.q,s.imu,state.time-(.2 if state.fault=='state' and state.step==10 else 0),0.,0.
+        q=np.array(s.q); age=leg=gyro=0.
+        if state.step==10:
+            age={'state':.2,'delayed_state':.399,'expired_state':.401}.get(state.fault,0.)
+            leg=.501 if state.fault=='leg_speed' else 0.
+            gyro=.301 if state.fault=='gyro_speed' else 0.
+            if state.fault=='pose': q[0]=.03; q[12]=.06
+        if state.fault=='start_pose': q[22]=.02
+        if state.fault=='home' and state.step>=len(c.q): q[22]=.05
+        return q,s.imu,state.time-age,leg,gyro
     def observation(stamp,frame):
         face=np.array(s.face)+([0,.02,0] if state.fault=='moved_target' and state.step==10 else [0,0,0])
         return Observation(dict(face=face,normal=s.normal,radius=s.radius),s.q,s.imu,stamp,frame)
@@ -191,14 +214,17 @@ def contact_run(monkeypatch):
         def wait(self,seconds):
             # Deliberately slower than the reference period, but below the
             # existing 100ms update guard. Contact has no elapsed-time expiry.
-            state.time+=max(seconds,.07)
+            delay=.399 if state.fault=='delayed_update' else .401 if state.fault=='expired_update' else .07
+            state.time+=max(seconds,delay)
             if self.streaming: state.step+=1
         def finish_stream(self): self.streaming=False
-        def close(self): state.released=True
-    def run(fault=None):
+        def close(self):
+            state.released=True
+            if state.fault=='release': self.release_error='release failed'
+    def run(fault=None,*,record_deviations=False):
         state.fault=fault
         report=execution.execute(SimpleNamespace(scene=s,candidate=c),'unused',{},Motion(),config,fresh,
-            SearchSettings(),now=lambda:state.time,observe_held=held)
+            SearchSettings(),now=lambda:state.time,observe_held=held,record_deviations=record_deviations)
         return report,state,c
     return run
 
@@ -221,6 +247,25 @@ def test_occlusion_never_hides_state_camera_collision_or_target_failure(contact_
     assert report['release_completed'] and state.released
 
 
+@pytest.mark.parametrize('fault',['delayed_state','delayed_update','start_pose','pose','fk','home'])
+def test_button_collection_policy_records_deviations_and_keeps_occluded_contact(contact_run,fault):
+    report,state,_=contact_run(fault,record_deviations=True)
+    assert report['completed'] and report['release_completed'] and state.released
+    assert report['execution_policy']['state_timeout_s']==.4
+    assert report['button_fixed_target']['stale_observation_commands']>0
+    if fault in ('start_pose','pose','fk','home'): assert report['warnings']
+    if fault=='home':
+        assert report['home_completed'] is False and report['home_max_error_rad']==pytest.approx(.05)
+
+
+@pytest.mark.parametrize('fault',['expired_state','expired_update','leg_speed','gyro_speed',
+    'camera','collision','moved_target','after_retreat','release'])
+def test_button_collection_policy_still_stops_on_hard_failures(contact_run,fault):
+    report,state,_=contact_run(fault,record_deviations=True)
+    assert not report['completed'] and state.released
+    assert report.get('error') or report.get('release_error')
+
+
 def test_button_shell_entrypoint_cannot_switch_to_bottle(tmp_path):
     # Capture Python argv instead of importing or connecting to any robot code.
     python=tmp_path/'python3'
@@ -236,8 +281,9 @@ def test_button_shell_entrypoint_cannot_switch_to_bottle(tmp_path):
 
 @pytest.mark.parametrize('levels,diagnostic,expected', [([140,145,150],False,0),
     ([110,115,120],False,1),([140,110,145],False,1),([],False,1),([],True,0)])
+@pytest.mark.parametrize('legacy_plan',[False,True])
 def test_full_button_entrypoint_keeps_monitoring_and_records_unknown_outcomes(
-        tmp_path,monkeypatch,levels,diagnostic,expected):
+        tmp_path,monkeypatch,levels,diagnostic,expected,legacy_plan):
     import time
     import arm_bridge
     import robust_push as rp
@@ -270,18 +316,22 @@ def test_full_button_entrypoint_keeps_monitoring_and_records_unknown_outcomes(
     monkeypatch.setattr(rp.time,'sleep',lambda dt:None)
     def search(model,calibration,scene,settings,*,monitor):
         monitor()
+        assert settings.scenarios==4
+        plan=verified_plan(stroke=scene.stroke,face=scene.face,normal=scene.normal)
+        if legacy_plan: plan['accepted_conditions']=3
         return SimpleNamespace(scene=scene,candidate=object(),
-            to_dict=lambda:dict(accepted=True,completed_rollouts=3))
+            to_dict=lambda:plan)
     monkeypatch.setattr(rp,'search',search)
     motion=SimpleNamespace(upper_body_hold={},command_publications=[],error=None,close=lambda:None)
     def arm_motion(*a,**kwargs):
-        assert kwargs['allow_pose_drift'] is False
+        assert not legacy_plan, 'Legacy three-condition plan must not enable the arm'
+        assert kwargs['allow_pose_drift'] is True and kwargs['synchronous_stream'] is True
         return motion
     monkeypatch.setattr(rp,'ArmMotion',arm_motion)
     calls=[]
     def execute(*a,**kwargs):
         calls.append(kwargs)
-        assert kwargs['record_deviations'] is False and not kwargs['allow_stale_observation']
+        assert kwargs['record_deviations'] is True and not kwargs['allow_stale_observation']
         assert (kwargs['observe_held'] is None)==diagnostic
         return dict(completed=True,motion_completed=not diagnostic,diagnostic_completed=diagnostic,
             home_completed=True,release_completed=True)
@@ -292,8 +342,11 @@ def test_full_button_entrypoint_keeps_monitoring_and_records_unknown_outcomes(
     args=['--task','button','--model','unused','--base-transform','unused','--stroke','.0015',
         '--execute','--calibrated','--execute-verified-plan','--arm-socket','unused','--output',str(output)]
     if diagnostic: args.append('--stop-before-contact')
-    assert rp.main(args)==expected
+    assert rp.main(args)==(2 if legacy_plan else expected)
     result=json.loads(output.read_text())
+    if legacy_plan:
+        assert not calls and '4条件' in result['error']
+        return
     assert len(calls)==1 and result['execution']['release_completed']
     assert checks[0]['require_target_margin']
     if not diagnostic:
@@ -303,7 +356,7 @@ def test_full_button_entrypoint_keeps_monitoring_and_records_unknown_outcomes(
 
 @pytest.mark.parametrize('height,x,yaw',[(.98,.35,-3),(.98,.36,0),(.98,.37,3),
     (1.05,.35,-3),(1.05,.36,0),(1.05,.37,3)])
-def test_button_three_physical_conditions_at_two_heights_and_shifted_panels(height,x,yaw):
+def test_button_four_physical_conditions_at_two_heights_and_shifted_panels(height,x,yaw):
     from kinematics import load_robot
     from robust_planner import search
     model=ROOT.parents[1]/'_local/bottle_push/menagerie/unitree_g1/g1.xml'
@@ -312,14 +365,14 @@ def test_button_three_physical_conditions_at_two_heights_and_shifted_panels(heig
     _,q=load_robot(model,(.1,0,0),.79)
     normal=(float(np.cos(np.radians(yaw))),float(np.sin(np.radians(yaw))),0.)
     scene=SceneSnapshot('button',(x,-.12,height),normal,.035,tuple(q),(0.,)*3,0.,uncertainty_m=.001)
-    settings=SearchSettings()
+    settings=SearchSettings(scenarios=4,budget_s=30.)
     plan=search(model,calibration,scene,settings)
     assert plan.candidate is not None,plan.report
     candidate=plan.candidate
     start,end=execution.button_fixed_interval(scene,candidate)
     assert start<=candidate.press_start and end>=candidate.retract_end
     trials=plan.report['candidates'][-1]['trials']
-    assert len(trials)==3
+    assert len(trials)==4
     for trial in trials:
         assert trial['completed'] and trial['success'],trial
         assert .9*scene.stroke<=trial['peak_press_m']<=.00165

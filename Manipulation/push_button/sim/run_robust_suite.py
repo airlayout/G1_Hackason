@@ -7,6 +7,9 @@ from pathlib import Path
 import subprocess
 import sys
 
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from robust_conditions import BUTTON_CONDITION_COUNT
+
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
@@ -16,7 +19,7 @@ def main():
     p.add_argument('--video',action='store_true')
     p.add_argument('--controllers',choices=('staged','robust'),nargs='+',default=['staged','robust'])
     p.add_argument('--planning-budget-s',type=float,default=10.)
-    p.add_argument('--planning-scenarios',type=int,default=3)
+    p.add_argument('--planning-scenarios',type=int,help='既定: ボタン4条件、ボトル3条件')
     p.add_argument('--planning-position-span-m',type=float,default=.003)
     p.add_argument('--bottle-feedback',choices=('off','relative'),default='off')
     p.add_argument('--holdout-scenarios',type=int,default=0)
@@ -37,11 +40,13 @@ def main():
         calibration = rng.uniform(-.001,.001,3)
         for task,direction in [('button','up'),('button','down'),('bottle','up')]:
             for controller in args.controllers:
+                scenario_count = args.planning_scenarios if args.planning_scenarios is not None else (
+                    BUTTON_CONDITION_COUNT if task=='button' else 3)
                 stem = f'{task}_{direction}_{seed}_{controller}'
                 path = args.out/(stem+'.json')
                 command = [sys.executable,str(entry),'--task',task,'--button-direction',direction,
                     '--controller',controller,'--model',args.model,'--report-out',str(path),
-                    '--planning-budget-s',str(args.planning_budget_s),'--planning-scenarios',str(args.planning_scenarios),
+                    '--planning-budget-s',str(args.planning_budget_s),'--planning-scenarios',str(scenario_count),
                     '--planning-position-span-m',str(args.planning_position_span_m),
                     '--bottle-feedback',args.bottle_feedback,
                     '--holdout-scenarios',str(args.holdout_scenarios),

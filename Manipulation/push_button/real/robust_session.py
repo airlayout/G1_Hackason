@@ -19,6 +19,11 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[3]
 REAL = Path(__file__).resolve().parent
+sys.path.insert(0,str(REAL.parent))
+from robust_options import BUTTON_DEFAULTS
+from robust_policy import COLLECTION_POLICY
+from robust_conditions import (BUTTON_CONDITION_COUNT,validate_button_plan,
+                               validate_button_scenario_settings)
 
 
 class PhaseFailure(RuntimeError):
@@ -54,7 +59,9 @@ def motion_arguments(mode,trial,output,socket_path=None,state_path=None,*,task='
         args += ['--allow-stale-observation']
     if state_path is None and mode in ('precontact','push'):
         args += ['--execute-after-plan' if task == 'bottle' else '--execute-verified-plan',
-                 '--planning-scenarios','3']
+                 '--planning-scenarios',str(BUTTON_CONDITION_COUNT if task=='button' else 3)]
+    elif task=='button':
+        args += ['--planning-scenarios',str(BUTTON_CONDITION_COUNT)]
     return args
 
 
@@ -64,10 +71,10 @@ def validate_preview(report,expected_xy,uncertainty,*,task='bottle'):
         raise RuntimeError('経路を採用できません: '+str(report.get('error') or plan.get('reason')))
     scene = plan['scene']
     if task == 'button':
-        if scene.get('task') != 'button' or plan.get('completed_rollouts') != 3:
-            raise RuntimeError('ボタン用のシミュレーション3条件が必要です')
+        validate_button_plan(plan)
         return dict(face_xyz_m=scene['face'],normal=scene['normal'],stroke_m=scene['stroke'],
-            completed_conditions=plan['completed_rollouts'],trajectory_samples=len(plan['trajectory']['q']))
+            completed_conditions=plan.get('accepted_conditions',plan['completed_rollouts']),
+            trajectory_samples=len(plan['trajectory']['q']))
     centre = [scene['face'][0]+scene['radius'],scene['face'][1]]
     distance = sum((a-b)**2 for a,b in zip(centre,expected_xy))**.5
     if distance > uncertainty:
@@ -81,6 +88,8 @@ def validate_button_trial(trial,calibration):
     """Reject missing measurements and bottle-only modes before opening SSH/DDS."""
     if trial.get('task','button') != 'button':
         raise ValueError('ボタン用のtrial_configを指定してください')
+    for key,value in BUTTON_DEFAULTS.items():
+        trial.setdefault(key,value)
     stroke = trial.get('stroke')
     if isinstance(stroke,bool) or not isinstance(stroke,(int,float)) or not math.isfinite(stroke) or not .0015 <= stroke <= .015:
         raise ValueError('実測したstroke（1.5〜15mm）を設定するか--stroke-mmで指定してください')
@@ -106,22 +115,36 @@ def validate_button_trial(trial,calibration):
     if button-tip-uncertainty < .003:
         raise ValueError('ボタン半径から手先半径と校正不確かさを引いた余裕が3mm未満です。実測校正を確認してください')
     trial['task'] = 'button'
-    trial['planning_scenarios'] = 3
+    trial['planning_scenarios'] = BUTTON_CONDITION_COUNT
+    validate_button_scenario_settings(trial['planning_scenarios'],trial['planning_position_span_m'])
+
+
+def policy_summary(plan):
+    return dict(accepted=plan.get('accepted'),
+        completed_conditions=plan.get('accepted_conditions',plan.get('completed_rollouts')),
+        **{key:plan.get(key) for key in ('candidates_attempted','physically_evaluated_candidates',
+            'condition_trials_started','completed_rollouts','aborted_rollouts','first_accepted_s')})
 
 
 def button_result_summary(actual,mode):
     execution = actual.get('execution',{})
-    returned = (bool(actual.get('completed')) and execution.get('home_completed') is True
-                and execution.get('release_completed') is True and not actual.get('cleanup_errors'))
+    try:
+        validate_button_plan(actual.get('plan',{}))
+        plan_error = None
+    except ValueError as exc:
+        plan_error = str(exc)
+    returned = (plan_error is None and bool(actual.get('completed')) and execution.get('release_completed') is True
+                and not actual.get('cleanup_errors'))
     completed = returned and (execution.get('diagnostic_completed') is True if mode=='precontact'
                               else actual.get('visual_success') is True and execution.get('motion_completed') is True)
     return dict(completed=bool(completed),motion_completed=bool(execution.get('motion_completed')),
         diagnostic_completed=bool(execution.get('diagnostic_completed')),
         home_completed=execution.get('home_completed'),release_completed=execution.get('release_completed'),
+        home_max_error_rad=execution.get('home_max_error_rad'),warnings=execution.get('warnings',[]),
         visual_success=actual.get('visual_success'),lamp_status=actual.get('lamp_check',{}).get('status'),
         physical_press_success=None,
-        policy=dict(accepted=actual.get('plan',{}).get('accepted'),
-                    completed_conditions=actual.get('plan',{}).get('completed_rollouts')))
+        plan_validation_error=plan_error,
+        policy=policy_summary(actual.get('plan',{})))
 
 
 def execute_child(command,log_path,env,*,input_text=None,timeout=100):
@@ -327,6 +350,16 @@ def main(argv=None):
         trial_path = run/'trial.json'
         write_json(trial_path,trial)
         write_json(run/'setup.json',setup)
+        if args.task == 'button':
+            report['execution_policy'] = COLLECTION_POLICY.to_dict() if args.mode!='check' else None
+            report['planning_limits'] = dict(budget_s=trial['planning_budget_s'],
+                max_candidates=trial['planning_max_candidates'],scenarios=BUTTON_CONDITION_COUNT)
+            print(f'ストローク: {trial["stroke"]*1000:g}mm / 探索上限: '
+                  f'{trial["planning_budget_s"]:g}秒・{trial["planning_max_candidates"]}候補・'
+                  f'{BUTTON_CONDITION_COUNT}条件（基準・奥3mm・左3mm・右3mm）',flush=True)
+            if args.mode != 'check':
+                print('ボトル共通監視: 状態・更新400ms / 脚0.5rad/s / IMU角速度0.3rad/s / '
+                      '姿勢・FK・帰還偏差は記録して続行 / 同期送信',flush=True)
         source_files = sorted(REAL.glob('*.py'))+sorted(REAL.glob('*.sh'))+sorted(REAL.parent.glob('*.py'))
         write_json(run/'source_sha256.json',{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest()
             for p in source_files})
@@ -366,14 +399,16 @@ def main(argv=None):
         elif args.task == 'button':
             print(f'ボタンの実測ストローク: {trial["stroke"]*1000:g}mm（計画・実機共通）',flush=True)
         with sdk_bridge(setup['sdk_python'],trial['network_interface'],run,'motion',env) as sock:
-            phase('3. シミュレーション3条件が通過したら即実行',[setup['vision_python'],
+            conditions = BUTTON_CONDITION_COUNT if args.task=='button' else 3
+            phase(f'3. シミュレーション{conditions}条件が通過したら即実行',[setup['vision_python'],
                 *motion_arguments(args.mode,trial_path,run/'result.json',socket_path=sock,task=args.task)])
         actual = json.loads((run/'result.json').read_text())
+        if args.task=='button':
+            validate_button_plan(actual.get('plan',{}))
         report['completed'] = bool(actual.get('completed'))
         if args.task == 'button':
             report.update(button_result_summary(actual,args.mode))
-        report['policy'] = dict(accepted=actual.get('plan',{}).get('accepted'),
-            completed_conditions=actual.get('plan',{}).get('completed_rollouts'))
+        report['policy'] = policy_summary(actual.get('plan',{}))
         execution = actual.get('execution',{})
         print('動作データを保存しました。制御解除:',execution.get('release_completed'),
             '帰還確認:',execution.get('home_completed'),

@@ -145,7 +145,7 @@ def test_execution_clock_includes_release_even_after_partial_enable(monkeypatch,
     candidate = SimpleNamespace(q=np.zeros((1, 7)), tau=np.zeros((1, 7)), press_start=0)
     plan = SimpleNamespace(scene=scene, candidate=candidate)
     monkeypatch.setattr(execution, 'build_scene_model', lambda *a: object())
-    monkeypatch.setattr(execution, 'validate_start', lambda *a: None)
+    monkeypatch.setattr(execution, 'validate_start', lambda *a,**k: [])
     class Motion:
         clock = 0.
         release_error = None

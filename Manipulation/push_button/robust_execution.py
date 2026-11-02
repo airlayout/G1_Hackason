@@ -7,6 +7,7 @@ from alignment import JointCommandFilter
 from robust_scene import build_scene_model, update_robot, contact_metrics
 from robust_planner import PERIOD, reference_torque
 from robust_perception import CorrectionGate
+from robust_policy import execution_policy
 from robust_control import (BottleFeedback, fade_return_offset, reference_command,
                             waist_support_torque, bottle_runtime_state)
 
@@ -28,20 +29,21 @@ def button_fixed_interval(scene, candidate):
 
 def validate_start(scene, configuration, observed, *, record_deviations=False):
     q, imu, _, leg, gyro = configuration
+    policy = execution_policy(record_deviations)
     delta = np.abs(np.array(q)-scene.q)
-    if leg > (.5 if record_deviations else .15) or gyro > (.3 if record_deviations else .10):
+    if leg > policy.leg_speed_rad_s or gyro > policy.gyro_rad_s:
         raise RuntimeError('Robot moved while planning; discard snapshot')
     warnings = []
     checks = [(np.max(delta[list(START_MONITORED_JOINTS)]) > .01
         or np.max(np.abs(np.array(imu)-scene.imu)) > np.deg2rad(.5),
-        'Robot moved while planning; discard snapshot'),
+        'Robot moved while planning; discard snapshot',True),
         (np.linalg.norm(np.array(observed.geometry['face'])-scene.face) > max(.003,scene.uncertainty_m),
-        'Target moved while planning; discard snapshot'),
+        'Target moved while planning; discard snapshot',scene.task=='bottle'),
         (scene.task == 'bottle' and abs(observed.geometry.get('object_height',scene.object_height)-scene.object_height) > .01,
-        'Bottle vertical extent changed while planning')]
-    for changed,reason in checks:
+        'Bottle vertical extent changed while planning',True)]
+    for changed,reason,recordable in checks:
         if changed:
-            if not record_deviations:
+            if not (record_deviations and recordable):
                 raise RuntimeError(reason)
             warnings.append(reason)
     return warnings
@@ -56,7 +58,7 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
     s, c = plan.scene, plan.candidate
     if allow_stale_observation and (s.task != 'bottle' or settings.bottle_feedback != 'off'):
         raise ValueError('Stale observations require bottle feedback off')
-    if observe_held is not None and (s.task != 'button' or diagnostic or record_deviations):
+    if observe_held is not None and (s.task != 'button' or diagnostic):
         raise ValueError('Contact occlusion requires a monitored full button press')
     fixed_interval = button_fixed_interval(s,c) if observe_held is not None else None
     if s.task == 'bottle' and c.motion_metrics.get('bottle_feedback_mode', 'off') != settings.bottle_feedback:
@@ -65,6 +67,8 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
                   home_completed=False, release_completed=False, physical_push_success=None,
                   stopped_for_measurement=0, remeasurement_count=0, commands=[], correction_steps=[])
     report['limits'] = settings.motion_limits.to_dict()
+    policy = execution_policy(record_deviations)
+    report['execution_policy'] = policy.to_dict()
     report['target_motion_s'] = settings.motion_duration_s
     report['bottle_feedback'] = settings.bottle_feedback
     report.update(allow_stale_observation=allow_stale_observation,stale_observation_commands=0)
@@ -111,12 +115,12 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
         end = c.press_start if diagnostic else len(c.q)
         for i in range(end):
             cycle = now()
-            max_age = .4 if record_deviations else .1
+            max_age = policy.state_timeout_s
             if cycle-last_tick > max_age:
                 raise RuntimeError(f'Control update exceeded {max_age*1000:.0f}ms')
             q, imu, stamp, leg, gyro = configuration()
-            if (not 0 <= now()-stamp <= max_age or leg > (.5 if record_deviations else .15)
-                    or gyro > (.3 if record_deviations else .10)):
+            if (not 0 <= now()-stamp <= max_age or leg > policy.leg_speed_rad_s
+                    or gyro > policy.gyro_rad_s):
                 raise RuntimeError('Stale or moving robot state')
             if np.max(np.abs(np.array(imu)-s.imu)) > np.deg2rad(3) or np.max(np.abs(np.array(q)[12:15]-np.array(s.q)[12:15])) > np.deg2rad(3):
                 deviation('Body posture changed')
@@ -244,12 +248,16 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
         home_started = now()
         motion.wait(.3)
         home_confirmed = True
+        home_errors = []
         for _ in range(3):
             error = np.max(np.abs(np.array(configuration()[0])[22:29]-np.array(s.q)[22:29]))
+            home_errors.append(float(error))
             home_confirmed &= error <= np.deg2rad(2)
             motion.wait(PERIOD)
         report.update(motion_completed=not diagnostic, diagnostic_completed=diagnostic,
-                      home_completed=bool(home_confirmed), home_confirmation_s=now()-home_started)
+                      home_completed=bool(home_confirmed), home_confirmation_s=now()-home_started,
+                      home_errors_rad=home_errors,home_max_error_rad=max(home_errors),
+                      home_tolerance_rad=float(np.deg2rad(2)))
         if not report['home_completed']:
             deviation('Home return not confirmed')
         report['completed'] = True

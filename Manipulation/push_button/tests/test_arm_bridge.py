@@ -65,9 +65,11 @@ def test_bridge_releases_when_command_process_stalls():
         proxy.set_hold(proxy.current_arm())
         proxy.publish((0,)*7, 0.01)
         thread.join(timeout=0.5)
-        assert not thread.is_alive()
-        assert arm.releases >= 1
-        assert "途絶" in errors[0]
+        assert thread.is_alive()  # Keep the reply channel open after watchdog release.
+        assert arm.releases >= 1 and proxy.current_configuration()
+        assert not errors
+        with pytest.raises(RuntimeError,match='途絶'):
+            proxy.publish((0,)*7, .01)
     finally:
         proxy.socket.close()
         thread.join(timeout=1)

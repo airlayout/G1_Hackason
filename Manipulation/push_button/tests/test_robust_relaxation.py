@@ -139,7 +139,9 @@ def test_saved_live_bottle_trajectory_passes_all_three_conditions_even_with_earl
     # Contact permission must not depend on these scheduled phase labels.
     candidate.phases = ['approach']*len(candidate.q)
     settings = SearchSettings()
-    for condition,expected_mm in zip(uncertainty_scenarios(settings,s),(47.38,50.36,44.33)):
+    # Re-recorded 2026-11-03 with MuJoCo 3.14 and the current shared waist/arm
+    # holding model. Keep both the 0.1mm replay tolerance and physical criteria.
+    for condition,expected_mm in zip(uncertainty_scenarios(settings,s),(46.79,50.12,43.63)):
         result = physical_trial(kin,s,candidate,condition,time.perf_counter()+30)
         assert result['completed'] and result['success'], result
         assert result['displacement_m'][0]*1000 == pytest.approx(expected_mm,abs=.1)

@@ -29,6 +29,7 @@ from push_button import ArmSdk, CONTROL_HZ, STATE_TIMEOUT, TRACKING_LIMIT, check
 from button_control import STAGED_CLEARANCES_M, preview_button_path, solve_checked, validate_fk_margin
 from trial_policy import ButtonTrialPolicy, TrialPause, ObservationUnavailable, add_trial_arguments, resolve_trial_arguments
 from motion_limits import JointMotionLimits, WEIGHT_RAMP_STEPS, CONTROL_PERIOD_S
+from robust_policy import execution_policy
 
 
 def read_calibration(path, *, require_button=True, require_target_margin=True):
@@ -73,7 +74,8 @@ def validate_stationary_pose(configuration, calibration, *, allow_pose_drift=Fal
     joints, rpy, received_at, leg_speed, gyro = configuration
     if time.monotonic() - received_at > STATE_TIMEOUT:
         raise RuntimeError("実機状態が古すぎます")
-    if leg_speed > (0.5 if allow_pose_drift else 0.15) or gyro > (0.3 if allow_pose_drift else 0.10):
+    policy = execution_policy(allow_pose_drift)
+    if leg_speed > policy.leg_speed_rad_s or gyro > policy.gyro_rad_s:
         raise RuntimeError(f'脚または骨盤が動いています (leg={leg_speed:.3f}rad/s, gyro={gyro:.3f}rad/s)')
     if allow_pose_drift:
         if np.max(np.abs(np.asarray(rpy)[:2])) > .15:
