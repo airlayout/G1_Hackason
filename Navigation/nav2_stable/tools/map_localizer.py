@@ -197,6 +197,14 @@ class MapLocalizer(Node):
         self.create_timer(1.0 / args.tf_rate, self._publish_tf)
         self.create_timer(1.0, self._publish_diag)
         self._last_cloud_stamp = None
+        # 照合1回の所要時間の記録（2026-11-03 追加）。`--match-rate` をどこまで上げられるかを
+        # PC2 の実測で決めるため。照合の動きは変えない
+        self._timing_fp = None
+        if args.timing_csv:
+            new_file = not args.timing_csv.exists()
+            self._timing_fp = args.timing_csv.open("a", encoding="utf-8")
+            if new_file:
+                self._timing_fp.write("t,cloud_stamp,n_pts,prep_ms,match_ms,total_ms,score\n")
 
         self.get_logger().info(
             f"起動: 地図={args.map_topic} 点群={args.cloud_topic} "
@@ -233,12 +241,21 @@ class MapLocalizer(Node):
             return
         self._last_cloud_stamp = stamp
 
+        t0 = time.perf_counter()
         pts = self._cloud_in_odom(msg)
+        t1 = time.perf_counter()
         if pts is None or len(pts) < self._args.min_points:
             self._last_reason = f"点が少ない({0 if pts is None else len(pts)})"
             self._rejected += 1
             return
         self._match(pts)
+        t2 = time.perf_counter()
+        if self._timing_fp is not None:
+            score = "" if self._last_score is None else f"{self._last_score:.4f}"
+            self._timing_fp.write(
+                f"{time.time():.3f},{stamp:.3f},{len(pts)},{(t1 - t0) * 1e3:.2f},"
+                f"{(t2 - t1) * 1e3:.2f},{(t2 - t0) * 1e3:.2f},{score}\n")
+            self._timing_fp.flush()
 
     def _cloud_in_odom(self, msg: PointCloud2) -> np.ndarray | None:
         """点群を odom 系の 2D 点に落とす。
@@ -441,6 +458,8 @@ def build_parser() -> argparse.ArgumentParser:
                         "走行には影響しない（ずれの実測用）")
     p.add_argument("--log-csv", type=Path, default=None,
                    help="1周期ごとに時刻・スコア・累積補正量を CSV で残す")
+    p.add_argument("--timing-csv", type=Path, default=None,
+                   help="照合1回ごとに点数・所要時間[ms]を CSV で残す（bench_localizer.sh 用）")
     p.add_argument("--match-rate", type=float, default=2.0, help="照合する頻度[Hz]")
     p.add_argument("--tf-rate", type=float, default=20.0,
                    help="map->odom を出す頻度[Hz]。**照合できなくても出し続ける**")
