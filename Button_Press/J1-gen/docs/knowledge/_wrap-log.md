@@ -80,3 +80,8 @@
 - patterns/robot_arm_control.md: 当たったと見る遅れのしきい値は実機の空中の動きで超えない値に。押す力は遅れ × 腕の硬さで頭打ち
 - real_robot_notes.md: 2026-11-01 午後に分かったこと（WSL2 の mirrored、`lo` のテスト、rgbd_server の Python、YOLO 15/15、補正、押す力の不足）
 - 提案したが保存しなかった: （domain・mine は個人の知識の方で確認中）
+
+- 2026-11-03 / Button_Press（J1-gen）
+  対象: 11/1 に押せなかった理由の分析、指をまっすぐ向けて垂直に押す変更、立ち位置、ラボで空中のボタンを 40〜50 cm
+  - real_robot_notes.md: 2026-11-03 に分かったこと（小指で押していた、まっすぐ押す・立ち位置、有線の口の名前、RealSense と Web カメラ、頭カメラの向き、空中のボタン）
+  - patterns/robot_arm_control.md: 狙う点と最初に当たる部分は違う／腕を伸ばしきる近くの関節の速さの上限と戻りの速さ
