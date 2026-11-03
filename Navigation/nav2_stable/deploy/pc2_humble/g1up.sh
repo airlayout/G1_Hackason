@@ -63,6 +63,9 @@ MAP_DEFAULT="$WS/install/g1_navigation/share/g1_navigation/maps/room_a_map_20260
 MAP="$MAP_DEFAULT"
 LIDAR_YAW=0
 OP_TIMEOUT=2.0
+# ⚠️ 2026-09-25 実機: 内蔵SLAM を 1801 で上げ直すと odom が約4Hz に落ち、既定 0.5 秒では
+# enable 直後に必ず tf_stale FAULT になった。その日は 1.0 で巡回を1周した（start_nav.sh 第6引数）
+TF_TIMEOUT=0.5
 USE_LOCALIZER=0
 SKIP_RECORD=0
 DRY=0
@@ -75,6 +78,7 @@ while [ $# -gt 0 ]; do
         --map)              MAP="$2"; shift 2 ;;
         --lidar-yaw)        LIDAR_YAW="$2"; shift 2 ;;
         --operator-timeout) OP_TIMEOUT="$2"; shift 2 ;;
+        --tf-timeout)       TF_TIMEOUT="$2"; shift 2 ;;
         --localizer)        USE_LOCALIZER=1; shift ;;
         --skip-record)      SKIP_RECORD=1; shift ;;
         --dry-run)          DRY=1; shift ;;
@@ -120,7 +124,7 @@ if [ "$DO_ENABLE" = 1 ]; then
     exit 0
 fi
 
-echo "${c_b}G1 Nav2 立ち上げ${c_0}  地図=$(basename "$MAP")  lidar_yaw=$LIDAR_YAW  operator_timeout=$OP_TIMEOUT"
+echo "${c_b}G1 Nav2 立ち上げ${c_0}  地図=$(basename "$MAP")  lidar_yaw=$LIDAR_YAW  operator_timeout=$OP_TIMEOUT  tf_timeout=$TF_TIMEOUT"
 [ "$USE_LOCALIZER" = 1 ] && echo "  自己位置: 連続(map_localizer)" || echo "  自己位置: 静的(find_map_offset を1回)"
 [ "$DRY" = 1 ] && warn "dry-run。実際には何もしない"
 
@@ -258,7 +262,7 @@ fi
 
 # --- 5+7. Nav2 と自己位置合わせ ---------------------------------------------
 launch_nav() {   # $1 = map_to_odom
-    run "bash '$HERE/start_nav.sh' '$1' $LIDAR_YAW $OP_TIMEOUT '$PATROL' '$MAP'" || die "launch できなかった"
+    run "bash '$HERE/start_nav.sh' '$1' $LIDAR_YAW $OP_TIMEOUT '$PATROL' '$MAP' $TF_TIMEOUT" || die "launch できなかった"
     [ "$DRY" = 1 ] && return 0
     local i
     for i in $(seq 1 40); do
