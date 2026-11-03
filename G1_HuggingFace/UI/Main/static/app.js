@@ -195,6 +195,16 @@ function apply(state) {
   setChip('chip-vision', v.alive ? `${v.fps} fps` : '途絶', v.alive ? 'ok' : 'bad');
   setChip('chip-link', state.connected ? (state.read_only ? '正常（見るだけ）' : '正常') : '切断',
           state.connected ? 'ok' : 'bad');
+  const vo = state.voice || {};
+  const VOICE = {
+    ready: ['待機', 'ok'], speaking: ['話し中', 'warn'], starting: ['準備中', ''],
+    off: ['ログのみ', ''], disabled: ['切', ''], error: ['失敗', 'bad'],
+  };
+  const [voText, voCls] = VOICE[vo.state] || [vo.state || '—', ''];
+  setChip('chip-voice', voText, voCls);
+  document.getElementById('chip-voice').title =
+    [vo.phrase && `「${vo.phrase}」`, vo.message, vo.played != null && `鳴らした回数 ${vo.played}`]
+      .filter(Boolean).join(' / ');
 
   // 地図が無い・変わったら読み直す
   const wantDigest = state.map_digest || null;

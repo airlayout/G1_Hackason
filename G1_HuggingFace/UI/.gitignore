@@ -6,3 +6,7 @@ Log/*.jsonl
 # リポジトリを重くしないため各自が Reference/ に置く。
 # ⚠️ 置かないと Main/run.sh が「動画が見つかりません」で止まる
 Reference/*.mp4
+
+# 声かけの録音（2026-11-03）。配布してよいか確かめていない音声を入れないため、
+# 自分の声でも入れない。各自が Voice/ に置く（Voice/README.md）
+Voice/*.wav

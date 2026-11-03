@@ -6,6 +6,10 @@
 #   bash run.sh --device <名前>  # by-id の安定名を自分で指定する
 #   bash run.sh --port 9000      # 以降の引数は UI 本体(Main/run.sh)へ渡す
 #   bash run.sh --wifi [PC2_IP]  # 無線: 映像も現在地も Wi-Fi で PC2 から（見るだけ）
+#   bash run.sh --no-voice       # 人を検知しても声をかけない
+#
+# 人を検知したら G1 本体のスピーカーで声をかける（Voice/README.md）。録音した WAV が
+# Voice/ に無ければ、声かけ無しで続ける。⚠️ 無線（見るだけ）でも鳴らす（2026-11-03 の決定）
 #
 # ⚠️ **有線のときの航法はモックのまま。** 実機の Nav2 には繋がない（映像だけが本物）。
 #    実 Nav2 に繋ぐときは README の「② ROS に繋ぐ」か --wifi を使うこと。
@@ -42,11 +46,15 @@ HOST_SET=0
 ADAPTER_DIR=/home/unitree/g1_ui_adapter
 # ⚠️ パターンは括弧付きのまま使う（CAM_PATTERN と同じ理由）
 ADAPTER_PATTERN='g1_ui_adapte[r]/Adapter'
+NO_VOICE=0
+# ⚠️ パターンは括弧付きのまま使う（CAM_PATTERN と同じ理由）
+SPEAKER_PATTERN='g1_ui_speake[r]/g1_speaker'
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-browser) OPEN_BROWSER=0; shift ;;
     --device)     DEVICE="${2:?--device には名前が要る}"; shift 2 ;;
     --host)       HOST="${2:?--host には宛先が要る}"; HOST_SET=1; shift 2 ;;
+    --no-voice)   NO_VOICE=1; shift ;;
     --wifi)       WIFI=1; shift
                   if [[ $# -gt 0 && "$1" != -* ]]; then WIFI_IP="$1"; shift; fi ;;
     # ⚠️ **UI 本体へ素通しするだけでは足りない**(2026-09-24 に発見)。
@@ -54,7 +62,7 @@ while [[ $# -gt 0 ]]; do
     #    「UI は 9000 で立っているのに 8090 を 60 秒叩いて die する」になっていた。
     --port)       UI_ARGS+=("$1" "${2:?--port には番号が要る}")
                   PORT_OVERRIDE="$2"; shift 2 ;;
-    -h|--help)    sed -n '2,21p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help)    sed -n '2,25p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *)            UI_ARGS+=("$1"); shift ;;
   esac
 done
@@ -82,6 +90,10 @@ cleanup() {
   if [[ "$REMOTE_READY" != "1" ]]; then
     printf '  機体側には何も触っていない\n'
     return
+  fi
+  # 声かけは UI が止まると標準入力が閉じて終わる。残っていたときの保険
+  if timeout 20 "${SSH[@]}" "$HOST" "pkill -f '$SPEAKER_PATTERN'" >/dev/null 2>&1; then
+    warn "PC2 の声かけが残っていたので止めた"
   fi
   if [[ "$WIFI" == "1" ]]; then
     if timeout 20 "${SSH[@]}" "$HOST" "pkill -f '$ADAPTER_PATTERN'" >/dev/null 2>&1; then
@@ -267,6 +279,44 @@ print(s.get("bridge_state"), "pose" if s.get("pose") else "no-pose")
     "")             warn "アダプタの状態を読めなかった" ;;
     *)              ok "Nav2 が見えている: $NAVSTAT" ;;
   esac
+fi
+
+# --- 2c. 声かけ（人を検知したら G1 本体のスピーカーで鳴らす） ------------------
+# ⚠️ 鳴らすのは PC2 の中。PC から音声の DDS を叩かない（Speaker/g1_speaker.py の冒頭）。
+#    ここでは WAV と g1_speaker.py を置き、音声サービスに届くかだけ確かめる。
+#    常駐させるのは UI 本体（ssh を1本張り、検知のたびに1行送る）
+step "2c. 声かけ"
+VOICE_ON=""; VOICE_WAV=""; VOICE_DIR=""
+read -r VOICE_ON VOICE_WAV VOICE_DIR < <("$VENV" - "$HERE/Main/config.yaml" <<'PY'
+import sys
+from pathlib import Path
+import yaml
+p = Path(sys.argv[1])
+v = yaml.safe_load(p.read_text(encoding="utf-8")).get("voice", {})
+print(int(bool(v.get("enabled", True))), (p.parent / str(v.get("wav", ""))).resolve(),
+      v.get("remote_dir", "/home/unitree/g1_ui_speaker"))
+PY
+) || true
+if [[ "$NO_VOICE" == "1" || "$VOICE_ON" != "1" ]]; then
+  ok "切ってある（--no-voice か voice.enabled: false）"
+  UI_ARGS+=(--no-voice)
+elif [[ ! -f "$VOICE_WAV" ]]; then
+  warn "録音が無いので声かけ無しで続ける: $VOICE_WAV（Voice/README.md の手順で録る）"
+  UI_ARGS+=(--no-voice)
+else
+  timeout 30 "${SSH[@]}" "$HOST" "mkdir -p $VOICE_DIR; pkill -f '$SPEAKER_PATTERN'" >/dev/null 2>&1 || true
+  scp -q "$HERE/Speaker/g1_speaker.py" "$VOICE_WAV" "$HOST:$VOICE_DIR/"
+  # 鳴らさずに、音声サービスに届くかと音量だけ見る（音量は変えない）
+  VOICE_CHECK="$(timeout 30 "${SSH[@]}" "$HOST" \
+    "python3 $VOICE_DIR/g1_speaker.py --check --wav $VOICE_DIR/$(basename "$VOICE_WAV")" 2>&1 || true)"
+  if grep -q '"status": "ready"' <<<"$VOICE_CHECK"; then
+    ok "PC2 の音声サービスに届いた（$(grep -o '"volume": [0-9-]*' <<<"$VOICE_CHECK" | tail -1)）。$(basename "$VOICE_WAV")"
+    UI_ARGS+=(--voice-host "$HOST")
+  else
+    printf '%s\n' "$VOICE_CHECK" | tail -5 | sed 's/^/     /'
+    warn "PC2 の音声サービスに届かない。声かけ無しで続ける（上は g1_speaker.py --check の出力）"
+    UI_ARGS+=(--no-voice)
+  fi
 fi
 
 # --- 3. UI 本体 -------------------------------------------------------------

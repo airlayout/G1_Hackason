@@ -14,6 +14,7 @@
     ../../venv/bin/python server.py            # 既定は config.yaml
     ../../venv/bin/python server.py --nav http # ROS アダプタに繋ぐ
     ../../venv/bin/python server.py --wifi     # 無線: 映像も航法も PC2 から（見るだけ）
+    ../../venv/bin/python server.py --voice-host g1   # 人を検知したら G1 本体で声をかける
 """
 from __future__ import annotations
 
@@ -43,6 +44,7 @@ from common.detector.yolo_detector import YoloDetector     # noqa: E402
 
 from nav.base import COMMANDS, NavSource                   # noqa: E402
 from vision import DetectionEvent, VisionWorker            # noqa: E402
+from voice import VoiceAnnouncer, build_voice              # noqa: E402
 
 STATIC = HERE / "static"
 _MJPEG_BOUNDARY = "g1frame"
@@ -144,6 +146,7 @@ class Handler(BaseHTTPRequestHandler):
     vision: VisionWorker
     navsrc: NavSource
     events: EventLog
+    voice: VoiceAnnouncer | None
 
     def log_message(self, fmt: str, *args) -> None:
         """既定のアクセスログは MJPEG で埋まるので黙らせる。"""
@@ -224,6 +227,7 @@ class Handler(BaseHTTPRequestHandler):
         state["vision"] = self.vision.status
         state["mock"] = self.navsrc.is_mock
         state["map_warning"] = self.navsrc.map_warning()
+        state["voice"] = self.voice.status if self.voice else {"state": "disabled"}
         # 画面はこれが変わったら地図を読み直す（Nav2 を別の地図で上げ直したとき）
         info = self.navsrc.map_info()
         state["map_digest"] = info.get("digest") if info else None
@@ -268,6 +272,8 @@ def apply_wifi(cfg: dict, ip: str) -> None:
     ⚠️ **DDS は無線に通さない**（Navigation の WIRELESS.md）。航法は PC2 で動く
     アダプタに HTTP で聞き、映像は PC2 の ZMQ に Wi-Fi で繋ぐ。どちらも ROS を通らない。
     ⚠️ **操作は必ず止める。** アダプタも --read-only で上げるが、こちらでも止める。
+    ⚠️ 声かけ（voice.py）は止めない。検知で自動的に出るもので、画面からの操作ではない
+    （2026-11-03 に決めた）。
     """
     w = cfg.get("wifi", {})
     ip = ip or str(w.get("pc2_ip", ""))
@@ -286,9 +292,10 @@ def apply_wifi(cfg: dict, ip: str) -> None:
           f"航法 http://{ip}:{port}（見るだけ）")
 
 
-def make_handler(vision: VisionWorker, navsrc: NavSource, events: EventLog) -> type[Handler]:
+def make_handler(vision: VisionWorker, navsrc: NavSource, events: EventLog,
+                 voice: VoiceAnnouncer | None) -> type[Handler]:
     return type("BoundHandler", (Handler,),
-                {"vision": vision, "navsrc": navsrc, "events": events})
+                {"vision": vision, "navsrc": navsrc, "events": events, "voice": voice})
 
 
 def main() -> None:
@@ -300,6 +307,10 @@ def main() -> None:
     parser.add_argument("--wifi", nargs="?", const="", metavar="PC2_IP",
                         help="無線で使う。映像も航法も PC2 の Wi-Fi 側から取り、操作は止める"
                              "（IP を省くと config.yaml の wifi.pc2_ip）")
+    parser.add_argument("--voice-host", metavar="SSH宛先",
+                        help="人を検知したら G1 本体のスピーカーで声をかける。PC2 への ssh の宛先"
+                             "（../run.sh が WAV と Speaker/g1_speaker.py を置いてから渡す）")
+    parser.add_argument("--no-voice", action="store_true", help="声かけを切る")
     args = parser.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
@@ -320,6 +331,25 @@ def main() -> None:
         device=str(dcfg.get("device", "auto")),
     )
     events = EventLog((HERE / str(cfg["log"]["dir"])).resolve())
+    vcfg_voice = dict(cfg.get("voice", {}))
+    if args.no_voice:
+        vcfg_voice["enabled"] = False
+
+    def still_present() -> bool:
+        # ⚠️ カメラが途切れると「消失」が来ないので、声の繰り返しは毎回これで確かめる
+        s = vision.status
+        return bool(s["alive"] and s["present"])
+
+    voice = build_voice(vcfg_voice, args.voice_host, still_present)
+
+    def on_event(event: DetectionEvent) -> None:
+        events.add(event)
+        if voice is not None:
+            # ⚠️ 声の失敗で検知ログを止めない（順番もログが先）
+            try:
+                voice.on_event(event)
+            except Exception as exc:
+                print(f"[声] 例外: {exc}")
     vision = VisionWorker(
         source=build_frame_source(vcfg),
         detector=detector,
@@ -327,17 +357,21 @@ def main() -> None:
         jpeg_quality=int(vcfg.get("jpeg_quality", 80)),
         present_frames=int(dcfg.get("present_frames", 2)),
         absent_grace_s=float(dcfg.get("absent_grace_s", 1.5)),
-        on_event=events.add,
+        on_event=on_event,
     )
     navsrc = build_nav_source(cfg["nav"])
+    if voice is not None:
+        voice.start()
     vision.start()
 
     host = str(cfg["server"]["host"])
     port = int(args.port or cfg["server"]["port"])
     try:
-        httpd = ThreadingHTTPServer((host, port), make_handler(vision, navsrc, events))
+        httpd = ThreadingHTTPServer((host, port), make_handler(vision, navsrc, events, voice))
     except OSError as exc:
         vision.stop()
+        if voice is not None:
+            voice.close()
         raise SystemExit(f"[UI] ポート {port} を使えません({exc})。"
                          f"--port で別の番号を指定してください") from exc
     httpd.daemon_threads = True
@@ -349,6 +383,8 @@ def main() -> None:
     finally:
         # ⚠️ ここで例外を握りつぶさないこと（Navigation 側で痛い目を見ている）
         vision.stop()
+        if voice is not None:
+            voice.close()
         navsrc.close()
         httpd.server_close()
 

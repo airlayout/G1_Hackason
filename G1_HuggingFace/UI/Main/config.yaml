@@ -73,6 +73,21 @@ wifi:
   # アダプタへの問い合わせの待ち時間。無線は有線より遅れる
   timeout_s: 1.5
 
+# 人を検知したら G1 本体のスピーカーで声をかける（2026-11-03 追加。Voice/README.md）
+#   鳴らすのは PC2 の中（../run.sh が WAV と Speaker/g1_speaker.py を送って常駐させる）。
+#   Main/run.sh 単体（モック・動画）では鳴らさず、ログに出すだけ
+voice:
+  enabled: true
+  # 鳴らす WAV。⚠️ 録音は git に入れない（Voice/*.wav は .gitignore で除外）
+  wav: ../Voice/tachiiri_kinshi.wav
+  # 画面とログに出す台詞（WAV の中身と合わせること）
+  phrase: 立ち入り禁止です。警備員に連絡します
+  # 人が映っている間は繰り返す。言い終えてから次を言うまで空ける秒数
+  #（消えたら止める。言いかけの台詞は最後まで言う。カメラが途切れたときも止める）
+  repeat_gap_s: 1.0
+  # PC2 に置く場所
+  remote_dir: /home/unitree/g1_ui_speaker
+
 server:
   host: 127.0.0.1
   port: 8090        # 8080 は別プロセスが使っていたので避けている
