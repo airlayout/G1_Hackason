@@ -103,7 +103,9 @@ class ElevatorPressController:
         pc = copy.deepcopy(press_cfg)
         pc["press"].update(elevator_cfg["press"].get("planner", {}))
         pc["ik"].update(elevator_cfg.get("ik", {}))
-        speed = elevator_cfg["press"].get("max_joint_speed_rad_s")
+        ep = elevator_cfg["press"]
+        by_set = (ep.get("by_button_set") or {}).get(elevator_cfg["geometry"].get("button_set", ""), {})
+        speed = ep.get("max_joint_speed_rad_s", by_set.get("max_joint_speed_rad_s"))  # その回の指定 > 押す組ごと
         if speed is not None:
             # 計画で許す関節の速さだけを変える（arm.yaml はボトルの送る側も使うので書き換えない）。送るときの頭打ちは
             # 評価環境・run_dds の安全フィルタ（Yada の contest.yaml、1.0 rad/s）

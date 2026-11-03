@@ -511,6 +511,9 @@ class TestElevatorPlan(unittest.TestCase):
         self.assertNotIn("近すぎる", advice)
         self.assertIn("左へ 12 cm 以上寄る", advice)
         self.assertIn("ボタンが体の中心から右 14±2 cm、目安は柱まで 48 cm", advice)
+        # 計画で許す関節の速さは、車いす用だけ 0.55 rad/s（腕が伸びきる近くの 50 cm でも計画が立つ）
+        self.assertAlmostEqual(ctl.planner.max_joint_step, 0.55 * ctl.planner.dt, places=9)
+        self.assertAlmostEqual(self.ctl.planner.max_joint_step, 0.5 * self.ctl.planner.dt, places=9)  # 一般用は arm.yaml のまま
         # 腕が伸びきる遠さ（55 cm）は範囲の外
         self.assertIn("遠すぎる。あと 5 cm 以上近づく", ctl._stand_advice(call(0.55, -0.14)))
 
