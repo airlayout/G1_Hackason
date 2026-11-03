@@ -7,6 +7,9 @@
     # エレベーターの呼びボタン（▼）。ラボは車いす用の下のボタン・YOLO
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair \\
         --detector yolo --execute
+    # 壁もボタンも無いところで、エレベーターと同じ腕の動きだけ（空中の車いす用 ▼。腕を伸ばしたときの体の崩れを見る）
+    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair \\
+        --air 0.48 -0.14 --execute
 
 事前確認（押すたびに毎回。見るだけで、そのつど変わりうることだけ。1 つでもだめなら何も送らずに終わる。終了コード 10）:
 1. モーションコントローラが稼働中か（arm_sdk の受け手。倒れた・ダンピングにしたあとは止まっている）
@@ -165,6 +168,8 @@ def press_command(args: argparse.Namespace, iface: str) -> tuple[list[str], dict
         env["J1GEN_BUTTON_SET"] = args.button_set
     if args.detector:
         env["J1GEN_BUTTON_DETECTOR"] = args.detector
+    if getattr(args, "air", None):
+        env["J1GEN_AIR_BUTTONS"] = f"{args.air[0]},{args.air[1]}"
     return cmd + list(getattr(args, "extra", [])), env
 
 
@@ -189,6 +194,8 @@ def main() -> int:
     p.add_argument("--button-set", choices=["general", "wheelchair"], help="ボタン: 押す組（既定は elevator.yaml）")
     p.add_argument("--detector", choices=["classic", "yolo"], help="ボタン: 見つけ方（既定は elevator.yaml）")
     p.add_argument("--instruction", default="", help="ボタン: 指示の文")
+    p.add_argument("--air", type=float, nargs=2, metavar=("X", "Y"),
+                   help="ボタン: カメラで探さず、pelvis から前 X・左右 Y [m]（− が右）の空中に車いす用の ▲▼ があるものとして動かす")
     p.add_argument("--skip-prechecks", action="store_true", help="事前確認を飛ばす（模擬ロボットで試すときだけ）")
     add_camera_args(p)
     argv = sys.argv[1:]

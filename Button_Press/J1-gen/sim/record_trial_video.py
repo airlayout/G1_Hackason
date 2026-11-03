@@ -159,6 +159,8 @@ def main() -> int:
         head.close()
         robot.close()
     print("[video] 段階が始まった時刻: " + "、".join(f"{p} {t:.2f} s" for p, t in phases))
+    if res.error:
+        print(f"[video] エージェントのエラー:\n{res.error}")
     print(f"[video] {res.outcome}（{res.time_s} s）。{state['frames']} コマ、撮るのにかかった時間 {time.time() - wall:.0f} s")
     print(f"[video] ✅ {out}")
     return 0

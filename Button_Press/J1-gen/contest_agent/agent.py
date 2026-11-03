@@ -20,6 +20,9 @@ J1-gen の部品は、Yada の j1gen_bridge で別名（j1gen_common）として
     J1GEN_BODY_LOG=_local/button_press/body_log $P Button_Press/Yada/contest/run_dds.py --agent ... （実機の引数）
     $P Button_Press/J1-gen/real/body_motion.py _local/button_press/body_log/<日時>_<up|down>
 
+環境変数 J1GEN_AIR_BUTTONS に「x,y」（pelvis から前・左右 [m]）を渡すと、カメラでボタンを探さず、その空中に車いす用の
+▲▼ があるものとして同じ動きをする（壁の無いところで腕を伸ばす動きだけを試す。real/auto_press.py --air。押し直しはしない）。
+
 同じフォルダに、押す前（ボタンを見つけたとき）と点灯の確認のときの画像も保存する（lit_00_before.png、
 lit_01_check.png … と、枠・明るさを描いた *_annotated.jpg、lit_log.json）。手が枠に被さって点灯の確認が
 狂っていないか（点灯していないのに「点灯した」、点灯したのに「していない」）を、あとで見るため。
@@ -48,8 +51,16 @@ class J1genElevatorAgent(Agent):
             elevator["geometry"]["button_set"] = os.environ["J1GEN_BUTTON_SET"]
         if os.environ.get("J1GEN_BUTTON_WEIGHTS"):  # 候補の重みを、既定を変えずに評価するとき
             elevator["yolo"]["weights"] = os.environ["J1GEN_BUTTON_WEIGHTS"]
+        air = os.environ.get("J1GEN_AIR_BUTTONS")
+        if air:
+            elevator["press"]["max_retries"] = 0  # 空中なので点灯しない。押し直して深くしない
+            elevator["geometry"]["button_set"] = "wheelchair"  # 高さは車いす用。指をまっすぐ向ける設定を使う
         self.ctl = j1gen("elevator_press").ElevatorPressController.from_config(
             j1gen_config("robot.yaml"), j1gen_config("press.yaml"), j1gen_config("arm.yaml"), elevator)
+        if air:
+            x, y = (float(v) for v in air.split(","))
+            self.ctl.finder = j1gen("elevator_buttons").AirButtonFinder(x, y)
+            print(f"[j1gen-agent] ⚠️ 空中のボタン（カメラで探さない）: 前 {x * 100:.0f} cm、左右 {y * 100:+.0f} cm")
         weights = f"（重み: {elevator['yolo']['weights']}）" if elevator["detector"] == "yolo" else ""
         print(f"[j1gen-agent] ボタンを探す方法: {elevator['detector']}{weights}、押す組: {elevator['geometry'].get('button_set', 'general')}")
 

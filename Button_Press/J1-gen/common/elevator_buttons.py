@@ -273,6 +273,33 @@ def fit_plane(points: np.ndarray, iters: int = 2, keep_m: float = 0.006) -> tupl
     return n, c, float(keep.mean())
 
 
+class AirButtonFinder:
+    """カメラを使わず、決まった位置（空中）に車いす用の ▲▼ があるものとして返す（ButtonFinder の代わり）。
+
+    ラボで壁もボタンも無いところで、エレベーターと同じ腕の動き（手前 → 押し込み → 戻る）だけを実機で試し、
+    腕を伸ばしたときに体（バランス）が崩れないかを見るため（real/auto_press.py --air）。高さはラボの車いす用と同じ
+    pelvis から ▲ +0.21・▼ +0.14 m（sim/elevator_stand_map.py と同じ）、押す向きはまっすぐ前。
+    """
+
+    class _NoDetector:
+        """点灯の確認で枠を見つけ直すときの detector の代わり（何も見つけない = 最初の枠のまま）。"""
+
+        def detect(self, rgb: np.ndarray) -> list:
+            return []
+
+    def __init__(self, x: float, y: float, z_up: float = 0.21, z_down: float = 0.14) -> None:
+        self.x, self.y, self.z_up, self.z_down = float(x), float(y), float(z_up), float(z_down)
+        self.detector = self._NoDetector()
+
+    def find(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q_waist: np.ndarray) -> CallButtons:
+        # 枠は画像の真ん中の小さな四角（点灯の確認が画像を読むので、空でない範囲にする。空中なので点灯はしない）
+        h, w = np.asarray(rgb).shape[:2]
+        box = (w // 2 - 10, h // 2 - 10, w // 2 + 10, h // 2 + 10)
+        up = Button3D(np.array([self.x, self.y, self.z_up]), 0.035, "up", box, 100, "up")
+        down = Button3D(np.array([self.x, self.y, self.z_down]), 0.035, "down", box, 100, "down")
+        return CallButtons(up, down, np.array([1.0, 0.0, 0.0]))
+
+
 class ButtonFinder:
     def __init__(self, cam_tf: HeadCameraTransform, detector: CandidateDetector, cfg: dict[str, Any]) -> None:
         self.cam_tf = cam_tf

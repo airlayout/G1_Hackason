@@ -656,6 +656,34 @@ class TestElevatorPlan(unittest.TestCase):
         self.assertEqual(ctl.phase, "reach")
         self.assertTrue(any("⚠️" in l.message and "近すぎる" in l.message for l in ctl.log))
 
+    def test_air_buttons_run_the_whole_motion(self) -> None:
+        """AirButtonFinder（real/auto_press.py --air）: カメラで探さず空中の車いす用 ▼ に対して、本番と同じ段階を
+        最後まで通り、始めの姿勢へ戻る（壁の無いラボで、腕を伸ばしたときの体の崩れを見るため）。"""
+        from common.elevator_buttons import AirButtonFinder
+        from common.elevator_press import ElevatorPressController
+
+        elev = load_config("elevator.yaml")
+        elev["geometry"]["button_set"] = "wheelchair"
+        elev["press"]["max_retries"] = 0
+        ctl = ElevatorPressController.from_config(load_config("robot.yaml"), load_config("press.yaml"),
+                                                  load_config("arm.yaml"), elev)
+        ctl.finder = AirButtonFinder(0.48, -0.14)
+        ctl.reset("down", 0.02, np.full(17, 60.0))
+        img, depth, K0 = np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640)), np.eye(3)
+        q, t, phases, done = self.q_stand.copy(), 0.0, [], False
+        while not done and t < 30.0:
+            t += 0.02
+            q29, done = ctl.step(img, depth, K0, q, t, 0.0)
+            q = q29.copy()  # 指令にそのまま付いてくる
+            phases.append(ctl.phase)
+        self.assertTrue(done)
+        self.assertEqual([p for p in dict.fromkeys(phases) if p != "look"],
+                         ["reach", "settle", "press", "hold", "retract", "check", "home", "done"])
+        np.testing.assert_allclose(ctl.plan_.target_point[:2], [0.48 - 0.008, -0.14], atol=1e-9)
+        np.testing.assert_allclose(ctl.plan_.finger_axis, [1.0, 0.0, 0.0], atol=1e-9)
+        arm = ctl.kin.arm_idx
+        np.testing.assert_allclose(ctl.q_ik[arm], ctl.legs[0][0], atol=1e-9)  # 計画を始めたときの姿勢へ戻る（送る値は重力の分を足す）
+
     def test_press_stops_when_finger_is_blocked(self) -> None:
         """押し込みの途中で指先が止まったら（ボタンが底に着いた）、それ以上奥へ押さずに保持へ移る。"""
         ctl = self.ctl
