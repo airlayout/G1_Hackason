@@ -103,6 +103,12 @@ class ElevatorPressController:
         pc = copy.deepcopy(press_cfg)
         pc["press"].update(elevator_cfg["press"].get("planner", {}))
         pc["ik"].update(elevator_cfg.get("ik", {}))
+        speed = elevator_cfg["press"].get("max_joint_speed_rad_s")
+        if speed is not None:
+            # 計画で許す関節の速さだけを変える（arm.yaml はボトルの送る側も使うので書き換えない）。送るときの頭打ちは
+            # 評価環境・run_dds の安全フィルタ（Yada の contest.yaml、1.0 rad/s）
+            arm_cfg = copy.deepcopy(arm_cfg)
+            arm_cfg["safety"]["max_joint_speed_rad_s"] = float(speed)
         planner = PressPlanner.from_config(robot_cfg, pc, arm_cfg, "right")
         finder = ButtonFinder.from_config(robot_cfg, elevator_cfg)
         return cls(robot_cfg, planner, finder, GravityModel(robot_cfg), elevator_cfg)
@@ -144,7 +150,7 @@ class ElevatorPressController:
         q_des = self.q_hold.copy()
         arm = self.kin.arm_idx
         el = t - self.t_phase
-        c = self.cfg["press"]
+        c = self._press_cfg()  # 押す組ごとの上書き（retract_s など）も重ねる
         done = False
         fresh = self._is_fresh(t, image_t)
 

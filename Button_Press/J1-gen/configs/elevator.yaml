@@ -135,6 +135,10 @@ press:
     wheelchair:
       finger_tilts_deg: [[0, 0]]
       level_finger_row: true
+      # 押し込み終わりから手前の点へ戻る時間 [秒]（既定 1.0）。2026-11-03 の実機（空中のボタン、auto_press.py --air）で、
+      # 遠く立つほど戻り始めに肘が速く回り（40 cm 0.73 → 48 cm 1.05 → 50 cm 1.38 rad/s）、体が少し傾いた
+      # （腰の回転の最大は戻り始め）。押し込み（press_s 2.5 秒）と同じ速さにする
+      retract_s: 2.5
       # 勧める立ち位置（2026-11-03。実機の立った姿勢での計画の地図 sim/elevator_stand_map.py --button-set wheelchair と
       # 評価環境のシミュレーション sim/record_trial_video.py --lab-wheelchair で確かめた）。11/1 は腰から柱まで約 36 cm で
       # つま先が壁まで約 16 cm と近すぎたので、離れて押す。

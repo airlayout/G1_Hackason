@@ -679,6 +679,10 @@ class TestElevatorPlan(unittest.TestCase):
         self.assertTrue(done)
         self.assertEqual([p for p in dict.fromkeys(phases) if p != "look"],
                          ["reach", "settle", "press", "hold", "retract", "check", "home", "done"])
+        # 車いす用は戻り（retract）を press.by_button_set.wheelchair.retract_s（2.5 秒）かけてゆっくり行う
+        retract_s = phases.count("retract") * 0.02
+        self.assertAlmostEqual(retract_s, elev["press"]["by_button_set"]["wheelchair"]["retract_s"], delta=0.05)
+        self.assertGreater(retract_s, elev["press"]["retract_s"] + 1.0)
         np.testing.assert_allclose(ctl.plan_.target_point[:2], [0.48 - 0.008, -0.14], atol=1e-9)
         np.testing.assert_allclose(ctl.plan_.finger_axis, [1.0, 0.0, 0.0], atol=1e-9)
         arm = ctl.kin.arm_idx

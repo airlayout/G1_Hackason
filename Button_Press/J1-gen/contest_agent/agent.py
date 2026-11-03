@@ -20,6 +20,8 @@ J1-gen の部品は、Yada の j1gen_bridge で別名（j1gen_common）として
     J1GEN_BODY_LOG=_local/button_press/body_log $P Button_Press/Yada/contest/run_dds.py --agent ... （実機の引数）
     $P Button_Press/J1-gen/real/body_motion.py _local/button_press/body_log/<日時>_<up|down>
 
+環境変数 J1GEN_MAX_JOINT_SPEED に rad/s を渡すと、計画で許す関節の速さ（既定は arm.yaml の 0.5）をその回だけ変える。
+
 環境変数 J1GEN_AIR_BUTTONS に「x,y」（pelvis から前・左右 [m]）を渡すと、カメラでボタンを探さず、その空中に車いす用の
 ▲▼ があるものとして同じ動きをする（壁の無いところで腕を伸ばす動きだけを試す。real/auto_press.py --air。押し直しはしない）。
 
@@ -51,6 +53,9 @@ class J1genElevatorAgent(Agent):
             elevator["geometry"]["button_set"] = os.environ["J1GEN_BUTTON_SET"]
         if os.environ.get("J1GEN_BUTTON_WEIGHTS"):  # 候補の重みを、既定を変えずに評価するとき
             elevator["yolo"]["weights"] = os.environ["J1GEN_BUTTON_WEIGHTS"]
+        if os.environ.get("J1GEN_MAX_JOINT_SPEED"):  # 計画で許す関節の速さ [rad/s]（real/auto_press.py --max-joint-speed）
+            elevator["press"]["max_joint_speed_rad_s"] = float(os.environ["J1GEN_MAX_JOINT_SPEED"])
+            print(f"[j1gen-agent] ⚠️ 計画で許す関節の速さ: {elevator['press']['max_joint_speed_rad_s']} rad/s（既定は arm.yaml）")
         air = os.environ.get("J1GEN_AIR_BUTTONS")
         if air:
             elevator["press"]["max_retries"] = 0  # 空中なので点灯しない。押し直して深くしない
