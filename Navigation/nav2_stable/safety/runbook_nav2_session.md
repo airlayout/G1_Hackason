@@ -445,6 +445,7 @@ yaml の `yaw_deg` を書き換えること。
 | **`enable_navigation` が拒否される** | heartbeat 未受信 / TF・センサー異常 / 状態が `READY` でない。`message` に理由が出る |
 | **Goal を送っても動かない** | `/cmd_vel_smoothed` が流れているか。`NAVIGATING だが指令が届いていない` の WARN が出ていないか |
 | **点群が反対向き / `base_link` の赤軸が実機の正面と逆** | `lidar_yaw` を 0 と 180 で入れ替える（§5.1.1）。**地図の一致率では判別できない** |
+| **巡回が `hold_reason: localization` で止まった** / map_web に「地図と合っていない」 | `map2odom_ctl.sh relocalize` → 候補の 20cm 以内が 80% 以上なら `apply` → **map_web で位置と向きを目視** → `clear_fault` → `patrol_ctl.sh start`。位置が実は合っている（人だかり等）ならそのまま `start` してよい（`ok` に戻るまで監視を休む）。手順は `tools/map2odom_ctl.sh` の冒頭 |
 | **自己位置が合わない** | §7 をやり直す。判定は §7 のとおり — **校正直後は `20cm以内` 80%以上、歩いたあとは `50cm以内`**。最後は RViz の目視 |
 | **急に止まった** | `/g1/bridge_status` の `fault_reason`。`operator_lost` なら heartbeat が途絶えている |
 | **TF が消えた / planner が Extrapolation Error** | **内蔵SLAM が落ちている**。`ros2 topic hz /unitree/slam_mapping/odom` が無反応なら `1801` を再送し、**§7 をやり直す**（§3 の警告） |

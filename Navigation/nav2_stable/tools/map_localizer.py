@@ -54,19 +54,23 @@ from __future__ import annotations
 
 import argparse
 import math
+import sys
 import time
 from pathlib import Path
 
 import numpy as np
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-from geometry_msgs.msg import TransformStamped
+from geometry_msgs.msg import Pose2D, TransformStamped
 from nav_msgs.msg import OccupancyGrid
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import PointCloud2, PointField
 from std_srvs.srv import SetBool
 from tf2_ros import Buffer, TransformListener, TransformBroadcaster
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from localization_health import LOST, OK, LocalizationHealth  # noqa: E402
 
 
 def cloud_xyz(msg: PointCloud2) -> np.ndarray | None:
@@ -165,6 +169,12 @@ class MapLocalizer(Node):
         self._m2o_initial = self._m2o.copy()   # 累積補正量を測る基準
         self._last_score: float | None = None
         self._last_reason = "起動直後"
+        # いま使っている map→odom がスキャンと合っているか（2026-11-03 追加）。
+        # patrol_node.py がこれを見て、lost なら巡回を止める
+        self._health = LocalizationHealth(
+            window=args.health_window, lost_below=args.health_lost_below,
+            ok_at=args.health_ok_at, max_yaw_rate_deg=args.health_max_yaw_rate)
+        self._sensor_yaw = 0.0
 
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
@@ -191,6 +201,10 @@ class MapLocalizer(Node):
         # 必ず TF が途切れ、`tf_stale` で FAULT になる（2026-09-24 にモックで実測）。
         self._mode = args.mode
         self.create_service(SetBool, "/g1/localizer/correct", self._srv_mode)
+        # 初期合わせのやり直し（`map2odom_ctl.sh apply`）。**プロセスを入れ替えずに**
+        # map→odom を差し替える。入れ替えると距離場の作成（約3秒）の間 TF が途切れ、
+        # tf_stale で FAULT になる（上の correct と同じ理由）
+        self.create_subscription(Pose2D, "/g1/localizer/set_map_to_odom", self._on_set_m2o, 10)
 
         # map→odom は**補正が無くても出し続ける**。出さないと TF が途切れ、
         # Nav2 も cmd_router の鮮度監視も止まってしまう(A-10h)。
@@ -248,6 +262,7 @@ class MapLocalizer(Node):
             self._last_reason = f"点が少ない({0 if pts is None else len(pts)})"
             self._rejected += 1
             return
+        self._judge_health(stamp, pts)
         self._match(pts)
         t2 = time.perf_counter()
         if self._timing_fp is not None:
@@ -283,6 +298,7 @@ class MapLocalizer(Node):
             [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
         ], dtype=np.float64)
         pts = arr @ rot.T + np.array([t.x, t.y, t.z])
+        self._sensor_yaw = math.atan2(rot[1, 0], rot[0, 0])   # 旋回中かの判定に使う
         # 高さで絞る。床と天井を落として壁だけを残す
         m = (pts[:, 2] >= self._args.min_height) & (pts[:, 2] <= self._args.max_height)
         # ⚠️⚠️ **センサーの近くの点を捨てる**（2026-11-03 に実測で判明）。
@@ -314,6 +330,52 @@ class MapLocalizer(Node):
         # 与えると「地図の外に逃げる」方向へ引っ張られる。
         # 代わりに、外に出た割合が大きすぎる候補は上で inf にしている。
         return float(self._field[rows[inside], cols[inside]].mean())
+
+    # --- 健全性 -------------------------------------------------------------
+    def _pose_in_use(self) -> np.ndarray:
+        """**いま実際に使われている** map→odom。observe では静的 TF の初期値が使われている。"""
+        return self._m2o_initial if self._args.observe_only else self._m2o
+
+    def _inlier(self, pts_odom: np.ndarray, cand: np.ndarray) -> float:
+        """候補の map→odom で、壁から --health-inlier-dist 以内に入る点の割合。地図の外は外れ扱い。"""
+        c, s = math.cos(cand[2]), math.sin(cand[2])
+        xs = c * pts_odom[:, 0] - s * pts_odom[:, 1] + cand[0]
+        ys = s * pts_odom[:, 0] + c * pts_odom[:, 1] + cand[1]
+        cols = np.floor((xs - self._origin[0]) / self._resolution).astype(np.int32)
+        rows = np.floor((ys - self._origin[1]) / self._resolution).astype(np.int32)
+        h, w = self._field.shape
+        inside = (cols >= 0) & (cols < w) & (rows >= 0) & (rows < h)
+        near = self._field[rows[inside], cols[inside]] < self._args.health_inlier_dist
+        return float(near.sum()) / len(pts_odom)
+
+    def _judge_health(self, stamp: float, pts_odom: np.ndarray) -> None:
+        before = self._health.state
+        after = self._health.update(stamp, self._sensor_yaw, self._inlier(pts_odom, self._pose_in_use()))
+        if after == before:
+            return
+        avg = self._health.average
+        if after == LOST:
+            self.get_logger().error(
+                f"❌ 自己位置が地図と合っていない（直近の inlier 率 平均 {avg:.0%} < "
+                f"{self._args.health_lost_below:.0%}）。巡回は止まる。"
+                "map2odom_ctl.sh relocalize で合わせ直すこと")
+        elif after == OK:
+            self.get_logger().info(f"✅ 自己位置は地図と合っている（inlier 率 平均 {avg:.0%}）")
+
+    def _on_set_m2o(self, msg: Pose2D) -> None:
+        if self._args.observe_only:
+            # observe では map→odom を出していない（静的 TF が出している）ので差し替えても効かない
+            self.get_logger().error(
+                "observe では map→odom を差し替えられない。map2odom_ctl.sh start で供給者にすること")
+            return
+        old = self._m2o.copy()
+        self._m2o = np.array([msg.x, msg.y, msg.theta], dtype=np.float64)
+        self._m2o_initial = self._m2o.copy()   # 累積補正量はここから測り直す
+        self._health.reset()
+        self._last_reason = "map→odom を差し替えた"
+        self.get_logger().warn(
+            f"map→odom を差し替えた: ({old[0]:.3f}, {old[1]:.3f}, {math.degrees(old[2]):.1f}°) → "
+            f"({msg.x:.3f}, {msg.y:.3f}, {math.degrees(msg.theta):.1f}°)")
 
     def _srv_mode(self, req, res):
         """data=true → correct（補正する） / false → hold（初期値のまま出す）。"""
@@ -414,6 +476,11 @@ class MapLocalizer(Node):
             # ⚠️ 棄却が続くのは「補正できていない」ということ。**WARN で見えるようにする**
             st.level = DiagnosticStatus.WARN
             st.message = "not_updating"
+        if ready and self._health.state == LOST:
+            # ⚠️ 補正の採否より優先して見せる。**いま使っている位置が合っていない**ということ
+            st.level = DiagnosticStatus.ERROR
+            st.message = "lost"
+        avg = self._health.average
         for k, v in (
             ("reason", self._last_reason),
             ("score", "-" if self._last_score is None else f"{self._last_score:.4f}"),
@@ -422,6 +489,11 @@ class MapLocalizer(Node):
             ("rejected", str(self._rejected)),
             ("map_to_odom",
              f"{self._m2o[0]:.3f}, {self._m2o[1]:.3f}, {math.degrees(self._m2o[2]):.2f}deg"),
+            # patrol_node.py は health を見る（unknown / ok / lost）
+            ("health", self._health.state),
+            ("inlier", "-" if self._health.last_inlier is None else f"{self._health.last_inlier:.3f}"),
+            ("inlier_avg", "-" if avg is None else f"{avg:.3f}"),
+            ("spinning", str(self._health.spinning).lower()),
         ):
             st.values.append(KeyValue(key=k, value=v))
         arr = DiagnosticArray()
@@ -467,6 +539,17 @@ def build_parser() -> argparse.ArgumentParser:
                         "走行には影響しない（ずれの実測用）")
     p.add_argument("--log-csv", type=Path, default=None,
                    help="1周期ごとに時刻・スコア・累積補正量を CSV で残す")
+    # --- 自己位置の健全性（2026-11-03 追加。値の根拠は localization_health.py）---------
+    p.add_argument("--health-inlier-dist", type=float, default=0.2,
+                   help="壁からこの距離[m]以内の点を「合っている」と数える")
+    p.add_argument("--health-window", type=int, default=10,
+                   help="直近この回数の照合の平均で判定する（2Hz で 5 秒）")
+    p.add_argument("--health-lost-below", type=float, default=0.70,
+                   help="inlier 率の平均がこれ未満で lost")
+    p.add_argument("--health-ok-at", type=float, default=0.75,
+                   help="inlier 率の平均がこれ以上で ok に戻る")
+    p.add_argument("--health-max-yaw-rate", type=float, default=20.0,
+                   help="これ[°/s]より速く回っている照合は判定に使わない（点群が流れるため）")
     p.add_argument("--timing-csv", type=Path, default=None,
                    help="照合1回ごとに点数・所要時間[ms]を CSV で残す（bench_localizer.sh 用）")
     # 2Hz は PC2 で照合1回 p95 81ms（1コアの約15%）を測って据え置いた

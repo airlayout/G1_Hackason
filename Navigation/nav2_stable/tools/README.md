@@ -75,6 +75,7 @@ docker run --rm --network host --ipc host \
 |---|---|
 | `bench_localizer.sh` | 記録済み bag を再生して `map_localizer.py` を動かし、**照合1回の所要時間**を測る。`ROS_DOMAIN_ID=77`＋localhost のみで閉じるので、機体の電源が入っていても混ざらない。PC2（pixi）／ROS 入りの PC／Docker を自動で選ぶ |
 | `publish_map_file.py` | 地図の .yaml/.pgm を `/map` に流す（map_server の代わり。`bench_localizer.sh` が使う） |
+| `localization_health.py` | いま使っている `map→odom` で点群の何割が壁と合うか（inlier 率）から `ok` / `lost` を判定する（ROS 非依存。`map_localizer.py` が使う。テストは `../tests/`） |
 | `localizer_timing_summary.py` | `map_localizer.py --timing-csv` の記録を集計し、照合を何 Hz まで回せるかを出す |
 
 ### Nav2 / 可視化

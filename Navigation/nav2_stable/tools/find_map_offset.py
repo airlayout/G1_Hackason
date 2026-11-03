@@ -102,7 +102,7 @@ class G(Node):
         self.OCCF=np.fft.rfft2(self.occ)
         best=(1e9,None)
         t0=time.time()
-        for deg in np.arange(-self.a.yaw_range, self.a.yaw_range + 1e-9, self.a.yaw_step):
+        for deg in self.a.yaw_center + np.arange(-self.a.yaw_range, self.a.yaw_range + 1e-9, self.a.yaw_step):
             th=math.radians(float(deg)); c,s=math.cos(th),math.sin(th)
             xs=c*pts[:,0]-s*pts[:,1]; ys=s*pts[:,0]+c*pts[:,1]
             # スキャンを地図と同じ格子にラスタ化(原点は地図の原点基準、平行移動0の状態)
@@ -132,6 +132,8 @@ class G(Node):
         ok=(cc>=0)&(cc<w2)&(rr>=0)&(rr<h); d=self.f[rr[ok],cc[ok]]
         print(f"   距離: 平均={d.mean():.3f} 中央={np.median(d):.3f} "
               f"20cm以内={100*(d<0.2).mean():.0f}% 50cm以内={100*(d<0.5).mean():.0f}%",flush=True)
+        # map2odom_ctl.sh relocalize が読む行(yaw は rad)。書式を変えるときはあちらも直すこと
+        print(f"RESULT {dx:.3f} {dy:.3f} {math.radians(deg):.4f} {(d<0.2).mean():.3f} {(d<0.5).mean():.3f}",flush=True)
         print(f"   参考(恒等 dx=dy=yaw=0 のとき):",flush=True)
         cc=np.floor((pts[:,0]-self.org[0])/self.res).astype(np.int64)
         rr=np.floor((pts[:,1]-self.org[1])/self.res).astype(np.int64)
@@ -146,6 +148,9 @@ def build_parser():
     p.add_argument("--yaw-range",type=float,default=20.0,
                    help="探索する yaw の範囲[度]。全周を探すなら 180")
     p.add_argument("--yaw-step",type=float,default=1.0,help="yaw の刻み[度]")
+    p.add_argument("--yaw-center",type=float,default=0.0,
+                   help="探索の中心の yaw[度]。relocalize ではいまの推定を中心に狭く探す"
+                        "(左右対称の部屋で 180° 逆向きを掴まないため)")
     p.add_argument("--timeout",type=float,default=120.0)
     p.add_argument("--min-range",type=float,default=1.0,
                    help="センサーからの水平距離がこれ未満の点を捨てる[m]。機体自身の体を除くため")

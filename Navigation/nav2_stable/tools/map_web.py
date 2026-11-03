@@ -17,7 +17,8 @@
 ## 表示するもの
 
 地図(/map) / 現在地と向き(TF map→base_link) / 軌跡 / 巡回路(/g1/patrol/route) /
-計画経路(/plan) / 状態(/g1/bridge_status・/g1/patrol/status)
+計画経路(/plan) / 状態(/g1/bridge_status・/g1/patrol/status) /
+自己位置が地図と合っているか(/g1/localizer_status の health。map_localizer.py が動いているとき)
 
 **見るだけ。** 操作（Goal・巡回の開始）は持たせない。誰でも開ける URL に操作を置かないため。
 
@@ -68,6 +69,8 @@ class MapWebNode(Node):
         self._plan: list[tuple[float, float]] = []
         self._bridge: dict[str, str] = {}
         self._patrol: dict[str, Any] = {}
+        self._localizer: dict[str, str] = {}
+        self._localizer_wall = 0.0
 
         # /map と巡回路は latched(transient_local)。ただし後から張った購読に届かないことがある
         # (HANDOVER 落とし穴 15)ので、巡回路は周期配信もされている前提で普通に受ける
@@ -78,6 +81,7 @@ class MapWebNode(Node):
         self.create_subscription(Path, "/plan", self._on_plan, 10)
         self.create_subscription(DiagnosticArray, "/g1/bridge_status", self._on_bridge, 10)
         self.create_subscription(String, "/g1/patrol/status", self._on_patrol, 10)
+        self.create_subscription(DiagnosticArray, "/g1/localizer_status", self._on_localizer, 10)
 
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
@@ -129,6 +133,14 @@ class MapWebNode(Node):
         with self._lock:
             self._bridge = d
 
+    def _on_localizer(self, msg: DiagnosticArray) -> None:
+        if not msg.status:
+            return
+        d = {kv.key: kv.value for kv in msg.status[0].values}
+        with self._lock:
+            self._localizer = d
+            self._localizer_wall = time.time()
+
     def _on_patrol(self, msg: String) -> None:
         try:
             d = json.loads(msg.data)
@@ -172,6 +184,8 @@ class MapWebNode(Node):
                 "plan": self._plan,
                 "bridge": self._bridge,
                 "patrol": self._patrol,
+                "localizer": self._localizer,
+                "localizer_age_s": (time.time() - self._localizer_wall) if self._localizer else None,
                 "server_time": time.time(),
             }
         return json.dumps(body).encode("utf-8")
@@ -195,6 +209,7 @@ PAGE = """<!doctype html>
   <span>状態 <b id="st">-</b></span>
   <span>巡回 <b id="pt">-</b></span>
   <span>位置 <b id="pos">-</b></span>
+  <span>自己位置 <b id="loc">-</b></span>
   <span id="age"></span>
   <span id="hb"></span>
 </div>
@@ -276,6 +291,13 @@ async function poll() {
       document.getElementById('pos').textContent =
         `x=${st.pose.x.toFixed(2)} y=${st.pose.y.toFixed(2)} 向き=${(st.pose.yaw * 180 / Math.PI).toFixed(0)}°`;
       if (follow) { ox = st.pose.x; oy = st.pose.y; }
+    }
+    const lc = document.getElementById('loc'), L = st.localizer || {};
+    if (!L.health || st.localizer_age_s > 5) { lc.textContent = 'map_localizer なし'; lc.className = 'warn'; }
+    else {
+      const avg = L.inlier_avg && L.inlier_avg !== '-' ? ` ${(parseFloat(L.inlier_avg) * 100).toFixed(0)}%` : '';
+      lc.textContent = {ok: '合っている', lost: '⚠️ 地図と合っていない（relocalize）', unknown: '判定中'}[L.health] + avg;
+      lc.className = L.health === 'ok' ? 'ok' : (L.health === 'lost' ? 'ng' : 'warn');
     }
     const ag = document.getElementById('age');
     if (st.pose_age_s === null) { ag.textContent = '位置がまだ無い（TF map→base_link）'; ag.className = 'ng'; }
