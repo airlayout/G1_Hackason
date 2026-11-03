@@ -7,6 +7,8 @@ Log/*.jsonl
 # ⚠️ 置かないと Main/run.sh が「動画が見つかりません」で止まる
 Reference/*.mp4
 
-# 声かけの録音（2026-11-03）。配布してよいか確かめていない音声を入れないため、
-# 自分の声でも入れない。各自が Voice/ に置く（Voice/README.md）
+# 声かけの録音（2026-11-03）。入れてよいのは本人が公開に同意した録音だけ（Voice/README.md）。
+# いま入れているのは Voice/tachiiri_kinshi.wav（録った本人が公開を了承）。
+# 切り出す前の録音や試し録りは入れない
 Voice/*.wav
+!Voice/tachiiri_kinshi.wav
