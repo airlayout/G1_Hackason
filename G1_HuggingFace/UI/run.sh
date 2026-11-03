@@ -104,14 +104,17 @@ cleanup() {
   fi
   # ⚠️ ここでリンクが既に切れていることがある（ケーブルを抜かれた等）。
   #    そのときは止められないので、**黙って成功したことにしない**。
-  if timeout 20 "${SSH[@]}" "$HOST" "pkill -f '$CAM_PATTERN'" >/dev/null 2>&1; then
-    ok "G1 のカメラ配信を止めた"
-  elif timeout 20 "${SSH[@]}" "$HOST" "pgrep -f '$CAM_PATTERN' >/dev/null" >/dev/null 2>&1; then
-    warn "G1 のカメラ配信が残っている。次のどちらかで止めること:"
-    printf "     ssh %s 'pkill -f %s'\n" "$HOST" "$CAM_PATTERN"
-  else
-    ok "G1 のカメラ配信は動いていない"
-  fi
+  #    ⚠️ pkill の終了コードで分ける。0=止めた / 1=動いていない / それ以外=ssh が通らない。
+  #    2026-11-03 に、有線を抜いたあと ssh がタイムアウトしたのを「動いていない」と誤って出し、
+  #    実際は配信が残っていた
+  local rc=0
+  timeout 20 "${SSH[@]}" "$HOST" "pkill -f '$CAM_PATTERN'" >/dev/null 2>&1 || rc=$?
+  case "$rc" in
+    0) ok "G1 のカメラ配信を止めた" ;;
+    1) ok "G1 のカメラ配信は動いていない" ;;
+    *) warn "G1 に届かず、カメラ配信が残っているか確かめられない（ssh の終了コード $rc）。届く経路で止めること:"
+       printf "     ssh <有線なら g1 / 無線なら unitree@<PC2 の Wi-Fi の IP>> 'pkill -f %s'\n" "$CAM_PATTERN" ;;
+  esac
   if [[ "$WIFI" != "1" ]]; then
     printf '  有線リンク(%s)は上げたままにしてある。切るなら nmcli connection down %s\n' "$LINK" "$LINK"
   fi
@@ -249,13 +252,17 @@ if [[ "$WIFI" == "1" ]]; then
     pkill -9 -f '$ADAPTER_PATTERN'; sleep 0.5" >/dev/null 2>&1 || true
   # ⚠️ Nav2 と同じ pixi 環境・同じ DDS 設定（eth0 固定）で上げる。start_nav.sh と同じ作法
   # ⚠️ **--read-only を外さないこと。** Wi-Fi 上の誰からでも叩ける口に操作を置かない
-  timeout 30 "${SSH[@]}" "$HOST" "cd /home/unitree/g1_nav2/pc2_humble && \
-    setsid nohup /home/unitree/.pixi/bin/pixi run bash -lc '
+  # ⚠️ **出力の付け替えは ( ) 全体にかける。** `cd X && setsid ... > log &` と書くと、裏に回る
+  #    `cd && ...` の子シェルが ssh の出力を握ったままになり、**アダプタが終わるまで ssh が返らない**
+  #    （2026-11-03 に実機の PC2 で踏んだ。timeout 30 で切られ、set -e で何も言わずに終わっていた）
+  timeout 30 "${SSH[@]}" "$HOST" "(cd /home/unitree/g1_nav2/pc2_humble && \
+    exec setsid nohup /home/unitree/.pixi/bin/pixi run bash -lc '
       source /home/unitree/g1_nav2/g1_ws/install/setup.bash
       export ROS_DOMAIN_ID=0 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
       export CYCLONEDDS_URI=file:///home/unitree/g1_nav2/cyclonedds_eth0.xml PYTHONUNBUFFERED=1
-      exec python3 $ADAPTER_DIR/Adapter/ros_adapter.py --host 0.0.0.0 --port $ADAPTER_PORT --read-only' \
-    > $ADAPTER_DIR/adapter.log 2>&1 < /dev/null & echo ok" >/dev/null
+      exec python3 $ADAPTER_DIR/Adapter/ros_adapter.py --host 0.0.0.0 --port $ADAPTER_PORT --read-only') \
+    > $ADAPTER_DIR/adapter.log 2>&1 < /dev/null & echo ok" >/dev/null \
+    || die "PC2 でアダプタを起動できなかった（ssh が 30 秒で返らない・失敗した）"
   ADAPTER_URL="http://$WIFI_IP:$ADAPTER_PORT"
   for _ in $(seq 40); do
     curl -sf -m 2 "$ADAPTER_URL/healthz" >/dev/null 2>&1 && break

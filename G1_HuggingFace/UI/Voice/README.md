@@ -51,8 +51,16 @@ ssh g1 'python3 ~/g1_ui_speaker/g1_speaker.py --wav ~/g1_ui_speaker/tachiiri_kin
   エンタメ班と同じく PC2 の中から鳴らす
 - ⚠️ 純正の `TtsMaker`（その場で読み上げ）は使っていない。公式資料では中国語と英語のみで、日本語は未確認
 
+## 実機での確認（2026-11-03・有線）
+
+- `g1_speaker.py --check` が PC2 の system python3.8 で動き、音声サービスに届いた（音量 100。`GetVolume` は `(0, {'volume': 100})` を返す）
+- 単発で鳴らして、本体のスピーカーから聞こえた
+- `bash run.sh --device <C922 の by-id>` で通し: 人が 2〜3 秒映った回は 1 回、**9 秒映った回は 3 回鳴り、外れたら止まった**
+
+- 無線（`bash run.sh --wifi --device <C922 の by-id>`。PC2 は Physical_AI_5G、操作PC は Physical_AI）でも、
+  映っていた 3.5 秒に 2 回鳴り、外れたら止まった。Nav2 は動かしていない（声かけに Nav2 は要らない）
+
 ## 未確認のこと（2026-11-03 時点）
 
-- **実機ではまだ鳴らしていない。** 偽の再生プロセスでのテスト（`tests/test_voice.py`）と、モックの UI でログに出るところまで
 - 本体の音声アシスタント（"Hello Robot"）とスピーカーを取り合うか
 - Nav2 や巡回と同時に動かしたときに PC2 の負荷が問題にならないか

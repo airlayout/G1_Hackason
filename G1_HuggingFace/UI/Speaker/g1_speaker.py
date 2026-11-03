@@ -152,7 +152,10 @@ def _code_of(result: object) -> int:
 
 
 def _volume_of(data: object) -> int:
-    """GetVolume の中身は版によって数値か JSON 文字列なので、両方を受ける。"""
+    """GetVolume の中身を音量にする。PC2 の版は dict（`{'volume': 100}`、2026-11-03 実測）。
+    念のため数値と JSON 文字列も受ける。"""
+    if isinstance(data, dict):
+        return int(data.get("volume", -1))
     if isinstance(data, (int, float)):
         return int(data)
     try:
