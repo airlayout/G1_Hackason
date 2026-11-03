@@ -97,7 +97,7 @@
         1066,
         1097
       ],
-      "base_duration_s": 1.0,
+      "base_duration_s": 1.5,
       "playback_speed": 1.0,
       "stage": "full",
       "motion_layout": "upper-body",
@@ -111,7 +111,8 @@
       "fast_reaction": true,
       "manual_gate_token": "RUN_SURPRISE_100_1X",
       "acquire_ramp_seconds": 0.4,
-      "prevalidated_runtime": true
+      "prevalidated_runtime": true,
+      "return_s": 1.0
     },
     "joy": {
       "source": "EESB_Excitement_00001 [2829,2850)",
@@ -137,7 +138,10 @@
       "source": "EESB_Excitement_00001 [2829,2850)",
       "source_csv": "data/motions/EESB_Excitement_00001.csv",
       "source_sha256": "114a0c3374b20eed24d1205c46e262956454dac35a76a5767c0eff9b54023319",
-      "source_frame_range": [2829, 2850],
+      "source_frame_range": [
+        2829,
+        2850
+      ],
       "base_duration_s": 3.0,
       "playback_speed": 1.5,
       "stage": "full",
@@ -152,6 +156,308 @@
       "fast_reaction": true,
       "acquire_ramp_seconds": 0.15,
       "prevalidated_runtime": true
+    },
+    "bow": {
+      "source": "kimodo お辞儀 (2026-10-28)",
+      "source_csv": "data/motions/kimodo/bow.csv",
+      "source_sha256": "e3e2b1e70ba45b514cc66e1ae7acaee22b5207393a527d4b71b6d9bbf1a35f35",
+      "source_frame_range": [
+        0,
+        121
+      ],
+      "base_duration_s": 4.03,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.5,
+      "waist_amplitude": 0.25,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "welcome": {
+      "source": "kimodo ウェルカム (1) (2026-10-28)",
+      "source_csv": "data/motions/kimodo/welcome.csv",
+      "source_sha256": "c33a86128e3f3b3fd0747ac38a7ce83006a07582cf73c14fb53f2e1a55c324a4",
+      "source_frame_range": [
+        0,
+        119
+      ],
+      "base_duration_s": 3.97,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.5,
+      "waist_amplitude": 0.25,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "salute": {
+      "source": "kimodo 敬礼 (2026-10-28)",
+      "source_csv": "data/motions/kimodo/salute.csv",
+      "source_sha256": "dec0035535cb6037fba1cf8e0bdcdb806698645aa52db6c1a062f5f38a6120d4",
+      "source_frame_range": [
+        0,
+        121
+      ],
+      "base_duration_s": 6.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.75,
+      "waist_amplitude": 0.25,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "look_around": {
+      "source": "kimodo きょろきょろ (2026-10-28)",
+      "source_csv": "data/motions/kimodo/look_around.csv",
+      "source_sha256": "0892194f44468fa81963b3c82672ab03e3c09a49a1676b96fb8bbda12cffdbc9",
+      "source_frame_range": [
+        0,
+        120
+      ],
+      "base_duration_s": 4.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.5,
+      "waist_amplitude": 0.25,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended",
+      "known_issue": "2026-10-30 real G1: body sway grew in late clip/return (leg dev 0.157 rad, gyro >1 rad/s), robot had to be rebooted. Do not load until reworked."
+    },
+    "mitsuketa": {
+      "source": "kimodo みつけた (2026-10-28)",
+      "source_csv": "data/motions/kimodo/mitsuketa.csv",
+      "source_sha256": "2f19cad1df02c5c9dff085d5aa2c28dbe70eef4b92e45dfcd1c2de3f72e1db2a",
+      "source_frame_range": [
+        0,
+        120
+      ],
+      "base_duration_s": 4.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.5,
+      "waist_amplitude": 0.25,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended",
+      "known_issue": "2026-10-30 real G1: gyro limit tripped 1.5 s into clip; after fault release the waist twisted (yaw 0.42 rad) and robot thrashed until power-off. Do not load until reworked."
+    },
+    "bikkuri": {
+      "source": "kimodo びっくり (2026-10-28)",
+      "source_csv": "data/motions/kimodo/bikkuri.csv",
+      "source_sha256": "17c84995e80cf8adc4a167b413f814f89cdadb08eb7ff8a3e44fd4d880728e59",
+      "source_frame_range": [
+        0,
+        120
+      ],
+      "base_duration_s": 4.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.5,
+      "waist_amplitude": 0.25,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "chotto_bikkuri": {
+      "source": "kimodo ちょっとびっくり (2026-10-28)",
+      "source_csv": "data/motions/kimodo/chotto_bikkuri.csv",
+      "source_sha256": "cebbdd684dc1690d9abc4e388fff5a6423ec4010161756696fa06c3871a782f0",
+      "source_frame_range": [
+        0,
+        120
+      ],
+      "base_duration_s": 4.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.5,
+      "waist_amplitude": 0.25,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "odoroku": {
+      "source": "kimodo おどろく (2026-10-28)",
+      "source_csv": "data/motions/kimodo/odoroku.csv",
+      "source_sha256": "fab5acae3c1752273d050edebdf0eb86f8f9687fae90bff8f4577434ce3f91f2",
+      "source_frame_range": [
+        0,
+        120
+      ],
+      "base_duration_s": 4.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.5,
+      "waist_amplitude": 0.25,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "sokoni_ita": {
+      "source": "kimodo そこにいたのか (2026-10-28)",
+      "source_csv": "data/motions/kimodo/sokoni_ita.csv",
+      "source_sha256": "59f31b133017d48bf3648838c8bd96dd1e231b1b3f93e7ad838f318ec45d6923",
+      "source_frame_range": [
+        0,
+        120
+      ],
+      "base_duration_s": 4.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.5,
+      "waist_amplitude": 0.25,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "detekoi": {
+      "source": "kimodo でてこい (2026-10-28)",
+      "source_csv": "data/motions/kimodo/detekoi.csv",
+      "source_sha256": "f605c22cf3cf9bd9d8781667f3c87a8c579618fb6b7af8c0582c959a56b6e637",
+      "source_frame_range": [
+        0,
+        120
+      ],
+      "base_duration_s": 8.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.75,
+      "waist_amplitude": 0.25,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "kikimimi": {
+      "source": "kimodo 聞き耳 (2026-10-28)",
+      "source_csv": "data/motions/kimodo/kikimimi.csv",
+      "source_sha256": "ea503763c3da6560bd4da02543e0045baeb40ff102efb2188385289e71a697b2",
+      "source_frame_range": [
+        0,
+        119
+      ],
+      "base_duration_s": 3.97,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.5,
+      "waist_amplitude": 0.0,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "kinniku": {
+      "source": "kimodo 筋肉 (2026-10-28)",
+      "source_csv": "data/motions/kimodo/kinniku.csv",
+      "source_sha256": "d89eb384423ae61a4ec92a5020764d07b9baaef19345b2c0089f955d8a06622e",
+      "source_frame_range": [
+        0,
+        120
+      ],
+      "base_duration_s": 7.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.75,
+      "waist_amplitude": 0.0,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "hisashiburi": {
+      "source": "kimodo ひさしぶり (2026-10-28)",
+      "source_csv": "data/motions/kimodo/hisashiburi.csv",
+      "source_sha256": "5c1a134afe4247e48747cbca904017030adbdcc9df7e55b235b75b5a52ac6854",
+      "source_frame_range": [
+        0,
+        120
+      ],
+      "base_duration_s": 7.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.5,
+      "waist_amplitude": 0.0,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "comical_dance": {
+      "source": "kimodo こみかるダンス (2026-10-28)",
+      "source_csv": "data/motions/kimodo/comical_dance.csv",
+      "source_sha256": "c00d34288c8d10c6bef3a1ef9274412dd72a119571024fb2905a9ae5b9d1deeb",
+      "source_frame_range": [
+        0,
+        180
+      ],
+      "base_duration_s": 11.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.375,
+      "waist_amplitude": 0.0,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
+    },
+    "tekitou_dance": {
+      "source": "kimodo 適当ダンス (2026-10-28)",
+      "source_csv": "data/motions/kimodo/tekitou_dance.csv",
+      "source_sha256": "07fc8fab62f351201dac14fd1553f7247d5d723522ce01a87eb397752b000495",
+      "source_frame_range": [
+        0,
+        180
+      ],
+      "base_duration_s": 11.0,
+      "playback_speed": 1.0,
+      "stage": "half",
+      "motion_layout": "upper-body",
+      "arms_amplitude": 0.5,
+      "waist_amplitude": 0.0,
+      "legs": "excluded",
+      "requires_stop": true,
+      "real_g1_validated": false,
+      "acquire_ramp_seconds": 0.4,
+      "validation_mode": "hackathon_suspended"
     }
   }
 }

@@ -69,8 +69,10 @@ def test_fast_surprise_changes_only_smooth_outer_transitions() -> None:
         snapshot(), "surprise_100_hackathon_suspended", 1.0, 1.0,
         fast_reaction=True)
     np.testing.assert_array_equal(fast["clip"], regular["clip"])
-    assert fast_durations == {"entry": .1, "clip": 1.0, "return": .5}
-    assert regular_durations["return"] > fast_durations["return"]
+    assert fast_durations == {"entry": .1, "clip": 1.5, "return": 1.0}
+    # The profile fixes the return speed; only the entry differs.
+    assert regular_durations["return"] == fast_durations["return"]
+    assert regular_durations["entry"] > fast_durations["entry"]
     assert np.array_equal(fast["entry"][0], np.asarray(snapshot()["all_q"])[12:])
     assert np.array_equal(fast["return"][-1], np.asarray(snapshot()["all_q"])[12:])
     assert metadata["fast_reaction"] is True

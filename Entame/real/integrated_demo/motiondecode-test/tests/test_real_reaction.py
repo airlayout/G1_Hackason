@@ -291,9 +291,8 @@ def test_stale_abort_releases_zero_gains_with_initialized_angles(monkeypatch):
             assert m.kp==m.kd==0 and m.q==q[i]
 
 
-def test_prevalidated_envelope_abort_reaches_weight_zero(monkeypatch):
+def test_prevalidated_fault_abort_reaches_weight_zero(monkeypatch):
     import run_real_reaction as real
-    from robot_transport import RecoverableMotionEnvelopeExceeded
     monkeypatch.setattr(real.time, 'sleep', lambda _: None)
     q=np.asarray(snapshot()['all_q'])
     r=object.__new__(Runtime)
@@ -305,8 +304,34 @@ def test_prevalidated_envelope_abort_reaches_weight_zero(monkeypatch):
         sent.append((phase,weight));r.writer.weight=weight
     r.send=send
     r.sample=lambda *a,**k: (_ for _ in ()).throw(
-        RecoverableMotionEnvelopeExceeded(
-            tilt_peak=.05,tilt_limit=.30,gyro_peak=1.48,gyro_limit=.80))
+        RuntimeError('Robot tilt/angular motion exceeds first-test limits'))
+    r.previous_target=q.copy()
     r.abort_release()
     assert r.writer.weight == 0.
-    assert sent[-1] == ('abort_measured_hold_release', 0.)
+    assert sent[-1] == ('abort_q0_release', 0.)
+
+
+def test_prevalidated_abort_returns_to_q0_before_release(monkeypatch):
+    import run_real_reaction as real
+    monkeypatch.setattr(real.time, 'sleep', lambda _: None)
+    q0=np.asarray(snapshot()['all_q'])
+    mid=q0.copy();mid[12:]+=.6  # raised arms / twisted waist mid-gesture
+    r=object.__new__(Runtime)
+    r.prevalidated_runtime=True;r.release_duration_s=.30;r.q0=q0.copy()
+    r.previous_target=mid.copy();r.writer=NS(weight=1.)
+    sent=[]
+    def send(phase,target,weight):
+        sent.append((phase,np.asarray(target).copy(),weight));r.writer.weight=weight
+    r.send=send
+    def broken_sample(*a,**k):raise RuntimeError('LowState absent/stale; refuse motion')
+    r.sample=broken_sample
+    r.abort_release()
+    returning=[x for x in sent if x[0]=='abort_return_to_q0']
+    releasing=[x for x in sent if x[0]=='abort_q0_release']
+    assert returning and all(w==1. for _,_,w in returning)
+    assert np.allclose(returning[0][1],mid) and np.allclose(returning[-1][1],q0)
+    speeds=np.abs(np.diff([x[1] for x in returning],axis=0))/real.DT
+    assert speeds.max()<=real.ABORT_RETURN_SPEED+1e-6
+    assert all(np.allclose(t,q0) for _,t,_ in releasing)
+    assert len(releasing)*real.DT>=1.
+    assert sent[-1][2]==0. and r.writer.weight==0.

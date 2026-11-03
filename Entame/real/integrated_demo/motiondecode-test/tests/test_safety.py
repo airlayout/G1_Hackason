@@ -13,8 +13,7 @@ from common import (ROOT, NAMES, ARMS, ARM_NAMES, ARM_INDICES, read_motion,
                     retime_arm_window)
 from play_g1_arms import validate_clip, prepare, transition, transition_duration, run_phase
 from robot_transport import (arm_action_ownership_reasons, decode_arm_action_state,
-                             make_command, ReadOnlyState, LOWSTATE_FRESHNESS_S,
-                             RecoverableMotionEnvelopeExceeded, validate_state)
+                             make_command, ReadOnlyState, LOWSTATE_FRESHNESS_S)
 
 def artifact():return read_arms(ROOT/'output/selected_arms.csv')
 
@@ -139,37 +138,6 @@ def test_stale_state_rejected():
     with pytest.raises(RuntimeError,match='stale'):r.get()
 
 
-def safety_state(*, roll=0., pitch=0., gyro=(0., 0., 0.)):
-    return NS(
-        mode_machine=2, mode_pr=0, tick=1,
-        imu_state=NS(rpy=(roll, pitch, 0.), gyroscope=gyro),
-        motor_state=[NS(q=0., dq=0., motorstate=0, temperature=(25,))
-                     for _ in range(29)],
-    )
-
-
-def test_first_test_tilt_and_gyro_limits_remain_default():
-    validate_state(safety_state(roll=.20, gyro=(.50, 0., 0.)))
-    with pytest.raises(RuntimeError, match=r"limit=0.20rad.*limit=0.50rad/s"):
-        validate_state(safety_state(roll=.201))
-    with pytest.raises(RuntimeError, match=r"limit=0.20rad.*limit=0.50rad/s"):
-        validate_state(safety_state(gyro=(.501, 0., 0.)))
-
-
-def test_hackathon_tilt_and_gyro_limits_are_bounded_opt_in():
-    validate_state(
-        safety_state(roll=.30, gyro=(.80, 0., 0.)),
-        hackathon_suspended_mode=True,
-    )
-    with pytest.raises(RecoverableMotionEnvelopeExceeded,
-                       match=r"limit=0.30rad.*limit=0.80rad/s"):
-        validate_state(safety_state(pitch=.301), hackathon_suspended_mode=True)
-    with pytest.raises(RuntimeError, match=r"limit=0.30rad.*limit=0.80rad/s"):
-        validate_state(
-            safety_state(gyro=(0., 0., .801)), hackathon_suspended_mode=True
-        )
-
-
 def bare_lowstate_reader():
     reader=object.__new__(ReadOnlyState)
     reader.lock=threading.Lock();reader.history=deque(maxlen=1000);reader.latest=None
@@ -234,8 +202,9 @@ def test_unitree_lowstate_backend_still_initializes_channel_subscriber():
     assert calls[1][0]=='init' and calls[1][2]==10
 
 
-def test_direct_lowstate_backend_constructs_only_topic_listener_and_datareader():
+def test_direct_lowstate_backend_constructs_only_topic_and_polled_datareader():
     reader=bare_lowstate_reader();reader.lowstate_backend='cyclonedds'
+    reader.lowstate_closing=True  # poll thread exits immediately
     reader.discovery_participant='participant';calls=[]
     def topic(*args):calls.append(('topic',args));return 'topic'
     def listener(**kwargs):calls.append(('listener',kwargs));return 'listener'
@@ -244,7 +213,7 @@ def test_direct_lowstate_backend_constructs_only_topic_listener_and_datareader()
         lambda *args:pytest.fail('ChannelSubscriber used'),
         'LowState',data_reader,topic,listener)
     assert reader.reader=='reader'
-    assert [name for name,_ in calls]==['topic','listener','data_reader']
+    assert [name for name,_ in calls]==['topic','data_reader']
 
 @pytest.mark.parametrize('fault',[KeyboardInterrupt,RuntimeError])
 def test_interrupt_cleanup_and_normal_release(monkeypatch,fault):

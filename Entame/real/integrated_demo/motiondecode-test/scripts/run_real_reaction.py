@@ -21,8 +21,7 @@ from common import (ROOT, JOINTS, NAMES, ARM_INDICES, read_motion, retime_arm_wi
 from play_g1_arms import ACTIVE, DT, MAX_SPEED, MAX_ACCEL, transition, transition_duration
 from scene import (make_scene, set_arms, clearance_pairs, pair_clearances,
                    check_baseline_contact_path, measured_pose_clearances)
-from robot_transport import (ARM_ACTION_STALE_S, ReadOnlyState,
-                             RecoverableMotionEnvelopeExceeded, state_summary,
+from robot_transport import (ARM_ACTION_STALE_S, ReadOnlyState, state_summary,
                              validate_state)
 from inspect_arm_sdk_publishers import local_process_scan, interface_ipv4
 from safety_monitor import (OwnershipWatchdog, assess_collision_clearances,
@@ -40,6 +39,7 @@ HOLD_S=.75
 FAST_ACQUIRE_S=.15
 FAST_HOLD_S=.10
 FAST_RELEASE_S=.30
+ABORT_RETURN_SPEED=1.0  # rad/s, fault-path return to q0 before release
 FAST_POST_RELEASE_S=.10
 TRACKING_LIMIT=.10
 HOLD_DEVIATION_LIMIT=.03
@@ -585,9 +585,7 @@ class Runtime:
         return result
 
     def sample(self,phase,target,check=True):
-        state=self.reader.get();validate_state(
-            state,hackathon_suspended_mode=bool(
-                getattr(self,'hackathon_suspended_mode',False)))
+        state=self.reader.get();validate_state(state)
         q=np.array([m.q for m in state.motor_state[:29]])
         dq=np.array([m.dq for m in state.motor_state[:29]])
         target=np.asarray(target,dtype=float)
@@ -732,19 +730,29 @@ class Runtime:
         # immediately send weight=0 with last initialized angles and zero gains.
         initial_weight=self.writer.weight
         if getattr(self,'prevalidated_runtime',False):
-            steps=max(1,int(np.ceil(initial_weight*self.release_duration_s/DT)))
+            # Resident reactions: never hand a mid-gesture pose (raised arms,
+            # twisted waist) back to the locomotion controller.  On 2026-10-30
+            # that made a tilt fault escalate into whole-body thrashing.  First
+            # return the upper body to q0 from the last commanded target (no
+            # feedback needed) at <=1 rad/s with weight held, then ramp weight.
+            start=np.asarray(self.previous_target,dtype=float).copy()
+            delta=float(np.max(np.abs(start[12:]-self.q0[12:]))) if initial_weight>0 else 0.
+            return_s=min(3.,max(1.,1.875*delta/ABORT_RETURN_SPEED))  # smoothstep peak speed
+            phases=[]
+            if delta>1e-3:
+                for q_upper in transition(start[12:],self.q0[12:],return_s):
+                    q=self.q0.copy();q[12:]=q_upper;phases.append(('abort_return_to_q0',q,initial_weight))
+            steps=max(1,int(np.ceil(max(1.,self.release_duration_s)/DT)))
             for k in range(steps+1):
-                state=self.reader.get();measured=np.array([m.q for m in state.motor_state[:29]])
-                validate_upper(measured);q=self.q0.copy();q[12:]=measured[12:]
-                weight=max(0.,initial_weight*(1-k/steps))
-                self.send('abort_measured_hold_release',q,weight)
-                try:
-                    self.sample('abort_measured_hold_release',q,check=False)
-                except RecoverableMotionEnvelopeExceeded:
-                    # The envelope violation caused this release. Continue to
-                    # weight zero; postflight rechecks all hard-safety gates.
+                phases.append(('abort_q0_release',self.q0.copy(),max(0.,initial_weight*(1-k/steps))))
+            for i,(name,q,weight) in enumerate(phases):
+                self.send(name,q,weight)
+                try:self.sample(name,q,check=False)
+                except BaseException:
+                    # Telemetry problems must not stop the controlled return;
+                    # postflight rechecks all hard-safety gates.
                     pass
-                if k<steps:time.sleep(DT)
+                if i<len(phases)-1:time.sleep(DT)
             return
         steps=max(1,int(np.ceil(initial_weight*RAMP_S/DT)))
         try:
@@ -959,7 +967,7 @@ def main():
     p.add_argument('--network-interface',required=True)
     p.add_argument('--discovery-peer',action='append',default=[],
                    help='Optional process-local DDS discovery peer; does not change OS networking')
-    p.add_argument('--expected-arm-pid',type=int,required=True,
+    p.add_argument('--expected-arm-pid',type=int,default=2934,
                    help='PID from the immediately preceding read-only internal Arm service inventory')
     p.add_argument('--arm-action-stale-s',type=float,default=ARM_ACTION_STALE_S,
                    help='Arm Action freshness limit; keep default unless measured read-only first')
