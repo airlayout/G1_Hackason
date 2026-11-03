@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common.config import REPO_ROOT, load_config  # noqa: E402
 
-OUTCOMES = ("success", "collision", "timeout")
+OUTCOMES = ("success", "collision", "overforce", "timeout")
 
 
 def make_env_fn(cfg: dict[str, Any], rank: int, seed: int):

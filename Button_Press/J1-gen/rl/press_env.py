@@ -11,8 +11,10 @@
   机の縁の x と天板の z 2、前の行動 7（合わせて 39）
 
 終わり方（info["outcome"]）:
-  success   指先が押す点の近く（押す向きに直交するずれが lateral_tol_m 以内）で、押す力が範囲内のまま hold_s 続いた
+  success   指先が押す点の近く（押す向きに直交するずれが lateral_tol_m 以内）で面まで届き（reach_x_tol_m）、
+            ボトルとの接触点が指先の近く（contact_tip_tol_m）で、押す力が範囲内のまま hold_s 続いた
   collision 腕・ハンドが机や体に当たった
+  overforce ボトルを押す力が force_abort_n を超えた（接触の瞬間の強打。設定が null なら無効）
   timeout   episode_s を過ぎた（truncated）
 """
 
@@ -180,7 +182,7 @@ class PressEnv(gym.Env):
             mj.mj_step(m, d)
         self._steps += 1
 
-        hit, force = self._contacts()
+        hit, force, contact_tip = self._contacts()
         tip = self.tip_pos()
         dist = float(np.linalg.norm(self.target - tip))
         axis = self.finger_axis()
@@ -192,20 +194,30 @@ class PressEnv(gym.Env):
         self._prev_action = a
 
         lateral = float(np.linalg.norm((self.target - tip) - ((self.target - tip) @ PUSH_DIR) * PUSH_DIR))
-        pressing = lateral <= cfg_s["lateral_tol_m"] and cfg_s["force_min_n"] <= force <= cfg_s["force_max_n"]
+        # 指先が面まで届いている（押す点の x より reach_x_tol_m 以上手前ではない）、ボトルとの接触点が指先の近く
+        # （ハンドの当たり判定の箱の角で押す抜け穴をふさぐ。2026-11-01 の v2 は接触点が指先から約 50 mm だった）
+        reached = (self.target[0] - tip[0]) <= cfg_s["reach_x_tol_m"]
+        near_tip = contact_tip <= cfg_s["contact_tip_tol_m"]
+        pressing = (lateral <= cfg_s["lateral_tol_m"] and cfg_s["force_min_n"] <= force <= cfg_s["force_max_n"]
+                    and reached and near_tip)
         self._good_steps = self._good_steps + 1 if pressing else 0
 
         terminated, outcome = False, ""
+        abort_n = cfg_s.get("force_abort_n")
         if hit:
             reward += cfg_r["collision"]
             terminated, outcome = True, "collision"
+        elif abort_n is not None and force > abort_n:
+            reward += cfg_r["overforce"]
+            terminated, outcome = True, "overforce"
         elif self._good_steps >= self._hold_steps:
             reward += cfg_r["success"]
             terminated, outcome = True, "success"
         truncated = not terminated and self._steps >= self.max_steps
         if truncated:
             outcome = "timeout"
-        info = {"outcome": outcome, "dist": dist, "lateral": lateral, "force": force, "hit": hit}
+        info = {"outcome": outcome, "dist": dist, "lateral": lateral, "force": force, "hit": hit,
+                "contact_tip": contact_tip, "reach_x": float(self.target[0] - tip[0])}
         return self._obs(), float(reward), terminated, truncated, info
 
     # ---- 状態 ---------------------------------------------------------------------------
@@ -234,8 +246,8 @@ class PressEnv(gym.Env):
             out[key] = min(out.get(key, 0.0), float(c.dist))
         return out
 
-    def _contacts(self) -> tuple[str, float]:
-        """(当たった相手 "desk" / "body" / ""、ボトルを押す力の合計 [N])。
+    def _contacts(self) -> tuple[str, float, float]:
+        """(当たった相手 "desk" / "body" / ""、ボトルを押す力の合計 [N]、ボトルとの接触点から指先までの最短距離 [m]。接触なしは inf)。
 
         腕と机・体の接触は、めり込んだもの（dist < 0）だけを数える（肩のリンクは設計上 胴体の近くにあるため。common/collision.py）。
         開始の姿勢ですでにめり込んでいる組（実機の立った姿勢では、下ろした手が股関節の当たり判定に −8〜−10 mm 入っている。
@@ -243,19 +255,21 @@ class PressEnv(gym.Env):
         （common/press_planner.py と同じ考え方）。
         """
         m, d = self.model, self.data
-        force = 0.0
+        force, contact_tip = 0.0, float("inf")
+        tip_w = d.site_xpos[self._tip]
         for i in range(d.ncon):
             c = d.contact[i]
             a, b = self._cat[m.geom_bodyid[c.geom1]], self._cat[m.geom_bodyid[c.geom2]]
             if "bottle" in (a, b) and "arm" in (a, b):
                 self._mj.mj_contactForce(m, d, i, self._f6)
                 force += abs(float(self._f6[0]))
+                contact_tip = min(contact_tip, float(np.linalg.norm(c.pos - tip_w)))
         extra = float(self.cfg["collision"]["start_extra_m"])
         for (arm_b, other_b), dist in self._arm_touches().items():
             start = self._start_dist.get((arm_b, other_b))
             if start is None or dist < start - extra:
-                return str(self._cat[other_b]), force
-        return "", force
+                return str(self._cat[other_b]), force, contact_tip
+        return "", force, contact_tip
 
     def _obs(self) -> np.ndarray:
         d = self.data

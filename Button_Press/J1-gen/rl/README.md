@@ -1,6 +1,6 @@
 # 強化学習でボトルを押す（範囲 A）
 
-進み具合と引き継ぎは [docs/reports/rl_press_log_20261101.md](../docs/reports/rl_press_log_20261101.md)。
+進み具合と引き継ぎは [docs/reports/rl_press_log.md](../docs/reports/rl_press_log.md)。
 
 右腕 7 関節だけを強化学習の方策で動かし、ボトルの手前の面を押す。ボトルの位置は今の検出（YOLO と深度）で出す前提で、
 方策には位置を数値で渡す（画像は渡さない）。計画と比べ方・見積もりは [docs/reports/rl_press_plan.md](../docs/reports/rl_press_plan.md)。
@@ -9,6 +9,7 @@
 |---|---|
 | `press_env.py` | 学習環境（Gymnasium）。MuJoCo、胴体固定、机とボトルの位置をエピソードごとにランダムに変える |
 | `check_env.py` | 環境の確認（速さ、成功・当たりの判定が働くか） |
+| `record_video.py` | 学習した方策の動きを mp4 にする（`_local/rl/videos/`）。`--seeds` で配置を指定できる |
 | `../configs/rl_press.yaml` | 設定（行動の大きさ、配置の範囲、成功の条件、報酬） |
 | `requirements.txt` | 強化学習だけで使うもの（gymnasium、stable-baselines3） |
 

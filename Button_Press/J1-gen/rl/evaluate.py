@@ -45,10 +45,12 @@ def load_policy(model_path: Path) -> tuple[Any, Any, dict[str, Any]]:
 def run_episode(env: PressEnv, model: Any, vecnorm: Any, seed: int, viewer: Any = None) -> dict[str, Any]:
     obs, reset_info = env.reset(seed=seed)
     max_force, info, t0 = 0.0, {}, time.monotonic()
+    best_ct = float("inf")  # 押している間の、接触点から指先までの最短距離
     while True:
         action, _ = model.predict(vecnorm.normalize_obs(obs[None]), deterministic=True)
         obs, _, terminated, truncated, info = env.step(action[0])
         max_force = max(max_force, info["force"])
+        best_ct = min(best_ct, info["contact_tip"])
         if viewer is not None:
             viewer.sync()
             rest = env._steps / env.cfg["control_hz"] - (time.monotonic() - t0)
@@ -59,6 +61,8 @@ def run_episode(env: PressEnv, model: Any, vecnorm: Any, seed: int, viewer: Any 
     return {"seed": seed, "outcome": info["outcome"], "time_s": env._steps / env.cfg["control_hz"],
             "max_force_n": round(max_force, 2), "lateral_mm": round(info["lateral"] * 1000, 1),
             "dist_mm": round(info["dist"] * 1000, 1), "hit": info["hit"],
+            "contact_tip_mm": round(best_ct * 1000, 1) if best_ct != float("inf") else None,
+            "reach_x_mm": round(info["reach_x"] * 1000, 1),
             "layout": {k: round(float(v), 4) for k, v in reset_info["layout"].items()}}
 
 
@@ -86,11 +90,11 @@ def main() -> int:
         rows.append(r)
         lay = ", ".join(f"{n} {v:+.3f}" for n, v in r["layout"].items())
         print(f"[evaluate] {k:3d} {r['outcome']:9s} {r['time_s']:4.1f} 秒、押す力の最大 {r['max_force_n']:5.1f} N、"
-              f"横 {r['lateral_mm']:5.1f} mm、押す点まで {r['dist_mm']:5.1f} mm、当たった {r['hit'] or '-'}（{lay}）")
+              f"横 {r['lateral_mm']:5.1f} mm、押す点まで {r['dist_mm']:5.1f} mm、接触点-指先 {r['contact_tip_mm']} mm、面まで {r['reach_x_mm']} mm、当たった {r['hit'] or '-'}（{lay}）")
     if viewer is not None:
         viewer.close()
     n = len(rows)
-    counts = {o: sum(r["outcome"] == o for r in rows) for o in ("success", "collision", "timeout")}
+    counts = {o: sum(r["outcome"] == o for r in rows) for o in ("success", "collision", "overforce", "timeout")}
     ok = [r for r in rows if r["outcome"] == "success"]
     print(f"[evaluate] {n} 回: " + "、".join(f"{o} {c}（{100 * c / n:.0f}%）" for o, c in counts.items()))
     if ok:
