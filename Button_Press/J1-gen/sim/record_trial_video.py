@@ -12,7 +12,7 @@ evaluate.py --view の画面は、計算が間に合わないとスローモー�
 保存先: _local/button_press_yada/videos/seed<種>_<評価セット>.mp4（git の対象外）。
 
 --lab-wheelchair: ラボのエレベーターの車いす用の ▲▼ を、elevator.yaml の press.by_button_set.wheelchair の勧める立ち位置
-（柱まで・左右は --stand で変えられる）に置き、押す組を wheelchair にして撮る。高さは pelvis からの高さを実機と同じにする
+（柱までの目安 target_dist_m と左右。--stand で変えられる）に置き、押す組を wheelchair にして撮る。高さは pelvis からの高さを実機と同じにする
 （sim/elevator_stand_map.py と同じ ▲ +0.21・▼ +0.14 m）。評価環境の判定に乗せるため、低い 2 つを up / down の名前にし、
 一般用の 2 つ（wc_up / wc_down の名前）はその上に置く。押す指の当たり判定は評価環境と同じ中指の先の球だけ（ゴムの手の形は無い）。
 """
@@ -42,12 +42,13 @@ def _text(img: np.ndarray, s: str, xy: tuple[int, int], scale: float = 0.8, colo
 
 
 def _wheelchair_stand() -> tuple[float, float]:
-    """elevator.yaml の press.by_button_set.wheelchair.stand の真ん中（柱まで [m]、左右 y [m]）。"""
+    """elevator.yaml の press.by_button_set.wheelchair.stand の目安（柱まで [m]、左右 y [m]）。"""
     import yaml  # common は Yada の方が import されるので、J1-gen の設定はファイルから直接読む
 
     elev = yaml.safe_load((FEATURE_DIR / "configs" / "elevator.yaml").read_text(encoding="utf-8"))
     st = elev["press"]["by_button_set"]["wheelchair"]["stand"]
-    return (float(st["min_dist_m"]) + float(st["max_dist_m"])) / 2.0, float(st.get("center_side_m", 0.0))
+    dist = st.get("target_dist_m", (float(st["min_dist_m"]) + float(st["max_dist_m"])) / 2.0)
+    return float(dist), float(st.get("center_side_m", 0.0))
 
 
 def _place_lab_wheelchair(scene: dict, x: float, y: float) -> None:
@@ -75,7 +76,7 @@ def main() -> int:
     ap.add_argument("--distance", type=float, default=1.0)
     ap.add_argument("--lab-wheelchair", action="store_true", help="ラボの車いす用の ▲▼ を勧める立ち位置に置いて撮る")
     ap.add_argument("--stand", type=float, nargs=2, metavar=("X", "Y"), default=None,
-                    help="--lab-wheelchair のボタンの位置 [m]（pelvis から柱の面まで、▲▼ の左右 y。− が右）。既定は勧める範囲の真ん中")
+                    help="--lab-wheelchair のボタンの位置 [m]（pelvis から柱の面まで、▲▼ の左右 y。− が右）。既定は勧める立ち位置の目安")
     ap.add_argument("--target", choices=["up", "down"], default=None, help="押すボタン（既定は種で決まる）")
     args = ap.parse_args()
 

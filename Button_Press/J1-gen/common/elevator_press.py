@@ -295,8 +295,9 @@ class ElevatorPressController:
             return ""
         side_text = (f"左右 {w * 100:.0f} cm 以内" if center == 0.0 else
                      f"ボタンが体の中心から{lr(center)} {abs(center) * 100:.0f}±{w * 100:.0f} cm")
+        target = f"、目安は柱まで {float(st['target_dist_m']) * 100:.0f} cm" if "target_dist_m" in st else ""
         return ("立つ位置が勧める範囲の外: " + "、".join(msgs)
-                + f"（勧める範囲: 柱まで {lo * 100:.0f}〜{hi * 100:.0f} cm、{side_text}）")
+                + f"（勧める範囲: 柱まで {lo * 100:.0f}〜{hi * 100:.0f} cm、{side_text}{target}）")
 
     def _press_cfg(self) -> dict[str, Any]:
         """press の設定に、押す組（geometry.button_set）ごとの上書き（press.by_button_set）を重ねたもの。"""

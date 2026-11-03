@@ -471,7 +471,8 @@ class TestElevatorPlan(unittest.TestCase):
     def test_wheelchair_presses_straight_with_middle_finger(self) -> None:
         """車いす用の組（press.by_button_set.wheelchair）は、指を押す向きにまっすぐ向け、指の並びを押す面と平行にする。
         2026-11-01 の実機は 35°/20° で、小指の先で横から押していた。まっすぐ押せるのは、ボタンが体の右寄りのとき
-        （柱まで 38 cm・右 12 cm）。11/1 の立ち位置（ほぼ正面）では計画が立たず、右へ寄るよう知らせる。"""
+        （勧める範囲の近い側 30 cm・目安 48 cm・遠い側 50 cm、右 14 cm）。11/1 の立ち位置（ほぼ正面）では計画が立たず、
+        左へ寄るよう知らせる。"""
         from common.elevator_press import ElevatorPressController
         from common.press_planner import UnreachableError
 
@@ -486,27 +487,32 @@ class TestElevatorPlan(unittest.TestCase):
                                Button3D(np.array([x, y, 0.14]), 0.035, "down", (0, 0, 1, 1), 100, "down"), n)
 
         limit = np.sin(np.radians(float(ctl.kin.cfg["row_tol_deg"]) + float(ctl.kin.cfg["tol_axis_deg"])))
-        for target in ("up", "down"):
+        for target, x in (("up", 0.30), ("down", 0.30), ("up", 0.48), ("down", 0.48), ("up", 0.50), ("down", 0.50)):
             ctl.reset(target, 0.02, np.full(17, 60.0))
-            self.assertEqual(ctl._stand_advice(call(0.38, -0.12)), "")
-            ctl._plan(self.q_stand, call(0.38, -0.12))
+            self.assertEqual(ctl._stand_advice(call(x, -0.14)), "")
+            ctl._plan(self.q_stand, call(x, -0.14))
             p = ctl.plan_
             np.testing.assert_allclose(p.finger_axis, n, atol=1e-9)
-            np.testing.assert_allclose(p.row_normal, n)
+            # 近い側（30 cm）の ▲ は、指の並びを縛ると立たず、縛らない計画になる（指がまっすぐなら中指は前に出る）
+            if x >= 0.40:
+                np.testing.assert_allclose(p.row_normal, n)
             q = self.q_stand.copy()
             for qa in (p.q_approach, p.press_in[-1]):
                 q[ctl.kin.arm_idx] = qa
                 _, r = ctl.kin.fk(q)
                 self.assertGreater(r[:, 0] @ n, np.cos(np.radians(2.0)))
-                self.assertLess(abs(r[:, 2] @ n), limit)
-        # 11/1 の立ち位置（柱まで約 30 cm、ほぼ正面）
+                if p.row_normal is not None:
+                    self.assertLess(abs(r[:, 2] @ n), limit)
+        # 11/1 の立ち位置（柱まで約 36 cm、ほぼ正面）
         ctl.reset("down", 0.02, np.full(17, 60.0))
         with self.assertRaises(UnreachableError):
-            ctl._plan(self.q_stand, call(0.30, 0.0))
-        advice = ctl._stand_advice(call(0.30, 0.0))
-        self.assertIn("近すぎる。あと 6 cm 以上下がる", advice)
-        self.assertIn("左へ 9 cm 以上寄る", advice)
-        self.assertIn("ボタンが体の中心から右 12±3 cm", advice)
+            ctl._plan(self.q_stand, call(0.36, 0.0))
+        advice = ctl._stand_advice(call(0.36, 0.0))
+        self.assertNotIn("近すぎる", advice)
+        self.assertIn("左へ 12 cm 以上寄る", advice)
+        self.assertIn("ボタンが体の中心から右 14±2 cm、目安は柱まで 48 cm", advice)
+        # 腕が伸びきる遠さ（55 cm）は範囲の外
+        self.assertIn("遠すぎる。あと 5 cm 以上近づく", ctl._stand_advice(call(0.55, -0.14)))
 
     def test_plans_low_wheelchair_buttons(self) -> None:
         """車いす用の低いボタン（ボトルの押す点とほぼ同じ高さ、pelvis から z +0.04〜+0.15）にも手前の姿勢まで計画が立つ（2026-10-22）。
