@@ -67,6 +67,9 @@ class J1genElevatorAgent(Agent):
                 d[key] = float(os.environ[name]) / 1000
                 print(f"[j1gen-agent] ⚠️ 押す力の設定 {key}: {d[key] * 1000:.0f} mm（既定は elevator.yaml）")
         cs["retry_lag_m"] = max(float(cs["retry_lag_m"]), float(cs["lag_m"]))  # 押し直しが 1 回目より弱くならないように
+        if os.environ.get("J1GEN_NO_RETRY"):  # 押す力を確かめるとき、強めの押し直しで点いたのと区別する（real/auto_press.py --no-retry）
+            elevator["press"]["max_retries"] = 0
+            print("[j1gen-agent] ⚠️ 押し直しをしない")
         air = os.environ.get("J1GEN_AIR_BUTTONS")
         if air:
             elevator["press"]["max_retries"] = 0  # 空中なので点灯しない。押し直して深くしない
