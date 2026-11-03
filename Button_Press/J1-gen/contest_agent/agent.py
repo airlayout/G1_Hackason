@@ -22,6 +22,9 @@ J1-gen の部品は、Yada の j1gen_bridge で別名（j1gen_common）として
 
 環境変数 J1GEN_MAX_JOINT_SPEED に rad/s を渡すと、計画で許す関節の速さ（既定は arm.yaml の 0.5）をその回だけ変える。
 
+環境変数 J1GEN_PRESS_KEEP_MM・J1GEN_STOP_LAG_MM・J1GEN_PRESS_DEPTH_MM に mm を渡すと、押す力の設定（elevator.yaml の
+contact_stop.keep_m・lag_m と planner.press_depth_m）をその回だけ変える（real/auto_press.py --keep-mm など）。
+
 環境変数 J1GEN_AIR_BUTTONS に「x,y」（pelvis から前・左右 [m]）を渡すと、カメラでボタンを探さず、その空中に車いす用の
 ▲▼ があるものとして同じ動きをする（壁の無いところで腕を伸ばす動きだけを試す。real/auto_press.py --air。押し直しはしない）。
 
@@ -56,6 +59,14 @@ class J1genElevatorAgent(Agent):
         if os.environ.get("J1GEN_MAX_JOINT_SPEED"):  # 計画で許す関節の速さ [rad/s]（real/auto_press.py --max-joint-speed）
             elevator["press"]["max_joint_speed_rad_s"] = float(os.environ["J1GEN_MAX_JOINT_SPEED"])
             print(f"[j1gen-agent] ⚠️ 計画で許す関節の速さ: {elevator['press']['max_joint_speed_rad_s']} rad/s（既定は arm.yaml）")
+        # 押す力（real/auto_press.py --keep-mm / --stop-lag-mm / --depth-mm）。指令した指先が実際の指先より先に出た分 × 腕の硬さが力
+        cs = elevator["press"]["contact_stop"]
+        for name, key, d in (("J1GEN_PRESS_KEEP_MM", "keep_m", cs), ("J1GEN_STOP_LAG_MM", "lag_m", cs),
+                             ("J1GEN_PRESS_DEPTH_MM", "press_depth_m", elevator["press"]["planner"])):
+            if os.environ.get(name):
+                d[key] = float(os.environ[name]) / 1000
+                print(f"[j1gen-agent] ⚠️ 押す力の設定 {key}: {d[key] * 1000:.0f} mm（既定は elevator.yaml）")
+        cs["retry_lag_m"] = max(float(cs["retry_lag_m"]), float(cs["lag_m"]))  # 押し直しが 1 回目より弱くならないように
         air = os.environ.get("J1GEN_AIR_BUTTONS")
         if air:
             elevator["press"]["max_retries"] = 0  # 空中なので点灯しない。押し直して深くしない

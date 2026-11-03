@@ -170,6 +170,9 @@ def press_command(args: argparse.Namespace, iface: str) -> tuple[list[str], dict
         env["J1GEN_BUTTON_DETECTOR"] = args.detector
     if getattr(args, "max_joint_speed", None):
         env["J1GEN_MAX_JOINT_SPEED"] = str(args.max_joint_speed)
+    for name, v in (("J1GEN_PRESS_KEEP_MM", "keep_mm"), ("J1GEN_STOP_LAG_MM", "stop_lag_mm"), ("J1GEN_PRESS_DEPTH_MM", "depth_mm")):
+        if getattr(args, v, None) is not None:
+            env[name] = str(getattr(args, v))
     if getattr(args, "air", None):
         env["J1GEN_AIR_BUTTONS"] = f"{args.air[0]},{args.air[1]}"
     return cmd + list(getattr(args, "extra", [])), env
@@ -199,6 +202,12 @@ def main() -> int:
     p.add_argument("--max-joint-speed", type=float, metavar="RAD_S",
                    help="ボタン: 計画で許す関節の速さ [rad/s]（既定は arm.yaml の 0.5。腕が伸びきる近くで「関節が 1 周期に … 動く」と"
                         "断られるとき。送るときの頭打ちは run_dds の安全フィルタの 1.0）")
+    p.add_argument("--keep-mm", type=float,
+                   help="ボタン: 指先が止まったあと、実際の指先より何 mm 先を押し続けるか（既定は elevator.yaml の 2。大きいほど保持の力が強い）")
+    p.add_argument("--stop-lag-mm", type=float,
+                   help="ボタン: 指令が実際の指先より何 mm 先に出たら押し込みを止めるか（既定は elevator.yaml の 10。大きいほど止まる前の力が強い）")
+    p.add_argument("--depth-mm", type=float,
+                   help="ボタン: 表面から何 mm 奥まで押し込む計画にするか（既定は elevator.yaml の 15。--stop-lag-mm より大きくする）")
     p.add_argument("--air", type=float, nargs=2, metavar=("X", "Y"),
                    help="ボタン: カメラで探さず、pelvis から前 X・左右 Y [m]（− が右）の空中に車いす用の ▲▼ があるものとして動かす")
     p.add_argument("--skip-prechecks", action="store_true", help="事前確認を飛ばす（模擬ロボットで試すときだけ）")
