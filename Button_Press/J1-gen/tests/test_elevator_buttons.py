@@ -108,10 +108,11 @@ class TestFindButtons(unittest.TestCase):
         base = self.find([(0.0, 0.10, "up"), (0.0, 0.02, "down")])
         np.testing.assert_allclose(call.up.center - base.up.center, cam.offset, atol=1e-9)
         np.testing.assert_allclose(call.normal, base.normal, atol=1e-9)
-        # 設定が null なら localize.yaml（ボトルと同じ較正）の値。elevator.yaml はボタンだけの値（2026-11-01 のラボ）を持つ
+        # 設定が null なら localize.yaml（ボトルと同じ較正）の値
         np.testing.assert_allclose(calibration_offset({"calibration": {"offset_pelvis_m": None}}),
                                    load_config("localize.yaml")["calibration"]["offset_pelvis_m"])
-        np.testing.assert_allclose(calibration_offset(self.cfg), self.cfg["calibration"]["offset_pelvis_m"])
+        np.testing.assert_allclose(calibration_offset(self.cfg), self.cfg["calibration"]["offset_pelvis_m"]
+                                   or load_config("localize.yaml")["calibration"]["offset_pelvis_m"])
         np.testing.assert_allclose(calibration_offset({"calibration": {"offset_pelvis_m": [0.0, 0.01, 0.0]}}),
                                    [0.0, 0.01, 0.0])
 
@@ -426,6 +427,11 @@ class TestElevatorPlan(unittest.TestCase):
         cls.q0[[15, 22]] = 0.2
         cls.q0[16], cls.q0[23] = 0.25, -0.25
         cls.q0[[18, 25]] = 1.0
+        # 実機の立った姿勢（2026-10-21 の lowstate）
+        cls.q_stand = np.array([-0.290485, -0.004960, -0.002531, 0.593250, -0.318594, 0.008501, -0.271123, 0.003017,
+                                -0.002223, 0.601994, -0.338352, -0.005524, -0.000576, 0.000470, -0.002349, 0.291049,
+                                0.129657, 0.015711, 0.981556, 0.087161, 0.076807, 0.015232, 0.286950, -0.125894,
+                                0.024520, 0.982035, -0.096293, 0.058938, -0.020649])
 
     def call(self, x: float = 0.309) -> CallButtons:
         return CallButtons(Button3D(np.array([x, 0.027, 0.267]), 0.033, "up", (0, 0, 1, 1), 100, "up"),
@@ -455,18 +461,56 @@ class TestElevatorPlan(unittest.TestCase):
         """実機の立った姿勢（2026-10-21 の lowstate）は、下ろした手が股関節の当たり判定に入っている（−7 mm）。
         開始姿勢ですでに近い組は、最初の区間で開始より近づかない間は許す（PressPlanner.plan と同じ）。許さないと、
         どの位置でも「手前の姿勢へ動く途中で柱・壁に当たる」と断られた（sim/elevator_stand_map.py で気づいた、2026-10-29）。"""
-        q = np.array([-0.290485, -0.004960, -0.002531, 0.593250, -0.318594, 0.008501, -0.271123, 0.003017,
-                      -0.002223, 0.601994, -0.338352, -0.005524, -0.000576, 0.000470, -0.002349, 0.291049,
-                      0.129657, 0.015711, 0.981556, 0.087161, 0.076807, 0.015232, 0.286950, -0.125894,
-                      0.024520, 0.982035, -0.096293, 0.058938, -0.020649])
+        q = self.q_stand
         for target in ("up", "down"):
             self.ctl.reset(target, 0.02, np.full(17, 60.0))
             self.assertTrue(any("hip" in h.body1 + h.body2 for h in self.ctl.planner.collision.contacts(q)))  # 開始で当たり判定に入っている
             self.ctl._plan(q, self.call())
             self.assertIsNotNone(self.ctl.plan_)
 
+    def test_wheelchair_presses_straight_with_middle_finger(self) -> None:
+        """車いす用の組（press.by_button_set.wheelchair）は、指を押す向きにまっすぐ向け、指の並びを押す面と平行にする。
+        2026-11-01 の実機は 35°/20° で、小指の先で横から押していた。まっすぐ押せるのは、ボタンが体の右寄りのとき
+        （柱まで 38 cm・右 12 cm）。11/1 の立ち位置（ほぼ正面）では計画が立たず、右へ寄るよう知らせる。"""
+        from common.elevator_press import ElevatorPressController
+        from common.press_planner import UnreachableError
+
+        elev = load_config("elevator.yaml")
+        elev["geometry"]["button_set"] = "wheelchair"
+        ctl = ElevatorPressController.from_config(load_config("robot.yaml"), load_config("press.yaml"),
+                                                  load_config("arm.yaml"), elev)
+        n = np.array([1.0, 0.0, 0.0])
+
+        def call(x: float, y: float) -> CallButtons:
+            return CallButtons(Button3D(np.array([x, y, 0.21]), 0.035, "up", (0, 0, 1, 1), 100, "up"),
+                               Button3D(np.array([x, y, 0.14]), 0.035, "down", (0, 0, 1, 1), 100, "down"), n)
+
+        limit = np.sin(np.radians(float(ctl.kin.cfg["row_tol_deg"]) + float(ctl.kin.cfg["tol_axis_deg"])))
+        for target in ("up", "down"):
+            ctl.reset(target, 0.02, np.full(17, 60.0))
+            self.assertEqual(ctl._stand_advice(call(0.38, -0.12)), "")
+            ctl._plan(self.q_stand, call(0.38, -0.12))
+            p = ctl.plan_
+            np.testing.assert_allclose(p.finger_axis, n, atol=1e-9)
+            np.testing.assert_allclose(p.row_normal, n)
+            q = self.q_stand.copy()
+            for qa in (p.q_approach, p.press_in[-1]):
+                q[ctl.kin.arm_idx] = qa
+                _, r = ctl.kin.fk(q)
+                self.assertGreater(r[:, 0] @ n, np.cos(np.radians(2.0)))
+                self.assertLess(abs(r[:, 2] @ n), limit)
+        # 11/1 の立ち位置（柱まで約 30 cm、ほぼ正面）
+        ctl.reset("down", 0.02, np.full(17, 60.0))
+        with self.assertRaises(UnreachableError):
+            ctl._plan(self.q_stand, call(0.30, 0.0))
+        advice = ctl._stand_advice(call(0.30, 0.0))
+        self.assertIn("近すぎる。あと 6 cm 以上下がる", advice)
+        self.assertIn("左へ 9 cm 以上寄る", advice)
+        self.assertIn("ボタンが体の中心から右 12±3 cm", advice)
+
     def test_plans_low_wheelchair_buttons(self) -> None:
-        """車いす用の低いボタン（ボトルの押す点とほぼ同じ高さ、pelvis から z +0.04〜+0.15）にも手前の姿勢まで計画が立つ（2026-10-22）。"""
+        """車いす用の低いボタン（ボトルの押す点とほぼ同じ高さ、pelvis から z +0.04〜+0.15）にも手前の姿勢まで計画が立つ（2026-10-22）。
+"""
         for z in (0.15, 0.10, 0.04):
             for y in (0.027, -0.05):
                 c = CallButtons(Button3D(np.array([0.309, y, z + 0.08]), 0.03, "up", (0, 0, 1, 1), 100, "up"),

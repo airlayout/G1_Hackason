@@ -63,6 +63,26 @@ class TestKinematics(unittest.TestCase):
                 np.testing.assert_allclose(kin.fk_pos(res.q), p, atol=0.0005)
         self.assertGreaterEqual(ok, 16)
 
+    def test_ik_row_normal_levels_finger_row(self) -> None:
+        """row_normal を与えると、指が並ぶ向き（手先の z 軸）がそれとほぼ直角になる。指の向きと位置は変わらず合う。
+        与えないと、ねじれは自由（2026-11-01 の実機では小指側が押す向きに前に出て、小指で押していた）。"""
+        from common.elevator_press import finger_axis_for
+
+        kin = self.kin["right"]
+        n = np.array([1.0, 0.0, 0.0])
+        axis = finger_axis_for(n, 35.0, 20.0)
+        # ラボの車いす用 ▼ の手前の点。初期値はエレベーターの計画と同じ（elevator.yaml の ik_seed_right_arm）
+        p = np.array([0.24, 0.0, 0.14])
+        seed = np.zeros(29)
+        seed[kin.arm_idx] = load_config("elevator.yaml")["press"]["ik_seed_right_arm"]
+        res = kin.ik(p, seed, axis, row_normal=n)
+        self.assertTrue(res.success, res.reason)
+        _, r = kin.fk(res.q)
+        tol = np.radians(float(self.press["ik"]["tol_axis_deg"]))
+        self.assertLess(abs(r[:, 2] @ n), np.sin(2 * tol))
+        self.assertLess(np.degrees(np.arccos(r[:, 0] @ axis)), 2 * float(self.press["ik"]["tol_axis_deg"]))
+        np.testing.assert_allclose(kin.fk_pos(res.q), p, atol=0.0005)
+
     def test_ik_rejects_far_target(self) -> None:
         res = self.kin["right"].ik(np.array([1.5, -0.2, 0.0]), np.zeros(29), None)
         self.assertFalse(res.success)

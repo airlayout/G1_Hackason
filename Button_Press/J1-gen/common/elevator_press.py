@@ -272,10 +272,11 @@ class ElevatorPressController:
         範囲の外でも押せることは多い（推定の位置は realistic で押す向きに最大 19 mm ずれる）ので、この文で止めはしない。
         計画できなかったときの理由に添え、計画できたときは注意として出す。
         """
-        st = self.cfg["press"]["stand"]
+        st = self._press_cfg()["stand"]
         mid = (call.up.center + call.down.center) / 2.0
         dist, side = float(mid @ call.normal), float(mid[1])
         lo, hi, w = float(st["min_dist_m"]), float(st["max_dist_m"]), float(st["max_side_m"])
+        center = float(st.get("center_side_m", 0.0))
         def cm(m: float) -> int:  # 動く量は切り上げ（「あと 0 cm」と出さない）
             return max(1, int(np.ceil(m * 100 - 1e-6)))
 
@@ -284,16 +285,27 @@ class ElevatorPressController:
             msgs.append(f"柱まで {dist * 100:.1f} cm と近すぎる。あと {cm(lo - dist)} cm 以上下がる")
         elif dist > hi:
             msgs.append(f"柱まで {dist * 100:.1f} cm と遠すぎる。あと {cm(dist - hi)} cm 以上近づく")
-        if abs(side) > w:
-            way = "左" if side > 0 else "右"
-            msgs.append(f"ボタンが体の中心から{way}に {abs(side) * 100:.1f} cm。{way}へ {cm(abs(side) - w)} cm 以上寄る")
+        def lr(y: float) -> str:
+            return "左" if y > 0 else "右"
+
+        if abs(side - center) > w:
+            way = lr(side - center)
+            msgs.append(f"ボタンが体の中心から{lr(side)}に {abs(side) * 100:.1f} cm。{way}へ {cm(abs(side - center) - w)} cm 以上寄る")
         if not msgs:
             return ""
+        side_text = (f"左右 {w * 100:.0f} cm 以内" if center == 0.0 else
+                     f"ボタンが体の中心から{lr(center)} {abs(center) * 100:.0f}±{w * 100:.0f} cm")
         return ("立つ位置が勧める範囲の外: " + "、".join(msgs)
-                + f"（勧める範囲: 柱まで {lo * 100:.0f}〜{hi * 100:.0f} cm、左右 {w * 100:.0f} cm 以内）")
+                + f"（勧める範囲: 柱まで {lo * 100:.0f}〜{hi * 100:.0f} cm、{side_text}）")
+
+    def _press_cfg(self) -> dict[str, Any]:
+        """press の設定に、押す組（geometry.button_set）ごとの上書き（press.by_button_set）を重ねたもの。"""
+        c = self.cfg["press"]
+        over = (c.get("by_button_set") or {}).get(self.cfg["geometry"].get("button_set", ""), {})
+        return {**c, **over}
 
     def _plan(self, q: np.ndarray, call: CallButtons, depth: float | None = None) -> None:
-        c = self.cfg["press"]
+        c = self._press_cfg()
         n = call.normal
         face = call.button(self.target).center
         # 中指の先（の球の中心）の目標: 球の表面がボタンの面に触れる位置
@@ -311,32 +323,39 @@ class ElevatorPressController:
         errors: list[str] = []
         # 指の傾きは候補を順に試す（柱が近く面が斜めのとき、最初の傾きでは手首が胴体に近づきすぎた。
         # 2026-10-07、realistic の seed 8）
-        for left_deg, up_deg in c["finger_tilts_deg"]:
-            finger = finger_axis_for(n, float(left_deg), float(up_deg))
-            for via in [None] + list(self._via_points(touch, n)):
-                q_via = None
-                what = f"指 {left_deg:g}°/{up_deg:g}°、" + (
-                    "経由点なし" if via is None else f"経由点 {np.round(via, 3).tolist()}")
-                if via is not None:
-                    # 経由点でも指を手前の姿勢と同じ向きにする（位置だけで解くと、手首を大きく曲げた解になり、
-                    # 関節リミットや胴体に当たった。2026-10-07、評価環境の seed 1 の ▼）
-                    rv = self.kin.ik(via, seed)
-                    rv = self.kin.ik(via, rv.q if rv.success else seed, finger)
-                    if not rv.success:
-                        errors.append(f"{what}: 経由点に届かない（{rv.reason}）")
+        # 指が並ぶ向きを押す面と平行にする（press.level_finger_row）。2026-11-01 の実機では、ねじれが自由で
+        # 小指側が 13〜15 mm 前に出て、小指の先で斜めに押していた（細い小指が曲がり、力が伝わらなかった）。
+        # 縛ると計画が立たない位置がある（35°/20° では pelvis から z +0.04 の低いボタンや柱まで 36 cm 以上）ので、
+        # どの候補でも立たないときだけ、縛らずに計画し直す
+        rows = [n, None] if c.get("level_finger_row", False) else [None]
+        for row in rows:
+            for left_deg, up_deg in c["finger_tilts_deg"]:
+                finger = finger_axis_for(n, float(left_deg), float(up_deg))
+                for via in [None] + list(self._via_points(touch, n)):
+                    q_via = None
+                    what = f"指 {left_deg:g}°/{up_deg:g}°、" + (
+                        "経由点なし" if via is None else f"経由点 {np.round(via, 3).tolist()}") + (
+                        "、指の並びは縛らない" if row is None and len(rows) > 1 else "")
+                    if via is not None:
+                        # 経由点でも指を手前の姿勢と同じ向きにする（位置だけで解くと、手首を大きく曲げた解になり、
+                        # 関節リミットや胴体に当たった。2026-10-07、評価環境の seed 1 の ▼）
+                        rv = self.kin.ik(via, seed)
+                        rv = self.kin.ik(via, rv.q if rv.success else seed, finger, row_normal=row)
+                        if not rv.success:
+                            errors.append(f"{what}: 経由点に届かない（{rv.reason}）")
+                            continue
+                        q_via = rv.q[self.kin.arm_idx]
+                    try:
+                        plan = self.planner.plan(q, touch, n, q_seed=seed, depth=depth, q_via_arm=q_via,
+                                                 finger_axis=finger, row_normal=row)
+                        self._check_wall(wall, q, plan)
+                    except UnreachableError as e:
+                        errors.append(f"{what}: {e}")
                         continue
-                    q_via = rv.q[self.kin.arm_idx]
-                try:
-                    plan = self.planner.plan(q, touch, n, q_seed=seed, depth=depth, q_via_arm=q_via,
-                                             finger_axis=finger)
-                    self._check_wall(wall, q, plan)
-                except UnreachableError as e:
-                    errors.append(f"{what}: {e}")
-                    continue
-                self.plan_ = plan
-                self._build_legs(q, plan)
-                self._note(f"計画（{what}）: {plan.summary()}")
-                return
+                    self.plan_ = plan
+                    self._build_legs(q, plan)
+                    self._note(f"計画（{what}）: {plan.summary()}")
+                    return
         raise UnreachableError(" / ".join(errors))
 
     def _via_points(self, touch: np.ndarray, n: np.ndarray):
@@ -418,7 +437,7 @@ class ElevatorPressController:
                 e = e - (e @ n) * n
             self.corr = np.clip(self.corr + float(c["gain"]) * self.dt * e, -float(c["max_m"]), float(c["max_m"]))
         axis = self.plan_.finger_axis
-        r = self.kin.ik(p_goal + self.corr, self.q_ik, axis, max_iter=50)
+        r = self.kin.ik(p_goal + self.corr, self.q_ik, axis, max_iter=50, row_normal=self.plan_.row_normal)
         if np.isfinite(r.pos_err) and r.pos_err < float(c["accept_err_m"]):
             self.q_ik = r.q
         return self.q_ik[self.kin.arm_idx]
