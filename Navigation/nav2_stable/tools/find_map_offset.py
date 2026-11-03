@@ -88,7 +88,12 @@ class G(Node):
                     [2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w)],
                     [2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y)]])
         p=a@R.T+np.array([t.x,t.y,t.z])
-        m2=(p[:,2]>=0.3)&(p[:,2]<=1.8); pts=p[m2][:,:2].astype(np.float64)
+        m2=(p[:,2]>=0.3)&(p[:,2]<=1.8)
+        # ⚠️⚠️ センサーの近く(機体自身の腕や胴)を捨てる。2026-11-03 に、高さで絞った点の
+        # 69% が 0.5m 以内で、それが一致率を 20〜30% に押し下げていた(答えは合っていたのに
+        # 失敗に見えた)。map_localizer.py の --min-range と同じ理由
+        m2&=np.hypot(p[:,0]-t.x,p[:,1]-t.y)>=self.a.min_range
+        pts=p[m2][:,:2].astype(np.float64)
         if len(pts)>4000:
             pts=pts[np.random.choice(len(pts),4000,replace=False)]
         self.done=True
@@ -142,6 +147,8 @@ def build_parser():
                    help="探索する yaw の範囲[度]。全周を探すなら 180")
     p.add_argument("--yaw-step",type=float,default=1.0,help="yaw の刻み[度]")
     p.add_argument("--timeout",type=float,default=120.0)
+    p.add_argument("--min-range",type=float,default=1.0,
+                   help="センサーからの水平距離がこれ未満の点を捨てる[m]。機体自身の体を除くため")
     p.add_argument("--min-points",type=int,default=1000,
                    help="この点数に満たないフレームは捨てる(既定 1000)。"
                         "G1 の LiDAR は 1 点だけのフレームを交互に出すため")

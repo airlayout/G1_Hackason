@@ -285,6 +285,13 @@ class MapLocalizer(Node):
         pts = arr @ rot.T + np.array([t.x, t.y, t.z])
         # 高さで絞る。床と天井を落として壁だけを残す
         m = (pts[:, 2] >= self._args.min_height) & (pts[:, 2] <= self._args.max_height)
+        # ⚠️⚠️ **センサーの近くの点を捨てる**（2026-11-03 に実測で判明）。
+        # MID-360 は**機体自身の腕や胴**を拾い、高さで絞った点の **69% が 0.5m 以内**だった。
+        # その 86% は地図の壁と合わず、平均距離のスコアが 0.4m 前後になって
+        # **照合のほぼ全部が棄却されていた**（2m 以遠の点は 84〜95% が壁と合う）。
+        # 1m で切ると、同じ記録で採用率が 11% → 99% になった
+        # （findings/localizer_timing_20261103.md）
+        m &= np.hypot(pts[:, 0] - t.x, pts[:, 1] - t.y) >= self._args.min_range
         pts = pts[m][:, :2]
         if len(pts) > self._args.max_points:
             idx = np.random.choice(len(pts), self._args.max_points, replace=False)
@@ -437,6 +444,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="この高さ未満の点を捨てる(床を除く)。odom 系の z")
     p.add_argument("--max-height", type=float, default=1.8,
                    help="この高さを超える点を捨てる(天井を除く)")
+    p.add_argument("--min-range", type=float, default=1.0,
+                   help="センサーからの水平距離がこれ未満の点を捨てる[m]。機体自身の体を除くため")
     p.add_argument("--min-points", type=int, default=200)
     p.add_argument("--max-points", type=int, default=1500,
                    help="これ以上は無作為に間引く(1周期の計算量を抑える)")
