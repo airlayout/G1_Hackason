@@ -11,6 +11,8 @@ import unittest
 from types import SimpleNamespace
 from typing import Any
 
+import numpy as np
+
 from _env import needs
 from common.dds import SIM_MARKER, LatestLowState
 from common.robot_model import NUM_MOTORS
@@ -18,7 +20,7 @@ from common.robot_model import NUM_MOTORS
 
 def fake_lowstate(q: float, sim: bool = False) -> SimpleNamespace:
     """parse_lowstate が読む項目だけを持つ LowState_ の代わり。"""
-    motor = [SimpleNamespace(q=q, dq=0.0, mode=1) for _ in range(NUM_MOTORS)]
+    motor = [SimpleNamespace(q=q, dq=0.0, mode=1, tau_est=0.5 * i) for i in range(NUM_MOTORS)]
     return SimpleNamespace(motor_state=motor, imu_state=SimpleNamespace(quaternion=[1.0, 0.0, 0.0, 0.0]),
                            mode_machine=5, reserve=[SIM_MARKER if sim else 0, 0])
 
@@ -69,6 +71,11 @@ class TestLatestLowState(unittest.TestCase):
         self.assertAlmostEqual(ls.latest().q[0], 0.4)
         self.assertAlmostEqual(ls.latest().q[0], 0.4)
         self.assertEqual(ls.count, 1)
+
+    def test_tau_est_is_parsed(self) -> None:
+        st = self.make([[fake_lowstate(0.0)]]).latest()
+        assert st.tau_est is not None
+        np.testing.assert_allclose(st.tau_est, 0.5 * np.arange(NUM_MOTORS))
 
     def test_sim_marker_is_parsed(self) -> None:
         self.assertTrue(self.make([[fake_lowstate(0.0, sim=True)]]).latest().sim_marker)

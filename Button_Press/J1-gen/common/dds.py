@@ -97,10 +97,12 @@ def parse_lowstate(msg: Any) -> JointState:
     q = np.array([msg.motor_state[i].q for i in range(NUM_MOTORS)])
     dq = np.array([msg.motor_state[i].dq for i in range(NUM_MOTORS)])
     mode = np.array([msg.motor_state[i].mode for i in range(NUM_MOTORS)], dtype=int)
+    tau = np.array([msg.motor_state[i].tau_est for i in range(NUM_MOTORS)])
     # unitree の IMU 四元数は (w, x, y, z) の順
     imu = np.array(msg.imu_state.quaternion, dtype=float)
     return JointState(q=q, dq=dq, motor_mode=mode, mode_machine=int(msg.mode_machine),
-                      stamp=time.monotonic(), imu_quat=imu, sim_marker=int(msg.reserve[0]) == SIM_MARKER)
+                      stamp=time.monotonic(), imu_quat=imu, sim_marker=int(msg.reserve[0]) == SIM_MARKER,
+                      tau_est=tau)
 
 
 _participant: Any = None

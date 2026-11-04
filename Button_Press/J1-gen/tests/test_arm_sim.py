@@ -47,6 +47,23 @@ class TestArmSim(unittest.TestCase):
             err = float(np.max(np.abs(be.read_state().q[ARM] - target)))
         return err
 
+    def test_motor_torque_balances_gravity_when_still(self) -> None:
+        """止まっているとき、推定トルク（tau_est に当たる値）は重力のトルクと釣り合う（向きが実機の tau_est と同じ:
+        正の値は関節を正の向きに回すトルク）。"""
+        cfg = load_config("arm.yaml")
+        cfg["arm"] = "right"
+        cfg["sim"].update(emulate="arm_sdk", gravity_compensation=True, realtime=False)
+        be = make_backend(cfg, self.robot_cfg, dry_run=False, path="sim")
+        be.open()
+        with ArmCommander(be, cfg, self.lower, self.upper) as arm:
+            arm.move_to(arm.commanded_arm_q + TARGET_DELTA)  # 最後に settle_s だけ止まって待つ
+            st = be.read_state()
+            assert st.tau_est is not None
+            gravity = be.data.qfrc_bias[be._vadr][ARM]
+            print(f"\n[test] 右腕の推定トルク {np.round(st.tau_est[ARM], 2)} Nm、重力 {np.round(gravity, 2)} Nm")
+            self.assertGreater(float(np.abs(gravity).max()), 1.0)  # 釣り合いを見る意味がある大きさ
+            np.testing.assert_allclose(st.tau_est[ARM], gravity, atol=0.2)
+
     def test_reaches_target_arm_sdk_emulation(self) -> None:
         self.assertLess(self._move("arm_sdk", True), np.radians(0.5))
 

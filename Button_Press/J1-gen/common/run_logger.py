@@ -7,7 +7,7 @@
     frames/         段階ごとの RGB（PNG）と深度（16bit PNG）、検出結果を描いた画像
     plan_*.json     押し込みの計画（目標、手前・押し込み終わりの点、IK の結果の関節角、軌道の全点）
     commands.csv    送った（dry-run では送るはずだった）指令の全周期: 時刻、weight、q / kp / kd / tau（29 関節）
-    lowstate.csv    制御の周期ごとの lowstate（時刻、関節角、関節速度、IMU）。対象を測るときの lowstate も入る
+    lowstate.csv    制御の周期ごとの lowstate（時刻、関節角、関節速度、IMU、推定トルク）。対象を測るときの lowstate も入る
     body_motion.csv 押している間の体（pelvis）の動き（common/body_motion.py。脚の関節角から求める）
 """
 
@@ -25,7 +25,7 @@ import numpy as np
 
 from .arm.backend import ArmBackend
 from .arm.types import JointCommand, JointState
-from .recording import LOWSTATE_HEADER, git_commit
+from .recording import LOWSTATE_HEADER, git_commit, lowstate_row
 from .rgbd_protocol import RgbdFrame
 from .robot_model import NUM_MOTORS
 
@@ -110,8 +110,7 @@ class RunLogger:
             self._cmd_f.flush()
 
     def log_state(self, st: JointState) -> None:
-        self._ls.writerow([f"{time.time():.6f}", st.mode_machine] + [f"{v:.6f}" for v in st.q]
-                          + [f"{v:.6f}" for v in st.dq] + [f"{v:.6f}" for v in st.imu_quat])
+        self._ls.writerow(lowstate_row(time.time(), st))
 
     def flush(self) -> None:
         for f in (self._events, self._cmd_f, self._ls_f):
