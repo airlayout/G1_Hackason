@@ -80,6 +80,13 @@ class ArmKinematics:
         """指の向き（手先リンクの x 軸、pelvis 座標）。"""
         return self.fk(q)[1][:, 0]
 
+    def jacobian_pos(self, q: np.ndarray) -> np.ndarray:
+        """指先の位置のヤコビアン (3, 7)。腕の 7 関節を動かしたとき、指先が pelvis 座標でどれだけ動くか。"""
+        pin = self._pin
+        J = pin.computeFrameJacobian(self.model, self.data, np.asarray(q, dtype=float), self.ee_frame,
+                                     pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
+        return J[:3, self.arm_idx].copy()
+
     # ---- IK -------------------------------------------------------------------
 
     def ik(

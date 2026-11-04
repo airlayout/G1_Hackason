@@ -14,7 +14,7 @@
 J1-gen の部品は、Yada の j1gen_bridge で別名（j1gen_common）として読み込む。
 シミュレーターの正解の値（ボタンの座標など）は使わない。
 
-環境変数 J1GEN_BODY_LOG にフォルダを渡すと、毎周期の関節角・IMU・段階をそこに記録する（実機で、押している間に
+環境変数 J1GEN_BODY_LOG にフォルダを渡すと、毎周期の関節角・IMU・段階・推定トルク・推定した押す力をそこに記録する（実機で、押している間に
 足側のバランス制御が腰をどれだけ動かしたかを見るため。読み方は real/body_motion.py）:
 
     J1GEN_BODY_LOG=_local/button_press/body_log $P Button_Press/Yada/contest/run_dds.py --agent ... （実機の引数）
@@ -94,7 +94,9 @@ class J1genElevatorAgent(Agent):
         self._result_written = False
 
     def act(self, obs: Observation) -> Action:
-        q29, done = self.ctl.step(obs.rgb, obs.depth, obs.K, obs.q, obs.t, obs.image_t, obs.imu_quat)
+        # 推定トルク（Observation.tau_est）は 2026-11-04 に評価環境へ足した。足す前の評価環境でも動くよう getattr で読む
+        q29, done = self.ctl.step(obs.rgb, obs.depth, obs.K, obs.q, obs.t, obs.image_t, obs.imu_quat,
+                                  getattr(obs, "tau_est", None))
         if self.body_log is not None:
             self.body_log.write(obs, self.ctl)
         if done:
@@ -109,6 +111,7 @@ class J1genElevatorAgent(Agent):
         if not path or getattr(self, "_result_written", True):
             return
         self._result_written = True
+        self.ctl.finish_force()  # 押し込み・保持の途中で終わった（点灯した瞬間に終わる評価環境、Ctrl+C）ときの分
         write_result(Path(path), self.ctl, self.body_log.dir if self.body_log is not None else None)
 
 
@@ -122,11 +125,15 @@ def write_result(path: Path, ctl: object, body_log_dir: Path | None) -> None:
         "phase": getattr(ctl, "phase", ""),
         "notes": [{"phase": s.phase, "message": s.message} for s in log],
         "body_log": str(body_log_dir) if body_log_dir is not None else None,
+        # 押し込みの回ごとの、推定トルクから推定した押す力 [N]（common/push_force.py）。推定トルクが無ければ空
+        "press_forces": getattr(ctl, "press_forces", []),
     }, ensure_ascii=False, indent=2))
 
 
 class BodyLog:
     """毎周期の関節角（29）・IMU・段階を body_log.csv に書く（列は common/body_motion.read_lowstate_csv が読む形）。
+    2026-11-04 から、推定トルク tau0..tau28 と、押し込み・保持の間に推定した押す向きの力 push_force_n も書く
+    （無ければ空欄。読み方は real/press_force.py）。
     計画ができたら、押す点（pelvis 座標）を meta.json に書く。"""
 
     def __init__(self, folder: Path) -> None:
@@ -134,7 +141,8 @@ class BodyLog:
         self.dir = folder
         self._f = open(folder / "body_log.csv", "w", newline="", encoding="utf-8", buffering=1)
         self._w = csv.writer(self._f)
-        self._w.writerow(["t", "phase"] + [f"q{i}" for i in range(29)] + ["qw", "qx", "qy", "qz"])
+        self._w.writerow(["t", "phase"] + [f"q{i}" for i in range(29)] + ["qw", "qx", "qy", "qz"]
+                         + [f"tau{i}" for i in range(29)] + ["push_force_n"])
         self._planned = False
         print(f"[j1gen-agent] 体の動きの記録: {folder}")
 
@@ -173,13 +181,18 @@ class BodyLog:
 
     def write(self, obs: Observation, ctl: object) -> None:
         phase = getattr(ctl, "phase", "")
+        tau = getattr(obs, "tau_est", None)
+        force = getattr(getattr(ctl, "force", None), "last_n", None)
         self._w.writerow([f"{obs.t:.4f}", phase] + [f"{v:.6f}" for v in obs.q]
-                         + [f"{v:.6f}" for v in np.asarray(obs.imu_quat, dtype=float)])
+                         + [f"{v:.6f}" for v in np.asarray(obs.imu_quat, dtype=float)]
+                         + ([f"{v:.4f}" for v in tau] if tau is not None else [""] * 29)
+                         + [f"{force:.2f}" if force is not None else ""])
         plan = getattr(ctl, "plan_", None)
         if plan is not None and not self._planned:
             self._planned = True
             (self.dir / "meta.json").write_text(json.dumps(
                 {"target_point": np.asarray(plan.target_point).tolist(), "planned_t": obs.t,
+                 "push_dir": np.asarray(plan.push_dir).tolist(),  # 押す力を出し直すとき（real/press_force.py）
                  "phase": phase}, ensure_ascii=False, indent=2))
 
 

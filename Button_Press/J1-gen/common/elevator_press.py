@@ -2,7 +2,7 @@
 
     ctl = ElevatorPressController.from_config(robot_cfg, press_cfg, arm_cfg, elevator_cfg)
     ctl.reset(target="up", control_dt=0.02, upper_kp=kp17)   # kp17: motor 12〜28 の PD の強さ
-    q29, done = ctl.step(rgb, depth, K, q, t, image_t, imu_quat)   # 上半身の目標の角度（29 関節の並び）
+    q29, done = ctl.step(rgb, depth, K, q, t, image_t, imu_quat, tau_est)   # 上半身の目標の角度（29 関節の並び）
 
 J1-gen の部品をそのまま使う:
 - 見つける: common/elevator_buttons.py（一般用の ▲▼、柱の面の向き、3 フレームでばらつきを確かめる）
@@ -26,6 +26,11 @@ weight が 0 に戻り、腕が柱の数 cm 手前から元の姿勢へ動く。
 確かめてある。押す向きと逆にまっすぐ離れる方法は、肘がたたまれて右の手首が胴体に入った（柱まで 31 cm で、
 面から 10 cm 以上離れると当たる。2026-10-14）。
 
+押す力の推定（tau_est が渡されたとき。common/push_force.py）: 押し込みを始める前の推定トルクを基準に、押し込み・保持の
+間に指先がボタンを押した力 [N] を推定し、保持が終わったら段階のメッセージと press_forces に残す。止める判断には
+使わない（止めるのは今までどおり関節の遅れ）。2026-11-03 の 19:39 の ▲ で「当たらなかった」のか「指が曲がって遅れが
+増えなかった」のかを、関節角からは区別できなかったため。
+
 指先のずれの補正（Yada の見本のエージェントと同じ考え方）: 実際の関節の角度から指先の位置を計算（FK）し、
 目標とのずれを少しずつ足し込む。押す向きの成分は、押している間は足し込まない（押し込む力を出すため）。
 ボタンに触れる直前で補正を止める（触れたあとは摩擦で横に動けず、補正だけが膨らむため）。
@@ -44,6 +49,7 @@ from .arm.gravity import GravityModel
 from .collision import CollisionChecker
 from .elevator_buttons import ButtonFinder, ButtonNotFound, ButtonTracker, CallButtons
 from .press_planner import PressPlan, PressPlanner, UnreachableError
+from .push_force import PushForceMonitor
 from .robot_model import WAIST_IDX
 
 UPPER_IDX = list(range(12, 29))
@@ -91,6 +97,7 @@ class ElevatorPressController:
         self.gravity = gravity
         self.cfg = cfg
         self.tracker = ButtonTracker(cfg["tracking"])
+        self.force = PushForceMonitor(self.kin, gravity)
         self.log: list[StepLog] = []
         # 押す前（見つけたとき）と点灯の確認のときの画像を、外へ渡す口（agent.py が記録に使う）。
         # on_snapshot(種類 "before" / "check", 画像 RGB, 内容の辞書)。無ければ何もしない
@@ -142,11 +149,16 @@ class ElevatorPressController:
         self.baseline_level: float | None = None
         self.outcome = ""
         self.log = []
+        self.force = PushForceMonitor(self.kin, self.gravity)
+        self.press_forces: list[dict[str, Any]] = []  # 押し込みの回ごとの推定した押す力（PushForceSummary.to_dict()）
 
     def step(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q: np.ndarray, t: float,
-             image_t: float, imu_quat: np.ndarray | None = None) -> tuple[np.ndarray, bool]:
-        """1 周期分。上半身の目標の角度（29 関節の並び。下半身は今の角度のまま）と、終わったかを返す。"""
+             image_t: float, imu_quat: np.ndarray | None = None,
+             tau_est: np.ndarray | None = None) -> tuple[np.ndarray, bool]:
+        """1 周期分。上半身の目標の角度（29 関節の並び。下半身は今の角度のまま）と、終わったかを返す。
+        tau_est（29。lowstate の推定トルク）を渡すと、押し込みの間の押す力を推定して記録する（止める判断には使わない）。"""
         q = np.asarray(q, dtype=float)
+        tau = None if tau_est is None else np.asarray(tau_est, dtype=float)
         if self.q_hold is None:
             self.q_hold = q.copy()
         q_des = self.q_hold.copy()
@@ -179,6 +191,8 @@ class ElevatorPressController:
             lag = self._push_lag(q)
             if self.lag0 is None:
                 self.lag0 = lag  # 押す前からある遅れ（実機の重力補償 0.5 で 4.5 mm）。増え方で止める
+                self.force.start(self.plan_.push_dir)  # 押す前（手前で止まっていた間）の推定トルクを基準にする
+            self.force.measure("press", q, tau, imu_quat)
             if lag - self.lag0 > self._stop_lag():
                 p = self._stop_press(p, lag, t)
                 q_des[arm] = self._servo(q, p, integrate_push=False)
@@ -187,8 +201,10 @@ class ElevatorPressController:
                 if s >= 1.0:
                     self._enter("hold", t)
         elif self.phase == "hold":
+            self.force.measure("hold", q, tau, imu_quat)
             q_des[arm] = self._servo(q, self.plan_.end_point, integrate_push=False)
             if el >= float(c["hold_s"]):
+                self.finish_force()
                 self._enter("retract", t)
         elif self.phase == "retract":
             s = smoothstep(el / float(c["retract_s"]))
@@ -210,6 +226,9 @@ class ElevatorPressController:
             q_des[arm] = self.q_ik[arm] if self.q_ik is not None else q_des[arm]
             done = True
 
+        if self.phase not in ("press", "hold"):
+            self.force.last_n = None
+        self.force.remember(q, tau, imu_quat)
         return self._gravity_offset(q_des, imu_quat), done
 
     def _is_fresh(self, t: float, image_t: float) -> bool:
@@ -239,6 +258,14 @@ class ElevatorPressController:
         self.phase, self.t_phase = phase, t
         if phase == "press":
             self.lag0 = None  # 押し込みを始めた周期の遅れを、次の step で測り直す
+
+    def finish_force(self) -> None:
+        """押し込み・保持が終わった。推定した押す力を残す（tau_est が無ければ何もしない）。保持の途中で終わったとき
+        （評価環境は点灯した瞬間に終わる。Ctrl+C）も、外（contest_agent/agent.py）から呼んで、そこまでの分を残す。"""
+        summary = self.force.finish()
+        if summary is not None:
+            self.press_forces.append(summary.to_dict())
+            self._note(summary.text())
 
     def _give_up(self, t: float, why: str) -> bool:
         self.outcome = f"中止: {why}"
