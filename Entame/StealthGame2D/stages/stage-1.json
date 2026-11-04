@@ -42,8 +42,8 @@
         "y": 395
       }
     ],
-    "moveSpeed": 40,
-    "visionAngle": 65,
+    "moveSpeed": 32,
+    "visionAngle": 70,
     "visionDistance": 400
   }
 }

@@ -3,6 +3,26 @@
 `Entame/docs/win-conditions.md` の「①盗む」パターンをブラウザで素早く試すMVP。
 「警備員1人の視野を避けてターゲットを取り、STARTへ戻る」体験が面白いかを検証する。
 
+## 動作イメージ
+
+G1（Guard: 巡回して歩く）と Pepper（Camera: その場で首を振る）をモデルにした2Dステージ「level3」のテストプレイ（約60秒）。
+
+![G1 と Pepper の 2D ステルスゲーム level3](../docs/images/stealth2d-g1-pepper-level3.gif)
+
+`Entame/docs/images/stealth2d-g1-pepper-level3.gif`（400×394、8fps、約1.4MB）。ステージエディタの ▶ テストプレイを画面録画したもの。
+
+level6 のテストプレイ（約38秒）。壁の向こうの Camera と巡回する Guard を避けて TARGET を取り、START へ戻る。
+
+![G1 と Pepper の 2D ステルスゲーム level6](../docs/images/stealth2d-g1-pepper-level6.gif)
+
+`Entame/docs/images/stealth2d-g1-pepper-level6.gif`（400×445、8fps、約1.2MB）。
+ステージデータは `stages/stage-6.json`（ID 6）。
+
+## ベンチマーク
+
+調整の基準にするゲームは [Infiltrator!](https://totenarctanz.itch.io/infiltrator)（itch.io、HTML5、全24ステージ）。
+ページ本文を読んだだけでプレイは未実施。内容と現行との比較は `Entame/docs/research/stealth-game-benchmark.md`。
+
 ## 起動方法
 
 ES Modules を使っているため `file://` では動かない。簡易HTTPサーバで配信する。
@@ -26,8 +46,10 @@ python3 devserver.py
 | 項目 | 値 |
 |---|---|
 | 部屋サイズ | 5m〜25m四方の範囲でステージごとに調整可能（デフォルト10m×10m = 800px×800px） |
-| プレイヤー(人)の歩行速度 | 1.0 m/s（= 80px/sec、`player.js`） |
-| 警備員(G1)の歩行速度 | 0.5 m/s（= 40px/sec、各`stages/*.json`の`guard.moveSpeed`） |
+| プレイヤー(人)の歩行速度 | 1.5 m/s（= 120px/sec、`player.js`）。大人の自然な歩行速度は約 1.2〜1.4 m/s なので、やや速め |
+| 警備員(G1)の歩行速度 | 0.4 m/s（= 32px/sec、各`stages/*.json`の`guard.moveSpeed`）。指令 0.5 m/s に対する実測 0.38 m/s（シミュレータ。`docs/safety.md`）に近い値。実機での測定は未実施 |
+| 警備員(G1)の視野角 | 70°（`guard.visionAngle`。`docs/g1-detection-spec.md` のカメラ水平画角） |
+| 警備員(G1)の検知継続時間 | 0.2 秒（`guard.js` の `DETECTION_DWELL_SEC`）。視野に入り続けた時間がこれ以上で即GAME OVER。視野から外れるとリセット |
 
 視野角・視認距離の初期値の根拠（水平画角70°のWebカメラ想定など）は
 `Entame/docs/g1-detection-spec.md`を正とする。数値を変更する場合は両方を
@@ -38,7 +60,7 @@ python3 devserver.py
 - 矢印キー（↑↓←→）のみで移動
 - ターゲットに触れると自動取得
 - 取得後にSTART地点へ戻るとCLEAR
-- 警備員の視野（扇形）に、遮蔽物なしで入ると即GAME OVER（一発アウト）
+- 警備員の視野（扇形）に、遮蔽物なしで 0.2 秒入り続けるとGAME OVER。セキュリティカメラ（Pepper）は視野に入った瞬間にGAME OVER
 
 ## ステージデータ（stages/*.json）
 
@@ -51,6 +73,8 @@ stages/
   stage-1.json
   stage-2.json
   stage-3.json
+  stage-4.json     # level3（G1 + Pepper カメラ）
+  stage-6.json     # level6（G1 + Pepper カメラ）
 ```
 
 `main.js` / `editor.js` は起動時に `stagesLoader.js` の `loadStages()` を呼び、
@@ -73,10 +97,14 @@ GUIで調整できる。LEVEL SELECT画面の「ステージエディタを開�
 - モードボタンで配置対象を切り替え、Canvas上をクリック（壁はドラッグ）で配置
 - 巡回ルートの各区間が壁と衝突する場合、赤線＋警告メッセージで即座に警告する
   （「警備員が壁にスタックする」バグを作った時点で気づけるようにするため）
-- 既存のSTAGE 1〜3を読み込んで編集することも、Newで新規作成することも可能
+- 既存のステージを読み込んで編集することも、「＋ 新規ステージ」で新規作成することも可能
 - **▶ テストプレイ**: 保存前でも、編集中のステージ設定でその場にゲーム本体と
   同じロジック（移動・巡回・視野判定・CLEAR/GAME OVER）を動かして確認できる。
   矢印キーで操作し、「■ 編集に戻る」でエディタに戻る
+- **保存先の表示**: ボタンの上に「保存すると何が起きるか」を常に表示する。
+  **ID がそのまま保存ファイル名（`stage-<ID>.json`）**になる。
+  緑 = 新規追加 / 編集中ステージの更新、赤 = 別ステージの上書き（保存時に確認ダイアログも出る）。
+  「＋ 新規ステージ」は空いている ID（最大 ID + 1）を自動で入れる。ステージ一覧は `#ID 名前` で表示する
 - **💾 JSONを保存**: 編集中のステージ1件を `stage-<ID>.json` として保存する。
   `devserver.py` 起動時は `stages/` に直接書き込まれ、`manifest.json` も
   自動更新される。保存APIがない場合はブラウザへのダウンロードにフォールバック

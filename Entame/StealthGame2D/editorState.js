@@ -1,7 +1,8 @@
 // エディタの初期状態生成とステージデータの複製。
 
 // スケール: 1m = 80px（部屋10m×10m = 800px×800px）。
-// moveSpeed 40px/s は実機G1の歩行速度0.5m/sに対応する。
+// moveSpeed 32px/s = G1 の歩行速度 0.4m/s（実測 0.38m/s。指令 0.5 に対し。docs/safety.md）。
+// visionAngle 70° は docs/g1-detection-spec.md のカメラ水平画角。
 export function createInitialState() {
   return {
     id: 1,
@@ -15,10 +16,13 @@ export function createInitialState() {
       x: 400,
       y: 400,
       patrolPath: [],
-      moveSpeed: 40,
-      visionAngle: 65,
+      moveSpeed: 32,
+      visionAngle: 70,
       visionDistance: 400,
     },
+    // セキュリティカメラ（Pepper）。未配置は null。配置すると securityCamera.js の
+    // defaultSecurityCamera() の形（direction / swingAngle は度）になる。
+    securityCamera: null,
   };
 }
 

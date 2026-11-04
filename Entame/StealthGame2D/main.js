@@ -1,6 +1,7 @@
 import { loadStages } from "./stagesLoader.js";
 import { createPlayer, updatePlayer, isBackAtStart } from "./player.js";
 import { createGuard, updateGuard, isCaught } from "./guard.js";
+import { createSecurityCamera, updateSecurityCamera } from "./securityCamera.js";
 import { renderStage } from "./render.js";
 
 const STATE = {
@@ -25,6 +26,7 @@ let state = STATE.LEVEL_SELECT;
 let currentStage = null;
 let player = null;
 let guard = null;
+let securityCamera = null;
 let lastTimestamp = 0;
 
 const input = { up: false, down: false, left: false, right: false };
@@ -69,6 +71,7 @@ function startStage(stage) {
   canvas.height = stage.height;
   player = createPlayer(stage.start);
   guard = createGuard(stage.guard);
+  securityCamera = stage.securityCamera ? createSecurityCamera(stage.securityCamera) : null;
   input.up = input.down = input.left = input.right = false;
   state = STATE.PLAYING;
   showScreen();
@@ -107,8 +110,9 @@ backButtonEl.addEventListener("click", () => {
 function update(dt) {
   updatePlayer(player, input, dt, currentStage);
   updateGuard(guard, dt, currentStage, player);
+  if (securityCamera) updateSecurityCamera(securityCamera, dt, currentStage, player);
 
-  if (isCaught(guard)) {
+  if (isCaught(guard) || (securityCamera && securityCamera.caught)) {
     state = STATE.GAME_OVER;
   } else if (isBackAtStart(player, currentStage)) {
     state = STATE.CLEAR;
@@ -123,7 +127,7 @@ function loop(timestamp) {
     update(dt);
     // 検知（赤）確定でGAME_OVERに遷移した瞬間の状態も1フレーム描画してから
     // オーバーレイを出す。ここで描画をスキップすると赤い視野が一切見えないまま終わる。
-    renderStage(ctx, currentStage, player, guard, currentStage.name);
+    renderStage(ctx, currentStage, player, guard, currentStage.name, securityCamera);
     if (state !== STATE.PLAYING) {
       showScreen();
     }

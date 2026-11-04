@@ -3,6 +3,7 @@
 
 import { createPlayer, updatePlayer, isBackAtStart } from "./player.js";
 import { createGuard, updateGuard, isCaught } from "./guard.js";
+import { createSecurityCamera, updateSecurityCamera } from "./securityCamera.js";
 import { renderStage } from "./render.js";
 
 export function createPlaySession(stage) {
@@ -10,6 +11,7 @@ export function createPlaySession(stage) {
     stage,
     player: createPlayer(stage.start),
     guard: createGuard(stage.guard),
+    securityCamera: stage.securityCamera ? createSecurityCamera(stage.securityCamera) : null,
     input: { up: false, down: false, left: false, right: false },
     result: null,
   };
@@ -20,8 +22,11 @@ export function stepPlaySession(session, dt) {
 
   updatePlayer(session.player, session.input, dt, session.stage);
   updateGuard(session.guard, dt, session.stage, session.player);
+  if (session.securityCamera) {
+    updateSecurityCamera(session.securityCamera, dt, session.stage, session.player);
+  }
 
-  if (isCaught(session.guard)) {
+  if (isCaught(session.guard) || (session.securityCamera && session.securityCamera.caught)) {
     session.result = "GAME_OVER";
     return;
   }
@@ -31,5 +36,5 @@ export function stepPlaySession(session, dt) {
 }
 
 export function renderPlaySession(ctx, session) {
-  renderStage(ctx, session.stage, session.player, session.guard, `TEST PLAY: ${session.stage.name}`);
+  renderStage(ctx, session.stage, session.player, session.guard, `TEST PLAY: ${session.stage.name}`, session.securityCamera);
 }

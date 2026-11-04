@@ -25,6 +25,7 @@ export function validateStage(stage) {
   checkPoint("START", stage.start);
   checkPoint("TARGET", stage.target);
   checkPoint("GUARD", { x: stage.guard.x, y: stage.guard.y });
+  if (stage.securityCamera) checkPoint("CAMERA", stage.securityCamera);
 
   return { blockedLegs, stuckPoints };
 }

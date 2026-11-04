@@ -1,14 +1,16 @@
 // Canvas描画。ゲーム状態を受け取って毎フレーム描画するだけの純粋な関数群。
 
 import { computeVisionPolygon } from "./guard.js";
+import { CANVAS_FONT, CANVAS_FONT_PX, labelY } from "./canvasText.js";
 
-export function renderStage(ctx, stage, player, guard, stageLabel) {
+export function renderStage(ctx, stage, player, guard, stageLabel, securityCamera = null) {
   ctx.clearRect(0, 0, stage.width, stage.height);
 
   ctx.fillStyle = "#1b1f24";
   ctx.fillRect(0, 0, stage.width, stage.height);
 
   drawVisionCone(ctx, guard, stage.walls);
+  if (securityCamera) drawVisionCone(ctx, securityCamera, stage.walls);
 
   ctx.fillStyle = "#555c66";
   for (const wall of stage.walls) {
@@ -21,9 +23,30 @@ export function renderStage(ctx, stage, player, guard, stageLabel) {
   }
 
   drawGuard(ctx, guard);
+  if (securityCamera) drawSecurityCamera(ctx, securityCamera);
   drawPlayer(ctx, player);
 
   drawHud(ctx, stageLabel, player);
+}
+
+const CAMERA_BODY_HALF = 9;
+
+function drawSecurityCamera(ctx, camera) {
+  ctx.fillStyle = "#c9a8ff";
+  ctx.fillRect(camera.x - CAMERA_BODY_HALF, camera.y - CAMERA_BODY_HALF, CAMERA_BODY_HALF * 2, CAMERA_BODY_HALF * 2);
+
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(camera.x, camera.y);
+  ctx.lineTo(camera.x + Math.cos(camera.facingAngle) * 20, camera.y + Math.sin(camera.facingAngle) * 20);
+  ctx.stroke();
+
+  ctx.fillStyle = "#e8eaed";
+  ctx.font = CANVAS_FONT;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Camera", camera.x, labelY(camera.y, CAMERA_BODY_HALF));
 }
 
 function drawGuard(ctx, guard) {
@@ -47,10 +70,10 @@ function drawGuard(ctx, guard) {
   ctx.fill();
 
   ctx.fillStyle = "#e8eaed";
-  ctx.font = "12px monospace";
+  ctx.font = CANVAS_FONT;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("Guard", guard.x, guard.y - 20);
+  ctx.fillText("Guard", guard.x, labelY(guard.y, guard.radius));
 }
 
 function drawPlayer(ctx, player) {
@@ -60,10 +83,10 @@ function drawPlayer(ctx, player) {
   ctx.fill();
 
   ctx.fillStyle = "#e8eaed";
-  ctx.font = "12px monospace";
+  ctx.font = CANVAS_FONT;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("Player", player.x, player.y - 20);
+  ctx.fillText("Player", player.x, labelY(player.y, player.radius));
 }
 
 function drawMarker(ctx, pos, color, label) {
@@ -72,9 +95,10 @@ function drawMarker(ctx, pos, color, label) {
   ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = "#e8eaed";
-  ctx.font = "12px monospace";
+  ctx.font = CANVAS_FONT;
   ctx.textAlign = "center";
-  ctx.fillText(label, pos.x, pos.y - 18);
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, pos.x, labelY(pos.y, 12));
 }
 
 const VISION_COLOR_DEFAULT = "rgba(61, 220, 132, 0.25)"; // 緑: 通常巡回
@@ -98,11 +122,11 @@ function drawVisionCone(ctx, guard, walls) {
 
 function drawHud(ctx, stageLabel, player) {
   ctx.fillStyle = "#e8eaed";
-  ctx.font = "16px monospace";
+  ctx.font = CANVAS_FONT;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  ctx.fillText(stageLabel, 12, 24);
+  ctx.fillText(stageLabel, 12, CANVAS_FONT_PX + 4);
   if (player.hasTarget) {
-    ctx.fillText("TARGET GET! Return to START", 12, 46);
+    ctx.fillText("TARGET GET! Return to START", 12, (CANVAS_FONT_PX + 4) * 2);
   }
 }

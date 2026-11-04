@@ -5,7 +5,7 @@ import { moveWithWallCollision } from "./collision.js";
 // スケール: 1m = 80px（部屋10m×10m = 800px×800px）。
 // プレイヤー(人)の歩行速度は実測1.0m/sを想定。
 const RADIUS = 10;
-const SPEED = 80; // px/sec (1.0 m/s)
+const SPEED = 120; // px/sec (1.5 m/s)
 
 export function createPlayer(start) {
   return {
