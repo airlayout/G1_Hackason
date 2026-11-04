@@ -15,13 +15,18 @@
 1. モーションコントローラが稼働中か（arm_sdk の受け手。倒れた・ダンピングにしたあとは止まっている）
 2. 立っているか（lowstate の IMU の骨盤の傾き、腰の角度）
 3. 頭カメラのカラーが止まっていないか（2 枚の差。2026-10-21 は途中で videohub のカラーが止まった）
-4. ボタンのときだけ: 腰・腕のモータの mode が 1 か（プログラムを終えるとゼロトルクに戻ることがある。
+4. 頭カメラの向き: 同じ 2 枚の深度の床・机の面から pitch を求め、位置の計算に使う向き（ボタンは URDF、ボトルは
+   head_camera_mount があればその値）から 10° より大きくずれていないか。首の向きはつなぎ直すたびにずれることがあった
+   （2026-11-03、61.2°・64.4°。直すと 51〜54°）ので、その日に 1 回の前提から毎回の確認に移した。
+   水平な面が写らず測れないときは止めない（注意だけ）。--skip-head-tilt で飛ばせる
+5. ボタンのときだけ: 腰・腕のモータの mode が 1 か（プログラムを終えるとゼロトルクに戻ることがある。
    ボトルは press_bottle.py の ArmCommander が送る前に確かめるので、ここでは見ない）
 
 その日に 1 回でよい前提（このスクリプトでは見ない。REAL_DAY_PROCEDURE.md の「Enter なしで最後まで流す」の前提）:
-接続（check_connection.py --rgbd。mode_machine・lowstate の頻度）、頭カメラの向き（check_head_tilt.py）、
+接続（check_connection.py --rgbd。mode_machine・lowstate の頻度）、
 ボトルなら机の箱（make_table_boxes.py。机を動かしたら作り直す）、ボタンなら camera.yaml の head_camera_mount を使っていないこと
-（エレベーターのエージェントは robot.yaml の向きのまま）。
+（エレベーターのエージェントは robot.yaml の向きのまま）。頭カメラの向きは、その日の最初に check_head_tilt.py でも確かめる
+（床が広く写る所で、首を直す前後を測るため）。
 
 押す（事前確認がすべて通ったとき）:
 - ボトル: real/press_bottle.py --path arm_sdk（--execute なら --execute --no-confirm）。段階ごとの Enter 待ちをしない
@@ -65,6 +70,9 @@ EXIT_PRECHECK = 10
 MAX_PELVIS_TILT_DEG = 5.0
 MAX_WAIST_DEG = 3.0
 MIN_COLOR_CHANGE = 0.05  # 2 枚のカラーの差（画素の平均）。止まっていると 0.00、動いていれば 1 前後（2026-10-21）
+# 頭カメラの向き（深度の床の面から求めた pitch）と、位置の計算に使う向きの差の上限 [deg]。2026-11-03: 51〜54°
+# （URDF 47.6° から +3〜+7°）では推定の位置は 0〜5 mm で合い点灯した。首がずれた 61.2°・64.4°（+14〜+17°）を止める
+MAX_HEAD_PITCH_DIFF_DEG = 10.0
 
 
 @dataclass
@@ -112,6 +120,8 @@ def run_prechecks(args: argparse.Namespace, iface: str) -> list[Check]:
         if change < MIN_COLOR_CHANGE:
             msg += "。カラーが止まっている（videohub が古い画像を返している。G1 の再起動で直った例がある）"
         checks.append(Check("頭カメラ", change >= MIN_COLOR_CHANGE, msg))
+        if not args.skip_head_tilt:
+            checks.append(head_tilt_check([a, b], st.q[list(WAIST_IDX)], st.imu_quat, expected_head_pitch(args)))
 
     if args.target != "bottle":
         st = reader.latest() or st
@@ -119,6 +129,45 @@ def run_prechecks(args: argparse.Namespace, iface: str) -> list[Check]:
         checks.append(Check("モータの mode", not off, "腰・腕すべて 1" if not off else
                             f"1 でない: {', '.join(off)}（ゼロトルク。リモコンでダンピングに入れてから立たせる）"))
     return checks
+
+
+def expected_head_pitch(args: argparse.Namespace) -> tuple[float, str]:
+    """位置の計算に使う頭カメラの pitch [deg] と、その出どころ。ボトルはカメラの設定の head_camera_mount があればその値
+    （press_bottle.py が使う）、ボタンは robot.yaml（URDF）の値（エレベーターのエージェントは上書きを使わない）。"""
+    if args.target == "bottle":
+        mount = load_camera_config(args, quiet=True).get("head_camera_mount")
+        if mount and mount.get("rpy_deg") is not None:
+            return float(mount["rpy_deg"][1]), f"{args.camera_config} の head_camera_mount"
+    return float(np.degrees(load_config("robot.yaml")["head_camera"]["rpy"][1])), "URDF"
+
+
+def head_tilt_check(frames: list[Any], q_waist: np.ndarray, imu_quat: np.ndarray | None,
+                    expected: tuple[float, str]) -> Check:
+    """頭カメラの向き（深度の床・机の面から求めた pitch。common/head_tilt.py）が、位置の計算に使う向きと大きく違わないか。
+
+    首の向きは、つなぎ直すたびにずれることがある（2026-11-03、ラボで 61.2°、エレベーターで 64.4°。直すと 51〜54°）。
+    ずれたまま押すと、ボタン・ボトルの位置が大きくずれる。水平な面が写らず測れないときは止めない（注意だけ出す。
+    エレベーターの前では床が画像の 1 割ほどしか写らないことがある）。
+    """
+    from common.camera_geometry import HeadCameraTransform
+    from common.head_tilt import estimate_head_tilt, judge
+
+    robot_cfg = load_config("robot.yaml")  # 面から向きを解くのに使うのは、首より上の取り付け（pitch・roll はここで求める）
+    tf = HeadCameraTransform(robot_cfg)
+    planes = [p for f in frames for p in estimate_head_tilt(f, tf, robot_cfg, q_waist, imu_quat)]
+    pitch_ref, source = expected
+    res = judge(planes, pitch_ref)
+    if res["pitch_deg"] is None:
+        return Check("頭カメラの向き", True, "⚠️ 水平な面（床・机）が写らず測れない（止めない）。"
+                     "首がずれていないか、床が広く写る向きで real/check_head_tilt.py を実行して確かめる")
+    diff = res["pitch_deg"] - pitch_ref
+    msg = (f"pitch {res['pitch_deg']:.1f}°（{source} {pitch_ref:.1f}° から {diff:+.1f}°、面 {res['n_planes']} 枚"
+           + (f"、ばらつき {res['spread_deg']:.1f}°" if res["n_planes"] > 1 else "") + "）")
+    ok = abs(diff) <= MAX_HEAD_PITCH_DIFF_DEG
+    if not ok:
+        msg += (f"。{MAX_HEAD_PITCH_DIFF_DEG:.0f}° より大きくずれている（首の向きがずれた）。首を直して "
+                "real/check_head_tilt.py で測り直す")
+    return Check("頭カメラの向き", ok, msg)
 
 
 def motion_controller_check() -> Check:
@@ -217,6 +266,9 @@ def main() -> int:
     p.add_argument("--air", type=float, nargs=2, metavar=("X", "Y"),
                    help="ボタン: カメラで探さず、pelvis から前 X・左右 Y [m]（− が右）の空中に車いす用の ▲▼ があるものとして動かす")
     p.add_argument("--skip-prechecks", action="store_true", help="事前確認を飛ばす（模擬ロボットで試すときだけ）")
+    p.add_argument("--skip-head-tilt", action="store_true",
+                   help="事前確認のうち、頭カメラの向きだけを飛ばす（床でない斜めの面を床と取り違えて止まるとき。"
+                        "real/check_head_tilt.py で別に確かめてから）")
     add_camera_args(p)
     argv = sys.argv[1:]
     extra = argv[argv.index("--") + 1:] if "--" in argv else []

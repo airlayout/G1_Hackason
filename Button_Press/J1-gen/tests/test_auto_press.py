@@ -15,7 +15,7 @@ import numpy as np
 from common.config import FEATURE_DIR, REPO_ROOT
 
 sys.path.insert(0, str(FEATURE_DIR / "real"))
-from auto_press import color_changed, press_command, take_agent_result  # noqa: E402
+from auto_press import color_changed, expected_head_pitch, head_tilt_check, press_command, take_agent_result  # noqa: E402
 
 
 def args(**kw: object) -> argparse.Namespace:
@@ -32,6 +32,50 @@ class TestPrechecks(unittest.TestCase):
         self.assertEqual(color_changed(img, img.copy()), 0.0)
         noisy = np.clip(img.astype(int) + np.random.default_rng(1).integers(-3, 4, img.shape), 0, 255)
         self.assertGreater(color_changed(img, noisy.astype(np.uint8)), 0.05)
+
+
+class TestHeadTiltCheck(unittest.TestCase):
+    """頭カメラの向きの事前確認。床だけが写る深度（tests/test_head_tilt.py の synth_frame）で確かめる。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from common.camera_geometry import HeadCameraTransform
+        from common.config import load_config
+
+        cls.cfg = load_config("robot.yaml")
+        cls.tf = HeadCameraTransform(cls.cfg)
+
+    def check(self, pitch: float | None) -> object:
+        from test_head_tilt import synth_frame
+
+        planes = [] if pitch is None else [(-0.73, -9.0)]  # 床（pelvis −0.73 m）。None は面が写らない
+        f = synth_frame(self.tf, self.cfg, 50.0 if pitch is None else pitch, 0.0, planes)
+        return head_tilt_check([f, f], np.zeros(3), None, (47.6, "URDF"))
+
+    def test_neck_shifted_stops(self) -> None:
+        """2026-11-03 のラボ（61.2°）・エレベーター（64.4°）は止める。"""
+        for pitch in (61.2, 64.4):
+            c = self.check(pitch)
+            self.assertFalse(c.ok, c.message)
+            self.assertIn("首", c.message)
+
+    def test_fixed_neck_passes(self) -> None:
+        """直したあとの 51〜54°（URDF から +3〜+7°）では押して点灯したので通す。"""
+        for pitch in (47.6, 51.0, 54.2):
+            c = self.check(pitch)
+            self.assertTrue(c.ok, c.message)
+            got = float(c.message.split("pitch ")[1].split("°")[0])
+            self.assertAlmostEqual(got, pitch, delta=0.5)  # 求め方は 0.25° 刻み
+
+    def test_no_floor_only_warns(self) -> None:
+        c = self.check(None)
+        self.assertTrue(c.ok)
+        self.assertIn("測れない", c.message)
+
+    def test_expected_pitch(self) -> None:
+        """ボタンは URDF の向き。ボトルは head_camera_mount があればその値（camera.yaml は書いていないので URDF）。"""
+        self.assertAlmostEqual(expected_head_pitch(args(target="up"))[0], 47.6, delta=0.1)
+        self.assertEqual(expected_head_pitch(args(target="bottle"))[1], "URDF")
 
 
 class TestPressCommand(unittest.TestCase):

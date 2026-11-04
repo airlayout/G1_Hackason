@@ -820,12 +820,14 @@ G1_HuggingFace/venv/bin/python Button_Press/Yada/contest/run_dds.py --agent Butt
 
 **前提（その日に 1 回。スクリプトでは見ない）:**
 - 接続: `check_connection.py --rgbd`（`mode_machine`・lowstate の頻度・深度付きの画像）
-- 頭カメラの向き: `check_head_tilt.py --live --frames 5`（首が傾いていないか）
+- 頭カメラの向き: `check_head_tilt.py --live --frames 5`（首が傾いていないか。2026-11-04 から、スクリプトも毎回確かめる（下）。
+  こちらは床が広く写る所で、首を直す前後を測るのに使う）
 - ボトル: 机の箱 `make_table_boxes.py --live --save`（机を動かしたら作り直す）。dry-run で計画が立つこと
 - ボタン: `camera.yaml` の `head_camera_mount` を使っていないこと（エレベーターのエージェントは `robot.yaml` の向きのまま）
 
 **毎回の事前確認（スクリプトが押す前に見る。そのつど変わりうることだけ）:** モーションコントローラ（arm_sdk の受け手）、
-立っているか（IMU・腰）、カラーが止まっていないか、ボタンのときはモータの mode（ボトルは押す側が見る）。
+立っているか（IMU・腰）、カラーが止まっていないか、頭カメラの向き（使う向きから 10° より大きくずれていないか。
+2026-11-03 につなぎ直すたびにずれたので毎回に移した。測れないときは注意だけ）、ボタンのときはモータの mode（ボトルは押す側が見る）。
 1 つでもだめなら何も送らない（終了コード 10）。
 
 まず dry-run（既定。何も送らない）:
