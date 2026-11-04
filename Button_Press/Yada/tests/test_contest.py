@@ -116,6 +116,22 @@ class TestExampleAgent(unittest.TestCase):
                 err = np.linalg.norm(b.center - robot.scene.button(b.name).face_center)
                 self.assertLess(err, 0.01, f"{b.name}: front_x={fx}, h={h}, y={cy}")
 
+    def test_observation_has_motor_torque(self) -> None:
+        """観測に関節の推定トルク（実機の tau_est に当たる、モーターが出しているトルク）が入る。上半身は重力を
+        補償しているので、止まっていれば重力のトルクと釣り合う。"""
+        robot = self.MujocoRobot(make_trial(0, self.cfg).scene_cfg, self.cfg)
+        try:
+            robot.advance(1.0)
+            obs = robot.observe(1.0)
+            gravity = robot.data.qfrc_bias[robot._vadr]
+        finally:
+            robot.close()
+        assert obs.tau_est is not None
+        self.assertEqual(obs.tau_est.shape, (29,))
+        upper = list(UPPER_BODY_IDX)
+        self.assertGreater(float(np.abs(gravity[upper]).max()), 1.0)
+        np.testing.assert_allclose(obs.tau_est[upper], gravity[upper], atol=0.3)
+
     def test_smoke_seeds_succeed(self) -> None:
         """見本のエージェントが、動作の確認用の種（seeds.yaml の smoke）で成功し、壁や柱に強くぶつからない。"""
         from contest.runner import run_episode

@@ -127,8 +127,10 @@ class MujocoRobot(Robot):
                 self._images.push(t, (self._sensor.color(rgb), self._sensor.depth(depth)))
             image_t, (rgb, depth) = self._images.get(t)
             q, dq = self._sensor.joints(q, dq)
+        # モーターが出しているトルク: 指令のトルク（上限で頭打ち）+ 関節の減衰に入れた D の項
+        tau_est = d.actuator_force[self._act] + d.qfrc_damper[self._vadr]
         return Observation(rgb=rgb, depth=depth, K=self.K.copy(), q=q, dq=dq, t=float(t),
-                           imu_quat=d.xquat[self._pelvis].copy(), image_t=image_t)
+                           imu_quat=d.xquat[self._pelvis].copy(), image_t=image_t, tau_est=tau_est)
 
     def command(self, q_upper: np.ndarray, base_cmd: np.ndarray) -> None:
         q = self.q_des.copy() if not self._cmd_queue else self._cmd_queue[-1][1].copy()

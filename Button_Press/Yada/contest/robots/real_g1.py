@@ -110,8 +110,9 @@ class RealG1Robot(Robot):
             raise RuntimeError("頭カメラの画像が届かない（RGB-D サーバの起動とアドレスを確認）")
         ins = fr.intrinsics
         K = np.array([[ins.fx, 0.0, ins.cx], [0.0, ins.fy, ins.cy], [0.0, 0.0, 1.0]])
+        tau = getattr(st, "tau_est", None)  # J1-gen の JointState（2026-11-04 から）
         return Observation(rgb=fr.color_bgr[:, :, ::-1].copy(), depth=fr.depth_m(), K=K, q=st.q.copy(),
-                           dq=st.dq.copy(), t=float(t))
+                           dq=st.dq.copy(), t=float(t), tau_est=None if tau is None else tau.copy())
 
     def command(self, q_upper: np.ndarray, base_cmd: np.ndarray) -> None:
         now = time.monotonic()
