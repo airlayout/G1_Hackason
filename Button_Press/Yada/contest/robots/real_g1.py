@@ -112,7 +112,9 @@ class RealG1Robot(Robot):
         K = np.array([[ins.fx, 0.0, ins.cx], [0.0, ins.fy, ins.cy], [0.0, 0.0, 1.0]])
         tau = getattr(st, "tau_est", None)  # J1-gen の JointState（2026-11-04 から）
         return Observation(rgb=fr.color_bgr[:, :, ::-1].copy(), depth=fr.depth_m(), K=K, q=st.q.copy(),
-                           dq=st.dq.copy(), t=float(t), tau_est=None if tau is None else tau.copy())
+                           dq=st.dq.copy(), t=float(t), tau_est=None if tau is None else tau.copy(),
+                           # 腰の IMU の姿勢。2026-11-04 まで渡しておらず、実機ではずっと (1, 0, 0, 0) だった
+                           imu_quat=np.asarray(st.imu_quat, dtype=float).copy())
 
     def command(self, q_upper: np.ndarray, base_cmd: np.ndarray) -> None:
         now = time.monotonic()
