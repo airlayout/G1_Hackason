@@ -73,6 +73,7 @@ class J1genElevatorAgent(Agent):
         air = os.environ.get("J1GEN_AIR_BUTTONS")
         if air:
             elevator["press"]["max_retries"] = 0  # 空中なので点灯しない。押し直して深くしない
+            elevator["press"]["lit_check"]["prelit_level"] = None  # 枠は画像の真ん中の仮の四角。明るい物が写っても止めない
             elevator["geometry"]["button_set"] = "wheelchair"  # 高さは車いす用。指をまっすぐ向ける設定を使う
         self.ctl = j1gen("elevator_press").ElevatorPressController.from_config(
             j1gen_config("robot.yaml"), j1gen_config("press.yaml"), j1gen_config("arm.yaml"), elevator)

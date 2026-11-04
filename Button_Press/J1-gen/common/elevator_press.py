@@ -262,6 +262,13 @@ class ElevatorPressController:
         self.baseline_brightness = self._brightness(rgb, b.bbox)
         self.baseline_level = self._lit_level(rgb, b.bbox)
         self._snapshot("before", rgb, b.bbox, t, level=self.baseline_level, retry=0)
+        prelit = self.cfg["press"]["lit_check"].get("prelit_level")
+        if prelit is not None and self.baseline_level >= float(prelit):
+            # 呼びはもう登録されている。押すと、かごが着いてランプが消えたときに「点かなかった」と判定し、
+            # 強く押し直してしまう（2026-11-03 の 19:45 の ▲。押す前 234 → 確認のとき 54）
+            self._give_up(t, f"押す前から点灯している（明るい部分 {self.baseline_level:.0f}、{float(prelit):.0f} 以上）ので押さない。"
+                          "ランプが消えてから（かごが着いてから）押し直す")
+            return
         advice = self._stand_advice(merged)
         try:
             self._plan(q, merged)
