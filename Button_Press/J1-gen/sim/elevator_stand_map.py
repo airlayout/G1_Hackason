@@ -4,6 +4,8 @@
     $P Button_Press/J1-gen/sim/elevator_stand_map.py --workers 8
     $P Button_Press/J1-gen/sim/elevator_stand_map.py --xs 0.30 0.34 --ys -0.04 0.0 --tilts 0 --targets down
     $P Button_Press/J1-gen/sim/elevator_stand_map.py --button-set wheelchair --ys -0.28 -0.24 -0.20 -0.16 -0.12 -0.08 -0.04 0.0 0.04 --tilts 0
+    # 左腕（ボタンを体の左に置く）
+    $P Button_Press/J1-gen/sim/elevator_stand_map.py --arm left --button-set wheelchair --ys -0.04 0.0 0.04 0.08 0.12 0.16 0.20 0.24 0.28 --tilts 0
 
 ラボのエレベーターの車いす用の組（2026-10-22 にメジャーで測定。床から ▲ 約 93.5 cm・▼ 約 87 cm、間隔 約 7 cm、直径 約 3.5 cm。
 pelvis は床から約 0.73 m なので z は ▲ +0.21・▼ +0.14 m）を、pelvis の前方 x_mid・左右 y_mid（左が +）・柱の面の向きの傾き tilt（z まわり）で
@@ -42,10 +44,11 @@ STAGES = ["W", "R", "A", "V", "D", "1", "2", "P", "Q", "J", "K"]
 _G: dict[str, Any] = {}
 
 
-def init_worker(button_set: str = "general") -> None:
+def init_worker(button_set: str = "general", arm: str = "right") -> None:
     robot, press, arm, elev = (load_config(n) for n in ("robot.yaml", "press.yaml", "arm.yaml", "elevator.yaml"))
     # 押す組ごとの設定（press.by_button_set。wheelchair は指をまっすぐ向ける）を使う
     elev["geometry"]["button_set"] = button_set
+    elev["press"]["arm"] = arm
     ctl = ElevatorPressController.from_config(robot, press, arm, elev)
     _G.update(ctl=ctl, tf=HeadCameraTransform(robot), elev=elev)
 
@@ -116,13 +119,14 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--button-set", default="general", choices=["general", "wheelchair"],
                     help="押す組（press.by_button_set の設定と勧める範囲を使う。ボタンの高さはどちらもラボの車いす用）")
+    ap.add_argument("--arm", default="right", choices=["left", "right"], help="押す腕（elevator.yaml の press.arm）")
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
 
     cells = [(x, y, t, tg) for tg in args.targets for t in args.tilts for x in args.xs for y in args.ys]
     t0 = time.time()
     print(f"[stand] {len(cells)} 通りを計画する（{args.workers} プロセス）")
-    with ProcessPoolExecutor(args.workers, initializer=init_worker, initargs=(args.button_set,)) as ex:
+    with ProcessPoolExecutor(args.workers, initializer=init_worker, initargs=(args.button_set, args.arm)) as ex:
         rows = list(ex.map(run_cell, cells, chunksize=4))
     out = args.out or REPO_ROOT / "_local" / "button_press" / "stand_map" / time.strftime("%Y%m%d_%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
@@ -134,8 +138,8 @@ def main() -> int:
     press = load_config("elevator.yaml")["press"]
     elev = {**press["stand"], **((press.get("by_button_set") or {}).get(args.button_set, {}).get("stand", {}))}
     lo, hi, side = float(elev["min_dist_m"]), float(elev["max_dist_m"]), float(elev["max_side_m"])
-    center = float(elev.get("center_side_m", 0.0))
-    text = [f"押す組 {args.button_set}。今の勧める範囲（elevator.yaml の press.stand）: 柱まで {lo * 100:.0f}〜{hi * 100:.0f} cm、"
+    center = (1.0 if args.arm == "right" else -1.0) * float(elev.get("center_side_m", 0.0))  # 右腕の値。左腕なら反転
+    text = [f"押す腕 {args.arm}、押す組 {args.button_set}。今の勧める範囲（elevator.yaml の press.stand）: 柱まで {lo * 100:.0f}〜{hi * 100:.0f} cm、"
             f"左右 {center * 100:+.0f}±{side * 100:.0f} cm（[ ] で囲む）",
             "記号: # 計画が通り、ボタンも柱の範囲もカメラに入る / + ボタンは入るが柱の範囲が一部出る / o 計画は通るがカメラに入らない / 英字 断られた段階"]
     for tg in args.targets:

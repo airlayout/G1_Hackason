@@ -9,7 +9,7 @@ G1 の腕には力のセンサーが無いので、lowstate の推定トルク�
     $P Button_Press/J1-gen/real/press_force.py _local/button_press/body_log/<日時>_<up|down>
 
 表示するもの:
-- 腕が止まっている間（look の段階）の推定トルクのばらつき（右腕 7 関節の標準偏差）。推定の力がこれに比べて
+- 腕が止まっている間（look の段階）の推定トルクのばらつき（押した腕の 7 関節の標準偏差）。推定の力がこれに比べて
   十分大きいかを見る目安（実機の値は 2026-11-04 の時点で未確認）
 - 押し込みの回ごとの、押す向きの力の最大（そのときの横の力）、保持中の平均・最大
 
@@ -33,7 +33,7 @@ from common.arm.gravity import GravityModel  # noqa: E402
 from common.config import load_config  # noqa: E402
 from common.kinematics import ArmKinematics  # noqa: E402
 from common.push_force import replay, still_noise  # noqa: E402
-from common.robot_model import NUM_MOTORS, RIGHT_ARM_IDX  # noqa: E402
+from common.robot_model import LEFT_ARM_IDX, NUM_MOTORS, RIGHT_ARM_IDX  # noqa: E402
 
 
 def read_body_log(path: Path) -> tuple[np.ndarray, list[str], np.ndarray, np.ndarray, np.ndarray | None]:
@@ -55,6 +55,8 @@ def read_body_log(path: Path) -> tuple[np.ndarray, list[str], np.ndarray, np.nda
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("folder", type=Path, help="エージェントの記録のフォルダ（body_log.csv と meta.json があるところ）")
+    ap.add_argument("--arm", choices=["left", "right"],
+                    help="押した腕（既定は meta.json の arm。無ければ right。2026-11-04 より前の記録はすべて右腕）")
     a = ap.parse_args()
 
     log, meta = a.folder / "body_log.csv", a.folder / "meta.json"
@@ -68,16 +70,18 @@ def main() -> int:
     if not meta.exists() or "push_dir" not in json.loads(meta.read_text()):
         print("[press_force] meta.json に押す向き（push_dir）が無い（計画まで行かなかった回か、2026-11-04 より前の記録）")
         return 1
-    push_dir = np.asarray(json.loads(meta.read_text())["push_dir"], dtype=float)
+    m = json.loads(meta.read_text())
+    push_dir = np.asarray(m["push_dir"], dtype=float)
+    side = a.arm or str(m.get("arm", "right"))
 
-    arm = list(RIGHT_ARM_IDX)
+    arm = list(RIGHT_ARM_IDX if side == "right" else LEFT_ARM_IDX)
     look = [i for i, p in enumerate(phases) if p == "look"]
     if len(look) >= 10:
         noise = still_noise(tau[look][:, arm])
-        print(f"[press_force] 腕が止まっている間（look、{len(look)} 周期）の推定トルクのばらつき（右腕、標準偏差）: "
+        print(f"[press_force] 腕が止まっている間（look、{len(look)} 周期）の推定トルクのばらつき（{side} 腕、標準偏差）: "
               + " ".join(f"{v:.3f}" for v in noise) + " Nm")
 
-    kin = ArmKinematics(load_config("robot.yaml"), "right", load_config("press.yaml")["ik"])
+    kin = ArmKinematics(load_config("robot.yaml"), side, load_config("press.yaml")["ik"])
     force, summaries = replay(kin, GravityModel(load_config("robot.yaml")), phases, q, tau, imu, push_dir)
     if not summaries:
         print("[press_force] 押し込みの段階（press）の行が無い")

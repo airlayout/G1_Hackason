@@ -8,10 +8,13 @@ J1-gen の部品をそのまま使う:
 - 見つける: common/elevator_buttons.py（一般用の ▲▼、柱の面の向き、3 フレームでばらつきを確かめる）
 - 計画: common/press_planner.py（IK、腕と体の衝突、作業空間の箱、押し込みの直線）
 - 柱（壁）との衝突: 柱の面の位置から壁の箱を作り、開始 → 手前の姿勢の移動で腕が壁に当たらないかを確かめる。
-  当たるなら、壁から離れた右側の経由点を通る（fungi-55 さんの push_button の経由点と同じ考え方）。
+  当たるなら、壁から離れた押す腕の側（右腕なら右）の経由点を通る（fungi-55 さんの push_button の経由点と同じ考え方）。
   押し込みの直線は壁（ボタン）に触れるのが目的なので、壁とは調べない（体との衝突は調べる）
 - 重力: common/arm/gravity.py（IMU の向きを使う）。腕は弱い PD（kp 60）で重力を補償しないので、
   垂れる量（重力のトルク ÷ kp）だけ目標をずらす
+
+押す腕（press.arm。right / left）: 設定の腕ごとの値（IK の初期姿勢、指の傾き、経由点、勧める立ち位置）は右腕の値で書き、
+左腕なら左右を反転して使う（common/pipeline.py のボトル押しと同じ考え方。G1 は左右対称）。
 
 段階:
   look → reach（関節空間で手前の姿勢へ。経由点があれば通る）→ settle（手前で止まり、指先のずれを補正）
@@ -50,13 +53,14 @@ from .collision import CollisionChecker
 from .elevator_buttons import ButtonFinder, ButtonNotFound, ButtonTracker, CallButtons
 from .press_planner import PressPlan, PressPlanner, UnreachableError
 from .push_force import PushForceMonitor
-from .robot_model import WAIST_IDX
+from .robot_model import WAIST_IDX, mirror_arm_q
 
 UPPER_IDX = list(range(12, 29))
 
 
 def finger_axis_for(normal: np.ndarray, left_deg: float, up_deg: float) -> np.ndarray:
-    """押す向き normal から、指の向きを決める（左・上に傾ける。右下から斜めに指を伸ばす）。"""
+    """押す向き normal から、指の向きを決める（左・上に傾ける。右下から斜めに指を伸ばす）。
+    左腕では left_deg に負の値を渡す（右へ傾ける。左下から斜めに伸ばす）。"""
     n = np.asarray(normal, dtype=float)
     left = np.cross([0.0, 0.0, 1.0], n)
     left /= np.linalg.norm(left)
@@ -93,6 +97,9 @@ class ElevatorPressController:
         self.robot_cfg = robot_cfg
         self.planner = planner
         self.kin = planner.kin
+        self.side = planner.kin.side
+        # 右腕の値で書いた設定（左右の向きを持つもの）を、押す腕に合わせる符号。右腕 +1、左腕 −1
+        self.sgn = 1.0 if self.side == "right" else -1.0
         self.finder = finder
         self.gravity = gravity
         self.cfg = cfg
@@ -106,7 +113,8 @@ class ElevatorPressController:
     @classmethod
     def from_config(cls, robot_cfg: dict[str, Any], press_cfg: dict[str, Any], arm_cfg: dict[str, Any],
                     elevator_cfg: dict[str, Any]) -> "ElevatorPressController":
-        """press_cfg（configs/press.yaml）の press と ik を、elevator_cfg の press と ik で上書きして使う。"""
+        """press_cfg（configs/press.yaml）の press と ik を、elevator_cfg の press と ik で上書きして使う。
+        押す腕は elevator_cfg の press.arm（right / left。無ければ right）。"""
         pc = copy.deepcopy(press_cfg)
         pc["press"].update(elevator_cfg["press"].get("planner", {}))
         pc["ik"].update(elevator_cfg.get("ik", {}))
@@ -118,7 +126,10 @@ class ElevatorPressController:
             # 評価環境・run_dds の安全フィルタ（Yada の contest.yaml、1.0 rad/s）
             arm_cfg = copy.deepcopy(arm_cfg)
             arm_cfg["safety"]["max_joint_speed_rad_s"] = float(speed)
-        planner = PressPlanner.from_config(robot_cfg, pc, arm_cfg, "right")
+        side = str(ep.get("arm", "right"))
+        if side not in ("left", "right"):
+            raise ValueError(f"press.arm は left か right: {side}")
+        planner = PressPlanner.from_config(robot_cfg, pc, arm_cfg, side)
         finder = ButtonFinder.from_config(robot_cfg, elevator_cfg)
         return cls(robot_cfg, planner, finder, GravityModel(robot_cfg), elevator_cfg)
 
@@ -318,7 +329,7 @@ class ElevatorPressController:
         mid = (call.up.center + call.down.center) / 2.0
         dist, side = float(mid @ call.normal), float(mid[1])
         lo, hi, w = float(st["min_dist_m"]), float(st["max_dist_m"]), float(st["max_side_m"])
-        center = float(st.get("center_side_m", 0.0))
+        center = self.sgn * float(st.get("center_side_m", 0.0))  # 右腕の値で書いてある。左腕なら左右を反転
         def cm(m: float) -> int:  # 動く量は切り上げ（「あと 0 cm」と出さない）
             return max(1, int(np.ceil(m * 100 - 1e-6)))
 
@@ -354,13 +365,14 @@ class ElevatorPressController:
         # 中指の先（の球の中心）の目標: 球の表面がボタンの面に触れる位置
         touch = face - float(c["tip_radius_m"]) * n
         seed = q.copy()
-        seed[self.kin.arm_idx] = np.asarray(c["ik_seed_right_arm"], dtype=float)
+        seed_arm = np.asarray(c["ik_seed_right_arm"], dtype=float)
+        seed[self.kin.arm_idx] = seed_arm if self.side == "right" else mirror_arm_q(seed_arm)
         approach = touch - float(self.planner.cfg["approach_distance_m"]) * n
         # 姿勢を選ぶため、まず位置だけで解いてから、指の向きも合わせる（Yada の見本と同じ 2 段）
         r0 = self.kin.ik(approach, seed)
         if r0.success:
             seed = r0.q
-        wall = CollisionChecker(self.robot_cfg, "right", float(c["wall_clearance_m"]),
+        wall = CollisionChecker(self.robot_cfg, self.side, float(c["wall_clearance_m"]),
                                 [wall_obstacle(call, self.cfg["wall"])])
         self.wall = wall
         errors: list[str] = []
@@ -373,7 +385,8 @@ class ElevatorPressController:
         rows = [n, None] if c.get("level_finger_row", False) else [None]
         for row in rows:
             for left_deg, up_deg in c["finger_tilts_deg"]:
-                finger = finger_axis_for(n, float(left_deg), float(up_deg))
+                # 指の傾きは右腕の値（左へ傾ける）。左腕なら右へ傾ける
+                finger = finger_axis_for(n, self.sgn * float(left_deg), float(up_deg))
                 for via in [None] + list(self._via_points(touch, n)):
                     q_via = None
                     what = f"指 {left_deg:g}°/{up_deg:g}°、" + (
@@ -397,17 +410,17 @@ class ElevatorPressController:
                         continue
                     self.plan_ = plan
                     self._build_legs(q, plan)
-                    self._note(f"計画（{what}）: {plan.summary()}")
+                    self._note(f"計画（{self.side} 腕、{what}）: {plan.summary()}")
                     return
         raise UnreachableError(" / ".join(errors))
 
     def _via_points(self, touch: np.ndarray, n: np.ndarray):
-        """壁から離れた、体の右側の経由点（手前の姿勢へ、壁をこすらずに入るため）。"""
+        """壁から離れた、押す腕の側（右腕なら右、左腕なら左）の経由点（手前の姿勢へ、壁をこすらずに入るため）。"""
         v = self.cfg["press"]["via"]
-        right = np.cross(n, [0.0, 0.0, 1.0])
-        right /= np.linalg.norm(right)
+        out = self.sgn * np.cross(n, [0.0, 0.0, 1.0])  # 押す腕の側（右腕なら右）
+        out /= np.linalg.norm(out)
         for back, side in v["offsets_m"]:
-            p = touch - float(back) * n + float(side) * right
+            p = touch - float(back) * n + float(side) * out
             p[2] = max(p[2], float(v["min_height_m"]))
             yield p
 
@@ -470,7 +483,7 @@ class ElevatorPressController:
         return False
 
     def _servo(self, q: np.ndarray, p_goal: np.ndarray, integrate_push: bool) -> np.ndarray:
-        """指先を p_goal に合わせる右腕 7 関節。実際の指先とのずれを積分して目標に足す。"""
+        """指先を p_goal に合わせる押す腕の 7 関節。実際の指先とのずれを積分して目標に足す。"""
         c = self.cfg["press"]["servo"]
         n = self.plan_.push_dir
         tip = self.kin.fk_pos(q)
@@ -618,7 +631,7 @@ class ElevatorPressController:
     def _start_home(self, t: float) -> None:
         """押し終わった（点灯した・確かめられない）。来た経路を逆にたどって、始めの姿勢へ戻す。
 
-        今の右腕（指先のずれの補正で、計画した手前の姿勢から少しずれている）から、まず計画した手前の姿勢へ戻り、
+        今の押す腕（指先のずれの補正で、計画した手前の姿勢から少しずれている）から、まず計画した手前の姿勢へ戻り、
         そのあと来た区間を逆にたどる。今の姿勢から手前の姿勢へ戻る区間も、柱・壁と体に当たらないことを確かめる。
         当たるなら、今の姿勢のまま終わる。
         """

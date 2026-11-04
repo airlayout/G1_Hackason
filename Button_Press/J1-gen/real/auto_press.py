@@ -10,6 +10,9 @@
     # 壁もボタンも無いところで、エレベーターと同じ腕の動きだけ（空中の車いす用 ▼。腕を伸ばしたときの体の崩れを見る）
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair \\
         --air 0.48 -0.14 --execute
+    # 左腕で押す（ボタンが体の左に来るように立つ。空中なら左右を + にする）
+    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair \\
+        --arm left --air 0.48 0.14
 
 事前確認（押すたびに毎回。見るだけで、そのつど変わりうることだけ。1 つでもだめなら何も送らずに終わる。終了コード 10）:
 1. モーションコントローラが稼働中か（arm_sdk の受け手。倒れた・ダンピングにしたあとは止まっている）
@@ -204,6 +207,8 @@ def press_command(args: argparse.Namespace, iface: str) -> tuple[list[str], dict
                "--camera-config", args.camera_config]
         if args.host:
             cmd += ["--host", args.host]
+        if getattr(args, "arm", None):
+            cmd += ["--arm", args.arm]
         if args.execute:
             cmd += ["--execute", "--no-confirm"]
         return cmd + list(getattr(args, "extra", [])), env
@@ -215,6 +220,8 @@ def press_command(args: argparse.Namespace, iface: str) -> tuple[list[str], dict
     if not args.execute:
         cmd.append("--dry-run")
     env["J1GEN_BODY_LOG"] = str(REPO_ROOT / "_local" / "button_press" / "body_log")
+    if getattr(args, "arm", None):
+        env["J1GEN_ARM"] = args.arm
     if args.button_set:
         env["J1GEN_BUTTON_SET"] = args.button_set
     if args.detector:
@@ -249,6 +256,9 @@ def main() -> int:
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
     p.add_argument("--label", default="", help="ボトル: 記録のフォルダ名に付ける言葉（既定 auto）")
     p.add_argument("--gravity-scale", type=float, default=0.5, help="ボトル: 腕の重力補償の倍率（2026-10-14 に決めた 0.5）")
+    p.add_argument("--arm", choices=["left", "right"],
+                   help="押す腕（既定は ボタン: elevator.yaml の press.arm / ボトル: pipeline.yaml）。左腕で押すときは、"
+                        "ボタンが体の左に来るように立つ（--air なら Y を + にする）")
     p.add_argument("--button-set", choices=["general", "wheelchair"], help="ボタン: 押す組（既定は elevator.yaml）")
     p.add_argument("--detector", choices=["classic", "yolo"], help="ボタン: 見つけ方（既定は elevator.yaml）")
     p.add_argument("--instruction", default="", help="ボタン: 指示の文")

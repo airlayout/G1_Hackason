@@ -107,6 +107,14 @@ class TestPressCommand(unittest.TestCase):
         self.assertEqual((env["J1GEN_BUTTON_SET"], env["J1GEN_BUTTON_DETECTOR"]), ("wheelchair", "yolo"))
         cmd, _ = press_command(args(target="down", execute=True), "enp129s0")
         self.assertNotIn("--dry-run", cmd)
+        self.assertNotIn("J1GEN_ARM", env)  # 指定しなければ elevator.yaml の press.arm のまま
+
+    def test_arm(self) -> None:
+        """--arm は、ボタンならエージェントへ環境変数 J1GEN_ARM で、ボトルなら press_bottle.py の --arm で渡す。"""
+        _, env = press_command(args(target="up", arm="left"), "enp129s0")
+        self.assertEqual(env["J1GEN_ARM"], "left")
+        cmd, _ = press_command(args(target="bottle", arm="left"), "enp129s0")
+        self.assertEqual(cmd[cmd.index("--arm") + 1], "left")
 
 
 class TestAgentResult(unittest.TestCase):
