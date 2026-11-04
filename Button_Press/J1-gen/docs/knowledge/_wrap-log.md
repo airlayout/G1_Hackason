@@ -90,3 +90,9 @@
   対象: エレベーターでまっすぐ押した 17 回、押す力を弱める・手袋なし、点灯の判定、PC2 の配信
   - real_robot_notes.md: 2026-11-03 夜に分かったこと（15/17 点灯、力は既定で足りる、かごの到着で判定が狂う、配信の起動し直し、IP の重なり）
   - patterns/robot_arm_control.md: 力不足に見えても当たり方を疑う・柔らかい指は接触の判定を鈍らせる
+
+- 2026-11-04 / Button_Press（J1-gen）
+  対象: 押した力の推定（推定トルク tau_est）、評価環境の観測への tau_est と IMU、Yada さんのファイルの扱い
+  - real_robot_notes.md: 2026-11-04 に分かったこと（腕に力のセンサーなし・tau_est、press_force.py、エレベーターの IMU は fd0d38d まで固定）
+  - patterns/robot_arm_control.md: 推定トルクから押した力を出す・重力を引く
+  - patterns/sim_real_config.md: 観測の口で値を入れ忘れても既定値がもっともらしいと気づかない
