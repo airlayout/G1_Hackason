@@ -28,6 +28,9 @@ contact_stop.keep_m・lag_m と planner.press_depth_m）をその回だけ変え
 環境変数 J1GEN_AIR_BUTTONS に「x,y」（pelvis から前・左右 [m]）を渡すと、カメラでボタンを探さず、その空中に車いす用の
 ▲▼ があるものとして同じ動きをする（壁の無いところで腕を伸ばす動きだけを試す。real/auto_press.py --air。押し直しはしない）。
 
+環境変数 J1GEN_RESULT_JSON にファイルの名前を渡すと、終わったときに結果（点灯した・確かめられない・中止とその理由）と
+段階ごとのメッセージを書く（real/auto_press.py が渡し、自分の記録 _local/button_press/auto/*.json に取り込む）。
+
 同じフォルダに、押す前（ボタンを見つけたとき）と点灯の確認のときの画像も保存する（lit_00_before.png、
 lit_01_check.png … と、枠・明るさを描いた *_annotated.jpg、lit_log.json）。手が枠に被さって点灯の確認が
 狂っていないか（点灯していないのに「点灯した」、点灯したのに「していない」）を、あとで見るため。
@@ -88,12 +91,38 @@ class J1genElevatorAgent(Agent):
         self.ctl.reset(task.target, task.control_dt, task.upper_kp)
         self.body_log = BodyLog.open(task.target)
         self.ctl.on_snapshot = self.body_log.save_snapshot if self.body_log is not None else None
+        self._result_written = False
 
     def act(self, obs: Observation) -> Action:
         q29, done = self.ctl.step(obs.rgb, obs.depth, obs.K, obs.q, obs.t, obs.image_t, obs.imu_quat)
         if self.body_log is not None:
             self.body_log.write(obs, self.ctl)
+        if done:
+            self._write_result()
         return Action(q_target=q29[list(UPPER_BODY_IDX)], done=done)
+
+    def close(self) -> None:
+        self._write_result()  # 終わる前に止まった（Ctrl+C・通信が切れた）ときも、そこまでの段階を残す
+
+    def _write_result(self) -> None:
+        path = os.environ.get("J1GEN_RESULT_JSON")
+        if not path or getattr(self, "_result_written", True):
+            return
+        self._result_written = True
+        write_result(Path(path), self.ctl, self.body_log.dir if self.body_log is not None else None)
+
+
+def write_result(path: Path, ctl: object, body_log_dir: Path | None) -> None:
+    """結果（点灯した・確かめられない・中止とその理由）と、段階ごとのメッセージを JSON に書く（real/auto_press.py が
+    J1GEN_RESULT_JSON で渡し、自分の記録に取り込む）。2026-11-03 は、計画まで行かずに終わった回の理由が画面にしか出ず、
+    あとから分からなかった。"""
+    log = getattr(ctl, "log", [])
+    path.write_text(json.dumps({
+        "outcome": getattr(ctl, "outcome", "") or "（結果が出る前に終わった）",
+        "phase": getattr(ctl, "phase", ""),
+        "notes": [{"phase": s.phase, "message": s.message} for s in log],
+        "body_log": str(body_log_dir) if body_log_dir is not None else None,
+    }, ensure_ascii=False, indent=2))
 
 
 class BodyLog:

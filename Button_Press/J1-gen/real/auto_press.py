@@ -29,6 +29,8 @@
 どちらも、計画が立たない（届かない・当たる・見つからない）ときは腕を動かさずに終わる。
 Ctrl+C を押すと、押す側がその場で止めて来た経路を逆にたどって戻る（もう一度 Ctrl+C でその場で weight を下げる）。
 このスクリプトは、押す側が終わるまで待つ。結果（事前確認・コマンド・終了コード）は _local/button_press/auto/ に JSON で残す。
+ボタンのときは、エージェントの結果（点灯した・確かめられない・中止とその理由、段階ごとのメッセージ、body_log のフォルダ）も
+"agent" に入れる（終了コードは中止でも 0 なので、これを見る）。
 `--` のあとの引数は、押す側のコマンドにそのまま渡す（例: `-- --seed-pose press_bottle`）。
 
 模擬ロボット（sim/sim_robot_server.py）で流れを試すとき（モーションコントローラが無く、描画のカラーは変化しないので、事前確認を飛ばす）:
@@ -246,6 +248,9 @@ def main() -> int:
         return EXIT_PRECHECK
 
     cmd, env = press_command(args, iface)
+    agent_result = path.with_name(path.stem + "_agent.json")
+    if args.target != "bottle":
+        env["J1GEN_RESULT_JSON"] = str(agent_result)  # エージェントが結果と中止の理由を書く（contest_agent/agent.py）
     record["command"], record["env"] = cmd, env
     print("[auto] 押す: " + " ".join(f"{k}={v}" for k, v in env.items()) + (" " if env else "") + " ".join(cmd))
     if args.execute:
@@ -253,9 +258,24 @@ def main() -> int:
     code = run_until_done(cmd, env)
     record["exit_code"] = code
     record["finished_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    if args.target != "bottle":
+        record["agent"] = take_agent_result(agent_result)
     path.write_text(json.dumps(record, indent=2, ensure_ascii=False))
+    if record.get("agent"):
+        print(f"[auto] エージェントの結果: {record['agent']['outcome']}")
     print(f"[auto] 終了コード {code}。記録: {path}")
     return code
+
+
+def take_agent_result(path: Path) -> dict[str, Any] | None:
+    """エージェントが書いた結果（contest_agent/agent.py の write_result）を読み、ファイルは消す（auto の記録に入れるので）。
+    書かれていない（押す側が途中で落ちた）・読めないときは None。"""
+    try:
+        res = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    path.unlink(missing_ok=True)
+    return res
 
 
 if __name__ == "__main__":
