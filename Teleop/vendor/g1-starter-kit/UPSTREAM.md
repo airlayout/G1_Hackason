@@ -95,7 +95,22 @@ OMEN（`ubuntu@192.168.123.200`）のキットは 45ead40 のまま、コミッ�
 | `tools/go_home_selftest.py`・`tools/arm_effort_selftest.py` | 上の自己テスト（新規・実機不要） |
 | `setup/apply_patches.py`（10-30） | 修正 `loco-fwd-max`（左スティックを前へ倒したときの歩きの上限を `--loco-fwd-max` で 0〜1.0 m/s に。既定は上流と同じ 0.3、後ろ・横・旋回は 0.3 のまま）。扉を押して前へ出られるかの関門で上げて試すため |
 | `tools/loco_fwd_max_selftest.py` | 上の自己テスト（新規・実機不要。16 項目） |
+| `setup/apply_patches.py`（11-03） | 修正 `no-loco`（足なし: `--no-loco` で `--motion` のまま歩きの指令を送らない。記録の歩きは 0）。行を足すだけの置換（適用後が適用前を含む）は目印を先に見るように直した（`loco-fwd-max` は流すたびに `--loco-fwd-max` を二重に足していた） |
+| `tools/no_loco_selftest.py` | 上の自己テスト（新規・実機不要。11 項目）。`loco_fwd_max_selftest.py`・`stick_pause_selftest.py` は `no_loco=False` を渡すように直した |
+| `tools/loco_replay.py`・`tools/replay_arm.py`（11-03） | 再生の `--legs`（記録の歩きの指令も純正へ流す。送り方は `Door/real/door_stock_io.py` と同じ: SetVelocity・20 回/秒・止めるときは 0 を 3 回・FSM 500/501 だけ）。記録の time_ns どおりの再生。腰を遠隔操作と同じ kp 300・kd 3 で保つ（`--legs` は `--waist hold` でだけ）。時刻どおりの腕の速さの確かめ（30 rad/s 超は断る）。正常に終わったときに制御権を返した直後に重み 1 で掴み直していた二重の後始末を 1 回に（済んだ印は送り終えてから立てる） |
+| `tools/replay_legs_selftest.py` | 上の自己テスト（新規・実機不要。偽の DDS と偽の純正で、main() と同じつなぎ方の再生を丸ごと回す。正常・歩いている最中の中断・後始末の途中の例外・SetVelocity の拒否・腕の速さ・入口の断り。約 20 秒） |
+| `setup/apply_patches.py`（11-04） | 修正 `seated-controls`（座位: `--motion` なし＝純正を止めて `rt/lowcmd` でも、A の終了・両スティックの一時停止・Quest の途切れの一時停止を効かせる。上流はこの塊が `--motion` のときだけ。歩きの指令は `--motion` のときだけ送り、記録には全身の角度と歩き 0 を残す） |
+| `tools/seated_controls_selftest.py` | 上の自己テスト（新規・実機不要。9 項目。歩きの口に一度も触らないことも見る）。`stick_pause_selftest.py` は塊の抜き出しの始まりを上流のコメント `# high level control` に、`loco_fwd_max_selftest.py` は `motion=True` を渡すように直した |
 
 確かめ方: 上流の xr_teleoperate（817fb00）の素の写しに全部当てた結果が、OMEN で動いている
 `~/xr_teleoperate` の 3 ファイルと 1 文字違わず一致すること、全部外すと素の版に戻ること、
 自己テスト 2 本が合格することを 2026-10-26 に確かめた。
+2026-11-03 にも同じ確かめをした（素の写しに 46 か所・2 回目は何も変わらない・OMEN の実物との差は `no-loco` の分だけ・
+全部外すと素に戻る・`no-loco` だけ外すと 11-03 の前の OMEN と一致）。そのうえで OMEN の `~/xr_teleoperate` に
+`no-loco` を当て（控えは `~/xr_teleoperate_backups/20261103T175848/`）、自己テスト 8 本が合格した。
+同じ日に PC2 の `~/xr_teleoperate` にも `loco-fwd-max` と `no-loco` を当て（控えは PC2 の
+`~/xr_teleoperate_backups/20261103T172217/`。PC2 の時計は中国時間）、PC2 の上で自己テスト 8 本が合格した。
+当てた後の `teleop_hand_and_arm.py`・`robot_control/robot_arm.py` は OMEN と PC2 で md5 が一致する。
+2026-11-04 の `seated-controls` も同じ確かめをした（素の写しに 49 か所・2 回目は何も変わらない・今の OMEN との差は
+3 か所だけ・全部外すと素に戻る・`no-loco` を外すと乗っている `seated-controls` も外れる）。OMEN の一時の写し（`/tmp`）に当てて、
+本物の SDK で自己テスト 9 本が合格した。OMEN と PC2 の `~/xr_teleoperate` にはまだ当てていない（PC2 は `pc2_teleop.sh patch` で当てる）。

@@ -26,6 +26,15 @@
                 こちらでないと動かない。腕以外を空で送ると脱力するので、
                 このスクリプトは送信前に全関節を現在角度でロックする。
   既定の --topic auto は実機に問い合わせて適切な方を選ぶ。
+
+[G1_Hackason 改変]（2026-11-03）:
+  - --legs で、記録の歩きの指令（修正 record-loco-cmd）も腕と同じ時刻で純正へ流す（tools/loco_replay.py）。
+    rt/arm_sdk（純正が立たせている）で、純正が歩ける状態（FSM 500/501）のときだけ。既定は腕だけ
+  - 記録に 1 コマごとの時刻（修正 record-timestamp の time_ns）があれば、その時刻どおりに再生する。
+    遠隔操作の周期は 30 Hz より遅いことが多く（10-29 は中央 34.5 ms）、名目の fps で流すと速く・歩きは短くなる
+  - 腰は遠隔操作（xr_teleoperate）と同じ強さ（kp 300・kd 3）で保つ。rt/arm_sdk の重みは腰も純正から取り上げるので
+    （11-03 実機）、記録した時と同じ保ち方にする
+  - 正常に終わったときに後始末（制御権の返却）を 2 回通り、返した直後に重み 1 で掴み直していたのを 1 回にした
 """
 
 
@@ -39,6 +48,8 @@ import time
 from pathlib import Path
 
 import numpy as np
+
+import loco_replay
 
 # ---- 関節インデックス（unitree_hg の motor_cmd 配列上の位置） ------------------
 
@@ -148,6 +159,26 @@ def load_episode(episode_dir, source="actions"):
         sys.exit(f"エラー: 想定外の要素数 left={left.shape[1]} right={right.shape[1]}（7 のはず）")
 
     return left, right, fps
+
+
+def load_times(episode_dir, n_frames):
+    """[G1_Hackason 改変] 記録の 1 コマごとの経過秒（先頭 0）。time_ns が無い・数が合わない・戻る記録は None。"""
+    with open(Path(episode_dir) / "data.json", encoding="utf-8") as f:
+        stamps = [fr.get("time_ns") for fr in json.load(f).get("data", [])]
+    if len(stamps) != n_frames or any(not isinstance(s, int) for s in stamps):
+        return None
+    t = (np.asarray(stamps, dtype=np.int64) - stamps[0]) / 1e9
+    return t if np.all(np.diff(t) > 0) else None
+
+
+def frame_pos(t, fps, times=None):
+    """[G1_Hackason 改変] 再生を始めてから t 秒の、記録の上の位置（コマ番号。小数は次のコマとの間）。
+
+    times があれば記録の時刻どおり、無ければ名目の fps で数える。
+    """
+    if times is None:
+        return t * fps
+    return float(np.interp(t, times, np.arange(len(times))))
 
 
 def infer_dof(left, right, forced=None):
@@ -311,6 +342,11 @@ class ArmReplayer:
         self.abort = threading.Event()
         self.abort_reason = ""
         self.started_sending = False
+        self.released = False
+        # [G1_Hackason 改変] 歩きの再生（--legs）の口。play_hook(コマ番号) は再生中の毎周期、
+        # stop_hook() は再生の終わり・中断・後始末の始めに呼ぶ（歩きを先に止めてから腕を戻す）
+        self.play_hook = None
+        self.stop_hook = None
 
         # ChannelFactoryInitialize は main() で先に済ませてある
         self.cmd = unitree_hg_msg_dds__LowCmd_()
@@ -449,13 +485,15 @@ class ArmReplayer:
             self.cmd.motor_cmd[j].kp, self.cmd.motor_cmd[j].kd = self._gain_for(j)
         # 腰は「動かさない」が、指令ゼロだと剛性ゼロで脱力する恐れがあるため
         # 開始時の実測値をホールドし続ける（--waist none で無効化できる）
+        # [G1_Hackason 改変] 強さはどちらの経路でも遠隔操作と同じ kp 300・kd 3（記録した時の保ち方）。
+        # 元は rt/arm_sdk だと腕と同じ 60・1.5 だった
         if waist_hold is not None:
             for k, j in enumerate(self.waist_joints):
                 lo, hi = LIMITS[j]
                 self.cmd.motor_cmd[j].q = float(np.clip(waist_hold[k], lo, hi))
                 self.cmd.motor_cmd[j].dq = 0.0
                 self.cmd.motor_cmd[j].tau = 0.0
-                self.cmd.motor_cmd[j].kp, self.cmd.motor_cmd[j].kd = self._gain_for(j)
+                self.cmd.motor_cmd[j].kp, self.cmd.motor_cmd[j].kd = KP_HIGH, KD_HIGH
         self.cmd.crc = self.crc.Crc(self.cmd)
         self.pub.Write(self.cmd)
 
@@ -471,7 +509,8 @@ class ArmReplayer:
             time.sleep(CONTROL_DT)
         return True
 
-    def run(self, traj, fps, weight_ramp, approach, waist_mode):
+    def run(self, traj, fps, weight_ramp, approach, waist_mode, times=None):
+        """times は記録の 1 コマごとの経過秒（[G1_Hackason 改変]。None なら名目の fps で流す）。"""
         self.wait_for_state()
         start_q = self.current_q(self.joints)
         waist_hold = self.current_q(self.waist_joints) if waist_mode == "hold" else None
@@ -499,8 +538,9 @@ class ArmReplayer:
             return self._release(waist_hold, weight_ramp)
 
         # [3] 記録軌道の再生（経過時間で補間サンプリング）
-        duration = (len(traj) - 1) / fps
-        print(f"  [3/6] 再生 ({duration:.1f} 秒 / {len(traj)} フレーム)")
+        duration = float(times[-1]) if times is not None else (len(traj) - 1) / fps
+        print(f"  [3/6] 再生 ({duration:.1f} 秒 / {len(traj)} フレーム"
+              f"{'・記録の時刻どおり' if times is not None else ''})")
         # 実時間ではなく monotonic を使う（NTP 調整やサスペンドで時計が飛ぶと
         # 軌道が一気に進んで急動作になるため）
         t0 = time.monotonic()
@@ -512,14 +552,18 @@ class ArmReplayer:
             t = time.monotonic() - t0
             if t >= duration:
                 break
-            pos = t * fps
-            i = int(pos)
+            pos = frame_pos(t, fps, times)
+            i = min(int(pos), len(traj) - 1)
             frac = pos - i
             self.last_target = (1 - frac) * traj[i] + frac * traj[min(i + 1, len(traj) - 1)]
             self._send(1.0, self.last_target, waist_hold)
+            if self.play_hook is not None:
+                self.play_hook(i)
             time.sleep(CONTROL_DT)
             print(f"\r        {t:5.1f} / {duration:.1f} s", end="", flush=True)
         print()
+        if self.stop_hook is not None:
+            self.stop_hook()
 
         # [4] 記録の初期姿勢へ戻す
         print("  [4/6] 初期姿勢へ復帰 (3.0 秒)")
@@ -544,6 +588,12 @@ class ArmReplayer:
            停止後の挙動はロボット側の watchdog に依存し、このスクリプトからは
            保証できない。ロボットは支持された状態で使うこと。
         """
+        # [G1_Hackason 改変] 歩きを先に止める（腕を戻している間に歩き続けない）。後始末は終わりまで通れば 1 回だけ。
+        # 済んだ印は送り終えてから立てる（途中で例外が出たら、main() の finally の 2 回目がやり直せるように）
+        if self.stop_hook is not None:
+            self.stop_hook()
+        if self.released:
+            return True
         if not self.started_sending:
             print("  （まだ何も送信していないため、終了処理は不要です）")
             return True
@@ -586,7 +636,42 @@ class ArmReplayer:
             print("  送信を終了しました。")
             print("  ⚠️ rt/lowcmd には制御権の返却手順がありません。停止後の挙動は")
             print("     ロボット側の watchdog に依存します（このキットでは未検証）。")
+        self.released = True
         return True
+
+
+def attach_legs(replayer, sender, loco):
+    """[G1_Hackason 改変] 歩きの再生をつなぐ。再生中のコマの指令を送り手に置き、
+    SetVelocity が FAIL_TRIP 回続けて失敗したら再生ごと止める。止めるときは送り手に 0 を送らせる。"""
+    def on_frame(i):
+        _, failed, code = sender.status()
+        if failed >= loco_replay.FAIL_TRIP:
+            replayer.abort.set()
+            replayer.abort_reason = f"歩きの指令（SetVelocity）が {failed} 回続けて失敗しました（code={code}）"
+            return
+        sender.set(*loco[i])
+
+    replayer.play_hook = on_frame
+    replayer.stop_hook = sender.stop
+
+
+def validate_timing(traj, times):
+    """[G1_Hackason 改変] 記録の時刻どおりに流すときの腕の速さを確かめる。
+
+    validate_trajectory は名目の fps の 1 コマで飛びを見るので、時刻の間隔が狭いコマでは実際の速さを
+    少なく見積もる。再生は 1 周期（CONTROL_DT）より細かくは動かないので、間隔は CONTROL_DT を下限にして数える。
+    線は名目の 30 Hz での WARN_STEP_RAD・MAX_STEP_RAD と同じ速さ（10.5・30 rad/s）。10-29 の 1 本は最大 22.9 rad/s
+    """
+    dt = np.maximum(np.diff(times), CONTROL_DT)
+    rate = np.abs(np.diff(traj, axis=0)).max(axis=1) / dt
+    warn_rate, max_rate = WARN_STEP_RAD * 30.0, MAX_STEP_RAD * 30.0
+    if rate.max() > max_rate:
+        k = int(rate.argmax())
+        sys.exit(f"エラー: 記録の時刻どおりだと {k} コマ目で腕が {rate.max():.1f} rad/s になります（上限 {max_rate:g}）。"
+                 "記録の破損とみなして実機には送りません（--frequency で名目の速さにもできます）。")
+    if rate.max() > warn_rate:
+        print(f"  ⚠️ 記録の時刻どおりだと、腕が最大 {rate.max():.1f} rad/s で動くコマが "
+              f"{int((rate > warn_rate).sum())} あります（警告の線 {warn_rate:g} rad/s）")
 
 
 def detect_control_topic(iface):
@@ -701,15 +786,37 @@ def main():
     p.add_argument("--kd", type=float, default=DEFAULT_KD)
     p.add_argument("--no-plot", action="store_true", help="dry-run でプロットを出さない")
     p.add_argument("--save-plot", default=None, help="dry-run のプロットを PNG 保存（画面不要）")
+    p.add_argument("--legs", action="store_true",
+                   help="[G1_Hackason 改変] 記録の歩きの指令も純正へ流す（rt/arm_sdk・FSM 500/501 のときだけ）")
     args = p.parse_args()
 
     validate_args(args)
+    # [G1_Hackason 改変] arm_sdk の重みは腰も取り上げるので、腰を書かないと脱力したまま歩かせることになる（11-03 実機）
+    if args.legs and args.waist != "hold":
+        sys.exit("エラー: --legs は --waist hold（既定）でだけ使えます。腰が脱力したまま歩かせないため。")
     left, right, rec_fps = load_episode(args.episode, args.source)
     traj, joints, dof, overlap_err = infer_dof(left, right, args.dof)
     fps = args.frequency or rec_fps
 
     summarize(traj, joints, dof, fps, overlap_err, args.source)
     validate_trajectory(traj, fps)
+
+    # [G1_Hackason 改変] 記録の時刻（--frequency を渡したときは名目の fps のまま）と歩きの指令
+    times = None if args.frequency else load_times(args.episode, len(traj))
+    if times is not None:
+        print(f"  再生の時刻 : 記録の time_ns どおり {times[-1]:.1f} 秒"
+              f"（名目 {fps:g} Hz なら {(len(traj) - 1) / fps:.1f} 秒）")
+        validate_timing(traj, times)
+    loco = loco_replay.load_loco(args.episode)
+    has_walk = loco is not None and len(loco) == len(traj) and bool(loco_replay.walking_mask(loco).any())
+    if has_walk:
+        for line in loco_replay.summarize_loco(loco, times if times is not None else np.arange(len(loco)) / fps):
+            print(line)
+        print("  → 歩きも純正へ流します（--legs）" if args.legs else "  → 腕だけを再生します（歩きも流すなら --legs）")
+    elif args.legs:
+        sys.exit("エラー: この記録には歩きがありません（足なしで録った・歩きの欄が無い）。--legs を外してください。")
+    if args.legs:
+        loco_replay.check_loco(loco)
 
     if args.dry_run:
         print("=" * 62)
@@ -724,7 +831,9 @@ def main():
         print(f"  kp={args.kp} kd={args.kd}  制御周期={CONTROL_DT * 1000:.0f} ms"
               f"  腰={args.waist}")
         print("\n  実機で再生するには --execute と --network-interface を付けてください。")
-        if not args.no_plot:
+        # [G1_Hackason 改変] --save-plot があれば --no-plot でも保存する（docs/04-record-replay.md の
+        # 「--no-plot --save-plot で画像に保存」のとおりに。元は --no-plot だと保存もしなかった）
+        if args.save_plot or not args.no_plot:
             plot_trajectory(traj, joints, fps, args.save_plot)
         return
 
@@ -747,6 +856,18 @@ def main():
 
     require_motion_stopped(topic, args.force_lowcmd)
 
+    # [G1_Hackason 改変] 歩きは純正に頼むので、純正が立たせていて歩ける状態のときだけ
+    loco_client = None
+    if args.legs:
+        if topic != "rt/arm_sdk":
+            sys.exit("エラー: --legs は rt/arm_sdk（純正が立たせている）でだけ使えます。"
+                     f"今は {topic}（{reason}）。腕だけなら --legs を外してください。")
+        loco_client = loco_replay.make_loco_client(loco_replay.RPC_TIMEOUT_S)
+        fsm = loco_replay.fsm_id(loco_client)
+        if fsm not in loco_replay.WALKING_FSM_IDS:
+            sys.exit(f"エラー: 純正が歩ける状態ではありません（FSM={fsm}。歩けるのは 500/501）。\n"
+                     "  リモコンで通常運転（R1+X）に入れてから実行してください。")
+
     print("=" * 62)
     print(" ⚠️  実機送信モード")
     print("=" * 62)
@@ -756,12 +877,17 @@ def main():
         print("  ゲイン           : xr_teleoperate と同じ分類（手首40 / 肩肘80 / その他300）")
         print("  腕以外           : 起動時の実測角でロック（脱力させない）")
     else:
-        print(f"  ゲイン           : kp={args.kp} kd={args.kd}")
+        print(f"  ゲイン           : kp={args.kp} kd={args.kd}（腰は遠隔操作と同じ kp {KP_HIGH:g}・kd {KD_HIGH:g}）")
     print(f"  対象関節         : 腕 {len(joints)} 関節のみ（脚・ハンドには書き込みません）")
     print(f"  通信断の検出     : rt/lowstate が {args.state_timeout} 秒途切れたら停止")
     if topic == "rt/lowcmd":
         print("  モード監視       : 再生中にモーションコントローラが起動したら停止")
     print(f"  腰               : {args.waist}")
+    if args.legs:
+        print("  歩き             : 記録の指令を純正へ流す（SetVelocity・20 回/秒）。⚠️ 開ループ")
+        print("                     記録を始めた時と同じ位置・向きに立たせ、進む先を空けること")
+    else:
+        print("  歩き             : 送らない（腕だけ）")
     if args.waist == "none" and topic == "rt/arm_sdk":
         print("  ⚠️ --waist none と rt/arm_sdk の組み合わせでは、腰の指令が")
         print("     kp=0/kd=0 のまま送られ、腰の剛性が失われる場合があります。")
@@ -793,10 +919,17 @@ def main():
     if topic == "rt/lowcmd":
         threading.Thread(target=watch_motion_mode, args=(replayer,), daemon=True).start()
 
+    # [G1_Hackason 改変] 歩きは再生中のコマの指令を別の糸から送る。続けて失敗したら再生ごと止める
+    sender = None
+    if args.legs:
+        sender = loco_replay.LocoSender(loco_client)
+        attach_legs(replayer, sender, loco)
+        sender.start()
+
     try:
         replayer.wait_for_state()
         replayer.verify_robot_dof(dof)
-        replayer.run(traj, fps, args.weight_ramp, args.approach, args.waist)
+        replayer.run(traj, fps, args.weight_ramp, args.approach, args.waist, times)
     except KeyboardInterrupt:
         replayer.abort.set()
         replayer.abort_reason = "Ctrl+C を受信"
@@ -817,6 +950,10 @@ def main():
             except BaseException as e:
                 print(f"  ⚠️ 終了処理に失敗しました（{type(e).__name__}）。"
                       "ロボットの状態を目視で確認してください。")
+        if sender is not None:
+            sender.close()
+            sent, failed, code = sender.status()
+            print(f"  歩きの指令: {sent} 回送った（最後の戻り値 {code}・続けて失敗 {failed}）。最後は 0 を送って止めた")
         if replayer.abort_reason:
             print(f"  中断理由: {replayer.abort_reason}")
 

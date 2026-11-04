@@ -97,6 +97,18 @@ patch ファイルではなく文字列置換にしてあるのは、上流が�
                   10-29 の 1 本目で、扉の前で前への指令に 12% しか進まなかったため、関門の試しで上げて確かめる（10-30）。
                   上流のコメントの issue #135 はスティックの符号の質問で、0.3 にした理由は書かれていない。
                   ⚠️ record-loco-cmd の loco_cmd_sent の行の上に当たる（自動で補完する）。
+
+  no-loco         [G1_Hackason 改変] 足なし: --no-loco を付けると、--motion のまま歩きの指令を一度も送らない
+                  （純正が立たせたまま、腕だけを遠隔操作する）。スティックを倒しても歩かず、記録の歩きは 0。
+                  両スティック 0.5 秒の一時停止・A の終了・Quest の途切れの一時停止はそのまま効く。
+                  --motion なしで使うと起動の時点で断る（--motion なしはデバッグ状態で、純正の制御を止めてしまう）。
+                  ⚠️ stick-pause と loco-fwd-max が入れた行の上に当たる（自動で補完する。2026-11-03）。
+
+  seated-controls [G1_Hackason 改変] 座位: --motion なし（純正を止めて rt/lowcmd で腕だけ。脚と腰は起動時の角度で固める）
+                  でも、A の終了・両スティック 0.5 秒の一時停止・Quest の途切れの一時停止を効かせる。上流はこの塊が
+                  --motion のときだけで、--motion なしでは Quest が途切れて戻った瞬間に腕が今の手へ 30 rad/s で飛んだ。
+                  歩きの指令は --motion のときだけ送る（歩きの口が無い）。記録には全身の角度と歩き（0）を残す。
+                  ⚠️ no-loco・xr-stale-stop・record-loco-cmd が入れた行の上に当たる（自動で補完する。2026-11-04）。
 """
 
 import argparse
@@ -669,6 +681,61 @@ G1_29_Num_Motors = 35''',
              "loco_vx * (args.loco_fwd_max if loco_vx > 0 else 0.3)"),
         ],
     },
+    # [G1_Hackason 改変] 上流 817fb00 には無い。足なし（立ったまま腕だけ）の遠隔操作と記録のため（2026-11-03）。
+    "no-loco": {
+        "desc": "--no-loco で、--motion のまま歩きの指令を送らない（足なし。記録の歩きは 0）",
+        "file": "teleop_hand_and_arm.py",
+        "plain": [
+            ("    parser.add_argument('--loco-fwd-max', type = _loco_fwd_max, default = 0.3, help = 'max forward walking speed [m/s] of the left stick (backward, sideways and turning stay 0.3)')\n",
+             "    parser.add_argument('--loco-fwd-max', type = _loco_fwd_max, default = 0.3, help = 'max forward walking speed [m/s] of the left stick (backward, sideways and turning stay 0.3)')\n"
+             "    # PATCH(no-loco): 足なし。--motion のまま歩きの指令を一度も送らない（純正が立たせたまま、腕だけを遠隔操作する）\n"
+             "    parser.add_argument('--no-loco', action = 'store_true', help = 'with --motion, never send walking commands (arms only; the robot keeps standing)')\n",
+             "PATCH(no-loco): 足なし。"),
+            ("    if args.ee == \"dex1_internal\" and args.motion:\n",
+             "    # PATCH(no-loco): --motion なしはデバッグ状態に入って純正の制御を止めるので、足なしの意味にならない\n"
+             "    if args.no_loco and not args.motion:\n"
+             "        parser.error(\"--no-loco は --motion と一緒に使う（--motion なしは純正の制御を止めてしまう）\")\n"
+             "    if args.ee == \"dex1_internal\" and args.motion:\n",
+             "if args.no_loco and not args.motion:"),
+            ("                    loco_cmd_sent = [0.0, 0.0, 0.0]  # PATCH(stick-pause): 一時停止中は歩かない\n"
+             "                loco_wrapper.Move(*loco_cmd_sent)\n",
+             "                    loco_cmd_sent = [0.0, 0.0, 0.0]  # PATCH(stick-pause): 一時停止中は歩かない\n"
+             "                # PATCH(no-loco): 足なしでは歩きの指令を一度も送らない。記録の歩きも 0 にする\n"
+             "                if args.no_loco:\n"
+             "                    loco_cmd_sent = [0.0, 0.0, 0.0]\n"
+             "                else:\n"
+             "                    loco_wrapper.Move(*loco_cmd_sent)\n",
+             "PATCH(no-loco): 足なしでは歩きの指令を"),
+        ],
+    },
+    # [G1_Hackason 改変] 上流 817fb00 には無い。座らせたまま、純正を止めて腕だけを遠隔操作するため（2026-11-04）。
+    "seated-controls": {
+        "desc": "座位（--motion なし）でも A の終了・両スティックの一時停止・Quest の途切れの一時停止を効かせる",
+        "file": "teleop_hand_and_arm.py",
+        "plain": [
+            # 1) 高い段の操作の塊を --motion なしでも通す（歩きの指令は 2) で --motion のときだけにする）
+            ("            if args.input_mode == \"controller\" and args.motion:\n"
+             "                # quit teleoperate\n",
+             "            # PATCH(seated-controls): 元は --motion のときだけ。座位（--motion なし＝純正を止めて rt/lowcmd）でも\n"
+             "            # A の終了・両スティック 0.5 秒の一時停止・Quest の途切れの一時停止を効かせる。歩きは --motion のときだけ送る\n"
+             "            if args.input_mode == \"controller\":\n"
+             "                # quit teleoperate\n",
+             "PATCH(seated-controls): 元は --motion のときだけ"),
+            # 2) 歩きの口（loco_wrapper）は --motion のときにしか作られないので、--motion なしでは送らない（記録の歩きは 0）
+            ("                if args.no_loco:\n"
+             "                    loco_cmd_sent = [0.0, 0.0, 0.0]\n",
+             "                # PATCH(seated-controls): --motion なしは歩きの口（loco_wrapper）が無いので、足なしと同じく送らない\n"
+             "                if args.no_loco or not args.motion:\n"
+             "                    loco_cmd_sent = [0.0, 0.0, 0.0]\n",
+             "if args.no_loco or not args.motion:"),
+            # 3) 記録にも、--motion なしで全身の角度と歩き（0）を残す（上流は空欄）
+            ("                    if args.input_mode == \"controller\" and args.motion:\n"
+             "                        current_body_state = arm_ctrl.get_current_motor_q().tolist()\n",
+             "                    if args.input_mode == \"controller\":  # PATCH(seated-controls): 座位でも全身の角度と歩き（0）を残す\n"
+             "                        current_body_state = arm_ctrl.get_current_motor_q().tolist()\n",
+             "PATCH(seated-controls): 座位でも全身の角度"),
+        ],
+    },
 }
 
 
@@ -692,6 +759,11 @@ def apply_scoped(text, anchor, before, after, revert, marker):
     end = text.find("\nclass ", start + 1)
     end = len(text) if end < 0 else end
     block = text[start:end]
+    # [G1_Hackason 改変] 行を足すだけの置換（適用後が適用前を含む）は、置換元が見つかるかだけで
+    # 判断すると当てるたびに二重に足すので marker を先に見る。ほかの置換では先に見ない
+    # （同じ修正の別の置換が先に書いた文字列が marker と重なり、当て損ねる。2026-11-03 に確かめた）。
+    if not revert and before in after and marker in block:
+        return text, "already"
     hit = block.find(src)
     if hit < 0:
         # 適用方向で marker があれば適用済み、戻す方向で marker が無ければ戻し済み
@@ -704,6 +776,10 @@ def apply_scoped(text, anchor, before, after, revert, marker):
 def apply_plain(text, before, after, revert, marker):
     """ファイル全体で全件置換する。"""
     src, dst = (after, before) if revert else (before, after)
+    # [G1_Hackason 改変] apply_scoped と同じ理由で、行を足すだけの置換は marker を先に見る。
+    # 2026-11-03 まで loco-fwd-max（--motion の行の後ろに足す）は、流すたびに --loco-fwd-max を二重に足していた。
+    if not revert and before in after and marker in text:
+        return text, "already"
     if src not in text:
         done = (marker in text) if not revert else (marker not in text)
         return text, "already" if done else "not-found"
@@ -808,6 +884,8 @@ DEPENDS = {
     "xr-stale-log": ["xr-stale-stop"],              # xr-stale-stop が入れた行の上に当たる
     "record-arm-effort": ["arm-tau-getter", "arm-tau-store"],  # 腕の制御の部品に足したトルクの口と、その写しを使う
     "loco-fwd-max": ["record-loco-cmd"],            # record-loco-cmd が作った loco_cmd_sent の行の上に当たる
+    "no-loco": ["stick-pause", "loco-fwd-max"],     # stick-pause の Move の行と、loco-fwd-max の引数の行の上に当たる
+    "seated-controls": ["no-loco", "xr-stale-stop", "record-loco-cmd"],  # no-loco と record-loco-cmd の行の上に当たる
 }
 
 

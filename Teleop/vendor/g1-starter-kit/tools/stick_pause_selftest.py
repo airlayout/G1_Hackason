@@ -141,8 +141,8 @@ def main() -> int:
     has_stale = "PATCH(xr-stale-stop)" in text
 
     init_src = extract(text, "PATCH(stick-pause): 両スティック長押し", "while not STOP:", False)
-    high_src = extract(text, 'if args.input_mode == "controller" and args.motion:',
-                       "# get current robot state data.", False)
+    # 11-04: 修正 seated-controls が塊の頭の if を書き換えるので、その上の上流のコメントから抜き出す
+    high_src = extract(text, "# high level control", "# get current robot state data.", False)
     ik_src = extract(text, "sol_q, sol_tauff  = arm_ik.solve_ik", "arm_ctrl.ctrl_dual_arm(sol_q, sol_tauff)", True)
     rec_src = extract(text, "PATCH(record-loco-cmd): 手なしでも", "current_body_action = []", True)
     rec_src = "if True:\n" + textwrap.indent(rec_src, "    ")
@@ -153,7 +153,8 @@ def main() -> int:
     ns = {
         "time": clock, "arm_ctrl": arm, "loco_wrapper": loco, "arm_ik": FakeIK(),
         "tv_wrapper": types.SimpleNamespace(tvuer=tvuer),
-        "args": types.SimpleNamespace(input_mode="controller", motion=True, loco_fwd_max=0.3),  # 前の上限は loco-fwd-max の既定
+        "args": types.SimpleNamespace(input_mode="controller", motion=True, loco_fwd_max=0.3,  # 前の上限は loco-fwd-max の既定
+                                      no_loco=False),  # 足あり（修正 no-loco の既定）
         "logger_mp": types.SimpleNamespace(warning=lambda m: print(f"    （記録係）{m}"),
                                            info=lambda m: (infos.append(m), print(f"    （記録係）{m}")),
                                            debug=lambda m: None),

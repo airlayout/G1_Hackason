@@ -56,13 +56,17 @@ class FakeLoco:
         self.sent.append((vx, vy, vyaw))
 
 
-def step(src: str, fwd_max: float, left: tuple, right_x: float = 0.0, paused: bool = False) -> tuple:
+def step(src: str, fwd_max: float, left: tuple, right_x: float = 0.0, paused: bool = False,
+         no_loco: bool = False, motion: bool = True) -> tuple:
     """スティックの値（televuer の形: 前は y が負）を 1 周期ぶん流し、機体へ送った指令と記録の値を返す。"""
     loco = FakeLoco()
     ns = {"tele_data": types.SimpleNamespace(left_ctrl_thumbstickValue=list(left), right_ctrl_thumbstickValue=[right_x, 0.0]),
-          "args": types.SimpleNamespace(loco_fwd_max=fwd_max), "stick_paused": paused, "loco_wrapper": loco}
+          # no_loco は修正 no-loco（11-03）、motion は修正 seated-controls（11-04。--motion なしは座位）
+          "args": types.SimpleNamespace(loco_fwd_max=fwd_max, no_loco=no_loco, motion=motion),
+          "stick_paused": paused, "loco_wrapper": loco}
     exec(src, ns)
-    return loco.sent[-1], tuple(ns["loco_cmd_sent"])
+    # 足なし（no-loco）では Move を一度も呼ばないので、送った値は None で返す
+    return (loco.sent[-1] if loco.sent else None), tuple(ns["loco_cmd_sent"])
 
 
 def main() -> int:
