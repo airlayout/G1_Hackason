@@ -191,9 +191,15 @@ def test_fifo_reader_reopens_after_each_writer(tmp_path):
 
 # ---- 輪（偽の機体） ----
 
+WAIST_HOLDS = []  # FakeArm.hold_waist の呼び出し [(q, kp, kd)]。_run が回すたびに空にする
+
+
 class FakeArm:
     def __init__(self, sink) -> None:
         self.sink = sink
+
+    def hold_waist(self, q_waist, kp_waist, kd_waist) -> None:
+        WAIST_HOLDS.append((np.array(q_waist), np.array(kp_waist), np.array(kd_waist)))
 
     def write(self, q_arm, kp_arm, kd_arm, weight) -> None:
         self.sink.append((time.monotonic(), np.array(q_arm), float(weight)))
@@ -215,6 +221,7 @@ def _run(monkeypatch, tmp_path, script, *, fsm=501, pitch_deg=0.0, load=lambda e
     t0 = [time.monotonic()]
     fired = set()
     arms = []
+    WAIST_HOLDS.clear()
     loco = FakeLoco(fsm=fsm)
 
     class FakeIO:
@@ -294,6 +301,12 @@ def test_full_flow_borrows_and_returns_arms(monkeypatch, tmp_path):
     first_full = int(np.argmax(w >= 1.0))
     assert (np.diff(w[:first_full + 1]) >= 0).all()  # 借りる間は重みが上がるだけ
     assert all(np.isfinite(a[1]).all() for a in arms)
+    # 腰は腕を借りる時に 1 度だけ、その時の角度と学習の強さで保つ（11-03 実機: 書かないと重み 1 で腰が脱力して足踏みした）
+    p = dc.load_params(POLICY)
+    assert len(WAIST_HOLDS) == 1
+    q_w, kp_w, kd_w = WAIST_HOLDS[0]
+    assert np.allclose(q_w, p.q_default[12:15]) and np.allclose(kp_w, p.kp[12:15]) and np.allclose(kd_w, p.kd[12:15])
+    assert (kp_w > 0).all() and (kd_w > 0).all()
     assert loco.damps() == []
     t_post = _phase_time(z, phases, "POST")
     late = [c for c in loco.vel() if c[1] > t_post + 0.3]
@@ -408,3 +421,172 @@ def test_probe_pushes_forward_with_arms_held(monkeypatch, tmp_path):
     assert len(r["押す試し"]) == 1 and r["押す試し"][0]["前の指令 m/s"] == pytest.approx(0.4)
     assert "dof_pos（脚と腰）" in r["観測"] and r["段"]["DOOR"]["秒"] > 0.4
     analyze_stock.print_report(r)
+
+
+# ---- odom の中継（11-03） ----
+
+def test_udp_odom_receives_relay_packets():
+    import socket as _socket
+
+    import odom_relay as orl
+
+    port = 47391
+    rx = orl.UdpOdom(port)
+    try:
+        tx = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+        tx.sendto(b"broken", ("127.0.0.1", port))  # 長さが違う電文は捨てる
+        tx.sendto(orl.pack(12.5, 0.3, -0.2, 0.7), ("127.0.0.1", port))
+        t_end = time.monotonic() + 2.0
+        while rx.latest()[0] is None and time.monotonic() < t_end:
+            time.sleep(0.01)
+        odom, t = rx.latest()
+        assert t == 12.5 and odom == pytest.approx((0.3, -0.2, 0.7))
+        assert rx.count == 1
+    finally:
+        rx.close()
+
+
+@needs_policy
+def test_relay_odom_replaces_robotio_odom(monkeypatch, tmp_path):
+    """--odom relay では RobotIO に odom を受けさせず、中継の受け口の値を記録と扉の値に使う"""
+    import door_run_stock as drs
+
+    class FakeRx:
+        def latest(self):
+            return (0.25, -0.05, 0.1), time.monotonic()
+
+    started = []
+    monkeypatch.setattr(drs, "start_odom_relay", lambda iface: (started.append(iface) or FakeRx(), None))
+    monkeypatch.setattr(drs, "stop_odom_relay", lambda rx, child: started.append("stopped"))
+    rc, seen, phases, z, arms, loco, t0 = _run(monkeypatch, tmp_path, [(0.3, "a"), (3.8, "d"), (4.8, "r"), (8.2, "q")],
+                                               extra_args=("--odom", "relay"))
+    assert rc == 0 and "DOOR" in seen
+    assert started[-1] == "stopped" and len(started) == 2
+    assert np.allclose(z["odom"][np.isfinite(z["odom"]).all(1)], (0.25, -0.05, 0.1))
+
+
+def test_ref_retry_only_while_ready():
+    """REF の送り直しは READY の間だけ（11-03 実機: DOOR で送り直して推定器が地図を作り直し、止まった）"""
+    import door_frame as dfr
+    import door_run_stock as drs
+
+    class FakeLidar:
+        def __init__(self) -> None:
+            self.refs = 0
+            self.head_xy = None
+
+        def request_ref(self) -> None:
+            self.refs += 1
+
+        def ready(self, now) -> bool:
+            return False  # 推定が一瞬受け入れられない
+
+        def note_state(self, *args) -> None:
+            pass
+
+        def pose(self, now, odom):
+            return None, ""
+
+        def angle_obs(self, now):
+            return dfr.door_closed_angle_obs()
+
+    lidar = FakeLidar()
+    dv = drs.DoorValues(dfr.PlanarPose(-1.0, 0.0, 0.0), lidar, "track", [0.047, -0.019])
+    q, quat = np.zeros(29), np.array([1.0, 0.0, 0.0, 0.0])
+    dv.begin(100.0, (0.0, 0.0, 0.0), 100.0)
+    assert lidar.refs == 1
+    late = 100.0 + drs.LIDAR_REF_RETRY_S + 1.0
+    dv.update(late, 1.0, (0.0, 0.0, 0.0), late, q, quat)  # DOOR・POST・PROBE（既定は送り直さない）
+    assert lidar.refs == 1
+    dv.update(late, drs.LIDAR_REF_RETRY_S + 1.0, (0.0, 0.0, 0.0), late, q, quat, retry_ref=True)  # READY
+    assert lidar.refs == 2
+
+
+def test_arm_heat_gate_ignores_short_peak():
+    """11-04 実機: 腕の温度の読みは力を入れると上がり抜くとすぐ下がる（巻線の見積もり）。線を一瞬越えただけでは止めない"""
+    import door_run_stock as drs
+
+    # Arrange
+    gate = drs.ArmHeatGate(limit_c=95.0, hold_s=1.0)
+
+    # Act: 0.5 秒だけ線を越えて下がる
+    trips = [gate.update(10.0 + 0.1 * k, 96.0 if k < 5 else 90.0, None) for k in range(10)]
+
+    # Assert
+    assert not any(trips)
+
+
+def test_arm_heat_gate_trips_when_held_over_limit():
+    import door_run_stock as drs
+
+    # Arrange
+    gate = drs.ArmHeatGate(limit_c=95.0, hold_s=1.0)
+
+    # Act: 線を越えたまま 1.2 秒
+    trips = [gate.update(10.0 + 0.1 * k, 96.0, None) for k in range(13)]
+
+    # Assert: 1 秒までは止めない・越えたら止める
+    assert not any(trips[:10])
+    assert trips[10]
+
+
+def test_arm_heat_gate_restarts_after_dropping_below():
+    import door_run_stock as drs
+
+    # Arrange
+    gate = drs.ArmHeatGate(limit_c=95.0, hold_s=1.0)
+
+    # Act: 0.8 秒越えて 1 回下がり、また 0.8 秒越える（続けては 1 秒に届かない）
+    temps = [96.0] * 8 + [94.0] + [96.0] * 8
+    trips = [gate.update(10.0 + 0.1 * k, c, None) for k, c in enumerate(temps)]
+
+    # Assert
+    assert not any(trips)
+
+
+def test_arm_heat_gate_trips_at_once_on_motor_flag():
+    """モーター自身の保護の札は待たない（11-03 実機: 札 512 で腕の力が抜けた）"""
+    import door_run_stock as drs
+
+    # Arrange
+    gate = drs.ArmHeatGate(limit_c=95.0, hold_s=1.0)
+
+    # Act / Assert
+    assert gate.update(10.0, 50.0, 16)
+
+
+def test_arm_temps_take_hotter_of_two_readings():
+    import door_run_stock as drs
+
+    # Arrange: 腕 14 関節。関節 16（左肩 roll）だけ 2 つの値が違う
+    motors = [types.SimpleNamespace(temperature=(40, 41), motorstate=0) for _ in range(29)]
+    motors[16] = types.SimpleNamespace(temperature=(80, 86), motorstate=0)
+    state = types.SimpleNamespace(motor_state=motors)
+
+    # Act
+    temps = drs.arm_temps(state)
+
+    # Assert
+    assert temps.shape == (14,)
+    assert temps[16 - 15] == 86.0
+    assert temps.max() == 86.0
+
+
+def test_cap_roll_press_limits_only_inward_shoulder_roll():
+    """11-06 実機: 左肩 roll は目標 −15°・角度 −4° で胴へ 20 N·m。胴の側へ押す力だけ 6 N·m に切り、外へ開く側と他の関節は触らない"""
+    import door_run_stock as drs
+
+    kp = np.array([100.0, 100.0, 40.0, 40.0, 20.0, 20.0, 20.0] * 2)
+    q = np.zeros(14)
+    q[1], q[8] = np.radians(-4.0), np.radians(-3.0)
+    target = q.copy()
+    target[0] = 0.5  # 肩 pitch は切らない
+    target[1], target[8] = np.radians(-15.0), np.radians(2.0)  # 両肩とも胴の側（左は負・右は正）
+    out = drs.cap_roll_press(target, q, kp, 6.0)
+    torque = kp * (out - q)
+    assert torque[1] == pytest.approx(-6.0) and torque[8] == pytest.approx(6.0)
+    assert out[0] == 0.5 and np.array_equal(np.delete(out, [1, 8]), np.delete(target, [1, 8]))
+    assert target[1] == pytest.approx(np.radians(-15.0))  # 入力は書き換えない
+    outward = q.copy()
+    outward[1], outward[8] = np.radians(20.0), np.radians(-20.0)  # 外へ開く側は 20° 先でも切らない
+    assert np.array_equal(drs.cap_roll_press(outward, q, kp, 6.0), outward)

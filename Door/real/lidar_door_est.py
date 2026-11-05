@@ -67,9 +67,13 @@ LEVEL_MAX_H_STEP_M = 0.03
 # 重ね直しの外れの見張り（10-23、10-16 の開け閉めの記録で一度外れて 5 m までずれていったので足した）
 JUMP_POS_M = 0.10  # 予測からこれ以上跳んだ結果は捨てて予測を保つ（0.1 s で 10 cm＝1 m/s。歩く速さの上限は約 0.36 m/s）
 JUMP_YAW_DEG = 8.0
-MAX_SPEED_MPS = 0.6  # 等速の予測に使う速さの上限
+# 等速の予測に使う速さの上限・受け入れの速さの関門。11-04: 0.6 では純正の歩きで見失った（頭が 1 歩ごとに横へ揺れ、ライダーは
+# 胴（/dog_odom 0.33 m/s）の約 2 倍の 0.60〜0.73 m/s で動いて見える）。0.9 で 11-04 の 2 回の再生とも見失わず、終わりの姿勢は変わらない
+MAX_SPEED_MPS = 0.9
 MAX_YAW_RATE = 1.5  # [rad/s]
 LOST_S = 1.0  # これだけ続けて捨てたら「見失った」（制御は立ったまま止まる）
+# 弾いた理由のビット（DoorTracker.last_why。0 なら受け入れた）
+WHY_ICP, WHY_JUMP_POS, WHY_JUMP_YAW, WHY_RMS, WHY_EIG, WHY_MATCHED, WHY_SPEED = 1, 2, 4, 8, 16, 32, 64
 
 
 def wrap(a: float) -> float:
@@ -447,6 +451,8 @@ class DoorTracker:
         self.last_angle: Optional[Tuple[float, float]] = None  # (時刻, 角度 [deg])
         self.last_accept_t: Optional[float] = None
         self.rejected = 0
+        self.last_why = 0
+        self.last_jump = Pose2D(0.0, 0.0, 0.0)
 
     @classmethod
     def from_still(cls, still_scans: Sequence[np.ndarray], thickness_m: float, lever_side: int = +1) -> "DoorTracker":
@@ -499,9 +505,15 @@ class DoorTracker:
         pred = init or self.predict(t)
         res = match_scan(self.map, band_xy(q), pred, self.door)
         jump = pred.inverse().compose(res.pose)
-        accepted = (res.ok and math.hypot(jump.x, jump.y) <= JUMP_POS_M and abs(math.degrees(jump.yaw)) <= JUMP_YAW_DEG
-                    and res.rms_m <= ACCEPT_MAX_RMS_M and res.min_eig >= ACCEPT_MIN_EIG and res.matched >= ACCEPT_MIN_MATCHED
-                    and self._plausible_speed(t, res.pose))
+        why = ((0 if res.ok else WHY_ICP)
+               | (WHY_JUMP_POS if math.hypot(jump.x, jump.y) > JUMP_POS_M else 0)
+               | (WHY_JUMP_YAW if abs(math.degrees(jump.yaw)) > JUMP_YAW_DEG else 0)
+               | (WHY_RMS if not res.rms_m <= ACCEPT_MAX_RMS_M else 0)
+               | (WHY_EIG if res.min_eig < ACCEPT_MIN_EIG else 0)
+               | (WHY_MATCHED if res.matched < ACCEPT_MIN_MATCHED else 0)
+               | (0 if self._plausible_speed(t, res.pose) else WHY_SPEED))
+        self.last_why, self.last_jump = why, jump  # 11-03: 弾いた理由を記録に残す（door_lidar_node の rows）
+        accepted = why == 0
         if accepted:
             self.prev = (self.prev + [(t, res.pose)])[-2:]
             self.last_accept_t, self.rejected = t, 0

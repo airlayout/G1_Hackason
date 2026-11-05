@@ -63,7 +63,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import numpy as np
 
@@ -106,11 +106,44 @@ def pressed(keys: int, name: str) -> bool:
     return bool(keys >> KEY[name] & 1)
 
 
+class LatestPoll:
+    """DDS の読み手（KeepLast 1）から、呼ばれた時に最新の 1 件だけを取る。新しい件が無ければ前の値と受けた時刻を保つ
+    （途切れの見張りはその時刻で効く）。11-05 夜: 聞き役（コールバック）だと rt/lowstate の約 1,000 件/秒のたびに GIL を取り、
+    PC2 で輪の計算が延びた（画像の生徒の 1 周期 3.2 → 9.8 ms。DOOR の周期の平均が 25 ms を越えて止まった）"""
+
+    def __init__(self, take: Callable[[], list], is_valid: Callable[[object], bool],
+                 convert: Callable[[object], object] = lambda m: m, clock: Callable[[], float] = time.monotonic) -> None:
+        self._take, self._is_valid, self._convert, self._clock = take, is_valid, convert, clock
+        self.value = None
+        self.t: Optional[float] = None
+
+    def poll(self):
+        """→ (最新の値, 受けた時刻)。まだ一度も受けていなければ (None, None)"""
+        got = [m for m in self._take() if self._is_valid(m)]
+        if got:
+            self.value, self.t = self._convert(got[-1]), self._clock()
+        return self.value, self.t
+
+
+def odom_xy_yaw(msg) -> tuple:
+    """rt/dog_odom（nav_msgs/Odometry）→ (x, y, yaw)"""
+    p = msg.pose.pose.position
+    o = msg.pose.pose.orientation
+    return float(p.x), float(p.y), dfr.yaw_from_quat_wxyz(np.array([o.w, o.x, o.y, o.z]))
+
+
 class RobotIO:
-    """rt/lowstate・rt/dog_odom を受け、rt/lowcmd を送る。送るのはこのクラスだけ"""
+    """rt/lowstate・rt/dog_odom を受け、rt/lowcmd を送る。送るのはこのクラスだけ。
+    受けるのは聞き役でなく、snapshot() のたびに最新の 1 件を取りに行く（LatestPoll。11-04 の seat_hold.py と同じ形）。
+    SDK の ChannelSubscriber は QoS を選べず Read(0) が永久に待つので、ChannelFactoryInitialize の後に自分の参加者で直に作る"""
 
     def __init__(self, iface: str, send: bool, use_odom: bool) -> None:
-        from unitree_sdk2py.core.channel import ChannelFactoryInitialize, ChannelPublisher, ChannelSubscriber
+        from cyclonedds.domain import DomainParticipant
+        from cyclonedds.internal import InvalidSample
+        from cyclonedds.qos import Policy, Qos
+        from cyclonedds.sub import DataReader
+        from cyclonedds.topic import Topic
+        from unitree_sdk2py.core.channel import ChannelFactoryInitialize, ChannelPublisher
         from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_
         from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_, LowState_
         from unitree_sdk2py.utils.crc import CRC
@@ -119,44 +152,31 @@ class RobotIO:
         self.send_enabled = send
         self.crc = CRC()
         self.cmd = unitree_hg_msg_dds__LowCmd_()
-        self.state = None
-        self.state_t = None
-        self.odom = None  # (x, y, yaw)
-        self.odom_t = None
-        self.odom_count = 0
         self._lock = threading.Lock()
         self.pub = None
         if send:
             self.pub = ChannelPublisher("rt/lowcmd", LowCmd_)
             self.pub.Init()
-        self.sub = ChannelSubscriber("rt/lowstate", LowState_)
-        self.sub.Init(self._on_state, 10)
-        self.odom_sub = None
+        self._dp = DomainParticipant(0)
+        latest = Qos(Policy.History.KeepLast(1))
+        valid = lambda m: not isinstance(m, InvalidSample)  # noqa: E731
+        rd_state = DataReader(self._dp, Topic(self._dp, "rt/lowstate", LowState_), latest)
+        self._readers = [rd_state]  # 捨てると読み手が回収される
+        self._state = LatestPoll(lambda: rd_state.take(N=1), valid)
+        self._odom = None
         if use_odom:
             from unitree_sdk2py.idl.nav_msgs.msg.dds_ import Odometry_
 
-            self.odom_sub = ChannelSubscriber("rt/dog_odom", Odometry_)
-            self.odom_sub.Init(self._on_odom, 1)
-
-    def _on_state(self, msg) -> None:
-        with self._lock:
-            self.state = msg
-            self.state_t = time.monotonic()
-
-    def _on_odom(self, msg) -> None:
-        self.odom_count += 1
-        if self.odom_count % 10:  # 1008 Hz を約 100 Hz に間引く（重い処理はしない）
-            return
-        p = msg.pose.pose.position
-        o = msg.pose.pose.orientation
-        yaw = dfr.yaw_from_quat_wxyz(np.array([o.w, o.x, o.y, o.z]))
-        with self._lock:
-            self.odom = (float(p.x), float(p.y), yaw)
-            self.odom_t = time.monotonic()
+            rd_odom = DataReader(self._dp, Topic(self._dp, "rt/dog_odom", Odometry_), latest)
+            self._readers.append(rd_odom)
+            self._odom = LatestPoll(lambda: rd_odom.take(N=1), valid, odom_xy_yaw)
 
     def snapshot(self):
+        """→ (lowstate, 受けた時刻, odom (x, y, yaw), 受けた時刻)。呼ぶたびに最新の 1 件を取りに行く"""
         with self._lock:
-            return self.state, self.state_t, self.odom, self.odom_t
+            state, state_t = self._state.poll()
+            odom, odom_t = self._odom.poll() if self._odom is not None else (None, None)
+            return state, state_t, odom, odom_t
 
     def write(self, state, q: np.ndarray, kp: np.ndarray, kd: np.ndarray) -> None:
         if not self.send_enabled:

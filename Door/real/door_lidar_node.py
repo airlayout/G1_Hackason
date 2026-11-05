@@ -9,6 +9,9 @@ PC2 で: python3 -u door_lidar_node.py --thickness 0.04 [--lever-right]
 
 Mac で記録を流す（試し・L2）: Navigation/.venv/bin/python Door/real/door_lidar_node.py --replay <ライダーのセッション> [--ref-at 0]
   記録の受け取った時刻の間隔のまま流し、同じ電文を UDP で送り、--out に全部の推定を npz で残す
+  方策の回を再現する（11-03）: --ref-from <実機の lidar_node_*.npz> で、実機が REF を受けた時刻（ref_wall）に REF を出す
+  （記録の時刻と同じ PC2 の時計なので、実機と同じ回から扉と地図を作り直す）。--rec-clock で推定の時刻も PC2 の時計で付け、
+  実機の推定と時刻で突き合わせる（実機は地図を作る約 5 秒の間の回を捨て、再生は捨てないので、回の順番ではそろわない）
 
 止め方: Ctrl+C か SIGTERM（制御は 0.5 s 届かなければ立ったまま止まる）
 """
@@ -23,7 +26,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Iterator, List, Optional, Tuple
+from typing import Iterable, Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -64,8 +67,10 @@ class Node:
         self.ref_t: Optional[float] = None
         self.seq = 0
         self.rows: List[Tuple[float, ...]] = []
+        self.ref_log: List[float] = []  # REF を受けた時刻。生の点群の記録と同じ時計（実機は PC2 の time.time()・再生は記録の時刻）
 
-    def request_ref(self) -> None:
+    def request_ref(self, t: Optional[float] = None) -> None:
+        self.ref_log.append(time.time() if t is None else t)
         print(f"[lidar_node] REF を受けた: {REF_SKIP_S:.0f} 秒待ってから 2.5 秒で扉と地図を作る（扉の正面で止まって・扉は閉じて）", flush=True)
         self.tracker = None
         self.ref_t = None  # 次の回の時刻から数える（記録を早送りで流しても同じ秒数を捨てる）
@@ -112,18 +117,26 @@ class Node:
         self.tx.sendto(msg.pack(m), self.addr)
         self.seq += 1
         cost = time.perf_counter() - t0
+        jump = tracker.last_jump
         self.rows.append((stamp, e.lidar.x, e.lidar.y, e.lidar.yaw, e.angle_deg, float(e.accepted), float(e.lost),
-                          e.match.matched, e.match.rms_m, e.tilt_deg, cost))
+                          e.match.matched, e.match.rms_m, e.tilt_deg, cost, e.match.min_eig, math.hypot(jump.x, jump.y),
+                          math.degrees(jump.yaw), float(tracker.last_why), e.match.pose.x, e.match.pose.y, e.match.pose.yaw))
         if e.lost and self.seq % 10 == 0:
             print("[lidar_node] ⚠️ 見失った（1 秒続けて重ね直せない）", flush=True)
 
     def save(self, path: Path) -> None:
-        if self.rows:
-            cols = ("stamp", "x", "y", "yaw", "angle_deg", "accepted", "lost", "matched", "rms", "tilt_deg", "cost_s")
-            r = np.array(self.rows, dtype=float)
-            np.savez_compressed(path, **{c: r[:, i] for i, c in enumerate(cols)})
-            print(f"[lidar_node] 記録を書いた: {path}（{len(r)} 回・計算 中央 {np.median(r[:, -1]) * 1000:.1f} ms・"
-                  f"99% {np.percentile(r[:, -1], 99) * 1000:.1f} ms）", flush=True)
+        if not self.rows and not self.ref_log:
+            return
+        # 11-03: min_eig・予測からの跳び・弾いた理由（lidar_door_est.WHY_*）・重ね直しの結果の姿勢（弾いた回も）を足した。
+        #        REF を受けた時刻 ref_wall は行と長さが違う別の欄（扉を測れず行が 0 でも残す）
+        cols = ("stamp", "x", "y", "yaw", "angle_deg", "accepted", "lost", "matched", "rms", "tilt_deg", "cost_s",
+                "min_eig", "jump_pos_m", "jump_yaw_deg", "why", "match_x", "match_y", "match_yaw")
+        r = np.array(self.rows, dtype=float).reshape(-1, len(cols))
+        fields = {c: r[:, i] for i, c in enumerate(cols)} if len(r) else {}
+        np.savez_compressed(path, ref_wall=np.array(self.ref_log, dtype=float), **fields)
+        cost = (f"計算 中央 {np.median(r[:, cols.index('cost_s')]) * 1000:.1f} ms・99% {np.percentile(r[:, cols.index('cost_s')], 99) * 1000:.1f} ms"
+                if len(r) else "推定は無し")
+        print(f"[lidar_node] 記録を書いた: {path}（{len(r)} 回・REF {len(self.ref_log)} 回・{cost}）", flush=True)
 
 
 def listen_ref(node: Node, port: int, stop: threading.Event) -> None:
@@ -140,9 +153,11 @@ def listen_ref(node: Node, port: int, stop: threading.Event) -> None:
             node.request_ref()
 
 
-def replay_scans(session: Path, speed: float) -> Iterator[Tuple[float, np.ndarray]]:
-    """記録の回を、受け取った時刻の間隔の speed 倍の速さで返す。電文の時刻は記録の間隔のまま（早送りでも歩く速さが変わらない）。
-    ⚠️ speed ≠ 1 だと電文の時刻が今からずれるので、door_run_real.py（電文の年齢を見る）と組むときは speed 1 で流す"""
+def replay_scans(session: Path, speed: float, rec_clock: bool = False) -> Iterator[Tuple[float, np.ndarray, float]]:
+    """記録の回を、受け取った時刻の間隔の speed 倍の速さで (電文の時刻, 点, 記録の受け取った時刻) で返す。
+    電文の時刻は記録の間隔のまま（早送りでも歩く速さが変わらない）。記録の時刻は PC2 の時計のまま（REF の時刻と比べる）。
+    rec_clock なら電文の時刻も記録の時計で付ける（実機の lidar_node_*.npz と同じ「受け取った時刻 − SCAN_DELAY_S」。分析用）。
+    ⚠️ speed ≠ 1 や rec_clock だと電文の時刻が今からずれるので、door_run_real.py（電文の年齢を見る）と組むときは使わない"""
     from crop_lidar_bag import iter_lidar, scan_xyz  # Mac だけ（g1_mapping を使う）
 
     t_rec0 = t_wall0 = None
@@ -153,7 +168,35 @@ def replay_scans(session: Path, speed: float) -> Iterator[Tuple[float, np.ndarra
         wait = t_wall0 + (t_rec - t_rec0) / speed - time.time()
         if wait > 0:
             time.sleep(wait)
-        yield t_wall0 + (t_rec - t_rec0) - SCAN_DELAY_S, scan_xyz(payload)
+        stamp = t_rec if rec_clock else t_wall0 + (t_rec - t_rec0)
+        yield stamp - SCAN_DELAY_S, scan_xyz(payload), t_rec
+
+
+def load_ref_wall(path: Path) -> List[float]:
+    """実機の推定器の記録（lidar_node_*.npz）から、REF を受けた時刻（PC2 の時計）を昇順で"""
+    d = np.load(path)
+    if "ref_wall" not in d:
+        raise SystemExit(f"[lidar_node] {path} に ref_wall（REF を受けた時刻）が無い。11-03 より前の記録は --ref-at で秒を渡す")
+    return sorted(float(t) for t in d["ref_wall"])
+
+
+def run_replay(node: Node, items: Iterable[Tuple[float, np.ndarray, float]], refs: Sequence[float], relative: bool,
+               stop: threading.Event) -> None:
+    """記録の回を順に node へ流す。REF は、記録の時刻が refs を越えた最初の回の前に出す（実機で REF の後に最初に処理する回と同じ）。
+    relative なら refs は記録の始めからの秒、そうでなければ PC2 の時計の時刻。記録より前の REF は最初の回の前に出す"""
+    want = sorted(refs)
+    k = 0
+    t_rec0: Optional[float] = None
+    for stamp, xyz, t_rec in items:
+        if stop.is_set():
+            return
+        t_rec0 = t_rec if t_rec0 is None else t_rec0
+        base = t_rec0 if relative else 0.0
+        while k < len(want) and t_rec >= base + want[k]:
+            print(f"[lidar_node] 再生: 記録の始めから {t_rec - t_rec0:.2f} s で REF を出す", flush=True)
+            node.request_ref(t_rec)  # ref_wall は記録の時計（PC2）で残す。電文の時刻（今の時計）とは別
+            k += 1
+        node.on_scan(stamp, xyz)
 
 
 def main() -> int:
@@ -164,8 +207,11 @@ def main() -> int:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=msg.PORT, help="推定を送る先（door_run_real.py）。REF は port+1 で受ける")
     ap.add_argument("--replay", type=Path, help="Mac で記録を流す（ライダーのセッション）")
-    ap.add_argument("--ref-at", type=float, default=0.0, help="--replay で REF を出す記録の始めからの秒")
+    ap.add_argument("--ref-at", type=float, nargs="+", default=[0.0], help="--replay で REF を出す記録の始めからの秒（いくつでも）")
+    ap.add_argument("--ref-from", type=Path, help="--replay で、実機の lidar_node_*.npz の ref_wall の時刻に REF を出す（--ref-at より優先）")
     ap.add_argument("--speed", type=float, default=1.0, help="--replay の速さ")
+    ap.add_argument("--rec-clock", action="store_true",
+                    help="--replay の電文の時刻を記録の時計（PC2）で付ける。実機の lidar_node_*.npz と時刻で突き合わせる分析用（door_run_real.py とは組めない）")
     ap.add_argument("--out", type=Path, default=Path("logs") / f"lidar_node_{time.strftime('%Y%m%d_%H%M%S')}.npz")
     a = ap.parse_args()
 
@@ -176,15 +222,11 @@ def main() -> int:
     a.out.parent.mkdir(parents=True, exist_ok=True)
     try:
         if a.replay:
-            t_start, refd = None, False
-            for stamp, xyz in replay_scans(a.replay, a.speed):
-                if stop.is_set():
-                    break
-                t_start = stamp if t_start is None else t_start
-                if node.collect is None and node.tracker is None and stamp - t_start >= a.ref_at and not refd:
-                    refd = True
-                    node.request_ref()
-                node.on_scan(stamp, xyz)
+            items = replay_scans(a.replay, a.speed, a.rec_clock)
+            if a.ref_from:
+                run_replay(node, items, load_ref_wall(a.ref_from), relative=False, stop=stop)
+            else:
+                run_replay(node, items, a.ref_at, relative=True, stop=stop)
             return 0
         threading.Thread(target=listen_ref, args=(node, a.port + 1, stop), daemon=True).start()
         from unitree_sdk2py.core.channel import ChannelFactoryInitialize, ChannelSubscriber

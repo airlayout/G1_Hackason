@@ -108,6 +108,7 @@ class CoreState:
     cmd_prev: np.ndarray  # [7] HOMIE への指令 [vx, vy, wz, 高さ, roll, pitch, yaw]（実の単位）
     homie_hist: np.ndarray  # [5, 86] 古い → 新しい
     homie_a_prev: np.ndarray  # [15]
+    policy_state: Optional[tuple] = None  # 差し替えた生徒（policy）が持ち越す状態（11-05、画像の生徒の追う段の h, c）
 
 
 @dataclass(frozen=True)
@@ -218,6 +219,7 @@ def reset_actor(p: Params, s: CoreState) -> CoreState:
         a_real_prev=np.zeros(NUM_ACT),
         whole_prev=whole,
         cmd_prev=default_cmd(p),
+        policy_state=None,
     )
 
 
@@ -262,8 +264,13 @@ def build_actor_obs(p: Params, s: CoreState, inp: Inputs) -> np.ndarray:
 def actor_forward(p: Params, obs: np.ndarray, h: np.ndarray, cell: np.ndarray):
     """正規化 → LSTM 2 層（PyTorch の門の順 i, f, g, o）→ MLP。出力は平均の行動（鏡写しの側）"""
     x = np.clip((obs - p.rms_mean) / np.sqrt(p.rms_var + p.c["rms_eps"]), -p.c["rms_clip"], p.c["rms_clip"])
+    return lstm_mlp(p.lstm, p.actor_mlp, x, h, cell)
+
+
+def lstm_mlp(lstm, mlp: Mlp, x: np.ndarray, h: np.ndarray, cell: np.ndarray):
+    """正規化した入力 → LSTM（層ごとの (W_ih, W_hh, b_ih, b_hh)）→ MLP。返り値は (出力, h, cell)"""
     h_new, c_new = [], []
-    for layer, (w_ih, w_hh, b_ih, b_hh) in enumerate(p.lstm):
+    for layer, (w_ih, w_hh, b_ih, b_hh) in enumerate(lstm):
         g = w_ih @ x + b_ih + w_hh @ h[layer] + b_hh
         i, f, gg, o = np.split(g, 4)
         c_l = _sigmoid(f) * cell[layer] + _sigmoid(i) * np.tanh(gg)
@@ -271,7 +278,7 @@ def actor_forward(p: Params, obs: np.ndarray, h: np.ndarray, cell: np.ndarray):
         h_new.append(h_l)
         c_new.append(c_l)
         x = h_l
-    return p.actor_mlp(x), np.stack(h_new), np.stack(c_new)
+    return mlp(x), np.stack(h_new), np.stack(c_new)
 
 
 def homie_one_step(p: Params, s: CoreState, inp: Inputs) -> np.ndarray:
@@ -327,16 +334,27 @@ def guard_arm_D(p: Params, D: np.ndarray, q: np.ndarray, arm_guard) -> np.ndarra
 
 
 def step(p: Params, s: CoreState, inp: Inputs, mode: str = "door", zero_stand_cmd: bool = True,
-         arm_guard: Optional[Tuple[float, float]] = ARM_GUARD):
+         arm_guard: Optional[Tuple[float, float]] = ARM_GUARD, policy=None):
     """1 制御ステップ。mode: "door"＝生徒と HOMIE／"hold"＝生徒を止める（指令 0・腕は今の目標のまま）
 
     arm_guard: (delta, margin)。腕の D を積んだ直後に今の角度 ±delta・可動域の端から margin 内側へ収める（B）。
                None は切らない（10-16 の正解の記録と比べる用）
+    policy: 生徒の計算を差し替える（11-05、画像の生徒 door_vision_core.VisionActor）。prepare(obs, 持ち越す状態) で扉の値を
+            観測に差し込み（→ (観測, 次の状態)）、forward(obs, h, cell) で行動を出す。持ち越す状態は "door" の周期だけ進める
+            （"hold" は LSTM と同じく止める）。None なら npz の生徒（扉の値は inp から）
     返り値: (次の状態, StepOut)
     """
     obs = build_actor_obs(p, s, inp)
+    policy_state = s.policy_state
+    if policy is not None:
+        obs, next_policy_state = policy.prepare(obs, s.policy_state)
     if mode == "door":
-        a_pol, h, cell = actor_forward(p, obs, s.h, s.cell)
+        if policy is not None:
+            policy_state = next_policy_state
+        if policy is None:
+            a_pol, h, cell = actor_forward(p, obs, s.h, s.cell)
+        else:
+            a_pol, h, cell = policy.forward(obs, s.h, s.cell)
         a_real = p.act_mirror @ a_pol if p.mirror else a_pol
         D = np.clip(s.D + p.c["delta_action_scale"] * a_real, -p.c["delta_action_clip"], p.c["delta_action_clip"])
         arm_guard = resolve_arm_guard(p, arm_guard)
@@ -367,6 +385,7 @@ def step(p: Params, s: CoreState, inp: Inputs, mode: str = "door", zero_stand_cm
         cmd_prev=cmd,
         homie_hist=np.vstack([s.homie_hist[1:], one[None, :]]),
         homie_a_prev=homie_a,
+        policy_state=policy_state,
     )
     return new, StepOut(q_target, obs, a_pol, a_real, homie_obs, homie_a, walk, cmd)
 

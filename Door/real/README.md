@@ -14,6 +14,7 @@
 | `target_guard.py` | 10-26: 腕の積み上げを今の角度 ±δ に収める（直し B）・送る目標を切る・立つ HOMIE の指令を 0（直し 8）。学習（VIRAL6 パッチ 0069）と 1 字も違わない同じファイル |
 | `door_foot_load.py`・`leg_model_g1_29dof_rev_1_0.npz` | 10-26: 脚の関節の角度・トルクと IMU から左右の足の鉛直の力を逆算する（numpy だけ）。モデルは公式の g1_29dof_rev_1_0（`export_leg_model.py` が Mac の MuJoCo で書き出す） |
 | `door_run_stock.py`・`door_stock_io.py` | 11-02: **純正の脚の口**。純正の歩行のまま腕だけ `rt/arm_sdk` で借り、歩きは生徒の指令を `SetVelocity` で渡す（下の「純正の脚で動かす」） |
+| `door_vision_*.py`・`export_vision_student.py`・`pc2/run_vision.sh` | 11-05: **頭のカラーの画像だけの生徒**。`door_run_stock.py --door-source vision` で扉の値を画像から当てる。カメラは別のプロセス（純正の VideoClient → 画像の網 → UDP）。書き出し・電源を入れてからの手順は `docs/plan/2026-11-05-g1-door-vision-rl.md` の 9.3・9.4 |
 | `analyze_stock.py` | 11-02: `door_run_stock.py` の記録の解析（段・扉の角度・指令に対して進んだ割合・RPC・腕の追従・観測が学習の範囲か・押す試し） |
 | `tests/` | 機体なしの試験（10-26 に 103 件。扉の値・リモコン・段の進み方・B で立ったまま・L2+B で脱力・Ctrl+C の 1 回目と 2 回目・ssh の切断・ボタンの押しっぱなし・lowstate の途切れ・NaN。重みと正解の記録は環境変数 `DOOR_POLICY`・`DOOR_GOLDEN` で渡す） |
 
@@ -158,6 +159,16 @@ cd ~/door_real && ./door_start.sh                # 扉の試し（run_first.sh�
 lowstate の途切れ・周期の遅れ・SetVelocity の失敗 5 回・ライダーの見張り）。脱力はリモコンの L2+B（純正のもの）・Ctrl+C の 2 回目・傾き 30° だけ。
 プログラムが落ちても、純正はその時の形で腕を保ち（10-27 に確認）、速度は 0.5 秒で切れる。
 
+**SetVelocity は別のプロセスで送る（11-04〜、`LOCO=relay` が既定）**: `run_stock.sh` は `door_run_stock.py --loco relay` で起こし、
+`loco_relay.py` が子のプロセスで LocoClient を持って SetVelocity を 20 回/秒で送る。主の側とは UDP（127.0.0.1:47341・47342）で、
+主は変わった時の指令（歩く・止まる・脱力）に加え、毎周期「今の望み」を丸ごと送る（1 発落ちても次の周期で届く）。
+子は状態（送った数・続けて失敗した数・番号・応答の時間・FSM・子の pid）を 50 回/秒で返す。
+11-04 の実機で、同じプロセスからは返事が 1/4〜1/2 落ちた（3104）。同じ失敗を子のプロセスへ移して直した例がある（4paradigm/phanthymotus-driver 24274c5）。
+- 子は、主の電文が 0.3 秒来なければ速度 0 を送り、親が居なくなれば止めてから終わる。Ctrl+C と ssh の切断では終わらない（主が止める指令・脱力を送るのに要る）
+- 主は、腕を構える〜方策の間に子の状態が 0.5 秒来なければ立ったまま止まる（子が居ないまま `d` で歩かせない）。記録の列 `vel_status_age` が状態の古さ
+- 子が居ないときに脱力が要れば（傾き 30° 等）、主が自分で LocoClient を作って Damp を 1 回送る。pid の違う状態（居残った前の子）は受け付けない
+- 起動の時の FSM は子が読む（主のプロセスは LocoClient を持たない）。前の作りに戻すのは `LOCO=inproc`
+
 ```bash
 # Mac: 配る（重みは logs_real/policy/ に置いてある。リポジトリには入れない）
 bash Door/real/deploy_to_pc2.sh Door/real/logs_real/policy/door_policy_f3sc_r4_it65350.npz
@@ -172,3 +183,18 @@ DOOR=0.94,2.05,0.99,0.064 SECS=5 CENTER="0.047 -0.016" ./door_start.sh run_stock
 # Mac: 記録を読む
 Navigation/.venv/bin/python Door/real/analyze_stock.py <door_stock_*.npz> --policy Door/real/logs_real/policy/door_policy_f3sc_r4_it65350.npz
 ```
+
+**生の点群も録る（11-03〜）**: `door_start.sh run_stock.sh` は、方策のプロセスが動いている間ずっと `pc2/rec_follow.sh` で
+ライダー＋頭の IMU（`~/mapping_runs/<日時>_run_stock_<日時>_li`）と `/dog_odom`（`…_odom`）を別々のプロセスで録る。
+方策が終わると書き切って止まる（上限 `REC_MAX` 既定 900 秒・約 5 GB）。PC2 の空きが `REC_MIN_FREE_GB`（既定 8 GB）未満なら起こさない。
+`REC=0` で録らずに起こす。録っている様子は `logs/rec_latest.log`。推定器は REF を受けた時刻を `lidar_node_*.npz` の `ref_wall` に残す。
+
+```bash
+# Mac: 写す（1 回 0.5〜2 GB。Mac の空きを先に確かめる）
+rsync -a -e "ssh -i $G1_KEY" unitree@192.168.0.82:mapping_runs/<日時>_run_stock_<日時>_li Door/real/logs_real/<日>/
+# Mac: 実機と同じ時刻に REF を出して再生し、推定を実機の推定と時刻で突き合わせる（--rec-clock）
+Navigation/.venv/bin/python Door/real/door_lidar_node.py --thickness <板の厚み> --replay <…_li> \
+  --ref-from <実機の lidar_node_*.npz> --rec-clock --speed 50 --out <再生の npz>
+```
+11-03 の検証: 旋回の記録 ① を再生すると、実機の推定との差は中央 0.5 cm・最大 3.7 cm（向き 0.25° 以内）。
+録りながら READY を保っても、制御の周期は 99% 23.7 ms（録らないとき 22.0 ms）、推定器は 10 回/秒のまま。

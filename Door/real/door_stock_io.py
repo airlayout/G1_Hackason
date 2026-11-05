@@ -21,6 +21,7 @@ import door_core as dc
 
 ARM_IDX = tuple(range(dc.NUM_HOMIE, dc.NUM_DOF))  # SDK 15〜28（左腕 7・右腕 7）
 WEIGHT_IDX = 29  # rt/arm_sdk の借りる重みの置き場所（motor_cmd[29].q）
+WAIST_IDX = (12, 13, 14)  # 腰 yaw・roll・pitch。arm_sdk の重みは腰も純正から取り上げる（11-03 実機）
 WALKING_FSM_IDS = (500, 501)  # 歩ける FSM（loco_driver.py と同じ。802 の立位ロックでは指令が通っても足が動かない）
 VEL_RATE_HZ = 20.0
 VEL_DURATION_S = 0.5  # 1 回の SetVelocity が効く時間
@@ -80,6 +81,15 @@ class ArmSdkWriter:
         self.pub = ChannelPublisher("rt/arm_sdk", LowCmd_)
         self.pub.Init()
 
+    def hold_waist(self, q_waist: np.ndarray, kp_waist: np.ndarray, kd_waist: np.ndarray) -> None:
+        """腰 3 関節を q_waist で保つ。以後の write に毎回入る。
+        ⚠️ 11-03 実機: arm_sdk の重みは腰も純正から取り上げる。腰を書かないと重み 1 で腰のトルクが 0 になり、胴が振られて純正が足踏みを続けた"""
+        for k, j in enumerate(WAIST_IDX):
+            m = self.msg.motor_cmd[j]
+            m.mode = 1
+            m.q, m.dq, m.tau = float(q_waist[k]), 0.0, 0.0
+            m.kp, m.kd = float(kp_waist[k]), float(kd_waist[k])
+
     def write(self, q_arm: np.ndarray, kp_arm: np.ndarray, kd_arm: np.ndarray, weight: float) -> None:
         for k, j in enumerate(ARM_IDX):  # 腕 14 関節だけ。他は既定値のまま（無指令）
             m = self.msg.motor_cmd[j]
@@ -116,6 +126,7 @@ class VelStatus:
     want: Tuple[bool, float, float, float]  # 今送っている (歩くか, vx, vy, wz)
     damped: bool
     last_error: str
+    age_s: float = 0.0  # この状態の古さ [s]。同じプロセスの送り手は常に 0、中継（loco_relay.LocoRelay）は最後に届いてからの秒
 
 
 class VelocitySender:

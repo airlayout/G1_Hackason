@@ -107,35 +107,19 @@ def gains_by_substring(names: list, table: dict) -> np.ndarray:
     return out
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", required=True)
-    ap.add_argument("--config", required=True)
-    ap.add_argument("--walk", required=True)
-    ap.add_argument("--stand", required=True)
-    ap.add_argument("--viral", required=True)
-    ap.add_argument("--out", required=True)
-    a = ap.parse_args()
-
-    cfg = yaml.safe_load(open(a.config, encoding="utf-8"))
-    obs_cfg, robot, envc = cfg["obs"], cfg["robot"], cfg["env"]["config"]
-    algo = cfg["algo"]["config"]
-
-    # --- 観測の並び（名前の辞書順。legged_robot_base.py:1223） ---
-    terms = sorted(obs_cfg["obs_dict"]["actor_obs"])
+def obs_layout(obs_cfg: dict, obs_key: str = "actor_obs"):
+    """観測の並び（名前の辞書順。legged_robot_base.py:1223）→ (layout, 幅)"""
     layout, start = {}, 0
-    for t in terms:
+    for t in sorted(obs_cfg["obs_dict"][obs_key]):
         layout[t] = (start, start + TERM_DIMS[t])
         start += TERM_DIMS[t]
-    obs_dim = start
+    return layout, start
 
-    ck = load_torch(a.ckpt)
-    P = {k: v.double() for k, v in ck["policy_state_dict"].items()}
-    if P["memory.rnn.weight_ih_l0"].shape[1] != obs_dim:
-        raise ValueError(f"観測の幅 {obs_dim} が ckpt の {P['memory.rnn.weight_ih_l0'].shape[1]} と合わない")
 
-    # --- 鏡写し（DoorMan の door_mirror.py に通す） ---
-    dm = import_door_mirror(Path(a.viral))
+def mirror_tables(cfg: dict, viral: Path, layout: dict, obs_dim: int):
+    """鏡写し（DoorMan の door_mirror.py に通す）→ (観測の M, b, 行動の A, DoorMirror)"""
+    robot = cfg["robot"]
+    dm = import_door_mirror(viral)
     mirror = dm.DoorMirror(robot["dof_names"], robot["left_arm_dof_names"], robot["right_arm_dof_names"])
     M = np.zeros((obs_dim, obs_dim))
     b = np.zeros(obs_dim)
@@ -154,8 +138,13 @@ def main() -> int:
         back = M @ (M @ x + b) + b
     if not np.isfinite(back).all() or np.abs(back - x).max() > 1e-9 or np.abs(A @ A - np.eye(door_core.NUM_ACT)).max() > 1e-12:
         raise ValueError("鏡写しを 2 回掛けても元に戻らない")
+    return M, b, A, mirror
 
-    # --- 機体の表 ---
+
+def robot_tables(cfg: dict):
+    """機体の表と定数 → (arrays, consts)。arrays は q_default・kp・kd・可動域・力の上限（と学習の腕の積み上げの δ）"""
+    obs_cfg, robot, envc = cfg["obs"], cfg["robot"], cfg["env"]["config"]
+    algo = cfg["algo"]["config"]
     names = list(robot["dof_names"])
     q_default = np.array([float(robot["init_state"]["default_joint_angles"][n]) for n in names])
     kp = gains_by_substring(names, robot["control"]["stiffness"])
@@ -191,11 +180,6 @@ def main() -> int:
         raise ValueError(f"指令の頭打ちが前後・横・旋回で違う: {thr}（door_core は 1 つの値しか持たない）")
 
     arrays = {
-        "obs_mirror_M": M,
-        "obs_mirror_b": b,
-        "act_mirror": A,
-        "rms_mean": P["running_mean_std.running_mean"].numpy(),
-        "rms_var": P["running_mean_std.running_var"].numpy(),
         "q_default": q_default,
         "kp": kp,
         "kd": kd,
@@ -205,6 +189,15 @@ def main() -> int:
     }
     if guard_delta is not None:
         arrays["arm_guard_delta"] = guard_delta  # door_core が既定の δ の代わりに使う
+    return arrays, consts
+
+
+def policy_arrays(P: dict) -> dict:
+    """状態入力の生徒（f3sc の形）の正規化・LSTM・MLP"""
+    arrays = {
+        "rms_mean": P["running_mean_std.running_mean"].numpy(),
+        "rms_var": P["running_mean_std.running_var"].numpy(),
+    }
     for i in range(door_core.LSTM_LAYERS):
         for k in ("w_ih", "w_hh", "b_ih", "b_hh"):
             src = f"memory.rnn.{k.replace('w_', 'weight_').replace('b_', 'bias_')}_l{i}"
@@ -212,8 +205,13 @@ def main() -> int:
     for j, idx in enumerate((0, 2, 4, 6)):
         arrays[f"actor{j}_w"] = P[f"actor_module.module.{idx}.weight"].numpy()
         arrays[f"actor{j}_b"] = P[f"actor_module.module.{idx}.bias"].numpy()
-    homie_sd = {}
-    for name, path in (("walk", a.walk), ("stand", a.stand)):
+    return arrays
+
+
+def homie_arrays(walk: str, stand: str):
+    """HOMIE の歩く・立つの重み → (arrays, 状態の辞書)"""
+    arrays, homie_sd = {}, {}
+    for name, path in (("walk", walk), ("stand", stand)):
         sd = {k: v.double() for k, v in load_torch(path)["model_state_dict"].items()}
         homie_sd[name] = sd
         for j, idx in enumerate((0, 2, 4)):
@@ -222,28 +220,20 @@ def main() -> int:
         for j, idx in enumerate((0, 2, 4, 6)):
             arrays[f"{name}_act{j}_w"] = sd[f"actor.{idx}.weight"].numpy()
             arrays[f"{name}_act{j}_b"] = sd[f"actor.{idx}.bias"].numpy()
+    return arrays, homie_sd
 
-    meta = {
-        "layout": layout,
-        "obs_dim": obs_dim,
-        "mirror_left_doors": bool(envc.get("mirror_left_doors", False)),
-        "constants": consts,
-        "dof_names": names,
-        "source": {
-            "ckpt": a.ckpt,
-            "ckpt_sha256": sha256(a.ckpt),
-            "walk_sha256": sha256(a.walk),
-            "stand_sha256": sha256(a.stand),
-            "global_step": int(getattr(ck.get("state"), "__dict__", {}).get("_state", {}).get("global_step", -1))
-            if isinstance(getattr(ck.get("state"), "__dict__", {}).get("_state", None), dict)
-            else -1,
-        },
-    }
-    out = Path(a.out)
-    np.savez(out, meta_json=np.array(json.dumps(meta, ensure_ascii=False)), **arrays)
 
-    # --- torch と numpy の突き合わせ ---
-    p = door_core.load_params(str(out))
+def ckpt_global_step(ck: dict) -> int:
+    """学習の反復の数。trl のクラスが読めればその属性、読めなければ（Mac）代用のクラスに残った状態から。無ければ −1"""
+    st = ck.get("state")
+    if hasattr(st, "global_step"):
+        return int(st.global_step)
+    state = getattr(st, "__dict__", {}).get("_state", None)
+    return int(state.get("global_step", -1)) if isinstance(state, dict) else -1
+
+
+def check_actor(p, P: dict, obs_dim: int) -> float:
+    """torch の LSTM・MLP と door_core の計算の差の最大"""
     lstm = torch.nn.LSTM(obs_dim, door_core.LSTM_HIDDEN, num_layers=door_core.LSTM_LAYERS).double()
     lstm.load_state_dict({k[len("memory.rnn."):]: v for k, v in P.items() if k.startswith("memory.rnn.")})
     mlp = torch.nn.Sequential(
@@ -259,12 +249,18 @@ def main() -> int:
     mean, var = P["running_mean_std.running_mean"], P["running_mean_std.running_var"]
     with torch.no_grad():
         for _ in range(60):
-            o = rng.normal(size=obs_dim) * np.sqrt(arrays["rms_var"]) + arrays["rms_mean"]
+            o = rng.normal(size=obs_dim) * np.sqrt(var.numpy()) + mean.numpy()
             y_np, h, c = door_core.actor_forward(p, o, h, c)
             xt = torch.clamp((torch.from_numpy(o) - mean) / torch.sqrt(var + 1e-5), -5, 5)
             out_t, th = lstm(xt.view(1, 1, -1), th)
             y_t = mlp(out_t.view(-1)).numpy()
             worst = max(worst, float(np.abs(y_np - y_t).max()))
+    return worst
+
+
+def check_homie(p, homie_sd: dict) -> float:
+    """torch の HOMIE と door_core の計算の差の最大"""
+    rng = np.random.default_rng(1)
     homie_worst = 0.0
     for name in ("walk", "stand"):
         sd = homie_sd[name]
@@ -280,6 +276,51 @@ def main() -> int:
                 z = torch.nn.functional.normalize(parts[3:], dim=-1, p=2)
                 y_t = act(torch.cat([torch.from_numpy(o[-86:]), parts[:3], z])).numpy()
                 homie_worst = max(homie_worst, float(np.abs(net(o) - y_t).max()))
+    return homie_worst
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ckpt", required=True)
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--walk", required=True)
+    ap.add_argument("--stand", required=True)
+    ap.add_argument("--viral", required=True)
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args()
+
+    cfg = yaml.safe_load(open(a.config, encoding="utf-8"))
+    layout, obs_dim = obs_layout(cfg["obs"])
+    ck = load_torch(a.ckpt)
+    P = {k: v.double() for k, v in ck["policy_state_dict"].items()}
+    if P["memory.rnn.weight_ih_l0"].shape[1] != obs_dim:
+        raise ValueError(f"観測の幅 {obs_dim} が ckpt の {P['memory.rnn.weight_ih_l0'].shape[1]} と合わない")
+    M, b, A, _ = mirror_tables(cfg, Path(a.viral), layout, obs_dim)
+    robot_arr, consts = robot_tables(cfg)
+    homie_arr, homie_sd = homie_arrays(a.walk, a.stand)
+    arrays = {"obs_mirror_M": M, "obs_mirror_b": b, "act_mirror": A, **policy_arrays(P), **robot_arr, **homie_arr}
+
+    meta = {
+        "layout": layout,
+        "obs_dim": obs_dim,
+        "mirror_left_doors": bool(cfg["env"]["config"].get("mirror_left_doors", False)),
+        "constants": consts,
+        "dof_names": list(cfg["robot"]["dof_names"]),
+        "source": {
+            "ckpt": a.ckpt,
+            "ckpt_sha256": sha256(a.ckpt),
+            "walk_sha256": sha256(a.walk),
+            "stand_sha256": sha256(a.stand),
+            "global_step": ckpt_global_step(ck),
+        },
+    }
+    out = Path(a.out)
+    np.savez(out, meta_json=np.array(json.dumps(meta, ensure_ascii=False)), **arrays)
+
+    # --- torch と numpy の突き合わせ ---
+    p = door_core.load_params(str(out))
+    worst = check_actor(p, P, obs_dim)
+    homie_worst = check_homie(p, homie_sd)
     print(f"[export] 観測 {obs_dim}（辞書順）: " + ", ".join(f"{k}[{s}:{e}]" for k, (s, e) in layout.items()))
     print(f"[export] torch と numpy の差の最大: 生徒 {worst:.2e}・HOMIE {homie_worst:.2e}")
     if worst > 1e-8 or homie_worst > 1e-8:

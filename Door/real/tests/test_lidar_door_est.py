@@ -124,6 +124,34 @@ def test_jump_is_rejected_and_prediction_kept(world, tracker_scans):
     assert far.x - e.lidar.x > 0.25
 
 
+def test_stock_gait_head_speed_is_accepted(world, tracker_scans):
+    # Arrange: 11-04 の純正の歩きでは、頭の揺れでライダーが 0.60〜0.73 m/s で動いて見えた（0.6 m/s の関門で弾いて見失った）
+    tr = _tracker(tracker_scans)
+    rng = np.random.default_rng(4)
+    speed = 0.75
+
+    # Act: 前へ 0.75 m/s で 1 秒
+    acc = [tr.step(0.1 * k, S.lidar_scan(world, START[0] + speed * 0.1 * k, START[1], START[2],
+                                         pitch_deg=5.0, noise=0.003, rng=rng)).accepted for k in range(1, 11)]
+
+    # Assert
+    assert all(acc)
+
+
+def test_speed_gate_still_rejects_implausible_jump(world, tracker_scans):
+    # Arrange: その場で 1 回受け入れる
+    tr = _tracker(tracker_scans)
+    tr.step(0.1, S.lidar_scan(world, *START, pitch_deg=5.0))
+
+    # Act: 0.1 s 後に 12 cm 先（1.2 m/s）。初期値も同じ所に与えて、跳びの関門ではなく速さの関門だけを見る
+    moved = L.Pose2D(START[0] + 0.12, START[1], START[2])
+    e = tr.step(0.2, S.lidar_scan(world, moved.x, moved.y, moved.yaw, pitch_deg=5.0), init=moved)
+
+    # Assert
+    assert not e.accepted
+    assert tr.last_why & L.WHY_SPEED
+
+
 def test_lost_after_one_second_of_rejections(world, tracker_scans):
     # Arrange
     tr = _tracker(tracker_scans)

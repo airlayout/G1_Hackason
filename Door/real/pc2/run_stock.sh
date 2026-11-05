@@ -12,11 +12,19 @@
 #   POLICY    重みの npz（既定 door_policy_f3sc_r4_it65350.npz＝f3sc の 4 回目・線 20 rad/s で 512 回 94.3%）
 #   MODE      track（毎回当て直す・既定）／still
 #   MAX_VX    前への上限 [m/s]（既定 0.5＝学習の頭打ち）
+#   ARM_TEMP  腕のモーターがこの温度 [°C] 以上なら立ったまま止まる（既定 75。11-03 はデータを取るため 82）
+#   ODOM      relay（既定。rt/dog_odom を別のプロセスで受ける。11-03: 同じプロセスだと SetVelocity が 76 ms に延びた）／dog
+#   ARM_TEMP_HOLD  腕の温度が ARM_TEMP をこれだけ [s] 続けて越えたら止める（既定 1.0。11-04: 読みは腕を押し当てた山で跳ねる。札は待たない）
+#   RPC_TIMEOUT  純正の RPC の返事を待つ上限 [s]（既定 1.0）。11-04: 1.0 だと返事が 1 回落ちるたびに次の SetVelocity を 1 秒送れず、
+#             効き目 0.5 秒が切れて純正が減速した（手順 7.5 で 0.25 を測る）。起動の時の FSM の読み取りにも効く
+#   LOCO      relay（既定。SetVelocity を別のプロセス loco_relay.py で送る）／inproc（11-04 までの作り）。11-04: 同じプロセスでは
+#             返事が 1/4〜1/2 落ちた（3104）。同じ失敗を子のプロセスへ移して直した例がある（4paradigm/phanthymotus-driver 24274c5）
 cd ~/door_real || exit 1
 : "${DOOR:?扉の寸法を DOOR=幅,高さ,レバーの高さ,バックセット [m] で渡す}"
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1  # 10-16: BLAS の糸が多いと周期が乱れる
 ARGS=(--policy "${POLICY:-door_policy_f3sc_r4_it65350.npz}" --iface eth0 --door-source lidar --lidar-mode "${MODE:-track}"
-      --door "$DOOR" --run-seconds "${SECS:-5}" --odom dog --leg-actions "${LEGACT:-shadow}" --max-vx "${MAX_VX:-0.5}"
+      --door "$DOOR" --run-seconds "${SECS:-5}" --odom "${ODOM:-relay}" --leg-actions "${LEGACT:-shadow}" --max-vx "${MAX_VX:-0.5}" --arm-temp-stop "${ARM_TEMP:-75}"
+      --rpc-timeout "${RPC_TIMEOUT:-1.0}" --arm-temp-hold "${ARM_TEMP_HOLD:-1.0}" --loco "${LOCO:-relay}"
       --cmd-fifo logs/stock_cmd.fifo)
 [ -n "${STOP_DEG:-}" ] && ARGS+=(--stop-door-deg "$STOP_DEG")
 if [ -n "${CENTER:-}" ]; then

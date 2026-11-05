@@ -3,6 +3,7 @@
 #
 #   bash Door/real/deploy_to_pc2.sh <door_policy_*.npz>    # 配って確かめ、PC2 の Python を調べる
 #   bash Door/real/deploy_to_pc2.sh check                  # 配らずに PC2 の Python だけ調べる
+#   bash Door/real/deploy_to_pc2.sh <door_vision_*.npz>    # 11-05: 画像の生徒。隣の <名前>_encoder.npz・_encoder.onnx も配る
 #
 # 接続先は Mapping/real/quickstart/live/_common.sh と同じ（既定は有線 192.168.123.164。無線は G1_PC2_HOST=192.168.0.82）
 #
@@ -37,12 +38,19 @@ if [ "${1:-}" != check ]; then
          "$HERE/door_lidar_msg.py" "$HERE/door_lidar_source.py" "$HERE/door_lidar_node.py" "$HERE/lidar_door_est.py"
          "$HERE/door_lidar_angle.py" "$HERE/door_lidar_frame.py" "$HERE/door_lidar_geometry.py" "$HERE/lidar_offset_from_tape.py"
          "$HERE/door_stand_guard.py" "$HERE/pc2/release_native.py"  # 10-23 の再発防止（STAND の見張り・純正の制御を SDK で外す）
-         "$HERE/door_run_stock.py" "$HERE/door_stock_io.py" "$HERE/pc2/run_stock.sh" "$HERE/pc2/stock_cmd.sh"  # 11-02: 純正の脚の口
+         "$HERE/door_run_stock.py" "$HERE/door_stock_io.py" "$HERE/odom_relay.py" "$HERE/loco_relay.py" "$HERE/turn_probe.py" "$HERE/pc2/run_stock.sh" "$HERE/pc2/stock_cmd.sh"  # 11-02: 純正の脚の口（odom_relay は 11-03・loco_relay は 11-04）
          # PC2 で起こす・止める・録るスクリプト
          "$HERE/pc2/door_start.sh" "$HERE/pc2/door_stop.sh" "$HERE/pc2/lidar_start.sh" "$HERE/pc2/lidar_stop.sh"
-         "$HERE/pc2/run_door_lidar.sh" "$HERE/pc2/run_arms_dry.sh" "$HERE/pc2/rec_take.sh" "$HERE/pc2/rec_stop.sh" "$HERE/pc2/watch_remote.py")
+         "$HERE/pc2/run_door_lidar.sh" "$HERE/pc2/run_arms_dry.sh" "$HERE/pc2/rec_take.sh" "$HERE/pc2/rec_stop.sh" "$HERE/pc2/watch_remote.py"
+         "$HERE/pc2/rec_follow.sh"  # 11-03: 方策の回の生の点群（door_start.sh が run_stock.sh と一緒に起こす）
+         # 11-05: 頭のカラーの画像だけの生徒（カメラ側のプロセス・特徴の受け取り・numpy の計算・起こす台本）
+         "$HERE/door_vision_core.py" "$HERE/door_vision_encoder.py" "$HERE/door_vision_source.py" "$HERE/door_vision_node.py"
+         "$HERE/pc2/run_vision.sh" "$HERE/pc2/cam_tilt.py")  # cam_tilt: 頭カメラの俯角を D435i の加速度計で（床の AprilTag の代わり）
+  for ext in _encoder.npz _encoder.onnx; do  # 画像の生徒の書き出しなら、画像の網の重みも配る
+    [ -f "${POLICY%.npz}$ext" ] && FILES+=("${POLICY%.npz}$ext")
+  done
   pc2 "mkdir -p ~/$DEST/logs" || exit 1
-  scp -q "${JUMP[@]}" -i "$G1_KEY" -o BatchMode=yes -o IdentitiesOnly=yes "${FILES[@]}" "$G1_PC2_USER@$G1_PC2_HOST:$DEST/" || { say "scp 失敗"; exit 1; }
+  scp -q ${JUMP[@]+"${JUMP[@]}"} -i "$G1_KEY" -o BatchMode=yes -o IdentitiesOnly=yes "${FILES[@]}" "$G1_PC2_USER@$G1_PC2_HOST:$DEST/" || { say "scp 失敗"; exit 1; }
   bad=0
   for f in "${FILES[@]}"; do
     want=$(md5 -q "$f")
@@ -52,6 +60,9 @@ if [ "${1:-}" != check ]; then
   [ "$bad" = 0 ] || exit 1
   pc2 "chmod +x ~/$DEST/*.sh" || exit 1
 fi
+
+# 11-03: 方策の回の生の点群を録れるか（記録の道具・空き容量。足りないと door_start.sh は run_stock.sh を起こさない）
+say "生の点群を録れるか: $(pc2 "~/$DEST/rec_follow.sh --check" 2>&1 | tr '\n' ' ')"
 
 # PC2 の Python で、SDK・numpy・脚の odom の型がそろうかを見る（読むだけ）
 say "PC2 の Python を調べる"
@@ -71,5 +82,14 @@ try:
     print("OK python %s numpy %s sdk %s" % (sys.version.split()[0], numpy.__version__, unitree_sdk2py.__file__))
 except Exception as e:
     print("NG %s: %s" % (type(e).__name__, e))
+# 11-05: 画像の生徒（door_vision_node.py）: カラーは純正の VideoClient・JPEG の復号は cv2・網は onnxruntime（無ければ numpy）
+for name, stmt in (("VideoClient", "from unitree_sdk2py.go2.video.video_client import VideoClient"),
+                   ("cv2", "import cv2; v = cv2.__version__"), ("onnxruntime", "import onnxruntime; v = onnxruntime.__version__")):
+    try:
+        v = ""
+        exec(stmt)
+        print("  画像: %s OK %s" % (name, v))
+    except Exception as e:
+        print("  画像: %s 無い（%s: %s）" % (name, type(e).__name__, e))
 EOF
 done'

@@ -32,6 +32,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)  # mac の BLAS が m
 
 BIN_M = 0.005
 EDGE_Z = (0.3, 0.95)  # [m] 縁を探す高さ（今日のように頭が下を向くと 0.95 m より上は写らない）
+EDGE_STEP_M = 0.015  # [m] 板からこれだけ出たら柱の段差に入った。11-03 実機: 8 mm だと板のふくらみ（最大 0.8 cm）を右の柱と取り違えて幅 0.46〜0.66 m。柱の段差は 2.7〜3.1 cm
 LEVER_W = (0.04, 0.12)  # [m] 板からの出っ張り（握る棒）
 LEVER_Z = (0.80, 1.25)  # [m]
 NECK_M = 0.01  # [m] 棒の端から軸までの首の太さ（10-16 の扉の形から。扉ごとに違いうる）
@@ -66,7 +67,7 @@ def find_edge(u: np.ndarray, w: np.ndarray, z: np.ndarray, side: int) -> tuple[f
             mids.append((lo + hi) / 2)
             meds.append(float(np.median(wb[k])))
     mids, meds = np.array(mids), np.array(meds)
-    first = np.nonzero(meds > 0.008)[0]  # 板から 8 mm 出たら柱の段差に入った
+    first = np.nonzero(meds > EDGE_STEP_M)[0]  # 板から EDGE_STEP_M 出たら柱の段差に入った
     if not len(first):
         return float("nan"), float("nan")
     i0 = first[0]
