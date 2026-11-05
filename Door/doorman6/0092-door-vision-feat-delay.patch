@@ -1,0 +1,166 @@
+11-05 夜 G1_Hackason: 画像の特徴を台ごとに 2〜4 歩遅らせて方策に渡す（env.config.vision_feat.delay_steps・door_vision_feat.FeatDelay）。実機は撮ってから方策が使うまで中央 108〜115 ms、シミュレータは 0〜80 ms だった
+
+diff -ruN a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+--- a/gr00t/rl/envs/door/door_open_homie.py	2026-11-05 20:07:18
++++ b/gr00t/rl/envs/door/door_open_homie.py	2026-11-05 20:07:19
+@@ -334,16 +334,23 @@
+         self._vis_count = 0
+         self._vis_encoder = None
+         self._vis_feat = None
++        self._vis_delay = None  # 11-05 夜: 特徴の遅れ（env.config.vision_feat.delay_steps、door_vision_feat.FeatDelay）
+         self._vis_dumper = None
+         self._vis_on = bool(used & {"vis_feat", "vis_head_gravity", "door_truth"}) or bool(dump_cfg.get("dir", None))
+         if not self._vis_on:
+             return
+-        from gr00t.rl.envs.door.door_vision_feat import VisionDumper, load_encoder
++        from gr00t.rl.envs.door.door_vision_feat import FeatDelay, VisionDumper, load_encoder
+ 
+         if "vis_feat" in used:
+             feat_dim = int(self.config.obs.obs_dims["vis_feat"])
+             self._vis_encoder = load_encoder(vf_cfg.get("encoder_path", None), feat_dim, self.device)
+             self._vis_feat = torch.zeros(self.num_envs, feat_dim, device=self.device)
++            d_lo, d_hi = (int(v) for v in vf_cfg.get("delay_steps", [0, 0]))
++            if d_hi > 0:
++                if d_hi >= self._vis_every:
++                    raise ValueError(f"vision_feat.delay_steps の上 {d_hi} は every_n {self._vis_every} より小さくする")
++                self._vis_delay = FeatDelay(self.num_envs, feat_dim, d_lo, d_hi, self.device)
++                print(f"[G1_Hackason] 画像の生徒: 特徴を {d_lo}〜{d_hi} 歩遅らせて渡す（実機の撮ってからの古さに合わせる）")
+         if dump_cfg.get("dir", None):
+             self._vis_dumper = VisionDumper(
+                 dump_cfg["dir"], int(dump_cfg.get("shard_size", 2048)), float(dump_cfg.get("keep_frac", 0.25)),
+@@ -429,6 +436,8 @@
+         k = self._vis_count
+         self._vis_count += 1
+         if k % self._vis_every != 0:
++            if self._vis_delay is not None:
++                self._vis_feat = self._vis_delay.tick(self._vis_feat)
+             return
+         rgb = _t(self.simulator.scene.sensors["ego_camera"].data.output["rgb"])[..., :3]
+         if rgb.dtype != torch.uint8:
+@@ -436,7 +445,8 @@
+         if self._vis_encoder is not None:
+             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                 feats = [self._vis_encoder(rgb[i : i + self._vis_chunk]) for i in range(0, rgb.shape[0], self._vis_chunk)]
+-            self._vis_feat = torch.cat(feats, dim=0).float()
++            new = torch.cat(feats, dim=0).float()
++            self._vis_feat = new if self._vis_delay is None else self._vis_delay.capture(self._vis_feat, new)
+         dumper = self._vis_dumper
+         if dumper is not None and not dumper.full:
+             dumper.add({
+@@ -1501,6 +1511,8 @@
+         if getattr(self, "_vis_on", False) and len(env_ids) > 0:  # 11-04: 頭の重力の片寄りを引き直す
+             self._vis_hg_bias[env_ids] = torch.randn(len(env_ids), 3, device=self.device) * self._vis_hg_bias_sigma
+             self._vis_nod_rad[env_ids] = 0.0  # 戻しでカメラは俯角だけに書き直される（0061）。次の描画の歩で頷きを書く
++            if self._vis_delay is not None:
++                self._vis_delay.cancel(env_ids)
+             if self._vis_nod_deg > 0.0:
+                 k = len(env_ids)
+                 lo, hi = self._vis_nod_hz_range
+diff -ruN a/gr00t/rl/envs/door/door_vision_feat.py b/gr00t/rl/envs/door/door_vision_feat.py
+--- a/gr00t/rl/envs/door/door_vision_feat.py	2026-11-05 20:07:19
++++ b/gr00t/rl/envs/door/door_vision_feat.py	2026-11-05 20:07:19
+@@ -119,6 +119,40 @@
+     return quat_rotate_inverse_xyzw(q_head, g)
+ 
+ 
++class FeatDelay:
++    """11-05 夜: 撮った特徴を台ごとに k 歩遅らせて方策に渡す（k は撮るたびに [lo, hi] から引く）。
++    実機（PC2）は撮ってから方策が使うまで中央 108〜115 ms（10〜90% で 67〜159 ms。10 Hz の持ち回しを含む）、
++    シミュレータは描いたその歩から 0〜80 ms（中央 40 ms）＝約 3 歩の差。[2, 4] で 40〜160 ms（中央 100 ms ほど）になる。
++    hi は撮る間隔（every_n）より小さくする（待っている特徴を次に撮った特徴で上書きしないため）"""
++
++    def __init__(self, num_envs: int, feat_dim: int, lo: int, hi: int, device):
++        if not 0 <= lo <= hi:
++            raise ValueError(f"遅れの歩の範囲が逆か負: [{lo}, {hi}]")
++        self.lo, self.hi = int(lo), int(hi)
++        self.pending = torch.zeros(num_envs, feat_dim, device=device)
++        self.left = torch.full((num_envs,), -1, dtype=torch.long, device=device)  # 渡すまでの残りの歩（−1 は待ちなし）
++
++    def capture(self, cur: torch.Tensor, new: torch.Tensor) -> torch.Tensor:
++        """撮った歩: 遅れ 0 を引いた台にはすぐ new、ほかは待たせる → この歩に方策が見る特徴"""
++        k = torch.randint(self.lo, self.hi + 1, (new.shape[0],), device=new.device)
++        now = k == 0
++        self.pending = new.clone()
++        self.left = torch.where(now, torch.full_like(k, -1), k)
++        return torch.where(now[:, None], new, cur)
++
++    def tick(self, cur: torch.Tensor) -> torch.Tensor:
++        """撮らない歩: 待ちを 1 歩進め、残りが 0 になった台に待っていた特徴を渡す"""
++        waiting = self.left > 0
++        left = torch.where(waiting, self.left - 1, self.left)
++        due = waiting & (left == 0)
++        self.left = torch.where(due, torch.full_like(left, -1), left)
++        return torch.where(due[:, None], self.pending, cur)
++
++    def cancel(self, env_ids: torch.Tensor) -> None:
++        """回の始め: 前の回に撮った特徴を新しい回に持ち込まない"""
++        self.left[env_ids] = -1
++
++
+ def load_encoder(path: str | None, feat_dim: int, device) -> DoorVisionEncoder:
+     """学習済みの画像の網を読む（path が無ければ ImageNet のままの網。速さを測る・記録を集めるとき）"""
+     enc = DoorVisionEncoder(feat_dim=feat_dim, pretrained=path is None)
+diff -ruN a/tests_g1/test_vision_feat_delay.py b/tests_g1/test_vision_feat_delay.py
+--- a/tests_g1/test_vision_feat_delay.py	1970-01-01 09:00:00
++++ b/tests_g1/test_vision_feat_delay.py	2026-11-05 20:07:19
+@@ -0,0 +1,60 @@
++"""11-05 夜: door_vision_feat.FeatDelay（撮った特徴を台ごとに k 歩遅らせて渡す）の試験。Isaac Sim なしで回る"""
++import pytest
++import torch
++
++from gr00t.rl.envs.door.door_vision_feat import FeatDelay
++
++EVERY = 5
++
++
++def _run(delay: FeatDelay, steps: int, n: int = 4, dim: int = 2):
++    """環境の _update_vision と同じ順に回し、歩ごとに方策が見る特徴（撮った回の番号）を返す"""
++    cur = torch.full((n, dim), -1.0)
++    seen = []
++    for k in range(steps):
++        if k % EVERY == 0:
++            cur = delay.capture(cur, torch.full((n, dim), float(k // EVERY)))
++        else:
++            cur = delay.tick(cur)
++        seen.append(cur[:, 0].clone())
++    return torch.stack(seen)  # [steps, n]
++
++
++def test_zero_delay_is_same_as_before() -> None:
++    seen = _run(FeatDelay(4, 2, 0, 0, "cpu"), 15)
++    want = torch.tensor([k // EVERY for k in range(15)], dtype=torch.float32)
++    assert torch.equal(seen, want[:, None].expand(15, 4))
++
++
++@pytest.mark.parametrize("d", [1, 2, 4])
++def test_fixed_delay_shifts_by_d_steps(d: int) -> None:
++    seen = _run(FeatDelay(3, 2, d, d, "cpu"), 20, n=3)
++    for k in range(20):
++        # 撮った歩から d 歩後に切り替わる。最初の d 歩は撮る前の値（−1）
++        want = (k - d) // EVERY if k >= d else -1
++        assert torch.all(seen[k] == want), (k, seen[k])
++
++
++def test_random_delay_within_range_and_per_env() -> None:
++    torch.manual_seed(0)
++    n = 512
++    delay = FeatDelay(n, 1, 2, 4, "cpu")
++    seen = _run(delay, EVERY * 4, n=n, dim=1)
++    # 2 回目に撮った特徴（番号 1、歩 5）が見え始めた歩 − 5 が遅れ
++    first = (seen == 1).float().argmax(dim=0) - EVERY
++    assert int(first.min()) == 2 and int(first.max()) == 4
++    assert len(torch.unique(first)) == 3  # 台ごとに引いている
++
++
++def test_cancel_drops_pending_feature() -> None:
++    delay = FeatDelay(2, 1, 3, 3, "cpu")
++    cur = delay.capture(torch.zeros(2, 1), torch.ones(2, 1))
++    delay.cancel(torch.tensor([1]))
++    for _ in range(3):
++        cur = delay.tick(cur)
++    assert cur[:, 0].tolist() == [1.0, 0.0]
++
++
++def test_bad_range_raises() -> None:
++    with pytest.raises(ValueError):
++        FeatDelay(2, 1, 3, 1, "cpu")

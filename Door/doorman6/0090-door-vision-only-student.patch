@@ -1,0 +1,1773 @@
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_vision_f3_dagger-lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_vision_f3_dagger-lstm.yaml
+new file mode 100644
+--- /dev/null
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_vision_f3_dagger-lstm.yaml
+@@ -0,0 +1,207 @@
++# @package _global_
++#
++# G1_Hackason（11-04、画像だけの生徒 V3）: 頭のカラーの画像だけで扉の値を読む生徒が、f3sc 27 回目（状態入力の方策・シミュレータで
++# 95.7%）を真似る DAgger。計画書 docs/plan/2026-11-04-g1-door-vision-rl.md。
++#   生徒の網: vision_door_student.VisionDoorStudent（f3sc の LSTM・MLP・正規化をそのまま初めの値にし、扉の値 19 個だけを
++#     扉の頭の当てに差し替える）。画像の網は環境の中で固めて 10 Hz で特徴を作る（env.config.vision_feat）
++#   教師: f3sc（RecurrentActor・入力 teacher_obs＝f3sc の actor_obs）。teacher_actor_path と f3sc の重みを起動時に渡す
++#   機体・扉・報酬・乱択は f3sc の学習と同じ（起動の引数で f3sc と同じものを渡す。exp_vis_1104.sh）
++#   カメラ: 頭の D435i のカラー 108×192（VIRAL の大きさ）・画角 69°×42°・俯角は回ごとに 30〜70° で引く（0061）
++# door_open_homie_29dof_state_dagger-lstm.yaml（状態入力の生徒）からの違いは、観測・生徒の網・カメラ・学習率・補助の答えの重み
++
++defaults:
++  - /algo: dagger_vision_distributed
++  - /env: door_open_homie
++  - /simulator: isaacsim
++  - /domain_rand: NO_domain_rand
++  - /rewards: wbmanip/reward_door_open_homie
++  - /robot: g1/g1_29dof
++  - /terrain: terrain_locomotion_plane
++  - /obs: wbmanip/door_open_homie_29dof_vision_f3
++  - /opt: wandb
++  - override /trainer: trl_distill_obj_pred_homie_api
++
++exp_base: ${hydra:runtime.choices.exp}
++exp_var: lstm
++experiment_name: ${exp_base}_${exp_var}
++experiment_dir: ${base_dir}/${project_name}/${experiment_name}-${timestamp}
++
++num_envs: 128
++project_name: g1_open_door_vision
++
++enable_cameras: true
++headless: True
++
++teacher_actor_path: ???  # 必須。f3sc 27 回目の last.pt（~/work_inoue/doorman/ckpt/start_1103_0807/last.pt）
++door_head_path: null  # V2 で学んだ扉の頭（door_vision_pretrain.py の出力）。無ければ乱数から
++vision_encoder_path: null  # V2 で学んだ画像の網。無ければ ImageNet のまま
++
++callbacks:
++  model_save:
++    save_frequency: 100
++
++algo:
++  config:
++    entropy_coef: 0.0
++    use_new_actor_critic: True
++    num_steps_per_env: 32
++    # 学習の段は画像を通さない（特徴だけ）ので軽い。集めた 1 回分を 5 回使う（状態入力の生徒と同じ）
++    num_learning_epochs: 5
++    num_mini_batches: 4
++    use_padding_mask: False
++    ppo_shuffle_every_epoch: True
++    sync_advantage_normalization: True
++    # 生徒は f3sc の重みから始めるので、状態入力の生徒（3e-4・0 から）より小さく
++    actor_learning_rate: 1e-4
++    critic_learning_rate: 1e-4
++    homie_walk_model_path: ./models/model_walk.pt
++    homie_stand_model_path: ./models/model_stand.pt
++    homie_command_dim: 3
++    non_homie_command_actions_dim: 14
++    opt_homie: False
++    save_interval: 100
++
++    init_noise_std: 0.001
++    max_noise_std: 0.001
++    clamp_noise_std: True
++    freeze_noise_std: True
++
++    gamma: 0.9966
++    lam: 0.983
++
++    init_at_random_ep_len: True
++    rollout_with_teacher_num_steps: 0
++    teacher_rollout_ratio: 0.0
++    # 3 割の台（番号の小さい方）は教師の行動で動かす（状態入力の生徒と同じ。押す・通る場面の手本を切らさない）。
++    # ⚠️ 評価では ++algo.config.enforce_teacher_rollout=False を渡す
++    enforce_teacher_rollout: True
++    ratio_teacher_rollout: 0.3
++
++    network_load_dict:
++      teacher_actor:
++        path: ${teacher_actor_path}
++
++    # 扉の頭の補助の答え（17 個・項目ごとに 1/許す誤差² の重み。distill_trainer_obj_pred.py）
++    obj_pred_loss_coef: 0.2
++    obj_pred_loss_type: "l2"
++    obj_pred_dim: 17
++
++    module_dim:
++      actor_obs: -1
++      rnn_hidden_dim: 256
++
++    actor:
++      _target_: gr00t.rl.trl.modules.vision_door_student.VisionDoorStudent
++      running_mean_std: False
++      rnn_type: "lstm"
++      rnn_hidden_dim: 256
++      rnn_num_layers: 2
++      init_from: ${teacher_actor_path}
++      door_head_path: ${door_head_path}
++      backbone:
++        mlp_module:
++          _target_: gr00t.rl.agents.modules.modules.BaseModule
++          process_output_dim: True
++          module_config_dict:
++            input_dim: [actor_obs]
++            output_dim:
++              - ${eval:'${algo.config.homie_command_dim} + ${algo.config.non_homie_command_actions_dim}'}
++            layer_config:
++              type: MLP
++              hidden_dims: [512, 256, 128]  # f3sc と同じ
++              activation: SiLU
++    teacher_actor:
++      _target_: gr00t.rl.trl.modules.actor_critic_modules_recurrent.RecurrentActor
++      running_mean_std: True
++      rnn_type: "lstm"
++      rnn_hidden_dim: 256
++      rnn_num_layers: 2
++      backbone:
++        _target_: gr00t.rl.agents.modules.modules.BaseModule
++        process_output_dim: True
++        module_config_dict:
++          input_dim: [teacher_obs]
++          output_dim:
++            - ${eval:'${algo.config.homie_command_dim} + ${algo.config.non_homie_command_actions_dim}'}
++          layer_config:
++            type: MLP
++            hidden_dims: [512, 256, 128]
++            activation: SiLU
++
++simulator:
++  config:
++    cameras:
++      enable_cameras: true
++      camera_types:
++        - rgb: true
++        - depth: false
++      camera_resolutions: [108, 192]
++      camera_attached_link: "torso_link"
++      camera_pos_offset: [0.0576, 0.0525, 0.4299]   # d435_link の取付 ∘ (0, 0.035, 0)
++      camera_rot_offset: [0.90244, 0.0, 0.43081, 0.0]  # wxyz。pitch 47.6° + 3.4° = 51.0°（回ごとの乱択が上書きする）
++      camera_horizontal_aperture: 3.567  # 焦点 1.88 で 69°
++      camera_vertical_aperture: 2.006  # 42°
++    scene:
++      replicate_physics: False
++      env_spacing: 20.0
++    sim:
++      physx:
++        num_position_iterations: 8
++        num_velocity_iterations: 4
++
++domain_rand:
++  randomize_dome_light: True
++  randomize_camera_pitch: True
++  camera_pitch_range_deg: [30.0, 70.0]
++
++robot:
++  asset:
++    self_collisions: 0
++  use_primitive: False
++  actions_dim: 29
++  check_action_dim: True
++  terminate_after_contacts_on : ["head", "knee", "wrist"]
++
++rewards:
++  reward_scales:
++    pregrasp_finger_dof_pos_l1: 0.0
++    grasp_finger_dof_pos_l1: 0.0
++    limits_primitive_action: 0.0
++    press_door_handle_down: 1.0
++    push_door_unlatched: 6.0
++    penalty_standing_still: -5.0
++
++env:
++  config:
++    vision_feat:
++      every_n: 5  # 10 Hz（制御 50 Hz）
++      encoder_path: ${vision_encoder_path}
++      head_gravity_bias: 0.015
++    task:
++      name: door_nolatch
++    grasp_min_contact_links: 1
++    grasp_contact_force_threshold: 1.0
++    max_episode_length_s: 30
++    max_stage_time: [250, 100, 100, 100, 300, 200]
++    lever_side_hand: True
++    pregrasp_height: 0.0
++    pregrasp_above_margin: null
++    grasp_target_offset: [0.06, 0.0, 0.01]
++    push_door_force_penalize_pull: True
++    grasp_target_offset_along_lever: 0.04
++    push_door_handle_pos_only: True
++    push_door_hinge_pos_only: True
++    pregrasp_offset: [-0.14, 0.0, 0.12]
++    delta_action_indices: [
++      0, 1, 2,  # homie command
++      3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,  # upper body
++    ]
++    resting_dof_pos: [
++      -0.1, 0, 0, 0.3, -0.2, 0,  # l hip knee ankle
++      -0.1, 0, 0, 0.3, -0.2, 0,  # r hip knee ankle
++      0, 0, 0,  # waist
++      0.261799, 0.174533, 0, 0.261799,  # l shoulder elbow
++      1.5708, 0, 0,  # l wrist
++      0.261799, -0.174533, 0, 0.261799,  # r shoulder elbow
++      -1.5708, 0, 0,  # r wrist
++    ]
+diff --git a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_vision_f3_ppo-lstm.yaml b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_vision_f3_ppo-lstm.yaml
+new file mode 100644
+--- /dev/null
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_vision_f3_ppo-lstm.yaml
+@@ -0,0 +1,191 @@
++# @package _global_
++#
++# G1_Hackason（11-04、画像だけの生徒 V4）: DAgger で作った画像だけの生徒（vision_door_student.VisionDoorStudent）を PPO で磨く。
++#   actor: 生徒（ppo_mode・扉の頭は固める）。critic: f3sc の評価係（RecurrentCritic・critic_obs は f3sc と同じ）
++#   出発の重みは make_vis_ppo_ckpt.py で組み立てて ++checkpoint で渡す（生徒＋f3sc の評価係・std は f3sc × 倍率）
++#   PPO の設定は f3sc の学習（door_open_homie_29dof_state_ppo-lstm＋exp_stocklegs_1030.sh の引数）と同じ。台数だけ 256
++#   機体・扉・報酬・乱択・カメラは DAgger（door_open_homie_29dof_vision_f3_dagger-lstm）と同じ
++
++defaults:
++  - /algo: ppo
++  - /env: door_open_homie
++  - /simulator: isaacsim
++  - /domain_rand: NO_domain_rand
++  - /rewards: wbmanip/reward_door_open_homie
++  - /robot: g1/g1_29dof
++  - /terrain: terrain_locomotion_plane
++  - /obs: wbmanip/door_open_homie_29dof_vision_f3
++  - /opt: wandb
++  - override /trainer: trl_homie_api
++
++exp_base: ${hydra:runtime.choices.exp}
++exp_var: lstm
++experiment_name: ${exp_base}_${exp_var}
++experiment_dir: ${base_dir}/${project_name}/${experiment_name}-${timestamp}
++
++num_envs: 256
++project_name: g1_open_door_vision_ppo
++
++enable_cameras: true
++headless: True
++
++vision_encoder_path: ???  # V2 で学んだ画像の網（DAgger と同じもの）
++
++callbacks:
++  model_save:
++    save_frequency: 100
++
++algo:
++  config:
++    entropy_coef: 0.001
++    use_new_actor_critic: True
++    num_steps_per_env: 32
++    num_learning_epochs: 5
++    num_mini_batches: 4
++    use_padding_mask: False
++    ppo_shuffle_every_epoch: True
++    sync_advantage_normalization: True
++    actor_learning_rate: 1.0e-4
++    critic_learning_rate: 1.0e-4
++    homie_walk_model_path: ./models/model_walk.pt
++    homie_stand_model_path: ./models/model_stand.pt
++    homie_command_dim: 3
++    non_homie_command_actions_dim: 14
++    opt_homie: False
++    desired_kl: 0.005
++    load_optimizer: False
++
++    init_noise_std: 0.8
++    max_noise_std: 0.26
++    clamp_noise_std: True
++    save_interval: 100
++
++    gamma: 0.9975
++    lam: 0.985
++
++    init_at_random_ep_len: True
++    caps_temporal_coef: 1.0
++    caps_temporal_start: 3
++    caps_temporal_end: 17
++
++    module_dim:
++      actor_obs: -1
++      rnn_hidden_dim: 256
++
++    actor:
++      _target_: gr00t.rl.trl.modules.vision_door_student.VisionDoorStudent
++      running_mean_std: False
++      rnn_type: "lstm"
++      rnn_hidden_dim: 256
++      rnn_num_layers: 2
++      init_from: null  # 重みは ++checkpoint（make_vis_ppo_ckpt.py の出力）から
++      door_head_path: null
++      ppo_mode: True
++      freeze_door_head: True
++      backbone:
++        mlp_module:
++          _target_: gr00t.rl.agents.modules.modules.BaseModule
++          process_output_dim: True
++          module_config_dict:
++            input_dim: [actor_obs]
++            output_dim:
++              - ${eval:'${algo.config.homie_command_dim} + ${algo.config.non_homie_command_actions_dim}'}
++            layer_config:
++              type: MLP
++              hidden_dims: [512, 256, 128]
++              activation: SiLU
++    critic:
++      _target_: gr00t.rl.trl.modules.actor_critic_modules_recurrent.RecurrentCritic
++      running_mean_std: True
++      rnn_type: "lstm"
++      rnn_hidden_dim: 256
++      rnn_num_layers: 2
++      backbone:
++        _target_: gr00t.rl.agents.modules.modules.BaseModule
++        process_output_dim: True
++        module_config_dict:
++          type: MLP
++          input_dim: [critic_obs]
++          output_dim: [1]
++          layer_config:
++            type: MLP
++            hidden_dims: [512, 256, 128]
++            activation: SiLU
++
++simulator:
++  config:
++    cameras:
++      enable_cameras: true
++      camera_types:
++        - rgb: true
++        - depth: false
++      camera_resolutions: [108, 192]
++      camera_attached_link: "torso_link"
++      camera_pos_offset: [0.0576, 0.0525, 0.4299]
++      camera_rot_offset: [0.90244, 0.0, 0.43081, 0.0]
++      camera_horizontal_aperture: 3.567
++      camera_vertical_aperture: 2.006
++    scene:
++      replicate_physics: False
++      env_spacing: 20.0
++    sim:
++      physx:
++        num_position_iterations: 8
++        num_velocity_iterations: 4
++
++domain_rand:
++  randomize_dome_light: True
++  randomize_camera_pitch: True
++  camera_pitch_range_deg: [30.0, 70.0]
++
++robot:
++  asset:
++    self_collisions: 0
++  use_primitive: False
++  actions_dim: 29
++  check_action_dim: True
++  terminate_after_contacts_on : ["head", "knee", "wrist"]
++
++rewards:
++  reward_scales:
++    pregrasp_finger_dof_pos_l1: 0.0
++    grasp_finger_dof_pos_l1: 0.0
++    limits_primitive_action: 0.0
++    press_door_handle_down: 1.0
++    push_door_unlatched: 6.0
++    penalty_standing_still: -5.0
++
++env:
++  config:
++    vision_feat:
++      every_n: 5
++      encoder_path: ${vision_encoder_path}
++      head_gravity_bias: 0.015
++    task:
++      name: door_nolatch
++    grasp_min_contact_links: 1
++    grasp_contact_force_threshold: 1.0
++    max_episode_length_s: 30
++    max_stage_time: [250, 100, 100, 100, 300, 200]
++    lever_side_hand: True
++    pregrasp_height: 0.0
++    pregrasp_above_margin: null
++    grasp_target_offset: [0.06, 0.0, 0.01]
++    push_door_force_penalize_pull: True
++    grasp_target_offset_along_lever: 0.04
++    push_door_handle_pos_only: True
++    push_door_hinge_pos_only: True
++    pregrasp_offset: [-0.14, 0.0, 0.12]
++    delta_action_indices: [
++      0, 1, 2,  # homie command
++      3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,  # upper body
++    ]
++    resting_dof_pos: [
++      -0.1, 0, 0, 0.3, -0.2, 0,  # l hip knee ankle
++      -0.1, 0, 0, 0.3, -0.2, 0,  # r hip knee ankle
++      0, 0, 0,  # waist
++      0.261799, 0.174533, 0, 0.261799,  # l shoulder elbow
++      1.5708, 0, 0,  # l wrist
++      0.261799, -0.174533, 0, 0.261799,  # r shoulder elbow
++      -1.5708, 0, 0,  # r wrist
++    ]
+diff --git a/gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_vision_f3.yaml b/gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_vision_f3.yaml
+new file mode 100644
+--- /dev/null
++++ b/gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_vision_f3.yaml
+@@ -0,0 +1,303 @@
++# @package _global_
++# G1_Hackason（11-04、画像だけの生徒）: 頭のカラーの画像だけで扉の値を読む生徒の DAgger（教師 f3sc 27 回目）の観測。
++# f3sc の観測（door_open_homie_29dof_state_ppo.yaml）からの違い:
++#   actor_obs（生徒）: f3sc の actor_obs から扉の 3 項目（door_angle_lidar・door_frame_loc・door_geometry）を外し、
++#     vis_feat（頭のカラーの特徴 128。環境の中の固めた画像の網が 10 Hz で作る）と vis_head_gravity（頭から見た重力 3）を足した
++#   teacher_obs: f3sc の actor_obs そのまま（並び・倍率・雑音も同じ。教師の重みに合わせる）
++#   gt_obj_pos: door_truth（扉の本当の値 17。生徒の扉の頭の補助の答え。door_vision_feat.DOOR_TRUTH_NAMES）
++#   critic_obs・homie_obs: f3sc と同じ（V4 の PPO で f3sc の評価係をそのまま使う）
++# 生徒の網（vision_door_student.py）は項目名の辞書順の並びから位置を数えるので、項目の名前を変えるときは網も確かめる
++
++# Be careful when using _raw, history
++obs:
++  obs_dict:
++    actor_obs: [
++      base_ang_vel,
++      projected_gravity,
++      dof_pos,
++      dof_vel,
++      actions,
++      delta_actions,
++
++      b_homie_commands,
++      complete,
++
++      arm_dof_torque,
++      vis_feat,
++      vis_head_gravity
++    ]
++
++    teacher_obs: [
++      base_ang_vel,
++      projected_gravity,
++      dof_pos,
++      dof_vel,
++      actions,
++      delta_actions,
++
++      b_homie_commands,
++      complete,
++
++      door_angle_lidar,
++      door_frame_loc,
++      door_geometry,
++      arm_dof_torque
++    ]
++
++    gt_obj_pos: [
++      door_truth,
++    ]
++
++    critic_obs: [
++      dof_pos,
++      relative_to_door,
++      dof_vel,
++      actions,
++      projected_gravity,
++      door_dof_pos,
++      base_lin_vel,
++      base_ang_vel,
++      hand_force,
++      stage,
++      privileged_door_info,
++      delta_actions,
++      hand_handle_transform,
++      unwarped_actions,
++
++      transition,
++      complete,
++
++      time_in_stage,
++      actual_time_in_stage,
++      total_time,
++
++      b_homie_commands
++    ]
++
++    homie_obs: [
++      a_history_homie,
++      b_homie_commands,
++      c_homie_base_ang_vel,
++      d_homie_projected_gravity,
++      # homie_torso_ang_vel,
++      # homie_torso_projected_gravity,
++      e_homie_dof_pos,
++      f_homie_dof_vel,
++      g_homie_body_actions,
++      # homie_clock_inputs,
++    ]
++
++  # define those coumpounds in obs_dict, for example, you can define different long/short history with different length
++  obs_auxiliary: 
++    history_long: {
++      dof_pos: 20,
++      relative_to_door: 20,
++      dof_vel: 2,
++      actions: 15,
++      projected_gravity: 15,
++      door_dof_pos: 15,
++      base_lin_vel: 15,
++      base_ang_vel: 15,
++      hand_force: 15,
++      stage: 15,
++      privileged_door_info: 15,
++      delta_actions: 15,
++      hand_handle_transform: 15,
++
++      transition: 15,
++      complete: 15,
++
++      time_in_stage: 15,
++      actual_time_in_stage: 15,
++    }
++
++    a_history_homie: {
++      b_homie_commands: 5,
++      c_homie_base_ang_vel: 5,
++      d_homie_projected_gravity: 5,
++      # homie_torso_ang_vel: 5,
++      # homie_torso_projected_gravity: 5,
++      e_homie_dof_pos: 5,
++      f_homie_dof_vel: 5,
++      g_homie_body_actions: 5,
++      # homie_clock_inputs: 5,
++    }
++
++    history_short: {
++      dof_pos: 3,
++      relative_to_door: 3,
++      dof_vel: 2,
++      actions: 1,
++      projected_gravity: 1,
++      door_dof_pos: 2,
++      base_lin_vel: 2,
++      base_ang_vel: 2,
++      hand_force: 2,
++      stage: 2,
++      privileged_door_info: 2,
++      delta_actions: 2,
++      hand_handle_transform: 2,
++
++      transition: 2,
++      complete: 2,
++
++      time_in_stage: 2,
++      actual_time_in_stage: 2,
++    }
++
++  homie_history_length: 5
++
++  obs_scales: {
++    dof_pos: 1.0,
++    relative_to_door: 1.0,
++    dof_vel: 0.05,
++    history: 1.0,
++    actions: 1.0,
++    projected_gravity: 1.0,
++    door_dof_pos: 1.0,
++    base_lin_vel: 1.0,
++    base_ang_vel: 0.5,
++    hand_force: 0.01,
++    stage: 1.0,
++    privileged_door_info: 1.0,
++    delta_actions: 1.0,
++    hand_handle_transform: 1.0,
++    unwarped_actions: 1.0,
++    door_angle_lidar: 1.0,
++    door_frame_loc: 1.0,
++    door_geometry: 1.0,
++    arm_dof_torque: 0.05,
++    vis_feat: 1.0,
++    vis_head_gravity: 1.0,
++    door_truth: 1.0,
++
++    transition: 1.0,
++    complete: 1.0,
++
++    time_in_stage: 1.0,
++    actual_time_in_stage: 1.0,
++    total_time: 1.0,
++
++    b_homie_commands: 1.0,
++    e_homie_dof_pos: 1.0,
++    f_homie_dof_vel: 0.05,
++    c_homie_base_ang_vel: 0.5,
++    d_homie_projected_gravity: 1.0,
++    # homie_torso_ang_vel: 0.5,
++    # homie_torso_projected_gravity: 1.0,
++    g_homie_body_actions: 1.0,
++    # homie_clock_inputs: 1.0,
++    a_history_homie: 1.0
++  }
++
++  noise_scales: {
++    dof_pos: 0.01,
++    relative_to_door: 0.0,
++    dof_vel: 0.2,
++    history: 0.0,
++    actions: 0.0,
++    projected_gravity: 0.0,
++    door_dof_pos: 0.0,
++    base_lin_vel: 0.0,
++    base_ang_vel: 0.0,
++    hand_force: 0.0,
++    stage: 0.0,
++    privileged_door_info: 0.0,
++    delta_actions: 0.0,
++    hand_handle_transform: 0.0,
++    unwarped_actions: 0.0,
++    door_angle_lidar: 0.0,  # 雑音は door_state_sensor.py が入れる
++    door_frame_loc: 0.0,
++    door_geometry: 0.0,
++    arm_dof_torque: 1.0,  # ±1 N·m
++    vis_feat: 0.0,
++    vis_head_gravity: 0.02,  # 頭の IMU の重力の揺れ（回ごとの片寄りは env.config.vision_feat.head_gravity_bias）
++    door_truth: 0.0,
++
++    transition: 0.0,
++    complete: 0.0,
++
++    time_in_stage: 0.0,
++    actual_time_in_stage: 0.0,
++    total_time: 0.0,
++
++    b_homie_commands: 0.0,
++    e_homie_dof_pos: 0.01,
++    f_homie_dof_vel: 0.2,
++    c_homie_base_ang_vel: 0.0,
++    d_homie_projected_gravity: 0.0,
++    # homie_torso_ang_vel: 0.0,
++    # homie_torso_projected_gravity: 0.0,
++    g_homie_body_actions: 0.0,
++    # homie_clock_inputs: 0.0,
++    a_history_homie: 0.0
++  }
++
++  add_noise_currculum: False
++  noise_initial_value: 0.05
++  noise_value_max: 1.00
++  noise_value_min: 0.00001
++  soft_dof_pos_curriculum_degree: 0.00001
++  soft_dof_pos_curriculum_level_down_threshold: 100
++  soft_dof_pos_curriculum_level_up_threshold: 900
++
++  obs_dims:
++    - dof_pos: ${robot.dof_obs_size}
++    - hand_force: 6  # 2 手 × 1 剛体 × 3
++    - relative_to_door: 9
++    - dof_vel: ${robot.dof_obs_size}
++    - actions: ${robot.actions_dim}
++    - projected_gravity: 3
++    - door_dof_pos: 2
++    - base_lin_vel: 3
++    - base_ang_vel: 3
++    - stage: ${eval:'len(${env.config.max_stage_time})'}
++    - privileged_door_info: 8
++    - hand_handle_transform: 18
++    - b_homie_commands: 7
++    - e_homie_dof_pos: ${robot.homie_dof_obs_size}
++    - f_homie_dof_vel: ${robot.homie_dof_obs_size}
++    - c_homie_base_ang_vel: 3
++    - d_homie_projected_gravity: 3
++    # - homie_torso_ang_vel: 3
++    # - homie_torso_projected_gravity: 3
++    - g_homie_body_actions: ${robot.lower_body_actions_dim}
++    #- homie_clock_inputs: 2
++    - transition: 1
++    - complete: 1
++    - time_in_stage: 1
++    - actual_time_in_stage: 1
++    - total_time: 1
++    - delta_actions: ${eval:'len(${env.config.delta_action_indices})'}
++    - unwarped_actions: ${eval:'len(${env.config.warped_action.indices})'}
++    - door_angle_lidar: 3
++    - door_frame_loc: 9
++    - door_geometry: 7
++    - arm_dof_torque: 14
++    - vis_feat: 128
++    - vis_head_gravity: 3
++    - door_truth: 17
++
++  homie_command_keys: {
++    # 'loco_vel', 'height', 'rpy', 'left_arm', 'right_arm'
++    'loco_vel', 'left_arm', 'right_arm'
++    #, 'left_arm'
++  }
++
++  homie_command_default: {
++    'loco_vel': [0.0, 0.0, 0.0],
++    'height': [0.0],
++    'rpy': [0.0, 0.0, 0.0],
++    'left_arm': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
++    'right_arm': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
++  }
++
++  homie_command_index: {
++    'loco_vel': [0, 1, 2],
++    'height': [3],
++    'rpy': [4, 5, 6],
++    'left_arm': [7, 8, 9, 10, 11, 12, 13],
++    'right_arm': [14, 15, 16, 17, 18, 19, 20],  # 7 + 14 = 21
++  }
++
++  homie_default_height: 0.74
+diff --git a/gr00t/rl/envs/door/door_mirror.py b/gr00t/rl/envs/door/door_mirror.py
+--- a/gr00t/rl/envs/door/door_mirror.py
++++ b/gr00t/rl/envs/door/door_mirror.py
+@@ -66,6 +66,7 @@
+             "door_frame_loc": _flip_y,  # 測位で求めた枠の位置・tan・norm（relative_to_door と同じ並び）
+             "door_geometry": self._door_geometry,
+             "arm_dof_torque": self._arms,
++            "vis_head_gravity": _flip_y,  # 11-04: 頭から見た重力の向き（画像だけの生徒）
+             "palm_lever_rel": _flip_y,  # 段 5: 手のひらからレバーまでの位置の差（骨盤の座標のベクトル）  # 左腕 7・右腕 7 の関節のトルク（関節と同じく左右を入れ替え roll・yaw を反転）
+         }
+ 
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -321,7 +321,138 @@
+ 
+                 self._door_push = PushStageDoorValues(self.num_envs, self.device, self.dt, vis_cfg)
+                 self._door_vision_used = None
++        self._init_vision_student(used)
+ 
++    def _init_vision_student(self, used):
++        """G1_Hackason（11-04、画像だけの生徒）: 頭のカラーの特徴（vis_feat）・頭の重力（vis_head_gravity）・扉の本当の値
++        （door_truth）の観測と、V2 の学習用の記録（env.config.vision_dump）。どれも使わないときは何もしない（door_vision_feat.py）。
++        特徴は env.config.vision_feat.every_n 歩に 1 回だけカメラを読んで作り、間は持ち回す（カメラは読んだときだけ描画される）"""
++        vf_cfg = self.config.get("vision_feat", None) or {}
++        dump_cfg = self.config.get("vision_dump", None) or {}
++        self._vis_every = int(vf_cfg.get("every_n", 5))
++        self._vis_chunk = int(vf_cfg.get("chunk", 256))  # 画像の網に一度に通す台数（GPU の山を抑える）
++        self._vis_count = 0
++        self._vis_encoder = None
++        self._vis_feat = None
++        self._vis_dumper = None
++        self._vis_on = bool(used & {"vis_feat", "vis_head_gravity", "door_truth"}) or bool(dump_cfg.get("dir", None))
++        if not self._vis_on:
++            return
++        from gr00t.rl.envs.door.door_vision_feat import VisionDumper, load_encoder
++
++        if "vis_feat" in used:
++            feat_dim = int(self.config.obs.obs_dims["vis_feat"])
++            self._vis_encoder = load_encoder(vf_cfg.get("encoder_path", None), feat_dim, self.device)
++            self._vis_feat = torch.zeros(self.num_envs, feat_dim, device=self.device)
++        if dump_cfg.get("dir", None):
++            self._vis_dumper = VisionDumper(
++                dump_cfg["dir"], int(dump_cfg.get("shard_size", 2048)), float(dump_cfg.get("keep_frac", 0.25)),
++                int(dump_cfg.get("max_frames", 0)), int(dump_cfg.get("seed", 0)),
++            )
++        self._vis_torso_idx = self.simulator.body_names.index("torso_link")
++        # カメラの取付の既定の俯角（camera_rot_offset は wxyz で y 軸まわり）。俯角の乱択（0061）があれば台ごとの値を使う
++        rot = list(self.config.simulator.config.cameras.camera_rot_offset)
++        self._vis_pitch_default = 2.0 * math.atan2(float(rot[2]), float(rot[0]))
++        # 頭の重力の回ごとの片寄り（頭の IMU とカメラの向きの合わせの誤差の代わり）。σ は env.config.vision_feat.head_gravity_bias
++        self._vis_hg_bias_sigma = float(vf_cfg.get("head_gravity_bias", 0.015))
++        self._vis_hg_bias = torch.zeros(self.num_envs, 3, device=self.device)
++        # 歩くたびの頭の頷き（11-04）: 回ごとに振幅 0〜nod_deg・周波数 nod_hz の範囲・位相を引き、俯角に正弦波で足す。
++        # カメラの向きは描画の歩ごとに書き直す（書いた向きは次の描画から効くので、次の描画の時刻の頷きを書く）。既定 0 は何もしない
++        self._vis_nod_deg = float(vf_cfg.get("nod_deg", 0.0))
++        lo, hi = list(vf_cfg.get("nod_hz", [1.2, 2.0]))
++        self._vis_nod_hz_range = (float(lo), float(hi))
++        self._vis_nod_amp = torch.zeros(self.num_envs, device=self.device)
++        self._vis_nod_hz = torch.full((self.num_envs,), float(lo), device=self.device)
++        self._vis_nod_phase = torch.zeros(self.num_envs, device=self.device)
++        self._vis_nod_rad = torch.zeros(self.num_envs, device=self.device)  # いま書いてある（＝描画に効いている）頷き
++        print(f"[G1_Hackason] 画像の生徒: 頷き 0〜{self._vis_nod_deg}°・{self._vis_nod_hz_range} Hz")
++        print(f"[G1_Hackason] 画像の生徒: 観測 {sorted(used & {'vis_feat', 'vis_head_gravity', 'door_truth'})}・"
++              f"{self._vis_every} 歩に 1 回・記録 {dump_cfg.get('dir', None)}・既定の俯角 {math.degrees(self._vis_pitch_default):.1f}°")
++
++    def _vis_pitch_rad(self) -> torch.Tensor:
++        default = torch.full((self.num_envs,), self._vis_pitch_default, device=self.device)
++        deg = getattr(self, "camera_pitch_deg", None)
++        base = default if deg is None else torch.where(torch.isnan(deg), default, torch.deg2rad(deg))
++        return base + self._vis_nod_rad
++
++    def _vis_apply_nod(self):
++        """次の描画（every_n 歩後）の時刻の頷きを、カメラの取付の向き（俯角＋頷き）として書く"""
++        if self._vis_nod_deg <= 0.0:
++            return
++        t = (self.episode_length_buf.float() + self._vis_every) * self.dt
++        nod = torch.deg2rad(self._vis_nod_amp) * torch.sin(2.0 * math.pi * self._vis_nod_hz * t + self._vis_nod_phase)
++        self._vis_nod_rad = torch.zeros_like(nod)
++        pitch = self._vis_pitch_rad() + nod
++        self.simulator.set_ego_camera_local_pitch(self._all_env_ids, pitch)
++        self._vis_nod_rad = nod
++
++    def _vis_head_gravity_raw(self) -> torch.Tensor:
++        from gr00t.rl.envs.door.door_vision_feat import head_gravity
++
++        q_torso = self.simulator._rigid_body_rot[:, self._vis_torso_idx, :]  # xyzw
++        g = head_gravity(q_torso, self._vis_pitch_rad()) + self._vis_hg_bias
++        return g / g.norm(dim=-1, keepdim=True).clamp_min(1e-6)
++
++    def _get_obs_vis_head_gravity(self):
++        # 方策の組（actor_obs など）では DoorMirror が y を反転する（door_mirror.py の vis_head_gravity）
++        return self._vis_head_gravity_raw()
++
++    def _get_obs_vis_feat(self):
++        return self._vis_feat
++
++    def _get_obs_door_truth(self):
++        """扉の本当の値 17 個（door_vision_feat.DOOR_TRUTH_NAMES）。gt_obj_pos の組は DoorMirror が映さないので、ここで鏡に映す"""
++        angle = self.simulator.get_task_dof_pos("door")[:, :1]
++        rel = torch.cat([self.relative_door_pos_buf, quat_to_tan_norm(self.relative_door_rot_buf, w_last=True)], dim=-1)
++        info = self._get_obs_privileged_door_info()
++        geom = torch.cat([info[:, :4], info[:, 5:8]], dim=-1)
++        if getattr(self, "_any_mirror", False):
++            m = self._mirror_env[:, None]
++            rel = torch.where(m, self._door_mirror.obs("door_frame_loc", rel), rel)
++            geom = torch.where(m, self._door_mirror.obs("door_geometry", geom), geom)
++        return torch.cat([angle, rel, geom], dim=-1)
++
++    def _vis_aux_in(self) -> torch.Tensor:
++        """扉の頭への手掛かり [頭の重力 3, 胴の重力 3, 腰 yaw・roll・pitch 3]。方策が見るのと同じく鏡に映した値（雑音なし）"""
++        hg = self._vis_head_gravity_raw()
++        pg = self.projected_gravity
++        dof = self.simulator.dof_pos
++        if getattr(self, "_any_mirror", False):
++            m = self._mirror_env[:, None]
++            hg = torch.where(m, self._door_mirror.obs("vis_head_gravity", hg), hg)
++            pg = torch.where(m, self._door_mirror.obs("projected_gravity", pg), pg)
++            dof = torch.where(m, self._door_mirror.obs("dof_pos", dof), dof)
++        return torch.cat([hg, pg, dof[:, 12:15]], dim=-1)
++
++    def _update_vision(self):
++        """every_n 歩に 1 回、頭のカメラを読んで特徴を作り直し、記録するなら画像と答えを溜める"""
++        k = self._vis_count
++        self._vis_count += 1
++        if k % self._vis_every != 0:
++            return
++        rgb = _t(self.simulator.scene.sensors["ego_camera"].data.output["rgb"])[..., :3]
++        if rgb.dtype != torch.uint8:
++            rgb = (rgb.float().clamp(0, 1) * 255.0 if rgb.max() <= 1.0 else rgb.float()).to(torch.uint8)
++        if self._vis_encoder is not None:
++            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
++                feats = [self._vis_encoder(rgb[i : i + self._vis_chunk]) for i in range(0, rgb.shape[0], self._vis_chunk)]
++            self._vis_feat = torch.cat(feats, dim=0).float()
++        dumper = self._vis_dumper
++        if dumper is not None and not dumper.full:
++            dumper.add({
++                "rgb": rgb,
++                "aux": self._vis_aux_in(),
++                "truth": self._get_obs_door_truth(),
++                "stage": self.stage_buf.float(),
++                "pitch_deg": torch.rad2deg(self._vis_pitch_rad()),
++                "ep_step": self.episode_length_buf.float(),
++                "env_id": self._all_env_ids.float(),
++            })
++            if dumper.full:
++                dumper.flush()
++                print(f"[G1_Hackason] 記録が max_frames（{dumper.max_frames}）に届いた", flush=True)
++        self._vis_apply_nod()
++
+     def _init_buffers(self):
+         super()._init_buffers()
+         # G1_Hackason（パッチ 0089、11-02）: 回が終わった理由と、終わった歩の段階・上半身の関節の速さの最大（_note_term_reason）。
+@@ -388,6 +519,8 @@
+             self._update_door_sensor(None if full_step else env_ids)
+         if getattr(self, "_use_palm_lever", False):
+             self._update_palm_lever(None if full_step else env_ids)
++        if full_step and getattr(self, "_vis_on", False):
++            self._update_vision()
+ 
+     def _update_door_sensor(self, env_ids=None):
+         """G1_Hackason（段 2.5）: 扉の角度の LiDAR と、測位で求めた枠の位置を 1 ステップ進める。
+@@ -1365,6 +1498,15 @@
+             self._door_push.reset(env_ids)  # 10-20: 押す間の値の出どころ（odometry・ライダーの片寄りを引き直す）
+         if getattr(self, "_use_palm_lever", False) and hasattr(self, "_plr_bias"):
+             self._plr_reset(env_ids)
++        if getattr(self, "_vis_on", False) and len(env_ids) > 0:  # 11-04: 頭の重力の片寄りを引き直す
++            self._vis_hg_bias[env_ids] = torch.randn(len(env_ids), 3, device=self.device) * self._vis_hg_bias_sigma
++            self._vis_nod_rad[env_ids] = 0.0  # 戻しでカメラは俯角だけに書き直される（0061）。次の描画の歩で頷きを書く
++            if self._vis_nod_deg > 0.0:
++                k = len(env_ids)
++                lo, hi = self._vis_nod_hz_range
++                self._vis_nod_amp[env_ids] = torch.rand(k, device=self.device) * self._vis_nod_deg
++                self._vis_nod_hz[env_ids] = lo + torch.rand(k, device=self.device) * (hi - lo)
++                self._vis_nod_phase[env_ids] = torch.rand(k, device=self.device) * 2.0 * math.pi
+ 
+     def _reset_object_states_callback(self, env_ids):
+         self._reset_door_states(env_ids)
+diff --git a/gr00t/rl/envs/door/door_vision_feat.py b/gr00t/rl/envs/door/door_vision_feat.py
+new file mode 100644
+--- /dev/null
++++ b/gr00t/rl/envs/door/door_vision_feat.py
+@@ -0,0 +1,181 @@
++# G1_Hackason（11-04、画像だけで扉を開ける生徒）: 画像の側の部品。torch と torchvision だけで動く（Isaac Sim なしで試験できる）。
++#
++# 生徒の作り（計画書 docs/plan/2026-11-04-g1-door-vision-rl.md の 3 章）:
++#   画像の網（DoorVisionEncoder）は環境の側に置いて固める。頭のカラーを 10 Hz（制御 5 歩に 1 回）で描き、特徴 128 個を作って
++#   間の 4 歩は同じ特徴を持ち回す。学習係には特徴だけが流れる（画像を溜めない）
++#   扉の頭（DoorHead）は生徒の側に置く。特徴＋頭と胴の重力の向き＋腰の角度から、扉の値 17 個（DOOR_TRUTH の並び）を当てる
++#   生徒は当てた値を f3sc（状態入力の方策）の扉の値 19 個の位置に差し込み、f3sc の LSTM と MLP をそのまま使う
++#
++# 扉の値の並び（door_truth、17 個。どれも鏡写しの後＝方策が見る向き）:
++#   [扉の開いた角度 rad, 枠の位置 xyz m（pelvis の座標）, 枠の向き tan・norm 6 個, 幅・高さ・レバーの高さ・バックセット m, lr, 1 − lr, io]
++from __future__ import annotations
++
++import math
++import os
++import time
++
++import numpy as np
++import torch
++import torch.nn as nn
++
++DOOR_TRUTH_DIM = 17
++AUX_IN_DIM = 9  # 頭の重力 3・胴の重力 3（projected_gravity）・腰の角度 3（yaw・roll・pitch）
++# 損失の重み＝1 / 許す誤差²。角度 2°・位置 3 cm・向き 0.03・長さ 2 cm・向きの札 0.1
++DOOR_TRUTH_TOL = [math.radians(2.0)] + [0.03] * 3 + [0.03] * 6 + [0.02] * 4 + [0.1] * 3
++DOOR_TRUTH_NAMES = (
++    ["angle", "pos_x", "pos_y", "pos_z"]
++    + [f"rot6d_{i}" for i in range(6)]
++    + ["width", "height", "handle_height", "backset", "lr", "one_minus_lr", "io"]
++)
++IMAGENET_MEAN = (0.485, 0.456, 0.406)
++IMAGENET_STD = (0.229, 0.224, 0.225)
++
++
++class DoorVisionEncoder(nn.Module):
++    """uint8 の RGB 画像 [N, H, W, 3] → 特徴 [N, feat_dim]。ResNet18（ImageNet で学習済み）の平均プーリングの後に線形＋LayerNorm"""
++
++    def __init__(self, feat_dim: int = 128, pretrained: bool = True):
++        super().__init__()
++        import torchvision
++
++        weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
++        r = torchvision.models.resnet18(weights=weights)
++        self.trunk = nn.Sequential(*list(r.children())[:-1])  # → [N, 512, 1, 1]
++        self.proj = nn.Linear(512, feat_dim)
++        self.norm = nn.LayerNorm(feat_dim)
++        self.feat_dim = feat_dim
++        self.register_buffer("img_mean", torch.tensor(IMAGENET_MEAN).view(1, 3, 1, 1))
++        self.register_buffer("img_std", torch.tensor(IMAGENET_STD).view(1, 3, 1, 1))
++
++    def preprocess(self, rgb_u8: torch.Tensor) -> torch.Tensor:
++        x = rgb_u8[..., :3].permute(0, 3, 1, 2).float() / 255.0
++        return (x - self.img_mean) / self.img_std
++
++    def forward_normalized(self, x: torch.Tensor) -> torch.Tensor:
++        return self.norm(self.proj(self.trunk(x).flatten(1)))
++
++    def forward(self, rgb_u8: torch.Tensor) -> torch.Tensor:
++        return self.forward_normalized(self.preprocess(rgb_u8))
++
++
++class DoorHead(nn.Module):
++    """特徴 [.., feat_dim] と手掛かり [.., AUX_IN_DIM] → 扉の値 [.., 17]（物理の単位）。
++    網は正規化した値を出し、out_mean・out_std（学習用の記録から求めた値）で物理の単位に戻す"""
++
++    def __init__(self, feat_dim: int = 128, hidden: tuple[int, ...] = (256, 128)):
++        super().__init__()
++        layers: list[nn.Module] = []
++        d = feat_dim + AUX_IN_DIM
++        for h in hidden:
++            layers += [nn.Linear(d, h), nn.SiLU()]
++            d = h
++        layers.append(nn.Linear(d, DOOR_TRUTH_DIM))
++        self.net = nn.Sequential(*layers)
++        self.register_buffer("out_mean", torch.zeros(DOOR_TRUTH_DIM))
++        self.register_buffer("out_std", torch.ones(DOOR_TRUTH_DIM))
++
++    def forward_normalized(self, feat: torch.Tensor, aux: torch.Tensor) -> torch.Tensor:
++        return self.net(torch.cat([feat, aux], dim=-1))
++
++    def forward(self, feat: torch.Tensor, aux: torch.Tensor) -> torch.Tensor:
++        return self.forward_normalized(feat, aux) * self.out_std + self.out_mean
++
++
++def door_truth_weight(device=None) -> torch.Tensor:
++    """扉の値の損失の重み（1 / 許す誤差²）"""
++    tol = torch.tensor(DOOR_TRUTH_TOL, dtype=torch.float32, device=device)
++    return 1.0 / tol**2
++
++
++def quat_mul_xyzw(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
++    ax, ay, az, aw = a.unbind(-1)
++    bx, by, bz, bw = b.unbind(-1)
++    return torch.stack(
++        [
++            aw * bx + ax * bw + ay * bz - az * by,
++            aw * by - ax * bz + ay * bw + az * bx,
++            aw * bz + ax * by - ay * bx + az * bw,
++            aw * bw - ax * bx - ay * by - az * bz,
++        ],
++        dim=-1,
++    )
++
++
++def quat_rotate_inverse_xyzw(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
++    """q（xyzw）の逆回転で v を回す（世界の向き → q の座標）"""
++    xyz, w = q[..., :3], q[..., 3:4]
++    t = 2.0 * torch.cross(xyz, v, dim=-1)
++    return v - w * t + torch.cross(xyz, t, dim=-1)
++
++
++def head_gravity(torso_quat_xyzw: torch.Tensor, pitch_rad: torch.Tensor) -> torch.Tensor:
++    """頭（カメラの体の座標。前 +x・上 +z。torso_link の y 軸まわりに pitch_rad 下を向く）から見た重力の向き [N, 3]"""
++    half = 0.5 * pitch_rad
++    zero = torch.zeros_like(half)
++    q_pitch = torch.stack([zero, torch.sin(half), zero, torch.cos(half)], dim=-1)
++    q_head = quat_mul_xyzw(torso_quat_xyzw, q_pitch)
++    g = torch.zeros_like(q_head[..., :3])
++    g[..., 2] = -1.0
++    return quat_rotate_inverse_xyzw(q_head, g)
++
++
++def load_encoder(path: str | None, feat_dim: int, device) -> DoorVisionEncoder:
++    """学習済みの画像の網を読む（path が無ければ ImageNet のままの網。速さを測る・記録を集めるとき）"""
++    enc = DoorVisionEncoder(feat_dim=feat_dim, pretrained=path is None)
++    if path:
++        sd = torch.load(path, map_location="cpu", weights_only=False)
++        sd = sd.get("encoder", sd)
++        enc.load_state_dict(sd)
++        print(f"[G1_Hackason] 画像の網を読んだ: {path}")
++    enc.to(device).eval()
++    for p in enc.parameters():
++        p.requires_grad = False
++    return enc
++
++
++class VisionDumper:
++    """V2 の学習用の記録。画像（uint8）・手掛かり・扉の値・段階などを shard_XXXXX.npz に溜めて書く。
++    1 回に全部の台でなく keep_frac の割合の台だけ残す（同じ扉の似た画像ばかりにしない）"""
++
++    def __init__(self, out_dir: str, shard_size: int = 2048, keep_frac: float = 0.25, max_frames: int = 0, seed: int = 0):
++        self.out_dir = out_dir
++        os.makedirs(out_dir, exist_ok=True)
++        self.shard_size = int(shard_size)
++        self.keep_frac = float(keep_frac)
++        self.max_frames = int(max_frames)
++        self.gen = torch.Generator()
++        self.gen.manual_seed(int(seed))
++        self.buf: dict[str, list[np.ndarray]] = {}
++        self.n_buf = 0
++        self.n_written = 0
++        self.shard_idx = len([f for f in os.listdir(out_dir) if f.startswith("shard_")])
++        self.t0 = time.time()
++
++    @property
++    def full(self) -> bool:
++        return self.max_frames > 0 and self.n_written + self.n_buf >= self.max_frames
++
++    def add(self, items: dict[str, torch.Tensor]) -> None:
++        if self.full:
++            return
++        n = next(iter(items.values())).shape[0]
++        keep = (torch.rand(n, generator=self.gen) < self.keep_frac).nonzero(as_tuple=False).flatten()
++        if len(keep) == 0:
++            return
++        for k, v in items.items():
++            self.buf.setdefault(k, []).append(v.detach()[keep.to(v.device)].cpu().numpy())
++        self.n_buf += len(keep)
++        if self.n_buf >= self.shard_size:
++            self.flush()
++
++    def flush(self) -> None:
++        if self.n_buf == 0:
++            return
++        arrs = {k: np.concatenate(v, axis=0) for k, v in self.buf.items()}
++        path = os.path.join(self.out_dir, f"shard_{self.shard_idx:05d}.npz")
++        np.savez(path, **arrs)
++        self.shard_idx += 1
++        self.n_written += self.n_buf
++        print(f"[G1_Hackason] 記録 {path}（{self.n_buf} 枚・計 {self.n_written} 枚・{time.time() - self.t0:.0f} 秒）", flush=True)
++        self.buf = {}
++        self.n_buf = 0
+diff --git a/gr00t/rl/scripts/door_vision_pretrain.py b/gr00t/rl/scripts/door_vision_pretrain.py
+new file mode 100644
+--- /dev/null
++++ b/gr00t/rl/scripts/door_vision_pretrain.py
+@@ -0,0 +1,226 @@
++# G1_Hackason（11-04、画像だけの生徒 V2）: collect_vis_1104.sh で集めた画像と答えから、画像の網（DoorVisionEncoder）と扉の頭
++# （DoorHead）を学ぶ。シミュレータを使わない（GPU だけ）。学習に無い扉（記録の束ごとに台の 1 割）で外れを測る。
++#
++# 使い方: python door_vision_pretrain.py --data <束1>/frames <束2>/frames ... --out <出力.pt> [--epochs 8] [--batch 256]
++# 出力: {"encoder": 画像の網, "head": 扉の頭（out_mean・out_std 込み）, "metrics": 外れの表}
++# 外れの表: 項目ごとの平均の絶対誤差（角度は度・長さは cm）を、全体と段階ごと（区間 0〜5）に出す
++from __future__ import annotations
++
++import argparse
++import glob
++import json
++import math
++import os
++import time
++
++import numpy as np
++import torch
++import torch.nn.functional as F
++
++from gr00t.rl.envs.door.door_vision_feat import (
++    DOOR_TRUTH_DIM,
++    DOOR_TRUTH_NAMES,
++    DOOR_TRUTH_TOL,
++    DoorHead,
++    DoorVisionEncoder,
++)
++
++
++def load_frames(dirs: list[str]) -> dict[str, np.ndarray]:
++    """束（frames/）ごとの shard_*.npz を読み、扉の番号（束の番号 × 100000 ＋ 台の番号）を付けて 1 つにする。
++    画像は大きい（10 万枚で約 6 GB）ので、先に枚数を数えて 1 つの配列を用意し、束を 1 つずつ書き込む（つなぐと RAM が 2 倍要る）"""
++    files = [(bi, f) for bi, d in enumerate(dirs) for f in sorted(glob.glob(os.path.join(d, "shard_*.npz")))]
++    counts = []
++    for _, f in files:
++        with np.load(f) as z:
++            counts.append(len(z["env_id"]))
++    n = int(sum(counts))
++    out: dict[str, np.ndarray] = {}
++    i = 0
++    for (bi, f), c in zip(files, counts):
++        with np.load(f) as z:
++            for k in z.files:
++                a = z[k]
++                if k not in out:
++                    out[k] = np.empty((n,) + a.shape[1:], dtype=a.dtype)
++                out[k][i : i + c] = a
++        out.setdefault("door_id", np.empty(n, dtype=np.int64))[i : i + c] = bi * 100000 + out["env_id"][i : i + c].astype(np.int64)
++        i += c
++    for d in dirs:
++        print(f"[pretrain] {d}: {sum(1 for bi, f in files if f.startswith(d))} 束", flush=True)
++    return out
++
++
++def split_by_door(door_id: np.ndarray, val_frac: float, seed: int) -> tuple[np.ndarray, np.ndarray]:
++    doors = np.unique(door_id)
++    rng = np.random.default_rng(seed)
++    val_doors = rng.choice(doors, size=max(1, int(round(len(doors) * val_frac))), replace=False)
++    is_val = np.isin(door_id, val_doors)
++    return np.nonzero(~is_val)[0], np.nonzero(is_val)[0]
++
++
++def augment(x: torch.Tensor, gen: torch.Generator) -> torch.Tensor:
++    """x: [B, 3, H, W]（0〜1）。明るさ・コントラスト・彩度・白の釣り合い・ぼけ・雑音・まれに白黒。形（幾何）は変えない
++    （画像の中の位置が扉の位置の手掛かりなので、ずらし・切り抜きはしない）"""
++    b = x.shape[0]
++    dev = x.device
++
++    def u(lo, hi, *shape):
++        return torch.rand(*shape, device=dev, generator=gen) * (hi - lo) + lo
++
++    x = x * u(0.6, 1.5, b, 1, 1, 1)
++    mean = x.mean(dim=(1, 2, 3), keepdim=True)
++    x = (x - mean) * u(0.6, 1.4, b, 1, 1, 1) + mean
++    gray = x.mean(dim=1, keepdim=True)
++    x = (x - gray) * u(0.5, 1.5, b, 1, 1, 1) + gray
++    x = x * u(0.85, 1.15, b, 3, 1, 1)
++    blur = torch.rand(b, device=dev, generator=gen) < 0.3
++    if blur.any():
++        k = torch.tensor([1.0, 2.0, 1.0], device=dev)
++        k = (k[:, None] * k[None, :]) / 16.0
++        xb = F.conv2d(x[blur].reshape(-1, 1, *x.shape[2:]), k[None, None], padding=1).reshape(-1, 3, *x.shape[2:])
++        x = x.clone()
++        x[blur] = xb
++    x = x + torch.randn(x.shape, device=dev, generator=gen) * u(0.0, 0.04, b, 1, 1, 1)
++    g = torch.rand(b, device=dev, generator=gen) < 0.05
++    if g.any():
++        x[g] = x[g].mean(dim=1, keepdim=True).expand(-1, 3, -1, -1)
++    return x.clamp(0.0, 1.0)
++
++
++def aux_noise(aux: torch.Tensor, gen: torch.Generator) -> torch.Tensor:
++    """手掛かり [頭の重力 3, 胴の重力 3, 腰 3] に、学習の観測と同じくらいの揺れ（頭の重力は片寄りも）を足す"""
++    n = torch.randn(aux.shape, device=aux.device, generator=gen)
++    out = aux.clone()
++    hg = aux[:, :3] + n[:, :3] * 0.02 + torch.randn(aux.shape[0], 3, device=aux.device, generator=gen) * 0.015
++    out[:, :3] = hg / hg.norm(dim=-1, keepdim=True).clamp_min(1e-6)
++    out[:, 6:9] = aux[:, 6:9] + n[:, 6:9] * 0.01
++    return out
++
++
++def evaluate(enc, head, data, idx, device, tol, batch=512) -> dict:
++    enc.eval()
++    head.eval()
++    errs, stages = [], []
++    with torch.no_grad(), torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
++        for i in range(0, len(idx), batch):
++            j = idx[i : i + batch]
++            rgb = torch.from_numpy(data["rgb"][j]).to(device)
++            aux = torch.from_numpy(data["aux"][j]).float().to(device)
++            y = torch.from_numpy(data["truth"][j]).float().to(device)
++            pred = head(enc(rgb).float(), aux).float()
++            errs.append((pred - y).abs().cpu())
++            stages.append(torch.from_numpy(data["stage"][j]))
++    err = torch.cat(errs)
++    stage = torch.cat(stages).long()
++    unit = torch.tensor([180.0 / math.pi] + [100.0] * 3 + [1.0] * 6 + [100.0] * 4 + [1.0] * 3)  # 度・cm・そのまま
++    res = {"all": dict(zip(DOOR_TRUTH_NAMES, (err.mean(0) * unit).tolist())), "n": int(len(idx))}
++    for s in range(6):
++        m = stage == s
++        if m.sum() > 0:
++            res[f"stage{s}"] = dict(zip(DOOR_TRUTH_NAMES, (err[m].mean(0) * unit).tolist()))
++            res[f"stage{s}"]["n"] = int(m.sum())
++    res["loss_tol"] = float(((err / tol.cpu()) ** 2).mean())
++    return res
++
++
++def fmt(res: dict) -> str:
++    a = res["all"]
++    return (f"角度 {a['angle']:.2f}° 位置 {a['pos_x']:.1f}/{a['pos_y']:.1f}/{a['pos_z']:.1f} cm 向き {a['rot6d_0']:.3f} "
++            f"幅 {a['width']:.1f} 高さ {a['height']:.1f} レバー高 {a['handle_height']:.1f} バックセット {a['backset']:.1f} cm "
++            f"(n={res['n']}, 損失 {res['loss_tol']:.2f})")
++
++
++def main() -> None:
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--data", nargs="+", required=True)
++    ap.add_argument("--out", required=True)
++    ap.add_argument("--epochs", type=int, default=8)
++    ap.add_argument("--batch", type=int, default=256)
++    ap.add_argument("--lr", type=float, default=3e-4)
++    ap.add_argument("--val_frac", type=float, default=0.1)
++    ap.add_argument("--feat_dim", type=int, default=128)
++    ap.add_argument("--init", default=None, help="続きから学ぶ重み（この台本の出力）")
++    ap.add_argument("--seed", type=int, default=0)
++    ap.add_argument("--device", default="cuda")
++    ap.add_argument("--eval_batch", type=int, default=512)
++    ap.add_argument("--max_steps", type=int, default=0, help="1 エポックの歩数の上限（試しの確かめ用。0 は全部）")
++    args = ap.parse_args()
++
++    device = torch.device(args.device)
++    t0 = time.time()
++    data = load_frames(args.data)
++    n = len(data["truth"])
++    tr, va = split_by_door(data["door_id"], args.val_frac, args.seed)
++    print(f"[pretrain] 画像 {n} 枚・扉 {len(np.unique(data['door_id']))} 枚（学習 {len(tr)}・確かめ {len(va)}）・"
++          f"読み込み {time.time() - t0:.0f} 秒", flush=True)
++
++    enc = DoorVisionEncoder(args.feat_dim, pretrained=args.init is None).to(device)
++    head = DoorHead(args.feat_dim).to(device)
++    y_tr = torch.from_numpy(data["truth"][tr]).float()
++    head.out_mean.copy_(y_tr.mean(0))
++    head.out_std.copy_(y_tr.std(0).clamp_min(1e-3))
++    if args.init:
++        ck = torch.load(args.init, map_location="cpu", weights_only=False)
++        enc.load_state_dict(ck["encoder"])
++        head.load_state_dict(ck["head"])
++        print(f"[pretrain] 続きから: {args.init}", flush=True)
++    tol = torch.tensor(DOOR_TRUTH_TOL, device=device)
++    params = [{"params": enc.parameters(), "lr": args.lr}, {"params": head.parameters(), "lr": args.lr}]
++    opt = torch.optim.AdamW(params, weight_decay=1e-4)
++    steps_per_epoch = max(1, len(tr) // args.batch)
++    if args.max_steps:
++        steps_per_epoch = min(steps_per_epoch, args.max_steps)
++    total = steps_per_epoch * args.epochs
++    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=args.lr, total_steps=total, pct_start=0.05)
++    gen = torch.Generator(device=device)
++    gen.manual_seed(args.seed)
++    rng = np.random.default_rng(args.seed)
++    best = None
++    history = []
++    for ep in range(args.epochs):
++        enc.train()
++        head.train()
++        perm = rng.permutation(tr)
++        t1 = time.time()
++        run = 0.0
++        for s in range(steps_per_epoch):
++            j = np.sort(perm[s * args.batch : (s + 1) * args.batch])
++            rgb = torch.from_numpy(data["rgb"][j]).to(device, non_blocking=True)
++            aux = torch.from_numpy(data["aux"][j]).float().to(device)
++            y = torch.from_numpy(data["truth"][j]).float().to(device)
++            x = augment(rgb[..., :3].permute(0, 3, 1, 2).float() / 255.0, gen)
++            x = (x - enc.img_mean) / enc.img_std
++            with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
++                feat = enc.forward_normalized(x)
++                pred = head(feat.float(), aux_noise(aux, gen))
++            loss = (((pred.float() - y) / tol) ** 2).mean()
++            opt.zero_grad(set_to_none=True)
++            loss.backward()
++            torch.nn.utils.clip_grad_norm_(list(enc.parameters()) + list(head.parameters()), 1.0)
++            opt.step()
++            sched.step()
++            run += loss.item()
++            if (s + 1) % 200 == 0 or args.max_steps:
++                print(f"[pretrain] ep {ep} {s + 1}/{steps_per_epoch} 損失 {run / (1 if args.max_steps else 200):.3f} "
++                      f"({(s + 1) * args.batch / (time.time() - t1):.0f} 枚/秒)", flush=True)
++                run = 0.0
++        res = evaluate(enc, head, data, va, device, tol, args.eval_batch)
++        res_tr = evaluate(enc, head, data, tr[:: max(1, len(tr) // 4000)], device, tol, args.eval_batch)
++        history.append({"epoch": ep, "val": res, "train_sub": res_tr})
++        print(f"[pretrain] ep {ep} 確かめ（学習に無い扉）: {fmt(res)}", flush=True)
++        print(f"[pretrain] ep {ep} 学習の扉（一部）    : {fmt(res_tr)}", flush=True)
++        if best is None or res["loss_tol"] < best:
++            best = res["loss_tol"]
++            torch.save({"encoder": enc.state_dict(), "head": head.state_dict(), "metrics": res,
++                        "args": vars(args), "epoch": ep}, args.out)
++            print(f"[pretrain] 保存 {args.out}（ep {ep}）", flush=True)
++    with open(os.path.splitext(args.out)[0] + "_history.json", "w") as f:
++        json.dump(history, f, indent=1, ensure_ascii=False)
++    print(f"[pretrain] 終わり {time.time() - t0:.0f} 秒", flush=True)
++
++
++assert DOOR_TRUTH_DIM == len(DOOR_TRUTH_NAMES)
++
++if __name__ == "__main__":
++    main()
+diff --git a/gr00t/rl/scripts/make_vis_ppo_ckpt.py b/gr00t/rl/scripts/make_vis_ppo_ckpt.py
+new file mode 100644
+--- /dev/null
++++ b/gr00t/rl/scripts/make_vis_ppo_ckpt.py
+@@ -0,0 +1,46 @@
++"""G1_Hackason（11-04、画像だけの生徒 V4）: DAgger で作った画像だけの生徒を PPO で磨く出発の重みを組み立てる
++（make_state_ppo_ckpt.py と同じ考え）。
++
++  actor  = 生徒（VisionDoorStudent）の重みそのまま。std だけ f3sc が最後に学んだ値 × --std-scale（探索の揺らぎ）
++  critic = f3sc の評価係（critic_obs は f3sc と同じなので、そのまま使える）
++  env の状態（打ち切りの線など）と学習の状態は f3sc のものを使う。最適化の状態は入れない（学習率は exp の値で始まる）
++
++使い方（OMEN の ~/work_inoue/doorman6/VIRAL6_vis で）:
++  python gr00t/rl/scripts/make_vis_ppo_ckpt.py <生徒の last.pt> <f3sc の last.pt> <出力の .pt> [--std-scale 0.5]
++出力の隣に生徒の config.yaml を写さない（PPO の exp で起動して ++checkpoint で渡す）
++"""
++
++import argparse
++
++import torch
++
++
++def main() -> None:
++    ap = argparse.ArgumentParser()
++    ap.add_argument("student")
++    ap.add_argument("teacher")
++    ap.add_argument("out")
++    ap.add_argument("--std-scale", type=float, default=0.5)
++    args = ap.parse_args()
++
++    student = torch.load(args.student, map_location="cpu", weights_only=False)
++    teacher = torch.load(args.teacher, map_location="cpu", weights_only=False)
++    sp = student["policy_state_dict"]
++    assert "door_head.net.0.weight" in sp, "画像だけの生徒の重みではない"
++    policy = {k: v.clone() for k, v in sp.items()}
++    policy["std"] = teacher["policy_state_dict"]["std"].clone() * args.std_scale
++    out = {
++        "policy_state_dict": policy,
++        "value_state_dict": teacher["value_state_dict"],
++        "optimizer_state_dict": None,
++        "lr_scheduler_state_dict": None,
++        "state": teacher["state"],
++        "env_state_dict": teacher.get("env_state_dict", {}),
++    }
++    torch.save(out, args.out)
++    print(f"書いた: {args.out}（actor＝{args.student} の反復 {student['state'].global_step}、critic・env＝f3sc、"
++          f"std＝f3sc × {args.std_scale}: {[round(v, 3) for v in policy['std'][:5].tolist()]}…）")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/gr00t/rl/trl/modules/vision_door_student.py b/gr00t/rl/trl/modules/vision_door_student.py
+new file mode 100644
+--- /dev/null
++++ b/gr00t/rl/trl/modules/vision_door_student.py
+@@ -0,0 +1,223 @@
++# G1_Hackason（11-04、画像だけで扉を開ける生徒）: f3sc（状態入力の方策・扉の値 19 個を入力）の LSTM と MLP をそのまま使い、
++# 扉の値 19 個だけを「頭のカラーの特徴から当てた値」に差し替える生徒。
++#
++#   生徒の actor_obs（項目名の辞書順）: f3sc の項目から扉の 3 項目を除いたもの（体の感覚）＋ vis_feat（画像の特徴）＋ vis_head_gravity
++#   扉の頭（DoorHead）: 特徴＋[頭の重力・胴の重力・腰の角度] → 扉の値 17 個（door_vision_feat.DOOR_TRUTH_NAMES）
++#   扉の値 19 個 = door_angle_lidar [角度, 測れた 1.0, 古さ angle_age] ＋ door_frame_loc 9 ＋ door_geometry 7
++#   f3sc の入力（teacher_obs と同じ並び・151 個）に組み直し、f3sc の正規化（固定）を掛け、[特徴・頭の重力] を足して LSTM へ。
++#   LSTM の足した入力の重みは 0 から始める＝始めは「扉の値が当たっていれば f3sc と同じ」動き
++#
++# 学習係（distill_trainer_obj_pred_homie_api）からは StateRecurrentActorObjPred と同じに見える。obj_pred は扉の頭の 17 個で、
++# 損失の重み obj_pred_weight（1 / 許す誤差²）は学習係が読む（distill_trainer_obj_pred.py）
++# V4（PPO で磨く、ppo_mode=True）: PPO の学習係（ppo_trainer_homie_api）は、学習の段の出力を回の区切りで詰めた並びから
++# 台×歩の並びに戻して使う（RecurrentActor と同じ）。freeze_door_head=True で扉の頭を固める（補助の答えの損失が無いので、
++# 当てた値の意味を保つ）
++from __future__ import annotations
++
++import torch
++import torch.nn as nn
++from hydra.utils import instantiate
++from torch.distributions import Normal
++
++from gr00t.rl.envs.door.door_vision_feat import AUX_IN_DIM, DOOR_TRUTH_DIM, DoorHead, door_truth_weight
++from gr00t.rl.trl.modules.memory import Memory
++from gr00t.rl.trl.modules.state_actor_obj_pred_recurrent import StateRecurrentActorObjPred
++
++DOOR_TERMS = {"door_angle_lidar": 3, "door_frame_loc": 9, "door_geometry": 7}
++
++
++def _term_slices(obs_dims, terms) -> dict[str, tuple[int, int]]:
++    """観測の組（項目の並び）の中で、各項目が占める位置。組は項目名の辞書順に並ぶ（legged_robot_base._post_config_observation_callback）"""
++    out, i = {}, 0
++    for t in sorted(terms):
++        t = t[:-4] if t.endswith("_raw") else t
++        d = int(obs_dims[t])
++        out[t] = (i, i + d)
++        i += d
++    return out
++
++
++class VisionDoorStudent(StateRecurrentActorObjPred):
++    is_recurrent = True
++
++    def __init__(
++        self,
++        env_config,
++        algo_config,
++        backbone,
++        module_dim_dict={},
++        running_mean_std=False,
++        max_rollout_history=1,
++        input_key="actor_obs",
++        rnn_type="lstm",
++        rnn_hidden_dim=256,
++        rnn_num_layers=2,
++        teacher_key="teacher_obs",
++        feat_key="vis_feat",
++        head_gravity_key="vis_head_gravity",
++        angle_age=0.15,
++        init_from=None,
++        door_head_path=None,
++        door_head_hidden=(256, 128),
++        ppo_mode=False,
++        freeze_door_head=False,
++    ):
++        nn.Module.__init__(self)
++        self.input_key = input_key
++        self.max_rollout_history = max_rollout_history
++        obs = env_config.obs
++        dims = obs.obs_dims
++        s = _term_slices(dims, list(obs.obs_dict[input_key]))
++        t = _term_slices(dims, list(obs.obs_dict[teacher_key]))
++        self.student_dim = env_config.robot.algo_obs_dim_dict[input_key]
++        self.teacher_dim = env_config.robot.algo_obs_dim_dict[teacher_key]
++        assert set(DOOR_TERMS) <= set(t), f"教師の観測に扉の 3 項目が無い: {sorted(t)}"
++        assert not (set(DOOR_TERMS) & set(s)), "生徒の観測に扉の項目が入っている"
++        # 教師の並びの各項目を、生徒の観測（"s"）か当てた扉の値（"d"）のどこから取るか
++        door_off = {"door_angle_lidar": 0, "door_frame_loc": 3, "door_geometry": 12}
++        self._assemble = []
++        for name, (a, b) in sorted(t.items(), key=lambda kv: kv[1][0]):
++            if name in DOOR_TERMS:
++                o = door_off[name]
++                self._assemble.append(("d", o, o + (b - a)))
++            else:
++                assert name in s, f"教師の項目 {name} が生徒の観測に無い"
++                assert s[name][1] - s[name][0] == b - a
++                self._assemble.append(("s", *s[name]))
++        self.feat_slice = s[feat_key]
++        self.hg_slice = s[head_gravity_key]
++        self.pg_slice = s["projected_gravity"]
++        self.waist_slice = (s["dof_pos"][0] + 12, s["dof_pos"][0] + 15)
++        feat_dim = self.feat_slice[1] - self.feat_slice[0]
++        self.extra_dim = feat_dim + 3
++        self.angle_age = float(angle_age)
++
++        self.memory = Memory(
++            input_size=self.teacher_dim + self.extra_dim, type=rnn_type, num_layers=rnn_num_layers, hidden_size=rnn_hidden_dim
++        )
++        module_dim_dict_recurrent = dict(module_dim_dict)
++        module_dim_dict_recurrent[self.input_key] = rnn_hidden_dim
++        module_dim_dict_recurrent["rnn_hidden_dim"] = rnn_hidden_dim
++        self.mlp_module = instantiate(
++            backbone.mlp_module,
++            env_config=env_config,
++            algo_config=algo_config,
++            obs_dim_dict={self.input_key: rnn_hidden_dim},
++            module_dim_dict=module_dim_dict_recurrent,
++            _recursive_=False,
++        )
++        self.door_head = DoorHead(feat_dim, tuple(door_head_hidden))
++        self.obj_pred_mlp = self.door_head  # 学習係・to_cpu が名前で探すので同じ物を指す
++        # f3sc の観測の正規化（固定。学習で動かさない）
++        self.register_buffer("t_mean", torch.zeros(self.teacher_dim))
++        self.register_buffer("t_var", torch.ones(self.teacher_dim))
++        self.register_buffer("obj_pred_weight", door_truth_weight())
++        self.running_mean_std = None
++
++        self.num_actions = self.mlp_module.output_dim
++        self.std = nn.Parameter(algo_config.init_noise_std * torch.ones(self.num_actions))
++        if algo_config.get("freeze_noise_std", False):
++            self.std.requires_grad = False
++        self.clamp_noise_std = algo_config.get("clamp_noise_std", False)
++        if self.clamp_noise_std:
++            self.max_noise_std = algo_config.get("max_noise_std", 1.0)
++        self.distribution = None
++        Normal.set_default_validate_args(False)
++        self.obs_dict_buffer = {}
++        self.dones_buffer = None
++        self.steps = 0
++        self.is_eval_mode = False
++
++        if init_from:
++            self._init_from_teacher(init_from)
++        if door_head_path:
++            sd = torch.load(door_head_path, map_location="cpu", weights_only=False)
++            self.door_head.load_state_dict(sd.get("head", sd))
++            print(f"[G1_Hackason] 扉の頭を読んだ: {door_head_path}")
++        self.ppo_mode = bool(ppo_mode)
++        if freeze_door_head:
++            for p in self.door_head.parameters():
++                p.requires_grad = False
++        print(f"VisionDoorStudent: 生徒 {self.student_dim} → 教師の並び {self.teacher_dim}＋足す {self.extra_dim}・"
++              f"組み立て {self._assemble}・特徴 {self.feat_slice}・頭の重力 {self.hg_slice}")
++
++    @torch.no_grad()
++    def _init_from_teacher(self, path: str) -> None:
++        """f3sc の重み（PPO の last.pt の policy_state_dict）を写す。LSTM の 1 層目の足した入力の列は 0"""
++        ck = torch.load(path, map_location="cpu", weights_only=False)
++        sd = ck.get("policy_state_dict", ck)
++        self.t_mean.copy_(sd["running_mean_std.running_mean"])
++        self.t_var.copy_(sd["running_mean_std.running_var"])
++        rnn = self.memory.rnn
++        for name, p in rnn.named_parameters():
++            src = sd[f"memory.rnn.{name}"]
++            if name == "weight_ih_l0":
++                p.zero_()
++                p[:, : src.shape[1]] = src
++            else:
++                p.copy_(src)
++        mlp = {k[len("actor_module."):]: v for k, v in sd.items() if k.startswith("actor_module.")}
++        self.mlp_module.load_state_dict(mlp)
++        print(f"[G1_Hackason] 生徒の LSTM・MLP・正規化を教師から写した: {path}")
++
++    def door_values(self, obs: torch.Tensor) -> torch.Tensor:
++        """生徒の観測 [..., d] → 当てた扉の値 [..., 17]"""
++        feat = obs[..., self.feat_slice[0] : self.feat_slice[1]]
++        aux = torch.cat(
++            [
++                obs[..., self.hg_slice[0] : self.hg_slice[1]],
++                obs[..., self.pg_slice[0] : self.pg_slice[1]],
++                obs[..., self.waist_slice[0] : self.waist_slice[1]],
++            ],
++            dim=-1,
++        )
++        return self.door_head(feat, aux)
++
++    def _lstm_input(self, obs: torch.Tensor, door17: torch.Tensor) -> torch.Tensor:
++        ones = torch.ones_like(door17[..., :1])
++        door19 = torch.cat([door17[..., :1], ones, ones * self.angle_age, door17[..., 1:]], dim=-1)
++        parts = [obs[..., a:b] if src == "s" else door19[..., a:b] for src, a, b in self._assemble]
++        t = torch.cat(parts, dim=-1)
++        t = torch.clamp((t - self.t_mean) / torch.sqrt(self.t_var + 1e-5), -5.0, 5.0)
++        extra = torch.cat(
++            [obs[..., self.feat_slice[0] : self.feat_slice[1]], obs[..., self.hg_slice[0] : self.hg_slice[1]]], dim=-1
++        )
++        return torch.cat([t, extra], dim=-1)
++
++    def forward(self, obs_dict, masks=None, hidden_states=None, episode_attnmask=None, **kwargs):
++        obs = obs_dict[self.input_key]
++        door17 = self.door_values(obs)
++        x = self._lstm_input(obs, door17)
++        if x.dim() == 2:
++            memory_out = self._memory_step(x)
++        else:
++            memory_out = self.memory(x.transpose(0, 1), masks=masks, hidden_states=hidden_states)
++        return {"actions": self.mlp_module(memory_out), "obj_pred": door17}
++
++    def update_distribution(self, obs_dict, episode_attnmask=None, last_step_only=False, masks=None,
++                            hidden_states=None, original_dones=None, **kwargs):
++        mean = self.forward(obs_dict, masks=masks, hidden_states=hidden_states,
++                            episode_attnmask=episode_attnmask)["actions"]
++        if self.ppo_mode and masks is not None and original_dones is not None:
++            from gr00t.rl.trl.utils.rl import unsplit_trajectories
++
++            mean = unsplit_trajectories(mean, masks, original_dones)
++        if last_step_only:
++            mean = mean[:, -1]
++        self._set_distribution(mean)
++
++    def _rollout_mean(self, obs_dict, episode_attnmask=None, cur_dones=None):
++        self._update_obs_buffer(obs_dict, episode_attnmask, cur_dones)
++        obs = obs_dict[self.input_key]
++        door17 = self.door_values(obs)
++        memory_out = self._memory_step(self._lstm_input(obs, door17))
++        self.steps += 1
++        return self.mlp_module(memory_out), door17
++
++    def to_cpu(self):
++        super().to_cpu()
++        for b in ("t_mean", "t_var", "obj_pred_weight"):
++            setattr(self, b, getattr(self, b).to("cpu"))
++
++
++assert DOOR_TRUTH_DIM == 17 and AUX_IN_DIM == 9
+diff --git a/gr00t/rl/trl/trainer/distill_trainer_obj_pred.py b/gr00t/rl/trl/trainer/distill_trainer_obj_pred.py
+--- a/gr00t/rl/trl/trainer/distill_trainer_obj_pred.py
++++ b/gr00t/rl/trl/trainer/distill_trainer_obj_pred.py
+@@ -122,7 +122,10 @@
+         super()._setup_storage()
+ 
+         # Register the predicted object position key (3D position prediction)
+-        self.storage.register_key("predicted_obj_pos", shape=(3,), dtype=torch.float)
++        # G1_Hackason（11-04）: 画像だけの生徒は扉の値 17 個を当てる（algo.config.obj_pred_dim。既定 3 のまま）
++        self.storage.register_key(
++            "predicted_obj_pos", shape=(int(self.config.get("obj_pred_dim", 3)),), dtype=torch.float
++        )
+ 
+     def policy_step(self, policy_model, obs_dict, cur_dones=None):
+         policy_state_dict = {}
+@@ -366,6 +369,23 @@
+         # mb_gt_obj_pos_full contains [obj_relative_pos, obj_linear_vel, obj_ang_vel] (9 dims total)
+         # We only want to predict obj_relative_pos (first 3 dims)
+         mb_gt_obj_pos = mb_gt_obj_pos_full[..., :3]
++
++        # G1_Hackason（11-04）: 生徒が損失の重み obj_pred_weight（1 / 許す誤差²）を持つときは、当てた値の数だけ答えを取り、
++        # 項目ごとに重みを掛け、詰め物（masks が False）を除いて平均する（画像だけの生徒の扉の値 17 個）
++        weight = getattr(self.policy_model, "obj_pred_weight", None)
++        if weight is not None and self.config.get("use_obj_pred", True):
++            pred = policy_results["predicted_obj_pos"]
++            gt = mb_gt_obj_pos_full[..., : pred.shape[-1]].to(pred.dtype)
++            err = ((pred - gt) ** 2 * weight.to(pred.device)).mean(dim=-1)
++            masks = mb_rollout_data.get("mb_masks", None)
++            if masks is not None and masks.dim() == 2 and masks.shape != err.shape and masks.t().shape == err.shape:
++                masks = masks.t()
++            if masks is not None and masks.shape == err.shape:
++                m = masks.to(err.dtype)
++                obj_pred_loss = (err * m).sum() / m.sum().clamp_min(1.0)
++            else:
++                obj_pred_loss = err.mean()
++            return dict(obj_pred_loss=obj_pred_loss)
+ 
+         # Get predicted object position from policy results
+         if self.config.get("use_obj_pred", True):
+diff --git a/tests_g1/test_vision_door_student.py b/tests_g1/test_vision_door_student.py
+new file mode 100644
+--- /dev/null
++++ b/tests_g1/test_vision_door_student.py
+@@ -0,0 +1,139 @@
++# G1_Hackason（11-04）: 画像だけの生徒（vision_door_student.VisionDoorStudent）の確かめ。Isaac Sim なしで動く。
++#   1. 扉の頭が「本当の扉の値」を出せば、生徒の行動は f3sc（教師）の行動と一致する（LSTM の足した入力の重みは 0 から）
++#   2. 教師の並び（teacher_obs）の組み立てが、扉の 3 項目の位置に当てた値を差し込み、ほかは生徒の観測から取る
++#   3. 学習の段（[軌跡, 長さ, d]＋masks）と 1 歩ずつの回しが同じ行動を出す
++# 使い方（OMEN）: cd VIRAL6_vis && PYTHONPATH=. python -m pytest -q tests_g1/test_vision_door_student.py
++#   教師の重みは F3SC（既定 ~/work_inoue/doorman/ckpt/start_1103_0807/last.pt）。無ければ飛ばす
++import os
++
++import pytest
++import torch
++import yaml
++from omegaconf import OmegaConf
++
++F3SC = os.environ.get("F3SC", os.path.expanduser("~/work_inoue/doorman/ckpt/start_1103_0807/last.pt"))
++OBS_YAML = "gr00t/rl/config/obs/wbmanip/door_open_homie_29dof_vision_f3.yaml"
++pytestmark = pytest.mark.skipif(not os.path.exists(F3SC), reason="f3sc の重みが無い")
++
++
++def _env_config():
++    obs = yaml.safe_load(open(OBS_YAML))["obs"]
++    dims = {}
++    for d in obs["obs_dims"]:
++        (k, v), = d.items()
++        if isinstance(v, str):
++            v = {"${robot.dof_obs_size}": 29, "${robot.actions_dim}": 29}.get(v, None)
++            if v is None:
++                continue
++        dims[k] = v
++    dims["delta_actions"] = 17
++    algo = {}
++    for g in ("actor_obs", "teacher_obs"):
++        algo[g] = sum(dims[t] for t in obs["obs_dict"][g])
++    return OmegaConf.create({
++        "obs": {"obs_dims": dims, "obs_dict": {g: obs["obs_dict"][g] for g in ("actor_obs", "teacher_obs")}},
++        "robot": {"algo_obs_dim_dict": algo, "actions_dim": 29},
++    })
++
++
++def _student():
++    from gr00t.rl.trl.modules.vision_door_student import VisionDoorStudent
++
++    env_config = _env_config()
++    algo_config = OmegaConf.create({"init_noise_std": 0.001, "freeze_noise_std": True, "clamp_noise_std": True,
++                                    "max_noise_std": 0.001})
++    backbone = OmegaConf.create({"mlp_module": {
++        "_target_": "gr00t.rl.agents.modules.modules.BaseModule", "process_output_dim": True,
++        "module_config_dict": {"input_dim": ["actor_obs"], "output_dim": [17],
++                               "layer_config": {"type": "MLP", "hidden_dims": [512, 256, 128], "activation": "SiLU"}}}})
++    return VisionDoorStudent(env_config, algo_config, backbone, rnn_num_layers=2, init_from=F3SC), env_config
++
++
++def _teacher_step(sd, t_obs, hc):
++    """f3sc の 1 歩（正規化 → LSTM 2 層 → MLP SiLU）を重みから直接計算する"""
++    x = torch.clamp((t_obs - sd["running_mean_std.running_mean"]) / torch.sqrt(sd["running_mean_std.running_var"] + 1e-5), -5, 5)
++    lstm = torch.nn.LSTM(x.shape[-1], 256, 2)
++    lstm.load_state_dict({k[len("memory.rnn."):]: v for k, v in sd.items() if k.startswith("memory.rnn.")})
++    out, hc = lstm(x[None], hc)
++    h = out[0]
++    for i in (0, 2, 4):
++        h = torch.nn.functional.silu(h @ sd[f"actor_module.module.{i}.weight"].T + sd[f"actor_module.module.{i}.bias"])
++    return h @ sd["actor_module.module.6.weight"].T + sd["actor_module.module.6.bias"], hc
++
++
++def _make_obs(stu, env_config, n, gen):
++    """生徒の観測と、同じ体の感覚と扉の値から作った教師の観測を返す"""
++    from gr00t.rl.trl.modules.vision_door_student import _term_slices
++
++    dims = env_config.obs.obs_dims
++    s = _term_slices(dims, list(env_config.obs.obs_dict["actor_obs"]))
++    t = _term_slices(dims, list(env_config.obs.obs_dict["teacher_obs"]))
++    s_obs = torch.randn(n, stu.student_dim, generator=gen) * 0.3
++    door17 = torch.randn(n, 17, generator=gen) * 0.3
++    t_obs = torch.zeros(n, stu.teacher_dim)
++    for name, (a, b) in t.items():
++        if name == "door_angle_lidar":
++            t_obs[:, a:b] = torch.stack([door17[:, 0], torch.ones(n), torch.full((n,), stu.angle_age)], dim=1)
++        elif name == "door_frame_loc":
++            t_obs[:, a:b] = door17[:, 1:10]
++        elif name == "door_geometry":
++            t_obs[:, a:b] = door17[:, 10:17]
++        else:
++            t_obs[:, a:b] = s_obs[:, s[name][0]:s[name][1]]
++    return s_obs, t_obs, door17
++
++
++def test_student_matches_teacher_when_door_values_are_true():
++    stu, env_config = _student()
++    stu.eval()
++    sd = torch.load(F3SC, map_location="cpu", weights_only=False)["policy_state_dict"]
++    gen = torch.Generator().manual_seed(0)
++    n = 8
++    hc = None
++    for step in range(5):
++        s_obs, t_obs, door17 = _make_obs(stu, env_config, n, gen)
++        stu.door_values = lambda obs, d=door17: d  # 扉の頭の代わりに本当の値を出す
++        with torch.no_grad():
++            a_s, _ = stu._rollout_mean({"actor_obs": s_obs})
++            a_t, hc = _teacher_step(sd, t_obs, hc)
++        assert torch.allclose(a_s, a_t, atol=1e-4), (step, (a_s - a_t).abs().max())
++
++
++def test_batch_forward_matches_rollout():
++    stu, env_config = _student()
++    stu.eval()
++    gen = torch.Generator().manual_seed(1)
++    n, length = 4, 6
++    seq = [_make_obs(stu, env_config, n, gen)[0] for _ in range(length)]
++    with torch.no_grad():
++        roll = torch.stack([stu._rollout_mean({"actor_obs": o})[0] for o in seq], dim=1)
++        masks = torch.ones(length, n, dtype=torch.bool)
++        batch = stu.forward({"actor_obs": torch.stack(seq, dim=1)}, masks=masks)["actions"]
++    assert torch.allclose(roll, batch, atol=1e-4), (roll - batch).abs().max()
++
++
++def test_ppo_mode_unsplits_to_env_by_step():
++    """ppo_mode では学習の段の出力が「台 × 歩」の並びに戻り、1 歩ずつ回した行動と一致する（PPO の学習係が使う並び）"""
++    from gr00t.rl.trl.utils.rl import split_and_pad_trajectories
++
++    stu, env_config = _student()
++    stu.ppo_mode = True
++    stu.eval()
++    gen = torch.Generator().manual_seed(2)
++    n, length = 3, 6
++    seq = [_make_obs(stu, env_config, n, gen)[0] for _ in range(length)]
++    dones = torch.zeros(length, n)
++    dones[2, 1] = 1.0  # 台 1 は 3 歩目で回が終わる
++    with torch.no_grad():
++        roll = []
++        for t, o in enumerate(seq):
++            roll.append(stu._rollout_mean({"actor_obs": o})[0])
++            stu.memory.reset(dones[t].long())
++        roll = torch.stack(roll, dim=1)  # [台, 歩, 17]
++        obs = torch.stack(seq, dim=0)  # [歩, 台, d]
++        padded, masks = split_and_pad_trajectories(obs, dones)
++        stu.update_distribution({"actor_obs": padded.transpose(0, 1)}, masks=masks.transpose(0, 1),
++                                original_dones=dones.t())
++        mean = stu.distribution.mean
++    assert mean.shape == roll.shape, (mean.shape, roll.shape)
++    assert torch.allclose(roll, mean, atol=1e-4), (roll - mean).abs().max()

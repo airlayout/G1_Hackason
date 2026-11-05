@@ -1,0 +1,295 @@
+11-05 G1_Hackason: 画像だけの生徒に扉の値を記憶で追う段（door_tracker_hidden）・DAgger で生徒の隠れ状態を溜める（save_actor_hidden_states）・評価の天井（door_truth_key）
+
+diff -ruN a/gr00t/rl/trl/modules/vision_door_student.py b/gr00t/rl/trl/modules/vision_door_student.py
+--- a/gr00t/rl/trl/modules/vision_door_student.py	2026-11-05 13:35:51
++++ b/gr00t/rl/trl/modules/vision_door_student.py	2026-11-05 13:35:51
+@@ -12,6 +12,14 @@
+ # V4（PPO で磨く、ppo_mode=True）: PPO の学習係（ppo_trainer_homie_api）は、学習の段の出力を回の区切りで詰めた並びから
+ # 台×歩の並びに戻して使う（RecurrentActor と同じ）。freeze_door_head=True で扉の頭を固める（補助の答えの損失が無いので、
+ # 当てた値の意味を保つ）
++#
++# 11-05 追う段（door_tracker_hidden > 0）: 扉の頭は今のコマだけで当てるので、押して開ける間（扉の戸先が写らない）に外れる。
++#   扉の頭と LSTM の間に記憶つきの段（LSTM 1 層）を足し、[今のコマの当て・体の感覚・特徴・頭の重力]（LSTM と同じ入力）から
++#   扉の値 17 個を当て直す。出力 = 扉の頭の当て + 直し × 許す誤差（直しの出口は 0 から＝始めは扉の頭と同じ＝d2 と同じ動き）。
++#   obj_pred（補助の答えの損失の相手）は当て直した値＝追う段は本当の扉の値だけで学ぶ。LSTM へは切り離して渡す（真似の損失で
++#   当て直しの意味を崩さない）。隠れ状態は get_hidden_states で (LSTM の h, c, 追う段の h, c) の 4 つ組にして学習係に溜めさせる
++#   init_student_from: 生徒の重み（d2 の last.pt）を読む。追う段の重みだけが無くてよい
++#   door_truth_key: 扉の値をこの観測（gt_obj_pos）の本当の値に差し替える（評価だけ。「追う段が完璧なら何点か」の天井を測る）
+ from __future__ import annotations
+ 
+ import torch
+@@ -61,6 +69,10 @@
+         door_head_hidden=(256, 128),
+         ppo_mode=False,
+         freeze_door_head=False,
++        door_tracker_hidden=0,
++        freeze_door_tracker=False,
++        init_student_from=None,
++        door_truth_key=None,
+     ):
+         nn.Module.__init__(self)
+         self.input_key = input_key
+@@ -112,6 +124,17 @@
+         self.register_buffer("t_mean", torch.zeros(self.teacher_dim))
+         self.register_buffer("t_var", torch.ones(self.teacher_dim))
+         self.register_buffer("obj_pred_weight", door_truth_weight())
++        # 追う段の直しの単位（項目ごとの許す誤差。重みのファイルには書かない＝d2 の重みも読める）
++        self.register_buffer("door_tol", door_truth_weight().rsqrt(), persistent=False)
++        self.tracker = None
++        self.tracker_out = None
++        if door_tracker_hidden:
++            self.tracker = Memory(input_size=self.teacher_dim + self.extra_dim, type=rnn_type, num_layers=1,
++                                  hidden_size=int(door_tracker_hidden))
++            self.tracker_out = nn.Linear(int(door_tracker_hidden), DOOR_TRUTH_DIM)
++            nn.init.zeros_(self.tracker_out.weight)
++            nn.init.zeros_(self.tracker_out.bias)
++        self.door_truth_key = door_truth_key
+         self.running_mean_std = None
+ 
+         self.num_actions = self.mlp_module.output_dim
+@@ -134,14 +157,30 @@
+             sd = torch.load(door_head_path, map_location="cpu", weights_only=False)
+             self.door_head.load_state_dict(sd.get("head", sd))
+             print(f"[G1_Hackason] 扉の頭を読んだ: {door_head_path}")
++        if init_student_from:
++            self._init_from_student(init_student_from)
+         self.ppo_mode = bool(ppo_mode)
+         if freeze_door_head:
+             for p in self.door_head.parameters():
+                 p.requires_grad = False
++        if freeze_door_tracker and self.tracker is not None:
++            for p in [*self.tracker.parameters(), *self.tracker_out.parameters()]:
++                p.requires_grad = False
+         print(f"VisionDoorStudent: 生徒 {self.student_dim} → 教師の並び {self.teacher_dim}＋足す {self.extra_dim}・"
+-              f"組み立て {self._assemble}・特徴 {self.feat_slice}・頭の重力 {self.hg_slice}")
++              f"組み立て {self._assemble}・特徴 {self.feat_slice}・頭の重力 {self.hg_slice}・"
++              f"追う段 {door_tracker_hidden or 'なし'}{'（固める）' if freeze_door_tracker else ''}・"
++              f"扉の値を本当の値に差し替え {door_truth_key or 'しない'}")
+ 
+     @torch.no_grad()
++    def _init_from_student(self, path: str) -> None:
++        """生徒の重み（DAgger・PPO の last.pt）を読む。足りなくてよいのは追う段の重みだけ"""
++        ck = torch.load(path, map_location="cpu", weights_only=False)
++        missing, unexpected = self.load_state_dict(ck.get("policy_state_dict", ck), strict=False)
++        bad = [k for k in missing if not k.startswith(("tracker.", "tracker_out."))]
++        assert not bad and not unexpected, f"生徒の重みが合わない: 足りない {bad}・余分 {unexpected}"
++        print(f"[G1_Hackason] 生徒の重みを読んだ: {path}（初めの値のまま: {missing or 'なし'}）")
++
++    @torch.no_grad()
+     def _init_from_teacher(self, path: str) -> None:
+         """f3sc の重み（PPO の last.pt の policy_state_dict）を写す。LSTM の 1 層目の足した入力の列は 0"""
+         ck = torch.load(path, map_location="cpu", weights_only=False)
+@@ -184,14 +223,42 @@
+         )
+         return torch.cat([t, extra], dim=-1)
+ 
++    def _split_hidden(self, hidden_states):
++        """学習係が渡す隠れ状態 → (LSTM の分, 追う段の分)。追う段があるときは (h, c, 追う段の h, c) の 4 つ組"""
++        if hidden_states is None or self.tracker is None:
++            return hidden_states, None
++        return (hidden_states[0], hidden_states[1]), (hidden_states[2], hidden_states[3])
++
++    def _door17(self, obs_dict, obs: torch.Tensor, masks=None, hidden_states=None) -> torch.Tensor:
++        """扉の値 17 個: 扉の頭（今のコマ）→ 追う段（記憶つき。あれば）。door_truth_key のときは本当の値（評価の天井）"""
++        if self.door_truth_key:
++            if self.door_truth_key not in obs_dict:
++                raise KeyError(f"door_truth_key={self.door_truth_key} が観測に無い: {sorted(obs_dict)}")
++            return obs_dict[self.door_truth_key][..., :DOOR_TRUTH_DIM].to(obs.dtype)
++        head = self.door_values(obs)
++        if self.tracker is None:
++            return head
++        x = self._lstm_input(obs, head)
++        if x.dim() == 2:
++            out = self.tracker(x)
++            out = out.squeeze(0) if out.dim() == 3 else out
++        else:
++            out = self.tracker(x.transpose(0, 1), masks=masks, hidden_states=hidden_states)
++        return head + self.tracker_out(out) * self.door_tol
++
++    def _to_lstm(self, door17: torch.Tensor) -> torch.Tensor:
++        """LSTM へ渡す扉の値。追う段は本当の値だけで学ぶので、真似の損失の勾配を追う段へ流さない"""
++        return door17.detach() if self.tracker is not None else door17
++
+     def forward(self, obs_dict, masks=None, hidden_states=None, episode_attnmask=None, **kwargs):
+         obs = obs_dict[self.input_key]
+-        door17 = self.door_values(obs)
+-        x = self._lstm_input(obs, door17)
++        hs_main, hs_trk = self._split_hidden(hidden_states)
++        door17 = self._door17(obs_dict, obs, masks=masks, hidden_states=hs_trk)
++        x = self._lstm_input(obs, self._to_lstm(door17))
+         if x.dim() == 2:
+             memory_out = self._memory_step(x)
+         else:
+-            memory_out = self.memory(x.transpose(0, 1), masks=masks, hidden_states=hidden_states)
++            memory_out = self.memory(x.transpose(0, 1), masks=masks, hidden_states=hs_main)
+         return {"actions": self.mlp_module(memory_out), "obj_pred": door17}
+ 
+     def update_distribution(self, obs_dict, episode_attnmask=None, last_step_only=False, masks=None,
+@@ -209,15 +276,37 @@
+     def _rollout_mean(self, obs_dict, episode_attnmask=None, cur_dones=None):
+         self._update_obs_buffer(obs_dict, episode_attnmask, cur_dones)
+         obs = obs_dict[self.input_key]
+-        door17 = self.door_values(obs)
+-        memory_out = self._memory_step(self._lstm_input(obs, door17))
++        door17 = self._door17(obs_dict, obs)
++        memory_out = self._memory_step(self._lstm_input(obs, self._to_lstm(door17)))
+         self.steps += 1
+         return self.mlp_module(memory_out), door17
+ 
++    def get_hidden_states(self):
++        main = self.memory.hidden_states
++        if self.tracker is None:
++            return main
++        trk = self.tracker.hidden_states
++        if main is None or trk is None:
++            return None
++        return (*main, *trk)
++
++    def reset(self, dones=None):
++        self.memory.reset(dones)
++        if self.tracker is not None:
++            self.tracker.reset(dones)
++
++    def clear_rollout(self):
++        super().clear_rollout()
++        if self.tracker is not None:
++            self.tracker.detach_hidden_states()
++
+     def to_cpu(self):
+         super().to_cpu()
+-        for b in ("t_mean", "t_var", "obj_pred_weight"):
++        for b in ("t_mean", "t_var", "obj_pred_weight", "door_tol"):
+             setattr(self, b, getattr(self, b).to("cpu"))
++        if self.tracker is not None:
++            self.tracker.to("cpu")
++            self.tracker_out.to("cpu")
+ 
+ 
+ assert DOOR_TRUTH_DIM == 17 and AUX_IN_DIM == 9
+diff -ruN a/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py b/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py
+--- a/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py	2026-11-05 13:35:51
++++ b/gr00t/rl/trl/trainer/distill_trainer_obj_pred_homie_api.py	2026-11-05 13:35:51
+@@ -410,9 +410,17 @@
+         else:
+             episode_attnmask = None
+ 
++        # G1_Hackason（11-05）: 生徒の隠れ状態を回す前に取って溜める（PPO と同じ）。学習の窓（num_steps_per_env 歩）の頭を 0 でなく
++        # 回したときの状態から始めるので、窓より長く覚えること（押す間の扉の値を追う段）を学べる
++        actor_hidden_states = None
++        if self.config.get("save_actor_hidden_states", False) and getattr(policy_model, "is_recurrent", False):
++            actor_hidden_states = policy_model.get_hidden_states()
++
+         student_state_dict = policy_model.rollout_with_obj_pred(
+             obs_dict=actor_obs_dict, episode_attnmask=episode_attnmask, cur_dones=cur_dones
+         )
++        if actor_hidden_states is not None:
++            policy_state_dict["hidden_states"] = (actor_hidden_states, None)
+ 
+         policy_actions_log_prob = policy_model.get_actions_log_prob(
+             actions=student_state_dict["action_mean"]
+diff -ruN a/tests_g1/test_vision_door_student.py b/tests_g1/test_vision_door_student.py
+--- a/tests_g1/test_vision_door_student.py	2026-11-05 13:35:51
++++ b/tests_g1/test_vision_door_student.py	2026-11-05 13:35:51
+@@ -2,6 +2,8 @@
+ #   1. 扉の頭が「本当の扉の値」を出せば、生徒の行動は f3sc（教師）の行動と一致する（LSTM の足した入力の重みは 0 から）
+ #   2. 教師の並び（teacher_obs）の組み立てが、扉の 3 項目の位置に当てた値を差し込み、ほかは生徒の観測から取る
+ #   3. 学習の段（[軌跡, 長さ, d]＋masks）と 1 歩ずつの回しが同じ行動を出す
++#   4. 11-05 追う段: 始めは d2 と同じ動き・回した隠れ状態から学習の段を始めると 1 歩ずつと一致・回の区切りで消える・
++#      本当の値への差し替え（評価の天井）・d2 の重みを読める
+ # 使い方（OMEN）: cd VIRAL6_vis && PYTHONPATH=. python -m pytest -q tests_g1/test_vision_door_student.py
+ #   教師の重みは F3SC（既定 ~/work_inoue/doorman/ckpt/start_1103_0807/last.pt）。無ければ飛ばす
+ import os
+@@ -36,7 +38,7 @@
+     })
+ 
+ 
+-def _student():
++def _student(**kw):
+     from gr00t.rl.trl.modules.vision_door_student import VisionDoorStudent
+ 
+     env_config = _env_config()
+@@ -46,7 +48,7 @@
+         "_target_": "gr00t.rl.agents.modules.modules.BaseModule", "process_output_dim": True,
+         "module_config_dict": {"input_dim": ["actor_obs"], "output_dim": [17],
+                                "layer_config": {"type": "MLP", "hidden_dims": [512, 256, 128], "activation": "SiLU"}}}})
+-    return VisionDoorStudent(env_config, algo_config, backbone, rnn_num_layers=2, init_from=F3SC), env_config
++    return VisionDoorStudent(env_config, algo_config, backbone, rnn_num_layers=2, init_from=F3SC, **kw), env_config
+ 
+ 
+ def _teacher_step(sd, t_obs, hc):
+@@ -138,3 +140,75 @@
+     assert mean.shape == roll.shape, (mean.shape, roll.shape)
+     assert torch.allclose(roll, mean, atol=1e-4), (roll - mean).abs().max()
+ 
++
++def _tracked_pair(tmp_path):
++    """追う段なしの生徒（d2 の代わり。扉の頭は乱数）と、その重みを init_student_from で読んだ追う段つきの生徒"""
++    base, env_config = _student()
++    path = tmp_path / "d2.pt"
++    torch.save({"policy_state_dict": base.state_dict()}, path)
++    trk, _ = _student(door_tracker_hidden=32, init_student_from=str(path))
++    return base.eval(), trk.eval(), env_config
++
++
++def test_tracker_starts_as_d2(tmp_path):
++    """直しの出口は 0 から＝追う段つきでも始めは d2 と同じ扉の値・同じ動き"""
++    base, trk, env_config = _tracked_pair(tmp_path)
++    gen = torch.Generator().manual_seed(3)
++    for _ in range(4):
++        s_obs = _make_obs(base, env_config, 5, gen)[0]
++        with torch.no_grad():
++            a0, d0 = base._rollout_mean({"actor_obs": s_obs})
++            a1, d1 = trk._rollout_mean({"actor_obs": s_obs})
++        assert torch.allclose(a0, a1, atol=1e-6) and torch.allclose(d0, d1, atol=1e-6)
++
++
++def test_tracker_batch_from_saved_hidden_matches_rollout(tmp_path):
++    """回したときの隠れ状態（get_hidden_states の 4 つ組）から学習の段を始めると、1 歩ずつ回した扉の値・行動と一致する"""
++    _, trk, env_config = _tracked_pair(tmp_path)
++    with torch.no_grad():
++        trk.tracker_out.weight.normal_(0.0, 0.3)
++    gen = torch.Generator().manual_seed(4)
++    n, k, length = 3, 3, 7
++    seq = [_make_obs(trk, env_config, n, gen)[0] for _ in range(length)]
++    acts, doors, saved = [], [], None
++    with torch.no_grad():
++        for t, o in enumerate(seq):
++            if t == k:
++                saved = tuple(h.clone() for h in trk.get_hidden_states())
++            a, d = trk._rollout_mean({"actor_obs": o})
++            acts.append(a)
++            doors.append(d)
++        assert len(saved) == 4 and saved[2].shape == (1, n, 32)
++        out = trk.forward({"actor_obs": torch.stack(seq[k:], dim=1)}, masks=torch.ones(length - k, n, dtype=torch.bool),
++                          hidden_states=saved)
++    roll_a = torch.stack(acts[k:], dim=1)
++    roll_d = torch.stack(doors[k:], dim=1)
++    assert torch.allclose(out["obj_pred"], roll_d, atol=1e-4), (out["obj_pred"] - roll_d).abs().max()
++    assert torch.allclose(out["actions"], roll_a, atol=1e-4), (out["actions"] - roll_a).abs().max()
++    # 隠れ状態 0 から始めると扉の値が変わる＝追う段は本当に覚えたことを使っている
++    with torch.no_grad():
++        zero = trk.forward({"actor_obs": torch.stack(seq[k:], dim=1)}, masks=torch.ones(length - k, n, dtype=torch.bool))
++    assert not torch.allclose(zero["obj_pred"][:, 0], roll_d[:, 0], atol=1e-4)
++
++
++def test_tracker_reset_clears_both_memories(tmp_path):
++    _, trk, env_config = _tracked_pair(tmp_path)
++    gen = torch.Generator().manual_seed(5)
++    with torch.no_grad():
++        trk._rollout_mean({"actor_obs": _make_obs(trk, env_config, 3, gen)[0]})
++    trk.reset(torch.tensor([0, 1, 0]))
++    for h in trk.get_hidden_states():
++        assert torch.all(h[:, 1] == 0) and torch.any(h[:, 0] != 0)
++
++
++def test_door_truth_key_replaces_door_values():
++    stu, env_config = _student(door_truth_key="gt_obj_pos")
++    stu.eval()
++    gen = torch.Generator().manual_seed(6)
++    s_obs, _, door17 = _make_obs(stu, env_config, 4, gen)
++    truth = torch.cat([door17, torch.randn(4, 5, generator=gen)], dim=1)  # 答えの観測は 17 個より長くてよい
++    with torch.no_grad():
++        _, d = stu._rollout_mean({"actor_obs": s_obs, "gt_obj_pos": truth})
++    assert torch.equal(d, door17)
++    with pytest.raises(KeyError):
++        stu._rollout_mean({"actor_obs": s_obs})
