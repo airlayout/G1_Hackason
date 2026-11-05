@@ -1,7 +1,7 @@
 // セキュリティカメラ（Pepper の首振り監視役）。位置は固定で、向きだけを往復して振る。
 // 数値の根拠は Entame/docs/pepper-detection-spec.md。★の項目は未測定の仮置き。
 
-import { canSeePlayer } from "./guard.js";
+import { canSeeAny } from "./guard.js";
 
 export const CAMERA_VISION_ANGLE_DEG = 57.2; // Pepper 上カメラの水平画角
 export const CAMERA_VISION_DISTANCE_PX = 240; // ★ 3m（1m = 80px）。最大視認距離は未測定
@@ -43,10 +43,11 @@ export function createSecurityCamera(config) {
   };
 }
 
-export function updateSecurityCamera(camera, dt, stage, player) {
+// targets: 見つけたらアウトの対象（プレイヤー、ミニロボットがいればそれも）。
+export function updateSecurityCamera(camera, dt, stage, targets) {
   if (camera.caught) return;
 
-  if (canSeePlayer(camera, player, stage.walls)) {
+  if (canSeeAny(camera, targets, stage.walls)) {
     camera.caught = true;
     return;
   }

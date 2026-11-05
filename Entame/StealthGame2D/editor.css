@@ -123,6 +123,12 @@
   width: 5em;
 }
 
+#editor-fields input[type="checkbox"] {
+  width: 1.2em;
+  height: 1.2em;
+  vertical-align: middle;
+}
+
 #editor-fields input[type="text"] {
   width: 9em;
 }

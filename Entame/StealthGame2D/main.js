@@ -1,7 +1,8 @@
 import { loadStages } from "./stagesLoader.js";
-import { createPlayer, updatePlayer, isBackAtStart } from "./player.js";
+import { createPlayer, updatePlayer } from "./player.js";
 import { createGuard, updateGuard, isCaught } from "./guard.js";
 import { createSecurityCamera, updateSecurityCamera } from "./securityCamera.js";
+import { createMiniRobot, updateMiniRobot, isStageCleared, detectionTargets } from "./miniRobot.js";
 import { renderStage } from "./render.js";
 
 const STATE = {
@@ -27,6 +28,7 @@ let currentStage = null;
 let player = null;
 let guard = null;
 let securityCamera = null;
+let miniRobot = null;
 let lastTimestamp = 0;
 
 const input = { up: false, down: false, left: false, right: false };
@@ -72,6 +74,7 @@ function startStage(stage) {
   player = createPlayer(stage.start);
   guard = createGuard(stage.guard);
   securityCamera = stage.securityCamera ? createSecurityCamera(stage.securityCamera) : null;
+  miniRobot = stage.miniRobot ? createMiniRobot(stage.miniRobot, stage.start) : null;
   input.up = input.down = input.left = input.right = false;
   state = STATE.PLAYING;
   showScreen();
@@ -109,12 +112,14 @@ backButtonEl.addEventListener("click", () => {
 
 function update(dt) {
   updatePlayer(player, input, dt, currentStage);
-  updateGuard(guard, dt, currentStage, player);
-  if (securityCamera) updateSecurityCamera(securityCamera, dt, currentStage, player);
+  if (miniRobot) updateMiniRobot(miniRobot, dt, player, currentStage);
+  const targets = detectionTargets(player, miniRobot);
+  updateGuard(guard, dt, currentStage, targets);
+  if (securityCamera) updateSecurityCamera(securityCamera, dt, currentStage, targets);
 
   if (isCaught(guard) || (securityCamera && securityCamera.caught)) {
     state = STATE.GAME_OVER;
-  } else if (isBackAtStart(player, currentStage)) {
+  } else if (isStageCleared(player, miniRobot, currentStage)) {
     state = STATE.CLEAR;
   }
 }
@@ -127,7 +132,7 @@ function loop(timestamp) {
     update(dt);
     // 検知（赤）確定でGAME_OVERに遷移した瞬間の状態も1フレーム描画してから
     // オーバーレイを出す。ここで描画をスキップすると赤い視野が一切見えないまま終わる。
-    renderStage(ctx, currentStage, player, guard, currentStage.name, securityCamera);
+    renderStage(ctx, currentStage, player, guard, currentStage.name, securityCamera, miniRobot);
     if (state !== STATE.PLAYING) {
       showScreen();
     }

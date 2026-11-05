@@ -1,9 +1,10 @@
 // Canvas描画。ゲーム状態を受け取って毎フレーム描画するだけの純粋な関数群。
 
 import { computeVisionPolygon } from "./guard.js";
+import { MINI_ROBOT_COLOR, MODE_LABEL } from "./miniRobot.js";
 import { CANVAS_FONT, CANVAS_FONT_PX, labelY } from "./canvasText.js";
 
-export function renderStage(ctx, stage, player, guard, stageLabel, securityCamera = null) {
+export function renderStage(ctx, stage, player, guard, stageLabel, securityCamera = null, miniRobot = null) {
   ctx.clearRect(0, 0, stage.width, stage.height);
 
   ctx.fillStyle = "#1b1f24";
@@ -24,6 +25,7 @@ export function renderStage(ctx, stage, player, guard, stageLabel, securityCamer
 
   drawGuard(ctx, guard);
   if (securityCamera) drawSecurityCamera(ctx, securityCamera);
+  if (miniRobot) drawMiniRobot(ctx, miniRobot);
   drawPlayer(ctx, player);
 
   drawHud(ctx, stageLabel, player);
@@ -74,6 +76,18 @@ function drawGuard(ctx, guard) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("Guard", guard.x, labelY(guard.y, guard.radius));
+}
+
+function drawMiniRobot(ctx, robot) {
+  ctx.fillStyle = MINI_ROBOT_COLOR;
+  ctx.fillRect(robot.x - robot.radius, robot.y - robot.radius, robot.radius * 2, robot.radius * 2);
+
+  ctx.fillStyle = "#e8eaed";
+  ctx.font = CANVAS_FONT;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  // 今のモードを "Mini: follower" の形で出す（人を見失ったときは "Mini: search"）。
+  ctx.fillText(`Mini: ${MODE_LABEL[robot.mode]}`, robot.x, labelY(robot.y, robot.radius));
 }
 
 function drawPlayer(ctx, player) {

@@ -3,6 +3,7 @@
 
 import { CANVAS_FONT, labelY } from "./canvasText.js";
 import { defaultSecurityCamera } from "./securityCamera.js";
+import { MINI_ROBOT_COLOR, MINI_ROBOT_RADIUS } from "./miniRobot.js";
 
 const DEG_TO_RAD = Math.PI / 180;
 const CAMERA_BODY_HALF = 9;
@@ -21,6 +22,20 @@ export function renderEditor(ctx, stage, validation, wallDraft) {
   if (stage.securityCamera) {
     drawSecurityCamera(ctx, stage.securityCamera, validation.stuckPoints.includes("CAMERA"));
   }
+  if (stage.miniRobot) drawMiniRobotAtStart(ctx, stage.start);
+}
+
+// ミニロボットは START から人に同行して出発する。START の少し右下に置いて見せる。
+function drawMiniRobotAtStart(ctx, start) {
+  const x = start.x + 24;
+  const y = start.y + 24;
+  ctx.fillStyle = MINI_ROBOT_COLOR;
+  ctx.fillRect(x - MINI_ROBOT_RADIUS, y - MINI_ROBOT_RADIUS, MINI_ROBOT_RADIUS * 2, MINI_ROBOT_RADIUS * 2);
+  ctx.fillStyle = "#e8eaed";
+  ctx.font = CANVAS_FONT;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("MINI", x, labelY(y, MINI_ROBOT_RADIUS));
 }
 
 // 首を振って見渡せる範囲（振り幅 + 視野角）を扇形で薄く塗り、中心の向きを線で示す。

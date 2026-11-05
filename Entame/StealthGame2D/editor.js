@@ -7,6 +7,7 @@ import { renderEditor } from "./editorRender.js";
 import { exportStageJson } from "./editorExport.js";
 import { createPlaySession, stepPlaySession, renderPlaySession } from "./editorPlay.js";
 import { defaultSecurityCamera, CAMERA_MAX_SWING_DEG } from "./securityCamera.js";
+import { defaultMiniRobot, MINI_ROBOT_MIN_SPEED_MPS, MINI_ROBOT_MAX_SPEED_MPS } from "./miniRobot.js";
 
 const canvas = document.getElementById("editor-canvas");
 const ctx = canvas.getContext("2d");
@@ -21,6 +22,8 @@ const fieldVisionAngle = document.getElementById("field-vision-angle");
 const fieldVisionDistance = document.getElementById("field-vision-distance");
 const fieldCameraDirection = document.getElementById("field-camera-direction");
 const fieldCameraSwing = document.getElementById("field-camera-swing");
+const fieldMiniRobot = document.getElementById("field-mini-robot");
+const fieldMiniSpeed = document.getElementById("field-mini-speed");
 const removeCameraButton = document.getElementById("btn-remove-camera");
 const validationEl = document.getElementById("validation-messages");
 const exportArea = document.getElementById("export-output");
@@ -138,6 +141,7 @@ function syncFieldsFromStage() {
   fieldVisionAngle.value = stage.guard.visionAngle;
   fieldVisionDistance.value = stage.guard.visionDistance / SCALE_PX_PER_M;
   syncCameraFields();
+  syncMiniRobotFields();
   resizeCanvasToStage();
   updateSaveTarget();
 }
@@ -150,6 +154,27 @@ function syncCameraFields() {
   fieldCameraDirection.value = camera ? camera.direction : "";
   fieldCameraSwing.value = camera ? camera.swingAngle : "";
 }
+
+// ミニロボット無効のときは速度欄を空にして無効化する。
+function syncMiniRobotFields() {
+  const robot = stage.miniRobot;
+  fieldMiniRobot.checked = Boolean(robot);
+  fieldMiniSpeed.disabled = !robot;
+  fieldMiniSpeed.value = robot ? robot.speed / SCALE_PX_PER_M : "";
+}
+
+fieldMiniRobot.addEventListener("change", () => {
+  stage = { ...stage, miniRobot: fieldMiniRobot.checked ? defaultMiniRobot() : null };
+  syncMiniRobotFields();
+  draw();
+});
+
+// 速度は人・G1 より遅い範囲に制限する（MIN〜MAX m/s）。
+bindNumberField(fieldMiniSpeed, (metersPerSec) => {
+  if (!stage.miniRobot) return;
+  const clamped = Math.min(MINI_ROBOT_MAX_SPEED_MPS, Math.max(MINI_ROBOT_MIN_SPEED_MPS, metersPerSec));
+  stage = { ...stage, miniRobot: { ...stage.miniRobot, speed: Math.round(clamped * SCALE_PX_PER_M) } };
+});
 
 function updateCamera(changes) {
   if (!stage.securityCamera) return;

@@ -30,10 +30,11 @@ export function createGuard(config) {
   };
 }
 
-export function updateGuard(guard, dt, stage, player) {
+// targets: 見つけたらアウトの対象（プレイヤー、ミニロボットがいればそれも）。
+export function updateGuard(guard, dt, stage, targets) {
   if (guard.caught) return;
 
-  if (canSeePlayer(guard, player, stage.walls)) {
+  if (canSeeAny(guard, targets, stage.walls)) {
     guard.seenSec += dt;
     if (guard.seenSec >= DETECTION_DWELL_SEC) {
       guard.caught = true;
@@ -47,6 +48,8 @@ export function updateGuard(guard, dt, stage, player) {
 }
 
 function updatePatrolMovement(guard, dt, stage) {
+  // 巡回ルート未設定（編集途中のテストプレイ）は、その場に立ったまま動かない。
+  if (guard.patrolPath.length === 0) return;
   const target = guard.patrolPath[guard.waypointIndex];
   const dx = target.x - guard.x;
   const dy = target.y - guard.y;
@@ -163,4 +166,9 @@ export function canSeePlayer(guard, player, walls) {
   const playerPos = { x: player.x, y: player.y };
   const occluded = walls.some((wall) => segmentIntersectsWall(guardPos, playerPos, wall));
   return !occluded;
+}
+
+// 対象のどれか1つでも見えていれば true（プレイヤー or 同行するミニロボット）。
+export function canSeeAny(observer, targets, walls) {
+  return targets.some((target) => canSeePlayer(observer, target, walls));
 }
