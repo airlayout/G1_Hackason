@@ -4,16 +4,17 @@
 import { createPlayer, updatePlayer } from "./player.js";
 import { createGuard, updateGuard, isCaught } from "./guard.js";
 import { createSecurityCamera, updateSecurityCamera } from "./securityCamera.js";
-import { createMiniRobot, updateMiniRobot, isStageCleared, detectionTargets } from "./miniRobot.js";
+import { createMiniRobot, defaultMiniRobot, updateMiniRobot, isStageCleared, detectionTargets } from "./miniRobot.js";
 import { renderStage } from "./render.js";
 
-export function createPlaySession(stage) {
+// withMiniRobot: テストプレイでミニロボットを連れて行くか（ステージには保存しない）。
+export function createPlaySession(stage, withMiniRobot = false) {
   return {
     stage,
     player: createPlayer(stage.start),
     guard: createGuard(stage.guard),
-    securityCamera: stage.securityCamera ? createSecurityCamera(stage.securityCamera) : null,
-    miniRobot: stage.miniRobot ? createMiniRobot(stage.miniRobot, stage.start) : null,
+    securityCameras: stage.securityCameras.map(createSecurityCamera),
+    miniRobot: withMiniRobot ? createMiniRobot(defaultMiniRobot(), stage.start) : null,
     input: { up: false, down: false, left: false, right: false },
     result: null,
   };
@@ -26,11 +27,11 @@ export function stepPlaySession(session, dt) {
   if (session.miniRobot) updateMiniRobot(session.miniRobot, dt, session.player, session.stage);
   const targets = detectionTargets(session.player, session.miniRobot);
   updateGuard(session.guard, dt, session.stage, targets);
-  if (session.securityCamera) {
-    updateSecurityCamera(session.securityCamera, dt, session.stage, targets);
+  for (const camera of session.securityCameras) {
+    updateSecurityCamera(camera, dt, session.stage, targets);
   }
 
-  if (isCaught(session.guard) || (session.securityCamera && session.securityCamera.caught)) {
+  if (isCaught(session.guard) || session.securityCameras.some((camera) => camera.caught)) {
     session.result = "GAME_OVER";
     return;
   }
@@ -40,5 +41,5 @@ export function stepPlaySession(session, dt) {
 }
 
 export function renderPlaySession(ctx, session) {
-  renderStage(ctx, session.stage, session.player, session.guard, `TEST PLAY: ${session.stage.name}`, session.securityCamera, session.miniRobot);
+  renderStage(ctx, session.stage, session.player, session.guard, `TEST PLAY: ${session.stage.name}`, session.securityCameras, session.miniRobot);
 }

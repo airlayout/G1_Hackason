@@ -20,12 +20,9 @@ export function createInitialState() {
       visionAngle: 70,
       visionDistance: 400,
     },
-    // セキュリティカメラ（Pepper）。未配置は null。配置すると securityCamera.js の
-    // defaultSecurityCamera() の形（direction / swingAngle は度）になる。
-    securityCamera: null,
-    // ミニロボット（人に同行する非常に遅い小型ロボット）。無効は null。有効にすると
-    // miniRobot.js の defaultMiniRobot() の形（speed は px/s）になる。
-    miniRobot: null,
+    // セキュリティカメラ（Pepper）。何台でも置ける。1台ごとに securityCamera.js の
+    // defaultSecurityCamera() の形（direction / swingAngle は度）。
+    securityCameras: [],
   };
 }
 

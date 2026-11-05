@@ -54,13 +54,15 @@
     "visionAngle": 70,
     "visionDistance": 400
   },
-  "securityCamera": {
-    "x": 517,
-    "y": 257,
-    "direction": 120,
-    "swingAngle": 90,
-    "swingSpeed": 28.6,
-    "visionAngle": 57.2,
-    "visionDistance": 240
-  }
+  "securityCameras": [
+    {
+      "x": 517,
+      "y": 257,
+      "direction": 120,
+      "swingAngle": 90,
+      "swingSpeed": 28.6,
+      "visionAngle": 57.2,
+      "visionDistance": 240
+    }
+  ]
 }

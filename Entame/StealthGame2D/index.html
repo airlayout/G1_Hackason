@@ -15,6 +15,10 @@
   <h2>LEVEL SELECT</h2>
 </div>
 
+<div id="level-options">
+  <label><input id="play-mini-robot" type="checkbox" /> ミニロボットを連れて行く</label>
+</div>
+
 <div id="play-controls" class="hidden">
   <button id="btn-retry">やり直す</button>
   <button id="btn-back">レベル選択に戻る</button>
@@ -24,7 +28,7 @@
   矢印キーで移動し、警備員(赤)の視野(扇形)を避けてTARGETを取ろう。<br />
   視野に入ると一発GAME OVER。<br />
   TARGETを取ったらSTARTまで戻ればCLEAR。<br />
-  ミニロボット(橙)がいるステージでは、ミニロボットも見つかったらGAME OVER。CLEARには人とミニロボットの両方がSTARTに戻る必要がある（ミニロボットは遅い）。
+  ミニロボット(橙)を連れて行く設定のときは、ミニロボットも見つかったらGAME OVER。CLEARには人とミニロボットの両方がSTARTに戻る必要がある（ミニロボットは遅い）。
 </p>
 
 <canvas id="game-canvas" class="hidden"></canvas>

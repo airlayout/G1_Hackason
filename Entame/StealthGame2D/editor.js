@@ -7,7 +7,6 @@ import { renderEditor } from "./editorRender.js";
 import { exportStageJson } from "./editorExport.js";
 import { createPlaySession, stepPlaySession, renderPlaySession } from "./editorPlay.js";
 import { defaultSecurityCamera, CAMERA_MAX_SWING_DEG } from "./securityCamera.js";
-import { defaultMiniRobot, MINI_ROBOT_MIN_SPEED_MPS, MINI_ROBOT_MAX_SPEED_MPS } from "./miniRobot.js";
 
 const canvas = document.getElementById("editor-canvas");
 const ctx = canvas.getContext("2d");
@@ -23,7 +22,6 @@ const fieldVisionDistance = document.getElementById("field-vision-distance");
 const fieldCameraDirection = document.getElementById("field-camera-direction");
 const fieldCameraSwing = document.getElementById("field-camera-swing");
 const fieldMiniRobot = document.getElementById("field-mini-robot");
-const fieldMiniSpeed = document.getElementById("field-mini-speed");
 const removeCameraButton = document.getElementById("btn-remove-camera");
 const validationEl = document.getElementById("validation-messages");
 const exportArea = document.getElementById("export-output");
@@ -53,6 +51,10 @@ let baseStages = [];
 // 編集の元になった保存済みステージの ID。新規ステージなら null。
 // 「保存先の ID が別ステージと被っていないか」の判定に使う（被ると上書きされる）。
 let editingId = null;
+// Cam Direction / Swing の対象にしているカメラの番号（securityCameras の添字）。無ければ -1。
+let selectedCamera = -1;
+// カメラ配置モードで、既存カメラをクリックして選ぶときの当たり半径。
+const CAMERA_PICK_RADIUS_PX = 20;
 
 // 空いている ID の候補（最大 ID + 1）。
 function nextFreeId() {
@@ -140,45 +142,26 @@ function syncFieldsFromStage() {
   fieldMoveSpeed.value = stage.guard.moveSpeed / SCALE_PX_PER_M;
   fieldVisionAngle.value = stage.guard.visionAngle;
   fieldVisionDistance.value = stage.guard.visionDistance / SCALE_PX_PER_M;
+  selectedCamera = stage.securityCameras.length > 0 ? 0 : -1;
   syncCameraFields();
-  syncMiniRobotFields();
   resizeCanvasToStage();
   updateSaveTarget();
 }
 
-// カメラ未配置のときは入力欄を空にして無効化する。
+// 選択中のカメラが無いときは入力欄を空にして無効化する。
 function syncCameraFields() {
-  const camera = stage.securityCamera;
+  const camera = stage.securityCameras[selectedCamera];
   fieldCameraDirection.disabled = !camera;
   fieldCameraSwing.disabled = !camera;
   fieldCameraDirection.value = camera ? camera.direction : "";
   fieldCameraSwing.value = camera ? camera.swingAngle : "";
 }
 
-// ミニロボット無効のときは速度欄を空にして無効化する。
-function syncMiniRobotFields() {
-  const robot = stage.miniRobot;
-  fieldMiniRobot.checked = Boolean(robot);
-  fieldMiniSpeed.disabled = !robot;
-  fieldMiniSpeed.value = robot ? robot.speed / SCALE_PX_PER_M : "";
-}
-
-fieldMiniRobot.addEventListener("change", () => {
-  stage = { ...stage, miniRobot: fieldMiniRobot.checked ? defaultMiniRobot() : null };
-  syncMiniRobotFields();
-  draw();
-});
-
-// 速度は人・G1 より遅い範囲に制限する（MIN〜MAX m/s）。
-bindNumberField(fieldMiniSpeed, (metersPerSec) => {
-  if (!stage.miniRobot) return;
-  const clamped = Math.min(MINI_ROBOT_MAX_SPEED_MPS, Math.max(MINI_ROBOT_MIN_SPEED_MPS, metersPerSec));
-  stage = { ...stage, miniRobot: { ...stage.miniRobot, speed: Math.round(clamped * SCALE_PX_PER_M) } };
-});
-
+// 選択中のカメラだけを書き換える。
 function updateCamera(changes) {
-  if (!stage.securityCamera) return;
-  stage = { ...stage, securityCamera: { ...stage.securityCamera, ...changes } };
+  if (selectedCamera < 0) return;
+  const cameras = stage.securityCameras.map((camera, i) => (i === selectedCamera ? { ...camera, ...changes } : camera));
+  stage = { ...stage, securityCameras: cameras };
 }
 
 function bindNumberField(el, apply) {
@@ -280,10 +263,14 @@ canvas.addEventListener("click", (event) => {
   } else if (mode === "waypoint") {
     stage = { ...stage, guard: { ...stage.guard, patrolPath: [...stage.guard.patrolPath, pos] } };
   } else if (mode === "securityCamera") {
-    const placed = stage.securityCamera
-      ? { ...stage.securityCamera, x: pos.x, y: pos.y }
-      : defaultSecurityCamera(pos.x, pos.y);
-    stage = { ...stage, securityCamera: placed };
+    // 既存カメラの上をクリックしたら選択、何もないところなら新しいカメラを追加する。
+    const hit = stage.securityCameras.findIndex((camera) => Math.hypot(camera.x - pos.x, camera.y - pos.y) <= CAMERA_PICK_RADIUS_PX);
+    if (hit >= 0) {
+      selectedCamera = hit;
+    } else {
+      stage = { ...stage, securityCameras: [...stage.securityCameras, defaultSecurityCamera(pos.x, pos.y)] };
+      selectedCamera = stage.securityCameras.length - 1;
+    }
     syncCameraFields();
   } else if (mode === "deleteWall") {
     stage = { ...stage, walls: stage.walls.filter((wall) => !isInsideWall(pos, wall)) };
@@ -302,7 +289,9 @@ clearWaypointsButton.addEventListener("click", () => {
 });
 
 removeCameraButton.addEventListener("click", () => {
-  stage = { ...stage, securityCamera: null };
+  if (selectedCamera < 0) return;
+  stage = { ...stage, securityCameras: stage.securityCameras.filter((_, i) => i !== selectedCamera) };
+  selectedCamera = stage.securityCameras.length - 1;
   syncCameraFields();
   draw();
 });
@@ -460,7 +449,7 @@ function startTestPlay() {
   playOverlayTitle.textContent = "";
   playInput.up = playInput.down = playInput.left = playInput.right = false;
 
-  playSession = createPlaySession(loadStage(stage));
+  playSession = createPlaySession(loadStage(stage), fieldMiniRobot.checked);
   playSession.input = playInput;
   playLastTimestamp = 0;
   playAnimationHandle = requestAnimationFrame(playLoop);
@@ -498,7 +487,7 @@ function playLoop(timestamp) {
 
 function draw() {
   const validation = validateStage(stage);
-  renderEditor(ctx, stage, validation, wallDraft);
+  renderEditor(ctx, stage, validation, wallDraft, selectedCamera);
   renderValidationMessages(validation);
 }
 

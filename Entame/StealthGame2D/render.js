@@ -4,14 +4,14 @@ import { computeVisionPolygon } from "./guard.js";
 import { MINI_ROBOT_COLOR, MODE_LABEL } from "./miniRobot.js";
 import { CANVAS_FONT, CANVAS_FONT_PX, labelY } from "./canvasText.js";
 
-export function renderStage(ctx, stage, player, guard, stageLabel, securityCamera = null, miniRobot = null) {
+export function renderStage(ctx, stage, player, guard, stageLabel, securityCameras = [], miniRobot = null) {
   ctx.clearRect(0, 0, stage.width, stage.height);
 
   ctx.fillStyle = "#1b1f24";
   ctx.fillRect(0, 0, stage.width, stage.height);
 
   drawVisionCone(ctx, guard, stage.walls);
-  if (securityCamera) drawVisionCone(ctx, securityCamera, stage.walls);
+  for (const camera of securityCameras) drawVisionCone(ctx, camera, stage.walls);
 
   ctx.fillStyle = "#555c66";
   for (const wall of stage.walls) {
@@ -24,7 +24,7 @@ export function renderStage(ctx, stage, player, guard, stageLabel, securityCamer
   }
 
   drawGuard(ctx, guard);
-  if (securityCamera) drawSecurityCamera(ctx, securityCamera);
+  for (const camera of securityCameras) drawSecurityCamera(ctx, camera);
   if (miniRobot) drawMiniRobot(ctx, miniRobot);
   drawPlayer(ctx, player);
 
