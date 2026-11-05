@@ -1,7 +1,7 @@
 {
   "sources": {
-    "g1-bottle-reaction": "506d6cbd849502139be223ec7def74b3d75feaaa",
-    "motiondecode-test": "78bacb68caa620797042703444a8286223663128"
+    "g1-bottle-reaction": "f6ea19b098b89491fddc2e5475f32af2926e1a0b",
+    "motiondecode-test": "0baca5e2dd6448d20cb98c8dd1be39f87cd0fa08"
   },
   "excluded": [
     "g1-bottle-reaction/assets/audio/reactions/banana/detected.wav",
@@ -508,7 +508,12 @@
     "motiondecode-test/external/cyclonedds/lib/libddsc.so": "120000",
     "motiondecode-test/external/cyclonedds/lib/libddsc.so.0": "120000",
     "motiondecode-test/scripts/evaluate_g1_preflight.py": "100755",
-    "motiondecode-test/scripts/inspect_arm_sdk_publishers.py": "100755"
+    "motiondecode-test/scripts/inspect_arm_sdk_publishers.py": "100755",
+    "g1-bottle-reaction/scripts/g1_game.py": "100755",
+    "g1-bottle-reaction/scripts/build-motiondecode-bundle.sh": "100755",
+    "g1-bottle-reaction/scripts/deploy-motiondecode-runtime.sh": "100755",
+    "g1-bottle-reaction/scripts/reaction-runtime-validate.py": "100755",
+    "g1-bottle-reaction/scripts/reaction-ssh.sh": "100755"
   },
   "public_audio_exclusion": {
     "paths": [
@@ -520,5 +525,42 @@
     "reason": "Public redistribution rights unconfirmed",
     "local_copies": "Untracked and ignored",
     "branch_history_sanitized": true
+  },
+  "previous_sources": {
+    "g1-bottle-reaction": "506d6cbd849502139be223ec7def74b3d75feaaa",
+    "motiondecode-test": "78bacb68caa620797042703444a8286223663128"
+  },
+  "update_20261103": {
+    "method": "git diff 506d6cb..f6ea19b and 78bacb6..0baca5e applied to this snapshot; earlier portability edits kept",
+    "modified": [
+      {
+        "path": "g1-bottle-reaction/scripts/g1_game.py",
+        "source_sha256": "05e58a9d4684208a4196f08797e2635314309f915a041235b3bccf4c529683f4",
+        "integrated_sha256": "185a4d62ba0b7f43fc8af110a550b992beb0b65583ff3d44913582e20c383d0c",
+        "reason": "PC-side paths resolved from this snapshot"
+      },
+      {
+        "path": "g1-bottle-reaction/scripts/build-motiondecode-bundle.sh",
+        "source_sha256": "aa66313c0075317c0776c46ab77a2a2b4646587b9fff3b8b856c62abcf293827",
+        "integrated_sha256": "9d3f1b1061bb46fa8ba904a48781a8b51dc97f30355a3ede412349f20ce1c5e8",
+        "reason": "PC-side paths resolved from this snapshot"
+      },
+      {
+        "path": "g1-bottle-reaction/scripts/deploy-motiondecode-runtime.sh",
+        "source_sha256": "346fa8c62823fbb43d36bd7f9ccac48ab7b6a2ec489303f0a619cf65ed90b54e",
+        "integrated_sha256": "368f472254b53df043e936cb87297380e6a96b86c0f70ac6af9dcf99425ac371",
+        "reason": "PC-side paths resolved from this snapshot"
+      }
+    ],
+    "added_reference": [
+      "motiondecode-test/output/fast_game_reactions_20260916/found_replacement_target_retry4/fresh_q0.json (read by g1_game.py check as the upper-body reference pose)"
+    ],
+    "kept_not_deleted": [
+      "motiondecode-test/data/motions/EESB_Intense_Surprise_00002.csv",
+      "motiondecode-test/data/motions/EESB_Intense_Surprise_00003.csv"
+    ],
+    "start-motiondecode-resident.sh": "replaced by the 11/03 source version; it uses the existing PC2 Unitree SDK and CycloneDDS instead of the bundled external/",
+    "audio": "18 paired reaction WAVs added; the 4 WAVs excluded earlier stay excluded",
+    "real_robot_validation": "2026-11-03 standing reactions 17/17 PASS; multi-lap patrol with this version not yet run"
   }
 }
