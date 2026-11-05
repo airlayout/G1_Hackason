@@ -10,7 +10,9 @@ const RADIUS = 10;
 const TURN_SPEED = Math.PI / 4; // rad/sec（約45°/秒。従来の半分）
 const TURN_ALIGN_THRESHOLD = (2 * Math.PI) / 180; // これ未満の角度差なら整列済みとみなす
 
-// 視界に入った瞬間に即アウト（一発アウト）。
+// 視界に入り続けた時間がこれ以上で「見つかった」（docs/g1-detection-spec.md の検知継続時間 0.2〜0.5秒の下限）。
+// 視界から外れると積算はリセットする。
+export const DETECTION_DWELL_SEC = 0.2;
 
 export function createGuard(config) {
   return {
@@ -23,22 +25,31 @@ export function createGuard(config) {
     visionAngle: config.visionAngle,
     visionDistance: config.visionDistance,
     facingAngle: 0,
+    seenSec: 0,
     caught: false,
   };
 }
 
-export function updateGuard(guard, dt, stage, player) {
+// targets: 見つけたらアウトの対象（プレイヤー、ミニロボットがいればそれも）。
+export function updateGuard(guard, dt, stage, targets) {
   if (guard.caught) return;
 
-  if (canSeePlayer(guard, player, stage.walls)) {
-    guard.caught = true;
-    return;
+  if (canSeeAny(guard, targets, stage.walls)) {
+    guard.seenSec += dt;
+    if (guard.seenSec >= DETECTION_DWELL_SEC) {
+      guard.caught = true;
+      return;
+    }
+  } else {
+    guard.seenSec = 0;
   }
 
   updatePatrolMovement(guard, dt, stage);
 }
 
 function updatePatrolMovement(guard, dt, stage) {
+  // 巡回ルート未設定（編集途中のテストプレイ）は、その場に立ったまま動かない。
+  if (guard.patrolPath.length === 0) return;
   const target = guard.patrolPath[guard.waypointIndex];
   const dx = target.x - guard.x;
   const dy = target.y - guard.y;
@@ -155,4 +166,9 @@ export function canSeePlayer(guard, player, walls) {
   const playerPos = { x: player.x, y: player.y };
   const occluded = walls.some((wall) => segmentIntersectsWall(guardPos, playerPos, wall));
   return !occluded;
+}
+
+// 対象のどれか1つでも見えていれば true（プレイヤー or 同行するミニロボット）。
+export function canSeeAny(observer, targets, walls) {
+  return targets.some((target) => canSeePlayer(observer, target, walls));
 }
