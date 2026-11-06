@@ -45,8 +45,10 @@ if [ "${1:-}" != check ]; then
          "$HERE/pc2/rec_follow.sh"  # 11-03: 方策の回の生の点群（door_start.sh が run_stock.sh と一緒に起こす）
          # 11-05: 頭のカラーの画像だけの生徒（カメラ側のプロセス・特徴の受け取り・numpy の計算・起こす台本）
          "$HERE/door_vision_core.py" "$HERE/door_vision_encoder.py" "$HERE/door_vision_source.py" "$HERE/door_vision_node.py"
-         "$HERE/pc2/run_vision.sh" "$HERE/pc2/cam_tilt.py")  # cam_tilt: 頭カメラの俯角を D435i の加速度計で（床の AprilTag の代わり）
-  for ext in _encoder.npz _encoder.onnx; do  # 画像の生徒の書き出しなら、画像の網の重みも配る
+         "$HERE/pc2/run_vision.sh" "$HERE/pc2/cam_tilt.py"  # cam_tilt: 頭カメラの俯角を D435i の加速度計で（床の AprilTag の代わり）
+         "$HERE/pc2/depth_probe.py"  # 11-06: 頭カメラの深度が PC2 で取れるか（計画 D1）
+         "$HERE/door_depth_shm.py" "$HERE/pc2/depth_relay.py")  # 11-06: 深度は機体の python3（3.8）の pyrealsense2 の中継で受ける
+  for ext in _encoder.npz _encoder.onnx _meta.json; do  # 画像の生徒の書き出しなら、画像の網の重みも配る（meta で rgbd かを見る）
     [ -f "${POLICY%.npz}$ext" ] && FILES+=("${POLICY%.npz}$ext")
   done
   pc2 "mkdir -p ~/$DEST/logs" || exit 1
@@ -91,5 +93,11 @@ for name, stmt in (("VideoClient", "from unitree_sdk2py.go2.video.video_client i
         print("  画像: %s OK %s" % (name, v))
     except Exception as e:
         print("  画像: %s 無い（%s: %s）" % (name, type(e).__name__, e))
+# 11-06: 深度の中継（depth_relay.py）は /usr/bin/python3 の pyrealsense2 を使う（lerobot の 3.12 には入らない＝glibc 2.38）
+try:
+    import pyrealsense2 as rs
+    print("  深度: pyrealsense2 OK（機器 %d 台）" % len(rs.context().devices))
+except Exception as e:
+    print("  深度: pyrealsense2 無い（%s: %s）" % (type(e).__name__, e))
 EOF
 done'

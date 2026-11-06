@@ -44,6 +44,56 @@ def bgr_to_rgb(bgr: np.ndarray) -> np.ndarray:
     return np.ascontiguousarray(bgr[..., ::-1])
 
 
+# --- 11-06: カラー＋深度（VIRAL6_vis の door_vision_feat.DoorRGBDEncoder・パッチ 0094） ---
+# シミュレータは深度をカラーと同じカメラ・同じ画角（焦点 1.88・開口 2.6035×1.4621）で描き、縦横 1/2 の 54×96 で使う。
+# 実機の D435i の深度（左の赤外線の位置・87°×58°）からは、その画角の中央を最近傍で取り出して同じ形にする（素子の位置の差 約 1.5 cm は無視）
+DEPTH_MAX = 3.0
+DEPTH_H, DEPTH_W = IMG_H // 2, IMG_W // 2
+SIM_TAN_HALF = (2.6035 / 2 / 1.88, 1.4621 / 2 / 1.88)  # シミュレータのカメラの半画角の tan（横・縦）
+
+
+def depth_from_intrinsics(depth_m: np.ndarray, fx: float, fy: float, cx: float, cy: float) -> np.ndarray:
+    """実機の深度 [H, W]（m・0 は測れない）→ シミュレータと同じ画角・形の深度 [54, 96]（float32・0 は測れない・3 m で詰める）。
+    出力の各画素の中心の向きを深度のカメラの内部の値（fx・fy・cx・cy、画素）で写し、最近傍で取る。画面の外は 0"""
+    tx = (np.arange(DEPTH_W) + 0.5) / DEPTH_W * 2.0 - 1.0
+    ty = (np.arange(DEPTH_H) + 0.5) / DEPTH_H * 2.0 - 1.0
+    u = np.rint(cx + fx * tx * SIM_TAN_HALF[0] - 0.5).astype(int)
+    v = np.rint(cy + fy * ty * SIM_TAN_HALF[1] - 0.5).astype(int)
+    h, w = depth_m.shape
+    inside = (u >= 0) & (u < w)
+    inside_v = (v >= 0) & (v < h)
+    out = np.zeros((DEPTH_H, DEPTH_W), dtype=np.float32)
+    sub = depth_m[np.clip(v, 0, h - 1)][:, np.clip(u, 0, w - 1)].astype(np.float32)
+    out[:] = np.where(inside_v[:, None] & inside[None, :], sub, 0.0)
+    out[~np.isfinite(out)] = 0.0
+    return np.clip(out, 0.0, DEPTH_MAX)
+
+
+def depth_input(d: np.ndarray) -> np.ndarray:
+    """深度 [54, 96]（m）→ 深度の枝の入力 [2, 54, 96]（距離 / DEPTH_MAX と測れた所の 1。door_vision_feat.depth_input と同じ）"""
+    return np.ascontiguousarray(np.stack([d / DEPTH_MAX, (d > 0).astype(np.float32)]).astype(np.float32))
+
+
+class OrtRGBDEncoder:
+    """onnxruntime で回すカラー＋深度の網（入力 rgb [1, 3, 108, 192]・depth [1, 2, 54, 96]・color_off [1] → [1, feat_dim]）"""
+
+    uses_depth = True
+
+    def __init__(self, path: str, threads: int = 4) -> None:
+        import onnxruntime as ort
+
+        so = ort.SessionOptions()
+        so.intra_op_num_threads = int(threads)
+        self.sess = ort.InferenceSession(path, sess_options=so, providers=["CPUExecutionProvider"])
+        self.names = [i.name for i in self.sess.get_inputs()]
+
+    def __call__(self, x_rgb: np.ndarray, x_depth: np.ndarray, color_off: bool = False) -> np.ndarray:
+        feed = {"rgb": x_rgb[None].astype(np.float32), "depth": x_depth[None].astype(np.float32),
+                "color_off": np.array([1.0 if color_off else 0.0], dtype=np.float32)}
+        y = self.sess.run(None, {k: feed[k] for k in self.names})[0]
+        return y[0].astype(np.float64)
+
+
 # --- numpy の ResNet18 ---
 
 

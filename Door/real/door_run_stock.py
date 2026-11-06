@@ -440,9 +440,11 @@ def vision_policy(vp: dvc.VisionParams, feats: dvs.VisionFeatSource, quat: np.nd
 def vision_row(vp: dvc.VisionParams, out, vmsg, pol, now: float) -> dict:
     """記録の列（毎周期そろえる。無い所は NaN）: 特徴の番号・撮ってからの古さ・網の ms・頭の重力（鏡写しの側）・当てた扉の値 17"""
     nan3, nan17 = np.full(3, np.nan), np.full(dvc.DOOR_DIM, np.nan)
+    ok = out is not None and pol is not None
     return dict(vis_seq=vmsg[0] if vmsg else np.nan, vis_age=(now - vmsg[2]) if vmsg else np.nan,
                 vis_encode_ms=vmsg[4] if vmsg else np.nan, vis_hg=pol.hg_m if pol is not None else nan3,
-                vis_door=dvc.door_from_obs(vp, out.obs) if (out is not None and pol is not None) else nan17)
+                vis_door=dvc.door_from_obs(vp, out.obs) if ok else nan17,
+                vis_head=dvc.door_values(vp, out.obs, pol.feat, pol.hg_m) if ok else nan17)  # 11-06: 追う段を通さない扉の頭
 
 
 def vision_text(p: dc.Params, vp: dvc.VisionParams, out, vmsg, pol, now: float) -> str:
@@ -454,8 +456,12 @@ def vision_text(p: dc.Params, vp: dvc.VisionParams, out, vmsg, pol, now: float) 
     if out is None or pol is None:
         return "画像 " + age
     ang, pos = dvc.door_real(p, vp, out.obs)
+    # 11-06: READY（hold）の間は追う段が毎周期ゼロから 1 歩で、回の始めの距離へ引っ張る（D4 で前へ最大 +0.49 m）。
+    # 巻き尺と比べるのは追う段を通さない扉の頭の値（D4 の 2 か所で前 5 cm 以内）
+    _, pos_h = dvc.door_real(p, vp, dvc.insert_door(vp, out.obs, dvc.door_values(vp, out.obs, pol.feat, pol.hg_m)))
     tilt = dvc.floor_tilt_deg(pol.hg_m)
-    return f"画像の扉 前 {pos[0]:+.2f} 左 {pos[1]:+.2f} m・{math.degrees(ang):.0f}° {age}頭の俯角（床から）{tilt:.1f}° "
+    return (f"画像の扉 前 {pos[0]:+.2f} 左 {pos[1]:+.2f} m・{math.degrees(ang):.0f}°（頭だけ 前 {pos_h[0]:+.2f} 左 {pos_h[1]:+.2f}） "
+            f"{age}頭の俯角（床から）{tilt:.1f}° ")
 
 
 def warm_up_vision(p: dc.Params, vp: dvc.VisionParams, state, geometry: np.ndarray, pose: dfr.PlanarPose) -> float:

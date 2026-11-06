@@ -7,7 +7,8 @@
 #
 #   VPOLICY=<名前>.npz DOOR=<幅,高さ,レバーの高さ,バックセット> ./door_start.sh run_vision.sh
 #     例: VPOLICY=door_vision_d4.npz DOOR=0.94,2.05,0.99,0.064 SECS=8 ./door_start.sh run_vision.sh
-#   VPOLICY   export_vision_student.py の npz（隣に <名前>_encoder.npz と <名前>_encoder.onnx）
+#   VPOLICY   export_vision_student.py の npz（隣に <名前>_encoder.npz と <名前>_encoder.onnx）。11-06: <名前>_meta.json の
+#             encoder_kind が rgbd（カラー＋深度・onnx だけ）なら、先に深度の中継 depth_relay.py（機体の python3）も起こす
 #   PITCH     カメラの俯角 [°]（torso から見て下向き）。既定 auto＝起こす前に立っている間の頭カメラ D435i の加速度計を
 #             5 秒読み（cam_tilt.py）、その床からの俯角に合うように走らせ役が起動時の姿勢から決める（--cam-tilt-deg）。
 #             11-05 夜に手で合わせた値は 53.4°（カメラの加速度計 53.25°・READY の表示との差から）。数字を渡せばその値
@@ -22,7 +23,11 @@ cd ~/door_real || exit 1
 : "${VPOLICY:?画像の生徒の npz を VPOLICY=<名前>.npz で渡す}"
 : "${DOOR:?扉の寸法を DOOR=幅,高さ,レバーの高さ,バックセット [m] で渡す（画像の生徒は使わないが走らせ役が要る）}"
 ENC="${VPOLICY%.npz}_encoder"
-[ -f "$VPOLICY" ] && [ -f "$ENC.npz" ] || { echo "[run] 無い: $VPOLICY か $ENC.npz（deploy_to_pc2.sh で配る）"; exit 1; }
+META="${VPOLICY%.npz}_meta.json"
+KIND=rgb  # 11-06: カラー＋深度の書き出し（meta の encoder_kind=rgbd）は _encoder.npz が無く onnx だけ
+[ -f "$META" ] && KIND=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("encoder_kind") or "rgb")' "$META")
+if [ "$KIND" = rgbd ]; then NEED="$ENC.onnx"; else NEED="$ENC.npz"; fi
+[ -f "$VPOLICY" ] && [ -f "$NEED" ] || { echo "[run] 無い: $VPOLICY か $NEED（deploy_to_pc2.sh で配る）"; exit 1; }
 ts=$(date +%Y%m%d_%H%M%S)
 VLOG="logs/vision_$ts.log"
 PITCH="${PITCH:-auto}"
@@ -38,8 +43,24 @@ if [ "$PITCH" = auto ]; then  # カメラの加速度計で頭の床からの俯
 fi
 VPY="${VPY:-$HOME/miniforge3/envs/lerobot/bin/python}"
 [ -x "$VPY" ] || { echo "[run] ⚠️ $VPY が無い: python3（numpy の網は 10 Hz に届かない）で起こす"; VPY=python3; }
+DPID=""
+if [ "$KIND" = rgbd ]; then  # 11-06: 深度は機体の python3（3.8）の pyrealsense2 の中継が /dev/shm に置く（3.12 には入らない）
+  DLOG="logs/depth_$ts.log"
+  setsid nohup python3 -u depth_relay.py --parent-pid $$ > "$DLOG" 2>&1 < /dev/null &
+  DPID=$!
+  for _ in $(seq 30); do
+    grep -q "最初の深度を置いた" "$DLOG" 2>/dev/null && break
+    kill -0 "$DPID" 2>/dev/null || break
+    sleep 0.5
+  done
+  cat "$DLOG"
+  grep -q "最初の深度を置いた" "$DLOG" || { echo "[run] 深度の中継から枚が来ない（$DLOG を見る）"; kill "$DPID" 2>/dev/null; exit 1; }
+  ENC_ARGS=(--rgbd-onnx "$ENC.onnx" --depth shm)
+else
+  ENC_ARGS=(--encoder "$ENC.npz" --onnx "$ENC.onnx" --backend "${BACKEND:-auto}")
+fi
 OPENBLAS_NUM_THREADS="${VTHREADS:-3}" OMP_NUM_THREADS="${VTHREADS:-3}" setsid nohup "$VPY" -u door_vision_node.py \
-  --encoder "$ENC.npz" --onnx "$ENC.onnx" --backend "${BACKEND:-auto}" --threads "${VTHREADS:-3}" --iface eth0 \
+  "${ENC_ARGS[@]}" --threads "${VTHREADS:-3}" --iface eth0 \
   --parent-pid $$ --log-dir logs > "$VLOG" 2>&1 < /dev/null &
 VPID=$!
 ln -sf "vision_$ts.log" logs/vision_latest.log
@@ -51,7 +72,7 @@ done
 cat "$VLOG"
 if ! grep -q "最初の特徴を送った" "$VLOG"; then
   echo "[run] カメラ側から特徴が来ない（$VLOG を見る）。走らせ役は起こさない"
-  kill "$VPID" 2>/dev/null
+  kill "$VPID" ${DPID:+"$DPID"} 2>/dev/null
   exit 1
 fi
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1  # 10-16: BLAS の糸が多いと周期が乱れる
