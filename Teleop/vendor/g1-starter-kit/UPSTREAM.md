@@ -101,6 +101,8 @@ OMEN（`ubuntu@192.168.123.200`）のキットは 45ead40 のまま、コミッ�
 | `tools/replay_legs_selftest.py` | 上の自己テスト（新規・実機不要。偽の DDS と偽の純正で、main() と同じつなぎ方の再生を丸ごと回す。正常・歩いている最中の中断・後始末の途中の例外・SetVelocity の拒否・腕の速さ・入口の断り。約 20 秒） |
 | `setup/apply_patches.py`（11-04） | 修正 `seated-controls`（座位: `--motion` なし＝純正を止めて `rt/lowcmd` でも、A の終了・両スティックの一時停止・Quest の途切れの一時停止を効かせる。上流はこの塊が `--motion` のときだけ。歩きの指令は `--motion` のときだけ送り、記録には全身の角度と歩き 0 を残す） |
 | `tools/seated_controls_selftest.py` | 上の自己テスト（新規・実機不要。9 項目。歩きの口に一度も触らないことも見る）。`stick_pause_selftest.py` は塊の抜き出しの始まりを上流のコメント `# high level control` に、`loco_fwd_max_selftest.py` は `motion=True` を渡すように直した |
+| `setup/apply_patches.py`（11-04 夕） | 修正 `arm-home-hold`（G1_29_ArmController の `clip_arm_q_target`。速さの上限が 2 rad/s 以下のとき＝起動・終わり・再開の直後は、目標を前に送った目標から寄せる。上流は「今の実測＋1 周期ぶん」なので出せる力が 0.64 N·m までで、0 の姿勢で前腕を保つ 1.9 N·m（肘・URDF）に負け、座位で start をくり返すと腕の止まる場所がずれていった。目標と実測の差は 0.1 rad まで。30 rad/s の追従中は上流のまま）・修正 `arm-home-wait`（起動のとき「Press [r]」の手前で、腕が 0 に着くのを最長 5 秒待ち、`[arm-home]` の 1 行を出す） |
+| `tools/arm_home_selftest.py` | 上の自己テスト（新規・実機不要。重さのある偽の腕を 250 Hz で回す: 垂れた姿勢から 0.48 秒で 0 に届く（上流の寄せ方は 3 秒後も 1.17 rad 離れたまま）・ぶつかったら差を 0.1 rad まで・30 rad/s は上流と同じ値（200 通り）・待つ所が着いたら抜ける／5 秒で警告。わざと壊した 4 通りを全部見つける） |
 
 確かめ方: 上流の xr_teleoperate（817fb00）の素の写しに全部当てた結果が、OMEN で動いている
 `~/xr_teleoperate` の 3 ファイルと 1 文字違わず一致すること、全部外すと素の版に戻ること、
@@ -114,3 +116,5 @@ OMEN（`ubuntu@192.168.123.200`）のキットは 45ead40 のまま、コミッ�
 2026-11-04 の `seated-controls` も同じ確かめをした（素の写しに 49 か所・2 回目は何も変わらない・今の OMEN との差は
 3 か所だけ・全部外すと素に戻る・`no-loco` を外すと乗っている `seated-controls` も外れる）。OMEN の一時の写し（`/tmp`）に当てて、
 本物の SDK で自己テスト 9 本が合格した。OMEN と PC2 の `~/xr_teleoperate` にはまだ当てていない（PC2 は `pc2_teleop.sh patch` で当てる）。
+同じ日の 16:38（日本時間）に PC2 へ `pc2_teleop.sh patch` で当て、PC2 の上で自己テスト 10 本が合格した。
+夕方の `arm-home-hold`・`arm-home-wait` も、素の写しに当たる・2 回目は何も変わらない・全部外すと素に戻る（当てるときの控え `.orig` を除く）を確かめ、OMEN の `~/xr_teleoperate` を丸ごと一時フォルダ（`/tmp`）へ写して当て、本物の SDK で自己テスト 10 本（`arm_home` を含む）が合格した。PC2 にはまだ当てていない（機体の電源が切れていた）。

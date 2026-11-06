@@ -46,9 +46,10 @@ MAIN="$XR/teleop/teleop_hand_and_arm.py"
 [ -f "$MAIN" ] || die "xr_teleoperate が無い: ${XR}"
 # 修正が当たっていないと、記録に歩きが残らない・Quest が切れても歩き続ける・押し込みで落ちる
 for m in "PATCH(record-loco-cmd)" "PATCH(stick-pause)" "PATCH(xr-stale-stop)" "PATCH(xr-stale-log)" "PATCH(safe-exit)" \
-         "PATCH(record-arm-effort)" "PATCH(state-watchdog)" "PATCH(go-home-release)" "PATCH(arm-tau-getter)"; do
+         "PATCH(record-arm-effort)" "PATCH(state-watchdog)" "PATCH(go-home-release)" "PATCH(arm-tau-getter)" \
+         "PATCH(arm-home-hold)" "PATCH(arm-home-wait)"; do
   f="$MAIN"
-  case "$m" in "PATCH(state-watchdog)"|"PATCH(go-home-release)"|"PATCH(arm-tau-getter)") f="$XR/teleop/robot_control/robot_arm.py" ;; esac
+  case "$m" in "PATCH(state-watchdog)"|"PATCH(go-home-release)"|"PATCH(arm-tau-getter)"|"PATCH(arm-home-hold)") f="$XR/teleop/robot_control/robot_arm.py" ;; esac
   grep -qF "$m" "$f" || die "${m} が当たっていない（apply_patches.py を先に流す）"
 done
 grep -qF "PATCH(record-timestamp)" "$XR/teleop/utils/episode_writer.py" || die "PATCH(record-timestamp) が当たっていない"
@@ -113,6 +114,8 @@ echo "[start] 起こした: PID ${PID}・記録 ${DATA}/${TASK}/・ログ ${LOG}
 
 for _ in $(seq 1 "$WAIT_S"); do
   if grep -qF "Press [r] to start" "$LOG" 2>/dev/null; then
+    # 2026-11-04: 腕が下ろした初期位置に着いたか（修正 arm-home-wait の 1 行）を出す。着かなければ警告の行が出る
+    grep -F "[arm-home]" "$LOG" | tail -n 1 | sed 's/^.*\[arm-home\]/[start]/'
     WIFI_IP=$(ip -4 -o addr show "$WIFI_IFACE" 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
     echo "[start] ✓ 準備ができた。Quest で https://${WIFI_IP:-<無線の IP>}:8012/?ws=wss://${WIFI_IP:-<IP>}:8012 を開き"
     echo "        「Pass-through」（周りが見える方。「Virtual Reality」は全面グレーになる）を押してから、Mac で go"

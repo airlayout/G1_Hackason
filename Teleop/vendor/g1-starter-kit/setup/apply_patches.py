@@ -109,6 +109,15 @@ patch ファイルではなく文字列置換にしてあるのは、上流が�
                   --motion のときだけで、--motion なしでは Quest が途切れて戻った瞬間に腕が今の手へ 30 rad/s で飛んだ。
                   歩きの指令は --motion のときだけ送る（歩きの口が無い）。記録には全身の角度と歩き（0）を残す。
                   ⚠️ no-loco・xr-stale-stop・record-loco-cmd が入れた行の上に当たる（自動で補完する。2026-11-04）。
+
+  arm-home-hold   [G1_Hackason 改変] 腕の速さの上限が 2 rad/s 以下のとき（起動・終わり・一時停止からの再開の直後）、
+                  目標を「前に送った目標」から寄せる（G1_29_ArmController）。上流は「今の実測＋1 周期ぶん」を送るので
+                  出せる力が 0.64 N·m（kp 80×2 rad/s×4 ms）までしかなく、0 の姿勢（上腕は下・前腕は前へ水平）で
+                  前腕を保つ 1.9 N·m（肘）に負けた。起動でも終わりでも腕が 0 へ届かずに垂れた所で止まり、座位では
+                  保持係がそこを保って、start をくり返すほど腕の止まる場所がずれていった（11-04）。
+                  ぶつかったときに押しすぎないよう、目標と実測の差は 0.1 rad までにする。追従中（30 rad/s）は上流のまま。
+  arm-home-wait   [G1_Hackason 改変] 起動のとき、腕が下ろした初期位置（全関節 0・差 0.05 rad 未満）に着くのを最長 5 秒
+                  待ってから「Press [r]」を出し、着いたか（[arm-home]）をログに出す。着かなくても先へ進む。
 """
 
 import argparse
@@ -734,6 +743,64 @@ G1_29_Num_Motors = 35''',
              "                    if args.input_mode == \"controller\":  # PATCH(seated-controls): 座位でも全身の角度と歩き（0）を残す\n"
              "                        current_body_state = arm_ctrl.get_current_motor_q().tolist()\n",
              "PATCH(seated-controls): 座位でも全身の角度"),
+        ],
+    },
+    # [G1_Hackason 改変] 上流 817fb00 には無い。座位で start をくり返すと、腕の止まる場所がずれていった（11-04）。
+    "arm-home-hold": {
+        "desc": "2 rad/s 以下では前に送った目標から寄せ、腕を下ろした姿勢（0）まで重さに負けずに届かせる（G1_29）",
+        "file": "robot_control/robot_arm.py",
+        "scoped": [
+            ("class G1_29_ArmController",
+             "    def clip_arm_q_target(self, target_q, velocity_limit):\n"
+             "        current_q = self.get_current_dual_arm_q()\n"
+             "        delta = target_q - current_q\n"
+             "        motion_scale = np.max(np.abs(delta)) / (velocity_limit * self.control_dt)\n"
+             "        cliped_arm_q_target = current_q + delta / max(motion_scale, 1.0)\n"
+             "        return cliped_arm_q_target\n",
+             "    def clip_arm_q_target(self, target_q, velocity_limit):\n"
+             "        # PATCH(arm-home-hold): 上流は「今の実測＋1 周期ぶん」を送るので、出せる力が kp×速さ×周期までしかない\n"
+             "        # （2 rad/s で 80×2×0.004＝0.64 N·m）。0 の姿勢で前腕を水平に保つには肘 1.9・肩 pitch 2.2 N·m が要り\n"
+             "        # （URDF の重さ）、起動と終わり（2 rad/s）で 0 へ届かずに垂れた所で止まり、保持係がそこを保ち、\n"
+             "        # 次の start がまたそこから始まって、腕の止まる場所がずれていった（11-04 座位）。\n"
+             "        # 2 rad/s 以下では前に送った目標から寄せる（力が足りる）。ぶつかったときに押しすぎないよう、\n"
+             "        # 目標と実測の差は 0.1 rad（kp 80 で 8 N·m・手首 kp 40 で 4 N·m）までにする。速いとき（追従中）は上流のまま\n"
+             "        slow_rad_s, max_err_rad = 2.0, 0.1\n"
+             "        current_q = self.get_current_dual_arm_q()\n"
+             "        last_q = getattr(self, \"_home_last_q\", None)\n"
+             "        slow = velocity_limit <= slow_rad_s + 1e-9\n"
+             "        base_q = last_q if slow and last_q is not None else current_q\n"
+             "        delta = target_q - base_q\n"
+             "        motion_scale = np.max(np.abs(delta)) / (velocity_limit * self.control_dt)\n"
+             "        cliped_arm_q_target = base_q + delta / max(motion_scale, 1.0)\n"
+             "        if slow:\n"
+             "            cliped_arm_q_target = np.clip(cliped_arm_q_target, current_q - max_err_rad, current_q + max_err_rad)\n"
+             "        self._home_last_q = cliped_arm_q_target\n"
+             "        return cliped_arm_q_target\n",
+             "PATCH(arm-home-hold)"),
+        ],
+    },
+    # [G1_Hackason 改変] 上流 817fb00 には無い。start の後、腕が下ろした初期位置に着いたかを見てから「Press [r]」を出す。
+    "arm-home-wait": {
+        "desc": "起動のとき、腕が下ろした初期位置（0）に着くのを最長 5 秒待ち、着いたかをログに出す",
+        "file": "teleop_hand_and_arm.py",
+        "plain": [
+            ('        logger_mp.info("----------------------------------------------------------------")\n'
+             '        logger_mp.info("🟢  Press [r] to start syncing the robot with your movements.")\n',
+             "        # PATCH(arm-home-wait): 腕が下ろした初期位置（全関節 0）に着くのを最長 5 秒待つ。着かなくても先へ進む\n"
+             "        # （ぶつかっているかもしれないので押し続けない。arm-home-hold が押す力を抑える）。上流は待たずに先へ進む\n"
+             "        _home_t0 = time.time()\n"
+             "        _home_err = max(abs(float(x)) for x in arm_ctrl.get_current_dual_arm_q())\n"
+             "        while _home_err >= 0.05 and time.time() - _home_t0 < 5.0:\n"
+             "            time.sleep(0.05)\n"
+             "            _home_err = max(abs(float(x)) for x in arm_ctrl.get_current_dual_arm_q())\n"
+             "        if _home_err < 0.05:\n"
+             "            logger_mp.info(f\"[arm-home] 腕を下ろした初期位置に戻した（{time.time() - _home_t0:.1f} 秒・いちばん大きいずれ {_home_err:.3f} rad）\")\n"
+             "        else:\n"
+             "            logger_mp.warning(f\"[arm-home] 5 秒で腕が初期位置に戻りきらない（いちばん大きいずれ {_home_err:.2f} rad）。\"\n"
+             "                              \"腕が何かに当たっていないか見る\")\n"
+             '        logger_mp.info("----------------------------------------------------------------")\n'
+             '        logger_mp.info("🟢  Press [r] to start syncing the robot with your movements.")\n',
+             "PATCH(arm-home-wait)"),
         ],
     },
 }

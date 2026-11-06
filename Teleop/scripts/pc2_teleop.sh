@@ -57,7 +57,7 @@ else
 fi
 OMEN="${G1_OMEN_SSH:-ubuntu@100.99.102.70}"   # install-omen の送り先
 TELEOP_PAT='^[^ ]*python[^ ]* (-u )?teleop_hand_and_arm.py'   # ssh 越しの pgrep が運び役のシェルに当たらない形（10-27）
-SELFTESTS="no_loco seated_controls loco_fwd_max stick_pause record_timestamp go_home arm_effort state_watchdog replay_legs"
+SELFTESTS="no_loco seated_controls loco_fwd_max stick_pause record_timestamp go_home arm_home arm_effort state_watchdog replay_legs"
 PC2_SELFTESTS="seat_hold"                     # Teleop/scripts/pc2/ の自己テスト（保持係を本物の DDS で。lo・domain 7）
 TOOLS="teleop_tools"                          # PC2 の $HOME 相対
 PY='$HOME/miniforge3/envs/tv/bin/python'      # PC2 の上で展開させる
