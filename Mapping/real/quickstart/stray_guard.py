@@ -34,6 +34,25 @@ RViz2 の「2D Goal Pose」からクリックすると保護が無くなる。�
 
 - 見張り中に `map -> base_link` の**スタンプが `--max-tf-gap` 秒進まなければ**キャンセル
 
+**人が押して止める口（2026-09-18 に追加）**
+
+- `--cancel-topic`（既定 `/cancel_nav`）に**何か 1 通来たら即キャンセル**する
+
+RViz2 側は `rviz_default_plugins/PublishPoint` の Topic をこれに向けてある
+（live の 4 設定に入れた。ツールバーの「Publish Point」を選んで地図をクリックする）。
+**なぜトピックにしたか:**
+
+- RViz2 の Nav2 パネルの `Cancel` ボタンは**パネル自身が投げたゴールしか切れない**
+  （2026-09-18 実測）。「2D Goal Pose」のクリックは `/goal_pose` を撃つだけで、
+  アクションに変えるのは `bt_navigator` なのでパネルは走行を掴んでいない
+- では「Nav2 Goal」ツールに替えればよいかというと**替えられない。**
+  あちらはアクション直投げで `/goal_pose` を出さないので、**この見張りが起動しない**
+- アクションもサービスも **AP を越えられない**（`ros_to_foxglove.py` が返せるのは
+  トピックだけ）。無線で止めたいならトピックしか道が無い
+
+⚠️ **このノードは Nav2 と同じ側に置くこと。** キャンセルはサービス呼び出しなので、
+無線構成（Nav2 が PC2）でコンテナ側に置くと届かない。
+
 ## ⚠️ 距離の首輪だけでは足りない（なぜ G0 を足したか）
 
 `--max-abs` は既定 3.0 m で**頭打ち**になる。ゴールまで 4.35 m のクリックでは
@@ -91,7 +110,8 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from action_msgs.msg import GoalStatus, GoalStatusArray
 from action_msgs.srv import CancelGoal
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PointStamped, PoseStamped
+from nav_msgs.msg import Path as NavPath
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from tf2_ros import Buffer, TransformListener
@@ -143,11 +163,21 @@ class StrayGuard(Node):
         self.watch: dict | None = None       # 見張り中の情報。None なら待機
         self.create_subscription(PoseStamped, "/goal_pose", self._on_goal, 10)
         self.create_subscription(GoalStatusArray, STATUS_TOPIC, self._on_status, 10)
+        # 人が押して止める口。**見張り中でなくても効く**（アクション直投げのゴールも切れる）
+        if args.cancel_topic:
+            self.create_subscription(PointStamped, args.cancel_topic, self._on_cancel_request, 10)
+        # ⚠️ Nav2 は**新しい経路を作ったときしか** /plan を出さない。取り消しても空の経路は来ないので、
+        # RViz2 には最後の経路が残り続ける（2026-09-28 実機: Publish Point で止めたのに線が残った）。
+        # ゴールが終わったら、ここから空の経路を 1 通出して消す
+        self.plan_pub = (self.create_publisher(NavPath, args.clear_plan_topic, 10)
+                         if args.clear_plan_topic else None)
         self.create_timer(1.0 / max(args.rate, 0.1), self._tick)
         # ── 門番 G0（見かけの速さ）の状態 ──────────────────────────
         self.limit = read_max_vel(Path(args.nav2_yaml) if args.nav2_yaml else None)
         self.g0_threshold = self.limit * args.g0_factor
         self.last_stamp: float | None = None     # 直近に取り込んだ TF のスタンプ[s]
+        # スタンプが最後に進んだときの**こちらの時計**[s]。/tf 途絶はこれで測る（_tf_stall の注記）
+        self.last_advance: float | None = None
         self.last_xy: tuple[float, float] | None = None
         self.speeds: deque = deque()             # (区間の中央時刻, 見かけの速さ)
         self.g0_warned = -1e9                    # 待機中の警告を間引く
@@ -208,6 +238,15 @@ class StrayGuard(Node):
             return
         self.get_logger().info("[guard] ゴールが終了した。待機に戻る")
         self.watch = None
+        self._clear_plan()
+
+    def _clear_plan(self) -> None:
+        """RViz2 に残った経路の線を消す（空の Path を出す）。"""
+        if self.plan_pub is None:
+            return
+        msg = NavPath()
+        msg.header.frame_id = "map"          # スタンプは 0 ＝ RViz2 は最新の TF で描く
+        self.plan_pub.publish(msg)
 
     # ── 門番 G0（見かけの速さ）──────────────────────────────────────
     def _sample_speed(self) -> None:
@@ -228,6 +267,7 @@ class StrayGuard(Node):
             v = math.hypot(xy[0] - self.last_xy[0], xy[1] - self.last_xy[1]) / dt
             self.speeds.append((stamp - dt / 2.0, v))
         self.last_stamp, self.last_xy = stamp, xy
+        self.last_advance = self.get_clock().now().nanoseconds * 1e-9
         lo = stamp - self.a.g0_window
         while self.speeds and self.speeds[0][0] < lo:
             self.speeds.popleft()
@@ -269,7 +309,7 @@ class StrayGuard(Node):
             why = ("見かけの速さ {:.2f} m/s（上限 {:.2f} m/s）。"
                    "**推定が機体に出せない速さで動いている＝測位の破綻**".format(
                        med, self.g0_threshold))
-        elif self.last_stamp is not None and \
+        elif self.last_advance is not None and \
                 (stall := self._tf_stall(w)) is not None:
             why = stall
         elif d > w["leash"]:
@@ -292,13 +332,32 @@ class StrayGuard(Node):
         ⚠️ **これが効くのは `--no-sim-time`（＝ 実機）だけ**である。
         記録の再生では `/clock` も一緒に止まるので、`now` が進まず gap も育たない。
         再生で「止まったのに鳴らない」のは仕様であって不具合ではない。
+
+        ⚠️⚠️ **「今の時刻 − スタンプ」で測ってはいけない（2026-09-28 に直した）。**
+        LiDAR の点群のスタンプは **機体側（PC1 か LiDAR 自身。未確認）の時計**で付き、Mac・PC2 と揃っていない。
+        FAST_LIO / open3d_loc の TF はそのスタンプを継ぐので、平常でも
+        「今 − スタンプ」が **09-26 は 5.1 s、09-28 は 9.4 s**（上限 10 s まで 0.6 s）あった。
+        09-26 に上限 3 s でゴールを受けた 0.03 s 後に全部取り消したのはこれで、
+        「open3d_loc が 2.5 s おきだから」という当時の説明は誤りだった（map->odom は 10 Hz で来ている）。
+        ⇒ **スタンプが最後に進んでから、こちらの時計で何秒経ったか**を見る。
+        時計のずれは差し引きで消え、「測位が止まった」だけが残る。
         """
         now_s = self.get_clock().now().nanoseconds * 1e-9
-        gap = now_s - self.last_stamp
+        gap = now_s - self.last_advance
         if gap <= self.a.max_tf_gap:
             return None
-        return ("map -> base_link が {:.1f}s 進んでいない（上限 {:.1f}s）。"
+        return ("map -> base_link のスタンプが {:.1f}s 進んでいない（上限 {:.1f}s）。"
                 "**測位が止まっている**".format(gap, self.a.max_tf_gap))
+
+    def _on_cancel_request(self, msg: PointStamped) -> None:
+        """人が RViz2 で押した。**理由を残してから切る。**"""
+        self.get_logger().error(
+            "[guard] **人の指示でキャンセルする**（{} を受けた / 地図上 ({:+.2f}, {:+.2f})）".format(
+                self.a.cancel_topic, msg.point.x, msg.point.y))
+        if self.watch:
+            # 見張り中なら待機に戻す。_on_status の終了通知より先に来ても矛盾しないように
+            self.watch["fired"] = True
+        self._cancel()
 
     def _cancel(self) -> None:
         if not self.cli.service_is_ready():
@@ -319,6 +378,8 @@ class StrayGuard(Node):
         self.get_logger().error(
             "[guard] キャンセル完了 return_code={} / 対象 {} 件".format(
                 res.return_code, len(res.goals_canceling)))
+        if res.goals_canceling:
+            self._clear_plan()               # 状態の通知より先に来ても線は消す
 
 
 def main(argv=None) -> int:
@@ -343,12 +404,21 @@ def main(argv=None) -> int:
                         "0.5 にすると /tf が落ちたとき窓の中が 3 本を切って黙る")
     p.add_argument("--no-g0", action="store_true",
                    help="門番 G0 を切る。**切る理由を記録に残すこと**")
-    p.add_argument("--max-tf-gap", type=float, default=3.0,
+    # ⚠️ 2026-09-26: 旧既定 3.0 は MOLA（10 Hz）の頃の値。FAST_LIO + open3d_loc では
+    # map->odom が約 2.5 s おきにしか出ず、map->base_link のスタンプが正常でも約 5 s 遅れる。
+    # 3.0 だとゴールを受けた 50 ms 後に必ず「測位停止」で取り消した（実機で 2 回）。
+    # 10.0 は正常の遅れ 5 s の 2 倍。代償: 本当に止まると最大約 3〜3.6 m（0.30〜0.36 m/s）歩く
+    p.add_argument("--max-tf-gap", type=float, default=3.0,     # 09-28: 時計のずれを差し引くようにしたので 10 から戻した
                    help="見張り中に map -> base_link のスタンプが"
                         "これだけ進まなければキャンセル[s]。"
                         "09-12 の崩壊は最後に /tf ごと止まった")
     p.add_argument("--nav2-yaml", default=NAV2_YAML_DEFAULT,
                    help="並進の上限（velocity_smoother の max_velocity）の出どころ")
+    p.add_argument("--clear-plan-topic", default="/plan",
+                   help="ゴールが終わったら空の経路を出すトピック（RViz2 の線を消す。空文字で無効）")
+    p.add_argument("--cancel-topic", default="/cancel_nav",
+                   help="ここに 1 通来たら即キャンセルする（PointStamped）。"
+                        "RViz2 の Publish Point を向けてある。空文字で無効")
     p.add_argument("--no-sim-time", action="store_true",
                    help="実機で使うときに付ける（/clock が無いので必須）")
     args = p.parse_args(argv)

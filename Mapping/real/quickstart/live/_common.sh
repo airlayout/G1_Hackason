@@ -80,7 +80,7 @@ pc2_kill_procs() {
     done
     left="$(pc2_pids "$pattern" | tr '\n' ' ')"
     if [ -n "${left// /}" ]; then
-        warn "$sig で死ななかった（$left）。KILL する"
+        warn "$sig で死ななかった（${left}）。KILL する"
         pc2 "kill -KILL $left 2>/dev/null; true"
         sleep 1
     fi
@@ -111,6 +111,46 @@ pc2_ros2() {                    # $1=秒 以降が ros2 の引数
     local secs="$1"; shift
     pc2_ros "timeout $secs env \$JAMMY_ENV \"\$LOADER\" --library-path \"\$JAMMY_LIBS\" \
              \"\$PREFIX/usr/bin/python3.10\" \"\$ROS/bin/ros2\" $*"
+}
+
+# ── 条件が立つまで待つ（固定 sleep の置き換え）──────────────────────
+# **2026-09-17 に up.sh を 2 回通したら、待ちだけで約 10 分使った。**
+# 無条件の sleep が合計 174 秒あり、段 0 で落ちると何も起動していないのに
+# 次回また全額払う形になっていた。だから「出るまで待つ」に置き換える。
+#
+# ⚠️ **待ち受けは向こう側で回す。** 毎秒 ssh すると AP 越しでは往復だけで
+# 0.5〜1 秒かかり、待ち時間を測っているのか往復を測っているのか分からなくなる。
+#
+# ⚠️⚠️ **成立しなくても die しない。** 上限まで待って warn し、そのまま先へ進む
+# （＝旧来の固定 sleep と同じ挙動に落ちる）。ここで止めると、**判定の側が
+# 壊れただけで起動できなくなる**。2026-09-17 の誤診 9 件のうち 8 件は
+# 「正常を異常と報告する」向きの計器の故障だった。合否は後段の実測に任せる。
+#
+#   pc2_wait "Nav2" 90 'grep -q "Managed nodes are active" /tmp/pc2_nav2.log'
+#   ctr_wait "中継(in)" 40 '[ -s /tmp/relay.log ]'
+_wait_verdict() {               # $1=説明 / $2=上限秒 / $3=向こうの返事
+    case "$3" in
+        OK*) ok "${1} … $(printf '%s' "${3#OK }" | tr -d '[:space:]') 秒で確認"; return 0 ;;
+        *)   warn "${1} が ${2} 秒で確認できなかった。そのまま進む"; return 1 ;;
+    esac
+}
+# 向こう側で 1 秒ごとに条件を試す sh 片を組み立てる。$cond は**展開しない**
+# （ここで展開すると `$(...)` がこちらで走ってしまう）。
+_wait_script() {                # $1=上限秒 / $2=条件
+    printf 'i=0
+while [ $i -lt %s ]; do
+    if %s; then echo "OK $i"; exit 0; fi
+    i=$((i + 1)); sleep 1
+done
+echo TIMEOUT
+' "$1" "$2"
+}
+pc2_wait() {                    # $1=説明 / $2=上限秒 / $3=PC2 で評価する条件
+    _wait_verdict "$1" "$2" "$(pc2 "$(_wait_script "$2" "$3")" 2>/dev/null)"
+}
+ctr_wait() {                    # $1=説明 / $2=上限秒 / $3=コンテナで評価する条件
+    _wait_verdict "$1" "$2" \
+        "$(docker exec "$G1_CONTAINER" bash -c "$(_wait_script "$2" "$3")" 2>/dev/null)"
 }
 
 # コンテナでコマンドを走らせる。

@@ -3,7 +3,7 @@
 #
 #   bash quickstart/live/preflight.sh          # 先にこれ
 #   bash quickstart/live/up.sh --init "X Y YAW_DEG"
-#   bash quickstart/live/up.sh                 # 初期姿勢をタグから自動で取る
+#   bash quickstart/live/up.sh                 # 初期姿勢を自動で取る（タグ → 回る → 指紋）
 #
 # ⚠️ **足は繋がない。** 歩かせるのは `live/legs.sh` で別に行う（事故の幅を狭くする）。
 #
@@ -58,41 +58,23 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# ── 0. 初期姿勢（タグから取る）──────────────────────────────────────
+# ── 0. 初期姿勢（タグ → 回って見直す → LiDAR の指紋）────────────────
+# ⚠️ 2026-09-26: 段 0 は initial_pose.sh に切り出した（タグが見えないときの手段を足したため）。
+# タグの自己検査の案内（水平だけ落ちたら機体を直す、等）もあちらに移してある。
 if [ -z "$INIT" ]; then
-    say "初期姿勢をタグから取る（大域探索も種も要らない）"
-    # ⚠️ 2026-09-25: 地図の座標系をタグの登録と照合する（違えば localize_from_tags.py が止まる）。
-    # map_frame.txt は地図と一緒に配る（quickstart/map_frame.py --write が作る）。
-    # 無ければ照合せずに警告だけ出る（配布前の構成を壊さないため）
-    OUT="$(pc2 'cd "$HOME/g1_cfg/apriltag" && MF="$HOME/g1_cfg/map/map_frame.txt" &&
-                 timeout 150 python3 localize_from_tags.py \
-                 --live --seconds 5 \
-                 --registry "$HOME/g1_cfg/apriltag/tag_registry.json" \
-                 --extrinsics "$HOME/g1_cfg/apriltag/extrinsics.json" \
-                 $( [ -s "$MF" ] && printf -- "--map-frame %s" "$(cat "$MF")" ) 2>&1' || true)"
-    printf '%s\n' "$OUT" | grep -E '^\*\*|\*\*\(x|食い違い|z .*roll|ばらつき|座標系|map_frame' | sed 's/^/     /' >&2
-    case "$OUT" in
-        *"[NG] 座標系が違う"*)
-            die "タグの登録と地図の座標系が違う（上の行）。~/g1_cfg/map を戻すか、タグを登録し直す" ;;
-    esac
-    # ⚠️ **文字クラスに `+` を入れる。**localize_from_tags.py は符号を必ず付けて
-    # `**(x -0.139, y +0.184, yaw +11.98 deg)**` と出す。`[-0-9.]` だと `+0.184` を
-    # 拾えず、**タグ測位が成功しているのに「取れなかった」と die する**
-    # （2026-09-17 に踏んだ。x が負だったので余計に気づきにくかった）
-    INIT="$(printf '%s\n' "$OUT" | sed -n 's/.*\*\*(x *\([-+0-9.]*\), *y *\([-+0-9.]*\), *yaw *\([-+0-9.]*\) deg)\*\*.*/\1 \2 \3/p' | head -1)"
-    [ -n "$INIT" ] || die "タグから姿勢が取れなかった。--init \"X Y YAW\" で渡すこと"
-    ok "タグ由来の初期姿勢: $INIT"
-    # ⚠️ 自己検査が落ちていたら採用しない（誤った種は FAST_LIO では復帰しない）
-    printf '%s\n' "$OUT" | grep -q '⛔' && die "タグの自己検査が落ちている。貼り直すか近づく"
+    INIT="$(bash "$HERE/initial_pose.sh")" || die "初期姿勢が決まらなかった（上の行）"
+    [ -n "$INIT" ] || die "initial_pose.sh が姿勢を返さなかった"
+    ok "初期姿勢: $INIT"
 fi
 
 # ── 1. 測位 ────────────────────────────────────────────────────────
 say "1. FAST_LIO を起こす（初期姿勢 ${INIT}）"
 pc2 "rm -f /tmp/pc2_c5_run.log
      nohup setsid bash \$HOME/g1_cfg/run_fastlio_loc_live.sh --init '$INIT' \
-       > /tmp/pc2_c5_run.log 2>&1 < /dev/null &
-     sleep 30
-     grep -E '初期姿勢|動作中|エラー' /tmp/pc2_c5_run.log | sed 's/^/     /'"
+       > /tmp/pc2_c5_run.log 2>&1 < /dev/null &"
+# ⚠️ 旧 sleep 30。run_fastlio_loc_live.sh は最後に「動作中。ログ:」を出すので、それを待つ
+pc2_wait "FAST_LIO の起動" 60 'grep -qE "動作中|エラー" /tmp/pc2_c5_run.log'
+pc2 "grep -E '初期姿勢|動作中|エラー' /tmp/pc2_c5_run.log | sed 's/^/     /'"
 
 say "   ⚠️ **最初に roll/pitch を見る**（立位なら 0 付近。±3 度を超えたら取付を疑う）"
 # ⚠️ **待つ。**FAST_LIO を起こした直後は `map` フレームがまだ無く、
@@ -120,15 +102,48 @@ pc2 "P=\"\$HOME/jammy_ros/rootfs\"
      export CYCLONEDDS_URI='$G1_DDS_ETH0'
      nohup setsid env \$JAMMY_ENV \"\$LOADER\" --library-path \"\$JAMMY_LIBS\" \
        \"\$P/usr/bin/python3.10\" \"\$HOME/g1_cfg/cloud_to_scan.py\" \
-       --min-height 1.30 --max-height 1.82 > /tmp/pc2_scan.log 2>&1 < /dev/null &
-     sleep 12; tail -1 /tmp/pc2_scan.log | cut -c1-110 | sed 's/^/     /'"
+       --min-height 1.30 --max-height 1.82 > /tmp/pc2_scan.log 2>&1 < /dev/null &"
+# ⚠️ 旧 sleep 12。「N 枚目」が出れば**実際に点が流れている**証拠になる（時間より強い）
+pc2_wait "cloud_to_scan の出力" 40 'grep -q "枚目" /tmp/pc2_scan.log'
+pc2 "tail -1 /tmp/pc2_scan.log | cut -c1-110 | sed 's/^/     /'"
+
+# ── 2.5 種から立ち位置を空ける ──────────────────────────────────────
+# ⚠️ 2026-09-28: 種に**記録のあとで動かされた家具**が残り、それが立ち位置の 0.10 m に
+# あったため `Starting point in lethal space!` で経路が作れず、その場で回って止まった。
+# 頭の LiDAR は機体から水平 0.90 m より内側の床を見られないので、octomap_server は
+# 足元の古い占有を**消せない**。機体の体がある円柱（0.35 m ＝ filter_self_returns.py と同じ）
+# に障害物は存在できないので、そこだけを空きにした種を起動のたびに作る。
+# 根拠と半径の決め方は quickstart/carve_seed_start.py の冒頭。G1_CARVE_START=0 で飛ばす。
+SEED_ENV=""
+if [ "${G1_CARVE_START:-1}" = "1" ]; then
+    say "2.5 種から立ち位置を空ける（半径 0.35 m）"
+    CARVE_PY="$QS/../../../.venv/bin/python"
+    CARVE_DIR="$(mktemp -d)"
+    if [ ! -x "$CARVE_PY" ]; then
+        warn "Python が無い（${CARVE_PY}）。元の種のまま起こす"
+    elif ! scp -q -i "$G1_KEY" "$G1_PC2_USER@$G1_PC2_HOST:g1_cfg/map/seed.bt" "$CARVE_DIR/seed.bt"; then
+        warn "PC2 の ~/g1_cfg/map/seed.bt を取れない。元の種のまま起こす"
+    elif "$CARVE_PY" "$QS/carve_seed_start.py" --seed "$CARVE_DIR/seed.bt" \
+            --out "$CARVE_DIR/seed_start.bt" --pose "$INIT" 2>&1 | sed 's/^/     /' >&2 \
+         && [ -s "$CARVE_DIR/seed_start.bt" ] \
+         && scp -q -i "$G1_KEY" "$CARVE_DIR/seed_start.bt" \
+                "$G1_PC2_USER@$G1_PC2_HOST:g1_cfg/map/seed_start.bt"; then
+        SEED_ENV='G1_OCTOMAP_SEED=$HOME/g1_cfg/map/seed_start.bt'   # $HOME は PC2 で展開させる
+        ok "立ち位置を空けた種 → ~/g1_cfg/map/seed_start.bt"
+    else
+        warn "立ち位置を空けられなかった（上の行）。元の種のまま起こす"
+    fi
+    rm -rf "$CARVE_DIR"
+fi
 
 # ── 3. Nav2 ────────────────────────────────────────────────────────
 say "3. Nav2 を起こす"
-pc2 "rm -f /tmp/pc2_nav2_run.log
-     nohup setsid bash \$HOME/g1_cfg/run_nav2_live.sh > /tmp/pc2_nav2_run.log 2>&1 < /dev/null &
-     sleep 40
-     grep -E '完了|ログ' /tmp/pc2_nav2_run.log | sed 's/^/     /'"
+pc2 "rm -f /tmp/pc2_nav2_run.log /tmp/pc2_nav2.log   # ⚠️ 前回のログが残ると下の待ちが即合格する（2026-09-28）
+     nohup setsid env $SEED_ENV bash \$HOME/g1_cfg/run_nav2_live.sh > /tmp/pc2_nav2_run.log 2>&1 < /dev/null &"
+# ⚠️ 旧 sleep 40。run_nav2_live.sh の「ログ:」は**起こした直後**に出るので合図にならない。
+# nav2_bringup は lifecycle_manager を autostart するので、その完了を待つ。
+pc2_wait "Nav2 の活性化" 120 'grep -q "Managed nodes are active" /tmp/pc2_nav2.log'
+pc2 "grep -E '完了|ログ' /tmp/pc2_nav2_run.log | sed 's/^/     /'"
 
 # ── 4. 橋 ──────────────────────────────────────────────────────────
 # ⚠️ Nav2 より**後**に起こす（先に起こすと Nav2 のトピックを拾い損ねる）。
@@ -137,9 +152,10 @@ if [ "$LINK" = "wired" ]; then
 else
 say "4. foxglove_bridge を起こす（⚠️ Nav2 の後）"
 pc2 "rm -f /tmp/fox.log
-     nohup bash \"\$HOME/mapping_tools/start_fox\"\"glove_bridge.sh\" > /tmp/fox.log 2>&1 < /dev/null &
-     sleep 30
-     ss -ltn 2>/dev/null | grep -q 8765 && echo '     8765 待受中' || echo '     ⛔ 橋が上がらない'"
+     nohup bash \"\$HOME/mapping_tools/start_fox\"\"glove_bridge.sh\" > /tmp/fox.log 2>&1 < /dev/null &"
+# ⚠️ 旧 sleep 30。待受ポートが立つことだけが合図になる
+pc2_wait "foxglove_bridge の待受 8765" 60 'ss -ltn 2>/dev/null | grep -q 8765' \
+    || pc2 "tail -3 /tmp/fox.log | sed 's/^/     /'"
 fi
 
 # ── 5. 姿勢ロガー（⚠️ /tmp に置かない）──────────────────────────────
@@ -153,9 +169,13 @@ pc2 "mkdir -p \$HOME/g1_runs
      nohup setsid env \$JAMMY_ENV \"\$LOADER\" --library-path \"\$JAMMY_LIBS\" \
        \"\$P/usr/bin/python3.10\" \"\$HOME/g1_cfg/apriltag/log_tf_pose.py\" \
        --target map --source base_link --out \$HOME/g1_runs/pose_$STAMP.txt \
-       > \$HOME/g1_runs/pose_$STAMP.log 2>&1 < /dev/null &
-     sleep 12
-     echo \"     \$(wc -l < \$HOME/g1_runs/pose_$STAMP.txt) 行 -> ~/g1_runs/pose_$STAMP.txt\""
+       > \$HOME/g1_runs/pose_$STAMP.log 2>&1 < /dev/null &"
+# ⚠️ 旧 sleep 12。**行が書けている**ことが合図（10 Hz なので 10 行 = 約 1 秒ぶん）。
+# ⚠️ `wc` の前に `-s` を見る。ファイルが無いと `wc -l <` は何も印字せず、
+#    `[ "" -ge 10 ]` が構文エラーになる（`|| echo 0` で繕うと "00" 型の再発）。
+pc2_wait "姿勢ロガーの書き込み" 40 \
+    "[ -s \$HOME/g1_runs/pose_$STAMP.txt ] && [ \"\$(wc -l < \$HOME/g1_runs/pose_$STAMP.txt)\" -ge 10 ]"
+pc2 "echo \"     \$(wc -l < \$HOME/g1_runs/pose_$STAMP.txt) 行 -> ~/g1_runs/pose_$STAMP.txt\""
 echo "$STAMP" > "$HERE/.last_run"
 
 # ── 6. Mac 側 ──────────────────────────────────────────────────────
@@ -173,6 +193,10 @@ else
     ctr_bg "source /opt/ros/humble/setup.bash >/dev/null 2>&1
             cd /work/G1_Hackason/Mapping/real/quickstart
             exec python3 -u foxglove_to_ros.py --host $G1_PC2_HOST > /tmp/relay.log 2>&1"
+    # ⚠️ 旧 sleep 18。**ログの有無で見ない。**「橋に繋ぐ ws://…」は接続する*前*に
+    # 出るので、繋がらなくても即合格になる。広告を受け取った行だけが証拠になる。
+    ctr_wait "中継(in)" 40 'grep -q "橋が広告するトピック" /tmp/relay.log' \
+        || ctr "tail -3 /tmp/relay.log | sed 's/^/     /'"
 fi
 
 # ── コンテナ側の固定地図（既定 off）────────────────────────────────
@@ -186,13 +210,11 @@ if [ "${G1_SHOW_SEED_MAP:-0}" = "1" ]; then
     ctr_bg "source /opt/ros/humble/setup.bash >/dev/null 2>&1
             exec ros2 run nav2_map_server map_server --ros-args \
                  -p yaml_filename:=$MAP -p use_sim_time:=false > /tmp/mapsrv.log 2>&1"
-    sleep 18
+    ctr_wait "map_server の起動" 40 '[ -s /tmp/mapsrv.log ]'
     ctr "source /opt/ros/humble/setup.bash >/dev/null 2>&1
          ros2 lifecycle set /map_server configure >/dev/null 2>&1
          ros2 lifecycle set /map_server activate  >/dev/null 2>&1
          echo '     map_server 活性化'"
-else
-    sleep 18
 fi
 if [ "$LINK" = "wired" ]; then
     say "   中継(back) は飛ばす（RViz2 のクリックは DDS で直接届く）"
@@ -200,7 +222,9 @@ else
     ctr_bg "source /opt/ros/humble/setup.bash >/dev/null 2>&1
             cd /work/G1_Hackason/Mapping/real/quickstart
             exec python3 -u ros_to_foxglove.py --host $G1_PC2_HOST > /tmp/back.log 2>&1"
-    sleep 12
+    # ⚠️ 旧 sleep 12。ここも「繋ぐ」ではなく**設定が済んだ**行で見る
+    ctr_wait "中継(back)" 40 'grep -q "待機中" /tmp/back.log' \
+        || ctr "tail -3 /tmp/back.log | sed 's/^/     /'"
 fi
 
 docker cp "$QS/rviz/g1_nav_nocloud.rviz" "$G1_CONTAINER:/home/ubuntu/g1_nav_nocloud.rviz" >/dev/null
@@ -208,7 +232,10 @@ docker exec -d -u ubuntu -e HOME=/home/ubuntu -e DISPLAY=:1 \
     -e XAUTHORITY=/home/ubuntu/.Xauthority \
     -e ROS_DOMAIN_ID=0 -e CYCLONEDDS_URI="$G1_DDS_COL0" "$G1_CONTAINER" \
     bash -c 'source /opt/ros/humble/setup.bash; rviz2 -d /home/ubuntu/g1_nav_nocloud.rviz > /home/ubuntu/rviz2.log 2>&1'
-sleep 20
+# ⚠️ 旧 sleep 20。**`ps | grep` で見ない。**判定文のコマンド行に名前が載って
+# 自己マッチし、起動していなくても「居る」と出る（2026-09-18 にこの形で実際に騙された）。
+# ログが書けたかだけを見る。遅れても後段は困らないので上限で先へ進んでよい。
+ctr_wait "RViz2" 40 '[ -s /home/ubuntu/rviz2.log ]'
 
 # ── 7. 通しの確認 ──────────────────────────────────────────────────
 say "7. 通しの確認"
@@ -224,10 +251,32 @@ else
     ctr "tail -1 /tmp/relay.log | sed 's/^/     中継(in)  /'; tail -1 /tmp/back.log | sed 's/^/     中継(back) /'"
 fi
 
+# ── 立ち位置の cost（クリックする前に分かるように）────────────────────
+# ⚠️ lethal だと、クリックしても「その場で 90° 回って 5 秒待つ」を繰り返して止まるだけで、
+# 原因は PC2 の /tmp/pc2_nav2.log にしか出ない（2026-09-28）。PC2 で見るので AP 構成でも効く
+echo '  -- 立ち位置の cost（global costmap）--' >&2
+scp -q -i "$G1_KEY" "$QS/check_start_cost.py" "$G1_PC2_USER@$G1_PC2_HOST:g1_cfg/" \
+    || warn "check_start_cost.py を送れない"
+START_OUT="$(pc2 "P=\"\$HOME/jammy_ros/rootfs\"
+     . \"\$HOME/jammy_ros/env.sh\" >/dev/null 2>&1
+     export ROS_DOMAIN_ID=0
+     export CYCLONEDDS_URI='$G1_DDS_ETH0'
+     timeout 40 env \$JAMMY_ENV \"\$LOADER\" --library-path \"\$JAMMY_LIBS\" \
+       \"\$P/usr/bin/python3.10\" \"\$HOME/g1_cfg/check_start_cost.py\"; echo \"rc=\$?\"" 2>&1)"
+printf '%s\n' "$START_OUT" | grep '^\[start\]' | sed 's/^/     /' >&2
+case "$START_OUT" in
+    *rc=0*) ok "立ち位置から経路を作れる" ;;
+    *rc=1*) bad "立ち位置が lethal。**クリックしても回って止まる**"
+            echo "     → リモコンで空いた床へ 1 m ずらしてからクリックする" >&2
+            echo "       （G1_CARVE_START=0 で起こしていないか。初期姿勢がずれていないか も疑う）" >&2 ;;
+    *)      warn "立ち位置の cost を測れなかった（上の行）" ;;
+esac
+
 printf '\n'
 say "RViz2:            http://$G1_VM_IP/"
 say "軽量ビュー:        bash $QS/run_nav_live_view.sh $G1_PC2_HOST  → http://<Mac>:8080/"
 say "記録:             ~/g1_runs/pose_$STAMP.txt（PC2）"
+say "頭カメラの映像:    bash quickstart/live/camera.sh start → RViz2 の「Head camera (IR)」にチェック"
 printf '\n'
 say "⚠️ **足はまだ繋がっていない**（/cmd_vel の購読者 0 ＝ 機体は動かない）"
 say "   歩かせる: bash quickstart/live/legs.sh --arm"

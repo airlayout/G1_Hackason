@@ -20,6 +20,14 @@ Panels:
   - /Current View1
   Name: Views
   Splitter Ratio: 0.5
+# Nav2 のパネル（2026-09-18 に足した）。**走行中はここの真ん中のボタンが
+# 「Cancel」になる。** これが RViz2 から経路を切る唯一の押し場所である。
+# ⚠️ **切れるのは「Nav2 Goal」ツールで投げたゴールだけ。**「2D Goal Pose」は
+#    /goal_pose を撃つだけで、変換するのは bt_navigator 側なのでパネルは
+#    走行を掴んでおらず、ボタンは Startup/Reset のまま（09-18 に実測）。
+#    そちらを止めるのは quickstart/cancel_nav.py か stray_guard.py。
+- Class: nav2_rviz_plugins/Navigation 2
+  Name: Navigation 2
 Visualization Manager:
   Class: ''
   Displays:
@@ -339,6 +347,22 @@ Visualization Manager:
       History Policy: Keep Last
       Reliability Policy: Reliable
       Value: /local_costmap/published_footprint
+  # 頭の IR カメラ（2026-09-26 に足した）。live/camera.sh start で流れる。
+  # ⚠️ 既定は切ってある（RViz2 が重い）。見るときだけチェックを入れる
+  - Class: rviz_default_plugins/Image
+    Enabled: false
+    Max Value: 1
+    Median window: 5
+    Min Value: 0
+    Name: Head camera (IR)
+    Normalize Range: true
+    Topic:
+      Depth: 1
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Best Effort
+      Value: /g1_camera/ir/image
+    Value: false
   Enabled: true
   Global Options:
     Background Color: 32; 35; 42
@@ -360,6 +384,19 @@ Visualization Manager:
       History Policy: Keep Last
       Reliability Policy: Reliable
       Value: /goal_pose
+  # 走行中に押して止める口（2026-09-18 に足した）。/cancel_nav に PointStamped を撃つ。
+  # ⚠️ **Nav2 パネルの Cancel は「2D Goal Pose」のクリックを切れない**
+  #    （パネルは自分が投げたゴールしか掴まない。09-18 実測）。
+  # 受けるのは stray_guard.py --cancel-topic。**Nav2 と同じ側に常駐させること**
+  #    （キャンセルはサービス呼び出しなので AP を越えない）。
+  - Class: rviz_default_plugins/PublishPoint
+    Single click: true
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /cancel_nav
   Transformation:
     Current:
       Class: rviz_default_plugins/TF

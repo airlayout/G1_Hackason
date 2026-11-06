@@ -91,11 +91,16 @@ fi
 #           odometry の座標系のままで測れる
 ENGINE="${G1_RT_ENGINE:-mola}"
 if [ "$ENGINE" = "fastlio" ]; then
-    say "[1] FAST-LIO2 を起こす（C2。事前地図なしの odometry）"
+    # 設定は差し替えられる（2026-10-23）。PC2 の live（run_fastlio_loc_live.sh）が使うのは
+    #   G1_FASTLIO_CFG_DIR=$WORK/quickstart/pc2/fastlio_loc G1_FASTLIO_CFG=fastlio_g1.yaml
+    # （外部パラメータ単位行列・推定 OFF ＝ body ≡ livox_frame）。既定は 09-12 の odometry 計測用のまま
+    FASTLIO_CFG_DIR="${G1_FASTLIO_CFG_DIR:-$WORK/quickstart/fastlio}"
+    FASTLIO_CFG="${G1_FASTLIO_CFG:-g1_mid360_pc2.yaml}"
+    say "[1] FAST-LIO2 を起こす（C2。事前地図なしの odometry。設定 ${FASTLIO_CFG}）"
     spawn mola.log "source /work/third_party/ws_c5/install/setup.bash && \
         ros2 launch fast_lio mapping.launch.py \
-        config_path:=/work/G1_Hackason/Mapping/real/quickstart/fastlio \
-        config_file:=g1_mid360_pc2.yaml rviz:=false use_sim_time:=true"
+        config_path:=$FASTLIO_CFG_DIR \
+        config_file:=$FASTLIO_CFG rviz:=false use_sim_time:=true"
     # ⚠️ このフォークは topic を /Odometry_loc に改名している（本家は /Odometry）
     RECORD_TOPIC="/Odometry_loc"
 else

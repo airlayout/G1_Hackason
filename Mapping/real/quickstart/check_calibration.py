@@ -21,6 +21,35 @@
     # 地図 PCD の床も一緒に見る
     ... --pcd runs/<S>/map/map_octomap_r4_s5.pcd
 
+## `--base-link`: **base_link が床に対して水平か**だけを見る
+
+この道具の中でもこれだけは **測位も地図も /tf も使わない**。
+生 LiDAR に固定変換 `base_link -> livox_frame` を掛けて床平面を当てるだけなので、
+測位の良し悪しから完全に独立した審判になる。
+
+    python3 quickstart/check_calibration.py runs/<bag> --base-link
+
+⚠️ **タグでは判定できない（循環する）。** `measure_extrinsics.py` は
+「base_link は床と水平」を前提に床タグから測るので、機体の傾きがカメラ取付へ
+吸収されて**構造的に 0 に出る**。2026-09-16 と 2026-09-17 に 2 回、これで誤診した。
+疑ったらこちらを回すこと。
+
+### この判定が正しいことの検算（2026-09-18）
+
+同じ記録（`runs/_ov/bag`・2026-09-16 の補正後）に新旧の取付を当てて、
+`base-link-was-tilted-59deg-floor-fix` に残っている値を再現できることを確かめた。
+
+| 当てた取付 | このモードの出力 | 記録にある値 |
+|---|---|---|
+| 補正後 `-0.112579 -0.057151 1.209672` / `-179.401 -1.9437 0.0321` | **0.35 度** / 床 -0.001 m | 0.046 度 / +0.00002 m |
+| 補正前 `0 0 1.228` / `177.93 3.32 0` | **5.24 度** | 5.90 度 |
+
+床が base_link の原点に乗る（-0.001 m）ことも、新旧の差も再現する。
+
+観測した値: 2026-09-16 の補正後 0.046 度 / 2026-09-17 朝（歩けた）pitch +0.62 度 /
+同日午後の立位ロック +6.74 度 / R1+X 後 +4.30 度。
+**同じ通常運転でもセッションごとに数度動く**ので、固定値にしてはいけない。
+
 ## 出るもの
 
   * **傾き**        map 系の床が水平か。2 deg 未満なら向きのcalibrationは正しい
@@ -70,6 +99,52 @@ def floor_of(P: np.ndarray):
     return float(np.median(F[:, 2])), tilt, len(F)
 
 
+def base_link_level(a) -> int:
+    """**base_link が床に対して水平か**を、生 LiDAR だけで測る。
+
+    p_base = R(rpy) · p_livox + xyz  を当てて床平面を当てるだけ。
+    法線が base_link の +z からどれだけ傾いているかが答え。
+    """
+    xyz = np.array([float(v) for v in a.livox_xyz.split()])
+    rpy = np.array([float(v) for v in a.livox_rpy_deg.split()])
+    # ROS の rpy 規約（R = Rz·Ry·Rx）。⚠️ open3d_loc の Euler2Matrix3d は Rx·Ry·Rz で
+    # **別物**（run_fastlio_loc_live.sh の要点 2）。ここは静的 TF と同じ ROS 規約。
+    R = Rotation.from_euler("xyz", rpy, degrees=True).as_matrix()
+
+    _, scans, _ = mo.read_bag(a.bag)
+    if not scans:
+        print("生 LiDAR が 1 枚も無い（/utlidar/cloud_livox_mid360）", file=sys.stderr)
+        return 1
+    used = scans[:: max(1, a.scan_step)]
+    P = np.vstack([s[1] for s in used])
+    P = P[np.isfinite(P).all(1)]
+    rng = np.linalg.norm(P, axis=1)
+    # ⚠️ 至近は機体自身が写る。遠方は点が疎で平面フィットが暴れる
+    P = P[(rng > RANGE_MIN) & (rng < RANGE_MAX)]
+    B = P @ R.T + xyz
+
+    got = floor_of(B)
+    if got is None:
+        print("床とみなせる帯に点が足りない（500 点未満）", file=sys.stderr)
+        return 1
+    z, tilt, cnt = got
+    print(f"スキャン {len(used)} 枚 / 床候補 {cnt} 点（{RANGE_MIN}〜{RANGE_MAX} m）")
+    print(f"base_link 系の床の高さ  {z:+.3f} m   （0 に近いほどよい）")
+    print(f"base_link の傾き        {tilt:.2f} deg （床の法線と +z の角度）")
+    print()
+    if tilt < 1.0:
+        print("✅ 水平。base_link の取付は今のままでよい")
+    elif tilt < 3.0:
+        print("⚠️ 1〜3 度。preflight の pitch ±3 度は通るが、詰めるなら測り直す")
+    else:
+        print("⛔ **3 度を超えている。** 次の順で切り分ける:")
+        print("   1. 機体が通常運転（FSM 500/501）か。立位ロックだと数度前傾する")
+        print("   2. それでも傾くなら base_link -> livox_frame を測り直す")
+        print("      （2026-09-16 と同じ手順。水平軸まわりの最小回転を足す）")
+        print("   ⚠️ タグ（measure_extrinsics.py）で確かめようとしないこと。循環する")
+    return 0
+
+
 def poses_from_tf(con, tid) -> np.ndarray:
     out = []
     for (blob,) in con.execute("SELECT data FROM messages WHERE topic_id=?", (tid["/tf"],)):
@@ -91,7 +166,16 @@ def main() -> int:
     ap.add_argument("--pcd", type=Path, help="地図 PCD。床の高さを併せて測る")
     ap.add_argument("--windows", type=int, default=8, help="ドリフトを見る時間窓の数")
     ap.add_argument("--scan-step", type=int, default=SCAN_STEP)
+    ap.add_argument("--base-link", action="store_true",
+                    help="base_link が床に対し水平かだけを見る（測位も /tf も使わない）")
+    # 既定は run_fastlio_loc_live.sh / run_mola_live.sh と**同じ値**にしてある。
+    # ⚠️ あちらを変えたらこちらも変えること（値は 7 ファイルに散っている）
+    ap.add_argument("--livox-xyz", default="-0.112579 -0.057151 1.209672")
+    ap.add_argument("--livox-rpy-deg", default="-179.401 -1.9437 0.0321")
     a = ap.parse_args()
+
+    if a.base_link:
+        return base_link_level(a)
 
     if a.traj:
         T = np.loadtxt(a.traj)

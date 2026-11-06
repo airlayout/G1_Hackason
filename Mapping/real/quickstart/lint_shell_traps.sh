@@ -32,9 +32,14 @@ files=$(find "${TARGETS[@]}" -name '*.sh' -type f 2>/dev/null | grep -v '/\.venv
 echo "[lint] $(printf '%s\n' "$files" | grep -c . ) 本の .sh を見る" >&2
 
 # 1. $VAR の直後に全角文字（コメント行は無害なので除く）
+# ⚠️ **`grep -P` を使わない。**macOS の /usr/bin/grep は -P を持たず `invalid option` で落ちる。
+# 以前はそれを `2>/dev/null || true` で握りつぶしていたので、**この検査は Mac では一度も
+# 動いていなかった**（2026-09-28 に camera.sh の `（$VIEW_ARGS）` を素通りさせて発覚）。
+# perl は macOS にも PC2 にも標準で入っている
 while IFS= read -r hit; do
     report "全角の直後" "$hit"
-done < <(printf '%s\n' "$files" | xargs grep -nP '^\s*[^#].*\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]' 2>/dev/null || true)
+done < <(printf '%s\n' "$files" | xargs perl -ne \
+    'print "$ARGV:$.:$_" if /^\s*[^#\s].*\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/; close ARGV if eof')
 
 # 2. grep -c / pgrep -c に || echo 0
 while IFS= read -r hit; do

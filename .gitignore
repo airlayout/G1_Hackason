@@ -67,3 +67,7 @@ Demo/demo.env
 
 # up.sh が書く実行時の目印（記録の回収に使う）
 Mapping/real/quickstart/live/.last_run
+
+# 指紋（UpDown-SC）の外部クローンと地図ごとの台帳（setup.sh / initial_pose.sh が作り直す）
+Mapping/real/quickstart/fingerprint/.updown-sc/
+Mapping/real/quickstart/fingerprint/cache/

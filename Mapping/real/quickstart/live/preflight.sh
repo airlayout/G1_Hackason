@@ -13,6 +13,7 @@
 # | 測位が `Waiting for Odometry_loc` から進まない | **LiDAR の IMU が配信されていない**（起動ごとに出ないことがある）| 6. |
 # | Nav2 が計算しているのに足が動かない | `cmd_vel_bridge` が **wlan0 を掴んでいた** | 起動時に固定（up.sh）|
 # | コンテナから機体が見えない | Mac の `bridge101` に `en8` が入っていない | 2. |
+# | `--arm` は成功するのに歩かない／タグ自己検査が落ちる | **立位ロックのまま**（FSM 802）| 6. |
 #
 # ## 終了コード
 #   0  全部通った。up.sh に進んでよい
@@ -118,11 +119,52 @@ else
     pc2 'ls -ld /tmp/pc2_lock' 2>/dev/null | sed 's/^/       /' >&2
 fi
 
-# ── 6. センサ（ここが今日いちばん効いた）────────────────────────────
+# ── 6. 機体の動作状態（FSM）─────────────────────────────────────────
+# ⚠️⚠️ **2026-09-17 にここが無くて 1 時間近く失った。**立位ロックのままだと:
+#
+#   - 姿勢が歩行時と違うので頭（LiDAR とカメラが載っている）が約 6.6 度前傾する。
+#     すると up.sh の段 0（タグ自己検査）が pitch 残差 6.65 度で落ち、
+#     案内は「タグを貼り直せ」と出る。**タグは正常で、直すべきは機体の状態だった**
+#   - legs.sh --arm は成功し /cmd_vel も流れるのに、**Move() が無言で無視されて
+#     機体が動かない**（loco_driver.py は Move() の戻り値を捨てるのでログにも出ない）
+#
+# 番号は SDK の実装（g1_loco_client.py）と実測から:
+#   500 = LocoClient.Start() が送る値 / 501 = 通常運転で観測した値（歩けた）
+#   802 = 立位ロックで観測した値（Move が効かない）
+#   0 ゼロトルク / 1 ダンピング / 3 着座 / 702・706 立ち上がり
+# ⚠️ 500/501 以外を全部 NG にしている。**歩ける番号が他にもあれば足すこと**
+#    （実測で確かめた 2 つしか許していない。偽の NG の方が偽の合格より安い）
+step "6. 機体の動作状態（FSM。⚠️ ここが違うと --arm しても動かない）"
+FSM="$(pc2 'PYTHONPATH=$HOME/unitree_sdk2_python timeout 60 python3 -c "
+from unitree_sdk2py.core.channel import ChannelFactoryInitialize
+from unitree_sdk2py.g1.loco.g1_loco_client import LocoClient
+ChannelFactoryInitialize(0, \"eth0\")
+c = LocoClient(); c.SetTimeout(10.0); c.Init()
+code, fsm = c.GetFsmId()
+print(\"FSMID\", code, fsm)
+"' 2>/dev/null | awk '$1 == "FSMID" && $2 == "0" { print $3 }')"
+case "${FSM:-}" in
+    500|501)
+        ok "通常運転（FSM ${FSM}）。歩ける" ;;
+    "")
+        # ⚠️ 読めないことと、状態が悪いことは別。ここでは止めない
+        #    （2026-09-17 の誤診 9 件のうち 8 件は計器の側の故障だった）
+        warn "FSM を読めなかった。**まず計器の側を疑う**（unitree_sdk2py / eth0 / 電源）"
+        echo "     → --arm しても動かないときは、ここを手で確かめること" >&2 ;;
+    *)
+        bad "通常運転に入っていない（FSM ${FSM}）"
+        echo "     → **リモコンで R1 + X（⑦ 通常運転 / Main Operation Control）**" >&2
+        echo "        段は 1 つずつ上げる: ① L2+B ダンピング → ② L2+↑ 立位ロック" >&2
+        echo "        → ⑦ R1+X 通常運転（詳しくは Demo/01_remote.sh）" >&2
+        echo "     ⚠️ ここを上げずに進むと、タグ自己検査も --arm も**別の顔で失敗する**" >&2
+        FAIL=1 ;;
+esac
+
+# ── 7. センサ（ここが今日いちばん効いた）────────────────────────────
 # ⚠️ **有線構成ではコンテナから直接測れる。**機体の DDS が col0 に載っているので、
 # PC2 に何も置かずに `ros2 topic hz` で見られる（2026-09-17 に確認）。
 # 以前ここが参照していた `probe_imu_sdk.py` は**一度も書かれていない**。
-step "6. センサ（⚠️ LiDAR の IMU は起動ごとに出ないことがある）"
+step "7. センサ（⚠️ LiDAR の IMU は起動ごとに出ないことがある）"
 probe_hz() {   # $1=topic → 実測レートを印字（取れなければ空）
     local out
     if [ "$LINK" = "wired" ]; then
@@ -161,8 +203,8 @@ for spec in "/utlidar/cloud_livox_mid360 10" "/utlidar/imu_livox_mid360 200" "/d
     fi
 done
 
-# ── 7. 既に何か動いていないか ───────────────────────────────────────
-step "7. 二重起動の確認（⚠️ 測位が 2 つ出ると /tf が壊れる）"
+# ── 8. 既に何か動いていないか ───────────────────────────────────────
+step "8. 二重起動の確認（⚠️ 測位が 2 つ出ると /tf が壊れる）"
 # ⚠️ **PC2 側で grep しない。**`_common.sh` の `pc2_count` を使う
 # （理由はあちらの注記。自己マッチと `grep -c` の終了コードで 4 回誤診した）。
 RUNNING="$(pc2_count 'fastlio_mapping|global_localization_node|mola-cli|nav2_amcl')"

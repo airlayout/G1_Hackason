@@ -33,6 +33,7 @@ Nav2 を**過去の地図の上で**走らせたいので、その 2 つを重�
 from __future__ import annotations
 
 import argparse
+import json
 import math
 from pathlib import Path
 
@@ -96,6 +97,9 @@ def main() -> int:
     p.add_argument("--min-fitness", type=float, default=0.6)
     p.add_argument("--band", type=float, nargs=2, default=STRUCTURE_BAND,
                    help="位置合わせに使う床上の高さ帯[m]。**床と天井は必ず外すこと**")
+    p.add_argument("--save", type=Path,
+                   help="求まった 4x4 行列と合否を JSON に保存する。"
+                        "⚠️ 表示される RPY は丸めてあるので、後段へは必ずこの行列を渡す")
     args = p.parse_args()
 
     print("高さ帯で絞る（床と天井を外す）")
@@ -140,6 +144,22 @@ def main() -> int:
     print("  回転[deg] roll={:+.2f} pitch={:+.2f} yaw={:+.2f}".format(
         math.degrees(roll), math.degrees(pitch), math.degrees(yaw)))
     print()
+
+    if args.save:
+        args.save.parent.mkdir(parents=True, exist_ok=True)
+        args.save.write_text(json.dumps({
+            "source": str(args.live),
+            "reference": str(args.reference),
+            "band": list(args.band),
+            "voxel": args.voxel,
+            "fitness": float(result.fitness),
+            "inlier_rmse": float(result.inlier_rmse),
+            "transform": np.asarray(transform).tolist(),
+            "xyz": [x, y, z],
+            "rpy_deg": [math.degrees(roll), math.degrees(pitch), math.degrees(yaw)],
+        }, indent=2, ensure_ascii=False) + "\n")
+        print("保存: {}".format(args.save))
+        print()
 
     if result.fitness < args.min_fitness:
         print("[NG] fitness {:.3f} が閾値 {:.2f} に届かない。"

@@ -35,6 +35,7 @@ Nav2 の global costmap の静的レイヤは `nav_msgs/OccupancyGrid` を要求
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 import numpy as np
@@ -77,10 +78,33 @@ FLOOR_BAND = (-0.20, 0.15)    # 床面とみなす帯
 PGM_OCCUPIED, PGM_FREE, PGM_UNKNOWN = 0, 254, 205
 
 
+def read_map_frame(yaml_path: Path, resolution: float):
+    """既存の地図 yaml と pgm から (原点, 幅セル, 高さセル) を読む。
+
+    `--like` の中身。**同じ枠で出せば、地図を差し替えても参照側は何も変えなくてよい。**
+    """
+    text = yaml_path.read_text()
+    origin = [float(v) for v in
+              re.search(r"origin:\s*\[([^\]]+)\]", text).group(1).split(",")]
+    existing = float(re.search(r"resolution:\s*([0-9.]+)", text).group(1))
+    if abs(existing - resolution) > 1e-9:
+        raise SystemExit("--like の解像度 {} が指定 {} と違う".format(existing, resolution))
+    image_name = re.search(r"image:\s*(\S+)", text).group(1)
+    with (yaml_path.parent / image_name).open("rb") as handle:
+        if handle.readline().strip() != b"P5":
+            raise SystemExit("P5 の pgm ではない: {}".format(image_name))
+        line = handle.readline()
+        while line.startswith(b"#"):
+            line = handle.readline()
+        width, height = (int(v) for v in line.split())
+    return np.array(origin[:2], dtype=np.float64), width, height
+
+
 def build_grid(points: np.ndarray, resolution: float = 0.10,
                band: tuple[float, float] = OBSTACLE_BAND,
                dilate_free: float = 0.30, min_points: int = MIN_POINTS,
-               verbose: bool = True) -> tuple[np.ndarray, np.ndarray]:
+               verbose: bool = True, frame=None,
+               floor_z: "float | None" = None) -> tuple[np.ndarray, np.ndarray]:
     """点群を 2D の占有格子にする。戻り値: (pgm の画素値の 2 次元配列, 左下の原点 [m])。
 
     **占有の判定はここ 1 箇所だけ**にする。Nav2 が走る静的レイヤも、重畳の基準地図
@@ -90,23 +114,54 @@ def build_grid(points: np.ndarray, resolution: float = 0.10,
     if len(points) == 0:
         raise ValueError("有限な点が 0 です")
 
-    floor_z = float(np.percentile(points[:, 2], FLOOR_PERCENTILE))
+    # ⚠️ **床の定義は呼ぶ側と揃えること（2026-09-18 に踏んだ）。**
+    # ここの既定は 5% 分位だが、clean_map.py / filter_persistence.py は**最頻ビン**で
+    # 床を出す。同じ点群で 0.088 m ずれ、`--band` の下限がそのぶん下がった。
+    # clean_map が「床 +0.10 m の余裕を積んだ」つもりの帯が、実際にはうねりの上端
+    # （+0.139 m）に乗り、床の高い所が障害物になって占有が 1.98 倍になっていた。
+    # 呼ぶ側が測った床を渡せるようにしてある。**既定は変えない**
+    # （nav_map_ref と ghost の過去の数字と比べられなくなるため）。
+    if floor_z is None:
+        floor_z = float(np.percentile(points[:, 2], FLOOR_PERCENTILE))
+        source = "5% 分位"
+    else:
+        floor_z = float(floor_z)
+        source = "呼ぶ側の指定"
     height = points[:, 2] - floor_z
     if verbose:
-        print("点 {:,} / 床の高さ z={:.3f}m".format(len(points), floor_z))
+        print("点 {:,} / 床の高さ z={:.3f}m（{}）".format(len(points), floor_z, source))
 
     obstacle = points[(height >= band[0]) & (height <= band[1])]
     floor = points[(height >= FLOOR_BAND[0]) & (height <= FLOOR_BAND[1])]
     if verbose:
         print("  障害物帯 {:,} 点 / 床帯 {:,} 点".format(len(obstacle), len(floor)))
 
-    lo = points[:, :2].min(axis=0) - resolution
-    hi = points[:, :2].max(axis=0) + resolution
-    size = np.ceil((hi - lo) / resolution).astype(int)
-    width, height_cells = int(size[0]), int(size[1])
+    if frame is None:
+        lo = points[:, :2].min(axis=0) - resolution
+        hi = points[:, :2].max(axis=0) + resolution
+        size = np.ceil((hi - lo) / resolution).astype(int)
+        width, height_cells = int(size[0]), int(size[1])
+    else:
+        # 枠を外から与える（--like）。**別の記録から作った地図を、既存の地図と
+        # 同じ原点・同じ大きさで出す**ための道。原点が変わると
+        # octomap_seed_from_nav_map.py の位相の前提と、地図を参照する 22 箇所が崩れる。
+        lo, width, height_cells = frame
+        lo = np.asarray(lo, dtype=np.float64)
+        hi = lo + np.array([width, height_cells], dtype=np.float64) * resolution
+        # ⚠️ **枠の外は落とす。clip すると縁に貼り付いて偽の壁になる。**
+        def inside(subset: np.ndarray) -> np.ndarray:
+            return subset[(subset[:, 0] >= lo[0]) & (subset[:, 0] < hi[0])
+                          & (subset[:, 1] >= lo[1]) & (subset[:, 1] < hi[1])]
+        before_obstacle, before_floor = len(obstacle), len(floor)
+        obstacle, floor = inside(obstacle), inside(floor)
+        dropped = (before_obstacle - len(obstacle)) + (before_floor - len(floor))
+        if verbose and dropped:
+            print("  ⚠️ 枠の外の点を落とした: 障害物 {:,} / 床 {:,}".format(
+                before_obstacle - len(obstacle), before_floor - len(floor)))
     if verbose:
-        print("  格子 {} x {} セル（{:.1f} x {:.1f} m）".format(
-            width, height_cells, width * resolution, height_cells * resolution))
+        print("  格子 {} x {} セル（{:.1f} x {:.1f} m）原点 [{:.4f}, {:.4f}]{}".format(
+            width, height_cells, width * resolution, height_cells * resolution,
+            lo[0], lo[1], "（--like で固定）" if frame is not None else ""))
 
     def to_cells(xy: np.ndarray) -> np.ndarray:
         idx = np.floor((xy - lo) / resolution).astype(int)
@@ -179,13 +234,21 @@ def main() -> int:
     p.add_argument("--min-points", type=int, default=MIN_POINTS,
                    help=f"帯の中の点数がこれ未満のセルは占有にしない（既定 {MIN_POINTS}）。"
                         "1 にすると 2026-09-08 以前の挙動")
+    p.add_argument("--floor-z", type=float, default=None,
+                   help="床の絶対高さ[m]。**帯はここから測る。**"
+                        "省くと 5%% 分位（⚠️ clean_map.py は最頻ビンなので 0.09 m ずれる）")
+    p.add_argument("--like", type=Path, default=None,
+                   help="既存の地図 yaml と同じ原点・同じ大きさで出す。"
+                        "**別の記録の地図を差し替えるときはこれを使う**（枠の外は落とす）")
     args = p.parse_args()
 
     cloud = o3d.io.read_point_cloud(str(args.pcd))
     points = np.asarray(cloud.points)
     try:
+        frame = read_map_frame(args.like, args.resolution) if args.like else None
         image, lo = build_grid(points, args.resolution, tuple(args.band),
-                               args.dilate_free, args.min_points)
+                               args.dilate_free, args.min_points, frame=frame,
+                               floor_z=args.floor_z)
     except ValueError as e:
         raise SystemExit("{}: {}".format(e, args.pcd))
 

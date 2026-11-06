@@ -181,6 +181,9 @@ def main() -> int:
     p.add_argument("--floor-margin", type=float, default=DEFAULT_FLOOR_MARGIN,
                    help="床のうねりの上に積む余裕[m]")
     p.add_argument("--skip-sim", action="store_true", help="③（3D）を飛ばす")
+    p.add_argument("--like", type=Path, default=None,
+                   help="② の占有格子を、既存の地図 yaml と同じ原点・大きさで出す。"
+                        "**別の記録の地図で差し替えるときに使う**（案 A / 2026-09-18）")
     args = p.parse_args()
 
     try:
@@ -256,11 +259,18 @@ def main() -> int:
     # ⚠️ --min-points は pcd_to_mjcf.py の MIN_POINTS と同じ値にする。
     #    1（＝帯の中に 1 点で占有）だと床のうねりが帯の下端をかすめた所が障害物になり、
     #    2026-09-08 の長距離では**それが経路を幅 0.7 m の隙間へ押し込んでいた**。
-    if run([py, HERE / "pcd_to_occupancy.py",
-            session / "map" / "map_octomap_sim.pcd", session / "map" / "nav_map_clean",
-            "--band", lower, BAND_UPPER_2D, "--min-points", MIN_POINTS_2D],
-           "② 占有格子（帯 {:.2f}〜{:.2f} m / 帯の中 {} 点以上）".format(
-               lower, BAND_UPPER_2D, MIN_POINTS_2D)) != 0:
+    # ⚠️ **上で測った床をそのまま渡す。** pcd_to_occupancy の既定（5% 分位）に任せると
+    # 最頻ビンとの差（0911 では 0.088 m）ぶん帯の下限が下がり、積んだ余裕が消える
+    occupancy = [py, HERE / "pcd_to_occupancy.py",
+                 session / "map" / "map_octomap_sim.pcd", session / "map" / "nav_map_clean",
+                 "--band", lower, BAND_UPPER_2D, "--min-points", MIN_POINTS_2D,
+                 "--floor-z", "{:.6f}".format(floor)]
+    if args.like:
+        occupancy += ["--like", args.like]
+    if run(occupancy,
+           "② 占有格子（帯 {:.2f}〜{:.2f} m / 帯の中 {} 点以上{}）".format(
+               lower, BAND_UPPER_2D, MIN_POINTS_2D,
+               " / 枠は {}".format(args.like.name) if args.like else "")) != 0:
         die("②-1 占有格子", "pcd_to_occupancy.py が落ちた")
 
     # 旧 nav_map は 2026-09-11 に map/old/ へ退避した。**黙って比較を落とさない**

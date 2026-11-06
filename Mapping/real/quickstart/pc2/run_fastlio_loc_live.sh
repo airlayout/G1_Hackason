@@ -39,6 +39,15 @@
 # 3. **`initialpose` を渡さないと SEGV する。** 既定が空ベクトルなのに
 #    `initialpose_[3]` を読む（同 361-370）。2026-09-15 にコンテナで実際に落とした。
 #
+# 3.5 **`/scan` を明け渡す（`-r /scan:=/loc_scan`）。** この実装は照合に使う点群を
+#    `/scan` に PointCloud2 で出す。ところが `/scan` は `cloud_to_scan.py` が
+#    **LaserScan** を出す口でもあるため、1 つのトピックに型が 2 つ載る。
+#    2026-09-17 の実機では `foxglove_bridge` が PointCloud2 のほうを掴み、
+#    **RViz2 に LaserScan が一切出ないのに原因が分からない**状態になった
+#    （`ros2 topic echo /scan` は "contains more than one type" としか言わない）。
+#    ⚠️ Nav2 は `/scan` を使っていない（観測源は `/utlidar/cloud_livox_mid360`）ので
+#    逃がして差し支えない。中身を見たいときは `/loc_scan` を購読する。
+#
 # 4. **カルマンのパラメータはパラメータファイルからは入らない。** コードが宣言している
 #    名前が `kf_baselink2map/x`（**スラッシュ**・同 319-321）で、yaml の入れ子は
 #    `kf_baselink2map.x`（ドット）になるため**一致しない**。出荷時の
@@ -248,6 +257,7 @@ jrun_ws "$WS/bin/$NODE_BIN" --ros-args --params-file "$O3D_YAML" \
     -p "kf_baselink2map/y:=[0.001,0.005]" \
     -p "kf_baselink2map/z:=[0.00001,0.04]" \
     -r __node:=global_localization_node \
+    -r /scan:=/loc_scan \
     > /tmp/pc2_o3dloc.log 2>&1 &
 O3_PID=$!; PIDS="$PIDS $O3_PID"
 sleep 3

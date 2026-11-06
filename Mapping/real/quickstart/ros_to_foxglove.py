@@ -14,12 +14,17 @@ foxglove_bridge は `clientPublish` の能力を持つ（serverInfo の capabili
 こちらから advertise して ClientMessageData を送れば、**橋が機体側で publish し直す**。
 
     RViz2 --/goal_pose--> [これ] --WS/TCP--> foxglove_bridge --> 機体の /goal_pose --> Nav2
+    RViz2 --/cancel_nav-> [これ] --WS/TCP--> foxglove_bridge --> 機体の /cancel_nav --> stray_guard
 
 ## 何を返すか
 
-既定は `/goal_pose` だけ。**戻す口は最小限にする** —— ここは機体を動かす側なので、
-広げるほど事故の幅が広がる。`/initialpose` は測位をやり直す口なので、要るときだけ
-`--topic` で明示する。
+既定は `/goal_pose` と `/cancel_nav` の 2 本。**戻す口は最小限にする** —— ここは
+機体を動かす側なので、広げるほど事故の幅が広がる。`/initialpose` は測位をやり直す口なので、
+要るときだけ `--topic` で明示する。
+
+⚠️ **`/cancel_nav`（止める口）だけは既定に入れる。** 動かす口を無線で開けておいて
+止める口を開けないのは筋が通らない。無線では他に止める道が無い
+（Nav2 パネルの Cancel はクリックのゴールを切れない。09-18 実測）。
 
 ⚠️ `/cmd_vel` は**絶対にここから流さない**。速度指令は Nav2 → cmd_vel_bridge →
 loco_driver の経路にウォッチドッグと発進ゲートが仕込んである。AP 越しの
@@ -50,9 +55,15 @@ from foxglove_ws import FoxgloveClient  # noqa: E402
 
 CLIENT_MSG_DATA = 0x01                  # クライアント→サーバのバイナリ先頭 1 バイト
 
-# 機体へ返す口。⚠️ 増やすほど事故の幅が広がる。既定は 1 本だけ。
+# 機体へ返す口。⚠️ 増やすほど事故の幅が広がる。
+# ⚠️ **`/cancel_nav` は例外として既定に入れてある（2026-09-18）。**
+# これは走行を**止める**口で、増やすぶんは安全側に倒れる。しかも無線では
+# **他に止める道が無い**: RViz2 の Nav2 パネルの Cancel は自分が投げたゴールしか
+# 切れず（09-18 実測）、アクションもサービスも AP を越えない。
+# 受けるのは `stray_guard.py --cancel-topic /cancel_nav`（**機体側に常駐させる**）。
 DEFAULT_TOPICS = {
     "/goal_pose": "geometry_msgs/msg/PoseStamped",
+    "/cancel_nav": "geometry_msgs/msg/PointStamped",
 }
 # 明示したときだけ返すもの
 OPTIONAL_TOPICS = {
@@ -70,7 +81,7 @@ def main() -> int:
     ap.add_argument("--host", default="10.42.0.76")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--topic", action="append", default=None,
-                    help="返すトピック（複数可）。省略すると /goal_pose のみ")
+                    help="返すトピック（複数可）。省略すると /goal_pose と /cancel_nav")
     a = ap.parse_args()
 
     known = {**DEFAULT_TOPICS, **OPTIONAL_TOPICS}
