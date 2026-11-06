@@ -5,6 +5,7 @@
 #
 # 使い方（OMEN の ~/work_inoue/doorman6）: SEED=1 NUM_ENVS=64 MINUTES=12 MAX_FRAMES=8000 bash collect_vis_1104.sh <出力先>
 #   KEEP_FRAC: 1 回の書き出しで残す台の割合（既定 0.25）。PITCH: 俯角の範囲（既定 [30.0,70.0]）
+#   CAM_TYPES: 描く種類（11-06 カラー＋深度は [{rgb:true},{depth:true}] と ++env.config.vision_dump.depth=True）
 #   HAP/VAP: カメラの開口（焦点 1.88。既定 2.6035×1.4621＝D435 のカラーの 69°×42°。11-04 の ds1 は赤外線の 3.567×2.006＝87°×56° だった）
 set -uo pipefail
 OUT="$1"; shift
@@ -21,6 +22,9 @@ export PATH="$HOME/miniforge3/envs/doorman6/bin:$PATH" OMNI_KIT_ACCEPT_EULA=YES 
   XDG_RUNTIME_DIR="/run/user/$(id -u)" PYTHONUNBUFFERED=1 TMPDIR="$B/tmp" PYTHONPATH="$B/$REPO" \
   PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 mkdir -p "$OUT" "$B/tmp"
+# 描く種類（既定はカラーだけ）。${VAR:-既定} の既定に } を書くと展開がそこで閉じるので、先に別の変数へ入れる
+CAM_TYPES_DEFAULT="[{rgb:true},{depth:false}]"
+CAM_TYPES="${CAM_TYPES:-$CAM_TYPES_DEFAULT}"
 source "$BASE/gate.sh"
 export IGNORE_PAUSE=1
 log() { echo "=== [$(date '+%m-%d %T')] $*" | tee -a "$OUT/collect.log"; }
@@ -46,7 +50,7 @@ setsid systemd-run --user --scope --quiet -p MemoryMax="$MEM_MAX" -p MemorySwapM
   ++algo.config.eval.num_eval_episodes=1000000 ++algo.config.eval.eval_num_envs_episodes=False \
   ++env.config.reset_from_dataset.motion_file_dir="$BASE/LAFAN-G1" \
   ++enable_cameras=True ++simulator.config.cameras.enable_cameras=True \
-  "++simulator.config.cameras.camera_types=[{rgb:true},{depth:false}]" \
+  "++simulator.config.cameras.camera_types=$CAM_TYPES" \
   "++simulator.config.cameras.camera_resolutions=[108,192]" \
   ++simulator.config.cameras.camera_attached_link=torso_link \
   "++simulator.config.cameras.camera_pos_offset=[0.0576,0.0525,0.4299]" \

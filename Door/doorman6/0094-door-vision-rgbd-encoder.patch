@@ -1,0 +1,316 @@
+diff -ruN a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+--- a/gr00t/rl/envs/door/door_open_homie.py	2026-11-06 09:45:59
++++ b/gr00t/rl/envs/door/door_open_homie.py	2026-11-06 09:45:59
+@@ -351,6 +351,15 @@
+                     raise ValueError(f"vision_feat.delay_steps の上 {d_hi} は every_n {self._vis_every} より小さくする")
+                 self._vis_delay = FeatDelay(self.num_envs, feat_dim, d_lo, d_hi, self.device)
+                 print(f"[G1_Hackason] 画像の生徒: 特徴を {d_lo}〜{d_hi} 歩遅らせて渡す（実機の撮ってからの古さに合わせる）")
++        # 11-06（カラー＋深度）: 網がカラー＋深度（DoorRGBDEncoder）か、記録に深度も残す（vision_dump.depth）なら深度を読む。
++        # 網に渡す深度には D435 の型の揺れと欠けを足す（vision_feat.depth_noise、既定 True）。カラーを落とす台は回ごとに
++        # vision_feat.color_off_prob の割合で引く（既定 0）。記録には揺れを足す前の深度を残す（網の先の学習で毎回引き直す）
++        self._vis_use_depth = bool(getattr(self._vis_encoder, "uses_depth", False)) or bool(dump_cfg.get("depth", False))
++        self._vis_depth_noise = bool(vf_cfg.get("depth_noise", True))
++        self._vis_color_off_prob = float(vf_cfg.get("color_off_prob", 0.0))
++        self._vis_color_off = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
++        if self._vis_use_depth:
++            print(f"[G1_Hackason] 画像の生徒: 深度も使う（揺れ {self._vis_depth_noise}・カラーを落とす割合 {self._vis_color_off_prob}）")
+         if dump_cfg.get("dir", None):
+             self._vis_dumper = VisionDumper(
+                 dump_cfg["dir"], int(dump_cfg.get("shard_size", 2048)), float(dump_cfg.get("keep_frac", 0.25)),
+@@ -439,17 +448,30 @@
+             if self._vis_delay is not None:
+                 self._vis_feat = self._vis_delay.tick(self._vis_feat)
+             return
+-        rgb = _t(self.simulator.scene.sensors["ego_camera"].data.output["rgb"])[..., :3]
++        output = self.simulator.scene.sensors["ego_camera"].data.output
++        rgb = _t(output["rgb"])[..., :3]
+         if rgb.dtype != torch.uint8:
+             rgb = (rgb.float().clamp(0, 1) * 255.0 if rgb.max() <= 1.0 else rgb.float()).to(torch.uint8)
++        depth = None
++        if self._vis_use_depth:
++            from gr00t.rl.envs.door.door_vision_feat import depth_clean, depth_noise
++
++            depth = depth_clean(_t(output["depth"])[..., 0])
+         if self._vis_encoder is not None:
++            c = self._vis_chunk
+             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+-                feats = [self._vis_encoder(rgb[i : i + self._vis_chunk]) for i in range(0, rgb.shape[0], self._vis_chunk)]
++                if getattr(self._vis_encoder, "uses_depth", False):
++                    d_in = depth_noise(depth) if self._vis_depth_noise else depth
++                    feats = [self._vis_encoder(rgb[i : i + c], d_in[i : i + c], self._vis_color_off[i : i + c])
++                             for i in range(0, rgb.shape[0], c)]
++                else:
++                    feats = [self._vis_encoder(rgb[i : i + c]) for i in range(0, rgb.shape[0], c)]
+             new = torch.cat(feats, dim=0).float()
+             self._vis_feat = new if self._vis_delay is None else self._vis_delay.capture(self._vis_feat, new)
+         dumper = self._vis_dumper
+         if dumper is not None and not dumper.full:
+-            dumper.add({
++            items = {} if depth is None else {"depth": depth.half()}
++            dumper.add(items | {
+                 "rgb": rgb,
+                 "aux": self._vis_aux_in(),
+                 "truth": self._get_obs_door_truth(),
+@@ -1513,6 +1535,8 @@
+             self._vis_nod_rad[env_ids] = 0.0  # 戻しでカメラは俯角だけに書き直される（0061）。次の描画の歩で頷きを書く
+             if self._vis_delay is not None:
+                 self._vis_delay.cancel(env_ids)
++            if self._vis_color_off_prob > 0.0:  # 11-06: この回はカラーを落とす（深度だけで扉を当てる）
++                self._vis_color_off[env_ids] = torch.rand(len(env_ids), device=self.device) < self._vis_color_off_prob
+             if self._vis_nod_deg > 0.0:
+                 k = len(env_ids)
+                 lo, hi = self._vis_nod_hz_range
+diff -ruN a/gr00t/rl/envs/door/door_vision_feat.py b/gr00t/rl/envs/door/door_vision_feat.py
+--- a/gr00t/rl/envs/door/door_vision_feat.py	2026-11-06 09:45:59
++++ b/gr00t/rl/envs/door/door_vision_feat.py	2026-11-06 09:45:59
+@@ -30,7 +30,80 @@
+ IMAGENET_MEAN = (0.485, 0.456, 0.406)
+ IMAGENET_STD = (0.229, 0.224, 0.225)
+ 
++# 11-06（カラー＋深度、計画 docs/plan/2026-11-06-g1-door-depth-rl.md）: 深度はカラーと同じカメラ・同じ画角（69°×42°）で描き、
++# 縦横 1/2 に間引いて 54×96 で使う（実機は D435i の深度 87°×58° の中央を切り出して同じ形にする）。単位は m、測れない所は 0
++DEPTH_MAX = 3.0  # これより遠い所は 3 m に詰める（扉の課題で要るのは 0.2〜2.5 m）
++DEPTH_STRIDE = 2  # 108×192 → 54×96
+ 
++
++def depth_clean(depth: torch.Tensor) -> torch.Tensor:
++    """描いた深度 [..., H, W] の無限・非数を 0（測れない）にし、DEPTH_MAX で詰める。間引き（DEPTH_STRIDE）もここでする"""
++    d = depth[..., ::DEPTH_STRIDE, ::DEPTH_STRIDE].float()
++    d = torch.where(torch.isfinite(d), d, torch.zeros_like(d))
++    return d.clamp(0.0, DEPTH_MAX)
++
++
++def depth_noise(d: torch.Tensor, gen: torch.Generator | None = None) -> torch.Tensor:
++    """深度 [B, H, W]（m・0 は測れない）に、D435 の型の揺れと欠けを足した写し（実物の深度を録るまでの仮の型。D1 で合わせ直す）。
++    - 1 枚ごとの尺度の片寄り ±1%（σ）・画素ごとの揺れ σ = 3 mm + 8 mm × (距離 m)²（2 m で 3.5 cm）
++    - 最短距離（1 枚ごとに 0.17〜0.30 m）より近い所は欠ける
++    - 奥行きが跳ぶ縁（隣と 5 cm 以上の差）の 7 割が欠ける（投光器の影と縁の誤対応）
++    - 画素ごとの欠け 0〜3%・四角い欠けの塊 0〜3 個（暗い面・金属のつや）"""
++    b, h, w = d.shape
++    dev = d.device
++
++    def u(lo, hi, *shape):
++        return torch.rand(*shape, device=dev, generator=gen) * (hi - lo) + lo
++
++    valid = d > 0
++    out = d * (1.0 + 0.01 * torch.randn(b, 1, 1, device=dev, generator=gen))
++    out = out + torch.randn(d.shape, device=dev, generator=gen) * (0.003 + 0.008 * d**2)
++    drop = out < u(0.17, 0.30, b, 1, 1)
++    gx = torch.zeros_like(d, dtype=torch.bool)
++    gx[:, :, 1:] = (d[:, :, 1:] - d[:, :, :-1]).abs() > 0.05
++    gy = torch.zeros_like(d, dtype=torch.bool)
++    gy[:, 1:, :] = (d[:, 1:, :] - d[:, :-1, :]).abs() > 0.05
++    drop |= (gx | gy) & (torch.rand(d.shape, device=dev, generator=gen) < 0.7)
++    drop |= torch.rand(d.shape, device=dev, generator=gen) < u(0.0, 0.03, b, 1, 1)
++    yy = torch.arange(h, device=dev)[None, :, None]
++    xx = torch.arange(w, device=dev)[None, None, :]
++    for _ in range(3):
++        on = torch.rand(b, 1, 1, device=dev, generator=gen) < 0.5
++        bh = u(2, h / 4, b, 1, 1)
++        bw = u(2, w / 4, b, 1, 1)
++        y0 = u(0, h, b, 1, 1)
++        x0 = u(0, w, b, 1, 1)
++        drop |= on & (yy >= y0) & (yy < y0 + bh) & (xx >= x0) & (xx < x0 + bw)
++    out = torch.where(valid & ~drop, out, torch.zeros_like(out))
++    return out.clamp(0.0, DEPTH_MAX)
++
++
++def depth_input(d: torch.Tensor) -> torch.Tensor:
++    """深度 [B, H, W]（m）→ 深度の枝の入力 [B, 2, H, W]（距離 / DEPTH_MAX と、測れた所の 1）"""
++    return torch.stack([d / DEPTH_MAX, (d > 0).float()], dim=1)
++
++
++class DepthBranch(nn.Module):
++    """深度の枝: [B, 2, 54, 96] → [B, 256]。小さな CNN を最初から学ぶ（ImageNet の重みは深度に向かない）。
++    最後は平均で潰さず並びのまま平らにする（画面の中の位置が扉の位置の手掛かり）"""
++
++    def __init__(self, out_dim: int = 256, in_hw: tuple[int, int] = (54, 96)):
++        super().__init__()
++        self.conv = nn.Sequential(
++            nn.Conv2d(2, 32, 5, stride=2, padding=2), nn.ELU(),
++            nn.Conv2d(32, 64, 3, stride=2, padding=1), nn.ELU(),
++            nn.Conv2d(64, 64, 3, stride=2, padding=1), nn.ELU(),
++            nn.Conv2d(64, 32, 1), nn.ELU(),
++        )
++        with torch.no_grad():
++            n = self.conv(torch.zeros(1, 2, *in_hw)).numel()
++        self.fc = nn.Sequential(nn.Linear(n, out_dim), nn.ELU())
++        self.out_dim = out_dim
++
++    def forward(self, x: torch.Tensor) -> torch.Tensor:
++        return self.fc(self.conv(x).flatten(1))
++
++
+ class DoorVisionEncoder(nn.Module):
+     """uint8 の RGB 画像 [N, H, W, 3] → 特徴 [N, feat_dim]。ResNet18（ImageNet で学習済み）の平均プーリングの後に線形＋LayerNorm"""
+ 
+@@ -58,6 +131,41 @@
+         return self.forward_normalized(self.preprocess(rgb_u8))
+ 
+ 
++class DoorRGBDEncoder(nn.Module):
++    """11-06: カラー [N, H, W, 3]（uint8）と深度 [N, H/2, W/2]（m）→ 特徴 [N, feat_dim]。
++    カラーの枝は ResNet18（ImageNet で学習済み）→ 512、深度の枝は DepthBranch → 256。つないで線形＋LayerNorm。
++    color_off [N]（bool）の台はカラーの枝の出力を 0 にする（カラーを落とす練習。シミュレータで網がカラーだけに頼らないように）"""
++
++    uses_depth = True
++
++    def __init__(self, feat_dim: int = 128, pretrained: bool = True):
++        super().__init__()
++        import torchvision
++
++        weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
++        r = torchvision.models.resnet18(weights=weights)
++        self.trunk = nn.Sequential(*list(r.children())[:-1])  # → [N, 512, 1, 1]
++        self.depth = DepthBranch()
++        self.proj = nn.Linear(512 + self.depth.out_dim, feat_dim)
++        self.norm = nn.LayerNorm(feat_dim)
++        self.feat_dim = feat_dim
++        self.register_buffer("img_mean", torch.tensor(IMAGENET_MEAN).view(1, 3, 1, 1))
++        self.register_buffer("img_std", torch.tensor(IMAGENET_STD).view(1, 3, 1, 1))
++
++    def preprocess(self, rgb_u8: torch.Tensor) -> torch.Tensor:
++        x = rgb_u8[..., :3].permute(0, 3, 1, 2).float() / 255.0
++        return (x - self.img_mean) / self.img_std
++
++    def forward_normalized(self, x_rgb: torch.Tensor, x_depth: torch.Tensor, color_off: torch.Tensor | None = None):
++        c = self.trunk(x_rgb).flatten(1)
++        if color_off is not None:
++            c = torch.where(color_off[:, None], torch.zeros_like(c), c)
++        return self.norm(self.proj(torch.cat([c, self.depth(x_depth)], dim=-1)))
++
++    def forward(self, rgb_u8: torch.Tensor, depth_m: torch.Tensor, color_off: torch.Tensor | None = None):
++        return self.forward_normalized(self.preprocess(rgb_u8), depth_input(depth_m), color_off)
++
++
+ class DoorHead(nn.Module):
+     """特徴 [.., feat_dim] と手掛かり [.., AUX_IN_DIM] → 扉の値 [.., 17]（物理の単位）。
+     網は正規化した値を出し、out_mean・out_std（学習用の記録から求めた値）で物理の単位に戻す"""
+@@ -153,14 +261,17 @@
+         self.left[env_ids] = -1
+ 
+ 
+-def load_encoder(path: str | None, feat_dim: int, device) -> DoorVisionEncoder:
+-    """学習済みの画像の網を読む（path が無ければ ImageNet のままの網。速さを測る・記録を集めるとき）"""
+-    enc = DoorVisionEncoder(feat_dim=feat_dim, pretrained=path is None)
+-    if path:
+-        sd = torch.load(path, map_location="cpu", weights_only=False)
+-        sd = sd.get("encoder", sd)
+-        enc.load_state_dict(sd)
+-        print(f"[G1_Hackason] 画像の網を読んだ: {path}")
++def load_encoder(path: str | None, feat_dim: int, device, kind: str = "rgb") -> nn.Module:
++    """学習済みの画像の網を読む（path が無ければ ImageNet のままの網。速さを測る・記録を集めるとき）。
++    重みの "encoder_kind" が "rgbd" ならカラー＋深度の網（DoorRGBDEncoder）。path が無いときは kind で選ぶ"""
++    sd = torch.load(path, map_location="cpu", weights_only=False) if path else None
++    if sd is not None:
++        kind = sd.get("encoder_kind", "rgb") if isinstance(sd, dict) else "rgb"
++    cls = DoorRGBDEncoder if kind == "rgbd" else DoorVisionEncoder
++    enc = cls(feat_dim=feat_dim, pretrained=path is None)
++    if sd is not None:
++        enc.load_state_dict(sd.get("encoder", sd))
++        print(f"[G1_Hackason] 画像の網を読んだ（{kind}）: {path}")
+     enc.to(device).eval()
+     for p in enc.parameters():
+         p.requires_grad = False
+diff -ruN a/gr00t/rl/scripts/door_vision_pretrain.py b/gr00t/rl/scripts/door_vision_pretrain.py
+--- a/gr00t/rl/scripts/door_vision_pretrain.py	2026-11-06 09:45:59
++++ b/gr00t/rl/scripts/door_vision_pretrain.py	2026-11-06 09:45:59
+@@ -4,6 +4,8 @@
+ # 使い方: python door_vision_pretrain.py --data <束1>/frames <束2>/frames ... --out <出力.pt> [--epochs 8] [--batch 256]
+ # 出力: {"encoder": 画像の網, "head": 扉の頭（out_mean・out_std 込み）, "metrics": 外れの表}
+ # 外れの表: 項目ごとの平均の絶対誤差（角度は度・長さは cm）を、全体と段階ごと（区間 0〜5）に出す
++# 11-06（カラー＋深度）: 記録に depth があれば DoorRGBDEncoder を学ぶ。深度には毎回 D435 の型の揺れと欠けを引き（depth_noise）、
++#   --color_off の割合でカラーの枝を落とす。確かめは「カラー＋深度」と「深度だけ（カラーを落とす）」の両方で測る
+ from __future__ import annotations
+ 
+ import argparse
+@@ -22,7 +24,10 @@
+     DOOR_TRUTH_NAMES,
+     DOOR_TRUTH_TOL,
+     DoorHead,
++    DoorRGBDEncoder,
+     DoorVisionEncoder,
++    depth_input,
++    depth_noise,
+ )
+ 
+ 
+@@ -98,17 +103,26 @@
+     return out
+ 
+ 
+-def evaluate(enc, head, data, idx, device, tol, batch=512) -> dict:
++def evaluate(enc, head, data, idx, device, tol, batch=512, color_off=False) -> dict:
++    """color_off=True はカラーの枝を落とす（深度だけ）。深度の揺れは決まった種で引く（毎回同じ揺れで比べる）"""
+     enc.eval()
+     head.eval()
+     errs, stages = [], []
++    rgbd = getattr(enc, "uses_depth", False)
++    gen = torch.Generator(device=device)
++    gen.manual_seed(12345)
+     with torch.no_grad(), torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
+         for i in range(0, len(idx), batch):
+             j = idx[i : i + batch]
+             rgb = torch.from_numpy(data["rgb"][j]).to(device)
+             aux = torch.from_numpy(data["aux"][j]).float().to(device)
+             y = torch.from_numpy(data["truth"][j]).float().to(device)
+-            pred = head(enc(rgb).float(), aux).float()
++            if rgbd:
++                d = depth_noise(torch.from_numpy(data["depth"][j]).float().to(device), gen)
++                off = torch.full((len(j),), bool(color_off), device=device)
++                pred = head(enc(rgb, d, off).float(), aux).float()
++            else:
++                pred = head(enc(rgb).float(), aux).float()
+             errs.append((pred - y).abs().cpu())
+             stages.append(torch.from_numpy(data["stage"][j]))
+     err = torch.cat(errs)
+@@ -145,6 +159,7 @@
+     ap.add_argument("--device", default="cuda")
+     ap.add_argument("--eval_batch", type=int, default=512)
+     ap.add_argument("--max_steps", type=int, default=0, help="1 エポックの歩数の上限（試しの確かめ用。0 は全部）")
++    ap.add_argument("--color_off", type=float, default=0.4, help="カラー＋深度のとき、カラーの枝を落とす割合")
+     args = ap.parse_args()
+ 
+     device = torch.device(args.device)
+@@ -155,7 +170,10 @@
+     print(f"[pretrain] 画像 {n} 枚・扉 {len(np.unique(data['door_id']))} 枚（学習 {len(tr)}・確かめ {len(va)}）・"
+           f"読み込み {time.time() - t0:.0f} 秒", flush=True)
+ 
+-    enc = DoorVisionEncoder(args.feat_dim, pretrained=args.init is None).to(device)
++    rgbd = "depth" in data
++    enc_cls = DoorRGBDEncoder if rgbd else DoorVisionEncoder
++    enc = enc_cls(args.feat_dim, pretrained=args.init is None).to(device)
++    print(f"[pretrain] 網: {enc_cls.__name__}" + (f"（カラーを落とす割合 {args.color_off}）" if rgbd else ""), flush=True)
+     head = DoorHead(args.feat_dim).to(device)
+     y_tr = torch.from_numpy(data["truth"][tr]).float()
+     head.out_mean.copy_(y_tr.mean(0))
+@@ -191,8 +209,11 @@
+             y = torch.from_numpy(data["truth"][j]).float().to(device)
+             x = augment(rgb[..., :3].permute(0, 3, 1, 2).float() / 255.0, gen)
+             x = (x - enc.img_mean) / enc.img_std
++            if rgbd:
++                d = depth_noise(torch.from_numpy(data["depth"][j]).float().to(device), gen)
++                off = torch.rand(len(j), device=device, generator=gen) < args.color_off
+             with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
+-                feat = enc.forward_normalized(x)
++                feat = enc.forward_normalized(x, depth_input(d), off) if rgbd else enc.forward_normalized(x)
+                 pred = head(feat.float(), aux_noise(aux, gen))
+             loss = (((pred.float() - y) / tol) ** 2).mean()
+             opt.zero_grad(set_to_none=True)
+@@ -209,11 +230,15 @@
+         res_tr = evaluate(enc, head, data, tr[:: max(1, len(tr) // 4000)], device, tol, args.eval_batch)
+         history.append({"epoch": ep, "val": res, "train_sub": res_tr})
+         print(f"[pretrain] ep {ep} 確かめ（学習に無い扉）: {fmt(res)}", flush=True)
++        if rgbd:
++            res_d = evaluate(enc, head, data, va, device, tol, args.eval_batch, color_off=True)
++            history[-1]["val_depth_only"] = res_d
++            print(f"[pretrain] ep {ep} 確かめ（深度だけ）    : {fmt(res_d)}", flush=True)
+         print(f"[pretrain] ep {ep} 学習の扉（一部）    : {fmt(res_tr)}", flush=True)
+         if best is None or res["loss_tol"] < best:
+             best = res["loss_tol"]
+             torch.save({"encoder": enc.state_dict(), "head": head.state_dict(), "metrics": res,
+-                        "args": vars(args), "epoch": ep}, args.out)
++                        "args": vars(args), "epoch": ep, "encoder_kind": "rgbd" if rgbd else "rgb"}, args.out)
+             print(f"[pretrain] 保存 {args.out}（ep {ep}）", flush=True)
+     with open(os.path.splitext(args.out)[0] + "_history.json", "w") as f:
+         json.dump(history, f, indent=1, ensure_ascii=False)

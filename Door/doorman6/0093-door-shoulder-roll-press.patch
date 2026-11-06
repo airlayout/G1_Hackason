@@ -1,0 +1,188 @@
+From d1f6a2b7c623ba6feee3cb1e5be28702e22d9d47 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Fri, 6 Nov 2026 09:35:15 +0900
+Subject: [PATCH] door: optionally cap the shoulder roll push into the torso
+ and penalize it (env.config.shoulder_roll_press_max_nm pulls the sent
+ shoulder roll target back so that kp*(target minus angle) toward the torso
+ stays within the limit, the same as the real robot
+ door_run_stock.cap_roll_press, leaving the outward side, the other joints,
+ the accumulator and the observations alone;
+ rewards.reward_scales.penalty_shoulder_roll_press penalizes the squared
+ torque toward the torso, averaged over physics substeps, since the motor heat
+ grows with it; on 11-06 the real robot pushed the left arm into the torso at
+ 20 N*m and reached 88 C in 6 s; default off = unchanged) (11-06)
+
+---
+ .../envs/base_task/finger_primitive_base.py   | 22 +++++++++++++++
+ gr00t/rl/envs/base_task/roll_press.py         | 28 +++++++++++++++++++
+ gr00t/rl/envs/base_task/substep_monitor.py    | 14 ++++++++++
+ .../legged_base_task/legged_robot_base.py     | 24 +++++++++++++++-
+ 4 files changed, 87 insertions(+), 1 deletion(-)
+ create mode 100644 gr00t/rl/envs/base_task/roll_press.py
+
+diff --git a/gr00t/rl/envs/base_task/finger_primitive_base.py b/gr00t/rl/envs/base_task/finger_primitive_base.py
+index 73dc996..9cca231 100644
+--- a/gr00t/rl/envs/base_task/finger_primitive_base.py
++++ b/gr00t/rl/envs/base_task/finger_primitive_base.py
+@@ -5,6 +5,7 @@
+ import torch
+ from typing_extensions import override
+ 
++from gr00t.rl.envs.base_task.roll_press import LEFT_SHOULDER_ROLL, RIGHT_SHOULDER_ROLL, ROLL_INWARD, cap_toward
+ from gr00t.rl.envs.base_task.target_guard import limit_sent_target
+ from gr00t.rl.envs.legged_base_task.legged_robot_base import LeggedRobotBase
+ 
+@@ -110,6 +111,12 @@ class FingerPrimitiveBase(LeggedRobotBase):
+             rate = self.config.get("arm_target_rate_limit", None)
+             if rate is not None:
+                 combined_target = self._limit_arm_target_rate(combined_target, float(rate))
++            # G1_Hackason（T1、11-06）: 肩 roll の目標を、胴の側へ押す力 kp·(目標 − 角度) が shoulder_roll_press_max_nm [N·m] を
++            # 越えない所まで戻す（実機の door_run_stock.cap_roll_press と同じ。11-06 の実機は胴へ 20 N·m 押し当てて 6 秒で 88 °C）。
++            # 外へ開く側・他の関節・積み上げ D・観測には触らない。既定 None＝切らない
++            press = self.config.get("shoulder_roll_press_max_nm", None)
++            if press is not None:
++                combined_target = self._cap_shoulder_roll_press(combined_target, float(press))
+             for i, primitive_cfg in enumerate(self._primitive_action_map):
+                 inheritrange = primitive_cfg["inheritrange"]
+                 p0 = primitive_cfg["pos_0"]
+@@ -159,6 +166,21 @@ class FingerPrimitiveBase(LeggedRobotBase):
+             self._tsl_step = step
+         return self._tsl_prev.clone()
+ 
++    def _cap_shoulder_roll_press(self, combined_target: torch.Tensor, max_nm: float) -> torch.Tensor:
++        """左右の肩 roll の目標を、今の角度から胴の側へ max_nm / kp までに切る（kp は設定の固さ。実機と同じく公称の値）"""
++        if not hasattr(self, "_roll_press_idx"):
++            names = list(self.config.robot.dof_names)
++            self._roll_press_idx = torch.tensor(
++                [names.index(LEFT_SHOULDER_ROLL), names.index(RIGHT_SHOULDER_ROLL)], device=self.device
++            )
++            self._roll_press_inward = torch.tensor(ROLL_INWARD, device=self.device)
++        idx = self._roll_press_idx
++        out = combined_target.clone()
++        out[:, idx] = cap_toward(
++            combined_target[:, idx], self.simulator.dof_pos[:, idx], self.p_gains[idx], self._roll_press_inward, max_nm
++        )
++        return out
++
+     def _arm_rate_limit_mask(self) -> torch.Tensor:
+         """腕の目標の変化に上限をかける台（[N] bool）。扉の環境で上書きする"""
+         return torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+diff --git a/gr00t/rl/envs/base_task/roll_press.py b/gr00t/rl/envs/base_task/roll_press.py
+new file mode 100644
+index 0000000..1a6e8b6
+--- /dev/null
++++ b/gr00t/rl/envs/base_task/roll_press.py
+@@ -0,0 +1,28 @@
++"""肩 roll の胴への押し当てを切る（G1_Hackason の T1、2026-11-06）。
++
++11-06 の実機で、方策は DOOR の 1.5 秒から左肩 roll を胴の中へ送り続け、腕は胴に当たって止まり、
++積み上げの範囲いっぱい（δ 0.2 rad × kp 100 = 20 N·m）で押し続けて 6 秒で 45 → 88 °C になった。
++実機は送る目標を切って胴へ押す力を 6 N·m までにした（G1_Hackason/Door/real/door_run_stock.cap_roll_press）。
++シミュレータにも同じ切り方を入れ、その条件で学び直す。numpy の配列と torch の tensor のどちらでも動く書き方だけを使う。
++"""
++
++LEFT_SHOULDER_ROLL = "left_shoulder_roll_joint"
++RIGHT_SHOULDER_ROLL = "right_shoulder_roll_joint"
++ROLL_INWARD = (-1.0, 1.0)  # 胴へ向かう向き: 左は負・右は正（door_run_stock.ARM_ROLL_INWARD と同じ）
++
++
++def cap_toward(target, q, kp, inward, max_nm):
++    """目標を、inward の向きへ押す力 kp·(目標 − 角度) が max_nm を越えない所まで戻した写し。
++
++    inward は要素ごとに ±1。反対の向き（胴から離す側）は切らない。入力は書き換えない。
++    target・q: [..., k]、kp・inward: [k]（後ろの次元で揃う形なら何でも）
++    """
++    lim = q + inward * max_nm / kp
++    st = inward * target
++    sl = inward * lim
++    return inward * (st - (st - sl).clip(0, None))  # inward·min(inward·目標, inward·限り)
++
++
++def press_toward(torque, inward):
++    """inward の向きへ出した力だけ（反対の向きは 0）"""
++    return (inward * torque).clip(0, None)
+diff --git a/gr00t/rl/envs/base_task/substep_monitor.py b/gr00t/rl/envs/base_task/substep_monitor.py
+index 9e84e5a..4cad0ce 100644
+--- a/gr00t/rl/envs/base_task/substep_monitor.py
++++ b/gr00t/rl/envs/base_task/substep_monitor.py
+@@ -14,14 +14,28 @@ class SubstepMonitor:
+         self.ratio = float(saturation_ratio)
+         self.sat_count = torch.zeros(num_envs, num_arm, device=device)
+         self.contact_peak = torch.zeros(num_envs, max(num_contact_bodies, 0), device=device)
++        # T1（11-06）: 肩 roll が胴の側へ出した力の 2 乗の和（左右）と、その最大 [N·m]
++        self.roll_press_sq = torch.zeros(num_envs, device=device)
++        self.roll_press_peak = torch.zeros(num_envs, device=device)
+         self.n = 0
+ 
+     def begin(self) -> None:
+         """制御の 1 ステップの始め（物理 1 回目の前）に数え直す"""
+         self.sat_count.zero_()
+         self.contact_peak.zero_()
++        self.roll_press_sq.zero_()
++        self.roll_press_peak.zero_()
+         self.n = 0
+ 
++    def add_roll_press(self, press: torch.Tensor) -> None:
++        """物理 1 回の後（after_substep より前に呼ぶ）。press [N, 2] は胴の側へ出した力（反対の向きは 0）"""
++        self.roll_press_sq += (press**2).sum(dim=-1)
++        self.roll_press_peak = torch.maximum(self.roll_press_peak, press.amax(dim=-1))
++
++    def roll_press_sq_mean(self) -> torch.Tensor:
++        """[N] 物理の回で平均した、肩 roll の胴への力の 2 乗の和（左右）"""
++        return self.roll_press_sq / max(self.n, 1)
++
+     def after_substep(self, arm_torque: torch.Tensor, arm_limit: torch.Tensor, contact_force=None) -> None:
+         """物理 1 回の後。arm_torque [N, 腕]・arm_limit [腕]・contact_force [N, 部品]（無ければ None）"""
+         self.sat_count += (arm_torque.abs() >= self.ratio * arm_limit).float()
+diff --git a/gr00t/rl/envs/legged_base_task/legged_robot_base.py b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+index 13e55ef..0d517ab 100644
+--- a/gr00t/rl/envs/legged_base_task/legged_robot_base.py
++++ b/gr00t/rl/envs/legged_base_task/legged_robot_base.py
+@@ -16,6 +16,7 @@ from termcolor import colored
+ from torchvision.transforms import v2
+ 
+ from gr00t.rl.envs.base_task.base_task import BaseTask
++from gr00t.rl.envs.base_task.roll_press import LEFT_SHOULDER_ROLL, RIGHT_SHOULDER_ROLL, ROLL_INWARD, press_toward
+ from gr00t.rl.envs.env_utils.history_handler import HistoryHandler
+ from gr00t.rl.envs.env_utils.visualization import Point
+ from gr00t.rl.envs.legged_base_task.live_reward_plotter import RewardPlotter
+@@ -663,7 +664,16 @@ class LeggedRobotBase(BaseTask):
+         mon = getattr(self, "_substep_monitor", None)
+         if mon is None:
+             return
+-        tau = self.simulator.applied_dof_torque[:, self._monitor_arm_idx]
++        applied = self.simulator.applied_dof_torque
++        # T1（11-06）: 肩 roll が胴の側へ出した力（罰 penalty_shoulder_roll_press と記録に使う）
++        if not hasattr(self, "_monitor_roll_idx"):
++            names = list(self.config.robot.dof_names)
++            self._monitor_roll_idx = torch.tensor(
++                [names.index(LEFT_SHOULDER_ROLL), names.index(RIGHT_SHOULDER_ROLL)], device=self.device
++            )
++            self._monitor_roll_inward = torch.tensor(ROLL_INWARD, device=self.device)
++        mon.add_roll_press(press_toward(applied[:, self._monitor_roll_idx], self._monitor_roll_inward))
++        tau = applied[:, self._monitor_arm_idx]
+         lim = self.simulator.torque_limits[self._monitor_arm_idx]
+         mon.after_substep(tau, lim, self.simulator.arm_body_contact_force())
+ 
+@@ -686,6 +696,18 @@ class LeggedRobotBase(BaseTask):
+         self.log_dict["arm_body_contact_peak"] = mon.contact_peak.max()
+         return hit.float().sum(dim=-1)
+ 
++    def _reward_penalty_shoulder_roll_press(self):
++        """T1（11-06）: 肩 roll が胴の側へ出した力 [N·m] の 2 乗の和（左右）の、物理の回の平均。モーターの熱は力の 2 乗で増える
++        （実機の 11-04 の測り: 左肩 roll の温度の上がり ≒ 0.0197 × ∫τ²dt）。胴から離す側の力は数えない"""
++        mon = getattr(self, "_substep_monitor", None)
++        if mon is None:
++            return torch.zeros(self.num_envs, device=self.device)
++        sq = mon.roll_press_sq_mean()
++        self.log_dict["shoulder_roll_press_rms"] = (sq.mean() / 2.0).sqrt()
++        self.log_dict["shoulder_roll_press_peak"] = mon.roll_press_peak.max()
++        self.log_dict["shoulder_roll_press_over3_frac"] = (mon.roll_press_peak > 3.0).float().mean()
++        return sq
++
+     def _compute_perturbation_forces(self):
+         """
+         Should be implemented in the child class if needed.
+-- 
+2.43.0
+
