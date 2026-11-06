@@ -28,6 +28,23 @@ ROS 側が落ちても、UDP が届かなくなっても、**このプロセス�
 | 発進ゲート | `--arm` を付けない限り SDK を呼ばない |
 | 後退の禁止 | 後方センサ上部が死角（2026-09-06 実測）。既定で vx<0 を捨てる |
 
+## ⚠️ 無音で失敗する型（2026-09-17 に 1 時間近く失った）
+
+`--arm` は成功し、`/cmd_vel` も 800 件中継され、`--status` も「両方稼働中・
+Subscription count 1」と出るのに、**機体が 1 mm も動かない**ことがある。
+原因は機体が通常運転（FSM 500/501）に入っていなかったこと（実測 802 ＝ 立位ロック）。
+
+見つけられなかった理由は 2 つ:
+
+  1. `LocoClient.Move()` は `SetVelocity()` を呼ぶだけで **戻り値を捨てている**
+     （SDK 実装。`Move()` は常に `None` を返すので、呼ぶ側が見ても無意味）
+  2. ここでも戻り値を見ていなかったので、拒否されてもログに何も出なかった
+
+⇒ **`SetVelocity()` を直に呼び、`code` を見る。**起動時に `GetFsmId()` も読む。
+⚠️ FSM が違うときに `code` が非ゼロになるかは**確かめていない**（RPC は通って
+   コントローラ側が黙って捨てている可能性がある）。**当てにするのは FSM の表示**で、
+   `code` は追加の網である。
+
 ## 使い方
 
     # ① まず素振り。SDK を呼ばず、届いた指令を表示するだけ
@@ -48,6 +65,16 @@ DEFAULT_MAX_VY = 0.20       # [m/s]
 DEFAULT_MAX_VYAW = 0.50     # [rad/s]
 DEFAULT_TIMEOUT = 0.5       # [s] 無指令でこれを超えたら止める
 
+# `LocoClient.Move(..., continous_move=True)` が内部で使う値と同じ。
+# Move() は戻り値を捨てるので、こちらは SetVelocity() を直に呼ぶ（下の注記）。
+MOVE_DURATION_S = 864000.0
+# 歩行を受け付ける FSM。**実測した 2 つだけ**を「歩ける」としている。
+#   500 = LocoClient.Start() が送る値 / 501 = 通常運転で観測した値
+#   802 = 立位ロックで観測した値（指令は通るのに**足が動かない**）
+# ⚠️ 他にも歩ける番号があれば足すこと（quickstart/live/preflight.sh の 6. と同じ表）
+WALKING_FSM_IDS = (500, 501)
+REJECT_REPORT_S = 2.0       # [s] 拒否の報告はこの間隔に間引く（毎周期出すと読めない）
+
 
 def clamp(value: float, limit: float) -> float:
     return max(-limit, min(limit, value))
@@ -59,6 +86,7 @@ class LocoDriver:
         self._client = None
         self._last_seen = None
         self._moving = False
+        self._last_reject = 0.0
         if not args.dry_run:
             self._init_loco(args.network_interface)
 
@@ -71,6 +99,37 @@ class LocoDriver:
         self._client.SetTimeout(10.0)
         self._client.Init()
         print("[driver] LocoClient を初期化した（iface={}）".format(iface), flush=True)
+        self._report_fsm()
+
+    def _fsm(self):
+        """いまの FSM を返す。読めなければ None（**読めないことは異常ではない**）。"""
+        if self._client is None:
+            return None
+        try:
+            code, fsm = self._client.GetFsmId()
+        except Exception as error:                       # noqa: BLE001
+            print("[driver] FSM を読めない: {}".format(error), file=sys.stderr, flush=True)
+            return None
+        return fsm if code == 0 else None
+
+    def _report_fsm(self) -> None:
+        """起動時に 1 度だけ、歩ける状態かを声に出す。"""
+        fsm = self._fsm()
+        if fsm is None:
+            print("[driver] ⚠️ FSM を読めなかった。歩けるかどうか確認できていない",
+                  flush=True)
+            return
+        if fsm in WALKING_FSM_IDS:
+            print("[driver] FSM={} 通常運転。歩ける".format(fsm), flush=True)
+            return
+        # ⚠️ ここで止めない。歩ける番号が他にもあるかもしれず、
+        #    偽の拒否で起動できなくなるほうが困る。ただし**見逃せない形で言う**。
+        print("[driver] " + "=" * 62, flush=True)
+        print("[driver] ⚠️⚠️ FSM={} は通常運転ではない。**指令を送っても足は動かない**"
+              .format(fsm), flush=True)
+        print("[driver]   → リモコンで R1 + X（⑦ 通常運転 / Main Operation Control）", flush=True)
+        print("[driver]   → 段は 1 つずつ: ① L2+B ダンピング → ② L2+↑ 立位ロック → ⑦ R1+X", flush=True)
+        print("[driver] " + "=" * 62, flush=True)
 
     def apply(self, vx: float, vy: float, vyaw: float) -> None:
         vx = clamp(vx, self._args.max_vx)
@@ -87,7 +146,15 @@ class LocoDriver:
                   flush=True)
             self._moving = True
             return
-        self._client.Move(vx, vy, vyaw, continous_move=True)
+        # ⚠️ **Move() を使わない。**あれは SetVelocity() の戻り値を捨てるので、
+        # 拒否されても呼ぶ側からは成功と区別がつかない（冒頭の注記）。
+        code = self._client.SetVelocity(vx, vy, vyaw, MOVE_DURATION_S)
+        if code != 0:
+            now = time.time()
+            if now - self._last_reject >= REJECT_REPORT_S:
+                self._last_reject = now
+                print("[driver] ⚠️ SetVelocity が拒否された code={} / いまの FSM={}"
+                      .format(code, self._fsm()), file=sys.stderr, flush=True)
         self._moving = True
 
     def watchdog(self) -> None:
