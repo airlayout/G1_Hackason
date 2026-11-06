@@ -152,6 +152,8 @@ class G1TwinRunner:
         from isaaclab.assets import Articulation
         from isaaclab_assets.robots.unitree import G1_CFG
 
+        from .offline_assets import localize
+
         assets_root = NUCLEUS_ASSET_ROOT_DIR
         if not assets_root:
             raise RuntimeError(
@@ -164,6 +166,7 @@ class G1TwinRunner:
                 usd_path=self._config.scene_usd_path, path="/World/Warehouse"
             )
             ground = sim_utils.GroundPlaneCfg()
+            ground.usd_path = localize(ground.usd_path)
             ground.func("/World/GroundPlane", ground)
             print(f"[OK] 実測地図シーンを読み込みました: {self._config.scene_usd_path}")
         elif self._config.use_warehouse:
@@ -173,6 +176,7 @@ class G1TwinRunner:
         else:
             # 平地のみ
             ground = sim_utils.GroundPlaneCfg()
+            ground.usd_path = localize(ground.usd_path)
             ground.func("/World/GroundPlane", ground)
             print("[OK] 平地を生成しました")
 
@@ -183,6 +187,7 @@ class G1TwinRunner:
         # G1 を配置
         x, y = self._config.spawn_xy
         robot_cfg = G1_CFG.replace(prim_path="/World/G1")
+        robot_cfg.spawn.usd_path = localize(robot_cfg.spawn.usd_path)
         robot_cfg.init_state = robot_cfg.init_state.replace(pos=(x, y, SPAWN_HEIGHT))
         self._robot = Articulation(robot_cfg)
         print(f"[OK] G1 を配置しました: pos=({x}, {y}, {SPAWN_HEIGHT})")

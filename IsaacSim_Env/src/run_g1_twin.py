@@ -19,6 +19,16 @@ from __future__ import annotations
 import os
 import argparse
 
+# --- アセットの参照先をローカルのキャッシュへ向ける ---
+# ⚠️ isaaclab の import より先に行うこと。GroundPlaneCfg.usd_path の既定値は
+# isaaclab.sim の import 時に確定するので、後ろでやると床だけ S3 を見にいく。
+# 理由と仕組みは g1_twin/offline_assets.py の docstring に書いてある。
+from g1_twin.offline_assets import use_local_assets
+
+_LOCAL_ASSET_ROOT = use_local_assets()
+if _LOCAL_ASSET_ROOT:
+    print(f"[OK] アセットはローカルのキャッシュを使います: {_LOCAL_ASSET_ROOT}")
+
 # --- Isaac Sim の起動は他の import より先に行う必要がある ---
 from isaaclab.app import AppLauncher
 
