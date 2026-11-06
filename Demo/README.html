@@ -585,105 +585,50 @@ bash Demo/preflight.sh</code>
 
   <h3>これがリモコン</h3>
   <figure>
-    <img src="images/g1_remote.jpg" width="1400" height="864"
-         alt="Unitree G1 の純正リモコン。左グリップにスティックと十字キー、右グリップにスティックと XYAB、中央に一覧が印刷されたパネル、下辺に SELECT・F1・F3・START。">
-    <figcaption>Unitree G1 の純正リモコン。左にスティックと十字キー、右にスティックと XYAB。
-    L1/L2・R1/R2 は上面にある。
-    <b>出典: <a href="https://robostore.com/products/unitree-g1-remote-controller">RoboStore の製品ページ</a>（© RoboStore LLC）。</b>
-    製品写真をそのまま使っているので、外部へ出す資料に転用するときは扱いに注意すること。</figcaption>
+    <img src="images/g1_remote.jpg" width="2000" height="1012" loading="lazy" decoding="async"
+         alt="実機に付いてきたリモコンを真上から写した写真。左グリップにスティック・十字キー・SELECT・F1 と PG/ST ランプ、右グリップにスティック・Y/X/B/A・F3・START と BT/DL ランプ、下辺中央に赤い STOP。中央のパネルに G1 の一覧が刷ってあり、Mode 欄に Zero Moment（L2＋Y）、① Damping（L2＋B）、② Locked Standing（L2＋十字上）、⑤ Lie→Stand、④ Seated Mode、⑥ Squat↔Stand、Adapt Rise。Motion Control Switching 欄に ③ Running Mode（R2＋A）と ⑦ Regular Mode（R1＋X）。Interactional 欄に Handshake（SELECT＋A）、Wave Hand（SELECT＋Y）、Face Wave・Right Kiss・Clap（いずれもダブルクリック）。右半分は ⑨ Dance Mode の一覧と注記。">
+    <figcaption>実機に付いてきたリモコン。左グリップにスティックと十字キーと SELECT・F1、
+    右グリップにスティックと XYAB と F3・START。<b>L1/L2・R1/R2 は上面にあり、この向きでは見えない。</b>
+    中央パネルに刷ってあるのが下で使う一覧。
+    <b>出典: 実機を撮影したもの（2026-09-17）。</b></figcaption>
   </figure>
 
-  <div class="note bad">
-    <span class="lbl">⚠️ 本体に印刷されている一覧は G1 のものではない</span>
-    <p>中央パネルの表は <b>Stair Climbing / Pounce / Dance / Searchlight</b> ——
-    <b>四足（Go2 など）用</b>。リモコン本体が Unitree 共通なので、G1 に付いてくるものにも
-    四足の表が刷ってある。<b>そのまま読むと G1 では違う動きになる。</b>
-    G1 の組み合わせは下の表を使うこと。</p>
+  <div class="note">
+    <span class="lbl">中央パネルの一覧は G1 のもの</span>
+    <p>この機体に付いてきたリモコンには <b>G1 の表</b>が刷ってある。
+    <b>① Damping ／ ② Locked Standing ／ ③ Running Mode ／ ⑦ Regular Mode</b> という番号付けも、
+    下の対応表とそのまま一致する。<b>手元のパネルを読みながら進めてよい。</b>
+    パネル右下の凡例のとおり、<b>★ は短押し、▲ は 2 秒長押し</b>で出る。</p>
   </div>
 
   <h3>どこを押すか</h3>
-  <div class="figwrap"><svg viewBox="0 0 900 620" role="img" aria-labelledby="fig7t fig7d" xmlns="http://www.w3.org/2000/svg">
+  <div class="figwrap"><svg viewBox="0 0 900 330" role="img" aria-labelledby="fig7t fig7d" xmlns="http://www.w3.org/2000/svg">
   <title id="fig7t">リモコンのどこを押すか</title>
-  <desc id="fig7d">起動に使うのは L2＋B（①ダンピング）、L2＋上（②立位ロック）、R1＋X（⑦通常運転）の 3 つ。走らせたいときだけ R2＋A（③走行）を足す。図の色が付いたボタンがそれ。配置は左グリップがスティックと十字キー、右グリップがスティックと XYAB、中央が一覧の印刷パネル。</desc>
+  <desc id="fig7d">起動に使うのは L2＋B（①ダンピング）、L2＋上（②立位ロック）、R1＋X（⑦通常運転）の 3 つ。走らせたいときだけ R2＋A（③走行）を足す。</desc>
 
-  <!-- ══ 左: リモコン（実物の配置に合わせて縮小して置く）══ -->
-  <g transform="translate(20,10) scale(0.98)">
-    <rect x="150" y="118" width="228" height="150" rx="16" fill="#2b2f36" stroke="var(--line-strong)"/>
-    <rect x="162" y="128" width="204" height="130" rx="8" fill="#12151a" stroke="#3a4049"/>
-    <text x="264" y="180" text-anchor="middle" class="t-b" fill="#8b94a3">MODE SWITCH</text>
-    <text x="264" y="206" text-anchor="middle" class="t-m" fill="#6b7686">一覧の印刷パネル</text>
-    <text x="264" y="230" text-anchor="middle" class="t-m" fill="#e0964f">⚠️ 四足用。G1 では使わない</text>
-    <rect x="256" y="248" width="16" height="7" rx="2" fill="#c0392b"/>
+  <!-- ══ 対応表 ══ -->
+  <text x="30" y="30" class="t-b">起動に使う 3 つ（この順に上げる）</text>
 
-    <path d="M46 112 q-14 0 -14 16 v112 q0 34 34 34 h84 q18 0 18 -18 V118 q0 -6 -8 -6 z"
-          fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="2"/>
-    <path d="M854 138 q14 0 14 16 v112 q0 34 -34 34 h-84 q-18 0 -18 -18 V144 q0 -6 8 -6 z"
-          fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="2"/>
+  <rect x="30" y="42" width="840" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+  <text x="46" y="66" class="t-mono-b" fill="var(--accent)">①  L2 ＋ B</text>
+  <text x="200" y="66" class="t-b">ダンピング</text>
+  <text x="200" y="84" class="t-s">腕のモータが有効になる（実演4 の前提）</text>
 
-    <rect x="60"  y="94" width="58" height="16" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
-    <rect x="60"  y="72" width="58" height="18" rx="6" fill="var(--accent)"  stroke="var(--accent)"/>
-    <text x="89" y="108" text-anchor="middle" class="t-b">L1</text>
-    <text x="89"  y="87" text-anchor="middle" class="t-b" fill="#fff">L2</text>
-    <rect x="782" y="120" width="58" height="18" rx="6" fill="var(--accent)"  stroke="var(--accent)"/>
-    <rect x="782" y="98" width="58" height="16" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
-    <text x="811" y="135" text-anchor="middle" class="t-b" fill="#fff">R1</text>
-    <text x="811" y="112" text-anchor="middle" class="t-b">R2</text>
+  <rect x="30" y="102" width="840" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+  <text x="46" y="126" class="t-mono-b" fill="var(--accent)">②  L2 ＋ UP</text>
+  <text x="200" y="126" class="t-b">立位ロック</text>
+  <text x="200" y="144" class="t-s">ここでウィンチを緩める</text>
 
-    <circle cx="96" cy="152" r="24" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
-    <circle cx="96" cy="152" r="10" fill="#2b2f36" stroke="var(--line-strong)"/>
-    <circle cx="96"  cy="200" r="13" fill="var(--accent)"  stroke="var(--accent)"/>
-    <circle cx="96"  cy="244" r="13" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
-    <circle cx="68"  cy="222" r="13" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
-    <circle cx="124" cy="222" r="13" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
-    <text x="96" y="206" text-anchor="middle" class="t-b" fill="#fff">▲</text>
-    <text x="150" y="206" class="t-b" fill="var(--accent)">UP</text>
-    <rect x="50" y="266" width="28" height="12" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
-    <rect x="94" y="266" width="28" height="12" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
-    <text x="64"  y="296" text-anchor="middle" class="t-m" fill="var(--ink-3)">SELECT</text>
-    <text x="108" y="296" text-anchor="middle" class="t-m" fill="var(--ink-3)">F1</text>
+  <rect x="30" y="162" width="840" height="52" rx="6" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/>
+  <text x="46" y="186" class="t-mono-b" fill="var(--good)">⑦  R1 ＋ X</text>
+  <text x="200" y="186" class="t-b">通常運転</text>
+  <text x="200" y="204" class="t-s">START で立ち、スティックで歩く</text>
 
-    <circle cx="804" cy="178" r="24" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
-    <circle cx="804" cy="178" r="10" fill="#2b2f36" stroke="var(--line-strong)"/>
-    <circle cx="804" cy="226" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
-    <circle cx="804" cy="272" r="15" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2"/>
-    <circle cx="775" cy="249" r="15" fill="var(--accent)"  stroke="var(--accent)"/>
-    <circle cx="833" cy="249" r="15" fill="var(--accent)"  stroke="var(--accent)"/>
-    <text x="804" y="232" text-anchor="middle" class="t-b">Y</text>
-    <text x="804" y="278" text-anchor="middle" class="t-b">A</text>
-    <text x="775" y="255" text-anchor="middle" class="t-b" fill="#fff">X</text>
-    <text x="833" y="255" text-anchor="middle" class="t-b" fill="#fff">B</text>
-    <rect x="758" y="292" width="28" height="12" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
-    <rect x="802" y="292" width="28" height="12" rx="6" fill="var(--surface)" stroke="var(--line-strong)"/>
-    <text x="772" y="322" text-anchor="middle" class="t-m" fill="var(--ink-3)">F3</text>
-    <text x="816" y="322" text-anchor="middle" class="t-m" fill="var(--ink-3)">START</text>
-  </g>
-
-  <text x="30" y="368" class="t-s" fill="var(--ink-3)">色が付いているのが起動に使うボタン。</text>
-  <text x="30" y="388" class="t-s" fill="var(--ink-3)">L1/L2・R1/R2 は上面にあり、この向きでは見えない。</text>
-
-  <!-- ══ 下段: 対応表 ══ -->
-  <text x="30" y="418" class="t-b">起動に使う 3 つ（この順に上げる）</text>
-
-  <rect x="30" y="430" width="840" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
-  <text x="46" y="454" class="t-mono-b" fill="var(--accent)">①  L2 ＋ B</text>
-  <text x="200" y="454" class="t-b">ダンピング</text>
-  <text x="200" y="472" class="t-s">腕のモータが有効になる（実演4 の前提）</text>
-
-  <rect x="30" y="490" width="840" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
-  <text x="46" y="514" class="t-mono-b" fill="var(--accent)">②  L2 ＋ UP</text>
-  <text x="200" y="514" class="t-b">立位ロック</text>
-  <text x="200" y="532" class="t-s">ここでウィンチを緩める</text>
-
-  <rect x="30" y="550" width="840" height="52" rx="6" fill="var(--good-soft)" stroke="var(--good)" stroke-width="1.5"/>
-  <text x="46" y="574" class="t-mono-b" fill="var(--good)">⑦  R1 ＋ X</text>
-  <text x="200" y="574" class="t-b">通常運転</text>
-  <text x="200" y="592" class="t-s">START で立ち、スティックで歩く</text>
-
-  <text x="30" y="638" class="t-b">走らせたいときだけ足す</text>
-  <rect x="30" y="648" width="840" height="52" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-dasharray="4 3"/>
-  <text x="46" y="672" class="t-mono-b" fill="var(--ink-3)">③  R2 ＋ A</text>
-  <text x="200" y="672" class="t-s">走行（R2＋下 = 低速走 ／ R2＋上 = 高速走）</text>
-  <text x="200" y="690" class="t-s" fill="var(--warn)">デモでは使わなくてよい</text>
+  <text x="30" y="250" class="t-b">走らせたいときだけ足す</text>
+  <rect x="30" y="260" width="840" height="52" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-dasharray="4 3"/>
+  <text x="46" y="284" class="t-mono-b" fill="var(--ink-3)">③  R2 ＋ A</text>
+  <text x="200" y="284" class="t-s">走行（R2＋下 = 低速走 ／ R2＋上 = 高速走）</text>
+  <text x="200" y="302" class="t-s" fill="var(--warn)">デモでは使わなくてよい</text>
 </svg></div>
   <p class="figcap-after">ボタンの対応は
   <a href="https://docs.quadruped.de/projects/g1/html/operation_1.4.html">QUADRUPED Docs の G1 操作編（Firmware V1.0.4）</a>
@@ -779,6 +724,16 @@ bash Demo/preflight.sh</code>
       <h3>⑦ 通常運転（Main Operation Control）　<code>R1 ＋ X</code></h3>
       <p><b>R1 を押しながら X</b>。歩行制御が動きだす。<b>START</b> で立ち、スティックで前後左右・旋回が効く。
       <b>まず小さく前後させて、素直に動くことを確かめてから見せる。</b></p>
+    </li>
+    <li>
+      <h3>プレモーションをいくつか出す</h3>
+      <p>通常運転に入ったら、<b>歩かせる前にプレモーションをいくつか出す。</b>
+      腕の動きなので歩行より見せやすく、<b>立位が安定していることの確認</b>にもなる。</p>
+      <p class="num">WaveHand（手を振る）<code>SELECT ＋ Y</code>　→　Clap（拍手）<code>A ダブルクリック</code></p>
+      <p>一覧はリモコン中央パネルの <b>Interactional</b> 欄。
+      ほかに Handshake <code>SELECT ＋ A</code>、Face Wave <code>Y ダブルクリック</code>、
+      Right Kiss <code>X ダブルクリック</code> がある。どれも <b>★ ＝ 短押し</b>で出る。</p>
+      <p>⚠️ <b>腕が振られるので、腕の可動範囲に人と物が無いことを確かめてから出すこと。</b></p>
     </li>
   </ol>
 
