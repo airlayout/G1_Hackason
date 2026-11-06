@@ -51,6 +51,7 @@ def main() -> int:
     import mujoco
 
     model, vecnorm, cfg = load_policy(args.model)
+    cfg.setdefault("scene", {}).setdefault("edge_focus", {})["prob"] = 0.0  # 動画も配置を偏らせない
     env = PressEnv(cfg)
     renderer = mujoco.Renderer(env.model, height=H, width=W)
     cam = mujoco.MjvCamera()

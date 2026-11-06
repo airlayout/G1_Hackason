@@ -75,6 +75,7 @@ def main() -> int:
     args = ap.parse_args()
 
     model, vecnorm, cfg = load_policy(args.model)
+    cfg.setdefault("scene", {}).setdefault("edge_focus", {})["prob"] = 0.0  # 評価は配置を偏らせない
     env = PressEnv(cfg)
     viewer = None
     if args.view:

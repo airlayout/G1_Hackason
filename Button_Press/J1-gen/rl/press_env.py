@@ -109,6 +109,11 @@ class PressEnv(gym.Env):
         if self._start_q.shape != (NUM_MOTORS,):
             raise ValueError(f"start_q は {NUM_MOTORS} 個: {self._start_q.shape}")
 
+        # 右肩（肩のピッチ関節）の位置（pelvis 座標）。胴体固定なので、開始の姿勢のものをそのまま使う（配置を球に収めるのに使う）
+        self.data.qpos[self._qadr] = self._start_q
+        mujoco.mj_forward(m, self.data)
+        self.shoulder = self.data.body("right_shoulder_pitch_link").xpos - self._pelvis
+
         self.action_space = gym.spaces.Box(-1.0, 1.0, shape=(7,), dtype=np.float32)
         self.observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(OBS_DIM,), dtype=np.float32)
 
@@ -127,14 +132,28 @@ class PressEnv(gym.Env):
     # ---- 配置 ---------------------------------------------------------------------------
 
     def sample_layout(self) -> dict[str, float]:
-        """配置（押す点の x、ボトルの y、縁からの隙間、天板の z）を設定の範囲から引く。縁が近すぎれば引き直す。"""
+        """配置（押す点の x、ボトルの y、縁からの隙間、天板の z）を設定の範囲から引く。縁が近すぎる、または押す点が
+        右肩から reach_radius_m の球の外（腕が届かない）なら引き直す。"""
         sc = self.cfg["scene"]
         u = self.np_random.uniform
+        # 学習だけ、左右の端の配置を多く引く（edge_focus。評価と動画では prob を 0 にする。0 のときは乱数を余計に使わない）
+        # 端か中かと右か左かは、引き直しの前に 1 回だけ決める（引き直しのたびに決めると、球で落とされやすい右が減る）
+        focus = sc.get("edge_focus") or {}
+        y_range = sc["bottle_y"]
+        if focus.get("prob", 0.0) > 0.0 and self.np_random.random() < focus["prob"]:
+            y_range = [sc["bottle_y"][0], focus["right_below"]] if self.np_random.random() < 0.5 \
+                else [focus["left_above"], sc["bottle_y"][1]]
         for _ in range(100):
-            lay = {"target_x": u(*sc["target_x"]), "bottle_y": u(*sc["bottle_y"]), "gap": u(*sc["gap"]),
+            lay = {"target_x": u(*sc["target_x"]), "bottle_y": u(*y_range), "gap": u(*sc["gap"]),
                    "top_z": u(*sc["top_z"])}
-            if lay["target_x"] - lay["gap"] >= sc["table_edge_min_m"]:
-                return lay
+            if lay["target_x"] - lay["gap"] < sc["table_edge_min_m"]:
+                continue
+            r = sc.get("reach_radius_m")
+            if r is not None:
+                target = np.array([lay["target_x"], lay["bottle_y"], lay["top_z"] + sc["press_height_m"]])
+                if np.linalg.norm(target - self.shoulder) > r:
+                    continue
+            return lay
         raise RuntimeError("配置を引けない（scene の範囲を見直す）")
 
     def set_layout(self, target_x: float, bottle_y: float, gap: float, top_z: float) -> None:

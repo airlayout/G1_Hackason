@@ -3,7 +3,7 @@
 進み具合と引き継ぎは [docs/reports/rl_press_log.md](../docs/reports/rl_press_log.md)。
 
 右腕 7 関節だけを強化学習の方策で動かし、ボトルの手前の面を押す。ボトルの位置は今の検出（YOLO と深度）で出す前提で、
-方策には位置を数値で渡す（画像は渡さない）。計画と比べ方・見積もりは [docs/reports/rl_press_plan.md](../docs/reports/rl_press_plan.md)。
+方策には位置を数値で渡す（画像は渡さない）。計画・比べ方・見積もりは [rl_press_log.md](../docs/reports/rl_press_log.md) の 2〜4、外の人向けの要約は [REPORT_rl_press.md](../docs/reports/REPORT_rl_press.md)。
 
 | ファイル | 中身 |
 |---|---|

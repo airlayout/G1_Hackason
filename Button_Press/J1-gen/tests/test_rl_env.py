@@ -28,6 +28,14 @@ class TestPressEnv(unittest.TestCase):
                 self.assertTrue(lo <= lay[k] <= hi, (k, lay[k]))
             self.assertGreaterEqual(lay["target_x"] - lay["gap"], sc["table_edge_min_m"])
 
+    def test_layout_inside_reach_sphere(self) -> None:
+        """引いた配置の押す点は、右肩から reach_radius_m の球の中に入る。肩は開始の姿勢の位置（腕の付け根）。"""
+        sc = self.env.cfg["scene"]
+        np.testing.assert_allclose(self.env.shoulder, [-0.001, -0.100, 0.292], atol=0.005)
+        for seed in range(100):
+            self.env.reset(seed=seed)
+            self.assertLessEqual(float(np.linalg.norm(self.env.target - self.env.shoulder)), sc["reach_radius_m"] + 1e-9)
+
     def test_obs_shape_and_target(self) -> None:
         layout = {"target_x": 0.35, "bottle_y": -0.15, "gap": 0.05, "top_z": 0.0}
         obs, _ = self.env.reset(seed=0, options={"layout": layout})
