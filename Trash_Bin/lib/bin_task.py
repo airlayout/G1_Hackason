@@ -69,6 +69,9 @@ def configure_pipeline(cfg: PipelineConfig, scene: dict[str, Any], side: str, po
     cfg.press["press"]["max_press_depth_m"] = max(depth, float(cfg.press["press"]["max_press_depth_m"]))
     if p.get("approach_m"):
         cfg.press["press"]["approach_distance_m"] = float(p["approach_m"])
+    # 押し込んだまま保持する時間（J1-gen の既定 0.5 秒）。この間に画像を撮る（lib/lean.py の follow）
+    if p.get("hold_s"):
+        cfg.press["press"]["hold_s"] = float(p["hold_s"])
     if p.get("speed_m_s") and not keep_speed:
         cfg.press["press"]["press_speed_m_s"] = float(p["speed_m_s"])
     # 押し込みを止める遅れ（J1-gen の contact_stop.lag_m）。ゴミ箱のフラップは 5 mm では開き切る前に止まる
@@ -118,6 +121,13 @@ class BinPipeline(PressPipeline):
         # 計画の関数に、今試している指の向きを渡す（J1-gen の make_plan は渡さないため）。
         # 立て直し（replan）は前の計画の指の向きを自分で渡すので、そのときはそちらを使う
         self.planner.plan = lambda *a, **k: plan(*a, **{"finger_axis": self._axis, **k})
+
+    def _on_stage(self, stage: str, plan: PressPlan) -> None:
+        """J1-gen の段階ごとの記録に加えて、押し込みが止まったら（end）、保持する間にも画像を撮るようにする。"""
+        super()._on_stage(stage, plan)
+        arm = getattr(self, "_arm", None)
+        if stage == "end" and self.grab_frame is not None and arm is not None and hasattr(arm, "hold_capture"):
+            arm.hold_capture = lambda i: self.logger.save_frame(f"hold{i + 1}", self.grab_frame())
 
     def _seeds(self, st: Any) -> list[tuple[str, np.ndarray | None]]:
         """J1-gen の IK の初期値（教えた姿勢・今の姿勢・ゼロ姿勢）に、設定の初期値を足す。

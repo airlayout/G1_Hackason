@@ -66,11 +66,12 @@ def add_bin_scene(spec: Any, cfg: dict[str, Any]) -> None:
     rgba = list(b["rgba"])
     t = float(b["wall_thickness"])
 
-    def box(name: str, lo: list[float], hi: list[float], color: list[float], collide: bool = True) -> None:
+    def box(name: str, lo: list[float], hi: list[float], color: list[float], collide: bool = True, group: int = 0) -> None:
         lo_, hi_ = np.asarray(lo, dtype=float), np.asarray(hi, dtype=float)
         geom = body.add_geom(name=name, type=mujoco.mjtGeom.mjGEOM_BOX, pos=list((lo_ + hi_) / 2),
                              size=list((hi_ - lo_) / 2))
         geom.rgba = color
+        geom.group = group
         if not collide:
             geom.contype, geom.conaffinity = 0, 0
 
@@ -100,7 +101,7 @@ def add_bin_scene(spec: Any, cfg: dict[str, Any]) -> None:
     gap = b.get("back_wall_gap_m")
     if gap is not None:
         box(f"{BIN}_wall", [x1 + float(gap), -1.5, g["z_ground"]], [x1 + float(gap) + 0.05, 1.5, g["z_ground"] + 2.0],
-            [0.85, 0.88, 0.88, 1.0])
+            [0.85, 0.88, 0.88, 1.0], group=2)  # 画面では 2 キーで消せる（ロボットは 0・1。頭カメラは 0〜2 を描くので写る）
     # 本体（中空）: 壁は上端まで、底は薄い板
     box(f"{BIN}_front", [x0, ya, zf], [x0 + t, yb, zt], rgba)
     box(f"{BIN}_back", [x1 - t, ya, zf], [x1, yb, zt], rgba)

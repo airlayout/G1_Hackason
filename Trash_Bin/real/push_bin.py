@@ -5,7 +5,9 @@
     $P Trash_Bin/real/push_bin.py --locate-only
     # 2. dry-run（既定）: 事前確認 → 見つける → 計画 → 指令の計算まで。送信しない
     $P Trash_Bin/real/push_bin.py
-    # 3. 本番: 事前確認 → 見つける → 押す → 中を撮る → 戻る（各段階で Enter）。腰は動かさない
+    # 3. 空振り: ゴミ箱を置かずに、設定の置き方（シミュレーションで確かめた位置）に向けて同じ腕の動きをする。体の動きを見る
+    $P Trash_Bin/real/push_bin.py --air --execute
+    # 4. 本番: 事前確認 → 見つける → 押す → 中を撮る → 戻る（各段階で Enter）。腰は動かさない
     $P Trash_Bin/real/push_bin.py --execute
 
 腕を動かす前に、ボタン押し（J1-gen の auto_press.py）と同じ事前確認をする（real/precheck.py）。通らなければ何も送らない。
@@ -42,9 +44,35 @@ from common.dds import peer_label  # noqa: E402
 from common.pipeline_cli import add_common_args, load_pipeline_config, make_logger  # noqa: E402
 from hand_shape import install as install_hand_shape  # noqa: E402
 from lean import LeaningCommander  # noqa: E402
-from locate_bin import LocateError, draw_detection, locate_bin  # noqa: E402
+from locate_bin import LocateError, draw_detection, locate_bin, measure_pelvis_height  # noqa: E402
 
 EXIT_PRECHECK = 10  # J1-gen の auto_press.py と同じ
+MAX_TILT_CHANGE_DEG = 1.0  # 1 回ごとの体の傾きの変化の目安。超えたら次の段階へ進まない（J1-gen が 2026-11-01 に使った値）
+
+
+def report_body_motion(log_dir: Path, code: int) -> None:
+    """記録（events.jsonl の body_motion）から体の傾きの変化を読み、次の段階へ進んでよいかの目安を表示する。"""
+    import json
+
+    if code != 0:
+        print(f"[push_bin] ⚠️ 途中で中止した（終了コード {code}）。次の段階へ進まない。理由を確かめる")
+        return
+
+    ev = None
+    try:
+        for line in open(log_dir / "events.jsonl", encoding="utf-8"):
+            e = json.loads(line)
+            if e.get("event") == "body_motion":
+                ev = e
+    except OSError:
+        pass
+    if ev is None or ev.get("imu_tilt_max_deg") is None:
+        print("[push_bin] 体の動きの記録が無い（体の傾きは画面の表示か body_motion.csv で見る）")
+        return
+    tilt = float(ev["imu_tilt_max_deg"])
+    ok = tilt <= MAX_TILT_CHANGE_DEG
+    print(f"[push_bin] 体の傾きの変化の最大: {tilt:.2f}°（目安 {MAX_TILT_CHANGE_DEG}° 以下）→ "
+          + ("次の段階へ進んでよい" if ok else "⚠️ 目安を超えた。次の段階へ進まない（ハーネスを外さない・ゴミ箱を置かない）"))
 
 
 def wait_state(backend, timeout_s: float = 5.0):  # noqa: ANN001,ANN201
@@ -111,6 +139,8 @@ def main() -> int:
     p.add_argument("--waist-pitch", type=float, help="押す前に腰を前に傾ける角度 [deg]（既定は設定の lean_waist_pitch_deg）")
     p.add_argument("--frames", type=int, default=5, help="ゴミ箱を測る枚数（中央値を使う）")
     p.add_argument("--locate-only", action="store_true", help="見つけるだけ（腕も腰も動かさない）")
+    p.add_argument("--air", action="store_true",
+                   help="空振り: ゴミ箱を置かずに、設定の置き方に向けて同じ腕の動きをする（深度で探さない。床から pelvis の高さだけ測る）")
     p.add_argument("--lean-only", action="store_true", help="腰だけを傾けて戻す（腕は動かさない）")
     p.add_argument("--lean-hold-s", type=float, default=3.0, help="--lean-only で、傾けたまま保つ秒数")
     p.add_argument("--execute", action="store_true", help="実際に送信する（付けなければ dry-run）")
@@ -135,7 +165,9 @@ def main() -> int:
     if args.network_interface:
         cfg.arm["network_interface"] = args.network_interface
     iface = cfg.arm["network_interface"]
-    mode = "見つけるだけ" if args.locate_only else ("腰だけ" if args.lean_only else "押す")
+    if args.air and args.locate_only:
+        p.error("--air と --locate-only は一緒に使えない")
+    mode = "見つけるだけ" if args.locate_only else ("腰だけ" if args.lean_only else ("空振り" if args.air else "押す"))
     print(f"[push_bin] {mode}。ネットワークの口: {iface or '（未設定）'}、相手: {peer_label(iface) if iface else '?'}、"
           f"{'送信する（--execute）' if args.execute else 'dry-run（送信しない）'}、腰 {scene.get('lean_waist_pitch_deg') or 0}°")
 
@@ -183,6 +215,31 @@ def main() -> int:
                 logger.close(code=EXIT_PRECHECK, message="事前確認が通らない")
                 return EXIT_PRECHECK
         transform = HeadCameraTransform(cfg.robot, np.asarray(cfg.localize["calibration"]["offset_pelvis_m"], dtype=float))
+        if args.air:
+            # 空振り: ゴミ箱は無いので探さない。シミュレーションで確かめた置き方（設定）に向けて、本番と同じ計画・動きをする。
+            # 床から pelvis の高さは測って表示する（台の高さを決める材料。押す点には使わない＝シミュレーションと同じ動きにする）
+            pose = pose_from_config(scene)
+            frame, st = src.read_rgbd(), wait_state(backend)
+            height = measure_pelvis_height(frame, transform, st.q[12:15], scene) if frame is not None else None
+            print(f"[push_bin] 空振り。床から求めた pelvis の高さ: "
+                  + (f"{height:.3f} m（設定 {scene['pelvis_height_m']:.3f} m）→ 台の高さの目安 "
+                     f"{(float(scene['bin']['stand_height_m']) + height - float(scene['pelvis_height_m'])) * 100:.0f} cm"
+                     if height is not None else "床が写っていないので測れない"))
+            logger.event("air", pelvis_height_m=height)
+            if frame is not None:
+                logger.save_frame("air_start", frame, waist_q=st.q[12:15])
+            target = configure_pipeline(cfg, scene, side, pose, keep_speed=args.speed_mm_s is not None)
+            print(f"[push_bin] 押す点（空中）: [{target[0]:+.3f}, {target[1]:+.3f}, {target[2]:+.3f}] m。"
+                  "ゴミ箱が無いので、計画の深さまで押し込んで保持し、戻る")
+            lean_rad = install_leaning(scene)
+            pipe = BinPipeline(cfg, backend, logger, src.read_rgbd, None, confirm=args.execute and not args.no_confirm,
+                               finger_tilts_deg=scene["push"].get("finger_tilts_deg") or [[0, 0]], lean_rad=lean_rad,
+                               extra_seeds_deg=scene["push"].get("ik_seeds_deg"))
+            res = pipe.run()
+            code = res.code
+            report_body_motion(logger.dir, code)
+            print(f"[push_bin] 記録: {logger.dir}")
+            return code
         pose, (frame, q_waist, det) = locate_from_frames(src, backend, transform, scene, args.frames, logger,
                                                          max_spread_m=0.02, max_spread_deg=3.0)
         apply_measured_pelvis_height(scene, det)  # 押す点の高さを、実機の pelvis の高さに合わせる
@@ -207,7 +264,9 @@ def main() -> int:
                            extra_seeds_deg=scene["push"].get("ik_seeds_deg"))
         res = pipe.run()
         code = res.code
-        print(f"[push_bin] 押し切った瞬間の頭カメラの画像: {logger.dir}/frames/（*_end_color.png）")
+        report_body_motion(logger.dir, code)
+        print(f"[push_bin] 中の確認用の頭カメラの画像（フラップを押し下げている間）: {logger.dir}/frames/ の"
+              " *_end_color.png（押し込みが止まった瞬間）と *_hold1〜3_color.png（保持中に 0.5 秒ごと）")
     except LocateError as e:
         print(f"[push_bin] ❌ ゴミ箱を見つけられない: {e}")
         logger.close(code=2, message=str(e))

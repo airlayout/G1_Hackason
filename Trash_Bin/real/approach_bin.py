@@ -37,7 +37,7 @@ sys.path.insert(0, str(REPO / "Button_Press" / "J1-gen"))
 sys.path.insert(0, str(REPO / "Trash_Bin" / "lib"))
 sys.path.insert(0, str(REPO / "Trash_Bin" / "sim"))  # 設定の読み込み（bin_scene.load_scene_config）だけ使う
 
-from approach import ApproachConfig, ApproachStep, approach_step  # noqa: E402
+from approach import ApproachConfig, ApproachStep, approach_step, measured_motion, walk_summary  # noqa: E402
 from bin_geometry import BinPose, pose_from_config  # noqa: E402
 from bin_scene import load_scene_config  # noqa: E402
 from common.arm import make_backend  # noqa: E402
@@ -136,6 +136,8 @@ def main() -> int:
         walker = Walker(args.execute)
         prior: BinPose | None = None
         lost = 0
+        last: tuple[BinPose, np.ndarray] | None = None  # 前回測った置き方と、そのあと指令した量（実際に動いた量と比べる）
+        walked: list[tuple[np.ndarray, np.ndarray]] = []
         for k in range(1, acfg.max_steps + 1):
             frame, st = None, None
             for _ in range(3):  # 最初の 1 枚は届くまで少しかかることがある
@@ -159,6 +161,14 @@ def main() -> int:
                 prior = None
                 continue
             lost = 0
+            if last is not None:
+                moved = measured_motion(last[0], det.pose)
+                walked.append((last[1], moved))
+                logger.event("walk_measured", commanded=last[1], measured=moved)
+                print(f"[approach]   前回の 1 歩: 指令 前 {last[1][0] * 100:+.1f} cm・左 {last[1][1] * 100:+.1f} cm・"
+                      f"{np.degrees(last[1][2]):+.1f}° → 測った 前 {moved[0] * 100:+.1f} cm・左 {moved[1] * 100:+.1f} cm・"
+                      f"{np.degrees(moved[2]):+.1f}°")
+            last = None
             step = approach_step(det.pose, target, acfg)
             print(f"[approach] {k} 回目: {det.summary()}")
             print(f"[approach]   {step.summary()}")
@@ -181,6 +191,7 @@ def main() -> int:
                     break
             walker.walk(step)
             time.sleep(acfg.settle_s)
+            last = (det.pose, np.array([step.vx, step.vy, step.vyaw]) * step.duration_s)
             # 次に測るときは、歩いた（つもりの）分だけ前回の置き方を動かし、探す範囲の中心にする
             dx, dy, dyaw = step.vx * step.duration_s, step.vy * step.duration_s, step.vyaw * step.duration_s
             cs, sn = np.cos(dyaw), np.sin(dyaw)
@@ -196,6 +207,11 @@ def main() -> int:
     finally:
         if walker is not None:
             walker.stop()
+        if args.execute:
+            # 小さく歩けたか（指令した量と、測った量の比）。10 日の実機で、歩く速さ・時間の決め方を直す材料にする
+            print("[approach] 歩いた量（指令 と 頭カメラで測った量）:")
+            for line in walk_summary(walked):
+                print(f"[approach]   {line}")
         backend.close()
         if src is not None:
             src.close()

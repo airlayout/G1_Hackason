@@ -33,7 +33,9 @@ def mirror_mask(model: Any, data: Any, renderer: Any, camera_name: str) -> np.nd
     """頭カメラの画像で、鏡面として扱う部品（すり鉢とフラップ）が写っている画素（True / False）。"""
     import mujoco
 
-    ids = [g for g in range(model.ngeom) if (model.geom(g).name or "").startswith(MIRROR_GEOMS)]
+    # 「NO」のステッカー（bin_flap_sticker）はつや消しなので鏡面にしない
+    ids = [g for g in range(model.ngeom) if (model.geom(g).name or "").startswith(MIRROR_GEOMS)
+           and not (model.geom(g).name or "").endswith("_sticker")]
     renderer.enable_segmentation_rendering()
     renderer.update_scene(data, camera=camera_name)
     seg = renderer.render().copy()

@@ -51,6 +51,16 @@ class BinSimBackend(SimBackend):
     J1-gen のファイルは変えずにシーンだけ差し替えるため、open() の間だけその関数をゴミ箱のものに置き換える。
     """
 
+    def set_view_camera(self) -> None:
+        """画面の視点を、ロボットの左後ろの上からゴミ箱を見る向きにする（後ろの壁がゴミ箱の奥になる）。画面が無ければ何もしない。"""
+        v = getattr(self, "_viewer", None)
+        if v is None:
+            return
+        with v.lock():
+            v.cam.lookat[:] = self.data.body("pelvis").xpos + np.array([0.35, -0.15, -0.25])
+            v.cam.distance, v.cam.azimuth, v.cam.elevation = 2.2, 25.0, -38.0
+        print("[sim] 画面: 2 キーで後ろの壁を消す・出す（頭カメラには写ったまま）。] / [ キーで頭カメラの視点")
+
     def open(self) -> None:
         orig = sim_scene.add_scene
         sim_scene.add_scene = add_bin_scene
@@ -61,6 +71,7 @@ class BinSimBackend(SimBackend):
         # 頭カメラを 16:9（848×480 など）で描けるように、画面外で描く大きさの上限を広げる（既定は 640×480）
         self.model.vis.global_.offwidth = max(int(self.model.vis.global_.offwidth), 1280)
         self.model.vis.global_.offheight = max(int(self.model.vis.global_.offheight), 960)
+        self.set_view_camera()
         self.flap_max_deg = 0.0
         self.bin_contacts: dict[str, float] = {}  # フラップ以外のゴミ箱と体の接触（組ごとの最大の力 [N]）
 

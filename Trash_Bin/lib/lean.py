@@ -18,6 +18,7 @@ ArmCommander は arm_sdk の経路で腰の 3 関節に「開始時の角度を�
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import numpy as np
@@ -41,6 +42,36 @@ class LeaningCommander(ArmCommander):
         self._pitch_start: float | None = None  # 開始時の腰の pitch（戻す先）
         self._leaned = False
         self._dry_lean = False  # dry-run で、傾けたつもりにしているか
+        # 押し込んだまま保持する間に、hold_frames 回に分けて呼ぶ関数（画像を撮る。lib/bin_task.py の BinPipeline が入れる）
+        self.hold_capture: Callable[[int], None] | None = None
+        self.hold_frames = 3
+
+    # ---- 押し込んだまま保持する間に画像を撮る ----------------------------------------
+
+    def follow(self, waypoints_arm: Sequence[np.ndarray], label: str = "軌道",
+               stop_when: Callable[[np.ndarray, np.ndarray], bool] | None = None) -> int:
+        """J1-gen の follow。ただし「押し込んだまま保持」は hold_frames 回に分けて送り、区切りごとに hold_capture を呼ぶ。
+
+        頭カメラの配信は 1 秒に 5 枚なので、押し込みが止まった瞬間の 1 枚だけだと、フラップが開き切る前の画像になりうる。
+        区切りの間（画像を撮る数十 ms）は指令を送らないが、腕は最後の指令を保つ。2 つ目の区切りからは Enter を待たない
+        （腕を伸ばしたまま待つと体が傾いていく。2026-10-31 の J1-gen の記録）。
+        """
+        wps = list(waypoints_arm)
+        k = self.hold_frames
+        if label != "押し込んだまま保持" or self.hold_capture is None or len(wps) < k:
+            return super().follow(wps, label, stop_when)
+        confirm, sent = self.confirm, 0
+        try:
+            for i in range(k):
+                sent += super().follow(wps[i * len(wps) // k:(i + 1) * len(wps) // k], label, stop_when) or 0
+                self.confirm = False
+                try:
+                    self.hold_capture(i)
+                except Exception as e:  # noqa: BLE001  画像が撮れなくても、腕の動きは止めない
+                    print(f"[lean] 保持中の画像を撮れなかった（{type(e).__name__}: {e}）")
+        finally:
+            self.confirm = confirm
+        return sent
 
     # ---- 腰を動かす ----------------------------------------------------------------
 

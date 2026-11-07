@@ -139,6 +139,9 @@ push:
                      [-38, 15], [-22, 15], [-38, 8], [-22, 8], [-52, 15], [-38, 22], [-22, 22], [-15, 15]]
   # 押す点の何 m 上から真下へ下ろすか。J1-gen の既定は 5 cm（press.yaml の approach_distance_m）
   approach_m: 0.08
+  # 押し込んだまま保持する時間 [s]（J1-gen の既定 0.5 秒）。この間に 3 回、頭カメラの画像を撮る（frames/ の *_hold1〜3_color.png）。
+  # 押し込みが止まった瞬間の 1 枚（*_end_color.png）だけだと、配信が 1 秒に 5 枚なのでフラップが開き切る前の画像になりうる
+  hold_s: 1.5
   # 押し込む速さ [m/s]。J1-gen の既定は 3 cm/s（press.yaml の press_speed_m_s）
   speed_m_s: 0.015
   # 手先が入ってよい箱（pelvis 座標 [m]）。J1-gen の press.yaml の workspace（ボタン押し用の仮の値、x の下限 0.10）を上書きする。

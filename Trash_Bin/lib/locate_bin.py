@@ -48,7 +48,8 @@ class BinDetection:
         c = self.pose.center_xy
         return (f"中心 [{c[0]:+.3f}, {c[1]:+.3f}] m、向き {np.degrees(self.pose.yaw):+.1f}°、"
                 f"大きさ {self.size_xy[0] * 100:.1f} × {self.size_xy[1] * 100:.1f} cm、点 {self.n_points} 個"
-                + ("（一部しか写っていない。設定の寸法で合わせ直した）" if self.partial else ""))
+                + ("（上面の深度で見つからず、フラップのステッカーで求めた）" if self.info.get("by_sticker")
+                   else "（一部しか写っていない。設定の寸法で合わせ直した）" if self.partial else ""))
 
 
 def depth_to_pelvis(frame: Any, transform: Any, q_waist: np.ndarray, step: int = 2) -> np.ndarray:
@@ -143,12 +144,85 @@ def _floor_level(pts: np.ndarray, transform: Any, q_waist: np.ndarray, z_floor: 
     return FloorLevel(rot=rot, pivot=pivot, dz=dz, tilt_deg=tilt, n_points=int(len(sel)))
 
 
+def locate_by_sticker(frame: Any, transform: Any, q_waist: np.ndarray, cfg: dict[str, Any],
+                      level: "FloorLevel | None" = None, min_white: int = 170, max_sat: int = 60) -> BinDetection:
+    """フラップの「NO」のステッカー（白・つや消し）から、ゴミ箱の置き方を求める。上面の深度が鏡面で欠けたときの予備。
+
+    ステッカーの画素 = カラーが白っぽく（明るさ min_white 以上・彩度 max_sat 以下）、深度があり、高さがフラップの面
+    （閉じた状態）の近くにある点。上から見たかたまりの中心と向きから、ゴミ箱の中心と向きを逆算する
+    （ステッカーはフラップの中心から flap.sticker_center だけずれた所、長い辺がゴミ箱の幅の向き）。
+    向きはステッカーの長方形の向きで決めるので、上面の縁で合わせるより粗い。見つからなければ LocateError。
+    """
+    import cv2
+
+    b, fl = cfg["bin"], cfg["flap"]
+    ph = float(cfg["pelvis_height_m"])
+    z_open = float(b["opening_z"]) + float(b.get("stand_height_m", 0.0)) - ph
+    hsv = cv2.cvtColor(frame.color_bgr, cv2.COLOR_BGR2HSV)
+    white = (hsv[:, :, 2] >= min_white) & (hsv[:, :, 1] <= max_sat)
+    d = frame.depth_m()
+    ok = white & (d > 0.15) & (d < 3.0)
+    vs, us = np.nonzero(ok)
+    if len(vs) < 30:
+        raise LocateError(f"ステッカーらしい白い画素（深度あり）が少ない（{len(vs)} 個）")
+    z = d[vs, us]
+    intr = frame.intrinsics
+    xyz = np.stack([(us - intr.cx) / intr.fx * z, (vs - intr.cy) / intr.fy * z, z], axis=1)
+    r, p = transform.pelvis_from_optical(np.asarray(q_waist, dtype=float))
+    pts = xyz @ r.T + p + transform.offset
+    if level is not None:
+        pts = level.apply(pts)
+    pts = pts[np.abs(pts[:, 2] - z_open) < 0.015]
+    if len(pts) < 30:
+        raise LocateError(f"フラップの高さに白い点が少ない（{len(pts)} 個）")
+    # 上から見て一番大きなかたまり（2 cm 以内でつながる点）
+    cell = 0.005
+    lo = pts[:, :2].min(axis=0) - 0.05
+    ij = np.floor((pts[:, :2] - lo) / cell).astype(int)
+    img = np.zeros(tuple(ij.max(axis=0) + 11), np.uint8)
+    img[ij[:, 0], ij[:, 1]] = 255
+    img = cv2.morphologyEx(img, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(img)
+    if n < 2:
+        raise LocateError("ステッカーのかたまりが見つからない")
+    k = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    cells = (np.argwhere(labels == k) + 0.5) * cell + lo
+    (cx, cy), (s1, s2), ang = cv2.minAreaRect(cells.astype(np.float32))
+    sx, sy = float(fl["sticker_size"][0]), float(fl["sticker_size"][1])
+    long_side, short_side = max(s1, s2), min(s1, s2)
+    if not (0.5 * sy <= long_side <= 1.6 * sy and 0.4 * sx <= short_side <= 1.8 * sx):
+        raise LocateError(f"白いかたまりが {long_side * 100:.1f} × {short_side * 100:.1f} cm で、ステッカー"
+                          f"（{sy * 100:.0f} × {sx * 100:.0f} cm）の大きさと合わない")
+    # 長い辺 = ゴミ箱の幅（y）の向き。ゴミ箱の x（奥行）はそれと直角で、ロボットから遠ざかる向き（±45° 以内の前提）
+    a = np.radians(ang) + (0.0 if s1 >= s2 else np.pi / 2)
+    ey = np.array([np.cos(a), np.sin(a)])
+    ex = np.array([ey[1], -ey[0]])
+    if ex[0] < 0:
+        ex = -ex
+    yaw = float(np.arctan2(ex[1], ex[0]))
+    off = np.asarray(fl["sticker_center"], dtype=float)  # フラップ（＝ゴミ箱の上面の中心）からのずれ（箱の x, y）
+    rot = np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
+    center = np.array([cx, cy]) - rot @ off
+    return BinDetection(pose=BinPose(center_xy=center, yaw=yaw), size_xy=(float(b["depth"]), float(b["width"])),
+                        n_points=int(len(pts)), partial=True,
+                        info={"by_sticker": True, "sticker_center": [float(cx), float(cy)],
+                              "sticker_size": [float(long_side), float(short_side)],
+                              "floor_level": None if level is None else level.summary()})
+
+
+def measure_pelvis_height(frame: Any, transform: Any, q_waist: np.ndarray, cfg: dict[str, Any]) -> float | None:
+    """深度で床を測って、床から pelvis までの高さ [m] を返す（床が写っていなければ None）。ゴミ箱は要らない（空振りのとき用）。"""
+    ph = float(cfg["pelvis_height_m"])
+    level = _floor_level(depth_to_pelvis(frame, transform, q_waist), transform, q_waist, -ph)
+    return None if level is None else ph + level.dz
+
+
 def locate_bin(frame: Any, transform: Any, q_waist: np.ndarray, cfg: dict[str, Any],
                band_m: tuple[float, float] = (0.02, 0.015), cell_m: float = 0.005,
                size_tol_m: float = 0.05, refine: bool = True, min_score: float = 0.6,
                join_m: float = 0.10, prior: BinPose | None = None, level_with_floor: bool = True,
                wall_above_m: float | None = None, wall_below_m: float = 0.08, wall_pad_m: float = 0.015,
-               remove_walls: bool | None = None) -> BinDetection:
+               remove_walls: bool | None = None, use_sticker: bool = True) -> BinDetection:
     """深度から、ゴミ箱の置き方を求める。見つからなければ LocateError。
 
     band_m: 上面の高さの範囲の余裕（開口の縁より下へ、上端より上へ）[m]
@@ -177,10 +251,24 @@ def locate_bin(frame: Any, transform: Any, q_waist: np.ndarray, cfg: dict[str, A
                   prior=prior, level_with_floor=level_with_floor, wall_above_m=wall_above_m, wall_below_m=wall_below_m,
                   wall_pad_m=wall_pad_m)
         try:
-            return locate_bin(frame, transform, q_waist, cfg, remove_walls=False, **kw)
-        except TooLargeError:
-            det = locate_bin(frame, transform, q_waist, cfg, remove_walls=True, **kw)
-            det.info["walls_removed"] = True
+            try:
+                return locate_bin(frame, transform, q_waist, cfg, remove_walls=False, **kw)
+            except TooLargeError:
+                det = locate_bin(frame, transform, q_waist, cfg, remove_walls=True, **kw)
+                det.info["walls_removed"] = True
+                return det
+        except LocateError as e:
+            # 上面の深度で見つからない（鏡面で欠けた・壁とつながった）ときは、フラップのステッカーで探す
+            if not use_sticker:
+                raise
+            ph_ = float(cfg["pelvis_height_m"])
+            pts_ = depth_to_pelvis(frame, transform, q_waist)
+            lvl = _floor_level(pts_, transform, q_waist, -ph_) if level_with_floor else None
+            try:
+                det = locate_by_sticker(frame, transform, q_waist, cfg, level=lvl)
+            except LocateError as e2:
+                raise LocateError(f"{e}。ステッカーでも見つからない: {e2}") from e
+            det.info["why_sticker"] = str(e)
             return det
 
     b = cfg["bin"]

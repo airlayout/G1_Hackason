@@ -26,7 +26,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from push_bin_sim import BinSimBackend  # noqa: E402  （J1-gen と lib/ のパスも通る）
-from approach import ApproachConfig, approach_step, stand_error  # noqa: E402
+from approach import ApproachConfig, approach_step, stand_error, measured_motion, walk_summary # noqa: E402
 from bin_geometry import BinPose, pose_from_config  # noqa: E402
 from bin_scene import load_scene_config, start_pose  # noqa: E402
 from common.camera_geometry import HeadCameraTransform  # noqa: E402
@@ -143,6 +143,8 @@ def main() -> int:
           f"{np.degrees(stand_error(truth, target)[2]):+.1f}°")
 
     prior, lost, ok = None, 0, False
+    last = None  # (前回測った置き方, 指令した量, 本当に動いた量)
+    walked, truths = [], []
     for k in range(1, cfg.max_steps + 1):
         backend.tick(0.02)
         frame = camera.render()
@@ -161,6 +163,10 @@ def main() -> int:
             prior = None
             continue
         lost = 0
+        if last is not None:
+            walked.append((last[1], measured_motion(last[0], det.pose)))
+            truths.append(last[2])
+        last = None
         prior = det.pose
         meas_err = np.linalg.norm(det.pose.center_xy - truth.center_xy) * 100
         step = approach_step(det.pose, target, cfg)
@@ -170,6 +176,7 @@ def main() -> int:
             ok = True
             break
         new_truth, moved = walk(truth, step.vx, step.vy, step.vyaw, step.duration_s, rng, args.walk_error, args.slip)
+        last = (det.pose, np.array([step.vx, step.vy, step.vyaw]) * step.duration_s, moved)
         if backend.viewer_running():
             animate_bin(backend, truth, new_truth, step.duration_s)
             time.sleep(0.5)  # 止まって測る間
@@ -180,6 +187,13 @@ def main() -> int:
         prior, _ = walk(prior, step.vx, step.vy, step.vyaw, step.duration_s, np.random.default_rng(0), 0.0, 0.0)
         del planned, moved
 
+    if walked:
+        print("[approach] 歩いた量（指令 と 頭カメラで測った量。real/approach_bin.py と同じ集計）:")
+        for line in walk_summary(walked):
+            print(f"[approach]   {line}")
+        err = np.array([m - t for (_, m), t in zip(walked, truths)])
+        print(f"[approach]   測った量と本当に動いた量の差（最大）: 前 {np.abs(err[:, 0]).max() * 100:.1f} cm・"
+              f"左 {np.abs(err[:, 1]).max() * 100:.1f} cm・{np.degrees(np.abs(err[:, 2]).max()):.1f}°")
     final = stand_error(truth, target)
     print(f"[approach] {'着いた' if ok else '着かなかった'}。最後の立つ位置のずれ（正解）: 前 {final[0] * 100:+.1f} cm・"
           f"左 {final[1] * 100:+.1f} cm・向き {np.degrees(final[2]):+.1f}°")

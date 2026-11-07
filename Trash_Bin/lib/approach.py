@@ -97,3 +97,34 @@ def approach_step(measured: BinPose, target: BinPose, cfg: ApproachConfig) -> Ap
     max_vx = cfg.max_vx if dx >= 0 else cfg.max_reverse_vx
     t = max(abs(dx) / max_vx, abs(dy) / cfg.max_vy, abs(dyaw) / cfg.max_vyaw, cfg.min_step_s)
     return ApproachStep(done=False, error=err, vx=dx / t, vy=dy / t, vyaw=dyaw / t, duration_s=float(t))
+
+
+def measured_motion(before: BinPose, after: BinPose) -> np.ndarray:
+    """歩く前と後に測ったゴミ箱の置き方（pelvis 座標）から、ロボットが実際に動いた量 (dx, dy, dyaw) を求める。
+
+    ゴミ箱は動かないので、after = R(dyaw)⁻¹ (before − d) の関係から d と dyaw を逆算する（dx 前、dy 左、dyaw 左回り [rad]）。
+    測る誤差（中心 約 1 cm・向き 約 1°）がそのまま入る。
+    """
+    dyaw = float(np.arctan2(np.sin(before.yaw - after.yaw), np.cos(before.yaw - after.yaw)))
+    d = np.asarray(before.center_xy, dtype=float) - _rot2(dyaw) @ np.asarray(after.center_xy, dtype=float)
+    return np.array([d[0], d[1], dyaw])
+
+
+def walk_summary(rows: list[tuple[np.ndarray, np.ndarray]], min_cmd: tuple[float, float, float] = (0.03, 0.03, 0.087)) -> list[str]:
+    """(指令した量, 測った量) の組から、軸ごとの「測った ÷ 指令」を表示用の行にする。指令が min_cmd 未満の軸は比に入れない。"""
+    if not rows:
+        return ["歩いた記録が無い"]
+    lines = ["回 | 指令 前 cm・左 cm・回 ° | 測った 前 cm・左 cm・回 °"]
+    for i, (c, m) in enumerate(rows, start=1):
+        lines.append(f"{i:2d} | {c[0] * 100:+6.1f} {c[1] * 100:+6.1f} {np.degrees(c[2]):+6.1f} | "
+                     f"{m[0] * 100:+6.1f} {m[1] * 100:+6.1f} {np.degrees(m[2]):+6.1f}")
+    names = ("前後", "左右", "向き")
+    for ax in range(3):
+        sel = [(c[ax], m[ax]) for c, m in rows if abs(c[ax]) >= min_cmd[ax]]
+        if sel:
+            ratio = sum(m for _, m in sel) / sum(c for c, _ in sel)
+            lines.append(f"{names[ax]}: 測った ÷ 指令 = {ratio:.2f}（{len(sel)} 回）")
+    # シミュレーション（2026-11-08）で、測った量と本当に動いた量の差は 前後 最大 1.7 cm、左右 最大 5.6 cm・向き 4.7°。
+    # 向きの測り間違い 1° で、1 m 先のゴミ箱から逆算する左右が約 1.5 cm ずれるため
+    lines.append("前後は 2 cm ほどの精度。左右と向きは測る誤差が大きい（1 歩で数 cm・数°）ので、何回分かの傾向だけを見る")
+    return lines
