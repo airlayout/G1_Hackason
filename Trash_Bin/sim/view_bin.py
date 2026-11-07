@@ -30,7 +30,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from push_bin_sim import BinSimBackend, finger_axis  # noqa: E402  （J1-gen を import できるようにパスも通る）
+from push_bin_sim import BinSimBackend  # noqa: E402  （J1-gen と lib/ を import できるようにパスも通る）
+from bin_task import finger_axis  # noqa: E402
 from bin_scene import CONTENT, FLAP, bin_obstacles, flap_angle_deg, load_scene_config, push_point, start_pose  # noqa: E402
 from common.arm.types import JointCommand  # noqa: E402
 from hand_shape import install as install_hand_shape  # noqa: E402
@@ -70,7 +71,7 @@ def main() -> int:
     p.add_argument("--bin-front", type=float, help="ゴミ箱の正面の x [m]（pelvis 座標）")
     p.add_argument("--bin-y", type=float, help="ゴミ箱の中心の y [m]（pelvis 座標。右が −）")
     p.add_argument("--waist-pitch", type=float, help="押す前に腰を前に傾ける角度 [deg]（既定はシーンの設定の lean_waist_pitch_deg。0 なら傾けない）")
-    p.add_argument("--lift-m", type=float, default=0.0, help="ゴミ箱を台に載せて高くする量 [m]")
+    p.add_argument("--lift-m", type=float, help="ゴミ箱を載せる台の高さ [m]（既定はシーンの設定の bin.stand_height_m）")
     p.add_argument("--half", choices=["right", "left"], help="フラップのどちらの半分を押すか（既定は右）")
     p.add_argument("--inset", type=float, help="開口の手前の縁から押す点までの奥行 [m]")
     p.add_argument("--from-axis", type=float, help="フラップの軸から押す点までの距離 [m]")
@@ -100,8 +101,8 @@ def main() -> int:
         scene["bin"]["center_y"] = args.bin_y
     if args.waist_pitch is not None:
         scene["lean_waist_pitch_deg"] = args.waist_pitch
-    if args.lift_m:
-        scene["pelvis_height_m"] = float(scene["pelvis_height_m"]) - args.lift_m
+    if args.lift_m is not None:
+        scene["bin"]["stand_height_m"] = args.lift_m  # ゴミ箱を載せる台の高さ
     for key, val in (("half", args.half), ("inset_m", args.inset), ("from_axis_m", args.from_axis)):
         if val is not None:
             scene["push"][key] = val
@@ -168,10 +169,13 @@ def run_motion(args: argparse.Namespace, scene: dict, robot: dict, arm_cfg: dict
     zero = q_lean.copy()
     zero[idx] = 0.0
     seeds = [q_lean, zero]
-    if args.via:
-        via = q_lean.copy()
-        via[idx] = np.radians(json.loads(args.via))
-        seeds.insert(0, via)
+    # 経由する姿勢（押す流れと同じ。--via が無ければ設定の push.via_pose）。開始 → 経由 → 押す点の上 の順に動く
+    via_cfg = json.loads(args.via) if args.via else scene["push"].get("via_pose")
+    q_via = None
+    if via_cfg is not None:
+        q_via = q_lean.copy()
+        q_via[idx] = 0.0 if via_cfg == "zero" else np.radians(np.asarray(via_cfg, dtype=float))
+        seeds.insert(0, q_via)
     # 指の向きの候補を順に試し、押す点の上の姿勢が安全基準を満たす最初のものを使う（計画の流れと同じ）
     tilts = [args.tilt] if args.tilt else (scene["push"].get("finger_tilts_deg") or [[0.0, 0.0]])
     for tilt in tilts:
@@ -252,11 +256,13 @@ def run_motion(args: argparse.Namespace, scene: dict, robot: dict, arm_cfg: dict
             key = f"{other} ↔ {names[0]}"
             hits[key] = max(hits.get(key, 0.0), abs(float(f6[0])))
 
-    print("[view] 動かす: 開始の姿勢 → 腰を傾ける → 押す点の上 → 真下へ押し込む → 保持 → 戻る → 腰を戻す")
+    print("[view] 動かす: 開始の姿勢 → 腰を傾ける → 経由の姿勢 → 押す点の上 → 真下へ押し込む → 保持 → 戻る → 腰を戻す")
     hold(1.5)
     if lean:
         print(f"[view] 腰を前に {np.degrees(lean):.0f}° 傾ける")
         waist_to(q_lean[WAIST_PITCH])
+    if q_via is not None:
+        go(q_via, 3.0)
     go(q_app, 3.0)
     # 押し込み: 指先が進まなくなったら（指令した指先が実際の指先より押す向きに lag_m 以上先に出たら）それ以上押さず、
     # 今の実際の姿勢を保つ。J1-gen の contact_stop と同じ考え方（決めた深さまで押し続けると、フラップが逃げたあとも
@@ -288,6 +294,10 @@ def run_motion(args: argparse.Namespace, scene: dict, robot: dict, arm_cfg: dict
     go(q_app, 2.0)
     q_back = q0.copy()
     q_back[WAIST_PITCH] = cmd.q[WAIST_PITCH]  # 腕を戻すあいだは、腰は傾けたまま
+    if q_via is not None:
+        q_v = q_via.copy()
+        q_v[WAIST_PITCH] = cmd.q[WAIST_PITCH]
+        go(q_v, 3.0)
     go(q_back, 3.0)
     if lean:
         print("[view] 腰を戻す")

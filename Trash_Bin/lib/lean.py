@@ -40,6 +40,7 @@ class LeaningCommander(ArmCommander):
         self.max_error = np.radians(float(max_error_deg))
         self._pitch_start: float | None = None  # 開始時の腰の pitch（戻す先）
         self._leaned = False
+        self._dry_lean = False  # dry-run で、傾けたつもりにしているか
 
     # ---- 腰を動かす ----------------------------------------------------------------
 
@@ -78,6 +79,12 @@ class LeaningCommander(ArmCommander):
         """腰を開始時の角度 + lean_rad まで傾ける。"""
         if self.lean_rad == 0.0:
             return
+        if self.backend.dry_run:
+            # dry-run は指令を送らないので、腰は傾かない。安全確認の基準は動かさず、計画の確かめ（measured_q）だけ
+            # 傾けたつもりの角度で行う（基準を動かすと、実測が付いてこないので「腰がずれた」で中止になる）
+            self._dry_lean = True
+            print(f"[lean] dry-run なので腰は動かさない（計画は腰 {np.degrees(self.lean_rad):+.1f}° のつもりで確かめる）")
+            return
         self._pitch_start = float(self._cmd.q[WAIST_PITCH])
         self._leaned = True  # 途中で中止しても戻すように、動かし始める前に立てる
         self._move_waist_pitch(self._pitch_start + self.lean_rad, "腰を前に傾ける")
@@ -88,6 +95,14 @@ class LeaningCommander(ArmCommander):
             return
         self._move_waist_pitch(self._pitch_start, "腰を戻す")
         self._leaned = False
+
+    def measured_q(self) -> np.ndarray:
+        """lowstate の最新の関節角。dry-run で傾けたつもりのときは、腰の pitch に lean_rad を足す
+        （J1-gen は押す手前で、この値の腰の角度で計画を立て直す）。"""
+        q = super().measured_q()
+        if self._dry_lean:
+            q[WAIST_PITCH] += self.lean_rad
+        return q
 
     # ---- J1-gen の開始・終了に組み込む ----------------------------------------------------
 

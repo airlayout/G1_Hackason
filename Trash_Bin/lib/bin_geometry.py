@@ -44,15 +44,20 @@ def pose_from_config(cfg: dict[str, Any]) -> BinPose:
 
 
 def local_geometry(cfg: dict[str, Any]) -> dict[str, float]:
-    """箱の座標での寸法（x0/x1: 正面/背面、ya/yb: 右/左の側面、o*: 開口の縁、z*: 高さ）。"""
+    """箱の座標での寸法（x0/x1: 正面/背面、ya/yb: 右/左の側面、o*: 開口の縁、z*: 高さ）。
+
+    z_ground は床、z_floor はゴミ箱の底（台 bin.stand_height_m に載せたら、その分だけ床より上）。
+    """
     b = cfg["bin"]
     ph = float(cfg["pelvis_height_m"])
+    base = float(b.get("stand_height_m", 0.0))
     d, w = float(b["depth"]), float(b["width"])
     od, ow = float(b["opening_depth"]), float(b["opening_width"])
     return {
         "x0": -d / 2, "x1": d / 2, "ya": -w / 2, "yb": w / 2,
         "ox0": -od / 2, "ox1": od / 2, "oy0": -ow / 2, "oy1": ow / 2,
-        "z_floor": -ph, "z_top": float(b["height"]) - ph, "z_open": float(b["opening_z"]) - ph,
+        "z_ground": -ph, "z_floor": base - ph, "z_top": float(b["height"]) + base - ph,
+        "z_open": float(b["opening_z"]) + base - ph,
     }
 
 
@@ -87,7 +92,7 @@ def bin_obstacles(cfg: dict[str, Any], steps: int = 4, margin_m: float = 0.0,
     g = local_geometry(cfg)
     x0, x1, ya, yb = g["x0"], g["x1"], g["ya"], g["yb"]
     ox0, ox1, oy0, oy1 = g["ox0"], g["ox1"], g["oy0"], g["oy1"]
-    zf, zt, zo = g["z_floor"], g["z_top"], g["z_open"]
+    zf, zt, zo = g["z_ground"], g["z_top"], g["z_open"]  # 台も障害物なので、箱は床から
     boxes: list[tuple[str, list[float], list[float]]] = []
     # 正面側・背面側の帯（幅いっぱい）と、左右の帯（開口の奥行の範囲）。edge は開口の縁の座標、outer は外周の座標
     for name, edge, outer, axis in (("front", ox0, x0, "x"), ("back", ox1, x1, "x"),

@@ -50,6 +50,16 @@ def add_bin_scene(spec: Any, cfg: dict[str, Any]) -> None:
     g = local_geometry(cfg)
     b, fl = cfg["bin"], cfg["flap"]
     pelvis = np.asarray(spec.body("pelvis").pos, dtype=float)
+    # 床を pelvis から pelvis_height_m 下に置く（公式 XML の床は、脚をまっすぐ伸ばした pelvis 0.793 m の高さに合わせてある）。
+    # 床は見た目と深度のためだけ（ロボットは pelvis を固定しているので、足との当たり判定は要らない）
+    for gm in spec.worldbody.geoms:
+        if gm.name == "floor":
+            gm.pos = [gm.pos[0], gm.pos[1], float(pelvis[2] - float(cfg["pelvis_height_m"]))]
+            gm.contype, gm.conaffinity = 0, 0
+    # pelvis と太ももの付け根は親子のリンクで、実機でもメッシュが少し重なる。MuJoCo は親子の接触を無視するが、pelvis を世界に固定すると
+    # その対象から外れ、脚を曲げた立ち方で股関節が弾かれて −16° → −6° に動き、足が後ろへ流れた（2026-11-07）
+    for leg in ("left", "right"):
+        spec.add_exclude(bodyname1="pelvis", bodyname2=f"{leg}_hip_pitch_link")
     yaw = pose.yaw
     body = spec.worldbody.add_body(name=f"{BIN}_body", pos=list(pelvis + [pose.center_xy[0], pose.center_xy[1], 0.0]),
                                    quat=[float(np.cos(yaw / 2)), 0.0, 0.0, float(np.sin(yaw / 2))])
@@ -83,6 +93,14 @@ def add_bin_scene(spec: Any, cfg: dict[str, Any]) -> None:
 
     x0, x1, ya, yb = g["x0"], g["x1"], g["ya"], g["yb"]
     zf, zt, zo = g["z_floor"], g["z_top"], g["z_open"]
+    # 台（bin.stand_height_m）: 床からゴミ箱の底まで、ゴミ箱と同じ大きさの箱
+    if zf > g["z_ground"]:
+        box(f"{BIN}_stand", [x0, ya, g["z_ground"]], [x1, yb, zf], [0.45, 0.35, 0.25, 1.0])
+    # 後ろの壁（bin.back_wall_gap_m。実物は壁際に置いてある）: ゴミ箱の背面からこの距離の、幅 3 m・高さ 2 m の壁
+    gap = b.get("back_wall_gap_m")
+    if gap is not None:
+        box(f"{BIN}_wall", [x1 + float(gap), -1.5, g["z_ground"]], [x1 + float(gap) + 0.05, 1.5, g["z_ground"] + 2.0],
+            [0.85, 0.88, 0.88, 1.0])
     # 本体（中空）: 壁は上端まで、底は薄い板
     box(f"{BIN}_front", [x0, ya, zf], [x0 + t, yb, zt], rgba)
     box(f"{BIN}_back", [x1 - t, ya, zf], [x1, yb, zt], rgba)
@@ -124,10 +142,11 @@ def add_bin_scene(spec: Any, cfg: dict[str, Any]) -> None:
 
     # 中身（見た目だけ）。位置はゴミ箱の上面の中心から
     ph = float(cfg["pelvis_height_m"])
+    base = float(b.get("stand_height_m", 0.0))
     for c in cfg.get("contents") or []:
         cx, cy = float(c["center"][0]), float(c["center"][1])
         sx, sy = float(c["size"][0]) / 2, float(c["size"][1]) / 2
-        z0, z1 = float(c["z"][0]) - ph, float(c["z"][1]) - ph
+        z0, z1 = float(c["z"][0]) + base - ph, float(c["z"][1]) + base - ph
         box(f"{CONTENT}{c['name']}", [cx - sx, cy - sy, z0], [cx + sx, cy + sy, z1], list(c["rgba"]), collide=False)
 
 
@@ -155,6 +174,12 @@ def start_pose(cfg: dict[str, Any], q: np.ndarray) -> np.ndarray:
     out = np.asarray(q, dtype=float).copy()
     for idx, deg in (cfg.get("detection_pose_deg") or {}).items():
         out[int(idx)] = np.radians(float(deg))
+    # 実機の立ち方（膝の実測値）。足裏を水平にして足首を股の真下に置く: 股 −0.47 倍、足首 −0.53 倍（太ももとすねの長さの比から）
+    knee = cfg.get("stand_knee_deg")
+    if knee:
+        k = np.radians(float(knee))
+        for base in (0, 6):  # 左脚 motor 0〜5、右脚 6〜11（hip_pitch, hip_roll, hip_yaw, knee, ankle_pitch, ankle_roll）
+            out[base + 0], out[base + 3], out[base + 4] = -0.47 * k, k, -0.53 * k
     arm = cfg.get("start_right_arm_deg")
     if arm is not None:
         out[22:29] = np.radians(np.asarray(arm, dtype=float))  # 右腕は motor 22〜28
