@@ -1,6 +1,11 @@
-"""腰を前に傾けて押すための、腕の指令（Button_Press/J1-gen の ArmCommander を継承）。sim / real 共通。
+"""ゴミ箱を押すときの腕の指令（Button_Press/J1-gen の ArmCommander を継承）。sim / real 共通。
 
-正面のゴミ箱は、腰を傾けないと腕が届かない（Trash_Bin/configs/bin_scene.yaml の lean_waist_pitch_deg を参照）。
+足しているのは 2 つ:
+- 押し込んだまま保持する間に、何回かに分けて画像を撮る（follow）。今の流れで使っている
+- 腰を前に傾けて押す（lean_waist_pitch_deg）。**今は使っていない**: 安全のため腰は曲げず、ゴミ箱を台に載せる方針にした
+  （2026-11-07）。腰を傾ければ届く範囲は広がる（10° で約 3 cm 深く届く）ので、仕組みだけ残している
+
+以下は腰を傾ける仕組みの説明。
 ArmCommander は arm_sdk の経路で腰の 3 関節に「開始時の角度を保つ」指令を送っているので、その目標をゆっくり動かして傾ける。
 
 なぜ ArmCommander の中でやるのか: 指令を終えると weight が 0 に戻り、腰は内蔵コントローラの姿勢（直立）へ戻る。
@@ -49,8 +54,9 @@ class LeaningCommander(ArmCommander):
     # ---- 押し込んだまま保持する間に画像を撮る ----------------------------------------
 
     def follow(self, waypoints_arm: Sequence[np.ndarray], label: str = "軌道",
-               stop_when: Callable[[np.ndarray, np.ndarray], bool] | None = None) -> int:
+               stop_when: Callable[[np.ndarray, np.ndarray], bool] | None = None, **kwargs: Any) -> int:
         """J1-gen の follow。ただし「押し込んだまま保持」は hold_frames 回に分けて送り、区切りごとに hold_capture を呼ぶ。
+        kwargs（J1-gen の新しい版の expect_motion など）はそのまま渡す。
 
         頭カメラの配信は 1 秒に 5 枚なので、押し込みが止まった瞬間の 1 枚だけだと、フラップが開き切る前の画像になりうる。
         区切りの間（画像を撮る数十 ms）は指令を送らないが、腕は最後の指令を保つ。2 つ目の区切りからは Enter を待たない
@@ -59,11 +65,11 @@ class LeaningCommander(ArmCommander):
         wps = list(waypoints_arm)
         k = self.hold_frames
         if label != "押し込んだまま保持" or self.hold_capture is None or len(wps) < k:
-            return super().follow(wps, label, stop_when)
+            return super().follow(wps, label, stop_when, **kwargs)
         confirm, sent = self.confirm, 0
         try:
             for i in range(k):
-                sent += super().follow(wps[i * len(wps) // k:(i + 1) * len(wps) // k], label, stop_when) or 0
+                sent += super().follow(wps[i * len(wps) // k:(i + 1) * len(wps) // k], label, stop_when, **kwargs) or 0
                 self.confirm = False
                 try:
                     self.hold_capture(i)

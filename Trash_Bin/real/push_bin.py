@@ -268,9 +268,13 @@ def main() -> int:
         pipe = BinPipeline(cfg, backend, logger, src.read_rgbd, None, confirm=args.execute and not args.no_confirm,
                            finger_tilts_deg=scene["push"].get("finger_tilts_deg") or [[0, 0]], lean_rad=lean_rad,
                            extra_seeds_deg=scene["push"].get("ik_seeds_deg"))
+        pipe.contents_ctx = {"scene": scene, "pose": pose, "transform": transform}  # 保持中に中身を深度で測る
         res = pipe.run()
         code = res.code
         report_body_motion(logger.dir, code)
+        from contents import best_of, summary
+
+        print(f"[push_bin] {summary(best_of(pipe.contents))}（画像でも確かめる）")
         print(f"[push_bin] 中の確認用の頭カメラの画像（フラップを押し下げている間）: {logger.dir}/frames/ の"
               " *_end_color.png（押し込みが止まった瞬間）と *_hold1〜3_color.png（保持中に 0.5 秒ごと）")
     except LocateError as e:

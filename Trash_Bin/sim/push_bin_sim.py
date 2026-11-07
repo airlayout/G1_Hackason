@@ -136,6 +136,16 @@ def run_sim(args: argparse.Namespace) -> tuple[PipelineResult, BinSimBackend, An
     from approach_sim import apply_scene_args
 
     apply_scene_args(scene, args)
+    # 中身の量を変える（深度で中身を測る確認用）。--empty-bin で空、--bag-top-m で袋の上面の高さ（底から）。上の 2 つも一緒に動かす
+    if args.empty_bin:
+        scene["contents"] = []
+    elif args.bag_top_m is not None:
+        old = next((float(c["z"][1]) for c in scene.get("contents") or [] if c["name"] == "bag"), None)
+        for c in scene.get("contents") or []:
+            if c["name"] == "bag":
+                c["z"] = [float(c["z"][0]), args.bag_top_m]
+            elif old is not None:
+                c["z"] = [float(c["z"][0]) - old + args.bag_top_m, float(c["z"][1]) - old + args.bag_top_m]
     if args.waist_pitch is not None:
         scene["lean_waist_pitch_deg"] = args.waist_pitch
     if args.lift_m is not None:
@@ -232,11 +242,14 @@ def run_sim(args: argparse.Namespace) -> tuple[PipelineResult, BinSimBackend, An
                           lean_rad=lean_rad, extra_seeds_deg=scene["push"].get("ik_seeds_deg"),
                           finger_tilts_deg=(json.loads(args.tilts) if args.tilts
                                             else scene["push"].get("finger_tilts_deg") or [[0, 0]]))
+    pipe.contents_ctx = {"scene": scene, "pose": pose, "transform": locate_tf}
     try:
         res = pipe.run()
     finally:
         camera.close()
-    summary = {"result": "成功" if res.code == 0 else res.message, "code": res.code,
+    from contents import best_of
+
+    summary = {"result": "成功" if res.code == 0 else res.message, "code": res.code, "contents": best_of(pipe.contents),
                "push_point_pelvis_m": target.round(4).tolist(), "depth_m": depth, "located": located,
                "flap_max_deg": round(backend.flap_max_deg, 1), "bin_contacts_N": backend.bin_contacts, **pipe.measure}
     return res, backend, logger, summary
@@ -247,6 +260,8 @@ def main() -> int:
     add_common_args(p)
     p.add_argument("--scene", help="シーンの設定（既定は Trash_Bin/configs/bin_scene.yaml）")
     p.add_argument("--inset", type=float, help="開口の手前の縁から押す点までの奥行 [m]（既定はシーンの設定）")
+    p.add_argument("--empty-bin", action="store_true", help="中身を入れない（深度で中身を測る確認用）")
+    p.add_argument("--bag-top-m", type=float, help="袋の上面の高さ（ゴミ箱の底から [m]。既定はシーンの設定の 0.30）")
     p.add_argument("--from-axis", type=float, help="フラップの軸から押す点までの距離 [m]（既定はシーンの設定）")
     p.add_argument("--via", help='経由する姿勢: zero | "" (直接) | "[7 つの角度 deg]"（既定はシーンの設定）')
     p.add_argument("--approach-mm", type=float, help="押す点の何 mm 手前（上）まで関節空間で動くか（既定は press.yaml の 50）")

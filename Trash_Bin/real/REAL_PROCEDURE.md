@@ -139,6 +139,8 @@ $P Trash_Bin/real/push_bin.py --execute    # 本番
 
 段階ごとに Enter: 開始 → 経由の姿勢 → 押す点の上 → 押し込み → 保持（1.5 秒、この間に 3 回撮る）→ 戻る。
 中の確認用の画像は `frames/` の下の `*_end_color.png`（押し込みが止まった瞬間）と `*_hold1〜3_color.png`（保持中）。
+保持中の 3 枚の深度から、中身がどこまで溜まっているかも表示する（`lib/contents.py`。上面の高さと判定）。頭カメラは斜めから見るので底は見えず、
+「見える範囲には無い」は「底から十数 cm より上には何も無い」の意味。黒い袋は深度が欠けやすいので、必ず画像でも確かめる。
 最後に体の傾きの変化が出る。1° を超えたら、次の回へ進まない。
 
 ## 持ち帰るもの
@@ -150,5 +152,6 @@ $P Trash_Bin/real/push_bin.py --execute    # 本番
 - 4 の深度（`*_locate_*`、立つ位置・0.5 m・1 m）
 - 5 のフラップの力
 - 6 の歩いた量の集計（画面の表示と `events.jsonl` の `walk_measured`）
-- 7 の中の画像（`*_end_color.png`・`*_hold*_color.png`）と `body_motion.csv`
+- 7 の中の画像（`*_end_color.png`・`*_hold*_color.png`）、中身の判定（`events.jsonl` の `contents`）、`body_motion.csv`
+- できれば、中身の量を変えて（空・半分・満杯に近い）7 を繰り返し、判定と実物を比べる
 - Jigen さんの 11/3 の生ログ（`lowstate`・`body_log`）。立ったときの脚の角度で、pelvis の高さの推定を確かめる

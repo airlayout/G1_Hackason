@@ -2,7 +2,7 @@
 
 Button_Press/J1-gen の PressPipeline をそのまま使い（J1-gen のファイルは変えない）、ここで次を足す:
 - configure_pipeline: シーンの設定（configs/bin_scene.yaml の push など）を、J1-gen の設定（cfg.press / pipeline / arm）に当てる
-- install_leaning: J1-gen の流れが使う ArmCommander を、腰を傾けて戻すもの（lib/lean.py）に差し替える
+- install_leaning: J1-gen の流れが使う ArmCommander を、lib/lean.py のもの（保持中に撮る・腰を傾ける）に差し替える
 - BinPipeline: 指の向きの候補を順に試す。腕を動かす前の計画を、傾けたあとの腰の角度で立てる
 """
 
@@ -61,6 +61,9 @@ def configure_pipeline(cfg: PipelineConfig, scene: dict[str, Any], side: str, po
     cfg.pipeline["target"]["manual"]["point_pelvis_m"] = target.tolist()
     cfg.pipeline["push"]["direction"] = list(p["direction"])
     cfg.pipeline["via_pose"] = p.get("via_pose")
+    # 指の向きは BinPipeline が push.finger_tilts_deg で試す。新しい J1-gen の候補（左へ傾けるボタン押し用。真下へ押すと向きが
+    # 決まらず nan になる）は使わない
+    cfg.pipeline["finger_tilts_deg"] = [[0, 0]]
     # J1-gen の立つ位置の勧め（ボトルの机用）はゴミ箱には合わないので使わない
     cfg.pipeline["stand"] = None
     # 押し込みの深さ（J1-gen の上限 3 cm は外す）・手前の距離・速さ
@@ -115,19 +118,48 @@ class BinPipeline(PressPipeline):
         self.lean_rad = lean_rad
         self.extra_seeds_deg = extra_seeds_deg or []
         self.measure: dict[str, Any] = {}
+        # 中身を深度で測るための情報（scene・pose・transform）。入れたときだけ、保持中に撮るたびに測る（lib/contents.py）
+        self.contents_ctx: dict[str, Any] | None = None
+        self.contents: list[dict[str, Any]] = []
         self._tilts = finger_tilts_deg
         self._axis: np.ndarray | None = None
         plan = self.planner.plan
-        # 計画の関数に、今試している指の向きを渡す（J1-gen の make_plan は渡さないため）。
-        # 立て直し（replan）は前の計画の指の向きを自分で渡すので、そのときはそちらを使う
-        self.planner.plan = lambda *a, **k: plan(*a, **{"finger_axis": self._axis, **k})
+        # 計画の関数に、今試している指の向きを渡す。J1-gen が向きを渡さない（None・省略）ときだけ、こちらの向きを使う:
+        # - 古い J1-gen の make_plan は渡さない。新しい J1-gen（origin/Dev/ButtonPress、2026-11）は pipeline.yaml の
+        #   finger_tilts_deg を自分で試して渡すが、configure_pipeline で [[0, 0]]（= None を渡す）にしてある
+        # - 立て直し（replan）は前の計画の指の向きを渡すので、そのときはそちらを使う
+        def plan_with_axis(*a: Any, **k: Any) -> PressPlan:
+            if k.get("finger_axis") is None:
+                k["finger_axis"] = self._axis
+            return plan(*a, **k)
+
+        self.planner.plan = plan_with_axis
 
     def _on_stage(self, stage: str, plan: PressPlan) -> None:
         """J1-gen の段階ごとの記録に加えて、押し込みが止まったら（end）、保持する間にも画像を撮るようにする。"""
         super()._on_stage(stage, plan)
         arm = getattr(self, "_arm", None)
         if stage == "end" and self.grab_frame is not None and arm is not None and hasattr(arm, "hold_capture"):
-            arm.hold_capture = lambda i: self.logger.save_frame(f"hold{i + 1}", self.grab_frame())
+            arm.hold_capture = self._capture_hold
+
+    def _capture_hold(self, i: int) -> None:
+        """保持中の 1 枚: 保存し、contents_ctx があれば中身を深度で測って記録する。"""
+        f = self.grab_frame()
+        if f is None:
+            return
+        self.logger.save_frame(f"hold{i + 1}", f)
+        if self.contents_ctx is None:
+            return
+        from contents import measure_contents, summary
+
+        st = self.backend.read_state()
+        q_waist = st.q[12:15] if st is not None else np.zeros(3)
+        c = self.contents_ctx
+        r = measure_contents(f, c["transform"], q_waist, c["scene"], c["pose"])
+        r["hold"] = i + 1
+        self.contents.append(r)
+        self.logger.event("contents", **r)
+        print(f"[bin] 保持中 {i + 1} 枚目の{summary(r)}")
 
     def _seeds(self, st: Any) -> list[tuple[str, np.ndarray | None]]:
         """J1-gen の IK の初期値（教えた姿勢・今の姿勢・ゼロ姿勢）に、設定の初期値を足す。
