@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>状態とボタン</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 860px; height: 600px; box-sizing: border-box; padding: 24px; display: flex; flex-direction: column; gap: 12px; background: #f2f2ef; color: #222; font-family: system-ui, -apple-system, 'Hiragino Sans', sans-serif; font-size: 13px; line-height: 1.5">
+  <div style="font-weight: 700; font-size: 18px">ゲームの状態と、押せるボタン</div>
+
+  <div style="display: grid; grid-template-columns: 150px repeat(4, minmax(0, 1fr)); border: 1.5px solid #333; background: #fff">
+    <div style="padding: 6px 10px; font-weight: 700; background: #e8e8e6; border-bottom: 1.5px solid #333">状態</div>
+    <div style="padding: 6px 10px; font-weight: 700; background: #e8e8e6; border-bottom: 1.5px solid #333">G1</div>
+    <div style="padding: 6px 10px; font-weight: 700; background: #e8e8e6; border-bottom: 1.5px solid #333">Pepper</div>
+    <div style="padding: 6px 10px; font-weight: 700; background: #e8e8e6; border-bottom: 1.5px solid #333">運営のボタン</div>
+    <div style="padding: 6px 10px; font-weight: 700; background: #e8e8e6; border-bottom: 1.5px solid #333">プレイヤーのスマホ</div>
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+      <div style="padding: 8px 10px; font-weight: 700; border-bottom: 1px solid #bbb">{{r.name}}</div>
+      <div style="padding: 8px 10px; border-bottom: 1px solid #bbb">{{r.g1}}</div>
+      <div style="padding: 8px 10px; border-bottom: 1px solid #bbb">{{r.pepper}}</div>
+      <div style="padding: 8px 10px; border-bottom: 1px solid #bbb">{{r.operator}}</div>
+      <div style="padding: 8px 10px; border-bottom: 1px solid #bbb">{{r.phone}}</div>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 4px; font-size: 13px">
+    <div style="font-weight: 700">共通のルール</div>
+    <sc-for list="{{rules}}" as="t" hint-placeholder-count="4">
+      <div>・{{t.text}}</div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":860,"height":600}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      rows: [
+        { name: '準備', g1: '停止。リセット（初期位置へ戻す）が可能', pepper: '停止。首振りの試験が可能', operator: '開始前チェックが全部そろうとゲーム開始が有効', phone: '待機の表示。ボタンは押せない' },
+        { name: 'PLAYING', g1: '巡回中（前進 → 旋回 → 前進）', pepper: '首振り中', operator: '終了・巡回停止・首振り停止・緊急停止', phone: 'TARGET を取った → START に戻った の順に押せる' },
+        { name: 'GAME OVER（検知: YOLO が自動で確定）', g1: '停止', pepper: '停止', operator: '再開（運営のみ）→ リセット。検知した瞬間の画像を確認できる', phone: '赤い GAME OVER と理由（G1 / Pepper に見つかった）。ボタンは押せない' },
+        { name: 'GAME OVER（安全停止 1 m）', g1: '即停止', pepper: '停止', operator: '再開（運営のみ）→ リセット', phone: '赤い GAME OVER と理由「G1 との距離が 1 m 以内」' },
+        { name: 'CLEAR', g1: '停止', pepper: '停止', operator: 'リセット（G1 を初期位置へ戻し、次のプレイ準備）', phone: 'CLEAR と経過時間' }
+      ],
+      rules: [
+        { text: '緊急停止は、どの状態でも押せる。G1 と Pepper の両方を止め、ゲームも GAME OVER にする。追加の停止手段で、コントローラ保持者の停止を置き換えない。' },
+        { text: '再開は運営のボタンだけ。自動では再開しない。' },
+        { text: 'リセットで初期位置に戻る間も、停止ボタンを常に押せる。後退は使わず、旋回してから前進して戻る。' },
+        { text: '通信が 1 秒切れたら G1 は止まる。ダッシュボードが落ちても同じ。' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
