@@ -154,6 +154,11 @@ def main() -> int:
     # J1-gen の実機日の机の箱（configs/obstacles.yaml）はボトル用なので、--obstacles-file で指定したときだけ読む
     if args.obstacles_file is None:
         args.obstacles_file = ""
+    # 腕の重力補償の倍率: 実機は J1-gen と同じ 0.5（2026-10-14 の実測で決めた値。auto_press.py の既定）。
+    # 模擬ロボット（lo）は MuJoCo の側で補償しているので 0 のまま（二重になる）
+    real_robot = (args.network_interface or "") != "lo"
+    if args.gravity_scale is None and real_robot:
+        args.gravity_scale = 0.5
     cfg = load_pipeline_config(args)
     cfg.pipeline["log_dir"] = args.log_dir or "_local/trash_bin/runs"
     side = cfg.pipeline.get("arm") or cfg.arm["arm"]
@@ -169,7 +174,8 @@ def main() -> int:
         p.error("--air と --locate-only は一緒に使えない")
     mode = "見つけるだけ" if args.locate_only else ("腰だけ" if args.lean_only else ("空振り" if args.air else "押す"))
     print(f"[push_bin] {mode}。ネットワークの口: {iface or '（未設定）'}、相手: {peer_label(iface) if iface else '?'}、"
-          f"{'送信する（--execute）' if args.execute else 'dry-run（送信しない）'}、腰 {scene.get('lean_waist_pitch_deg') or 0}°")
+          f"{'送信する（--execute）' if args.execute else 'dry-run（送信しない）'}、腰 {scene.get('lean_waist_pitch_deg') or 0}°、"
+          f"腕の重力補償 {cfg.arm['gravity_compensation']['scale']}")
 
     backend = make_backend(cfg.arm, cfg.robot, dry_run=not args.execute, path="arm_sdk")
     logger = make_logger(cfg, args.label or mode, {"kind": "real", "mode": mode, "execute": args.execute,
