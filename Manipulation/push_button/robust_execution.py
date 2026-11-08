@@ -52,10 +52,17 @@ def validate_start(scene, configuration, observed, *, record_deviations=False):
 def execute(plan, model_path, calibration, motion, configuration, observe, settings,
             *, now=time.monotonic, set_torque=lambda tau: None, diagnostic=False,
             record_deviations=False, set_waist_torque=None, allow_stale_observation=False,
-            observe_held=None):
+            observe_held=None, feedback_state=None):
     if plan.candidate is None:
         raise RuntimeError('No fully verified robust plan; no motion allowed')
     s, c = plan.scene, plan.candidate
+    if s.task == 'button' and ('button_feedback' in getattr(c,'motion_metrics',{})) != (settings.button_feedback == 'joint'):
+        raise RuntimeError('Button feedback mode differs from the verified plan')
+    if s.task == 'button' and settings.button_feedback == 'joint':
+        from button_tracking_runtime import execute_feedback
+        return execute_feedback(plan,model_path,calibration,motion,configuration,observe,settings,
+            now=now,set_torque=set_torque,diagnostic=diagnostic,record_deviations=record_deviations,
+            set_waist_torque=set_waist_torque,feedback_state=feedback_state)
     if allow_stale_observation and (s.task != 'bottle' or settings.bottle_feedback != 'off'):
         raise ValueError('Stale observations require bottle feedback off')
     if observe_held is not None and (s.task != 'button' or diagnostic):

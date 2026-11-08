@@ -110,6 +110,16 @@ class ArmSdk:
             raise RuntimeError("実機状態が古すぎます")
         return joints, rpy, received_at, leg_speed, gyro
 
+    def joint_feedback_state(self):
+        self.current_configuration()
+        with self._lock:
+            state, stamp = self._state, self._state_at
+            values = {name:[float(getattr(state.motor_state[i],name,float('nan'))) for i in range(22,29)]
+                for name in ('q','dq','ddq','tau_est')}
+        if not all(math.isfinite(v) for v in values['q']):
+            raise RuntimeError('Invalid joint feedback state')
+        return dict(received_at_s=stamp,**{k:[v if math.isfinite(v) else None for v in vs] for k,vs in values.items()})
+
     def set_hold(self, current: tuple[float, ...]):
         if self._last_weight > 0:
             raise RuntimeError('制御中は上半身の保持姿勢を変更できません')

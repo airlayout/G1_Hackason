@@ -55,6 +55,10 @@ class ArmProxy:
         values = channel._rpc("state")
         return tuple(values[0]), tuple(values[1]), *values[2:]
 
+    def joint_feedback_state(self):
+        channel = getattr(self,'_state_channel',None) or self
+        return channel._rpc('feedback_state')
+
     def current_arm(self):
         return tuple(self.current_configuration()[0][15:29])
 
@@ -129,9 +133,10 @@ def serve_state_connections(server, arm, stop):
                 while b'\n' in buffer:
                     line,buffer = buffer.split(b'\n',1)
                     try:
-                        if json.loads(line)['op'] != 'state':
+                        op = json.loads(line)['op']
+                        if op not in ('state','feedback_state'):
                             raise ValueError('This socket is read-only')
-                        reply = dict(result=arm.current_configuration())
+                        reply = dict(result=arm.current_configuration() if op == 'state' else arm.joint_feedback_state())
                     except Exception as error:
                         reply = dict(error=str(error))
                     try:
@@ -177,6 +182,8 @@ def serve_connection(connection, arm, timeout_s=0.5, *, status=None):
                     result = None
                     if op == "state":
                         result = arm.current_configuration()
+                    elif op == 'feedback_state':
+                        result = arm.joint_feedback_state()
                     elif op == "info":
                         if active:
                             raise ValueError("腕制御中は接続情報を照会できません")

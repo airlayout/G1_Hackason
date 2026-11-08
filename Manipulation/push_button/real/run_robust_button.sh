@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# check: no actuation; precontact: approach and return; push: measured press and lamp check.
-# Defaults: 15mm stroke, 30s/50-candidate search, four conditions, first valid path.
-# Conditions: nominal, 3mm farther, panel-horizontal left 3mm, panel-horizontal right 3mm.
-# precontact/push share bottle monitoring and synchronous publication; CLI/JSON can override defaults.
+# check: weight zero; precontact: approach/return; push: press/retreat/lamp check.
+# Joint correction starts at the initial pose and continues throughout movement.
+# CLI arguments after these defaults can select --button-feedback off and/or
+# --button-policy standard (four conditions). G1 setup routes over SSH.
 set -euo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-exec env PYTHONUNBUFFERED=1 python3 "$HERE/robust_session.py" "$@" --task button
+exec env PYTHONUNBUFFERED=1 python3 "$HERE/robust_session.py" \
+    --button-feedback joint --button-policy collection --planning-budget-s 120 "$@" --task button

@@ -20,6 +20,7 @@ from trajectory import ARM_JOINTS, ARM_TORQUE_LIMITS_NM
 from alignment import press_compensation_allowance, press_overtravel_allowance
 from alignment import JointCommandFilter
 from robust_control import BottleFeedback, bottle_contact_margin, fade_return_offset, reference_command, waist_support_torque
+from button_tracking import controller_metadata
 from motion_limits import (JointMotionLimits, CONTROL_PERIOD_S, MOTION_OVERHEAD_S,
                            PLANNED_LIMIT_FRACTION, MOTION_TOLERANCE_S)
 
@@ -45,6 +46,9 @@ class SearchSettings:
     joint_acceleration_rad_s2: float = 4.
     position_span_m: float = .003
     bottle_feedback: str = 'off'
+    button_feedback: str = 'off'
+    button_policy: str = 'standard'
+    button_feedback_timeout_s: float = 120.
 
     @property
     def motion_limits(self):
@@ -64,6 +68,10 @@ class SearchSettings:
                 or not 0 <= self.position_error_m <= .02
                 or not np.isfinite(self.position_span_m) or not 0 <= self.position_span_m <= .02
                 or self.bottle_feedback not in ('off', 'relative')
+                or self.button_feedback not in ('off', 'joint')
+                or self.button_policy not in ('standard', 'collection')
+                or not np.isfinite(self.button_feedback_timeout_s)
+                or not 10 <= self.button_feedback_timeout_s <= 300
                 or not 0 <= self.normal_error_deg <= 10
                 or not 0 <= self.tracking_error_rad <= .02):
             raise ValueError('Invalid robust search settings')
@@ -194,17 +202,21 @@ def reference_torque(kin, q, velocity, scale):
 
 def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings, deadline):
     original = kin.data.qpos.copy()
+    collection = scene.task == 'button' and settings.button_policy == 'collection'
+    feedback = scene.task == 'button' and settings.button_feedback == 'joint'
     face, normal = np.array(scene.face), np.array(scene.normal)
     r = scene.tip_radius
     home = original[kin.qadr].copy()
     points, labels = [home], ['approach']
     tip = kin.tip_position()
-    raised = face-(r+.12)*normal + [0, waypoint_offset[0], (.10 if scene.task=='bottle' else 0.)+waypoint_offset[1]]
+    raised = face-(r+(.05 if collection else .12))*normal + [0, waypoint_offset[0], (.10 if scene.task=='bottle' else 0.)+waypoint_offset[1]]
     # Reserve up to 1mm for residual normal tracking at the farther position
     # scenario. Larger feedforward increases contact tracking error; rollouts
     # still enforce the measured stroke, overtravel, tracking and force bounds.
     depth = (scene.stroke+press_compensation_allowance(scene.stroke)+min(.001,settings.position_span_m)
              if scene.task == 'button' else scene.push_distance)
+    if feedback:
+        depth = scene.stroke
     relative_feedback = scene.task == 'bottle' and settings.bottle_feedback == 'relative'
     contact_clearance = .005+scene.uncertainty_m+settings.position_error_m if relative_feedback else .005
     target_points = [(raised, 'approach'), (face-(r+.05)*normal, 'approach'),
@@ -212,13 +224,22 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     for d in np.linspace(0, depth, max(2, math.ceil(depth/.005)+1))[1:]:
         target_points.append((face+(d-r)*normal, 'press'))
     target_points += [(face-(r+.05)*normal, 'retract'), (raised, 'return')]
+    rng = np.random.default_rng(index)
+    if collection:
+        staging = np.array([.20,-.25,.75])
+        target_points.insert(0,(staging,'approach'))
+        target_points.append((staging,'return'))
     for target, phase in target_points:
         if time.perf_counter() >= deadline:
             raise TimeoutError('candidate generation budget')
         seed = kin.data.qpos[kin.qadr].copy()
         if len(points) == 1:
             seed[:3] += seed_offset
-        solution = kin.solve(target, normal, seed=seed)
+        if collection:
+            from button_collection import solve_collection_waypoint
+            solution = solve_collection_waypoint(kin,target,normal,seed=seed,rng=rng,deadline=deadline)
+        else:
+            solution = kin.solve(target, normal, seed=seed)
         kin.validate_path(solution.joint_angles, allowed_tip_geoms={kin.model.geom('robust_target_geom').id},
                           allow_tip_contact=True)
         pose = kin.data.qpos.copy(); pose[kin.qadr] = solution.joint_angles; kin.update(pose)
@@ -249,8 +270,11 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     qs = spline(t)
     if scene.task == 'button':
         metrics['button_press'] = dict(measured_stroke_m=scene.stroke,
-            compliance_compensation_m=press_compensation_allowance(scene.stroke),
-            normal_tracking_reserve_m=min(.001,settings.position_span_m),reference_depth_m=depth)
+            compliance_compensation_m=0. if feedback else press_compensation_allowance(scene.stroke),
+            normal_tracking_reserve_m=0. if feedback else min(.001,settings.position_span_m),reference_depth_m=depth)
+    if feedback:
+        metrics['button_feedback'] = controller_metadata()
+        metrics['button_tracking_settings'] = asdict(settings)
     if scene.task == 'bottle':
         metrics['bottle_feedback_mode'] = settings.bottle_feedback
         metrics['bottle_feedback'] = dict(offset_limit_m=scene.uncertainty_m+.005,
@@ -283,6 +307,10 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
 
 
 def uncertainty_scenarios(settings, scene, *, include_corners=True, full_uncertainty=False):
+    if scene.task == 'button' and settings.button_policy == 'collection' and not full_uncertainty:
+        validate_button_scenario_settings(settings.scenarios,settings.position_span_m,'collection')
+        return [dict(index=0,name='nominal',position=[0.,0.,0.],angles=[0.,0.,0.],tracking=[0.]*7,
+            mass=float(np.mean(settings.mass_range)),friction=float(np.mean(settings.friction_range)))]
     if scene.task=='button' and settings.scenarios==BUTTON_CONDITION_COUNT and not full_uncertainty:
         validate_button_scenario_settings(settings.scenarios,settings.position_span_m)
         # Preserve old samples 0/2 for nominal/far. Samples 3/4 add lateral errors;
@@ -320,7 +348,7 @@ def button_press_depth_bounds(scene, condition=None):
 
 
 def _trial_failure_reasons(scene, *, displacement, peak_press, peak_force, clearance,
-                           tracking_max, dynamic_joint_margin, home_error, condition=None):
+                           tracking_max, dynamic_joint_margin, home_error, condition=None, include_diagnostics=False):
     if scene.task == 'button':
         lower,upper = button_press_depth_bounds(scene,condition)
         checks = dict(press_depth=lower <= peak_press <= upper,
@@ -330,7 +358,9 @@ def _trial_failure_reasons(scene, *, displacement, peak_press, peak_force, clear
                       push_lateral=abs(displacement[1]) <= .01)
     checks.update(obstacle_clearance=clearance >= .003, tracking_error=tracking_max <= .01,
                   joint_margin=dynamic_joint_margin >= .02, home_return=home_error <= np.deg2rad(2))
-    return [name for name, passed in checks.items() if not passed]
+    diagnostic = (('press_depth','tracking_error','home_return') if scene.task == 'button'
+        and scene.button_policy == 'collection' and not include_diagnostics else ())
+    return [name for name, passed in checks.items() if not passed and name not in diagnostic]
 
 
 def physical_trial(base_kin, scene, c, condition, deadline):
@@ -365,6 +395,9 @@ def physical_trial(base_kin, scene, c, condition, deadline):
         d.qpos[adr:adr+3] += shift
     d.ctrl[:] = scene.q
     mujoco.mj_forward(m, d)
+    if scene.task == 'button' and 'button_feedback' in c.motion_metrics:
+        from button_tracking_runtime import physical_feedback_trial
+        return physical_feedback_trial(base_kin,kin,scene,c,condition,deadline,started)
     initial_object = d.xpos[m.body('robust_target').id].copy()
     clearance, lateral_max, peak_press, tracking_max = .05, 0., 0., 0.
     target_margin = float('inf')

@@ -28,15 +28,19 @@ class SceneSnapshot:
     stroke: float = .0015
     push_distance: float = .05
     frame_ids: tuple = ()
+    button_policy: str = 'standard'
 
     def __post_init__(self):
+        collection = self.task == 'button' and self.button_policy == 'collection'
+        if self.button_policy not in ('standard','collection') or (self.task != 'button' and self.button_policy != 'standard'):
+            raise ValueError('Invalid scene policy')
         numbers = (*self.face, *self.normal, *self.q, *self.imu, self.radius,
                    self.tip_radius, self.uncertainty_m, self.captured_at,
                    self.object_height, self.stroke, self.push_distance)
         if (self.task not in ('button', 'bottle') or len(self.q) != 29
                 or len(self.face) != 3 or len(self.normal) != 3 or len(self.imu) != 3
-                or not np.all(np.isfinite(numbers)) or not .02 <= self.radius <= .06
-                or not 0 < self.tip_radius < self.radius or not 0 <= self.uncertainty_m <= .02
+                or not np.all(np.isfinite(numbers)) or not (.0075 if collection else .02) <= self.radius <= .06
+                or not 0 < self.tip_radius <= self.radius or (not collection and self.tip_radius == self.radius) or not 0 <= self.uncertainty_m <= .02
                 or abs(np.linalg.norm(self.normal)-1) > .001
                 or self.normal[0] < .9 or not .0015 <= self.stroke <= .015
                 or not 0 < self.push_distance <= .1):
@@ -195,7 +199,10 @@ def contact_metrics(kin, scene, *, contact=False):
             continue
         if pair == {kin.tip_id, target} and contact:
             continue
-        clearance = min(clearance, float(c.dist))
+        rim = (scene.task == 'button' and scene.button_policy == 'collection'
+            and kin.tip_id in pair and any(kin.model.geom(g).name.startswith('robust_panel_') for g in pair))
+        if not rim:
+            clearance = min(clearance, float(c.dist))
         if c.dist < -.0005:
             raise ValueError(f'Unexpected arm contact: {sorted(pair)}')
     # Distance to static obstacles and self pairs even before contact is generated.
@@ -206,6 +213,9 @@ def contact_metrics(kin, scene, *, contact=False):
     obstacles = kin._robust_obstacles
     for a in kin.arm_geoms:
         for b in obstacles:
+            if (scene.task == 'button' and scene.button_policy == 'collection'
+                    and a == kin.tip_id and kin.model.geom(b).name.startswith('robust_panel_')):
+                continue  # Only the free-space margin is waived, never penetration checks above.
             distance = mujoco.mj_geomDistance(kin.model, kin.data, a, b, .05, None)
             clearance = min(clearance, float(distance))
     return clearance

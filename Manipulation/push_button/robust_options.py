@@ -32,6 +32,9 @@ def add_arguments(parser):
     parser.add_argument('--planning-max-rollouts', type=int, default=1000)
     parser.add_argument('--planning-scenarios', type=int, default=3)
     parser.add_argument('--planning-position-span-m', type=float, default=.003)
+    parser.add_argument('--button-feedback', choices=('off','joint'), default='off')
+    parser.add_argument('--button-policy', choices=('standard','collection'), default='standard')
+    parser.add_argument('--button-feedback-timeout-s', type=float, default=120.)
     parser.add_argument('--bottle-feedback', choices=('off','relative'), default='off')
     parser.add_argument('--planning-workers', type=int, default=8)
     parser.add_argument('--planning-max-candidates', type=int, default=50)
@@ -81,6 +84,8 @@ def parse(parser, argv=None, *, task=None):
             parser.error(f'Invalid {action.dest}')
     settings = SearchSettings(budget_s=args.planning_budget_s, max_rollouts=args.planning_max_rollouts,
         scenarios=args.planning_scenarios, position_span_m=args.planning_position_span_m,
+        button_feedback=args.button_feedback, button_policy=args.button_policy,
+        button_feedback_timeout_s=args.button_feedback_timeout_s,
         bottle_feedback=args.bottle_feedback, workers=args.planning_workers,
         max_candidates=args.planning_max_candidates, seed=args.planning_seed,
         position_error_m=args.position_error_m, normal_error_deg=args.normal_error_deg,

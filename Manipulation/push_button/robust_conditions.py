@@ -19,33 +19,53 @@ def button_condition_positions(normal):
         tuple(BUTTON_POSITION_SPAN_M*v for v in left),tuple(-BUTTON_POSITION_SPAN_M*v for v in left))
 
 
-def validate_button_scenario_settings(count,span):
+def validate_button_scenario_settings(count,span,policy='standard'):
+    if policy == 'collection':
+        if count != 1:
+            raise ValueError('収集モードは基準位置の1条件で検証します')
+        return
+    if policy != 'standard':
+        raise ValueError('Unknown button policy')
     if count!=BUTTON_CONDITION_COUNT or not math.isclose(span,BUTTON_POSITION_SPAN_M,rel_tol=0.,abs_tol=1e-9):
         raise ValueError('ボタンは基準・奥3mm・左3mm・右3mmの4条件が必要です')
 
 
 def validate_button_plan(plan):
     """Reject stale three-condition, incomplete, renamed or displaced plans before motion."""
-    message = 'ボタン用の基準・奥3mm・左3mm・右3mmの4条件合格が必要です'
-    if not plan.get('accepted') or plan.get('accepted_conditions')!=BUTTON_CONDITION_COUNT:
+    policy = plan.get('settings',{}).get('button_policy','standard')
+    if policy not in ('standard','collection'):
+        raise ValueError('Unknown button plan policy')
+    if policy == 'collection' and plan.get('scene',{}).get('button_policy') != 'collection':
+        raise ValueError('Button scene/plan policy mismatch')
+    count = 1 if policy == 'collection' else BUTTON_CONDITION_COUNT
+    names = ('nominal',) if policy == 'collection' else BUTTON_CONDITION_NAMES
+    message = ('ボタン収集用の基準位置1条件の完走・合格が必要です' if policy == 'collection' else
+        'ボタン用の基準・奥3mm・左3mm・右3mmの4条件合格が必要です')
+    if not plan.get('accepted') or plan.get('accepted_conditions')!=count:
         raise ValueError(message)
     scene = plan.get('scene',{})
     if scene.get('task')!='button':
         raise ValueError(message)
     try:
-        positions = button_condition_positions(scene.get('normal',()))
+        positions = button_condition_positions(scene.get('normal',()))[:count]
     except (TypeError,ValueError) as exc:
         raise ValueError(message) from exc
     conditions = plan.get('conditions',[])
-    if len(conditions)!=BUTTON_CONDITION_COUNT:
+    if len(conditions)!=count:
         raise ValueError(message)
     selected = [row for row in plan.get('candidates',[]) if row.get('index')==plan.get('trajectory',{}).get('candidate')]
     if len(selected)!=1 or selected[0].get('accepted') is not True:
         raise ValueError(message)
+    if plan.get('settings',{}).get('button_feedback') == 'joint':
+        metrics = plan.get('trajectory',{}).get('motion_metrics',{})
+        if metrics.get('button_feedback',{}).get('version') != 1 or metrics.get('button_tracking_settings') != plan['settings']:
+            raise ValueError('Button feedback settings were not verified')
+        if any(t.get('button_feedback') != 'joint' for t in selected[0].get('trials',[])):
+            raise ValueError('Button joint feedback rollout is required')
     trials = selected[0].get('trials',[])
-    if len(trials)!=BUTTON_CONDITION_COUNT:
+    if len(trials)!=count:
         raise ValueError(message)
-    for name,position,condition,trial in zip(BUTTON_CONDITION_NAMES,positions,conditions,trials):
+    for name,position,condition,trial in zip(names,positions,conditions,trials):
         if (condition.get('name')!=name or trial.get('condition_name')!=name
                 or trial.get('completed') is not True or trial.get('success') is not True):
             raise ValueError(message)

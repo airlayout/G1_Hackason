@@ -38,7 +38,8 @@ class LatestFrameSampler:
 
 
 class ObservationWindow:
-    def __init__(self, stability_m=.004):
+    def __init__(self, stability_m=.004, *, allow_stale=False):
+        self.allow_stale = allow_stale
         self.stability_m = stability_m
         self.samples = deque(maxlen=3)
         self.last_id, self.last_stamp = -1, -np.inf
@@ -46,7 +47,7 @@ class ObservationWindow:
 
     def consume(self, value, now):
         if (value.frame_id <= self.last_id or value.captured_at <= self.last_stamp
-                or not 0 <= now-value.captured_at <= .5):
+                or (not self.allow_stale and not 0 <= now-value.captured_at <= .5)):
             self.samples.clear()
             raise ValueError('Stale or duplicate perception frame')
         self.last_id, self.last_stamp = value.frame_id, value.captured_at
@@ -81,9 +82,9 @@ class ObservationWindow:
 
 class ContinuousObserver:
     """read() -> Observation or None. The camera and its FK model have one owner."""
-    def __init__(self, read, close=lambda: None, *, now=time.monotonic, stability_m=.004):
+    def __init__(self, read, close=lambda: None, *, now=time.monotonic, stability_m=.004, allow_stale=False):
         self.read, self.close_reader, self.now = read, close, now
-        self.window = ObservationWindow(stability_m)
+        self.window = ObservationWindow(stability_m,allow_stale=allow_stale)
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.value = self.error = None
@@ -128,7 +129,7 @@ class ContinuousObserver:
             if self.error is not None:
                 raise RuntimeError(str(self.error)) from self.error
             try:
-                return self.latest()
+                return self.latest(allow_stale=self.window.allow_stale)
             except RuntimeError:
                 self.stop.wait(.01)
         raise RuntimeError('Initial three-frame observation unavailable')
@@ -143,7 +144,7 @@ class ContinuousObserver:
 def snapshot(task, observed, calibration, args):
     return SceneSnapshot(task=task, q=observed.q, imu=observed.imu,
         captured_at=observed.captured_at, tip_radius=calibration['tip_radius_m'],
-        frame_ids=observed.frame_ids,
+        frame_ids=observed.frame_ids, button_policy=getattr(args,'button_policy','standard'),
         uncertainty_m=calibration['position_uncertainty_m'],
         stroke=args.stroke, push_distance=args.push_distance, **observed.geometry)
 
@@ -170,12 +171,13 @@ class CorrectionGate:
             raise RuntimeError('Observed target normal changed')
         # Forward motion/contact depth remains controlled by the planned reference.
         lateral = error-normal*(error@normal)
-        limit = min(.005, self.scene.radius-self.scene.tip_radius)
+        collection = self.scene.task == 'button' and getattr(self.scene,'button_policy','standard') == 'collection'
+        limit = .005 if collection else min(.005, self.scene.radius-self.scene.tip_radius)
         if np.linalg.norm(lateral) > limit:
             raise RuntimeError('Observed target shift exceeds certified correction envelope')
         if freeze:
             return self.offset.copy()
-        if np.linalg.norm(lateral) > max(.001, self.scene.uncertainty_m):
+        if np.linalg.norm(lateral) > (.001 if collection else max(.001, self.scene.uncertainty_m)):
             # Bound the increment; command filtering also enforces joint acceleration.
             delta = lateral-self.offset
             self.offset += delta*min(1., .0005/max(np.linalg.norm(delta), 1e-12))

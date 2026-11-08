@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prepare RGB-D/DDS, verify policy IO, then run one operator-requested trial."""
 import argparse
+from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime
 import fcntl
@@ -59,9 +60,9 @@ def motion_arguments(mode,trial,output,socket_path=None,state_path=None,*,task='
         args += ['--allow-stale-observation']
     if state_path is None and mode in ('precontact','push'):
         args += ['--execute-after-plan' if task == 'bottle' else '--execute-verified-plan',
-                 '--planning-scenarios',str(BUTTON_CONDITION_COUNT if task=='button' else 3)]
+                 '--planning-scenarios',str(json.loads(Path(trial).read_text()).get('planning_scenarios',BUTTON_CONDITION_COUNT) if task=='button' else 3)]
     elif task=='button':
-        args += ['--planning-scenarios',str(BUTTON_CONDITION_COUNT)]
+        args += ['--planning-scenarios',str(json.loads(Path(trial).read_text()).get('planning_scenarios',BUTTON_CONDITION_COUNT))]
     return args
 
 
@@ -90,6 +91,14 @@ def validate_button_trial(trial,calibration):
         raise ValueError('ボタン用のtrial_configを指定してください')
     for key,value in BUTTON_DEFAULTS.items():
         trial.setdefault(key,value)
+    collection = trial.get('button_policy','standard') == 'collection'
+    if trial.get('button_policy','standard') not in ('standard','collection') or trial.get('button_feedback','off') not in ('off','joint'):
+        raise ValueError('Invalid button feedback/policy')
+    for key,low,high in (('planning_budget_s',0.,300.),('button_feedback_timeout_s',10.,300.)):
+        value = trial.get(key,120.)
+        if (isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value)
+                or not (low <= value <= high if key=='button_feedback_timeout_s' else low < value <= high)):
+            raise ValueError(key+'が範囲外です')
     stroke = trial.get('stroke')
     if isinstance(stroke,bool) or not isinstance(stroke,(int,float)) or not math.isfinite(stroke) or not .0015 <= stroke <= .015:
         raise ValueError('実測したstroke（1.5〜15mm）を設定するか--stroke-mmで指定してください')
@@ -110,13 +119,13 @@ def validate_button_trial(trial,calibration):
     if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in dimensions):
         raise ValueError('校正JSONに実測button_radius_m・tip_radius_m・position_uncertainty_mが必要です')
     button,tip,uncertainty = dimensions
-    if not (0 < tip < .04 and tip < button <= .06 and 0 <= uncertainty <= .02):
+    if not (0 < tip < .04 and tip <= button <= .06 and (collection or tip < button) and 0 <= uncertainty <= .02):
         raise ValueError('ボタン・手先の半径または校正の不確かさが範囲外です')
-    if button-tip-uncertainty < .003:
+    if not collection and button-tip-uncertainty < .003:
         raise ValueError('ボタン半径から手先半径と校正不確かさを引いた余裕が3mm未満です。実測校正を確認してください')
     trial['task'] = 'button'
-    trial['planning_scenarios'] = BUTTON_CONDITION_COUNT
-    validate_button_scenario_settings(trial['planning_scenarios'],trial['planning_position_span_m'])
+    trial['planning_scenarios'] = 1 if collection else BUTTON_CONDITION_COUNT
+    validate_button_scenario_settings(trial['planning_scenarios'],trial['planning_position_span_m'],trial.get('button_policy','standard'))
 
 
 def policy_summary(plan):
@@ -257,6 +266,31 @@ def print_execution_failure(run):
             print('画像で測ったボトル移動量:',report['measured_displacement_m'],'m')
     else:
         print('終了理由: 詳細は実行ログを確認してください。')
+    plan = report.get('plan',{})
+    if plan and not plan.get('accepted'):
+        print('探索結果:',plan.get('candidates_attempted',len(plan.get('candidates',[]))),
+              '候補 / 物理評価:',plan.get('physically_evaluated_candidates',0),
+              '/ 完走:',plan.get('completed_rollouts',0))
+        # Group IK residuals by cause while retaining one concrete example.
+        counts, examples = Counter(), {}
+        for candidate in plan.get('candidates',[]):
+            reasons = [candidate['reason']] if candidate.get('reason') else []
+            if candidate.get('trials'):
+                reasons = [str(failure) for trial in candidate['trials']
+                           for failure in (trial.get('failure_reasons') or
+                                           ([trial['reason']] if trial.get('reason') else []))] or reasons
+            for detail in set(reasons):
+                category = '手先のIKが収束しません' if detail.startswith('手先のIKが収束しません') else detail
+                counts[category] += 1
+                examples.setdefault(category,detail)
+        for category, count in counts.most_common(5):
+            print(f'候補・条件の却下理由 ({count}件): {examples[category]}')
+        face = plan.get('scene',{}).get('face')
+        if face is not None:
+            print('認識したボタン/物体の位置 [m] (停止時の床座標):',face)
+        if plan.get('physically_evaluated_candidates') == 0:
+            print('物理シミュレーション開始前に全候補が却下されました。'
+                  '認識位置・腕の可動範囲・接近経路の衝突を確認してください。')
     delta = execution.get('post_enable_delta')
     if delta:
         index = delta['max_joint_index']
@@ -273,6 +307,13 @@ def print_execution_failure(run):
             print('SDK側の停止理由:',bridge['error'])
 
 
+def button_child_timeout(trial):
+    # Initial RGB-D window + search + feedback + bounded recovery + IO/cleanup.
+    motion_budget = (trial.get('button_feedback_timeout_s',120.) if trial.get('button_feedback') == 'joint'
+        else trial.get('motion_duration_s',30.))
+    return 30.+float(trial.get('planning_budget_s',30.))+float(motion_budget)+30.+30.
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--task',choices=('bottle','button'),default='bottle')
@@ -284,12 +325,17 @@ def main(argv=None):
     parser.add_argument('--stroke-mm',type=float,help='ボタンの実測ストローク[mm]（1.5〜15）')
     parser.add_argument('--button-direction',choices=('up','down'))
     parser.add_argument('--target-pixel',type=int,nargs=2,metavar=('U','V'))
+    parser.add_argument('--button-feedback',choices=('off','joint'))
+    parser.add_argument('--button-policy',choices=('standard','collection'))
+    parser.add_argument('--button-feedback-timeout-s',type=float)
+    parser.add_argument('--planning-budget-s',type=float,help='経路探索と物理検証の合計時間上限')
+    parser.add_argument('--deploy-only',action='store_true',help='G1へコードを転送して終了（動作なし）')
     args = parser.parse_args(argv)
     if args.setup is None:
         args.setup = ROOT/('_local/robust_push' if args.task=='bottle' else '_local/robust_button')/'active_setup.json'
     if args.task == 'button' and args.push_distance is not None:
         parser.error('ボタンには--push-distanceではなく--stroke-mmを指定してください')
-    if args.task == 'bottle' and any(v is not None for v in (args.stroke_mm,args.button_direction,args.target_pixel)):
+    if args.task == 'bottle' and any(v is not None for v in (args.stroke_mm,args.button_direction,args.target_pixel,args.button_feedback,args.button_policy,args.button_feedback_timeout_s)):
         parser.error('ボタン用の引数には--task buttonが必要です')
     if args.stroke_mm is not None and (not math.isfinite(args.stroke_mm) or not 1.5 <= args.stroke_mm <= 15):
         parser.error('--stroke-mm must be between 1.5 and 15mm')
@@ -306,6 +352,15 @@ def main(argv=None):
         parser.error('実機設定はJSONオブジェクトで指定してください')
     if required-set(setup):
         parser.error('実機設定に必要な項目がありません: '+', '.join(sorted(required-set(setup))))
+    if args.task == 'button' and setup.get('execution_host') == 'g1' and os.environ.get('G1_BUTTON_ON_ROBOT') != '1':
+        from button_on_g1 import run_on_g1
+        try:
+            return run_on_g1(ROOT,setup,list(sys.argv[1:] if argv is None else argv),deploy_only=args.deploy_only)
+        except (OSError,ValueError,RuntimeError,subprocess.SubprocessError) as exc:
+            print(str(exc),file=sys.stderr)
+            return 2
+    if args.deploy_only:
+        parser.error('--deploy-onlyにはexecution_host=g1のボタン設定が必要です')
     for key in ('sdk_python','vision_python','trial_config'):
         setup[key] = str(local_path(setup[key],resolve_symlinks=key=='trial_config'))
         if not Path(setup[key]).is_file():
@@ -331,6 +386,8 @@ def main(argv=None):
         trial = json.loads(Path(setup['trial_config']).read_text())
         if args.push_distance is not None:
             trial['push_distance'] = args.push_distance
+        if args.planning_budget_s is not None:
+            trial['planning_budget_s'] = args.planning_budget_s
         if args.task == 'bottle':
             report['push_distance_m'] = trial.get('push_distance',.05)
         for key in ('model','weights','base_transform'):
@@ -340,7 +397,9 @@ def main(argv=None):
         calibration = json.loads(Path(trial['base_transform']).read_text())
         if args.task == 'button':
             for key,value in (('stroke',None if args.stroke_mm is None else args.stroke_mm/1000),
-                              ('button_direction',args.button_direction),('target_pixel',args.target_pixel)):
+                              ('button_direction',args.button_direction),('target_pixel',args.target_pixel),('button_feedback',args.button_feedback),
+                              ('button_policy',args.button_policy),('button_feedback_timeout_s',args.button_feedback_timeout_s),
+                              ('planning_budget_s',args.planning_budget_s)):
                 if value is not None:
                     trial[key] = value
             validate_button_trial(trial,calibration)
@@ -353,23 +412,24 @@ def main(argv=None):
         if args.task == 'button':
             report['execution_policy'] = COLLECTION_POLICY.to_dict() if args.mode!='check' else None
             report['planning_limits'] = dict(budget_s=trial['planning_budget_s'],
-                max_candidates=trial['planning_max_candidates'],scenarios=BUTTON_CONDITION_COUNT)
+                max_candidates=trial['planning_max_candidates'],scenarios=trial['planning_scenarios'])
             print(f'ストローク: {trial["stroke"]*1000:g}mm / 探索上限: '
                   f'{trial["planning_budget_s"]:g}秒・{trial["planning_max_candidates"]}候補・'
-                  f'{BUTTON_CONDITION_COUNT}条件（基準・奥3mm・左3mm・右3mm）',flush=True)
+                  f'{trial["planning_scenarios"]}条件 / 補正: {trial.get("button_feedback","off")} / 方策: {trial.get("button_policy","standard")}',flush=True)
             if args.mode != 'check':
-                print('ボトル共通監視: 状態・更新400ms / 脚0.5rad/s / IMU角速度0.3rad/s / '
-                      '姿勢・FK・帰還偏差は記録して続行 / 同期送信',flush=True)
+                print('状態・更新400ms / 脚0.5rad/s / IMU角速度0.3rad/s / 同期送信',flush=True)
+                if trial.get('button_feedback') == 'joint':
+                    print('初期姿勢から関節角と胴体姿勢で補正。追従が遅れる間は目標の進行を保留し、補正を継続します。',flush=True)
         source_files = sorted(REAL.glob('*.py'))+sorted(REAL.glob('*.sh'))+sorted(REAL.parent.glob('*.py'))
         write_json(run/'source_sha256.json',{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest()
             for p in source_files})
-        def phase(name,command,*,input_text=None):
+        def phase(name,command,*,input_text=None,timeout=None):
             print(name,flush=True)
             row = dict(name=name,started_at=datetime.now().astimezone().isoformat())
             report['phases'].append(row)
             log_path = run/(f'{len(report["phases"]):02d}.log')
             row['log'] = str(log_path)
-            row['exit_code'] = execute_child(command,log_path,env,input_text=input_text)
+            row['exit_code'] = execute_child(command,log_path,env,input_text=input_text,**({} if timeout is None else {'timeout':timeout}))
             if row['exit_code']:
                 raise PhaseFailure(name,row['exit_code'])
         print('1. SSH・RGB-D配信を準備',flush=True)
@@ -380,7 +440,8 @@ def main(argv=None):
         if args.mode == 'check':
             preview = run/'preview.json'
             phase('3. RGB-D入力・認識・経路生成を確認',[setup['vision_python'],
-                *motion_arguments(args.mode,trial_path,preview,state_path=run/'state/state.json',task=args.task)])
+                *motion_arguments(args.mode,trial_path,preview,state_path=run/'state/state.json',task=args.task)],
+                **({'timeout':button_child_timeout(trial)} if args.task == 'button' else {}))
             report['policy'] = validate_preview(json.loads(preview.read_text()),setup.get('measured_bottle_xy_m'),
                 float(calibration['position_uncertainty_m']),task=args.task)
             with sdk_bridge(setup['sdk_python'],trial['network_interface'],run,'io',env) as sock:
@@ -399,9 +460,10 @@ def main(argv=None):
         elif args.task == 'button':
             print(f'ボタンの実測ストローク: {trial["stroke"]*1000:g}mm（計画・実機共通）',flush=True)
         with sdk_bridge(setup['sdk_python'],trial['network_interface'],run,'motion',env) as sock:
-            conditions = BUTTON_CONDITION_COUNT if args.task=='button' else 3
+            conditions = trial['planning_scenarios'] if args.task=='button' else 3
             phase(f'3. シミュレーション{conditions}条件が通過したら即実行',[setup['vision_python'],
-                *motion_arguments(args.mode,trial_path,run/'result.json',socket_path=sock,task=args.task)])
+                *motion_arguments(args.mode,trial_path,run/'result.json',socket_path=sock,task=args.task)],
+                **({'timeout':button_child_timeout(trial)} if args.task == 'button' else {}))
         actual = json.loads((run/'result.json').read_text())
         if args.task=='button':
             validate_button_plan(actual.get('plan',{}))

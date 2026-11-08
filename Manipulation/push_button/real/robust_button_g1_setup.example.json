@@ -1,0 +1,12 @@
+{
+  "schema": "g1-robust-session-v1",
+  "execution_host": "g1",
+  "remote_runtime_root": "/home/unitree/button_press/prep_fixed_20261103_down/runtime",
+  "sdk_python": "/path/to/local/sdk/venv/bin/python",
+  "vision_python": "/path/to/local/vision/venv/bin/python",
+  "trial_config": "_local/robust_button/trial.json",
+  "ssh_host": "g1",
+  "remote_camera_root": "/home/unitree/button_press",
+  "remote_sdk_python": "/home/unitree/button_press/venv/bin/python",
+  "remote_network_interface": "eth0"
+}

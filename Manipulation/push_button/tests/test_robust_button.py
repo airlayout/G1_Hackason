@@ -55,7 +55,7 @@ def launcher(tmp_path,monkeypatch):
         calls.append('bridge')
         yield Path('/tmp/fake_button.sock')
     monkeypatch.setattr(session,'sdk_bridge',bridge)
-    def fake_execute(command,log,env,*,input_text=None):
+    def fake_execute(command,log,env,*,input_text=None,timeout=100):
         calls.append(command)
         log.write_text('mock child')
         if '--task' in command:
@@ -276,7 +276,9 @@ def test_button_shell_entrypoint_cannot_switch_to_bottle(tmp_path):
         '--button-direction','down'],capture_output=True,text=True,
         env=dict(os.environ,PATH=str(tmp_path)+os.pathsep+os.environ['PATH']),check=True)
     args=result.stdout.splitlines()
-    assert args[1]=='push' and args[-2:]==['--task','button']
+    assert 'push' in args and args[-2:]==['--task','button']
+    assert args[args.index('--button-feedback')+1]=='joint'
+    assert args[args.index('--button-policy')+1]=='collection'
 
 
 @pytest.mark.parametrize('levels,diagnostic,expected', [([140,145,150],False,0),

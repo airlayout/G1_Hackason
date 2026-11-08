@@ -28,6 +28,35 @@ def test_venv_python_symlink_is_preserved(tmp_path):
     assert session.local_path(interpreter) == Path(sys.executable).resolve()
 
 
+def test_failed_search_prints_ik_collisions_and_observed_position(tmp_path,capsys):
+    (tmp_path/'result.json').write_text(json.dumps(dict(plan=dict(accepted=False,
+        reason='No candidate completed and passed every required uncertainty condition',
+        candidates_attempted=3,physically_evaluated_candidates=0,completed_rollouts=0,
+        scene=dict(face=[.56,-.09,.87]),candidates=[
+            dict(reason='手先のIKが収束しません (位置誤差 0.098 m)'),
+            dict(reason='手先のIKが収束しません (位置誤差 0.075 m)'),
+            dict(reason='腕の経路に衝突があります (geoms=[36, 61])')]))))
+    session.print_execution_failure(tmp_path)
+    output = capsys.readouterr().out
+    assert '物理評価: 0 / 完走: 0' in output
+    assert '(2件): 手先のIKが収束しません' in output
+    assert 'geoms=[36, 61]' in output
+    assert '[0.56, -0.09, 0.87]' in output
+    assert '物理シミュレーション開始前' in output
+
+
+def test_failed_rollouts_print_physical_failures_instead_of_generic_reason(tmp_path,capsys):
+    (tmp_path/'preview.json').write_text(json.dumps(dict(plan=dict(accepted=False,
+        physically_evaluated_candidates=1,completed_rollouts=1,candidates=[dict(
+            reason='Not every condition completed and passed',trials=[
+                dict(completed=True,failure_reasons=['press_depth','press_force']),
+                dict(completed=False,reason='deadline')])]))))
+    session.print_execution_failure(tmp_path)
+    output = capsys.readouterr().out
+    assert 'press_depth' in output and 'press_force' in output and 'deadline' in output
+    assert '物理シミュレーション開始前' not in output
+
+
 def test_output_probe_rejects_active_weight_torque_changed_target_and_bad_crc():
     message = SimpleNamespace(motor_cmd=[SimpleNamespace(q=0.,dq=0.,tau=0.,kp=0.,kd=0.) for _ in range(35)],crc=123)
     hold = dict(**control_contract(),held_upper_body_q_rad=[0.]*17)

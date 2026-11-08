@@ -32,7 +32,7 @@ from motion_limits import JointMotionLimits, WEIGHT_RAMP_STEPS, CONTROL_PERIOD_S
 from robust_policy import execution_policy
 
 
-def read_calibration(path, *, require_button=True, require_target_margin=True):
+def read_calibration(path, *, require_button=True, require_target_margin=True, button_collection=False):
     calibration = json.loads(Path(path).read_text())
     schema = calibration.get("schema")
     if schema not in ("g1-button-calibration-v1", "g1-button-calibration-v2"):
@@ -64,7 +64,7 @@ def read_calibration(path, *, require_button=True, require_target_margin=True):
     if (not np.all(np.isfinite((tip_radius, button_radius, uncertainty)))
             or not 0 < tip_radius < 0.04 or not 0 < button_radius <= 0.06
             or not 0 <= uncertainty <= 0.02
-            or (require_button and (button_radius <= tip_radius or
+            or (require_button and (button_radius < tip_radius or (not button_collection and button_radius == tip_radius) or
                 (require_target_margin and button_radius - tip_radius < uncertainty + 0.003)))):
         raise ValueError("ボタンと手先の寸法に対して位置の不確かさが大きすぎます")
     return calibration, transform

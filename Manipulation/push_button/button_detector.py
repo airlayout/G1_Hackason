@@ -42,10 +42,15 @@ def make_button_detector(weights=None, confidence=DEFAULT_CONFIDENCE, device="au
     if runtime is None:
         from real.j1gen_camera import J1CameraRuntime
         runtime = J1CameraRuntime()
-    cls = runtime.module("perception_bridge").perception("detector.yolo_detector").YoloDetector
-    detector = ButtonDetector(cls(model_name=str(path.resolve()), classes=None,
-        confidence_threshold=confidence, device=device, imgsz=imgsz),
-        direction=direction, class_name=class_name)
+    bridge = runtime.module('perception_bridge')
+    if path.suffix.lower() == '.onnx':
+        cls = bridge.perception('detector.onnx_yolo').OnnxYoloDetector
+        backend = cls(model_path=str(path.resolve()),classes=None,confidence_threshold=confidence,num_threads=2)
+        backend.class_names = tuple(backend.names.values())
+    else:
+        cls = bridge.perception('detector.yolo_detector').YoloDetector
+        backend = cls(model_name=str(path.resolve()),classes=None,confidence_threshold=confidence,device=device,imgsz=imgsz)
+    detector = ButtonDetector(backend,direction=direction,class_name=class_name)
     detector.detect(np.zeros((480, 640, 3), dtype=np.uint8))
     return detector
 

@@ -29,14 +29,17 @@ from robust_conditions import (BUTTON_CONDITION_COUNT,validate_button_plan,
                                validate_button_scenario_settings)
 
 
-def collect_outcome_observations(observer, *, now=time.monotonic, sleep=time.sleep):
+def collect_outcome_observations(observer, *, now=time.monotonic, sleep=time.sleep, allow_stale=False, after=None):
     """Wait briefly for three new measurements without treating held images as results."""
-    results, last_id = [], observer.latest(allow_stale=True).frame_id
+    initial = observer.latest(allow_stale=True)
+    results, last_id, last_stamp = [], initial.frame_id, initial.captured_at
     deadline = now()+2.
     while len(results) < 3 and now() < deadline:
         final = observer.latest(allow_stale=True)
-        if final.frame_id > last_id and 0 <= now()-final.captured_at <= .5:
-            results.append(final); last_id = final.frame_id
+        if (final.frame_id > last_id and final.captured_at > last_stamp
+                and (after is None or final.captured_at > after)
+                and (allow_stale or 0 <= now()-final.captured_at <= .5)):
+            results.append(final); last_id, last_stamp = final.frame_id, final.captured_at
         sleep(.02)
     return results
 
@@ -90,6 +93,9 @@ def main(argv=None, *, task=None):
         args.confidence = DEFAULT_CONFIDENCE if args.task == 'button' else .25
     if args.detector_imgsz is None:
         args.detector_imgsz = DEFAULT_IMAGE_SIZE if args.task == 'button' else 960
+    collection = args.task == 'button' and settings.button_policy == 'collection'
+    if args.task != 'button' and (settings.button_feedback != 'off' or settings.button_policy != 'standard'):
+        parser.error('Button feedback/policy requires --task button')
     policy = execution_policy(args.execute_after_plan or args.execute_verified_plan)
     report = dict(schema='g1-robust-trial-v1', task=args.task, completed=False, physical_push_success=None,
                   visual_success=None,
@@ -100,6 +106,10 @@ def main(argv=None, *, task=None):
         stale_bottle_pose='verified_reference_prediction' if args.allow_stale_observation else None,
         outcome_frames_required=not (args.stop_before_contact or args.allow_stale_observation),
         capture_pose='current_stationary_state' if args.static_target else 'capture_time_history')
+    if collection:
+        report['image_policy'].update(initial_three_fresh_frames_required=False,
+            initial_three_distinct_frames_required=True,continuous_age_check=False,
+            outcome_three_distinct_post_press_frames_required=True)
     if args.execute_verified_plan:
         report['image_policy'].update(button_contact_occlusion=not args.stop_before_contact,
             fixed_interval_timeout_s=None)
@@ -110,6 +120,8 @@ def main(argv=None, *, task=None):
     report['pose_history_policy'] = dict(sample_period_s=CONTROL_PERIOD_S,
         warmup_s=.6,max_gap_s=.1,on_unmatched_frame='discard_and_recapture')
     report['pose_history_rejections'] = []
+    if collection:
+        report['pose_history_policy'].update(max_gap_s=None,on_unmatched_frame='nearest_history_sample')
     arm = motion = observer = camera = None
     state_stop = threading.Event()
     state_thread = None
@@ -120,10 +132,10 @@ def main(argv=None, *, task=None):
         if not np.isfinite(args.lamp_min_rise) or args.lamp_min_rise <= 0:
             raise ValueError('--lamp-min-rise must be finite and positive')
         if args.execute_verified_plan and (not args.execute or args.task != 'button' or
-                settings.scenarios != BUTTON_CONDITION_COUNT or args.execute_after_plan):
+                settings.scenarios != (1 if collection else BUTTON_CONDITION_COUNT) or args.execute_after_plan):
             raise ValueError('--execute-verified-plan requires button --execute and 4 scenarios, without --execute-after-plan')
         if args.task=='button' and args.execute:
-            validate_button_scenario_settings(settings.scenarios,settings.position_span_m)
+            validate_button_scenario_settings(settings.scenarios,settings.position_span_m,settings.button_policy)
         if args.task == 'button' and (not isinstance(args.stroke,(int,float)) or isinstance(args.stroke,bool)
                 or not np.isfinite(args.stroke) or not .0015 <= args.stroke <= .015):
             raise ValueError('Button mode requires a measured stroke between 1.5 and 15mm')
@@ -138,7 +150,7 @@ def main(argv=None, *, task=None):
         if not args.execute and not args.state_json:
             raise ValueError('Planning preview requires --state-json')
         calibration, _ = read_calibration(args.base_transform, require_button=args.task=='button',
-                                          require_target_margin=args.execute_verified_plan)
+                                          require_target_margin=args.execute_verified_plan and not collection,button_collection=collection)
         report['calibration'] = calibration
         runtime = J1CameraRuntime(args.j1gen_root)
         # Model warm-up occurs before the initial capture and search deadline.
@@ -208,7 +220,7 @@ def main(argv=None, *, task=None):
             state = json.loads(Path(args.state_json).read_text())
             def configuration():
                 return (state['motor_q_rad'],state['imu_rpy_rad'],time.monotonic(),0.,0.)
-        camera = J1RgbdCamera(runtime,args.camera_config,args.host)
+        camera = J1RgbdCamera(runtime,args.camera_config,args.host,**({'max_age_s':None} if collection else {}))
         reference = [None]
         stable_base = [args.bottle_base_height]
         perception_rejections = []
@@ -218,13 +230,13 @@ def main(argv=None, *, task=None):
             if delivered is None:
                 return None
             frame, stamp = delivered
-            if not 0 <= time.monotonic()-stamp <= .5:
+            if not collection and not 0 <= time.monotonic()-stamp <= .5:
                 return None
             config = configuration()
             # The camera is torso-fixed. A stationary-target diagnostic uses the
             # fresh, stationary torso state rather than an image-time history lookup.
             try:
-                q, imu = (history.at(stamp, config, max_distance_s=.1)
+                q, imu = (history.at(stamp, config, max_distance_s=None if collection else .1)
                           if args.execute and not args.static_target else config[:2])
             except ValueError as exc:
                 # This image cannot be paired with a measured robot pose.
@@ -266,13 +278,13 @@ def main(argv=None, *, task=None):
             observed,lamp = candidates[0]
             reference[0] = observed
             return Observation(observed,tuple(q),tuple(imu),stamp,frame.frame_id,lamp)
-        observer = ContinuousObserver(read,camera.close)
-        initial = observer.initial()
+        observer = ContinuousObserver(read,camera.close,**(dict(stability_m=.01,allow_stale=True) if collection else {}))
+        initial = observer.initial(**({'timeout_s':30.} if collection else {}))
         if args.task == 'bottle':
             stable_base[0] = initial.geometry['base_height']
         scene = snapshot(args.task,initial,calibration,args)
         def latest_observation():
-            if args.static_target or args.allow_stale_observation:
+            if args.static_target or args.allow_stale_observation or collection:
                 return observer.latest(allow_stale=True)
             return observer.latest()
         def monitor():
@@ -308,24 +320,29 @@ def main(argv=None, *, task=None):
         motion = ArmMotion(arm,calibration,gravity=lambda config,velocity=None: torque['value'].copy(),
                            waist_gravity=lambda config: torque['waist'].copy(),
                            state_sink=record_state,limits=settings.motion_limits,
-                           allow_pose_drift=policy.record_deviations,synchronous_stream=policy.synchronous_stream)
+                           allow_pose_drift=policy.record_deviations,
+                           synchronous_stream=policy.synchronous_stream or settings.button_feedback=='joint')
         report['upper_body_hold'] = motion.upper_body_hold
         report['execution'] = execute(plan,args.model,calibration,motion,configuration,latest_observation,settings,
             set_torque=lambda value: torque.update(value=np.array(value)),diagnostic=args.stop_before_contact,
             record_deviations=policy.record_deviations,set_waist_torque=lambda value: torque.update(waist=np.array(value)),
             allow_stale_observation=args.allow_stale_observation,
+            feedback_state=arm.joint_feedback_state if settings.button_feedback == 'joint' else None,
             observe_held=(lambda:observer.latest(allow_stale=True))
                 if args.execute_verified_plan and not args.stop_before_contact else None)
         report['command_publications'] = motion.command_publications
         if motion.error is not None:
             report['motion_thread_error'] = str(motion.error)
+        if report['execution'].get('interrupted'):
+            return 130
         report['completed'] = report['execution']['completed']
         if args.execute_verified_plan and report['execution'].get('error'):
             return 2
         if report['completed'] and not args.stop_before_contact:
             # Outcome measurements do not update an execution target or restart the push.
             try:
-                results = collect_outcome_observations(observer)
+                results = collect_outcome_observations(observer,**(dict(allow_stale=True,
+                    after=report['execution'].get('retreat_started_at_s')) if collection else {}))
             except RuntimeError as exc:
                 if not args.allow_stale_observation and args.task != 'button':
                     raise
