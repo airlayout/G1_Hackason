@@ -128,8 +128,10 @@ def test_one_command_orders_checks_and_never_arms_after_failed_preparation(tmp_p
         if '--trial-config' in command:
             assert json.loads(Path(command[command.index('--trial-config')+1]).read_text())['push_distance']==.05
         if any('check_robust_readiness.py' in value for value in command):
+            assert command[command.index('--policy')+1]=='collection'
             return 1 if failure == 'state' else 0
         if any('check_arm_output.py' in value for value in command):
+            assert command[command.index('--policy')+1]=='collection'
             return 1 if failure == 'output' else 0
         if '--execute' not in command:
             if failure == 'preview': return 1
@@ -139,7 +141,7 @@ def test_one_command_orders_checks_and_never_arms_after_failed_preparation(tmp_p
                 execution=dict(diagnostic_completed=True,release_completed=True))))
         return 0
     monkeypatch.setattr(session,'execute_child',execute)
-    result = session.main([mode,'--setup',str(setup),'--push-distance','.05'])
+    result = session.main([mode,'--setup',str(setup),'--push-distance','.05','--readiness-policy','collection'])
     assert json.loads(trial.read_text())['push_distance']==.02
     assert calls, 'Preparation must reach the subprocess phases before testing their failure paths'
     armed = [(command,text) for command,text in calls if '--execute' in command]

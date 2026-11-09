@@ -279,6 +279,7 @@ def test_button_shell_entrypoint_cannot_switch_to_bottle(tmp_path):
     assert 'push' in args and args[-2:]==['--task','button']
     assert args[args.index('--button-feedback')+1]=='joint'
     assert args[args.index('--button-policy')+1]=='collection'
+    assert args[args.index('--readiness-policy')+1]=='collection'
 
 
 @pytest.mark.parametrize('levels,diagnostic,expected', [([140,145,150],False,0),

@@ -1,6 +1,5 @@
 """Collision-checked IK retries and observation policy for explicit collection mode."""
 import time
-from dataclasses import replace
 
 import numpy as np
 from scipy.optimize import least_squares
@@ -11,15 +10,21 @@ from robust_perception import CorrectionGate
 
 
 class CollectionCorrectionGate(CorrectionGate):
-    """Keep the planned press normal; log later normal estimates for collection."""
+    """Record target movement and keep visual correction within the checked range."""
 
     def __init__(self, scene):
         super().__init__(scene)
         self.normal_deviations = []
+        self.position_changes = []
 
     def update(self, observed, progress, *, freeze=False):
         if self.scene.task != 'button':
             return super().update(observed, progress, freeze=freeze)
+        if observed.frame_id == self.last_id:
+            return self.offset.copy()
+        face = np.asarray(observed.geometry['face'],dtype=float)
+        if face.shape != (3,) or not np.all(np.isfinite(face)):
+            raise RuntimeError('Invalid observed target position')
         normal = np.asarray(observed.geometry['normal'], dtype=float)
         if normal.shape != (3,) or not np.all(np.isfinite(normal)) or np.linalg.norm(normal) < 1e-9:
             raise RuntimeError('Invalid observed target normal')
@@ -29,10 +34,22 @@ class CollectionCorrectionGate(CorrectionGate):
             self.normal_deviations.append(dict(frame_id=observed.frame_id,
                 captured_at_s=observed.captured_at, angle_deg=angle,
                 observed_normal=normal.tolist(), planned_normal=list(self.scene.normal)))
-        # Only orientation is held. The base gate still checks forward/lateral
-        # position changes, and the bounded correction uses the planned normal.
-        held = replace(observed, geometry=dict(observed.geometry, normal=self.scene.normal))
-        return super().update(held, progress, freeze=freeze)
+        planned_normal = np.asarray(self.scene.normal)
+        displacement = face-np.asarray(self.scene.face)
+        forward = float(displacement@planned_normal)
+        lateral = displacement-forward*planned_normal
+        length = float(np.linalg.norm(lateral))
+        desired = np.zeros(3) if length <= .001 else lateral*min(1.,.005/length)
+        if not freeze:
+            delta = desired-self.offset
+            self.offset += delta*min(1.,.0005/max(float(np.linalg.norm(delta)),1e-12))
+        self.last_id = observed.frame_id
+        self.position_changes.append(dict(frame_id=observed.frame_id,captured_at_s=observed.captured_at,
+            observed_face_m=face.tolist(),displacement_m=displacement.tolist(),
+            press_direction_change_m=forward,lateral_change_m=length,
+            correction_offset_m=self.offset.tolist(),correction_clamped=length > .005,
+            target_locked=freeze))
+        return self.offset.copy()
 
 
 def solve_collection_waypoint(kin, target, normal, *, seed, rng, deadline):

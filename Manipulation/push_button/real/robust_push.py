@@ -109,7 +109,9 @@ def main(argv=None, *, task=None):
     if collection:
         report['image_policy'].update(initial_three_fresh_frames_required=False,
             initial_three_distinct_frames_required=True,continuous_age_check=False,
-            outcome_three_distinct_post_press_frames_required=True)
+            outcome_three_distinct_post_press_frames_required=True,
+            target_position_change='record_only',target_position_stop_enabled=False,
+            lateral_correction_limit_m=.005)
     if args.execute_verified_plan:
         report['image_policy'].update(button_contact_occlusion=not args.stop_before_contact,
             fixed_interval_timeout_s=None)
@@ -267,7 +269,7 @@ def main(argv=None, *, task=None):
                         observed = dict(face=target.face_xyz, normal=target.press_direction,
                                         radius=calibration['button_radius_m'])
                         lamp = lamp_level(frame.color_bgr,detected.bbox)
-                    if reference[0] is not None and (np.linalg.norm(np.array(observed['face'])-reference[0]['face']) > .025
+                    if reference[0] is not None and ((not collection and np.linalg.norm(np.array(observed['face'])-reference[0]['face']) > .025)
                             or abs(observed['radius']-reference[0]['radius']) > .005):
                         continue
                     candidates.append((observed,lamp))
@@ -278,7 +280,8 @@ def main(argv=None, *, task=None):
             observed,lamp = candidates[0]
             reference[0] = observed
             return Observation(observed,tuple(q),tuple(imu),stamp,frame.frame_id,lamp)
-        observer = ContinuousObserver(read,camera.close,**(dict(stability_m=.01,allow_stale=True) if collection else {}))
+        observer = ContinuousObserver(read,camera.close,**(dict(stability_m=.01,allow_stale=True,
+            allow_target_motion=True) if collection else {}))
         initial = observer.initial(**({'timeout_s':30.} if collection else {}))
         if args.task == 'bottle':
             stable_base[0] = initial.geometry['base_height']

@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from arm_bridge import ArmProxy
 from check_arm_connection import check_state, validate_connection
+from robust_policy import execution_policy
 from motion_limits import JointMotionLimits
 from trajectory import validate_arm_q
 from upper_body_control import control_contract
@@ -78,6 +79,8 @@ sys.exit(0 if result['received'] else 1)
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--policy',choices=('strict','collection'),
+        help='起動前確認と共通の状態監視。省略時は従来の接続確認条件')
     parser.add_argument('--socket',required=True)
     parser.add_argument('--network-interface',required=True)
     parser.add_argument('--output',type=Path,required=True)
@@ -111,7 +114,9 @@ def main():
         validate_connection(report['connection'])
         report['limits'] = proxy.configure_motion_limits(JointMotionLimits(1.2,4.))
         config = proxy.current_configuration()
-        check_state(config,time.monotonic())
+        policy = execution_policy(args.policy=='collection') if args.policy is not None else None
+        check_state(config,time.monotonic(),policy=policy)
+        report['execution_policy'] = policy.to_dict() if policy is not None else None
         current = tuple(config[0][15:29])
         plan = json.loads(args.plan.read_text())
         if not plan.get('plan',{}).get('accepted'):

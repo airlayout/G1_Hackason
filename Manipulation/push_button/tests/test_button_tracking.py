@@ -159,6 +159,33 @@ def test_collection_requires_distinct_images_even_when_age_is_relaxed():
         window.consume(last,100.)
 
 
+def test_collection_observer_delivers_new_stable_position_after_a_large_shift():
+    window=ObservationWindow(allow_stale=True,allow_target_motion=True)
+    geometry=dict(face=(.4,-.12,1.),normal=(1.,0.,0.),radius=.015)
+    for index in range(3):
+        window.consume(Observation(geometry,(0.,)*29,(0.,)*3,index*.2,index),100.)
+    moved=dict(geometry,face=(.43,-.04,.98))
+    for index in range(3,6):
+        result=window.consume(Observation(moved,(0.,)*29,(0.,)*3,index*.2,index),100.)
+    assert result is not None
+    np.testing.assert_allclose(result.geometry['face'],moved['face'])
+    assert result.frame_ids==(3,4,5)
+
+
+@pytest.mark.parametrize('record_deviations',[False,True])
+def test_collection_target_movement_never_aborts_planning(record_deviations):
+    from robust_execution import validate_start
+    scene=SceneSnapshot('button',(.4,-.12,1.),(1.,0.,0.),.015,(0.,)*29,(0.,)*3,0.,
+        button_policy='collection',tip_radius=.015,uncertainty_m=.015)
+    observed=Observation(dict(face=(.43,-.04,.98),normal=scene.normal),scene.q,scene.imu,0.,1)
+    config=(scene.q,scene.imu,0.,0.,0.)
+    warnings=validate_start(scene,config,observed,record_deviations=record_deviations)
+    assert warnings and 'Target moved' in warnings[0]
+    with pytest.raises(RuntimeError,match='Target moved'):
+        validate_start(replace(scene,radius=.035,button_policy='standard'),config,observed,
+            record_deviations=record_deviations)
+
+
 def test_collection_plan_requires_matching_feedback_physics_and_policy():
     from test_robust_button_policy import valid_plan
     plan=valid_plan()
@@ -301,6 +328,40 @@ def test_feedback_errors_preserve_partial_report_and_release(monkeypatch,control
         config,observe,settings,now=lambda:10.)
     assert result['release_completed'] and not result['completed'] and closed
     assert result.get('interrupted',False)==isinstance(failure,KeyboardInterrupt)
+
+
+def test_feedback_runtime_records_large_target_changes_and_keeps_sending(monkeypatch,controller_fixture):
+    import button_tracking_runtime as runtime
+    kin,scene,c,settings,cal,model=controller_fixture
+    scene=replace(scene,button_policy='collection')
+    settings=replace(settings,button_policy='collection')
+    clock=[0.];offsets=[];sent=[];closed=[];frames=[0]
+    class Controller:
+        def __init__(self,*a,**k):
+            self.done=False;self.tcps=c.tcp;self.index=0;self.normal=np.asarray(scene.normal)
+            self.retreat=False;self.guard_holds=0;self.integral=TorqueIntegral();self.error=None
+        def start_from_command(self,*a): pass
+        def step(self,q,imu,stamp,elapsed,offset):
+            offsets.append(offset.copy());self.done=len(offsets)==3
+            return dict(q=c.q[0],velocity=np.zeros(7),tau=np.zeros(7),phase='approach',index=0,
+                reference_held=False,torque_bias=np.zeros(7),actual_depth_m=-.1,reference_depth_m=-.1,
+                guard_holds=0,error_m=0.,measured_tip=c.tcp[0],target=c.tcp[0])
+    monkeypatch.setattr(runtime,'ButtonTrackingController',Controller)
+    motion=SimpleNamespace(enable=lambda:None,start_approach=lambda:None,
+        current_target=lambda:c.q[0],stream=lambda *a,**k:sent.append(a[0]),
+        wait=lambda duration:clock.__setitem__(0,clock[0]+duration),
+        close=lambda:closed.append(True),release_error=None)
+    config=lambda:(scene.q,scene.imu,clock[0],0.,0.)
+    def observe():
+        frames[0]+=1
+        return Observation(dict(face=tuple(np.asarray(scene.face)+[.03,.07,0.]),normal=scene.normal),
+            scene.q,scene.imu,clock[0],frames[0])
+    result=runtime.execute_feedback(SimpleNamespace(scene=scene,candidate=c),model,cal,motion,
+        config,observe,settings,now=lambda:clock[0],record_deviations=True)
+    assert result['completed'] and result['release_completed'] and len(sent)==3 and closed
+    assert result['target_position_stop_enabled'] is False
+    assert len(result['target_position_changes'])==3 and all(v['correction_clamped'] for v in result['target_position_changes'])
+    assert all(np.linalg.norm(value)<=.005 for value in offsets)
 
 
 def test_feedback_rpc_is_read_only_and_keeps_legacy_state_tuple():

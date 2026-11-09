@@ -12,6 +12,24 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT/'Manipulation/push_button/real'), str(ROOT/'Manipulation/push_button')]
 from check_arm_connection import check_state, validate_connection
 from push_button import ArmSdk
+from robust_policy import STRICT_POLICY, execution_policy
+
+
+def validate_readiness_state(configuration, calibration, now, *, policy=STRICT_POLICY):
+    """Share bottle execution limits while retaining explicit strict diagnostics."""
+    check_state(configuration,now,policy=policy)
+    q,imu,_,_,_ = configuration
+    waist_delta = [a-b for a,b in zip(q[12:15],calibration['reference_waist_q_rad'])]
+    tilt_delta = [math.atan2(math.sin(a-b),math.cos(a-b))
+        for a,b in zip(imu[:2],calibration['reference_imu_rpy_rad'][:2])]
+    warnings = []
+    for changed,reason in ((max(map(abs,waist_delta)) > .025,'腰姿勢が校正時から0.025radを超えて変化しました'),
+            (max(map(abs,tilt_delta)) > math.radians(2),'IMUの傾きが校正時から2度を超えて変化しました')):
+        if changed:
+            if not policy.record_deviations:
+                raise RuntimeError(reason)
+            warnings.append(reason)
+    return warnings
 
 
 def check_other_controller(host):
@@ -37,11 +55,14 @@ def main():
     parser.add_argument('--trial-config',type=Path,required=True)
     parser.add_argument('--output-dir',type=Path,required=True)
     parser.add_argument('--ssh-host',default='g1')
+    parser.add_argument('--policy',choices=('strict','collection'),default='strict')
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True,exist_ok=False)
     trial = json.loads(args.trial_config.read_text())
     calibration = json.loads(Path(trial['base_transform']).read_text())
-    report = dict(robot_commands_sent=False,checked_at_epoch_s=time.time(),samples=[])
+    policy = execution_policy(args.policy=='collection')
+    report = dict(robot_commands_sent=False,checked_at_epoch_s=time.time(),samples=[],warnings=[],
+        readiness_policy=args.policy,execution_policy=policy.to_dict())
     arm = None
     try:
         report['other_controller'] = check_other_controller(args.ssh_host)
@@ -50,23 +71,18 @@ def main():
         validate_connection(report['connection'])
         for _ in range(50):
             config = arm.current_configuration()
-            check_state(config,time.monotonic())
+            for warning in validate_readiness_state(config,calibration,time.monotonic(),policy=policy):
+                if warning not in report['warnings']:
+                    report['warnings'].append(warning)
             q,imu,stamp,leg,gyro = config
-            if not 0 <= time.monotonic()-stamp <= .1:
-                raise RuntimeError('Robot state older than 100ms')
-            if max(abs(a-b) for a,b in zip(q[12:15],calibration['reference_waist_q_rad'])) > .025:
-                raise RuntimeError('腰姿勢が校正時から0.025radを超えて変化しました')
-            tilt = [abs(math.atan2(math.sin(a-b),math.cos(a-b)))
-                for a,b in zip(imu[:2],calibration['reference_imu_rpy_rad'][:2])]
-            if max(tilt) > math.radians(2):
-                raise RuntimeError('IMUの傾きが校正時から2度を超えて変化しました')
             report['samples'].append(dict(motor_q_rad=q,imu_rpy_rad=imu,
                 state_age_s=time.monotonic()-stamp,leg_speed_rad_s=leg,gyro_rad_s=gyro))
             time.sleep(.02)
         report['passed'] = True
         (args.output_dir/'state.json').write_text(json.dumps(dict(schema='g1-button-state-v1',
             motor_q_rad=q,imu_rpy_rad=imu),indent=2)+'\n')
-        print('FSM 501・29DoF・新しい50状態サンプル・校正姿勢を確認しました。')
+        print(f'FSM 501・29DoF・50状態サンプル・{args.policy}監視を確認しました。'
+              f' 状態期限{policy.state_timeout_s*1000:g}ms、脚{policy.leg_speed_rad_s:g}rad/s、IMU{policy.gyro_rad_s:g}rad/s')
         return 0
     except Exception as exc:
         report.update(passed=False,error=str(exc))

@@ -109,7 +109,9 @@ def execute_feedback(plan, model_path, calibration, motion, configuration, obser
         if not report['release_completed']:
             report['completed'] = False
         report.update(duration_s=now()-started,motion_s=now()-started,guard_holds=controller.guard_holds,
-            feedback_normal_deviations=getattr(gate,'normal_deviations',[]))
+            feedback_normal_deviations=getattr(gate,'normal_deviations',[]),
+            target_position_stop_enabled=settings.button_policy!='collection',
+            target_position_changes=getattr(gate,'position_changes',[]))
         controller.integral.bias[:] = 0.
     return report
 

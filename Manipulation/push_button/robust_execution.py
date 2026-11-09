@@ -34,10 +34,14 @@ def validate_start(scene, configuration, observed, *, record_deviations=False):
     if leg > policy.leg_speed_rad_s or gyro > policy.gyro_rad_s:
         raise RuntimeError('Robot moved while planning; discard snapshot')
     warnings = []
+    target_changed = np.linalg.norm(np.array(observed.geometry['face'])-scene.face) > max(.003,scene.uncertainty_m)
+    record_target_motion = scene.task == 'button' and getattr(scene,'button_policy','standard') == 'collection'
+    if target_changed and record_target_motion:
+        warnings.append('Target moved while planning; recorded for button collection')
     checks = [(np.max(delta[list(START_MONITORED_JOINTS)]) > .01
         or np.max(np.abs(np.array(imu)-scene.imu)) > np.deg2rad(.5),
         'Robot moved while planning; discard snapshot',True),
-        (np.linalg.norm(np.array(observed.geometry['face'])-scene.face) > max(.003,scene.uncertainty_m),
+        (target_changed and not record_target_motion,
         'Target moved while planning; discard snapshot',scene.task=='bottle'),
         (scene.task == 'bottle' and abs(observed.geometry.get('object_height',scene.object_height)-scene.object_height) > .01,
         'Bottle vertical extent changed while planning',True)]
@@ -91,7 +95,11 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
     check = build_scene_model(model_path, calibration, s)
     start = configuration()
     report['warnings'].extend(validate_start(s,start,observe(),record_deviations=record_deviations))
-    gate = BottleFeedback(s) if s.task == 'bottle' else CorrectionGate(s)
+    if s.task == 'button' and getattr(s,'button_policy','standard') == 'collection':
+        from button_collection import CollectionCorrectionGate
+        gate = CollectionCorrectionGate(s)
+    else:
+        gate = BottleFeedback(s) if s.task == 'bottle' else CorrectionGate(s)
     command_filter = JointCommandFilter(c.q[0], settings.motion_limits)
     n = np.array(s.normal)
     started = now()
@@ -271,6 +279,8 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
     except Exception as exc:
         report['error'] = str(exc)
     finally:
+        if hasattr(gate,'position_changes'):
+            report.update(target_position_stop_enabled=False,target_position_changes=gate.position_changes)
         if enabled:
             release_started = now()
             try:

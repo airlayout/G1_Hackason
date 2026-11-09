@@ -329,6 +329,8 @@ def main(argv=None):
     parser.add_argument('--button-policy',choices=('standard','collection'))
     parser.add_argument('--button-feedback-timeout-s',type=float)
     parser.add_argument('--planning-budget-s',type=float,help='経路探索と物理検証の合計時間上限')
+    parser.add_argument('--readiness-policy',choices=('strict','collection'),default='strict',
+        help='起動前の状態監視。実機バッシュはボトル共通のcollectionを使用')
     parser.add_argument('--deploy-only',action='store_true',help='G1へコードを転送して終了（動作なし）')
     args = parser.parse_args(argv)
     if args.setup is None:
@@ -371,6 +373,7 @@ def main(argv=None):
     run.mkdir()
     print('ログ:',run,flush=True)
     report = dict(task=args.task,mode=args.mode,completed=False,io_passed=None,setup_file=str(args.setup),phases=[],
+        readiness_policy=args.readiness_policy,
         flow='check-input-policy-output' if args.mode == 'check' else 'initialize-single-live-plan-execute')
     env = dict(os.environ,OPENBLAS_NUM_THREADS='1',OMP_NUM_THREADS='1',MUJOCO_GL='egl',
                YOLO_CONFIG_DIR=str(ROOT/'_local/bottle_push/ultralytics'))
@@ -436,7 +439,7 @@ def main(argv=None):
         report['camera'] = ensure_camera(setup,run)
         phase('2. 関節入力・立位・他の制御を確認', [setup['sdk_python'],str(REAL/'check_robust_readiness.py'),
             '--trial-config',str(trial_path),'--output-dir',str(run/'state'),
-            '--ssh-host',setup['ssh_host']])
+            '--ssh-host',setup['ssh_host'],'--policy',args.readiness_policy])
         if args.mode == 'check':
             preview = run/'preview.json'
             phase('3. RGB-D入力・認識・経路生成を確認',[setup['vision_python'],
@@ -449,7 +452,8 @@ def main(argv=None):
                     '--socket',str(sock),'--network-interface',trial['network_interface'],
                     '--plan',str(preview),'--output',str(run/'output_io.json'),
                     '--ssh-host',setup['ssh_host'],'--remote-python',setup['remote_sdk_python'],
-                    '--remote-interface',setup.get('remote_network_interface','eth0')])
+                    '--remote-interface',setup.get('remote_network_interface','eth0'),
+                    '--policy',args.readiness_policy])
             report['io_passed'] = True
             report['completed'] = True
             print('入力・方策生成・出力の疎通確認が完了しました。腕の制御は有効にしていません。',flush=True)

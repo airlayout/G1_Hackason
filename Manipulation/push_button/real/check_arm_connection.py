@@ -22,15 +22,18 @@ def validate_settings(angle_deg, duration):
         raise ValueError("上げる角度は2～10度、片道の移動時間は2～5秒が必要です")
 
 
-def check_state(configuration, now, baseline=None):
+def check_state(configuration, now, baseline=None, *, policy=None):
     joints, rpy, stamp, leg_speed, gyro = configuration
     if (len(joints) != 29 or len(rpy) != 3
             or not all(math.isfinite(v) for v in (*joints, *rpy, stamp, leg_speed, gyro))):
         raise ValueError("29軸の関節角・IMU・時刻の状態データが不正です")
-    if not 0 <= now-stamp <= 0.25:
+    state_timeout = .25 if policy is None else policy.state_timeout_s
+    leg_limit = .15 if policy is None else policy.leg_speed_rad_s
+    gyro_limit = .10 if policy is None else policy.gyro_rad_s
+    if not 0 <= now-stamp <= state_timeout:
         raise RuntimeError(f"実機状態が古いか時刻が不正です (age={now-stamp:.3f}s)")
     validate_arm_q(list(joints[22:29]))
-    if leg_speed > 0.15 or gyro > 0.10 or max(abs(v) for v in rpy[:2]) > 0.15:
+    if leg_speed > leg_limit or gyro > gyro_limit or max(abs(v) for v in rpy[:2]) > 0.15:
         raise RuntimeError(f"脚または骨盤が静止・直立していません "
                            f"(脚速度={leg_speed:.3f}rad/s, 角速度={gyro:.3f}rad/s, "
                            f"roll={rpy[0]:.3f}rad, pitch={rpy[1]:.3f}rad)")

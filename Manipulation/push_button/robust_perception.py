@@ -38,8 +38,9 @@ class LatestFrameSampler:
 
 
 class ObservationWindow:
-    def __init__(self, stability_m=.004, *, allow_stale=False):
+    def __init__(self, stability_m=.004, *, allow_stale=False, allow_target_motion=False):
         self.allow_stale = allow_stale
+        self.allow_target_motion = allow_target_motion
         self.stability_m = stability_m
         self.samples = deque(maxlen=3)
         self.last_id, self.last_stamp = -1, -np.inf
@@ -55,7 +56,7 @@ class ObservationWindow:
             self.samples.clear()  # a disappearance must not reuse pre-loss stability samples
         g = value.geometry
         if self.reference is not None:
-            if (np.linalg.norm(np.array(g['face'])-self.reference['face']) > .025
+            if ((not self.allow_target_motion and np.linalg.norm(np.array(g['face'])-self.reference['face']) > .025)
                     or abs(g['radius']-self.reference['radius']) > .005):
                 self.samples.clear()
                 raise ValueError('Target identity changed')
@@ -82,9 +83,10 @@ class ObservationWindow:
 
 class ContinuousObserver:
     """read() -> Observation or None. The camera and its FK model have one owner."""
-    def __init__(self, read, close=lambda: None, *, now=time.monotonic, stability_m=.004, allow_stale=False):
+    def __init__(self, read, close=lambda: None, *, now=time.monotonic, stability_m=.004, allow_stale=False,
+                 allow_target_motion=False):
         self.read, self.close_reader, self.now = read, close, now
-        self.window = ObservationWindow(stability_m,allow_stale=allow_stale)
+        self.window = ObservationWindow(stability_m,allow_stale=allow_stale,allow_target_motion=allow_target_motion)
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.value = self.error = None

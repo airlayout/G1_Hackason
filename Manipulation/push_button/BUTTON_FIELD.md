@@ -24,7 +24,12 @@ bash Manipulation/push_button/real/run_robust_button.sh precontact --button-dire
 bash Manipulation/push_button/real/run_robust_button_press.sh --button-direction down
 ```
 
-バッシュからの既定値は `--button-feedback joint --button-policy collection --planning-budget-s 120`。
+バッシュからの既定値は `--readiness-policy collection --button-feedback joint --button-policy collection --planning-budget-s 120`。
+起動前の状態監視はボトル用バッシュと共通にし、状態期限400ms・脚速度0.5rad/s・IMU角速度0.3rad/sを使う。
+校正時からの腰角0.025rad超・傾き2度超の差は警告として記録し、それだけでは開始を拒否しない。
+骨盤の絶対的な傾き0.15rad（約8.6度）、必要ファイル、FSM 501、他の腕制御との競合は確認する。
+`check`・`precontact`・`push` の全モードへ同じ起動前条件を渡す。
+厳しい起動前確認が必要な場合は `--readiness-policy strict` を明示する。
 収集用の `collection` は基準位置の1条件で、実機と同じ補正処理を物理検証する。
 押下深さ・追従・帰還の偏差は診断情報として扱うが、実際の衝突、過大な接触力、関節余裕は合否に使う。
 選択した手先とパネルの穴の縁だけは3mmの空間余裕を求めず、0.5mmを超える侵入を拒否する。
@@ -43,6 +48,10 @@ Pythonの直接起動では従来の `standard/off` が既定である。
 
 収集用では画像の経過時間による停止を外し、初回は異なる3枚を使う（安定幅10mm、最大30秒）。
 計画時の押下方向を保持し、接触前の横方向補正を5mm以内に制限する。
+対象位置が横方向5mm・押下方向10mmを超えて変わった場合も、それを理由に停止しない。
+計画中・実行直前の対象位置の差は警告として記録し、画像の更新時にも25mmの位置変化だけでは観測を捨てない。
+補正量の5mm上限と1回の画像更新あたり0.5mmの変化量制限は維持し、変化量と上限適用をログに残す。
+新しい位置は異なる3枚で安定を確認して受け取り、不正な数値・対象の一意性・半径の整合性は確認する。
 接触の5mm手前以降は画像による目標変更を止めるが、実測角と胴体姿勢による補正は継続する。
 関節状態の期限400ms、脚速度0.5rad/s、IMU角速度0.3rad/sなどの監視は残る。
 点灯確認には押下後に撮影された別々の3枚を使う。画像不足や判定混在は成功にしない。
