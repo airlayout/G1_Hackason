@@ -42,6 +42,7 @@ weight が 0 に戻り、腕が柱の数 cm 手前から元の姿勢へ動く。
 from __future__ import annotations
 
 import copy
+import itertools
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -364,14 +365,17 @@ class ElevatorPressController:
         face = call.button(self.target).center
         # 中指の先（の球の中心）の目標: 球の表面がボタンの面に触れる位置
         touch = face - float(c["tip_radius_m"]) * n
-        seed = q.copy()
-        seed_arm = np.asarray(c["ik_seed_right_arm"], dtype=float)
-        seed[self.kin.arm_idx] = seed_arm if self.side == "right" else mirror_arm_q(seed_arm)
         approach = touch - float(self.planner.cfg["approach_distance_m"]) * n
-        # 姿勢を選ぶため、まず位置だけで解いてから、指の向きも合わせる（Yada の見本と同じ 2 段）
-        r0 = self.kin.ik(approach, seed)
-        if r0.success:
-            seed = r0.q
+        # IK の初期姿勢の候補（右腕の値。左腕なら鏡像）。ik_seed_right_arm のあとに、ik_seed_right_arm_more を順に試す
+        # （車いす用は、手首を曲げてボタンを体の中央寄りでも押す姿勢。press.by_button_set.wheelchair）
+        seeds = []
+        for k, seed_arm in enumerate([c["ik_seed_right_arm"]] + list(c.get("ik_seed_right_arm_more") or [])):
+            seed = q.copy()
+            seed_arm = np.asarray(seed_arm, dtype=float)
+            seed[self.kin.arm_idx] = seed_arm if self.side == "right" else mirror_arm_q(seed_arm)
+            # 姿勢を選ぶため、まず位置だけで解いてから、指の向きも合わせる（Yada の見本と同じ 2 段）
+            r0 = self.kin.ik(approach, seed)
+            seeds.append((k, r0.q if r0.success else seed))
         wall = CollisionChecker(self.robot_cfg, self.side, float(c["wall_clearance_m"]),
                                 [wall_obstacle(call, self.cfg["wall"])])
         self.wall = wall
@@ -383,35 +387,36 @@ class ElevatorPressController:
         # 縛ると計画が立たない位置がある（35°/20° では pelvis から z +0.04 の低いボタンや柱まで 36 cm 以上）ので、
         # どの候補でも立たないときだけ、縛らずに計画し直す
         rows = [n, None] if c.get("level_finger_row", False) else [None]
-        for row in rows:
-            for left_deg, up_deg in c["finger_tilts_deg"]:
-                # 指の傾きは右腕の値（左へ傾ける）。左腕なら右へ傾ける
-                finger = finger_axis_for(n, self.sgn * float(left_deg), float(up_deg))
-                for via in [None] + list(self._via_points(touch, n)):
-                    q_via = None
-                    what = f"指 {left_deg:g}°/{up_deg:g}°、" + (
-                        "経由点なし" if via is None else f"経由点 {np.round(via, 3).tolist()}") + (
-                        "、指の並びは縛らない" if row is None and len(rows) > 1 else "")
-                    if via is not None:
-                        # 経由点でも指を手前の姿勢と同じ向きにする（位置だけで解くと、手首を大きく曲げた解になり、
-                        # 関節リミットや胴体に当たった。2026-10-07、評価環境の seed 1 の ▼）
-                        rv = self.kin.ik(via, seed)
-                        rv = self.kin.ik(via, rv.q if rv.success else seed, finger, row_normal=row)
-                        if not rv.success:
-                            errors.append(f"{what}: 経由点に届かない（{rv.reason}）")
-                            continue
-                        q_via = rv.q[self.kin.arm_idx]
-                    try:
-                        plan = self.planner.plan(q, touch, n, q_seed=seed, depth=depth, q_via_arm=q_via,
-                                                 finger_axis=finger, row_normal=row)
-                        self._check_wall(wall, q, plan)
-                    except UnreachableError as e:
-                        errors.append(f"{what}: {e}")
+        # 初期姿勢は、指の並びを縛るかより内側で回す（手首を曲げた姿勢で縛れるなら、縛らない今の姿勢より先に使う）
+        for row, (k, seed), (left_deg, up_deg) in itertools.product(rows, seeds, c["finger_tilts_deg"]):
+            # 指の傾きは右腕の値（左へ傾ける）。左腕なら右へ傾ける
+            finger = finger_axis_for(n, self.sgn * float(left_deg), float(up_deg))
+            for via in [None] + list(self._via_points(touch, n)):
+                q_via = None
+                what = f"指 {left_deg:g}°/{up_deg:g}°、" + (
+                    "経由点なし" if via is None else f"経由点 {np.round(via, 3).tolist()}") + (
+                    "、指の並びは縛らない" if row is None and len(rows) > 1 else "") + (
+                    f"、初期姿勢 {k + 1} 番目（ik_seed_right_arm_more）" if k > 0 else "")
+                if via is not None:
+                    # 経由点でも指を手前の姿勢と同じ向きにする（位置だけで解くと、手首を大きく曲げた解になり、
+                    # 関節リミットや胴体に当たった。2026-10-07、評価環境の seed 1 の ▼）
+                    rv = self.kin.ik(via, seed)
+                    rv = self.kin.ik(via, rv.q if rv.success else seed, finger, row_normal=row)
+                    if not rv.success:
+                        errors.append(f"{what}: 経由点に届かない（{rv.reason}）")
                         continue
-                    self.plan_ = plan
-                    self._build_legs(q, plan)
-                    self._note(f"計画（{self.side} 腕、{what}）: {plan.summary()}")
-                    return
+                    q_via = rv.q[self.kin.arm_idx]
+                try:
+                    plan = self.planner.plan(q, touch, n, q_seed=seed, depth=depth, q_via_arm=q_via,
+                                             finger_axis=finger, row_normal=row)
+                    self._check_wall(wall, q, plan)
+                except UnreachableError as e:
+                    errors.append(f"{what}: {e}")
+                    continue
+                self.plan_ = plan
+                self._build_legs(q, plan)
+                self._note(f"計画（{self.side} 腕、{what}）: {plan.summary()}")
+                return
         raise UnreachableError(" / ".join(errors))
 
     def _via_points(self, touch: np.ndarray, n: np.ndarray):

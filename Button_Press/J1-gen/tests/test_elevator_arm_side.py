@@ -168,5 +168,34 @@ class TestStandMapWorker(unittest.TestCase):
                 self.assertEqual(m._G["ctl"].side, side)
 
 
+@needs("pin")
+class TestBentWristSeed(unittest.TestCase):
+    """車いす用は、今の初期姿勢で計画が立たないとき、手首を曲げた初期姿勢（press.by_button_set.wheelchair の
+    ik_seed_right_arm_more）でも試す。ボタンが体の中央寄り（柱まで 40 cm・左右 0）でも、指の並びを縛ったまま立つ（2026-11-10）。"""
+
+    def test_center_button_plans_with_bent_wrist(self) -> None:
+        import sys
+
+        from common.config import FEATURE_DIR
+
+        sys.path.insert(0, str(FEATURE_DIR / "sim"))
+        import elevator_stand_map as m
+        from reach_map import REAL_STAND_1021
+
+        m.init_worker("wheelchair", "right")
+        ctl = m._G["ctl"]
+        for target in ("down", "up"):
+            with self.subTest(target=target):
+                ctl.reset(target, 0.02, np.full(17, 60.0))
+                ctl._plan(REAL_STAND_1021, m.make_call(0.40, 0.0, 0.0))
+                self.assertIn("初期姿勢 2 番目", ctl.log[-1].message)
+                self.assertIsNotNone(ctl.plan_.row_normal)  # 指の並びは縛ったまま（11/1 の小指で押すのに戻らない）
+                self.assertLess(ctl.plan_.q_approach[6], -0.9)  # 手首 yaw を大きく曲げている
+        # 今までどおり押せる位置（勧める立ち位置）は、今の初期姿勢のまま
+        ctl.reset("down", 0.02, np.full(17, 60.0))
+        ctl._plan(REAL_STAND_1021, m.make_call(0.48, -0.14, 0.0))
+        self.assertNotIn("初期姿勢 2 番目", ctl.log[-1].message)
+
+
 if __name__ == "__main__":
     unittest.main()

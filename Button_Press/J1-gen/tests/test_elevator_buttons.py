@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import copy
 import unittest
 
 import numpy as np
@@ -503,10 +504,19 @@ class TestElevatorPlan(unittest.TestCase):
                 self.assertGreater(r[:, 0] @ n, np.cos(np.radians(2.0)))
                 if p.row_normal is not None:
                     self.assertLess(abs(r[:, 2] @ n), limit)
-        # 11/1 の立ち位置（柱まで約 36 cm、ほぼ正面）
+        # 11/1 の立ち位置（柱まで約 36 cm、ほぼ正面）。今の初期姿勢では立たないが、2026-11-10 から手首を曲げた初期姿勢
+        # （ik_seed_right_arm_more）で、指の並びを縛ったまま立つ。勧める範囲（右 14±2 cm）はまだ変えないので、注意は出す
         ctl.reset("down", 0.02, np.full(17, 60.0))
+        ctl._plan(self.q_stand, call(0.36, 0.0))
+        self.assertIn("初期姿勢 2 番目", ctl.log[-1].message)
+        self.assertIsNotNone(ctl.plan_.row_normal)
+        no_bend = copy.deepcopy(elev)
+        no_bend["press"]["by_button_set"]["wheelchair"]["ik_seed_right_arm_more"] = []
+        ctl_nb = ElevatorPressController.from_config(load_config("robot.yaml"), load_config("press.yaml"),
+                                                     load_config("arm.yaml"), no_bend)
+        ctl_nb.reset("down", 0.02, np.full(17, 60.0))
         with self.assertRaises(UnreachableError):
-            ctl._plan(self.q_stand, call(0.36, 0.0))
+            ctl_nb._plan(self.q_stand, call(0.36, 0.0))
         advice = ctl._stand_advice(call(0.36, 0.0))
         self.assertNotIn("近すぎる", advice)
         self.assertIn("左へ 12 cm 以上寄る", advice)
