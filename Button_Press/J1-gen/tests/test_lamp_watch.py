@@ -146,6 +146,23 @@ class TestControllerUsesSeenLamp(unittest.TestCase):
         self.assertFalse(e["lit"])
         self.assertGreaterEqual(e["visible"], 0.0)
 
+    def test_hand_mask_off_uses_the_whole_lamp(self) -> None:
+        """実機の手は黒いので、手の画素を除かない（lit_watch.hand_mask: false）。見えた割合は記録するが、判定には使う。"""
+        from unittest import mock
+
+        self.ready()
+        self.ctl.phase = "hold"
+        lw = self.ctl.cfg["press"]["lit_watch"]
+        with mock.patch.dict(lw, {"hand_mask": False}), \
+                mock.patch.object(self.ctl, "_hand_circles", return_value=[(320.0, 320.0, 30.0)]):  # 枠を全部覆う手
+            self.ctl._watch(np.full((480, 640, 3), 60, np.uint8), np.full((480, 640), 0.5), K, self.q0, 7.0)
+        e = self.ctl.lamp.trace[-1]
+        self.assertTrue(e["used"])
+        self.assertLess(e["visible"], 0.1)
+        with mock.patch.object(self.ctl, "_hand_circles", return_value=[(320.0, 320.0, 30.0)]):  # 既定（除く）なら使わない
+            self.ctl._watch(np.full((480, 640, 3), 60, np.uint8), np.full((480, 640), 0.5), K, self.q0, 7.2)
+        self.assertFalse(self.ctl.lamp.trace[-1]["used"])
+
 
 if __name__ == "__main__":
     unittest.main()

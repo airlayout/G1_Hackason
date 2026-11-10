@@ -74,6 +74,9 @@ class J1genElevatorAgent(Agent):
                 d[key] = float(os.environ[name]) / 1000
                 print(f"[j1gen-agent] ⚠️ 押す力の設定 {key}: {d[key] * 1000:.0f} mm（既定は elevator.yaml）")
         cs["retry_lag_m"] = max(float(cs["retry_lag_m"]), float(cs["lag_m"]))  # 押し直しが 1 回目より弱くならないように
+        if os.environ.get("J1GEN_HAND_MASK") is not None:  # 実機の黒い手は 0（real/auto_press.py。common/lamp_watch.py）
+            elevator["press"]["lit_watch"]["hand_mask"] = os.environ["J1GEN_HAND_MASK"] not in ("0", "", "false")
+            print(f"[j1gen-agent] ランプを見るとき手の画素を除く: {elevator['press']['lit_watch']['hand_mask']}")
         if os.environ.get("J1GEN_NO_RETRY"):  # 押す力を確かめるとき、強めの押し直しで点いたのと区別する（real/auto_press.py --no-retry）
             elevator["press"]["max_retries"] = 0
             print("[j1gen-agent] ⚠️ 押し直しをしない")

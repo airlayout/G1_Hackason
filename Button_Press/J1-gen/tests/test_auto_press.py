@@ -107,6 +107,9 @@ class TestPressCommand(unittest.TestCase):
         self.assertEqual((env["J1GEN_BUTTON_SET"], env["J1GEN_BUTTON_DETECTOR"]), ("wheelchair", "yolo"))
         cmd, _ = press_command(args(target="down", execute=True), "enp129s0")
         self.assertNotIn("--dry-run", cmd)
+        self.assertEqual(env["J1GEN_HAND_MASK"], "0")  # 実機の手は黒いので、ランプを見るとき手の画素を除かない
+        _, env = press_command(args(target="down", hand_mask=True), "enp129s0")
+        self.assertEqual(env["J1GEN_HAND_MASK"], "1")
         self.assertNotIn("J1GEN_ARM", env)  # 指定しなければ elevator.yaml の press.arm のまま
 
     def test_arm(self) -> None:

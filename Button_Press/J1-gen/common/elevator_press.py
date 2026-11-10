@@ -704,7 +704,8 @@ class ElevatorPressController:
         self._note(f"乗り場の扉を見る範囲: {n} 画素（記録だけ。判断には使わない）")
 
     def _watch(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q: np.ndarray, t: float) -> None:
-        """押し込みから戻るまでの新しい画像で、ランプの明るさ（手の写る画素を除く）と扉を見る。
+        """押し込みから戻るまでの新しい画像で、ランプの明るさと扉を見る。lit_watch.hand_mask なら手の写る画素を除く
+        （シミュレーションの白い手。実機の手は黒いので除かない。どちらでも見えた割合は記録する）。
 
         枠は見つけたときのまま（毎回見つけ直すと YOLO で 0.2 秒近くかかり、50 Hz の制御が止まる）。"""
         lw = self.cfg["press"].get("lit_watch") or {}
@@ -727,8 +728,13 @@ class ElevatorPressController:
         except Exception as e:  # noqa: BLE001  見続けるのは補助。失敗しても押す動きは止めない
             print(f"[elevator] ⚠️ 手の写る範囲を求められない（続ける）: {e}")
             return
-        level, visible = self._lit_level_visible(rgb, box, covered)
-        used = bool(np.isfinite(level)) and visible >= float(lw["min_visible"])
+        _, visible = self._lit_level_visible(rgb, box, covered)
+        if lw.get("hand_mask", True):
+            level, _ = self._lit_level_visible(rgb, box, covered)
+            used = bool(np.isfinite(level)) and visible >= float(lw["min_visible"])
+        else:
+            level = self._lit_level(rgb, box)
+            used = bool(np.isfinite(level))
         rise = level - self.baseline_level if used else float("nan")
         lit = used and self._is_lit(level, rise)
         entry = {"t": float(t), "phase": self.phase, "retry": self.retries, "level": level, "rise": rise,

@@ -233,6 +233,9 @@ def press_command(args: argparse.Namespace, iface: str) -> tuple[list[str], dict
             env[name] = str(getattr(args, v))
     if getattr(args, "no_retry", False):
         env["J1GEN_NO_RETRY"] = "1"
+    # 押している間もランプを見るとき、手の画素を除くか。実機のゴムの手・手袋は黒く、被さっても明るく見えないので除かない
+    # （除くと、ランプの縁が少し見えている画像まで使えなくなる）。シミュレーションの白い手は elevator.yaml の既定で除く
+    env["J1GEN_HAND_MASK"] = "1" if getattr(args, "hand_mask", False) else "0"
     if getattr(args, "air", None):
         env["J1GEN_AIR_BUTTONS"] = f"{args.air[0]},{args.air[1]}"
     return cmd + list(getattr(args, "extra", [])), env
@@ -275,6 +278,9 @@ def main() -> int:
                    help="ボタン: 点灯していなくても押し直さない（押す力を確かめるとき。押し直しは 1 回目より強い）")
     p.add_argument("--air", type=float, nargs=2, metavar=("X", "Y"),
                    help="ボタン: カメラで探さず、pelvis から前 X・左右 Y [m]（− が右）の空中に車いす用の ▲▼ があるものとして動かす")
+    p.add_argument("--hand-mask", action="store_true",
+                   help="ボタン: 押している間もランプを見るとき、手・前腕が写る画素を除く（既定は除かない。実機の手は黒い。"
+                        "白い手のシミュレーションや、白い手袋のとき）")
     p.add_argument("--skip-prechecks", action="store_true", help="事前確認を飛ばす（模擬ロボットで試すときだけ）")
     p.add_argument("--skip-head-tilt", action="store_true",
                    help="事前確認のうち、頭カメラの向きだけを飛ばす（床でない斜めの面を床と取り違えて止まるとき。"
