@@ -131,7 +131,10 @@ def write_result(path: Path, ctl: object, body_log_dir: Path | None) -> None:
         "body_log": str(body_log_dir) if body_log_dir is not None else None,
         # 押し込みの回ごとの、推定トルクから推定した押す力 [N]（common/push_force.py）。推定トルクが無ければ空
         "press_forces": getattr(ctl, "press_forces", []),
-    }, ensure_ascii=False, indent=2))
+        # 押している間・戻る間に見たランプ（一度でも点灯したか）と、乗り場の扉が開いたか（記録だけ）。common/lamp_watch.py
+        "lamp_watch": ctl.lamp.summary() if getattr(ctl, "lamp", None) is not None else None,
+        "door_watch": ctl.door.summary() if getattr(ctl, "door", None) is not None else None,
+    }, ensure_ascii=False, indent=2, default=float))
 
 
 class BodyLog:
@@ -159,15 +162,20 @@ class BodyLog:
 
     def save_snapshot(self, kind: str, rgb: np.ndarray, info: dict) -> None:
         """押す前（kind="before"）・点灯の確認（"check"）の画像を、元の画像と、枠・値を描いた画像で保存し、
-        内容を lit_log.json に足す。元の画像は、あとで点灯判定の回帰テストや学習に使える。"""
+        内容を lit_log.json に足す。元の画像は、あとで点灯判定の回帰テストや学習に使える。
+        押している間・戻る間に見た画像（"watch"、初めて点灯を見たものは "seen"）は数が多いので、"watch" は
+        枠・値・手の写る円を描いた JPEG だけにする（手がランプをどれだけ隠すかを、実機の画像で確かめるため）。"""
         import cv2  # 実機でも入っている（評価環境が使う）。記録を使わないときは読み込まない
 
         self._shots = getattr(self, "_shots", 0)
         stem = f"lit_{self._shots:02d}_{kind}"
         self._shots += 1
         bgr = cv2.cvtColor(np.asarray(rgb, dtype=np.uint8), cv2.COLOR_RGB2BGR)
-        cv2.imwrite(str(self.dir / f"{stem}.png"), bgr)
+        if kind != "watch":
+            cv2.imwrite(str(self.dir / f"{stem}.png"), bgr)
         vis = bgr.copy()
+        for u, v, r in info.get("hand", []):  # 手・前腕が写るとみなした範囲（ランプの明るさから除いた画素）
+            cv2.circle(vis, (int(round(u)), int(round(v))), max(int(round(r)), 1), (255, 0, 255), 1)
         x1, y1, x2, y2 = info["bbox"]
         cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 255, 0), 1)
         if info.get("found_box") and info.get("moved"):  # 見つけ直して枠が動いたとき、元の枠を青で
@@ -176,11 +184,14 @@ class BodyLog:
         label = f"{kind} {info['target']} level={info['level']:.0f}"
         if "rise" in info:
             label += f" rise={info['rise']:+.0f} {'LIT' if info['lit'] else 'not lit'}"
+        if "visible" in info:
+            label += f" {info['phase']} visible={info['visible'] * 100:.0f}%"
         cv2.putText(vis, label, (4, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
         cv2.imwrite(str(self.dir / f"{stem}_annotated.jpg"), vis)
         path = self.dir / "lit_log.json"
         rows = json.loads(path.read_text()) if path.exists() else []
-        rows.append({"image": f"{stem}.png", "kind": kind, **info})
+        rows.append({"image": f"{stem}.png" if kind != "watch" else f"{stem}_annotated.jpg", "kind": kind,
+                     **{k: v for k, v in info.items() if k != "hand"}})  # 手の円は画像にだけ描く（毎回書き直すので軽くする）
         path.write_text(json.dumps(rows, ensure_ascii=False, indent=1, default=float))
 
     def write(self, obs: Observation, ctl: object) -> None:

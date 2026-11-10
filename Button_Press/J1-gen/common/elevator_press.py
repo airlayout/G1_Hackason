@@ -34,6 +34,10 @@ weight が 0 に戻り、腕が柱の数 cm 手前から元の姿勢へ動く。
 使わない（止めるのは今までどおり関節の遅れ）。2026-11-03 の 19:39 の ▲ で「当たらなかった」のか「指が曲がって遅れが
 増えなかった」のかを、関節角からは区別できなかったため。
 
+ランプと扉を見続ける（common/lamp_watch.py）: 押し込み・保持・戻り・確認の間の新しい画像でも毎回ランプの明るさを見て、
+一度でも点灯していれば、確認のときに消えていても「点灯した」とする（かごがその階にいると、押している間だけ点く。
+2026-11-03）。手・前腕が写る画素は関節の角度から求めて除く。押したあとは乗り場の扉が開いたかも記録する（判断には使わない）。
+
 指先のずれの補正（Yada の見本のエージェントと同じ考え方）: 実際の関節の角度から指先の位置を計算（FK）し、
 目標とのずれを少しずつ足し込む。押す向きの成分は、押している間は足し込まない（押し込む力を出すため）。
 ボタンに触れる直前で補正を止める（触れたあとは摩擦で横に動けず、補正だけが膨らむため）。
@@ -52,6 +56,7 @@ import numpy as np
 from .arm.gravity import GravityModel
 from .collision import CollisionChecker
 from .elevator_buttons import ButtonFinder, ButtonNotFound, ButtonTracker, CallButtons
+from .lamp_watch import DoorWatch, LampWatch, hand_mask, load_stl_vertices, mesh_circles, segment_circles
 from .press_planner import PressPlan, PressPlanner, UnreachableError
 from .push_force import PushForceMonitor
 from .robot_model import WAIST_IDX, mirror_arm_q
@@ -163,6 +168,10 @@ class ElevatorPressController:
         self.log = []
         self.force = PushForceMonitor(self.kin, self.gravity)
         self.press_forces: list[dict[str, Any]] = []  # 押し込みの回ごとの推定した押す力（PushForceSummary.to_dict()）
+        self.lamp = LampWatch()
+        self._t_press: float | None = None
+        self._t_hold: float | None = None
+        self.door = DoorWatch(self.cfg["press"]["door_watch"]) if self.cfg["press"].get("door_watch") else None
 
     def step(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q: np.ndarray, t: float,
              image_t: float, imu_quat: np.ndarray | None = None,
@@ -179,6 +188,8 @@ class ElevatorPressController:
         c = self._press_cfg()  # 押す組ごとの上書き（retract_s など）も重ねる
         done = False
         fresh = self._is_fresh(t, image_t)
+        if fresh and self.phase in ("press", "hold", "retract", "check", "home") and self.call is not None:
+            self._watch(rgb, depth, K, q, t)  # 確認より先に見る（同じ画像で確認するときも、見続けた結果に入れる）
 
         if self.phase == "look":
             if t >= float(c["look_start_s"]) and fresh:
@@ -270,6 +281,9 @@ class ElevatorPressController:
         self.phase, self.t_phase = phase, t
         if phase == "press":
             self.lag0 = None  # 押し込みを始めた周期の遅れを、次の step で測り直す
+            self._t_press = t
+        elif phase == "hold":
+            self._t_hold = t
 
     def finish_force(self) -> None:
         """押し込み・保持が終わった。推定した押す力を残す（tau_est が無ければ何もしない）。保持の途中で終わったとき
@@ -300,6 +314,7 @@ class ElevatorPressController:
         b = merged.button(self.target)
         self.baseline_brightness = self._brightness(rgb, b.bbox)
         self.baseline_level = self._lit_level(rgb, b.bbox)
+        self._start_door(merged, depth, K, q)
         self._snapshot("before", rgb, b.bbox, t, level=self.baseline_level, retry=0)
         prelit = self.cfg["press"]["lit_check"].get("prelit_level")
         if prelit is not None and self.baseline_level >= float(prelit):
@@ -536,6 +551,10 @@ class ElevatorPressController:
         return float(patch.mean()) if patch.size else float("nan")
 
     def _lit_level(self, rgb: np.ndarray, bbox: tuple[int, int, int, int]) -> float:
+        return self._lit_level_visible(rgb, bbox)[0]
+
+    def _lit_level_visible(self, rgb: np.ndarray, bbox: tuple[int, int, int, int],
+                           covered: np.ndarray | None = None) -> tuple[float, float]:
         """ボタンの明るい部分の明るさ: 枠に内接する楕円を lit_check.radius 倍に広げた範囲の、明るい側から
         lit_check.percentile % の値（0〜255）。
 
@@ -543,6 +562,9 @@ class ElevatorPressController:
         枠全体の平均では輪の光が薄まり、上がり方が +21〜+31（以前のしきい値 +25 でぎりぎり）だった。明るい側の値なら
         +51〜+95。評価環境（面全体が白くなる）では +39〜+55（点灯していないときは 1 以下）。縁の輪の平均は、
         評価環境で黒い盤が混ざって +18〜+34 に薄まったので使わない。
+
+        covered（画像と同じ大きさの真偽）を渡すと、その画素（手・前腕が写る所）を除いて求める。
+        返すのは (明るさ, 範囲のうち使えた画素の割合)。
         """
         lc = self.cfg["press"]["lit_check"]
         x1, y1, x2, y2 = bbox
@@ -552,11 +574,16 @@ class ElevatorPressController:
         a1, b1 = max(int(np.floor(cx - ro * rx)), 0), max(int(np.floor(cy - ro * ry)), 0)
         a2, b2 = min(int(np.ceil(cx + ro * rx)), w), min(int(np.ceil(cy + ro * ry)), h)
         if a2 <= a1 or b2 <= b1:
-            return float("nan")
+            return float("nan"), 0.0
         v, u = np.mgrid[b1:b2, a1:a2]
         inside = np.hypot((u + 0.5 - cx) / rx, (v + 0.5 - cy) / ry) <= ro
+        n_all = int(inside.sum())
+        if covered is not None:
+            inside &= ~covered[b1:b2, a1:a2]
         gray = np.asarray(rgb[b1:b2, a1:a2], dtype=float).mean(axis=2)
-        return float(np.percentile(gray[inside], float(lc["percentile"]))) if inside.any() else float("nan")
+        if not inside.any():
+            return float("nan"), 0.0
+        return float(np.percentile(gray[inside], float(lc["percentile"]))), float(inside.sum()) / max(n_all, 1)
 
     def _current_bbox(self, rgb: np.ndarray, bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
         """見つけたときの枠に最も近い、今の画像のボタンの枠。無ければ、見つけたときの枠のまま。
@@ -620,6 +647,14 @@ class ElevatorPressController:
             self._note(f"点灯した（{shown}）")
             self._start_home(t)
             return True
+        seen = self.lamp.seen
+        if seen is not None:
+            # 確認のときには消えていたが、押している間・戻る間に点灯を見た（かごがその階にいた・すぐ来た）
+            self.outcome = "点灯した（確認のときには消えていた）"
+            self._note(f"点灯した: {seen['phase']} の {seen['t'] - self.t_contact():+.1f} 秒（当たってから）に"
+                       f"明るい部分 {seen['rise']:+.0f} を見た（見えた割合 {seen['visible'] * 100:.0f}%）。確認のときは {shown}。押し直さない")
+            self._start_home(t)
+            return True
         if self.retries >= int(c["max_retries"]):
             self.outcome = f"点灯を確かめられない（{shown}）"
             self._note(self.outcome)
@@ -632,6 +667,79 @@ class ElevatorPressController:
         self.plan_ = PressPlan(**{**p.__dict__, "end_point": p.target_point + depth * p.push_dir, "depth": depth})
         self._enter("press", t)
         return False
+
+    def t_contact(self) -> float:
+        """最後の押し込みで指が止まった（保持に入った）時刻。まだなら押し込みを始めた時刻。"""
+        return self._t_hold if self._t_hold is not None else (self._t_press or 0.0)
+
+    def _hand_circles(self, q: np.ndarray, K: np.ndarray) -> list[tuple[float, float, float]]:
+        """押す腕の手（ゴムの手のメッシュの頂点）と前腕（肘 → 手首）が画像に写る円の並び。"""
+        lw = self.cfg["press"]["lit_watch"]
+        if getattr(self, "_hand_vertices", None) is None:
+            from .config import resolve_repo_path
+
+            urdf = resolve_repo_path(self.robot_cfg["model"]["urdf_path"])
+            self._hand_vertices = load_stl_vertices(urdf.parent / "meshes" / f"{self.side}_rubber_hand.STL")
+        cam = self.finder.cam_tf
+        rot, pos = cam.pelvis_from_optical(np.asarray(q, dtype=float)[list(WAIST_IDX)])
+        pos = pos + np.asarray(getattr(cam, "offset", np.zeros(3)), dtype=float)
+        K = np.asarray(K, dtype=float)
+        self.kin.fk_pos(q)  # oMf を更新する
+        frame = lambda name: self.kin.data.oMf[self.kin.model.getFrameId(f"{self.side}_{name}")]
+        hand = frame("rubber_hand")
+        verts = self._hand_vertices @ hand.rotation.T + hand.translation
+        return (mesh_circles(verts, float(lw["hand_margin_m"]), K, rot, pos)
+                + segment_circles(frame("elbow_link").translation, frame("wrist_yaw_link").translation,
+                                  float(lw["forearm_radius_m"]), K, rot, pos))
+
+    def _start_door(self, call: CallButtons, depth: np.ndarray, K: np.ndarray, q: np.ndarray) -> None:
+        """乗り場の扉を見る範囲と基準の深度を決める（見つけたとき。腕はまだ下ろしている）。"""
+        if self.door is None or not hasattr(self.finder, "cam_tf"):
+            return
+        cam = self.finder.cam_tf
+        rot, pos = cam.pelvis_from_optical(np.asarray(q, dtype=float)[list(WAIST_IDX)])
+        pos = pos + np.asarray(getattr(cam, "offset", np.zeros(3)), dtype=float)
+        mid = (call.up.center + call.down.center) / 2.0
+        n = self.door.start(mid, call.normal, depth, np.asarray(K, dtype=float), rot, pos)
+        self._note(f"乗り場の扉を見る範囲: {n} 画素（記録だけ。判断には使わない）")
+
+    def _watch(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q: np.ndarray, t: float) -> None:
+        """押し込みから戻るまでの新しい画像で、ランプの明るさ（手の写る画素を除く）と扉を見る。
+
+        枠は見つけたときのまま（毎回見つけ直すと YOLO で 0.2 秒近くかかり、50 Hz の制御が止まる）。"""
+        lw = self.cfg["press"].get("lit_watch") or {}
+        if not lw.get("enabled", False) or not hasattr(self.finder, "cam_tf"):
+            return
+        if self.door is not None and self.door.opened is None:
+            self.door.observe(depth, None, t)  # 扉は画像の左。押す腕は写らない
+            if self.door.opened is not None:
+                self._note(f"乗り場の扉が開いた（範囲の {self.door.opened['fraction'] * 100:.0f}% が奥へ変わった。記録だけ）")
+        if self.phase not in ("press", "hold", "retract", "check") or self.baseline_level is None:
+            return
+        box = self.call.button(self.target).bbox
+        try:
+            circles = self._hand_circles(q, K)
+            x1, y1, x2, y2 = box
+            r = float(self.cfg["press"]["lit_check"]["radius"])
+            cx, cy, hw, hh = (x1 + x2) / 2, (y1 + y2) / 2, r * (x2 - x1) / 2 + 2, r * (y2 - y1) / 2 + 2
+            region = (int(cx - hw), int(cy - hh), int(np.ceil(cx + hw)), int(np.ceil(cy + hh)))
+            covered = hand_mask(np.asarray(rgb).shape[:2], circles, region)  # ランプの範囲の中だけ塗る
+        except Exception as e:  # noqa: BLE001  見続けるのは補助。失敗しても押す動きは止めない
+            print(f"[elevator] ⚠️ 手の写る範囲を求められない（続ける）: {e}")
+            return
+        level, visible = self._lit_level_visible(rgb, box, covered)
+        used = bool(np.isfinite(level)) and visible >= float(lw["min_visible"])
+        rise = level - self.baseline_level if used else float("nan")
+        lit = used and self._is_lit(level, rise)
+        entry = {"t": float(t), "phase": self.phase, "retry": self.retries, "level": level, "rise": rise,
+                 "visible": visible, "used": used, "lit": lit}
+        first = self.lamp.add(entry)
+        if first or lw.get("save_frames", False):
+            self._snapshot("seen" if first else "watch", rgb, box, t, level=level, retry=self.retries, rise=rise,
+                           lit=lit, visible=visible, phase=self.phase,
+                           hand=[[round(v, 1) for v in c] for c in circles[::max(len(circles) // 150, 1)]])
+        if first:
+            self._note(f"押している間・戻る間に点灯を見た（{self.phase}、明るい部分 {rise:+.0f}、見えた割合 {visible * 100:.0f}%）")
 
     def _start_home(self, t: float) -> None:
         """押し終わった（点灯した・確かめられない）。来た経路を逆にたどって、始めの姿勢へ戻す。
