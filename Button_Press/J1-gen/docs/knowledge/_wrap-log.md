@@ -96,3 +96,9 @@
   - real_robot_notes.md: 2026-11-04 に分かったこと（腕に力のセンサーなし・tau_est、press_force.py、エレベーターの IMU は fd0d38d まで固定）
   - patterns/robot_arm_control.md: 推定トルクから押した力を出す・重力を引く
   - patterns/sim_real_config.md: 観測の口で値を入れ忘れても既定値がもっともらしいと気づかない
+
+- 2026-11-10 / Button_Press（J1-gen）
+  対象: 11/3 の困りごとの修正（押す前から点灯、中止の理由、頭カメラの向きを毎回）、立ち位置の地図の取り直し、手首を曲げる形、押している間もランプを見る・扉・マイク
+  - real_robot_notes.md: 2026-11-04〜11-10 に分かったこと（確認の時刻、手がランプを隠す、扉、到着の音とマイクの仕様、手の色、地図とカメラの角度）
+  - patterns/robot_arm_control.md: IK の初期姿勢を変えると、体に当たる位置でも届く
+  - patterns/sim_real_config.md: シミュの手は白く、実機の手は黒い
