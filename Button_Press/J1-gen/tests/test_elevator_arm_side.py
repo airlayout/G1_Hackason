@@ -149,5 +149,24 @@ class TestElevatorLeftArm(unittest.TestCase):
                 self.assertGreater(ctl.plan_.approach_point[1], 0.0)
 
 
+@needs("pin")
+class TestStandMapWorker(unittest.TestCase):
+    """立つ位置の地図（sim/elevator_stand_map.py）の準備で、押す腕が設定に渡る。2026-11-10 に、引数の腕（"right"）を
+    arm.yaml の中身で上書きしてしまい、地図が起動しなかった。"""
+
+    def test_init_worker_uses_the_arm(self) -> None:
+        import sys
+
+        from common.config import FEATURE_DIR
+
+        sys.path.insert(0, str(FEATURE_DIR / "sim"))
+        import elevator_stand_map as m
+
+        for side in ("right", "left"):
+            with self.subTest(side=side):
+                m.init_worker("wheelchair", side)
+                self.assertEqual(m._G["ctl"].side, side)
+
+
 if __name__ == "__main__":
     unittest.main()

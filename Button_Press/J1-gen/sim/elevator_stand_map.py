@@ -45,11 +45,11 @@ _G: dict[str, Any] = {}
 
 
 def init_worker(button_set: str = "general", arm: str = "right") -> None:
-    robot, press, arm, elev = (load_config(n) for n in ("robot.yaml", "press.yaml", "arm.yaml", "elevator.yaml"))
+    robot, press, arm_cfg, elev = (load_config(n) for n in ("robot.yaml", "press.yaml", "arm.yaml", "elevator.yaml"))
     # 押す組ごとの設定（press.by_button_set。wheelchair は指をまっすぐ向ける）を使う
     elev["geometry"]["button_set"] = button_set
     elev["press"]["arm"] = arm
-    ctl = ElevatorPressController.from_config(robot, press, arm, elev)
+    ctl = ElevatorPressController.from_config(robot, press, arm_cfg, elev)
     _G.update(ctl=ctl, tf=HeadCameraTransform(robot), elev=elev)
 
 
