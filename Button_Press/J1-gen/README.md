@@ -40,6 +40,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `column_face.py` — ボタンが見えない遠さ（柱まで約 1 m〜55 cm）から、頭カメラの深度で柱の面の距離・向き・左右の端を求める。床で首の向きのずれを直す（立つ位置まで寄るのに使う。設定は `configs/approach.yaml`）
   - `loco.py` — 立つ位置まで寄るときに、純正の歩行コントローラで 1 回分だけ歩かせる（`SetVelocity` に時間を明示し、脚が止まるまで待つ。遅すぎる・速すぎる・2 軸・後ろへの指令は送らない。回数と前に進んだ合計に上限）。テスト用の偽物の足 `FakeLoco` も
   - `approach.py` — 人がリモコンで柱の手前に置いたあと、頭カメラだけで押せる位置まで寄る（観測 → 1 回動く → 止まる → 観測）。▲▼ が見えて押し方の候補のどれかで計画が立てば止まる。遠くは柱の面と端、近くは ▲▼ で測る。実機は `real/approach.py`
+  - `webcam_buttons.py` — 前方の Web カメラ（Innomaker、深度なし）で、遠くから ▲▼ の位置を推定する（頭カメラの柱の面との交点・ボタンの大きさ・動いた前後の視差）。焦点距離と取り付けの較正も。寄る流れのおまけ（`approach.py` の `WebcamAssist`、`real/approach.py --webcam`）
 - `sim/` — MuJoCo での検証
   - `fetch_models.sh` — 公式モデル（unitree_ros の `g1_29dof_rev_1_0`）を取得する
   - `move_arm_sim.py` — 腕を指定の関節角へ動かして戻す
@@ -51,6 +52,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `make_button_dataset.py` — ボタンの YOLO の学習データを、Yada の評価環境の画像から作る（正解の枠は自動）
   - `train_button_yolo.py` — ボタンの YOLO（クラス up / down）を学習する
   - `record_trial_video.py` — 評価環境の 1 試行を、実際の速さで再生される動画にする
+  - `approach_sim.py` — 立つ位置まで寄る流れを評価環境で通し、着いた位置で押して点灯するかまで見る（歩けない評価環境では、歩いたぶん乗り場を逆にずらす）
   - `merge_button_datasets.py` — シミュレーションの学習データと、枠を付けた実機の写真を混ぜる
 - `contest_agent/` — Yada の評価環境（`Button_Press/Yada/contest`）で動かすエージェント（中身は `common/elevator_press.py`）
   - `rehearsal.py` — 実機日のリハーサル（当日手順書の段階0〜6と故障の場面を、模擬ロボットで通しで実行）

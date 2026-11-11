@@ -6,6 +6,8 @@
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/approach.py --target up --button-set wheelchair --detector yolo --execute
     # 左腕も候補にする（計画が立った腕を出す）
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/approach.py --target up --button-set wheelchair --arms right left --execute
+    # 前方の Web カメラも使う（較正済みのときだけ効く。無い・映像が来ない・未較正なら、注意を出して頭カメラだけで寄る）
+    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/approach.py --target up --button-set wheelchair --detector yolo --webcam --execute
 
 押せる位置に着いたら（ready）、出てきた腕で real/auto_press.py を実行する（このスクリプトは押さない）。
 --execute のときは、歩き出す前に Enter を待つ。歩いている途中の Ctrl+C でも StopMove を送る。
@@ -26,7 +28,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common.approach import Approacher, Frame, HeadPerception, PlanFeasibility  # noqa: E402
+from common.approach import Approacher, Frame, HeadPerception, PlanFeasibility, WebcamAssist  # noqa: E402
 from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
 from common.column_face import FaceFinder  # noqa: E402
 from common.config import REPO_ROOT, load_config  # noqa: E402
@@ -41,6 +43,8 @@ def main() -> int:
     p.add_argument("--button-set", choices=["general", "wheelchair"], help="押す組（既定は elevator.yaml）")
     p.add_argument("--detector", choices=["classic", "yolo"], help="▲▼ の見つけ方（既定は elevator.yaml）")
     p.add_argument("--execute", action="store_true", help="歩く（付けなければ 1 回観測して、次の動きを表示するだけ）")
+    p.add_argument("--webcam", action="store_true",
+                   help="前方の Web カメラも使う（configs/webcam.yaml。使えなければ頭カメラだけ）")
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
     p.add_argument("--no-lowstate", action="store_true",
                    help="lowstate を読まない（--execute なしのときだけ。腰 0°・骨盤は水平・腕は下ろしたままと仮定）")
@@ -87,8 +91,28 @@ def main() -> int:
         q = st.q.copy() if st is not None else np.zeros(29)
         return Frame(f.color_bgr[:, :, ::-1].copy(), f.depth_m(), K, q, st.imu_quat if st is not None else None)
 
+    webcam = webcam_stream = None
+    if args.webcam:
+        from common.elevator_buttons import make_candidate_detector
+        from common.webcam_buttons import WebcamModel, WebcamNotReady, WebcamStream
+
+        wcfg = load_config("webcam.yaml")
+        wcfg["buttons"]["button_set"] = elevator["geometry"].get("button_set", wcfg["buttons"]["button_set"])
+        try:
+            wcam = WebcamModel.from_config(wcfg)
+            webcam_stream = WebcamStream(wcfg["stream"].get("host") or cam["server_address"], wcfg)
+            webcam_stream.open()
+            if webcam_stream.read() is None:
+                raise WebcamNotReady("Web カメラの映像が届かない（Mapping の配信 innomaker_camera_server.py、5555 番）")
+            webcam = WebcamAssist(webcam_stream.read, make_candidate_detector(elevator), wcam, wcfg)
+            print("[approach] 前方の Web カメラも使う")
+        except WebcamNotReady as e:
+            print(f"[approach] ⚠️ Web カメラは使わない（頭カメラだけで寄る）: {e}")
+            if webcam_stream is not None:
+                webcam_stream.close()
+                webcam_stream = None
     perception = HeadPerception(get_frame, ButtonFinder.from_config(robot_cfg, elevator),
-                                FaceFinder.from_config(robot_cfg, cfg["face"]), elevator, cfg["face"], app)
+                                FaceFinder.from_config(robot_cfg, cfg["face"]), elevator, cfg["face"], app, webcam)
     feasibility = PlanFeasibility.from_config(robot_cfg, load_config("press.yaml"), load_config("arm.yaml"), elevator,
                                               list(app["arms"]), args.target)
     backend = stillness = None
@@ -103,8 +127,12 @@ def main() -> int:
     if args.execute:
         input("[approach] 腕を下ろした・周りに人がいない・リモコンを持った人がそばにいることを確かめて Enter（やめるなら Ctrl+C）: ")
 
-    with source:
-        result = Approacher(perception, feasibility, mover, app).run()
+    try:
+        with source:
+            result = Approacher(perception, feasibility, mover, app).run()
+    finally:
+        if webcam_stream is not None:
+            webcam_stream.close()
 
     if result.outcome == "ready":
         print(f"[approach] 次: real/auto_press.py --target {args.target} --arm {result.arm}"
