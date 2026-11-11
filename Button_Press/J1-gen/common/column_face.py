@@ -11,13 +11,15 @@
 
 流れ（座標は pelvis。x 前・y 左・z 上）:
 1. 深度を間引いて点にする
-2. 床を探す: 法線がほぼ真上の平面だけを RANSAC で探す。見つかれば、床の法線が IMU の真上と一致するように
+2. 立った面（法線がほぼ水平で、こちらを向いたもの）を RANSAC で数枚探し、取り除く（首のずれの分だけ傾きを緩く探す。
+   床の帯と壁の下をまたぐ傾いた平面を床と取り違えないため）
+3. 残りから床を探す: 法線がほぼ真上の平面だけを RANSAC で探す。見つかれば、床の法線が IMU の真上と一致するように
    点をカメラの位置のまわりに回す（首の向きのずれを、その場で直す。11/3 は URDF 47.6° に対して実機 51〜54°。
    直さないと、1 m 先の面の距離が数 cm ずれる）。近いと床が写らない（約 50 cm より近く）ので、そのときは前のフレームで
    床から求めた直し方を使う（FaceFinder が覚えておく。無ければ直さない。55 cm で 5.4° ずれたままだと約 4 cm 遠く出る）
-3. 立った面（法線がほぼ水平で、こちらを向いたもの）を RANSAC で数枚探す。前方の通り道（左右 ±corridor_half_m）に
-   かかるもののうち、いちばん近い面を柱の面とする（柱が壁より出ていれば柱、扉の奥や後ろの壁ではない）
-4. 選んだ面に、垂直という条件つきで当てはめ直し、距離・向きを出す
+4. 直したあとで、立った面の点を奥行きの段（柱・壁・扉）に分ける。前方の通り道（左右 ±corridor_half_m）に
+   かかるもののうち、いちばん近い面を柱の面とする（柱が壁より出ていれば柱、扉の奥や後ろの壁ではない）。距離・向きを出す。
+   向きは、立った面の点の奥行きのヒストグラムが最も鋭くなる向き（柱・壁・扉の平行な段がそろう向き）
 5. 面に乗った点を面に沿って並べ、つながった範囲の両端を柱の端とする。画像の左右の縁で切れていれば、端は分からない（None）
 
 画像処理は numpy だけを使う（RGB は使わない。黒い柱でも深度は取れる前提。⚠️ 実機の遠くからの深度は未確認）。
@@ -158,63 +160,26 @@ def find_face(depth_m: np.ndarray, K: np.ndarray, rot: np.ndarray, pos: np.ndarr
     rng = np.random.default_rng(int(cfg.get("seed", 0)))
     iters = int(cfg["ransac_iterations"])
 
-    # 2. 床
-    fc = cfg["floor"]
-    cos_floor = np.cos(np.radians(float(fc["max_tilt_deg"])))
-    z_lo, z_hi = (float(x) for x in fc["z_range_m"])
-
-    def floor_like(n: np.ndarray, p0: np.ndarray) -> bool:
-        return abs(float(n @ up)) > cos_floor and z_lo < float(p0 @ up) < z_hi
-
-    floor_inl = _ransac(P, floor_like, float(fc["threshold_m"]), iters, rng)
-    floor_found = floor_inl is not None and int(floor_inl.sum()) >= int(fc["min_points"])
-    correction_deg, floor_z = 0.0, None
-    R, corr_from = np.eye(3), "none"
-    if floor_found:
-        fp = P[floor_inl]
-        c = fp.mean(axis=0)
-        n_floor = np.linalg.svd(fp - c, full_matrices=False)[2][-1]
-        if n_floor @ up < 0:
-            n_floor = -n_floor
-        correction_deg = float(np.degrees(np.arccos(np.clip(n_floor @ up, -1.0, 1.0))))
-        if correction_deg > float(fc["max_correction_deg"]):
-            raise FaceNotFound(f"床から求めた首の向きのずれが {correction_deg:.1f}° と大きすぎる"
-                               f"（上限 {float(fc['max_correction_deg']):.0f}°）。首の向きを確かめる（real/check_head_tilt.py）")
-        if fc.get("correct_pitch", True):
-            R, corr_from = _rotation_between(n_floor, up), "floor"
-            P = (P - pos) @ R.T + pos
-            c = R @ (c - pos) + pos
-        else:
-            correction_deg = 0.0
-        floor_z = float(c @ up)
-    else:
-        floor_inl = np.zeros(len(P), bool)
-        if prior_correction is not None and fc.get("correct_pitch", True):
-            R, corr_from = np.asarray(prior_correction, dtype=float), "previous"
-            P = (P - pos) @ R.T + pos
-            correction_deg = float(np.degrees(np.arccos(np.clip((np.trace(R) - 1) / 2, -1.0, 1.0))))
-
-    # 3. 立った面
-    wc = cfg["wall"]
-    sin_vert = np.sin(np.radians(float(wc["vertical_tol_deg"])))
+    fc, wc = cfg["floor"], cfg["wall"]
+    max_corr = float(fc["max_correction_deg"])
     cos_yaw = np.cos(np.radians(float(wc["max_yaw_deg"])))
     fwd = np.array([1.0, 0.0, 0.0]) - up * up[0]
     fwd /= np.linalg.norm(fwd)
-    height = P @ up
-    base = floor_z if floor_z is not None else z_hi
-    rest = ~floor_inl & (height > base + float(wc["min_above_floor_m"]))
+
+    # 2. 立った面（壁・柱・扉）を先に探す。首のずれの分（max_correction_deg）だけ傾きを緩くして探し、床で直したあとで
+    # 厳しく確かめる。先に取り除くのは、柱の近くでは床が画像の下の細い帯にしか写らず、床の帯と壁の下のほうをまたぐ
+    # 傾いた平面を「床」と取り違えたため（評価環境、柱まで 78 cm で 11.6° と誤って直した。2026-11-11）
+    sin_loose = np.sin(np.radians(float(wc["vertical_tol_deg"]) + max_corr))
 
     def wall_like(n: np.ndarray, p0: np.ndarray) -> bool:
-        if abs(float(n @ up)) > sin_vert:
+        if abs(float(n @ up)) > sin_loose:
             return False
         if n @ (pos - p0) < 0:
             n = -n  # カメラに向ける
         return float(-n @ fwd) > cos_yaw
 
-    left = np.array([0.0, 1.0, 0.0]) - up * up[1]
-    left /= np.linalg.norm(left)
-    corridor = np.abs(P @ left) < float(wc["corridor_half_m"])
-    candidates: list[tuple[float, Plane]] = []
+    walls: list[np.ndarray] = []
+    rest = np.ones(len(P), bool)
     for _ in range(int(wc["max_planes"])):
         idx = np.flatnonzero(rest)
         if len(idx) < int(wc["min_points"]):
@@ -225,28 +190,118 @@ def find_face(depth_m: np.ndarray, K: np.ndarray, rot: np.ndarray, pos: np.ndarr
         inl = np.zeros(len(P), bool)
         inl[idx[inl_sub]] = True
         rest &= ~inl
-        n, p0 = _fit_vertical(P[inl], up, pos)
-        # 当てはめ直した面で点を選び直す（RANSAC の 3 点のぶれを除く）
-        inl = (np.abs((P - p0) @ n) < float(wc["threshold_m"])) & ~floor_inl & (height > base + float(wc["min_above_floor_m"]))
-        if int((inl & corridor).sum()) < int(wc["min_corridor_points"]):
+        walls.append(inl)
+
+    # 3. 床（立った面に乗った点を除いた残りから）
+    cos_floor = np.cos(np.radians(float(fc["max_tilt_deg"])))
+    z_lo, z_hi = (float(x) for x in fc["z_range_m"])
+
+    def floor_like(n: np.ndarray, p0: np.ndarray) -> bool:
+        return abs(float(n @ up)) > cos_floor and z_lo < float(p0 @ up) < z_hi
+
+    idx = np.flatnonzero(rest)
+    floor_sub = _ransac(P[idx], floor_like, float(fc["threshold_m"]), iters, rng)
+    floor_inl = np.zeros(len(P), bool)
+    if floor_sub is not None:
+        floor_inl[idx[floor_sub]] = True
+    floor_found = int(floor_inl.sum()) >= int(fc["min_points"])
+    if floor_found:
+        # 床が狭い（画像の下の細い帯だけ）と、法線が数度ずれる（評価環境、柱まで 62 cm で首のずれを 1.4〜3.6° と誤って直し、
+        # 距離が 2〜7 cm 近く出た）。奥行き方向・左右とも広さが足りなければ、床からは直さない（前の直し方を使う）
+        fp = P[floor_inl]
+        ext_f = float(np.ptp(fp @ fwd))
+        ext_l = float(np.ptp(fp @ (np.cross(up, fwd))))
+        floor_found = ext_f >= float(fc["min_extent_m"][0]) and ext_l >= float(fc["min_extent_m"][1])
+    correction_deg, floor_z = 0.0, None
+    R, corr_from = np.eye(3), "none"
+    if floor_found:
+        fp = P[floor_inl]
+        c = fp.mean(axis=0)
+        n_floor = np.linalg.svd(fp - c, full_matrices=False)[2][-1]
+        if n_floor @ up < 0:
+            n_floor = -n_floor
+        correction_deg = float(np.degrees(np.arccos(np.clip(n_floor @ up, -1.0, 1.0))))
+        if correction_deg > max_corr:
+            raise FaceNotFound(f"床から求めた首の向きのずれが {correction_deg:.1f}° と大きすぎる"
+                               f"（上限 {max_corr:.0f}°）。首の向きを確かめる（real/check_head_tilt.py）")
+        if fc.get("correct_pitch", True):
+            R, corr_from = _rotation_between(n_floor, up), "floor"
+            P = (P - pos) @ R.T + pos
+            c = R @ (c - pos) + pos
+        else:
+            correction_deg = 0.0
+        floor_z = float(c @ up)
+    else:
+        floor_inl[:] = False
+        if prior_correction is not None and fc.get("correct_pitch", True):
+            R, corr_from = np.asarray(prior_correction, dtype=float), "previous"
+            P = (P - pos) @ R.T + pos
+            correction_deg = float(np.degrees(np.arccos(np.clip((np.trace(R) - 1) / 2, -1.0, 1.0))))
+
+    # 4. 向きと奥行きの段: 立った面の点を、向き θ（正対からの角度）に投影した奥行きのヒストグラムが最も鋭くなる θ を探す。
+    # 柱・壁・扉のように平行な面が奥行きの段になって並ぶ（評価環境は柱 70.0・壁 71.0・扉 75.7 cm）と、平面の当てはめでは
+    # 段をまたぐ斜めの面になって向きが 3〜5° ずれた。平行な段がそろう向きを探せば、段がいくつあっても向きが決まる
+    height = P @ up
+    base = floor_z if floor_z is not None else z_hi
+    above = ~floor_inl & (height > base + float(wc["min_above_floor_m"]))
+    vert = np.zeros(len(P), bool)
+    for inl in walls:
+        vert |= inl
+    vert &= above
+    if int(vert.sum()) < int(wc["min_points"]):
+        raise FaceNotFound("前方に立った面（柱・壁）が見つからない"
+                           f"（{'床はあった' if floor_found else '床も無い'}。柱に向いているか、近すぎ・遠すぎでないか）")
+    left = np.array([0.0, 1.0, 0.0]) - up * up[1]
+    left /= np.linalg.norm(left)
+    Q = P[vert]
+    qf, ql = Q @ fwd, Q @ left
+    bin_m = float(wc["layer_bin_m"])
+
+    def sharpness(theta: float) -> float:
+        d = np.cos(theta) * qf + np.sin(theta) * ql
+        counts = np.bincount(((d - d.min()) / bin_m).astype(int))
+        return float((counts.astype(float) ** 2).sum())
+
+    max_yaw = np.radians(float(wc["max_yaw_deg"]))
+    thetas = np.arange(-max_yaw, max_yaw + 1e-9, np.radians(1.0))
+    best = float(thetas[int(np.argmax([sharpness(t) for t in thetas]))])
+    fine = np.arange(best - np.radians(1.0), best + np.radians(1.0) + 1e-9, np.radians(0.1))
+    best = float(fine[int(np.argmax([sharpness(t) for t in fine]))])
+    f = np.cos(best) * fwd + np.sin(best) * left  # 面に向かう向き
+    n = -f
+    proj = P @ f  # 面までの奥行き（pelvis の原点から）
+
+    # 段（ヒストグラムのピーク）を手前から見て、通り道にかかる最初の段を柱の面とする
+    corridor = np.abs(P @ left) < float(wc["corridor_half_m"])
+    r_lo, r_hi = (float(x) for x in wc["refine_threshold_m"])
+    d_v = proj[vert]
+    counts = np.bincount(((d_v - d_v.min()) / bin_m).astype(int))
+    order = np.argsort(-counts)
+    layers: list[tuple[float, np.ndarray]] = []
+    for k in order:
+        if counts[k] < int(wc["min_points"]) // 4:
+            break
+        d_k = d_v.min() + (k + 0.5) * bin_m
+        if any(abs(d_k - d0) < 2 * bin_m for d0, _ in layers):
+            continue  # 同じ段の隣の区画
+        thr = float(np.clip(float(wc["refine_per_m"]) * d_k, r_lo, r_hi))
+        inl = vert & (np.abs(proj - d_k) < thr)
+        if int(inl.sum()) < int(wc["min_points"]) // 2:
             continue
-        dist = float(n @ (np.zeros(3) - p0))
-        if dist <= 0:
-            continue
-        candidates.append((dist, Plane(n, p0, inl)))
+        d_k = float(np.median(proj[inl]))
+        inl = vert & (np.abs(proj - d_k) < thr)
+        layers.append((d_k, inl))
+    candidates = [(d, Plane(n, d * f, inl)) for d, inl in layers
+                  if d > 0 and int((inl & corridor).sum()) >= int(wc["min_corridor_points"])]
     if not candidates:
         raise FaceNotFound("前方に立った面（柱・壁）が見つからない"
                            f"（{'床はあった' if floor_found else '床も無い'}。柱に向いているか、近すぎ・遠すぎでないか）")
     candidates.sort(key=lambda t: t[0])
     dist, plane = candidates[0]
-    n = plane.normal
-
-    # 4. 距離・向き
-    f = -n
-    yaw = float(np.arctan2(f @ left, f @ fwd))
+    yaw = best
     foot = -dist * n  # 原点から面への足（原点 + dist × (−n)）
 
-    # 5. 端
+    # 5. 端（面に沿って並べる）
     t = np.cross(up, f)
     t /= np.linalg.norm(t)
     pts = P[plane.inliers]
@@ -269,18 +324,26 @@ def find_face(depth_m: np.ndarray, K: np.ndarray, rot: np.ndarray, pos: np.ndarr
                       others_m=[d for d, _ in candidates[1:]], correction=R, correction_from=corr_from)
 
 
-def _fit_vertical(points: np.ndarray, up: np.ndarray, pos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """点に垂直な平面を当てはめる（水平面に落として直線を当てはめる）。(こちらを向く水平の法線, 平面上の点)。"""
-    c = points.mean(axis=0)
-    flat = (points - c) - np.outer((points - c) @ up, up)
-    _, _, vt = np.linalg.svd(flat, full_matrices=False)
-    # 水平面の中で広がりの大きい向きが面に沿う向き、それと up に垂直な向きが法線
-    along = vt[0] - up * (vt[0] @ up)
-    along /= np.linalg.norm(along)
-    n = np.cross(along, up)
-    if n @ (pos - c) < 0:
-        n = -n
-    return n, c
+def motion_between(before: "ColumnFace", after: "ColumnFace") -> dict[str, Any]:
+    """柱の面の見え方の変化から、動いた量（動く前の体の座標で、前・左 [cm]、左回り [deg]）。real/loco_pulse.py の
+    1 回分の測定と、Web カメラの視差（common/webcam_buttons.py の triangulate）が使う。
+
+    面に向かう向き f = (cos ψ, sin ψ)、面に沿って左 t = (−sin ψ, cos ψ)。体が (dx, dy) 動き dθ 回ると、
+    ψ' = ψ − dθ、面までの距離 d' = d − f·(dx, dy)、端 s' = s − t·(dx, dy)。横（t の成分）は端が前後とも分かるときだけ。
+    """
+    psi = before.yaw_rad
+    f = np.array([np.cos(psi), np.sin(psi)])
+    t = np.array([-np.sin(psi), np.cos(psi)])
+    a = before.distance_m - after.distance_m
+    shifts = [s1 - s0 for s0, s1 in ((before.left_edge_m, after.left_edge_m), (before.right_edge_m, after.right_edge_m))
+              if s0 is not None and s1 is not None]
+    b = -float(np.mean(shifts)) if shifts else None
+    d = a * f + (b if b is not None else 0.0) * t
+    return {"forward_cm": float(d[0] * 100) if b is not None else float(a * 100),
+            "left_cm": float(d[1] * 100) if b is not None else None,
+            "toward_wall_cm": float(a * 100), "along_wall_cm": None if b is None else float(b * 100),
+            "turn_deg": float(np.degrees(before.yaw_rad - after.yaw_rad)),
+            "before": before.summary(), "after": after.summary()}
 
 
 class FaceFinder:

@@ -109,22 +109,42 @@ class TestFindFace(unittest.TestCase):
 
     def test_near_without_floor(self) -> None:
         """近いと床が写らない。直さずに求める。"""
-        face = find(render(0.45))
+        face = find(render(0.45, edges=(-3.0, 3.0), wall_behind=None))  # 柱が画像いっぱい（横から床も見えない）
         self.assertFalse(face.floor_found)
         self.assertAlmostEqual(face.distance_m, 0.45, delta=0.01)
 
     def test_near_uses_previous_floor_correction(self) -> None:
-        """首が 53° のとき、近く（床なし）では直せず約 4 cm 遠く出る。遠くで床から求めた直し方を渡せば合う。"""
+        """首が 53° のとき、近く（床なし）では直せず 2〜4 cm 遠く出る。遠くで床から求めた直し方を渡せば合う。"""
         far = find(render(0.8, pitch_deg=53.0))
         self.assertEqual(far.correction_from, "floor")
-        near_depth = render(0.45, pitch_deg=53.0)
+        near_depth = render(0.45, pitch_deg=53.0, edges=(-3.0, 3.0), wall_behind=None)  # 柱が画像いっぱい（横から床も見えない）
         raw = find(near_depth)
         self.assertEqual(raw.correction_from, "none")
-        self.assertGreater(raw.distance_m - 0.45, 0.025)
+        self.assertGreater(raw.distance_m - 0.45, 0.015)
         fixed = find_face(near_depth, K, camera(URDF_PITCH), CAM_POS, UP, CFG, far.correction)
         self.assertEqual(fixed.correction_from, "previous")
         self.assertAlmostEqual(fixed.distance_m, 0.45, delta=0.01)
         self.assertAlmostEqual(fixed.pitch_correction_deg, 53.0 - URDF_PITCH, delta=0.5)
+
+    def test_narrow_floor_is_not_used(self) -> None:
+        """近いと、柱の横に見える床は狭い。狭い床からは直さず（法線が数度ずれる）、遠くで広い床から求めた直し方を使う。"""
+        near_depth = render(0.45, pitch_deg=53.0)
+        self.assertNotEqual(find(near_depth).correction_from, "floor")
+        far = find(render(0.9, pitch_deg=53.0))
+        self.assertEqual(far.correction_from, "floor")
+        face = find_face(near_depth, K, camera(URDF_PITCH), CAM_POS, UP, CFG, far.correction)
+        self.assertEqual(face.correction_from, "previous")
+        self.assertAlmostEqual(face.distance_m, 0.45, delta=0.01)
+
+    def test_floor_strip_and_wall_bottom(self) -> None:
+        """床が画像の下の細い帯にしか写らなくても、床の帯と壁の下をまたぐ傾いた平面を床と取り違えない（評価環境で起きた）。"""
+        for pitch in (URDF_PITCH, 53.0):
+            with self.subTest(pitch=pitch):
+                face = find(render(0.62, pitch_deg=pitch, edges=(-3.0, 3.0), wall_behind=None))
+                self.assertAlmostEqual(face.distance_m, 0.62, delta=0.01)
+                self.assertAlmostEqual(np.degrees(face.yaw_rad), 0.0, delta=0.7)
+                if face.floor_found:
+                    self.assertAlmostEqual(face.pitch_correction_deg, pitch - URDF_PITCH, delta=0.7)
 
     def test_far(self) -> None:
         face = find(render(1.5, yaw_deg=5.0))

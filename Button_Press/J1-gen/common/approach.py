@@ -16,6 +16,10 @@
      その余地を残す（純正の歩行は進む向きが 18〜20° ずれるので、横に動くと前にも出る）
    - 面しか見えないうちも、柱の端が見えていれば、最初に見えた端の位置（人が置いた左右の位置）を覚えておき、
      前に進んでずれたら横に戻す（1 m 進むと、向きのずれで横に 30 cm 以上ずれることがある）
+   - ▲▼ が組でそろわなくても、ボタンが 1 個でも見えれば、その左右（▲▼ は同じ柱に縦に並ぶので左右は同じ）を手がかりにする
+     （評価環境で、▲ が画像の上に切れて「1 個」のまま前へ進み、横に 34 cm ずれてボタンが画像の外に出た）
+   - 前方の Web カメラ（WebcamAssist、おまけ）があれば、遠くでもボタンの左右が分かる（Web カメラの方向の線と柱の面の交点）。
+     左右の手がかりがあれば、端の代わりに、ボタンを左右の目安へ寄せる。無い・映像が来ない日は端だけで動く
    - 1 回で動ける最小（common/loco.py。前は約 11 cm）より十分小さいずれは直さない
    - どの 1 回分も、多めに動き向きもずれたときの前進（step_uncertainty・max_heading_error_deg）を見積もり、
      それでも min_safe_dist_m より近づくなら送らない。前進は勧める範囲（press.stand）の近い側に forward_margin_m を
@@ -34,7 +38,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from .column_face import ColumnFace, FaceFinder, FaceNotFound, FaceTracker
+from .column_face import ColumnFace, FaceFinder, FaceNotFound, FaceTracker, motion_between
 from .elevator_buttons import ButtonFinder, ButtonNotFound, ButtonTracker, CallButtons
 from .loco import LocoError, LocoMover, Pulse
 from .robot_model import WAIST_IDX
@@ -65,6 +69,11 @@ class Measurement:
     # 柱の面の左右の端（面に沿って pelvis の足から測る。+ が左。common/column_face.py）。分からなければ None
     left_edge_m: float | None = None
     right_edge_m: float | None = None
+    # 面しか見えないときのボタンの左右の手がかり（pelvis の y）と、その出どころ（"head_single" = 頭カメラで 1 個だけ見えた
+    # ボタン / "webcam" = 前方の Web カメラ）。Web カメラの推定の中身（WebcamAssist.estimate）も残す。無ければ None
+    side_hint_m: float | None = None
+    side_hint_source: str | None = None
+    webcam: dict[str, Any] | None = None
 
     @classmethod
     def from_call(cls, call: CallButtons, q: np.ndarray | None) -> "Measurement":
@@ -79,6 +88,9 @@ class Measurement:
 
     def summary(self) -> str:
         side = "" if self.side_m is None else f"、ボタンは体の{'左' if self.side_m > 0 else '右'} {abs(self.side_m) * 100:.1f} cm"
+        if self.side_m is None and self.side_hint_m is not None:
+            src = {"webcam": "Web カメラ", "head_single": "1 個だけ見えたボタン"}.get(self.side_hint_source or "", "手がかり")
+            side = f"、{src}ではボタンは体の{'左' if self.side_hint_m > 0 else '右'} {abs(self.side_hint_m) * 100:.1f} cm"
         what = "▲▼ から" if self.source == "buttons" else "柱の面から（▲▼ は見えない）"
         return f"{what}: 柱まで {self.distance_m * 100:.1f} cm、向き {np.degrees(self.yaw_rad):+.1f}°{side}"
 
@@ -122,13 +134,17 @@ class HeadPerception:
     """頭カメラのフレームから、▲▼ か柱の面で立ち位置を求める。get_frame() は新しいフレームを 1 枚返す（届かなければ None）。"""
 
     def __init__(self, get_frame: Callable[[], Frame | None], buttons: ButtonFinder | None, face: FaceFinder,
-                 elevator_cfg: dict[str, Any], face_cfg: dict[str, Any], cfg: dict[str, Any]) -> None:
+                 elevator_cfg: dict[str, Any], face_cfg: dict[str, Any], cfg: dict[str, Any],
+                 webcam: "WebcamAssist | None" = None) -> None:
+        """webcam: 前方の Web カメラ（おまけ）。面しか見えないときに、ボタンの左右を推定する。None なら使わない。"""
         self.get_frame = get_frame
+        self.webcam = webcam
         self.buttons = buttons
         self.face = face
         self.button_tracker = ButtonTracker(elevator_cfg["tracking"])
         self.face_tracker = FaceTracker(face_cfg["tracking"])
         self.max_frames = int(cfg["max_frames"])
+        self.column_tol = float(elevator_cfg["geometry"]["column_tolerance_m"])
         self.skip_after_move = int(cfg["skip_frames_after_move"])
         self._skip = 0
         self.last_reason = ""
@@ -141,7 +157,8 @@ class HeadPerception:
 
     def measure(self) -> Measurement | None:
         face_m: Measurement | None = None
-        reasons: list[str] = []
+        why = {"▲▼": "", "柱の面": ""}
+        single_y: float | None = None
         for _ in range(self.max_frames + self._skip):
             fr = self.get_frame()
             if fr is None:
@@ -158,18 +175,33 @@ class HeadPerception:
                         return Measurement.from_call(merged, np.asarray(fr.q, dtype=float).copy())
                 except ButtonNotFound as e:
                     self.button_tracker.reset()
-                    reasons.append(f"▲▼: {e}")
+                    why["▲▼"] = str(e)
+                    # 組にならなくても、3 次元の位置が出たボタンが同じ柱（左右が column_tolerance 以内）にあれば、その左右
+                    ys = [float(b.center[1]) for b in getattr(self.buttons, "last_buttons", [])]
+                    if ys and np.ptp(ys) <= self.column_tol:
+                        single_y = float(np.median(ys))
             try:
                 fm = self.face_tracker.add(self.face.find(fr.depth, fr.K, qw, fr.imu_quat))
                 if fm is not None:
                     face_m = Measurement.from_face(fm, np.asarray(fr.q, dtype=float).copy())
+                elif len(self.face_tracker.samples) >= self.face_tracker.frames:
+                    s = self.face_tracker.samples
+                    why["柱の面"] = ("続けて測るとばらつく（距離 " + "・".join(f"{f.distance_m * 100:.1f}" for f in s)
+                                   + " cm、向き " + "・".join(f"{np.degrees(f.yaw_rad):+.1f}" for f in s) + "°）")
             except FaceNotFound as e:
                 self.face_tracker.reset()
-                reasons.append(f"柱の面: {e}")
+                why["柱の面"] = str(e)
         if face_m is not None:
+            if single_y is not None:
+                face_m.side_hint_m, face_m.side_hint_source = single_y, "head_single"
+            if self.webcam is not None and face_m.face is not None:
+                est = self.webcam.estimate(face_m.face)
+                face_m.webcam = est if est is not None else {"reason": self.webcam.last_reason}
+                if est is not None and est.get("use") is not None and face_m.side_hint_m is None:
+                    face_m.side_hint_m, face_m.side_hint_source = float(est["use"][1]), "webcam"
             return face_m
         self.last_reason = (f"{self.max_frames} フレームで ▲▼ も柱の面もそろわない（最後の理由: "
-                            + ("、".join(reasons[-2:]) if reasons else "ばらつきが大きい") + "）")
+                            + "、".join(f"{k}: {v}" for k, v in why.items() if v) + "）")
         return None
 
 
@@ -285,12 +317,27 @@ def decide(m: Measurement, feasible_arm: str | None, reasons: dict[str, str], st
         return Decision("move", why, p)
 
     if m.source == "face":
-        shift = edge_shift(m, edge_ref or {})
-        if shift is not None and abs(shift) > float(cfg["side_tol_m"]):
-            p = mover.plan("left" if shift > 0 else "right", abs(shift))
-            if p is not None and is_safe(p):
-                return Decision("move", f"柱の端が最初より {shift * 100:+.1f} cm ずれた（体が{'右' if shift > 0 else '左'}へずれた）。"
-                                        f"{'左' if shift > 0 else '右'}へ戻す", p)
+        # 左右の手がかり（1 個だけ見えたボタン・Web カメラ）があればそれで、無ければ柱の端で、横のずれを直す
+        if m.side_hint_m is not None:
+            hint_err = float(m.side_hint_m) - float(st["center_side_m"])
+            if abs(hint_err) > float(cfg["side_tol_m"]):
+                p = mover.plan("left" if hint_err > 0 else "right", abs(hint_err))
+                if p is not None and is_safe(p):
+                    way = "左" if hint_err > 0 else "右"
+                    src = {"webcam": "Web カメラ", "head_single": "1 個だけ見えたボタン"}.get(m.side_hint_source or "", "手がかり")
+                    return Decision("move", f"{src}でボタンが目安（{arm} 腕、体の中心から {float(st['center_side_m']) * 100:+.0f} cm）"
+                                            f"から {hint_err * 100:+.1f} cm。{way}へ", p)
+        else:
+            shift = edge_shift(m, edge_ref or {})
+            if shift is not None and abs(shift) > float(cfg["max_edge_shift_m"]):
+                # 1 回分で横にずれうる量より大きい。柱と壁の段が近い（評価環境は 1 cm）と、手前の段が柱になったり壁になったりして
+                # 端が飛ぶ（+33 cm と出た）。別の段の端を見ているとみなし、端では直さない
+                shift = None
+            if shift is not None and abs(shift) > float(cfg["side_tol_m"]):
+                p = mover.plan("left" if shift > 0 else "right", abs(shift))
+                if p is not None and is_safe(p):
+                    return Decision("move", f"柱の端が最初より {shift * 100:+.1f} cm ずれた（体が{'右' if shift > 0 else '左'}へずれた）。"
+                                            f"{'左' if shift > 0 else '右'}へ戻す", p)
         stop = max(target, float(cfg["face_stop_dist_m"]))
         dec = forward(d - stop, f"柱まで {d * 100:.1f} cm。▲▼ が見え始める {stop * 100:.0f} cm まで前へ")
         if dec is not None:
@@ -314,6 +361,12 @@ def decide(m: Measurement, feasible_arm: str | None, reasons: dict[str, str], st
             side_blocked = f"{way}へ {abs(side_err) * 100:.0f} cm 寄りたいが、柱に近すぎて横に動けない。"
     if err > 0:
         dec = forward(err, f"柱まで {d * 100:.1f} cm（目安 {target * 100:.0f} cm、勧める範囲 {lo * 100:.0f}〜{hi * 100:.0f} cm）。前へ")
+        if dec is not None:
+            return dec
+    if d > hi:
+        # 目安まで 1 回の最小の半分より近いが、勧める範囲より遠く計画も立たない（評価環境、柱まで 52 cm・目安 48 cm で止まった）。
+        # 最小の 1 回分でも前へ（範囲の近い側・安全はいつもどおり確かめる）
+        dec = forward(step, f"柱まで {d * 100:.1f} cm と勧める範囲（〜{hi * 100:.0f} cm）より遠く、計画が立たない。最小の 1 回分だけ前へ")
         if dec is not None:
             return dec
     if side_blocked:
@@ -356,6 +409,8 @@ class Approacher:
                 row: dict[str, Any] = {"step": k + 1, "source": m.source, "distance_m": m.distance_m,
                                        "yaw_deg": float(np.degrees(m.yaw_rad)), "side_m": m.side_m,
                                        "left_edge_m": m.left_edge_m, "right_edge_m": m.right_edge_m,
+                                       "side_hint_m": m.side_hint_m, "side_hint_source": m.side_hint_source,
+                                       "webcam": m.webcam,
                                        "action": dec.action, "reason": dec.reason,
                                        "pulse": None if dec.pulse is None else vars(dec.pulse)}
                 steps.append(row)
@@ -381,3 +436,70 @@ class Approacher:
         mark = {"ready": "✅", "aborted": "❌", "dry_run": "（送らない）"}[outcome]
         self.log(f"[approach] {mark} {reason}")
         return ApproachResult(outcome, reason, arm, steps)
+
+
+# ---- 前方の Web カメラ（おまけ） ----------------------------------------------------------
+
+
+class WebcamAssist:
+    """前方の Web カメラで、面しか見えない遠さからボタンの左右を推定する（common/webcam_buttons.py の 3 つの方法）。
+
+    get_frame() は (RGB の画像, 受け取ってからの秒数) か None を返す。決めるのに使うのは webcam.yaml の assist.use
+    （plane = 頭カメラの柱の面との交点 / size = ▲▼ の間隔から / off = 記録するだけ）。ほかの方法の値も記録に残す
+    （大きさ・視差の当たり具合を、実機で比べるため）。交点と間隔からの距離が大きく食い違えば使わない。
+    """
+
+    def __init__(self, get_frame: Callable[[], tuple[np.ndarray, float] | None], detector: Any, cam: Any,
+                 cfg: dict[str, Any]) -> None:
+        self.get_frame = get_frame
+        self.detector = detector
+        self.cam = cam
+        self.cfg = cfg
+        self.last_reason = ""
+        self._prev: tuple[np.ndarray, ColumnFace] | None = None
+
+    def estimate(self, face: ColumnFace | None) -> dict[str, Any] | None:
+        from .webcam_buttons import find_pair, from_plane, from_size, triangulate
+
+        a = self.cfg["assist"]
+        got = self.get_frame()
+        if got is None:
+            self.last_reason = "Web カメラの映像が届かない"
+            return None
+        rgb, age = got
+        if age > float(a["max_age_s"]):
+            self.last_reason = f"Web カメラの映像が古い（{age:.1f} 秒前）"
+            return None
+        pair = find_pair(self.detector.detect(rgb), self.cfg)
+        if pair is None:
+            self.last_reason = "Web カメラの画像に ▲▼ の組が見つからない"
+            self._prev = None
+            return None
+        est: dict[str, Any] = {"uv": pair.mid_px.tolist(), "spacing_px": pair.spacing_px}
+        plane = from_plane(self.cam, pair.mid_px, face.normal, face.point) if face is not None else None
+        sizes = from_size(self.cam, pair, self.cfg)
+        if plane is not None:
+            est["plane"] = plane.tolist()
+        for k, v in sizes.items():
+            est[k] = v.tolist()
+        if self._prev is not None and face is not None:
+            uv0, f0 = self._prev
+            mv = motion_between(f0, face)
+            if mv["left_cm"] is not None:
+                tri = triangulate(self.cam, uv0, pair.mid_px,
+                                  (mv["forward_cm"] / 100, mv["left_cm"] / 100, np.radians(mv["turn_deg"])))
+                if tri is not None:
+                    est["parallax"], est["parallax_gap_m"] = tri[0].tolist(), tri[1]
+        self._prev = (pair.mid_px.copy(), face) if face is not None else None
+        if plane is not None and "by_spacing" in sizes:
+            r_plane = float(np.linalg.norm(plane - self.cam.xyz))
+            r_size = float(np.linalg.norm(sizes["by_spacing"] - self.cam.xyz))
+            if abs(r_size / r_plane - 1.0) > float(a["max_range_disagreement"]):
+                est["use"] = None
+                self.last_reason = (f"Web カメラの推定が食い違う（柱の面との交点まで {r_plane * 100:.0f} cm、"
+                                    f"▲▼ の間隔からは {r_size * 100:.0f} cm）。使わない")
+                est["reason"] = self.last_reason
+                return est
+        use = {"plane": plane, "size": sizes.get("by_spacing"), "off": None}[str(a["use"])]
+        est["use"] = None if use is None else np.asarray(use).tolist()
+        return est

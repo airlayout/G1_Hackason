@@ -87,6 +87,25 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(d.action, "abort")
         self.assertIn("横に動けない", d.reason)
 
+    def test_just_outside_range_takes_min_step(self) -> None:
+        """目安（48 cm）まで 4.5 cm しかなくても、勧める範囲（〜50 cm）より遠く計画が立たなければ、最小の 1 回分だけ前へ。"""
+        stand = dict(STAND_R, target_dist_m=0.48)
+        d = dec(buttons(0.525, -0.12), stands={"right": stand})
+        self.assertEqual(d.pulse.axis, "forward")
+        self.assertEqual(d.pulse.duration_s, 0.5)
+
+    def test_single_button_side_hint(self) -> None:
+        """面しか見えなくても、1 個だけ見えたボタンの左右が分かれば、目安へ横に寄せる。"""
+        m = Measurement("face", 0.62, 0.0, None, side_hint_m=0.02, side_hint_source="head_single")
+        d = dec(m)
+        self.assertEqual(d.pulse.axis, "left")
+        self.assertIn("1 個だけ見えたボタン", d.reason)
+
+    def test_side_hint_ok_then_forward(self) -> None:
+        """面しか見えず、手がかりの左右が目安に近ければ、面のときと同じく前へ（評価環境で落ちた組み合わせ）。"""
+        m = Measurement("face", 0.70, 0.0, None, side_hint_m=-0.136, side_hint_source="head_single")
+        self.assertEqual(dec(m).pulse.axis, "forward")
+
     def test_nothing_more_to_do(self) -> None:
         d = dec(buttons(0.42, -0.12))  # 目安に近く、1 回の最小より小さいずれしか残っていないのに計画が立たない
         self.assertEqual(d.action, "abort")
@@ -225,6 +244,14 @@ class TestApproacher(unittest.TestCase):
         self.assertEqual(res.outcome, "ready", res.reason)
         self.assertTrue(any(s["source"] == "face" and s["pulse"] and s["pulse"]["axis"] == "left" for s in res.steps))
 
+    def test_edge_jump_is_ignored(self) -> None:
+        """柱の端が 1 回分ではありえないほど飛んだら（別の段の端）、端では直さず前へ進む。"""
+        m = Measurement("face", 0.9, 0.0, None, left_edge_m=0.40, right_edge_m=None)
+        d = decide(m, None, {}, {"right": STAND_R}, APP, dry_mover(), {"left": 0.07})
+        self.assertEqual(d.pulse.axis, "forward")
+        m = Measurement("face", 0.9, 0.0, None, left_edge_m=0.15, right_edge_m=None)
+        self.assertEqual(decide(m, None, {}, {"right": STAND_R}, APP, dry_mover(), {"left": 0.07}).pulse.axis, "left")
+
     def test_dry_run_stops_after_first_decision(self) -> None:
         fake = FakeLoco()
         res, _ = run(fake, World(fake, bx=1.0, by=0.0), go=False)
@@ -272,6 +299,33 @@ class TestApproacher(unittest.TestCase):
         res, _ = run(fake, World(fake, bx=1.0, by=0.0), cfg=cfg)
         self.assertEqual(res.outcome, "aborted")
         self.assertEqual(len(fake.calls), 4)
+
+
+class TestHeadPerception(unittest.TestCase):
+    def test_single_button_gives_side_hint(self) -> None:
+        """▲ が画像の上に切れて ▲▼ が組にならないとき、見えた ▼ の左右を面の観測に添える。"""
+        from common.approach import Frame, HeadPerception
+        from common.column_face import ColumnFace
+        from common.elevator_buttons import Button3D, ButtonNotFound
+
+        class OneButton:
+            last_buttons = [Button3D(np.array([0.6, -0.05, 0.14]), 0.035, "down", (0, 0, 1, 1), 100, "")]
+
+            def find(self, *a: object) -> None:
+                raise ButtonNotFound("ボタンが 1 個しか見つからない")
+
+        class Wall:
+            def find(self, *a: object) -> ColumnFace:
+                return ColumnFace(normal=np.array([-1.0, 0, 0]), point=np.array([0.6, 0, 0]), distance_m=0.6, yaw_rad=0.0,
+                                  left_edge_m=None, right_edge_m=None, n_points=1000, floor_found=False,
+                                  pitch_correction_deg=0.0, floor_z_m=None)
+
+        frame = Frame(np.zeros((4, 4, 3), np.uint8), np.zeros((4, 4)), np.eye(3), np.zeros(29))
+        el = load_config("elevator.yaml")
+        hp = HeadPerception(lambda: frame, OneButton(), Wall(), el, CFG["face"], APP)
+        m = hp.measure()
+        self.assertEqual(m.source, "face")
+        self.assertEqual((m.side_hint_m, m.side_hint_source), (-0.05, "head_single"))
 
 
 @needs("pin", "models")
