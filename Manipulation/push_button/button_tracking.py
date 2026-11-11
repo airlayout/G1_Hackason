@@ -13,6 +13,7 @@ from robust_scene import update_robot, contact_metrics
 from trajectory import ARM_TORQUE_LIMITS_NM, ARM_JOINTS
 
 PERIOD = .02
+COMMAND_CLEARANCE_M = .01
 KI = np.array([40., 40., 40., 40., 20., 20., 20.])
 BIAS_LIMIT = np.array([6., 6., 4., 6., 2., 1.5, 1.5])
 BIAS_SLEW = np.array([2., 2., 2., 2., 1., 1., 1.])
@@ -24,7 +25,7 @@ def controller_metadata():
         ki_nm_rad_s=KI.tolist(), bias_limit_nm=BIAS_LIMIT.tolist(),
         bias_slew_nm_s=BIAS_SLEW.tolist(), initial_hold_s=2.,
         press_settle_s=.12, home_tolerance_m=.002,
-        extra_press_displacement_m=0.)
+        extra_press_displacement_m=0., command_clearance_m=COMMAND_CLEARANCE_M)
 
 
 class TorqueIntegral:
@@ -182,8 +183,8 @@ class ButtonTrackingController:
             self.kin.validate_path(command, allow_tip_contact=not self.diagnostic,
                 allowed_tip_geoms={target_geom})
             commanded = pose.copy(); commanded[self.kin.qadr] = command; self.kin.update(commanded)
-            if contact_metrics(self.kin, self.scene, contact=not self.diagnostic) < .003:
-                raise ValueError('Command has less than 3mm obstacle clearance')
+            if contact_metrics(self.kin, self.scene, contact=not self.diagnostic) < COMMAND_CLEARANCE_M:
+                raise ValueError(f'Command has less than {COMMAND_CLEARANCE_M * 1000:g}mm obstacle clearance')
         try:
             validate(goal)
         except ValueError:

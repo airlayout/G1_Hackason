@@ -32,8 +32,9 @@ bash Manipulation/push_button/real/run_robust_button_press.sh --button-direction
 厳しい起動前確認が必要な場合は `--readiness-policy strict` を明示する。
 収集用の `collection` は基準位置の1条件で、実機と同じ補正処理を物理検証する。
 押下深さ・追従・帰還の偏差は診断情報として扱うが、実際の衝突、過大な接触力、関節余裕は合否に使う。
-選択した手先とパネルの穴の縁だけは3mmの空間余裕を求めず、0.5mmを超える侵入を拒否する。
-他の障害物には3mmの余裕を求める。
+関節フィードバックでは、次の指令先で障害物との余裕が10mm未満なら、減速指令で再検査する。
+収集用では選択した手先とパネルの穴の縁の組み合わせは空間余裕の対象外とし、0.5mmを超える侵入を拒否する。
+経路候補の静的検査と、物理検証で実際にたどった姿勢の余裕の合否基準は3mmとする。
 標準の4条件（基準・奥3mm・左3mm・右3mm）は `--button-policy standard` で選べる。
 従来の補正なし実行は `--button-feedback off --button-policy standard --planning-budget-s 30`。
 Pythonの直接起動では従来の `standard/off` が既定である。
