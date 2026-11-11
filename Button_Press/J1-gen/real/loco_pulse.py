@@ -3,11 +3,11 @@
     # 送らずに、送るはずの指令だけを見る（既定）
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/loco_pulse.py --axis forward --amount 20
     # 実機に送る（有線のラボ PC。G1 は立って歩ける状態・周りに人がいない・リモコンを持った人がそばにいること）
-    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/loco_pulse.py --axis forward --amount 20 --go
+    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/loco_pulse.py --axis forward --amount 20 --execute
     # 速さと時間を直接（下限・上限の確認は同じ）
-    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/loco_pulse.py --raw 0.3 0 0 0.6 --go
+    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/loco_pulse.py --raw 0.3 0 0 0.6 --execute
 
---amount は cm（回る向きは °）。--go のときは、送る前に Enter を待つ（Ctrl+C でやめる。歩いている途中の Ctrl+C でも StopMove を送る）。
+--amount は cm（回る向きは °）。--execute のときは、送る前に Enter を待つ（Ctrl+C でやめる。歩いている途中の Ctrl+C でも StopMove を送る）。
 送ったあと、脚 12 関節の角速度を記録し、止まるまでの時間を出す。_local/button_press/loco_pulse/<時刻>/ に
 pulse.json（指令・結果）と legs.csv（時刻・脚の角速度の最大）を残す。動いた距離はメジャーか頭カメラ（real/check_face.py）で測る。
 ⚠️ 腕は下ろしておく（このスクリプトは腕を見ない。auto_press などの腕の指令を止めてから使う）。
@@ -49,7 +49,7 @@ def main() -> int:
     what.add_argument("--axis", choices=list(AXES))
     what.add_argument("--raw", type=float, nargs=4, metavar=("VX", "VY", "WZ", "DURATION"))
     p.add_argument("--amount", type=float, help="--axis で動きたい量（cm、回る向きは °）")
-    p.add_argument("--go", action="store_true", help="実機に送る（付けなければ表示だけ）")
+    p.add_argument("--execute", action="store_true", help="実機に送る（付けなければ表示だけ）")
     p.add_argument("--network-interface")
     args = p.parse_args()
 
@@ -59,7 +59,7 @@ def main() -> int:
             p.error("--axis には --amount が要る")
         amount = np.radians(args.amount) if args.axis.startswith("turn") else args.amount / 100.0
     reader = stillness = backend = None
-    if args.go:
+    if args.execute:
         from common.dds import LowStateReader, init_dds
         from common.loco import SdkLocoBackend
 
@@ -70,7 +70,7 @@ def main() -> int:
         reader.wait(10.0)
         backend = SdkLocoBackend()
         stillness = RecordingStillness(reader, cfg["still"])
-    mover = LocoMover(backend, stillness, cfg, go=args.go)
+    mover = LocoMover(backend, stillness, cfg, go=args.execute)
     try:
         if args.axis:
             pulse = mover.plan(args.axis, amount)
@@ -86,12 +86,12 @@ def main() -> int:
         print(f"[loco_pulse] ❌ 送らない: {e}")
         return 1
     print(f"[loco_pulse] {pulse.summary()}")
-    if args.go:
+    if args.execute:
         input("[loco_pulse] 周りに人がいない・リモコンを持った人がそばにいることを確かめて Enter（やめるなら Ctrl+C）: ")
     with mover:
         result = mover.pulse(pulse)
-    if not args.go:
-        print("[loco_pulse] 送っていない（実機に送るなら --go）")
+    if not args.execute:
+        print("[loco_pulse] 送っていない（実機に送るなら --execute）")
         return 0
     print(f"[loco_pulse] {'止まった' if result.stopped else '❌ 止まらなかった'}（送ってから {result.settle_s:.2f} 秒）"
           f"{'。' + result.note if result.note else ''}")

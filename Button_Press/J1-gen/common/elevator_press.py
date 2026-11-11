@@ -368,6 +368,23 @@ class ElevatorPressController:
         return ("立つ位置が勧める範囲の外: " + "、".join(msgs)
                 + f"（勧める範囲: 柱まで {lo * 100:.0f}〜{hi * 100:.0f} cm、{side_text}{target}）")
 
+    def can_plan(self, q: np.ndarray, call: CallButtons, target: str) -> str | None:
+        """押す計画が立つか（腕は動かさない）。立てば None、立たなければ理由の文。
+
+        立つ位置まで寄る（common/approach.py）が「押し方の候補のどれかで計画が立つか」を止める判断に使う。
+        押すときと同じ候補（初期姿勢・指の傾き・経由点・指の並び）を順に試す。状態は reset し直すので、押すのには使わない。
+        """
+        self.reset(target, 0.02, np.ones(len(UPPER_IDX)))
+        try:
+            self._plan(np.asarray(q, dtype=float), call)
+        except UnreachableError as e:
+            return str(e)
+        return None
+
+    def stand_cfg(self) -> dict[str, Any]:
+        """勧める立つ位置（press.stand に押す組ごとの上書きを重ねたもの。center_side_m は右腕の値）。"""
+        return dict(self._press_cfg()["stand"])
+
     def _press_cfg(self) -> dict[str, Any]:
         """press の設定に、押す組（geometry.button_set）ごとの上書き（press.by_button_set）を重ねたもの。"""
         c = self.cfg["press"]

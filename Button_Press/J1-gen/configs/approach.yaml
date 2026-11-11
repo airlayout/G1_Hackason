@@ -82,3 +82,30 @@ loco:
   limits:
     max_pulses: 15
     max_forward_total_m: 1.5
+
+# ---- 寄る流れ（common/approach.py。観測 → 1 回動く → 止まる → 観測） ----
+approach:
+  # 計画を試す腕（順に。最初に計画が立った腕で押す）。左腕も試すなら [right, left]
+  arms: [right]
+  # 前後の目安 [m]。null なら elevator.yaml の press.stand（押す組ごと）の target_dist_m、それも無ければ min〜max の中点
+  target_dist_m: null
+  # これより近いと中止する（壁にぶつかる。後ろへは動かないので、人がリモコンで下げる）
+  min_safe_dist_m: 0.27
+  # 面しか見えないうちは、ここまでしか前へ進まない [m]（▲▼ が見え始める距離。頭カメラ 53° で車いす用は約 46〜49 cm から見える）。
+  # ▲▼ が見えてから左右を直す余地を残す
+  face_stop_dist_m: 0.50
+  # 前進は、勧める範囲の近い側からこれだけ手前で止める [m]
+  forward_margin_m: 0.03
+  # 1 回分の安全の見積もり: 多めに動く割合と、進む向きのずれの最大 [deg]（純正の歩行は前へ −18〜−20° ずれた。U-12）。
+  # 横に動くと、動いた量 × sin(この角度) だけ前にも出るとみなす。この最悪でも min_safe_dist_m より近づく 1 回分は送らない
+  step_uncertainty: 0.3
+  max_heading_error_deg: 30
+  # 向きがこれより大きくずれていれば、まず回る [deg]
+  yaw_tol_deg: 6
+  # ▲▼ が見えて計画が立たないとき、左右の目安（press.stand.center_side_m）からこれより離れていれば横へ動く [m]
+  side_tol_m: 0.04
+  # 観測の回数の上限（動く回数の上限は loco.limits）
+  max_steps: 12
+  # 1 回の観測で読むフレームの上限と、動いたあとに読み飛ばすフレームの数
+  max_frames: 15
+  skip_frames_after_move: 2
