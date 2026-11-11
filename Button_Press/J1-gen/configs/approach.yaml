@@ -45,3 +45,40 @@ face:
     frames: 3
     max_spread_m: 0.01
     max_yaw_spread_deg: 1.5
+
+# ---- 1 回分だけ歩く（common/loco.py。純正の歩行コントローラの LocoClient.SetVelocity） ----
+# ⚠️ 値の多くは仮。出どころは Navigation 班の実機の記録（Navigation/nav2_stable/Planning.md の U-07・U-12、2026-09-09。
+# 前に 1 秒だけ送った結果）。横・回る・短い時間（1 秒未満）は誰も測っていない。実機日（E）に測って直す。
+loco:
+  # 最初に送る前に、FSM がこの中かを確かめる（null なら確かめない）。501 = 腰 3 自由度の Regular（立ち上げ後の値、HANDOFF の 3）
+  allowed_fsm_ids: [501]
+  # SetVelocity の duration の上限 [s]。このプロセスが落ちても、この時間で G1 が自分で止まる
+  max_duration_s: 1.0
+  # 送ってよい速さの範囲（絶対値）。下限より遅いと歩き出さない・向きが定まらない（vx 0.1 は動かず、0.2 は向きが +98.6° ずれた）
+  min_speed: {vx: 0.25, vy: 0.25, wz: 0.25}
+  max_speed: {vx: 0.35, vy: 0.30, wz: 0.50}
+  # 1 回で動ける最小の量（rate × min_duration_s）のこの割合より小さいずれは、直さない
+  min_fraction: 0.5
+  axes:
+    # speed: 送る速さ、rate: 1 秒あたりに実際に動いた量（歩き終わりの分を含む。m/s か rad/s）、時間の範囲 [s]
+    # 前: vx 0.3 を 1 秒で Δx +0.228〜+0.231 m（3 回）。向きは −18〜−20° ずれた
+    forward: {speed: 0.30, rate: 0.23, min_duration_s: 0.5, max_duration_s: 1.0}
+    # 後ろ: 頭のセンサの後ろ上が死角なので、既定では使わない（近すぎたら人がリモコンで下げる）
+    backward: {enabled: false, speed: 0.30, rate: 0.20, min_duration_s: 0.5, max_duration_s: 1.0}
+    # 横・回る: 測っていない（仮の値）
+    left: {speed: 0.30, rate: 0.20, min_duration_s: 0.5, max_duration_s: 1.0}
+    right: {speed: 0.30, rate: 0.20, min_duration_s: 0.5, max_duration_s: 1.0}
+    turn_left: {speed: 0.30, rate: 0.25, min_duration_s: 0.5, max_duration_s: 1.0}
+    turn_right: {speed: 0.30, rate: 0.25, min_duration_s: 0.5, max_duration_s: 1.0}
+  # 止まったかの判定: 脚 12 関節の角速度がこの値以下で hold_s 続いたら止まった。指令の時間のあと timeout_s 待っても
+  # 止まらなければ StopMove を送って中止する（歩き終わりは約 1.9 秒、完全に止まるまで 3.4 秒。U-07）
+  still:
+    max_leg_dq_rad_s: 0.1
+    hold_s: 0.5
+    timeout_s: 6.0
+    poll_s: 0.05
+    max_state_age_s: 0.2
+  # 寄る 1 回の中での上限（寄る流れが間違って回り続けても止まる）
+  limits:
+    max_pulses: 15
+    max_forward_total_m: 1.5
