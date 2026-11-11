@@ -52,7 +52,8 @@ export PAUSE_FILE="$HOME/work_inoue/PAUSE_DOOR_F3" STOP_FILE="$HOME/work_inoue/S
 log() { echo "=== [$(date '+%m-%d %T')] $*"; }
 log "exp_f3 start name=${NAME:-f3} ck=$CK rounds=${ROUNDS:-96} pass_rate=$PASS_RATE overopen=${OVR:--6.0} repo=$CHAIN_REPO${TRAIN_MORE:+ more=$TRAIN_MORE}"
 log "fix=$FIX"
-./stage_chain.sh "$CK" "${NAME:-f3}:$TASK:${ROUNDS:-96}:30:through:$TRAIN"
+# CRIT（11-09）: 区切りごとの評価の成功の数え方（count_success.py の --criterion。既定 through。腕だけの段は arm10）
+./stage_chain.sh "$CK" "${NAME:-f3}:$TASK:${ROUNDS:-96}:30:${CRIT:-through}:$TRAIN"
 L=$(ls -td chain/*/ | head -1)
 log "chain done chain=$L"
 cut -f1-6 "$L/results.tsv" | sed "s/^/  [chain] /"

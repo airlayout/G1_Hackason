@@ -33,12 +33,12 @@ grep -qF "_init_stock_legs" "$HOME/work_inoue/doorman6/VIRAL6_fix/gr00t/rl/envs/
 # F3' と CAPS の引数（exp_f3_caps_1030.sh と同じ）
 CAP="++algo.config.max_noise_std=0.26"
 WALK="++env.config.walk_away_start_m=1.0,++rewards.reward_scales.walk_away_in_swing=-40.0"
-LONG="++env.config.max_stage_time=[250|100|100|100|600|200]"
+LONG="${LONG_MORE:-++env.config.max_stage_time=[250|100|100|100|600|200]}"  # 11-07: LONG_MORE で替えられる（鈍い脚は近づくのに時間がかかる）
 NOPULL="++env.config.target_root_distance_swing_scale=0.0"
 F3K_MORE="$CAP,$WALK,$LONG,$NOPULL,++rewards.reward_scales.penalty_arm_action_change=-0.2,++rewards.reward_scales.penalty_walk_in_hold=-0.3"
 CAPS_MORE="$F3K_MORE,++algo.config.caps_temporal_coef=1.0,++algo.config.caps_temporal_start=3,++algo.config.caps_temporal_end=17"
 # 純正に似せた脚（構える・つかむ段階の歩く罰も、同じ切り替えの線で数える）
-STOCK_MORE="++algo.config.homie_switch_threshold=0.1,++env.config.walk_in_hold_threshold=0.1,++env.config.loco_cmd_delay_steps_range=[0|15],++env.config.loco_cmd_gain_range=[0.8|1.2]"
+STOCK_MORE="${STOCK_MORE:-++algo.config.homie_switch_threshold=0.1,++env.config.walk_in_hold_threshold=0.1,++env.config.loco_cmd_delay_steps_range=[0|15],++env.config.loco_cmd_gain_range=[0.8|1.2]}"  # 11-06: 外から STOCK_MORE で替えられる（t2_1106.sh の鈍い脚）
 MASK_MORE="++env.config.actor_obs_mask_lower_body=True"
 
 EVAL_EXTRA="++env.config.reset_from_dataset.enabled=False ++env.config.max_stage_time=[500,200,200,200,600,400] ++env.config.max_episode_length_s=60"
@@ -104,6 +104,8 @@ if [ -n "${TERM_UP:-}" ]; then
     *) log "TERM_UP は 0〜1 の小数: ${TERM_UP}"; exit 1 ;;
   esac
 fi
+# EXTRA_MORE（11-06）: 学習の引数をさらに足す（TRAIN_MORE と同じ書き方。例: T1 の肩 roll の切り詰めと罰）
+[ -n "${EXTRA_MORE:-}" ] && B_MORE="$B_MORE,$EXTRA_MORE"
 log "段 B: $B_NAME を学習し直す ck=$CK mask=${MASK:-1} complete_through=${COMPLETE_THROUGH:-0} auto_envs=${AUTO_ENVS:-0} term_up=${TERM_UP:-設定のまま}"
 export NAME="$B_NAME" TRAIN_MORE="$B_MORE"
 # 学習（と各回の評価）の上限は 10 GB（10-30 17〜19 時の sar で 4,096 台の学習は 8.5 GB。再起動の後は空きが 12.5 GB で、

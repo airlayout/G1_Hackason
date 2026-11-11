@@ -1,0 +1,207 @@
+From 2a3ae91d5f23ea397868318ecf5ccb983430b127 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Sat, 7 Nov 2026 06:18:14 +0900
+Subject: [PATCH] homie: optional stock walking response model and command
+ replay for fitting it to the real robot (env.config.loco_resp replaces the
+ 0085 uniform delay and gain with per-axis delays, a dead band, a gain curve
+ over the command size for each sign, per-episode randomization and a drift
+ added while walking, since the real Unitree walking answered only 0.52, 0.36
+ and 0.61 of the commands with 0.26, 0.56 and 0.10 s delays, small commands
+ hardly at all, drifting right and turning right more easily than left;
+ env.config.loco_cmd_replay replaces the walking command with recorded
+ sequences so that the response of the whole layer plus HOMIE can be measured;
+ the state recorder also writes the policy command and the command that
+ reached the legs; default off = unchanged) (11-07)
+
+---
+ gr00t/rl/envs/base_task/homie_base.py | 119 ++++++++++++++++++++++++--
+ gr00t/rl/utils/state_recorder.py      |  11 +++
+ 2 files changed, 124 insertions(+), 6 deletions(-)
+
+diff --git a/gr00t/rl/envs/base_task/homie_base.py b/gr00t/rl/envs/base_task/homie_base.py
+index 67d36bf..8eac909 100644
+--- a/gr00t/rl/envs/base_task/homie_base.py
++++ b/gr00t/rl/envs/base_task/homie_base.py
+@@ -125,6 +125,7 @@ class HomieBase(LeggedRobotBase):
+             self._homie_commands = torch.clamp(
+                 self._homie_commands, self._homie_command_low_thres, self._homie_command_high_thres
+             )
++        self._replay_loco_cmd()  # G1_Hackason（0095）: 歩きの指令を記録の列で置き換える（脚の応え方を測る用。既定は切）
+         self._update_stock_legs()  # G1_Hackason（0085）: 脚に届く指令（遅れ・倍率）
+ 
+         self._homie_actions = actions[:, -self._num_lower_dof :]
+@@ -242,8 +243,105 @@ class HomieBase(LeggedRobotBase):
+         self._loco_cmd_ptr = 0
+         self._loco_cmd_delay = torch.full((self.num_envs,), lo, dtype=torch.long, device=self.device)
+         self._loco_cmd_gain = torch.ones(self.num_envs, 3, device=self.device)
++        self._init_loco_resp()  # 0095: 有効なら遅れの入れ物を軸ごとの遅れの長さに広げ、_stock_legs_on を立てる
++        self._init_loco_cmd_replay()
+         self._reset_stock_legs(torch.arange(self.num_envs, device=self.device))
+ 
++    # ---- G1_Hackason（パッチ 0095、11-07）: 実機の記録から作る純正の応え方 ----
++    # 11-06 の実機の 8 回で、純正の歩行は指令に 前後 0.52・左右 0.36・旋回 0.61 倍しか応えず（遅れ 0.26・0.56・0.10 s）、
++    # 小さい指令ほど効かず、右へ流れ、右旋回は効くが左旋回は効きにくかった。一様な倍率（0085）ではこの形を真似られない。
++    #   env.config.loco_resp.enabled=True で、0085 の遅れ・倍率の代わりに次を通す（観測に入る所・切り替えの線は 0085 と同じ）:
++    #     delay_steps=[[a,b],[a,b],[a,b]]: 前後・横・旋回ごとに、回ごとに a〜b 歩遅らせる（1 歩 0.02 秒）
++    #     dead=[x,y,z]: 遅れた指令の大きさがこれ未満の軸は 0（効かない帯）
++    #     knots=[[…],[…],[…]]・gain_pos=[[…],[…],[…]]・gain_neg=[[…],[…],[…]]: 軸ごとに、指令の大きさ |c| に対する倍率の折れ線
++    #       （正・負の向きで別。knots の外は端の倍率）。脚に届く指令 = c × 倍率(|c|) × 回ごとの乱択
++    #     bias=[x,y,z]: どれかの軸が歩いている（0 でない）間に足す流れ（例 横 −0.025 m/s＝右へ流れる）
++    #     gain_rand=r・bias_rand=r: 回ごと・軸ごとに倍率と流れへ U(1−r, 1+r) を掛ける
++    #   ここで決めるのは「HOMIE に渡す指令」。合わせる相手は層＋HOMIE の全体なので、値は HOMIE 自身の応え方を測ってから決める
++    #   env.config.loco_cmd_replay.path=<npz>: 方策の歩きの指令（前後・横・旋回）を npz の cmd [K, T, 3]（実の単位・1 歩 0.02 秒）で
++    #     置き換える。台 i は列 i % K を回の始めから流し、尽きたら 0。脚の応え方を、決まった指令の列で測るため（既定は切）
++    def _init_loco_resp(self):
++        cfg = self.config.get("loco_resp", None)
++        self._loco_resp_on = bool(cfg is not None and cfg.get("enabled", False))
++        if not self._loco_resp_on:
++            return
++        dev = self.device
++        delay = torch.tensor([[int(v) for v in ab] for ab in cfg["delay_steps"]], dtype=torch.long, device=dev)
++        assert delay.shape == (3, 2) and (delay[:, 0] >= 0).all() and (delay[:, 0] <= delay[:, 1]).all(), \
++            f"loco_resp.delay_steps は [[a,b]×3]・0 <= a <= b にする: {cfg['delay_steps']}"
++        self._resp_delay_range = delay
++        self._resp_dead = torch.tensor([float(v) for v in cfg.get("dead", [0.0, 0.0, 0.0])], device=dev)
++        self._resp_knots, self._resp_gain_pos, self._resp_gain_neg = [], [], []
++        for ax in range(3):
++            k = torch.tensor([float(v) for v in cfg["knots"][ax]], device=dev)
++            gp = torch.tensor([float(v) for v in cfg["gain_pos"][ax]], device=dev)
++            gn = torch.tensor([float(v) for v in cfg["gain_neg"][ax]], device=dev)
++            assert k.numel() >= 1 and k.numel() == gp.numel() == gn.numel() and bool((k[1:] > k[:-1]).all()), \
++                f"loco_resp の軸 {ax}: knots は増える列で、gain_pos・gain_neg と同じ長さにする"
++            self._resp_knots.append(k)
++            self._resp_gain_pos.append(gp)
++            self._resp_gain_neg.append(gn)
++        self._resp_bias = torch.tensor([float(v) for v in cfg.get("bias", [0.0, 0.0, 0.0])], device=dev)
++        self._resp_gain_rand = float(cfg.get("gain_rand", 0.0))
++        self._resp_bias_rand = float(cfg.get("bias_rand", 0.0))
++        self._resp_delay = delay[:, 0].repeat(self.num_envs, 1)  # [num_envs, 3]
++        self._resp_scale = torch.ones(self.num_envs, 3, device=dev)
++        self._resp_bias_env = self._resp_bias.repeat(self.num_envs, 1)
++        self._loco_cmd_buf = torch.zeros(self.num_envs, int(delay[:, 1].max()) + 1, 3, device=dev)
++        self._stock_legs_on = True
++
++    def _reset_loco_resp(self, env_ids):
++        n = len(env_ids)
++        lo, hi = self._resp_delay_range[:, 0], self._resp_delay_range[:, 1]
++        u = torch.rand(n, 3, device=self.device)
++        self._resp_delay[env_ids] = torch.minimum(lo + (u * (hi - lo + 1).float()).long(), hi)
++        r, rb = self._resp_gain_rand, self._resp_bias_rand
++        self._resp_scale[env_ids] = 1.0 + r * (2.0 * torch.rand(n, 3, device=self.device) - 1.0)
++        self._resp_bias_env[env_ids] = self._resp_bias * (1.0 + rb * (2.0 * torch.rand(n, 3, device=self.device) - 1.0))
++
++    @staticmethod
++    def _interp(x, xp, fp):
++        """折れ線 (xp, fp) の x での値（xp の外は端の値）。x は任意の形、xp・fp は 1 次元"""
++        if xp.numel() == 1:
++            return torch.full_like(x, float(fp[0]))
++        xc = torch.clamp(x, xp[0], xp[-1])
++        i = torch.clamp(torch.searchsorted(xp, xc, right=True) - 1, 0, xp.numel() - 2)
++        x0, x1, f0, f1 = xp[i], xp[i + 1], fp[i], fp[i + 1]
++        return f0 + (f1 - f0) * (xc - x0) / (x1 - x0)
++
++    def _loco_resp_map(self, c):
++        """遅れた指令 c [num_envs, 3] → 脚に届く指令 [num_envs, 3]（効かない帯・向きごとの倍率・回ごとの乱択・歩く間の流れ）"""
++        out = torch.zeros_like(c)
++        for ax in range(3):
++            a = c[:, ax].abs()
++            g = torch.where(c[:, ax] >= 0, self._interp(a, self._resp_knots[ax], self._resp_gain_pos[ax]),
++                            self._interp(a, self._resp_knots[ax], self._resp_gain_neg[ax]))
++            out[:, ax] = torch.where(a < self._resp_dead[ax], torch.zeros_like(a), c[:, ax] * g * self._resp_scale[:, ax])
++        walking = (out != 0).any(dim=-1, keepdim=True)
++        return out + walking.float() * self._resp_bias_env
++
++    def _init_loco_cmd_replay(self):
++        cfg = self.config.get("loco_cmd_replay", None)
++        path = cfg.get("path", None) if cfg is not None else None
++        self._loco_replay = None
++        if not path:
++            return
++        import numpy as np
++
++        seq = torch.tensor(np.load(str(path))["cmd"], dtype=torch.float32, device=self.device)
++        assert seq.dim() == 3 and seq.shape[-1] == 3, f"loco_cmd_replay の cmd は [K, T, 3] にする: {tuple(seq.shape)}"
++        self._loco_replay = seq
++        self._loco_replay_k = torch.arange(self.num_envs, device=self.device) % seq.shape[0]
++
++    def _replay_loco_cmd(self):
++        seq = getattr(self, "_loco_replay", None)
++        if seq is None:
++            return
++        t = self.episode_length_buf.long()
++        inside = t < seq.shape[1]
++        cmd = seq[self._loco_replay_k, torch.clamp(t, max=seq.shape[1] - 1)]
++        self._homie_commands[:, :3] = torch.where(inside[:, None], cmd, torch.zeros_like(cmd))
++
+     def _reset_stock_legs(self, env_ids):
+         if len(env_ids) == 0:
+             return
+@@ -252,11 +350,14 @@ class HomieBase(LeggedRobotBase):
+             self._mask_lower_env[env_ids] = torch.rand(len(env_ids), device=self.device) < p
+         if not getattr(self, "_stock_legs_on", False):
+             return
+-        lo, hi = self._loco_delay_range
+-        glo, ghi = self._loco_gain_range
+         n = len(env_ids)
+-        self._loco_cmd_delay[env_ids] = torch.randint(lo, hi + 1, (n,), device=self.device)
+-        self._loco_cmd_gain[env_ids] = glo + (ghi - glo) * torch.rand(n, 3, device=self.device)
++        if getattr(self, "_loco_resp_on", False):
++            self._reset_loco_resp(env_ids)
++        else:
++            lo, hi = self._loco_delay_range
++            glo, ghi = self._loco_gain_range
++            self._loco_cmd_delay[env_ids] = torch.randint(lo, hi + 1, (n,), device=self.device)
++            self._loco_cmd_gain[env_ids] = glo + (ghi - glo) * torch.rand(n, 3, device=self.device)
+         self._loco_cmd_buf[env_ids] = 0.0
+         self._homie_commands_legs[env_ids, :3] = 0.0
+ 
+@@ -266,9 +367,15 @@ class HomieBase(LeggedRobotBase):
+         n_slot = self._loco_cmd_buf.shape[1]
+         self._loco_cmd_ptr = (self._loco_cmd_ptr + 1) % n_slot
+         self._loco_cmd_buf[:, self._loco_cmd_ptr] = self._homie_commands[:, :3]
+-        idx = (self._loco_cmd_ptr - self._loco_cmd_delay) % n_slot
+         legs = self._homie_commands.clone()
+-        legs[:, :3] = self._loco_cmd_buf[torch.arange(self.num_envs, device=self.device), idx] * self._loco_cmd_gain
++        envs = torch.arange(self.num_envs, device=self.device)
++        if getattr(self, "_loco_resp_on", False):  # 0095: 軸ごとの遅れ → 応え方の写像
++            idx = (self._loco_cmd_ptr - self._resp_delay) % n_slot  # [num_envs, 3]
++            delayed = torch.stack([self._loco_cmd_buf[envs, idx[:, ax], ax] for ax in range(3)], dim=-1)
++            legs[:, :3] = self._loco_resp_map(delayed)
++        else:
++            idx = (self._loco_cmd_ptr - self._loco_cmd_delay) % n_slot
++            legs[:, :3] = self._loco_cmd_buf[envs, idx] * self._loco_cmd_gain
+         self._homie_commands_legs = legs
+ 
+     def _apply_stock_legs_obs(self):
+diff --git a/gr00t/rl/utils/state_recorder.py b/gr00t/rl/utils/state_recorder.py
+index 7b4964f..f408bfb 100644
+--- a/gr00t/rl/utils/state_recorder.py
++++ b/gr00t/rl/utils/state_recorder.py
+@@ -107,6 +107,7 @@ class StateRecorder:
+         row.update(self._hand_lever_force(env, k))
+         if hasattr(env, "term_reason_buf"):  # G1_Hackason（パッチ 0089）
+             row.update(self._term_reason(env, k))
++        row.update(self._loco_cmds(env, k))
+         if self.pregrasp_diag:
+             row.update(self._pregrasp_diag(env, k))
+         for key, value in row.items():
+@@ -117,6 +118,16 @@ class StateRecorder:
+         if len(self.buf["step"]) >= self.chunk_steps:
+             self.flush()
+ 
++    @staticmethod
++    def _loco_cmds(env, k: int) -> dict:
++        """G1_Hackason（パッチ 0095）: 歩きの指令（前後・横・旋回・実の単位）。homie_cmd＝方策が出した（再生なら再生の）指令、
++        legs_cmd＝脚（HOMIE）に届いた指令（0085・0095 の遅れと応え方の後。どちらも切なら homie_cmd と同じ）"""
++        if not hasattr(env, "_homie_commands"):
++            return {}
++        cmd = env._homie_commands[:k, :3]
++        legs = env._homie_commands_legs[:k, :3] if getattr(env, "_stock_legs_on", False) else cmd
++        return {"homie_cmd": cmd.cpu().numpy(), "legs_cmd": legs.cpu().numpy()}
++
+     @staticmethod
+     def _hand_lever_force(env, k: int) -> dict:
+         if not hasattr(env, "right_hand_indices_tgt_ct_sensor"):
+-- 
+2.43.0
+

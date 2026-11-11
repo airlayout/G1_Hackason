@@ -1,0 +1,186 @@
+From 2552d39686c193de187f1517e21009dc2514d9ae Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 9 Nov 2026 11:15:54 +0900
+Subject: [PATCH] door: optional arm-only lever stage (env.config.arm_stage:
+ start each episode at a stance pose in front of the lever, given as the
+ pelvis distance from the door plane, the lateral offset from the lever pivot
+ toward the lever side and the yaw, mirrored for right-hand doors; start in
+ the pregrasp stage instead of the walk-to-door stage, keep the legs on the
+ standing HOMIE at every step through the stand latch, complete on entering
+ complete_stage (default 4 = door 10 deg) and shrink the initial root
+ velocity; the default range widens the 10-90% of the pelvis pose of the f3t3
+ teacher when it touched the lever in 256 evaluation episodes, x -0.48..-0.32
+ m, y -0.15..-0.01 m, yaw -65..-25 deg; default off = unchanged) (11-09)
+
+---
+ gr00t/rl/envs/door/arm_stage.py       | 68 +++++++++++++++++++++++++++
+ gr00t/rl/envs/door/door_open_homie.py | 43 +++++++++++++++++
+ 2 files changed, 111 insertions(+)
+ create mode 100644 gr00t/rl/envs/door/arm_stage.py
+
+diff --git a/gr00t/rl/envs/door/arm_stage.py b/gr00t/rl/envs/door/arm_stage.py
+new file mode 100644
+index 0000000..dc05b52
+--- /dev/null
++++ b/gr00t/rl/envs/door/arm_stage.py
+@@ -0,0 +1,68 @@
++"""段 2 レバーを腕だけで学ぶ口（G1_Hackason 案 A の手順 3・4、パッチ 0097、2026-11-09）。
++
++計画書 docs/plan/2026-11-09-g1-door-staged-rgbd.md。実機の段 2 は、段 1（手で書いた制御）が止めた「構えの位置」から、
++脚は純正で立ったまま（歩きの指令 0）、腕だけでレバーを下げて扉を引き継ぎの角度まで開ける。シムで同じ場面を作る:
++  始め: 構えの位置（扉の面とレバーの付け根からの前・横・向き）に立たせ、段 1（構える）から始める
++  脚: 毎歩、歩く指令の積み上げを 0 にする（stand_latch と同じ口。HOMIE は立つ方策のまま）
++  終わり: complete_stage（既定 4＝扉が 10° 開いた段 3→4）に入ったら完了（reset_on_complete の遅れの後に回を終える）
++
++env.config.arm_stage（無い・enabled=False なら元のまま）:
++  enabled: True で有効
++  start_range: [x0, x1, y0, y1, 向き0°, 向き1°]。x は pelvis の扉の面からの前（手前が負）、y は pelvis のレバーの付け根からの横
++    （レバーの側が正。把手が右の扉では左右を映す）、向きは扉へ正対が 0°（レバーの側へ向くのが正。同じく映す）。それぞれ一様に引く
++    既定はシムの教師 f3t3 がレバーに触れた時（段 2 に入った時）の 10〜90% 点を少し広げた範囲（11-09 の 256 回の評価の記録）
++  start_stage: 回を始める段（既定 1＝構える）
++  complete_stage: この段に入ったら完了（既定 4）
++  start_vel: 回の始めの胴の速さ・角速さの乱択の幅 [m/s・rad/s]（元は ±0.5。立ったまま始めるので既定 ±0.1）
++
++ここは torch の関数だけ（Isaac Sim なしで試験できる）。環境（door_open_homie.py）が呼ぶ。
++"""
++
++from __future__ import annotations
++
++import torch
++
++# f3t3 が段 2 に入った時の pelvis（11-09、記録 start_1107_1338 の 244 回）: 前 −0.41 [−0.48, −0.30]・横 −0.09 [−0.15, −0.02]・
++# 向き −47° [−65, −34]（中央値 [10%, 90%]。把手が左の扉で、右へ回ってレバーの側の左肩を前に出している）
++DEFAULT_START_RANGE = (-0.48, -0.32, -0.15, -0.01, -65.0, -25.0)
++
++
++def arm_stage_config(cfg) -> dict | None:
++    """env.config.arm_stage を読んで確かめる。無い・enabled=False なら None"""
++    if cfg is None or not bool(cfg.get("enabled", False)):
++        return None
++    rng = tuple(float(v) for v in cfg.get("start_range", DEFAULT_START_RANGE))
++    assert len(rng) == 6, f"arm_stage.start_range は [x0, x1, y0, y1, 向き0, 向き1] の 6 個: {rng}"
++    assert rng[0] <= rng[1] and rng[2] <= rng[3] and rng[4] <= rng[5], f"arm_stage.start_range は各組で小 <= 大: {rng}"
++    start_stage = int(cfg.get("start_stage", 1))
++    complete_stage = int(cfg.get("complete_stage", 4))
++    assert 1 <= start_stage < complete_stage, f"arm_stage は 1 <= start_stage < complete_stage: {start_stage}, {complete_stage}"
++    start_vel = float(cfg.get("start_vel", 0.1))
++    assert start_vel >= 0.0, f"arm_stage.start_vel は 0 以上: {start_vel}"
++    return {"start_range": rng, "start_stage": start_stage, "complete_stage": complete_stage, "start_vel": start_vel}
++
++
++def lever_pivot_y(door_width: torch.Tensor, backset: torch.Tensor, open_lr: torch.Tensor) -> torch.Tensor:
++    """レバーの付け根の y [m]（扉の座標）。door.py の door_handle の置き方 (幅/2 − バックセット) × 左右 と同じ"""
++    return (door_width / 2.0 - backset) * open_lr
++
++
++def sample_stance(pivot_y: torch.Tensor, open_lr: torch.Tensor, start_range: tuple, u: torch.Tensor):
++    """構えの位置を引く。u は [n, 3] の 0〜1 の一様乱数（前・横・向きの順）。(x, y, 向き [rad]) を返す（どれも [n]）
++
++    x は扉の面（env の原点）からの前、y は扉の座標の横。向きは world の yaw（扉は +x を向いて開く）"""
++    x0, x1, y0, y1, w0, w1 = start_range
++    x = x0 + (x1 - x0) * u[:, 0]
++    y = pivot_y + open_lr * (y0 + (y1 - y0) * u[:, 1])
++    yaw = open_lr * torch.deg2rad(w0 + (w1 - w0) * u[:, 2])
++    return x, y, yaw
++
++
++def start_stages(stage: torch.Tensor, start_stage: int) -> torch.Tensor:
++    """戻した回の段: 段 0（元の始め）を start_stage に替える。途中の段から始める回（staged reset）はそのまま"""
++    return torch.where(stage == 0, torch.full_like(stage, start_stage), stage)
++
++
++def arm_stage_complete(stage_buf: torch.Tensor, complete_stage: int) -> torch.Tensor:
++    """完了: complete_stage 以上の段にいる"""
++    return stage_buf >= complete_stage
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index a0ad9d2..d4556a8 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -30,6 +30,13 @@ from gr00t.rl.envs.base_task.homie_base import HomieBase
+ from gr00t.rl.envs.base_task.staged_task_base import StagedTaskBase
+ from gr00t.rl.envs.base_task.stand_latch import update_stand_latch
+ from gr00t.rl.envs.base_task.warped_action_base import WarpedActionBase
++from gr00t.rl.envs.door.arm_stage import (
++    arm_stage_complete,
++    arm_stage_config,
++    lever_pivot_y,
++    sample_stance,
++    start_stages,
++)
+ from gr00t.rl.envs.door.door_mirror import DoorMirror
+ from gr00t.rl.envs.door.door_state_sensor import DoorStateSensor
+ from gr00t.rl.envs.door.reset_from_dataset import ResetFromDataset
+@@ -157,6 +164,14 @@ class DoorPregrasp(
+         self.door_closer_params["backcheck_angle"] *= torch.pi / 180.0
+         self.any_door_closer_shaped = bool(self.door_closer_shaped.any())
+ 
++        # G1_Hackason（パッチ 0097、11-09）: 段 2 レバーを腕だけで学ぶ口（arm_stage.py）。構えの位置から段 1 で始め、脚は毎歩
++        # 立つ HOMIE、complete_stage に入ったら完了。既定は切で、元と同じ
++        self._arm_stage = arm_stage_config(self.config.get("arm_stage", None))
++        if self._arm_stage is not None:
++            self._lever_pivot_y = lever_pivot_y(self.door_width, self.door_handle_width, self.door_open_lr)
++            self._arm_stage_latched = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
++            print(f"[arm_stage] 腕だけの段 {self._arm_stage}・脚は毎歩 立つ HOMIE（歩く指令の積み上げを 0）")
++
+         # G1_Hackason: どちらの手で把手を取りに行くか。元の DoorMan は把手と反対の手（door_open_lr < 0 で左手。
+         # このとき把手は機体の右）で、体の前を横切って取りに行く。lever_side_hand: True なら把手と同じ側の手を使う
+         # （指の無い 29 関節版では左手が把手に届かず、区間 1→2 で止まった。2026-10-07 の評価で 0/121）
+@@ -1293,6 +1308,8 @@ class DoorPregrasp(
+         # G1_Hackason（G2、10-29）: 止まるはずの場面（構える・つかむ・レバーの間）は、実機でも測れる 2 つの値で決める:
+         # 胴（腰）と把手の水平距離・扉の開いた角度。段階（stage_buf）は実機に無いので使わない。実機の door_core.py と同じ関数。
+         # シミュレータは本当の値を渡す（実機はライダーの値。誤差は角度 σ0.07〜0.18°・位置 数 cm で、線 10°・0.3/0.5 m より十分小さい）
++        if getattr(self, "_arm_stage", None) is not None:  # 0097: 腕だけの段は毎歩止める（実機の段 2 は歩きの指令 0）
++            return self._arm_stage_latched
+         if not self.config.get("stand_latch", False):
+             return None
+         dist = torch.norm(self.simulator.robot_root_states[:, :2] - self._compute_grasp_target()[:, :2], dim=-1)
+@@ -1391,6 +1408,21 @@ class DoorPregrasp(
+             w0 * torch.pi / 180.0, w1 * torch.pi / 180.0, (len(env_ids), 1), device=str(self.device)
+         )[:, 0]
+         self.target_robot_root_states[env_ids, 3:7] = quat_from_euler_xyz(r, p, random_yaw)
++        arm = getattr(self, "_arm_stage", None)
++        if arm is not None:  # G1_Hackason（0097）: 腕だけの段は、構えの位置（扉の面とレバーの付け根から）に立たせる
++            self._reset_root_states_arm_stage(env_ids, r, p, arm)
++
++    def _reset_root_states_arm_stage(self, env_ids, roll, pitch, arm: dict):
++        n = len(env_ids)
++        x, y, yaw = sample_stance(
++            self._lever_pivot_y[env_ids], self.door_open_lr[env_ids], arm["start_range"],
++            torch.rand(n, 3, device=self.device),
++        )
++        self.target_robot_root_states[env_ids, 0] = x + self.env_origins[env_ids, 0]
++        self.target_robot_root_states[env_ids, 1] = y + self.env_origins[env_ids, 1]
++        self.target_robot_root_states[env_ids, 3:7] = quat_from_euler_xyz(roll, pitch, yaw)
++        v = arm["start_vel"]  # 元の ±0.5 m/s・rad/s は歩いて近づく前提。扉の前で立ったまま始めるので小さくする
++        self.target_robot_root_states[env_ids, 7:13] = v * (2.0 * torch.rand(n, 6, device=self.device) - 1.0)
+ 
+     @override
+     def _reset_dofs(self, env_ids, target_state=None):
+@@ -1419,6 +1451,14 @@ class DoorPregrasp(
+         # set velocities to 0
+         self.target_robot_dof_state[env_ids, :, 1] = 0.0
+ 
++    @override
++    def set_to_stage(self, env_ids, stage):
++        # G1_Hackason（0097）: 腕だけの段は、段 0 から始める回を start_stage（構える）から始める。途中の段から始める回はそのまま
++        arm = getattr(self, "_arm_stage", None)
++        if arm is not None:
++            stage = start_stages(stage, arm["start_stage"])
++        super().set_to_stage(env_ids, stage)
++
+     def _reset_door_states(self, env_ids):
+         randomize_door_init_state = self.config.get("randomize_door_init_state", False)
+         self.door_dof_state_buf[:] = 0.0
+@@ -1749,6 +1789,9 @@ class DoorPregrasp(
+         return self._stage_4_to_5_advance_condition()
+ 
+     def _stage_5_to_complete_condition(self):
++        arm = getattr(self, "_arm_stage", None)
++        if arm is not None:  # G1_Hackason（0097）: 腕だけの段は complete_stage（既定 4＝扉 10°）に入ったら完了
++            return arm_stage_complete(self.stage_buf, arm["complete_stage"])
+         walked_far = (self.simulator.robot_root_states[:, 0] - self.env_origins[:, 0]) > 1.5
+         # G1_Hackason（パッチ 0088、11-01）: 元の完了は扉の先 1.5 m だけで段階を見ない。扉を door_through_angle_deg 未満しか
+         # 開けずに抜けても完了になり、打ち切りの罰が無く完了の報酬が入っていた（評価の成功 count_success.py は段階 5 を要する）。
+-- 
+2.43.0
+

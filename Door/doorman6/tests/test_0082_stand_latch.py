@@ -48,7 +48,12 @@ def test_base_latch_is_off():
 def test_door_latch_uses_only_what_the_real_robot_can_measure():
     fn = _method(DOOR_ENV, "DoorPregrasp", "_stand_latch_mask")
     src = ast.unparse(fn)
-    assert ast.unparse(fn.body[0]) == "if not self.config.get('stand_latch', False):\n    return None"
+    body = [ast.unparse(s) for s in fn.body]
+    # 0097（11-09）: 腕だけの段（env.config.arm_stage）なら先に「毎歩すべての台を止める」で返る。その次が元の入口
+    if body[0] == "arm = getattr(self, '_arm_stage', None)":  # 0099 から、腕だけの段の判定は _arm_stage_legs_mask に分けた
+        assert body[1] == "if arm is not None:\n    return self._arm_stage_legs_mask(arm)"
+        body = body[2:]
+    assert body[0] == "if not self.config.get('stand_latch', False):\n    return None"
     assert "torch.norm(self.simulator.robot_root_states[:, :2] - self._compute_grasp_target()[:, :2], dim=-1)" in src
     assert "torch.rad2deg(torch.abs(self.simulator.get_task_dof_pos('door')[:, 0]))" in src
     assert "stage_buf" not in src

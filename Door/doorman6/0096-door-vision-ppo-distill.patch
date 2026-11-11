@@ -1,0 +1,757 @@
+--- a/gr00t/rl/trl/trainer/ppo_distill_trainer_homie_api.py
++++ b/gr00t/rl/trl/trainer/ppo_distill_trainer_homie_api.py
+@@ -0,0 +1,173 @@
++# G1_Hackason（11-08、パッチ 0096・計画書 docs/plan/2026-11-06-g1-door-depth-rl.md 8 章の案 A）: 画像だけの生徒を、自分の報酬で磨く。
++#   DAgger（模倣学習）だけの生徒は教師が上限で、教師が生徒に見えない値に頼る所では教師の行動を平均でしか写せない。そこで
++#   PPO（強化学習）で生徒自身の報酬から学ばせ、教師への真似は錨として少しずつ弱める（Kickstarting・TWIST・Distillation-PPO の形）。
++#
++#   損失 = PPO（評価係は教師の評価係から始める）
++#          ＋ λ(t) × 教師の行動の平均との差の 2 乗（真似の錨）
++#          ＋ obj_pred_loss_coef × 追う段の当て直した扉の値の誤差（DAgger と同じ補助の損失。11-05 の qc1 は追う段を固めて外れを直せなかった）
++#   教師の答えは DAgger（distill_trainer_obj_pred_homie_api）と同じく、生徒が自分で走った各歩で教師に答えさせる（teacher_obs。
++#   教師の LSTM は回の切れ目で戻す）。教師に運転させる台は作らない（他人の行動が混ざると PPO の更新が壊れる）
++#   λ(t): 慣らしの後 bc_anchor_decay_iters 反復で bc_anchor_coef_start から bc_anchor_coef_end へ直線に下げる
++#   評価係の慣らし: 最初の critic_warmup_iters 反復は評価係の損失だけで更新する（教師の評価係は教師の回の値しか知らない）。
++#     その間は actor が動かず KL が 0 に近いので、KL での学習率の調整もしない（調整すると 1.5 倍ずつ上がり続ける）
++#   反復は強化学習を始めた所（state.rl_start_step）から数える。学習の状態は重みに保存されるので、30 分の区切りで起こし直しても続きから数える
++from copy import deepcopy
++
++import torch
++
++from gr00t.rl.trl.trainer.ppo_trainer_homie_api import TRLPPOTrainer
++
++
++def bc_anchor_coef(rl_iters: int, warmup: int, start: float, end: float, decay_iters: int) -> float:
++    """真似の錨の重み λ。慣らしの間は 0（損失に足さない）。慣らしの後 decay_iters 反復で start から end へ直線に下げ、その後は end"""
++    if rl_iters < warmup:
++        return 0.0
++    if decay_iters <= 0:
++        return float(end)
++    frac = min(1.0, (rl_iters - warmup) / decay_iters)
++    return float(start + (end - start) * frac)
++
++
++def anchor_losses(mu, teacher_mu, obj_pred, gt_obj, obj_weight):
++    """真似の錨（教師の行動の平均との差の 2 乗の平均）と、追う段の補助の損失（扉の値の項目ごとに 1/許す誤差² を掛けた 2 乗の平均。
++    distill_trainer_obj_pred._compute_obj_pred_loss と同じ式）。並びはどちらも [台, 歩, 項目]"""
++    bc = torch.mean(torch.square(mu - teacher_mu))
++    gt = gt_obj[..., : obj_pred.shape[-1]].to(obj_pred.dtype)
++    obj = (torch.square(obj_pred - gt) * obj_weight.to(obj_pred.device)).mean()
++    return bc, obj
++
++
++class TRLPPODistillTrainerHomieAPI(TRLPPOTrainer):
++    _tag_names = ["trl", "humanoid_ppo_distill"]
++
++    def _init_trl(self, *args, **kwargs):
++        super()._init_trl(*args, **kwargs)
++        if self.ref_model is None:
++            raise ValueError("教師が無い。exp に algo.config.use_dagger: True と teacher_actor を書く")
++        self.bc_anchor_coef_start = float(self.config.get("bc_anchor_coef_start", 1.0))
++        self.bc_anchor_coef_end = float(self.config.get("bc_anchor_coef_end", 0.1))
++        self.bc_anchor_decay_iters = int(self.config.get("bc_anchor_decay_iters", 2000))
++        self.critic_warmup_iters = int(self.config.get("critic_warmup_iters", 50))
++        self.obj_pred_loss_coef = float(self.config.get("obj_pred_loss_coef", 0.2))
++        self._load_teacher_actor()
++
++    def _load_teacher_actor(self):
++        """distill_trainer.load_teacher_actor と同じ（教師の重みを読み、正規化の統計を動かさないように eval にする）"""
++        path = self.config.network_load_dict.teacher_actor.path
++        ck = torch.load(path, map_location=self.accelerator.device, weights_only=False)
++        key = "actor_model_state_dict" if "actor_model_state_dict" in ck else "policy_state_dict"
++        self.ref_model.load_state_dict(ck[key])
++        self.ref_model.eval()
++        for p in self.ref_model.parameters():
++            p.requires_grad = False
++        print(f"[G1_Hackason] 真似の錨の教師を読んだ: {path}")
++
++    def _setup_storage(self):
++        super()._setup_storage()
++        self.storage.register_key("teacher_actions", shape=(self.policy_model.num_actions,), dtype=torch.float)
++
++    def train(self):
++        if getattr(self.state, "rl_start_step", None) is None:
++            self.state.rl_start_step = int(self.state.global_step)
++        print(f"[G1_Hackason] 強化学習の反復 {self._rl_iters()} から（始めた所 {self.state.rl_start_step}・"
++              f"慣らし {self.critic_warmup_iters}・真似の錨 {self.bc_anchor_coef_start}→{self.bc_anchor_coef_end} を "
++              f"{self.bc_anchor_decay_iters} 反復で・追う段の補助 {self.obj_pred_loss_coef}）")
++        return super().train()
++
++    def _rl_iters(self) -> int:
++        return int(self.state.global_step) - int(getattr(self.state, "rl_start_step", self.state.global_step))
++
++    def _in_warmup(self) -> bool:
++        return self._rl_iters() < self.critic_warmup_iters
++
++    # --- 走らせる間: 生徒の各歩で教師に答えさせる ---
++
++    def policy_step(self, policy_model, homie_walk_model, homie_stand_model, obs_dict, cur_dones=None,
++                    store_hidden_states=True):
++        out = super().policy_step(policy_model, homie_walk_model, homie_stand_model, obs_dict,
++                                  cur_dones=cur_dones, store_hidden_states=store_hidden_states)
++        with torch.no_grad():
++            teacher = self.ref_model.act_inference(obs_dict=deepcopy(obs_dict), input_key="teacher_obs")
++        out["teacher_actions"] = teacher[..., : self.policy_model.num_actions]
++        return out
++
++    def _rollout_step(self, model, obs_dict):
++        self.ref_model.init_rollout()
++        obs_dict = super()._rollout_step(model, obs_dict)
++        # 教師は act_inference だけを使い distribution を作らない。Actor.clear_rollout は del self.distribution で 2 回目の
++        # 反復から落ちる（11-08 r1 の区切り 0。DAgger の学習係は try/except で黙って飛ばしていた）。空の値を置いてから呼び、
++        # 観測の溜めの片付けと隠れ状態の切り離しまで通す
++        self.ref_model.distribution = None
++        self.ref_model.clear_rollout()
++        return obs_dict
++
++    def _process_env_step(self, rewards, dones, infos):
++        super()._process_env_step(rewards, dones, infos)
++        self.ref_model.reset(dones)
++
++    # --- 学ぶ間: 教師の答えと扉の値の正解を [台, 歩] の並びで渡す（PPO の学習の段の出力と同じ並び） ---
++
++    def _get_rollout_data(self, obs_keys):
++        data = super()._get_rollout_data(obs_keys)
++        data["teacher_actions"] = self.storage.teacher_actions.transpose(0, 1).to(self.accelerator.device)
++        return data
++
++    def _get_mb_rollout_data(self, rollout_data, micro_batch_inds):
++        mb = super()._get_mb_rollout_data(rollout_data, micro_batch_inds)
++        mb["mb_teacher_actions"] = rollout_data["teacher_actions"][micro_batch_inds]
++        mb["mb_gt_obj_pos"] = rollout_data["all_obs_dict"]["gt_obj_pos"][micro_batch_inds]
++        return mb
++
++    def _forward_model(self, model, mb_rollout_data):
++        out = super()._forward_model(model, mb_rollout_data)
++        # 生徒（VisionDoorStudent）は学習の段の act で当て直した扉の値を last_obj_pred に残す（並びは action_mean と同じ）
++        out["obj_pred"] = self.accelerator.unwrap_model(model).policy.last_obj_pred
++        return out
++
++    def _compute_loss(self, forward_results, mb_rollout_data):
++        ret = super()._compute_loss(forward_results, mb_rollout_data)
++        warm = self._in_warmup()
++        mu = forward_results["policy_results"]["action_mean"][..., : self.policy_model.num_actions]
++        with torch.set_grad_enabled(not warm):
++            bc, obj = anchor_losses(mu, mb_rollout_data["mb_teacher_actions"].to(mu.dtype), forward_results["obj_pred"],
++                                    mb_rollout_data["mb_gt_obj_pos"], self.policy_model.obj_pred_weight)
++        lam = bc_anchor_coef(self._rl_iters(), self.critic_warmup_iters, self.bc_anchor_coef_start,
++                             self.bc_anchor_coef_end, self.bc_anchor_decay_iters)
++        if warm:
++            ret["loss"] = self.args.vf_coef * ret["ppo_loss_dict"]["vf_loss"]
++        else:
++            ret["loss"] = ret["loss"] + lam * bc + self.obj_pred_loss_coef * obj
++        ret.update(bc_anchor_loss=bc.detach(), obj_pred_loss=obj.detach(), bc_anchor_coef=lam)
++        return ret
++
++    def _adjust_learning_rate_based_on_kl(self, kl_mean, optimizer):
++        if self._in_warmup():
++            return
++        super()._adjust_learning_rate_based_on_kl(kl_mean, optimizer)
++
++    # --- 記録 ---
++
++    def _register_stats_buffer(self):
++        super()._register_stats_buffer()
++        shape = self.approxkl_stats.shape
++        self.bc_anchor_stats = torch.zeros(shape, device=self.accelerator.device)
++        self.obj_pred_stats = torch.zeros(shape, device=self.accelerator.device)
++
++    def _update_stats_buffer(self, ppo_epoch_idx, minibatch_idx, microbatch_idx, loss_dict, forward_results,
++                             mb_rollout_data):
++        super()._update_stats_buffer(ppo_epoch_idx, minibatch_idx, microbatch_idx, loss_dict, forward_results,
++                                     mb_rollout_data)
++        self.bc_anchor_stats[ppo_epoch_idx, minibatch_idx, microbatch_idx] = loss_dict["bc_anchor_loss"]
++        self.obj_pred_stats[ppo_epoch_idx, minibatch_idx, microbatch_idx] = loss_dict["obj_pred_loss"]
++
++    def _get_train_metrics(self):
++        metrics = super()._get_train_metrics()
++        lam = bc_anchor_coef(self._rl_iters(), self.critic_warmup_iters, self.bc_anchor_coef_start,
++                             self.bc_anchor_coef_end, self.bc_anchor_decay_iters)
++        metrics["loss/bc_anchor"] = self.accelerator.gather_for_metrics(self.bc_anchor_stats).mean().item()
++        metrics["loss/weighted_bc_anchor"] = lam * metrics["loss/bc_anchor"]
++        metrics["loss/obj_pred_loss"] = self.accelerator.gather_for_metrics(self.obj_pred_stats).mean().item()
++        metrics["rl/bc_anchor_coef"] = lam
++        metrics["rl/iters"] = self._rl_iters()
++        metrics["rl/critic_warmup"] = float(self._in_warmup())
++        return metrics
+--- a/gr00t/rl/trl/modules/vision_door_student.py
++++ b/gr00t/rl/trl/modules/vision_door_student.py
+@@ -11,7 +11,7 @@
+ # 損失の重み obj_pred_weight（1 / 許す誤差²）は学習係が読む（distill_trainer_obj_pred.py）
+ # V4（PPO で磨く、ppo_mode=True）: PPO の学習係（ppo_trainer_homie_api）は、学習の段の出力を回の区切りで詰めた並びから
+ # 台×歩の並びに戻して使う（RecurrentActor と同じ）。freeze_door_head=True で扉の頭を固める（補助の答えの損失が無いので、
+-# 当てた値の意味を保つ）
++# 当てた値の意味を保つ）。11-08（0096）: 当て直した扉の値も同じ並びに戻して last_obj_pred に残す（ppo_distill の補助の損失）
+ #
+ # 11-05 追う段（door_tracker_hidden > 0）: 扉の頭は今のコマだけで当てるので、押して開ける間（扉の戸先が写らない）に外れる。
+ #   扉の頭と LSTM の間に記憶つきの段（LSTM 1 層）を足し、[今のコマの当て・体の感覚・特徴・頭の重力]（LSTM と同じ入力）から
+@@ -263,14 +263,17 @@
+ 
+     def update_distribution(self, obs_dict, episode_attnmask=None, last_step_only=False, masks=None,
+                             hidden_states=None, original_dones=None, **kwargs):
+-        mean = self.forward(obs_dict, masks=masks, hidden_states=hidden_states,
+-                            episode_attnmask=episode_attnmask)["actions"]
++        out = self.forward(obs_dict, masks=masks, hidden_states=hidden_states, episode_attnmask=episode_attnmask)
++        mean, obj_pred = out["actions"], out["obj_pred"]
+         if self.ppo_mode and masks is not None and original_dones is not None:
+             from gr00t.rl.trl.utils.rl import unsplit_trajectories
+ 
+             mean = unsplit_trajectories(mean, masks, original_dones)
++            obj_pred = unsplit_trajectories(obj_pred, masks, original_dones)
+         if last_step_only:
+-            mean = mean[:, -1]
++            mean, obj_pred = mean[:, -1], obj_pred[:, -1]
++        # 11-08（パッチ 0096）: PPO に追う段の補助の損失を足す学習係（ppo_distill_trainer_homie_api）が読む。並びは mean と同じ
++        self.last_obj_pred = obj_pred
+         self._set_distribution(mean)
+ 
+     def _rollout_mean(self, obs_dict, episode_attnmask=None, cur_dones=None):
+--- a/gr00t/rl/scripts/make_vis_ppo_ckpt.py
++++ b/gr00t/rl/scripts/make_vis_ppo_ckpt.py
+@@ -1,20 +1,55 @@
+ """G1_Hackason（11-04、画像だけの生徒 V4）: DAgger で作った画像だけの生徒を PPO で磨く出発の重みを組み立てる
+ （make_state_ppo_ckpt.py と同じ考え）。
+ 
+-  actor  = 生徒（VisionDoorStudent）の重みそのまま。std だけ f3sc が最後に学んだ値 × --std-scale（探索の揺らぎ）
+-  critic = f3sc の評価係（critic_obs は f3sc と同じなので、そのまま使える）
+-  env の状態（打ち切りの線など）と学習の状態は f3sc のものを使う。最適化の状態は入れない（学習率は exp の値で始まる）
++  actor  = 生徒（VisionDoorStudent）の重みそのまま。std だけ教師が最後に学んだ値 × --std-scale（探索の揺らぎ）
++  critic = 教師の評価係（critic_obs は教師と同じなので、そのまま使える）
++  env の状態（打ち切りの線など）と学習の状態は教師のものを使う。最適化の状態は入れない（学習率は exp の値で始まる）
++  11-08（パッチ 0096）: 教師は f3sc でも f3t3 でもよい。追う段（tracker）の重みもそのまま写す。学習の状態に強化学習を始めた
++  反復（rl_start_step）を書く（ppo_distill の学習係が慣らしと真似の錨の重みをここから数える）。生徒と教師で env の状態が
++  違えば表示する（評価は生徒の重みの env の状態で回るので、強化学習の出発点の評価とずれる）
+ 
+ 使い方（OMEN の ~/work_inoue/doorman6/VIRAL6_vis で）:
+-  python gr00t/rl/scripts/make_vis_ppo_ckpt.py <生徒の last.pt> <f3sc の last.pt> <出力の .pt> [--std-scale 0.5]
++  python gr00t/rl/scripts/make_vis_ppo_ckpt.py <生徒の last.pt> <教師の last.pt> <出力の .pt> [--std-scale 0.5]
+ 出力の隣に生徒の config.yaml を写さない（PPO の exp で起動して ++checkpoint で渡す）
+ """
+ 
+ import argparse
++import copy
+ 
+ import torch
+ 
+ 
++def build(student: dict, teacher: dict, std_scale: float) -> dict:
++    sp = student["policy_state_dict"]
++    assert "door_head.net.0.weight" in sp, "画像だけの生徒の重みではない"
++    policy = {k: v.clone() for k, v in sp.items()}
++    std = teacher["policy_state_dict"]["std"]
++    assert std.shape == policy["std"].shape, f"行動の数が合わない: 生徒 {tuple(policy['std'].shape)}・教師 {tuple(std.shape)}"
++    policy["std"] = std.clone() * std_scale
++    state = copy.copy(teacher["state"])
++    state.rl_start_step = int(state.global_step)
++    return {
++        "policy_state_dict": policy,
++        "value_state_dict": teacher["value_state_dict"],
++        "optimizer_state_dict": None,
++        "lr_scheduler_state_dict": None,
++        "state": state,
++        "env_state_dict": teacher.get("env_state_dict", {}),
++    }
++
++
++def env_state_diff(a: dict, b: dict) -> list[str]:
++    """env の状態の違い（項目名と両方の値）"""
++    out = []
++    for k in sorted(set(a) | set(b)):
++        va, vb = a.get(k), b.get(k)
++        same = (torch.equal(va, vb) if isinstance(va, torch.Tensor) and isinstance(vb, torch.Tensor)
++                and va.shape == vb.shape else va == vb)
++        if not same:
++            out.append(f"{k}: 生徒 {va} ・教師 {vb}")
++    return out
++
++
+ def main() -> None:
+     ap = argparse.ArgumentParser()
+     ap.add_argument("student")
+@@ -25,21 +60,15 @@
+ 
+     student = torch.load(args.student, map_location="cpu", weights_only=False)
+     teacher = torch.load(args.teacher, map_location="cpu", weights_only=False)
+-    sp = student["policy_state_dict"]
+-    assert "door_head.net.0.weight" in sp, "画像だけの生徒の重みではない"
+-    policy = {k: v.clone() for k, v in sp.items()}
+-    policy["std"] = teacher["policy_state_dict"]["std"].clone() * args.std_scale
+-    out = {
+-        "policy_state_dict": policy,
+-        "value_state_dict": teacher["value_state_dict"],
+-        "optimizer_state_dict": None,
+-        "lr_scheduler_state_dict": None,
+-        "state": teacher["state"],
+-        "env_state_dict": teacher.get("env_state_dict", {}),
+-    }
++    out = build(student, teacher, args.std_scale)
+     torch.save(out, args.out)
+-    print(f"書いた: {args.out}（actor＝{args.student} の反復 {student['state'].global_step}、critic・env＝f3sc、"
+-          f"std＝f3sc × {args.std_scale}: {[round(v, 3) for v in policy['std'][:5].tolist()]}…）")
++    policy = out["policy_state_dict"]
++    trk = any(k.startswith("tracker.") for k in policy)
++    print(f"書いた: {args.out}（actor＝{args.student} の反復 {student['state'].global_step}・追う段 {'あり' if trk else 'なし'}、"
++          f"critic・env＝{args.teacher}、強化学習の始め {out['state'].rl_start_step}、"
++          f"std＝教師 × {args.std_scale}: {[round(v, 3) for v in policy['std'][:5].tolist()]}…）")
++    diff = env_state_diff(student.get("env_state_dict", {}), out["env_state_dict"])
++    print("env の状態の違い（生徒・教師）: " + ("; ".join(diff) if diff else "なし"))
+ 
+ 
+ if __name__ == "__main__":
+--- a/gr00t/rl/config/trainer/trl_ppo_distill_homie_api.yaml
++++ b/gr00t/rl/config/trainer/trl_ppo_distill_homie_api.yaml
+@@ -0,0 +1 @@
++_target_: gr00t.rl.trl.trainer.ppo_distill_trainer_homie_api.TRLPPODistillTrainerHomieAPI
+--- a/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_vision_f3_ppo_distill-lstm.yaml
++++ b/gr00t/rl/config/exp/wbmanip/door_open_homie_29dof_vision_f3_ppo_distill-lstm.yaml
+@@ -0,0 +1,231 @@
++# @package _global_
++#
++# G1_Hackason（11-08、パッチ 0096・計画書 docs/plan/2026-11-06-g1-door-depth-rl.md 8 章の案 A）: DAgger で作った画像だけの生徒
++# （e4）を、自分の報酬の PPO（強化学習）で磨く。教師への真似は錨として少しずつ弱め、追う段は DAgger と同じ補助の損失で学び続ける。
++#   学習係: ppo_distill_trainer_homie_api（PPO＋真似の錨＋追う段の補助の損失・評価係の慣らし）
++#   actor: 生徒（VisionDoorStudent・ppo_mode・扉の頭は固める・追う段 128 は学ぶ）。重みは make_vis_ppo_ckpt.py で組み立てて ++checkpoint で渡す
++#   critic: 教師 f3t3 の評価係（RecurrentCritic・critic_obs）。教師（真似の錨）: f3t3 の actor（teacher_actor_path）
++#   PPO の設定は f3t3 の学習（door_open_homie_29dof_state_ppo-lstm）と同じ。報酬は f3t3 と同じ（T1 の肩 roll の罰も）
++#   機体・扉・乱択・カメラは DAgger（door_open_homie_29dof_vision_f3_dagger-lstm）と同じ（起動の引数も exp_vis_1104.sh で同じものを渡す）
++
++defaults:
++  - /algo: ppo
++  - /env: door_open_homie
++  - /simulator: isaacsim
++  - /domain_rand: NO_domain_rand
++  - /rewards: wbmanip/reward_door_open_homie
++  - /robot: g1/g1_29dof
++  - /terrain: terrain_locomotion_plane
++  - /obs: wbmanip/door_open_homie_29dof_vision_f3
++  - /opt: wandb
++  - override /trainer: trl_ppo_distill_homie_api
++
++exp_base: ${hydra:runtime.choices.exp}
++exp_var: lstm
++experiment_name: ${exp_base}_${exp_var}
++experiment_dir: ${base_dir}/${project_name}/${experiment_name}-${timestamp}
++
++num_envs: 256
++project_name: g1_open_door_vision_ppo_distill
++
++enable_cameras: true
++headless: True
++
++teacher_actor_path: ???  # 必須。教師 f3t3 の last.pt（真似の錨。評価係は出発の重みに入っている）
++door_head_path: null  # 使わない（扉の頭の重みは出発の重みに入っている）。exp_vis_1104.sh が渡すので置き場だけ
++vision_encoder_path: ???  # V2 で学んだ画像の網（DAgger と同じもの）
++
++callbacks:
++  model_save:
++    save_frequency: 100
++
++algo:
++  trl:
++    # 出発の重みは f3t3 の学習の状態（反復 7 万台）を引き継ぐ。既定の上限 50,000 だと 1 反復で黙って終わる
++    num_total_batches: 1000000
++  config:
++    # PPO の設定は f3t3 と同じ
++    entropy_coef: 0.001
++    use_new_actor_critic: True
++    num_steps_per_env: 32
++    num_learning_epochs: 5
++    num_mini_batches: 4
++    use_padding_mask: False
++    ppo_shuffle_every_epoch: True
++    sync_advantage_normalization: True
++    actor_learning_rate: 1.0e-4
++    critic_learning_rate: 1.0e-4
++    homie_walk_model_path: ./models/model_walk.pt
++    homie_stand_model_path: ./models/model_stand.pt
++    homie_command_dim: 3
++    non_homie_command_actions_dim: 14
++    opt_homie: False
++    desired_kl: 0.005
++    load_optimizer: False
++    init_noise_std: 0.8
++    max_noise_std: 0.26
++    clamp_noise_std: True
++    freeze_noise_std: False
++    save_interval: 100
++    gamma: 0.9975
++    lam: 0.985
++    init_at_random_ep_len: True
++    caps_temporal_coef: 1.0
++    caps_temporal_start: 3
++    caps_temporal_end: 17
++
++    # 真似の錨（教師 f3t3 の行動の平均との差の 2 乗）と追う段の補助の損失（ppo_distill_trainer_homie_api）
++    use_dagger: True  # 起動（train_agent_trl.py）が teacher_actor を作る
++    network_load_dict:
++      teacher_actor:
++        path: ${teacher_actor_path}
++    bc_anchor_coef_start: 1.0
++    bc_anchor_coef_end: 0.1
++    bc_anchor_decay_iters: 2000
++    critic_warmup_iters: 50
++    obj_pred_loss_coef: 0.2  # DAgger と同じ
++    obj_pred_dim: 17
++    # 教師に運転させる台は作らない（eval_vis_1104.sh が渡しても PPO の学習係は読まない）
++    enforce_teacher_rollout: False
++
++    module_dim:
++      actor_obs: -1
++      rnn_hidden_dim: 256
++
++    actor:
++      _target_: gr00t.rl.trl.modules.vision_door_student.VisionDoorStudent
++      running_mean_std: False
++      rnn_type: "lstm"
++      rnn_hidden_dim: 256
++      rnn_num_layers: 2
++      init_from: null  # 重みは ++checkpoint（make_vis_ppo_ckpt.py の出力）から
++      door_head_path: null
++      ppo_mode: True
++      freeze_door_head: True
++      door_tracker_hidden: 128
++      backbone:
++        mlp_module:
++          _target_: gr00t.rl.agents.modules.modules.BaseModule
++          process_output_dim: True
++          module_config_dict:
++            input_dim: [actor_obs]
++            output_dim:
++              - ${eval:'${algo.config.homie_command_dim} + ${algo.config.non_homie_command_actions_dim}'}
++            layer_config:
++              type: MLP
++              hidden_dims: [512, 256, 128]
++              activation: SiLU
++    teacher_actor:
++      _target_: gr00t.rl.trl.modules.actor_critic_modules_recurrent.RecurrentActor
++      running_mean_std: True
++      rnn_type: "lstm"
++      rnn_hidden_dim: 256
++      rnn_num_layers: 2
++      backbone:
++        _target_: gr00t.rl.agents.modules.modules.BaseModule
++        process_output_dim: True
++        module_config_dict:
++          input_dim: [teacher_obs]
++          output_dim:
++            - ${eval:'${algo.config.homie_command_dim} + ${algo.config.non_homie_command_actions_dim}'}
++          layer_config:
++            type: MLP
++            hidden_dims: [512, 256, 128]
++            activation: SiLU
++    critic:
++      _target_: gr00t.rl.trl.modules.actor_critic_modules_recurrent.RecurrentCritic
++      running_mean_std: True
++      rnn_type: "lstm"
++      rnn_hidden_dim: 256
++      rnn_num_layers: 2
++      backbone:
++        _target_: gr00t.rl.agents.modules.modules.BaseModule
++        process_output_dim: True
++        module_config_dict:
++          type: MLP
++          input_dim: [critic_obs]
++          output_dim: [1]
++          layer_config:
++            type: MLP
++            hidden_dims: [512, 256, 128]
++            activation: SiLU
++
++simulator:
++  config:
++    cameras:
++      enable_cameras: true
++      camera_types:
++        - rgb: true
++        - depth: false
++      camera_resolutions: [108, 192]
++      camera_attached_link: "torso_link"
++      camera_pos_offset: [0.0576, 0.0525, 0.4299]   # d435_link の取付 ∘ (0, 0.035, 0)
++      camera_rot_offset: [0.90244, 0.0, 0.43081, 0.0]  # wxyz。pitch 47.6° + 3.4° = 51.0°（回ごとの乱択が上書きする）
++      # 焦点 1.88 で D435 のカラーの 69°×42°（11-05 に直した。11-04 は赤外線の 3.567×2.006＝87°×56° で学んでいた）
++      camera_horizontal_aperture: 2.6035
++      camera_vertical_aperture: 1.4621
++    scene:
++      replicate_physics: False
++      env_spacing: 20.0
++    sim:
++      physx:
++        num_position_iterations: 8
++        num_velocity_iterations: 4
++
++domain_rand:
++  randomize_dome_light: True
++  randomize_camera_pitch: True
++  camera_pitch_range_deg: [30.0, 70.0]
++
++robot:
++  asset:
++    self_collisions: 0
++  use_primitive: False
++  actions_dim: 29
++  check_action_dim: True
++  terminate_after_contacts_on : ["head", "knee", "wrist"]
++
++rewards:
++  reward_scales:
++    pregrasp_finger_dof_pos_l1: 0.0
++    grasp_finger_dof_pos_l1: 0.0
++    limits_primitive_action: 0.0
++    press_door_handle_down: 1.0
++    push_door_unlatched: 6.0
++    penalty_standing_still: -5.0
++    penalty_shoulder_roll_press: -0.01  # T1（f3t3 と同じ。DAgger の exp には無い）
++
++env:
++  config:
++    vision_feat:
++      every_n: 5  # 10 Hz（制御 50 Hz）
++      encoder_path: ${vision_encoder_path}
++      head_gravity_bias: 0.015
++    task:
++      name: door_nolatch
++    grasp_min_contact_links: 1
++    grasp_contact_force_threshold: 1.0
++    max_episode_length_s: 30
++    max_stage_time: [250, 100, 100, 100, 300, 200]
++    lever_side_hand: True
++    pregrasp_height: 0.0
++    pregrasp_above_margin: null
++    grasp_target_offset: [0.06, 0.0, 0.01]
++    push_door_force_penalize_pull: True
++    grasp_target_offset_along_lever: 0.04
++    push_door_handle_pos_only: True
++    push_door_hinge_pos_only: True
++    pregrasp_offset: [-0.14, 0.0, 0.12]
++    delta_action_indices: [
++      0, 1, 2,  # homie command
++      3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,  # upper body
++    ]
++    resting_dof_pos: [
++      -0.1, 0, 0, 0.3, -0.2, 0,  # l hip knee ankle
++      -0.1, 0, 0, 0.3, -0.2, 0,  # r hip knee ankle
++      0, 0, 0,  # waist
++      0.261799, 0.174533, 0, 0.261799,  # l shoulder elbow
++      1.5708, 0, 0,  # l wrist
++      0.261799, -0.174533, 0, 0.261799,  # r shoulder elbow
++      -1.5708, 0, 0,  # r wrist
++    ]
+--- a/tests_g1/test_0096_ppo_distill.py
++++ b/tests_g1/test_0096_ppo_distill.py
+@@ -0,0 +1,216 @@
++# G1_Hackason（11-08、パッチ 0096）: 画像だけの生徒を PPO＋真似の錨＋追う段の補助の損失で磨く学習係の確かめ。Isaac Sim なしで動く。
++#   1. 真似の錨の重み λ: 慣らしの間は 0・慣らしの後に start から end へ直線に下げ・その後は end
++#   2. 損失の式: 真似の錨は DAgger の MSE と同じ・追う段の補助は DAgger の obj_pred の式と同じ・勾配が生徒の出力へ流れる
++#   3. 学習係の損失の組み立て: 慣らしの間は評価係の損失だけ（真似と補助は足さない）・慣らしの後は PPO＋λ×真似＋係数×補助
++#   4. 慣らしの間は KL で学習率を動かさない（actor が動かず KL≈0 で 1.5 倍ずつ上がり続けるのを防ぐ）
++#   5. 生徒の ppo_mode の学習の段: 当て直した扉の値（last_obj_pred）が行動と同じ「台 × 歩」の並びに戻り、1 歩ずつ回した値と一致
++#   6. 出発の重みの組み立て（make_vis_ppo_ckpt.build）: actor は生徒そのまま（追う段も）・std は教師 × 倍率・critic と env は教師・
++#      強化学習を始めた反復を学習の状態に書く
++#   7. count_success.py の passed（段を見ずに扉 70° 以上＋扉の先 1.5 m）
++# 使い方（OMEN）: cd VIRAL6_vis && PYTHONPATH=. python -m pytest -q tests_g1/test_0096_ppo_distill.py
++import importlib.util
++import os
++import sys
++from types import SimpleNamespace
++
++import numpy as np
++import pytest
++import torch
++
++from gr00t.rl.trl.trainer.ppo_distill_trainer_homie_api import (
++    TRLPPODistillTrainerHomieAPI,
++    anchor_losses,
++    bc_anchor_coef,
++)
++from gr00t.rl.trl.trainer.ppo_trainer_homie_api import TRLPPOTrainer
++
++sys.path.insert(0, os.path.dirname(__file__))
++from test_vision_door_student import F3SC, _make_obs, _student  # noqa: E402
++
++COUNT_SUCCESS = os.environ.get("COUNT_SUCCESS", os.path.expanduser("~/work_inoue/doorman/count_success.py"))
++
++
++def test_bc_anchor_coef_schedule():
++    args = dict(warmup=50, start=1.0, end=0.1, decay_iters=2000)
++    assert bc_anchor_coef(0, **args) == 0.0
++    assert bc_anchor_coef(49, **args) == 0.0
++    assert bc_anchor_coef(50, **args) == pytest.approx(1.0)
++    assert bc_anchor_coef(1050, **args) == pytest.approx(0.55)
++    assert bc_anchor_coef(2050, **args) == pytest.approx(0.1)
++    assert bc_anchor_coef(10_000, **args) == pytest.approx(0.1)
++    assert bc_anchor_coef(60, warmup=50, start=1.0, end=0.1, decay_iters=0) == pytest.approx(0.1)
++
++
++def test_anchor_losses_match_dagger_formulas():
++    gen = torch.Generator().manual_seed(0)
++    mu = torch.randn(4, 6, 17, generator=gen, requires_grad=True)
++    teacher = torch.randn(4, 6, 17, generator=gen)
++    pred = torch.randn(4, 6, 17, generator=gen, requires_grad=True)
++    gt = torch.randn(4, 6, 22, generator=gen)  # 答えの観測は 17 個より長くてよい（先頭 17 個を使う）
++    w = torch.rand(17, generator=gen) + 0.5
++    bc, obj = anchor_losses(mu, teacher, pred, gt, w)
++    assert torch.allclose(bc, torch.nn.MSELoss()(mu, teacher))
++    assert torch.allclose(obj, ((pred - gt[..., :17]) ** 2 * w).mean(dim=-1).mean())
++    (bc + obj).backward()
++    assert mu.grad is not None and pred.grad is not None and mu.grad.abs().sum() > 0
++
++
++def _bare_trainer(global_step, rl_start_step, warmup=50):
++    tr = object.__new__(TRLPPODistillTrainerHomieAPI)
++    tr.state = SimpleNamespace(global_step=global_step, rl_start_step=rl_start_step)
++    tr.critic_warmup_iters = warmup
++    tr.bc_anchor_coef_start, tr.bc_anchor_coef_end, tr.bc_anchor_decay_iters = 1.0, 0.1, 2000
++    tr.obj_pred_loss_coef = 0.2
++    tr.policy_model = SimpleNamespace(num_actions=17, obj_pred_weight=torch.ones(17))
++    tr.args = SimpleNamespace(vf_coef=0.5, learning_rate=1e-4)
++    tr.desired_kl = 0.005
++    return tr
++
++
++def _loss_inputs():
++    gen = torch.Generator().manual_seed(1)
++    mu = torch.randn(3, 5, 17 + 12, generator=gen)  # 生徒の 17 個＋HOMIE の脚（学習係が先頭 17 個に切る）
++    fr = {"policy_results": {"action_mean": mu}, "obj_pred": torch.randn(3, 5, 17, generator=gen)}
++    mb = {"mb_teacher_actions": torch.randn(3, 5, 17, generator=gen), "mb_gt_obj_pos": torch.randn(3, 5, 17, generator=gen)}
++    return fr, mb
++
++
++@pytest.fixture
++def fake_ppo_loss(monkeypatch):
++    def _parent(self, forward_results, mb_rollout_data):
++        return {"loss": torch.tensor(3.0), "ppo_loss_dict": {"vf_loss": torch.tensor(8.0)}}
++
++    monkeypatch.setattr(TRLPPOTrainer, "_compute_loss", _parent)
++
++
++def test_loss_is_critic_only_during_warmup(fake_ppo_loss):
++    tr = _bare_trainer(global_step=71_620, rl_start_step=71_600)  # 慣らしの 20 反復目
++    fr, mb = _loss_inputs()
++    ret = tr._compute_loss(fr, mb)
++    assert float(ret["loss"]) == pytest.approx(0.5 * 8.0)
++    assert ret["bc_anchor_coef"] == 0.0
++    assert float(ret["bc_anchor_loss"]) > 0 and float(ret["obj_pred_loss"]) > 0  # 記録には出す
++
++
++def test_loss_adds_anchor_and_tracker_after_warmup(fake_ppo_loss):
++    tr = _bare_trainer(global_step=71_600 + 50 + 1000, rl_start_step=71_600)
++    fr, mb = _loss_inputs()
++    ret = tr._compute_loss(fr, mb)
++    bc, obj = anchor_losses(fr["policy_results"]["action_mean"][..., :17], mb["mb_teacher_actions"], fr["obj_pred"],
++                            mb["mb_gt_obj_pos"], torch.ones(17))
++    assert ret["bc_anchor_coef"] == pytest.approx(0.55)
++    assert float(ret["loss"]) == pytest.approx(3.0 + 0.55 * float(bc) + 0.2 * float(obj), rel=1e-5)
++
++
++def test_kl_learning_rate_frozen_during_warmup():
++    opt = torch.optim.Adam([torch.nn.Parameter(torch.zeros(1))], lr=1e-4)
++    tr = _bare_trainer(global_step=71_600, rl_start_step=71_600)
++    tr._adjust_learning_rate_based_on_kl(torch.tensor(1e-6), opt)  # KL≈0（actor が動かない）
++    assert opt.param_groups[0]["lr"] == pytest.approx(1e-4)
++    tr.state.global_step = 71_600 + 50
++    tr._adjust_learning_rate_based_on_kl(torch.tensor(1e-6), opt)
++    assert opt.param_groups[0]["lr"] == pytest.approx(1.5e-4)
++
++
++def test_rollout_clears_teacher_without_distribution(monkeypatch):
++    """教師は act_inference だけで distribution を作らない。2 回目の反復の clear_rollout で落ちない（11-08 r1 の区切り 0 で踏んだ）"""
++    from gr00t.rl.trl.modules.actor_critic_modules import Actor
++
++    class _Teacher:
++        def __init__(self):
++            self.distribution = None  # Actor.__init__ と同じ
++            self.detached = 0
++
++        init_rollout = Actor.init_rollout
++
++        def clear_rollout(self):
++            Actor.clear_rollout(self)  # del self.distribution（2 回目から属性が無い）
++            self.detached += 1  # RecurrentActor の隠れ状態の切り離しの代わり
++
++    monkeypatch.setattr(TRLPPOTrainer, "_rollout_step", lambda self, model, obs: obs)
++    tr = _bare_trainer(global_step=0, rl_start_step=0)
++    tr.ref_model = _Teacher()
++    for _ in range(3):
++        assert tr._rollout_step(None, {"x": 1}) == {"x": 1}
++    assert tr.ref_model.detached == 3
++
++
++@pytest.mark.skipif(not os.path.exists(F3SC), reason="f3sc の重みが無い")
++def test_ppo_mode_keeps_tracked_door_values_in_env_by_step():
++    from gr00t.rl.trl.utils.rl import split_and_pad_trajectories
++
++    stu, env_config = _student(door_tracker_hidden=32)
++    with torch.no_grad():
++        stu.tracker_out.weight.normal_(0.0, 0.3)  # 追う段が値を変える状態で確かめる
++    stu.ppo_mode = True
++    stu.eval()
++    gen = torch.Generator().manual_seed(2)
++    n, length = 3, 6
++    seq = [_make_obs(stu, env_config, n, gen)[0] for _ in range(length)]
++    dones = torch.zeros(length, n)
++    dones[2, 1] = 1.0  # 台 1 は 3 歩目で回が終わる
++    with torch.no_grad():
++        acts, doors = [], []
++        for t, o in enumerate(seq):
++            a, d = stu._rollout_mean({"actor_obs": o})
++            acts.append(a)
++            doors.append(d)
++            stu.reset(dones[t].long())
++        padded, masks = split_and_pad_trajectories(torch.stack(seq, dim=0), dones)
++        stu.update_distribution({"actor_obs": padded.transpose(0, 1)}, masks=masks.transpose(0, 1),
++                                original_dones=dones.t())
++    roll_d = torch.stack(doors, dim=1)
++    assert stu.last_obj_pred.shape == roll_d.shape == (n, length, 17)
++    assert torch.allclose(stu.last_obj_pred, roll_d, atol=1e-4), (stu.last_obj_pred - roll_d).abs().max()
++    assert torch.allclose(stu.distribution.mean, torch.stack(acts, dim=1), atol=1e-4)
++
++
++def test_build_ppo_start_from_student_and_teacher():
++    from gr00t.rl.scripts.make_vis_ppo_ckpt import build, env_state_diff
++
++    student = {
++        "policy_state_dict": {"door_head.net.0.weight": torch.ones(2, 2), "tracker.rnn.weight_ih_l0": torch.full((4, 3), 2.0),
++                              "std": torch.full((17,), 0.001)},
++        "state": SimpleNamespace(global_step=12_000),
++        "env_state_dict": {"termination_level": 1.0},
++    }
++    teacher = {
++        "policy_state_dict": {"std": torch.full((17,), 0.2)},
++        "value_state_dict": {"memory.rnn.weight_ih_l0": torch.zeros(3)},
++        "state": SimpleNamespace(global_step=71_600),
++        "env_state_dict": {"termination_level": 0.9},
++    }
++    out = build(student, teacher, 0.5)
++    assert set(out["policy_state_dict"]) == set(student["policy_state_dict"])
++    assert torch.equal(out["policy_state_dict"]["tracker.rnn.weight_ih_l0"], torch.full((4, 3), 2.0))
++    assert torch.allclose(out["policy_state_dict"]["std"], torch.full((17,), 0.1))
++    assert out["value_state_dict"] is teacher["value_state_dict"]
++    assert out["state"].rl_start_step == 71_600 and out["optimizer_state_dict"] is None
++    assert not hasattr(teacher["state"], "rl_start_step")  # 読んだ教師の状態は書き換えない
++    assert env_state_diff(student["env_state_dict"], out["env_state_dict"]) == ["termination_level: 生徒 1.0 ・教師 0.9"]
++    with pytest.raises(AssertionError):
++        build({"policy_state_dict": {"std": torch.ones(17)}, "state": student["state"]}, teacher, 0.5)
++
++
++@pytest.mark.skipif(not os.path.exists(COUNT_SUCCESS), reason="count_success.py が無い")
++def test_count_success_passed_ignores_stage():
++    spec = importlib.util.spec_from_file_location("count_success", COUNT_SUCCESS)
++    cs = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(cs)
++    steps = 6
++    # 台 0: 段 0 のまま扉 80° で抜けた（passed・through ではない）。台 1: 段 5 で抜けた（両方）。
++    # 台 2: 扉 50° のまま抜けた（どちらでもない）。台 3: 扉を 80° 開けたが 1.5 m に届かない（どちらでもない）
++    stage = np.array([[0, 0, 0, 0], [0, 4, 0, 0], [0, 5, 0, 0], [0, 5, 0, 0], [0, 5, 0, 0], [0, 5, 0, 0]])
++    x = np.array([[0.0, 0.0, 0.0, 0.0], [0.5, 0.5, 0.5, 0.5], [1.0, 1.0, 1.0, 1.0], [1.6, 1.6, 1.6, 1.1],
++                  [1.7, 1.7, 1.7, 1.2], [1.8, 1.8, 1.8, 1.2]])
++    hinge_deg = np.array([[0, 0, 0, 0], [40, 40, 30, 40], [80, 75, 50, 80], [80, 75, 50, 80], [80, 75, 50, 80],
++                          [80, 75, 50, 80]], dtype=float)
++    rec = {
++        "stage": stage,
++        "episode_length": np.tile(np.arange(1, steps + 1)[:, None], (1, 4)),
++        "root_pos": np.stack([x, np.zeros_like(x), np.zeros_like(x)], axis=-1),
++        "door_dof_pos": np.stack([np.radians(hinge_deg), np.zeros_like(x)], axis=-1),
++    }
++    eps = cs.split_episodes(rec)
++    assert [cs.is_success(ep, "passed") for ep in eps] == [True, True, False, False]
++    assert [cs.is_success(ep, "through") for ep in eps] == [False, True, False, False]

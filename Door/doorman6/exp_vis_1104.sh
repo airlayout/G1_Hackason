@@ -55,10 +55,10 @@ F3_ARGS=(
   ++simulator.config.arm_body_contact_sensor=True ++rewards.reward_scales.penalty_arm_body_contact=-0.2
   ++robot.asset.usd_file=g1/g1_29dof_rev_1_0_col/g1_29dof_rev_1_0_col.usd
   ++env.config.walk_away_start_m=1.0 ++rewards.reward_scales.walk_away_in_swing=-40.0
-  "++env.config.max_stage_time=[250,100,100,100,600,200]" ++env.config.target_root_distance_swing_scale=0.0
+  "++env.config.max_stage_time=[${STAGE_TIME:-250,100,100,100,600,200}]" ++env.config.target_root_distance_swing_scale=0.0  # 11-07: STAGE_TIME で替えられる
   ++rewards.reward_scales.penalty_arm_action_change=-0.2 ++rewards.reward_scales.penalty_walk_in_hold=-0.3
   ++algo.config.homie_switch_threshold=0.1 ++env.config.walk_in_hold_threshold=0.1
-  "++env.config.loco_cmd_delay_steps_range=[0,15]" "++env.config.loco_cmd_gain_range=[0.8,1.2]"
+  "++env.config.loco_cmd_delay_steps_range=[${LEGS_DELAY:-0,15}]" "++env.config.loco_cmd_gain_range=[${LEGS_GAIN:-0.8,1.2}]"  # 11-06: LEGS_DELAY・LEGS_GAIN で替えられる（t2 の鈍い脚）
   ++env.config.complete_requires_through_stage=True ++env.config.termination_curriculum.level_up_ave_goal_reached_rate=0.9
   ++env.config.enable_staged_reset=True
 )

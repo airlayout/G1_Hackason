@@ -1,0 +1,56 @@
+From a3d1fd89529b87e67923f79a657b8bc1a2bbeb61 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Tue, 10 Nov 2026 11:08:24 +0900
+Subject: [PATCH] state recorder: optionally write the head camera depth next
+ to the RGB (env.config.record_states.depth_png=True writes
+ depth/env##_step######.png as uint16 millimetres at the same steps as
+ rgb_every, infinite and NaN as 0, so that the head camera colour and depth
+ while the arm-only policy puts the hand on the lever can be shown and passed
+ through the RGBD door head afterwards; default False = RGB only as before)
+ (11-10)
+
+---
+ gr00t/rl/utils/state_recorder.py | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/gr00t/rl/utils/state_recorder.py b/gr00t/rl/utils/state_recorder.py
+index f408bfb..282c878 100644
+--- a/gr00t/rl/utils/state_recorder.py
++++ b/gr00t/rl/utils/state_recorder.py
+@@ -9,6 +9,8 @@
+ #   chunk_steps: 何ステップごとにファイルを分けるか（既定 100。止められたときに失うのはこの分まで）
+ #   pregrasp_diag: True で区間 1→2 の条件の各項目も書く（既定 False）
+ #   rgb_every: カメラ（ego_camera）があるとき、何ステップごとに先頭 num_envs 台の RGB を PNG で書くか（既定 0 = 書かない）
++#   depth_png: True で、RGB と同じ歩に深度も 16 ビットの PNG（mm・測れない所と無限は 0）で depth/ に書く（パッチ 0102・11-10。
++#     腕をレバーに乗せる間に頭のカメラのカラーと深度がどう写るかの動画と、画像の網の当てを後で通すため。既定 False）
+ # 扉の環境（パッチ 0089 の後）では、回が終わった理由 term_reason（door_open_homie の TERM_* のビット。−1 はまだ終わっていない）・
+ # 終わった歩の段階 term_stage・上半身の関節の速さの最大 term_upper_vel とその関節 term_upper_joint（dof の番号）・終わった回数
+ # term_count と、今の歩の上半身の関節の速さの最大 upper_vel_max・upper_vel_joint も書く。term_* は次に終わるまで持ち越す
+@@ -44,6 +46,7 @@ class StateRecorder:
+         self.num = int(min(cfg.get("num_envs", 4), env.num_envs))
+         self.chunk_steps = int(cfg.get("chunk_steps", 100))
+         self.rgb_every = int(cfg.get("rgb_every", 0))
++        self.depth_png = bool(cfg.get("depth_png", False))
+         self.pregrasp_diag = bool(cfg.get("pregrasp_diag", False))
+         self.rgb_count = 0
+         os.makedirs(self.dir, exist_ok=True)
+@@ -206,6 +209,16 @@ class StateRecorder:
+         for i in range(rgb.shape[0]):
+             path = os.path.join(out_dir, f"env{i:02d}_step{int(env.common_step_counter):06d}.png")
+             cv2.imwrite(path, rgb[i, :, :, ::-1])  # OpenCV は BGR
++        if self.depth_png and "depth" in env.simulator.scene.sensors["ego_camera"].data.output.keys():
++            depth = _t(env.simulator.scene.sensors["ego_camera"].data.output["depth"])[: self.num].float()
++            depth = depth.reshape(depth.shape[0], depth.shape[1], depth.shape[2])  # [N, H, W, 1] → [N, H, W]
++            depth = torch.where(torch.isfinite(depth), depth, torch.zeros_like(depth))
++            mm = (depth * 1000.0).clamp(0, 65535).round().to(torch.int32).cpu().numpy().astype(np.uint16)
++            out_dir = os.path.join(self.dir, "depth")
++            os.makedirs(out_dir, exist_ok=True)
++            for i in range(mm.shape[0]):
++                path = os.path.join(out_dir, f"env{i:02d}_step{int(env.common_step_counter):06d}.png")
++                cv2.imwrite(path, mm[i])
+ 
+     def flush(self) -> None:
+         if not self.buf or not self.buf.get("step"):
+-- 
+2.43.0
+

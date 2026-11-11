@@ -1,0 +1,74 @@
+From c8b33e31a78b0df2691f271c45f614a4957cc0c1 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 9 Nov 2026 12:55:49 +0900
+Subject: [PATCH] door: arm-only stage can complete on the door angle
+ (env.config.arm_stage.complete_door_deg: complete when the hinge is open by
+ at least this many degrees instead of on entering complete_stage; with the
+ legs on the standing HOMIE the policy learned to press the lever fully down
+ in 1 h but never pushed the door past 0.1 deg, the body slid back up to 15 cm
+ and the hand pulled the lever, so the handover to the f3t3 teacher moves to
+ the angle just after the latch is out; default None = unchanged) (11-09)
+
+---
+ gr00t/rl/envs/door/arm_stage.py       | 18 ++++++++++++++----
+ gr00t/rl/envs/door/door_open_homie.py |  4 +++-
+ 2 files changed, 17 insertions(+), 5 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/arm_stage.py b/gr00t/rl/envs/door/arm_stage.py
+index dc05b52..9f8d6cc 100644
+--- a/gr00t/rl/envs/door/arm_stage.py
++++ b/gr00t/rl/envs/door/arm_stage.py
+@@ -13,6 +13,9 @@ env.config.arm_stage（無い・enabled=False なら元のまま）:
+     既定はシムの教師 f3t3 がレバーに触れた時（段 2 に入った時）の 10〜90% 点を少し広げた範囲（11-09 の 256 回の評価の記録）
+   start_stage: 回を始める段（既定 1＝構える）
+   complete_stage: この段に入ったら完了（既定 4）
++  complete_door_deg: 指定すると、段ではなく扉の角度がこの値 [°] 以上になったら完了（パッチ 0098・11-09）。脚を止めたまま
++    10° まで押し開けられなかった（扉は 0.1° で止まり、押すと体が後ろへずれた）ので、引き継ぎの角度をラッチが外れた所まで
++    下げる（計画書 3.4 の「2〜3°」）。押し開けは引き継いだ f3t3 が歩いて受け持つ
+   start_vel: 回の始めの胴の速さ・角速さの乱択の幅 [m/s・rad/s]（元は ±0.5。立ったまま始めるので既定 ±0.1）
+ 
+ ここは torch の関数だけ（Isaac Sim なしで試験できる）。環境（door_open_homie.py）が呼ぶ。
+@@ -39,7 +42,11 @@ def arm_stage_config(cfg) -> dict | None:
+     assert 1 <= start_stage < complete_stage, f"arm_stage は 1 <= start_stage < complete_stage: {start_stage}, {complete_stage}"
+     start_vel = float(cfg.get("start_vel", 0.1))
+     assert start_vel >= 0.0, f"arm_stage.start_vel は 0 以上: {start_vel}"
+-    return {"start_range": rng, "start_stage": start_stage, "complete_stage": complete_stage, "start_vel": start_vel}
++    door_deg = cfg.get("complete_door_deg", None)
++    door_deg = None if door_deg is None else float(door_deg)
++    assert door_deg is None or door_deg > 0.0, f"arm_stage.complete_door_deg は正: {door_deg}"
++    return {"start_range": rng, "start_stage": start_stage, "complete_stage": complete_stage, "start_vel": start_vel,
++            "complete_door_deg": door_deg}
+ 
+ 
+ def lever_pivot_y(door_width: torch.Tensor, backset: torch.Tensor, open_lr: torch.Tensor) -> torch.Tensor:
+@@ -63,6 +70,9 @@ def start_stages(stage: torch.Tensor, start_stage: int) -> torch.Tensor:
+     return torch.where(stage == 0, torch.full_like(stage, start_stage), stage)
+ 
+ 
+-def arm_stage_complete(stage_buf: torch.Tensor, complete_stage: int) -> torch.Tensor:
+-    """完了: complete_stage 以上の段にいる"""
+-    return stage_buf >= complete_stage
++def arm_stage_complete(stage_buf: torch.Tensor, complete_stage: int, hinge_rad: torch.Tensor | None = None,
++                       door_deg: float | None = None) -> torch.Tensor:
++    """完了: door_deg が無ければ complete_stage 以上の段にいる。あれば扉の角度（hinge_rad の大きさ）が door_deg 以上"""
++    if door_deg is None:
++        return stage_buf >= complete_stage
++    return torch.rad2deg(torch.abs(hinge_rad)) >= door_deg
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index d4556a8..5bec7d7 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -1791,7 +1791,9 @@ class DoorPregrasp(
+     def _stage_5_to_complete_condition(self):
+         arm = getattr(self, "_arm_stage", None)
+         if arm is not None:  # G1_Hackason（0097）: 腕だけの段は complete_stage（既定 4＝扉 10°）に入ったら完了
+-            return arm_stage_complete(self.stage_buf, arm["complete_stage"])
++            # 0098: complete_door_deg があれば扉の角度で（引き継ぎの角度をラッチが外れた所まで下げる）
++            hinge = self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 0]
++            return arm_stage_complete(self.stage_buf, arm["complete_stage"], hinge, arm["complete_door_deg"])
+         walked_far = (self.simulator.robot_root_states[:, 0] - self.env_origins[:, 0]) > 1.5
+         # G1_Hackason（パッチ 0088、11-01）: 元の完了は扉の先 1.5 m だけで段階を見ない。扉を door_through_angle_deg 未満しか
+         # 開けずに抜けても完了になり、打ち切りの罰が無く完了の報酬が入っていた（評価の成功 count_success.py は段階 5 を要する）。
+-- 
+2.43.0
+

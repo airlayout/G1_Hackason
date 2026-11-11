@@ -20,7 +20,9 @@ import pytest
 
 HOMIE = Path("gr00t/rl/envs/base_task/homie_base.py")
 NEW_FNS = ("_get_obs_b_homie_commands", "_get_obs_b_homie_commands_legs", "_init_stock_legs", "_reset_stock_legs",
-           "_update_stock_legs", "_apply_stock_legs_obs")
+           "_update_stock_legs", "_apply_stock_legs_obs",
+           # 0095（11-07）: _init_stock_legs が呼ぶ応え方の層と指令の再生（既定は切）
+           "_init_loco_resp", "_reset_loco_resp", "_interp", "_loco_resp_map", "_init_loco_cmd_replay", "_replay_loco_cmd")
 N_LOWER = 15
 
 

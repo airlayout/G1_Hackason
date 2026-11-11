@@ -1,0 +1,144 @@
+From a93b74d8eab9f950df81d9a9a8a04cf800798845 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Tue, 10 Nov 2026 08:10:25 +0900
+Subject: [PATCH] door: arm-only stage can free the legs on a lever press
+ measured the way the real robot can (env.config.arm_stage.release=palm_press:
+ the palm of the used hand, forward kinematics on the robot, within
+ press_radius horizontally of the closed lever grasp point, tracked while the
+ lever and the door are closed plus a per-episode measurement bias of
+ press_ref_noise, at least press_drop below it, with a hand-lever force of at
+ least press_force, torque-based on the robot, for press_hold steps; the
+ defaults 0.10 m, 0.02 m, 5 N, 5 steps fired in 227 of the 251 episodes whose
+ true lever reached 30 deg in an s2e evaluation on unseen doors, 3 of them
+ before 10 deg, 0.1 s after the true angle; logs arm_press_early_frac; default
+ release=lever_true = unchanged) (11-10)
+
+---
+ gr00t/rl/envs/door/arm_stage.py       | 28 +++++++++++++++++++++++++-
+ gr00t/rl/envs/door/door_open_homie.py | 29 ++++++++++++++++++++++++++-
+ 2 files changed, 55 insertions(+), 2 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/arm_stage.py b/gr00t/rl/envs/door/arm_stage.py
+index a0312cb..d7f50f5 100644
+--- a/gr00t/rl/envs/door/arm_stage.py
++++ b/gr00t/rl/envs/door/arm_stage.py
+@@ -19,6 +19,12 @@ env.config.arm_stage（無い・enabled=False なら元のまま）:
+   free_legs_when_unlatched: True で、レバーが下がって掛け金が外れたら（扉の環境の _lever_unlatched＝既定 30°）その回の終わりまで
+     歩く指令を通す（パッチ 0099・11-09 ユーザー「ラッチが外れたら脚の固定を外す」）。脚を止めたままだと、3° でも押し開けられず
+     （押すと体が後ろへずれ、手はレバーを手前へ引いた）、f3t3 は押し開ける間に前へ 8 cm 踏み出していた。既定 False＝毎歩止める
++  release: 脚を放す引き金（パッチ 0100・11-10 ユーザー「レバーを下げたか: 案 1（トルク＋順運動学）」）。
++    "lever_true"（既定・0099 のまま）: シムの真のレバーの角度が掛け金の線（_lever_unlatched）を越えた
++    "palm_press": 実機でも測れる量だけで決める。使う手の手のひら（実機は順運動学）が、閉じたレバーの当てる点（実機は止まって深度で測る。
++      ここでは回ごとに press_ref_noise の片寄りを足す）の水平 press_radius 以内・当てる点より press_drop 以上低い所にあり、
++      手とレバーの力（実機はトルクから出す）が press_force 以上の歩が press_hold 歩つづいたら放す。既定の線は 11-10 に s2e の評価の
++      記録（学習に無い扉・256 回）で決めた: 真の 30° の 251 回のうち 227 回で立ち、早すぎ（レバー 10° 未満）3 回・遅れは中央 0.1 s
+   start_vel: 回の始めの胴の速さ・角速さの乱択の幅 [m/s・rad/s]（元は ±0.5。立ったまま始めるので既定 ±0.1）
+ 
+ ここは torch の関数だけ（Isaac Sim なしで試験できる）。環境（door_open_homie.py）が呼ぶ。
+@@ -31,6 +37,8 @@ import torch
+ # f3t3 が段 2 に入った時の pelvis（11-09、記録 start_1107_1338 の 244 回）: 前 −0.41 [−0.48, −0.30]・横 −0.09 [−0.15, −0.02]・
+ # 向き −47° [−65, −34]（中央値 [10%, 90%]。把手が左の扉で、右へ回ってレバーの側の左肩を前に出している）
+ DEFAULT_START_RANGE = (-0.48, -0.32, -0.15, -0.01, -65.0, -25.0)
++# 0100: palm_press の既定（11-10 に記録で決めた線。説明は上の release）
++PRESS_DEFAULTS = {"press_radius": 0.10, "press_drop": 0.02, "press_force": 5.0, "press_hold": 5, "press_ref_noise": 0.02}
+ 
+ 
+ def arm_stage_config(cfg) -> dict | None:
+@@ -48,8 +56,26 @@ def arm_stage_config(cfg) -> dict | None:
+     door_deg = cfg.get("complete_door_deg", None)
+     door_deg = None if door_deg is None else float(door_deg)
+     assert door_deg is None or door_deg > 0.0, f"arm_stage.complete_door_deg は正: {door_deg}"
++    release = str(cfg.get("release", "lever_true"))
++    assert release in ("lever_true", "palm_press"), f"arm_stage.release は lever_true か palm_press: {release}"
++    press = {k: float(cfg.get(k, v)) for k, v in PRESS_DEFAULTS.items()}
++    assert press["press_radius"] > 0 and press["press_force"] >= 0 and press["press_hold"] >= 1, f"arm_stage の press_*: {press}"
+     return {"start_range": rng, "start_stage": start_stage, "complete_stage": complete_stage, "start_vel": start_vel,
+-            "complete_door_deg": door_deg, "free_legs_when_unlatched": bool(cfg.get("free_legs_when_unlatched", False))}
++            "complete_door_deg": door_deg, "free_legs_when_unlatched": bool(cfg.get("free_legs_when_unlatched", False)),
++            "release": release, **press}
++
++
++
++def palm_press(palm: torch.Tensor, ref: torch.Tensor, force: torch.Tensor, radius: float, drop: float,
++               min_force: float) -> torch.Tensor:
++    """手のひらがレバーを押し下げている歩（0100）。palm・ref: [n, 3]（world）、force: [n] [N]"""
++    near = torch.linalg.norm(palm[:, :2] - ref[:, :2], dim=-1) <= radius
++    return near & (palm[:, 2] <= ref[:, 2] - drop) & (force >= min_force)
++
++
++def update_press_count(count: torch.Tensor, pressing: torch.Tensor) -> torch.Tensor:
++    """押し下げている歩が何歩つづいたか（途切れたら 0 から）"""
++    return torch.where(pressing, count + 1, torch.zeros_like(count))
+ 
+ 
+ def update_legs_free(free: torch.Tensor, unlatched: torch.Tensor) -> torch.Tensor:
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 36c34c6..83f6b64 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -34,9 +34,11 @@ from gr00t.rl.envs.door.arm_stage import (
+     arm_stage_complete,
+     arm_stage_config,
+     lever_pivot_y,
++    palm_press,
+     sample_stance,
+     start_stages,
+     update_legs_free,
++    update_press_count,
+ )
+ from gr00t.rl.envs.door.door_mirror import DoorMirror
+ from gr00t.rl.envs.door.door_state_sensor import DoorStateSensor
+@@ -172,6 +174,10 @@ class DoorPregrasp(
+             self._lever_pivot_y = lever_pivot_y(self.door_width, self.door_handle_width, self.door_open_lr)
+             self._arm_stage_latched = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+             self._arm_legs_free = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)  # 0099
++            # 0100: palm_press の引き金。閉じたレバーの当てる点（回ごとの測りの片寄りを足す）・押し下げが続いた歩の数
++            self._press_ref = torch.full((self.num_envs, 3), float("nan"), device=self.device)
++            self._press_bias = torch.zeros(self.num_envs, 3, device=self.device)
++            self._press_count = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+             legs = "掛け金が外れるまで" if self._arm_stage["free_legs_when_unlatched"] else "毎歩"
+             print(f"[arm_stage] 腕だけの段 {self._arm_stage}・脚は{legs} 立つ HOMIE（歩く指令の積み上げを 0）")
+ 
+@@ -1335,10 +1341,27 @@ class DoorPregrasp(
+         """腕だけの段で脚を止める台。0099: free_legs_when_unlatched なら、掛け金が一度外れた台は回の終わりまで放す"""
+         if not arm["free_legs_when_unlatched"]:
+             return self._arm_stage_latched
+-        self._arm_legs_free = update_legs_free(self._arm_legs_free, self._lever_unlatched())
++        unlatched = self._arm_stage_palm_press(arm) if arm["release"] == "palm_press" else self._lever_unlatched()
++        self._arm_legs_free = update_legs_free(self._arm_legs_free, unlatched)
+         self.log_dict["arm_legs_free_frac"] = self._arm_legs_free.float().mean()
+         return ~self._arm_legs_free
+ 
++    def _arm_stage_palm_press(self, arm: dict):
++        """0100: 実機でも測れる量だけで「レバーを下げた」（arm_stage.py の release="palm_press"）。押し下げが press_hold 歩つづいた台"""
++        joints = self.simulator.scene.articulations["door"].data.joint_pos.torch
++        # 閉じたレバーの当てる点: レバーと扉が閉じている間だけ追う（実機は段 2 の始めに止まって深度で測った値）
++        closed = (joints[:, 1].abs() < math.radians(5.0)) & (joints[:, 0].abs() < math.radians(1.0))
++        self._press_ref = torch.where(closed[:, None], self._compute_grasp_target() + self._press_bias, self._press_ref)
++        palm = torch.where(self.use_left_hand[:, None], self._palm_pos("left"), self._palm_pos("right"))
++        pressing = palm_press(palm, self._press_ref, self._hand_lever_force_n(),
++                              arm["press_radius"], arm["press_drop"], arm["press_force"])
++        self._press_count = update_press_count(self._press_count, pressing)
++        fired = self._press_count >= arm["press_hold"]
++        new = fired & ~self._arm_legs_free  # この歩で初めて立った台。真のレバーが 10° 未満なら早すぎ（診断）
++        if bool(new.any()):
++            self.log_dict["arm_press_early_frac"] = (joints[new, 1].abs() < math.radians(10.0)).float().mean()
++        return fired
++
+     def _compute_grasp_target(self):
+         grasp_target_pos_w = (
+             self.simulator.scene.sensors["right_hand_frame_transformer"]
+@@ -1388,6 +1411,10 @@ class DoorPregrasp(
+             self._door_opened_once[env_ids] = False
+         if hasattr(self, "_arm_legs_free"):  # 0099: 回の始めは脚を止める
+             self._arm_legs_free[env_ids] = False
++        if hasattr(self, "_press_count"):  # 0100: 当てる点は測り直し、片寄りは回ごとに引き直す
++            self._press_count[env_ids] = 0
++            self._press_ref[env_ids] = float("nan")
++            self._press_bias[env_ids] = self._arm_stage["press_ref_noise"] * torch.randn(len(env_ids), 3, device=self.device)
+         if getattr(self, "_use_door_sensor", False):
+             self.door_sensor.reset(env_ids)  # 段 2.5: 回ごとの片寄りを引き直す
+             if getattr(self, "_door_carry", None) is not None:
+-- 
+2.43.0
+

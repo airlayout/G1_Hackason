@@ -1,0 +1,107 @@
+From 8622b0fbaaedbf173abf1d54b2b1105fe9227f9f Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Mon, 9 Nov 2026 14:09:51 +0900
+Subject: [PATCH] door: arm-only stage can free the legs once the latch is out
+ (env.config.arm_stage.free_legs_when_unlatched: the stand latch stays on
+ until the lever reaches push_unlatched_handle_deg, then lets the walking
+ command through for the rest of the episode; with the legs kept on the
+ standing HOMIE the policy pressed the lever fully down in 74% of episodes but
+ never pushed the door past 3 deg in 2 h, the body slid back and the hand
+ pulled the lever, while the f3t3 teacher stepped 8 cm forward while pushing;
+ default False = latched at every step as before) (11-09)
+
+---
+ gr00t/rl/envs/door/arm_stage.py       | 10 +++++++++-
+ gr00t/rl/envs/door/door_open_homie.py | 20 +++++++++++++++++---
+ 2 files changed, 26 insertions(+), 4 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/arm_stage.py b/gr00t/rl/envs/door/arm_stage.py
+index 9f8d6cc..a0312cb 100644
+--- a/gr00t/rl/envs/door/arm_stage.py
++++ b/gr00t/rl/envs/door/arm_stage.py
+@@ -16,6 +16,9 @@ env.config.arm_stage（無い・enabled=False なら元のまま）:
+   complete_door_deg: 指定すると、段ではなく扉の角度がこの値 [°] 以上になったら完了（パッチ 0098・11-09）。脚を止めたまま
+     10° まで押し開けられなかった（扉は 0.1° で止まり、押すと体が後ろへずれた）ので、引き継ぎの角度をラッチが外れた所まで
+     下げる（計画書 3.4 の「2〜3°」）。押し開けは引き継いだ f3t3 が歩いて受け持つ
++  free_legs_when_unlatched: True で、レバーが下がって掛け金が外れたら（扉の環境の _lever_unlatched＝既定 30°）その回の終わりまで
++    歩く指令を通す（パッチ 0099・11-09 ユーザー「ラッチが外れたら脚の固定を外す」）。脚を止めたままだと、3° でも押し開けられず
++    （押すと体が後ろへずれ、手はレバーを手前へ引いた）、f3t3 は押し開ける間に前へ 8 cm 踏み出していた。既定 False＝毎歩止める
+   start_vel: 回の始めの胴の速さ・角速さの乱択の幅 [m/s・rad/s]（元は ±0.5。立ったまま始めるので既定 ±0.1）
+ 
+ ここは torch の関数だけ（Isaac Sim なしで試験できる）。環境（door_open_homie.py）が呼ぶ。
+@@ -46,7 +49,12 @@ def arm_stage_config(cfg) -> dict | None:
+     door_deg = None if door_deg is None else float(door_deg)
+     assert door_deg is None or door_deg > 0.0, f"arm_stage.complete_door_deg は正: {door_deg}"
+     return {"start_range": rng, "start_stage": start_stage, "complete_stage": complete_stage, "start_vel": start_vel,
+-            "complete_door_deg": door_deg}
++            "complete_door_deg": door_deg, "free_legs_when_unlatched": bool(cfg.get("free_legs_when_unlatched", False))}
++
++
++def update_legs_free(free: torch.Tensor, unlatched: torch.Tensor) -> torch.Tensor:
++    """脚を放す台（0099）: 一度掛け金が外れたら、その回の終わりまで放したまま（レバーが戻っても止め直さない）"""
++    return free | unlatched
+ 
+ 
+ def lever_pivot_y(door_width: torch.Tensor, backset: torch.Tensor, open_lr: torch.Tensor) -> torch.Tensor:
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 5bec7d7..36c34c6 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -36,6 +36,7 @@ from gr00t.rl.envs.door.arm_stage import (
+     lever_pivot_y,
+     sample_stance,
+     start_stages,
++    update_legs_free,
+ )
+ from gr00t.rl.envs.door.door_mirror import DoorMirror
+ from gr00t.rl.envs.door.door_state_sensor import DoorStateSensor
+@@ -170,7 +171,9 @@ class DoorPregrasp(
+         if self._arm_stage is not None:
+             self._lever_pivot_y = lever_pivot_y(self.door_width, self.door_handle_width, self.door_open_lr)
+             self._arm_stage_latched = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+-            print(f"[arm_stage] 腕だけの段 {self._arm_stage}・脚は毎歩 立つ HOMIE（歩く指令の積み上げを 0）")
++            self._arm_legs_free = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)  # 0099
++            legs = "掛け金が外れるまで" if self._arm_stage["free_legs_when_unlatched"] else "毎歩"
++            print(f"[arm_stage] 腕だけの段 {self._arm_stage}・脚は{legs} 立つ HOMIE（歩く指令の積み上げを 0）")
+ 
+         # G1_Hackason: どちらの手で把手を取りに行くか。元の DoorMan は把手と反対の手（door_open_lr < 0 で左手。
+         # このとき把手は機体の右）で、体の前を横切って取りに行く。lever_side_hand: True なら把手と同じ側の手を使う
+@@ -1308,8 +1311,9 @@ class DoorPregrasp(
+         # G1_Hackason（G2、10-29）: 止まるはずの場面（構える・つかむ・レバーの間）は、実機でも測れる 2 つの値で決める:
+         # 胴（腰）と把手の水平距離・扉の開いた角度。段階（stage_buf）は実機に無いので使わない。実機の door_core.py と同じ関数。
+         # シミュレータは本当の値を渡す（実機はライダーの値。誤差は角度 σ0.07〜0.18°・位置 数 cm で、線 10°・0.3/0.5 m より十分小さい）
+-        if getattr(self, "_arm_stage", None) is not None:  # 0097: 腕だけの段は毎歩止める（実機の段 2 は歩きの指令 0）
+-            return self._arm_stage_latched
++        arm = getattr(self, "_arm_stage", None)
++        if arm is not None:  # 0097: 腕だけの段は毎歩止める（実機の段 2 は歩きの指令 0）
++            return self._arm_stage_legs_mask(arm)
+         if not self.config.get("stand_latch", False):
+             return None
+         dist = torch.norm(self.simulator.robot_root_states[:, :2] - self._compute_grasp_target()[:, :2], dim=-1)
+@@ -1327,6 +1331,14 @@ class DoorPregrasp(
+         self.log_dict["stand_latch_frac"] = self._stand_latched.float().mean()
+         return self._stand_latched
+ 
++    def _arm_stage_legs_mask(self, arm: dict):
++        """腕だけの段で脚を止める台。0099: free_legs_when_unlatched なら、掛け金が一度外れた台は回の終わりまで放す"""
++        if not arm["free_legs_when_unlatched"]:
++            return self._arm_stage_latched
++        self._arm_legs_free = update_legs_free(self._arm_legs_free, self._lever_unlatched())
++        self.log_dict["arm_legs_free_frac"] = self._arm_legs_free.float().mean()
++        return ~self._arm_legs_free
++
+     def _compute_grasp_target(self):
+         grasp_target_pos_w = (
+             self.simulator.scene.sensors["right_hand_frame_transformer"]
+@@ -1374,6 +1386,8 @@ class DoorPregrasp(
+         if hasattr(self, "_stand_latched"):  # G2: 回の始めは止めていない・扉はまだ開いていない
+             self._stand_latched[env_ids] = False
+             self._door_opened_once[env_ids] = False
++        if hasattr(self, "_arm_legs_free"):  # 0099: 回の始めは脚を止める
++            self._arm_legs_free[env_ids] = False
+         if getattr(self, "_use_door_sensor", False):
+             self.door_sensor.reset(env_ids)  # 段 2.5: 回ごとの片寄りを引き直す
+             if getattr(self, "_door_carry", None) is not None:
+-- 
+2.43.0
+

@@ -5,6 +5,8 @@
 # 使い方（OMEN の ~/work_inoue/doorman6）: bash eval_vis_1104.sh <生徒の last.pt> <出力先> [台数 128]
 #   TEACHER_DRIVE=1: 教師に運転させる（配管の検算。f3sc 単独の率に戻るか。[[doorman-dagger-three-silent-traps]]）
 #   SEED: 扉の種（既定 999）。PITCH_DEG: 俯角を固める（例 51。既定は学習と同じ 30〜70° の乱択）
+#   CRITERION: 成功の数え方（既定 through。11-08: 段の持ち時間で打ち切らない評価は ++env.config.reset_on_overtime=False と
+#     CRITERION=passed を組にする＝段を見ずに扉 70° 以上＋扉の先 1.5 m。count_success.py）
 set -uo pipefail
 CK="$1"; OUT="$2"; N="${3:-128}"; shift $(( $# < 3 ? $# : 3 ))
 B="$HOME/work_inoue/doorman6"
@@ -24,4 +26,4 @@ WORK="$B" REPO="${REPO:-VIRAL6_vis}" ENV_NAME=doorman6 IGNORE_PAUSE=1 IDLE_GATE=
   MEM_MAX="${MEM_MAX:-12G}" NEED_MARGIN_MB="${NEED_MARGIN_MB:-256}" \
   ./run_eval_record.sh "$CK" "$OUT" "$N" "$N" "${MINUTES:-25}" \
   ++env.config.enable_staged_reset=False ++algo.config.eval.eval_num_envs_episodes=True "${EXTRA[@]}" "$@"
-"$PY" "$BASE/count_success.py" "$OUT" --criterion through --json "$OUT/summary.json" | tee "$OUT/summary.txt"
+"$PY" "$BASE/count_success.py" "$OUT" --criterion "${CRITERION:-through}" --json "$OUT/summary.json" | tee "$OUT/summary.txt"

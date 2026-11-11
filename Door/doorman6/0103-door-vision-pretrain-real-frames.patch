@@ -1,0 +1,277 @@
+diff -ruN a/gr00t/rl/scripts/door_vision_pretrain.py b/gr00t/rl/scripts/door_vision_pretrain.py
+--- a/gr00t/rl/scripts/door_vision_pretrain.py	2026-11-10 14:13:47
++++ b/gr00t/rl/scripts/door_vision_pretrain.py	2026-11-10 15:13:55
+@@ -6,6 +6,14 @@
+ # 外れの表: 項目ごとの平均の絶対誤差（角度は度・長さは cm）を、全体と段階ごと（区間 0〜5）に出す
+ # 11-06（カラー＋深度）: 記録に depth があれば DoorRGBDEncoder を学ぶ。深度には毎回 D435 の型の揺れと欠けを引き（depth_noise）、
+ #   --color_off の割合でカラーの枝を落とす。確かめは「カラー＋深度」と「深度だけ（カラーを落とす）」の両方で測る
++# 11-10（実物の画を混ぜる、計画 docs/plan/2026-11-09-g1-door-staged-rgbd.md 8.7 節 手順 R2）: --real_data の実物の束
++#   （Door/real/real_shard_1110.py が書く。シムの束と同じ形・正解はライダー）を、1 回の歩みの --real_frac の割合で混ぜる。
++#   実物の深度には揺れも欠けも足さない（もう実物の揺れと欠けがある）。--real_val の束は学習に使わず、毎エポックの外れを出し、
++#   最後のエポックの 1 枚ごとの当てを <出力>_realval.npz に残す（距離の帯ごとの表は real_eval_1110.py --pred）。
++#   保存は従来どおりシムの確かめの損失が最小のエポックと、最後のエポック（<出力>_last.pt）。--eval_only は --init の重みを測るだけ
++#   --occlude: 写り込む物（腕・手・人）の真似。カラーにランダムな四角（色は一様か雑音）を貼り、半分はその所の深度を近い物（0.25〜0.7 m）に
++#   する（残りの半分は深度はそのまま）。11-10: 実物 18:59 で網は画面の左下の近い物（構えた左手の見込み）に引っ張られ、カラーの左下を
++#   隠すだけで左の当てが 14 cm 動いた。シムの学習はカラーを隠す練習をしていなかった（深度には四角い欠けがあった）
+ from __future__ import annotations
+ 
+ import argparse
+@@ -64,6 +72,33 @@
+     return np.nonzero(~is_val)[0], np.nonzero(is_val)[0]
+ 
+ 
++REAL_KEYS = ("rgb", "depth", "aux", "truth", "stage")
++
++
++def load_real(paths: list[str]) -> dict[str, np.ndarray] | None:
++    """実物の束（real_shard_1110.py の npz）を 1 つにする。無ければ None。形がシムの束と違えば止める"""
++    if not paths:
++        return None
++    parts = []
++    for path in paths:
++        with np.load(path) as z:
++            missing = [k for k in REAL_KEYS if k not in z.files]
++            if missing:
++                raise ValueError(f"{path} に {missing} が無い（real_shard_1110.py の出力か）")
++            part = {k: z[k] for k in REAL_KEYS}
++        if part["rgb"].shape[1:] != (108, 192, 3) or part["depth"].shape[1:] != (54, 96) or part["truth"].shape[1:] != (DOOR_TRUTH_DIM,):
++            raise ValueError(f"{path} の形がシムの束と違う: {[(k, v.shape) for k, v in part.items()]}")
++        print(f"[pretrain] 実物の束 {path}: {len(part['truth'])} 枚", flush=True)
++        parts.append(part)
++    return {k: np.concatenate([p[k] for p in parts]) for k in REAL_KEYS}
++
++
++def mixed_batch(sim_idx: np.ndarray, n_real: int, n_real_total: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
++    """1 回の歩みの番号: シムは並べ替えた順の続き（sim_idx）、実物は n_real 枚を戻して引く（実物の枚はシムより少ないので）"""
++    real_idx = np.sort(rng.integers(0, n_real_total, size=n_real)) if n_real > 0 and n_real_total > 0 else np.zeros(0, np.int64)
++    return np.sort(sim_idx), real_idx
++
++
+ def augment(x: torch.Tensor, gen: torch.Generator) -> torch.Tensor:
+     """x: [B, 3, H, W]（0〜1）。明るさ・コントラスト・彩度・白の釣り合い・ぼけ・雑音・まれに白黒。形（幾何）は変えない
+     （画像の中の位置が扉の位置の手掛かりなので、ずらし・切り抜きはしない）"""
+@@ -93,6 +128,39 @@
+     return x.clamp(0.0, 1.0)
+ 
+ 
++def occlude(x: torch.Tensor, d: torch.Tensor, prob: float, gen: torch.Generator) -> tuple[torch.Tensor, torch.Tensor]:
++    """写り込む物の真似。x: カラー [B, 3, H, W]（0〜1）・d: 深度 [B, H/2, W/2]（m）。prob の割合の台に四角を 1〜2 個貼る。
++    四角は縦 15〜50%・横 10〜40%。半分は画面の下半分に寄せる（腕と手は下から入る）。色は一様（半分）か雑音。
++    その台の半分は四角の所の深度を近い物（0.25〜0.7 m・1 cm の揺れ）にし、残りは深度をそのままにする（色だけ違う物）"""
++    if prob <= 0:
++        return x, d
++    b, _, h, w = x.shape
++    dh, dw = d.shape[1:]
++    dev = x.device
++    x, d = x.clone(), d.clone()
++
++    def u(lo, hi, *shape):
++        return torch.rand(*shape, device=dev, generator=gen) * (hi - lo) + lo
++
++    yy = torch.arange(h, device=dev)[None, :, None]
++    xx = torch.arange(w, device=dev)[None, None, :]
++    for k in range(2):
++        on = torch.rand(b, device=dev, generator=gen) < (prob if k == 0 else prob * 0.5)
++        bh, bw = u(0.15, 0.5, b) * h, u(0.10, 0.4, b) * w
++        low = torch.rand(b, device=dev, generator=gen) < 0.5
++        y0 = torch.where(low, h - bh * u(0.5, 1.0, b), u(0, 1, b) * (h - bh))
++        x0 = u(0, 1, b) * (w - bw)
++        m = on[:, None, None] & (yy >= y0[:, None, None]) & (yy < (y0 + bh)[:, None, None]) & (xx >= x0[:, None, None]) & (xx < (x0 + bw)[:, None, None])
++        flat = torch.rand(b, device=dev, generator=gen) < 0.5
++        col = torch.where(flat[:, None, None, None], u(0, 1, b, 3, 1, 1).expand(b, 3, h, w), u(0, 1, b, 3, h, w))
++        x = torch.where(m[:, None], col, x)
++        near = on & (torch.rand(b, device=dev, generator=gen) < 0.5)
++        md = m[:, ::h // dh, ::w // dw][:, :dh, :dw] & near[:, None, None]
++        dn = u(0.25, 0.7, b, 1, 1) + torch.randn(d.shape, device=dev, generator=gen) * 0.01
++        d = torch.where(md, dn, d)
++    return x, d
++
++
+ def aux_noise(aux: torch.Tensor, gen: torch.Generator) -> torch.Tensor:
+     """手掛かり [頭の重力 3, 胴の重力 3, 腰 3] に、学習の観測と同じくらいの揺れ（頭の重力は片寄りも）を足す"""
+     n = torch.randn(aux.shape, device=aux.device, generator=gen)
+@@ -103,8 +171,9 @@
+     return out
+ 
+ 
+-def evaluate(enc, head, data, idx, device, tol, batch=512, color_off=False) -> dict:
+-    """color_off=True はカラーの枝を落とす（深度だけ）。深度の揺れは決まった種で引く（毎回同じ揺れで比べる）"""
++def evaluate(enc, head, data, idx, device, tol, batch=512, color_off=False, noise=True, preds=None) -> dict:
++    """color_off=True はカラーの枝を落とす（深度だけ）。深度の揺れは決まった種で引く（毎回同じ揺れで比べる）。
++    noise=False は深度に揺れも欠けも足さない（実物の束）。preds にリストを渡すと 1 枚ごとの当て（正規化を戻した値）を足す"""
+     enc.eval()
+     head.eval()
+     errs, stages = [], []
+@@ -118,11 +187,14 @@
+             aux = torch.from_numpy(data["aux"][j]).float().to(device)
+             y = torch.from_numpy(data["truth"][j]).float().to(device)
+             if rgbd:
+-                d = depth_noise(torch.from_numpy(data["depth"][j]).float().to(device), gen)
++                d = torch.from_numpy(data["depth"][j]).float().to(device)
++                d = depth_noise(d, gen) if noise else d
+                 off = torch.full((len(j),), bool(color_off), device=device)
+                 pred = head(enc(rgb, d, off).float(), aux).float()
+             else:
+                 pred = head(enc(rgb).float(), aux).float()
++            if preds is not None:
++                preds.append(pred.cpu().numpy())
+             errs.append((pred - y).abs().cpu())
+             stages.append(torch.from_numpy(data["stage"][j]))
+     err = torch.cat(errs)
+@@ -160,7 +232,16 @@
+     ap.add_argument("--eval_batch", type=int, default=512)
+     ap.add_argument("--max_steps", type=int, default=0, help="1 エポックの歩数の上限（試しの確かめ用。0 は全部）")
+     ap.add_argument("--color_off", type=float, default=0.4, help="カラー＋深度のとき、カラーの枝を落とす割合")
++    ap.add_argument("--real_data", nargs="*", default=[], help="学習に混ぜる実物の束（real_shard_1110.py の npz）")
++    ap.add_argument("--real_val", nargs="*", default=[], help="確かめだけに使う実物の束（学習に使わない）")
++    ap.add_argument("--real_frac", type=float, default=0.25, help="1 回の歩みのうち実物の枚の割合（--real_data があるとき）")
++    ap.add_argument("--eval_only", action="store_true", help="--init の重みを確かめの束で測るだけ（学ばない）")
++    ap.add_argument("--occlude", type=float, default=0.0, help="写り込む物の真似を貼る台の割合（カラー＋深度のとき。0 で貼らない）")
+     args = ap.parse_args()
++    if args.eval_only and not args.init:
++        raise SystemExit("[pretrain] --eval_only には --init が要る")
++    if not 0.0 <= args.real_frac < 1.0:
++        raise SystemExit(f"[pretrain] --real_frac は 0 以上 1 未満（{args.real_frac}）")
+ 
+     device = torch.device(args.device)
+     t0 = time.time()
+@@ -169,8 +250,14 @@
+     tr, va = split_by_door(data["door_id"], args.val_frac, args.seed)
+     print(f"[pretrain] 画像 {n} 枚・扉 {len(np.unique(data['door_id']))} 枚（学習 {len(tr)}・確かめ {len(va)}）・"
+           f"読み込み {time.time() - t0:.0f} 秒", flush=True)
++    real = load_real(args.real_data)
++    real_vals = {os.path.basename(p): load_real([p]) for p in args.real_val}
++    n_real = int(round(args.batch * args.real_frac)) if real is not None else 0
++    sim_bs = args.batch - n_real
+ 
+     rgbd = "depth" in data
++    if (real is not None or real_vals) and not rgbd:
++        raise SystemExit("[pretrain] 実物の束はカラー＋深度の網だけ（シムの束に depth が無い）")
+     enc_cls = DoorRGBDEncoder if rgbd else DoorVisionEncoder
+     enc = enc_cls(args.feat_dim, pretrained=args.init is None).to(device)
+     print(f"[pretrain] 網: {enc_cls.__name__}" + (f"（カラーを落とす割合 {args.color_off}）" if rgbd else ""), flush=True)
+@@ -184,9 +271,47 @@
+         head.load_state_dict(ck["head"])
+         print(f"[pretrain] 続きから: {args.init}", flush=True)
+     tol = torch.tensor(DOOR_TRUTH_TOL, device=device)
++    real_dump = os.path.splitext(args.out)[0] + "_realval.npz"
++
++    def eval_epoch(ep: int, final: bool) -> dict:
++        """シムの確かめ（学習に無い扉・深度だけ）・シムの学習の扉の一部・実物の確かめの束・実物の学習の束の一部を測る。
++        final なら実物の確かめの束の 1 枚ごとの当てを real_dump に書く"""
++        out = {"epoch": ep}
++        out["val"] = evaluate(enc, head, data, va, device, tol, args.eval_batch)
++        print(f"[pretrain] ep {ep} 確かめ（学習に無い扉）: {fmt(out['val'])}", flush=True)
++        if rgbd:
++            out["val_depth_only"] = evaluate(enc, head, data, va, device, tol, args.eval_batch, color_off=True)
++            print(f"[pretrain] ep {ep} 確かめ（深度だけ）    : {fmt(out['val_depth_only'])}", flush=True)
++        out["train_sub"] = evaluate(enc, head, data, tr[:: max(1, len(tr) // 4000)], device, tol, args.eval_batch)
++        print(f"[pretrain] ep {ep} 学習の扉（一部）    : {fmt(out['train_sub'])}", flush=True)
++        dump = {}
++        for name, rv in real_vals.items():
++            preds: list | None = [] if final else None
++            out[f"real_val:{name}"] = evaluate(enc, head, rv, np.arange(len(rv["truth"])), device, tol, args.eval_batch,
++                                               noise=False, preds=preds)
++            print(f"[pretrain] ep {ep} 実物の確かめ {name}: {fmt(out[f'real_val:{name}'])}", flush=True)
++            if final:
++                dump[f"pred:{name}"] = np.concatenate(preds)
++                dump[f"truth:{name}"] = rv["truth"]
++        if real is not None:
++            sub = np.arange(0, len(real["truth"]), max(1, len(real["truth"]) // 2000))
++            out["real_train_sub"] = evaluate(enc, head, real, sub, device, tol, args.eval_batch, noise=False)
++            print(f"[pretrain] ep {ep} 実物の学習の束（一部）: {fmt(out['real_train_sub'])}", flush=True)
++        if dump:
++            np.savez(real_dump, names=np.array(list(real_vals)), **dump)
++            print(f"[pretrain] 実物の確かめの 1 枚ごとの当て: {real_dump}", flush=True)
++        return out
++
++    if args.eval_only:
++        res = eval_epoch(-1, final=True)
++        with open(os.path.splitext(args.out)[0] + "_eval.json", "w") as f:
++            json.dump(res, f, indent=1, ensure_ascii=False)
++        print(f"[pretrain] 測るだけ 終わり {time.time() - t0:.0f} 秒", flush=True)
++        return
++
+     params = [{"params": enc.parameters(), "lr": args.lr}, {"params": head.parameters(), "lr": args.lr}]
+     opt = torch.optim.AdamW(params, weight_decay=1e-4)
+-    steps_per_epoch = max(1, len(tr) // args.batch)
++    steps_per_epoch = max(1, len(tr) // sim_bs)  # 1 エポックでシムの学習の枚を 1 回ずつ（実物は戻して引く）
+     if args.max_steps:
+         steps_per_epoch = min(steps_per_epoch, args.max_steps)
+     total = steps_per_epoch * args.epochs
+@@ -194,6 +319,9 @@
+     gen = torch.Generator(device=device)
+     gen.manual_seed(args.seed)
+     rng = np.random.default_rng(args.seed)
++    if real is not None:
++        print(f"[pretrain] 1 回の歩み {args.batch} 枚 = シム {sim_bs}＋実物 {n_real}（実物 {len(real['truth'])} 枚から戻して引く）",
++              flush=True)
+     best = None
+     history = []
+     for ep in range(args.epochs):
+@@ -203,15 +331,26 @@
+         t1 = time.time()
+         run = 0.0
+         for s in range(steps_per_epoch):
+-            j = np.sort(perm[s * args.batch : (s + 1) * args.batch])
+-            rgb = torch.from_numpy(data["rgb"][j]).to(device, non_blocking=True)
+-            aux = torch.from_numpy(data["aux"][j]).float().to(device)
+-            y = torch.from_numpy(data["truth"][j]).float().to(device)
++            j, jr = mixed_batch(perm[s * sim_bs : (s + 1) * sim_bs], n_real, len(real["truth"]) if real is not None else 0, rng)
++            rgb = torch.from_numpy(data["rgb"][j])
++            aux = torch.from_numpy(data["aux"][j]).float()
++            y = torch.from_numpy(data["truth"][j]).float()
++            if rgbd:
++                d = depth_noise(torch.from_numpy(data["depth"][j]).float().to(device), gen)
++            if len(jr):  # 実物の枚を後ろに足す（深度は記録のまま）
++                rgb = torch.cat([rgb, torch.from_numpy(real["rgb"][jr])])
++                aux = torch.cat([aux, torch.from_numpy(real["aux"][jr]).float()])
++                y = torch.cat([y, torch.from_numpy(real["truth"][jr]).float()])
++                d = torch.cat([d, torch.from_numpy(real["depth"][jr]).float().to(device)])
++            rgb = rgb.to(device, non_blocking=True)
++            aux = aux.to(device)
++            y = y.to(device)
+             x = augment(rgb[..., :3].permute(0, 3, 1, 2).float() / 255.0, gen)
++            if rgbd and args.occlude > 0:
++                x, d = occlude(x, d, args.occlude, gen)
+             x = (x - enc.img_mean) / enc.img_std
+             if rgbd:
+-                d = depth_noise(torch.from_numpy(data["depth"][j]).float().to(device), gen)
+-                off = torch.rand(len(j), device=device, generator=gen) < args.color_off
++                off = torch.rand(len(y), device=device, generator=gen) < args.color_off
+             with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
+                 feat = enc.forward_normalized(x, depth_input(d), off) if rgbd else enc.forward_normalized(x)
+                 pred = head(feat.float(), aux_noise(aux, gen))
+@@ -226,24 +365,20 @@
+                 print(f"[pretrain] ep {ep} {s + 1}/{steps_per_epoch} 損失 {run / (1 if args.max_steps else 200):.3f} "
+                       f"({(s + 1) * args.batch / (time.time() - t1):.0f} 枚/秒)", flush=True)
+                 run = 0.0
+-        res = evaluate(enc, head, data, va, device, tol, args.eval_batch)
+-        res_tr = evaluate(enc, head, data, tr[:: max(1, len(tr) // 4000)], device, tol, args.eval_batch)
+-        history.append({"epoch": ep, "val": res, "train_sub": res_tr})
+-        print(f"[pretrain] ep {ep} 確かめ（学習に無い扉）: {fmt(res)}", flush=True)
+-        if rgbd:
+-            res_d = evaluate(enc, head, data, va, device, tol, args.eval_batch, color_off=True)
+-            history[-1]["val_depth_only"] = res_d
+-            print(f"[pretrain] ep {ep} 確かめ（深度だけ）    : {fmt(res_d)}", flush=True)
+-        print(f"[pretrain] ep {ep} 学習の扉（一部）    : {fmt(res_tr)}", flush=True)
++        res_all = eval_epoch(ep, final=ep == args.epochs - 1)
++        history.append(res_all)
++        res = res_all["val"]
++        ck = {"encoder": enc.state_dict(), "head": head.state_dict(), "metrics": res, "args": vars(args), "epoch": ep,
++              "encoder_kind": "rgbd" if rgbd else "rgb"}
+         if best is None or res["loss_tol"] < best:
+             best = res["loss_tol"]
+-            torch.save({"encoder": enc.state_dict(), "head": head.state_dict(), "metrics": res,
+-                        "args": vars(args), "epoch": ep, "encoder_kind": "rgbd" if rgbd else "rgb"}, args.out)
++            torch.save(ck, args.out)
+             print(f"[pretrain] 保存 {args.out}（ep {ep}）", flush=True)
++        if ep == args.epochs - 1:
++            torch.save(ck, os.path.splitext(args.out)[0] + "_last.pt")
+     with open(os.path.splitext(args.out)[0] + "_history.json", "w") as f:
+         json.dump(history, f, indent=1, ensure_ascii=False)
+     print(f"[pretrain] 終わり {time.time() - t0:.0f} 秒", flush=True)
+-
+ 
+ assert DOOR_TRUTH_DIM == len(DOOR_TRUTH_NAMES)
+ 

@@ -1,0 +1,146 @@
+From 89f4934dacaa9df820912770f53ca8936cf5ecfe Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Tue, 10 Nov 2026 08:15:28 +0900
+Subject: [PATCH] door: evaluate the handover from the arm-only stage to a
+ second policy (env.config.arm_stage.handover_door_deg marks the envs whose
+ door reached that angle in env.arm_handover_buf until the episode ends,
+ arm_stage.complete_through=True restores the original walk-through
+ completion; eval.handover_policy_path loads a second actor with the same
+ network into a copy of the policy, runs it every step and takes its action
+ mean for the marked envs, eval.handover_hidden=shadow keeps its LSTM running
+ from the episode start, zero clears it at the switch; for the plan to hand
+ the door from the arm-only policy over to the f3t3 teacher at 3 deg; default
+ off = unchanged) (11-10)
+
+---
+ gr00t/rl/envs/door/arm_stage.py               |  9 +++++-
+ gr00t/rl/envs/door/door_open_homie.py         |  9 +++++-
+ gr00t/rl/trl/trainer/ppo_trainer_homie_api.py | 28 +++++++++++++++++++
+ 3 files changed, 44 insertions(+), 2 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/arm_stage.py b/gr00t/rl/envs/door/arm_stage.py
+index d7f50f5..820ee29 100644
+--- a/gr00t/rl/envs/door/arm_stage.py
++++ b/gr00t/rl/envs/door/arm_stage.py
+@@ -25,6 +25,9 @@ env.config.arm_stage（無い・enabled=False なら元のまま）:
+       ここでは回ごとに press_ref_noise の片寄りを足す）の水平 press_radius 以内・当てる点より press_drop 以上低い所にあり、
+       手とレバーの力（実機はトルクから出す）が press_force 以上の歩が press_hold 歩つづいたら放す。既定の線は 11-10 に s2e の評価の
+       記録（学習に無い扉・256 回）で決めた: 真の 30° の 251 回のうち 227 回で立ち、早すぎ（レバー 10° 未満）3 回・遅れは中央 0.1 s
++  handover_door_deg: 指定すると、扉がこの角度 [°] に届いた台に「引き継いだ」の印（env.arm_handover_buf）を立て、回の終わりまで残す
++    （パッチ 0101・11-10 ユーザー「引き継ぎは f3t3（2 つの方策）」）。評価（eval.handover_policy_path）がこの印を見て行動を f3t3 に替える
++  complete_through: True なら完了を段や扉の角度で決めず、元の通り抜け（_stage_5_to_complete_condition）に戻す（引き継ぎの評価用）
+   start_vel: 回の始めの胴の速さ・角速さの乱択の幅 [m/s・rad/s]（元は ±0.5。立ったまま始めるので既定 ±0.1）
+ 
+ ここは torch の関数だけ（Isaac Sim なしで試験できる）。環境（door_open_homie.py）が呼ぶ。
+@@ -60,9 +63,13 @@ def arm_stage_config(cfg) -> dict | None:
+     assert release in ("lever_true", "palm_press"), f"arm_stage.release は lever_true か palm_press: {release}"
+     press = {k: float(cfg.get(k, v)) for k, v in PRESS_DEFAULTS.items()}
+     assert press["press_radius"] > 0 and press["press_force"] >= 0 and press["press_hold"] >= 1, f"arm_stage の press_*: {press}"
++    handover = cfg.get("handover_door_deg", None)
++    handover = None if handover is None else float(handover)
++    assert handover is None or handover > 0.0, f"arm_stage.handover_door_deg は正: {handover}"
+     return {"start_range": rng, "start_stage": start_stage, "complete_stage": complete_stage, "start_vel": start_vel,
+             "complete_door_deg": door_deg, "free_legs_when_unlatched": bool(cfg.get("free_legs_when_unlatched", False)),
+-            "release": release, **press}
++            "release": release, **press, "handover_door_deg": handover,
++            "complete_through": bool(cfg.get("complete_through", False))}
+ 
+ 
+ 
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 83f6b64..ac0e086 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -178,6 +178,7 @@ class DoorPregrasp(
+             self._press_ref = torch.full((self.num_envs, 3), float("nan"), device=self.device)
+             self._press_bias = torch.zeros(self.num_envs, 3, device=self.device)
+             self._press_count = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
++            self.arm_handover_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)  # 0101
+             legs = "掛け金が外れるまで" if self._arm_stage["free_legs_when_unlatched"] else "毎歩"
+             print(f"[arm_stage] 腕だけの段 {self._arm_stage}・脚は{legs} 立つ HOMIE（歩く指令の積み上げを 0）")
+ 
+@@ -1411,6 +1412,8 @@ class DoorPregrasp(
+             self._door_opened_once[env_ids] = False
+         if hasattr(self, "_arm_legs_free"):  # 0099: 回の始めは脚を止める
+             self._arm_legs_free[env_ids] = False
++        if hasattr(self, "arm_handover_buf"):  # 0101: 回の始めは腕の方策
++            self.arm_handover_buf[env_ids] = False
+         if hasattr(self, "_press_count"):  # 0100: 当てる点は測り直し、片寄りは回ごとに引き直す
+             self._press_count[env_ids] = 0
+             self._press_ref[env_ids] = float("nan")
+@@ -1613,6 +1616,10 @@ class DoorPregrasp(
+         # reset_buf は整数（0/1）の入れ物（base_task.py）。整数のまま台を選ぶと「0 番と 1 番の台」を指すので真偽にする（11-02 に踏んだ）
+         base_reset = self.reset_buf.bool() if getattr(self, "state_recorder", None) is not None else None
+         self.reset_buf |= self.relative_door_pos_buf.norm(dim=-1) > 4.0
++        arm = getattr(self, "_arm_stage", None)
++        if arm is not None and arm["handover_door_deg"] is not None:  # 0101: 引き継ぎの印（扉が角度に届いた台・回の終わりまで残す）
++            hinge = self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 0]
++            self.arm_handover_buf |= torch.rad2deg(torch.abs(hinge)) >= arm["handover_door_deg"]
+ 
+         dof_overspeed = torch.any(
+             torch.abs(self.simulator.dof_vel[:, self._upper_non_finger_dof_idx])
+@@ -1831,7 +1838,7 @@ class DoorPregrasp(
+ 
+     def _stage_5_to_complete_condition(self):
+         arm = getattr(self, "_arm_stage", None)
+-        if arm is not None:  # G1_Hackason（0097）: 腕だけの段は complete_stage（既定 4＝扉 10°）に入ったら完了
++        if arm is not None and not arm["complete_through"]:  # G1_Hackason（0097）: 腕だけの段は complete_stage（既定 4＝扉 10°）に入ったら完了
+             # 0098: complete_door_deg があれば扉の角度で（引き継ぎの角度をラッチが外れた所まで下げる）
+             hinge = self.simulator.scene.articulations["door"].data.joint_pos.torch[:, 0]
+             return arm_stage_complete(self.stage_buf, arm["complete_stage"], hinge, arm["complete_door_deg"])
+diff --git a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+index e100984..87faab0 100644
+--- a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
++++ b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+@@ -2065,6 +2065,20 @@ class TRLPPOTrainer(PPOTrainer):
+         print(f"Loaded checkpoint from step {self.state.global_step}")
+         return checkpoint
+ 
++    def _load_handover_policy(self):
++        """G1_Hackason（0101）: 引き継ぐ先の方策（eval.handover_policy_path）。今の方策の写しに重みを読む（網の形・観測は同じ前提）"""
++        import copy
++
++        path = self.config.eval.handover_policy_path
++        policy = copy.deepcopy(self.accelerator.unwrap_model(self.model).policy)
++        checkpoint = torch.load(path, map_location=self.accelerator.device, weights_only=False)
++        key = "actor_model_state_dict" if "actor_model_state_dict" in checkpoint else "policy_state_dict"
++        policy.load_state_dict(checkpoint[key])
++        policy.eval_mode()
++        policy.init_rollout()
++        print(f"[handover] 引き継ぐ先の方策 {path}（記憶 {self.config.eval.get('handover_hidden', 'shadow')}）")
++        return policy
++
+     def eval(self):
+         self._eval_mode()
+         self.env.set_is_evaluating()
+@@ -2136,6 +2150,13 @@ class TRLPPOTrainer(PPOTrainer):
+                 self.config.eval.get("vision_dataset_shard", 2000),
+             )
+ 
++        # G1_Hackason（0101、11-10）: 引き継ぎの評価。eval.handover_policy_path の方策（f3t3）を毎歩いっしょに回し、
++        # env.arm_handover_buf（arm_stage.handover_door_deg）が立った台の行動をそちらに替える。eval.handover_hidden:
++        #   "shadow"（既定）: 回の始めから影で回して記憶（LSTM）を温めておく ／ "zero": 替える歩で記憶を 0 にしてから回す
++        handover = self._load_handover_policy() if self.config.get("eval", {}).get("handover_policy_path", None) else None
++        handover_zero = str(self.config.get("eval", {}).get("handover_hidden", "shadow")) == "zero"
++        handed = None
++
+         with torch.no_grad():
+             with unwrap_model_for_generation(
+                 self.model,
+@@ -2152,6 +2173,13 @@ class TRLPPOTrainer(PPOTrainer):
+ 
+                     actions = policy_model.rollout(obs_dict=obs_dict)
+                     action_mean = policy_model.action_mean.detach()
++                    if handover is not None:
++                        now = self.env.arm_handover_buf.clone()
++                        if handover_zero and handed is not None and bool((now & ~handed).any()):
++                            handover.reset((now & ~handed).float())
++                        handover.rollout(obs_dict=obs_dict)
++                        action_mean = torch.where(now[:, None], handover.action_mean.detach(), action_mean)
++                        handed = now
+ 
+                     homie_obs = obs_dict["homie_obs"]
+                     walk_out = homie_walk_model(homie_obs)
+-- 
+2.43.0
+
