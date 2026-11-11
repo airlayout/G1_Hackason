@@ -188,6 +188,18 @@ class TestFaceTracker(unittest.TestCase):
         self.assertAlmostEqual(out.distance_m, 1.002)
         self.assertAlmostEqual(out.left_edge_m, 0.25)  # 3 枚中 2 枚で分かった
 
+    def test_outlier_is_tolerated(self) -> None:
+        """直近 5 枚のうち 1 枚だけ外れていても、残りがそろえばまとめる（乱しありの評価環境で、そろわずに止まった）。"""
+        tr = FaceTracker(CFG["tracking"])
+        self.assertIsNone(tr.add(self.face(0.744, -4.7)))
+        self.assertIsNone(tr.add(self.face(0.727, 0.2)))
+        out = tr.add(self.face(0.727, 0.1))
+        self.assertIsNone(out)  # 3 枚のうち 2 枚しかそろっていない
+        self.assertIn("ばらつく", tr.last_reject)
+        out = tr.add(self.face(0.728, 0.1))
+        self.assertIsNotNone(out)
+        self.assertAlmostEqual(out.distance_m, 0.727, places=3)
+
     def test_waits_when_moving(self) -> None:
         tr = FaceTracker(CFG["tracking"])
         tr.add(self.face(1.00))

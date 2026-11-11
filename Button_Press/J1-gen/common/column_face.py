@@ -380,29 +380,41 @@ class FaceFinder:
 
 
 class FaceTracker:
-    """新しいフレームで続けて測り、ばらつきが小さければ中央値を返す（ButtonTracker と同じ考え方）。"""
+    """新しいフレームで続けて測り、直近 window 枚のうち中央値に近い frames 枚以上がそろえば、その中央値を返す。
+
+    ButtonTracker（3 枚続けてそろう）と違い、外れ値が 1〜2 枚混ざってもよい（乱しありの評価環境で、3 枚のうち 1 枚だけ
+    距離 2 cm・向き 5° 外れて、15 フレーム使ってもそろわずに止まった）。
+    """
 
     def __init__(self, cfg: dict[str, Any]) -> None:
         self.frames = int(cfg["frames"])
+        self.window = int(cfg.get("window", self.frames))
         self.max_spread_m = float(cfg["max_spread_m"])
         self.max_yaw_spread_deg = float(cfg["max_yaw_spread_deg"])
         self.samples: list[ColumnFace] = []
+        self.last_reject = ""  # そろわなかったときの理由（ばらつき）
 
     def reset(self) -> None:
         self.samples.clear()
+        self.last_reject = ""
 
     def add(self, face: ColumnFace) -> ColumnFace | None:
         """1 フレーム分を足す。そろってばらつきが小さければ、まとめた結果を返す（そうでなければ None）。"""
         self.samples.append(face)
+        self.samples = self.samples[-self.window:]
         if len(self.samples) < self.frames:
             return None
-        s = self.samples[-self.frames:]
+        d_all = np.array([f.distance_m for f in self.samples])
+        y_all = np.array([f.yaw_rad for f in self.samples])
+        md, my = float(np.median(d_all)), float(np.median(y_all))
+        keep = (np.abs(d_all - md) <= self.max_spread_m / 2) & (np.degrees(np.abs(y_all - my)) <= self.max_yaw_spread_deg / 2)
+        if int(keep.sum()) < self.frames:
+            self.last_reject = ("続けて測るとばらつく（距離 " + "・".join(f"{v * 100:.1f}" for v in d_all) + " cm、向き "
+                                + "・".join(f"{v:+.1f}" for v in np.degrees(y_all)) + "°）")
+            return None
+        s = [f for f, k in zip(self.samples, keep) if k]
         d = np.array([f.distance_m for f in s])
         y = np.array([f.yaw_rad for f in s])
-        if np.ptp(d) > self.max_spread_m or np.degrees(np.ptp(y)) > self.max_yaw_spread_deg:
-            # 古いほうから捨てて、次のフレームを待つ
-            self.samples.pop(0)
-            return None
         k = int(np.argsort(d)[len(d) // 2])  # 距離が中央値のフレームの法線・足を使う
 
         def med(vals: list[float | None]) -> float | None:

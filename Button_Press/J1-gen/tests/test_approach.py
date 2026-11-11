@@ -247,10 +247,14 @@ class TestApproacher(unittest.TestCase):
     def test_edge_jump_is_ignored(self) -> None:
         """柱の端が 1 回分ではありえないほど飛んだら（別の段の端）、端では直さず前へ進む。"""
         m = Measurement("face", 0.9, 0.0, None, left_edge_m=0.40, right_edge_m=None)
-        d = decide(m, None, {}, {"right": STAND_R}, APP, dry_mover(), {"left": 0.07})
-        self.assertEqual(d.pulse.axis, "forward")
-        m = Measurement("face", 0.9, 0.0, None, left_edge_m=0.15, right_edge_m=None)
-        self.assertEqual(decide(m, None, {}, {"right": STAND_R}, APP, dry_mover(), {"left": 0.07}).pulse.axis, "left")
+        d = decide(m, None, {}, {"right": STAND_R}, APP, dry_mover(), {"left": 0.07}, {"left": 0.07})
+        self.assertEqual(d.pulse.axis, "forward")  # 前の観測から 33 cm 飛んだ
+        m = Measurement("face", 0.9, 0.0, None, left_edge_m=0.19, right_edge_m=None)  # 最初から 12 cm ずれた
+        self.assertEqual(decide(m, None, {}, {"right": STAND_R}, APP, dry_mover(), {"left": 0.07}, {"left": 0.07}).pulse.axis,
+                         "left")
+        m = Measurement("face", 0.9, 0.0, None, left_edge_m=0.25, right_edge_m=None)  # 最初から 18 cm、前の観測からは 6 cm
+        self.assertEqual(decide(m, None, {}, {"right": STAND_R}, APP, dry_mover(), {"left": 0.07}, {"left": 0.19}).pulse.axis,
+                         "left")
 
     def test_dry_run_stops_after_first_decision(self) -> None:
         fake = FakeLoco()
@@ -326,6 +330,18 @@ class TestHeadPerception(unittest.TestCase):
         m = hp.measure()
         self.assertEqual(m.source, "face")
         self.assertEqual((m.side_hint_m, m.side_hint_source), (-0.05, "head_single"))
+
+        # 柱の面から離れた物（奥行き 15 cm 手前）や、フレームごとに左右が飛ぶ物は使わない
+        OneButton.last_buttons = [Button3D(np.array([0.45, -0.05, 0.14]), 0.035, "down", (0, 0, 1, 1), 100, "")]
+        self.assertIsNone(HeadPerception(lambda: frame, OneButton(), Wall(), el, CFG["face"], APP).measure().side_hint_m)
+        ys = iter([0.58, -0.64, 0.64, -0.36] * 10)
+
+        class Jumpy(OneButton):
+            @property
+            def last_buttons(self) -> list:  # type: ignore[override]
+                return [Button3D(np.array([0.6, next(ys), 0.14]), 0.035, "down", (0, 0, 1, 1), 100, "")]
+
+        self.assertIsNone(HeadPerception(lambda: frame, Jumpy(), Wall(), el, CFG["face"], APP).measure().side_hint_m)
 
 
 @needs("pin", "models")

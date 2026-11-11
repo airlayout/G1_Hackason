@@ -145,6 +145,8 @@ class HeadPerception:
         self.face_tracker = FaceTracker(face_cfg["tracking"])
         self.max_frames = int(cfg["max_frames"])
         self.column_tol = float(elevator_cfg["geometry"]["column_tolerance_m"])
+        self.single_depth_tol = float(cfg["single_depth_tol_m"])
+        self.single_min_frames = int(cfg["single_min_frames"])
         self.skip_after_move = int(cfg["skip_frames_after_move"])
         self._skip = 0
         self.last_reason = ""
@@ -158,7 +160,7 @@ class HeadPerception:
     def measure(self) -> Measurement | None:
         face_m: Measurement | None = None
         why = {"▲▼": "", "柱の面": ""}
-        single_y: float | None = None
+        singles: list[list[np.ndarray]] = []  # フレームごとの、組にならなかったボタンの位置（pelvis 座標）
         for _ in range(self.max_frames + self._skip):
             fr = self.get_frame()
             if fr is None:
@@ -176,22 +178,21 @@ class HeadPerception:
                 except ButtonNotFound as e:
                     self.button_tracker.reset()
                     why["▲▼"] = str(e)
-                    # 組にならなくても、3 次元の位置が出たボタンが同じ柱（左右が column_tolerance 以内）にあれば、その左右
-                    ys = [float(b.center[1]) for b in getattr(self.buttons, "last_buttons", [])]
-                    if ys and np.ptp(ys) <= self.column_tol:
-                        single_y = float(np.median(ys))
+                    # 組にならなくても、3 次元の位置が出たボタンを覚えておく（最後に、柱の面の上にあり、2 フレーム以上で
+                    # 同じ左右に見えたものだけを手がかりにする。乱しありの評価環境では、ボタンでない物を 1 個だけ誤って
+                    # 見つけ、左右が ±60 cm 飛んで行ったり来たりした）
+                    singles.append([np.asarray(b.center, dtype=float) for b in getattr(self.buttons, "last_buttons", [])])
             try:
                 fm = self.face_tracker.add(self.face.find(fr.depth, fr.K, qw, fr.imu_quat))
                 if fm is not None:
                     face_m = Measurement.from_face(fm, np.asarray(fr.q, dtype=float).copy())
-                elif len(self.face_tracker.samples) >= self.face_tracker.frames:
-                    s = self.face_tracker.samples
-                    why["柱の面"] = ("続けて測るとばらつく（距離 " + "・".join(f"{f.distance_m * 100:.1f}" for f in s)
-                                   + " cm、向き " + "・".join(f"{np.degrees(f.yaw_rad):+.1f}" for f in s) + "°）")
+                elif self.face_tracker.last_reject:
+                    why["柱の面"] = self.face_tracker.last_reject
             except FaceNotFound as e:
                 self.face_tracker.reset()
                 why["柱の面"] = str(e)
         if face_m is not None:
+            single_y = self._single_side(singles, face_m.face)
             if single_y is not None:
                 face_m.side_hint_m, face_m.side_hint_source = single_y, "head_single"
             if self.webcam is not None and face_m.face is not None:
@@ -203,6 +204,24 @@ class HeadPerception:
         self.last_reason = (f"{self.max_frames} フレームで ▲▼ も柱の面もそろわない（最後の理由: "
                             + "、".join(f"{k}: {v}" for k, v in why.items() if v) + "）")
         return None
+
+
+    def _single_side(self, singles: list[list[np.ndarray]], face: ColumnFace | None) -> float | None:
+        """組にならなかったボタンのうち、柱の面の上（奥行きが面と single_depth_tol_m 以内）にあり、single_min_frames 以上の
+        フレームで、しかも見えたフレームの半分以上で同じ左右（column_tolerance 以内）に見えたものの左右（中央値）。無ければ None。"""
+        if face is None or not singles:
+            return None
+        ys = []
+        for found in singles:
+            ok = [float(c[1]) for c in found if abs(float(-face.normal @ c) - face.distance_m) <= self.single_depth_tol]
+            if ok and np.ptp(ok) <= self.column_tol:
+                ys.append(float(np.median(ok)))
+        if len(ys) < self.single_min_frames:
+            return None
+        med = float(np.median(ys))
+        agree = [y for y in ys if abs(y - med) <= self.column_tol]
+        # 見えたフレームの半分以上で同じ左右（飛び回る誤検出は、同じ値が何度か出ても半分には届かない）
+        return float(np.median(agree)) if len(agree) >= max(self.single_min_frames, 0.5 * len(ys)) else None
 
 
 # ---- 押せるか -------------------------------------------------------------------
@@ -260,10 +279,12 @@ def edge_shift(m: Measurement, ref: dict[str, float]) -> float | None:
 
 
 def decide(m: Measurement, feasible_arm: str | None, reasons: dict[str, str], stands: dict[str, dict[str, Any]],
-           cfg: dict[str, Any], mover: LocoMover, edge_ref: dict[str, float] | None = None) -> Decision:
+           cfg: dict[str, Any], mover: LocoMover, edge_ref: dict[str, float] | None = None,
+           edge_prev: dict[str, float] | None = None) -> Decision:
     """観測から、止まる（ready）・1 回動く（move）・やめる（abort）を決める。
 
-    stands は腕ごとの勧める立つ位置。edge_ref は最初に見えた柱の端（面しか見えないうちに左右を保つのに使う）。
+    stands は腕ごとの勧める立つ位置。edge_ref は最初に見えた柱の端（面しか見えないうちに左右を保つのに使う）、
+    edge_prev は前の観測の柱の端（端が 1 回分ではありえないほど飛んだかを見る）。
     """
     d = m.distance_m
     if d < float(cfg["min_safe_dist_m"]):
@@ -329,11 +350,13 @@ def decide(m: Measurement, feasible_arm: str | None, reasons: dict[str, str], st
                                             f"から {hint_err * 100:+.1f} cm。{way}へ", p)
         else:
             shift = edge_shift(m, edge_ref or {})
-            if shift is not None and abs(shift) > float(cfg["max_edge_shift_m"]):
-                # 1 回分で横にずれうる量より大きい。柱と壁の段が近い（評価環境は 1 cm）と、手前の段が柱になったり壁になったりして
-                # 端が飛ぶ（+33 cm と出た）。別の段の端を見ているとみなし、端では直さない
+            jump = edge_shift(m, edge_prev or {})
+            if jump is not None and abs(jump) > float(cfg["max_edge_shift_m"]):
+                # 前の観測から、1 回分で横にずれうる量より大きく飛んだ。柱と壁の段が近い（評価環境は 1 cm）と、手前の段が柱に
+                # なったり壁になったりして端が飛ぶ（+33 cm と出た）。別の段の端を見ているとみなし、端では直さない
+                # （飛びは前の観測からの変化で見る。最初の位置からの合計で見ると、少しずつ溜まったずれまで捨てた）
                 shift = None
-            if shift is not None and abs(shift) > float(cfg["side_tol_m"]):
+            if shift is not None and abs(shift) > float(cfg["edge_tol_m"]):
                 p = mover.plan("left" if shift > 0 else "right", abs(shift))
                 if p is not None and is_safe(p):
                     return Decision("move", f"柱の端が最初より {shift * 100:+.1f} cm ずれた（体が{'右' if shift > 0 else '左'}へずれた）。"
@@ -390,8 +413,9 @@ class Approacher:
         self.cfg = cfg
         self.log = log
         self.stands = {a: feasibility.stand(a) for a in feasibility.arms}
-        # 最初に見えた柱の端（人が置いた左右の位置）。端ごとに、初めて分かったときの値を覚える
+        # 最初に見えた柱の端（人が置いた左右の位置）。端ごとに、初めて分かったときの値を覚える。edge_prev は前の観測の端
         self.edge_ref: dict[str, float] = {}
+        self.edge_prev: dict[str, float] = {}
 
     def run(self) -> ApproachResult:
         steps: list[dict[str, Any]] = []
@@ -405,7 +429,9 @@ class Approacher:
                     if v is not None and name not in self.edge_ref and m.source == "face":
                         self.edge_ref[name] = v
                 arm, reasons = self.feasibility.check(m) if m.source == "buttons" else (None, {})
-                dec = decide(m, arm, reasons, self.stands, self.cfg, self.mover, self.edge_ref)
+                dec = decide(m, arm, reasons, self.stands, self.cfg, self.mover, self.edge_ref, self.edge_prev)
+                if m.source == "face":
+                    self.edge_prev = {k: v for k, v in (("left", m.left_edge_m), ("right", m.right_edge_m)) if v is not None}
                 row: dict[str, Any] = {"step": k + 1, "source": m.source, "distance_m": m.distance_m,
                                        "yaw_deg": float(np.degrees(m.yaw_rad)), "side_m": m.side_m,
                                        "left_edge_m": m.left_edge_m, "right_edge_m": m.right_edge_m,

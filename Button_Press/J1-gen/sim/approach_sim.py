@@ -116,7 +116,7 @@ def main() -> int:
                 state["robot"] = robot_at(fake.pose)
                 state["robot"].advance(float(contest_cfg.get("settle_s", 0.0)))
                 state["t"] = 0.0
-                tr = true_rel(fake.pose, d0, y0)
+                tr = true_rel(fake.pose, d0, y0, base_realism)
                 print(f"  （本当の値: 柱まで {tr['dist_m'] * 100:.1f} cm、ボタン {tr['side_m'] * 100:+.1f} cm、向き {tr['yaw_deg']:+.1f}°）")
             r = state["robot"]
             ob = r.observe(state["t"])
@@ -149,7 +149,8 @@ def main() -> int:
         row = {"seed": seed, "target": target, "start": {"dist_m": d0, "side_m": y0, "yaw_deg": float(np.degrees(yaw0))},
                "legs": {"rate_ratio": fake.rate_ratio, "heading_error_deg": float(np.degrees(fake.heading_error))},
                "outcome": res.outcome, "reason": res.reason, "arm": res.arm, "moves": len(fake.calls),
-               "steps": res.steps, "approach_s": round(time.time() - t0, 1), "true_final": true_rel(fake.pose, d0, y0)}
+               "steps": res.steps, "approach_s": round(time.time() - t0, 1),
+               "true_final": true_rel(fake.pose, d0, y0, base_realism)}
         if res.outcome == "ready" and not args.no_press:
             state["robot"].close()
             os.environ["J1GEN_ARM"] = res.arm
@@ -195,12 +196,23 @@ def hall_offset(pose: np.ndarray, base) -> dict:
     return {"stance_xy": o, "stance_yaw": yh + float(base.stance_yaw)}
 
 
-def true_rel(pose: np.ndarray, d0: float, y0: float) -> dict:
-    """歩いたあとの、本当の柱までの距離・ボタンの左右（体の座標）・向き（乱しの立ち位置のずれは含めない）。"""
-    x, y, yaw = (float(v) for v in pose)
-    c, s = np.cos(yaw), np.sin(yaw)
-    rel = np.array([d0 - x, y0 - y])
-    return {"dist_m": float(d0 - x), "side_m": float(-s * rel[0] + c * rel[1]), "yaw_deg": float(np.degrees(-yaw))}
+def true_rel(pose: np.ndarray, d0: float, y0: float, base=None) -> dict:
+    """歩いたあとの、本当の柱までの距離・ボタンの左右（体の座標）・向き。
+
+    乗り場を実際に置いた位置（hall_offset。評価セット realistic の立ち位置のずれ base も含む）から計算する。
+    ボタンは最初の pelvis の座標で (d0, y0)、柱の面はそこを通り x に垂直。
+    """
+    if base is None:
+        x, y, yaw = (float(v) for v in pose)
+        c, s = np.cos(yaw), np.sin(yaw)
+        rel = np.array([d0 - x, y0 - y])
+        return {"dist_m": float(d0 - x), "side_m": float(-s * rel[0] + c * rel[1]), "yaw_deg": float(np.degrees(-yaw))}
+    off = hall_offset(pose, base)
+    o, yh = np.asarray(off["stance_xy"], dtype=float), float(off["stance_yaw"])
+    R = np.array([[np.cos(yh), -np.sin(yh)], [np.sin(yh), np.cos(yh)]])
+    b = o + R @ np.array([d0, y0])
+    n = R @ np.array([1.0, 0.0])
+    return {"dist_m": float(n @ b), "side_m": float(b[1]), "yaw_deg": float(np.degrees(yh))}
 
 
 def quiet_realism(r, MujocoRobot, scene: dict, contest_cfg: dict, robot_model):
