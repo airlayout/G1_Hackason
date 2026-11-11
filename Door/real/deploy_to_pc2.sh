@@ -51,8 +51,10 @@ if [ "${1:-}" != check ]; then
          "$HERE/door_depth_shm.py" "$HERE/pc2/depth_relay.py"  # 11-06: 深度は機体の python3（3.8）の pyrealsense2 の中継で受ける
          # 11-10 手順 L2: FAST-LIO（ボクセル 0.25）の姿勢を扉の座標にして送る口と、起こす・止める台本
          "$HERE/door_fastlio_node.py" "$HERE/fastlio_cfg_1110/fastlio_g1_vox025.yaml" "$HERE/pc2/fastlio_start.sh" "$HERE/pc2/fastlio_stop.sh"
+         "$HERE/door_cloud_fix.py"  # 11-11 T3（R5）: 段 0 の点群で扉の座標を直す（口の --cloud-fix・fastlio_start.sh の DOOR_CLOUD_FIX）
          # 11-10 手順 L4: 段の走らせ役（door_run_stock.py --staged）の部品・手のひらの扉の角度（L2b）・左腕の順運動学と URDF
          "$HERE/door_staged.py" "$HERE/door_run_staged.py" "$HERE/hand_door_angle.py" "$HERE/g1_arm_fk.py"
+         "$HERE/arm_replay.py" "$HERE/pc2/run_replay.sh"  # 11-11 R1・R4: 腕の動きの再生・腰 yaw の打ち消し（door_run_stock.py が読む）
          "$HERE/../doorman6/usd_fix/urdf_src/g1_29dof_rev_1_0.urdf")
   for ext in _encoder.npz _encoder.onnx _meta.json; do  # 画像の生徒の書き出しなら、画像の網の重みも配る（meta で rgbd かを見る）
     for POLICY in "$@"; do [ -f "${POLICY%.npz}$ext" ] && FILES+=("${POLICY%.npz}$ext"); done

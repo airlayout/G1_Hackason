@@ -10,7 +10,7 @@
 #   DOOR=<幅,高さ,レバーの高さ,バックセット> ./door_start.sh run_staged.sh
 #     例: DOOR=0.94,2.05,0.99,0.064 PELVIS_Z=0.75 STOP_DEG=3 ./door_start.sh run_staged.sh   （段 2 の 3° で止める日）
 #         DOOR=0.94,2.05,0.99,0.064 NOSEND=1 ./door_start.sh run_staged.sh                     （送らずに段 0 の値だけ見る）
-#   S2F       腕だけの方策の npz（既定 door_policy_s2f_it79500.npz）
+#   S2F       腕だけの方策の npz（既定 door_policy_s2g_it80700.npz＝11-11 の s2g・外乱とすき間の罰で学んだ。前は s2f_it79500）
 #   F3T3      引き継ぐ教師の npz（既定 door_policy_f3t3.npz）
 #   NET       段 0 の目の網の npz（既定 door_vision_c2.npz。隣に _encoder.onnx と _meta.json）
 #   PELVIS_Z  立った pelvis の床からの高さ [m]（既定 0.75 は置いた値。巻き尺で測って渡す。レバーを下げたかの判定の高さに効く）
@@ -22,12 +22,13 @@
 #   NO_RELEASE=1  段 2 の間は脚を放さない（11-11 の切り分け）
 #   TAPE      段 0 を巻き尺で: 左つま先→板,右つま先→板,左つま先←把手の側の縁,右つま先←縁 [m]（例 0.65,0.64,0.55,0.75）
 #   STOP_STAGE この段に入ったら立ったまま止まる（1＝段 0 が終わった所・2＝構えの位置に入った所・3＝f3t3 へ引き継ぐ所）
+#   WAIST_GAIN 段 2 の方策で脚を放す前の間、腰 yaw で体の回りを打ち消す倍率（既定 0＝切。R4）。WAIST_MAX [°]（既定 35）・WAIST_RATE [rad/s]（既定 1.0）
 #   NOSEND=1  腕も歩きも送らない（--no-send）。d を打つと段 0 の網の値・FAST-LIO の口の値が記録と表示に出る（機体は動かない）
 #   PITCH     カメラの俯角 [°]。既定 auto＝起こす前にカメラの加速度計で測る（cam_tilt.py。止まって立っていること）
 #   MAX_VX・ARM_TEMP・ARM_TEMP_HOLD・RPC_TIMEOUT・LOCO・ODOM・VPY・VTHREADS は run_vision.sh と同じ
 cd ~/door_real || exit 1
 : "${DOOR:?扉の寸法を DOOR=幅,高さ,レバーの高さ,バックセット [m] で渡す（巻き尺）}"
-S2F="${S2F:-door_policy_s2f_it79500.npz}"
+S2F="${S2F:-door_policy_s2g_it80700.npz}"
 F3T3="${F3T3:-door_policy_f3t3.npz}"
 NET="${NET:-door_vision_c2.npz}"
 ENC="${NET%.npz}_encoder.onnx"
@@ -96,5 +97,6 @@ if [ -n "$CAM_TILT" ]; then ARGS+=(--cam-tilt-deg "$CAM_TILT"); else ARGS+=(--he
 [ -n "${STAGE2_S:-}" ] && ARGS+=(--stage2-max-s "$STAGE2_S")
 [ "${NO_RELEASE:-0}" = 1 ] && ARGS+=(--no-leg-release)
 [ -n "${TAPE:-}" ] && ARGS+=(--stage0-tape "$TAPE")
+[ -n "${WAIST_GAIN:-}" ] && ARGS+=(--waist-comp-gain "$WAIST_GAIN" --waist-comp-max-deg "${WAIST_MAX:-35}" --waist-comp-rate "${WAIST_RATE:-1.0}")
 [ "${NOSEND:-0}" = 1 ] && ARGS+=(--no-send)
 exec python3 -u door_run_stock.py "${ARGS[@]}"

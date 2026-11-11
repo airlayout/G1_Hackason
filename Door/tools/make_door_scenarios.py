@@ -18,6 +18,7 @@ DoorSpawnerCfg の引数だけを差し替える。タスク名（＝ディレ�
 | door_en1154_g13_shaped_left_lpos | 2-4b-1 の学習用 | door_en1154_g13_shaped_left とレバーの位置だけが違う（高さ 0.85〜1.10 m・バックセット 30〜100 mm。実物は約 1.0 m・64 mm） |
 | door_en1154_g13_shaped_left_lever | 2-4b-2 の学習用 | door_en1154_g13_shaped_left_lpos とレバーの形だけが違う（長さ 100〜160 mm・断面は丸と四角。実物は約 142 mm・四角） |
 | door_en1154_g13_shaped_left_weight | 2-4b-3 の学習用 | door_en1154_g13_shaped_left_lever と扉の重さだけが違う（15〜120 kg。既定は 80〜120 kg。上限は切り捨てない） |
+| door_en1154_g13_shaped_left_weight_realwall | 段 2 の直し K6a（11-11） | door_en1154_g13_shaped_left_weight と壁・枠の前の面の出だけが違う（壁 1 cm・枠 3 cm。元は 5・6 cm。パッチ 0104 の door.py が要る） |
 | door_room4_g13 | 2-4 の学習用 | door_room4_wide の範囲で、等級 1〜3 を台ごとに 1/3 ずつ・実物の形のクローザー・レバーの力の下限 0.5 N·m |
 
 使い方:
@@ -250,6 +251,22 @@ def main() -> None:
         "（段 2-4b-2 の学習用）", "（段 2-4b-3 の学習用）", 1
     )
     write(tasks_dir, "door_en1154_g13_shaped_left_weight", weight_body)
+
+    # パッチ 0104・11-11（計画 docs/plan/2026-11-11-g1-door-stage2-fix.md の K6a）: 壁と枠の出を実物に。
+    # 11-11 の実機は手が壁の前を 2〜4 cm でかすめた。実物の壁は扉の板の表の約 1 cm 手前・枠の前の角は約 3 cm（巻き尺 IMG_1113〜1115）、
+    # シムは壁 5 cm・枠 6 cm。door.py の wall_front_out・cover_front_out は乱数を引かないので、同じ種なら同じ扉で壁と枠だけが違う
+    weight_line = "    door_weight=(15.0, 120.0),  # 扉の板の重さ [kg]（段 2-4b-3。既定は 80〜120）\n"
+    if weight_body.count(weight_line) != 1:
+        raise ValueError("door_en1154_g13_shaped_left_weight に door_weight の行が 1 つでない")
+    realwall_body = weight_body.replace(
+        weight_line,
+        weight_line
+        + "    wall_front_out=0.01,  # 壁（脇と上）の前の面の扉の板の表からの出 [m]（0104。元は 0.05。実物 約 0.01）\n"
+        + "    cover_front_out=0.03,  # 枠の前の面の出 [m]（0104。元は 0.06。実物 約 0.03）\n",
+    ).replace("・扉の重さ 15〜120 kg を広く（段 2-4b-3）。", "・扉の重さ 15〜120 kg を広く（段 2-4b-3）・壁 1 cm と枠 3 cm の出を実物に（0104）。", 1).replace(
+        "（段 2-4b-3 の学習用）", "（0104・K6a の評価用）", 1
+    )
+    write(tasks_dir, "door_en1154_g13_shaped_left_weight_realwall", realwall_body)
 
     # 段 2-4 の学習用（2026-10-13 のユーザー判断）: UIS Room 4 を含む広い範囲（door_room4_wide）で、クローザーは等級 1〜3 を
     # 実物の形で。台 i は i % 3 + 1 の等級（1/3 ずつ。等級ごとに効率の最小が違うので扉を 3 つ並べる）。等級 4 は評価だけ

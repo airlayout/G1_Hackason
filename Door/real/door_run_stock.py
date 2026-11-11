@@ -57,6 +57,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arm_replay as arp  # noqa: E402  11-11: R1 腕の動きの再生・R4 腰 yaw の打ち消し
 import door_core as dc  # noqa: E402
 import door_foot_load as dfl  # noqa: E402
 import door_frame as dfr  # noqa: E402
@@ -311,7 +312,38 @@ def parse_args(argv=None) -> argparse.Namespace:
                     help="--staged: 段 0 を巻き尺で「左つま先→板,右つま先→板,左つま先←把手の側の縁,右つま先←縁」[m]。網は比べるだけ")
     ap.add_argument("--staged-stop-stage", type=int, default=None,
                     help="--staged: この段に入ったら立ったまま止まる（1＝段 0 が終わった所・2＝構えの位置に入った所・3＝f3t3 へ引き継ぐ所）")
+    # 11-11（計画 docs/plan/2026-11-11-g1-door-stage2-decision.md の R1・R4）
+    ap.add_argument("--replay-arm", default=None,
+                    help="R1: DOOR で方策の代わりに、この記録（door_stock_*.npz）の段 2 の腕の送り値を同じ時刻で流す。脚は立ったまま（歩き 0）。"
+                         "扉から離れた何も無い所で使う（--door-source tape --start-x=-1 --start-y=0 --odom none と組で）")
+    ap.add_argument("--replay-segment", choices=arp.SEGMENTS, default="policy",
+                    help="--replay-arm: policy＝段 2 の方策の区間・stage2＝腕の構え（2.5 s）を含む段 2 の全部")
+    ap.add_argument("--replay-speed", type=float, default=1.0, help="--replay-arm: 速さの倍率（0.5 で半分の速さ＝R2）")
+    ap.add_argument("--replay-max-yaw-deg", type=float, default=45.0,
+                    help="[deg] --replay-arm: 再生を始めた時からの体の回り（IMU の yaw）がこれを越えたら立ったまま止まる。"
+                         "R1 の判定（10° 以上回るか）が見えるよう、10° 付近には置かない")
+    ap.add_argument("--waist-comp-gain", type=float, default=0.0,
+                    help="R4: 腰 yaw の打ち消しの倍率（0 で切）。--replay-arm の DOOR・--staged の段 2 の方策の間、体の回りの逆を腰 yaw の目標に足し、"
+                         "方策の扉の値は打ち消した胴の向きで渡す（シムのパッチ 0105 と同じ）")
+    ap.add_argument("--waist-comp-max-deg", type=float, default=35.0, help="[deg] R4: 打ち消しの上限")
+    ap.add_argument("--waist-comp-rate", type=float, default=1.0, help="[rad/s] R4: 打ち消しの変化の速さの上限（止めた後に 0 へ戻す速さも）")
     a = ap.parse_args(argv)
+    if a.replay_arm is not None and a.staged:
+        ap.error("--replay-arm は --staged と一緒に使わない（扉から離れた所で腕だけを流す）")
+    # レビューの指摘（11-11）: nan は大小の比べをすり抜けるので、有限かと上限も確かめる（腰は kp 250。腕のような NaN の門が無い）
+    def in_range(v: float, lo: float, hi: float, lo_open: bool) -> bool:
+        return math.isfinite(v) and (v > lo if lo_open else v >= lo) and v <= hi
+
+    if not in_range(a.replay_speed, 0.0, 2.0, True):
+        ap.error(f"--replay-speed は 0 より大きく 2 以下: {a.replay_speed}")
+    if not in_range(a.replay_max_yaw_deg, 0.0, 90.0, True):
+        ap.error(f"--replay-max-yaw-deg は 0 より大きく 90 以下: {a.replay_max_yaw_deg}")
+    if not in_range(a.waist_comp_gain, 0.0, 2.0, False):
+        ap.error(f"--waist-comp-gain は 0 以上 2 以下: {a.waist_comp_gain}")
+    if not in_range(a.waist_comp_max_deg, 0.0, 45.0, True):
+        ap.error(f"--waist-comp-max-deg は 0 より大きく 45 以下: {a.waist_comp_max_deg}")
+    if not in_range(a.waist_comp_rate, 0.0, 2.0, True):
+        ap.error(f"--waist-comp-rate は 0 より大きく 2 以下: {a.waist_comp_rate}")
     if a.run_seconds is None:
         a.run_seconds = 180.0 if a.staged else 5.0  # --staged の段 0〜3 は 5 秒では終わらない（段 1 だけで 60 秒まで）
     if a.staged:
@@ -558,6 +590,20 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
     max_tilt, stop_tilt, max_stand_tilt = (math.radians(v) for v in (a.max_tilt_deg, a.stop_tilt_deg, a.max_stand_tilt_deg))
     kp_arm, kd_arm, q_arm_goal = p.kp[ARMS], p.kd[ARMS], p.q_default[ARMS]
     lo_arm, hi_arm = p.q_lower[ARMS], p.q_upper[ARMS]
+    replay: Optional[arp.ReplayTrack] = None
+    if a.replay_arm is not None:  # 11-11 R1: 構える姿勢は再生の最初の行（記録の方策の始め＝学習の初めの姿勢の近く）
+        replay = arp.load_replay(a.replay_arm, a.replay_segment, a.replay_speed)
+        q_arm_goal = np.clip(replay.arm[0], lo_arm + a.clip_margin, hi_arm - a.clip_margin)
+        print(f"[door_stock] --replay-arm: {replay.source} の {replay.segment}・{len(replay.t)} 行・{replay.duration:.2f} 秒"
+              f"（倍率 {replay.speed}）・回りの止め {a.replay_max_yaw_deg:.0f}°", flush=True)
+        if a.run_seconds < replay.duration:
+            a.run_seconds = replay.duration + 1.0
+            print(f"[door_stock] --replay-arm: --run-seconds を再生の長さに合わせて {a.run_seconds:.1f} 秒に", flush=True)
+    guard_delta = np.asarray(p.arm_guard_delta if p.arm_guard_delta is not None else dc.ARM_GUARD[0], dtype=float)
+    wc_cfg = arp.WaistCompConfig(a.waist_comp_gain, math.radians(a.waist_comp_max_deg), a.waist_comp_rate)
+    if a.waist_comp_gain > 0.0:
+        print(f"[door_stock] R4 腰 yaw の打ち消し: 倍率 {a.waist_comp_gain}・上限 {a.waist_comp_max_deg:.0f}°・速さ {a.waist_comp_rate} rad/s"
+              "（--replay-arm の DOOR・--staged の段 2 の方策の間）", flush=True)
 
     io = drr.RobotIO(a.iface, send=False, use_odom=(a.odom == "dog"))  # rt/lowcmd は送らない（受け取りだけ）
     t_wait = time.monotonic()
@@ -673,6 +719,10 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
     prev_now = None
     last_print = 0.0
     t_exit = None
+    replay_t0: Optional[float] = None  # R1: 再生を始めた時刻（DOOR に入った周期）
+    replay_yaw0: Optional[float] = None  # R1: 再生を始めた時の IMU の yaw
+    waist_hold: Optional[np.ndarray] = None  # R4: 腕を借りた時の腰の角度（打ち消しはこの yaw に足す）
+    wc_state, wc_off, wc_rate = arp.WaistCompState(), 0.0, 0.0
 
     def go(new: str, why: str = "") -> None:
         nonlocal phase, phase_t, reason, reached_t, damp_left, arm_target
@@ -790,12 +840,15 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
             pol, vmsg = None, None
             odom_ok = 0.0
             dec = None  # --staged の段の決め事
+            wc_done = False  # R4: この周期に打ち消しを進めたか（READY・DOOR の中で進める。ほかの段では下で 0 へ戻す）
+            arm_prev = arm_target  # R1: 前の周期に送った腕の目標（再生の 1 周期の変化の上限の基準。方策の出力で上書きされる前に覚える）
             try:
                 if phase == "WAIT" and "a" in cmds:
                     arm_home = q[ARMS].copy()
                     arm_target = arm_home.copy()
                     if arm_io is not None:  # 腰は借りる直前の純正の角度で保つ（書かないと重み 1 で腰が脱力する）
                         arm_io.hold_waist(q[WAIST], p.kp[WAIST], p.kd[WAIST])
+                    waist_hold = q[WAIST].copy()  # R4: 打ち消しはこの角度に足す
                     weight = 0.0
                     go("ARMS_IN", "腕を借りる")
                 elif phase == "POST" and probe_vx_req(cmds) is not None:
@@ -865,6 +918,8 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                         else:
                             s = dc.reset_actor(p, s)
                             complete = 0.0
+                            if replay is not None:  # R1: この周期から再生する
+                                replay_t0, replay_yaw0 = now, dfr.yaw_from_quat_wxyz(quat)
                             if staged is not None:
                                 staged.begin(now)
                                 p_cur, staged_prev_mode = p, "hold"
@@ -885,8 +940,18 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                         s = dc.reset_actor(p_use, s)  # 段 2 の方策の始め（シムの回の始めと同じく記憶と腕の積み上げを 0 から）
                     if use_dec:
                         staged_prev_mode = mode
-                    inp = dc.Inputs(q=q, dq=dq, gyro=gyro, gravity=gravity, door_angle=dec.angle if use_dec else doorv.angle,
-                                    door_frame_loc=dfr.door_frame_loc(pose, quat), door_geometry=geometry, complete=complete)
+                    # R4: 腰 yaw の打ち消しは、再生の DOOR と、段 2 の方策で脚を放す前（歩きの積み上げを 0 に止めている間）だけ。
+                    # 脚を放した後や f3t3 の歩きは意図した回りなので打ち消さない（0 へ戻す）
+                    wc_active = phase == "DOOR" and (replay is not None or (use_dec and mode == "door" and dec.stage == 2
+                                                                            and dec.zero_walk))
+                    wc_state, wc_off, wc_rate = arp.waist_comp_step(wc_state, dfr.yaw_from_quat_wxyz(quat), wc_active, DT, wc_cfg)
+                    wc_done = True
+                    q_in, dq_in, pose_in = q, dq, pose
+                    if wc_off != 0.0:  # 方策には打ち消した胴の向きの扉の値と、打ち消しを引いた腰を渡す（段の部品には上で実の q を渡した）
+                        q_in, dq_in = arp.hide_waist(q, dq, wc_off, wc_rate)
+                        pose_in = arp.torso_pose(pose, wc_off)
+                    inp = dc.Inputs(q=q_in, dq=dq_in, gyro=gyro, gravity=gravity, door_angle=dec.angle if use_dec else doorv.angle,
+                                    door_frame_loc=dfr.door_frame_loc(pose_in, quat), door_geometry=geometry, complete=complete)
                     pol, vmsg = vision_policy(vp, feats, quat, q, head_pitch, p.mirror,
                                                  p if a.vision_actor == "teacher" else None) if vp is not None else (None, None)
                     s, out = dc.step(p_use, s, inp, mode=mode, policy=pol)
@@ -911,11 +976,26 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                         sender.set(walk, min(vx, a.max_vx), vy, wz)
                     else:
                         arm_target = (arm_hold if arm_hold is not None else q_arm_goal).copy()
+                    if replay is not None and phase == "DOOR" and replay_t0 is not None:
+                        # R1: 方策の腕の代わりに記録の腕を流す。走らせ役の積み上げの守り（今の角度 ±δ）を通らないので、ここで切り直す
+                        tr = now - replay_t0
+                        dyaw = arp.wrap_angle(dfr.yaw_from_quat_wxyz(quat) - replay_yaw0)
+                        if tr > replay.duration:
+                            go("POST", f"再生の終わり（{replay.duration:.2f} 秒）")
+                        elif abs(dyaw) > math.radians(a.replay_max_yaw_deg):
+                            go("POST", f"体の回り {math.degrees(dyaw):+.1f}°（--replay-max-yaw-deg {a.replay_max_yaw_deg:.0f}）")
+                        else:
+                            want = arp.guard_lead(arp.track_at(replay, tr), q[ARMS], guard_delta)
+                            arm_target = tg.limit_sent_target(want, arm_prev, lo_arm, hi_arm,
+                                                              margin=a.clip_margin, max_step=drr.MAX_TARGET_STEP)
+                        sender.set(False, 0.0, 0.0, 0.0)  # 脚は立ったまま（方策の歩きを送らない）
             except Exception as e:  # noqa: BLE001  方策の計算の誤りでは脱力せず、立ったまま腕を保つ
                 print(f"[door_stock] 計算で例外: {type(e).__name__}: {e}", flush=True)
                 out = None
                 if phase in ("ARMS_IN", "READY", "DOOR", "ARMS_OUT", "PROBE"):
                     go("POST", f"例外 {type(e).__name__}")
+            if not wc_done:  # R4: 打ち消しの段の外（POST・ARMS_OUT など）では 0 へ戻す
+                wc_state, wc_off, wc_rate = arp.waist_comp_step(wc_state, dfr.yaw_from_quat_wxyz(quat), False, DT, wc_cfg)
 
             # --- 送る（腕だけ。歩きは送る糸が送る） ---
             sent_arm = arm_target
@@ -927,6 +1007,15 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
             elif arm_target is not None and np.isfinite(arm_target).all():
                 if a.roll_press_max > 0 and phase in ("DOOR", "POST") and np.isfinite(q[ARMS]).all():
                     sent_arm = cap_roll_press(arm_target, q[ARMS], kp_arm, a.roll_press_max)
+                if arm_io is not None and wc_cfg.gain > 0.0 and waist_hold is not None:
+                    # R4: 腰は借りた時の角度＋腰 yaw の打ち消しで保つ（切っている時は借りた時の 1 回だけ書く、元のまま）。
+                    # 切るのは yaw だけ（roll・pitch は借りた時の値のまま）。有限でなければ借りた時の角度に戻して立ったまま止まる
+                    waist_cmd = arp.waist_with_yaw(waist_hold, wc_off, p.q_lower[WAIST[0]], p.q_upper[WAIST[0]])
+                    if not np.isfinite(waist_cmd).all():
+                        wc_state, wc_off, wc_rate = arp.WaistCompState(), 0.0, 0.0
+                        waist_cmd = waist_hold
+                        go("POST", "腰 yaw の打ち消しが有限でない")
+                    arm_io.hold_waist(waist_cmd, p.kp[WAIST], p.kd[WAIST])
                 if arm_io is not None:
                     arm_io.write(sent_arm, kp_arm, kd_arm, weight)
                 if phase == "WAIT":
@@ -944,7 +1033,13 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                        vel_sent=vst.sent, vel_status_age=vst.age_s, odom=np.array(odom) if odom is not None else np.full(3, np.nan),
                        odom_age=(now - odom_t) if odom_t is not None else np.inf, odom_ok=odom_ok,
                        foot_fz=np.array([forces.fz_left, forces.fz_right]), door_angle_obs=doorv.angle,
-                       arm_temp=arm_temps(state))  # 11-04: 温度の山か上がり続けかを記録で見分ける
+                       arm_temp=arm_temps(state),  # 11-04: 温度の山か上がり続けかを記録で見分ける
+                       # 11-11 R1・R4: [再生の時刻 s（DOOR の間）, 再生を始めてからの回り °]・[腰 yaw の打ち消し rad, その速さ rad/s, 基準の yaw rad]。
+                       # 列の長さをそろえるため、使わない周期も NaN で毎周期書く
+                       replay=np.array([now - replay_t0 if (replay_t0 is not None and phase == "DOOR") else np.nan,
+                                        math.degrees(arp.wrap_angle(dfr.yaw_from_quat_wxyz(quat) - replay_yaw0))
+                                        if replay_yaw0 is not None else np.nan]),
+                       waist_comp=np.array([wc_off, wc_rate, wc_state.yaw0 if wc_state.yaw0 is not None else np.nan]))
             if vp is not None:
                 row.update(vision_row(vp, out, vmsg, pol, now))
             if lidar is not None:
@@ -996,6 +1091,18 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
         # 腕を借りたまま輪の外へ出た（輪の外側の例外）ときは、今の目標を保ったまま重みを 2 秒で 0 へ（純正へ返す）
         if arm_io is not None and arm_target is not None and weight > 0.0 and phase != "DAMP":
             print("[door_stock] 腕を借りたまま終わる: 重みを 2 秒で 0 へ戻す", flush=True)
+            # R4（レビューの指摘）: 腰 yaw の打ち消しが残っていれば、重みを下げる前に借りた時の角度へ戻す（ねじれたまま純正へ返さない）
+            off = wc_off if math.isfinite(wc_off) else 0.0
+            while wc_cfg.gain > 0.0 and waist_hold is not None and off != 0.0:
+                off = off - max(-wc_cfg.rate * DT, min(wc_cfg.rate * DT, off))
+                try:
+                    arm_io.hold_waist(arp.waist_with_yaw(waist_hold, off, p.q_lower[WAIST[0]], p.q_upper[WAIST[0]]),
+                                      p.kp[WAIST], p.kd[WAIST])
+                    arm_io.write(arm_target, kp_arm, kd_arm, weight)
+                except Exception as e:  # noqa: BLE001  返すことを優先する
+                    print(f"[door_stock] arm_sdk の送信に失敗: {type(e).__name__}: {e}", flush=True)
+                    break
+                time.sleep(DT)
             while weight > 0.0:
                 weight = max(0.0, weight - DT / WEIGHT_RAMP_S)
                 try:

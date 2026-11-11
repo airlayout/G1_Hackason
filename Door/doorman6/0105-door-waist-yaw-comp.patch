@@ -1,0 +1,207 @@
+From a1ce030934a226a1a9ce72c461909715c5628c84 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Wed, 11 Nov 2026 12:08:30 +0900
+Subject: [PATCH] door: optional waist yaw compensation of the pelvis turn
+ (env.config.waist_yaw_comp reads the pelvis yaw change since the episode
+ start at every step before the 0104 disturbance, one step behind like the
+ real IMU, and adds minus gain times it, clamped to max_deg, to the waist yaw
+ target that HOMIE sent, so that the torso carrying the arms keeps its
+ heading; door_obs=torso turns the door frame position and orientation given
+ to the policy back by the compensation, since the pelvis frame sees the door
+ turn and the policy would also correct with the arm; hide_obs subtracts the
+ compensation from the waist yaw angle and rate in the policy and HOMIE
+ observations before the mirroring; on 11-11 the real stock legs turned the
+ body by +10 to +29 deg just before the hand came down and the real runner can
+ add to the waist target held through arm_sdk; with the disturbance imposed
+ from outside, the reaction of the waist that would turn the real pelvis
+ further is not modelled; default off = unchanged) (11-11)
+
+---
+ .../envs/base_task/finger_primitive_base.py   |  5 ++
+ gr00t/rl/envs/door/door_open_homie.py         | 46 ++++++++++++++
+ gr00t/rl/envs/door/waist_yaw_comp.py          | 63 +++++++++++++++++++
+ 3 files changed, 114 insertions(+)
+ create mode 100644 gr00t/rl/envs/door/waist_yaw_comp.py
+
+diff --git a/gr00t/rl/envs/base_task/finger_primitive_base.py b/gr00t/rl/envs/base_task/finger_primitive_base.py
+index 9cca231..543a7d1 100644
+--- a/gr00t/rl/envs/base_task/finger_primitive_base.py
++++ b/gr00t/rl/envs/base_task/finger_primitive_base.py
+@@ -117,6 +117,11 @@ class FingerPrimitiveBase(LeggedRobotBase):
+             press = self.config.get("shoulder_roll_press_max_nm", None)
+             if press is not None:
+                 combined_target = self._cap_shoulder_roll_press(combined_target, float(press))
++            # G1_Hackason（0105、11-11）: 腰 yaw で体の回りを打ち消す（扉の環境の waist_yaw_comp・waist_yaw_comp.py）。
++            # 回の始めからの pelvis の回りの逆を、腰 yaw の目標（HOMIE の出力）に足す。既定は無し＝元のまま
++            off = getattr(self, "_wyc_offset", None)
++            if off is not None:
++                combined_target[:, self._wyc_idx] = combined_target[:, self._wyc_idx] + off
+             for i, primitive_cfg in enumerate(self._primitive_action_map):
+                 inheritrange = primitive_cfg["inheritrange"]
+                 p0 = primitive_cfg["pos_0"]
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 98bf06a..5794a78 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -44,6 +44,7 @@ from gr00t.rl.envs.door.door_mirror import DoorMirror
+ from gr00t.rl.envs.door.door_state_sensor import DoorStateSensor
+ from gr00t.rl.envs.door.reset_from_dataset import ResetFromDataset
+ from gr00t.rl.envs.door.walk_away import walk_away_amount
++from gr00t.rl.envs.door.waist_yaw_comp import comp_offset, rotate_rel_yaw, waist_yaw_comp_config, wrap_angle, yaw_from_xyzw
+ from gr00t.rl.envs.door.yaw_disturb import ramp_offset, rotate_root_state_wxyz, sample_disturb, yaw_disturb_config
+ from gr00t.rl.isaac_utils.playground.env_rand.door_closer import closer_torque
+ from gr00t.rl.isaac_utils.rotations import quat_to_tan_norm, wxyz_to_xyzw, xyzw_to_wxyz
+@@ -195,6 +196,15 @@ class DoorPregrasp(
+             self._yd_resample(torch.arange(self.num_envs, device=self.device))
+             print(f"[yaw_disturb] 段 2 の途中で胴を回す外乱 {self._yaw_disturb}")
+ 
++        # G1_Hackason（パッチ 0105、11-11）: 腰 yaw で体の回りを打ち消す（waist_yaw_comp.py）。既定は切で、元と同じ
++        self._wyc = waist_yaw_comp_config(self.config.get("waist_yaw_comp", None))
++        if self._wyc is not None:
++            self._wyc_idx = list(self.config.robot.dof_names).index("waist_yaw_joint")
++            self._wyc_yaw0 = torch.zeros(self.num_envs, device=self.device)
++            self._wyc_offset = torch.zeros(self.num_envs, device=self.device)
++            self._wyc_prev = torch.zeros(self.num_envs, device=self.device)
++            print(f"[waist_yaw_comp] 腰 yaw で体の回りを打ち消す {self._wyc}・腰 yaw の関節 {self._wyc_idx}")
++
+         # G1_Hackason: どちらの手で把手を取りに行くか。元の DoorMan は把手と反対の手（door_open_lr < 0 で左手。
+         # このとき把手は機体の右）で、体の前を横切って取りに行く。lever_side_hand: True なら把手と同じ側の手を使う
+         # （指の無い 29 関節版では左手が把手に届かず、区間 1→2 で止まった。2026-10-07 の評価で 0/121）
+@@ -450,6 +460,9 @@ class DoorPregrasp(
+             pose = self._door_carry.step(pose_true, env_ids=env_ids)
+             self._door_carry_err = (pose - pose_true).detach()  # 記録・確かめ用（運んだ値 − 本当の値）
+             rel_pos, rel_rot = door_rel_from_planar(pose, root[:, 3:7], door[:, 3:7])
++        wyc = getattr(self, "_wyc", None)
++        if wyc is not None and wyc["door_obs"] == "torso":  # 0105: 打ち消した胴の向きから見た扉の値にする
++            rel_pos, rel_rot = rotate_rel_yaw(rel_pos, rel_rot, -self._wyc_offset)
+         pos, rot = self.door_sensor.localize(rel_pos, rel_rot)
+         if env_ids is None:
+             self._door_frame_loc_pos, self._door_frame_loc_rot = pos, rot
+@@ -1429,6 +1442,9 @@ class DoorPregrasp(
+             self.arm_handover_buf[env_ids] = False
+         if hasattr(self, "_yd_applied"):  # 0104: 外乱は回ごとに引き直し、足した回りは 0 から
+             self._yd_resample(env_ids)
++        if hasattr(self, "_wyc_offset"):  # 0105: 打ち消しは 0 から（基準の向きは回の始めの歩で取り直す）
++            self._wyc_offset[env_ids] = 0.0
++            self._wyc_prev[env_ids] = 0.0
+         if hasattr(self, "_press_count"):  # 0100: 当てる点は測り直し、片寄りは回ごとに引き直す
+             self._press_count[env_ids] = 0
+             self._press_ref[env_ids] = float("nan")
+@@ -1571,8 +1587,36 @@ class DoorPregrasp(
+         self._yd_applied = self._yd_applied + delta
+         self.log_dict["yaw_disturb_deg"] = torch.rad2deg(self._yd_applied.abs()).mean()
+ 
++    def _wyc_update(self):
++        """0105: 回の始めからの pelvis の回りを読み、腰 yaw の打ち消しを決める（この歩の外乱より前に読む＝1 歩遅れ。実機の IMU と同じ扱い）。
++        回の始め（episode_length_buf <= 1。リセットで書いた姿勢が物理を 1 回通った後まで）で基準の向きを取り直す"""
++        yaw = yaw_from_xyzw(self.simulator.robot_root_states[:, 3:7])
++        fresh = self.episode_length_buf <= 1
++        self._wyc_yaw0 = torch.where(fresh, yaw, self._wyc_yaw0)
++        offset = comp_offset(wrap_angle(yaw - self._wyc_yaw0), self._wyc["gain"], self._wyc["max_rad"])
++        self._wyc_prev = torch.where(fresh, torch.zeros_like(offset), self._wyc_offset)
++        self._wyc_offset = torch.where(fresh, torch.zeros_like(offset), offset)
++
++    def _wyc_hide_obs(self):
++        """0105: 方策と HOMIE の観測の腰 yaw の角度・角速度から打ち消しの分を引く（写しを書き換える。critic はそのまま）"""
++        raw = self.obs_buf_dict_raw
++        scales = self.config.obs.obs_scales
++        vel = (self._wyc_offset - self._wyc_prev) / self.dt
++        for group, kp, kv in (("actor_obs", "dof_pos", "dof_vel"), ("homie_obs", "e_homie_dof_pos", "f_homie_dof_vel")):
++            if group not in raw.keys():
++                continue
++            for key, val in ((kp, self._wyc_offset), (kv, vel)):
++                if key in raw[group].keys():
++                    x = raw[group][key].clone()
++                    x[:, self._wyc_idx] = x[:, self._wyc_idx] - val * float(scales[key])
++                    raw[group][key] = x
++                    if group == "homie_obs" and key in self.hist_obs_dict.keys():
++                        self.hist_obs_dict[key] = x  # HOMIE の履歴も同じ値にする
++
+     @override
+     def step(self, actor_state):
++        if getattr(self, "_wyc", None) is not None:  # 0105: 腰の打ち消しを決める（外乱の前に読む）
++            self._wyc_update()
+         if getattr(self, "_yaw_disturb", None) is not None:  # 0104: 物理の前に胴を回す
+             self._apply_yaw_disturb()
+         # G1_Hackason（段 2-4）: 鏡に映した世界での教師の行動を、本当の向きに映し戻す（脚の HOMIE の行動は本当の向きのまま）
+@@ -1588,6 +1632,8 @@ class DoorPregrasp(
+ 
+     @override
+     def _post_config_observation_callback(self):
++        if getattr(self, "_wyc", None) is not None and self._wyc["hide_obs"]:  # 0105: 鏡写しの前に打ち消しの分を引く
++            self._wyc_hide_obs()
+         if getattr(self, "_any_mirror", False):
+             self._mirror_policy_obs()
+         super()._post_config_observation_callback()
+diff --git a/gr00t/rl/envs/door/waist_yaw_comp.py b/gr00t/rl/envs/door/waist_yaw_comp.py
+new file mode 100644
+index 0000000..214130b
+--- /dev/null
++++ b/gr00t/rl/envs/door/waist_yaw_comp.py
+@@ -0,0 +1,63 @@
++"""腰 yaw で体（pelvis）の回りを打ち消す口（G1_Hackason 計画 docs/plan/2026-11-11-g1-door-stage2-fix.md の K3、パッチ 0105、2026-11-11）。
++
++11-11 の実機の段 2 は、手が下りる直前に純正の脚の上で体が +10〜29° 回り、手が把手の側へ 9〜14 cm ずれて空振りした。
++腰 yaw を回りと逆へ回せば、腕の付いている胴の向きは保てる（実機は arm_sdk が腰を持っているので、走らせ役が腰の目標に足せる）。
++シムでは: 毎歩、回の始めからの pelvis の回り Δ を読み（1 歩遅れ。実機の IMU と同じ扱い）、腰 yaw の目標に −倍率·Δ（上限で切る）を足す。
++  door_obs="torso": 方策に渡す扉の枠の位置と向きを、打ち消した胴の向きへ回して渡す（pelvis から見た扉は回って見えるので、そのまま
++    だと方策が腕でも直そうとして二重に直す）。"pelvis" は元のまま
++  hide_obs=True: 方策と HOMIE の観測の腰 yaw の角度・角速度から、打ち消しの分を引く（どちらも学習で見たことのない腰の角度を見ない）
++⚠️ シムの外乱（0104）は回りを外から決めて与えるので、腰を回す反作用で pelvis がさらに回る、という実機の効き方は出ない（上限の見積もり）
++
++env.config.waist_yaw_comp（無い・enabled=False なら元のまま）:
++  enabled: True で有効
++  gain: 倍率（既定 1.0）
++  max_deg: 打ち消しの上限 [°]（既定 35）
++  door_obs: torso / pelvis（既定 torso）
++  hide_obs: 既定 True
++
++ここは torch の関数だけ（Isaac Sim なしで試験できる）。環境（door_open_homie.py）と finger_primitive_base.py が呼ぶ。
++"""
++
++from __future__ import annotations
++
++import math
++
++import torch
++
++
++def waist_yaw_comp_config(cfg) -> dict | None:
++    """env.config.waist_yaw_comp を読んで確かめる。無い・enabled=False なら None"""
++    if cfg is None or not bool(cfg.get("enabled", False)):
++        return None
++    gain = float(cfg.get("gain", 1.0))
++    assert gain >= 0.0, f"waist_yaw_comp.gain は 0 以上: {gain}"
++    max_deg = float(cfg.get("max_deg", 35.0))
++    assert max_deg > 0.0, f"waist_yaw_comp.max_deg は正: {max_deg}"
++    door_obs = str(cfg.get("door_obs", "torso"))
++    assert door_obs in ("torso", "pelvis"), f"waist_yaw_comp.door_obs は torso か pelvis: {door_obs}"
++    return {"gain": gain, "max_rad": math.radians(max_deg), "door_obs": door_obs, "hide_obs": bool(cfg.get("hide_obs", True))}
++
++
++def wrap_angle(a: torch.Tensor) -> torch.Tensor:
++    return torch.atan2(torch.sin(a), torch.cos(a))
++
++
++def yaw_from_xyzw(q: torch.Tensor) -> torch.Tensor:
++    x, y, z, w = q.unbind(-1)
++    return torch.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
++
++
++def comp_offset(dyaw: torch.Tensor, gain: float, max_rad: float) -> torch.Tensor:
++    """腰 yaw の目標に足す打ち消し [rad] = −倍率 × 回り（±上限で切る）"""
++    return torch.clamp(-gain * dyaw, -max_rad, max_rad)
++
++
++def rotate_rel_yaw(rel_pos: torch.Tensor, rel_rot_xyzw: torch.Tensor, angle: torch.Tensor):
++    """機体から見た位置 [n, 3] と向き（xyzw）[n, 4] を、機体の鉛直軸のまわりに angle [rad]（[n]）回した新しいテンソル"""
++    c, s = torch.cos(angle), torch.sin(angle)
++    pos = torch.stack([c * rel_pos[:, 0] - s * rel_pos[:, 1], s * rel_pos[:, 0] + c * rel_pos[:, 1], rel_pos[:, 2]], dim=-1)
++    hz, hw = torch.sin(angle / 2), torch.cos(angle / 2)
++    x, y, z, w = rel_rot_xyzw.unbind(-1)
++    # q_z(angle) ⊗ q（xyzw）
++    rot = torch.stack([hw * x - hz * y, hw * y + hz * x, hw * z + hz * w, hw * w - hz * z], dim=-1)
++    return pos, rot
+-- 
+2.43.0
+

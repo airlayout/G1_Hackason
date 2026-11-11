@@ -1,0 +1,266 @@
+From aff20fcbfde24ef8a1b512dacdbb2517579e30e5 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Wed, 11 Nov 2026 13:33:24 +0900
+Subject: [PATCH] door: optional clearance penalty to the door frame covers and
+ the walls with an adaptive weight (env.config.wall_gap: for the fingertip,
+ palm, wrist, forearm middle and elbow of both arms, the fingertip being the
+ palm plus tip_m along wrist to palm as in the real forward kinematics, the
+ top view signed distance to the cover boxes from the opening edge over the
+ cover width and to the wall boxes beyond, on both sides, gives a cost of the
+ sum of max(0, x_m - d) / x_m, so that passing close is penalised before
+ touching; rewards.reward_scales.wall_gap_lagrange=1.0 returns minus lambda
+ times the cost, and at every episode end the episodes that came within x_m
+ once count as violations, whose rate as an exponential moving average moves
+ lambda up while above target_rate and down otherwise between 0 and
+ lambda_max, kept in state_path across chain rounds and not updated while
+ evaluating; the door customData now carries coverWidth, coverFrontX,
+ wallFrontX and gapWidth; x_m 0.06 since on 11-11 the real hand touched the
+ frame and the wall in two runs while the model points were 3.3 to 4.5 cm
+ away, plus about 1 cm left after correcting stage 0 with the point cloud
+ (user, option 2); default off = unchanged) (11-11)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py         |  67 ++++++++++++
+ gr00t/rl/envs/door/wall_gap.py                | 100 ++++++++++++++++++
+ .../isaac_utils/playground/env_rand/door.py   |   5 +
+ 3 files changed, 172 insertions(+)
+ create mode 100644 gr00t/rl/envs/door/wall_gap.py
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 5794a78..1fbaf9d 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -45,6 +45,7 @@ from gr00t.rl.envs.door.door_state_sensor import DoorStateSensor
+ from gr00t.rl.envs.door.reset_from_dataset import ResetFromDataset
+ from gr00t.rl.envs.door.walk_away import walk_away_amount
+ from gr00t.rl.envs.door.waist_yaw_comp import comp_offset, rotate_rel_yaw, waist_yaw_comp_config, wrap_angle, yaw_from_xyzw
++from gr00t.rl.envs.door.wall_gap import arm_points, gap_cost, gap_to_walls, lagrange_step, to_door_frame, wall_gap_config
+ from gr00t.rl.envs.door.yaw_disturb import ramp_offset, rotate_root_state_wxyz, sample_disturb, yaw_disturb_config
+ from gr00t.rl.isaac_utils.playground.env_rand.door_closer import closer_torque
+ from gr00t.rl.isaac_utils.rotations import quat_to_tan_norm, wxyz_to_xyzw, xyzw_to_wxyz
+@@ -144,6 +145,11 @@ class DoorPregrasp(
+             name: torch.full((self.num_envs,), 1.0 if name == "efficiency" else 0.0, device=self.device)
+             for name in DOOR_CLOSER_METADATA_KEYS
+         }
++        # G1_Hackason（0106）: 枠の幅・枠と壁の前の面の x（扉の座標）・扉と枠のすき間。記録の無い扉（0106 より前の生成）は元の値
++        self.door_cover_width = torch.full((self.num_envs,), 0.04, device=self.device)
++        self.door_cover_front_x = torch.full((self.num_envs,), -0.08, device=self.device)
++        self.door_wall_front_x = torch.full((self.num_envs,), -0.07, device=self.device)
++        self.door_gap_width = torch.full((self.num_envs,), 0.002, device=self.device)
+ 
+         for env_id in range(self.num_envs):
+             door_prim_path = f"/World/envs/env_{env_id}/door"
+@@ -160,6 +166,10 @@ class DoorPregrasp(
+             self.door_hinge_max_force[env_id] = float(door_metadata.get("hingeDriveMaxForce", 0.0))
+             self.door_hinge_stiffness[env_id] = float(door_metadata.get("hingeDriveStiffness", 0.0))
+             self.door_hinge_target_deg[env_id] = float(door_metadata.get("hingeDriveTargetDeg", 0.0))
++            self.door_cover_width[env_id] = float(door_metadata.get("coverWidth", 0.04))  # 0106
++            self.door_cover_front_x[env_id] = float(door_metadata.get("coverFrontX", -0.08))
++            self.door_wall_front_x[env_id] = float(door_metadata.get("wallFrontX", -0.07))
++            self.door_gap_width[env_id] = float(door_metadata.get("gapWidth", 0.002))
+             if door_metadata.get("closerShaped", False):
+                 self.door_closer_shaped[env_id] = True
+                 for name, key in DOOR_CLOSER_METADATA_KEYS.items():
+@@ -205,6 +215,24 @@ class DoorPregrasp(
+             self._wyc_prev = torch.zeros(self.num_envs, device=self.device)
+             print(f"[waist_yaw_comp] 腰 yaw で体の回りを打ち消す {self._wyc}・腰 yaw の関節 {self._wyc_idx}")
+ 
++        # G1_Hackason（パッチ 0106、11-11）: 枠と壁へのすき間の罰（wall_gap.py）。既定は切で、元と同じ
++        self._wg = wall_gap_config(self.config.get("wall_gap", None))
++        if self._wg is not None:
++            names = self.simulator.body_names
++            self._wg_wrist_idx = [names.index(f"{s}_wrist_yaw_link") for s in ("left", "right")]
++            self._wg_elbow_idx = [names.index(f"{s}_elbow_link") for s in ("left", "right")]
++            self._wg_edge = self.door_width / 2 - self.door_gap_width
++            self._wg_min = torch.full((self.num_envs,), float("inf"), device=self.device)
++            self._wg_steps = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
++            self._wg_state = {"lambda": self._wg["lambda_init"], "rate": self._wg["rate_init"], "events": 0, "violations": 0}
++            path = self._wg["state_path"]
++            if path and os.path.exists(path):
++                with open(path) as fp:
++                    saved = json.load(fp)
++                self._wg_state.update({k: saved[k] for k in ("lambda", "rate") if k in saved})
++            print(f"[wall_gap] 枠と壁へのすき間の罰 {self._wg}・λ={self._wg_state['lambda']:.3f} 割合={self._wg_state['rate']:.3f}・"
++                  f"枠の前 x 中央 {float(self.door_cover_front_x.median()):+.3f}・壁の前 x 中央 {float(self.door_wall_front_x.median()):+.3f}")
++
+         # G1_Hackason: どちらの手で把手を取りに行くか。元の DoorMan は把手と反対の手（door_open_lr < 0 で左手。
+         # このとき把手は機体の右）で、体の前を横切って取りに行く。lever_side_hand: True なら把手と同じ側の手を使う
+         # （指の無い 29 関節版では左手が把手に届かず、区間 1→2 で止まった。2026-10-07 の評価で 0/121）
+@@ -1445,6 +1473,8 @@ class DoorPregrasp(
+         if hasattr(self, "_wyc_offset"):  # 0105: 打ち消しは 0 から（基準の向きは回の始めの歩で取り直す）
+             self._wyc_offset[env_ids] = 0.0
+             self._wyc_prev[env_ids] = 0.0
++        if hasattr(self, "_wg_min"):  # 0106: 終わった回の違反を数えて重みを進め、回の最小距離を戻す
++            self._wg_episode_end(env_ids)
+         if hasattr(self, "_press_count"):  # 0100: 当てる点は測り直し、片寄りは回ごとに引き直す
+             self._press_count[env_ids] = 0
+             self._press_ref[env_ids] = float("nan")
+@@ -1587,6 +1617,43 @@ class DoorPregrasp(
+         self._yd_applied = self._yd_applied + delta
+         self.log_dict["yaw_disturb_deg"] = torch.rad2deg(self._yd_applied.abs()).mean()
+ 
++    def _reward_wall_gap_lagrange(self):
++        """0106: 枠と壁へのすき間の罰 −λ·Σ max(0, X − d)/X（wall_gap.py）。報酬の重みは 1.0 で使う。回の最小距離も持つ"""
++        if getattr(self, "_wg", None) is None:
++            return torch.zeros(self.num_envs, device=self.device)
++        body = self.simulator._rigid_body_pos
++        palm = torch.stack([self._palm_pos("left"), self._palm_pos("right")], dim=1)
++        pts = arm_points(body[:, self._wg_wrist_idx], palm, body[:, self._wg_elbow_idx], self._wg["tip_m"])
++        door = self.simulator.get_task_root_state("door")  # [pos, wxyz, …]
++        d = gap_to_walls(to_door_frame(pts, door[:, :3], door[:, 3:7]), self._wg_edge, self.door_cover_front_x,
++                         self.door_wall_front_x, self.door_cover_width)
++        dmin = d.amin(dim=-1)
++        self._wg_min = torch.minimum(self._wg_min, dmin)
++        self._wg_steps = self._wg_steps + 1
++        lam = self._wg_state["lambda"]
++        self.log_dict["wall_gap_lambda"] = torch.tensor(lam, device=self.device)
++        self.log_dict["wall_gap_rate"] = torch.tensor(self._wg_state["rate"], device=self.device)
++        self.log_dict["wall_gap_in_frac"] = (dmin < self._wg["x_m"]).float().mean()
++        return -lam * gap_cost(d, self._wg["x_m"])
++
++    def _wg_episode_end(self, env_ids):
++        """0106: 回の終わり（リセット）に、回の中で一度でも X 以内に入ったかを数えて λ を進め、回の最小距離を戻す。
++        評価の間・1 歩も進んでいない回（始めのリセット）は数えない。λ は state_path に残す（区切りをまたいで続ける）"""
++        valid = self._wg_steps[env_ids] > 0
++        if not getattr(self, "is_evaluating", False) and bool(valid.any()):
++            viol = (self._wg_min[env_ids][valid] < self._wg["x_m"]).float()
++            st = self._wg_state
++            before = st["events"]
++            st["lambda"], st["rate"] = lagrange_step(st["lambda"], st["rate"], viol, self._wg)
++            st["events"] += int(viol.numel())
++            st["violations"] += int(viol.sum())
++            path, every = self._wg["state_path"], self._wg["save_every_events"]
++            if path and st["events"] // every != before // every:
++                with open(path, "w") as fp:
++                    json.dump({**st, "step": int(self.common_step_counter)}, fp)
++        self._wg_min[env_ids] = float("inf")
++        self._wg_steps[env_ids] = 0
++
+     def _wyc_update(self):
+         """0105: 回の始めからの pelvis の回りを読み、腰 yaw の打ち消しを決める（この歩の外乱より前に読む＝1 歩遅れ。実機の IMU と同じ扱い）。
+         回の始め（episode_length_buf <= 1。リセットで書いた姿勢が物理を 1 回通った後まで）で基準の向きを取り直す"""
+diff --git a/gr00t/rl/envs/door/wall_gap.py b/gr00t/rl/envs/door/wall_gap.py
+new file mode 100644
+index 0000000..d0d5c8b
+--- /dev/null
++++ b/gr00t/rl/envs/door/wall_gap.py
+@@ -0,0 +1,100 @@
++"""枠と壁へのすき間の罰（G1_Hackason 計画 docs/plan/2026-11-11-g1-door-stage2-decision.md 5 節 3、パッチ 0106、2026-11-11）。
++
++11-11 の実機は、段 2 の腕の振り出しで手が把手の側の枠・壁に当たった（1 回目・3 回目。手の外力 28〜35 N・肩 roll 6〜8 N·m）。
++その時、順運動学の模型の点（指先＝手のひら＋10 cm・手のひら・手首・前腕の中ほど・肘）は面から 3.3〜4.5 cm 離れて見えていた
++（模型と実際の手の形の差・揃えの残り）。段 0 を点群で直した後の残り約 1 cm を足して X = 6 cm（ユーザー 11-11「案 2」）。
++今までの当たりの罰（penalty_door_frame_contact）は触れた時だけで相手も絞っていないので、近くを通るだけなら罰にならなかった。
++
++罰: 左右の腕の模型の点 10 個の、上から見た枠・壁の箱までの距離 d から、費用 = Σ max(0, X − d) / X（触れると 1 点あたり 1）。
++  枠: 開口の縁（y = ±(幅/2 − すき間)）から枠の幅、前の面は扉の customData の coverFrontX。壁: その外、前の面は wallFrontX
++  縁の内でも枠の横の面に近ければ数える（付け根の近くを押す手も入る）
++重みの自動調整（10-20 のレバーの当たりの罰と同じ双対上昇）: 回の中で一度でも X 以内に入った回を違反とし、その割合（回ごとの
++  指数移動平均）が target_rate より多い間は λ を上げ、少なければ下げる（0〜lambda_max）。報酬は −λ·費用（重み 1.0 で使う）。
++  λ は state_path の JSON に残して区切りをまたいで続ける。評価の間は更新しない
++
++env.config.wall_gap（無い・enabled=False なら元のまま）:
++  enabled・x_m（0.06）・tip_m（0.10）・lambda_init（2.0）・lambda_max（50）・lr（0.002）・target_rate（0.1）・rate_init（1.0）・
++  rate_ema（0.002）・state_path（無し）・save_every_events（200）
++rewards.reward_scales.wall_gap_lagrange: 1.0
++
++ここは torch の関数だけ（Isaac Sim なしで試験できる）。環境（door_open_homie.py）が呼ぶ。
++"""
++
++from __future__ import annotations
++
++import torch
++
++DEFAULTS = {"x_m": 0.06, "tip_m": 0.10, "lambda_init": 2.0, "lambda_max": 50.0, "lr": 0.002, "target_rate": 0.1,
++            "rate_init": 1.0, "rate_ema": 0.002, "save_every_events": 200}
++DEPTH_M = 0.30  # 箱の奥行き（前の面から奥へ）。距離の計算に使うだけ
++FAR_M = 5.0  # 壁の箱の外への広がり
++
++
++def wall_gap_config(cfg) -> dict | None:
++    """env.config.wall_gap を読んで確かめる。無い・enabled=False なら None"""
++    if cfg is None or not bool(cfg.get("enabled", False)):
++        return None
++    out = {k: float(cfg.get(k, v)) for k, v in DEFAULTS.items()}
++    out["save_every_events"] = int(out["save_every_events"])
++    assert out["x_m"] > 0.0 and out["tip_m"] >= 0.0, f"wall_gap.x_m は正・tip_m は 0 以上: {out}"
++    assert 0.0 <= out["target_rate"] <= 1.0 and 0.0 < out["rate_ema"] <= 1.0, f"wall_gap.target_rate・rate_ema: {out}"
++    assert 0.0 <= out["lambda_init"] <= out["lambda_max"], f"wall_gap は 0 <= lambda_init <= lambda_max: {out}"
++    out["state_path"] = cfg.get("state_path", None)
++    return out
++
++
++def box_dist_2d(px: torch.Tensor, py: torch.Tensor, x0, x1, y0, y1) -> torch.Tensor:
++    """上から見た長方形 [x0,x1]×[y0,y1] までの符号つき距離（外は正・中は負）。境はテンソルでも数でもよい"""
++    dx = torch.maximum(x0 - px, px - x1)
++    dy = torch.maximum(y0 - py, py - y1)
++    outside = torch.hypot(dx.clamp(min=0.0), dy.clamp(min=0.0))
++    inside = torch.maximum(dx, dy).clamp(max=0.0)
++    return outside + inside
++
++
++def gap_to_walls(P: torch.Tensor, edge: torch.Tensor, frame_x: torch.Tensor, wall_x: torch.Tensor,
++                 cover_w: torch.Tensor) -> torch.Tensor:
++    """P [n, k, 3]（扉の座標）→ 両側の枠・壁の箱までの距離の最小 [n, k]。edge・frame_x・wall_x・cover_w は [n]"""
++    px = P[..., 0]
++    e, fx, wx, cw = (v[:, None] for v in (edge, frame_x, wall_x, cover_w))
++    ds = []
++    for s in (1.0, -1.0):
++        py = s * P[..., 1]
++        ds.append(box_dist_2d(px, py, fx, fx + DEPTH_M, e, e + cw))
++        ds.append(box_dist_2d(px, py, wx, wx + DEPTH_M, e + cw, e + FAR_M))
++    return torch.stack(ds).amin(dim=0)
++
++
++def arm_points(wrist: torch.Tensor, palm: torch.Tensor, elbow: torch.Tensor, tip_m: float) -> torch.Tensor:
++    """[n, 2, 3]（左・右）の手首・手のひら・肘 → [n, 10, 3]（左の指先・手のひら・手首・前腕の中ほど・肘、右の同じ順）"""
++    d = palm - wrist
++    tip = palm + tip_m * d / (torch.linalg.norm(d, dim=-1, keepdim=True) + 1e-9)
++    fore = (wrist + elbow) / 2
++    pts = torch.stack([tip, palm, wrist, fore, elbow], dim=2)  # [n, 2, 5, 3]
++    return pts.reshape(pts.shape[0], 10, 3)
++
++
++def gap_cost(d: torch.Tensor, x_m: float) -> torch.Tensor:
++    """距離 [n, k] → 費用 [n] = Σ max(0, X − d) / X"""
++    return ((x_m - d).clamp(min=0.0) / x_m).sum(dim=-1)
++
++
++def to_door_frame(P: torch.Tensor, door_pos: torch.Tensor, door_wxyz: torch.Tensor) -> torch.Tensor:
++    """世界の点 [n, k, 3] を扉の座標へ（扉の root の位置 [n, 3]・向き wxyz [n, 4] の逆を掛ける）"""
++    w, x, y, z = (door_wxyz[:, i, None] for i in range(4))
++    v = P - door_pos[:, None, :]
++    # q の逆（共役）で回す: v' = v + 2 q̄v × (q̄v × v + w v)、q̄v = −(x, y, z)
++    qv = -torch.stack([x, y, z], dim=-1).expand_as(v)
++    t = 2.0 * torch.cross(qv, v, dim=-1)
++    return v + w[..., None] * t + torch.cross(qv, t, dim=-1)
++
++
++def lagrange_step(lam: float, rate: float, viol: torch.Tensor, cfg: dict) -> tuple[float, float]:
++    """回の終わりの違反（0/1 [m]）で、割合の指数移動平均と λ を進める。(λ, 割合) を返す"""
++    n = int(viol.numel())
++    if n == 0:
++        return lam, rate
++    keep = (1.0 - cfg["rate_ema"]) ** n
++    rate = rate * keep + float(viol.float().mean()) * (1.0 - keep)
++    lam = lam + cfg["lr"] * (rate - cfg["target_rate"]) * n
++    return min(max(lam, 0.0), cfg["lambda_max"]), rate
+diff --git a/gr00t/rl/isaac_utils/playground/env_rand/door.py b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+index 08fcff8..859613c 100644
+--- a/gr00t/rl/isaac_utils/playground/env_rand/door.py
++++ b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+@@ -1149,6 +1149,11 @@ def spawn_door(
+         "handleDriveMaxForce": handle_drive.GetMaxForceAttr().Get(),
+         "handleCrossSection": str(handle_cross_section),
+         "handleMaxAngleDeg": float(handle_max_angle_deg),
++        # G1_Hackason（0106）: 枠と壁へのすき間の罰が使う。枠の幅・枠と壁の前の面の x（扉の座標）・扉と枠のすき間 [m]
++        "coverWidth": float(door_cover_width),
++        "coverFrontX": float(cover_x - cover_hx),
++        "wallFrontX": float(wall_x - wall_hx),
++        "gapWidth": float(gap_width),
+     }
+     metadata_value.update(closer_metadata)
+     if cfg.build_latch:
+-- 
+2.43.0
+

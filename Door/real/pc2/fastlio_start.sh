@@ -11,7 +11,21 @@
 # 出力: logs/fastlio_<日時>.log・logs/fastlio_node_console_<日時>.log・logs/fastlio_node_<日時>.npz（止めた時に書く）
 # ⚠️ 機体ではまだ試していない（11-10 は記録の再生だけ）。初回は CPU（top）と電文の遅れを測る（計画書 L2 の確かめ）
 # ⚠️ bash で実行する（source しない）。setsid の pid の取り方が非対話のシェルの前提（lidar_start.sh と同じ）
+# T3（11-11・R5）: 段 0 の点群で REF の扉の座標（前後・向き・横）を直す。環境変数で選ぶ（既定は今までと同じ＝直さない）
+#   DOOR_CLOUD_FIX=off|log|on（既定 off。log＝測って口のログと npz の cloud_fix に残すだけ・on＝REF を直して運ぶ）
+#   DOOR_OPENING_W=0.96（開口の幅＝板から枠へ段が付く所の間。11-11 の点群の値。巻き尺の板の 0.94 ではない）
+#   DOOR_LEVER_RIGHT=1（把手が右の扉。既定は把手が左＝11-11 の扉）
+#   例: DOOR_CLOUD_FIX=log ./fastlio_start.sh
+#   ⚠️ log・on は PC2 に door_cloud_fix.py が要る（無いと口が起きない。off なら要らない）
 cd ~/door_real || exit 1
+CLOUD_FIX="${DOOR_CLOUD_FIX:-off}"
+OPENING_W="${DOOR_OPENING_W:-0.96}"
+case "$CLOUD_FIX" in off|log|on) ;; *) echo "[fastlio] DOOR_CLOUD_FIX は off・log・on のどれか（$CLOUD_FIX）"; exit 2 ;; esac
+NODE_ARGS=(--cloud-fix "$CLOUD_FIX" --door-width "$OPENING_W")
+[ "${DOOR_LEVER_RIGHT:-0}" = 1 ] && NODE_ARGS+=(--lever-right)
+if [ "$CLOUD_FIX" != off ] && [ ! -f door_cloud_fix.py ]; then
+  echo "[fastlio] DOOR_CLOUD_FIX=$CLOUD_FIX には door_cloud_fix.py が要る（~/door_real に無い。deploy_to_pc2.sh で配る）"; exit 2
+fi
 JAMMY="${G1_JAMMY_ROOT:-$HOME/jammy_ros}"
 WS="${G1_C5_ROOT:-$JAMMY/ws_c5}"
 CFG="${FASTLIO_CFG:-$PWD/fastlio_g1_vox025.yaml}"  # deploy_to_pc2.sh が Door/real/fastlio_cfg_1110/ から写す
@@ -61,7 +75,7 @@ fi
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
 PIN=(nice -n 5)
 command -v taskset > /dev/null && PIN+=(taskset -c "${NODE_CPUS:-6,7}")
-setsid nohup "${PIN[@]}" python3 -u door_fastlio_node.py --iface eth0 --out "logs/fastlio_node_$ts.npz" \
+setsid nohup "${PIN[@]}" python3 -u door_fastlio_node.py --iface eth0 "${NODE_ARGS[@]}" --out "logs/fastlio_node_$ts.npz" \
   > "logs/fastlio_node_console_$ts.log" 2>&1 < /dev/null &
 echo $! > logs/fastlio_node.pid
 ln -sf "fastlio_node_console_$ts.log" logs/fastlio_node_console_latest.log

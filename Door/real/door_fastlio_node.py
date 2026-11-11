@@ -13,6 +13,10 @@
 pelvis への直し（腰の関節・pelvis の IMU・取付は URDF の計算だけ＝L3）と /dog_odom でのつなぎ（50 Hz）は受け口の側（track の形）。
 L2b（9.14）: 手のひらで扉の角度を出す時も、受け口の track の形（姿勢の時刻にそろえ、その後を /dog_odom でつなぐ）が要る。
 
+T3（11-11・計画 docs/plan/2026-11-11-g1-door-stage2-decision.md の R5）: --cloud-fix on なら、2. の止まった回の点群を REF の姿勢で
+  扉の座標に置き、閉じた板の直線（前後と向き）と開口の縁（横）で REF の姿勢を直してから運ぶ（door_cloud_fix.py）。log は測って
+  記録だけ（REF のまま）。既定は off（今までと同じ・door_cloud_fix.py が無くても動く）。REF のたびに直す（段 0 の 2 回の REF の両方。
+  走らせ役の 8 cm・5° の見張りは「1 回目を点群で直して運んだ値」と 2 回目の網を比べることになる）。直す前後は npz の cloud_fix に残す
 PC2 で: python3 -u door_fastlio_node.py [--iface eth0]（FAST-LIO は Mapping の fastlio_mapping を Door/real/fastlio_cfg_1110/
   fastlio_g1_vox025.yaml で起こしておく。出力は /Odometry_loc＝DDS の rt/Odometry_loc）。⚠️ 機体ではまだ試していない
 記録で（Mac・OMEN）: --replay-lidar <ライダーのセッション> --replay-fastlio <FAST-LIO の再生の tf_bag> --ref-wall <PC2 の時刻>
@@ -39,6 +43,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import door_lidar_msg as msg  # noqa: E402
 import lidar_door_est as est  # noqa: E402
 
+try:  # T3: 段 0 の点群での直し。PC2 に配っていなくても、既定の off なら口は今までどおり動く（使う時に読めなければ起動で止める）
+    import door_cloud_fix as cf  # noqa: E402
+    _CF_IMPORT_ERROR = ""
+except ImportError as _e:  # pragma: no cover  PC2 に door_cloud_fix.py を配っていない時
+    cf = None  # type: ignore[assignment]
+    _CF_IMPORT_ERROR = f"{type(_e).__name__}: {_e}"
+
 REF_SKIP_S = 1.0           # door_lidar_node・R0 と同じ（STAND に入った直後は姿勢が動いている）
 STILL_SCANS = 25           # 床を当てる回（10 Hz で 2.5 秒）
 SCAN_PERIOD_S = 0.1        # MID-360 の 1 回
@@ -54,6 +65,9 @@ JUMP_MPS = 1.5             # 追っている間の跳びの線（純正の歩行
 JUMP_RAD = 0.5             # 1 回（0.1 s）の向きの跳び
 JUMP_RISE_M = 0.3          # 段 0 からのライダーの上下（歩いても数 cm）
 SCAN_KEEP = 64             # 当てるために覚えておく点群の回
+CLOUD_FIX_MODES = ("off", "log", "on")  # T3: off＝測らない（今までと同じ）・log＝測って記録だけ・on＝REF を直す
+CLOUD_FIX_X_RANGE = (-2.0, -0.4)  # 段 0 の立ち位置（扉の座標でのライダーの x）。外なら直さない（"REF" だけの試しの (0, 0, 0) など）
+FIX_LOG_HEAD = ("t_ref", "raw_x", "raw_y", "raw_yaw", "fix_x", "fix_y", "fix_yaw", "applied")  # cloud_fix の列の頭（残りは cf.FIX_COLS）
 ODOM_TOPIC = "rt/Odometry_loc"
 CLOUD_TOPIC = "rt/utlidar/cloud_livox_mid360"
 Pose = Tuple[float, float, float]
@@ -109,7 +123,17 @@ class FastlioCarry:
     on_scan からも電文が出る）。追っている間に姿勢が跳んだ（FAST-LIO の再起動・発散）・有限でない時は、追うのをやめて
     電文を止める（受け口は 0.5 s 届かなければ立ったまま止まる）。もう一度 REF が要る"""
 
-    def __init__(self) -> None:
+    def __init__(self, cloud_fix: str = "off", door_width: Optional[float] = None, lever_right: bool = False) -> None:
+        if cloud_fix not in CLOUD_FIX_MODES:
+            raise ValueError(f"cloud_fix は {CLOUD_FIX_MODES} のどれか（{cloud_fix!r}）")
+        if cloud_fix != "off" and cf is None:
+            raise RuntimeError(f"段 0 の点群の直し（{cloud_fix}）に door_cloud_fix.py が要るが読めない（{_CF_IMPORT_ERROR}）。"
+                               "deploy_to_pc2.sh の配る一覧に入っているか")
+        self.cloud_fix = cloud_fix
+        self.door_width = float(door_width) if door_width is not None else (cf.OPENING_W if cf is not None else math.nan)
+        self.lever_right = bool(lever_right)
+        self.fix_log: List[Tuple[float, ...]] = []  # REF ごとの直し（FIX_LOG_HEAD ＋ cf.FIX_COLS）
+        self.fix_why: List[str] = []
         self.scans: Deque[Tuple[float, float]] = deque(maxlen=SCAN_KEEP)  # (ヘッダ, 受け取り)
         self.pending: Deque[Tuple[float, np.ndarray]] = deque(maxlen=PENDING_KEEP)  # 点群より先に届いた出力
         self.last_hdr: Optional[float] = None
@@ -235,7 +259,34 @@ class FastlioCarry:
         if not (LIDAR_H_RANGE_M[0] <= level.h <= LIDAR_H_RANGE_M[1]):
             self._fail(f"床からのライダーの高さ {level.h:.3f} m が {LIDAR_H_RANGE_M} の外（床を取り違えた疑い）")
             return
+        if self.cloud_fix != "off":
+            self._apply_cloud_fix(level)
         self.level, self.T_a = level, T_a
+
+    def _apply_cloud_fix(self, level: est.Level) -> None:
+        """T3（11-11・R5）: 段 0 の止まった回の点群を REF の姿勢で扉の座標に置き、板の直線と開口の縁で REF の姿勢を直す。
+        on なら self.ref_pose を直した値に替える（以後の電文はこの値に FAST-LIO の動きを足す）。log・直せない時は REF のまま。
+        直しが落ちても段 0 は作る（電文は止めない）。直す前後の REF と前後・向き・横の値を fix_log に残す"""
+        raw = self.ref_pose
+        t0 = time.time()
+        if not (CLOUD_FIX_X_RANGE[0] <= raw[0] <= CLOUD_FIX_X_RANGE[1]):
+            fix = cf.CloudFix(False, why=f"REF の x {raw[0]:+.2f} m が段 0 の立ち位置 {CLOUD_FIX_X_RANGE} の外（\"REF\" だけの試しなど）")
+        else:
+            try:
+                fix = cf.measure(cf.points_in_door(self.anchor_xyz, level, raw), self.door_width, self.lever_right)
+            except Exception as e:  # noqa: BLE001  直しの不具合で段 0 を止めない（REF のまま運ぶ）
+                fix = cf.CloudFix(False, why=f"直しの計算で例外: {type(e).__name__}: {e}")
+        fixed = cf.apply_fix(raw, fix)
+        applied = self.cloud_fix == "on" and fix.ok
+        if applied:
+            self.ref_pose = fixed
+        self.fix_log.append((float(self.ref_t), *raw, *fixed, float(applied), *fix.row()))
+        self.fix_why.append("・".join(v for v in (fix.why, f"上限で切った: {fix.clamped}" if fix.clamped else "") if v))
+        what = "直した" if applied else ("記録だけ・REF のまま" if fix.ok else "REF のまま")
+        print(f"[fastlio_node] 段 0 の点群の直し（{self.cloud_fix}・{what}・{1000 * (time.time() - t0):.0f} ms）: {fix.summary()}", flush=True)
+        if fix.ok:
+            print(f"[fastlio_node]   REF x {raw[0]:+.3f}→{fixed[0]:+.3f} y {raw[1]:+.3f}→{fixed[1]:+.3f} "
+                  f"向き {math.degrees(raw[2]):+.2f}→{math.degrees(fixed[2]):+.2f}°", flush=True)
 
     def _use(self, T: np.ndarray, hit: Tuple[float, float]) -> List[msg.LidarMsg]:
         hdr, recv = hit
@@ -447,13 +498,18 @@ def run_live(node: FastlioCarry, iface: str, host: str, port: int, stop: threadi
 
 
 def save(node: FastlioCarry, out: List[msg.LidarMsg], path: Path) -> None:
+    """電文・REF（受け取ったままの値）・段 0 の点群の直し（cloud_fix・REF ごとに 1 行・列は cloud_fix_cols・理由は cloud_fix_why）"""
     rows = np.array([[m.stamp, m.x, m.y, m.yaw, m.tilt_deg] for m in out]) if out else np.zeros((0, 5))
+    fix_cols = FIX_LOG_HEAD + (tuple(cf.FIX_COLS) if cf is not None else ())
     np.savez_compressed(path, rows=rows, cols=np.array(["stamp", "x", "y", "yaw", "tilt_deg"]),
-                        ref_log=np.array(node.ref_log) if node.ref_log else np.zeros((0, 4)), stats=str(node.stats))
+                        ref_log=np.array(node.ref_log) if node.ref_log else np.zeros((0, 4)), stats=str(node.stats),
+                        cloud_fix=np.array(node.fix_log) if node.fix_log else np.zeros((0, len(fix_cols))),
+                        cloud_fix_cols=np.array(fix_cols), cloud_fix_why=np.array(node.fix_why, dtype=str),
+                        cloud_fix_mode=node.cloud_fix)
     print(f"[fastlio_node] 書いた: {path}（電文 {len(out)}・{node.stats}）", flush=True)
 
 
-def main(argv=None) -> int:
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--iface", default="eth0")
     ap.add_argument("--host", default="127.0.0.1")
@@ -463,8 +519,22 @@ def main(argv=None) -> int:
     ap.add_argument("--ref-wall", type=float, help="記録: REF を出す PC2 の時刻（壁）")
     ap.add_argument("--ref-pose", type=float, nargs=3, default=[0.0, 0.0, 0.0], help="記録: REF の扉の座標でのライダーの姿勢")
     ap.add_argument("--out", type=Path, default=None)
-    a = ap.parse_args(argv)
-    node = FastlioCarry()
+    ap.add_argument("--cloud-fix", choices=CLOUD_FIX_MODES, default="off",
+                    help="T3: 段 0 の点群で REF を直す（off＝今までと同じ・log＝測って記録だけ・on＝直す）")
+    ap.add_argument("--door-width", type=float, default=None,
+                    help="開口の幅（板から枠へ段が付く所の間）[m]。既定は 11-11 の点群の 0.960（巻き尺の板の 0.94 ではない）")
+    ap.add_argument("--lever-right", action="store_true", help="把手が右（蝶番が +y）の扉。既定は把手が左（11-11 の扉）")
+    return ap.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    a = parse_args(argv)
+    try:
+        node = FastlioCarry(a.cloud_fix, a.door_width, a.lever_right)
+    except (ValueError, RuntimeError) as e:
+        raise SystemExit(f"[fastlio_node] {e}") from e
+    print(f"[fastlio_node] 段 0 の点群の直し: {a.cloud_fix}"
+          + (f"（開口の幅 {node.door_width:.3f} m・把手が{'右' if node.lever_right else '左'}）" if a.cloud_fix != "off" else ""), flush=True)
     if a.replay_lidar:
         if a.replay_fastlio is None or a.ref_wall is None:
             raise SystemExit("[fastlio_node] --replay-lidar には --replay-fastlio と --ref-wall が要る")
