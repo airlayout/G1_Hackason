@@ -48,6 +48,26 @@ def collect(paths: List[str]) -> Tuple[np.ndarray, np.ndarray]:
     return np.concatenate(cmds), np.concatenate(vels)
 
 
+def segments(paths: List[str], min_s: float = 2.0) -> List[dict]:
+    """11-07: DOOR・PROBE の続いた区間ごとに {name・t（区間の始めから s）・cmd [N, 3]（歩かない周期は 0）・odom [N, 3]}。
+    シミュレータに同じ指令の列を流して（ana_sim_loco_resp_1107.py）、実機の動きと比べるために使う"""
+    out = []
+    for path in paths:
+        z = np.load(path, allow_pickle=True)
+        t, ph, want, odom = z["t"], z["phase"].astype(int), z["vel_want"], z["odom"]
+        m = np.isin(ph, (DOOR, PROBE)) & np.isfinite(odom).all(1) & np.isfinite(want).all(1)
+        idx = np.nonzero(m)[0]
+        if not len(idx):
+            continue
+        for run in np.split(idx, np.nonzero(np.diff(idx) > 1)[0] + 1):
+            if t[run[-1]] - t[run[0]] < min_s:
+                continue
+            cmd = np.where(want[run, :1] > 0.5, want[run, 1:4], 0.0)
+            out.append(dict(name=f"{path.split('/')[-1].replace('.npz', '')}_{int(ph[run[0]])}_{run[0]}",
+                            t=t[run] - t[run[0]], cmd=cmd, odom=odom[run]))
+    return out
+
+
 def best_lag(c: np.ndarray, v: np.ndarray) -> int:
     ok = np.isfinite(v)
     best, arg = -1e9, 0
@@ -62,8 +82,10 @@ def best_lag(c: np.ndarray, v: np.ndarray) -> int:
     return arg
 
 
-def main(paths: List[str]) -> int:
-    c, v = collect(paths)
+def summarize(c: np.ndarray, v: np.ndarray, min_n: int = 25) -> List[dict]:
+    """指令 c [N, 3] と体の速さ v [N, 3]（同じ周期 DT）→ 軸ごとの {遅れ s・原点を通る傾き・指令の大きさごとの割合}。
+    11-07: シミュレータの記録（ana_sim_loco_resp_1107.py）にも同じ測り方を使うために切り出した"""
+    out = []
     for ax in range(3):
         lag = best_lag(c[:, ax], v[:, ax])
         a, b = c[: len(c) - lag, ax], v[lag:, ax]
@@ -71,15 +93,30 @@ def main(paths: List[str]) -> int:
         a, b = a[m], b[m]
         nz = np.abs(a) > 1e-3
         slope = float(np.sum(a[nz] * b[nz]) / np.sum(a[nz] ** 2)) if nz.any() else float("nan")
-        print(f"\n[gain] {NAMES[ax]}: 遅れ {lag * DT:.2f} s・原点を通る傾き（進んだ／指令） {slope:.2f}", flush=True)
+        bins = []
         edges = BINS[ax]
         for lo, hi in zip(edges[:-1], edges[1:]):
             for sgn in (1, -1):
                 sel = (sgn * a > lo) & (sgn * a <= hi)
-                if sel.sum() < 25:
+                if sel.sum() < min_n:
                     continue
-                print(f"   指令 {'+' if sgn > 0 else '−'}{lo:.2f}〜{hi:.2f}: {sel.sum() * DT:5.1f} 秒・指令の平均 {np.mean(a[sel]):+.3f}・"
-                      f"進んだ平均 {np.mean(b[sel]):+.3f}（{100 * np.mean(b[sel]) / np.mean(a[sel]):4.0f}%）", flush=True)
+                bins.append(dict(sign=sgn, lo=lo, hi=hi, seconds=float(sel.sum() * DT), cmd=float(np.mean(a[sel])),
+                                 vel=float(np.mean(b[sel])), ratio=float(np.mean(b[sel]) / np.mean(a[sel]))))
+        out.append(dict(axis=NAMES[ax], lag_s=lag * DT, slope=slope, bins=bins))
+    return out
+
+
+def print_summary(summary: List[dict], tag: str = "gain") -> None:
+    for s in summary:
+        print(f"\n[{tag}] {s['axis']}: 遅れ {s['lag_s']:.2f} s・原点を通る傾き（進んだ／指令） {s['slope']:.2f}", flush=True)
+        for b in s["bins"]:
+            print(f"   指令 {'+' if b['sign'] > 0 else '−'}{b['lo']:.2f}〜{b['hi']:.2f}: {b['seconds']:5.1f} 秒・指令の平均 {b['cmd']:+.3f}・"
+                  f"進んだ平均 {b['vel']:+.3f}（{100 * b['ratio']:4.0f}%）", flush=True)
+
+
+def main(paths: List[str]) -> int:
+    c, v = collect(paths)
+    print_summary(summarize(c, v))
     return 0
 
 
