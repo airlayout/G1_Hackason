@@ -11,7 +11,10 @@ RUN="${1:-run_first.sh}"
 if [ -f logs/door.pid ] && kill -0 "$(cat logs/door.pid)" 2>/dev/null; then echo "[door] もう動いている（pid $(cat logs/door.pid)）"; exit 1; fi
 REC="${REC:-auto}"
 if [ "${REC}" = auto ]; then
-  if [ "${RUN}" = run_stock.sh ] || [ "${RUN}" = run_vision.sh ]; then REC=1; else REC=0; fi  # 11-05: 画像の生徒も答え合わせに録る
+  case "${RUN}" in  # 11-05: 画像の生徒も答え合わせに録る。11-11: 段の走らせ役も（R0 の正解付け・C5 の地図のため）
+    run_stock.sh|run_vision.sh|run_staged.sh) REC=1 ;;
+    *) REC=0 ;;
+  esac
 fi
 if [ "${REC}" = 1 ]; then
   ./rec_follow.sh --check || { echo "[door] 起こさない（生の点群を録れない。REC=0 なら録らずに起こす）"; exit 1; }

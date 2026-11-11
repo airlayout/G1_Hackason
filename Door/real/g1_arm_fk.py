@@ -1,80 +1,92 @@
-"""G1（29 関節）の手のひらの位置を、関節の角度から順運動学で出す（2026-10-23、腕だけの空振りの解析）。numpy だけ。
+"""11-09: G1 の URDF（学習の USD と同じ g1_29dof_rev_1_0.urdf）で、関節 29 の角度から腕の部品の位置を pelvis の座標で出す（numpy だけ）。
 
-関節のつながりは unitree の URDF（g1_29dof）から読む: pelvis → 腰 yaw・roll・pitch → torso_link → 肩 pitch・roll・yaw → 肘 →
-手首 roll・pitch・yaw → 手のひら（left/right_hand_palm_joint の固定の先 = rubber_hand）。関節の番号は SDK の順（腰 12〜14・左腕 15〜21・右腕 22〜28）。
+  fk = ArmFK(urdf_path)
+  pts = fk.points(q29)   # {"L肩": xyz, "L肘": xyz, "L手": xyz, "L指先": xyz, "R…": …}（pelvis の座標 [m]）
+
+関節の並びは SDK の 0〜28（脚 12・腰 3・左腕 7・右腕 7）。指先は手のひらの原点から、手首→手のひらの向きへ HAND_TIP_M 先とした（目安）。
 """
 from __future__ import annotations
 
 import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict
 
 import numpy as np
 
-def _default_urdf() -> Path:
-    """このファイルの隣（g1_29dof.urdf）か、Mac の作業場所の G1_Hackason_Entame にある unitree の URDF"""
-    here = Path(__file__).resolve().parent
-    if (here / "g1_29dof.urdf").exists():
-        return here / "g1_29dof.urdf"
-    for up in here.parents:
-        c = up / "G1_Hackason_Entame" / "Entame" / "real" / "integrated_demo" / "motiondecode-test" / "external" / "g1_official_29dof.urdf"
-        if c.exists():
-            return c
-    raise FileNotFoundError("g1 の URDF が見つからない（g1_arm_fk.py の隣に g1_29dof.urdf を置く）")
-SIDE_CHAIN = {
-    side: ["waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
-           f"{side}_shoulder_pitch_joint", f"{side}_shoulder_roll_joint", f"{side}_shoulder_yaw_joint", f"{side}_elbow_joint",
-           f"{side}_wrist_roll_joint", f"{side}_wrist_pitch_joint", f"{side}_wrist_yaw_joint", f"{side}_hand_palm_joint"]
-    for side in ("left", "right")
-}
-SDK_INDEX = {"waist_yaw_joint": 12, "waist_roll_joint": 13, "waist_pitch_joint": 14}
-for _k, _n in enumerate(("shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_roll", "wrist_pitch", "wrist_yaw")):
-    SDK_INDEX[f"left_{_n}_joint"] = 15 + _k
-    SDK_INDEX[f"right_{_n}_joint"] = 22 + _k
+JOINT_ORDER = (
+    "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint", "left_ankle_pitch_joint",
+    "left_ankle_roll_joint", "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint", "right_knee_joint",
+    "right_ankle_pitch_joint", "right_ankle_roll_joint", "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
+    "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint",
+    "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint",
+    "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint",
+)
+HAND_TIP_M = 0.10  # 手のひらの原点から指先までの目安
+LINKS = {"肩": "shoulder_roll_link", "肘": "elbow_link", "手首": "wrist_yaw_link", "手": "rubber_hand"}
 
 
-def rpy_matrix(r: float, p: float, y: float) -> np.ndarray:
+def _rpy(r: float, p: float, y: float) -> np.ndarray:
     cr, sr, cp, sp, cy, sy = math.cos(r), math.sin(r), math.cos(p), math.sin(p), math.cos(y), math.sin(y)
-    rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
-    ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
-    rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
-    return rz @ ry @ rx  # URDF の rpy は固定軸 X→Y→Z の順
+    return np.array([[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+                     [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+                     [-sp, cp * sr, cp * cr]])
 
 
-def axis_angle(axis: np.ndarray, a: float) -> np.ndarray:
-    x, y, z = axis / np.linalg.norm(axis)
-    c, s, t = math.cos(a), math.sin(a), 1 - math.cos(a)
-    return np.array([[t * x * x + c, t * x * y - s * z, t * x * z + s * y],
-                     [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
-                     [t * x * z - s * y, t * y * z + s * x, t * z * z + c]])
+def _axis_angle(ax: np.ndarray, a: float) -> np.ndarray:
+    ax = ax / np.linalg.norm(ax)
+    k = np.array([[0, -ax[2], ax[1]], [ax[2], 0, -ax[0]], [-ax[1], ax[0], 0]])
+    return np.eye(3) + math.sin(a) * k + (1 - math.cos(a)) * k @ k
 
 
-def load_chain(urdf: "Path | None" = None) -> Dict[str, List[Tuple[str, np.ndarray, np.ndarray, np.ndarray]]]:
-    """側ごとに [(関節名, 原点の回転, 原点の位置, 軸)]"""
-    root = ET.parse(urdf or _default_urdf()).getroot()
-    joints = {j.get("name"): j for j in root.findall("joint")}
-    out = {}
-    for side, names in SIDE_CHAIN.items():
-        chain = []
-        for n in names:
-            j = joints[n]
+class ArmFK:
+    def __init__(self, urdf: str) -> None:
+        root = ET.parse(urdf).getroot()
+        self.joints = {}  # 子の部品 → (関節名, 親, 位置, 回転, 軸, 種類)
+        for j in root.findall("joint"):
             o = j.find("origin")
-            xyz = np.array([float(v) for v in (o.get("xyz") or "0 0 0").split()])
-            rpy = [float(v) for v in (o.get("rpy") or "0 0 0").split()]
+            xyz = np.array([float(v) for v in (o.get("xyz", "0 0 0") if o is not None else "0 0 0").split()])
+            rpy = [float(v) for v in (o.get("rpy", "0 0 0") if o is not None else "0 0 0").split()]
             ax = j.find("axis")
             axis = np.array([float(v) for v in ax.get("xyz").split()]) if ax is not None else np.zeros(3)
-            chain.append((n, rpy_matrix(*rpy), xyz, axis))
-        out[side] = chain
-    return out
+            self.joints[j.find("child").get("link")] = (j.get("name"), j.find("parent").get("link"), xyz, _rpy(*rpy), axis, j.get("type"))
+        self.index = {n: i for i, n in enumerate(JOINT_ORDER)}
+
+    def link_pose(self, link: str, q: np.ndarray):
+        """pelvis から見た部品の位置と向き"""
+        chain = []
+        while link != "pelvis":
+            chain.append(self.joints[link])
+            link = self.joints[link][1]
+        R, p = np.eye(3), np.zeros(3)
+        for name, _, xyz, rot, axis, kind in reversed(chain):
+            p = p + R @ xyz
+            R = R @ rot
+            if kind in ("revolute", "continuous") and name in self.index:
+                R = R @ _axis_angle(axis, float(q[self.index[name]]))
+        return p, R
+
+    def points(self, q: np.ndarray) -> Dict[str, np.ndarray]:
+        out = {}
+        for side, pre in (("L", "left_"), ("R", "right_")):
+            for jp, suffix in LINKS.items():
+                out[side + jp] = self.link_pose(pre + suffix, q)[0]
+            d = out[side + "手"] - out[side + "手首"]
+            out[side + "指先"] = out[side + "手"] + HAND_TIP_M * d / (np.linalg.norm(d) + 1e-9)
+        return out
 
 
-def palm_in_pelvis(chain, q: np.ndarray, side: str) -> np.ndarray:
-    """関節の角度 q（SDK の順・29）→ pelvis の座標での手のひらの位置"""
-    R, p = np.eye(3), np.zeros(3)
-    for name, R0, xyz, axis in chain[side]:
-        p = p + R @ xyz
-        R = R @ R0
-        if name in SDK_INDEX:
-            R = R @ axis_angle(axis, float(q[SDK_INDEX[name]]))
-    return p
+def default_urdf() -> str:
+    return str(Path(__file__).resolve().parents[1] / "doorman6/usd_fix/urdf_src/g1_29dof_rev_1_0.urdf")
+
+
+# 10-23 の口（hand_reach_dry.py が使う）。11-09 に ArmFK へ書き換えたとき消えていたので、ArmFK の上に戻した
+def load_chain(urdf: "str | Path | None" = None) -> ArmFK:
+    """順運動学の入れ物を作る（URDF を省くと default_urdf）"""
+    return ArmFK(str(urdf) if urdf else default_urdf())
+
+
+def palm_in_pelvis(chain: ArmFK, q: np.ndarray, side: str) -> np.ndarray:
+    """関節の角度 q（SDK の順・29）→ pelvis の座標での手のひら（{side}_hand_palm_joint の先の rubber_hand の原点）"""
+    return chain.link_pose(f"{side}_rubber_hand", q)[0]

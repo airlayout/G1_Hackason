@@ -83,6 +83,7 @@ ARGS=(--policy "$VPOLICY" --iface eth0 --door-source vision --door "$DOOR" --run
 if [ -n "$CAM_TILT" ]; then ARGS+=(--cam-tilt-deg "$CAM_TILT"); else ARGS+=(--head-pitch-deg "$PITCH"); fi
 [ -n "${VEL_GAIN:-}" ] && ARGS+=(--vel-gain "$VEL_GAIN")  # 11-06: 純正の鈍さの補い（例 VEL_GAIN=1.5,2,1 VX_FLOOR=0.15）
 [ -n "${VX_FLOOR:-}" ] && ARGS+=(--vx-floor "$VX_FLOOR")
+[ -n "${VX_DEAD:-}" ] && ARGS+=(--vx-dead "$VX_DEAD")  # 11-09: 持ち上げ始める線（既定 0.03。シムの層 v2 に合わせるなら 0.05）
 [ -n "${VACTOR:-}" ] && ARGS+=(--vision-actor "$VACTOR")  # 11-06: VACTOR=teacher で扉の値は画像・行動は教師
 [ "${NOSEND:-0}" = 1 ] && ARGS+=(--no-send)
 exec python3 -u door_run_stock.py "${ARGS[@]}"

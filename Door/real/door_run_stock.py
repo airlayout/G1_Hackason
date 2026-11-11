@@ -28,7 +28,7 @@ HOMIE の経路（door_run_real.py）とは別のプロセス。rt/lowcmd は送
   WAIT と DAMP では q・Enter・Ctrl+C で終わる
 
 例（PC2。機体は吊って綱を緩め、リモコンで通常運転 501 に入れておく）:
-  python3 door_run_stock.py --policy door_policy.npz --iface eth0 --door-source lidar --lidar-center-xy 0.047 -0.016 \\
+  python3 door_run_stock.py --policy door_policy.npz --iface eth0 --door-source lidar \\
       --door 0.94,2.05,0.99,0.064 --run-seconds 5
 
 --door-source vision（11-05）: 頭のカラーの画像だけの生徒（export_vision_student.py の npz を --policy に渡す）。
@@ -153,10 +153,13 @@ class DoorValues:
         roll, pitch = dfr.roll_pitch_from_quat_wxyz(quat)
         self.lidar.note_state(now, odom if (odom is not None and now - odom_t < 0.05) else None, q_waist, roll, pitch)
         if not self.head_set and ready_s > 0.5:
-            head = dlm.head_xy_from_center_offset(self.center_xy, q_waist, roll, pitch)
+            # 11-10 手順 L3: center_xy が無ければ URDF の順運動学だけ（補正 0。R0 の --center fk で巻き尺 3 地点と 3 cm 以内）
+            head = ((0.0, 0.0) if self.center_xy is None
+                    else dlm.head_xy_from_center_offset(self.center_xy, q_waist, roll, pitch))
             self.lidar.head_xy = head  # 立った姿勢で取付を合わせる。以後の腰の動きは順運動学で追う
             self.head_set = True
-            print(f"[door_stock] ライダーの取付の補正 {head[0]:+.3f} {head[1]:+.3f} m（腰 {np.degrees(q_waist).round(1).tolist()}°）", flush=True)
+            print(f"[door_stock] ライダーの取付の補正 {head[0]:+.3f} {head[1]:+.3f} m（{'URDF の計算だけ' if self.center_xy is None else '--lidar-center-xy から'}・"
+                  f"腰 {np.degrees(q_waist).round(1).tolist()}°）", flush=True)
         if retry_ref and self.ref_t is not None and now - self.ref_t > LIDAR_REF_RETRY_S and not self.lidar.ready(now):
             self.lidar.request_ref()  # 推定器が扉を測れなかった（「REF をもう一度」）ときの送り直し
             self.ref_t = now
@@ -211,10 +214,10 @@ def cap_roll_press(target: np.ndarray, q_arm: np.ndarray, kp_arm: np.ndarray, ma
     return out
 
 
-def boost_stock_velocity(vx: float, vy: float, wz: float, gain: tuple, vx_floor: float) -> tuple:
-    """純正の歩行の鈍さを補う: 各軸に gain を掛け、|vx| が VX_DEAD を越えて vx_floor 未満なら vx_floor へ持ち上げ、VEL_LIMIT で切る"""
+def boost_stock_velocity(vx: float, vy: float, wz: float, gain: tuple, vx_floor: float, vx_dead: float = VX_DEAD) -> tuple:
+    """純正の歩行の鈍さを補う: 各軸に gain を掛け、|vx| が vx_dead を越えて vx_floor 未満なら vx_floor へ持ち上げ、VEL_LIMIT で切る"""
     out = [vx * gain[0], vy * gain[1], wz * gain[2]]
-    if VX_DEAD < abs(vx) and abs(out[0]) < vx_floor:
+    if vx_dead < abs(vx) and abs(out[0]) < vx_floor:
         out[0] = math.copysign(vx_floor, vx)
     return tuple(max(-lim, min(lim, v)) for v, lim in zip(out, VEL_LIMIT))
 
@@ -236,7 +239,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--start-yaw-deg", type=float, default=0.0)
     ap.add_argument("--door", required=True, help="幅,高さ,レバーの高さ,バックセット [m]")
     ap.add_argument("--lever-right", action="store_true", help="把手が右の扉（UIS Room 4 は左なので付けない）")
-    ap.add_argument("--run-seconds", type=float, default=5.0)
+    ap.add_argument("--run-seconds", type=float, default=None, help="DOOR の長さの上限 [s]（既定 5・--staged は 180）")
     ap.add_argument("--stop-door-deg", type=float, default=None, help="扉がこの角度 [°] まで開いたら POST（ライダーのときだけ）")
     ap.add_argument("--arm-temp-stop", type=float, default=ARM_TEMP_STOP_C,
                     help="[°C] 腕のモーターがこれ以上なら立ったまま止まる（純正の保護の札は 84 °C 前後で立つ）")
@@ -246,7 +249,10 @@ def parse_args(argv=None) -> argparse.Namespace:
                     help="relay: rt/dog_odom を別のプロセス（odom_relay.py）で受けて UDP で受け取る（11-03。同じプロセスで受けると GIL を食う）")
     ap.add_argument("--clip-margin", type=float, default=0.05, help="腕の目標を可動域の端から内側へ切る余裕 [rad]")
     ap.add_argument("--vel-gain", default="1,1,1", help="純正へ送る vx,vy,wz に掛ける倍率（11-06 実機の応えは 約 0.6,0.4,0.9）")
-    ap.add_argument("--vx-floor", type=float, default=0.0, help="[m/s] 前後の小さい指令（|vx| > 0.03）をこの大きさまで持ち上げる。0 で切")
+    ap.add_argument("--vx-floor", type=float, default=0.0, help="[m/s] 前後の小さい指令（|vx| > --vx-dead）をこの大きさまで持ち上げる。0 で切")
+    ap.add_argument("--vx-dead", type=float, default=VX_DEAD,
+                    help="[m/s] これ以下の前後の指令は持ち上げない。11-09: シムの層 v2 の効かない帯 0.05 に合わせるなら 0.05"
+                         "（実機の掃引では 0.1 m/s で 0〜10%・0.15 で 55〜80% しか進まない）")
     ap.add_argument("--roll-press-max", type=float, default=ROLL_PRESS_MAX_NM,
                     help="[N·m] DOOR・POST で肩 roll が胴の側へ押す力の上限（送る目標を今の角度から切る）。0 以下で切らない")
     ap.add_argument("--stop-tilt-deg", type=float, default=10.0, help="これより傾いたら立ったまま止まる")
@@ -280,16 +286,42 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--lidar-mode", choices=("track", "still"), default="track")
     ap.add_argument("--lidar-port", type=int, default=dlm.PORT)
     ap.add_argument("--lidar-center-xy", type=float, nargs=2, metavar=("前", "左"),
-                    help="[m] 立っているときの pelvis から見たライダーの水平の位置（その日に巻き尺で決める）")
+                    help="[m] 立っているときの pelvis から見たライダーの水平の位置。渡さなければ URDF の順運動学だけ"
+                         "（11-10 R0: 巻き尺 3 地点と 3 cm 以内。10-21 の旋回の値 0.047 −0.016 は扉を 8 cm 遠くに置く）")
     ap.add_argument("--cmd-fifo", default=None,
                     help="PC の指示を読む名前つきパイプ（切り離して起こすとき。pc2/stock_cmd.sh が書く）。標準入力も読み続ける")
     ap.add_argument("--log-dir", default="logs")
+    # 11-10 手順 L4（計画書 9.3）: 段に分けて回す。--policy は腕だけの方策 s2f、扉の値は FAST-LIO の口（door_fastlio_node.py）
+    ap.add_argument("--staged", action="store_true",
+                    help="段 0（網で 2 回測る）→ 段 1（構えの位置へ寄る）→ 段 2（s2f）→ 3° で f3t3。--door-source lidar・--policy-f3t3・--net が要る")
+    ap.add_argument("--policy-f3t3", default=None, help="--staged: 引き継ぐ教師 f3t3 の npz（export_door_policy.py）")
+    ap.add_argument("--net", default=None, help="--staged: 段 0 で扉を測る目の網（export_c2_1110.py の door_vision_c2.npz）")
+    ap.add_argument("--pelvis-z", type=float, default=None,
+                    help="[m] --staged: 立った pelvis の床からの高さ（既定 door_run_staged.DEFAULT_PELVIS_Z＝0.75。⚠️ 機体の日に巻き尺で）")
+    ap.add_argument("--urdf", default=None, help="--staged: 順運動学の URDF（既定は隣の g1_29dof_rev_1_0.urdf か学習の URDF）")
+    ap.add_argument("--net-dx", type=float, default=0.0,
+                    help="[m] --staged: 段 0 の網の pelvis の前後の値に足す補正（網が扉を遠くに出すなら正。巻き尺と比べて決める）")
+    ap.add_argument("--press-radius", type=float, default=None,
+                    help="[m] --staged: 段 2 の引き金の水平の線（既定は腕の力が分からない時 0.16・分かる時 0.10）")
+    ap.add_argument("--stage2-max-s", type=float, default=15.0,
+                    help="[s] --staged: 段 2 の腕だけの方策がこの秒で扉を 3° 開けられなければ立ったまま止まる")
+    ap.add_argument("--no-leg-release", action="store_true",
+                    help="--staged: 段 2 の間は脚を放さない（歩きの積み上げを 0 に止めたまま・11-11 の機体の切り分け）")
+    ap.add_argument("--stage0-tape", default=None,
+                    help="--staged: 段 0 を巻き尺で「左つま先→板,右つま先→板,左つま先←把手の側の縁,右つま先←縁」[m]。網は比べるだけ")
+    ap.add_argument("--staged-stop-stage", type=int, default=None,
+                    help="--staged: この段に入ったら立ったまま止まる（1＝段 0 が終わった所・2＝構えの位置に入った所・3＝f3t3 へ引き継ぐ所）")
     a = ap.parse_args(argv)
+    if a.run_seconds is None:
+        a.run_seconds = 180.0 if a.staged else 5.0  # --staged の段 0〜3 は 5 秒では終わらない（段 1 だけで 60 秒まで）
+    if a.staged:
+        if a.door_source != "lidar" or a.lidar_mode != "track" or not a.policy_f3t3 or not a.net:
+            ap.error("--staged には --door-source lidar（--lidar-mode track）・--policy-f3t3・--net が要る")
     if a.door_source == "tape" and (a.start_x is None or a.start_y is None):
         ap.error("--door-source tape では --start-x と --start-y が要る")
     if a.door_source == "lidar" and a.lidar_center_xy is None:
-        a.lidar_center_xy = [0.047, -0.016]
-        print("[door_stock] ⚠️ --lidar-center-xy が無い: 10-21 の旋回の値 (0.047, −0.016) を使う。その日に巻き尺で測ってから渡す", flush=True)
+        # 11-10 手順 L3: 旋回で測った (0.047, −0.016) は扉を 8 cm 遠くに置く（R0）。渡されなければ URDF の順運動学だけを使う
+        print("[door_stock] --lidar-center-xy が無い: ライダーの取付は URDF の順運動学だけ（補正 0）", flush=True)
     return a
 
 
@@ -486,7 +518,7 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
         from door_lidar_source import LidarDoorSource
 
         lidar = LidarDoorSource(a.lidar_port, mode=a.lidar_mode)
-    doorv = DoorValues(start_pose, lidar, a.lidar_mode, a.lidar_center_xy)
+    doorv = DoorValues(start_pose, None if a.staged else lidar, a.lidar_mode, a.lidar_center_xy)  # --staged は段 0 が REF を送る
     vp, feats, head_pitch = None, None, 0.0
     if a.door_source == "vision":
         vp = dvc.load_vision(a.policy, p)
@@ -495,6 +527,31 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
     w, h, lh, bs = (float(v) for v in a.door.split(","))
     vel_gain = tuple(float(v) for v in a.vel_gain.split(","))
     geometry = dfr.door_geometry(w, h, lh, bs, lever_left=not a.lever_right)
+    staged, p_f3t3, vp_net, feats_net = None, None, None, None
+    if a.staged:  # 11-10 手順 L4。網は画像の生徒の経路（vp）と混ぜない（s2f・f3t3 は状態入力の方策）
+        import door_run_staged as drst  # --staged の時だけ読む（付けない日に部品の読み込みで起動が落ちないように）
+        import door_staged as dsd
+        import door_lidar_source as dls_
+        # 11-11 の機体: 歩く間の FAST-LIO の姿勢は歩みで ±5〜7 cm 揺れ、odom との食い違いの線 8 cm に掛かって段 1 が止まった。
+        # 段の走らせ役では 15 cm にする（FAST-LIO の跳びは口の側で別に見張っている・段 1 は止まって測る）
+        dls_.DISAGREE_M = 0.15
+        import g1_arm_fk as fk
+        p_f3t3 = dc.load_params(a.policy_f3t3, mirror=not a.lever_right)
+        vp_net = dvc.load_vision(a.net, p)
+        feats_net = dvs.VisionFeatSource(vp_net.feat_dim, a.vision_port)
+        here_urdf = Path(__file__).resolve().parent / "g1_29dof_rev_1_0.urdf"
+        urdf = a.urdf or (str(here_urdf) if here_urdf.exists() else None)
+        net_pitch = math.radians(a.head_pitch_deg if a.head_pitch_deg is not None else dvc.camera_pitch_deg(vp_net))
+        staged = drst.StagedDoor(w, h, lh, bs, not a.lever_right, lidar, drst.NetSampler(p, vp_net, feats_net, net_pitch),
+                                 drst.make_palm_fn(fk.load_chain(urdf), a.pelvis_z if a.pelvis_z is not None else drst.DEFAULT_PELVIS_Z,
+                                                   not a.lever_right), force_known=False, net_dx=a.net_dx,
+                                 press_radius=a.press_radius, stage2_max_s=a.stage2_max_s,
+                                 release_legs=not a.no_leg_release,
+                                 tape_pose=(dsd.pose_from_tape(*(float(v) for v in a.stage0_tape.split(",")), w, lever_left=not a.lever_right)
+                                            if a.stage0_tape else None))
+        if staged.tape_pose is not None:
+            tp = staged.tape_pose
+            print(f"[door_stock] --staged: 段 0 は巻き尺 {a.stage0_tape} → pelvis x {tp.x:+.3f} y {tp.y:+.3f} 向き {math.degrees(tp.yaw):+.1f}°", flush=True)
     leg_model = dfl.load_leg_model(a.leg_model)
     body_weight = (a.body_mass_kg if a.body_mass_kg else leg_model.total_mass) * leg_model.gravity
     use_load_check = a.load_check == "on"
@@ -521,7 +578,14 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
         head_pitch = dvc.pitch_for_floor_tilt(quat0, q0[WAIST], a.cam_tilt_deg, head_pitch)
         print(f"[door_stock] 頭の俯角: カメラの加速度計 {a.cam_tilt_deg:.2f}°（床から）に合わせて torso から "
               f"{math.degrees(head_pitch):.2f}°（前の値 {given:.1f}°）", flush=True)
-    why = dvc.head_pitch_out_of_range(vp, head_pitch) if vp is not None else None
+    if staged is not None:  # 段 0 の網の俯角も、カメラの加速度計の値に合わせる
+        q0 = np.array([state0.motor_state[j].q for j in range(dc.NUM_DOF)])
+        quat0 = np.array(state0.imu_state.quaternion, dtype=float)
+        if a.cam_tilt_deg is not None:
+            staged.net.head_pitch = dvc.pitch_for_floor_tilt(quat0, q0[WAIST], a.cam_tilt_deg, staged.net.head_pitch)
+        print(f"[door_stock] --staged: 段 0 の網の俯角 {math.degrees(staged.net.head_pitch):.2f}°（torso から）", flush=True)
+    why = (dvc.head_pitch_out_of_range(vp, head_pitch) if vp is not None
+           else dvc.head_pitch_out_of_range(vp_net, staged.net.head_pitch) if staged is not None else None)
     if why:
         print(f"[door_stock] 起動しない: {why}", flush=True)
         stop_odom_relay(odom_rx, relay)
@@ -546,9 +610,13 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
     sender.start()
     print(f"[door_stock] 29 関節・送る={'しない' if a.no_send else 'する'}・扉 {geometry.tolist()}・鏡写し {p.mirror}・"
           f"扉の値 {a.door_source}{'（' + a.lidar_mode + '）' if lidar else ''}・脚の観測 {a.leg_actions}・前の上限 {a.max_vx} m/s"
-          + (f"・足の確かめ 合計 {100 * a.min_load_total:.0f}%・片足 {100 * a.min_load_each:.0f}%" if use_load_check else "・⚠️ 足の確かめ off"),
+          + (f"・足の確かめ 合計 {100 * a.min_load_total:.0f}%・片足 {100 * a.min_load_each:.0f}%" if use_load_check else "・⚠️ 足の確かめ off")
+          + (f"・歩きの底上げ 倍率 {a.vel_gain}・前の持ち上げ {a.vx_dead}→{a.vx_floor} m/s" if a.vel_gain != "1,1,1" or a.vx_floor > 0 else ""),
           flush=True)
     print(f"[door_stock] 方策の空回し: {drr.warm_up(p, state0, geometry, start_pose):.0f} ms", flush=True)
+    if staged is not None:
+        print(f"[door_stock] --staged: 段 0〜2 は {a.policy}・3° で {a.policy_f3t3}・網 {a.net}・pelvis の高さ {a.pelvis_z or drst.DEFAULT_PELVIS_Z} m・"
+              f"腕の力は使わない（L2c の前）。f3t3 の空回し {drr.warm_up(p_f3t3, state0, geometry, start_pose):.0f} ms", flush=True)
     if vp is not None:
         print(f"[door_stock] 画像の生徒: 特徴 {vp.feat_dim}・カメラ {vp.meta['camera']['hfov_deg']:.0f}°×{vp.meta['camera']['vfov_deg']:.0f}°・"
               f"俯角 {math.degrees(head_pitch):.1f}°（学習の乱択 {vp.meta['camera']['pitch_range_deg']}）・"
@@ -599,6 +667,7 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
     damp_left = 0
     probe_vx = a.probe_vx
     complete = 0.0
+    p_cur, last_obs, staged_prev_mode = p, None, "hold"  # --staged: 今の方策・前の周期の観測（段 0 の網の頭に使う）
     periods: List[float] = []
     next_t = time.monotonic()
     prev_now = None
@@ -720,6 +789,7 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
             pose = None
             pol, vmsg = None, None
             odom_ok = 0.0
+            dec = None  # --staged の段の決め事
             try:
                 if phase == "WAIT" and "a" in cmds:
                     arm_home = q[ARMS].copy()
@@ -738,10 +808,11 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                 if phase == "ARMS_IN":
                     weight = min(1.0, weight + DT / WEIGHT_RAMP_S)
                     if weight >= 1.0:
-                        arm_target = dsio.move_toward(arm_target, q_arm_goal, ARM_SPEED * DT)
-                        if reached_t is None and np.abs(arm_target - q_arm_goal).max() < 1e-9:
+                        goal = arm_home if staged is not None else q_arm_goal  # --staged: 段 0〜1 は腕を下ろしたまま（網に手が写らない）
+                        arm_target = dsio.move_toward(arm_target, goal, ARM_SPEED * DT)
+                        if reached_t is None and np.abs(arm_target - goal).max() < 1e-9:
                             reached_t = now
-                        resid = float(np.abs(q[ARMS] - q_arm_goal).max())
+                        resid = float(np.abs(q[ARMS] - goal).max())
                         if reached_t is not None and (resid < ARM_SETTLE_RAD or now - reached_t > ARM_SETTLE_S):
                             s = dc.initial_state(p)
                             load_gate = dfl.HoldLoadGate(weight=body_weight, min_total=a.min_load_total, min_each=a.min_load_each)
@@ -762,42 +833,81 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                 if phase in ("READY", "DOOR", "POST", "PROBE"):
                     pose, odom_ok, vwhy = doorv.update(now, now - phase_t if phase == "READY" else 1.0, odom, odom_t, q, quat,
                                                        retry_ref=(phase == "READY"))
-                    if vp is not None:
+                    if staged is not None and phase == "DOOR":  # 11-10 L4: 段の部品が枠・扉の角度・歩き・止める理由を決める
+                        dec = staged.decide(now, q, quat, odom, odom_t, last_obs)
+                        pose, vwhy = dec.pose, dec.stop
+                        if not vwhy and a.staged_stop_stage is not None and dec.stage >= a.staged_stop_stage:
+                            vwhy = f"段 {dec.stage} に入った（--staged-stop-stage {a.staged_stop_stage}）"
+                        if dec.stage >= 3 and pose.x > 1.5:
+                            complete = 1.0
+                    elif vp is not None:
                         vwhy = feats.why_not(now)  # 画像の生徒は扉の値を画像から取る。odom は記録だけ（姿勢は READY からの動き）
-                    elif pose.x > 1.5:
+                    elif pose.x > 1.5 and staged is None:
                         complete = 1.0
                     if phase == "DOOR" and vwhy:
                         go("POST", vwhy)
                     if phase == "DOOR" and complete:
                         go("POST", "通り抜けた（扉の先 1.5 m）")
-                    if phase == "DOOR" and a.stop_door_deg is not None and doorv.door_deg() >= a.stop_door_deg:
-                        go("POST", f"扉 {doorv.door_deg():.0f}°（--stop-door-deg {a.stop_door_deg:.0f}）")
+                    deg_now = ((math.degrees(dec.angle[0]) if dec.angle[1] > 0.5 else float("nan")) if dec is not None
+                               else doorv.door_deg())  # --staged は手のひらの扉の角度
+                    if phase == "DOOR" and a.stop_door_deg is not None and deg_now >= a.stop_door_deg:
+                        go("POST", f"扉 {deg_now:.0f}°（--stop-door-deg {a.stop_door_deg:.0f}）")
                     if phase == "DOOR" and now - phase_t >= a.run_seconds:
                         go("POST", "時間")
                 if phase == "READY":
                     load_gate = load_gate.push(now, forces, dq)
                     if "d" in cmds:
-                        refuse = ready_refusals(tilt, max_stand_tilt, load_gate.verdict() if use_load_check else None,
-                                                doorv.refuse_door(now) if vp is None else feats.why_not(now))
+                        src_why = (feats_net.why_not(now) if staged is not None else
+                                   doorv.refuse_door(now) if vp is None else feats.why_not(now))
+                        refuse = ready_refusals(tilt, max_stand_tilt, load_gate.verdict() if use_load_check else None, src_why)
                         if refuse:
                             print("[door_stock] d を受け付けない: " + "・".join(refuse), flush=True)
                         else:
                             s = dc.reset_actor(p, s)
                             complete = 0.0
-                            go("DOOR", f"{a.run_seconds:.1f} 秒")
+                            if staged is not None:
+                                staged.begin(now)
+                                p_cur, staged_prev_mode = p, "hold"
+                            go("DOOR", f"{a.run_seconds:.1f} 秒" + ("・段に分けて（段 0 から）" if staged is not None else ""))
+                            if staged is not None:  # この周期から段を通す（READY の周期に決め事を作っていないので今作る）
+                                dec = staged.decide(now, q, quat, odom, odom_t, last_obs)
+                                pose = dec.pose
+                                if dec.stop:
+                                    go("POST", dec.stop)
                 if phase in ("READY", "DOOR"):
-                    inp = dc.Inputs(q=q, dq=dq, gyro=gyro, gravity=gravity, door_angle=doorv.angle,
+                    use_dec = dec is not None and phase == "DOOR"
+                    if use_dec and dec.handover_now:  # 3°: f3t3 へ持ち替える（積み上げ D・HOMIE の履歴は持ち越し、記憶だけ 0）
+                        s, p_cur = dsd.handover_state(s, "zero"), p_f3t3
+                        print(f"[door_stock] --staged: {dec.info}", flush=True)
+                    p_use = p_cur if use_dec else p
+                    mode = dec.mode if use_dec else ("door" if phase == "DOOR" else "hold")
+                    if use_dec and mode == "door" and staged_prev_mode == "hold":
+                        s = dc.reset_actor(p_use, s)  # 段 2 の方策の始め（シムの回の始めと同じく記憶と腕の積み上げを 0 から）
+                    if use_dec:
+                        staged_prev_mode = mode
+                    inp = dc.Inputs(q=q, dq=dq, gyro=gyro, gravity=gravity, door_angle=dec.angle if use_dec else doorv.angle,
                                     door_frame_loc=dfr.door_frame_loc(pose, quat), door_geometry=geometry, complete=complete)
                     pol, vmsg = vision_policy(vp, feats, quat, q, head_pitch, p.mirror,
                                                  p if a.vision_actor == "teacher" else None) if vp is not None else (None, None)
-                    s, out = dc.step(p, s, inp, mode="door" if phase == "DOOR" else "hold", policy=pol)
-                    s = dsio.with_leg_actions(p, s, q, a.leg_actions)
-                    if phase == "DOOR":
+                    s, out = dc.step(p_use, s, inp, mode=mode, policy=pol)
+                    s = dsio.with_leg_actions(p_use, s, q, a.leg_actions)
+                    if use_dec and dec.zero_walk:
+                        s = dsd.zero_walk_accumulator(s)  # 段 2 の脚を放す前（シムの arm_stage と同じ）
+                    last_obs = out.obs
+                    if use_dec and dec.arm != "policy":  # 段 0〜1・段 2 の腕の構え: 腕は手で、歩きは段の指令
+                        arm_target = dsio.move_toward(arm_target, arm_home if dec.arm == "home" else q_arm_goal, ARM_SPEED * DT)
+                        w_, vx_, vy_, wz_ = dec.walk if dec.walk is not None else drst.STAND
+                        sender.set(w_, min(vx_, a.max_vx), vy_, wz_)
+                    elif use_dec and dec.walk is not None:  # 段 2 の脚を放す前: 腕は方策・歩かない
                         arm_target = tg.limit_sent_target(out.q_target[ARMS], arm_target, lo_arm, hi_arm,
                                                           margin=a.clip_margin, max_step=drr.MAX_TARGET_STEP)
-                        walk, vx, vy, wz = dsio.stock_velocity(p, out.cmd)
+                        sender.set(*dec.walk)
+                    elif phase == "DOOR":
+                        arm_target = tg.limit_sent_target(out.q_target[ARMS], arm_target, lo_arm, hi_arm,
+                                                          margin=a.clip_margin, max_step=drr.MAX_TARGET_STEP)
+                        walk, vx, vy, wz = dsio.stock_velocity(p_use, out.cmd)  # --staged の段 3 は f3t3 の線
                         if walk and (vel_gain != (1.0, 1.0, 1.0) or a.vx_floor > 0):
-                            vx, vy, wz = boost_stock_velocity(vx, vy, wz, vel_gain, a.vx_floor)
+                            vx, vy, wz = boost_stock_velocity(vx, vy, wz, vel_gain, a.vx_floor, a.vx_dead)
                         sender.set(walk, min(vx, a.max_vx), vy, wz)
                     else:
                         arm_target = (arm_hold if arm_hold is not None else q_arm_goal).copy()
@@ -841,6 +951,10 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                 lm, lrx = lidar.snapshot()
                 row.update(lidar_msg=np.array([lm.stamp, lm.x, lm.y, lm.yaw, lm.angle, lm.state, lm.rms_m, lm.tilt_deg, lm.seq])
                            if lm is not None else np.full(9, np.nan), lidar_rx_age=(now - lrx) if lm is not None else np.inf)
+            if staged is not None:  # 11-10 L4: 段・方策（0 腕の段／1 f3t3）・腕の目標の出どころ・積み上げを止めたか・持ち替え・扉の角度・段 0 の見張り
+                row.update(staged=np.array([dec.stage, dec.policy == "f3t3", ("home", "goal", "policy").index(dec.arm), dec.zero_walk,
+                                            dec.handover_now, math.degrees(dec.angle[0]), dec.angle[1], *staged.stage0.check])
+                           if dec is not None else np.full(9, np.nan))
             if out is not None:
                 row.update(obs=out.obs, a_pol=out.a_pol, D=s.D, cmd=out.cmd, homie_a=out.homie_a, walk=out.walk,
                            q_policy=out.q_target, pose=np.array([pose.x, pose.y, pose.yaw]))
@@ -876,6 +990,8 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
         sender.close()
         if feats is not None:
             feats.close()
+        if feats_net is not None:
+            feats_net.close()
         stop_odom_relay(odom_rx, relay)
         # 腕を借りたまま輪の外へ出た（輪の外側の例外）ときは、今の目標を保ったまま重みを 2 秒で 0 へ（純正へ返す）
         if arm_io is not None and arm_target is not None and weight > 0.0 and phase != "DAMP":

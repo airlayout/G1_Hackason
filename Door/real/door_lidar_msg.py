@@ -109,3 +109,37 @@ def head_xy_from_center_offset(center_xy: Tuple[float, float], q_waist: Tuple[fl
     """旋回で測った「pelvis（robot_center）から見たライダーの水平の位置」から、順運動学の分を引いた補正"""
     fk = lidar_offset_xy(q_waist, roll, pitch, (0.0, 0.0))
     return float(center_xy[0] - fk[0]), float(center_xy[1] - fk[1])
+
+
+def pelvis_to_lidar(x: float, y: float, yaw: float, q_waist: Tuple[float, float, float], roll: float, pitch: float,
+                    head_xy: Tuple[float, float]) -> Tuple[float, float, float]:
+    """扉の座標での pelvis の床の上の姿勢 → ライダーの床の上の姿勢（lidar_to_pelvis の逆）。
+    11-10 手順 L2: 段 0 の網（c2）で測った pelvis の姿勢から、FAST-LIO の口（door_fastlio_node）へ REF で渡す値を作る"""
+    o = lidar_offset_xy(q_waist, roll, pitch, head_xy)
+    c, s = math.cos(yaw), math.sin(yaw)
+    yaw_l = math.atan2(math.sin(yaw + q_waist[0]), math.cos(yaw + q_waist[0]))
+    return x + c * o[0] - s * o[1], y + s * o[0] + c * o[1], yaw_l
+
+
+def pack_ref(pose: Optional[Tuple[float, float, float]] = None) -> bytes:
+    """走らせ役 → 口の REF。pose（扉の座標でのライダーの床の上の姿勢）を渡せば "REF2 x y yaw"（FAST-LIO の口）、
+    無ければ "REF"（自前の推定器 door_lidar_node は扉を自分で測る。FAST-LIO の口は (0, 0, 0) とみなす）"""
+    if pose is None:
+        return b"REF"
+    if not all(math.isfinite(float(v)) for v in pose):
+        raise ValueError(f"REF の姿勢が有限でない: {pose}")
+    return f"REF2 {pose[0]:.6f} {pose[1]:.6f} {pose[2]:.6f}".encode()
+
+
+def parse_ref(data: bytes) -> Optional[Tuple[float, float, float]]:
+    """b"REF" → (0, 0, 0)・b"REF2 x y yaw" → (x, y, yaw)。どちらでもなければ None"""
+    parts = data.strip().split()
+    if parts == [b"REF"]:
+        return (0.0, 0.0, 0.0)
+    if len(parts) != 4 or parts[0] != b"REF2":
+        return None
+    try:
+        vals = tuple(float(v) for v in parts[1:])
+    except ValueError:
+        return None
+    return vals if all(math.isfinite(v) for v in vals) else None  # type: ignore[return-value]

@@ -75,6 +75,7 @@ class LidarDoorSource:
         self.recent: Deque[_Rx] = deque(maxlen=50)
         self.bad = 0
         self.clock_bad = 0
+        self.stale = 0  # REF より前の走査の電文を捨てた数
         self.ref_t: Optional[float] = None
         self.states: Deque[Tuple[float, Optional[Odom], Waist, float, float]] = deque()  # (t, odom, 腰, roll, pitch)
         self.state_gap_since: Optional[float] = None
@@ -107,6 +108,9 @@ class LidarDoorSource:
                 if not (-0.05 <= age <= MSG_AGE_MAX_S):
                     self.clock_bad += 1
                     continue
+                if self.ref_t is not None and rx_mono - age < self.ref_t:
+                    self.stale += 1  # 11-10 L2 のレビュー: REF の前の走査（古い段 0 で追っていた値）を新しい REF の値と取り違えない
+                    continue
                 r = _Rx(m, rx_mono - age, rx_mono)
                 self.latest = r
                 self.recent.append(r)
@@ -115,12 +119,14 @@ class LidarDoorSource:
         self._stop.set()
         self.rx.close()
 
-    def request_ref(self) -> None:
-        """推定器に「今から止まって扉と地図を作れ」と送る（STAND で止まってから）"""
-        self.tx.sendto(b"REF", ("127.0.0.1", self.port + 1))
-        with self._lock:
+    def request_ref(self, lidar_pose: Optional[Tuple[float, float, float]] = None) -> None:
+        """推定器に「今から止まって扉と地図を作れ」と送る（STAND で止まってから）。
+        11-10 手順 L2: FAST-LIO の口（door_fastlio_node）には、段 0 の網で測った扉の座標でのライダーの床の上の姿勢を
+        lidar_pose で渡す（msg.pelvis_to_lidar で作る）。無ければ今までどおり "REF"（自前の推定器は扉を自分で測る）"""
+        with self._lock:  # 時刻を先に置く: REF より前の走査の電文（推定器がまだ追っていた分）は受け取りで捨てる
+            self.ref_t = time.monotonic()
             self.latest, self.recent = None, deque(maxlen=50)
-        self.ref_t = time.monotonic()
+        self.tx.sendto(msg.pack_ref(lidar_pose), ("127.0.0.1", self.port + 1))
         self.still_pose = self.still_odom = None
         self.scan_pelvis.clear()
         self.angle_t, self.angle_seen, self.angle_valid, self.angle_held = None, -1, 1.0, 0.0

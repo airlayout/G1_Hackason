@@ -7,6 +7,8 @@ SetVelocity(0, 0, 0, 0.5) を 3 回送る（door_stock_io.VelocitySender と同�
 
 使い方（PC2・機体は通常運転 501・扉の前）: python3 -u turn_probe.py [--plan "0.2:2,0:2,-0.2:2,0:2"]
   --plan は「wz [rad/s]:秒」を , でつなぐ。既定は ±0.2・±0.35・±0.5 を、行って戻る形で（各 ±23〜29°）
+  11-09: 前後・左右の指令の掃引にも使う。区間を「vx/vy/wz:秒」と書く（例 "0.1/0/0:3,0:2,-0.1/0/0:3,0:2"）。
+    小さい指令に純正の脚がどれだけ応えるか（シミュレータの層 v2 との答え合わせ）。正解は rec_follow.sh の生の点群と /dog_odom
 """
 from __future__ import annotations
 
@@ -31,20 +33,27 @@ DEFAULT_PLAN = ("0:2,0.2:2,0:2,-0.2:2,0:2,-0.2:2,0:2,0.2:2,0:3,"
                 "0.5:1,0:2,-0.5:1,0:2,-0.5:1,0:2,0.5:1,0:3")
 MAX_ABS_WZ = 0.6  # [rad/s] これより速い指令は受け付けない
 MAX_SEG_DEG = 35.0  # 1 区間で回す角度の上限
+MAX_ABS_V = 0.5  # [m/s] 前後・左右の指令の上限（学習の前の上限と同じ）
+MAX_SEG_M = 1.6  # 1 区間で送る距離（指令×秒）の上限。純正は前で 0.5 倍前後しか進まないので実際は 0.8 m 前後
 STOP_TILT_DEG = 10.0
 STATE_STALE_S = 0.1
 VEL_FAIL_TRIP = 5
 DT = 0.02
 
 
-def parse_plan(text: str) -> List[Tuple[float, float]]:
-    """「wz:秒,...」→ [(wz, 秒)]。速すぎる・回し過ぎる区間は ValueError"""
+def parse_plan(text: str) -> List[Tuple[Tuple[float, float, float], float]]:
+    """「wz:秒,...」か「vx/vy/wz:秒,...」→ [((vx, vy, wz), 秒)]。速すぎる・回し過ぎる・進み過ぎる区間は ValueError"""
     plan = []
     for part in text.split(","):
-        wz, secs = (float(v) for v in part.split(":"))
+        vel, secs_text = part.split(":")
+        comps = [float(v) for v in vel.split("/")]
+        vx, vy, wz = (0.0, 0.0, comps[0]) if len(comps) == 1 else comps
+        secs = float(secs_text)
         if abs(wz) > MAX_ABS_WZ or secs <= 0 or abs(math.degrees(wz * secs)) > MAX_SEG_DEG:
             raise ValueError(f"区間 {part} は上限（{MAX_ABS_WZ} rad/s・1 区間 {MAX_SEG_DEG}°）の外")
-        plan.append((wz, secs))
+        if max(abs(vx), abs(vy)) > MAX_ABS_V or math.hypot(vx, vy) * secs > MAX_SEG_M:
+            raise ValueError(f"区間 {part} は上限（{MAX_ABS_V} m/s・1 区間 {MAX_SEG_M} m）の外")
+        plan.append(((vx, vy, wz), secs))
     return plan
 
 
@@ -76,7 +85,7 @@ def main(argv=None) -> int:
     signal.signal(signal.SIGHUP, lambda *_: stop.update(why="ssh の切断"))
     print(f"[turn] FSM {fsm}・{len(plan)} 区間・合計 {sum(s for _, s in plan):.1f} 秒。止めるのはリモコンの B／select か Ctrl+C", flush=True)
 
-    rows = {k: [] for k in ("t", "seg", "wz_cmd", "gyro", "quat", "q", "rpc_ms", "code")}
+    rows = {k: [] for k in ("t", "seg", "wz_cmd", "v_cmd", "gyro", "quat", "q", "rpc_ms", "code")}
     keys_prev = 0
     t0 = time.monotonic()
     next_t = t0
@@ -106,18 +115,19 @@ def main(argv=None) -> int:
                 stop["why"] = f"SetVelocity が {vst.failed_in_row} 回続けて失敗（code={vst.last_code}）"
             if stop["why"]:
                 break
-            wz = plan[seg][0]
-            sender.set(wz != 0.0, 0.0, 0.0, wz)
+            vx, vy, wz = plan[seg][0]
+            sender.set((vx, vy, wz) != (0.0, 0.0, 0.0), vx, vy, wz)
             rows["t"].append(now)
             rows["seg"].append(seg)
             rows["wz_cmd"].append(wz)
+            rows["v_cmd"].append((vx, vy, wz))
             rows["gyro"].append(np.array(state.imu_state.gyroscope, dtype=float))
             rows["quat"].append(quat)
             rows["q"].append(np.array([state.motor_state[j].q for j in range(dc.NUM_DOF)]))
             rows["rpc_ms"].append(vst.last_rpc_ms)
             rows["code"].append(np.nan if vst.last_code is None else vst.last_code)
             if len(rows["t"]) % 25 == 1:
-                print(f"[turn] {el:5.1f} s 区間 {seg + 1}/{len(plan)} wz 指令 {wz:+.2f}・胴の回る速さ {rows['gyro'][-1][2]:+.2f} rad/s・"
+                print(f"[turn] {el:5.1f} s 区間 {seg + 1}/{len(plan)} 指令 {vx:+.2f} {vy:+.2f} {wz:+.2f}・胴の回る速さ {rows['gyro'][-1][2]:+.2f} rad/s・"
                       f"傾き {tilt:.1f}°・RPC {vst.last_rpc_ms:.0f} ms", flush=True)
             next_t += DT
             slack = next_t - time.monotonic()
@@ -130,7 +140,8 @@ def main(argv=None) -> int:
         time.sleep(0.3)
         sender.close()
         out = Path(a.log_dir) / f"turn_probe_{datetime.now().strftime('%Y%m%d_%H%M%S')}.npz"
-        np.savez_compressed(out, **{k: np.array(v) for k, v in rows.items()}, plan=np.array(plan), reason=np.array(stop["why"] or "全区間を終えた"))
+        np.savez_compressed(out, **{k: np.array(v) for k, v in rows.items()},
+                            plan=np.array([[*vel, secs] for vel, secs in plan]), reason=np.array(stop["why"] or "全区間を終えた"))
         print(f"[turn] 止めた（{stop['why'] or '全区間を終えた'}）。記録 {out}", flush=True)
     return 0
 

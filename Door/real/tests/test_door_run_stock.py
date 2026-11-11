@@ -590,3 +590,53 @@ def test_cap_roll_press_limits_only_inward_shoulder_roll():
     outward = q.copy()
     outward[1], outward[8] = np.radians(20.0), np.radians(-20.0)  # 外へ開く側は 20° 先でも切らない
     assert np.array_equal(drs.cap_roll_press(outward, q, kp, 6.0), outward)
+
+
+def test_lidar_center_defaults_to_urdf_fk_only():
+    """11-10 手順 L3: --lidar-center-xy を渡さなければ、取付は URDF の順運動学だけ（補正 0）。
+    旋回で測った (0.047, −0.016) は扉を 8 cm 遠くに置く（R0）ので、黙って使わない"""
+    import door_run_stock as drs
+
+    # Arrange / Act
+    a = drs.parse_args(["--policy", "p.npz", "--door", "0.94,2.05,0.99,0.064", "--door-source", "lidar"])
+    b = drs.parse_args(["--policy", "p.npz", "--door", "0.94,2.05,0.99,0.064", "--door-source", "lidar",
+                        "--lidar-center-xy", "0.047", "-0.016"])
+
+    # Assert
+    assert a.lidar_center_xy is None
+    assert b.lidar_center_xy == [0.047, -0.016]
+
+
+def test_door_values_fk_center_sets_zero_head_xy():
+    """取付が URDF の計算だけなら、立った後に推定器へ渡す補正 head_xy は (0, 0)（R0 の --center fk と同じ）"""
+    import door_frame as dfr
+    import door_run_stock as drs
+
+    class FakeLidar:
+        head_xy = None
+
+        def request_ref(self) -> None:
+            pass
+
+        def ready(self, now) -> bool:
+            return True
+
+        def note_state(self, *args) -> None:
+            pass
+
+        def pose(self, now, odom):
+            return None, ""
+
+        def angle_obs(self, now):
+            return dfr.door_closed_angle_obs()
+
+    lidar = FakeLidar()
+    dv = drs.DoorValues(dfr.PlanarPose(-1.0, 0.0, 0.0), lidar, "track", None)
+    q, quat = np.zeros(29), np.array([1.0, 0.0, 0.0, 0.0])
+    dv.begin(100.0, (0.0, 0.0, 0.0), 100.0)
+
+    # Act
+    dv.update(101.0, 1.0, (0.0, 0.0, 0.0), 101.0, q, quat)
+
+    # Assert
+    assert lidar.head_xy == (0.0, 0.0)

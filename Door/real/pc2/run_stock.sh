@@ -19,10 +19,18 @@
 #             効き目 0.5 秒が切れて純正が減速した（手順 7.5 で 0.25 を測る）。起動の時の FSM の読み取りにも効く
 #   LOCO      relay（既定。SetVelocity を別のプロセス loco_relay.py で送る）／inproc（11-04 までの作り）。11-04: 同じプロセスでは
 #             返事が 1/4〜1/2 落ちた（3104）。同じ失敗を子のプロセスへ移して直した例がある（4paradigm/phanthymotus-driver 24274c5）
+#   START     「前 左 [向き°]」を渡すと扉の値をライダーでなく巻き尺＋脚の odom で出す（--door-source tape）。
+#             前は扉の板の面から pelvis まで（手前は負＝−(足先の巻き尺 + 0.123)）、左は開口の中心から pelvis まで（扉を向いて左が正）。
+#             11-09: 画像の網は扉が画面から外れると壁を扉と取り違えた → 教師を巻き尺の値で動かす（例 START="-0.883 -0.12"）
 cd ~/door_real || exit 1
 : "${DOOR:?扉の寸法を DOOR=幅,高さ,レバーの高さ,バックセット [m] で渡す}"
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1  # 10-16: BLAS の糸が多いと周期が乱れる
-ARGS=(--policy "${POLICY:-door_policy_f3sc_r4_it65350.npz}" --iface eth0 --door-source lidar --lidar-mode "${MODE:-track}"
+SRC=(--door-source lidar --lidar-mode "${MODE:-track}")
+if [ -n "${START:-}" ]; then
+  read -r SX SY SYAW <<< "$START"
+  SRC=(--door-source tape --start-x "$SX" --start-y "$SY" --start-yaw-deg "${SYAW:-0}")
+fi
+ARGS=(--policy "${POLICY:-door_policy_f3sc_r4_it65350.npz}" --iface eth0 "${SRC[@]}"
       --door "$DOOR" --run-seconds "${SECS:-5}" --odom "${ODOM:-relay}" --leg-actions "${LEGACT:-shadow}" --max-vx "${MAX_VX:-0.5}" --arm-temp-stop "${ARM_TEMP:-75}"
       --rpc-timeout "${RPC_TIMEOUT:-1.0}" --arm-temp-hold "${ARM_TEMP_HOLD:-1.0}" --loco "${LOCO:-relay}"
       --cmd-fifo logs/stock_cmd.fifo)
@@ -30,7 +38,7 @@ ARGS=(--policy "${POLICY:-door_policy_f3sc_r4_it65350.npz}" --iface eth0 --door-
 if [ -n "${CENTER:-}" ]; then
   read -r CX CY <<< "$CENTER"
   ARGS+=(--lidar-center-xy "$CX" "$CY")
-else
-  echo "[run] ⚠️ CENTER が無い: door_run_stock.py は 10-21 の旋回の値を使って警告を出す"
+elif [ -z "${START:-}" ]; then
+  echo "[run] CENTER が無い: ライダーの取付は URDF の順運動学だけ（11-10 L3）"
 fi
 exec python3 -u door_run_stock.py "${ARGS[@]}"
