@@ -121,14 +121,14 @@ def test_tracking_error_holds_the_reference_and_resumes_after_correction(control
 
 
 @pytest.mark.parametrize(('command_clearance', 'guard_holds', 'index'), [
-    (.009, 1, 0),
-    (.010, 0, 1),
+    (.002, 1, 0),
+    (.003, 0, 1),
 ])
-def test_next_command_requires_one_centimeter_clearance(
+def test_next_command_enforces_obstacle_clearance(
         controller_fixture, monkeypatch, command_clearance, guard_holds, index):
     kin, scene, candidate, settings, *_ = controller_fixture
     controller = ButtonTrackingController(kin, scene, candidate, settings)
-    clearances = iter([.05, command_clearance] + [.010] * guard_holds)
+    clearances = iter([.05, command_clearance] + [.003] * guard_holds)
     monkeypatch.setattr('button_tracking.contact_metrics', lambda *args, **kwargs: next(clearances))
 
     result = controller.step(scene.q, scene.imu, 0., 2.)

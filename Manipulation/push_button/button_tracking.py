@@ -13,7 +13,7 @@ from robust_scene import update_robot, contact_metrics
 from trajectory import ARM_TORQUE_LIMITS_NM, ARM_JOINTS
 
 PERIOD = .02
-COMMAND_CLEARANCE_M = .01
+COMMAND_CLEARANCE_M = .003
 KI = np.array([40., 40., 40., 40., 20., 20., 20.])
 BIAS_LIMIT = np.array([6., 6., 4., 6., 2., 1.5, 1.5])
 BIAS_SLEW = np.array([2., 2., 2., 2., 1., 1., 1.])
