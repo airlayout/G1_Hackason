@@ -2,7 +2,8 @@
 
   DOOR_POLICY=<書き出した npz> python -m pytest G1_Hackason/Door/real/tests/test_door_staged_loop.py -q
 
-偽の FAST-LIO の受け口は、純正へ最後に送った速度の指令（偽の LocoClient が覚える）で姿勢を動かす（純正の鈍さと効かない帯を真似る）。
+偽の FAST-LIO の受け口は、純正へ最後に送った速度の指令（偽の LocoClient が覚える）で姿勢を動かす（純正の鈍さと効かない帯を真似る。
+11-12 夜: 左右は指令を 0.5 秒出し続けるまで動かない、も足した）。
 方策は s2f・f3t3 の代わりに同じ npz を 2 回読む（形が同じなので輪の確かめには足りる）。
 """
 from __future__ import annotations
@@ -27,6 +28,7 @@ from test_door_real import _State, needs_policy  # noqa: E402
 from test_door_run_stock import POLICY, FakeArm, FakeLoco  # noqa: E402
 
 GAIN, DEAD = (0.52, 0.36, 0.61), (0.15, 0.15, 0.2)
+LATERAL_START_S = 0.5  # 11-06 の実測（左右の遅れ 0.56 s）・11-12 の機体: 左右 0.2 m/s を 0.3〜0.46 秒出しても 1 cm も動かなかった
 
 
 class FakeLidarSource:
@@ -37,6 +39,7 @@ class FakeLidarSource:
         self.ref_t = self.t_last = None
         self.true = dfr.PlanarPose(-1.0, 0.05, 0.0)
         self.lock = threading.Lock()
+        self.lat_since = None  # 左右の指令を出し始めた時刻（出し続けて LATERAL_START_S たつまで横へ動かない）
 
     def request_ref(self, lidar_pose=None) -> None:
         self.refs.append(lidar_pose)
@@ -48,6 +51,12 @@ class FakeLidarSource:
                 vel = self.loco.vel()
                 vx, vy, wz = (vel[-1][2][:3] if vel else (0.0, 0.0, 0.0))
                 v = [c * g if abs(c) >= d else 0.0 for c, g, d in zip((vx, vy, wz), GAIN, DEAD)]
+                if abs(vy) >= DEAD[1]:
+                    self.lat_since = now if self.lat_since is None else self.lat_since
+                    if now - self.lat_since < LATERAL_START_S:
+                        v[1] = 0.0  # 歩き出すまで横へは出ない
+                else:
+                    self.lat_since = None
                 dt = now - self.t_last
                 p = self.true
                 c, s = math.cos(p.yaw), math.sin(p.yaw)
@@ -78,8 +87,9 @@ class FakeFeats:
         pass
 
 
-def _run_staged(monkeypatch, tmp_path, script, extra=()):
-    """偽の機体で door_run_stock.main(--staged) を回す。返り値: (記録, 偽の FAST-LIO の受け口, 段の列, 段の並び)"""
+def _run_staged(monkeypatch, tmp_path, script, extra=(), run_seconds="45"):
+    """偽の機体で door_run_stock.main(--staged) を回す。返り値: (記録, 偽の FAST-LIO の受け口, 段の列, 段の並び)。
+    script の行は (秒, 指示の文字) か (秒, 呼ぶ関数)（11-12 夜: 回の間に定数を直す形を試す）"""
     import door_lidar_source
     import door_run_real as drr
     import door_run_staged as drst
@@ -106,12 +116,16 @@ def _run_staged(monkeypatch, tmp_path, script, extra=()):
             self.rows = list(script)
 
         def readline(self):
-            if not self.rows:
-                time.sleep(30.0)
-                return ""
-            at, name = self.rows.pop(0)
-            time.sleep(max(0.0, t0[0] + at - time.monotonic()))
-            return name + "\n"
+            while True:
+                if not self.rows:
+                    time.sleep(30.0)
+                    return ""
+                at, name = self.rows.pop(0)
+                time.sleep(max(0.0, t0[0] + at - time.monotonic()))
+                if callable(name):
+                    name()
+                    continue
+                return name + "\n"
 
     class FakeNet:
         def __init__(self, p_, vp, feats, head_pitch) -> None:
@@ -137,7 +151,7 @@ def _run_staged(monkeypatch, tmp_path, script, extra=()):
     monkeypatch.setattr(sys, "stdin", FakeStdin())
     t0[0] = time.monotonic()
     rc = drs.main(["--policy", POLICY, "--policy-f3t3", POLICY, "--net", "c2.npz", "--staged", "--door-source", "lidar",
-                   "--door", "0.94,2.05,0.99,0.064", "--run-seconds", "45", "--log-dir", str(tmp_path), *extra])
+                   "--door", "0.94,2.05,0.99,0.064", "--run-seconds", run_seconds, "--log-dir", str(tmp_path), *extra])
     assert rc == 0
     z = dict(np.load(sorted(tmp_path.glob("door_stock_*[0-9].npz"))[0]))
     st = z["staged"]
@@ -166,8 +180,9 @@ def test_staged_loop_goes_through_stage0_approach_and_into_stage2(monkeypatch, t
     assert in2.any()
     want = z["vel_want"][in2]
     assert not want[:, 0].any() and np.allclose(want[:, 1:], 0.0)
-    # 段 2 の方策の周期は歩きの積み上げが 0
-    assert np.allclose(z["D"][in2][:, :3], 0.0)
+    # 段 2 の方策の周期は歩きの積み上げが 0（回の時間切れで止まる周期は方策を回さないので D が NaN。その 1 行は除く）
+    ran = in2 & np.isfinite(z["D"][:, 0])
+    assert ran.sum() >= in2.sum() - 1 and np.allclose(z["D"][ran][:, :3], 0.0)
 
 
 @needs_policy

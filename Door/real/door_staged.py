@@ -119,6 +119,24 @@ def average_pose(a: dfr.PlanarPose, b: dfr.PlanarPose) -> dfr.PlanarPose:
 TOE_TO_PELVIS_M = 0.145      # 足先 → pelvis（11-10 訂正・memory tape-pelvis-from-toes）
 
 
+TAPE_FEET_M = (0.12, 0.30)   # 両足の間（縁からの距離の差）の線。11-12: 右つま先 38 cm を 28 と打ち間違え、足の間 11 cm で気づいた
+TAPE_BOARD_DIFF_M = 0.08     # 左右のつま先から板までの差の上限（扉に向いて立っている）
+
+
+def tape_check(a_left: float, a_right: float, d_left: float, d_right: float) -> str:
+    """巻き尺 4 つの形の確かめ（打ち間違いを起動の前に見つける）。空なら OK"""
+    vals = (a_left, a_right, d_left, d_right)
+    if not all(math.isfinite(v) and 0.0 <= v <= 3.0 for v in vals):
+        return f"0〜3 m の外か数でない（{vals}）"
+    feet = abs(d_right - d_left)
+    if not (TAPE_FEET_M[0] <= feet <= TAPE_FEET_M[1]):
+        return (f"両足の間 {100 * feet:.0f} cm（縁から 左 {100 * d_left:.0f}・右 {100 * d_right:.0f} cm）で、"
+                f"{100 * TAPE_FEET_M[0]:.0f}〜{100 * TAPE_FEET_M[1]:.0f} cm の外")
+    if abs(a_left - a_right) > TAPE_BOARD_DIFF_M:
+        return f"左右のつま先から板まで（{100 * a_left:.0f}・{100 * a_right:.0f} cm）の差が {100 * TAPE_BOARD_DIFF_M:.0f} cm より大きい"
+    return ""
+
+
 def pose_from_tape(a_left: float, a_right: float, d_left: float, d_right: float, width: float,
                    thickness: float = 0.04, lever_left: bool = True) -> dfr.PlanarPose:
     """巻き尺 4 つ → 扉の座標での pelvis の姿勢（11-11 の機体: 網の横のずれを外して段 2 を確かめる）。

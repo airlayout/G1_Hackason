@@ -13,7 +13,9 @@ door_fastlio_node.py が送る）・目の網（c2 の特徴 → 扉の頭）・
 
 11-12 台本（docs/plan/2026-11-12-g1-door-scripted-stage123.md）: script を渡すと、段 2・3 は学習した方策でなく台本
 （door_script.ScriptDoor）が進める。腕は "script"（逆運動学で出した左腕 7 軸の目標）、脚は台本の指令、方策は回さない（"hold"）。
-script_start=1 は段 0 を飛ばし、前の回の REF（FAST-LIO の口が持っている扉の座標）のまま段 1 の寄りから始める
+script_start=1 は段 0 を飛ばし、前の回の REF（FAST-LIO の口が持っている扉の座標）のまま段 1 の寄りから始める。
+11-12 夜: 同じ走らせ役で段 0 を一度通したら、次の d からは段 0 を自動で飛ばす（d0 で段 0 からやり直す）。
+d のたびに台本の定数を読み直す（reload_script。門番 script_gate.py を通った定数だけ）。止まった時は手を扉から離す（ScriptArm.release）
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ import numpy as np
 import door_frame as dfr
 import door_lidar_msg as dlm
 import door_script as dscr
+import g1_arm_fk as fk
 import door_staged as ds
 import hand_door_angle as hda
 
@@ -71,26 +74,62 @@ class ScriptArm:
         self.filt = dscr.PoseFilter(script.p.pose_tau_s)
         self.posture = np.asarray(script.p.posture, dtype=float)
         self.q_cmd: Optional[np.ndarray] = None
+        self.last_pose: Optional[dfr.PlanarPose] = None   # なました姿勢（止まった時に手を離す向きに使う）
+        self.release_goal: Optional[np.ndarray] = None    # 止まった時の手の行き先（扉の座標）
+        self.release_until: Optional[float] = None
+
+    def _frame(self, pose: dfr.PlanarPose, quat: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        roll, pitch = dfr.roll_pitch_from_quat_wxyz(quat)
+        return dfr.rot_z(pose.yaw) @ dfr.tilt_matrix(roll, pitch), np.array([pose.x, pose.y, self.pelvis_z])
 
     def step(self, now: float, q: np.ndarray, quat: np.ndarray, pose: dfr.PlanarPose,
              tau: Optional[np.ndarray]) -> Tuple[dscr.ScriptOut, Optional[np.ndarray]]:
         fpose = self.filt.step(pose)
-        palm = self.palm_fn(q, fpose, quat)
+        self.last_pose = fpose
+        side = "left" if self.ik.side == "left" else "right"
+        palm_b = fk.palm_in_pelvis(self.ik.chain, q, side)  # 順運動学は 1 周期に 1 回（11-12 夜）
+        R, T = self._frame(fpose, quat)
+        palm = T + R @ palm_b
+        Rr, Tr = self._frame(pose, quat)
+        palm_raw = Tr + Rr @ palm_b                          # 扉の角度は、なましていない姿勢で読む
+        fwd = float(palm_b[0])
         q_act = np.asarray(q, dtype=float)[self.ik.idx]
-        fwd = float(self.ik.palm(q, q_act)[0])
         tau_pitch = float(tau[self.ik.idx[0]]) if tau is not None else math.nan  # 把手の側の肩 pitch
-        out = self.script.step(now, fpose, palm, tau_pitch, fwd)
+        out = self.script.step(now, fpose, palm, tau_pitch, fwd, palm_angle=palm_raw)
         if out.goal is None or out.stop:
             return out, None
+        return out, self._ik_to(q, q_act, out.goal, R, T, out.direction)
+
+    def _ik_to(self, q: np.ndarray, q_act: np.ndarray, goal: np.ndarray, R: np.ndarray, T: np.ndarray,
+               direction_door: Optional[np.ndarray]) -> np.ndarray:
         if self.q_cmd is None:
             self.q_cmd = q_act.copy()
-        roll, pitch = dfr.roll_pitch_from_quat_wxyz(quat)
-        R = dfr.rot_z(fpose.yaw) @ dfr.tilt_matrix(roll, pitch)
-        target = R.T @ (out.goal - np.array([fpose.x, fpose.y, self.pelvis_z]))
+        target = R.T @ (np.asarray(goal, dtype=float) - T)
         q_cmd = np.clip(self.q_cmd, q_act - SCRIPT_Q_LEAD, q_act + SCRIPT_Q_LEAD)
-        direction = R.T @ out.direction if out.direction is not None else None
+        direction = R.T @ direction_door if direction_door is not None else None
         self.q_cmd = self.ik.step(q, q_cmd, target, self.posture, direction)
-        return out, self.q_cmd.copy()
+        return self.q_cmd.copy()
+
+    def begin_release(self, now: float, q: np.ndarray, quat: np.ndarray) -> bool:
+        """止まった時（POST）に手を扉から離し始める。手が扉・レバーに触れていない時は何もしない（False）"""
+        if not self.script.touching() or self.last_pose is None:
+            return False
+        R, T = self._frame(self.last_pose, quat)
+        palm = T + R @ fk.palm_in_pelvis(self.ik.chain, q, "left" if self.ik.side == "left" else "right")
+        if not np.isfinite(palm).all():
+            return False
+        self.release_goal = self.script.release_goal(palm)
+        self.release_until = now + self.script.p.release_s
+        self.q_cmd = None
+        return True
+
+    def release(self, now: float, q: np.ndarray, quat: np.ndarray) -> Optional[np.ndarray]:
+        """手を離す間の左腕 7 軸の目標（離し終えたら None＝その場で保つ）。体は止まっている前提で、なました姿勢のまま"""
+        if self.release_until is None or now > self.release_until or self.last_pose is None:
+            return None
+        R, T = self._frame(self.last_pose, quat)
+        q_act = np.asarray(q, dtype=float)[self.ik.idx]
+        return self._ik_to(q, q_act, self.release_goal, R, T, None)
 
 
 class NetSampler:
@@ -132,12 +171,15 @@ class StagedDoor:
                  press_radius: Optional[float] = None, stage2_max_s: float = ds.STAGE2_MAX_S,
                  release_legs: bool = True, tape_pose: Optional[dfr.PlanarPose] = None,
                  script: Optional[dscr.ScriptParams] = None, script_start: int = 0, ik=None,
-                 pelvis_z: float = DEFAULT_PELVIS_Z) -> None:
+                 pelvis_z: float = DEFAULT_PELVIS_Z, script_path: Optional[str] = None,
+                 script_stop: Optional[str] = None, script_check: Optional[Callable[[], str]] = None) -> None:
         if script is not None and ik is None:
             raise ValueError("台本（script）には逆運動学（ik）が要る")
         if script_start not in (0, 1) or (script_start and script is None):
             raise ValueError(f"script_start は 0 か 1（1 は台本の時だけ）: {script_start}")
         self.script_p, self.script_start, self.ik, self.pelvis_z = script, script_start, ik, pelvis_z
+        self.script_path, self.script_stop, self.script_check = script_path, script_stop, script_check
+        self.ref_done = False  # この走らせ役で段 0 を一度通した（次の d からは段 0 を飛ばす）
         self.script: Optional[ScriptArm] = None
         self.warm_until: Optional[float] = None
         self.tape_pose = tape_pose
@@ -160,12 +202,34 @@ class StagedDoor:
         self.handover_wait_t: Optional[float] = None
 
     # --- 段の入り口 ---
-    def begin(self, now: float) -> None:
+    def reload_script(self) -> str:
+        """d の前に台本の定数を読み直す。返り値は受け付けない理由（空なら読み直した）。
+        門番（script_check）が「通っていない」と言えば、古い定数でも走らせない"""
+        if self.script_p is None or not self.script_path:
+            return ""
+        if self.script_check is not None:
+            why = self.script_check()
+            if why:
+                return f"台本の定数: {why}（Mac で push_params.sh、か PC2 で python3 script_gate.py {self.script_path} --door ... を回す）"
+        try:
+            p = dscr.load_params(self.script_path, stop_after=self.script_stop)
+        except (OSError, ValueError) as e:
+            return f"台本の定数を読めない: {type(e).__name__}: {e}"
+        changed = p != self.script_p
+        self.script_p = p
+        self.stance = dscr.script_stance(p, self.width, self.backset, self.lever_height, self.lever_left)
+        if changed:
+            print(f"[staged] 台本の定数を読み直した（{self.script_path}・止める所 {p.stop_after or '無し'}・段 3 {p.push_mode}"
+                  + (f"・{p.note}" if p.note else "") + "）", flush=True)
+        return ""
+
+    def begin(self, now: float, force_stage0: bool = False) -> None:
         self.stage, self.stage0 = 0, ds.Stage0(self.tape_pose)
         self.approach = self.arm = self.carry = None
         self.prep_until = self.handover_wait_t = None
         self.script, self.warm_until = None, None
-        if self.script_start >= 1:  # 段 0 を飛ばす: 前の回の REF のまま、今の FAST-LIO の姿勢から寄り直す
+        skip0 = self.script_p is not None and (self.script_start >= 1 or self.ref_done) and not force_stage0
+        if skip0:  # 段 0 を飛ばす: 前の回の REF のまま、今の FAST-LIO の姿勢から寄り直す
             self.stage, self.approach, self.warm_until = 1, ds.Approach(self.stance), now + SCRIPT_WARM_S
             t = self.stance.target
             print(f"[staged] 台本: 段 0 を飛ばして段 1 から（前の REF のまま）。構えの位置 x {t.x:+.3f} y {t.y:+.3f} 向き "
@@ -180,6 +244,7 @@ class StagedDoor:
               f"（レバーの当てる点 {np.round(sd.ref, 3).tolist()}・止める所 {self.script_p.stop_after or '無し'}）", flush=True)
 
     def _enter_stage1(self, now: float) -> None:
+        self.ref_done = True
         self.stage, self.approach = 1, ds.Approach(self.stance)
         t = self.stance.target
         print(f"[staged] 段 0 が終わった → 段 1: 構えの位置 x {t.x:+.3f} y {t.y:+.3f} 向き {math.degrees(t.yaw):+.0f}° へ寄る", flush=True)

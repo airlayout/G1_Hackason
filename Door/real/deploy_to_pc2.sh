@@ -55,8 +55,13 @@ if [ "${1:-}" != check ]; then
          # 11-10 手順 L4: 段の走らせ役（door_run_stock.py --staged）の部品・手のひらの扉の角度（L2b）・左腕の順運動学と URDF
          "$HERE/door_staged.py" "$HERE/door_run_staged.py" "$HERE/hand_door_angle.py" "$HERE/g1_arm_fk.py"
          "$HERE/door_script.py" "$HERE/g1_arm_ik.py" "$HERE/script_params.json"  # 11-12: 段 2・3 の台本・腕の逆運動学・台本の定数
+         "$HERE/script_params_1112_robot.json"  # 11-12 の機体の 10 回目の値（戻す時）
+         # 11-12 夜: 当たりの模型と門番・回の要約・朝の一括の確かめ（作業ログ 2026-11-12 の 7 章）
+         "$HERE/door_clearance.py" "$HERE/script_gate.py" "$HERE/ana_script_run.py" "$HERE/pc2/preflight.sh" "$HERE/pc2/preflight.py"
          "$HERE/arm_replay.py" "$HERE/pc2/run_replay.sh"  # 11-11 R1・R4: 腕の動きの再生・腰 yaw の打ち消し（door_run_stock.py が読む）
          "$HERE/../doorman6/usd_fix/urdf_src/g1_29dof_rev_1_0.urdf")
+  [ -f "$HERE/script_params.json.ok" ] && FILES+=("$HERE/script_params.json.ok")  # 門番を通った印（無ければ PC2 の run_staged.sh が門番を回す）
+  [ -f "$HERE/door_geom.json" ] && FILES+=("$HERE/door_geom.json")
   for ext in _encoder.npz _encoder.onnx _meta.json; do  # 画像の生徒の書き出しなら、画像の網の重みも配る（meta で rgbd かを見る）
     for POLICY in "$@"; do [ -f "${POLICY%.npz}$ext" ] && FILES+=("${POLICY%.npz}$ext"); done
   done

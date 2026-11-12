@@ -91,6 +91,8 @@ VX_DEAD = 0.03  # これより小さい前後の指令は持ち上げない（�
 LIDAR_REF_RETRY_S = 15.0
 PHASES = ("WAIT", "ARMS_IN", "READY", "DOOR", "POST", "ARMS_OUT", "DAMP", "PROBE")  # 記録は番号で持つので、足すときは後ろへ
 ACTIVE = ("ARMS_IN", "READY", "DOOR", "POST", "ARMS_OUT", "PROBE")
+D_WAIT_S = 30.0  # 11-12 夜: d を打った時に足の荷重の確かめが「脚が動いている」で判定できなければ、止まるまでこれだけ待つ
+# （11-12 の機体: 右足首 roll が断続的に揺れ、十数回打ち直して約 4 分。待つ間に揺れが止まれば、その周期に始める）
 
 
 class _NullLoco:
@@ -223,6 +225,17 @@ def boost_stock_velocity(vx: float, vy: float, wz: float, gain: tuple, vx_floor:
     return tuple(max(-lim, min(lim, v)) for v, lim in zip(out, VEL_LIMIT))
 
 
+def print_try_summary(rows: dict, why: str, door: str, phases=None) -> None:
+    """11-12 夜: 台本の回が止まった時の要約（別の糸）。失敗しても走らせ役は止めない"""
+    try:
+        import ana_script_run as asr
+        n = min(len(v) for v in rows.values())
+        z = {k: np.stack(v[:n]) for k, v in rows.items() if n > 0}
+        print(asr.summarize_arrays(z, dict(reason=why, args=dict(door=door), phases=phases), door, title="この回"), flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[door_stock] 回の要約を出せなかった: {type(e).__name__}: {e}", flush=True)
+
+
 def ready_refusals(tilt: float, max_stand_tilt: float, load: Optional[dfl.GateVerdict], door_why: str) -> List[str]:
     """READY で d を打った時に受け付けない理由（空なら受け付ける）。load は足の確かめの判定（None は見ない）"""
     out = drr.hold_refusals(tilt, max_stand_tilt, load)
@@ -317,6 +330,9 @@ def parse_args(argv=None) -> argparse.Namespace:
                     help="--staged: 段 2・3 を学習した方策でなく台本（door_script.py）で進める。台本の定数の JSON（script_params.json）")
     ap.add_argument("--script-start", type=int, choices=(0, 1), default=0,
                     help="--script: 1 は段 0 を飛ばし、前の回の REF（FAST-LIO の口が持つ扉の座標）のまま段 1 の寄りから始める")
+    ap.add_argument("--script-gate", choices=("on", "off"), default="on",
+                    help="--script: 門番（script_gate.py）を通った定数（<定数>.ok が合う）だけで走らせる。d のたびにも確かめる")
+    ap.add_argument("--script-geom", default=None, help="--script: 門番の扉の周りの寸法の JSON（door_geom.json。無ければ既定の寸法）")
     ap.add_argument("--script-stop", default=None,
                     help="--script: この小段（2a・2b・2c・2d・3a）が終わったら立ったまま止まる（定数ファイルの stop_after より優先）")
     ap.add_argument("--replay-arm", default=None,
@@ -582,12 +598,21 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
         net_pitch = math.radians(a.head_pitch_deg if a.head_pitch_deg is not None else dvc.camera_pitch_deg(vp_net))
         chain = fk.load_chain(urdf)
         pelvis_z = a.pelvis_z if a.pelvis_z is not None else drst.DEFAULT_PELVIS_Z
-        script_p, script_ik = None, None
+        script_p, script_ik, script_check = None, None, None
         if a.script is not None:  # 11-12: 段 2・3 を台本で（学習した方策は腕と腰の係数を読むためだけに残る）
             import door_script as dscr
             import g1_arm_ik as aik
             script_p = dscr.load_params(a.script, stop_after=a.script_stop)
             script_ik = aik.ArmIK(chain, "right" if a.lever_right else "left", urdf)
+            if a.script_gate == "on":
+                import script_gate as sgate
+                script_check = lambda: sgate.verify_ok(a.script, a.script_geom, a.door, pelvis_z)  # noqa: E731
+                why = script_check()
+                if why:
+                    raise SystemExit(f"[door_stock] 起動しない: 台本の定数が{why}。python3 script_gate.py {a.script} --door {a.door} "
+                                     f"--pelvis-z {pelvis_z} を回す（緊急時だけ --script-gate off）")
+            else:
+                print("[door_stock] ⚠️ --script-gate off: 門番を通っていない定数でも走らせる", flush=True)
             print(f"[door_stock] --script: {a.script}・始める段 {a.script_start}・止める所 {script_p.stop_after or '無し'}・"
                   f"構え x {script_p.stance_x:+.2f} 横 {script_p.stance_y_off:+.2f} 向き {script_p.stance_yaw_deg:+.0f}°・"
                   f"押し下げ {100 * script_p.press_depth:.0f} cm・終わり {script_p.goal_deg:.0f}°" + (f"・{script_p.note}" if script_p.note else ""),
@@ -597,10 +622,15 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
         staged = drst.StagedDoor(w, h, lh, bs, not a.lever_right, lidar, drst.NetSampler(p, vp_net, feats_net, net_pitch),
                                  drst.make_palm_fn(chain, pelvis_z, not a.lever_right), force_known=False, net_dx=a.net_dx,
                                  script=script_p, script_start=a.script_start, ik=script_ik, pelvis_z=pelvis_z,
+                                 script_path=a.script, script_stop=a.script_stop, script_check=script_check,
                                  press_radius=a.press_radius, stage2_max_s=a.stage2_max_s,
                                  release_legs=not a.no_leg_release,
                                  tape_pose=(dsd.pose_from_tape(*(float(v) for v in a.stage0_tape.split(",")), w, lever_left=not a.lever_right)
                                             if a.stage0_tape else None))
+        if a.stage0_tape:
+            why = dsd.tape_check(*(float(v) for v in a.stage0_tape.split(",")))
+            if why:
+                raise SystemExit(f"[door_stock] 起動しない: 巻き尺の値 {a.stage0_tape} が{why}（打ち間違いでないか測り直す）")
         if staged.tape_pose is not None:
             tp = staged.tape_pose
             print(f"[door_stock] --staged: 段 0 は巻き尺 {a.stage0_tape} → pelvis x {tp.x:+.3f} y {tp.y:+.3f} 向き {math.degrees(tp.yaw):+.1f}°", flush=True)
@@ -716,6 +746,8 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
         threading.Thread(target=watch_fifo, args=(a.cmd_fifo, lines), daemon=True).start()
 
     log = drr.Logger()
+    try_row = [0]  # 今の回（DOOR に入った時）の記録の行の番号
+    pending_d: Optional[Tuple[float, bool]] = None  # 待っている d（打った時刻, 段 0 からか）
     log_dir = Path(a.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     stamp = f"{datetime.now():%Y%m%d_%H%M%S}"
@@ -749,12 +781,25 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
         if phase == "DAMP" or phase == new:
             return
         print(f"[door_stock] {phase} → {new}" + (f"（{why}）" if why else ""), flush=True)
+        if new == "DOOR":
+            try_row[0] = len(log.rows.get("t", []))
+        was = phase
         phase, phase_t, reached_t = new, time.monotonic(), None
         if new in ("POST", "ARMS_OUT", "DAMP"):
             sender.stop()
         if new == "POST" and arm_target is not None and np.isfinite(q[ARMS]).all():
             # 止めた瞬間の実際の角度で保つ。届かない目標（体・扉に当たった先）を押し続けない（11-03 実機: 左肩 roll が 84 °C）
             arm_target = np.clip(q[ARMS], lo_arm + a.clip_margin, hi_arm - a.clip_margin)
+        if was == "DOOR" and new == "POST" and staged is not None and staged.script is not None and np.isfinite(q).all():
+            # 11-12 夜: 台本の段で止まったら、手を扉・レバーから離してから保つ（手が当たったまま保つと 20 秒で 56→72 °C）
+            if staged.script.begin_release(time.monotonic(), q, quat):
+                print(f"[door_stock] 手を扉から離す（後ろへ {100 * staged.script.script.p.release_back:.0f} cm・"
+                      f"上へ {100 * staged.script.script.p.release_up:.0f} cm・{staged.script.script.p.release_s:.1f} 秒）", flush=True)
+        if was == "DOOR" and new == "POST" and staged is not None and staged.script_p is not None and "t" in log.rows:
+            # 11-12 夜: 回の要約を別の糸で出す（numpy だけの軽い集計。Mac へ記録を取りに行かずに読める）
+            k0 = try_row[0]
+            snap = {k: v[k0:] for k, v in log.rows.items()}
+            threading.Thread(target=print_try_summary, args=(snap, why, a.door, PHASES), daemon=True).start()
         if new in ("POST", "DAMP"):
             reason = why
         if new == "DAMP":
@@ -822,7 +867,7 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
             for c in cmds:
                 if c == "q" and phase in ("WAIT", "DAMP"):
                     soft_stop("PC の q", from_pc=True)
-                elif c not in ("a", "d", "r") and parse_probe(c, a.probe_vx) is None:
+                elif c not in ("a", "d", "d0", "r") and parse_probe(c, a.probe_vx) is None:
                     soft_stop("PC の Enter", from_pc=True)
             chord = (1 << drr.KEY["L2"]) | (1 << drr.KEY["B"])
             if keys & chord == chord and edge & chord:
@@ -927,23 +972,42 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                         go("POST", f"扉 {deg_now:.0f}°（--stop-door-deg {a.stop_door_deg:.0f}）")
                     if phase == "DOOR" and now - phase_t >= a.run_seconds:
                         go("POST", "時間")
+                # 11-12 夜: 腕を構えている間（ARMS_IN）に届いた d も待たせ、READY になったら始める（a ; d を続けて打てる）
+                if ("d" in cmds or "d0" in cmds) and phase in ("ARMS_IN", "READY"):
+                    pending_d = (now, "d0" in cmds)
+                if phase not in ("ARMS_IN", "READY"):
+                    pending_d = None
                 if phase == "READY":
                     load_gate = load_gate.push(now, forces, dq)
-                    if "d" in cmds:
+                    if pending_d is not None:
                         src_why = (feats_net.why_not(now) if staged is not None else
                                    doorv.refuse_door(now) if vp is None else feats.why_not(now))
-                        refuse = ready_refusals(tilt, max_stand_tilt, load_gate.verdict() if use_load_check else None, src_why)
-                        if refuse:
-                            print("[door_stock] d を受け付けない: " + "・".join(refuse), flush=True)
-                        else:
+                        verdict = load_gate.verdict() if use_load_check else None
+                        refuse = ready_refusals(tilt, max_stand_tilt, verdict, src_why)
+                        moving_only = (verdict is not None and verdict.decision == dfl.SKIP and len(refuse) == 1)
+                        reload_why = "" if refuse or staged is None else staged.reload_script()
+                        if refuse and moving_only and now - pending_d[0] < D_WAIT_S:
+                            if int((now - pending_d[0]) / 2.0) != int((now - pending_d[0] - DT) / 2.0):
+                                print(f"[door_stock] d を待っている（{now - pending_d[0]:.0f} 秒）: " + "・".join(refuse), flush=True)
+                            refuse = ["待つ"]
+                        elif refuse:
+                            print("[door_stock] d を受け付けない: " + "・".join(refuse)
+                                  + (f"（{D_WAIT_S:.0f} 秒待った）" if moving_only else ""), flush=True)
+                            pending_d = None
+                        elif reload_why:
+                            print("[door_stock] d を受け付けない: " + reload_why, flush=True)
+                            refuse, pending_d = [reload_why], None
+                        if not refuse:
                             s = dc.reset_actor(p, s)
                             complete = 0.0
                             if replay is not None:  # R1: この周期から再生する
                                 replay_t0, replay_yaw0 = now, dfr.yaw_from_quat_wxyz(quat)
+                            force0 = bool(pending_d[1])
+                            pending_d = None
                             if staged is not None:
-                                staged.begin(now)
+                                staged.begin(now, force_stage0=force0)
                                 p_cur, staged_prev_mode = p, "hold"
-                            go("DOOR", f"{a.run_seconds:.1f} 秒" + ("・段に分けて（段 0 から）" if staged is not None else ""))
+                            go("DOOR", f"{a.run_seconds:.1f} 秒" + (f"・段に分けて（段 {staged.stage} から）" if staged is not None else ""))
                             if staged is not None:  # この周期から段を通す（READY の周期に決め事を作っていないので今作る）
                                 dec = staged.decide(now, q, quat, odom, odom_t, last_obs, tau=tau)
                                 pose = dec.pose
@@ -975,12 +1039,18 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                                     door_frame_loc=dfr.door_frame_loc(pose_in, quat), door_geometry=geometry, complete=complete)
                     pol, vmsg = vision_policy(vp, feats, quat, q, head_pitch, p.mirror,
                                                  p if a.vision_actor == "teacher" else None) if vp is not None else (None, None)
-                    s, out = dc.step(p_use, s, inp, mode=mode, policy=pol)
-                    s = dsio.with_leg_actions(p_use, s, q, a.leg_actions)
-                    if use_dec and dec.zero_walk:
-                        s = dsd.zero_walk_accumulator(s)  # 段 2 の脚を放す前（シムの arm_stage と同じ）
-                    last_obs = out.obs
-                    if use_dec and dec.arm == "script":  # 11-12 台本: 左腕は逆運動学の目標・右腕は借りる前の角度・脚は台本の指令
+                    # 11-12 夜: 台本の段 1 以降は学習した方策を回さない（使わない網の計算と、止まる周期に方策の腕が混じるのを避ける）
+                    script_stage = use_dec and staged.script_p is not None and dec.stage >= 1
+                    if not script_stage:
+                        s, out = dc.step(p_use, s, inp, mode=mode, policy=pol)
+                        s = dsio.with_leg_actions(p_use, s, q, a.leg_actions)
+                        if use_dec and dec.zero_walk:
+                            s = dsd.zero_walk_accumulator(s)  # 段 2 の脚を放す前（シムの arm_stage と同じ）
+                        last_obs = out.obs
+                    if script_stage and dec.stage >= 2 and dec.arm != "script" and dec.arm != "home":
+                        # 台本の段で止まる周期（段の部品の _stop は腕の出どころを "policy" で返す）: 腕はその場・脚は立つ
+                        sender.set(False, 0.0, 0.0, 0.0)
+                    elif use_dec and dec.arm == "script":  # 11-12 台本: 左腕は逆運動学の目標・右腕は借りる前の角度・脚は台本の指令
                         if dec.arm_left is not None:
                             want = arm_home.copy()
                             want[slice(7, 14) if a.lever_right else slice(0, 7)] = dec.arm_left
@@ -1022,6 +1092,14 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                             arm_target = tg.limit_sent_target(want, arm_prev, lo_arm, hi_arm,
                                                               margin=a.clip_margin, max_step=drr.MAX_TARGET_STEP)
                         sender.set(False, 0.0, 0.0, 0.0)  # 脚は立ったまま（方策の歩きを送らない）
+                if phase == "POST" and staged is not None and staged.script is not None and arm_target is not None:
+                    rel = staged.script.release(now, q, quat)  # 11-12 夜: 止まった後、手を扉から離す間だけ
+                    if rel is not None:
+                        want = arm_target.copy()
+                        want[slice(7, 14) if a.lever_right else slice(0, 7)] = rel
+                        want = arp.guard_lead(want, q[ARMS], guard_delta)
+                        arm_target = tg.limit_sent_target(want, arm_target, lo_arm, hi_arm,
+                                                          margin=a.clip_margin, max_step=drr.MAX_TARGET_STEP)
             except Exception as e:  # noqa: BLE001  方策の計算の誤りでは脱力せず、立ったまま腕を保つ
                 print(f"[door_stock] 計算で例外: {type(e).__name__}: {e}", flush=True)
                 out = None

@@ -1,7 +1,9 @@
 """11-12 台本（S2・S3・S5）: door_script.ScriptDoor の状態の移りを、偽の手のひら（扉の座標の点）で確かめる。機体は要らない。
 
-偽の世界: 手のひらは行き先へ付いていく。レバーは当てる点の高さでばねのように受け（行き先の半分だけ下がる・4.5 cm で止まる）、
-3 cm 下がると掛け金が外れる。外れるまでは手のひらは前へ出られない。脚の指令が出ると pelvis が前へ進む（0.5 倍）。
+偽の世界: 手のひらは行き先へ付いていく。レバーに当たるのは手の先（手のひらの原点の −above[0] 前。11-12 の形は手の先で押す）。
+レバーは当てる点の高さでばねのように受け（行き先の半分だけ下がる・4.5 cm で止まる）、3 cm 下がると掛け金が外れる。
+外れるまでは手の先は前へ出られない。脚の指令が出ると pelvis が前へ進む（0.5 倍）。
+⚠️ 偽の世界は台本の状態の移りを確かめるだけで、機体の当たり方・純正の脚の癖は入っていない（作業ログ 2026-11-12 の 4 章）
 """
 from __future__ import annotations
 
@@ -28,7 +30,9 @@ class World:
         st = dscr.script_stance(p, *DOOR, True).target
         self.pose = st
         self.palm = np.array([st.x + 0.01, st.y + 0.23, 0.63])  # 腕を下ろした手のひら
+        self.reach = -p.above[0]  # 手のひらの原点から、レバーに当たる所（手の先）まで
         self.lever, self.latch_free, self.tau_gain = lever, latch_free, tau_gain
+        self.stuck_x: float = math.inf  # 手の先がこれより前へ出られない（扉が動かない形）
         self.depth = 0.0
         self.opened = False
         self.yaw_kicks = {}   # 小段の名前 → 回す角度 [rad]（1 回だけ）
@@ -38,14 +42,16 @@ class World:
         d = goal - self.palm
         n = float(np.linalg.norm(d))
         new = goal.copy() if n <= 0.3 * DT else self.palm + d * (0.3 * DT / n)
-        over = self.lever and np.linalg.norm(new[:2] - self.ref[:2]) < 0.06 or self.depth > 0
+        tip = new + np.array([self.reach, 0.0, 0.0])
+        over = self.lever and np.linalg.norm(tip[:2] - self.ref[:2]) < 0.06 or self.depth > 0
         if self.lever and over and goal[2] < self.ref[2]:
             self.depth = min(0.045, 0.5 * (self.ref[2] - goal[2]))
             new[2] = self.ref[2] - self.depth
         released = self.latch_free and self.depth >= 0.03
-        self.opened = self.opened or (released and new[0] > self.ref[0] + 0.02)  # 開いた扉は掛け金に掛からない
+        self.opened = self.opened or (released and tip[0] > self.ref[0] + 0.02)  # 開いた扉は掛け金に掛からない
         if self.lever and self.depth > 0 and not released and not self.opened:
-            new[0] = min(new[0], self.ref[0] + 0.003)
+            new[0] = min(new[0], self.ref[0] + 0.003 - self.reach)
+        new[0] = min(new[0], self.stuck_x - self.reach)
         self.palm = new
 
     def run(self, s: dscr.ScriptDoor, seconds: float = 60.0) -> dscr.ScriptOut:
@@ -74,14 +80,117 @@ def make(**kw):
 
 
 def test_full_run_presses_lever_unlatches_and_walks_door_to_goal():
-    p, s = make()
+    p, s = make()  # 既定＝段 3 は walk（腕は体に対して固め、歩いて押す）
     w = World(p)
     out = w.run(s)
     assert out.success and "成功" in out.stop, out
     assert w.subs == ["2a", "2b", "2c", "2d", "3a", "3c", "done"], w.subs
-    assert math.degrees(s.angle) >= p.goal_deg
-    assert w.walked > 0.05  # 手が前へ出すぎた所で脚が前へ出ている
+    assert s.angle_median_deg() >= p.goal_deg
+    assert w.walked > 0.10  # 体が前へ出て押している
     assert out.angle_obs[1] == 1.0 and math.degrees(out.angle_obs[0]) >= p.goal_deg
+
+
+def test_pulse_mode_still_reaches_goal_with_short_walks():
+    p, s = make(push_mode="pulse")  # 11-12 の機体の形
+    w = World(p)
+    out = w.run(s)
+    assert out.success, out
+    assert w.walked > 0.05  # 手が前へ出すぎた所で脚が前へ出ている
+
+
+def test_walk_mode_keeps_walking_through_3c_and_stands_at_the_end():
+    p, s = make()
+    w = World(p)
+    walks = []
+    orig = s.step
+
+    def step(*a, **k):
+        out = orig(*a, **k)
+        walks.append((out.sub, out.walk[0]))
+        return out
+
+    s.step = step
+    out = w.run(s)
+    assert out.success
+    in3c = [wk for sub, wk in walks if sub == "3c"]
+    assert len(in3c) > 2 and all(in3c[1:])                     # 3c の間は歩き続ける（入った周期は 3a の続きで立つ）
+    assert not any(wk for sub, wk in walks if sub in ("2a", "2b", "2c", "2d", "3a"))  # 3a までは脚を止める
+    assert not walks[-1][1]                                    # 終わりは立つ
+
+
+def test_walk_mode_fails_when_hand_is_pushed_into_the_body():
+    # 扉が動かず、歩くほど手が体へ押し込まれる形（手の前への出が walk_min_fwd を下回る）→ 立ったまま止まる
+    p, s = make()
+    w = World(p)
+    orig = s._enter_3c
+
+    def enter(t, pose, palm):
+        w.stuck_x = float(palm[0] + w.reach) + 0.005
+        orig(t, pose, palm)
+
+    s._enter_3c = enter
+    out = w.run(s)
+    assert ("押し込まれた" in out.stop or "開いていかない" in out.stop) and not out.success, out
+
+
+def test_walk_in_3a_walks_while_unlatching_and_does_not_trip_pelvis_guard():
+    p, s = make(walk_in_3a=True)
+    w = World(p)
+    out = w.run(s)
+    assert out.success, out
+
+
+def test_goal_uses_median_angle_so_a_single_spike_does_not_end_the_run():
+    p, s = make(goal_deg=20.0)
+    s.palm_ref = np.array([-0.18, 0.30, 0.95])
+    s.sub, s.t_sub, s.palm_body = "3c", 0.0, np.array([0.2, 0.2])
+    s.angle_best, s.t_progress = 0.0, 0.0
+    pose = dfr.PlanarPose(-0.4, 0.08, 0.0)
+    line = s.line
+    v = s.palm_ref[:2] - line.hinge_xy
+
+    def palm_at(deg):
+        a = line.open_sign * math.radians(deg)
+        c, sn = math.cos(a), math.sin(a)
+        xy = line.hinge_xy + np.array([c * v[0] - sn * v[1], sn * v[0] + c * v[1]])
+        return np.array([xy[0], xy[1], 0.95])
+
+    for k, deg in enumerate([5, 5, 5, 25, 5, 5]):  # 1 周期だけ 25° に跳ぶ
+        out = s.step(k * 0.02, pose, palm_at(5), -2.0, 0.3, palm_angle=palm_at(deg))
+        assert out.sub == "3c" and not out.success
+    assert s.angle_median_deg() < 10
+
+
+def test_angle_is_read_from_palm_angle_when_given():
+    p, s = make()
+    s.palm_ref = np.array([-0.18, 0.30, 0.95])
+    s.sub, s.t_sub, s.palm_body = "3c", 0.0, np.array([0.2, 0.2])
+    pose = dfr.PlanarPose(-0.4, 0.08, 0.0)
+    s.step(0.0, pose, s.palm_ref, -2.0, 0.3, palm_angle=s.palm_ref + np.array([0.05, 0.0, 0.0]))
+    assert math.degrees(s.angle) > 2.0  # 行き先の基準（palm）は動いていなくても、角度は palm_angle で読む
+
+
+def test_release_goal_moves_back_and_up_and_touching_follows_contact():
+    p, s = make()
+    palm = np.array([-0.18, 0.30, 0.95])
+    g = s.release_goal(palm)
+    assert np.allclose(g - palm, [-p.release_back, 0.0, p.release_up])
+    assert not s.touching()        # 2a・触れていない
+    s.sub = "2b"
+    assert not s.touching()
+    s.sub = "2d"
+    assert s.touching()
+
+
+def test_defaults_match_shipped_params_file_and_robot_file_differs_only_in_first_via():
+    here = Path(__file__).resolve().parents[1]
+    shipped = dscr.load_params(str(here / "script_params.json"))
+    robot = dscr.load_params(str(here / "script_params_1112_robot.json"))
+    from dataclasses import replace
+    assert replace(shipped, note="") == replace(dscr.ScriptParams(), note="")
+    diff = {f: (getattr(robot, f), getattr(shipped, f)) for f in dscr.ScriptParams.__dataclass_fields__
+            if f != "note" and getattr(robot, f) != getattr(shipped, f)}
+    assert set(diff) == {"via"} and robot.via[1:] == shipped.via[1:], diff  # 11-12 夜に変えたのは最初の経由点の高さだけ
 
 
 def test_arm_stays_down_and_legs_stand_while_waiting():
@@ -93,14 +202,16 @@ def test_arm_stays_down_and_legs_stand_while_waiting():
 
 
 def test_miss_when_no_lever_under_the_hand():
-    p, s = make()
+    # 触れたを高さで決めない時（touch_by_height=False）は、レバーが無ければ当てる点の下まで下ろして空振りで止まる
+    p, s = make(touch_by_height=False)
     w = World(p, lever=False)
     out = w.run(s)
     assert "空振り" in out.stop and w.subs[-1] == "failed" and "3a" not in w.subs
 
 
 def test_touch_is_detected_by_shoulder_torque_too():
-    p, s = make(lag_line=1.0)  # 遅れでは立たないようにして、力だけで触れたと分かるか
+    # 遅れ・高さでは立たないようにして、力だけで触れたと分かるか（偽のレバーは 4.5 cm しか下がらないので押し下げの線も合わせる）
+    p, s = make(lag_line=1.0, touch_by_height=False, press_depth=0.04, press_min=0.02)
     w = World(p, tau_gain=400.0)
     out = w.run(s)
     assert out.success, out
@@ -141,7 +252,7 @@ def test_body_yaw_twice_fails_after_retries_are_used_up():
 
 
 def test_shoulder_torque_over_limit_stops():
-    p, s = make(tau_max=5.0, tau_max_s=0.5, lag_line=1.0, tau_line=100.0)  # 触れたと分からないまま押し続ける形
+    p, s = make(tau_max=5.0, tau_max_s=0.5, lag_line=1.0, tau_line=100.0, touch_by_height=False)  # 触れたと分からないまま押し続ける形
     w = World(p, tau_gain=400.0)
     out = w.run(s)
     assert "上限" in out.stop
@@ -186,7 +297,8 @@ def test_load_params_reads_json_and_rejects_unknown_or_bad_values(tmp_path):
     f.write_text(json.dumps({"press_dept": 0.05}), encoding="utf-8")
     with pytest.raises(ValueError, match="知らない名前"):
         dscr.load_params(str(f))
-    for bad in ({"walk_vx": 0.1}, {"stop_after": "3c"}, {"press_min": 0.1}, {"stance_x": -0.2}, {"posture": [0, 0, 0]}):
+    for bad in ({"walk_vx": 0.1}, {"stop_after": "3c"}, {"press_min": 0.1}, {"stance_x": -0.2}, {"posture": [0, 0, 0]},
+                {"push_mode": "run"}, {"push_mode": "walk", "walk_vx": 0.0}, {"release_back": 0.2}):
         with pytest.raises(ValueError):
             dscr.load_params(None, **bad)
 

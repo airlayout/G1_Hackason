@@ -30,6 +30,13 @@
 #   FULL_EVERY   元の JPEG（と生の深度）を書く間隔 [s]。既定は台本の時 0.1（10 Hz・正解データ）・ほかは 2.0
 #     例: SCRIPT=script_params.json SCRIPT_STOP=2b TAPE=0.65,0.64,0.55,0.75 DOOR=0.94,2.05,0.99,0.064 PELVIS_Z=0.73 ./door_start.sh run_staged.sh
 #         SCRIPT=script_params.json SCRIPT_START=1 SCRIPT_STOP=2d DOOR=... PELVIS_Z=0.73 ./door_start.sh run_staged.sh
+#   11-12 夜（作業ログ 2026-11-12 の 7 章）:
+#   GATE       on（既定）＝台本の定数が門番（script_gate.py）を通っていなければ、PC2 で門番を回し、落ちたら起こさない／off＝確かめない
+#   GEOM       門番の扉の周りの寸法の JSON（door_geom.json。無ければ既定の寸法＝11-11 の巻き尺）
+#   RUN_CPUS   走らせ役を置くコア（例 2,3。taskset。既定は置かない）・VCPUS 目の網のコア（例 0,1）・DCPUS 深度の中継のコア（例 1）
+#              11-12 の機体: 段 2 以降の 1 周期の計算が p99 29 ms・最大 41〜63 ms に跳ねた（台本なしの s2g でも同じ）。取り合いの見込み
+#   走らせ役は起こしたまま何度も回せる: 止まったら ./stock_cmd.sh a（構え直す）→ d（段 1 から・段 0 は 1 度通したら飛ばす）。
+#   d のたびに $SCRIPT を読み直す（Mac で push_params.sh で送る）。d0 は段 0 から
 #   NOSEND=1  腕も歩きも送らない（--no-send）。d を打つと段 0 の網の値・FAST-LIO の口の値が記録と表示に出る（機体は動かない）
 #   PITCH     カメラの俯角 [°]。既定 auto＝起こす前にカメラの加速度計で測る（cam_tilt.py。止まって立っていること）
 #   MAX_VX・ARM_TEMP・ARM_TEMP_HOLD・RPC_TIMEOUT・LOCO・ODOM・VPY・VTHREADS は run_vision.sh と同じ
@@ -47,6 +54,14 @@ if [ -n "$SCRIPT" ]; then
   done
   python3 -c "import door_script as d; d.load_params('$SCRIPT', stop_after='${SCRIPT_STOP:-}' or None)" \
     || { echo "[run] 台本の定数を読めない（$SCRIPT・SCRIPT_STOP=${SCRIPT_STOP:-}）"; exit 1; }
+  PZ="${PELVIS_Z:-0.75}"
+  GATE_ARGS=("$SCRIPT" --door "$DOOR" --pelvis-z "$PZ"); [ -n "${GEOM:-}" ] && GATE_ARGS+=(--geom "$GEOM")
+  if [ "${GATE:-on}" = on ]; then
+    if ! python3 script_gate.py "${GATE_ARGS[@]}" --check | grep -q "合う"; then
+      echo "[run] 台本の定数が門番を通っていない: PC2 で門番を回す（20 秒ほど）"
+      python3 script_gate.py "${GATE_ARGS[@]}" || { echo "[run] 門番に落ちた: 起こさない（上の × を直す）"; exit 1; }
+    fi
+  fi
 fi
 for f in "$S2F" "$F3T3" "$NET" "$ENC" g1_29dof_rev_1_0.urdf; do
   [ -f "$f" ] || { echo "[run] 無い: $f（Mac から deploy_to_pc2.sh で配る）"; exit 1; }
@@ -72,7 +87,8 @@ VPY="${VPY:-$HOME/miniforge3/envs/lerobot/bin/python}"
 [ -x "$VPY" ] || { echo "[run] ⚠️ $VPY が無い: python3 で起こす（網が 10 Hz に届かない恐れ）"; VPY=python3; }
 # 深度の中継（機体の python3＝3.8 の pyrealsense2 が /dev/shm に置く。3.12 には入らない）
 DLOG="logs/depth_$ts.log"
-setsid nohup python3 -u depth_relay.py --parent-pid $$ > "$DLOG" 2>&1 < /dev/null &
+PIN_D=(); [ -n "${DCPUS:-}" ] && PIN_D=(taskset -c "$DCPUS")
+setsid nohup ${PIN_D[@]+"${PIN_D[@]}"} python3 -u depth_relay.py --parent-pid $$ > "$DLOG" 2>&1 < /dev/null &
 DPID=$!
 for _ in $(seq 30); do
   grep -q "最初の深度を置いた" "$DLOG" 2>/dev/null && break
@@ -83,7 +99,8 @@ cat "$DLOG"
 grep -q "最初の深度を置いた" "$DLOG" || { echo "[run] 深度の中継から枚が来ない（$DLOG を見る）"; kill "$DPID" 2>/dev/null; exit 1; }
 # 目の網 c2（カラー＋深度 → 特徴 128）
 VLOG="logs/vision_$ts.log"
-OPENBLAS_NUM_THREADS="${VTHREADS:-3}" OMP_NUM_THREADS="${VTHREADS:-3}" setsid nohup "$VPY" -u door_vision_node.py \
+PIN_V=(); [ -n "${VCPUS:-}" ] && PIN_V=(taskset -c "$VCPUS")
+OPENBLAS_NUM_THREADS="${VTHREADS:-3}" OMP_NUM_THREADS="${VTHREADS:-3}" setsid nohup ${PIN_V[@]+"${PIN_V[@]}"} "$VPY" -u door_vision_node.py \
   --rgbd-onnx "$ENC" --depth shm --threads "${VTHREADS:-3}" --iface eth0 \
   --parent-pid $$ --log-dir logs --full-every "$FULL_EVERY" --full-depth > "$VLOG" 2>&1 < /dev/null &
 VPID=$!
@@ -116,6 +133,8 @@ if [ -n "$CAM_TILT" ]; then ARGS+=(--cam-tilt-deg "$CAM_TILT"); else ARGS+=(--he
 [ -n "${WAIST_GAIN:-}" ] && ARGS+=(--waist-comp-gain "$WAIST_GAIN" --waist-comp-max-deg "${WAIST_MAX:-35}" --waist-comp-rate "${WAIST_RATE:-1.0}")
 [ -n "$SCRIPT" ] && ARGS+=(--script "$SCRIPT" --script-start "${SCRIPT_START:-0}")
 [ -n "$SCRIPT" ] && [ -n "${SCRIPT_STOP:-}" ] && ARGS+=(--script-stop "$SCRIPT_STOP")
+[ -n "$SCRIPT" ] && ARGS+=(--script-gate "${GATE:-on}" --pelvis-z "$PZ") && [ -n "${GEOM:-}" ] && ARGS+=(--script-geom "$GEOM")
 [ -n "${LOAD_CHECK:-}" ] && ARGS+=(--load-check "$LOAD_CHECK")  # 11-12: off＝d の前の足の荷重の確かめを切る（右足首が揺れ続けて判定が始まらない時）
 [ "${NOSEND:-0}" = 1 ] && ARGS+=(--no-send)
-exec python3 -u door_run_stock.py "${ARGS[@]}"
+PIN_R=(); [ -n "${RUN_CPUS:-}" ] && PIN_R=(taskset -c "$RUN_CPUS") && echo "[run] 走らせ役をコア $RUN_CPUS に置く"
+exec ${PIN_R[@]+"${PIN_R[@]}"} python3 -u door_run_stock.py "${ARGS[@]}"

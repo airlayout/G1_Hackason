@@ -24,7 +24,7 @@
     [
       -0.16,
       0.18,
-      -0.25
+      -0.18
     ],
     [
       -0.16,
@@ -56,6 +56,8 @@
   "touch_still_m": 0.003,
   "tau_line": 6.0,
   "touch_hold": 3,
+  "touch_by_height": true,
+  "touch_at": 0.0,
   "press_speed": 0.04,
   "press_depth": 0.07,
   "press_min": 0.03,
@@ -68,6 +70,11 @@
   "unlatch_stall_s": 3.0,
   "nudge_vx": 0.2,
   "nudge_s": 0.5,
+  "push_mode": "walk",
+  "walk_in_3a": false,
+  "push_press": 0.02,
+  "walk_min_fwd": 0.15,
+  "angle_med_s": 0.5,
   "push_lead_deg": 4.0,
   "push_dz": 0.0,
   "push_dr": 0.0,
@@ -89,7 +96,8 @@
   "done_hold_s": 1.0,
   "stop_after": "",
   "pose_tau_s": 0.2,
-  "note": "11-12 8 本目: 手を 3 cm 付け根寄りへ（7 本目は棒の右寄りに乗った）。段 3 へ",
-  "touch_by_height": true,
-  "touch_at": 0.0
+  "release_back": 0.04,
+  "release_up": 0.02,
+  "release_s": 1.5,
+  "note": "11-12 夜: 既定値そのまま（最初の経由点を 7 cm 高く・段 3 は walk）。11-12 の機体の値は script_params_1112_robot.json"
 }

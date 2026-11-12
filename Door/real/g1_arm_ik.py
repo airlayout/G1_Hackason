@@ -91,7 +91,10 @@ class ArmIK:
     def direction(self, q29: np.ndarray, q7: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """手の向き（手首 yaw の関節 → 手のひらの単位ベクトル。pelvis の座標）と、そのヤコビアン（3×7）"""
         p, _ = self.jacobian(q29, q7)
-        frames = self._frames
+        return self._direction_from(p, self._frames)
+
+    def _direction_from(self, p: np.ndarray, frames) -> Tuple[np.ndarray, np.ndarray]:
+        """jacobian が辿った鎖（frames）から手の向きとそのヤコビアンを出す（鎖を 2 回辿らない・11-12 夜）"""
         v = p - frames[f"{self.side}_wrist_yaw_joint"][0]
         u = v / float(np.linalg.norm(v))
         Ju = np.zeros((3, 7))
@@ -113,7 +116,7 @@ class ArmIK:
         if n > MAX_ERR_M:
             err = err * (MAX_ERR_M / n)
         if direction is not None and np.isfinite(np.asarray(direction, dtype=float)).all():
-            u, Ju = self.direction(q29, q7)
+            u, Ju = self._direction_from(p, self._frames)
             e_dir = DIR_WEIGHT_M * (np.asarray(direction, dtype=float) - u)
             nd = float(np.linalg.norm(e_dir))
             if nd > MAX_ERR_M:
