@@ -84,6 +84,30 @@ def test_replay_follows_record_and_stands(monkeypatch, tmp_path):
 
 
 @needs_policy
+def test_replay_never_sets_walk_even_if_policy_wants_to_walk(monkeypatch, tmp_path):
+    """11-12 実機: 再生の DOOR で方策の歩きを set してから立つで上書きしていた。中継（LocoRelay）は set のたびに
+    すぐ送るので、純正へ方策の歩き（左 0.4 m/s・右回り 0.5 rad/s）が混じった。set の順でなく、歩くの set が無いことを見る"""
+    import door_stock_io as dsio
+
+    src = _replay_npz(tmp_path / "src")
+    monkeypatch.setattr(dsio, "stock_velocity", lambda p, cmd: (True, 0.05, 0.4, -0.5))  # 方策が歩きたがる
+    calls = []
+    orig_set = dsio.VelocitySender.set
+
+    def spy_set(self, walk, vx, vy, wz):
+        calls.append((bool(walk), vx, vy, wz))
+        return orig_set(self, walk, vx, vy, wz)
+
+    monkeypatch.setattr(dsio.VelocitySender, "set", spy_set)
+    rc, seen, phases, z, arms, loco, t0 = tdrs._run(monkeypatch, tmp_path / "log", SCRIPT,
+                                                    extra_args=("--replay-arm", str(src)))
+    assert rc == 0 and "DOOR" in seen
+    assert calls, "DOOR の間に set が呼ばれていない（試験の前提が崩れた）"
+    assert not any(c[0] for c in calls), f"歩くの set が {sum(c[0] for c in calls)} 回"
+    assert all(c[2][:3] == (0.0, 0.0, 0.0) for c in loco.vel())  # 純正へ届いた指令も全部 0
+
+
+@needs_policy
 def test_waist_comp_follows_body_turn_and_returns(monkeypatch, tmp_path):
     src = _replay_npz(tmp_path / "src")
     turn = math.radians(20.0)

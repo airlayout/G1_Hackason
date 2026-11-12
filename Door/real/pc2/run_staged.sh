@@ -23,6 +23,13 @@
 #   TAPE      段 0 を巻き尺で: 左つま先→板,右つま先→板,左つま先←把手の側の縁,右つま先←縁 [m]（例 0.65,0.64,0.55,0.75）
 #   STOP_STAGE この段に入ったら立ったまま止まる（1＝段 0 が終わった所・2＝構えの位置に入った所・3＝f3t3 へ引き継ぐ所）
 #   WAIST_GAIN 段 2 の方策で脚を放す前の間、腰 yaw で体の回りを打ち消す倍率（既定 0＝切。R4）。WAIST_MAX [°]（既定 35）・WAIST_RATE [rad/s]（既定 1.0）
+#   11-12 台本（docs/plan/2026-11-12-g1-door-scripted-stage123.md）: 段 2・3 を学習した方策でなく台本（door_script.py）で
+#   SCRIPT       台本の定数の JSON（例 script_params.json）。渡すと段 2・3 は台本。構えの位置も台本の値になる
+#   SCRIPT_START 1＝段 0 を飛ばし、前の回の REF のまま段 1 の寄りから（FAST-LIO の口を止めていない時だけ）。既定 0
+#   SCRIPT_STOP  この小段（2a・2b・2c・2d・3a）が終わったら立ったまま止まる。扉の角度で止めるのは STOP_DEG
+#   FULL_EVERY   元の JPEG（と生の深度）を書く間隔 [s]。既定は台本の時 0.1（10 Hz・正解データ）・ほかは 2.0
+#     例: SCRIPT=script_params.json SCRIPT_STOP=2b TAPE=0.65,0.64,0.55,0.75 DOOR=0.94,2.05,0.99,0.064 PELVIS_Z=0.73 ./door_start.sh run_staged.sh
+#         SCRIPT=script_params.json SCRIPT_START=1 SCRIPT_STOP=2d DOOR=... PELVIS_Z=0.73 ./door_start.sh run_staged.sh
 #   NOSEND=1  腕も歩きも送らない（--no-send）。d を打つと段 0 の網の値・FAST-LIO の口の値が記録と表示に出る（機体は動かない）
 #   PITCH     カメラの俯角 [°]。既定 auto＝起こす前にカメラの加速度計で測る（cam_tilt.py。止まって立っていること）
 #   MAX_VX・ARM_TEMP・ARM_TEMP_HOLD・RPC_TIMEOUT・LOCO・ODOM・VPY・VTHREADS は run_vision.sh と同じ
@@ -32,6 +39,15 @@ S2F="${S2F:-door_policy_s2g_it80700.npz}"
 F3T3="${F3T3:-door_policy_f3t3.npz}"
 NET="${NET:-door_vision_c2.npz}"
 ENC="${NET%.npz}_encoder.onnx"
+SCRIPT="${SCRIPT:-}"
+FULL_EVERY="${FULL_EVERY:-$([ -n "$SCRIPT" ] && echo 0.1 || echo 2.0)}"
+if [ -n "$SCRIPT" ]; then
+  for f in "$SCRIPT" door_script.py g1_arm_ik.py; do
+    [ -f "$f" ] || { echo "[run] 無い: $f（Mac から deploy_to_pc2.sh で配る）"; exit 1; }
+  done
+  python3 -c "import door_script as d; d.load_params('$SCRIPT', stop_after='${SCRIPT_STOP:-}' or None)" \
+    || { echo "[run] 台本の定数を読めない（$SCRIPT・SCRIPT_STOP=${SCRIPT_STOP:-}）"; exit 1; }
+fi
 for f in "$S2F" "$F3T3" "$NET" "$ENC" g1_29dof_rev_1_0.urdf; do
   [ -f "$f" ] || { echo "[run] 無い: $f（Mac から deploy_to_pc2.sh で配る）"; exit 1; }
 done
@@ -69,7 +85,7 @@ grep -q "最初の深度を置いた" "$DLOG" || { echo "[run] 深度の中継�
 VLOG="logs/vision_$ts.log"
 OPENBLAS_NUM_THREADS="${VTHREADS:-3}" OMP_NUM_THREADS="${VTHREADS:-3}" setsid nohup "$VPY" -u door_vision_node.py \
   --rgbd-onnx "$ENC" --depth shm --threads "${VTHREADS:-3}" --iface eth0 \
-  --parent-pid $$ --log-dir logs > "$VLOG" 2>&1 < /dev/null &
+  --parent-pid $$ --log-dir logs --full-every "$FULL_EVERY" --full-depth > "$VLOG" 2>&1 < /dev/null &
 VPID=$!
 ln -sf "vision_$ts.log" logs/vision_latest.log
 for _ in $(seq 60); do
@@ -98,5 +114,8 @@ if [ -n "$CAM_TILT" ]; then ARGS+=(--cam-tilt-deg "$CAM_TILT"); else ARGS+=(--he
 [ "${NO_RELEASE:-0}" = 1 ] && ARGS+=(--no-leg-release)
 [ -n "${TAPE:-}" ] && ARGS+=(--stage0-tape "$TAPE")
 [ -n "${WAIST_GAIN:-}" ] && ARGS+=(--waist-comp-gain "$WAIST_GAIN" --waist-comp-max-deg "${WAIST_MAX:-35}" --waist-comp-rate "${WAIST_RATE:-1.0}")
+[ -n "$SCRIPT" ] && ARGS+=(--script "$SCRIPT" --script-start "${SCRIPT_START:-0}")
+[ -n "$SCRIPT" ] && [ -n "${SCRIPT_STOP:-}" ] && ARGS+=(--script-stop "$SCRIPT_STOP")
+[ -n "${LOAD_CHECK:-}" ] && ARGS+=(--load-check "$LOAD_CHECK")  # 11-12: off＝d の前の足の荷重の確かめを切る（右足首が揺れ続けて判定が始まらない時）
 [ "${NOSEND:-0}" = 1 ] && ARGS+=(--no-send)
 exec python3 -u door_run_stock.py "${ARGS[@]}"

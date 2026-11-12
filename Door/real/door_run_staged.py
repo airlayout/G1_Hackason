@@ -10,6 +10,10 @@ door_fastlio_node.py が送る）・目の網（c2 の特徴 → 扉の頭）・
   段 3  教師 f3t3（"f3t3"）。状態は持ち替え（記憶だけ 0）。枠は引き継いだ時の値を /dog_odom で運ぶ
 ⚠️ 段 1 の指令の線・倍率、pelvis の高さ（--pelvis-z）、レバーの当てる点のずれは L5 のシムと L7 の機体で確かめる。
 ⚠️ 腕の力（L2c）はまだ無いので、既定では力の線を 0 にして位置と下がりだけで脚を放す（force_known=False）
+
+11-12 台本（docs/plan/2026-11-12-g1-door-scripted-stage123.md）: script を渡すと、段 2・3 は学習した方策でなく台本
+（door_script.ScriptDoor）が進める。腕は "script"（逆運動学で出した左腕 7 軸の目標）、脚は台本の指令、方策は回さない（"hold"）。
+script_start=1 は段 0 を飛ばし、前の回の REF（FAST-LIO の口が持っている扉の座標）のまま段 1 の寄りから始める
 """
 from __future__ import annotations
 
@@ -21,6 +25,7 @@ import numpy as np
 
 import door_frame as dfr
 import door_lidar_msg as dlm
+import door_script as dscr
 import door_staged as ds
 import hand_door_angle as hda
 
@@ -32,6 +37,8 @@ ODOM_LOST_S = 0.5       # 段 3 で odom がこれだけ来なければ止まる
 POSE_LOST_S = 0.5       # 段 2 で FAST-LIO の姿勢がこれだけ来なければ止まる
 DEFAULT_PELVIS_Z = 0.75  # [m] 立った pelvis の床からの高さ（⚠️ L7 で巻き尺で測る。レバーを下げたかの判定の高さに効く）
 WAIST = slice(12, 15)
+SCRIPT_WARM_S = 0.6     # script_start=1: 受け口に関節・odom の履歴が溜まるまで待つ（溜まる前は FAST-LIO の姿勢を今へ運べない）
+SCRIPT_Q_LEAD = 0.3     # 逆運動学の内の腕の角度が実の角度より先へ行ける幅 [rad]（当たっている間に溜め込まない）
 
 
 @dataclass(frozen=True)
@@ -42,11 +49,48 @@ class Decision:
     pose: dfr.PlanarPose           # 扉の座標での pelvis の姿勢（door_frame_loc を作る）
     angle: np.ndarray              # door_angle_lidar（3）
     walk: Optional[Walk]           # None なら方策の指令（door_stock_io.stock_velocity）で歩く
-    arm: str                       # 腕の目標の出どころ: "home"（借りる前の角度）・"goal"（学習の初めの姿勢へ寄せる）・"policy"
+    arm: str                       # 腕の目標の出どころ: "home"（借りる前の角度）・"goal"（学習の初めの姿勢へ寄せる）・"policy"・"script"
     zero_walk: bool = False        # 方策の後に歩きの積み上げを 0 に止める（door_staged.zero_walk_accumulator）
     handover_now: bool = False     # この周期に f3t3 へ持ち替える（door_staged.handover_state）
     stop: str = ""                 # 空でなければ立ったまま止まる理由
     info: str = ""
+    arm_left: Optional[np.ndarray] = None   # arm="script": 左腕 7 軸の目標（None は今の目標のまま）
+    waist_comp: bool = False                # arm="script": 腰 yaw の打ち消しを頼む
+    script_row: Optional[np.ndarray] = None  # 記録の 1 行（door_script.ScriptDoor.row）
+
+
+ARM_SOURCES = ("home", "goal", "policy", "script")  # 記録の staged 列の番号
+
+
+class ScriptArm:
+    """台本（door_script.ScriptDoor）を機体につなぐ: pelvis の姿勢をなまし、扉の座標の手のひらを出し、台本の行き先を
+    逆運動学（g1_arm_ik.ArmIK）で左腕 7 軸の目標にする"""
+
+    def __init__(self, script: dscr.ScriptDoor, ik, palm_fn: Callable, pelvis_z: float) -> None:
+        self.script, self.ik, self.palm_fn, self.pelvis_z = script, ik, palm_fn, pelvis_z
+        self.filt = dscr.PoseFilter(script.p.pose_tau_s)
+        self.posture = np.asarray(script.p.posture, dtype=float)
+        self.q_cmd: Optional[np.ndarray] = None
+
+    def step(self, now: float, q: np.ndarray, quat: np.ndarray, pose: dfr.PlanarPose,
+             tau: Optional[np.ndarray]) -> Tuple[dscr.ScriptOut, Optional[np.ndarray]]:
+        fpose = self.filt.step(pose)
+        palm = self.palm_fn(q, fpose, quat)
+        q_act = np.asarray(q, dtype=float)[self.ik.idx]
+        fwd = float(self.ik.palm(q, q_act)[0])
+        tau_pitch = float(tau[self.ik.idx[0]]) if tau is not None else math.nan  # 把手の側の肩 pitch
+        out = self.script.step(now, fpose, palm, tau_pitch, fwd)
+        if out.goal is None or out.stop:
+            return out, None
+        if self.q_cmd is None:
+            self.q_cmd = q_act.copy()
+        roll, pitch = dfr.roll_pitch_from_quat_wxyz(quat)
+        R = dfr.rot_z(fpose.yaw) @ dfr.tilt_matrix(roll, pitch)
+        target = R.T @ (out.goal - np.array([fpose.x, fpose.y, self.pelvis_z]))
+        q_cmd = np.clip(self.q_cmd, q_act - SCRIPT_Q_LEAD, q_act + SCRIPT_Q_LEAD)
+        direction = R.T @ out.direction if out.direction is not None else None
+        self.q_cmd = self.ik.step(q, q_cmd, target, self.posture, direction)
+        return out, self.q_cmd.copy()
 
 
 class NetSampler:
@@ -86,14 +130,24 @@ class StagedDoor:
     def __init__(self, width: float, height: float, lever_height: float, backset: float, lever_left: bool,
                  lidar, net, palm_fn: Callable, force_known: bool = False, net_dx: float = 0.0,
                  press_radius: Optional[float] = None, stage2_max_s: float = ds.STAGE2_MAX_S,
-                 release_legs: bool = True, tape_pose: Optional[dfr.PlanarPose] = None) -> None:
+                 release_legs: bool = True, tape_pose: Optional[dfr.PlanarPose] = None,
+                 script: Optional[dscr.ScriptParams] = None, script_start: int = 0, ik=None,
+                 pelvis_z: float = DEFAULT_PELVIS_Z) -> None:
+        if script is not None and ik is None:
+            raise ValueError("台本（script）には逆運動学（ik）が要る")
+        if script_start not in (0, 1) or (script_start and script is None):
+            raise ValueError(f"script_start は 0 か 1（1 は台本の時だけ）: {script_start}")
+        self.script_p, self.script_start, self.ik, self.pelvis_z = script, script_start, ik, pelvis_z
+        self.script: Optional[ScriptArm] = None
+        self.warm_until: Optional[float] = None
         self.tape_pose = tape_pose
         self.width, self.height, self.lever_height, self.backset = width, height, lever_height, backset
         self.lever_left, self.force_known = lever_left, force_known
         self.lidar, self.net, self.palm_fn = lidar, net, palm_fn
         self.press_radius, self.stage2_max_s, self.release_legs = press_radius, stage2_max_s, release_legs
         self.net_dx = net_dx  # 網の pelvis の前後の値に足す補正 [m]（巻き尺との片寄り。11-11 の機体で網は扉を 4〜5 cm 遠くに出した）
-        self.stance = ds.stance(width, backset, lever_left)
+        self.stance = (dscr.script_stance(script, width, backset, lever_height, lever_left) if script is not None
+                       else ds.stance(width, backset, lever_left))
         self.stage = -1
         self.stage0: Optional[ds.Stage0] = None
         self.approach: Optional[ds.Approach] = None
@@ -110,6 +164,20 @@ class StagedDoor:
         self.stage, self.stage0 = 0, ds.Stage0(self.tape_pose)
         self.approach = self.arm = self.carry = None
         self.prep_until = self.handover_wait_t = None
+        self.script, self.warm_until = None, None
+        if self.script_start >= 1:  # 段 0 を飛ばす: 前の回の REF のまま、今の FAST-LIO の姿勢から寄り直す
+            self.stage, self.approach, self.warm_until = 1, ds.Approach(self.stance), now + SCRIPT_WARM_S
+            t = self.stance.target
+            print(f"[staged] 台本: 段 0 を飛ばして段 1 から（前の REF のまま）。構えの位置 x {t.x:+.3f} y {t.y:+.3f} 向き "
+                  f"{math.degrees(t.yaw):+.0f}°", flush=True)
+
+    def _enter_script(self, now: float) -> None:
+        self.stage, self.prep_until = 2, None
+        sd = dscr.ScriptDoor(self.script_p, self.width, self.backset, self.lever_height, self.lever_left)
+        self.script = ScriptArm(sd, self.ik, self.palm_fn, self.pelvis_z)
+        p = self.last_pose
+        print(f"[staged] 段 1 が終わった（x {p.x:+.3f} y {p.y:+.3f} 向き {math.degrees(p.yaw):+.1f}°）→ 台本の段 2"
+              f"（レバーの当てる点 {np.round(sd.ref, 3).tolist()}・止める所 {self.script_p.stop_after or '無し'}）", flush=True)
 
     def _enter_stage1(self, now: float) -> None:
         self.stage, self.approach = 1, ds.Approach(self.stance)
@@ -134,7 +202,8 @@ class StagedDoor:
         self.last_odom_t = now
 
     # --- 毎周期 ---
-    def decide(self, now: float, q: np.ndarray, quat: np.ndarray, odom, odom_t, obs: Optional[np.ndarray]) -> Decision:
+    def decide(self, now: float, q: np.ndarray, quat: np.ndarray, odom, odom_t, obs: Optional[np.ndarray],
+               tau: Optional[np.ndarray] = None) -> Decision:
         closed = dfr.door_closed_angle_obs()
         fresh = odom if (odom is not None and odom_t is not None and now - odom_t < ODOM_STALE_S) else None
         q_waist = tuple(float(v) for v in q[WAIST])
@@ -143,6 +212,12 @@ class StagedDoor:
             self.lidar.note_state(now, fresh, q_waist, roll, pitch)
         if self.stage == 0:
             return self._stage0(now, q, quat, q_waist, roll, pitch, fresh, obs, closed)
+        if self.stage == 1 and self.warm_until is not None:
+            if now < self.warm_until:
+                return Decision(1, "arm", "hold", self.last_pose, closed, STAND, "home", info="受け口の履歴を溜めている")
+            self.warm_until = None
+            if not self.lidar.ready(now):
+                return self._stop(1, "段 1: FAST-LIO の口から受け入れた姿勢が来ない（REF が無いなら段 0 から始める）", closed)
         if self.stage == 1:
             lpose, why = self.lidar.pose(now, fresh)
             if why:
@@ -151,6 +226,9 @@ class StagedDoor:
             self._keep(now, lpose)
             if self.approach.failed:
                 return self._stop(1, "段 1: " + self.approach.reason, closed)
+            if self.approach.done and self.script_p is not None:
+                self._enter_script(now)
+                return Decision(2, "arm", "hold", self.last_pose, closed, STAND, "home", info="構えの位置に入った: 台本へ")
             if self.approach.done:
                 self._enter_arm_prep(now)
                 return Decision(2, "arm", "hold", self.last_pose, closed, STAND, "goal", info="構えの位置に入った: 腕を構える")
@@ -162,6 +240,8 @@ class StagedDoor:
             self._keep(now, lpose)
             if lpose is None and self.last_pose_t is not None and now - self.last_pose_t > POSE_LOST_S:
                 return self._stop(2, f"段 2: FAST-LIO の姿勢が {POSE_LOST_S} 秒来ない", closed)
+            if self.script is not None:
+                return self._script(now, q, quat, tau)
             if self.prep_until is not None:
                 if now < self.prep_until:
                     return Decision(2, "arm", "hold", self.last_pose, closed, STAND, "goal", info="腕を構える")
@@ -189,6 +269,14 @@ class StagedDoor:
         out = self.arm.step(now, palm, None) if self.arm is not None else None
         angle = out.angle_obs if out is not None else closed
         return Decision(3, "f3t3", "door", self.last_pose, angle, None, "policy", info="f3t3")
+
+    def _script(self, now: float, q: np.ndarray, quat: np.ndarray, tau: Optional[np.ndarray]) -> Decision:
+        """台本の段 2・3。方策は回さず（"hold"）、腕は逆運動学の目標、脚は台本の指令"""
+        out, arm_left = self.script.step(now, q, quat, self.last_pose, tau)
+        stage = 3 if out.sub in ("3a", "3c", "done") else 2
+        arm = "home" if (out.goal is None and not out.stop) else "script"
+        return Decision(stage, "arm", "hold", self.last_pose, out.angle_obs, out.walk, arm, stop=out.stop,
+                        info=f"台本 {out.sub}", arm_left=arm_left, waist_comp=out.waist_comp, script_row=self.script.script.row())
 
     def _stage0(self, now, q, quat, q_waist, roll, pitch, fresh, obs, closed) -> Decision:
         carried = None

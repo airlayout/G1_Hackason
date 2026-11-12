@@ -313,6 +313,12 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--staged-stop-stage", type=int, default=None,
                     help="--staged: この段に入ったら立ったまま止まる（1＝段 0 が終わった所・2＝構えの位置に入った所・3＝f3t3 へ引き継ぐ所）")
     # 11-11（計画 docs/plan/2026-11-11-g1-door-stage2-decision.md の R1・R4）
+    ap.add_argument("--script", default=None,
+                    help="--staged: 段 2・3 を学習した方策でなく台本（door_script.py）で進める。台本の定数の JSON（script_params.json）")
+    ap.add_argument("--script-start", type=int, choices=(0, 1), default=0,
+                    help="--script: 1 は段 0 を飛ばし、前の回の REF（FAST-LIO の口が持つ扉の座標）のまま段 1 の寄りから始める")
+    ap.add_argument("--script-stop", default=None,
+                    help="--script: この小段（2a・2b・2c・2d・3a）が終わったら立ったまま止まる（定数ファイルの stop_after より優先）")
     ap.add_argument("--replay-arm", default=None,
                     help="R1: DOOR で方策の代わりに、この記録（door_stock_*.npz）の段 2 の腕の送り値を同じ時刻で流す。脚は立ったまま（歩き 0）。"
                          "扉から離れた何も無い所で使う（--door-source tape --start-x=-1 --start-y=0 --odom none と組で）")
@@ -574,9 +580,23 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
         here_urdf = Path(__file__).resolve().parent / "g1_29dof_rev_1_0.urdf"
         urdf = a.urdf or (str(here_urdf) if here_urdf.exists() else None)
         net_pitch = math.radians(a.head_pitch_deg if a.head_pitch_deg is not None else dvc.camera_pitch_deg(vp_net))
+        chain = fk.load_chain(urdf)
+        pelvis_z = a.pelvis_z if a.pelvis_z is not None else drst.DEFAULT_PELVIS_Z
+        script_p, script_ik = None, None
+        if a.script is not None:  # 11-12: 段 2・3 を台本で（学習した方策は腕と腰の係数を読むためだけに残る）
+            import door_script as dscr
+            import g1_arm_ik as aik
+            script_p = dscr.load_params(a.script, stop_after=a.script_stop)
+            script_ik = aik.ArmIK(chain, "right" if a.lever_right else "left", urdf)
+            print(f"[door_stock] --script: {a.script}・始める段 {a.script_start}・止める所 {script_p.stop_after or '無し'}・"
+                  f"構え x {script_p.stance_x:+.2f} 横 {script_p.stance_y_off:+.2f} 向き {script_p.stance_yaw_deg:+.0f}°・"
+                  f"押し下げ {100 * script_p.press_depth:.0f} cm・終わり {script_p.goal_deg:.0f}°" + (f"・{script_p.note}" if script_p.note else ""),
+                  flush=True)
+        elif a.script_start or a.script_stop:
+            raise SystemExit("--script-start・--script-stop は --script と一緒に使う")
         staged = drst.StagedDoor(w, h, lh, bs, not a.lever_right, lidar, drst.NetSampler(p, vp_net, feats_net, net_pitch),
-                                 drst.make_palm_fn(fk.load_chain(urdf), a.pelvis_z if a.pelvis_z is not None else drst.DEFAULT_PELVIS_Z,
-                                                   not a.lever_right), force_known=False, net_dx=a.net_dx,
+                                 drst.make_palm_fn(chain, pelvis_z, not a.lever_right), force_known=False, net_dx=a.net_dx,
+                                 script=script_p, script_start=a.script_start, ik=script_ik, pelvis_z=pelvis_z,
                                  press_radius=a.press_radius, stage2_max_s=a.stage2_max_s,
                                  release_legs=not a.no_leg_release,
                                  tape_pose=(dsd.pose_from_tape(*(float(v) for v in a.stage0_tape.split(",")), w, lever_left=not a.lever_right)
@@ -887,7 +907,7 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                     pose, odom_ok, vwhy = doorv.update(now, now - phase_t if phase == "READY" else 1.0, odom, odom_t, q, quat,
                                                        retry_ref=(phase == "READY"))
                     if staged is not None and phase == "DOOR":  # 11-10 L4: 段の部品が枠・扉の角度・歩き・止める理由を決める
-                        dec = staged.decide(now, q, quat, odom, odom_t, last_obs)
+                        dec = staged.decide(now, q, quat, odom, odom_t, last_obs, tau=tau)
                         pose, vwhy = dec.pose, dec.stop
                         if not vwhy and a.staged_stop_stage is not None and dec.stage >= a.staged_stop_stage:
                             vwhy = f"段 {dec.stage} に入った（--staged-stop-stage {a.staged_stop_stage}）"
@@ -925,7 +945,7 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                                 p_cur, staged_prev_mode = p, "hold"
                             go("DOOR", f"{a.run_seconds:.1f} 秒" + ("・段に分けて（段 0 から）" if staged is not None else ""))
                             if staged is not None:  # この周期から段を通す（READY の周期に決め事を作っていないので今作る）
-                                dec = staged.decide(now, q, quat, odom, odom_t, last_obs)
+                                dec = staged.decide(now, q, quat, odom, odom_t, last_obs, tau=tau)
                                 pose = dec.pose
                                 if dec.stop:
                                     go("POST", dec.stop)
@@ -943,7 +963,8 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                     # R4: 腰 yaw の打ち消しは、再生の DOOR と、段 2 の方策で脚を放す前（歩きの積み上げを 0 に止めている間）だけ。
                     # 脚を放した後や f3t3 の歩きは意図した回りなので打ち消さない（0 へ戻す）
                     wc_active = phase == "DOOR" and (replay is not None or (use_dec and mode == "door" and dec.stage == 2
-                                                                            and dec.zero_walk))
+                                                                            and dec.zero_walk)
+                                                 or (use_dec and dec.arm == "script" and dec.waist_comp))  # 台本: 脚を止めている小段
                     wc_state, wc_off, wc_rate = arp.waist_comp_step(wc_state, dfr.yaw_from_quat_wxyz(quat), wc_active, DT, wc_cfg)
                     wc_done = True
                     q_in, dq_in, pose_in = q, dq, pose
@@ -959,7 +980,16 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                     if use_dec and dec.zero_walk:
                         s = dsd.zero_walk_accumulator(s)  # 段 2 の脚を放す前（シムの arm_stage と同じ）
                     last_obs = out.obs
-                    if use_dec and dec.arm != "policy":  # 段 0〜1・段 2 の腕の構え: 腕は手で、歩きは段の指令
+                    if use_dec and dec.arm == "script":  # 11-12 台本: 左腕は逆運動学の目標・右腕は借りる前の角度・脚は台本の指令
+                        if dec.arm_left is not None:
+                            want = arm_home.copy()
+                            want[slice(7, 14) if a.lever_right else slice(0, 7)] = dec.arm_left
+                            want = arp.guard_lead(want, q[ARMS], guard_delta)  # 今の角度 ±δ（押し付けの力の頭打ち。方策の積み上げの守りと同じ幅）
+                            arm_target = tg.limit_sent_target(want, arm_target, lo_arm, hi_arm,
+                                                              margin=a.clip_margin, max_step=drr.MAX_TARGET_STEP)
+                        w_, vx_, vy_, wz_ = dec.walk if dec.walk is not None else drst.STAND
+                        sender.set(w_, min(vx_, a.max_vx), vy_, wz_)
+                    elif use_dec and dec.arm != "policy":  # 段 0〜1・段 2 の腕の構え: 腕は手で、歩きは段の指令
                         arm_target = dsio.move_toward(arm_target, arm_home if dec.arm == "home" else q_arm_goal, ARM_SPEED * DT)
                         w_, vx_, vy_, wz_ = dec.walk if dec.walk is not None else drst.STAND
                         sender.set(w_, min(vx_, a.max_vx), vy_, wz_)
@@ -967,6 +997,9 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                         arm_target = tg.limit_sent_target(out.q_target[ARMS], arm_target, lo_arm, hi_arm,
                                                           margin=a.clip_margin, max_step=drr.MAX_TARGET_STEP)
                         sender.set(*dec.walk)
+                    elif phase == "DOOR" and replay is not None:
+                        pass  # R1: 腕は下の再生が決め、脚は立ったまま。方策の歩きを一度でも set しない
+                        # （11-12 実機: set してから立つで上書きしていた。中継は set のたびにすぐ送るので方策の歩きが純正へ混じった）
                     elif phase == "DOOR":
                         arm_target = tg.limit_sent_target(out.q_target[ARMS], arm_target, lo_arm, hi_arm,
                                                           margin=a.clip_margin, max_step=drr.MAX_TARGET_STEP)
@@ -1047,9 +1080,12 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                 row.update(lidar_msg=np.array([lm.stamp, lm.x, lm.y, lm.yaw, lm.angle, lm.state, lm.rms_m, lm.tilt_deg, lm.seq])
                            if lm is not None else np.full(9, np.nan), lidar_rx_age=(now - lrx) if lm is not None else np.inf)
             if staged is not None:  # 11-10 L4: 段・方策（0 腕の段／1 f3t3）・腕の目標の出どころ・積み上げを止めたか・持ち替え・扉の角度・段 0 の見張り
-                row.update(staged=np.array([dec.stage, dec.policy == "f3t3", ("home", "goal", "policy").index(dec.arm), dec.zero_walk,
+                row.update(staged=np.array([dec.stage, dec.policy == "f3t3", drst.ARM_SOURCES.index(dec.arm), dec.zero_walk,
                                             dec.handover_now, math.degrees(dec.angle[0]), dec.angle[1], *staged.stage0.check])
                            if dec is not None else np.full(9, np.nan))
+            if staged is not None and staged.script_p is not None:  # 11-12 台本の 1 行（door_script.ScriptDoor.row）
+                row.update(script=dec.script_row if (dec is not None and dec.script_row is not None)
+                           else np.full(drst.dscr.ROW_LEN, np.nan))
             if out is not None:
                 row.update(obs=out.obs, a_pol=out.a_pol, D=s.D, cmd=out.cmd, homie_a=out.homie_a, walk=out.walk,
                            q_policy=out.q_target, pose=np.array([pose.x, pose.y, pose.yaw]))

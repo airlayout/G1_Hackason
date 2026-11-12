@@ -61,6 +61,9 @@ K_W = 1.2
 TURN_DONE_DEG = 5.0          # 回るのを終える向きの残り
 AXIS_TOL_M = 0.02            # 体の座標の各軸でこれより近ければその軸は 0
 LEG_S = (0.3, 2.0)           # 1 回に並進を出す長さ [s]（最小・最大）
+# 11-12 の機体: 左右 0.2 m/s を 0.30〜0.46 秒出しても 11 回とも 1 cm も動かなかった（純正は横の指令に歩き出すまで約 0.5 秒かかる）。
+# 左右の指令はこの長さを足して出す
+LATERAL_START_S = 0.5
 COAST_M = 0.06               # 指令を 0 にした後に流れる分（11-11 の機体で約 8 cm。控えめに引く）
 SETTLE_S = 1.5               # 止まって待つ長さ
 AVG_S = 0.7                  # その後ろのこの長さの姿勢の中央値で測る
@@ -361,12 +364,13 @@ class Approach:
         if self.legs > MAX_LEGS:
             return self._fail(f"{MAX_LEGS} 回出しても構えの位置に入らない（残り 前 {body[0]:+.3f}・左 {body[1]:+.3f} m）")
         durs, cmd = [], []
-        for d, g in zip(body, STOCK_GAIN[:2]):
+        for axis, (d, g) in enumerate(zip(body, STOCK_GAIN[:2])):
             if abs(d) <= AXIS_TOL_M:
                 durs.append(0.0)
                 cmd.append(0.0)
-            else:  # 流れる分（COAST_M）を引いた長さ。短すぎる時は最小の長さ
-                durs.append(min(LEG_S[1], max(LEG_S[0], (abs(d) - COAST_M) / (V_MIN * g))))
+            else:  # 流れる分（COAST_M）を引いた長さ。短すぎる時は最小の長さ。左右は歩き出しの分を足す
+                start = LATERAL_START_S if axis == 1 else 0.0
+                durs.append(min(LEG_S[1], start + max(LEG_S[0], (abs(d) - COAST_M) / (V_MIN * g))))
                 cmd.append(math.copysign(V_MIN, d))
         self.phase, self.t_phase = "leg", t
         self.leg_cmd, self.leg_until = (cmd[0], cmd[1], 0.0), (durs[0], durs[1])

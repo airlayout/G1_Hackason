@@ -18,7 +18,9 @@ pc2/depth_relay.py が /dev/shm に置く枚。PC2 の 3.12 には pyrealsense2 
 """
 from __future__ import annotations
 
+import io
 import argparse
+import zlib
 import os
 import signal
 import socket
@@ -258,6 +260,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--log-dir", default="logs")
     ap.add_argument("--save-max", type=int, default=9000, help="npz に残す縮めた画像の上限（10 Hz で 15 分）")
     ap.add_argument("--full-every", type=float, default=2.0, help="元の JPEG を書く間隔 [s]（0 で書かない）")
+    ap.add_argument("--full-depth", action="store_true",
+                    help="11-12 正解データ: 元の JPEG を書く時に、同じ時刻の深度（中継の生の値・mm の u16）も <同じ名前>.depth_mm.npy.z（zlib）で書く")
     return ap.parse_args(argv)
 
 
@@ -353,6 +357,10 @@ def main(argv=None) -> int:  # noqa: C901  起動・輪・後始末を 1 か所�
                 if a.full_every > 0 and now - last_full >= a.full_every:
                     last_full = now
                     (full_dir / f"{seq:06d}_{t_cap:.3f}.jpg").write_bytes(jpeg)
+                    if a.full_depth and depth_rx is not None:  # 生の深度（np.load(BytesIO(zlib.decompress(...))) で戻す）
+                        buf = io.BytesIO()
+                        np.save(buf, np.round(np.nan_to_num(np.asarray(got_d[0], dtype=np.float32)) * 1000.0).astype(np.uint16))  # [mm]
+                        (full_dir / f"{seq:06d}_{t_cap:.3f}.depth_mm.npy.z").write_bytes(zlib.compress(buf.getvalue(), 1))
                 enc_ms_win.append(enc_ms)
                 if seq == 0:
                     print(f"[vision] 最初の特徴を送った（復号 {(t1 - t0) * 1000:.0f} ms・網 {enc_ms:.0f} ms）", flush=True)
