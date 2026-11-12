@@ -1,0 +1,53 @@
+{
+  "instruction": "pick up the apple, walk left and place the apple on the plate.",
+  "env_name": "gr00tlocomanip_g1_sim/LMPnPAppleToPlateDC_G1_gear_wbc",
+  "summary": [
+    "sim: GR00T-WholeBodyControl (MuJoCo) gr00tlocomanip_g1_sim/LMPnPAppleToPlateDC_G1_gear_wbc",
+    "学習なし（推論のみ）。n_action_steps=20, max_episode_steps=1440。flash-attn なし（SDPA）。",
+    "checkpoint はこのタスク用に微調整済みのもの。ゼロショットではない。",
+    "",
+    "nvidia 公式 checkpoint : 0/1 成功（コミュニティでも 0/11 の報告 = NVIDIA/Isaac-GR00T issue #574）",
+    "cloudwalk checkpoint   : 1/3 成功（本人申告は 5/10。3 回では誤差が大きい）",
+    "",
+    "注: action / state は評価スクリプトが保存しないため、画像のみ。",
+    "注: 各エピソードのメモは、等間隔 6 フレームを見た範囲の所見（全編は見ていない）。"
+  ],
+  "episodes": [
+    {
+      "name": "nvidia_official_ep0_FAIL",
+      "video": "6d1bbd33-49ab-430d-a4b0-e45296a0460f_s0.mp4",
+      "checkpoint": "nvidia/GR00T-N1.6-G1-PnPAppleToPlate",
+      "result": "FAIL",
+      "frames": 720,
+      "seconds": 36.0,
+      "note": "両手をリンゴに向けて伸ばすが、つかめない。歩き出さず時間切れ。"
+    },
+    {
+      "name": "cloudwalk_ep_104b1afa_FAIL",
+      "video": "104b1afa-aa68-4e72-9c5b-e4c17e193e16_s0.mp4",
+      "checkpoint": "cloudwalk-research/GR00T-N1.6-G1-PnPAppleToPlate",
+      "result": "FAIL",
+      "frames": 720,
+      "seconds": 36.0,
+      "note": "両手を開いてリンゴに近づけるが、触れないまま終わる。後半は腕が横に大きく開き、リンゴは机に残る。"
+    },
+    {
+      "name": "cloudwalk_ep_909f0c7a_FAIL",
+      "video": "909f0c7a-159c-4f97-861a-7784f10d1361_s0.mp4",
+      "checkpoint": "cloudwalk-research/GR00T-N1.6-G1-PnPAppleToPlate",
+      "result": "FAIL",
+      "frames": 720,
+      "seconds": 36.0,
+      "note": "途中でリンゴをつかんで左へ動き出すが、最終フレームではリンゴが机の上にあり、皿の近くにない。つかんだ後に落とした可能性（推測。全編は未確認）。"
+    },
+    {
+      "name": "cloudwalk_ep_00b6b9e9_SUCCESS",
+      "video": "00b6b9e9-fa1f-42a5-97be-3b78c38481f2_s1.mp4",
+      "checkpoint": "cloudwalk-research/GR00T-N1.6-G1-PnPAppleToPlate",
+      "result": "SUCCESS",
+      "frames": 440,
+      "seconds": 22.0,
+      "note": "リンゴをつかんで持ち上げ、左へ歩き、皿の上に置く。完了して早く終わった（22 秒）。"
+    }
+  ]
+}
