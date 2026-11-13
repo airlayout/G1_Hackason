@@ -264,6 +264,64 @@ def elevator_section(rows: list[dict[str, str]], md: list[str]) -> str:
     return "".join(parts)
 
 
+# 腰をひねったときのまとめの色（腰 0° で通る / ひねると通る / どの角度でもだめ）
+WAIST_COLORS = {"zero": COLORS["ok"], "twist": "#5b8def", "none": COLORS["other"]}
+
+
+def waist_best(rows_at: dict[float, dict[str, str]]) -> float | None:
+    """1 つの配置で、通る（計画もカメラも）腰 yaw のうち絶対値が最小のもの [deg]（同じなら +）。どれも通らなければ None。"""
+    ok = [w for w, r in rows_at.items() if status(r) == "ok"]
+    return min(ok, key=lambda w: (abs(w), -w)) if ok else None
+
+
+def waist_section(name: str, rows: list[dict[str, str]], md: list[str]) -> str:
+    """腰 yaw を振った立つ位置の地図（elevator_stand_map.py --waist-yaws の map.csv。waist_yaw の列がある）。
+    まとめの図（腰 0° で通る / ひねると通る＝マスの数字がその腰 yaw / だめ）と、腰 yaw ごとの図。"""
+    parts: list[str] = [f"<h3>{html.escape(name)}</h3>"]
+    md += [f"### エレベーター: 腰をひねったとき（{name}）", ""]
+    for target, tname in (("down", "▼（床から約 87 cm）"), ("up", "▲（床から約 93.5 cm）")):
+        rs = [r for r in rows if r["target"] == target]
+        if not rs:
+            continue
+        xs = sorted({float(r["x"]) for r in rs})
+        ys = sorted({float(r["y"]) for r in rs})
+        yaws = sorted({float(r["waist_yaw"]) for r in rs}, key=lambda w: (abs(w), -w))
+        at: dict[tuple[float, float], dict[float, dict[str, str]]] = {}
+        for r in rs:
+            at.setdefault((float(r["x"]), float(r["y"])), {})[float(r["waist_yaw"])] = r
+        best = {k: waist_best(v) for k, v in at.items()}
+        n0 = sum(b == 0.0 for b in best.values())
+        n1 = sum(b is not None and b != 0.0 for b in best.values())
+
+        def overview(x: float, y: float) -> tuple[str, str]:
+            if (x, y) not in best:
+                return "#fff", ""
+            b = best[(x, y)]
+            if b is None:
+                return WAIST_COLORS["none"], ""
+            return (WAIST_COLORS["zero"], "") if b == 0.0 else (WAIST_COLORS["twist"], f"{b:+.0f}")
+        parts += [f"<h4>{tname}</h4>",
+                  f'<p class="num">腰 0° で通る <b>{n0}</b>、ひねると通る <b>{n1}</b> / {len(at)} 通り</p>',
+                  '<div class="legend">'
+                  f'<span><i style="background:{WAIST_COLORS["zero"]}"></i>腰 0° で通る（計画もカメラも）</span>'
+                  f'<span><i style="background:{WAIST_COLORS["twist"]}"></i>ひねると通る（数字 = 通る腰 yaw のうち最小 [deg]。+ は上体が左を向く）</span>'
+                  f'<span><i style="background:{WAIST_COLORS["none"]}"></i>どの腰 yaw でもだめ</span></div>',
+                  svg_grid(xs, ys, overview, "柱（ボタン）までの距離 [cm]", "ボタンが体の中心からどちらか [cm]"),
+                  f"<details><summary>腰 yaw ごとの図（{len(yaws)} 枚）</summary>{legend()}<div class='grid'>"]
+        for w in yaws:
+            def cell(x: float, y: float, w=w) -> tuple[str, str]:
+                r = at.get((x, y), {}).get(w)
+                if r is None:
+                    return "#fff", ""
+                s = status(r)
+                return COLORS[s], "" if s == "ok" else ("o" if s == "novis" else r["stage"])
+            n = sum(status(v[w]) == "ok" for v in at.values() if w in v)
+            parts.append(f"<div><h5>腰 yaw {w:+.0f}°（通る {n}）</h5>{svg_grid(xs, ys, cell, '柱までの距離 [cm]', 'ボタンの左右 [cm]')}</div>")
+        parts.append("</div></details>")
+        md += [f"#### {tname}", "", f"- 腰 0° で通る: **{n0} / {len(at)}**、ひねると通る: **{n1}**", ""]
+    return "".join(parts)
+
+
 CSS = """
 :root{--bg:#fff;--fg:#1f2328;--mut:#59636e;--line:#d0d7de}
 @media (prefers-color-scheme:dark){:root{--bg:#16181d;--fg:#e6e8eb;--mut:#9aa4af;--line:#3a3f47}}
@@ -282,6 +340,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--bottle", action="append", default=[], metavar="名前=フォルダ", help="reach_map.py の結果（何個でも）")
     ap.add_argument("--elevator", type=Path, help="elevator_stand_map.py の結果")
+    ap.add_argument("--waist", action="append", default=[], metavar="名前=フォルダ",
+                    help="elevator_stand_map.py --waist-yaws の結果（腰 yaw を振った地図。何個でも）")
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
     out = args.out or REPO / "_local/button_press/reach_report" / time.strftime("%Y%m%d_%H%M%S")
@@ -309,6 +369,15 @@ def main() -> None:
         md += ["## エレベーター", ""]
         body.append(elevator_section(rows, md))
         print(f"[reach_report] エレベーター: {len(rows)} 通り")
+    if args.waist:
+        body.append("<h2>エレベーター（立つ位置）: 腰をひねったとき</h2><p class='note'>頭カメラは胴体に付いていて、腰 yaw と一緒に回る。"
+                    "開始の姿勢の腰 yaw だけを入れ替えて計画し、その腰の角度でカメラに入るかを出した（柱の面の傾き 0°）。"
+                    "ボタンの位置は pelvis から見たもの（腰をひねっても変わらない）。</p>")
+        for spec in args.waist:
+            name, _, path = spec.partition("=")
+            rows = load(REPO / path if not Path(path).is_absolute() else Path(path))
+            body.append(waist_section(name, rows, md))
+            print(f"[reach_report] 腰をひねった地図 {name}: {len(rows)} 通り")
     page = (f"<!doctype html><html lang='ja'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
             f"<title>押せる範囲のまとめ</title><style>{CSS}</style></head><body>{''.join(body)}</body></html>")
     (out / "report.html").write_text(page, encoding="utf-8")

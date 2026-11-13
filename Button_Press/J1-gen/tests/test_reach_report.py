@@ -51,6 +51,22 @@ class TestReachReportParts(unittest.TestCase):
         self.assertIn("| 通る数 | 1/1（カメラ外 0） | 1/1（カメラ外 0） | 0/1（カメラ外 1） |", md)
         self.assertNotIn("机の高さごと", rr.bottle_section("試し", rows[:2], []))
 
+    def test_waist_section_picks_smallest_yaw_that_passes(self) -> None:
+        """腰 yaw を振った地図: 腰 0° で通る配置と、ひねると通る配置（絶対値が最小の腰 yaw。同じなら +）を分けて数える。"""
+        def row(x: str, w: str, ok: str, vis: str) -> dict[str, str]:
+            return {"x": x, "y": "0.2", "tilt": "0.0", "target": "down", "waist_yaw": w, "plan_ok": ok, "stage": "" if ok == "1" else "A",
+                    "partner": "" if ok == "1" else "body", "vis_buttons": vis, "vis_region": vis}
+        rows = ([row("0.30", w, "1", "1") for w in ("0.0", "10.0", "-10.0")]                      # 腰 0° で通る
+                + [row("0.34", "0.0", "1", "0"), row("0.34", "10.0", "1", "1"), row("0.34", "-10.0", "1", "1"),
+                   row("0.34", "20.0", "1", "1")]                                                 # ひねると通る（+10）
+                + [row("0.38", w, "0", "0") for w in ("0.0", "10.0", "-10.0")])                   # だめ
+        self.assertEqual(rr.waist_best({0.0: rows[3], 10.0: rows[4], -10.0: rows[5], 20.0: rows[6]}), 10.0)
+        md: list[str] = []
+        out = rr.waist_section("右腕", rows, md)
+        self.assertIn("腰 0° で通る <b>1</b>、ひねると通る <b>1</b> / 3 通り", out)
+        self.assertIn(">+10<", out)
+        self.assertIn("- 腰 0° で通る: **1 / 3**、ひねると通る: **1**", md)
+
 
 if __name__ == "__main__":
     unittest.main()
