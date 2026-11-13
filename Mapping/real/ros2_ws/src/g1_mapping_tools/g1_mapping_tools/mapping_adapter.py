@@ -42,6 +42,8 @@ class MappingAdapter(Node):
         self._fallback_child_frame = str(
             self.declare_parameter("fallback_child_frame", "base_link").value
         )
+        self._child_frame_override = str(self.declare_parameter("child_frame_override", "").value)
+        source_sensor_pose = str(self.declare_parameter("source_sensor_pose", "").value)
         self._path_limit = int(self.declare_parameter("path_limit", 5000).value)
 
         sensor_qos = QoSProfile(
@@ -54,6 +56,7 @@ class MappingAdapter(Node):
         self._cloud_pub = self.create_publisher(
             PointCloud2, "/g1_mapping/cloud_registered", sensor_qos
         )
+        self._sensor_pose_pub = self.create_publisher(PoseStamped, "/g1_mapping/sensor_pose", 20)
         path_qos = QoSProfile(
             reliability=QoSReliabilityPolicy.RELIABLE,
             history=QoSHistoryPolicy.KEEP_LAST,
@@ -70,6 +73,8 @@ class MappingAdapter(Node):
         self.create_subscription(
             PointCloud2, source_cloud, self._on_cloud, sensor_qos
         )
+        if source_sensor_pose:
+            self.create_subscription(PoseStamped, source_sensor_pose, self._on_sensor_pose, sensor_qos)
         self.get_logger().info(
             f"normalize odom={source_odom}, cloud={source_cloud} -> /g1_mapping/*"
         )
@@ -77,7 +82,9 @@ class MappingAdapter(Node):
     def _on_odom(self, source: Odometry) -> None:
         message = copy.deepcopy(source)
         message.header.frame_id = self._global_frame
-        if not message.child_frame_id:
+        if self._child_frame_override:
+            message.child_frame_id = self._child_frame_override
+        elif not message.child_frame_id:
             message.child_frame_id = self._fallback_child_frame
         self._latest_odom = message
         self._odom_pub.publish(message)
@@ -116,6 +123,13 @@ class MappingAdapter(Node):
                     "登録点群のstampが0のため、直近odometryのstampで補正します"
                 )
         self._cloud_pub.publish(message)
+
+    def _on_sensor_pose(self, source: PoseStamped) -> None:
+        # Both the cloud and the sensor pose are in FAST-LIO's camera_init basis.
+        # Canonical map uses that same basis; preserve the exact scan-end stamp.
+        message = copy.deepcopy(source)
+        message.header.frame_id = self._global_frame
+        self._sensor_pose_pub.publish(message)
 
 
 def main() -> None:

@@ -9,13 +9,14 @@ import os
 import subprocess
 import sys
 
-from .compose import ComposeError, ComposeRuntime
+from .compose import ComposeError
 from .config import Settings
 from .doctor import DiagnosticReport, diagnose, print_report
 from .mock import write_mock_artifacts
 from .pcd import validate_session
 from .rebuild import rebuild_map
 from .session import MappingSession, SessionManager
+from .runtime import get_runtime
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -24,7 +25,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("build", help="onboard/raw Docker imageを構築する")
+    subparsers.add_parser("build", help="選択した実行環境を構築する（Docker/native）")
 
     doctor = subparsers.add_parser("doctor", help="接続・センサー・backendを非破壊診断する")
     doctor.add_argument(
@@ -53,6 +54,9 @@ def _parser() -> argparse.ArgumentParser:
     stop = subparsers.add_parser("stop", help="地図を保存してセッションを停止する")
     stop.add_argument("--allow-partial", action="store_true")
 
+    recover = subparsers.add_parser("recover", help="G1記録の停止・回収・最終地図の再生成を再開する")
+    recover.add_argument("session_id", nargs="?")
+
     validate = subparsers.add_parser("validate", help="PCD・rosbag・軌跡を検証する")
     validate.add_argument("session_id", nargs="?")
     validate.add_argument("--allow-partial", action="store_true")
@@ -73,14 +77,17 @@ def _parser() -> argparse.ArgumentParser:
         "rebuild", help="rosbagの地図点群からmap_raw.pcdを再構成する"
     )
     rebuild.add_argument("session_id", nargs="?")
+    rebuild.add_argument("--method", choices=("auto", "octomap", "accumulate"), default="auto",
+                         help="raw/simは既定でOctoMap。accumulateは訂正なしの旧式蓄積")
+    rebuild.add_argument("--bag-dir", type=Path, help="OctoMap再生成用の別の記録ディレクトリ")
     rebuild.add_argument(
         "--topic", help="使うPointCloud2トピック（既定: 共通の登録済み点群）"
     )
     rebuild.add_argument(
         "--voxel",
         type=float,
-        default=0.05,
-        help="ボクセル一辺[m]。0で間引きなし（既定: 0.05）",
+        default=None,
+        help="ボクセル一辺[m]（OctoMapは計測時の設定。accumulateは既定0.05、0で間引きなし）",
     )
     rebuild.add_argument("--output", type=Path, help="出力先PCD（既定: セッションのmap/）")
     rebuild.add_argument(
@@ -140,7 +147,7 @@ def _start(settings: Settings, arguments: argparse.Namespace) -> int:
     )
     try:
         if backend != "mock":
-            ComposeRuntime(settings).start(session)
+            get_runtime(settings).start(session)
         manager.update(session, "running", f"{backend} backendでMapping中です")
     except Exception as exc:
         manager.finish(session, success=False, message=f"開始失敗: {exc}")
@@ -167,7 +174,7 @@ def _stop(settings: Settings, arguments: argparse.Namespace) -> int:
     if session.backend == "mock":
         write_mock_artifacts(session)
     else:
-        runtime = ComposeRuntime(settings)
+        runtime = get_runtime(settings)
         try:
             runtime.save_and_stop(session)
         except Exception as exc:
@@ -176,14 +183,19 @@ def _stop(settings: Settings, arguments: argparse.Namespace) -> int:
             runtime.collect_logs(session)
         except Exception as exc:
             errors.append(f"ログ回収: {exc}")
+        if "remote_recording" in json.loads(session.manifest_path.read_text()):
+            return _finish_remote(settings, session, errors)
         if not session.map_path.is_file():
             try:
-                rebuild_map(
-                    session.directory,
-                    topic="/g1_mapping/cloud_registered",
-                    output_path=session.map_path,
-                    voxel_size=0.05,
-                )
+                if session.backend in {"raw", "sim"}:
+                    runtime.rebuild_occupancy(session, session.map_path)
+                else:
+                    rebuild_map(
+                        session.directory,
+                        topic="/g1_mapping/cloud_registered",
+                        output_path=session.map_path,
+                        voxel_size=0.05,
+                    )
             except Exception as exc:
                 errors.append(f"共通登録点群からのPCD再構成: {exc}")
 
@@ -204,6 +216,42 @@ def _stop(settings: Settings, arguments: argparse.Namespace) -> int:
     return 0 if success else 1
 
 
+def _finish_remote(settings: Settings, session: MappingSession, errors: list[str]) -> int:
+    manager = SessionManager(settings)
+    try:
+        if errors:
+            raise RuntimeError("; ".join(errors))
+        get_runtime(settings).finalize_remote(session)
+        valid, report = validate_session(session.directory, min_map_points=settings.min_map_points,
+                                         allow_partial=False)
+        _print_validation(report)
+        if not valid:
+            raise RuntimeError("最終地図の検証に失敗しました。report/quality.jsonを確認してください")
+    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+        manager.update(session, "stopping", f"回収・再生成待ち: {error}")
+        print(f"[PENDING] {error}")
+        print(f"[NEXT] G1との接続を回復して ./mapctl recover {session.session_id}")
+        return 1
+    manager.finish(session, success=True, message="G1原本を回収し、最終地図を再生成しました")
+    print(f"[COMPLETED] {session.session_id}")
+    print(f"[OUTPUT] {session.directory}")
+    return 0
+
+
+def _recover(settings: Settings, arguments: argparse.Namespace) -> int:
+    manager = SessionManager(settings)
+    session = manager.resolve(arguments.session_id)
+    if settings.runtime != "native" or "remote_recording" not in json.loads(session.manifest_path.read_text()):
+        raise RuntimeError("recoverはG1側に記録したnative/ssh/rawセッション用です")
+    active = manager.active()
+    if active is not None and active.session_id != session.session_id:
+        raise RuntimeError("別セッションが実行中です。先にそのセッションを停止してください")
+    manager.update(session, "stopping", "G1原本の回収と再生成を再開します")
+    runtime = get_runtime(settings)
+    runtime._stop_processes(session)
+    return _finish_remote(settings, session, [])
+
+
 def _status(settings: Settings) -> int:
     manager = SessionManager(settings)
     session = manager.active()
@@ -221,7 +269,7 @@ def _status(settings: Settings) -> int:
     print(f"[BACKEND] {session.backend}")
     print(f"[STATUS] {state['status']}: {state['message']}")
     if session.backend != "mock":
-        print(ComposeRuntime(settings).ps(session))
+        print(get_runtime(settings).ps(session))
     return 0
 
 
@@ -262,7 +310,7 @@ def _view(settings: Settings, arguments: argparse.Namespace) -> int:
         if not session.map_path.is_file():
             raise RuntimeError(f"PCDがありません: {session.map_path}")
         mode = "saved"
-        pcd_path = f"/runs/{session.session_id}/map/map_raw.pcd"
+        pcd_path = str(session.map_path) if settings.runtime == "native" else f"/runs/{session.session_id}/map/map_raw.pcd"
         fixed_frame = arguments.fixed_frame or "map"
         map_topic = arguments.map_topic or "/g1_mapping/map"
 
@@ -283,7 +331,7 @@ def _view(settings: Settings, arguments: argparse.Namespace) -> int:
     if mode == "saved":
         print(f"[PCD] {session.map_path}", flush=True)
     try:
-        ComposeRuntime(settings).view(
+        get_runtime(settings).view(
             mode=mode,
             pcd_path=pcd_path,
             fixed_frame=fixed_frame,
@@ -310,7 +358,19 @@ def _rebuild(settings: Settings, arguments: argparse.Namespace) -> int:
         )
     topic = arguments.topic or "/g1_mapping/cloud_registered"
     print(f"[REBUILD] session={session.session_id} backend={session.backend}")
-    print(f"[REBUILD] topic={topic} voxel={arguments.voxel}m")
+    method = arguments.method
+    if method == "auto":
+        method = "octomap" if session.backend in {"raw", "sim"} else "accumulate"
+    print(f"[REBUILD] method={method} topic={topic}")
+    if method == "octomap":
+        get_runtime(settings).rebuild_occupancy(
+            session, output_path, voxel_size=arguments.voxel,
+            bag_dir=arguments.bag_dir, cloud_topic=topic,
+        )
+        print(f"[OUTPUT] {output_path}")
+        return 0
+    if arguments.bag_dir:
+        raise ValueError("--bag-dirは--method octomapで使用してください")
 
     def report(messages: int, raw_points: int, kept: int) -> None:
         print(
@@ -322,7 +382,7 @@ def _rebuild(settings: Settings, arguments: argparse.Namespace) -> int:
         session.directory,
         topic=topic,
         output_path=output_path,
-        voxel_size=arguments.voxel,
+        voxel_size=0.05 if arguments.voxel is None else arguments.voxel,
         progress=report,
     )
     extent = [
@@ -341,8 +401,8 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings.load()
     try:
         if arguments.command == "build":
-            ComposeRuntime(settings).build()
-            print("[OK] Mapping imagesを構築しました")
+            get_runtime(settings).build()
+            print(f"[OK] Mapping環境を構築しました: {settings.runtime}")
             return 0
         if arguments.command == "doctor":
             report = diagnose(
@@ -362,6 +422,8 @@ def main(argv: list[str] | None = None) -> int:
             return _status(settings)
         if arguments.command == "stop":
             return _stop(settings, arguments)
+        if arguments.command == "recover":
+            return _recover(settings, arguments)
         if arguments.command == "validate":
             return _validate(settings, arguments)
         if arguments.command == "view":
@@ -369,6 +431,8 @@ def main(argv: list[str] | None = None) -> int:
         if arguments.command == "rebuild":
             return _rebuild(settings, arguments)
         if arguments.command == "bundle":
+            if settings.runtime == "native":
+                raise RuntimeError("bundleはDocker配備用です。native環境はnative/setup.shで構築してください")
             script = settings.project_dir / "scripts" / "make-field-kit.sh"
             command = [str(script)]
             if arguments.output:

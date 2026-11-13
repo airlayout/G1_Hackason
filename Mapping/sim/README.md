@@ -1,7 +1,7 @@
 # Mapping / sim
 
 Isaac Simから実機と同じROSトピック契約でLiDAR・IMU・RGBを配信し、実機raw backendと
-同じadapter・FAST-LIO2・recorder・RVizを検証する。
+同じadapter・FAST-LIO2・OctoMap・recorder・RVizを検証する。
 
 ## 起動
 
@@ -21,4 +21,7 @@ cd Mapping/real
 ```
 
 終了時は`./mapctl stop`、`./mapctl validate`を実行する。
+表示と保存は空き観測で訂正するOctoMap地図を使う。
+`./mapctl rebuild <session_id> --output /tmp/rebuilt.pcd` で、記録済みの点群と
+センサ姿勢から同じ処理を再実行できる。
 `/g1_sim/ground_truth/*`は評価専用であり、FAST-LIO2へは入力しない。

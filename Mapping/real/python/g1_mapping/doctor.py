@@ -10,8 +10,8 @@ import socket
 import shutil
 import subprocess
 
-from .compose import ComposeRuntime
 from .config import Settings
+from .runtime import get_runtime
 
 
 @dataclass(frozen=True)
@@ -73,6 +73,10 @@ def _host_checks(
     settings: Settings, *, mock: bool, simulation: bool = False
 ) -> list[Check]:
     checks: list[Check] = []
+    if settings.transport not in {"dds", "ssh"}:
+        checks.append(Check("host.transport", "FAIL", f"未知のMAPPING_TRANSPORT: {settings.transport}"))
+    elif settings.transport == "ssh" and settings.runtime != "native":
+        checks.append(Check("host.transport", "FAIL", "SSH中継はMAPPING_RUNTIME=nativeで使用してください"))
     if settings.camera_required and not settings.camera_enabled:
         checks.append(
             Check(
@@ -102,6 +106,17 @@ def _host_checks(
                     f"NIC {settings.g1_iface} がありません。.envのG1_IFACEを確認してください",
                 )
             )
+        elif settings.transport == "ssh":
+            addresses = _interface_addresses(settings.g1_iface)
+            result = _run(["ip", "-j", "route", "get", settings.g1_host])
+            routes = json.loads(result.stdout) if result.returncode == 0 else []
+            route = routes[0] if routes else {}
+            ready = bool(addresses) and route.get("dev") == settings.g1_iface
+            checks.append(Check(
+                "host.network", "PASS" if ready else "FAIL",
+                f"{settings.g1_host}へ{route.get('dev', '経路なし')}経由"
+                f"（送信元 {route.get('prefsrc', '不明')}、指定NIC {settings.g1_iface}）",
+            ))
         else:
             subnet = ipaddress.ip_network("192.168.123.0/24")
             addresses = _interface_addresses(settings.g1_iface)
@@ -119,7 +134,15 @@ def _host_checks(
                     )
                 )
 
-    if shutil.which("docker") is None:
+    if mock:
+        checks.append(Check("host.runtime", "PASS", "mockでは実行環境を要求しません"))
+    elif settings.runtime == "native":
+        runtime = get_runtime(settings)
+        result = runtime.run("python3", "-c", "import rclpy, zmq; from rclpy.utilities import get_rmw_implementation_identifier; print(get_rmw_implementation_identifier())",
+                             backend="sim" if simulation else "raw", timeout=15, check=False)
+        checks.append(Check("host.native", "PASS" if result.returncode == 0 else "FAIL",
+                            result.stdout.strip() or result.stderr.strip()))
+    elif shutil.which("docker") is None:
         checks.append(Check("host.docker", "FAIL", "dockerが見つかりません"))
     else:
         result = _run(["docker", "info"], timeout=15)
@@ -133,14 +156,14 @@ def _host_checks(
             )
         )
 
-    result = _run(["docker", "compose", "version"])
-    checks.append(
-        Check(
-            "host.compose",
-            "PASS" if result.returncode == 0 else "FAIL",
-            result.stdout.strip() or result.stderr.strip(),
+        result = _run(["docker", "compose", "version"])
+        checks.append(
+            Check(
+                "host.compose",
+                "PASS" if result.returncode == 0 else "FAIL",
+                result.stdout.strip() or result.stderr.strip(),
+            )
         )
-    )
 
     settings.runs_dir.mkdir(parents=True, exist_ok=True)
     free_gib = shutil.disk_usage(settings.runs_dir).free / (1024**3)
@@ -200,7 +223,10 @@ def diagnose(
         selected = "onboard" if requested_backend == "auto" else requested_backend
         return DiagnosticReport(requested_backend, selected, checks)
 
-    runtime = ComposeRuntime(settings)
+    if any(check.status == "FAIL" and check.name.startswith("host.") for check in checks):
+        return DiagnosticReport(requested_backend, None, checks)
+
+    runtime = get_runtime(settings)
     if requested_backend == "sim":
         candidates = ["sim"]
     else:
@@ -211,17 +237,12 @@ def diagnose(
     selected: str | None = None
 
     for backend in candidates:
-        image = (
-            "g1-mapping-raw:local"
-            if backend == "sim"
-            else f"g1-mapping-{backend}:local"
-        )
-        if not runtime.image_exists(image):
+        if not runtime.backend_available(backend):
             checks.append(
                 Check(
                     f"backend.{backend}",
                     "FAIL",
-                    f"image {image} がありません。先に ./mapctl build を実行してください",
+                    f"{settings.runtime}環境に{backend} backendがありません。./mapctl buildを確認してください",
                 )
             )
             continue

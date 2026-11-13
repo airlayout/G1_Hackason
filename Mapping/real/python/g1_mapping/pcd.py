@@ -202,26 +202,37 @@ def validate_session(
         except (OSError, ValueError, KeyError, struct.error) as exc:
             checks.append(ValidationCheck("map.pcd", "FAIL", str(exc)))
 
-    bag_dir = session_dir / "raw" / "rosbag2"
-    metadata = bag_dir / "metadata.yaml"
-    checks.append(
-        ValidationCheck(
-            "raw.rosbag2",
-            "PASS" if metadata.exists() else ("WARN" if allow_partial else "FAIL"),
-            "rosbag2 metadataあり" if metadata.exists() else "rosbag2 metadataがありません",
-        )
-    )
-
     manifest_path = session_dir / "manifest.json"
     manifest = (
         json.loads(manifest_path.read_text(encoding="utf-8"))
         if manifest_path.is_file()
         else {}
     )
+    final = manifest.get("final_replay", {})
+    remote = manifest.get("remote_recording")
+    bag_dir = session_dir / ("raw/g1/rosbag2" if remote else "raw/rosbag2")
+    metadata = bag_dir / "metadata.yaml"
+    checks.append(ValidationCheck("raw.rosbag2", "PASS" if metadata.exists() else
+                                  ("WARN" if allow_partial else "FAIL"), str(metadata)))
+    if remote:
+        verified = False
+        try:
+            inventory = json.loads((session_dir / "raw/g1/inventory.json").read_text())
+            state = inventory["state"]
+            verified = state["status"] == "completed" and state.get("dropped", 0) == 0
+        except (OSError, ValueError, KeyError):
+            pass
+        checks.append(ValidationCheck("g1.originals", "PASS" if verified else "FAIL",
+                                      "G1記録の回収・照合済み" if verified else "G1原本が未回収または記録異常"))
+        checks.append(ValidationCheck("g1.final_replay", "PASS" if final.get("complete") else "FAIL",
+                                      "G1原本から再生成済み" if final.get("complete") else "最終再生成が未完了"))
     camera = manifest.get("camera", {})
     camera_required = bool(camera.get("required", False)) if isinstance(camera, dict) else False
     try:
         topic_counts = _bag_topic_counts(bag_dir)
+        if remote and final.get("complete"):
+            for name, count in _bag_topic_counts(session_dir / final["directory"] / "rosbag2").items():
+                topic_counts[name] = topic_counts.get(name, 0) + count
     except (OSError, sqlite3.DatabaseError) as error:
         topic_counts = {}
         checks.append(ValidationCheck("raw.topics", "FAIL", str(error)))
@@ -239,6 +250,16 @@ def validate_session(
             )
         ),
     )
+    if isinstance(manifest.get("occupancy_map"), dict):
+        required_topics += (str(topics.get("canonical_sensor_pose", "/g1_mapping/sensor_pose")),)
+        metadata_path = map_path.with_suffix(".octomap.json")
+        try:
+            occupancy = json.loads(metadata_path.read_text(encoding="utf-8"))
+            complete = occupancy.get("algorithm") == "octomap" and occupancy.get("scans", 0) > 0
+            checks.append(ValidationCheck("map.occupancy", "PASS" if complete else "FAIL",
+                                          f"OctoMap {occupancy.get('scans', 0)} scans"))
+        except (OSError, ValueError) as error:
+            checks.append(ValidationCheck("map.occupancy", "WARN" if allow_partial else "FAIL", str(error)))
     for topic in required_topics:
         count = topic_counts.get(topic, 0)
         checks.append(

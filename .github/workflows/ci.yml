@@ -40,6 +40,9 @@ jobs:
         run: bash scripts/ci/changed_files.sh "${{ github.event.pull_request.base.sha || '' }}" >> "$GITHUB_OUTPUT"
 
       # 実機・ROS 2・LiDARは不要。各フォルダのtests/run_tests.shを自動で探して実行する。
+      - name: Install occupancy mapping test dependency
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends liboctomap-dev
+
       - name: Run tests
         env:
           CI_CHANGED_FILES: ${{ steps.changed.outputs.files }}
