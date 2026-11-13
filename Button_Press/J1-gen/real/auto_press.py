@@ -220,6 +220,10 @@ def press_command(args: argparse.Namespace, iface: str) -> tuple[list[str], dict
     if not args.execute:
         cmd.append("--dry-run")
     env["J1GEN_BODY_LOG"] = str(REPO_ROOT / "_local" / "button_press" / "body_log")
+    # 腰を回して探す（press.waist_scan）は、実機ではまだ動かす確認をしていないので、必ずオフにする（指定の口は作らない）。
+    # elevator.yaml を誤ってオンにしても動かないよう、強制のオフ（"0"）を渡す。contest_agent/agent.py が J1GEN_WAIST_SCAN を
+    # 読み、"1" のときだけオンにする（yaml の enabled は使わない）
+    env["J1GEN_WAIST_SCAN"] = "0"
     if getattr(args, "arm", None):
         env["J1GEN_ARM"] = args.arm
     if args.button_set:

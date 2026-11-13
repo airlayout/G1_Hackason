@@ -85,6 +85,30 @@ press:
   # 下の腕ごとの値（ik_seed_right_arm、finger_tilts_deg の左、via の右へずらす距離、stand.center_side_m）は右腕の値で書く。
   # left のときは左右を反転して使う（common/elevator_press.py）。左腕はまだシミュレーション・実機で確かめていない（2026-11-04）
   arm: right
+  # 腰を回して探す（common/elevator_press.py、docs/PLAN_waist_yaw_reach.md の 9.2）。既定はオフ。実機ではまだ確かめていない
+  # （評価環境・実機の口 contest_agent/agent.py は、下の enabled を使わず、環境変数 J1GEN_WAIST_SCAN=1 のときだけオンにする。
+  # 実機用の real/auto_press.py は必ず 0 を渡す）。
+  # 腰 0° で時間内に ▲▼ を見つけられなかったときだけ、腰 yaw を yaws_deg の順に回し、止まってから見る。見つけたら、その腰の角度のまま
+  # 押し、押し終わったら（中止のときも）始めの角度へ戻す。頭カメラは胴体に付いているので、ひねるとボタンが体の横 20〜28 cm にずれていても画像に入る
+  waist_scan:
+    enabled: false
+    # 試す腰 yaw の順 [deg]（+ は上から見て左回り）。始めの角度からの相対ではなく、腰 yaw の角度そのもの
+    yaws_deg: [10, -10, 20, -20]
+    max_deg: 20          # これを超える角度は設定の誤りとして ValueError（±30° にしても押せる配置は増えなかった）
+    speed_deg_s: 10      # 回す速さ [deg/s]（smoothstep なので最大は平均の 1.5 倍。時間 = 角度差 / 速さ、最低 0.5 秒）
+    settle_s: 0.5        # 回し終わってから見始める（戻し終わってから終わる）までの待ち [s]（ぶれた画像を使わない）
+    look_s: 1.5          # 各角度で見る時間 [s]
+    # ひねる前に、深度で体の前の物までの距離を確かめる（common/front_clearance.py）。clear_x_m より近い・確かめられないなら、ひねらずに中止。
+    # clear_x_m = 始めの立った姿勢（REAL_STAND_1021）で腰 yaw を −20〜+20° に振ったときの、上体（胴体・頭・両腕・ハンド）の
+    # 形状がいちばん前へ出る x（pelvis 座標。ハンドは包む箱）0.182 m + 余裕 5 cm = 0.232 m を切り上げた値（tests/test_elevator_waist_scan.py で
+    # 計算し直し、この値がそれ以上であることを確かめる）
+    clear_x_m: 0.24
+    # 前の物までの距離に使う点: pelvis の z がこの範囲（腰 〜 肩の少し上）、|y| がこの幅以内（上体の幅 ±0.235 m に、ひねったとき
+    # 腕が横へ振れる分の余裕）。その x の下位 front_percentile %（外れ値に強いよう、最小にしない）。点が front_min_points 未満なら確かめられない
+    front_z_m: [0.0, 0.40]
+    front_half_width_m: 0.35
+    front_percentile: 3.0
+    front_min_points: 300
   planner:
     # 手前の点（球の表面がボタンに触れる位置から、押す向きにこれだけ戻る）[m]
     approach_distance_m: 0.06

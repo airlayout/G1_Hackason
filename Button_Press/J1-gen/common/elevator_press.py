@@ -39,6 +39,12 @@ weight が 0 に戻り、腕が柱の数 cm 手前から元の姿勢へ動く。
 使わない（止めるのは今までどおり関節の遅れ）。2026-11-03 の 19:39 の ▲ で「当たらなかった」のか「指が曲がって遅れが
 増えなかった」のかを、関節角からは区別できなかったため。
 
+腰を回して探す（press.waist_scan。既定はオフ。実機ではまだ確かめていない）: 腰 0° で時間内に ▲▼ を見つけられなかったとき、
+中止せず、腰 yaw を yaws_deg の順に回して（turn）、止まってから見る（look）。頭カメラは胴体に付いているので、腰をひねると
+カメラの向きが変わり、体の横にずれたボタンが画像に入る。見つけたら、その腰の角度のまま腕の計画・押し込みへ進む（腰の指令は
+q_hold[12] に持ち、腕の段階でも変えない）。終わる（home のあと・中止）とき、腰が回っていれば始めの角度へ戻して（untwist）から done にする。
+ひねる前に、深度で体の前の物までの距離を確かめる（common/front_clearance.py）。clear_x_m より近い・確かめられないときはひねらずに中止。
+
 ランプと扉を見続ける（common/lamp_watch.py）: 押し込み・保持・戻り・確認の間の新しい画像でも毎回ランプの明るさを見て、
 一度でも点灯していれば、確認のときに消えていても「点灯した」とする（かごがその階にいると、押している間だけ点く。
 2026-11-03）。手・前腕が写る画素は関節の角度から求めて除く。押したあとは乗り場の扉が開いたかも記録する（判断には使わない）。
@@ -61,12 +67,14 @@ import numpy as np
 from .arm.gravity import GravityModel
 from .collision import CollisionChecker
 from .elevator_buttons import ButtonFinder, ButtonNotFound, ButtonTracker, CallButtons
+from .front_clearance import front_distance
 from .lamp_watch import DoorWatch, LampWatch, hand_mask, load_stl_vertices, mesh_circles, segment_circles
 from .press_planner import PressPlan, PressPlanner, UnreachableError
 from .push_force import PushForceMonitor
 from .robot_model import WAIST_IDX, mirror_arm_q
 
 UPPER_IDX = list(range(12, 29))
+WAIST_YAW = WAIST_IDX[0]  # 腰 yaw（motor 12）。29 関節の並びの index
 
 
 def finger_axis_for(normal: np.ndarray, left_deg: float, up_deg: float) -> np.ndarray:
@@ -118,6 +126,7 @@ class ElevatorPressController:
         self._hand_vertices_by_side: dict[str, np.ndarray] = {}  # 手のメッシュ（腕ごと。読むのは使うときだけ）
         self._use_side(self.default_side)
         self.log: list[StepLog] = []
+        self._scan_cfg()  # 設定の誤り（max_deg を超える角度）は、作るときに ValueError にする
         # 押す前（見つけたとき）と点灯の確認のときの画像を、外へ渡す口（agent.py が記録に使う）。
         # on_snapshot(種類 "before" / "check", 画像 RGB, 内容の辞書)。無ければ何もしない
         self.on_snapshot: Callable[[str, np.ndarray, dict[str, Any]], None] | None = None
@@ -187,6 +196,18 @@ class ElevatorPressController:
         self._use_side(order[0])
         raise UnreachableError(" / ".join(reasons))
 
+    def _scan_cfg(self) -> dict[str, Any]:
+        """press.waist_scan（既定はオフ）。yaws_deg に max_deg を超える角度があれば ValueError。"""
+        ws = dict(self.cfg["press"].get("waist_scan") or {})
+        yaws = [float(y) for y in ws.get("yaws_deg", [])]
+        mx = float(ws.get("max_deg", 20.0))
+        bad = [y for y in yaws if abs(y) > mx + 1e-9]
+        if bad:
+            raise ValueError(f"press.waist_scan.yaws_deg は max_deg（{mx:g}°）以内: {bad}")
+        ws["enabled"] = bool(ws.get("enabled", False))
+        ws["yaws_deg"] = yaws
+        return ws
+
     # ---- 外から呼ぶ ------------------------------------------------------------------
 
     def reset(self, target: str, control_dt: float, upper_kp: np.ndarray) -> None:
@@ -215,6 +236,12 @@ class ElevatorPressController:
         self.baseline_level: float | None = None
         self.outcome = ""
         self.log = []
+        # 腰を回して探す状態（前の回の角度を残さない）
+        self.waist0: float | None = None  # 始めの腰 yaw [rad]（最初の step で測る）
+        self.scan_i = 0  # 次に試す yaws_deg の番号
+        self.scan_tried: list[float] = []  # 回して見た角度 [deg]
+        self._turn: tuple[float, float, float] | None = None  # 回している間の (元の yaw, 目標の yaw [rad], 回す時間 [s])
+        self._look_until: float | None = None  # 回した先で見る期限（None は始めの姿勢の look。今までの期限を使う）
         self.press_forces: list[dict[str, Any]] = []  # 押し込みの回ごとの推定した押す力（PushForceSummary.to_dict()）
         self.lamp = LampWatch()
         self._t_press: float | None = None
@@ -230,6 +257,8 @@ class ElevatorPressController:
         tau = None if tau_est is None else np.asarray(tau_est, dtype=float)
         if self.q_hold is None:
             self.q_hold = q.copy()
+        if self.waist0 is None:
+            self.waist0 = float(self.q_hold[WAIST_YAW])
         q_des = self.q_hold.copy()
         arm = self.kin.arm_idx
         el = t - self.t_phase
@@ -242,13 +271,27 @@ class ElevatorPressController:
         if self.phase == "look":
             if t >= float(c["look_start_s"]) and fresh:
                 self._look(rgb, depth, K, q, t)
-            if self.phase == "look" and t > float(c["look_start_s"]) + float(c["look_timeout_s"]):
+            ws = self._scan_cfg()
+            until = float(c["look_start_s"]) + float(c["look_timeout_s"]) if self._look_until is None else self._look_until
+            if self.phase == "look" and t > until:
                 st = c["stand"]
-                done = self._give_up(t, "時間内に一般用の ▲▼ を見つけられない"
-                                     + (f"（最後の理由: {self._last_reason}）" if getattr(self, "_last_reason", "") else "")
-                                     + f"。立つ位置を確かめる: 柱まで {float(st['min_dist_m']) * 100:.0f}〜"
-                                     f"{float(st['max_dist_m']) * 100:.0f} cm、左右 {float(st['max_side_m']) * 100:.0f} cm 以内"
-                                     "（遠いと高い ▲ が頭カメラの上に切れる）")
+                why = ("時間内に一般用の ▲▼ を見つけられない"
+                       + (f"（最後の理由: {self._last_reason}）" if getattr(self, "_last_reason", "") else "")
+                       + f"。立つ位置を確かめる: 柱まで {float(st['min_dist_m']) * 100:.0f}〜"
+                       f"{float(st['max_dist_m']) * 100:.0f} cm、左右 {float(st['max_side_m']) * 100:.0f} cm 以内"
+                       "（遠いと高い ▲ が頭カメラの上に切れる）")
+                if not ws["enabled"]:
+                    done = self._give_up(t, why)
+                elif self.scan_i >= len(ws["yaws_deg"]):
+                    tried = "、".join(f"{y:+g}°" for y in self.scan_tried) or "なし"
+                    done = self._give_up(t, f"{why}。腰を回して探した角度: {tried}（見つからない）")
+                else:
+                    done = self._next_scan(t, depth, K, q, ws, why)
+        elif self.phase in ("turn", "untwist"):
+            if self.q_ik is not None:
+                q_des[arm] = self.q_ik[arm]  # 押したあとなら、腕は戻した姿勢のまま（回すのは腰 yaw だけ）
+            self._twist(el, t, ws=self._scan_cfg())
+            q_des[WAIST_YAW] = self.q_hold[WAIST_YAW]
         elif self.phase == "reach":
             q_des[arm] = self._reach(el, t)
         elif self.phase == "settle":
@@ -292,7 +335,7 @@ class ElevatorPressController:
             if el >= sum(T for _, _, T in self.home_legs):
                 self.q_ik[arm] = self.home_legs[-1][1]
                 self._note("腕を始めの姿勢へ戻した")
-                self._enter("done", t)
+                self._finish(t)  # 腰が回っていれば、始めの角度へ戻してから done
         elif self.phase == "done":
             q_des[arm] = self.q_ik[arm] if self.q_ik is not None else q_des[arm]
             done = True
@@ -342,10 +385,82 @@ class ElevatorPressController:
             self._note(summary.text())
 
     def _give_up(self, t: float, why: str) -> bool:
+        """中止する。腰が回っていれば、始めの角度へ戻してから done にする（その間は False を返す）。"""
         self.outcome = f"中止: {why}"
         self._note(self.outcome)
+        return self._finish(t)
+
+    def _twisted(self) -> bool:
+        return self.waist0 is not None and abs(float(self.q_hold[WAIST_YAW]) - self.waist0) > 1e-6
+
+    def _finish(self, t: float) -> bool:
+        """終わる。腰が回っていれば始めの角度へ戻す段階（untwist）へ、回っていなければ done へ。done になったかを返す。"""
+        if self._twisted():
+            self._begin_turn(t, self.waist0, "untwist")
+            self._note(f"腰を始めの角度（{np.degrees(self.waist0):+.1f}°）へ戻す")
+            return False
         self._enter("done", t)
         return True
+
+    def _begin_turn(self, t: float, yaw: float, phase: str) -> None:
+        """腰 yaw を今の指令から yaw [rad] まで回す段階に入る。時間 = 角度差 / 速さ（最低 0.5 秒）。"""
+        ws = self._scan_cfg()
+        now = float(self.q_hold[WAIST_YAW])
+        dur = max(0.5, abs(np.degrees(yaw - now)) / float(ws.get("speed_deg_s", 10.0)))
+        self._turn = (now, float(yaw), float(dur))
+        self.tracker.reset()  # 前の角度のフレームと混ぜない
+        self._enter(phase, t)
+
+    def _twist(self, el: float, t: float, ws: dict[str, Any]) -> None:
+        """turn / untwist の 1 周期。腰 yaw の指令（q_hold[12]）だけを smoothstep で動かし、止まって settle_s 待ったら次へ
+        （turn は回した先の look へ、untwist は done へ）。"""
+        a, b, dur = self._turn
+        self.q_hold[WAIST_YAW] = a + smoothstep(el / dur) * (b - a)
+        if el < dur + float(ws.get("settle_s", 0.5)):
+            return
+        if self.phase == "untwist":
+            self._note("腰を始めの角度へ戻した")
+            self._enter("done", t)
+        else:
+            self._look_until = t + float(ws.get("look_s", 1.5))
+            self._enter("look", t)
+
+    def _next_scan(self, t: float, depth: np.ndarray, K: np.ndarray, q: np.ndarray, ws: dict[str, Any], why: str) -> bool:
+        """次の角度へ腰を回す。最初の 1 回の前に、前の物までの距離を確かめる（近い・確かめられないなら、ひねらずに中止）。"""
+        if self.scan_i == 0:
+            msg = self._front_check(depth, K, q, ws)
+            if msg:
+                return self._give_up(t, f"{msg}。{why}")
+        yaw = float(ws["yaws_deg"][self.scan_i])
+        self.scan_i += 1
+        self.scan_tried.append(yaw)
+        self._note(f"腰を {yaw:+g}° へ回して探す（{self.scan_i}/{len(ws['yaws_deg'])} 番目）")
+        self._begin_turn(t, np.radians(yaw), "turn")
+        return False
+
+    def _front_distance(self, depth: np.ndarray, K: np.ndarray, q: np.ndarray, ws: dict[str, Any]) -> tuple[float | None, int]:
+        """深度から、体の前の物までの距離 [m] と使った点の数（頭カメラの変換が無い・点が足りなければ None）。"""
+        cam = getattr(self.finder, "cam_tf", None)
+        if cam is None or depth is None:
+            return None, 0
+        rot, pos = cam.pelvis_from_optical(np.asarray(q, dtype=float)[list(WAIST_IDX)])
+        pos = pos + np.asarray(getattr(cam, "offset", np.zeros(3)), dtype=float)
+        z0, z1 = (float(v) for v in ws.get("front_z_m", [0.0, 0.40]))
+        return front_distance(depth, K, rot, pos, (z0, z1), float(ws.get("front_half_width_m", 0.35)),
+                              float(ws.get("front_percentile", 3.0)), int(ws.get("front_min_points", 300)))
+
+    def _front_check(self, depth: np.ndarray, K: np.ndarray, q: np.ndarray, ws: dict[str, Any]) -> str:
+        """ひねってよいか。よければ空、だめなら理由の文。"""
+        clear = float(ws["clear_x_m"])
+        dist, n = self._front_distance(depth, K, q, ws)
+        if dist is None:
+            return f"前の物までの距離を深度から確かめられない（上体の高さ・幅の点が {n} 個）ので、腰をひねって探さない"
+        if dist < clear:
+            need = max(1, int(np.ceil((clear - dist) * 100 - 1e-6)))
+            return (f"柱に近すぎるので腰をひねって探さない（前の物まで {dist * 100:.0f} cm、"
+                    f"{clear * 100:.0f} cm 以上必要。あと {need} cm 下がる）")
+        self._note(f"前の物まで {dist * 100:.0f} cm（{clear * 100:.0f} cm 以上あるのでひねってよい。点 {n} 個）")
+        return ""
 
     def _look(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q: np.ndarray, t: float) -> None:
         try:
@@ -832,7 +947,7 @@ class ElevatorPressController:
         q[arm] = now
         if self._path_hits(q, [now, self.legs[-1][1]]):
             self._note("⚠️ 手前の姿勢へ戻ると腕が当たるので、今の姿勢のまま終わる")
-            self._enter("done", t)
+            self._finish(t)
             return
         self.home_legs = [first] + [(b, a, T) for a, b, T in reversed(self.legs)]
         self._note(f"来た経路を逆にたどって、始めの姿勢へ戻す（{sum(T for _, _, T in self.home_legs):.1f} 秒）")

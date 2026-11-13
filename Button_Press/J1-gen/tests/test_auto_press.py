@@ -112,6 +112,16 @@ class TestPressCommand(unittest.TestCase):
         self.assertEqual(env["J1GEN_HAND_MASK"], "1")
         self.assertNotIn("J1GEN_ARM", env)  # 指定しなければ elevator.yaml の press.arm のまま
 
+    def test_waist_scan_is_always_off(self) -> None:
+        """腰を回して探す（press.waist_scan）は、実機ではまだ確かめていないので、必ずオフ（強制のオフを渡す）。指定の口は無い。"""
+        for kw in ({}, {"execute": True}, {"arm": "auto"}, {"button_set": "wheelchair"}):
+            with self.subTest(kw=kw):
+                _, env = press_command(args(target="up", **kw), "enp129s0")
+                self.assertEqual(env["J1GEN_WAIST_SCAN"], "0")
+        # 指定の口は無い（auto_press.py に --waist-scan の引数を作っていない）
+        src = (FEATURE_DIR / "real" / "auto_press.py").read_text(encoding="utf-8")
+        self.assertNotIn('add_argument("--waist', src)
+
     def test_arm(self) -> None:
         """--arm は、ボタンならエージェントへ環境変数 J1GEN_ARM で、ボトルなら press_bottle.py の --arm で渡す。"""
         _, env = press_command(args(target="up", arm="left"), "enp129s0")
