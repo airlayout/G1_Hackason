@@ -214,6 +214,173 @@ class TestScan(WaistScanBase):
         self.controller(scan={"yaws_deg": [10, 25], "max_deg": 30})  # 上限を上げれば作れる
 
 
+class HintFinder(FakeFinder):
+    """FakeFinder に last_buttons を持たせたもの。見つからないときも、見えているボタン seen（y のリスト）を残す。"""
+
+    def __init__(self, call: CallButtons, found_deg: list[float], seen_y: list[float] | None = None) -> None:
+        super().__init__(call, found_deg)
+        self.seen_y = seen_y or []
+        self.last_buttons: list = []
+
+    def find(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q_waist: np.ndarray) -> CallButtons:
+        self.last_buttons = [make_call(0.40, y).up for y in self.seen_y]  # find のたびに新しい list（ButtonFinder と同じ）
+        return super().find(rgb, depth, K, q_waist)
+
+
+class FakeFaceFinder:
+    """柱の面の端だけを返す偽物（left / right は None で切れている）。FaceNotFound を出す指定もできる。"""
+
+    def __init__(self, left: float | None, right: float | None, notfound: bool = False) -> None:
+        self.left, self.right, self.notfound = left, right, notfound
+        self.calls = 0
+
+    def find(self, depth, K, q_waist, imu_quat=None):  # noqa: ANN001
+        from types import SimpleNamespace
+
+        from common.column_face import FaceNotFound
+
+        self.calls += 1
+        if self.notfound:
+            raise FaceNotFound("偽: 面なし")
+        return SimpleNamespace(left_edge_m=self.left, right_edge_m=self.right)
+
+
+class TestOrderHint(WaistScanBase):
+    def order(self, finder, face=None, scan: dict | None = None) -> tuple[list[float], "ElevatorPressController"]:
+        """最初に回し始める段階（turn）まで回し、決まった順と controller を返す。"""
+        ctl = self.controller(scan=scan)
+        ctl.face_finder = face
+        with self.near_front(ctl):
+            self.run_loop(ctl, finder, stop="turn")
+        return ctl.scan_order, ctl
+
+    def test_no_hint_keeps_configured_order(self) -> None:
+        for finder in (FakeFinder(make_call(0.40, -0.14), []), HintFinder(make_call(0.40, -0.14), [])):
+            order, ctl = self.order(finder)
+            self.assertEqual(order, [10.0, -10.0, 20.0, -20.0])
+            self.assertEqual(ctl.scan_tried, [10.0])
+
+    def test_visible_button_on_right_starts_from_minus(self) -> None:
+        order, ctl = self.order(HintFinder(make_call(0.40, -0.14), [], seen_y=[-0.20, -0.18]))
+        self.assertEqual(order, [-10.0, -20.0, 10.0, 20.0])
+        self.assertEqual(ctl.scan_tried, [-10.0])
+        self.assertTrue(any("回す順" in m.message and "ボタン" in m.message and "右" in m.message for m in ctl.log))
+
+    def test_visible_button_on_left_starts_from_plus(self) -> None:
+        order, _ = self.order(HintFinder(make_call(0.40, 0.14), [], seen_y=[0.20]))
+        self.assertEqual(order, [10.0, 20.0, -10.0, -20.0])
+
+    def test_button_near_front_keeps_configured_order(self) -> None:
+        order, ctl = self.order(HintFinder(make_call(0.40, 0.0), [], seen_y=[0.04, -0.03]), face=FakeFaceFinder(0.2, None))
+        self.assertEqual(order, [10.0, -10.0, 20.0, -20.0])
+        self.assertEqual(ctl.face_finder.calls, 0)  # ボタンが見えているので柱の面は見ない
+
+    def test_stale_last_buttons_are_ignored(self) -> None:
+        """find が last_buttons を更新しなかった（同じ list のまま）なら、古い値として使わない。"""
+        f = HintFinder(make_call(0.40, -0.14), [])
+        f.last_buttons = [make_call(0.40, -0.30).up]
+        f.find = lambda rgb, depth, K, q: (_ for _ in ()).throw(ButtonNotFound("偽: 更新前に失敗"))  # type: ignore[method-assign]
+        order, _ = self.order(f)
+        self.assertEqual(order, [10.0, -10.0, 20.0, -20.0])
+
+    def test_face_edge_only_left_visible_goes_right(self) -> None:
+        """左の端だけ見える（右は切れている）→ 柱は右へ続く → 右から。"""
+        order, ctl = self.order(FakeFinder(make_call(0.40, -0.14), []), face=FakeFaceFinder(0.02, None))
+        self.assertEqual(order, [-10.0, -20.0, 10.0, 20.0])
+        self.assertTrue(any("仮定" in m.message for m in ctl.log))
+
+    def test_face_edge_only_right_visible_goes_left(self) -> None:
+        order, _ = self.order(FakeFinder(make_call(0.40, 0.14), []), face=FakeFaceFinder(None, -0.02))
+        self.assertEqual(order, [10.0, 20.0, -10.0, -20.0])
+
+    def test_face_both_edges_uses_center_sign(self) -> None:
+        self.assertEqual(self.order(FakeFinder(make_call(0.4, 0), []), face=FakeFaceFinder(-0.05, -0.35))[0],
+                         [-10.0, -20.0, 10.0, 20.0])
+        self.assertEqual(self.order(FakeFinder(make_call(0.4, 0), []), face=FakeFaceFinder(0.35, 0.05))[0],
+                         [10.0, 20.0, -10.0, -20.0])
+        self.assertEqual(self.order(FakeFinder(make_call(0.4, 0), []), face=FakeFaceFinder(0.25, -0.20))[0],
+                         [10.0, -10.0, 20.0, -20.0])  # 中央 +2.5 cm は正面に近い
+
+    def test_face_unusable_keeps_configured_order(self) -> None:
+        for face in (FakeFaceFinder(None, None), FakeFaceFinder(None, None, notfound=True), None):
+            order, _ = self.order(FakeFinder(make_call(0.40, -0.14), []), face=face)
+            self.assertEqual(order, [10.0, -10.0, 20.0, -20.0])
+
+    def test_wrong_guess_still_tries_the_other_side(self) -> None:
+        """手がかりは右だが、実際は +10° で見つかる → −10, −20 を試したあと +10 で見つけて押す。"""
+        ctl = self.controller()
+        ctl.face_finder = FakeFaceFinder(0.02, None)
+        finder = FakeFinder(make_call(0.40, -0.14), found_deg=[10.0])
+        with self.near_front(ctl):
+            rec, _ = self.run_loop(ctl, finder, stop="reach")
+        self.assertEqual(ctl.scan_tried, [-10.0, -20.0, 10.0])
+        self.assertAlmostEqual(rec[-1][1], np.radians(10.0), places=9)
+
+    def test_right_button_is_found_sooner_with_the_hint(self) -> None:
+        def steps(hint: bool) -> int:
+            ctl = self.controller(scan={"order_hint": {"enabled": hint}})
+            ctl.face_finder = FakeFaceFinder(0.02, None)
+            with self.near_front(ctl):
+                rec, _ = self.run_loop(ctl, FakeFinder(make_call(0.40, -0.14), found_deg=[-10.0]), stop="reach")
+            return len(rec)
+
+        with_hint, without = steps(True), steps(False)
+        self.assertLess(with_hint, without)
+        print(f"[test] -10° で見つかるまで: ヒントあり {with_hint * DT:.1f} 秒 / なし {without * DT:.1f} 秒")
+
+    def test_disabled_keeps_configured_order_and_does_not_look(self) -> None:
+        face = FakeFaceFinder(0.02, None)
+        order, ctl = self.order(HintFinder(make_call(0.4, -0.14), [], seen_y=[-0.2]), face=face,
+                                scan={"order_hint": {"enabled": False}})
+        self.assertEqual(order, [10.0, -10.0, 20.0, -20.0])
+        self.assertEqual(face.calls, 0)
+
+    def test_order_is_decided_again_after_reset(self) -> None:
+        ctl = self.controller()
+        ctl.face_finder = FakeFaceFinder(0.02, None)
+        with self.near_front(ctl):
+            self.run_loop(ctl, FakeFinder(make_call(0.4, -0.14), []), stop="turn")
+            self.assertEqual(ctl.scan_order[0], -10.0)
+            ctl.face_finder = FakeFaceFinder(None, -0.02)
+            self.run_loop(ctl, FakeFinder(make_call(0.4, 0.14), []), stop="turn")
+        self.assertEqual(ctl.scan_order[0], 10.0)
+
+    def test_scan_off_does_nothing(self) -> None:
+        ctl = self.controller(enabled=False)
+        ctl.face_finder = FakeFaceFinder(0.02, None)
+        rec, _ = self.run_loop(ctl, FakeFinder(make_call(0.40, -0.14), []))
+        self.assertEqual(ctl.face_finder.calls, 0)
+        self.assertEqual(self.phases(rec), ["look", "done"])
+
+    def test_from_config_builds_face_finder_only_when_enabled(self) -> None:
+        self.assertIsNone(self.controller(enabled=False).face_finder)
+        self.assertIsNotNone(self.controller().face_finder)
+        self.assertIsNone(self.controller(scan={"order_hint": {"use_face": False}}).face_finder)
+
+
+class TestFaceEdgesAtNearRange(unittest.TestCase):
+    """FaceFinder の端が、腰をひねる前の近さ（柱まで 28〜40 cm）で出るかの確認（合成の深度。tests/test_column_face.py の render）。
+    結果: 距離は出るが、端が出るのは端が画像の中（pelvis の正面から左右 約 12 cm 以内）にあるときだけ。
+    面が画像より広いと両端とも None（手がかりにならない）。"""
+
+    def test_near_edges_visible_only_when_inside_the_image(self) -> None:
+        import test_column_face as T
+
+        for dist in (0.28, 0.34, 0.40):
+            # 体の右にある柱（面は pelvis の正面から右へ 45 cm、左の端が正面付近）: 左の端だけ見える
+            f = T.find(T.render(dist, edges=(-0.45, 0.02)))
+            self.assertIsNone(f.right_edge_m, dist)
+            self.assertIsNotNone(f.left_edge_m, dist)
+            # 左へ 45 cm: 右の端だけ
+            f = T.find(T.render(dist, edges=(-0.02, 0.45)))
+            self.assertIsNone(f.left_edge_m, dist)
+            self.assertIsNotNone(f.right_edge_m, dist)
+            # ラボの柱の幅（45 cm）が画像いっぱいに写る真正面: 両端とも切れて手がかりにならない
+            f = T.find(T.render(dist, edges=(-0.20, 0.25)))
+            self.assertIsNone(f.left_edge_m, dist)
+            self.assertIsNone(f.right_edge_m, dist)
+
+
 class TestFrontCheck(WaistScanBase):
     def test_close_object_prevents_the_twist(self) -> None:
         ctl = self.controller()

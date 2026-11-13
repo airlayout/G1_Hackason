@@ -109,6 +109,16 @@ press:
     front_half_width_m: 0.35
     front_percentile: 3.0
     front_min_points: 300
+    # 回す順を手がかりから決める（最初に回す前に 1 回。ボタンがありそうな側の角度から回す。外れても反対側も必ず試す）。
+    # use_buttons: 腰 0° の look の最後の find で見えているボタンの左右（pelvis の y の平均）。
+    # use_face: ボタンが 1 つも見えないとき、深度で見た柱の面の端（片方だけ見えれば、切れている側へ柱が続く）。
+    #   「ボタンは柱の面の中央あたりに付いている」という仮定に頼る。近い距離（28〜40 cm）で端が出るかは確かめ中
+    # min_side_m: 左右がこれ未満（正面に近い）なら決めない（設定の yaws_deg の順のまま）
+    order_hint:
+      enabled: true
+      min_side_m: 0.05
+      use_buttons: true
+      use_face: true
   planner:
     # 手前の点（球の表面がボタンに触れる位置から、押す向きにこれだけ戻る）[m]
     approach_distance_m: 0.06

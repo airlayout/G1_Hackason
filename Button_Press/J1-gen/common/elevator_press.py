@@ -44,6 +44,11 @@ weight が 0 に戻り、腕が柱の数 cm 手前から元の姿勢へ動く。
 カメラの向きが変わり、体の横にずれたボタンが画像に入る。見つけたら、その腰の角度のまま腕の計画・押し込みへ進む（腰の指令は
 q_hold[12] に持ち、腕の段階でも変えない）。終わる（home のあと・中止）とき、腰が回っていれば始めの角度へ戻して（untwist）から done にする。
 ひねる前に、深度で体の前の物までの距離を確かめる（common/front_clearance.py）。clear_x_m より近い・確かめられないときはひねらずに中止。
+回す順は、手がかりから決める（press.waist_scan.order_hint。最初に回す前に 1 回、reset のたびに決め直す）。ボタンが右にありそうなら
+−側（絶対値の小さい順）から、左なら +側から回し、反対側も必ず試す（外れて失うのは時間だけ。前の物までの距離の確認・角度の上限・
+速さは変えない）。手がかりは、1) look の間の最後の find で 1 つ以上見えているボタンの左右（ButtonFinder.last_buttons）、
+2) 深度で見た柱の面の左右の端（片方だけ見えていれば、切れている側へ柱が続くのでボタンはそちら）。どちらも無ければ設定の順のまま。
+2 は「ボタンは柱の面の中央あたりに付いている」という仮定に頼る（ラボの柱では ▲▼ の中点から右 20 cm〜左 25 cm が面）。
 
 ランプと扉を見続ける（common/lamp_watch.py）: 押し込み・保持・戻り・確認の間の新しい画像でも毎回ランプの明るさを見て、
 一度でも点灯していれば、確認のときに消えていても「点灯した」とする（かごがその階にいると、押している間だけ点く。
@@ -66,7 +71,8 @@ import numpy as np
 
 from .arm.gravity import GravityModel
 from .collision import CollisionChecker
-from .elevator_buttons import ButtonFinder, ButtonNotFound, ButtonTracker, CallButtons
+from .column_face import FaceFinder, FaceNotFound
+from .elevator_buttons import ButtonFinder, ButtonNotFound, ButtonTracker, CallButtons, calibration_offset
 from .front_clearance import front_distance
 from .lamp_watch import DoorWatch, LampWatch, hand_mask, load_stl_vertices, mesh_circles, segment_circles
 from .press_planner import PressPlan, PressPlanner, UnreachableError
@@ -113,8 +119,10 @@ class StepLog:
 class ElevatorPressController:
     def __init__(self, robot_cfg: dict[str, Any], planner: PressPlanner, finder: ButtonFinder,
                  gravity: GravityModel, cfg: dict[str, Any], planners: dict[str, PressPlanner] | None = None,
-                 auto: bool = False) -> None:
+                 auto: bool = False, face_finder: FaceFinder | None = None) -> None:
         self.robot_cfg = robot_cfg
+        # 腰を回す順の手がかり（柱の面の端）に使う。None なら使わない
+        self.face_finder = face_finder
         # 押す腕の候補。auto は 2 つ（右 → 左の順に持ち、その順に試す）。right / left は 1 つ
         self.planners: dict[str, PressPlanner] = dict(planners) if planners else {planner.kin.side: planner}
         self.auto = auto
@@ -153,8 +161,16 @@ class ElevatorPressController:
         auto = side == "auto"
         planners = {s: PressPlanner.from_config(robot_cfg, pc, arm_cfg, s) for s in (("right", "left") if auto else (side,))}
         finder = ButtonFinder.from_config(robot_cfg, elevator_cfg)
+        face_finder = None
+        ws = ep.get("waist_scan") or {}
+        hint = ws.get("order_hint") or {}
+        if ws.get("enabled") and hint.get("enabled") and hint.get("use_face"):
+            from .config import load_config
+
+            face_finder = FaceFinder.from_config(robot_cfg, load_config("approach.yaml")["face"],
+                                                 offset=calibration_offset(elevator_cfg))
         return cls(robot_cfg, planners["right" if auto else side], finder, GravityModel(robot_cfg), elevator_cfg,
-                   planners=planners, auto=auto)
+                   planners=planners, auto=auto, face_finder=face_finder)
 
     def _use_side(self, side: str) -> None:
         """押す腕を切り替える。腕に結び付いたもの（計画器・運動学・左右の符号・押す力の推定・手のメッシュ）を全部入れ替える。
@@ -206,6 +222,12 @@ class ElevatorPressController:
             raise ValueError(f"press.waist_scan.yaws_deg は max_deg（{mx:g}°）以内: {bad}")
         ws["enabled"] = bool(ws.get("enabled", False))
         ws["yaws_deg"] = yaws
+        oh = dict(ws.get("order_hint") or {})
+        oh["enabled"] = bool(oh.get("enabled", False))  # 設定に無ければ使わない（設定の順のまま）
+        oh["min_side_m"] = float(oh.get("min_side_m", 0.05))
+        oh["use_buttons"] = bool(oh.get("use_buttons", True))
+        oh["use_face"] = bool(oh.get("use_face", True))
+        ws["order_hint"] = oh
         return ws
 
     # ---- 外から呼ぶ ------------------------------------------------------------------
@@ -240,6 +262,9 @@ class ElevatorPressController:
         self.waist0: float | None = None  # 始めの腰 yaw [rad]（最初の step で測る）
         self.scan_i = 0  # 次に試す yaws_deg の番号
         self.scan_tried: list[float] = []  # 回して見た角度 [deg]
+        self.scan_order: list[float] | None = None  # 回す順（最初に回す前に決める。None はまだ）
+        self._seen_buttons: list[Any] = []  # 始めの姿勢の look の、最後の find で見えたボタン（今回の find で得たものだけ）
+        self._imu_quat: np.ndarray | None = None
         self._turn: tuple[float, float, float] | None = None  # 回している間の (元の yaw, 目標の yaw [rad], 回す時間 [s])
         self._look_until: float | None = None  # 回した先で見る期限（None は始めの姿勢の look。今までの期限を使う）
         self.press_forces: list[dict[str, Any]] = []  # 押し込みの回ごとの推定した押す力（PushForceSummary.to_dict()）
@@ -254,6 +279,7 @@ class ElevatorPressController:
         """1 周期分。上半身の目標の角度（29 関節の並び。下半身は今の角度のまま）と、終わったかを返す。
         tau_est（29。lowstate の推定トルク）を渡すと、押し込みの間の押す力を推定して記録する（止める判断には使わない）。"""
         q = np.asarray(q, dtype=float)
+        self._imu_quat = imu_quat
         tau = None if tau_est is None else np.asarray(tau_est, dtype=float)
         if self.q_hold is None:
             self.q_hold = q.copy()
@@ -431,12 +457,74 @@ class ElevatorPressController:
             msg = self._front_check(depth, K, q, ws)
             if msg:
                 return self._give_up(t, f"{msg}。{why}")
-        yaw = float(ws["yaws_deg"][self.scan_i])
+            self.scan_order = self._decide_order(depth, K, q, ws)
+        order = self.scan_order if self.scan_order is not None else ws["yaws_deg"]
+        yaw = float(order[self.scan_i])
         self.scan_i += 1
         self.scan_tried.append(yaw)
         self._note(f"腰を {yaw:+g}° へ回して探す（{self.scan_i}/{len(ws['yaws_deg'])} 番目）")
         self._begin_turn(t, np.radians(yaw), "turn")
         return False
+
+    @staticmethod
+    def _ordered(yaws: list[float], side: int) -> list[float]:
+        """side が +1 なら + の角度（絶対値の小さい順）→ − の角度（同）。−1 ならその逆。0 は設定の順のまま。"""
+        if side == 0:
+            return list(yaws)
+        pos = sorted((y for y in yaws if y > 0), key=abs)
+        neg = sorted((y for y in yaws if y < 0), key=abs)
+        zero = [y for y in yaws if y == 0]
+        return zero + (pos + neg if side > 0 else neg + pos)
+
+    def _side_from_buttons(self, oh: dict[str, Any]) -> tuple[int, str]:
+        """始めの look の最後の find で見えたボタンの y（pelvis 座標、左が +）の平均から、左右（+1 / −1 / 0）と理由。"""
+        if not self._seen_buttons:
+            return 0, "ボタンは見えていない"
+        ys = [float(np.asarray(b.center, dtype=float)[1]) for b in self._seen_buttons]
+        y = float(np.mean(ys))
+        if abs(y) < float(oh["min_side_m"]):
+            return 0, f"見えたボタン {len(ys)} 個の左右の平均 {y * 100:+.0f} cm が正面に近い（{float(oh['min_side_m']) * 100:.0f} cm 未満）"
+        return (1 if y > 0 else -1), f"見えたボタン {len(ys)} 個の左右の平均 {y * 100:+.0f} cm"
+
+    def _side_from_face(self, depth: np.ndarray, K: np.ndarray, q: np.ndarray, oh: dict[str, Any]) -> tuple[int, str]:
+        """深度で見た柱の面の端から、左右（+1 / −1 / 0）と理由。「ボタンは柱の面の中央あたりに付いている」という仮定に頼る。"""
+        if self.face_finder is None or depth is None:
+            return 0, "柱の面を見る道具が無い"
+        try:
+            face = self.face_finder.find(depth, K, np.asarray(q, dtype=float)[list(WAIST_IDX)], self._imu_quat)
+        except FaceNotFound as e:
+            return 0, f"柱の面が見つからない（{e}）"
+        except Exception as e:  # 手がかりのために探索を止めない
+            return 0, f"柱の面を測れない（{type(e).__name__}: {e}）"
+        le, re = face.left_edge_m, face.right_edge_m
+        if le is None and re is None:
+            return 0, "柱の面の両端が画像の縁で切れている"
+        if (le is None) != (re is None):
+            # 片方だけ見える: 柱は切れている側へ続く。ボタンは面の中央あたり、という仮定でそちらにある
+            return (1, "柱の面の右の端だけ見える（左は画像の縁で切れている）") if le is None else \
+                   (-1, "柱の面の左の端だけ見える（右は画像の縁で切れている）")
+        mid = (float(le) + float(re)) / 2
+        if abs(mid) < float(oh["min_side_m"]):
+            return 0, f"柱の面の中央 {mid * 100:+.0f} cm が正面に近い（{float(oh['min_side_m']) * 100:.0f} cm 未満）"
+        return (1 if mid > 0 else -1), f"柱の面の中央 {mid * 100:+.0f} cm（端 左 {float(le) * 100:+.0f} / 右 {float(re) * 100:+.0f} cm）"
+
+    def _decide_order(self, depth: np.ndarray, K: np.ndarray, q: np.ndarray, ws: dict[str, Any]) -> list[float]:
+        """回す順を決める。手がかり（ボタン → 柱の面の端）の左右で、その側の角度から回す。分からなければ設定の順。"""
+        yaws = list(ws["yaws_deg"])
+        oh = ws["order_hint"]
+        if not oh["enabled"]:
+            return yaws
+        side, why = 0, ""
+        if oh["use_buttons"]:
+            side, why = self._side_from_buttons(oh)
+            why = "ボタン: " + why
+        if side == 0 and oh["use_face"] and (not oh["use_buttons"] or not self._seen_buttons):
+            side, why2 = self._side_from_face(depth, K, q, oh)
+            why = (why + " → " if why else "") + "柱の面（ボタンは柱の面の中央あたり、という仮定）: " + why2
+        order = self._ordered(yaws, side)
+        name = {1: "左（+）", -1: "右（−）", 0: "分からない"}[side]
+        self._note(f"回す順: {'、'.join(f'{y:+g}°' for y in order)}（ボタンは{name}と見た。{why or '手がかりを使わない設定'}）")
+        return order
 
     def _front_distance(self, depth: np.ndarray, K: np.ndarray, q: np.ndarray, ws: dict[str, Any]) -> tuple[float | None, int]:
         """深度から、体の前の物までの距離 [m] と使った点の数（頭カメラの変換が無い・点が足りなければ None）。"""
@@ -463,12 +551,20 @@ class ElevatorPressController:
         return ""
 
     def _look(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q: np.ndarray, t: float) -> None:
+        # 回す順の手がかり: finder.last_buttons は find のたびに新しい list に差し替わる。差し替わっていなければ（find が
+        # その前に例外を出した・last_buttons の無い偽の finder）、古い値なので使わない。回したあとの look では更新しない
+        before = getattr(self.finder, "last_buttons", None)
         try:
             call = self.finder.find(rgb, depth, K, q[list(WAIST_IDX)])
         except ButtonNotFound as e:
+            self._note_buttons(before)
             self._last_reason = str(e)
             self.tracker.reset()
             return
+        except BaseException:
+            self._note_buttons(before)
+            raise
+        self._note_buttons(before)
         merged = self.tracker.add(call)
         if merged is None:
             return
@@ -498,6 +594,13 @@ class ElevatorPressController:
         if advice:
             self._note(f"⚠️ {advice}（計画は立ったので押す）")
         self._enter("reach", t)
+
+    def _note_buttons(self, before: Any) -> None:
+        """始めの姿勢（scan_i == 0）の look で、この find が更新した last_buttons だけを覚える（更新されていなければ空）。"""
+        if self.scan_i != 0:
+            return
+        now = getattr(self.finder, "last_buttons", None)
+        self._seen_buttons = list(now) if (now is not None and now is not before) else []
 
     def _stand_advice(self, call: CallButtons) -> str:
         """立っている位置が勧める範囲（press.stand）の外なら、どちらへ何 cm 動けばよいかの文。範囲の中なら空。
