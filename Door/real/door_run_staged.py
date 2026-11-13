@@ -29,6 +29,8 @@ import door_frame as dfr
 import door_lidar_msg as dlm
 import door_script as dscr
 import g1_arm_fk as fk
+import g1_arm_ik as aik
+import hand_force as hfm
 import door_staged as ds
 import hand_door_angle as hda
 
@@ -38,10 +40,19 @@ ARM_PREP_S = 2.5        # 段 2 の前に腕を学習の初めの姿勢へ寄せ
 ODOM_STALE_S = 0.1      # これより古い odom は使わない（door_run_real.ODOM_STALE_S と同じ）
 ODOM_LOST_S = 0.5       # 段 3 で odom がこれだけ来なければ止まる
 POSE_LOST_S = 0.5       # 段 2 で FAST-LIO の姿勢がこれだけ来なければ止まる
+# 11-13 実機: 段 0 を飛ばした段 1 で、正しい値（x -0.43）の次の 1 回だけ x +9.55 m に跳んで止まった（出どころは未切り分け）
+POSE_JUMP_M = 0.3       # 直前に受け入れた姿勢からこれ以上跳んだ値は捨てる（50 Hz の 1 周期で歩きは 1 cm 未満）
+POSE_JUMP_DEG = 20.0
+POSE_JUMP_WINDOW_S = POSE_LOST_S + 0.1  # 直前の姿勢がこれより古ければ比べない（跳びが続けば先に POSE_LOST_S で止まる）
 DEFAULT_PELVIS_Z = 0.75  # [m] 立った pelvis の床からの高さ（⚠️ L7 で巻き尺で測る。レバーを下げたかの判定の高さに効く）
 WAIST = slice(12, 15)
 SCRIPT_WARM_S = 0.6     # script_start=1: 受け口に関節・odom の履歴が溜まるまで待つ（溜まる前は FAST-LIO の姿勢を今へ運べない）
 SCRIPT_Q_LEAD = 0.3     # 逆運動学の内の腕の角度が実の角度より先へ行ける幅 [rad]（当たっている間に溜め込まない）
+# 11-13 把手と反対の手を添える: 腕 7 軸（肩 pitch・roll・yaw・肘・手首 roll・pitch・yaw）の左右の鏡写しの符号
+MIRROR7 = np.array([1.0, -1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
+HELPER_DIR = np.array([1.0, 0.0, 0.0])  # 添えた手の向き（扉の座標・板へまっすぐ）
+HELPER_SUBS = ("2a", "2b", "2c", "2d", "3a", "3c")
+DT = dscr.DT
 
 
 @dataclass(frozen=True)
@@ -58,7 +69,10 @@ class Decision:
     stop: str = ""                 # 空でなければ立ったまま止まる理由
     info: str = ""
     arm_left: Optional[np.ndarray] = None   # arm="script": 左腕 7 軸の目標（None は今の目標のまま）
+    arm_other: Optional[np.ndarray] = None  # arm="script": 把手と反対の手 7 軸の目標（11-13。None は借りる前の角度）
     waist_comp: bool = False                # arm="script": 腰 yaw の打ち消しを頼む
+    waist_twist: float = 0.0                # arm="script": 腰 yaw に足す角度 [rad]（11-13 半身で押す）
+    waist_lean: float = 0.0                 # arm="script": 腰 pitch に足す角度 [rad]（11-13 前へ傾ける）
     script_row: Optional[np.ndarray] = None  # 記録の 1 行（door_script.ScriptDoor.row）
 
 
@@ -77,6 +91,25 @@ class ScriptArm:
         self.last_pose: Optional[dfr.PlanarPose] = None   # なました姿勢（止まった時に手を離す向きに使う）
         self.release_goal: Optional[np.ndarray] = None    # 止まった時の手の行き先（扉の座標）
         self.release_until: Optional[float] = None
+        # 11-13: 把手と反対の手を板に添える（script.p.helper）。arm_other は毎周期の 7 軸の目標（None は借りる前の角度のまま）
+        self.helper = aik.ArmIK(ik.chain, "right" if ik.side == "left" else "left", getattr(ik, "urdf", None)) if script.p.helper else None
+        self.h_posture = self.posture * MIRROR7
+        self.h_q_cmd: Optional[np.ndarray] = None
+        self.h_goal: Optional[np.ndarray] = None          # 扉の座標の今の行き先（寄せながら動かす）
+        self.h_body: Optional[np.ndarray] = None          # 3c: pelvis の座標に固めた行き先
+        self.h_t: Optional[float] = None
+        self.h_release_goal: Optional[np.ndarray] = None
+        self.h_release_until = 0.0
+        self.arm_other: Optional[np.ndarray] = None
+        # 11-13: 手が扉・レバーから受ける力の見積もり（腕の関節の力から。扉の座標・N）。2b の間（触れていない）に基準を取る
+        try:
+            self.hf: Optional[hfm.HandForce] = hfm.HandForce(ik.chain, getattr(ik, "urdf", None) or fk.default_urdf(), ik.side,
+                                                             tip_m=hfm.TIP_M)  # 台本は手の先で押す
+        except (OSError, ValueError, KeyError) as e:
+            print(f"[staged] ⚠️ 手の力の見積もりは使えない（{type(e).__name__}: {e}）", flush=True)
+            self.hf = None
+        self.hand_f = np.full(3, np.nan)
+        self.hf_tick = 0
 
     def _frame(self, pose: dfr.PlanarPose, quat: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         roll, pitch = dfr.roll_pitch_from_quat_wxyz(quat)
@@ -95,10 +128,84 @@ class ScriptArm:
         fwd = float(palm_b[0])
         q_act = np.asarray(q, dtype=float)[self.ik.idx]
         tau_pitch = float(tau[self.ik.idx[0]]) if tau is not None else math.nan  # 把手の側の肩 pitch
+        self._update_hand_force(q, quat, tau, Rr)  # 前の周期の小段で見る（2b は基準・2c から先は力）
         out = self.script.step(now, fpose, palm, tau_pitch, fwd, palm_angle=palm_raw)
+        self.arm_other = self._helper_step(now, q, out.sub, R, T) if self.helper is not None else None
         if out.goal is None or out.stop:
             return out, None
         return out, self._ik_to(q, q_act, out.goal, R, T, out.direction)
+
+    def _update_hand_force(self, q: np.ndarray, quat: np.ndarray, tau: Optional[np.ndarray], R: np.ndarray) -> None:
+        """手の力の見積もりを 25 Hz で進める（計算は 1 回 1 ms 前後。周期の半分に間引く）。値は self.hand_f（扉の座標）"""
+        if self.hf is None or tau is None:
+            return
+        self.hf_tick += 1
+        if self.hf_tick % 2:
+            return
+        sub = self.script.sub
+        if sub in ("2a", "2b"):
+            self.hand_f = np.full(3, np.nan)
+            if sub == "2b":
+                self.hf.calibrate(q, quat, tau)
+        elif sub in ("2c", "2d", "3a", "3c", "done"):
+            F = self.hf.force(q, quat, tau)
+            self.hand_f = R @ F if np.isfinite(F).all() else np.full(3, np.nan)
+
+    # --- 把手と反対の手（11-13） ---
+    def _helper_palm(self, q: np.ndarray, R: np.ndarray, T: np.ndarray) -> np.ndarray:
+        return T + R @ fk.palm_in_pelvis(self.helper.chain, q, self.helper.side)
+
+    def _helper_ik(self, q: np.ndarray, goal: np.ndarray, R: np.ndarray, T: np.ndarray) -> np.ndarray:
+        q_act = np.asarray(q, dtype=float)[self.helper.idx]
+        if self.h_q_cmd is None:
+            self.h_q_cmd = q_act.copy()
+        q_cmd = np.clip(self.h_q_cmd, q_act - SCRIPT_Q_LEAD, q_act + SCRIPT_Q_LEAD)
+        self.h_q_cmd = self.helper.step(q, q_cmd, R.T @ (goal - T), self.h_posture, R.T @ HELPER_DIR)
+        return self.h_q_cmd.copy()
+
+    def _helper_step(self, now: float, q: np.ndarray, sub: str, R: np.ndarray, T: np.ndarray) -> Optional[np.ndarray]:
+        """把手と反対の手の 7 軸の目標。helper_from より前は None（借りる前の角度のまま）。
+        構え（helper_from〜2d・retreat）: 板の 8 cm 手前 → 3a: 板へ押し当てる → 3c: pelvis に対して固める（歩いて押す）"""
+        p = self.script.p
+        dt = DT if self.h_t is None else min(max(now - self.h_t, 0.0), 0.1)
+        self.h_t = now
+        active = HELPER_SUBS.index(sub) >= HELPER_SUBS.index(p.helper_from) if sub in HELPER_SUBS else self.h_goal is not None
+        if not active:
+            return None
+        if sub in ("done", "failed"):  # 走らせ役が POST へ移る周期。今の目標のまま（POST で手を引く）
+            return self.h_q_cmd.copy() if self.h_q_cmd is not None else None
+        if self.h_goal is None:
+            self.h_goal = self._helper_palm(q, R, T)
+        y = float(self.script.ref[1]) - self.script.lr * p.helper_dy
+        if sub == "3c":
+            if self.h_body is None:  # 3c に入った周期: 今の行き先を pelvis の座標に固め、左手と同じく push_press だけ前へ
+                self.h_body = R.T @ (self.h_goal - T) + np.array([p.push_press, 0.0, 0.0])
+            self.h_goal = T + R @ self.h_body
+        else:
+            self.h_body = None
+            x, speed = (p.helper_x_press, p.helper_press_speed) if sub == "3a" else (p.helper_x_ready, p.helper_speed)
+            self.h_goal = dscr._toward(self.h_goal, np.array([x, y, p.helper_z]), speed * dt)
+        return self._helper_ik(q, self.h_goal, R, T)
+
+    def begin_release_other(self, now: float, q: np.ndarray, quat: np.ndarray) -> bool:
+        """止まった時（POST）に、添えた手を扉の座標で後ろへ helper_back 引き始める（構えていなければ何もしない）"""
+        if self.helper is None or self.h_q_cmd is None or self.last_pose is None:
+            return False
+        R, T = self._frame(self.last_pose, quat)
+        palm = self._helper_palm(q, R, T)
+        if not np.isfinite(palm).all():
+            return False
+        self.h_release_goal = palm - np.array([self.script.p.helper_back, 0.0, 0.0])
+        self.h_release_until = now + self.script.p.release_s
+        self.h_q_cmd, self.h_goal, self.h_body = None, None, None
+        return True
+
+    def release_other(self, now: float, q: np.ndarray, quat: np.ndarray) -> Optional[np.ndarray]:
+        """添えた手を引く間の 7 軸の目標（引き終えたら None＝その場で保つ）"""
+        if self.h_release_goal is None or now > self.h_release_until or self.last_pose is None:
+            return None
+        R, T = self._frame(self.last_pose, quat)
+        return self._helper_ik(q, self.h_release_goal, R, T)
 
     def _ik_to(self, q: np.ndarray, q_act: np.ndarray, goal: np.ndarray, R: np.ndarray, T: np.ndarray,
                direction_door: Optional[np.ndarray]) -> np.ndarray:
@@ -198,6 +305,7 @@ class StagedDoor:
         self.prep_until: Optional[float] = None
         self.last_pose = dfr.PlanarPose(-1.0, 0.0, 0.0)
         self.last_pose_t: Optional[float] = None
+        self.jumped = False  # 直前の周期に跳んだ姿勢を捨てたか（表示を 1 度だけにする）
         self.last_odom_t: Optional[float] = None
         self.handover_wait_t: Optional[float] = None
 
@@ -284,7 +392,7 @@ class StagedDoor:
             if not self.lidar.ready(now):
                 return self._stop(1, "段 1: FAST-LIO の口から受け入れた姿勢が来ない（REF が無いなら段 0 から始める）", closed)
         if self.stage == 1:
-            lpose, why = self.lidar.pose(now, fresh)
+            lpose, why = self._lidar_pose(now, fresh)
             if why:
                 return self._stop(1, "段 1: " + why, closed)
             cmd = self.approach.step(now, lpose)
@@ -299,7 +407,7 @@ class StagedDoor:
                 return Decision(2, "arm", "hold", self.last_pose, closed, STAND, "goal", info="構えの位置に入った: 腕を構える")
             return Decision(1, "arm", "hold", self.last_pose, closed, (any(cmd), *cmd), "home", info=self.approach.phase)
         if self.stage == 2:
-            lpose, why = self.lidar.pose(now, fresh)
+            lpose, why = self._lidar_pose(now, fresh)
             if why:
                 return self._stop(2, "段 2: " + why, closed)
             self._keep(now, lpose)
@@ -341,7 +449,7 @@ class StagedDoor:
         stage = 3 if out.sub in ("3a", "3c", "done") else 2
         arm = "home" if (out.goal is None and not out.stop) else "script"
         return Decision(stage, "arm", "hold", self.last_pose, out.angle_obs, out.walk, arm, stop=out.stop,
-                        info=f"台本 {out.sub}", arm_left=arm_left, waist_comp=out.waist_comp, script_row=self.script.script.row())
+                        info=f"台本 {out.sub}", arm_left=arm_left, arm_other=self.script.arm_other, waist_comp=out.waist_comp, waist_twist=out.waist_twist, waist_lean=out.waist_lean, script_row=self.script.script.row())
 
     def _stage0(self, now, q, quat, q_waist, roll, pitch, fresh, obs, closed) -> Decision:
         carried = None
@@ -371,6 +479,24 @@ class StagedDoor:
     def _keep(self, now: float, pose: Optional[dfr.PlanarPose]) -> None:
         if pose is not None:
             self.last_pose, self.last_pose_t = pose, now
+
+    def _lidar_pose(self, now: float, fresh) -> Tuple[Optional[dfr.PlanarPose], str]:
+        """FAST-LIO の姿勢。直前に受け入れた姿勢から跳んだ 1 回は捨てる（None＝短い途切れ。続けば POSE_LOST_S の見張りで止まる）"""
+        lpose, why = self.lidar.pose(now, fresh)
+        if lpose is None or why or self.last_pose_t is None or now - self.last_pose_t > POSE_JUMP_WINDOW_S:
+            self.jumped = False
+            return lpose, why
+        p = self.last_pose
+        jump = math.hypot(lpose.x - p.x, lpose.y - p.y)
+        turn = abs(math.degrees(ds.wrap(lpose.yaw - p.yaw)))
+        if jump <= POSE_JUMP_M and turn <= POSE_JUMP_DEG:
+            self.jumped = False
+            return lpose, why
+        if not self.jumped:
+            print(f"[staged] ⚠️ 姿勢が跳んだので捨てた: ({p.x:+.2f},{p.y:+.2f},{math.degrees(p.yaw):+.0f}°) → "
+                  f"({lpose.x:+.2f},{lpose.y:+.2f},{math.degrees(lpose.yaw):+.0f}°)", flush=True)
+        self.jumped = True
+        return None, ""
 
     def _stop(self, stage: int, why: str, angle: np.ndarray) -> Decision:
         return Decision(stage, "f3t3" if stage >= 3 else "arm", "hold", self.last_pose, angle, STAND,

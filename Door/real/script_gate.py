@@ -90,13 +90,16 @@ def stance_poses(st) -> List[Tuple[str, dfr.PlanarPose]]:
 
 
 def run_pose(p: dscr.ScriptParams, g: dcl.DoorGeom, pose: dfr.PlanarPose, pelvis_z: float, chain: fk.ArmFK, ik: aik.ArmIK,
-             name: str) -> PoseResult:
+             name: str, shift: float = 0.0) -> PoseResult:
     """行き先どおりに動く腕で、2c の触れた所（当てる点の高さ）まで台本を走らせる"""
     res = PoseResult(name)
     p = replace(p, touch_by_height=True, stop_after="2c", retries=0)  # 門番は「当てる点の高さに下りた時」で見る
     sd = dscr.ScriptDoor(p, g.width, g.backset, g.lever_height, g.lever_left)
+    sd.shift = shift  # 空振りの押し直しの横のずらし（0 でなければ、棒に乗るかは見ず、壁・板とのすき間と可動域だけ見る）
     arm = drst.ScriptArm(sd, ik, drst.make_palm_fn(chain, pelvis_z, g.lever_left), pelvis_z)
     q = np.zeros(29)
+    q[12] = sd.twist_rad()  # 11-13 半身で押す: 腰 yaw を回した姿勢で見る（回り切った後の形）
+    q[14] = math.radians(p.lean_deg) if dscr.SUBS.index(p.lean_from) <= dscr.SUBS.index("2c") else 0.0  # 11-13 前へ傾けた姿勢で見る
     q[ik.idx] = HOME7
     quat = np.array([1.0, 0.0, 0.0, 0.0])
     tau = np.zeros(29)
@@ -136,7 +139,7 @@ def run_pose(p: dscr.ScriptParams, g: dcl.DoorGeom, pose: dfr.PlanarPose, pelvis
     segs = dcl.arm_segments(chain, q, pose, quat, pelvis_z, g, "left" if g.lever_left else "right")
     res.bar = dcl.bar_contact(segs, g)
     gap, at = res.bar
-    if not (gap <= BAR_ON_GAP_M and BAR_ON_MIN <= at <= g.bar_len):
+    if shift == 0.0 and not (gap <= BAR_ON_GAP_M and BAR_ON_MIN <= at <= g.bar_len):
         res.bad(f"当てる点の高さに下りた時、手の先が棒の上に無い（すき間 {100 * gap:.1f} cm・付け根から {100 * at:.1f} cm）")
     for o in WALL_OBS:
         d, where = res.min_gap[o]
@@ -144,7 +147,7 @@ def run_pose(p: dscr.ScriptParams, g: dcl.DoorGeom, pose: dfr.PlanarPose, pelvis
             res.bad(f"{o}とのすき間 {100 * d:.1f} cm（{where}・線 {100 * FAIL_M:.0f} cm）")
         elif d < WARN_M:
             res.note(f"{o}とのすき間 {100 * d:.1f} cm（{where}・実機では計画より約 2 cm 前へ出る）")
-    for o in BAR_OBS:
+    for o in BAR_OBS if shift == 0.0 else ():
         d, where = res.min_gap[o]
         if d < FAIL_BAR_M:
             res.bad(f"構える間に{o}に触れる（すき間 {100 * d:.1f} cm・{where}）")
@@ -166,6 +169,8 @@ def check(p: dscr.ScriptParams, g: dcl.DoorGeom, pelvis_z: float, urdf: Optional
     ik = aik.ArmIK(chain, "left" if g.lever_left else "right", urdf)
     st = dscr.script_stance(p, g.width, g.backset, g.lever_height, g.lever_left)
     results = [run_pose(p, g, pose, pelvis_z, chain, ik, name) for name, pose in (poses or stance_poses(st))]
+    if poses is None:  # 空振りの押し直し: 構えの真ん中で、ずらした先でも壁・板に当たらず腕が届くか
+        results += [run_pose(p, g, st.target, pelvis_z, chain, ik, f"押し直し 横 {100 * v:+.0f} cm", shift=v) for v in p.miss_shifts]
     return all(r.ok for r in results), any(r.warn for r in results), results
 
 

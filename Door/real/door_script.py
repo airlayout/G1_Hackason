@@ -34,7 +34,10 @@ STAND: Walk = (False, 0.0, 0.0, 0.0)
 SUBS = ("2a", "2b", "2c", "2d", "3a", "3c", "done", "retreat", "failed")
 STOP_AFTER = ("", "2a", "2b", "2c", "2d", "3a")
 PUSH_MODES = ("walk", "pulse")
+WALK_HANDS = ("body", "arc")
 DT = 0.02
+MISS_SHIFT_MAX = 0.10   # 押し直しの横のずらしの上限 [m]（棒の長さの内）
+BACK_TOL_M = 0.02       # 押し直しの前に下がる: 2a の終わりの位置からこれより前に居る間は下がる
 ROW_LEN = 12
 
 
@@ -44,6 +47,18 @@ class ScriptParams:
     stance_x: float = -0.40
     stance_y_off: float = -0.22    # 手が肩より 8 cm 外に来る（内だと肘が胸の前へ回り込む・11-12 机の上の確かめ）
     stance_yaw_deg: float = 0.0
+    # 当てる点を棒に沿って付け根の側へずらす [m]（11-13: 寸法の当てる点は棒の先から 2.5 cm・手は先から 5.5 cm しか内側に無く、
+    # 3c で蝶番の側へ 6.6 cm ずれて棒から滑った）。構えの位置・経由点・押し直しのずらしは皆この点から測る
+    ref_dy: float = 0.0
+    # 半身で押す（11-13 案 A）: 段 2 の始めから、腰 yaw で上体を把手と反対の側へ twist_deg 回す（把手が左なら右へ）。
+    # 把手の側の肩が前・中央寄りに出て、手が骨盤のほぼ正面に来る（扉の押し返しが体を回す腕が短くなる）。骨盤は扉にまっすぐのまま
+    twist_deg: float = 0.0
+    twist_rate: float = 0.6        # その回す速さ [rad/s]
+    # 上体を前へ傾ける（11-13 案 B）: lean_from の小段から腰 pitch を前へ lean_deg。手の高さ（約 0.9 m）で押し返されると
+    # 体は後ろへ倒される向きになり、純正が後ろへ踏む（半身の 1 回目: 向きは ±5° のまま 14 cm 下がった）→ 重心を先に前へ置く
+    lean_deg: float = 0.0
+    lean_from: str = "2a"
+    lean_rate: float = 0.3         # 傾ける速さ [rad/s]
     stance_tol: Tuple[float, float, float] = (0.04, 0.04, 6.0)  # 前後 m・左右 m・向き °
     # 逆運動学の基準の姿勢（左腕 7 軸）。肩 roll を外へ開いた形（11-11 の s2f の角度 −0.8,0.17,… だと肘が胸の前へ回り込み、
     # 肩 roll が体の側へ −0.5〜−0.8 rad 押す＝11-03 に熱を持った型。11-12 机の上の通り道の確かめで決めた）
@@ -100,6 +115,16 @@ class ScriptParams:
     unlatch_stall_s: float = 3.0
     nudge_vx: float = 0.2
     nudge_s: float = 0.5
+    # 11-12 夕 空振りの押し直し: 3a で扉の角度が miss_stall_s 伸びない（手の先が板で止まる＝棒に乗っていない）か、
+    # 歩いて押す 3a で pelvis が miss_adv 進んでも掛け金が外れない時、手を上げ（歩いた分は下がり）、レバーの上の点を横へ
+    # miss_shifts の順にずらして押し下げからやり直す（横は把手の付け根の側が正・当てる点の初めの位置からの差）。使い切ったら元の止まり方
+    # 11-12 実機 2 回目: 立ち位置の横の読みが 9.8 cm 違い、手は棒の先の外（蝶番の側）へ下りて空を切った → 付け根の側から試す。
+    # 棒は 13 cm・初めの手の先は付け根から 7.4 cm（門番）なので、横の外れ −6.4〜+5.6 cm は初めから乗る。+5・−5・+9 cm で −11〜+15 cm まで拾う
+    # 当たった 4 回は 3a に入って 1.0〜1.9 秒で 3° に届いた（0.5° ずつの伸びは 1 秒 空かない）
+    miss_shifts: Tuple[float, ...] = (0.05, -0.05, 0.09)
+    miss_stall_s: float = 1.5
+    miss_adv: float = 0.12         # 手は 0.05 m/s でしか前へ出ないので、当たった回でも 3° までに体は 5〜10 cm 寄る（それより大きく）
+    miss_back_s: float = 4.0       # 歩いた分を下がる時間の上限
     # 3c 押しながら歩く
     push_mode: str = "walk"        # "walk"＝腕は体に対して固めて前へ歩き続ける／"pulse"＝腕で押し、手が前へ出すぎたら短く歩く
     walk_in_3a: bool = False       # walk: 3a（掛け金を外す）から前へ歩き出す（案 ②。脚を止めて押すと後ろへ踏み出す時に試す）
@@ -109,6 +134,8 @@ class ScriptParams:
     push_lead_deg: float = 4.0
     push_dz: float = 0.0           # 3c の行き先の高さの足し（0＝下げた時の高さ − hold_extra）
     push_dr: float = 0.0           # 行き先を蝶番から遠ざける足し [m]（負で蝶番寄り＝板の上へ移す時）
+    push_dn: float = 0.0           # 3c の行き先を板へ向けてずらす [m]（11-13: 手の先が棒でなく板の表に当たるまで。約 0.06）
+    push_z: float = 0.0            # 3c の手のひらの高さ [m]（0＝下げた時の高さ − hold_extra。11-13: レバーの下の板 0.80）
     goal_deg: float = 30.0
     push_max_s: float = 20.0
     push_stall_s: float = 3.0
@@ -117,6 +144,18 @@ class ScriptParams:
     walk_vx: float = 0.2
     walk_vy: float = 0.0
     walk_wz: float = 0.0
+    walk_yaw_kp: float = 1.5       # walk: 3c に入った時の向きへ戻す倍率 [1/s]（0 で切る。11-13 実機で 3c に体が +38° 回った）
+    walk_wz_max: float = 0.5       # walk: その回りの指令の上限 [rad/s]（段 1 の WZ_MAX と同じ）
+    walk_lat_kp: float = 1.0       # walk: 3c に入った時の横の位置へ戻す倍率 [1/s]（0 で切る）
+    walk_yaw_ff: float = 0.0       # walk: 前の速さ 1 m/s あたりの先回りの回り [rad/s]（把手の側へ回される分を先に打ち消す。11-13）
+    walk_hand: str = "body"        # walk: "body"＝手を体に固める／"arc"＝手を扉の角度＋push_lead_deg の板の上に置く（11-13）
+    walk_fwd_hold: float = 0.24    # walk・arc: 手の前への出がこれ未満なら、前の指令を walk_vx_hold へ落とす [m]
+    walk_vx_hold: float = 0.2      # walk・arc: その時の前の指令 [m/s]（0 にすると止まって後ろへ踏み出す）
+    # 11-13: 3c の前の指令を walk_vx_start から walk_vx へ walk_ramp_s 秒かけて上げる（0 は一気に。当たりの衝撃を小さく）
+    walk_ramp_s: float = 0.0
+    walk_vx_start: float = 0.15    # 純正が歩き出す線（0.1 は 0〜10%・0.15 で 59% 応える。11-09 の掃引）
+    walk_3a_vx: float = 0.0        # walk_in_3a: 3a の前の指令 [m/s]（0 は walk_vx。11-13: 0.2＝足踏みで掛け金の山を受け止める）
+    walk_vy_max: float = 0.15      # walk: その横の指令の上限 [m/s]
     pulse_max_s: float = 1.0
     pulse_gap_s: float = 0.6
     # 守り
@@ -133,6 +172,18 @@ class ScriptParams:
     release_back: float = 0.04
     release_up: float = 0.02
     release_s: float = 1.5
+    # 把手と反対の手（把手が左なら右手）を板に添えて両手で押す（11-13 ユーザー案。左手 1 本だと扉の押し返しで体が
+    # 左へ回され、回りの指令を上限にしても戻せなかった＝8 回目は 1 秒で +36°）。動かすのは走らせ役の側（door_run_staged.ScriptArm）
+    # ⚠️ 門番（script_gate.py・door_clearance.py）はこの手の当たりを見ていない
+    helper: bool = False
+    helper_from: str = "2c"        # この小段から手を板の前に構える（2b は左腕が大きく動くので、その後）
+    helper_dy: float = 0.32        # 手のひらの横: 当てる点から蝶番の側へ [m]（レバーの先から約 30 cm 離れる）
+    helper_z: float = 0.95         # 手のひらの高さ [m]（右肩は床から約 1.02 m）
+    helper_x_ready: float = -0.20  # 構えの手のひらの原点の x（手の先は約 10 cm 先＝板の表 −0.02 の 8 cm 手前）
+    helper_x_press: float = -0.10  # 3a から寄せる x（手の先が板の表を 2 cm 越えて押し当てる）
+    helper_speed: float = 0.25     # 構えへ寄せる速さ [m/s]
+    helper_press_speed: float = 0.10  # 3a で板へ寄せる速さ [m/s]
+    helper_back: float = 0.10      # 止まった時に手を引く量 [m]（release_s 秒で）
     note: str = ""
 
 
@@ -190,14 +241,44 @@ def check_params(p: ScriptParams) -> None:
         raise ValueError("release_back・release_up は 0〜0.10 m、release_s は正")
     if p.walk_vx and abs(p.walk_vx) < ds.V_MIN:
         raise ValueError(f"walk_vx は 0 か {ds.V_MIN} m/s 以上（純正は 0.1〜0.15 m/s では動かない）")
+    if not (all(abs(v) <= MISS_SHIFT_MAX for v in p.miss_shifts) and p.miss_stall_s > 0 and p.miss_adv > 0 and p.miss_back_s > 0):
+        raise ValueError(f"miss_shifts は ±{MISS_SHIFT_MAX} m の内、miss_stall_s・miss_adv・miss_back_s は正")
     if not (-0.60 <= p.stance_x <= ds.NEAR_STOP_X - 0.02):
         raise ValueError(f"stance_x は −0.60〜{ds.NEAR_STOP_X - 0.02:.2f} m（近すぎると段 1 が止まる）: {p.stance_x}")
+    if not (0.0 <= p.push_dn <= 0.12 and (p.push_z == 0.0 or 0.60 <= p.push_z <= 1.10)):
+        raise ValueError("push_dn は 0〜0.12 m・push_z は 0 か 0.60〜1.10 m")
+    if not -0.05 <= p.ref_dy <= 0.06:
+        raise ValueError(f"ref_dy は −0.05〜0.06 m（付け根は寸法の当てる点から 10.5 cm）: {p.ref_dy}")
+    if not (0.0 <= p.twist_deg <= 40.0 and 0.1 <= p.twist_rate <= 1.0):
+        raise ValueError("twist_deg は 0〜40°・twist_rate は 0.1〜1.0 rad/s")
+    if p.twist_deg > 0 and p.waist_comp_from:
+        raise ValueError("twist_deg を使う時は waist_comp_from を空にする（腰 yaw の打ち消しと一緒には使わない）")
+    if not (0.0 <= p.lean_deg <= 20.0 and 0.05 <= p.lean_rate <= 0.6 and p.lean_from in SUBS[:6]):
+        raise ValueError(f"lean_deg は 0〜20°・lean_rate は 0.05〜0.6 rad/s・lean_from は {SUBS[:6]} のどれか")
+    if not (0.0 <= p.walk_ramp_s <= 10.0 and 0.12 <= p.walk_vx_start <= 0.3):
+        raise ValueError("walk_ramp_s は 0〜10 秒・walk_vx_start は 0.12〜0.3 m/s")
+    if p.walk_hand not in WALK_HANDS:
+        raise ValueError(f"walk_hand は {WALK_HANDS} のどれか: {p.walk_hand!r}")
+    if not (0.0 <= p.walk_yaw_ff <= 2.0 and p.walk_min_fwd < p.walk_fwd_hold and 0.0 <= p.walk_vx_hold):
+        raise ValueError("walk_yaw_ff は 0〜2・walk_min_fwd < walk_fwd_hold・walk_vx_hold ≥ 0")
+    if p.helper_from not in SUBS[:5]:
+        raise ValueError(f"helper_from は {SUBS[:5]} のどれか: {p.helper_from!r}")
+    if not (p.helper_speed > 0 and p.helper_press_speed > 0 and 0.0 <= p.helper_back <= 0.20
+            and 0.10 <= p.helper_dy <= 0.60 and 0.70 <= p.helper_z <= 1.20 and p.helper_x_ready < p.helper_x_press <= 0.0):
+        raise ValueError("helper の定数: 速さは正・helper_back 0〜0.20・helper_dy 0.10〜0.60・helper_z 0.70〜1.20・"
+                         "helper_x_ready < helper_x_press ≤ 0")
+
+
+def script_ref_point(p: ScriptParams, width: float, backset: float, lever_height: float, lever_left: bool = True) -> np.ndarray:
+    """台本の当てる点（扉の座標）＝ 寸法から出した当てる点を、棒に沿って付け根の側へ ref_dy ずらした点"""
+    lr = 1.0 if lever_left else -1.0
+    return ds.lever_ref_point(width, backset, lever_height, lever_left) + np.array([0.0, lr * p.ref_dy, 0.0])
 
 
 def script_stance(p: ScriptParams, width: float, backset: float, lever_height: float, lever_left: bool = True) -> ds.Stance:
     """台本の構えの位置（段 1 の寄りの行き先）"""
     lr = 1.0 if lever_left else -1.0
-    ref = ds.lever_ref_point(width, backset, lever_height, lever_left)
+    ref = script_ref_point(p, width, backset, lever_height, lever_left)
     return ds.Stance(dfr.PlanarPose(p.stance_x, float(ref[1]) + lr * p.stance_y_off, lr * math.radians(p.stance_yaw_deg)),
                      p.stance_tol[0], p.stance_tol[1], math.radians(p.stance_tol[2]))
 
@@ -229,6 +310,8 @@ class ScriptOut:
     stop: str = ""                 # 空でなければ立ったまま止まる理由
     success: bool = False
     info: str = ""
+    waist_twist: float = 0.0       # 腰 yaw の目標に足す角度 [rad]（借りた時の角度から。半身で押す）
+    waist_lean: float = 0.0        # 腰 pitch の目標に足す角度 [rad]（前へが正）
 
 
 def _toward(g: np.ndarray, wp: np.ndarray, step: float) -> np.ndarray:
@@ -244,7 +327,7 @@ class ScriptDoor:
     def __init__(self, p: ScriptParams, width: float, backset: float, lever_height: float, lever_left: bool = True) -> None:
         check_params(p)
         self.p, self.lr = p, (1.0 if lever_left else -1.0)
-        self.ref = ds.lever_ref_point(width, backset, lever_height, lever_left)
+        self.ref = script_ref_point(p, width, backset, lever_height, lever_left)
         self.line = hda.door_line(width, lever_left)
         self.sub = "2a"
         self.t_sub: Optional[float] = None
@@ -269,33 +352,91 @@ class ScriptDoor:
         self.walk_rest_until = 0.0
         self.tau_over_t: Optional[float] = None
         self.retries_left = p.retries
+        self.miss_i = 0                                  # 空振りの押し直しを使った回数
+        self.shift = 0.0                                 # レバーの上の点の横のずらし [m]（把手の付け根の側が正）
+        self.x_home: Optional[float] = None              # 押し直しの前に下がって戻る pelvis の x（2a の終わりの位置）
+        self.t_back: Optional[float] = None
         self.xy0: Optional[Tuple[float, float]] = None   # 2a の終わりの pelvis の位置
         self.raise_best = math.inf                       # 2b: 今の経由点までの残りの最小
         self.raise_t = 0.0
         self.palm_body: Optional[np.ndarray] = None      # walk: 3c に入った時の手のひら（pelvis の向きの座標・前・左）
+        self.yaw_3c0: Optional[float] = None             # walk: 3c に入った時の pelvis の向き（保つ向き）
+        self.y_3c0: Optional[float] = None               # walk: 3c に入った時の pelvis の横の位置（保つ位置）
+        self.yaw_3a0: Optional[float] = None             # walk_in_3a: 3a に入った時の pelvis の向き（保つ向き）
         self.angles: List[Tuple[float, float]] = []      # 直近の（時刻, 扉の角度 rad）
         self.reason = ""
         self.success = False
         self.lag = self.tau = self.fwd = math.nan
         self.palm = np.full(3, math.nan)
 
+    def twist_rad(self) -> float:
+        """腰 yaw に足す角度 [rad]（把手が左なら負＝上体を右へ）"""
+        return -self.lr * math.radians(self.p.twist_deg)
+
+    def lean_rad(self) -> float:
+        """腰 pitch に足す角度 [rad]（前へが正）。lean_from の小段から（やり直しの retreat・done も保つ）"""
+        if self.p.lean_deg <= 0.0:
+            return 0.0
+        on = self.sub in ("retreat", "done") or (self.sub in SUBS[:6] and SUBS.index(self.sub) >= SUBS.index(self.p.lean_from))
+        return math.radians(self.p.lean_deg) if on else 0.0
+
     # --- 3c の walk ---
     def _enter_3c(self, t: float, pose: dfr.PlanarPose, palm: np.ndarray) -> None:
         c, s = math.cos(pose.yaw), math.sin(pose.yaw)
         d = np.asarray(palm, dtype=float)[:2] - np.array([pose.x, pose.y])
         self.palm_body = np.array([c * d[0] + s * d[1], -s * d[0] + c * d[1]])
+        self.yaw_3c0, self.y_3c0 = pose.yaw, pose.y
         self._go("3c", t)
+
+    def _hold_yaw_wz(self, pose: dfr.PlanarPose, ref: Optional[float] = None, ff: bool = True) -> float:
+        """walk: 3c に入った時の向きへ戻す回りの指令 [rad/s]。
+        11-13 実機: 扉が左の手を押し返し、体が左へ回った（3c の 8.8 秒で +38°・扉 8° で止まる）"""
+        p = self.p
+        ref = self.yaw_3c0 if ref is None else ref
+        if ref is None or not math.isfinite(pose.yaw) or p.walk_yaw_kp <= 0.0:
+            return p.walk_wz
+        # 先回り: 把手の側の手が押し返されて体は把手の側へ回る（把手が左なら左回り）→ 前の速さに比べた右回りを先に入れる
+        ff = -self.lr * p.walk_yaw_ff * p.walk_vx if ff else 0.0
+        wz = p.walk_wz + ff + p.walk_yaw_kp * ds.wrap(ref - pose.yaw)
+        return float(np.clip(wz, -p.walk_wz_max, p.walk_wz_max))
+
+    def _hold_lat_vy(self, pose: dfr.PlanarPose) -> float:
+        """walk: 3c に入った時の横の位置（扉の座標の y）へ戻す横の指令 [m/s・体の座標]。
+        11-13 実機: 向きを保った 2 回とも体が蝶番の側へ 11〜12 cm 流れ、手が体の左へ離れて回す力の腕が伸びた"""
+        p = self.p
+        if self.y_3c0 is None or not (math.isfinite(pose.y) and math.isfinite(pose.yaw)) or p.walk_lat_kp <= 0.0:
+            return p.walk_vy
+        vy = p.walk_vy + p.walk_lat_kp * math.cos(pose.yaw) * (self.y_3c0 - pose.y)
+        return float(np.clip(vy, -p.walk_vy_max, p.walk_vy_max))
+
+    def _arc_goal(self, deg: float, palm: np.ndarray) -> np.ndarray:
+        """3c の手の行き先: 扉の角度 deg＋push_lead_deg だけ開いた板の上（当てる点を蝶番の回りに回す）"""
+        p = self.p
+        tgt = math.radians(min(deg + p.push_lead_deg, p.goal_deg + p.push_lead_deg))
+        # push_dn: 閉じた扉の座標で板へ向けて（+x）ずらしてから回す（11-13: レバーでなく、その下の板を押す）
+        v = self.palm_ref[:2] + np.array([p.push_dn, 0.0]) - self.line.hinge_xy
+        r = float(np.linalg.norm(v))
+        v = v * ((r + p.push_dr) / r)
+        a = self.line.open_sign * tgt
+        c, s = math.cos(a), math.sin(a)
+        xy = self.line.hinge_xy + np.array([c * v[0] - s * v[1], s * v[0] + c * v[1]])
+        # 掛け金が外れた後は強く押さえない: 高さは下げた時の手のひら − hold_extra（＋ push_dz）。push_z を渡すとその高さ
+        z = p.push_z if p.push_z > 0 else self.palm_ref[2] - p.hold_extra + p.push_dz
+        return self._lead_cap(np.array([xy[0], xy[1], z]), palm)
 
     def _push_walk(self, t: float, pose: dfr.PlanarPose, palm: np.ndarray, palm_fwd: float) -> Tuple[Walk, str]:
         """腕は体に対して固め（3c に入った時の手のひらの位置＋push_press 前）、前へ歩き続けて体で押す"""
         p = self.p
         if self.palm_body is None:
             self._enter_3c(t, pose, palm)
-        c, s = math.cos(pose.yaw), math.sin(pose.yaw)
-        b = self.palm_body + np.array([p.push_press, 0.0])
-        xy = np.array([pose.x, pose.y]) + np.array([c * b[0] - s * b[1], s * b[0] + c * b[1]])
-        self.goal = self._lead_cap(np.array([xy[0], xy[1], self.palm_ref[2] - p.hold_extra + p.push_dz]), palm)
         deg = math.degrees(self.angle)
+        if p.walk_hand == "arc":  # 11-13: 手は扉の角度＋push_lead_deg の板の上へ（一歩ごとの体の揺れは腕で吸う）
+            self.goal = self._arc_goal(deg, palm)
+        else:
+            c, s = math.cos(pose.yaw), math.sin(pose.yaw)
+            b = self.palm_body + np.array([p.push_press, 0.0])
+            xy = np.array([pose.x, pose.y]) + np.array([c * b[0] - s * b[1], s * b[0] + c * b[1]])
+            self.goal = self._lead_cap(np.array([xy[0], xy[1], self.palm_ref[2] - p.hold_extra + p.push_dz]), palm)
         if deg > self.angle_best + 1.0:
             self.angle_best, self.t_progress = deg, t
         self.walking_until = t + DT  # 記録の「歩きの指令を出しているか」
@@ -317,11 +458,35 @@ class ScriptDoor:
             self.walking_until = None
             self._fail(f"{p.push_max_s:.0f} 秒で {p.goal_deg:.0f}° に届かない（{deg:.1f}°）", t)
             return STAND, self.reason
-        return (True, p.walk_vx, p.walk_vy, p.walk_wz), ""
+        vx = p.walk_vx
+        if p.walk_ramp_s > 0.0 and p.walk_vx > p.walk_vx_start:
+            vx = p.walk_vx_start + (p.walk_vx - p.walk_vx_start) * min(1.0, max(0.0, (t - self.t_sub) / p.walk_ramp_s))
+        if p.walk_hand == "arc" and math.isfinite(palm_fwd) and palm_fwd < p.walk_fwd_hold:
+            vx = min(p.walk_vx, p.walk_vx_hold)  # 扉より体が先に出ている: 足踏みで踏ん張るだけ（止めると後ろへ踏み出す）
+        return (True, vx, self._hold_lat_vy(pose), self._hold_yaw_wz(pose)), ""
 
     # --- 部品 ---
     def _off(self, d: Sequence[float]) -> np.ndarray:
         return self.ref + np.array([d[0], self.lr * d[1], d[2]])
+
+    def _above(self) -> np.ndarray:
+        a = self.p.above
+        return self._off((a[0], a[1] + self.shift, a[2]))
+
+    def _miss(self, why: str, t: float) -> bool:
+        """空振りとみて押し直す（手を上げ、横へずらす）。使い切っていたら False"""
+        p = self.p
+        if self.miss_i >= len(p.miss_shifts):
+            return False
+        self.shift = p.miss_shifts[self.miss_i]
+        self.miss_i += 1
+        print(f"[script] 空振りとみる（{why}）: 手を上げ、レバーの上の点を横へ {100 * self.shift:+.0f} cm ずらして押し直す"
+              f"（{self.miss_i}/{len(p.miss_shifts)} 回目）", flush=True)
+        self.x_home = self.xy0[0] if self.xy0 is not None else None
+        self.palm_ref, self.angle, self.z_contact, self.angles = None, 0.0, None, []
+        self.nudge_until, self.t_back = None, None
+        self._go("retreat", t)
+        return True
 
     def _go(self, sub: str, t: float) -> None:
         print(f"[script] {self.sub} → {sub}（{self._where()}）", flush=True)
@@ -440,7 +605,7 @@ class ScriptDoor:
             elif t - self.t_sub > p.wait_max_s:
                 self._fail(f"{p.wait_max_s:.0f} 秒待っても体が止まらない", t)
         elif self.sub == "2b":
-            wps = [self._off(v) for v in p.via] + [self._off(p.above)]
+            wps = [self._off(v) for v in p.via] + [self._above()]
             wp = wps[self.wp_i]
             self.goal = self._lead_cap(_toward(self.goal, wp, p.raise_speed * dt), palm)  # 当たったら行き先は 5 cm 先で止まる
             at_goal = float(np.linalg.norm(self.goal - wp)) < 1e-9
@@ -517,8 +682,13 @@ class ScriptDoor:
             deg = math.degrees(self.angle)
             if deg > self.angle_best + 0.5:
                 self.angle_best, self.t_progress = deg, t
-            if p.push_mode == "walk" and p.walk_in_3a:
-                walk = (True, p.walk_vx, p.walk_vy, p.walk_wz)
+            walk_3a = p.push_mode == "walk" and p.walk_in_3a
+            if walk_3a:  # 11-13: 前は walk_3a_vx（足踏みで踏ん張る）・向きは 3a に入った時の向きを保つ（先回りは入れない）
+                if self.yaw_3a0 is None:
+                    self.yaw_3a0 = pose.yaw
+                walk = (True, p.walk_3a_vx if p.walk_3a_vx > 0 else p.walk_vx, p.walk_vy,
+                        self._hold_yaw_wz(pose, self.yaw_3a0, ff=False))
+            adv = pose.x - self.xy0[0] if (walk_3a and self.xy0 is not None) else 0.0
             if self.nudge_until is not None:
                 if t < self.nudge_until:
                     walk = (True, p.nudge_vx, 0.0, 0.0)
@@ -532,6 +702,15 @@ class ScriptDoor:
                     walk = STAND
                 else:
                     self._enter_3c(t, pose, palm)
+            elif adv > p.miss_adv:
+                why = f"pelvis が {100 * adv:.0f} cm 進んでも掛け金が外れない（扉 {deg:.1f}°）"
+                if self._miss(why, t):
+                    walk = STAND
+                else:
+                    self._fail(why + "・押し直しは使い切った", t)
+            elif (self.nudge_until is None and not self.nudged and t - self.t_progress > p.miss_stall_s
+                  and self._miss(f"扉が {p.miss_stall_s} 秒 伸びない（{deg:.1f}°）", t)):
+                walk = STAND
             elif self.nudge_until is None and t - self.t_progress > p.unlatch_stall_s:
                 if not self.nudged:
                     self.nudged, self.nudge_until = True, t + p.nudge_s
@@ -542,15 +721,7 @@ class ScriptDoor:
             walk, stop = self._push_walk(t, pose, palm, palm_fwd)
         elif self.sub == "3c":
             deg = math.degrees(self.angle)
-            tgt = math.radians(min(deg + p.push_lead_deg, p.goal_deg + p.push_lead_deg))
-            v = self.palm_ref[:2] - self.line.hinge_xy
-            r = float(np.linalg.norm(v))
-            v = v * ((r + p.push_dr) / r)
-            a = self.line.open_sign * tgt
-            c, s = math.cos(a), math.sin(a)
-            xy = self.line.hinge_xy + np.array([c * v[0] - s * v[1], s * v[0] + c * v[1]])
-            # 掛け金が外れた後は強く押さえない: 高さは下げた時の手のひら − hold_extra（＋ push_dz）
-            self.goal = self._lead_cap(np.array([xy[0], xy[1], self.palm_ref[2] - p.hold_extra + p.push_dz]), palm)
+            self.goal = self._arc_goal(deg, palm)
             if deg > self.angle_best + 1.0:
                 self.angle_best, self.t_progress = deg, t
             # 脚: 手が前へ出すぎたら短く前へ（出し続けない。止まって腕で押し、また出す）
@@ -576,7 +747,16 @@ class ScriptDoor:
             up = np.array([palm[0], palm[1], self.ref[2] + p.above[2]]) if self.goal is None else np.array(
                 [self.goal[0], self.goal[1], self.ref[2] + p.above[2]])
             self.goal = _toward(self.goal if self.goal is not None else palm.copy(), up, p.raise_speed * dt)
-            if abs(palm[2] - up[2]) < p.via_tol or t - self.t_sub > 3.0:
+            hand_up = abs(palm[2] - up[2]) < p.via_tol or t - self.t_sub > 3.0
+            # 押し直し: 歩いて押した分は、手が上がってから後ろへ下がって戻る（構えの位置から離れたままだと手が届かない）
+            back = hand_up and self.x_home is not None and pose.x > self.x_home + BACK_TOL_M
+            if back:
+                self.t_back = t if self.t_back is None else self.t_back
+                back = t - self.t_back < p.miss_back_s
+            if back:
+                walk = (True, -abs(p.walk_vx), 0.0, 0.0)
+            elif hand_up:
+                self.x_home, self.t_back = None, None
                 self.yaws = []
                 self.xy0 = None
                 self.wp_i = len(p.via)  # 経由点は飛ばしてレバーの上へ戻る
@@ -592,4 +772,5 @@ class ScriptDoor:
         if p.hand_dir_deg >= 0.0:
             a = math.radians(p.hand_dir_deg)
             direction = np.array([math.cos(a), -self.lr * math.sin(a), 0.0])
-        return ScriptOut(self.sub, goal, walk, direction, self._angle_obs(), wc, stop, self.success and self.sub == "done", self._where())
+        return ScriptOut(self.sub, goal, walk, direction, self._angle_obs(), wc, stop, self.success and self.sub == "done", self._where(),
+                         waist_twist=self.twist_rad(), waist_lean=self.lean_rad())

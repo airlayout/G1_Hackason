@@ -54,7 +54,8 @@ class ArmIK:
         self.chain, self.side = chain, side
         self.idx = arm_indices(side)
         self.link = f"{side}_rubber_hand"
-        self.lo, self.hi = joint_limits(urdf or fk.default_urdf(), side)
+        self.urdf = urdf or fk.default_urdf()  # 11-13: 反対の腕の逆運動学を同じ URDF で作る（PC2 は置き場所が違う）
+        self.lo, self.hi = joint_limits(self.urdf, side)
         self.lo, self.hi = self.lo + LIMIT_MARGIN, self.hi - LIMIT_MARGIN
 
     def _full(self, q29: np.ndarray, q7: np.ndarray) -> np.ndarray:

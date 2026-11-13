@@ -1,0 +1,174 @@
+diff --git a/gr00t/rl/envs/door/script_teacher.py b/gr00t/rl/envs/door/script_teacher.py
+index 77024e6..4831546 100644
+--- a/gr00t/rl/envs/door/script_teacher.py
++++ b/gr00t/rl/envs/door/script_teacher.py
+@@ -15,6 +15,12 @@ env.config.script_teacher（無い・enabled=False なら元のまま）:
+   out: 回ごとの結果を書く JSON Lines（無ければ書かない）
+   stop_after: 台本の止める所を上書き（"" なら最後まで）
+   walk: True で台本の脚への指令も通す（既定 False＝脚は環境の掛け金のまま）
++  tau: True で環境の関節の力（self.torques・SDK の並びへ）を台本へ渡す（パッチ 0111、11-13）。台本の手の力の見積もり
++       （G1_Hackason/Door/real/hand_force.py）が動き、回ごとの結果に見積もりと、レバー‐手の接触の力（接触センサ）を並べる
++  tau_src: "env"（既定。環境が外で計算した PD の力 self.torques）か "applied"（物理エンジンの中の PD が掛けた力
++       simulator.applied_dof_torque・力の上限で切った値）。11-13: env では見積もりが接触と合わなかった
++  twist: True で台本の腰 yaw のひねり（ScriptOut.waist_twist・半身で押す）を腰 yaw の目標に足す（0111）。
++       waist_yaw_comp を gain 0 で一緒に有効にすること（足す口 _wyc_offset と、HOMIE の観測から引く hide_obs を借りる）
+ 
+ ここは Isaac Sim に触れない（環境の持ち物を読むだけ）。逆運動学が 1 台 0.2〜0.5 ms なので、台数は 256 までを目安に。
+ """
+@@ -44,11 +50,13 @@ def script_teacher_config(cfg) -> dict | None:
+     assert os.path.isfile(params) and os.path.isfile(urdf), f"script_teacher の params・urdf が無い: {params} {urdf}"
+     frac = float(cfg.get("frac", 1.0))
+     assert 0.0 < frac <= 1.0, f"script_teacher.frac は 0〜1: {frac}"
++    assert str(cfg.get("tau_src", "env")) in ("env", "applied"), f"script_teacher.tau_src は env か applied: {cfg.get('tau_src')}"
+     out = cfg.get("out", None)
+     stop_after = cfg.get("stop_after", None)
+     return {"dir": d, "params": params, "urdf": urdf, "frac": frac, "out": None if out is None else str(out),
+             "stop_after": None if stop_after is None else str(stop_after), "walk": bool(cfg.get("walk", False)),
+-            "trace": int(cfg.get("trace", 0))}
++            "trace": int(cfg.get("trace", 0)), "tau": bool(cfg.get("tau", False)), "twist": bool(cfg.get("twist", False)),
++            "tau_src": str(cfg.get("tau_src", "env"))}
+ 
+ 
+ def quat_xyzw_to_wxyz(q: np.ndarray) -> np.ndarray:
+@@ -87,6 +95,20 @@ class ScriptTeacher:
+         self.target = torch.full((env.num_envs, NUM_ARM), float("nan"), device=env.device)  # 台本の腕の目標 [rad]（シムの腕の並び）
+         if cfg["out"]:
+             os.makedirs(os.path.dirname(cfg["out"]) or ".", exist_ok=True)
++        # 0111: 腰 yaw のひねり（台ごと・速さの上限つき）。足す口は waist_yaw_comp の _wyc_offset（gain 0 で有効にしておく）
++        self.twist_off = np.zeros(self.n)
++        if cfg["twist"]:
++            assert hasattr(env, "_wyc_offset"), "script_teacher.twist には env.config.waist_yaw_comp（gain=0・hide_obs=True）が要る"
++            assert float(env._wyc["gain"]) == 0.0, f"script_teacher.twist の時は waist_yaw_comp.gain を 0 に（今 {env._wyc['gain']}）"
++        if float(getattr(self.params, "lean_deg", 0.0)) > 0.0:
++            print(f"[script_teacher] ⚠️ 定数の lean_deg {self.params.lean_deg}° はシムでは入れない（腰 pitch の口が無い）")
++        self.pairs: list = [[] for _ in range(self.n)]   # 0111: (小段, 見積もり xyz, 接触 xyz, 手のひらの原点で解いた見積もり xyz)
++        self.hf_palm: list = [None] * self.n             # 0111: 比べ用に、力の掛かる点を手のひらの原点にした見積もり
++        try:
++            import hand_force as hfm  # noqa: PLC0415
++            self.hfm = hfm
++        except ImportError:
++            self.hfm = None
+         print(f"[script_teacher] 台本で腕を動かす台 {self.n}/{env.num_envs}・定数 {cfg['params']}・"
+               f"止める所 {self.params.stop_after!r}・構え x {self.params.stance_x} y_off {self.params.stance_y_off}")
+ 
+@@ -97,16 +119,19 @@ class ScriptTeacher:
+                                       float(env.door_handle_height[i]), lever_left)
+         ik = self.aik.ArmIK(self.chain, "left" if lever_left else "right", self.cfg["urdf"])
+         self.arms[i] = self.drs.ScriptArm(script, ik, None, 0.75)
++        if self.cfg["tau"] and self.hfm is not None:
++            self.hf_palm[i] = self.hfm.HandForce(self.chain, self.cfg["urdf"], ik.side, tip_m=0.0)
+         self.stats[i] = {"env": i, "episode": int(self.episode[i]), "lever_left": lever_left, "subs": [], "steps": 0,
+                          "lever_max_deg": 0.0, "door_max_deg": 0.0, "stop": "", "success": False,
+                          "door_width": float(env.door_width[i]), "backset": float(env.door_handle_width[i]),
+-                         "lever_height": float(env.door_handle_height[i])}
++                         "lever_height": float(env.door_handle_height[i]), "sub_pose": []}
+ 
+     def _flush(self, i: int) -> None:
+         s = self.stats[i]
+         if s is None or s["steps"] == 0:
+             return
+         s["last_sub"] = s["subs"][-1][0] if s["subs"] else ""
++        s["hand_force"] = self._force_summary(i)
+         if self.cfg["out"]:
+             with open(self.cfg["out"], "a") as f:
+                 f.write(json.dumps(s, ensure_ascii=False) + "\n")
+@@ -115,6 +140,29 @@ class ScriptTeacher:
+             self.traces[i] = []
+         self.episode[i] += 1
+ 
++    def _force_summary(self, i: int) -> dict:
++        """0111: 小段ごとに、手の力の見積もりと接触センサの力の中央値・差・相関（前後 x・横 y・上下 z。扉の座標・N）"""
++        out = {}
++        rows = self.pairs[i] if i < len(self.pairs) else []
++        for sub in ("2c", "2d", "3a", "3c"):
++            r = np.array([p[1:] for p in rows if p[0] == sub], dtype=float)
++            if len(r) < 10:
++                continue
++            est, tru, pal = r[:, 0:3], r[:, 3:6], r[:, 6:9]
++            d = {"n": int(len(r)), "est_med": np.round(np.median(est, axis=0), 1).tolist(),
++                 "true_med": np.round(np.median(tru, axis=0), 1).tolist(),
++                 "abs_err_med": np.round(np.median(np.abs(est - tru), axis=0), 1).tolist(),
++                 "palm_est_med": np.round(np.median(pal, axis=0), 1).tolist(),
++                 "palm_abs_err_med": np.round(np.median(np.abs(pal - tru), axis=0), 1).tolist()}
++            corr = []
++            for k in range(3):
++                a, b = est[:, k], tru[:, k]
++                corr.append(round(float(np.corrcoef(a, b)[0, 1]), 2) if a.std() > 1e-6 and b.std() > 1e-6 else None)
++            d["corr"] = corr
++            out[sub] = d
++        self.pairs[i] = []
++        return out
++
+     def reset(self, env_ids) -> None:
+         for i in (int(v) for v in env_ids):
+             if i < self.n:
+@@ -122,6 +170,8 @@ class ScriptTeacher:
+                 self.arms[i] = None
+                 self.hold[i] = None
+                 self.stats[i] = None
++                self.twist_off[i] = 0.0
++                self.hf_palm[i] = None
+         self.sub_code[env_ids] = -1
+         self.target[env_ids] = float("nan")
+ 
+@@ -137,6 +187,14 @@ class ScriptTeacher:
+         default = np.broadcast_to(env.default_dof_pos.detach().cpu().numpy().astype(float), (env.num_envs, q_sim.shape[1]))
+         D = env._delta_actions[:n].detach().cpu().numpy().astype(float)
+         changed = np.zeros(n, dtype=bool)
++        # 0111: 関節の力（SDK の並び）と、レバー‐手の接触の力（手が受ける向き＝センサの値の逆）
++        tau_real = None
++        if self.cfg["tau"]:
++            src = env.simulator.applied_dof_torque if self.cfg["tau_src"] == "applied" else env.torques
++            tau_real = src[:n].detach().cpu().numpy().astype(float)[:, self.sim_from_real]
++        cf = getattr(env.simulator, "object_to_hand_contact_forces", None) if self.cfg["tau"] else None
++        cf = None if cf is None else cf[:n].detach().cpu().numpy().astype(float)
++        dt = float(env.dt)
+         for i in range(n):
+             if self.arms[i] is None:
+                 self._new(env, i)
+@@ -146,8 +204,35 @@ class ScriptTeacher:
+             arm.pelvis_z = root[i, 2] - origin[i, 2]
+             if st["steps"] == 0:
+                 st["start"] = [round(pose.x, 4), round(pose.y, 4), round(math.degrees(pose.yaw), 2)]
+-            out, q7 = arm.step(float(t[i]), q_real[i], quat, pose, None)
++            out, q7 = arm.step(float(t[i]), q_real[i], quat, pose, None if tau_real is None else tau_real[i])
+             st["steps"] += 1
++            if not st["sub_pose"] or st["sub_pose"][-1][0] != out.sub:  # 0111: 小段に入った時の pelvis・扉
++                st["sub_pose"].append([out.sub, round(float(t[i]), 2), round(pose.x, 3), round(pose.y, 3),
++                                       round(math.degrees(pose.yaw), 1), round(float(np.degrees(abs(door[i, 0]))), 2)])
++            if tau_real is not None and "calib_res0" not in st and out.sub == "2c" and getattr(arm, "hf", None) is not None \
++                    and arm.hf.res0 is not None:  # 0111: 2b で取った基準の残り（g − tau・腕 7 軸・N·m）＝重さの模型とシムの違い
++                st["calib_res0"] = [round(float(v), 2) for v in arm.hf.res0]
++            if cf is not None:
++                side_idx = env.left_hand_indices_tgt_ct_sensor if arm.ik.side == "left" else env.right_hand_indices_tgt_ct_sensor
++                f_true = -cf[i, 0, side_idx, :].sum(axis=0)
++                f_est = np.asarray(arm.hand_f, dtype=float)
++                f_palm = np.full(3, np.nan)
++                hp = self.hf_palm[i]
++                if hp is not None and tau_real is not None and st["steps"] % 2 == 0:
++                    if out.sub == "2b":
++                        hp.calibrate(q_real[i], quat, tau_real[i])
++                    elif out.sub in ("2c", "2d", "3a", "3c"):
++                        Fp = hp.force(q_real[i], quat, tau_real[i])
++                        f_palm = arm._frame(pose, quat)[0] @ Fp if np.isfinite(Fp).all() else f_palm
++                if np.isfinite(f_est).all() and np.isfinite(f_palm).all() and out.sub in ("2c", "2d", "3a", "3c"):
++                    self.pairs[i].append((out.sub, *f_est, *f_true, *f_palm))
++            else:
++                f_true, f_est = np.full(3, np.nan), np.full(3, np.nan)
++            if self.cfg["twist"]:  # 0111: 腰 yaw のひねりを台本の値へ、速さの上限で寄せる
++                goal = float(getattr(out, "waist_twist", 0.0))
++                step = float(self.params.twist_rate) * dt
++                self.twist_off[i] += max(-step, min(step, goal - self.twist_off[i]))
++                env._wyc_offset[i] = float(self.twist_off[i])
+             st["lever_max_deg"] = max(st["lever_max_deg"], float(np.degrees(abs(door[i, 1]))))
+             st["door_max_deg"] = max(st["door_max_deg"], float(np.degrees(abs(door[i, 0]))))
+             if not st["subs"] or st["subs"][-1][0] != out.sub:
+@@ -169,7 +254,7 @@ class ScriptTeacher:
+                 qc = np.full(7, np.nan) if q7 is None else q7
+                 self.traces[i].append(np.concatenate([[t[i], self.dscr.SUBS.index(out.sub), arm.script.wp_i], arm.script.palm, g,
+                                                       q_real[i][arm.ik.idx], qc, [pose.x, pose.y, pose.yaw, arm.pelvis_z],
+-                                                      [door[i, 0], door[i, 1]]]))
++                                                      [door[i, 0], door[i, 1]], f_est, f_true, [self.twist_off[i]]]))
+             if q7 is None:
+                 continue  # 腕を下ろしたまま・止まった: 直前の目標を保つ
+             for k, r in enumerate(arm.ik.idx):

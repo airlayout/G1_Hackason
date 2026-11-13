@@ -775,6 +775,8 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
     replay_yaw0: Optional[float] = None  # R1: 再生を始めた時の IMU の yaw
     waist_hold: Optional[np.ndarray] = None  # R4: 腕を借りた時の腰の角度（打ち消しはこの yaw に足す）
     wc_state, wc_off, wc_rate = arp.WaistCompState(), 0.0, 0.0
+    lean_off, lean_rate = 0.0, 0.3  # 11-13 前へ傾ける: 腰 pitch に足している角度 [rad] と速さ（台本の lean_deg・lean_rate）
+    twist_off, twist_rate = 0.0, 0.6  # 11-13 半身で押す: 腰 yaw に足している角度 [rad] と速さ（台本の twist_deg・twist_rate）
 
     def go(new: str, why: str = "") -> None:
         nonlocal phase, phase_t, reason, reached_t, damp_left, arm_target
@@ -795,6 +797,8 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
             if staged.script.begin_release(time.monotonic(), q, quat):
                 print(f"[door_stock] 手を扉から離す（後ろへ {100 * staged.script.script.p.release_back:.0f} cm・"
                       f"上へ {100 * staged.script.script.p.release_up:.0f} cm・{staged.script.script.p.release_s:.1f} 秒）", flush=True)
+            if staged.script.begin_release_other(time.monotonic(), q, quat):  # 11-13: 添えた手も引く
+                print(f"[door_stock] 添えた手を引く（後ろへ {100 * staged.script.script.p.helper_back:.0f} cm）", flush=True)
         if was == "DOOR" and new == "POST" and staged is not None and staged.script_p is not None and "t" in log.rows:
             # 11-12 夜: 回の要約を別の糸で出す（numpy だけの軽い集計。Mac へ記録を取りに行かずに読める）
             k0 = try_row[0]
@@ -1054,6 +1058,8 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                         if dec.arm_left is not None:
                             want = arm_home.copy()
                             want[slice(7, 14) if a.lever_right else slice(0, 7)] = dec.arm_left
+                            if dec.arm_other is not None:  # 11-13: 把手と反対の手を板に添える（台本の helper）
+                                want[slice(0, 7) if a.lever_right else slice(7, 14)] = dec.arm_other
                             want = arp.guard_lead(want, q[ARMS], guard_delta)  # 今の角度 ±δ（押し付けの力の頭打ち。方策の積み上げの守りと同じ幅）
                             arm_target = tg.limit_sent_target(want, arm_target, lo_arm, hi_arm,
                                                               margin=a.clip_margin, max_step=drr.MAX_TARGET_STEP)
@@ -1094,9 +1100,13 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                         sender.set(False, 0.0, 0.0, 0.0)  # 脚は立ったまま（方策の歩きを送らない）
                 if phase == "POST" and staged is not None and staged.script is not None and arm_target is not None:
                     rel = staged.script.release(now, q, quat)  # 11-12 夜: 止まった後、手を扉から離す間だけ
-                    if rel is not None:
+                    rel_o = staged.script.release_other(now, q, quat)  # 11-13: 添えた手を引く間だけ
+                    if rel is not None or rel_o is not None:
                         want = arm_target.copy()
-                        want[slice(7, 14) if a.lever_right else slice(0, 7)] = rel
+                        if rel is not None:
+                            want[slice(7, 14) if a.lever_right else slice(0, 7)] = rel
+                        if rel_o is not None:
+                            want[slice(0, 7) if a.lever_right else slice(7, 14)] = rel_o
                         want = arp.guard_lead(want, q[ARMS], guard_delta)
                         arm_target = tg.limit_sent_target(want, arm_target, lo_arm, hi_arm,
                                                           margin=a.clip_margin, max_step=drr.MAX_TARGET_STEP)
@@ -1108,6 +1118,20 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
             if not wc_done:  # R4: 打ち消しの段の外（POST・ARMS_OUT など）では 0 へ戻す
                 wc_state, wc_off, wc_rate = arp.waist_comp_step(wc_state, dfr.yaw_from_quat_wxyz(quat), False, DT, wc_cfg)
 
+            # 11-13 半身で押す: 台本の DOOR の間は台本の角度へ・POST は今のまま保つ（手が扉の近くにある）・ほかは 0 へ戻す
+            if phase == "DOOR" and dec is not None and dec.arm == "script":
+                twist_goal = float(dec.waist_twist) if math.isfinite(dec.waist_twist) else 0.0
+                lean_goal = float(dec.waist_lean) if math.isfinite(dec.waist_lean) else 0.0
+                if staged is not None and staged.script_p is not None:
+                    twist_rate, lean_rate = staged.script_p.twist_rate, staged.script_p.lean_rate
+            elif phase == "DOOR":
+                twist_goal, lean_goal = twist_off, lean_off
+            elif phase == "POST":  # ひねりは保つ（手が扉の近く）・傾きは戻す（押していないのに前へ傾いたまま立たせない）
+                twist_goal, lean_goal = twist_off, 0.0
+            else:
+                twist_goal, lean_goal = 0.0, 0.0
+            twist_off += max(-twist_rate * DT, min(twist_rate * DT, twist_goal - twist_off))
+            lean_off += max(-lean_rate * DT, min(lean_rate * DT, lean_goal - lean_off))
             # --- 送る（腕だけ。歩きは送る糸が送る） ---
             sent_arm = arm_target
             if phase == "DAMP":
@@ -1118,12 +1142,13 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
             elif arm_target is not None and np.isfinite(arm_target).all():
                 if a.roll_press_max > 0 and phase in ("DOOR", "POST") and np.isfinite(q[ARMS]).all():
                     sent_arm = cap_roll_press(arm_target, q[ARMS], kp_arm, a.roll_press_max)
-                if arm_io is not None and wc_cfg.gain > 0.0 and waist_hold is not None:
+                if arm_io is not None and (wc_cfg.gain > 0.0 or twist_off != 0.0 or twist_goal != 0.0 or lean_off != 0.0 or lean_goal != 0.0) and waist_hold is not None:
                     # R4: 腰は借りた時の角度＋腰 yaw の打ち消しで保つ（切っている時は借りた時の 1 回だけ書く、元のまま）。
                     # 切るのは yaw だけ（roll・pitch は借りた時の値のまま）。有限でなければ借りた時の角度に戻して立ったまま止まる
-                    waist_cmd = arp.waist_with_yaw(waist_hold, wc_off, p.q_lower[WAIST[0]], p.q_upper[WAIST[0]])
+                    waist_cmd = arp.waist_with_yaw(waist_hold, wc_off + twist_off, p.q_lower[WAIST[0]], p.q_upper[WAIST[0]])
+                    waist_cmd[2] = min(max(waist_cmd[2] + lean_off, p.q_lower[WAIST[2]]), p.q_upper[WAIST[2]])  # 腰 pitch（前へが正）
                     if not np.isfinite(waist_cmd).all():
-                        wc_state, wc_off, wc_rate = arp.WaistCompState(), 0.0, 0.0
+                        wc_state, wc_off, wc_rate, twist_off, lean_off = arp.WaistCompState(), 0.0, 0.0, 0.0, 0.0
                         waist_cmd = waist_hold
                         go("POST", "腰 yaw の打ち消しが有限でない")
                     arm_io.hold_waist(waist_cmd, p.kp[WAIST], p.kd[WAIST])
@@ -1163,7 +1188,9 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
                            if dec is not None else np.full(9, np.nan))
             if staged is not None and staged.script_p is not None:  # 11-12 台本の 1 行（door_script.ScriptDoor.row）
                 row.update(script=dec.script_row if (dec is not None and dec.script_row is not None)
-                           else np.full(drst.dscr.ROW_LEN, np.nan))
+                           else np.full(drst.dscr.ROW_LEN, np.nan),
+                           hand_f=staged.script.hand_f if (staged.script is not None and dec is not None and dec.script_row is not None)
+                           else np.full(3, np.nan))  # 11-13: 手が受ける力の見積もり（扉の座標・N）
             if out is not None:
                 row.update(obs=out.obs, a_pol=out.a_pol, D=s.D, cmd=out.cmd, homie_a=out.homie_a, walk=out.walk,
                            q_policy=out.q_target, pose=np.array([pose.x, pose.y, pose.yaw]))
@@ -1206,12 +1233,15 @@ def main(argv=None) -> int:  # noqa: C901  段の進み方を 1 か所で読め�
         if arm_io is not None and arm_target is not None and weight > 0.0 and phase != "DAMP":
             print("[door_stock] 腕を借りたまま終わる: 重みを 2 秒で 0 へ戻す", flush=True)
             # R4（レビューの指摘）: 腰 yaw の打ち消しが残っていれば、重みを下げる前に借りた時の角度へ戻す（ねじれたまま純正へ返さない）
-            off = wc_off if math.isfinite(wc_off) else 0.0
-            while wc_cfg.gain > 0.0 and waist_hold is not None and off != 0.0:
-                off = off - max(-wc_cfg.rate * DT, min(wc_cfg.rate * DT, off))
+            off = (wc_off if math.isfinite(wc_off) else 0.0) + twist_off
+            back = max(wc_cfg.rate, 0.3)  # 打ち消しを切っていても、半身の分は戻す
+            while waist_hold is not None and (off != 0.0 or lean_off != 0.0):
+                off = off - max(-back * DT, min(back * DT, off))
+                lean_off = lean_off - max(-0.3 * DT, min(0.3 * DT, lean_off))
                 try:
-                    arm_io.hold_waist(arp.waist_with_yaw(waist_hold, off, p.q_lower[WAIST[0]], p.q_upper[WAIST[0]]),
-                                      p.kp[WAIST], p.kd[WAIST])
+                    w_back = arp.waist_with_yaw(waist_hold, off, p.q_lower[WAIST[0]], p.q_upper[WAIST[0]])
+                    w_back[2] = min(max(w_back[2] + lean_off, p.q_lower[WAIST[2]]), p.q_upper[WAIST[2]])
+                    arm_io.hold_waist(w_back, p.kp[WAIST], p.kd[WAIST])
                     arm_io.write(arm_target, kp_arm, kd_arm, weight)
                 except Exception as e:  # noqa: BLE001  返すことを優先する
                     print(f"[door_stock] arm_sdk の送信に失敗: {type(e).__name__}: {e}", flush=True)

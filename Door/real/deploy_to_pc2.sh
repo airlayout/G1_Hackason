@@ -54,6 +54,7 @@ if [ "${1:-}" != check ]; then
          "$HERE/door_cloud_fix.py"  # 11-11 T3（R5）: 段 0 の点群で扉の座標を直す（口の --cloud-fix・fastlio_start.sh の DOOR_CLOUD_FIX）
          # 11-10 手順 L4: 段の走らせ役（door_run_stock.py --staged）の部品・手のひらの扉の角度（L2b）・左腕の順運動学と URDF
          "$HERE/door_staged.py" "$HERE/door_run_staged.py" "$HERE/hand_door_angle.py" "$HERE/g1_arm_fk.py"
+         "$HERE/hand_force.py"  # 11-13: 腕の関節の力から手の力を見積もる（door_run_staged.ScriptArm が読む）
          "$HERE/door_script.py" "$HERE/g1_arm_ik.py" "$HERE/script_params.json"  # 11-12: 段 2・3 の台本・腕の逆運動学・台本の定数
          "$HERE/script_params_1112_robot.json"  # 11-12 の機体の 10 回目の値（戻す時）
          # 11-12 夜: 当たりの模型と門番・回の要約・朝の一括の確かめ（作業ログ 2026-11-12 の 7 章）

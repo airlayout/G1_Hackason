@@ -87,7 +87,7 @@ def test_gate_passes_shipped_params_from_all_stance_corners():
     p = dscr.load_params(str(HERE / "script_params.json"))
     ok, warn, res = sg.check(p, dcl.load_geom(None, DOOR), 0.73)
     assert ok, sg.report(res)
-    assert len(res) == 5 and all(r.min_gap["棒"][0] >= sg.WARN_M for r in res)  # 上げる間に棒から 2 cm 以上
+    assert len(res) == 5 + len(p.miss_shifts) and all(r.min_gap["棒"][0] >= sg.WARN_M for r in res)  # 上げる間に棒から 2 cm 以上
 
 
 def test_gate_fails_robot_day_params_at_back_right_corner():

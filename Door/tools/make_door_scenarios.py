@@ -268,6 +268,29 @@ def main() -> None:
     )
     write(tasks_dir, "door_en1154_g13_shaped_left_weight_realwall", realwall_body)
 
+    # 11-13（計画 docs/plan/2026-11-12-g1-door-scripted-stage123.md の 16 節）: 実機の台本をシムで確かめる用に、UIS Room 4 の寸法に
+    # 絞った扉（幅 0.94 m・レバー 0.99 m・バックセット 64 mm・レバー 約 13〜14 cm・四角・等級 1）。重さは実物が分からないので 20〜45 kg
+    room4_like = {
+        "    door_handle_tblr=(1.10, 0.85, 0.03, 0.10),  # レバーの高さ 0.85〜1.10 m・バックセット 30〜100 mm（段 2-4b-1）\n":
+            "    door_handle_tblr=(1.00, 0.98, 0.060, 0.068),  # レバーの高さ 0.98〜1.00 m・バックセット 60〜68 mm（Room 4 は 0.99・64 mm）\n"
+            "    door_width=(0.93, 0.95),  # 扉の幅 [m]（Room 4 は 0.94）\n",
+        "    handle_length_range=(0.10, 0.16),  # レバーの長さ [m]（段 2-4b-2。既定は 0.11〜0.14）\n":
+            "    handle_length_range=(0.13, 0.145),  # レバーの長さ [m]（Room 4 は付け根から先まで 13 cm・全長 約 142 mm）\n",
+        '    handle_cross_section=["round", "square"],  # レバーの断面（段 2-4b-2。既定は丸だけ）\n':
+            '    handle_cross_section=["square"],  # レバーの断面（Room 4 は四角）\n',
+        "    door_weight=(15.0, 120.0),  # 扉の板の重さ [kg]（段 2-4b-3。既定は 80〜120）\n":
+            "    door_weight=(20.0, 45.0),  # 扉の板の重さ [kg]（Room 4 は未測。事務所の扉の幅）\n",
+        "    assets_cfg=[door_spawner_cfg, door_spawner_cfg_g2, door_spawner_cfg_g3] * 1366,\n":
+            "    assets_cfg=[door_spawner_cfg] * 4098,  # 等級 1 だけ（10-29 の見積もり m0 ≈ 10〜12 N·m）\n",
+    }
+    room4_body = realwall_body
+    for old, new in room4_like.items():
+        if room4_body.count(old) != 1:
+            raise ValueError(f"door_room4_like_left_realwall の置き換え先が 1 つでない: {old!r}")
+        room4_body = room4_body.replace(old, new)
+    room4_body = room4_body.replace("（0104・K6a の評価用）", "（11-13・実機の台本をシムで確かめる用・Room 4 の寸法）", 1)
+    write(tasks_dir, "door_room4_like_left_realwall", room4_body)
+
     # 段 2-4 の学習用（2026-10-13 のユーザー判断）: UIS Room 4 を含む広い範囲（door_room4_wide）で、クローザーは等級 1〜3 を
     # 実物の形で。台 i は i % 3 + 1 の等級（1/3 ずつ。等級ごとに効率の最小が違うので扉を 3 つ並べる）。等級 4 は評価だけ
     room4_line = "    hinge_drive_max_force_range=(9.0, 37.0),  # EN 1154 等級 1〜4（等級 5 の最低値まで）[N·m]\n"

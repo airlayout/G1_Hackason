@@ -96,7 +96,7 @@ def summarize_arrays(z: Dict[str, np.ndarray], meta: Dict, door: str, clear: boo
         mv = 100 * math.hypot(pose[k1, 0] - pose[k0, 0], pose[k1, 1] - pose[k0, 1])
         out.append(f"[ana] {dscr.SUBS[int(sub[k0])]:7s} {t[k0] - t0:6.2f} {t[k1] - t[k0]:5.2f}   [{d[0]:+6.1f},{d[1]:+6.1f},{d[2]:+6.1f}]"
                    f"            {sc[k1, 7]:5.1f}   {tp[-1]:+5.1f}/{te[-1]:+5.1f}・{np.abs(tp).max():4.1f}/{np.abs(te).max():4.1f}"
-                   f"            {yaw[k1] - yaw[idx[0]]:+5.1f}      {mv:5.1f}")
+                   f"            {(yaw[k1] - yaw[idx[0]] + 180.0) % 360.0 - 180.0:+5.1f}      {mv:5.1f}")  # ±180° の折り返し（11-13: −322.4 と出た）
     lag = sc[ok, 8]
     walk = z["vel_want"][ok][:, 0] > 0
     pulses = int(np.sum(walk[1:] & ~walk[:-1]) + (1 if walk[0] else 0))
@@ -109,6 +109,14 @@ def summarize_arrays(z: Dict[str, np.ndarray], meta: Dict, door: str, clear: boo
         still_mv = math.nan
     out.append(f"[ana] 扉の最大 {np.nanmax(sc[ok, 7]):.1f}°・遅れ（手のひら−行き先の上下）最大 "
                f"{100 * np.nanmax(np.abs(lag)) if np.isfinite(lag).any() else float('nan'):.1f} cm・手の前への出 最大 {np.nanmax(sc[ok, 10]):.2f} m")
+    if "hand_f" in z:  # 11-13: 手が受ける力の見積もり（扉の座標）。前後は扉が押し返す向きが負・上下はレバーが押し上げる向きが正
+        for name in ("3a", "3c"):
+            kk = np.where(ok & (sub == dscr.SUBS.index(name)))[0]
+            hf = z["hand_f"][kk]
+            hf = hf[np.isfinite(hf).all(axis=1)]
+            if len(hf) > 5:
+                out.append(f"[ana] 手の力 {name}: 前後 中央 {np.median(hf[:, 0]):+.0f} N・山 {hf[:, 0].min():+.0f} N・押している割合 "
+                           f"{100 * np.mean(hf[:, 0] < -3.0):.0f}%・レバーを押さえる力 中央 {np.median(hf[:, 2]):+.0f} N・横 中央 {np.median(hf[:, 1]):+.0f} N")
     steps = count_steps(z["foot_fz"][ok]) if "foot_fz" in z else -1
     out.append(f"[ana] 脚: 指令を出した回数 {pulses}・出していた時間 {walk.sum() * 0.02:.1f} 秒・踏み出し {steps} 回・"
                f"pelvis の進み 前 {100 * (p_ok[-1, 0] - p_ok[0, 0]):+.1f} 横 {100 * (p_ok[-1, 1] - p_ok[0, 1]):+.1f} cm・"
