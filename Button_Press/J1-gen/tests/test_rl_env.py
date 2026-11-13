@@ -71,6 +71,29 @@ class TestPressEnv(unittest.TestCase):
         self.assertTrue(truncated)
         self.assertEqual(info["outcome"], "timeout")
 
+    def test_search_penalty(self) -> None:
+        """押す点の近くにいる間だけ、毎周期 search_penalty が引かれる（遠いときは引かれない）。"""
+        env = self.env
+        cfg_r = env.cfg["reward"]
+        base = dict(cfg_r)
+        try:
+            for pen in (0.0, 1.0):
+                cfg_r.update(search_near_m=0.05, search_penalty=pen, touch_lateral_penalty=0.0)
+                env.reset(seed=1)
+                _, r_far, *_ = env.step(np.zeros(7))
+                env._prev_dist = float(np.linalg.norm(env.target - env.tip_pos()))
+                env.target = env.tip_pos() + np.array([0.02, 0.0, 0.0])  # 指先の 2 cm 前に押す点を置く
+                env._prev_dist = 0.02
+                _, r_near, *_ = env.step(np.zeros(7))
+                if pen == 0.0:
+                    far0, near0 = r_far, r_near
+                else:
+                    self.assertAlmostEqual(r_far, far0, places=6)
+                    self.assertAlmostEqual(r_near, near0 - 1.0, places=6)
+        finally:
+            cfg_r.clear()
+            cfg_r.update(base)
+
 
 @needs("mujoco", "gym", "pin")
 class TestPressEnvScripted(unittest.TestCase):

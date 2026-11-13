@@ -124,6 +124,7 @@ class PressEnv(gym.Env):
         self.top_z = 0.0
         self._steps = 0
         self._good_steps = 0
+        self._touched = False
         self._prev_dist = 0.0
         self._f6 = np.zeros(6)
         # 開始の姿勢ですでに接している（腕, 相手）の組と、そのときの距離
@@ -185,6 +186,7 @@ class PressEnv(gym.Env):
         self._prev_action = np.zeros(7)
         self._steps = 0
         self._good_steps = 0
+        self._touched = False
         self._prev_dist = float(np.linalg.norm(self.target - self.tip_pos()))
         return self._obs(), {"layout": lay}
 
@@ -213,6 +215,15 @@ class PressEnv(gym.Env):
         self._prev_action = a
 
         lateral = float(np.linalg.norm((self.target - tip) - ((self.target - tip) @ PUSH_DIR) * PUSH_DIR))
+        # 探す時間への罰（2026-11-06: 押す点の 5 cm 以内に入ってから成功まで中央値 1.07 秒、触れたあとに小さく動いて合わせていた）。
+        # (1) 押す点の近くにいる間は毎周期少し減点する（成功して終われば、それ以上かからない）
+        near_m = cfg_r.get("search_near_m", 0.0)
+        if near_m > 0.0 and dist < near_m:
+            reward -= cfg_r.get("search_penalty", 0.0)
+        # (2) 最初にボトルに触れた周期の横のずれが free_m を超えた分を減点する（触れる前に位置を合わせさせる）
+        if not self._touched and force > 0.5:
+            self._touched = True
+            reward -= cfg_r.get("touch_lateral_penalty", 0.0) * max(0.0, lateral - cfg_r.get("touch_lateral_free_m", 0.0))
         # 指先が面まで届いている（押す点の x より reach_x_tol_m 以上手前ではない）、ボトルとの接触点が指先の近く
         # （ハンドの当たり判定の箱の角で押す抜け穴をふさぐ。2026-11-01 の v2 は接触点が指先から約 50 mm だった）
         reached = (self.target[0] - tip[0]) <= cfg_s["reach_x_tol_m"]
