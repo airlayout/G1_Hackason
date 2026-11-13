@@ -4,24 +4,36 @@ G1の3D LiDAR・IMU・頭部RGBを使い、部屋の点群地図・軌跡・再�
 実機用は次の2方式を、同じ操作と成果物形式で切り替えられる。
 
 - `onboard` — G1内蔵のUnitree LIO/SLAMサービスを利用
-- `raw` — G1の生LiDAR・IMUをROS 2版FAST-LIO2で処理
+- `raw` — G1の生LiDAR・IMUをROS 2版FAST-LIO2で処理し、OctoMapで占有・空きを更新
 
 どちらの方式でも、生LiDAR・IMU・RGB・CameraInfoと正規化済みLIO出力を同じrosbag2へ
 記録する。現場ではライブ地図・自己位置・RGBを確認し、3DGSは持ち帰ってから処理する。
 
-RViz2は可視化専用コンテナへ分離している。Mapping中のライブ点群と、保存後の
-`map_raw.pcd`を同じ表示設定で確認できる。
+`raw` / `sim` は、同時刻の登録点群とLiDAR姿勢から作ったOctoMapを表示・保存する。
+無線のnative/ssh/rawではG1内でも生LiDAR・IMU・RGBを記録し、通信断後は自動再接続する。
+`mapctl stop`で原本回収と最終地図の再生成まで実行し、途中失敗は`mapctl recover`で再開する。
+`mapctl rebuild` でも同じ処理を実行する。後の光線が通過した場所の点は削除される。
+GLIMによる全体最適化は含まない。起動・古い記録の移行は [`real/`](real/README.md) を参照。
+
+RViz2はDocker方式では可視化専用コンテナ、native方式では構築したROS 2環境で起動する。
+Mapping中のライブ点群と、保存後の`map_raw.pcd`を同じ表示設定で確認できる。
 
 ## 構成
 
-- [`real/`](real/README.md) — 実機用の共通CLI、2つのbackend、Docker配備、テスト
+- [`MAPPING_QUICKSTART.md`](MAPPING_QUICKSTART.md) — native＋SSHによる無線手動計測・保存・後処理の短い手順
+- [`real/`](real/README.md) — 初回構築・接続設定、実機用の共通CLI、Docker/native配備、テスト
 - [`sim/`](sim/README.md) — Isaac Simから実機と同じtopic契約でFAST-LIO2へ入れる経路
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — システム境界と成果物契約
 - [`FIELD_RUNBOOK.md`](FIELD_RUNBOOK.md) — 現場で上から順に実行する手順
 - [`FAILURES.md`](FAILURES.md) — 実測で判明した失敗と再発防止策
 
-MappingのROS 2環境はDocker内へ隔離する。LeRobotによる歩行環境
-`G1_HuggingFace/venv/`とは依存関係を共有しない。
+Mappingの実行環境はDocker、または既存のUbuntu 24.04＋ROS 2 Jazzyを使う
+`native`から選べる。nativeで追加する依存とビルド成果物は`_local/mapping/`へ置く。
+LeRobotによる歩行環境`G1_HuggingFace/venv/`とは依存関係を共有しない。
+初回は[`real/README.md`](real/README.md)で実行環境と接続先を設定する。
+準備済み環境での計測は[`MAPPING_QUICKSTART.md`](MAPPING_QUICKSTART.md)を参照。
+PCごとのNIC名・G1やカメラのアドレス・保存先は`real/.env`へ設定する。
+`.env.example`は設定のひな形であり、接続先がそのまま利用できることを保証しない。
 
 ## 現在の状態
 
@@ -49,8 +61,9 @@ G1内蔵LIOサービスの応答とセンサートピックを確認できた。
 - **`stop`の正常完了とG1側へのPCD書き出し**。試験では2回とも停止時に通信が切れており、
   G1へ`kEndMapping`が届かなかった。そのため`/home/unitree/maps/`にPCDは生成されていない
   （実機を全探索して確認済み）。この経路は次回の試験で確かめる。
-- **`raw` backendの実走**。`doctor`はPASSするが、FAST-LIO2で実際に地図を作ってはいない。
-  LiDAR–IMU外部パラメータと時刻同期の詰めはこの段階で必要になる。
+- **移動計測の定量精度**。2026-10-21にnative・無線で実機移動計測を行い、
+  記録済み3,443スキャンからのOctoMap再生成・床基準化・3D表示まで確認した。
+  絶対位置の精度、SLAMドリフト、LiDAR–IMU外部パラメータ・時刻同期の詰めは未評価。
 
 Isaac Simでは`sim` backendとして、Mid-360形式点群、200Hz IMU、RGB、CameraInfoを
 同一simulation clockで配信し、実機rawと同じFAST-LIO2・recorderへ接続できる。

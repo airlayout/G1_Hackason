@@ -3,18 +3,284 @@
 G1の部屋Mappingを、内蔵LIOと生LiDAR＋IMUの2方式で実行する現場用環境。
 操作はすべて`mapctl`から行い、成果物形式はbackendによらず共通になる。
 
+## 作業ディレクトリと接続先
+
+初回は本書で実行環境と接続先を設定する。準備後のnative＋SSH方式の計測は
+[`../MAPPING_QUICKSTART.md`](../MAPPING_QUICKSTART.md)を参照。
+以下のPC側コマンドは、リポジトリのルートから作業ディレクトリへ移動して実行する。
+
+```bash
+cd Mapping/real
+test -f .env || cp .env.example .env
+```
+
+`.env.example`は設定のひな形。NIC名・G1やカメラのアドレス・保存先は、
+使用するPCとG1に合わせて`.env`で指定する。`.env`はGit管理対象外で、
+`mapctl`が自動で読み込む。手動の`ssh`・`scp`コマンドは`.env`を読み込まない。
+
+本書の手動SSH例では、接続先を`g1`というSSHエイリアスで表す。
+`~/.ssh/config`に使用する接続先を設定するか、コマンド中の`g1`を接続先へ置き換える。
+
+```sshconfig
+Host g1
+    HostName <G1の到達可能なIPアドレスまたはホスト名>
+    User <G1のSSHユーザー>
+```
+
+## Dockerなしで実機を手動計測する
+
+### G1上に生センサとカメラを記録する試験経路
+
+`record_dds_to_bag.py`と`onboard_record_ctl.py`をG1に配置し、systemd user
+サービスとして記録する。SSHを切ってもサービスは残る（G1上で`loginctl show-user
+$(id -un) -p Linger`が`yes`であること）。生LiDAR・IMUはG1内のrosbagに、
+回転済みJPEGと各画像のG1時刻は同じセッションの`raw/camera/`に保存する。
+rosbagには画像を含めない。画像の時刻は露光時刻ではない。
+
+```bash
+ssh g1 'mkdir -p ~/mapping_tools'
+scp quickstart/record_dds_to_bag.py g1:~/mapping_tools/record_onboard_with_camera.py
+scp quickstart/onboard_record_ctl.py g1:~/mapping_tools/
+scp quickstart/innomaker_camera_server.py g1:~/mapping_tools/
+# G1のカメラサービスがまだない場合だけ起動する。
+ssh g1 'systemd-run --user --unit=g1-mapping-camera --property=Type=exec /usr/bin/python3 -u "$HOME/mapping_tools/innomaker_camera_server.py"'
+ssh g1 'python3 ~/mapping_tools/onboard_record_ctl.py start --name room'
+ssh g1 'python3 ~/mapping_tools/onboard_record_ctl.py status'
+ssh g1 'python3 ~/mapping_tools/onboard_record_ctl.py stop'
+```
+
+G1のサービスはG1の再起動後は再起動が必要。記録中はカメラサービスを停止しない。
+終了時`state.json`の状態、各トピック件数、`lidar_imu_dropped`、カメラの
+フレーム数と最大間隔を確認する。これらはDDSで受信する前の欠落を保証しない。
+記録先はG1の`~/mapping_runs/<session_id>/`。PC上の`mapctl`は別セッションであり、
+ライブ表示に利用できるが接続断で停止する。G1記録から完成地図を作るには、
+PCとの接続復旧後に次を実行する。生データはG1に残り、PCでFAST-LIO再処理後、
+生成地図・軌跡・派生rosbagをG1にもコピーする。
+
+```bash
+G1_RECORD_SSH=g1 ./quickstart/reconstruct_onboard.sh <session_id>
+```
+
+完成地図は`~/mapping_runs/<session_id>/map/map_fastlio.pcd`に戻る。この再処理には
+PCのnative環境が必要で、G1単体では完成地図を自動生成しない。再生後の地図の精度や
+画像との同期は別途検証する。
+この補助スクリプトはG1側の`unitree`ユーザーの既定ディレクトリ構成を前提にする。
+接続先や保存先を設定で管理する通常計測には、下記の`mapctl`経路を使う。
+
+### Innomakerヘッドカメラ
+
+`quickstart/innomaker_camera_server.py`はInnomaker U20CAMを安定した
+`/dev/v4l/by-id/`名で開き、映像を反時計回りに90度回転して、Mappingの
+`head_camera`形式でポート5555へ配信する。G1上のPython 3、OpenCV、pyzmqが必要。
+実機への配置と起動例（配信はこのSSH端末を開いている間だけ動作する）:
+
+```bash
+ssh g1 'mkdir -p ~/mapping_tools'
+scp quickstart/innomaker_camera_server.py g1:~/mapping_tools/
+ssh -t g1 'python3 -u ~/mapping_tools/innomaker_camera_server.py'
+```
+
+別端末のMapping設定は`CAMERA_HOST`をG1の到達可能なアドレスにし、
+`CAMERA_WIDTH=720`、`CAMERA_HEIGHT=1280`とする。標準では1280×720で取得し、
+回転後720×1280、約5fpsのJPEGを送る。`./mapctl doctor --backend raw`で受信を
+確認してから通常どおり開始する。起動時の設定やカメラの個体によっては
+by-idパスを`--device`で指定する。
+
+画像時刻はG1のホスト時計でフレーム取得直後に付けた近似値であり、露光時刻の
+ハードウェア同期ではない。既存ブリッジのmetadataにある
+`lerobot_camera_capture_realtime`は互換形式上の表示で、このサーバーでは
+上記の近似時刻を意味する。カメラ内部・歪み・LiDARとの外部校正、時計のずれ、
+画像ごとのカメラ姿勢は別途確認が必要。画像を回転しているため校正もその向きと
+解像度で扱う。記録成功はRGB Gaussian Splattingの完成を意味しない。
+
+### 無線SSH方式の設定と計測
+
+PCとG1を端末間通信が可能な同じネットワークへ接続する。無線では5GHz Wi-Fiを推奨する。
+SSID・NIC名・IPアドレスは環境ごとに異なるため、`.env`に次を設定する。
+
+| 設定 | 内容 |
+|---|---|
+| `MAPPING_RUNTIME` | `native` |
+| `MAPPING_TRANSPORT` | `ssh`（Docker方式では使用不可） |
+| `G1_IFACE` | PCのWi-Fi NIC名。`ip -br address`で確認する |
+| `G1_HOST` | PCから到達できるG1のIPアドレス |
+| `G1_SSH_USER` | G1のSSHユーザー。既定は`unitree` |
+| `G1_SSH_HOST` | SSHの接続先。省略時は`G1_HOST`。別経路のIPやSSHエイリアスも指定可能 |
+| `CAMERA_HOST` | PCから到達できるカメラ配信先。G1上で配信する場合はそのG1のアドレス |
+| `ROS_DOMAIN_ID` | PC内のROS domain。他のROS処理との重複を避ける（例：46） |
+| `G1_SENSOR_IFACE` | G1内部でLiDAR・IMUを受信するNIC。既定は`eth0` |
+| `G1_SENSOR_SDK_PATH` | G1上のUnitree SDK2 Pythonの絶対パス |
+| `G1_SENSOR_REMOTE_DIR` | G1上の中継・記録スクリプトの配置先 |
+| `G1_MAPPING_RUNS_DIR` | G1上の原本保存先の絶対パス |
+| `MAPPING_RUNS_DIR` | PC側の保存先。既定は`./runs` |
+
+G1側のSDK・スクリプト・保存先の既定値は`.env.example`と
+[`python/g1_mapping/config.py`](python/g1_mapping/config.py)を参照する。
+必要に応じて既定値を上書きし、G1のSSH鍵認証とカメラ配信を確認する。
+下記の初回構築が完了したら、診断・計測・ライブ表示を開始する。
+
+```bash
+./mapctl doctor --backend raw
+./mapctl start --backend raw --name room_a
+./mapctl view --live
+```
+
+5〜10秒静止した後に純正コントローラで低速移動する。終了時はG1を止め、
+端末でCtrl+Cを押して表示を閉じ、`./mapctl stop`、`./mapctl validate`を実行する。
+停止時にはG1との接続を戻して原本を回収する。回収待ちになった場合は`./mapctl recover`で再開する。
+
+無線方式は`MAPPING_TRANSPORT=ssh`、`MAPPING_RUNTIME=native`を使用する。
+LiDAR/IMUは`G1_SENSOR_IFACE`のDDS domain 0からCDRのままSSHで中継し、
+PC内はループバック・`ROS_DOMAIN_ID`で指定したdomainでFAST-LIO2へ入力する。
+RGBは`CAMERA_HOST`へ接続する。
+計測ではG1上でLiDAR・IMU・RGBの記録を独立起動する。Wi-FiやSSHが切れても
+G1内の記録は続く。PCへの地図用中継は自動再接続し、保存済みデータの続きから
+元の時刻順に最大`SENSOR_CATCHUP_RATE`倍速で追いつく。追いつくまでは地図表示が遅れる。
+RGBはPCへ最新フレームを配信し、通信復帰後は自動で受信を再開する。
+G1へ歩行指令は送らない。SSH鍵で接続できることが前提。
+初回と関連コードの更新後に`./mapctl build`を実行し、中継・記録スクリプトをG1へ配置する。
+G1のDHCPアドレスが変わった場合は`.env`の`G1_HOST`・`CAMERA_HOST`と、
+そのアドレスを使う`G1_SSH_HOST`やSSHエイリアスの設定を更新する。
+
+### 初回構築と共通操作
+
+Ubuntu 24.04 x86_64にROS 2 Jazzy、PCL・Eigen・OctoMapの開発ライブラリが
+導入済みなら、`native`環境を使用できる。FAST-LIO2と共通ノードを
+リポジトリ内の`_local/mapping/`へ構築し、ホストのROSやconda環境を変更しない。
+不足するCycloneDDS・pcl_ros・pyzmqは、固定版のdebを同じ場所へ展開する。
+直接DDS購読ではDocker・sudo・G1へのSSHは計測自体には必要ない。
+無線SSH中継ではG1へのSSH鍵認証を使用する。
+
+```bash
+# Mapping/realで、接続方式に合わせて.envを設定してから実行する。
+# MAPPING_RUNTIME=native
+# MAPPING_TRANSPORT=ddsなら実機用Ethernet NIC、sshならPCのWi-Fi NICをG1_IFACEに指定する。
+./mapctl build
+./mapctl doctor --backend raw
+```
+
+G1上のカメラ配信が起動済みなら、そのまま利用する。未起動の場合は
+上記「Innomakerヘッドカメラ」、または下記「現場操作」のカメラ専用serverを使う。
+カメラの焦点距離は推測で埋めず、未取得なら
+`CAMERA_FX/FY/CX/CY`を0のままにする。この場合、画像は記録されるが
+`validate`は内部パラメータ未確定のWARNを表示する。
+
+```bash
+# 端末1: 計測開始。autoではなくrawを明示する。
+./mapctl start --backend raw --name room_a
+./mapctl status
+
+# 端末2: ライブ地図・軌跡・RGB
+./mapctl view --live
+
+# G1を5〜10秒静止させてから、純正リモコンで低速に部屋を巡回する。
+# 計測処理から歩行指令やSLAM開始・終了APIは送信しない。
+
+# 端末1: 停止・保存。G1とカメラ配信はこの完了まで接続したままにする。
+./mapctl stop
+./mapctl validate
+./mapctl view
+```
+
+成果物は`MAPPING_RUNS_DIR/<session>/`（既定は`runs/<session>/`）にまとまる。
+`map/map_raw.pcd`、`map/map_raw.bt`、
+`map/map_raw.octomap.json`、rosbag、軌跡とログを保存する。
+native/ssh/rawでは`stop`がG1記録の停止、SHA-256照合付き回収、全LiDAR・IMUの
+FAST-LIO2 → OctoMap再処理を続けて実行する。再処理は元の計測時間の約1.25倍以上を要する。
+PCのライブ記録は`raw/rosbag2/`、回収した完全な原本は`raw/g1/rosbag2/`、
+再処理した登録点群・センサ姿勢は`derived/final_<ID>/rosbag2/`に残る。
+最終地図は`map/map_raw.*`、ライブ地図は`map/map_preview.*`として保存し、軌跡も更新する。
+G1原本は`G1_MAPPING_RUNS_DIR/<session>/`にも残し、自動では削除しない。
+その他の方式では地図を保存した後に各プロセスを正常終了し、rosbagを最後に閉じる。
+端末を閉じても記録は続くため、必ず`./mapctl stop`を使う。
+
+### 通信断・回収失敗から再開する
+
+接続が戻るまではPC画面の地図とRGBは更新されない。地図の遅延・接続状態は
+`./mapctl status`の`connection`で確認できる（`connected` / `disconnected` / `catching_up`）。
+RGBはRVizの`Camera`パネルに表示する。既存のG1 LeRobot ImageServerを使用し、
+G1側の記録は同じ機体内の`127.0.0.1:CAMERA_ZMQ_PORT`を購読する。
+
+停止時にもG1へ接続できない場合、セッションは完了せず回収待ちになる。
+G1は停止要求が届くまで記録を続けるため、接続を戻して次を実行する。
+
+```bash
+./mapctl recover                 # 回収待ちのセッションを再開
+./mapctl recover <session_id>    # セッションIDを指定して再開
+./mapctl validate
+./mapctl view                    # 完全な原本から作った最終地図
+```
+
+回収途中の再切断では`.part`から再開し、全ファイルのサイズとSHA-256を照合する。
+記録バッファ超過、G1空き容量不足、必須センサーの停止、再生成失敗を完了扱いにしない。
+G1の空き容量下限は`G1_MIN_FREE_GIB`（既定2GiB）。G1側にPython 3とUnitree SDK2 Pythonが必要。
+カメラ記録用pyzmqがG1のSDK用Pythonに無い場合、`build`が固定版のwheelを
+中継スクリプトの`deps/`へ配置する（初回のみG1からPyPIへ接続できることとpipが必要）。
+G1のシステムやLeRobot環境へはインストールしない。
+機体の電源断やストレージ障害への保証は含まない。
+
+再生成はDocker版と同じC++実装・計測時の設定を使う。
+
+```bash
+./mapctl rebuild <session_id> --output /tmp/room_rebuilt.pcd
+bash tests/run_tests.sh
+```
+
+検証実績（2026-10-21）：native経路を実機で確認した。LiDAR約9.96Hz、IMU約200Hz、
+640×360 RGB約5Hzを受信し、短時間記録から33,609点・86スキャンの地図を保存した。
+保存PCDとrosbagから再生成したPCDはSHA-256が一致した。RVizでの保存地図配信と
+GUI起動も確認済み。歩行しながらの地図品質とカメラ内部パラメータの確定は別途確認する。
+
+同日の移動計測では3,443スキャンから地図を再生成し、床基準化して3D表示まで確認した。
+絶対位置やSLAMドリフトの定量精度は未評価。計測・後処理の共通手順と過去の計測例は
+[`../MAPPING_QUICKSTART.md`](../MAPPING_QUICKSTART.md)を参照。
+
+native環境の対象backendは`raw`と`sim`。内蔵SLAMを使う`onboard`と
+Docker field kitの`bundle`は、以下のDocker環境向けである。
+
 ## backend
 
 | backend | 処理場所 | 主な依存 | PCD保存 |
 |---|---|---|---|
 | `onboard` | G1内蔵SLAMサービス | Unitree SDK2 | 登録済み点群から共通再構成 |
-| `raw` | 現場Ubuntu PC | ROS 2 Humble、FAST-LIO2 | 現場PCへ直接保存 |
-| `sim` | Isaac Sim＋現場PC | ROS 2 Humble、FAST-LIO2 | 現場PCへ直接保存 |
+| `raw` | 現場Ubuntu PC | ROS 2 Humble / Jazzy、FAST-LIO2、OctoMap | 空き観測で訂正した共通地図を保存 |
+| `sim` | Isaac Sim＋現場PC | ROS 2 Humble、FAST-LIO2、OctoMap | rawと同じ処理で保存 |
 
 いずれも、生LiDAR・IMU・RGB・CameraInfo・正規化済みodometry・登録点群を同じ
 rosbag2へ並行記録する。これが再処理可能な正本になる。
 
-## 必要環境
+## FAST-LIO2＋OctoMapの統合経路
+
+`raw` / `sim` は、FAST-LIO2の歪み補正済み登録点群と、そのスキャン終端時刻の
+LiDAR姿勢を使ってOctoMapを更新する。後の光線が通過した場所は占有確率を下げ、
+空きになった場所の点を `/g1_mapping/map` から削除する。
+表示・停止時のPCD保存・事後再生成は、同じC++実装と設定を使う。
+
+```bash
+./mapctl build                         # 選択した実行環境を構築・更新する
+./mapctl start --backend raw --name room_a
+./mapctl view --live                   # 別端末
+./mapctl stop                         # 訂正済みmap_raw.pcdを保存
+./mapctl rebuild <session_id> --output /tmp/room_rebuilt.pcd
+```
+
+`auto` は従来どおりUnitree内蔵方式を優先する。この統合経路には `--backend raw`
+（Isaac Simでは `sim`）を明示する。内蔵方式の蓄積処理は別経路のままである。
+
+保存先は `map/map_raw.pcd`、占有木は `map/map_raw.bt`、設定・処理スキャン数は
+`map/map_raw.octomap.json`。PCDには `density` に加えて `occupancy` を持たせる。
+`density` は観測回数の表示用指標で、占有確率ではない。
+
+OctoMapの設定は `.env` の `OCTOMAP_*`、出力点群の間引きは `MAP_VOXEL_SIZE` で指定する。
+計測時の設定はmanifestにも保存し、事後再生成で再利用する。
+既定のレイ上限は3mで、その外側など「空きの証拠がない」点は未知として残す。
+未観測と空きは区別し、空スキャンだけで障害物を消すことはしない。
+
+FAST-LIO2のLiDAR姿勢配信は固定commitへの小さなpatchで追加している。
+LiDAR–IMUの推定外部パラメータを含むため、IMUの位置をLiDAR原点として代用しない。
+点群と姿勢は時刻の完全一致で組み合わせる。GLIMやループ閉じ込みは含まない。
+
+## Docker方式の必要環境
 
 - Ubuntu PC
 - Docker Engine + Docker Compose
@@ -23,10 +289,10 @@ rosbag2へ並行記録する。これが再処理可能な正本になる。
 
 ROS 2やPCLをホストへ直接インストールする必要はない。
 
-## 初回準備
+## Docker方式の初回準備
 
 ```bash
-cp .env.example .env
+test -f .env || cp .env.example .env
 # .envのG1_IFACEと必要なトピック名を編集
 chmod +x mapctl scripts/*.sh docker/*.sh
 ./mapctl build
@@ -45,12 +311,12 @@ chmod +x mapctl scripts/*.sh docker/*.sh
 mockでも実際と同じセッション状態遷移を通り、PCD、trajectory、rosbag metadata、
 品質レポートを生成する。
 
-## 現場操作
+## 現場操作（Docker・内蔵LIO方式）
 
 G1 PC2では、歩行modeに触れないカメラ専用serverを先に起動する。
 
 ```bash
-ssh -t unitree@192.168.123.164 'bash ~/mapping_tools/start_camera_only.sh'
+ssh -t g1 'bash ~/mapping_tools/start_camera_only.sh'
 ```
 
 この端末は計測中そのまま開いておく。別端末の現場PCで次を実行する。
@@ -76,21 +342,67 @@ ssh -t unitree@192.168.123.164 'bash ~/mapping_tools/start_camera_only.sh'
 ./mapctl rebuild                          # 最新セッション
 ./mapctl rebuild <session_id>             # セッション指定
 ./mapctl rebuild --voxel 0.02             # 解像度を上げる（既定 0.05m）
-./mapctl rebuild --voxel 0                # 間引きなし
-./mapctl rebuild --topic /unitree/slam_mapping/points
+./mapctl rebuild --method accumulate --voxel 0    # 訂正なし・間引きなし
+./mapctl rebuild --method accumulate --topic /unitree/slam_mapping/points
 ./mapctl rebuild --force                  # 既存のmap_raw.pcdを上書きする
 ```
 
-`db3`を直接読むため**ROS 2もDockerも要らず**、`metadata.yaml`が欠けたセッションからも
-復旧できる。処理はホストのPythonだけで完結する（標準ライブラリのみ）。
+`raw` / `sim` の既定はOctoMap再生成で、共通C++実装が `db3` の登録点群と
+`/g1_mapping/sensor_pose` を読む。`metadata.yaml`が欠けていても再生成できる。
+`--voxel` を省略すると計測時の値を使う。OctoMap再生成では正の値が必要になる。
 
-既定ではbackendによらず`/g1_mapping/cloud_registered`を使う。adapterより前の生LiDARは
-センサー座標系なので、PCD再構成には使用しない。
+`onboard` の既定、および明示した `--method accumulate` は従来の単純蓄積で、
+ホストPythonのみで動く。この経路では同一ボクセルの最初の1点を残し、空き観測による
+訂正は行わない。`--voxel 0` による間引きなしの指定もこの経路で使用する。
 
-同一ボクセルに落ちた点は最初の1点だけを残す。既存の`map_raw.pcd`は`--force`なしでは
-上書きしない（実機から回収した地図のほうが正であるため）。
+センサ姿勢の記録がない古いraw/simセッションは、既定のOctoMap再生成でエラーにする。
+古い生LiDAR＋IMUを使って作り直す場合は次を使う。
+この旧記録向けの再処理スクリプトはDocker方式で実行する。
+
+```bash
+./quickstart/replay_fastlio.sh <session_id>
+```
+
+再生するのは生LiDARとIMUのみで、古い登録点群や地図を再入力しない。
+記録に `/clock` がある場合はその時計を使い、ない場合はbagの再生時計を生成する。
+シミュレーションではゼロ開始の正のセンサ時刻を受け付け、時刻0のスキャンは除外する。
+訂正済みPCDと、`derived/<再生ID>/rosbag2` に新しい点群・センサ姿勢を保存する。
+終了時に表示する `mapctl rebuild --bag-dir ...` コマンドで、その結果を再生成できる。
+
+既存の`map_raw.pcd`は`--force`なしでは上書きしない。
 
 作り直したら`./mapctl validate`で検証し、`./mapctl view <session_id>`で確認する。
+
+### 床基準の高さ処理（地図Zを鉛直と仮定しない）
+
+FAST-LIOの初期地図座標は必ずしも水平・上向きではない。`Z < 2`だけでは
+「床から2m未満」にはならない。まずIMU加速度を地図座標で確認し、軌跡を挟む
+平行な床・天井面と照合する。初期IMU座標と地図初期座標が一致する場合以外は、
+IMU加速度を記録姿勢で地図座標へ回転してから使う。
+
+`quickstart/postprocess_floor_pcd.py` は、確認済みの `--up ux uy uz` と
+`--trajectory trajectory/trajectory.tum` を使い、床・天井を推定して別ディレクトリへ
+出力する（numpy/scipy/matplotlib/PyYAMLが必要）。元PCDは上書きしない。
+入力は、上記 `mapctl rebuild --output ...` で元地図とは別に再生成したPCDを推奨する。
+
+- 半径15cm以内に他の2点がない孤立点のみ除去する。
+- 床をZ=0、床法線を+Zにする右手座標系へ剛体変換する。
+- 処理済み全点群を複製し、保存値で床高さ `height < 2.0 m` を満たす点だけ残す。
+- 高さ0〜2mを青→水色→緑→黄→赤で着色し、元の密度・観測回数等も保持する。
+- `processing.json` に平面支持数・残差・変換行列・ハッシュを残す。
+
+近傍点による孤立点除去はOctoMapとは別の任意の補助処理で、`--no-denoise` で省略できる。
+同一ソースの確認済み座標変換は `--up` の代わりに `--reference-processing processing.json`
+を指定して再利用できる。比較時はこの方法で床基準だけを揃え、元の点は除去せずに表示できる。
+
+床・天井が検出できない場合や軌跡と整合しない場合は停止する。高さ処理は
+ループ閉じ込みや姿勢再最適化の代わりではなく、XYの絶対方位も確定しない。
+再生成時の `.bt` は元の地図座標のままで、床座標のPCDとは混在させない。
+床基準の結果は、構築済みのnative環境で次のように開ける（G1への接続は不要）。
+
+```bash
+bash quickstart/view_floor_map.sh runs/<session_id>/derived/<処理出力ディレクトリ>
+```
 
 ## RViz表示
 
@@ -109,14 +421,26 @@ Mapping中のライブ表示は、別のGUI端末から実行する。
 ```
 
 `--publish-only`はPCDを`/g1_mapping/map`へ配信するだけで、RVizを起動しない。
-GUI版はX11/XWaylandの`DISPLAY`を可視化専用コンテナへ渡す。Mappingコンテナへ
-RVizやディスプレイソケットを渡すことはない。
+Docker方式のGUI版はX11/XWaylandの`DISPLAY`を可視化専用コンテナへ渡す。
+native方式では、構築したROS 2環境でRVizを起動する。
 
 GUI接続で失敗する場合は`echo $DISPLAY`を確認する。Xauthorityが標準位置にない環境では、
 実在する認証ファイルを`XAUTHORITY`へ設定してから実行する（例:
 `export XAUTHORITY=/run/user/<UID>/gdm/Xauthority`）。
 
 詳細は[`../FIELD_RUNBOOK.md`](../FIELD_RUNBOOK.md)を参照。
+
+## 統合経路の検証
+
+```bash
+bash tests/run_tests.sh
+```
+
+`liboctomap-dev`がある環境では、偽点の削除・静止構造と未知領域の保持・保存後の
+確率更新・表示周期に依存しない再生成をC++で検証する。CIにもこの依存を追加している。
+ROS 2とビルド済みworkspaceがある環境では `test_occupancy_ros.py` が実ノードを起動し、
+偽点が消えること、保存失敗の伝播、PCD保存とmetadataなしdb3からの再生成の一致を確認する。
+ROSや3DGSの依存がないホストでは、それぞれのテストを理由付きでskipする。
 
 ## オフライン配備
 
@@ -132,6 +456,6 @@ GUI接続で失敗する場合は`echo $DISPLAY`を確認する。Xauthorityが�
 
 ## 外部依存の固定
 
-利用するcommitは[`vendor/mapping.repos`](vendor/mapping.repos)と
-[`docker/Dockerfile`](docker/Dockerfile)のbuild argsで固定している。更新時は両方を同時に
-変更し、mock、Docker build、rosbag replayを再検証する。
+利用するcommitはDocker方式では[`docker/Dockerfile`](docker/Dockerfile)のbuild args、
+native方式では[`native/setup.sh`](native/setup.sh)で固定している。
+更新時は両方式の指定を揃え、mock、Docker build、rosbag replayを再検証する。
