@@ -346,3 +346,9 @@
 - **立ち位置の地図は頭カメラの角度で変わる**。53°（実機の直したあと 51〜54°）だと 46 cm 以上で ▲ が画像から出る。目安の 48 cm で見えるかは次の実機日に確かめる（それまで勧める範囲は変えない）
 - **頭カメラの向きは `auto_press.py` の事前確認で毎回測る**（10° より大きくずれたら止める、3b64071）。中止の理由は auto の記録の `"agent"` に残る（b84e5fb）
 - 手首を曲げる形で、ボタンが体の中央寄りでも計画が立つ（7ef4b99。patterns/robot_arm_control.md）。左腕は `--arm left`（04d0e1d）
+
+## 敬礼・指さしの既存モーションは無い・`right hand up` のあと倒れた（2026-11-13）
+- Unitree 標準の腕アクション（`G1ArmActionClient.ExecuteAction`）は 16 個（hands up 15、clap 17、high five 18、right hand up 23、high wave 26、shake hand 27 など）で、**敬礼と指さしは無い**
+- **`Entame/real/arm_wave_real.py` で `right hand up` を支え無しに送ると、動作のあとゆっくり力が抜けて倒れた。** このスクリプトは動作の 3 秒後に `ReleaseMode()`（歩行制御の解除）を呼ぶ。原因は推定（収録が実行前に切れていた）。`high wave` は人が支えて試した記録
+- 腕だけ動かすなら `rt/arm_sdk`（歩行コントローラは動かしたまま）。`actions/`（敬礼 `salute`・指さし `point`・`point_level`）を作った。**角度は計画値で実機は未確認**。`real/run_action.py --action <名前> --path sim|arm_sdk`（既定は dry-run、`--execute` は人が打つ）。腰のずれの上限は実行時だけ 5°（`--waist-max-deg`）
+- ノート PC が有線で `192.168.123.x` を持っていれば（`ip -br a`）、PC2 に入らず `--network-interface eth1` で直接送れる。ゼロトルクのままだと「モータが無効」で止まるので、ダンピング（FSM 1）を経由して立たせる
