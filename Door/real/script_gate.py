@@ -55,6 +55,8 @@ BAR_ON_MIN = 0.01                    # 付け根から少なくともこれだ�
 SIM_S = 25.0
 DT = 0.02
 WALL_OBS = ("板", "枠", "壁")
+HOOK_FAIL_M = 0.02                   # 掛け終えた時の手のひらと掛けた形の差の線（行き先どおりに動く腕で）
+HOOK_DIR_FAIL_DEG, HOOK_DIR_WARN_DEG = 10.0, 5.0  # 掛け終えた時の手の向きの差の線
 BAR_OBS = ("棒", "付け根")
 
 
@@ -90,10 +92,12 @@ def stance_poses(st) -> List[Tuple[str, dfr.PlanarPose]]:
 
 
 def run_pose(p: dscr.ScriptParams, g: dcl.DoorGeom, pose: dfr.PlanarPose, pelvis_z: float, chain: fk.ArmFK, ik: aik.ArmIK,
-             name: str, shift: float = 0.0) -> PoseResult:
-    """行き先どおりに動く腕で、2c の触れた所（当てる点の高さ）まで台本を走らせる"""
+             name: str, shift: float = 0.0, hook: bool = False) -> PoseResult:
+    """行き先どおりに動く腕で、2c の触れた所（当てる点の高さ）まで台本を走らせる。
+    hook（11-13 夜・p.hook_deg > 0）: 2d の押し下げと手首を下げて掛ける所まで走らせ、掛けた形に届くかと板・枠・壁とのすき間を見る
+    （門番の棒は閉じたまま動かないので、2c・2d の棒とのすき間は見ない。押し下げで棒が下がっても板からの距離は変わらない）"""
     res = PoseResult(name)
-    p = replace(p, touch_by_height=True, stop_after="2c", retries=0)  # 門番は「当てる点の高さに下りた時」で見る
+    p = replace(p, touch_by_height=True, stop_after="2d" if hook else "2c", retries=0)  # 門番は「当てる点の高さに下りた時」で見る
     sd = dscr.ScriptDoor(p, g.width, g.backset, g.lever_height, g.lever_left)
     sd.shift = shift  # 空振りの押し直しの横のずらし（0 でなければ、棒に乗るかは見ず、壁・板とのすき間と可動域だけ見る）
     arm = drst.ScriptArm(sd, ik, drst.make_palm_fn(chain, pelvis_z, g.lever_left), pelvis_z)
@@ -111,7 +115,7 @@ def run_pose(p: dscr.ScriptParams, g: dcl.DoorGeom, pose: dfr.PlanarPose, pelvis
             out, q7 = arm.step(k * DT, q, quat, pose, tau)
             if q7 is not None:
                 q[ik.idx] = q7
-            if out.sub in ("2b", "2c"):
+            if out.sub in ("2b", "2c") or (hook and out.sub == "2d"):
                 # 逆運動学が切る所（URDF の端から LIMIT_MARGIN 内側）までの余裕。0 は逆運動学が端に張り付いている
                 m = np.minimum(q[ik.idx] - ik.lo, ik.hi - q[ik.idx])
                 res.margin = min(res.margin, float(m.min()))
@@ -124,8 +128,8 @@ def run_pose(p: dscr.ScriptParams, g: dcl.DoorGeom, pose: dfr.PlanarPose, pelvis
                     segs = dcl.arm_segments(chain, q, pose, quat, pelvis_z, g, "left" if g.lever_left else "right")
                     gaps = dcl.clearances(segs, g, obs)
                     for o, (d, part) in gaps.items():
-                        if out.sub == "2c" and o in BAR_OBS:
-                            continue  # 2c は棒へ下りていく所
+                        if out.sub in ("2c", "2d") and o in BAR_OBS:
+                            continue  # 2c は棒へ下りていく所・2d は棒を押し下げている所
                         if d < res.min_gap[o][0]:
                             res.min_gap[o] = (d, f"{part}・{out.sub}")
             if out.stop:
@@ -139,7 +143,9 @@ def run_pose(p: dscr.ScriptParams, g: dcl.DoorGeom, pose: dfr.PlanarPose, pelvis
     segs = dcl.arm_segments(chain, q, pose, quat, pelvis_z, g, "left" if g.lever_left else "right")
     res.bar = dcl.bar_contact(segs, g)
     gap, at = res.bar
-    if shift == 0.0 and not (gap <= BAR_ON_GAP_M and BAR_ON_MIN <= at <= g.bar_len):
+    if hook:
+        _hook_end(res, sd, arm, ik, q, pose, quat)
+    elif shift == 0.0 and not (gap <= BAR_ON_GAP_M and BAR_ON_MIN <= at <= g.bar_len):
         res.bad(f"当てる点の高さに下りた時、手の先が棒の上に無い（すき間 {100 * gap:.1f} cm・付け根から {100 * at:.1f} cm）")
     for o in WALL_OBS:
         d, where = res.min_gap[o]
@@ -162,13 +168,37 @@ def run_pose(p: dscr.ScriptParams, g: dcl.DoorGeom, pose: dfr.PlanarPose, pelvis
     return res
 
 
+def _hook_end(res: PoseResult, sd: dscr.ScriptDoor, arm: drst.ScriptArm, ik: aik.ArmIK, q: np.ndarray,
+              pose: dfr.PlanarPose, quat: np.ndarray) -> None:
+    """掛け終えた時: 手のひらが掛けた形（＋押さえの先行）に着き、手の向きが上向きになっているか"""
+    if sd.hook_palm0 is None:
+        res.bad("2d で手首を下げ始めなかった")
+        return
+    geo, d = sd.hook_geometry(sd.hook_palm0, 1.0)
+    R, T = arm._frame(pose, quat)
+    palm = T + R @ fk.palm_in_pelvis(ik.chain, q, ik.side)
+    err = float(np.linalg.norm(palm - (geo + np.array([0.0, 0.0, sd.hook_lead]))))
+    u, _ = ik.direction(q, q[ik.idx])
+    ang = math.degrees(math.acos(float(np.clip((R @ u) @ d, -1.0, 1.0))))
+    res.lines.append(f"  掛けた形: 手のひらの差 {100 * err:.1f} cm・手の向きの差 {ang:.1f}°（手の先 {sd.p.hook_deg:.0f}° 上）")
+    if err > HOOK_FAIL_M:
+        res.bad(f"掛けた形に手のひらが届かない（差 {100 * err:.1f} cm・線 {100 * HOOK_FAIL_M:.0f} cm）")
+    if ang > HOOK_DIR_FAIL_DEG:
+        res.bad(f"手首を下げ切れない（手の向きの差 {ang:.1f}°・線 {HOOK_DIR_FAIL_DEG:.0f}°）")
+    elif ang > HOOK_DIR_WARN_DEG:
+        res.note(f"手の向きが掛けた形から {ang:.1f}° ずれる")
+
+
 def check(p: dscr.ScriptParams, g: dcl.DoorGeom, pelvis_z: float, urdf: Optional[str] = None,
           poses: Optional[Sequence[Tuple[str, dfr.PlanarPose]]] = None) -> Tuple[bool, bool, List[PoseResult]]:
     """返り値: (通ったか, 注意があるか, 構えの位置ごとの結果)"""
     chain = fk.load_chain(urdf)
     ik = aik.ArmIK(chain, "left" if g.lever_left else "right", urdf)
     st = dscr.script_stance(p, g.width, g.backset, g.lever_height, g.lever_left)
-    results = [run_pose(p, g, pose, pelvis_z, chain, ik, name) for name, pose in (poses or stance_poses(st))]
+    ps = list(poses or stance_poses(st))
+    results = [run_pose(p, g, pose, pelvis_z, chain, ik, name) for name, pose in ps]
+    if p.hook_deg > 0.0:  # 11-13 夜 手首を下げて掛ける形: 同じ構えの位置で 2d の終わりまで
+        results += [run_pose(p, g, pose, pelvis_z, chain, ik, f"{name}・掛ける", hook=True) for name, pose in ps]
     if poses is None:  # 空振りの押し直し: 構えの真ん中で、ずらした先でも壁・板に当たらず腕が届くか
         results += [run_pose(p, g, st.target, pelvis_z, chain, ik, f"押し直し 横 {100 * v:+.0f} cm", shift=v) for v in p.miss_shifts]
     return all(r.ok for r in results), any(r.warn for r in results), results

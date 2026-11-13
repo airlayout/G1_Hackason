@@ -66,6 +66,17 @@ class ScriptParams:
     # 手の先の向き（水平のまま蝶番の側へ振る角度。0＝扉へまっすぐ・90＝棒に沿って真横）。負の値で向きを縛らない。
     # 11-12 実機: 60° は棒の脇を通って空振り、80° は肩 yaw が可動域の端で手が止まった → 0°（まっすぐ前）で手の先で押す形が通った
     hand_dir_deg: float = 0.0
+    # 11-13 夜 手首を下げてレバーに掛ける（ユーザー案）: 2d で押し下げた後、手前の棒の縁（手のひらの原点から手の向きに hook_pivot 先）を
+    # 支点に手首を下げ、手の先を hook_deg 上へ向ける。同時に手を手の向きへ hook_slide 滑らせ、棒の縁を手の先から遠ざける。
+    # 前へ押す力が「前と下」の向きで棒に入る＝押すほど棒に食い込む（水平の手は前へ摩擦でしか押せず、11-13 実機で棒から滑った）。
+    # 寸法（door_clearance）: 棒の中心は手のひらの原点の約 10 cm 先・半径 1.1 cm → 手前の縁は約 9 cm 先。扉の角度の基準は掛け終えた
+    # 手のひらで取る。0 で切る（手は水平のまま）。門番（11-13 夜）: 35° は構えの 5 か所とも届く（差 0.3 cm・1.2° 以下）。
+    # 手をまっすぐ前（hand_dir_deg 0・構え x −0.40）だと滑らせ 2 cm で手の先が板に 1 cm より近づく → 既定 1 cm
+    hook_deg: float = 0.0
+    hook_pivot: float = 0.09
+    hook_slide: float = 0.01
+    hook_rate: float = 0.6         # 手首を下げる速さ [rad/s]（35° を約 1 秒）
+    hook_settle_s: float = 0.3     # 掛け終えてから 3a へ移るまで待つ
     # 2a 待つ
     settle_s: float = 1.5
     yaw_still_deg: float = 1.5     # 直近 0.5 秒の向きの幅がこれ未満なら止まっている
@@ -261,6 +272,15 @@ def check_params(p: ScriptParams) -> None:
         raise ValueError(f"walk_hand は {WALK_HANDS} のどれか: {p.walk_hand!r}")
     if not (0.0 <= p.walk_yaw_ff <= 2.0 and p.walk_min_fwd < p.walk_fwd_hold and 0.0 <= p.walk_vx_hold):
         raise ValueError("walk_yaw_ff は 0〜2・walk_min_fwd < walk_fwd_hold・walk_vx_hold ≥ 0")
+    if not 0.0 <= p.hook_deg <= 60.0:
+        raise ValueError(f"hook_deg は 0〜60°: {p.hook_deg}")
+    if p.hook_deg > 0.0:
+        if p.hand_dir_deg < 0.0:
+            raise ValueError("hook_deg を使う時は hand_dir_deg ≥ 0（手の向きを縛る）")
+        if not (0.0 < p.hook_pivot <= 0.12 and 0.0 <= p.hook_slide <= p.hook_pivot - 0.03
+                and 0.05 <= p.hook_rate <= 2.0 and p.hook_settle_s >= 0.0):
+            raise ValueError("hook の定数: hook_pivot 0〜0.12 m・hook_slide 0〜(hook_pivot − 0.03) m・hook_rate 0.05〜2 rad/s・"
+                             "hook_settle_s ≥ 0")
     if p.helper_from not in SUBS[:5]:
         raise ValueError(f"helper_from は {SUBS[:5]} のどれか: {p.helper_from!r}")
     if not (p.helper_speed > 0 and p.helper_press_speed > 0 and 0.0 <= p.helper_back <= 0.20
@@ -364,6 +384,10 @@ class ScriptDoor:
         self.y_3c0: Optional[float] = None               # walk: 3c に入った時の pelvis の横の位置（保つ位置）
         self.yaw_3a0: Optional[float] = None             # walk_in_3a: 3a に入った時の pelvis の向き（保つ向き）
         self.angles: List[Tuple[float, float]] = []      # 直近の（時刻, 扉の角度 rad）
+        self.hook_t0: Optional[float] = None             # 手首を下げ始めた時刻（2d の押し下げの後）
+        self.hook_palm0: Optional[np.ndarray] = None     # 押し下げ終えた時の手のひら（掛ける形の基準）
+        self.hook_lead = 0.0                             # 押し下げ終えた時の行き先の上下の先行（掛ける間も押さえ続ける）
+        self.hook_h = 0.0                                # 今の手の先の上向き [rad]（やり直しの構えで 0 へ戻す）
         self.reason = ""
         self.success = False
         self.lag = self.tau = self.fwd = math.nan
@@ -379,6 +403,52 @@ class ScriptDoor:
             return 0.0
         on = self.sub in ("retreat", "done") or (self.sub in SUBS[:6] and SUBS.index(self.sub) >= SUBS.index(self.p.lean_from))
         return math.radians(self.p.lean_deg) if on else 0.0
+
+    # --- 手首を下げてレバーに掛ける（11-13 夜） ---
+    def _hand_dir(self, h: float) -> np.ndarray:
+        """手の先の向き（扉の座標の単位ベクトル）: 水平に hand_dir_deg だけ蝶番の側へ振り、h [rad] 上へ向ける"""
+        a = math.radians(self.p.hand_dir_deg)
+        return np.array([math.cos(h) * math.cos(a), -self.lr * math.cos(h) * math.sin(a), math.sin(h)])
+
+    def hook_geometry(self, palm0: np.ndarray, f: float) -> Tuple[np.ndarray, np.ndarray]:
+        """掛ける形の進み f（0〜1）の時の手のひらの行き先（押さえの先行は入れない）と手の向き。palm0 は押し下げ終えた手のひら。
+        支点（手前の棒の縁）は palm0 から水平の手の向きに hook_pivot 先。f=1 で手のひらの原点から支点まで hook_pivot − hook_slide"""
+        p = self.p
+        f = min(1.0, max(0.0, float(f)))
+        pivot = np.asarray(palm0, dtype=float) + p.hook_pivot * self._hand_dir(0.0)
+        d = self._hand_dir(f * math.radians(p.hook_deg))
+        return pivot - (p.hook_pivot - f * p.hook_slide) * d, d
+
+    def _begin_hook(self, t: float, palm: np.ndarray) -> None:
+        self.hook_t0, self.hook_palm0 = t, palm.copy()
+        self.hook_lead = min(0.0, float(self.goal[2] - palm[2]))
+        print(f"[script] 手首を下げてレバーに掛ける: 手の先を {self.p.hook_deg:.0f}° 上へ・手を {100 * self.p.hook_slide:.0f} cm 前へ"
+              f"（支点は手のひらの {100 * self.p.hook_pivot:.0f} cm 先・押さえの先行 {100 * self.hook_lead:.1f} cm）", flush=True)
+
+    def _hook_step(self, t: float, palm: np.ndarray, pa: np.ndarray) -> str:
+        """2d の押し下げの後: 手首を下げていく。掛け終えて hook_settle_s 待ったら 3a へ（止める所なら止まる理由を返す）"""
+        p = self.p
+        el = t - self.hook_t0
+        dur = math.radians(p.hook_deg) / p.hook_rate
+        f = min(1.0, el / dur)
+        geo, _ = self.hook_geometry(self.hook_palm0, f)
+        self.hook_h = f * math.radians(p.hook_deg)
+        self.goal = self._lead_cap(geo + np.array([0.0, 0.0, self.hook_lead]), palm)
+        if el < dur + p.hook_settle_s:
+            return ""
+        d = palm - geo
+        print(f"[script] 掛けた: 手のひら−掛けた形 前 {100 * d[0]:+.1f} 横 {100 * d[1]:+.1f} 上 {100 * d[2]:+.1f} cm", flush=True)
+        return self._pressed(t, palm, pa)
+
+    def _pressed(self, t: float, palm: np.ndarray, pa: np.ndarray) -> str:
+        """押し下げ（と掛け）を終えた: 扉の角度の基準を今の手のひらで取り、3a へ（止める所なら止まる理由を返す）"""
+        self.palm_ref, self.angle, self.angle_best, self.t_progress = pa.copy(), 0.0, 0.0, t
+        self.angles = []
+        self.goal = np.array([palm[0], palm[1], self.goal[2]])  # 押さえる深さはそのまま（掛け金が外れるまで）
+        if self._stop_after("2d"):
+            return self.reason
+        self._go("3a", t)
+        return ""
 
     # --- 3c の walk ---
     def _enter_3c(self, t: float, pose: dfr.PlanarPose, palm: np.ndarray) -> None:
@@ -656,6 +726,8 @@ class ScriptDoor:
                     self._go("2d", t)
             elif palm[2] <= self.ref[2] + p.touch_floor:
                 self._fail(f"当てる点の {-100 * p.touch_floor:.0f} cm 下まで下ろしても触れない（空振り）", t)
+        elif self.sub == "2d" and self.hook_t0 is not None:
+            stop = self._hook_step(t, palm, pa)
         elif self.sub == "2d":
             g = self.goal.copy()  # 行き先は手のひらの lead_max 先まで下げ続ける（ばねのあるレバーを押し切る。力は lead_max で頭打ち）
             g[2] = g[2] - p.press_speed * dt
@@ -665,14 +737,11 @@ class ScriptDoor:
             depth = self.z_contact - float(palm[2])
             stalled = t - self.t_progress > p.stall_s or t - self.t_sub > p.press_max_s
             if depth >= p.press_depth or (stalled and depth >= p.press_min):
-                self.palm_ref, self.angle, self.angle_best, self.t_progress = pa.copy(), 0.0, 0.0, t
-                self.angles = []
-                self.goal = np.array([palm[0], palm[1], self.goal[2]])  # 押さえる深さはそのまま（掛け金が外れるまで）
                 print(f"[script] 下げた: 下がり {100 * depth:.1f} cm・肩 pitch の力 {tau_pitch:+.1f} N·m", flush=True)
-                if self._stop_after("2d"):
-                    stop = self.reason
+                if p.hook_deg > 0.0:
+                    self._begin_hook(t, palm)  # 3a へは手首を下げ終えてから（扉の角度の基準もその時に取る）
                 else:
-                    self._go("3a", t)
+                    stop = self._pressed(t, palm, pa)
             elif stalled:
                 self._fail(f"レバーが下がらない（下がり {100 * depth:.1f} cm・線 {100 * p.press_min:.0f} cm・力 {tau_pitch:+.1f} N·m）", t)
         elif self.sub == "3a":
@@ -756,6 +825,7 @@ class ScriptDoor:
             if back:
                 walk = (True, -abs(p.walk_vx), 0.0, 0.0)
             elif hand_up:
+                self.hook_t0, self.hook_h = None, 0.0  # やり直しの構えは手を水平に戻す（掛けるのは次の 2d の後）
                 self.x_home, self.t_back = None, None
                 self.yaws = []
                 self.xy0 = None
@@ -768,9 +838,6 @@ class ScriptDoor:
             stop = self.reason
         wc = bool(p.waist_comp_from) and self.sub in SUBS[SUBS.index(p.waist_comp_from):5]  # 脚を止めている 3a まで
         goal = self.goal.copy() if self.goal is not None else None
-        direction = None
-        if p.hand_dir_deg >= 0.0:
-            a = math.radians(p.hand_dir_deg)
-            direction = np.array([math.cos(a), -self.lr * math.sin(a), 0.0])
+        direction = self._hand_dir(self.hook_h) if p.hand_dir_deg >= 0.0 else None  # 掛けた後（3a・3c・やり直しで上げる間）は上向き
         return ScriptOut(self.sub, goal, walk, direction, self._angle_obs(), wc, stop, self.success and self.sub == "done", self._where(),
                          waist_twist=self.twist_rad(), waist_lean=self.lean_rad())

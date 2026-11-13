@@ -90,6 +90,25 @@ def test_gate_passes_shipped_params_from_all_stance_corners():
     assert len(res) == 5 + len(p.miss_shifts) and all(r.min_gap["棒"][0] >= sg.WARN_M for r in res)  # 上げる間に棒から 2 cm 以上
 
 
+def test_gate_checks_hook_pose_from_every_stance_corner():
+    """11-13 夜 手首を下げて掛ける形: 構えの 5 か所それぞれで 2d の終わり（掛け終えた所）まで走らせ、届くかと板とのすき間を見る"""
+    p = replace(dscr.load_params(str(HERE / "script_params_run1.json")), hook_deg=35.0, hook_slide=0.01)
+    ok, _, res = sg.check(p, dcl.load_geom(None, DOOR), 0.73, poses=None)
+    hooks = [r for r in res if r.name.endswith("・掛ける")]
+    assert ok, sg.report(res)
+    assert len(hooks) == 5 and all(any("掛けた形:" in line for line in r.lines) for r in hooks)
+    assert all(r.min_gap["板"][0] >= sg.FAIL_M for r in hooks)
+
+
+def test_gate_fails_hook_that_slides_tip_into_board():
+    """手をまっすぐ前（構え x −0.40）で 2 cm 滑らせると、手の先が板に 1 cm より近づく"""
+    p = replace(dscr.load_params(str(HERE / "script_params_run1.json")), hook_deg=35.0, hook_slide=0.02)
+    ok, _, res = sg.check(p, dcl.load_geom(None, DOOR), 0.73)
+    assert not ok
+    assert all(r.name.endswith("・掛ける") for r in res if not r.ok)
+    assert any("板とのすき間" in line for r in res if not r.ok for line in r.lines)
+
+
 def test_gate_fails_robot_day_params_at_back_right_corner():
     """11-12 の機体の値（最初の経由点が低い）は、構えの許容の隅（後ろ・右・左回り）で手が届かない＝11-12 夜に直した理由"""
     p = dscr.load_params(str(HERE / "script_params_1112_robot.json"))
