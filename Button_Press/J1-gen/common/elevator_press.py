@@ -15,8 +15,9 @@ J1-gen の部品をそのまま使う:
 
 押す腕（press.arm。right / left / auto）: 設定の腕ごとの値（IK の初期姿勢、指の傾き、経由点、勧める立ち位置）は右腕の値で書き、
 左腕なら左右を反転して使う（common/pipeline.py のボトル押しと同じ考え方。G1 は左右対称）。
-auto は、右腕・左腕の両方の計画器を持ち、ボタンを見つけたあと（look の中）に、計画が立つ腕を選ぶ。試す順は、▲▼ の中点が
-体の左（pelvis の y > 0）なら左 → 右、そうでなければ右 → 左（右腕は実機で押した実績があるので、正面は右腕を先に）。
+auto は、右腕・左腕の両方の計画器を持ち、ボタンを見つけたあと（look の中）に、計画が立つ腕を選ぶ。試す順は、いつも
+右 → 左（右腕は実機で押した実績があるので、右腕で計画が立つなら右腕。立たないときだけ左腕。2026-11-13 に、ボタンが体の
+左寄りなら左腕から、という順をやめた。評価環境で、中心から数 cm 左の正面のボタンでも左腕が選ばれたため）。
 どちらも立たなければ中止（理由は両方の腕の分）。reset のたびに選び直す。腕に結び付いた状態は _use_side で全部切り替える。
 左腕は実機でまだ押していないので、既定は right のまま。
 
@@ -106,7 +107,7 @@ class ElevatorPressController:
                  gravity: GravityModel, cfg: dict[str, Any], planners: dict[str, PressPlanner] | None = None,
                  auto: bool = False) -> None:
         self.robot_cfg = robot_cfg
-        # 押す腕の候補。auto は 2 つ（右 → 左の順に持ち、_arm_order で試す順を決める）。right / left は 1 つ
+        # 押す腕の候補。auto は 2 つ（右 → 左の順に持ち、その順に試す）。right / left は 1 つ
         self.planners: dict[str, PressPlanner] = dict(planners) if planners else {planner.kin.side: planner}
         self.auto = auto
         self.default_side = planner.kin.side  # 腕がまだ決まっていない間・reset 直後の腕（auto は right）
@@ -158,12 +159,11 @@ class ElevatorPressController:
         self._hand_vertices = self._hand_vertices_by_side.get(side)
 
     def _arm_order(self, call: CallButtons) -> list[str]:
-        """計画を試す腕の順。auto 以外は 1 つ。auto は、▲▼ の中点が体の左（pelvis の y > 0）なら左 → 右、そうでなければ
-        右 → 左（右腕は実機で押した実績があるので、正面は右腕を先に）。"""
+        """計画を試す腕の順。auto 以外は 1 つ。auto は、いつも右 → 左（右腕は実機で押した実績があるので、右腕で計画が
+        立つなら右腕で押す。左腕は、右腕で立たないときだけ）。"""
         if not self.auto:
             return [self.side]
-        mid_y = float(((call.up.center + call.down.center) / 2.0)[1])
-        return ["left", "right"] if mid_y > 0.0 else ["right", "left"]
+        return ["right", "left"]
 
     def _plan_arm(self, q: np.ndarray, call: CallButtons, depth: float | None = None) -> None:
         """押す計画を立てる。auto なら腕の候補を順に試し、最初に立った腕を選ぶ（self.side がその腕になる）。

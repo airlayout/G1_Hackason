@@ -151,7 +151,7 @@ class TestElevatorLeftArm(unittest.TestCase):
 
 @needs('mujoco', 'pin')
 class TestElevatorAutoArm(unittest.TestCase):
-    """press.arm: auto。ボタンを見つけたあと、計画が立つ腕を選ぶ（体の左寄りなら左腕から試す）。2026-11-13。
+    """press.arm: auto。ボタンを見つけたあと、計画が立つ腕を選ぶ（右腕を先に試し、立たないときだけ左腕）。2026-11-13。
     開始の姿勢は 10/21 の実機の立った姿勢（地図 sim/elevator_stand_map.py と同じ）。"""
 
     @classmethod
@@ -213,7 +213,8 @@ class TestElevatorAutoArm(unittest.TestCase):
                     self.assertIn("押す腕を選んだ: " + want, ctl.log[-1].message)
 
     def test_switches_to_the_other_arm_when_the_first_fails(self) -> None:
-        """一般用で柱まで 44 cm・▲・体の右 12 cm は、先に試す右腕では立たず、左腕で立つ（地図 gen_auto の配置）。逆も同じ。"""
+        """一般用で柱まで 44 cm・▲・体の右 12 cm は、先に試す右腕では立たず、左腕で立つ（地図 gen_auto の配置）。
+        左 12 cm は、左腕では立たず、右腕で立つ（右腕が先なので、そのまま右腕）。"""
         for y, first, want in ((-0.12, "right", "left"), (0.12, "left", "right")):
             with self.subTest(y=y):
                 call = make_call(0.44, y)
@@ -235,8 +236,18 @@ class TestElevatorAutoArm(unittest.TestCase):
         self.assertEqual(ctl.sgn, 1.0)
         why = ctl.can_plan(self.q0, make_call(0.52, 0.28), "down")
         self.assertIsNotNone(why)
-        self.assertEqual(ctl.side, "left")  # 左寄りなら先に左腕
-        self.assertEqual(ctl.sgn, -1.0)
+        self.assertEqual(ctl.side, "right")  # 左寄りでも、先に試すのは右腕
+        self.assertEqual(ctl.sgn, 1.0)
+
+    def test_prefers_right_when_both_arms_can_plan(self) -> None:
+        """どちらの腕でも計画が立つ配置（一般用、柱まで 30 cm、中心から左 2 cm）では、右腕を選ぶ
+        （実機で実績があるのは右腕。評価環境で、中心から数 cm 左のボタンに左腕が選ばれたのをやめた）。"""
+        call = make_call(0.30, 0.02)
+        for side in ("right", "left"):
+            self.assertIsNone(self.controller(side, "general").can_plan(self.q0, call, "down"), side)
+        ctl = self.controller("auto", "general")
+        self.assertIsNone(ctl.can_plan(self.q0, call, "down"))
+        self.assertEqual(ctl.side, "right")
 
     def test_reset_chooses_again(self) -> None:
         """左腕を選んだあと reset すると右腕に戻り、右寄りのボタンでは右腕を選び直す。"""

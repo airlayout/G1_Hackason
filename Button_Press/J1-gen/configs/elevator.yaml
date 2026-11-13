@@ -81,7 +81,7 @@ ik:
 
 press:
   # 押す腕: right / left / auto。環境変数 J1GEN_ARM（real/auto_press.py --arm）で上書きできる。
-  # auto = ボタンを見つけたあと、計画が立つ腕を選ぶ（体の左寄りなら左腕から試す）。左腕は実機で未確認なので既定は right
+  # auto = ボタンを見つけたあと、計画が立つ腕を選ぶ（右腕を先に試し、立たないときだけ左腕）。左腕は実機で未確認なので既定は right
   # 下の腕ごとの値（ik_seed_right_arm、finger_tilts_deg の左、via の右へずらす距離、stand.center_side_m）は右腕の値で書く。
   # left のときは左右を反転して使う（common/elevator_press.py）。左腕はまだシミュレーション・実機で確かめていない（2026-11-04）
   arm: right
