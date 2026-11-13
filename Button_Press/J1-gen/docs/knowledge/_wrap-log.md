@@ -120,5 +120,5 @@
 
 - 2026-11-13 / Button_Press（J1-gen）
   対象: 11/13 の実機日（空中の腕・腰だけを回す・エレベーターで押す腕の自動選択 4 回点灯）
-  - real_robot_notes.md: 4 回点灯（左腕で初めて）、53 cm でも見える、点灯のしきい値、regular mode の姿勢、推定の力のずれ、腰の回し、videohub の空の画像、PC2 の時計、PC2 で押す準備、マイク、script と収録
+  - real_robot_notes.md: 4 回点灯（左腕で初めて）、53 cm でも見える、点灯のしきい値、regular mode の姿勢、推定の力のずれ、腰の回し、videohub の空の画像、PC2 のタイムゾーン（中国時間）、PC2 で押す準備、マイク、script と収録
   - patterns/robot_arm_control.md: 推定の力は空中で 0 になるか先に見る、「立っているか」の値は本体のモードで変わる

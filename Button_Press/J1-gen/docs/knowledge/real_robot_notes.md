@@ -364,7 +364,7 @@
 - **押した力の推定（`tau_est` から）は、空中（何にも当たらない）でも 6〜9 N 出る**（両腕。腕を伸ばすほど増える）。直すまで、推定の力で「押せた」とは判断しない
 - 腰だけを回す（`real/waist_turn_check.py`）: ±5°・±10°・±20°（kp 60 / kd 1.5）と ±5°（kp 300 / kd 5）が全部最後まで回った。kp 60 は回している途中のずれ 1.6〜2.2°（止める判定 3°）、kp 300 は 0.86°
 - **起動直後に videohub が空の画像を返すことがある**（`GetImageSample` が code 0 で中身が空）。videohub は止めずに、ロボットを再起動すると直った。起動したら `real/depth_server/videohub_check.py` で 1 枚取れるかを先に見る
-- **PC2 の時計はノート PC より 1 時間遅れていた**（PC2 の記録のフォルダ名がずれる）
+- PC2 は中国時間（Asia/Shanghai）のまま。記録のフォルダ名は日本時間より 1 時間少ない（収録の中の epoch の時刻は正しい）
 - PC2 の上でボタンを押すには、`onboard.sh sync` に入っていない `Button_Press/Yada/{common,configs,contest,sim}` と `J1-gen/contest_agent` も送る。PC2 では `--network-interface eth0 --camera-config camera_onboard.yaml`
 - マイクは、有線のノート PC（WSL のミラーモード、`--network-interface eth1`）でも届いた。マイクを起こす操作は要らなかった。到着の音は周りの会話で判定できなかった（静かなときに録り直す）
 - 送るコマンドを人が打つときは、`script -f -a _local/button_press/user_<日付>.log` の中で打つと、あとで出力を読める。状態の記録（`real/record.py --mode interval`）は実機日のあいだ流し続けると、予期しない変化の時刻を後から探せる（regular mode に変えた時刻が分かった）
