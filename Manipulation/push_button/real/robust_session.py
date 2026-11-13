@@ -420,7 +420,7 @@ def main(argv=None):
                   f'{trial["planning_budget_s"]:g}秒・{trial["planning_max_candidates"]}候補・'
                   f'{trial["planning_scenarios"]}条件 / 補正: {trial.get("button_feedback","off")} / 方策: {trial.get("button_policy","standard")}',flush=True)
             if args.mode != 'check':
-                print('状態・更新400ms / 脚0.5rad/s / IMU角速度0.3rad/s / 同期送信',flush=True)
+                print('状態・更新400ms / 脚1.0rad/s / IMU角速度0.3rad/s / 同期送信',flush=True)
                 if trial.get('button_feedback') == 'joint':
                     print('初期姿勢から関節角と胴体姿勢で補正。追従が遅れる間は目標の進行を保留し、補正を継続します。',flush=True)
         source_files = sorted(REAL.glob('*.py'))+sorted(REAL.glob('*.sh'))+sorted(REAL.parent.glob('*.py'))

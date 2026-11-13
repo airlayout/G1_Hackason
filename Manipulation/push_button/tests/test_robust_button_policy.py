@@ -114,11 +114,11 @@ def test_far_depth_relaxation_never_removes_other_failure_reasons(change,reason)
 def test_robot_policy_keeps_strict_defaults_and_uses_one_shared_collection_profile():
     strict=execution_policy();collection=execution_policy(True)
     assert strict.state_timeout_s==.1 and strict.leg_speed_rad_s==.15
-    assert collection.state_timeout_s==.4 and collection.leg_speed_rad_s==.5 and collection.gyro_rad_s==.3
+    assert collection.state_timeout_s==.4 and collection.leg_speed_rad_s==1.0 and collection.gyro_rad_s==.3
     assert collection.record_deviations and collection.synchronous_stream
 
 
-@pytest.mark.parametrize('age,leg,gyro,tilt',[(.401,0,0,0),(.0,.501,0,0),(.0,0,.301,0),(.0,0,0,.151)])
+@pytest.mark.parametrize('age,leg,gyro,tilt',[(.401,0,0,0),(.0,1.001,0,0),(.0,0,.301,0),(.0,0,0,.151)])
 def test_collection_motion_monitor_still_rejects_expiry_speed_and_non_upright_pose(monkeypatch,age,leg,gyro,tilt):
     import align_button
     monkeypatch.setattr(align_button.time,'monotonic',lambda:100.)

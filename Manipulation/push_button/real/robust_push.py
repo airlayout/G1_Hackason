@@ -21,7 +21,7 @@ from kinematics import load_robot, ArmKinematics
 from j1gen_camera import J1CameraRuntime, J1RgbdCamera, CalibratedHeadCamera, add_camera_arguments
 from align_button import read_calibration, validate_stationary_pose, ArmMotion
 from pose_history import PoseHistory
-from button_feedback import lamp_level
+from button_feedback import ImageLampTracker, lamp_level
 from button_detector import make_button_detector, DEFAULT_CONFIDENCE, DEFAULT_IMAGE_SIZE
 from motion_limits import CONTROL_PERIOD_S
 from robust_policy import execution_policy
@@ -227,6 +227,7 @@ def main(argv=None, *, task=None):
         stable_base = [args.bottle_base_height]
         perception_rejections = []
         sampler = LatestFrameSampler()
+        lamp_tracker = ImageLampTracker() if args.task == 'button' else None
         def read():
             delivered = sampler.consume(camera.poll(), time.monotonic())
             if delivered is None:
@@ -234,6 +235,9 @@ def main(argv=None, *, task=None):
             frame, stamp = delivered
             if not collection and not 0 <= time.monotonic()-stamp <= .5:
                 return None
+            detections = detector.detect(frame.color_bgr)
+            if lamp_tracker is not None:
+                lamp_tracker.observe(frame.color_bgr, detections, stamp, frame.frame_id)
             config = configuration()
             # The camera is torso-fixed. A stationary-target diagnostic uses the
             # fresh, stationary torso state rather than an image-time history lookup.
@@ -251,7 +255,7 @@ def main(argv=None, *, task=None):
             intr = frame.intrinsics
             intr = CameraIntrinsics(intr.fx,intr.fy,intr.cx,intr.cy)
             candidates = []
-            for detected in detector.detect(frame.color_bgr):
+            for detected in detections:
                 if reference[0] is None and args.target_pixel:
                     u,v = args.target_pixel; x0,y0,x1,y1 = detected.bbox
                     if not x0 <= u <= x1 or not y0 <= v <= y1:
@@ -272,12 +276,14 @@ def main(argv=None, *, task=None):
                     if reference[0] is not None and ((not collection and np.linalg.norm(np.array(observed['face'])-reference[0]['face']) > .025)
                             or abs(observed['radius']-reference[0]['radius']) > .005):
                         continue
-                    candidates.append((observed,lamp))
+                    candidates.append((observed,lamp,detected.bbox))
                 except ValueError as exc:
                     perception_rejections.append(str(exc))
             if len(candidates) != 1:
                 return None
-            observed,lamp = candidates[0]
+            observed,lamp,bbox = candidates[0]
+            if lamp_tracker is not None and reference[0] is None:
+                lamp_tracker.seed(bbox)
             reference[0] = observed
             return Observation(observed,tuple(q),tuple(imu),stamp,frame.frame_id,lamp)
         observer = ContinuousObserver(read,camera.close,**(dict(stability_m=.01,allow_stale=True,
@@ -331,9 +337,16 @@ def main(argv=None, *, task=None):
             record_deviations=policy.record_deviations,set_waist_torque=lambda value: torque.update(waist=np.array(value)),
             allow_stale_observation=args.allow_stale_observation,
             feedback_state=arm.joint_feedback_state if settings.button_feedback == 'joint' else None,
+            lamp_baseline=initial.lamp if args.task == 'button' and settings.button_feedback == 'joint' else None,
+            lamp_min_rise=args.lamp_min_rise,
+            observe_lamp=lamp_tracker.latest if lamp_tracker is not None else None,
             observe_held=(lambda:observer.latest(allow_stale=True))
                 if args.execute_verified_plan and not args.stop_before_contact else None)
         report['command_publications'] = motion.command_publications
+        early_lamp = report['execution'].get('lamp_early_return')
+        if early_lamp:
+            report['visual_success'] = True
+            report['lamp_early_return'] = early_lamp
         if motion.error is not None:
             report['motion_thread_error'] = str(motion.error)
         if report['execution'].get('interrupted'):
@@ -358,11 +371,12 @@ def main(argv=None, *, task=None):
                 if not args.allow_stale_observation and args.task != 'button':
                     raise RuntimeError(report['outcome_error'])
             if args.task == 'button':
-                report['visual_success'] = button_lamp_outcome(initial.lamp,results,args.lamp_min_rise)
+                post_retreat_lamp = button_lamp_outcome(initial.lamp,results,args.lamp_min_rise)
+                report['visual_success'] = True if early_lamp else post_retreat_lamp
                 report['lamp_check'] = dict(baseline=initial.lamp,min_rise=args.lamp_min_rise,
                     levels=[v.lamp for v in results],frame_ids=[v.frame_id for v in results],
-                    status='lit' if report['visual_success'] is True else
-                        'no_rise' if report['visual_success'] is False else 'unknown')
+                    status='lit' if post_retreat_lamp is True else
+                        'no_rise' if post_retreat_lamp is False else 'unknown')
                 report['motion_completed'] = bool(report['execution'].get('motion_completed'))
                 report['physical_press_success'] = None
             elif args.task == 'bottle' and len(results) == 3:

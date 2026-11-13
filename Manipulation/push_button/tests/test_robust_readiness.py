@@ -31,14 +31,14 @@ def test_collection_readiness_uses_bottle_execution_limits_and_records_pose_drif
 
 
 @pytest.mark.parametrize('value',[
-    dict(age=.4001),dict(age=-.01),dict(leg=.5001),dict(gyro=.3001),dict(tilt=.1501)])
+    dict(age=.4001),dict(age=-.01),dict(leg=1.0001),dict(gyro=.3001),dict(tilt=.1501)])
 def test_collection_still_rejects_expired_moving_or_tilted_state(value):
     with pytest.raises(RuntimeError):
         readiness.validate_readiness_state(configuration(**value),CAL,0.,policy=COLLECTION_POLICY)
 
 
 def test_collection_boundaries_and_malformed_joint_values():
-    assert readiness.validate_readiness_state(configuration(age=.4,leg=.5,gyro=.3),CAL,0.,policy=COLLECTION_POLICY)==[]
+    assert readiness.validate_readiness_state(configuration(age=.4,leg=1.,gyro=.3),CAL,0.,policy=COLLECTION_POLICY)==[]
     value=configuration();value[0][23]=math.nan
     with pytest.raises(ValueError,match='状態データ'):
         readiness.validate_readiness_state(value,CAL,0.,policy=COLLECTION_POLICY)

@@ -60,7 +60,7 @@ MUJOCO_GL=egl python Manipulation/push_button/sim/run_push_mujoco.py \
 
 `real/run_robust_bottle.sh` とボタン用 `real/run_robust_button.sh` は、
 起動前に共通の `--readiness-policy collection` を使う。
-状態期限400ms・脚速度0.5rad/s・IMU角速度0.3rad/sで確認し、校正時の腰角・傾きとの差は記録する。
+状態期限400ms・脚速度1.0rad/s・IMU角速度0.3rad/sで確認し、校正時の腰角・傾きとの差は記録する。
 骨盤の絶対的な傾き0.15rad、必要ファイル、立位FSM 501、他の腕制御との競合は引き続き確認する。
 従来の厳しい起動前確認は `--readiness-policy strict` で選べる。
 

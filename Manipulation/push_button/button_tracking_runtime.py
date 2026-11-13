@@ -12,7 +12,8 @@ from robust_policy import execution_policy
 
 def execute_feedback(plan, model_path, calibration, motion, configuration, observe, settings,
                      *, now=time.monotonic, set_torque=lambda tau: None, diagnostic=False,
-                     record_deviations=False, set_waist_torque=None, feedback_state=None, **unused):
+                     record_deviations=False, set_waist_torque=None, feedback_state=None,
+                     lamp_baseline=None, lamp_min_rise=30., observe_lamp=None, **unused):
     from robust_execution import validate_start
     from button_collection import CollectionCorrectionGate
     from robust_perception import CorrectionGate
@@ -31,6 +32,7 @@ def execute_feedback(plan, model_path, calibration, motion, configuration, obser
     report['warnings'].extend(validate_start(scene,configuration(),observe(),record_deviations=record_deviations))
     started = now()
     enabled = False
+    lamp_monitor = None
     try:
         set_torque(candidate.tau[0])
         if set_waist_torque:
@@ -44,6 +46,9 @@ def execute_feedback(plan, model_path, calibration, motion, configuration, obser
             imu_rpy_rad=list(map(float,enabled_state[1])),state_received_at_s=enabled_state[2])
         motion.start_approach()
         trajectory_started = last_tick = now()
+        if not diagnostic and lamp_baseline is not None:
+            from button_feedback import PressLampMonitor
+            lamp_monitor = PressLampMonitor(lamp_baseline, lamp_min_rise, trajectory_started)
         while not controller.done:
             cycle = now()
             config = configuration()
@@ -52,6 +57,15 @@ def execute_feedback(plan, model_path, calibration, motion, configuration, obser
                     or leg > policy.leg_speed_rad_s or gyro > policy.gyro_rad_s):
                 raise RuntimeError('Stale or moving robot state')
             observation = observe()  # Camera-worker errors still surface with held frames.
+            if lamp_monitor is not None and not controller.retreat:
+                lamp_observation = observe_lamp() if observe_lamp is not None else observation
+                trigger_index = controller.index
+                if (lamp_observation is not None and lamp_monitor.observe(lamp_observation, cycle)
+                        and controller.return_on_lamp(cycle-trajectory_started)):
+                    report['lamp_early_return'] = dict(baseline=float(lamp_baseline),
+                        min_rise=float(lamp_min_rise), frames=list(lamp_monitor.frames),
+                        confirmed_at_s=cycle, reference_index=int(trigger_index))
+                    print('点灯を検出しました。押し込みを止め、通過した経路を戻ります。',flush=True)
             depth = float((controller.tcps[controller.index]-scene.face)@controller.normal+scene.tip_radius)
             # Geometry does not follow the button cylinder as it is depressed.
             # Freeze visual retargeting at contact; joint/body feedback continues.
@@ -93,6 +107,8 @@ def execute_feedback(plan, model_path, calibration, motion, configuration, obser
         report.update(home_completed=error <= np.deg2rad(2),home_max_error_rad=error,
             motion_completed=not diagnostic and controller.error is None,
             diagnostic_completed=diagnostic and controller.error is None,completed=controller.error is None)
+        if report.get('lamp_early_return') and not report['home_completed']:
+            report.update(completed=False,error='点灯後の開始姿勢への復帰誤差が2度を超えました')
         if controller.error:
             report.update(error=controller.error,recovery_completed=True)
     except KeyboardInterrupt:

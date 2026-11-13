@@ -15,7 +15,7 @@ class ExecutionPolicy:
 
 
 STRICT_POLICY = ExecutionPolicy(.1, .15, .10, False, False)
-COLLECTION_POLICY = ExecutionPolicy(.4, .5, .3, True, True)
+COLLECTION_POLICY = ExecutionPolicy(.4, 1.0, .3, True, True)
 
 
 def execution_policy(record_deviations=False):

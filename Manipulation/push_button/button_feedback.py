@@ -1,6 +1,7 @@
 """実機画像の点灯判定。SDK・カメラ配信・Yadaの押下設定には依存しない。"""
 
 from dataclasses import dataclass
+import threading
 
 import numpy as np
 
@@ -11,6 +12,71 @@ class LampFrame:
     bbox: tuple[float, float, float, float]
     captured_at: float
     frame_id: int
+
+
+@dataclass(frozen=True)
+class LampObservation:
+    captured_at: float
+    frame_id: int
+    lamp: float
+    blue_lit: bool
+
+
+class ImageLampTracker:
+    """Monitor the selected button in RGB even when depth estimation fails."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.bbox = None
+        self.value = None
+
+    def seed(self, bbox):
+        with self.lock:
+            self.bbox = tuple(map(float, bbox))
+
+    def observe(self, image, detections, captured_at, frame_id):
+        with self.lock:
+            box = self.bbox
+        if box is None:
+            return
+        centre = (np.asarray(box[:2])+np.asarray(box[2:]))/2
+        radius = max(box[2]-box[0], box[3]-box[1])*2
+        nearby = []
+        for detection in detections:
+            candidate = np.asarray(detection.bbox, dtype=float)
+            if candidate.shape != (4,) or not np.all(np.isfinite(candidate)):
+                continue
+            distance = np.linalg.norm((candidate[:2]+candidate[2:])/2-centre)
+            if distance <= radius:
+                nearby.append((distance, tuple(candidate)))
+        if nearby:
+            box = min(nearby, key=lambda value:value[0])[1]
+        try:
+            value = LampObservation(float(captured_at), int(frame_id), lamp_level(image, box),
+                                    blue_lamp_visible(image, box))
+        except ValueError:
+            return
+        with self.lock:
+            self.bbox, self.value = box, value
+
+    def latest(self):
+        with self.lock:
+            return self.value
+
+
+def blue_lamp_visible(image, bbox):
+    """Recognize a visible blue ring even when it was already lit at startup."""
+    image = np.asarray(image)
+    x1, y1, x2, y2 = map(float, bbox)
+    h, w = image.shape[:2]
+    left, top = max(0, int(np.floor(x1))), max(0, int(np.floor(y1)))
+    right, bottom = min(w, int(np.ceil(x2))), min(h, int(np.ceil(y2)))
+    if right-left < 6 or bottom-top < 6:
+        raise ValueError('Button image region too small')
+    pixels = image[top:bottom,left:right].astype(np.int16)
+    blue, green, red = pixels[:,:,0], pixels[:,:,1], pixels[:,:,2]
+    lit = (blue > 150) & (blue-red > 35) & (blue-green > 10)
+    return int(np.count_nonzero(lit)) >= max(3, int(np.ceil(lit.size*.01)))
 
 
 def lamp_level(image, bbox):
@@ -72,4 +138,30 @@ class LampCheck:
         self.frames.append({"captured_at_s": float(frame.captured_at),
                             "frame_id": int(frame.frame_id), "bbox": [float(v) for v in frame.bbox],
                             "level": level, "rise": level-self.baseline})
+        return True
+
+
+class PressLampMonitor:
+    """Detect a rise in a recent observation captured after entering the press."""
+
+    def __init__(self, baseline, min_rise, after):
+        if not np.all(np.isfinite([baseline, min_rise, after])) or min_rise <= 0:
+            raise ValueError('Invalid lamp baseline, threshold or start time')
+        self.baseline, self.min_rise, self.after = float(baseline), float(min_rise), float(after)
+        self.last_id, self.last_stamp = -1, after
+        self.frames = []
+
+    def observe(self, observed, now):
+        stamp, frame_id, level = observed.captured_at, observed.frame_id, observed.lamp
+        if frame_id <= self.last_id or stamp <= self.last_stamp:
+            return False
+        self.last_id = frame_id
+        self.last_stamp = stamp
+        blue_lit = bool(getattr(observed, 'blue_lit', False))
+        if (not np.isfinite(stamp) or not 0 <= now-stamp <= .5 or level is None
+                or not np.isfinite(level) or (level-self.baseline < self.min_rise and not blue_lit)):
+            self.frames.clear()
+            return False
+        self.frames.append(dict(frame_id=int(frame_id), captured_at_s=float(stamp), level=float(level),
+                                rise=float(level-self.baseline), blue_lit=blue_lit))
         return True

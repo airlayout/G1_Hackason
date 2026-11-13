@@ -188,7 +188,7 @@ def contact_run(monkeypatch):
         q=np.array(s.q); age=leg=gyro=0.
         if state.step==10:
             age={'state':.2,'delayed_state':.399,'expired_state':.401}.get(state.fault,0.)
-            leg=.501 if state.fault=='leg_speed' else 0.
+            leg=1.001 if state.fault=='leg_speed' else 0.
             gyro=.301 if state.fault=='gyro_speed' else 0.
             if state.fault=='pose': q[0]=.03; q[12]=.06
         if state.fault=='start_pose': q[22]=.02

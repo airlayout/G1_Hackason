@@ -56,7 +56,7 @@ def validate_start(scene, configuration, observed, *, record_deviations=False):
 def execute(plan, model_path, calibration, motion, configuration, observe, settings,
             *, now=time.monotonic, set_torque=lambda tau: None, diagnostic=False,
             record_deviations=False, set_waist_torque=None, allow_stale_observation=False,
-            observe_held=None, feedback_state=None):
+            observe_held=None, feedback_state=None, lamp_baseline=None, lamp_min_rise=30., observe_lamp=None):
     if plan.candidate is None:
         raise RuntimeError('No fully verified robust plan; no motion allowed')
     s, c = plan.scene, plan.candidate
@@ -66,7 +66,8 @@ def execute(plan, model_path, calibration, motion, configuration, observe, setti
         from button_tracking_runtime import execute_feedback
         return execute_feedback(plan,model_path,calibration,motion,configuration,observe,settings,
             now=now,set_torque=set_torque,diagnostic=diagnostic,record_deviations=record_deviations,
-            set_waist_torque=set_waist_torque,feedback_state=feedback_state)
+            set_waist_torque=set_waist_torque,feedback_state=feedback_state,
+            lamp_baseline=lamp_baseline,lamp_min_rise=lamp_min_rise,observe_lamp=observe_lamp)
     if allow_stale_observation and (s.task != 'bottle' or settings.bottle_feedback != 'off'):
         raise ValueError('Stale observations require bottle feedback off')
     if observe_held is not None and (s.task != 'button' or diagnostic):

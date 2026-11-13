@@ -108,6 +108,46 @@ def test_recovery_reverses_only_the_path_already_traversed(controller_fixture):
     assert controller.recovery_started==10.
 
 
+def test_lamp_return_reverses_only_the_traversed_path_without_error(controller_fixture):
+    kin,scene,c,settings,*_=controller_fixture
+    controller=ButtonTrackingController(kin,scene,c,settings)
+    controller.index=5
+    assert controller.return_on_lamp(10.)
+    np.testing.assert_array_equal(controller.qs,c.q[:6][::-1])
+    assert controller.retreat and controller.error is None and controller.index == 0
+    assert not controller.return_on_lamp(11.)
+
+
+def test_lamp_monitor_accepts_one_new_bright_frame_and_rejects_stale():
+    from button_feedback import PressLampMonitor
+    monitor=PressLampMonitor(50.,30.,10.)
+    def observation(frame,stamp,level):
+        return SimpleNamespace(frame_id=frame,captured_at=stamp,lamp=level)
+    assert not monitor.observe(observation(1,9.9,150.),10.)
+    assert not monitor.observe(observation(2,10.1,75.),10.2)
+    assert not monitor.observe(observation(3,10.2,150.),11.)
+    assert not monitor.observe(observation(3,10.2,150.),11.)
+    assert monitor.observe(observation(4,11.1,80.),11.2)
+    assert [v['frame_id'] for v in monitor.frames] == [4]
+
+
+def test_image_lamp_monitor_works_without_detection_or_depth():
+    from button_feedback import ImageLampTracker, PressLampMonitor
+    tracker=ImageLampTracker()
+    tracker.seed((10,10,30,30))
+    dark=np.full((40,40,3),40,dtype=np.uint8)
+    tracker.observe(dark,[],1.,1)
+    assert not tracker.latest().blue_lit
+    image=dark.copy()
+    image[15:19,15:19]=[230,190,80]
+    tracker.observe(image,[],2.,2)
+    observed=tracker.latest()
+    assert observed.frame_id == 2 and observed.blue_lit
+    # A blue ring still triggers even if it was already bright at baseline.
+    monitor=PressLampMonitor(observed.lamp,30.,1.5)
+    assert monitor.observe(observed,2.1)
+
+
 def test_tracking_error_holds_the_reference_and_resumes_after_correction(controller_fixture):
     kin,scene,c,settings,*_=controller_fixture
     controller=ButtonTrackingController(kin,scene,c,settings)
@@ -382,6 +422,46 @@ def test_feedback_runtime_records_large_target_changes_and_keeps_sending(monkeyp
     assert all(np.linalg.norm(value)<=.005 for value in offsets)
 
 
+def test_feedback_runtime_returns_on_first_new_lit_frame(monkeypatch,controller_fixture):
+    import button_tracking_runtime as runtime
+    import robust_execution
+    _,scene,c,settings,cal,model=controller_fixture
+    clock=[0.]; frames=[0]; actions=[]
+    class Controller:
+        def __init__(self,*args,**kwargs):
+            self.done=False; self.qs=c.q; self.tcps=c.tcp; self.index=0; self.normal=np.asarray(scene.normal)
+            self.retreat=False; self.guard_holds=0; self.integral=TorqueIntegral(); self.error=None
+            self.press_end=c.press_end
+        def start_from_command(self,*args): pass
+        def return_on_lamp(self,elapsed):
+            actions.append('lamp_return'); self.retreat=True; return True
+        def step(self,q,imu,stamp,elapsed,offset):
+            actions.append('retreat' if self.retreat else 'forward')
+            self.done=self.retreat
+            return dict(q=c.q[0],velocity=np.zeros(7),tau=np.zeros(7),phase='test',index=self.index,
+                reference_held=False,torque_bias=np.zeros(7),actual_depth_m=-.1,reference_depth_m=-.1,
+                guard_holds=0,error_m=0.,measured_tip=c.tcp[0],target=c.tcp[0])
+    monkeypatch.setattr(runtime,'ButtonTrackingController',Controller)
+    monkeypatch.setattr(robust_execution,'validate_start',lambda *a,**k:[])
+    motion=SimpleNamespace(enable=lambda:None,start_approach=lambda:None,
+        current_target=lambda:c.q[0],stream=lambda *a,**k:None,
+        wait=lambda duration:clock.__setitem__(0,clock[0]+duration),
+        close=lambda:None,release_error=None)
+    config=lambda:(scene.q,scene.imu,clock[0],0.,0.)
+    def observe():
+        # Simulate 3D position estimation having stopped updating.
+        return Observation(dict(face=scene.face,normal=scene.normal),scene.q,scene.imu,0.,1,20.)
+    def observe_lamp():
+        frames[0]+=1
+        return SimpleNamespace(captured_at=clock[0],frame_id=frames[0],lamp=100.,blue_lit=False)
+    result=runtime.execute_feedback(SimpleNamespace(scene=scene,candidate=c),model,cal,motion,
+        config,observe,settings,now=lambda:clock[0],lamp_baseline=50.,observe_lamp=observe_lamp)
+    assert 'error' not in result, result.get('error')
+    assert actions == ['forward','lamp_return','retreat']
+    assert result['lamp_early_return']['frames'][0]['level'] == 100.
+    assert result['completed'] and result['release_completed']
+
+
 def test_feedback_rpc_is_read_only_and_keeps_legacy_state_tuple():
     from test_arm_bridge import connection
     proxy,arm,errors,thread=connection()
@@ -411,3 +491,26 @@ def test_shared_controller_completes_a_physical_press_and_retreat(controller_fix
     assert .0135 <= result['peak_press_m'] <= .016
     assert result['peak_force_n'] <= 40. and result['home_error_rad'] < np.deg2rad(2.)
     assert result['button_feedback']=='joint' and result['guard_holds']==0
+
+
+def test_early_lamp_return_completes_in_physics(controller_fixture, monkeypatch):
+    from robust_planner import generate_candidate, physical_trial
+    _,_,_,_,_,model=controller_fixture
+    recorded=json.loads((ROOT/'tests/data/button_tracking_nov03.json').read_text())
+    scene=SceneSnapshot(**recorded['scene'])
+    kin=build_scene_model(model,recorded['calibration'],scene)
+    settings=SearchSettings(button_feedback='joint',button_policy='collection',scenarios=1,budget_s=90)
+    deadline=time.perf_counter()+90.
+    candidate=generate_candidate(kin,scene,0,(0.,0.,0.),(0.,0.),settings,deadline)
+    original=ButtonTrackingController.step
+    triggered=[]
+    def step(controller,q,imu,stamp,elapsed,offset=None):
+        if not controller.retreat and controller.index >= candidate.press_start+10:
+            triggered.append(controller.index)
+            controller.return_on_lamp(elapsed)
+        return original(controller,q,imu,stamp,elapsed,offset)
+    monkeypatch.setattr(ButtonTrackingController,'step',step)
+    condition=uncertainty_scenarios(settings,scene)[0]
+    result=physical_trial(kin,scene,candidate,condition,deadline)
+    assert triggered and result['completed'] and result['success'],result
+    assert result['home_error_rad'] < np.deg2rad(2.)

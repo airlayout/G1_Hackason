@@ -114,6 +114,21 @@ class ButtonTrackingController:
         self.settled = 0
         self.retreat = True
 
+    def return_on_lamp(self, elapsed):
+        """Retreat over the already traversed reference after a confirmed light."""
+        if self.retreat or self.diagnostic:
+            return False
+        self.qs = self.qs[:self.index+1][::-1].copy()
+        self.tcps = self.tcps[:self.index+1][::-1].copy()
+        self.labels = ['lamp_return']*len(self.qs)
+        self.press_end = 0
+        self.index = 0
+        self.credit = 0.
+        self.settled = 0
+        self.retreat = True
+        self.last_progress = elapsed
+        return True
+
     def _body_corrected_goal(self, pose, nominal, tcp):
         # Recompute the arm solution in the measured waist/IMU pose. The target
         # remains in the calibrated world frame; no fixed height offset is used.
@@ -137,6 +152,8 @@ class ButtonTrackingController:
         offset = np.zeros(3) if offset is None else np.asarray(offset)
         if self.recovery_started is None and (elapsed > self.settings.button_feedback_timeout_s
                 or elapsed-self.last_progress > 20.):
+            if self.retreat:
+                raise RuntimeError('Button return did not converge within its time budget')
             self.recover(elapsed, 'Button tracking did not converge within its time budget')
         if self.recovery_started is not None and elapsed-self.recovery_started > 30.:
             raise RuntimeError('Button recovery exceeded 30s')
