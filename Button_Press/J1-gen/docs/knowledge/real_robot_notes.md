@@ -352,3 +352,19 @@
 - **`Entame/real/arm_wave_real.py` で `right hand up` を支え無しに送ると、動作のあとゆっくり力が抜けて倒れた。** このスクリプトは動作の 3 秒後に `ReleaseMode()`（歩行制御の解除）を呼ぶ。原因は推定（収録が実行前に切れていた）。`high wave` は人が支えて試した記録
 - 腕だけ動かすなら `rt/arm_sdk`（歩行コントローラは動かしたまま）。`actions/`（敬礼 `salute`・指さし `point`・`point_level`）を作った。**角度は計画値で実機は未確認**。`real/run_action.py --action <名前> --path sim|arm_sdk`（既定は dry-run、`--execute` は人が打つ）。腰のずれの上限は実行時だけ 5°（`--waist-max-deg`）
 - ノート PC が有線で `192.168.123.x` を持っていれば（`ip -br a`）、PC2 に入らず `--network-interface eth1` で直接送れる。ゼロトルクのままだと「モータが無効」で止まるので、ダンピング（FSM 1）を経由して立たせる
+
+## 2026-11-13 の実機日で分かったこと（空中の腕・腰だけを回す・エレベーターで押す腕の自動選択）
+
+まとめは `docs/reports/REPORT_20261113.md`、細かいことは `real/DAILY_LOG_20261113_laptop.md`。
+
+- **押す腕の自動選択（`--arm auto`）で、ラボの車いす用 ▼ を 4 回押して 4 回点灯**。右寄り・正面 → 右腕、左 18.6 cm → 左腕（左腕で初めて点灯）。正面（左 0.8 cm）も右腕のまっすぐの形で点灯した
+- **柱から約 53 cm（つま先から壁まで約 35 cm）でも ▲▼ は頭カメラに入る**（首 50〜52°）。約 46 cm（つま先 約 30 cm）で計画が立った
+- 押す前から点灯していたら止まる: 点灯 232〜234・消灯 66〜68 で、しきい値 225 は実機で合う
+- **regular mode では立っているだけで腰 pitch 約 −3.3°・骨盤の傾き約 2.9°**（locked standing は −0.2°・0.8°）。エレベーターも regular mode なので、事前確認の腰 pitch の上限を 6° にした（yaw・roll は 3°。929443b）
+- **押した力の推定（`tau_est` から）は、空中（何にも当たらない）でも 6〜9 N 出る**（両腕。腕を伸ばすほど増える）。直すまで、推定の力で「押せた」とは判断しない
+- 腰だけを回す（`real/waist_turn_check.py`）: ±5°・±10°・±20°（kp 60 / kd 1.5）と ±5°（kp 300 / kd 5）が全部最後まで回った。kp 60 は回している途中のずれ 1.6〜2.2°（止める判定 3°）、kp 300 は 0.86°
+- **起動直後に videohub が空の画像を返すことがある**（`GetImageSample` が code 0 で中身が空）。videohub は止めずに、ロボットを再起動すると直った。起動したら `real/depth_server/videohub_check.py` で 1 枚取れるかを先に見る
+- **PC2 の時計はノート PC より 1 時間遅れていた**（PC2 の記録のフォルダ名がずれる）
+- PC2 の上でボタンを押すには、`onboard.sh sync` に入っていない `Button_Press/Yada/{common,configs,contest,sim}` と `J1-gen/contest_agent` も送る。PC2 では `--network-interface eth0 --camera-config camera_onboard.yaml`
+- マイクは、有線のノート PC（WSL のミラーモード、`--network-interface eth1`）でも届いた。マイクを起こす操作は要らなかった。到着の音は周りの会話で判定できなかった（静かなときに録り直す）
+- 送るコマンドを人が打つときは、`script -f -a _local/button_press/user_<日付>.log` の中で打つと、あとで出力を読める。状態の記録（`real/record.py --mode interval`）は実機日のあいだ流し続けると、予期しない変化の時刻を後から探せる（regular mode に変えた時刻が分かった）
