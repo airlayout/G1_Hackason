@@ -6,6 +6,87 @@ G1に喋らせる・G1のマイクで聞き取る機能全般。`SimpleWalk/`・
 音声はsim側で検証する意味が薄い（マイク・スピーカーの実機挙動そのものが対象のため）
 ので、`sim/`・`real/`のような分割はせず、**このフォルダ直下にコードを置く**。
 
+## 「手を振って」で SDK のプリセットを動かす
+
+手振り専用の `configs/tasks.wave.json` と `configs/tools.wave.json` を追加した。
+G1 内蔵マイク → 音量による区間抽出 → EmbeddingGemma 2 → `wave_hand`
+→ 汎用ツール `sdk_arm_action(preset="high wave")` → SDK の `ExecuteAction(26)` とつながる。
+この設定では巡回の開始を登録せず、**Nav2 / ROS を起動せずに**動作確認できる。
+既定の巡回設定を使う場合は、引き続き次節の手順に従う。
+
+### G1 上で準備する
+
+モデルの配置と推論 venv は[次節の環境構築](#g1-の環境と登録音声を準備する)と共通。
+ツールサーバー用には ROS を含まない専用 venv を用意する:
+
+```bash
+cd /home/unitree/G1_Hackason
+python3 -m venv /tmp/g1-voice-wave-tools
+/tmp/g1-voice-wave-tools/bin/python -m pip install -r Voice/requirements-tools.txt
+```
+
+SDK 呼び出しは別プロセスで行い、`VOICE_SDK_PYTHON` には `unitree_sdk2py` が入っている
+G1 上の Python を指定する。既定は `/usr/bin/python3`。共有 Python への追加インストールは行わない。
+`VOICE_SDK_INTERFACE` は既定で `eth0`。
+
+巡回・歩行・他の腕制御を終了し、停止中の機体を既存の手順で SDK の腕動作を受け付ける状態にする。
+呼び出し口は FSM ID が 500 / 501 / 801 の場合だけ要求を送り、SDK の拒否も失敗として返す。
+**制御モードの選択・解除、起立、走行許可の変更は行わない。**
+FSM の検査は静止状態や他の制御主体の不在を保証するものではないため、これらは試験前に確認する。
+
+### 登録音声を収録し、dry-run で確認する
+
+まず説明文の設定で起動する。この段階ではツールサーバーも SDK も不要:
+
+```bash
+/tmp/g1-voice-infer/bin/python Voice/onboard_voice.py \
+  --model /home/unitree/models/embeddinggemma-2 --device cpu \
+  --config Voice/configs/tasks.wave.json --tools Voice/configs/tools.wave.json \
+  --output-dir _local/voice/wave-reference-runs
+```
+
+待受表示のあと「手を振って」「手を振ってください」「手を振らないで」「こんにちは」を、各判定ログを待って収録する。
+Ctrl+C で終了し、保存された各 `input.wav` を確認する。
+`configs/tasks.wave.audio.example.json` を `_local/voice/tasks.wave.json` にコピーし、
+`reference_audio` をそれぞれ手振り 2 種類・否定・雑談の WAV の絶対パスに変更する。
+説明文だけの照合では日本語の肯定・否定が近いスコアになった記録があるため、
+実行前に登録に使っていない録音で判定を確認し、しきい値を調整する。
+
+上記コマンドの `--config` を `_local/voice/tasks.wave.json` に変えて再起動する。
+「手を振って」で `wave_hand` / `dry_run`、否定や雑談で `rejected` になることを確認する。
+保存済み WAV でも `--replay /path/to/test.wav` を追加して確認できる。
+
+### 音声から実行する
+
+別々の G1 上のターミナルで、ツールサーバーと音声プロセスを起動する。
+どちらもリポジトリ直下から実行し、既存の音声・ツールサーバーは先に終了する:
+
+```bash
+VOICE_SDK_PYTHON=/usr/bin/python3 VOICE_SDK_INTERFACE=eth0 \
+  /tmp/g1-voice-wave-tools/bin/python Voice/tool_server.py \
+  --config Voice/configs/tools.wave.json --execute
+```
+
+```bash
+/tmp/g1-voice-infer/bin/python Voice/onboard_voice.py \
+  --model /home/unitree/models/embeddinggemma-2 --device cpu \
+  --config _local/voice/tasks.wave.json --tools Voice/configs/tools.wave.json --execute
+```
+
+「手を振って」と話すと、登録した `high wave` だけを呼ぶ。
+`--execute` はサーバーと音声プロセスの両方に必要。手振り専用設定では
+`deploy/run_tools.sh` と巡回用の systemd unit は使わない。
+
+SDK の応答後も 5 秒間は同じ実行グループと腕ツールのプロセス間ロックを保持し、連続実行を抑える。
+ツール結果の `process_exited` はプロセス終了、子の JSON の `accepted` は SDK の受理を表し、
+物理動作の完了通知ではない。Ctrl+C は待受・プロセスを終了するが、受理済みプリセットの停止は保証しない。
+ログは既定の `_local/voice/onboard-runs/` に保存する。
+
+`Entame/real/arm_wave_real.py` の既存の手振り実績をもとにしているが、
+この音声経路の G1 実機確認は未実施。テストでは SDK の境界を置き換え、実機へは送信しない。
+実モデルでも登録した合成音声から `wave_hand` → dry-run を確認した。
+未登録の言い換えを見送るケースがあり、実録音による分類精度は未検証。
+
 ## G1 本体で常時受信し、巡回を開始する
 
 `onboard_voice.py` は、**G1 の PC2 上だけで音声入力からツール実行まで完結する**構成。
@@ -20,7 +101,7 @@ G1 内蔵マイク（UDP / eth0）
   → /g1/patrol/start → 応答の success と RUNNING 状態を確認
 ```
 
-現在登録しているツールは `patrol_start` のみ。準備済みの巡回を開始・再開する。
+巡回用の既定設定に登録しているツールは `patrol_start`。準備済みの巡回を開始・再開する。
 既に巡回中なら既存の巡回ノードが再起動せず応答する。
 巡回路の用意・地図との位置合わせ・発進ゲート・走行許可は既存の Navigation の手順で準備する。
 
@@ -156,6 +237,8 @@ G1 側で確認する。`/tmp` の venv は再起動で消えるため、自動�
 `ros_service` に `/g1/patrol/pause` を登録でき、音声側のコード変更は不要。
 ROS backend は応答の `success_field` と、任意の `confirm` に指定した状態トピックで結果を確認できる。
 `command` は管理者が登録した `argv` を shell=False で実行し、`{引数名}` のトークンにだけ値を渡す。
+`command` の `config.cwd` に相対パスを指定すると、ツール設定 JSON のあるディレクトリから解決する。
+`tools.wave.json` はこの仕組みでリポジトリの配置場所に依存せず SDK 用ラッパーを呼び出す。
 引数スキーマは `additionalProperties: false` とし、必要に応じて enum や数値範囲を制限する。
 新しい実行方式は `ToolSpec, arguments -> ToolResult` の callable を backend として登録する。
 

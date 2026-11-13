@@ -40,7 +40,8 @@ class ToolResult:
 
 
 def load_tools(path: Path) -> tuple[ToolSpec, ...]:
-    data = json.loads(path.expanduser().read_text(encoding="utf-8"))
+    path = path.expanduser().resolve()
+    data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or not isinstance(data.get("tools"), list):
         raise ValueError("ツール設定には tools 配列が必要です")
     specs = []
@@ -61,6 +62,13 @@ def load_tools(path: Path) -> tuple[ToolSpec, ...]:
         backend, config = row.get("backend"), row.get("config", {})
         if not isinstance(backend, str) or not backend or not isinstance(config, dict):
             raise ValueError(f"{name}: backend と config を確認してください")
+        if backend == "command" and "cwd" in config:
+            if not isinstance(config["cwd"], str) or not config["cwd"]:
+                raise ValueError(f"{name}: cwd は空でないパスにしてください")
+            cwd = Path(config["cwd"]).expanduser()
+            if not cwd.is_absolute():
+                cwd = path.parent / cwd
+            config = {**config, "cwd": str(cwd.resolve())}
         group = row.get("exclusive_group", "motion")
         if not isinstance(group, str) or not group:
             raise ValueError(f"{name}: exclusive_group を指定してください")

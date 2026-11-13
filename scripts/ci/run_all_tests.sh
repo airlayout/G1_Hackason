@@ -34,6 +34,7 @@ DEPENDS_ON=(
     "Button_Press Perception"
     "Voice Button_Press"
     "Voice Navigation"
+    "Voice Entame"
 )
 
 # ---- 実行する機能フォルダを決める -------------------------------------------

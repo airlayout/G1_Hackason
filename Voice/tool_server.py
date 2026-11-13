@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""既存 ROS 環境で動かす、登録済みツールのローカル実行サーバー。"""
+"""G1 上で動かす、登録済みツールのローカル実行サーバー。"""
 
 from __future__ import annotations
 

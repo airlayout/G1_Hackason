@@ -1,0 +1,19 @@
+{
+  "min_similarity": 0.75,
+  "min_margin": 0.08,
+  "tasks": [
+    {
+      "id": "wave_hand",
+      "action": "sdk_arm_action",
+      "arguments": {"preset": "high wave"},
+      "descriptions": ["手を振って。"],
+      "reference_audio": ["../../_local/voice/reference-audio/wave-hand.wav", "../../_local/voice/reference-audio/wave-hand-polite.wav"]
+    },
+    {
+      "id": "no_action",
+      "action": null,
+      "descriptions": ["手を振らないで。待っていて。"],
+      "reference_audio": ["../../_local/voice/reference-audio/wave-cancel.wav", "../../_local/voice/reference-audio/wave-other.wav"]
+    }
+  ]
+}

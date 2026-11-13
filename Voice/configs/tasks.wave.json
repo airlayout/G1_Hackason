@@ -1,0 +1,17 @@
+{
+  "min_similarity": 0.75,
+  "min_margin": 0.08,
+  "tasks": [
+    {
+      "id": "wave_hand",
+      "action": "sdk_arm_action",
+      "arguments": {"preset": "high wave"},
+      "descriptions": ["手を振って。", "手を振ってください。", "手を振って挨拶してください。"]
+    },
+    {
+      "id": "no_action",
+      "action": null,
+      "descriptions": ["手を振らないで。", "手を動かさないで。", "その場で待っていて。", "巡回を開始して。", "こんにちは。"]
+    }
+  ]
+}

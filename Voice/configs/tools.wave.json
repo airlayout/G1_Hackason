@@ -1,0 +1,21 @@
+{
+  "tools": [
+    {
+      "name": "sdk_arm_action",
+      "description": "停止中の G1 で、登録済みの手振りプリセット high wave を実行する。",
+      "backend": "command",
+      "config": {
+        "cwd": "../..",
+        "argv": ["bash", "Voice/deploy/run_sdk_arm_action.sh", "--preset", "{preset}", "--execute"]
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {"preset": {"type": "string", "enum": ["high wave"]}},
+        "required": ["preset"],
+        "additionalProperties": false
+      },
+      "timeout_s": 20,
+      "exclusive_group": "motion"
+    }
+  ]
+}
