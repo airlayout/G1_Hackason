@@ -56,7 +56,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from auto_press import MAX_PELVIS_TILT_DEG, MAX_WAIST_DEG, Check, motion_controller_check  # noqa: E402
+from auto_press import Check, motion_controller_check  # noqa: E402
+from auto_press import stand_check as _stand_check  # noqa: E402
 from common.arm import ArmCommander, StateTimeoutError, StopRequested, WaistDeviationError, joint_limits  # noqa: E402
 from common.arm.backend import ArmBackend  # noqa: E402
 from common.arm.types import JointState  # noqa: E402
@@ -191,11 +192,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def stand_check(st: JointState) -> Check:
-    """立っているか（real/auto_press.py の事前確認と同じ基準: 骨盤の傾き 5° 以下、腰 3 関節が 3° 以内）。"""
-    tilt = pelvis_tilt_deg(st.imu_quat)
-    waist = np.degrees(st.q[list(WAIST_IDX)])
-    ok = tilt <= MAX_PELVIS_TILT_DEG and float(np.max(np.abs(waist))) <= MAX_WAIST_DEG
-    return Check("立っているか", ok, f"骨盤の傾き {tilt:.1f}°、腰 yaw/roll/pitch " + ", ".join(f"{v:+.1f}" for v in waist) + "°")
+    """立っているか（real/auto_press.py の事前確認と同じ基準: 骨盤の傾き 5° 以下、腰 yaw/roll 3°・pitch 6° 以内）。"""
+    return _stand_check(pelvis_tilt_deg(st.imu_quat), np.degrees(st.q[list(WAIST_IDX)]))
 
 
 def resolve_gains(args: argparse.Namespace, arm_cfg: dict[str, Any]) -> tuple[float, float]:

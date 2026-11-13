@@ -45,6 +45,9 @@ PC2 に残る記録のフォルダ名（body_log・auto など）は PC2 の時�
 | 18:34（17:34） | 以後、送るコマンドはユーザーが打つことにした。`record.py --mode interval --interval-s 1` を PC2 で流し続ける（lowstate 全部・画像 1 秒に 1 枚） |
 | 18:35（17:35） | `--arm auto` の dry-run を 2 通り、もう一度（どちらも ✅） |
 | 18:37〜18:38（17:37〜17:38） | **ユーザーが `--arm auto` を空中で 2 回送った**（PC2 で `script -f -a ~/button_press/onboard_logs/user_20261113.log` の中で） |
+| 18:38:53（17:38:53） | **ユーザーがロボットのモードを locked standing → regular mode に変えた**。約 1 秒で腰 pitch −0.25° → −3.4°、骨盤の傾き 0.8° → 2.9°（どちらのモードも立っている） |
+| 18:4x | `waist_turn_check.py`（dry-run）が事前確認の「立っているか」で止まった（腰 pitch −3.3° が基準の 3° を超えた。何も送っていない） |
+| 19:0x | エレベーターも regular mode なので、事前確認の腰 pitch の上限を 6° にした（ユーザーが B を選んだ）。PC2 に送り、dry-run が通った |
 
 ## つなぎ方（PC2 の上で動かす）
 
@@ -147,9 +150,32 @@ PC2 に残る記録のフォルダ名（body_log・auto など）は PC2 の時�
   → 押した力の推定は、空中で同じ動きをしたときの値（姿勢ごとのずれ）を引かないと使えない。直し方は机の上で考える
   （案: 押す前に、同じ経路を空中で動かしたときの推定を基準にする／重力のモデルの質量を実機に合わせる）
 
+## 腰だけを回す（`waist_turn_check.py`）
+
+### 1 回目の dry-run: 事前確認で止まった（regular mode）
+
+- 表示された計画: +5° → −5° → 0°、10°/秒、各 3 秒保つ、全体 10 秒、腰の PD kp 60 / kd 1.5、止める判定 3°・3°・3°・0.2 秒
+- 事前確認: モーションコントローラ `ai` OK、モータの mode OK、**立っているか NG**（骨盤の傾き 2.9°、腰 yaw/roll/pitch −0.1, +0.5, −3.3°）。
+  基準は auto_press と同じ「骨盤の傾き 5° 以下、腰の 3 関節が 3° 以内」で、腰 pitch が少し超えた
+- 原因: **ロボットのモードを locked standing から regular mode に変えたため**。流していた記録（`recordings/20261113_173448_day_watch/lowstate.csv`）で、
+  17:38:53（PC2）に約 1 秒で腰 pitch が −0.25° → −3.4° に変わってそのまま。腕の 2 回目（〜17:38:15）の約 40 秒後で、腕は下ろしたまま
+- 分かったこと: **regular mode では、立っているだけで腰 pitch が約 −3.3°・骨盤の傾きが約 2.9° になる**。今の事前確認（auto_press も同じ）は
+  regular mode では通らない。空中の腕の試し（17:25〜17:38）はすべて locked standing（腰 pitch −0.2°、傾き 0.7〜0.8°）
+
+### 事前確認の腰の上限を変えた（ユーザーが選んだ。エレベーターでも regular mode を使うため）
+
+- `real/auto_press.py` の `MAX_WAIST_DEG` を、一律 3° から **yaw 3° / roll 3° / pitch 6°** にした。骨盤の傾きの上限 5° はそのまま
+  （regular mode の 2.9° は入る）。yaw は、起動直後のように腰がひねられたまま（−13.6°）を止めるため 3° のまま
+- 判定を `stand_check(tilt, waist)` にまとめ、`waist_turn_check.py` も同じものを使う（前は同じ式を 2 か所に書いていた）
+- 腰を回す間の止める判定（WaistGuard）と ArmCommander の腰のずれ（`waist_max_deviation_rad` 0.05）は **始めからの変化**で見るので、変えていない
+- テスト `tests/test_auto_press.py` の `TestStandCheck`（regular mode・locked standing は通る、yaw −13.6°・roll 3.5°・pitch −6.5°・傾き 5.5° は止まる）。
+  J1-gen の全テスト 481 件 OK（スキップ 8）
+- PC2 に送ってもう一度 dry-run: **事前確認 3 つとも OK**（骨盤の傾き 2.9°、腰 −0.1, +0.5, −3.3°（上限 3/3/6°））
+
 ## 決めたこと
 
 - 今日は有線のラボ PC を使わず、PC2 の上で押す処理を動かす（ユーザー。(b) を選んだ）
+- 事前確認の腰 pitch の上限を 6° にする（エレベーターでも regular mode を使うため。ユーザー）
 - **送る（`--execute`）コマンドはユーザーが打つ**。Claude は dry-run まで。`record.py` を流し続け、ユーザーは `script` の中で打つ（ユーザー）
 - `docs/reports/REPORT_20261113.md`（次の実機日に試すこと）を `ToDo_20261113.md` に改名し、今日の REPORT と記録は別に作る（ユーザー）
 

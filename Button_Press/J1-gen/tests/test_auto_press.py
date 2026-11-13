@@ -15,7 +15,9 @@ import numpy as np
 from common.config import FEATURE_DIR, REPO_ROOT
 
 sys.path.insert(0, str(FEATURE_DIR / "real"))
-from auto_press import color_changed, expected_head_pitch, head_tilt_check, press_command, take_agent_result  # noqa: E402
+from auto_press import (  # noqa: E402
+    color_changed, expected_head_pitch, head_tilt_check, press_command, stand_check, take_agent_result,
+)
 
 
 def args(**kw: object) -> argparse.Namespace:
@@ -32,6 +34,32 @@ class TestPrechecks(unittest.TestCase):
         self.assertEqual(color_changed(img, img.copy()), 0.0)
         noisy = np.clip(img.astype(int) + np.random.default_rng(1).integers(-3, 4, img.shape), 0, 255)
         self.assertGreater(color_changed(img, noisy.astype(np.uint8)), 0.05)
+
+
+class TestStandCheck(unittest.TestCase):
+    """立っているか。2026-11-13 の実機の値で確かめる。"""
+
+    def test_regular_mode_passes(self) -> None:
+        """regular mode（エレベーターで使う）は、立っているだけで腰 pitch −3.3°・骨盤の傾き 2.9°。3° の一律の上限では止まった。"""
+        self.assertTrue(stand_check(2.9, np.array([-0.1, 0.5, -3.3])).ok)
+
+    def test_locked_standing_passes(self) -> None:
+        self.assertTrue(stand_check(0.8, np.array([-0.1, 0.1, -0.2])).ok)
+
+    def test_twisted_waist_is_stopped(self) -> None:
+        """起動直後に腰 yaw が −13.6° だった。yaw は 3° のまま。"""
+        self.assertFalse(stand_check(0.8, np.array([-13.6, 0.9, 3.3])).ok)
+        self.assertFalse(stand_check(0.8, np.array([3.5, 0.0, 0.0])).ok)
+
+    def test_roll_and_pitch_limits(self) -> None:
+        self.assertFalse(stand_check(0.8, np.array([0.0, 3.5, 0.0])).ok)
+        self.assertFalse(stand_check(0.8, np.array([0.0, 0.0, -6.5])).ok)
+
+    def test_pelvis_tilt_limit(self) -> None:
+        self.assertFalse(stand_check(5.5, np.array([0.0, 0.0, 0.0])).ok)
+
+    def test_message_shows_limits(self) -> None:
+        self.assertIn("上限 3/3/6°", stand_check(2.9, np.array([-0.1, 0.5, -3.3])).message)
 
 
 class TestHeadTiltCheck(unittest.TestCase):

@@ -71,7 +71,10 @@ EXIT_PRECHECK = 10
 
 # 事前確認のしきい値
 MAX_PELVIS_TILT_DEG = 5.0
-MAX_WAIST_DEG = 3.0
+# 腰 yaw / roll / pitch の、0° からの差の上限 [deg]。pitch だけ広い: 2026-11-13、立った状態のまま locked standing から
+# regular mode（エレベーターで使うモード）に変えると、腰 pitch が −0.2° → −3.3°、骨盤の傾きが 0.8° → 2.9° になり、3° で止まった。
+# yaw は腰がひねられたまま（2026-11-13 の起動直後 −13.6°）を止めるため 3° のまま
+MAX_WAIST_DEG = (3.0, 3.0, 6.0)
 MIN_COLOR_CHANGE = 0.05  # 2 枚のカラーの差（画素の平均）。止まっていると 0.00、動いていれば 1 前後（2026-10-21）
 # 頭カメラの向き（深度の床の面から求めた pitch）と、位置の計算に使う向きの差の上限 [deg]。2026-11-03: 51〜54°
 # （URDF 47.6° から +3〜+7°）では推定の位置は 0〜5 mm で合い点灯した。首がずれた 61.2°・64.4°（+14〜+17°）を止める
@@ -90,6 +93,15 @@ def color_changed(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.mean(np.abs(a.astype(float) - b.astype(float))))
 
 
+def stand_check(tilt_deg: float, waist_deg: np.ndarray) -> Check:
+    """立っているか: 骨盤の傾き（IMU）が MAX_PELVIS_TILT_DEG 以下、腰 yaw / roll / pitch がそれぞれ MAX_WAIST_DEG 以内。"""
+    waist = np.asarray(waist_deg, dtype=float)
+    ok = tilt_deg <= MAX_PELVIS_TILT_DEG and bool(np.all(np.abs(waist) <= np.asarray(MAX_WAIST_DEG)))
+    return Check("立っているか", ok, f"骨盤の傾き {tilt_deg:.1f}°、腰 yaw/roll/pitch "
+                 + ", ".join(f"{v:+.1f}" for v in waist) + "°（上限 "
+                 + "/".join(f"{v:g}" for v in MAX_WAIST_DEG) + "°）")
+
+
 def run_prechecks(args: argparse.Namespace, iface: str) -> list[Check]:
     """押すたびに見ること（そのつど変わりうることだけ）。"""
     from common.camera_rgbd import RgbdZmqSource
@@ -104,11 +116,7 @@ def run_prechecks(args: argparse.Namespace, iface: str) -> list[Check]:
         return [Check("lowstate", False, str(e))]
     checks = [motion_controller_check()]
 
-    tilt = pelvis_tilt_deg(st.imu_quat)
-    waist = np.degrees(st.q[list(WAIST_IDX)])
-    stand_ok = tilt <= MAX_PELVIS_TILT_DEG and float(np.max(np.abs(waist))) <= MAX_WAIST_DEG
-    checks.append(Check("立っているか", stand_ok, f"骨盤の傾き {tilt:.1f}°、腰 yaw/roll/pitch "
-                        + ", ".join(f"{v:+.1f}" for v in waist) + "°"))
+    checks.append(stand_check(pelvis_tilt_deg(st.imu_quat), np.degrees(st.q[list(WAIST_IDX)])))
 
     cam = load_camera_config(args, quiet=True)["rgbd"]
     with RgbdZmqSource(cam["server_address"], int(cam["port"]), int(cam["timeout_ms"])) as src:
