@@ -29,6 +29,10 @@ from .poses import ACTIONS, Action
 # 腰の上限の既定 [deg]。2026-11-13 の実機で、point は上限 5° では止まり、8° で最後まで動いた（腰 pitch の最大 +6.7°）。
 # point_level は 10° で最後まで動いた（腰の kp 60 のとき）
 DEFAULT_WAIST_MAX_DEG = 8.0
+# 腰を開始時の角度に保つ PD の既定（この動作だけ。arm.yaml の arm_sdk.waist_hold = 60 / 1.5 は変えない）。
+# 2026-11-13 の実機: point_level の腰 pitch の最大は kp 60 で +9.2°、kp 120 / kd 2.5 で +3.9〜4.1°（震え無し）
+DEFAULT_WAIST_KP = 120.0
+DEFAULT_WAIST_KD = 2.5
 # 腰の PD の上限（real/waist_turn_check.py と同じ。2026-11-13 に arm_sdk で kp 300 / kd 5 を実機で送った記録がある）
 MAX_WAIST_KP = 300.0
 MAX_WAIST_KD = 5.0
@@ -54,10 +58,8 @@ def run_action(action: Action, args: argparse.Namespace, path: str, dry_run: boo
     arm_cfg["safety"]["waist_max_deviation_rad"] = float(np.radians(args.waist_max_deg))
     # 腰を開始時の角度に保つ PD も、この動作の実行時だけ変える（arm_sdk のときだけ効く）
     hold = arm_cfg["arm_sdk"]["waist_hold"]
-    if args.waist_kp is not None:
-        hold["kp"] = float(args.waist_kp)
-    if args.waist_kd is not None:
-        hold["kd"] = float(args.waist_kd)
+    hold["kp"] = float(args.waist_kp)
+    hold["kd"] = float(args.waist_kd)
     for k, v in (overrides or {}).items():
         arm_cfg[k] = v
 
@@ -130,17 +132,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--waist-max-deg", type=float, default=DEFAULT_WAIST_MAX_DEG,
                    help=f"腰の角度が開始時からこれ以上ずれたら中止する [deg]（既定 {DEFAULT_WAIST_MAX_DEG:.0f}。"
                         "この動作だけの値で、arm.yaml の既定（約 2.9）は変えない。point_level は kp 60 で 10 が要った）")
-    p.add_argument("--waist-kp", type=float,
-                   help=f"腰を開始時の角度に保つ PD の kp（既定は arm.yaml の arm_sdk.waist_hold = 60。{MAX_WAIST_KP:.0f} まで）")
-    p.add_argument("--waist-kd", type=float,
-                   help=f"腰を保つ PD の kd（既定は arm.yaml = 1.5。{MAX_WAIST_KD:.0f} まで）")
+    p.add_argument("--waist-kp", type=float, default=DEFAULT_WAIST_KP,
+                   help=f"腰を開始時の角度に保つ PD の kp（既定 {DEFAULT_WAIST_KP:.0f}。この動作だけの値で、"
+                        f"arm.yaml の arm_sdk.waist_hold = 60 は変えない。{MAX_WAIST_KP:.0f} まで）")
+    p.add_argument("--waist-kd", type=float, default=DEFAULT_WAIST_KD,
+                   help=f"腰を保つ PD の kd（既定 {DEFAULT_WAIST_KD}。{MAX_WAIST_KD:.0f} まで）")
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は設定ファイル）")
     p.add_argument("--execute", action="store_true", help="実際に送信する（付けなければ dry-run）")
     p.add_argument("--no-confirm", action="store_true", help="各段階の Enter 待ちを省く（--execute 時の既定は確認あり）")
     args = p.parse_args(argv)
-    if args.waist_kp is not None and not (0.0 < args.waist_kp <= MAX_WAIST_KP):
+    if not (0.0 < args.waist_kp <= MAX_WAIST_KP):
         p.error(f"--waist-kp は 0 より大きく {MAX_WAIST_KP:.0f} 以下: {args.waist_kp}")
-    if args.waist_kd is not None and not (0.0 <= args.waist_kd <= MAX_WAIST_KD):
+    if not (0.0 <= args.waist_kd <= MAX_WAIST_KD):
         p.error(f"--waist-kd は 0 以上 {MAX_WAIST_KD:.0f} 以下: {args.waist_kd}")
     if not (0.0 < args.waist_max_deg <= 15.0):
         p.error(f"--waist-max-deg は 0 より大きく 15 以下（腰 pitch の可動域 ±30° の半分）: {args.waist_max_deg}")
