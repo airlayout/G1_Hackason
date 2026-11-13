@@ -187,11 +187,7 @@ def main():
         stamp = time.strftime("%Y%m%d_%H%M%S")
         args.json = ROOT / "output" / f"arm_control_ownership_{stamp}.json"
 
-    # The receive-only identity probe discovers the robot Arm PID; it cannot
-    # require that result before discovery.  Bind the reader's local identity
-    # to this diagnostic process, then resolve the strict remote candidate from
-    # the built-in DDS inventory below.
-    reader = ReadOnlyState(args.network_interface, expected_arm_pid=os.getpid())
+    reader = ReadOnlyState(args.network_interface)
     try:
         time.sleep(1)  # discovery settling, outside the measured window
         start_activity = reader.activity_snapshot()

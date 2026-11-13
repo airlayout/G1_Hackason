@@ -15,7 +15,8 @@ import numpy as np
 from common import NAMES, ROOT, acquire_file_lock, interpolate, output_path, write_json
 from reaction_profiles import (align_precomputed_reaction, precompute_named_reaction)
 from resident_protocol import DryRunBackend, JsonUnixServer, ResidentController
-from robot_transport import (ReadOnlyState, RecoverableMotionEnvelopeExceeded,
+from robot_transport import (LOWSTATE_FRESHNESS_S, ReadOnlyState,
+                             RecoverableMotionEnvelopeExceeded,
                              RecoverablePreCommandStationarityError,
                              state_summary, validate_state)
 from run_real_reaction import (DT, FAST_ACQUIRE_S, FAST_HOLD_S, FAST_POST_RELEASE_S,
@@ -27,25 +28,75 @@ from safety_monitor import OwnershipWatchdog
 
 
 REACTION_SPECS = {
-    # Public engine name -> exact already-tested trajectory profile.
-    "surprise": ("surprise_100_hackathon_suspended", 1.0, 1.0, True),
-    "found": ("found", .5, .25, False),
-    "joy": ("joy_100_hackathon_suspended", 1.0, 1.0, True),
+    # Public engine name -> (profile, arm scale, waist scale, fast).
+    # Waist scale is 0 for every reaction: arm_sdk always blends the waist,
+    # so it is held at the pre-reaction pose instead of following the clip.
+    # Waist motion destabilized the standing G1 on 2026-10-30.
+    "surprise": ("surprise_100_hackathon_suspended", 1.0, 0.0, True),
+    "found": ("found", .5, 0.0, False),
+    "joy": ("joy_100_hackathon_suspended", 1.0, 0.0, True),
+    # Kimodo-generated reactions (2026-10-28), half amplitude like "found".
+    "bow": ("bow", .5, 0.0, False),
+    "welcome": ("welcome", .5, 0.0, False),
+    # 75% lifts the hand to head height; the 6 s profile keeps the 50%/4 s speed.
+    "salute": ("salute", .75, 0.0, False),
+    "look_around": ("look_around", .5, 0.0, False),
+    "mitsuketa": ("mitsuketa", .5, 0.0, False),
+    "bikkuri": ("bikkuri", .5, 0.0, False),
+    "chotto_bikkuri": ("chotto_bikkuri", .5, 0.0, False),
+    "odoroku": ("odoroku", .5, 0.0, False),
+    "sokoni_ita": ("sokoni_ita", .5, 0.0, False),
+    "detekoi": ("detekoi", .75, 0.0, False),
+    "kikimimi": ("kikimimi", .5, 0.0, False),
+    "kinniku": ("kinniku", .75, 0.0, False),
+    "hisashiburi": ("hisashiburi", .5, 0.0, False),
+    "comical_dance": ("comical_dance", .375, 0.0, False),
+    "tekitou_dance": ("tekitou_dance", .5, 0.0, False),
 }
 
-CONTROLLED_RETURN_MIN_S = .10
-CONTROLLED_RETURN_MAX_S = .75
-CONTROLLED_RETURN_CONSECUTIVE = 3
+# Automatic recovery after a tilt/gyro abort (hackathon runtime only). The stop
+# limits in validate_state are unchanged; these are stricter settling limits.
+RECOVERY_DEADLINE_S = 10.
+RECOVERY_SETTLED_S = 1.
+RECOVERY_MAX_TILT_RAD = .12
+RECOVERY_MAX_GYRO_RAD_S = .10
+RECOVERY_MAX_CONSECUTIVE = 2
 
 
 def classify_runtime_exception(exc: BaseException | None, hackathon_runtime: bool) -> str:
     if exc is None:
         return "SUCCESS"
-    if hackathon_runtime and isinstance(exc, RecoverableMotionEnvelopeExceeded):
-        return "RECOVERABLE_ABORT"
-    if hackathon_runtime and isinstance(exc, RecoverablePreCommandStationarityError):
+    if hackathon_runtime and isinstance(exc, (RecoverableMotionEnvelopeExceeded,
+                                              RecoverablePreCommandStationarityError)):
         return "RECOVERABLE_ABORT"
     return "HARD_FAULT"
+
+
+def wait_until_settled(read_summary, preflight, *, deadline_s=RECOVERY_DEADLINE_S,
+                       settled_s=RECOVERY_SETTLED_S, clock=time.monotonic,
+                       sleeper=time.sleep) -> bool:
+    """True once every start gate and the settling limits hold for settled_s."""
+    deadline = clock() + deadline_s; settled_since = None
+    while clock() < deadline:
+        try:
+            preflight(); summary = read_summary()
+            calm = (max(abs(x) for x in summary["imu_rpy"][:2]) <= RECOVERY_MAX_TILT_RAD
+                    and max(abs(x) for x in summary["gyro"]) <= RECOVERY_MAX_GYRO_RAD_S)
+        except RuntimeError:
+            calm = False
+        if not calm:
+            settled_since = None
+        else:
+            settled_since = clock() if settled_since is None else settled_since
+            if clock() - settled_since >= settled_s:
+                return True
+        sleeper(.05)
+    return False
+
+
+CONTROLLED_RETURN_MIN_S = .10
+CONTROLLED_RETURN_MAX_S = .75
+CONTROLLED_RETURN_CONSECUTIVE = 3
 
 
 def adaptive_controlled_return_hold(runtime, q0: np.ndarray, *,
@@ -130,8 +181,8 @@ class RealResidentBackend:
         self.reader = self.writer = self.runtime = self.watchdog = None
         self.reactions = frozenset(reactions)
         self.lowstate_backend = lowstate_backend
-        self.hackathon_suspended_mode = True
         self.hackathon_runtime = bool(hackathon_runtime)
+        self.consecutive_recoveries = 0
         self.lock_file = None; self.assets = {}; self.preflights = {}
         self.full_sweep = None; self.folder = None; self.execution_index = 0
 
@@ -150,15 +201,11 @@ class RealResidentBackend:
         self.reader = ReadOnlyState(self.interface, self.discovery_peers,
                                     self.expected_arm_pid,
                                     lowstate_backend=self.lowstate_backend)
-        state = self.reader.wait(3.0); validate_state(
-            state, initial=True,
-            hackathon_suspended_mode=self.hackathon_suspended_mode)
+        state = self.reader.wait(3.0); validate_state(state, initial=True)
         wait_for_fresh_idle_ownership(
             self.reader, allow_robot_internal_idle_traffic=True)
         self.reader.require_stationary()
-        state = self.reader.get(); validate_state(
-            state, initial=True,
-            hackathon_suspended_mode=self.hackathon_suspended_mode)
+        state = self.reader.get(); validate_state(state, initial=True)
         snapshot = state_summary(state)
 
         # All heavy trajectory and collision checks are completed before READY.
@@ -171,6 +218,13 @@ class RealResidentBackend:
                     else report["passed"])
             self.preflights[name] = {"passed": bool(hard), "report": report,
                                      "metadata": metadata}
+            if not hard:
+                collision = report["collision"]
+                print(f"PREFLIGHT_FAILED {name} checks="
+                      f"{[k for k, v in report['checks'].items() if not v]} "
+                      f"clearance={collision['minimum_clearance_m']} "
+                      f"new_pairs={collision.get('new_collision_pairs')} "
+                      f"deficit_pairs={collision.get('new_clearance_deficit_pairs')}", flush=True)
 
         self.runtime = Runtime(
             self.reader, None, snapshot, self.folder, "resident",
@@ -233,12 +287,10 @@ class RealResidentBackend:
     def preflight(self) -> dict:
         """Run the existing receive-only motion-start gates without commanding G1."""
         state = self.reader.get(max_age=.15)
-        validate_state(
-            state, initial=True,
-            hackathon_suspended_mode=self.hackathon_suspended_mode)
+        validate_state(state, initial=True)
         self.reader.require_stationary()
         validate_upper(np.asarray(state_summary(state)["all_q"]))
-        ownership = self.watchdog.fresh_snapshot(max_age_s=.75,timeout_s=2.)
+        ownership = self.watchdog.snapshot(max_age_s=.75)
         if not ownership["ownership_safe"]:
             raise RuntimeError(
                 "ownership is not safe: " + "; ".join(ownership["reasons"])
@@ -264,27 +316,12 @@ class RealResidentBackend:
             raise RuntimeError(f"reaction is not resident-prevalidated: {reaction}")
         state = self.reader.get(max_age=.15)
         try:
-            validate_state(
-                state, initial=True,
-                hackathon_suspended_mode=self.hackathon_suspended_mode)
-        except RecoverablePreCommandStationarityError as exc:
-            if not self.hackathon_runtime or self.writer.weight != 0.:
-                raise
-            deadline = time.monotonic() + 2.0
-            recovery_status = None
-            while time.monotonic() < deadline:
-                try:
-                    self.runtime.sample("PRECOMMAND_RECOVERY", self.runtime.q0)
-                    self.preflight()
-                    recovery_status = self.status()
-                    break
-                except RuntimeError:
-                    time.sleep(.05)
-            if not (recovery_status
-                    and recovery_status.get("ownership_safe") is True
-                    and recovery_status.get("external_writers") == 0
-                    and recovery_status.get("weight") == 0.
-                    and "status_error" not in recovery_status):
+            validate_state(state, initial=True)
+        except (RecoverableMotionEnvelopeExceeded,
+                RecoverablePreCommandStationarityError) as exc:
+            # No command has been sent for this request.
+            if not (self.hackathon_runtime and self.writer.weight == 0.
+                    and self._recover()):
                 raise
             return {
                 "schema": "motiondecode-test.resident-result.v1",
@@ -293,11 +330,18 @@ class RealResidentBackend:
                 "motion_completed": False, "released": True,
                 "weight_zero": True, "returned_to_q0": False,
                 "hard_fault": None, "recoverable_reason": str(exc),
-                "recovery_status": recovery_status, "commands_sent": 0,
+                "recovery_status": self.status(), "commands_sent": 0,
                 "reaction_engine_trigger_monotonic_s": request.get(
                     "trigger_monotonic_s") if request else None,
                 "worker_receive_monotonic_s": received,
             }
+        # Discovery is continuously evaluated by the watchdog. Consuming its
+        # fresh, latched cache keeps DDS discovery off the trigger path while
+        # preserving conflict detection and fail-closed behavior.
+        ownership = self.watchdog.snapshot(max_age_s=.75)
+        if not ownership["ownership_safe"]:
+            raise RuntimeError("ownership is not safe: " +
+                               "; ".join(ownership["reasons"]))
         q0 = np.asarray(state_summary(state)["all_q"]); validate_upper(q0)
         paths, _, durations, metadata = align_precomputed_reaction(self.assets[reaction], q0)
         # Trigger-time checks are bounded vector operations only.
@@ -305,23 +349,22 @@ class RealResidentBackend:
         if not np.isfinite(merged).all() or merged.shape[1] != 17:
             raise RuntimeError("resident trajectory integrity failure")
 
-        # Keep the cached fast path, but refresh stale SAFE state immediately
-        # before motion. Latched unsafe/error/stopped states never refresh and
-        # remain fail-closed. This also closes the preflight/execute TTL gap.
-        ownership = self.watchdog.fresh_snapshot(max_age_s=.75,timeout_s=2.)
-        if not ownership["ownership_safe"]:
-            raise RuntimeError("ownership is not safe: " +
-                               "; ".join(ownership["reasons"]))
-
         runtime = self.runtime; runtime.q0 = q0.copy(); runtime.previous_target = q0.copy()
         runtime.rows.clear(); runtime.command_rows.clear(); runtime.fast_loop_timings.clear()
         runtime.phase_terminations.clear(); runtime.velocity_records.clear()
         sent_before = self.writer.sent
         acquire_start = time.monotonic(); clip_start = None; completed = False
-        execution_exception = None
         hard_fault = None
         controlled_return = {}
-        gc.collect(); gc.disable()
+        execution_exception = None
+        gc_start = time.monotonic(); gc.collect(); gc.disable()
+        gc_done = time.monotonic()
+        # The collection stops the LowState poll thread: start the ramp only
+        # after a sample newer than the pause (the freshness limit still applies).
+        while self.reader.latest[0] < gc_done and time.monotonic() - gc_done < LOWSTATE_FRESHNESS_S:
+            time.sleep(.002)
+        print(f"GC_PAUSE {reaction} collect_ms={1000 * (gc_done - gc_start):.0f} "
+              f"fresh_wait_ms={1000 * (time.monotonic() - gc_done):.0f}", flush=True)
         try:
             runtime.phase("ACQUIRE_RAMP", FAST_ACQUIRE_S, lambda u: q0, lambda u: u)
             runtime.phase("HOLD", FAST_HOLD_S, lambda u: q0, lambda u: 1.)
@@ -339,6 +382,9 @@ class RealResidentBackend:
         except BaseException as exc:
             execution_exception = exc
             hard_fault = str(exc)
+            print(f"REACTION_FAULT {reaction} context={runtime.current_context} "
+                  f"lowstate_age_ms={1000 * (time.monotonic() - self.reader.latest[0]):.0f} "
+                  f"reason={exc}", flush=True)
             runtime.abort_release()
         finally:
             gc.enable()
@@ -356,47 +402,23 @@ class RealResidentBackend:
         return_diagnostics = q0_return_diagnostics(
             rows, q0, np.asarray(final["all_q"]), controlled_return
         )
-        recoverable_abort = bool(
+        recoverable_abort = (
             classify_runtime_exception(execution_exception, self.hackathon_runtime)
-            == "RECOVERABLE_ABORT"
-            and self.writer.weight == 0.
+            == "RECOVERABLE_ABORT" and self.writer.weight == 0. and self._recover()
         )
-        recovery_status = None
-        if recoverable_abort:
-            deadline = time.monotonic() + 2.0
-            while time.monotonic() < deadline:
-                try:
-                    self.runtime.sample("RECOVERY_POSTFLIGHT", q0)
-                    self.preflight()
-                    recovery_status = self.status()
-                    break
-                except RuntimeError:
-                    time.sleep(.05)
-            recoverable_abort = bool(
-                recovery_status
-                and recovery_status.get("ownership_safe") is True
-                and recovery_status.get("external_writers") == 0
-                and recovery_status.get("weight") == 0.
-                and "status_error" not in recovery_status
-            )
-        classification = (
-            "RECOVERABLE_ABORT" if recoverable_abort else
-            "HARD_FAULT" if hard_fault else
-            "DEGRADED_SUCCESS" if not return_diagnostics["returned_to_q0"] else
-            "SUCCESS"
-        )
+        if execution_exception is None:
+            self.consecutive_recoveries = 0
         self.execution_index += 1
         result = {
             "schema": "motiondecode-test.resident-result.v1", "reaction": reaction,
             "status": ("recoverable_abort" if recoverable_abort else
                        "pass" if completed and hard_fault is None else "fail"),
-            "classification": classification,
+            "recoverable_reason": hard_fault if recoverable_abort else None,
+            "recovery_status": self.status() if recoverable_abort else None,
             "executed": self.writer.sent > sent_before, "motion_completed": completed,
             "released": self.writer.weight == 0.,
             "returned_to_q0": return_diagnostics["returned_to_q0"],
             "hard_fault": hard_fault, "metadata": metadata,
-            "recoverable_reason": hard_fault if recoverable_abort else None,
-            "recovery_status": recovery_status,
             "reaction_engine_trigger_monotonic_s": request.get("trigger_monotonic_s") if request else None,
             "worker_receive_monotonic_s": received,
             "acquire_start_monotonic_s": acquire_start,
@@ -418,6 +440,19 @@ class RealResidentBackend:
             raise RuntimeError(hard_fault)
         return result
 
+    def _recover(self) -> bool:
+        """Return to READY only if G1 settles; a repeat offender stays FAULT."""
+        if self.consecutive_recoveries >= RECOVERY_MAX_CONSECUTIVE:
+            print("RECOVERY_REFUSED consecutive limit reached", flush=True)
+            return False
+        settled = wait_until_settled(
+            lambda: state_summary(self.reader.get(max_age=.15)), self.preflight)
+        print(f"RECOVERY settled={settled} "
+              f"previous_recoveries={self.consecutive_recoveries}", flush=True)
+        if settled:
+            self.consecutive_recoveries += 1
+        return settled
+
     def stop(self) -> None:
         if self.writer is not None:
             try:
@@ -437,10 +472,11 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--real", action="store_true")
     parser.add_argument("--confirm-site-ready", action="store_true")
-    parser.add_argument("--hackathon-runtime", action="store_true")
+    parser.add_argument("--hackathon-runtime", action="store_true",
+                        help="Return to READY after a tilt/gyro abort once G1 settles")
     parser.add_argument("--socket", type=Path, default=Path("/tmp/motiondecode-reaction.sock"))
     parser.add_argument("--network-interface", default="eth0")
-    parser.add_argument("--expected-arm-pid", type=int)
+    parser.add_argument("--expected-arm-pid", type=int, default=2934)
     parser.add_argument("--lowstate-backend", choices=("unitree", "cyclonedds"),
                         default="unitree")
     parser.add_argument("--discovery-peer", action="append", default=[])
@@ -454,8 +490,6 @@ def main() -> int:
     args = build_parser().parse_args()
     if args.real and not args.confirm_site_ready:
         raise SystemExit("real resident worker requires --confirm-site-ready")
-    if args.real and args.expected_arm_pid is None:
-        raise SystemExit("real resident worker requires PID from the startup identity probe")
     reactions = set(args.reaction or REACTION_SPECS)
     backend = (DryRunBackend() if args.dry_run else
                RealResidentBackend(args.network_interface, args.expected_arm_pid,

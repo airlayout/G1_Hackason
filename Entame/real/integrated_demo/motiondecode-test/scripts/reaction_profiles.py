@@ -57,10 +57,10 @@ def precompute_named_reaction(name: str, arm_scale: float, waist_scale: float,
                               playback_speed: float | None = None,
                               fast_reaction: bool = False) -> dict:
     """Load and retime a named asset without binding it to a robot pose."""
-    if arm_scale not in (0.25, 0.5, 1.0):
-        raise ValueError("Named arm scale must be 0.25, 0.5, or 1.0")
-    if waist_scale not in (0.125, 0.25, 0.5, 1.0):
-        raise ValueError("Named waist scale must be 0.125, 0.25, 0.5, or 1.0")
+    if arm_scale not in (0.25, 0.375, 0.5, 0.75, 1.0):
+        raise ValueError("Named arm scale must be 0.25, 0.375, 0.5, 0.75, or 1.0")
+    if waist_scale not in (0.0, 0.125, 0.25, 0.5, 1.0):
+        raise ValueError("Named waist scale must be 0, 0.125, 0.25, 0.5, or 1.0")
     profile = load_trajectory_profile(name)
     source, _ = read_motion(ROOT / profile["source_csv"])
     start, end = profile["source_frame_range"]
@@ -73,8 +73,8 @@ def precompute_named_reaction(name: str, arm_scale: float, waist_scale: float,
     scaled_delta = arm_scale * delta
     scaled_delta[:, :3] = waist_scale * delta[:, :3]
     entry_s = 0.10 if fast_reaction else 0.25
-    return_s = 0.50 if fast_reaction else safe_transition_duration(
-        scaled_delta[-1], np.zeros(17))
+    return_s = profile.get("return_s") or (0.50 if fast_reaction else safe_transition_duration(
+        scaled_delta[-1], np.zeros(17)))
     return {
         "name": name,
         "profile": profile,

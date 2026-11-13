@@ -6,10 +6,34 @@
 
 | Source | 固定commit |
 |---|---|
-| g1-bottle-reaction | `506d6cbd849502139be223ec7def74b3d75feaaa` |
-| motiondecode-test | `78bacb68caa620797042703444a8286223663128` |
+| g1-bottle-reaction | `f6ea19b098b89491fddc2e5475f32af2926e1a0b`（main、2026-11-03） |
+| motiondecode-test | `0baca5e2dd6448d20cb98c8dd1be39f87cd0fa08`（main、2026-11-03） |
 
-両方とも`recovery/hackathon-runtime-20260929`指定。Git履歴・submoduleは含めず、ソース・設定・必要資産を直接収録。差分はパス可搬性、統合説明、生成物除外です。詳細は[INTEGRATION_REPORT.md](INTEGRATION_REPORT.md)と[SNAPSHOT_MANIFEST.json](SNAPSHOT_MANIFEST.json)を参照。
+2026-11-03に、9/29版（`506d6cb` / `78bacb6`、`recovery/hackathon-runtime-20260929`）からの差分を当てて更新しました。内容は下の「2026-11-03 ゲーム版」を参照。Git履歴・submoduleは含めず、ソース・設定・必要資産を直接収録。差分はパス可搬性、統合説明、生成物除外です。詳細は[INTEGRATION_REPORT.md](INTEGRATION_REPORT.md)と[SNAPSHOT_MANIFEST.json](SNAPSHOT_MANIFEST.json)を参照。
+
+## 2026-11-03 ゲーム版
+
+- `g1-bottle-reaction/scripts/g1_game.py`: ゲーム全体を1コマンドで操作します。`check`（読み取りのみ）→ `worker`（リアクション用ワーカー起動、腕は動かない）→ `dry`（歩かず、カメラ→YOLO→リアクション選択を確認）→ `run --laps 3` または `run --minutes 5`（実際に歩く。`WALK`と入力したときだけ）→ `stop`（全部止めて解放）。SSHはTailscale、歩行のUDP中継はLANを使います（`G1_SSH_TARGET` / `G1_LAN_HOST`で変更）。
+- リアクションは対象ごとの候補からシャッフルして選び、全部1回ずつ出してから繰り返します。モーションごとに組の音声を再生します。person: そこにいたのか / おどろく / 敬礼 / でてこい / 筋肉。banana・plushie: surprise / ちょっとびっくり / ウェルカム / ひさしぶり。起動時チェックに落ちたモーションは候補から外れます。
+- MotionDecodeはkimodo生成の上半身モーションを追加（`motiondecode-test/data/motions/kimodo/`、`config/named_reactions.json`）。脚と腰は動かしません（腰スケール0で開始姿勢保持）。`--hackathon-runtime`では、リアクション中の傾き・角速度超過で止まっても、G1が落ち着けばREADYに戻り巡回を再開します。
+- G1上のMotionDecodeは、コミットから作るバンドル（`scripts/build-motiondecode-bundle.sh` → `scripts/deploy-motiondecode-runtime.sh`）で配備します。G1 PC2既存のUnitree SDK・CycloneDDSを使います。
+- G1カメラはC922をby-idで開きます（無い場合はVideoClient）。
+- 2026-11-03実機（立位・歩行なし）: person 14回・plushie 3回、計17回すべてPASS。巡回込みの複数周は最新版では未確認です。巡回コード（`patrol/`）は9/29に3周完走した版から変更していません。
+
+PC側の操作手順:
+
+```bash
+cd "$DEMO/g1-bottle-reaction"
+export G1_PYTHON=/absolute/path/to/python   # 省略時は実行中のpython
+"$G1_PYTHON" "$DEMO/setup/fetch_yolo.py"     # YOLO重み（Git管理外）
+"$G1_PYTHON" scripts/g1_game.py check
+"$G1_PYTHON" scripts/g1_game.py worker
+"$G1_PYTHON" scripts/g1_game.py dry --duration 30
+"$G1_PYTHON" scripts/g1_game.py run --laps 3   # 実機が歩く。周囲の安全確認とリモコン必須
+"$G1_PYTHON" scripts/g1_game.py stop
+```
+
+`check`以外はG1と通信します。`worker`以降は他の人がG1を使っていないときだけ実行してください。
 
 ## 主要機能
 

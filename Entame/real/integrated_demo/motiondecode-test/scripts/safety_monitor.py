@@ -30,7 +30,6 @@ class OwnershipWatchdog:
             raise ValueError('Ownership watchdog period must be finite and positive')
         self.snapshot_fn=snapshot_fn;self.period_s=float(period_s);self.clock=clock
         self.lock=threading.Lock();self.stop_event=threading.Event();self.thread=None
-        self.discovery_lock=threading.Lock();self.synchronous_refresh_lock=threading.Lock()
         self.reset_session()
 
     def reset_session(self):
@@ -53,76 +52,35 @@ class OwnershipWatchdog:
     def _run(self):
         previous_start=None
         while not self.stop_event.is_set():
-            started=self.clock()
-            with self.discovery_lock:
-                self._perform_check(started,previous_start)
+            started=self.clock();error=None;report=None
+            try:report=self.snapshot_fn()
+            except Exception as exc:error=f'{type(exc).__name__}: {exc}'
+            ended=self.clock()
+            with self.lock:
+                record={'check_started_monotonic_s':started,
+                        'check_completed_monotonic_s':ended,
+                        'check_duration_s':ended-started,
+                        'check_interval_s':None if previous_start is None else started-previous_start,
+                        'successful':report is not None,'error':error}
+                self.last_check_started=started;self.last_check_time=ended;self.last_error=error
+                if report is not None:
+                    self.current=deepcopy(report);self.last_success_time=ended
+                    record.update(ownership_passed=bool(report.get('passed')),
+                                  external_writer_count=len(report.get('external_arm_sdk_writers',[])),
+                                  armsdk_writer_count=len(report.get('armsdk_writers',[])),
+                                  arm_action_state=report.get('arm_action',{}).get('status'))
+                    fingerprint=_endpoint_fingerprint(report)
+                    if self.previous_fingerprint is not None and fingerprint!=self.previous_fingerprint:
+                        self.change_events.append({'monotonic_s':ended,
+                                                   'previous':self.previous_fingerprint,
+                                                   'current':fingerprint})
+                    self.previous_fingerprint=fingerprint
+                    if not report.get('passed') and not self.latched_fault:
+                        self.latched_fault=True;self.latched_at=ended
+                        self.latched_reasons=list(report.get('reasons',[])) or ['ownership unsafe']
+                self.records.append(record)
             previous_start=started
             self.stop_event.wait(max(0.,self.period_s-(self.clock()-started)))
-
-    def _perform_check(self,started=None,previous_start=None):
-        started=self.clock() if started is None else started
-        error=None;report=None
-        try:report=self.snapshot_fn()
-        except Exception as exc:error=f'{type(exc).__name__}: {exc}'
-        ended=self.clock()
-        with self.lock:
-            record={'check_started_monotonic_s':started,
-                    'check_completed_monotonic_s':ended,
-                    'check_duration_s':ended-started,
-                    'check_interval_s':None if previous_start is None else started-previous_start,
-                    'successful':report is not None,'error':error}
-            self.last_check_started=started;self.last_check_time=ended;self.last_error=error
-            if report is not None:
-                self.current=deepcopy(report);self.last_success_time=ended
-                record.update(ownership_passed=bool(report.get('passed')),
-                              external_writer_count=len(report.get('external_arm_sdk_writers',[])),
-                              armsdk_writer_count=len(report.get('armsdk_writers',[])),
-                              arm_action_state=report.get('arm_action',{}).get('status'))
-                fingerprint=_endpoint_fingerprint(report)
-                if self.previous_fingerprint is not None and fingerprint!=self.previous_fingerprint:
-                    self.change_events.append({'monotonic_s':ended,
-                                               'previous':self.previous_fingerprint,
-                                               'current':fingerprint})
-                self.previous_fingerprint=fingerprint
-                if not report.get('passed') and not self.latched_fault:
-                    self.latched_fault=True;self.latched_at=ended
-                    self.latched_reasons=list(report.get('reasons',[])) or ['ownership unsafe']
-            self.records.append(record)
-
-    @staticmethod
-    def _refresh_allowed(snapshot):
-        return (snapshot['watchdog_running'] and snapshot['current_cached_safe']
-                and snapshot['freshness_expired'] and not snapshot['latched_fault']
-                and snapshot['latest_check_error'] is None)
-
-    def fresh_snapshot(self,max_age_s,timeout_s=2.):
-        """Return fresh ownership, synchronously refreshing only stale SAFE state.
-
-        Unsafe, errored, latched, or stopped watchdog state remains fail-closed.
-        A timed-out refresh may finish later and update the cache, but never
-        authorizes the caller that observed the timeout.
-        """
-        if not np.isfinite(timeout_s) or timeout_s<=0:
-            raise ValueError('Ownership refresh timeout must be finite and positive')
-        initial=self.snapshot(max_age_s=max_age_s)
-        if initial['ownership_safe'] or not self._refresh_allowed(initial):return initial
-        completed=threading.Event();result={}
-        def refresh():
-            with self.synchronous_refresh_lock:
-                current=self.snapshot(max_age_s=max_age_s)
-                if not current['ownership_safe'] and self._refresh_allowed(current):
-                    with self.discovery_lock:self._perform_check()
-                    current=self.snapshot(max_age_s=max_age_s)
-                result['snapshot']=current
-            completed.set()
-        threading.Thread(target=refresh,name='ownership-synchronous-refresh',daemon=True).start()
-        if completed.wait(timeout_s):return result['snapshot']
-        timed_out=self.snapshot(max_age_s=max_age_s)
-        timed_out['ownership_safe']=False
-        timed_out['reasons']=list(timed_out['reasons'])+[
-            'fresh synchronous ownership check timed out']
-        timed_out['synchronous_refresh_timed_out']=True
-        return timed_out
 
     def wait_first(self,timeout_s=2.):
         deadline=self.clock()+timeout_s

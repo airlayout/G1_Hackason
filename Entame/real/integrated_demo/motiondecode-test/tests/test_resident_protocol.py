@@ -44,23 +44,6 @@ def test_fault_is_latched():
     assert controller.handle({"reaction": "surprise"})["accepted"] is False
 
 
-def test_recoverable_abort_result_returns_worker_to_ready():
-    class RecoverableBackend(DryRunBackend):
-        def execute(self, reaction, request, received):
-            return {
-                "reaction": reaction, "status": "recoverable_abort",
-                "classification": "RECOVERABLE_ABORT", "released": True,
-                "weight_zero": True,
-            }
-
-    controller = ResidentController(RecoverableBackend(), {"surprise"})
-    controller.start()
-    response = controller.handle({"reaction": "surprise"})
-    assert response["classification"] == "RECOVERABLE_ABORT"
-    assert response["state"] == "READY"
-    assert controller.state == "READY"
-
-
 def test_preflight_is_read_only_and_failure_does_not_fault_worker():
     class PreflightBackend(DryRunBackend):
         def __init__(self):
@@ -83,3 +66,40 @@ def test_preflight_is_read_only_and_failure_does_not_fault_worker():
     assert response["reason"] == "robot not stable"
     assert controller.state == "READY"
     assert backend.executions == 0
+
+
+def test_every_reaction_holds_waist_and_leaves_legs_ungained():
+    import json
+    from pathlib import Path
+    import numpy as np
+    from hold_core import command_fields
+    from reaction_profiles import align_precomputed_reaction, precompute_named_reaction
+    from run_real_reaction import CONTROLLED
+    import resident_worker
+    assert CONTROLLED == list(range(12, 29))
+    fields = command_fields(np.zeros(29), 1.0, 0, CONTROLLED)
+    assert all(fields["kp"][i] == 0. and fields["kd"][i] == 0. for i in range(12))
+    root = Path(__file__).resolve().parents[1]
+    q0 = np.asarray(json.loads((root / "output/fast_game_reactions_20260916/"
+                                "found_replacement_target_retry4/fresh_q0.json").read_text())["all_q"])
+    for name, (profile, arms, waist, fast) in resident_worker.REACTION_SPECS.items():
+        assert waist == 0.0, name
+        asset = precompute_named_reaction(profile, arms, waist, fast_reaction=fast)
+        paths, _, _, _ = align_precomputed_reaction(asset, q0)
+        for phase, path in paths.items():
+            assert np.allclose(np.asarray(path)[:, :3], q0[12:15]), (name, phase)
+
+
+def test_surprise_keeps_full_size_at_the_speed_of_the_other_reactions():
+    import numpy as np
+    from reaction_profiles import precompute_named_reaction
+    from play_g1_arms import DT
+    import resident_worker
+    profile, arms, waist, fast = resident_worker.REACTION_SPECS["surprise"]
+    asset = precompute_named_reaction(profile, arms, waist, fast_reaction=fast)
+    assert arms == 1.0 and fast is True
+    assert asset["durations"] == {"entry": .1, "clip": 1.5, "return": 1.0}
+    delta = np.asarray(asset["scaled_delta"])
+    clip_speed = np.abs(np.diff(delta[:, 3:], axis=0)).max() * (len(delta) - 1) / 1.5
+    return_speed = 1.875 * np.abs(delta[-1]).max() / 1.0
+    assert max(clip_speed, return_speed) <= 2.8

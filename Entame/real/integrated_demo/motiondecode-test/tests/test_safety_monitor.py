@@ -1,4 +1,3 @@
-import threading
 import time
 
 import numpy as np
@@ -52,80 +51,6 @@ def test_fast_cache_reads_do_not_run_discovery_synchronously():
     for _ in range(2000):assert watchdog.snapshot()['current_cached_safe']
     watchdog.stop()
     assert calls<10
-
-
-class _AliveThread:
-    def is_alive(self):
-        return True
-
-
-def _stale_watchdog(snapshot_fn,clock):
-    watchdog=OwnershipWatchdog(snapshot_fn,clock=clock)
-    watchdog.thread=_AliveThread()
-    watchdog.current=ownership(True)
-    watchdog.last_check_time=clock()-1.
-    watchdog.last_success_time=clock()-1.
-    return watchdog
-
-
-def test_stale_safe_cache_gets_bounded_fresh_synchronous_check():
-    now=[10.]
-    calls=[]
-    watchdog=_stale_watchdog(lambda:(calls.append(now[0]) or ownership(True)),
-                             lambda:now[0])
-    result=watchdog.fresh_snapshot(max_age_s=.75,timeout_s=.2)
-    assert result['ownership_safe']
-    assert not result['freshness_expired']
-    assert calls==[10.]
-
-
-def test_three_reactions_after_long_patrol_gaps_each_refresh_stale_safe_cache():
-    now=[100.]
-    calls=[]
-    watchdog=_stale_watchdog(lambda:(calls.append(now[0]) or ownership(True)),
-                             lambda:now[0])
-    for gap in (30.,45.,60.):
-        now[0]+=gap
-        result=watchdog.fresh_snapshot(max_age_s=.75,timeout_s=.2)
-        assert result['ownership_safe']
-    assert calls==[130.,175.,235.]
-
-
-def test_stale_refresh_that_finds_external_writer_latches_and_fails_closed():
-    now=[10.]
-    watchdog=_stale_watchdog(lambda:ownership(False,'external writer'),lambda:now[0])
-    result=watchdog.fresh_snapshot(max_age_s=.75,timeout_s=.2)
-    assert not result['ownership_safe']
-    assert result['latched_fault']
-    assert result['latched_reasons']==['external writer']
-
-
-def test_latched_error_and_stopped_states_never_attempt_synchronous_refresh():
-    now=[10.];calls=[]
-    watchdog=_stale_watchdog(lambda:(calls.append(True) or ownership(True)),lambda:now[0])
-    watchdog.latched_fault=True;watchdog.latched_reasons=['external writer']
-    assert not watchdog.fresh_snapshot(.75,.2)['ownership_safe']
-    watchdog.latched_fault=False;watchdog.latched_reasons=[];watchdog.last_error='DDS failed'
-    assert not watchdog.fresh_snapshot(.75,.2)['ownership_safe']
-    watchdog.last_error=None;watchdog.thread=None
-    assert not watchdog.fresh_snapshot(.75,.2)['ownership_safe']
-    assert calls==[]
-
-
-def test_synchronous_refresh_timeout_is_fail_closed():
-    gate=threading.Event();now=[10.]
-    def delayed_safe():
-        gate.wait(1.)
-        return ownership(True)
-    watchdog=_stale_watchdog(delayed_safe,lambda:now[0])
-    started=time.monotonic()
-    result=watchdog.fresh_snapshot(max_age_s=.75,timeout_s=.03)
-    elapsed=time.monotonic()-started
-    gate.set()
-    assert elapsed<.2
-    assert not result['ownership_safe']
-    assert result['synchronous_refresh_timed_out']
-    assert 'fresh synchronous ownership check timed out' in result['reasons']
 
 
 def test_hard_safety_and_existing_baseline_noise_are_separate():
