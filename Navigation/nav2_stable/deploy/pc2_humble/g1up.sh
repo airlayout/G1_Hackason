@@ -23,7 +23,8 @@
 # 人は機体から 2m 以上離れること(近いと costmap と地図照合の両方が劣化する)。
 # やらない: **発進ゲートの開放と Goal 送信（巡回の開始も含む）**。
 #          ここは人が判断して叩く(D-07 の設計意図)。
-#          操作PC 側の heartbeat と RViz も別途(最後に手順を表示する)
+#          heartbeat と RViz も別途(最後に手順を表示する)。--supervision onboard で
+#          heartbeat の監視元を Voice のオンボード処理へ切り替える（既定は operator）。
 #
 # ## 前提
 #
@@ -69,6 +70,7 @@ DRY=0
 DO_ENABLE=0
 FORCE_POSTURE=0
 PATROL=""
+SUPERVISION="operator"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -80,11 +82,16 @@ while [ $# -gt 0 ]; do
         --dry-run)          DRY=1; shift ;;
         --force-posture)    FORCE_POSTURE=1; shift ;;
         --patrol)           PATROL="$2"; shift 2 ;;
+        --supervision)      SUPERVISION="$2"; shift 2 ;;
         --enable)           DO_ENABLE=1; shift ;;
         -h|--help)          sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "未知の引数: $1" >&2; exit 2 ;;
     esac
 done
+case "$SUPERVISION" in
+    operator|onboard) ;;
+    *) echo "--supervision は operator / onboard を指定してください" >&2; exit 2 ;;
+esac
 
 # --- 表示 -------------------------------------------------------------------
 c_ok=$'\e[32m'; c_ng=$'\e[31m'; c_w=$'\e[33m'; c_b=$'\e[1m'; c_0=$'\e[0m'
@@ -258,7 +265,7 @@ fi
 
 # --- 5+7. Nav2 と自己位置合わせ ---------------------------------------------
 launch_nav() {   # $1 = map_to_odom
-    run "bash '$HERE/start_nav.sh' '$1' $LIDAR_YAW $OP_TIMEOUT '$PATROL' '$MAP'" || die "launch できなかった"
+    run "bash '$HERE/start_nav.sh' '$1' $LIDAR_YAW $OP_TIMEOUT '$PATROL' '$MAP' 0.5 '$SUPERVISION'" || die "launch できなかった"
     [ "$DRY" = 1 ] && return 0
     local i
     for i in $(seq 1 40); do
@@ -352,13 +359,20 @@ if [ "$DRY" = 0 ]; then
 fi
 
 # --- 次にやること -----------------------------------------------------------
+HEARTBEAT_NEXT="g1_heartbeat_sender --host 192.168.123.164 &"
+HEARTBEAT_WHERE="操作PC"
+if [ "$SUPERVISION" = onboard ]; then
+    HEARTBEAT_WHERE="G1 本体"
+    HEARTBEAT_NEXT="G1 上で Voice の tool_server --execute --onboard-heartbeat と onboard_voice --execute を起動する。
+   loopback:47312 でマイク受信・推論処理を監視する。外部操作PCからの heartbeat は使用しない。"
+fi
 cat <<EOS
 
 ${c_b}=== ここまでで機体は動かない。ここから先は人の判断 ===${c_0}
 
-${c_b}① 操作PC で（別の端末）${c_0}
-   g1_heartbeat_sender --host 192.168.123.164 &
-   cd <repo>/Navigation/nav2_stable/tools && G1_RMW=rmw_cyclonedds_cpp ./rviz_operate.sh
+${c_b}① $HEARTBEAT_WHERE で生存監視を起動${c_0}
+   $HEARTBEAT_NEXT
+   表示用 RViz は操作PCで: cd <repo>/Navigation/nav2_stable/tools && G1_RMW=rmw_cyclonedds_cpp ./rviz_operate.sh
 
 ${c_b}② RViz で目視確認（省かない）${c_0}
    ・機体の位置が実際の立ち位置と合っているか

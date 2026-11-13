@@ -1,0 +1,15 @@
+[Unit]
+Description=G1 local tool execution and onboard supervision
+
+[Service]
+Type=notify
+NotifyAccess=all
+EnvironmentFile=%h/.config/g1-voice/environment
+ExecStart=/bin/bash -c 'exec bash "$$VOICE_REPO_ROOT/Voice/deploy/run_tools.sh" --execute --onboard-heartbeat'
+TimeoutStartSec=15
+Restart=no
+SuccessExitStatus=130
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

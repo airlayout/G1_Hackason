@@ -200,6 +200,8 @@ def _launch_setup(context, *args, **kwargs):
         output="screen",
         parameters=[{
             "heartbeat_required": flag("heartbeat_required"),
+            "heartbeat_port": int(LaunchConfiguration("heartbeat_port").perform(context)),
+            "heartbeat_bind_address": LaunchConfiguration("heartbeat_bind_address").perform(context),
             "operator_timeout_s": float(LaunchConfiguration("operator_timeout_s").perform(context)),
             # ⚠️ **指令が何秒途切れたら FAULT にするか。** 既定 0.30 だと、復帰動作
             # (spin / DriveOnHeading)の切り替わりや Goal 到達の直後に必ず落ちる
@@ -347,6 +349,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "operator_timeout_s", default_value="1.0",
             description="heartbeatが何秒途絶したら停止するか。会場の電波状況に応じて調整する"),
+        DeclareLaunchArgument(
+            "heartbeat_port", default_value="47311",
+            description="生存監視の受信ポート。オンボード監視では専用の47312を使う"),
+        DeclareLaunchArgument(
+            "heartbeat_bind_address", default_value="0.0.0.0",
+            description="生存監視のbind先。オンボード監視では127.0.0.1に限定する"),
         DeclareLaunchArgument(
             "tf_timeout_s", default_value="0.5",
             description="TFが何秒古くなったらFAULTにするか。内蔵SLAMのodomが遅いときは伸ばす"),

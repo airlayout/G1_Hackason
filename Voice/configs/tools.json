@@ -1,0 +1,23 @@
+{
+  "tools": [
+    {
+      "name": "patrol_start",
+      "description": "準備済みの巡回を開始・再開する。既に巡回中なら再起動しない。",
+      "backend": "ros_service",
+      "config": {
+        "service": "/g1/patrol/start",
+        "service_type": "std_srvs/srv/Trigger",
+        "success_field": "success",
+        "confirm": {
+          "topic": "/g1/patrol/status",
+          "message_type": "std_msgs/msg/String",
+          "json_field": "state",
+          "allowed_values": ["RUNNING"]
+        }
+      },
+      "input_schema": {"type": "object", "properties": {}, "additionalProperties": false},
+      "timeout_s": 5,
+      "exclusive_group": "motion"
+    }
+  ]
+}

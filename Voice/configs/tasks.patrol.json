@@ -1,0 +1,17 @@
+{
+  "min_similarity": 0.75,
+  "min_margin": 0.08,
+  "tasks": [
+    {
+      "id": "patrol_start",
+      "action": "patrol_start",
+      "arguments": {},
+      "descriptions": ["巡回を開始してください。", "見回りを始めてください。"]
+    },
+    {
+      "id": "no_action",
+      "action": null,
+      "descriptions": ["巡回を始めないで。", "その場で待っていて。", "こんにちは。"]
+    }
+  ]
+}

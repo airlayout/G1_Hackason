@@ -1,0 +1,15 @@
+[Unit]
+Description=G1 microphone segmentation and EmbeddingGemma 2 inference
+Requires=g1-voice-tools.service
+After=g1-voice-tools.service
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/g1-voice/environment
+ExecStart=/bin/bash -c 'exec "$$VOICE_MODEL_PYTHON" "$$VOICE_REPO_ROOT/Voice/onboard_voice.py" --model "$$VOICE_MODEL_PATH" --config "$$VOICE_TASK_CONFIG" --device "$$VOICE_DEVICE" --execute'
+Restart=no
+SuccessExitStatus=130
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

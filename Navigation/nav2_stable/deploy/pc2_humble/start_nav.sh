@@ -47,6 +47,13 @@ MAP="${5:-$MAPS/room_a_map_20260911_edited.yaml}"
 # (`Lookup would require extrapolation into the future`／最新TFが0.513秒前)。
 # 代償: 本当に TF が途絶したときの検知がこの秒数だけ遅れる(max_vx 0.30 で +0.15m/0.5秒)。
 TF_TIMEOUT="${6:-0.5}"
+# 第7引数: 外部操作PC監視 / オンボード音声処理の監視。既存の既定は変えない。
+SUPERVISION="${7:-operator}"
+case "$SUPERVISION" in
+  operator) HB_ARGS="heartbeat_port:=47311 heartbeat_bind_address:=0.0.0.0" ;;
+  onboard)  HB_ARGS="heartbeat_port:=47312 heartbeat_bind_address:=127.0.0.1" ;;
+  *) echo "supervision は operator / onboard を指定してください" >&2; exit 2 ;;
+esac
 CYCLONE_CFG=/home/unitree/g1_nav2/cyclonedds_eth0.xml
 # ⚠️ **空の引数を渡してはいけない**(2026-09-24 に実機で踏んだ)。`ros2 launch` は
 # `patrol_waypoints:=` を `malformed launch argument` として**起動前に**弾くため、
@@ -77,8 +84,9 @@ setsid nohup ~/.pixi/bin/pixi run bash -lc "
   export CYCLONEDDS_URI=file://$CYCLONE_CFG
   exec ros2 launch g1_navigation navigation.launch.py backend:=real map:=$MAP \
        map_to_odom:='$MAP2ODOM' lidar_yaw:=$LIDAR_YAW \
-       operator_timeout_s:=$OP_TIMEOUT tf_timeout_s:=$TF_TIMEOUT $PATROL_ARG
+       operator_timeout_s:=$OP_TIMEOUT tf_timeout_s:=$TF_TIMEOUT $HB_ARGS $PATROL_ARG
 " > /tmp/nav_launch.log 2>&1 < /dev/null &
 echo "started (map_to_odom=$MAP2ODOM lidar_yaw=$LIDAR_YAW operator_timeout_s=$OP_TIMEOUT tf_timeout_s=$TF_TIMEOUT rmw=cyclonedds)"
 echo "  巡回路: ${PATROL_WAYPOINTS:-(未指定。単純ゴール指定モードのみ)}"
 echo "  地図  : $(basename "$MAP")"
+echo "  生存監視: $SUPERVISION（heartbeat_required=true は維持）"

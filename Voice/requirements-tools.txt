@@ -1,0 +1,2 @@
+# ROS 環境のツールサーバー用。モデル・numpy・torch は不要。
+jsonschema>=4.18,<5

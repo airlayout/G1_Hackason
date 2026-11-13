@@ -25,13 +25,15 @@ set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 # 棚上げ中のフォルダは対象外（IsaacSim_Envのtest_*.pyはIsaac Sim本体が要る）
-FEATURE_DIRS=(Common SimpleWalk Perception Mapping Navigation Entame Button_Press)
+FEATURE_DIRS=(Common SimpleWalk Perception Mapping Navigation Entame Button_Press Voice)
 
 # 機能フォルダが、コードを読み込んでいるほかの機能フォルダ（"使う側 使われる側"）。
 # 使われる側が変わったら、使う側のテストも実行する。コードの依存を足したらここにも足す
 # （Button_Press/J1-gen の perception_bridge.py が Perception/common を読み込む）
 DEPENDS_ON=(
     "Button_Press Perception"
+    "Voice Button_Press"
+    "Voice Navigation"
 )
 
 # ---- 実行する機能フォルダを決める -------------------------------------------

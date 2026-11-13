@@ -1,0 +1,10 @@
+{
+  "threshold_dbfs": -35.0,
+  "frame_ms": 20,
+  "start_ms": 100,
+  "end_ms": 600,
+  "pre_roll_ms": 300,
+  "min_voiced_ms": 300,
+  "max_ms": 15000,
+  "sample_rate": 16000
+}

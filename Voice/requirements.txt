@@ -1,0 +1,11 @@
+# Python 3.11 以上（推奨 3.12）。音声波形を直接渡す Transformers の実装を使う。
+transformers==5.22.2
+torch>=2.6,<3
+# AutoProcessor が動画用 processor も構築するため必要（画像・動画の重みは読み込まない）。
+torchvision>=0.21,<1
+numpy>=1.26,<3
+scipy>=1.13,<2
+soundfile>=0.13,<1
+sounddevice>=0.5,<1
+Pillow>=10,<13
+-r requirements-tools.txt

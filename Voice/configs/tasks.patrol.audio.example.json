@@ -1,0 +1,19 @@
+{
+  "min_similarity": 0.75,
+  "min_margin": 0.08,
+  "tasks": [
+    {
+      "id": "patrol_start",
+      "action": "patrol_start",
+      "arguments": {},
+      "descriptions": ["巡回を開始してください。"],
+      "reference_audio": ["../../_local/voice/reference-audio/patrol-start.wav"]
+    },
+    {
+      "id": "no_action",
+      "action": null,
+      "descriptions": ["巡回を始めないで。待っていて。"],
+      "reference_audio": ["../../_local/voice/reference-audio/patrol-cancel.wav"]
+    }
+  ]
+}

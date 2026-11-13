@@ -1,0 +1,8 @@
+# G1 上の実際の配置先に合わせて変更する。パスには絶対パスを使う。
+VOICE_REPO_ROOT=/home/unitree/G1_Hackason
+VOICE_NAV_ROOT=/home/unitree/g1_nav2
+VOICE_MODEL_PYTHON=/tmp/g1-voice-infer/bin/python
+VOICE_TOOLS_PYTHON=/tmp/g1-voice-tools/bin/python
+VOICE_MODEL_PATH=/home/unitree/models/embeddinggemma-2
+VOICE_TASK_CONFIG=/home/unitree/G1_Hackason/Voice/configs/tasks.patrol.audio.example.json
+VOICE_DEVICE=cpu

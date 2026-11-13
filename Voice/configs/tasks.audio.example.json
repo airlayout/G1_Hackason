@@ -1,0 +1,24 @@
+{
+  "min_similarity": 0.75,
+  "min_margin": 0.08,
+  "tasks": [
+    {
+      "id": "press_bottle",
+      "action": "press_bottle",
+      "descriptions": ["ボトルを押す指示"],
+      "reference_audio": ["../../_local/voice/reference-audio/bottle.wav"]
+    },
+    {
+      "id": "press_down",
+      "action": "press_down",
+      "descriptions": ["エレベーターの下ボタンを押す指示"],
+      "reference_audio": ["../../_local/voice/reference-audio/down.wav"]
+    },
+    {
+      "id": "no_action",
+      "action": null,
+      "descriptions": ["押さない・待機・雑談などの実行しない指示"],
+      "reference_audio": ["../../_local/voice/reference-audio/cancel.wav"]
+    }
+  ]
+}
