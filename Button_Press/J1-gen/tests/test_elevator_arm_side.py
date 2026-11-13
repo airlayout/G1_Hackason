@@ -149,6 +149,123 @@ class TestElevatorLeftArm(unittest.TestCase):
                 self.assertGreater(ctl.plan_.approach_point[1], 0.0)
 
 
+@needs('mujoco', 'pin')
+class TestElevatorAutoArm(unittest.TestCase):
+    """press.arm: auto。ボタンを見つけたあと、計画が立つ腕を選ぶ（体の左寄りなら左腕から試す）。2026-11-13。
+    開始の姿勢は 10/21 の実機の立った姿勢（地図 sim/elevator_stand_map.py と同じ）。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        import sys
+
+        from common.config import FEATURE_DIR
+
+        sys.path.insert(0, str(FEATURE_DIR / "sim"))
+        from reach_map import REAL_STAND_1021
+
+        cls.q0 = REAL_STAND_1021.copy()
+        cls.cfgs = tuple(load_config(n) for n in ("robot.yaml", "press.yaml", "arm.yaml", "elevator.yaml"))
+
+    def controller(self, side: str | None, button_set: str):
+        from common.elevator_press import ElevatorPressController
+
+        robot, press, arm, elev = self.cfgs
+        e = copy.deepcopy(elev)
+        e["geometry"]["button_set"] = button_set
+        if side is None:
+            e["press"].pop("arm", None)
+        else:
+            e["press"]["arm"] = side
+        return ElevatorPressController.from_config(robot, press, arm, e)
+
+    def test_fixed_arm_keeps_one_planner(self) -> None:
+        """right / left / 無しは今までどおり（計画器は 1 つ。reset しても腕は変わらない）。"""
+        for side, want in (("right", "right"), ("left", "left"), (None, "right")):
+            with self.subTest(side=side):
+                ctl = self.controller(side, "wheelchair")
+                self.assertFalse(ctl.auto)
+                self.assertEqual(list(ctl.planners), [want])
+                ctl.reset("down", 0.02, np.full(17, 60.0))
+                self.assertEqual(ctl.side, want)
+
+    def test_auto_has_both_planners_and_defaults_to_right(self) -> None:
+        ctl = self.controller("auto", "wheelchair")
+        self.assertTrue(ctl.auto)
+        self.assertEqual(sorted(ctl.planners), ["left", "right"])
+        self.assertEqual(ctl.side, "right")  # 腕が決まる前（look より前）は右腕
+        self.assertEqual(ctl.kin.arm_idx.tolist(), list(RIGHT_ARM_IDX))
+
+    def test_unknown_arm_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            self.controller("both", "wheelchair")
+
+    def test_picks_the_arm_on_the_button_side(self) -> None:
+        """車いす用の組で、ボタンが体の右 14 cm（柱まで 40 cm）なら右腕、左 14 cm なら左腕。"""
+        for y, want in ((-0.14, "right"), (0.14, "left")):
+            for target in ("down", "up"):
+                with self.subTest(y=y, target=target):
+                    ctl = self.controller("auto", "wheelchair")
+                    self.assertIsNone(ctl.can_plan(self.q0, make_call(0.40, y), target))
+                    self.assertEqual(ctl.side, want)
+                    self.assertEqual(ctl.kin.arm_idx.tolist(), list(RIGHT_ARM_IDX if want == "right" else LEFT_ARM_IDX))
+                    self.assertEqual(ctl.sgn, 1.0 if want == "right" else -1.0)
+                    self.assertEqual(ctl.force.kin.side, want)  # 押す力の推定も選んだ腕のもの
+                    self.assertIn("押す腕を選んだ: " + want, ctl.log[-1].message)
+
+    def test_switches_to_the_other_arm_when_the_first_fails(self) -> None:
+        """一般用で柱まで 44 cm・▲・体の右 12 cm は、先に試す右腕では立たず、左腕で立つ（地図 gen_auto の配置）。逆も同じ。"""
+        for y, first, want in ((-0.12, "right", "left"), (0.12, "left", "right")):
+            with self.subTest(y=y):
+                call = make_call(0.44, y)
+                fixed = self.controller(first, "general")
+                self.assertIsNotNone(fixed.can_plan(self.q0, call, "up"))  # 先に試す腕だけでは立たない
+                ctl = self.controller("auto", "general")
+                self.assertIsNone(ctl.can_plan(self.q0, call, "up"))
+                self.assertEqual(ctl.side, want)
+
+    def test_both_fail_reports_both_arms(self) -> None:
+        """どちらも立たない配置（車いす用、柱まで 52 cm・体の右 28 cm の ▼）では、理由に両方の腕が入り、
+        腕は先に試した腕に戻る（立つ位置の助言をその腕で出す）。"""
+        ctl = self.controller("auto", "wheelchair")
+        why = ctl.can_plan(self.q0, make_call(0.52, -0.28), "down")
+        self.assertIsNotNone(why)
+        self.assertIn("right 腕:", why)
+        self.assertIn("left 腕:", why)
+        self.assertEqual(ctl.side, "right")
+        self.assertEqual(ctl.sgn, 1.0)
+        why = ctl.can_plan(self.q0, make_call(0.52, 0.28), "down")
+        self.assertIsNotNone(why)
+        self.assertEqual(ctl.side, "left")  # 左寄りなら先に左腕
+        self.assertEqual(ctl.sgn, -1.0)
+
+    def test_reset_chooses_again(self) -> None:
+        """左腕を選んだあと reset すると右腕に戻り、右寄りのボタンでは右腕を選び直す。"""
+        ctl = self.controller("auto", "wheelchair")
+        ctl.reset("down", 0.02, np.full(17, 60.0))
+        ctl._plan_arm(self.q0, make_call(0.40, 0.14))
+        self.assertEqual(ctl.side, "left")
+        ctl.reset("down", 0.02, np.full(17, 60.0))
+        self.assertEqual(ctl.side, "right")
+        self.assertIsNone(ctl._hand_vertices)  # 手のメッシュは選んだ腕のものだけを読む
+        ctl._plan_arm(self.q0, make_call(0.40, -0.14))
+        self.assertEqual(ctl.side, "right")
+        self.assertIsNone(ctl.can_plan(self.q0, make_call(0.40, 0.14), "up"))  # can_plan も reset し直して選び直す
+        self.assertEqual(ctl.side, "left")
+
+    def test_hand_mesh_follows_the_arm(self) -> None:
+        """手のメッシュは腕ごとに読み、腕を切り替えても取り違えない。"""
+        ctl = self.controller("auto", "wheelchair")
+        K = np.array([[300.0, 0.0, 320.0], [0.0, 300.0, 180.0], [0.0, 0.0, 1.0]])
+        verts = {}
+        for side in ("right", "left"):
+            ctl._use_side(side)
+            ctl._hand_circles(self.q0, K)
+            verts[side] = ctl._hand_vertices
+        self.assertFalse(np.array_equal(verts["right"], verts["left"]))
+        ctl._use_side("right")
+        self.assertIs(ctl._hand_vertices, verts["right"])
+
+
 @needs("pin")
 class TestStandMapWorker(unittest.TestCase):
     """立つ位置の地図（sim/elevator_stand_map.py）の準備で、押す腕が設定に渡る。2026-11-10 に、引数の腕（"right"）を

@@ -20,7 +20,8 @@ J1-gen の部品は、Yada の j1gen_bridge で別名（j1gen_common）として
     J1GEN_BODY_LOG=_local/button_press/body_log $P Button_Press/Yada/contest/run_dds.py --agent ... （実機の引数）
     $P Button_Press/J1-gen/real/body_motion.py _local/button_press/body_log/<日時>_<up|down>
 
-環境変数 J1GEN_ARM に right / left を渡すと、押す腕を変える（既定は configs/elevator.yaml の press.arm）。
+環境変数 J1GEN_ARM に right / left / auto を渡すと、押す腕を変える（既定は configs/elevator.yaml の press.arm）。
+auto は、ボタンを見つけたあとに計画が立つ腕を選ぶ（記録の arm は選んだ腕）。
 環境変数 J1GEN_MAX_JOINT_SPEED に rad/s を渡すと、計画で許す関節の速さ（既定は arm.yaml の 0.5）をその回だけ変える。
 
 環境変数 J1GEN_PRESS_KEEP_MM・J1GEN_STOP_LAG_MM・J1GEN_PRESS_DEPTH_MM に mm を渡すと、押す力の設定（elevator.yaml の
@@ -58,7 +59,7 @@ class J1genElevatorAgent(Agent):
             elevator["detector"] = os.environ["J1GEN_BUTTON_DETECTOR"]
         if os.environ.get("J1GEN_BUTTON_SET"):
             elevator["geometry"]["button_set"] = os.environ["J1GEN_BUTTON_SET"]
-        if os.environ.get("J1GEN_ARM"):  # 押す腕 right / left（real/auto_press.py --arm）
+        if os.environ.get("J1GEN_ARM"):  # 押す腕 right / left / auto（real/auto_press.py --arm）
             elevator["press"]["arm"] = os.environ["J1GEN_ARM"]
         print(f"[j1gen-agent] 押す腕: {elevator['press'].get('arm', 'right')}")
         if os.environ.get("J1GEN_BUTTON_WEIGHTS"):  # 候補の重みを、既定を変えずに評価するとき

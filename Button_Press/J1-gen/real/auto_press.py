@@ -259,9 +259,10 @@ def main() -> int:
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
     p.add_argument("--label", default="", help="ボトル: 記録のフォルダ名に付ける言葉（既定 auto）")
     p.add_argument("--gravity-scale", type=float, default=0.5, help="ボトル: 腕の重力補償の倍率（2026-10-14 に決めた 0.5）")
-    p.add_argument("--arm", choices=["left", "right"],
+    p.add_argument("--arm", choices=["left", "right", "auto"],
                    help="押す腕（既定は ボタン: elevator.yaml の press.arm / ボトル: pipeline.yaml）。左腕で押すときは、"
-                        "ボタンが体の左に来るように立つ（--air なら Y を + にする）")
+                        "ボタンが体の左に来るように立つ（--air なら Y を + にする）。auto（ボタンのみ）は、ボタンを見つけたあと"
+                        "計画が立つ腕を選ぶ（左腕は実機で未確認）")
     p.add_argument("--button-set", choices=["general", "wheelchair"], help="ボタン: 押す組（既定は elevator.yaml）")
     p.add_argument("--detector", choices=["classic", "yolo"], help="ボタン: 見つけ方（既定は elevator.yaml）")
     p.add_argument("--instruction", default="", help="ボタン: 指示の文")
@@ -290,6 +291,8 @@ def main() -> int:
     extra = argv[argv.index("--") + 1:] if "--" in argv else []
     args = p.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
     args.extra = extra
+    if args.arm == "auto" and args.target == "bottle":
+        p.error("--arm auto はボタン（--target up / down）だけ。ボトルは left か right")
 
     iface = args.network_interface or load_config("arm.yaml")["network_interface"]
     mode = "送る（--execute）" if args.execute else "dry-run（送らない）"

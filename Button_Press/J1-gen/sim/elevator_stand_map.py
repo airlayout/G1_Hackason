@@ -6,6 +6,8 @@
     $P Button_Press/J1-gen/sim/elevator_stand_map.py --button-set wheelchair --ys -0.28 -0.24 -0.20 -0.16 -0.12 -0.08 -0.04 0.0 0.04 --tilts 0
     # 腰 yaw を振る（[deg]。+ は上から見て左回り＝上体が左を向く。0 を含める。複数のときは、腰 yaw ごとの地図とまとめの地図を出す）
     $P Button_Press/J1-gen/sim/elevator_stand_map.py --button-set wheelchair --tilts 0 --waist-yaws 0 10 20 30 -10 -20 -30 --workers 8
+    # 腕を自動で選ぶ（実際の選び方 = ElevatorPressController の auto を通す。CSV に arm 列、どちらの腕で通ったかの地図も出す）
+    $P Button_Press/J1-gen/sim/elevator_stand_map.py --arm auto --button-set wheelchair --tilts 0
     # 左腕（ボタンを体の左に置く）
     $P Button_Press/J1-gen/sim/elevator_stand_map.py --arm left --button-set wheelchair --ys -0.04 0.0 0.04 0.08 0.12 0.16 0.20 0.24 0.28 --tilts 0
 
@@ -17,6 +19,7 @@ pelvis は床から約 0.73 m なので z は ▲ +0.21・▼ +0.14 m）を、pe
 記号: # = 計画が通り、カメラにも入る / o = 計画は通るが、カメラに入らない / 英字 = 断られた段階
   W 作業空間の外 / R 手前の姿勢に届かない / A 手前の姿勢で体に当たる / V 経由点で当たる / D 手前の姿勢へ（経由点なしで）動く途中で体に当たる / 1・2 手前の姿勢へ動く途中で体に当たる
   P・Q 押し込みの直線で届かない・当たる / J 関節が急に動く / K 手前の姿勢へ動く途中で柱・壁に当たる
+腕の地図（--arm auto のとき）: R = 右腕で通り、カメラにも入る / L = 左腕で通り、カメラにも入る / r・l = 計画は通る（右腕・左腕）がカメラに入らない / . = どちらもだめ。
 腰 yaw（--waist-yaws）: 開始の姿勢の腰（motor 12）だけを入れ替えて計画する。ボタンの位置・柱の面の向きは pelvis 座標のまま。
 カメラに入るかの判定も、その腰の角度で出す（頭カメラは胴体に付いていて、腰と一緒に回る）。
 """
@@ -99,7 +102,7 @@ def run_cell(cell: tuple[float, float, float, str] | tuple[float, float, float, 
     ctl.reset(target, 0.02, np.full(17, 60.0))
     ok, st, why, reason = 0, "", "", ""
     try:
-        ctl._plan(q0, call)
+        ctl._plan_arm(q0, call)   # auto のときは腕の候補を順に試す（実際の選び方）
         ok = 1
     except UnreachableError as e:
         best = (-1, "R", "")
@@ -111,15 +114,26 @@ def run_cell(cell: tuple[float, float, float, str] | tuple[float, float, float, 
         reason = str(e)[:140]
     vb, vr = visible(_G["tf"], x, y, waist_yaw_deg=yaw)
     plan = ctl.plan_ if ok else None
-    return {"x": x, "y": y, "tilt": tilt, "target": target, "waist_yaw": yaw, "plan_ok": ok, "stage": st, "partner": why,
-            "vis_buttons": int(vb), "vis_region": int(vr), "advice": ctl._stand_advice(call),
-            "summary": "" if plan is None else plan.summary()[:60], "reason": reason}
+    row = {"x": x, "y": y, "tilt": tilt, "target": target, "waist_yaw": yaw, "plan_ok": ok, "stage": st, "partner": why,
+           "vis_buttons": int(vb), "vis_region": int(vr), "advice": ctl._stand_advice(call),
+           "summary": "" if plan is None else plan.summary()[:60], "reason": reason}
+    if ctl.auto:   # 選ばれた腕（立たなかったら空）。auto のときだけ列を足す
+        row["arm"] = ctl.side if ok else ""
+    return row
 
 
 def sym(r: dict[str, Any]) -> str:
     if r["plan_ok"]:
         return "#" if r["vis_buttons"] and r["vis_region"] else ("+" if r["vis_buttons"] else "o")
     return r["stage"]
+
+
+def arm_sym(r: dict[str, Any]) -> str:
+    """auto の腕の地図の 1 文字。R・L = その腕で通りカメラにも入る、r・l = 通るがカメラに入らない、. = どちらもだめ。"""
+    if not r["plan_ok"]:
+        return "."
+    c = r["arm"][0].upper()
+    return c if full_ok(r) else c.lower()
 
 
 def full_ok(r: dict[str, Any]) -> bool:
@@ -152,7 +166,8 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--button-set", default="general", choices=["general", "wheelchair"],
                     help="押す組（press.by_button_set の設定と勧める範囲を使う。ボタンの高さはどちらもラボの車いす用）")
-    ap.add_argument("--arm", default="right", choices=["left", "right"], help="押す腕（elevator.yaml の press.arm）")
+    ap.add_argument("--arm", default="right", choices=["left", "right", "auto"],
+                    help="押す腕（elevator.yaml の press.arm）。auto は計画が立つ腕を選ぶ（実際の選び方を通す）")
     ap.add_argument("--waist-yaws", type=float, nargs="+", default=[0.0],
                     help="腰 yaw の並び [deg]（+ は上から見て左回り）。既定は 0 だけ（今までと同じ出力）。複数のとき、まとめの地図も出す")
     ap.add_argument("--out", type=Path)
@@ -171,6 +186,7 @@ def main() -> int:
     out = args.out or REPO_ROOT / "_local" / "button_press" / "stand_map" / time.strftime("%Y%m%d_%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
     idx = {(r["x"], r["y"], r["tilt"], r["target"], r["waist_yaw"]): r for r in rows}   # 腰 yaw の列は --waist-yaws のときだけ CSV に出す
+    auto = args.arm == "auto"
     csv_rows = rows if use_yaw else [{k: v for k, v in r.items() if k != "waist_yaw"} for r in rows]
     with open(out / "map.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(csv_rows[0]))
@@ -179,10 +195,13 @@ def main() -> int:
     press = load_config("elevator.yaml")["press"]
     elev = {**press["stand"], **((press.get("by_button_set") or {}).get(args.button_set, {}).get("stand", {}))}
     lo, hi, side = float(elev["min_dist_m"]), float(elev["max_dist_m"]), float(elev["max_side_m"])
-    center = (1.0 if args.arm == "right" else -1.0) * float(elev.get("center_side_m", 0.0))  # 右腕の値。左腕なら反転
+    # 右腕の値。左腕なら反転。auto は右腕の枠のまま（左腕の枠は左右反転した位置になるが、地図には 1 つしか重ねない）
+    center = (-1.0 if args.arm == "left" else 1.0) * float(elev.get("center_side_m", 0.0))
     text = [f"押す腕 {args.arm}、押す組 {args.button_set}。今の勧める範囲（elevator.yaml の press.stand）: 柱まで {lo * 100:.0f}〜{hi * 100:.0f} cm、"
-            f"左右 {center * 100:+.0f}±{side * 100:.0f} cm（[ ] で囲む）",
+            f"左右 {center * 100:+.0f}±{side * 100:.0f} cm（[ ] で囲む）" + ("。auto は右腕の枠だけ（左腕の枠は左右反対）" if auto else ""),
             "記号: # 計画が通り、ボタンも柱の範囲もカメラに入る / + ボタンは入るが柱の範囲が一部出る / o 計画は通るがカメラに入らない / 英字 断られた段階"]
+    if auto:
+        text.append("腕の地図の記号: R = 右腕で通り、カメラにも入る / L = 左腕で通り、カメラにも入る / r・l = 右腕・左腕で計画は通るがカメラに入らない / . = どちらもだめ")
     syms = yaw_symbols(yaws)
     if use_yaw and len(yaws) > 1:
         text.append("まとめの地図の記号: # 腰 0° で計画が通り、カメラにも入る / 数字・英字 0° ではだめだが、その腰 yaw で通り、その腰の角度でカメラにも入る"
@@ -205,6 +224,8 @@ def main() -> int:
         for t in args.tilts:
             for w in yaws:
                 grid(tg, t, lambda x, y, w=w: sym(idx[(x, y, t, tg, w)]), f"、腰 yaw {w:+.0f}°" if use_yaw else "")
+                if auto:
+                    grid(tg, t, lambda x, y, w=w: arm_sym(idx[(x, y, t, tg, w)]), "、どちらの腕で通ったか" + (f"（腰 yaw {w:+.0f}°）" if use_yaw else ""))
             if use_yaw and len(yaws) > 1:
                 grid(tg, t, lambda x, y: best_yaw_symbol({w: idx[(x, y, t, tg, w)] for w in yaws}, yaws, syms), "、まとめ（腰 yaw を選んだとき）")
     ok = sum(r["plan_ok"] for r in rows)
@@ -214,6 +235,9 @@ def main() -> int:
     for r in rows:
         if not r["plan_ok"]:
             cnt[(r["stage"], r["partner"])] = cnt.get((r["stage"], r["partner"]), 0) + 1
+    if auto:
+        arms = [r["arm"] for r in rows if r["plan_ok"]]
+        summ.append(f"選ばれた腕: 右 {arms.count('right')}、左 {arms.count('left')}")
     summ.append("断られた段階（件数）: " + "、".join(f"{s}{('/' + w) if w else ''} {n}" for (s, w), n in sorted(cnt.items(), key=lambda kv: -kv[1])))
     if use_yaw and len(yaws) > 1:
         keys = sorted({k[:4] for k in idx})

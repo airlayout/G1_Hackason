@@ -13,8 +13,12 @@ J1-gen の部品をそのまま使う:
 - 重力: common/arm/gravity.py（IMU の向きを使う）。腕は弱い PD（kp 60）で重力を補償しないので、
   垂れる量（重力のトルク ÷ kp）だけ目標をずらす
 
-押す腕（press.arm。right / left）: 設定の腕ごとの値（IK の初期姿勢、指の傾き、経由点、勧める立ち位置）は右腕の値で書き、
+押す腕（press.arm。right / left / auto）: 設定の腕ごとの値（IK の初期姿勢、指の傾き、経由点、勧める立ち位置）は右腕の値で書き、
 左腕なら左右を反転して使う（common/pipeline.py のボトル押しと同じ考え方。G1 は左右対称）。
+auto は、右腕・左腕の両方の計画器を持ち、ボタンを見つけたあと（look の中）に、計画が立つ腕を選ぶ。試す順は、▲▼ の中点が
+体の左（pelvis の y > 0）なら左 → 右、そうでなければ右 → 左（右腕は実機で押した実績があるので、正面は右腕を先に）。
+どちらも立たなければ中止（理由は両方の腕の分）。reset のたびに選び直す。腕に結び付いた状態は _use_side で全部切り替える。
+左腕は実機でまだ押していないので、既定は right のまま。
 
 段階:
   look → reach（関節空間で手前の姿勢へ。経由点があれば通る）→ settle（手前で止まり、指先のずれを補正）
@@ -99,18 +103,19 @@ class StepLog:
 
 class ElevatorPressController:
     def __init__(self, robot_cfg: dict[str, Any], planner: PressPlanner, finder: ButtonFinder,
-                 gravity: GravityModel, cfg: dict[str, Any]) -> None:
+                 gravity: GravityModel, cfg: dict[str, Any], planners: dict[str, PressPlanner] | None = None,
+                 auto: bool = False) -> None:
         self.robot_cfg = robot_cfg
-        self.planner = planner
-        self.kin = planner.kin
-        self.side = planner.kin.side
-        # 右腕の値で書いた設定（左右の向きを持つもの）を、押す腕に合わせる符号。右腕 +1、左腕 −1
-        self.sgn = 1.0 if self.side == "right" else -1.0
+        # 押す腕の候補。auto は 2 つ（右 → 左の順に持ち、_arm_order で試す順を決める）。right / left は 1 つ
+        self.planners: dict[str, PressPlanner] = dict(planners) if planners else {planner.kin.side: planner}
+        self.auto = auto
+        self.default_side = planner.kin.side  # 腕がまだ決まっていない間・reset 直後の腕（auto は right）
         self.finder = finder
         self.gravity = gravity
         self.cfg = cfg
         self.tracker = ButtonTracker(cfg["tracking"])
-        self.force = PushForceMonitor(self.kin, gravity)
+        self._hand_vertices_by_side: dict[str, np.ndarray] = {}  # 手のメッシュ（腕ごと。読むのは使うときだけ）
+        self._use_side(self.default_side)
         self.log: list[StepLog] = []
         # 押す前（見つけたとき）と点灯の確認のときの画像を、外へ渡す口（agent.py が記録に使う）。
         # on_snapshot(種類 "before" / "check", 画像 RGB, 内容の辞書)。無ければ何もしない
@@ -120,7 +125,7 @@ class ElevatorPressController:
     def from_config(cls, robot_cfg: dict[str, Any], press_cfg: dict[str, Any], arm_cfg: dict[str, Any],
                     elevator_cfg: dict[str, Any]) -> "ElevatorPressController":
         """press_cfg（configs/press.yaml）の press と ik を、elevator_cfg の press と ik で上書きして使う。
-        押す腕は elevator_cfg の press.arm（right / left。無ければ right）。"""
+        押す腕は elevator_cfg の press.arm（right / left / auto。無ければ right）。auto は両腕の計画器を作る。"""
         pc = copy.deepcopy(press_cfg)
         pc["press"].update(elevator_cfg["press"].get("planner", {}))
         pc["ik"].update(elevator_cfg.get("ik", {}))
@@ -133,11 +138,54 @@ class ElevatorPressController:
             arm_cfg = copy.deepcopy(arm_cfg)
             arm_cfg["safety"]["max_joint_speed_rad_s"] = float(speed)
         side = str(ep.get("arm", "right"))
-        if side not in ("left", "right"):
-            raise ValueError(f"press.arm は left か right: {side}")
-        planner = PressPlanner.from_config(robot_cfg, pc, arm_cfg, side)
+        if side not in ("left", "right", "auto"):
+            raise ValueError(f"press.arm は left / right / auto: {side}")
+        auto = side == "auto"
+        planners = {s: PressPlanner.from_config(robot_cfg, pc, arm_cfg, s) for s in (("right", "left") if auto else (side,))}
         finder = ButtonFinder.from_config(robot_cfg, elevator_cfg)
-        return cls(robot_cfg, planner, finder, GravityModel(robot_cfg), elevator_cfg)
+        return cls(robot_cfg, planners["right" if auto else side], finder, GravityModel(robot_cfg), elevator_cfg,
+                   planners=planners, auto=auto)
+
+    def _use_side(self, side: str) -> None:
+        """押す腕を切り替える。腕に結び付いたもの（計画器・運動学・左右の符号・押す力の推定・手のメッシュ）を全部入れ替える。
+        _plan が作る柱の衝突判定（self.wall）は計画のたびに作り直すので、ここでは触らない。"""
+        self.planner = self.planners[side]
+        self.kin = self.planner.kin
+        self.side = self.kin.side
+        # 右腕の値で書いた設定（左右の向きを持つもの）を、押す腕に合わせる符号。右腕 +1、左腕 −1
+        self.sgn = 1.0 if self.side == "right" else -1.0
+        self.force = PushForceMonitor(self.kin, self.gravity)
+        self._hand_vertices = self._hand_vertices_by_side.get(side)
+
+    def _arm_order(self, call: CallButtons) -> list[str]:
+        """計画を試す腕の順。auto 以外は 1 つ。auto は、▲▼ の中点が体の左（pelvis の y > 0）なら左 → 右、そうでなければ
+        右 → 左（右腕は実機で押した実績があるので、正面は右腕を先に）。"""
+        if not self.auto:
+            return [self.side]
+        mid_y = float(((call.up.center + call.down.center) / 2.0)[1])
+        return ["left", "right"] if mid_y > 0.0 else ["right", "left"]
+
+    def _plan_arm(self, q: np.ndarray, call: CallButtons, depth: float | None = None) -> None:
+        """押す計画を立てる。auto なら腕の候補を順に試し、最初に立った腕を選ぶ（self.side がその腕になる）。
+        どちらも立たなければ UnreachableError（理由に腕ごとの分を入れる）。そのとき腕は先に試した腕に戻す
+        （立つ位置の助言を、先に試した腕のもので出すため）。"""
+        if not self.auto:
+            self._plan(q, call, depth)
+            return
+        order = self._arm_order(call)
+        reasons: list[str] = []
+        for side in order:
+            self._use_side(side)
+            try:
+                self._plan(q, call, depth)
+            except UnreachableError as e:
+                reasons.append(f"{side} 腕: {e}")
+                continue
+            mid_y = float(((call.up.center + call.down.center) / 2.0)[1])
+            self._note(f"押す腕を選んだ: {side}（ボタンが体の中心から{'左' if mid_y > 0 else '右'} {abs(mid_y) * 100:.1f} cm）")
+            return
+        self._use_side(order[0])
+        raise UnreachableError(" / ".join(reasons))
 
     # ---- 外から呼ぶ ------------------------------------------------------------------
 
@@ -150,6 +198,7 @@ class ElevatorPressController:
         if self.kp.shape != (len(UPPER_IDX),):
             raise ValueError(f"upper_kp は 17 個: {self.kp.shape}")
         self.phase, self.t_phase = "look", 0.0
+        self._use_side(self.default_side)  # auto は前の回に選んだ腕を残さない（look でまた選ぶ）
         self.lag0: float | None = None  # 押し込みを始めた周期の指令の遅れ（_enter("press") で測り直す）
         self.tracker.reset()
         self.last_image_t = -np.inf
@@ -166,7 +215,6 @@ class ElevatorPressController:
         self.baseline_level: float | None = None
         self.outcome = ""
         self.log = []
-        self.force = PushForceMonitor(self.kin, self.gravity)
         self.press_forces: list[dict[str, Any]] = []  # 押し込みの回ごとの推定した押す力（PushForceSummary.to_dict()）
         self.lamp = LampWatch()
         self._t_press: float | None = None
@@ -323,11 +371,14 @@ class ElevatorPressController:
             self._give_up(t, f"押す前から点灯している（明るい部分 {self.baseline_level:.0f}、{float(prelit):.0f} 以上）ので押さない。"
                           "ランプが消えてから（かごが着いてから）押し直す")
             return
-        advice = self._stand_advice(merged)
+        err: UnreachableError | None = None
         try:
-            self._plan(q, merged)
+            self._plan_arm(q, merged)
         except UnreachableError as e:
-            self._give_up(t, (f"{advice}。" if advice else "") + f"計画できない: {e}")
+            err = e
+        advice = self._stand_advice(merged)  # 選んだ腕（auto でどちらも立たないときは先に試した腕）の範囲で出す
+        if err is not None:
+            self._give_up(t, (f"{advice}。" if advice else "") + f"計画できない: {err}")
             return
         if advice:
             self._note(f"⚠️ {advice}（計画は立ったので押す）")
@@ -376,7 +427,7 @@ class ElevatorPressController:
         """
         self.reset(target, 0.02, np.ones(len(UPPER_IDX)))
         try:
-            self._plan(np.asarray(q, dtype=float), call)
+            self._plan_arm(np.asarray(q, dtype=float), call)
         except UnreachableError as e:
             return str(e)
         return None
@@ -692,11 +743,12 @@ class ElevatorPressController:
     def _hand_circles(self, q: np.ndarray, K: np.ndarray) -> list[tuple[float, float, float]]:
         """押す腕の手（ゴムの手のメッシュの頂点）と前腕（肘 → 手首）が画像に写る円の並び。"""
         lw = self.cfg["press"]["lit_watch"]
-        if getattr(self, "_hand_vertices", None) is None:
+        if self._hand_vertices is None:
             from .config import resolve_repo_path
 
             urdf = resolve_repo_path(self.robot_cfg["model"]["urdf_path"])
             self._hand_vertices = load_stl_vertices(urdf.parent / "meshes" / f"{self.side}_rubber_hand.STL")
+            self._hand_vertices_by_side[self.side] = self._hand_vertices
         cam = self.finder.cam_tf
         rot, pos = cam.pelvis_from_optical(np.asarray(q, dtype=float)[list(WAIST_IDX)])
         pos = pos + np.asarray(getattr(cam, "offset", np.zeros(3)), dtype=float)
