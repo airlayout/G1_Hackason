@@ -248,6 +248,29 @@ class TestAgentSaveSnapshot(unittest.TestCase):
             back = cv2.cvtColor(cv2.imread(str(run / "lit_00_before.png")), cv2.COLOR_BGR2RGB)
             self.assertEqual(tuple(back[15, 15]), (255, 0, 0))  # 色の並び（RGB）が保たれている
 
+    def test_open_avoids_same_second_folder(self) -> None:
+        """同じ秒に同じボタンの記録を 2 つ開いても、別のフォルダになる（並列の試行で名前がぶつかった。2026-11-13）。"""
+        code = (
+            "import sys, os, time, importlib.util\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, '.')\n"
+            "sp = importlib.util.spec_from_file_location('agent', sys.argv[2])\n"
+            "m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)\n"
+            "os.environ['J1GEN_BODY_LOG'] = sys.argv[1]\n"
+            "m.time.strftime = lambda fmt: '20261113_000000'\n"
+            "a = m.BodyLog.open('up'); b = m.BodyLog.open('up'); c = m.BodyLog.open('up')\n"
+            "print(a.dir.name, b.dir.name, c.dir.name)\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            r = subprocess.run([sys.executable, "-I", "-c", code, tmp, str(ROOT / "contest_agent" / "agent.py")],
+                               cwd=REPO_ROOT / "Button_Press" / "Yada", capture_output=True, text=True,
+                               env={"PYTHONPATH": str(REPO_ROOT / "Button_Press" / "Yada")})
+            if r.returncode != 0 and ("ModuleNotFoundError" in r.stderr or "ImportError" in r.stderr):
+                self.skipTest(f"評価環境（Yada）の読み込みに必要なものが無い: {r.stderr.strip().splitlines()[-1]}")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip().splitlines()[-1],
+                             "20261113_000000_up 20261113_000000_up_2 20261113_000000_up_3")
+
 
 if __name__ == "__main__":
     unittest.main()

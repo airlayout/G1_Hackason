@@ -162,7 +162,15 @@ class BodyLog:
         root = os.environ.get("J1GEN_BODY_LOG")
         if not root:
             return None
-        return cls(Path(root) / f"{time.strftime('%Y%m%d_%H%M%S')}_{target}")
+        base = Path(root) / f"{time.strftime('%Y%m%d_%H%M%S')}_{target}"
+        # 並列の試行が同じ秒に始まると名前がぶつかる（2026-11-13、評価環境の 4 並列で FileExistsError）。
+        # ぶつかったら _2, _3 … を付ける（mkdir が先に取った方を勝たせるので、プロセスの間でも重ならない）
+        for n in range(1, 100):
+            try:
+                return cls(base if n == 1 else base.with_name(f"{base.name}_{n}"))
+            except FileExistsError:
+                continue
+        raise FileExistsError(f"体の動きの記録のフォルダを作れない（同じ名前が多すぎる）: {base}")
 
     def save_snapshot(self, kind: str, rgb: np.ndarray, info: dict) -> None:
         """押す前（kind="before"）・点灯の確認（"check"）の画像を、元の画像と、枠・値を描いた画像で保存し、
