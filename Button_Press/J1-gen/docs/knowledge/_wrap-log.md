@@ -102,3 +102,9 @@
   - real_robot_notes.md: 2026-11-04〜11-10 に分かったこと（確認の時刻、手がランプを隠す、扉、到着の音とマイクの仕様、手の色、地図とカメラの角度）
   - patterns/robot_arm_control.md: IK の初期姿勢を変えると、体に当たる位置でも届く
   - patterns/sim_real_config.md: シミュの手は白く、実機の手は黒い
+
+- 2026-11-13 / Button_Press（J1-gen）
+  対象: 立つ位置まで寄る（A 柱の面・B 1 回分歩く・C 寄る流れ・D 評価環境で通す・E 実機日の測り方・F 前方の Web カメラ）
+  - patterns/camera_checks.md: 下向きの頭カメラで柱までの距離・向きを出すときの落とし穴（床は壁を取り除いてから、狭い床では直さない、段になった面は奥行きのヒストグラムで）
+  - patterns/sim_real_config.md: 腰固定の評価環境で歩くには乗り場を逆にずらす・真値にも同じずらしを入れる
+  - domain/unitree_g1.md: 純正の歩行は遅い指令では歩き出さない（班の Navigation の実測の要約）
