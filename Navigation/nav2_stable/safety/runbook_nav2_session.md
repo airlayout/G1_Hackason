@@ -254,6 +254,10 @@ G1_DOMAIN_ID=<PC2と同じ> tools/rviz_operate.sh
 python3 tools/find_map_offset.py --yaw-range 180 --yaw-step 3
 ```
 
+📌 **2026-11-03 から、機体の 1m 以内の点（機体自身の腕や胴）を除いて照合する**（`--min-range 1.0`）。
+それ以前は点の 7 割が自分の体で、**答えが合っていても一致率が 20〜30% と出て失敗に見えた**
+（同じ場面で修正後は 20cm 以内 90%）。下の表の 44% 等は修正前の値。
+
 ⚠️ **`--yaw-range 180` は必須。** 既定の ±20° だと**偽のピークを掴む**。
 2026-09-15 の実機で、真値（yaw 159°、20cm以内 97%）に対し既定の探索が
 **yaw 3.0° を 99%（真値より高スコア）で返した**。スコアだけでは正誤を判別できない。
@@ -441,6 +445,7 @@ yaml の `yaw_deg` を書き換えること。
 | **`enable_navigation` が拒否される** | heartbeat 未受信 / TF・センサー異常 / 状態が `READY` でない。`message` に理由が出る |
 | **Goal を送っても動かない** | `/cmd_vel_smoothed` が流れているか。`NAVIGATING だが指令が届いていない` の WARN が出ていないか |
 | **点群が反対向き / `base_link` の赤軸が実機の正面と逆** | `lidar_yaw` を 0 と 180 で入れ替える（§5.1.1）。**地図の一致率では判別できない** |
+| **巡回が `hold_reason: localization` で止まった** / map_web に「地図と合っていない」 | `map2odom_ctl.sh relocalize` → 候補の 20cm 以内が 80% 以上なら `apply` → **map_web で位置と向きを目視** → `clear_fault` → `patrol_ctl.sh start`。位置が実は合っている（人だかり等）ならそのまま `start` してよい（`ok` に戻るまで監視を休む）。手順は `tools/map2odom_ctl.sh` の冒頭 |
 | **自己位置が合わない** | §7 をやり直す。判定は §7 のとおり — **校正直後は `20cm以内` 80%以上、歩いたあとは `50cm以内`**。最後は RViz の目視 |
 | **急に止まった** | `/g1/bridge_status` の `fault_reason`。`operator_lost` なら heartbeat が途絶えている |
 | **TF が消えた / planner が Extrapolation Error** | **内蔵SLAM が落ちている**。`ros2 topic hz /unitree/slam_mapping/odom` が無反応なら `1801` を再送し、**§7 をやり直す**（§3 の警告） |
