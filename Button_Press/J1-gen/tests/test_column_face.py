@@ -63,7 +63,10 @@ def render(dist: float, yaw_deg: float = 0.0, pitch_deg: float = URDF_PITCH, edg
     return depth.astype(np.float32)
 
 
-CFG = load_config("approach.yaml")["face"]
+SHIPPED = load_config("approach.yaml")["face"]
+# 床で首の向きを直す仕組みのテストは、直す設定で行う（2026-11-14 から設定の既定は直さない。理由は configs/approach.yaml）
+CFG = copy.deepcopy(SHIPPED)
+CFG["floor"]["correct_pitch"] = True
 
 
 def find(depth: np.ndarray, cfg: dict | None = None, pitch_deg: float = URDF_PITCH) -> ColumnFace:
@@ -226,6 +229,16 @@ class TestFaceFinder(unittest.TestCase):
             CAM_POS = saved
         face = finder.find(depth, K, np.zeros(3))
         self.assertAlmostEqual(face.distance_m, 1.0, delta=0.01)
+
+
+class TestShippedConfig(unittest.TestCase):
+    def test_default_does_not_correct_pitch(self) -> None:
+        """既定は床で直さない（ボタンと同じ URDF の向き）。首が 53° でも直さず、床は探すだけ。"""
+        self.assertFalse(SHIPPED["floor"]["correct_pitch"])
+        face = find(render(1.0, pitch_deg=53.0), SHIPPED)
+        self.assertEqual(face.correction_from, "none")
+        self.assertEqual(face.pitch_correction_deg, 0.0)
+        self.assertTrue(face.floor_found)
 
 
 if __name__ == "__main__":
