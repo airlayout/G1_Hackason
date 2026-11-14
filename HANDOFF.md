@@ -1,10 +1,11 @@
 # G1 プロジェクト開発引き継ぎ
 
-2026-11-13（JST）更新。Unitree G1 のデジタルツイン、実機の認識・移動・操作を扱うリポジトリ。直近の作業は、頭部 RGB-D と実測関節角を使ったエレベーターの呼びボタン押下。
+2026-11-14（JST）更新。Unitree G1 のデジタルツイン、実機の認識・移動・操作を扱うリポジトリ。直近の作業は、頭部 RGB-D と実測関節角を使ったエレベーターの呼びボタン押下。
 
 ## 作業の再開
 
-- 作業コピーは `/home/kanto/dev/G1_Hackason`。引き継ぎ作成前は `push-button` の `2d80adb` で、作業ツリーはクリーン。手元の `origin/push-button` と同じコミットだった。手元の `origin/main` は `27fde70` で、このブランチはそこから44コミット先。件数と SHA は手元のリモート追跡参照で確認した値。
+- 作業コピーは `/home/kanto/dev/G1_Hackason`。引き継ぎ作成前の `push-button` は `0b8d144` で、fetch 後の `origin/main` と一致し、`origin/push-button` より1コミット先だった。この引き継ぎのコミット後は SHA が変わるため、再開時に参照を確認する。
+- 引き継ぎ作成時、`Manipulation/push_button/` に既存の未コミット変更がある。**この引き継ぎのコミットには含まれておらず、別のチェックアウトには届かない。** 詳細は下の「未コミットの作業」を参照し、消去・上書きしない。
 - [AGENTS.md](AGENTS.md) が Git 運用の基準。ボタン押下の継続先は `push-button`。各班の担当ブランチは `Dev/Mapping2`、`Dev/Navigation`、`Dev/Perception`。依頼から担当を特定できない場合はブランチを選ばず、現在の差分と参照を確認する。
 - 実装を再開するときは `git status --short --branch` で変更を確認し、既存の差分を保護する。担当ブランチで `git fetch origin` のあと `git merge origin/main`。`main` への取り込みは PR の **Create a merge commit**。Update branch もマージコミット版を使い、機能ブランチは維持する。コミットの依頼だけならコミットまで。push は内容を確認してから明示的に別操作で行う。
 - リポジトリ全体の入口は [README.md](README.md)、操作 PC・G1 搭載 PC（PC2）の共通セットアップは [SETUP.md](SETUP.md)。2026年8月の環境記述や各機能の進捗表は、対象ディレクトリの手順と検証日付を照合する。
@@ -28,8 +29,16 @@
 - **11月3日 `1f6e7ec`**。15 mm のボタンに対して、標準モードの基準・奥・左・右の4条件で事前検証。比較試験の結果と旧設定は [11月3日の実装・評価記録](Manipulation/push_button/reports/BUTTON_CONTROL_POLICY_PLAN_20261101.md) にある。
 - **11月9日 `9c33e44`、`15dca6d`**。右腕の実測角を初期姿勢から帰還まで読み、重力補償に上限付きの積分トルクを加える。腰角と IMU も FK に反映。追従が遅いときは経路の進行を保留する。起動前監視はボトルと共有し、収集モードでの対象位置変化は記録しながら上限付きで補正する。
 - **11月13日 `2d80adb`**。11月11日に 10 mm にした次指令先の障害物余裕を 3 mm に戻した。余裕を下回る場合は減速指令で再検査する。設定箇所は `COMMAND_CLEARANCE_M`。[共通コントローラ](Manipulation/push_button/button_tracking.py)、[補正テスト](Manipulation/push_button/tests/test_button_tracking.py)
+- **11月14日 `194ed54`、`409f574`**。動作中の点灯検出による帰還と、高速版の起動入口・腕のトレースを追加。これらはコミット済みだが、下記の未コミット変更で点灯判定と帰還方法がさらに変わっている。[高速版・トレース](Manipulation/push_button/ROBUST.md)
 
-シェル入口の `real/run_robust_button.sh` は `collection` の起動前監視とボタン検証、`joint` の補正、120秒の計画予算が既定。収集モードの物理検証は基準位置の1条件。標準ボタン検証は基準・奥3 mm・左3 mm・右3 mm の4条件。Python の直接起動ではボタン検証 `standard`、補正 `off` が既定。補正付きではストロークの既定が15 mmで、旧来の追加押し込みを加えない。
+シェル入口の `real/run_robust_button.sh` は `collection` の起動前監視とボタン検証、`joint` の補正が既定。計画予算はコミット済み版では120秒、作業ツリーの変更では300秒。収集モードの物理検証は基準位置の1条件。標準ボタン検証は基準・奥3 mm・左3 mm・右3 mm の4条件。Python の直接起動ではボタン検証 `standard`、補正 `off` が既定。補正付きではストロークの既定が15 mmで、旧来の追加押し込みを加えない。
+
+### 未コミットの作業（この作業コピーのみ）
+
+- `BUTTON_FIELD.md`、`button_feedback.py`、`button_tracking.py`、`button_tracking_runtime.py`、`real/robust_push.py`、`real/run_robust_button.sh`、`robust_conditions.py`、`robust_planner.py` と対応テスト3件が変更済み。新規の `button_return.py` は未追跡。再開時は `git status` と `git diff` で確認する。
+- 点灯検出は最初に対象を特定した画像を基準に、対応する検出枠内の明るさが30以上増えた新しい1枚で早期帰還する。青色のみでは判定しない。深度が取れなくてもよいが、対応するボタン検出枠は必要。反射や露出変化による誤検出の可能性がある。
+- 点灯後の帰還は、事前に衝突余裕を検査した関節空間の短い経路を候補に使い、接触開始・押下終了の2時点からの帰還を物理検証する。帰還中は追従誤差による経路進行の保留を外すが、指令の速度・加速度制限と衝突検査は維持する。異常時復帰や接触前診断は対象外。
+- これらの変更について実機での点灯・帰還成功は確認できていない。実機投入前に差分とテスト結果を確認し、[現場手順](Manipulation/push_button/BUTTON_FIELD.md) の `check` → `precontact` → `push` の順で確認する。作業ツリーの手順書は未コミット実装に対応するため、Git 上のコードだけを見る場合は内容が異なる。
 
 | 調べたい箇所 | ファイル |
 | --- | --- |
@@ -58,6 +67,8 @@ _local/button_press_yada/venv/bin/python -m pytest -q -rs Manipulation/push_butt
 ```
 
 11月13日の引き継ぎ時は、サンドボックスでローカルソケットが使えず全体回帰が途中終了。直近の補正・起動前監視・標準ポリシーの重点試験は93件合格、1件不合格、ソケットを使う1件を除外。3 mm の障害物余裕のテスト2件は合格した。不合格は標準ポリシーの全候補比較で、30秒の上限内で候補34件までを試行し、期待する候補36に到達しなかった。11月9日の保存済み全体回帰は652件合格・40件スキップ。
+
+11月14日の引き継ぎ時は、上記環境変数を使い `test_button_feedback.py`、`test_button_tracking.py`、`test_robust_button.py` の3ファイルを、未コミット変更を含む作業ツリーで実行し、113件合格した。全体回帰や実機動作を確認した結果ではない。
 
 `_local/` は Git 対象外。同じ作業コピーなら既存の環境・ログを参照できる。別のチェックアウトへ移るときは、必要なモデル・設定・実測校正・ログの所在を確認する。G1 上で実行する構成では、設定と実測校正は G1 側から読める場所に置く。Git に含まれるボタン検出重みは [button_final8.pt](Button_Press/J1-gen/weights/button_final8.pt)。
 
