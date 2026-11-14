@@ -22,3 +22,113 @@
 - domain/unitree_g1.md: 頭カメラの向きは、首の傾きで変わる（ユーザー承認）
 - mine/script_design.md: 毎回の処理と、その日に 1 回の前提を分ける（ユーザー承認）
 - 提案したが保存しなかった: 「次のステップの方針（Enter なしで最後まで流すやり方へ移る）」
+
+## 2026-10-31 / G1 ボタン押し（Button_Press/J1-gen）
+
+対象: 2026-10-31 のセッション全体（ラボ PC・有線。PC2 への ssh、カメラ配信の起動、既定・広げた設定でのボトル押し）
+
+- tech/shell_and_ssh.md: Claude が G1 の PC2 に ssh する手順（鍵の登録・オプション・起動したプロセスの扱い）
+- tech/shell_and_ssh.md: Claude には、ユーザーのターミナルの出力が見えない（保存されたログで裏を取る）
+- patterns/robot_arm_control.md: ボトルが滑ると、遅れでは当たったと分からない（固定して測る）
+- patterns/robot_arm_control.md: 腕を大きく前へ出すと、体が前へ傾くことがある（広げた設定の経由の姿勢）
+- patterns/analysis_pitfalls.md: 人に貼ってもらう文字列を、省略して書いた
+- real_robot_notes.md: 「2026-10-31 に分かったこと」（モード切り替えで PC2 が再起動しカメラ配信が消える、立ち直すと位置関係が変わる、
+  骨盤の傾きの上限、追従の遅れ・押し込みの結果、広げた設定の初回、頭カメラの向き 50.2°、録画の大きさ）
+- 提案したが保存しなかった: なし
+
+## 2026-11-01 / G1 ボタン押し（Button_Press/J1-gen）
+
+対象: 2026-10-31〜11-01 のセッション全体（ノート PC から Wi-Fi で PC2 に ssh。onboard の見積もり、PC2 の調査・計画の時間、lowstate の受け取り、ボタンと人の YOLO の ONNX）
+
+- tech/pc2_onboard.md（新規）: YOLO26 の ONNX は `end2end=False` で書き出し、元の `.pt` と比べる
+- tech/pc2_onboard.md（新規）: lowstate をコールバックで全部受けると 1 コアの 7 割（最新 1 件だけ持つ DataReader で 10%）
+- tech/shell_and_ssh.md: `pkill -f` が自分を止める件の再発（ssh 先の `bash -c`）
+- real_robot_notes.md: 「2026-10-31 に分かったこと（PC2 で動かす準備）」（PC2 の中なら DDS が届く、DDS のライブラリは lerobot にある、計画・YOLO の時間）
+- 提案したが保存しなかった: なし
+
+## 2026-11-01 / G1 ボタン押し（Button_Press/J1-gen）
+
+対象: 10/31 の YOLO の撮り足し（点灯した ▲）、自動ラベルの直し、8 本での最終版、評価環境の 3 つ
+- real_robot_notes.md: 点灯した ▲ の動画で確かめた結果、最終版 final8 の候補と `J1GEN_BUTTON_WEIGHTS`、点字を拾う注意
+- 提案したが保存しなかった: なし
+
+## 2026-11-01 / G1（Perception の人の検出、PC2 の Web カメラ）
+
+対象: G1 の Web カメラで YOLO（CPU・TensorRT）、person_alert（写真を残して PC へ・映像の配信）、カメラの番号の入れ替わり、Wi-Fi の自動接続
+- real_robot_notes.md: 「2026-10-31 に分かったこと（PC2 の Web カメラ・人の検出・Wi-Fi）」（カメラ 2 つと by-id、Mapping の配信の受け取り方、GPU の速さ、Fujitsu_free_Wi-Fi の自動接続を切った件）
+- 提案したが保存しなかった: なし
+
+## 2026-11-01 / G1 ボタン押し（Button_Press/J1-gen、10/31 の前日準備）
+
+対象: 配置 A〜F の予想とシミュ、模擬ロボットで auto_press、判定基準、動画、reach_wide2.yaml、経由なしの地図
+- real_robot_notes.md: 経由なしの地図（経由の姿勢は今も必要）、reach_wide2.yaml、「指先が実際に進んだ距離」の読み方（50 mm が上限、判定は当たって止まった＋動画）
+- 提案したが保存しなかった: なし
+
+
+## 2026-11-01 / G1 ボタン押し（Button_Press/J1-gen、onboard の実機日）
+
+対象: 広げた設定を既定に、机の箱の余裕 1 cm、無線の ssh で PC2 の上で押す（onboard.sh）、NoMotionError の誤判定、置ける範囲の dry-run
+- patterns/robot_arm_control.md: 「指令どおりに動いたか」の確認は、指令を実際の位置へ寄せるだけの動きでは外す
+- patterns/robot_arm_control.md: dry-run では、中止して戻る動きは確かめられない（模擬ロボットで確かめる）
+- tech/shell_and_ssh.md: 無線の ssh から、PC2 の上の押す処理を切り離して動かす（`real/onboard.sh`）
+- real_robot_notes.md: 2026-11-01 に分かったこと（onboard、送る間隔、別の班の VLA、置ける範囲）
+- 提案したが保存しなかった: （domain・mine は個人の知識の方で確認中）
+
+## 2026-11-01 / G1 ボタン押し（Button_Press/J1-gen、エレベーターの実機日・午後）
+
+対象: ノート PC から有線（WSL2 mirrored）、エレベーターの車いす用 ▼ を 5 回、ボタン用の補正、押す力の不足、テストと mirrored
+- patterns/robot_arm_control.md: 当たったと見る遅れのしきい値は実機の空中の動きで超えない値に。押す力は遅れ × 腕の硬さで頭打ち
+- real_robot_notes.md: 2026-11-01 午後に分かったこと（WSL2 の mirrored、`lo` のテスト、rgbd_server の Python、YOLO 15/15、補正、押す力の不足）
+- 提案したが保存しなかった: （domain・mine は個人の知識の方で確認中）
+
+- 2026-11-03 / Button_Press（J1-gen）
+  対象: 11/1 に押せなかった理由の分析、指をまっすぐ向けて垂直に押す変更、立ち位置、ラボで空中のボタンを 40〜50 cm
+  - real_robot_notes.md: 2026-11-03 に分かったこと（小指で押していた、まっすぐ押す・立ち位置、有線の口の名前、RealSense と Web カメラ、頭カメラの向き、空中のボタン）
+  - patterns/robot_arm_control.md: 狙う点と最初に当たる部分は違う／腕を伸ばしきる近くの関節の速さの上限と戻りの速さ
+
+- 2026-11-03（夜）/ Button_Press（J1-gen）
+  対象: エレベーターでまっすぐ押した 17 回、押す力を弱める・手袋なし、点灯の判定、PC2 の配信
+  - real_robot_notes.md: 2026-11-03 夜に分かったこと（15/17 点灯、力は既定で足りる、かごの到着で判定が狂う、配信の起動し直し、IP の重なり）
+  - patterns/robot_arm_control.md: 力不足に見えても当たり方を疑う・柔らかい指は接触の判定を鈍らせる
+
+- 2026-11-04 / Button_Press（J1-gen）
+  対象: 押した力の推定（推定トルク tau_est）、評価環境の観測への tau_est と IMU、Yada さんのファイルの扱い
+  - real_robot_notes.md: 2026-11-04 に分かったこと（腕に力のセンサーなし・tau_est、press_force.py、エレベーターの IMU は fd0d38d まで固定）
+  - patterns/robot_arm_control.md: 推定トルクから押した力を出す・重力を引く
+  - patterns/sim_real_config.md: 観測の口で値を入れ忘れても既定値がもっともらしいと気づかない
+
+- 2026-11-10 / Button_Press（J1-gen）
+  対象: 11/3 の困りごとの修正（押す前から点灯、中止の理由、頭カメラの向きを毎回）、立ち位置の地図の取り直し、手首を曲げる形、押している間もランプを見る・扉・マイク
+  - real_robot_notes.md: 2026-11-04〜11-10 に分かったこと（確認の時刻、手がランプを隠す、扉、到着の音とマイクの仕様、手の色、地図とカメラの角度）
+  - patterns/robot_arm_control.md: IK の初期姿勢を変えると、体に当たる位置でも届く
+  - patterns/sim_real_config.md: シミュの手は白く、実機の手は黒い
+
+- 2026-11-13 / Button_Press（J1-gen）
+  対象: 立つ位置まで寄る（A 柱の面・B 1 回分歩く・C 寄る流れ・D 評価環境で通す・E 実機日の測り方・F 前方の Web カメラ）
+  - patterns/camera_checks.md: 下向きの頭カメラで柱までの距離・向きを出すときの落とし穴（床は壁を取り除いてから、狭い床では直さない、段になった面は奥行きのヒストグラムで）
+  - patterns/sim_real_config.md: 腰固定の評価環境で歩くには乗り場を逆にずらす・真値にも同じずらしを入れる
+  - domain/unitree_g1.md: 純正の歩行は遅い指令では歩き出さない（班の Navigation の実測の要約）
+
+- 2026-11-13 / Button_Press（J1-gen）
+  対象: 強化学習（PPO）でボトルを押す取り組み（v1〜v12）を、いったん終わりにしたときのまとめ
+  - tech/rl_training.md: 成功判定の抜け穴、強打は打ち切りで直す、範囲を広げる前に腕の届く球を計算する、弱い配置を学習だけ多く引く、動かない方策、探す時間は罰や条件の緩和では縮まなかった、学習の環境ではまったこと
+
+- 2026-11-13 / Button_Press（J1-gen）
+  対象: 敬礼・指さしの動作（既存モーション調査・`right hand up` で倒れた件・`actions/` を作った）
+  - real_robot_notes.md: 敬礼・指さしの既存モーションは無い、`arm_wave_real.py` の `ReleaseMode()` で倒れた（推定）、有線のノート PC から直接送れる
+  - patterns/robot_arm_control.md: 敬礼・指さしの姿勢は FK と最適化で求める、肘を横へ張る形は手首を大きく曲げる解になる
+
+- 2026-11-13 / Button_Press（J1-gen）
+  対象: 11/13 の実機日（空中の腕・腰だけを回す・エレベーターで押す腕の自動選択 4 回点灯）
+  - real_robot_notes.md: 4 回点灯（左腕で初めて）、53 cm でも見える、点灯のしきい値、regular mode の姿勢、推定の力のずれ、腰の回し、videohub の空の画像、PC2 のタイムゾーン（中国時間）、PC2 で押す準備、マイク、script と収録
+  - patterns/robot_arm_control.md: 推定の力は空中で 0 になるか先に見る、「立っているか」の値は本体のモードで変わる
+
+- 2026-11-14 / Button_Press（J1-gen）
+  対象: 11/13 の収録から柱の面を求めた・床で首を直すのをやめた
+  - patterns/camera_checks.md: 実機では床で首を直すとボタンと 3〜7 cm 食い違った → correct_pitch false、壊れた収録の読み方
+
+- 2026-11-14 / Button_Press（J1-gen）
+  対象: 敬礼・指さしを実機で送った結果、腰を保つ kp、敬礼の形の作り直し
+  - patterns/robot_arm_control.md: 肘を横へ張る敬礼は手の向きを目標に入れると手首を大きく曲げずに解ける（前の記録の訂正）、腕を前へ出すと腰が前へ倒れる・動作ごとの上限と kp
+  - real_robot_notes.md: 敬礼・指さしの実機の結果、onboard.sh sync は actions/ を送らない、関節範囲
+

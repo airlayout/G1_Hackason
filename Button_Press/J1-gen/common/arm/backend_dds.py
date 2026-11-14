@@ -16,20 +16,18 @@ example/g1/low_level/g1_low_level_example.py（lowcmd）。
 
 from __future__ import annotations
 
-import threading
 import time
 from typing import Any
 
 import numpy as np
 
 from ..robot_model import ARM_SDK_WEIGHT_IDX, NUM_MOTORS
-from ..dds import check_peer, init_dds, parse_lowstate, peer_label
+from ..dds import LatestLowState, check_peer, init_dds, peer_label
 from .backend import ArmBackend
 from .types import JointCommand, JointState
 
 TOPIC_ARM_SDK = "rt/arm_sdk"
 TOPIC_LOWCMD = "rt/lowcmd"
-TOPIC_LOWSTATE = "rt/lowstate"
 
 
 def active_joints(cmd: JointCommand) -> list[int]:
@@ -75,15 +73,14 @@ class DdsBackend(ArmBackend):
         self.dry_run = dry_run
         self._iface = network_interface
         self._domain_id = domain_id
-        self._lock = threading.Lock()
-        self._state: JointState | None = None
+        self._lowstate = LatestLowState()
         self._next_deadline: float | None = None
         self._send_count = 0
 
     def open(self) -> None:
-        from unitree_sdk2py.core.channel import ChannelPublisher, ChannelSubscriber
+        from unitree_sdk2py.core.channel import ChannelPublisher
         from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_
-        from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_, LowState_
+        from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_
         from unitree_sdk2py.utils.crc import CRC
 
         if not self._iface:
@@ -92,8 +89,8 @@ class DdsBackend(ArmBackend):
                 "（`ip -br a` で確認）を設定すること"
             )
         init_dds(self._domain_id, self._iface)
-        self._sub = ChannelSubscriber(TOPIC_LOWSTATE, LowState_)
-        self._sub.Init(self._on_state, 10)
+        # lowstate は読むときに最新の 1 通を取りに行く（コールバックで全部受けると 1 コアの約 72%。dds.py の冒頭）
+        self._lowstate.open(self._domain_id, self._iface)
         self._pub = None
         if not self.dry_run:
             self._pub = ChannelPublisher(self.topic, LowCmd_)
@@ -102,14 +99,8 @@ class DdsBackend(ArmBackend):
         self._msg = unitree_hg_msg_dds__LowCmd_()
         print(f"[dds] 送信先 {self.topic}（{'送信しない: dry-run' if self.dry_run else '送信する'}）")
 
-    def _on_state(self, msg: Any) -> None:
-        st = parse_lowstate(msg)
-        with self._lock:
-            self._state = st
-
     def read_state(self) -> JointState | None:
-        with self._lock:
-            return self._state
+        return self._lowstate.latest()
 
     def send(self, cmd: JointCommand) -> None:
         st = self.read_state()

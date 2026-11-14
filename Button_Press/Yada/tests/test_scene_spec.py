@@ -89,6 +89,74 @@ class TestColumnScene(unittest.TestCase):
         self.assertGreater(right.center[1] - right.half_size[1], self.cfg["column"]["width"] / 2)  # 扉は柱の左
 
 
+def _box(scene, name: str):
+    return next(b for b in scene.boxes if b.name == name)
+
+
+def _x_range(box) -> tuple[float, float]:
+    return box.center[0] - box.half_size[0], box.center[0] + box.half_size[0]
+
+
+def _yz_overlap(a, b) -> bool:
+    lo_a, hi_a = a.center[1:] - a.half_size[1:], a.center[1:] + a.half_size[1:]
+    lo_b, hi_b = b.center[1:] - b.half_size[1:], b.center[1:] + b.half_size[1:]
+    return bool(np.all(lo_a < hi_b - 1e-9) and np.all(lo_b < hi_a - 1e-9))
+
+
+class TestRecessedDoor(unittest.TestCase):
+    """扉が壁の表面より奥に引っ込んでいる（実機のラボのエレベーター。door.recess_m、2026-11-04）。"""
+
+    def setUp(self) -> None:
+        self.cfg = load_config("elevator_prod.yaml")
+        self.cfg["door"]["recess_m"] = 0.05
+        self.scene = build_hall_scene(self.cfg)
+        self.fx = self.cfg["wall"]["front_x"]
+
+    def test_leaves_are_behind_the_wall_surface(self) -> None:
+        for name in ("hall_door_left", "hall_door_right", "hall_door_gap"):
+            self.assertAlmostEqual(_x_range(_box(self.scene, name))[0], self.fx + 0.05, places=9, msg=name)
+
+    def test_wall_has_a_hole_for_the_door(self) -> None:
+        """壁は 3 つの箱で、どれも扉の板の前をふさがない（扉が見える）。右の壁は柱の後ろまで続く（柱のすぐ左が三方枠）。"""
+        names = {b.name for b in self.scene.boxes}
+        self.assertNotIn("hall_wall", names)
+        walls = [b for b in self.scene.boxes if b.name.startswith("hall_wall_")]
+        self.assertEqual(len(walls), 3)
+        for leaf in ("hall_door_left", "hall_door_right"):
+            for w in walls:
+                self.assertFalse(_yz_overlap(w, _box(self.scene, leaf)), (w.name, leaf))
+        right_wall = _box(self.scene, "hall_wall_right")
+        self.assertAlmostEqual(right_wall.center[1] + right_wall.half_size[1], self.cfg["column"]["width"] / 2, places=9)
+
+    def test_frame_lines_the_reveal(self) -> None:
+        """三方枠は、壁の表面より前（frame_protrusion）から扉の板の面までの、穴の側面を覆う。"""
+        for name in ("hall_door_frame_left", "hall_door_frame_right", "hall_door_frame_top"):
+            lo, hi = _x_range(_box(self.scene, name))
+            self.assertAlmostEqual(lo, self.fx - self.cfg["door"]["frame_protrusion"], places=9, msg=name)
+            self.assertAlmostEqual(hi, self.fx + 0.05, places=9, msg=name)
+
+    def test_buttons_do_not_move(self) -> None:
+        """扉を引っ込めても、柱とボタンの位置は変わらない。"""
+        flat = load_config("elevator_prod.yaml")
+        flat["door"]["recess_m"] = 0.0
+        before = {b.name: b.face_center for b in build_hall_scene(flat).buttons}
+        for b in self.scene.buttons:
+            np.testing.assert_allclose(b.face_center, before[b.name])
+
+    def test_zero_recess_is_the_old_shape(self) -> None:
+        """recess_m が 0（elevator_hall.yaml のように書いていない）なら、前の形（1 枚の壁、扉は壁から前に出る）。"""
+        flat = load_config("elevator_prod.yaml")
+        flat["door"]["recess_m"] = 0.0
+        scene = build_hall_scene(flat)
+        self.assertIn("hall_wall", {b.name for b in scene.boxes})
+        self.assertAlmostEqual(_x_range(_box(scene, "hall_door_left"))[1], self.fx, places=9)
+
+    def test_negative_recess_is_rejected(self) -> None:
+        self.cfg["door"]["recess_m"] = -0.01
+        with self.assertRaises(ValueError):
+            build_hall_scene(self.cfg)
+
+
 class TestCarpet(unittest.TestCase):
     def test_texture_color_and_seam(self) -> None:
         """平均の色は設定の rgb。端どうしの差が内側の隣り合う画素の差と同じくらい（並べても継ぎ目が出ない）。"""

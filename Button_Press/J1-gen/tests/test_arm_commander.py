@@ -232,6 +232,17 @@ class TestMove(unittest.TestCase):
         np.testing.assert_allclose(seen[-1][0][ARM], wps[5])
         self.assertFalse(any(np.allclose(c.q[ARM], wps[7]) for c in be.sent))
 
+    def test_follow_without_expect_motion_skips_no_motion_check(self) -> None:
+        """指令を実際の位置へ寄せる動き（押し当てて止めたあと、指令を実際の指先まで戻す）は、腕が動かなくても止めない。
+        2026-11-01 の実機で「押し込みを少し戻す」を NoMotionError と判定して 2 回中止した。"""
+        be = FakeBackend()
+        wps = [be.q0[ARM] + 0.004 * (k + 1) for k in range(15)]  # 合わせて 0.06 rad（判定の 0.02 を超える）
+        with make(be) as arm:
+            be.follow = False  # 腕は動かない（当たって止まっている）
+            arm.follow(wps, expect_motion=False)
+            with self.assertRaises(NoMotionError):
+                arm.follow(list(reversed(wps)))
+
     def test_follow_rejects_big_step(self) -> None:
         be = FakeBackend()
         with self.assertRaises(UnsafeTargetError):

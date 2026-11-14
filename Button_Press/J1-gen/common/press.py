@@ -223,7 +223,8 @@ def execute_press(
             # 止めた点から、保持する点まで直線をさかのぼる（1 周期の関節の動きの上限を守るため）
             back = [w.copy() for w in reversed(plan.press_in[j:sent - 1])]
             if back:
-                arm.follow(back, label="押し込みを少し戻す")
+                # 指令を実際の指先（当たって遅れている所）まで戻すだけなので、腕はほとんど動かないのが正しい
+                arm.follow(back, label="押し込みを少し戻す", expect_motion=False)
             q_hold = plan.press_in[j]
             press_out = [w.copy() for w in reversed(plan.press_in[:j])] + [plan.q_approach.copy()]
         if on_stage:

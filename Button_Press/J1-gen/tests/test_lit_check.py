@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import cv2
 import numpy as np
@@ -21,6 +22,7 @@ from _env import needs
 from common.config import REPO_ROOT, load_config
 
 DATA = Path(__file__).resolve().parent / "data" / "lab_elevator"
+HEAD_DATA = Path(__file__).resolve().parent / "data" / "lab_elevator_head"
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -70,6 +72,72 @@ class TestLitCheckOnRealPhotos(unittest.TestCase):
                 self.assertFalse(self.ctl._is_lit(other, other - base), (base, other))
         for base in self.levels["unlit"]:  # 普通の消灯が少し明るくなっただけ
             self.assertFalse(self.ctl._is_lit(base + 10, 10))
+
+
+@needs("mujoco", "pin")
+class TestPrelitOnHeadCamera(unittest.TestCase):
+    """押す前から点灯しているボタンは押さない（lit_check.prelit_level）。実機の頭カメラの画像（2026-11-03、
+    tests/data/lab_elevator_head/）で、押す前から点灯・消灯・押したあとの点灯の値を確かめる。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from common.elevator_press import ElevatorPressController
+
+        cls.ctl = ElevatorPressController.from_config(
+            load_config("robot.yaml"), load_config("press.yaml"), load_config("arm.yaml"), load_config("elevator.yaml"))
+        cls.prelit = float(cls.ctl.cfg["press"]["lit_check"]["prelit_level"])
+        cls.cases: dict[str, list[tuple[np.ndarray, tuple[int, int, int, int]]]] = {"prelit": [], "unlit": [], "lit": []}
+        for c in json.loads((HEAD_DATA / "manifest.json").read_text(encoding="utf-8"))["cases"]:
+            rgb = cv2.cvtColor(cv2.imread(str(HEAD_DATA / c["file"])), cv2.COLOR_BGR2RGB)
+            cls.cases[c["kind"]].append((rgb, tuple(c["bbox"])))
+
+    def level(self, kind: str) -> list[float]:
+        return [self.ctl._lit_level(rgb, box) for rgb, box in self.cases[kind]]
+
+    def test_prelit_and_lit_are_above_and_unlit_far_below(self) -> None:
+        """11/3: 押す前の消灯 62〜79、点灯 232〜235。しきい値はその間で、消灯から 100 以上離れている。"""
+        self.assertTrue(all(self.cases.values()))
+        self.assertGreaterEqual(min(self.level("prelit") + self.level("lit")), self.prelit)
+        self.assertLess(max(self.level("unlit")) + 100, self.prelit)
+
+    def test_prelit_is_above_glint(self) -> None:
+        """スマホの写真の、反射で白い消灯（tests/data/lab_elevator/ の glint）は、押す前から点灯とみなさない。"""
+        for c in json.loads((DATA / "manifest.json").read_text(encoding="utf-8"))["cases"]:
+            if c["kind"] == "glint":
+                rgb = cv2.cvtColor(cv2.imread(str(DATA / c["file"])), cv2.COLOR_BGR2RGB)
+                self.assertLess(self.ctl._lit_level(rgb, tuple(c["bbox"])), self.prelit, c["file"])
+
+    def look(self, kind: str) -> None:
+        """見つけたときの画像を kind の画像にして _look を通す（見つけるところは決まった ▲▼ を返す）。"""
+        from common.elevator_buttons import Button3D, CallButtons
+
+        rgb, box = self.cases[kind][0]
+        c = self.ctl
+        c.reset("up", 0.02, np.full(17, 60.0))
+        c.on_snapshot = None
+        call = CallButtons(Button3D(np.array([0.45, -0.14, 0.21]), 0.035, "up", box, 100, "up"),
+                           Button3D(np.array([0.45, -0.14, 0.14]), 0.035, "down", box, 100, "down"),
+                           np.array([1.0, 0.0, 0.0]))
+        q0 = np.zeros(29)
+        with mock.patch.object(c.finder, "find", return_value=call), mock.patch.object(c.tracker, "add", return_value=call):
+            c._look(rgb, np.zeros(rgb.shape[:2]), np.eye(3), q0, 1.0)
+
+    def test_prelit_button_is_not_pressed(self) -> None:
+        self.look("prelit")
+        self.assertEqual(self.ctl.phase, "done")
+        self.assertIn("押す前から点灯している", self.ctl.outcome)
+        self.assertIsNone(self.ctl.plan_)
+
+    def test_unlit_button_goes_on_to_plan(self) -> None:
+        """消灯なら押す前の点灯の確かめでは止めない（計画が立つかどうかは別。止めた理由が「点灯」でないこと）。"""
+        self.look("unlit")
+        self.assertNotIn("押す前から点灯している", self.ctl.outcome)
+
+    def test_can_be_turned_off(self) -> None:
+        lc = self.ctl.cfg["press"]["lit_check"]
+        with mock.patch.dict(lc, {"prelit_level": None}):
+            self.look("prelit")
+        self.assertNotIn("押す前から点灯している", self.ctl.outcome)
 
 
 @needs("mujoco", "pin")
@@ -179,6 +247,29 @@ class TestAgentSaveSnapshot(unittest.TestCase):
             self.assertTrue(rows[1]["lit"])
             back = cv2.cvtColor(cv2.imread(str(run / "lit_00_before.png")), cv2.COLOR_BGR2RGB)
             self.assertEqual(tuple(back[15, 15]), (255, 0, 0))  # 色の並び（RGB）が保たれている
+
+    def test_open_avoids_same_second_folder(self) -> None:
+        """同じ秒に同じボタンの記録を 2 つ開いても、別のフォルダになる（並列の試行で名前がぶつかった。2026-11-13）。"""
+        code = (
+            "import sys, os, time, importlib.util\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, '.')\n"
+            "sp = importlib.util.spec_from_file_location('agent', sys.argv[2])\n"
+            "m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)\n"
+            "os.environ['J1GEN_BODY_LOG'] = sys.argv[1]\n"
+            "m.time.strftime = lambda fmt: '20261113_000000'\n"
+            "a = m.BodyLog.open('up'); b = m.BodyLog.open('up'); c = m.BodyLog.open('up')\n"
+            "print(a.dir.name, b.dir.name, c.dir.name)\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            r = subprocess.run([sys.executable, "-I", "-c", code, tmp, str(ROOT / "contest_agent" / "agent.py")],
+                               cwd=REPO_ROOT / "Button_Press" / "Yada", capture_output=True, text=True,
+                               env={"PYTHONPATH": str(REPO_ROOT / "Button_Press" / "Yada")})
+            if r.returncode != 0 and ("ModuleNotFoundError" in r.stderr or "ImportError" in r.stderr):
+                self.skipTest(f"評価環境（Yada）の読み込みに必要なものが無い: {r.stderr.strip().splitlines()[-1]}")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip().splitlines()[-1],
+                             "20261113_000000_up 20261113_000000_up_2 20261113_000000_up_3")
 
 
 if __name__ == "__main__":

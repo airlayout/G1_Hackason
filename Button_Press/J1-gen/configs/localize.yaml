@@ -1,7 +1,8 @@
 # Button_Press / 対象の検出と 3D 座標の設定（タスク4）
 
 detector:
-  # yolo（既定）| color（色で探す。YOLO が対象を見つけられないときの予備。模擬ロボットのリハーサルでも使う）
+  # yolo（既定）| onnx（同じ YOLO を ONNX にしたもの。torch・ultralytics なしで動くので G1 の PC2 で使う）
+  # | color（色で探す。YOLO が対象を見つけられないときの予備。模擬ロボットのリハーサルでも使う）
   type: yolo
   # Perception と同じ YOLO の重み（ultralytics が初回に自動でダウンロードする）
   model: yolo26n.pt
@@ -10,6 +11,10 @@ detector:
   confidence_threshold: 0.4
   # auto（GPU があれば GPU）| cpu | cuda
   device: auto
+  # type: onnx のときの重み（リポジトリ直下からの相対パス。Perception/real/export_onnx.py で yolo26n.pt から書き出したもの。
+  # .pt と同じ結果になる書き出し方（end2end=False）。2026-10-31 に PC2 で .pt との差 0.005 以下）と、使う CPU のスレッド数
+  onnx_model: _local/perception/models/yolo26n.onnx
+  onnx_threads: 4
   # type: color のときの色の範囲（HSV。H は 0〜179）。既定は赤（色相が 0 付近と 179 付近の 2 つ）。
   # 実機のボトルのラベルの色に合わせて変える
   color:

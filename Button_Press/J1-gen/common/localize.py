@@ -169,13 +169,28 @@ class ColorDetector:
 
 
 def make_detector(loc_cfg: dict[str, Any]) -> Detector:
-    """設定の detector.type に応じて、Perception の YoloDetector か、色の検出器を作る。"""
+    """設定の detector.type に応じて、Perception の YoloDetector（yolo）、ONNX の YOLO（onnx）、色の検出器（color）を作る。
+
+    onnx は onnxruntime（CPU）で動かす。torch・ultralytics が要らないので、G1 の PC2 で使う（detector.onnx_model の重み）。
+    """
     from .perception_bridge import perception
 
     det = loc_cfg["detector"]
-    if det.get("type", "yolo") == "color":
+    kind = det.get("type", "yolo")
+    if kind == "color":
         c = det["color"]
         return ColorDetector(c["hsv_ranges"], int(c["min_area_px"]), str(det["classes"][0]))
+    if kind == "onnx":
+        from .config import resolve_repo_path
+
+        path = resolve_repo_path(det["onnx_model"])
+        if not path.is_file():
+            raise FileNotFoundError(f"ボトルの YOLO の ONNX が無い: {path}（Perception/real/export_onnx.py で yolo26n.pt から書き出す）")
+        threads = det.get("onnx_threads")
+        return perception("detector.onnx_yolo").OnnxYoloDetector(
+            model_path=str(path), classes=list(det["classes"]),
+            confidence_threshold=float(det["confidence_threshold"]), num_threads=int(threads) if threads else None,
+        )
     return perception("detector").YoloDetector(
         model_name=det["model"], classes=list(det["classes"]),
         confidence_threshold=float(det["confidence_threshold"]), device=det.get("device", "auto"),

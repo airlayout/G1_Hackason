@@ -16,7 +16,7 @@ from common.arm.types import JointState
 from common.config import FEATURE_DIR, load_config
 from common.localize import Locator
 from common.recorder import Recorder
-from common.recording import Recording, RecordingWriter
+from common.recording import LOWSTATE_HEADER, LOWSTATE_HEADER_V1, Recording, RecordingWriter
 from common.rgbd_protocol import Intrinsics, RgbdFrame
 from common.robot_model import NUM_MOTORS
 
@@ -127,6 +127,34 @@ class TestRecording(unittest.TestCase):
         r = Recording(w.dir)
         self.assertGreater(r.lowstate_count, 0)
         self.assertIsNotNone(r.q_at(0.0))
+
+    def test_tau_columns_and_old_format(self) -> None:
+        """推定トルクは tau0..tau28 の列に入る（無ければ空欄）。列の無い古い記録（2026-11-04 より前）も読める。"""
+        import csv
+
+        from common.body_motion import read_lowstate_csv
+
+        w = RecordingWriter(self.root, "tau", {})
+        q = np.full(NUM_MOTORS, 0.1)
+        w.add_lowstate(1.0, JointState(q, np.zeros(NUM_MOTORS), np.ones(NUM_MOTORS, int), 5, 0.0,
+                                       tau_est=np.arange(NUM_MOTORS, dtype=float)))
+        w.add_lowstate(2.0, JointState(q, np.zeros(NUM_MOTORS), np.ones(NUM_MOTORS, int), 5, 0.0))
+        w.close()
+        with open(w.dir / "lowstate.csv", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        self.assertEqual(list(rows[0].keys()), LOWSTATE_HEADER)
+        self.assertEqual(float(rows[0]["tau28"]), 28.0)
+        self.assertEqual(rows[1]["tau0"], "")
+        self.assertEqual(Recording(w.dir).lowstate_count, 2)
+
+        # 古い記録: 推定トルクの列が無い
+        with open(w.dir / "lowstate.csv", "w", newline="", encoding="utf-8") as f:
+            cw = csv.writer(f)
+            cw.writerow(LOWSTATE_HEADER_V1)
+            cw.writerow(["1.0", "5"] + ["0.1"] * NUM_MOTORS + ["0"] * NUM_MOTORS + ["1", "0", "0", "0"])
+        self.assertEqual(Recording(w.dir).lowstate_count, 1)
+        t, q_read, _, _ = read_lowstate_csv(w.dir / "lowstate.csv")
+        self.assertAlmostEqual(float(q_read[0, 3]), 0.1)
 
 
 @needs('render', 'pin')

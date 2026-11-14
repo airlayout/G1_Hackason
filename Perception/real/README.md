@@ -7,6 +7,45 @@
 - `check_yolo.py` — YOLO(人の検出)がそのマシンで動くか・速さを確かめる。G1のPC2の上で、torchを使わずONNXで動かす
   (`export_onnx.py` で書き出し、PC2用の配布物は `fetch_pc2_wheels.sh`)
 - `probe_zmq_camera.py` — 認識処理を含まない、画像取得だけの動作確認スクリプト
+- `person_alert.py` / `person_alert_receiver.py` — 人を検出したら写真を G1 に残し、PC へも送る（下記）
+
+## person_alert.py（人を検出したら写真を残して PC へ送る） ※2026-10-31 実機で確認
+
+G1 の PC2 で動かす。人が 3 フレーム続けて写ったら「出来事」にして、枠を描いた写真と記録（`events.jsonl`）を
+`~/perception/_local/perception/person_alert/` に保存し、ZMQ（5560 番）で配信する。そのあと 10 秒は出さない（人がいる間は 10 秒ごと）。
+写真は 1000 枚まで（超えたら古いものから消す。記録は消さない）。**PC がつないでいなくても G1 には必ず残る**
+（つないでいなかった間の写真は PC には届かないので、要るなら `scp` で持ってくる）。準備（エンジン・`~/perception/` への配置）は
+`Perception/docs/report/2026-10-31_g1_webcam_yolo.md` を参照。
+
+```bash
+# G1（PC2）: GPU 版。前方のカメラ（Innomaker）を Mapping の配信（5555 番）から受け取る。Mapping を止めずに使える（5 枚/秒）
+cd ~/perception && /usr/bin/python3 real/person_alert.py --zmq localhost:5555 --zmq-bgr --rotate 180 --backend tensorrt --model yolo26n.engine
+```
+
+**PC2 の Web カメラは 2 つある**（2026-10-31）: 前方の **Innomaker U20CAM** と、腕の**リストカメラ**（SunplusIT の Full HD webcam）。
+`/dev/videoN` の番号は再起動で入れ替わる（再起動の前は Innomaker が video6、後はリストカメラが video6 になり、
+`--webcam 6` のままリストカメラの映像を配信していた）。直接開くときは `--webcam /dev/v4l/by-id/...` で指定する（`ls /dev/v4l/by-id/`）。
+
+| 前方のカメラの取り方 | オプション | 速さ |
+|---|---|---|
+| Mapping の `~/mapping_tools/innomaker_camera_server.py` の配信から（BGR・反時計回りに回し済み） | `--zmq localhost:5555 --zmq-bgr --rotate 180` | 5 枚/秒（Mapping の設定） |
+| 直接（Mapping の配信が止まっているときだけ） | `--webcam /dev/v4l/by-id/usb-Innomaker_Innomaker-U20CAM-1080p-S1_SN0001-video-index0 --rotate cw` | 約 30 枚/秒 |
+```bash
+# PC: 受け取って _local/perception/person_alert_received/ に保存し、表示する（PC から G1 へつなぐので WSL でも設定は要らない）
+G1_HuggingFace/venv/bin/python Perception/real/person_alert_receiver.py --host 192.168.0.82
+```
+
+**認識した映像をブラウザで見る**: G1 側に `--stream 8080` を足し、ブラウザ（Windows でよい）で `http://192.168.0.82:8080/` を開く。
+枠・人数・fps を描いた映像が、見ている人がいるときだけ 10 枚/秒（`--stream-fps`）で届く。VLC などでは `/stream`、最新の 1 枚は `/snapshot.jpg`。
+同じネットワークにいる人なら誰でも見られる（人が写るので注意）。
+
+- 2026-10-31 の確認（Wi-Fi）: 10.0 枚/秒、1 枚約 52 KB、約 0.5 MB/s、届く間隔の最大 155 ms。2 人同時に見ても同じ。
+  配信しながらでも検出は約 28 fps のまま（PC2 の CPU はこのプロセスで約 50%）
+- G1 は 5 秒ごとに生きている合図を送り、PC は 15 秒届かなければ警告する
+- 2026-10-31 の確認: GPU 版で約 28 fps（カメラの 30 fps でほぼ頭打ち）。60 秒で出来事 4 件、PC に 4 件とも届いた。PC を止めた状態でも
+  G1 に保存され、`--max-photos 3` で古い写真から消えた
+- 写真の時刻は G1 の時計（その日はラボPC より約 1 時間遅れていた）
+- カメラは同時に 1 つのプロセスしか開けない。`check_yolo.py` などと同時には動かせない
 
 ## run_real.py（YOLO検出パイプライン）
 
@@ -55,7 +94,8 @@ PC2 には torch を入れず、ラボPCで書き出した ONNX を **onnxruntim
 G1_HuggingFace/venv/bin/python Perception/real/export_onnx.py
 ```
 
-→ `_local/perception/models/yolo26n.onnx`（約 10 MB、end-to-end）。サンプル画像で ultralytics と一致するかも確かめる。
+→ `_local/perception/models/yolo26n.onnx`（約 10 MB、従来型の出力。NMS は `onnx_yolo.py` が行う）。サンプル画像で `.pt` と一致するかも確かめる
+（2026-10-31 までの end-to-end の書き出しは `.pt` とずれていた: `Button_Press/J1-gen/docs/reports/onboard_pc2_20261031.md` の 7 章）。
 PC2 がインターネットにつながらない場合（`Button_Press/J1-gen/real/pc2_survey.sh` の結果で分かる）は、配布物も集める:
 
 ```bash

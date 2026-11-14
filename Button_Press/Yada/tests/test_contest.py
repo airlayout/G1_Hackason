@@ -79,6 +79,33 @@ class TestSafetyAndChecks(unittest.TestCase):
                 load_agent(d)
 
 
+class TestRealObservation(unittest.TestCase):
+    """実機・模擬 G1 の口（contest/robots/real_g1.py）の観測に、lowstate の IMU と推定トルクが入る。
+    DDS・カメラには接続しない（受け取った lowstate と画像の代わりを入れる）。2026-11-04 まで IMU を渡しておらず、
+    実機ではエージェントに渡る IMU がずっと (1, 0, 0, 0) だった。"""
+
+    def test_imu_and_torque_are_passed(self) -> None:
+        import threading
+        import time
+        from types import SimpleNamespace
+
+        from contest.robots.real_g1 import RealG1Robot
+
+        imu = np.array([0.999, 0.03, -0.02, 0.01])
+        tau = np.arange(29, dtype=float)
+        st = SimpleNamespace(q=np.zeros(29), dq=np.zeros(29), imu_quat=imu, tau_est=tau, stamp=time.monotonic())
+        intr = SimpleNamespace(fx=300.0, fy=300.0, cx=160.0, cy=120.0)
+        frame = SimpleNamespace(color_bgr=np.zeros((240, 320, 3), np.uint8), intrinsics=intr,
+                                depth_m=lambda: np.zeros((240, 320), np.float32))
+        robot = RealG1Robot.__new__(RealG1Robot)  # DDS・カメラを開かない
+        robot.backend = SimpleNamespace(read_state=lambda: st)
+        robot._frame, robot._frame_lock = frame, threading.Lock()
+        obs = robot.observe(1.0)
+        np.testing.assert_allclose(obs.imu_quat, imu)
+        assert obs.tau_est is not None
+        np.testing.assert_allclose(obs.tau_est, tau)
+
+
 @unittest.skipUnless(HAS_SIM, SKIP_SIM)
 class TestExampleAgent(unittest.TestCase):
     @classmethod
@@ -115,6 +142,22 @@ class TestExampleAgent(unittest.TestCase):
             for b in found:
                 err = np.linalg.norm(b.center - robot.scene.button(b.name).face_center)
                 self.assertLess(err, 0.01, f"{b.name}: front_x={fx}, h={h}, y={cy}")
+
+    def test_observation_has_motor_torque(self) -> None:
+        """観測に関節の推定トルク（実機の tau_est に当たる、モーターが出しているトルク）が入る。上半身は重力を
+        補償しているので、止まっていれば重力のトルクと釣り合う。"""
+        robot = self.MujocoRobot(make_trial(0, self.cfg).scene_cfg, self.cfg)
+        try:
+            robot.advance(1.0)
+            obs = robot.observe(1.0)
+            gravity = robot.data.qfrc_bias[robot._vadr]
+        finally:
+            robot.close()
+        assert obs.tau_est is not None
+        self.assertEqual(obs.tau_est.shape, (29,))
+        upper = list(UPPER_BODY_IDX)
+        self.assertGreater(float(np.abs(gravity[upper]).max()), 1.0)
+        np.testing.assert_allclose(obs.tau_est[upper], gravity[upper], atol=0.3)
 
     def test_smoke_seeds_succeed(self) -> None:
         """見本のエージェントが、動作の確認用の種（seeds.yaml の smoke）で成功し、壁や柱に強くぶつからない。"""

@@ -112,7 +112,15 @@ class SimBackend(ArmBackend):
             motor_mode=np.ones(NUM_MOTORS, dtype=int),
             mode_machine=int(self._sim_cfg.get("mode_machine", 5)),
             stamp=time.monotonic(),
+            tau_est=self.motor_torque(),
         )
+
+    def motor_torque(self) -> np.ndarray:
+        """実機の tau_est に当たる、モーターが出しているトルク（29）[Nm]。指令のトルク（上限で頭打ちにした
+        actuator_force。P の項・重力補償・フィードフォワード）に、関節の減衰に入れた D の項（qfrc_damper）を足したもの。
+        実機の内蔵コントローラも P・D・重力補償をまとめてモーターで出すので、同じものを比べられる。"""
+        d = self.data
+        return d.actuator_force[self._act] + d.qfrc_damper[self._vadr]
 
     def send(self, cmd: JointCommand) -> None:
         if not self.dry_run:

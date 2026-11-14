@@ -1,0 +1,33 @@
+# エレベーターのボタンを押す流れで、G1 に喋らせる言葉（common/announce.py、real/voice_phrases.py）
+#
+# 言葉はノート PC の VOICEVOX（Voice/voicevox_speak.py）で前もって WAV にし、PC2 の dir に置いておく。
+# 押している間は合成しない（PC2 に voicevox_core が入らない・合成に時間がかかるため）。鳴らすだけ。
+#
+#   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/voice_phrases.py make    # WAV を作る（ノート PC）
+#   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/voice_phrases.py send    # PC2 に送る（PC2 の /tmp は再起動で消える。その日に 1 回）
+#   G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/voice_phrases.py play lit   # 1 つ鳴らして確かめる
+#
+# 言葉を変えたら make → send をやり直す。名前（左側）は common/elevator_press.py の出来事の名前と同じにする。
+# 名前を消す（または文を空にする）と、その出来事では喋らない。
+
+phrases:
+  press_start: ボタンを押します                       # 計画が立ち、腕を伸ばし始めるとき（reach に入るとき）
+  lit: 点灯成功                                       # 点灯を確かめたとき（押している間だけ点いたのを見たときも）
+  retry: 点灯していません。もう一度押します           # 点灯せず、深く押し直すとき
+  not_confirmed: 点灯を確認できませんでした           # 押し直しても点灯を確かめられなかったとき
+  gave_up: ボタンを押すのを中止します                 # 見つからない・計画が立たないなどで中止したとき
+
+# 声（null なら Voice/voicevox_speak.py の既定 = 剣崎雌雄 21・pitch 0・intonation 1）
+voice:
+  style: null
+  speed: null
+  pitch: null
+  intonation: null
+
+# 鳴らす側（PC2）
+pc2:
+  host: unitree@192.168.0.82                 # ノート PC から ssh で鳴らすとき（--voice ssh）の宛先。環境変数 PC2 で上書き
+  dir: /tmp/g1_voice_tts/phrases             # WAV と g1_speaker.py を置く所（PC2 では /tmp の下だけを使う）
+  python: python3                            # g1_speaker.py を動かす python（unitree_sdk2py が入っている system の 3.8）
+  iface: eth0                                # PC2 の DDS のインターフェース
+  timeout_s: 20                              # 1 回鳴らすのを待つ上限（ssh が詰まっても、次の言葉が永遠に待たないように）

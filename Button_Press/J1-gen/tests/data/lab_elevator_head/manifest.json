@@ -1,0 +1,83 @@
+{
+ "about": "ラボのエレベーター（2026-11-03 の夜）の G1 の頭カメラ（RealSense のカラー、videohub 経由）の画像から、ボタンの周り ±60 px を切り出したもの（_local/button_press/body_log/<run>/<image>）。kind: prelit=押す前から点灯（呼んだあと）、unlit=押す前の消灯、lit=押したあとの点灯。bbox は切り出しの中の、YOLO が見つけた枠。level_at_run はその回の _lit_level の値",
+ "cases": [
+  {
+   "file": "prelit_194532_up.png",
+   "kind": "prelit",
+   "run": "20261103_194532_up",
+   "image": "lit_00_before.png",
+   "bbox": [
+    60,
+    60,
+    105,
+    92
+   ],
+   "level_at_run": 234.0
+  },
+  {
+   "file": "unlit_194456_up.png",
+   "kind": "unlit",
+   "run": "20261103_194456_up",
+   "image": "lit_00_before.png",
+   "bbox": [
+    60,
+    60,
+    101,
+    90
+   ],
+   "level_at_run": 79.3
+  },
+  {
+   "file": "unlit_204152_up.png",
+   "kind": "unlit",
+   "run": "20261103_204152_up",
+   "image": "lit_00_before.png",
+   "bbox": [
+    60,
+    60,
+    100,
+    89
+   ],
+   "level_at_run": 77.3
+  },
+  {
+   "file": "unlit_212034_down.png",
+   "kind": "unlit",
+   "run": "20261103_212034_down",
+   "image": "lit_00_before.png",
+   "bbox": [
+    60,
+    60,
+    97,
+    84
+   ],
+   "level_at_run": 62.3
+  },
+  {
+   "file": "lit_193432_down.png",
+   "kind": "lit",
+   "run": "20261103_193432_down",
+   "image": "lit_01_check.png",
+   "bbox": [
+    60,
+    60,
+    99,
+    86
+   ],
+   "level_at_run": 232.3
+  },
+  {
+   "file": "lit_212202_down.png",
+   "kind": "lit",
+   "run": "20261103_212202_down",
+   "image": "lit_01_check.png",
+   "bbox": [
+    60,
+    60,
+    101,
+    85
+   ],
+   "level_at_run": 233.7
+  }
+ ]
+}

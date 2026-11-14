@@ -183,7 +183,11 @@ class ClassicButtonDetector:
 
 
 class YoloButtonDetector:
-    """自分で学習した YOLO（クラス up / down）。ボタンの面は、枠に内接する楕円とする。"""
+    """自分で学習した YOLO（クラス up / down）。ボタンの面は、枠に内接する楕円とする。
+
+    重みが .pt なら ultralytics（torch を使う）、.onnx なら onnxruntime（torch・ultralytics なし。G1 の PC2 向け。
+    real/export_button_onnx.py で .pt から書き出す）で動かす。
+    """
 
     def __init__(self, cfg: dict[str, Any]) -> None:
         from .config import resolve_repo_path
@@ -191,11 +195,18 @@ class YoloButtonDetector:
 
         weights = resolve_repo_path(cfg["weights"])
         if not weights.is_file():
-            raise FileNotFoundError(f"ボタンの YOLO の重みが無い: {weights}（sim/train_button_yolo.py で作る）")
-        yolo = perception("detector.yolo_detector")
-        self._det = yolo.YoloDetector(model_name=str(weights), classes=None,
-                                      confidence_threshold=float(cfg.get("confidence", 0.4)),
-                                      device=str(cfg.get("device", "auto")))
+            hint = "real/export_button_onnx.py で .pt から書き出す" if weights.suffix == ".onnx" else "sim/train_button_yolo.py で作る"
+            raise FileNotFoundError(f"ボタンの YOLO の重みが無い: {weights}（{hint}）")
+        conf = float(cfg.get("confidence", 0.4))
+        if weights.suffix == ".onnx":
+            threads = cfg.get("threads")
+            self._det = perception("detector.onnx_yolo").OnnxYoloDetector(
+                model_path=str(weights), classes=None, confidence_threshold=conf,
+                num_threads=int(threads) if threads else None)
+        else:
+            yolo = perception("detector.yolo_detector")
+            self._det = yolo.YoloDetector(model_name=str(weights), classes=None, confidence_threshold=conf,
+                                          device=str(cfg.get("device", "auto")))
         # 最初の 1 回の推論だけが遅い（2026-10-12、ノート PC の CPU で 1.1 秒。2 回目からは約 0.17 秒）。
         # 実時間で動く模擬 G1・実機では、その間ロボットが前の指令のまま待つので、試行の前に済ませておく
         self._det.detect(np.zeros((480, 640, 3), np.uint8))
@@ -260,6 +271,33 @@ def fit_plane(points: np.ndarray, iters: int = 2, keep_m: float = 0.006) -> tupl
         dist = np.abs((pts - c) @ n)
         keep = dist < max(keep_m, 2.5 * float(np.median(dist)))
     return n, c, float(keep.mean())
+
+
+class AirButtonFinder:
+    """カメラを使わず、決まった位置（空中）に車いす用の ▲▼ があるものとして返す（ButtonFinder の代わり）。
+
+    ラボで壁もボタンも無いところで、エレベーターと同じ腕の動き（手前 → 押し込み → 戻る）だけを実機で試し、
+    腕を伸ばしたときに体（バランス）が崩れないかを見るため（real/auto_press.py --air）。高さはラボの車いす用と同じ
+    pelvis から ▲ +0.21・▼ +0.14 m（sim/elevator_stand_map.py と同じ）、押す向きはまっすぐ前。
+    """
+
+    class _NoDetector:
+        """点灯の確認で枠を見つけ直すときの detector の代わり（何も見つけない = 最初の枠のまま）。"""
+
+        def detect(self, rgb: np.ndarray) -> list:
+            return []
+
+    def __init__(self, x: float, y: float, z_up: float = 0.21, z_down: float = 0.14) -> None:
+        self.x, self.y, self.z_up, self.z_down = float(x), float(y), float(z_up), float(z_down)
+        self.detector = self._NoDetector()
+
+    def find(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q_waist: np.ndarray) -> CallButtons:
+        # 枠は画像の真ん中の小さな四角（点灯の確認が画像を読むので、空でない範囲にする。空中なので点灯はしない）
+        h, w = np.asarray(rgb).shape[:2]
+        box = (w // 2 - 10, h // 2 - 10, w // 2 + 10, h // 2 + 10)
+        up = Button3D(np.array([self.x, self.y, self.z_up]), 0.035, "up", box, 100, "up")
+        down = Button3D(np.array([self.x, self.y, self.z_down]), 0.035, "down", box, 100, "down")
+        return CallButtons(up, down, np.array([1.0, 0.0, 0.0]))
 
 
 class ButtonFinder:

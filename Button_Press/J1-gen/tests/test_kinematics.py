@@ -63,6 +63,26 @@ class TestKinematics(unittest.TestCase):
                 np.testing.assert_allclose(kin.fk_pos(res.q), p, atol=0.0005)
         self.assertGreaterEqual(ok, 16)
 
+    def test_ik_row_normal_levels_finger_row(self) -> None:
+        """row_normal を与えると、指が並ぶ向き（手先の z 軸）がそれとほぼ直角になる。指の向きと位置は変わらず合う。
+        与えないと、ねじれは自由（2026-11-01 の実機では小指側が押す向きに前に出て、小指で押していた）。"""
+        from common.elevator_press import finger_axis_for
+
+        kin = self.kin["right"]
+        n = np.array([1.0, 0.0, 0.0])
+        axis = finger_axis_for(n, 35.0, 20.0)
+        # ラボの車いす用 ▼ の手前の点。初期値はエレベーターの計画と同じ（elevator.yaml の ik_seed_right_arm）
+        p = np.array([0.24, 0.0, 0.14])
+        seed = np.zeros(29)
+        seed[kin.arm_idx] = load_config("elevator.yaml")["press"]["ik_seed_right_arm"]
+        res = kin.ik(p, seed, axis, row_normal=n)
+        self.assertTrue(res.success, res.reason)
+        _, r = kin.fk(res.q)
+        tol = np.radians(float(self.press["ik"]["tol_axis_deg"]))
+        self.assertLess(abs(r[:, 2] @ n), np.sin(2 * tol))
+        self.assertLess(np.degrees(np.arccos(r[:, 0] @ axis)), 2 * float(self.press["ik"]["tol_axis_deg"]))
+        np.testing.assert_allclose(kin.fk_pos(res.q), p, atol=0.0005)
+
     def test_ik_rejects_far_target(self) -> None:
         res = self.kin["right"].ik(np.array([1.5, -0.2, 0.0]), np.zeros(29), None)
         self.assertFalse(res.success)
@@ -154,6 +174,33 @@ class TestPressPlanner(unittest.TestCase):
         via = np.radians(load_config("pipeline.yaml")["via_pose"])
         plan = self.pl.plan(q, np.array([0.33, -0.19, 0.11]), np.array([1.0, 0, 0]), q_via_arm=via)
         self.assertEqual(len(plan.press_out), len(plan.press_in))
+
+    def test_tilted_finger_reaches_bottle_near_the_body_center(self) -> None:
+        """ボトルが体の正面寄り（右 5 cm）だと、指を前方に合わせた手前の姿勢で腕が胴体に当たって断られる。指を左へ傾けると通る
+        （sim/approach_search.py、2026-10-29）。実機 10/21 の立った姿勢と、探索で見つけた経由の姿勢を使う。"""
+        from common.press_planner import finger_axis_for
+
+        q = np.array([-0.290485, -0.004960, -0.002531, 0.593250, -0.318594, 0.008501, -0.271123, 0.003017,
+                      -0.002223, 0.601994, -0.338352, -0.005524, -0.000576, 0.000470, -0.002349, 0.291049,
+                      0.129657, 0.015711, 0.981556, 0.087161, 0.076807, 0.015232, 0.286950, -0.125894,
+                      0.024520, 0.982035, -0.096293, 0.058938, -0.020649])
+        via = np.radians([68.3, -11.1, -40.9, -43.9, 0.0, -4.1, 0.0])
+        target, push = np.array([0.34, -0.05, 0.10]), np.array([1.0, 0, 0])
+        with self.assertRaisesRegex(UnreachableError, "ぶつかる"):
+            self.pl.plan(q, target, push, q_via_arm=via)
+        plan = self.pl.plan(q, target, push, q_via_arm=via, finger_axis=finger_axis_for(push, 30.0, -15.0))
+        np.testing.assert_allclose(plan.target_point, target)
+        self.assertEqual(len(plan.press_out), len(plan.press_in))
+
+    def test_finger_axis_for(self) -> None:
+        from common.press_planner import finger_axis_for
+
+        np.testing.assert_allclose(finger_axis_for([1, 0, 0], 0, 0), [1, 0, 0], atol=1e-12)
+        f = finger_axis_for([2.0, 0, 0], 30.0, -15.0)          # 長さは問わない。左（+y）・下（−z）へ傾く
+        self.assertAlmostEqual(float(np.linalg.norm(f)), 1.0)
+        self.assertGreater(f[1], 0.0)
+        self.assertLess(f[2], 0.0)
+        self.assertAlmostEqual(float(np.degrees(np.arccos(np.clip(f @ [1, 0, 0], -1, 1)))), np.degrees(np.arccos(np.cos(np.radians(30)) * np.cos(np.radians(15)))), places=6)
 
     def test_rejects_bad_input(self) -> None:
         with self.assertRaises(UnreachableError):

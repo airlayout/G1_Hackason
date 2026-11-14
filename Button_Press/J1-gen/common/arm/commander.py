@@ -444,12 +444,15 @@ class ArmCommander:
         self.check_motion(q_before, q_cmd_start, q_arm)
 
     def follow(self, waypoints_arm: Sequence[np.ndarray], label: str = "軌道",
-               stop_when: Callable[[np.ndarray, np.ndarray], bool] | None = None) -> int:
+               stop_when: Callable[[np.ndarray, np.ndarray], bool] | None = None, expect_motion: bool = True) -> int:
         """片腕 7 関節の点列を 1 周期に 1 点ずつ送る（タスク2の直線押し込み用）。送った点の数を返す。
 
         送る前に全点を確認する。隣り合う点の差が 1 ステップの上限を超える軌道は拒否する。
         stop_when（指令の 29 関節, 実測の 29 関節）が True を返したら、残りの点は送らずに止まる
         （押し込みで指先が進まなくなったとき）。実測は、その周期の指令を送る前に読んだ lowstate。
+        expect_motion=False なら「動いたか」（NoMotionError）は見ず、追従誤差だけ表示する。指令を実際の位置へ寄せる動き
+        （押し当てて止めたあと、指令を実際の指先まで戻す）は、腕がほとんど動かないのが正しいので
+        （2026-11-01 の実機で、これを「動いていない」と判定して 2 回中止した）。
         """
         if not self._started or (self._stopping and not self._retreating):
             raise RuntimeError("start() の前、または終了処理中に follow() が呼ばれた")
@@ -479,13 +482,13 @@ class ArmCommander:
                 break
         for _ in range(int(float(self.cfg["safety"]["settle_s"]) / self.dt)):
             self._send_tick()
-        self.check_motion(q_before, q_cmd_start, wps[sent - 1])
+        self.check_motion(q_before, q_cmd_start, wps[sent - 1], expect_motion=expect_motion)
         return sent
 
     # ---- 動いたかの確認 ----------------------------------------------------------
 
     def check_motion(
-        self, q_before: np.ndarray, q_cmd_start: np.ndarray, q_target: np.ndarray
+        self, q_before: np.ndarray, q_cmd_start: np.ndarray, q_target: np.ndarray, expect_motion: bool = True
     ) -> dict[str, float]:
         """lowstate の関節角が指令どおりに変わったかを確認する。
 
@@ -504,7 +507,7 @@ class ArmCommander:
         measured = q_after - q_before
         err = float(np.max(np.abs(q_after - q_target)))
         big = np.abs(commanded) > float(mc["min_commanded_rad"])
-        if np.any(big):
+        if expect_motion and np.any(big):
             # 腕全体として、指令した変化の向きにどれだけ進んだか（射影の割合）。関節ごとの最小では見ない
             # （押し当てたときに、1 つの関節だけ押し戻されることがあるため。模擬ロボットで手首ピッチが −0.17）
             c, m = commanded[big], measured[big]
@@ -551,7 +554,8 @@ class ArmCommander:
                     continue
                 if s.line is not None:
                     print(f"[arm] 戻る: {s.label}（{len(s.line)} 点、{len(s.line) * self.dt:.1f} 秒）")
-                    self.follow(s.line, label=f"戻る: {s.label}")
+                    # 押す力が抜ける点まで下がる（hold）は、指令を実際の位置へ寄せるだけなので「動いたか」は見ない
+                    self.follow(s.line, label=f"戻る: {s.label}", expect_motion=not s.hold)
                 else:
                     self.move_to(s.target, label=f"戻る: {s.label}", check_workspace=s.check_workspace)
             self.retreated = True
