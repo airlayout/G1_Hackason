@@ -46,6 +46,20 @@ class TestCommands(unittest.TestCase):
         self.assertIn("--no-confirm", ap.build_approach_cmd(a, RESULT))
         self.assertNotIn("--no-confirm", ap.build_press_cmd(a, "right"))
 
+    def test_voice_goes_to_both(self) -> None:
+        a = parse("--target", "up", "--execute", "--voice", "local")
+        appr, press = ap.build_approach_cmd(a, RESULT), ap.build_press_cmd(a, "right")
+        self.assertEqual(appr[appr.index("--voice") + 1], "local")
+        self.assertEqual(press[press.index("--voice") + 1], "local")
+        self.assertNotIn("--voice", ap.build_approach_cmd(parse("--target", "up"), RESULT))
+
+    def test_voice_phrases_for_approach(self) -> None:
+        from common.config import load_config
+
+        phrases = load_config("voice.yaml")["phrases"]
+        for k in ("approach_start", "approach_ready", "approach_gave_up"):
+            self.assertTrue(str(phrases.get(k) or "").strip(), k)
+
     def test_webcam_only_approach(self) -> None:
         a = parse("--target", "up", "--webcam")
         self.assertIn("--webcam", ap.build_approach_cmd(a, RESULT))

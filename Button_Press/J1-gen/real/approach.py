@@ -11,6 +11,7 @@
 
 押せる位置に着いたら（ready）、出てきた腕で real/auto_press.py を実行する（このスクリプトは押さない）。
 --execute のときは、歩き出す前に Enter を待つ。歩いている途中の Ctrl+C でも StopMove を送る。
+--voice local（PC2 の上）で、歩き始め・着いた・中止のときに喋る（configs/voice.yaml の approach_*）。
 結果（観測・判断・1 回ごとの動き）は _local/button_press/approach/<時刻>/result.json に残す。
 設定は configs/approach.yaml（face・loco・approach）と elevator.yaml（押す組・勧める立つ位置・▲▼ の見つけ方）。
 """
@@ -48,6 +49,9 @@ def main() -> int:
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
     p.add_argument("--no-lowstate", action="store_true",
                    help="lowstate を読まない（--execute なしのときだけ。腰 0°・骨盤は水平・腕は下ろしたままと仮定）")
+    p.add_argument("--voice", choices=["local", "ssh"],
+                   help="--execute のとき、歩き始め・着いた・中止で G1 に喋らせる（configs/voice.yaml の approach_*。"
+                        "local = PC2 の上で動かすとき、ssh = ノート PC から。先に real/voice_phrases.py make・send）")
     p.add_argument("--no-confirm", action="store_true",
                    help="--execute のとき、歩き始める前の Enter を待たない（人がリモコンを持ってそばにいるときだけ）")
     p.add_argument("--result-json", type=Path,
@@ -133,6 +137,14 @@ def main() -> int:
     elif args.execute:
         input("[approach] 腕を下ろした・周りに人がいない・リモコンを持った人がそばにいることを確かめて Enter（やめるなら Ctrl+C）: ")
 
+    # 声（歩くときだけ。dry-run で「近づきます」と言うと、歩くと誤解するので喋らない）
+    voice = None
+    if args.voice and args.execute:
+        from common.announce import Announcer
+
+        voice = Announcer.from_config(load_config("voice.yaml"), args.voice)
+        voice.say("approach_start")
+
     approacher = Approacher(perception, feasibility, mover, app)
     interrupted = False
     try:
@@ -148,6 +160,10 @@ def main() -> int:
         if webcam_stream is not None:
             webcam_stream.close()
 
+    if voice is not None:
+        voice.say("approach_ready" if result.outcome == "ready" else "approach_gave_up")
+        # 言い終わるまで待つ（続けて auto_press が「ボタンを押します」と言うので、重ならないように）
+        voice.close()
     if result.outcome == "ready":
         print(f"[approach] 次: real/auto_press.py --target {args.target} --arm {result.arm}"
               + (f" --button-set {args.button_set}" if args.button_set else "")
@@ -159,7 +175,8 @@ def main() -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     saved_args = {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()}
     path.write_text(json.dumps({"args": saved_args, "outcome": result.outcome, "reason": result.reason, "arm": result.arm,
-                                "interrupted": interrupted, "steps": result.steps},
+                                "interrupted": interrupted, "steps": result.steps,
+                                "voice": voice.said if voice is not None else None},
                                indent=2, ensure_ascii=False, default=float))
     print(f"[approach] 保存: {path}")
     if interrupted:

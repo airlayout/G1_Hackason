@@ -22,7 +22,8 @@ from common import announce
 from common.announce import Announcer, speaker_command
 from common.config import FEATURE_DIR, REPO_ROOT, load_config
 
-EVENTS = ("press_start", "lit", "retry", "not_confirmed", "gave_up")
+# 押す流れ（common/elevator_press.py）と寄る流れ（real/approach.py --voice）の出来事
+EVENTS = ("press_start", "lit", "retry", "not_confirmed", "gave_up", "approach_start", "approach_ready", "approach_gave_up")
 
 
 def cfg() -> dict:

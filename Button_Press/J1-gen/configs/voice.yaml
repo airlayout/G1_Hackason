@@ -16,6 +16,10 @@ phrases:
   retry: 点灯していません。もう一度押します           # 点灯せず、深く押し直すとき
   not_confirmed: 点灯を確認できませんでした           # 押し直しても点灯を確かめられなかったとき
   gave_up: ボタンを押すのを中止します                 # 見つからない・計画が立たないなどで中止したとき
+  # 寄る流れ（real/approach.py --voice。--execute のときだけ）
+  approach_start: ボタンに近づきます                  # 歩き始める前
+  approach_ready: 位置につきました                    # 押せる位置に着いたとき（このあと押す処理が「ボタンを押します」と言う）
+  approach_gave_up: 近づくのを中止します              # 中止・見つからない・Ctrl+C のとき
 
 # 声（null なら Voice/voicevox_speak.py の既定 = 剣崎雌雄 21・pitch 0・intonation 1）
 voice:

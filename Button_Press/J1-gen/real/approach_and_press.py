@@ -6,6 +6,8 @@
     ~/button_press/venv/bin/python real/approach_and_press.py --target down --button-set wheelchair --detector yolo --arms right left --network-interface eth0 --camera-config camera_onboard.yaml --execute
     # Enter なしで、寄って押すまで続ける（リモコンを持った人がそばにいるときだけ）
     ~/button_press/venv/bin/python real/approach_and_press.py --target down --button-set wheelchair --detector yolo --arms right left --network-interface eth0 --camera-config camera_onboard.yaml --no-confirm --execute
+    # 声つき（寄る・押すの両方。先に real/voice_phrases.py make・send）
+    ~/button_press/venv/bin/python real/approach_and_press.py --target down --button-set wheelchair --detector yolo --arms right left --network-interface eth0 --camera-config camera_onboard.yaml --voice local --execute
     # 寄り終わってから、押す前にもう 1 回 Enter を待つ
     python real/approach_and_press.py --target up --execute --press-confirm
     # auto_press.py に追加の引数を渡す（--press-args 以降はすべて auto_press.py へ）
@@ -53,6 +55,8 @@ def build_approach_cmd(args: argparse.Namespace, result_json: Path, python: str 
         cmd.append("--webcam")
     if args.no_confirm:
         cmd.append("--no-confirm")
+    if args.voice:
+        cmd += ["--voice", args.voice]
     if args.execute:
         cmd.append("--execute")
     return cmd
@@ -69,6 +73,8 @@ def build_press_cmd(args: argparse.Namespace, arm: str, python: str = sys.execut
         cmd += ["--network-interface", args.network_interface]
     if args.camera_config:
         cmd += ["--camera-config", args.camera_config]
+    if args.voice:
+        cmd += ["--voice", args.voice]
     if args.execute:
         cmd.append("--execute")
     cmd += list(args.press_args or [])
@@ -127,6 +133,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--camera-config", help="カメラの接続先の設定（例 camera_onboard.yaml）")
     p.add_argument("--execute", action="store_true", help="実機で歩いて押す（付けなければ dry-run）")
     p.add_argument("--webcam", action="store_true", help="approach にだけ渡す（前方の Web カメラも使う）")
+    p.add_argument("--voice", choices=["local", "ssh"],
+                   help="寄る（歩き始め・着いた・中止）と押す（押します・点灯成功など）の両方で喋らせる。PC2 の上なら local")
     p.add_argument("--no-confirm", action="store_true",
                    help="approach の歩き始める前の Enter も待たない（--press-confirm を付けなければ、Enter なしで押すまで続く）")
     p.add_argument("--press-confirm", action="store_true", help="寄り終わってから、押す前に Enter を待つ（既定は続けて押す）")
