@@ -316,9 +316,10 @@ def decide(m: Measurement, feasible_arm: str | None, reasons: dict[str, str], st
         if p is not None:
             return Decision("move", f"柱に正対していない（{np.degrees(yaw):+.1f}°）。回る", p)
 
-    # 腕を選ぶ（▲▼ が見えていれば、左右の目安に近い腕。見えなければ最初の腕）
-    if m.side_m is not None:
-        arm = min(stands, key=lambda a: abs(m.side_m - float(stands[a]["center_side_m"])))
+    # 腕を選ぶ（▲▼ か左右の手がかりがあれば、左右の目安に近い腕。どちらも無ければ最初の腕）
+    side_seen = m.side_m if m.side_m is not None else m.side_hint_m
+    if side_seen is not None:
+        arm = min(stands, key=lambda a: abs(float(side_seen) - float(stands[a]["center_side_m"])))
     else:
         arm = next(iter(stands))
     st = stands[arm]
@@ -343,7 +344,7 @@ def decide(m: Measurement, feasible_arm: str | None, reasons: dict[str, str], st
         # 左右の手がかり（1 個だけ見えたボタン・Web カメラ）があればそれで、無ければ柱の端で、横のずれを直す
         if m.side_hint_m is not None:
             hint_err = float(m.side_hint_m) - float(st["center_side_m"])
-            if abs(hint_err) > float(cfg["side_tol_m"]):
+            if abs(hint_err) > float(cfg.get("face_side_tol_m", cfg["side_tol_m"])):
                 p = mover.plan("left" if hint_err > 0 else "right", abs(hint_err))
                 if p is not None and is_safe(p):
                     way = "左" if hint_err > 0 else "右"
@@ -373,7 +374,14 @@ def decide(m: Measurement, feasible_arm: str | None, reasons: dict[str, str], st
         return Decision("abort", f"柱まで {d * 100:.1f} cm まで来たが ▲▼ が見えない（勧める範囲 {lo * 100:.0f}〜{hi * 100:.0f} cm）。"
                                  "頭カメラの向き・ボタンの高さ・照明を確かめる")
 
-    # ▲▼ が見えているが計画が立たない。左右を先に直す（横に動くと前にも少し出るので、前は最後）
+    # ▲▼ が見えているが計画が立たない。勧める範囲より遠ければ、まず前へ（範囲に入れば左右を合わせなくても押せることが多い。
+    # 11/14 夜のエレベーター 2 回目: 52 cm で横を合わせ続け、前へ 5 cm で押せる範囲だった）。範囲の中なら左右を先に直す
+    # （横に動くと前にも少し出るので、範囲の中では前は最後）
+    if d > hi:
+        dec = forward(max(err, step), f"柱まで {d * 100:.1f} cm と勧める範囲（〜{hi * 100:.0f} cm）より遠い。"
+                                             f"左右より先に前へ（目安 {target * 100:.0f} cm）")
+        if dec is not None:
+            return dec
     side_err = float(m.side_m) - float(st["center_side_m"])
     side_blocked = ""
     if abs(side_err) > float(cfg["side_tol_m"]):

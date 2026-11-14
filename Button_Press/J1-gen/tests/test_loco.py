@@ -93,8 +93,11 @@ class TestCheck(unittest.TestCase):
 
     def test_side_total(self) -> None:
         """横へ動いた見込みの合計（左右で打ち消す）が上限を超える 1 回は送らない（頭カメラは横の物が見えない。11/14）。"""
-        m, fake, _ = mover()
-        lim = float(CFG["limits"]["max_side_total_m"])
+        # 既定は上限なし（null。11/14 夜）。数値を書いたときに働くかを確かめる
+        cfg = copy.deepcopy(CFG)
+        cfg["limits"]["max_side_total_m"] = 0.5
+        m, fake, _ = mover(cfg=cfg)
+        lim = float(cfg["limits"]["max_side_total_m"])
         step = float(CFG["axes"]["left"]["rate"]) * float(CFG["axes"]["left"]["max_duration_s"])
         n = int(lim // step)
         for _ in range(n):

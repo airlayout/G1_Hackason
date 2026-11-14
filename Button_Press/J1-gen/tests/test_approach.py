@@ -122,6 +122,23 @@ class TestDecide(unittest.TestCase):
         # 右腕の目安（−14）へ。右は 1 回で約 23 cm 動き、その半分より小さいずれは直さないので、16 cm ずらす
         self.assertEqual(dec(buttons(0.42, -0.30), stands=stands).pulse.axis, "right")
 
+    def test_far_buttons_forward_before_side(self) -> None:
+        """勧める範囲より遠ければ、左右がずれていても先に前へ（11/14 夜のエレベーター 2 回目: 52.8 cm・ボタン右 0.4 cm で横へ合わせ続けた）。"""
+        stands = {"right": dict(STAND_R, target_dist_m=0.48), "left": dict(STAND_L, target_dist_m=0.48)}
+        d = dec(buttons(0.528, -0.004), stands=stands)
+        self.assertEqual(d.pulse.axis, "forward")
+        self.assertIn("左右より先に前へ", d.reason)
+        # 範囲の中なら横を直す（近い右腕の目安 −14 cm へ。体を左へ動かすとボタンは体の右へ移る）
+        self.assertEqual(dec(buttons(0.45, -0.004), stands=stands).pulse.axis, "left")
+
+    def test_side_hint_uses_closer_arm(self) -> None:
+        """面しか見えないうちの手がかりは、近い方の腕の目安と比べる（2 回目: 70.9 cm で左 21 cm。左腕の目安 +14 cm なら 7 cm）。"""
+        stands = {"right": STAND_R, "left": STAND_L}
+        m = Measurement("face", 0.709, 0.0, None, side_hint_m=0.21, side_hint_source="head_single")
+        self.assertEqual(dec(m, stands=stands).pulse.axis, "forward")
+        m = Measurement("face", 0.709, 0.0, None, side_hint_m=0.40, side_hint_source="head_single")
+        self.assertEqual(dec(m, stands=stands).pulse.axis, "left")  # 近い方の目安からも 26 cm なら横へ
+
 
 # ---- 寄る流れを通す ---------------------------------------------------------------------
 
