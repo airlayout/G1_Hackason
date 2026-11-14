@@ -119,7 +119,8 @@ class TestDecide(unittest.TestCase):
     def test_picks_closer_arm(self) -> None:
         stands = {"right": STAND_R, "left": STAND_L}
         self.assertEqual(dec(buttons(0.42, 0.20), stands=stands).pulse.axis, "left")  # 左腕の目安（+14）へ
-        self.assertEqual(dec(buttons(0.42, -0.20), stands=stands).pulse.axis, "right")  # 右腕の目安（−14）へ
+        # 右腕の目安（−14）へ。右は 1 回で約 23 cm 動き、その半分より小さいずれは直さないので、16 cm ずらす
+        self.assertEqual(dec(buttons(0.42, -0.30), stands=stands).pulse.axis, "right")
 
 
 # ---- 寄る流れを通す ---------------------------------------------------------------------
@@ -184,6 +185,16 @@ class FakeFeasibility:
         return self.stands[arm]
 
 
+def legs(ratio: float = 1.0, **kw: object) -> FakeLoco:
+    """向きごとに approach.yaml の rate（実機で測った 1 秒あたりの量）で動く偽物の足。ratio はばらつきの倍率（1 = 設定どおり）。
+
+    前は向きによらず「指令の速さ × 割合」で動かしていたが、11/14 の実機で向きによって大きく違うと分かった
+    （左は右の半分以下）。設定と同じ量を基準にし、ratio・noise・heading_error でずらす。
+    """
+    rates = {k: float(a["rate"]) for k, a in CFG["loco"]["axes"].items()}
+    return FakeLoco(rates=rates, rate_ratio=ratio, **kw)  # type: ignore[arg-type]
+
+
 def run(fake: FakeLoco, world: World, stands: dict | None = None, cfg: dict | None = None, go: bool = True):
     mover = LocoMover(fake, fake, CFG["loco"], go=go, sleep=fake.sleep, now=fake.now, log=lambda s: None)
     feas = FakeFeasibility(stands or {"right": STAND_R})
@@ -193,7 +204,7 @@ def run(fake: FakeLoco, world: World, stands: dict | None = None, cfg: dict | No
 class TestApproacher(unittest.TestCase):
     def test_reaches_from_1m_with_drift(self) -> None:
         """1 m 手前・ボタンが体の正面から 5 cm 左。前に進むと右へ 19° ずれる足でも、測り直して押せる位置に着く。"""
-        fake = FakeLoco(rate_ratio=0.77, heading_error_deg=-19.0, noise=0.1, seed=1)
+        fake = legs(1.03, heading_error_deg=-19.0, noise=0.1, seed=1)
         res, _ = run(fake, World(fake, bx=1.0, by=0.05))
         self.assertEqual(res.outcome, "ready", res.reason)
         self.assertEqual(res.arm, "right")
@@ -203,7 +214,7 @@ class TestApproacher(unittest.TestCase):
         self.assertLessEqual(len(res.steps), 10)
 
     def test_turned_start(self) -> None:
-        fake = FakeLoco(rate_ratio=0.75, seed=2)
+        fake = legs(1.0, seed=2)
         fake.pose[2] = np.radians(-15)  # 柱から右へ 15° 向いている
         res, _ = run(fake, World(fake, bx=0.9, by=-0.10))
         self.assertEqual(res.outcome, "ready", res.reason)
@@ -214,23 +225,23 @@ class TestApproacher(unittest.TestCase):
         rng = np.random.default_rng(0)
         ready = 0
         for seed in range(30):
-            fake = FakeLoco(rate_ratio=rng.uniform(0.6, 0.9), heading_error_deg=rng.uniform(-25, 5), noise=0.15,
-                            seed=seed)
+            fake = legs(rng.uniform(0.8, 1.2), heading_error_deg=rng.uniform(-25, 5), noise=0.15, seed=seed)
             fake.pose[2] = np.radians(rng.uniform(-12, 12))
             world = World(fake, bx=rng.uniform(0.7, 1.4), by=rng.uniform(-0.25, 0.20), seed=seed)
             res, _ = run(fake, world)
             ready += res.outcome == "ready"
             closest = min(world.closest, world.bx - fake.pose[0])
             self.assertGreaterEqual(closest, APP["min_safe_dist_m"] - 0.02, f"seed {seed}: {res.reason}")  # 近づきすぎない
-        self.assertGreaterEqual(ready, 27)
+        # 足は 11/14 の実機の量（左は右の半分以下）。30 通りのうち 1 通りは、前へ進むたびに 25° 近く右へずれる足で、
+        # 横へ動いた合計の上限（±50 cm）で止まる（安全側。上限なしなら 27）
+        self.assertGreaterEqual(ready, 26)
 
     def test_many_seeds_without_edges(self) -> None:
         """柱の端が分からないと、遠くで溜まった横のずれを近くで直しきれないことがある。そのときも中止で、ぶつかりはしない。"""
         rng = np.random.default_rng(1)
         ready = 0
         for seed in range(20):
-            fake = FakeLoco(rate_ratio=rng.uniform(0.6, 0.9), heading_error_deg=rng.uniform(-25, 5), noise=0.15,
-                            seed=seed)
+            fake = legs(rng.uniform(0.8, 1.2), heading_error_deg=rng.uniform(-25, 5), noise=0.15, seed=seed)
             world = World(fake, bx=rng.uniform(0.7, 1.2), by=rng.uniform(-0.25, 0.20), seed=seed, edges=False)
             res, _ = run(fake, world)
             ready += res.outcome == "ready"
@@ -239,7 +250,7 @@ class TestApproacher(unittest.TestCase):
 
     def test_edges_keep_side_while_far(self) -> None:
         """前に進むと右へずれる足でも、柱の端を見て、▲▼ が見える前に横へ戻す。"""
-        fake = FakeLoco(rate_ratio=0.85, heading_error_deg=-22.0, seed=3)
+        fake = legs(1.13, heading_error_deg=-22.0, seed=3)
         res, _ = run(fake, World(fake, bx=1.3, by=0.0))
         self.assertEqual(res.outcome, "ready", res.reason)
         self.assertTrue(any(s["source"] == "face" and s["pulse"] and s["pulse"]["axis"] == "left" for s in res.steps))

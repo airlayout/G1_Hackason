@@ -7,7 +7,8 @@
 
 評価環境は腰（pelvis）を固定していて歩けない。そこで、歩いたぶん乗り場のほうを逆に動かす（評価セット realistic の
 「立ち位置のずれ」stance_xy / stance_yaw の口を使い、1 回動くたびにモデルを作り直す）。歩く量は偽物の足（common/loco.py の
-FakeLoco。進む向きが −25〜+5° ずれ、動く量は指令の 60〜90%、ばらつき 15%。試行ごとに乱数で決める）。頭カメラの画像・深度、
+FakeLoco。進む向きが −25〜+5° ずれ、動く量は向きごとに approach.yaml の rate（実機で測った量）の 80〜120%、ばらつき 15%。
+試行ごとに乱数で決める）。頭カメラの画像・深度、
 ▲▼ の検出、柱の面、押せるかの計画（PlanFeasibility）は本物（評価環境の画像と、J1-gen の部品そのもの）。
 
 置き方（ラボの車いす用、--scene lab）: 柱の面まで 0.7〜1.2 m、▲▼ の中点が体の左右 −25〜+15 cm、向き ±10°（乱数）。
@@ -97,8 +98,9 @@ def main() -> int:
         if base_realism is None:
             base_realism = quiet_realism(sample_realism(seed, contest_cfg["realism"]), MujocoRobot, scene, contest_cfg,
                                          robot_model)
-        fake = loco.FakeLoco(rate_ratio=rng.uniform(0.6, 0.9), heading_error_deg=rng.uniform(-25, 5), noise=0.15,
-                             seed=seed)
+        # 向きごとに approach.yaml の rate（11/14 に実機で測った量）で動き、試行ごとに ±20% ずらす
+        fake = loco.FakeLoco(rates={k: float(a["rate"]) for k, a in acfg["loco"]["axes"].items()},
+                             rate_ratio=rng.uniform(0.8, 1.2), heading_error_deg=rng.uniform(-25, 5), noise=0.15, seed=seed)
         fake.pose[2] = yaw0
         feas.target = target
 

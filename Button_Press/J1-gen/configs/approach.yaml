@@ -80,15 +80,19 @@ loco:
   min_fraction: 0.5
   axes:
     # speed: 送る速さ、rate: 1 秒あたりに実際に動いた量（歩き終わりの分を含む。m/s か rad/s）、時間の範囲 [s]
-    # 前: vx 0.3 を 1 秒で Δx +0.228〜+0.231 m（3 回）。向きは −18〜−20° ずれた
-    forward: {speed: 0.30, rate: 0.23, min_duration_s: 0.5, max_duration_s: 1.0}
+    # 前: vx 0.3 を 1 秒で Δx +0.228〜+0.231 m（3 回）。向きは −18〜−20° ずれた。11/14（頭カメラ）: 0.5 秒で +8.8・+9.0 cm、
+    # 1 秒で +22.8 cm（向きのずれ −0.1°）→ loco_fit の当てはめ 0.21
+    forward: {speed: 0.30, rate: 0.21, min_duration_s: 0.5, max_duration_s: 1.0}
     # 後ろ: 頭のセンサの後ろ上が死角なので、既定では使わない（近すぎたら人がリモコンで下げる）
     backward: {enabled: false, speed: 0.30, rate: 0.20, min_duration_s: 0.5, max_duration_s: 1.0}
-    # 横・回る: 測っていない（仮の値）
-    left: {speed: 0.30, rate: 0.20, min_duration_s: 0.5, max_duration_s: 1.0}
-    right: {speed: 0.30, rate: 0.20, min_duration_s: 0.5, max_duration_s: 1.0}
-    turn_left: {speed: 0.30, rate: 0.25, min_duration_s: 0.5, max_duration_s: 1.0}
-    turn_right: {speed: 0.30, rate: 0.25, min_duration_s: 0.5, max_duration_s: 1.0}
+    # 横・回る: 11/14 に実機で測った（頭カメラ。DAILY_LOG_20261114_laptop の「歩く 1 回分」）。寄る流れは頭カメラで測り直すので、頭カメラの値を使う
+    # 横: 0.5 秒では歩き出さない（左 −0.8 cm）→ 1.0 秒だけ。右へ大きく動く偏りがある（左 10.4・10.6 cm、右 24.8・21.9 cm。
+    # メジャーでも左 約 15 cm・右 約 20 cm で右が大きい）
+    left: {speed: 0.30, rate: 0.105, min_duration_s: 1.0, max_duration_s: 1.0}
+    right: {speed: 0.30, rate: 0.23, min_duration_s: 1.0, max_duration_s: 1.0}
+    # 回る: 左 1 秒 +10.8°・0.5 秒 +4.9°、右 1 秒 −11.6°（右の 0.5 秒は試していない。左と同じとみる）
+    turn_left: {speed: 0.30, rate: 0.19, min_duration_s: 0.5, max_duration_s: 1.0}
+    turn_right: {speed: 0.30, rate: 0.19, min_duration_s: 0.5, max_duration_s: 1.0}
   # 止まったかの判定: 脚 12 関節の角速度がこの値以下で hold_s 続いたら止まった。指令の時間のあと timeout_s 待っても
   # 止まらなければ StopMove を送って中止する（歩き終わりは約 1.9 秒、完全に止まるまで 3.4 秒。U-07）
   still:

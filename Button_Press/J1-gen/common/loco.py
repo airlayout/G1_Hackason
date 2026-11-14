@@ -319,9 +319,15 @@ class FakeLoco:
     """
 
     def __init__(self, min_speed: dict[str, float] | None = None, rate_ratio: float = 0.75, tail_s: float = 1.9,
-                 tail_ratio: float = 0.0, heading_error_deg: float = 0.0, noise: float = 0.0, seed: int = 0) -> None:
+                 tail_ratio: float = 0.0, heading_error_deg: float = 0.0, noise: float = 0.0, seed: int = 0,
+                 rates: dict[str, float] | None = None) -> None:
         self.min_speed = min_speed or {"vx": 0.25, "vy": 0.2, "wz": 0.2}
-        self.rate_ratio = float(rate_ratio)   # 実際の速さ / 指令の速さ（duration のあいだ）
+        # rates が無ければ: 実際の速さ / 指令の速さ（duration のあいだ。前・横・回るで同じ）。
+        # rates（向きの名前 → 1 秒あたりに動く量。forward / backward / left / right / turn_left / turn_right）があれば、
+        # 動く量は rates[向き] × 時間 × rate_ratio（rate_ratio はばらつきの倍率）。11/14 の実機では向きで大きく違った
+        # （速さ 0.3 で前 0.21 m/s・左 0.105 m/s・右 0.23 m/s・回る 0.19 rad/s）
+        self.rates = None if rates is None else {k: float(v) for k, v in rates.items()}
+        self.rate_ratio = float(rate_ratio)
         self.tail_s = float(tail_s)           # 歩き終わりに止まるまでの時間
         self.tail_ratio = float(tail_ratio)   # 歩き終わりに余分に動く量（duration のあいだに動いた量に対する割合）
         self.heading_error = np.radians(float(heading_error_deg))  # 並進の向きのずれ（+ が左）
@@ -349,6 +355,9 @@ class FakeLoco:
         if not v.any():
             return
         k = self.rate_ratio * float(duration_s) * (1.0 + self.tail_ratio)
+        if self.rates is not None:
+            names = (("forward", "backward"), ("left", "right"), ("turn_left", "turn_right"))
+            v = np.array([np.sign(x) * self.rates[names[i][0 if x > 0 else 1]] if x != 0 else 0.0 for i, x in enumerate(v)])
         d = v * k * (1.0 + self.noise * self.rng.standard_normal(3))
         # 並進は向きがずれる（胴体の座標で回してから、床の座標へ）
         c, s = np.cos(self.heading_error), np.sin(self.heading_error)
