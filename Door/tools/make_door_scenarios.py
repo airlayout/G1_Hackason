@@ -19,6 +19,7 @@ DoorSpawnerCfg の引数だけを差し替える。タスク名（＝ディレ�
 | door_en1154_g13_shaped_left_lever | 2-4b-2 の学習用 | door_en1154_g13_shaped_left_lpos とレバーの形だけが違う（長さ 100〜160 mm・断面は丸と四角。実物は約 142 mm・四角） |
 | door_en1154_g13_shaped_left_weight | 2-4b-3 の学習用 | door_en1154_g13_shaped_left_lever と扉の重さだけが違う（15〜120 kg。既定は 80〜120 kg。上限は切り捨てない） |
 | door_en1154_g13_shaped_left_weight_realwall | 段 2 の直し K6a（11-11） | door_en1154_g13_shaped_left_weight と壁・枠の前の面の出だけが違う（壁 1 cm・枠 3 cm。元は 5・6 cm。パッチ 0104 の door.py が要る） |
+| door_room4_fit_1114（_light・_heavy） | 11-14 レバーの段の試験台 | 実機 11-13 朝の記録から合わせた扉（レバーのばね・止まり・掛け金の角度と出・手との摩擦・クローザー）。パッチ 0112 が要る。_light・_heavy はクローザーだけ軽め・重め |
 | door_room4_g13 | 2-4 の学習用 | door_room4_wide の範囲で、等級 1〜3 を台ごとに 1/3 ずつ・実物の形のクローザー・レバーの力の下限 0.5 N·m |
 
 使い方:
@@ -93,6 +94,43 @@ ROOM4_REPLACEMENTS = {
     # レバーの左右を両方（この扉はレバー左）
     '    door_open_lr=["right"],\n': '    door_open_lr=["left", "right"],\n',
 }
+
+
+# 11-14: 実機の記録から合わせたレバー（パッチ 0112）。下〜上は fit_door_from_records.py の 10〜90 パーセンタイル
+FIT_1114_LEVER_LINES = (
+    "    handle_max_angle_deg_range=(44.0, 47.0),  # レバーの止まり [deg]（押し下げ 10 cm の回は 44〜47° で頭打ち）\n"
+    "    latch_release_angle_deg_range=(30.0, 41.9),  # 掛け金が外れる角度 [deg]（上限は 7 cm の回で外れた 41.9°・下限は記録から決まらず市販の作り）\n"
+    "    latch_throw_range=(0.010, 0.013),  # 掛け金の出 [m]（Room 4 は 11.5 mm。元は 3 cm）\n"
+    "    handle_spring_stiffness_range=(1.09, 1.71),  # レバーのばねの硬さ [N·m/rad]（0112）\n"
+    "    handle_spring_preload_range=(0.10, 0.50),  # 0° でのレバーの回り [N·m]（0112。40° で 1.26 N·m）\n"
+    "    handle_spring_damping=0.3,  # レバーの減衰 [N·m·s/rad]（0112）\n"
+    "    handle_friction_range=(0.53, 0.66),  # 手とレバーの摩擦（0112。手が棒に沿って流れている間の比。++domain_rand.randomize_friction=False と組）\n"
+    "    latch_inert=True,  # 円錐の掛け金は飾り（0112b）。掛け金は ++env.config.virtual_latch.enabled=True が受け持つ\n"
+)
+FIT_1114_ROOM4_CLOSER_LINE = "    hinge_drive_max_force_range=(9.0, 13.0),  # EN 1154 等級 1 [N·m]\n"
+FIT_1114_ANCHOR_LINE = '    handle_cross_section=["square"],  # レバーの断面（Room 4 は四角）\n'
+# クローザーの閉じる回り m0 [N·m]。開ける速さ 1°/s（実機 0.5〜1.8°/s）で、開ける回り m0 ×（1 ＋（1/効率 − 1）× 0.35）が
+# 記録の 9.9〜14.9 N·m（押している間）になる幅。軽め・重めは計画 13.5 節の「仮定を 3 通り」
+FIT_1114_CLOSERS = (
+    ("door_room4_fit_1114", (7.5, 12.5), "クローザーは記録の幅（開ける回り 9.9〜14.9 N·m）"),
+    ("door_room4_fit_1114_light", (5.0, 7.5), "クローザーは軽め（記録の下より下）"),
+    ("door_room4_fit_1114_heavy", (12.5, 16.0), "クローザーは重め（記録の上より上・10-29 の遠隔操作の見積もりの上側）"),
+)
+
+
+def fit_1114_body(room4_body: str, m0_lo: float, m0_hi: float, note: str) -> str:
+    """door_room4_like_left_realwall にレバーの合わせ（0112）とクローザーの幅を入れた場面"""
+    for line in (FIT_1114_ROOM4_CLOSER_LINE, FIT_1114_ANCHOR_LINE):
+        if room4_body.count(line) != 1:
+            raise ValueError(f"door_room4_like_left_realwall の置き換え先が 1 つでない: {line!r}")
+    return (
+        room4_body.replace(
+            FIT_1114_ROOM4_CLOSER_LINE,
+            f"    hinge_drive_max_force_range=({m0_lo}, {m0_hi}),  # 閉じる回り m0 [N·m]（11-14 の合わせ・{note}）\n",
+        )
+        .replace(FIT_1114_ANCHOR_LINE, FIT_1114_ANCHOR_LINE + FIT_1114_LEVER_LINES)
+        .replace("（11-13・実機の台本をシムで確かめる用・Room 4 の寸法）", f"（11-14・実機の記録から合わせた扉・{note}）", 1)
+    )
 
 
 def write(tasks_dir: Path, name: str, body: str) -> None:
@@ -290,6 +328,11 @@ def main() -> None:
         room4_body = room4_body.replace(old, new)
     room4_body = room4_body.replace("（0104・K6a の評価用）", "（11-13・実機の台本をシムで確かめる用・Room 4 の寸法）", 1)
     write(tasks_dir, "door_room4_like_left_realwall", room4_body)
+
+    # 11-14（計画 docs/plan/2026-11-14-g1-door-sim-lever-bench-from-real-records.md の段 C・14 節）: 11-13 朝の実機の記録から
+    # 合わせた扉。値は Door/real/fit_door_from_records.py（logs_real/robot_20261113/fit_door_1114.json）の 下〜上。パッチ 0112 が要る
+    for name, (m0_lo, m0_hi), note in FIT_1114_CLOSERS:
+        write(tasks_dir, name, fit_1114_body(room4_body, m0_lo, m0_hi, note))
 
     # 段 2-4 の学習用（2026-10-13 のユーザー判断）: UIS Room 4 を含む広い範囲（door_room4_wide）で、クローザーは等級 1〜3 を
     # 実物の形で。台 i は i % 3 + 1 の等級（1/3 ずつ。等級ごとに効率の最小が違うので扉を 3 つ並べる）。等級 4 は評価だけ

@@ -1,0 +1,81 @@
+From 0b85ea40faaec5bccbf004383fd5bf836a8bf1b2 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Sat, 14 Nov 2026 10:27:31 +0900
+Subject: [PATCH] door: pelvis replay can release the pelvis to the legs at a
+ sub stage and accepts torch tensors (0113d;
+ env.config.pelvis_replay.release_sub stops writing the root velocity once the
+ script reaches that sub stage, 4a included, so that the second half from 3c
+ walks on the stock like legs after the recorded first half; with the HOMIE
+ legs alone the 3a reaction moved the pelvis or turned the body and 0 of 32
+ envs reached 3c; default None = unchanged) (11-14)
+
+---
+ gr00t/rl/envs/door/pelvis_replay.py | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/pelvis_replay.py b/gr00t/rl/envs/door/pelvis_replay.py
+index 36d4e72..149d1b8 100644
+--- a/gr00t/rl/envs/door/pelvis_replay.py
++++ b/gr00t/rl/envs/door/pelvis_replay.py
+@@ -13,7 +13,8 @@ G1_Hackason/Door/real/make_pelvis_replay_1114.py）をそのまま再生する
+          扉が加速するので扉の重さとクローザーの計算が狂う＝掛け金が外れた後は使えない（計画 6 節）
+ env.config.pelvis_replay（無い・enabled=False なら元のまま）:
+   enabled・file（npz）・method（vel／door）・hold_from（既定 "2b"）・start_sub（既定 "3a"）・kp・kp_rot（既定 20 /s）・
+-  labels（使う回の番号のリスト。空なら全部）・offset_s（記録のこの秒から再生する。0113c・「歩いている最中」の動きを当てる時）。
++  labels（使う回の番号のリスト。空なら全部）・offset_s（記録のこの秒から再生する。0113c・「歩いている最中」の動きを当てる時）・
++  release_sub（この小段に入ったら再生を放して、脚（HOMIE）に任せる。0113d・後半 3c の入りのつなぎ目。既定 None＝放さない）。
+   台 i は回 i % 回の数 を再生する
+ """
+ 
+@@ -42,7 +43,10 @@ def pelvis_replay_config(cfg) -> dict | None:
+     assert hold_from in SUBS and start_sub in SUBS and SUBS.index(hold_from) <= SUBS.index(start_sub), \
+         f"pelvis_replay.hold_from・start_sub がおかしい: {hold_from} {start_sub}"
+     labels = cfg.get("labels", None)
+-    return {"file": f, "method": method, "hold_from": SUBS.index(hold_from), "start_sub": SUBS.index(start_sub),
++    release = cfg.get("release_sub", None)
++    assert release is None or (str(release) in SUBS and SUBS.index(str(release)) >= SUBS.index(start_sub)), \
++        f"pelvis_replay.release_sub は start_sub より後の小段: {release}"
++    return {"release_sub": None if release is None else SUBS.index(str(release)),"file": f, "method": method, "hold_from": SUBS.index(hold_from), "start_sub": SUBS.index(start_sub),
+             "kp": float(cfg.get("kp", 20.0)), "kp_rot": float(cfg.get("kp_rot", 20.0)),
+             "offset_s": float(cfg.get("offset_s", 0.0)),
+             "labels": [int(v) for v in labels] if labels else []}
+@@ -116,7 +120,7 @@ class PelvisReplay:
+         self.v = torch.as_tensor(v.astype(np.float32), device=self.dev)
+         n = env.num_envs
+         self.run = torch.arange(n, device=self.dev) % self.R
+-        self.phase = torch.zeros(n, dtype=torch.long, device=self.dev)  # 0 切・1 止める・2 再生
++        self.phase = torch.zeros(n, dtype=torch.long, device=self.dev)  # 0 切・1 止める・2 再生・3 放した（0113d・回の戻しまで）
+         self.t0 = torch.zeros(n, device=self.dev)
+         self.p0 = torch.zeros(n, 6, device=self.dev)  # x, y, z（台の原点から）・yaw・roll・pitch
+         self.err_max = torch.zeros(n, device=self.dev)  # 再生中の pelvis の水平のずれの最大 [m]
+@@ -142,6 +146,9 @@ class PelvisReplay:
+         start = (self.phase == 1) & alive & (sub >= self.cfg["start_sub"])
+         self.t0[start] = t[start]
+         self.phase[start] = 2
++        if self.cfg.get("release_sub") is not None:  # 0113d: 放す小段（4a は番号が最後なので、3c 以降はどれでも放す）
++            rel = (self.phase == 2) & (sub >= self.cfg["release_sub"]) & (sub != SUBS.index("retreat")) & (sub != SUBS.index("failed"))
++            self.phase[rel] = 3
+         self.t_ctrl = t
+         self.sub_k = 0
+ 
+@@ -168,7 +175,7 @@ class PelvisReplay:
+ 
+     # --- 物理 1 回ごと ---
+     def physics_substep(self, env) -> None:
+-        active = self.phase > 0
++        active = (self.phase == 1) | (self.phase == 2)
+         if not bool(active.any()):
+             return
+         t_end = self.t_ctrl + (self.sub_k + 1) * self.phys_dt  # この物理 1 回の終わりの時刻
+@@ -220,7 +227,7 @@ class PelvisReplay:
+     def reset(self, env, env_ids) -> None:
+         ids = torch.as_tensor(env_ids, device=self.dev, dtype=torch.long)
+         if self.method == "door" and len(ids):
+-            moved = ids[self.phase[ids] > 0]
++            moved = ids[(self.phase[ids] == 1) | (self.phase[ids] == 2)]
+             if len(moved):
+                 self.door.write_root_link_pose_to_sim_index(root_pose=self.door_pose0[moved].contiguous(), env_ids=moved)
+         self.phase[ids] = 0
+-- 
+2.43.0
+

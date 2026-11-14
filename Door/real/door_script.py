@@ -31,7 +31,8 @@ import hand_door_angle as hda
 
 Walk = Tuple[bool, float, float, float]
 STAND: Walk = (False, 0.0, 0.0, 0.0)
-SUBS = ("2a", "2b", "2c", "2d", "3a", "3c", "done", "retreat", "failed")
+# 11-14: 段 4 の入り（4a）は最後に足す（記録の小段の番号を変えない）
+SUBS = ("2a", "2b", "2c", "2d", "3a", "3c", "done", "retreat", "failed", "4a")
 STOP_AFTER = ("", "2a", "2b", "2c", "2d", "3a")
 PUSH_MODES = ("walk", "pulse")
 WALK_HANDS = ("body", "arc")
@@ -166,9 +167,24 @@ class ScriptParams:
     walk_ramp_s: float = 0.0
     walk_vx_start: float = 0.15    # 純正が歩き出す線（0.1 は 0〜10%・0.15 で 59% 応える。11-09 の掃引）
     walk_3a_vx: float = 0.0        # walk_in_3a: 3a の前の指令 [m/s]（0 は walk_vx。11-13: 0.2＝足踏みで掛け金の山を受け止める）
+    # 11-14（計画 docs/plan/2026-11-14-g1-door-sim-lever-bench-from-real-records.md の 8 節の 4）: walk_in_3a の足踏みを、この小段から
+    # 始める（"3a"＝今までどおり・"2c"・"2d"）。11-13 夕: 3a の入りの足踏みの歩き出し 0.5 秒に体が横へ 12 cm 流れ、手がレバーから抜けた
+    # → 歩き出しの揺れを手が押す前に済ませる。足踏みの間は「脚を止めているのに pelvis が動いた」の守りを外す。⚠️ 機体では未試験
+    walk_from: str = "3a"
     walk_vy_max: float = 0.15      # walk: その横の指令の上限 [m/s]
     pulse_max_s: float = 1.0
     pulse_gap_s: float = 0.6
+    # 11-14 段 4 の入り（計画 docs/plan/2026-11-14-g1-door-sim-lever-bench-from-real-records.md の 13.3・⚠️ 推測で作った形・機体では未試験）:
+    # 3c で扉が goal_deg に届いたら、done で止まる代わりに 4a へ移り、手は 3c の形のまま（body は体に固める・arc は扉の弧で
+    # pass_arc_max_deg まで）前へ pass_vx で歩き続け、pelvis が戸口の面（扉の座標 x ≥ pass_x）を越えたら成功で止まる。
+    # DoorMan の方策は扉 35° ほどで体が戸口の面を越え、戸口から押し広げて通っていた。閉める・離れるは今回の外
+    pass_through: bool = False
+    pass_x: float = 0.0            # pelvis がこの x を越えたら段 4 に入った（原点＝開口の中心の床・板の表は x −0.02）
+    pass_vx: float = 0.2           # 4a の前の指令 [m/s]
+    pass_min_deg: float = 20.0     # 4a の間に扉の角度（中央値）がこれを下回ったら止まる（扉が戻ってきた）
+    pass_stall_s: float = 4.0      # pelvis がこの間 2 cm も前へ出なければ止まる
+    pass_max_s: float = 15.0
+    pass_arc_max_deg: float = 60.0  # walk_hand arc の時の 4a の手の行き先の角度の上限
     # 守り
     tau_max: float = 20.0          # 肩 pitch の力の見積もりの上限 [N·m]
     tau_max_s: float = 2.0
@@ -268,6 +284,8 @@ def check_params(p: ScriptParams) -> None:
         raise ValueError(f"lean_deg は 0〜20°・lean_rate は 0.05〜0.6 rad/s・lean_from は {SUBS[:6]} のどれか")
     if not (0.0 <= p.walk_ramp_s <= 10.0 and 0.12 <= p.walk_vx_start <= 0.3):
         raise ValueError("walk_ramp_s は 0〜10 秒・walk_vx_start は 0.12〜0.3 m/s")
+    if p.walk_from not in ("2c", "2d", "3a"):
+        raise ValueError(f"walk_from は 2c・2d・3a のどれか: {p.walk_from!r}")
     if p.walk_hand not in WALK_HANDS:
         raise ValueError(f"walk_hand は {WALK_HANDS} のどれか: {p.walk_hand!r}")
     if not (0.0 <= p.walk_yaw_ff <= 2.0 and p.walk_min_fwd < p.walk_fwd_hold and 0.0 <= p.walk_vx_hold):
@@ -281,6 +299,10 @@ def check_params(p: ScriptParams) -> None:
                 and 0.05 <= p.hook_rate <= 2.0 and p.hook_settle_s >= 0.0):
             raise ValueError("hook の定数: hook_pivot 0〜0.12 m・hook_slide 0〜(hook_pivot − 0.03) m・hook_rate 0.05〜2 rad/s・"
                              "hook_settle_s ≥ 0")
+    if p.pass_through and not (-0.30 <= p.pass_x <= 0.40 and ds.V_MIN <= p.pass_vx <= 0.4 and 0.0 < p.pass_min_deg < p.goal_deg
+                               and p.pass_stall_s > 0 and p.pass_max_s > 0 and p.goal_deg <= p.pass_arc_max_deg <= 90.0):
+        raise ValueError(f"pass の定数: pass_x −0.30〜0.40 m・pass_vx {ds.V_MIN}〜0.4 m/s・0 < pass_min_deg < goal_deg・"
+                         "pass_stall_s と pass_max_s は正・goal_deg ≤ pass_arc_max_deg ≤ 90")
     if p.helper_from not in SUBS[:5]:
         raise ValueError(f"helper_from は {SUBS[:5]} のどれか: {p.helper_from!r}")
     if not (p.helper_speed > 0 and p.helper_press_speed > 0 and 0.0 <= p.helper_back <= 0.20
@@ -383,11 +405,13 @@ class ScriptDoor:
         self.yaw_3c0: Optional[float] = None             # walk: 3c に入った時の pelvis の向き（保つ向き）
         self.y_3c0: Optional[float] = None               # walk: 3c に入った時の pelvis の横の位置（保つ位置）
         self.yaw_3a0: Optional[float] = None             # walk_in_3a: 3a に入った時の pelvis の向き（保つ向き）
+        self.x_walk0: Optional[float] = None             # 11-14 walk_from: 3a に入った時の pelvis の x（早めた足踏みの空振りの進みはここから）
         self.angles: List[Tuple[float, float]] = []      # 直近の（時刻, 扉の角度 rad）
         self.hook_t0: Optional[float] = None             # 手首を下げ始めた時刻（2d の押し下げの後）
         self.hook_palm0: Optional[np.ndarray] = None     # 押し下げ終えた時の手のひら（掛ける形の基準）
         self.hook_lead = 0.0                             # 押し下げ終えた時の行き先の上下の先行（掛ける間も押さえ続ける）
         self.hook_h = 0.0                                # 今の手の先の上向き [rad]（やり直しの構えで 0 へ戻す）
+        self.pass_x_best: Optional[float] = None         # 4a: 進んだ pelvis の x の最大
         self.reason = ""
         self.success = False
         self.lag = self.tau = self.fwd = math.nan
@@ -479,10 +503,12 @@ class ScriptDoor:
         vy = p.walk_vy + p.walk_lat_kp * math.cos(pose.yaw) * (self.y_3c0 - pose.y)
         return float(np.clip(vy, -p.walk_vy_max, p.walk_vy_max))
 
-    def _arc_goal(self, deg: float, palm: np.ndarray) -> np.ndarray:
-        """3c の手の行き先: 扉の角度 deg＋push_lead_deg だけ開いた板の上（当てる点を蝶番の回りに回す）"""
+    def _arc_goal(self, deg: float, palm: np.ndarray, cap_deg: Optional[float] = None) -> np.ndarray:
+        """3c の手の行き先: 扉の角度 deg＋push_lead_deg だけ開いた板の上（当てる点を蝶番の回りに回す）。
+        cap_deg は角度の上限（既定 goal_deg＋push_lead_deg。4a は pass_arc_max_deg）"""
         p = self.p
-        tgt = math.radians(min(deg + p.push_lead_deg, p.goal_deg + p.push_lead_deg))
+        cap = p.goal_deg + p.push_lead_deg if cap_deg is None else cap_deg
+        tgt = math.radians(min(deg + p.push_lead_deg, cap))
         # push_dn: 閉じた扉の座標で板へ向けて（+x）ずらしてから回す（11-13: レバーでなく、その下の板を押す）
         v = self.palm_ref[:2] + np.array([p.push_dn, 0.0]) - self.line.hinge_xy
         r = float(np.linalg.norm(v))
@@ -500,17 +526,15 @@ class ScriptDoor:
         if self.palm_body is None:
             self._enter_3c(t, pose, palm)
         deg = math.degrees(self.angle)
-        if p.walk_hand == "arc":  # 11-13: 手は扉の角度＋push_lead_deg の板の上へ（一歩ごとの体の揺れは腕で吸う）
-            self.goal = self._arc_goal(deg, palm)
-        else:
-            c, s = math.cos(pose.yaw), math.sin(pose.yaw)
-            b = self.palm_body + np.array([p.push_press, 0.0])
-            xy = np.array([pose.x, pose.y]) + np.array([c * b[0] - s * b[1], s * b[0] + c * b[1]])
-            self.goal = self._lead_cap(np.array([xy[0], xy[1], self.palm_ref[2] - p.hold_extra + p.push_dz]), palm)
+        self.goal = self._walk_hand_goal(pose, palm, deg)
         if deg > self.angle_best + 1.0:
             self.angle_best, self.t_progress = deg, t
         self.walking_until = t + DT  # 記録の「歩きの指令を出しているか」
         if self.angle_median_deg() >= p.goal_deg:
+            if p.pass_through:  # 11-14: 段 4 の入りへ（歩き続ける・手は 3c の形のまま）
+                self.pass_x_best, self.t_progress = pose.x, t
+                self._go("4a", t)
+                return (True, p.pass_vx, self._hold_lat_vy(pose), self._hold_yaw_wz(pose)), ""
             self.walking_until = None
             self.success = True
             self.goal = np.asarray(palm, dtype=float).copy()
@@ -535,6 +559,53 @@ class ScriptDoor:
             vx = min(p.walk_vx, p.walk_vx_hold)  # 扉より体が先に出ている: 足踏みで踏ん張るだけ（止めると後ろへ踏み出す）
         return (True, vx, self._hold_lat_vy(pose), self._hold_yaw_wz(pose)), ""
 
+    def _walk_hand_goal(self, pose: dfr.PlanarPose, palm: np.ndarray, deg: float, cap_deg: Optional[float] = None) -> np.ndarray:
+        """walk の手の行き先。body: 3c に入った時の手のひらを体に固め push_press 前／arc: 扉の角度＋push_lead_deg の板の上"""
+        p = self.p
+        if p.walk_hand == "arc":  # 11-13: 手は扉の角度＋push_lead_deg の板の上へ（一歩ごとの体の揺れは腕で吸う）
+            return self._arc_goal(deg, palm, cap_deg)
+        c, s = math.cos(pose.yaw), math.sin(pose.yaw)
+        b = self.palm_body + np.array([p.push_press, 0.0])
+        xy = np.array([pose.x, pose.y]) + np.array([c * b[0] - s * b[1], s * b[0] + c * b[1]])
+        return self._lead_cap(np.array([xy[0], xy[1], self.palm_ref[2] - p.hold_extra + p.push_dz]), palm)
+
+    def _pass_walk(self, t: float, pose: dfr.PlanarPose, palm: np.ndarray) -> Tuple[Walk, str]:
+        """11-14 段 4 の入り（⚠️ 推測で作った形）: 手は 3c の形のまま前へ歩き続け、pelvis が戸口の面を越えたら成功で止まる"""
+        p = self.p
+        deg = math.degrees(self.angle)
+        self.goal = self._walk_hand_goal(pose, palm, deg, p.pass_arc_max_deg)
+        self.walking_until = t + DT
+        if self.pass_x_best is None:
+            self.pass_x_best, self.t_progress = pose.x, t
+        if pose.x >= p.pass_x:
+            self.walking_until = None
+            self.success = True
+            self.goal = np.asarray(palm, dtype=float).copy()
+            print(f"[script] 戸口の面を越えた（pelvis x {pose.x:+.3f} m・扉 {self.angle_median_deg():.1f}°）", flush=True)
+            self._go("done", t)
+            return STAND, ""
+        if pose.x > self.pass_x_best + 0.02:
+            self.pass_x_best, self.t_progress = pose.x, t
+        why = ""
+        if self.angle_median_deg() < p.pass_min_deg:
+            why = f"扉が戻ってきた（{self.angle_median_deg():.1f}°・線 {p.pass_min_deg:.0f}°・pelvis x {pose.x:+.3f} m）"
+        elif t - self.t_progress > p.pass_stall_s:
+            why = f"pelvis が {p.pass_stall_s:.0f} 秒 前へ出ない（x {pose.x:+.3f} m・線 {p.pass_x:+.2f} m・扉 {deg:.1f}°）"
+        elif t - self.t_sub > p.pass_max_s:
+            why = f"{p.pass_max_s:.0f} 秒で戸口の面に届かない（x {pose.x:+.3f} m）"
+        if why:
+            self.walking_until = None
+            self._fail(why, t)
+            return STAND, self.reason
+        return (True, p.pass_vx, self._hold_lat_vy(pose), self._hold_yaw_wz(pose)), ""
+
+    def _walk_early(self) -> bool:
+        """walk_from が 3a より前で、今その小段から 3a の手前までにいる（足踏みしている）か"""
+        p = self.p
+        if not (p.push_mode == "walk" and p.walk_in_3a and p.walk_from != "3a" and self.sub in ("2c", "2d")):
+            return False
+        return SUBS.index(self.sub) >= SUBS.index(p.walk_from)
+
     # --- 部品 ---
     def _off(self, d: Sequence[float]) -> np.ndarray:
         return self.ref + np.array([d[0], self.lr * d[1], d[2]])
@@ -553,6 +624,7 @@ class ScriptDoor:
         print(f"[script] 空振りとみる（{why}）: 手を上げ、レバーの上の点を横へ {100 * self.shift:+.0f} cm ずらして押し直す"
               f"（{self.miss_i}/{len(p.miss_shifts)} 回目）", flush=True)
         self.x_home = self.xy0[0] if self.xy0 is not None else None
+        self.x_walk0 = None  # 11-14: 押し直しの足踏みは、また始めた所から数える
         self.palm_ref, self.angle, self.z_contact, self.angles = None, 0.0, None, []
         self.nudge_until, self.t_back = None, None
         self._go("retreat", t)
@@ -609,7 +681,7 @@ class ScriptDoor:
 
     def touching(self) -> bool:
         """手が扉かレバーに触れている（触れていそうな）小段か。止まった時に手を離すかの判定"""
-        return self.z_contact is not None or self.sub in ("2c", "2d", "3a", "3c", "done")
+        return self.z_contact is not None or self.sub in ("2c", "2d", "3a", "3c", "4a", "done")
 
     def step(self, t: float, pose: dfr.PlanarPose, palm: np.ndarray, tau_pitch: float, palm_fwd: float,  # noqa: C901
              palm_angle: Optional[np.ndarray] = None) -> ScriptOut:
@@ -637,7 +709,8 @@ class ScriptDoor:
         stop = ""
 
         # 守り: 肩 pitch の力・体の回り
-        legs_still = not (self.sub == "3a" and p.push_mode == "walk" and p.walk_in_3a)
+        early = self._walk_early()  # 11-14: 3a より前から足踏みしている
+        legs_still = not ((self.sub == "3a" and p.push_mode == "walk" and p.walk_in_3a) or early)
         if (self.sub in ("2b", "2c", "2d", "3a") and self.xy0 is not None and self.nudge_until is None and not self.nudged
                 and legs_still):
             moved = math.hypot(pose.x - self.xy0[0], pose.y - self.xy0[1])
@@ -757,7 +830,10 @@ class ScriptDoor:
                     self.yaw_3a0 = pose.yaw
                 walk = (True, p.walk_3a_vx if p.walk_3a_vx > 0 else p.walk_vx, p.walk_vy,
                         self._hold_yaw_wz(pose, self.yaw_3a0, ff=False))
-            adv = pose.x - self.xy0[0] if (walk_3a and self.xy0 is not None) else 0.0
+            if walk_3a and p.walk_from != "3a" and self.x_walk0 is None:
+                self.x_walk0 = pose.x  # 11-14: 2d から足踏みしていると 2d の間に 10〜30 cm 寄るので、3a に入った所から数える
+            x_from = self.x_walk0 if self.x_walk0 is not None else (self.xy0[0] if self.xy0 is not None else None)
+            adv = pose.x - x_from if (walk_3a and x_from is not None) else 0.0  # 11-14: walk_from の時は足踏みを始めた所から
             if self.nudge_until is not None:
                 if t < self.nudge_until:
                     walk = (True, p.nudge_vx, 0.0, 0.0)
@@ -788,6 +864,8 @@ class ScriptDoor:
                     self._fail(f"掛け金が外れない（扉 {deg:.1f}°・脚で 1 回押した後）", t)
         elif self.sub == "3c" and p.push_mode == "walk":
             walk, stop = self._push_walk(t, pose, palm, palm_fwd)
+        elif self.sub == "4a":  # 11-14 段 4 の入り
+            walk, stop = self._pass_walk(t, pose, palm)
         elif self.sub == "3c":
             deg = math.degrees(self.angle)
             self.goal = self._arc_goal(deg, palm)
@@ -834,6 +912,10 @@ class ScriptDoor:
         elif self.sub == "done":
             if t - self.t_sub >= p.done_hold_s:
                 stop = f"台本: 扉 {self.angle_median_deg():.0f}° まで開けた（成功）"
+        if early and not stop and self.sub in ("2c", "2d") and walk == STAND:  # 11-14: walk_from の足踏み（3a と同じ前の速さ・向きを保つ）
+            if self.yaw_3a0 is None:
+                self.yaw_3a0 = pose.yaw
+            walk = (True, p.walk_3a_vx if p.walk_3a_vx > 0 else p.walk_vx, p.walk_vy, self._hold_yaw_wz(pose, self.yaw_3a0, ff=False))
         if self.sub == "failed":
             stop = self.reason
         wc = bool(p.waist_comp_from) and self.sub in SUBS[SUBS.index(p.waist_comp_from):5]  # 脚を止めている 3a まで

@@ -1,0 +1,182 @@
+From 06cc86e59b2d14326fce4e796f213015540c7706 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Sat, 14 Nov 2026 10:37:32 +0900
+Subject: [PATCH] door: pelvis replay can follow the walking command with a
+ stock like response after the release sub stage (0113e, a guess;
+ env.config.pelvis_replay.cmd_follow turns the script walking command into the
+ pelvis velocity with delay_s 0.26, gain 0.6 and a 0.1 m/s dead band as
+ measured on the real stock walking on 11-07, backs off at back_v for back_s
+ when the estimated hand force pushed back over f_th as the real legs gave way
+ at 25 to 40 N, and can add the lateral and yaw sway of a recorded walk onset;
+ so the second half from 3c can be compared with the hand force bounded only
+ by the arm stiffness; default off = unchanged) (11-14)
+
+---
+ gr00t/rl/envs/door/pelvis_replay.py | 105 ++++++++++++++++++++++++++--
+ 1 file changed, 100 insertions(+), 5 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/pelvis_replay.py b/gr00t/rl/envs/door/pelvis_replay.py
+index 149d1b8..2a9624a 100644
+--- a/gr00t/rl/envs/door/pelvis_replay.py
++++ b/gr00t/rl/envs/door/pelvis_replay.py
+@@ -14,7 +14,11 @@ G1_Hackason/Door/real/make_pelvis_replay_1114.py）をそのまま再生する
+ env.config.pelvis_replay（無い・enabled=False なら元のまま）:
+   enabled・file（npz）・method（vel／door）・hold_from（既定 "2b"）・start_sub（既定 "3a"）・kp・kp_rot（既定 20 /s）・
+   labels（使う回の番号のリスト。空なら全部）・offset_s（記録のこの秒から再生する。0113c・「歩いている最中」の動きを当てる時）・
+-  release_sub（この小段に入ったら再生を放して、脚（HOMIE）に任せる。0113d・後半 3c の入りのつなぎ目。既定 None＝放さない）。
++  release_sub（この小段に入ったら再生を放して、脚（HOMIE）に任せる。0113d・後半 3c の入りのつなぎ目。既定 None＝放さない）・
++  cmd_follow（0113e・⚠️ 推測: release_sub で放す代わりに、pelvis を「純正の脚の応え方」で動かす。台本の歩きの指令を遅れ delay_s・
++  倍率 gain・効かない帯 dead（前後と横 [m/s]）で pelvis の速さにし、手の押し返し（台本の見積もりの −前後）が f_th を越えたら back_s 秒
++  back_v で下がる。sway_label を渡すと、放した時にその回の記録の最初の sway_s 秒の横・向きの動きを足す（3a を脚を止めて回した時の
++  3c の歩き出しの揺れ）。HOMIE の脚だけだと 3c の歩き出しに 4〜9 cm 後ろへ下がり、0.2 m/s ではほとんど前へ出なかった（11-14 g_ga_off））。
+   台 i は回 i % 回の数 を再生する
+ """
+ 
+@@ -46,7 +50,15 @@ def pelvis_replay_config(cfg) -> dict | None:
+     release = cfg.get("release_sub", None)
+     assert release is None or (str(release) in SUBS and SUBS.index(str(release)) >= SUBS.index(start_sub)), \
+         f"pelvis_replay.release_sub は start_sub より後の小段: {release}"
+-    return {"release_sub": None if release is None else SUBS.index(str(release)),"file": f, "method": method, "hold_from": SUBS.index(hold_from), "start_sub": SUBS.index(start_sub),
++    cf = cfg.get("cmd_follow", None) or {}
++    cmd = None
++    if cf.get("enabled", False):
++        assert release is not None, "pelvis_replay.cmd_follow には release_sub が要る（そこから指令に沿わせる）"
++        cmd = {"gain": float(cf.get("gain", 0.6)), "delay_s": float(cf.get("delay_s", 0.26)), "dead": float(cf.get("dead", 0.1)),
++               "wz_gain": float(cf.get("wz_gain", 0.6)), "f_th": float(cf.get("f_th", 30.0)), "back_v": float(cf.get("back_v", -0.2)),
++               "back_s": float(cf.get("back_s", 0.5)), "sway_label": cf.get("sway_label", None), "sway_s": float(cf.get("sway_s", 0.8))}
++        assert 0 < cmd["gain"] <= 1.5 and cmd["delay_s"] >= 0 and cmd["back_v"] <= 0 and cmd["f_th"] > 0, f"cmd_follow の値: {cf}"
++    return {"cmd_follow": cmd, "release_sub": None if release is None else SUBS.index(str(release)),"file": f, "method": method, "hold_from": SUBS.index(hold_from), "start_sub": SUBS.index(start_sub),
+             "kp": float(cfg.get("kp", 20.0)), "kp_rot": float(cfg.get("kp_rot", 20.0)),
+             "offset_s": float(cfg.get("offset_s", 0.0)),
+             "labels": [int(v) for v in labels] if labels else []}
+@@ -127,6 +139,23 @@ class PelvisReplay:
+         self.t_ctrl = torch.zeros(n, device=self.dev)
+         self.sub_k = 0
+         self.phys_dt = float(env.dt) / float(env.config.simulator.config.sim.control_decimation)
++        # 0113e: 指令に沿わせる（phase 4）の持ち物
++        self.cmd = cfg.get("cmd_follow")
++        self.tgt = torch.zeros(n, 3, device=self.dev)      # 目標の x, y, yaw（台の原点から）
++        self.vtgt = torch.zeros(n, 3, device=self.dev)     # 目標の速さ（世界の x, y, wz）
++        self.back_until = torch.full((n,), -1.0, device=self.dev)
++        self.t_rel0 = torch.zeros(n, device=self.dev)      # 指令に沿わせ始めた時刻
++        self.sway0 = torch.zeros(n, 3, device=self.dev)    # その時の pelvis（揺れの記録の基準）
++        self.n_back = torch.zeros(n, dtype=torch.long, device=self.dev)
++        if self.cmd is not None:
++            self.delay_n = max(0, int(round(self.cmd["delay_s"] / float(env.dt))))
++            self.cmd_buf = torch.zeros(self.delay_n + 1, n, 3, device=self.dev)
++            self.sway_k = None
++            if self.cmd["sway_label"] is not None:
++                k = np.where(np.asarray(z["labels"]) == int(self.cmd["sway_label"]))[0]
++                assert len(k), f"cmd_follow.sway_label {self.cmd['sway_label']} が file に無い"
++                self.sway_d = torch.as_tensor(np.asarray(z["d"], dtype=np.float32)[int(k[0])], device=self.dev)  # (M, 5)
++                self.sway_k = int(round(self.cmd["sway_s"] / self.dt_traj))
+         self.robot = env.simulator._robot
+         self.door = env.simulator.scene.articulations["door"]
+         self.door_pose0 = _tt(self.door.data.root_link_pose_w).clone()  # 扉の根元（世界・xyzw）
+@@ -148,10 +177,60 @@ class PelvisReplay:
+         self.phase[start] = 2
+         if self.cfg.get("release_sub") is not None:  # 0113d: 放す小段（4a は番号が最後なので、3c 以降はどれでも放す）
+             rel = (self.phase == 2) & (sub >= self.cfg["release_sub"]) & (sub != SUBS.index("retreat")) & (sub != SUBS.index("failed"))
+-            self.phase[rel] = 3
++            if self.cmd is None:
++                self.phase[rel] = 3
++            elif bool(rel.any()):  # 0113e: 放す代わりに指令に沿わせる（今の pelvis から）
++                pos, yaw, _, _ = self._robot_pose(env)
++                cur = torch.stack([pos[:, 0], pos[:, 1], yaw], dim=-1)
++                self.tgt[rel] = cur[rel]
++                self.sway0[rel] = cur[rel]
++                self.t_rel0[rel] = t[rel]
++                self.phase[rel] = 4
++        if self.cmd is not None:
++            self._cmd_step(env, t)
+         self.t_ctrl = t
+         self.sub_k = 0
+ 
++    def _cmd_step(self, env, t: torch.Tensor) -> None:
++        """0113e: 台本の歩きの指令 → 純正の応え方（遅れ・効かない帯・倍率）→ 目標の速さ。押し返しが線を越えたら下がる"""
++        c, dt = self.cmd, float(env.dt)
++        sc = float(env.config.homie_command_scale)
++        D = env._delta_actions[:, 0:3]
++        cmd = torch.stack([D[:, 0] * sc * 2.0, D[:, 1] * sc * 2.0, D[:, 2] * sc * 0.5], dim=-1)  # script_teacher の逆 [m/s, m/s, rad/s]
++        self.cmd_buf = torch.roll(self.cmd_buf, 1, dims=0)
++        self.cmd_buf[0] = cmd
++        late = self.cmd_buf[-1]
++        v = torch.where(late[:, :2].abs() >= c["dead"], late[:, :2] * c["gain"], torch.zeros_like(late[:, :2]))
++        wz = late[:, 2] * c["wz_gain"]
++        f_back = torch.nan_to_num(-env._script_teacher.hand_f_t[:, 0], nan=0.0)
++        on = self.phase == 4
++        start = on & (f_back > c["f_th"]) & (t >= self.back_until)
++        self.back_until = torch.where(start, t + c["back_s"], self.back_until)
++        self.n_back += start.long()
++        back = on & (t < self.back_until)
++        v[:, 0] = torch.where(back, torch.full_like(v[:, 0], c["back_v"]), v[:, 0])
++        v[:, 1] = torch.where(back, torch.zeros_like(v[:, 1]), v[:, 1])
++        yaw = self.tgt[:, 2]
++        cy, sy = torch.cos(yaw), torch.sin(yaw)
++        vw = torch.stack([cy * v[:, 0] - sy * v[:, 1], sy * v[:, 0] + cy * v[:, 1], wz], dim=-1)
++        self.vtgt = torch.where(on[:, None], vw, torch.zeros_like(vw))
++        self.tgt = self.tgt + self.vtgt * dt
++
++    def _sway(self, t_now: torch.Tensor):
++        """0113e: 指令に沿わせ始めてからの揺れの記録（横・向き。前後は指令の側に任せる）。記録が無ければ 0"""
++        if self.cmd is None or self.sway_k is None:
++            return torch.zeros(len(t_now), 3, device=self.dev), torch.zeros(len(t_now), 3, device=self.dev)
++        rel = torch.clamp(t_now - self.t_rel0, min=0.0) / self.dt_traj
++        i0 = torch.clamp(rel.floor().long(), 0, self.sway_k)
++        i1 = torch.clamp(i0 + 1, max=self.sway_k)
++        w = (rel - rel.floor()).clamp(0.0, 1.0)[:, None]
++        d = (1 - w) * self.sway_d[i0] + w * self.sway_d[i1]
++        out = torch.stack([torch.zeros_like(d[:, 0]), d[:, 1], d[:, 2]], dim=-1)
++        vel = torch.stack([torch.zeros_like(d[:, 0]), (self.sway_d[i1, 1] - self.sway_d[i0, 1]) / self.dt_traj,
++                           (self.sway_d[i1, 2] - self.sway_d[i0, 2]) / self.dt_traj], dim=-1)
++        vel = torch.where((i0 >= self.sway_k)[:, None], torch.zeros_like(vel), vel)
++        return out, vel
++
+     def _robot_pose(self, env):
+         pose = _tt(self.robot.data.root_link_pose_w)
+         pos = pose[:, :3] - env.env_origins
+@@ -175,7 +254,7 @@ class PelvisReplay:
+ 
+     # --- 物理 1 回ごと ---
+     def physics_substep(self, env) -> None:
+-        active = (self.phase == 1) | (self.phase == 2)
++        active = (self.phase == 1) | (self.phase == 2) | (self.phase == 4)
+         if not bool(active.any()):
+             return
+         t_end = self.t_ctrl + (self.sub_k + 1) * self.phys_dt  # この物理 1 回の終わりの時刻
+@@ -185,6 +264,17 @@ class PelvisReplay:
+         robot_v = v if self.method == "vel" else torch.zeros_like(v)
+         pos, yaw, roll, pitch = self._robot_pose(env)
+         tx, ty = self.p0[:, 0] + robot_d[:, 0], self.p0[:, 1] + robot_d[:, 1]
++        if self.cmd is not None:  # 0113e: 指令に沿わせる台は、目標（指令の積み）＋揺れの記録へ
++            c4 = self.phase == 4
++            sw, swv = self._sway(t_end)
++            frac = float(self.sub_k) / float(env.config.simulator.config.sim.control_decimation)
++            tx = torch.where(c4, self.tgt[:, 0] + self.vtgt[:, 0] * self.phys_dt * frac + sw[:, 0], tx)
++            ty = torch.where(c4, self.tgt[:, 1] + self.vtgt[:, 1] * self.phys_dt * frac + sw[:, 1], ty)
++            robot_v = torch.where(c4[:, None], torch.stack([self.vtgt[:, 0], self.vtgt[:, 1] + swv[:, 1], self.vtgt[:, 2] + swv[:, 2],
++                                                             torch.zeros_like(swv[:, 0]), torch.zeros_like(swv[:, 0])], dim=-1), robot_v)
++            yaw_t = self.tgt[:, 2] + sw[:, 2] - self.p0[:, 3]  # 下の向きの目標は p0 ＋ robot_d[:, 2]
++            robot_d = torch.where(c4[:, None], torch.stack([robot_d[:, 0], robot_d[:, 1], yaw_t, torch.zeros_like(yaw_t),
++                                                             torch.zeros_like(yaw_t)], dim=-1), robot_d)
+         kp, kr = self.cfg["kp"], self.cfg["kp_rot"]
+         lin = torch.stack([robot_v[:, 0] + kp * (tx - pos[:, 0]), robot_v[:, 1] + kp * (ty - pos[:, 1]),
+                            kp * (self.p0[:, 2] - pos[:, 2])], dim=-1)
+@@ -233,8 +323,13 @@ class PelvisReplay:
+         self.phase[ids] = 0
+         self.t0[ids] = 0.0
+         self.err_max[ids] = 0.0
++        self.back_until[ids] = -1.0
++        self.n_back[ids] = 0
++        if self.cmd is not None:
++            self.cmd_buf[:, ids] = 0.0
+ 
+     def summary(self, i: int) -> dict:
+         """回ごとの結果に足す値（台本の教師の JSON Lines）"""
+         return {"replay_label": int(self.labels[int(self.run[i])]), "replay_method": self.method,
+-                "replay_err_max_cm": round(100 * float(self.err_max[i]), 2), "replay_phase": int(self.phase[i])}
++                "replay_err_max_cm": round(100 * float(self.err_max[i]), 2), "replay_phase": int(self.phase[i]),
++                "cmd_back_n": int(self.n_back[i])}
+-- 
+2.43.0
+

@@ -1,0 +1,43 @@
+From 323d4515c9bf00ca0cba6c2e6e8a005f186bbd20 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Sat, 14 Nov 2026 10:58:56 +0900
+Subject: [PATCH] door: command following pelvis can take the pushed back force
+ from the lever to hand contact sensor (0113g; cmd_follow.src contact, since
+ in 3c the script hand force estimate was about 10 N toward pushed back while
+ the contact sensor read 0, and turned the body 73 deg without any push;
+ default est = unchanged) (11-14)
+
+---
+ gr00t/rl/envs/door/pelvis_replay.py | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/pelvis_replay.py b/gr00t/rl/envs/door/pelvis_replay.py
+index 4df2439..1cc8176 100644
+--- a/gr00t/rl/envs/door/pelvis_replay.py
++++ b/gr00t/rl/envs/door/pelvis_replay.py
+@@ -60,7 +60,9 @@ def pelvis_replay_config(cfg) -> dict | None:
+         cmd = {"gain": float(cf.get("gain", 0.6)), "delay_s": float(cf.get("delay_s", 0.26)), "dead": float(cf.get("dead", 0.1)),
+                "wz_gain": float(cf.get("wz_gain", 0.6)), "f_th": float(cf.get("f_th", 30.0)), "back_v": float(cf.get("back_v", -0.2)),
+                "back_s": float(cf.get("back_s", 0.5)), "sway_label": cf.get("sway_label", None), "sway_s": float(cf.get("sway_s", 0.8)),
+-               "fwd_per_n": float(cf.get("fwd_per_n", 0.0)), "turn_per_n": float(cf.get("turn_per_n", 0.0))}
++               "fwd_per_n": float(cf.get("fwd_per_n", 0.0)), "turn_per_n": float(cf.get("turn_per_n", 0.0)),
++               "src": str(cf.get("src", "est"))}
++        assert cmd["src"] in ("est", "contact"), f"cmd_follow.src は est か contact: {cmd['src']}"
+         assert 0 < cmd["gain"] <= 1.5 and cmd["delay_s"] >= 0 and cmd["back_v"] <= 0 and cmd["f_th"] > 0, f"cmd_follow の値: {cf}"
+     return {"cmd_follow": cmd, "release_sub": None if release is None else SUBS.index(str(release)),"file": f, "method": method, "hold_from": SUBS.index(hold_from), "start_sub": SUBS.index(start_sub),
+             "kp": float(cfg.get("kp", 20.0)), "kp_rot": float(cfg.get("kp_rot", 20.0)),
+@@ -206,7 +208,10 @@ class PelvisReplay:
+         late = self.cmd_buf[-1]
+         v = torch.where(late[:, :2].abs() >= c["dead"], late[:, :2] * c["gain"], torch.zeros_like(late[:, :2]))
+         wz = late[:, 2] * c["wz_gain"]
+-        f_back = torch.nan_to_num(-env._script_teacher.hand_f_t[:, 0], nan=0.0)
++        # 0113g: 押し返しの力は、台本の見積もり（est）か、レバーと手の接触センサ（contact）。11-14: シムの 3c では見積もりが
++        # 本当の力より約 10 N 押し返しの向きへ片寄り（3a の上下も 6 N）、押していないのに体を回した（g3_ga）
++        f_src = env._script_teacher.hand_f_t if c["src"] == "est" else env._script_teacher.hand_c_t
++        f_back = torch.nan_to_num(-f_src[:, 0], nan=0.0)
+         push = torch.clamp(f_back, min=0.0)
+         lr = torch.where(env.door_open_lr > 0, 1.0, -1.0).to(push.dtype)  # 把手が左なら左（+yaw）へ回される
+         v[:, 0] = v[:, 0] - c["fwd_per_n"] * push  # 押すほど前へ出ない（11-13 朝の 1 回目）
+-- 
+2.43.0
+

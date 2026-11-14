@@ -147,7 +147,7 @@ class ScriptArm:
             self.hand_f = np.full(3, np.nan)
             if sub == "2b":
                 self.hf.calibrate(q, quat, tau)
-        elif sub in ("2c", "2d", "3a", "3c", "done"):
+        elif sub in ("2c", "2d", "3a", "3c", "4a", "done"):
             F = self.hf.force(q, quat, tau)
             self.hand_f = R @ F if np.isfinite(F).all() else np.full(3, np.nan)
 
@@ -177,7 +177,7 @@ class ScriptArm:
         if self.h_goal is None:
             self.h_goal = self._helper_palm(q, R, T)
         y = float(self.script.ref[1]) - self.script.lr * p.helper_dy
-        if sub == "3c":
+        if sub in ("3c", "4a"):  # 11-14: 4a（段 4 の入り）も 3c と同じく体に固める
             if self.h_body is None:  # 3c に入った周期: 今の行き先を pelvis の座標に固め、左手と同じく push_press だけ前へ
                 self.h_body = R.T @ (self.h_goal - T) + np.array([p.push_press, 0.0, 0.0])
             self.h_goal = T + R @ self.h_body
@@ -446,7 +446,7 @@ class StagedDoor:
     def _script(self, now: float, q: np.ndarray, quat: np.ndarray, tau: Optional[np.ndarray]) -> Decision:
         """台本の段 2・3。方策は回さず（"hold"）、腕は逆運動学の目標、脚は台本の指令"""
         out, arm_left = self.script.step(now, q, quat, self.last_pose, tau)
-        stage = 3 if out.sub in ("3a", "3c", "done") else 2
+        stage = 3 if out.sub in ("3a", "3c", "4a", "done") else 2  # 11-14: 4a（段 4 の入り）も走らせ役の段 3 のまま
         arm = "home" if (out.goal is None and not out.stop) else "script"
         return Decision(stage, "arm", "hold", self.last_pose, out.angle_obs, out.walk, arm, stop=out.stop,
                         info=f"台本 {out.sub}", arm_left=arm_left, arm_other=self.script.arm_other, waist_comp=out.waist_comp, waist_twist=out.waist_twist, waist_lean=out.waist_lean, script_row=self.script.script.row())

@@ -1,0 +1,349 @@
+From 9d649c5774bef27bead774cd088ca8a6ba2fa885 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Sat, 14 Nov 2026 08:31:30 +0900
+Subject: [PATCH] door: lever spring, lever friction, inert cone latch with a
+ virtual latch and a door only probe fitted to the real robot records of 11-13
+ (DoorSpawnerCfg.handle_spring_stiffness_range and handle_spring_preload_range
+ make the lever return torque grow with angle as on the real lever, 0.27 N m
+ at 0 deg and 1.42 N m per rad, instead of the constant drive max force; Isaac
+ Lab writes the drive target 0 every step so the preload is the handle effort
+ applied by the env, minus the preload instead of the 0.26 N m tension, and
+ the lever body gravity is switched off because the real torque is net of it;
+ the old damping of 0.5 per deg (29 N m s per rad) was hidden by the max force
+ and is replaced by handle_spring_damping 0.3; handle_friction_range binds a
+ physics material with max combine to the lever bars; latch_inert removes the
+ cone collider and widens the latch joint limit because the cone was pushed in
+ by the frame before any touch, turning the lever 13 to 26 deg, its joint
+ limit stopped the lever at the release angle, and pushing the door cammed it
+ open; env.config.virtual_latch holds the hinge with a stiff one sided spring
+ while the lever is above the release angle and the door is within zone_deg of
+ closed; env.config.lever_probe pushes each lever with a different torque and
+ then the hinge, and on the fitted door the settled lever angles matched the
+ set spring within 0.05 deg in 15 of 15 free envs and the door opened exactly
+ in the 32 of 32 envs above the release angle; per env lever and latch values
+ go to static.npz as door_lever_*; default off = unchanged) (11-14)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py         | 98 ++++++++++++++++++-
+ .../isaac_utils/playground/env_rand/door.py   | 83 +++++++++++++++-
+ gr00t/rl/utils/state_recorder.py              |  5 +
+ 3 files changed, 182 insertions(+), 4 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index fb074bf..991aaa3 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -57,6 +57,17 @@ from gr00t.rl.utils.torch_utils import torch_rand_float
+ # レバーに掛け続ける力 [N·m]（元の DoorMan の「tension the door handle」。角度の 15° を rad にした値をそのまま力に使っている）
+ DOOR_HANDLE_TENSION = 15 * torch.pi / 180.0
+ # G1_Hackason（段 2-4）: closer_torque の引数 ← 扉の customData のキー（door.py の _sample_shaped_closer）。backcheck_angle は deg で入る
++# G1_Hackason（0112・11-14）: レバーと掛け金の台ごとの値 ← 扉の customData のキー（記録と扉だけの試しが使う。無い扉は NaN）
++DOOR_LEVER_METADATA_KEYS = {
++    "spring_k": "handleSpringK",
++    "spring_tau0": "handleSpringTau0",
++    "spring_damping": "handleSpringDamping",
++    "friction": "handleFriction",
++    "max_deg": "handleMaxAngleDeg",
++    "drive_max_force": "handleDriveMaxForce",
++    "latch_release_deg": "latchReleaseAngleDeg",
++    "latch_throw": "latchThrow",
++}
+ DOOR_CLOSER_METADATA_KEYS = {
+     "m0": "closerM0",
+     "ratio_90": "closerRatio90",
+@@ -152,6 +163,9 @@ class DoorPregrasp(
+         self.door_wall_front_x = torch.full((self.num_envs,), -0.07, device=self.device)
+         self.door_gap_width = torch.full((self.num_envs,), 0.002, device=self.device)
+ 
++        self.door_lever_params = {  # 0112
++            name: torch.full((self.num_envs,), float("nan"), device=self.device) for name in DOOR_LEVER_METADATA_KEYS
++        }
+         for env_id in range(self.num_envs):
+             door_prim_path = f"/World/envs/env_{env_id}/door"
+             door_prim = stage.GetPrimAtPath(door_prim_path)
+@@ -171,6 +185,9 @@ class DoorPregrasp(
+             self.door_cover_front_x[env_id] = float(door_metadata.get("coverFrontX", -0.08))
+             self.door_wall_front_x[env_id] = float(door_metadata.get("wallFrontX", -0.07))
+             self.door_gap_width[env_id] = float(door_metadata.get("gapWidth", 0.002))
++            for name, key in DOOR_LEVER_METADATA_KEYS.items():  # 0112
++                if key in door_metadata:
++                    self.door_lever_params[name][env_id] = float(door_metadata[key])
+             if door_metadata.get("closerShaped", False):
+                 self.door_closer_shaped[env_id] = True
+                 for name, key in DOOR_CLOSER_METADATA_KEYS.items():
+@@ -179,6 +196,18 @@ class DoorPregrasp(
+                 self.door_hinge_max_force[env_id] = float(door_metadata["closerM0"])
+         self.door_closer_params["backcheck_angle"] *= torch.pi / 180.0
+         self.any_door_closer_shaped = bool(self.door_closer_shaped.any())
++        # 0112c: レバーに掛け続ける回り。ばねの扉（handleSpringK あり）は −予圧（上げる向き）、ほかは元の張り
++        spring = torch.isfinite(self.door_lever_params["spring_k"])
++        self._handle_effort_base = torch.where(
++            spring, -torch.nan_to_num(self.door_lever_params["spring_tau0"]), torch.full_like(self.door_lever_params["spring_k"], DOOR_HANDLE_TENSION)
++        )
++        self._any_handle_spring = bool(spring.any())
++        if self._any_handle_spring:
++            self.door_dof_effort[:, 1] = self._handle_effort_base
++            print(f"[0112c] レバーのばね: {int(spring.sum())}/{self.num_envs} 台・予圧 "
++                  f"{float(self.door_lever_params['spring_tau0'][spring].min()):.2f}〜{float(self.door_lever_params['spring_tau0'][spring].max()):.2f} N·m", flush=True)
++        self._lever_probe = self._lever_probe_config(self.config.get("lever_probe", None))  # 0112
++        self._vlatch = self._virtual_latch_config(self.config.get("virtual_latch", None))  # 0112b
+ 
+         # G1_Hackason（パッチ 0097、11-09）: 段 2 レバーを腕だけで学ぶ口（arm_stage.py）。構えの位置から段 1 で始め、脚は毎歩
+         # 立つ HOMIE、complete_stage に入ったら完了。既定は切で、元と同じ
+@@ -1597,6 +1626,8 @@ class DoorPregrasp(
+         )
+         door_dof_target[:, 0] = 0.0
+         door_dof_target[:, 1] = DOOR_HANDLE_TENSION  # tension the door handle
++        if getattr(self, "_any_handle_spring", False):  # 0112c: ばねの扉は −予圧
++            door_dof_target[:, 1] = self._handle_effort_base
+         self.simulator.apply_torques_at_task_dof(env_ids, {"door": door_dof_target})
+ 
+     def _yd_resample(self, env_ids):
+@@ -1767,9 +1798,70 @@ class DoorPregrasp(
+     @override
+     def _apply_force_in_physics_step(self):
+         super()._apply_force_in_physics_step()
+-        if self.any_door_closer_shaped:
++        if (self.any_door_closer_shaped or getattr(self, "_lever_probe", None) is not None
++                or getattr(self, "_vlatch", None) is not None or getattr(self, "_any_handle_spring", False)):
+             self._apply_door_closer_torque()
+ 
++    def _lever_probe_config(self, cfg):
++        """G1_Hackason（0112・11-14）: 扉だけを動かす試し（計画の段 C）。台 i のレバーに handle_torque_max × i/(台数−1) の
++        下げる回りを handle_start_s から、蝶番に開ける向きの hinge_torque を hinge_start_s から足す。レバーが落ち着いた角度で
++        ばねを、蝶番が開いたかで掛け金が外れる角度を確かめる（機体は扉から離して置く）。既定は切"""
++        if not cfg or not cfg.get("enabled", False):
++            return None
++        n = max(1, self.num_envs - 1)
++        p = {
++            "handle_torque": float(cfg.get("handle_torque_max", 2.5))
++            * torch.arange(self.num_envs, device=self.device, dtype=torch.float32)
++            / n,
++            "handle_start_s": float(cfg.get("handle_start_s", 1.0)),
++            "hinge_torque": float(cfg.get("hinge_torque", 30.0)),
++            "hinge_start_s": float(cfg.get("hinge_start_s", 4.0)),
++        }
++        if p["handle_start_s"] < 0.0 or p["hinge_start_s"] < p["handle_start_s"] or p["hinge_torque"] < 0.0:
++            raise ValueError(f"lever_probe の時刻か力がおかしい: {cfg}")
++        print(f"[0112] lever_probe: レバーへ 0〜{float(p['handle_torque'][-1]):.2f} N·m を {p['handle_start_s']} 秒から・"
++              f"蝶番へ {p['hinge_torque']} N·m を {p['hinge_start_s']} 秒から", flush=True)
++        return p
++
++    def _virtual_latch_config(self, cfg):
++        """G1_Hackason（0112b・11-14）: 仮想の掛け金。円錐の掛け金（door.py の latch_inert で飾りにする）の代わりに、
++        レバーの角度が外れる角度より上（＝掛け金が出ている）で、扉が閉じ際 zone_deg 以内なら、蝶番を開ける向きにだけ
++        硬いばねで止める。扉が zone_deg より開いてからレバーを戻しても止めない（掛け金は枠の外）。閉じてくれば掛かり直す"""
++        if not cfg or not cfg.get("enabled", False):
++            return None
++        rel = self.door_lever_params["latch_release_deg"]
++        if not bool(torch.isfinite(rel).all()):
++            raise ValueError("virtual_latch には全部の扉の latchReleaseAngleDeg が要る（build_latch=True の場面）")
++        p = {
++            "release": rel * (torch.pi / 180.0),
++            "zone": float(cfg.get("zone_deg", 0.5)) * torch.pi / 180.0,
++            "hold": float(cfg.get("hold_deg", 0.05)) * torch.pi / 180.0,
++            "k": float(cfg.get("k", 30000.0)),
++            "d": float(cfg.get("d", 600.0)),
++        }
++        if not (0.0 <= p["hold"] < p["zone"] and p["k"] > 0.0 and p["d"] >= 0.0):
++            raise ValueError(f"virtual_latch の値がおかしい: {cfg}")
++        print(f"[0112b] virtual_latch: 閉じ際 {cfg.get('zone_deg', 0.5)}° 以内・外れる角度 "
++              f"{float(rel.min()):.1f}〜{float(rel.max()):.1f}°・k {p['k']}・d {p['d']}", flush=True)
++        return p
++
++    def _virtual_latch_effort(self, hinge_pos, hinge_vel):
++        """0112b: 掛け金が掛かっている台の蝶番に、開ける向きを止める回り（開く向きが正の回りを負へ）を足す"""
++        p = self._vlatch
++        handle = self.simulator.get_task_dof_pos("door")[:, 1]
++        engaged = (handle < p["release"]) & (hinge_pos < p["zone"])
++        pen = torch.clamp(hinge_pos - p["hold"], min=0.0)
++        tau = p["k"] * pen + p["d"] * torch.clamp(hinge_vel, min=0.0)
++        self.door_dof_effort[:, 0] -= torch.where(engaged, tau, torch.zeros_like(tau))
++
++    def _lever_probe_effort(self):
++        """0112: 試しの回り（レバーは下げる向き・蝶番は開ける向き）を door_dof_effort に足す"""
++        p = self._lever_probe
++        t = self.episode_length_buf.to(torch.float32) * self.dt
++        zero = torch.zeros_like(p["handle_torque"])
++        self.door_dof_effort[:, 1] = self._handle_effort_base + torch.where(t >= p["handle_start_s"], p["handle_torque"], zero)
++        self.door_dof_effort[:, 0] += torch.where(t >= p["hinge_start_s"], zero + p["hinge_torque"], zero)
++
+     def _apply_door_closer_torque(self):
+         # G1_Hackason（段 2-4）: 実物の形のクローザー。物理ステップ（200 Hz）ごとに今の角度・角速度から力を決める。
+         # 形の無い台の蝶番は 0（_reset_door_states と同じ）。力は scene.write_data_to_sim で PhysX に渡る
+@@ -1777,6 +1869,10 @@ class DoorPregrasp(
+         hinge_vel = self.simulator.get_task_dof_vel("door")[:, 0]
+         torque = closer_torque(hinge_pos, hinge_vel, **self.door_closer_params)
+         self.door_dof_effort[:, 0] = torch.where(self.door_closer_shaped, torque, torch.zeros_like(torque))
++        if getattr(self, "_lever_probe", None) is not None:  # 0112
++            self._lever_probe_effort()
++        if getattr(self, "_vlatch", None) is not None:  # 0112b
++            self._virtual_latch_effort(hinge_pos, hinge_vel)
+         self.simulator.apply_torques_at_task_dof(self._all_env_ids, {"door": self.door_dof_effort})
+ 
+     @override
+diff --git a/gr00t/rl/isaac_utils/playground/env_rand/door.py b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+index 859613c..8c48cfc 100644
+--- a/gr00t/rl/isaac_utils/playground/env_rand/door.py
++++ b/gr00t/rl/isaac_utils/playground/env_rand/door.py
+@@ -15,7 +15,7 @@ import omni.usd
+ from isaaclab.sim import schemas
+ from isaaclab.sim.utils import bind_visual_material, clone
+ from isaaclab.utils import configclass
+-from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, UsdPhysics
++from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
+ 
+ def _get_material_randomization():
+     """Lazy import to avoid loading omni.kit.scripting before SimulationApp is ready."""
+@@ -120,6 +120,18 @@ class DoorSpawnerCfg(sim_utils.RigidObjectSpawnerCfg):
+     latch_throw_range: Optional[tuple[float, float]] = None
+     # ラッチが引っ込みきるレバーの角度 [deg]。元は 45（＝回しきると外れる）。レバーの上限を超えない
+     latch_release_angle_deg_range: Optional[tuple[float, float]] = None
++    # G1_Hackason（0112・11-14）: レバーの戻す回りを角度で増えるばねにする（実機の記録から。Door/real/fit_door_from_records.py）。
++    # 回り＝予圧 ＋ 硬さ × 角度 [N·m]（env が掛け続ける 0.26 N·m を引いた正味）。両方 None なら元どおり（ドライブの上限で一定の回り。
++    # 元の減衰 0.5 /deg は 29 N·m·s/rad で、上限で切られて見えていなかった。ばねの時は handle_spring_damping を使う）
++    handle_spring_stiffness_range: Optional[tuple[float, float]] = None  # 硬さ [N·m/rad]
++    handle_spring_preload_range: Optional[tuple[float, float]] = None  # 0° での回り [N·m]
++    handle_spring_damping: float = 0.3  # 減衰 [N·m·s/rad]（実機の押している間と押さえている間の差 約 0.15 N·m ÷ 0.3 rad/s から）
++    # G1_Hackason（0112）: レバー（棒）の材質の摩擦（静止＝動き）。相手と組む時は max（機体の材質の乱数を切って使う。
++    # 機体の既定 0.5 より大きい値なら、この値がそのまま手と棒の摩擦になる）。None なら元どおり（材質を付けない）
++    handle_friction_range: Optional[tuple[float, float]] = None
++    # G1_Hackason（0112b）: 円錐の掛け金を当たらない飾りにする（当たりを外し、関節の上限を広げてレバーを止めない）。
++    # 掛け金の働きは env.config.virtual_latch が受け持つ（外れる角度は latch_release_angle_deg_range のまま引く）
++    latch_inert: bool = False
+     # 閉じた位置での押し付け [N·m]。元は目標 -10° × ばね（1〜10 /deg）を力の上限で切った値で、閉じた位置でも上限まで押す。
+     # 上限を EN 1154 の等級まで強くすると、押し付けがラッチの斜面を押してレバーが勝手に回る（2026-10-07、等級 1 で
+     # 16 台中 12 台が 85〜99° まで回った。蝶番は閉位置を 0.003〜0.046° 越えていた）。指定すると目標角を -押し付け/ばね にし、
+@@ -144,6 +156,59 @@ class DoorSpawnerCfg(sim_utils.RigidObjectSpawnerCfg):
+ CLOSER_SHAPED_DRIVE_MAX_FORCE = 1.0e4
+ 
+ 
++# G1_Hackason（0112）: env がレバーに掛け続ける回り（door_open_homie.py の DOOR_HANDLE_TENSION と同じ値）。ばねはこの分を足して作る
++HANDLE_TENSION_NM = 15.0 * np.pi / 180.0
++# ばねの時のドライブの力の上限 [N·m]。ばねの回りより十分大きく（止まりの 45° で 2 N·m 前後）
++HANDLE_SPRING_MAX_FORCE_NM = 20.0
++
++
++def _apply_handle_spring(cfg: "DoorSpawnerCfg", handle_drive, handle_prim=None) -> dict:
++    """G1_Hackason（0112）: レバーのドライブを 回り＝予圧＋硬さ×角度 のばねにする。返す dict は扉の customData に入れる。
++    USD の回転のドライブの硬さ・減衰は 1° あたり。ドライブの回り＝硬さ×(目標−角度)。目標を負の角に置いて予圧を作り、
++    env が下げる向きに掛け続ける 0.26 N·m の分を足す。乱数は他の値を引いた後に引く（指定の無い扉は乱数の順も元どおり）"""
++    k_range, tau0_range = cfg.handle_spring_stiffness_range, cfg.handle_spring_preload_range
++    if k_range is None and tau0_range is None:
++        return {}
++    if k_range is None or tau0_range is None:
++        raise ValueError("handle_spring_stiffness_range と handle_spring_preload_range は組で指定する")
++    k = float(np.random.uniform(*k_range))
++    tau0 = float(np.random.uniform(*tau0_range))
++    if not (k > 0.0 and tau0 >= 0.0 and cfg.handle_spring_damping >= 0.0):
++        raise ValueError(f"レバーのばねの値がおかしい: 硬さ {k}・予圧 {tau0}・減衰 {cfg.handle_spring_damping}")
++    deg = np.pi / 180.0
++    handle_drive.GetStiffnessAttr().Set(k * deg)
++    handle_drive.GetDampingAttr().Set(float(cfg.handle_spring_damping) * deg)
++    # 0112c: Isaac Lab はドライブの目標角を毎回 0 に書く（USD の目標角は効かない）。予圧は env がレバーに掛ける回り
++    # （door_open_homie.py の _handle_effort_base ＝ −予圧）で入れる。レバーの重さ（棒と鉤で 0.1〜0.26 N·m）は切る
++    # （実機の記録の回りは重さ込みの正味）
++    handle_drive.GetTargetPositionAttr().Set(0.0)
++    handle_drive.GetMaxForceAttr().Set(HANDLE_SPRING_MAX_FORCE_NM)
++    if handle_prim is not None:
++        PhysxSchema.PhysxRigidBodyAPI.Apply(handle_prim).CreateDisableGravityAttr().Set(True)
++    return {"handleSpringK": k, "handleSpringTau0": tau0, "handleSpringDamping": float(cfg.handle_spring_damping),
++            "handleGravityOff": handle_prim is not None}
++
++
++def _bind_handle_friction(stage, cfg: "DoorSpawnerCfg", handle_prim_path: str, collider_paths) -> Optional[float]:
++    """G1_Hackason（0112）: レバーの棒の当たりに摩擦の材質を付ける（静止＝動き・組み合わせは max）。付けた摩擦を返す"""
++    if cfg.handle_friction_range is None:
++        return None
++    mu = float(np.random.uniform(*cfg.handle_friction_range))
++    if not mu > 0.0:
++        raise ValueError(f"レバーの摩擦は正: {mu}")
++    material = UsdShade.Material.Define(stage, os.path.join(handle_prim_path, "lever_physics_material"))
++    api = UsdPhysics.MaterialAPI.Apply(material.GetPrim())
++    api.CreateStaticFrictionAttr().Set(mu)
++    api.CreateDynamicFrictionAttr().Set(mu)
++    api.CreateRestitutionAttr().Set(0.0)
++    PhysxSchema.PhysxMaterialAPI.Apply(material.GetPrim()).CreateFrictionCombineModeAttr().Set("max")
++    for path in collider_paths:
++        UsdShade.MaterialBindingAPI.Apply(stage.GetPrimAtPath(path)).Bind(
++            material, UsdShade.Tokens.weakerThanDescendants, "physics"
++        )
++    return mu
++
++
+ def _sample_shaped_closer(cfg: "DoorSpawnerCfg", hinge_drive) -> dict:
+     """実物の形のクローザーの値を台ごとに引き、蝶番のドライブを切る。返す dict は扉の customData に入れる。
+ 
+@@ -589,6 +654,9 @@ def spawn_door(
+         handle_shape_outside_geom.GetHeightAttr().Set(handle_length)
+     add_mass(stage, handle_shape_outside_prim_path, mass=0.1)
+     add_collider(stage, handle_shape_outside_prim_path)
++    handle_friction = _bind_handle_friction(  # G1_Hackason（0112）: 指定が無ければ何もしない
++        stage, cfg, handle_prim_path, (handle_shape_inside_prim_path, handle_shape_outside_prim_path)
++    )
+ 
+     spawn_hook = np.random.rand() < 0.5 if cfg.rand_spawn_hook is None else cfg.rand_spawn_hook
+     if spawn_hook:
+@@ -710,6 +778,9 @@ def spawn_door(
+     )
+     handle_drive.GetDampingAttr().Set(0.5)
+     handle_drive.GetStiffnessAttr().Set(50.0)
++    lever_metadata = _apply_handle_spring(  # G1_Hackason（0112）: 指定が無ければ何もしない
++        cfg, handle_drive, stage.GetPrimAtPath(handle_prim_path)
++    )
+     _update_joint_transform(stage, handle_joint_prim_path, panel_prim_path, handle_prim_path)
+ 
+     # build latch
+@@ -739,7 +810,8 @@ def spawn_door(
+         cone_geom.GetHeightAttr().Set(0.05)
+         cone_geom.GetPurposeAttr().Set("guide")
+         add_mass(stage, latch_geom_prim_path, mass=0.1)
+-        add_collider(stage, latch_geom_prim_path)
++        if not cfg.latch_inert:  # G1_Hackason（0112b）: 飾りの掛け金は当たらない
++            add_collider(stage, latch_geom_prim_path)
+ 
+         latch_joint_prim_path = os.path.join(panel_prim_path, "latch_joint")
+         latch_joint = UsdPhysics.PrismaticJoint.Define(stage, latch_joint_prim_path)
+@@ -762,7 +834,8 @@ def spawn_door(
+             handle_max_angle_deg,
+         )
+         latch_joint.GetLowerLimitAttr().Set(0.0)
+-        latch_joint.GetUpperLimitAttr().Set(latch_throw)
++        # G1_Hackason（0112b）: 飾りの掛け金は、レバーが止まりまで回っても上限に当たらないよう広げる（連動でレバーを止めない）
++        latch_joint.GetUpperLimitAttr().Set(latch_throw * (3.0 if cfg.latch_inert else 1.0))
+         latch_mimic_joint = PhysxSchema.PhysxMimicJointAPI.Apply(
+             latch_joint.GetPrim(), UsdPhysics.Tokens.rotX
+         )
+@@ -1156,9 +1229,13 @@ def spawn_door(
+         "gapWidth": float(gap_width),
+     }
+     metadata_value.update(closer_metadata)
++    metadata_value.update(lever_metadata)  # G1_Hackason（0112）
++    if handle_friction is not None:
++        metadata_value["handleFriction"] = float(handle_friction)
+     if cfg.build_latch:
+         metadata_value["latchThrow"] = float(latch_throw)
+         metadata_value["latchReleaseAngleDeg"] = float(latch_release_angle_deg)
++        metadata_value["latchInert"] = bool(cfg.latch_inert)  # G1_Hackason（0112b）
+     if cfg.add_walls:
+         metadata_value["front"] = front
+         metadata_value["rear"] = rear
+diff --git a/gr00t/rl/utils/state_recorder.py b/gr00t/rl/utils/state_recorder.py
+index 282c878..380717c 100644
+--- a/gr00t/rl/utils/state_recorder.py
++++ b/gr00t/rl/utils/state_recorder.py
+@@ -83,6 +83,11 @@ class StateRecorder:
+                 f"door_closer_{name}": value[:k].cpu().numpy()
+                 for name, value in getattr(env, "door_closer_params", {}).items()
+             },
++            # G1_Hackason（0112）: レバーと掛け金の台ごとの値（ばね・摩擦・止まり・外れる角度・出。無い扉は NaN）
++            **{
++                f"door_lever_{name}": value[:k].cpu().numpy()
++                for name, value in getattr(env, "door_lever_params", {}).items()
++            },
+         )
+ 
+     def record(self, env) -> None:
+-- 
+2.43.0
+

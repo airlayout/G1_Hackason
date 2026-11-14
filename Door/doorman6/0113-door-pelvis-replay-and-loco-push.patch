@@ -1,0 +1,552 @@
+From 91abefe3d5540847bcfbcce7bb5eb4b2dd29bfe3 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Sat, 14 Nov 2026 09:11:43 +0900
+Subject: [PATCH] door: replay of the real robot pelvis motion and a pushed
+ back stepping layer for the stock like legs (0113, 0114;
+ env.config.pelvis_replay replays the pelvis motion recorded on the real robot
+ from the 3a entry, door frame x, y, yaw and roll, pitch from
+ G1_Hackason/Door/real/make_pelvis_replay_1114.py, holding the pelvis from
+ hold_from; method vel writes the robot root velocity every physics step as
+ the recorded velocity plus kp times the pose error so that the pelvis behaves
+ like a very heavy body without teleporting while the hand is on the lever,
+ and kept the recorded pelvis within 0.24 to 0.58 cm on 84 envs; method door
+ holds the robot and places the fixed door root inversely, and the script
+ teacher then reads the pelvis from the door root; offset_s starts from the
+ middle of a record; script_teacher.init_arm sets the arm target at the
+ episode start to the real arms down pose because the sim started with
+ straight elbows and random wrists and the damped least squares IK then ended
+ at the shoulder roll limit and failed to reach above the lever in 13 of 24
+ envs; env.config.loco_push (a guess) replaces the forward walking command by
+ v_back for t_back when the estimated hand force pushed back over f_th, as the
+ real stock legs stepped back 9 to 14 cm after 25 to 40 N, and adds a lateral
+ and yaw pulse to the leg command at the walk onset, as the real pelvis swayed
+ 12 to 15 cm to the hinge side in 0.5 to 0.8 s; the script teacher keeps the
+ per env hand force tensors; default off = unchanged) (11-14)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py |  38 +++++
+ gr00t/rl/envs/door/loco_push.py       |  94 +++++++++++
+ gr00t/rl/envs/door/pelvis_replay.py   | 233 ++++++++++++++++++++++++++
+ gr00t/rl/envs/door/script_teacher.py  |  30 +++-
+ 4 files changed, 393 insertions(+), 2 deletions(-)
+ create mode 100644 gr00t/rl/envs/door/loco_push.py
+ create mode 100644 gr00t/rl/envs/door/pelvis_replay.py
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 991aaa3..190bd8b 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -47,6 +47,8 @@ from gr00t.rl.envs.door.walk_away import walk_away_amount
+ from gr00t.rl.envs.door.waist_yaw_comp import comp_offset, rotate_rel_yaw, waist_yaw_comp_config, wrap_angle, yaw_from_xyzw
+ from gr00t.rl.envs.door.wall_gap import arm_points, gap_cost, gap_to_walls, lagrange_step, to_door_frame, wall_gap_config
+ from gr00t.rl.envs.door.script_teacher import ScriptTeacher, script_teacher_config
++from gr00t.rl.envs.door.pelvis_replay import PelvisReplay, pelvis_replay_config  # 0113
++from gr00t.rl.envs.door.loco_push import LocoPush, loco_push_config  # 0114
+ from gr00t.rl.envs.door.yaw_disturb import ramp_offset, rotate_root_state_wxyz, sample_disturb, yaw_disturb_config
+ from gr00t.rl.isaac_utils.playground.env_rand.door_closer import closer_torque
+ from gr00t.rl.isaac_utils.rotations import quat_to_tan_norm, wxyz_to_xyzw, xyzw_to_wxyz
+@@ -230,6 +232,15 @@ class DoorPregrasp(
+         # 0108: 実機の台本を台ごとに回して腕を動かす口（script_teacher.py。作るのは最初の歩＝持ち物がそろってから）
+         self._script_teacher_cfg = script_teacher_config(self.config.get("script_teacher", None))
+         self._script_teacher = None
++        # 0113: 実機の pelvis の動きの再生（pelvis_replay.py。台本の教師が要る。作るのは台本の教師と同じく最初の歩）
++        self._pelvis_replay_cfg = pelvis_replay_config(self.config.get("pelvis_replay", None))
++        assert self._pelvis_replay_cfg is None or self._script_teacher_cfg is not None, \
++            "pelvis_replay には script_teacher が要る（再生を始める小段を台本から読む）"
++        self._pelvis_replay = None
++        # 0114: 押されて下がる脚と歩き出しの横揺れ（loco_push.py。台本の教師の手の力と応え方の層が要る）
++        self._loco_push_cfg = loco_push_config(self.config.get("loco_push", None))
++        assert self._loco_push_cfg is None or self._script_teacher_cfg is not None, "loco_push には script_teacher が要る"
++        self._loco_push = None
+         self._yaw_disturb = yaw_disturb_config(self.config.get("yaw_disturb", None))
+         if self._yaw_disturb is not None:
+             self._yd_amp = torch.zeros(self.num_envs, device=self.device)
+@@ -1408,7 +1419,18 @@ class DoorPregrasp(
+         if getattr(self, "_script_teacher_cfg", None) is not None:  # 0108: 台本が腕の積み上げを書き換える
+             if self._script_teacher is None:
+                 self._script_teacher = ScriptTeacher(self, self._script_teacher_cfg)
++            if getattr(self, "_pelvis_replay_cfg", None) is not None and self._pelvis_replay is None:  # 0113
++                self._pelvis_replay = PelvisReplay(self, self._pelvis_replay_cfg)
++                self._script_teacher.extra_summary = self._st_extra_summary  # 0114: 再生と押されて下がる脚の両方
++                self._script_teacher.replay = self._pelvis_replay
+             self._script_teacher.apply(self)
++            if self._pelvis_replay is not None:  # 0113: 止める・再生を始める台を決める
++                self._pelvis_replay.control_step(self)
++            if getattr(self, "_loco_push_cfg", None) is not None:  # 0114: 押されて下がる・歩き出しの横揺れ
++                if self._loco_push is None:
++                    self._loco_push = LocoPush(self, self._loco_push_cfg)
++                    self._script_teacher.extra_summary = self._st_extra_summary
++                self._loco_push.control_step(self)
+         arm = getattr(self, "_arm_stage", None)
+         if arm is not None:  # 0097: 腕だけの段は毎歩止める（実機の段 2 は歩きの指令 0）
+             return self._arm_stage_legs_mask(arm)
+@@ -1503,6 +1525,10 @@ class DoorPregrasp(
+             self._door_opened_once[env_ids] = False
+         if getattr(self, "_script_teacher", None) is not None:  # 0108: 台本を回ごとに作り直す
+             self._script_teacher.reset(env_ids)
++        if getattr(self, "_pelvis_replay", None) is not None:  # 0113: 再生を止め、方法 door なら扉を戻す（台本の結果を書いた後）
++            self._pelvis_replay.reset(self, env_ids)
++        if getattr(self, "_loco_push", None) is not None:  # 0114
++            self._loco_push.reset(env_ids)
+         if hasattr(self, "_arm_legs_free"):  # 0099: 回の始めは脚を止める
+             self._arm_legs_free[env_ids] = False
+         if hasattr(self, "arm_handover_buf"):  # 0101: 回の始めは腕の方策
+@@ -1740,8 +1766,18 @@ class DoorPregrasp(
+             actor_state["actions"] = actions
+         return super().step(actor_state)
+ 
++    def _st_extra_summary(self, i: int) -> dict:
++        """0114: 台本の教師の回ごとの結果に足す値（再生 0113・押されて下がる脚 0114）"""
++        out = {}
++        for obj in (getattr(self, "_pelvis_replay", None), getattr(self, "_loco_push", None)):
++            if obj is not None:
++                out.update(obj.summary(i))
++        return out
++
+     @override
+     def _post_config_observation_callback(self):
++        if getattr(self, "_loco_push", None) is not None:  # 0114: 脚に届く指令に歩き出しの横揺れを足す（観測を作る前）
++            self._loco_push.apply_legs(self)
+         if getattr(self, "_wyc", None) is not None and self._wyc["hide_obs"]:  # 0105: 鏡写しの前に打ち消しの分を引く
+             self._wyc_hide_obs()
+         if getattr(self, "_any_mirror", False):
+@@ -1798,6 +1834,8 @@ class DoorPregrasp(
+     @override
+     def _apply_force_in_physics_step(self):
+         super()._apply_force_in_physics_step()
++        if getattr(self, "_pelvis_replay", None) is not None:  # 0113: 物理 1 回ごとに根元の速さ（と扉）を書く
++            self._pelvis_replay.physics_substep(self)
+         if (self.any_door_closer_shaped or getattr(self, "_lever_probe", None) is not None
+                 or getattr(self, "_vlatch", None) is not None or getattr(self, "_any_handle_spring", False)):
+             self._apply_door_closer_torque()
+diff --git a/gr00t/rl/envs/door/loco_push.py b/gr00t/rl/envs/door/loco_push.py
+new file mode 100644
+index 0000000..e5e1378
+--- /dev/null
++++ b/gr00t/rl/envs/door/loco_push.py
+@@ -0,0 +1,94 @@
++"""押されて下がる脚と歩き出しの横揺れ（パッチ 0114、2026-11-14・⚠️ 推測で作った形）。
++
++計画 docs/plan/2026-11-14-g1-door-sim-lever-bench-from-real-records.md の 13.1。純正の脚はシムで作れないので、純正に似せた脚
++（0085・0095 の応え方の層＋HOMIE）に、実機で見えた 2 つの癖を指令の層で足す:
++  押されて下がる: 歩いている台で、手が扉から押し返される力（台本の手の力の見積もり＝実機と同じ見積もりの −前後）が f_th を越えたら、
++                 t_back 秒、前後の指令を v_back（後ろ向き）に置き換える（応え方の層を通る）。11-13 朝: 25〜40 N の山の直後に
++                 pelvis が 9〜14 cm 下がった
++  歩き出しの横揺れ: 歩きの指令が 0 から立ち上がった時、sway_s 秒、脚に届く指令（層の後ろ）に横 sway_vy と回り sway_wz を足す。
++                 11-13 朝・夕: 足踏みの歩き出しの 0.5〜0.8 秒に pelvis が蝶番の側へ 12〜15 cm・向き +1〜+4°
++env.config.loco_push（無い・enabled=False なら元のまま）: enabled・f_th [N]・v_back [m/s]・t_back [s]・refractory [s]・
++  sway_vy [m/s・体の座標・把手が左の扉で右が負]・sway_wz [rad/s]・sway_s [s]・walk_on [m/s]・src（"est"＝台本の見積もり／
++  "contact"＝接触センサ）。台本の教師（tau=True）と、応え方の層（env.config.loco_resp.enabled=True）が要る
++"""
++
++from __future__ import annotations
++
++import torch
++
++ARM_ACCUM_START = 3  # 積み上げの並び [前後, 横, 旋回, 腕 14]（script_teacher.py と同じ）
++
++
++def loco_push_config(cfg) -> dict | None:
++    if cfg is None or not bool(cfg.get("enabled", False)):
++        return None
++    out = {"f_th": float(cfg.get("f_th", 30.0)), "v_back": float(cfg.get("v_back", -0.3)),
++           "t_back": float(cfg.get("t_back", 0.6)), "refractory": float(cfg.get("refractory", 0.6)),
++           "sway_vy": float(cfg.get("sway_vy", -0.25)), "sway_wz": float(cfg.get("sway_wz", 0.1)),
++           "sway_s": float(cfg.get("sway_s", 0.5)), "walk_on": float(cfg.get("walk_on", 0.08)),
++           "src": str(cfg.get("src", "est"))}
++    assert out["f_th"] > 0 and out["v_back"] <= 0 and out["t_back"] >= 0 and out["sway_s"] >= 0, f"loco_push の値がおかしい: {cfg}"
++    assert out["src"] in ("est", "contact"), f"loco_push.src は est か contact: {out['src']}"
++    return out
++
++
++class LocoPush:
++    """control_step(env) を台本の教師の apply の直後に、apply_legs(env) を観測を作る直前に、reset(env_ids) を回の戻しで呼ぶ"""
++
++    def __init__(self, env, cfg: dict) -> None:
++        assert getattr(env, "_stock_legs_on", False), "loco_push には応え方の層（env.config.loco_resp.enabled=True）が要る"
++        self.cfg, self.dev, n = cfg, env.device, env.num_envs
++        self.back_until = torch.full((n,), -1.0, device=self.dev)
++        self.back_ready = torch.zeros(n, device=self.dev)
++        self.sway_until = torch.full((n,), -1.0, device=self.dev)
++        self.walking_prev = torch.zeros(n, dtype=torch.bool, device=self.dev)
++        self.n_back = torch.zeros(n, dtype=torch.long, device=self.dev)
++        self.n_sway = torch.zeros(n, dtype=torch.long, device=self.dev)
++        self.f_peak = torch.zeros(n, device=self.dev)
++        self.t = torch.zeros(n, device=self.dev)
++        print(f"[loco_push] 押し返し {cfg['f_th']} N を越えたら前後 {cfg['v_back']} m/s を {cfg['t_back']} 秒・"
++              f"歩き出しに横 {cfg['sway_vy']} m/s・回り {cfg['sway_wz']} rad/s を {cfg['sway_s']} 秒（力は {cfg['src']}）", flush=True)
++
++    def control_step(self, env) -> None:
++        c = self.cfg
++        st = env._script_teacher
++        f = st.hand_f_t if c["src"] == "est" else st.hand_c_t
++        f_back = torch.nan_to_num(-f[:, 0], nan=0.0)
++        self.t = env.episode_length_buf.to(torch.float32) * float(env.dt)
++        sc = float(env.config.homie_command_scale)
++        vx_cmd = env._delta_actions[:, 0] * sc * 2.0  # 台本が書いた前後の指令 [m/s]（script_teacher の逆）
++        walking = vx_cmd > c["walk_on"]
++        self.f_peak = torch.where(walking, torch.maximum(self.f_peak, f_back), self.f_peak)
++        start = walking & (f_back > c["f_th"]) & (self.t >= self.back_ready)
++        self.back_until = torch.where(start, self.t + c["t_back"], self.back_until)
++        self.back_ready = torch.where(start, self.t + c["t_back"] + c["refractory"], self.back_ready)
++        self.n_back += start.long()
++        onset = walking & ~self.walking_prev
++        self.sway_until = torch.where(onset, self.t + c["sway_s"], self.sway_until)
++        self.n_sway += onset.long()
++        self.walking_prev = walking
++        back = self.t < self.back_until
++        if bool(back.any()):  # 前後の指令を後ろ向きに置き換える（応え方の層を通る）
++            env._delta_actions[back, 0] = c["v_back"] / 2.0 / sc
++
++    def apply_legs(self, env) -> None:
++        sway = self.t < self.sway_until
++        if not bool(sway.any()):
++            return
++        legs = env._homie_commands_legs.clone()
++        legs[sway, 1] += self.cfg["sway_vy"] / 2.0  # 指令の単位（get_physical_homie_commands の逆）
++        legs[sway, 2] += self.cfg["sway_wz"] / 0.5
++        env._homie_commands_legs = legs
++
++    def reset(self, env_ids) -> None:
++        ids = torch.as_tensor(env_ids, device=self.dev, dtype=torch.long)
++        self.back_until[ids] = -1.0
++        self.back_ready[ids] = 0.0
++        self.sway_until[ids] = -1.0
++        self.walking_prev[ids] = False
++        self.n_back[ids] = 0
++        self.n_sway[ids] = 0
++        self.f_peak[ids] = 0.0
++
++    def summary(self, i: int) -> dict:
++        return {"push_back_n": int(self.n_back[i]), "sway_n": int(self.n_sway[i]), "push_f_peak": round(float(self.f_peak[i]), 1)}
+diff --git a/gr00t/rl/envs/door/pelvis_replay.py b/gr00t/rl/envs/door/pelvis_replay.py
+new file mode 100644
+index 0000000..36d4e72
+--- /dev/null
++++ b/gr00t/rl/envs/door/pelvis_replay.py
+@@ -0,0 +1,233 @@
++"""実機の pelvis の動きをシムで再生する口（パッチ 0113、2026-11-14）。
++
++計画 docs/plan/2026-11-14-g1-door-sim-lever-bench-from-real-records.md の段 D。純正の脚はシムで作れないので、脚は歩かせず、
++実機の記録の pelvis の動き（3a に入ってからの扉の座標の前後・横・向きと roll・pitch の差。
++G1_Hackason/Door/real/make_pelvis_replay_1114.py）をそのまま再生する。台本（script_teacher）が要る。
++  hold_from の小段から: pelvis をその時の姿勢に止める（HOMIE の踏み直しを消す。実機の純正は 2a〜2d で 2 cm 内）
++  start_sub の小段から: 止めた姿勢 ＋ 記録の差 に沿わせる（記録の終わりより後は最後の差のまま）
++方法（method）:
++  "vel"  方法 1: 物理 1 回（200 Hz）ごとに、機体の根元の速さを 記録の速さ ＋ kp ×（記録の姿勢 − 今の姿勢）に書く。
++         瞬間移動が無いので、手とレバーの間の力が跳ねにくい（根元は無限に重い体のようにふるまう）
++  "door" 方法 2: 機体の根元は止めた姿勢に保ち、扉（根元は固定・壁も同じ体）を記録と逆に動かす（根元の姿勢を物理 1 回ごとに書く）。
++         扉の座標が動くので、台本の教師は pelvis を扉の根元からの姿勢で読む（script_teacher.py）。
++         扉が加速するので扉の重さとクローザーの計算が狂う＝掛け金が外れた後は使えない（計画 6 節）
++env.config.pelvis_replay（無い・enabled=False なら元のまま）:
++  enabled・file（npz）・method（vel／door）・hold_from（既定 "2b"）・start_sub（既定 "3a"）・kp・kp_rot（既定 20 /s）・
++  labels（使う回の番号のリスト。空なら全部）・offset_s（記録のこの秒から再生する。0113c・「歩いている最中」の動きを当てる時）。
++  台 i は回 i % 回の数 を再生する
++"""
++
++from __future__ import annotations
++
++import math
++import os
++
++import numpy as np
++import torch
++
++# door_script.SUBS と同じ並び（script_teacher.sub_code の番号）
++SUBS = ("2a", "2b", "2c", "2d", "3a", "3c", "done", "retreat", "failed")
++LAST_ACTIVE_SUB = SUBS.index("3c")
++
++
++def pelvis_replay_config(cfg) -> dict | None:
++    """env.config.pelvis_replay を読んで確かめる。無い・enabled=False なら None"""
++    if cfg is None or not bool(cfg.get("enabled", False)):
++        return None
++    f = str(cfg.get("file", ""))
++    assert os.path.isfile(f), f"pelvis_replay.file が無い: {f}"
++    method = str(cfg.get("method", "vel"))
++    assert method in ("vel", "door"), f"pelvis_replay.method は vel か door: {method}"
++    hold_from, start_sub = str(cfg.get("hold_from", "2b")), str(cfg.get("start_sub", "3a"))
++    assert hold_from in SUBS and start_sub in SUBS and SUBS.index(hold_from) <= SUBS.index(start_sub), \
++        f"pelvis_replay.hold_from・start_sub がおかしい: {hold_from} {start_sub}"
++    labels = cfg.get("labels", None)
++    return {"file": f, "method": method, "hold_from": SUBS.index(hold_from), "start_sub": SUBS.index(start_sub),
++            "kp": float(cfg.get("kp", 20.0)), "kp_rot": float(cfg.get("kp_rot", 20.0)),
++            "offset_s": float(cfg.get("offset_s", 0.0)),
++            "labels": [int(v) for v in labels] if labels else []}
++
++
++def _tt(x) -> torch.Tensor:
++    """Isaac Lab 3.0 の配列（ProxyArray・warp）を torch に（torch の配列はそのまま）"""
++    if isinstance(x, torch.Tensor):
++        return x
++    if hasattr(x, "torch"):
++        return x.torch
++    import warp as wp  # noqa: PLC0415
++
++    return wp.to_torch(x)
++
++
++def euler_from_quat_xyzw(q: torch.Tensor):
++    """(yaw, roll, pitch)。ZYX の並び"""
++    x, y, z, w = q.unbind(-1)
++    yaw = torch.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
++    roll = torch.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
++    pitch = torch.asin(torch.clamp(2 * (w * y - z * x), -1.0, 1.0))
++    return yaw, roll, pitch
++
++
++def quat_xyzw_from_euler(yaw, roll, pitch) -> torch.Tensor:
++    cy, sy = torch.cos(yaw / 2), torch.sin(yaw / 2)
++    cr, sr = torch.cos(roll / 2), torch.sin(roll / 2)
++    cp, sp = torch.cos(pitch / 2), torch.sin(pitch / 2)
++    w = cr * cp * cy + sr * sp * sy
++    x = sr * cp * cy - cr * sp * sy
++    y = cr * sp * cy + sr * cp * sy
++    z = cr * cp * sy - sr * sp * cy
++    return torch.stack([x, y, z, w], dim=-1)
++
++
++def rotvec_to_target(q: torch.Tensor, q_t: torch.Tensor) -> torch.Tensor:
++    """今の向き q から目標 q_t への回り（世界の座標の回転ベクトル）。四元数は xyzw"""
++    x, y, z, w = q.unbind(-1)
++    xt, yt, zt, wt = q_t.unbind(-1)
++    # q_err = q_t ⊗ conj(q)
++    ew = wt * w + xt * x + yt * y + zt * z
++    ex = -wt * x + xt * w - yt * z + zt * y
++    ey = -wt * y + xt * z + yt * w - zt * x
++    ez = -wt * z - xt * y + yt * x + zt * w
++    sign = torch.where(ew < 0, -1.0, 1.0)
++    ew, ex, ey, ez = ew * sign, ex * sign, ey * sign, ez * sign
++    s = torch.sqrt(torch.clamp(ex * ex + ey * ey + ez * ez, min=1e-12))
++    ang = 2 * torch.atan2(s, ew)
++    return torch.stack([ex, ey, ez], dim=-1) * (ang / s)[..., None]
++
++
++class PelvisReplay:
++    """control_step(env) を台本の教師の apply の直後に、physics_substep(env) を物理 1 回ごと（力を掛ける所）に、
++    reset(env, env_ids) を回の戻しで呼ぶ"""
++
++    def __init__(self, env, cfg: dict) -> None:
++        z = np.load(cfg["file"])
++        labels, d = np.asarray(z["labels"]), np.asarray(z["d"], dtype=np.float32)
++        if cfg["labels"]:
++            keep = np.isin(labels, cfg["labels"])
++            assert keep.any(), f"pelvis_replay.labels {cfg['labels']} が file に無い（{labels.tolist()}）"
++            labels, d = labels[keep], d[keep]
++        self.cfg, self.method = cfg, cfg["method"]
++        self.dev = env.device
++        self.labels = labels
++        self.R, self.M = d.shape[0], d.shape[1]
++        self.dt_traj = float(z["t"][1] - z["t"][0])
++        self.d = torch.as_tensor(d, device=self.dev)
++        v = np.gradient(d, self.dt_traj, axis=1)
++        self.v = torch.as_tensor(v.astype(np.float32), device=self.dev)
++        n = env.num_envs
++        self.run = torch.arange(n, device=self.dev) % self.R
++        self.phase = torch.zeros(n, dtype=torch.long, device=self.dev)  # 0 切・1 止める・2 再生
++        self.t0 = torch.zeros(n, device=self.dev)
++        self.p0 = torch.zeros(n, 6, device=self.dev)  # x, y, z（台の原点から）・yaw・roll・pitch
++        self.err_max = torch.zeros(n, device=self.dev)  # 再生中の pelvis の水平のずれの最大 [m]
++        self.t_ctrl = torch.zeros(n, device=self.dev)
++        self.sub_k = 0
++        self.phys_dt = float(env.dt) / float(env.config.simulator.config.sim.control_decimation)
++        self.robot = env.simulator._robot
++        self.door = env.simulator.scene.articulations["door"]
++        self.door_pose0 = _tt(self.door.data.root_link_pose_w).clone()  # 扉の根元（世界・xyzw）
++        print(f"[pelvis_replay] 方法 {self.method}・回 {labels.tolist()}（台 i は回 i % {self.R}）・{self.M} 点・"
++              f"止めるのは {SUBS[cfg['hold_from']]} から・再生は {SUBS[cfg['start_sub']]} から・kp {cfg['kp']}", flush=True)
++
++    # --- 毎歩（台本の教師の apply の直後） ---
++    def control_step(self, env) -> None:
++        sub = env._script_teacher.sub_code
++        t = env.episode_length_buf.to(torch.float32) * float(env.dt)
++        alive = (sub >= 0) & (sub <= LAST_ACTIVE_SUB)
++        new_hold = (self.phase == 0) & alive & (sub >= self.cfg["hold_from"])
++        if new_hold.any():
++            pos, yaw, roll, pitch = self._robot_pose(env)
++            self.p0[new_hold] = torch.stack([pos[:, 0], pos[:, 1], pos[:, 2], yaw, roll, pitch], dim=-1)[new_hold]
++            self.phase[new_hold] = 1
++        start = (self.phase == 1) & alive & (sub >= self.cfg["start_sub"])
++        self.t0[start] = t[start]
++        self.phase[start] = 2
++        self.t_ctrl = t
++        self.sub_k = 0
++
++    def _robot_pose(self, env):
++        pose = _tt(self.robot.data.root_link_pose_w)
++        pos = pose[:, :3] - env.env_origins
++        yaw, roll, pitch = euler_from_quat_xyzw(pose[:, 3:7])
++        return pos, yaw, roll, pitch
++
++    def _delta(self, t_now: torch.Tensor):
++        """(差 (n,5), 速さ (n,5))。再生中でない台は 0"""
++        rel = (torch.clamp(t_now - self.t0, min=0.0) + self.cfg["offset_s"]) / self.dt_traj  # 0113c: 記録の途中から
++        i0 = torch.clamp(rel.floor().long(), 0, self.M - 1)
++        i1 = torch.clamp(i0 + 1, max=self.M - 1)
++        w = (rel - rel.floor()).clamp(0.0, 1.0)[:, None]
++        d = (1 - w) * self.d[self.run, i0] + w * self.d[self.run, i1]
++        if self.cfg["offset_s"] > 0.0:  # 0113c: 途中から再生する時は、その点からの差にする
++            k0 = min(int(round(self.cfg["offset_s"] / self.dt_traj)), self.M - 1)
++            d = d - self.d[self.run, k0]
++        v = (1 - w) * self.v[self.run, i0] + w * self.v[self.run, i1]
++        v = torch.where((i0 >= self.M - 1)[:, None], torch.zeros_like(v), v)
++        on = (self.phase == 2)[:, None]
++        return torch.where(on, d, torch.zeros_like(d)), torch.where(on, v, torch.zeros_like(v))
++
++    # --- 物理 1 回ごと ---
++    def physics_substep(self, env) -> None:
++        active = self.phase > 0
++        if not bool(active.any()):
++            return
++        t_end = self.t_ctrl + (self.sub_k + 1) * self.phys_dt  # この物理 1 回の終わりの時刻
++        self.sub_k += 1
++        d, v = self._delta(t_end)
++        robot_d = d if self.method == "vel" else torch.zeros_like(d)
++        robot_v = v if self.method == "vel" else torch.zeros_like(v)
++        pos, yaw, roll, pitch = self._robot_pose(env)
++        tx, ty = self.p0[:, 0] + robot_d[:, 0], self.p0[:, 1] + robot_d[:, 1]
++        kp, kr = self.cfg["kp"], self.cfg["kp_rot"]
++        lin = torch.stack([robot_v[:, 0] + kp * (tx - pos[:, 0]), robot_v[:, 1] + kp * (ty - pos[:, 1]),
++                           kp * (self.p0[:, 2] - pos[:, 2])], dim=-1)
++        q = _tt(self.robot.data.root_link_pose_w)[:, 3:7]
++        q_t = quat_xyzw_from_euler(self.p0[:, 3] + robot_d[:, 2], self.p0[:, 4] + robot_d[:, 3], self.p0[:, 5] + robot_d[:, 4])
++        ang = kr * rotvec_to_target(q, q_t)
++        ang[:, 2] = ang[:, 2] + robot_v[:, 2]
++        ids = torch.nonzero(active, as_tuple=False).flatten()
++        vel = torch.cat([lin, ang], dim=-1)[ids].to(torch.float32).contiguous()
++        self.robot.write_root_link_velocity_to_sim_index(root_velocity=vel, env_ids=ids)
++        err = torch.hypot(tx - pos[:, 0], ty - pos[:, 1])
++        self.err_max = torch.where(self.phase == 2, torch.maximum(self.err_max, err), self.err_max)
++        if self.method == "door":
++            self._move_door(env, d, ids)
++
++    def _move_door(self, env, d: torch.Tensor, ids: torch.Tensor) -> None:
++        """扉の根元を、止めた pelvis から見て pelvis が 止めた姿勢 ＋ 差 に見える所へ置く（平面の剛体変換）。
++        扉の根元 T ＝ p0 ⊗ (p0 ⊕ 差)⁻¹（扉の初めの姿勢は台の原点・向き 0）"""
++        x0, y0, th0 = self.p0[:, 0], self.p0[:, 1], self.p0[:, 3]
++        xq, yq, thq = x0 + d[:, 0], y0 + d[:, 1], th0 + d[:, 2]
++        c, s = torch.cos(thq), torch.sin(thq)
++        ix, iy = -(c * xq + s * yq), -(-s * xq + c * yq)  # q⁻¹ の位置
++        c0, s0 = torch.cos(th0), torch.sin(th0)
++        px, py = x0 + c0 * ix - s0 * iy, y0 + s0 * ix + c0 * iy
++        th = th0 - thq
++        pose = self.door_pose0.clone()
++        pose[:, 0] = env.env_origins[:, 0] + px
++        pose[:, 1] = env.env_origins[:, 1] + py
++        zero = torch.zeros_like(th)
++        pose[:, 3:7] = quat_xyzw_from_euler(th, zero, zero)
++        self.door.write_root_link_pose_to_sim_index(root_pose=pose[ids].to(torch.float32).contiguous(), env_ids=ids)
++
++    def door_root_planar(self, env, n: int) -> np.ndarray:
++        """台本の教師が pelvis を扉の座標で読むための、扉の根元の (x, y, yaw)（台の原点から）。方法 door の時だけ使う"""
++        pose = _tt(self.door.data.root_link_pose_w)[:n]
++        yaw, _, _ = euler_from_quat_xyzw(pose[:, 3:7])
++        xy = pose[:, :2] - env.env_origins[:n, :2]
++        return torch.cat([xy, yaw[:, None]], dim=-1).detach().cpu().numpy().astype(float)
++
++    def reset(self, env, env_ids) -> None:
++        ids = torch.as_tensor(env_ids, device=self.dev, dtype=torch.long)
++        if self.method == "door" and len(ids):
++            moved = ids[self.phase[ids] > 0]
++            if len(moved):
++                self.door.write_root_link_pose_to_sim_index(root_pose=self.door_pose0[moved].contiguous(), env_ids=moved)
++        self.phase[ids] = 0
++        self.t0[ids] = 0.0
++        self.err_max[ids] = 0.0
++
++    def summary(self, i: int) -> dict:
++        """回ごとの結果に足す値（台本の教師の JSON Lines）"""
++        return {"replay_label": int(self.labels[int(self.run[i])]), "replay_method": self.method,
++                "replay_err_max_cm": round(100 * float(self.err_max[i]), 2), "replay_phase": int(self.phase[i])}
+diff --git a/gr00t/rl/envs/door/script_teacher.py b/gr00t/rl/envs/door/script_teacher.py
+index 4831546..240554b 100644
+--- a/gr00t/rl/envs/door/script_teacher.py
++++ b/gr00t/rl/envs/door/script_teacher.py
+@@ -56,7 +56,8 @@ def script_teacher_config(cfg) -> dict | None:
+     return {"dir": d, "params": params, "urdf": urdf, "frac": frac, "out": None if out is None else str(out),
+             "stop_after": None if stop_after is None else str(stop_after), "walk": bool(cfg.get("walk", False)),
+             "trace": int(cfg.get("trace", 0)), "tau": bool(cfg.get("tau", False)), "twist": bool(cfg.get("twist", False)),
+-            "tau_src": str(cfg.get("tau_src", "env"))}
++            "tau_src": str(cfg.get("tau_src", "env")),
++            "init_arm": None if cfg.get("init_arm", None) is None else [float(v) for v in cfg.get("init_arm")]}
+ 
+ 
+ def quat_xyzw_to_wxyz(q: np.ndarray) -> np.ndarray:
+@@ -103,6 +104,14 @@ class ScriptTeacher:
+         if float(getattr(self.params, "lean_deg", 0.0)) > 0.0:
+             print(f"[script_teacher] ⚠️ 定数の lean_deg {self.params.lean_deg}° はシムでは入れない（腰 pitch の口が無い）")
+         self.pairs: list = [[] for _ in range(self.n)]   # 0111: (小段, 見積もり xyz, 接触 xyz, 手のひらの原点で解いた見積もり xyz)
++        self.extra_summary = None  # 0113: 回ごとの結果に足す値（pelvis_replay.summary）
++        # 0114: 台ごとの手の力（扉の座標・N）。台本の見積もり（実機と同じ）と接触センサ。押されて下がる脚（loco_push）が読む
++        self.hand_f_t = torch.full((env.num_envs, 3), float("nan"), device=env.device)
++        self.hand_c_t = torch.full((env.num_envs, 3), float("nan"), device=env.device)
++        # 0113b: 回の始めの腕の目標（SDK の並びの左腕 7・右腕 7）。実機の純正の腕を下ろした形に寄せる
++        self.init_arm = cfg.get("init_arm", None)
++        assert self.init_arm is None or len(self.init_arm) == NUM_ARM, f"script_teacher.init_arm は 14 個: {self.init_arm}"
++        self.replay = None  # 0113: 方法 door の時は pelvis を扉の根元からの姿勢で読む
+         self.hf_palm: list = [None] * self.n             # 0111: 比べ用に、力の掛かる点を手のひらの原点にした見積もり
+         try:
+             import hand_force as hfm  # noqa: PLC0415
+@@ -131,6 +140,8 @@ class ScriptTeacher:
+         if s is None or s["steps"] == 0:
+             return
+         s["last_sub"] = s["subs"][-1][0] if s["subs"] else ""
++        if self.extra_summary is not None:  # 0113
++            s.update(self.extra_summary(i))
+         s["hand_force"] = self._force_summary(i)
+         if self.cfg["out"]:
+             with open(self.cfg["out"], "a") as f:
+@@ -195,12 +206,20 @@ class ScriptTeacher:
+         cf = getattr(env.simulator, "object_to_hand_contact_forces", None) if self.cfg["tau"] else None
+         cf = None if cf is None else cf[:n].detach().cpu().numpy().astype(float)
+         dt = float(env.dt)
++        f_est_all = np.full((n, 3), np.nan)  # 0114
++        f_con_all = np.full((n, 3), np.nan)
++        door_root = (self.replay.door_root_planar(env, n)  # 0113: 方法 door は扉が動く
++                     if self.replay is not None and self.replay.method == "door" else None)
+         for i in range(n):
+             if self.arms[i] is None:
+                 self._new(env, i)
+             arm, st = self.arms[i], self.stats[i]
+             quat = quat_xyzw_to_wxyz(root[i, 3:7])
+             pose = self.dfr.PlanarPose(root[i, 0] - origin[i, 0], root[i, 1] - origin[i, 1], self.dfr.yaw_from_quat_wxyz(quat))
++            if door_root is not None:  # 0113: 扉の根元からの姿勢（平面）
++                dx, dy, dyaw = pose.x - door_root[i, 0], pose.y - door_root[i, 1], door_root[i, 2]
++                c, s_ = math.cos(dyaw), math.sin(dyaw)
++                pose = self.dfr.PlanarPose(c * dx + s_ * dy, -s_ * dx + c * dy, pose.yaw - dyaw)
+             arm.pelvis_z = root[i, 2] - origin[i, 2]
+             if st["steps"] == 0:
+                 st["start"] = [round(pose.x, 4), round(pose.y, 4), round(math.degrees(pose.yaw), 2)]
+@@ -228,6 +247,7 @@ class ScriptTeacher:
+                     self.pairs[i].append((out.sub, *f_est, *f_true, *f_palm))
+             else:
+                 f_true, f_est = np.full(3, np.nan), np.full(3, np.nan)
++            f_est_all[i], f_con_all[i] = f_est, f_true  # 0114
+             if self.cfg["twist"]:  # 0111: 腰 yaw のひねりを台本の値へ、速さの上限で寄せる
+                 goal = float(getattr(out, "waist_twist", 0.0))
+                 step = float(self.params.twist_rate) * dt
+@@ -244,7 +264,11 @@ class ScriptTeacher:
+             st["success"] = st["success"] or bool(out.success)
+             self.sub_code[i] = self.dscr.SUBS.index(out.sub) if out.sub in self.dscr.SUBS else -1
+             if self.hold[i] is None:  # 回の始め: 今の角度を保つ目標から（方策の出力は腕に通さない）
+-                self.hold[i] = (q_sim[i, self.num_lower:self.num_lower + NUM_ARM]
++                q_hold = q_sim[i].copy()
++                if self.init_arm is not None:  # 0113b: 実機の始めの腕の形へ寄せる（2a の間に PD で動く）
++                    for k in range(NUM_ARM):
++                        q_hold[int(self.sim_from_real[15 + k])] = self.init_arm[k]
++                self.hold[i] = (q_hold[self.num_lower:self.num_lower + NUM_ARM]
+                                 - default[i, self.num_lower:self.num_lower + NUM_ARM]) / self.action_scale
+             D[i, ARM_ACCUM_START:ARM_ACCUM_START + NUM_ARM] = self.hold[i]
+             D[i, 0:ARM_ACCUM_START] = 0.0  # 脚は立ったまま（方策の歩きは通さない。台本が歩く時だけ下で書く）
+@@ -269,6 +293,8 @@ class ScriptTeacher:
+                 sc = float(env.config.homie_command_scale)
+                 if moving:
+                     D[i, 0:3] = np.array([vx / 2.0, vy / 2.0, wz / 0.5]) / sc
++        self.hand_f_t[:n] = torch.as_tensor(f_est_all, dtype=torch.float32, device=env.device)  # 0114
++        self.hand_c_t[:n] = torch.as_tensor(f_con_all, dtype=torch.float32, device=env.device)
+         if changed.any():
+             ids = torch.as_tensor(np.flatnonzero(changed), device=env.device)
+             new = torch.as_tensor(D[changed], dtype=env._delta_actions.dtype, device=env.device)
+-- 
+2.43.0
+

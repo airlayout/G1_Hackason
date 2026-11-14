@@ -1,0 +1,55 @@
+From 56ca33089c9a58cfca9c952c738faa4746a81b4b Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Sat, 14 Nov 2026 10:46:37 +0900
+Subject: [PATCH] door: command following pelvis slows forward and turns toward
+ the lever side with the pushed back hand force (0113f, a guess;
+ cmd_follow.fwd_per_n and turn_per_n, since without them the door opened to 30
+ deg in 3 s with the run 1 form while the real door stopped at 8 deg; the real
+ pelvis advanced only 0.027 m/s at a 0.2 m/s command while pushing 6 to 12 N
+ and turned 36 deg, and turned 29 deg per s against a full opposite yaw
+ command; default 0 = unchanged) (11-14)
+
+---
+ gr00t/rl/envs/door/pelvis_replay.py | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/pelvis_replay.py b/gr00t/rl/envs/door/pelvis_replay.py
+index 2a9624a..4df2439 100644
+--- a/gr00t/rl/envs/door/pelvis_replay.py
++++ b/gr00t/rl/envs/door/pelvis_replay.py
+@@ -18,7 +18,10 @@ env.config.pelvis_replay（無い・enabled=False なら元のまま）:
+   cmd_follow（0113e・⚠️ 推測: release_sub で放す代わりに、pelvis を「純正の脚の応え方」で動かす。台本の歩きの指令を遅れ delay_s・
+   倍率 gain・効かない帯 dead（前後と横 [m/s]）で pelvis の速さにし、手の押し返し（台本の見積もりの −前後）が f_th を越えたら back_s 秒
+   back_v で下がる。sway_label を渡すと、放した時にその回の記録の最初の sway_s 秒の横・向きの動きを足す（3a を脚を止めて回した時の
+-  3c の歩き出しの揺れ）。HOMIE の脚だけだと 3c の歩き出しに 4〜9 cm 後ろへ下がり、0.2 m/s ではほとんど前へ出なかった（11-14 g_ga_off））。
++  3c の歩き出しの揺れ）。fwd_per_n: 押し返し 1 N あたり前の速さを落とす [m/s/N]・turn_per_n: 押し返し 1 N あたり把手の側へ回る [rad/s/N]
++  （11-13 朝の 1 回目: 0.2 m/s の指令で押す力 6〜12 N の間 0.027 m/s しか進まず +36° 回された。15 回目: 3.8 秒で +28°。
++  回りの指令を上限 −1.0 rad/s にしても毎秒 29° 回された）。HOMIE の脚だけだと 3c の歩き出しに 4〜9 cm 後ろへ下がり、0.2 m/s では
++  ほとんど前へ出なかった（11-14 g_ga_off）。押し返しの効きを入れないと、扉は 3 秒で 30° 開いた（実機は 8°。g2_ga））。
+   台 i は回 i % 回の数 を再生する
+ """
+ 
+@@ -56,7 +59,8 @@ def pelvis_replay_config(cfg) -> dict | None:
+         assert release is not None, "pelvis_replay.cmd_follow には release_sub が要る（そこから指令に沿わせる）"
+         cmd = {"gain": float(cf.get("gain", 0.6)), "delay_s": float(cf.get("delay_s", 0.26)), "dead": float(cf.get("dead", 0.1)),
+                "wz_gain": float(cf.get("wz_gain", 0.6)), "f_th": float(cf.get("f_th", 30.0)), "back_v": float(cf.get("back_v", -0.2)),
+-               "back_s": float(cf.get("back_s", 0.5)), "sway_label": cf.get("sway_label", None), "sway_s": float(cf.get("sway_s", 0.8))}
++               "back_s": float(cf.get("back_s", 0.5)), "sway_label": cf.get("sway_label", None), "sway_s": float(cf.get("sway_s", 0.8)),
++               "fwd_per_n": float(cf.get("fwd_per_n", 0.0)), "turn_per_n": float(cf.get("turn_per_n", 0.0))}
+         assert 0 < cmd["gain"] <= 1.5 and cmd["delay_s"] >= 0 and cmd["back_v"] <= 0 and cmd["f_th"] > 0, f"cmd_follow の値: {cf}"
+     return {"cmd_follow": cmd, "release_sub": None if release is None else SUBS.index(str(release)),"file": f, "method": method, "hold_from": SUBS.index(hold_from), "start_sub": SUBS.index(start_sub),
+             "kp": float(cfg.get("kp", 20.0)), "kp_rot": float(cfg.get("kp_rot", 20.0)),
+@@ -203,6 +207,10 @@ class PelvisReplay:
+         v = torch.where(late[:, :2].abs() >= c["dead"], late[:, :2] * c["gain"], torch.zeros_like(late[:, :2]))
+         wz = late[:, 2] * c["wz_gain"]
+         f_back = torch.nan_to_num(-env._script_teacher.hand_f_t[:, 0], nan=0.0)
++        push = torch.clamp(f_back, min=0.0)
++        lr = torch.where(env.door_open_lr > 0, 1.0, -1.0).to(push.dtype)  # 把手が左なら左（+yaw）へ回される
++        v[:, 0] = v[:, 0] - c["fwd_per_n"] * push  # 押すほど前へ出ない（11-13 朝の 1 回目）
++        wz = wz + c["turn_per_n"] * push * lr     # 押し返しで体が把手の側へ回される
+         on = self.phase == 4
+         start = on & (f_back > c["f_th"]) & (t >= self.back_until)
+         self.back_until = torch.where(start, t + c["back_s"], self.back_until)
+-- 
+2.43.0
+
