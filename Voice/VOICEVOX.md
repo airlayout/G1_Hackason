@@ -26,6 +26,7 @@ G1 内蔵の TTS（`AudioClient.TtsMaker`）は**日本語を読めない**（�
 リポジトリの一番上（`G1_Hackason/`）で、操作PCのターミナルから:
 
 ```bash
+bash Voice/say.sh "こんにちは"                       # いちばん手軽: 白上虎太郎「わーい」（32）で喋らせる（STYLE=11 などで声を変える）
 PY=~/voicevox_core/venv/bin/python
 $PY Voice/voicevox_speak.py --play "こんにちは。私はジーワンです"   # 作って送って鳴らす
 $PY Voice/voicevox_speak.py "こんにちは"            # 作って PC2 に送るだけ（鳴らすコマンドを出す）
