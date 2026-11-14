@@ -46,10 +46,10 @@ DEFAULT_CORE_DIR = Path.home() / "voicevox_core" / "voicevox_core"
 # 読み込む音声モデル（VVM）のファイル名パターン。既定は置いてあるもの全部。
 # 0.vvm = 四国めたん・ずんだもん・春日部つむぎ・雨晴はう、2.vvm = 九州そら、4.vvm = 玄野武宏・剣崎雌雄、9.vvm = 白上虎太郎
 DEFAULT_MODEL = "*.vvm"
-# 既定の声: 剣崎雌雄（ノーマル）を VOICEVOX の標準の高さ・抑揚で（2026-11-14 に実機で聞き比べて決めた。
-# 初めは少し低く（-0.06）・抑揚控えめ（0.8）にしていたが、標準のほうが明るく、大きく聞こえた）
+# 既定の声: 剣崎雌雄（ノーマル）を少し高く（0.05）、抑揚は VOICEVOX の標準で（2026-11-14 に実機で聞き比べて決めた。
+# 初めは少し低く（-0.06）・抑揚控えめ（0.8）にしていたが、標準のほうが明るく、大きく聞こえた。そこから少し上げた）
 DEFAULT_STYLE = 21
-DEFAULT_PITCH = 0.0
+DEFAULT_PITCH = 0.05
 DEFAULT_INTONATION = 1.0
 DEFAULT_HOST = "unitree@192.168.0.82"   # PC2 の Wi-Fi 側。有線なら --host unitree@192.168.123.164
 REMOTE_DIR = "/tmp/g1_voice_tts"
