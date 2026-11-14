@@ -130,15 +130,23 @@ class PrintLocoBackend:
 
 
 class LegStillness:
-    """lowstate の脚 12 関節の角速度で、止まったかを見る（hold_s のあいだ続けて max_leg_dq_rad_s 以下なら止まった）。"""
+    """lowstate の脚 12 関節の角速度で、止まったかを見る（hold_s のあいだ続けて max_leg_dq_rad_s 以下なら止まった）。
+
+    max_leg_dq_rad_s を超えても、spike_s より短く、spike_max_dq_rad_s 以下で跳ねた値は動いたとみなさない（数え直さない）。
+    11/14 の実機: 止まって立っているのに、0.3〜0.5 秒おきに 1 回だけ 0.2〜0.3 rad/s が跳ね、そのたびに数え直して
+    寄る流れが timeout_s（6 秒）に届いて中止した。歩いている間は 1〜5 rad/s が続くので、跳ねとは区別できる。
+    """
 
     def __init__(self, reader: Any, cfg: dict[str, Any], now: Callable[[], float] = time.monotonic) -> None:
         self.reader = reader
         self.max_dq = float(cfg["max_leg_dq_rad_s"])
         self.hold_s = float(cfg["hold_s"])
         self.max_age_s = float(cfg.get("max_state_age_s", 0.2))
+        self.spike_s = float(cfg.get("spike_s", 0.0))
+        self.spike_max_dq = float(cfg.get("spike_max_dq_rad_s", self.max_dq))
         self.now = now
         self._since: float | None = None
+        self._over_since: float | None = None
 
     def is_still(self) -> bool:
         st = self.reader.latest()
@@ -146,10 +154,17 @@ class LegStillness:
         if st is None or t - float(st.stamp) > self.max_age_s:
             # lowstate が古い（届いていない）ときは、止まったとみなさない
             self._since = None
+            self._over_since = None
             return False
-        if float(np.abs(np.asarray(st.dq)[list(LEG_IDX)]).max()) > self.max_dq:
-            self._since = None
+        dq = float(np.abs(np.asarray(st.dq)[list(LEG_IDX)]).max())
+        if dq > self.max_dq:
+            if self._over_since is None:
+                self._over_since = t
+            if t - self._over_since >= self.spike_s or dq > self.spike_max_dq:
+                # spike_s 以上続けて超えた（spike_s が 0 なら、1 回でも超えた）か、跳ねにしては大きい: 動いている。数え直す
+                self._since = None
             return False
+        self._over_since = None
         if self._since is None:
             self._since = t
         return t - self._since >= self.hold_s

@@ -15,6 +15,9 @@ from common.config import FEATURE_DIR, load_config
 from common.loco import FakeLoco, LegStillness, LocoError, LocoMover, Pulse
 
 CFG = load_config("approach.yaml")["loco"]
+# 前へ 1 秒あたりに動く量と最小の時間（実機で測って変わるので、数字を書かずに設定から取る）
+RATE_FWD = float(CFG["axes"]["forward"]["rate"])
+MIN_S_FWD = float(CFG["axes"]["forward"]["min_duration_s"])
 
 
 def mover(fake: FakeLoco | None = None, cfg: dict | None = None, go: bool = True,
@@ -30,14 +33,15 @@ class TestPlan(unittest.TestCase):
         m, _, _ = mover()
         p = m.plan("forward", 0.20)
         self.assertEqual((p.vx, p.vy, p.wz), (0.30, 0.0, 0.0))
-        self.assertAlmostEqual(p.duration_s, 0.20 / 0.23)
+        self.assertAlmostEqual(p.duration_s, 0.20 / RATE_FWD)
 
     def test_large_is_capped_and_small_is_skipped(self) -> None:
         m, _, _ = mover()
         self.assertEqual(m.plan("forward", 0.80).duration_s, 1.0)  # 1 回では足りない。呼ぶ側が測り直して続ける
-        self.assertAlmostEqual(m.plan("forward", 0.08).duration_s, 0.5)  # 最小の時間（約 11.5 cm 動く）
-        self.assertIsNone(m.plan("forward", 0.05))  # 最小の半分より小さいずれは直さない
-        self.assertAlmostEqual(m.min_step("forward"), 0.115)
+        step = RATE_FWD * MIN_S_FWD  # 最小の 1 回で動く量（0.21 × 0.5 = 約 10.5 cm）
+        self.assertAlmostEqual(m.plan("forward", step * 0.8).duration_s, MIN_S_FWD)  # 最小より小さくても半分以上なら最小の時間
+        self.assertIsNone(m.plan("forward", step * 0.45))  # 最小の半分より小さいずれは直さない
+        self.assertAlmostEqual(m.min_step("forward"), step)
 
     def test_sides_and_turns(self) -> None:
         m, _, _ = mover()
@@ -79,11 +83,12 @@ class TestCheck(unittest.TestCase):
 
     def test_forward_total(self) -> None:
         m, fake, _ = mover()
-        for _ in range(6):  # 1 回 0.23 m で、上限 1.5 m
+        n = int(float(CFG["limits"]["max_forward_total_m"]) // RATE_FWD)  # 1 回 RATE_FWD m（1 秒）で、上限 1.5 m
+        for _ in range(n):
             m.pulse(m.plan("forward", 0.5))
         with self.assertRaises(LocoError):
             m.pulse(m.plan("forward", 0.5))
-        self.assertEqual(len(fake.calls), 6)
+        self.assertEqual(len(fake.calls), n)
 
 
 class TestPulse(unittest.TestCase):
@@ -98,11 +103,12 @@ class TestPulse(unittest.TestCase):
         m, fake, _ = mover(FakeLoco(rate_ratio=0.75, tail_s=1.9))
         r = m.pulse(m.plan("forward", 0.20))
         self.assertTrue(r.sent and r.stopped)
-        # 指令の時間（0.87 秒）＋歩き終わり（1.9 秒）が過ぎるまで待った
-        self.assertGreaterEqual(r.settle_s, 0.87 + 1.9 - 1e-6)
-        self.assertLess(r.settle_s, 0.87 + 1.9 + 0.1)
-        self.assertAlmostEqual(fake.pose[0], 0.75 * 0.30 * (0.20 / 0.23), places=6)
-        self.assertEqual(fake.calls[0][3], 0.20 / 0.23)  # duration を明示して送った
+        dur = 0.20 / RATE_FWD
+        # 指令の時間（約 0.95 秒）＋歩き終わり（1.9 秒）が過ぎるまで待った
+        self.assertGreaterEqual(r.settle_s, dur + 1.9 - 1e-6)
+        self.assertLess(r.settle_s, dur + 1.9 + 0.1)
+        self.assertAlmostEqual(fake.pose[0], 0.75 * 0.30 * dur, places=6)
+        self.assertEqual(fake.calls[0][3], dur)  # duration を明示して送った
 
     def test_not_stopping_sends_stop(self) -> None:
         class Never:
@@ -194,6 +200,44 @@ class TestLegStillness(unittest.TestCase):
         self.assertTrue(res)  # 0.1 秒から 0.55 秒以上続いた
         clock[0] = 1.5
         self.assertFalse(still.is_still())  # lowstate が古い
+
+    def _run(self, still: LegStillness, reader: "_Reader", clock: list[float], seq: list[tuple[float, float]]) -> float | None:
+        """(時刻, 膝の角速度) を順に流し、止まったとみなした最初の時刻を返す（無ければ None）。"""
+        for t, v in seq:
+            dq = np.zeros(29)
+            dq[3] = v
+            clock[0] = t
+            reader.state = _State(dq, t)
+            if still.is_still():
+                return t
+        return None
+
+    def test_short_spike_is_ignored(self) -> None:
+        """止まって立っていても 1 回だけ跳ねる値（11/14 の実機で 0.2〜0.46 rad/s）では数え直さない。"""
+        clock = [0.0]
+        reader = _Reader()
+        still = LegStillness(reader, CFG["still"], now=lambda: clock[0])
+        # 1/16 秒おき（時刻の足し算で丸めの誤差が出ないように）。0.125 秒・0.375 秒に 1 回ずつ 0.3 rad/s が跳ねる
+        seq = [(i / 16, 0.3 if i in (2, 6) else 0.03) for i in range(24)]
+        self.assertEqual(self._run(still, reader, clock, seq), 0.5)  # 0.0 秒から 0.5 秒続いた
+        # 跳ねを無視しない判定（spike_s 0）では、0.4375 秒から数え直して 0.9375 秒になる
+        clock = [0.0]
+        still = LegStillness(reader, dict(CFG["still"], spike_s=0.0), now=lambda: clock[0])
+        self.assertEqual(self._run(still, reader, clock, seq), 0.9375)
+
+    def test_long_or_large_is_motion(self) -> None:
+        """続けて超える（歩き終わり）か、跳ねにしては大きい値（歩いている）なら、短くても数え直す。"""
+        clock = [0.0]
+        reader = _Reader()
+        still = LegStillness(reader, CFG["still"], now=lambda: clock[0])
+        # 0.1875〜0.3125 秒の 3 回続けて 0.3 rad/s（0.125 秒続いた）→ 数え直し、0.375 秒から 0.5 秒で 0.875 秒
+        seq = [(i / 16, 0.3 if i in (3, 4, 5) else 0.03) for i in range(24)]
+        self.assertEqual(self._run(still, reader, clock, seq), 0.875)
+        clock = [0.0]
+        still = LegStillness(reader, CFG["still"], now=lambda: clock[0])
+        # 0.1875 秒に 1 回だけ 1.5 rad/s → 数え直し、0.25 秒から 0.5 秒で 0.75 秒
+        seq = [(i / 16, 1.5 if i == 3 else 0.03) for i in range(24)]
+        self.assertEqual(self._run(still, reader, clock, seq), 0.75)
 
 
 # 同じプロセスで別の口の DDS を初期化すると、ほかのテストとぶつかるので、別のプロセスで動かす
