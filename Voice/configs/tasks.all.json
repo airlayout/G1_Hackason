@@ -1,0 +1,35 @@
+{
+  "min_similarity": 0.65,
+  "min_margin": 0.0,
+  "tasks": [
+    {
+      "id": "wave_hand",
+      "action": "sdk_arm_action",
+      "arguments": {"preset": "high wave"},
+      "descriptions": ["手を振って。", "手を振ってください。", "手を振って挨拶してください。"]
+    },
+    {
+      "id": "patrol_start",
+      "action": "patrol_start",
+      "arguments": {},
+      "descriptions": ["巡回を開始してください。", "見回りを始めてください。", "巡回を再開してください。"]
+    },
+    {
+      "id": "press_bottle",
+      "action": "press_bottle",
+      "arguments": {},
+      "descriptions": ["机の上のボトルを押してください。", "目の前のペットボトルを押して。"]
+    },
+    {
+      "id": "press_down",
+      "action": "press_down",
+      "arguments": {},
+      "descriptions": ["エレベーターの下向きの呼び出しボタンを押してください。", "車いす用の下ボタンを押して。"]
+    },
+    {
+      "id": "no_action",
+      "action": null,
+      "descriptions": ["何もしないで。そのまま待っていて。", "手を振らないで。", "巡回を始めないで。", "ボトルを押さないでください。", "エレベーターのボタンは押さないで。", "やめて。新しい指示を取り消します。", "こんにちは。今日はいい天気ですね。"]
+    }
+  ]
+}

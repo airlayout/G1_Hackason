@@ -90,6 +90,18 @@ class G1ArmActionClient:
                 (parent / "__init__.py").touch()
             path.write_text(source)
         marker = self.directory / "sdk-events.jsonl"
+        # ROS の PYTHONPATH を除去しても、専用 Python 内の SDK を使えることを確認する。
+        sdk_python = self.directory / "sdk-python"
+        sdk_python.write_text(
+            f"#!{sys.executable}\n"
+            "import os, runpy, sys\n"
+            "assert 'PYTHONPATH' not in os.environ\n"
+            "assert 'LD_LIBRARY_PATH' not in os.environ\n"
+            f"sys.path.insert(0, {str(sdk)!r})\n"
+            "sys.argv = sys.argv[1:]\n"
+            "runpy.run_path(sys.argv[0], run_name='__main__')\n"
+        )
+        sdk_python.chmod(0o700)
         backend = CommandBackend()
         runtime = ToolRuntime(self.specs, {"command": backend})
         server = ToolServer(self.directory / "tools.sock", runtime, execute=True)
@@ -102,8 +114,9 @@ class G1ArmActionClient:
                                    for task in self.catalog.tasks for _ in range(task.reference_count)])
             controller = VoiceController(encoder, TaskRouter(self.catalog, references), runtime,
                                          self.directory / "runs", ToolClient(server.path, timeout_s=23))
-            with patch.dict(os.environ, {"VOICE_SDK_PYTHON": sys.executable, "VOICE_SDK_INTERFACE": "eth0",
-                                         "PYTHONPATH": str(sdk), "WAVE_TEST_MARKER": str(marker)}):
+            with patch.dict(os.environ, {"VOICE_SDK_PYTHON": str(sdk_python), "VOICE_SDK_INTERFACE": "eth0",
+                                         "PYTHONPATH": "/unused/ros-python", "LD_LIBRARY_PATH": "/unused/ros-libs",
+                                         "WAVE_TEST_MARKER": str(marker)}):
                 result = controller.process(Segment(np.full(6400, 0.1, dtype=np.float32), time.monotonic()))
                 self.assertEqual(result["decision"]["task_id"], "wave_hand")
                 self.assertTrue(result["tool_result"]["success"], result)

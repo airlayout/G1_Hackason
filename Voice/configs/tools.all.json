@@ -1,0 +1,48 @@
+{
+  "tools": [
+    {
+      "name": "sdk_arm_action",
+      "description": "停止中の G1 で手振りプリセット high wave を実行する。",
+      "backend": "command",
+      "config": {
+        "cwd": "../..",
+        "argv": ["bash", "Voice/deploy/run_sdk_arm_action.sh", "--preset", "{preset}", "--execute"]
+      },
+      "input_schema": {"type": "object", "properties": {"preset": {"type": "string", "enum": ["high wave"]}}, "required": ["preset"], "additionalProperties": false},
+      "timeout_s": 20,
+      "exclusive_group": "motion"
+    },
+    {
+      "name": "patrol_start",
+      "description": "準備済みの巡回を開始・再開する。",
+      "backend": "ros_service",
+      "config": {
+        "service": "/g1/patrol/start",
+        "service_type": "std_srvs/srv/Trigger",
+        "success_field": "success",
+        "confirm": {"topic": "/g1/patrol/status", "message_type": "std_msgs/msg/String", "json_field": "state", "allowed_values": ["RUNNING"]}
+      },
+      "input_schema": {"type": "object", "properties": {}, "additionalProperties": false},
+      "timeout_s": 5,
+      "exclusive_group": "motion"
+    },
+    {
+      "name": "press_bottle",
+      "description": "既存の事前確認と計画を通してボトルを押す。",
+      "backend": "command",
+      "config": {"cwd": "../..", "argv": ["bash", "Voice/deploy/run_button_action.sh", "bottle", "--execute"]},
+      "input_schema": {"type": "object", "properties": {}, "additionalProperties": false},
+      "timeout_s": 300,
+      "exclusive_group": "motion"
+    },
+    {
+      "name": "press_down",
+      "description": "既存の事前確認と計画を通して車いす用の下ボタンを押す。",
+      "backend": "command",
+      "config": {"cwd": "../..", "argv": ["bash", "Voice/deploy/run_button_action.sh", "down", "--button-set", "wheelchair", "--detector", "yolo", "--execute"]},
+      "input_schema": {"type": "object", "properties": {}, "additionalProperties": false},
+      "timeout_s": 300,
+      "exclusive_group": "motion"
+    }
+  ]
+}

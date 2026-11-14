@@ -115,7 +115,10 @@ class ContinuousListener:
         self.reporter.start()
 
     def feed(self, samples: np.ndarray, now: float) -> None:
-        if now - self.last_packet > 0.1:
+        # UDP は複数フレームをまとめて運ぶ。現在のパケットが含む音声時間を
+        # 差し引き、実際に音声が欠けた時間だけを受信途切れとして判定する。
+        packet_duration = len(samples) / self.segmenter.config.sample_rate
+        if now - self.last_packet - packet_duration > 0.1:
             self.segmenter.reset()
             while not self.pending.empty():
                 try:

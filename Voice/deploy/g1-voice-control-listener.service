@@ -1,0 +1,11 @@
+[Unit]
+Description=G1 onboard EmbeddingGemma voice control
+Requires=g1-voice-control-tools.service
+After=g1-voice-control-tools.service
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /home/unitree/g1-voice-control/src/Voice/deploy/control.sh listener
+TimeoutStopSec=15
+SuccessExitStatus=130
+Restart=no

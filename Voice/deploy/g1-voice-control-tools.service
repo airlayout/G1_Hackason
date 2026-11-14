@@ -1,0 +1,12 @@
+[Unit]
+Description=G1 voice tools (hand wave, patrol, button press)
+
+[Service]
+Type=notify
+NotifyAccess=all
+ExecStart=/bin/bash /home/unitree/g1-voice-control/src/Voice/deploy/control.sh tools
+TimeoutStartSec=30
+TimeoutStopSec=10
+KillMode=mixed
+SuccessExitStatus=130 143
+Restart=no

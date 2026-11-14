@@ -65,6 +65,23 @@ class VoiceControllerTests(unittest.TestCase):
 
 
 class ContinuousListenerTests(unittest.TestCase):
+    def test_160ms_microphone_packets_form_complete_utterance(self) -> None:
+        listener = ContinuousListener(Mock(client=None), EnergySegmenter(SegmentConfig()))
+        for index in range(7):
+            samples = np.full(2560, 0.2 if index < 3 else 0.0, dtype=np.float32)
+            listener.feed(samples, 10 + index * 0.16)
+        self.assertEqual(listener.pending.qsize(), 1)
+        segment = listener.pending.get_nowait()
+        self.assertAlmostEqual(len(segment.samples) / 16000, 0.5)
+
+    def test_missing_160ms_packet_discards_partial_utterance(self) -> None:
+        listener = ContinuousListener(Mock(client=None), EnergySegmenter(SegmentConfig()))
+        listener.feed(np.full(2560, 0.2, dtype=np.float32), 10)
+        listener.feed(np.full(2560, 0.2, dtype=np.float32), 10.16)
+        for index in range(4):
+            listener.feed(np.zeros(2560, dtype=np.float32), 10.48 + index * 0.16)
+        self.assertTrue(listener.pending.empty())
+
     def test_capture_continues_and_queue_is_bounded_while_inference_blocks(self) -> None:
         entered, release = threading.Event(), threading.Event()
         controller = Mock(client=None)

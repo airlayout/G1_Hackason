@@ -6,6 +6,47 @@ G1に喋らせる・G1のマイクで聞き取る機能全般。`SimpleWalk/`・
 音声はsim側で検証する意味が薄い（マイク・スピーカーの実機挙動そのものが対象のため）
 ので、`sim/`・`real/`のような分割はせず、**このフォルダ直下にコードを置く**。
 
+## 全操作をまとめた G1 上の実行環境
+
+`configs/tasks.all.json` と `configs/tools.all.json` は、手振り・巡回開始/再開・
+ボトル押し・車いす用の下ボタン押しを同じ待受から選択する設定。
+入力音声の embedding と、`tasks.all.json` の各ツールに対応する説明文
+（`descriptions`）の embedding を比較する。説明文の embedding は起動時に一度作る。
+`no_action` は新規指示の見送りであり、実行中の動作を停止する処理は含まない。
+
+G1 の `/home/unitree/g1-voice-control/` に専用環境を配置する構成では、
+`src/` に Voice と SDK ラッパー、`venv/` に推論環境、`tools-venv/` に ROS 用環境、
+`models/embeddinggemma-2/` にモデルを置く。内蔵マイクの受信・音声区間抽出・
+EmbeddingGemma 推論・タスク選択・ツール呼び出しは G1 内で行う。
+常駐時はモデル取得を行わず、操作 PC での推論や外部 API を必要としない。
+
+機体固有のパスは `environment` に記録する。ボタン押しには、機体で準備済みの
+`VOICE_BUTTON_REPO` と `VOICE_BUTTON_PYTHON` を使う。SDK/ボタン押しの子プロセスには
+ROS の Python パス・共有ライブラリ設定を引き継がない。
+巡回には、地図・自己位置・巡回路・走行許可を準備した既存 Navigation が必要。
+
+配置済みの G1 では次の入口を使う:
+
+```bash
+~/g1-voice-control/bin/voice start            # 音声を判定し、dry-run で結果を記録
+~/g1-voice-control/bin/voice logs             # 待受・判定・ツール結果を見る
+~/g1-voice-control/bin/voice status
+~/g1-voice-control/bin/voice stop
+```
+
+実行環境と機体側の各操作の前提を確認後、`voice start --execute` で実行モードに切り替える。
+起動時に専用の tools/listener service を停止してからモードを揃えて再起動する。
+自動起動・障害時の自動再起動は設定しない。
+推論期限の監視は、最大 300 秒のボタン押し呼び出しを含め 330 秒とする。
+発話の鮮度判定は従来どおり 5 秒で、古い発話を実行するための待ち行列は増やさない。
+
+機体で使うタスク設定は `config/tasks.all.json`。
+`min_similarity=0.65`、`min_margin=0` で、音声と説明文の類似度を判定する。
+0.65 以上の候補から 1 位を採用し、候補差での見送りは行わない。
+1 位が `no_action` の場合は新規動作を開始しない。
+確認用に録音した WAV は `reference-audio/` に保存し、動作確認の入力として使う。
+音声と説明文の比較結果は `config/verification-text.json` に保存する。
+
 ## 「手を振って」で SDK のプリセットを動かす
 
 手振り専用の `configs/tasks.wave.json` と `configs/tools.wave.json` を追加した。
@@ -345,7 +386,7 @@ Ctrl+C は既存タスクにも届き、その停止処理が終わるまで待�
 各タスクの説明文のうち最も高い類似度を使い、次の順で判定する:
 
 1. 最高スコアが `min_similarity` 未満なら見送る。
-2. 別タスクの 2 位との差が `min_margin` 未満なら、曖昧として見送る。
+2. `min_margin` が正の場合、別タスクの 2 位との差がそれ未満なら、曖昧として見送る。0 なら候補差の判定を省略する。
 3. 勝ったタスクの `action` が `null` なら見送る。それ以外は実行候補にする。
 
 **既定のしきい値 0.5 / 0.08 は未校正の初期値。** 日本語の実録音・話者の違い・雑音・

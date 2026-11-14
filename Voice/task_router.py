@@ -61,8 +61,6 @@ def load_catalog(path: Path) -> TaskCatalog:
         value = data.get(key)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
             raise ValueError(f"{key} は {low}〜{high} の数値にしてください")
-        if key == "min_margin" and value == 0:
-            raise ValueError("min_margin は 0 より大きくしてください")
         thresholds.append(float(value))
     rows = data.get("tasks")
     if not isinstance(rows, list) or len(rows) < 2:
@@ -125,7 +123,7 @@ class TaskRouter:
         first, second = candidates[:2]
         if first.score < self.catalog.min_similarity:
             reason = "low_similarity"
-        elif first.score - second.score < self.catalog.min_margin:
+        elif self.catalog.min_margin > 0 and first.score - second.score < self.catalog.min_margin:
             reason = "ambiguous"
         elif next(task for task in self.catalog.tasks if task.task_id == first.task_id).action is None:
             reason = "no_action"

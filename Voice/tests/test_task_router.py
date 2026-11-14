@@ -31,6 +31,12 @@ class TaskRouterTests(unittest.TestCase):
         self.assertIsNone(decision.task_id)
         self.assertEqual(decision.reason, "ambiguous")
 
+    def test_zero_margin_accepts_highest_ranked_close_candidate(self) -> None:
+        catalog = TaskCatalog(self.catalog.tasks, min_similarity=0.65, min_margin=0)
+        decision = TaskRouter(catalog, self.vectors).route(np.array([1, 1, 0]))
+        self.assertEqual(decision.task_id, "bottle")
+        self.assertEqual(decision.reason, "accepted")
+
     def test_low_similarity_is_rejected(self) -> None:
         self.assertEqual(self.router.route(np.array([-1, -1, -1])).reason, "low_similarity")
 
@@ -54,6 +60,15 @@ class TaskRouterTests(unittest.TestCase):
 
 
 class CatalogTests(unittest.TestCase):
+    def test_zero_margin_is_valid(self) -> None:
+        source = Path(__file__).resolve().parents[1] / "configs/tasks.all.json"
+        data = json.loads(source.read_text())
+        data["min_margin"] = 0
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tasks.json"
+            path.write_text(json.dumps(data))
+            self.assertEqual(load_catalog(path).min_margin, 0)
+
     def test_default_catalog_is_valid(self) -> None:
         catalog = load_catalog(Path(__file__).resolve().parents[1] / "configs/tasks.json")
         self.assertEqual([task.task_id for task in catalog.tasks], ["press_bottle", "press_down", "no_action"])
@@ -80,7 +95,7 @@ class CatalogTests(unittest.TestCase):
                       {"id": "none", "descriptions": ["待つ"], "action": None}],
         }
         cases = []
-        for key, value in (("min_similarity", float("nan")), ("min_margin", 0), ("min_margin", True), ("tasks", [])):
+        for key, value in (("min_similarity", float("nan")), ("min_margin", -0.01), ("min_margin", True), ("tasks", [])):
             cases.append({**valid, key: value})
         cases.append({**valid, "tasks": [valid["tasks"][0], valid["tasks"][0]]})
         cases.append({**valid, "tasks": [{"id": "bad", "descriptions": [], "action": None}, valid["tasks"][1]]})
