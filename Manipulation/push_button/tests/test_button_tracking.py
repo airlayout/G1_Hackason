@@ -460,6 +460,7 @@ def test_feedback_runtime_returns_on_first_new_lit_frame(monkeypatch,controller_
     assert actions == ['forward','lamp_return','retreat']
     assert result['lamp_early_return']['frames'][0]['level'] == 100.
     assert result['completed'] and result['release_completed']
+    json.dumps(result)
 
 
 def test_feedback_rpc_is_read_only_and_keeps_legacy_state_tuple():

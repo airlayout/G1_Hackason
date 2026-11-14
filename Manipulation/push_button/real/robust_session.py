@@ -329,6 +329,7 @@ def main(argv=None):
     parser.add_argument('--button-policy',choices=('standard','collection'))
     parser.add_argument('--button-feedback-timeout-s',type=float)
     parser.add_argument('--planning-budget-s',type=float,help='経路探索と物理検証の合計時間上限')
+    parser.add_argument('--arm-speed-multiplier',type=float,help='腕の接近・帰還の速度倍率（0.1〜10）')
     parser.add_argument('--readiness-policy',choices=('strict','collection'),default='strict',
         help='起動前の状態監視。実機バッシュはボトル共通のcollectionを使用')
     parser.add_argument('--deploy-only',action='store_true',help='G1へコードを転送して終了（動作なし）')
@@ -339,6 +340,8 @@ def main(argv=None):
         parser.error('ボタンには--push-distanceではなく--stroke-mmを指定してください')
     if args.task == 'bottle' and any(v is not None for v in (args.stroke_mm,args.button_direction,args.target_pixel,args.button_feedback,args.button_policy,args.button_feedback_timeout_s)):
         parser.error('ボタン用の引数には--task buttonが必要です')
+    if args.arm_speed_multiplier is not None and (args.task != 'button' or not math.isfinite(args.arm_speed_multiplier) or not 0.1 <= args.arm_speed_multiplier <= 10):
+        parser.error('--arm-speed-multiplierはボタン用の0.1〜10で指定してください')
     if args.stroke_mm is not None and (not math.isfinite(args.stroke_mm) or not 1.5 <= args.stroke_mm <= 15):
         parser.error('--stroke-mm must be between 1.5 and 15mm')
     if args.push_distance is not None and (not math.isfinite(args.push_distance) or not 0 < args.push_distance <= .1):
@@ -402,11 +405,13 @@ def main(argv=None):
             for key,value in (('stroke',None if args.stroke_mm is None else args.stroke_mm/1000),
                               ('button_direction',args.button_direction),('target_pixel',args.target_pixel),('button_feedback',args.button_feedback),
                               ('button_policy',args.button_policy),('button_feedback_timeout_s',args.button_feedback_timeout_s),
-                              ('planning_budget_s',args.planning_budget_s)):
+                              ('planning_budget_s',args.planning_budget_s),('arm_speed_multiplier',args.arm_speed_multiplier)):
                 if value is not None:
                     trial[key] = value
             validate_button_trial(trial,calibration)
             report['stroke_m'] = trial['stroke']
+            report['arm_speed_multiplier_requested'] = trial.get('arm_speed_multiplier',1.)
+            print(f'腕の速度倍率（指定）: {report["arm_speed_multiplier_requested"]:g}倍',flush=True)
         write_json(run/'calibration.json',calibration)
         trial['base_transform'] = str(run/'calibration.json')
         trial_path = run/'trial.json'

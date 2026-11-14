@@ -186,6 +186,21 @@ MUJOCO_GL=egl OPENBLAS_NUM_THREADS=1 \
 
 ## 実機の一括起動
 
+直前の実機用 `_local/robust_button/run_press_on_g1.sh` と使い分ける高速版は次の通り。
+既定では腕の自由接近と帰還の軌道を5倍速にするよう計画する。
+
+```bash
+bash _local/robust_button/run_press_on_g1_fast.sh
+bash _local/robust_button/run_press_on_g1_fast.sh --arm-speed-multiplier 3
+```
+
+倍率は0.1〜10で指定でき、環境変数 `ARM_SPEED_MULTIPLIER=3` でも変更できる。
+接触直前・押下・接触から離れる区間の時間、制御周期、監視、関節の速度・加速度上限は共通。
+上限に収まる倍率へ計画時に調整し、指定倍率と自由動作区間の計画上の平均倍率を表示・保存する。
+追従待ちや点灯による早期帰還などのため、実動作時間は計画どおりとは限らない。
+確認だけなら同じスクリプトに `--check` を付ける。その他の引数やG1への転送は従来と同じ。
+共有可能な入口は `Manipulation/push_button/real/run_robust_button_press_fast.sh`。
+
 乗り場の上下ボタン用の一括起動は [BUTTON_FIELD.md](BUTTON_FIELD.md) の
 「ボトル版と同じ一括起動で押す（robust）」を参照。
 `run_robust_button_press.sh --button-direction up|down` で選択し、実測ストロークと

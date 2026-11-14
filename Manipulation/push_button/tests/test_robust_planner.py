@@ -347,7 +347,7 @@ def test_preview_uses_no_arm_or_execute_path(monkeypatch,tmp_path):
         def initial(self): return observation()
         def close(self): pass
     monkeypatch.setattr(rp,'ContinuousObserver',Observer)
-    monkeypatch.setattr(rp,'search',lambda *a,**k:SimpleNamespace(candidate=object(),to_dict=lambda:dict(accepted=True)))
+    monkeypatch.setattr(rp,'search',lambda *a,**k:SimpleNamespace(candidate=SimpleNamespace(motion_metrics={}),to_dict=lambda:dict(accepted=True)))
     monkeypatch.setattr(rp,'ArmMotion',lambda *a,**k:pytest.fail('preview opened arm'))
     state = tmp_path/'state.json'
     state.write_text(json.dumps(dict(motor_q_rad=[0]*29,imu_rpy_rad=[0]*3)))

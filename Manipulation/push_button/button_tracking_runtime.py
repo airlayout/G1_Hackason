@@ -104,7 +104,7 @@ def execute_feedback(plan, model_path, calibration, motion, configuration, obser
         report['trajectory_s'] = now()-trajectory_started
         home = configuration()
         error = float(np.max(np.abs(np.asarray(home[0])[22:29]-candidate.q[0])))
-        report.update(home_completed=error <= np.deg2rad(2),home_max_error_rad=error,
+        report.update(home_completed=bool(error <= np.deg2rad(2)),home_max_error_rad=error,
             motion_completed=not diagnostic and controller.error is None,
             diagnostic_completed=diagnostic and controller.error is None,completed=controller.error is None)
         if report.get('lamp_early_return') and not report['home_completed']:

@@ -25,6 +25,7 @@ from motion_limits import (JointMotionLimits, CONTROL_PERIOD_S, MOTION_OVERHEAD_
                            PLANNED_LIMIT_FRACTION, MOTION_TOLERANCE_S)
 
 PERIOD = CONTROL_PERIOD_S
+BUTTON_APPROACH_TIME_SCALE = .7
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,7 @@ class SearchSettings:
     button_feedback: str = 'off'
     button_policy: str = 'standard'
     button_feedback_timeout_s: float = 120.
+    arm_speed_multiplier: float = 1.
 
     @property
     def motion_limits(self):
@@ -72,6 +74,8 @@ class SearchSettings:
                 or self.button_policy not in ('standard', 'collection')
                 or not np.isfinite(self.button_feedback_timeout_s)
                 or not 10 <= self.button_feedback_timeout_s <= 300
+                or not np.isfinite(self.arm_speed_multiplier)
+                or not 0.1 <= self.arm_speed_multiplier <= 10.
                 or not 0 <= self.normal_error_deg <= 10
                 or not 0 <= self.tracking_error_rad <= .02):
             raise ValueError('Invalid robust search settings')
@@ -188,6 +192,70 @@ def retime_reference(times, points, settings):
     return times, spline, np.arange(ticks+1)*PERIOD, metrics
 
 
+def accelerate_button_approach(times, points, labels, settings, metrics):
+    """Shorten free approach only, preserving later phase durations and limits."""
+    close = next((i for i, phase in enumerate(labels) if phase == 'close'), None)
+    if close is None or close < 2:
+        raise ValueError('Button approach requires a close waypoint')
+    end_index = close-1
+    original_end = float(times[end_index])
+    limits = settings.motion_limits
+    for scale in np.linspace(BUTTON_APPROACH_TIME_SCALE, 1., 31):
+        new_end = min(original_end, math.ceil(original_end*scale/PERIOD-1e-9)*PERIOD)
+        adjusted = times.copy()
+        adjusted[:end_index+1] *= new_end/original_end
+        adjusted[end_index+1:] -= original_end-new_end
+        derivatives = PchipInterpolator(adjusted, points, axis=0).derivative()(adjusted)
+        derivatives[0] = derivatives[-1] = 0.
+        candidate = CubicHermiteSpline(adjusted,points,derivatives,axis=0)
+        speed, acceleration = spline_peaks(candidate)
+        if (speed <= PLANNED_LIMIT_FRACTION*limits.joint_speed_rad_s+1e-9
+                and acceleration <= PLANNED_LIMIT_FRACTION*limits.joint_acceleration_rad_s2+1e-9):
+            ticks = round(adjusted[-1]/PERIOD)
+            duration = (ticks+1)*PERIOD
+            updated = dict(metrics,trajectory_s=duration,expected_motion_s=duration+MOTION_OVERHEAD_S,
+                max_joint_speed_rad_s=speed,max_joint_acceleration_rad_s2=acceleration,
+                speed_limit_fraction=speed/limits.joint_speed_rad_s,
+                acceleration_limit_fraction=acceleration/limits.joint_acceleration_rad_s2,
+                approach_time_scale=new_end/original_end,
+                approach_before_s=original_end,approach_after_s=new_end)
+            return adjusted,candidate,np.arange(ticks+1)*PERIOD,updated
+    raise ValueError('Unable to retain joint headroom when retiming button approach')
+
+
+def retime_button_arm(times, points, labels, settings, metrics):
+    """Retime free approach and return; keep contact intervals and limits intact."""
+    close = labels.index('close')
+    retract = labels.index('retract')
+    mask = np.array([i < close or i > retract for i in range(1, len(labels))])
+    intervals = np.diff(times)
+    requested = settings.arm_speed_multiplier
+    limits = settings.motion_limits
+    # Move toward the original timing if the requested rate exceeds headroom.
+    for scale in np.linspace(1. / requested, 1., 201):
+        adjusted_intervals = intervals.copy()
+        adjusted_intervals[mask] *= scale
+        adjusted = np.r_[0., np.cumsum(adjusted_intervals)]
+        # End on a control tick, extending only the final free-return interval.
+        adjusted[-1] = math.ceil(adjusted[-1] / PERIOD - 1e-9) * PERIOD
+        derivatives = PchipInterpolator(adjusted, points, axis=0).derivative()(adjusted)
+        derivatives[0] = derivatives[-1] = 0.
+        spline = CubicHermiteSpline(adjusted, points, derivatives, axis=0)
+        speed, acceleration = spline_peaks(spline)
+        if (speed <= PLANNED_LIMIT_FRACTION * limits.joint_speed_rad_s + 1e-9
+                and acceleration <= PLANNED_LIMIT_FRACTION * limits.joint_acceleration_rad_s2 + 1e-9):
+            ticks = round(adjusted[-1] / PERIOD)
+            duration = (ticks + 1) * PERIOD
+            effective = float(intervals[mask].sum() / np.diff(adjusted)[mask].sum())
+            updated = dict(metrics, trajectory_s=duration, expected_motion_s=duration + MOTION_OVERHEAD_S,
+                max_joint_speed_rad_s=speed, max_joint_acceleration_rad_s2=acceleration,
+                speed_limit_fraction=speed / limits.joint_speed_rad_s,
+                acceleration_limit_fraction=acceleration / limits.joint_acceleration_rad_s2,
+                arm_speed_multiplier_requested=requested, arm_speed_multiplier_effective=effective)
+            return adjusted, spline, np.arange(ticks + 1) * PERIOD, updated
+    raise ValueError('Unable to retime button arm within joint headroom')
+
+
 def reference_torque(kin, q, velocity, scale):
     original = kin.data.qpos.copy()
     try:
@@ -267,6 +335,10 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     times = (allocate_bottle_phases(points, durations, labels, settings, deadline)
              if scene.task == 'bottle' else np.r_[0., np.cumsum(durations)])
     times, spline, t, metrics = retime_reference(times, points, settings)
+    if collection and feedback:
+        times, spline, t, metrics = accelerate_button_approach(times,points,labels,settings,metrics)
+    if scene.task == 'button' and settings.arm_speed_multiplier != 1.:
+        times, spline, t, metrics = retime_button_arm(times,points,labels,settings,metrics)
     qs = spline(t)
     if scene.task == 'button':
         metrics['button_press'] = dict(measured_stroke_m=scene.stroke,

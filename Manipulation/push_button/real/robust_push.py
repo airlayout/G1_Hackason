@@ -306,6 +306,10 @@ def main(argv=None, *, task=None):
         report['plan'] = plan.to_dict()
         if plan.candidate is None:
             return 1
+        speed_metrics = plan.candidate.motion_metrics
+        if 'arm_speed_multiplier_effective' in speed_metrics:
+            print(f'腕の自由動作の軌道速度: 指定 {speed_metrics["arm_speed_multiplier_requested"]:g}倍 / '
+                  f'計画 {speed_metrics["arm_speed_multiplier_effective"]:.2f}倍（関節上限を適用）',flush=True)
         if args.task=='button' and args.execute:
             validate_button_plan(report['plan'])
         if not args.execute:

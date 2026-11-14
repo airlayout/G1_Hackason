@@ -15,7 +15,7 @@ sys.path[:0] = [str(ROOT), str(ROOT/'real')]
 from alignment import JointCommandFilter
 from motion_limits import JointMotionLimits, MOTION_OVERHEAD_S, ENABLE_DURATION_S, RELEASE_DURATION_S
 from robust_options import add_arguments, parse
-from robust_planner import SearchSettings, retime_reference, spline_peaks
+from robust_planner import SearchSettings, retime_reference, retime_button_arm, spline_peaks
 
 
 @pytest.mark.parametrize('speed,acceleration', [(0, 4), (1.3, 4), (1.2, 4.1),
@@ -50,6 +50,30 @@ def test_spline_extrema_include_velocity_peak_between_ticks():
     speed, acceleration = spline_peaks(spline)
     assert speed == pytest.approx(1.5)
     assert acceleration == pytest.approx(6.)
+
+
+def test_button_arm_speed_retimes_free_phases_and_respects_limits():
+    labels = ['approach', 'approach', 'close', 'contact', 'press', 'retract', 'return', 'home']
+    times = np.arange(len(labels), dtype=float) * 3.
+    points = np.array([[x] * 7 for x in (0., .2, .3, .32, .34, .3, .2, 0.)])
+    settings = SearchSettings(arm_speed_multiplier=5.)
+    adjusted, spline, samples, metrics = retime_button_arm(times, points, labels, settings, {})
+    assert 1. < metrics['arm_speed_multiplier_effective'] <= 5.
+    np.testing.assert_allclose(np.diff(adjusted)[1:5], np.diff(times)[1:5])
+    np.testing.assert_allclose(spline(adjusted), points, atol=1e-12)
+    assert metrics['speed_limit_fraction'] <= .8 + 1e-9
+    assert metrics['acceleration_limit_fraction'] <= .8 + 1e-9
+    assert samples[-1] == pytest.approx(adjusted[-1])
+
+
+def test_button_arm_speed_is_validated_and_passed_through_cli():
+    parser = argparse.ArgumentParser()
+    add_arguments(parser)
+    _, settings = parse(parser, ['--arm-speed-multiplier', '5'])
+    assert settings.arm_speed_multiplier == 5.
+    for invalid in (0, -1, 11, float('nan'), float('inf')):
+        with pytest.raises(ValueError, match='Invalid robust search settings'):
+            SearchSettings(arm_speed_multiplier=invalid)
 
 
 def test_retiming_preserves_geometry_and_reserves_twenty_percent():
