@@ -67,12 +67,22 @@ if [ "${1:-}" != check ]; then
     for POLICY in "$@"; do [ -f "${POLICY%.npz}$ext" ] && FILES+=("${POLICY%.npz}$ext"); done
   done
   pc2 "mkdir -p ~/$DEST/logs" || exit 1
-  scp -q ${JUMP[@]+"${JUMP[@]}"} -i "$G1_KEY" -o BatchMode=yes -o IdentitiesOnly=yes "${FILES[@]}" "$G1_PC2_USER@$G1_PC2_HOST:$DEST/" || { say "scp 失敗"; exit 1; }
-  bad=0
+  # -O: 無線の PC2 へは既定の SFTP 方式が極端に遅い（11-13 夕: 17 MB に 10 分）。古い方式で送る
+  # 11-13 夕: PC2 に同じ md5 で既にある物は送らない（重みは数十 MB あり、無線が細い日は 1 本に 10 分かかる）
+  NAMES=(); for f in "${FILES[@]}"; do NAMES+=("$(basename "$f")"); done
+  HAVE=$(pc2 "cd ~/$DEST && md5sum ${NAMES[*]} 2>/dev/null")
+  SEND=()
   for f in "${FILES[@]}"; do
-    want=$(md5 -q "$f")
-    got=$(pc2 "md5sum ~/$DEST/$(basename "$f")" | cut -d' ' -f1)
-    if [ "$want" = "$got" ]; then say "md5 一致: $(basename "$f")"; else say "⚠️ md5 不一致: $(basename "$f")"; bad=1; fi
+    echo "$HAVE" | grep -qx "$(md5 -q "$f")  $(basename "$f")" || SEND+=("$f")
+  done
+  say "送る: ${#SEND[@]} 本（全 ${#FILES[@]} 本のうち。残りは PC2 に同じ物がある）"
+  if [ "${#SEND[@]}" -gt 0 ]; then
+    scp -O -q ${JUMP[@]+"${JUMP[@]}"} -i "$G1_KEY" -o BatchMode=yes -o IdentitiesOnly=yes "${SEND[@]}" "$G1_PC2_USER@$G1_PC2_HOST:$DEST/" || { say "scp 失敗"; exit 1; }
+  fi
+  bad=0
+  HAVE=$(pc2 "cd ~/$DEST && md5sum ${NAMES[*]} 2>/dev/null")  # 1 往復でまとめて照らす（1 本ずつだと無線で 1〜2 分）
+  for f in "${FILES[@]}"; do
+    if echo "$HAVE" | grep -qx "$(md5 -q "$f")  $(basename "$f")"; then say "md5 一致: $(basename "$f")"; else say "⚠️ md5 不一致: $(basename "$f")"; bad=1; fi
   done
   [ "$bad" = 0 ] || exit 1
   pc2 "chmod +x ~/$DEST/*.sh" || exit 1
