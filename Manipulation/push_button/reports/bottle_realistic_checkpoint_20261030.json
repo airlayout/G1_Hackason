@@ -1,0 +1,1220 @@
+{
+  "schema": "g1-bottle-realistic-checkpoint-v1",
+  "date": "2026-10-30",
+  "status": "incomplete_user_requested_checkpoint",
+  "required_calibrated_successes": 5,
+  "required_holdout_successes": 18,
+  "required_holdout_trials": 20,
+  "interrupted_seed": 103,
+  "sets": {
+    "ablation_gravity_off": {
+      "trials_completed": 1,
+      "successes": 0,
+      "expected_outcomes": 0,
+      "options": {
+        "seeds": [
+          0
+        ],
+        "out": "/home/kanto/dev/G1_Hackason/_local/bottle_push/implementation_20261030/ablation_gravity_off",
+        "model": "/home/kanto/dev/G1_Hackason/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+        "weights": "/home/kanto/dev/G1_Hackason/yolo26n.pt",
+        "profile": "calibrated",
+        "gravity_scale": 0.0,
+        "detector_imgsz": 960,
+        "preview_step_m": 0.005,
+        "fault": "none",
+        "video": false,
+        "track_table": true,
+        "dynamics_feedforward": false,
+        "min_successes": 0
+      },
+      "source_sha256": {
+        "Manipulation/push_button/bottle.py": "2cb90bd745df379f41bd731fa1c01f8b43b1bdcf073705002f3fb02e5211a64d",
+        "Manipulation/push_button/real/push_bottle.py": "533dd000e5e1c5f7d19dbb9db067e8747b9773ca5275dc3590513ed14806e810",
+        "Manipulation/push_button/real/align_button.py": "d72221855a2a7762378cf4dd112fde9bb899b69f07ad225423a4e8b61270bc28",
+        "Manipulation/push_button/alignment.py": "300de3234d6cac2b95f3e2af9295a996a790c136cb5d06b93297375fe421861a",
+        "Manipulation/push_button/real/j1gen_camera.py": "88eb49f552870a6ff91564771e752b0ece7c4ec9b2e49ee69932a7861ebb23a0",
+        "Manipulation/push_button/real/push_button.py": "167f009ae6ebc3bc74e8f10bd02c5c1b65a45d0bf4db3193c0f3aaf6faaeccdc",
+        "Button_Press/Yada/common/realism.py": "e6ebb6d8a6e6eb08a2bd49cfdd926f21adc3f7b03d20e660aa37c3626d10f601",
+        "Button_Press/Yada/configs/contest.yaml": "19a95fad327ba62d5d342f9e14d869580c15acf53ec5956d8fe1da3e8df574a9",
+        "Manipulation/push_button/gravity.py": "63983653e48c2650a7a49d1e8885209f091c49b3616385f92c1867f45f12d346",
+        "Manipulation/push_button/kinematics.py": "487c3416d6ffa3df4df26c5571392f9128b4c3a3692b71222be5fc120ecd385a",
+        "Manipulation/push_button/trajectory.py": "91598758cd7c19ff444f19c9f8c1a2371a816f27f048ec3f9fb0ab68bc5103f2",
+        "Manipulation/push_button/real/arm_bridge.py": "24685978b10347a7aa1cef845c94b58dc9a80aa0b2cf8223c217a59e41540c9e",
+        "Manipulation/push_button/cartesian.py": "5609c4adc9ce565bbac52cf3d19f56d5bd04272809d3baccdeed62a1fdfe0150",
+        "Manipulation/push_button/pose_history.py": "849fd81eac3447d4d20d2af7c6c8092ea0ef3dc828cdcbd1447af93a9ba51435",
+        "Manipulation/push_button/table_reference.py": "17b944a683e7d8e11082da3abaabc292febbb90a5979484e64ad9eaac622510f",
+        "Manipulation/push_button/return_path.py": "324b00e9bafab4bdc70bbec3b0bf961925553880aa3bcabae4dd87627c1f8123",
+        "Button_Press/J1-gen/common/camera_rgbd.py": "633a9e5c7704d35101cbfe51fa51d93a075eae2a1d3ceaa2b5824e73042a7f27",
+        "Button_Press/J1-gen/common/rgbd_protocol.py": "5e4bed49837c8e04a0f036dba864c932466c9213cedb134de4e0c433751e4090",
+        "Perception/common/detector/yolo_detector.py": "b69e8f86312aacccec952837760a5d0f7294e4f10746f0b030382100fb48cec3",
+        "Manipulation/push_button/sim/run_realistic_bottle.py": "a6b4d2987799a6f1422a4a04fdb1f7469fcfa94188cdd688a8f8933316b0400f"
+      },
+      "results": [
+        {
+          "seed": 0,
+          "success": false,
+          "expected_outcome": false,
+          "exit_code": 1,
+          "error": "安定した新しい3フレームのボトル計測を取得できません（対象消失・深度・鮮度を確認）",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": false,
+          "home_completed": false,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              -2.3042347840895872e-07,
+              4.7929066382401686e-08,
+              4.190574109941281e-09
+            ],
+            "bottle_final_tilt_deg": 0.0006069526030987846,
+            "bottle_max_tilt_deg": 0.0009547873258331131,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": 0.0007098336960519774,
+            "released": true,
+            "publish_count": 0,
+            "inference_count": 12,
+            "max_inference_s": 0.6077899500378408
+          },
+          "perception_rejections": {
+            "処理後の画像鮮度超過": 9,
+            "安定計測の期限超過": 1
+          },
+          "fault_events": null,
+          "phases": [
+            "measure"
+          ]
+        }
+      ]
+    },
+    "ablation_coarse_ik": {
+      "trials_completed": 1,
+      "successes": 0,
+      "expected_outcomes": 0,
+      "options": {
+        "seeds": [
+          1
+        ],
+        "out": "/home/kanto/dev/G1_Hackason/_local/bottle_push/implementation_20261030/ablation_coarse_ik",
+        "model": "/home/kanto/dev/G1_Hackason/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+        "weights": "/home/kanto/dev/G1_Hackason/yolo26n.pt",
+        "profile": "calibrated",
+        "gravity_scale": 1.0,
+        "detector_imgsz": 960,
+        "preview_step_m": 1.0,
+        "fault": "none",
+        "video": false,
+        "track_table": true,
+        "dynamics_feedforward": true,
+        "min_successes": 0
+      },
+      "source_sha256": {
+        "Manipulation/push_button/bottle.py": "2cb90bd745df379f41bd731fa1c01f8b43b1bdcf073705002f3fb02e5211a64d",
+        "Manipulation/push_button/real/push_bottle.py": "555e5716cd669ac76155fc6ae7e0b62dff7fb277693cc7ce43dd7e6e6ded4bbd",
+        "Manipulation/push_button/real/align_button.py": "d72221855a2a7762378cf4dd112fde9bb899b69f07ad225423a4e8b61270bc28",
+        "Manipulation/push_button/alignment.py": "300de3234d6cac2b95f3e2af9295a996a790c136cb5d06b93297375fe421861a",
+        "Manipulation/push_button/real/j1gen_camera.py": "88eb49f552870a6ff91564771e752b0ece7c4ec9b2e49ee69932a7861ebb23a0",
+        "Manipulation/push_button/real/push_button.py": "167f009ae6ebc3bc74e8f10bd02c5c1b65a45d0bf4db3193c0f3aaf6faaeccdc",
+        "Button_Press/Yada/common/realism.py": "e6ebb6d8a6e6eb08a2bd49cfdd926f21adc3f7b03d20e660aa37c3626d10f601",
+        "Button_Press/Yada/configs/contest.yaml": "19a95fad327ba62d5d342f9e14d869580c15acf53ec5956d8fe1da3e8df574a9",
+        "Manipulation/push_button/gravity.py": "63983653e48c2650a7a49d1e8885209f091c49b3616385f92c1867f45f12d346",
+        "Manipulation/push_button/kinematics.py": "487c3416d6ffa3df4df26c5571392f9128b4c3a3692b71222be5fc120ecd385a",
+        "Manipulation/push_button/trajectory.py": "91598758cd7c19ff444f19c9f8c1a2371a816f27f048ec3f9fb0ab68bc5103f2",
+        "Manipulation/push_button/real/arm_bridge.py": "24685978b10347a7aa1cef845c94b58dc9a80aa0b2cf8223c217a59e41540c9e",
+        "Manipulation/push_button/cartesian.py": "5609c4adc9ce565bbac52cf3d19f56d5bd04272809d3baccdeed62a1fdfe0150",
+        "Manipulation/push_button/pose_history.py": "849fd81eac3447d4d20d2af7c6c8092ea0ef3dc828cdcbd1447af93a9ba51435",
+        "Manipulation/push_button/table_reference.py": "17b944a683e7d8e11082da3abaabc292febbb90a5979484e64ad9eaac622510f",
+        "Manipulation/push_button/return_path.py": "324b00e9bafab4bdc70bbec3b0bf961925553880aa3bcabae4dd87627c1f8123",
+        "Button_Press/J1-gen/common/camera_rgbd.py": "633a9e5c7704d35101cbfe51fa51d93a075eae2a1d3ceaa2b5824e73042a7f27",
+        "Button_Press/J1-gen/common/rgbd_protocol.py": "5e4bed49837c8e04a0f036dba864c932466c9213cedb134de4e0c433751e4090",
+        "Perception/common/detector/yolo_detector.py": "b69e8f86312aacccec952837760a5d0f7294e4f10746f0b030382100fb48cec3",
+        "Manipulation/push_button/sim/run_realistic_bottle.py": "a6b4d2987799a6f1422a4a04fdb1f7469fcfa94188cdd688a8f8933316b0400f"
+      },
+      "results": [
+        {
+          "seed": 1,
+          "success": false,
+          "expected_outcome": false,
+          "exit_code": 1,
+          "error": "安定した新しい3フレームのボトル計測を取得できません（対象消失・深度・鮮度を確認）",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": false,
+          "home_completed": false,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              -2.6146375903257635e-07,
+              -1.0613374201717818e-07,
+              -4.399657416165326e-09
+            ],
+            "bottle_final_tilt_deg": 0.0007236959319719204,
+            "bottle_max_tilt_deg": 0.0009335912345041344,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": 0.00046528132063971476,
+            "released": true,
+            "publish_count": 0,
+            "inference_count": 8,
+            "max_inference_s": 0.8597720279940404
+          },
+          "perception_rejections": {
+            "処理後の画像鮮度超過": 7,
+            "安定計測の期限超過": 1
+          },
+          "fault_events": null,
+          "phases": [
+            "measure"
+          ]
+        }
+      ]
+    },
+    "ablation_imgsz640": {
+      "trials_completed": 1,
+      "successes": 0,
+      "expected_outcomes": 0,
+      "options": {
+        "seeds": [
+          2
+        ],
+        "out": "/home/kanto/dev/G1_Hackason/_local/bottle_push/implementation_20261030/ablation_imgsz640",
+        "model": "/home/kanto/dev/G1_Hackason/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+        "weights": "/home/kanto/dev/G1_Hackason/yolo26n.pt",
+        "profile": "calibrated",
+        "gravity_scale": 1.0,
+        "detector_imgsz": 640,
+        "preview_step_m": 0.005,
+        "fault": "none",
+        "video": false,
+        "track_table": true,
+        "dynamics_feedforward": true,
+        "min_successes": 0
+      },
+      "source_sha256": {
+        "Manipulation/push_button/bottle.py": "2cb90bd745df379f41bd731fa1c01f8b43b1bdcf073705002f3fb02e5211a64d",
+        "Manipulation/push_button/real/push_bottle.py": "555e5716cd669ac76155fc6ae7e0b62dff7fb277693cc7ce43dd7e6e6ded4bbd",
+        "Manipulation/push_button/real/align_button.py": "d72221855a2a7762378cf4dd112fde9bb899b69f07ad225423a4e8b61270bc28",
+        "Manipulation/push_button/alignment.py": "300de3234d6cac2b95f3e2af9295a996a790c136cb5d06b93297375fe421861a",
+        "Manipulation/push_button/real/j1gen_camera.py": "88eb49f552870a6ff91564771e752b0ece7c4ec9b2e49ee69932a7861ebb23a0",
+        "Manipulation/push_button/real/push_button.py": "167f009ae6ebc3bc74e8f10bd02c5c1b65a45d0bf4db3193c0f3aaf6faaeccdc",
+        "Button_Press/Yada/common/realism.py": "e6ebb6d8a6e6eb08a2bd49cfdd926f21adc3f7b03d20e660aa37c3626d10f601",
+        "Button_Press/Yada/configs/contest.yaml": "19a95fad327ba62d5d342f9e14d869580c15acf53ec5956d8fe1da3e8df574a9",
+        "Manipulation/push_button/gravity.py": "63983653e48c2650a7a49d1e8885209f091c49b3616385f92c1867f45f12d346",
+        "Manipulation/push_button/kinematics.py": "487c3416d6ffa3df4df26c5571392f9128b4c3a3692b71222be5fc120ecd385a",
+        "Manipulation/push_button/trajectory.py": "91598758cd7c19ff444f19c9f8c1a2371a816f27f048ec3f9fb0ab68bc5103f2",
+        "Manipulation/push_button/real/arm_bridge.py": "24685978b10347a7aa1cef845c94b58dc9a80aa0b2cf8223c217a59e41540c9e",
+        "Manipulation/push_button/cartesian.py": "5609c4adc9ce565bbac52cf3d19f56d5bd04272809d3baccdeed62a1fdfe0150",
+        "Manipulation/push_button/pose_history.py": "849fd81eac3447d4d20d2af7c6c8092ea0ef3dc828cdcbd1447af93a9ba51435",
+        "Manipulation/push_button/table_reference.py": "17b944a683e7d8e11082da3abaabc292febbb90a5979484e64ad9eaac622510f",
+        "Manipulation/push_button/return_path.py": "324b00e9bafab4bdc70bbec3b0bf961925553880aa3bcabae4dd87627c1f8123",
+        "Button_Press/J1-gen/common/camera_rgbd.py": "633a9e5c7704d35101cbfe51fa51d93a075eae2a1d3ceaa2b5824e73042a7f27",
+        "Button_Press/J1-gen/common/rgbd_protocol.py": "5e4bed49837c8e04a0f036dba864c932466c9213cedb134de4e0c433751e4090",
+        "Perception/common/detector/yolo_detector.py": "b69e8f86312aacccec952837760a5d0f7294e4f10746f0b030382100fb48cec3",
+        "Manipulation/push_button/sim/run_realistic_bottle.py": "a6b4d2987799a6f1422a4a04fdb1f7469fcfa94188cdd688a8f8933316b0400f"
+      },
+      "results": [
+        {
+          "seed": 2,
+          "success": false,
+          "expected_outcome": false,
+          "exit_code": 1,
+          "error": "安定した新しい3フレームのボトル計測を取得できません（対象消失・深度・鮮度を確認）",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": false,
+          "home_completed": false,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              -1.713831077054806e-08,
+              1.2924471087805145e-07,
+              -3.0256112060200735e-09
+            ],
+            "bottle_final_tilt_deg": 0.000534839957148013,
+            "bottle_max_tilt_deg": 0.0009757564567552912,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": 0.00060335013730444,
+            "released": true,
+            "publish_count": 0,
+            "inference_count": 45,
+            "max_inference_s": 0.7681124359951355
+          },
+          "perception_rejections": {
+            "ボトル未検出": 44,
+            "処理後の画像鮮度超過": 1,
+            "安定計測の期限超過": 1
+          },
+          "fault_events": null,
+          "phases": [
+            "measure"
+          ]
+        }
+      ]
+    },
+    "fault_miscalibrated": {
+      "trials_completed": 1,
+      "successes": 0,
+      "expected_outcomes": 1,
+      "options": {
+        "seeds": [
+          0
+        ],
+        "out": "/home/kanto/dev/G1_Hackason/_local/bottle_push/implementation_20261030/fault_miscalibrated",
+        "model": "/home/kanto/dev/G1_Hackason/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+        "weights": "/home/kanto/dev/G1_Hackason/yolo26n.pt",
+        "profile": "miscalibrated",
+        "gravity_scale": 1.0,
+        "detector_imgsz": 960,
+        "preview_step_m": 0.005,
+        "fault": "none",
+        "video": false,
+        "track_table": true,
+        "dynamics_feedforward": true,
+        "min_successes": null
+      },
+      "source_sha256": {
+        "Manipulation/push_button/bottle.py": "2cb90bd745df379f41bd731fa1c01f8b43b1bdcf073705002f3fb02e5211a64d",
+        "Manipulation/push_button/real/push_bottle.py": "555e5716cd669ac76155fc6ae7e0b62dff7fb277693cc7ce43dd7e6e6ded4bbd",
+        "Manipulation/push_button/real/align_button.py": "d72221855a2a7762378cf4dd112fde9bb899b69f07ad225423a4e8b61270bc28",
+        "Manipulation/push_button/alignment.py": "300de3234d6cac2b95f3e2af9295a996a790c136cb5d06b93297375fe421861a",
+        "Manipulation/push_button/real/j1gen_camera.py": "88eb49f552870a6ff91564771e752b0ece7c4ec9b2e49ee69932a7861ebb23a0",
+        "Manipulation/push_button/real/push_button.py": "167f009ae6ebc3bc74e8f10bd02c5c1b65a45d0bf4db3193c0f3aaf6faaeccdc",
+        "Button_Press/Yada/common/realism.py": "e6ebb6d8a6e6eb08a2bd49cfdd926f21adc3f7b03d20e660aa37c3626d10f601",
+        "Button_Press/Yada/configs/contest.yaml": "19a95fad327ba62d5d342f9e14d869580c15acf53ec5956d8fe1da3e8df574a9",
+        "Manipulation/push_button/gravity.py": "63983653e48c2650a7a49d1e8885209f091c49b3616385f92c1867f45f12d346",
+        "Manipulation/push_button/kinematics.py": "487c3416d6ffa3df4df26c5571392f9128b4c3a3692b71222be5fc120ecd385a",
+        "Manipulation/push_button/trajectory.py": "91598758cd7c19ff444f19c9f8c1a2371a816f27f048ec3f9fb0ab68bc5103f2",
+        "Manipulation/push_button/real/arm_bridge.py": "24685978b10347a7aa1cef845c94b58dc9a80aa0b2cf8223c217a59e41540c9e",
+        "Manipulation/push_button/cartesian.py": "5609c4adc9ce565bbac52cf3d19f56d5bd04272809d3baccdeed62a1fdfe0150",
+        "Manipulation/push_button/pose_history.py": "849fd81eac3447d4d20d2af7c6c8092ea0ef3dc828cdcbd1447af93a9ba51435",
+        "Manipulation/push_button/table_reference.py": "17b944a683e7d8e11082da3abaabc292febbb90a5979484e64ad9eaac622510f",
+        "Manipulation/push_button/return_path.py": "324b00e9bafab4bdc70bbec3b0bf961925553880aa3bcabae4dd87627c1f8123",
+        "Button_Press/J1-gen/common/camera_rgbd.py": "633a9e5c7704d35101cbfe51fa51d93a075eae2a1d3ceaa2b5824e73042a7f27",
+        "Button_Press/J1-gen/common/rgbd_protocol.py": "5e4bed49837c8e04a0f036dba864c932466c9213cedb134de4e0c433751e4090",
+        "Perception/common/detector/yolo_detector.py": "b69e8f86312aacccec952837760a5d0f7294e4f10746f0b030382100fb48cec3",
+        "Manipulation/push_button/sim/run_realistic_bottle.py": "a6b4d2987799a6f1422a4a04fdb1f7469fcfa94188cdd688a8f8933316b0400f"
+      },
+      "results": [
+        {
+          "seed": 0,
+          "success": false,
+          "expected_outcome": true,
+          "exit_code": 2,
+          "error": "ボタンと手先の寸法に対して位置の不確かさが大きすぎます",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": null,
+          "home_completed": null,
+          "release_completed": null,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              -2.71219681657886e-07,
+              -3.402972265087456e-08,
+              -7.479212804639701e-10
+            ],
+            "bottle_final_tilt_deg": 0.0006612227477820813,
+            "bottle_max_tilt_deg": 0.0008015297744480207,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": null,
+            "released": true,
+            "publish_count": 0,
+            "inference_count": 0,
+            "max_inference_s": 0
+          },
+          "perception_rejections": null,
+          "fault_events": null,
+          "phases": []
+        }
+      ]
+    },
+    "fault_target_loss": {
+      "trials_completed": 1,
+      "successes": 0,
+      "expected_outcomes": 1,
+      "options": {
+        "seeds": [
+          0
+        ],
+        "out": "/home/kanto/dev/G1_Hackason/_local/bottle_push/implementation_20261030/fault_target_loss",
+        "model": "/home/kanto/dev/G1_Hackason/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+        "weights": "/home/kanto/dev/G1_Hackason/yolo26n.pt",
+        "profile": "calibrated",
+        "gravity_scale": 1.0,
+        "detector_imgsz": 960,
+        "preview_step_m": 0.005,
+        "fault": "target-loss",
+        "video": false,
+        "track_table": true,
+        "dynamics_feedforward": true,
+        "min_successes": null
+      },
+      "source_sha256": {
+        "Manipulation/push_button/bottle.py": "2cb90bd745df379f41bd731fa1c01f8b43b1bdcf073705002f3fb02e5211a64d",
+        "Manipulation/push_button/real/push_bottle.py": "555e5716cd669ac76155fc6ae7e0b62dff7fb277693cc7ce43dd7e6e6ded4bbd",
+        "Manipulation/push_button/real/align_button.py": "d72221855a2a7762378cf4dd112fde9bb899b69f07ad225423a4e8b61270bc28",
+        "Manipulation/push_button/alignment.py": "300de3234d6cac2b95f3e2af9295a996a790c136cb5d06b93297375fe421861a",
+        "Manipulation/push_button/real/j1gen_camera.py": "88eb49f552870a6ff91564771e752b0ece7c4ec9b2e49ee69932a7861ebb23a0",
+        "Manipulation/push_button/real/push_button.py": "167f009ae6ebc3bc74e8f10bd02c5c1b65a45d0bf4db3193c0f3aaf6faaeccdc",
+        "Button_Press/Yada/common/realism.py": "e6ebb6d8a6e6eb08a2bd49cfdd926f21adc3f7b03d20e660aa37c3626d10f601",
+        "Button_Press/Yada/configs/contest.yaml": "19a95fad327ba62d5d342f9e14d869580c15acf53ec5956d8fe1da3e8df574a9",
+        "Manipulation/push_button/gravity.py": "63983653e48c2650a7a49d1e8885209f091c49b3616385f92c1867f45f12d346",
+        "Manipulation/push_button/kinematics.py": "487c3416d6ffa3df4df26c5571392f9128b4c3a3692b71222be5fc120ecd385a",
+        "Manipulation/push_button/trajectory.py": "91598758cd7c19ff444f19c9f8c1a2371a816f27f048ec3f9fb0ab68bc5103f2",
+        "Manipulation/push_button/real/arm_bridge.py": "24685978b10347a7aa1cef845c94b58dc9a80aa0b2cf8223c217a59e41540c9e",
+        "Manipulation/push_button/cartesian.py": "5609c4adc9ce565bbac52cf3d19f56d5bd04272809d3baccdeed62a1fdfe0150",
+        "Manipulation/push_button/pose_history.py": "849fd81eac3447d4d20d2af7c6c8092ea0ef3dc828cdcbd1447af93a9ba51435",
+        "Manipulation/push_button/table_reference.py": "17b944a683e7d8e11082da3abaabc292febbb90a5979484e64ad9eaac622510f",
+        "Manipulation/push_button/return_path.py": "324b00e9bafab4bdc70bbec3b0bf961925553880aa3bcabae4dd87627c1f8123",
+        "Button_Press/J1-gen/common/camera_rgbd.py": "633a9e5c7704d35101cbfe51fa51d93a075eae2a1d3ceaa2b5824e73042a7f27",
+        "Button_Press/J1-gen/common/rgbd_protocol.py": "5e4bed49837c8e04a0f036dba864c932466c9213cedb134de4e0c433751e4090",
+        "Perception/common/detector/yolo_detector.py": "b69e8f86312aacccec952837760a5d0f7294e4f10746f0b030382100fb48cec3",
+        "Manipulation/push_button/sim/run_realistic_bottle.py": "a6b4d2987799a6f1422a4a04fdb1f7469fcfa94188cdd688a8f8933316b0400f"
+      },
+      "results": [
+        {
+          "seed": 0,
+          "success": false,
+          "expected_outcome": true,
+          "exit_code": 1,
+          "error": "新しいRGB-Dを受信できません。5556の配信・接続先・PC間の時計同期を確認してください",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": false,
+          "home_completed": true,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              -1.370103191455918e-07,
+              -7.614507108177904e-08,
+              -1.8415755587142257e-09
+            ],
+            "bottle_final_tilt_deg": 0.000639918013925906,
+            "bottle_max_tilt_deg": 0.0009818267009077245,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": 0.0030574665001680823,
+            "released": true,
+            "publish_count": 1861,
+            "inference_count": 88,
+            "max_inference_s": 0.058635535009671
+          },
+          "perception_rejections": {
+            "ボトル未検出": 85,
+            "フレーム取得期限超過": 1
+          },
+          "fault_events": null,
+          "phases": [
+            "measure",
+            "approach",
+            "remeasure",
+            "abort_return"
+          ]
+        }
+      ]
+    },
+    "fault_stale": {
+      "trials_completed": 1,
+      "successes": 0,
+      "expected_outcomes": 1,
+      "options": {
+        "seeds": [
+          0
+        ],
+        "out": "/home/kanto/dev/G1_Hackason/_local/bottle_push/implementation_20261030/fault_stale",
+        "model": "/home/kanto/dev/G1_Hackason/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+        "weights": "/home/kanto/dev/G1_Hackason/yolo26n.pt",
+        "profile": "calibrated",
+        "gravity_scale": 1.0,
+        "detector_imgsz": 960,
+        "preview_step_m": 0.005,
+        "fault": "stale-images",
+        "video": false,
+        "track_table": true,
+        "dynamics_feedforward": true,
+        "min_successes": null
+      },
+      "source_sha256": {
+        "Manipulation/push_button/bottle.py": "2cb90bd745df379f41bd731fa1c01f8b43b1bdcf073705002f3fb02e5211a64d",
+        "Manipulation/push_button/real/push_bottle.py": "555e5716cd669ac76155fc6ae7e0b62dff7fb277693cc7ce43dd7e6e6ded4bbd",
+        "Manipulation/push_button/real/align_button.py": "d72221855a2a7762378cf4dd112fde9bb899b69f07ad225423a4e8b61270bc28",
+        "Manipulation/push_button/alignment.py": "300de3234d6cac2b95f3e2af9295a996a790c136cb5d06b93297375fe421861a",
+        "Manipulation/push_button/real/j1gen_camera.py": "88eb49f552870a6ff91564771e752b0ece7c4ec9b2e49ee69932a7861ebb23a0",
+        "Manipulation/push_button/real/push_button.py": "167f009ae6ebc3bc74e8f10bd02c5c1b65a45d0bf4db3193c0f3aaf6faaeccdc",
+        "Button_Press/Yada/common/realism.py": "e6ebb6d8a6e6eb08a2bd49cfdd926f21adc3f7b03d20e660aa37c3626d10f601",
+        "Button_Press/Yada/configs/contest.yaml": "19a95fad327ba62d5d342f9e14d869580c15acf53ec5956d8fe1da3e8df574a9",
+        "Manipulation/push_button/gravity.py": "63983653e48c2650a7a49d1e8885209f091c49b3616385f92c1867f45f12d346",
+        "Manipulation/push_button/kinematics.py": "487c3416d6ffa3df4df26c5571392f9128b4c3a3692b71222be5fc120ecd385a",
+        "Manipulation/push_button/trajectory.py": "91598758cd7c19ff444f19c9f8c1a2371a816f27f048ec3f9fb0ab68bc5103f2",
+        "Manipulation/push_button/real/arm_bridge.py": "24685978b10347a7aa1cef845c94b58dc9a80aa0b2cf8223c217a59e41540c9e",
+        "Manipulation/push_button/cartesian.py": "5609c4adc9ce565bbac52cf3d19f56d5bd04272809d3baccdeed62a1fdfe0150",
+        "Manipulation/push_button/pose_history.py": "849fd81eac3447d4d20d2af7c6c8092ea0ef3dc828cdcbd1447af93a9ba51435",
+        "Manipulation/push_button/table_reference.py": "17b944a683e7d8e11082da3abaabc292febbb90a5979484e64ad9eaac622510f",
+        "Manipulation/push_button/return_path.py": "324b00e9bafab4bdc70bbec3b0bf961925553880aa3bcabae4dd87627c1f8123",
+        "Button_Press/J1-gen/common/camera_rgbd.py": "633a9e5c7704d35101cbfe51fa51d93a075eae2a1d3ceaa2b5824e73042a7f27",
+        "Button_Press/J1-gen/common/rgbd_protocol.py": "5e4bed49837c8e04a0f036dba864c932466c9213cedb134de4e0c433751e4090",
+        "Perception/common/detector/yolo_detector.py": "b69e8f86312aacccec952837760a5d0f7294e4f10746f0b030382100fb48cec3",
+        "Manipulation/push_button/sim/run_realistic_bottle.py": "7b05889416ab624ff6e0eca5e7878f7f0ddc2f2d56fd6930c4fd058e1ee00a98"
+      },
+      "results": [
+        {
+          "seed": 0,
+          "success": false,
+          "expected_outcome": true,
+          "exit_code": 1,
+          "error": "新しいRGB-Dを受信できません。5556の配信・接続先・PC間の時計同期を確認してください",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": false,
+          "home_completed": true,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              -9.807576034637222e-08,
+              -1.0179378645558401e-07,
+              2.7214398512498406e-09
+            ],
+            "bottle_final_tilt_deg": 0.0006460381689190574,
+            "bottle_max_tilt_deg": 0.0009818267009077245,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": 0.0030511252740222095,
+            "released": true,
+            "publish_count": 1860,
+            "inference_count": 3,
+            "max_inference_s": 0.05727782903704792
+          },
+          "perception_rejections": {
+            "フレーム取得期限超過": 1
+          },
+          "fault_events": [
+            {
+              "fault": "stale-images",
+              "time_s": 15.408000000001982,
+              "phase": "remeasure"
+            }
+          ],
+          "phases": [
+            "measure",
+            "approach",
+            "remeasure",
+            "abort_return"
+          ]
+        }
+      ]
+    },
+    "fault_unreachable": {
+      "trials_completed": 1,
+      "successes": 0,
+      "expected_outcomes": 1,
+      "options": {
+        "seeds": [
+          0
+        ],
+        "out": "/home/kanto/dev/G1_Hackason/_local/bottle_push/implementation_20261030/fault_unreachable",
+        "model": "/home/kanto/dev/G1_Hackason/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+        "weights": "/home/kanto/dev/G1_Hackason/yolo26n.pt",
+        "profile": "calibrated",
+        "gravity_scale": 1.0,
+        "detector_imgsz": 960,
+        "preview_step_m": 0.005,
+        "fault": "unreachable",
+        "video": false,
+        "track_table": true,
+        "dynamics_feedforward": true,
+        "min_successes": null
+      },
+      "source_sha256": {
+        "Manipulation/push_button/bottle.py": "2cb90bd745df379f41bd731fa1c01f8b43b1bdcf073705002f3fb02e5211a64d",
+        "Manipulation/push_button/real/push_bottle.py": "555e5716cd669ac76155fc6ae7e0b62dff7fb277693cc7ce43dd7e6e6ded4bbd",
+        "Manipulation/push_button/real/align_button.py": "d72221855a2a7762378cf4dd112fde9bb899b69f07ad225423a4e8b61270bc28",
+        "Manipulation/push_button/alignment.py": "300de3234d6cac2b95f3e2af9295a996a790c136cb5d06b93297375fe421861a",
+        "Manipulation/push_button/real/j1gen_camera.py": "88eb49f552870a6ff91564771e752b0ece7c4ec9b2e49ee69932a7861ebb23a0",
+        "Manipulation/push_button/real/push_button.py": "167f009ae6ebc3bc74e8f10bd02c5c1b65a45d0bf4db3193c0f3aaf6faaeccdc",
+        "Button_Press/Yada/common/realism.py": "e6ebb6d8a6e6eb08a2bd49cfdd926f21adc3f7b03d20e660aa37c3626d10f601",
+        "Button_Press/Yada/configs/contest.yaml": "19a95fad327ba62d5d342f9e14d869580c15acf53ec5956d8fe1da3e8df574a9",
+        "Manipulation/push_button/gravity.py": "63983653e48c2650a7a49d1e8885209f091c49b3616385f92c1867f45f12d346",
+        "Manipulation/push_button/kinematics.py": "487c3416d6ffa3df4df26c5571392f9128b4c3a3692b71222be5fc120ecd385a",
+        "Manipulation/push_button/trajectory.py": "91598758cd7c19ff444f19c9f8c1a2371a816f27f048ec3f9fb0ab68bc5103f2",
+        "Manipulation/push_button/real/arm_bridge.py": "24685978b10347a7aa1cef845c94b58dc9a80aa0b2cf8223c217a59e41540c9e",
+        "Manipulation/push_button/cartesian.py": "5609c4adc9ce565bbac52cf3d19f56d5bd04272809d3baccdeed62a1fdfe0150",
+        "Manipulation/push_button/pose_history.py": "849fd81eac3447d4d20d2af7c6c8092ea0ef3dc828cdcbd1447af93a9ba51435",
+        "Manipulation/push_button/table_reference.py": "17b944a683e7d8e11082da3abaabc292febbb90a5979484e64ad9eaac622510f",
+        "Manipulation/push_button/return_path.py": "324b00e9bafab4bdc70bbec3b0bf961925553880aa3bcabae4dd87627c1f8123",
+        "Button_Press/J1-gen/common/camera_rgbd.py": "633a9e5c7704d35101cbfe51fa51d93a075eae2a1d3ceaa2b5824e73042a7f27",
+        "Button_Press/J1-gen/common/rgbd_protocol.py": "5e4bed49837c8e04a0f036dba864c932466c9213cedb134de4e0c433751e4090",
+        "Perception/common/detector/yolo_detector.py": "b69e8f86312aacccec952837760a5d0f7294e4f10746f0b030382100fb48cec3",
+        "Manipulation/push_button/sim/run_realistic_bottle.py": "7b05889416ab624ff6e0eca5e7878f7f0ddc2f2d56fd6930c4fd058e1ee00a98"
+      },
+      "results": [
+        {
+          "seed": 0,
+          "success": false,
+          "expected_outcome": true,
+          "exit_code": 1,
+          "error": "手先のIKが収束しません (位置誤差 0.087 m、方向誤差 17.8 度): [    0.39817    -0.25236        0.83]",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": false,
+          "home_completed": false,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              2.5439854772768555e-07,
+              6.131176994439436e-07,
+              2.65965546253355e-08
+            ],
+            "bottle_final_tilt_deg": 0.00043328907402706346,
+            "bottle_max_tilt_deg": 0.0008973071663900316,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": 0.0007096936238573824,
+            "released": true,
+            "publish_count": 0,
+            "inference_count": 6,
+            "max_inference_s": 0.05425880302209407
+          },
+          "perception_rejections": {
+            "フレーム間の位置または半径が不安定": 3
+          },
+          "fault_events": [],
+          "phases": [
+            "measure"
+          ]
+        }
+      ]
+    },
+    "fault_disconnect": {
+      "trials_completed": 1,
+      "successes": 0,
+      "expected_outcomes": 1,
+      "options": {
+        "seeds": [
+          0
+        ],
+        "out": "/home/kanto/dev/G1_Hackason/_local/bottle_push/implementation_20261030/fault_disconnect",
+        "model": "/home/kanto/dev/G1_Hackason/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+        "weights": "/home/kanto/dev/G1_Hackason/yolo26n.pt",
+        "profile": "calibrated",
+        "gravity_scale": 1.0,
+        "detector_imgsz": 960,
+        "preview_step_m": 0.005,
+        "fault": "state-disconnect",
+        "video": false,
+        "track_table": true,
+        "dynamics_feedforward": true,
+        "min_successes": null
+      },
+      "source_sha256": {
+        "Manipulation/push_button/bottle.py": "2cb90bd745df379f41bd731fa1c01f8b43b1bdcf073705002f3fb02e5211a64d",
+        "Manipulation/push_button/real/push_bottle.py": "555e5716cd669ac76155fc6ae7e0b62dff7fb277693cc7ce43dd7e6e6ded4bbd",
+        "Manipulation/push_button/real/align_button.py": "d72221855a2a7762378cf4dd112fde9bb899b69f07ad225423a4e8b61270bc28",
+        "Manipulation/push_button/alignment.py": "300de3234d6cac2b95f3e2af9295a996a790c136cb5d06b93297375fe421861a",
+        "Manipulation/push_button/real/j1gen_camera.py": "88eb49f552870a6ff91564771e752b0ece7c4ec9b2e49ee69932a7861ebb23a0",
+        "Manipulation/push_button/real/push_button.py": "167f009ae6ebc3bc74e8f10bd02c5c1b65a45d0bf4db3193c0f3aaf6faaeccdc",
+        "Button_Press/Yada/common/realism.py": "e6ebb6d8a6e6eb08a2bd49cfdd926f21adc3f7b03d20e660aa37c3626d10f601",
+        "Button_Press/Yada/configs/contest.yaml": "19a95fad327ba62d5d342f9e14d869580c15acf53ec5956d8fe1da3e8df574a9",
+        "Manipulation/push_button/gravity.py": "63983653e48c2650a7a49d1e8885209f091c49b3616385f92c1867f45f12d346",
+        "Manipulation/push_button/kinematics.py": "487c3416d6ffa3df4df26c5571392f9128b4c3a3692b71222be5fc120ecd385a",
+        "Manipulation/push_button/trajectory.py": "91598758cd7c19ff444f19c9f8c1a2371a816f27f048ec3f9fb0ab68bc5103f2",
+        "Manipulation/push_button/real/arm_bridge.py": "24685978b10347a7aa1cef845c94b58dc9a80aa0b2cf8223c217a59e41540c9e",
+        "Manipulation/push_button/cartesian.py": "5609c4adc9ce565bbac52cf3d19f56d5bd04272809d3baccdeed62a1fdfe0150",
+        "Manipulation/push_button/pose_history.py": "849fd81eac3447d4d20d2af7c6c8092ea0ef3dc828cdcbd1447af93a9ba51435",
+        "Manipulation/push_button/table_reference.py": "17b944a683e7d8e11082da3abaabc292febbb90a5979484e64ad9eaac622510f",
+        "Manipulation/push_button/return_path.py": "324b00e9bafab4bdc70bbec3b0bf961925553880aa3bcabae4dd87627c1f8123",
+        "Button_Press/J1-gen/common/camera_rgbd.py": "633a9e5c7704d35101cbfe51fa51d93a075eae2a1d3ceaa2b5824e73042a7f27",
+        "Button_Press/J1-gen/common/rgbd_protocol.py": "5e4bed49837c8e04a0f036dba864c932466c9213cedb134de4e0c433751e4090",
+        "Perception/common/detector/yolo_detector.py": "b69e8f86312aacccec952837760a5d0f7294e4f10746f0b030382100fb48cec3",
+        "Manipulation/push_button/sim/run_realistic_bottle.py": "7b05889416ab624ff6e0eca5e7878f7f0ddc2f2d56fd6930c4fd058e1ee00a98"
+      },
+      "results": [
+        {
+          "seed": 0,
+          "success": false,
+          "expected_outcome": true,
+          "exit_code": 1,
+          "error": "腕の状態監視で中止: 模擬状態通信断",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": false,
+          "home_completed": false,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              -4.2777379544167715e-07,
+              -1.9678187157534666e-07,
+              -1.2818421213367515e-08
+            ],
+            "bottle_final_tilt_deg": 0.0007821959916220926,
+            "bottle_max_tilt_deg": 0.0009547873258331131,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": 0.15103819654430084,
+            "released": true,
+            "publish_count": 252,
+            "inference_count": 3,
+            "max_inference_s": 0.05580706201726571
+          },
+          "perception_rejections": {},
+          "fault_events": [
+            {
+              "fault": "state-disconnect",
+              "time_s": 5.299999999999583,
+              "phase": "approach"
+            }
+          ],
+          "phases": [
+            "measure",
+            "approach"
+          ]
+        }
+      ]
+    },
+    "calibrated_acceptance": {
+      "trials_completed": 5,
+      "successes": 0,
+      "expected_outcomes": 0,
+      "options": {
+        "seeds": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "out": "/home/kanto/dev/G1_Hackason/_local/bottle_push/implementation_20261030/calibrated_acceptance",
+        "model": "/home/kanto/dev/G1_Hackason/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+        "weights": "/home/kanto/dev/G1_Hackason/yolo26n.pt",
+        "profile": "calibrated",
+        "gravity_scale": 1.0,
+        "detector_imgsz": 960,
+        "preview_step_m": 0.005,
+        "fault": "none",
+        "video": false,
+        "track_table": true,
+        "dynamics_feedforward": true,
+        "min_successes": null
+      },
+      "source_sha256": {
+        "Manipulation/push_button/bottle.py": "2cb90bd745df379f41bd731fa1c01f8b43b1bdcf073705002f3fb02e5211a64d",
+        "Manipulation/push_button/real/push_bottle.py": "555e5716cd669ac76155fc6ae7e0b62dff7fb277693cc7ce43dd7e6e6ded4bbd",
+        "Manipulation/push_button/real/align_button.py": "d72221855a2a7762378cf4dd112fde9bb899b69f07ad225423a4e8b61270bc28",
+        "Manipulation/push_button/alignment.py": "300de3234d6cac2b95f3e2af9295a996a790c136cb5d06b93297375fe421861a",
+        "Manipulation/push_button/real/j1gen_camera.py": "88eb49f552870a6ff91564771e752b0ece7c4ec9b2e49ee69932a7861ebb23a0",
+        "Manipulation/push_button/real/push_button.py": "167f009ae6ebc3bc74e8f10bd02c5c1b65a45d0bf4db3193c0f3aaf6faaeccdc",
+        "Button_Press/Yada/common/realism.py": "e6ebb6d8a6e6eb08a2bd49cfdd926f21adc3f7b03d20e660aa37c3626d10f601",
+        "Button_Press/Yada/configs/contest.yaml": "19a95fad327ba62d5d342f9e14d869580c15acf53ec5956d8fe1da3e8df574a9",
+        "Manipulation/push_button/gravity.py": "63983653e48c2650a7a49d1e8885209f091c49b3616385f92c1867f45f12d346",
+        "Manipulation/push_button/kinematics.py": "487c3416d6ffa3df4df26c5571392f9128b4c3a3692b71222be5fc120ecd385a",
+        "Manipulation/push_button/trajectory.py": "91598758cd7c19ff444f19c9f8c1a2371a816f27f048ec3f9fb0ab68bc5103f2",
+        "Manipulation/push_button/real/arm_bridge.py": "24685978b10347a7aa1cef845c94b58dc9a80aa0b2cf8223c217a59e41540c9e",
+        "Manipulation/push_button/cartesian.py": "5609c4adc9ce565bbac52cf3d19f56d5bd04272809d3baccdeed62a1fdfe0150",
+        "Manipulation/push_button/pose_history.py": "849fd81eac3447d4d20d2af7c6c8092ea0ef3dc828cdcbd1447af93a9ba51435",
+        "Manipulation/push_button/table_reference.py": "17b944a683e7d8e11082da3abaabc292febbb90a5979484e64ad9eaac622510f",
+        "Manipulation/push_button/return_path.py": "324b00e9bafab4bdc70bbec3b0bf961925553880aa3bcabae4dd87627c1f8123",
+        "Button_Press/J1-gen/common/camera_rgbd.py": "633a9e5c7704d35101cbfe51fa51d93a075eae2a1d3ceaa2b5824e73042a7f27",
+        "Button_Press/J1-gen/common/rgbd_protocol.py": "5e4bed49837c8e04a0f036dba864c932466c9213cedb134de4e0c433751e4090",
+        "Perception/common/detector/yolo_detector.py": "b69e8f86312aacccec952837760a5d0f7294e4f10746f0b030382100fb48cec3",
+        "Manipulation/push_button/sim/run_realistic_bottle.py": "7b05889416ab624ff6e0eca5e7878f7f0ddc2f2d56fd6930c4fd058e1ee00a98"
+      },
+      "results": [
+        {
+          "seed": 0,
+          "success": false,
+          "expected_outcome": false,
+          "exit_code": 1,
+          "error": "ボトル手前のFK位置合わせ誤差が8mmを超えました",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": false,
+          "home_completed": true,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              -1.21919569606721e-07,
+              1.4323593827691994e-07,
+              2.4690305355790088e-09
+            ],
+            "bottle_final_tilt_deg": 0.0005188801872050078,
+            "bottle_max_tilt_deg": 0.0009818267009077245,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": 0.002915350945149081,
+            "released": true,
+            "publish_count": 1936,
+            "inference_count": 6,
+            "max_inference_s": 0.05876880796859041
+          },
+          "perception_rejections": {},
+          "fault_events": [],
+          "phases": [
+            "measure",
+            "approach",
+            "remeasure",
+            "abort_return"
+          ]
+        },
+        {
+          "seed": 1,
+          "success": false,
+          "expected_outcome": false,
+          "exit_code": 1,
+          "error": "手先の指令と実測の差が1cmを超えました",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": false,
+          "home_completed": true,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              3.5533729292325233e-09,
+              1.1461323612405039e-07,
+              1.109931979659251e-08
+            ],
+            "bottle_final_tilt_deg": 0.0005405998724889677,
+            "bottle_max_tilt_deg": 0.0010345425792151102,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": 0.0027597474378198428,
+            "released": true,
+            "publish_count": 1484,
+            "inference_count": 6,
+            "max_inference_s": 0.06339372403454036
+          },
+          "perception_rejections": {},
+          "fault_events": [],
+          "phases": [
+            "measure",
+            "approach",
+            "remeasure",
+            "push",
+            "retract",
+            "home"
+          ]
+        },
+        {
+          "seed": 2,
+          "success": false,
+          "expected_outcome": false,
+          "exit_code": 1,
+          "error": "ボトル手前のFK位置合わせ誤差が8mmを超えました",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": false,
+          "home_completed": true,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              -1.8440735477520676e-07,
+              -2.875518709255509e-07,
+              -1.938391402944717e-08
+            ],
+            "bottle_final_tilt_deg": 0.0007824750462753835,
+            "bottle_max_tilt_deg": 0.0009771389960194774,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": 0.0027281795245879814,
+            "released": true,
+            "publish_count": 1922,
+            "inference_count": 6,
+            "max_inference_s": 0.053376135998405516
+          },
+          "perception_rejections": {},
+          "fault_events": [],
+          "phases": [
+            "measure",
+            "approach",
+            "remeasure",
+            "abort_return"
+          ]
+        },
+        {
+          "seed": 3,
+          "success": false,
+          "expected_outcome": false,
+          "exit_code": 1,
+          "error": null,
+          "verification_error": "安定した新しい3フレームのボトル計測を取得できません（対象消失・深度・鮮度を確認）",
+          "completed": true,
+          "motion_completed": true,
+          "home_completed": true,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              0.04482558245820467,
+              0.017301761902033863,
+              -1.014133887977664e-09
+            ],
+            "bottle_final_tilt_deg": 0.0006805020508331092,
+            "bottle_max_tilt_deg": 0.10613066867109314,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 2.1770876283915497,
+            "home_joint_error_rad": 0.0029515910905726916,
+            "released": true,
+            "publish_count": 2633,
+            "inference_count": 54,
+            "max_inference_s": 0.06079215696081519
+          },
+          "perception_rejections": {
+            "深度または対象幾何の棄却": 13,
+            "接触高さに有効なボトル胴体の深度がありません": 13,
+            "ボトル未検出": 30,
+            "安定計測の期限超過": 1
+          },
+          "fault_events": [],
+          "phases": [
+            "measure",
+            "approach",
+            "remeasure",
+            "push",
+            "retract",
+            "verify",
+            "home",
+            "done"
+          ]
+        },
+        {
+          "seed": 4,
+          "success": false,
+          "expected_outcome": false,
+          "exit_code": 1,
+          "error": "ボトル手前のFK位置合わせ誤差が8mmを超えました",
+          "verification_error": null,
+          "completed": false,
+          "motion_completed": false,
+          "home_completed": true,
+          "release_completed": true,
+          "visual_success": null,
+          "measured_displacement_m": null,
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              1.2791942327616823e-07,
+              3.2630970592251174e-08,
+              8.907709680983089e-09
+            ],
+            "bottle_final_tilt_deg": 0.0006616519917732477,
+            "bottle_max_tilt_deg": 0.0009471201635183404,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 0.0,
+            "home_joint_error_rad": 0.0025387751330098185,
+            "released": true,
+            "publish_count": 1989,
+            "inference_count": 6,
+            "max_inference_s": 0.057861721026711166
+          },
+          "perception_rejections": {},
+          "fault_events": [],
+          "phases": [
+            "measure",
+            "approach",
+            "remeasure",
+            "abort_return"
+          ]
+        }
+      ]
+    },
+    "holdout_final": {
+      "trials_completed": 3,
+      "successes": 1,
+      "expected_outcomes": 1,
+      "options": {
+        "seeds": [
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107,
+          108,
+          109,
+          110,
+          111,
+          112,
+          113,
+          114,
+          115,
+          116,
+          117,
+          118,
+          119
+        ],
+        "out": "/home/kanto/dev/G1_Hackason/_local/bottle_push/implementation_20261030/holdout_final",
+        "model": "/home/kanto/dev/G1_Hackason/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+        "weights": "/home/kanto/dev/G1_Hackason/yolo26n.pt",
+        "profile": "calibrated",
+        "gravity_scale": 1.0,
+        "detector_imgsz": 960,
+        "preview_step_m": 0.005,
+        "fault": "none",
+        "video": false,
+        "track_table": true,
+        "dynamics_feedforward": true,
+        "min_successes": 18
+      },
+      "source_sha256": {
+        "Manipulation/push_button/bottle.py": "c1cb6395bc50c7646bbb5c4396cbb196c3b2dd415784321594d414103bbfe7fd",
+        "Manipulation/push_button/real/push_bottle.py": "555e5716cd669ac76155fc6ae7e0b62dff7fb277693cc7ce43dd7e6e6ded4bbd",
+        "Manipulation/push_button/real/align_button.py": "d72221855a2a7762378cf4dd112fde9bb899b69f07ad225423a4e8b61270bc28",
+        "Manipulation/push_button/alignment.py": "300de3234d6cac2b95f3e2af9295a996a790c136cb5d06b93297375fe421861a",
+        "Manipulation/push_button/real/j1gen_camera.py": "88eb49f552870a6ff91564771e752b0ece7c4ec9b2e49ee69932a7861ebb23a0",
+        "Manipulation/push_button/real/push_button.py": "167f009ae6ebc3bc74e8f10bd02c5c1b65a45d0bf4db3193c0f3aaf6faaeccdc",
+        "Button_Press/Yada/common/realism.py": "e6ebb6d8a6e6eb08a2bd49cfdd926f21adc3f7b03d20e660aa37c3626d10f601",
+        "Button_Press/Yada/configs/contest.yaml": "19a95fad327ba62d5d342f9e14d869580c15acf53ec5956d8fe1da3e8df574a9",
+        "Manipulation/push_button/gravity.py": "63983653e48c2650a7a49d1e8885209f091c49b3616385f92c1867f45f12d346",
+        "Manipulation/push_button/kinematics.py": "487c3416d6ffa3df4df26c5571392f9128b4c3a3692b71222be5fc120ecd385a",
+        "Manipulation/push_button/trajectory.py": "91598758cd7c19ff444f19c9f8c1a2371a816f27f048ec3f9fb0ab68bc5103f2",
+        "Manipulation/push_button/real/arm_bridge.py": "24685978b10347a7aa1cef845c94b58dc9a80aa0b2cf8223c217a59e41540c9e",
+        "Manipulation/push_button/cartesian.py": "5609c4adc9ce565bbac52cf3d19f56d5bd04272809d3baccdeed62a1fdfe0150",
+        "Manipulation/push_button/pose_history.py": "849fd81eac3447d4d20d2af7c6c8092ea0ef3dc828cdcbd1447af93a9ba51435",
+        "Manipulation/push_button/table_reference.py": "17b944a683e7d8e11082da3abaabc292febbb90a5979484e64ad9eaac622510f",
+        "Manipulation/push_button/return_path.py": "324b00e9bafab4bdc70bbec3b0bf961925553880aa3bcabae4dd87627c1f8123",
+        "Button_Press/J1-gen/common/camera_rgbd.py": "633a9e5c7704d35101cbfe51fa51d93a075eae2a1d3ceaa2b5824e73042a7f27",
+        "Button_Press/J1-gen/common/rgbd_protocol.py": "5e4bed49837c8e04a0f036dba864c932466c9213cedb134de4e0c433751e4090",
+        "Perception/common/detector/yolo_detector.py": "b69e8f86312aacccec952837760a5d0f7294e4f10746f0b030382100fb48cec3",
+        "Manipulation/push_button/sim/run_realistic_bottle.py": "7b05889416ab624ff6e0eca5e7878f7f0ddc2f2d56fd6930c4fd058e1ee00a98"
+      },
+      "results": [
+        {
+          "seed": 100,
+          "success": true,
+          "expected_outcome": true,
+          "exit_code": 0,
+          "error": null,
+          "verification_error": null,
+          "completed": true,
+          "motion_completed": true,
+          "home_completed": true,
+          "release_completed": true,
+          "visual_success": true,
+          "measured_displacement_m": [
+            0.04558882599136749,
+            0.006536038739160865
+          ],
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              0.046522287525199435,
+              0.007718795298466974,
+              -1.271002381120212e-08
+            ],
+            "bottle_final_tilt_deg": 0.0006158567052808992,
+            "bottle_max_tilt_deg": 0.10904471851187265,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 3.189572600161879,
+            "home_joint_error_rad": 0.0030316673285631646,
+            "released": true,
+            "publish_count": 2414,
+            "inference_count": 12,
+            "max_inference_s": 0.0574492760351859
+          },
+          "perception_rejections": {
+            "追跡位置または半径が一致しません": 2,
+            "ボトル未検出": 1
+          },
+          "fault_events": [],
+          "phases": [
+            "measure",
+            "approach",
+            "remeasure",
+            "push",
+            "retract",
+            "verify",
+            "home",
+            "done"
+          ]
+        },
+        {
+          "seed": 101,
+          "success": false,
+          "expected_outcome": false,
+          "exit_code": 1,
+          "error": null,
+          "verification_error": "画像で確認したボトルの移動量が許容範囲外です",
+          "completed": true,
+          "motion_completed": true,
+          "home_completed": true,
+          "release_completed": true,
+          "visual_success": false,
+          "measured_displacement_m": [
+            0.045505824994091226,
+            0.010584294998241761
+          ],
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              0.04646689475828458,
+              0.014271362340425253,
+              -5.850868678436427e-10
+            ],
+            "bottle_final_tilt_deg": 0.000660947642702809,
+            "bottle_max_tilt_deg": 0.09552797177803238,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 2.031892570174695,
+            "home_joint_error_rad": 0.002665782876157735,
+            "released": true,
+            "publish_count": 2402,
+            "inference_count": 9,
+            "max_inference_s": 0.059057512029539794
+          },
+          "perception_rejections": {},
+          "fault_events": [],
+          "phases": [
+            "measure",
+            "approach",
+            "remeasure",
+            "push",
+            "retract",
+            "verify",
+            "home",
+            "done"
+          ]
+        },
+        {
+          "seed": 102,
+          "success": false,
+          "expected_outcome": false,
+          "exit_code": 1,
+          "error": null,
+          "verification_error": "画像で確認したボトルの移動量が許容範囲外です",
+          "completed": true,
+          "motion_completed": true,
+          "home_completed": true,
+          "release_completed": true,
+          "visual_success": false,
+          "measured_displacement_m": [
+            0.04419042666990591,
+            0.015157572041264833
+          ],
+          "evaluation": {
+            "ground_truth_used_for_control": false,
+            "bottle_displacement_m": [
+              0.044907281053313264,
+              0.01682373462429196,
+              4.182277746345164e-09
+            ],
+            "bottle_final_tilt_deg": 0.0006282915564081698,
+            "bottle_max_tilt_deg": 0.11512165903779499,
+            "max_arm_table_contact_n": 0.0,
+            "max_self_contact_n": 0.0,
+            "max_non_tip_bottle_contact_n": 0.0,
+            "max_other_arm_contact_n": 0.0,
+            "max_arm_bottle_contact_n": 2.0800903176372634,
+            "home_joint_error_rad": 0.0025575260849097226,
+            "released": true,
+            "publish_count": 2369,
+            "inference_count": 11,
+            "max_inference_s": 0.06137570895953104
+          },
+          "perception_rejections": {
+            "フレーム間の位置または半径が不安定": 2
+          },
+          "fault_events": [],
+          "phases": [
+            "measure",
+            "approach",
+            "remeasure",
+            "push",
+            "retract",
+            "verify",
+            "home",
+            "done"
+          ]
+        }
+      ]
+    }
+  },
+  "regression": {
+    "passed": 259,
+    "warnings": 3,
+    "duration_s": 110.14,
+    "command": "MUJOCO_GL=egl OPENBLAS_NUM_THREADS=2 OMP_NUM_THREADS=2 G1_MUJOCO_MODEL=<menagerie>/unitree_g1/g1.xml python -m pytest Manipulation/push_button/tests -q"
+  },
+  "holdout_source_differs_from_checkpoint": []
+}

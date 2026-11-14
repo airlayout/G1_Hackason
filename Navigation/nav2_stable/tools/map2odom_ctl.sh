@@ -6,6 +6,22 @@
 #   ./map2odom_ctl.sh hold                      # 補正を **止める**（初期値のまま出し続ける）
 #   ./map2odom_ctl.sh observe <dx> <dy> <yaw>   # ⭐ 測るだけ（TF は出さない・併走してよい）
 #   ./map2odom_ctl.sh status / off
+#   ./map2odom_ctl.sh relocalize                # 合わせ直しの候補を探す（**機体を止めてから**。適用はしない）
+#   ./map2odom_ctl.sh apply   <dx> <dy> <yaw>   # 候補を適用する（プロセスは入れ替えない）
+#
+# ## 自己位置が lost になったら（2026-11-03 追加）
+#
+# 巡回は止まり、約 1.3 秒後に FAULT になる（patrol_node.py）。手順:
+#
+#   1. map_web で位置と向きを見る。合っているなら（人だかり等で一時的に下がっただけ）6 へ
+#   2. ./map2odom_ctl.sh relocalize      # いまの推定の向き ±20° → だめなら全周を探す
+#   3. 出た候補の「20cm以内」が 80% 以上か見る
+#   4. ./map2odom_ctl.sh apply <dx> <dy> <yaw>
+#   5. **map_web で位置と向きが実機と合っているか目で見る**（向きが 180° 逆でも一致率は高く出る）
+#   6. clear_fault → patrol_ctl.sh start
+#
+# ⚠️ relocalize / apply は供給者（start で上げた map_localizer）に対してだけ効く。
+#    observe（静的 TF と併走）のときは map→odom を出しているのが静的 TF なので効かない
 #
 # ## ⚠️ 使う前提: Nav2 を `map_to_odom:=none` で上げること
 #
@@ -78,7 +94,61 @@ svc() {   # svc <true|false>
       ros2 service call /g1/localizer/correct std_srvs/srv/SetBool '{data: $1}'" 2>&1 | tail -1
 }
 
+ros_run() {   # ros_run <コマンド文字列>（PC2 の pixi か、手元の ROS で実行する）
+    if [ ! -x "$PIXI" ]; then
+        timeout 200 bash -lc "source $G1_DIR/g1_ws/install/setup.bash 2>/dev/null || true
+          $1" 2>&1
+        return
+    fi
+    (cd "$G1_DIR/pc2_humble" && timeout 200 "$PIXI" run bash -lc "
+      source $G1_DIR/g1_ws/install/setup.bash
+      export ROS_DOMAIN_ID=0 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      export CYCLONEDDS_URI=file://$CYCLONE_CFG
+      $1" 2>&1)
+}
+
+# find_map_offset.py を回し、RESULT 行（dx dy yaw[rad] 20cm以内 50cm以内）を返す
+find_offset() {   # find_offset <yaw_center[度]> <yaw_range[度]>
+    ros_run "python3 $G1_DIR/tools/find_map_offset.py --yaw-center $1 --yaw-range $2 --yaw-step 1" \
+        | sed -n 's/^RESULT //p' | tail -1
+}
+
 case "$CMD" in
+  relocalize)
+    # いまの推定を /g1/localizer_status から読む（"x, y, Ndeg"）
+    CUR=$(ros_run "timeout 5 ros2 topic echo --once /g1/localizer_status" \
+          | grep -A1 "key: map_to_odom" | sed -n "s/.*value: '\{0,1\}\([^']*\)'\{0,1\}$/\1/p" | tail -1)
+    if [ -z "$CUR" ]; then
+        echo "❌ /g1/localizer_status が読めない。map_localizer が動いているか（status）を見ること" >&2; exit 1
+    fi
+    CUR_DEG=$(echo "$CUR" | awk -F', *' '{sub("deg","",$3); print $3}')
+    echo "いまの map→odom: $CUR"
+    echo "--- 1) いまの向き ${CUR_DEG}° の ±20° を探す（180° 逆向きを掴まないため狭く探す）"
+    R1=$(find_offset "$CUR_DEG" 20)
+    BEST="$R1"
+    if [ -z "$R1" ] || awk -v p="$(echo "$R1" | cut -d' ' -f4)" 'BEGIN{exit !(p < 0.8)}'; then
+        echo "  → ${R1:-見つからず}（20cm以内 80% 未満）。全周を探す"
+        echo "--- 2) 全周（±180°）を探す。⚠️ 向きが逆の答えもありうるので必ず目で見ること"
+        BEST=$(find_offset 0 180)
+    fi
+    if [ -z "$BEST" ]; then echo "❌ 候補が見つからない。点群・TF・地図を確認すること" >&2; exit 1; fi
+    read -r DX DY YAW P20 P50 <<< "$BEST"
+    echo
+    awk -v x="$DX" -v y="$DY" -v t="$YAW" -v p="$P20" -v q="$P50" 'BEGIN{
+        printf "候補: map→odom = (%.3f, %.3f, %.1f°)   20cm以内 %.0f%%  50cm以内 %.0f%%\n", x, y, t*180/3.14159265, p*100, q*100
+        if (p < 0.8) print "⚠️ 20cm以内が 80% 未満。この場所では合わせにくい。特徴のある場所へ動かしてやり直すこと"}'
+    echo
+    echo "適用するなら:  $0 apply $DX $DY $YAW"
+    echo "⚠️ 適用したら map_web で**位置と向き**が実機と合っているか必ず目で見ること"
+    ;;
+  apply)
+    need_xyz "$@"
+    # ⚠️ -w 1: 購読者（map_localizer）が見つかるまで待つ。見つかる前に1回だけ出すと届かない
+    OUT=$(ros_run "ros2 topic pub --once -w 1 /g1/localizer/set_map_to_odom geometry_msgs/msg/Pose2D '{x: $1, y: $2, theta: $3}'")
+    echo "$OUT" | tail -2
+    echo "apply: map→odom = $1 $2 $3 を map_localizer に渡した（ログに「差し替えた」が出る）"
+    echo "  ⚠️ map_web で位置と向きを確かめてから clear_fault → patrol_ctl.sh start"
+    ;;
   start)
     need_xyz "$@"
     kill_localizer; sleep 1

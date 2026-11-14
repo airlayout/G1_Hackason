@@ -1,0 +1,392 @@
+{
+  "schema": "g1-robust-trial-v1",
+  "task": "bottle",
+  "completed": false,
+  "physical_push_success": null,
+  "settings": {
+    "budget_s": 10.0,
+    "max_rollouts": 1000,
+    "scenarios": 20,
+    "workers": 8,
+    "max_candidates": 50,
+    "seed": 0,
+    "position_error_m": 0.001,
+    "normal_error_deg": 1.0,
+    "tracking_error_rad": 0.001,
+    "mass_range": [
+      0.28,
+      0.42
+    ],
+    "friction_range": [
+      0.24,
+      0.36
+    ],
+    "gravity_scale": 1.0,
+    "motion_duration_s": 30.0,
+    "joint_speed_rad_s": 1.2,
+    "joint_acceleration_rad_s2": 4.0
+  },
+  "arguments": {
+    "task": "bottle",
+    "model": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+    "base_transform": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/calibration_previous.json",
+    "state_json": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_20261101_111808_N56UT0/state.json",
+    "output": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_20261101_111808_N56UT0/result.json",
+    "weights": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/models/yolo26n.pt",
+    "button_direction": null,
+    "target_pixel": null,
+    "confidence": 0.25,
+    "device": "cpu",
+    "detector_imgsz": 960,
+    "network_interface": "enp129s0",
+    "arm_socket": null,
+    "execute": false,
+    "calibrated": false,
+    "stop_before_contact": false,
+    "motion_planner": "robust",
+    "trial_config": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/trial.json",
+    "planning_budget_s": 10.0,
+    "planning_max_rollouts": 1000,
+    "planning_scenarios": 20,
+    "planning_workers": 8,
+    "planning_max_candidates": 50,
+    "planning_seed": 0,
+    "position_error_m": 0.001,
+    "normal_error_deg": 1.0,
+    "tracking_error_rad": 0.001,
+    "mass_range": [
+      0.28,
+      0.42
+    ],
+    "friction_range": [
+      0.24,
+      0.36
+    ],
+    "bottle_base_height": 0.72,
+    "contact_height": 0.08,
+    "stroke": 0.0015,
+    "push_distance": 0.05,
+    "gravity_scale": 1.0,
+    "motion_duration_s": 30.0,
+    "joint_speed_rad_s": 1.2,
+    "joint_acceleration_rad_s2": 4.0,
+    "j1gen_root": null,
+    "camera_config": "camera.yaml",
+    "host": "192.168.123.164"
+  },
+  "calibration": {
+    "schema": "g1-button-calibration-v2",
+    "camera_body": "torso_link",
+    "camera_offset_m": [
+      -0.008196056063758783,
+      -0.00827976001704056,
+      0.018840695320078482
+    ],
+    "camera_rpy_offset_rad": [
+      -0.048594911386863636,
+      -0.0031263843534105554,
+      -0.014836240570040656
+    ],
+    "pelvis_height_m": 0.77,
+    "tip_offset_m": [
+      0.1583,
+      0.0283,
+      0.0067
+    ],
+    "tip_radius_m": 0.015,
+    "position_uncertainty_m": 0.015,
+    "reference_waist_q_rad": [
+      -0.001607027486898005,
+      -0.0016876553418114781,
+      -0.038732390850782394
+    ],
+    "reference_imu_rpy_rad": [
+      0.00037252751644700766,
+      0.03764556720852852,
+      -0.24314935505390167
+    ],
+    "provenance": {
+      "camera": "Fitted to user-measured horizontal 40x30 cm tabletop at z=0.76 m, x=[0.31,0.61], y=[-0.36,0.04]",
+      "camera_height_independent_check_m": {
+        "measured": 1.24,
+        "estimated": 1.2357050696013938
+      },
+      "bottle_center_independent_check_m": {
+        "placed_by_user": [
+          0.38,
+          -0.2
+        ],
+        "estimated": [
+          0.38325007293855406,
+          -0.20633615871110703
+        ]
+      },
+      "hand": "Operator confirmed unactuated fixed five-finger stock hand; nominal geometry from pinned official model",
+      "hand_mesh_commit": "ccfc6fd8430a17ba3dacef9a1e2faf64ff3b0aee",
+      "middle_fingertip_surface_m": [
+        0.1733,
+        0.0283,
+        0.0067
+      ],
+      "sphere_center_definition": "15 mm inward from nominal middle-fingertip surface along hand +X",
+      "uncertainty": "Conservative 15 mm planning allowance; not a precision metrology certificate",
+      "path": "Full stock-hand meshes vs measured tabletop/robot checked offline; minimum predicted clearance about 51 mm"
+    },
+    "validation_status": "Camera/table and nominal stock-hand profile established; actual precontact trajectory and tip projection validation pending"
+  },
+  "error": "No fresh continuous observation",
+  "perception_frames": [
+    {
+      "frame_id": 6834,
+      "captured_at_s": 79308.77420896768,
+      "frame_ids": [
+        6830,
+        6832,
+        6834
+      ],
+      "geometry": {
+        "face": [
+          0.3632443647187481,
+          -0.21529168656540307,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035369820420324015,
+        "base_height": 0.72,
+        "object_height": 0.15089640727599118
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 6835,
+      "captured_at_s": 79308.9736051016,
+      "frame_ids": [
+        6832,
+        6834,
+        6835
+      ],
+      "geometry": {
+        "face": [
+          0.3632642186317592,
+          -0.21529168656540307,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035369820420324015,
+        "base_height": 0.72,
+        "object_height": 0.15308455497009232
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 6837,
+      "captured_at_s": 79309.37567693218,
+      "frame_ids": [
+        6834,
+        6835,
+        6837
+      ],
+      "geometry": {
+        "face": [
+          0.363920767796866,
+          -0.21463704307407727,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.034562919231327566,
+        "base_height": 0.72,
+        "object_height": 0.15148855061226596
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 6838,
+      "captured_at_s": 79309.5767930263,
+      "frame_ids": [
+        6835,
+        6837,
+        6838
+      ],
+      "geometry": {
+        "face": [
+          0.3637813875613935,
+          -0.21459383119807343,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.034562919231327566,
+        "base_height": 0.72,
+        "object_height": 0.15170413853397957
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 6839,
+      "captured_at_s": 79309.77483995534,
+      "frame_ids": [
+        6837,
+        6838,
+        6839
+      ],
+      "geometry": {
+        "face": [
+          0.363920767796866,
+          -0.21463704307407727,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03508293406023823,
+        "base_height": 0.72,
+        "object_height": 0.15129457113051847
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 6841,
+      "captured_at_s": 79310.17558122825,
+      "frame_ids": [
+        6838,
+        6839,
+        6841
+      ],
+      "geometry": {
+        "face": [
+          0.3637813875613935,
+          -0.21490062970943438,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03508293406023823,
+        "base_height": 0.72,
+        "object_height": 0.15232971325385092
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 6843,
+      "captured_at_s": 79310.57555402527,
+      "frame_ids": [
+        6839,
+        6841,
+        6843
+      ],
+      "geometry": {
+        "face": [
+          0.3632320387360833,
+          -0.21490062970943438,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.034531734559635,
+        "base_height": 0.72,
+        "object_height": 0.15320388872011692
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 6845,
+      "captured_at_s": 79310.97498454334,
+      "frame_ids": [
+        6841,
+        6843,
+        6845
+      ],
+      "geometry": {
+        "face": [
+          0.36301503984279476,
+          -0.21490062970943438,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.034531734559635,
+        "base_height": 0.72,
+        "object_height": 0.15374523598101364
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 6847,
+      "captured_at_s": 79311.37452449705,
+      "frame_ids": [
+        6843,
+        6845,
+        6847
+      ],
+      "geometry": {
+        "face": [
+          0.36255675343680543,
+          -0.21476270695736896,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03502658426804765,
+        "base_height": 0.72,
+        "object_height": 0.15404125663848933
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 6848,
+      "captured_at_s": 79311.60956507926,
+      "frame_ids": [
+        6845,
+        6847,
+        6848
+      ],
+      "geometry": {
+        "face": [
+          0.36255675343680543,
+          -0.21494090427399154,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.0351784635950599,
+        "base_height": 0.72,
+        "object_height": 0.15216344421678274
+      },
+      "lamp": null
+    }
+  ],
+  "perception_rejections": {},
+  "geometry_rejections": []
+}

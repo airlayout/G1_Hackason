@@ -1,0 +1,23 @@
+{
+  "motion_planner": "robust",
+  "planning_budget_s": 10.0,
+  "planning_max_rollouts": 1000,
+  "planning_scenarios": 3,
+  "planning_position_span_m": 0.003,
+  "bottle_feedback": "off",
+  "planning_workers": 8,
+  "planning_max_candidates": 50,
+  "planning_seed": 0,
+  "position_error_m": 0.001,
+  "normal_error_deg": 1.0,
+  "tracking_error_rad": 0.001,
+  "mass_range": [0.28, 0.42],
+  "friction_range": [0.24, 0.36],
+  "contact_height": 0.08,
+  "push_distance": 0.05,
+  "stroke": 0.0015,
+  "gravity_scale": 1.0,
+  "motion_duration_s": 30.0,
+  "joint_speed_rad_s": 1.2,
+  "joint_acceleration_rad_s2": 4.0
+}

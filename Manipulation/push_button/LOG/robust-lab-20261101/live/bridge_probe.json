@@ -1,0 +1,13 @@
+{
+  "connection": {
+    "mode_machine": 5,
+    "motor_count": 35,
+    "fsm_id": 501
+  },
+  "limits": {
+    "joint_speed_rad_s": 1.2,
+    "joint_acceleration_rad_s2": 4.0
+  },
+  "state_age_s": 0.0005658860027324408,
+  "robot_commands_sent": false
+}

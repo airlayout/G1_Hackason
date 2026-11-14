@@ -166,13 +166,14 @@ class VideohubCamera:
         """videohub からカラーを 1 枚受け取る（BGR）。受け取れなければ None。"""
         code, data = self._client.GetImageSample()
         img = None
-        # 中身が空・壊れているときは、imdecode が None を返さずに例外を出す（2026-11-01 に 2 回、これで配信ごと止まった）。
-        # その 1 枚は受け取れなかったことにして、続ける
-        if code == 0 and data:
-            try:
-                img = cv2.imdecode(np.frombuffer(bytes(data), np.uint8), cv2.IMREAD_COLOR)
-            except cv2.error:
-                img = None
+        if code == 0 and data is not None:
+            encoded = np.frombuffer(bytes(data), np.uint8)
+            if encoded.size:
+                try:
+                    img = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+                except cv2.error:
+                    # 一時的に空・不正な画像が返っても、配信を止めず次のフレームを待つ。
+                    img = None
         if img is None:
             self._fail += 1
             if self._fail in (1, 10) or self._fail % 100 == 0:

@@ -1,0 +1,233 @@
+[
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/readiness.json",
+    "archived": "setup/readiness.json",
+    "bytes": 4347,
+    "sha256": "ef6217523649ae505da99743f17dd84fb37ce55dafb2737433fe3628d70a8480"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/trial.json",
+    "archived": "setup/trial.json",
+    "bytes": 972,
+    "sha256": "7e73faa32a8dbf1659be3dff34f4f6a90b2846d90155b79e6e90e38935529bfb"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/operator_setup.json",
+    "archived": "setup/operator_setup.json",
+    "bytes": 283,
+    "sha256": "d6aca7ace045b6a138e85ffd3791d08e76afb4726fc699cc99e7e137098fa46a"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/calibration_previous.json",
+    "archived": "setup/calibration_previous.json",
+    "bytes": 1857,
+    "sha256": "54a5ae5d1a6e86d7db1636b096445bc38aff222576f26e52faeb0e33c5f868e2"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/connection.json",
+    "archived": "live/connection.json",
+    "bytes": 933,
+    "sha256": "b83f10277d37d15825bb2679073f82235d1769b2fa69fdafeff4fe76afb98f60"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/local_connection.json",
+    "archived": "live/local_connection.json",
+    "bytes": 930,
+    "sha256": "f1d83b069e98120ae6b2ba6c5f5c002693f0ab61ffa962e87ab5100e9958a04b"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/bridge_probe.json",
+    "archived": "live/bridge_probe.json",
+    "bytes": 248,
+    "sha256": "fc046fd388b9abeed088fd34e248a4dbf9d92addaec8d3ef37af8a8496625fff"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/state_monitor.json",
+    "archived": "live/state_monitor.json",
+    "bytes": 114490,
+    "sha256": "495a97cac01aa1be5c8cd5d52313a4668fc0fdf046b38359a5ce43f62f1828e6"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_01.json",
+    "archived": "live/initial_preview.json",
+    "bytes": 4794,
+    "sha256": "9aad3571392fe92126500fe96a625f11dd92bb9b31ef57c0b8ab228ca83888ea"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_20261101_111421_UdQCOv/result.json",
+    "archived": "live/preview_20261101_111421_UdQCOv/result.json",
+    "bytes": 5713,
+    "sha256": "9fcb3f1ced484babd7a2030cb94ec590f88c17aec9861aedc5ed6b6615ccdbcb"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_20261101_111655_dEyZY4/result.json",
+    "archived": "live/preview_20261101_111655_dEyZY4/result.json",
+    "bytes": 5195,
+    "sha256": "d2130f8bfad20472b565faf4bdb339b9bda749f1d98046b7dc8e6522af836e3e"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_20261101_111808_N56UT0/result.json",
+    "archived": "live/preview_20261101_111808_N56UT0/result.json",
+    "bytes": 9427,
+    "sha256": "fef8b8e6cfdc8d706efc7cd6b197d053eb2a7d5a06063b27d157bfb6f6f89d40"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_20261101_112139_AbiesV/result.json",
+    "archived": "live/preview_20261101_112139_AbiesV/result.json",
+    "bytes": 11440,
+    "sha256": "7a6eea2d096caf12a40d2a01aa90d06a946f1241edfbc1db809a87cd75a76f04"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_20261101_112349_RVjmES/result.json",
+    "archived": "live/preview_20261101_112349_RVjmES/result.json",
+    "bytes": 29146,
+    "sha256": "09e1f28d877ebf6079cc8ebbc3d254b8c0ce5ef760c6814fc418423720898126"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/diagnostic_20261101_112010/result.json",
+    "archived": "live/diagnostic_20261101_112010/result.json",
+    "bytes": 9395,
+    "sha256": "9045cfb6786dc652afc5482ca3b2735e2c586e94dcccd70bde14b31a2fa2d4e8"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/diagnostic_20261101_112010/timing.json",
+    "archived": "live/diagnostic_20261101_112010/timing_events.json",
+    "transformation": "Dropped empty camera poll events only",
+    "bytes": 5888,
+    "sha256": "fdf6343e2c632fdfe5879ec616bc501d2575e172deb06d02af1bb3e40e71c9b1"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/diagnostic_20261101_112224/result.json",
+    "archived": "live/diagnostic_20261101_112224/result.json",
+    "bytes": 9959,
+    "sha256": "b4d22b04a4f6d3a63ed45ed8c2d1ec29f769db6c24e85c4b59b20b854e3e51cb"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/diagnostic_20261101_112224/timing.json",
+    "archived": "live/diagnostic_20261101_112224/timing_events.json",
+    "transformation": "Dropped empty camera poll events only",
+    "bytes": 13063,
+    "sha256": "adb63fe889b7cbf7ca038774ed0e70ca7901b8c3b757348bbd4adaeb44c72047"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/diagnostic_20261101_112438/result.json",
+    "archived": "live/diagnostic_20261101_112438/result.json",
+    "bytes": 72029,
+    "sha256": "3bf391dd0cd10e50ebb4654d4b667d9ab2be691df39c23d1d6bd99b3e82e356e"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/diagnostic_20261101_112438/timing.json",
+    "archived": "live/diagnostic_20261101_112438/timing_events.json",
+    "transformation": "Dropped empty camera poll events only",
+    "bytes": 35841,
+    "sha256": "3c6050d397862b4689670bb56000e3aff913bc3f5517e921acec977e699bb529"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/environment_benchmark.json",
+    "archived": "simulation/environment_benchmark.json",
+    "bytes": 591623,
+    "sha256": "153f02306be10d4e3a43f7d054951366e36b628c20d062b7f66cf2805b63587e"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/filtered_environment_benchmark.json",
+    "archived": "simulation/filtered_environment_benchmark.json",
+    "bytes": 593636,
+    "sha256": "19ee598e4ce621e8b7bd105659c06739537a135effa0be1acb79cc6b71e6d349"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/final_environment_benchmark.json",
+    "archived": "simulation/final_environment_benchmark.json",
+    "bytes": 581270,
+    "sha256": "5d337f1d79cb2ef8a99dcc09fc1c02a071259fc59c0e85e3c6fd60738ca45bed"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline_candidate.json",
+    "archived": "performance/baseline_candidate.json",
+    "bytes": 18628,
+    "sha256": "53741f4dde1e110e67ec08688d91563b8ad04e4bbe8f271647c9965f9d7959f2"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline_search_4workers.json",
+    "archived": "performance/baseline_search_4workers.json",
+    "bytes": 67768,
+    "sha256": "7735db8392ceb9db8a86cedef723128d3258c6abd227c7508d5f6670a9b5cb7b"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline_search_8workers.json",
+    "archived": "performance/baseline_search_8workers.json",
+    "bytes": 94973,
+    "sha256": "1e0fd7f4574c114e8f4c4f1d0e4a12b062a9f368e31a65a84a7429d6ba7f13fd"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/detail.json",
+    "archived": "performance/detail.json",
+    "bytes": 41272,
+    "sha256": "ed20808e5509a156d2f6c53ee5fc448b036f9dff410021db2a1eb9f78093f05d"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/feedback-detail.json",
+    "archived": "performance/feedback-detail.json",
+    "bytes": 20540,
+    "sha256": "9c561966602132164b8dd078de00d1bc504b6d88288a5500ef47b7fa8a0a5a51"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/provenance.json",
+    "archived": "performance/provenance.json",
+    "bytes": 268,
+    "sha256": "86ba8158f69d9c48dc693646e6177ef9771921e98cc76fff4a72313beca39422"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/scoped_baseline.json",
+    "archived": "performance/scoped_baseline.json",
+    "bytes": 2033,
+    "sha256": "d7c8c278bf448b9351eece8926ac5aea73ce739b83b5c7a0c653137c9a77dbe5"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/scoped_feedback.json",
+    "archived": "performance/scoped_feedback.json",
+    "bytes": 1385,
+    "sha256": "e5167fa6e1e8b4a315e4b30d67511da64d2e4817dbbdd0fc445c2c07cd961645"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/summary.json",
+    "archived": "performance/summary.json",
+    "bytes": 4026,
+    "sha256": "2945d9863d346286a171475788a637f300b83b7d06cbb064aed27d74172ff39c"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline_candidate.npz",
+    "archived": "performance/baseline_candidate.npz",
+    "bytes": 166555,
+    "sha256": "02ff45d7c58170c640612cab23d8f7f482b069594262857fbc81878cf8d711de"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/profile_runtime.py",
+    "archived": "tools/profile_runtime.py",
+    "bytes": 7199,
+    "sha256": "3c3968803994708de280b22ea729f6113a07eeeb9b691ea916a6862b9177eee5"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/profile_scoped.py",
+    "archived": "tools/profile_scoped.py",
+    "bytes": 4170,
+    "sha256": "96ecfff21173224fc950f6e7d303cb01f3c80c33b26be15b43ce57e5fa35f72e"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/diagnose_preview.py",
+    "archived": "tools/diagnose_preview.py",
+    "bytes": 3440,
+    "sha256": "03abd22cdd266d218342671eb69f08b04aa2d70a67008910a70afa4ecccdcdd8"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preflight.py",
+    "archived": "tools/preflight.py",
+    "bytes": 4457,
+    "sha256": "34b25e889e337aa24f89913695c0e7182d002196b10563e9e10c168089b87edd"
+  },
+  {
+    "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/run.sh",
+    "archived": "tools/run.sh",
+    "bytes": 2503,
+    "sha256": "b3524a7b470ae04cf7b4c3572528ac487999a82b57567f4d2ebbc28e22417d45"
+  }
+]

@@ -35,6 +35,19 @@ Goal を1件しか持てないので、**退かないと「人が送った Goal 
 **巡回は自動的に `HOLD` する**（暴走しない）。再定位のあと
 `/g1/patrol/start` を呼べば**止まった地点の次から**続きを回る（`index` を保つ）。
 
+## 自己位置が地図と合わなくなったら止まる（2026-11-03 追加）
+
+`map_localizer.py` が `/g1/localizer_status` に出す `health` が **`lost`** になったら、
+巡回を `HOLD`（理由 `localization`）にして Goal を畳む。速度指令が途絶えるので、
+約 1.3 秒後に `g1_cmd_router` が `cmd_timeout` で FAULT にして機体は止まる（findings/patrol_mode.md §6）。
+**自動では再開しない**（上の約束と同じ）。人が `map2odom_ctl.sh relocalize` → `apply` で
+合わせ直し、`clear_fault` → `/g1/patrol/start` で再開する。
+
+- `lost` の判定は `tools/localization_health.py`（旋回中を除いた 5 秒の inlier 率の平均が 70% 未満）
+- `map_localizer.py` が動いていない・診断が古いときは**何もしない**（従来どおりの挙動）
+- 人が「位置は合っている」と判断して `lost` のまま `start` したときは、**一度 `ok` に戻るまで
+  この監視を休ませる**（すぐまた止まるのを防ぐ）。`start` の応答にその旨を出す
+
 ## RViz で巡回路を引く（教示モード）
 
     ./tools/patrol_ctl.sh teach     # TEACH に入る。以後 RViz の「Publish Point」が点になる
@@ -166,6 +179,12 @@ class PatrolNode(Node):
             "bridge_status_topic", "/g1/bridge_status").value
         # 診断が何秒来なければ「見えていない」と判断するか
         self.bridge_stale_s = self.declare_parameter("bridge_stale_s", 3.0).value
+        # 自己位置の健全性（map_localizer.py の health）で巡回を止めるか
+        self.localization_guard = self.declare_parameter("localization_guard", True).value
+        self.localizer_status_topic = self.declare_parameter(
+            "localizer_status_topic", "/g1/localizer_status").value
+        # map_localizer.py の診断は 1Hz。これより古ければ「見ていない」扱いにして何もしない
+        self.localizer_stale_s = self.declare_parameter("localizer_stale_s", 5.0).value
         # 教示モードの書き出し先。⚠️ **既定を waypoints_file にはしない。**
         # 実機の既定は install/share 配下（--symlink-install でリポジトリの実体）なので、
         # 上書きするとリポジトリが汚れるし、元のひな形も失う。
@@ -196,12 +215,18 @@ class PatrolNode(Node):
         self._wait_until = 0.0         # dwell / retry の待ち
         self._bridge_state = ""
         self._bridge_stamp = 0.0
+        self._loc_health = ""          # unknown / ok / lost（map_localizer.py の health）
+        self._loc_inlier_avg = ""
+        self._loc_stamp = 0.0
+        self._loc_override = False     # 人が lost のまま start した。ok に戻るまで監視を休む
         self._teach: List[Dict[str, float]] = []   # 教示中に溜めた点
         self._autostart_at = time.monotonic() + float(self.start_delay_s)
 
         self._client = ActionClient(self, NavigateToPose, "navigate_to_pose")
         self.create_subscription(
             DiagnosticArray, self.bridge_status_topic, self._on_bridge_status, 10)
+        self.create_subscription(
+            DiagnosticArray, self.localizer_status_topic, self._on_localizer_status, 10)
         # ⚠️ **購読するだけ。ここから Goal は送らない。** 人が RViz から送った Goal を
         # 検出して巡回を畳むためだけに見ている。
         self.create_subscription(PoseStamped, "/goal_pose", self._on_manual_goal, 10)
@@ -286,6 +311,24 @@ class PatrolNode(Node):
                 self._bridge_state = st.message
                 self._bridge_stamp = time.monotonic()
 
+    def _on_localizer_status(self, msg: DiagnosticArray) -> None:
+        for st in msg.status:
+            values = {kv.key: kv.value for kv in st.values}
+            if "health" not in values:
+                continue
+            self._loc_health = values["health"]
+            self._loc_inlier_avg = values.get("inlier_avg", "")
+            self._loc_stamp = time.monotonic()
+            if self._loc_override and self._loc_health == "ok":
+                self._loc_override = False
+                self.get_logger().info("自己位置が ok に戻った。自己位置の監視を再開する")
+
+    def _localization(self) -> str:
+        """いまの health。診断が来ていない・古いときは "no_data"（何もしない）。"""
+        if not self._loc_health or time.monotonic() - self._loc_stamp > self.localizer_stale_s:
+            return "no_data"
+        return self._loc_health
+
     def _bridge_ok(self) -> tuple:
         """(走ってよいか, 理由)。"""
         if not self.require_bridge_ok:
@@ -329,6 +372,14 @@ class PatrolNode(Node):
         if self.state == "RUNNING":
             res.success, res.message = True, f"すでに巡回中（{self.index}/{len(self.waypoints)}）"
             return res
+        note = ""
+        if self.localization_guard and self._localization() == "lost":
+            # 人が「位置は合っている」と判断して動かす場合。止めた直後にまた止まらないよう、
+            # ok に戻るまで監視を休ませる
+            self._loc_override = True
+            note = (f" ⚠️ 自己位置は lost（inlier 率 平均 {self._loc_inlier_avg}）のまま。"
+                    "ok に戻るまで自己位置による停止を休む")
+            self.get_logger().warn(f"⚠️ lost のまま start された。{note}")
         if self.state == "DONE":
             self.index, self.loop_count = 0, 0
         self.retries = 0
@@ -337,7 +388,7 @@ class PatrolNode(Node):
         self.state = "RUNNING"
         self.get_logger().info(f"▶ 巡回開始（{self.index + 1}/{len(self.waypoints)} 点目から）")
         res.success = True
-        res.message = f"巡回を開始する（{self.index + 1}/{len(self.waypoints)} 点目から）"
+        res.message = f"巡回を開始する（{self.index + 1}/{len(self.waypoints)} 点目から）{note}"
         return res
 
     def _srv_pause(self, req, res):
@@ -423,6 +474,13 @@ class PatrolNode(Node):
         ok, why = self._bridge_ok()
         if not ok:
             self._to_hold(why)
+            return
+
+        if (self.localization_guard and not self._loc_override
+                and self._localization() == "lost"):
+            # ⚠️ 自己位置が地図と合っていないまま歩くと、壁へ向かって自信満々に歩く。
+            # Goal を畳む → 約 1.3 秒後に cmd_timeout で FAULT → 機体は止まる。自動では再開しない
+            self._to_hold(f"localization（inlier 率 平均 {self._loc_inlier_avg}）")
             return
 
         if self._goal_in_flight:
@@ -692,6 +750,9 @@ class PatrolNode(Node):
             "last_result": self.last_result,
             "hold_reason": self.hold_reason,
             "bridge": self._bridge_state or "unknown",
+            "localization": self._localization(),
+            "localization_inlier_avg": self._loc_inlier_avg,
+            "localization_override": self._loc_override,
             "teach_points": len(self._teach),
             "error": self.load_error or "",
         }, ensure_ascii=False)

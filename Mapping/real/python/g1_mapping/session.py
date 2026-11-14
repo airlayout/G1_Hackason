@@ -105,12 +105,15 @@ class SessionManager:
             "session_id": session_id,
             "name": name,
             "backend": backend,
+            "runtime": self.settings.runtime,
+            "transport": self.settings.transport,
             "created_at": now,
             "git_revision": _git_revision(self.settings.project_dir),
             "robot": {
                 "host": None if backend == "sim" else self.settings.g1_host,
                 "network_interface": "lo" if backend == "sim" else self.settings.g1_iface,
                 "ros_domain_id": self.settings.ros_domain_id,
+                "sensor_ssh_host": (self.settings.ssh_host or self.settings.g1_host) if self.settings.transport == "ssh" else None,
             },
             "topics": {
                 "raw_points": self.settings.raw_points_topic,
@@ -119,6 +122,7 @@ class SessionManager:
                 "onboard_odom": self.settings.onboard_odom_topic,
                 "canonical_odom": "/g1_mapping/odom",
                 "canonical_registered_cloud": "/g1_mapping/cloud_registered",
+                "canonical_sensor_pose": "/g1_mapping/sensor_pose",
                 "canonical_map": "/g1_mapping/map",
                 "camera_image": "/g1_camera/color/image/compressed",
                 "camera_info": "/g1_camera/color/camera_info",
@@ -145,13 +149,43 @@ class SessionManager:
                 ),
             },
             "live_map": {
+                "method": "octomap" if backend in {"raw", "sim"} else "accumulate",
                 "voxel_size": self.settings.map_voxel_size,
                 "density_definition": "unique_scan_count",
                 "density_target_scans": self.settings.density_target_scans,
             },
+            "occupancy_map": self.settings.occupancy_parameters() if backend in {"raw", "sim"} else None,
             "remote_map_path": remote_map_path,
             "diagnostic": diagnostic,
         }
+        if self.settings.runtime == "native" and self.settings.transport == "ssh" and backend == "raw":
+            if not Path(self.settings.g1_runs_dir).is_absolute():
+                raise ValueError("G1_MAPPING_RUNS_DIRはG1上の絶対パスで指定してください")
+            manifest["remote_recording"] = {
+                "directory": f"{self.settings.g1_runs_dir}/{session_id}",
+                "script": f"{self.settings.sensor_remote_dir}/remote_record.py",
+                "config": {
+                    "points_topic": self.settings.raw_points_topic,
+                    "imu_topic": self.settings.raw_imu_topic,
+                    "iface": self.settings.sensor_iface,
+                    "sdk_path": self.settings.sensor_sdk_path,
+                    "min_free_gib": self.settings.g1_min_free_gib,
+                    "camera_enabled": self.settings.camera_enabled,
+                    "camera_required": self.settings.camera_enabled and self.settings.camera_required,
+                    "camera_port": self.settings.camera_zmq_port,
+                    "camera_name": self.settings.camera_name,
+                    "camera_frame_id": self.settings.camera_frame_id,
+                    **{f"camera_{key}": getattr(self.settings, f"camera_{key}")
+                       for key in ("width", "height", "fx", "fy", "cx", "cy")},
+                },
+            }
+            env = self.settings.compose_environment(session_id, backend)
+            manifest["replay_environment"] = {
+                "POINT_TIMESTAMP_MODE": env.get("POINT_TIMESTAMP_MODE", "auto"),
+                "ALLOW_INFERRED_POINT_TIME": env.get("ALLOW_INFERRED_POINT_TIME", "true"),
+                # raw_mapping uses these fixed FAST-LIO settings from its YAML.
+                "FASTLIO_EXTRINSIC_EST": "true", "FASTLIO_TIME_SYNC": "false", "FASTLIO_TIME_OFFSET": "0",
+            }
         state: dict[str, object] = {
             "session_id": session_id,
             "backend": backend,

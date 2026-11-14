@@ -1,0 +1,1367 @@
+{
+  "schema": "g1-robust-trial-v1",
+  "task": "bottle",
+  "completed": false,
+  "physical_push_success": null,
+  "settings": {
+    "budget_s": 10.0,
+    "max_rollouts": 1000,
+    "scenarios": 20,
+    "workers": 4,
+    "max_candidates": 50,
+    "seed": 0,
+    "position_error_m": 0.001,
+    "normal_error_deg": 1.0,
+    "tracking_error_rad": 0.001,
+    "mass_range": [
+      0.28,
+      0.42
+    ],
+    "friction_range": [
+      0.24,
+      0.36
+    ],
+    "gravity_scale": 1.0,
+    "motion_duration_s": 30.0,
+    "joint_speed_rad_s": 1.2,
+    "joint_acceleration_rad_s2": 4.0
+  },
+  "arguments": {
+    "task": "bottle",
+    "model": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+    "base_transform": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/calibration_previous.json",
+    "state_json": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_20261101_112349_RVjmES/state.json",
+    "output": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_20261101_112349_RVjmES/result.json",
+    "weights": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/models/yolo26n.pt",
+    "button_direction": null,
+    "target_pixel": null,
+    "confidence": 0.25,
+    "device": "cpu",
+    "detector_imgsz": 960,
+    "network_interface": "enp129s0",
+    "arm_socket": null,
+    "execute": false,
+    "calibrated": false,
+    "stop_before_contact": false,
+    "motion_planner": "robust",
+    "trial_config": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/trial.json",
+    "planning_budget_s": 10.0,
+    "planning_max_rollouts": 1000,
+    "planning_scenarios": 20,
+    "planning_workers": 4,
+    "planning_max_candidates": 50,
+    "planning_seed": 0,
+    "position_error_m": 0.001,
+    "normal_error_deg": 1.0,
+    "tracking_error_rad": 0.001,
+    "mass_range": [
+      0.28,
+      0.42
+    ],
+    "friction_range": [
+      0.24,
+      0.36
+    ],
+    "bottle_base_height": 0.72,
+    "contact_height": 0.08,
+    "stroke": 0.0015,
+    "push_distance": 0.05,
+    "gravity_scale": 1.0,
+    "motion_duration_s": 30.0,
+    "joint_speed_rad_s": 1.2,
+    "joint_acceleration_rad_s2": 4.0,
+    "j1gen_root": null,
+    "camera_config": "camera.yaml",
+    "host": "192.168.123.164"
+  },
+  "calibration": {
+    "schema": "g1-button-calibration-v2",
+    "camera_body": "torso_link",
+    "camera_offset_m": [
+      -0.008196056063758783,
+      -0.00827976001704056,
+      0.018840695320078482
+    ],
+    "camera_rpy_offset_rad": [
+      -0.048594911386863636,
+      -0.0031263843534105554,
+      -0.014836240570040656
+    ],
+    "pelvis_height_m": 0.77,
+    "tip_offset_m": [
+      0.1583,
+      0.0283,
+      0.0067
+    ],
+    "tip_radius_m": 0.015,
+    "position_uncertainty_m": 0.015,
+    "reference_waist_q_rad": [
+      -0.001607027486898005,
+      -0.0016876553418114781,
+      -0.038732390850782394
+    ],
+    "reference_imu_rpy_rad": [
+      0.00037252751644700766,
+      0.03764556720852852,
+      -0.24314935505390167
+    ],
+    "provenance": {
+      "camera": "Fitted to user-measured horizontal 40x30 cm tabletop at z=0.76 m, x=[0.31,0.61], y=[-0.36,0.04]",
+      "camera_height_independent_check_m": {
+        "measured": 1.24,
+        "estimated": 1.2357050696013938
+      },
+      "bottle_center_independent_check_m": {
+        "placed_by_user": [
+          0.38,
+          -0.2
+        ],
+        "estimated": [
+          0.38325007293855406,
+          -0.20633615871110703
+        ]
+      },
+      "hand": "Operator confirmed unactuated fixed five-finger stock hand; nominal geometry from pinned official model",
+      "hand_mesh_commit": "ccfc6fd8430a17ba3dacef9a1e2faf64ff3b0aee",
+      "middle_fingertip_surface_m": [
+        0.1733,
+        0.0283,
+        0.0067
+      ],
+      "sphere_center_definition": "15 mm inward from nominal middle-fingertip surface along hand +X",
+      "uncertainty": "Conservative 15 mm planning allowance; not a precision metrology certificate",
+      "path": "Full stock-hand meshes vs measured tabletop/robot checked offline; minimum predicted clearance about 51 mm"
+    },
+    "validation_status": "Camera/table and nominal stock-hand profile established; actual precontact trajectory and tip projection validation pending"
+  },
+  "error": "No fresh continuous observation",
+  "perception_frames": [
+    {
+      "frame_id": 8536,
+      "captured_at_s": 79649.19404893751,
+      "frame_ids": [
+        8534,
+        8535,
+        8536
+      ],
+      "geometry": {
+        "face": [
+          0.34444688115656713,
+          -0.17405549149474125,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03775406450102116,
+        "base_height": 0.72,
+        "object_height": 0.15077230338860514
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8537,
+      "captured_at_s": 79649.39094695645,
+      "frame_ids": [
+        8535,
+        8536,
+        8537
+      ],
+      "geometry": {
+        "face": [
+          0.34430179879446443,
+          -0.17329834702810798,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03681838253462141,
+        "base_height": 0.72,
+        "object_height": 0.14929973664228458
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8538,
+      "captured_at_s": 79649.59091231589,
+      "frame_ids": [
+        8536,
+        8537,
+        8538
+      ],
+      "geometry": {
+        "face": [
+          0.34425459356946425,
+          -0.17329834702810798,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03681838253462141,
+        "base_height": 0.72,
+        "object_height": 0.14942136475255607
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8539,
+      "captured_at_s": 79649.79679681956,
+      "frame_ids": [
+        8537,
+        8538,
+        8539
+      ],
+      "geometry": {
+        "face": [
+          0.34430179879446443,
+          -0.17339874110132772,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03681838253462141,
+        "base_height": 0.72,
+        "object_height": 0.14905229136405518
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8540,
+      "captured_at_s": 79649.98801904511,
+      "frame_ids": [
+        8538,
+        8539,
+        8540
+      ],
+      "geometry": {
+        "face": [
+          0.3443589538447581,
+          -0.1735469425061554,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03702531791521768,
+        "base_height": 0.72,
+        "object_height": 0.14886166892355346
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8541,
+      "captured_at_s": 79650.19876439295,
+      "frame_ids": [
+        8539,
+        8540,
+        8541
+      ],
+      "geometry": {
+        "face": [
+          0.34446130977838285,
+          -0.1735469425061554,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03702531791521768,
+        "base_height": 0.72,
+        "object_height": 0.1488458331445648
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8542,
+      "captured_at_s": 79650.38852743112,
+      "frame_ids": [
+        8540,
+        8541,
+        8542
+      ],
+      "geometry": {
+        "face": [
+          0.3443589538447581,
+          -0.1735469425061554,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03702531791521768,
+        "base_height": 0.72,
+        "object_height": 0.15046453512175517
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8543,
+      "captured_at_s": 79650.5876003466,
+      "frame_ids": [
+        8541,
+        8542,
+        8543
+      ],
+      "geometry": {
+        "face": [
+          0.34452669694116367,
+          -0.17400304940862335,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.037301873970093,
+        "base_height": 0.72,
+        "object_height": 0.14906330826670455
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8544,
+      "captured_at_s": 79650.79064135224,
+      "frame_ids": [
+        8542,
+        8543,
+        8544
+      ],
+      "geometry": {
+        "face": [
+          0.34431365095318384,
+          -0.17310472489875373,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03586372226477884,
+        "base_height": 0.72,
+        "object_height": 0.14993382809025402
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8545,
+      "captured_at_s": 79650.99014206084,
+      "frame_ids": [
+        8543,
+        8544,
+        8545
+      ],
+      "geometry": {
+        "face": [
+          0.34431365095318384,
+          -0.17310472489875373,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03586372226477884,
+        "base_height": 0.72,
+        "object_height": 0.15123266586719408
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8546,
+      "captured_at_s": 79651.19281210507,
+      "frame_ids": [
+        8544,
+        8545,
+        8546
+      ],
+      "geometry": {
+        "face": [
+          0.34431365095318384,
+          -0.17310472489875373,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03586372226477884,
+        "base_height": 0.72,
+        "object_height": 0.15028165225841073
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8547,
+      "captured_at_s": 79651.39222376134,
+      "frame_ids": [
+        8545,
+        8546,
+        8547
+      ],
+      "geometry": {
+        "face": [
+          0.34436502377290823,
+          -0.17293413429088178,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035042301205692364,
+        "base_height": 0.72,
+        "object_height": 0.15034639951264184
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8548,
+      "captured_at_s": 79651.59006322459,
+      "frame_ids": [
+        8546,
+        8547,
+        8548
+      ],
+      "geometry": {
+        "face": [
+          0.34436502377290823,
+          -0.17320310713373432,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03623952301179626,
+        "base_height": 0.72,
+        "object_height": 0.15045961699305221
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8549,
+      "captured_at_s": 79651.79998992837,
+      "frame_ids": [
+        8547,
+        8548,
+        8549
+      ],
+      "geometry": {
+        "face": [
+          0.34436502377290823,
+          -0.1733646638763326,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03623952301179626,
+        "base_height": 0.72,
+        "object_height": 0.14963075882734733
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8550,
+      "captured_at_s": 79651.98911777465,
+      "frame_ids": [
+        8548,
+        8549,
+        8550
+      ],
+      "geometry": {
+        "face": [
+          0.34407274612398625,
+          -0.1733646638763326,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03623952301179626,
+        "base_height": 0.72,
+        "object_height": 0.1494566891719017
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8551,
+      "captured_at_s": 79652.19222159537,
+      "frame_ids": [
+        8549,
+        8550,
+        8551
+      ],
+      "geometry": {
+        "face": [
+          0.3442367425248891,
+          -0.17335885767992196,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03636789192727426,
+        "base_height": 0.72,
+        "object_height": 0.1497280072719266
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8552,
+      "captured_at_s": 79652.39114933083,
+      "frame_ids": [
+        8550,
+        8551,
+        8552
+      ],
+      "geometry": {
+        "face": [
+          0.3442367425248891,
+          -0.1730389738276673,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03618444764138871,
+        "base_height": 0.72,
+        "object_height": 0.150682511224711
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8553,
+      "captured_at_s": 79652.59033652006,
+      "frame_ids": [
+        8551,
+        8552,
+        8553
+      ],
+      "geometry": {
+        "face": [
+          0.3442367425248891,
+          -0.17286803201272485,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03506987084832397,
+        "base_height": 0.72,
+        "object_height": 0.15146452572881008
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8554,
+      "captured_at_s": 79652.78971463091,
+      "frame_ids": [
+        8552,
+        8553,
+        8554
+      ],
+      "geometry": {
+        "face": [
+          0.3444811999898464,
+          -0.1728227693134951,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03506987084832397,
+        "base_height": 0.72,
+        "object_height": 0.1498260089496829
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8555,
+      "captured_at_s": 79652.98866300915,
+      "frame_ids": [
+        8553,
+        8554,
+        8555
+      ],
+      "geometry": {
+        "face": [
+          0.3441835667109892,
+          -0.17281107086121095,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03530950390082864,
+        "base_height": 0.72,
+        "object_height": 0.150051548247213
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8556,
+      "captured_at_s": 79653.19702559701,
+      "frame_ids": [
+        8554,
+        8555,
+        8556
+      ],
+      "geometry": {
+        "face": [
+          0.34439803384630696,
+          -0.1728227693134951,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035364457777846206,
+        "base_height": 0.72,
+        "object_height": 0.1498218456118633
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8557,
+      "captured_at_s": 79653.39120657927,
+      "frame_ids": [
+        8555,
+        8556,
+        8557
+      ],
+      "geometry": {
+        "face": [
+          0.3441258122942964,
+          -0.17287729763383397,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035364457777846206,
+        "base_height": 0.72,
+        "object_height": 0.1505879867350639
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8558,
+      "captured_at_s": 79653.59331531252,
+      "frame_ids": [
+        8556,
+        8557,
+        8558
+      ],
+      "geometry": {
+        "face": [
+          0.3440385847422457,
+          -0.17287729763383397,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03514942466873452,
+        "base_height": 0.72,
+        "object_height": 0.15105685895724297
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8559,
+      "captured_at_s": 79653.79159340686,
+      "frame_ids": [
+        8557,
+        8558,
+        8559
+      ],
+      "geometry": {
+        "face": [
+          0.3440385847422457,
+          -0.17287729763383397,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03514942466873452,
+        "base_height": 0.72,
+        "object_height": 0.15044826746527595
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8560,
+      "captured_at_s": 79653.99173953725,
+      "frame_ids": [
+        8558,
+        8559,
+        8560
+      ],
+      "geometry": {
+        "face": [
+          0.34424083448610854,
+          -0.17294097927373908,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.035618652917560785,
+        "base_height": 0.72,
+        "object_height": 0.14964310568637873
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8561,
+      "captured_at_s": 79654.19001052066,
+      "frame_ids": [
+        8559,
+        8560,
+        8561
+      ],
+      "geometry": {
+        "face": [
+          0.34424083448610854,
+          -0.1730385548033313,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03605672507716685,
+        "base_height": 0.72,
+        "object_height": 0.1504453670303998
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8562,
+      "captured_at_s": 79654.39061274509,
+      "frame_ids": [
+        8560,
+        8561,
+        8562
+      ],
+      "geometry": {
+        "face": [
+          0.34415404199403876,
+          -0.1730385548033313,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03605672507716685,
+        "base_height": 0.72,
+        "object_height": 0.1511417993029397
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8563,
+      "captured_at_s": 79654.59911071365,
+      "frame_ids": [
+        8561,
+        8562,
+        8563
+      ],
+      "geometry": {
+        "face": [
+          0.3440884129805604,
+          -0.1730385548033313,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03605672507716685,
+        "base_height": 0.72,
+        "object_height": 0.14922217270048344
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8564,
+      "captured_at_s": 79654.79027674906,
+      "frame_ids": [
+        8562,
+        8563,
+        8564
+      ],
+      "geometry": {
+        "face": [
+          0.3440884129805604,
+          -0.17301533593492235,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03618692263363769,
+        "base_height": 0.72,
+        "object_height": 0.1498277725874797
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8565,
+      "captured_at_s": 79654.99335262485,
+      "frame_ids": [
+        8563,
+        8564,
+        8565
+      ],
+      "geometry": {
+        "face": [
+          0.3441472521722206,
+          -0.17305609800115404,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03618692263363769,
+        "base_height": 0.72,
+        "object_height": 0.14994600424161952
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8566,
+      "captured_at_s": 79655.19023926846,
+      "frame_ids": [
+        8564,
+        8565,
+        8566
+      ],
+      "geometry": {
+        "face": [
+          0.3441472521722206,
+          -0.17305609800115404,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03618692263363769,
+        "base_height": 0.72,
+        "object_height": 0.14914748272777312
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8567,
+      "captured_at_s": 79655.39036871573,
+      "frame_ids": [
+        8565,
+        8566,
+        8567
+      ],
+      "geometry": {
+        "face": [
+          0.3441472521722206,
+          -0.1731221204365639,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.0363420035247628,
+        "base_height": 0.72,
+        "object_height": 0.14961661163868056
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8568,
+      "captured_at_s": 79655.59426350836,
+      "frame_ids": [
+        8566,
+        8567,
+        8568
+      ],
+      "geometry": {
+        "face": [
+          0.34409685982193944,
+          -0.1731221204365639,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.0363420035247628,
+        "base_height": 0.72,
+        "object_height": 0.1505216797415847
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8569,
+      "captured_at_s": 79655.79036203981,
+      "frame_ids": [
+        8567,
+        8568,
+        8569
+      ],
+      "geometry": {
+        "face": [
+          0.34427340065844386,
+          -0.1731221204365639,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.0363420035247628,
+        "base_height": 0.72,
+        "object_height": 0.1494300613349342
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8570,
+      "captured_at_s": 79655.9897544171,
+      "frame_ids": [
+        8568,
+        8569,
+        8570
+      ],
+      "geometry": {
+        "face": [
+          0.34427340065844386,
+          -0.17326871395472795,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03678411981528096,
+        "base_height": 0.72,
+        "object_height": 0.1494923149185602
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8571,
+      "captured_at_s": 79656.1898186448,
+      "frame_ids": [
+        8569,
+        8570,
+        8571
+      ],
+      "geometry": {
+        "face": [
+          0.3444177178686043,
+          -0.17326871395472795,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03678411981528096,
+        "base_height": 0.72,
+        "object_height": 0.14973044814257352
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8572,
+      "captured_at_s": 79656.39240236307,
+      "frame_ids": [
+        8570,
+        8571,
+        8572
+      ],
+      "geometry": {
+        "face": [
+          0.3444177178686043,
+          -0.17312854146190143,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03598532720116882,
+        "base_height": 0.72,
+        "object_height": 0.15123324209321753
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8573,
+      "captured_at_s": 79656.59280633104,
+      "frame_ids": [
+        8571,
+        8572,
+        8573
+      ],
+      "geometry": {
+        "face": [
+          0.34389344331577276,
+          -0.17312854146190143,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03598532720116882,
+        "base_height": 0.72,
+        "object_height": 0.14939559252634826
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8574,
+      "captured_at_s": 79656.79242051569,
+      "frame_ids": [
+        8572,
+        8573,
+        8574
+      ],
+      "geometry": {
+        "face": [
+          0.34389344331577276,
+          -0.17325675887687642,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.036280740767680314,
+        "base_height": 0.72,
+        "object_height": 0.149732163348974
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8575,
+      "captured_at_s": 79656.99012168143,
+      "frame_ids": [
+        8573,
+        8574,
+        8575
+      ],
+      "geometry": {
+        "face": [
+          0.34415707724110545,
+          -0.17325675887687642,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.036280740767680314,
+        "base_height": 0.72,
+        "object_height": 0.15001134991798293
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8576,
+      "captured_at_s": 79657.18959466141,
+      "frame_ids": [
+        8574,
+        8575,
+        8576
+      ],
+      "geometry": {
+        "face": [
+          0.3441822821609727,
+          -0.1729411901427504,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03567096722968204,
+        "base_height": 0.72,
+        "object_height": 0.1504793317755474
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8577,
+      "captured_at_s": 79657.39119905999,
+      "frame_ids": [
+        8575,
+        8576,
+        8577
+      ],
+      "geometry": {
+        "face": [
+          0.3441822821609727,
+          -0.1729411901427504,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03567096722968204,
+        "base_height": 0.72,
+        "object_height": 0.14901372427165605
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8578,
+      "captured_at_s": 79657.59113329429,
+      "frame_ids": [
+        8576,
+        8577,
+        8578
+      ],
+      "geometry": {
+        "face": [
+          0.3441969741949458,
+          -0.17368857435130994,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03662026349970026,
+        "base_height": 0.72,
+        "object_height": 0.15046901187993356
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8579,
+      "captured_at_s": 79657.79014122215,
+      "frame_ids": [
+        8577,
+        8578,
+        8579
+      ],
+      "geometry": {
+        "face": [
+          0.3442171203064483,
+          -0.17368857435130994,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03726749616230698,
+        "base_height": 0.72,
+        "object_height": 0.15019507178877622
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8580,
+      "captured_at_s": 79657.9971557352,
+      "frame_ids": [
+        8578,
+        8579,
+        8580
+      ],
+      "geometry": {
+        "face": [
+          0.3442171203064483,
+          -0.1735559038477363,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03662026349970026,
+        "base_height": 0.72,
+        "object_height": 0.15004680064767761
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8581,
+      "captured_at_s": 79658.19067107026,
+      "frame_ids": [
+        8579,
+        8580,
+        8581
+      ],
+      "geometry": {
+        "face": [
+          0.3440918267960652,
+          -0.17333661291223498,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03623225514934386,
+        "base_height": 0.72,
+        "object_height": 0.15000642706720757
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8582,
+      "captured_at_s": 79658.39026750214,
+      "frame_ids": [
+        8580,
+        8581,
+        8582
+      ],
+      "geometry": {
+        "face": [
+          0.34386281174763855,
+          -0.17333661291223498,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03609144489354714,
+        "base_height": 0.72,
+        "object_height": 0.15096619689725221
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8583,
+      "captured_at_s": 79658.59096562004,
+      "frame_ids": [
+        8581,
+        8582,
+        8583
+      ],
+      "geometry": {
+        "face": [
+          0.34386281174763855,
+          -0.17355873437371655,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03609144489354714,
+        "base_height": 0.72,
+        "object_height": 0.1496228258243566
+      },
+      "lamp": null
+    },
+    {
+      "frame_id": 8584,
+      "captured_at_s": 79658.791366077,
+      "frame_ids": [
+        8582,
+        8583,
+        8584
+      ],
+      "geometry": {
+        "face": [
+          0.3439364894398588,
+          -0.17355873437371655,
+          0.7999999999999999
+        ],
+        "normal": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.03609144489354714,
+        "base_height": 0.72,
+        "object_height": 0.14964310568637873
+      },
+      "lamp": null
+    }
+  ],
+  "perception_rejections": {},
+  "geometry_rejections": []
+}

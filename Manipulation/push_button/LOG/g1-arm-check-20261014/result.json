@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-14",
+  "requested_test": "Small right-arm raise and return",
+  "command_route": "rt/arm_sdk",
+  "joint": 22,
+  "commanded_delta_deg": -12.0,
+  "raise_duration_s": 2.0,
+  "outcome": "Interrupted during hold by stationarity/upright guard",
+  "guard_error": "Robot is not stationary and upright",
+  "guard_trigger_measurement": "Not recorded; exact triggering signal is unknown",
+  "completed_full_commanded_trajectory": false,
+  "commanded_arm_blend_after_cleanup": 0.0,
+  "movement_amplitude_verified": false,
+  "automatic_retry": false,
+  "post_test": {
+    "fsm_rpc_code": 0,
+    "fsm_id": 501,
+    "samples": 40,
+    "initial_right_shoulder_rad": 0.28828054666519165,
+    "final_right_shoulder_rad": 0.28488901257514954,
+    "right_shoulder_return_error_deg": -0.19432058943415526,
+    "max_abs_roll_rad": 0.0063454885967075825,
+    "max_abs_pitch_rad": 0.022350557148456573,
+    "max_abs_gyroscope_rad_s": 0.012783171609044075,
+    "max_leg_joint_speed_rad_s": 0.05345071107149124,
+    "max_arm_joint_speed_rad_s": 0.04295146465301514
+  },
+  "lower_body_control_followup": {
+    "bridge_pid_before": 15100,
+    "bridge_pid_after": 15100,
+    "bridge_process_restarted": false,
+    "fsm_rpc_code": 0,
+    "fsm_id": 501,
+    "fsm_continuously_logged_during_arm_test": false
+  },
+  "notes": "No walking, mode switching, Damp or whole-body torque-release command was sent. The existing locomotion SDK bridge remained running with the same PID, and standing FSM 501 was observed before and after the test. Physical observation of the arm movement is pending."
+}

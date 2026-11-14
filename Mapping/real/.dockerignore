@@ -1,0 +1,8 @@
+.env
+.mapping-state.json
+runs
+dist
+**/__pycache__
+**/build
+**/install
+**/log

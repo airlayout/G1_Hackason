@@ -28,3 +28,23 @@ J1GEN_BUTTON_DETECTOR=yolo J1GEN_BUTTON_WEIGHTS=Button_Press/J1-gen/weights/butt
   - 今の使い方（ultralytics は .pt を横長のまま入れる）との差: 個数と矢印が同じ 41/45。違った 4 枚は、ラボの写真 IMG_0924（消灯。大きさ違いの 3 枚）と
     シミュの 1 枚で、どれも ONNX が 1 つ少ない（.pt 4 個 / .onnx 3 個）。1 枚の時間はノート PC の CPU で .pt 238 ms・.onnx 96 ms
 - **G1 の頭カメラ（実機）ではまだ確かめていない**
+
+## main 側の取り込み記録（button_final8.pt）
+
+`button_final8.pt` は Jigen の `Dev/ButtonPress` から取り込んだ最終版。
+元と同じ配置で、実機とシミュレーションのボタン用YOLOから共用する。
+
+- [取得元](https://github.com/airlayout/G1_Hackason/blob/8bcbbd7275cd4545d8abd14279226b3fd91b78fc/Button_Press/J1-gen/weights/button_final8.pt)
+- 元コミット: `8bcbbd7275cd4545d8abd14279226b3fd91b78fc`
+- Git blob: `7d5eeab147a6fa786078a741e62d4e4ba81730c3`
+- SHA256: `7795e946b5331f17160ea688ef7ad2d8ea10cd59c93ef420f18bd75ca62eec41`
+- サイズ: 5,370,181 bytes、クラス: `up` / `down`
+- 標準推論設定: 640画素、信頼度0.4
+
+ラボのエレベーターを撮影した8本の動画から726枚と、シミュレーション80枚で学習した重み
+（2026-10-31、11エポック目）。学習データと途中の重みは同梱しない。
+
+[元の検証記録](https://github.com/airlayout/G1_Hackason/blob/8bcbbd7275cd4545d8abd14279226b3fd91b78fc/Button_Press/J1-gen/weights/README.md)
+では、Jigenのエージェントによるbasic・realistic・模擬DDSの練習20試行がそれぞれ20/20。
+この成績はManipulation側の制御を検証したものではない。G1頭カメラの実画像による精度と
+実機での押下成功は別途確認が必要。ここには指定された `.pt` 版を収録する。

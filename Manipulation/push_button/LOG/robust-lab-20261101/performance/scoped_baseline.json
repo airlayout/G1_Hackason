@@ -1,0 +1,79 @@
+{
+  "mode": "baseline",
+  "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button",
+  "total_wall_s": 0.5792964959982783,
+  "trial": {
+    "completed": true,
+    "success": false,
+    "min_clearance_m": 0.04985888193196582,
+    "target_margin_m": -0.0012257481539200551,
+    "tracking_max_m": 0.006739779073360953,
+    "min_joint_margin_rad": 0.3967283952393341,
+    "peak_press_m": 0.0,
+    "peak_force_n": null,
+    "displacement_m": [
+      0.04737738334209857,
+      -0.0025909419017120794,
+      -3.629622712497671e-06
+    ],
+    "wall_s": 0.5763163689989597
+  },
+  "timers": {
+    "copy_model_and_data": {
+      "calls": 1,
+      "wall_s": 0.038244924013270065
+    },
+    "full_forward_subcalls": {
+      "calls": 1,
+      "wall_s": 0.000126276005175896
+    },
+    "physics_integration": {
+      "calls": 134,
+      "wall_s": 0.38894671098387334
+    },
+    "forward_position_checks": {
+      "calls": 1335,
+      "wall_s": 0.026426440963405184
+    },
+    "geometry_distance_subcalls": {
+      "calls": 10680,
+      "wall_s": 0.006607409188291058
+    },
+    "collision_clearance_checks": {
+      "calls": 1335,
+      "wall_s": 0.09265176285407506
+    }
+  },
+  "other_setup_python_metrics_and_cleanup_s": 0.033026657183654606,
+  "candidate_total_s": 0.24389565500314347,
+  "candidate_timers": {
+    "full_forward_subcalls": {
+      "calls": 1911,
+      "wall_s": 0.0668684799602488
+    },
+    "inverse_kinematics": {
+      "calls": 16,
+      "wall_s": 0.011741169015294872
+    },
+    "path_validation": {
+      "calls": 16,
+      "wall_s": 0.036015412959386595
+    },
+    "duration_optimization": {
+      "calls": 1,
+      "wall_s": 0.03233961800287943
+    },
+    "retime_spline": {
+      "calls": 1,
+      "wall_s": 0.00027484299789648503
+    },
+    "geometry_distance_subcalls": {
+      "calls": 10680,
+      "wall_s": 0.006302872920059599
+    },
+    "collision_clearance_checks": {
+      "calls": 1335,
+      "wall_s": 0.08772453306301031
+    }
+  }
+}

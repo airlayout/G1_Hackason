@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SESSION_ID="${MAPPING_SESSION_ID:?MAPPING_SESSION_ID is required}"
-OUTPUT_DIR="/runs/$SESSION_ID/raw/rosbag2"
+OUTPUT_DIR="${MAPPING_RUNS_DIR:-/runs}/$SESSION_ID/raw/rosbag2"
 
 TOPICS=(
     "${RAW_POINTS_TOPIC:?RAW_POINTS_TOPIC is required}"
@@ -13,6 +13,7 @@ TOPICS=(
     /g1_mapping/imu
     /g1_mapping/odom
     /g1_mapping/cloud_registered
+    /g1_mapping/sensor_pose
     /g1_camera/color/image/compressed
     /g1_camera/color/camera_info
     /g1_camera/frame_metadata

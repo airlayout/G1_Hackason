@@ -19,7 +19,11 @@ class YoloDetector:
         classes: list[str] | None = None,
         confidence_threshold: float = 0.5,
         device: str = "auto",
+        imgsz: int = 640,
     ) -> None:
+        if not isinstance(imgsz, int) or imgsz <= 0 or imgsz % 32:
+            raise ValueError("imgszは32の正の倍数が必要です")
+        self._imgsz = imgsz
         self._confidence_threshold = confidence_threshold
         self._device = self._resolve_device(device)
 
@@ -50,6 +54,11 @@ class YoloDetector:
     def device(self) -> str:
         return self._device
 
+    @property
+    def class_names(self) -> tuple[str, ...]:
+        """重みが持つクラス名。モデルを読み直さず用途別のフィルタを作る。"""
+        return tuple(self._model.names.values())
+
     def detect(self, frame: np.ndarray) -> list[Detection]:
         """1フレームに対して推論を行い、Detectionのリストを返す"""
         results = self._model.predict(
@@ -58,6 +67,7 @@ class YoloDetector:
             conf=self._confidence_threshold,
             device=self._device,
             verbose=False,
+            imgsz=self._imgsz,
         )
 
         detections: list[Detection] = []

@@ -1,0 +1,10 @@
+# RGB-D受信・頭カメラFKを動かす画像処理側の環境。PC2のSDK用Pythonとは別に入れる。
+numpy>=1.26
+mujoco==3.14.0
+PyYAML>=6.0
+opencv-python
+pyzmq>=26
+pin==3.9.0
+cmeel-urdfdom==4.0.1
+cmeel-tinyxml2==10.0.0
+ultralytics

@@ -1,0 +1,12 @@
+# 採点専用の仮想環境に入れる。実機SDK環境のパッケージを置き換えない。
+numpy>=1.26
+PyYAML>=6.0
+mujoco==3.14.0
+pin==3.9.0
+# Pinocchio 3.9 の共有ライブラリと対応する版をそろえる。
+cmeel-urdfdom==4.0.1
+cmeel-tinyxml2==10.0.0
+scipy
+pillow
+opencv-python
+pyzmq>=26
