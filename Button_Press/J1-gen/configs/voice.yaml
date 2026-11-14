@@ -17,7 +17,7 @@ phrases:
   not_confirmed: 点灯を確認できませんでした           # 押し直しても点灯を確かめられなかったとき
   gave_up: ボタンを押すのを中止します                 # 見つからない・計画が立たないなどで中止したとき
 
-# 声（null なら Voice/voicevox_speak.py の既定 = 剣崎雌雄 21・pitch 0.05・intonation 1）
+# 声（null なら Voice/voicevox_speak.py の既定 = 剣崎雌雄 21・pitch 0・intonation 1）
 voice:
   style: null
   speed: null
