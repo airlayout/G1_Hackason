@@ -9,7 +9,8 @@
     # 実機に送る（確認モードで各段階で Enter を待つ。--execute は人が打つ）
     ... --path arm_sdk --network-interface eth1 --execute
 
-動作: salute（敬礼・肘を横へ張る）/ salute_elbow_high（敬礼・肘を高く）/ salute_simple（敬礼の簡易版）/
+動作: salute（敬礼・肘を横へ張る）/ salute_wrist_bent（同・手首を曲げる）/ salute_elbow_high（敬礼・肘を高く）/
+      salute_simple（敬礼の簡易版）/
       point（指さし・前下）/ point_level（指さし・水平）。定義は actions/poses.py。
 
 腰の扱い（この動作の実行時だけ。configs/arm.yaml は変えない）:

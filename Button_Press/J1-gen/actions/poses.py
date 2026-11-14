@@ -49,6 +49,19 @@ SALUTE = Action(
     caution="肘を横へ張るので、右横に人や物が無いこと。手と頭の間は約 10 cm（MuJoCo）。実機では追従誤差 4〜5° があるので目で見る。",
 )
 
+# 敬礼（手首を曲げる）: salute と同じく肘を横へ張り、手の側面を前へ向けるが、手首を曲げて手先を額へ向ける（2026-11-14 の案 F）。
+# salute は手首をまっすぐにした版（案 G）。目標は同じ（指先 (0.10, -0.06, 0.50)・肘 (0.08, -0.30, 0.25)・掌の向きの前後成分 0）。
+# メッシュの最短距離: 手と頭 9.5 cm、腕と胴 9.0 cm。
+SALUTE_WRIST_BENT = Action(
+    name="salute_wrist_bent",
+    description="右肘を横へ張り、手首を曲げて手を額の右に当てて 2 秒止まり、戻る（敬礼・手首を曲げる）",
+    steps=(
+        Step("肘を横へ張って手首を曲げ、手を額へ", (-32.8, -66.0, -4.4, -48.9, 27.7, -20.3, -20.8), hold_s=2.0),
+    ),
+    planned_tip_m=(0.10, -0.06, 0.50),
+    caution="肘を横へ張るので、右横に人や物が無いこと。手と頭の間は約 10 cm（MuJoCo）。",
+)
+
 # 敬礼（肘を高く）: salute より肘を肩の高さまで上げる。手首は少し曲がる（pitch -28.9°）。
 # 目標: 指先 (0.10, -0.06, 0.53)・肘 (0.08, -0.30, 0.30)。メッシュの最短距離: 腕と頭 9.9 cm、腕と胴 6.2 cm。
 SALUTE_ELBOW_HIGH = Action(
@@ -94,4 +107,4 @@ POINT_LEVEL = Action(
     caution="腕をいちばん前へ出す姿勢。point で体の傾きを確かめてから使う。",
 )
 
-ACTIONS: dict[str, Action] = {a.name: a for a in (SALUTE, SALUTE_ELBOW_HIGH, SALUTE_SIMPLE, POINT, POINT_LEVEL)}
+ACTIONS: dict[str, Action] = {a.name: a for a in (SALUTE, SALUTE_WRIST_BENT, SALUTE_ELBOW_HIGH, SALUTE_SIMPLE, POINT, POINT_LEVEL)}
