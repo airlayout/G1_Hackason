@@ -5,9 +5,10 @@
 #   bash Voice/say.sh "ゆっくり話します" --speed 0.9      # 2 つ目からは voicevox_speak.py にそのまま渡す
 #   STYLE=11 bash Voice/say.sh "玄野武宏の声です"           # 声を変える（スタイル ID は --list-speakers）
 #
-# 既定の声: 白上虎太郎「わーい」（スタイル 32、高さ・抑揚は VOICEVOX の標準）。2026-11-14 に実機で聞き比べて選んだ。
+# 既定の声は voicevox_speak.py の既定（剣崎雌雄、スタイル 21、高さ・抑揚は VOICEVOX の標準）。
 # 環境変数: STYLE・PITCH・INTONATION（声）、VOICEVOX_PY（voicevox_core を入れた python）、PC2（ssh の宛先）
-# ⚠️ 外に出す場面（発表・動画など）では「VOICEVOX:白上虎太郎」のクレジット表記が要る
+#   例: STYLE=32 は白上虎太郎「わーい」
+# ⚠️ 外に出す場面（発表・動画など）では「VOICEVOX:剣崎雌雄」のような、使った声のクレジット表記が要る
 set -euo pipefail
 
 if [ $# -lt 1 ] || [ -z "$1" ]; then
@@ -19,6 +20,9 @@ shift
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PY="${VOICEVOX_PY:-$HOME/voicevox_core/venv/bin/python}"
-exec "$PY" "$HERE/voicevox_speak.py" --play \
-    --style "${STYLE:-32}" --pitch "${PITCH:-0}" --intonation "${INTONATION:-1}" \
+voice=()
+[ -n "${STYLE:-}" ] && voice+=(--style "$STYLE")
+[ -n "${PITCH:-}" ] && voice+=(--pitch "$PITCH")
+[ -n "${INTONATION:-}" ] && voice+=(--intonation "$INTONATION")
+exec "$PY" "$HERE/voicevox_speak.py" --play "${voice[@]}" \
     --host "${PC2:-unitree@192.168.0.82}" "$@" "$text"

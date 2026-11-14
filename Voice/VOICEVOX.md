@@ -16,8 +16,9 @@ G1 内蔵の TTS（`AudioClient.TtsMaker`）は**日本語を読めない**（�
 
 - 合成は操作PCで行う（インターネット不要）。PC から音声の DDS は叩かず、PC2 の中で鳴らす
   （PC でカメラと音声の DDS を同時に使うとエラー 3102/3104 になった記録がある）
-- 既定の声は**剣崎雌雄（スタイル 21）を少し低く（`--pitch -0.06`）・抑揚控えめ（`--intonation 0.8`）**。
-  ずんだもん・玄野武宏などと実機で聞き比べて決めた
+- 既定の声は**剣崎雌雄（スタイル 21）、高さ・抑揚は VOICEVOX の標準（`--pitch 0`・`--intonation 1`）**。
+  ずんだもん・九州そら・白上虎太郎・玄野武宏などと実機で聞き比べて決めた。初めは少し低く（-0.06）・抑揚控えめ（0.8）に
+  していたが、標準のほうが明るく、大きく聞こえた
 - 外に出す場面（発表・動画など）では「**VOICEVOX:剣崎雌雄**」のクレジット表記が要る
 - 音量は変えない（共用の機体。2026-11-14 時点で 100）。PC2 では `/tmp` の下だけを使う
 
@@ -26,7 +27,7 @@ G1 内蔵の TTS（`AudioClient.TtsMaker`）は**日本語を読めない**（�
 リポジトリの一番上（`G1_Hackason/`）で、操作PCのターミナルから:
 
 ```bash
-bash Voice/say.sh "こんにちは"                       # いちばん手軽: 白上虎太郎「わーい」（32）で喋らせる（STYLE=11 などで声を変える）
+bash Voice/say.sh "こんにちは"                       # いちばん手軽: 既定の声で喋らせる（STYLE=32 などで声を変える）
 PY=~/voicevox_core/venv/bin/python
 $PY Voice/voicevox_speak.py --play "こんにちは。私はジーワンです"   # 作って送って鳴らす
 $PY Voice/voicevox_speak.py "こんにちは"            # 作って PC2 に送るだけ（鳴らすコマンドを出す）
@@ -39,7 +40,7 @@ $PY Voice/voicevox_speak.py --play --style 3 --pitch 0 --intonation 1 "ずんだ
 - 鳴らさずに PC2 の音声サービスに届くかだけ見る:
   `ssh unitree@192.168.0.82 'python3 /tmp/g1_voice_tts/g1_speaker.py --check'`
 
-使える声（入れてあるモデル `0.vvm`・`4.vvm`）:
+使える声（入れてあるモデル `0.vvm`・`2.vvm`・`4.vvm`・`9.vvm`）:
 
 | 声 | スタイル ID |
 |---|---|
@@ -49,6 +50,8 @@ $PY Voice/voicevox_speak.py --play --style 3 --pitch 0 --intonation 1 "ずんだ
 | 雨晴はう | 10 |
 | 玄野武宏 | 11 |
 | 剣崎雌雄 | 21（既定） |
+| 九州そら（2.vvm） | ノーマル 16、あまあま 15、ツンツン 18、セクシー 17 |
+| 白上虎太郎（9.vvm） | ふつう 12、わーい 32、びくびく 33、おこ 34、びえーん 35 |
 
 他のモデル（青山龍星 `15.vvm` など）の一覧は voicevox_vvm の README.txt にある。青山龍星・No.7 などは
 企業が関わる利用に事前確認が要るので、使う前に規約を確かめること。
@@ -95,6 +98,9 @@ chmod +x download
 ./download --exclude c-api additional-libraries --models-pattern 0.vvm -o ./voicevox_core
 # 剣崎雌雄・玄野武宏のモデル（音声モデルの規約は上で同意済み）
 curl -sSL -o voicevox_core/models/vvms/4.vvm https://github.com/VOICEVOX/voicevox_vvm/releases/download/0.17.1/4.vvm
+# 聞き比べに使った九州そら（2.vvm）・白上虎太郎（9.vvm）。既定の声には要らない
+curl -sSL -o voicevox_core/models/vvms/2.vvm https://github.com/VOICEVOX/voicevox_vvm/releases/download/0.17.1/2.vvm
+curl -sSL -o voicevox_core/models/vvms/9.vvm https://github.com/VOICEVOX/voicevox_vvm/releases/download/0.17.1/9.vvm
 python3 -m venv venv
 venv/bin/pip install https://github.com/VOICEVOX/voicevox_core/releases/download/0.17.1/voicevox_core-0.17.1-cp310-abi3-manylinux_2_34_aarch64.whl
 ```
