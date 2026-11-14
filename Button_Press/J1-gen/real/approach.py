@@ -48,6 +48,8 @@ def main() -> int:
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
     p.add_argument("--no-lowstate", action="store_true",
                    help="lowstate を読まない（--execute なしのときだけ。腰 0°・骨盤は水平・腕は下ろしたままと仮定）")
+    p.add_argument("--result-json", type=Path,
+                   help="結果（result.json）の保存先（親フォルダは作る。既定は _local/button_press/approach/<時刻>/result.json）")
     add_camera_args(p)
     args = p.parse_args()
     if args.execute and args.no_lowstate:
@@ -146,10 +148,13 @@ def main() -> int:
         print(f"[approach] 次: real/auto_press.py --target {args.target} --arm {result.arm}"
               + (f" --button-set {args.button_set}" if args.button_set else "")
               + (f" --detector {args.detector}" if args.detector else ""))
-    out = REPO_ROOT / "_local" / "button_press" / "approach" / time.strftime("%Y%m%d_%H%M%S")
-    out.mkdir(parents=True, exist_ok=True)
-    path = out / "result.json"
-    path.write_text(json.dumps({"args": vars(args), "outcome": result.outcome, "reason": result.reason, "arm": result.arm,
+    if args.result_json is not None:
+        path = args.result_json
+    else:
+        path = REPO_ROOT / "_local" / "button_press" / "approach" / time.strftime("%Y%m%d_%H%M%S") / "result.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    saved_args = {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()}
+    path.write_text(json.dumps({"args": saved_args, "outcome": result.outcome, "reason": result.reason, "arm": result.arm,
                                 "interrupted": interrupted, "steps": result.steps},
                                indent=2, ensure_ascii=False, default=float))
     print(f"[approach] 保存: {path}")
