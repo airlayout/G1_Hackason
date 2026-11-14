@@ -184,6 +184,8 @@ class LocoMover:
         self.sleep, self.now, self.log = sleep, now, log
         self.n_pulses = 0
         self.forward_total_m = 0.0
+        # 横へ動いた見込みの合計（+ が左）。左右に行ったり来たりした分は打ち消す
+        self.side_total_m = 0.0
         self._fsm_checked = False
         self._moving = False
 
@@ -238,6 +240,19 @@ class LocoMover:
             add = float(self.cfg["axes"]["forward"]["rate"]) * p.duration_s
             if self.forward_total_m + add > float(lim["max_forward_total_m"]):
                 raise LocoError(f"前に進んだ合計が上限（{float(lim['max_forward_total_m']):.2f} m）を超える。人が確かめる")
+        if p.vy != 0 and lim.get("max_side_total_m") is not None:
+            # 頭カメラは前の下しか見ないので、横の物（11/14 はハーネスの台）は見えない。横へ動く合計に上限を置く
+            side = self.side_step(p)
+            if abs(self.side_total_m + side) > float(lim["max_side_total_m"]):
+                raise LocoError(f"横へ動いた合計が上限（±{float(lim['max_side_total_m']):.2f} m）を超える"
+                                f"（今 {self.side_total_m * 100:+.0f} cm、この 1 回で {side * 100:+.0f} cm）。人が確かめる")
+
+    def side_step(self, p: Pulse) -> float:
+        """この 1 回で横へ動く見込み [m]（+ が左。rate × 時間。前・回るなら 0）。"""
+        if p.vy == 0:
+            return 0.0
+        axis = "left" if p.vy > 0 else "right"
+        return float(np.sign(p.vy)) * float(self.cfg["axes"][axis]["rate"]) * p.duration_s
 
     # ---- 送る ------------------------------------------------------------------
 
@@ -253,6 +268,7 @@ class LocoMover:
         self.n_pulses += 1
         if p.vx > 0:
             self.forward_total_m += float(self.cfg["axes"]["forward"]["rate"]) * p.duration_s
+        self.side_total_m += self.side_step(p)
         if not self.go:
             self._moving = False
             return PulseResult(p, sent=False, stopped=True, settle_s=0.0, note="送っていない（go=False）")

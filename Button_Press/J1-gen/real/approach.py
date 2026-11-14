@@ -28,7 +28,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common.approach import Approacher, Frame, HeadPerception, PlanFeasibility, WebcamAssist  # noqa: E402
+from common.approach import ApproachResult, Approacher, Frame, HeadPerception, PlanFeasibility, WebcamAssist  # noqa: E402
 from common.camera_cfg import add_camera_args, load_camera_config  # noqa: E402
 from common.column_face import FaceFinder  # noqa: E402
 from common.config import REPO_ROOT, load_config  # noqa: E402
@@ -127,9 +127,17 @@ def main() -> int:
     if args.execute:
         input("[approach] 腕を下ろした・周りに人がいない・リモコンを持った人がそばにいることを確かめて Enter（やめるなら Ctrl+C）: ")
 
+    approacher = Approacher(perception, feasibility, mover, app)
+    interrupted = False
     try:
         with source:
-            result = Approacher(perception, feasibility, mover, app).run()
+            result = approacher.run()
+    except KeyboardInterrupt:
+        # 途中で止めても、それまでの観測と判断を残す（11/14、Ctrl+C で止めた回の result.json が残らなかった）。
+        # 歩いている途中なら、LocoMover が StopMove を送っている
+        interrupted = True
+        result = ApproachResult("aborted", "Ctrl+C で止めた", None, approacher.steps)
+        print("[approach] ❌ Ctrl+C で止めた")
     finally:
         if webcam_stream is not None:
             webcam_stream.close()
@@ -142,8 +150,11 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     path = out / "result.json"
     path.write_text(json.dumps({"args": vars(args), "outcome": result.outcome, "reason": result.reason, "arm": result.arm,
-                                "steps": result.steps}, indent=2, ensure_ascii=False, default=float))
+                                "interrupted": interrupted, "steps": result.steps},
+                               indent=2, ensure_ascii=False, default=float))
     print(f"[approach] 保存: {path}")
+    if interrupted:
+        return 130
     return 0 if result.outcome in ("ready", "dry_run") else 1
 
 

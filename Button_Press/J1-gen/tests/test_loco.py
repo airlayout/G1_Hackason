@@ -91,6 +91,21 @@ class TestCheck(unittest.TestCase):
         self.assertEqual(len(fake.calls), n)
 
 
+    def test_side_total(self) -> None:
+        """横へ動いた見込みの合計（左右で打ち消す）が上限を超える 1 回は送らない（頭カメラは横の物が見えない。11/14）。"""
+        m, fake, _ = mover()
+        lim = float(CFG["limits"]["max_side_total_m"])
+        step = float(CFG["axes"]["left"]["rate"]) * float(CFG["axes"]["left"]["max_duration_s"])
+        n = int(lim // step)
+        for _ in range(n):
+            m.pulse(m.plan("left", 0.5))
+        self.assertAlmostEqual(m.side_total_m, n * step)
+        with self.assertRaises(LocoError):
+            m.pulse(m.plan("left", 0.5))
+        m.pulse(m.plan("right", 0.5))  # 戻る向きなら送れる
+        self.assertEqual(len(fake.calls), n + 1)
+
+
 class TestPulse(unittest.TestCase):
     def test_dry_run_sends_nothing(self) -> None:
         logs: list[str] = []

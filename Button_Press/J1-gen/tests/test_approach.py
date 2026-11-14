@@ -13,7 +13,7 @@ import unittest
 import numpy as np
 
 from _env import needs
-from common.approach import Approacher, Measurement, decide
+from common.approach import Approacher, EdgeCheck, Measurement, decide
 from common.config import load_config
 from common.loco import FakeLoco, LocoMover
 
@@ -370,3 +370,87 @@ class TestPlanFeasibility(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---- 柱の端の確かめ（11/14 の実機: 誤った左端で逆へ動き、横の台にぶつかった） -----------------------------
+
+
+def face_m(d: float, left: float | None, right: float | None) -> Measurement:
+    return Measurement("face", d, 0.0, None, left_edge_m=left, right_edge_m=right)
+
+
+class TestEdgeCheck(unittest.TestCase):
+    def test_jump_from_last_seen(self) -> None:
+        """前の観測に無かった端も、最後に見えた値と比べる（横の 1 回分の見込みは差し引く）。飛んだ端だけ捨てる。"""
+        ec = EdgeCheck(APP)
+        m, notes = ec.check(face_m(1.0, 0.56, -0.50))
+        self.assertEqual((m.left_edge_m, m.right_edge_m, notes), (0.56, -0.50, []))
+        ec.moved()  # 前へ 1 回
+        m, notes = ec.check(face_m(0.85, None, -0.40))  # 左端は見えない。右へ 10 cm ずれた
+        self.assertEqual((m.right_edge_m, notes), (-0.40, []))
+        ec.moved(0.105)  # 左へ 10.5 cm 動いた見込み → 端は右へ 10.5 cm
+        m, notes = ec.check(face_m(0.83, 0.03, -0.50))
+        # 左端: 最後（2 回前）の 0.56 − 0.105 = 0.455 のはずが 0.03（42 cm。2 回分の 30 cm より大きい）→ 捨てる
+        self.assertIsNone(m.left_edge_m)
+        self.assertAlmostEqual(m.right_edge_m, -0.50)  # −0.40 − 0.105 = −0.505 から 0.5 cm
+        self.assertEqual(len(notes), 1)
+        self.assertIn("左端", notes[0])
+
+    def test_hidden_edge_may_drift(self) -> None:
+        """見えない間に動いた回数だけ、本当のずれを許す（3 回前に見えた端が 25 cm 動いていても使う）。"""
+        ec = EdgeCheck(dict(APP, edge_width_tol_m=None))  # 幅では捨てない（ここでは飛びだけを見る）
+        ec.check(face_m(1.0, 0.56, -0.50))
+        for _ in range(3):
+            ec.moved()
+            ec.check(face_m(0.8, None, -0.50))
+        m, notes = ec.check(face_m(0.5, 0.31, -0.50))
+        self.assertEqual((m.left_edge_m, notes), (0.31, []))
+
+    def test_width(self) -> None:
+        """左右の端の幅が最初に両方見えた幅と違えば、どちらが誤りか分からないので両方捨てる。"""
+        ec = EdgeCheck(dict(APP, max_edge_shift_m=10.0))  # 飛びでは捨てない
+        ec.check(face_m(1.0, 0.45, -0.50))  # 幅 95 cm
+        m, notes = ec.check(face_m(0.9, 0.03, -0.31))  # 幅 34 cm
+        self.assertEqual((m.left_edge_m, m.right_edge_m), (None, None))
+        self.assertIn("幅", notes[0])
+        m, notes = ec.check(face_m(0.8, 0.60, -0.37))  # 幅 97 cm
+        self.assertEqual((m.left_edge_m, m.right_edge_m, notes), (0.60, -0.37, []))
+
+
+class ScriptedWorld:
+    """決めた観測を順に返す（11/14 の 3 回目の、面しか見えないうちの観測を真似る）。"""
+
+    def __init__(self, ms: list[Measurement]) -> None:
+        self.ms = list(ms)
+        self.last_reason = "観測が尽きた"
+
+    def reset(self) -> None:
+        pass
+
+    def measure(self) -> Measurement | None:
+        return self.ms.pop(0) if self.ms else None
+
+
+class TestEdgeReplay(unittest.TestCase):
+    def test_wrong_left_edge_does_not_reverse(self) -> None:
+        """11/14 の 3 回目: 体が右へずれて左へ戻した次に、誤った左端（+3 cm）が入っても、右へ戻さない。
+
+        前は、ずれ（左端・右端の平均）が (0.03 − 0.56 + (−0.45 + 0.50)) / 2 = −24 cm と出て右へ動き、横のハーネスの台にぶつかった。
+        今は左端を捨て、右端だけで +5 cm（直す 8 cm より小さい）→ 前へ。
+        """
+        fake = FakeLoco(rate_ratio=0.75)
+        world = ScriptedWorld([
+            face_m(1.00, 0.56, -0.50),   # 最初の位置（左 +56・右 −50 を覚える）→ 前へ
+            face_m(0.84, None, -0.36),   # 右へ 14 cm ずれた（左端は見えない）→ 左へ
+            face_m(0.83, 0.03, -0.45),   # 左へ 1 回の後。左端が誤り（+3 cm）
+        ])
+        mover = LocoMover(fake, fake, CFG["loco"], go=True, sleep=fake.sleep, now=fake.now, log=lambda s: None)
+        logs: list[str] = []
+        ap = Approacher(world, FakeFeasibility({"right": STAND_R}), mover, APP, log=logs.append)
+        res = ap.run()
+        axes = [r["pulse"]["axis"] for r in res.steps if r["pulse"]]
+        self.assertEqual(axes, ["forward", "left", "forward"])
+        self.assertIsNone(res.steps[2]["left_edge_m"])
+        self.assertEqual(res.steps[2]["raw_left_edge_m"], 0.03)
+        self.assertTrue(any("左端" in s and "飛んだ" in s for s in logs))
+        self.assertEqual(len(ap.steps), 3)  # 途中で止めても real/approach.py が保存できる

@@ -203,6 +203,22 @@ class TestFaceTracker(unittest.TestCase):
         self.assertIsNotNone(out)
         self.assertAlmostEqual(out.distance_m, 0.727, places=3)
 
+    def test_scattered_edge_is_unknown(self) -> None:
+        """端が 1 回の観測の中でばらつけば（11/14 の実機、ホワイトボードの左端 +63・+35・+7 cm）、中央値を取らず分からないとする。"""
+        tr = FaceTracker(CFG["tracking"])
+        for left in (0.63, 0.35):
+            self.assertIsNone(tr.add(self.face(1.00, 0.0, left)))
+        out = tr.add(self.face(1.00, 0.0, 0.07))
+        self.assertIsNotNone(out)
+        self.assertIsNone(out.left_edge_m)
+        self.assertAlmostEqual(out.right_edge_m, -0.2)
+        # 1 枚だけ外れても、残りがそろえばその中央値
+        tr = FaceTracker(CFG["tracking"])
+        for left in (0.30, 0.07):
+            tr.add(self.face(1.00, 0.0, left))
+        out = tr.add(self.face(1.00, 0.0, 0.31))
+        self.assertAlmostEqual(out.left_edge_m, 0.305)
+
     def test_waits_when_moving(self) -> None:
         tr = FaceTracker(CFG["tracking"])
         tr.add(self.face(1.00))

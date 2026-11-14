@@ -391,6 +391,9 @@ class FaceTracker:
         self.window = int(cfg.get("window", self.frames))
         self.max_spread_m = float(cfg["max_spread_m"])
         self.max_yaw_spread_deg = float(cfg["max_yaw_spread_deg"])
+        # 端のばらつきの上限 [m]（中央値から ±この半分に、半分より多いフレームがそろわなければ、端は分からないとする）。null なら見ない
+        spread = cfg.get("max_edge_spread_m")
+        self.max_edge_spread_m = None if spread is None else float(spread)
         self.samples: list[ColumnFace] = []
         self.last_reject = ""  # そろわなかったときの理由（ばらつき）
 
@@ -419,8 +422,16 @@ class FaceTracker:
 
         def med(vals: list[float | None]) -> float | None:
             known = [v for v in vals if v is not None]
-            # 半分以上のフレームで分かったときだけ
-            return float(np.median(known)) if len(known) * 2 > len(vals) else None
+            # 半分より多いフレームで分かったときだけ
+            if len(known) * 2 <= len(vals):
+                return None
+            m = float(np.median(known))
+            if self.max_edge_spread_m is None:
+                return m
+            # 中央値の近くに、半分より多いフレームがそろったときだけ（11/14 の実機: ホワイトボードの光沢で深度に穴があき、
+            # 左端が +1・+7・+35・+57・+63 cm とばらつき、中央値を取っても誤った端になった）
+            near = [v for v in known if abs(v - m) <= self.max_edge_spread_m / 2]
+            return float(np.median(near)) if len(near) * 2 > len(vals) else None
 
         last = s[-1]
         return ColumnFace(normal=s[k].normal, point=s[k].point, distance_m=float(np.median(d)),

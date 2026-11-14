@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 import numpy as np
@@ -101,6 +101,8 @@ class Decision:
     reason: str
     pulse: Pulse | None = None
     arm: str | None = None
+    # 横へ動くとき、何を目安にしたか: "edges"（最初に覚えた柱の端の位置へ戻す）/ "target"（ボタン・手がかりの目安へ寄る）
+    side_basis: str | None = None
 
 
 @dataclass
@@ -347,7 +349,7 @@ def decide(m: Measurement, feasible_arm: str | None, reasons: dict[str, str], st
                     way = "左" if hint_err > 0 else "右"
                     src = {"webcam": "Web カメラ", "head_single": "1 個だけ見えたボタン"}.get(m.side_hint_source or "", "手がかり")
                     return Decision("move", f"{src}でボタンが目安（{arm} 腕、体の中心から {float(st['center_side_m']) * 100:+.0f} cm）"
-                                            f"から {hint_err * 100:+.1f} cm。{way}へ", p)
+                                            f"から {hint_err * 100:+.1f} cm。{way}へ", p, side_basis="target")
         else:
             shift = edge_shift(m, edge_ref or {})
             jump = edge_shift(m, edge_prev or {})
@@ -360,7 +362,7 @@ def decide(m: Measurement, feasible_arm: str | None, reasons: dict[str, str], st
                 p = mover.plan("left" if shift > 0 else "right", abs(shift))
                 if p is not None and is_safe(p):
                     return Decision("move", f"柱の端が最初より {shift * 100:+.1f} cm ずれた（体が{'右' if shift > 0 else '左'}へずれた）。"
-                                            f"{'左' if shift > 0 else '右'}へ戻す", p)
+                                            f"{'左' if shift > 0 else '右'}へ戻す", p, side_basis="edges")
         stop = max(target, float(cfg["face_stop_dist_m"]))
         dec = forward(d - stop, f"柱まで {d * 100:.1f} cm。▲▼ が見え始める {stop * 100:.0f} cm まで前へ")
         if dec is not None:
@@ -380,7 +382,7 @@ def decide(m: Measurement, feasible_arm: str | None, reasons: dict[str, str], st
             way = "左" if side_err > 0 else "右"
             if is_safe(p):
                 return Decision("move", f"ボタンが目安（{arm} 腕、体の中心から {float(st['center_side_m']) * 100:+.0f} cm）から"
-                                        f" {side_err * 100:+.1f} cm。{way}へ", p)
+                                        f" {side_err * 100:+.1f} cm。{way}へ", p, side_basis="target")
             side_blocked = f"{way}へ {abs(side_err) * 100:.0f} cm 寄りたいが、柱に近すぎて横に動けない。"
     if err > 0:
         dec = forward(err, f"柱まで {d * 100:.1f} cm（目安 {target * 100:.0f} cm、勧める範囲 {lo * 100:.0f}〜{hi * 100:.0f} cm）。前へ")
@@ -404,6 +406,59 @@ def decide(m: Measurement, feasible_arm: str | None, reasons: dict[str, str], st
 # ---- 寄る -----------------------------------------------------------------------
 
 
+class EdgeCheck:
+    """観測ごとの柱の端を確かめ、当てにならない端を捨てる（11/14 の実機で、誤った左端で逆へ動き、横の台にぶつかった）。
+
+    1. 端ごとに、最後に通った値と比べる。その後に送った横の 1 回分（見込み）を差し引いても、max_edge_shift_m × その後に動いた
+       回数より動いていれば、その端だけ捨てる（前の観測に無かった端も、最後に見えた値と比べられる。見えない間に本当にずれた分は、
+       回数に応じて許す）
+    2. 左右の端が両方あれば、その幅（左 − 右）を最初に両方見えた幅と比べ、edge_width_tol_m より違えば両方捨てる
+       （どちらが誤りか分からないので）。11/14 は幅 95 cm の板で、誤った左端と右端の幅が 34 cm だった
+    """
+
+    def __init__(self, cfg: dict[str, Any]) -> None:
+        self.max_jump = float(cfg["max_edge_shift_m"])
+        tol = cfg.get("edge_width_tol_m")
+        self.width_tol = None if tol is None else float(tol)
+        self.last: dict[str, float] = {}     # 端ごとの、最後に通った値
+        self.expect: dict[str, float] = {}   # 最後に通ってから、横の 1 回分で端が動くはずの量
+        self.n_since: dict[str, int] = {}    # 最後に通ってから動いた回数
+        self.width: float | None = None
+
+    def moved(self, side_m: float = 0.0) -> None:
+        """1 回動いた（前・回る・横のどれでも）。side_m は横へ動いた見込み（+ が左）。体が左へ動くと、端は右（−）へ動いて見える。"""
+        for k in ("left", "right"):
+            self.expect[k] = self.expect.get(k, 0.0) - side_m
+            self.n_since[k] = self.n_since.get(k, 0) + 1
+
+    def check(self, m: Measurement) -> tuple[Measurement, list[str]]:
+        """当てにならない端を None にした Measurement と、捨てた理由を返す。"""
+        vals = {"left": m.left_edge_m, "right": m.right_edge_m}
+        notes: list[str] = []
+        name = {"left": "左端", "right": "右端"}
+        for k, v in vals.items():
+            if v is None or k not in self.last:
+                continue
+            jump = v - (self.last[k] + self.expect.get(k, 0.0))
+            if abs(jump) > self.max_jump * max(1, self.n_since.get(k, 0)):
+                notes.append(f"{name[k]} {v * 100:+.1f} cm は、最後に見えた {self.last[k] * 100:+.1f} cm（横の動きの見込み "
+                             f"{self.expect.get(k, 0.0) * 100:+.1f} cm）から {jump * 100:+.1f} cm 飛んだ。使わない")
+                vals[k] = None
+        if vals["left"] is not None and vals["right"] is not None and self.width_tol is not None:
+            w = vals["left"] - vals["right"]
+            if self.width is None:
+                self.width = w
+            elif abs(w - self.width) > self.width_tol:
+                notes.append(f"左右の端の幅 {w * 100:.1f} cm が、最初の {self.width * 100:.1f} cm と違う。端は使わない")
+                vals = {"left": None, "right": None}
+        for k, v in vals.items():
+            if v is not None:
+                self.last[k] = v
+                self.expect[k] = 0.0
+                self.n_since[k] = 0
+        return replace(m, left_edge_m=vals["left"], right_edge_m=vals["right"]), notes
+
+
 class Approacher:
     def __init__(self, perception: Perception, feasibility: Feasibility, mover: LocoMover, cfg: dict[str, Any],
                  log: Callable[[str], None] = print) -> None:
@@ -415,26 +470,35 @@ class Approacher:
         self.stands = {a: feasibility.stand(a) for a in feasibility.arms}
         # 最初に見えた柱の端（人が置いた左右の位置）。端ごとに、初めて分かったときの値を覚える。edge_prev は前の観測の端
         self.edge_ref: dict[str, float] = {}
-        self.edge_prev: dict[str, float] = {}
+        # 端の確かめ（EdgeCheck）。飛びは端ごとに最後に通った値と比べるので、decide の edge_prev（前の観測）は使わない
+        self.edges = EdgeCheck(cfg)
+        # 途中で止めても（Ctrl+C）、それまでの観測を real/approach.py が保存できるように持っておく
+        self.steps: list[dict[str, Any]] = []
 
     def run(self) -> ApproachResult:
-        steps: list[dict[str, Any]] = []
+        steps = self.steps
         with self.mover:
             for k in range(int(self.cfg["max_steps"])):
                 m = self.perception.measure()
                 if m is None:
                     return self._end("aborted", f"見つからない: {self.perception.last_reason}", steps)
                 self.log(f"[approach] {k + 1} 回目の観測 — {m.summary()}")
+                raw_edges = (m.left_edge_m, m.right_edge_m)
+                edge_notes: list[str] = []
+                if m.source == "face":
+                    m, edge_notes = self.edges.check(m)
+                    for note in edge_notes:
+                        self.log(f"[approach] ⚠️ {note}")
                 for name, v in (("left", m.left_edge_m), ("right", m.right_edge_m)):
                     if v is not None and name not in self.edge_ref and m.source == "face":
                         self.edge_ref[name] = v
                 arm, reasons = self.feasibility.check(m) if m.source == "buttons" else (None, {})
-                dec = decide(m, arm, reasons, self.stands, self.cfg, self.mover, self.edge_ref, self.edge_prev)
-                if m.source == "face":
-                    self.edge_prev = {k: v for k, v in (("left", m.left_edge_m), ("right", m.right_edge_m)) if v is not None}
+                dec = decide(m, arm, reasons, self.stands, self.cfg, self.mover, self.edge_ref, None)
                 row: dict[str, Any] = {"step": k + 1, "source": m.source, "distance_m": m.distance_m,
                                        "yaw_deg": float(np.degrees(m.yaw_rad)), "side_m": m.side_m,
                                        "left_edge_m": m.left_edge_m, "right_edge_m": m.right_edge_m,
+                                       "raw_left_edge_m": raw_edges[0], "raw_right_edge_m": raw_edges[1],
+                                       "edge_notes": edge_notes, "edge_ref": dict(self.edge_ref),
                                        "side_hint_m": m.side_hint_m, "side_hint_source": m.side_hint_source,
                                        "webcam": m.webcam,
                                        "action": dec.action, "reason": dec.reason,
@@ -451,6 +515,12 @@ class Approacher:
                 except LocoError as e:
                     return self._end("aborted", str(e), steps)
                 row["settle_s"], row["stopped"] = res.settle_s, res.stopped
+                side = self.mover.side_step(dec.pulse)
+                self.edges.moved(side)
+                if side != 0.0 and dec.side_basis == "target":
+                    # ボタン・手がかりの目安へ寄った: 目指す左右が変わったので、柱の端の基準も同じだけ動かす
+                    # （動かさないと、次に面しか見えないとき「最初の位置からずれた」と戻してしまい、行ったり来たりする）
+                    self.edge_ref = {k: v - side for k, v in self.edge_ref.items()}
                 if not self.mover.go:
                     return self._end("dry_run", f"送っていない（go=False）。次の 1 回: {dec.pulse.summary()}", steps)
                 if not res.stopped:
