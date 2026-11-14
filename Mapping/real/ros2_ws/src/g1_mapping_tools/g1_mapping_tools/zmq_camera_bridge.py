@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import time
+from .camera_wire import decode_lerobot_message
 
 import rclpy
 from builtin_interfaces.msg import Time
@@ -15,9 +15,16 @@ from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
 )
-from sensor_msgs.msg import CameraInfo, CompressedImage
+from sensor_msgs.msg import CameraInfo, CompressedImage, Image
 from std_msgs.msg import String
 import zmq
+
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    cv2 = None
+    np = None
 
 
 def jpeg_dimensions(data: bytes) -> tuple[int, int] | None:
@@ -49,20 +56,6 @@ def jpeg_dimensions(data: bytes) -> tuple[int, int] | None:
             return width, height
         index += length
     return None
-
-
-def decode_lerobot_message(
-    wire_data: bytes, camera_name: str
-) -> tuple[bytes, int] | None:
-    """LeRobot ImageServer JSONからJPEGと撮影時刻nsを取り出す。"""
-    payload = json.loads(wire_data.decode("utf-8"))
-    images = payload.get("images", {})
-    timestamps = payload.get("timestamps", {})
-    if camera_name not in images or camera_name not in timestamps:
-        return None
-    jpeg = base64.b64decode(images[camera_name], validate=True)
-    capture_ns = int(float(timestamps[camera_name]) * 1_000_000_000)
-    return jpeg, capture_ns
 
 
 class ZmqCameraBridge(Node):
@@ -100,6 +93,11 @@ class ZmqCameraBridge(Node):
         self._image_pub = self.create_publisher(
             CompressedImage, "/g1_camera/color/image/compressed", sensor_qos
         )
+        self._raw_image_pub = self.create_publisher(
+            Image, "/g1_camera/color/image", sensor_qos
+        )
+        if cv2 is None:
+            self.get_logger().warning("OpenCVがないためRViz用の画像を配信できません")
         self._info_pub = self.create_publisher(
             CameraInfo, "/g1_camera/color/camera_info", info_qos
         )
@@ -108,12 +106,8 @@ class ZmqCameraBridge(Node):
         )
 
         self._zmq_context = zmq.Context.instance()
-        self._zmq_socket = self._zmq_context.socket(zmq.SUB)
-        self._zmq_socket.setsockopt(zmq.CONFLATE, 1)
-        self._zmq_socket.setsockopt(zmq.RCVHWM, 1)
-        self._zmq_socket.setsockopt(zmq.LINGER, 0)
-        self._zmq_socket.setsockopt(zmq.SUBSCRIBE, b"")
-        self._zmq_socket.connect(f"tcp://{host}:{port}")
+        self._endpoint = f"tcp://{host}:{port}"
+        self._connect_camera()
         self._sequence = 0
         self._last_frame_monotonic = time.monotonic()
         self._stale_reported = False
@@ -122,6 +116,17 @@ class ZmqCameraBridge(Node):
         self.get_logger().info(
             f"LeRobot camera {self._camera_name}@tcp://{host}:{port} を購読します"
         )
+
+    def _connect_camera(self) -> None:
+        self._zmq_socket = self._zmq_context.socket(zmq.SUB)
+        self._zmq_socket.setsockopt(zmq.CONFLATE, 1)
+        self._zmq_socket.setsockopt(zmq.RCVHWM, 1)
+        self._zmq_socket.setsockopt(zmq.LINGER, 0)
+        self._zmq_socket.setsockopt(zmq.RECONNECT_IVL, 500)
+        self._zmq_socket.setsockopt(zmq.RECONNECT_IVL_MAX, 3000)
+        self._zmq_socket.setsockopt(zmq.SUBSCRIBE, b"")
+        self._zmq_socket.connect(self._endpoint)
+        self._last_connect_monotonic = time.monotonic()
 
     def _poll(self) -> None:
         try:
@@ -151,6 +156,21 @@ class ZmqCameraBridge(Node):
         image.format = "rgb8; jpeg compressed rgb8"
         image.data = jpeg
         self._image_pub.publish(image)
+
+        # RViz can display raw images even without the compressed transport plugin.
+        if cv2 is not None and self._raw_image_pub.get_subscription_count():
+            frame = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if frame is not None:
+                # RViz表示の上下・左右を補正する。記録するJPEGは変更しない。
+                frame = cv2.flip(frame, -1)
+                raw = Image()
+                raw.header = image.header
+                raw.height, raw.width = frame.shape[:2]
+                raw.encoding = "bgr8"
+                raw.is_bigendian = False
+                raw.step = raw.width * 3
+                raw.data = frame.tobytes()
+                self._raw_image_pub.publish(raw)
 
         info = self._camera_info(width, height)
         info.header = image.header
@@ -197,9 +217,15 @@ class ZmqCameraBridge(Node):
         return message
 
     def _watchdog(self) -> None:
-        if not self._stale_reported and time.monotonic() - self._last_frame_monotonic > 3.0:
-            self.get_logger().warning("camera serverから3秒以上フレームを受信していません")
-            self._stale_reported = True
+        now = time.monotonic()
+        if now - self._last_frame_monotonic > 3.0:
+            if not self._stale_reported:
+                self.get_logger().warning("camera serverから3秒以上フレームを受信していません。再接続します")
+                self._stale_reported = True
+            if now - self._last_connect_monotonic > 3.0:
+                # Drop half-open TCP connections instead of waiting for OS retransmission timeouts.
+                self._zmq_socket.close(linger=0)
+                self._connect_camera()
 
     def destroy_node(self) -> bool:
         self._zmq_socket.close(linger=0)

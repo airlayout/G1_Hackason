@@ -18,6 +18,7 @@ ChannelSubscriberは型を明示すれば購読できる（実測で確認済み
 Python 3.8（PC2の既定）で動くように書いてある。
 """
 import argparse
+import base64
 import json
 import os
 import queue
@@ -68,6 +69,7 @@ def resolve_idl_type(ros_type):
 
 ROSBAG2_SCHEMA = """
 CREATE TABLE schema(schema_version INTEGER PRIMARY KEY, ros_distro TEXT NOT NULL);
+CREATE TABLE metadata(id INTEGER PRIMARY KEY, metadata_version INTEGER NOT NULL, metadata TEXT NOT NULL);
 CREATE TABLE topics(
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
@@ -94,9 +96,9 @@ def git_revision(project_dir):
         return "unknown"
 
 
-def create_session(runs_dir, name, backend, topics, g1_host, iface, domain_id):
+def create_session(runs_dir, name, backend, topics, g1_host, iface, domain_id, session_id=None):
     """`g1_mapping/session.py`が読める形のセッションを作る。"""
-    session_id = "{}_{}".format(datetime.now().strftime("%Y%m%dT%H%M%S"), name)
+    session_id = session_id or "{}_{}".format(datetime.now().strftime("%Y%m%dT%H%M%S"), name)
     directory = os.path.join(runs_dir, session_id)
     for child in ("raw", "map", "trajectory", "logs", "report"):
         os.makedirs(os.path.join(directory, child), exist_ok=True)
@@ -173,6 +175,8 @@ def main():
     parser.add_argument("--backend", default="raw", choices=["raw", "onboard"],
                         help="mapctl rebuild の既定トピック選択に効く")
     parser.add_argument("--runs-dir", default=os.path.expanduser("~/mapping_runs"))
+    parser.add_argument("--session-id", help="記録先の一意なセッションID")
+    parser.add_argument("--camera-zmq", action="store_true", help="同一セッションにヘッドカメラJPEGを保存")
     parser.add_argument("--iface", default="eth0")
     parser.add_argument("--domain-id", type=int, default=0)
     parser.add_argument("--g1-host", default="192.168.123.164")
@@ -235,7 +239,7 @@ def main():
 
     session_id, directory = create_session(
         args.runs_dir, args.name, backend, topics,
-        args.g1_host, args.iface, args.domain_id)
+        args.g1_host, args.iface, args.domain_id, args.session_id)
     bag_dir = os.path.join(directory, "raw", "rosbag2")
     os.makedirs(bag_dir, exist_ok=True)
     bag_path = os.path.join(bag_dir, "{}_0.db3".format(session_id))
@@ -256,6 +260,54 @@ def main():
     stopping = threading.Event()
     counts = dict((topic, 0) for topic in topics)
     dropped = [0]
+    camera_stats = {"frames": 0, "errors": [], "first_frame_time": None,
+                    "last_frame_time": None, "max_frame_gap_s": 0.0}
+
+    def record_camera():
+        # カメラは別スレッドでローカル配信を購読し、LiDAR書き込みを待たせない。
+        import zmq
+        camera_dir = os.path.join(directory, "raw", "camera")
+        os.makedirs(camera_dir, exist_ok=True)
+        context = zmq.Context()
+        socket = context.socket(zmq.SUB)
+        socket.setsockopt(zmq.SUBSCRIBE, b"")
+        socket.setsockopt(zmq.RCVTIMEO, 500)
+        socket.setsockopt(zmq.LINGER, 0)
+        socket.connect("tcp://127.0.0.1:5555")
+        try:
+            with open(os.path.join(camera_dir, "frames.jsonl"), "a", buffering=1) as index:
+                while not stopping.is_set():
+                    try:
+                        payload = json.loads(socket.recv().decode("utf-8"))
+                    except zmq.Again:
+                        continue
+                    try:
+                        data = base64.b64decode(payload["images"]["head_camera"], validate=True)
+                        stamp = float(payload["timestamps"]["head_camera"])
+                        if not data.startswith(b"\xff\xd8"):
+                            raise ValueError("invalid JPEG")
+                        filename = "{:08d}.jpg".format(camera_stats["frames"])
+                        with open(os.path.join(camera_dir, filename), "wb") as image:
+                            image.write(data)
+                        index.write(json.dumps({"file": filename, "timestamp_s": stamp,
+                                                "timestamp_source": "host_realtime_after_frame_read",
+                                                "rotation": "90_ccw"}) + "\n")
+                        camera_stats["frames"] += 1
+                        received = time.time()
+                        previous = camera_stats["last_frame_time"]
+                        if previous is not None:
+                            camera_stats["max_frame_gap_s"] = max(
+                                camera_stats["max_frame_gap_s"], received - previous)
+                        else:
+                            camera_stats["first_frame_time"] = received
+                        camera_stats["last_frame_time"] = received
+                    except (KeyError, ValueError, TypeError) as error:
+                        camera_stats["errors"].append(str(error))
+        except Exception as error:
+            camera_stats["errors"].append(str(error))
+        finally:
+            socket.close()
+            context.term()
 
     def make_handler(topic_id):
         def handle(message):
@@ -280,6 +332,11 @@ def main():
     # finally節が走らない＝1802が飛ばない。WiFi運用では現実的に起こるので捕まえる。
     if hasattr(signal, "SIGHUP"):
         signal.signal(signal.SIGHUP, request_stop)
+
+    camera_thread = None
+    if args.camera_zmq:
+        camera_thread = threading.Thread(target=record_camera, daemon=True)
+        camera_thread.start()
 
     id_to_topic = dict((v, k) for k, v in topic_ids.items())
     print("session : {}".format(session_id))
@@ -353,6 +410,9 @@ def main():
                     "  drop={}".format(dropped[0]) if dropped[0] else ""), flush=True)
                 last_report = now
     finally:
+        stopping.set()
+        if camera_thread is not None:
+            camera_thread.join(timeout=3)
         # 取りこぼしを吐き切ってから閉じる
         while True:
             try:
@@ -406,6 +466,18 @@ def main():
     state.update({"status": "completed",
                   "updated_at": datetime.now(timezone.utc).isoformat(),
                   "message": message})
+    state["lidar_imu_dropped"] = dropped[0]
+    state["topic_counts"] = counts
+    if args.camera_zmq:
+        state["camera"] = camera_stats
+        first = camera_stats["first_frame_time"]
+        last = camera_stats["last_frame_time"]
+        if (not first or not last or camera_stats["errors"]
+                or camera_stats["max_frame_gap_s"] > 2.0
+                or first - started > 2.0 or time.time() - last > 2.0):
+            state["status"] = "failed"
+    if dropped[0] or any(counts[t] == 0 for t in topics):
+        state["status"] = "failed"
     with open(state_path, "w") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
 

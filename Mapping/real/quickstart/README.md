@@ -1,12 +1,16 @@
-# quickstart — Docker無しでLiDARを取り、地図にして、GUIで見る
+# quickstart — 旧取得経路と実機検証記録（2026-09）
 
-`Mapping/real`本体はUbuntu PC + Docker + ROS 2 Humbleを前提にしている。
-ここはその前提が揃わない環境（macOSの操作PCなど）でも**LiDAR取得から地図生成・検証・
-GUI確認まで通す**ための最小経路。
+通常の計測は[`../../MAPPING_QUICKSTART.md`](../../MAPPING_QUICKSTART.md)、
+初回構築・設定は[`../README.md`](../README.md)を参照する。
+現在の`mapctl`はDockerとnativeの両方に対応している。
 
-**Docker・ROS 2・sudo・XQuartzのいずれも要らない。**
+本書はG1上で直接記録し、macOS等の操作PCへ回収する旧経路の検証記録。
+記載したIP・NIC・VM構成・利用環境は当時の実測例であり、共通の接続設定ではない。
+手動SSH例の`g1`は、使用するG1を指すSSHエイリアスとして設定する。
 
-2026-09-02に実機で端から端まで実証した。
+以下の静止スキャン取得・回収・Pythonによる地図生成では、操作PCにDocker・ROS 2を要求しない。
+ブラウザ可視化やMac向けRVizには、それぞれの節に記載した追加環境が必要。
+静止スキャンの経路は2026-09-02に実機で端から端まで実証した。
 
 ## 通しの例
 
@@ -20,7 +24,7 @@ ssh g1 'python3 ~/mapping_tools/probe_dds_topics.py 5'
 ssh g1 'python3 ~/mapping_tools/record_dds_to_bag.py --duration 60 --name room_a'
 
 # 3. 回収して地図にし、検証する（<id>は手順2が出力したsession）
-rsync -a -e ssh g1:/home/unitree/mapping_runs/<id> runs/
+rsync -a -e ssh g1:~/mapping_runs/<id> runs/
 ./mapctl rebuild  <id>
 ./mapctl validate <id>
 
@@ -85,7 +89,7 @@ ssh -t g1 'python3 ~/mapping_tools/record_dds_to_bag.py --with-mapping --name ro
 # --- 8. Ctrl-C で停止する（1802 が自動で飛ぶ） ---
 
 # --- 9. 回収して地図にする ---
-rsync -a -e ssh g1:/home/unitree/mapping_runs/<id> runs/
+rsync -a -e ssh g1:~/mapping_runs/<id> runs/
 ./mapctl rebuild  <id>
 ./mapctl validate <id>
 ../../Navigation/.venv/bin/python quickstart/view_pcd_gui.py runs/<id>/map/map_raw.pcd
@@ -261,7 +265,7 @@ SDKに型が無いトピックは**警告を出して外し、残りで記録を
 ## 3. 回収して地図にする（操作PCで実行）
 
 ```bash
-rsync -a -e ssh g1:/home/unitree/mapping_runs/<session_id> runs/
+rsync -a -e ssh g1:~/mapping_runs/<session_id> runs/
 ./mapctl rebuild  <session_id>      # --voxel 0.02 で解像度を上げられる
 ./mapctl validate <session_id>
 ```
@@ -279,8 +283,8 @@ rsync -a -e ssh g1:/home/unitree/mapping_runs/<session_id> runs/
 左ドラッグ=回転 / 右ドラッグ=平行移動 / スクロール=ズーム / `R`=視点リセット /
 `Q`・`ESC`=閉じる。色は高さZ、原点の座標軸は赤=X 緑=Y 青=Z。
 
-Open3Dは`Navigation/.venv`に既に入っている（`pyproject.toml`の`pcd`グループ）。
-無ければ`cd Navigation && uv sync --group pcd`。
+GUI確認にはOpen3Dを含むPython環境が必要。`Navigation/.venv`を使う例では、
+リポジトリのルートで`cd Navigation && uv sync --group pcd`を実行して用意する。
 
 ## 5. 歩いて地図を作る（建図・**実機未検証**）
 
@@ -332,7 +336,7 @@ ssh -t g1 'python3 ~/mapping_tools/record_dds_to_bag.py --with-mapping --name ro
 # 3. Ctrl-C で停止する（1802が自動で飛ぶ）
 
 # 4. 以降は静止スキャンと同じ
-rsync -a -e ssh g1:/home/unitree/mapping_runs/<id> runs/
+rsync -a -e ssh g1:~/mapping_runs/<id> runs/
 ./mapctl rebuild  <id>       # backend=onboard なので自動で slam_mapping/points を使う
 ./mapctl validate <id>
 ../../Navigation/.venv/bin/python quickstart/view_pcd_gui.py runs/<id>/map/map_raw.pcd
@@ -343,7 +347,7 @@ rsync -a -e ssh g1:/home/unitree/mapping_runs/<id> runs/
 ```bash
 ssh g1 'python3 ~/mapping_tools/mapping_ctl.py status'   # サービスの状態を見る
 ssh g1 'python3 ~/mapping_tools/mapping_ctl.py start'    # 1801
-ssh g1 'python3 ~/mapping_tools/mapping_ctl.py stop --map /home/unitree/test1.pcd'  # 1802
+ssh g1 'python3 ~/mapping_tools/mapping_ctl.py stop --map "$HOME/test1.pcd"'  # 1802
 ssh g1 'python3 ~/mapping_tools/mapping_ctl.py close'    # 1901 SLAM終了
 ```
 

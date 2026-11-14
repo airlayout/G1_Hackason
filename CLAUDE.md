@@ -2,15 +2,10 @@
 
 Unitree G1 をデジタルツイン上で操作する環境を構築するプロジェクト。
 
-## 作業を再開するとき
+## 環境（このプロジェクト専用）
 
-- [AGENTS.md](AGENTS.md) の Git 運用に従う。担当ブランチを確認し、既存の変更を保護してから `origin/main` をマージする。`main` への取り込みは PR のマージコミットを使い、コミットと push は別操作にする。
-- 作業に着手する前に [HANDOFF.md](HANDOFF.md) を読む。2026-11-13 時点の作業ブランチ、機能別の入口、直近のボタン押下開発、回帰テスト、実機での残作業が載っている。
-- 以下の Isaac Sim / IsaacLab の設定は、初期の `IsaacSim_Env/` 開発環境の記録。現在のチェックアウトと依存関係は、作業対象の手順を参照する。
-
-## 初期 Isaac Sim 環境（`devuser`）
-
-初期の `devuser` 環境では、`IsaacSim_Env/` の実行に以下の Isaac Sim を使用した。
+**このプロジェクトでは以下の Isaac Sim を使用する。**
+親ディレクトリ `~/isaac_dev/CLAUDE.md` に記載のパスではなく、こちらを優先すること。
 
 - Isaac Sim: `/home/devuser/isaacSim6.0dev2/_build/linux-x86_64/release`
   - バージョン: 6.0.0-rc.22
@@ -18,10 +13,11 @@ Unitree G1 をデジタルツイン上で操作する環境を構築するプロ
 - IsaacLab: `/home/devuser/IsaacLab`（`isaaclab.sh`）
 - GPU: NVIDIA L40S (46GB)
 
-この設定は当時の G1 用。`~/isaac_dev/` 配下の各プロジェクト（Cosmos、Gr00t、IsaacLab_dev など）にはそれぞれの環境設定がある。
+※ この指定は G1 プロジェクト配下のみに適用される。`~/isaac_dev/` 配下の他プロジェクト
+（Cosmos, Gr00t, IsaacLab_dev など）はそれぞれの環境設定に従う。
 
-## 初期 Isaac Sim 環境での編集範囲
-- `devuser` 環境の作業コピーは `~/isaac_dev/` 以下に置く
+## 重要：編集してよいファイル
+- `~/isaac_dev/` 以下のみ編集すること
 - `/home/devuser/isaacSim6.0dev2` 配下は絶対に編集しない
 - `/home/devuser/IsaacLab` 配下は絶対に編集しない（設定は本プロジェクト内に置く）
 
@@ -232,6 +228,11 @@ IsaacLab の `flat_env_cfg.py` が `lin_vel_x = (0.0, 1.0)` と設定してい�
 ## 注意点
 - アセットはリモートから取得されるため、初回ロード時はネットワーク接続が必要。
 
-## 初期 Isaac Sim 環境のコーディング規約
-`devuser` 環境では親ディレクトリの `~/isaac_dev/CLAUDE.md` の規約に従った（コメントは日本語、
-型ヒント必須、ログは `print("[タグ] メッセージ")` 形式）。現在の作業では対象コードの規約を確認する。
+## コーディング規約
+親ディレクトリの `~/isaac_dev/CLAUDE.md` の規約に従う（コメントは日本語、型ヒント必須、
+ログは `print("[タグ] メッセージ")` 形式）。
+
+## Navigation の緊急停止（2026-09-28）
+
+「Navigationを止めて」と言われたら、確認せず直ちに `bash Navigation/real/nav_stop.sh` を実行する
+（スキル `.claude/skills/stop-navigation/`）。手順と原因は `Navigation/real/STOP.md`。

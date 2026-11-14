@@ -74,6 +74,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libboost-all-dev \
     libeigen3-dev \
     libpcl-dev \
+    liboctomap-dev \
+    libsqlite3-dev \
     python3-dev \
     ros-humble-pcl-conversions \
     ros-humble-pcl-ros \
@@ -103,8 +105,15 @@ RUN mkdir -p /opt/g1_ws/src \
     && git -C /opt/g1_ws/src/fast_lio checkout "${FAST_LIO_COMMIT}" \
     && git -C /opt/g1_ws/src/fast_lio submodule update --init --recursive
 
+# The sensor pose carries the estimated LiDAR/IMU extrinsic at each scan end.
+COPY docker/fast_lio_sensor_pose.patch /tmp/fast_lio_sensor_pose.patch
+RUN git -C /opt/g1_ws/src/fast_lio apply --check /tmp/fast_lio_sensor_pose.patch \
+    && git -C /opt/g1_ws/src/fast_lio apply /tmp/fast_lio_sensor_pose.patch
+
 COPY ros2_ws/src/g1_sensor_adapter /opt/g1_ws/src/g1_sensor_adapter
 COPY ros2_ws/src/g1_mapping_bringup /opt/g1_ws/src/g1_mapping_bringup
+COPY ros2_ws/src/g1_mapping_octomap /opt/g1_ws/src/g1_mapping_octomap
+COPY docker/replay-occupancy.sh /opt/g1/bin/
 
 RUN source /opt/ros/humble/setup.bash \
     && source /opt/common_ws/install/setup.bash \

@@ -15,6 +15,7 @@
 #
 #     ./rviz_operate.sh                 # 既定(domain 0 / FastDDS)
 #     G1_DOMAIN_ID=3 ./rviz_operate.sh
+#     G1_RMW=rmw_cyclonedds_cpp G1_RVIZ_IFACE=enp3s0 ./rviz_operate.sh   # 現行の PC2(CycloneDDS)に有線で繋ぐ
 #     ./rviz_operate.sh stop
 #
 # ## Goal の送り方
@@ -37,6 +38,10 @@ NAME="${G1_RVIZ_NAME:-g1-nav2-rviz}"
 DOMAIN="${G1_DOMAIN_ID:-0}"
 RMW="${G1_RMW:-rmw_fastrtps_cpp}"
 CONFIG="${G1_RVIZ_CONFIG:-$HERE/nav2_operate.rviz}"
+# CycloneDDS を載せる NIC（例: enp3s0）。⚠️ 有線と WiFi の両方に繋がった操作PC では
+# 指定しないと WiFi 側を選び、何も映らないことがある（PC2 は eth0 固定なので有線側に揃える）。
+# 2026-10-14 は手で固定して映した。G1_RMW=rmw_cyclonedds_cpp のときだけ効く
+IFACE="${G1_RVIZ_IFACE:-}"
 
 if [ "${1:-}" = "stop" ]; then
     docker rm -f "$NAME" >/dev/null 2>&1 && echo "[rviz] 止めました" || echo "[rviz] 動いていません"
@@ -75,6 +80,12 @@ if [ -f "$PEERS_XML" ]; then
     echo "[rviz] initial peers を使う: $PEERS_XML"
 fi
 
+IFACE_ARGS=()
+if [ -n "$IFACE" ]; then
+    IFACE_ARGS=(-e "CYCLONEDDS_URI=<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$IFACE\"/></Interfaces></General></Domain></CycloneDDS>")
+    echo "[rviz] CycloneDDS を $IFACE に固定する"
+fi
+
 # --network host: DDS の discovery をホストのネットワークで行う(PC2 と同じ L2 に居る前提)
 docker run --rm "${TTY_ARGS[@]}" --name "$NAME" \
     --network host --ipc host \
@@ -84,6 +95,7 @@ docker run --rm "${TTY_ARGS[@]}" --name "$NAME" \
     -e RMW_IMPLEMENTATION="$RMW" \
     -e ROS_DOMAIN_ID="$DOMAIN" \
     "${PEER_ARGS[@]}" \
+    "${IFACE_ARGS[@]}" \
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
     -v "$CONFIG:/cfg/nav2_operate.rviz:ro" \
     "$IMAGE" \

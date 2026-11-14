@@ -5,13 +5,15 @@
 生LiDAR・IMU・RGBをrosbag2へ保存したものを正本とし、LIOの実行部分だけを
 pose providerとして交換する。provider固有topicはadapterで正規化し、記録・軌跡・
 ライブ地図・RViz・成果物検証は共通topicだけを使う。
-Mapping中にproviderを切り替えることはせず、失敗時は新しいセッションとして再開する。
+Mapping中にproviderを切り替えることはしない。native/ssh/rawの通信断ではG1記録を
+継続し、同じセッションの保存済みデータから配信を再開する。
 
 ```text
 G1内蔵LIO ─ onboard adapter ─┐
                              ├─ canonical odom / registered cloud
 FAST-LIO2 ─ raw adapter ─────┘              │
-                                            ├─ map accumulator ─ RViz2
+                                            ├─ onboard: map accumulator ─ RViz2
+                                            ├─ raw/sim: OctoMap + sensor pose ─ RViz2 / PCD
 RGB camera ─ camera adapter ────────────────┼─ rosbag2 recorder
                                             ├─ trajectory writer
                                             └─ PCD/session validator
@@ -45,12 +47,27 @@ Isaac Simでは`--backend sim`を使い、実機rawと同じFAST-LIO2を実行�
 ./mapctl rebuild [session_id]
 ```
 
-これはrosbagに記録済みの地図点群を蓄積して`map/map_raw.pcd`を書き出す**オフライン
-経路**であり、G1にもDockerにもROS 2にも依存しない。`db3`だけを読むため、異常終了で
+`onboard` は記録済みの地図点群を蓄積するPython経路で、G1にもDockerにもROS 2にも
+依存しない。`raw` / `sim` はDocker内の `g1_mapping_octomap/rebuild_occupancy` が、
+記録済みの登録点群とセンサ姿勢からオンラインと同じOctoMapを再生成する。
+いずれも `db3` を直接読むため、異常終了で
 `metadata.yaml`が欠けたセッションからも復旧できる。「生データを並行記録しておけば
 現場で地図が完成しなくても持ち帰れる」という前提を、実際に成立させるための実装。
 
 ## 可視化境界
+
+native/ssh/rawではG1の独立プロセスが生LiDAR・IMU・RGBをSQLite rosbag2へ記録する。
+SSH中継は確定済みの行だけを読み、最後にPCへ送った行IDの次から再接続する。
+送信待ちやSSH切断は記録プロセスに伝播させない。PCのFAST-LIO2は最大1.5倍速で
+未送信分を処理し、RGB表示は別のZeroMQ接続で最新フレームを受け取る。
+通信中断中は画面の更新が止まり、地図は追いつくまで遅延する。
+
+`mapctl stop`はG1記録を閉じ、再開可能な転送とSHA-256照合で原本を回収した後、
+別ROS domainで全生データをFAST-LIO2へ再入力する。登録点群・姿勢の組が一致し、
+開始時の初期化分を除いてスキャンが揃っていることを検査し、同じC++ OctoMap実装で
+最終PCDを生成する。最終地図だけを`map_raw.*`へ採用し、ライブ版は`map_preview.*`に残す。
+回収・再生成が失敗した場合はセッションを完了せず、`mapctl recover [session_id]`で再開する。
+G1原本は自動削除しない。`mapctl rebuild`は完了済みセッションの最終登録点群・姿勢を使う。
 
 可視化は`g1-mapping-visualization` imageへ分離し、Mapping backendのコンテナへGUI、
 X11ソケット、RViz依存を持ち込まない。
@@ -78,7 +95,15 @@ Mappingプロセスには影響せず、Mappingが停止しても可視化プロ
 - `PointCloud2`をLivox `CustomMsg`へ変換し、各点時刻を保持してFAST-LIO2へ渡す。
 - 各点時刻が無い場合は、点の並び順から1スキャン内の時刻を推定する縮退モードを持つ。
   縮退モードは診断レポートで明示し、正常扱いにはしない。
-- FAST-LIO2の`map_save`サービスで、セッション配下へPCDを保存する。
+- FAST-LIO2へ固定commit用patchを適用し、スキャン終端時刻のLiDAR姿勢を配信する。
+  原点には推定中のLiDAR–IMU外部パラメータを含める。
+- adapterが登録点群とセンサ姿勢を同じ`map`基底へ正規化する。`lio_body`をcanonical
+  child frameに使い、FAST-LIO2自身の`camera_init -> body` TFと競合させない。
+- `g1_mapping_octomap` は完全一致のスキャン時刻で点群とセンサ姿勢を組み合わせ、
+  占有・空きを更新する。空きに分類された候補点を地図から削除する。
+  削除はスキャン更新時に実行し、表示や保存の周期に結果を依存させない。
+- `/g1_mapping/save_map` が表示と同じ地図をPCDとOctoMapへ保存する。
+  保存失敗時の復旧も同じOctoMap処理を使い、単純蓄積へは自動で戻さない。
 
 ## 標準トピック
 
@@ -88,6 +113,7 @@ Mappingプロセスには影響せず、Mappingが停止しても可視化プロ
 | 正規化済みIMU | `/g1_mapping/imu` | `sensor_msgs/msg/Imu` |
 | LIO odometry | `/g1_mapping/odom` | `nav_msgs/msg/Odometry` |
 | 登録済み点群 | `/g1_mapping/cloud_registered` | `sensor_msgs/msg/PointCloud2` |
+| raw/simのLiDAR姿勢 | `/g1_mapping/sensor_pose` | `geometry_msgs/msg/PoseStamped` |
 | 地図点群 | `/g1_mapping/map` | `sensor_msgs/msg/PointCloud2` |
 | 移動軌跡 | `/g1_mapping/path` | `nav_msgs/msg/Path` |
 | RGB画像 | `/g1_camera/color/image/compressed` | `sensor_msgs/msg/CompressedImage` |
@@ -97,7 +123,10 @@ Mappingプロセスには影響せず、Mappingが停止しても可視化プロ
 `/g1_mapping/map`は表示用のボクセル地図で、通常の`x/y/z/intensity`に加えて
 `density`、`hit_count`、`scan_count`を持つ。`scan_count`は同一スキャン内の重複を
 1回として数え、`density=min(scan_count/DENSITY_TARGET_SCANS, 1)`とする。
-この地図は派生データなのでrosbagへ重複保存せず、登録済み点群から再生成する。
+raw/simではさらに`occupancy`を持つ。OctoMapで未知の候補点は既定で残し、占有確率の
+表示値を0.5とする。`density`は採否の判定には使わない。
+地図は派生データなのでrosbagへ重複保存せず、登録済み点群とセンサ姿勢から再生成する。
+OctoMap設定はmanifestとPCDと同名の`.octomap.json`へ保存する。
 
 実機入力・内蔵LIO出力のトピック名は`.env`で変更できる。ファームウェア差をソースコードに
 埋め込まない。
@@ -121,6 +150,14 @@ runs/<timestamp>_<name>/
 `state.json`は`created/running/stopping/completed/failed`の状態遷移を記録する。
 
 ## 依存関係と再現性
+
+`.env`の`MAPPING_RUNTIME`は配備方式を選び、`backend`はLIOの計算方式を選ぶ。
+`docker`は以下のコンテナ構成、`native`はUbuntu 24.04 x86_64のROS 2 Jazzyへ
+ローカルoverlayを重ねる。nativeも同じadapter・FAST-LIO2・OctoMap・recorderを使い、
+`mapctl`のセッション管理と成果物形式を共用する。追加依存・固定commitのソース・
+ビルド成果物は`_local/mapping/`へ置く。nativeが対応するbackendは`raw`と`sim`。
+LiDARはG1が配信するため、nativeではLivoxドライバ本体を起動せず、固定版の
+`CustomMsg`/`CustomPoint`だけをビルドする。
 
 - ホスト: Docker Engine、Docker Compose、SSH client、Python 3.10以上
 - コンテナ: Ubuntu 22.04、ROS 2 Humble、CycloneDDS
