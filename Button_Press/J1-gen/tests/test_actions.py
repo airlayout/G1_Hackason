@@ -71,5 +71,28 @@ class TestActionArgs(unittest.TestCase):
                 main(["--action", "point", "--path", "sim", *extra])
 
 
+class TestActionApi(unittest.TestCase):
+    def test_unverified_refused(self) -> None:
+        from actions.api import perform
+
+        with self.assertRaises(ValueError):
+            perform("point_level")
+        with self.assertRaises(ValueError):
+            perform("nothing")
+
+    def test_cli_refuses_unverified(self) -> None:
+        from actions.api import cli
+
+        self.assertEqual(cli(["point_level", "--sim"]), 2)
+
+
+@needs("mujoco", "pin", "models")
+class TestActionApiSim(unittest.TestCase):
+    def test_perform_sim(self) -> None:
+        from actions.api import perform
+
+        self.assertEqual(perform("salute", path="sim", execute=True, confirm=False), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
