@@ -25,6 +25,9 @@ G1 内蔵の TTS（`TtsMaker`）は日本語を読めない（2026-11-14 実機�
     $PY Voice/voicevox_speak.py --play "こんにちは、私はジーワンです"
     # 話者（スタイル ID）の一覧
     $PY Voice/voicevox_speak.py --list-speakers
+    # 決まった言葉をまとめて WAV にする（モデルの読み込みは 1 回。PC2 には送らない）
+    # JSON は {"名前": "文", ...}。<out-dir>/<名前>.wav ができる（Button_Press/J1-gen/real/voice_phrases.py が使う）
+    $PY Voice/voicevox_speak.py --batch phrases.json --out-dir Voice/out/phrases
 
 ⚠️ VOICEVOX は話者（キャラクター）ごとに利用規約がある。外に出す場面（発表・動画など）では
 「VOICEVOX:剣崎雌雄」のようなクレジット表記が要る。話者ごとの規約を確かめること。
@@ -32,6 +35,8 @@ G1 内蔵の TTS（`TtsMaker`）は日本語を読めない（2026-11-14 実機�
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -98,6 +103,24 @@ def synthesize(synth, text: str, style: int, speed: float, pitch: float = 0.0, i
     return synth.synthesis(query, style)
 
 
+def make_batch(synth, batch: Path, out_dir: Path, style: int, speed: float, pitch: float, intonation: float) -> int:
+    """JSON（{"名前": "文"}）の言葉を、out_dir/<名前>.wav にまとめて作る。"""
+    phrases = json.loads(batch.read_text(encoding="utf-8"))
+    if not isinstance(phrases, dict) or not phrases:
+        print(f"[voicevox] {batch} は {{\"名前\": \"文\"}} の JSON にしてください", file=sys.stderr)
+        return 1
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for key, text in phrases.items():
+        # ⚠️ 名前はそのままファイル名になる。PC2 のコマンドにも入るので、英数字と _ - だけにする
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", str(key)) or not str(text).strip():
+            print(f"[voicevox] 名前は英数字と _ - だけ、文は空でないこと: {key!r}: {text!r}", file=sys.stderr)
+            return 1
+        wav = synthesize(synth, str(text), style, speed, pitch, intonation)
+        (out_dir / f"{key}.wav").write_bytes(wav)
+        print(f"[voicevox] {out_dir / f'{key}.wav'}（約 {(len(wav) - 44) / 2 / 24000:.1f} 秒）: {text}", flush=True)
+    return 0
+
+
 def _run(cmd: List[str], timeout: float) -> None:
     print(f"[voicevox] $ {' '.join(cmd)}", flush=True)
     subprocess.run(cmd, check=True, timeout=timeout)
@@ -116,12 +139,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--play", action="store_true", help="PC2 に送ったあと、そのまま鳴らす")
     parser.add_argument("--no-send", action="store_true", help="WAV を作るだけで PC2 に送らない")
     parser.add_argument("--list-speakers", action="store_true", help="話者の一覧を出して終わる")
+    parser.add_argument("--batch", type=Path, default=None, help='{"名前": "文"} の JSON。まとめて WAV にする（送らない）')
+    parser.add_argument("--out-dir", type=Path, default=OUT_DIR / "phrases", help="--batch の WAV の置き場")
     args = parser.parse_args(argv)
 
     synth = make_synthesizer(args.core_dir, args.model)
     if args.list_speakers:
         list_speakers(synth)
         return 0
+    if args.batch is not None:
+        return make_batch(synth, args.batch, args.out_dir, args.style, args.speed, args.pitch, args.intonation)
     if not args.text or not args.text.strip():
         parser.error("喋らせる文を指定してください")
 

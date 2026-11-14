@@ -52,6 +52,36 @@ $PY Voice/voicevox_speak.py --play --style 3 --pitch 0 --intonation 1 "ずんだ
 他のモデル（青山龍星 `15.vvm` など）の一覧は voicevox_vvm の README.txt にある。青山龍星・No.7 などは
 企業が関わる利用に事前確認が要るので、使う前に規約を確かめること。
 
+## エレベーターのボタンを押す流れで喋らせる（2026-11-14 追加。実機ではまだ鳴らしていない）
+
+押す流れの節目で、決まった言葉を喋らせる。言葉は `Button_Press/J1-gen/configs/voice.yaml`。
+
+| 出来事 | 言葉（既定） | いつ |
+|---|---|---|
+| `press_start` | ボタンを押します | 計画が立ち、腕を伸ばし始めるとき |
+| `lit` | 点灯成功 | 点灯を確かめたとき（押している間だけ点いたのを見たときも） |
+| `retry` | 点灯していません。もう一度押します | 点灯せず、深く押し直すとき |
+| `not_confirmed` | 点灯を確認できませんでした | 押し直しても確かめられなかったとき |
+| `gave_up` | ボタンを押すのを中止します | 見つからない・計画が立たないなどで中止したとき |
+
+押している間は合成しない（PC2 には `voicevox_core` が入らない）。ノート PC で前もって WAV にして PC2 の
+`/tmp/g1_voice_tts/phrases/` に置き、押す流れでは鳴らすだけ。鳴らすのは別スレッド・別プロセスなので、
+腕の制御（50 Hz）は待たない。鳴らせなくても注意を 1 行出すだけで、押す流れは続ける。
+
+```bash
+P=G1_HuggingFace/venv/bin/python
+$P Button_Press/J1-gen/real/voice_phrases.py make         # WAV を作る（Voice/out/phrases/）
+$P Button_Press/J1-gen/real/voice_phrases.py send         # PC2 に送る（PC2 の /tmp は再起動で消える。その日に 1 回）
+$P Button_Press/J1-gen/real/voice_phrases.py play --all   # 全部を順に鳴らして確かめる
+```
+
+押す流れで喋らせるのは `real/auto_press.py` に `--voice` を付ける（dry-run でも喋る）:
+- PC2 の上で動かすとき: `--voice local`（PC2 の中で `g1_speaker.py` を動かす）
+- 有線のノート PC から動かすとき: `--voice ssh`（無線の ssh で PC2 に鳴らさせる。PC から音声の DDS は叩かない）
+
+鳴らした記録（言葉・成否・かかった秒）は、エージェントの結果の JSON の `"voice"` に入る。
+言葉を変えたら `make` → `send` をやり直す。
+
 ## 入れる（操作PC。1 回だけ）
 
 ⚠️ **このノートPCは ARM64（aarch64）**。x64 版は動かない（"Exec format error"）。合計 約 250MB。

@@ -10,6 +10,10 @@
     # 壁もボタンも無いところで、エレベーターと同じ腕の動きだけ（空中の車いす用 ▼。腕を伸ばしたときの体の崩れを見る）
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair \\
         --air 0.48 -0.14 --execute
+    # 押す流れの節目で G1 に喋らせる（「ボタンを押します」「点灯成功」。configs/voice.yaml。先に real/voice_phrases.py make・send）
+    #   PC2 の上で動かすときは --voice local、有線のノート PC から動かすときは --voice ssh
+    ~/button_press/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair \\
+        --detector yolo --network-interface eth0 --camera-config camera_onboard.yaml --voice local --execute
     # 左腕で押す（ボタンが体の左に来るように立つ。空中なら左右を + にする）
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair \\
         --arm left --air 0.48 0.14
@@ -248,6 +252,8 @@ def press_command(args: argparse.Namespace, iface: str) -> tuple[list[str], dict
     # 押している間もランプを見るとき、手の画素を除くか。実機のゴムの手・手袋は黒く、被さっても明るく見えないので除かない
     # （除くと、ランプの縁が少し見えている画像まで使えなくなる）。シミュレーションの白い手は elevator.yaml の既定で除く
     env["J1GEN_HAND_MASK"] = "1" if getattr(args, "hand_mask", False) else "0"
+    if getattr(args, "voice", None):
+        env["J1GEN_VOICE"] = args.voice  # contest_agent/agent.py が common/announce.py で喋らせる
     if getattr(args, "air", None):
         env["J1GEN_AIR_BUTTONS"] = f"{args.air[0]},{args.air[1]}"
     return cmd + list(getattr(args, "extra", [])), env
@@ -294,6 +300,9 @@ def main() -> int:
     p.add_argument("--hand-mask", action="store_true",
                    help="ボタン: 押している間もランプを見るとき、手・前腕が写る画素を除く（既定は除かない。実機の手は黒い。"
                         "白い手のシミュレーションや、白い手袋のとき）")
+    p.add_argument("--voice", choices=["local", "ssh"],
+                   help="ボタン: 押す流れの節目で G1 に喋らせる（configs/voice.yaml。dry-run でも喋る）。local = PC2 の上で動かすとき、"
+                        "ssh = 有線のノート PC から無線の ssh で PC2 に鳴らさせるとき。先に real/voice_phrases.py make・send")
     p.add_argument("--skip-prechecks", action="store_true", help="事前確認を飛ばす（模擬ロボットで試すときだけ）")
     p.add_argument("--skip-head-tilt", action="store_true",
                    help="事前確認のうち、頭カメラの向きだけを飛ばす（床でない斜めの面を床と取り違えて止まるとき。"
@@ -305,6 +314,8 @@ def main() -> int:
     args.extra = extra
     if args.arm == "auto" and args.target == "bottle":
         p.error("--arm auto はボタン（--target up / down）だけ。ボトルは left か right")
+    if args.voice and args.target == "bottle":
+        p.error("--voice はボタン（--target up / down）だけ")
 
     iface = args.network_interface or load_config("arm.yaml")["network_interface"]
     mode = "送る（--execute）" if args.execute else "dry-run（送らない）"

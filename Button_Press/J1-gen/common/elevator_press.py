@@ -138,6 +138,10 @@ class ElevatorPressController:
         # 押す前（見つけたとき）と点灯の確認のときの画像を、外へ渡す口（agent.py が記録に使う）。
         # on_snapshot(種類 "before" / "check", 画像 RGB, 内容の辞書)。無ければ何もしない
         self.on_snapshot: Callable[[str, np.ndarray, dict[str, Any]], None] | None = None
+        # 押す流れの節目を外へ渡す口（agent.py が G1 に喋らせるのに使う。common/announce.py、configs/voice.yaml）。
+        # on_event(名前): "press_start"（腕を伸ばし始める）/ "lit"（点灯した）/ "retry"（押し直す）/
+        # "not_confirmed"（点灯を確かめられない）/ "gave_up"（中止）。無ければ何もしない
+        self.on_event: Callable[[str], None] | None = None
 
     @classmethod
     def from_config(cls, robot_cfg: dict[str, Any], press_cfg: dict[str, Any], arm_cfg: dict[str, Any],
@@ -394,6 +398,15 @@ class ElevatorPressController:
         self.log.append(StepLog(self.phase, msg))
         print(f"[elevator] {self.phase}: {msg}")
 
+    def _event(self, name: str) -> None:
+        """節目を on_event に渡す。外の口で何が起きても、押す流れ（50 Hz の制御）は止めない。"""
+        if self.on_event is None:
+            return
+        try:
+            self.on_event(name)
+        except Exception as e:  # noqa: BLE001
+            print(f"[elevator] ⚠️ on_event（{name}）で例外: {e}")
+
     def _enter(self, phase: str, t: float) -> None:
         self.phase, self.t_phase = phase, t
         if phase == "press":
@@ -414,6 +427,7 @@ class ElevatorPressController:
         """中止する。腰が回っていれば、始めの角度へ戻してから done にする（その間は False を返す）。"""
         self.outcome = f"中止: {why}"
         self._note(self.outcome)
+        self._event("gave_up")
         return self._finish(t)
 
     def _twisted(self) -> bool:
@@ -593,6 +607,7 @@ class ElevatorPressController:
             return
         if advice:
             self._note(f"⚠️ {advice}（計画は立ったので押す）")
+        self._event("press_start")
         self._enter("reach", t)
 
     def _note_buttons(self, before: Any) -> None:
@@ -931,12 +946,14 @@ class ElevatorPressController:
         if self._is_lit(level, rise):
             self.outcome = "点灯した"
             self._note(f"点灯した（{shown}）")
+            self._event("lit")
             self._start_home(t)
             return True
         seen = self.lamp.seen
         if seen is not None:
             # 確認のときには消えていたが、押している間・戻る間に点灯を見た（かごがその階にいた・すぐ来た）
             self.outcome = "点灯した（確認のときには消えていた）"
+            self._event("lit")
             self._note(f"点灯した: {seen['phase']} の {seen['t'] - self.t_contact():+.1f} 秒（当たってから）に"
                        f"明るい部分 {seen['rise']:+.0f} を見た（見えた割合 {seen['visible'] * 100:.0f}%）。確認のときは {shown}。押し直さない")
             self._start_home(t)
@@ -944,11 +961,13 @@ class ElevatorPressController:
         if self.retries >= int(c["max_retries"]):
             self.outcome = f"点灯を確かめられない（{shown}）"
             self._note(self.outcome)
+            self._event("not_confirmed")
             self._start_home(t)
             return True
         self.retries += 1
         depth = min(self.plan_.depth + float(c["retry_extra_depth_m"]), float(self.planner.cfg["max_press_depth_m"]))
         self._note(f"点灯していない（{shown}）。{depth * 1000:.0f} mm で押し直す")
+        self._event("retry")
         p = self.plan_
         self.plan_ = PressPlan(**{**p.__dict__, "end_point": p.target_point + depth * p.push_dir, "depth": depth})
         self._enter("press", t)

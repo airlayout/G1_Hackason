@@ -35,6 +35,11 @@ contact_stop.keep_m・lag_m と planner.press_depth_m）をその回だけ変え
 環境変数 J1GEN_RESULT_JSON にファイルの名前を渡すと、終わったときに結果（点灯した・確かめられない・中止とその理由）と
 段階ごとのメッセージを書く（real/auto_press.py が渡し、自分の記録 _local/button_press/auto/*.json に取り込む）。
 
+環境変数 J1GEN_VOICE に local / ssh を渡すと、押す流れの節目で G1 に喋らせる（「ボタンを押します」「点灯成功」など。
+言葉は configs/voice.yaml、鳴らし方は common/announce.py。real/auto_press.py --voice）。local は PC2 の上で動かすとき、
+ssh は有線のノート PC から動かすとき。前もって real/voice_phrases.py make・send で PC2 に WAV を置いておく。
+鳴らした記録は、結果の JSON の "voice" に入れる。渡さなければ喋らない（評価環境はこれまでどおり）。
+
 同じフォルダに、押す前（ボタンを見つけたとき）と点灯の確認のときの画像も保存する（lit_00_before.png、
 lit_01_check.png … と、枠・明るさを描いた *_annotated.jpg、lit_log.json）。手が枠に被さって点灯の確認が
 狂っていないか（点灯していないのに「点灯した」、点灯したのに「していない」）を、あとで見るため。
@@ -99,6 +104,12 @@ class J1genElevatorAgent(Agent):
             x, y = (float(v) for v in air.split(","))
             self.ctl.finder = j1gen("elevator_buttons").AirButtonFinder(x, y)
             print(f"[j1gen-agent] ⚠️ 空中のボタン（カメラで探さない）: 前 {x * 100:.0f} cm、左右 {y * 100:+.0f} cm")
+        self.voice = None
+        mode = os.environ.get("J1GEN_VOICE", "").strip()
+        if mode and mode not in ("0", "off"):
+            self.voice = j1gen("announce").Announcer.from_config(j1gen_config("voice.yaml"), mode)
+            self.ctl.on_event = self.voice.say
+            print(f"[j1gen-agent] 喋らせる: {mode}（configs/voice.yaml）")
         weights = f"（重み: {elevator['yolo']['weights']}）" if elevator["detector"] == "yolo" else ""
         print(f"[j1gen-agent] ボタンを探す方法: {elevator['detector']}{weights}、押す組: {elevator['geometry'].get('button_set', 'general')}")
 
@@ -120,6 +131,9 @@ class J1genElevatorAgent(Agent):
 
     def close(self) -> None:
         self._write_result()  # 終わる前に止まった（Ctrl+C・通信が切れた）ときも、そこまでの段階を残す
+        if self.voice is not None:
+            self.voice.close(wait_s=8.0)  # 最後の言葉（点灯成功など）を言い終わるまで待つ。腕はもう戻してある
+            add_voice_to_result(os.environ.get("J1GEN_RESULT_JSON"), self.voice.said)
 
     def _write_result(self) -> None:
         path = os.environ.get("J1GEN_RESULT_JSON")
@@ -146,6 +160,15 @@ def write_result(path: Path, ctl: object, body_log_dir: Path | None) -> None:
         "lamp_watch": ctl.lamp.summary() if getattr(ctl, "lamp", None) is not None else None,
         "door_watch": ctl.door.summary() if getattr(ctl, "door", None) is not None else None,
     }, ensure_ascii=False, indent=2, default=float))
+
+
+def add_voice_to_result(path: str | None, said: list[dict]) -> None:
+    """鳴らした記録を結果の JSON に足す（結果は done のときに書くが、言葉はそのあとも鳴っているので、終わるときに足す）。"""
+    if not path or not Path(path).exists():
+        return
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    data["voice"] = said
+    Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2, default=float), encoding="utf-8")
 
 
 class BodyLog:
