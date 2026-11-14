@@ -132,3 +132,10 @@
   - patterns/robot_arm_control.md: 肘を横へ張る敬礼は手の向きを目標に入れると手首を大きく曲げずに解ける（前の記録の訂正）、腕を前へ出すと腰が前へ倒れる・動作ごとの上限と kp
   - real_robot_notes.md: 敬礼・指さしの実機の結果、onboard.sh sync は actions/ を送らない、関節範囲
 
+
+- 2026-11-14 / Button_Press（J1-gen）
+  対象: 11/14 の実機日（無線の ssh で PC2 の上）。歩く 1 回分、壁まで寄る 3 回、止まった判定と柱の端の誤りの直し
+  - real_robot_notes.md: 歩く量の表、骨盤からつま先、壁の置き方、止まっていても脚の角速度が跳ねる、横の物は見えない、PC2 のボタンの YOLO は ONNX、record.py が止まった
+  - patterns/camera_checks.md: ホワイトボードの端は深度で当てにならない、記録を流し直して判断の数字を再現できる
+  - patterns/sim_real_config.md: 偽物の足は向きごとに設定の rate で動かす
+  - domain/unitree_g1.md: 横は左右で量が違う、立っていても脚の角速度が跳ねる
