@@ -1,0 +1,153 @@
+{
+  "schema": "g1-robust-trial-v1",
+  "task": "bottle",
+  "completed": false,
+  "physical_push_success": null,
+  "settings": {
+    "budget_s": 10.0,
+    "max_rollouts": 1000,
+    "scenarios": 20,
+    "workers": 8,
+    "max_candidates": 50,
+    "seed": 0,
+    "position_error_m": 0.001,
+    "normal_error_deg": 1.0,
+    "tracking_error_rad": 0.001,
+    "mass_range": [
+      0.28,
+      0.42
+    ],
+    "friction_range": [
+      0.24,
+      0.36
+    ],
+    "gravity_scale": 1.0,
+    "motion_duration_s": 30.0,
+    "joint_speed_rad_s": 1.2,
+    "joint_acceleration_rad_s2": 4.0
+  },
+  "arguments": {
+    "task": "bottle",
+    "model": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/menagerie/unitree_g1/g1.xml",
+    "base_transform": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/calibration_previous.json",
+    "state_json": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_20261101_111655_dEyZY4/state.json",
+    "output": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/preview_20261101_111655_dEyZY4/result.json",
+    "weights": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/models/yolo26n.pt",
+    "button_direction": null,
+    "target_pixel": null,
+    "confidence": 0.25,
+    "device": "cpu",
+    "detector_imgsz": 960,
+    "network_interface": "enp129s0",
+    "arm_socket": null,
+    "execute": false,
+    "calibrated": false,
+    "stop_before_contact": false,
+    "motion_planner": "robust",
+    "trial_config": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/trial.json",
+    "planning_budget_s": 10.0,
+    "planning_max_rollouts": 1000,
+    "planning_scenarios": 20,
+    "planning_workers": 8,
+    "planning_max_candidates": 50,
+    "planning_seed": 0,
+    "position_error_m": 0.001,
+    "normal_error_deg": 1.0,
+    "tracking_error_rad": 0.001,
+    "mass_range": [
+      0.28,
+      0.42
+    ],
+    "friction_range": [
+      0.24,
+      0.36
+    ],
+    "bottle_base_height": 0.72,
+    "contact_height": 0.08,
+    "stroke": 0.0015,
+    "push_distance": 0.05,
+    "gravity_scale": 1.0,
+    "motion_duration_s": 30.0,
+    "joint_speed_rad_s": 1.2,
+    "joint_acceleration_rad_s2": 4.0,
+    "j1gen_root": null,
+    "camera_config": "camera.yaml",
+    "host": "192.168.123.164"
+  },
+  "calibration": {
+    "schema": "g1-button-calibration-v2",
+    "camera_body": "torso_link",
+    "camera_offset_m": [
+      -0.008196056063758783,
+      -0.00827976001704056,
+      0.018840695320078482
+    ],
+    "camera_rpy_offset_rad": [
+      -0.048594911386863636,
+      -0.0031263843534105554,
+      -0.014836240570040656
+    ],
+    "pelvis_height_m": 0.77,
+    "tip_offset_m": [
+      0.1583,
+      0.0283,
+      0.0067
+    ],
+    "tip_radius_m": 0.015,
+    "position_uncertainty_m": 0.015,
+    "reference_waist_q_rad": [
+      -0.001607027486898005,
+      -0.0016876553418114781,
+      -0.038732390850782394
+    ],
+    "reference_imu_rpy_rad": [
+      0.00037252751644700766,
+      0.03764556720852852,
+      -0.24314935505390167
+    ],
+    "provenance": {
+      "camera": "Fitted to user-measured horizontal 40x30 cm tabletop at z=0.76 m, x=[0.31,0.61], y=[-0.36,0.04]",
+      "camera_height_independent_check_m": {
+        "measured": 1.24,
+        "estimated": 1.2357050696013938
+      },
+      "bottle_center_independent_check_m": {
+        "placed_by_user": [
+          0.38,
+          -0.2
+        ],
+        "estimated": [
+          0.38325007293855406,
+          -0.20633615871110703
+        ]
+      },
+      "hand": "Operator confirmed unactuated fixed five-finger stock hand; nominal geometry from pinned official model",
+      "hand_mesh_commit": "ccfc6fd8430a17ba3dacef9a1e2faf64ff3b0aee",
+      "middle_fingertip_surface_m": [
+        0.1733,
+        0.0283,
+        0.0067
+      ],
+      "sphere_center_definition": "15 mm inward from nominal middle-fingertip surface along hand +X",
+      "uncertainty": "Conservative 15 mm planning allowance; not a precision metrology certificate",
+      "path": "Full stock-hand meshes vs measured tabletop/robot checked offline; minimum predicted clearance about 51 mm"
+    },
+    "validation_status": "Camera/table and nominal stock-hand profile established; actual precontact trajectory and tip projection validation pending"
+  },
+  "error": "Initial three-frame observation unavailable",
+  "perception_frames": [],
+  "perception_rejections": {},
+  "geometry_rejections": [
+    "ボトル胴体の曲面深度を安定して推定できません",
+    "ボトル胴体の曲面深度を安定して推定できません",
+    "ボトル胴体の曲面深度を安定して推定できません",
+    "ボトル胴体の曲面深度を安定して推定できません",
+    "ボトル胴体の曲面深度を安定して推定できません",
+    "ボトル胴体の曲面深度を安定して推定できません",
+    "ボトル胴体の曲面深度を安定して推定できません",
+    "ボトル胴体の曲面深度を安定して推定できません",
+    "ボトル胴体の曲面深度を安定して推定できません",
+    "ボトル胴体の曲面深度を安定して推定できません",
+    "ボトル胴体の曲面深度を安定して推定できません"
+  ]
+}

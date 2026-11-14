@@ -1,0 +1,27 @@
+{
+  "device": "Intel RealSense D435I",
+  "width": 640,
+  "height": 480,
+  "frames": 30,
+  "elapsed_s": 1.0004754940000566,
+  "fps": 29.98574195961096,
+  "first_frame_number": 30,
+  "last_frame_number": 59,
+  "depth_scale_m": 0.0010000000474974513,
+  "valid_percent": 95.67057291666666,
+  "center_median_m": 1.715000033378601,
+  "valid_depth_percentiles_m": [
+    0.895950028300286,
+    1.7060000896453857,
+    3.3650002479553223
+  ],
+  "intrinsics": {
+    "fx": 384.8084411621094,
+    "fy": 384.8084411621094,
+    "cx": 325.35614013671875,
+    "cy": 242.0720977783203
+  },
+  "preview_min_m": 0.2,
+  "preview_max_m": 3.0,
+  "note": "Native depth, not aligned or synchronized to videohub color."
+}

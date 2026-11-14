@@ -1,0 +1,38 @@
+{
+  "schema": "g1-arm-connection-check-v1",
+  "completed": false,
+  "connection_verified": true,
+  "connection": {
+    "mode_machine": 5,
+    "motor_count": 35,
+    "fsm_id": 501
+  },
+  "plan": {
+    "joint": 22,
+    "joint_name": "right_shoulder_pitch_joint",
+    "angle_deg": 5.0,
+    "raise_duration_s": 2.0,
+    "hold_s": 0.5,
+    "return_duration_s": 2.0,
+    "start_right_arm_rad": [
+      0.2869023382663727,
+      -0.2228706330060959,
+      0.02551441639661789,
+      0.9838929176330566,
+      -0.10130265355110168,
+      0.030715569853782654,
+      0.006028065457940102
+    ],
+    "raised_right_arm_rad": [
+      0.1996358756666562,
+      -0.2228706330060959,
+      0.02551441639661789,
+      0.9838929176330566,
+      -0.10130265355110168,
+      0.030715569853782654,
+      0.006028065457940102
+    ],
+    "peak_command_speed_rad_s": 0.06544984694978735,
+    "peak_command_acceleration_rad_s2": 0.1308996938995747
+  }
+}

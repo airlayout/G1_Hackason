@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="42" time="1.327" timestamp="2026-11-01T12:12:44.747295+09:00" hostname="ubuntu-OMEN-16L-Gaming-Desktop-TG03-0xxx"><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_window_requires_three_unique_fresh_frames_and_rejects_identity_jump" time="0.001" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_five_hz_frame_jitter_does_not_drop_every_other_image" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_small_jitter_does_not_retarget_and_consistent_shift_is_bounded" time="0.001" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_snapshot_age_is_not_execution_expiry_but_movement_invalidates" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_missing_bottom_and_transparent_depth_reject_without_table_fallback" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_measured_bottom_separates_oblique_bottle_from_support[False--0.215]" time="0.028" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_measured_bottom_separates_oblique_bottle_from_support[False-0.215]" time="0.019" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_measured_bottom_separates_oblique_bottle_from_support[True--0.215]" time="0.022" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_measured_bottom_separates_oblique_bottle_from_support[True-0.215]" time="0.022" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_trial_config_cli_precedence_and_opt_in" time="0.004" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_uncertainty_is_deterministic_nominal_first_and_bias_fixed_per_trial" time="0.001" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_b_wall_is_fixed_low_front_is_free_but_back_is_blocked" time="0.211" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_absolute_imu_yaw_is_not_floor_frame_heading" time="0.156" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_deadline_returns_no_plan_and_never_commands_hardware" time="0.143" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_real_robust_parser_is_importable_without_sdk" time="0.002" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_search_compares_all_accepted_candidates_and_breaks_ties_by_duration" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_robust_planner" name="test_preview_uses_no_arm_or_execute_path" time="0.002" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_invalid_limits_reject_before_any_motion[0-4]" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_invalid_limits_reject_before_any_motion[1.3-4]" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_invalid_limits_reject_before_any_motion[1.2-4.1]" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_invalid_limits_reject_before_any_motion[nan-4]" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_invalid_limits_reject_before_any_motion[True-4]" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_invalid_limits_reject_before_any_motion[1.2--1]" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_robust_defaults_and_json_cli_precedence" time="0.001" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_spline_extrema_include_velocity_peak_between_ticks" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_retiming_preserves_geometry_and_reserves_twenty_percent" time="0.001" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_motion_budget_extends_only_within_tolerance_or_rejects" time="0.001" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_runtime_filter_uses_higher_limits_and_caps_corrections" time="0.001" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_short_bottle_motion_keeps_contact_stable_under_placement_error" time="0.207"><failure message="ValueError: Motion budget cannot retain 20% joint speed/acceleration headroom">def test_short_bottle_motion_keeps_contact_stable_under_placement_error():
+        import time
+        from kinematics import load_robot
+        from robust_scene import SceneSnapshot, build_scene_model
+        from robust_planner import generate_candidate, physical_trial, uncertainty_scenarios
+        path = ROOT.parents[1]/'_local/bottle_push/menagerie/unitree_g1/g1.xml'
+        if not path.exists():
+            pytest.skip('Menagerie asset not installed')
+        _, q = load_robot(path, (.1, 0, 0), .79)
+        scene = SceneSnapshot('bottle', (.326, -.12, .84), (1., 0., 0.), .034,
+                              tuple(q), (0., 0., 0.), 0., base_height=.76, uncertainty_m=.001)
+        kin = build_scene_model(path, dict(tip_offset_m=(.1, 0, 0), pelvis_height_m=.79), scene)
+        settings = SearchSettings()
+&gt;       candidate = generate_candidate(kin, scene, 0, (0, 0, 0), (0, 0), settings, time.perf_counter()+30)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Manipulation/push_button/tests/test_motion_limits.py:108:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+Manipulation/push_button/robust_planner.py:236: in generate_candidate
+    times, spline, t, metrics = retime_reference(times, points, settings)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+times = array([ 0.        ,  3.19786228,  4.54267694,  5.05864061,  7.30064643,
+        9.05605626, 10.81470735, 12.58122724, ...
+       17.86121629, 19.62120949, 21.3812002 , 23.14118752, 24.90117106,
+       25.94416065, 27.24691877, 30.43368259])
+points = array([[ 0.2       , -0.2       ,  0.        ,  1.28      ,  0.        ,
+         0.        ,  0.        ],
+       [ 0...41640434],
+       [ 0.2       , -0.2       ,  0.        ,  1.28      ,  0.        ,
+         0.        ,  0.        ]])
+settings = SearchSettings(budget_s=10.0, max_rollouts=1000, scenarios=20, workers=8, max_candidates=50, seed=0, position_error_m=...on_range=(0.24, 0.36), gravity_scale=1.0, motion_duration_s=30.0, joint_speed_rad_s=1.2, joint_acceleration_rad_s2=4.0)
+
+    def retime_reference(times, points, settings):
+        """Keep the geometric spline; fit the motion budget with 20% command headroom."""
+        derivatives = PchipInterpolator(times, points, axis=0).derivative()(times)
+        derivatives[0] = derivatives[-1] = 0.
+        spline = CubicHermiteSpline(times, points, derivatives, axis=0)
+        speed, acceleration = spline_peaks(spline)
+        limits = settings.motion_limits
+        minimum_scale = max(speed/(PLANNED_LIMIT_FRACTION*limits.joint_speed_rad_s),
+                            math.sqrt(acceleration/(PLANNED_LIMIT_FRACTION*limits.joint_acceleration_rad_s2)))
+        # Each sample is held for PERIOD, including the final home command.
+        desired_end = max(PERIOD, settings.motion_duration_s-MOTION_OVERHEAD_S-PERIOD)
+        end = max(desired_end, times[-1]*minimum_scale)
+        ticks = max(1, math.ceil(end/PERIOD-1e-9))
+        end = ticks*PERIOD
+        duration = (ticks+1)*PERIOD
+        if duration+MOTION_OVERHEAD_S &gt; settings.motion_duration_s+MOTION_TOLERANCE_S+1e-9:
+&gt;           raise ValueError('Motion budget cannot retain 20% joint speed/acceleration headroom')
+E           ValueError: Motion budget cannot retain 20% joint speed/acceleration headroom
+
+Manipulation/push_button/robust_planner.py:161: ValueError</failure></testcase><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_arm_motion_negotiates_and_enforces_same_stream_limits" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_execution_clock_includes_release_even_after_partial_enable[False]" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_motion_limits" name="test_execution_clock_includes_release_even_after_partial_enable[True]" time="0.000" /><testcase classname="Manipulation.push_button.tests.test_j1gen_camera" name="test_only_distinct_post_wait_fresh_images_count" time="0.063" /><testcase classname="Manipulation.push_button.tests.test_j1gen_camera" name="test_unsynchronized_future_timestamp_aborts" time="0.001" /><testcase classname="Manipulation.push_button.tests.test_j1gen_camera" name="test_nonblocking_poll_rejects_duplicate_and_stale_frames" time="0.001" /><testcase classname="Manipulation.push_button.tests.test_j1gen_camera" name="test_live_localizer_keeps_bgr_depth_scale_and_three_frame_policy" time="0.026" /><testcase classname="Manipulation.push_button.tests.test_j1gen_camera" name="test_lamp_reidentifies_unique_target_without_updating_press_goal[1-True]" time="0.001" /><testcase classname="Manipulation.push_button.tests.test_j1gen_camera" name="test_lamp_reidentifies_unique_target_without_updating_press_goal[0-False]" time="0.002" /><testcase classname="Manipulation.push_button.tests.test_j1gen_camera" name="test_lamp_reidentifies_unique_target_without_updating_press_goal[2-False]" time="0.002" /><testcase classname="Manipulation.push_button.tests.test_j1gen_camera" name="test_real_zmq_accepts_j1gen_wire_format_with_videohub_resolution" time="0.033" /><testcase classname="Manipulation.push_button.tests.test_j1gen_camera" name="test_official_head_fk_and_legacy_calibration_use_same_floor_frame" time="0.089" /><testcase classname="Manipulation.push_button.tests.test_j1gen_camera" name="test_v2_calibration_accepts_small_corrections_and_rejects_missing_values" time="0.001" /></testsuite></testsuites>

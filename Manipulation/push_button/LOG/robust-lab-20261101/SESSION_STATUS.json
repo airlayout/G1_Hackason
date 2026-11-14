@@ -1,0 +1,44 @@
+{
+  "recorded_at_epoch_s": 1793502764.533932,
+  "status": "work in progress; improvement work stopped at user request",
+  "ready_for_robot_motion": false,
+  "robot_motion_commands_sent": false,
+  "hardware_push_performed": false,
+  "baseline_git_head": "95f2afcffac22ab0f0a12ebeee398b2198a37af7",
+  "branch": "push-button",
+  "operator_confirmed": {
+    "table_surface_height_m": 0.72,
+    "right_hand": "standard fixed stock hand",
+    "robot": "upright and stationary",
+    "bottle_at_table_front_edge": true,
+    "support_for_5cm_forward_push": true
+  },
+  "live_plan_accepted": false,
+  "live_rejection_summary": {
+    "completed_rollouts": 45,
+    "early_tip_contact_aborts": 11,
+    "deadline_aborts": 4,
+    "best_target_margin_m": -0.000588702193679941,
+    "required_target_margin_m": 0.003
+  },
+  "unfinished_feedback": {
+    "ready_for_hardware": false,
+    "measured_tracking_error_m": 0.017494839587773908,
+    "allowed_tracking_error_m": 0.01
+  },
+  "validation": {
+    "result": "41 passed, 1 failed; known WIP short-motion regression",
+    "exit_code": 1,
+    "files": [
+      "validation/pytest.log",
+      "validation/pytest.xml",
+      "validation/result.json"
+    ]
+  },
+  "excluded": [
+    "SSH configuration, keys and credentials",
+    "Python environments and model weights",
+    "Camera photos and raw RGB-D captures",
+    "Duplicated cached source checkouts and binary profiler dumps"
+  ]
+}

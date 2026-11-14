@@ -1,0 +1,1220 @@
+{
+  "mode": "detail",
+  "source": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button",
+  "settings": {
+    "budget_s": 10.0,
+    "max_rollouts": 1000,
+    "scenarios": 20,
+    "workers": 4,
+    "max_candidates": 50,
+    "seed": 0,
+    "position_error_m": 0.001,
+    "normal_error_deg": 1.0,
+    "tracking_error_rad": 0.001,
+    "mass_range": [
+      0.28,
+      0.42
+    ],
+    "friction_range": [
+      0.24,
+      0.36
+    ],
+    "gravity_scale": 1.0,
+    "motion_duration_s": 30.0,
+    "joint_speed_rad_s": 1.2,
+    "joint_acceleration_rad_s2": 4.0
+  },
+  "robot_connected": false,
+  "model_build_s": 0.1754543990100501,
+  "candidate_unprofiled_s": 0.30153418199915905,
+  "candidate_profile": {
+    "exclusive_categories_s": {
+      "other_python_numpy_and_wrappers": 0.12311832300000002,
+      "linear_solve": 0.0018308110000000001,
+      "full_forward_dynamics": 0.073452272,
+      "collision_distance": 0.005539975,
+      "trajectory_time_optimization": 0.000172565
+    },
+    "total_profiled_s": 0.20411394600000002,
+    "top_cumulative": [
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_forward>",
+        "calls": 1911,
+        "exclusive_s": 0.073452272,
+        "cumulative_s": 0.073452272
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/kinematics.py",
+        "line": 143,
+        "function": "update",
+        "calls": 1402,
+        "exclusive_s": 0.0034481060000000003,
+        "cumulative_s": 0.064150096
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/robust_planner.py",
+        "line": 120,
+        "function": "allocate_bottle_phases",
+        "calls": 1,
+        "exclusive_s": 4.0799e-05,
+        "cumulative_s": 0.056637188000000005
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/optimize/_minimize.py",
+        "line": 54,
+        "function": "minimize",
+        "calls": 1,
+        "exclusive_s": 5.2222e-05,
+        "cumulative_s": 0.056224539000000004
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/optimize/_slsqp_py.py",
+        "line": 220,
+        "function": "_minimize_slsqp",
+        "calls": 1,
+        "exclusive_s": 0.00010407500000000001,
+        "cumulative_s": 0.056049669
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/robust_planner.py",
+        "line": 126,
+        "function": "constraints",
+        "calls": 155,
+        "exclusive_s": 0.001462409,
+        "cumulative_s": 0.052076636
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/optimize/_slsqp_py.py",
+        "line": 599,
+        "function": "_eval_con_normals",
+        "calls": 8,
+        "exclusive_s": 2.6439000000000002e-05,
+        "cumulative_s": 0.050248525
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/optimize/_slsqp_py.py",
+        "line": 354,
+        "function": "cjac",
+        "calls": 8,
+        "exclusive_s": 1.9005000000000002e-05,
+        "cumulative_s": 0.050211774
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/optimize/_numdiff.py",
+        "line": 288,
+        "function": "approx_derivative",
+        "calls": 8,
+        "exclusive_s": 0.000191878,
+        "cumulative_s": 0.050163653
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/optimize/_numdiff.py",
+        "line": 904,
+        "function": "__call__",
+        "calls": 144,
+        "exclusive_s": 0.00033387300000000005,
+        "cumulative_s": 0.049048393
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/optimize/_numdiff.py",
+        "line": 683,
+        "function": "_dense_difference",
+        "calls": 8,
+        "exclusive_s": 0.000325011,
+        "cumulative_s": 0.046887448000000005
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/kinematics.py",
+        "line": 201,
+        "function": "validate_path",
+        "calls": 16,
+        "exclusive_s": 0.024987687,
+        "cumulative_s": 0.039508974
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_cubic.py",
+        "line": 265,
+        "function": "__init__",
+        "calls": 156,
+        "exclusive_s": 0.0004957760000000001,
+        "cumulative_s": 0.028184304
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_cubic.py",
+        "line": 150,
+        "function": "__init__",
+        "calls": 313,
+        "exclusive_s": 0.002760572,
+        "cumulative_s": 0.023541861
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_interpolate.py",
+        "line": 1508,
+        "function": "__call__",
+        "calls": 1492,
+        "exclusive_s": 0.001756181,
+        "cumulative_s": 0.018362154000000002
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_cubic.py",
+        "line": 18,
+        "function": "prepare_input",
+        "calls": 469,
+        "exclusive_s": 0.0035164700000000003,
+        "cumulative_s": 0.018085485000000002
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_interpolate.py",
+        "line": 753,
+        "function": "__call__",
+        "calls": 1492,
+        "exclusive_s": 0.0038633170000000002,
+        "cumulative_s": 0.010726946000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_cubic.py",
+        "line": 293,
+        "function": "_find_derivatives",
+        "calls": 156,
+        "exclusive_s": 0.002981618,
+        "cumulative_s": 0.010260311000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/_external/array_api_compat/numpy/_aliases.py",
+        "line": 70,
+        "function": "asarray",
+        "calls": 4567,
+        "exclusive_s": 0.0024082920000000002,
+        "cumulative_s": 0.008086573
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 2589,
+        "function": "all",
+        "calls": 2991,
+        "exclusive_s": 0.001364758,
+        "cumulative_s": 0.007474647
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 89,
+        "function": "_wrapreduction_any_all",
+        "calls": 3469,
+        "exclusive_s": 0.002684646,
+        "cumulative_s": 0.006746887
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/numeric.py",
+        "line": 1482,
+        "function": "moveaxis",
+        "calls": 1067,
+        "exclusive_s": 0.001905715,
+        "cumulative_s": 0.006531487000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_cubic.py",
+        "line": 278,
+        "function": "_edge_case",
+        "calls": 312,
+        "exclusive_s": 0.002418968,
+        "cumulative_s": 0.005606578
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_geomDistance>",
+        "calls": 10680,
+        "exclusive_s": 0.005539975,
+        "cumulative_s": 0.005539975
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/_external/array_api_compat/_internal.py",
+        "line": 33,
+        "function": "wrapped_f",
+        "calls": 2030,
+        "exclusive_s": 0.000687284,
+        "cumulative_s": 0.00537711
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method numpy.array>",
+        "calls": 7164,
+        "exclusive_s": 0.003980789,
+        "cumulative_s": 0.0052203580000000005
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 2241,
+        "function": "clip",
+        "calls": 1653,
+        "exclusive_s": 0.001267506,
+        "cumulative_s": 0.004936982
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/robust_planner.py",
+        "line": 103,
+        "function": "spline_extrema",
+        "calls": 157,
+        "exclusive_s": 0.003408611,
+        "cumulative_s": 0.004707083
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 51,
+        "function": "_wrapfunc",
+        "calls": 2436,
+        "exclusive_s": 0.001045974,
+        "cumulative_s": 0.004674653
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_interpolate.py",
+        "line": 1399,
+        "function": "__init__",
+        "calls": 313,
+        "exclusive_s": 0.00040608800000000003,
+        "cumulative_s": 0.004118758
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_interpolate.py",
+        "line": 781,
+        "function": "_evaluate",
+        "calls": 1492,
+        "exclusive_s": 0.0034430130000000004,
+        "cumulative_s": 0.004058204
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/numeric.py",
+        "line": 1420,
+        "function": "normalize_axis_tuple",
+        "calls": 2134,
+        "exclusive_s": 0.002469064,
+        "cumulative_s": 0.0038478960000000004
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'reduce' of 'numpy.ufunc' objects>",
+        "calls": 3605,
+        "exclusive_s": 0.003844094,
+        "cumulative_s": 0.003844094
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_interpolate.py",
+        "line": 616,
+        "function": "__init__",
+        "calls": 313,
+        "exclusive_s": 0.001090891,
+        "cumulative_s": 0.003679018
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/lib/_function_base_impl.py",
+        "line": 1391,
+        "function": "diff",
+        "calls": 1252,
+        "exclusive_s": 0.002891938,
+        "cumulative_s": 0.0034069290000000004
+      }
+    ],
+    "top_exclusive": [
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_forward>",
+        "calls": 1911,
+        "exclusive_s": 0.073452272,
+        "cumulative_s": 0.073452272
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/kinematics.py",
+        "line": 201,
+        "function": "validate_path",
+        "calls": 16,
+        "exclusive_s": 0.024987687,
+        "cumulative_s": 0.039508974
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_geomDistance>",
+        "calls": 10680,
+        "exclusive_s": 0.005539975,
+        "cumulative_s": 0.005539975
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method numpy.array>",
+        "calls": 7164,
+        "exclusive_s": 0.003980789,
+        "cumulative_s": 0.0052203580000000005
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_interpolate.py",
+        "line": 753,
+        "function": "__call__",
+        "calls": 1492,
+        "exclusive_s": 0.0038633170000000002,
+        "cumulative_s": 0.010726946000000001
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'reduce' of 'numpy.ufunc' objects>",
+        "calls": 3605,
+        "exclusive_s": 0.003844094,
+        "cumulative_s": 0.003844094
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_cubic.py",
+        "line": 18,
+        "function": "prepare_input",
+        "calls": 469,
+        "exclusive_s": 0.0035164700000000003,
+        "cumulative_s": 0.018085485000000002
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/kinematics.py",
+        "line": 143,
+        "function": "update",
+        "calls": 1402,
+        "exclusive_s": 0.0034481060000000003,
+        "cumulative_s": 0.064150096
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_interpolate.py",
+        "line": 781,
+        "function": "_evaluate",
+        "calls": 1492,
+        "exclusive_s": 0.0034430130000000004,
+        "cumulative_s": 0.004058204
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/robust_planner.py",
+        "line": 103,
+        "function": "spline_extrema",
+        "calls": 157,
+        "exclusive_s": 0.003408611,
+        "cumulative_s": 0.004707083
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_cubic.py",
+        "line": 293,
+        "function": "_find_derivatives",
+        "calls": 156,
+        "exclusive_s": 0.002981618,
+        "cumulative_s": 0.010260311000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/lib/_function_base_impl.py",
+        "line": 1391,
+        "function": "diff",
+        "calls": 1252,
+        "exclusive_s": 0.002891938,
+        "cumulative_s": 0.0034069290000000004
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_cubic.py",
+        "line": 150,
+        "function": "__init__",
+        "calls": 313,
+        "exclusive_s": 0.002760572,
+        "cumulative_s": 0.023541861
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 89,
+        "function": "_wrapreduction_any_all",
+        "calls": 3469,
+        "exclusive_s": 0.002684646,
+        "cumulative_s": 0.006746887
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/numeric.py",
+        "line": 1420,
+        "function": "normalize_axis_tuple",
+        "calls": 2134,
+        "exclusive_s": 0.002469064,
+        "cumulative_s": 0.0038478960000000004
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_cubic.py",
+        "line": 278,
+        "function": "_edge_case",
+        "calls": 312,
+        "exclusive_s": 0.002418968,
+        "cumulative_s": 0.005606578
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/_external/array_api_compat/numpy/_aliases.py",
+        "line": 70,
+        "function": "asarray",
+        "calls": 4567,
+        "exclusive_s": 0.0024082920000000002,
+        "cumulative_s": 0.008086573
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/_methods.py",
+        "line": 98,
+        "function": "_clip",
+        "calls": 1653,
+        "exclusive_s": 0.002027802,
+        "cumulative_s": 0.002027802
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/numeric.py",
+        "line": 1482,
+        "function": "moveaxis",
+        "calls": 1067,
+        "exclusive_s": 0.001905715,
+        "cumulative_s": 0.006531487000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/linalg/_linalg.py",
+        "line": 2442,
+        "function": "lstsq",
+        "calls": 95,
+        "exclusive_s": 0.0018219280000000002,
+        "cumulative_s": 0.0026374980000000003
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_interpolate.py",
+        "line": 1508,
+        "function": "__call__",
+        "calls": 1492,
+        "exclusive_s": 0.001756181,
+        "cumulative_s": 0.018362154000000002
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/lib/_index_tricks_impl.py",
+        "line": 344,
+        "function": "__getitem__",
+        "calls": 311,
+        "exclusive_s": 0.0017529520000000001,
+        "cumulative_s": 0.002383381
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method scipy.optimize._slsqplib.slsqp>",
+        "calls": 16,
+        "exclusive_s": 0.001594324,
+        "cumulative_s": 0.001594324
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method builtins.min>",
+        "calls": 12126,
+        "exclusive_s": 0.001523784,
+        "cumulative_s": 0.001523784
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'reshape' of 'numpy.ndarray' objects>",
+        "calls": 3740,
+        "exclusive_s": 0.001495472,
+        "cumulative_s": 0.001495472
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/robust_planner.py",
+        "line": 126,
+        "function": "constraints",
+        "calls": 155,
+        "exclusive_s": 0.001462409,
+        "cumulative_s": 0.052076636
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/_external/array_api_compat/common/_helpers.py",
+        "line": 683,
+        "function": "_check_device",
+        "calls": 5980,
+        "exclusive_s": 0.001423061,
+        "cumulative_s": 0.0020591470000000003
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 2589,
+        "function": "all",
+        "calls": 2991,
+        "exclusive_s": 0.001364758,
+        "cumulative_s": 0.007474647
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 2241,
+        "function": "clip",
+        "calls": 1653,
+        "exclusive_s": 0.001267506,
+        "cumulative_s": 0.004936982
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/shape_base.py",
+        "line": 380,
+        "function": "stack",
+        "calls": 313,
+        "exclusive_s": 0.001253809,
+        "cumulative_s": 0.0014132910000000001
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'copy' of 'numpy.ndarray' objects>",
+        "calls": 2987,
+        "exclusive_s": 0.001142817,
+        "cumulative_s": 0.001142817
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/interpolate/_interpolate.py",
+        "line": 616,
+        "function": "__init__",
+        "calls": 313,
+        "exclusive_s": 0.001090891,
+        "cumulative_s": 0.003679018
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/numerictypes.py",
+        "line": 385,
+        "function": "isdtype",
+        "calls": 1561,
+        "exclusive_s": 0.001090037,
+        "cumulative_s": 0.002878676
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/scipy/_external/array_api_compat/common/_aliases.py",
+        "line": 631,
+        "function": "sign",
+        "calls": 1404,
+        "exclusive_s": 0.001056318,
+        "cumulative_s": 0.0033974260000000003
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/kinematics.py",
+        "line": 150,
+        "function": "tip_position",
+        "calls": 1354,
+        "exclusive_s": 0.001046316,
+        "cumulative_s": 0.0016292230000000002
+      }
+    ]
+  },
+  "trial_unprofiled_s": 0.6426732749969233,
+  "trial_unprofiled": {
+    "completed": true,
+    "success": false,
+    "min_clearance_m": 0.04985888193196582,
+    "target_margin_m": -0.0012257481539200551,
+    "tracking_max_m": 0.006739779073360953,
+    "min_joint_margin_rad": 0.3967283952393341,
+    "peak_press_m": 0.0,
+    "peak_force_n": null,
+    "displacement_m": [
+      0.04737738334209857,
+      -0.0025909419017120794,
+      -3.629622712497671e-06
+    ],
+    "wall_s": 0.6378778319922276
+  },
+  "trial_profiled": {
+    "completed": true,
+    "success": false,
+    "min_clearance_m": 0.04985888193196582,
+    "target_margin_m": -0.0012257481539200551,
+    "tracking_max_m": 0.006739779073360953,
+    "min_joint_margin_rad": 0.3967283952393341,
+    "peak_press_m": 0.0,
+    "peak_force_n": null,
+    "displacement_m": [
+      0.04737738334209857,
+      -0.0025909419017120794,
+      -3.629622712497671e-06
+    ],
+    "wall_s": 0.6588167680019978
+  },
+  "trial_profile": {
+    "exclusive_categories_s": {
+      "other_python_numpy_and_wrappers": 0.026107536999999997,
+      "copy_model_and_data": 0.042086677,
+      "full_forward_dynamics": 0.000130896,
+      "forward_position_and_collision": 0.029568673,
+      "collision_distance": 0.005866986,
+      "physics_rollout": 0.43770088900000004
+    },
+    "total_profiled_s": 0.541461658,
+    "top_cumulative": [
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/mujoco/rollout.py",
+        "line": 50,
+        "function": "rollout",
+        "calls": 134,
+        "exclusive_s": 0.43591185400000004,
+        "cumulative_s": 0.43633148600000005
+      },
+      {
+        "file": "/usr/lib/python3.12/copy.py",
+        "line": 61,
+        "function": "copy",
+        "calls": 1,
+        "exclusive_s": 0.042086677,
+        "cumulative_s": 0.042088666000000004
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_fwdPosition>",
+        "calls": 1335,
+        "exclusive_s": 0.029568673,
+        "cumulative_s": 0.029568673
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/linalg/_linalg.py",
+        "line": 2623,
+        "function": "norm",
+        "calls": 2235,
+        "exclusive_s": 0.004322609000000001,
+        "cumulative_s": 0.007612334
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_geomDistance>",
+        "calls": 10680,
+        "exclusive_s": 0.005866986,
+        "cumulative_s": 0.005866986
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 3190,
+        "function": "min",
+        "calls": 1335,
+        "exclusive_s": 0.000981777,
+        "cumulative_s": 0.004872522000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 69,
+        "function": "_wrapreduction",
+        "calls": 1335,
+        "exclusive_s": 0.001597733,
+        "cumulative_s": 0.003890745
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'reduce' of 'numpy.ufunc' objects>",
+        "calls": 1469,
+        "exclusive_s": 0.002482086,
+        "cumulative_s": 0.002482086
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/kinematics.py",
+        "line": 150,
+        "function": "tip_position",
+        "calls": 2235,
+        "exclusive_s": 0.0014377720000000001,
+        "cumulative_s": 0.002284603
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_setState>",
+        "calls": 1335,
+        "exclusive_s": 0.0022666550000000002,
+        "cumulative_s": 0.0022666550000000002
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/mujoco/rollout.py",
+        "line": 425,
+        "function": "_tile_if_required",
+        "calls": 402,
+        "exclusive_s": 0.000452474,
+        "cumulative_s": 0.002245609
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method builtins.min>",
+        "calls": 13484,
+        "exclusive_s": 0.0017203630000000001,
+        "cumulative_s": 0.0017203630000000001
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'dot' of 'numpy.ndarray' objects>",
+        "calls": 2235,
+        "exclusive_s": 0.0015918850000000001,
+        "cumulative_s": 0.0015918850000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/lib/_shape_base_impl.py",
+        "line": 1211,
+        "function": "tile",
+        "calls": 268,
+        "exclusive_s": 0.000582356,
+        "cumulative_s": 0.0012682700000000002
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/lib/_function_base_impl.py",
+        "line": 1391,
+        "function": "diff",
+        "calls": 134,
+        "exclusive_s": 0.000767668,
+        "cumulative_s": 0.0008725940000000001
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'copy' of 'numpy.ndarray' objects>",
+        "calls": 2237,
+        "exclusive_s": 0.000851312,
+        "cumulative_s": 0.000851312
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 2477,
+        "function": "any",
+        "calls": 134,
+        "exclusive_s": 0.000137094,
+        "cumulative_s": 0.0007402120000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/linalg/_linalg.py",
+        "line": 187,
+        "function": "isComplexType",
+        "calls": 2235,
+        "exclusive_s": 0.00042061400000000004,
+        "cumulative_s": 0.000621192
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 89,
+        "function": "_wrapreduction_any_all",
+        "calls": 134,
+        "exclusive_s": 0.000196488,
+        "cumulative_s": 0.000603118
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 462,
+        "function": "repeat",
+        "calls": 134,
+        "exclusive_s": 0.000100792,
+        "cumulative_s": 0.000582238
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'ravel' of 'numpy.ndarray' objects>",
+        "calls": 2235,
+        "exclusive_s": 0.0005598560000000001,
+        "cumulative_s": 0.0005598560000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/mujoco/rollout.py",
+        "line": 375,
+        "function": "_ensure_2d",
+        "calls": 268,
+        "exclusive_s": 0.000164172,
+        "cumulative_s": 0.000512807
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/numeric.py",
+        "line": 171,
+        "function": "ones",
+        "calls": 268,
+        "exclusive_s": 0.000357239,
+        "cumulative_s": 0.000502273
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 51,
+        "function": "_wrapfunc",
+        "calls": 134,
+        "exclusive_s": 9.7936e-05,
+        "cumulative_s": 0.000481446
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method numpy.array>",
+        "calls": 407,
+        "exclusive_s": 0.000479205,
+        "cumulative_s": 0.000479205
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method builtins.issubclass>",
+        "calls": 4471,
+        "exclusive_s": 0.000443556,
+        "cumulative_s": 0.000443556
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'reshape' of 'numpy.ndarray' objects>",
+        "calls": 900,
+        "exclusive_s": 0.00044333700000000003,
+        "cumulative_s": 0.00044333700000000003
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method builtins.max>",
+        "calls": 2235,
+        "exclusive_s": 0.000396271,
+        "cumulative_s": 0.000396271
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/mujoco/rollout.py",
+        "line": 30,
+        "function": "__init__",
+        "calls": 134,
+        "exclusive_s": 0.00036751700000000004,
+        "cumulative_s": 0.00036751700000000004
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'repeat' of 'numpy.ndarray' objects>",
+        "calls": 134,
+        "exclusive_s": 0.000351162,
+        "cumulative_s": 0.000351162
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'items' of 'dict' objects>",
+        "calls": 2675,
+        "exclusive_s": 0.00032075800000000003,
+        "cumulative_s": 0.00032075800000000003
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method numpy.asarray>",
+        "calls": 2235,
+        "exclusive_s": 0.00027421300000000004,
+        "cumulative_s": 0.00027421300000000004
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/shape_base.py",
+        "line": 80,
+        "function": "atleast_2d",
+        "calls": 134,
+        "exclusive_s": 0.00021849300000000002,
+        "cumulative_s": 0.00027224000000000004
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method builtins.all>",
+        "calls": 268,
+        "exclusive_s": 0.000146729,
+        "cumulative_s": 0.000267025
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_getState>",
+        "calls": 134,
+        "exclusive_s": 0.000258285,
+        "cumulative_s": 0.000258285
+      }
+    ],
+    "top_exclusive": [
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/mujoco/rollout.py",
+        "line": 50,
+        "function": "rollout",
+        "calls": 134,
+        "exclusive_s": 0.43591185400000004,
+        "cumulative_s": 0.43633148600000005
+      },
+      {
+        "file": "/usr/lib/python3.12/copy.py",
+        "line": 61,
+        "function": "copy",
+        "calls": 1,
+        "exclusive_s": 0.042086677,
+        "cumulative_s": 0.042088666000000004
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_fwdPosition>",
+        "calls": 1335,
+        "exclusive_s": 0.029568673,
+        "cumulative_s": 0.029568673
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_geomDistance>",
+        "calls": 10680,
+        "exclusive_s": 0.005866986,
+        "cumulative_s": 0.005866986
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/linalg/_linalg.py",
+        "line": 2623,
+        "function": "norm",
+        "calls": 2235,
+        "exclusive_s": 0.004322609000000001,
+        "cumulative_s": 0.007612334
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'reduce' of 'numpy.ufunc' objects>",
+        "calls": 1469,
+        "exclusive_s": 0.002482086,
+        "cumulative_s": 0.002482086
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_setState>",
+        "calls": 1335,
+        "exclusive_s": 0.0022666550000000002,
+        "cumulative_s": 0.0022666550000000002
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method builtins.min>",
+        "calls": 13484,
+        "exclusive_s": 0.0017203630000000001,
+        "cumulative_s": 0.0017203630000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 69,
+        "function": "_wrapreduction",
+        "calls": 1335,
+        "exclusive_s": 0.001597733,
+        "cumulative_s": 0.003890745
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'dot' of 'numpy.ndarray' objects>",
+        "calls": 2235,
+        "exclusive_s": 0.0015918850000000001,
+        "cumulative_s": 0.0015918850000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/robust_push/lab_20261101/performance_20261101_114944/baseline/Manipulation/push_button/kinematics.py",
+        "line": 150,
+        "function": "tip_position",
+        "calls": 2235,
+        "exclusive_s": 0.0014377720000000001,
+        "cumulative_s": 0.002284603
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 3190,
+        "function": "min",
+        "calls": 1335,
+        "exclusive_s": 0.000981777,
+        "cumulative_s": 0.004872522000000001
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'copy' of 'numpy.ndarray' objects>",
+        "calls": 2237,
+        "exclusive_s": 0.000851312,
+        "cumulative_s": 0.000851312
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/lib/_function_base_impl.py",
+        "line": 1391,
+        "function": "diff",
+        "calls": 134,
+        "exclusive_s": 0.000767668,
+        "cumulative_s": 0.0008725940000000001
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/lib/_shape_base_impl.py",
+        "line": 1211,
+        "function": "tile",
+        "calls": 268,
+        "exclusive_s": 0.000582356,
+        "cumulative_s": 0.0012682700000000002
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'ravel' of 'numpy.ndarray' objects>",
+        "calls": 2235,
+        "exclusive_s": 0.0005598560000000001,
+        "cumulative_s": 0.0005598560000000001
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method numpy.array>",
+        "calls": 407,
+        "exclusive_s": 0.000479205,
+        "cumulative_s": 0.000479205
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/mujoco/rollout.py",
+        "line": 425,
+        "function": "_tile_if_required",
+        "calls": 402,
+        "exclusive_s": 0.000452474,
+        "cumulative_s": 0.002245609
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method builtins.issubclass>",
+        "calls": 4471,
+        "exclusive_s": 0.000443556,
+        "cumulative_s": 0.000443556
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'reshape' of 'numpy.ndarray' objects>",
+        "calls": 900,
+        "exclusive_s": 0.00044333700000000003,
+        "cumulative_s": 0.00044333700000000003
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/linalg/_linalg.py",
+        "line": 187,
+        "function": "isComplexType",
+        "calls": 2235,
+        "exclusive_s": 0.00042061400000000004,
+        "cumulative_s": 0.000621192
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method builtins.max>",
+        "calls": 2235,
+        "exclusive_s": 0.000396271,
+        "cumulative_s": 0.000396271
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/mujoco/rollout.py",
+        "line": 30,
+        "function": "__init__",
+        "calls": 134,
+        "exclusive_s": 0.00036751700000000004,
+        "cumulative_s": 0.00036751700000000004
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/numeric.py",
+        "line": 171,
+        "function": "ones",
+        "calls": 268,
+        "exclusive_s": 0.000357239,
+        "cumulative_s": 0.000502273
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'repeat' of 'numpy.ndarray' objects>",
+        "calls": 134,
+        "exclusive_s": 0.000351162,
+        "cumulative_s": 0.000351162
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<method 'items' of 'dict' objects>",
+        "calls": 2675,
+        "exclusive_s": 0.00032075800000000003,
+        "cumulative_s": 0.00032075800000000003
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method numpy.asarray>",
+        "calls": 2235,
+        "exclusive_s": 0.00027421300000000004,
+        "cumulative_s": 0.00027421300000000004
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method mujoco._functions.mj_getState>",
+        "calls": 134,
+        "exclusive_s": 0.000258285,
+        "cumulative_s": 0.000258285
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method builtins.hasattr>",
+        "calls": 1336,
+        "exclusive_s": 0.000254959,
+        "cumulative_s": 0.000254959
+      },
+      {
+        "file": "~",
+        "line": 0,
+        "function": "<built-in method numpy.empty>",
+        "calls": 537,
+        "exclusive_s": 0.000234658,
+        "cumulative_s": 0.000234658
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/shape_base.py",
+        "line": 80,
+        "function": "atleast_2d",
+        "calls": 134,
+        "exclusive_s": 0.00021849300000000002,
+        "cumulative_s": 0.00027224000000000004
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/linalg/_linalg.py",
+        "line": 2619,
+        "function": "_norm_dispatcher",
+        "calls": 2235,
+        "exclusive_s": 0.00021422900000000003,
+        "cumulative_s": 0.00021422900000000003
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/numpy/_core/fromnumeric.py",
+        "line": 89,
+        "function": "_wrapreduction_any_all",
+        "calls": 134,
+        "exclusive_s": 0.000196488,
+        "cumulative_s": 0.000603118
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/mujoco/rollout.py",
+        "line": 396,
+        "function": "_infer_dimension",
+        "calls": 268,
+        "exclusive_s": 0.00016423200000000002,
+        "cumulative_s": 0.00018844
+      },
+      {
+        "file": "/home/ubuntu/dev/G1_Kanto/_local/bottle_push/venv/lib/python3.12/site-packages/mujoco/rollout.py",
+        "line": 375,
+        "function": "_ensure_2d",
+        "calls": 268,
+        "exclusive_s": 0.000164172,
+        "cumulative_s": 0.000512807
+      }
+    ]
+  },
+  "workload": {
+    "control_samples": 1335,
+    "simulated_trajectory_s": 26.7,
+    "physics_step_s": 0.002,
+    "expected_physics_steps": 13350,
+    "robot_dof": 35,
+    "geometry_count": 74
+  }
+}

@@ -1,0 +1,263 @@
+[
+  {
+    "name": "detect",
+    "start_s": 0.5719646329962416,
+    "duration_s": 0.6309929819981335
+  },
+  {
+    "name": "poll",
+    "start_s": 1.552349666992086,
+    "image_age_s": 0.128588399689761,
+    "frame_id": 7423,
+    "duration_s": 0.0029389830015134066
+  },
+  {
+    "name": "detect",
+    "start_s": 1.5557476349931676,
+    "duration_s": 0.04236101300921291
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 1.5983146959915757,
+    "duration_s": 0.005547017004573718
+  },
+  {
+    "name": "poll",
+    "start_s": 1.7536546109913616,
+    "image_age_s": 0.13177175955206621,
+    "frame_id": 7424,
+    "duration_s": 0.0019859720050590113
+  },
+  {
+    "name": "detect",
+    "start_s": 1.7560136730025988,
+    "duration_s": 0.026107508994755335
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 1.7822347259934759,
+    "duration_s": 0.00528032700822223
+  },
+  {
+    "name": "poll",
+    "start_s": 1.9534024619933916,
+    "image_age_s": 0.13269710121676326,
+    "frame_id": 7425,
+    "duration_s": 0.004604317000485025
+  },
+  {
+    "name": "detect",
+    "start_s": 1.95841979800025,
+    "duration_s": 0.02502479898976162
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 1.9836154779914068,
+    "duration_s": 0.005441940011223778
+  },
+  {
+    "name": "build_scene_model",
+    "start_s": 1.9917071779927937,
+    "duration_s": 0.11544413000228815
+  },
+  {
+    "name": "generate_candidate",
+    "start_s": 2.1086150060000364,
+    "duration_s": 0.22582768100255635
+  },
+  {
+    "name": "poll",
+    "start_s": 2.1494440429960378,
+    "image_age_s": 0.12556951589067467,
+    "frame_id": 7426,
+    "duration_s": 0.002386238003964536
+  },
+  {
+    "name": "latest_failure",
+    "start_s": 2.3414196879894007,
+    "age_s": 0.5161144272133242,
+    "thread_alive": true,
+    "error": "None"
+  },
+  {
+    "name": "poll",
+    "start_s": 2.3518176520010456,
+    "image_age_s": 0.13041003288526554,
+    "frame_id": 7427,
+    "duration_s": 0.0017875209887279198
+  },
+  {
+    "name": "detect",
+    "start_s": 2.353956349994405,
+    "duration_s": 0.02220800799841527
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 2.376319656992564,
+    "duration_s": 0.005564976003370248
+  },
+  {
+    "name": "poll",
+    "start_s": 2.5578102479921654,
+    "image_age_s": 0.13674851556424983,
+    "frame_id": 7428,
+    "duration_s": 0.002435836009681225
+  },
+  {
+    "name": "detect",
+    "start_s": 2.5606765190022998,
+    "duration_s": 0.03189554599521216
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 2.5927213719987776,
+    "duration_s": 0.006581449997611344
+  },
+  {
+    "name": "poll",
+    "start_s": 2.7474900969973532,
+    "image_age_s": 0.1294937673083041,
+    "frame_id": 7429,
+    "duration_s": 0.0067296670022187755
+  },
+  {
+    "name": "poll",
+    "start_s": 2.9495985839894274,
+    "image_age_s": 0.1316381772630848,
+    "frame_id": 7430,
+    "duration_s": 0.006724567007040605
+  },
+  {
+    "name": "detect",
+    "start_s": 2.9580872889928287,
+    "duration_s": 0.17885450199537445
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 3.137583983989316,
+    "duration_s": 0.008050261007156223
+  },
+  {
+    "name": "poll",
+    "start_s": 3.150968792993808,
+    "image_age_s": 0.12991034053266048,
+    "frame_id": 7431,
+    "duration_s": 0.0018725590052781627
+  },
+  {
+    "name": "poll",
+    "start_s": 3.345739522992517,
+    "image_age_s": 0.12316330491739791,
+    "frame_id": 7432,
+    "duration_s": 0.002479985007084906
+  },
+  {
+    "name": "detect",
+    "start_s": 3.3486775899946224,
+    "duration_s": 0.032042353006545454
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 3.380847926993738,
+    "duration_s": 0.006843330003903247
+  },
+  {
+    "name": "poll",
+    "start_s": 3.550471608992666,
+    "image_age_s": 0.13003878374001943,
+    "frame_id": 7433,
+    "duration_s": 0.0031741310085635632
+  },
+  {
+    "name": "detect",
+    "start_s": 3.55397148198972,
+    "duration_s": 0.03164323999953922
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 3.585748725992744,
+    "duration_s": 0.006980791004025377
+  },
+  {
+    "name": "poll",
+    "start_s": 3.762184259001515,
+    "image_age_s": 0.1299888108333107,
+    "frame_id": 7434,
+    "duration_s": 0.002251126992632635
+  },
+  {
+    "name": "detect",
+    "start_s": 3.764751951996004,
+    "duration_s": 0.03144858599989675
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 3.7963360259891488,
+    "duration_s": 0.006961353006772697
+  },
+  {
+    "name": "poll",
+    "start_s": 3.941012362993206,
+    "image_age_s": 0.1190721945167752,
+    "frame_id": 7435,
+    "duration_s": 0.002602769003715366
+  },
+  {
+    "name": "poll",
+    "start_s": 4.148510166996857,
+    "image_age_s": 0.1254384819912957,
+    "frame_id": 7436,
+    "duration_s": 0.0023944120039232075
+  },
+  {
+    "name": "detect",
+    "start_s": 4.151343088000431,
+    "duration_s": 0.033150475996080786
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 4.184620685002301,
+    "duration_s": 0.0066809229901991785
+  },
+  {
+    "name": "poll",
+    "start_s": 4.356040781000047,
+    "image_age_s": 0.13330019106797408,
+    "frame_id": 7437,
+    "duration_s": 0.0023576550011057407
+  },
+  {
+    "name": "detect",
+    "start_s": 4.358787489996757,
+    "duration_s": 0.0314966989972163
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 4.390410295993206,
+    "duration_s": 0.00665486000070814
+  },
+  {
+    "name": "poll",
+    "start_s": 4.556321067997487,
+    "image_age_s": 0.13134320320386905,
+    "frame_id": 7438,
+    "duration_s": 0.0019513019942678511
+  },
+  {
+    "name": "poll",
+    "start_s": 4.75413080699218,
+    "image_age_s": 0.13034682912984863,
+    "frame_id": 7439,
+    "duration_s": 0.0022497669997392222
+  },
+  {
+    "name": "detect",
+    "start_s": 4.756896987993969,
+    "duration_s": 0.03332795300229918
+  },
+  {
+    "name": "estimate_bottle",
+    "start_s": 4.790486712998245,
+    "duration_s": 0.006527402991196141
+  }
+]

@@ -1,0 +1,21 @@
+{
+  "task": "button",
+  "motion_planner": "robust",
+  "model": "_local/bottle_push/menagerie/unitree_g1/g1.xml",
+  "weights": "Button_Press/J1-gen/weights/button_final8.pt",
+  "base_transform": "_local/robust_button/calibration.json",
+  "host": "192.168.123.164",
+  "network_interface": "enp129s0",
+  "device": "cpu",
+  "stroke": 0.015,
+  "button_direction": null,
+  "planning_scenarios": 4,
+  "planning_position_span_m": 0.003,
+  "planning_budget_s": 30.0,
+  "planning_max_candidates": 50,
+  "gravity_scale": 1.0,
+  "motion_duration_s": 30.0,
+  "joint_speed_rad_s": 1.2,
+  "joint_acceleration_rad_s2": 4.0,
+  "lamp_min_rise": 30.0
+}
