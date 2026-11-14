@@ -126,3 +126,9 @@
 - 2026-11-14 / Button_Press（J1-gen）
   対象: 11/13 の収録から柱の面を求めた・床で首を直すのをやめた
   - patterns/camera_checks.md: 実機では床で首を直すとボタンと 3〜7 cm 食い違った → correct_pitch false、壊れた収録の読み方
+
+- 2026-11-14 / Button_Press（J1-gen）
+  対象: 敬礼・指さしを実機で送った結果、腰を保つ kp、敬礼の形の作り直し
+  - patterns/robot_arm_control.md: 肘を横へ張る敬礼は手の向きを目標に入れると手首を大きく曲げずに解ける（前の記録の訂正）、腕を前へ出すと腰が前へ倒れる・動作ごとの上限と kp
+  - real_robot_notes.md: 敬礼・指さしの実機の結果、onboard.sh sync は actions/ を送らない、関節範囲
+

@@ -368,3 +368,11 @@
 - PC2 の上でボタンを押すには、`onboard.sh sync` に入っていない `Button_Press/Yada/{common,configs,contest,sim}` と `J1-gen/contest_agent` も送る。PC2 では `--network-interface eth0 --camera-config camera_onboard.yaml`
 - マイクは、有線のノート PC（WSL のミラーモード、`--network-interface eth1`）でも届いた。マイクを起こす操作は要らなかった。到着の音は周りの会話で判定できなかった（静かなときに録り直す）
 - 送るコマンドを人が打つときは、`script -f -a _local/button_press/user_<日付>.log` の中で打つと、あとで出力を読める。状態の記録（`real/record.py --mode interval`）は実機日のあいだ流し続けると、予期しない変化の時刻を後から探せる（regular mode に変えた時刻が分かった）
+
+## 敬礼・指さしを実機で送った（2026-11-13 夜。PC2 の上、無線の ssh）
+- `salute`（今の `salute_simple`）は上限 5° で完走。`point` は上限 8°、`point_level` は 10°（腰の kp 60）で完走。**腰の kp 120 / kd 2.5 なら `point_level` も 8° で完走**（腰 pitch +3.9〜4.1°）。表は `real/DAILY_LOG_20261113_laptop.md` の「敬礼・指さし」
+- 腕の追従誤差 4.4〜4.7° の ⚠️（止まらない警告）は kp 120 でも残る（原因は未調査）
+- 敬礼の形を作り直した（実機は未確認）: `salute`（既定）は肘を横へ張り、手首まっすぐで正面から手の側面が見える。`salute_wrist_bent`（手首を曲げる）、`salute_elbow_high`（肘を肩の高さ）。動画はノート PC の `_local/button_press/videos/salute_*.mp4`
+- **`onboard.sh sync` は `actions/` を送らない**。PC2 で動かすときは `rsync -a --exclude __pycache__ Button_Press/J1-gen/actions unitree@<PC2>:button_press/repo/Button_Press/J1-gen/` も
+- 関節範囲（公式モデル）: 肘 −60〜+120°（負が曲げ）、腰 pitch ±30°、手首 roll ±113°、手首 pitch / yaw ±92°
+
