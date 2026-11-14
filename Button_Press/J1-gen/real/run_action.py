@@ -9,7 +9,8 @@
     # 実機に送る（確認モードで各段階で Enter を待つ。--execute は人が打つ）
     ... --path arm_sdk --network-interface eth1 --execute
 
-動作: salute（敬礼）/ point（指さし・前下）/ point_level（指さし・水平）。定義は actions/poses.py。
+動作: salute（敬礼・肘を横へ張る）/ salute_elbow_high（敬礼・肘を高く）/ salute_simple（敬礼の簡易版）/
+      point（指さし・前下）/ point_level（指さし・水平）。定義は actions/poses.py。
 
 腰の扱い（この動作の実行時だけ。configs/arm.yaml は変えない）:
 - 腰が開始時から --waist-max-deg（既定 8°）ずれたら中止する。2026-11-13 の実機（腰の kp 60）で、point は 8°、point_level は 10° で最後まで動いた（kp 120 なら point_level も 8° で動いた）
