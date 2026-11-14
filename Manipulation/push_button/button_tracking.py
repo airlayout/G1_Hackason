@@ -25,7 +25,8 @@ def controller_metadata():
         ki_nm_rad_s=KI.tolist(), bias_limit_nm=BIAS_LIMIT.tolist(),
         bias_slew_nm_s=BIAS_SLEW.tolist(), initial_hold_s=2.,
         press_settle_s=.12, home_tolerance_m=.002,
-        extra_press_displacement_m=0., command_clearance_m=COMMAND_CLEARANCE_M)
+        extra_press_displacement_m=0., command_clearance_m=COMMAND_CLEARANCE_M,
+        lamp_return_method='optimized_collision_checked', lamp_return_tracking_gate=False)
 
 
 class TorqueIntegral:
@@ -88,6 +89,8 @@ class ButtonTrackingController:
         self.credit = 0.
         self.settled = 0
         self.retreat = False
+        self.lamp_return = False
+        self.lamp_return_shortcut = False
         self.done = False
         self.error = None
         self.recovery_started = None
@@ -115,17 +118,18 @@ class ButtonTrackingController:
         self.retreat = True
 
     def return_on_lamp(self, elapsed):
-        """Retreat over the already traversed reference after a confirmed light."""
+        """Use the precomputed checked shortcut after a confirmed light."""
         if self.retreat or self.diagnostic:
             return False
-        self.qs = self.qs[:self.index+1][::-1].copy()
-        self.tcps = self.tcps[:self.index+1][::-1].copy()
+        from button_return import build_lamp_return
+        self.qs, self.tcps, self.lamp_return_shortcut = build_lamp_return(self.candidate, self.index)
         self.labels = ['lamp_return']*len(self.qs)
         self.press_end = 0
         self.index = 0
         self.credit = 0.
         self.settled = 0
         self.retreat = True
+        self.lamp_return = True
         self.last_progress = elapsed
         return True
 
@@ -171,6 +175,8 @@ class ButtonTrackingController:
             low, high = ((.003,.012) if depth < -.05 else (.001,.005)
                          if depth < -.005 or self.retreat else (.001,.003))
             rate = float(np.clip((high-error)/(high-low), 0., 1.))
+            if self.lamp_return:
+                rate = 1.
             if not self.retreat and depth >= -.005 and (lateral > .001 or depth-actual_depth > .001):
                 rate = 0.
             if not self.retreat and self.index == self.press_end:
@@ -181,6 +187,8 @@ class ButtonTrackingController:
                     self.settled = 0
                 else:
                     rate = 0.
+            # Lamp return follows its time-optimized reference without the FK
+            # tracking gate; the command filter and collision guard still run.
             self.credit += rate
             advance = int(self.credit); self.credit -= advance
             stop = len(self.qs)-1 if self.retreat else self.press_end

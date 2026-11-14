@@ -64,8 +64,10 @@ def execute_feedback(plan, model_path, calibration, motion, configuration, obser
                         and controller.return_on_lamp(cycle-trajectory_started)):
                     report['lamp_early_return'] = dict(baseline=float(lamp_baseline),
                         min_rise=float(lamp_min_rise), frames=list(lamp_monitor.frames),
-                        confirmed_at_s=cycle, reference_index=int(trigger_index))
-                    print('点灯を検出しました。押し込みを止め、通過した経路を戻ります。',flush=True)
+                        confirmed_at_s=cycle, reference_index=int(trigger_index),
+                        return_method=('optimized_shortcut' if getattr(controller,'lamp_return_shortcut',False)
+                                       else 'checked_reference'))
+                    print('点灯を検出しました。押し込みを止め、追従と制限を監視しながら速く戻ります。',flush=True)
             depth = float((controller.tcps[controller.index]-scene.face)@controller.normal+scene.tip_radius)
             # Geometry does not follow the button cylinder as it is depressed.
             # Freeze visual retargeting at contact; joint/body feedback continues.
@@ -152,10 +154,15 @@ def physical_feedback_trial(base_kin, kin, scene, candidate, condition, deadline
     target = m.geom('robust_target_geom').id
     elapsed = 0.
     reason = None
+    lamp_trigger_index = condition.get('_lamp_trigger_index')
+    lamp_triggered = False
     try:
         while not controller.done:
             if time.perf_counter() >= deadline:
                 return dict(completed=False,reason='deadline',wall_s=time.perf_counter()-started)
+            if (lamp_trigger_index is not None and not controller.retreat
+                    and controller.index >= lamp_trigger_index):
+                lamp_triggered = controller.return_on_lamp(elapsed)
             row = controller.step(d.qpos[:29].copy(),scene.imu,elapsed,elapsed)
             d.ctrl[:] = scene.q
             d.ctrl[kin.actuator] = row['q']+np.asarray(condition['tracking'])
@@ -187,6 +194,12 @@ def physical_feedback_trial(base_kin, kin, scene, candidate, condition, deadline
         dynamic_joint_margin=dynamic_margin,home_error=home_error,condition=condition,include_diagnostics=True)
     failures = [v for v in diagnostics if settings.button_policy != 'collection'
                 or v not in ('press_depth','tracking_error','home_return')]
+    if lamp_trigger_index is not None:
+        failures = [v for v in failures if v != 'press_depth']
+        if not lamp_triggered:
+            failures.append('lamp return not triggered')
+        if home_error > np.deg2rad(2.):
+            failures.append('lamp return did not reach home')
     if reason:
         failures.append(reason)
     return dict(completed=True,success=not failures,failure_reasons=failures,
@@ -194,4 +207,5 @@ def physical_feedback_trial(base_kin, kin, scene, candidate, condition, deadline
         min_joint_margin_rad=dynamic_margin,peak_press_m=peak_press,peak_force_n=peak_force,
         condition_position_m=list(condition['position']),condition_name=condition.get('name'),
         displacement_m=[0.,0.,0.],duration_s=elapsed,guard_holds=controller.guard_holds,
-        button_feedback='joint',diagnostic_failure_reasons=diagnostics,wall_s=time.perf_counter()-started)
+        button_feedback='joint',lamp_return_triggered=lamp_triggered,
+        diagnostic_failure_reasons=diagnostics,wall_s=time.perf_counter()-started)

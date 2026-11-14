@@ -65,6 +65,14 @@ def validate_button_plan(plan):
     trials = selected[0].get('trials',[])
     if len(trials)!=count:
         raise ValueError(message)
+    if plan.get('trajectory',{}).get('motion_metrics',{}).get('lamp_return_plan'):
+        checks = trials[0].get('lamp_return_trials',[])
+        if len(checks) != 2 or any(c.get('completed') is not True or c.get('success') is not True
+                                   or c.get('lamp_return_triggered') is not True for c in checks):
+            raise ValueError('点灯後の帰還経路の物理検証が必要です')
+        trajectory = plan['trajectory']
+        if [c.get('trigger_index') for c in checks] != [trajectory.get('press_start'),trajectory.get('press_end')]:
+            raise ValueError('点灯後の帰還経路の検証位置が一致しません')
     for name,position,condition,trial in zip(names,positions,conditions,trials):
         if (condition.get('name')!=name or trial.get('condition_name')!=name
                 or trial.get('completed') is not True or trial.get('success') is not True):

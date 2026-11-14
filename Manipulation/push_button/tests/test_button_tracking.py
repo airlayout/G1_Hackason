@@ -118,6 +118,56 @@ def test_lamp_return_reverses_only_the_traversed_path_without_error(controller_f
     assert not controller.return_on_lamp(11.)
 
 
+def test_lamp_return_advances_despite_tracking_error_with_joint_limits(controller_fixture):
+    kin,scene,c,settings,*_=controller_fixture
+    def make_controller():
+        controller=ButtonTrackingController(kin,scene,c,settings)
+        controller.index=5
+        controller.start_from_command(c.q[5])
+        assert controller.return_on_lamp(2.)
+        return controller
+    accelerated=make_controller()
+    measured=np.asarray(scene.q).copy(); measured[22:29]=c.q[5]
+    row=accelerated.step(measured,scene.imu,2.,2.)
+    assert row['index']==1
+    assert np.max(np.abs(row['velocity'])) <= settings.motion_limits.joint_speed_rad_s
+    stalled=make_controller()
+    displaced=measured.copy(); displaced[22]+=.08
+    assert stalled.step(displaced,scene.imu,2.,2.)['index']==1
+
+
+def test_lamp_return_uses_precomputed_shortcut_and_stays_continuous(controller_fixture):
+    kin,scene,c,settings,*_=controller_fixture
+    c.motion_metrics['lamp_return_plan'] = dict(version=1,nodes=[0,3],edges=[None,
+        dict(to=0,kind='shortcut',q=[c.q[3].tolist(),c.q[1].tolist(),c.q[0].tolist()],
+             tcp=[c.tcp[3].tolist(),c.tcp[1].tolist(),c.tcp[0].tolist()])])
+    controller=ButtonTrackingController(kin,scene,c,settings)
+    controller.index=5
+    assert controller.return_on_lamp(2.)
+    np.testing.assert_array_equal(controller.qs, c.q[[5,4,3,1,0]])
+    np.testing.assert_array_equal(controller.tcps, c.tcp[[5,4,3,1,0]])
+    assert controller.lamp_return_shortcut
+
+
+def test_return_optimizer_keeps_reference_when_shortcuts_collide(controller_fixture,monkeypatch):
+    from button_return import optimize_lamp_returns,build_lamp_return
+    kin,scene,c,settings,*_=controller_fixture
+    attempts=[]
+    def reject(*args,**kwargs):
+        attempts.append(1)
+        raise ValueError('collision')
+    monkeypatch.setattr(kin,'validate_path',reject)
+    c.q=np.repeat(c.q,20,axis=0)
+    c.tcp=np.repeat(c.tcp,20,axis=0)
+    c.press_end=len(c.q)-1
+    plan=optimize_lamp_returns(kin,scene,c.q,c.tcp,c.press_end,settings.motion_limits,time.perf_counter()+10)
+    c.motion_metrics['lamp_return_plan']=plan
+    q,tcp,used=build_lamp_return(c,c.press_end)
+    np.testing.assert_array_equal(q,c.q[:c.press_end+1][::-1])
+    np.testing.assert_array_equal(tcp,c.tcp[:c.press_end+1][::-1])
+    assert attempts and not used
+
+
 def test_lamp_monitor_accepts_one_new_bright_frame_and_rejects_stale():
     from button_feedback import PressLampMonitor
     monitor=PressLampMonitor(50.,30.,10.)
@@ -131,21 +181,27 @@ def test_lamp_monitor_accepts_one_new_bright_frame_and_rejects_stale():
     assert [v['frame_id'] for v in monitor.frames] == [4]
 
 
-def test_image_lamp_monitor_works_without_detection_or_depth():
+def test_image_lamp_monitor_requires_matching_detection_but_not_depth():
     from button_feedback import ImageLampTracker, PressLampMonitor
     tracker=ImageLampTracker()
     tracker.seed((10,10,30,30))
     dark=np.full((40,40,3),40,dtype=np.uint8)
-    tracker.observe(dark,[],1.,1)
-    assert not tracker.latest().blue_lit
+    detection=SimpleNamespace(bbox=(10,10,30,30))
+    tracker.observe(dark,[detection],1.,1)
+    assert tracker.latest().lamp == 40
     image=dark.copy()
-    image[15:19,15:19]=[230,190,80]
+    image[10:30,10:30]=[230,190,80]
     tracker.observe(image,[],2.,2)
+    assert tracker.latest().frame_id == 1
+    tracker.observe(image,[SimpleNamespace(bbox=(30,10,39,30))],2.,2)
+    assert tracker.latest().frame_id == 1
+    tracker.observe(image,[detection],2.,2)
     observed=tracker.latest()
-    assert observed.frame_id == 2 and observed.blue_lit
-    # A blue ring still triggers even if it was already bright at baseline.
+    assert observed.frame_id == 2 and observed.lamp > 40
+    # Colour alone is insufficient; compare to the initial brightness.
     monitor=PressLampMonitor(observed.lamp,30.,1.5)
-    assert monitor.observe(observed,2.1)
+    assert not monitor.observe(observed,2.1)
+    assert PressLampMonitor(40,30.,1.5).observe(observed,2.1)
 
 
 def test_tracking_error_holds_the_reference_and_resumes_after_correction(controller_fixture):
@@ -257,6 +313,17 @@ def test_collection_plan_requires_matching_feedback_physics_and_policy():
     selected['trials'][0]['button_feedback']='joint'
     plan['trajectory']['motion_metrics']=dict(button_feedback=controller_metadata(),button_tracking_settings=asdict(settings))
     validate_button_plan(plan)
+    plan['trajectory'].update(press_start=10,press_end=20)
+    plan['trajectory']['motion_metrics']['lamp_return_plan']={'version':1}
+    with pytest.raises(ValueError,match='帰還経路の物理検証'):
+        validate_button_plan(plan)
+    selected['trials'][0]['lamp_return_trials']=[dict(completed=True,success=True,
+        lamp_return_triggered=True,trigger_index=i) for i in (10,20)]
+    validate_button_plan(plan)
+    selected['trials'][0]['lamp_return_trials'][0]['trigger_index']=11
+    with pytest.raises(ValueError,match='検証位置'):
+        validate_button_plan(plan)
+    selected['trials'][0]['lamp_return_trials'][0]['trigger_index']=10
     selected['trials'][0].pop('button_feedback')
     with pytest.raises(ValueError,match='rollout'):
         validate_button_plan(plan)

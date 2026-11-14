@@ -228,6 +228,7 @@ def main(argv=None, *, task=None):
         perception_rejections = []
         sampler = LatestFrameSampler()
         lamp_tracker = ImageLampTracker() if args.task == 'button' else None
+        first_lamp = [None]
         def read():
             delivered = sampler.consume(camera.poll(), time.monotonic())
             if delivered is None:
@@ -272,7 +273,7 @@ def main(argv=None, *, task=None):
                             tracking=reference[0] is not None)
                         observed = dict(face=target.face_xyz, normal=target.press_direction,
                                         radius=calibration['button_radius_m'])
-                        lamp = lamp_level(frame.color_bgr,detected.bbox)
+                        lamp = lamp_level(frame.color_bgr,detected.bbox,ellipse_scale=1.0)
                     if reference[0] is not None and ((not collection and np.linalg.norm(np.array(observed['face'])-reference[0]['face']) > .025)
                             or abs(observed['radius']-reference[0]['radius']) > .005):
                         continue
@@ -284,11 +285,16 @@ def main(argv=None, *, task=None):
             observed,lamp,bbox = candidates[0]
             if lamp_tracker is not None and reference[0] is None:
                 lamp_tracker.seed(bbox)
+                first_lamp[0] = dict(level=float(lamp), frame_id=int(frame.frame_id),
+                                     captured_at_s=float(stamp), bbox=list(map(float,bbox)))
             reference[0] = observed
             return Observation(observed,tuple(q),tuple(imu),stamp,frame.frame_id,lamp)
         observer = ContinuousObserver(read,camera.close,**(dict(stability_m=.01,allow_stale=True,
             allow_target_motion=True) if collection else {}))
         initial = observer.initial(**({'timeout_s':30.} if collection else {}))
+        lamp_baseline = (first_lamp[0]['level'] if first_lamp[0] is not None else initial.lamp)
+        if first_lamp[0] is not None:
+            report['lamp_baseline'] = first_lamp[0]
         if args.task == 'bottle':
             stable_base[0] = initial.geometry['base_height']
         scene = snapshot(args.task,initial,calibration,args)
@@ -341,7 +347,7 @@ def main(argv=None, *, task=None):
             record_deviations=policy.record_deviations,set_waist_torque=lambda value: torque.update(waist=np.array(value)),
             allow_stale_observation=args.allow_stale_observation,
             feedback_state=arm.joint_feedback_state if settings.button_feedback == 'joint' else None,
-            lamp_baseline=initial.lamp if args.task == 'button' and settings.button_feedback == 'joint' else None,
+            lamp_baseline=lamp_baseline if args.task == 'button' and settings.button_feedback == 'joint' else None,
             lamp_min_rise=args.lamp_min_rise,
             observe_lamp=lamp_tracker.latest if lamp_tracker is not None else None,
             observe_held=(lambda:observer.latest(allow_stale=True))
@@ -375,12 +381,14 @@ def main(argv=None, *, task=None):
                 if not args.allow_stale_observation and args.task != 'button':
                     raise RuntimeError(report['outcome_error'])
             if args.task == 'button':
-                post_retreat_lamp = button_lamp_outcome(initial.lamp,results,args.lamp_min_rise)
+                post_retreat_lamp = button_lamp_outcome(lamp_baseline,results,args.lamp_min_rise)
                 report['visual_success'] = True if early_lamp else post_retreat_lamp
-                report['lamp_check'] = dict(baseline=initial.lamp,min_rise=args.lamp_min_rise,
+                report['lamp_check'] = dict(baseline=lamp_baseline,min_rise=args.lamp_min_rise,
                     levels=[v.lamp for v in results],frame_ids=[v.frame_id for v in results],
-                    status='lit' if post_retreat_lamp is True else
+                    status='lit' if early_lamp or post_retreat_lamp is True else
                         'no_rise' if post_retreat_lamp is False else 'unknown')
+                report['lamp_check']['post_return_status'] = ('lit' if post_retreat_lamp is True else
+                    'no_rise' if post_retreat_lamp is False else 'unknown')
                 report['motion_completed'] = bool(report['execution'].get('motion_completed'))
                 report['physical_press_success'] = None
             elif args.task == 'bottle' and len(results) == 3:

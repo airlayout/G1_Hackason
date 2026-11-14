@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from button_feedback import LampCheck, LampFrame, lamp_level
+from button_feedback import LampCheck, LampFrame, PressLampMonitor, lamp_level
+from types import SimpleNamespace
 
 
 def ring_image(level):
@@ -29,6 +30,23 @@ def test_thin_ring_is_visible_in_percentile_without_whole_box_average():
     assert lamp_level(after, (20, 20, 60, 60))-lamp_level(before, (20, 20, 60, 60)) > 100
     np.testing.assert_allclose(lamp_level(after, (20, 20, 60, 60)),
                                lamp_level(after[:, :, ::-1], (20, 20, 60, 60)))
+
+
+def test_button_only_ellipse_ignores_brightness_outside_target():
+    before = np.full((80, 80, 3), 40, dtype=np.uint8)
+    after = before.copy()
+    after[:20, :] = 255
+    after[:, :20] = 255
+    after[60:, :] = 255
+    after[:, 60:] = 255
+    box = (20, 20, 60, 60)
+    assert lamp_level(after, box, ellipse_scale=1.0) == lamp_level(before, box, ellipse_scale=1.0)
+
+
+def test_early_return_requires_brightness_rise_even_for_blue():
+    monitor = PressLampMonitor(100, 30, 1.)
+    assert not monitor.observe(SimpleNamespace(frame_id=1, captured_at=1.1, lamp=100, blue_lit=True), 1.1)
+    assert monitor.observe(SimpleNamespace(frame_id=2, captured_at=1.2, lamp=130, blue_lit=False), 1.2)
 
 
 @pytest.mark.parametrize("levels, expected", [([130]*3, True), ([129]*3, False),

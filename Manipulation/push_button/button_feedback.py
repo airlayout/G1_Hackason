@@ -19,7 +19,6 @@ class LampObservation:
     captured_at: float
     frame_id: int
     lamp: float
-    blue_lit: bool
 
 
 class ImageLampTracker:
@@ -39,21 +38,21 @@ class ImageLampTracker:
             box = self.bbox
         if box is None:
             return
-        centre = (np.asarray(box[:2])+np.asarray(box[2:]))/2
-        radius = max(box[2]-box[0], box[3]-box[1])*2
         nearby = []
         for detection in detections:
             candidate = np.asarray(detection.bbox, dtype=float)
-            if candidate.shape != (4,) or not np.all(np.isfinite(candidate)):
+            if candidate.shape != (4,) or not np.all(np.isfinite(candidate)) or np.any(candidate[2:] <= candidate[:2]):
                 continue
-            distance = np.linalg.norm((candidate[:2]+candidate[2:])/2-centre)
-            if distance <= radius:
-                nearby.append((distance, tuple(candidate)))
-        if nearby:
-            box = min(nearby, key=lambda value:value[0])[1]
+            intersection = np.maximum(0, np.minimum(candidate[2:], box[2:])-np.maximum(candidate[:2], box[:2]))
+            area = np.prod(intersection)
+            union = np.prod(candidate[2:]-candidate[:2])+np.prod(np.asarray(box[2:])-box[:2])-area
+            if union > 0 and area/union >= .3:
+                nearby.append((area/union, tuple(candidate)))
+        if not nearby:
+            return
+        box = max(nearby, key=lambda value:value[0])[1]
         try:
-            value = LampObservation(float(captured_at), int(frame_id), lamp_level(image, box),
-                                    blue_lamp_visible(image, box))
+            value = LampObservation(float(captured_at), int(frame_id), lamp_level(image, box, ellipse_scale=1.0))
         except ValueError:
             return
         with self.lock:
@@ -64,23 +63,8 @@ class ImageLampTracker:
             return self.value
 
 
-def blue_lamp_visible(image, bbox):
-    """Recognize a visible blue ring even when it was already lit at startup."""
-    image = np.asarray(image)
-    x1, y1, x2, y2 = map(float, bbox)
-    h, w = image.shape[:2]
-    left, top = max(0, int(np.floor(x1))), max(0, int(np.floor(y1)))
-    right, bottom = min(w, int(np.ceil(x2))), min(h, int(np.ceil(y2)))
-    if right-left < 6 or bottom-top < 6:
-        raise ValueError('Button image region too small')
-    pixels = image[top:bottom,left:right].astype(np.int16)
-    blue, green, red = pixels[:,:,0], pixels[:,:,1], pixels[:,:,2]
-    lit = (blue > 150) & (blue-red > 35) & (blue-green > 10)
-    return int(np.count_nonzero(lit)) >= max(3, int(np.ceil(lit.size*.01)))
-
-
-def lamp_level(image, bbox):
-    """ボタン枠の1.15倍の楕円内で、平均RGB値の90パーセンタイルを求める。
+def lamp_level(image, bbox, *, ellipse_scale=1.15):
+    """指定倍率の楕円内で、平均RGB値の90パーセンタイルを求める。
 
     BGRでも値は同じ。細い縁だけが点灯する実物ボタンを対象にする。
     """
@@ -94,10 +78,12 @@ def lamp_level(image, bbox):
     if x1 < 0 or y1 < 0 or x2 > w or y2 > h or min(x2-x1, y2-y1) < 6:
         raise ValueError("点灯確認の検出枠が画像外または小さすぎます")
     cx, cy, rx, ry = (x1+x2)/2, (y1+y2)/2, (x2-x1)/2, (y2-y1)/2
-    left, top = max(0, int(np.floor(cx-1.15*rx))), max(0, int(np.floor(cy-1.15*ry)))
-    right, bottom = min(w, int(np.ceil(cx+1.15*rx))), min(h, int(np.ceil(cy+1.15*ry)))
+    if not np.isfinite(ellipse_scale) or ellipse_scale <= 0:
+        raise ValueError('Invalid ellipse scale')
+    left, top = max(0, int(np.floor(cx-ellipse_scale*rx))), max(0, int(np.floor(cy-ellipse_scale*ry)))
+    right, bottom = min(w, int(np.ceil(cx+ellipse_scale*rx))), min(h, int(np.ceil(cy+ellipse_scale*ry)))
     yy, xx = np.mgrid[top:bottom, left:right]
-    inside = ((xx+0.5-cx)/rx)**2 + ((yy+0.5-cy)/ry)**2 <= 1.15**2
+    inside = ((xx+0.5-cx)/rx)**2 + ((yy+0.5-cy)/ry)**2 <= ellipse_scale**2
     gray = image[top:bottom, left:right].astype(float).mean(axis=2)
     return float(np.percentile(gray[inside], 90))
 
@@ -157,11 +143,10 @@ class PressLampMonitor:
             return False
         self.last_id = frame_id
         self.last_stamp = stamp
-        blue_lit = bool(getattr(observed, 'blue_lit', False))
         if (not np.isfinite(stamp) or not 0 <= now-stamp <= .5 or level is None
-                or not np.isfinite(level) or (level-self.baseline < self.min_rise and not blue_lit)):
+                or not np.isfinite(level) or level-self.baseline < self.min_rise):
             self.frames.clear()
             return False
         self.frames.append(dict(frame_id=int(frame_id), captured_at_s=float(stamp), level=float(level),
-                                rise=float(level-self.baseline), blue_lit=blue_lit))
+                                rise=float(level-self.baseline)))
         return True

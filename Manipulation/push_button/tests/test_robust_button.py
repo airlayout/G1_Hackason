@@ -322,7 +322,7 @@ def test_full_button_entrypoint_keeps_monitoring_and_records_unknown_outcomes(
         assert settings.scenarios==4
         plan=verified_plan(stroke=scene.stroke,face=scene.face,normal=scene.normal)
         if legacy_plan: plan['accepted_conditions']=3
-        return SimpleNamespace(scene=scene,candidate=object(),
+        return SimpleNamespace(scene=scene,candidate=SimpleNamespace(motion_metrics={}),
             to_dict=lambda:plan)
     monkeypatch.setattr(rp,'search',search)
     motion=SimpleNamespace(upper_body_hold={},command_publications=[],error=None,close=lambda:None)

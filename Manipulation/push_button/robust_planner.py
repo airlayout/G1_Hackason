@@ -374,6 +374,10 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     start = next(i for i, p in enumerate(phases) if p == 'contact')
     end = max(i for i, p in enumerate(phases) if p == 'press')
     retract = max(i for i, p in enumerate(phases) if p == 'retract')
+    if feedback:
+        from button_return import optimize_lamp_returns
+        metrics['lamp_return_plan'] = optimize_lamp_returns(
+            kin,scene,qs,np.asarray(tcp),end,settings.motion_limits,deadline)
     return Candidate(index, qs, np.array(tcp), phases, start, end, retract, len(qs)*PERIOD,
                      margin, clearance, np.array(taus), metrics, np.array(waist_taus))
 
@@ -606,6 +610,20 @@ def _init_worker(path, calibration, scene):
 
 def _worker_trial(scene, candidate, condition, deadline):
     result = physical_trial(_worker_kin, scene, candidate, condition, deadline)
+    if (scene.task == 'button' and condition.get('name') == 'nominal'
+            and candidate.motion_metrics.get('lamp_return_plan') and result.get('success')):
+        checks = []
+        for index in (candidate.press_start, candidate.press_end):
+            early_condition = dict(condition, _lamp_trigger_index=index)
+            check = physical_trial(_worker_kin,scene,candidate,early_condition,deadline)
+            check['trigger_index'] = index
+            checks.append(check)
+            if not check.get('completed') or not check.get('success'):
+                break
+        result['lamp_return_trials'] = checks
+        if len(checks) != 2 or any(not c.get('completed') or not c.get('success') for c in checks):
+            result['success'] = False
+            result.setdefault('failure_reasons',[]).append('lamp return physics validation failed')
     if 'name' in condition:
         # Keep the condition identity even when a rollout exits at its deadline.
         result.update(condition_name=condition['name'],condition_position_m=list(condition['position']))
