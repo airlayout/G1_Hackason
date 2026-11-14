@@ -91,6 +91,16 @@ class ButtonTrackingController:
         self.retreat = False
         self.lamp_return = False
         self.lamp_return_shortcut = False
+        self.straight_active = False
+        self.straight_alignment_count = 0
+        self.straight_last_frame = None
+        self.straight_q_correction = None
+        self.straight_alignment_index = None
+        if settings.button_press_mode == 'straight_trial' and not diagnostic:
+            alignment = candidate.motion_metrics.get('straight_trial')
+            if not alignment or not 0 <= alignment['align_index'] <= candidate.press_start:
+                raise ValueError('Straight trial requires a verified alignment waypoint')
+            self.straight_alignment_index = alignment['align_index']
         self.done = False
         self.error = None
         self.recovery_started = None
@@ -151,7 +161,7 @@ class ButtonTrackingController:
                 np.minimum(self.limits[:, 1]-.025, nominal+.12))
         return q
 
-    def step(self, q, imu, stamp, elapsed, offset=None):
+    def step(self, q, imu, stamp, elapsed, offset=None, *, alignment_frame_id=None):
         from robust_planner import reference_torque
         offset = np.zeros(3) if offset is None else np.asarray(offset)
         if self.recovery_started is None and (elapsed > self.settings.button_feedback_timeout_s
@@ -177,7 +187,25 @@ class ButtonTrackingController:
             rate = float(np.clip((high-error)/(high-low), 0., 1.))
             if self.lamp_return:
                 rate = 1.
-            if not self.retreat and depth >= -.005 and (lateral > .001 or depth-actual_depth > .001):
+            if (self.straight_alignment_index is not None and not self.retreat and not self.straight_active
+                    and self.index >= self.straight_alignment_index):
+                rate = 0.
+                relative = measured_tip-(np.asarray(self.scene.face)+offset)
+                cross_track = np.linalg.norm(relative-(relative@self.normal)*self.normal)
+                aligned = error <= .003 and cross_track <= .003
+                if not aligned or alignment_frame_id is None:
+                    self.straight_alignment_count = 0
+                    self.straight_last_frame = None
+                elif alignment_frame_id != self.straight_last_frame:
+                    self.straight_last_frame = alignment_frame_id
+                    self.straight_alignment_count += 1
+                if self.straight_alignment_count >= 3:
+                    self.straight_q_correction = self._body_corrected_goal(
+                        pose,self.qs[self.index],target)-self.qs[self.index]
+                    self.straight_active = True
+            if self.straight_active and not self.retreat:
+                rate = 1.2
+            if not self.retreat and not self.straight_active and depth >= -.005 and (lateral > .001 or depth-actual_depth > .001):
                 rate = 0.
             if not self.retreat and self.index == self.press_end:
                 reached = self.diagnostic or (actual_depth >= self.scene.stroke-.0005 and lateral <= .001)
@@ -198,7 +226,11 @@ class ButtonTrackingController:
                 self.done = self.settled >= 10
         target = self.tcps[self.index]+offset
         depth = float((target-self.scene.face)@self.normal+self.scene.tip_radius)
-        desired = self._body_corrected_goal(pose, self.qs[self.index], target)
+        if self.straight_active and not self.retreat:
+            desired = np.clip(self.qs[self.index]+self.straight_q_correction,
+                              self.limits[:,0]+.025,self.limits[:,1]-.025)
+        else:
+            desired = self._body_corrected_goal(pose, self.qs[self.index], target)
         old_position, old_velocity = self.filter.position.copy(), self.filter.velocity.copy()
         goal = self.filter.next_goal(desired, PERIOD)
         target_geom = self.kin.model.geom('robust_target_geom').id
@@ -234,4 +266,5 @@ class ButtonTrackingController:
             error_m=error, actual_depth_m=actual_depth, reference_depth_m=depth,
             phase='initial_correction' if elapsed < 2. and not self.retreat else self.labels[self.index],
             index=self.index, reference_held=self.index==previous_index,
+            straight_active=self.straight_active, straight_alignment_count=self.straight_alignment_count,
             guard_holds=self.guard_holds, done=self.done)

@@ -3,7 +3,7 @@
 ボトル押しの段階接近、保持・再開・復帰、非同期認識、試行記録を
 `real/run_push.py --task button --profile field` から使える。
 右腕と頭RGB-Dカメラ、既存の実測カメラ・手先校正を使用する。
-実機の呼びボタンへの接触試験は、この変更では実施していない。
+`field` プロファイルを使った実機接触試験は実施していない。
 
 ## 関節角を補正しながら実機で押す（robust）
 
@@ -24,7 +24,24 @@ bash Manipulation/push_button/real/run_robust_button.sh precontact --button-dire
 bash Manipulation/push_button/real/run_robust_button_press.sh --button-direction down
 ```
 
-バッシュからの既定値は `--readiness-policy collection --button-feedback joint --button-policy collection --planning-budget-s 300`。
+バッシュの既定は直進押下。推定上のボタン5cm手前で、ボタン中心と手先の
+進行線が3mm以内となる位置を、新しい画像3枚で確認してから押下へ進む。
+これは画像から検出したボタン位置と、関節・カメラ校正から推定した手先の比較であり、
+画像で指先そのものを検出する方式ではない。位置目標の補正は固定するが、
+関節トルク補正、速度・加速度制限、衝突・状態監視と点灯後の帰還は維持する。
+基準位置の模擬試験では完走した一方、ボタン位置を上下・左右へ2mmずらした場合に
+パネル縁へ接触する条件があった。実機では2026-11-14の2試行で点灯・復帰・解除を確認した。
+
+```bash
+# この別名のバッシュからも同じ直進押下を選べる。
+# 認識・計画・重み0の出力確認。腕は動かない。
+bash Manipulation/push_button/real/run_robust_button_press_straight_trial.sh --check --button-direction down
+
+# 本押し。物理検証が通過すれば確認入力を待たず腕が動く。
+bash Manipulation/push_button/real/run_robust_button_press_straight_trial.sh --button-direction down
+```
+
+バッシュからの既定値は `--readiness-policy collection --button-feedback joint --button-policy collection --button-press-mode straight_trial --planning-budget-s 300`。
 点灯後の帰還も物理検証するため、実行開始までの計画時間は以前より長くなる場合がある。
 起動前の状態監視はボトル用バッシュと共通にし、状態期限400ms・脚速度1.0rad/s・IMU角速度0.3rad/sを使う。
 校正時からの腰角0.025rad超・傾き2度超の差は警告として記録し、それだけでは開始を拒否しない。
@@ -37,8 +54,8 @@ bash Manipulation/push_button/real/run_robust_button_press.sh --button-direction
 収集用では選択した手先とパネルの穴の縁の組み合わせは空間余裕の対象外とし、0.5mmを超える侵入を拒否する。
 経路候補の静的検査と、物理検証で実際にたどった姿勢の余裕の合否基準は3mmとする。
 標準の4条件（基準・奥3mm・左3mm・右3mm）は `--button-policy standard` で選べる。
-従来の補正なし実行は `--button-feedback off --button-policy standard --planning-budget-s 30`。
-Pythonの直接起動では従来の `standard/off` が既定である。
+従来の補正なし実行は `--button-press-mode feedback --button-feedback off --button-policy standard --planning-budget-s 30`。
+Pythonの直接起動では従来の `standard/off` と `feedback` が既定である。
 
 補正付きでは、目標の押し込み量を実測ストローク（既定15mm、`--stroke-mm`で変更）にする。
 以前の4mmのたわみ補償と1mmの追加押し込みは加えない。押下後は接触中に蓄積した補助トルクを減らす。
@@ -94,7 +111,8 @@ fungiwindowsで直接実行するならfungiwindows側に、ラボPCで使った
 点灯判定・帰還・解除を記録する。SDKが返さない追加計測値はnullとなる。
 シミュレーションと実機が同じ補正設定を使ったことも検証する。
 
-実機での成功と補正ゲインは未検証。シミュレーションは骨盤固定であり、実機の立位バランスを保証しない。
+実機の2試行はこの配置での確認であり、補正ゲインや他の配置の網羅的な検証ではない。
+シミュレーションは骨盤固定であり、実機の立位バランスを保証しない。
 保存済みログからのオフライン検証は `sim/verify_button_tracking.py --help` を参照。
 
 ## 設定と対象選択

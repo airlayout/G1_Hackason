@@ -1,6 +1,7 @@
 """Feedback invariants, policy boundaries and launch integration without hardware."""
 import io
 import json
+import os
 from dataclasses import asdict, replace
 from pathlib import Path
 import socket
@@ -134,6 +135,26 @@ def test_lamp_return_advances_despite_tracking_error_with_joint_limits(controlle
     stalled=make_controller()
     displaced=measured.copy(); displaced[22]+=.08
     assert stalled.step(displaced,scene.imu,2.,2.)['index']==1
+
+
+def test_straight_trial_requires_three_new_frames_with_tip_on_button_line(controller_fixture,monkeypatch):
+    kin,scene,c,settings,*_=controller_fixture
+    monkeypatch.setattr('button_tracking.contact_metrics',lambda *args,**kwargs:.05)
+    monkeypatch.setattr(kin,'validate_path',lambda *args,**kwargs:None)
+    face=c.tcp[0]+np.array(scene.normal)*(scene.tip_radius+.05)
+    aligned_scene=replace(scene,face=tuple(face))
+    c.motion_metrics['straight_trial']=dict(align_index=0)
+    controller=ButtonTrackingController(kin,aligned_scene,c,replace(settings,button_press_mode='straight_trial'))
+    for i,frame in enumerate((1,1,2)):
+        row=controller.step(scene.q,scene.imu,i*.02,2.+i*.02,alignment_frame_id=frame)
+        assert not row['straight_active'] and row['index']==0
+    row=controller.step(scene.q,scene.imu,.06,2.06,alignment_frame_id=3)
+    assert row['straight_active'] and row['index']>0
+    off_axis=replace(aligned_scene,face=tuple(face+np.array([0.,.01,0.])))
+    controller=ButtonTrackingController(kin,off_axis,c,replace(settings,button_press_mode='straight_trial'))
+    for i in range(4):
+        row=controller.step(scene.q,scene.imu,i*.02,2.+i*.02,alignment_frame_id=i)
+        assert not row['straight_active']
 
 
 def test_lamp_return_uses_precomputed_shortcut_and_stays_continuous(controller_fixture):
@@ -331,6 +352,34 @@ def test_collection_plan_requires_matching_feedback_physics_and_policy():
 
 def test_child_timeout_includes_both_planning_and_feedback_budget():
     assert session.button_child_timeout(dict(button_feedback='joint',planning_budget_s=120,button_feedback_timeout_s=120))==330.
+
+
+def test_straight_trial_is_forwarded_to_the_real_trial_config(launcher,monkeypatch):
+    seen=[]
+    def execute(command,*args,**kwargs):
+        if '--trial-config' in command:
+            trial=json.loads(Path(command[command.index('--trial-config')+1]).read_text())
+            seen.append(trial['button_press_mode'])
+        return launcher.execute(command,*args,**kwargs)
+    monkeypatch.setattr(session,'execute_child',execute)
+    assert session.main(launcher.args('push')+['--button-feedback','joint',
+                        '--button-press-mode','straight_trial'])==0
+    assert seen and all(value == 'straight_trial' for value in seen)
+
+
+@pytest.mark.parametrize('script', ['run_robust_button_press.sh', 'run_robust_button_press_fast.sh'])
+def test_press_bash_defaults_to_straight_mode_and_allows_override(tmp_path,script):
+    interpreter=tmp_path/'python3'
+    interpreter.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$BUTTON_ARGS_FILE"\n')
+    interpreter.chmod(0o755)
+    output=tmp_path/'args.txt'
+    env=dict(os.environ,PATH=str(tmp_path)+os.pathsep+os.environ['PATH'],BUTTON_ARGS_FILE=str(output))
+    def modes(*args):
+        subprocess.run(['bash',str(ROOT/'real'/script),*args],env=env,check=True)
+        words=output.read_text().splitlines()
+        return [words[i+1] for i,w in enumerate(words) if w=='--button-press-mode']
+    assert modes() == ['straight_trial']
+    assert modes('--button-press-mode','feedback') == ['straight_trial','feedback']
 
 
 def test_launcher_propagates_feedback_and_keeps_original_calibration(launcher,monkeypatch):

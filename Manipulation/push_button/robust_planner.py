@@ -50,6 +50,7 @@ class SearchSettings:
     button_feedback: str = 'off'
     button_policy: str = 'standard'
     button_feedback_timeout_s: float = 120.
+    button_press_mode: str = 'feedback'
     arm_speed_multiplier: float = 1.
 
     @property
@@ -72,6 +73,8 @@ class SearchSettings:
                 or self.bottle_feedback not in ('off', 'relative')
                 or self.button_feedback not in ('off', 'joint')
                 or self.button_policy not in ('standard', 'collection')
+                or self.button_press_mode not in ('feedback','straight_trial')
+                or (self.button_press_mode == 'straight_trial' and self.button_feedback != 'joint')
                 or not np.isfinite(self.button_feedback_timeout_s)
                 or not 10 <= self.button_feedback_timeout_s <= 300
                 or not np.isfinite(self.arm_speed_multiplier)
@@ -374,6 +377,18 @@ def generate_candidate(kin, scene, index, seed_offset, waypoint_offset, settings
     start = next(i for i, p in enumerate(phases) if p == 'contact')
     end = max(i for i, p in enumerate(phases) if p == 'press')
     retract = max(i for i, p in enumerate(phases) if p == 'retract')
+    if settings.button_press_mode == 'straight_trial':
+        positions = np.asarray(tcp)
+        align_target = face-(r+.05)*normal
+        align_index = int(np.argmin(np.linalg.norm(positions[:start+1]-align_target,axis=1)))
+        if np.linalg.norm(positions[align_index]-align_target) > .003:
+            raise ValueError('No aligned 5cm precontact waypoint')
+        relative = positions[align_index:end+1]-face
+        lateral = relative-np.outer(relative@normal,normal)
+        if np.linalg.norm(lateral,axis=1).max() > .003:
+            raise ValueError('Precontact-to-press reference is not sufficiently straight')
+        metrics['straight_trial'] = dict(align_index=align_index, precontact_m=.05,
+                                        lateral_limit_m=.003)
     if feedback:
         from button_return import optimize_lamp_returns
         metrics['lamp_return_plan'] = optimize_lamp_returns(

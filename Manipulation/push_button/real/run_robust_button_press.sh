@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Current RGB-D -> nominal feedback simulation -> press -> return -> lamp check.
-# Defaults: 15mm, shared bottle collection readiness, continuous joint correction.
+# Defaults: 15mm, shared collection readiness, one alignment then straight press.
 # Target-position changes are logged; search stops at the first valid path.
 set -euo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)

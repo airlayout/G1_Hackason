@@ -71,11 +71,19 @@ def execute_feedback(plan, model_path, calibration, motion, configuration, obser
             depth = float((controller.tcps[controller.index]-scene.face)@controller.normal+scene.tip_radius)
             # Geometry does not follow the button cylinder as it is depressed.
             # Freeze visual retargeting at contact; joint/body feedback continues.
-            offset = (gate.offset.copy() if controller.retreat or depth >= -.005
+            offset = (gate.offset.copy() if controller.retreat or getattr(controller,'straight_active',False) or depth >= -.005
                       else gate.update(observation,0.))
             if controller.retreat:
                 offset *= np.clip((len(controller.qs)-1-controller.index)/max(1,len(controller.qs)-1-controller.press_end),0.,1.)
-            row = controller.step(q,imu,stamp,cycle-trajectory_started,offset)
+            extra = {}
+            if settings.button_press_mode == 'straight_trial':
+                age = cycle-observation.captured_at
+                extra['alignment_frame_id'] = observation.frame_id if 0 <= age <= .8 else None
+            row = controller.step(q,imu,stamp,cycle-trajectory_started,offset,**extra)
+            if row.get('straight_active') and 'straight_alignment' not in report:
+                report['straight_alignment'] = dict(time_s=now()-started,frame_id=observation.frame_id,
+                    reference_index=row['index'],measured_tip_m=row['measured_tip'].tolist())
+                print('位置合わせ完了。目標補正を固定して押します。',flush=True)
             if controller.retreat and 'retreat_started_at_s' not in report:
                 report['retreat_started_at_s'] = cycle
             set_torque(row['tau'])
@@ -163,7 +171,9 @@ def physical_feedback_trial(base_kin, kin, scene, candidate, condition, deadline
             if (lamp_trigger_index is not None and not controller.retreat
                     and controller.index >= lamp_trigger_index):
                 lamp_triggered = controller.return_on_lamp(elapsed)
-            row = controller.step(d.qpos[:29].copy(),scene.imu,elapsed,elapsed)
+            extra = ({'alignment_frame_id': int(elapsed/.2)}
+                     if settings.button_press_mode == 'straight_trial' else {})
+            row = controller.step(d.qpos[:29].copy(),scene.imu,elapsed,elapsed,**extra)
             d.ctrl[:] = scene.q
             d.ctrl[kin.actuator] = row['q']+np.asarray(condition['tracking'])
             waist_tau = waist_support_torque(controller.kin,row['q'])

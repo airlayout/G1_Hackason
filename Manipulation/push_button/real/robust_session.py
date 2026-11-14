@@ -94,6 +94,10 @@ def validate_button_trial(trial,calibration):
     collection = trial.get('button_policy','standard') == 'collection'
     if trial.get('button_policy','standard') not in ('standard','collection') or trial.get('button_feedback','off') not in ('off','joint'):
         raise ValueError('Invalid button feedback/policy')
+    if trial.get('button_press_mode','feedback') not in ('feedback','straight_trial'):
+        raise ValueError('Invalid button press mode')
+    if trial.get('button_press_mode','feedback') == 'straight_trial' and trial.get('button_feedback','off') != 'joint':
+        raise ValueError('直進試験にはjoint補正を有効にしてください')
     for key,low,high in (('planning_budget_s',0.,300.),('button_feedback_timeout_s',10.,300.)):
         value = trial.get(key,120.)
         if (isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value)
@@ -326,6 +330,7 @@ def main(argv=None):
     parser.add_argument('--button-direction',choices=('up','down'))
     parser.add_argument('--target-pixel',type=int,nargs=2,metavar=('U','V'))
     parser.add_argument('--button-feedback',choices=('off','joint'))
+    parser.add_argument('--button-press-mode',choices=('feedback','straight_trial'))
     parser.add_argument('--button-policy',choices=('standard','collection'))
     parser.add_argument('--button-feedback-timeout-s',type=float)
     parser.add_argument('--planning-budget-s',type=float,help='経路探索と物理検証の合計時間上限')
@@ -338,7 +343,7 @@ def main(argv=None):
         args.setup = ROOT/('_local/robust_push' if args.task=='bottle' else '_local/robust_button')/'active_setup.json'
     if args.task == 'button' and args.push_distance is not None:
         parser.error('ボタンには--push-distanceではなく--stroke-mmを指定してください')
-    if args.task == 'bottle' and any(v is not None for v in (args.stroke_mm,args.button_direction,args.target_pixel,args.button_feedback,args.button_policy,args.button_feedback_timeout_s)):
+    if args.task == 'bottle' and any(v is not None for v in (args.stroke_mm,args.button_direction,args.target_pixel,args.button_feedback,args.button_policy,args.button_feedback_timeout_s,args.button_press_mode)):
         parser.error('ボタン用の引数には--task buttonが必要です')
     if args.arm_speed_multiplier is not None and (args.task != 'button' or not math.isfinite(args.arm_speed_multiplier) or not 0.1 <= args.arm_speed_multiplier <= 10):
         parser.error('--arm-speed-multiplierはボタン用の0.1〜10で指定してください')
@@ -405,6 +410,7 @@ def main(argv=None):
             for key,value in (('stroke',None if args.stroke_mm is None else args.stroke_mm/1000),
                               ('button_direction',args.button_direction),('target_pixel',args.target_pixel),('button_feedback',args.button_feedback),
                               ('button_policy',args.button_policy),('button_feedback_timeout_s',args.button_feedback_timeout_s),
+                              ('button_press_mode',args.button_press_mode),
                               ('planning_budget_s',args.planning_budget_s),('arm_speed_multiplier',args.arm_speed_multiplier)):
                 if value is not None:
                     trial[key] = value
@@ -412,6 +418,8 @@ def main(argv=None):
             report['stroke_m'] = trial['stroke']
             report['arm_speed_multiplier_requested'] = trial.get('arm_speed_multiplier',1.)
             print(f'腕の速度倍率（指定）: {report["arm_speed_multiplier_requested"]:g}倍',flush=True)
+            if trial.get('button_press_mode') == 'straight_trial':
+                print('直進押下: ボタン手前で位置合わせ後、目標補正を固定して押します。',flush=True)
         write_json(run/'calibration.json',calibration)
         trial['base_transform'] = str(run/'calibration.json')
         trial_path = run/'trial.json'

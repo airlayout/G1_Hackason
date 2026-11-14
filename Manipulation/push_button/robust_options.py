@@ -33,6 +33,7 @@ def add_arguments(parser):
     parser.add_argument('--planning-scenarios', type=int, default=3)
     parser.add_argument('--planning-position-span-m', type=float, default=.003)
     parser.add_argument('--button-feedback', choices=('off','joint'), default='off')
+    parser.add_argument('--button-press-mode', choices=('feedback','straight_trial'), default='feedback')
     parser.add_argument('--button-policy', choices=('standard','collection'), default='standard')
     parser.add_argument('--button-feedback-timeout-s', type=float, default=120.)
     parser.add_argument('--bottle-feedback', choices=('off','relative'), default='off')
@@ -86,6 +87,7 @@ def parse(parser, argv=None, *, task=None):
     settings = SearchSettings(budget_s=args.planning_budget_s, max_rollouts=args.planning_max_rollouts,
         scenarios=args.planning_scenarios, position_span_m=args.planning_position_span_m,
         button_feedback=args.button_feedback, button_policy=args.button_policy,
+        button_press_mode=args.button_press_mode,
         button_feedback_timeout_s=args.button_feedback_timeout_s,
         bottle_feedback=args.bottle_feedback, workers=args.planning_workers,
         max_candidates=args.planning_max_candidates, seed=args.planning_seed,

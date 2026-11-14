@@ -94,7 +94,8 @@ def main(argv=None, *, task=None):
     if args.detector_imgsz is None:
         args.detector_imgsz = DEFAULT_IMAGE_SIZE if args.task == 'button' else 960
     collection = args.task == 'button' and settings.button_policy == 'collection'
-    if args.task != 'button' and (settings.button_feedback != 'off' or settings.button_policy != 'standard'):
+    if args.task != 'button' and (settings.button_feedback != 'off' or settings.button_policy != 'standard'
+                                  or settings.button_press_mode != 'feedback'):
         parser.error('Button feedback/policy requires --task button')
     policy = execution_policy(args.execute_after_plan or args.execute_verified_plan)
     report = dict(schema='g1-robust-trial-v1', task=args.task, completed=False, physical_push_success=None,
