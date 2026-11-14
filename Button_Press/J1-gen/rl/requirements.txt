@@ -1,0 +1,4 @@
+# 強化学習（rl/）だけで使う。torch を含むので、テストの requirements.txt には入れない（CI では rl のテストはスキップ）。
+# 入れ方は rl/README.md
+gymnasium>=1.0
+stable-baselines3>=2.3

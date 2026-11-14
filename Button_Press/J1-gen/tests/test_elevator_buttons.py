@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import copy
 import unittest
 
 import numpy as np
@@ -109,9 +110,10 @@ class TestFindButtons(unittest.TestCase):
         np.testing.assert_allclose(call.up.center - base.up.center, cam.offset, atol=1e-9)
         np.testing.assert_allclose(call.normal, base.normal, atol=1e-9)
         # 設定が null なら localize.yaml（ボトルと同じ較正）の値
-        self.assertIsNone(self.cfg["calibration"]["offset_pelvis_m"])
-        np.testing.assert_allclose(calibration_offset(self.cfg),
+        np.testing.assert_allclose(calibration_offset({"calibration": {"offset_pelvis_m": None}}),
                                    load_config("localize.yaml")["calibration"]["offset_pelvis_m"])
+        np.testing.assert_allclose(calibration_offset(self.cfg), self.cfg["calibration"]["offset_pelvis_m"]
+                                   or load_config("localize.yaml")["calibration"]["offset_pelvis_m"])
         np.testing.assert_allclose(calibration_offset({"calibration": {"offset_pelvis_m": [0.0, 0.01, 0.0]}}),
                                    [0.0, 0.01, 0.0])
 
@@ -147,6 +149,41 @@ class TestYoloCandidates(unittest.TestCase):
         self.assertTrue(cands[0].mask[65, 120] and not cands[0].mask[50, 100])
         # Perception の YoloDetector には BGR で渡す
         self.assertEqual(int(det._det.frames[0][0, 0, 2]), 200)
+
+    def test_backend_follows_weights_suffix(self) -> None:
+        """重みが .onnx なら onnxruntime（OnnxYoloDetector）、.pt なら ultralytics（YoloDetector）で作る。"""
+        import tempfile
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from common.elevator_buttons import YoloButtonDetector
+
+        made: list[tuple[str, dict]] = []
+
+        class Fake:
+            def __init__(self, kind: str, **kw: object) -> None:
+                made.append((kind, kw))
+
+            def detect(self, frame: np.ndarray) -> list:
+                return []
+
+        modules = {"detector.onnx_yolo": SimpleNamespace(OnnxYoloDetector=lambda **kw: Fake("onnx", **kw)),
+                   "detector.yolo_detector": SimpleNamespace(YoloDetector=lambda **kw: Fake("pt", **kw))}
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch("common.perception_bridge.perception", side_effect=lambda name: modules[name]):
+            for suffix in (".onnx", ".pt"):
+                (Path(d) / f"best{suffix}").write_bytes(b"")
+            YoloButtonDetector({"weights": str(Path(d) / "best.onnx"), "confidence": 0.5, "threads": 4})
+            YoloButtonDetector({"weights": str(Path(d) / "best.pt"), "confidence": 0.5, "device": "cpu"})
+            YoloButtonDetector({"weights": str(Path(d) / "best.onnx"), "threads": None})
+            with self.assertRaisesRegex(FileNotFoundError, "export_button_onnx"):
+                YoloButtonDetector({"weights": str(Path(d) / "none.onnx")})
+        self.assertEqual([k for k, _ in made], ["onnx", "pt", "onnx"])
+        self.assertEqual((made[0][1]["num_threads"], made[0][1]["confidence_threshold"]), (4, 0.5))
+        self.assertEqual(made[1][1]["device"], "cpu")
+        self.assertIsNone(made[2][1]["num_threads"])
+        self.assertEqual(made[2][1]["confidence_threshold"], 0.4)
 
     def test_val_split_has_both_sets(self) -> None:
         """学習データの検証用に、basic（偶数の種）と realistic（奇数の種）が半分ずつ入る。"""
@@ -391,6 +428,11 @@ class TestElevatorPlan(unittest.TestCase):
         cls.q0[[15, 22]] = 0.2
         cls.q0[16], cls.q0[23] = 0.25, -0.25
         cls.q0[[18, 25]] = 1.0
+        # 実機の立った姿勢（2026-10-21 の lowstate）
+        cls.q_stand = np.array([-0.290485, -0.004960, -0.002531, 0.593250, -0.318594, 0.008501, -0.271123, 0.003017,
+                                -0.002223, 0.601994, -0.338352, -0.005524, -0.000576, 0.000470, -0.002349, 0.291049,
+                                0.129657, 0.015711, 0.981556, 0.087161, 0.076807, 0.015232, 0.286950, -0.125894,
+                                0.024520, 0.982035, -0.096293, 0.058938, -0.020649])
 
     def call(self, x: float = 0.309) -> CallButtons:
         return CallButtons(Button3D(np.array([x, 0.027, 0.267]), 0.033, "up", (0, 0, 1, 1), 100, "up"),
@@ -416,8 +458,78 @@ class TestElevatorPlan(unittest.TestCase):
             self.assertAlmostEqual(front, face[0] + self.ctl.cfg["wall"]["margin_m"], places=9)
             self.assertLess(p.approach_point[0], front)
 
+    def test_plans_from_the_real_standing_pose(self) -> None:
+        """実機の立った姿勢（2026-10-21 の lowstate）は、下ろした手が股関節の当たり判定に入っている（−7 mm）。
+        開始姿勢ですでに近い組は、最初の区間で開始より近づかない間は許す（PressPlanner.plan と同じ）。許さないと、
+        どの位置でも「手前の姿勢へ動く途中で柱・壁に当たる」と断られた（sim/elevator_stand_map.py で気づいた、2026-10-29）。"""
+        q = self.q_stand
+        for target in ("up", "down"):
+            self.ctl.reset(target, 0.02, np.full(17, 60.0))
+            self.assertTrue(any("hip" in h.body1 + h.body2 for h in self.ctl.planner.collision.contacts(q)))  # 開始で当たり判定に入っている
+            self.ctl._plan(q, self.call())
+            self.assertIsNotNone(self.ctl.plan_)
+
+    def test_wheelchair_presses_straight_with_middle_finger(self) -> None:
+        """車いす用の組（press.by_button_set.wheelchair）は、指を押す向きにまっすぐ向け、指の並びを押す面と平行にする。
+        2026-11-01 の実機は 35°/20° で、小指の先で横から押していた。まっすぐ押せるのは、ボタンが体の右寄りのとき
+        （勧める範囲の近い側 30 cm・目安 48 cm・遠い側 50 cm、右 14 cm）。11/1 の立ち位置（ほぼ正面）では計画が立たず、
+        左へ寄るよう知らせる。"""
+        from common.elevator_press import ElevatorPressController
+        from common.press_planner import UnreachableError
+
+        elev = load_config("elevator.yaml")
+        elev["geometry"]["button_set"] = "wheelchair"
+        ctl = ElevatorPressController.from_config(load_config("robot.yaml"), load_config("press.yaml"),
+                                                  load_config("arm.yaml"), elev)
+        n = np.array([1.0, 0.0, 0.0])
+
+        def call(x: float, y: float) -> CallButtons:
+            return CallButtons(Button3D(np.array([x, y, 0.21]), 0.035, "up", (0, 0, 1, 1), 100, "up"),
+                               Button3D(np.array([x, y, 0.14]), 0.035, "down", (0, 0, 1, 1), 100, "down"), n)
+
+        limit = np.sin(np.radians(float(ctl.kin.cfg["row_tol_deg"]) + float(ctl.kin.cfg["tol_axis_deg"])))
+        for target, x in (("up", 0.30), ("down", 0.30), ("up", 0.48), ("down", 0.48), ("up", 0.50), ("down", 0.50)):
+            ctl.reset(target, 0.02, np.full(17, 60.0))
+            self.assertEqual(ctl._stand_advice(call(x, -0.14)), "")
+            ctl._plan(self.q_stand, call(x, -0.14))
+            p = ctl.plan_
+            np.testing.assert_allclose(p.finger_axis, n, atol=1e-9)
+            # 近い側（30 cm）の ▲ は、指の並びを縛ると立たず、縛らない計画になる（指がまっすぐなら中指は前に出る）
+            if x >= 0.40:
+                np.testing.assert_allclose(p.row_normal, n)
+            q = self.q_stand.copy()
+            for qa in (p.q_approach, p.press_in[-1]):
+                q[ctl.kin.arm_idx] = qa
+                _, r = ctl.kin.fk(q)
+                self.assertGreater(r[:, 0] @ n, np.cos(np.radians(2.0)))
+                if p.row_normal is not None:
+                    self.assertLess(abs(r[:, 2] @ n), limit)
+        # 11/1 の立ち位置（柱まで約 36 cm、ほぼ正面）。今の初期姿勢では立たないが、2026-11-10 から手首を曲げた初期姿勢
+        # （ik_seed_right_arm_more）で、指の並びを縛ったまま立つ。勧める範囲（右 14±2 cm）はまだ変えないので、注意は出す
+        ctl.reset("down", 0.02, np.full(17, 60.0))
+        ctl._plan(self.q_stand, call(0.36, 0.0))
+        self.assertIn("初期姿勢 2 番目", ctl.log[-1].message)
+        self.assertIsNotNone(ctl.plan_.row_normal)
+        no_bend = copy.deepcopy(elev)
+        no_bend["press"]["by_button_set"]["wheelchair"]["ik_seed_right_arm_more"] = []
+        ctl_nb = ElevatorPressController.from_config(load_config("robot.yaml"), load_config("press.yaml"),
+                                                     load_config("arm.yaml"), no_bend)
+        ctl_nb.reset("down", 0.02, np.full(17, 60.0))
+        with self.assertRaises(UnreachableError):
+            ctl_nb._plan(self.q_stand, call(0.36, 0.0))
+        advice = ctl._stand_advice(call(0.36, 0.0))
+        self.assertNotIn("近すぎる", advice)
+        self.assertIn("左へ 12 cm 以上寄る", advice)
+        self.assertIn("ボタンが体の中心から右 14±2 cm、目安は柱まで 48 cm", advice)
+        # 計画で許す関節の速さは、車いす用だけ 0.55 rad/s（腕が伸びきる近くの 50 cm でも計画が立つ）
+        self.assertAlmostEqual(ctl.planner.max_joint_step, 0.55 * ctl.planner.dt, places=9)
+        self.assertAlmostEqual(self.ctl.planner.max_joint_step, 0.5 * self.ctl.planner.dt, places=9)  # 一般用は arm.yaml のまま
+        # 腕が伸びきる遠さ（55 cm）は範囲の外
+        self.assertIn("遠すぎる。あと 5 cm 以上近づく", ctl._stand_advice(call(0.55, -0.14)))
+
     def test_plans_low_wheelchair_buttons(self) -> None:
-        """車いす用の低いボタン（ボトルの押す点とほぼ同じ高さ、pelvis から z +0.04〜+0.15）にも手前の姿勢まで計画が立つ（2026-10-22）。"""
+        """車いす用の低いボタン（ボトルの押す点とほぼ同じ高さ、pelvis から z +0.04〜+0.15）にも手前の姿勢まで計画が立つ（2026-10-22）。
+"""
         for z in (0.15, 0.10, 0.04):
             for y in (0.027, -0.05):
                 c = CallButtons(Button3D(np.array([0.309, y, z + 0.08]), 0.03, "up", (0, 0, 1, 1), 100, "up"),
@@ -557,6 +669,38 @@ class TestElevatorPlan(unittest.TestCase):
         self.assertEqual(ctl.phase, "reach")
         self.assertTrue(any("⚠️" in l.message and "近すぎる" in l.message for l in ctl.log))
 
+    def test_air_buttons_run_the_whole_motion(self) -> None:
+        """AirButtonFinder（real/auto_press.py --air）: カメラで探さず空中の車いす用 ▼ に対して、本番と同じ段階を
+        最後まで通り、始めの姿勢へ戻る（壁の無いラボで、腕を伸ばしたときの体の崩れを見るため）。"""
+        from common.elevator_buttons import AirButtonFinder
+        from common.elevator_press import ElevatorPressController
+
+        elev = load_config("elevator.yaml")
+        elev["geometry"]["button_set"] = "wheelchair"
+        elev["press"]["max_retries"] = 0
+        ctl = ElevatorPressController.from_config(load_config("robot.yaml"), load_config("press.yaml"),
+                                                  load_config("arm.yaml"), elev)
+        ctl.finder = AirButtonFinder(0.48, -0.14)
+        ctl.reset("down", 0.02, np.full(17, 60.0))
+        img, depth, K0 = np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640)), np.eye(3)
+        q, t, phases, done = self.q_stand.copy(), 0.0, [], False
+        while not done and t < 30.0:
+            t += 0.02
+            q29, done = ctl.step(img, depth, K0, q, t, 0.0)
+            q = q29.copy()  # 指令にそのまま付いてくる
+            phases.append(ctl.phase)
+        self.assertTrue(done)
+        self.assertEqual([p for p in dict.fromkeys(phases) if p != "look"],
+                         ["reach", "settle", "press", "hold", "retract", "check", "home", "done"])
+        # 車いす用は戻り（retract）を press.by_button_set.wheelchair.retract_s（2.5 秒）かけてゆっくり行う
+        retract_s = phases.count("retract") * 0.02
+        self.assertAlmostEqual(retract_s, elev["press"]["by_button_set"]["wheelchair"]["retract_s"], delta=0.05)
+        self.assertGreater(retract_s, elev["press"]["retract_s"] + 1.0)
+        np.testing.assert_allclose(ctl.plan_.target_point[:2], [0.48 - 0.008, -0.14], atol=1e-9)
+        np.testing.assert_allclose(ctl.plan_.finger_axis, [1.0, 0.0, 0.0], atol=1e-9)
+        arm = ctl.kin.arm_idx
+        np.testing.assert_allclose(ctl.q_ik[arm], ctl.legs[0][0], atol=1e-9)  # 計画を始めたときの姿勢へ戻る（送る値は重力の分を足す）
+
     def test_press_stops_when_finger_is_blocked(self) -> None:
         """押し込みの途中で指先が止まったら（ボタンが底に着いた）、それ以上奥へ押さずに保持へ移る。"""
         ctl = self.ctl
@@ -627,8 +771,10 @@ class TestElevatorPlan(unittest.TestCase):
         self.assertAlmostEqual(self.ctl.lag0, 0.006, delta=0.0015)
 
     def test_lagging_press_still_stops_when_blocked(self) -> None:
-        """押す前の遅れがあっても、指先が止まって遅れが増えたら止める。"""
-        held, t = self._lagging_press(0.006, 0.003)
+        """押す前の遅れがあっても、指先が止まって遅れが増えたら止める。
+        面の 4 mm 手前で止める（2026-11-01 の実機でも、推定した面より手前で当たった）。止める遅れ 10 mm が、押し込みの
+        残り（15 mm − 押す前の遅れ 6 mm − 止まった位置）を超えないと、終わりまで止まらないため。"""
+        held, t = self._lagging_press(0.006, -0.004)
         self.assertTrue(held)
         self.assertLess(t, self.ctl.cfg["press"]["press_s"])
 

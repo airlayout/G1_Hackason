@@ -130,6 +130,7 @@ class SimRobotServer:
             m.motor_state[i].q = float(st.q[i])
             m.motor_state[i].dq = float(st.dq[i])
             m.motor_state[i].mode = mode
+            m.motor_state[i].tau_est = float(st.tau_est[i])
         m.mode_machine = 2 if self._fault_active("mode_machine") else 5
         m.imu_state.quaternion = [1.0, 0.0, 0.0, 0.0]
         m.reserve = [SIM_MARKER, 0, 0, 0]

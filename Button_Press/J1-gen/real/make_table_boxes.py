@@ -79,7 +79,8 @@ def main() -> int:
     p.add_argument("--prefix", default="table", help="箱の名前の前につける語（table_1…）")
     p.add_argument("--save", action="store_true", help="configs/obstacles.yaml に保存する（既定は確認だけ）")
     p.add_argument("--obstacles-file", type=Path, default=OBSTACLES)
-    p.add_argument("--margin-m", type=float, default=0.03)
+    # 2026-10-31 に 0.03 → 0.01（計画の余裕 press.yaml の collision.clearance_m 0.01 は別にある）。実機でぶつかりそうなら戻す
+    p.add_argument("--margin-m", type=float, default=0.01, help="箱のまわりの余裕 [m]")
     p.add_argument("--depth-m", type=float, default=0.6, help="手前の縁から奥への長さ")
     p.add_argument("--below-m", type=float, default=0.8, help="天板から下への長さ")
     p.add_argument("--strip-m", type=float, default=0.09, help="箱の左右の幅")

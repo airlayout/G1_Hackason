@@ -1,0 +1,20 @@
+# Button_Press / 2026-10-31 まで既定だった、ボトルを押すときの経由の姿勢・指の向き・勧める立つ位置（--overlay reach_legacy.yaml）。
+#
+# 2026-10-31 に configs/pipeline.yaml の既定を、広げた設定（configs/reach_wide.yaml の値）に置き換えた。前の動きに戻したいとき、
+# 比べたいときに pipeline.yaml に重ねて使う。
+# - 実機で押したのはこの設定（2026-10-21〜22、机の縁 31〜32 cm・ボトルは縁ぎりぎり・体の右 15〜20 cm）
+# - 計画だけの地図（sim/reach_map.py）では、机の縁が 32 cm 以上・ボトルが体の右 10〜30 cm のときだけ通る（1,456 通り中 249）
+# - 2026-10-31 の実機の dry-run（体の正面のボトル、縁 22 cm）では、手前の姿勢で右肩が胴体に当たって計画できなかった
+#   （_local/button_press/runs/20261031_180154_default_dry）
+pipeline:
+  # 肩を後ろへ引き、肘を曲げて手を体の近くで持ち上げる姿勢（右腕の 7 つの角度 [deg]。左腕は左右を反転）
+  via_pose: [28.6, -11.5, 0.0, -34.4, 0.0, 0.0, 0.0]
+  # 指は押す向きに合わせるだけ
+  finger_tilts_deg: [[0, 0]]
+  # 勧める立つ位置（MuJoCo、2026-10-15、机の高さ 0.69・0.74・0.79 m の 621 通り）
+  stand:
+    target_min_m: 0.30
+    target_max_m: 0.40
+    side_min_m: 0.15
+    side_max_m: 0.25
+    table_edge_min_m: 0.29

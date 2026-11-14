@@ -25,7 +25,8 @@ def add_common_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--seed-pose", help="IK の初期値に使う教えた姿勢（既定は pipeline.yaml）")
     p.add_argument("--depth-mm", type=float, help="押し込みの深さ [mm]（既定は press.yaml。上限で頭打ち）")
     p.add_argument("--speed-mm-s", type=float, help="押し込みの速さ [mm/s]（既定は press.yaml）")
-    p.add_argument("--detector", choices=["yolo", "color"], help="検出器（既定は localize.yaml）")
+    p.add_argument("--detector", choices=["yolo", "onnx", "color"],
+                   help="検出器（既定は localize.yaml。onnx は torch なしで動く。G1 の PC2 で使う）")
     p.add_argument("--gravity-scale", type=float, help="腕の重力補償の倍率（既定は arm.yaml）")
     p.add_argument("--log-dir", help="記録の保存先（既定は pipeline.yaml の log_dir）")
     p.add_argument("--obstacles-file", help="teach.py --obstacle で作った箱のファイル（既定は configs/obstacles.yaml。"

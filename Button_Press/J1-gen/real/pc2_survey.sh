@@ -86,7 +86,8 @@ run "for d in /sys/class/video4linux/video*; do printf '%s: %s\\n' \"\${d##*/}\"
 run "lsusb"
 run "command -v v4l2-ctl && v4l2-ctl --list-devices"
 run "lsusb | grep -i 8086"
-run "ps -o pid,lstart,pcpu,cmd -C videohub_pc4,videohub_pc4_chest"
+# ps -C はコマンド名が 15 文字で切れるので videohub_pc4_chest が出ない。pid を pgrep で探して渡す
+run "ps -o pid,lstart,pcpu,cmd -p \$(pgrep -d, -f ^/unitree/module/video_hub_pc4/)"
 run "pgrep -af 'rgbd_server|run_g1_server' | grep -v pgrep"
 
 sec "置いてあるもの"

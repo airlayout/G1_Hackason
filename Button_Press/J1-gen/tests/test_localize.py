@@ -168,6 +168,25 @@ class TestLocator(unittest.TestCase):
         det = make_detector(load_config("localize.yaml"))
         self.assertIsInstance(det.detect(np.zeros((480, 640, 3), np.uint8)), list)
 
+    def test_onnx_detector_uses_onnx_model(self) -> None:
+        """type: onnx なら、onnx_model の重みを onnxruntime（OnnxYoloDetector）で、bottle だけを探すように作る（G1 の PC2 用）。"""
+        from types import SimpleNamespace
+        from unittest import mock
+
+        made: list[dict] = []
+        modules = {"detector.onnx_yolo": SimpleNamespace(OnnxYoloDetector=lambda **kw: made.append(kw) or "onnx")}
+        cfg = load_config("localize.yaml")
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch("common.perception_bridge.perception", side_effect=lambda name: modules[name]):
+            (Path(d) / "yolo26n.onnx").write_bytes(b"")
+            cfg["detector"].update(type="onnx", onnx_model=str(Path(d) / "yolo26n.onnx"), onnx_threads=4)
+            self.assertEqual(make_detector(cfg), "onnx")
+            cfg["detector"]["onnx_model"] = str(Path(d) / "none.onnx")
+            with self.assertRaisesRegex(FileNotFoundError, "export_onnx"):
+                make_detector(cfg)
+        self.assertEqual(made[0]["classes"], ["bottle"])
+        self.assertEqual((made[0]["num_threads"], made[0]["confidence_threshold"]), (4, 0.4))
+
 
 class TestRgbdIO(unittest.TestCase):
     def test_save_and_load(self) -> None:

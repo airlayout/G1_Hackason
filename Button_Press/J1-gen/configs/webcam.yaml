@@ -1,0 +1,46 @@
+# Button_Press / 前方の Web カメラ（Innomaker U20CAM、深度なし）で、遠くから ▲▼ の位置を推定する（common/webcam_buttons.py）。
+# 立つ位置まで寄るときの「おまけ」。無い・映像が来ない・未較正の日は使わず、頭カメラだけで寄る。
+
+# 映像の受け取り: Mapping 班の ~/mapping_tools/innomaker_camera_server.py の配信（PC2 の 5555 番、BGR、反時計回りに回し済み、5 枚/秒）。
+# カメラは同時に 1 つのプロセスしか開けないので、直接は開かず、この配信を受け取る（Perception/real/README.md と同じ）。
+# ⚠️ PC2 の 5555 番は、こちらの rgbd_server の RGB 互換の配信と同じ番号。rgbd_server は --no-legacy-rgb で 5556 だけにする
+stream:
+  host: null          # null なら camera.yaml の pc2_host
+  port: 5555
+  camera_name: null   # null なら配信の最初のカメラ
+  bgr: true
+  # 受け取ったあとに回す向き（Perception の人の検出と同じ 180。回したあとの画像が上向きになる）。none / cw / ccw / 180
+  rotate: "180"
+  timeout_ms: 500
+
+# カメラ（回したあとの画像で）。⚠️ fx と xyz が null の間は未較正として使わない。real/webcam_check.py --collect で
+# 頭カメラと Web カメラが同じ ▲▼ を見た組を集め、--fit で求めて書く
+camera:
+  size: [480, 640]    # 幅・高さ [px]（640×480 を 90° 回した縦長）
+  fx: null            # 焦点距離 [px]（fy は省略すると fx と同じ）
+  fy: null
+  cx: null            # null なら画像の中心
+  cy: null
+  # 取り付け: pelvis 座標でのカメラの体（x 前・y 左・z 上）の位置 [m] と向き（roll, pitch, yaw [deg]。pitch + が下向き）。
+  # 位置は巻き尺で測って書く（較正では向きと焦点距離だけを求めるのがふつう）
+  xyz: null
+  rpy_deg: [0.0, 0.0, 0.0]
+
+# ボタンの実物の寸法（ラボの車いす用。2026-10-22 にメジャーで測った: 直径 約 3.5 cm、▲▼ の間隔 約 7 cm）
+buttons:
+  diameter_m: 0.035
+  spacing_m: 0.07
+  # 画像で ▲▼ の組を選ぶとき、「間隔 ÷ 直径」が実物の比（2）からこの割合までずれてよい
+  ratio_tolerance: 0.4
+  # 押す組（elevator.yaml の geometry.button_set と同じ。wheelchair なら条件に合う組のうち画像でいちばん下）
+  button_set: wheelchair
+
+# 寄る流れで使うとき（common/approach.py）
+assist:
+  # 推定のうち、決めるのに使うもの: plane（頭カメラの柱の面との交点）/ size（大きさ）/ off（記録するだけ）
+  use: plane
+  # 使う映像の古さの上限 [s]（5 枚/秒なので 0.2 秒ごと）
+  max_age_s: 0.5
+  # 交点と大きさ（間隔）からの推定は同じ方向の線の上の点なので、食い違いは距離に出る。カメラからの距離の比がこれより
+  # ずれれば使わない（組を取り違えた・柱の面が違う物）
+  max_range_disagreement: 0.25

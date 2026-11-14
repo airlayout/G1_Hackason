@@ -324,6 +324,19 @@ class TestVideohubCamera(unittest.TestCase):
         assert f is not None
         self.assertIsNone(cam.complete(f))
 
+    def test_empty_or_broken_color_is_skipped(self) -> None:
+        """videohub が成功（code 0）なのに中身が空・壊れていても、落ちずにその 1 枚を飛ばし、次は受け取る
+        （2026-11-01 の実機で、空のデータを imdecode に渡して配信ごと止まった）。"""
+        cam = self._cam()
+        good = self.client.jpeg
+        f = cam.read()
+        assert f is not None
+        for bad in (b"", b"\x00\x01broken"):
+            self.client.jpeg = bad
+            self.assertIsNone(cam.complete(f))
+        self.client.jpeg = good
+        self.assertIsNotNone(cam.complete(f))
+
     def test_different_size_from_videohub_is_scaled(self) -> None:
         """videohub が 1280x720 を返しても、縦横比が同じなら内部パラメータを縮めて使う。"""
         small = cv2.resize(cv2.imdecode(np.frombuffer(self.client.jpeg, np.uint8), cv2.IMREAD_COLOR), (1280, 720))

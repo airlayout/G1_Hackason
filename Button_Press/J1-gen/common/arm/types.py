@@ -24,6 +24,9 @@ class JointState:
     imu_quat: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0, 0.0]))
     # 模擬ロボット（sim/sim_robot_server.py）が送った lowstate か（reserve[0] の目印）
     sim_marker: bool = False
+    # motor_state[i].tau_est。モーターの電流から推定した関節のトルク [Nm]（29）。力のセンサーではない（摩擦・ノイズが乗る）。
+    # 押している間の力を推定するのに使う（common/push_force.py）。読めない経路では None
+    tau_est: np.ndarray | None = None
 
 
 @dataclass

@@ -50,6 +50,8 @@ class PressPlan:
     q_via: np.ndarray | None = None
     # 指の向き（単位ベクトル）。押す方向と違う向きを与えたときだけ入る（None なら設定の align_finger に従う）
     finger_axis: np.ndarray | None = None
+    # 指が並ぶ向きと直角にする向き（ArmKinematics.ik の row_normal）。None ならねじれは自由
+    row_normal: np.ndarray | None = None
 
     def summary(self) -> str:
         f = lambda v: "[" + ", ".join(f"{x:+.3f}" for x in np.asarray(v, dtype=float)) + "]"  # noqa: E731
@@ -59,6 +61,22 @@ class PressPlan:
             f"（押す方向 {f(self.push_dir)}、直線 {len(self.press_in)} 点、IK の最大誤差 "
             f"{self.max_ik_err_m * 1000:.1f} mm）"
         )
+
+
+def finger_axis_for(push_dir: np.ndarray, left_deg: float, up_deg: float) -> np.ndarray:
+    """押す向きから、指の向きを決める（左へ left_deg、上へ up_deg 傾ける。0, 0 なら押す向きそのまま）。
+
+    手先は押す向きにまっすぐ動き、指だけが傾く。ボトルが体の正面寄りのとき、指を前方に合わせると、手前の姿勢で腕・手首が
+    胴体に近づきすぎる。左へ傾けると肘を外に張れて通る（sim/approach_search.py、2026-10-29）。エレベーターの指の傾きと同じ考え方。
+    """
+    n = np.asarray(push_dir, dtype=float)
+    n = n / np.linalg.norm(n)
+    left = np.cross([0.0, 0.0, 1.0], n)
+    left /= np.linalg.norm(left)
+    up = np.cross(n, left)
+    a, b = np.radians(left_deg), np.radians(up_deg)
+    f = np.cos(b) * (np.cos(a) * n + np.sin(a) * left) + np.sin(b) * up
+    return f / np.linalg.norm(f)
 
 
 class PressPlanner:
@@ -112,9 +130,10 @@ class PressPlanner:
         if hits:
             raise UnreachableError(f"{what}で腕が体にぶつかる: " + "; ".join(str(h) for h in hits[:3]))
 
-    def solve(self, point: np.ndarray, q_seed: np.ndarray, axis: np.ndarray | None, what: str) -> np.ndarray:
+    def solve(self, point: np.ndarray, q_seed: np.ndarray, axis: np.ndarray | None, what: str,
+              row_normal: np.ndarray | None = None) -> np.ndarray:
         """IK を解き、姿勢を確かめて 29 関節の角度を返す。"""
-        r = self.kin.ik(point, q_seed, axis)
+        r = self.kin.ik(point, q_seed, axis, row_normal=row_normal)
         if not r.success:
             raise UnreachableError(f"{what}に届かない: {r.reason}")
         self.check_pose(r.q, what)
@@ -131,6 +150,7 @@ class PressPlanner:
         depth: float | None = None,
         q_via_arm: np.ndarray | None = None,
         finger_axis: np.ndarray | None = None,
+        row_normal: np.ndarray | None = None,
     ) -> PressPlan:
         """
         q_now: 今の関節角（29、実測）。腰と反対の腕はこの値で固定して計算する
@@ -141,6 +161,7 @@ class PressPlanner:
         depth: 押し込みの深さ [m]（無ければ設定値）。max_press_depth_m で頭打ちにする
         finger_axis: 指の向き（pelvis 座標）。押す方向と違う向きにしたいとき（エレベーターのボタンを、体の前で
             右下から斜めに押すなど）に与える。手先は、これとは関係なく押す方向にまっすぐ動く
+        row_normal: 指が並ぶ向きをこれと直角にする（ArmKinematics.ik と同じ）。押す方向を渡すと中指の先が最も前に出る
         """
         c = self.cfg
         q_now = np.asarray(q_now, dtype=float)
@@ -171,7 +192,7 @@ class PressPlanner:
             except UnsafeTargetError as e:
                 raise UnreachableError(str(e)) from e
 
-        q_app = self.solve(approach, seed, axis, "手前の姿勢")
+        q_app = self.solve(approach, seed, axis, "手前の姿勢", row_normal)
 
         # 今の姿勢 →（経由の姿勢 →）手前の姿勢（関節空間の補間）の途中の姿勢もぶつからないか
         arm = self.kin.arm_idx
@@ -208,7 +229,7 @@ class PressPlanner:
         max_err = 0.0
         for k in range(1, steps + 1):
             p = approach + (end - approach) * (k / steps)
-            r = self.kin.ik(p, q, axis, max_iter=50)
+            r = self.kin.ik(p, q, axis, max_iter=50, row_normal=row_normal)
             if not r.success:
                 raise UnreachableError(f"押し込みの直線の {k}/{steps} 点目に届かない: {r.reason}")
             self.check_pose(r.q, f"押し込みの直線の {k}/{steps} 点目")
@@ -237,6 +258,7 @@ class PressPlanner:
             waist_q=q_now[[12, 13, 14]].copy(),
             q_via=None if q_via_arm is None else np.asarray(q_via_arm, dtype=float).copy(),
             finger_axis=None if finger_axis is None else axis.copy(),
+            row_normal=None if row_normal is None else np.asarray(row_normal, dtype=float).copy(),
         )
 
     def replan(self, plan: PressPlan, q_measured: np.ndarray, q_arm_now: np.ndarray,
@@ -251,6 +273,7 @@ class PressPlanner:
         q = np.asarray(q_measured, dtype=float).copy()
         q[self.kin.arm_idx] = q_arm_now
         new = self.plan(q, plan.target_point, plan.push_dir, q_seed=q,
-                        depth=plan.depth if depth is None else depth, finger_axis=plan.finger_axis)
+                        depth=plan.depth if depth is None else depth, finger_axis=plan.finger_axis,
+                        row_normal=plan.row_normal)
         new.q_via = plan.q_via  # 経由の姿勢は、戻るときにも使うので引き継ぐ
         return new

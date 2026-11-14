@@ -9,11 +9,15 @@
     python Perception/real/check_yolo.py --webcam 0 --model ~/perception/yolo26n.onnx --frames 100
     # ultralytics(torch)で比べる
     python Perception/real/check_yolo.py --image bus.jpg --backend ultralytics --model yolo26n.pt
+    # PC2のGPU(TensorRT)で。システムの Python 3.8 で動かす(エンジンの作り方は common/detector/trt_yolo.py)
+    /usr/bin/python3 real/check_yolo.py --webcam 6 --rotate cw --backend tensorrt --model yolo26n.engine --frames 100
 
 --backend onnx(既定)は torch/ultralytics を使わない(onnxruntime・opencv・numpy・pyzmq・PyYAML だけ)。
 表示するもの: 1枚にかかる時間(検出だけ・平均と90%)、受け取りを含めた毎秒の枚数、このプロセスのCPU使用率、検出した人の数。
 人が写った画像(枠を描いたもの)を --save-max 枚まで保存し、まとめを summary.json に残す(--out-dir、既定は _local/perception/check_yolo/<日時>)。
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -26,11 +30,15 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from common.alert import draw_detections  # noqa: E402
+from common.camera.webcam import WebcamSource, parse_device  # noqa: E402
 from common.detector import build_detector  # noqa: E402
 
 # リポジトリの中(Perception/real/)ならリポジトリ直下、PC2 に写した ~/perception/real/ なら ~/perception を基準にする
 _HERE = Path(__file__).resolve()
 REPO_ROOT = _HERE.parents[2] if (_HERE.parents[2] / "Perception").is_dir() else _HERE.parents[1]
+
+ROTATIONS = {"cw": cv2.ROTATE_90_CLOCKWISE, "ccw": cv2.ROTATE_90_COUNTERCLOCKWISE, "180": cv2.ROTATE_180}
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,13 +46,18 @@ def parse_args() -> argparse.Namespace:
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--image", nargs="+", help="画像ファイル(複数可)")
     src.add_argument("--zmq", metavar="HOST:PORT", help="ZMQのRGB配信(run_g1_server.py --camera と同じ形式)。PC2の中なら localhost:5555")
-    src.add_argument("--webcam", type=int, metavar="INDEX", help="Webカメラ(OpenCVのデバイス番号)")
-    p.add_argument("--backend", choices=["onnx", "ultralytics"], default="onnx")
-    p.add_argument("--model", required=True, help="onnx なら .onnx(Perception/real/export_onnx.py で書き出す)、ultralytics なら .pt")
+    src.add_argument("--webcam", type=parse_device, metavar="DEVICE",
+                     help="Webカメラ。/dev/v4l/by-id/... のパス(番号は再起動で入れ替わる)か、OpenCVのデバイス番号")
+    p.add_argument("--backend", choices=["onnx", "ultralytics", "tensorrt"], default="onnx")
+    p.add_argument("--model", required=True, help="onnx なら .onnx(Perception/real/export_onnx.py で書き出す)、ultralytics なら .pt、"
+                                                  "tensorrt なら PC2 で作った .engine(隣に .names.json が要る)")
     p.add_argument("--classes", nargs="*", default=["person"], help="検出するクラス(既定 person。空なら全部)")
     p.add_argument("--conf", type=float, default=0.5, help="確からしさのしきい値")
     p.add_argument("--frames", type=int, default=50, help="--zmq / --webcam で処理する枚数")
     p.add_argument("--camera-name", default="head_camera", help="--zmq の画像の名前")
+    p.add_argument("--zmq-bgr", action="store_true", help="--zmq の配信がBGR順のとき(Mapping の innomaker_camera_server.py)")
+    p.add_argument("--rotate", choices=["cw", "ccw", "180"],
+                   help="検出の前に画像を回す(cw=時計回り90°)。G1 の PC2 に挿した Web カメラは横向きに付いていて cw で正しい向きになる")
     p.add_argument("--threads", type=int, help="onnxruntime のスレッド数(既定はonnxruntimeに任せる。PC2では他の処理と分け合う)")
     p.add_argument("--save-max", type=int, default=20, help="人が写った画像を保存する上限")
     p.add_argument("--out-dir", type=Path)
@@ -65,10 +78,9 @@ def frames(args: argparse.Namespace):
         from common.camera.zmq_camera import ZmqFrameSource
 
         host, port = args.zmq.rsplit(":", 1)
-        source = ZmqFrameSource(server_address=host, port=int(port), camera_name=args.camera_name, timeout_ms=5000)
+        source = ZmqFrameSource(server_address=host, port=int(port), camera_name=args.camera_name, timeout_ms=5000,
+                                rgb=not args.zmq_bgr)
     else:
-        from common.camera.webcam import WebcamSource
-
         source = WebcamSource(device_index=args.webcam)
     with source:
         for i in range(args.frames):
@@ -77,16 +89,6 @@ def frames(args: argparse.Namespace):
                 print("[check_yolo] ❌ 画像が届かない(配信が動いているか・接続先を確かめる)")
                 return
             yield f"{i:05d}", img
-
-
-def draw(img: np.ndarray, dets: list) -> np.ndarray:
-    out = img.copy()
-    for d in dets:
-        x1, y1, x2, y2 = (int(v) for v in d.bbox)
-        cv2.rectangle(out, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(out, f"{d.class_name} {d.confidence:.2f}", (x1, max(y1 - 4, 12)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                    (0, 255, 0), 1)
-    return out
 
 
 def main() -> int:
@@ -109,13 +111,15 @@ def main() -> int:
     shape = None
     wall0, cpu0 = time.perf_counter(), time.process_time()
     for name, img in frames(args):
+        if args.rotate:
+            img = cv2.rotate(img, ROTATIONS[args.rotate])
         shape = img.shape
         t = time.perf_counter()
         dets = detector.detect(img)
         times_ms.append((time.perf_counter() - t) * 1000.0)
         counts.append(len(dets))
         if dets and saved < args.save_max:
-            cv2.imwrite(str(out_dir / f"{name}_n{len(dets)}.jpg"), draw(img, dets))
+            cv2.imwrite(str(out_dir / f"{name}_n{len(dets)}.jpg"), draw_detections(img, dets))
             saved += 1
         if args.image or len(times_ms) % 10 == 0:
             print(f"[check_yolo] {name}: {times_ms[-1]:.1f} ms、検出 {len(dets)}"

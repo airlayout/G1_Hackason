@@ -81,6 +81,9 @@ class Observation:
     imu_quat: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0, 0.0]))
     # 画像を撮った時刻（試行の開始から [秒]）。画像の遅れがあると t より前になる
     image_t: float = 0.0
+    # (29,) 関節の推定トルク [Nm]。実機の lowstate の motor_state[i].tau_est（モーターの電流からの推定。力のセンサーではない）。
+    # MuJoCo はモーターが出しているトルク（P・D・重力補償の合計）。取れない環境（Isaac Sim）では None
+    tau_est: np.ndarray | None = None
 
 
 @dataclass

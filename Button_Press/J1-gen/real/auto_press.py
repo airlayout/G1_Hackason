@@ -7,18 +7,33 @@
     # エレベーターの呼びボタン（▼）。ラボは車いす用の下のボタン・YOLO
     G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair \\
         --detector yolo --execute
+    # 壁もボタンも無いところで、エレベーターと同じ腕の動きだけ（空中の車いす用 ▼。腕を伸ばしたときの体の崩れを見る）
+    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair \\
+        --air 0.48 -0.14 --execute
+    # 押す流れの節目で G1 に喋らせる（「ボタンを押します」「点灯成功」。configs/voice.yaml。先に real/voice_phrases.py make・send）
+    #   PC2 の上で動かすときは --voice local、有線のノート PC から動かすときは --voice ssh
+    ~/button_press/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair \\
+        --detector yolo --network-interface eth0 --camera-config camera_onboard.yaml --voice local --execute
+    # 左腕で押す（ボタンが体の左に来るように立つ。空中なら左右を + にする）
+    G1_HuggingFace/venv/bin/python Button_Press/J1-gen/real/auto_press.py --target down --button-set wheelchair \\
+        --arm left --air 0.48 0.14
 
 事前確認（押すたびに毎回。見るだけで、そのつど変わりうることだけ。1 つでもだめなら何も送らずに終わる。終了コード 10）:
 1. モーションコントローラが稼働中か（arm_sdk の受け手。倒れた・ダンピングにしたあとは止まっている）
 2. 立っているか（lowstate の IMU の骨盤の傾き、腰の角度）
 3. 頭カメラのカラーが止まっていないか（2 枚の差。2026-10-21 は途中で videohub のカラーが止まった）
-4. ボタンのときだけ: 腰・腕のモータの mode が 1 か（プログラムを終えるとゼロトルクに戻ることがある。
+4. 頭カメラの向き: 同じ 2 枚の深度の床・机の面から pitch を求め、位置の計算に使う向き（ボタンは URDF、ボトルは
+   head_camera_mount があればその値）から 10° より大きくずれていないか。首の向きはつなぎ直すたびにずれることがあった
+   （2026-11-03、61.2°・64.4°。直すと 51〜54°）ので、その日に 1 回の前提から毎回の確認に移した。
+   水平な面が写らず測れないときは止めない（注意だけ）。--skip-head-tilt で飛ばせる
+5. ボタンのときだけ: 腰・腕のモータの mode が 1 か（プログラムを終えるとゼロトルクに戻ることがある。
    ボトルは press_bottle.py の ArmCommander が送る前に確かめるので、ここでは見ない）
 
 その日に 1 回でよい前提（このスクリプトでは見ない。REAL_DAY_PROCEDURE.md の「Enter なしで最後まで流す」の前提）:
-接続（check_connection.py --rgbd。mode_machine・lowstate の頻度）、頭カメラの向き（check_head_tilt.py）、
+接続（check_connection.py --rgbd。mode_machine・lowstate の頻度）、
 ボトルなら机の箱（make_table_boxes.py。机を動かしたら作り直す）、ボタンなら camera.yaml の head_camera_mount を使っていないこと
-（エレベーターのエージェントは robot.yaml の向きのまま）。
+（エレベーターのエージェントは robot.yaml の向きのまま）。頭カメラの向きは、その日の最初に check_head_tilt.py でも確かめる
+（床が広く写る所で、首を直す前後を測るため）。
 
 押す（事前確認がすべて通ったとき）:
 - ボトル: real/press_bottle.py --path arm_sdk（--execute なら --execute --no-confirm）。段階ごとの Enter 待ちをしない
@@ -26,6 +41,8 @@
 どちらも、計画が立たない（届かない・当たる・見つからない）ときは腕を動かさずに終わる。
 Ctrl+C を押すと、押す側がその場で止めて来た経路を逆にたどって戻る（もう一度 Ctrl+C でその場で weight を下げる）。
 このスクリプトは、押す側が終わるまで待つ。結果（事前確認・コマンド・終了コード）は _local/button_press/auto/ に JSON で残す。
+ボタンのときは、エージェントの結果（点灯した・確かめられない・中止とその理由、段階ごとのメッセージ、body_log のフォルダ）も
+"agent" に入れる（終了コードは中止でも 0 なので、これを見る）。
 `--` のあとの引数は、押す側のコマンドにそのまま渡す（例: `-- --seed-pose press_bottle`）。
 
 模擬ロボット（sim/sim_robot_server.py）で流れを試すとき（モーションコントローラが無く、描画のカラーは変化しないので、事前確認を飛ばす）:
@@ -57,9 +74,15 @@ from common.robot_model import JOINT_NAMES, LEFT_ARM_IDX, RIGHT_ARM_IDX, WAIST_I
 EXIT_PRECHECK = 10
 
 # 事前確認のしきい値
-MAX_PELVIS_TILT_DEG = 3.0
-MAX_WAIST_DEG = 3.0
+MAX_PELVIS_TILT_DEG = 5.0
+# 腰 yaw / roll / pitch の、0° からの差の上限 [deg]。pitch だけ広い: 2026-11-13、立った状態のまま locked standing から
+# regular mode（エレベーターで使うモード）に変えると、腰 pitch が −0.2° → −3.3°、骨盤の傾きが 0.8° → 2.9° になり、3° で止まった。
+# yaw は腰がひねられたまま（2026-11-13 の起動直後 −13.6°）を止めるため 3° のまま
+MAX_WAIST_DEG = (3.0, 3.0, 6.0)
 MIN_COLOR_CHANGE = 0.05  # 2 枚のカラーの差（画素の平均）。止まっていると 0.00、動いていれば 1 前後（2026-10-21）
+# 頭カメラの向き（深度の床の面から求めた pitch）と、位置の計算に使う向きの差の上限 [deg]。2026-11-03: 51〜54°
+# （URDF 47.6° から +3〜+7°）では推定の位置は 0〜5 mm で合い点灯した。首がずれた 61.2°・64.4°（+14〜+17°）を止める
+MAX_HEAD_PITCH_DIFF_DEG = 10.0
 
 
 @dataclass
@@ -72,6 +95,15 @@ class Check:
 def color_changed(a: np.ndarray, b: np.ndarray) -> float:
     """2 枚のカラーの差（画素の平均の絶対値）。"""
     return float(np.mean(np.abs(a.astype(float) - b.astype(float))))
+
+
+def stand_check(tilt_deg: float, waist_deg: np.ndarray) -> Check:
+    """立っているか: 骨盤の傾き（IMU）が MAX_PELVIS_TILT_DEG 以下、腰 yaw / roll / pitch がそれぞれ MAX_WAIST_DEG 以内。"""
+    waist = np.asarray(waist_deg, dtype=float)
+    ok = tilt_deg <= MAX_PELVIS_TILT_DEG and bool(np.all(np.abs(waist) <= np.asarray(MAX_WAIST_DEG)))
+    return Check("立っているか", ok, f"骨盤の傾き {tilt_deg:.1f}°、腰 yaw/roll/pitch "
+                 + ", ".join(f"{v:+.1f}" for v in waist) + "°（上限 "
+                 + "/".join(f"{v:g}" for v in MAX_WAIST_DEG) + "°）")
 
 
 def run_prechecks(args: argparse.Namespace, iface: str) -> list[Check]:
@@ -88,11 +120,7 @@ def run_prechecks(args: argparse.Namespace, iface: str) -> list[Check]:
         return [Check("lowstate", False, str(e))]
     checks = [motion_controller_check()]
 
-    tilt = pelvis_tilt_deg(st.imu_quat)
-    waist = np.degrees(st.q[list(WAIST_IDX)])
-    stand_ok = tilt <= MAX_PELVIS_TILT_DEG and float(np.max(np.abs(waist))) <= MAX_WAIST_DEG
-    checks.append(Check("立っているか", stand_ok, f"骨盤の傾き {tilt:.1f}°、腰 yaw/roll/pitch "
-                        + ", ".join(f"{v:+.1f}" for v in waist) + "°"))
+    checks.append(stand_check(pelvis_tilt_deg(st.imu_quat), np.degrees(st.q[list(WAIST_IDX)])))
 
     cam = load_camera_config(args, quiet=True)["rgbd"]
     with RgbdZmqSource(cam["server_address"], int(cam["port"]), int(cam["timeout_ms"])) as src:
@@ -107,6 +135,8 @@ def run_prechecks(args: argparse.Namespace, iface: str) -> list[Check]:
         if change < MIN_COLOR_CHANGE:
             msg += "。カラーが止まっている（videohub が古い画像を返している。G1 の再起動で直った例がある）"
         checks.append(Check("頭カメラ", change >= MIN_COLOR_CHANGE, msg))
+        if not args.skip_head_tilt:
+            checks.append(head_tilt_check([a, b], st.q[list(WAIST_IDX)], st.imu_quat, expected_head_pitch(args)))
 
     if args.target != "bottle":
         st = reader.latest() or st
@@ -114,6 +144,45 @@ def run_prechecks(args: argparse.Namespace, iface: str) -> list[Check]:
         checks.append(Check("モータの mode", not off, "腰・腕すべて 1" if not off else
                             f"1 でない: {', '.join(off)}（ゼロトルク。リモコンでダンピングに入れてから立たせる）"))
     return checks
+
+
+def expected_head_pitch(args: argparse.Namespace) -> tuple[float, str]:
+    """位置の計算に使う頭カメラの pitch [deg] と、その出どころ。ボトルはカメラの設定の head_camera_mount があればその値
+    （press_bottle.py が使う）、ボタンは robot.yaml（URDF）の値（エレベーターのエージェントは上書きを使わない）。"""
+    if args.target == "bottle":
+        mount = load_camera_config(args, quiet=True).get("head_camera_mount")
+        if mount and mount.get("rpy_deg") is not None:
+            return float(mount["rpy_deg"][1]), f"{args.camera_config} の head_camera_mount"
+    return float(np.degrees(load_config("robot.yaml")["head_camera"]["rpy"][1])), "URDF"
+
+
+def head_tilt_check(frames: list[Any], q_waist: np.ndarray, imu_quat: np.ndarray | None,
+                    expected: tuple[float, str]) -> Check:
+    """頭カメラの向き（深度の床・机の面から求めた pitch。common/head_tilt.py）が、位置の計算に使う向きと大きく違わないか。
+
+    首の向きは、つなぎ直すたびにずれることがある（2026-11-03、ラボで 61.2°、エレベーターで 64.4°。直すと 51〜54°）。
+    ずれたまま押すと、ボタン・ボトルの位置が大きくずれる。水平な面が写らず測れないときは止めない（注意だけ出す。
+    エレベーターの前では床が画像の 1 割ほどしか写らないことがある）。
+    """
+    from common.camera_geometry import HeadCameraTransform
+    from common.head_tilt import estimate_head_tilt, judge
+
+    robot_cfg = load_config("robot.yaml")  # 面から向きを解くのに使うのは、首より上の取り付け（pitch・roll はここで求める）
+    tf = HeadCameraTransform(robot_cfg)
+    planes = [p for f in frames for p in estimate_head_tilt(f, tf, robot_cfg, q_waist, imu_quat)]
+    pitch_ref, source = expected
+    res = judge(planes, pitch_ref)
+    if res["pitch_deg"] is None:
+        return Check("頭カメラの向き", True, "⚠️ 水平な面（床・机）が写らず測れない（止めない）。"
+                     "首がずれていないか、床が広く写る向きで real/check_head_tilt.py を実行して確かめる")
+    diff = res["pitch_deg"] - pitch_ref
+    msg = (f"pitch {res['pitch_deg']:.1f}°（{source} {pitch_ref:.1f}° から {diff:+.1f}°、面 {res['n_planes']} 枚"
+           + (f"、ばらつき {res['spread_deg']:.1f}°" if res["n_planes"] > 1 else "") + "）")
+    ok = abs(diff) <= MAX_HEAD_PITCH_DIFF_DEG
+    if not ok:
+        msg += (f"。{MAX_HEAD_PITCH_DIFF_DEG:.0f}° より大きくずれている（首の向きがずれた）。首を直して "
+                "real/check_head_tilt.py で測り直す")
+    return Check("頭カメラの向き", ok, msg)
 
 
 def motion_controller_check() -> Check:
@@ -150,6 +219,8 @@ def press_command(args: argparse.Namespace, iface: str) -> tuple[list[str], dict
                "--camera-config", args.camera_config]
         if args.host:
             cmd += ["--host", args.host]
+        if getattr(args, "arm", None):
+            cmd += ["--arm", args.arm]
         if args.execute:
             cmd += ["--execute", "--no-confirm"]
         return cmd + list(getattr(args, "extra", [])), env
@@ -161,10 +232,30 @@ def press_command(args: argparse.Namespace, iface: str) -> tuple[list[str], dict
     if not args.execute:
         cmd.append("--dry-run")
     env["J1GEN_BODY_LOG"] = str(REPO_ROOT / "_local" / "button_press" / "body_log")
+    # 腰を回して探す（press.waist_scan）は、実機ではまだ動かす確認をしていないので、必ずオフにする（指定の口は作らない）。
+    # elevator.yaml を誤ってオンにしても動かないよう、強制のオフ（"0"）を渡す。contest_agent/agent.py が J1GEN_WAIST_SCAN を
+    # 読み、"1" のときだけオンにする（yaml の enabled は使わない）
+    env["J1GEN_WAIST_SCAN"] = "0"
+    if getattr(args, "arm", None):
+        env["J1GEN_ARM"] = args.arm
     if args.button_set:
         env["J1GEN_BUTTON_SET"] = args.button_set
     if args.detector:
         env["J1GEN_BUTTON_DETECTOR"] = args.detector
+    if getattr(args, "max_joint_speed", None):
+        env["J1GEN_MAX_JOINT_SPEED"] = str(args.max_joint_speed)
+    for name, v in (("J1GEN_PRESS_KEEP_MM", "keep_mm"), ("J1GEN_STOP_LAG_MM", "stop_lag_mm"), ("J1GEN_PRESS_DEPTH_MM", "depth_mm")):
+        if getattr(args, v, None) is not None:
+            env[name] = str(getattr(args, v))
+    if getattr(args, "no_retry", False):
+        env["J1GEN_NO_RETRY"] = "1"
+    # 押している間もランプを見るとき、手の画素を除くか。実機のゴムの手・手袋は黒く、被さっても明るく見えないので除かない
+    # （除くと、ランプの縁が少し見えている画像まで使えなくなる）。シミュレーションの白い手は elevator.yaml の既定で除く
+    env["J1GEN_HAND_MASK"] = "1" if getattr(args, "hand_mask", False) else "0"
+    if getattr(args, "voice", None):
+        env["J1GEN_VOICE"] = args.voice  # contest_agent/agent.py が common/announce.py で喋らせる
+    if getattr(args, "air", None):
+        env["J1GEN_AIR_BUTTONS"] = f"{args.air[0]},{args.air[1]}"
     return cmd + list(getattr(args, "extra", [])), env
 
 
@@ -186,15 +277,45 @@ def main() -> int:
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
     p.add_argument("--label", default="", help="ボトル: 記録のフォルダ名に付ける言葉（既定 auto）")
     p.add_argument("--gravity-scale", type=float, default=0.5, help="ボトル: 腕の重力補償の倍率（2026-10-14 に決めた 0.5）")
+    p.add_argument("--arm", choices=["left", "right", "auto"],
+                   help="押す腕（既定は ボタン: elevator.yaml の press.arm / ボトル: pipeline.yaml）。左腕で押すときは、"
+                        "ボタンが体の左に来るように立つ（--air なら Y を + にする）。auto（ボタンのみ）は、ボタンを見つけたあと"
+                        "計画が立つ腕を選ぶ（左腕は実機で未確認）")
     p.add_argument("--button-set", choices=["general", "wheelchair"], help="ボタン: 押す組（既定は elevator.yaml）")
     p.add_argument("--detector", choices=["classic", "yolo"], help="ボタン: 見つけ方（既定は elevator.yaml）")
     p.add_argument("--instruction", default="", help="ボタン: 指示の文")
+    p.add_argument("--max-joint-speed", type=float, metavar="RAD_S",
+                   help="ボタン: 計画で許す関節の速さ [rad/s]（既定は arm.yaml の 0.5。腕が伸びきる近くで「関節が 1 周期に … 動く」と"
+                        "断られるとき。送るときの頭打ちは run_dds の安全フィルタの 1.0）")
+    p.add_argument("--keep-mm", type=float,
+                   help="ボタン: 指先が止まったあと、実際の指先より何 mm 先を押し続けるか（既定は elevator.yaml の 2。大きいほど保持の力が強い）")
+    p.add_argument("--stop-lag-mm", type=float,
+                   help="ボタン: 指令が実際の指先より何 mm 先に出たら押し込みを止めるか（既定は elevator.yaml の 10。大きいほど止まる前の力が強い）")
+    p.add_argument("--depth-mm", type=float,
+                   help="ボタン: 表面から何 mm 奥まで押し込む計画にするか（既定は elevator.yaml の 15。--stop-lag-mm より大きくする）")
+    p.add_argument("--no-retry", action="store_true",
+                   help="ボタン: 点灯していなくても押し直さない（押す力を確かめるとき。押し直しは 1 回目より強い）")
+    p.add_argument("--air", type=float, nargs=2, metavar=("X", "Y"),
+                   help="ボタン: カメラで探さず、pelvis から前 X・左右 Y [m]（− が右）の空中に車いす用の ▲▼ があるものとして動かす")
+    p.add_argument("--hand-mask", action="store_true",
+                   help="ボタン: 押している間もランプを見るとき、手・前腕が写る画素を除く（既定は除かない。実機の手は黒い。"
+                        "白い手のシミュレーションや、白い手袋のとき）")
+    p.add_argument("--voice", choices=["local", "ssh"],
+                   help="ボタン: 押す流れの節目で G1 に喋らせる（configs/voice.yaml。dry-run でも喋る）。local = PC2 の上で動かすとき、"
+                        "ssh = 有線のノート PC から無線の ssh で PC2 に鳴らさせるとき。先に real/voice_phrases.py make・send")
     p.add_argument("--skip-prechecks", action="store_true", help="事前確認を飛ばす（模擬ロボットで試すときだけ）")
+    p.add_argument("--skip-head-tilt", action="store_true",
+                   help="事前確認のうち、頭カメラの向きだけを飛ばす（床でない斜めの面を床と取り違えて止まるとき。"
+                        "real/check_head_tilt.py で別に確かめてから）")
     add_camera_args(p)
     argv = sys.argv[1:]
     extra = argv[argv.index("--") + 1:] if "--" in argv else []
     args = p.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
     args.extra = extra
+    if args.arm == "auto" and args.target == "bottle":
+        p.error("--arm auto はボタン（--target up / down）だけ。ボトルは left か right")
+    if args.voice and args.target == "bottle":
+        p.error("--voice はボタン（--target up / down）だけ")
 
     iface = args.network_interface or load_config("arm.yaml")["network_interface"]
     mode = "送る（--execute）" if args.execute else "dry-run（送らない）"
@@ -221,6 +342,9 @@ def main() -> int:
         return EXIT_PRECHECK
 
     cmd, env = press_command(args, iface)
+    agent_result = path.with_name(path.stem + "_agent.json")
+    if args.target != "bottle":
+        env["J1GEN_RESULT_JSON"] = str(agent_result)  # エージェントが結果と中止の理由を書く（contest_agent/agent.py）
     record["command"], record["env"] = cmd, env
     print("[auto] 押す: " + " ".join(f"{k}={v}" for k, v in env.items()) + (" " if env else "") + " ".join(cmd))
     if args.execute:
@@ -228,9 +352,24 @@ def main() -> int:
     code = run_until_done(cmd, env)
     record["exit_code"] = code
     record["finished_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    if args.target != "bottle":
+        record["agent"] = take_agent_result(agent_result)
     path.write_text(json.dumps(record, indent=2, ensure_ascii=False))
+    if record.get("agent"):
+        print(f"[auto] エージェントの結果: {record['agent']['outcome']}")
     print(f"[auto] 終了コード {code}。記録: {path}")
     return code
+
+
+def take_agent_result(path: Path) -> dict[str, Any] | None:
+    """エージェントが書いた結果（contest_agent/agent.py の write_result）を読み、ファイルは消す（auto の記録に入れるので）。
+    書かれていない（押す側が途中で落ちた）・読めないときは None。"""
+    try:
+        res = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    path.unlink(missing_ok=True)
+    return res
 
 
 if __name__ == "__main__":

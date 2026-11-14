@@ -37,6 +37,10 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `post_press.py` — 押したあとの確認の差し込み口（ボタン版で「点灯しなければ深く押し直す」に使う）
   - `elevator_buttons.py` — エレベーターの呼びボタン（一般用の ▲▼）を見つける。画像の候補 → ▲▼ の記号 → 3D → 柱の面の向き → 上の 2 つ
   - `elevator_press.py` — 呼びボタンを押す制御（50 Hz で 1 歩ずつ）。Yada の評価環境のエージェントの中身
+  - `column_face.py` — ボタンが見えない遠さ（柱まで約 1 m〜55 cm）から、頭カメラの深度で柱の面の距離・向き・左右の端を求める。床で首の向きのずれを直す（立つ位置まで寄るのに使う。設定は `configs/approach.yaml`）
+  - `loco.py` — 立つ位置まで寄るときに、純正の歩行コントローラで 1 回分だけ歩かせる（`SetVelocity` に時間を明示し、脚が止まるまで待つ。遅すぎる・速すぎる・2 軸・後ろへの指令は送らない。回数と前に進んだ合計に上限）。テスト用の偽物の足 `FakeLoco` も
+  - `approach.py` — 人がリモコンで柱の手前に置いたあと、頭カメラだけで押せる位置まで寄る（観測 → 1 回動く → 止まる → 観測）。▲▼ が見えて押し方の候補のどれかで計画が立てば止まる。遠くは柱の面と端、近くは ▲▼ で測る。実機は `real/approach.py`
+  - `webcam_buttons.py` — 前方の Web カメラ（Innomaker、深度なし）で、遠くから ▲▼ の位置を推定する（頭カメラの柱の面との交点・ボタンの大きさ・動いた前後の視差）。焦点距離と取り付けの較正も。寄る流れのおまけ（`approach.py` の `WebcamAssist`、`real/approach.py --webcam`）
 - `sim/` — MuJoCo での検証
   - `fetch_models.sh` — 公式モデル（unitree_ros の `g1_29dof_rev_1_0`）を取得する
   - `move_arm_sim.py` — 腕を指定の関節角へ動かして戻す
@@ -48,6 +52,7 @@ G1 の頭カメラ（RGB＋深度）で対象を見つけ、IK で腕を動か�
   - `make_button_dataset.py` — ボタンの YOLO の学習データを、Yada の評価環境の画像から作る（正解の枠は自動）
   - `train_button_yolo.py` — ボタンの YOLO（クラス up / down）を学習する
   - `record_trial_video.py` — 評価環境の 1 試行を、実際の速さで再生される動画にする
+  - `approach_sim.py` — 立つ位置まで寄る流れを評価環境で通し、着いた位置で押して点灯するかまで見る（歩けない評価環境では、歩いたぶん乗り場を逆にずらす）
   - `merge_button_datasets.py` — シミュレーションの学習データと、枠を付けた実機の写真を混ぜる
 - `contest_agent/` — Yada の評価環境（`Button_Press/Yada/contest`）で動かすエージェント（中身は `common/elevator_press.py`）
   - `rehearsal.py` — 実機日のリハーサル（当日手順書の段階0〜6と故障の場面を、模擬ロボットで通しで実行）
@@ -306,8 +311,17 @@ manual: 設定の点、または教えた姿勢の中指の先 + 定規のずれ
   - MuJoCo（2026-10-15、押し込みを止める処理を外して腰のずれで中止させた配置と、今の設定で中止する配置）:
     机 30.5 → 0 N・35.5 → 0 N（机 0.79 m）、24.1 → 8.0 N（机 0.74 m・縁 27 cm。中止の前から手首が縁に触れていて、
     戻り始めの 1 周期だけ）、ボトル 29.6 → 13.2 N・36.9 → 14.6 N（机 0.69 m・押す点 28 cm）。どれも開始姿勢まで戻った
-- **立つ位置（ボトル）**: 勧める範囲は、**押す点（ボトルの手前の面）まで 30〜40 cm、押す点が体の中心から右に 15〜25 cm、
-  机の手前の縁まで 29 cm 以上**（`pipeline.yaml` の `stand`。左腕なら左右を反転）。ボトルは机の縁の近く（10 cm 以内）に置く。
+- **経由の姿勢と指の向き（2026-10-31 から既定を広げた設定に変更）**: `pipeline.yaml` の `via_pose` は
+  `[68.3, -11.1, -40.9, -43.9, 0, -4.1, 0]`（肩を前へ大きく上げて、手を机より高くしてから前へ出す）、`finger_tilts_deg` は
+  `[[0, 0], [15, 0], [30, 0], [45, 0]]`（体の正面寄りのボトルは、指を左へ傾けて押す）。前の既定（10/21〜22 に実機で押した
+  `[28.6, -11.5, 0, -34.4, 0, 0, 0]`・指はまっすぐ・下の前の範囲）は `configs/reach_legacy.yaml` に残した（`--overlay reach_legacy.yaml` で戻せる）。
+  MuJoCo では 13 配置中 12 配置で押せた。実機（10/31）は、dry-run で体の正面のボトル・縁 22 cm でも計画が通り、確認モードで 1 回押して
+  接触で止まった。ただし**体が前へ最大 84 mm・7.5° 傾いた**（前の既定では同じ操作で 3.4 mm・0.8°）。押す間の体の傾き
+  （`runs/<日時>/body_motion.csv` の `imu_tilt_deg`）を見ながら使う（[REPORT_20261031.md](docs/reports/REPORT_20261031.md)）
+- **立つ位置（ボトル）**: 勧める範囲は、**押す点（ボトルの手前の面）まで 30〜40 cm、押す点が体の中心から右に 0〜25 cm、
+  机の手前の縁まで 20 cm 以上**（`pipeline.yaml` の `stand`。左腕なら左右を反転。2026-10-31 から。MuJoCo で押せた範囲）。
+  前の既定の経由の姿勢では、右に 15〜25 cm・縁まで 29 cm 以上で、下の 2 つの「近い側・遠い側」の数字はそのときのもの。
+  ボトルは机の縁の近く（10 cm 以内）に置く。
   範囲の外なら「押す点まで 47.1 cm と遠すぎる。あと 8 cm 以上近づく」のように出す。計画できなければ中止の理由に添え、
   計画できれば注意（⚠️）だけ出して続ける。エレベーターの呼びボタン（柱まで 29〜40 cm）とは、範囲を決めているものが違う
   - 近い側は**ボトルではなく机の縁**で決まる: 経由の姿勢へ手を上げる途中で、手首が机の縁に当たる（計画で断る）。
@@ -351,6 +365,30 @@ $P Button_Press/J1-gen/real/body_motion.py _local/button_press/body_log/<日時>
 
 - シミュレーションでの値: ボトル（腰を固定）は 0 mm。評価環境は脚を PD で保つだけなので、腕の反動で 0.2 mm・0.07°。
   評価環境の「体の揺れ」は腰を直接動かしているので、IMU には出るが脚の FK には出ない（実機では両方に出るはず）
+
+### 押した力の推定（関節の推定トルク tau_est から）
+
+G1 の腕には力のセンサーが無い。lowstate の `motor_state[i].tau_est`（モーターの電流から推定した関節のトルク）を
+2026-11-04 から読んで記録し、エレベーターの押し込みの間に**指先がボタンを押した力 [N]** を推定する（`common/push_force.py`）。
+2026-11-03 の 19:39 の ▲ で、ボタンに当たらなかったのか、ゴムの指が曲がって関節の遅れが増えなかったのかを、関節角からは
+区別できなかったため。**止める判断には使わない**（止めるのは今までどおり関節の遅れ。実機のノイズを見てから決める）。
+
+- 求め方: 手前で止まっていた間（押し込みを始める前の 10 周期）の推定トルクを基準にして、押し込み・保持の間の変化
+  Δτ（右腕 7 関節）= Jᵀ f を最小二乗で解く（J は指先の位置のヤコビアン）。腕が動くと重力のトルクも変わるので、重力のモデル
+  （`common/arm/gravity.py`）で計算した分を引く（引かないと、MuJoCo で触れる前の 6 cm だけで 3.7 N に見えた）
+- MuJoCo（Yada さんの評価環境、種 0 の ▲）: 推定した最大 10.1 N、シミュレーターのボタンが受けた力 10.5 N（`tests/test_push_force.py`）
+- 位置の PD 制御なので、トルクの変化は「関節の遅れ × kp」とほぼ同じ情報。関節の遅れと独立な証拠ではない。役に立つのは、
+  力が N の値で残ることと、押す向き・横の向きに分けられること
+- 残る場所: 段階のメッセージ「押す力（推定、tau_est から）: …」、auto の記録の `agent.press_forces`、body_log の
+  `tau0..tau28`・`push_force_n` の列、ボトルは記録の `lowstate.csv` の `tau0..tau28` の列（ボトルの押し込みでは推定していない）
+- 評価環境の観測（Yada さんの `contest/interface.py` の `Observation`）に `tau_est` を足した（省略可。Isaac Sim は None）
+
+```bash
+P=G1_HuggingFace/venv/bin/python
+$P Button_Press/J1-gen/real/press_force.py _local/button_press/body_log/<日時>_<up|down>
+```
+
+腕が止まっている間（look）の推定トルクのばらつきも表示する。実機の値は未確認（実機の日に見る）。
 
 ### ループバックの模擬ロボット
 
@@ -432,6 +470,12 @@ $P Button_Press/J1-gen/sim/record_trial_video.py --seed 1          # 実際の�
 ```
 
 - 準備: `pip install scipy`（評価環境の見本が使う）。J1-gen の側は scipy を使わない
+- **押す腕**（2026-11-04 から左腕も選べる）: `elevator.yaml` の `press.arm`（既定 `right`）か、環境変数
+  `J1GEN_ARM=left`（`real/auto_press.py --arm left`）。腕ごとの設定（IK の初期姿勢、指の傾き、経由点、勧める立ち位置）は
+  右腕の値で書いてあり、左腕では左右を反転して使う。G1 は左右対称なので、ボタンと立った姿勢を左右反転すると、左腕の計画は
+  右腕の計画の鏡像になる（`tests/test_elevator_arm_side.py`）。左腕のときは、ボタンが体の左に来るように立つ
+  （車いす用なら体の左 14 cm。`--air` なら Y を + にする）。⚠️ 左手の指先の位置（`robot.yaml` の `end_effector.left`）は、
+  右手の値の y を反転したもので、実機ではまだ測っていない。実機日の最初に `real/fk_check.py` で確かめる
 - 中身は `common/elevator_press.py`（`contest_agent/agent.py` は評価環境の決まりにつなぐだけ）。設定は `configs/elevator.yaml`
 - シミュレーターの正解の値（ボタンの座標など）は使わない。観測（RGB・深度・内部パラメータ・関節の角度・IMU）と、
   機体のモデル（`robot.yaml`）だけを使う
@@ -448,7 +492,7 @@ $P Button_Press/J1-gen/sim/record_trial_video.py --seed 1          # 実際の�
 2. **計画**（`PressPlanner`。ボトルと同じ）: IK、腕と体の衝突、作業空間の箱、押し込みの直線
    - 指は押す向きから左・上に傾ける（右下から斜めに伸ばす）。傾きの候補を順に試す
    - **柱・壁との衝突**: 柱の面の向きに回した箱を置き、開始 → 手前の姿勢の移動で腕が当たらないかを確かめる。
-     当たるなら、壁から離れた右側の経由点を通る（指の向きを手前の姿勢とそろえて解く）
+     当たるなら、壁から離れた押す腕の側（右腕なら右）の経由点を通る（指の向きを手前の姿勢とそろえて解く）
    - **立つ位置**: 勧める範囲は **pelvis から柱の面まで 29〜40 cm、▲▼ の中点が体の中心から左右 6 cm 以内**
      （`elevator.yaml` の `press.stand`）。範囲の外なら「柱まで 43.2 cm と遠すぎる。あと 4 cm 以上近づく」のように、
      どちらへ何 cm 動けばよいかを出す。計画できなければ中止の理由に添え、計画できれば注意（⚠️）だけ出して押す
@@ -543,6 +587,9 @@ $P Button_Press/Yada/contest/evaluate_dds.py --seeds practice \
 学習データの Roboflow のデータセット `acc-stwam/elevator-button-jinxe-qb0gs` は CC BY 4.0）。
 代わりに、評価環境の画像から自分で学習する（元にするのはリポジトリの `yolo26n.pt`。Ultralytics、AGPL-3.0）。
 
+**2026-11-01 から、既定の重みは最終版の [weights/button_final8.pt](weights/README.md)**（8 本のラボの動画とシミュで学習。`.onnx` も同じ場所。
+リポジトリに入っているので `git pull` で届く）。下の手順・結果のうち `_local/button_press/button_yolo/weights/best.pt` は前の既定の重み。
+
 ```bash
 $P Button_Press/J1-gen/sim/make_button_dataset.py      # 学習データ（正解の枠は MuJoCo のセグメンテーションから自動）
 $P Button_Press/J1-gen/sim/train_button_yolo.py        # 学習 → _local/button_press/button_yolo/weights/best.pt
@@ -615,6 +662,8 @@ J1GEN_BUTTON_DETECTOR=yolo OMP_NUM_THREADS=2 $P Button_Press/Yada/contest/evalua
     --agent Button_Press/J1-gen/contest_agent --seeds practice --set realistic --report --workers 4
 ```
 
+- 既定（`elevator.yaml` の `yolo.weights`）と違う重みを試すときは、`J1GEN_BUTTON_WEIGHTS=<.pt のパス>` を付ける（2026-10-31）。
+
 #### 撮った写真で確かめる（`real/check_button_photos.py`）
 
 実機の日に撮った写真で、classic と YOLO がボタンを見つけられるかを並べて比べる。シミュレーションの画像だけで
@@ -674,3 +723,33 @@ $P Button_Press/J1-gen/real/check_button_photos.py _local/button_press/button_yo
 
 試したこと（2026-10-12）: 実機の写真はまだ無いので、シミュレーションの写真で、枠の下書き・保存・読み直し・
 混ぜ方をテストで確かめた（画面の操作は未確認）。
+
+#### PC2 で動かす（ONNX、`real/export_button_onnx.py`）
+
+G1 の PC2 の Python（3.12）では torch で GPU を使えず、ultralytics も入っていない。そこで重みを ONNX に書き出し、
+onnxruntime（CPU）で動かす。`configs/elevator.yaml` の `yolo.weights` に `.onnx` を書くと、`YoloButtonDetector` が
+Perception の `OnnxYoloDetector` で動く（torch・ultralytics を読み込まない）。
+
+```bash
+$P Button_Press/J1-gen/real/export_button_onnx.py      # .pt の隣に best.onnx を書き出し、.pt と比べる
+```
+
+- 書き出しは `end2end=False`（従来型の出力。重なりの間引きは `onnx_yolo.py` が行う）、opset 17（PC2 の TensorRT 8.5 でも読める）。
+  **YOLO26 の end-to-end の出力（`nms=False`。Perception の `export_onnx.py` の書き方）だと、このボタンのモデルでは `.pt` と
+  結果が大きく変わった**（確からしさが 1.0 に張り付き、4 個が 2 個になる。`.pt` の推論は従来型の出口を使っている）
+- 比べ方は 2 つ。1. 同じモデルか（`.pt` も 640×640 の正方形に入れて比べる。合否）、2. 今の使い方との差（ultralytics は
+  `.pt` を横長のまま入れるので、確からしさが少し変わる。記録だけ）
+- PC2 では `yolo.threads: 4` がよい（全コアより速い）
+
+結果（2026-10-31、検証用 30 枚と、ラボのエレベーターのスマホの写真 15 枚）:
+- 1. 同じモデルか: **45 / 45 で一致**（確からしさの差 0.000）
+- 2. 今の使い方との差: 個数と矢印が同じ 44 / 45（確からしさの差は最大 0.18）。残りの 1 枚は、確からしさが境目（0.4）に近い
+  ボタンが 1 つ ONNX 側で出なかった
+- 1 枚の時間（候補づくりを含む）: ノート PC の CPU で `.pt` 289 ms / `.onnx` 96 ms。**PC2 で 4 スレッド 179 ms**（全コアだと 397 ms）、
+  準備 0.2 秒。PC2 で torch・ultralytics を読み込まないことも確かめた
+- 評価環境（realistic、練習用の 20 試行、`.onnx`）: **20 / 20**、点灯までの平均 9.07 秒（`.pt` と同じ）、壁・柱との接触力は最大 2.0 N（1 試行だけ）
+
+```bash
+J1GEN_BUTTON_DETECTOR=yolo J1GEN_BUTTON_WEIGHTS=_local/button_press/button_yolo/weights/best.onnx OMP_NUM_THREADS=2 \
+    $P Button_Press/Yada/contest/evaluate.py --agent Button_Press/J1-gen/contest_agent --seeds practice --set realistic --report --workers 4
+```

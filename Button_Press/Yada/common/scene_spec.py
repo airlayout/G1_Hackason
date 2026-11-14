@@ -180,9 +180,6 @@ def build_hall_scene(cfg: dict[str, Any]) -> HallScene:
 
     w = cfg["wall"]
     fx = float(w["front_x"])
-    boxes.append(_box_from_ranges("hall_wall", (fx, fx + float(w["thickness"])), tuple(w["y_range"]),
-                                  (floor, floor + float(w["height"])), w["rgba"]))
-
     column = cfg.get("layout") == "column"
     d = cfg["door"]
     half_w = float(d["width"]) / 2.0
@@ -194,22 +191,48 @@ def build_hall_scene(cfg: dict[str, Any]) -> HallScene:
         cy = float(d["center_y"])
     top = floor + float(d["height"])
     gap = float(d["gap"])
-    front = fx - float(d["protrusion"])
-    # 左右の扉（y の大きい側が左）。真ん中に隙間を空ける
-    boxes.append(_box_from_ranges("hall_door_left", (front, fx), (cy + gap / 2.0, cy + half_w), (floor, top),
-                                  d["leaf_rgba"]))
-    boxes.append(_box_from_ranges("hall_door_right", (front, fx), (cy - half_w, cy - gap / 2.0), (floor, top),
-                                  d["leaf_rgba"]))
-    boxes.append(_box_from_ranges("hall_door_gap", (fx - float(d["protrusion"]) / 2.0, fx),
-                                  (cy - gap / 2.0, cy + gap / 2.0), (floor, top), d["gap_rgba"]))
-    # 三方枠
     fw = float(d["frame_width"])
     ff = fx - float(d["frame_protrusion"])
-    boxes.append(_box_from_ranges("hall_door_frame_left", (ff, fx), (cy + half_w, cy + half_w + fw), (floor, top + fw),
+    wall_x = (fx, fx + float(w["thickness"]))
+    wall_z = (floor, floor + float(w["height"]))
+    # 扉が壁の表面からどれだけ奥に引っ込んでいるか [m]（0 なら壁の表面から protrusion だけ前に出る、前の形）。
+    # 実機のラボのエレベーターは扉が奥に引っ込んでいる（2026-11-04）
+    recess = float(d.get("recess_m", 0.0))
+    if recess < 0.0:
+        raise ValueError(f"door.recess_m は 0 以上（前に出すときは protrusion を使う）: {recess}")
+    if recess > 0.0:
+        # 壁に、扉と三方枠の大きさの穴を空ける（穴の右・左・上の 3 つの箱にする）
+        y0, y1 = (float(v) for v in w["y_range"])
+        lo, hi = cy - half_w - fw, cy + half_w + fw
+        if not (y0 < lo and hi < y1 and top + fw < wall_z[1]):
+            raise ValueError("引っ込んだ扉の穴が壁（wall.y_range・height）の外に出る")
+        boxes.append(_box_from_ranges("hall_wall_right", wall_x, (y0, lo), wall_z, w["rgba"]))
+        boxes.append(_box_from_ranges("hall_wall_left", wall_x, (hi, y1), wall_z, w["rgba"]))
+        boxes.append(_box_from_ranges("hall_wall_top", wall_x, (lo, hi), (top + fw, wall_z[1]), w["rgba"]))
+        # 扉の板は穴の奥に置く（厚みは leaf_thickness_m）。板の後ろは見えないので何も置かない
+        t = float(d.get("leaf_thickness_m", 0.03))
+        leaf_x = (fx + recess, fx + recess + t)
+        gap_x = (fx + recess, fx + recess + t / 2.0)
+        # 三方枠は、壁の表面から frame_protrusion 前に出たところから、扉の板の面まで（穴の側面と上面を覆う）
+        frame_x = (ff, fx + recess)
+    else:
+        boxes.append(_box_from_ranges("hall_wall", wall_x, tuple(w["y_range"]), wall_z, w["rgba"]))
+        front = fx - float(d["protrusion"])
+        leaf_x = (front, fx)
+        gap_x = (fx - float(d["protrusion"]) / 2.0, fx)
+        frame_x = (ff, fx)
+    # 左右の扉（y の大きい側が左）。真ん中に隙間を空ける
+    boxes.append(_box_from_ranges("hall_door_left", leaf_x, (cy + gap / 2.0, cy + half_w), (floor, top),
+                                  d["leaf_rgba"]))
+    boxes.append(_box_from_ranges("hall_door_right", leaf_x, (cy - half_w, cy - gap / 2.0), (floor, top),
+                                  d["leaf_rgba"]))
+    boxes.append(_box_from_ranges("hall_door_gap", gap_x, (cy - gap / 2.0, cy + gap / 2.0), (floor, top), d["gap_rgba"]))
+    # 三方枠
+    boxes.append(_box_from_ranges("hall_door_frame_left", frame_x, (cy + half_w, cy + half_w + fw), (floor, top + fw),
                                   d["frame_rgba"]))
-    boxes.append(_box_from_ranges("hall_door_frame_right", (ff, fx), (cy - half_w - fw, cy - half_w),
+    boxes.append(_box_from_ranges("hall_door_frame_right", frame_x, (cy - half_w - fw, cy - half_w),
                                   (floor, top + fw), d["frame_rgba"]))
-    boxes.append(_box_from_ranges("hall_door_frame_top", (ff, fx), (cy - half_w - fw, cy + half_w + fw),
+    boxes.append(_box_from_ranges("hall_door_frame_top", frame_x, (cy - half_w - fw, cy + half_w + fw),
                                   (top, top + fw), d["frame_rgba"]))
 
     if column:

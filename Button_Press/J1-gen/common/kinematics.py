@@ -80,6 +80,13 @@ class ArmKinematics:
         """指の向き（手先リンクの x 軸、pelvis 座標）。"""
         return self.fk(q)[1][:, 0]
 
+    def jacobian_pos(self, q: np.ndarray) -> np.ndarray:
+        """指先の位置のヤコビアン (3, 7)。腕の 7 関節を動かしたとき、指先が pelvis 座標でどれだけ動くか。"""
+        pin = self._pin
+        J = pin.computeFrameJacobian(self.model, self.data, np.asarray(q, dtype=float), self.ee_frame,
+                                     pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
+        return J[:3, self.arm_idx].copy()
+
     # ---- IK -------------------------------------------------------------------
 
     def ik(
@@ -88,8 +95,14 @@ class ArmKinematics:
         q_seed: np.ndarray,
         target_axis: np.ndarray | None = None,
         max_iter: int | None = None,
+        row_normal: np.ndarray | None = None,
     ) -> IKResult:
         """手先を target_pos へ（与えれば指の向きを target_axis へ）合わせる片腕 7 関節の角度を求める。
+
+        row_normal: 与えると、指が並ぶ向き（手先リンクの z 軸）をこれとほぼ直角（設定の row_tol_deg 以内）にする（指の軸まわりのねじれを決める）。
+                押す向きを渡すと、親指〜小指の並びが押す面と平行になる。指を押す向きにまっすぐ向けたときは、
+                いちばん長い中指の先が最も前に出る（ゴムの手のメッシュで約 4 mm）。与えないとねじれは自由で、
+                2026-11-01 の実機（指が押す向きから約 40° 斜め）では小指側が 13〜15 mm 前に出て、小指で押していた。
 
         q_seed: 初期値（29 関節）。腰と反対の腕はこの値のまま固定する。記録した押し込み姿勢を渡すと、
                 それに近い解が得られる（余った自由度で q_seed に近づける項を入れている）。
@@ -111,6 +124,12 @@ class ArmKinematics:
         if target_axis is not None:
             axis_t = np.asarray(target_axis, dtype=float)
             axis_t = axis_t / np.linalg.norm(axis_t)
+        row_n = None
+        if row_normal is not None:
+            row_n = np.asarray(row_normal, dtype=float)
+            row_n = row_n / np.linalg.norm(row_n)
+        # 指の並びの傾きはこの角度まで許す（ちょうど直角に縛ると、届く範囲の端で収束しなかった）
+        row_tol = np.radians(float(c.get("row_tol_deg", c["tol_axis_deg"])))
         q = np.asarray(q_seed, dtype=float).copy()
         q_ref = q[self.arm_idx].copy()
         lo = self.lower[self.arm_idx] + margin
@@ -119,6 +138,7 @@ class ArmKinematics:
 
         e_pos = np.inf
         e_axis = 0.0
+        e_row = 0.0
         it = 0
         for it in range(1, n_iter + 1):
             pin.computeJointJacobians(self.model, self.data, q)
@@ -139,14 +159,22 @@ class ArmKinematics:
                 P = np.eye(3) - np.outer(a, a)
                 rows_e.append(w_axis * cross)
                 rows_j.append(w_axis * (P @ J[3:]))
-            if e_pos < tol_pos and (axis_t is None or e_axis < tol_axis):
+            if row_n is not None:
+                z = t.rotation[:, 2]
+                # z と row_n の内積を ±sin(row_tol) の中に入れる。d(z·n)/dt = (ω × z)·n = ω·(z × n)
+                c_row = float(np.dot(z, row_n))
+                e_row = abs(float(np.arcsin(np.clip(c_row, -1.0, 1.0))))
+                s_tol = float(np.sin(row_tol))
+                rows_e.append(np.array([-w_axis * (c_row - np.clip(c_row, -s_tol, s_tol))]))
+                rows_j.append(w_axis * (np.cross(z, row_n) @ J[3:])[None, :])
+            if e_pos < tol_pos and (axis_t is None or e_axis < tol_axis) and e_row < row_tol + tol_axis:
                 break
             e = np.concatenate(rows_e)
             Jt = np.vstack(rows_j)
             JJt = Jt @ Jt.T + (lam**2) * np.eye(Jt.shape[0])
             Jpinv = Jt.T @ np.linalg.inv(JJt)
             dq = Jpinv @ e
-            # 余った自由度（腕は 7 関節、条件は 5 つ）で、初期値の姿勢に近づける。
+            # 余った自由度（腕は 7 関節、条件は 5 つ。指の並びも決めるときは 6 つ）で、初期値の姿勢に近づける。
             # 手先を動かさない方向だけに入れるため、射影には減衰なしの擬似逆行列を使う
             # （減衰付きで射影すると、本来の目標とわずかに打ち消し合って収束しなくなる）
             N = np.eye(len(self.arm_idx)) - np.linalg.pinv(Jt, rcond=1e-4) @ Jt
@@ -156,7 +184,7 @@ class ArmKinematics:
                 dq *= max_step / n
             q[self.arm_idx] = np.clip(q[self.arm_idx] + dq, lo, hi)
 
-        ok = e_pos < tol_pos and (axis_t is None or e_axis < tol_axis)
+        ok = e_pos < tol_pos and (axis_t is None or e_axis < tol_axis) and e_row < row_tol + tol_axis
         at_limit = [
             JOINT_NAMES[i]
             for k, i in enumerate(self.arm_idx)
@@ -169,7 +197,8 @@ class ArmKinematics:
         elif not ok:
             reason = (
                 f"収束しない（位置の誤差 {e_pos * 1000:.1f} mm、"
-                f"指の向きの誤差 {np.degrees(e_axis):.1f}°、{it} 回）"
+                f"指の向きの誤差 {np.degrees(e_axis):.1f}°、"
+                + (f"指の並びの傾き {np.degrees(e_row):.1f}°、" if row_n is not None else "") + f"{it} 回）"
             )
         return IKResult(q=q, success=ok, pos_err=e_pos, axis_err=e_axis, iterations=it,
                         reason=reason, at_limit=at_limit)

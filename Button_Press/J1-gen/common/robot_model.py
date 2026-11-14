@@ -32,6 +32,9 @@ NUM_MOTORS: int = 29
 WAIST_IDX: tuple[int, ...] = (12, 13, 14)
 LEFT_ARM_IDX: tuple[int, ...] = tuple(range(15, 22))
 RIGHT_ARM_IDX: tuple[int, ...] = tuple(range(22, 29))
+# 片腕 7 関節（shoulder pitch, roll, yaw, elbow, wrist roll, pitch, yaw）のうち、左右で向きが逆になるもの（roll と yaw）。
+# 右腕の角度のこの成分の符号を変えると、体の左右（pelvis の y）を反転した左腕の姿勢になる（tests/test_elevator_arm_side.py）
+ARM_MIRROR_JOINTS: tuple[int, ...] = (1, 2, 4, 6)
 # arm_sdk で weight を入れる motor_cmd の番号
 ARM_SDK_WEIGHT_IDX: int = 29
 
@@ -91,3 +94,12 @@ def build_spec(robot_cfg: dict[str, Any], fixed_base: bool = True) -> Any:
 def load_model(robot_cfg: dict[str, Any], fixed_base: bool = True) -> Any:
     """頭カメラ付きの MjModel を返す。"""
     return build_spec(robot_cfg, fixed_base=fixed_base).compile()
+
+
+def mirror_arm_q(q_arm: Any) -> np.ndarray:
+    """片腕 7 関節の角度を、反対の腕の左右の鏡像の姿勢にする（右腕 ↔ 左腕。roll と yaw の符号を変える）。"""
+    q = np.array(q_arm, dtype=float)
+    if q.shape != (7,):
+        raise ValueError(f"片腕の角度は 7 つ: {q.shape}")
+    q[list(ARM_MIRROR_JOINTS)] *= -1.0
+    return q

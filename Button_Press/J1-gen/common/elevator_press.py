@@ -2,16 +2,24 @@
 
     ctl = ElevatorPressController.from_config(robot_cfg, press_cfg, arm_cfg, elevator_cfg)
     ctl.reset(target="up", control_dt=0.02, upper_kp=kp17)   # kp17: motor 12〜28 の PD の強さ
-    q29, done = ctl.step(rgb, depth, K, q, t, image_t, imu_quat)   # 上半身の目標の角度（29 関節の並び）
+    q29, done = ctl.step(rgb, depth, K, q, t, image_t, imu_quat, tau_est)   # 上半身の目標の角度（29 関節の並び）
 
 J1-gen の部品をそのまま使う:
 - 見つける: common/elevator_buttons.py（一般用の ▲▼、柱の面の向き、3 フレームでばらつきを確かめる）
 - 計画: common/press_planner.py（IK、腕と体の衝突、作業空間の箱、押し込みの直線）
 - 柱（壁）との衝突: 柱の面の位置から壁の箱を作り、開始 → 手前の姿勢の移動で腕が壁に当たらないかを確かめる。
-  当たるなら、壁から離れた右側の経由点を通る（fungi-55 さんの push_button の経由点と同じ考え方）。
+  当たるなら、壁から離れた押す腕の側（右腕なら右）の経由点を通る（fungi-55 さんの push_button の経由点と同じ考え方）。
   押し込みの直線は壁（ボタン）に触れるのが目的なので、壁とは調べない（体との衝突は調べる）
 - 重力: common/arm/gravity.py（IMU の向きを使う）。腕は弱い PD（kp 60）で重力を補償しないので、
   垂れる量（重力のトルク ÷ kp）だけ目標をずらす
+
+押す腕（press.arm。right / left / auto）: 設定の腕ごとの値（IK の初期姿勢、指の傾き、経由点、勧める立ち位置）は右腕の値で書き、
+左腕なら左右を反転して使う（common/pipeline.py のボトル押しと同じ考え方。G1 は左右対称）。
+auto は、右腕・左腕の両方の計画器を持ち、ボタンを見つけたあと（look の中）に、計画が立つ腕を選ぶ。試す順は、いつも
+右 → 左（右腕は実機で押した実績があるので、右腕で計画が立つなら右腕。立たないときだけ左腕。2026-11-13 に、ボタンが体の
+左寄りなら左腕から、という順をやめた。評価環境で、中心から数 cm 左の正面のボタンでも左腕が選ばれたため）。
+どちらも立たなければ中止（理由は両方の腕の分）。reset のたびに選び直す。腕に結び付いた状態は _use_side で全部切り替える。
+左腕は実機でまだ押していないので、既定は right のまま。
 
 段階:
   look → reach（関節空間で手前の姿勢へ。経由点があれば通る）→ settle（手前で止まり、指先のずれを補正）
@@ -26,6 +34,26 @@ weight が 0 に戻り、腕が柱の数 cm 手前から元の姿勢へ動く。
 確かめてある。押す向きと逆にまっすぐ離れる方法は、肘がたたまれて右の手首が胴体に入った（柱まで 31 cm で、
 面から 10 cm 以上離れると当たる。2026-10-14）。
 
+押す力の推定（tau_est が渡されたとき。common/push_force.py）: 押し込みを始める前の推定トルクを基準に、押し込み・保持の
+間に指先がボタンを押した力 [N] を推定し、保持が終わったら段階のメッセージと press_forces に残す。止める判断には
+使わない（止めるのは今までどおり関節の遅れ）。2026-11-03 の 19:39 の ▲ で「当たらなかった」のか「指が曲がって遅れが
+増えなかった」のかを、関節角からは区別できなかったため。
+
+腰を回して探す（press.waist_scan。既定はオフ。実機ではまだ確かめていない）: 腰 0° で時間内に ▲▼ を見つけられなかったとき、
+中止せず、腰 yaw を yaws_deg の順に回して（turn）、止まってから見る（look）。頭カメラは胴体に付いているので、腰をひねると
+カメラの向きが変わり、体の横にずれたボタンが画像に入る。見つけたら、その腰の角度のまま腕の計画・押し込みへ進む（腰の指令は
+q_hold[12] に持ち、腕の段階でも変えない）。終わる（home のあと・中止）とき、腰が回っていれば始めの角度へ戻して（untwist）から done にする。
+ひねる前に、深度で体の前の物までの距離を確かめる（common/front_clearance.py）。clear_x_m より近い・確かめられないときはひねらずに中止。
+回す順は、手がかりから決める（press.waist_scan.order_hint。最初に回す前に 1 回、reset のたびに決め直す）。ボタンが右にありそうなら
+−側（絶対値の小さい順）から、左なら +側から回し、反対側も必ず試す（外れて失うのは時間だけ。前の物までの距離の確認・角度の上限・
+速さは変えない）。手がかりは、1) look の間の最後の find で 1 つ以上見えているボタンの左右（ButtonFinder.last_buttons）、
+2) 深度で見た柱の面の左右の端（片方だけ見えていれば、切れている側へ柱が続くのでボタンはそちら）。どちらも無ければ設定の順のまま。
+2 は「ボタンは柱の面の中央あたりに付いている」という仮定に頼る（ラボの柱では ▲▼ の中点から右 20 cm〜左 25 cm が面）。
+
+ランプと扉を見続ける（common/lamp_watch.py）: 押し込み・保持・戻り・確認の間の新しい画像でも毎回ランプの明るさを見て、
+一度でも点灯していれば、確認のときに消えていても「点灯した」とする（かごがその階にいると、押している間だけ点く。
+2026-11-03）。手・前腕が写る画素は関節の角度から求めて除く。押したあとは乗り場の扉が開いたかも記録する（判断には使わない）。
+
 指先のずれの補正（Yada の見本のエージェントと同じ考え方）: 実際の関節の角度から指先の位置を計算（FK）し、
 目標とのずれを少しずつ足し込む。押す向きの成分は、押している間は足し込まない（押し込む力を出すため）。
 ボタンに触れる直前で補正を止める（触れたあとは摩擦で横に動けず、補正だけが膨らむため）。
@@ -34,6 +62,7 @@ weight が 0 に戻り、腕が柱の数 cm 手前から元の姿勢へ動く。
 from __future__ import annotations
 
 import copy
+import itertools
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -42,15 +71,21 @@ import numpy as np
 
 from .arm.gravity import GravityModel
 from .collision import CollisionChecker
-from .elevator_buttons import ButtonFinder, ButtonNotFound, ButtonTracker, CallButtons
+from .column_face import FaceFinder, FaceNotFound
+from .elevator_buttons import ButtonFinder, ButtonNotFound, ButtonTracker, CallButtons, calibration_offset
+from .front_clearance import front_distance
+from .lamp_watch import DoorWatch, LampWatch, hand_mask, load_stl_vertices, mesh_circles, segment_circles
 from .press_planner import PressPlan, PressPlanner, UnreachableError
-from .robot_model import WAIST_IDX
+from .push_force import PushForceMonitor
+from .robot_model import WAIST_IDX, mirror_arm_q
 
 UPPER_IDX = list(range(12, 29))
+WAIST_YAW = WAIST_IDX[0]  # 腰 yaw（motor 12）。29 関節の並びの index
 
 
 def finger_axis_for(normal: np.ndarray, left_deg: float, up_deg: float) -> np.ndarray:
-    """押す向き normal から、指の向きを決める（左・上に傾ける。右下から斜めに指を伸ばす）。"""
+    """押す向き normal から、指の向きを決める（左・上に傾ける。右下から斜めに指を伸ばす）。
+    左腕では left_deg に負の値を渡す（右へ傾ける。左下から斜めに伸ばす）。"""
     n = np.asarray(normal, dtype=float)
     left = np.cross([0.0, 0.0, 1.0], n)
     left /= np.linalg.norm(left)
@@ -83,29 +118,121 @@ class StepLog:
 
 class ElevatorPressController:
     def __init__(self, robot_cfg: dict[str, Any], planner: PressPlanner, finder: ButtonFinder,
-                 gravity: GravityModel, cfg: dict[str, Any]) -> None:
+                 gravity: GravityModel, cfg: dict[str, Any], planners: dict[str, PressPlanner] | None = None,
+                 auto: bool = False, face_finder: FaceFinder | None = None) -> None:
         self.robot_cfg = robot_cfg
-        self.planner = planner
-        self.kin = planner.kin
+        # 腰を回す順の手がかり（柱の面の端）に使う。None なら使わない
+        self.face_finder = face_finder
+        # 押す腕の候補。auto は 2 つ（右 → 左の順に持ち、その順に試す）。right / left は 1 つ
+        self.planners: dict[str, PressPlanner] = dict(planners) if planners else {planner.kin.side: planner}
+        self.auto = auto
+        self.default_side = planner.kin.side  # 腕がまだ決まっていない間・reset 直後の腕（auto は right）
         self.finder = finder
         self.gravity = gravity
         self.cfg = cfg
         self.tracker = ButtonTracker(cfg["tracking"])
+        self._hand_vertices_by_side: dict[str, np.ndarray] = {}  # 手のメッシュ（腕ごと。読むのは使うときだけ）
+        self._use_side(self.default_side)
         self.log: list[StepLog] = []
+        self._scan_cfg()  # 設定の誤り（max_deg を超える角度）は、作るときに ValueError にする
         # 押す前（見つけたとき）と点灯の確認のときの画像を、外へ渡す口（agent.py が記録に使う）。
         # on_snapshot(種類 "before" / "check", 画像 RGB, 内容の辞書)。無ければ何もしない
         self.on_snapshot: Callable[[str, np.ndarray, dict[str, Any]], None] | None = None
+        # 押す流れの節目を外へ渡す口（agent.py が G1 に喋らせるのに使う。common/announce.py、configs/voice.yaml）。
+        # on_event(名前): "press_start"（腕を伸ばし始める）/ "lit"（点灯した）/ "retry"（押し直す）/
+        # "not_confirmed"（点灯を確かめられない）/ "gave_up"（中止）。無ければ何もしない
+        self.on_event: Callable[[str], None] | None = None
 
     @classmethod
     def from_config(cls, robot_cfg: dict[str, Any], press_cfg: dict[str, Any], arm_cfg: dict[str, Any],
                     elevator_cfg: dict[str, Any]) -> "ElevatorPressController":
-        """press_cfg（configs/press.yaml）の press と ik を、elevator_cfg の press と ik で上書きして使う。"""
+        """press_cfg（configs/press.yaml）の press と ik を、elevator_cfg の press と ik で上書きして使う。
+        押す腕は elevator_cfg の press.arm（right / left / auto。無ければ right）。auto は両腕の計画器を作る。"""
         pc = copy.deepcopy(press_cfg)
         pc["press"].update(elevator_cfg["press"].get("planner", {}))
         pc["ik"].update(elevator_cfg.get("ik", {}))
-        planner = PressPlanner.from_config(robot_cfg, pc, arm_cfg, "right")
+        ep = elevator_cfg["press"]
+        by_set = (ep.get("by_button_set") or {}).get(elevator_cfg["geometry"].get("button_set", ""), {})
+        speed = ep.get("max_joint_speed_rad_s", by_set.get("max_joint_speed_rad_s"))  # その回の指定 > 押す組ごと
+        if speed is not None:
+            # 計画で許す関節の速さだけを変える（arm.yaml はボトルの送る側も使うので書き換えない）。送るときの頭打ちは
+            # 評価環境・run_dds の安全フィルタ（Yada の contest.yaml、1.0 rad/s）
+            arm_cfg = copy.deepcopy(arm_cfg)
+            arm_cfg["safety"]["max_joint_speed_rad_s"] = float(speed)
+        side = str(ep.get("arm", "right"))
+        if side not in ("left", "right", "auto"):
+            raise ValueError(f"press.arm は left / right / auto: {side}")
+        auto = side == "auto"
+        planners = {s: PressPlanner.from_config(robot_cfg, pc, arm_cfg, s) for s in (("right", "left") if auto else (side,))}
         finder = ButtonFinder.from_config(robot_cfg, elevator_cfg)
-        return cls(robot_cfg, planner, finder, GravityModel(robot_cfg), elevator_cfg)
+        face_finder = None
+        ws = ep.get("waist_scan") or {}
+        hint = ws.get("order_hint") or {}
+        if ws.get("enabled") and hint.get("enabled") and hint.get("use_face"):
+            from .config import load_config
+
+            face_finder = FaceFinder.from_config(robot_cfg, load_config("approach.yaml")["face"],
+                                                 offset=calibration_offset(elevator_cfg))
+        return cls(robot_cfg, planners["right" if auto else side], finder, GravityModel(robot_cfg), elevator_cfg,
+                   planners=planners, auto=auto, face_finder=face_finder)
+
+    def _use_side(self, side: str) -> None:
+        """押す腕を切り替える。腕に結び付いたもの（計画器・運動学・左右の符号・押す力の推定・手のメッシュ）を全部入れ替える。
+        _plan が作る柱の衝突判定（self.wall）は計画のたびに作り直すので、ここでは触らない。"""
+        self.planner = self.planners[side]
+        self.kin = self.planner.kin
+        self.side = self.kin.side
+        # 右腕の値で書いた設定（左右の向きを持つもの）を、押す腕に合わせる符号。右腕 +1、左腕 −1
+        self.sgn = 1.0 if self.side == "right" else -1.0
+        self.force = PushForceMonitor(self.kin, self.gravity)
+        self._hand_vertices = self._hand_vertices_by_side.get(side)
+
+    def _arm_order(self, call: CallButtons) -> list[str]:
+        """計画を試す腕の順。auto 以外は 1 つ。auto は、いつも右 → 左（右腕は実機で押した実績があるので、右腕で計画が
+        立つなら右腕で押す。左腕は、右腕で立たないときだけ）。"""
+        if not self.auto:
+            return [self.side]
+        return ["right", "left"]
+
+    def _plan_arm(self, q: np.ndarray, call: CallButtons, depth: float | None = None) -> None:
+        """押す計画を立てる。auto なら腕の候補を順に試し、最初に立った腕を選ぶ（self.side がその腕になる）。
+        どちらも立たなければ UnreachableError（理由に腕ごとの分を入れる）。そのとき腕は先に試した腕に戻す
+        （立つ位置の助言を、先に試した腕のもので出すため）。"""
+        if not self.auto:
+            self._plan(q, call, depth)
+            return
+        order = self._arm_order(call)
+        reasons: list[str] = []
+        for side in order:
+            self._use_side(side)
+            try:
+                self._plan(q, call, depth)
+            except UnreachableError as e:
+                reasons.append(f"{side} 腕: {e}")
+                continue
+            mid_y = float(((call.up.center + call.down.center) / 2.0)[1])
+            self._note(f"押す腕を選んだ: {side}（ボタンが体の中心から{'左' if mid_y > 0 else '右'} {abs(mid_y) * 100:.1f} cm）")
+            return
+        self._use_side(order[0])
+        raise UnreachableError(" / ".join(reasons))
+
+    def _scan_cfg(self) -> dict[str, Any]:
+        """press.waist_scan（既定はオフ）。yaws_deg に max_deg を超える角度があれば ValueError。"""
+        ws = dict(self.cfg["press"].get("waist_scan") or {})
+        yaws = [float(y) for y in ws.get("yaws_deg", [])]
+        mx = float(ws.get("max_deg", 20.0))
+        bad = [y for y in yaws if abs(y) > mx + 1e-9]
+        if bad:
+            raise ValueError(f"press.waist_scan.yaws_deg は max_deg（{mx:g}°）以内: {bad}")
+        ws["enabled"] = bool(ws.get("enabled", False))
+        ws["yaws_deg"] = yaws
+        oh = dict(ws.get("order_hint") or {})
+        oh["enabled"] = bool(oh.get("enabled", False))  # 設定に無ければ使わない（設定の順のまま）
+        oh["min_side_m"] = float(oh.get("min_side_m", 0.05))
+        oh["use_buttons"] = bool(oh.get("use_buttons", True))
+        oh["use_face"] = bool(oh.get("use_face", True))
+        ws["order_hint"] = oh
+        return ws
 
     # ---- 外から呼ぶ ------------------------------------------------------------------
 
@@ -118,6 +245,7 @@ class ElevatorPressController:
         if self.kp.shape != (len(UPPER_IDX),):
             raise ValueError(f"upper_kp は 17 個: {self.kp.shape}")
         self.phase, self.t_phase = "look", 0.0
+        self._use_side(self.default_side)  # auto は前の回に選んだ腕を残さない（look でまた選ぶ）
         self.lag0: float | None = None  # 押し込みを始めた周期の指令の遅れ（_enter("press") で測り直す）
         self.tracker.reset()
         self.last_image_t = -np.inf
@@ -134,30 +262,66 @@ class ElevatorPressController:
         self.baseline_level: float | None = None
         self.outcome = ""
         self.log = []
+        # 腰を回して探す状態（前の回の角度を残さない）
+        self.waist0: float | None = None  # 始めの腰 yaw [rad]（最初の step で測る）
+        self.scan_i = 0  # 次に試す yaws_deg の番号
+        self.scan_tried: list[float] = []  # 回して見た角度 [deg]
+        self.scan_order: list[float] | None = None  # 回す順（最初に回す前に決める。None はまだ）
+        self._seen_buttons: list[Any] = []  # 始めの姿勢の look の、最後の find で見えたボタン（今回の find で得たものだけ）
+        self._imu_quat: np.ndarray | None = None
+        self._turn: tuple[float, float, float] | None = None  # 回している間の (元の yaw, 目標の yaw [rad], 回す時間 [s])
+        self._look_until: float | None = None  # 回した先で見る期限（None は始めの姿勢の look。今までの期限を使う）
+        self.press_forces: list[dict[str, Any]] = []  # 押し込みの回ごとの推定した押す力（PushForceSummary.to_dict()）
+        self.lamp = LampWatch()
+        self._t_press: float | None = None
+        self._t_hold: float | None = None
+        self.door = DoorWatch(self.cfg["press"]["door_watch"]) if self.cfg["press"].get("door_watch") else None
 
     def step(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q: np.ndarray, t: float,
-             image_t: float, imu_quat: np.ndarray | None = None) -> tuple[np.ndarray, bool]:
-        """1 周期分。上半身の目標の角度（29 関節の並び。下半身は今の角度のまま）と、終わったかを返す。"""
+             image_t: float, imu_quat: np.ndarray | None = None,
+             tau_est: np.ndarray | None = None) -> tuple[np.ndarray, bool]:
+        """1 周期分。上半身の目標の角度（29 関節の並び。下半身は今の角度のまま）と、終わったかを返す。
+        tau_est（29。lowstate の推定トルク）を渡すと、押し込みの間の押す力を推定して記録する（止める判断には使わない）。"""
         q = np.asarray(q, dtype=float)
+        self._imu_quat = imu_quat
+        tau = None if tau_est is None else np.asarray(tau_est, dtype=float)
         if self.q_hold is None:
             self.q_hold = q.copy()
+        if self.waist0 is None:
+            self.waist0 = float(self.q_hold[WAIST_YAW])
         q_des = self.q_hold.copy()
         arm = self.kin.arm_idx
         el = t - self.t_phase
-        c = self.cfg["press"]
+        c = self._press_cfg()  # 押す組ごとの上書き（retract_s など）も重ねる
         done = False
         fresh = self._is_fresh(t, image_t)
+        if fresh and self.phase in ("press", "hold", "retract", "check", "home") and self.call is not None:
+            self._watch(rgb, depth, K, q, t)  # 確認より先に見る（同じ画像で確認するときも、見続けた結果に入れる）
 
         if self.phase == "look":
             if t >= float(c["look_start_s"]) and fresh:
                 self._look(rgb, depth, K, q, t)
-            if self.phase == "look" and t > float(c["look_start_s"]) + float(c["look_timeout_s"]):
+            ws = self._scan_cfg()
+            until = float(c["look_start_s"]) + float(c["look_timeout_s"]) if self._look_until is None else self._look_until
+            if self.phase == "look" and t > until:
                 st = c["stand"]
-                done = self._give_up(t, "時間内に一般用の ▲▼ を見つけられない"
-                                     + (f"（最後の理由: {self._last_reason}）" if getattr(self, "_last_reason", "") else "")
-                                     + f"。立つ位置を確かめる: 柱まで {float(st['min_dist_m']) * 100:.0f}〜"
-                                     f"{float(st['max_dist_m']) * 100:.0f} cm、左右 {float(st['max_side_m']) * 100:.0f} cm 以内"
-                                     "（遠いと高い ▲ が頭カメラの上に切れる）")
+                why = ("時間内に一般用の ▲▼ を見つけられない"
+                       + (f"（最後の理由: {self._last_reason}）" if getattr(self, "_last_reason", "") else "")
+                       + f"。立つ位置を確かめる: 柱まで {float(st['min_dist_m']) * 100:.0f}〜"
+                       f"{float(st['max_dist_m']) * 100:.0f} cm、左右 {float(st['max_side_m']) * 100:.0f} cm 以内"
+                       "（遠いと高い ▲ が頭カメラの上に切れる）")
+                if not ws["enabled"]:
+                    done = self._give_up(t, why)
+                elif self.scan_i >= len(ws["yaws_deg"]):
+                    tried = "、".join(f"{y:+g}°" for y in self.scan_tried) or "なし"
+                    done = self._give_up(t, f"{why}。腰を回して探した角度: {tried}（見つからない）")
+                else:
+                    done = self._next_scan(t, depth, K, q, ws, why)
+        elif self.phase in ("turn", "untwist"):
+            if self.q_ik is not None:
+                q_des[arm] = self.q_ik[arm]  # 押したあとなら、腕は戻した姿勢のまま（回すのは腰 yaw だけ）
+            self._twist(el, t, ws=self._scan_cfg())
+            q_des[WAIST_YAW] = self.q_hold[WAIST_YAW]
         elif self.phase == "reach":
             q_des[arm] = self._reach(el, t)
         elif self.phase == "settle":
@@ -171,6 +335,8 @@ class ElevatorPressController:
             lag = self._push_lag(q)
             if self.lag0 is None:
                 self.lag0 = lag  # 押す前からある遅れ（実機の重力補償 0.5 で 4.5 mm）。増え方で止める
+                self.force.start(self.plan_.push_dir)  # 押す前（手前で止まっていた間）の推定トルクを基準にする
+            self.force.measure("press", q, tau, imu_quat)
             if lag - self.lag0 > self._stop_lag():
                 p = self._stop_press(p, lag, t)
                 q_des[arm] = self._servo(q, p, integrate_push=False)
@@ -179,8 +345,10 @@ class ElevatorPressController:
                 if s >= 1.0:
                     self._enter("hold", t)
         elif self.phase == "hold":
+            self.force.measure("hold", q, tau, imu_quat)
             q_des[arm] = self._servo(q, self.plan_.end_point, integrate_push=False)
             if el >= float(c["hold_s"]):
+                self.finish_force()
                 self._enter("retract", t)
         elif self.phase == "retract":
             s = smoothstep(el / float(c["retract_s"]))
@@ -197,11 +365,14 @@ class ElevatorPressController:
             if el >= sum(T for _, _, T in self.home_legs):
                 self.q_ik[arm] = self.home_legs[-1][1]
                 self._note("腕を始めの姿勢へ戻した")
-                self._enter("done", t)
+                self._finish(t)  # 腰が回っていれば、始めの角度へ戻してから done
         elif self.phase == "done":
             q_des[arm] = self.q_ik[arm] if self.q_ik is not None else q_des[arm]
             done = True
 
+        if self.phase not in ("press", "hold"):
+            self.force.last_n = None
+        self.force.remember(q, tau, imu_quat)
         return self._gravity_offset(q_des, imu_quat), done
 
     def _is_fresh(self, t: float, image_t: float) -> bool:
@@ -227,24 +398,187 @@ class ElevatorPressController:
         self.log.append(StepLog(self.phase, msg))
         print(f"[elevator] {self.phase}: {msg}")
 
+    def _event(self, name: str) -> None:
+        """節目を on_event に渡す。外の口で何が起きても、押す流れ（50 Hz の制御）は止めない。"""
+        if self.on_event is None:
+            return
+        try:
+            self.on_event(name)
+        except Exception as e:  # noqa: BLE001
+            print(f"[elevator] ⚠️ on_event（{name}）で例外: {e}")
+
     def _enter(self, phase: str, t: float) -> None:
         self.phase, self.t_phase = phase, t
         if phase == "press":
             self.lag0 = None  # 押し込みを始めた周期の遅れを、次の step で測り直す
+            self._t_press = t
+        elif phase == "hold":
+            self._t_hold = t
+
+    def finish_force(self) -> None:
+        """押し込み・保持が終わった。推定した押す力を残す（tau_est が無ければ何もしない）。保持の途中で終わったとき
+        （評価環境は点灯した瞬間に終わる。Ctrl+C）も、外（contest_agent/agent.py）から呼んで、そこまでの分を残す。"""
+        summary = self.force.finish()
+        if summary is not None:
+            self.press_forces.append(summary.to_dict())
+            self._note(summary.text())
 
     def _give_up(self, t: float, why: str) -> bool:
+        """中止する。腰が回っていれば、始めの角度へ戻してから done にする（その間は False を返す）。"""
         self.outcome = f"中止: {why}"
         self._note(self.outcome)
+        self._event("gave_up")
+        return self._finish(t)
+
+    def _twisted(self) -> bool:
+        return self.waist0 is not None and abs(float(self.q_hold[WAIST_YAW]) - self.waist0) > 1e-6
+
+    def _finish(self, t: float) -> bool:
+        """終わる。腰が回っていれば始めの角度へ戻す段階（untwist）へ、回っていなければ done へ。done になったかを返す。"""
+        if self._twisted():
+            self._begin_turn(t, self.waist0, "untwist")
+            self._note(f"腰を始めの角度（{np.degrees(self.waist0):+.1f}°）へ戻す")
+            return False
         self._enter("done", t)
         return True
 
+    def _begin_turn(self, t: float, yaw: float, phase: str) -> None:
+        """腰 yaw を今の指令から yaw [rad] まで回す段階に入る。時間 = 角度差 / 速さ（最低 0.5 秒）。"""
+        ws = self._scan_cfg()
+        now = float(self.q_hold[WAIST_YAW])
+        dur = max(0.5, abs(np.degrees(yaw - now)) / float(ws.get("speed_deg_s", 10.0)))
+        self._turn = (now, float(yaw), float(dur))
+        self.tracker.reset()  # 前の角度のフレームと混ぜない
+        self._enter(phase, t)
+
+    def _twist(self, el: float, t: float, ws: dict[str, Any]) -> None:
+        """turn / untwist の 1 周期。腰 yaw の指令（q_hold[12]）だけを smoothstep で動かし、止まって settle_s 待ったら次へ
+        （turn は回した先の look へ、untwist は done へ）。"""
+        a, b, dur = self._turn
+        self.q_hold[WAIST_YAW] = a + smoothstep(el / dur) * (b - a)
+        if el < dur + float(ws.get("settle_s", 0.5)):
+            return
+        if self.phase == "untwist":
+            self._note("腰を始めの角度へ戻した")
+            self._enter("done", t)
+        else:
+            self._look_until = t + float(ws.get("look_s", 1.5))
+            self._enter("look", t)
+
+    def _next_scan(self, t: float, depth: np.ndarray, K: np.ndarray, q: np.ndarray, ws: dict[str, Any], why: str) -> bool:
+        """次の角度へ腰を回す。最初の 1 回の前に、前の物までの距離を確かめる（近い・確かめられないなら、ひねらずに中止）。"""
+        if self.scan_i == 0:
+            msg = self._front_check(depth, K, q, ws)
+            if msg:
+                return self._give_up(t, f"{msg}。{why}")
+            self.scan_order = self._decide_order(depth, K, q, ws)
+        order = self.scan_order if self.scan_order is not None else ws["yaws_deg"]
+        yaw = float(order[self.scan_i])
+        self.scan_i += 1
+        self.scan_tried.append(yaw)
+        self._note(f"腰を {yaw:+g}° へ回して探す（{self.scan_i}/{len(ws['yaws_deg'])} 番目）")
+        self._begin_turn(t, np.radians(yaw), "turn")
+        return False
+
+    @staticmethod
+    def _ordered(yaws: list[float], side: int) -> list[float]:
+        """side が +1 なら + の角度（絶対値の小さい順）→ − の角度（同）。−1 ならその逆。0 は設定の順のまま。"""
+        if side == 0:
+            return list(yaws)
+        pos = sorted((y for y in yaws if y > 0), key=abs)
+        neg = sorted((y for y in yaws if y < 0), key=abs)
+        zero = [y for y in yaws if y == 0]
+        return zero + (pos + neg if side > 0 else neg + pos)
+
+    def _side_from_buttons(self, oh: dict[str, Any]) -> tuple[int, str]:
+        """始めの look の最後の find で見えたボタンの y（pelvis 座標、左が +）の平均から、左右（+1 / −1 / 0）と理由。"""
+        if not self._seen_buttons:
+            return 0, "ボタンは見えていない"
+        ys = [float(np.asarray(b.center, dtype=float)[1]) for b in self._seen_buttons]
+        y = float(np.mean(ys))
+        if abs(y) < float(oh["min_side_m"]):
+            return 0, f"見えたボタン {len(ys)} 個の左右の平均 {y * 100:+.0f} cm が正面に近い（{float(oh['min_side_m']) * 100:.0f} cm 未満）"
+        return (1 if y > 0 else -1), f"見えたボタン {len(ys)} 個の左右の平均 {y * 100:+.0f} cm"
+
+    def _side_from_face(self, depth: np.ndarray, K: np.ndarray, q: np.ndarray, oh: dict[str, Any]) -> tuple[int, str]:
+        """深度で見た柱の面の端から、左右（+1 / −1 / 0）と理由。「ボタンは柱の面の中央あたりに付いている」という仮定に頼る。"""
+        if self.face_finder is None or depth is None:
+            return 0, "柱の面を見る道具が無い"
+        try:
+            face = self.face_finder.find(depth, K, np.asarray(q, dtype=float)[list(WAIST_IDX)], self._imu_quat)
+        except FaceNotFound as e:
+            return 0, f"柱の面が見つからない（{e}）"
+        except Exception as e:  # 手がかりのために探索を止めない
+            return 0, f"柱の面を測れない（{type(e).__name__}: {e}）"
+        le, re = face.left_edge_m, face.right_edge_m
+        if le is None and re is None:
+            return 0, "柱の面の両端が画像の縁で切れている"
+        if (le is None) != (re is None):
+            # 片方だけ見える: 柱は切れている側へ続く。ボタンは面の中央あたり、という仮定でそちらにある
+            return (1, "柱の面の右の端だけ見える（左は画像の縁で切れている）") if le is None else \
+                   (-1, "柱の面の左の端だけ見える（右は画像の縁で切れている）")
+        mid = (float(le) + float(re)) / 2
+        if abs(mid) < float(oh["min_side_m"]):
+            return 0, f"柱の面の中央 {mid * 100:+.0f} cm が正面に近い（{float(oh['min_side_m']) * 100:.0f} cm 未満）"
+        return (1 if mid > 0 else -1), f"柱の面の中央 {mid * 100:+.0f} cm（端 左 {float(le) * 100:+.0f} / 右 {float(re) * 100:+.0f} cm）"
+
+    def _decide_order(self, depth: np.ndarray, K: np.ndarray, q: np.ndarray, ws: dict[str, Any]) -> list[float]:
+        """回す順を決める。手がかり（ボタン → 柱の面の端）の左右で、その側の角度から回す。分からなければ設定の順。"""
+        yaws = list(ws["yaws_deg"])
+        oh = ws["order_hint"]
+        if not oh["enabled"]:
+            return yaws
+        side, why = 0, ""
+        if oh["use_buttons"]:
+            side, why = self._side_from_buttons(oh)
+            why = "ボタン: " + why
+        if side == 0 and oh["use_face"] and (not oh["use_buttons"] or not self._seen_buttons):
+            side, why2 = self._side_from_face(depth, K, q, oh)
+            why = (why + " → " if why else "") + "柱の面（ボタンは柱の面の中央あたり、という仮定）: " + why2
+        order = self._ordered(yaws, side)
+        name = {1: "左（+）", -1: "右（−）", 0: "分からない"}[side]
+        self._note(f"回す順: {'、'.join(f'{y:+g}°' for y in order)}（ボタンは{name}と見た。{why or '手がかりを使わない設定'}）")
+        return order
+
+    def _front_distance(self, depth: np.ndarray, K: np.ndarray, q: np.ndarray, ws: dict[str, Any]) -> tuple[float | None, int]:
+        """深度から、体の前の物までの距離 [m] と使った点の数（頭カメラの変換が無い・点が足りなければ None）。"""
+        cam = getattr(self.finder, "cam_tf", None)
+        if cam is None or depth is None:
+            return None, 0
+        rot, pos = cam.pelvis_from_optical(np.asarray(q, dtype=float)[list(WAIST_IDX)])
+        pos = pos + np.asarray(getattr(cam, "offset", np.zeros(3)), dtype=float)
+        z0, z1 = (float(v) for v in ws.get("front_z_m", [0.0, 0.40]))
+        return front_distance(depth, K, rot, pos, (z0, z1), float(ws.get("front_half_width_m", 0.35)),
+                              float(ws.get("front_percentile", 3.0)), int(ws.get("front_min_points", 300)))
+
+    def _front_check(self, depth: np.ndarray, K: np.ndarray, q: np.ndarray, ws: dict[str, Any]) -> str:
+        """ひねってよいか。よければ空、だめなら理由の文。"""
+        clear = float(ws["clear_x_m"])
+        dist, n = self._front_distance(depth, K, q, ws)
+        if dist is None:
+            return f"前の物までの距離を深度から確かめられない（上体の高さ・幅の点が {n} 個）ので、腰をひねって探さない"
+        if dist < clear:
+            need = max(1, int(np.ceil((clear - dist) * 100 - 1e-6)))
+            return (f"柱に近すぎるので腰をひねって探さない（前の物まで {dist * 100:.0f} cm、"
+                    f"{clear * 100:.0f} cm 以上必要。あと {need} cm 下がる）")
+        self._note(f"前の物まで {dist * 100:.0f} cm（{clear * 100:.0f} cm 以上あるのでひねってよい。点 {n} 個）")
+        return ""
+
     def _look(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q: np.ndarray, t: float) -> None:
+        # 回す順の手がかり: finder.last_buttons は find のたびに新しい list に差し替わる。差し替わっていなければ（find が
+        # その前に例外を出した・last_buttons の無い偽の finder）、古い値なので使わない。回したあとの look では更新しない
+        before = getattr(self.finder, "last_buttons", None)
         try:
             call = self.finder.find(rgb, depth, K, q[list(WAIST_IDX)])
         except ButtonNotFound as e:
+            self._note_buttons(before)
             self._last_reason = str(e)
             self.tracker.reset()
             return
+        except BaseException:
+            self._note_buttons(before)
+            raise
+        self._note_buttons(before)
         merged = self.tracker.add(call)
         if merged is None:
             return
@@ -253,16 +587,35 @@ class ElevatorPressController:
         b = merged.button(self.target)
         self.baseline_brightness = self._brightness(rgb, b.bbox)
         self.baseline_level = self._lit_level(rgb, b.bbox)
+        self._start_door(merged, depth, K, q)
         self._snapshot("before", rgb, b.bbox, t, level=self.baseline_level, retry=0)
-        advice = self._stand_advice(merged)
+        prelit = self.cfg["press"]["lit_check"].get("prelit_level")
+        if prelit is not None and self.baseline_level >= float(prelit):
+            # 呼びはもう登録されている。押すと、かごが着いてランプが消えたときに「点かなかった」と判定し、
+            # 強く押し直してしまう（2026-11-03 の 19:45 の ▲。押す前 234 → 確認のとき 54）
+            self._give_up(t, f"押す前から点灯している（明るい部分 {self.baseline_level:.0f}、{float(prelit):.0f} 以上）ので押さない。"
+                          "ランプが消えてから（かごが着いてから）押し直す")
+            return
+        err: UnreachableError | None = None
         try:
-            self._plan(q, merged)
+            self._plan_arm(q, merged)
         except UnreachableError as e:
-            self._give_up(t, (f"{advice}。" if advice else "") + f"計画できない: {e}")
+            err = e
+        advice = self._stand_advice(merged)  # 選んだ腕（auto でどちらも立たないときは先に試した腕）の範囲で出す
+        if err is not None:
+            self._give_up(t, (f"{advice}。" if advice else "") + f"計画できない: {err}")
             return
         if advice:
             self._note(f"⚠️ {advice}（計画は立ったので押す）")
+        self._event("press_start")
         self._enter("reach", t)
+
+    def _note_buttons(self, before: Any) -> None:
+        """始めの姿勢（scan_i == 0）の look で、この find が更新した last_buttons だけを覚える（更新されていなければ空）。"""
+        if self.scan_i != 0:
+            return
+        now = getattr(self.finder, "last_buttons", None)
+        self._seen_buttons = list(now) if (now is not None and now is not before) else []
 
     def _stand_advice(self, call: CallButtons) -> str:
         """立っている位置が勧める範囲（press.stand）の外なら、どちらへ何 cm 動けばよいかの文。範囲の中なら空。
@@ -272,10 +625,11 @@ class ElevatorPressController:
         範囲の外でも押せることは多い（推定の位置は realistic で押す向きに最大 19 mm ずれる）ので、この文で止めはしない。
         計画できなかったときの理由に添え、計画できたときは注意として出す。
         """
-        st = self.cfg["press"]["stand"]
+        st = self._press_cfg()["stand"]
         mid = (call.up.center + call.down.center) / 2.0
         dist, side = float(mid @ call.normal), float(mid[1])
         lo, hi, w = float(st["min_dist_m"]), float(st["max_dist_m"]), float(st["max_side_m"])
+        center = self.sgn * float(st.get("center_side_m", 0.0))  # 右腕の値で書いてある。左腕なら左右を反転
         def cm(m: float) -> int:  # 動く量は切り上げ（「あと 0 cm」と出さない）
             return max(1, int(np.ceil(m * 100 - 1e-6)))
 
@@ -284,68 +638,110 @@ class ElevatorPressController:
             msgs.append(f"柱まで {dist * 100:.1f} cm と近すぎる。あと {cm(lo - dist)} cm 以上下がる")
         elif dist > hi:
             msgs.append(f"柱まで {dist * 100:.1f} cm と遠すぎる。あと {cm(dist - hi)} cm 以上近づく")
-        if abs(side) > w:
-            way = "左" if side > 0 else "右"
-            msgs.append(f"ボタンが体の中心から{way}に {abs(side) * 100:.1f} cm。{way}へ {cm(abs(side) - w)} cm 以上寄る")
+        def lr(y: float) -> str:
+            return "左" if y > 0 else "右"
+
+        if abs(side - center) > w:
+            way = lr(side - center)
+            msgs.append(f"ボタンが体の中心から{lr(side)}に {abs(side) * 100:.1f} cm。{way}へ {cm(abs(side - center) - w)} cm 以上寄る")
         if not msgs:
             return ""
+        side_text = (f"左右 {w * 100:.0f} cm 以内" if center == 0.0 else
+                     f"ボタンが体の中心から{lr(center)} {abs(center) * 100:.0f}±{w * 100:.0f} cm")
+        target = f"、目安は柱まで {float(st['target_dist_m']) * 100:.0f} cm" if "target_dist_m" in st else ""
         return ("立つ位置が勧める範囲の外: " + "、".join(msgs)
-                + f"（勧める範囲: 柱まで {lo * 100:.0f}〜{hi * 100:.0f} cm、左右 {w * 100:.0f} cm 以内）")
+                + f"（勧める範囲: 柱まで {lo * 100:.0f}〜{hi * 100:.0f} cm、{side_text}{target}）")
+
+    def can_plan(self, q: np.ndarray, call: CallButtons, target: str) -> str | None:
+        """押す計画が立つか（腕は動かさない）。立てば None、立たなければ理由の文。
+
+        立つ位置まで寄る（common/approach.py）が「押し方の候補のどれかで計画が立つか」を止める判断に使う。
+        押すときと同じ候補（初期姿勢・指の傾き・経由点・指の並び）を順に試す。状態は reset し直すので、押すのには使わない。
+        """
+        self.reset(target, 0.02, np.ones(len(UPPER_IDX)))
+        try:
+            self._plan_arm(np.asarray(q, dtype=float), call)
+        except UnreachableError as e:
+            return str(e)
+        return None
+
+    def stand_cfg(self) -> dict[str, Any]:
+        """勧める立つ位置（press.stand に押す組ごとの上書きを重ねたもの。center_side_m は右腕の値）。"""
+        return dict(self._press_cfg()["stand"])
+
+    def _press_cfg(self) -> dict[str, Any]:
+        """press の設定に、押す組（geometry.button_set）ごとの上書き（press.by_button_set）を重ねたもの。"""
+        c = self.cfg["press"]
+        over = (c.get("by_button_set") or {}).get(self.cfg["geometry"].get("button_set", ""), {})
+        return {**c, **over}
 
     def _plan(self, q: np.ndarray, call: CallButtons, depth: float | None = None) -> None:
-        c = self.cfg["press"]
+        c = self._press_cfg()
         n = call.normal
         face = call.button(self.target).center
         # 中指の先（の球の中心）の目標: 球の表面がボタンの面に触れる位置
         touch = face - float(c["tip_radius_m"]) * n
-        seed = q.copy()
-        seed[self.kin.arm_idx] = np.asarray(c["ik_seed_right_arm"], dtype=float)
         approach = touch - float(self.planner.cfg["approach_distance_m"]) * n
-        # 姿勢を選ぶため、まず位置だけで解いてから、指の向きも合わせる（Yada の見本と同じ 2 段）
-        r0 = self.kin.ik(approach, seed)
-        if r0.success:
-            seed = r0.q
-        wall = CollisionChecker(self.robot_cfg, "right", float(c["wall_clearance_m"]),
+        # IK の初期姿勢の候補（右腕の値。左腕なら鏡像）。ik_seed_right_arm のあとに、ik_seed_right_arm_more を順に試す
+        # （車いす用は、手首を曲げてボタンを体の中央寄りでも押す姿勢。press.by_button_set.wheelchair）
+        seeds = []
+        for k, seed_arm in enumerate([c["ik_seed_right_arm"]] + list(c.get("ik_seed_right_arm_more") or [])):
+            seed = q.copy()
+            seed_arm = np.asarray(seed_arm, dtype=float)
+            seed[self.kin.arm_idx] = seed_arm if self.side == "right" else mirror_arm_q(seed_arm)
+            # 姿勢を選ぶため、まず位置だけで解いてから、指の向きも合わせる（Yada の見本と同じ 2 段）
+            r0 = self.kin.ik(approach, seed)
+            seeds.append((k, r0.q if r0.success else seed))
+        wall = CollisionChecker(self.robot_cfg, self.side, float(c["wall_clearance_m"]),
                                 [wall_obstacle(call, self.cfg["wall"])])
         self.wall = wall
         errors: list[str] = []
         # 指の傾きは候補を順に試す（柱が近く面が斜めのとき、最初の傾きでは手首が胴体に近づきすぎた。
         # 2026-10-07、realistic の seed 8）
-        for left_deg, up_deg in c["finger_tilts_deg"]:
-            finger = finger_axis_for(n, float(left_deg), float(up_deg))
+        # 指が並ぶ向きを押す面と平行にする（press.level_finger_row）。2026-11-01 の実機では、ねじれが自由で
+        # 小指側が 13〜15 mm 前に出て、小指の先で斜めに押していた（細い小指が曲がり、力が伝わらなかった）。
+        # 縛ると計画が立たない位置がある（35°/20° では pelvis から z +0.04 の低いボタンや柱まで 36 cm 以上）ので、
+        # どの候補でも立たないときだけ、縛らずに計画し直す
+        rows = [n, None] if c.get("level_finger_row", False) else [None]
+        # 初期姿勢は、指の並びを縛るかより内側で回す（手首を曲げた姿勢で縛れるなら、縛らない今の姿勢より先に使う）
+        for row, (k, seed), (left_deg, up_deg) in itertools.product(rows, seeds, c["finger_tilts_deg"]):
+            # 指の傾きは右腕の値（左へ傾ける）。左腕なら右へ傾ける
+            finger = finger_axis_for(n, self.sgn * float(left_deg), float(up_deg))
             for via in [None] + list(self._via_points(touch, n)):
                 q_via = None
                 what = f"指 {left_deg:g}°/{up_deg:g}°、" + (
-                    "経由点なし" if via is None else f"経由点 {np.round(via, 3).tolist()}")
+                    "経由点なし" if via is None else f"経由点 {np.round(via, 3).tolist()}") + (
+                    "、指の並びは縛らない" if row is None and len(rows) > 1 else "") + (
+                    f"、初期姿勢 {k + 1} 番目（ik_seed_right_arm_more）" if k > 0 else "")
                 if via is not None:
                     # 経由点でも指を手前の姿勢と同じ向きにする（位置だけで解くと、手首を大きく曲げた解になり、
                     # 関節リミットや胴体に当たった。2026-10-07、評価環境の seed 1 の ▼）
                     rv = self.kin.ik(via, seed)
-                    rv = self.kin.ik(via, rv.q if rv.success else seed, finger)
+                    rv = self.kin.ik(via, rv.q if rv.success else seed, finger, row_normal=row)
                     if not rv.success:
                         errors.append(f"{what}: 経由点に届かない（{rv.reason}）")
                         continue
                     q_via = rv.q[self.kin.arm_idx]
                 try:
                     plan = self.planner.plan(q, touch, n, q_seed=seed, depth=depth, q_via_arm=q_via,
-                                             finger_axis=finger)
+                                             finger_axis=finger, row_normal=row)
                     self._check_wall(wall, q, plan)
                 except UnreachableError as e:
                     errors.append(f"{what}: {e}")
                     continue
                 self.plan_ = plan
                 self._build_legs(q, plan)
-                self._note(f"計画（{what}）: {plan.summary()}")
+                self._note(f"計画（{self.side} 腕、{what}）: {plan.summary()}")
                 return
         raise UnreachableError(" / ".join(errors))
 
     def _via_points(self, touch: np.ndarray, n: np.ndarray):
-        """壁から離れた、体の右側の経由点（手前の姿勢へ、壁をこすらずに入るため）。"""
+        """壁から離れた、押す腕の側（右腕なら右、左腕なら左）の経由点（手前の姿勢へ、壁をこすらずに入るため）。"""
         v = self.cfg["press"]["via"]
-        right = np.cross(n, [0.0, 0.0, 1.0])
-        right /= np.linalg.norm(right)
+        out = self.sgn * np.cross(n, [0.0, 0.0, 1.0])  # 押す腕の側（右腕なら右）
+        out /= np.linalg.norm(out)
         for back, side in v["offsets_m"]:
-            p = touch - float(back) * n + float(side) * right
+            p = touch - float(back) * n + float(side) * out
             p[2] = max(p[2], float(v["min_height_m"]))
             yield p
 
@@ -354,11 +750,17 @@ class ElevatorPressController:
         arm = self.kin.arm_idx
         pts = [q[arm]] + ([plan.q_via] if plan.q_via is not None else []) + [plan.q_approach]
         n = int(self.cfg["wall"]["path_samples"])
+        # 開始姿勢ですでに近い組（実機の立った姿勢では、下ろした手が股関節の当たり判定に入っている。ハンドの衝突形状は
+        # メッシュを包む箱で実物より大きい。2026-10-21 の実機で −7.4 mm）は、最初の区間では開始より近づかない間は許す
+        # （PressPlanner.plan と同じ。許さないと、実機の立った姿勢ではどの位置でも「柱・壁に当たる」で断られる）
+        start_dist = {(h.body1, h.body2): h.dist for h in wall.contacts(q)}
         for leg, (a, b) in enumerate(zip(pts[:-1], pts[1:]), start=1):
             for k, s in enumerate(np.linspace(0.0, 1.0, n + 1)[1:], start=1):
                 qq = q.copy()
                 qq[arm] = a + smoothstep(float(s)) * (b - a)
                 hits = wall.contacts(qq)
+                if leg == 1:
+                    hits = [h for h in hits if h.dist < start_dist.get((h.body1, h.body2), np.inf) - 1e-3]
                 if hits:
                     raise UnreachableError(f"手前の姿勢へ動く途中（区間 {leg}/{len(pts) - 1} の {k}/{n}）で腕が柱・壁に"
                                            "当たる: " + "; ".join(str(h) for h in hits[:2]))
@@ -402,7 +804,7 @@ class ElevatorPressController:
         return False
 
     def _servo(self, q: np.ndarray, p_goal: np.ndarray, integrate_push: bool) -> np.ndarray:
-        """指先を p_goal に合わせる右腕 7 関節。実際の指先とのずれを積分して目標に足す。"""
+        """指先を p_goal に合わせる押す腕の 7 関節。実際の指先とのずれを積分して目標に足す。"""
         c = self.cfg["press"]["servo"]
         n = self.plan_.push_dir
         tip = self.kin.fk_pos(q)
@@ -412,7 +814,7 @@ class ElevatorPressController:
                 e = e - (e @ n) * n
             self.corr = np.clip(self.corr + float(c["gain"]) * self.dt * e, -float(c["max_m"]), float(c["max_m"]))
         axis = self.plan_.finger_axis
-        r = self.kin.ik(p_goal + self.corr, self.q_ik, axis, max_iter=50)
+        r = self.kin.ik(p_goal + self.corr, self.q_ik, axis, max_iter=50, row_normal=self.plan_.row_normal)
         if np.isfinite(r.pos_err) and r.pos_err < float(c["accept_err_m"]):
             self.q_ik = r.q
         return self.q_ik[self.kin.arm_idx]
@@ -450,6 +852,10 @@ class ElevatorPressController:
         return float(patch.mean()) if patch.size else float("nan")
 
     def _lit_level(self, rgb: np.ndarray, bbox: tuple[int, int, int, int]) -> float:
+        return self._lit_level_visible(rgb, bbox)[0]
+
+    def _lit_level_visible(self, rgb: np.ndarray, bbox: tuple[int, int, int, int],
+                           covered: np.ndarray | None = None) -> tuple[float, float]:
         """ボタンの明るい部分の明るさ: 枠に内接する楕円を lit_check.radius 倍に広げた範囲の、明るい側から
         lit_check.percentile % の値（0〜255）。
 
@@ -457,6 +863,9 @@ class ElevatorPressController:
         枠全体の平均では輪の光が薄まり、上がり方が +21〜+31（以前のしきい値 +25 でぎりぎり）だった。明るい側の値なら
         +51〜+95。評価環境（面全体が白くなる）では +39〜+55（点灯していないときは 1 以下）。縁の輪の平均は、
         評価環境で黒い盤が混ざって +18〜+34 に薄まったので使わない。
+
+        covered（画像と同じ大きさの真偽）を渡すと、その画素（手・前腕が写る所）を除いて求める。
+        返すのは (明るさ, 範囲のうち使えた画素の割合)。
         """
         lc = self.cfg["press"]["lit_check"]
         x1, y1, x2, y2 = bbox
@@ -466,11 +875,16 @@ class ElevatorPressController:
         a1, b1 = max(int(np.floor(cx - ro * rx)), 0), max(int(np.floor(cy - ro * ry)), 0)
         a2, b2 = min(int(np.ceil(cx + ro * rx)), w), min(int(np.ceil(cy + ro * ry)), h)
         if a2 <= a1 or b2 <= b1:
-            return float("nan")
+            return float("nan"), 0.0
         v, u = np.mgrid[b1:b2, a1:a2]
         inside = np.hypot((u + 0.5 - cx) / rx, (v + 0.5 - cy) / ry) <= ro
+        n_all = int(inside.sum())
+        if covered is not None:
+            inside &= ~covered[b1:b2, a1:a2]
         gray = np.asarray(rgb[b1:b2, a1:a2], dtype=float).mean(axis=2)
-        return float(np.percentile(gray[inside], float(lc["percentile"]))) if inside.any() else float("nan")
+        if not inside.any():
+            return float("nan"), 0.0
+        return float(np.percentile(gray[inside], float(lc["percentile"]))), float(inside.sum()) / max(n_all, 1)
 
     def _current_bbox(self, rgb: np.ndarray, bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
         """見つけたときの枠に最も近い、今の画像のボタンの枠。無ければ、見つけたときの枠のまま。
@@ -532,25 +946,117 @@ class ElevatorPressController:
         if self._is_lit(level, rise):
             self.outcome = "点灯した"
             self._note(f"点灯した（{shown}）")
+            self._event("lit")
+            self._start_home(t)
+            return True
+        seen = self.lamp.seen
+        if seen is not None:
+            # 確認のときには消えていたが、押している間・戻る間に点灯を見た（かごがその階にいた・すぐ来た）
+            self.outcome = "点灯した（確認のときには消えていた）"
+            self._event("lit")
+            self._note(f"点灯した: {seen['phase']} の {seen['t'] - self.t_contact():+.1f} 秒（当たってから）に"
+                       f"明るい部分 {seen['rise']:+.0f} を見た（見えた割合 {seen['visible'] * 100:.0f}%）。確認のときは {shown}。押し直さない")
             self._start_home(t)
             return True
         if self.retries >= int(c["max_retries"]):
             self.outcome = f"点灯を確かめられない（{shown}）"
             self._note(self.outcome)
+            self._event("not_confirmed")
             self._start_home(t)
             return True
         self.retries += 1
         depth = min(self.plan_.depth + float(c["retry_extra_depth_m"]), float(self.planner.cfg["max_press_depth_m"]))
         self._note(f"点灯していない（{shown}）。{depth * 1000:.0f} mm で押し直す")
+        self._event("retry")
         p = self.plan_
         self.plan_ = PressPlan(**{**p.__dict__, "end_point": p.target_point + depth * p.push_dir, "depth": depth})
         self._enter("press", t)
         return False
 
+    def t_contact(self) -> float:
+        """最後の押し込みで指が止まった（保持に入った）時刻。まだなら押し込みを始めた時刻。"""
+        return self._t_hold if self._t_hold is not None else (self._t_press or 0.0)
+
+    def _hand_circles(self, q: np.ndarray, K: np.ndarray) -> list[tuple[float, float, float]]:
+        """押す腕の手（ゴムの手のメッシュの頂点）と前腕（肘 → 手首）が画像に写る円の並び。"""
+        lw = self.cfg["press"]["lit_watch"]
+        if self._hand_vertices is None:
+            from .config import resolve_repo_path
+
+            urdf = resolve_repo_path(self.robot_cfg["model"]["urdf_path"])
+            self._hand_vertices = load_stl_vertices(urdf.parent / "meshes" / f"{self.side}_rubber_hand.STL")
+            self._hand_vertices_by_side[self.side] = self._hand_vertices
+        cam = self.finder.cam_tf
+        rot, pos = cam.pelvis_from_optical(np.asarray(q, dtype=float)[list(WAIST_IDX)])
+        pos = pos + np.asarray(getattr(cam, "offset", np.zeros(3)), dtype=float)
+        K = np.asarray(K, dtype=float)
+        self.kin.fk_pos(q)  # oMf を更新する
+        frame = lambda name: self.kin.data.oMf[self.kin.model.getFrameId(f"{self.side}_{name}")]
+        hand = frame("rubber_hand")
+        verts = self._hand_vertices @ hand.rotation.T + hand.translation
+        return (mesh_circles(verts, float(lw["hand_margin_m"]), K, rot, pos)
+                + segment_circles(frame("elbow_link").translation, frame("wrist_yaw_link").translation,
+                                  float(lw["forearm_radius_m"]), K, rot, pos))
+
+    def _start_door(self, call: CallButtons, depth: np.ndarray, K: np.ndarray, q: np.ndarray) -> None:
+        """乗り場の扉を見る範囲と基準の深度を決める（見つけたとき。腕はまだ下ろしている）。"""
+        if self.door is None or not hasattr(self.finder, "cam_tf"):
+            return
+        cam = self.finder.cam_tf
+        rot, pos = cam.pelvis_from_optical(np.asarray(q, dtype=float)[list(WAIST_IDX)])
+        pos = pos + np.asarray(getattr(cam, "offset", np.zeros(3)), dtype=float)
+        mid = (call.up.center + call.down.center) / 2.0
+        n = self.door.start(mid, call.normal, depth, np.asarray(K, dtype=float), rot, pos)
+        self._note(f"乗り場の扉を見る範囲: {n} 画素（記録だけ。判断には使わない）")
+
+    def _watch(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray, q: np.ndarray, t: float) -> None:
+        """押し込みから戻るまでの新しい画像で、ランプの明るさと扉を見る。lit_watch.hand_mask なら手の写る画素を除く
+        （シミュレーションの白い手。実機の手は黒いので除かない。どちらでも見えた割合は記録する）。
+
+        枠は見つけたときのまま（毎回見つけ直すと YOLO で 0.2 秒近くかかり、50 Hz の制御が止まる）。"""
+        lw = self.cfg["press"].get("lit_watch") or {}
+        if not lw.get("enabled", False) or not hasattr(self.finder, "cam_tf"):
+            return
+        if self.door is not None and self.door.opened is None:
+            self.door.observe(depth, None, t)  # 扉は画像の左。押す腕は写らない
+            if self.door.opened is not None:
+                self._note(f"乗り場の扉が開いた（範囲の {self.door.opened['fraction'] * 100:.0f}% が奥へ変わった。記録だけ）")
+        if self.phase not in ("press", "hold", "retract", "check") or self.baseline_level is None:
+            return
+        box = self.call.button(self.target).bbox
+        try:
+            circles = self._hand_circles(q, K)
+            x1, y1, x2, y2 = box
+            r = float(self.cfg["press"]["lit_check"]["radius"])
+            cx, cy, hw, hh = (x1 + x2) / 2, (y1 + y2) / 2, r * (x2 - x1) / 2 + 2, r * (y2 - y1) / 2 + 2
+            region = (int(cx - hw), int(cy - hh), int(np.ceil(cx + hw)), int(np.ceil(cy + hh)))
+            covered = hand_mask(np.asarray(rgb).shape[:2], circles, region)  # ランプの範囲の中だけ塗る
+        except Exception as e:  # noqa: BLE001  見続けるのは補助。失敗しても押す動きは止めない
+            print(f"[elevator] ⚠️ 手の写る範囲を求められない（続ける）: {e}")
+            return
+        _, visible = self._lit_level_visible(rgb, box, covered)
+        if lw.get("hand_mask", True):
+            level, _ = self._lit_level_visible(rgb, box, covered)
+            used = bool(np.isfinite(level)) and visible >= float(lw["min_visible"])
+        else:
+            level = self._lit_level(rgb, box)
+            used = bool(np.isfinite(level))
+        rise = level - self.baseline_level if used else float("nan")
+        lit = used and self._is_lit(level, rise)
+        entry = {"t": float(t), "phase": self.phase, "retry": self.retries, "level": level, "rise": rise,
+                 "visible": visible, "used": used, "lit": lit}
+        first = self.lamp.add(entry)
+        if first or lw.get("save_frames", False):
+            self._snapshot("seen" if first else "watch", rgb, box, t, level=level, retry=self.retries, rise=rise,
+                           lit=lit, visible=visible, phase=self.phase,
+                           hand=[[round(v, 1) for v in c] for c in circles[::max(len(circles) // 150, 1)]])
+        if first:
+            self._note(f"押している間・戻る間に点灯を見た（{self.phase}、明るい部分 {rise:+.0f}、見えた割合 {visible * 100:.0f}%）")
+
     def _start_home(self, t: float) -> None:
         """押し終わった（点灯した・確かめられない）。来た経路を逆にたどって、始めの姿勢へ戻す。
 
-        今の右腕（指先のずれの補正で、計画した手前の姿勢から少しずれている）から、まず計画した手前の姿勢へ戻り、
+        今の押す腕（指先のずれの補正で、計画した手前の姿勢から少しずれている）から、まず計画した手前の姿勢へ戻り、
         そのあと来た区間を逆にたどる。今の姿勢から手前の姿勢へ戻る区間も、柱・壁と体に当たらないことを確かめる。
         当たるなら、今の姿勢のまま終わる。
         """
@@ -563,7 +1069,7 @@ class ElevatorPressController:
         q[arm] = now
         if self._path_hits(q, [now, self.legs[-1][1]]):
             self._note("⚠️ 手前の姿勢へ戻ると腕が当たるので、今の姿勢のまま終わる")
-            self._enter("done", t)
+            self._finish(t)
             return
         self.home_legs = [first] + [(b, a, T) for a, b, T in reversed(self.legs)]
         self._note(f"来た経路を逆にたどって、始めの姿勢へ戻す（{sum(T for _, _, T in self.home_legs):.1f} 秒）")

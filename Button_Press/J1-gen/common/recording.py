@@ -5,7 +5,8 @@
     meta.json        内部パラメータ、深度の単位、使った設定、git のコミット、コマンドの引数
     frames.jsonl     1 行 1 フレーム: 番号、受信した時刻、送信側の時刻、ファイル名、そのときの腰の角度
     frames/          000001_color.png（または .jpg）、000001_depth.png（16bit）
-    lowstate.csv     時刻、mode_machine、関節角 q0..q28、関節速度 dq0..dq28、IMU の四元数（w, x, y, z）
+    lowstate.csv     時刻、mode_machine、関節角 q0..q28、関節速度 dq0..dq28、IMU の四元数（w, x, y, z）、
+                     推定トルク tau0..tau28（2026-11-04 から。読めない経路では空欄。それより前の記録には列が無い）
 
 - 時刻はすべてラボ PC の time.time()（PC2 の時計とずれていても、フレームと lowstate の対応が取れるように）
 - 途中で落ちてもそれまでの分が残るよう、1 行ずつ追記して flush する
@@ -34,8 +35,17 @@ from .config import REPO_ROOT
 from .rgbd_protocol import Intrinsics, RgbdFrame
 from .robot_model import NUM_MOTORS, WAIST_IDX
 
-LOWSTATE_HEADER = (["t", "mode_machine"] + [f"q{i}" for i in range(NUM_MOTORS)]
-                   + [f"dq{i}" for i in range(NUM_MOTORS)] + ["qw", "qx", "qy", "qz"])
+# 2026-11-04 より前の列（推定トルクが無い）。古い記録を読むときに使う
+LOWSTATE_HEADER_V1 = (["t", "mode_machine"] + [f"q{i}" for i in range(NUM_MOTORS)]
+                      + [f"dq{i}" for i in range(NUM_MOTORS)] + ["qw", "qx", "qy", "qz"])
+LOWSTATE_HEADER = LOWSTATE_HEADER_V1 + [f"tau{i}" for i in range(NUM_MOTORS)]
+
+
+def lowstate_row(t: float, st: JointState) -> list[str]:
+    """lowstate.csv の 1 行（LOWSTATE_HEADER の並び）。推定トルクが無い（None）ときは空欄。"""
+    tau = [f"{v:.4f}" for v in st.tau_est] if st.tau_est is not None else [""] * NUM_MOTORS
+    return ([f"{t:.6f}", str(st.mode_machine)] + [f"{v:.6f}" for v in st.q] + [f"{v:.6f}" for v in st.dq]
+            + [f"{v:.6f}" for v in st.imu_quat] + tau)
 
 
 def git_commit() -> str:
@@ -97,8 +107,7 @@ class RecordingWriter:
         return i
 
     def add_lowstate(self, t: float, st: JointState) -> None:
-        self._csv.writerow([f"{t:.6f}", st.mode_machine] + [f"{v:.6f}" for v in st.q]
-                           + [f"{v:.6f}" for v in st.dq] + [f"{v:.6f}" for v in st.imu_quat])
+        self._csv.writerow(lowstate_row(t, st))
         self.n_lowstate += 1
         if self.n_lowstate % 50 == 0:
             self._lowstate.flush()
@@ -135,8 +144,8 @@ class Recording:
                 r = csv.reader(f)
                 next(r, None)
                 for row in r:
-                    if len(row) != len(LOWSTATE_HEADER):
-                        continue  # 途中で落ちたときの書きかけの行
+                    if len(row) not in (len(LOWSTATE_HEADER), len(LOWSTATE_HEADER_V1)):
+                        continue  # 途中で落ちたときの書きかけの行（推定トルクの列が無い古い記録も読む）
                     self._t.append(float(row[0]))
                     self._q.append(np.array([float(v) for v in row[2:2 + NUM_MOTORS]]))
         intr = self.meta.get("intrinsics")

@@ -40,7 +40,7 @@ from .dds import PeerMismatchError
 from .localize import Detector, Locator
 from .post_press import NoCheck, PostPressCheck
 from .press import execute_press
-from .press_planner import PressPlan, PressPlanner, UnreachableError
+from .press_planner import PressPlan, PressPlanner, UnreachableError, finger_axis_for
 from .realday import FingertipFK, load_taught_poses, project_to_image, taught_q_seed
 from .rgbd_protocol import RgbdFrame
 from .robot_model import WAIST_IDX
@@ -295,20 +295,22 @@ class PressPipeline:
         right = -sgn * y  # 押す腕の側へ何 m ずれているか
         s_lo, s_hi = float(stc["side_min_m"]), float(stc["side_max_m"])
         arm_side, other = ("右", "左") if self.side == "right" else ("左", "右")
+        # 押す点が腕と反対の側にあるときは「右に −3.0 cm」でなく「左に 3.0 cm」と書く
+        where = f"{arm_side}に {right * 100:.1f} cm" if right >= 0 else f"{other}に {-right * 100:.1f} cm"
         if right < s_lo:
-            msgs.append(f"押す点が体の中心から{arm_side}に {right * 100:.1f} cm（{s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
+            msgs.append(f"押す点が体の中心から{where}（{arm_side}に {s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
                         f"{other}へ {cm(s_lo - right)} cm 以上寄る")
         elif right > s_hi:
-            msgs.append(f"押す点が体の中心から{arm_side}に {right * 100:.1f} cm（{s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
+            msgs.append(f"押す点が体の中心から{where}（{arm_side}に {s_lo * 100:.0f}〜{s_hi * 100:.0f} cm がよい）。"
                         f"{arm_side}へ {cm(right - s_hi)} cm 以上寄る")
         edge_min = float(stc["table_edge_min_m"])
-        for ob in self.cfg.press.get("obstacles") or []:
-            if "table" not in str(ob.get("name", "")) or ob.get("x_axis") is not None:
-                continue
-            edge = float(ob["center"][0]) - float(ob["half_size"][0])
-            if edge < edge_min:
-                msgs.append(f"机の手前の縁まで {edge * 100:.1f} cm と近すぎる（経由の姿勢へ手を上げる途中で縁に当たる）。"
-                            f"あと {cm(edge_min - edge)} cm 以上下がる")
+        # 机は高さ違いの箱に分かれている（make_table_boxes.py）ので、いちばん近い縁で 1 回だけ出す
+        edges = [float(ob["center"][0]) - float(ob["half_size"][0]) for ob in self.cfg.press.get("obstacles") or []
+                 if "table" in str(ob.get("name", "")) and ob.get("x_axis") is None]
+        if edges and min(edges) < edge_min:
+            edge = min(edges)
+            msgs.append(f"机の手前の縁まで {edge * 100:.1f} cm と近すぎる（経由の姿勢へ手を上げる途中で縁に当たる）。"
+                        f"あと {cm(edge_min - edge)} cm 以上下がる")
         if not msgs:
             return ""
         return ("立つ位置が勧める範囲の外: " + "、".join(msgs)
@@ -320,22 +322,29 @@ class PressPipeline:
         via = self._via_pose()
         advice = self.stand_advice(target)
         errors = []
-        for label, q_seed in self._seeds(st):
-            try:
-                plan = self.planner.plan(st.q, target, push, q_seed=q_seed, q_via_arm=via)
-            except UnreachableError as e:
-                errors.append(f"{label}: {e}")
-                self.logger.event("plan_failed", seed=label, reason=str(e))
-                print(f"[pipeline] IK の初期値「{label}」では計画できない: {e}")
-                continue
-            self.logger.save_json("plan_initial.json", self._plan_dict(plan))
-            self.logger.event("plan", summary=plan.summary(), seed=label)
-            print(f"[pipeline] 計画（IK の初期値: {label}）: {plan.summary()}")
-            if advice:
-                self.logger.event("stand_advice", message=advice)
-                print(f"[pipeline] ⚠️ {advice}（計画は立ったので続ける）")
-            return plan
-        raise UnreachableError((f"{advice}。" if advice else "") + "どの IK の初期値でも計画できない: " + " / ".join(errors))
+        # 指の向きの候補（pipeline.yaml の finger_tilts_deg。既定は [[0, 0]] = 押す向きに合わせる）を順に試し、
+        # 先の候補で通ればあとは試さない。IK の初期値の候補は、向きごとに順に試す
+        tilts = [tuple(float(v) for v in t) for t in (self.cfg.pipeline.get("finger_tilts_deg") or [[0, 0]])]
+        for tilt in tilts:
+            axis = None if tilt == (0.0, 0.0) else finger_axis_for(push, *tilt)
+            tilt_s = "" if axis is None else f"、指 左{tilt[0]:g}°・上{tilt[1]:g}°"
+            for label, q_seed in self._seeds(st):
+                label = label + tilt_s
+                try:
+                    plan = self.planner.plan(st.q, target, push, q_seed=q_seed, q_via_arm=via, finger_axis=axis)
+                except UnreachableError as e:
+                    errors.append(f"{label}: {e}")
+                    self.logger.event("plan_failed", seed=label, reason=str(e))
+                    print(f"[pipeline] IK の初期値「{label}」では計画できない: {e}")
+                    continue
+                self.logger.save_json("plan_initial.json", self._plan_dict(plan))
+                self.logger.event("plan", summary=plan.summary(), seed=label)
+                print(f"[pipeline] 計画（IK の初期値: {label}）: {plan.summary()}")
+                if advice:
+                    self.logger.event("stand_advice", message=advice)
+                    print(f"[pipeline] ⚠️ {advice}（計画は立ったので続ける）")
+                return plan
+        raise UnreachableError((f"{advice}。" if advice else "") + "どの IK の初期値・指の向きでも計画できない: " + " / ".join(errors))
 
     @staticmethod
     def _plan_dict(plan: PressPlan) -> dict[str, Any]:
