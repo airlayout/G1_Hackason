@@ -4,6 +4,8 @@
     python real/approach_and_press.py --target down --button-set wheelchair --detector yolo
     # 実機で寄って押す（PC2 の上。approach の Enter 待ち・auto_press の事前確認はそのまま出る）
     ~/button_press/venv/bin/python real/approach_and_press.py --target down --button-set wheelchair --detector yolo --arms right left --network-interface eth0 --camera-config camera_onboard.yaml --execute
+    # Enter なしで、寄って押すまで続ける（リモコンを持った人がそばにいるときだけ）
+    ~/button_press/venv/bin/python real/approach_and_press.py --target down --button-set wheelchair --detector yolo --arms right left --network-interface eth0 --camera-config camera_onboard.yaml --no-confirm --execute
     # 寄り終わってから、押す前にもう 1 回 Enter を待つ
     python real/approach_and_press.py --target up --execute --press-confirm
     # auto_press.py に追加の引数を渡す（--press-args 以降はすべて auto_press.py へ）
@@ -49,6 +51,8 @@ def build_approach_cmd(args: argparse.Namespace, result_json: Path, python: str 
         cmd += ["--camera-config", args.camera_config]
     if args.webcam:
         cmd.append("--webcam")
+    if args.no_confirm:
+        cmd.append("--no-confirm")
     if args.execute:
         cmd.append("--execute")
     return cmd
@@ -123,6 +127,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--camera-config", help="カメラの接続先の設定（例 camera_onboard.yaml）")
     p.add_argument("--execute", action="store_true", help="実機で歩いて押す（付けなければ dry-run）")
     p.add_argument("--webcam", action="store_true", help="approach にだけ渡す（前方の Web カメラも使う）")
+    p.add_argument("--no-confirm", action="store_true",
+                   help="approach の歩き始める前の Enter も待たない（--press-confirm を付けなければ、Enter なしで押すまで続く）")
     p.add_argument("--press-confirm", action="store_true", help="寄り終わってから、押す前に Enter を待つ（既定は続けて押す）")
     p.add_argument("--press-args", nargs=argparse.REMAINDER, default=[],
                    help="以降の引数をそのまま auto_press.py に渡す（最後に書く）")

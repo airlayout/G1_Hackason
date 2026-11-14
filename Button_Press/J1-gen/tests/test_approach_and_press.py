@@ -40,6 +40,12 @@ class TestCommands(unittest.TestCase):
         self.assertEqual(appr[appr.index("--arms") + 1:appr.index("--arms") + 3], ["right", "left"])
         self.assertNotIn("--arms", press)
 
+    def test_no_confirm_only_approach(self) -> None:
+        self.assertNotIn("--no-confirm", ap.build_approach_cmd(parse("--target", "up", "--execute"), RESULT))  # 既定は Enter を待つ
+        a = parse("--target", "up", "--execute", "--no-confirm")
+        self.assertIn("--no-confirm", ap.build_approach_cmd(a, RESULT))
+        self.assertNotIn("--no-confirm", ap.build_press_cmd(a, "right"))
+
     def test_webcam_only_approach(self) -> None:
         a = parse("--target", "up", "--webcam")
         self.assertIn("--webcam", ap.build_approach_cmd(a, RESULT))

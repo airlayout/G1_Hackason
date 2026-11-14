@@ -48,6 +48,8 @@ def main() -> int:
     p.add_argument("--network-interface", help="G1 につないでいる NIC（既定は configs/arm.yaml）")
     p.add_argument("--no-lowstate", action="store_true",
                    help="lowstate を読まない（--execute なしのときだけ。腰 0°・骨盤は水平・腕は下ろしたままと仮定）")
+    p.add_argument("--no-confirm", action="store_true",
+                   help="--execute のとき、歩き始める前の Enter を待たない（人がリモコンを持ってそばにいるときだけ）")
     p.add_argument("--result-json", type=Path,
                    help="結果（result.json）の保存先（親フォルダは作る。既定は _local/button_press/approach/<時刻>/result.json）")
     add_camera_args(p)
@@ -126,7 +128,9 @@ def main() -> int:
     mover = LocoMover(backend, stillness, cfg["loco"], go=args.execute)
     print(f"[approach] 押す組: {elevator['geometry'].get('button_set', 'general')}、見つけ方: {elevator['detector']}、"
           f"腕の候補: {app['arms']}、{'歩く' if args.execute else '歩かない（1 回観測するだけ）'}")
-    if args.execute:
+    if args.execute and args.no_confirm:
+        print("[approach] ⚠️ --no-confirm: Enter を待たずに歩き始める（リモコンを持った人がそばにいること。危なければ L2+B）")
+    elif args.execute:
         input("[approach] 腕を下ろした・周りに人がいない・リモコンを持った人がそばにいることを確かめて Enter（やめるなら Ctrl+C）: ")
 
     approacher = Approacher(perception, feasibility, mover, app)
