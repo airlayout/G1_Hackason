@@ -66,16 +66,16 @@ def motion_arguments(mode,trial,output,socket_path=None,state_path=None,*,task='
     return args
 
 
-def validate_preview(report,expected_xy,uncertainty,*,task='bottle'):
+def validate_preview(report,expected_xy,uncertainty,*,task='bottle',button_validation='physical'):
     plan = report.get('plan',{})
     if not plan.get('accepted') or not report.get('planning_completed'):
         raise RuntimeError('経路を採用できません: '+str(report.get('error') or plan.get('reason')))
     scene = plan['scene']
     if task == 'button':
-        validate_button_plan(plan)
+        validate_button_plan(plan, method=button_validation)
         return dict(face_xyz_m=scene['face'],normal=scene['normal'],stroke_m=scene['stroke'],
             completed_conditions=plan.get('accepted_conditions',plan['completed_rollouts']),
-            trajectory_samples=len(plan['trajectory']['q']))
+            validation_method=button_validation,trajectory_samples=len(plan['trajectory']['q']))
     centre = [scene['face'][0]+scene['radius'],scene['face'][1]]
     distance = sum((a-b)**2 for a,b in zip(centre,expected_xy))**.5
     if distance > uncertainty:
@@ -98,6 +98,10 @@ def validate_button_trial(trial,calibration):
         raise ValueError('Invalid button press mode')
     if trial.get('button_press_mode','feedback') == 'straight_trial' and trial.get('button_feedback','off') != 'joint':
         raise ValueError('直進試験にはjoint補正を有効にしてください')
+    if trial.get('button_validation','physical') not in ('physical','kinematic'):
+        raise ValueError('Invalid button validation method')
+    if trial.get('button_validation','physical') == 'kinematic' and (not collection or trial.get('button_feedback') != 'joint'):
+        raise ValueError('運動学試作にはcollection方策とjoint補正が必要です')
     for key,low,high in (('planning_budget_s',0.,300.),('button_feedback_timeout_s',10.,300.)):
         value = trial.get(key,120.)
         if (isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value)
@@ -134,15 +138,16 @@ def validate_button_trial(trial,calibration):
 
 def policy_summary(plan):
     return dict(accepted=plan.get('accepted'),
+        validation_method=plan.get('validation_method','physical'),
         completed_conditions=plan.get('accepted_conditions',plan.get('completed_rollouts')),
         **{key:plan.get(key) for key in ('candidates_attempted','physically_evaluated_candidates',
             'condition_trials_started','completed_rollouts','aborted_rollouts','first_accepted_s')})
 
 
-def button_result_summary(actual,mode):
+def button_result_summary(actual,mode,*,button_validation='physical'):
     execution = actual.get('execution',{})
     try:
-        validate_button_plan(actual.get('plan',{}))
+        validate_button_plan(actual.get('plan',{}), method=button_validation)
         plan_error = None
     except ValueError as exc:
         plan_error = str(exc)
@@ -332,6 +337,8 @@ def main(argv=None):
     parser.add_argument('--button-feedback',choices=('off','joint'))
     parser.add_argument('--button-press-mode',choices=('feedback','straight_trial'))
     parser.add_argument('--button-policy',choices=('standard','collection'))
+    parser.add_argument('--button-validation',choices=('physical','kinematic'),
+        help='kinematic: 試作の静的経路・衝突検査（物理検証なし）')
     parser.add_argument('--button-feedback-timeout-s',type=float)
     parser.add_argument('--planning-budget-s',type=float,help='経路探索と物理検証の合計時間上限')
     parser.add_argument('--arm-speed-multiplier',type=float,help='腕の接近・帰還の速度倍率（0.1〜10）')
@@ -343,7 +350,7 @@ def main(argv=None):
         args.setup = ROOT/('_local/robust_push' if args.task=='bottle' else '_local/robust_button')/'active_setup.json'
     if args.task == 'button' and args.push_distance is not None:
         parser.error('ボタンには--push-distanceではなく--stroke-mmを指定してください')
-    if args.task == 'bottle' and any(v is not None for v in (args.stroke_mm,args.button_direction,args.target_pixel,args.button_feedback,args.button_policy,args.button_feedback_timeout_s,args.button_press_mode)):
+    if args.task == 'bottle' and any(v is not None for v in (args.stroke_mm,args.button_direction,args.target_pixel,args.button_feedback,args.button_policy,args.button_feedback_timeout_s,args.button_press_mode,args.button_validation)):
         parser.error('ボタン用の引数には--task buttonが必要です')
     if args.arm_speed_multiplier is not None and (args.task != 'button' or not math.isfinite(args.arm_speed_multiplier) or not 0.1 <= args.arm_speed_multiplier <= 10):
         parser.error('--arm-speed-multiplierはボタン用の0.1〜10で指定してください')
@@ -383,6 +390,7 @@ def main(argv=None):
     report = dict(task=args.task,mode=args.mode,completed=False,io_passed=None,setup_file=str(args.setup),phases=[],
         readiness_policy=args.readiness_policy,
         flow='check-input-policy-output' if args.mode == 'check' else 'initialize-single-live-plan-execute')
+    button_validation = 'physical'
     env = dict(os.environ,OPENBLAS_NUM_THREADS='1',OMP_NUM_THREADS='1',MUJOCO_GL='egl',
                YOLO_CONFIG_DIR=str(ROOT/'_local/bottle_push/ultralytics'))
     # Both tasks control the same robot; keep the original bottle lock shared.
@@ -410,11 +418,16 @@ def main(argv=None):
             for key,value in (('stroke',None if args.stroke_mm is None else args.stroke_mm/1000),
                               ('button_direction',args.button_direction),('target_pixel',args.target_pixel),('button_feedback',args.button_feedback),
                               ('button_policy',args.button_policy),('button_feedback_timeout_s',args.button_feedback_timeout_s),
+                              ('button_validation',args.button_validation),
                               ('button_press_mode',args.button_press_mode),
                               ('planning_budget_s',args.planning_budget_s),('arm_speed_multiplier',args.arm_speed_multiplier)):
                 if value is not None:
                     trial[key] = value
             validate_button_trial(trial,calibration)
+            button_validation = trial.get('button_validation','physical')
+            report['button_validation'] = button_validation
+            if button_validation == 'kinematic':
+                print('試作: 運動学・衝突のみを事前検査します。物理シミュレーションは行いません。',flush=True)
             report['stroke_m'] = trial['stroke']
             report['arm_speed_multiplier_requested'] = trial.get('arm_speed_multiplier',1.)
             print(f'腕の速度倍率（指定）: {report["arm_speed_multiplier_requested"]:g}倍',flush=True)
@@ -459,7 +472,7 @@ def main(argv=None):
                 *motion_arguments(args.mode,trial_path,preview,state_path=run/'state/state.json',task=args.task)],
                 **({'timeout':button_child_timeout(trial)} if args.task == 'button' else {}))
             report['policy'] = validate_preview(json.loads(preview.read_text()),setup.get('measured_bottle_xy_m'),
-                float(calibration['position_uncertainty_m']),task=args.task)
+                float(calibration['position_uncertainty_m']),task=args.task,button_validation=button_validation)
             with sdk_bridge(setup['sdk_python'],trial['network_interface'],run,'io',env) as sock:
                 phase('4. 方策出力→SDK→DDSを重み0で確認',[setup['sdk_python'],str(REAL/'check_arm_output.py'),
                     '--socket',str(sock),'--network-interface',trial['network_interface'],
@@ -478,15 +491,16 @@ def main(argv=None):
             print(f'ボタンの実測ストローク: {trial["stroke"]*1000:g}mm（計画・実機共通）',flush=True)
         with sdk_bridge(setup['sdk_python'],trial['network_interface'],run,'motion',env) as sock:
             conditions = trial['planning_scenarios'] if args.task=='button' else 3
-            phase(f'3. シミュレーション{conditions}条件が通過したら即実行',[setup['vision_python'],
+            phase(('3. 運動学・衝突検査が通過したら即実行（物理検証なし）' if button_validation == 'kinematic'
+                   else f'3. シミュレーション{conditions}条件が通過したら即実行'),[setup['vision_python'],
                 *motion_arguments(args.mode,trial_path,run/'result.json',socket_path=sock,task=args.task)],
                 **({'timeout':button_child_timeout(trial)} if args.task == 'button' else {}))
         actual = json.loads((run/'result.json').read_text())
         if args.task=='button':
-            validate_button_plan(actual.get('plan',{}))
+            validate_button_plan(actual.get('plan',{}), method=button_validation)
         report['completed'] = bool(actual.get('completed'))
         if args.task == 'button':
-            report.update(button_result_summary(actual,args.mode))
+            report.update(button_result_summary(actual,args.mode,button_validation=button_validation))
         report['policy'] = policy_summary(actual.get('plan',{}))
         execution = actual.get('execution',{})
         print('動作データを保存しました。制御解除:',execution.get('release_completed'),
@@ -513,7 +527,7 @@ def main(argv=None):
         if args.task == 'button' and (run/'result.json').is_file():
             try:
                 actual = json.loads((run/'result.json').read_text())
-                report.update(button_result_summary(actual,args.mode))
+                report.update(button_result_summary(actual,args.mode,button_validation=button_validation))
             except (OSError,ValueError,TypeError) as exc:
                 report.update(completed=False,result_read_error=str(exc))
         write_json(run/'session.json',report)

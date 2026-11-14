@@ -35,6 +35,8 @@ def add_arguments(parser):
     parser.add_argument('--button-feedback', choices=('off','joint'), default='off')
     parser.add_argument('--button-press-mode', choices=('feedback','straight_trial'), default='feedback')
     parser.add_argument('--button-policy', choices=('standard','collection'), default='standard')
+    parser.add_argument('--button-validation', choices=('physical','kinematic'), default='physical',
+        help='kinematicは試作: 事前の物理シミュレーションを行わず経路と衝突だけ確認')
     parser.add_argument('--button-feedback-timeout-s', type=float, default=120.)
     parser.add_argument('--bottle-feedback', choices=('off','relative'), default='off')
     parser.add_argument('--planning-workers', type=int, default=8)

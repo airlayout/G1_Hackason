@@ -20,8 +20,11 @@ bash Manipulation/push_button/real/run_robust_button.sh check --button-direction
 # 接触の5mm手前まで接近し、補正しながら帰還・解除する。
 bash Manipulation/push_button/real/run_robust_button.sh precontact --button-direction down
 
-# 物理検証に合格したら、本押し・退避・帰還・解除・点灯確認を行う。
+# 運動学・衝突検査を通過したら、本押し・退避・帰還・解除・点灯確認を行う。
 bash Manipulation/push_button/real/run_robust_button_press.sh --button-direction down
+
+# 物理シミュレーションで事前検証する場合。
+bash Manipulation/push_button/real/run_robust_button_press.sh --button-direction down --button-validation physical
 ```
 
 バッシュの既定は直進押下。推定上のボタン5cm手前で、ボタン中心と手先の
@@ -32,29 +35,48 @@ bash Manipulation/push_button/real/run_robust_button_press.sh --button-direction
 基準位置の模擬試験では完走した一方、ボタン位置を上下・左右へ2mmずらした場合に
 パネル縁へ接触する条件があった。実機では2026-11-14の2試行で点灯・復帰・解除を確認した。
 
+### 運動学だけで事前検査する本押し
+
+本押しのバッシュは、認識した基準位置で関節角・
+手先位置・経路上の自己衝突とパネルの余裕を検査するが、物理シミュレーションは行わない。
+追従、押下深さ・力、点灯後の帰還、立位バランスの物理検証は行われていない。
+既存の実機起動前監視、動作中の状態・衝突監視、速度・加速度制限、補正と点灯検出は使う。
+2026-11-14の実機1試行で点灯・帰還・制御解除を確認した。計画は7.86秒だった。
+その配置での1試行であり、他の配置や押下力の検証ではない。
+
+```bash
+# 同じ方式の試作バッシュも引き続き利用できる。
+bash Manipulation/push_button/real/run_kinematic_button_trial.sh --button-direction down --stroke-mm 15
+```
+
+`--stroke-mm` には実測値を指定する。ログの `button_validation` と
+`plan.validation_method` は `kinematic`、`physical_simulation_performed` は `false`。
+物理検証済みの経路と区別され、通常方式の物理検証の合格数には加えない。
+
 ```bash
 # この別名のバッシュからも同じ直進押下を選べる。
 # 認識・計画・重み0の出力確認。腕は動かない。
 bash Manipulation/push_button/real/run_robust_button_press_straight_trial.sh --check --button-direction down
 
-# 本押し。物理検証が通過すれば確認入力を待たず腕が動く。
+# 本押し。運動学・衝突検査が通過すれば確認入力を待たず腕が動く。
 bash Manipulation/push_button/real/run_robust_button_press_straight_trial.sh --button-direction down
 ```
 
 バッシュからの既定値は `--readiness-policy collection --button-feedback joint --button-policy collection --button-press-mode straight_trial --planning-budget-s 300`。
-点灯後の帰還も物理検証するため、実行開始までの計画時間は以前より長くなる場合がある。
+本押しの既定は運動学検査。`check` と `precontact` は従来どおり物理検証を使う。
+本押しでも `--button-validation physical` を指定すると、点灯後の帰還を含む物理検証を使う。
 起動前の状態監視はボトル用バッシュと共通にし、状態期限400ms・脚速度1.0rad/s・IMU角速度0.3rad/sを使う。
 校正時からの腰角0.025rad超・傾き2度超の差は警告として記録し、それだけでは開始を拒否しない。
 骨盤の絶対的な傾き0.15rad（約8.6度）、必要ファイル、FSM 501、他の腕制御との競合は確認する。
 `check`・`precontact`・`push` の全モードへ同じ起動前条件を渡す。
 厳しい起動前確認が必要な場合は `--readiness-policy strict` を明示する。
-収集用の `collection` は基準位置の1条件で、実機と同じ補正処理を物理検証する。
-押下深さ・追従・帰還の偏差は診断情報として扱うが、実際の衝突、過大な接触力、関節余裕は合否に使う。
+物理検証時の `collection` は基準位置の1条件で、実機と同じ補正処理を検証する。
+その場合、押下深さ・追従・帰還の偏差は診断情報として扱うが、衝突、過大な接触力、関節余裕は合否に使う。
 関節フィードバックでは、次の指令先で障害物との余裕が3mm未満なら、減速指令で再検査する。
 収集用では選択した手先とパネルの穴の縁の組み合わせは空間余裕の対象外とし、0.5mmを超える侵入を拒否する。
 経路候補の静的検査と、物理検証で実際にたどった姿勢の余裕の合否基準は3mmとする。
-標準の4条件（基準・奥3mm・左3mm・右3mm）は `--button-policy standard` で選べる。
-従来の補正なし実行は `--button-press-mode feedback --button-feedback off --button-policy standard --planning-budget-s 30`。
+標準の4条件（基準・奥3mm・左3mm・右3mm）は `--button-policy standard --button-validation physical` で選べる。
+従来の補正なし実行は `--button-press-mode feedback --button-feedback off --button-policy standard --button-validation physical --planning-budget-s 30`。
 Pythonの直接起動では従来の `standard/off` と `feedback` が既定である。
 
 補正付きでは、目標の押し込み量を実測ストローク（既定15mm、`--stroke-mm`で変更）にする。
@@ -77,7 +99,7 @@ joint補正では、最初に対象ボタンを特定した画像の明るさを
 位置や深度にかかわらず押し込みをやめ、押下前に計算・検査した短い経路で開始姿勢へ帰還する。
 点灯位置から近い経由点へ戻り、衝突余裕を検査した関節空間の短い経路を使う。
 帰還中は追従誤差によって参照経路を保留しない。実測姿勢から各指令への衝突検査と、
-関節の速度・加速度制限は引き続き適用する。計画時には点灯時点を変えた物理検証も行う。
+関節の速度・加速度制限は引き続き適用する。物理検証を選んだ場合は、計画時に点灯時点を変えた物理検証も行う。
 異常時の復帰や接触前診断はこの高速化の対象外。通常版・高速版のどちらのバッシュにも適用する。
 画像の判定は選択したボタンの領域を用い、3D位置推定が遮蔽で失敗しても続ける。
 基準の枠・明るさ・時刻と検出時の明るさ・時刻、帰還・制御解除の結果を記録する。

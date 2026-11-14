@@ -97,6 +97,9 @@ def main(argv=None, *, task=None):
     if args.task != 'button' and (settings.button_feedback != 'off' or settings.button_policy != 'standard'
                                   or settings.button_press_mode != 'feedback'):
         parser.error('Button feedback/policy requires --task button')
+    if args.button_validation == 'kinematic' and (args.task != 'button' or not collection
+            or settings.button_feedback != 'joint' or settings.scenarios != 1):
+        parser.error('kinematic trial requires a collection button, joint feedback, and one nominal scene')
     policy = execution_policy(args.execute_after_plan or args.execute_verified_plan)
     report = dict(schema='g1-robust-trial-v1', task=args.task, completed=False, physical_push_success=None,
                   visual_success=None,
@@ -309,7 +312,11 @@ def main(argv=None, *, task=None):
             for warning in warnings:
                 if warning not in report['planning_warnings']:
                     report['planning_warnings'].append(warning)
-        plan = search(args.model,calibration,scene,settings,monitor=monitor)
+        if args.button_validation == 'kinematic':
+            from kinematic_button_planner import search_kinematic
+            plan = search_kinematic(args.model,calibration,scene,settings,monitor=monitor)
+        else:
+            plan = search(args.model,calibration,scene,settings,monitor=monitor)
         report['plan'] = plan.to_dict()
         if plan.candidate is None:
             return 1
@@ -318,7 +325,7 @@ def main(argv=None, *, task=None):
             print(f'腕の自由動作の軌道速度: 指定 {speed_metrics["arm_speed_multiplier_requested"]:g}倍 / '
                   f'計画 {speed_metrics["arm_speed_multiplier_effective"]:.2f}倍（関節上限を適用）',flush=True)
         if args.task=='button' and args.execute:
-            validate_button_plan(report['plan'])
+            validate_button_plan(report['plan'], method=args.button_validation)
         if not args.execute:
             report['planning_completed'] = True
             return 0
@@ -328,7 +335,10 @@ def main(argv=None, *, task=None):
             action = ('接触手前の確認' if args.stop_before_contact else
                 f'{scene.stroke*1000:g}mmのボタン押下' if args.task == 'button' else
                 f'{scene.push_distance*100:.1f}cmの押し込み')
-            print(f'シミュレーション{settings.scenarios}条件合格。直ちに'+action+'動作を開始します。',flush=True)
+            if args.button_validation == 'kinematic':
+                print('運動学・衝突検査を通過（物理シミュレーションなし）。直ちに'+action+'動作を開始します。',flush=True)
+            else:
+                print(f'シミュレーション{settings.scenarios}条件合格。直ちに'+action+'動作を開始します。',flush=True)
         else:
             monitor()
             print('Navigationを停止し、Bモデルの配置条件と校正を確認してください。')
