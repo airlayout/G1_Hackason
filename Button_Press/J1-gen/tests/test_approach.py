@@ -454,3 +454,22 @@ class TestEdgeReplay(unittest.TestCase):
         self.assertEqual(res.steps[2]["raw_left_edge_m"], 0.03)
         self.assertTrue(any("左端" in s and "飛んだ" in s for s in logs))
         self.assertEqual(len(ap.steps), 3)  # 途中で止めても real/approach.py が保存できる
+
+    def test_edge_ref_after_facing(self) -> None:
+        """斜めのうちは端の基準を覚えず、正対してから覚える（11/14: 回るだけで右端が −48 → −36 cm に動いた）。"""
+        fake = FakeLoco(rate_ratio=0.75)
+        yaw = np.radians
+        world = ScriptedWorld([
+            Measurement("face", 1.02, yaw(26.7), None, left_edge_m=None, right_edge_m=-0.48),  # 斜め → 回る
+            Measurement("face", 1.04, yaw(17.0), None, left_edge_m=None, right_edge_m=-0.44),  # まだ斜め → 回る
+            Measurement("face", 1.05, yaw(5.8), None, left_edge_m=0.56, right_edge_m=-0.36),   # 正対 → ここで覚える
+            Measurement("face", 0.84, yaw(2.0), None, left_edge_m=0.60, right_edge_m=-0.31),   # 前へ 1 回で 5 cm 右へ
+        ])
+        mover = LocoMover(fake, fake, CFG["loco"], go=True, sleep=fake.sleep, now=fake.now, log=lambda s: None)
+        ap = Approacher(world, FakeFeasibility({"right": STAND_R}), mover, APP, log=lambda s: None)
+        res = ap.run()
+        axes = [r["pulse"]["axis"] for r in res.steps if r["pulse"]]
+        # 斜めの −48 cm を基準にすると 4 回目は +17 cm ずれて左へ動くが、正対した −36 cm が基準なので +5 cm → 前へ
+        self.assertEqual(axes, ["turn_left", "turn_left", "forward", "forward"])
+        self.assertEqual(res.steps[0]["edge_ref"], {})
+        self.assertEqual(res.steps[2]["edge_ref"], {"left": 0.56, "right": -0.36})

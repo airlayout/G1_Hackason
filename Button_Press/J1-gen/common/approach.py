@@ -468,7 +468,7 @@ class Approacher:
         self.cfg = cfg
         self.log = log
         self.stands = {a: feasibility.stand(a) for a in feasibility.arms}
-        # 最初に見えた柱の端（人が置いた左右の位置）。端ごとに、初めて分かったときの値を覚える。edge_prev は前の観測の端
+        # 最初に見えた柱の端（人が置いた左右の位置）。端ごとに、正対してから初めて分かったときの値を覚える
         self.edge_ref: dict[str, float] = {}
         # 端の確かめ（EdgeCheck）。飛びは端ごとに最後に通った値と比べるので、decide の edge_prev（前の観測）は使わない
         self.edges = EdgeCheck(cfg)
@@ -489,8 +489,11 @@ class Approacher:
                     m, edge_notes = self.edges.check(m)
                     for note in edge_notes:
                         self.log(f"[approach] ⚠️ {note}")
+                # 最初の端の位置は、正対してから（向きのずれが yaw_tol_deg 以内で）覚える。斜めのまま覚えると、回っただけで
+                # 端の値が動き（11/14: 26.7° → 5.8° と回る間に右端が −48 → −36 cm）、見かけのずれを直しに横へ動いてしまう
+                facing = abs(np.degrees(m.yaw_rad)) <= float(self.cfg["yaw_tol_deg"])
                 for name, v in (("left", m.left_edge_m), ("right", m.right_edge_m)):
-                    if v is not None and name not in self.edge_ref and m.source == "face":
+                    if v is not None and name not in self.edge_ref and m.source == "face" and facing:
                         self.edge_ref[name] = v
                 arm, reasons = self.feasibility.check(m) if m.source == "buttons" else (None, {})
                 dec = decide(m, arm, reasons, self.stands, self.cfg, self.mover, self.edge_ref, None)
