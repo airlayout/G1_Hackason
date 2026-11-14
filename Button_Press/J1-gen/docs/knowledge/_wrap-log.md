@@ -122,3 +122,7 @@
   対象: 11/13 の実機日（空中の腕・腰だけを回す・エレベーターで押す腕の自動選択 4 回点灯）
   - real_robot_notes.md: 4 回点灯（左腕で初めて）、53 cm でも見える、点灯のしきい値、regular mode の姿勢、推定の力のずれ、腰の回し、videohub の空の画像、PC2 のタイムゾーン（中国時間）、PC2 で押す準備、マイク、script と収録
   - patterns/robot_arm_control.md: 推定の力は空中で 0 になるか先に見る、「立っているか」の値は本体のモードで変わる
+
+- 2026-11-14 / Button_Press（J1-gen）
+  対象: 11/13 の収録から柱の面を求めた・床で首を直すのをやめた
+  - patterns/camera_checks.md: 実機では床で首を直すとボタンと 3〜7 cm 食い違った → correct_pitch false、壊れた収録の読み方
