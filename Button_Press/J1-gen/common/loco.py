@@ -145,6 +145,10 @@ class LegStillness:
         self.spike_s = float(cfg.get("spike_s", 0.0))
         self.spike_max_dq = float(cfg.get("spike_max_dq_rad_s", self.max_dq))
         self.now = now
+        self.reset()
+
+    def reset(self) -> None:
+        """次の停止確認に、それ以前の静止時間を持ち越さない。"""
         self._since: float | None = None
         self._over_since: float | None = None
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Opt-in robust planner using live RGB-D; SDK is opened only with --execute."""
 import argparse
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import json
 from pathlib import Path
 import sys
@@ -68,6 +68,8 @@ def main(argv=None, *, task=None):
     parser.add_argument('--detector-imgsz', type=int)
     parser.add_argument('--network-interface', default='enp3s0')
     parser.add_argument('--arm-socket')
+    parser.add_argument('--approach-button-set', choices=('wheelchair', 'general'))
+    parser.add_argument('--approach-confirmed', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--calibrated', action='store_true')
     parser.add_argument('--stop-before-contact', action='store_true')
@@ -87,6 +89,8 @@ def main(argv=None, *, task=None):
         parser.error('Use real/run_push.py for the legacy planner')
     if task is not None:
         args.task = task
+    if args.task == 'button' and args.stop_before_contact:
+        parser.error('ボタン押しの接触手前診断は廃止されました')
     if args.task == 'bottle' and not args.weights:
         parser.error('ボトルには--weightsが必要です')
     if args.confidence is None:
@@ -94,13 +98,21 @@ def main(argv=None, *, task=None):
     if args.detector_imgsz is None:
         args.detector_imgsz = DEFAULT_IMAGE_SIZE if args.task == 'button' else 960
     collection = args.task == 'button' and settings.button_policy == 'collection'
+    approach_set = args.approach_button_set
+    if approach_set and (args.task != 'button' or args.button_direction is None or not args.arm_socket
+            or not collection or settings.button_feedback != 'joint' or args.button_validation != 'kinematic'
+            or settings.button_press_mode != 'straight_trial' or args.target_pixel is not None
+            or (args.execute and not (args.execute_verified_plan and args.approach_confirmed))):
+        parser.error('脚補正には計測用SDK接続、ボタン方向、直進本押しの設定が必要です')
+    if args.approach_confirmed and not (approach_set and args.execute):
+        parser.error('脚補正の実行モードが必要です')
     if args.task != 'button' and (settings.button_feedback != 'off' or settings.button_policy != 'standard'
                                   or settings.button_press_mode != 'feedback'):
         parser.error('Button feedback/policy requires --task button')
     if args.button_validation == 'kinematic' and (args.task != 'button' or not collection
             or settings.button_feedback != 'joint' or settings.scenarios != 1):
         parser.error('kinematic trial requires a collection button, joint feedback, and one nominal scene')
-    policy = execution_policy(args.execute_after_plan or args.execute_verified_plan)
+    policy = execution_policy(args.execute_after_plan or args.execute_verified_plan or bool(approach_set))
     report = dict(schema='g1-robust-trial-v1', task=args.task, completed=False, physical_push_success=None,
                   visual_success=None,
                   settings=asdict(settings), arguments=vars(args))
@@ -119,6 +131,10 @@ def main(argv=None, *, task=None):
     if args.execute_verified_plan:
         report['image_policy'].update(button_contact_occlusion=not args.stop_before_contact,
             fixed_interval_timeout_s=None)
+    if approach_set:
+        report.update(approach_button_set=approach_set, approach_steps=[], approach_preview=not args.execute)
+        report['image_policy']['initial_three_fresh_frames_required'] = True
+        report['image_policy']['strict_snapshot_match_before_press'] = True
     report['execute_after_plan'] = args.execute_after_plan
     report['execute_verified_plan'] = args.execute_verified_plan
     report['execution_policy'] = policy.to_dict()
@@ -126,7 +142,7 @@ def main(argv=None, *, task=None):
     report['pose_history_policy'] = dict(sample_period_s=CONTROL_PERIOD_S,
         warmup_s=.6,max_gap_s=.1,on_unmatched_frame='discard_and_recapture')
     report['pose_history_rejections'] = []
-    if collection:
+    if collection and not approach_set:
         report['pose_history_policy'].update(max_gap_s=None,on_unmatched_frame='nearest_history_sample')
     arm = motion = observer = camera = None
     state_stop = threading.Event()
@@ -153,7 +169,7 @@ def main(argv=None, *, task=None):
             raise ValueError('--execute-after-plan requires bottle --execute and 3 scenarios')
         if args.execute and not args.calibrated:
             raise ValueError('--execute requires --calibrated')
-        if not args.execute and not args.state_json:
+        if not args.execute and not args.state_json and not approach_set:
             raise ValueError('Planning preview requires --state-json')
         calibration, _ = read_calibration(args.base_transform, require_button=args.task=='button',
                                           require_target_margin=args.execute_verified_plan and not collection,button_collection=collection)
@@ -162,7 +178,7 @@ def main(argv=None, *, task=None):
         # Model warm-up occurs before the initial capture and search deadline.
         if args.task == 'button':
             detector = make_button_detector(args.weights, args.confidence, args.device, runtime=runtime,
-                imgsz=args.detector_imgsz, direction=args.button_direction)
+                imgsz=args.detector_imgsz, direction=None if approach_set else args.button_direction)
         else:
             detector_type = runtime.module('perception_bridge').perception('detector.yolo_detector').YoloDetector
             detector = detector_type(model_name=args.weights, classes=['bottle'],
@@ -173,15 +189,22 @@ def main(argv=None, *, task=None):
         sensor_kin = ArmKinematics(model)
         sensor_kin.update_fixed_base(rest, calibration['reference_imu_rpy_rad'])
         geometry = CalibratedHeadCamera(runtime, sensor_kin, calibration)
+        approach = None
+        if approach_set:
+            from button_approach import ButtonApproach, plan_at_stops
+            approach = ButtonApproach(runtime, detector, approach_set, args.network_interface, execute=args.execute)
+            approach.wait_still()
+        live_state = args.execute or bool(approach_set)
         history = PoseHistory()
-        if args.execute:
+        if live_state:
             if args.arm_socket:
                 from arm_bridge import ArmProxy
                 arm = ArmProxy(args.arm_socket)
             else:
                 from push_button import ArmSdk
                 arm = ArmSdk(args.network_interface)
-            arm.stop_walking()
+            if not approach_set:
+                arm.stop_walking()
             report['state_samples'] = []
             def record_state(value):
                 history.append(value)
@@ -195,12 +218,6 @@ def main(argv=None, *, task=None):
                 return value
             state_lock = threading.Lock()
             state_cache = dict(value=None,error=None)
-            # Populate the same 0.6s window at the running 50Hz cadence. The
-            # old 100ms cadence exceeded the 100ms interpolation limit with
-            # even small RPC/scheduling overheads and rejected the first image.
-            for _ in range(round(.6/CONTROL_PERIOD_S)):
-                state_cache['value'] = read_configuration()
-                time.sleep(CONTROL_PERIOD_S)
             def sample_state():
                 try:
                     while not state_stop.is_set():
@@ -211,8 +228,26 @@ def main(argv=None, *, task=None):
                 except Exception as exc:
                     with state_lock:
                         state_cache['error'] = exc
-            state_thread = threading.Thread(target=sample_state,name='robust-state',daemon=True)
-            state_thread.start()
+
+            def start_state_sampling():
+                nonlocal history, state_thread
+                history = PoseHistory()
+                state_cache.update(value=None,error=None)
+                state_stop.clear()
+                # Populate the 0.6s window at the running 50Hz cadence.
+                for _ in range(round(.6/CONTROL_PERIOD_S)):
+                    state_cache['value'] = read_configuration()
+                    time.sleep(CONTROL_PERIOD_S)
+                state_thread = threading.Thread(target=sample_state,name='robust-state',daemon=True)
+                state_thread.start()
+
+            def stop_state_sampling():
+                state_stop.set()
+                state_thread.join(timeout=4.)
+                if state_thread.is_alive():
+                    raise RuntimeError('歩行前に姿勢監視を停止できません')
+
+            start_state_sampling()
             def configuration():
                 with state_lock:
                     value,error = state_cache['value'],state_cache['error']
@@ -226,29 +261,34 @@ def main(argv=None, *, task=None):
             state = json.loads(Path(args.state_json).read_text())
             def configuration():
                 return (state['motor_q_rad'],state['imu_rpy_rad'],time.monotonic(),0.,0.)
-        camera = J1RgbdCamera(runtime,args.camera_config,args.host,**({'max_age_s':None} if collection else {}))
+        camera = J1RgbdCamera(runtime,args.camera_config,args.host,
+                             **({'max_age_s':None} if collection and not approach_set else {}))
         reference = [None]
         stable_base = [args.bottle_base_height]
         perception_rejections = []
         sampler = LatestFrameSampler()
         lamp_tracker = ImageLampTracker() if args.task == 'button' else None
         first_lamp = [None]
+        target_pixel = args.target_pixel
+        before_arm_motion = bool(approach_set)
         def read():
             delivered = sampler.consume(camera.poll(), time.monotonic())
             if delivered is None:
                 return None
             frame, stamp = delivered
-            if not collection and not 0 <= time.monotonic()-stamp <= .5:
+            if (not collection or before_arm_motion) and not 0 <= time.monotonic()-stamp <= .5:
                 return None
             detections = detector.detect(frame.color_bgr)
+            if approach_set:
+                detections = [d for d in detections if d.class_name == args.button_direction]
             if lamp_tracker is not None:
                 lamp_tracker.observe(frame.color_bgr, detections, stamp, frame.frame_id)
             config = configuration()
             # The camera is torso-fixed. A stationary-target diagnostic uses the
             # fresh, stationary torso state rather than an image-time history lookup.
             try:
-                q, imu = (history.at(stamp, config, max_distance_s=None if collection else .1)
-                          if args.execute and not args.static_target else config[:2])
+                q, imu = (history.at(stamp, config, max_distance_s=None if collection and not before_arm_motion else .1)
+                          if live_state and not args.static_target else config[:2])
             except ValueError as exc:
                 # This image cannot be paired with a measured robot pose.
                 # Discard it and let the normal camera loop take a newer one;
@@ -261,8 +301,8 @@ def main(argv=None, *, task=None):
             intr = CameraIntrinsics(intr.fx,intr.fy,intr.cx,intr.cy)
             candidates = []
             for detected in detections:
-                if reference[0] is None and args.target_pixel:
-                    u,v = args.target_pixel; x0,y0,x1,y1 = detected.bbox
+                if target_pixel is not None and (reference[0] is None or before_arm_motion):
+                    u,v = target_pixel; x0,y0,x1,y1 = detected.bbox
                     if not x0 <= u <= x1 or not y0 <= v <= y1:
                         continue
                 try:
@@ -293,31 +333,73 @@ def main(argv=None, *, task=None):
                                      captured_at_s=float(stamp), bbox=list(map(float,bbox)))
             reference[0] = observed
             return Observation(observed,tuple(q),tuple(imu),stamp,frame.frame_id,lamp)
-        observer = ContinuousObserver(read,camera.close,**(dict(stability_m=.01,allow_stale=True,
-            allow_target_motion=True) if collection else {}))
-        initial = observer.initial(**({'timeout_s':30.} if collection else {}))
-        lamp_baseline = (first_lamp[0]['level'] if first_lamp[0] is not None else initial.lamp)
-        if first_lamp[0] is not None:
-            report['lamp_baseline'] = first_lamp[0]
-        if args.task == 'bottle':
-            stable_base[0] = initial.geometry['base_height']
-        scene = snapshot(args.task,initial,calibration,args)
+        def start_observer():
+            nonlocal observer
+            options = dict(stability_m=.01,allow_stale=True,allow_target_motion=True) if collection else {}
+            if approach_set:
+                observer = ContinuousObserver(read, **options)
+                return observer.initial(timeout_s=30., after=time.monotonic())
+            observer = ContinuousObserver(read, camera.close, **options)
+            return observer.initial(**({'timeout_s':30.} if collection else {}))
+
         def latest_observation():
             if args.static_target or args.allow_stale_observation or collection:
                 return observer.latest(allow_stale=True)
             return observer.latest()
-        def monitor():
-            warnings = validate_start(scene,configuration(),latest_observation(),
-                                      record_deviations=policy.record_deviations)
+        def monitor(observed=None):
+            warnings = validate_start(scene,configuration(),observed or latest_observation(),
+                                      record_deviations=policy.record_deviations,
+                                      require_snapshot_match=before_arm_motion)
             for warning in warnings:
                 if warning not in report['planning_warnings']:
                     report['planning_warnings'].append(warning)
         if args.button_validation == 'kinematic':
             from kinematic_button_planner import search_kinematic
-            plan = search_kinematic(args.model,calibration,scene,settings,monitor=monitor)
+
+        if approach_set:
+            def search_at_stop(measured, budget_s):
+                nonlocal initial, scene, target_pixel
+                x0, y0, x1, y1 = measured.call.button(args.button_direction).bbox
+                target_pixel = ((x0+x1)/2., (y0+y1)/2.)
+                initial = start_observer()
+                if initial.geometry['normal'][0] < .9:
+                    return None  # The observed panel needs a turn before a scene can be built.
+                scene = snapshot(args.task,initial,calibration,args)
+                candidate = search_kinematic(
+                    args.model, calibration, scene, replace(settings, budget_s=budget_s), monitor=monitor)
+                if candidate.report['search_status'] == 'candidates_exhausted':
+                    monitor(observer.initial(timeout_s=2., after=time.monotonic()))
+                return candidate
+
+            def move_to_next_stop(measured, pulse, row):
+                nonlocal observer, sampler, lamp_tracker, target_pixel, scene, initial
+                if observer is not None:
+                    observer.close()
+                    observer = None
+                stop_state_sampling()
+                reference[0] = first_lamp[0] = target_pixel = scene = initial = None
+                sampler = LatestFrameSampler()
+                lamp_tracker = ImageLampTracker()
+                approach.walk(measured, pulse, row)
+                start_state_sampling()
+
+            initial = scene = None
+            plan = plan_at_stops(
+                approach, lambda: approach.measure(camera, configuration, history),
+                search_at_stop, move_to_next_stop, steps=report['approach_steps'], budget_s=settings.budget_s)
+            if plan is None:
+                return 0  # Observe-only mode, with the proposed leg movement in the report.
         else:
-            plan = search(args.model,calibration,scene,settings,monitor=monitor)
+            initial = start_observer()
+            if args.task == 'bottle':
+                stable_base[0] = initial.geometry['base_height']
+            scene = snapshot(args.task,initial,calibration,args)
+            planner = search_kinematic if args.button_validation == 'kinematic' else search
+            plan = planner(args.model,calibration,scene,settings,monitor=monitor)
         report['plan'] = plan.to_dict()
+        lamp_baseline = (first_lamp[0]['level'] if first_lamp[0] is not None else initial.lamp)
+        if first_lamp[0] is not None:
+            report['lamp_baseline'] = first_lamp[0]
         if plan.candidate is None:
             return 1
         speed_metrics = plan.candidate.motion_metrics
@@ -330,7 +412,11 @@ def main(argv=None, *, task=None):
             report['planning_completed'] = True
             return 0
         if args.execute_after_plan or args.execute_verified_plan:
-            if args.execute_verified_plan:
+            if approach_set:
+                approach.wait_still()
+                monitor(observer.initial(timeout_s=2., after=time.monotonic()))
+                before_arm_motion = False
+            elif args.execute_verified_plan:
                 monitor()
             action = ('接触手前の確認' if args.stop_before_contact else
                 f'{scene.stroke*1000:g}mmのボタン押下' if args.task == 'button' else
@@ -422,7 +508,7 @@ def main(argv=None, *, task=None):
                     resource.close()
                 except Exception as exc:
                     report.setdefault('cleanup_errors',[]).append(str(exc))
-        if observer is None and camera is not None:
+        if camera is not None and (observer is None or approach_set):
             try:
                 camera.close()
             except Exception as exc:

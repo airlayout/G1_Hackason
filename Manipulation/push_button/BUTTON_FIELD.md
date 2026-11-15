@@ -14,18 +14,31 @@
 ボタンの5cm手前で補正を始める方式ではない。関節指令は50Hzの速度・加速度制限を通す。
 
 ```bash
-# 認識・補正付きの物理検証・DDS出力を確認。重み0で腕は動かさない。
-bash Manipulation/push_button/real/run_robust_button.sh check --button-direction down
-
-# 接触の5mm手前まで接近し、補正しながら帰還・解除する。
-bash Manipulation/push_button/real/run_robust_button.sh precontact --button-direction down
-
 # 運動学・衝突検査を通過したら、本押し・退避・帰還・解除・点灯確認を行う。
 bash Manipulation/push_button/real/run_robust_button_press.sh --button-direction down
 
 # 物理シミュレーションで事前検証する場合。
 bash Manipulation/push_button/real/run_robust_button_press.sh --button-direction down --button-validation physical
 ```
+
+### 脚で位置を補正してから本押し
+
+同じ組の ▲▼ が頭カメラに映る位置までリモコンで寄せる。操作 PC から次のコマンドを
+起動すると、既存の `execution_host: "g1"` の設定で PC2 上で実行する。
+
+```bash
+bash Manipulation/push_button/real/run_robust_button_approach_press.sh --button-direction down
+bash Manipulation/push_button/real/run_robust_button_approach_press.sh --button-direction down --execute
+```
+
+最初のコマンドは観測と次の判断を表示する。実行時は腕を下ろし、周囲・後方・足元の
+空きを確認してから `YES` を入力する。車いす用が既定で、一般用には
+`--button-set general` を指定する。
+
+停止ごとに新しい RGB-D 画像で計画し、合格した軌道を再計画せずに本押しへ渡す。
+補正は停止と再観測を挟んで1動作ずつ行う。自動後退は0.5秒を1回までとし、
+骨盤から柱まで27cm未満では停止する。探索時間は停止位置全体で共有する。
+歩行判断と候補の棄却理由は実行ログの `approach_steps` に残る。
 
 バッシュの既定は直進押下。推定上のボタン5cm手前で、ボタン中心と手先の
 進行線が3mm以内となる位置を、新しい画像3枚で確認してから押下へ進む。
@@ -55,20 +68,16 @@ bash Manipulation/push_button/real/run_kinematic_button_trial.sh --button-direct
 
 ```bash
 # この別名のバッシュからも同じ直進押下を選べる。
-# 認識・計画・重み0の出力確認。腕は動かない。
-bash Manipulation/push_button/real/run_robust_button_press_straight_trial.sh --check --button-direction down
-
-# 本押し。運動学・衝突検査が通過すれば確認入力を待たず腕が動く。
 bash Manipulation/push_button/real/run_robust_button_press_straight_trial.sh --button-direction down
 ```
 
 バッシュからの既定値は `--readiness-policy collection --button-feedback joint --button-policy collection --button-press-mode straight_trial --planning-budget-s 300`。
-本押しの既定は運動学検査。`check` と `precontact` は従来どおり物理検証を使う。
+ボタン押しの一括起動は本押し専用。既定は運動学検査。
 本押しでも `--button-validation physical` を指定すると、点灯後の帰還を含む物理検証を使う。
 起動前の状態監視はボトル用バッシュと共通にし、状態期限400ms・脚速度1.0rad/s・IMU角速度0.3rad/sを使う。
 校正時からの腰角0.025rad超・傾き2度超の差は警告として記録し、それだけでは開始を拒否しない。
 骨盤の絶対的な傾き0.15rad（約8.6度）、必要ファイル、FSM 501、他の腕制御との競合は確認する。
-`check`・`precontact`・`push` の全モードへ同じ起動前条件を渡す。
+本押しの開始前に同じ起動前条件を確認する。
 厳しい起動前確認が必要な場合は `--readiness-policy strict` を明示する。
 物理検証時の `collection` は基準位置の1条件で、実機と同じ補正処理を検証する。
 その場合、押下深さ・追従・帰還の偏差は診断情報として扱うが、衝突、過大な接触力、関節余裕は合否に使う。
@@ -100,7 +109,7 @@ joint補正では、最初に対象ボタンを特定した画像の明るさを
 点灯位置から近い経由点へ戻り、衝突余裕を検査した関節空間の短い経路を使う。
 帰還中は追従誤差によって参照経路を保留しない。実測姿勢から各指令への衝突検査と、
 関節の速度・加速度制限は引き続き適用する。物理検証を選んだ場合は、計画時に点灯時点を変えた物理検証も行う。
-異常時の復帰や接触前診断はこの高速化の対象外。通常版・高速版のどちらのバッシュにも適用する。
+異常時の復帰はこの高速化の対象外。通常版・高速版のどちらのバッシュにも適用する。
 画像の判定は選択したボタンの領域を用い、3D位置推定が遮蔽で失敗しても続ける。
 基準の枠・明るさ・時刻と検出時の明るさ・時刻、帰還・制御解除の結果を記録する。
 検出枠内の反射やカメラの露出変化も増光として判定される可能性がある。
@@ -118,7 +127,7 @@ fungiwindowsからはSSHで新しいコード専用ディレクトリへ転送�
 
 ```bash
 # G1へコードだけを転送して終了。腕の動作、RGB-D、DDSは開始しない。
-bash Manipulation/push_button/real/run_robust_button.sh check --deploy-only
+bash Manipulation/push_button/real/run_robust_button_press.sh --deploy-only
 ```
 
 校正JSONは**制御を実行するPCから読める場所**に必要である。G1実行ならG1側、

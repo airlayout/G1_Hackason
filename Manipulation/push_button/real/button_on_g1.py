@@ -12,12 +12,16 @@ import tarfile
 import uuid
 
 
-def source_archive(root):
+def source_archive(root, *, approach=False):
     buffer = io.BytesIO()
     base = root/'Manipulation/push_button'
     with tarfile.open(fileobj=buffer,mode='w:gz') as archive:
         for path in sorted(base.glob('*.py'))+sorted((base/'real').glob('*.py'))+sorted((base/'real').glob('*.sh')):
             archive.add(path,arcname=str(path.relative_to(root)),recursive=False)
+        if approach:
+            j1 = root/'Button_Press/J1-gen'
+            for path in sorted((j1/'common').rglob('*.py'))+sorted((j1/'configs').glob('*.yaml')):
+                archive.add(path,arcname=str(path.relative_to(root)),recursive=False)
     return buffer.getvalue()
 
 
@@ -30,14 +34,22 @@ release.mkdir(parents=True,exist_ok=False)
 with tarfile.open(fileobj=io.BytesIO(sys.stdin.buffer.read()),mode='r:gz') as archive:
     for entry in archive.getmembers():
         path=pathlib.PurePosixPath(entry.name)
-        if not entry.isfile() or path.is_absolute() or '..' in path.parts or path.parts[:2]!=('Manipulation','push_button'):
+        press = path.parts[:2] == ('Manipulation','push_button')
+        common = path.parts[:3] == ('Button_Press','J1-gen','common') and path.suffix == '.py'
+        config = path.parts[:3] == ('Button_Press','J1-gen','configs') and path.suffix == '.yaml'
+        if not entry.isfile() or path.is_absolute() or '..' in path.parts or not (press or common or config):
             raise SystemExit('Invalid code archive entry')
         target=release/entry.name
         target.parent.mkdir(parents=True,exist_ok=True)
         target.write_bytes(archive.extractfile(entry).read())
         target.chmod(entry.mode & 0o777)
-for name in ('_local','Button_Press','Perception'):
+for name in ('_local','Perception'):
     (release/name).symlink_to(base/name,target_is_directory=True)
+if (release/'Button_Press').exists():
+    (release/'Button_Press/J1-gen/weights').symlink_to(
+        base/'Button_Press/J1-gen/weights',target_is_directory=True)
+else:
+    (release/'Button_Press').symlink_to(base/'Button_Press',target_is_directory=True)
 print(json.dumps({'release':str(release),'runtime':str(base)}))
 '''
 
@@ -49,7 +61,8 @@ def run_on_g1(root, setup, arguments, *, deploy_only=False):
         raise ValueError('remote_runtime_rootにはG1上の絶対パスが必要です')
     ssh = ['ssh','-o','BatchMode=yes','-o','ConnectTimeout=5',host]
     install = shlex.join(['python3','-c',INSTALL,runtime,uuid.uuid4().hex])
-    result = subprocess.run(ssh+[install],input=source_archive(root),capture_output=True,timeout=60)
+    result = subprocess.run(ssh+[install],input=source_archive(root,approach='--approach' in arguments),
+                            capture_output=True,timeout=60)
     if result.returncode:
         raise RuntimeError('G1へのコード転送に失敗しました: '+result.stderr.decode(errors='replace')[-1000:])
     deployed = json.loads(result.stdout)

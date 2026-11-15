@@ -76,11 +76,15 @@ def test_readiness_entrypoint_passes_policy_and_closes_read_only_sdk(tmp_path,mo
         assert not (output/'state.json').exists()
 
 
-@pytest.mark.parametrize('script',['run_robust_button.sh','run_robust_bottle.sh'])
-def test_both_bash_entrypoints_select_shared_collection_readiness(tmp_path,script):
+@pytest.mark.parametrize(('script','args'), [
+    ('run_robust_button.sh', ['push']),
+    ('run_robust_bottle.sh', ['push']),
+    ('run_robust_button_approach_press.sh', ['--button-direction', 'down']),
+])
+def test_bash_entrypoints_select_shared_collection_readiness(tmp_path,script,args):
     python=tmp_path/'python3'
     python.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n');python.chmod(0o755)
-    result=subprocess.run(['bash',str(ROOT/'real'/script),'check'],check=True,text=True,capture_output=True,
+    result=subprocess.run(['bash',str(ROOT/'real'/script),*args],check=True,text=True,capture_output=True,
         env=dict(os.environ,PATH=str(tmp_path)+os.pathsep+os.environ['PATH']))
     args=result.stdout.splitlines()
     assert args[args.index('--readiness-policy')+1]=='collection'

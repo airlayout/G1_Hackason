@@ -25,9 +25,11 @@ def search_kinematic(path, calibration, scene, settings, *, monitor=lambda: None
     report['stages_wall_s']['scene'] = time.perf_counter()-t
     offsets = [(0.,0.,0.)]+[v for v in product((-.4,0.,.4),(-.4,0.,.4),(-.6,0.,.6)) if v != (0.,0.,0.)]
     t = time.perf_counter()
+    status = 'candidates_exhausted'
     for index in range(settings.max_candidates):
         monitor()
         if time.perf_counter() >= deadline:
+            status = 'budget_exhausted'
             break
         row = {'index': index, 'accepted': False}
         report['candidates'].append(row)
@@ -39,9 +41,14 @@ def search_kinematic(path, calibration, scene, settings, *, monitor=lambda: None
             candidate = generate_candidate(kin, scene, index, offsets[index % len(offsets)], waypoint, settings, deadline)
             if time.perf_counter() >= deadline:
                 row['reason'] = 'deadline'
+                status = 'budget_exhausted'
                 break
             monitor()
-        except (ValueError, TimeoutError) as exc:
+        except TimeoutError as exc:
+            row['reason'] = str(exc)
+            status = 'budget_exhausted'
+            break
+        except ValueError as exc:
             row['reason'] = str(exc)
             continue
         finally:
@@ -52,9 +59,13 @@ def search_kinematic(path, calibration, scene, settings, *, monitor=lambda: None
         plan.candidate = candidate
         report['first_accepted_s'] = time.perf_counter()-started
         report['kinematic_checked'] = True
+        status = 'accepted'
         break
     report['stages_wall_s']['candidate_and_static'] = time.perf_counter()-t
     report['total_wall_s'] = time.perf_counter()-started
+    if status == 'candidates_exhausted' and time.perf_counter() >= deadline:
+        status = 'budget_exhausted'
+    report['search_status'] = status
     if plan.candidate is None:
         report['kinematic_checked'] = False
         report['reason'] = 'No candidate passed kinematic and collision checks within budget'

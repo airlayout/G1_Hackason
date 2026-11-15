@@ -29,7 +29,7 @@
 - **11月9日 `9c33e44`、`15dca6d`**。右腕の実測角を初期姿勢から帰還まで読み、重力補償に上限付きの積分トルクを加える。腰角と IMU も FK に反映。追従が遅いときは経路の進行を保留する。起動前監視はボトルと共有し、収集モードでの対象位置変化は記録しながら上限付きで補正する。
 - **11月13日 `2d80adb`**。11月11日に 10 mm にした次指令先の障害物余裕を 3 mm に戻した。余裕を下回る場合は減速指令で再検査する。設定箇所は `COMMAND_CLEARANCE_M`。[共通コントローラ](Manipulation/push_button/button_tracking.py)、[補正テスト](Manipulation/push_button/tests/test_button_tracking.py)
 - **11月14日 `194ed54`、`409f574`、`40c4c56`、`4d3ed57`**。点灯検出と帰還を改善し、直進押下を既定にした。[高速版・トレース](Manipulation/push_button/ROBUST.md)
-- **11月14日 運動学検査**。本押しバッシュは物理検証の代わりに関節・手先・衝突の静的検査を既定にする。物理検証に戻すには `--button-validation physical`。`check` と `precontact` は物理検証を維持する。実機1試行で計画7.86秒、点灯・帰還・制御解除を確認した。その他の配置や実際の押下力は未検証。[現場手順](Manipulation/push_button/BUTTON_FIELD.md)
+- **11月14日 運動学検査**。ボタンの一括起動は本押し専用で、物理検証の代わりに関節・手先・衝突の静的検査を既定にする。物理検証に戻すには `--button-validation physical`。実機1試行で計画7.86秒、点灯・帰還・制御解除を確認した。その他の配置や実際の押下力は未検証。[現場手順](Manipulation/push_button/BUTTON_FIELD.md)
 
 シェル入口の `real/run_robust_button.sh` は `collection` の起動前監視、`joint` の補正、計画予算300秒が既定。物理検証を指定した収集モードは基準位置の1条件、標準ボタン検証は基準・奥3 mm・左3 mm・右3 mm の4条件。Python の直接起動では物理検証、ボタン検証 `standard`、補正 `off` が既定。補正付きのストロークは既定15 mm。
 

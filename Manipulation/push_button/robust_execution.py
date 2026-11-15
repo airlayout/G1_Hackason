@@ -27,7 +27,7 @@ def button_fixed_interval(scene, candidate):
     return int(close[0]), int(candidate.press_end+1+retreat[0])
 
 
-def validate_start(scene, configuration, observed, *, record_deviations=False):
+def validate_start(scene, configuration, observed, *, record_deviations=False, require_snapshot_match=False):
     q, imu, _, leg, gyro = configuration
     policy = execution_policy(record_deviations)
     delta = np.abs(np.array(q)-scene.q)
@@ -35,7 +35,8 @@ def validate_start(scene, configuration, observed, *, record_deviations=False):
         raise RuntimeError('Robot moved while planning; discard snapshot')
     warnings = []
     target_changed = np.linalg.norm(np.array(observed.geometry['face'])-scene.face) > max(.003,scene.uncertainty_m)
-    record_target_motion = scene.task == 'button' and getattr(scene,'button_policy','standard') == 'collection'
+    record_target_motion = (not require_snapshot_match and scene.task == 'button'
+                            and getattr(scene,'button_policy','standard') == 'collection')
     if target_changed and record_target_motion:
         warnings.append('Target moved while planning; recorded for button collection')
     checks = [(np.max(delta[list(START_MONITORED_JOINTS)]) > .01
@@ -47,7 +48,7 @@ def validate_start(scene, configuration, observed, *, record_deviations=False):
         'Bottle vertical extent changed while planning',True)]
     for changed,reason,recordable in checks:
         if changed:
-            if not (record_deviations and recordable):
+            if require_snapshot_match or not (record_deviations and recordable):
                 raise RuntimeError(reason)
             warnings.append(reason)
     return warnings

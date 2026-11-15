@@ -79,15 +79,23 @@ def launcher(tmp_path,monkeypatch):
         args=lambda mode:['--task','button',mode,'--setup',str(setup),'--stroke-mm','2','--button-direction','down'])
 
 
-@pytest.mark.parametrize('mode',['check','precontact','push'])
-def test_button_launcher_uses_measured_overrides_without_touching_originals(launcher,mode):
-    assert session.main(launcher.args(mode))==0
+def test_button_launcher_uses_measured_overrides_without_touching_originals(launcher):
+    assert session.main(launcher.args('push'))==0
     commands=[v for v in launcher.calls if isinstance(v,list)]
-    assert len([c for c in commands if '--execute' in c])==(0 if mode=='check' else 1)
+    assert len([c for c in commands if '--execute' in c])==1
     assert json.loads(launcher.trial.read_text())['stroke']==.0015
     assert json.loads(launcher.trial.read_text())['planning_scenarios']==3
     run=next((launcher.root/'_local/robust_button/runs').iterdir())
     assert json.loads((run/'session.json').read_text())['completed']
+
+
+@pytest.mark.parametrize('mode', ['check', 'precontact'])
+def test_removed_button_modes_fail_before_camera_and_sdk(launcher,mode):
+    with pytest.raises(SystemExit) as error:
+        session.main(launcher.args(mode))
+    assert error.value.code == 2 and launcher.calls == []
+    with pytest.raises(ValueError, match='pushのみ'):
+        session.motion_arguments(mode, launcher.trial, 'unused', task='button')
 
 
 @pytest.mark.parametrize('bad', ['stroke','radius','target','bottle_mode'])
@@ -113,9 +121,9 @@ def test_preparation_failure_never_sends_motion(launcher,monkeypatch,failed_phas
             return 2
         return launcher.execute(command,*args,**kwargs)
     monkeypatch.setattr(session,'execute_child',fail)
-    mode='push' if failed_phase=='state' else 'check'
-    assert session.main(launcher.args(mode))==2
-    assert not any(isinstance(c,list) and '--execute' in c for c in launcher.calls)
+    assert session.main(launcher.args('push'))==2
+    if failed_phase == 'state':
+        assert not any(isinstance(c,list) and '--execute' in c for c in launcher.calls)
 
 
 def test_bottle_and_button_share_robot_lock(launcher):
@@ -283,7 +291,7 @@ def test_button_shell_entrypoint_cannot_switch_to_bottle(tmp_path):
 
 
 @pytest.mark.parametrize('levels,diagnostic,expected', [([140,145,150],False,0),
-    ([110,115,120],False,1),([140,110,145],False,1),([],False,1),([],True,0)])
+    ([110,115,120],False,1),([140,110,145],False,1),([],False,1)])
 @pytest.mark.parametrize('legacy_plan',[False,True])
 def test_full_button_entrypoint_keeps_monitoring_and_records_unknown_outcomes(
         tmp_path,monkeypatch,levels,diagnostic,expected,legacy_plan):
@@ -355,6 +363,15 @@ def test_full_button_entrypoint_keeps_monitoring_and_records_unknown_outcomes(
     if not diagnostic:
         assert result['lamp_check']['status']==('lit' if expected==0 else 'unknown' if len(levels)!=3 or levels==[140,110,145] else 'no_rise')
         assert result['motion_completed'] and result['physical_press_success'] is None
+
+
+def test_direct_button_precontact_is_rejected_before_execution(tmp_path):
+    from robust_push import main
+    output = tmp_path/'result.json'
+    with pytest.raises(SystemExit) as error:
+        main(['--task','button','--model','unused','--base-transform','unused',
+              '--output',str(output),'--stop-before-contact'])
+    assert error.value.code == 2 and not output.exists()
 
 
 @pytest.mark.parametrize('height,x,yaw',[(.98,.35,-3),(.98,.36,0),(.98,.37,3),

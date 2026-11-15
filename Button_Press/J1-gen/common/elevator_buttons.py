@@ -212,18 +212,22 @@ class YoloButtonDetector:
         self._det.detect(np.zeros((480, 640, 3), np.uint8))
 
     def detect(self, rgb: np.ndarray) -> list[Candidate2D]:
-        h, w = rgb.shape[:2]
-        v, u = np.mgrid[0:h, 0:w]
         # Perception の YoloDetector は BGR（OpenCV の並び）を受け取る
-        out: list[Candidate2D] = []
-        for d in self._det.detect(np.ascontiguousarray(rgb[:, :, ::-1])):
-            x1, y1, x2, y2 = d.bbox
-            cx, cy, rx, ry = (x1 + x2) / 2, (y1 + y2) / 2, max((x2 - x1) / 2, 1), max((y2 - y1) / 2, 1)
-            face = ((u - cx) / rx) ** 2 + ((v - cy) / ry) ** 2 <= 1.0
-            box = (int(np.floor(x1)), int(np.floor(y1)), int(np.ceil(x2)), int(np.ceil(y2)))
-            out.append(Candidate2D(bbox=box, mask=face, arrow=d.class_name if d.class_name in ARROWS else None,
-                                   score=float(d.confidence), source="yolo"))
-        return out
+        return yolo_candidates(rgb, self._det.detect(np.ascontiguousarray(rgb[:, :, ::-1])))
+
+
+def yolo_candidates(rgb: np.ndarray, detections) -> list[Candidate2D]:
+    h, w = rgb.shape[:2]
+    v, u = np.mgrid[0:h, 0:w]
+    out: list[Candidate2D] = []
+    for d in detections:
+        x1, y1, x2, y2 = d.bbox
+        cx, cy, rx, ry = (x1 + x2) / 2, (y1 + y2) / 2, max((x2 - x1) / 2, 1), max((y2 - y1) / 2, 1)
+        face = ((u - cx) / rx) ** 2 + ((v - cy) / ry) ** 2 <= 1.0
+        box = (int(np.floor(x1)), int(np.floor(y1)), int(np.ceil(x2)), int(np.ceil(y2)))
+        out.append(Candidate2D(bbox=box, mask=face, arrow=d.class_name if d.class_name in ARROWS else None,
+                               score=float(d.confidence), source="yolo"))
+    return out
 
 
 def make_candidate_detector(cfg: dict[str, Any]) -> CandidateDetector:

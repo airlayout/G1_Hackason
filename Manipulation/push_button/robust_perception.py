@@ -125,15 +125,18 @@ class ContinuousObserver:
             raise RuntimeError('No fresh continuous observation')
         return value
 
-    def initial(self, timeout_s=5.):
+    def initial(self, timeout_s=5., *, after=None):
         deadline = self.now()+timeout_s
         while self.now() < deadline:
             if self.error is not None:
                 raise RuntimeError(str(self.error)) from self.error
             try:
-                return self.latest(allow_stale=self.window.allow_stale)
+                value = self.latest(allow_stale=self.window.allow_stale and after is None)
+                if after is None or value.captured_at > after:
+                    return value
             except RuntimeError:
-                self.stop.wait(.01)
+                pass
+            self.stop.wait(.01)
         raise RuntimeError('Initial three-frame observation unavailable')
 
     def close(self):

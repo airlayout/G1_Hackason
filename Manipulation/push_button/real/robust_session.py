@@ -45,9 +45,17 @@ def local_path(value,*,resolve_symlinks=True):
     return path.resolve() if resolve_symlinks else Path(os.path.abspath(path))
 
 
-def motion_arguments(mode,trial,output,socket_path=None,state_path=None,*,task='bottle'):
+def motion_arguments(mode,trial,output,socket_path=None,state_path=None,*,task='bottle',
+                     approach_button_set=None,approach_execute=False):
+    if task == 'button' and mode != 'push':
+        raise ValueError('ボタン押しはpushのみ対応しています')
     args = [str(REAL/'run_push.py'),'--task',task,'--motion-planner','robust',
         '--trial-config',str(trial),'--output',str(output)]
+    if approach_button_set is not None:
+        args += ['--arm-socket',str(socket_path),'--approach-button-set',approach_button_set]
+        if approach_execute:
+            args += ['--execute','--calibrated','--execute-verified-plan','--approach-confirmed']
+        return args
     if state_path is not None:
         args += ['--state-json',str(state_path)]
     else:
@@ -153,8 +161,7 @@ def button_result_summary(actual,mode,*,button_validation='physical'):
         plan_error = str(exc)
     returned = (plan_error is None and bool(actual.get('completed')) and execution.get('release_completed') is True
                 and not actual.get('cleanup_errors'))
-    completed = returned and (execution.get('diagnostic_completed') is True if mode=='precontact'
-                              else actual.get('visual_success') is True and execution.get('motion_completed') is True)
+    completed = returned and actual.get('visual_success') is True and execution.get('motion_completed') is True
     return dict(completed=bool(completed),motion_completed=bool(execution.get('motion_completed')),
         diagnostic_completed=bool(execution.get('diagnostic_completed')),
         home_completed=execution.get('home_completed'),release_completed=execution.get('release_completed'),
@@ -316,18 +323,23 @@ def print_execution_failure(run):
             print('SDK側の停止理由:',bridge['error'])
 
 
-def button_child_timeout(trial):
+def button_child_timeout(trial, *, approach_config=None):
     # Initial RGB-D window + search + feedback + bounded recovery + IO/cleanup.
     motion_budget = (trial.get('button_feedback_timeout_s',120.) if trial.get('button_feedback') == 'joint'
         else trial.get('motion_duration_s',30.))
-    return 30.+float(trial.get('planning_budget_s',30.))+float(motion_budget)+30.+30.
+    timeout = 30.+float(trial.get('planning_budget_s',30.))+float(motion_budget)+30.+30.
+    if approach_config is not None:
+        loco = approach_config['loco']
+        per_stop = 60. + loco['still']['timeout_s'] + loco['max_duration_s']
+        timeout += approach_config['approach']['max_steps'] * per_stop
+    return timeout
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--task',choices=('bottle','button'),default='bottle')
     parser.add_argument('mode',choices=('check','precontact','push'),
-        help='check: 重み0で入出力確認 / precontact: 接触手前往復 / push: 本押し')
+        help='ボタンはpushのみ。ボトルはcheck / precontact / push')
     parser.add_argument('--setup',type=Path)
     parser.add_argument('--push-distance',type=float,
         help='ボトルの押し込み量[m]。シミュレーション・実機の両方へ同じ値を適用する')
@@ -345,7 +357,20 @@ def main(argv=None):
     parser.add_argument('--readiness-policy',choices=('strict','collection'),default='strict',
         help='起動前の状態監視。実機バッシュはボトル共通のcollectionを使用')
     parser.add_argument('--deploy-only',action='store_true',help='G1へコードを転送して終了（動作なし）')
+    parser.add_argument('--approach',action='store_true',help='▲▼を観測して脚で立ち位置を補正する')
+    parser.add_argument('--button-set',choices=('wheelchair','general'),help='脚補正で選ぶ▲▼の組（既定: wheelchair）')
+    parser.add_argument('--execute',action='store_true',help='脚補正モードで歩行と本押しを実行する')
     args = parser.parse_args(argv)
+    if args.task == 'button' and args.mode != 'push':
+        parser.error('ボタン押しはpushのみ対応しています')
+    if args.approach:
+        if (args.task != 'button' or args.button_direction is None or args.target_pixel is not None
+                or args.button_validation != 'kinematic' or args.button_press_mode != 'straight_trial'
+                or args.button_feedback != 'joint' or args.button_policy != 'collection'):
+            parser.error('脚補正には本押しの既定設定と明示した --button-direction up|down が必要です')
+    elif args.execute or args.button_set is not None:
+        parser.error('--execute と --button-set は脚補正モード用です')
+    approach_button_set = (args.button_set or 'wheelchair') if args.approach else None
     if args.setup is None:
         args.setup = ROOT/('_local/robust_push' if args.task=='bottle' else '_local/robust_button')/'active_setup.json'
     if args.task == 'button' and args.push_distance is not None:
@@ -369,6 +394,8 @@ def main(argv=None):
         parser.error('実機設定はJSONオブジェクトで指定してください')
     if required-set(setup):
         parser.error('実機設定に必要な項目がありません: '+', '.join(sorted(required-set(setup))))
+    if args.approach and setup.get('execution_host') != 'g1' and os.environ.get('G1_BUTTON_ON_ROBOT') != '1':
+        parser.error('脚補正にはPC2で実行する execution_host=g1 の設定が必要です')
     if args.task == 'button' and setup.get('execution_host') == 'g1' and os.environ.get('G1_BUTTON_ON_ROBOT') != '1':
         from button_on_g1 import run_on_g1
         try:
@@ -390,6 +417,8 @@ def main(argv=None):
     report = dict(task=args.task,mode=args.mode,completed=False,io_passed=None,setup_file=str(args.setup),phases=[],
         readiness_policy=args.readiness_policy,
         flow='check-input-policy-output' if args.mode == 'check' else 'initialize-single-live-plan-execute')
+    if args.approach:
+        report.update(flow='approach-and-press', button_set=approach_button_set, preview=not args.execute)
     button_validation = 'physical'
     env = dict(os.environ,OPENBLAS_NUM_THREADS='1',OMP_NUM_THREADS='1',MUJOCO_GL='egl',
                YOLO_CONFIG_DIR=str(ROOT/'_local/bottle_push/ultralytics'))
@@ -424,6 +453,8 @@ def main(argv=None):
                 if value is not None:
                     trial[key] = value
             validate_button_trial(trial,calibration)
+            if args.approach:
+                trial.pop('target_pixel', None)  # The observed pair selects the target.
             button_validation = trial.get('button_validation','physical')
             report['button_validation'] = button_validation
             if button_validation == 'kinematic':
@@ -450,6 +481,9 @@ def main(argv=None):
                 if trial.get('button_feedback') == 'joint':
                     print('初期姿勢から関節角と胴体姿勢で補正。追従が遅れる間は目標の進行を保留し、補正を継続します。',flush=True)
         source_files = sorted(REAL.glob('*.py'))+sorted(REAL.glob('*.sh'))+sorted(REAL.parent.glob('*.py'))
+        if args.approach:
+            j1 = ROOT/'Button_Press/J1-gen'
+            source_files += sorted((j1/'common').rglob('*.py'))+sorted((j1/'configs').glob('*.yaml'))
         write_json(run/'source_sha256.json',{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest()
             for p in source_files})
         def phase(name,command,*,input_text=None,timeout=None):
@@ -466,6 +500,10 @@ def main(argv=None):
         phase('2. 関節入力・立位・他の制御を確認', [setup['sdk_python'],str(REAL/'check_robust_readiness.py'),
             '--trial-config',str(trial_path),'--output-dir',str(run/'state'),
             '--ssh-host',setup['ssh_host'],'--policy',args.readiness_policy])
+        if args.approach and args.execute:
+            if input('腕を下ろし、周囲・後方・足元が空いていることを確認したら YES: ').strip() != 'YES':
+                print('開始確認を取り消しました。',flush=True)
+                return 1
         if args.mode == 'check':
             preview = run/'preview.json'
             phase('3. RGB-D入力・認識・経路生成を確認',[setup['vision_python'],
@@ -484,18 +522,35 @@ def main(argv=None):
             report['completed'] = True
             print('入力・方策生成・出力の疎通確認が完了しました。腕の制御は有効にしていません。',flush=True)
             return 0
-        print('このコマンドの指定に従い、'+('接触手前確認' if args.mode=='precontact' else '本押し')+'を開始します。',flush=True)
+        if not args.approach:
+            print('このコマンドの指定に従い、'+('接触手前確認' if args.task == 'bottle' and args.mode=='precontact' else '本押し')+'を開始します。',flush=True)
         if args.mode == 'push' and args.task == 'bottle':
             print(f'ボトルの目標移動量: {report["push_distance_m"]*100:.1f}cm（計画・実機共通）',flush=True)
         elif args.task == 'button':
             print(f'ボタンの実測ストローク: {trial["stroke"]*1000:g}mm（計画・実機共通）',flush=True)
+        approach_config = None
+        if args.approach:
+            from j1gen_camera import J1CameraRuntime
+            runtime = J1CameraRuntime()
+            approach_config = runtime.module('config').load_config(runtime.root/'configs/approach.yaml')
+        result_path = run/('preview.json' if args.approach and not args.execute else 'result.json')
         with sdk_bridge(setup['sdk_python'],trial['network_interface'],run,'motion',env) as sock:
             conditions = trial['planning_scenarios'] if args.task=='button' else 3
-            phase(('3. 運動学・衝突検査が通過したら即実行（物理検証なし）' if button_validation == 'kinematic'
-                   else f'3. シミュレーション{conditions}条件が通過したら即実行'),[setup['vision_python'],
-                *motion_arguments(args.mode,trial_path,run/'result.json',socket_path=sock,task=args.task)],
-                **({'timeout':button_child_timeout(trial)} if args.task == 'button' else {}))
-        actual = json.loads((run/'result.json').read_text())
+            if args.approach:
+                phase_name = '3. 立ち位置の補正と本押し' if args.execute else '3. 立ち位置を観測して次の判断を表示'
+            elif button_validation == 'kinematic':
+                phase_name = '3. 運動学・衝突検査が通過したら即実行（物理検証なし）'
+            else:
+                phase_name = f'3. シミュレーション{conditions}条件が通過したら即実行'
+            phase(phase_name,[setup['vision_python'],
+                *motion_arguments(args.mode,trial_path,result_path,socket_path=sock,task=args.task,
+                                  approach_button_set=approach_button_set,approach_execute=args.execute)],
+                **({'timeout':button_child_timeout(trial,approach_config=approach_config)} if args.task == 'button' else {}))
+        actual = json.loads(result_path.read_text())
+        if args.approach and not args.execute:
+            report['approach_steps'] = actual['approach_steps']
+            report['completed'] = True
+            return 0
         if args.task=='button':
             validate_button_plan(actual.get('plan',{}), method=button_validation)
         report['completed'] = bool(actual.get('completed'))

@@ -131,7 +131,7 @@ def test_push_only_shell_forwards_requested_button_and_kinematic_mode(tmp_path):
     assert args[args.index('--stroke-mm')+1] == '15'
 
 
-def test_standard_button_launcher_defaults_only_push_to_kinematic(tmp_path):
+def test_standard_button_launcher_defaults_push_to_kinematic(tmp_path):
     python = tmp_path/'python3'
     python.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
     python.chmod(0o755)
@@ -142,8 +142,23 @@ def test_standard_button_launcher_defaults_only_push_to_kinematic(tmp_path):
                               text=True, check=True).stdout.splitlines()
     args = launch('--button-direction', 'down', 'push')
     assert args[args.index('--button-validation')+1] == 'kinematic'
-    assert '--button-validation' not in launch('check')
-    assert '--button-validation' not in launch('precontact')
+    for mode in ('check', 'precontact', '--check'):
+        result = subprocess.run(['bash', str(shell), mode], env=env, capture_output=True, text=True)
+        assert result.returncode == 2 and 'pushのみ' in result.stderr
+        assert not result.stdout
     args = launch('push', '--button-validation', 'physical')
     choices = [args[i+1] for i, value in enumerate(args) if value == '--button-validation']
     assert choices == ['kinematic', 'physical']
+
+
+@pytest.mark.parametrize('name', ['run_robust_button_press.sh', 'run_robust_button_press_fast.sh',
+                                  'run_robust_button_press_straight_trial.sh'])
+def test_button_aliases_reject_removed_check_before_starting_python(tmp_path, name):
+    python = tmp_path/'python3'
+    marker = tmp_path/'python_started'
+    python.write_text('#!/bin/sh\ntouch "$BUTTON_TEST_MARKER"\n')
+    python.chmod(0o755)
+    env = {**os.environ, 'PATH': str(tmp_path)+':'+os.environ['PATH'], 'BUTTON_TEST_MARKER': str(marker)}
+    result = subprocess.run(['bash', str(ROOT/'real'/name), '--check'], env=env, capture_output=True, text=True)
+    assert result.returncode == 2 and 'pushのみ' in result.stderr
+    assert not marker.exists()
