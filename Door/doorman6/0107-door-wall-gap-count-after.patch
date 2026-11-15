@@ -1,0 +1,73 @@
+From e830aba6cb25a93a765253a91b05ed84d2cc377b Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Wed, 11 Nov 2026 18:15:53 +0900
+Subject: [PATCH] door: wall clearance penalty can skip the start of each
+ episode (env.config.wall_gap.count_after_s: for that many seconds after the
+ reset the penalty is zero and the episode minimum distance is not updated, so
+ the violations that adapt lambda come only from the motion; with stance poses
+ toward the lever side beyond the opening edge the resting fingertip was
+ already within x_m at the start, which no policy could avoid; default 0 =
+ unchanged) (11-11)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py | 6 ++++--
+ gr00t/rl/envs/door/wall_gap.py        | 6 ++++--
+ 2 files changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 1fbaf9d..59a4ca1 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -1627,14 +1627,16 @@ class DoorPregrasp(
+         door = self.simulator.get_task_root_state("door")  # [pos, wxyz, …]
+         d = gap_to_walls(to_door_frame(pts, door[:, :3], door[:, 3:7]), self._wg_edge, self.door_cover_front_x,
+                          self.door_wall_front_x, self.door_cover_width)
+-        dmin = d.amin(dim=-1)
++        # 0107: 回の始めの count_after_s 秒は罰も違反も数えない（構えたままの避けようのない近さ）
++        live = self.episode_length_buf.float() * self.dt >= self._wg["count_after_s"]
++        dmin = torch.where(live, d.amin(dim=-1), torch.full_like(d[:, 0], float("inf")))
+         self._wg_min = torch.minimum(self._wg_min, dmin)
+         self._wg_steps = self._wg_steps + 1
+         lam = self._wg_state["lambda"]
+         self.log_dict["wall_gap_lambda"] = torch.tensor(lam, device=self.device)
+         self.log_dict["wall_gap_rate"] = torch.tensor(self._wg_state["rate"], device=self.device)
+         self.log_dict["wall_gap_in_frac"] = (dmin < self._wg["x_m"]).float().mean()
+-        return -lam * gap_cost(d, self._wg["x_m"])
++        return -lam * gap_cost(d, self._wg["x_m"]) * live.float()
+ 
+     def _wg_episode_end(self, env_ids):
+         """0106: 回の終わり（リセット）に、回の中で一度でも X 以内に入ったかを数えて λ を進め、回の最小距離を戻す。
+diff --git a/gr00t/rl/envs/door/wall_gap.py b/gr00t/rl/envs/door/wall_gap.py
+index d0d5c8b..9ff2c7e 100644
+--- a/gr00t/rl/envs/door/wall_gap.py
++++ b/gr00t/rl/envs/door/wall_gap.py
+@@ -14,7 +14,8 @@
+ 
+ env.config.wall_gap（無い・enabled=False なら元のまま）:
+   enabled・x_m（0.06）・tip_m（0.10）・lambda_init（2.0）・lambda_max（50）・lr（0.002）・target_rate（0.1）・rate_init（1.0）・
+-  rate_ema（0.002）・state_path（無し）・save_every_events（200）
++  rate_ema（0.002）・state_path（無し）・save_every_events（200）・count_after_s（0。パッチ 0107・11-11 夜: 回の始めのこの秒は罰も違反も
++  数えない。構えの位置が縁の外寄りだと、構えたままの指先が始めから X 以内にあり、方策では避けようがなかった）
+ rewards.reward_scales.wall_gap_lagrange: 1.0
+ 
+ ここは torch の関数だけ（Isaac Sim なしで試験できる）。環境（door_open_homie.py）が呼ぶ。
+@@ -25,7 +26,7 @@ from __future__ import annotations
+ import torch
+ 
+ DEFAULTS = {"x_m": 0.06, "tip_m": 0.10, "lambda_init": 2.0, "lambda_max": 50.0, "lr": 0.002, "target_rate": 0.1,
+-            "rate_init": 1.0, "rate_ema": 0.002, "save_every_events": 200}
++            "rate_init": 1.0, "rate_ema": 0.002, "save_every_events": 200, "count_after_s": 0.0}
+ DEPTH_M = 0.30  # 箱の奥行き（前の面から奥へ）。距離の計算に使うだけ
+ FAR_M = 5.0  # 壁の箱の外への広がり
+ 
+@@ -39,6 +40,7 @@ def wall_gap_config(cfg) -> dict | None:
+     assert out["x_m"] > 0.0 and out["tip_m"] >= 0.0, f"wall_gap.x_m は正・tip_m は 0 以上: {out}"
+     assert 0.0 <= out["target_rate"] <= 1.0 and 0.0 < out["rate_ema"] <= 1.0, f"wall_gap.target_rate・rate_ema: {out}"
+     assert 0.0 <= out["lambda_init"] <= out["lambda_max"], f"wall_gap は 0 <= lambda_init <= lambda_max: {out}"
++    assert out["count_after_s"] >= 0.0, f"wall_gap.count_after_s は 0 以上: {out}"
+     out["state_path"] = cfg.get("state_path", None)
+     return out
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,268 @@
+From 833452f9199c9f93c02a98f737d8ce4a29349163 Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Thu, 12 Nov 2026 11:42:59 +0900
+Subject: [PATCH] door: optional script teacher that runs the real robot door
+ script per env and writes the arm accumulator (env.config.script_teacher: for
+ the first frac of the envs a ScriptDoor state machine and the damped least
+ squares arm IK from G1_Hackason/Door/real are stepped every control step with
+ the pelvis pose in the door frame and the joints in SDK order, the 7 arm
+ targets are written back into the delta action accumulator, the other arm
+ columns hold the last value and the walk columns are zeroed so that the
+ policy output does not reach the arms or legs, per episode results go to a
+ JSON lines file and optional traces; used on 11-12 to check that the script
+ that opened the real door to 10 deg behaves the same in sim; default off =
+ unchanged) (11-12)
+
+---
+ gr00t/rl/envs/door/door_open_homie.py |  10 ++
+ gr00t/rl/envs/door/script_teacher.py  | 196 ++++++++++++++++++++++++++
+ 2 files changed, 206 insertions(+)
+ create mode 100644 gr00t/rl/envs/door/script_teacher.py
+
+diff --git a/gr00t/rl/envs/door/door_open_homie.py b/gr00t/rl/envs/door/door_open_homie.py
+index 59a4ca1..fb074bf 100644
+--- a/gr00t/rl/envs/door/door_open_homie.py
++++ b/gr00t/rl/envs/door/door_open_homie.py
+@@ -46,6 +46,7 @@ from gr00t.rl.envs.door.reset_from_dataset import ResetFromDataset
+ from gr00t.rl.envs.door.walk_away import walk_away_amount
+ from gr00t.rl.envs.door.waist_yaw_comp import comp_offset, rotate_rel_yaw, waist_yaw_comp_config, wrap_angle, yaw_from_xyzw
+ from gr00t.rl.envs.door.wall_gap import arm_points, gap_cost, gap_to_walls, lagrange_step, to_door_frame, wall_gap_config
++from gr00t.rl.envs.door.script_teacher import ScriptTeacher, script_teacher_config
+ from gr00t.rl.envs.door.yaw_disturb import ramp_offset, rotate_root_state_wxyz, sample_disturb, yaw_disturb_config
+ from gr00t.rl.isaac_utils.playground.env_rand.door_closer import closer_torque
+ from gr00t.rl.isaac_utils.rotations import quat_to_tan_norm, wxyz_to_xyzw, xyzw_to_wxyz
+@@ -197,6 +198,9 @@ class DoorPregrasp(
+         # G1_Hackason（パッチ 0104、11-11）: 段 2 の途中で胴を鉛直軸のまわりに回す外乱（yaw_disturb.py）。11-11 の実機は手が下りる
+         # 直前に純正の脚の上で +10〜29° 回って空振りした。既定は切で、元と同じ。親の __init__ の中のリセットはこの口より先に走るので、
+         # 最初の回の外乱はここで引く
++        # 0108: 実機の台本を台ごとに回して腕を動かす口（script_teacher.py。作るのは最初の歩＝持ち物がそろってから）
++        self._script_teacher_cfg = script_teacher_config(self.config.get("script_teacher", None))
++        self._script_teacher = None
+         self._yaw_disturb = yaw_disturb_config(self.config.get("yaw_disturb", None))
+         if self._yaw_disturb is not None:
+             self._yd_amp = torch.zeros(self.num_envs, device=self.device)
+@@ -1372,6 +1376,10 @@ class DoorPregrasp(
+         # G1_Hackason（G2、10-29）: 止まるはずの場面（構える・つかむ・レバーの間）は、実機でも測れる 2 つの値で決める:
+         # 胴（腰）と把手の水平距離・扉の開いた角度。段階（stage_buf）は実機に無いので使わない。実機の door_core.py と同じ関数。
+         # シミュレータは本当の値を渡す（実機はライダーの値。誤差は角度 σ0.07〜0.18°・位置 数 cm で、線 10°・0.3/0.5 m より十分小さい）
++        if getattr(self, "_script_teacher_cfg", None) is not None:  # 0108: 台本が腕の積み上げを書き換える
++            if self._script_teacher is None:
++                self._script_teacher = ScriptTeacher(self, self._script_teacher_cfg)
++            self._script_teacher.apply(self)
+         arm = getattr(self, "_arm_stage", None)
+         if arm is not None:  # 0097: 腕だけの段は毎歩止める（実機の段 2 は歩きの指令 0）
+             return self._arm_stage_legs_mask(arm)
+@@ -1464,6 +1472,8 @@ class DoorPregrasp(
+         if hasattr(self, "_stand_latched"):  # G2: 回の始めは止めていない・扉はまだ開いていない
+             self._stand_latched[env_ids] = False
+             self._door_opened_once[env_ids] = False
++        if getattr(self, "_script_teacher", None) is not None:  # 0108: 台本を回ごとに作り直す
++            self._script_teacher.reset(env_ids)
+         if hasattr(self, "_arm_legs_free"):  # 0099: 回の始めは脚を止める
+             self._arm_legs_free[env_ids] = False
+         if hasattr(self, "arm_handover_buf"):  # 0101: 回の始めは腕の方策
+diff --git a/gr00t/rl/envs/door/script_teacher.py b/gr00t/rl/envs/door/script_teacher.py
+new file mode 100644
+index 0000000..77024e6
+--- /dev/null
++++ b/gr00t/rl/envs/door/script_teacher.py
+@@ -0,0 +1,196 @@
++"""実機の台本（G1_Hackason/Door/real/door_script.py）をシムの台ごとに回す口（パッチ 0108、2026-11-12）。
++
++計画書 docs/plan/2026-11-12-g1-door-script-shaped-rl.md の S0・S1。11-12 に実機で扉 10° まで通した台本
++（状態機械＋逆運動学。numpy だけ）を、腕だけの段（arm_stage）の台ごとに 1 つずつ持ち、毎歩:
++  シムの関節・pelvis の姿勢 → 台本の入力（扉の座標の pelvis・SDK の並びの関節 29）→ 台本の腕 7 軸の目標
++  → 腕の積み上げ（_delta_actions の腕の列）に書き戻す（＝台本がその台の腕を動かす）
++使い道: S0＝台本がシムでも実機と同じように通る・当たるかを見る／S1＝台本を教師にした手本
++
++env.config.script_teacher（無い・enabled=False なら元のまま）:
++  enabled: True で有効
++  dir: 実機の台本の置き場（door_script.py・door_run_staged.py・g1_arm_ik.py … と URDF・定数）
++  params: 定数ファイル（既定 <dir>/script_params.json）
++  urdf: URDF（既定 <dir>/g1_29dof_rev_1_0.urdf）
++  frac: 台本が腕を動かす台の割合（既定 1.0。台の番号の小さい方から）
++  out: 回ごとの結果を書く JSON Lines（無ければ書かない）
++  stop_after: 台本の止める所を上書き（"" なら最後まで）
++  walk: True で台本の脚への指令も通す（既定 False＝脚は環境の掛け金のまま）
++
++ここは Isaac Sim に触れない（環境の持ち物を読むだけ）。逆運動学が 1 台 0.2〜0.5 ms なので、台数は 256 までを目安に。
++"""
++
++from __future__ import annotations
++
++import json
++import math
++import os
++import sys
++
++import numpy as np
++import torch
++
++ARM_ACCUM_START = 3  # 積み上げの並び [前後, 横, 旋回, 腕 14]
++NUM_ARM = 14
++
++
++def script_teacher_config(cfg) -> dict | None:
++    """env.config.script_teacher を読んで確かめる。無い・enabled=False なら None"""
++    if cfg is None or not bool(cfg.get("enabled", False)):
++        return None
++    d = str(cfg.get("dir", ""))
++    assert os.path.isfile(os.path.join(d, "door_script.py")), f"script_teacher.dir に door_script.py が無い: {d}"
++    params = str(cfg.get("params", os.path.join(d, "script_params.json")))
++    urdf = str(cfg.get("urdf", os.path.join(d, "g1_29dof_rev_1_0.urdf")))
++    assert os.path.isfile(params) and os.path.isfile(urdf), f"script_teacher の params・urdf が無い: {params} {urdf}"
++    frac = float(cfg.get("frac", 1.0))
++    assert 0.0 < frac <= 1.0, f"script_teacher.frac は 0〜1: {frac}"
++    out = cfg.get("out", None)
++    stop_after = cfg.get("stop_after", None)
++    return {"dir": d, "params": params, "urdf": urdf, "frac": frac, "out": None if out is None else str(out),
++            "stop_after": None if stop_after is None else str(stop_after), "walk": bool(cfg.get("walk", False)),
++            "trace": int(cfg.get("trace", 0))}
++
++
++def quat_xyzw_to_wxyz(q: np.ndarray) -> np.ndarray:
++    return q[..., [3, 0, 1, 2]]
++
++
++class ScriptTeacher:
++    """台ごとの台本。apply(env) を毎歩（積み上げを足した直後）、reset(env_ids) を回の戻しで呼ぶ"""
++
++    def __init__(self, env, cfg: dict) -> None:
++        if cfg["dir"] not in sys.path:
++            sys.path.insert(0, cfg["dir"])
++        import door_frame as dfr  # noqa: PLC0415
++        import door_run_staged as drs  # noqa: PLC0415
++        import door_script as dscr  # noqa: PLC0415
++        import g1_arm_fk as fk  # noqa: PLC0415
++        import g1_arm_ik as aik  # noqa: PLC0415
++
++        self.dfr, self.drs, self.dscr, self.fk, self.aik = dfr, drs, dscr, fk, aik
++        self.cfg = cfg
++        override = {} if cfg["stop_after"] is None else {"stop_after": cfg["stop_after"]}
++        self.params = dscr.load_params(cfg["params"], **override)
++        self.chain = fk.load_chain(cfg["urdf"])
++        names = list(env.dof_names)
++        self.sim_from_real = np.array([names.index(n) for n in fk.JOINT_ORDER])  # SDK の並び → シムの関節の番号
++        self.num_lower = int(env._homie_actions.shape[-1]) if hasattr(env, "_homie_actions") else 15
++        self.action_scale = float(env.config.robot.control.action_scale)
++        self.n = int(round(cfg["frac"] * env.num_envs))
++        self.arms: list = [None] * self.n
++        self.stats: list = [None] * self.n
++        self.hold: list = [None] * self.n   # 腕 14 列の積み上げ（台本が最後に書いた値）
++        self.trace_n = min(self.n, int(cfg.get("trace", 0)))
++        self.traces: list = [[] for _ in range(self.trace_n)]
++        self.episode = np.zeros(self.n, dtype=int)
++        self.sub_code = torch.full((env.num_envs,), -1, dtype=torch.long, device=env.device)  # 台本の小段（記録用）
++        self.target = torch.full((env.num_envs, NUM_ARM), float("nan"), device=env.device)  # 台本の腕の目標 [rad]（シムの腕の並び）
++        if cfg["out"]:
++            os.makedirs(os.path.dirname(cfg["out"]) or ".", exist_ok=True)
++        print(f"[script_teacher] 台本で腕を動かす台 {self.n}/{env.num_envs}・定数 {cfg['params']}・"
++              f"止める所 {self.params.stop_after!r}・構え x {self.params.stance_x} y_off {self.params.stance_y_off}")
++
++    # --- 回の始めと終わり ---
++    def _new(self, env, i: int) -> None:
++        lever_left = bool(env.door_open_lr[i] > 0)
++        script = self.dscr.ScriptDoor(self.params, float(env.door_width[i]), float(env.door_handle_width[i]),
++                                      float(env.door_handle_height[i]), lever_left)
++        ik = self.aik.ArmIK(self.chain, "left" if lever_left else "right", self.cfg["urdf"])
++        self.arms[i] = self.drs.ScriptArm(script, ik, None, 0.75)
++        self.stats[i] = {"env": i, "episode": int(self.episode[i]), "lever_left": lever_left, "subs": [], "steps": 0,
++                         "lever_max_deg": 0.0, "door_max_deg": 0.0, "stop": "", "success": False,
++                         "door_width": float(env.door_width[i]), "backset": float(env.door_handle_width[i]),
++                         "lever_height": float(env.door_handle_height[i])}
++
++    def _flush(self, i: int) -> None:
++        s = self.stats[i]
++        if s is None or s["steps"] == 0:
++            return
++        s["last_sub"] = s["subs"][-1][0] if s["subs"] else ""
++        if self.cfg["out"]:
++            with open(self.cfg["out"], "a") as f:
++                f.write(json.dumps(s, ensure_ascii=False) + "\n")
++        if i < self.trace_n and self.traces[i] and self.cfg["out"]:
++            np.save(f"{self.cfg['out']}.trace_env{i}_ep{int(self.episode[i])}.npy", np.array(self.traces[i]))
++            self.traces[i] = []
++        self.episode[i] += 1
++
++    def reset(self, env_ids) -> None:
++        for i in (int(v) for v in env_ids):
++            if i < self.n:
++                self._flush(i)
++                self.arms[i] = None
++                self.hold[i] = None
++                self.stats[i] = None
++        self.sub_code[env_ids] = -1
++        self.target[env_ids] = float("nan")
++
++    # --- 毎歩 ---
++    def apply(self, env) -> None:
++        n = self.n
++        q_sim = env.simulator.dof_pos[:n].detach().cpu().numpy().astype(float)
++        q_real = q_sim[:, self.sim_from_real]
++        root = env.simulator.robot_root_states[:n].detach().cpu().numpy().astype(float)
++        origin = env.env_origins[:n].detach().cpu().numpy().astype(float)
++        door = env.simulator.scene.articulations["door"].data.joint_pos.torch[:n].detach().cpu().numpy()
++        t = env.episode_length_buf[:n].detach().cpu().numpy().astype(float) * float(env.dt)
++        default = np.broadcast_to(env.default_dof_pos.detach().cpu().numpy().astype(float), (env.num_envs, q_sim.shape[1]))
++        D = env._delta_actions[:n].detach().cpu().numpy().astype(float)
++        changed = np.zeros(n, dtype=bool)
++        for i in range(n):
++            if self.arms[i] is None:
++                self._new(env, i)
++            arm, st = self.arms[i], self.stats[i]
++            quat = quat_xyzw_to_wxyz(root[i, 3:7])
++            pose = self.dfr.PlanarPose(root[i, 0] - origin[i, 0], root[i, 1] - origin[i, 1], self.dfr.yaw_from_quat_wxyz(quat))
++            arm.pelvis_z = root[i, 2] - origin[i, 2]
++            if st["steps"] == 0:
++                st["start"] = [round(pose.x, 4), round(pose.y, 4), round(math.degrees(pose.yaw), 2)]
++            out, q7 = arm.step(float(t[i]), q_real[i], quat, pose, None)
++            st["steps"] += 1
++            st["lever_max_deg"] = max(st["lever_max_deg"], float(np.degrees(abs(door[i, 1]))))
++            st["door_max_deg"] = max(st["door_max_deg"], float(np.degrees(abs(door[i, 0]))))
++            if not st["subs"] or st["subs"][-1][0] != out.sub:
++                st["subs"].append([out.sub, round(float(t[i]), 2)])
++            if out.stop and not st["stop"]:
++                st["stop"] = out.stop
++                st["stop_t"] = round(float(t[i]), 2)
++                st["palm"] = [round(float(v), 4) for v in arm.script.palm]
++            st["success"] = st["success"] or bool(out.success)
++            self.sub_code[i] = self.dscr.SUBS.index(out.sub) if out.sub in self.dscr.SUBS else -1
++            if self.hold[i] is None:  # 回の始め: 今の角度を保つ目標から（方策の出力は腕に通さない）
++                self.hold[i] = (q_sim[i, self.num_lower:self.num_lower + NUM_ARM]
++                                - default[i, self.num_lower:self.num_lower + NUM_ARM]) / self.action_scale
++            D[i, ARM_ACCUM_START:ARM_ACCUM_START + NUM_ARM] = self.hold[i]
++            D[i, 0:ARM_ACCUM_START] = 0.0  # 脚は立ったまま（方策の歩きは通さない。台本が歩く時だけ下で書く）
++            changed[i] = True
++            if i < self.trace_n:
++                g = np.full(3, np.nan) if out.goal is None else np.asarray(out.goal, dtype=float)
++                qc = np.full(7, np.nan) if q7 is None else q7
++                self.traces[i].append(np.concatenate([[t[i], self.dscr.SUBS.index(out.sub), arm.script.wp_i], arm.script.palm, g,
++                                                      q_real[i][arm.ik.idx], qc, [pose.x, pose.y, pose.yaw, arm.pelvis_z],
++                                                      [door[i, 0], door[i, 1]]]))
++            if q7 is None:
++                continue  # 腕を下ろしたまま・止まった: 直前の目標を保つ
++            for k, r in enumerate(arm.ik.idx):
++                s = int(self.sim_from_real[r])
++                col = s - self.num_lower
++                assert 0 <= col < NUM_ARM, f"腕の関節がシムの腕の並びの外: {self.fk.JOINT_ORDER[r]} → {s}"
++                D[i, ARM_ACCUM_START + col] = (q7[k] - default[i, s]) / self.action_scale
++            self.hold[i] = D[i, ARM_ACCUM_START:ARM_ACCUM_START + NUM_ARM].copy()
++            if self.cfg["walk"]:
++                moving, vx, vy, wz = out.walk
++                # 物理の指令 [m/s, m/s, rad/s] → 積み上げ（homie_command_scale 0.25 と get_physical_homie_commands の 2.0・0.5 の逆）
++                sc = float(env.config.homie_command_scale)
++                if moving:
++                    D[i, 0:3] = np.array([vx / 2.0, vy / 2.0, wz / 0.5]) / sc
++        if changed.any():
++            ids = torch.as_tensor(np.flatnonzero(changed), device=env.device)
++            new = torch.as_tensor(D[changed], dtype=env._delta_actions.dtype, device=env.device)
++            env._delta_actions[ids] = new
++            dflt = env.default_dof_pos.expand(env.num_envs, -1)[ids][:, self.num_lower:self.num_lower + NUM_ARM]
++            self.target[ids] = new[:, ARM_ACCUM_START:] * self.action_scale + dflt
++
++    def close(self) -> None:
++        for i in range(self.n):
++            self._flush(i)
+-- 
+2.43.0
+

@@ -152,3 +152,14 @@ def test_sources_wire_reward_reset_and_door_metadata():
         assert key in door
     for key in ('"coverWidth"', '"coverFrontX"', '"wallFrontX"'):
         assert key in src
+
+
+# ---- パッチ 0107（11-11 夜）: 回の始めの count_after_s 秒は数えない ----
+def test_0107_count_after_s_config_and_wiring():
+    assert wall_gap_config({"enabled": True})["count_after_s"] == 0.0
+    assert wall_gap_config({"enabled": True, "count_after_s": 0.3})["count_after_s"] == 0.3
+    with pytest.raises(AssertionError):
+        wall_gap_config({"enabled": True, "count_after_s": -0.1})
+    src = ast.unparse(_method(ENV, "_reward_wall_gap_lagrange"))
+    assert "self._wg['count_after_s']" in src and "* live.float()" in src  # ast.unparse は引用符を ' にする
+    assert src.index("live =") < src.index("self._wg_min = torch.minimum")

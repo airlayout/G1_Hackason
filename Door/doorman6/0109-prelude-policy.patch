@@ -1,0 +1,99 @@
+diff --git a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+index 87faab0..888b8ef 100644
+--- a/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
++++ b/gr00t/rl/trl/trainer/ppo_trainer_homie_api.py
+@@ -874,6 +874,7 @@ class TRLPPOTrainer(PPOTrainer):
+         homie_stand_model = model.homie_stand_model
+         policy_model.init_rollout()
+         self.storage.clear()
++        prelude = self._load_prelude_policy()  # 0109
+ 
+         dones = torch.zeros(self.env.num_envs, device=device)
+         # Check if we need to compute values step-by-step for recurrent models
+@@ -928,6 +929,8 @@ class TRLPPOTrainer(PPOTrainer):
+                     self.storage._save_hidden_states(policy_state_dict["hidden_states"])
+                 # Step the environment
+                 actor_state = {"actions": policy_state_dict["actions"]}
++                if prelude is not None:  # 0109: 引き継ぐ前の台は前座の方策の行動で動かす（貯めるのは学ぶ方策の行動のまま）
++                    actor_state["actions"] = self._prelude_swap(prelude, obs_dict, policy_state_dict["actions"], cur_dones=dones)
+                 # Pass gt_actions to environment if available (for distillation mode)
+                 if "gt_actions" in policy_state_dict:
+                     actor_state["gt_actions"] = policy_state_dict["gt_actions"]
+@@ -1015,6 +1018,8 @@ class TRLPPOTrainer(PPOTrainer):
+ 
+     def _process_env_step(self, rewards, dones, infos):
+         self.policy_model.reset(dones)
++        if getattr(self, "_prelude", None) is not None:  # 0109
++            self._prelude.reset(dones)
+         if self.value_model is not None:
+             self.value_model.reset(dones)
+         self.episode_env_tensors.add(infos["to_log"])
+@@ -2079,6 +2084,51 @@ class TRLPPOTrainer(PPOTrainer):
+         print(f"[handover] 引き継ぐ先の方策 {path}（記憶 {self.config.eval.get('handover_hidden', 'shadow')}）")
+         return policy
+ 
++    def _load_prelude_policy(self):
++        """G1_Hackason（0109、11-12）: 前座の方策（prelude_policy_path。凍らせた腕だけの段の方策）。env.arm_handover_buf が立つまで
++        （arm_stage.handover_door_deg に扉が届くまで）の行動をこの方策の平均に替える。学ぶ方策（教師の続き）はその後だけを受け持つ。
++        学習でも評価でも同じ。無ければ None"""
++        if getattr(self, "_prelude_loaded", False):
++            return self._prelude
++        self._prelude_loaded = True
++        self._prelude = None
++        path = self.config.get("prelude_policy_path", None)
++        if not path:
++            return None
++        import copy
++
++        policy = copy.deepcopy(self.accelerator.unwrap_model(self.model).policy)
++        checkpoint = torch.load(path, map_location=self.accelerator.device, weights_only=False)
++        key = "actor_model_state_dict" if "actor_model_state_dict" in checkpoint else "policy_state_dict"
++        policy.load_state_dict(checkpoint[key])
++        policy.eval_mode()
++        policy.init_rollout()
++        for prm in policy.parameters():
++            prm.requires_grad_(False)
++        if not hasattr(self.env, "arm_handover_buf"):
++            raise RuntimeError("[prelude] env.arm_handover_buf が無い（arm_stage.enabled と handover_door_deg が要る）")
++        self._prelude = policy
++        self._prelude_steps = 0
++        self._prelude_pre = 0
++        print(f"[prelude] 前座の方策 {path}（arm_handover_buf が立つまでの行動を替える）")
++        return policy
++
++    def _prelude_swap(self, prelude, obs_dict, actions, cur_dones=None):
++        """前座の方策を 1 歩回し、まだ引き継いでいない台の行動（方策の列だけ）をその平均に替えた写しを返す"""
++        prelude.rollout(obs_dict=deepcopy(obs_dict), cur_dones=cur_dones)
++        pre = ~self.env.arm_handover_buf.to(actions.device)
++        mean = prelude.action_mean.detach()
++        n = mean.shape[-1]
++        out = actions.clone()
++        out[:, :n] = torch.where(pre[:, None], mean, out[:, :n])
++        self._prelude_steps += int(pre.numel())
++        self._prelude_pre += int(pre.sum())
++        if self._prelude_steps >= 5_000_000:  # たまに、前座が動かした歩の割合を出す
++            print(f"[prelude] 前座が動かした歩 {100.0 * self._prelude_pre / self._prelude_steps:.1f}%", flush=True)
++            self._prelude_steps = 0
++            self._prelude_pre = 0
++        return out
++
+     def eval(self):
+         self._eval_mode()
+         self.env.set_is_evaluating()
+@@ -2156,6 +2206,7 @@ class TRLPPOTrainer(PPOTrainer):
+         handover = self._load_handover_policy() if self.config.get("eval", {}).get("handover_policy_path", None) else None
+         handover_zero = str(self.config.get("eval", {}).get("handover_hidden", "shadow")) == "zero"
+         handed = None
++        prelude_eval = self._load_prelude_policy()  # 0109
+ 
+         with torch.no_grad():
+             with unwrap_model_for_generation(
+@@ -2180,6 +2231,8 @@ class TRLPPOTrainer(PPOTrainer):
+                         handover.rollout(obs_dict=obs_dict)
+                         action_mean = torch.where(now[:, None], handover.action_mean.detach(), action_mean)
+                         handed = now
++                    if prelude_eval is not None:  # 0109
++                        action_mean = self._prelude_swap(prelude_eval, obs_dict, action_mean)
+ 
+                     homie_obs = obs_dict["homie_obs"]
+                     walk_out = homie_walk_model(homie_obs)
