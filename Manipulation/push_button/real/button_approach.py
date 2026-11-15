@@ -1,6 +1,7 @@
 """Observe the button pair and correct the stance while the arm is idle."""
 
-from dataclasses import asdict
+from copy import copy
+from dataclasses import asdict, replace
 from types import SimpleNamespace
 import time
 
@@ -48,6 +49,9 @@ class ButtonApproach:
         self.stillness = loco.LegStillness(reader, self.still_cfg)
         # This is the private configuration of the confirmed approach session.
         settings['loco']['axes']['backward']['enabled'] = True
+        settings['loco']['max_duration_s'] = float('inf')
+        for axis in settings['loco']['axes'].values():
+            axis['max_duration_s'] = float('inf')
         backend = loco.SdkLocoBackend() if execute else None
         self.mover = loco.LocoMover(backend, self.stillness, settings['loco'], go=execute)
         self.before_reverse = None
@@ -101,7 +105,7 @@ class ButtonApproach:
                 raise RuntimeError('後退後に柱との距離を確保できません')
             self.reverse_checked = True
         if distance < self.stand['min_dist_m']:
-            return self.reverse(), '推奨距離の下限より近い'
+            return self.reverse(distance), '推奨距離の下限より近い'
         if measured.call.normal[0] < .9:
             return self.turn_to_panel(measured)
         return None
@@ -112,10 +116,10 @@ class ButtonApproach:
             raise RuntimeError('押下計画の範囲外のパネル角度を旋回で補正できません')
         return decision.pulse, decision.reason
 
-    def reverse(self):
+    def reverse(self, distance):
         if self.before_reverse is not None:
             raise RuntimeError('自動後退は1回までです')
-        return self.mover.plan('backward', self.mover.min_step('backward'))
+        return self.mover.plan('backward', self.target_dist - distance)
 
     def correction(self, measured, reason):
         decision = self.approach.decide(
@@ -135,7 +139,7 @@ class ButtonApproach:
             if decision.pulse is not None:
                 return decision.pulse, decision.reason
         if measured.distance_m < self.target_dist:
-            return self.reverse(), f'{decision.reason}。短く後退して測り直す'
+            return self.reverse(measured.distance_m), f'{decision.reason}。後退して測り直す'
         raise RuntimeError(decision.reason)
 
     def walk(self, measured, pulse, row):
@@ -146,6 +150,58 @@ class ButtonApproach:
         row.update(stopped=result.stopped, settle_s=result.settle_s)
         if not result.stopped:
             raise RuntimeError(result.note)
+
+    def plan_corrections(self, measured, *, initial=None):
+        """Plan the stance corrections from one observation using estimated motion."""
+        normal = np.asarray(measured.call.normal, dtype=float).copy()
+        if normal.shape != (3,) or not np.isfinite(normal).all() or abs(normal[0]) < 1e-6:
+            raise RuntimeError('柱の向きを使って補正を計画できません')
+        midpoint = (np.asarray(measured.call.up.center) + np.asarray(measured.call.down.center)) / 2
+        point = np.array([(measured.distance_m - normal[1] * measured.side_m - normal[2] * midpoint[2]) / normal[0],
+                          measured.side_m, midpoint[2]], dtype=float)
+        predicted = measured
+        planner = copy(self.mover)
+        pulses = []
+        axes_used = set()
+        for index in range(4):
+            if predicted.distance_m < self.cfg['min_safe_dist_m']:
+                raise RuntimeError('計画した補正後の位置が柱に近すぎます')
+            if index == 0 and initial is not None:
+                pulse, reason = initial
+            elif predicted.distance_m < self.stand['min_dist_m']:
+                if self.before_reverse is not None or 'backward' in axes_used:
+                    raise RuntimeError('後退後の距離を確認できません')
+                pulse = planner.plan('backward', self.target_dist - predicted.distance_m)
+                reason = '推奨距離の下限より近い'
+            else:
+                decision = self.approach.decide(predicted, None, {}, {'right': self.stand},
+                                                {**self.cfg, 'target_dist_m': self.target_dist}, planner)
+                pulse, reason = decision.pulse, decision.reason
+            if pulse is None or pulse.axis in axes_used:
+                break
+            planner.check(pulse)
+            axes_used.add(pulse.axis)
+            pulses.append((pulse, reason))
+            planner.n_pulses += 1
+            if pulse.axis == 'forward':
+                planner.forward_total_m += planner.cfg['axes']['forward']['rate'] * pulse.duration_s
+            planner.side_total_m += planner.side_step(pulse)
+            amount = planner.cfg['axes'][pulse.axis]['rate'] * pulse.duration_s
+            if pulse.axis.startswith('turn_'):
+                angle = amount if pulse.axis == 'turn_left' else -amount
+                c, s = np.cos(angle), np.sin(angle)
+                rotation = np.array(((c, s, 0.), (-s, c, 0.), (0., 0., 1.)))
+                point, normal = rotation @ point, rotation @ normal
+            elif pulse.axis == 'forward':
+                point[0] -= amount
+            elif pulse.axis == 'backward':
+                point[0] += amount
+            else:
+                point[1] -= amount if pulse.axis == 'left' else -amount
+            predicted = replace(predicted, distance_m=float(point @ normal), side_m=float(point[1]),
+                                yaw_rad=float(np.arctan2(normal[1], normal[0])),
+                                call=SimpleNamespace(normal=normal))
+        return pulses
 
 
 def plan_at_stops(approach, measure, search, move, *, steps, budget_s):
@@ -158,14 +214,15 @@ def plan_at_stops(approach, measure, search, move, *, steps, budget_s):
             row.update(distance_m=measured.distance_m, side_m=measured.side_m,
                        yaw_deg=float(np.degrees(measured.yaw_rad)))
             print(f'[approach] {measured.summary()}', flush=True)
-            correction = approach.required_correction(measured)
-            if correction is None:
+            approach.required_correction(measured)
+            corrections = approach.plan_corrections(measured)
+            if not corrections:
                 if budget_s <= 0:
                     raise RuntimeError('押下軌道の合計計画時間を超えました')
                 plan = search(measured, budget_s)
                 if plan is None:
                     row.update(decision='turn', reason='本押しのパネル角度が計画範囲外')
-                    correction = approach.turn_to_panel(measured)
+                    corrections = approach.plan_corrections(measured, initial=approach.turn_to_panel(measured))
                 else:
                     status = plan.report['search_status']
                     budget_s -= plan.report['total_wall_s']
@@ -182,14 +239,14 @@ def plan_at_stops(approach, measure, search, move, *, steps, budget_s):
                     reasons = [entry['reason'] for entry in plan.report['candidates'] if 'reason' in entry]
                     reason = ' / '.join(dict.fromkeys(reasons)) or plan.report['reason']
                     row['rejections'] = reasons
-                    correction = approach.correction(measured, reason)
-            pulse, reason = correction
-            approach.mover.check(pulse)
-            row.update(decision='move', pulse=asdict(pulse), reason=reason)
-            print(f'[approach] {reason}。次の動作: {pulse.summary()}', flush=True)
+                    corrections = approach.plan_corrections(measured, initial=approach.correction(measured, reason))
+            row.update(decision='move', pulses=[dict(pulse=asdict(pulse), reason=reason)
+                                                for pulse, reason in corrections])
+            for pulse, reason in corrections:
+                print(f'[approach] {reason}。動作: {pulse.summary()}', flush=True)
             if not approach.mover.go:
                 return None
             if index + 1 == approach.cfg['max_steps']:
                 break
-            move(measured, pulse, row)
+            move(measured, corrections, row)
         raise RuntimeError('押下可能な位置を確認する前に観測回数の上限に達しました')

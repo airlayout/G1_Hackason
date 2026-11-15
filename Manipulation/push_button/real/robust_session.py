@@ -329,9 +329,7 @@ def button_child_timeout(trial, *, approach_config=None):
         else trial.get('motion_duration_s',30.))
     timeout = 30.+float(trial.get('planning_budget_s',30.))+float(motion_budget)+30.+30.
     if approach_config is not None:
-        loco = approach_config['loco']
-        per_stop = 60. + loco['still']['timeout_s'] + loco['max_duration_s']
-        timeout += approach_config['approach']['max_steps'] * per_stop
+        return None
     return timeout
 
 
@@ -455,6 +453,7 @@ def main(argv=None):
             validate_button_trial(trial,calibration)
             if args.approach:
                 trial.pop('target_pixel', None)  # The observed pair selects the target.
+                trial['planning_max_candidates'] = 1
             button_validation = trial.get('button_validation','physical')
             report['button_validation'] = button_validation
             if button_validation == 'kinematic':
@@ -486,13 +485,13 @@ def main(argv=None):
             source_files += sorted((j1/'common').rglob('*.py'))+sorted((j1/'configs').glob('*.yaml'))
         write_json(run/'source_sha256.json',{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest()
             for p in source_files})
-        def phase(name,command,*,input_text=None,timeout=None):
+        def phase(name,command,*,input_text=None,timeout=100):
             print(name,flush=True)
             row = dict(name=name,started_at=datetime.now().astimezone().isoformat())
             report['phases'].append(row)
             log_path = run/(f'{len(report["phases"]):02d}.log')
             row['log'] = str(log_path)
-            row['exit_code'] = execute_child(command,log_path,env,input_text=input_text,**({} if timeout is None else {'timeout':timeout}))
+            row['exit_code'] = execute_child(command,log_path,env,input_text=input_text,timeout=timeout)
             if row['exit_code']:
                 raise PhaseFailure(name,row['exit_code'])
         print('1. SSH・RGB-D配信を準備',flush=True)

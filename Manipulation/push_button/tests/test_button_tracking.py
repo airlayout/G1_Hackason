@@ -352,6 +352,7 @@ def test_collection_plan_requires_matching_feedback_physics_and_policy():
 
 def test_child_timeout_includes_both_planning_and_feedback_budget():
     assert session.button_child_timeout(dict(button_feedback='joint',planning_budget_s=120,button_feedback_timeout_s=120))==330.
+    assert session.button_child_timeout({}, approach_config={}) is None
 
 
 def test_straight_trial_is_forwarded_to_the_real_trial_config(launcher,monkeypatch):

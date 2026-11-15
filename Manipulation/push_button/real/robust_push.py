@@ -371,7 +371,7 @@ def main(argv=None, *, task=None):
                     monitor(observer.initial(timeout_s=2., after=time.monotonic()))
                 return candidate
 
-            def move_to_next_stop(measured, pulse, row):
+            def move_to_next_stop(measured, corrections, row):
                 nonlocal observer, sampler, lamp_tracker, target_pixel, scene, initial
                 if observer is not None:
                     observer.close()
@@ -380,7 +380,8 @@ def main(argv=None, *, task=None):
                 reference[0] = first_lamp[0] = target_pixel = scene = initial = None
                 sampler = LatestFrameSampler()
                 lamp_tracker = ImageLampTracker()
-                approach.walk(measured, pulse, row)
+                for (pulse, _), motion_row in zip(corrections, row['pulses']):
+                    approach.walk(measured, pulse, motion_row)
                 start_state_sampling()
 
             initial = scene = None

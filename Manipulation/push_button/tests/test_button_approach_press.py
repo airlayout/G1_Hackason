@@ -39,6 +39,9 @@ def walking():
     approach.before_reverse = None
     approach.reverse_checked = False
     config['loco']['axes']['backward']['enabled'] = True
+    config['loco']['max_duration_s'] = float('inf')
+    for axis in config['loco']['axes'].values():
+        axis['max_duration_s'] = float('inf')
     backend = loco.FakeLoco()
     stillness = SimpleNamespace(is_still=backend.is_still, reset=lambda: None)
     approach.stillness = stillness
@@ -49,8 +52,15 @@ def walking():
 
 def measurement(approach, distance=.48, side=-.14, yaw=0.):
     normal = (np.cos(yaw), np.sin(yaw), 0.)
-    call = SimpleNamespace(normal=normal, button=lambda _: SimpleNamespace(bbox=(20, 40, 30, 50)))
+    center = np.array([(distance - normal[1] * side) / normal[0], side, 1.])
+    call = SimpleNamespace(normal=normal, up=SimpleNamespace(center=center), down=SimpleNamespace(center=center),
+                           button=lambda _: SimpleNamespace(bbox=(20, 40, 30, 50)))
     return approach.approach.Measurement('buttons', distance, yaw, side, call=call)
+
+
+def move_batch(approach, measured, corrections, row):
+    for (pulse, _), motion_row in zip(corrections, row['pulses']):
+        approach.walk(measured, pulse, motion_row)
 
 
 def plan_result(status, *, seconds=7., scene=None):
@@ -79,13 +89,60 @@ def test_corrects_and_replans_only_at_the_new_stop(walking, distance, side, yaw,
         return accepted if measured.distance_m == .48 and measured.side_m == -.14 else plan_result('candidates_exhausted')
 
     steps = []
-    assert plan_at_stops(approach, lambda: next(observations), search, approach.walk,
+    assert plan_at_stops(approach, lambda: next(observations), search,
+                        lambda m, c, r: move_batch(approach, m, c, r),
                         steps=steps, budget_s=300.) is accepted
-    assert steps[0]['pulse']['axis'] == expected_axis and steps[0]['stopped']
-    assert steps[1]['decision'] == 'press' and len(backend.calls) == 1
-    assert budgets == ([300.] if expected_axis in ('backward', 'turn_left') else [300., 293.])
+    assert steps[0]['pulses'][0]['pulse']['axis'] == expected_axis
+    assert all(item['stopped'] for item in steps[0]['pulses'])
+    assert steps[1]['decision'] == 'press'
+    assert budgets == [300.]
     if expected_axis == 'backward':
-        assert backend.calls[0][3] == .5
+        assert backend.calls[0][3] == pytest.approx(.95)
+
+
+def test_approach_has_no_per_move_duration_limit(monkeypatch):
+    runtime = J1CameraRuntime()
+    dds = runtime.module('dds')
+    monkeypatch.setattr(dds, 'init_dds', lambda *_: None)
+    monkeypatch.setattr(dds, 'LowStateReader', lambda *_: SimpleNamespace(
+        open=lambda: None, wait=lambda *_: None))
+    approach = ButtonApproach(runtime, SimpleNamespace(class_names=['up', 'down']),
+                              'wheelchair', 'unused', execute=False)
+    for axis in ('forward', 'backward', 'left', 'right', 'turn_left', 'turn_right'):
+        pulse = approach.mover.plan(axis, .30)
+        rate = approach.mover.cfg['axes'][axis]['rate']
+        assert pulse.duration_s == pytest.approx(.30 / rate)
+        assert pulse.duration_s > 1.
+        approach.mover.check(pulse)
+    assert approach.reverse(.1).duration_s == pytest.approx((approach.target_dist - .1) / .2)
+
+
+def test_batch_moves_without_intermediate_measurement_and_retries_after_failed_plan(walking):
+    approach, backend = walking
+    observations = iter([measurement(approach, .75, .2, .2), measurement(approach),
+                         measurement(approach, .4)])
+    events = []
+    attempts = []
+
+    def measure():
+        events.append('measure')
+        return next(observations)
+
+    def search(measured, budget):
+        events.append('search')
+        attempts.append(measured)
+        return plan_result('candidates_exhausted' if len(attempts) == 1 else 'accepted')
+
+    def move(measured, corrections, row):
+        for (pulse, _), motion_row in zip(corrections, row['pulses']):
+            events.append(pulse.axis)
+            approach.walk(measured, pulse, motion_row)
+
+    result = plan_at_stops(approach, measure, search, move, steps=[], budget_s=300.)
+    assert result.candidate is not None
+    assert events[:5] == ['measure', 'turn_left', 'left', 'forward', 'measure']
+    assert events[5:] == ['search', 'forward', 'measure', 'search']
+    assert len(backend.calls) == 4
 
 
 @pytest.mark.parametrize(('fault','reason','commands'), [
@@ -99,7 +156,7 @@ def test_corrects_and_replans_only_at_the_new_stop(walking, distance, side, yaw,
 ])
 def test_approach_stops_before_enabling_the_arm(walking, monkeypatch, fault, reason, commands):
     approach, backend = walking
-    distance = {'too_close': .26, 'backward_did_not_help': .29}.get(fault, .58)
+    distance = {'too_close': .26, 'backward_did_not_help': .29, 'budget': .48}.get(fault, .58)
     observed = measurement(approach, distance)
     if fault == 'preview':
         approach.mover.go = False
@@ -128,15 +185,15 @@ def test_approach_stops_before_enabling_the_arm(walking, monkeypatch, fault, rea
 
     steps = []
     if fault == 'preview':
-        assert plan_at_stops(approach, measure, search, approach.walk, steps=steps, budget_s=300.) is None
-        assert steps[0]['pulse']['axis'] == 'forward'
+        assert plan_at_stops(approach, measure, search, lambda m, c, r: move_batch(approach, m, c, r), steps=steps, budget_s=300.) is None
+        assert steps[0]['pulses'][0]['pulse']['axis'] == 'forward'
     elif fault == 'interrupt':
         with pytest.raises(KeyboardInterrupt):
-            plan_at_stops(approach, measure, search, approach.walk, steps=steps, budget_s=300.)
+            plan_at_stops(approach, measure, search, lambda m, c, r: move_batch(approach, m, c, r), steps=steps, budget_s=300.)
         assert stop_calls == [True]
     else:
         with pytest.raises(RuntimeError, match=reason):
-            plan_at_stops(approach, measure, search, approach.walk, steps=steps, budget_s=300.)
+            plan_at_stops(approach, measure, search, lambda m, c, r: move_batch(approach, m, c, r), steps=steps, budget_s=300.)
     assert len(backend.calls) == commands
 
 
@@ -215,8 +272,8 @@ def test_robust_entrypoint_uses_the_same_accepted_plan(walking, tmp_path, monkey
         args += ['--execute','--calibrated','--execute-verified-plan','--approach-confirmed']
     assert rp.main(args) == (2 if outcome == 'drift' else 0)
     if outcome == 'corrected':
-        assert len(searches) == 2 and len(backend.calls) == 1
-        assert len(histories) == 2 and histories[0] is not histories[1]
+        assert len(searches) == 2 and len(backend.calls) == 2
+        assert len(histories) == 3 and histories[0] is not histories[1]
         assert len(confirmations) == 4
     else:
         assert len(searches) == 1 and backend.calls == []
