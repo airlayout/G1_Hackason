@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="color-scheme" content="dark">
+<title>G1 撮影</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main class="stage">
+  <video id="preview" playsinline muted autoplay></video>
+
+  <header class="hud" aria-live="polite">
+    <section class="robot" aria-label="機体の状態">
+      <p class="phase"><span id="phase">—</span><span id="sub" class="sub"></span></p>
+      <p class="door"><span id="door">—</span><small>開き</small></p>
+      <dl class="meters">
+        <div><dt>腕</dt><dd id="temp">—</dd></div>
+        <div><dt>周期</dt><dd id="period">—</dd></div>
+        <div><dt>回</dt><dd id="tries">—</dd></div>
+      </dl>
+      <p id="conn" class="conn" data-ok="false">PC2 —</p>
+    </section>
+    <section class="recbox" aria-label="録画">
+      <p id="recstate" class="recstate" data-on="false">録っていない</p>
+      <p id="upload" class="small"></p>
+      <p id="clockq" class="small"></p>
+    </section>
+  </header>
+
+  <aside id="ana" class="ana" hidden aria-label="回の要約">
+    <h2>回の要約 <button id="anaClose" type="button">閉じる</button></h2>
+    <pre id="anaText"></pre>
+  </aside>
+
+  <footer class="controls">
+    <ol id="events" class="events" aria-label="出来事"></ol>
+    <div class="marks" role="group" aria-label="印（押した時刻を動画に残す）">
+      <button type="button" class="mark" data-label="当たった">当たった</button>
+      <button type="button" class="mark" data-label="滑った">滑った</button>
+      <button type="button" class="mark" data-label="後ずさり">後ずさり</button>
+      <button type="button" class="mark" data-label="良い">良い</button>
+      <button type="button" id="memoBtn" class="mark memo">メモ</button>
+    </div>
+    <button type="button" id="recBtn" class="rec" aria-pressed="false">録る</button>
+    <div class="opts">
+      <label><input type="checkbox" id="auto" checked> 自動</label>
+      <select id="res" aria-label="解像度"><option value="1080">1080p</option><option value="720" selected>720p</option></select>
+      <select id="rate" aria-label="ビットレート"><option value="6000000">6 Mbps</option><option value="3000000">3 Mbps</option><option value="1500000" selected>1.5 Mbps</option></select>
+      <button type="button" id="anaBtn" class="link">要約</button>
+    </div>
+  </footer>
+
+  <div id="gate" class="gate">
+    <h1>G1 撮影</h1>
+    <p id="gateMsg">機体の横から撮る。「自動」なら a を打つと録り始め、止めて 6 秒で 1 本にして Mac へ送る。</p>
+    <button type="button" id="openBtn" class="primary">カメラを開く</button>
+  </div>
+
+  <dialog id="memoDlg">
+    <form method="dialog">
+      <label for="memoText">メモ（「メモ」を押した時刻で残す）</label>
+      <textarea id="memoText" rows="3"></textarea>
+      <menu><button value="cancel">やめる</button><button value="send" class="primary">残す</button></menu>
+    </form>
+  </dialog>
+
+  <p id="toast" class="toast" role="status"></p>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

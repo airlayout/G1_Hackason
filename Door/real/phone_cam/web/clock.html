@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>G1 撮影の時計</title>
+<style>
+  /* Mac の画面に出して iPhone で 2 秒写す。動画の画に写った時刻と、動画の時刻から見積もった時刻の差がカメラの遅れ */
+  :root { --c-bg: #fff; --c-ink: #000; --c-dim: #555; }
+  html, body { margin: 0; height: 100%; background: var(--c-bg); color: var(--c-ink); }
+  body { display: grid; place-items: center; font-family: -apple-system, "Hiragino Sans", sans-serif; }
+  main { text-align: center; }
+  #t { font: 800 min(15vw, 190px)/1 ui-monospace, Menlo, monospace; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  #f { display: inline-block; width: 64px; height: 64px; margin-top: 24px; background: var(--c-ink); }
+  p { color: var(--c-dim); font-size: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <div id="t">--:--:--.---</div>
+  <div id="f" aria-hidden="true"></div>
+  <p>録画を始めてすぐ、この画面を 2 秒写す（1 日 1 回）。その後 phone_sync.py --calib-frames で写った時刻を読む。</p>
+</main>
+<script>
+  'use strict';
+  const t = document.getElementById('t');
+  const f = document.getElementById('f');
+  let n = 0;
+  const pad = (v, k) => String(v).padStart(k, '0');
+  function tick() {
+    const d = new Date();
+    t.textContent = `${pad(d.getHours(), 2)}:${pad(d.getMinutes(), 2)}:${pad(d.getSeconds(), 2)}.${pad(d.getMilliseconds(), 3)}`;
+    n += 1;
+    f.style.visibility = n % 2 ? 'visible' : 'hidden';
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>
