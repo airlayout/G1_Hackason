@@ -208,6 +208,18 @@ class HeadPerception:
         return None
 
 
+    def observe_face(self) -> tuple[float, float] | None:
+        """新しいフレーム 1 枚だけで柱の面の (距離, 正対に要る回転) を返す（見ながら歩くとき。そろえない）。見えなければ None。"""
+        fr = self.get_frame()
+        if fr is None:
+            return None
+        qw = np.asarray(fr.q, dtype=float)[list(WAIST_IDX)]
+        try:
+            f = self.face.find(fr.depth, fr.K, qw, fr.imu_quat)
+        except FaceNotFound:
+            return None
+        return float(f.distance_m), float(f.yaw_rad)
+
     def _single_side(self, singles: list[list[np.ndarray]], face: ColumnFace | None) -> float | None:
         """組にならなかったボタンのうち、柱の面の上（奥行きが面と single_depth_tol_m 以内）にあり、single_min_frames 以上の
         フレームで、しかも見えたフレームの半分以上で同じ左右（column_tolerance 以内）に見えたものの左右（中央値）。無ければ None。"""
@@ -482,6 +494,9 @@ class Approacher:
         self.edges = EdgeCheck(cfg)
         # 途中で止めても（Ctrl+C）、それまでの観測を real/approach.py が保存できるように持っておく
         self.steps: list[dict[str, Any]] = []
+        # 見ながら前へ歩くのは 1 回だけ（approach.yaml の walk）。歩いた行は、次の観測でブレーキの量を書き足す
+        self._walked = False
+        self._walk_row: dict[str, Any] | None = None
 
     def run(self) -> ApproachResult:
         steps = self.steps
@@ -503,6 +518,47 @@ class Approacher:
                 for name, v in (("left", m.left_edge_m), ("right", m.right_edge_m)):
                     if v is not None and name not in self.edge_ref and m.source == "face" and facing:
                         self.edge_ref[name] = v
+                if self._walk_row is not None:
+                    # 見ながら歩いたあとの最初の観測: 止める指令を出したときの距離との差 = 止める指令のあとに進んだ量（ブレーキ）
+                    w = self._walk_row["walk"]
+                    if w.get("stop_cmd_m") is not None:
+                        w["after_m"] = m.distance_m
+                        w["brake_measured_m"] = float(w["stop_cmd_m"]) - m.distance_m
+                        self.log(f"[approach] 止める指令（柱まで {float(w['stop_cmd_m']) * 100:.1f} cm）のあと "
+                                 f"{w['brake_measured_m'] * 100:+.1f} cm 進んだ（設定の見込み {float(self.cfg['walk']['brake_m']) * 100:.0f} cm）")
+                    self._walk_row = None
+                wcfg = self.cfg.get("walk") or {}
+                observe = getattr(self.perception, "observe_face", None)
+                if (wcfg.get("enabled") and not self._walked and observe is not None and m.source == "face" and facing
+                        and m.distance_m > float(wcfg["start_min_dist_m"])):
+                    self._walked = True
+                    try:
+                        wr = self.mover.walk_forward(observe, float(wcfg["stop_dist_m"]), float(self.cfg["min_safe_dist_m"]), wcfg)
+                    except LocoError as e:
+                        return self._end("aborted", str(e), steps)
+                    reason = (f"柱まで {m.distance_m * 100:.1f} cm。見ながら前へ（{float(wcfg['stop_dist_m']) * 100:.0f} cm で止める）: "
+                              f"{wr.reason}")
+                    row = {"step": k + 1, "source": m.source, "distance_m": m.distance_m,
+                           "yaw_deg": float(np.degrees(m.yaw_rad)), "side_m": m.side_m,
+                           "left_edge_m": m.left_edge_m, "right_edge_m": m.right_edge_m,
+                           "raw_left_edge_m": raw_edges[0], "raw_right_edge_m": raw_edges[1],
+                           "edge_notes": edge_notes, "edge_ref": dict(self.edge_ref),
+                           "side_hint_m": m.side_hint_m, "side_hint_source": m.side_hint_source, "webcam": m.webcam,
+                           "action": "walk", "reason": reason, "pulse": None,
+                           "walk": {"outcome": wr.outcome, "start_m": wr.start_m, "stop_cmd_m": wr.stop_cmd_m,
+                                    "walk_s": wr.walk_s, "settle_s": wr.settle_s, "stopped": wr.stopped,
+                                    "trace": wr.trace}}
+                    steps.append(row)
+                    self.log(f"[approach] → {reason}")
+                    self.edges.moved(0.0)
+                    if not self.mover.go:
+                        return self._end("dry_run", f"送っていない（go=False）。次: 見ながら前へ（柱まで {m.distance_m * 100:.1f} cm → "
+                                                    f"{float(wcfg['stop_dist_m']) * 100:.0f} cm）", steps)
+                    if not wr.stopped:
+                        return self._end("aborted", "見ながら歩いたあと、脚が止まらない。StopMove を送った", steps)
+                    self._walk_row = row
+                    self.perception.reset()
+                    continue
                 arm, reasons = self.feasibility.check(m) if m.source == "buttons" else (None, {})
                 dec = decide(m, arm, reasons, self.stands, self.cfg, self.mover, self.edge_ref, None)
                 row: dict[str, Any] = {"step": k + 1, "source": m.source, "distance_m": m.distance_m,

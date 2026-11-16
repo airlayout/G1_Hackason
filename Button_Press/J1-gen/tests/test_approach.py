@@ -501,3 +501,78 @@ class TestEdgeReplay(unittest.TestCase):
         self.assertEqual(axes, ["turn_left", "turn_left", "forward", "forward"])
         self.assertEqual(res.steps[0]["edge_ref"], {})
         self.assertEqual(res.steps[2]["edge_ref"], {"left": 0.56, "right": -0.36})
+
+
+# ---- 見ながら前へ（walk）を含めて通す ---------------------------------------------------------------
+
+
+class WalkWorld(World):
+    """World に、1 枚だけで柱の面を返す observe_face を足したもの（5 枚/秒）。face_max_m より遠いと面は見えない。"""
+
+    face_max_m = 1.6
+
+    def observe_face(self) -> tuple[float, float] | None:
+        self.fake.sleep(0.2)
+        x, y, yaw = self.fake.pose
+        self.closest = min(self.closest, float(self.bx - x))
+        d = float(self.bx - x)
+        if d > self.face_max_m:
+            return None
+        return d + self.noise * self.rng.standard_normal(), float(-yaw)
+
+
+def walk_legs(ratio: float = 1.0, brake_m: float = 0.10, **kw: object) -> FakeLoco:
+    rates = {k: float(a["rate"]) for k, a in CFG["loco"]["axes"].items()}
+    return FakeLoco(rates=rates, rate_ratio=ratio, integrate=True, brake_m=brake_m, **kw)  # type: ignore[arg-type]
+
+
+class TestApproacherWalk(unittest.TestCase):
+    def test_walk_first_then_fine(self) -> None:
+        """1.3 m から: まず見ながら前へ歩き、そのあと 1 回分ずつで押せる位置へ。ブレーキの量を記録に残す。"""
+        fake = walk_legs(seed=1)
+        res, _ = run(fake, WalkWorld(fake, bx=1.3, by=-0.10))
+        self.assertEqual(res.outcome, "ready", res.reason)
+        self.assertEqual(res.steps[0]["action"], "walk")
+        w = res.steps[0]["walk"]
+        self.assertEqual(w["outcome"], "reached")
+        self.assertAlmostEqual(w["brake_measured_m"], 0.10, delta=0.04)
+        self.assertLessEqual(len(res.steps), 5)
+
+    def test_walk_saves_steps(self) -> None:
+        """同じ置き方で、1 回分ずつだけ（walk なし）より観測の回数が少ない。"""
+        n = {}
+        for walk in (True, False):
+            fake = walk_legs(seed=2)
+            cfg = copy.deepcopy(APP)
+            cfg["walk"]["enabled"] = walk
+            res, _ = run(fake, WalkWorld(fake, bx=1.4, by=-0.12), cfg=cfg)
+            self.assertEqual(res.outcome, "ready", res.reason)
+            n[walk] = len(res.steps)
+        self.assertLess(n[True], n[False])
+
+    def test_close_start_does_not_walk(self) -> None:
+        fake = walk_legs(seed=3)
+        res, _ = run(fake, WalkWorld(fake, bx=0.8, by=-0.12))
+        self.assertNotIn("walk", [s["action"] for s in res.steps])
+
+    def test_dry_run_reports_walk(self) -> None:
+        fake = walk_legs(seed=4)
+        res, _ = run(fake, WalkWorld(fake, bx=1.3, by=-0.12), go=False)
+        self.assertEqual(res.outcome, "dry_run")
+        self.assertIn("見ながら前へ", res.reason)
+        self.assertEqual(fake.calls, [])
+
+    def test_many_seeds_with_walk(self) -> None:
+        """置く位置・足のずれ・ブレーキ（見込み 10 cm に対して 0〜25 cm）を変えても、ほとんど着き、近づきすぎない。"""
+        rng = np.random.default_rng(5)
+        ready = 0
+        for seed in range(30):
+            fake = walk_legs(rng.uniform(0.85, 1.15), brake_m=rng.uniform(0.0, 0.25),
+                             heading_error_deg=rng.uniform(-10, 3), noise=0.1, seed=seed)
+            fake.pose[2] = np.radians(rng.uniform(-10, 10))
+            world = WalkWorld(fake, bx=rng.uniform(0.9, 1.5), by=rng.uniform(-0.25, 0.20), seed=seed)
+            res, _ = run(fake, world)
+            ready += res.outcome == "ready"
+            self.assertGreaterEqual(min(world.closest, world.bx - fake.pose[0]), APP["min_safe_dist_m"] - 0.02,
+                                    f"seed {seed}: {res.reason}")
+        self.assertGreaterEqual(ready, 25)

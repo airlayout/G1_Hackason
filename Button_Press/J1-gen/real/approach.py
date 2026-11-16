@@ -11,6 +11,7 @@
 
 押せる位置に着いたら（ready）、出てきた腕で real/auto_press.py を実行する（このスクリプトは押さない）。
 --execute のときは、歩き出す前に Enter を待つ。歩いている途中の Ctrl+C でも StopMove を送る。
+正対していて柱まで 85 cm より遠ければ、最初に頭カメラで柱の面を見ながら前へ歩き続け、約 65 cm で止める（approach.yaml の walk）。
 --voice local（PC2 の上）で、歩き始め・着いた・中止のときに喋る（configs/voice.yaml の approach_*）。
 結果（観測・判断・1 回ごとの動き）は _local/button_press/approach/<時刻>/result.json に残す。
 設定は configs/approach.yaml（face・loco・approach）と elevator.yaml（押す組・勧める立つ位置・▲▼ の見つけ方）。

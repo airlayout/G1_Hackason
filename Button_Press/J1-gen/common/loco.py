@@ -76,6 +76,21 @@ class PulseResult:
     note: str = ""
 
 
+@dataclass
+class WalkResult:
+    """見ながら前へ歩いた結果（LocoMover.walk_forward）。"""
+
+    outcome: str      # reached（止める距離に来た）/ lost（面を見失った）/ too_close / timeout / limit / dry_run
+    reason: str
+    sent: bool        # SDK に送った
+    stopped: bool     # 脚が止まったのを確かめた（dry_run なら True）
+    start_m: float    # 歩き始めの柱までの距離
+    stop_cmd_m: float | None = None   # 止める指令を出したときに見ていた距離
+    walk_s: float = 0.0               # 歩いていた時間（最初の指令から止める指令まで）
+    settle_s: float = 0.0             # 止める指令から脚が止まるまで
+    trace: list[dict[str, float | None]] = None  # type: ignore[assignment]  # 1 枚ごとの (t, 距離, 向き, 送った wz)
+
+
 class LocoBackend(Protocol):
     def set_velocity(self, vx: float, vy: float, wz: float, duration_s: float) -> None: ...
 
@@ -286,6 +301,107 @@ class LocoMover:
         return PulseResult(p, sent=True, stopped=False, settle_s=self.now() - t0,
                            note=f"{float(self.cfg['still']['timeout_s']):.1f} 秒待っても脚が止まらない。StopMove を送った")
 
+    def walk_forward(self, observe: Callable[[], tuple[float, float] | None], stop_dist_m: float, min_safe_m: float,
+                     wcfg: dict[str, Any]) -> WalkResult:
+        """頭カメラで柱の面を見ながら、前へ歩き続ける。距離が stop_dist_m + brake_m 以下になったら止める（見ながら歩く。B）。
+
+        observe() は新しいフレーム 1 枚から (柱までの距離 [m], 正対に要る回転 [rad]) を返す（見えなければ None）。
+        実機では次のフレームが届くまで待つ（5 枚/秒なら約 0.2 秒）。1 回動いて止まって測る pulse と違い、歩きながら測る。
+
+        安全の作り:
+        - SetVelocity は command_s（短い時間）で毎フレーム送り直す。このプロセスが落ちても command_s で G1 が自分で止まる
+        - 面を lost_s より長く見失う・近すぎる（min_safe_m + brake_m）・max_duration_s を超える・歩いた見込みが
+          max_distance_m を超える、のどれかで StopMove
+        - vx は loco の min_speed〜max_speed の中。回るのは |wz| ≤ max_wz（yaw_gain 0 なら回らない）。後ろへは動かない
+        """
+        speed = float(wcfg["speed"])
+        lo, hi = float(self.cfg["min_speed"]["vx"]), float(self.cfg["max_speed"]["vx"])
+        if not lo <= speed <= hi:
+            raise ValueError(f"見ながら歩く速さ {speed:.2f} が {lo:.2f}〜{hi:.2f} の外")
+        brake = float(wcfg["brake_m"])
+        cmd_s = float(wcfg["command_s"])
+        if not 0.0 < cmd_s <= float(self.cfg["max_duration_s"]):
+            raise ValueError(f"1 回の指令の時間 {cmd_s:.2f} 秒が 0〜{float(self.cfg['max_duration_s']):.2f} 秒の外")
+        lim = self.cfg["limits"]
+        if self.n_pulses >= int(lim["max_pulses"]):
+            raise LocoError(f"動いた回数が上限（{int(lim['max_pulses'])} 回）に達した。人が確かめる")
+        rate = float(self.cfg["axes"]["forward"]["rate"]) / float(self.cfg["axes"]["forward"]["speed"]) * speed
+        max_dist = min(float(wcfg["max_distance_m"]), float(lim["max_forward_total_m"]) - self.forward_total_m)
+        first = observe()
+        if first is None:
+            return WalkResult("lost", "歩き始める前に柱の面が見えない", False, True, float("nan"), trace=[])
+        d0 = float(first[0])
+        trace: list[dict[str, float | None]] = []
+        if not self.go:
+            self.log(f"[loco] （送らない）見ながら前へ: vx {speed:+.2f}、柱まで {d0 * 100:.1f} cm → "
+                     f"{stop_dist_m * 100:.0f} cm（止める指令は {(stop_dist_m + brake) * 100:.0f} cm で）")
+            return WalkResult("dry_run", "送っていない（go=False）", False, True, d0, trace=trace)
+        if not self._fsm_checked:
+            self._check_fsm()
+        self.log(f"[loco] 見ながら前へ: vx {speed:+.2f}、柱まで {d0 * 100:.1f} cm → {stop_dist_m * 100:.0f} cm"
+                 f"（ブレーキの見込み {brake * 100:.0f} cm）")
+        t0 = self.now()
+        last_seen = t0
+        obs: tuple[float, float] | None = first
+        outcome, reason, stop_cmd = "", "", None
+        self._moving = True
+        self.n_pulses += 1
+        try:
+            while True:
+                t = self.now() - t0
+                if obs is not None:
+                    d, yaw = float(obs[0]), float(obs[1])
+                    last_seen = self.now()
+                else:
+                    d, yaw = None, None  # type: ignore[assignment]
+                wz = 0.0
+                if yaw is not None and abs(np.degrees(yaw)) > float(wcfg["yaw_deadband_deg"]):
+                    wz = float(np.clip(float(wcfg["yaw_gain"]) * yaw, -float(wcfg["max_wz"]), float(wcfg["max_wz"])))
+                trace.append({"t": round(t, 3), "distance_m": d, "yaw_deg": None if yaw is None else float(np.degrees(yaw)),
+                              "wz": wz})
+                if d is not None and d - brake <= stop_dist_m:
+                    outcome, reason, stop_cmd = "reached", f"柱まで {d * 100:.1f} cm。止める", d
+                    break
+                if d is not None and d - brake < min_safe_m:
+                    outcome, reason, stop_cmd = "too_close", f"柱まで {d * 100:.1f} cm と近い。止める", d
+                    break
+                if self.now() - last_seen > float(wcfg["lost_s"]):
+                    outcome, reason = "lost", f"柱の面を {float(wcfg['lost_s']):.1f} 秒より長く見失った。止める"
+                    break
+                if t > float(wcfg["max_duration_s"]):
+                    outcome, reason = "timeout", f"{float(wcfg['max_duration_s']):.1f} 秒歩いても止める距離に来ない。止める"
+                    break
+                if rate * t > max_dist:
+                    outcome, reason = "limit", f"歩いた見込み {rate * t * 100:.0f} cm が上限 {max_dist * 100:.0f} cm を超える。止める"
+                    break
+                self.backend.set_velocity(speed, 0.0, wz, cmd_s)
+                obs = observe()
+            walk_s = self.now() - t0
+            stop_cmd = stop_cmd if stop_cmd is not None else (trace[-1]["distance_m"] if trace else None)
+            self.backend.stop()
+        except BaseException:
+            self.backend.stop()
+            self._moving = False
+            raise
+        # 前へ進んだ合計（見込み）。測った距離の差があればそれを使う
+        seen = [r["distance_m"] for r in trace if r["distance_m"] is not None]
+        self.forward_total_m += max(0.0, d0 - min(seen)) if seen else rate * walk_s
+        self.log(f"[loco] {reason}（{walk_s:.1f} 秒歩いた）")
+        # 脚が止まるまで待つ
+        t1 = self.now()
+        deadline = t1 + float(self.cfg["still"]["timeout_s"])
+        assert self.stillness is not None
+        stopped = False
+        while self.now() < deadline:
+            if self.stillness.is_still():
+                stopped = True
+                break
+            self.sleep(float(self.cfg["still"]["poll_s"]))
+        if not stopped:
+            self.backend.stop()
+        self._moving = False
+        return WalkResult(outcome, reason, True, stopped, d0, stop_cmd, walk_s, self.now() - t1, trace)
+
     def stop(self) -> None:
         """止める（動いている途中なら StopMove）。"""
         if self._moving:
@@ -320,7 +436,7 @@ class FakeLoco:
 
     def __init__(self, min_speed: dict[str, float] | None = None, rate_ratio: float = 0.75, tail_s: float = 1.9,
                  tail_ratio: float = 0.0, heading_error_deg: float = 0.0, noise: float = 0.0, seed: int = 0,
-                 rates: dict[str, float] | None = None) -> None:
+                 rates: dict[str, float] | None = None, integrate: bool = False, brake_m: float = 0.0) -> None:
         self.min_speed = min_speed or {"vx": 0.25, "vy": 0.2, "wz": 0.2}
         # rates が無ければ: 実際の速さ / 指令の速さ（duration のあいだ。前・横・回るで同じ）。
         # rates（向きの名前 → 1 秒あたりに動く量。forward / backward / left / right / turn_left / turn_right）があれば、
@@ -333,6 +449,13 @@ class FakeLoco:
         self.heading_error = np.radians(float(heading_error_deg))  # 並進の向きのずれ（+ が左）
         self.noise = float(noise)             # 動いた量のばらつき（割合、標準偏差）
         self.rng = np.random.default_rng(seed)
+        # integrate=True: 指令の時間のあいだ、時計（sleep）に合わせて少しずつ動く（見ながら歩く walk_forward 用。指令を短く
+        # 送り直すと、そのたびに指令の時間ぶんを一度に足す今の作りでは多く動きすぎる）。歩いている途中に StopMove で止めると、
+        # 前へ brake_m だけ余分に進む（止める指令のあとも少し歩く。実機の値は測る）
+        self.integrate = bool(integrate)
+        self.brake_m = float(brake_m)
+        self._v = np.zeros(3)          # 今の速さ（床の上の量 / 秒。胴体の座標）
+        self._cmd_until = 0.0
         self.pose = np.zeros(3)
         self.t = 0.0
         self._busy_until = 0.0
@@ -341,7 +464,29 @@ class FakeLoco:
 
     # 時計
     def sleep(self, dt: float) -> None:
-        self.t += max(0.0, float(dt))
+        dt = max(0.0, float(dt))
+        if self.integrate and self._v.any():
+            run = max(0.0, min(dt, self._cmd_until - self.t))
+            self._move(self._v * run)
+            if self.t + dt >= self._cmd_until:
+                # 指令の時間切れで止まる（1 回分の pulse）。rate に歩き終わりの分が入っているので、ブレーキは足さない
+                self._v = np.zeros(3)
+        self.t += dt
+
+    def _move(self, d: np.ndarray) -> None:
+        """胴体の座標の (前, 左, 左回り) だけ動く（並進は向きがずれる）。"""
+        c, s = np.cos(self.heading_error), np.sin(self.heading_error)
+        body = np.array([c * d[0] - s * d[1], s * d[0] + c * d[1]])
+        cy, sy = np.cos(self.pose[2]), np.sin(self.pose[2])
+        self.pose[0] += cy * body[0] - sy * body[1]
+        self.pose[1] += sy * body[0] + cy * body[1]
+        self.pose[2] += d[2]
+
+    def _halt(self) -> None:
+        """integrate の歩きを StopMove で止める（前へ歩いていたなら brake_m だけ余分に進む）。"""
+        if self._v[0] > 0 and self.brake_m > 0:
+            self._move(np.array([self.brake_m, 0.0, 0.0]))
+        self._v = np.zeros(3)
 
     def now(self) -> float:
         return self.t
@@ -353,6 +498,15 @@ class FakeLoco:
         mins = np.array([self.min_speed[c] for c in COMPONENTS])
         v[np.abs(v) < mins] = 0.0  # 遅いと歩き出さない
         if not v.any():
+            return
+        if self.integrate:
+            if self.rates is not None:
+                names = (("forward", "backward"), ("left", "right"), ("turn_left", "turn_right"))
+                v = np.array([np.sign(x) * self.rates[names[i][0 if x > 0 else 1]] if x != 0 else 0.0
+                              for i, x in enumerate(v)])
+            self._v = v * self.rate_ratio * (1.0 + self.noise * self.rng.standard_normal(3))
+            self._cmd_until = self.t + float(duration_s)
+            self._busy_until = self._cmd_until + self.tail_s
             return
         k = self.rate_ratio * float(duration_s) * (1.0 + self.tail_ratio)
         if self.rates is not None:
@@ -369,6 +523,9 @@ class FakeLoco:
         self._busy_until = self.t + float(duration_s) + self.tail_s
 
     def stop(self) -> None:
+        if self.integrate and self._v.any():
+            self._halt()
+            self._cmd_until = self.t
         self._busy_until = min(self._busy_until, self.t + self.tail_s)
 
     def fsm_id(self) -> int | None:

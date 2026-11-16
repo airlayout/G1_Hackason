@@ -310,3 +310,97 @@ class TestSdkBackendLoopback(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---- 見ながら前へ歩く（walk_forward。11/15 の B） ----------------------------------------------------
+
+
+WCFG = load_config("approach.yaml")["approach"]["walk"]
+
+
+def walk_world(fake: FakeLoco, wall_x: float, noise: float = 0.003, lose_after: int | None = None, seed: int = 0):
+    """柱の面が床の x = wall_x にある。observe は 0.2 秒（5 枚/秒）待ってから (距離, 回転) を返す。"""
+    rng = np.random.default_rng(seed)
+    n = [0]
+
+    def observe() -> tuple[float, float] | None:
+        fake.sleep(0.2)
+        n[0] += 1
+        if lose_after is not None and n[0] > lose_after:
+            return None
+        return float(wall_x - fake.pose[0]) + noise * rng.standard_normal(), float(-fake.pose[2])
+
+    return observe
+
+
+def walk_legs(brake_m: float = 0.10, **kw: object) -> FakeLoco:
+    rates = {k: float(a["rate"]) for k, a in CFG["axes"].items()}
+    return FakeLoco(rates=rates, integrate=True, brake_m=brake_m, **kw)  # type: ignore[arg-type]
+
+
+class TestWalkForward(unittest.TestCase):
+    def test_stops_near_target(self) -> None:
+        """1.4 m から歩き続け、止める距離（65 cm）の近くで止まる（ブレーキが見込みどおり 10 cm なら ±3 cm）。"""
+        fake = walk_legs(0.10)
+        m, _, _ = mover(fake)
+        r = m.walk_forward(walk_world(fake, 1.4), WCFG["stop_dist_m"], 0.27, WCFG)
+        self.assertEqual(r.outcome, "reached", r.reason)
+        self.assertTrue(r.stopped)
+        self.assertAlmostEqual(1.4 - fake.pose[0], WCFG["stop_dist_m"], delta=0.03)
+        self.assertGreater(len(fake.calls), 5)  # 短い指令を送り直し続けた
+        self.assertTrue(all(c[0] == WCFG["speed"] and c[1] == 0.0 and c[3] == WCFG["command_s"] for c in fake.calls))
+        self.assertEqual(m.n_pulses, 1)
+
+    def test_brake_larger_than_expected_is_still_safe(self) -> None:
+        """ブレーキが見込みの 2.5 倍（25 cm）でも、近づきすぎない（▲▼ が見える 50 cm 前後に止まる）。"""
+        fake = walk_legs(0.25)
+        m, _, _ = mover(fake)
+        m.walk_forward(walk_world(fake, 1.5), WCFG["stop_dist_m"], 0.27, WCFG)
+        self.assertGreater(1.5 - fake.pose[0], 0.45)
+
+    def test_lost_face_stops(self) -> None:
+        fake = walk_legs()
+        m, _, _ = mover(fake)
+        r = m.walk_forward(walk_world(fake, 1.5, lose_after=3), WCFG["stop_dist_m"], 0.27, WCFG)
+        self.assertEqual(r.outcome, "lost")
+        self.assertTrue(r.stopped)
+        self.assertGreater(1.5 - fake.pose[0], 1.0)  # 見失ってすぐ止めた（0.6 秒ぶんしか進まない）
+
+    def test_dry_run_sends_nothing(self) -> None:
+        fake = walk_legs()
+        m, _, _ = mover(fake, go=False)
+        r = m.walk_forward(walk_world(fake, 1.4), WCFG["stop_dist_m"], 0.27, WCFG)
+        self.assertEqual((r.outcome, fake.calls), ("dry_run", []))
+
+    def test_distance_limit(self) -> None:
+        """柱が遠すぎる（見える範囲の外の誤った面など）と、歩いた見込みの上限で止める。"""
+        fake = walk_legs()
+        m, _, _ = mover(fake)
+        cfg = dict(WCFG, max_distance_m=0.4)
+        r = m.walk_forward(walk_world(fake, 3.0), WCFG["stop_dist_m"], 0.27, cfg)
+        self.assertEqual(r.outcome, "limit")
+        self.assertLess(fake.pose[0], 0.4 + 0.10 + 0.1)
+
+    def test_too_fast_refused(self) -> None:
+        fake = walk_legs()
+        m, _, _ = mover(fake)
+        with self.assertRaises(ValueError):
+            m.walk_forward(walk_world(fake, 1.4), 0.65, 0.27, dict(WCFG, speed=0.6))
+        self.assertEqual(fake.calls, [])
+
+    def test_exception_sends_stop(self) -> None:
+        """観測の途中の例外（Ctrl+C を含む）でも StopMove を送り、指令の時間で止まる。"""
+        fake = walk_legs()
+        m, _, _ = mover(fake)
+        obs = walk_world(fake, 1.4)
+        n = [0]
+
+        def boom() -> tuple[float, float] | None:
+            n[0] += 1
+            if n[0] == 4:
+                raise KeyboardInterrupt
+            return obs()
+
+        with self.assertRaises(KeyboardInterrupt):
+            m.walk_forward(boom, 0.65, 0.27, WCFG)
+        self.assertFalse(fake._v.any())
