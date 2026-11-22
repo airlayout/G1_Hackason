@@ -48,6 +48,8 @@ function bind(button, action) {
   button.onclick = async () => { try { message(""); await action(); } catch (e) { message(e.message); } };
 }
 const sk = () => state?.skeleton;
+let palm = "down";                  // 追従中の手のひらの向き（下 / 上）。人へ指示し、ロボットの手首の回転も切り替える
+const PALM_SPEECH = {down: "手のひらを下に", up: "手のひらを上に"};
 const fresh = () => latest && performance.now() - latestAt <= FRESH_MS;
 
 // ---- カメラと骨格推定 ----
@@ -290,12 +292,27 @@ const followJoints = () => [...document.querySelectorAll("#followJoints input")]
 bind($("start"), async () => {
   if (!camera) throw new Error("先に「映像を開く」でカメラを開いてください");
   const result = await command("skeleton_start");
-  token = result.token; state = result; render();
+  palm = "down"; token = result.token; state = result; render();
 });
+function setPalm(next) {
+  if (next === "up" && sk().palm_up == null) throw new Error("先に「今の手首を『手のひら上』にする」で登録してください");
+  palm = next; say(PALM_SPEECH[next]); renderPalm();
+}
+bind($("palmDown"), () => setPalm("down"));
+bind($("palmUp"), () => setPalm("up"));
+bind($("palmSet"), async () => { state = await command("palm_set"); render(); });
+function renderPalm() {
+  const s = sk();
+  $("palmDown").setAttribute("aria-pressed", String(palm === "down"));
+  $("palmUp").setAttribute("aria-pressed", String(palm === "up"));
+  $("palmUp").disabled = s.palm_up == null;
+  $("palmSet").disabled = s.following;
+  $("palmInfo").textContent = s.palm_up == null ? "「上」は未登録（下だけ使えます）" : "「上」登録済み";
+}
 setInterval(async () => {
   if (!token || sending) return;
   sending = true;
-  try { state = await command("skeleton_sample", {token, features: fresh() ? latest : {}, follow: followJoints()}); }
+  try { state = await command("skeleton_sample", {token, features: fresh() ? latest : {}, follow: followJoints(), palm}); }
   catch (e) { token = null; message(e.message); }
   finally { sending = false; }
 }, SEND_INTERVAL_MS);
@@ -323,7 +340,7 @@ function render() {
   $("start").disabled = !s.ready || s.following || state.drive !== "on" || !camera;
   $("reset").disabled = s.following;
   $("side").disabled = s.following || !!phaseText;      // 追従・較正の途中で腕を替えない
-  renderPoses(); renderFits();
+  renderPoses(); renderFits(); renderPalm();
 }
 bind($("drive"), async () => { state = await command("drive", {mode: "on"}); render(); });
 bind($("auto"), () => autoCalibrate(sk().names.map((_, i) => i)));

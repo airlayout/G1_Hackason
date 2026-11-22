@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from baseline import Baseline
 from followlog import FollowLog
 from home import capture, load_home, neutral_map, save_home
+from palm import MIN_GAP, PALM_STATES, load_palm_up, save_palm_up
 from limits import (JOINTS, MIN_SPAN, RANGES, clamp_pose, default_limits, load_limits, parse_limits, raw, save_limits,
                     speed_raw, step_raw)
 from skeleton import FEATURES, POSE_NAMES, Calibration, PoseMover, calibration_poses, parse_features
@@ -20,6 +21,7 @@ from skeleton import FEATURES, POSE_NAMES, Calibration, PoseMover, calibration_p
 ROOT = Path(__file__).resolve().parent
 LIMITS_FILE = ROOT / "limits.json"   # モーター別の制限の保存先（起動時に自動で読む）
 HOME_FILE = ROOT / "home.json"       # 初期姿勢（追従の基準）の保存先（起動時に自動で読む）
+PALM_FILE = ROOT / "palm.json"       # 「手のひら上」の手首の回転の保存先（起動時に自動で読む）
 TIMEOUT = 0.65
 LABELS = {"low": "つかむ位置", "high": "持ち上げた位置"}
 # グリッパーは登録なしの固定範囲。指の開き 0（くっつけた）→ 最大閉、1（90度に開いた）→ 最大開。
@@ -218,8 +220,11 @@ class Desk:
     retry を渡さない(模擬・テスト)ときは校正が不要で、最初から済みとして扱う。"""
 
     def __init__(self, arm, live=False, clock=time.monotonic, retry=None, why="", command="",
-                 limits=None, limits_file=None, log=None, home=None, home_file=None, sync=False):
+                 limits=None, limits_file=None, log=None, home=None, home_file=None, sync=False,
+                 palm_up=None, palm_file=None):
         self.arm, self.live, self.clock = arm, live, clock
+        self.palm_up, self.palm_file = palm_up, palm_file   # 「手のひら上」の手首の回転（未登録なら None）
+        self.palm_down = None                # 追従中の「手のひら下」の手首の回転（初期姿勢、無ければ追従開始時の値）
         self.log = log                       # 追従のデバッグログ（FollowLog）。None なら残さない
         self.limits, self.limits_file = limits or default_limits(), limits_file
         self.home, self.home_file = home, home_file      # 初期姿勢（5関節。未登録なら None）
@@ -355,6 +360,7 @@ class Desk:
         c = self.calibration_sk
         return dict(names=list(POSE_NAMES), targets=self.poses_sk, captured=[i in c.captures for i in range(len(POSE_NAMES))],
                     moving=self.mover.active, at=self.mover.at, ready=c.ready, fits=c.fits, joints=FEATURES,
+                    palm_up=self.palm_up,
                     following=bool(self.token and self.skeleton_on))
 
     def skeleton_pose_index(self, data):
@@ -395,6 +401,10 @@ class Desk:
         elif op == "skeleton_start":
             if not self.calibration_sk.ready:
                 raise ValueError("較正が済んでいません。3姿勢を撮影してください")
+            down = self.home["wrist_roll"] if self.home else self.arm.read()["wrist_roll"]
+            if self.palm_up is not None and abs(self.palm_up - down) < MIN_GAP:
+                raise ValueError("「手のひら上」と「下」の手首の回転が近すぎます。モーターOFFで手首を回して、登録し直してください")
+            self.palm_down = down
             self.gripper_only, self.skeleton_on = False, True
             self.mover.stop()
             self.cmd.clear()
@@ -416,6 +426,11 @@ class Desk:
             raise ValueError("骨格版の追従ではありません")
         features = parse_features(data.get("features"))
         follow = parse_follow(data.get("follow")) - {"gripper"}
+        palm = data.get("palm", "down")
+        if palm not in PALM_STATES:
+            raise ValueError("手のひらは下か上で指定してください")
+        if palm == "up" and self.palm_up is None:
+            raise ValueError("「手のひら上」の位置が未登録です")
         now = self.clock()
         dt = clip(now - self.last, 0, 0.12)
         self.last = now
@@ -428,11 +443,14 @@ class Desk:
                 continue
             want[joint] = clip(target, raw(joint, self.limits[joint]["min"]), raw(joint, self.limits[joint]["max"]))
             goal[joint] = self.follow_goal(joint, current[joint], want[joint], dt, now)
-        if goal:
-            self.arm.write(goal)
+        roll = "wrist_roll"      # 手首の回転は人の角度を使わず、指示した手のひらの上下の値へ（速度制限つき）
+        want[roll] = clip(self.palm_up if palm == "up" else self.palm_down,
+                          raw(roll, self.limits[roll]["min"]), raw(roll, self.limits[roll]["max"]))
+        goal[roll] = self.follow_goal(roll, current[roll], want[roll], dt, now)
+        self.arm.write(goal)
         self.pose = current
         if self.log is not None:
-            self.log.write("sample", skeleton=True, follow=sorted(follow), inp=features, dt=dt, cur=current, want=want, goal=goal)
+            self.log.write("sample", skeleton=True, palm=palm, follow=sorted(follow), inp=features, dt=dt, cur=current, want=want, goal=goal)
 
     def set_limits(self, data):
         """画面からの制限の変更（reset なら既定値へ）。検証→保存→適用の順で、保存に失敗したら何も変えない。"""
@@ -456,6 +474,20 @@ class Desk:
                 raise ValueError(f"初期姿勢を保存できません: {exc}")
         self.home = home
         self.note = "今の姿勢を初期姿勢に記録"
+
+    def set_palm_up(self):
+        """今の手首の回転を「手のひら上」として記録する（保存に失敗したら何も変えない）。初期姿勢と近すぎるときは拒否する。"""
+        value = float(self.arm.read()["wrist_roll"])
+        down = self.home["wrist_roll"] if self.home else None
+        if down is not None and abs(value - down) < MIN_GAP:
+            raise ValueError("初期姿勢（手のひら下）と手首の回転がほぼ同じです。手首を手のひら上の向きに回してから登録してください")
+        if self.palm_file:
+            try:
+                save_palm_up(value, self.palm_file)
+            except OSError as exc:
+                raise ValueError(f"手のひら上を保存できません: {exc}")
+        self.palm_up = value
+        self.note = "今の手首を「手のひら上」に記録"
 
     def log_begin(self, mode):
         """追従の開始をデバッグログに残す（開始時の姿勢・制限・登録点つき）。"""
@@ -568,6 +600,8 @@ class Desk:
             self.set_limits(data)
         elif op == "home":
             self.set_home()
+        elif op == "palm_set":
+            self.set_palm_up()
         elif self.drive != "on" and op in ("move", "start", "skeleton_pose", "skeleton_start"):
             raise ValueError(f"モーターが「{DRIVE_NAMES[self.drive]}」のため動かせません。"
                              "動かすには「ON」に切り替えてください")
@@ -775,10 +809,12 @@ def main():
                 arm, why = None, str(exc)
             desk = Desk(arm, True, retry=lambda: RealArm(args), why=why, command=calibrate_command(args),
                         limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE, log=FollowLog(ROOT / "debug"),
-                        home=load_home(HOME_FILE), home_file=HOME_FILE, sync=True)
+                        home=load_home(HOME_FILE), home_file=HOME_FILE, sync=True,
+                        palm_up=load_palm_up(PALM_FILE), palm_file=PALM_FILE)
         else:
             desk = Desk(MockArm(), limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE,
-                        log=FollowLog(ROOT / "debug"), home=load_home(HOME_FILE), home_file=HOME_FILE, sync=True)
+                        log=FollowLog(ROOT / "debug"), home=load_home(HOME_FILE), home_file=HOME_FILE, sync=True,
+                        palm_up=load_palm_up(PALM_FILE), palm_file=PALM_FILE)
         done = threading.Event()
         def watch():
             while not done.wait(SOFT_TICK_S):

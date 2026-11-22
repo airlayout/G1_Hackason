@@ -29,6 +29,7 @@ details{margin:6px 0 0}details summary{cursor:pointer}details p,details ol{margi
 #gallery table{border-collapse:collapse;margin-top:14px;font-size:.95rem}#gallery th,#gallery td{border-bottom:1px solid var(--line);padding:4px 14px;text-align:left}
 #gallery .why{margin:6px 0 10px}
 .preview.mirror video,.preview.mirror canvas{transform:scaleX(-1)}
+#palm button[aria-pressed="true"]{font-weight:700;outline:3px solid #0f6b60}
 @media (max-width:900px){main{grid-template-columns:minmax(0,1fr)}.preview{width:100%}}
 </style></head>
 <body>
@@ -57,6 +58,8 @@ details{margin:6px 0 0}details summary{cursor:pointer}details p,details ol{margi
 <div id="poses"></div></section>
 <section id="follow"><h2>追従 <small>グリッパーは動かしません</small></h2>
 <div class="row"><b>追従する関節</b><div id="followJoints"></div></div>
+<div class="row" id="palm"><b>手のひら</b><button id="palmDown" aria-pressed="true">下（はじめ）</button><button id="palmUp" aria-pressed="false">上</button><span id="palmInfo" class="help"></span></div>
+<div class="row"><button id="palmSet">今の手首を「手のひら上」にする</button><span class="help">先にモーターをOFFにし、手首を手のひら上の向きへ手で回してから押す。下は初期姿勢の手首。追従中は、押した側へロボットの手首が回り、音声で人にも伝える。</span></div>
 <div class="row"><button id="start">追従開始</button><span id="status" role="status">待機中</span></div></section>
 </div>
 
