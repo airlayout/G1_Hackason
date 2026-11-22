@@ -10,19 +10,21 @@ h2{margin:0 0 8px}
 #message{min-height:1.4em;color:var(--warn);font-weight:700;margin:2px 0 0}
 details{margin:6px 0 0}details summary{cursor:pointer}details p,details ol{margin:6px 0}
 .col{display:flex;flex-direction:column;gap:14px;min-width:0}
-.preview{max-height:62vh;margin:8px 0 0}
+.preview{--ratio:1.3333;aspect-ratio:var(--ratio);width:min(100%,calc(62vh*var(--ratio)));margin:8px 0 0}
 #angles{display:flex;flex-wrap:wrap;gap:2px 16px;margin:6px 0;min-height:1.6em}#angles span{min-width:8em}
 #poses{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
 .pose{display:flex;flex-direction:column;gap:6px;border:1px solid #e0e9e6;border-radius:10px;padding:10px;background:#fafcfb;min-width:0}
 .pose h3{margin:0;font-size:.95rem}.pose p{margin:0;font-size:.8rem}
 .pose img{width:100%;aspect-ratio:16/9;object-fit:contain;background:#14292b;border-radius:8px}
+.figure{display:flex;gap:4px}.figure svg{width:50%;height:auto;display:block}
+.pose ul{margin:0;padding-left:1.1em;font-size:.78rem;line-height:1.4}
 .pose .done{color:var(--accent);font-weight:700}
 .pose .row{flex-direction:column;align-items:stretch;gap:6px}.pose button{padding:6px 8px;min-height:36px;font-size:.85rem}
 #fits{width:100%;border-collapse:collapse;font-size:.9rem}#fits th,#fits td{border-bottom:1px solid var(--line);padding:4px 8px;text-align:left}
 #fits .ok{color:var(--accent);font-weight:700}#fits .ng{color:var(--warn)}
 #followJoints{display:flex;flex-wrap:wrap;gap:6px 14px}
 .row{margin:6px 0 0}
-@media (max-width:900px){main{grid-template-columns:minmax(0,1fr)}.preview{max-height:none}}
+@media (max-width:900px){main{grid-template-columns:minmax(0,1fr)}.preview{width:100%}}
 </style></head>
 <body>
 <header><h1>SO-101 骨格版 <small>肩〜手の骨格推定で追従</small></h1><strong id="mode">接続中</strong><a href="/">全関節追従の画面へ</a><button id="stop">追従停止［Space］</button></header>
@@ -30,13 +32,14 @@ details{margin:6px 0 0}details summary{cursor:pointer}details p,details ol{margi
 <section id="guide"><h2>次にやること</h2><p id="next" role="status">読み込み中</p><p id="message" role="alert"></p>
 <details><summary>手順と、姿勢A・B・Cとは</summary>
 <ol class="help"><li>「映像を開く」で、肩・肘・手首・手が映るカメラを開く</li><li>「モーターON」</li><li>「自動で較正」を押して、カメラから離れる。姿勢A・B・Cの順に、ロボットが動く → 人が同じ姿勢をとってじっとする → <b>自動で撮影</b>（音声でも知らせる）</li><li>「追従開始」</li></ol>
-<p class="help"><b>姿勢A・B・C</b>：ロボットが順にとる3つの腕の形。A は初期姿勢、B・C は A から各関節を少しずつ動かした形（C は B と逆向き）。<b>ロボットの腕の形を見て、自分の腕（肩〜手）を同じ形にしてください</b>（上腕の向き・肘の曲げ・手首の曲げ・手のひらの向き）。3つの形で各関節の角度が15°以上違うほど、較正が正確になります。人の角度とロボットの値を3組ずつ集めて、関節ごとに「人の角度 → ロボット」の対応を作ります。</p>
+<p class="help"><b>姿勢A・B・C</b>：ロボットが順にとる3つの腕の形。A は初期姿勢、B・C は A から各関節を少しずつ動かした形（C は B と逆向き）。<b>各カードの図（正面と横）と同じ形に、自分の腕（肩〜手）をしてください</b>（上腕の向き・肘の曲げ・手首の曲げ・手のひらの向き）。図の形は暫定で、ロボットの腕が図と逆向きに動くときは知らせてください。3つの形で各関節の角度が15°以上違うほど、較正が正確になります。人の角度とロボットの値を3組ずつ集めて、関節ごとに「人の角度 → ロボット」の対応を作ります。</p>
 <p class="help">着いて3秒たったら、同じ姿勢で約1秒じっとすると自動で撮影します（前の姿勢から動いていないと撮影しません）。3姿勢の値は実機で未確認の暫定値です。危ない向きへ動いたら、追従停止（Space）。</p></details></section>
 
 <div class="col">
 <section id="cameras"><h2>カメラ</h2>
 <div class="row"><button id="enable">映像を開く</button><button id="drive">モーターON</button><span id="driveState"></span></div>
 <div class="row"><label>カメラ <select id="cam"><option value="">既定のカメラ</option></select></label><button id="devices">一覧を更新</button>
+<label>画角 <select id="fov"><option value="4:3">4:3（広い）</option><option value="16:9">16:9（上下が切れる）</option></select></label><span id="cameraInfo" class="help"></span>
 <label>追従する腕 <select id="side"><option value="right">人の右腕（画面の左側）</option><option value="left">人の左腕（画面の右側）</option></select></label></div>
 <div class="preview"><video id="input" autoplay muted playsinline></video><canvas id="overlay"></canvas></div>
 <div id="angles" aria-live="off"></div><p id="perf" class="help">認識 — ms／フレーム</p></section>

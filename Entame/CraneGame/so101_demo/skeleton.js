@@ -1,14 +1,23 @@
 // 骨格版の画面。カメラ → MediaPipe Pose → 腕の角度（skeleton_math.js）→ サーバー（/command の skeleton_*）。
 import {armFeatures, ARMS, smooth, steadyAngles, wrap} from "/skeleton_math.js";
+import {armFigure} from "/skeleton_figure.js";
 
 const $ = id => document.getElementById(id);
 const JOINT_NAMES = {shoulder_pan: "台座", shoulder_lift: "肩", elbow_flex: "肘", wrist_flex: "手首の曲げ", wrist_roll: "手首の回転"};
 const ANGLE_NAMES = {pan: "横向き", lift: "上げ下げ", elbow: "肘の角度", flex: "手首の曲げ", roll: "手首の回転"};
-const POSE_HINTS = [      // skeleton.py の POSE_OFFSETS（基準＋Aからの差）の説明。向きは実機で未確認なので、ロボットの実際の形を見てまねる
-  "基準。ロボットの初期姿勢（ホーム）の形。",
-  "Aから、台座・肩・肘・手首の曲げを、少しずつ同時に動かした形。",
-  "Bとほぼ逆向きに動かした形（手首の回転も少し回す）。",
+// 人がとる腕の形（度。skeleton_math.js の角度の定義）。ロボットの3姿勢（skeleton.py の POSE_OFFSETS）に対応させた暫定の形。
+// 対応の向きは、肩の上げ下げだけ実機で確認済み。ほかの関節は、ロボットが動いた形を見て、図と食い違えばここを直す。
+const HUMAN_POSES = [
+  {pan: 0, lift: 40, elbow: 90, flex: 0, roll: 0},
+  {pan: 30, lift: 75, elbow: 125, flex: 25, roll: 0},
+  {pan: -30, lift: 25, elbow: 55, flex: -25, roll: 40},
 ];
+function describePose(a) {
+  const side = a.pan === 0 ? "正面" : `カメラから見て${a.pan > 0 ? "右" : "左"}へ${Math.abs(a.pan)}°`;
+  const roll = a.roll === 0 ? "手のひらは下向き" : `手のひらを${a.roll}°ひねる（0°が下向き）`;
+  return [`上腕: ${side}、真下から${a.lift}°上げる（90°で水平）`, `肘: ${a.elbow}°（90°で直角、180°で伸ばす）`,
+    `手首: 肘と同じ向きへ${a.flex}°曲げる（0°で前腕と一直線）`, roll];
+}
 const SMOOTH_ALPHA = 0.4;
 const SEND_INTERVAL_MS = 66;        // 追従の送信間隔（約15回/秒。前の送信が終わるまで次は送らない）
 const POLL_MS = 300;
@@ -42,7 +51,20 @@ const sk = () => state?.skeleton;
 const fresh = () => latest && performance.now() - latestAt <= FRESH_MS;
 
 // ---- カメラと骨格推定 ----
-const constraint = id => ({video: id ? {deviceId: {exact: id}} : true, audio: false});
+// 画角: 多くのカメラは、16:9 で撮ると4:3の映像の上下を切り取る。4:3で撮ると、センサー全体（広い視野）が映る
+const FRAME = {"4:3": {width: 1280, height: 960}, "16:9": {width: 1280, height: 720}};
+const constraint = id => ({video: {...(id ? {deviceId: {exact: id}} : {}), width: {ideal: FRAME[$("fov").value].width}, height: {ideal: FRAME[$("fov").value].height}}, audio: false});
+// 開いたカメラの実際の大きさに、映像と認識点の枠をそろえる。ズームできるカメラは、いちばん広い側にする
+async function fitCamera() {
+  const video = $("input"), track = camera.getVideoTracks()[0], caps = track.getCapabilities?.() ?? {};
+  document.querySelector(".preview").style.setProperty("--ratio", video.videoWidth/video.videoHeight);
+  let zoom = "ズーム調整なし";
+  if (caps.zoom) {
+    try { await track.applyConstraints({advanced: [{zoom: caps.zoom.min}]}); zoom = `ズーム ${caps.zoom.min}（最も広角）`; }
+    catch (e) { zoom = "ズームを変えられません"; console.warn("zoom", e); }
+  }
+  $("cameraInfo").textContent = `${video.videoWidth}×${video.videoHeight}　${zoom}`;
+}
 async function listCameras() {
   const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput" && d.deviceId);
   const select = $("cam"), selected = select.value;
@@ -67,13 +89,13 @@ async function closeCamera() {
   camera?.getTracks().forEach(t => t.stop());
   camera = null; latest = raw = null; $("input").srcObject = null;
   const canvas = $("overlay"); canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-  $("angles").textContent = ""; $("perf").textContent = "認識 — ms／フレーム";
+  $("cameraInfo").textContent = ""; $("angles").textContent = ""; $("perf").textContent = "認識 — ms／フレーム";
 }
 async function openCamera() {
   await stopFollow("映像を開き直した");
   await loadTracker();
   camera = await navigator.mediaDevices.getUserMedia(constraint($("cam").value));
-  $("input").srcObject = camera; await $("input").play(); await listCameras();
+  $("input").srcObject = camera; await $("input").play(); await fitCamera(); await listCameras();
 }
 bind($("devices"), async () => {
   if (!camera) (await navigator.mediaDevices.getUserMedia(constraint(""))).getTracks().forEach(t => t.stop());
@@ -217,13 +239,14 @@ function buildPoses() {
     const card = document.createElement("div"); card.className = "pose"; card.id = "pose" + index;
     const title = document.createElement("h3"), img = document.createElement("img"), status = document.createElement("p"), row = document.createElement("div");
     title.textContent = name; status.className = "help";
-    const about = document.createElement("p"); about.className = "help"; about.textContent = POSE_HINTS[index] ?? ""; row.className = "row"; img.alt = name + "の撮影画像";
+    const pose = HUMAN_POSES[index], about = document.createElement("ul"); about.className = "help";
+    if (pose) for (const line of describePose(pose)) about.append(Object.assign(document.createElement("li"), {textContent: line})); row.className = "row"; img.alt = name + "の撮影画像";
     const move = document.createElement("button"), go = document.createElement("button");
     move.textContent = "ロボットをこの姿勢へ"; move.dataset.role = "move";        // 動かすだけ（撮影しない。姿勢の確認用）
     go.textContent = "この姿勢だけ撮り直す"; go.dataset.role = "go";
     bind(move, async () => { cancelAuto(); state = await command("skeleton_pose", {index}); render(); });
     bind(go, () => autoCalibrate([index]));
-    row.append(move, go); card.append(title, about, img, status, row); box.append(card);
+    row.append(move, go); card.append(title, pose ? armFigure(pose) : "", about, img, status, row); box.append(card);
   });
 }
 function renderPoses() {
