@@ -339,6 +339,21 @@ async function poll() {
     render();
   } catch (e) { message(e.message); }
 }
+// 映像の左右反転（鏡）。表示だけ反転し、骨格の計算や保存する画像は元の向きのまま。左右の腕の選択肢の説明は、反転に合わせて変える
+const MIRROR_KEY = "skeleton.mirror";
+function applyMirror() {
+  const on = $("mirror").checked, preview = document.querySelector(".preview");
+  preview.classList.toggle("mirror", on);
+  const [left, right] = $("side").options;
+  left.textContent = `人の左腕（画面の${on ? "左" : "右"}側）`; right.textContent = `人の右腕（画面の${on ? "右" : "左"}側）`;
+}
+try { const saved = localStorage.getItem(MIRROR_KEY); if (saved !== null) $("mirror").checked = saved === "1"; } catch (e) { console.warn("storage", e); }
+$("mirror").addEventListener("change", () => {
+  try { localStorage.setItem(MIRROR_KEY, $("mirror").checked ? "1" : "0"); } catch (e) { console.warn("storage", e); }
+  applyMirror();
+});
+applyMirror();
+
 // 追従する腕（左右）。選んだ腕は覚えておく。左右で角度の符号が逆になるものがあるため、腕を替えたら較正は無効（やり直す）
 const SIDE_KEY = "skeleton.side";
 try { const saved = localStorage.getItem(SIDE_KEY); if (saved in ARMS) $("side").value = saved; } catch (e) { console.warn("storage", e); }
