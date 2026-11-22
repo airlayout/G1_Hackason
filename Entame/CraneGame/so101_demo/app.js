@@ -118,6 +118,9 @@ function render(data) {
   const driven = data.drive === "on";   // OFF・やわらかのときは、スライダーと追従を使えない（姿勢の登録は使える）
   $("start").disabled = blocked || !driven || Object.keys(data.marks).length !== 2;
   $("startGripper").disabled = blocked || !driven;
+  $("homeSet").disabled = blocked;      // モーター OFF（手で姿勢を作る）のときも記録できる
+  $("homeGo").disabled = blocked || !driven || !data.home;
+  $("homeState").textContent = data.home ? "初期姿勢: 登録済み" : "初期姿勢: 未登録（追従は、動かせる範囲の真ん中が基準になる）";
   for (const b of document.querySelectorAll("#joints input")) b.disabled = blocked || !driven;
   for (const b of document.querySelectorAll("#marks button")) b.disabled = blocked;
   for (const b of document.querySelectorAll("#drive button")) b.disabled = data.fault || !data.calibration.done;
@@ -262,13 +265,16 @@ for (const [j,name] of Object.entries(joints)){
   slider.addEventListener("input", () => { targets[j]=Number(slider.value); stalls[j]=0; });
   row.append(text,slider,value); $("joints").append(row);
 }
-// 腕を中間へ: 各関節の「動かせる下限・上限」の真ん中を目標にする。あとはスライダーと同じ仕組みで、少しずつ動く
-bind($("center"),async()=>{
+// 初期姿勢: 今の姿勢を記録する（サーバーが home.json に保存）／記録した姿勢へ戻す。戻すのはスライダーと同じ仕組みで、少しずつ動く
+bind($("homeSet"),async()=>{
+  if(!state || state.active) throw new Error("追従中は記録できません。先に停止してください");
+  render(await command("home"));
+});
+bind($("homeGo"),async()=>{
   if(!state || state.active) throw new Error("追従中は動かせません。先に停止してください");
-  for(const j of Object.keys(joints)){
-    if(j==="gripper") continue;
-    const {min,max}=state.limits[j];
-    targets[j]=(min+max)/2; stalls[j]=0; $("slide-"+j).value=targets[j];
+  if(!state.home) throw new Error("初期姿勢が未登録です。机にグリッパーを置いた姿勢で「今の姿勢を初期姿勢にする」を押してください");
+  for(const [j,v] of Object.entries(state.home)){
+    targets[j]=pct(j,v); stalls[j]=0; $("slide-"+j).value=targets[j];
   }
 });
 async function tickMoves(){

@@ -4,3 +4,4 @@ __pycache__/
 debug/
 finger_calibration.json
 limits.json
+home.json

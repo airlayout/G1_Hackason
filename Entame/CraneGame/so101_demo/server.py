@@ -11,11 +11,13 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from followlog import FollowLog
+from home import capture, far_joints, load_home, neutral_map, save_home
 from limits import (JOINTS, MIN_SPAN, RANGES, clamp_pose, default_limits, load_limits, parse_limits, raw, save_limits,
                     speed_raw, step_raw)
 
 ROOT = Path(__file__).resolve().parent
 LIMITS_FILE = ROOT / "limits.json"   # モーター別の制限の保存先（起動時に自動で読む）
+HOME_FILE = ROOT / "home.json"       # 初期姿勢（追従の基準）の保存先（起動時に自動で読む）
 TIMEOUT = 0.65
 LABELS = {"low": "つかむ位置", "high": "持ち上げた位置"}
 # グリッパーは登録なしの固定範囲。指の開き 0（くっつけた）→ 最大閉、1（90度に開いた）→ 最大開。
@@ -201,10 +203,11 @@ class Desk:
     retry を渡さない(模擬・テスト)ときは校正が不要で、最初から済みとして扱う。"""
 
     def __init__(self, arm, live=False, clock=time.monotonic, retry=None, why="", command="",
-                 limits=None, limits_file=None, log=None):
+                 limits=None, limits_file=None, log=None, home=None, home_file=None):
         self.arm, self.live, self.clock = arm, live, clock
         self.log = log                       # 追従のデバッグログ（FollowLog）。None なら残さない
         self.limits, self.limits_file = limits or default_limits(), limits_file
+        self.home, self.home_file = home, home_file      # 初期姿勢（5関節。未登録なら None）
         if arm is not None:
             arm.set_limits(self.limits)
         self.retry, self.why, self.command_hint = retry, why, command
@@ -234,7 +237,7 @@ class Desk:
                     note=self.note, fault=self.fault, calibration=self.calibration(), drive=self.drive,
                     soft_level=self.soft_level,
                     gripper=dict(closed=GRIPPER_CLOSED, open=GRIPPER_OPEN), gripper_only=self.gripper_only,
-                    limits=self.limits, limit_defaults=default_limits(), limit_ranges=RANGES,
+                    home=self.home, limits=self.limits, limit_defaults=default_limits(), limit_ranges=RANGES,
                     limit_min_span=MIN_SPAN)
 
     def tick(self):
@@ -306,10 +309,30 @@ class Desk:
         self.arm.set_limits(new)
         self.note = "制限を保存して適用"
 
+    def set_home(self):
+        """今の姿勢を初期姿勢として記録する（保存に失敗したら何も変えない）。"""
+        home = capture(self.arm.read())
+        if self.home_file:
+            try:
+                save_home(home, self.home_file)
+            except OSError as exc:
+                raise ValueError(f"初期姿勢を保存できません: {exc}")
+        self.home = home
+        self.note = "今の姿勢を初期姿勢に記録"
+
+    def check_home(self):
+        """初期姿勢があるときは、追従の開始前に、腕が初期姿勢の近くにあることを確かめる（飛び出し防止）。"""
+        if self.home is None:
+            return
+        far = far_joints(self.arm.read(), self.home)
+        if far:
+            raise ValueError("腕が初期姿勢から離れています（" + "、".join(far) + "）。「初期姿勢へ戻す」を押してください")
+
     def log_begin(self, mode):
         """追従の開始をデバッグログに残す（開始時の姿勢・制限・登録点つき）。"""
         if self.log is not None:
-            self.log.begin(mode=mode, live=self.live, pose=self.arm.read(), limits=self.limits, marks=self.marks)
+            self.log.begin(mode=mode, live=self.live, pose=self.arm.read(), limits=self.limits, marks=self.marks,
+                           home=self.home)
 
     def log_end(self, reason):
         """追従のデバッグログを、停止の理由つきで閉じる（ログなし・追従中でなければ何もしない）。"""
@@ -373,8 +396,9 @@ class Desk:
                 elif self.gripper_only:
                     if j not in free:              # 入力が送られなければ、その関節は今の姿勢のまま
                         continue
-                    # 入力 -1〜1 を、その関節の「動かせる下限〜上限」いっぱいへ写す（手の全域が使える。範囲の外へは出ない）
-                    a, b, fraction = raw(j, self.limits[j]["min"]), raw(j, self.limits[j]["max"]), (free[j]+1) / 2
+                    # 入力 -1〜1 を、その関節の「動かせる下限〜上限」へ写す。0 が初期姿勢（未登録なら範囲の真ん中）
+                    lo, hi = raw(j, self.limits[j]["min"]), raw(j, self.limits[j]["max"])
+                    a, b, fraction = 0.0, neutral_map(free[j], lo, hi, self.home and self.home[j]), 1.0
                 else:
                     a, b, fraction = self.marks["low"][j], self.marks["high"][j], height
                 speed = speed_raw(j, self.limits)
@@ -390,6 +414,8 @@ class Desk:
             raise ValueError("設定を変える前に追従を停止してください")
         elif op == "limits":
             self.set_limits(data)
+        elif op == "home":
+            self.set_home()
         elif self.drive != "on" and op in ("move", "start"):
             raise ValueError(f"モーターが「{DRIVE_NAMES[self.drive]}」のため動かせません。"
                              "動かすには「ON」に切り替えてください")
@@ -413,6 +439,7 @@ class Desk:
             self.note = f"{LABELS[label]}を登録"
         elif op == "start" and data.get("gripper_only") is True:
             # グリッパーだけ追従。位置の登録も、登録区間の確認も要らない（腕には指令を出さない）
+            self.check_home()
             self.gripper_only = True
             self.last = self.clock()
             self.token = secrets.token_hex(16)
@@ -586,10 +613,11 @@ def main():
             except ValueError as exc:      # 校正の欠落・不一致は、画面で案内して待つ
                 arm, why = None, str(exc)
             desk = Desk(arm, True, retry=lambda: RealArm(args), why=why, command=calibrate_command(args),
-                        limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE, log=FollowLog(ROOT / "debug"))
+                        limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE, log=FollowLog(ROOT / "debug"),
+                        home=load_home(HOME_FILE), home_file=HOME_FILE)
         else:
             desk = Desk(MockArm(), limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE,
-                        log=FollowLog(ROOT / "debug"))
+                        log=FollowLog(ROOT / "debug"), home=load_home(HOME_FILE), home_file=HOME_FILE)
         done = threading.Event()
         def watch():
             while not done.wait(SOFT_TICK_S):
