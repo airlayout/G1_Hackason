@@ -1,6 +1,34 @@
+import {initLimits, renderLimits} from "/limits.js";
 const $ = id => document.getElementById(id);
 const joints = {shoulder_pan:"台座", shoulder_lift:"肩", elbow_flex:"肘", wrist_flex:"手首の曲げ", wrist_roll:"手首の回転", gripper:"グリッパー"};
-const labels = {low:"つかむ位置", open:"開いた幅", closed:"つかむ幅", high:"持ち上げた位置"};
+const labels = {low:"つかむ位置", high:"持ち上げた位置"};
+// 指の開き＝親指の先と人差し指の先の距離 ÷ 手のひらの幅（比）。最大に開いた比とくっつけた比を、1回だけ測って
+// （指の校正）ブラウザに保存する。角度で測ると、つまんだときも角度が大きいままになり「閉じても開き」と判定された
+// （2026-11-22）。校正前の表示用の仮の値は PROVISIONAL。校正が済むまで「追従開始」は使えない
+const PROVISIONAL={open:1,closed:.15};
+const CAL_DELAY_MS=3000, CAL_SAMPLE_MS=1000, CAL_STEADY=.12, CAL_MIN_GAP=.3, EDGE=.05;
+let fingerCal={}, lastRatio=null, lastHand=null;
+// 校正はサーバーのファイル（finger_calibration.json）に保存する。ブラウザを替えても、消しても、測り直しは要らない
+async function loadFinger(){
+  try{fingerCal=await (await fetch("/finger")).json(); $("fingerState").textContent=fingerText();}catch(e){info(e.message);}
+}
+async function saveFinger(update){
+  const res=await fetch("/finger",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(update)});
+  const data=await res.json();
+  if(!res.ok) throw new Error(data.error);
+  fingerCal=data;
+}
+const fingerReady=()=>Number.isFinite(fingerCal.open)&&Number.isFinite(fingerCal.closed);
+const fingerRange=()=>fingerReady()?fingerCal:PROVISIONAL;
+function fingerText(){
+  const f=a=>Number.isFinite(a)?a.toFixed(2):"未測定";
+  return (fingerReady()?"校正済み":"未校正")+"　開 "+f(fingerCal.open)+" ／ 閉 "+f(fingerCal.closed);
+}
+// 距離比から指の開き（0〜1）。両端の EDGE 以内は 0・1 に寄せる
+function openingFromRatio(ratio){
+  const {open,closed}=fingerRange(), v=(ratio-closed)/(open-closed);
+  return v<EDGE?0:v>1-EDGE?1:v;
+}
 let state, token, tracker, camera, recorder, recordingURL;
 let pending = false, starting = false, generation = 0, frame = -1, lastSample = 0, lastSeen = 0, latest;
 let followed = false, historyKey = "", moving = false;
@@ -34,8 +62,8 @@ function buildMarkTable() {
     th.textContent=name; row.append(th);
     for (const j of Object.keys(joints)) {
       const td=document.createElement("td"); td.id="m-"+key+"-"+j;
-      // 開いた幅・つかむ幅はグリッパー列、つかむ位置・持ち上げた位置は腕の列が使われる
-      if ((j==="gripper") === (key==="open" || key==="closed")) td.className="used";
+      // つかむ位置・持ち上げた位置は腕の列が使われる（グリッパーは登録なし）
+      if (j!=="gripper") td.className="used";
       row.append(td);
     }
     $("markTable").append(row);
@@ -71,9 +99,11 @@ function render(data) {
   }
   renderMarks(data);
   renderDrive(data);
+  renderLimits(data);
   const blocked = data.active || data.fault || !data.calibration.done;
   const driven = data.drive === "on";   // OFF・やわらかのときは、スライダーと追従を使えない（姿勢の登録は使える）
-  $("start").disabled = blocked || !driven || Object.keys(data.marks).length !== 4;
+  $("start").disabled = blocked || !driven || Object.keys(data.marks).length !== 2;
+  $("startGripper").disabled = blocked || !driven;
   for (const b of document.querySelectorAll("#joints input")) b.disabled = blocked || !driven;
   for (const b of document.querySelectorAll("#marks button")) b.disabled = blocked;
   for (const b of document.querySelectorAll("#drive button")) b.disabled = data.fault || !data.calibration.done;
@@ -98,10 +128,9 @@ const recording = () => recorder?.state === "recording";
 const steps = [
   {text:"モーターを校正", help:"画面右の「モーターの校正」の案内に従い、校正を終えて「校正を確認」を押す", done:() => state?.calibration.done},
   {text:"つかむ位置を登録", help:"現在位置のスライダーで爪を袋の左右に合わせ、「つかむ位置を登録」を押す", done:() => state && "low" in state.marks},
-  {text:"開いた幅を登録", help:"グリッパーを広げた姿勢で「開いた幅を登録」を押す", done:() => state && "open" in state.marks},
-  {text:"つかむ幅を登録", help:"グリッパーのスライダーで袋を軽く挟む幅まで閉じ、「つかむ幅を登録」を押す（開いた幅より小さくなる）", done:() => state && "closed" in state.marks},
   {text:"持ち上げた位置を登録", help:"肩か肘を少し動かして袋が浮く姿勢にし、「持ち上げた位置を登録」を押す", done:() => state && "high" in state.marks},
   {text:"操作用の映像を開く", help:"「カメラ一覧を更新」→ カメラを選ぶ →「映像を開く」。模擬モードではスライダー入力でも可", done:() => camera || isManual()},
+  {text:"指の開閉を校正（1回だけ）", help:"「指を最大に開く」を押し、3秒後に測る間、指を大きく開いたままにする。「指をくっつける」も同じ。結果はブラウザに保存される", done:() => fingerReady() || isManual()},
   {text:"追従を試す（空運転）", help:"手を下の線に合わせ、指を開いて「追従開始」。手を上下し、つまむ・開くを試す。止めるのはスペースキー", done:() => followed},
   {text:"録画を開始する", help:"カメラに手・爪・袋が一緒に映っているのを確かめ、「録画開始」を押す", done:() => recording() || Boolean(recordingURL)},
   {text:"録画を終えて保存する", help:"追従を止めて「録画終了」→「動画を保存」。保存した動画を再生して確認する", done:() => Boolean(recordingURL) && !recording()},
@@ -120,18 +149,17 @@ function updateGuide() {
   let next;
   if (state.fault) next = "通信異常です。実機と配線を確認し、サーバーを再起動してください";
   else if (!state.calibration.done) next = "先にモーターの校正が必要です。画面右の案内に従ってください";
-  else if (state.active) next = "追従中です。手を上下し、指を開閉して動きを確認する。止めるにはスペースキー";
+  else if (state.active) next = state.gripper_only ? "追従中（グリッパーだけ）です。指を開閉して動きを確認する。止めるにはスペースキー" : "追従中です。手を上下し、指を開閉して動きを確認する。止めるにはスペースキー";
   else if (state.problem) next = "直す必要があります: " + state.problem;
   else if (index < 0) next = "すべて完了です。保存した動画を再生して、袋が机から離れたことを確認してください";
   else next = "手順 " + (index + 1) + "／" + steps.length + "：" + steps[index].text + "　" + steps[index].help;
   if ($("next").textContent !== next) $("next").textContent = next;
-  const nextMark = index >= 1 && index <= 4 ? Object.keys(labels)[index-1] : null;
+  const nextMark = index >= 1 && index <= 2 ? Object.keys(labels)[index-1] : null;
   for (const key of Object.keys(labels)) $("mark-"+key).classList.toggle("next", key === nextMark);
 }
 function markSummary(key, pose) {
   if (!pose) return "未登録";
-  return key === "open" || key === "closed" ? "グリッパー "+pctText("gripper",pose.gripper)
-    : "肩 "+pctText("shoulder_lift",pose.shoulder_lift)+" ／ 肘 "+pctText("elbow_flex",pose.elbow_flex);
+  return "肩 "+pctText("shoulder_lift",pose.shoulder_lift)+" ／ 肘 "+pctText("elbow_flex",pose.elbow_flex);
 }
 
 // 仮想アーム（横から見た模式図）。角度への換算は見た目用で、実機の関節の向きとは一致しない
@@ -160,12 +188,12 @@ function handInput(now) {
   if (isManual()) return {height:$("height").value/100, opening:$("opening").value/100};
   return latest && now - lastSeen < 300 ? latest : null;
 }
-// 手の入力から求めた予定の姿勢。登録が揃っていれば登録した2姿勢の間、なければ現在の姿勢を基準にした仮の範囲
+// 手の入力から求めた予定の姿勢。グリッパーは固定範囲。腕は、登録が揃っていれば登録した2姿勢の間、なければ現在の姿勢を基準にした仮の範囲
 function targetPose({height, opening}) {
   const m = state.marks, ready = Object.keys(labels).every(k => k in m), out = {};
   for (const j of Object.keys(joints)) {
     if (j === "gripper") {
-      const closed = ready ? m.closed[j] : 0, open = ready ? m.open[j] : 100;
+      const {closed, open} = state.gripper;
       out[j] = closed + (open-closed)*opening;
     } else {
       const a = ready ? m.low[j] : state.pose[j], b = ready ? m.high[j] : a + (PREVIEW_RANGE[j] ?? 0);
@@ -204,6 +232,7 @@ async function stop() {
   render(await command("stop"));
 }
 bind($("stop"),stop);
+initLimits({joints, command, info, render});
 window.addEventListener("keydown", e => {
   if(e.code === "Space"){e.preventDefault(); if(!e.repeat) $("stop").click();}
 });
@@ -275,18 +304,65 @@ for (const key of Object.keys(labels)){
   bind(b, async()=>render(await command("mark",{label:key}))); $("marks").append(b);
 }
 const isManual = () => state && !state.live && $("manual").checked;
-bind($("start"), async()=>{
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+// ボタンを押してから CAL_DELAY_MS 待ち（手を構える時間）、CAL_SAMPLE_MS の間の角度の中央値を返す
+async function measureAngle() {
+  if (!camera) throw new Error("先に「映像を開く」でカメラを開いてください");
+  for (let s = CAL_DELAY_MS/1000; s > 0; s--) { $("fingerState").textContent = s+" 秒後に測ります。指の形を作ってください"; await sleep(1000); }
+  $("fingerState").textContent = "測定中…";
+  const values = [], end = performance.now() + CAL_SAMPLE_MS;
+  while (performance.now() < end) {
+    if (lastRatio !== null && performance.now()-lastSeen < 150) values.push(lastRatio);
+    await sleep(30);
+  }
+  if (values.length < 5) throw new Error("手が映っていません。手を映してやり直してください");
+  values.sort((a, b) => a-b);
+  if (values.at(-1) - values[0] > CAL_STEADY) throw new Error("測定中に指が動きました。形を保ってやり直してください");
+  return values[values.length >> 1];
+}
+function bindFingerCal(button, key) {
+  bind(button, async () => {
+    try {
+      const angle = await measureAngle(), next = {...fingerCal, [key]: angle};
+      if (Number.isFinite(next.open) && Number.isFinite(next.closed) && next.open - next.closed < CAL_MIN_GAP)
+        throw new Error("開いた比（"+next.open.toFixed(2)+"）とくっつけた比（"+next.closed.toFixed(2)+"）の差が "+CAL_MIN_GAP+" 未満です。指を大きく開き直してください");
+      await saveFinger({[key]: angle});
+    } finally { $("fingerState").textContent = fingerText(); }
+  });
+}
+// 診断の保存: 押した瞬間の映像（認識点つき）と数値を、サーバーの debug フォルダへ送る（原因調査用）
+bind($("snap"), async () => {
+  const video = $("input");
+  if (!camera || video.readyState < 2) throw new Error("先に「映像を開く」でカメラを開いてください");
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0); ctx.drawImage($("overlay"), 0, 0);
+  const info = {time: new Date().toISOString(), hand: $("hand").textContent, finger: {...fingerCal},
+    latest, ...lastHand, size: [canvas.width, canvas.height], drive: state?.drive, active: state?.active};
+  const res = await fetch("/snapshot", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({image: canvas.toDataURL("image/jpeg", .85), info})});
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  $("snapState").textContent = "保存: " + data.saved;
+});
+bindFingerCal($("calOpen"), "open"); bindFingerCal($("calClosed"), "closed");
+$("fingerState").textContent = fingerText(); loadFinger();
+bind($("start"), () => startFollow(false));
+bind($("startGripper"), () => startFollow(true));
+async function startFollow(gripperOnly){
   if(starting) return;
+  if(!isManual() && !fingerReady()) throw new Error("先に指の開閉を校正してください（「指を最大に開く」「指をくっつける」）");
   if(!isManual() && (!latest || performance.now()-lastSeen>300)) throw new Error("操作カメラに片手を映してください");
   starting=true;
   const sequence=++generation;
   try {
     for (const k of Object.keys(targets)) delete targets[k];
-    const result=await command("start");
+    const result=await command("start", gripperOnly ? {gripper_only: true} : {});
     if(sequence!==generation){await stop(); return;}
     token=result.token; followed=true; render(result);
   } finally {starting=false;}
-});
+}
 function constraint(id){return {video:id?{deviceId:{exact:id}}:true,audio:false};}
 async function listCameras(){
   const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="videoinput" && d.deviceId);
@@ -356,14 +432,20 @@ function track(now){
   const w=canvas.width,h=canvas.height;
   ctx.strokeStyle="#ffe081";
   for(const y of [.28,.72]){ctx.beginPath();ctx.moveTo(0,y*h);ctx.lineTo(w,y*h);ctx.stroke();}
-  latest=null;
+  latest=null; lastRatio=null; lastHand=null;
   if(!pts){$("hand").textContent="手が見えません";return;}
   const distance=(a,b)=>Math.hypot((pts[a].x-pts[b].x)*w,(pts[a].y-pts[b].y)*h);
-  const palm=distance(5,17);
+  const palm=distance(0,9);                     // 手首〜中指の付け根。横向きでも手のひら幅ほど縮まない
   if(palm<12){$("hand").textContent="手をもう少し大きく映してください";return;}
-  latest={height:limit((.72-pts[0].y)/.44),opening:limit((distance(4,8)/palm-.18)/.75)};
+  const vec=(a,b)=>[(pts[b].x-pts[a].x)*w,(pts[b].y-pts[a].y)*h];
+  const [tx,ty]=vec(2,4), [ix,iy]=vec(5,8);
+  const angle=Math.acos(Math.max(-1,Math.min(1,(tx*ix+ty*iy)/(Math.hypot(tx,ty)*Math.hypot(ix,iy)||1))))*180/Math.PI;
+  const ratio=distance(4,8)/palm;
+  lastRatio=ratio;
+  lastHand={ratio,angle,pts:pts.map(({x,y,z})=>[+x.toFixed(4),+y.toFixed(4),+z.toFixed(4)])};
+  latest={height:limit((.72-pts[0].y)/.44),opening:limit(openingFromRatio(ratio))};
   for(const i of [0,4,8]){ctx.fillStyle="#60ffb1";ctx.beginPath();ctx.arc(pts[i].x*w,pts[i].y*h,5,0,2*Math.PI);ctx.fill();}
-  lastSeen=now; $("hand").textContent="手を認識　高さ "+Math.round(latest.height*100)+"% ／ 開き "+Math.round(latest.opening*100)+"%";
+  lastSeen=now; $("hand").textContent="手を認識　高さ "+Math.round(latest.height*100)+"% ／ 開き "+Math.round(latest.opening*100)+"%（距離比 "+ratio.toFixed(2)+"、角度 "+Math.round(angle)+"°）";
 }
 async function loop(now){
   try{

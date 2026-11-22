@@ -10,13 +10,22 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from limits import (JOINTS, MIN_SPAN, RANGES, clamp_pose, default_limits, load_limits, parse_limits, save_limits,
+                    speed_raw, step_raw)
+
 ROOT = Path(__file__).resolve().parent
-JOINTS = ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper")
+LIMITS_FILE = ROOT / "limits.json"   # モーター別の制限の保存先（起動時に自動で読む）
 TIMEOUT = 0.65
-LABELS = {"low": "つかむ位置", "high": "持ち上げた位置", "open": "開いた幅", "closed": "つかむ幅"}
-MIN_GRIP_GAP = 2           # 開いた幅 − つかむ幅 の最小値（%）
+LABELS = {"low": "つかむ位置", "high": "持ち上げた位置"}
+# グリッパーは登録なしの固定範囲。指の開き 0（くっつけた）→ 最大閉、1（90度に開いた）→ 最大開。
+# 向き（どちらが開くか）は実機で未確認。逆なら入れ替える（校正済みの 0〜100% が可動範囲いっぱい）。
+GRIPPER_CLOSED, GRIPPER_OPEN = 0.0, 100.0
 ARM_GAP = (1, 35)          # 上下２点の関節差の許容範囲（内部単位。表示は半分の%）
 HISTORY_MAX = 50
+FINGER_FILE = ROOT / "finger_calibration.json"   # 指の校正の保存先（1人1回。手が変わるときだけ測り直す）
+FINGER_RATIO_MAX = 3.0
+SNAPSHOT_MAX = 200          # 診断の保存の上限（件）
+SNAPSHOT_BYTES = 3_000_000   # 診断1件の最大サイズ
 # スライダー操作は、サーバーが持つ「指令位置」を一定の速さで目標へ進めて送る。
 # 以前は「毎回 実際の位置 + 1〜3」を送っていたが、動くたびに差が消えて止まる→動くを繰り返し、
 # 肩が揺れ（P=48 では机まで揺れた）、肘は摩擦に負けて全く動かなかった（実測 2026-11-22、
@@ -66,12 +75,16 @@ class MockArm:
         self.pose = dict.fromkeys(JOINTS, 0.0)
         self.pose["gripper"] = 55.0
         self.drive = "on"
+        self.limits = default_limits()
 
     def read(self):
         return self.pose.copy()
 
     def write(self, pose):
-        self.pose.update(pose)
+        self.pose.update(clamp_pose(pose, self.limits))
+
+    def set_limits(self, limits):
+        self.limits = limits
 
     def set_drive(self, mode, level=SOFT_LEVEL):
         self.drive = mode
@@ -90,6 +103,7 @@ class RealArm:
         config = SO101FollowerConfig(port=args.port, id=args.robot_id, calibration_dir=args.calibration_dir,
                                      use_degrees=False, max_relative_target=3.0)
         self.robot = SO101Follower(config)
+        self.limits = default_limits()
         if not self.robot.calibration:
             raise ValueError(f"校正データがありません: {self.robot.calibration_fpath}")
         try:
@@ -122,7 +136,13 @@ class RealArm:
         return pose
 
     def write(self, pose):
+        """範囲の外は丸め、1回の移動量は関節ごとの上限にする（LeRobot の安全装置は、書く関節の分だけ辞書で渡す）。"""
+        pose = clamp_pose(pose, self.limits)
+        self.robot.config.max_relative_target = {j: float(step_raw(j, self.limits)) for j in pose}
         self.robot.send_action({j + ".pos": value for j, value in pose.items()})
+
+    def set_limits(self, limits):
+        self.limits = limits
 
     def set_drive(self, mode, level=SOFT_LEVEL):
         """モーターの状態を切り替える。力を入れる前に、目標を今の位置にそろえて、急に動かないようにする。
@@ -163,14 +183,19 @@ class Desk:
     """arm が None のときは「実機が未校正」。retry() で接続をやり直し、成功すれば操作できる。
     retry を渡さない(模擬・テスト)ときは校正が不要で、最初から済みとして扱う。"""
 
-    def __init__(self, arm, live=False, clock=time.monotonic, retry=None, why="", command=""):
+    def __init__(self, arm, live=False, clock=time.monotonic, retry=None, why="", command="",
+                 limits=None, limits_file=None):
         self.arm, self.live, self.clock = arm, live, clock
+        self.limits, self.limits_file = limits or default_limits(), limits_file
+        if arm is not None:
+            arm.set_limits(self.limits)
         self.retry, self.why, self.command_hint = retry, why, command
         self.pose = arm.read() if arm else dict.fromkeys(JOINTS, 0.0)
         self.drive = arm.drive if arm else "on"
         self.soft_level = SOFT_LEVEL
         self.cmd = {}                        # 関節ごとの (指令位置, 時刻)。スライダー移動で、目標へ一定速度で進める
         self.marks = {}
+        self.gripper_only = False            # True の間は、グリッパーだけ追従する（腕は今の姿勢のまま）
         self.history = []
         self.token = None
         self.note = "待機中"
@@ -189,7 +214,10 @@ class Desk:
         return dict(live=self.live, pose=self.pose, marks={k: v.copy() for k, v in self.marks.items()},
                     history=list(self.history), problem=self.problem(), active=self.token is not None,
                     note=self.note, fault=self.fault, calibration=self.calibration(), drive=self.drive,
-                    soft_level=self.soft_level)
+                    soft_level=self.soft_level,
+                    gripper=dict(closed=GRIPPER_CLOSED, open=GRIPPER_OPEN), gripper_only=self.gripper_only,
+                    limits=self.limits, limit_defaults=default_limits(), limit_ranges=RANGES,
+                    limit_min_span=MIN_SPAN)
 
     def tick(self):
         """一定間隔で呼ぶ。やわらかモード中は、目標を今の位置へ追従させる。"""
@@ -211,19 +239,13 @@ class Desk:
             self.why = str(exc)
             raise ValueError("まだ校正が済んでいません: " + self.why)
         self.arm, self.why = arm, ""
+        arm.set_limits(self.limits)
         self.pose, self.drive = arm.read(), arm.drive
         self.note = "校正を確認。実機に接続"
 
     def problem(self):
         """登録済みの点どうしの食い違いを、数値つきの説明で返す。問題なければ None。"""
         m = self.marks
-        if "open" in m and "closed" in m:
-            opened, closed = m["open"]["gripper"], m["closed"]["gripper"]
-            if opened - closed < MIN_GRIP_GAP:
-                hint = "開いた幅とつかむ幅が逆です。" if opened < closed else "ほぼ同じ値です。"
-                return (f"グリッパー: 開いた幅 {opened:.1f}%、つかむ幅 {closed:.1f}%。{hint}"
-                        f"開いた幅がつかむ幅より {MIN_GRIP_GAP} 以上大きくなるよう、グリッパーを動かして"
-                        "「開いた幅を登録」か「つかむ幅を登録」をやり直してください。")
         if "low" in m and "high" in m:
             gap = max(abs(m["high"][j] - m["low"][j]) for j in JOINTS[:-1])
             low, high = ARM_GAP
@@ -245,12 +267,26 @@ class Desk:
             self.cmd.pop(joint, None)
             return actual
         base = previous[0] if previous and now - previous[1] < MOVE_HOLD_S else actual
-        goal = base + clip(target - base, -MOVE_STEP, MOVE_STEP)
-        goal = clip(goal, actual - MOVE_LAG, actual + MOVE_LAG)
+        lag = min(MOVE_LAG, step_raw(joint, self.limits))     # 関節ごとの「1回の最大移動量」を超えない
+        step = min(MOVE_STEP, lag)
+        goal = base + clip(target - base, -step, step)
+        goal = clip(goal, actual - lag, actual + lag)
         limits = (0, 100) if joint == "gripper" else (-100, 100)
         goal = clip(goal, *limits)
         self.cmd[joint] = (goal, now)
         return goal
+
+    def set_limits(self, data):
+        """画面からの制限の変更（reset なら既定値へ）。検証→保存→適用の順で、保存に失敗したら何も変えない。"""
+        new = default_limits() if data.get("reset") is True else parse_limits(data.get("limits", {}), self.limits)
+        if self.limits_file:
+            try:
+                save_limits(new, self.limits_file)
+            except OSError as exc:
+                raise ValueError(f"制限を保存できません: {exc}")
+        self.limits = new
+        self.arm.set_limits(new)
+        self.note = "制限を保存して適用"
 
     def hold(self, reason):
         self.token = None
@@ -297,17 +333,20 @@ class Desk:
             self.last = now
             current = self.arm.read()
             goal = {}
-            for j in JOINTS:
+            for j in (["gripper"] if self.gripper_only else JOINTS):
                 if j == "gripper":
-                    a, b, fraction, speed = self.marks["closed"][j], self.marks["open"][j], opening, 45
+                    a, b, fraction = GRIPPER_CLOSED, GRIPPER_OPEN, opening
                 else:
-                    a, b, fraction, speed = self.marks["low"][j], self.marks["high"][j], height, 22
+                    a, b, fraction = self.marks["low"][j], self.marks["high"][j], height
+                speed = speed_raw(j, self.limits)
                 delta = clip(a + (b-a)*fraction - current[j], -speed*dt, speed*dt)
                 goal[j] = current[j] + delta
             self.arm.write(goal)
             self.pose = current
         elif self.token:
             raise ValueError("設定を変える前に追従を停止してください")
+        elif op == "limits":
+            self.set_limits(data)
         elif self.drive != "on" and op in ("move", "start"):
             raise ValueError(f"モーターが「{DRIVE_NAMES[self.drive]}」のため動かせません。"
                              "動かすには「ON」に切り替えてください")
@@ -329,7 +368,15 @@ class Desk:
             self.history = (self.history + [dict(time=time.strftime("%H:%M:%S"), label=label,
                                                  pose=self.pose.copy())])[-HISTORY_MAX:]
             self.note = f"{LABELS[label]}を登録"
+        elif op == "start" and data.get("gripper_only") is True:
+            # グリッパーだけ追従。位置の登録も、登録区間の確認も要らない（腕には指令を出さない）
+            self.gripper_only = True
+            self.last = self.clock()
+            self.token = secrets.token_hex(16)
+            self.note = "追従中（グリッパーだけ）"
+            return dict(**self.state(), token=self.token)
         elif op == "start":
+            self.gripper_only = False
             missing = [name for key, name in LABELS.items() if key not in self.marks]
             if missing:
                 raise ValueError("未登録の位置があります: " + "、".join(missing))
@@ -350,6 +397,45 @@ class Desk:
         else:
             raise ValueError("不明な操作")
         return self.state()
+
+
+def save_snapshot(data, folder=None, now=time.time):
+    """画面の「診断を保存」で送られた JPEG と数値を、debug フォルダに保存する（原因調査用。ファイル名を返す）。"""
+    import base64
+    folder = folder or ROOT / "debug"
+    head = "data:image/jpeg;base64,"
+    image, info = data.get("image"), data.get("info")
+    if not isinstance(image, str) or not image.startswith(head) or not isinstance(info, dict):
+        raise ValueError("画像(JPEG)と数値が必要です")
+    jpeg = base64.b64decode(image[len(head):], validate=True)
+    folder.mkdir(exist_ok=True)
+    if len(list(folder.glob("snap-*.jpg"))) >= SNAPSHOT_MAX:
+        raise ValueError(f"診断の保存が {SNAPSHOT_MAX} 件に達しました。debug フォルダを整理してください")
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now())) + f"-{int(now() * 1000) % 1000:03d}"
+    (folder / f"snap-{stamp}.jpg").write_bytes(jpeg)
+    (folder / f"snap-{stamp}.json").write_text(json.dumps(info, ensure_ascii=False, indent=1))
+    return f"snap-{stamp}"
+
+
+def load_finger(path=None):
+    """指の校正（開いた・くっつけた距離比）。保存ファイルが無い・壊れていれば空。"""
+    path = path or FINGER_FILE
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {k: float(data[k]) for k in ("open", "closed") if isinstance(data.get(k), (int, float))}
+
+
+def save_finger(data, path=None):
+    """画面から送られた校正値を保存する。送られた項目だけ上書きし、既存の他の項目は残す。"""
+    path = path or FINGER_FILE
+    merged = load_finger(path)
+    for key in ("open", "closed"):
+        if key in data:
+            merged[key] = number(data[key], 0, FINGER_RATIO_MAX)
+    path.write_text(json.dumps(merged, indent=1))
+    return merged
 
 
 def calibrate_command(args):
@@ -387,6 +473,8 @@ def main():
 
         def do_GET(self):
             path = urlsplit(self.path).path
+            if path == "/finger":
+                return self.reply(200, load_finger())
             if path == "/state":
                 with lock:
                     try:
@@ -394,7 +482,7 @@ def main():
                     except Exception as exc:
                         fail(exc)
                     return self.reply(200, desk.state())
-            if path in ("/", "/app.js", "/style.css"):
+            if path in ("/", "/app.js", "/limits.js", "/style.css"):
                 file = ROOT / ("desk.html" if path == "/" else path[1:])
             elif path.startswith("/assets/") and path[8:] in ASSETS:
                 file = ROOT / path[1:]
@@ -405,17 +493,22 @@ def main():
             self.reply(200, file.read_bytes(), mimetypes.guess_type(file.name)[0] or "application/octet-stream")
 
         def do_POST(self):
-            if (self.path != "/command" or self.headers.get("Host") != address
+            if (self.path not in ("/command", "/snapshot", "/finger") or self.headers.get("Host") != address
                     or self.headers.get("Origin") != "http://" + address
                     or self.headers.get_content_type() != "application/json"):
                 return self.reply(403, {"error": "このPCの操作画面を使用してください"})
+            snapshot = self.path == "/snapshot"
             try:
                 size = int(self.headers.get("Content-Length", 0))
-                if not 0 < size <= 2048:
+                if not 0 < size <= (SNAPSHOT_BYTES if snapshot else 2048):
                     raise ValueError("入力サイズが不正")
                 data = json.loads(self.rfile.read(size))
                 if not isinstance(data, dict):
                     raise ValueError("JSONオブジェクトが必要です")
+                if snapshot:
+                    return self.reply(200, {"saved": save_snapshot(data)})
+                if self.path == "/finger":
+                    return self.reply(200, save_finger(data))
             except ValueError as e:
                 return self.reply(400, {"error": str(e)})
             with lock:
@@ -442,9 +535,10 @@ def main():
                 arm, why = RealArm(args), ""
             except ValueError as exc:      # 校正の欠落・不一致は、画面で案内して待つ
                 arm, why = None, str(exc)
-            desk = Desk(arm, True, retry=lambda: RealArm(args), why=why, command=calibrate_command(args))
+            desk = Desk(arm, True, retry=lambda: RealArm(args), why=why, command=calibrate_command(args),
+                        limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE)
         else:
-            desk = Desk(MockArm())
+            desk = Desk(MockArm(), limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE)
         done = threading.Event()
         def watch():
             while not done.wait(SOFT_TICK_S):

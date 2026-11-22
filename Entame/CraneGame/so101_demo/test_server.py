@@ -5,7 +5,7 @@ import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from server import Desk, MockArm
+from server import GRIPPER_CLOSED, GRIPPER_OPEN, Desk, MockArm
 
 
 class ControlTests(unittest.TestCase):
@@ -15,11 +15,9 @@ class ControlTests(unittest.TestCase):
         self.desk = Desk(self.arm, clock=lambda: self.time)
 
     def teach(self):
-        for mark in ("low", "open"):
-            self.desk.command(dict(op="mark", label=mark))
-        self.arm.pose.update(shoulder_lift=16, gripper=25)
-        for mark in ("high", "closed"):
-            self.desk.command(dict(op="mark", label=mark))
+        self.desk.command(dict(op="mark", label="low"))
+        self.arm.pose.update(shoulder_lift=16)
+        self.desk.command(dict(op="mark", label="high"))
 
     def test_requires_teaching(self):
         with self.assertRaises(ValueError):
@@ -35,7 +33,7 @@ class ControlTests(unittest.TestCase):
                 self.desk.command(dict(op="sample", token=token, height=height, opening=opening))
                 self.assertLessEqual(abs(self.arm.pose["shoulder_lift"]-previous["shoulder_lift"]), 1.77)
             self.assertEqual(self.arm.pose["shoulder_lift"], 16*height)
-            self.assertEqual(self.arm.pose["gripper"], 25+30*opening)
+            self.assertEqual(self.arm.pose["gripper"], GRIPPER_CLOSED + (GRIPPER_OPEN-GRIPPER_CLOSED)*opening)
 
     def test_stale_packets_and_timeout(self):
         self.teach()
@@ -69,11 +67,76 @@ class ControlTests(unittest.TestCase):
             self.desk.command({"op":"start"})
         self.assertIsNone(self.desk.token)
 
-    def test_wrong_marks(self):
-        self.teach()
-        self.desk.command(dict(op="mark", label="open"))
-        with self.assertRaises(ValueError):
+    def test_gripper_needs_no_marks(self):
+        self.assertEqual(self.desk.state()["gripper"], dict(closed=GRIPPER_CLOSED, open=GRIPPER_OPEN))
+        with self.assertRaises(ValueError) as caught:
             self.desk.command({"op":"start"})
+        self.assertNotIn("幅", str(caught.exception))
+
+
+class GripperOnlyTests(unittest.TestCase):
+    def test_starts_without_marks_and_moves_only_gripper(self):
+        from server import JOINTS
+        time = [10.0]
+        desk = Desk(MockArm(), clock=lambda: time[0])
+        result = desk.command(dict(op="start", gripper_only=True))
+        self.assertEqual(desk.marks, {})
+        before = desk.pose.copy()
+        time[0] += 0.065
+        desk.command(dict(op="sample", token=result["token"], height=1, opening=0.0))
+        after = desk.arm.read()
+        self.assertNotEqual(after["gripper"], before["gripper"])
+        for joint in JOINTS[:-1]:
+            self.assertEqual(after[joint], before[joint])
+
+
+class FingerCalibrationTests(unittest.TestCase):
+    def test_save_merges_and_reloads(self):
+        import tempfile
+        from pathlib import Path
+        from server import load_finger, save_finger
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "finger.json"
+            self.assertEqual(load_finger(file), {})
+            save_finger(dict(closed=0.15), file)
+            self.assertEqual(save_finger(dict(open=1.2), file), dict(closed=0.15, open=1.2))
+            self.assertEqual(load_finger(file), dict(closed=0.15, open=1.2))
+
+    def test_rejects_bad_values_and_ignores_broken_file(self):
+        import tempfile
+        from pathlib import Path
+        from server import load_finger, save_finger
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "finger.json"
+            for bad in (float("nan"), -1, 99, "x"):
+                with self.assertRaises(ValueError):
+                    save_finger(dict(open=bad), file)
+            file.write_text("{broken")
+            self.assertEqual(load_finger(file), {})
+
+
+class SnapshotTests(unittest.TestCase):
+    def test_saves_image_and_numbers(self):
+        import base64
+        import tempfile
+        from pathlib import Path
+        from server import save_snapshot
+        jpeg = b"\xff\xd8\xff\xd9"
+        data = dict(image="data:image/jpeg;base64," + base64.b64encode(jpeg).decode(), info=dict(ratio=0.5))
+        with tempfile.TemporaryDirectory() as folder:
+            name = save_snapshot(data, Path(folder) / "debug", now=lambda: 1000.0)
+            self.assertEqual((Path(folder) / "debug" / (name + ".jpg")).read_bytes(), jpeg)
+            self.assertEqual(json.loads((Path(folder) / "debug" / (name + ".json")).read_text())["ratio"], 0.5)
+
+    def test_rejects_bad_input(self):
+        import tempfile
+        from pathlib import Path
+        from server import save_snapshot
+        with tempfile.TemporaryDirectory() as folder:
+            for bad in [dict(), dict(image="x", info={}), dict(image="data:image/jpeg;base64,!!!", info={}),
+                        dict(image="data:image/jpeg;base64,AAAA", info=[])]:
+                with self.assertRaises(ValueError):
+                    save_snapshot(bad, Path(folder))
 
 
 class MarkFeedbackTests(unittest.TestCase):
@@ -91,20 +154,11 @@ class MarkFeedbackTests(unittest.TestCase):
         state["marks"]["low"]["shoulder_lift"] = 99      # 返した値を書き換えても内部は変わらない
         self.assertEqual(self.desk.marks["low"]["shoulder_lift"], 0)
 
-    def test_gripper_problem_is_explained_with_numbers(self):
-        self.desk.command(dict(op="mark", label="open"))
-        state = self.desk.command(dict(op="mark", label="closed"))
-        self.assertIn("55.0", state["problem"])
-        self.arm.pose["gripper"] = 30
-        self.assertIsNone(self.desk.command(dict(op="mark", label="closed"))["problem"])
-        self.arm.pose["gripper"] = 70                    # 開いた幅より大きい → 逆
-        self.assertIn("逆", self.desk.command(dict(op="mark", label="closed"))["problem"])
-
     def test_start_lists_missing_marks(self):
         self.desk.command(dict(op="mark", label="low"))
         with self.assertRaises(ValueError) as caught:
             self.desk.command({"op": "start"})
-        self.assertIn("開いた幅", str(caught.exception))
+        self.assertIn("持ち上げた位置", str(caught.exception))
         self.assertNotIn("つかむ位置", str(caught.exception))
 
     def test_move_goes_toward_target_in_small_steps(self):
@@ -226,11 +280,9 @@ class DriveTests(unittest.TestCase):
         time = [10.0]
         arm = MockArm()
         desk = Desk(arm, clock=lambda: time[0])
-        for mark in ("low", "open"):
-            desk.command(dict(op="mark", label=mark))
-        arm.pose.update(shoulder_lift=16, gripper=25)
-        for mark in ("high", "closed"):
-            desk.command(dict(op="mark", label=mark))
+        desk.command(dict(op="mark", label="low"))
+        arm.pose.update(shoulder_lift=16)
+        desk.command(dict(op="mark", label="high"))
         token = desk.command({"op": "start"})["token"]
         state = desk.command(dict(op="drive", mode="soft"))
         self.assertFalse(state["active"])
@@ -245,6 +297,110 @@ class DriveTests(unittest.TestCase):
         self.arm.pose["elbow_flex"] = 42
         self.desk.refresh()
         self.assertEqual(self.desk.state()["pose"]["elbow_flex"], 42)
+
+
+class LimitsTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.folder = tempfile.TemporaryDirectory()
+        self.file = Path(self.folder.name) / "limits.json"
+        self.time = 10.0
+        self.arm = MockArm()
+        self.desk = Desk(self.arm, clock=lambda: self.time, limits_file=self.file)
+
+    def tearDown(self):
+        self.folder.cleanup()
+
+    def test_defaults_match_the_old_fixed_values(self):
+        from limits import default_limits, speed_raw, step_raw
+        limits = default_limits()
+        self.assertEqual(speed_raw("elbow_flex", limits), 22)
+        self.assertEqual(speed_raw("gripper", limits), 45)
+        self.assertEqual(step_raw("shoulder_lift", limits), 3.0)
+        self.assertEqual(step_raw("gripper", limits), 3.0)
+
+    def test_rejects_bad_input(self):
+        from limits import default_limits, parse_limits
+        base = default_limits()
+        for bad in ({"nothing": {"speed": 5}}, {"gripper": {"color": 5}}, {"gripper": {"speed": 0}},
+                    {"gripper": {"speed": float("nan")}}, {"gripper": {"step": 99}}, {"gripper": {"min": "0"}},
+                    {"gripper": {"min": 98}}, {"gripper": {"max": 3}}, [1]):
+            with self.assertRaises(ValueError, msg=bad):
+                parse_limits(bad, base)
+        self.assertEqual(base, default_limits())     # 元は変えない
+
+    def test_save_and_auto_load(self):
+        from limits import default_limits, load_limits
+        self.assertEqual(load_limits(self.file), default_limits())      # ファイルが無ければ既定値
+        self.desk.command(dict(op="limits", limits={"gripper": {"speed": 90, "max": 80}}))
+        loaded = load_limits(self.file)
+        self.assertEqual(loaded["gripper"]["speed"], 90.0)
+        self.assertEqual(loaded["gripper"]["max"], 80.0)
+        self.assertEqual(loaded["elbow_flex"], default_limits()["elbow_flex"])
+        restarted = Desk(MockArm(), limits=loaded, limits_file=self.file)
+        self.assertEqual(restarted.arm.limits["gripper"]["speed"], 90.0)
+
+    def test_broken_file_falls_back_to_defaults(self):
+        from limits import default_limits, load_limits
+        self.file.write_text("{broken")
+        self.assertEqual(load_limits(self.file), default_limits())
+        self.file.write_text(json.dumps({"gripper": {"speed": 9999}}))
+        self.assertEqual(load_limits(self.file), default_limits())
+
+    def test_reset_restores_defaults_and_saves(self):
+        from limits import default_limits, load_limits
+        self.desk.command(dict(op="limits", limits={"gripper": {"speed": 90}}))
+        state = self.desk.command(dict(op="limits", reset=True))
+        self.assertEqual(state["limits"], default_limits())
+        self.assertEqual(load_limits(self.file), default_limits())
+
+    def test_cannot_change_while_following(self):
+        token = self.desk.command(dict(op="start", gripper_only=True))["token"]
+        with self.assertRaises(ValueError):
+            self.desk.command(dict(op="limits", limits={"gripper": {"speed": 90}}))
+        self.assertEqual(self.desk.limits["gripper"]["speed"], 45.0)
+        self.assertTrue(token)
+
+    def test_save_failure_changes_nothing(self):
+        from pathlib import Path
+        desk = Desk(MockArm(), limits_file=Path(self.folder.name) / "missing" / "limits.json")
+        with self.assertRaises(ValueError):
+            desk.command(dict(op="limits", limits={"gripper": {"speed": 90}}))
+        self.assertEqual(desk.limits["gripper"]["speed"], 45.0)
+
+    def test_follow_speed_is_per_joint(self):
+        self.desk.command(dict(op="limits", limits={"gripper": {"speed": 20}}))
+        token = self.desk.command(dict(op="start", gripper_only=True))["token"]
+        before = self.arm.read()["gripper"]
+        self.time += .1
+        self.desk.command(dict(op="sample", token=token, height=0, opening=1))
+        self.assertAlmostEqual(self.arm.read()["gripper"] - before, 20 * .1)
+
+    def test_range_limit_clips_every_command(self):
+        self.desk.command(dict(op="limits", limits={"gripper": {"min": 20, "max": 70}, "elbow_flex": {"max": 60}}))
+        self.arm.write(dict(gripper=0, elbow_flex=100))
+        self.assertEqual(self.arm.read()["gripper"], 20)
+        self.assertEqual(self.arm.read()["elbow_flex"], 20)     # 60% → 内部の値 20
+        self.arm.write(dict(gripper=100))
+        self.assertEqual(self.arm.read()["gripper"], 70)
+
+    def test_slider_move_respects_step_limit(self):
+        self.desk.command(dict(op="limits", limits={"shoulder_lift": {"step": 0.25}}))   # 内部の 0.5
+        for _ in range(10):
+            self.time += .03
+            self.desk.command(dict(op="move", joint="shoulder_lift", value=50))
+        self.assertLessEqual(self.arm.read()["shoulder_lift"], 10 * .5)
+        self.assertGreater(self.arm.read()["shoulder_lift"], 0)
+
+    def test_real_arm_passes_per_joint_step_for_written_joints_only(self):
+        from limits import parse_limits
+        arm, _ = RealArmDriveTests.make(RealArmDriveTests())
+        arm.set_limits(parse_limits({"gripper": {"step": 6, "max": 90}}, arm.limits))
+        arm.write(dict(gripper=100))
+        self.assertEqual(arm.robot.config.max_relative_target, {"gripper": 6.0})
+        arm.write(dict(gripper=10, shoulder_lift=0))
+        self.assertEqual(arm.robot.config.max_relative_target, {"gripper": 6.0, "shoulder_lift": 3.0})
 
 
 class FakeBus:
@@ -267,9 +423,11 @@ class RealArmDriveTests(unittest.TestCase):
         from types import SimpleNamespace
         from server import RealArm, JOINTS
         bus, self.sent, self.positions = FakeBus(), [], {j: 5.0 for j in JOINTS}
+        from limits import default_limits
         arm = RealArm.__new__(RealArm)
+        arm.limits = default_limits()
         arm.robot = SimpleNamespace(
-            bus=bus, send_action=lambda action: (bus.calls.append(("goal",)), self.sent.append(action)),
+            config=SimpleNamespace(max_relative_target=3.0), bus=bus, send_action=lambda action: (bus.calls.append(("goal",)), self.sent.append(action)),
             get_observation=lambda: {j + ".pos": v for j, v in self.positions.items()})
         arm.normal = {"shoulder_lift": (1000, 32), "gripper": (500, 32)}
         arm.drive, arm.soft_goal, arm.deadband = "on", None, 1.0
