@@ -8,9 +8,9 @@ const ANGLE_NAMES = {pan: "横向き", lift: "上げ下げ", elbow: "肘の角�
 // 人がとる腕の形（度。skeleton_math.js の角度の定義）。ロボットの3姿勢（skeleton.py の POSE_OFFSETS）に対応させた暫定の形。
 // 対応の向きは、肩の上げ下げだけ実機で確認済み。ほかの関節は、ロボットが動いた形を見て、図と食い違えばここを直す。
 const HUMAN_POSES = [
-  {pan: 0, lift: 40, elbow: 90, flex: 0, roll: 0},
-  {pan: 30, lift: 75, elbow: 125, flex: 25, roll: 0},
-  {pan: -30, lift: 25, elbow: 55, flex: -25, roll: 40},
+  {pan: 0, lift: 50, elbow: 90, flex: 0, roll: 0},
+  {pan: 40, lift: 90, elbow: 150, flex: 30, roll: 0},
+  {pan: -40, lift: 25, elbow: 50, flex: -30, roll: 40},
 ];
 function describePose(a) {
   const side = a.pan === 0 ? "正面" : `カメラから見て${a.pan > 0 ? "右" : "左"}へ${Math.abs(a.pan)}°`;
@@ -247,7 +247,7 @@ function buildPoses() {
     go.textContent = "この姿勢だけ撮り直す"; go.dataset.role = "go";
     bind(move, async () => { cancelAuto(); state = await command("skeleton_pose", {index}); render(); });
     bind(go, () => autoCalibrate([index]));
-    row.append(move, go); card.append(title, pose ? armFigure(pose) : "", about, img, status, row); box.append(card);
+    row.append(move, go); card.append(title, pose ? armFigure(pose, HUMAN_POSES.filter((_, i) => i !== index)) : "", about, img, status, row); box.append(card);
   });
 }
 function renderPoses() {
