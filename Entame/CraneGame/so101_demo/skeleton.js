@@ -339,6 +339,29 @@ async function poll() {
     render();
   } catch (e) { message(e.message); }
 }
+// 姿勢の見本: 3姿勢を大きく並べ、角度の違いを表にして見せる（カードの図は小さいため）
+function showGallery() {
+  const body = $("galleryBody"); body.textContent = "";
+  const row = document.createElement("div"); row.className = "galleryRow";
+  HUMAN_POSES.forEach((pose, index) => {
+    const card = document.createElement("div"), title = document.createElement("h3");
+    title.textContent = sk()?.names[index] ?? "姿勢" + "ABC"[index];
+    card.append(title, armFigure(pose, HUMAN_POSES.filter((_, i) => i !== index)));
+    row.append(card);
+  });
+  const table = document.createElement("table"), head = table.insertRow();
+  head.append(document.createElement("th"));
+  HUMAN_POSES.forEach((_, index) => head.append(Object.assign(document.createElement("th"), {textContent: "ABC"[index]})));
+  for (const key of Object.keys(ANGLE_NAMES)) {
+    const line = table.insertRow();
+    line.insertCell().textContent = ANGLE_NAMES[key];
+    HUMAN_POSES.forEach(pose => { line.insertCell().textContent = pose[key] + "°"; });
+  }
+  body.append(row, table);
+  $("gallery").showModal();
+}
+$("galleryOpen").addEventListener("click", showGallery);
+
 // 映像の左右反転（鏡）。表示だけ反転し、骨格の計算や保存する画像は元の向きのまま。左右の腕の選択肢の説明は、反転に合わせて変える
 const MIRROR_KEY = "skeleton.mirror";
 function applyMirror() {

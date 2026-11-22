@@ -24,6 +24,10 @@ details{margin:6px 0 0}details summary{cursor:pointer}details p,details ol{margi
 #fits .ok{color:var(--accent);font-weight:700}#fits .ng{color:var(--warn)}
 #followJoints{display:flex;flex-wrap:wrap;gap:6px 14px}
 .row{margin:6px 0 0}
+#gallery{width:min(1100px,94vw);border:0;border-radius:12px;padding:16px 20px}#gallery::backdrop{background:#0008}
+.galleryRow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.galleryRow h3{margin:0 0 6px}
+#gallery table{border-collapse:collapse;margin-top:14px;font-size:.95rem}#gallery th,#gallery td{border-bottom:1px solid var(--line);padding:4px 14px;text-align:left}
+#gallery .why{margin:6px 0 10px}
 .preview.mirror video,.preview.mirror canvas{transform:scaleX(-1)}
 @media (max-width:900px){main{grid-template-columns:minmax(0,1fr)}.preview{width:100%}}
 </style></head>
@@ -49,7 +53,7 @@ details{margin:6px 0 0}details summary{cursor:pointer}details p,details ol{margi
 
 <div class="col">
 <section id="calibration"><h2>較正 <small>ロボットの3姿勢を、人がまねる（自動で撮影）</small></h2>
-<div class="row"><button id="auto">自動で較正（A→B→C）</button><button id="reset">較正をやり直す</button></div>
+<div class="row"><button id="auto">自動で較正（A→B→C）</button><button id="reset">較正をやり直す</button><button id="galleryOpen">姿勢の見本を大きく見る</button></div>
 <div id="poses"></div></section>
 <section id="follow"><h2>追従 <small>グリッパーは動かしません</small></h2>
 <div class="row"><b>追従する関節</b><div id="followJoints"></div></div>
@@ -57,6 +61,10 @@ details{margin:6px 0 0}details summary{cursor:pointer}details p,details ol{margi
 </div>
 
 <section id="fitsBox"><details><summary>関節ごとの対応（人の角度 → ロボット）</summary><table id="fits"></table></details></section>
+<dialog id="gallery"><form method="dialog"><button>閉じる</button></form>
+<h2>姿勢の見本 <small>A・B・Cの順にロボットが動く。人は同じ形をとる</small></h2>
+<p class="help why"><b>なぜ3つ？</b> 各関節で「人の角度 → ロボットの値」の直線を引くには2点で足りますが、3点あると、撮り間違いや向きの取り違えを、直線からのずれで見つけられます。A を真ん中に、B・C を反対側に置くので、追従する範囲の中で測れます（範囲の外を推測しません）。実線が今の姿勢、うすい点線がほかの2姿勢です。</p>
+<div id="galleryBody"></div></dialog>
 </main>
 <script type="module" src="/skeleton.js"></script>
 </body></html>
