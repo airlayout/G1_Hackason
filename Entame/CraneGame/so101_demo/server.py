@@ -29,10 +29,15 @@ MOVE_HOLD_S = 0.3          # この時間より長く指令が途切れたら、
 MOVE_DONE = 0.5            # 目標との差がこれ未満なら到達とみなし、今の位置で保持する
 # モーターの状態: on=固く保つ、soft=弱い力で保つ（外から押せば動く）、off=力を抜く（手で動かせる）
 DRIVE_NAMES = {"on": "ON", "soft": "やわらか", "off": "OFF"}
-# やわらかモードはトルク上限を下げて作る。実測（2026-11-22）: 上限 350 では外力に全く従わなかった。
-# 腕を持ち上げた姿勢でも、上限 30 で自重を保てた（ずれ 0.5 以下）ので、10〜200 の範囲で画面から調整する。
-SOFT_TORQUE_RANGE = (10, 200)   # モーターの最大値 1000 に対する上限。やわらかさ 0% → 10、100% → 200
-SOFT_LEVEL = 15                 # 既定のやわらかさ(%)。上限 約 39。未調整の暫定値
+# やわらかモード＝「外力では動かせて、外力がなければ姿勢を保つ」。
+# トルク上限を下げるだけでは作れない（実測 2026-11-22: 上限 350 は全く動かず、上限 10〜30 も押し返す。
+# 上限 30 以下では、モーターが自力で動くこともできない）。そこで、目標を常に「今の位置」へ追従させる。
+# 押されて動くと目標も一緒に動くのでモーターは押し返さず、外力が無ければ目標が動かず姿勢を保つ。
+# 速度に比例して押し返す D 項は 0 にする。目標が動き出すまでの余裕（不感帯）を画面で調整する。
+SOFT_TORQUE = 200               # やわらかモードのトルク上限（最大 1000）。暫定値・未調整
+SOFT_DEADBAND = (0.5, 4.0)      # 目標を追従させ始める位置のずれ（内部単位）。やわらかさ 0% → 0.5、100% → 4.0
+SOFT_LEVEL = 20                 # 既定の「保持の強さ」(%)。大きいほど押しても動きにくい。未調整の暫定値
+SOFT_TICK_S = 0.03              # 追従の間隔
 
 
 def pct(joint, value):
@@ -50,10 +55,10 @@ def clip(value, low, high):
     return min(high, max(low, value))
 
 
-def soft_torque(level):
-    """やわらかさ(0〜100%)を、モーターのトルク上限（SOFT_TORQUE_RANGE の範囲）にする。"""
-    low, high = SOFT_TORQUE_RANGE
-    return round(low + (high - low) * clip(level, 0, 100) / 100)
+def soft_deadband(level):
+    """保持の強さ(0〜100%)を、目標が今の位置に追従し始めるずれ（SOFT_DEADBAND の範囲）にする。"""
+    low, high = SOFT_DEADBAND
+    return low + (high - low) * clip(level, 0, 100) / 100
 
 
 class MockArm:
@@ -70,6 +75,9 @@ class MockArm:
 
     def set_drive(self, mode, level=SOFT_LEVEL):
         self.drive = mode
+
+    def soft_track(self):
+        pass
 
     def close(self):
         pass
@@ -89,8 +97,14 @@ class RealArm:
             if not self.robot.is_calibrated:
                 raise ValueError("実機と保存済み校正が一致しません。公式の校正手順を確認してください。")
             bus = self.robot.bus
-            # 「ON」に戻すときのトルク上限。やわらかモードから戻すために、いまの設定を覚えておく
-            self.normal = {m: bus.read("Torque_Limit", m, normalize=False) for m in bus.motors}
+            # 「ON」に戻すときのトルク上限と D ゲイン。やわらかモードから戻すために、いまの設定を覚えておく
+            # Torque_Limit は電源を切るまで実機に残る。前回のやわらかモードの低い値を「ふだんの値」と
+            # 誤って覚えないよう、起動時の値ではなく各モーター固有の上限(Max_Torque_Limit)を使う
+            self.normal = {m: (bus.read("Max_Torque_Limit", m, normalize=False),
+                               bus.read("D_Coefficient", m, normalize=False)) for m in bus.motors}
+            for motor, (limit, _) in self.normal.items():
+                bus.write("Torque_Limit", motor, limit, normalize=False)
+            self.soft_goal, self.deadband = None, soft_deadband(SOFT_LEVEL)
             self.drive = "on"
             self.write(self.read())
         except BaseException:
@@ -112,17 +126,34 @@ class RealArm:
 
     def set_drive(self, mode, level=SOFT_LEVEL):
         """モーターの状態を切り替える。力を入れる前に、目標を今の位置にそろえて、急に動かないようにする。
-        やわらか(soft)は、トルク上限を level（0〜100%）に応じて下げる。soft のまま level を変えても使える。"""
+        やわらか(soft)は、トルク上限を下げ D を 0 にして、soft_track() で目標を今の位置へ追従させる。
+        level（保持の強さ 0〜100%）は不感帯の大きさ。soft のまま level を変えても使える。"""
         bus = self.robot.bus
+        self.soft_goal = None
         if mode == "off":
             bus.disable_torque()
         else:
-            self.write(self.read())
+            pose = self.read()
+            self.write(pose)
+            soft = mode == "soft"
             for motor in bus.motors:
-                limit = self.normal[motor]
-                bus.write("Torque_Limit", motor, min(limit, soft_torque(level)) if mode == "soft" else limit)
+                limit, damping = self.normal[motor]
+                bus.write("Torque_Limit", motor, min(limit, SOFT_TORQUE) if soft else limit)
+                bus.write("D_Coefficient", motor, 0 if soft else damping)
             bus.enable_torque()
-        self.drive = mode
+            if soft:
+                self.soft_goal = pose
+        self.drive, self.deadband = mode, soft_deadband(level)
+
+    def soft_track(self):
+        """やわらかモード中に一定間隔で呼ぶ。不感帯を超えて動いた関節だけ、目標を今の位置へ移す。"""
+        if self.drive != "soft" or self.soft_goal is None:
+            return
+        pose = self.read()
+        moved = {j: v for j, v in pose.items() if abs(v - self.soft_goal[j]) > self.deadband}
+        if moved:
+            self.soft_goal.update(moved)
+            self.write(moved)
 
     def close(self):
         self.robot.disconnect()
@@ -159,6 +190,11 @@ class Desk:
                     history=list(self.history), problem=self.problem(), active=self.token is not None,
                     note=self.note, fault=self.fault, calibration=self.calibration(), drive=self.drive,
                     soft_level=self.soft_level)
+
+    def tick(self):
+        """一定間隔で呼ぶ。やわらかモード中は、目標を今の位置へ追従させる。"""
+        if self.arm is not None and self.drive == "soft" and not self.token:
+            self.arm.soft_track()
 
     def refresh(self):
         """力を抜いた・やわらかい間は、手で動かした姿勢を画面に出すため、実機の位置を読み直す。"""
@@ -411,10 +447,11 @@ def main():
             desk = Desk(MockArm())
         done = threading.Event()
         def watch():
-            while not done.wait(.08):
+            while not done.wait(SOFT_TICK_S):
                 with lock:
                     try:
                         desk.expired()
+                        desk.tick()
                     except Exception as exc:
                         fail(exc)
         guard = threading.Thread(target=watch, daemon=True)

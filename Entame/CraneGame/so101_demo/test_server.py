@@ -266,13 +266,13 @@ class RealArmDriveTests(unittest.TestCase):
     def make(self):
         from types import SimpleNamespace
         from server import RealArm, JOINTS
-        bus, sent = FakeBus(), []
+        bus, self.sent, self.positions = FakeBus(), [], {j: 5.0 for j in JOINTS}
         arm = RealArm.__new__(RealArm)
         arm.robot = SimpleNamespace(
-            bus=bus, send_action=lambda action: (bus.calls.append(("goal",)), sent.append(action)),
-            get_observation=lambda: {j + ".pos": 5.0 for j in JOINTS})
-        arm.normal = {"shoulder_lift": 1000, "gripper": 500}
-        arm.drive = "on"
+            bus=bus, send_action=lambda action: (bus.calls.append(("goal",)), self.sent.append(action)),
+            get_observation=lambda: {j + ".pos": v for j, v in self.positions.items()})
+        arm.normal = {"shoulder_lift": (1000, 32), "gripper": (500, 32)}
+        arm.drive, arm.soft_goal, arm.deadband = "on", None, 1.0
         return arm, bus
 
     def test_off_only_releases_torque(self):
@@ -289,28 +289,48 @@ class RealArmDriveTests(unittest.TestCase):
         self.assertEqual(bus.calls[0], ("goal",))
         self.assertEqual(bus.calls[-1], ("enable",))
 
-    def test_soft_lowers_gain_and_torque_and_on_restores_each_motor(self):
-        from server import soft_torque
+    def test_soft_lowers_torque_and_damping_and_on_restores_each_motor(self):
+        from server import SOFT_TORQUE
         arm, bus = self.make()
-        arm.set_drive("soft", 0)
-        self.assertIn(("write", "Torque_Limit", "shoulder_lift", soft_torque(0)), bus.calls)
-        self.assertIn(("write", "Torque_Limit", "gripper", soft_torque(0)), bus.calls)
-        bus.calls.clear()
-        arm.set_drive("soft", 100)                                                      # soft のままやわらかさを変える
-        self.assertIn(("write", "Torque_Limit", "shoulder_lift", soft_torque(100)), bus.calls)
-        self.assertIn(("write", "Torque_Limit", "gripper", min(500, soft_torque(100))), bus.calls)
+        arm.set_drive("soft")
+        self.assertIn(("write", "Torque_Limit", "shoulder_lift", SOFT_TORQUE), bus.calls)
+        self.assertIn(("write", "Torque_Limit", "gripper", min(500, SOFT_TORQUE)), bus.calls)
+        self.assertIn(("write", "D_Coefficient", "shoulder_lift", 0), bus.calls)        # 押し返す速度抵抗を無くす
         self.assertFalse([c for c in bus.calls if c[:2] == ("write", "P_Coefficient")])   # P は触らない
         bus.calls.clear()
         arm.set_drive("on")
-        self.assertIn(("write", "Torque_Limit", "shoulder_lift", 1000), bus.calls)      # 元の上限に戻る
+        self.assertIn(("write", "Torque_Limit", "shoulder_lift", 1000), bus.calls)      # 元の上限・D に戻る
         self.assertIn(("write", "Torque_Limit", "gripper", 500), bus.calls)
+        self.assertIn(("write", "D_Coefficient", "shoulder_lift", 32), bus.calls)
 
-    def test_soft_torque_maps_level_to_range_and_clamps(self):
-        from server import soft_torque, SOFT_TORQUE_RANGE
-        self.assertEqual(soft_torque(0), SOFT_TORQUE_RANGE[0])
-        self.assertEqual(soft_torque(100), SOFT_TORQUE_RANGE[1])
-        self.assertEqual(soft_torque(-5), SOFT_TORQUE_RANGE[0])
-        self.assertEqual(soft_torque(500), SOFT_TORQUE_RANGE[1])
+    def test_soft_deadband_maps_level_to_range_and_clamps(self):
+        from server import soft_deadband, SOFT_DEADBAND
+        self.assertEqual(soft_deadband(0), SOFT_DEADBAND[0])
+        self.assertEqual(soft_deadband(100), SOFT_DEADBAND[1])
+        self.assertEqual(soft_deadband(-5), SOFT_DEADBAND[0])
+        self.assertEqual(soft_deadband(500), SOFT_DEADBAND[1])
+
+    def test_soft_holds_posture_without_external_force_and_follows_when_pushed(self):
+        arm, bus = self.make()
+        arm.set_drive("soft", 0)                                    # 不感帯 0.5
+        self.sent.clear()
+        self.positions["shoulder_lift"] = 5.3                       # 不感帯の内側のずれ（重力や揺れ）→ 目標は動かさない
+        arm.soft_track()
+        self.assertEqual(self.sent, [])
+        self.positions["shoulder_lift"] = 8.0                       # 押された → 目標を今の位置へ移し、押し返さない
+        arm.soft_track()
+        self.assertEqual(self.sent, [{"shoulder_lift.pos": 8.0}])   # 動いた関節だけ書く
+        arm.soft_track()
+        self.assertEqual(len(self.sent), 1)                         # そのまま保持（同じ値を書き続けない）
+
+    def test_soft_track_does_nothing_unless_soft(self):
+        arm, bus = self.make()
+        for mode in ("on", "off"):
+            arm.set_drive(mode)
+            self.sent.clear()
+            self.positions["elbow_flex"] = 50.0
+            arm.soft_track()
+            self.assertEqual(self.sent, [])
 
 
 class LocalServerTests(unittest.TestCase):
