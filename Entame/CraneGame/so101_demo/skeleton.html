@@ -16,7 +16,7 @@ details{margin:6px 0 0}details summary{cursor:pointer}details p,details ol{margi
 .pose{display:flex;flex-direction:column;gap:6px;border:1px solid #e0e9e6;border-radius:10px;padding:10px;background:#fafcfb;min-width:0}
 .pose h3{margin:0;font-size:.95rem}.pose p{margin:0;font-size:.8rem}
 .pose img{width:100%;aspect-ratio:16/9;object-fit:contain;background:#14292b;border-radius:8px}
-.figure{display:flex;gap:4px}.figure svg{width:50%;height:auto;display:block}
+.figure{display:flex;gap:4px}.figure svg{width:33.3%;height:auto;display:block}
 .pose ul{margin:0;padding-left:1.1em;font-size:.78rem;line-height:1.4}
 .pose .done{color:var(--accent);font-weight:700}
 .pose .row{flex-direction:column;align-items:stretch;gap:6px}.pose button{padding:6px 8px;min-height:36px;font-size:.85rem}
@@ -37,7 +37,7 @@ details{margin:6px 0 0}details summary{cursor:pointer}details p,details ol{margi
 <section id="guide"><h2>次にやること</h2><p id="next" role="status">読み込み中</p><p id="message" role="alert"></p>
 <details><summary>手順と、姿勢A・B・Cとは</summary>
 <ol class="help"><li>「映像を開く」で、肩・肘・手首・手が映るカメラを開く</li><li>「モーターON」</li><li>「自動で較正」を押して、カメラから離れる。姿勢A・B・Cの順に、ロボットが動く → 人が同じ姿勢をとってじっとする → <b>自動で撮影</b>（音声でも知らせる）</li><li>「追従開始」</li></ol>
-<p class="help"><b>姿勢A・B・C</b>：ロボットが順にとる3つの腕の形。A は初期姿勢、B・C は A から各関節を動かした形（B は腕を横へ上げて伸ばす形、C は逆に、腕を下ろして肘を曲げる形）。<b>各カードの図（正面と横。うすい点線はほかの姿勢）と同じ形に、自分の腕（肩〜手）をしてください</b>（上腕の向き・肘の曲げ・手首の曲げ・手のひらの向き）。図の形は暫定で、ロボットの腕が図と逆向きに動くときは知らせてください。3つの形で各関節の角度が15°以上違うほど、較正が正確になります。人の角度とロボットの値を3組ずつ集めて、関節ごとに「人の角度 → ロボット」の対応を作ります。</p>
+<p class="help"><b>姿勢A・B・C</b>：ロボットが順にとる3つの腕の形。A は初期姿勢、B・C は A から各関節を動かした形（B は腕を横へ上げて伸ばす形、C は逆に、腕を下ろして肘を曲げる形）。<b>各カードの図（正面・横・上の3方向。うすい点線はほかの姿勢）と同じ形に、自分の腕（肩〜手）をしてください</b>（上腕の向き・肘の曲げ・手首の曲げ・手のひらの向き）。図の形は暫定で、ロボットの腕が図と逆向きに動くときは知らせてください。3つの形で各関節の角度が15°以上違うほど、較正が正確になります。人の角度とロボットの値を3組ずつ集めて、関節ごとに「人の角度 → ロボット」の対応を作ります。</p>
 <p class="help">着いて3秒たったら、同じ姿勢で約1秒じっとすると自動で撮影します（前の姿勢から動いていないと撮影しません）。3姿勢の値は実機で未確認の暫定値です。危ない向きへ動いたら、追従停止（Space）。</p></details></section>
 
 <div class="col">

@@ -37,13 +37,18 @@ function element(name, attributes, parent) {
   return node;
 }
 
-/** 1つの向きの図。horizontal(p) は点から図の横方向の値（m）を返す。 */
-function view(points, horizontal, label, ghosts) {
+/** 1つの向きの図。horizontal(p)・vertical(p) は、点から図の横・縦方向の値（m）を返す。top なら上から見た図（体は円と肩の線）。 */
+function view(points, {horizontal, vertical, top = false}, label, ghosts) {
   const svg = element("svg", {viewBox: `0 0 ${VIEW.width} ${VIEW.height}`, role: "img", "aria-label": label});
-  const [sx, sy] = VIEW.shoulder, at = p => [sx + horizontal(p)*VIEW.scale, sy + p.y*VIEW.scale];
+  const [sx, sy] = VIEW.shoulder, at = p => [sx + horizontal(p)*VIEW.scale, sy + vertical(p)*VIEW.scale];
   element("rect", {width: VIEW.width, height: VIEW.height, rx: 8, fill: "#eaf2ef"}, svg);
-  element("circle", {cx: sx, cy: sy - 17, r: 9, fill: "#c9d8d4"}, svg);                    // 頭
-  element("line", {x1: sx, y1: sy, x2: sx, y2: VIEW.height - 6, stroke: "#c9d8d4", "stroke-width": 9, "stroke-linecap": "round"}, svg);   // 体
+  if (top) {      // 上から: 頭（円）と肩の線。カメラは図の下側
+    element("line", {x1: sx - 26, y1: sy, x2: sx + 26, y2: sy, stroke: "#c9d8d4", "stroke-width": 9, "stroke-linecap": "round"}, svg);
+    element("circle", {cx: sx, cy: sy, r: 9, fill: "#b4c7c2"}, svg);
+  } else {
+    element("circle", {cx: sx, cy: sy - 17, r: 9, fill: "#c9d8d4"}, svg);                    // 頭
+    element("line", {x1: sx, y1: sy, x2: sx, y2: VIEW.height - 6, stroke: "#c9d8d4", "stroke-width": 9, "stroke-linecap": "round"}, svg);   // 体
+  }
   for (const ghost of ghosts) {      // ほかの姿勢を、うすい点線で重ねる（違いが分かるように）
     const other = [ghost.shoulder, ghost.elbow, ghost.wrist, ghost.hand].map(at);
     element("polyline", {points: other.map(([x, y]) => `${x},${y}`).join(" "), fill: "none", stroke: "#9aa9a6", "stroke-width": 2.5, "stroke-dasharray": "3 3", "stroke-linecap": "round", "stroke-linejoin": "round"}, svg);
@@ -58,10 +63,13 @@ function view(points, horizontal, label, ghosts) {
   return svg;
 }
 
-/** 正面（カメラから見た図）と横（右がカメラ側）の図を、1つの要素にして返す。others（ほかの姿勢の角度の配列）は、点線で重ねる。 */
+/** 正面（カメラから見た図）・横（右がカメラ側）・上（下がカメラ側）の3方向の図を、1つの要素にして返す。others（ほかの姿勢の角度の配列）は、点線で重ねる。 */
 export function armFigure(angles, others = []) {
   const points = armPoints(angles), ghosts = others.map(armPoints), box = document.createElement("div");
   box.className = "figure";
-  box.append(view(points, p => p.x, "正面", ghosts), view(points, p => -p.z, "横（右がカメラ）", ghosts));
+  box.append(
+    view(points, {horizontal: p => p.x, vertical: p => p.y}, "正面", ghosts),
+    view(points, {horizontal: p => -p.z, vertical: p => p.y}, "横（右がカメラ）", ghosts),
+    view(points, {horizontal: p => p.x, vertical: p => -p.z, top: true}, "上（下がカメラ）", ghosts));
   return box;
 }
