@@ -8,11 +8,11 @@ const labels = {low:"つかむ位置", high:"持ち上げた位置"};
 const PROVISIONAL={open:1,closed:.15};
 const CAL_DELAY_MS=3000, CAL_SAMPLE_MS=1000, CAL_STEADY=.12, CAL_MIN_GAP=.3, EDGE=.05;
 // 手首の回転＝手の傾き。手首(0)→中指の付け根(9)の線が画面の真上から何度傾いたか（画面上で時計回りが＋）。
-// ROLL_FULL_DEG 傾けると手首の可動範囲いっぱい。向きが逆なら ROLL_SIGN を -1 にする（実機・実画像で確認する）
+// ROLL_FULL_DEG 傾けると手首の可動範囲いっぱい。向きが逆なら ROLL_SIGN を -1 にする（1 のままで実機の向きが合うことを 2026-11-22 に確認済み）
 const ROLL_FULL_DEG=45, ROLL_SIGN=1;
 // 手首の曲げ＝手を奥へ倒したときの手のひらの縮み。縮み比＝(手首〜中指の付け根の長さ)÷(人差し指〜小指の付け根の幅)。
 // 真っ直ぐ約1.6、奥に倒すと約1.0（2026-11-22 の実画像）。FLEX_STRAIGHT 以上は「曲げなし」（可動範囲の中央）、
-// FLEX_FULL で端。手前に倒すと認識が外れるので片方向だけ。向きが逆なら FLEX_SIGN を -1 にする（実機で確認する）
+// FLEX_FULL で端。手前に倒すと認識が外れるので片方向だけ。向きが逆なら FLEX_SIGN を -1 にする（1 のままで実機の向きが合うことを 2026-11-22 に確認済み）
 const FLEX_STRAIGHT=1.55, FLEX_FULL=1.05, FLEX_SIGN=1;
 let fingerCal={}, lastRatio=null, lastHand=null;
 // 校正はサーバーのファイル（finger_calibration.json）に保存する。ブラウザを替えても、消しても、測り直しは要らない
