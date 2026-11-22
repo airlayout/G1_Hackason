@@ -1,0 +1,296 @@
+{
+  "mode": "saved-observation text-only planner",
+  "timestamps": [
+    8.0,
+    10.0,
+    12.0
+  ],
+  "config": {
+    "model_name": "Qwen/Qwen3-VL-2B-Instruct",
+    "revision": null,
+    "quantize_4bit": false,
+    "cache_dir": "C:\\dev\\robot-vlm-brain\\.cache\\huggingface\\hub",
+    "max_image_side": 384,
+    "min_pixels": 4096,
+    "max_pixels": 147456,
+    "max_new_tokens": 96,
+    "prompt_profile": "legacy",
+    "vram_fraction": 0.8,
+    "combined_output": false
+  },
+  "planner_system_prompt": "Choose ONE high-level robot action from the supplied structured current Observation and State.\nUse no image. Treat State as history and Observation as current evidence.\nIf a visible person is LEFT or RIGHT, LOOK in that direction. A visible CENTER person at\nMID/FAR => APPROACH CENTER; at NEAR/UNKNOWN => LOOK CENTER. If transition=APPEARED,\nFOUND toward the visible person is also allowed.\nIf no person is visible, last_seen_person_direction is known, and transition=DISAPPEARED\nor frames_since_person_seen is 1..3, SEARCH toward that last direction, target PERSON,\ndistance UNKNOWN. Otherwise if blocking_obstacle is LEFT, AVOID_RIGHT; if RIGHT,\nAVOID_LEFT; if CENTER or UNKNOWN and safe passage is unclear, WAIT. Otherwise WAIT.\nReturn ONLY one flat JSON object with action, direction, target, distance.\naction: LOOK/APPROACH/SEARCH/AVOID_LEFT/AVOID_RIGHT/FOUND/SURPRISE/WAIT.\ndirection: LEFT/CENTER/RIGHT/UNKNOWN. target: PERSON/BANANA/PLUSHIE/OBSTACLE/NONE.\ndistance: NEAR/MID/FAR/UNKNOWN. For visible person use target PERSON; for avoidance\nuse target OBSTACLE; for WAIT with no target use UNKNOWN/NONE/UNKNOWN.\nNever output motor values, speeds, metric distances, angles, commands or code.\nDo not change the Observation or State. Confidence is optional.\nAll enum values MUST be double-quoted JSON strings. No Markdown fences.\n",
+  "status": "pass",
+  "frames": [
+    {
+      "timestamp": 8.0,
+      "perception": {
+        "timestamp": 8.0,
+        "actual_timestamp": 8.0,
+        "frame_index": 240,
+        "saved_input_frame": "C:\\dev\\robot-vlm-brain\\reports\\frames\\phase32_2b_perception\\008.000s.png",
+        "source_image_size": [
+          910,
+          512
+        ],
+        "gpu_observation": {
+          "scope": "system GPU, not just this process",
+          "sample_count": 12,
+          "utilization_mean_percent": 36.333333333333336,
+          "utilization_peak_percent": 81.0,
+          "memory_peak_mib": 4891.0
+        },
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "LEFT"
+        },
+        "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"LEFT\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"LEFT\"\n}",
+        "bare_json": true,
+        "fallback": false,
+        "error": null,
+        "metrics": {},
+        "inference_executed": false
+      },
+      "state_before": {
+        "last_seen_person_direction": "UNKNOWN",
+        "person_visible_last_frame": null,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "state_after": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "planner": {
+        "decision": {
+          "action": "LOOK",
+          "direction": "LEFT",
+          "target": "PERSON",
+          "distance": "NEAR"
+        },
+        "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"LEFT\",\n  \"target\": \"PERSON\",\n  \"distance\": \"NEAR\"\n}",
+        "bare_json": true,
+        "fallback": false,
+        "error": null,
+        "metrics": {
+          "stage": "planner",
+          "model": "Qwen/Qwen3-VL-2B-Instruct",
+          "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+          "quantize_4bit": false,
+          "image_count": 0,
+          "image_tokens": 0,
+          "image_grids_thw": [],
+          "prompt_sha256": "184677b45c73a148f9e1197bd66a11513051d5f185390bab71488e8e3249ff3b",
+          "max_new_tokens": 96,
+          "model_instance_id": 2523852945600,
+          "processor_instance_id": 2523852944256,
+          "model_load_count": 1,
+          "generation_latency_s": 1.9540521999879275,
+          "inference_latency_s": 1.9738949000020511,
+          "preprocessing_latency_s": 0.01961920000030659,
+          "input_tokens": 381,
+          "output_tokens": 32,
+          "peak_allocated_gib": 4.053725719451904,
+          "peak_reserved_gib": 4.08203125
+        }
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a",
+      "timing": {
+        "perception_wall_s": 0.0,
+        "state_update_s": 1.0799994925037026e-05,
+        "planner_wall_s": 1.9742114999971818,
+        "total_brain_s": 1.9742234000004828
+      }
+    },
+    {
+      "timestamp": 10.0,
+      "perception": {
+        "timestamp": 10.0,
+        "actual_timestamp": 10.0,
+        "frame_index": 300,
+        "saved_input_frame": "C:\\dev\\robot-vlm-brain\\reports\\frames\\phase32_2b_perception\\010.000s.png",
+        "source_image_size": [
+          910,
+          512
+        ],
+        "gpu_observation": {
+          "scope": "system GPU, not just this process",
+          "sample_count": 12,
+          "utilization_mean_percent": 32.5,
+          "utilization_peak_percent": 40.0,
+          "memory_peak_mib": 4891.0
+        },
+        "observation": {
+          "person_visible": false,
+          "person_count": 0,
+          "person_direction": "UNKNOWN",
+          "person_distance": "UNKNOWN",
+          "blocking_obstacle": "RIGHT"
+        },
+        "raw_response": "{\n  \"person_visible\": false,\n  \"person_count\": 0,\n  \"person_direction\": \"UNKNOWN\",\n  \"person_distance\": \"UNKNOWN\",\n  \"blocking_obstacle\": \"RIGHT\"\n}",
+        "bare_json": true,
+        "fallback": false,
+        "error": null,
+        "metrics": {},
+        "inference_executed": false
+      },
+      "state_before": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "state_after": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": false,
+        "frames_since_person_seen": 1,
+        "transition": "DISAPPEARED"
+      },
+      "planner": {
+        "decision": {
+          "action": "SEARCH",
+          "direction": "LEFT",
+          "target": "PERSON",
+          "distance": "UNKNOWN"
+        },
+        "raw_response": "{\n  \"action\": \"SEARCH\",\n  \"direction\": \"LEFT\",\n  \"target\": \"PERSON\",\n  \"distance\": \"UNKNOWN\"\n}",
+        "bare_json": true,
+        "fallback": false,
+        "error": null,
+        "metrics": {
+          "stage": "planner",
+          "model": "Qwen/Qwen3-VL-2B-Instruct",
+          "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+          "quantize_4bit": false,
+          "image_count": 0,
+          "image_tokens": 0,
+          "image_grids_thw": [],
+          "prompt_sha256": "c2b94d7617e05978e226c1d6219cc1c2c76715f12c66111d40ad3cf8e60aca31",
+          "max_new_tokens": 96,
+          "model_instance_id": 2523852945600,
+          "processor_instance_id": 2523852944256,
+          "model_load_count": 1,
+          "generation_latency_s": 1.5349019000132103,
+          "inference_latency_s": 1.53656099998625,
+          "preprocessing_latency_s": 0.0014723999775014818,
+          "input_tokens": 383,
+          "output_tokens": 31,
+          "peak_allocated_gib": 4.053553104400635,
+          "peak_reserved_gib": 4.08203125
+        }
+      },
+      "mock_robot_output": "[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a",
+      "timing": {
+        "perception_wall_s": 0.0,
+        "state_update_s": 1.4500023098662496e-05,
+        "planner_wall_s": 1.5370085000176914,
+        "total_brain_s": 1.5370255000016186
+      }
+    },
+    {
+      "timestamp": 12.0,
+      "perception": {
+        "timestamp": 12.0,
+        "actual_timestamp": 12.0,
+        "frame_index": 360,
+        "saved_input_frame": "C:\\dev\\robot-vlm-brain\\reports\\frames\\phase32_2b_perception\\012.000s.png",
+        "source_image_size": [
+          910,
+          512
+        ],
+        "gpu_observation": {
+          "scope": "system GPU, not just this process",
+          "sample_count": 12,
+          "utilization_mean_percent": 31.333333333333332,
+          "utilization_peak_percent": 39.0,
+          "memory_peak_mib": 4891.0
+        },
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "LEFT"
+        },
+        "raw_response": "{\n  \"person_visible\": true,\n  \"person_count\": 1,\n  \"person_direction\": \"LEFT\",\n  \"person_distance\": \"NEAR\",\n  \"blocking_obstacle\": \"LEFT\"\n}",
+        "bare_json": true,
+        "fallback": false,
+        "error": null,
+        "metrics": {},
+        "inference_executed": false
+      },
+      "state_before": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": false,
+        "frames_since_person_seen": 1,
+        "transition": "DISAPPEARED"
+      },
+      "state_after": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "APPEARED"
+      },
+      "planner": {
+        "decision": {
+          "action": "LOOK",
+          "direction": "LEFT",
+          "target": "PERSON",
+          "distance": "NEAR"
+        },
+        "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"LEFT\",\n  \"target\": \"PERSON\",\n  \"distance\": \"NEAR\"\n}",
+        "bare_json": true,
+        "fallback": false,
+        "error": null,
+        "metrics": {
+          "stage": "planner",
+          "model": "Qwen/Qwen3-VL-2B-Instruct",
+          "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+          "quantize_4bit": false,
+          "image_count": 0,
+          "image_tokens": 0,
+          "image_grids_thw": [],
+          "prompt_sha256": "71892ec9f730c29ac46e0e05e674130089911e35a8782d2e83dcd2a403df4e68",
+          "max_new_tokens": 96,
+          "model_instance_id": 2523852945600,
+          "processor_instance_id": 2523852944256,
+          "model_load_count": 1,
+          "generation_latency_s": 1.6312406999932136,
+          "inference_latency_s": 1.6329208000097424,
+          "preprocessing_latency_s": 0.0014340000052470714,
+          "input_tokens": 383,
+          "output_tokens": 32,
+          "peak_allocated_gib": 4.053553104400635,
+          "peak_reserved_gib": 4.08203125
+        }
+      },
+      "mock_robot_output": "[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a",
+      "timing": {
+        "perception_wall_s": 0.0,
+        "state_update_s": 1.3400014722719789e-05,
+        "planner_wall_s": 1.6332935999962501,
+        "total_brain_s": 1.6333083999925293
+      }
+    }
+  ],
+  "model_load": {
+    "status": "pass",
+    "gpu": "NVIDIA GeForce RTX 3060 Ti",
+    "cuda_available": true,
+    "gpu_used": true,
+    "dtype": "torch.bfloat16",
+    "attention": "sdpa",
+    "model": "Qwen/Qwen3-VL-2B-Instruct",
+    "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+    "quantize_4bit": false,
+    "model_load_s": 3.2262368999945465,
+    "model_allocated_gib": 3.9638280868530273,
+    "model_load_peak_allocated_gib": 3.9638280868530273,
+    "model_load_peak_reserved_gib": 3.96484375,
+    "model_footprint_gib": 3.962837517261505
+  }
+}

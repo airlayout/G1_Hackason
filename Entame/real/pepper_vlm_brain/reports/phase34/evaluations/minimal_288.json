@@ -1,0 +1,793 @@
+{
+  "profile": {
+    "name": "minimal_288",
+    "format": "compact",
+    "edge": 288,
+    "minimal": true,
+    "dtype": "bf16",
+    "attention": "default",
+    "instrument": true
+  },
+  "pipeline_status": "failed",
+  "presence_accuracy": 0.0,
+  "direction_accuracy": 0.0,
+  "presence_correct_total": [
+    0,
+    18
+  ],
+  "direction_correct_total": [
+    0,
+    10
+  ],
+  "perception_valid_rate": 0.0,
+  "planner_valid_rate": 0.0,
+  "main_pass": false,
+  "extended_scores": [
+    0,
+    0
+  ],
+  "accuracy_maintained": false,
+  "integrity_pass": false,
+  "eligible": false,
+  "tier": "REJECT",
+  "peak_allocated_gib": 3.994723320007324,
+  "peak_reserved_gib": 4.064453125,
+  "metrics": {
+    "perception_wall_s": {
+      "count": 18,
+      "mean": 2.7889974555555455,
+      "median": 2.8094092000001183,
+      "p95": 2.911358340000038
+    },
+    "state_update_s": {
+      "count": 18,
+      "mean": 1.8888883662131977e-07,
+      "median": 1.9999970390927047e-07,
+      "p95": 3.000000106112566e-07
+    },
+    "planner_wall_s": {
+      "count": 18,
+      "mean": 0.0,
+      "median": 0.0,
+      "p95": 0.0
+    },
+    "total_brain_s": {
+      "count": 18,
+      "mean": 2.7890879277778016,
+      "median": 2.8094876500001646,
+      "p95": 2.911441139999897
+    },
+    "perception": {
+      "image_preprocessing_s": {
+        "count": 18,
+        "mean": 0.0034417166667076848,
+        "median": 0.0034270000001015433,
+        "p95": 0.0036756649999688308
+      },
+      "processor_s": {
+        "count": 18,
+        "mean": 0.0019484388888789301,
+        "median": 0.001894499999934851,
+        "p95": 0.002405084999736573
+      },
+      "device_transfer_s": {
+        "count": 18,
+        "mean": 0.00037697777780623356,
+        "median": 0.0003381999999874097,
+        "p95": 0.0005681050002976916
+      },
+      "vision_cuda_elapsed_s": {
+        "count": 18,
+        "mean": 2.3693634440104168,
+        "median": 2.396264404296875,
+        "p95": 2.460360595703125
+      },
+      "vision_host_forward_s": {
+        "count": 18,
+        "mean": 2.3685452555555204,
+        "median": 2.395176999999876,
+        "p95": 2.4601806749998105
+      },
+      "patch_embed_cuda_elapsed_s": {
+        "count": 18,
+        "mean": 2.3354056396484375,
+        "median": 2.3593778076171876,
+        "p95": 2.4352478759765623
+      },
+      "vision_block0_cuda_elapsed_s": {
+        "count": 18,
+        "mean": 0.0014519111182954576,
+        "median": 0.0011673599481582641,
+        "p95": 0.002045644843578338
+      },
+      "prefill_cuda_elapsed_s": {
+        "count": 18,
+        "mean": 2.4401341688368055,
+        "median": 2.4626334228515625,
+        "p95": 2.5595103881835937
+      },
+      "prefill_host_forward_s": {
+        "count": 18,
+        "mean": 2.4270867055555403,
+        "median": 2.4572739999998703,
+        "p95": 2.512916665000239
+      },
+      "ttft_generation_s": {
+        "count": 18,
+        "mean": 2.441714850000027,
+        "median": 2.464037449999978,
+        "p95": 2.5615520000000744
+      },
+      "ttft_stage_s": {
+        "count": 18,
+        "mean": 2.447545850000046,
+        "median": 2.4697530999999344,
+        "p95": 2.568178914999976
+      },
+      "decode_total_s": {
+        "count": 18,
+        "mean": 0.3409099166666844,
+        "median": 0.3373519000001579,
+        "p95": 0.37471942499992106
+      },
+      "decode_ms_per_token": {
+        "count": 18,
+        "mean": 48.701416666669196,
+        "median": 48.193128571451126,
+        "p95": 53.531346428560155
+      },
+      "input_tokens": {
+        "count": 18,
+        "mean": 111,
+        "median": 111.0,
+        "p95": 111.0
+      },
+      "image_tokens": {
+        "count": 18,
+        "mean": 45,
+        "median": 45.0,
+        "p95": 45.0
+      },
+      "output_tokens": {
+        "count": 18,
+        "mean": 8,
+        "median": 8.0,
+        "p95": 8.0
+      },
+      "validation_parsing_s": {
+        "count": 18,
+        "mean": 4.555555607213238e-06,
+        "median": 4.4000003072142135e-06,
+        "p95": 5.320000059327866e-06
+      },
+      "peak_allocated_gib": {
+        "count": 18,
+        "mean": 3.994723320007324,
+        "median": 3.994723320007324,
+        "p95": 3.994723320007324
+      },
+      "peak_reserved_gib": {
+        "count": 18,
+        "mean": 4.064453125,
+        "median": 4.064453125,
+        "p95": 4.064453125
+      }
+    },
+    "planner": {
+      "image_preprocessing_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "processor_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "device_transfer_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "vision_cuda_elapsed_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "vision_host_forward_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "patch_embed_cuda_elapsed_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "vision_block0_cuda_elapsed_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "prefill_cuda_elapsed_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "prefill_host_forward_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "ttft_generation_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "ttft_stage_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "decode_total_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "decode_ms_per_token": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "input_tokens": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "image_tokens": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "output_tokens": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "validation_parsing_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "peak_allocated_gib": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "peak_reserved_gib": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      }
+    }
+  },
+  "run_evaluations": [
+    {
+      "pass": false,
+      "integrity_errors": [
+        "Pipeline failed",
+        "Invalid/non-bare structured JSON at 3",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 3",
+        "Invalid raw Planner at 3",
+        "Invalid/non-bare structured JSON at 7",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 7",
+        "Invalid raw Planner at 7",
+        "Invalid/non-bare structured JSON at 8",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 8",
+        "Invalid raw Planner at 8",
+        "Invalid/non-bare structured JSON at 9",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 9",
+        "Invalid raw Planner at 9",
+        "Invalid/non-bare structured JSON at 9.5",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 9.5",
+        "Invalid raw Planner at 9.5",
+        "Invalid/non-bare structured JSON at 10",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 10",
+        "Invalid raw Planner at 10",
+        "Invalid/non-bare structured JSON at 10.25",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 10.25",
+        "Invalid raw Planner at 10.25",
+        "Invalid/non-bare structured JSON at 12",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 12",
+        "Invalid raw Planner at 12",
+        "Invalid/non-bare structured JSON at 13",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 13",
+        "Invalid raw Planner at 13",
+        "Model/processor instance reuse not proven"
+      ],
+      "checks": [
+        {
+          "timestamp": 3,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 7,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 8,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 9,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch",
+            "Last known direction mismatch",
+            "Search state/distance mismatch"
+          ]
+        },
+        {
+          "timestamp": 9.5,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch",
+            "Missed frame count mismatch"
+          ]
+        },
+        {
+          "timestamp": 10,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch",
+            "Missed frame count mismatch"
+          ]
+        },
+        {
+          "timestamp": 10.25,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Missed frame count mismatch"
+          ]
+        },
+        {
+          "timestamp": 12,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 13,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        }
+      ],
+      "planner_policy_checks": [
+        {
+          "timestamp": 3,
+          "pass": false
+        },
+        {
+          "timestamp": 7,
+          "pass": false
+        },
+        {
+          "timestamp": 8,
+          "pass": false
+        },
+        {
+          "timestamp": 9,
+          "pass": false
+        },
+        {
+          "timestamp": 9.5,
+          "pass": false
+        },
+        {
+          "timestamp": 10,
+          "pass": false
+        },
+        {
+          "timestamp": 10.25,
+          "pass": false
+        },
+        {
+          "timestamp": 12,
+          "pass": false
+        },
+        {
+          "timestamp": 13,
+          "pass": false
+        }
+      ],
+      "planner_policy_pass": false,
+      "model_reuse": false,
+      "serialization_errors": [
+        "Invalid perception raw at 3: Exactly four single-character codes required",
+        "Invalid planner raw at 3: Exactly four single-character codes required",
+        "Invalid perception raw at 7: Exactly four single-character codes required",
+        "Invalid planner raw at 7: Exactly four single-character codes required",
+        "Invalid perception raw at 8: Exactly four single-character codes required",
+        "Invalid planner raw at 8: Exactly four single-character codes required",
+        "Invalid perception raw at 9: Exactly four single-character codes required",
+        "Invalid planner raw at 9: Exactly four single-character codes required",
+        "Invalid perception raw at 9.5: Exactly four single-character codes required",
+        "Invalid planner raw at 9.5: Exactly four single-character codes required",
+        "Invalid perception raw at 10: Exactly four single-character codes required",
+        "Invalid planner raw at 10: Exactly four single-character codes required",
+        "Invalid perception raw at 10.25: Exactly four single-character codes required",
+        "Invalid planner raw at 10.25: Exactly four single-character codes required",
+        "Invalid perception raw at 12: Exactly four single-character codes required",
+        "Invalid planner raw at 12: Exactly four single-character codes required",
+        "Invalid perception raw at 13: Exactly four single-character codes required",
+        "Invalid planner raw at 13: Exactly four single-character codes required"
+      ],
+      "representation_note": "Raw codes validated strictly; canonical JSON view used only for unchanged schema/scenario checks."
+    },
+    {
+      "pass": false,
+      "integrity_errors": [
+        "Pipeline failed",
+        "Invalid/non-bare structured JSON at 3",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 3",
+        "Invalid raw Planner at 3",
+        "Invalid/non-bare structured JSON at 7",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 7",
+        "Invalid raw Planner at 7",
+        "Invalid/non-bare structured JSON at 8",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 8",
+        "Invalid raw Planner at 8",
+        "Invalid/non-bare structured JSON at 9",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 9",
+        "Invalid raw Planner at 9",
+        "Invalid/non-bare structured JSON at 9.5",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 9.5",
+        "Invalid raw Planner at 9.5",
+        "Invalid/non-bare structured JSON at 10",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 10",
+        "Invalid raw Planner at 10",
+        "Invalid/non-bare structured JSON at 10.25",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 10.25",
+        "Invalid raw Planner at 10.25",
+        "Invalid/non-bare structured JSON at 12",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 12",
+        "Invalid raw Planner at 12",
+        "Invalid/non-bare structured JSON at 13",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 13",
+        "Invalid raw Planner at 13",
+        "Model/processor instance reuse not proven"
+      ],
+      "checks": [
+        {
+          "timestamp": 3,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 7,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 8,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 9,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch",
+            "Last known direction mismatch",
+            "Search state/distance mismatch"
+          ]
+        },
+        {
+          "timestamp": 9.5,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch",
+            "Missed frame count mismatch"
+          ]
+        },
+        {
+          "timestamp": 10,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch",
+            "Missed frame count mismatch"
+          ]
+        },
+        {
+          "timestamp": 10.25,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Missed frame count mismatch"
+          ]
+        },
+        {
+          "timestamp": 12,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 13,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        }
+      ],
+      "planner_policy_checks": [
+        {
+          "timestamp": 3,
+          "pass": false
+        },
+        {
+          "timestamp": 7,
+          "pass": false
+        },
+        {
+          "timestamp": 8,
+          "pass": false
+        },
+        {
+          "timestamp": 9,
+          "pass": false
+        },
+        {
+          "timestamp": 9.5,
+          "pass": false
+        },
+        {
+          "timestamp": 10,
+          "pass": false
+        },
+        {
+          "timestamp": 10.25,
+          "pass": false
+        },
+        {
+          "timestamp": 12,
+          "pass": false
+        },
+        {
+          "timestamp": 13,
+          "pass": false
+        }
+      ],
+      "planner_policy_pass": false,
+      "model_reuse": false,
+      "serialization_errors": [
+        "Invalid perception raw at 3: Exactly four single-character codes required",
+        "Invalid planner raw at 3: Exactly four single-character codes required",
+        "Invalid perception raw at 7: Exactly four single-character codes required",
+        "Invalid planner raw at 7: Exactly four single-character codes required",
+        "Invalid perception raw at 8: Exactly four single-character codes required",
+        "Invalid planner raw at 8: Exactly four single-character codes required",
+        "Invalid perception raw at 9: Exactly four single-character codes required",
+        "Invalid planner raw at 9: Exactly four single-character codes required",
+        "Invalid perception raw at 9.5: Exactly four single-character codes required",
+        "Invalid planner raw at 9.5: Exactly four single-character codes required",
+        "Invalid perception raw at 10: Exactly four single-character codes required",
+        "Invalid planner raw at 10: Exactly four single-character codes required",
+        "Invalid perception raw at 10.25: Exactly four single-character codes required",
+        "Invalid planner raw at 10.25: Exactly four single-character codes required",
+        "Invalid perception raw at 12: Exactly four single-character codes required",
+        "Invalid planner raw at 12: Exactly four single-character codes required",
+        "Invalid perception raw at 13: Exactly four single-character codes required",
+        "Invalid planner raw at 13: Exactly four single-character codes required"
+      ],
+      "representation_note": "Raw codes validated strictly; canonical JSON view used only for unchanged schema/scenario checks."
+    },
+    {
+      "pass": false,
+      "integrity_errors": [
+        "Pipeline failed",
+        "Invalid/non-bare structured JSON at 8",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 8",
+        "Invalid raw Planner at 8",
+        "Invalid/non-bare structured JSON at 10",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 10",
+        "Invalid raw Planner at 10",
+        "Invalid/non-bare structured JSON at 12",
+        "Model was not loaded exactly once",
+        "Invalid/non-bare structured JSON at 12",
+        "Invalid raw Planner at 12",
+        "Model/processor instance reuse not proven"
+      ],
+      "checks": [
+        {
+          "timestamp": 8,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 10,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch",
+            "Last known direction mismatch",
+            "Search state/distance mismatch"
+          ]
+        },
+        {
+          "timestamp": 12,
+          "pass": false,
+          "errors": [
+            "Perception presence mismatch",
+            "Perception direction mismatch",
+            "State transition mismatch",
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        }
+      ],
+      "planner_policy_checks": [
+        {
+          "timestamp": 8,
+          "pass": false
+        },
+        {
+          "timestamp": 10,
+          "pass": false
+        },
+        {
+          "timestamp": 12,
+          "pass": false
+        }
+      ],
+      "planner_policy_pass": false,
+      "model_reuse": false,
+      "serialization_errors": [
+        "Invalid perception raw at 8: Exactly four single-character codes required",
+        "Invalid planner raw at 8: Exactly four single-character codes required",
+        "Invalid perception raw at 10: Exactly four single-character codes required",
+        "Invalid planner raw at 10: Exactly four single-character codes required",
+        "Invalid perception raw at 12: Exactly four single-character codes required",
+        "Invalid planner raw at 12: Exactly four single-character codes required"
+      ],
+      "representation_note": "Raw codes validated strictly; canonical JSON view used only for unchanged schema/scenario checks."
+    }
+  ],
+  "sample_note": "Warmup and model load excluded; mean/median/p95 across 9-frame runs.",
+  "report_file": "reports\\phase34\\minimal_288.json"
+}

@@ -1,0 +1,47 @@
+{
+  "purpose": "Post-run evaluator only. No labels to Perception or Planner.",
+  "timestamps": [
+    2,
+    6,
+    8,
+    10,
+    12,
+    16,
+    20,
+    24
+  ],
+  "checks": [
+    {
+      "timestamp": 8,
+      "person_visible": true,
+      "person_direction": "LEFT",
+      "transition": "STILL_VISIBLE",
+      "allowed_actions": [
+        "LOOK",
+        "FOUND"
+      ],
+      "decision_direction": "LEFT"
+    },
+    {
+      "timestamp": 10,
+      "person_visible": false,
+      "person_direction": "UNKNOWN",
+      "transition": "DISAPPEARED",
+      "allowed_actions": [
+        "SEARCH"
+      ],
+      "decision_direction": "LEFT"
+    },
+    {
+      "timestamp": 12,
+      "person_visible": true,
+      "person_direction": "LEFT",
+      "transition": "APPEARED",
+      "allowed_actions": [
+        "LOOK",
+        "FOUND"
+      ],
+      "decision_direction": "LEFT"
+    }
+  ]
+}

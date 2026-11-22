@@ -1,0 +1,27 @@
+{
+  "phase": "3.6",
+  "base_sha": "3c6d7f32c178702d968c03352207eb8c40b9f208",
+  "implementation_commit": "49b42dd94fd6c51a5719e864b6e44cc18d9f10cb",
+  "recorded_at_utc": "2026-10-02T08:48:12.726824+00:00",
+  "tests": "392 passed in 5.88s",
+  "git_status_after_implementation_commit": "M reports/PHASE33.md",
+  "preexisting_user_edit_sha256": "5c6156e6f385b0566a30376c421187494393d7b1d4a60876c64ca5c668a4bb1a",
+  "preexisting_user_edit_preserved_and_uncommitted": true,
+  "chosen_fast_source": "YOLO11n GPU FP32 imgsz640 confidence0.10",
+  "pepper_readiness": "NOT READY",
+  "raw_trace_directories": [
+    "selected",
+    "selected_lowconfidence",
+    "realtime",
+    "realtime_preempt",
+    "realtime_cooperative",
+    "realtime_lowconfidence",
+    "realtime_final",
+    "realtime_eventsemantic"
+  ],
+  "final_measured_config": "realtime_eventsemantic: hybrid x3, generic event/quiet-time scheduler, 100ms settling, token-boundary cancellation",
+  "raw_logs_preserved_verbatim": true,
+  "whitespace_check": "Source and JSON PASS; two original Ultralytics stdout lines contain trailing spaces and are preserved as raw logs.",
+  "report": "reports/PHASE36.md",
+  "final_head_note": "The following metadata-only commit stores this record; its SHA is reported in the final response."
+}

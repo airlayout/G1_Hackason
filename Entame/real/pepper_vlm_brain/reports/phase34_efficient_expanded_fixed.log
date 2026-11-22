@@ -1,0 +1,42 @@
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=0 t=3 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"LOOK","direction":"CENTER","target":"PERSON","distance":"NEAR"}' brain=2.828s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=0 t=7 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=3.425s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=0 t=8 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=3.400s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_linear_efficient_expanded_fixed run=0 t=9 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "UNKNOWN"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=3.360s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_linear_efficient_expanded_fixed run=0 t=9.5 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "RIGHT"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=3.375s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_linear_efficient_expanded_fixed run=0 t=10 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=3.456s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_linear_efficient_expanded_fixed run=0 t=10.25 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=3.367s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=0 t=12 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=3.500s
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=0 t=13 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "LOOK",\n  "direction": "CENTER",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=3.526s
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=1 t=3 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"LOOK","direction":"CENTER","target":"PERSON","distance":"NEAR"}' brain=2.956s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=1 t=7 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=3.483s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=1 t=8 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=3.512s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_linear_efficient_expanded_fixed run=1 t=9 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "UNKNOWN"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=3.462s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_linear_efficient_expanded_fixed run=1 t=9.5 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "RIGHT"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=3.387s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_linear_efficient_expanded_fixed run=1 t=10 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=3.419s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_linear_efficient_expanded_fixed run=1 t=10.25 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=3.388s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=1 t=12 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=3.636s
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=1 t=13 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "LOOK",\n  "direction": "CENTER",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=3.471s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=2 t=8 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=3.518s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_linear_efficient_expanded_fixed run=2 t=10 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=3.390s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_linear_efficient_expanded_fixed run=2 t=12 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=3.599s

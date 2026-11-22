@@ -1,0 +1,80 @@
+[
+  {
+    "type": "file",
+    "oid": "a6344aac8c09253b3b630fb776ae94478aa0275b",
+    "size": 1519,
+    "path": ".gitattributes"
+  },
+  {
+    "type": "file",
+    "oid": "13afcb1d2c695b57ebe4ee740db48671069566ce",
+    "size": 7136,
+    "path": "README.md"
+  },
+  {
+    "type": "file",
+    "oid": "e49e75bdda104c8de941eb20e0b3765184fb27bc",
+    "size": 5502,
+    "path": "chat_template.json"
+  },
+  {
+    "type": "file",
+    "oid": "0cd8c646eb55794594b14fefcd1d3acea5cc000f",
+    "size": 1505,
+    "path": "config.json"
+  },
+  {
+    "type": "file",
+    "oid": "7bb37933d2d86e4ceaabcc6540be989658f238e9",
+    "size": 269,
+    "path": "generation_config.json"
+  },
+  {
+    "type": "file",
+    "oid": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0",
+    "size": 1671839,
+    "path": "merges.txt"
+  },
+  {
+    "type": "file",
+    "oid": "756540b03375b1bb98d2b4b2c562f02eaf569821",
+    "size": 4255140312,
+    "lfs": {
+      "oid": "7de1838c87a5349b016c26a1c3f7d2bc400a3d485f95ef39a7059ffd734977a0",
+      "size": 4255140312,
+      "pointerSize": 135
+    },
+    "xetHash": "530c5853c2d688780845ce7d58faf0ffd43fc72f0a8190e8c412f0000f54fbc0",
+    "path": "model.safetensors"
+  },
+  {
+    "type": "file",
+    "oid": "2ea84a437d448ff71b08df68fdd949d5cc4ebb64",
+    "size": 390,
+    "path": "preprocessor_config.json"
+  },
+  {
+    "type": "file",
+    "oid": "c6cc1014128b19d1fc46b1d30a23e3b1d35db421",
+    "size": 7032403,
+    "path": "tokenizer.json"
+  },
+  {
+    "type": "file",
+    "oid": "d3d3763207692c78780f4bf42d4dadf49a5c8012",
+    "size": 10868,
+    "path": "tokenizer_config.json"
+  },
+  {
+    "type": "file",
+    "oid": "3ba673a5ad7d4d13f54155ecd38b2a94a6dac8fe",
+    "size": 385,
+    "path": "video_preprocessor_config.json"
+  },
+  {
+    "type": "file",
+    "oid": "4783fe10ac3adce15ac8f358ef5462739852c569",
+    "size": 2776833,
+    "path": "vocab.json"
+  }
+]

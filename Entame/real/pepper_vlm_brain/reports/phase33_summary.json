@@ -1,0 +1,235 @@
+{
+  "saved": {
+    "status": "pass",
+    "frames": 3,
+    "mean_perception_s": 0.0,
+    "mean_state_s": 1.2900010915473104e-05,
+    "mean_planner_s": 1.7148378666703745,
+    "mean_total_brain_s": 1.7148524333315436,
+    "max_allocated_gib": 4.053725719451904,
+    "max_reserved_gib": 4.08203125,
+    "model_load_s": 3.2262368999945465,
+    "model_load_peak_allocated_gib": 3.9638280868530273,
+    "perception_input_output_tokens": [
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ],
+      [
+        null,
+        null
+      ]
+    ],
+    "planner_input_output_tokens": [
+      [
+        381,
+        32
+      ],
+      [
+        383,
+        31
+      ],
+      [
+        383,
+        32
+      ]
+    ],
+    "fallback_count": 0
+  },
+  "three": {
+    "status": "pass",
+    "frames": 3,
+    "mean_perception_s": 6.888822233343187,
+    "mean_state_s": 1.5633316555370886e-05,
+    "mean_planner_s": 1.5592864666735597,
+    "mean_total_brain_s": 8.448175199999241,
+    "max_allocated_gib": 4.055383682250977,
+    "max_reserved_gib": 4.095703125,
+    "model_load_s": 3.1282256999984384,
+    "model_load_peak_allocated_gib": 3.9638280868530273,
+    "perception_input_output_tokens": [
+      [
+        339,
+        44
+      ],
+      [
+        339,
+        43
+      ],
+      [
+        339,
+        44
+      ]
+    ],
+    "planner_input_output_tokens": [
+      [
+        381,
+        32
+      ],
+      [
+        383,
+        31
+      ],
+      [
+        383,
+        32
+      ]
+    ],
+    "fallback_count": 0
+  },
+  "nine": {
+    "status": "pass",
+    "frames": 9,
+    "mean_perception_s": 6.673952933336194,
+    "mean_state_s": 1.5844448676539792e-05,
+    "mean_planner_s": 1.4056194333372534,
+    "mean_total_brain_s": 8.079636777773784,
+    "max_allocated_gib": 4.055383682250977,
+    "max_reserved_gib": 4.095703125,
+    "model_load_s": 3.1171793999965303,
+    "model_load_peak_allocated_gib": 3.9638280868530273,
+    "perception_input_output_tokens": [
+      [
+        339,
+        44
+      ],
+      [
+        339,
+        44
+      ],
+      [
+        339,
+        44
+      ],
+      [
+        339,
+        43
+      ],
+      [
+        339,
+        43
+      ],
+      [
+        339,
+        43
+      ],
+      [
+        339,
+        43
+      ],
+      [
+        339,
+        44
+      ],
+      [
+        339,
+        44
+      ]
+    ],
+    "planner_input_output_tokens": [
+      [
+        381,
+        19
+      ],
+      [
+        383,
+        32
+      ],
+      [
+        383,
+        32
+      ],
+      [
+        383,
+        31
+      ],
+      [
+        383,
+        31
+      ],
+      [
+        383,
+        31
+      ],
+      [
+        383,
+        18
+      ],
+      [
+        383,
+        32
+      ],
+      [
+        383,
+        32
+      ]
+    ],
+    "fallback_count": 0
+  },
+  "temporal": {
+    "status": "failed",
+    "valid_combined": 4,
+    "frame_count": 8,
+    "mean_latency_s": 13.212141887495818,
+    "paired_mean_latency_s": 14.021856785710302,
+    "input_tokens": [
+      561,
+      682,
+      682,
+      682,
+      682,
+      682,
+      682,
+      682
+    ],
+    "image_tokens": [
+      84,
+      168,
+      168,
+      168,
+      168,
+      168,
+      168,
+      168
+    ],
+    "output_tokens": [
+      66,
+      108,
+      108,
+      108,
+      107,
+      107,
+      107,
+      107
+    ],
+    "peak_allocated_gib": 4.153659820556641,
+    "peak_reserved_gib": 4.1875,
+    "driver_peak_mib": 5106.0,
+    "scenario_pass": false
+  },
+  "tests": {
+    "baseline_preserved": 183,
+    "added": 18,
+    "total": 201,
+    "result": "pass",
+    "log": "phase33_tests.log"
+  },
+  "frozen_files": {
+    "brain/split_prompt.py": {
+      "unchanged": true,
+      "sha256_normalized": "1bd0bbc594a7a1bf48c58170933a898a799d2187ca1d144ad83a3fc319b85fb2"
+    },
+    "brain/split_schemas.py": {
+      "unchanged": true,
+      "sha256_normalized": "e0ea6ff3d2e51d71c03b940ad3e3293a05d82f697aa5d8903fdfe3e81ae857b6"
+    },
+    "brain/state.py": {
+      "unchanged": true,
+      "sha256_normalized": "f06ff5948b1a4e8e1d7192ffcb59699005f12af405b59ceac6432973762de0c5"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "base_sha": "3c6d7f32c178702d968c03352207eb8c40b9f208",
+  "existing_modified_files": [
+    ".gitignore",
+    "reports/PHASE33.md"
+  ],
+  "only_allowed_change": ".gitignore adds .venv36/",
+  "preexisting_user_edit_unchanged": true,
+  "existing_reports_unchanged": true,
+  "original_scenarios_unchanged": true,
+  "existing_reports_count": 198,
+  "original_scenarios_count": 9,
+  "g1_sources_unchanged": true
+}

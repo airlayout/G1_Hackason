@@ -1,0 +1,15 @@
+{
+  "python": "3.13.15 (tags/v3.13.15:4061bc4, Aug  5 2026, 13:05:39) [MSC v.1944 64 bit (AMD64)]",
+  "executable": "C:\\dev\\robot-vlm-brain\\.venv\\Scripts\\python.exe",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "pip": "26.2.1",
+  "torch": "not installed",
+  "torchvision": "not installed",
+  "transformers": "not installed",
+  "accelerate": "not installed",
+  "bitsandbytes": "not installed",
+  "pydantic": "not installed",
+  "Pillow": "not installed",
+  "opencv-python": "not installed",
+  "torch_error": "No module named 'torch'"
+}

@@ -1,0 +1,294 @@
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=0 t=3 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"LOOK","direction":"CENTER","target":"PERSON","distance":"NEAR"}' brain=7.882s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=0 t=7 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"LOOK","direction":"LEFT","target":"PERSON","distance":"NEAR"}' brain=7.709s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=0 t=8 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=8.508s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_fp16 run=0 t=9 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "UNKNOWN"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=8.310s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_fp16 run=0 t=9.5 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"}' brain=7.774s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_fp16 run=0 t=10 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "RIGHT"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=8.294s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_fp16 run=0 t=10.25 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"}' brain=7.761s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=0 t=12 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=8.571s
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=0 t=13 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"LOOK","direction":"CENTER","target":"PERSON","distance":"NEAR"}' brain=7.763s
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=1 t=3 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"LOOK","direction":"CENTER","target":"PERSON","distance":"NEAR"}' brain=7.724s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=1 t=7 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"LOOK","direction":"LEFT","target":"PERSON","distance":"NEAR"}' brain=7.763s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=1 t=8 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=8.543s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_fp16 run=1 t=9 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "UNKNOWN"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=8.501s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_fp16 run=1 t=9.5 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"}' brain=7.627s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_fp16 run=1 t=10 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "RIGHT"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=8.481s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+json_fp16 run=1 t=10.25 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"}' brain=7.789s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=1 t=12 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=8.780s
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=1 t=13 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "CENTER",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{"action":"LOOK","direction":"CENTER","target":"PERSON","distance":"NEAR"}' brain=7.889s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=2 t=8 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "LEFT"\n}' D='{"action":"LOOK","direction":"LEFT","target":"PERSON","distance":"NEAR"}' brain=7.810s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+json_fp16 run=2 t=10 P='{\n  "person_visible": false,\n  "person_count": 0,\n  "person_direction": "UNKNOWN",\n  "person_distance": "UNKNOWN",\n  "blocking_obstacle": "RIGHT"\n}' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=8.354s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+json_fp16 run=2 t=12 P='{\n  "person_visible": true,\n  "person_count": 1,\n  "person_direction": "LEFT",\n  "person_distance": "NEAR",\n  "blocking_obstacle": "NONE"\n}' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "NEAR"\n}' brain=8.664s
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=0 t=3 P='C' D='{"action":"LOOK","direction":"CENTER","target":"PERSON","distance":"UNKNOWN"}' brain=5.596s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=0 t=7 P='B' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=6.166s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=0 t=8 P='B' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=6.083s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=0 t=9 P='A' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=6.034s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=0 t=9.5 P='A' D='{"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"}' brain=5.407s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=0 t=10 P='A' D='{"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"}' brain=5.436s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=0 t=10.25 P='A' D='{"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"}' brain=5.475s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=0 t=12 P='B' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=6.173s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=0 t=13 P='D' D='{"action":"LOOK","direction":"RIGHT","target":"PERSON","distance":"UNKNOWN"}' brain=5.524s
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=1 t=3 P='C' D='{"action":"LOOK","direction":"CENTER","target":"PERSON","distance":"UNKNOWN"}' brain=5.605s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=1 t=7 P='B' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=6.161s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=1 t=8 P='B' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=5.989s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=1 t=9 P='A' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=5.993s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=1 t=9.5 P='A' D='{"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"}' brain=5.406s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=1 t=10 P='A' D='{"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"}' brain=5.497s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=1 t=10.25 P='A' D='{"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"}' brain=5.458s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=1 t=12 P='B' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=6.072s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=1 t=13 P='D' D='{"action":"LOOK","direction":"RIGHT","target":"PERSON","distance":"UNKNOWN"}' brain=5.518s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=2 t=8 P='B' D='{"action":"LOOK","direction":"LEFT","target":"PERSON","distance":"UNKNOWN"}' brain=5.525s
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=2 t=10 P='A' D='{\n  "action": "SEARCH",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=6.217s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_constrained_fp16 run=2 t=12 P='B' D='{\n  "action": "LOOK",\n  "direction": "LEFT",\n  "target": "PERSON",\n  "distance": "UNKNOWN"\n}' brain=6.303s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=0 t=3 P='C' D='K' brain=4.851s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=0 t=7 P='B' D='A' brain=4.739s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=0 t=8 P='B' D='A' brain=4.728s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=0 t=9 P='A' D='G' brain=4.759s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_fp16 run=0 t=9.5 P='A' D='N' brain=4.473s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_fp16 run=0 t=10 P='A' D='N' brain=4.545s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_fp16 run=0 t=10.25 P='A' D='N' brain=4.584s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=0 t=12 P='B' D='K' brain=4.600s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=0 t=13 P='D' D='C' brain=4.655s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=1 t=3 P='C' D='K' brain=4.762s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=1 t=7 P='B' D='A' brain=4.721s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=1 t=8 P='B' D='A' brain=4.705s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=1 t=9 P='A' D='G' brain=4.692s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_fp16 run=1 t=9.5 P='A' D='N' brain=4.644s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_fp16 run=1 t=10 P='A' D='N' brain=4.615s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_fp16 run=1 t=10.25 P='A' D='N' brain=4.809s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=1 t=12 P='B' D='K' brain=4.791s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=1 t=13 P='D' D='C' brain=4.676s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=2 t=8 P='B' D='A' brain=4.668s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=2 t=10 P='A' D='G' brain=4.805s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_fp16 run=2 t=12 P='B' D='K' brain=4.724s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=0 t=3 P='C' D='K' brain=3.373s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=0 t=7 P='B' D='A' brain=3.405s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=0 t=8 P='B' D='A' brain=3.310s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=0 t=9 P='A' D='G' brain=3.340s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=0 t=9.5 P='A' D='N' brain=3.534s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=0 t=10 P='A' D='N' brain=3.389s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=0 t=10.25 P='A' D='N' brain=3.533s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=0 t=12 P='B' D='K' brain=3.340s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=0 t=13 P='D' D='C' brain=3.437s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=1 t=3 P='C' D='K' brain=3.418s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=1 t=7 P='B' D='A' brain=3.314s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=1 t=8 P='B' D='A' brain=3.359s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=1 t=9 P='A' D='G' brain=3.349s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=1 t=9.5 P='A' D='N' brain=3.378s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=1 t=10 P='A' D='N' brain=3.440s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=1 t=10.25 P='A' D='N' brain=3.379s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=1 t=12 P='B' D='K' brain=3.238s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=1 t=13 P='D' D='C' brain=3.530s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=2 t=8 P='B' D='A' brain=3.320s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=2 t=10 P='A' D='G' brain=3.360s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_336_fp16 run=2 t=12 P='B' D='K' brain=3.373s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=0 t=3 P='C' D='K' brain=3.476s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=0 t=7 P='B' D='A' brain=3.400s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=0 t=8 P='B' D='A' brain=3.439s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=0 t=9 P='A' D='G' brain=3.464s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=0 t=9.5 P='A' D='N' brain=3.348s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=0 t=10 P='A' D='N' brain=3.375s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=0 t=10.25 P='A' D='N' brain=3.461s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=0 t=12 P='B' D='K' brain=3.441s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=0 t=13 P='D' D='C' brain=3.420s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=1 t=3 P='C' D='K' brain=3.409s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=1 t=7 P='B' D='A' brain=3.407s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=1 t=8 P='B' D='A' brain=3.284s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=1 t=9 P='A' D='G' brain=3.431s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=1 t=9.5 P='A' D='N' brain=3.499s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=1 t=10 P='A' D='N' brain=3.388s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=1 t=10.25 P='A' D='N' brain=3.387s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=1 t=12 P='B' D='K' brain=3.394s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=1 t=13 P='D' D='C' brain=3.637s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=2 t=8 P='B' D='A' brain=3.366s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=2 t=10 P='A' D='G' brain=3.399s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_320_fp16 run=2 t=12 P='B' D='K' brain=3.435s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=0 t=3 P='C' D='K' brain=2.792s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=0 t=7 P='B' D='A' brain=2.553s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=0 t=8 P='B' D='A' brain=2.524s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=0 t=9 P='A' D='G' brain=2.518s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=0 t=9.5 P='A' D='N' brain=2.544s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=0 t=10 P='A' D='N' brain=2.640s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=0 t=10.25 P='A' D='N' brain=2.590s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=0 t=12 P='B' D='K' brain=2.616s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=0 t=13 P='C' D='K' brain=2.581s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=1 t=3 P='C' D='K' brain=2.592s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=1 t=7 P='B' D='A' brain=2.669s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=1 t=8 P='B' D='A' brain=2.652s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=1 t=9 P='A' D='G' brain=2.530s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=1 t=9.5 P='A' D='N' brain=2.768s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=1 t=10 P='A' D='N' brain=2.727s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=1 t=10.25 P='A' D='N' brain=2.583s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=1 t=12 P='B' D='K' brain=2.595s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=1 t=13 P='C' D='K' brain=2.592s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=2 t=8 P='B' D='A' brain=2.502s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=2 t=10 P='A' D='G' brain=2.570s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_288_fp16 run=2 t=12 P='B' D='K' brain=2.618s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=0 t=3 P='C' D='K' brain=1.851s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=0 t=7 P='B' D='A' brain=1.848s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=0 t=8 P='B' D='A' brain=1.865s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=0 t=9 P='A' D='G' brain=1.948s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=0 t=9.5 P='A' D='N' brain=1.834s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=0 t=10 P='A' D='N' brain=1.924s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=0 t=10.25 P='A' D='N' brain=1.911s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=0 t=12 P='D' D='K' brain=1.890s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=0 t=13 P='D' D='C' brain=1.874s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=1 t=3 P='C' D='K' brain=1.911s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=1 t=7 P='B' D='A' brain=1.849s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=1 t=8 P='B' D='A' brain=1.912s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=1 t=9 P='A' D='G' brain=2.037s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=1 t=9.5 P='A' D='N' brain=1.970s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=1 t=10 P='A' D='N' brain=1.943s
+[MOCK ROBOT] SURPRISE UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=1 t=10.25 P='A' D='N' brain=1.863s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=1 t=12 P='D' D='K' brain=1.942s
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=1 t=13 P='D' D='C' brain=1.891s
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=2 t=8 P='B' D='A' brain=1.911s
+[MOCK ROBOT] SEARCH RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=2 t=10 P='A' D='G' brain=1.876s
+[MOCK ROBOT] FOUND CENTER target=PERSON distance=UNKNOWN confidence=n/a
+class_both_256_fp16 run=2 t=12 P='D' D='K' brain=1.909s

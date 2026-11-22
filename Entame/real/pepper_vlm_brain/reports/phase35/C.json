@@ -1,0 +1,10 @@
+{
+  "experiment": "C",
+  "status": "NOT RUN",
+  "reason": "B failed its independent accuracy gate",
+  "a_eligible": true,
+  "b_eligible": false,
+  "measured_latency_s": null,
+  "measured_accuracy": null,
+  "promoted": false
+}

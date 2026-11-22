@@ -1,0 +1,168 @@
+{
+  "adapters/__init__.py": {
+    "unchanged": true,
+    "sha256": "34aad87101ea48df6f6676a8482bfd8241ce46e6a8c52ee7389f3b41bf6ce1f0"
+  },
+  "adapters/camera_webcam.py": {
+    "unchanged": true,
+    "sha256": "eebbe09ab63d394c6af99696905634530655f5fc66a8949fc994d850e10783f0"
+  },
+  "adapters/robot_mock.py": {
+    "unchanged": true,
+    "sha256": "d949e5e652cef009484ba17540809007bdbf8844cc675ef30ba93fd1ecc9667d"
+  },
+  "adapters/video_source.py": {
+    "unchanged": true,
+    "sha256": "6dd774a525f2837a4f5ce27d57ed89a6b4b236ca895bf42448755839b291ec01"
+  },
+  "benchmark_latency.py": {
+    "unchanged": true,
+    "sha256": "c75552f5bb4cae90ae5c312905f95e76a6b1dcc95b8291612f30aca977f2732f"
+  },
+  "brain/__init__.py": {
+    "unchanged": true,
+    "sha256": "fa4c40daf77f89d8ef8cff215c9fb6574b75c9faf0ab5071f99fbf3dc81b8845"
+  },
+  "brain/decision.py": {
+    "unchanged": true,
+    "sha256": "52cb3d5e12dbae03aeb545695656703040985f17b0205d15b53f9cafb4499d4d"
+  },
+  "brain/images.py": {
+    "unchanged": true,
+    "sha256": "d6c9cc5279afba145b53344de0e2bd1a4c946e136f760e755d77cc7862ff58f3"
+  },
+  "brain/memory.py": {
+    "unchanged": true,
+    "sha256": "ce8af2ab1827d39f91d3c86e574061a87b5a3618b387027ff7ba0bed54e3d207"
+  },
+  "brain/prompt.py": {
+    "unchanged": true,
+    "sha256": "77e3ce7d42a0ea78310812583fd91197d132e9ed645a32e759c4720132575a6c"
+  },
+  "brain/schemas.py": {
+    "unchanged": true,
+    "sha256": "f1dafc11558e14b9b27351c98f72d5d7c410a5d22e68f47b696e546b0aadd3b1"
+  },
+  "brain/split_brain.py": {
+    "unchanged": true,
+    "sha256": "79d57aaa29bb466f82ac3e46ea7248b456731a8e96b797e5d63a1e4e38f4064a"
+  },
+  "brain/split_prompt.py": {
+    "unchanged": true,
+    "sha256": "72c3019e2384d14d831efbdf9cbbc350f921a14089499a0cbe4e6a4d6aed5978"
+  },
+  "brain/split_schemas.py": {
+    "unchanged": true,
+    "sha256": "2afc139b48b4d82195a6140392918bd63dd953721d4e7c33e1ea920b67b4a03b"
+  },
+  "brain/split_vlm.py": {
+    "unchanged": true,
+    "sha256": "664b1b7dfd234253098c253dd09f10b67a7958e5e6f46120b0768faad66761a9"
+  },
+  "brain/state.py": {
+    "unchanged": true,
+    "sha256": "4a0689d7d9f67ced9e471419222fb6b3bdfdfd5966f2d559c27bed76a50ca32d"
+  },
+  "brain/telemetry.py": {
+    "unchanged": true,
+    "sha256": "92a84f1e588c343371e213bd4d4cb3feb5655e612598069beb6dc7261b2d15c7"
+  },
+  "brain/vlm.py": {
+    "unchanged": true,
+    "sha256": "c35b20f4e314ac79108a7321ccf4b27bdd9c814863af9a7cc684c4d7f39b7422"
+  },
+  "config.py": {
+    "unchanged": true,
+    "sha256": "74252ac39bfa38a5b537d6fcbf141b3caf3d2b8bf82497bce5f79373452b2339"
+  },
+  "evaluate_latency.py": {
+    "unchanged": true,
+    "sha256": "01f46157aea3d12385afb4649e2a0790b42a21b71d5f13d1ed8a50f0236c8e35"
+  },
+  "evaluate_phase33.py": {
+    "unchanged": true,
+    "sha256": "a0d875c3c7865e6e7c7f4e141343ae1dacbc7f1baf118fdccb76f98d352bbc81"
+  },
+  "evaluate_split_scenario.py": {
+    "unchanged": true,
+    "sha256": "a77f8e3b24fc556f71627952c62ac08425fc1b30f9928d56206979d44e6482c2"
+  },
+  "latency/__init__.py": {
+    "unchanged": true,
+    "sha256": "bc8a174616b213363e247a50da20c64d96e6109288bc31c973acf94d038994b7"
+  },
+  "latency/attention.py": {
+    "unchanged": true,
+    "sha256": "dd76d33508d72d070e2720d4e68527f904967eac855df13808efbf55bceed5e6"
+  },
+  "latency/codecs.py": {
+    "unchanged": true,
+    "sha256": "ecc6a29dd984b54e21fe80a13a9c69bdfc8722b4100bfe3e6a6e7432b18937da"
+  },
+  "latency/engine.py": {
+    "unchanged": true,
+    "sha256": "ba02eecc82ad311573a54785db9532707b107661bfba96f353bb159f52917d90"
+  },
+  "latency/patch_linear.py": {
+    "unchanged": true,
+    "sha256": "39376c10173e7508a90cb2ace856d08853f5af8cca8d0ac72a95320b994e205e"
+  },
+  "latency/profiles.py": {
+    "unchanged": true,
+    "sha256": "2268f109ab2ea74369f31abb52a2aa85121092314ee37cf25371cb706c68e4b7"
+  },
+  "latency/runtime.py": {
+    "unchanged": true,
+    "sha256": "1abd195171e46d5c0656e6d41507f1cbaeb23b7ff1e3770db7e01a4931f78702"
+  },
+  "run_brain.py": {
+    "unchanged": true,
+    "sha256": "cd6d787a3caa3c66fee368dbf25f303ef45c8f43859cee19b71aa76e6a98b2de"
+  },
+  "run_video.py": {
+    "unchanged": true,
+    "sha256": "d9e190b4630ff958713f7c971a4dc87de9c552c3039d0fe741910349a42fa7a3"
+  },
+  "scenarios/IMG_7121_hide_and_seek.json": {
+    "unchanged": true,
+    "sha256": "ae8cb6e4a6e7022ab8d5e3d523206189f4ccee7882141edf27dcc86db486fe01"
+  },
+  "scenarios/IMG_7121_phase31.json": {
+    "unchanged": true,
+    "sha256": "4e6584ae639ca798051ee1fa69a4ca3090c4b443c343ce9ee92b82d76eb73b48"
+  },
+  "scenarios/IMG_7121_phase31_additional.json": {
+    "unchanged": true,
+    "sha256": "2b80a95135b867798aceeb354d8a5f85919978e536f1c6efe610d07976572a48"
+  },
+  "scenarios/IMG_7121_phase32_perception.json": {
+    "unchanged": true,
+    "sha256": "a881a43e60b1343258b68fc52c8a7c1b510b8ae7eab554e98dadb8b6f3d81b13"
+  },
+  "scenarios/IMG_7121_phase32_planner.json": {
+    "unchanged": true,
+    "sha256": "f64b3ca14e2d9dbe42db6921c55833c4cef4681bd6ab1e25116d3094303d96bf"
+  },
+  "scenarios/IMG_7121_phase33_nine.json": {
+    "unchanged": true,
+    "sha256": "6267b69062bcdee3d3fb6e9a00fce7e255328c382b0eb83b61e229af58f1d8b3"
+  },
+  "scenarios/IMG_7121_phase33_three.json": {
+    "unchanged": true,
+    "sha256": "04f30dd2dd6c91bcaa390ca98a2c679ff234d86760fb95051290a76227333d12"
+  },
+  "scenarios/images/README.md": {
+    "unchanged": true,
+    "sha256": "81f161d5d4a7d22dba850afee4f14c08ae79dc7ef9f50f00913e5971fc13c6ed"
+  },
+  "scenarios/images/qwen-demo.jpg": {
+    "unchanged": true,
+    "sha256": "9eeaa87013b4e800930e8a411b58ff9e2fd5383906b1a022f4a712720af34cc2"
+  },
+  "existing_reports": {
+    "unchanged": true,
+    "count": 169,
+    "preexisting_user_edit_excluded": "reports/PHASE33.md",
+    "preexisting_edit_sha256": "5c6156e6f385b0566a30376c421187494393d7b1d4a60876c64ca5c668a4bb1a"
+  }
+}

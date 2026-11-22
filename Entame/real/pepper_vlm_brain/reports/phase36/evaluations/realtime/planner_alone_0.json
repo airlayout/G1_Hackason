@@ -1,0 +1,140 @@
+{
+  "case": "planner_alone",
+  "status": "complete",
+  "fast_count": 0,
+  "accepted_count": 0,
+  "rejected_count": 0,
+  "inference_latency_s": {
+    "count": 0,
+    "mean": null,
+    "median": null,
+    "p95": null,
+    "max": null
+  },
+  "slow_planner_latency_s": {
+    "count": 30,
+    "mean": 0.9847374433335062,
+    "median": 0.9824666000004072,
+    "p95": 1.019948769999519,
+    "max": 1.0269447999999102
+  },
+  "slow_semantic_latency_s": {
+    "count": 0,
+    "mean": null,
+    "median": null,
+    "p95": null,
+    "max": null
+  },
+  "result_frame_age_s": {
+    "count": 0,
+    "mean": null,
+    "median": null,
+    "p95": null,
+    "max": null
+  },
+  "update_interval_s": {
+    "count": 0,
+    "mean": null,
+    "median": null,
+    "p95": null,
+    "max": null
+  },
+  "update_rate_hz": 0.0,
+  "overlap_fast_count": 0,
+  "overlap_latency_s": {
+    "count": 0,
+    "mean": null,
+    "median": null,
+    "p95": null,
+    "max": null
+  },
+  "verified_empty_window_false_positive_total": [
+    0,
+    0
+  ],
+  "look_frame_to_ready_s": {
+    "count": 0,
+    "mean": null,
+    "median": null,
+    "p95": null,
+    "max": null
+  },
+  "look_while_slow_frame_to_ready_s": {
+    "count": 0,
+    "mean": null,
+    "median": null,
+    "p95": null,
+    "max": null
+  },
+  "look_while_slow_count": 0,
+  "slow_active_fast_loop_pass": false,
+  "latest_frame_wins": true,
+  "no_queue_accumulation": true,
+  "stale_result_rejection_pass": true,
+  "high_level_planner_integrity_pass": true,
+  "policy_correct_total": [
+    30,
+    30
+  ],
+  "cancelled_jobs": [],
+  "integrity_errors": [],
+  "event_kpis": {
+    "body_center_to_LEFT": {
+      "look_ready_upper_s": null,
+      "look_ready_lower_s": null,
+      "generation": null
+    },
+    "person_fully_disappears": {
+      "detection_latency_upper_s": null,
+      "detection_latency_lower_s": null,
+      "detected_generation": null,
+      "search_ready_upper_s": null,
+      "search_from_detection_s": null,
+      "search_ready": null
+    },
+    "first_partial_head_reappears_LEFT": {
+      "look_ready_upper_s": null,
+      "look_ready_lower_s": null,
+      "generation": null
+    }
+  },
+  "source_annotation_note": "Event latencies are conservative upper/lower bounds from visually annotated intervals; GT is evaluator-only.",
+  "cpu_process_percent": {
+    "15276": {
+      "count": 60,
+      "mean": 96.475,
+      "median": 99.8,
+      "p95": 100.0,
+      "max": 102.9
+    },
+    "13388": {
+      "count": 60,
+      "mean": 16.911666666666665,
+      "median": 12.5,
+      "p95": 28.409999999999982,
+      "max": 250.0
+    }
+  },
+  "gpu_utilization_percent": {
+    "count": 60,
+    "mean": 39.7,
+    "median": 40.0,
+    "p95": 42.0,
+    "max": 42
+  },
+  "gpu_used_gib": {
+    "count": 60,
+    "mean": 4.874095153808594,
+    "median": 4.874198913574219,
+    "p95": 4.874198913574219,
+    "max": 4.874198913574219
+  },
+  "peak_allocated_gib": 4.056125164031982,
+  "peak_reserved_gib": 4.095703125,
+  "fast_peak_allocated_gib": null,
+  "fast_peak_reserved_gib": null,
+  "planner_trigger_count": 0,
+  "slow_dispatch_count": 30,
+  "cooperative_single_weight": false,
+  "shared_qwen_negative_control": false
+}

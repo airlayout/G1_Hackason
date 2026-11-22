@@ -1,0 +1,9 @@
+{
+  "command": ".venv\\Scripts\\python.exe -m pytest -q",
+  "exit_code": 0,
+  "stdout": "........................................................................ [ 63%]\n.........................................                                [100%]\n113 passed in 0.52s\n",
+  "stderr": "",
+  "existing_cases": 72,
+  "new_cases": 41,
+  "contract_migration": "All original test cases retained; Memory tests now explicitly supply Observation rather than Decision-derived presence."
+}

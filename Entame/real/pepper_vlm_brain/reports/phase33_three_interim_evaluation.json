@@ -1,0 +1,27 @@
+{
+  "pass": false,
+  "integrity_errors": [
+    "Frame schedule mismatch",
+    "Pipeline failed"
+  ],
+  "checks": [
+    {
+      "timestamp": 8,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 10,
+      "pass": true,
+      "errors": []
+    },
+    {
+      "timestamp": 12,
+      "pass": false,
+      "errors": [
+        "Missing/duplicate frame"
+      ]
+    }
+  ],
+  "model_reuse": true
+}

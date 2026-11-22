@@ -1,0 +1,181 @@
+qwen selected [27, 27] [12, 15]
+yolo selected [27, 27] [15, 15]
+yolo selected [27, 27] [15, 15]
+fast_vlm_alone_0 fast loop True integrity []
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+fast_vlm_planner_0 fast loop False integrity []
+fast_vlm_semantic_0 fast loop False integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+hybrid_0 fast loop True integrity []
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+planner_alone_0 fast loop False integrity []
+yolo_alone_0 fast loop True integrity []
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+yolo_planner_0 fast loop True integrity []
+yolo_semantic_0 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+hybrid_0 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+hybrid_1 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+hybrid_2 fast loop True integrity []
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+fast_vlm_planner_cooperative_0 fast loop True integrity []
+fast_vlm_semantic_cooperative_0 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+hybrid_0 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+hybrid_1 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+hybrid_2 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+hybrid_0 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+hybrid_1 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+hybrid_2 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+hybrid_0 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+hybrid_1 fast loop True integrity []
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+hybrid_2 fast loop True integrity []

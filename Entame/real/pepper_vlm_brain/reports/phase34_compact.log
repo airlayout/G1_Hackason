@@ -1,0 +1,294 @@
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=0 t=3 P='1|C|N|0' D='A APPROACH,C CENTER,NEAR' brain=5.668s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=0 t=7 P='1|L|N|0' D='L LOOK,A APPROACH,X AVOID' brain=5.584s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=0 t=8 P='visible(1)|direction(L)|distance' D='' brain=5.076s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=0 t=9 P='0|C|N|0' D='' brain=5.120s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=0 t=9.5 P='1|C|N|0' D='A APPROACH,CENTER,NEAR' brain=5.527s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=0 t=10 P='1|C|N|0' D='A APPROACH,CENTER,NEAR' brain=5.626s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=0 t=10.25 P='0|C|N|0' D='' brain=5.102s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=0 t=12 P='1|C|N|0' D='A APPROACH,CENTER,NEAR' brain=5.508s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=0 t=13 P='1|C|N|0' D='A APPROACH,CENTER,NEAR' brain=5.372s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=1 t=3 P='1|C|N|0' D='A APPROACH,C CENTER,NEAR' brain=5.520s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=1 t=7 P='1|L|N|0' D='L LOOK,A APPROACH,X AVOID' brain=5.466s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=1 t=8 P='visible(1)|direction(L)|distance' D='' brain=5.125s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=1 t=9 P='0|C|N|0' D='' brain=5.163s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=1 t=9.5 P='1|C|N|0' D='A APPROACH,CENTER,NEAR' brain=5.519s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=1 t=10 P='1|C|N|0' D='A APPROACH,CENTER,NEAR' brain=5.525s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=1 t=10.25 P='0|C|N|0' D='' brain=5.154s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=1 t=12 P='1|C|N|0' D='A APPROACH,CENTER,NEAR' brain=5.465s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=1 t=13 P='1|C|N|0' D='A APPROACH,CENTER,NEAR' brain=5.490s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=2 t=8 P='visible(1)|direction(L)|distance' D='' brain=5.259s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=2 t=10 P='1|C|N|0' D='A APPROACH,C CENTER,NEAR' brain=5.623s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+compact run=2 t=12 P='1|C|N|0' D='A APPROACH,CENTER,NEAR' brain=5.488s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=0 t=3 P='Based on the provided information, here is' D='' brain=5.130s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=0 t=7 P='Based on the provided image and the description' D='' brain=4.966s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=0 t=8 P='Based on the provided image and the description' D='' brain=5.130s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=0 t=9 P='Based on the provided image and the description' D='' brain=5.176s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=0 t=9.5 P='Based on the provided image and the description' D='' brain=5.217s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=0 t=10 P='Based on the provided image and the description' D='' brain=5.065s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=0 t=10.25 P='Based on the provided image and the description' D='' brain=5.064s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=0 t=12 P='Based on the provided image and the description' D='' brain=5.282s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=0 t=13 P='Based on the provided image and the description' D='' brain=5.147s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=1 t=3 P='Based on the provided information, here is' D='' brain=5.060s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=1 t=7 P='Based on the provided image and the description' D='' brain=5.182s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=1 t=8 P='Based on the provided image and the description' D='' brain=4.941s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=1 t=9 P='Based on the provided image and the description' D='' brain=4.818s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=1 t=9.5 P='Based on the provided image and the description' D='' brain=4.798s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=1 t=10 P='Based on the provided image and the description' D='' brain=4.847s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=1 t=10.25 P='Based on the provided image and the description' D='' brain=4.785s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=1 t=12 P='Based on the provided image and the description' D='' brain=4.785s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=1 t=13 P='Based on the provided image and the description' D='' brain=4.958s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=2 t=8 P='Based on the provided image and the description' D='' brain=4.825s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=2 t=10 P='Based on the provided image and the description' D='' brain=4.796s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_384 run=2 t=12 P='Based on the provided image and the description' D='' brain=4.813s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=0 t=3 P='Based on the provided image and the specified' D='' brain=3.629s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=0 t=7 P='Based on the provided image and the description' D='' brain=3.560s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=0 t=8 P='Based on the provided image and the description' D='' brain=3.434s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=0 t=9 P='There are no visible people in the image' D='' brain=3.637s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=0 t=9.5 P='There is no visible person in the image' D='' brain=3.559s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=0 t=10 P='There is no visible person in the image' D='' brain=3.612s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=0 t=10.25 P='There is no visible person in the image' D='' brain=3.587s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=0 t=12 P='Based on the provided image and the specified' D='' brain=3.636s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=0 t=13 P='Based on the provided image and the description' D='' brain=3.578s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=1 t=3 P='Based on the provided image and the specified' D='' brain=3.566s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=1 t=7 P='Based on the provided image and the description' D='' brain=3.620s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=1 t=8 P='Based on the provided image and the description' D='' brain=3.578s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=1 t=9 P='There are no visible people in the image' D='' brain=3.579s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=1 t=9.5 P='There is no visible person in the image' D='' brain=3.761s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=1 t=10 P='There is no visible person in the image' D='' brain=3.641s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=1 t=10.25 P='There is no visible person in the image' D='' brain=3.743s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=1 t=12 P='Based on the provided image and the specified' D='' brain=3.788s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=1 t=13 P='Based on the provided image and the description' D='' brain=3.448s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=2 t=8 P='Based on the provided image and the description' D='' brain=3.635s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=2 t=10 P='There is no visible person in the image' D='' brain=3.621s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_336 run=2 t=12 P='Based on the provided image and the specified' D='' brain=3.602s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=0 t=3 P='Based on the provided image and the description' D='' brain=3.619s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=0 t=7 P='Based on the provided image and the description' D='' brain=3.559s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=0 t=8 P='Based on the provided image and the description' D='' brain=3.594s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=0 t=9 P='Based on the provided image and the description' D='' brain=3.747s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=0 t=9.5 P='There is no person visible in the image' D='' brain=3.660s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=0 t=10 P='There are no visible people in the image' D='' brain=3.596s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=0 t=10.25 P='There is no person visible in the image' D='' brain=3.585s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=0 t=12 P='Based on the provided image and the specified' D='' brain=3.730s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=0 t=13 P='Based on the provided image and the description' D='' brain=3.647s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=1 t=3 P='Based on the provided image and the description' D='' brain=3.738s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=1 t=7 P='Based on the provided image and the description' D='' brain=3.661s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=1 t=8 P='Based on the provided image and the description' D='' brain=3.572s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=1 t=9 P='Based on the provided image and the description' D='' brain=3.685s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=1 t=9.5 P='There is no person visible in the image' D='' brain=3.550s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=1 t=10 P='There are no visible people in the image' D='' brain=3.617s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=1 t=10.25 P='There is no person visible in the image' D='' brain=3.726s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=1 t=12 P='Based on the provided image and the specified' D='' brain=3.613s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=1 t=13 P='Based on the provided image and the description' D='' brain=3.615s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=2 t=8 P='Based on the provided image and the description' D='' brain=3.586s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=2 t=10 P='There are no visible people in the image' D='' brain=3.626s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_320 run=2 t=12 P='Based on the provided image and the specified' D='' brain=3.574s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=0 t=3 P='Based on the provided image and the specified' D='' brain=2.914s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=0 t=7 P='Based on the provided image and the description' D='' brain=2.898s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=0 t=8 P='Based on the provided image and the description' D='' brain=2.735s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=0 t=9 P='Based on the provided image and the specified' D='' brain=2.895s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=0 t=9.5 P='Based on the provided image and the specified' D='' brain=2.872s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=0 t=10 P='Based on the provided image, the person' D='' brain=2.853s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=0 t=10.25 P='Based on the provided image and the specified' D='' brain=2.759s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=0 t=12 P='Based on the provided image and the description' D='' brain=2.883s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=0 t=13 P='Based on the provided image and the specified' D='' brain=2.911s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=1 t=3 P='Based on the provided image and the specified' D='' brain=2.787s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=1 t=7 P='Based on the provided image and the description' D='' brain=2.775s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=1 t=8 P='Based on the provided image and the description' D='' brain=2.627s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=1 t=9 P='Based on the provided image and the specified' D='' brain=2.838s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=1 t=9.5 P='Based on the provided image and the specified' D='' brain=2.757s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=1 t=10 P='Based on the provided image, the person' D='' brain=2.832s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=1 t=10.25 P='Based on the provided image and the specified' D='' brain=2.711s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=1 t=12 P='Based on the provided image and the description' D='' brain=2.578s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=1 t=13 P='Based on the provided image and the specified' D='' brain=2.579s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=2 t=8 P='Based on the provided image and the description' D='' brain=2.635s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=2 t=10 P='Based on the provided image, the person' D='' brain=2.601s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_288 run=2 t=12 P='Based on the provided image and the description' D='' brain=2.601s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=0 t=3 P='Based on the provided image and the specified' D='' brain=1.940s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=0 t=7 P='Based on the provided image and the description' D='' brain=2.055s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=0 t=8 P='Based on the provided image and the description' D='' brain=2.019s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=0 t=9 P='Based on the provided image and the specified' D='' brain=1.984s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=0 t=9.5 P='Based on the provided image and the specified' D='' brain=2.004s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=0 t=10 P='Based on the provided image and the specified' D='' brain=2.236s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=0 t=10.25 P='Based on the provided image and the specified' D='' brain=1.999s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=0 t=12 P='Based on the provided image and the description' D='' brain=2.119s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=0 t=13 P='Based on the provided image and the specified' D='' brain=2.045s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=1 t=3 P='Based on the provided image and the specified' D='' brain=2.125s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=1 t=7 P='Based on the provided image and the description' D='' brain=2.073s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=1 t=8 P='Based on the provided image and the description' D='' brain=2.164s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=1 t=9 P='Based on the provided image and the specified' D='' brain=1.961s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=1 t=9.5 P='Based on the provided image and the specified' D='' brain=1.976s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=1 t=10 P='Based on the provided image and the specified' D='' brain=1.986s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=1 t=10.25 P='Based on the provided image and the specified' D='' brain=2.164s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=1 t=12 P='Based on the provided image and the description' D='' brain=2.100s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=1 t=13 P='Based on the provided image and the specified' D='' brain=2.240s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=2 t=8 P='Based on the provided image and the description' D='' brain=2.010s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=2 t=10 P='Based on the provided image and the specified' D='' brain=2.158s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+minimal_256 run=2 t=12 P='Based on the provided image and the description' D='' brain=2.078s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=0 t=3 P='C' D='L LOOK,C APPROACH,P SEARCH,F' brain=4.833s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=0 t=7 P='B' D='L LOOK,P AVOID_LEFT' brain=4.790s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=0 t=8 P='B' D='L LOOK,P AVOID_LEFT' brain=4.753s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=0 t=9 P='A' D='S SEARCH,F FOUND,R SURPRISE' brain=4.850s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=0 t=9.5 P='A' D='S SEARCH,F FOUND,R SURPRISE' brain=4.786s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=0 t=10 P='A' D='S SEARCH,F FOUND,R SURPRISE' brain=4.811s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=0 t=10.25 P='A' D='S SEARCH,F FOUND,R SURPRISE' brain=4.760s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=0 t=12 P='B' D='L LOOK,P AVOID_LEFT' brain=4.816s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=0 t=13 P='D' D='L LOOK,R AVOID_LEFT,S SEARCH' brain=4.863s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=1 t=3 P='C' D='L LOOK,C APPROACH,P SEARCH,F' brain=4.893s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=1 t=7 P='B' D='L LOOK,P AVOID_LEFT' brain=4.802s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=1 t=8 P='B' D='L LOOK,P AVOID_LEFT' brain=4.916s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=1 t=9 P='A' D='S SEARCH,F FOUND,R SURPRISE' brain=4.948s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=1 t=9.5 P='A' D='S SEARCH,F FOUND,R SURPRISE' brain=4.898s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=1 t=10 P='A' D='S SEARCH,F FOUND,R SURPRISE' brain=4.866s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=1 t=10.25 P='A' D='S SEARCH,F FOUND,R SURPRISE' brain=4.919s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=1 t=12 P='B' D='L LOOK,P AVOID_LEFT' brain=4.933s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=1 t=13 P='D' D='L LOOK,R AVOID_LEFT,S SEARCH' brain=4.879s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=2 t=8 P='B' D='L LOOK,P AVOID_LEFT' brain=4.907s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=2 t=10 P='A' D='S SEARCH,F FOUND,R SURPRISE' brain=4.887s
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+class_384 run=2 t=12 P='B' D='L LOOK,P AVOID_LEFT' brain=4.793s

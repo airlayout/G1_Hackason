@@ -1,0 +1,32 @@
+{
+  "mode": "read-only historical local evidence; no G1 connection or YOLO execution",
+  "sources": [
+    {
+      "path": "C:\\dev\\g1-bottle-reaction\\docs\\G1_PERSON_YOLO.md",
+      "sha256": "6919afd31eba86bf5549eb2e01bbcf275ec1b21eacebd427995634b5420699fa"
+    },
+    {
+      "path": "C:\\dev\\g1-bottle-reaction\\src\\g1_bottle_reaction\\game_vision\\person_yolo.py",
+      "sha256": "605b4dc2653a4df81278cf644a8c7074d2b9ab33abc2f9a8d3d271c9dc985e12"
+    },
+    {
+      "path": "C:\\dev\\g1-bottle-reaction\\src\\g1_bottle_reaction\\stealth\\target_perception.py",
+      "sha256": "888aeb6c921cfb39c116db35f01be99eb091fd7a4e42cca92d6b479a4dcb9996"
+    },
+    {
+      "path": "C:\\dev\\g1-bottle-reaction\\README.md",
+      "sha256": "f60ffd645114340bf0aa5b8e2769998a90d8b5960af7a1f281ab18ab7404659c"
+    }
+  ],
+  "documented_device": "RTX 5060 Ti, Linux venv, driver 595.84",
+  "documented_model": "YOLO11n, imgsz 640, confidence .25, inference cap 15 FPS",
+  "historical_inference_count": 3050,
+  "historical_mean_inference_ms": 5.4,
+  "historical_mean_inference_fps": 14.6,
+  "not_measured_here": [
+    "RTX 3060 Ti YOLO latency",
+    "same-GPU VLM contention",
+    "IMG_7121 detector accuracy",
+    "capture-to-execution latency"
+  ]
+}

@@ -1,0 +1,286 @@
+{
+  "prototype_contract_pass": true,
+  "latest_geometry_resolver_pass": true,
+  "model_reuse": true,
+  "integrity_errors": [],
+  "presence_correct_total": [
+    18,
+    18
+  ],
+  "direction_correct_total": [
+    8,
+    10
+  ],
+  "extended_original_planner_scores": [
+    8,
+    8
+  ],
+  "policy_original_scores": [
+    9,
+    9,
+    3
+  ],
+  "main_original_planner_pass": true,
+  "metrics": {
+    "fast_s": {
+      "count": 18,
+      "mean": 0.09803332222216138,
+      "median": 0.09758145000068907,
+      "p95": 0.10717488500131367
+    },
+    "semantic_s": {
+      "count": 18,
+      "mean": 2.2378265888887148,
+      "median": 2.2096118999998,
+      "p95": 2.3716154799989453
+    },
+    "planner_s": {
+      "count": 18,
+      "mean": 1.449015566666579,
+      "median": 1.5717173500006538,
+      "p95": 1.6442581449995486
+    },
+    "cycle_s": {
+      "count": 18,
+      "mean": 3.784966733333123,
+      "median": 3.8878967000000557,
+      "p95": 4.104647639999802
+    },
+    "fast_blocked_by_semantic_planner_s": {
+      "count": 18,
+      "mean": 3.686842155555294,
+      "median": 3.7831719999994675,
+      "p95": 4.004651894999279
+    }
+  },
+  "peak_allocated_gib": 4.056459426879883,
+  "peak_reserved_gib": 4.095703125,
+  "run_evaluations": [
+    {
+      "pass": false,
+      "integrity_errors": [],
+      "checks": [
+        {
+          "timestamp": 3,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 7,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 8,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 9,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 9.5,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 10,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 10.25,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 12,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 13,
+          "pass": false,
+          "errors": [
+            "Perception direction mismatch",
+            "Planner direction/target mismatch"
+          ]
+        }
+      ],
+      "planner_policy_checks": [
+        {
+          "timestamp": 3,
+          "pass": true
+        },
+        {
+          "timestamp": 7,
+          "pass": true
+        },
+        {
+          "timestamp": 8,
+          "pass": true
+        },
+        {
+          "timestamp": 9,
+          "pass": true
+        },
+        {
+          "timestamp": 9.5,
+          "pass": true
+        },
+        {
+          "timestamp": 10,
+          "pass": true
+        },
+        {
+          "timestamp": 10.25,
+          "pass": true
+        },
+        {
+          "timestamp": 12,
+          "pass": true
+        },
+        {
+          "timestamp": 13,
+          "pass": true
+        }
+      ],
+      "planner_policy_pass": true,
+      "model_reuse": true
+    },
+    {
+      "pass": false,
+      "integrity_errors": [],
+      "checks": [
+        {
+          "timestamp": 3,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 7,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 8,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 9,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 9.5,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 10,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 10.25,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 12,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 13,
+          "pass": false,
+          "errors": [
+            "Perception direction mismatch",
+            "Planner direction/target mismatch"
+          ]
+        }
+      ],
+      "planner_policy_checks": [
+        {
+          "timestamp": 3,
+          "pass": true
+        },
+        {
+          "timestamp": 7,
+          "pass": true
+        },
+        {
+          "timestamp": 8,
+          "pass": true
+        },
+        {
+          "timestamp": 9,
+          "pass": true
+        },
+        {
+          "timestamp": 9.5,
+          "pass": true
+        },
+        {
+          "timestamp": 10,
+          "pass": true
+        },
+        {
+          "timestamp": 10.25,
+          "pass": true
+        },
+        {
+          "timestamp": 12,
+          "pass": true
+        },
+        {
+          "timestamp": 13,
+          "pass": true
+        }
+      ],
+      "planner_policy_pass": true,
+      "model_reuse": true
+    },
+    {
+      "pass": true,
+      "integrity_errors": [],
+      "checks": [
+        {
+          "timestamp": 8,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 10,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 12,
+          "pass": true,
+          "errors": []
+        }
+      ],
+      "planner_policy_checks": [
+        {
+          "timestamp": 8,
+          "pass": true
+        },
+        {
+          "timestamp": 10,
+          "pass": true
+        },
+        {
+          "timestamp": 12,
+          "pass": true
+        }
+      ],
+      "planner_policy_pass": true,
+      "model_reuse": true
+    }
+  ],
+  "note": "Prototype PASS means precedence/reuse/binding contracts, not fast E2E viability. Semantic+Planner are nonpreemptible blocking jobs."
+}

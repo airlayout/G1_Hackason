@@ -1,0 +1,13 @@
+*.py text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.csv -text
+*.wav binary
+*.so* binary
+*.STL binary
+# Preserve inherited snapshot whitespace and CSV bytes (motion SHA256 gates).
+g1-bottle-reaction/** whitespace=-blank-at-eof
+motiondecode-test/.gitignore whitespace=-blank-at-eof
+motiondecode-test/external/** whitespace=-blank-at-eof,-blank-at-eol
+motiondecode-test/data/metadata/*.csv whitespace=-blank-at-eol
+motiondecode-test/output/*.csv whitespace=-blank-at-eol

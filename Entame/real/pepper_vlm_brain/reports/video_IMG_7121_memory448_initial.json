@@ -1,0 +1,706 @@
+{
+  "created_at": "2026-10-01T16:33:20.042176+09:00",
+  "mode": "single-image inference from selected video frames",
+  "memory_enabled": true,
+  "config": {
+    "model_name": "Qwen/Qwen3-VL-2B-Instruct",
+    "revision": null,
+    "quantize_4bit": false,
+    "cache_dir": "C:\\dev\\robot-vlm-brain\\.cache\\huggingface\\hub",
+    "max_image_side": 448,
+    "min_pixels": 4096,
+    "max_pixels": 200704,
+    "max_new_tokens": 128,
+    "vram_fraction": 0.8
+  },
+  "timestamps": [
+    2.0,
+    6.0,
+    8.0,
+    10.0,
+    12.0,
+    16.0,
+    20.0,
+    24.0
+  ],
+  "status": "pass",
+  "frames": [
+    {
+      "timestamp": 2.0,
+      "actual_timestamp": 2.0,
+      "frame_index": 60,
+      "saved_input_frame": "C:\\dev\\robot-vlm-brain\\reports\\frames\\video_IMG_7121_memory448_initial\\000060_00002.000s.png",
+      "source_image_size": [
+        910,
+        512
+      ],
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "WAIT",
+        "last_seen_person_direction": "UNKNOWN",
+        "person_visible_last_frame": false,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "gpu_observation": {
+        "scope": "system GPU, not just this process",
+        "sample_count": 18,
+        "utilization_mean_percent": 33.333333333333336,
+        "utilization_peak_percent": 46.0,
+        "memory_peak_mib": 5086.0
+      },
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person visible on left"
+      },
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"LEFT\",\n  \"target\": \"PERSON\",\n  \"distance\": \"NEAR\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"Person visible on left\"\n}",
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 5.8426695999951335,
+        "model_allocated_gib": 3.9638280868530273,
+        "source_image_size": [
+          910,
+          512
+        ],
+        "image_size": [
+          448,
+          252
+        ],
+        "image_grid_thw": [
+          1,
+          16,
+          28
+        ],
+        "processor_image_size": [
+          448,
+          256
+        ],
+        "image_tokens": 112,
+        "prompt_characters": 2245,
+        "max_new_tokens": 128,
+        "preprocessing_latency_s": 0.036066799992113374,
+        "generation_latency_s": 8.983263200003421,
+        "inference_latency_s": 9.019538599997759,
+        "input_tokens": 643,
+        "output_tokens": 53,
+        "peak_allocated_gib": 4.139321327209473,
+        "peak_reserved_gib": 4.1640625,
+        "vram_free_gib": 2.755859375,
+        "vram_total_gib": 7.99951171875
+      }
+    },
+    {
+      "timestamp": 6.0,
+      "actual_timestamp": 6.0,
+      "frame_index": 180,
+      "saved_input_frame": "C:\\dev\\robot-vlm-brain\\reports\\frames\\video_IMG_7121_memory448_initial\\000180_00006.000s.png",
+      "source_image_size": [
+        910,
+        512
+      ],
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "gpu_observation": {
+        "scope": "system GPU, not just this process",
+        "sample_count": 17,
+        "utilization_mean_percent": 36.470588235294116,
+        "utilization_peak_percent": 47.0,
+        "memory_peak_mib": 5086.0
+      },
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person visible on left"
+      },
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"LEFT\",\n  \"target\": \"PERSON\",\n  \"distance\": \"NEAR\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"Person visible on left\"\n}",
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 5.8426695999951335,
+        "model_allocated_gib": 3.9638280868530273,
+        "source_image_size": [
+          910,
+          512
+        ],
+        "image_size": [
+          448,
+          252
+        ],
+        "image_grid_thw": [
+          1,
+          16,
+          28
+        ],
+        "processor_image_size": [
+          448,
+          256
+        ],
+        "image_tokens": 112,
+        "prompt_characters": 2241,
+        "max_new_tokens": 128,
+        "vram_free_gib": 2.755859375,
+        "vram_total_gib": 7.99951171875,
+        "preprocessing_latency_s": 0.010651200005668215,
+        "generation_latency_s": 8.452274399998714,
+        "inference_latency_s": 8.463080800007447,
+        "input_tokens": 643,
+        "output_tokens": 53,
+        "peak_allocated_gib": 4.139321327209473,
+        "peak_reserved_gib": 4.1640625
+      }
+    },
+    {
+      "timestamp": 8.0,
+      "actual_timestamp": 8.0,
+      "frame_index": 240,
+      "saved_input_frame": "C:\\dev\\robot-vlm-brain\\reports\\frames\\video_IMG_7121_memory448_initial\\000240_00008.000s.png",
+      "source_image_size": [
+        910,
+        512
+      ],
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "gpu_observation": {
+        "scope": "system GPU, not just this process",
+        "sample_count": 17,
+        "utilization_mean_percent": 34.11764705882353,
+        "utilization_peak_percent": 49.0,
+        "memory_peak_mib": 5086.0
+      },
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person visible on left"
+      },
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"LEFT\",\n  \"target\": \"PERSON\",\n  \"distance\": \"NEAR\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"Person visible on left\"\n}",
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 5.8426695999951335,
+        "model_allocated_gib": 3.9638280868530273,
+        "source_image_size": [
+          910,
+          512
+        ],
+        "image_size": [
+          448,
+          252
+        ],
+        "image_grid_thw": [
+          1,
+          16,
+          28
+        ],
+        "processor_image_size": [
+          448,
+          256
+        ],
+        "image_tokens": 112,
+        "prompt_characters": 2241,
+        "max_new_tokens": 128,
+        "vram_free_gib": 2.755859375,
+        "vram_total_gib": 7.99951171875,
+        "preprocessing_latency_s": 0.009906999999657273,
+        "generation_latency_s": 8.394303399996716,
+        "inference_latency_s": 8.4043687999947,
+        "input_tokens": 643,
+        "output_tokens": 53,
+        "peak_allocated_gib": 4.139321327209473,
+        "peak_reserved_gib": 4.1640625
+      }
+    },
+    {
+      "timestamp": 10.0,
+      "actual_timestamp": 10.0,
+      "frame_index": 300,
+      "saved_input_frame": "C:\\dev\\robot-vlm-brain\\reports\\frames\\video_IMG_7121_memory448_initial\\000300_00010.000s.png",
+      "source_image_size": [
+        910,
+        512
+      ],
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "gpu_observation": {
+        "scope": "system GPU, not just this process",
+        "sample_count": 16,
+        "utilization_mean_percent": 35.9375,
+        "utilization_peak_percent": 46.0,
+        "memory_peak_mib": 5086.0
+      },
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "MID",
+        "confidence": 0.95,
+        "scene_summary": "person visible in center"
+      },
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"CENTER\",\n  \"target\": \"PERSON\",\n  \"distance\": \"MID\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"person visible in center\"\n}",
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 5.8426695999951335,
+        "model_allocated_gib": 3.9638280868530273,
+        "source_image_size": [
+          910,
+          512
+        ],
+        "image_size": [
+          448,
+          252
+        ],
+        "image_grid_thw": [
+          1,
+          16,
+          28
+        ],
+        "processor_image_size": [
+          448,
+          256
+        ],
+        "image_tokens": 112,
+        "prompt_characters": 2241,
+        "max_new_tokens": 128,
+        "vram_free_gib": 2.755859375,
+        "vram_total_gib": 7.99951171875,
+        "preprocessing_latency_s": 0.009651900007156655,
+        "generation_latency_s": 8.389457299999776,
+        "inference_latency_s": 8.399262999999337,
+        "input_tokens": 643,
+        "output_tokens": 53,
+        "peak_allocated_gib": 4.139321327209473,
+        "peak_reserved_gib": 4.1640625
+      }
+    },
+    {
+      "timestamp": 12.0,
+      "actual_timestamp": 12.0,
+      "frame_index": 360,
+      "saved_input_frame": "C:\\dev\\robot-vlm-brain\\reports\\frames\\video_IMG_7121_memory448_initial\\000360_00012.000s.png",
+      "source_image_size": [
+        910,
+        512
+      ],
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "gpu_observation": {
+        "scope": "system GPU, not just this process",
+        "sample_count": 17,
+        "utilization_mean_percent": 34.411764705882355,
+        "utilization_peak_percent": 46.0,
+        "memory_peak_mib": 5086.0
+      },
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person visible on left"
+      },
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"LEFT\",\n  \"target\": \"PERSON\",\n  \"distance\": \"NEAR\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"Person visible on left\"\n}",
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 5.8426695999951335,
+        "model_allocated_gib": 3.9638280868530273,
+        "source_image_size": [
+          910,
+          512
+        ],
+        "image_size": [
+          448,
+          252
+        ],
+        "image_grid_thw": [
+          1,
+          16,
+          28
+        ],
+        "processor_image_size": [
+          448,
+          256
+        ],
+        "image_tokens": 112,
+        "prompt_characters": 2243,
+        "max_new_tokens": 128,
+        "vram_free_gib": 2.755859375,
+        "vram_total_gib": 7.99951171875,
+        "preprocessing_latency_s": 0.011173799997777678,
+        "generation_latency_s": 8.453325700000278,
+        "inference_latency_s": 8.464662700003828,
+        "input_tokens": 643,
+        "output_tokens": 53,
+        "peak_allocated_gib": 4.139321327209473,
+        "peak_reserved_gib": 4.1640625
+      }
+    },
+    {
+      "timestamp": 16.0,
+      "actual_timestamp": 16.0,
+      "frame_index": 480,
+      "saved_input_frame": "C:\\dev\\robot-vlm-brain\\reports\\frames\\video_IMG_7121_memory448_initial\\000480_00016.000s.png",
+      "source_image_size": [
+        910,
+        512
+      ],
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "gpu_observation": {
+        "scope": "system GPU, not just this process",
+        "sample_count": 17,
+        "utilization_mean_percent": 35.1764705882353,
+        "utilization_peak_percent": 46.0,
+        "memory_peak_mib": 5086.0
+      },
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person standing in front of camera"
+      },
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"CENTER\",\n  \"target\": \"PERSON\",\n  \"distance\": \"NEAR\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"Person standing in front of camera\"\n}",
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 5.8426695999951335,
+        "model_allocated_gib": 3.9638280868530273,
+        "source_image_size": [
+          910,
+          512
+        ],
+        "image_size": [
+          448,
+          252
+        ],
+        "image_grid_thw": [
+          1,
+          16,
+          28
+        ],
+        "processor_image_size": [
+          448,
+          256
+        ],
+        "image_tokens": 112,
+        "prompt_characters": 2241,
+        "max_new_tokens": 128,
+        "vram_free_gib": 2.755859375,
+        "vram_total_gib": 7.99951171875,
+        "preprocessing_latency_s": 0.010006799988332205,
+        "generation_latency_s": 8.634101800009375,
+        "inference_latency_s": 8.644267199997557,
+        "input_tokens": 643,
+        "output_tokens": 55,
+        "peak_allocated_gib": 4.139321327209473,
+        "peak_reserved_gib": 4.1640625
+      }
+    },
+    {
+      "timestamp": 20.0,
+      "actual_timestamp": 20.0,
+      "frame_index": 600,
+      "saved_input_frame": "C:\\dev\\robot-vlm-brain\\reports\\frames\\video_IMG_7121_memory448_initial\\000600_00020.000s.png",
+      "source_image_size": [
+        910,
+        512
+      ],
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "gpu_observation": {
+        "scope": "system GPU, not just this process",
+        "sample_count": 17,
+        "utilization_mean_percent": 37.76470588235294,
+        "utilization_peak_percent": 46.0,
+        "memory_peak_mib": 5088.0
+      },
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person visible, looking left"
+      },
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"LEFT\",\n  \"target\": \"PERSON\",\n  \"distance\": \"NEAR\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"Person visible, looking left\"\n}",
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 5.8426695999951335,
+        "model_allocated_gib": 3.9638280868530273,
+        "source_image_size": [
+          910,
+          512
+        ],
+        "image_size": [
+          448,
+          252
+        ],
+        "image_grid_thw": [
+          1,
+          16,
+          28
+        ],
+        "processor_image_size": [
+          448,
+          256
+        ],
+        "image_tokens": 112,
+        "prompt_characters": 2243,
+        "max_new_tokens": 128,
+        "vram_free_gib": 2.755859375,
+        "vram_total_gib": 7.99951171875,
+        "preprocessing_latency_s": 0.015526699993642978,
+        "generation_latency_s": 8.344992800004547,
+        "inference_latency_s": 8.360679399993387,
+        "input_tokens": 643,
+        "output_tokens": 54,
+        "peak_allocated_gib": 4.139321327209473,
+        "peak_reserved_gib": 4.1640625
+      }
+    },
+    {
+      "timestamp": 24.0,
+      "actual_timestamp": 24.0,
+      "frame_index": 720,
+      "saved_input_frame": "C:\\dev\\robot-vlm-brain\\reports\\frames\\video_IMG_7121_memory448_initial\\000720_00024.000s.png",
+      "source_image_size": [
+        910,
+        512
+      ],
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "gpu_observation": {
+        "scope": "system GPU, not just this process",
+        "sample_count": 16,
+        "utilization_mean_percent": 36.25,
+        "utilization_peak_percent": 46.0,
+        "memory_peak_mib": 5086.0
+      },
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person visible, center"
+      },
+      "raw_response": "{\n  \"action\": \"LOOK\",\n  \"direction\": \"CENTER\",\n  \"target\": \"PERSON\",\n  \"distance\": \"NEAR\",\n  \"confidence\": 0.95,\n  \"scene_summary\": \"Person visible, center\"\n}",
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 5.8426695999951335,
+        "model_allocated_gib": 3.9638280868530273,
+        "source_image_size": [
+          910,
+          512
+        ],
+        "image_size": [
+          448,
+          252
+        ],
+        "image_grid_thw": [
+          1,
+          16,
+          28
+        ],
+        "processor_image_size": [
+          448,
+          256
+        ],
+        "image_tokens": 112,
+        "prompt_characters": 2241,
+        "max_new_tokens": 128,
+        "vram_free_gib": 2.755859375,
+        "vram_total_gib": 7.99951171875,
+        "preprocessing_latency_s": 0.009961699994164519,
+        "generation_latency_s": 8.448004999998375,
+        "inference_latency_s": 8.458163799994509,
+        "input_tokens": 643,
+        "output_tokens": 53,
+        "peak_allocated_gib": 4.139321327209473,
+        "peak_reserved_gib": 4.1640625
+      }
+    }
+  ],
+  "video": {
+    "path": "C:\\Users\\slowh\\Downloads\\IMG_7121.mp4",
+    "fps": 30.0,
+    "frame_count": 885,
+    "duration_s": 29.5,
+    "source_size": [
+      910,
+      512
+    ],
+    "backend": "FFMPEG",
+    "orientation_degrees": 0.0,
+    "sha256": "3ecc220cd52007997078aa70782118e22f1d75c92884e3a8ebe8523f6a73a929"
+  }
+}

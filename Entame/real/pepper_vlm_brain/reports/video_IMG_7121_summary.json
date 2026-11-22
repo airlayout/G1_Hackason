@@ -1,0 +1,306 @@
+{
+  "phase2a": "PASS",
+  "phase3_scenario": "FAIL",
+  "video": {
+    "path": "C:\\Users\\slowh\\Downloads\\IMG_7121.mp4",
+    "fps": 30.0,
+    "frame_count": 885,
+    "duration_s": 29.5,
+    "source_size": [
+      910,
+      512
+    ],
+    "backend": "FFMPEG",
+    "orientation_degrees": 0.0,
+    "sha256": "3ecc220cd52007997078aa70782118e22f1d75c92884e3a8ebe8523f6a73a929"
+  },
+  "timestamps": [
+    2.0,
+    6.0,
+    8.0,
+    10.0,
+    12.0,
+    16.0,
+    20.0,
+    24.0
+  ],
+  "performance": {
+    "memory448_initial": {
+      "mean_latency_s": 8.526753037498565,
+      "min_latency_s": 8.360679399993387,
+      "max_latency_s": 9.019538599997759,
+      "mean_preprocessing_s": 0.014118237497314112,
+      "mean_generation_s": 8.5124654500014,
+      "peak_allocated_gib": 4.139321327209473,
+      "peak_reserved_gib": 4.1640625,
+      "driver_memory_peak_mib": 5088.0,
+      "gpu_utilization_mean_percent": 35.43275122549019,
+      "image_tokens": 112,
+      "input_tokens": 643,
+      "generated_tokens_range": [
+        53,
+        55
+      ]
+    },
+    "memory384_legacy": {
+      "mean_latency_s": 7.152291362503092,
+      "min_latency_s": 6.944346900010714,
+      "max_latency_s": 7.685977799992543,
+      "mean_preprocessing_s": 0.011567562500204076,
+      "mean_generation_s": 7.140469312498681,
+      "peak_allocated_gib": 4.132607936859131,
+      "peak_reserved_gib": 4.15625,
+      "driver_memory_peak_mib": 5076.0,
+      "gpu_utilization_mean_percent": 36.29913003663004,
+      "image_tokens": 84,
+      "input_tokens": 615,
+      "generated_tokens_range": [
+        53,
+        55
+      ]
+    },
+    "memory384_repeat": {
+      "mean_latency_s": 7.013164137501008,
+      "min_latency_s": 6.8208004999905825,
+      "max_latency_s": 7.2622243000078015,
+      "mean_preprocessing_s": 0.011186724999788566,
+      "mean_generation_s": 7.001722912502373,
+      "peak_allocated_gib": 4.132607936859131,
+      "peak_reserved_gib": 4.15625,
+      "driver_memory_peak_mib": 5057.0,
+      "gpu_utilization_mean_percent": 36.4485347985348,
+      "image_tokens": 84,
+      "input_tokens": 615,
+      "generated_tokens_range": [
+        53,
+        55
+      ]
+    }
+  },
+  "speedup_fraction": 0.16119402883500067,
+  "reproducibility": {
+    "same_video_hash": true,
+    "same_frame_indices": true,
+    "same_saved_input_hashes": true,
+    "same_decisions": true,
+    "same_memory_states": true
+  },
+  "phase1_regression_pass": true,
+  "timeline": [
+    {
+      "timestamp": 2.0,
+      "frame_index": 60,
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person standing near chair"
+      },
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "WAIT",
+        "last_seen_person_direction": "UNKNOWN",
+        "person_visible_last_frame": false,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      }
+    },
+    {
+      "timestamp": 6.0,
+      "frame_index": 180,
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person standing near table"
+      },
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      }
+    },
+    {
+      "timestamp": 8.0,
+      "frame_index": 240,
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person visible on left"
+      },
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      }
+    },
+    {
+      "timestamp": 10.0,
+      "frame_index": 300,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "MID",
+        "confidence": 0.95,
+        "scene_summary": "person visible in center"
+      },
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      }
+    },
+    {
+      "timestamp": 12.0,
+      "frame_index": 360,
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person visible on left"
+      },
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      }
+    },
+    {
+      "timestamp": 16.0,
+      "frame_index": 480,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person standing in front of camera"
+      },
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      }
+    },
+    {
+      "timestamp": 20.0,
+      "frame_index": 600,
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person standing near chair"
+      },
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      }
+    },
+    {
+      "timestamp": 24.0,
+      "frame_index": 720,
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "NEAR",
+        "confidence": 0.95,
+        "scene_summary": "Person visible, center"
+      },
+      "memory_before": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      },
+      "memory_after": {
+        "memory_available": true,
+        "last_action": "LOOK",
+        "last_seen_person_direction": "CENTER",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0
+      }
+    }
+  ],
+  "tests": {
+    "command": "python -m pytest -q",
+    "exit_code": 0,
+    "stdout": "........................................................................ [100%]\n72 passed in 0.39s\n",
+    "stderr": "",
+    "elapsed_s": 0.8070005999907153
+  }
+}

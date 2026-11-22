@@ -1,0 +1,20 @@
+{
+  "packages": {
+    "torch": "2.9.1+cu128",
+    "transformers": "4.57.6",
+    "accelerate": "1.12.0",
+    "pydantic": "2.12.5",
+    "Pillow": "12.1.0",
+    "numpy": "2.2.6",
+    "opencv-python": "4.13.0.92",
+    "pytest": "9.0.2"
+  },
+  "torchvision": "0.24.1+cu128",
+  "nvidia": "NVIDIA GeForce RTX 3060 Ti, 581.42, 8192 MiB",
+  "same_baseline_packages": true,
+  "same_driver_gpu": true,
+  "stable_ultralytics_installed": false,
+  "logical_cpu_count": 12,
+  "video_sha256": "3ecc220cd52007997078aa70782118e22f1d75c92884e3a8ebe8523f6a73a929",
+  "yolo_weight_sha256": "0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1"
+}

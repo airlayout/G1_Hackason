@@ -1,0 +1,11 @@
+venv/
+.venv*/
+.runtime/
+.cache/
+.pytest_cache/
+__pycache__/
+*.log
+*.pid
+*.sock
+.env
+.env.*

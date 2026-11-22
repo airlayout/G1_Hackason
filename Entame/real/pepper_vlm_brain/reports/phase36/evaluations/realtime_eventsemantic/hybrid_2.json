@@ -1,0 +1,152 @@
+{
+  "case": "hybrid",
+  "status": "complete",
+  "fast_count": 884,
+  "accepted_count": 884,
+  "rejected_count": 0,
+  "inference_latency_s": {
+    "count": 884,
+    "mean": 0.01623917613121535,
+    "median": 0.013357450001421967,
+    "p95": 0.031187029999819055,
+    "max": 0.07869490000302903
+  },
+  "slow_planner_latency_s": {
+    "count": 6,
+    "mean": 1.5450204499999625,
+    "median": 1.6406768499982718,
+    "p95": 1.7276919500000076,
+    "max": 1.7508149999994203
+  },
+  "slow_semantic_latency_s": {
+    "count": 3,
+    "mean": 2.41467506666595,
+    "median": 2.3445087000000058,
+    "p95": 2.53458482999813,
+    "max": 2.5557043999979214
+  },
+  "result_frame_age_s": {
+    "count": 884,
+    "mean": 0.02981150795504079,
+    "median": 0.028104266664740862,
+    "p95": 0.04943060333189347,
+    "max": 0.0898455999995349
+  },
+  "update_interval_s": {
+    "count": 883,
+    "mean": 0.033351410645526,
+    "median": 0.031638199998269556,
+    "p95": 0.04972523000069486,
+    "max": 0.09751890000188723
+  },
+  "update_rate_hz": 29.966101694915253,
+  "overlap_fast_count": 495,
+  "overlap_latency_s": {
+    "count": 495,
+    "mean": 0.01828089898983969,
+    "median": 0.01386350000029779,
+    "p95": 0.0323866699993232,
+    "max": 0.07869490000302903
+  },
+  "verified_empty_window_false_positive_total": [
+    0,
+    58
+  ],
+  "look_frame_to_ready_s": {
+    "count": 819,
+    "mean": 0.02995981762196318,
+    "median": 0.028212433335284004,
+    "p95": 0.04923436333338027,
+    "max": 0.08999309999853722
+  },
+  "look_while_slow_frame_to_ready_s": {
+    "count": 442,
+    "mean": 0.0328809371029289,
+    "median": 0.03113751666569442,
+    "p95": 0.051745874996231574,
+    "max": 0.08999309999853722
+  },
+  "look_while_slow_count": 442,
+  "slow_active_fast_loop_pass": true,
+  "latest_frame_wins": true,
+  "no_queue_accumulation": true,
+  "stale_result_rejection_pass": true,
+  "high_level_planner_integrity_pass": true,
+  "policy_correct_total": [
+    6,
+    6
+  ],
+  "cancelled_jobs": [],
+  "integrity_errors": [],
+  "event_kpis": {
+    "body_center_to_LEFT": {
+      "look_ready_upper_s": 0.09113569999826687,
+      "look_ready_lower_s": 0.024469033331600443,
+      "generation": 179
+    },
+    "person_fully_disappears": {
+      "detection_latency_upper_s": 0.08725529999865067,
+      "detection_latency_lower_s": 0.02058863333198424,
+      "detected_generation": 254,
+      "search_ready_upper_s": 1.938660099998378,
+      "search_from_detection_s": 1.8514047999997274,
+      "search_ready": {
+        "action": "SEARCH",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      }
+    },
+    "first_partial_head_reappears_LEFT": {
+      "look_ready_upper_s": 0.2616030333321149,
+      "look_ready_lower_s": 0.22826969999878166,
+      "generation": 318
+    }
+  },
+  "source_annotation_note": "Event latencies are conservative upper/lower bounds from visually annotated intervals; GT is evaluator-only.",
+  "cpu_process_percent": {
+    "22020": {
+      "count": 59,
+      "mean": 44.08305084745763,
+      "median": 46.8,
+      "p95": 56.2,
+      "max": 65.8
+    },
+    "2068": {
+      "count": 59,
+      "mean": 60.0864406779661,
+      "median": 87.1,
+      "p95": 103.32999999999983,
+      "max": 212.1
+    },
+    "11868": {
+      "count": 59,
+      "mean": 19.76101694915254,
+      "median": 12.5,
+      "p95": 59.76999999999997,
+      "max": 77.9
+    }
+  },
+  "gpu_utilization_percent": {
+    "count": 59,
+    "mean": 43.813559322033896,
+    "median": 57,
+    "p95": 75.0,
+    "max": 78
+  },
+  "gpu_used_gib": {
+    "count": 59,
+    "mean": 5.113243103027344,
+    "median": 5.113243103027344,
+    "p95": 5.113243103027344,
+    "max": 5.113243103027344
+  },
+  "peak_allocated_gib": 4.056459426879883,
+  "peak_reserved_gib": 4.095703125,
+  "fast_peak_allocated_gib": 0.0639333724975586,
+  "fast_peak_reserved_gib": 0.087890625,
+  "planner_trigger_count": 8,
+  "slow_dispatch_count": 9,
+  "cooperative_single_weight": false,
+  "shared_qwen_negative_control": false
+}

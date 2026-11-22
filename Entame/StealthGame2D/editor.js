@@ -6,6 +6,7 @@ import { validateStage } from "./editorValidate.js";
 import { renderEditor } from "./editorRender.js";
 import { exportStageJson } from "./editorExport.js";
 import { createPlaySession, stepPlaySession, renderPlaySession } from "./editorPlay.js";
+import { defaultSecurityCamera, CAMERA_MAX_SWING_DEG } from "./securityCamera.js";
 
 const canvas = document.getElementById("editor-canvas");
 const ctx = canvas.getContext("2d");
@@ -18,6 +19,10 @@ const fieldHeightM = document.getElementById("field-height-m");
 const fieldMoveSpeed = document.getElementById("field-move-speed");
 const fieldVisionAngle = document.getElementById("field-vision-angle");
 const fieldVisionDistance = document.getElementById("field-vision-distance");
+const fieldCameraDirection = document.getElementById("field-camera-direction");
+const fieldCameraSwing = document.getElementById("field-camera-swing");
+const fieldMiniRobot = document.getElementById("field-mini-robot");
+const removeCameraButton = document.getElementById("btn-remove-camera");
 const validationEl = document.getElementById("validation-messages");
 const exportArea = document.getElementById("export-output");
 const exportButton = document.getElementById("btn-export");
@@ -30,6 +35,8 @@ const saveButton = document.getElementById("btn-save");
 const playOverlay = document.getElementById("play-overlay");
 const playOverlayTitle = document.getElementById("play-overlay-title");
 const stopPlayButton = document.getElementById("btn-stop-play");
+const retryPlayButton = document.getElementById("btn-retry-play");
+const saveTargetEl = document.getElementById("save-target");
 
 // スケール: 1m = 80px。ステージのエリアサイズは5m〜25mの範囲で調整できる。
 const SCALE_PX_PER_M = 80;
@@ -41,6 +48,46 @@ let mode = "start";
 let wallDraft = null;
 let wallDragOrigin = null;
 let baseStages = [];
+// 編集の元になった保存済みステージの ID。新規ステージなら null。
+// 「保存先の ID が別ステージと被っていないか」の判定に使う（被ると上書きされる）。
+let editingId = null;
+// Cam Direction / Swing の対象にしているカメラの番号（securityCameras の添字）。無ければ -1。
+let selectedCamera = -1;
+// カメラ配置モードで、既存カメラをクリックして選ぶときの当たり半径。
+const CAMERA_PICK_RADIUS_PX = 20;
+
+// 空いている ID の候補（最大 ID + 1）。
+function nextFreeId() {
+  return baseStages.reduce((max, s) => Math.max(max, s.id), 0) + 1;
+}
+
+function createNewStage() {
+  const id = nextFreeId();
+  editingId = null;
+  return { ...createInitialState(), id, name: `STAGE ${id}` };
+}
+
+// 今保存すると何が起きるか。"new"（新規追加）/ "update"（編集中を更新）/ "overwrite"（別ステージを上書き）
+function describeSaveTarget() {
+  const fileName = `stage-${stage.id}.json`;
+  const existing = baseStages.find((s) => s.id === stage.id);
+  if (!existing) return { kind: "new", fileName, text: `保存すると新規ステージとして追加: ${fileName}` };
+  if (existing.id === editingId) {
+    return { kind: "update", fileName, existing, text: `保存すると「${existing.name}」を更新: ${fileName}` };
+  }
+  return {
+    kind: "overwrite",
+    fileName,
+    existing,
+    text: `⚠ ID ${stage.id} は「${existing.name}」が使用中。保存すると上書きされます（別ステージにするなら ID を ${nextFreeId()} に）`,
+  };
+}
+
+function updateSaveTarget() {
+  const target = describeSaveTarget();
+  saveTargetEl.textContent = target.text;
+  saveTargetEl.classList.toggle("save-target-warn", target.kind === "overwrite");
+}
 
 function resizeCanvasToStage() {
   canvas.width = stage.width;
@@ -60,7 +107,7 @@ function populateStageSelect(stages) {
   for (const s of stages) {
     const option = document.createElement("option");
     option.value = String(s.id);
-    option.textContent = s.name;
+    option.textContent = `#${s.id} ${s.name}`;
     stageSelect.appendChild(option);
   }
 }
@@ -68,17 +115,20 @@ function populateStageSelect(stages) {
 stageSelect.addEventListener("change", () => {
   const value = stageSelect.value;
   if (value === "new") {
-    stage = createInitialState();
+    stage = createNewStage();
   } else {
     const found = baseStages.find((s) => String(s.id) === value);
-    if (found) stage = loadStage(found);
+    if (found) {
+      stage = loadStage(found);
+      editingId = found.id;
+    }
   }
   syncFieldsFromStage();
   draw();
 });
 
 newStageButton.addEventListener("click", () => {
-  stage = createInitialState();
+  stage = createNewStage();
   stageSelect.value = "new";
   syncFieldsFromStage();
   draw();
@@ -92,7 +142,26 @@ function syncFieldsFromStage() {
   fieldMoveSpeed.value = stage.guard.moveSpeed / SCALE_PX_PER_M;
   fieldVisionAngle.value = stage.guard.visionAngle;
   fieldVisionDistance.value = stage.guard.visionDistance / SCALE_PX_PER_M;
+  selectedCamera = stage.securityCameras.length > 0 ? 0 : -1;
+  syncCameraFields();
   resizeCanvasToStage();
+  updateSaveTarget();
+}
+
+// 選択中のカメラが無いときは入力欄を空にして無効化する。
+function syncCameraFields() {
+  const camera = stage.securityCameras[selectedCamera];
+  fieldCameraDirection.disabled = !camera;
+  fieldCameraSwing.disabled = !camera;
+  fieldCameraDirection.value = camera ? camera.direction : "";
+  fieldCameraSwing.value = camera ? camera.swingAngle : "";
+}
+
+// 選択中のカメラだけを書き換える。
+function updateCamera(changes) {
+  if (selectedCamera < 0) return;
+  const cameras = stage.securityCameras.map((camera, i) => (i === selectedCamera ? { ...camera, ...changes } : camera));
+  stage = { ...stage, securityCameras: cameras };
 }
 
 function bindNumberField(el, apply) {
@@ -109,6 +178,7 @@ fieldName.addEventListener("input", () => {
 });
 bindNumberField(fieldId, (value) => {
   stage = { ...stage, id: value };
+  updateSaveTarget();
 });
 function bindAreaSizeField(el, apply) {
   el.addEventListener("input", () => {
@@ -131,6 +201,13 @@ bindNumberField(fieldVisionAngle, (value) => {
 });
 bindNumberField(fieldVisionDistance, (meters) => {
   stage = { ...stage, guard: { ...stage.guard, visionDistance: Math.round(meters * SCALE_PX_PER_M) } };
+});
+bindNumberField(fieldCameraDirection, (degrees) => updateCamera({ direction: degrees }));
+// 振り幅は首の使用範囲（HeadYaw ±1.0rad）を超えられない。
+bindNumberField(fieldCameraSwing, (degrees) => {
+  const clamped = Math.min(CAMERA_MAX_SWING_DEG, Math.max(0, degrees));
+  if (clamped !== degrees) fieldCameraSwing.value = clamped;
+  updateCamera({ swingAngle: clamped });
 });
 
 function getCanvasPos(event) {
@@ -185,6 +262,16 @@ canvas.addEventListener("click", (event) => {
     stage = { ...stage, guard: { ...stage.guard, x: pos.x, y: pos.y } };
   } else if (mode === "waypoint") {
     stage = { ...stage, guard: { ...stage.guard, patrolPath: [...stage.guard.patrolPath, pos] } };
+  } else if (mode === "securityCamera") {
+    // 既存カメラの上をクリックしたら選択、何もないところなら新しいカメラを追加する。
+    const hit = stage.securityCameras.findIndex((camera) => Math.hypot(camera.x - pos.x, camera.y - pos.y) <= CAMERA_PICK_RADIUS_PX);
+    if (hit >= 0) {
+      selectedCamera = hit;
+    } else {
+      stage = { ...stage, securityCameras: [...stage.securityCameras, defaultSecurityCamera(pos.x, pos.y)] };
+      selectedCamera = stage.securityCameras.length - 1;
+    }
+    syncCameraFields();
   } else if (mode === "deleteWall") {
     stage = { ...stage, walls: stage.walls.filter((wall) => !isInsideWall(pos, wall)) };
   }
@@ -198,6 +285,14 @@ undoWaypointButton.addEventListener("click", () => {
 
 clearWaypointsButton.addEventListener("click", () => {
   stage = { ...stage, guard: { ...stage.guard, patrolPath: [] } };
+  draw();
+});
+
+removeCameraButton.addEventListener("click", () => {
+  if (selectedCamera < 0) return;
+  stage = { ...stage, securityCameras: stage.securityCameras.filter((_, i) => i !== selectedCamera) };
+  selectedCamera = stage.securityCameras.length - 1;
+  syncCameraFields();
   draw();
 });
 
@@ -217,19 +312,28 @@ saveButton.addEventListener("click", async () => {
     if (!proceed) return;
   }
 
-  const fileName = `stage-${stage.id}.json`;
-  const isNewStage = !baseStages.some((s) => s.id === stage.id);
+  const target = describeSaveTarget();
+  const fileName = target.fileName;
+  const isNewStage = target.kind === "new";
+
+  // 編集の元と別のステージを上書きしようとしている場合は、必ず確認する。
+  if (target.kind === "overwrite") {
+    const proceed = window.confirm(
+      `ID ${stage.id} は「${target.existing.name}」が使用中です。\n` +
+        `保存すると「${target.existing.name}」（${fileName}）が上書きされて消えます。\n\n` +
+        `別ステージとして保存するなら、キャンセルして ID を ${nextFreeId()} にしてください。\n上書きしますか？`
+    );
+    if (!proceed) return;
+  }
 
   try {
     await saveStageViaApi(fileName, stage);
-    baseStages = mergeStageIntoList(baseStages, stage);
-    refreshStageSelectOptions();
+    afterSave();
     window.alert(`${fileName} を stages/ に保存しました。次回の読み込みから反映されます。`);
   } catch (error) {
     console.error("サーバー経由の保存に失敗しました:", error);
     downloadTextFile(fileName, exportStageJson(stage));
-    baseStages = mergeStageIntoList(baseStages, stage);
-    refreshStageSelectOptions();
+    afterSave();
     const manifestHint = isNewStage
       ? `\nstages/ フォルダに置いた上で、stages/manifest.json に "${fileName}" を追記してください（新規ステージのため）。`
       : `\nstages/ フォルダの同名ファイルを置き換えてください。`;
@@ -240,6 +344,15 @@ saveButton.addEventListener("click", async () => {
     );
   }
 });
+
+// 保存後: 一覧へ反映し、このステージを「保存済みの編集対象」にする。
+function afterSave() {
+  baseStages = mergeStageIntoList(baseStages, stage);
+  editingId = stage.id;
+  refreshStageSelectOptions();
+  stageSelect.value = String(stage.id);
+  updateSaveTarget();
+}
 
 async function saveStageViaApi(fileName, stageData) {
   const response = await fetch("/api/save-stage", {
@@ -275,7 +388,7 @@ function downloadTextFile(fileName, content) {
 
 function refreshStageSelectOptions() {
   const currentValue = stageSelect.value;
-  stageSelect.innerHTML = '<option value="new">New</option>';
+  stageSelect.innerHTML = '<option value="new">＋ 新規ステージ</option>';
   populateStageSelect(baseStages);
   const stillExists = Array.from(stageSelect.options).some((opt) => opt.value === currentValue);
   stageSelect.value = stillExists ? currentValue : "new";
@@ -295,6 +408,11 @@ function isPlaying() {
 
 window.addEventListener("keydown", (event) => {
   if (!isPlaying()) return;
+  if (event.key === "r" || event.key === "R") {
+    if (!event.repeat) startTestPlay();
+    event.preventDefault();
+    return;
+  }
   const dir = PLAY_KEY_MAP[event.key];
   if (dir) {
     playInput[dir] = true;
@@ -319,13 +437,19 @@ stopPlayButton.addEventListener("click", () => {
   stopTestPlay();
 });
 
+retryPlayButton.addEventListener("click", () => {
+  startTestPlay();
+});
+
+// 実行中・GAME OVER・CLEAR のどこからでも最初からやり直せる（編集中のステージ設定を再読込）。
 function startTestPlay() {
+  if (playAnimationHandle) cancelAnimationFrame(playAnimationHandle);
   editorPanel.classList.add("hidden");
   playOverlay.classList.remove("hidden");
   playOverlayTitle.textContent = "";
   playInput.up = playInput.down = playInput.left = playInput.right = false;
 
-  playSession = createPlaySession(loadStage(stage));
+  playSession = createPlaySession(loadStage(stage), fieldMiniRobot.checked);
   playSession.input = playInput;
   playLastTimestamp = 0;
   playAnimationHandle = requestAnimationFrame(playLoop);
@@ -363,7 +487,7 @@ function playLoop(timestamp) {
 
 function draw() {
   const validation = validateStage(stage);
-  renderEditor(ctx, stage, validation, wallDraft);
+  renderEditor(ctx, stage, validation, wallDraft, selectedCamera);
   renderValidationMessages(validation);
 }
 
@@ -389,6 +513,8 @@ async function init() {
   try {
     baseStages = await loadStages();
     populateStageSelect(baseStages);
+    // 起動直後の新規ステージは、既存と被らない ID にする。
+    stage = createNewStage();
   } catch (error) {
     console.error("ステージデータの読み込みに失敗しました:", error);
     validationEl.textContent = "既存ステージの読み込みに失敗しました（新規ステージの作成のみ可能です）";

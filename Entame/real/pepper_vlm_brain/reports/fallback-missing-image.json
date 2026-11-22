@@ -1,0 +1,13 @@
+{
+  "decision": {
+    "action": "WAIT",
+    "direction": "UNKNOWN",
+    "target": "NONE",
+    "distance": "UNKNOWN",
+    "confidence": 0.0
+  },
+  "raw_response": "",
+  "fallback": true,
+  "error": "Startup/image failed: FileNotFoundError: [Errno 2] No such file or directory: 'nonexistent.jpg'",
+  "metrics": {}
+}

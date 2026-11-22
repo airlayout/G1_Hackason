@@ -1,0 +1,1816 @@
+{
+  "schema": "motiondecode-test.arm-control-ownership.v2",
+  "checked_local_time": "2026-09-12 21:09:51 +0900",
+  "network_interface": "enp129s0",
+  "dds_domain": 0,
+  "receive_only": true,
+  "command_publishers_created": 0,
+  "observation_requested_s": 15.0,
+  "observation_actual_s": 15.041,
+  "lowstate": {
+    "status": "PASS",
+    "stationary": "PASS",
+    "state_validation_error": null,
+    "stationary_error": null,
+    "freshness_errors": [],
+    "latest_state": {
+      "mode_machine": 5,
+      "mode_pr": 0,
+      "tick": 7414031,
+      "imu_rpy": [
+        -0.020577184855937958,
+        -0.04271695017814636,
+        -1.2898832559585571
+      ],
+      "gyro": [
+        -0.004261057358235121,
+        0.0021305286791175604,
+        0.011717907153069973
+      ],
+      "all_q": [
+        0.02225976623594761,
+        0.031037544831633568,
+        0.106117382645607,
+        0.3217439353466034,
+        -0.2764761745929718,
+        0.016157394275069237,
+        -0.0075846826657652855,
+        0.005138835404068232,
+        0.019940532743930817,
+        0.2933141589164734,
+        -0.224891796708107,
+        0.014780514873564243,
+        0.24161657691001892,
+        0.03990122675895691,
+        -0.006464624777436256,
+        0.10193782299757004,
+        -0.08257131278514862,
+        1.5697177648544312,
+        1.3654706478118896,
+        1.2609082460403442,
+        -0.11204051971435547,
+        -0.013614079914987087,
+        0.15213973820209503,
+        -0.06733936071395874,
+        -0.2868903577327728,
+        1.4358899593353271,
+        -0.054863784462213516,
+        -0.00820919405668974,
+        -0.10897255688905716
+      ],
+      "arm_q": [
+        0.10193782299757004,
+        -0.08257131278514862,
+        1.5697177648544312,
+        1.3654706478118896,
+        1.2609082460403442,
+        -0.11204051971435547,
+        -0.013614079914987087,
+        0.15213973820209503,
+        -0.06733936071395874,
+        -0.2868903577327728,
+        1.4358899593353271,
+        -0.054863784462213516,
+        -0.00820919405668974,
+        -0.10897255688905716
+      ],
+      "arm_dq": [
+        -0.012271846644580364,
+        0.003067961661145091,
+        0.006135923322290182,
+        -0.004601942375302315,
+        -0.0015339808305725455,
+        -0.012271846644580364,
+        0.0,
+        0.0015339808305725455,
+        0.01840776950120926,
+        -0.015339808538556099,
+        0.0015339808305725455,
+        -0.010737866163253784,
+        -0.01840776950120926,
+        0.0
+      ],
+      "arm_motorstate": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "arm_temperature": [
+        58,
+        55,
+        53,
+        48,
+        49,
+        52,
+        55,
+        54,
+        51,
+        51,
+        48,
+        51,
+        47,
+        48
+      ]
+    },
+    "publishers": [
+      {
+        "topic": "rt/lowstate",
+        "endpoint_guid": "011005ea-2378-25db-0a7e-07ac00000203",
+        "participant_guid": "011005ea-2378-25db-0a7e-07ac000001c1",
+        "publication_handle": "653568959727788398",
+        "hostname": "Unitree",
+        "process_name": "basic_service",
+        "pid": "2536",
+        "source_ips": [
+          "192.168.123.161"
+        ],
+        "classification": "UNKNOWN EXTERNAL PARTICIPANT",
+        "sample_count": null,
+        "related_publications": [
+          "rt/api/basic_clearoip/response",
+          "rt/api/basic_clearoip_lease/response",
+          "rt/api/basic_demarcate/response",
+          "rt/api/basic_demarcate_lease/response",
+          "rt/api/basic_softlimit/response",
+          "rt/api/basic_softlimit_lease/response",
+          "rt/api/basic_taumax/response",
+          "rt/api/basic_taumax_lease/response",
+          "rt/api/config/request",
+          "rt/lf/bmsstate",
+          "rt/lf/lowstate",
+          "rt/lf/mainboardstate",
+          "rt/lf/secondary_imu",
+          "rt/lowstate",
+          "rt/secondary_imu"
+        ],
+        "related_subscriptions": [
+          "rt/api/basic_clearoip/request",
+          "rt/api/basic_clearoip_lease/request",
+          "rt/api/basic_demarcate/request",
+          "rt/api/basic_demarcate_lease/request",
+          "rt/api/basic_softlimit/request",
+          "rt/api/basic_softlimit_lease/request",
+          "rt/api/basic_taumax/request",
+          "rt/api/basic_taumax_lease/request",
+          "rt/api/config/response",
+          "rt/config_change_status",
+          "rt/lowcmd"
+        ],
+        "endpoint_kind": "publication",
+        "source_locator": [
+          "udp/239.255.0.1:7400@2",
+          "udp/192.168.123.161:45863@2"
+        ],
+        "application_name": "basic_service",
+        "sample_rate_hz": null,
+        "endpoint_liveliness": {
+          "kind": "Policy.Liveliness.Automatic",
+          "lease_duration_ns": 9223372036854775807,
+          "lease_is_effectively_infinite": true
+        },
+        "participant_liveliness": {
+          "kind": "Policy.Liveliness.Automatic",
+          "lease_duration_ns": 10000000000,
+          "lease_is_effectively_infinite": false
+        },
+        "discovery": {
+          "first_seen_s": 0.0,
+          "last_seen_s": 15.0,
+          "persistence_s": 15.0,
+          "polls_present": 55,
+          "polls_total": 55,
+          "present_at_end": true
+        }
+      }
+    ]
+  },
+  "topics": {
+    "rt/arm_sdk": {
+      "meaning": "Motion-mode user arm command blend input (underscore)",
+      "publishers": [
+        {
+          "topic": "rt/arm_sdk",
+          "endpoint_guid": "01106c5f-69d1-55de-cc92-bcf900000403",
+          "participant_guid": "01106c5f-69d1-55de-cc92-bcf9000001c1",
+          "publication_handle": "1730366526242603940",
+          "hostname": "Unitree",
+          "process_name": "python3",
+          "pid": "2934",
+          "source_ips": [
+            "192.168.123.161"
+          ],
+          "classification": "EXPECTED ROBOT INTERNAL PARTICIPANT",
+          "sample_count": 0,
+          "related_publications": [
+            "rt/api/arm/response",
+            "rt/api/sport/request",
+            "rt/arm/action/state",
+            "rt/arm_sdk"
+          ],
+          "related_subscriptions": [
+            "rt/api/arm/request",
+            "rt/api/sport/response",
+            "rt/armsdk",
+            "rt/lf/bmsstate",
+            "rt/lowstate",
+            "rt/sportmodestate"
+          ],
+          "endpoint_kind": "publication",
+          "source_locator": [
+            "udp/239.255.0.1:7400@2",
+            "udp/192.168.123.161:48491@2"
+          ],
+          "application_name": "python3",
+          "sample_rate_hz": 0.0,
+          "endpoint_liveliness": {
+            "kind": "Policy.Liveliness.Automatic",
+            "lease_duration_ns": 9223372036854775807,
+            "lease_is_effectively_infinite": true
+          },
+          "participant_liveliness": {
+            "kind": "Policy.Liveliness.Automatic",
+            "lease_duration_ns": 10000000000,
+            "lease_is_effectively_infinite": false
+          },
+          "discovery": {
+            "first_seen_s": 0.0,
+            "last_seen_s": 15.0,
+            "persistence_s": 15.0,
+            "polls_present": 55,
+            "polls_total": 55,
+            "present_at_end": true
+          }
+        }
+      ],
+      "total_sample_count": 0,
+      "total_sample_rate_hz": 0.0,
+      "expected_robot_internal_count": 1,
+      "expected_robot_internal_sample_count": 0,
+      "external_writer_count": 0
+    },
+    "rt/armsdk": {
+      "meaning": "Arm Action service input (no underscore)",
+      "publishers": [],
+      "subscribers": [
+        {
+          "topic": "rt/armsdk",
+          "endpoint_guid": "01105837-d718-579c-1e3d-9fc200000704",
+          "participant_guid": "01105837-d718-579c-1e3d-9fc2000001c1",
+          "publication_handle": "17164977806445727721",
+          "hostname": "ubuntu-OMEN-16L-Gaming-Desktop-TG03-0xxx",
+          "process_name": "python",
+          "pid": "33205",
+          "source_ips": [],
+          "classification": "THIS DIAGNOSTIC/CONTROLLER PROCESS",
+          "sample_count": null,
+          "related_publications": [],
+          "related_subscriptions": [
+            "DCPSParticipant",
+            "DCPSPublication",
+            "DCPSSubscription",
+            "rt/arm/action/state",
+            "rt/arm_sdk",
+            "rt/armsdk"
+          ],
+          "endpoint_kind": "subscription",
+          "source_locator": [
+            "localprocess"
+          ],
+          "application_name": "python",
+          "sample_rate_hz": null,
+          "endpoint_liveliness": {
+            "kind": "Policy.Liveliness.Automatic",
+            "lease_duration_ns": 9223372036854775807,
+            "lease_is_effectively_infinite": true
+          },
+          "participant_liveliness": {
+            "kind": "Policy.Liveliness.Automatic",
+            "lease_duration_ns": 10000000000,
+            "lease_is_effectively_infinite": false
+          }
+        },
+        {
+          "topic": "rt/armsdk",
+          "endpoint_guid": "01106c5f-69d1-55de-cc92-bcf900001404",
+          "participant_guid": "01106c5f-69d1-55de-cc92-bcf9000001c1",
+          "publication_handle": "10818313270642283880",
+          "hostname": "Unitree",
+          "process_name": "python3",
+          "pid": "2934",
+          "source_ips": [
+            "192.168.123.161"
+          ],
+          "classification": "EXPECTED ROBOT INTERNAL PARTICIPANT",
+          "sample_count": null,
+          "related_publications": [
+            "rt/api/arm/response",
+            "rt/api/sport/request",
+            "rt/arm/action/state",
+            "rt/arm_sdk"
+          ],
+          "related_subscriptions": [
+            "rt/api/arm/request",
+            "rt/api/sport/response",
+            "rt/armsdk",
+            "rt/lf/bmsstate",
+            "rt/lowstate",
+            "rt/sportmodestate"
+          ],
+          "endpoint_kind": "subscription",
+          "source_locator": [
+            "udp/239.255.0.1:7400@2",
+            "udp/192.168.123.161:48491@2"
+          ],
+          "application_name": "python3",
+          "sample_rate_hz": null,
+          "endpoint_liveliness": {
+            "kind": "Policy.Liveliness.Automatic",
+            "lease_duration_ns": 9223372036854775807,
+            "lease_is_effectively_infinite": true
+          },
+          "participant_liveliness": {
+            "kind": "Policy.Liveliness.Automatic",
+            "lease_duration_ns": 10000000000,
+            "lease_is_effectively_infinite": false
+          }
+        }
+      ],
+      "remote_subscribers_excluding_observer": [
+        {
+          "topic": "rt/armsdk",
+          "endpoint_guid": "01106c5f-69d1-55de-cc92-bcf900001404",
+          "participant_guid": "01106c5f-69d1-55de-cc92-bcf9000001c1",
+          "publication_handle": "10818313270642283880",
+          "hostname": "Unitree",
+          "process_name": "python3",
+          "pid": "2934",
+          "source_ips": [
+            "192.168.123.161"
+          ],
+          "classification": "EXPECTED ROBOT INTERNAL PARTICIPANT",
+          "sample_count": null,
+          "related_publications": [
+            "rt/api/arm/response",
+            "rt/api/sport/request",
+            "rt/arm/action/state",
+            "rt/arm_sdk"
+          ],
+          "related_subscriptions": [
+            "rt/api/arm/request",
+            "rt/api/sport/response",
+            "rt/armsdk",
+            "rt/lf/bmsstate",
+            "rt/lowstate",
+            "rt/sportmodestate"
+          ],
+          "endpoint_kind": "subscription",
+          "source_locator": [
+            "udp/239.255.0.1:7400@2",
+            "udp/192.168.123.161:48491@2"
+          ],
+          "application_name": "python3",
+          "sample_rate_hz": null,
+          "endpoint_liveliness": {
+            "kind": "Policy.Liveliness.Automatic",
+            "lease_duration_ns": 9223372036854775807,
+            "lease_is_effectively_infinite": true
+          },
+          "participant_liveliness": {
+            "kind": "Policy.Liveliness.Automatic",
+            "lease_duration_ns": 10000000000,
+            "lease_is_effectively_infinite": false
+          }
+        }
+      ],
+      "total_sample_count": 0,
+      "total_sample_rate_hz": 0.0,
+      "unknown_writer_count": 0
+    },
+    "rt/arm/action/state": {
+      "idl_type": "std_msgs::msg::dds_::String_",
+      "publishers": [
+        {
+          "topic": "rt/arm/action/state",
+          "endpoint_guid": "01106c5f-69d1-55de-cc92-bcf900000e03",
+          "participant_guid": "01106c5f-69d1-55de-cc92-bcf9000001c1",
+          "publication_handle": "10827667507220755322",
+          "hostname": "Unitree",
+          "process_name": "python3",
+          "pid": "2934",
+          "source_ips": [
+            "192.168.123.161"
+          ],
+          "classification": "EXPECTED ROBOT INTERNAL PARTICIPANT",
+          "sample_count": 149,
+          "related_publications": [
+            "rt/api/arm/response",
+            "rt/api/sport/request",
+            "rt/arm/action/state",
+            "rt/arm_sdk"
+          ],
+          "related_subscriptions": [
+            "rt/api/arm/request",
+            "rt/api/sport/response",
+            "rt/armsdk",
+            "rt/lf/bmsstate",
+            "rt/lowstate",
+            "rt/sportmodestate"
+          ],
+          "endpoint_kind": "publication",
+          "source_locator": [
+            "udp/239.255.0.1:7400@2",
+            "udp/192.168.123.161:48491@2"
+          ],
+          "application_name": "python3",
+          "sample_rate_hz": 9.906573467910206,
+          "endpoint_liveliness": {
+            "kind": "Policy.Liveliness.Automatic",
+            "lease_duration_ns": 9223372036854775807,
+            "lease_is_effectively_infinite": true
+          },
+          "participant_liveliness": {
+            "kind": "Policy.Liveliness.Automatic",
+            "lease_duration_ns": 10000000000,
+            "lease_is_effectively_infinite": false
+          },
+          "discovery": {
+            "first_seen_s": 0.0,
+            "last_seen_s": 15.0,
+            "persistence_s": 15.0,
+            "polls_present": 55,
+            "polls_total": 55,
+            "present_at_end": true
+          }
+        }
+      ],
+      "sample_count": 150,
+      "sample_rate_hz": 9.973060538164637,
+      "distinct_raw_payloads": [
+        "{\"holding\": false, \"id\": 0, \"name\": \"\"}"
+      ],
+      "decoded_distinct_payloads": [
+        {
+          "status": "IDLE",
+          "raw": "{\"holding\": false, \"id\": 0, \"name\": \"\"}",
+          "decoded": {
+            "holding": false,
+            "id": 0,
+            "name": ""
+          },
+          "reason": "exact observed holding/id/name schema"
+        }
+      ],
+      "status_during_observation": "IDLE"
+    }
+  },
+  "ownership": {
+    "passed": true,
+    "reasons": [],
+    "expected_robot_internal": [
+      {
+        "topic": "rt/arm_sdk",
+        "endpoint_guid": "01106c5f-69d1-55de-cc92-bcf900000403",
+        "participant_guid": "01106c5f-69d1-55de-cc92-bcf9000001c1",
+        "publication_handle": "1730366526242603940",
+        "hostname": "Unitree",
+        "process_name": "python3",
+        "pid": "2934",
+        "source_ips": [
+          "192.168.123.161"
+        ],
+        "classification": "EXPECTED ROBOT INTERNAL PARTICIPANT",
+        "sample_count": 0,
+        "related_publications": [
+          "rt/api/arm/response",
+          "rt/api/sport/request",
+          "rt/arm/action/state",
+          "rt/arm_sdk"
+        ],
+        "related_subscriptions": [
+          "rt/api/arm/request",
+          "rt/api/sport/response",
+          "rt/armsdk",
+          "rt/lf/bmsstate",
+          "rt/lowstate",
+          "rt/sportmodestate"
+        ]
+      }
+    ],
+    "robot_internal_traffic": "IDLE",
+    "external_arm_sdk_writers": [],
+    "own_arm_sdk_writers": [],
+    "armsdk_writers": [],
+    "arm_action": {
+      "status": "IDLE",
+      "raw": "{\"holding\": false, \"id\": 0, \"name\": \"\"}",
+      "decoded": {
+        "holding": false,
+        "id": 0,
+        "name": ""
+      },
+      "reason": "exact observed holding/id/name schema",
+      "received_monotonic": 7449.304568767,
+      "source_timestamp_ns": 1789214991381882438,
+      "publication_handle": "10827667507220755322",
+      "data": "{\"holding\": false, \"id\": 0, \"name\": \"\"}",
+      "age_s": 0.040837716999703844,
+      "status_during_observation": "IDLE"
+    },
+    "publications": {
+      "rt/arm_sdk": [
+        {
+          "topic": "rt/arm_sdk",
+          "endpoint_guid": "01106c5f-69d1-55de-cc92-bcf900000403",
+          "participant_guid": "01106c5f-69d1-55de-cc92-bcf9000001c1",
+          "publication_handle": "1730366526242603940",
+          "hostname": "Unitree",
+          "process_name": "python3",
+          "pid": "2934",
+          "source_ips": [
+            "192.168.123.161"
+          ],
+          "classification": "EXPECTED ROBOT INTERNAL PARTICIPANT",
+          "sample_count": 0,
+          "related_publications": [
+            "rt/api/arm/response",
+            "rt/api/sport/request",
+            "rt/arm/action/state",
+            "rt/arm_sdk"
+          ],
+          "related_subscriptions": [
+            "rt/api/arm/request",
+            "rt/api/sport/response",
+            "rt/armsdk",
+            "rt/lf/bmsstate",
+            "rt/lowstate",
+            "rt/sportmodestate"
+          ]
+        }
+      ],
+      "rt/armsdk": [],
+      "rt/arm/action/state": [
+        {
+          "topic": "rt/arm/action/state",
+          "endpoint_guid": "01106c5f-69d1-55de-cc92-bcf900000e03",
+          "participant_guid": "01106c5f-69d1-55de-cc92-bcf9000001c1",
+          "publication_handle": "10827667507220755322",
+          "hostname": "Unitree",
+          "process_name": "python3",
+          "pid": "2934",
+          "source_ips": [
+            "192.168.123.161"
+          ],
+          "classification": "EXPECTED ROBOT INTERNAL PARTICIPANT",
+          "sample_count": 160,
+          "related_publications": [
+            "rt/api/arm/response",
+            "rt/api/sport/request",
+            "rt/arm/action/state",
+            "rt/arm_sdk"
+          ],
+          "related_subscriptions": [
+            "rt/api/arm/request",
+            "rt/api/sport/response",
+            "rt/armsdk",
+            "rt/lf/bmsstate",
+            "rt/lowstate",
+            "rt/sportmodestate"
+          ]
+        }
+      ],
+      "rt/lowstate": [
+        {
+          "topic": "rt/lowstate",
+          "endpoint_guid": "011005ea-2378-25db-0a7e-07ac00000203",
+          "participant_guid": "011005ea-2378-25db-0a7e-07ac000001c1",
+          "publication_handle": "653568959727788398",
+          "hostname": "Unitree",
+          "process_name": "basic_service",
+          "pid": "2536",
+          "source_ips": [
+            "192.168.123.161"
+          ],
+          "classification": "UNKNOWN EXTERNAL PARTICIPANT",
+          "sample_count": 0,
+          "related_publications": [
+            "rt/api/basic_clearoip/response",
+            "rt/api/basic_clearoip_lease/response",
+            "rt/api/basic_demarcate/response",
+            "rt/api/basic_demarcate_lease/response",
+            "rt/api/basic_softlimit/response",
+            "rt/api/basic_softlimit_lease/response",
+            "rt/api/basic_taumax/response",
+            "rt/api/basic_taumax_lease/response",
+            "rt/api/config/request",
+            "rt/lf/bmsstate",
+            "rt/lf/lowstate",
+            "rt/lf/mainboardstate",
+            "rt/lf/secondary_imu",
+            "rt/lowstate",
+            "rt/secondary_imu"
+          ],
+          "related_subscriptions": [
+            "rt/api/basic_clearoip/request",
+            "rt/api/basic_clearoip_lease/request",
+            "rt/api/basic_demarcate/request",
+            "rt/api/basic_demarcate_lease/request",
+            "rt/api/basic_softlimit/request",
+            "rt/api/basic_softlimit_lease/request",
+            "rt/api/basic_taumax/request",
+            "rt/api/basic_taumax_lease/request",
+            "rt/api/config/response",
+            "rt/config_change_status",
+            "rt/lowcmd"
+          ]
+        }
+      ]
+    }
+  },
+  "local_os_scan": {
+    "local_hostname": "ubuntu-OMEN-16L-Gaming-Desktop-TG03-0xxx",
+    "interface_ipv4": [
+      "192.168.123.200"
+    ],
+    "diagnostic_pid": 33205,
+    "candidate_processes_excluding_diagnostic": [],
+    "udp_sockets_on_interface_or_dds_ports_excluding_diagnostic": [
+      "UNCONN 0      0                  192.168.123.200:57448         0.0.0.0:*   users:((\"ChatGPT\",pid=3636,fd=46))"
+    ],
+    "ss_available": true
+  },
+  "timeline": [
+    {
+      "at_s": 0.0,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7399008,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 0
+      }
+    },
+    {
+      "at_s": 0.267,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7399276,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 3
+      }
+    },
+    {
+      "at_s": 0.536,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7399542,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 6
+      }
+    },
+    {
+      "at_s": 0.802,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7399816,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 8
+      }
+    },
+    {
+      "at_s": 1.075,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7400088,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 11
+      }
+    },
+    {
+      "at_s": 1.348,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7400359,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 14
+      }
+    },
+    {
+      "at_s": 1.618,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7400636,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 16
+      }
+    },
+    {
+      "at_s": 1.896,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7400917,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 19
+      }
+    },
+    {
+      "at_s": 2.176,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7401191,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 22
+      }
+    },
+    {
+      "at_s": 2.451,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7401472,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 25
+      }
+    },
+    {
+      "at_s": 2.731,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7401771,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 28
+      }
+    },
+    {
+      "at_s": 3.031,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7402047,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 30
+      }
+    },
+    {
+      "at_s": 3.306,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7402317,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 33
+      }
+    },
+    {
+      "at_s": 3.577,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7402600,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 36
+      }
+    },
+    {
+      "at_s": 3.859,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7402873,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 39
+      }
+    },
+    {
+      "at_s": 4.133,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7403153,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 41
+      }
+    },
+    {
+      "at_s": 4.413,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7403431,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 44
+      }
+    },
+    {
+      "at_s": 4.691,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7403708,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 47
+      }
+    },
+    {
+      "at_s": 4.968,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7403995,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 50
+      }
+    },
+    {
+      "at_s": 5.255,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7404266,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 52
+      }
+    },
+    {
+      "at_s": 5.526,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7404539,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 55
+      }
+    },
+    {
+      "at_s": 5.798,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7404807,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 58
+      }
+    },
+    {
+      "at_s": 6.066,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7405082,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 61
+      }
+    },
+    {
+      "at_s": 6.342,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7405358,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 63
+      }
+    },
+    {
+      "at_s": 6.617,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7405630,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 66
+      }
+    },
+    {
+      "at_s": 6.89,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7405927,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 69
+      }
+    },
+    {
+      "at_s": 7.187,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7406197,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 72
+      }
+    },
+    {
+      "at_s": 7.457,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7406481,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 74
+      }
+    },
+    {
+      "at_s": 7.74,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7406754,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 77
+      }
+    },
+    {
+      "at_s": 8.014,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7407026,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 80
+      }
+    },
+    {
+      "at_s": 8.286,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7407312,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 83
+      }
+    },
+    {
+      "at_s": 8.571,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7407596,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 85
+      }
+    },
+    {
+      "at_s": 8.856,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7407878,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 88
+      }
+    },
+    {
+      "at_s": 9.137,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7408153,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 91
+      }
+    },
+    {
+      "at_s": 9.413,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7408435,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 94
+      }
+    },
+    {
+      "at_s": 9.695,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7408716,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 97
+      }
+    },
+    {
+      "at_s": 9.975,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7408992,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 99
+      }
+    },
+    {
+      "at_s": 10.252,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7409278,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 102
+      }
+    },
+    {
+      "at_s": 10.538,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7409563,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 105
+      }
+    },
+    {
+      "at_s": 10.824,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7409850,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 108
+      }
+    },
+    {
+      "at_s": 11.11,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7410172,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 111
+      }
+    },
+    {
+      "at_s": 11.432,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7410455,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 114
+      }
+    },
+    {
+      "at_s": 11.714,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7410745,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 117
+      }
+    },
+    {
+      "at_s": 12.005,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7411017,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 119
+      }
+    },
+    {
+      "at_s": 12.281,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7411296,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 122
+      }
+    },
+    {
+      "at_s": 12.556,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7411583,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 125
+      }
+    },
+    {
+      "at_s": 12.843,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7411856,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 128
+      }
+    },
+    {
+      "at_s": 13.116,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7412130,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 130
+      }
+    },
+    {
+      "at_s": 13.391,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7412417,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 133
+      }
+    },
+    {
+      "at_s": 13.678,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7412702,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 136
+      }
+    },
+    {
+      "at_s": 13.962,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7412976,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 139
+      }
+    },
+    {
+      "at_s": 14.236,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7413265,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 142
+      }
+    },
+    {
+      "at_s": 14.525,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7413551,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 145
+      }
+    },
+    {
+      "at_s": 14.811,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7413825,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 147
+      }
+    },
+    {
+      "at_s": 15.0,
+      "lowstate_fresh": true,
+      "lowstate_tick": 7414031,
+      "publication_counts": {
+        "rt/arm_sdk": 1,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 1,
+        "rt/lowstate": 1
+      },
+      "subscription_counts": {
+        "rt/arm_sdk": 2,
+        "rt/armsdk": 2,
+        "rt/arm/action/state": 3
+      },
+      "sample_counts": {
+        "rt/arm_sdk": 0,
+        "rt/armsdk": 0,
+        "rt/arm/action/state": 149
+      }
+    }
+  ],
+  "ownership_preflight": "PASS",
+  "real_robot_test": "NOT EVALUATED; RUN COMBINED OFFLINE PREFLIGHT",
+  "limitations": [
+    "Locator/IP values are self-advertised DDS participant properties.",
+    "Per-writer samples use publication_handle matched to the built-in endpoint instance handle.",
+    "No command publisher, MotionSwitcher client, arm RPC, or robot motion was created."
+  ]
+}

@@ -1,0 +1,4508 @@
+{
+  "case": "planner_alone",
+  "status": "complete",
+  "fast_source": "none",
+  "slow_load": "planner",
+  "fast_results": [],
+  "slow_results": [
+    {
+      "kind": "planner",
+      "generation": 0,
+      "source_timestamp": 0.0,
+      "capture_timestamp": 15315.2355596,
+      "processing_start": 15315.2438096,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0014718000002176268,
+        "device_transfer_s": 0.0003128000007563969,
+        "text_decoding_s": 0.0001962000005732989,
+        "generation_latency_s": 1.0083709999998973,
+        "inference_latency_s": 1.01049729999977,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 1.0109174999997776,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15316.2551629,
+      "inference_finished_timestamp": 15316.2551629,
+      "inference_latency_s": 1.0113533000003372,
+      "result_age_s": 1.0196033000011084,
+      "dispatch_timestamp": 15315.2436332,
+      "received_timestamp": 15316.2569642,
+      "request_context": {
+        "kind": "planner",
+        "generation": 0,
+        "source_timestamp": 0.0,
+        "capture_timestamp": 15315.2355596,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15315.2436332
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 30,
+      "source_timestamp": 1.0,
+      "capture_timestamp": 15316.2355596,
+      "processing_start": 15316.2572723,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010644000012689503,
+        "device_transfer_s": 0.00014400000145542435,
+        "text_decoding_s": 0.00023389999842038378,
+        "generation_latency_s": 0.9872811999994155,
+        "inference_latency_s": 0.9888677999988431,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9891883000000234,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15317.2468448,
+      "inference_finished_timestamp": 15317.2468448,
+      "inference_latency_s": 0.9895725000005768,
+      "result_age_s": 1.0112852000002022,
+      "dispatch_timestamp": 15316.2571337,
+      "received_timestamp": 15317.2476481,
+      "request_context": {
+        "kind": "planner",
+        "generation": 30,
+        "source_timestamp": 1.0,
+        "capture_timestamp": 15316.2355596,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15316.2571337
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 60,
+      "source_timestamp": 2.0,
+      "capture_timestamp": 15317.2355596,
+      "processing_start": 15317.2480719,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010855000000447035,
+        "device_transfer_s": 0.0001616000008652918,
+        "text_decoding_s": 0.00028540000130306,
+        "generation_latency_s": 0.9673540000003413,
+        "inference_latency_s": 0.9690783999994892,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9695198999997956,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15318.2180046,
+      "inference_finished_timestamp": 15318.2180046,
+      "inference_latency_s": 0.9699326999998448,
+      "result_age_s": 0.9824449999996432,
+      "dispatch_timestamp": 15317.2478608,
+      "received_timestamp": 15318.2192109,
+      "request_context": {
+        "kind": "planner",
+        "generation": 60,
+        "source_timestamp": 2.0,
+        "capture_timestamp": 15317.2355596,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15317.2478608
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 89,
+      "source_timestamp": 2.966666666666667,
+      "capture_timestamp": 15318.202226266667,
+      "processing_start": 15318.2198355,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010925999995379243,
+        "device_transfer_s": 0.00033459999940532725,
+        "text_decoding_s": 0.00023569999939354602,
+        "generation_latency_s": 0.9918259999994916,
+        "inference_latency_s": 0.9935961999999563,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.993960199999492,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15319.2141572,
+      "inference_finished_timestamp": 15319.2141572,
+      "inference_latency_s": 0.9943217000000004,
+      "result_age_s": 1.011930933333133,
+      "dispatch_timestamp": 15318.2196839,
+      "received_timestamp": 15319.2150634,
+      "request_context": {
+        "kind": "planner",
+        "generation": 89,
+        "source_timestamp": 2.966666666666667,
+        "capture_timestamp": 15318.202226266667,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15318.2196839
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 119,
+      "source_timestamp": 3.966666666666667,
+      "capture_timestamp": 15319.202226266667,
+      "processing_start": 15319.2152951,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010113999996974599,
+        "device_transfer_s": 0.00014240000018617138,
+        "text_decoding_s": 0.00010649999967426993,
+        "generation_latency_s": 0.961376700000983,
+        "inference_latency_s": 0.9627153000001272,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9629780999985087,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15320.1788862,
+      "inference_finished_timestamp": 15320.1788862,
+      "inference_latency_s": 0.9635910999986663,
+      "result_age_s": 0.9766599333324848,
+      "dispatch_timestamp": 15319.2151801,
+      "received_timestamp": 15320.180142,
+      "request_context": {
+        "kind": "planner",
+        "generation": 119,
+        "source_timestamp": 3.966666666666667,
+        "capture_timestamp": 15319.202226266667,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15319.2151801
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 148,
+      "source_timestamp": 4.933333333333334,
+      "capture_timestamp": 15320.168892933332,
+      "processing_start": 15320.1804339,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010039999997388804,
+        "device_transfer_s": 0.00010819999988598283,
+        "text_decoding_s": 0.00023230000078910962,
+        "generation_latency_s": 0.9819744999986142,
+        "inference_latency_s": 0.9834553999990021,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9838501000012911,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15321.1645983,
+      "inference_finished_timestamp": 15321.1645983,
+      "inference_latency_s": 0.9841644000007364,
+      "result_age_s": 0.9957053666676074,
+      "dispatch_timestamp": 15320.1803165,
+      "received_timestamp": 15321.1658564,
+      "request_context": {
+        "kind": "planner",
+        "generation": 148,
+        "source_timestamp": 4.933333333333334,
+        "capture_timestamp": 15320.168892933332,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15320.1803165
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 177,
+      "source_timestamp": 5.9,
+      "capture_timestamp": 15321.1355596,
+      "processing_start": 15321.1661662,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010180000008404022,
+        "device_transfer_s": 0.00012380000043776818,
+        "text_decoding_s": 0.00010780000047816429,
+        "generation_latency_s": 0.9897144999995362,
+        "inference_latency_s": 0.9910436999998637,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9913053999989643,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15322.1578111,
+      "inference_finished_timestamp": 15322.1578111,
+      "inference_latency_s": 0.9916448999993008,
+      "result_age_s": 1.0222515000004933,
+      "dispatch_timestamp": 15321.1660273,
+      "received_timestamp": 15322.15947,
+      "request_context": {
+        "kind": "planner",
+        "generation": 177,
+        "source_timestamp": 5.9,
+        "capture_timestamp": 15321.1355596,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15321.1660273
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 207,
+      "source_timestamp": 6.9,
+      "capture_timestamp": 15322.1355596,
+      "processing_start": 15322.1598702,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.001388099999530823,
+        "device_transfer_s": 0.0003440000000409782,
+        "text_decoding_s": 0.0001218999987031566,
+        "generation_latency_s": 0.9775975000011385,
+        "inference_latency_s": 0.9795419999991282,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9798331999991206,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15323.1400283,
+      "inference_finished_timestamp": 15323.1400283,
+      "inference_latency_s": 0.9801581000010628,
+      "result_age_s": 1.0044687000008707,
+      "dispatch_timestamp": 15322.159696,
+      "received_timestamp": 15323.1406851,
+      "request_context": {
+        "kind": "planner",
+        "generation": 207,
+        "source_timestamp": 6.9,
+        "capture_timestamp": 15322.1355596,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15322.159696
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 236,
+      "source_timestamp": 7.866666666666666,
+      "capture_timestamp": 15323.102226266667,
+      "processing_start": 15323.1408766,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010039999997388804,
+        "device_transfer_s": 0.00011509999967529438,
+        "text_decoding_s": 0.00011269999959040433,
+        "generation_latency_s": 1.0250606000008702,
+        "inference_latency_s": 1.0263732000003074,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 1.0266295999990689,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15324.1678214,
+      "inference_finished_timestamp": 15324.1678214,
+      "inference_latency_s": 1.0269447999999102,
+      "result_age_s": 1.0655951333337725,
+      "dispatch_timestamp": 15323.1408001,
+      "received_timestamp": 15324.1693565,
+      "request_context": {
+        "kind": "planner",
+        "generation": 236,
+        "source_timestamp": 7.866666666666666,
+        "capture_timestamp": 15323.102226266667,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15323.1408001
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 267,
+      "source_timestamp": 8.9,
+      "capture_timestamp": 15324.1355596,
+      "processing_start": 15324.1696702,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0012684000012086472,
+        "device_transfer_s": 0.00030530000003636815,
+        "text_decoding_s": 0.00014150000060908496,
+        "generation_latency_s": 0.9653077999992092,
+        "inference_latency_s": 0.9671171999998478,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9674267999998847,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15325.1374477,
+      "inference_finished_timestamp": 15325.1374477,
+      "inference_latency_s": 0.9677775000000111,
+      "result_age_s": 1.0018881000014517,
+      "dispatch_timestamp": 15324.1695324,
+      "received_timestamp": 15325.1381019,
+      "request_context": {
+        "kind": "planner",
+        "generation": 267,
+        "source_timestamp": 8.9,
+        "capture_timestamp": 15324.1355596,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15324.1695324
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 296,
+      "source_timestamp": 9.866666666666667,
+      "capture_timestamp": 15325.102226266667,
+      "processing_start": 15325.1383425,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.001009699999485747,
+        "device_transfer_s": 0.00021569999989878852,
+        "text_decoding_s": 0.0001953999999386724,
+        "generation_latency_s": 0.9651152000005823,
+        "inference_latency_s": 0.9666701999994984,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9669874999999593,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15326.1056703,
+      "inference_finished_timestamp": 15326.1056703,
+      "inference_latency_s": 0.9673277999991114,
+      "result_age_s": 1.0034440333329258,
+      "dispatch_timestamp": 15325.138241,
+      "received_timestamp": 15326.1064824,
+      "request_context": {
+        "kind": "planner",
+        "generation": 296,
+        "source_timestamp": 9.866666666666667,
+        "capture_timestamp": 15325.102226266667,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15325.138241
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 326,
+      "source_timestamp": 10.866666666666667,
+      "capture_timestamp": 15326.102226266667,
+      "processing_start": 15326.106785,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010676999991119374,
+        "device_transfer_s": 0.000213699999221717,
+        "text_decoding_s": 0.00011220000124012586,
+        "generation_latency_s": 0.9651723999995738,
+        "inference_latency_s": 0.9666455000005953,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9669183999994857,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15327.0743597,
+      "inference_finished_timestamp": 15327.0743597,
+      "inference_latency_s": 0.9675747000001138,
+      "result_age_s": 0.9721334333335108,
+      "dispatch_timestamp": 15326.106657,
+      "received_timestamp": 15327.0760147,
+      "request_context": {
+        "kind": "planner",
+        "generation": 326,
+        "source_timestamp": 10.866666666666667,
+        "capture_timestamp": 15326.102226266667,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15326.106657
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 355,
+      "source_timestamp": 11.833333333333334,
+      "capture_timestamp": 15327.068892933334,
+      "processing_start": 15327.0763303,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010235999998258194,
+        "device_transfer_s": 0.0001319999992119847,
+        "text_decoding_s": 0.00012040000001434237,
+        "generation_latency_s": 0.9770323999982793,
+        "inference_latency_s": 0.9783865999997943,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9786600999996153,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15328.0552952,
+      "inference_finished_timestamp": 15328.0552952,
+      "inference_latency_s": 0.9789648999994824,
+      "result_age_s": 0.9864022666661185,
+      "dispatch_timestamp": 15327.0761917,
+      "received_timestamp": 15328.0556982,
+      "request_context": {
+        "kind": "planner",
+        "generation": 355,
+        "source_timestamp": 11.833333333333334,
+        "capture_timestamp": 15327.068892933334,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15327.0761917
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 384,
+      "source_timestamp": 12.8,
+      "capture_timestamp": 15328.035559599999,
+      "processing_start": 15328.0559628,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0009833999993134057,
+        "device_transfer_s": 0.00012229999992996454,
+        "text_decoding_s": 0.0001160000010713702,
+        "generation_latency_s": 0.9737256999997044,
+        "inference_latency_s": 0.975030899999183,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9753147999999783,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15329.031587,
+      "inference_finished_timestamp": 15329.031587,
+      "inference_latency_s": 0.9756242000003112,
+      "result_age_s": 0.9960274000004574,
+      "dispatch_timestamp": 15328.0558571,
+      "received_timestamp": 15329.0317981,
+      "request_context": {
+        "kind": "planner",
+        "generation": 384,
+        "source_timestamp": 12.8,
+        "capture_timestamp": 15328.035559599999,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15328.0558571
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 413,
+      "source_timestamp": 13.766666666666667,
+      "capture_timestamp": 15329.002226266666,
+      "processing_start": 15329.0320375,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.000992999999652966,
+        "device_transfer_s": 0.0001126000006479444,
+        "text_decoding_s": 0.00011619999895629007,
+        "generation_latency_s": 0.9824783000003663,
+        "inference_latency_s": 0.9837812000005215,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9840480999991996,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15330.0163924,
+      "inference_finished_timestamp": 15330.0163924,
+      "inference_latency_s": 0.9843549000015628,
+      "result_age_s": 1.0141661333345837,
+      "dispatch_timestamp": 15329.0319204,
+      "received_timestamp": 15330.0174734,
+      "request_context": {
+        "kind": "planner",
+        "generation": 413,
+        "source_timestamp": 13.766666666666667,
+        "capture_timestamp": 15329.002226266666,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15329.0319204
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 443,
+      "source_timestamp": 14.766666666666667,
+      "capture_timestamp": 15330.002226266666,
+      "processing_start": 15330.0176598,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0011321999991196208,
+        "device_transfer_s": 0.00018500000078347512,
+        "text_decoding_s": 0.00013039999976172112,
+        "generation_latency_s": 1.0244232000004558,
+        "inference_latency_s": 1.0259664000004705,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 1.0262460000012652,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15331.0442188,
+      "inference_finished_timestamp": 15331.0442188,
+      "inference_latency_s": 1.0265589999999065,
+      "result_age_s": 1.0419925333335414,
+      "dispatch_timestamp": 15330.017591,
+      "received_timestamp": 15331.0445059,
+      "request_context": {
+        "kind": "planner",
+        "generation": 443,
+        "source_timestamp": 14.766666666666667,
+        "capture_timestamp": 15330.002226266666,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15330.017591
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 474,
+      "source_timestamp": 15.8,
+      "capture_timestamp": 15331.035559599999,
+      "processing_start": 15331.0448281,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010110999992321013,
+        "device_transfer_s": 0.0001126000006479444,
+        "text_decoding_s": 0.00010769999971671496,
+        "generation_latency_s": 0.976421900000787,
+        "inference_latency_s": 0.977734000000055,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9779906999992818,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15332.0231588,
+      "inference_finished_timestamp": 15332.0231588,
+      "inference_latency_s": 0.9783306999997876,
+      "result_age_s": 0.9875992000015685,
+      "dispatch_timestamp": 15331.0447213,
+      "received_timestamp": 15332.0233188,
+      "request_context": {
+        "kind": "planner",
+        "generation": 474,
+        "source_timestamp": 15.8,
+        "capture_timestamp": 15331.035559599999,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15331.0447213
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 503,
+      "source_timestamp": 16.766666666666666,
+      "capture_timestamp": 15332.002226266666,
+      "processing_start": 15332.0235351,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0009819999995670514,
+        "device_transfer_s": 0.0001143000008596573,
+        "text_decoding_s": 0.00010419999853183981,
+        "generation_latency_s": 0.9833546999998362,
+        "inference_latency_s": 0.9846323999991,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9848939999992581,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15333.0087373,
+      "inference_finished_timestamp": 15333.0087373,
+      "inference_latency_s": 0.9852022000013676,
+      "result_age_s": 1.006511033334391,
+      "dispatch_timestamp": 15332.0234373,
+      "received_timestamp": 15333.0091707,
+      "request_context": {
+        "kind": "planner",
+        "generation": 503,
+        "source_timestamp": 16.766666666666666,
+        "capture_timestamp": 15332.002226266666,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15332.0234373
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 532,
+      "source_timestamp": 17.733333333333334,
+      "capture_timestamp": 15332.968892933333,
+      "processing_start": 15333.0094714,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0011590000012802193,
+        "device_transfer_s": 0.00018290000116394367,
+        "text_decoding_s": 0.00017780000052880496,
+        "generation_latency_s": 0.9823439000010694,
+        "inference_latency_s": 0.9839843999998266,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9848528000002261,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15333.9946713,
+      "inference_finished_timestamp": 15333.9946713,
+      "inference_latency_s": 0.9851999000002252,
+      "result_age_s": 1.0257783666675095,
+      "dispatch_timestamp": 15333.009339,
+      "received_timestamp": 15333.9960027,
+      "request_context": {
+        "kind": "planner",
+        "generation": 532,
+        "source_timestamp": 17.733333333333334,
+        "capture_timestamp": 15332.968892933333,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15333.009339
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 562,
+      "source_timestamp": 18.733333333333334,
+      "capture_timestamp": 15333.968892933333,
+      "processing_start": 15333.996249,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010147000011784257,
+        "device_transfer_s": 0.00023099999998521525,
+        "text_decoding_s": 0.00010840000140888151,
+        "generation_latency_s": 0.9980849000003218,
+        "inference_latency_s": 0.9995175000003655,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9997988999984955,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15334.996358,
+      "inference_finished_timestamp": 15334.996358,
+      "inference_latency_s": 1.0001090000005206,
+      "result_age_s": 1.0274650666669913,
+      "dispatch_timestamp": 15333.9961289,
+      "received_timestamp": 15334.9969448,
+      "request_context": {
+        "kind": "planner",
+        "generation": 562,
+        "source_timestamp": 18.733333333333334,
+        "capture_timestamp": 15333.968892933333,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15333.9961289
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 592,
+      "source_timestamp": 19.733333333333334,
+      "capture_timestamp": 15334.968892933333,
+      "processing_start": 15334.9972674,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010179000000789529,
+        "device_transfer_s": 0.00011049999920942355,
+        "text_decoding_s": 0.00013140000010025688,
+        "generation_latency_s": 0.9568926000010833,
+        "inference_latency_s": 0.95823879999989,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9585055999996257,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15335.9560984,
+      "inference_finished_timestamp": 15335.9560984,
+      "inference_latency_s": 0.9588309999999183,
+      "result_age_s": 0.9872054666666372,
+      "dispatch_timestamp": 15334.997141,
+      "received_timestamp": 15335.9570677,
+      "request_context": {
+        "kind": "planner",
+        "generation": 592,
+        "source_timestamp": 19.733333333333334,
+        "capture_timestamp": 15334.968892933333,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15334.997141
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 621,
+      "source_timestamp": 20.7,
+      "capture_timestamp": 15335.9355596,
+      "processing_start": 15335.9573709,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010039000007964205,
+        "device_transfer_s": 0.00012510000124166254,
+        "text_decoding_s": 0.00010739999925135635,
+        "generation_latency_s": 0.9662011000000348,
+        "inference_latency_s": 0.9675182000009954,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9677891000010277,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15336.9254759,
+      "inference_finished_timestamp": 15336.9254759,
+      "inference_latency_s": 0.9681049999999232,
+      "result_age_s": 0.9899162999990949,
+      "dispatch_timestamp": 15335.9572338,
+      "received_timestamp": 15336.9264308,
+      "request_context": {
+        "kind": "planner",
+        "generation": 621,
+        "source_timestamp": 20.7,
+        "capture_timestamp": 15335.9355596,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15335.9572338
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 650,
+      "source_timestamp": 21.666666666666668,
+      "capture_timestamp": 15336.902226266666,
+      "processing_start": 15336.9267436,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010437999990244862,
+        "device_transfer_s": 0.00024990000019897707,
+        "text_decoding_s": 0.00011320000157866161,
+        "generation_latency_s": 0.9918465999999171,
+        "inference_latency_s": 0.9933361999992485,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9936101000002964,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15337.9206841,
+      "inference_finished_timestamp": 15337.9206841,
+      "inference_latency_s": 0.9939405000004626,
+      "result_age_s": 1.0184578333337413,
+      "dispatch_timestamp": 15336.9266223,
+      "received_timestamp": 15337.9216945,
+      "request_context": {
+        "kind": "planner",
+        "generation": 650,
+        "source_timestamp": 21.666666666666668,
+        "capture_timestamp": 15336.902226266666,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15336.9266223
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 680,
+      "source_timestamp": 22.666666666666668,
+      "capture_timestamp": 15337.902226266666,
+      "processing_start": 15337.9219922,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0009974000004149275,
+        "device_transfer_s": 0.00010799999836308416,
+        "text_decoding_s": 0.0001036000012391014,
+        "generation_latency_s": 0.9893026999998256,
+        "inference_latency_s": 0.9905878999998095,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9908438000002207,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15338.9131711,
+      "inference_finished_timestamp": 15338.9131711,
+      "inference_latency_s": 0.9911789000016142,
+      "result_age_s": 1.0109448333350883,
+      "dispatch_timestamp": 15337.9218647,
+      "received_timestamp": 15338.9147071,
+      "request_context": {
+        "kind": "planner",
+        "generation": 680,
+        "source_timestamp": 22.666666666666668,
+        "capture_timestamp": 15337.902226266666,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15337.9218647
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 710,
+      "source_timestamp": 23.666666666666668,
+      "capture_timestamp": 15338.902226266666,
+      "processing_start": 15338.9150358,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0009780000000318978,
+        "device_transfer_s": 0.00011330000052112155,
+        "text_decoding_s": 0.0001142999990406679,
+        "generation_latency_s": 1.0099809000003006,
+        "inference_latency_s": 1.0112683000006655,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 1.0115315000002738,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15339.9269054,
+      "inference_finished_timestamp": 15339.9269054,
+      "inference_latency_s": 1.011869599999045,
+      "result_age_s": 1.0246791333338479,
+      "dispatch_timestamp": 15338.9148773,
+      "received_timestamp": 15339.928349,
+      "request_context": {
+        "kind": "planner",
+        "generation": 710,
+        "source_timestamp": 23.666666666666668,
+        "capture_timestamp": 15338.902226266666,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15338.9148773
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 740,
+      "source_timestamp": 24.666666666666668,
+      "capture_timestamp": 15339.902226266666,
+      "processing_start": 15339.9285833,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.001010800000585732,
+        "device_transfer_s": 0.00010879999899771065,
+        "text_decoding_s": 0.00011099999937869143,
+        "generation_latency_s": 0.9789034000004904,
+        "inference_latency_s": 0.980221600000732,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.980473499999789,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15340.9093521,
+      "inference_finished_timestamp": 15340.9093521,
+      "inference_latency_s": 0.980768800000078,
+      "result_age_s": 1.0071258333337028,
+      "dispatch_timestamp": 15339.9284684,
+      "received_timestamp": 15340.9097045,
+      "request_context": {
+        "kind": "planner",
+        "generation": 740,
+        "source_timestamp": 24.666666666666668,
+        "capture_timestamp": 15339.902226266666,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15339.9284684
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 769,
+      "source_timestamp": 25.633333333333333,
+      "capture_timestamp": 15340.868892933333,
+      "processing_start": 15340.9099565,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010022999995271675,
+        "device_transfer_s": 0.00010860000111279078,
+        "text_decoding_s": 0.00013500000022759195,
+        "generation_latency_s": 0.9634962000000087,
+        "inference_latency_s": 0.9648307000006753,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9651474000002054,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15341.875479,
+      "inference_finished_timestamp": 15341.875479,
+      "inference_latency_s": 0.9655225000005885,
+      "result_age_s": 1.006586066667296,
+      "dispatch_timestamp": 15340.9098147,
+      "received_timestamp": 15341.8767591,
+      "request_context": {
+        "kind": "planner",
+        "generation": 769,
+        "source_timestamp": 25.633333333333333,
+        "capture_timestamp": 15340.868892933333,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15340.9098147
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 799,
+      "source_timestamp": 26.633333333333333,
+      "capture_timestamp": 15341.868892933333,
+      "processing_start": 15341.8769911,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010062000001198612,
+        "device_transfer_s": 0.0001188000005640788,
+        "text_decoding_s": 0.00010890000157814939,
+        "generation_latency_s": 0.9903712000013911,
+        "inference_latency_s": 0.9916844999988825,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9919912000004842,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15342.8693512,
+      "inference_finished_timestamp": 15342.8693512,
+      "inference_latency_s": 0.9923601000009512,
+      "result_age_s": 1.0004582666679198,
+      "dispatch_timestamp": 15341.8768807,
+      "received_timestamp": 15342.8704019,
+      "request_context": {
+        "kind": "planner",
+        "generation": 799,
+        "source_timestamp": 26.633333333333333,
+        "capture_timestamp": 15341.868892933333,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15341.8768807
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 828,
+      "source_timestamp": 27.6,
+      "capture_timestamp": 15342.8355596,
+      "processing_start": 15342.8706437,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010763999998744112,
+        "device_transfer_s": 0.00022600000011152588,
+        "text_decoding_s": 0.00011010000162059441,
+        "generation_latency_s": 0.9718420999997761,
+        "inference_latency_s": 0.9733347999990656,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.973627100000158,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15343.844589,
+      "inference_finished_timestamp": 15343.844589,
+      "inference_latency_s": 0.9739453000001959,
+      "result_age_s": 1.009029400000145,
+      "dispatch_timestamp": 15342.8705325,
+      "received_timestamp": 15343.8455342,
+      "request_context": {
+        "kind": "planner",
+        "generation": 828,
+        "source_timestamp": 27.6,
+        "capture_timestamp": 15342.8355596,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15342.8705325
+      }
+    },
+    {
+      "kind": "planner",
+      "generation": 858,
+      "source_timestamp": 28.6,
+      "capture_timestamp": 15343.8355596,
+      "processing_start": 15343.8457798,
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"LEFT\",\"target\":\"PERSON\",\"distance\":\"NEAR\"}",
+      "decision": {
+        "action": "LOOK",
+        "direction": "LEFT",
+        "target": "PERSON",
+        "distance": "NEAR"
+      },
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "json",
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "598c7576f9bbabbe7057d36aa344e072af58751740b52e73676bff3317b32528",
+        "max_new_tokens": 96,
+        "input_tokens": 381,
+        "output_tokens": 19,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          22397,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          3944,
+          934,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0009942999986378709,
+        "device_transfer_s": 0.00011490000179037452,
+        "text_decoding_s": 0.00014900000132911373,
+        "generation_latency_s": 0.9749718000002758,
+        "inference_latency_s": 0.9763147000012395,
+        "peak_allocated_gib": 4.056125164031982,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": false,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.976587400000426,
+        "planner_input": {
+          "current_observation": {
+            "person_visible": true,
+            "person_count": 1,
+            "person_direction": "LEFT",
+            "person_distance": "NEAR",
+            "blocking_obstacle": "NONE"
+          },
+          "memory": {
+            "last_seen_person_direction": "LEFT",
+            "person_visible_last_frame": true,
+            "frames_since_person_seen": 0
+          },
+          "transition": "UNKNOWN"
+        },
+        "chosen_code": null
+      },
+      "planner_input": {
+        "current_observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "memory": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0
+        },
+        "transition": "UNKNOWN"
+      },
+      "peak_allocated_gib": 4.056125164031982,
+      "peak_reserved_gib": 4.095703125,
+      "processing_finish": 15344.8226731,
+      "inference_finished_timestamp": 15344.8226731,
+      "inference_latency_s": 0.9768932999995741,
+      "result_age_s": 0.9871134999993956,
+      "dispatch_timestamp": 15343.8456707,
+      "received_timestamp": 15344.8233012,
+      "request_context": {
+        "kind": "planner",
+        "generation": 858,
+        "source_timestamp": 28.6,
+        "capture_timestamp": 15343.8355596,
+        "observation": {
+          "person_visible": true,
+          "person_count": 1,
+          "person_direction": "LEFT",
+          "person_distance": "NEAR",
+          "blocking_obstacle": "NONE"
+        },
+        "snapshot": {
+          "last_seen_person_direction": "LEFT",
+          "person_visible_last_frame": true,
+          "frames_since_person_seen": 0,
+          "transition": "UNKNOWN"
+        },
+        "workload": "continuous stress, not per-camera product planning",
+        "dispatch_timestamp": 15343.8456707
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15315.2435214,
+      "generation": 0,
+      "capture_timestamp": 15315.2355596
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15316.2568963,
+      "generation": 30,
+      "capture_timestamp": 15316.2355596
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15317.2475699,
+      "generation": 60,
+      "capture_timestamp": 15317.2355596
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15318.219022,
+      "generation": 89,
+      "capture_timestamp": 15318.202226266667
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15319.2150009,
+      "generation": 119,
+      "capture_timestamp": 15319.202226266667
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15320.1800826,
+      "generation": 148,
+      "capture_timestamp": 15320.168892933332
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15321.1657948,
+      "generation": 177,
+      "capture_timestamp": 15321.1355596
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15322.1593617,
+      "generation": 207,
+      "capture_timestamp": 15322.1355596
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15323.1406245,
+      "generation": 236,
+      "capture_timestamp": 15323.102226266667
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15324.1692562,
+      "generation": 267,
+      "capture_timestamp": 15324.1355596
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15325.1380374,
+      "generation": 296,
+      "capture_timestamp": 15325.102226266667
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15326.1064039,
+      "generation": 326,
+      "capture_timestamp": 15326.102226266667
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15327.0759579,
+      "generation": 355,
+      "capture_timestamp": 15327.068892933334
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15328.0556394,
+      "generation": 384,
+      "capture_timestamp": 15328.035559599999
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15329.0317395,
+      "generation": 413,
+      "capture_timestamp": 15329.002226266666
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15330.0174059,
+      "generation": 443,
+      "capture_timestamp": 15330.002226266666
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15331.0444282,
+      "generation": 474,
+      "capture_timestamp": 15331.035559599999
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15332.0232609,
+      "generation": 503,
+      "capture_timestamp": 15332.002226266666
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15333.0090602,
+      "generation": 532,
+      "capture_timestamp": 15332.968892933333
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15333.9959233,
+      "generation": 562,
+      "capture_timestamp": 15333.968892933333
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15334.9968861,
+      "generation": 592,
+      "capture_timestamp": 15334.968892933333
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15335.9570105,
+      "generation": 621,
+      "capture_timestamp": 15335.9355596
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15336.9263143,
+      "generation": 650,
+      "capture_timestamp": 15336.902226266666
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15337.9216424,
+      "generation": 680,
+      "capture_timestamp": 15337.902226266666
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15338.9146504,
+      "generation": 710,
+      "capture_timestamp": 15338.902226266666
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15339.9282914,
+      "generation": 740,
+      "capture_timestamp": 15339.902226266666
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15340.9095922,
+      "generation": 769,
+      "capture_timestamp": 15340.868892933333
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15341.876668,
+      "generation": 799,
+      "capture_timestamp": 15341.868892933333
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15342.870332,
+      "generation": 828,
+      "capture_timestamp": 15342.8355596
+    },
+    {
+      "type": "slow_dispatch",
+      "kind": "planner",
+      "timestamp": 15343.845478,
+      "generation": 858,
+      "capture_timestamp": 15343.8355596
+    }
+  ],
+  "commands": [],
+  "resources": [
+    {
+      "timestamp": 15315.2364748,
+      "cpu_process_percent": {
+        "15276": 0.0,
+        "13388": 250.0
+      },
+      "gpu_utilization_percent": 36,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15315.7376309,
+      "cpu_process_percent": {
+        "15276": 96.6,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 36,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15316.2389478,
+      "cpu_process_percent": {
+        "15276": 99.7,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 36,
+      "gpu_used_gib": 4.871910095214844
+    },
+    {
+      "timestamp": 15316.7393611,
+      "cpu_process_percent": {
+        "15276": 96.8,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 36,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15317.239848,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15317.7402829,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15318.2406615,
+      "cpu_process_percent": {
+        "15276": 96.8,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15318.7416432,
+      "cpu_process_percent": {
+        "15276": 96.7,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15319.2431816,
+      "cpu_process_percent": {
+        "15276": 99.7,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15319.7434836,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15320.2444093,
+      "cpu_process_percent": {
+        "15276": 96.6,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 37,
+      "gpu_used_gib": 4.871788024902344
+    },
+    {
+      "timestamp": 15320.7447549,
+      "cpu_process_percent": {
+        "15276": 100.1,
+        "13388": 6.3
+      },
+      "gpu_utilization_percent": 37,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15321.2461762,
+      "cpu_process_percent": {
+        "15276": 93.5,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 42,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15321.7465746,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 42,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15322.247017,
+      "cpu_process_percent": {
+        "15276": 96.8,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15322.7478828,
+      "cpu_process_percent": {
+        "15276": 96.7,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15323.2490915,
+      "cpu_process_percent": {
+        "15276": 96.6,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15323.7503151,
+      "cpu_process_percent": {
+        "15276": 96.6,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15324.2514104,
+      "cpu_process_percent": {
+        "15276": 93.5,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.872764587402344
+    },
+    {
+      "timestamp": 15324.7514398,
+      "cpu_process_percent": {
+        "15276": 100.0,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15325.2521128,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 0.0
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15325.7522139,
+      "cpu_process_percent": {
+        "15276": 100.0,
+        "13388": 25.0
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15326.2522429,
+      "cpu_process_percent": {
+        "15276": 100.0,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15326.7534977,
+      "cpu_process_percent": {
+        "15276": 99.8,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 38,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15327.2546365,
+      "cpu_process_percent": {
+        "15276": 96.6,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 38,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15327.7561535,
+      "cpu_process_percent": {
+        "15276": 99.7,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15328.2566089,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 28.1
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874107360839844
+    },
+    {
+      "timestamp": 15328.7575599,
+      "cpu_process_percent": {
+        "15276": 99.8,
+        "13388": 40.5
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15329.2578892,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15329.7584759,
+      "cpu_process_percent": {
+        "15276": 96.8,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15330.2595416,
+      "cpu_process_percent": {
+        "15276": 87.3,
+        "13388": 24.9
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15330.760204,
+      "cpu_process_percent": {
+        "15276": 96.8,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15331.2610828,
+      "cpu_process_percent": {
+        "15276": 93.6,
+        "13388": 34.3
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15331.7613593,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 25.0
+      },
+      "gpu_utilization_percent": 38,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15332.261376,
+      "cpu_process_percent": {
+        "15276": 100.0,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 38,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15332.7620789,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15333.2622015,
+      "cpu_process_percent": {
+        "15276": 93.7,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15333.7631257,
+      "cpu_process_percent": {
+        "15276": 99.8,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15334.2642294,
+      "cpu_process_percent": {
+        "15276": 99.8,
+        "13388": 12.5
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15334.764709,
+      "cpu_process_percent": {
+        "15276": 93.7,
+        "13388": 28.1
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15335.2658021,
+      "cpu_process_percent": {
+        "15276": 96.7,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15335.7666994,
+      "cpu_process_percent": {
+        "15276": 99.8,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15336.2678623,
+      "cpu_process_percent": {
+        "15276": 102.9,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15336.7688709,
+      "cpu_process_percent": {
+        "15276": 99.8,
+        "13388": 0.0
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15337.2693648,
+      "cpu_process_percent": {
+        "15276": 93.7,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15337.7701366,
+      "cpu_process_percent": {
+        "15276": 99.8,
+        "13388": 3.1
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15338.270983,
+      "cpu_process_percent": {
+        "15276": 96.7,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15338.7718895,
+      "cpu_process_percent": {
+        "15276": 99.8,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15339.2720342,
+      "cpu_process_percent": {
+        "15276": 100.0,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15339.773211,
+      "cpu_process_percent": {
+        "15276": 96.6,
+        "13388": 0.0
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15340.2735864,
+      "cpu_process_percent": {
+        "15276": 90.6,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15340.7741638,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 3.1
+      },
+      "gpu_utilization_percent": 42,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15341.2741981,
+      "cpu_process_percent": {
+        "15276": 100.0,
+        "13388": 6.3
+      },
+      "gpu_utilization_percent": 42,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15341.7751842,
+      "cpu_process_percent": {
+        "15276": 99.8,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15342.2759791,
+      "cpu_process_percent": {
+        "15276": 99.8,
+        "13388": 15.6
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15342.7767,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15343.2774101,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 39,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15343.777825,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 18.7
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15344.2785982,
+      "cpu_process_percent": {
+        "15276": 99.8,
+        "13388": 9.4
+      },
+      "gpu_utilization_percent": 40,
+      "gpu_used_gib": 4.874198913574219
+    },
+    {
+      "timestamp": 15344.7793174,
+      "cpu_process_percent": {
+        "15276": 99.9,
+        "13388": 6.2
+      },
+      "gpu_utilization_percent": 41,
+      "gpu_used_gib": 4.874198913574219
+    }
+  ],
+  "queue_capacity": 0,
+  "latest_frame_slot_capacity": 1,
+  "max_in_flight_per_worker": 1,
+  "shared_qwen_negative_control": false,
+  "note": "Qwen negative control uses one safe serialized GPU owner; YOLO and Qwen use independent processes.",
+  "slow_worker": {
+    "type": "ready",
+    "info": {
+      "backend": "shared-one-Qwen2B",
+      "model_load": {
+        "gpu": "NVIDIA GeForce RTX 3060 Ti",
+        "cuda_available": true,
+        "gpu_used": true,
+        "dtype": "torch.bfloat16",
+        "attention": "sdpa",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "quantize_4bit": false,
+        "model_load_s": 3.1473055999995267,
+        "model_allocated_gib": 3.9638280868530273,
+        "model_load_peak_allocated_gib": 3.9638280868530273,
+        "model_load_peak_reserved_gib": 3.96484375,
+        "model_footprint_gib": 3.962837517261505,
+        "model_instance_id": 2330246465920,
+        "processor_instance_id": 2330246464576,
+        "model_load_count": 1
+      }
+    },
+    "pid": 15276
+  },
+  "origin_perf_counter": 15315.2355596,
+  "video": {
+    "fps": 30.0,
+    "frame_count": 885,
+    "duration_s": 29.5
+  },
+  "producer_error": null,
+  "producer_frames": 885,
+  "latest_slot_overwrites": 884,
+  "slot_capacity": 1,
+  "final_state": {
+    "last_seen_person_direction": "UNKNOWN",
+    "person_visible_last_frame": null,
+    "frames_since_person_seen": 0,
+    "transition": "UNKNOWN"
+  },
+  "event_coalesced": 0,
+  "worker_counts": [
+    {
+      "pid": 15276,
+      "sent": 30,
+      "completed": 30
+    }
+  ]
+}

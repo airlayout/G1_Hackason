@@ -1,0 +1,129 @@
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+D t=3 fast=C planner={"action":"LOOK","direction":"CENTER","target":"PERSON","distance":"NEAR"} timing={'fast_s': 0.10917060000065248, 'semantic_s': 2.3614860999987286, 'planner_s': 1.0632108000008884, 'cycle_s': 3.5339499000001524, 'fast_blocked_by_semantic_planner_s': 3.424696899999617}
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+D t=7 fast=B planner={
+  "action": "LOOK",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "NEAR"
+} timing={'fast_s': 0.10336049999932584, 'semantic_s': 2.4290153000001737, 'planner_s': 1.5754428999989614, 'cycle_s': 4.10791639999843, 'fast_blocked_by_semantic_planner_s': 4.004458199999135}
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+D t=8 fast=B planner={
+  "action": "LOOK",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "NEAR"
+} timing={'fast_s': 0.0969107000000804, 'semantic_s': 2.3310141999991174, 'planner_s': 1.5784934000002977, 'cycle_s': 4.006579799999599, 'fast_blocked_by_semantic_planner_s': 3.909507599999415}
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+D t=9 fast=A planner={
+  "action": "SEARCH",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "UNKNOWN"
+} timing={'fast_s': 0.1024543999992602, 'semantic_s': 2.2045274000010977, 'planner_s': 1.576653999998598, 'cycle_s': 3.8837239000004047, 'fast_blocked_by_semantic_planner_s': 3.7811813999996957}
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+D t=9.5 fast=A planner={
+  "action": "SEARCH",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "UNKNOWN"
+} timing={'fast_s': 0.10106900000027963, 'semantic_s': 2.1460003000011056, 'planner_s': 1.570527800000491, 'cycle_s': 3.8176884000004065, 'fast_blocked_by_semantic_planner_s': 3.7165281000015966}
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+D t=10 fast=A planner={
+  "action": "SEARCH",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "UNKNOWN"
+} timing={'fast_s': 0.0890386999999464, 'semantic_s': 2.1537098999997397, 'planner_s': 1.5729069000008167, 'cycle_s': 3.815723599998819, 'fast_blocked_by_semantic_planner_s': 3.7266168000005564}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+D t=10.25 fast=A planner={"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"} timing={'fast_s': 0.09316500000022643, 'semantic_s': 2.174955000000409, 'planner_s': 0.9348642999993899, 'cycle_s': 3.203055599999061, 'fast_blocked_by_semantic_planner_s': 3.109819299999799}
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+D t=12 fast=B planner={
+  "action": "LOOK",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "NEAR"
+} timing={'fast_s': 0.09618869999940216, 'semantic_s': 2.229123699999036, 'planner_s': 1.5815550000006624, 'cycle_s': 3.906950099999449, 'fast_blocked_by_semantic_planner_s': 3.8106786999996984}
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+D t=13 fast=D planner={
+  "action": "LOOK",
+  "direction": "RIGHT",
+  "target": "PERSON",
+  "distance": "UNKNOWN"
+} timing={'fast_s': 0.09504259999994247, 'semantic_s': 2.2047155000000203, 'planner_s': 1.5416413999992074, 'cycle_s': 3.8415093000003253, 'fast_blocked_by_semantic_planner_s': 3.7463568999992276}
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+D t=3 fast=C planner={"action":"LOOK","direction":"CENTER","target":"PERSON","distance":"NEAR"} timing={'fast_s': 0.09836489999906917, 'semantic_s': 2.192194600000221, 'planner_s': 1.0038322000000335, 'cycle_s': 3.294483499999842, 'fast_blocked_by_semantic_planner_s': 3.1960268000002543}
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+D t=7 fast=B planner={
+  "action": "LOOK",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "NEAR"
+} timing={'fast_s': 0.09309570000004896, 'semantic_s': 2.2077786999998352, 'planner_s': 1.62881600000037, 'cycle_s': 3.9297998000001826, 'fast_blocked_by_semantic_planner_s': 3.836594700000205}
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+D t=8 fast=B planner={
+  "action": "LOOK",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "NEAR"
+} timing={'fast_s': 0.09593990000030317, 'semantic_s': 2.2344527000004746, 'planner_s': 1.6395711999994091, 'cycle_s': 3.9700622000000294, 'fast_blocked_by_semantic_planner_s': 3.8740238999998837}
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+D t=9 fast=A planner={
+  "action": "SEARCH",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "UNKNOWN"
+} timing={'fast_s': 0.09210709999933897, 'semantic_s': 2.1564149999994697, 'planner_s': 1.559577399999398, 'cycle_s': 3.8081781000000774, 'fast_blocked_by_semantic_planner_s': 3.7159923999988678}
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+D t=9.5 fast=A planner={
+  "action": "SEARCH",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "UNKNOWN"
+} timing={'fast_s': 0.09937329999957001, 'semantic_s': 2.2671798999999737, 'planner_s': 1.5642219000001205, 'cycle_s': 3.9308751999997185, 'fast_blocked_by_semantic_planner_s': 3.8314018000000942}
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+D t=10 fast=A planner={
+  "action": "SEARCH",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "UNKNOWN"
+} timing={'fast_s': 0.10682270000143035, 'semantic_s': 2.2114450999997644, 'planner_s': 1.573717499999475, 'cycle_s': 3.8920694999997067, 'fast_blocked_by_semantic_planner_s': 3.7851625999992393}
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+D t=10.25 fast=A planner={"action":"WAIT","direction":"UNKNOWN","target":"NONE","distance":"UNKNOWN"} timing={'fast_s': 0.09485379999932775, 'semantic_s': 2.163301299999148, 'planner_s': 0.9242950000007113, 'cycle_s': 3.1825191999996605, 'fast_blocked_by_semantic_planner_s': 3.087596299999859}
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+D t=12 fast=B planner={
+  "action": "LOOK",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "NEAR"
+} timing={'fast_s': 0.09825220000129775, 'semantic_s': 2.3349319999997533, 'planner_s': 1.6708175000003394, 'cycle_s': 4.104070800000045, 'fast_blocked_by_semantic_planner_s': 4.005749500000093}
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=UNKNOWN confidence=n/a
+D t=13 fast=D planner={
+  "action": "LOOK",
+  "direction": "RIGHT",
+  "target": "PERSON",
+  "distance": "UNKNOWN"
+} timing={'fast_s': 0.09938999999940279, 'semantic_s': 2.2786318999988, 'planner_s': 1.5221349999992526, 'cycle_s': 3.9002459000003, 'fast_blocked_by_semantic_planner_s': 3.8007668999980524}
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+D t=8 fast=B planner={
+  "action": "LOOK",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "NEAR"
+} timing={'fast_s': 0.08841729999949166, 'semantic_s': 2.2526813999993465, 'planner_s': 1.6116591000009066, 'cycle_s': 3.9528276000000915, 'fast_blocked_by_semantic_planner_s': 3.864340500000253}
+[MOCK ROBOT] SEARCH LEFT target=PERSON distance=UNKNOWN confidence=n/a
+D t=10 fast=A planner={
+  "action": "SEARCH",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "UNKNOWN"
+} timing={'fast_s': 0.10360190000028524, 'semantic_s': 2.270369900001242, 'planner_s': 1.5539473999997426, 'cycle_s': 3.9280166999997164, 'fast_blocked_by_semantic_planner_s': 3.8243173000009847}
+[MOCK ROBOT] LOOK LEFT target=PERSON distance=NEAR confidence=n/a
+D t=12 fast=B planner={
+  "action": "LOOK",
+  "direction": "LEFT",
+  "target": "PERSON",
+  "distance": "NEAR"
+} timing={'fast_s': 0.09414800000013201, 'semantic_s': 2.224677899999733, 'planner_s': 1.64243869999882, 'cycle_s': 3.961334800000259, 'fast_blocked_by_semantic_planner_s': 3.8671165999985533}
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a

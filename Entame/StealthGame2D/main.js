@@ -1,6 +1,8 @@
 import { loadStages } from "./stagesLoader.js";
-import { createPlayer, updatePlayer, isBackAtStart } from "./player.js";
+import { createPlayer, updatePlayer } from "./player.js";
 import { createGuard, updateGuard, isCaught } from "./guard.js";
+import { createSecurityCamera, updateSecurityCamera } from "./securityCamera.js";
+import { createMiniRobot, defaultMiniRobot, updateMiniRobot, isStageCleared, detectionTargets } from "./miniRobot.js";
 import { renderStage } from "./render.js";
 
 const STATE = {
@@ -13,6 +15,8 @@ const STATE = {
 const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
 const levelSelectEl = document.getElementById("level-select");
+const levelOptionsEl = document.getElementById("level-options");
+const miniRobotToggleEl = document.getElementById("play-mini-robot");
 const overlayEl = document.getElementById("overlay");
 const overlayTitleEl = document.getElementById("overlay-title");
 const overlayHintEl = document.getElementById("overlay-hint");
@@ -25,6 +29,8 @@ let state = STATE.LEVEL_SELECT;
 let currentStage = null;
 let player = null;
 let guard = null;
+let securityCameras = [];
+let miniRobot = null;
 let lastTimestamp = 0;
 
 const input = { up: false, down: false, left: false, right: false };
@@ -57,7 +63,8 @@ function buildLevelSelect(stages) {
   for (const stage of stages) {
     const button = document.createElement("button");
     button.className = "level-button";
-    button.textContent = `LEVEL ${stage.id}`;
+    // エディタでつけたステージ名を出す（名前が空のときだけ ID で代用）。
+    button.textContent = stage.name || `LEVEL ${stage.id}`;
     button.addEventListener("click", () => startStage(stage));
     levelSelectEl.appendChild(button);
   }
@@ -69,6 +76,9 @@ function startStage(stage) {
   canvas.height = stage.height;
   player = createPlayer(stage.start);
   guard = createGuard(stage.guard);
+  securityCameras = stage.securityCameras.map(createSecurityCamera);
+  // ミニロボットを連れて行くかは、ステージではなくプレイする人がレベル選択で選ぶ。
+  miniRobot = miniRobotToggleEl.checked ? createMiniRobot(defaultMiniRobot(), stage.start) : null;
   input.up = input.down = input.left = input.right = false;
   state = STATE.PLAYING;
   showScreen();
@@ -76,6 +86,7 @@ function startStage(stage) {
 
 function showScreen() {
   levelSelectEl.classList.toggle("hidden", state !== STATE.LEVEL_SELECT);
+  levelOptionsEl.classList.toggle("hidden", state !== STATE.LEVEL_SELECT);
   canvas.classList.toggle("hidden", state === STATE.LEVEL_SELECT);
   playControlsEl.classList.toggle("hidden", state === STATE.LEVEL_SELECT);
   playRulesEl.classList.toggle("hidden", state === STATE.LEVEL_SELECT);
@@ -106,11 +117,14 @@ backButtonEl.addEventListener("click", () => {
 
 function update(dt) {
   updatePlayer(player, input, dt, currentStage);
-  updateGuard(guard, dt, currentStage, player);
+  if (miniRobot) updateMiniRobot(miniRobot, dt, player, currentStage);
+  const targets = detectionTargets(player, miniRobot);
+  updateGuard(guard, dt, currentStage, targets);
+  for (const camera of securityCameras) updateSecurityCamera(camera, dt, currentStage, targets);
 
-  if (isCaught(guard)) {
+  if (isCaught(guard) || securityCameras.some((camera) => camera.caught)) {
     state = STATE.GAME_OVER;
-  } else if (isBackAtStart(player, currentStage)) {
+  } else if (isStageCleared(player, miniRobot, currentStage)) {
     state = STATE.CLEAR;
   }
 }
@@ -123,7 +137,7 @@ function loop(timestamp) {
     update(dt);
     // 検知（赤）確定でGAME_OVERに遷移した瞬間の状態も1フレーム描画してから
     // オーバーレイを出す。ここで描画をスキップすると赤い視野が一切見えないまま終わる。
-    renderStage(ctx, currentStage, player, guard, currentStage.name);
+    renderStage(ctx, currentStage, player, guard, currentStage.name, securityCameras, miniRobot);
     if (state !== STATE.PLAYING) {
       showScreen();
     }

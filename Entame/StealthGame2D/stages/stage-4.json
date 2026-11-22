@@ -1,0 +1,68 @@
+{
+  "id": 4,
+  "name": "level3",
+  "width": 800,
+  "height": 800,
+  "start": {
+    "x": 40,
+    "y": 400
+  },
+  "target": {
+    "x": 760,
+    "y": 400
+  },
+  "walls": [
+    {
+      "x": 53,
+      "y": 457,
+      "w": 268,
+      "h": 14
+    },
+    {
+      "x": 413,
+      "y": 454,
+      "w": 346,
+      "h": 20
+    },
+    {
+      "x": 587,
+      "y": 313,
+      "w": 175,
+      "h": 19
+    },
+    {
+      "x": 39,
+      "y": 314,
+      "w": 428,
+      "h": 15
+    }
+  ],
+  "guard": {
+    "x": 369,
+    "y": 634,
+    "patrolPath": [
+      {
+        "x": 366,
+        "y": 465
+      },
+      {
+        "x": 370,
+        "y": 657
+      }
+    ],
+    "moveSpeed": 32,
+    "visionAngle": 70,
+    "visionDistance": 400
+  },
+  "securityCameras": [
+    {
+      "x": 517,
+      "y": 257,
+      "direction": 120,
+      "swingAngle": 90,
+      "swingSpeed": 28.6,
+      "visionAngle": 57.2,
+      "visionDistance": 240
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "mode": "saved-observation state-only replay",
+  "planner_executed": false,
+  "note": "No new Perception inference; no Decision is generated or substituted.",
+  "frames": [
+    {
+      "timestamp": 8.0,
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "LEFT",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "LEFT"
+      },
+      "state_before": {
+        "last_seen_person_direction": "UNKNOWN",
+        "person_visible_last_frame": null,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "state_after": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "state_update_s": 0.00045540000428445637,
+      "error": null
+    },
+    {
+      "timestamp": 10.0,
+      "observation": {
+        "person_visible": false,
+        "person_count": 0,
+        "person_direction": "UNKNOWN",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "RIGHT"
+      },
+      "state_before": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "state_after": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": false,
+        "frames_since_person_seen": 1,
+        "transition": "DISAPPEARED"
+      },
+      "state_update_s": 8.400005754083395e-06,
+      "error": null
+    },
+    {
+      "timestamp": 12.0,
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "LEFT",
+        "person_distance": "NEAR",
+        "blocking_obstacle": "LEFT"
+      },
+      "state_before": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": false,
+        "frames_since_person_seen": 1,
+        "transition": "DISAPPEARED"
+      },
+      "state_after": {
+        "last_seen_person_direction": "LEFT",
+        "person_visible_last_frame": true,
+        "frames_since_person_seen": 0,
+        "transition": "APPEARED"
+      },
+      "state_update_s": 3.9000005926936865e-06,
+      "error": null
+    }
+  ],
+  "status": "pass"
+}

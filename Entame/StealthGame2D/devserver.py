@@ -38,6 +38,12 @@ def is_valid_filename(file_name):
 
 
 class DevRequestHandler(SimpleHTTPRequestHandler):
+    def end_headers(self):
+        # 開発用: ブラウザに静的ファイルをキャッシュさせない（保存したステージが
+        # リロードで古いまま表示されるのを防ぐ）。
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def do_POST(self):
         if self.path == "/api/save-stage":
             self._handle_save_stage()

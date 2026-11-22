@@ -1,0 +1,13 @@
+{
+  "mode": "post-run visual annotation only; never imported by runtime",
+  "video_sha256": "3ecc220cd52007997078aa70782118e22f1d75c92884e3a8ebe8523f6a73a929",
+  "original_labels_unchanged": true,
+  "annotation_method": "Viewed original video frames and saved contact sheets. Intervals represent visual uncertainty, not inferred detector event times. Body direction uses fixed 40/60 percent boundaries.",
+  "events": [
+    {"name": "body_center_to_LEFT", "type": "direction", "direction": "LEFT", "lower_source_timestamp": 5.9, "upper_source_timestamp": 5.966666666666667, "uncertainty_frames": 2},
+    {"name": "person_fully_disappears", "type": "disappeared", "last_seen_direction": "LEFT", "lower_source_timestamp": 8.4, "upper_source_timestamp": 8.466666666666667, "uncertainty_frames": 2},
+    {"name": "first_partial_head_reappears_LEFT", "type": "reappeared", "direction": "LEFT", "lower_source_timestamp": 10.366666666666667, "upper_source_timestamp": 10.4, "uncertainty_frames": 1}
+  ],
+  "anchor_note": "12 seconds is the original confirmed-present evaluation anchor. The first visible partial head is earlier. No original timestamp label is changed.",
+  "visual_evidence": ["reports/phase36/annotation/event_overview.jpg", "reports/phase36/annotation/event_detail.jpg", "reports/phase36/annotation/direction_overview.jpg", "reports/phase36/annotation/direction_detail.jpg"]
+}

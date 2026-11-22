@@ -1,0 +1,32 @@
+{"presence_correct_total": [27, 27], "direction_correct_total": [12, 15], "presence_accuracy": 1.0, "direction_accuracy": 0.8, "valid_class_rate": 1.0, "main_pass": true, "extended_geometry_scores": [8, 8, 8], "eligible": true, "integrity_errors": [], "peak_allocated_gib": 4.006528854370117, "peak_reserved_gib": 4.01171875, "note": "Geometry-only gate, not full Observation or Action accuracy. Warmup/load/fresh main excluded from aggregates."}
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] FOUND LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] APPROACH CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] FOUND LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] APPROACH CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] FOUND LEFT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] APPROACH CENTER target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] LOOK RIGHT target=PERSON distance=NEAR confidence=n/a
+[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=n/a
+[MOCK ROBOT] FOUND LEFT target=PERSON distance=NEAR confidence=n/a
+{"pipeline_status": "pass", "presence_accuracy": 1.0, "direction_accuracy": 0.8, "presence_correct_total": [27, 27], "direction_correct_total": [12, 15], "perception_valid_rate": 1.0, "planner_valid_rate": 1.0, "main_pass": false, "extended_scores": [3, 3, 3], "accuracy_maintained": false, "integrity_pass": true, "eligible": false, "tier": "REJECT (accuracy)", "peak_allocated_gib": 4.065380573272705, "peak_reserved_gib": 4.09765625, "sample_note": "Warmup and model load excluded; mean/median/p95 across 9-frame runs.", "serialization_errors": [], "policy_scores": [3, 3, 3, 1], "policy_total": [10, 30]}

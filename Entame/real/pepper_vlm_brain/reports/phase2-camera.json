@@ -1,0 +1,6 @@
+{
+  "command": "run_webcam.py --probe",
+  "exit_code": 1,
+  "stdout": "{\"decision\": {\"action\": \"WAIT\", \"direction\": \"UNKNOWN\", \"target\": \"NONE\", \"distance\": \"UNKNOWN\", \"confidence\": 0.0}, \"raw_response\": \"\", \"fallback\": true, \"error\": \"Webcam failed: CameraError: Webcam 0 cannot be opened. Check connection, Windows camera permissions and competing camera apps.\", \"metrics\": {}}\n[MOCK ROBOT] WAIT UNKNOWN target=NONE distance=UNKNOWN confidence=0.00\n",
+  "stderr": "[ WARN:0@0.201] global cap.cpp:480 cv::VideoCapture::open VIDEOIO(DSHOW): backend is generally available but can't be used to capture by index\n[ WARN:0@0.404] global cap.cpp:480 cv::VideoCapture::open VIDEOIO(MSMF): backend is generally available but can't be used to capture by index\n"
+}

@@ -1,0 +1,638 @@
+<title>G1 統合デモ 全体像</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* Layout: 読み物の縦1カラム。図は各セクションの主役で、横幅が要る図は自前のスクロール枠に入れる。
+   色の約束: 場所=面の色(PC/Jetson/本体/現場)、通信=線の色(SSH/DDS/UDP/ソケット)。全図で共通。 */
+:root {
+  --bg:#f2f5f7; --surface:#ffffff; --fg:#14232b; --muted:#55676f; --line:#d3dde2;
+  --accent:#0a6b8f; --accent-soft:#dcf0f7; --warn:#a35a00; --warn-soft:#fdeed6;
+  --code-bg:#e8eef1;
+  --ssh:#1f5fbf; --dds:#0f7a4f; --udp:#b45309; --ipc:#7b3fb0;
+  --z-pc:#e3eefb; --z-jet:#e1f3ea; --z-body:#f1e8f8; --z-world:#eceff1;
+  --font-body:"Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0f171c; --surface:#17232a; --fg:#e3edf1; --muted:#93a8b1; --line:#2c3e47;
+    --accent:#5cc3e6; --accent-soft:#14333f; --warn:#f0b55c; --warn-soft:#3a2b12; --code-bg:#0c1317;
+    --ssh:#6aa5ff; --dds:#4cd19b; --udp:#f0a24a; --ipc:#c49bf0;
+    --z-pc:#14263d; --z-jet:#12302a; --z-body:#2a1d38; --z-world:#232d33; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0f171c; --surface:#17232a; --fg:#e3edf1; --muted:#93a8b1; --line:#2c3e47;
+  --accent:#5cc3e6; --accent-soft:#14333f; --warn:#f0b55c; --warn-soft:#3a2b12; --code-bg:#0c1317;
+  --ssh:#6aa5ff; --dds:#4cd19b; --udp:#f0a24a; --ipc:#c49bf0;
+  --z-pc:#14263d; --z-jet:#12302a; --z-body:#2a1d38; --z-world:#232d33; color-scheme:dark;
+}
+* { box-sizing:border-box; }
+body { background:var(--bg); color:var(--fg); font-family:var(--font-body); font-size:15px; line-height:1.8; padding-inline:16px; padding-block:32px 64px; }
+main { max-width:1240px; margin-inline:auto; display:flex; flex-direction:column; gap:48px; }
+h1 { font-size:clamp(26px,5vw,34px); line-height:1.3; margin:0 0 10px; text-wrap:balance; }
+h2 { font-size:20px; margin:0 0 12px; line-height:1.4; text-wrap:balance; display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 12px; }
+h2 small { font-family:var(--font-mono); font-size:12px; font-weight:400; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; }
+h3 { font-size:15px; margin:0 0 4px; }
+p { margin:0 0 12px; max-width:68ch; }
+code { font-family:var(--font-mono); font-size:.88em; background:var(--code-bg); padding:1px 6px; border-radius:4px; }
+.lead { font-size:17px; max-width:62ch; }
+.panel { background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:16px 20px; }
+.legend { display:flex; flex-wrap:wrap; gap:8px 18px; font-size:13px; margin:0 0 12px; align-items:center; }
+.panel .legend:last-child { margin-bottom:0; }
+.legend span { display:inline-flex; align-items:center; gap:7px; }
+.sw { width:26px; height:0; border-top:3px solid; display:inline-block; }
+.sw.dash { border-top-style:dashed; }
+.tile { width:14px; height:14px; border-radius:3px; border:1px solid var(--line); display:inline-block; }
+.fig { margin:0; }
+.fig .scroll { overflow-x:auto; background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:8px; }
+.fig svg { display:block; height:auto; color:var(--fg); font-family:var(--font-body); }
+.fig figcaption { font-size:13px; color:var(--muted); margin-top:8px; max-width:74ch; }
+.zone { stroke:var(--muted); stroke-width:1; stroke-dasharray:5 4; }
+.z-pc { fill:var(--z-pc); } .z-jet { fill:var(--z-jet); } .z-body { fill:var(--z-body); } .z-world { fill:var(--z-world); }
+.node { fill:var(--surface); stroke:currentColor; stroke-width:1.2; }
+.hl { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+.stop { fill:var(--warn-soft); stroke:var(--warn); stroke-width:1.4; }
+.head { stroke:currentColor; stroke-width:1; }
+.t-name { font-family:var(--font-mono); font-size:12.5px; font-weight:500; fill:currentColor; }
+.t-desc { font-size:11.5px; fill:var(--muted); }
+.t-zone { font-size:13px; font-weight:700; fill:currentColor; }
+.t-msg { font-size:11.5px; fill:currentColor; paint-order:stroke; stroke:var(--surface); stroke-width:4px; stroke-linejoin:round; }
+.t-phase { font-size:12px; font-weight:700; fill:var(--muted); }
+.t-warn { font-size:12px; fill:var(--warn); font-weight:500; }
+.t-ok { font-size:12px; fill:var(--accent); font-weight:500; }
+.life { stroke:var(--muted); stroke-width:1; stroke-dasharray:2 4; }
+.phase0 { fill:var(--bg); } .phase1 { fill:none; }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; }
+.card { background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:14px 16px; min-width:0; }
+.card .where { font-family:var(--font-mono); font-size:12px; color:var(--muted); margin-bottom:2px; }
+.card p { margin:6px 0 0; font-size:14px; color:var(--muted); }
+.card .rate { font-family:var(--font-mono); font-size:12px; color:var(--accent); }
+.tablewrap { overflow-x:auto; background:var(--surface); border:1px solid var(--line); border-radius:8px; }
+table { border-collapse:collapse; width:100%; min-width:760px; font-size:13.5px; line-height:1.6; }
+th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+th { font-size:12px; color:var(--muted); font-weight:500; letter-spacing:.04em; white-space:nowrap; }
+tr:last-child td { border-bottom:none; }
+.pill { font-family:var(--font-mono); font-size:11.5px; padding:1px 8px; border-radius:999px; border:1px solid var(--line); white-space:nowrap; }
+.pill.pc { background:var(--z-pc); } .pill.jet { background:var(--z-jet); } .pill.body { background:var(--z-body); }
+.steps { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+.steps li { background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:14px 16px; min-width:0; }
+.steps li p { margin:4px 0 0; font-size:14px; color:var(--muted); }
+.steps b.k { color:var(--accent); font-size:14px; }
+.callout { background:var(--warn-soft); border:1px solid var(--warn); border-radius:8px; padding:14px 18px; }
+.callout h3 { color:var(--warn); } .callout ul { margin:6px 0 0; padding-left:20px; } .callout li { margin-bottom:4px; }
+.foot { font-size:13px; color:var(--muted); border-top:1px solid var(--line); padding-top:16px; }
+
+html { scroll-behavior:smooth; }
+.toc { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 0; padding:0; list-style:none; }
+.toc a { display:inline-block; font-size:13px; color:var(--fg); text-decoration:none; background:var(--surface); border:1px solid var(--line); border-radius:999px; padding:3px 12px; }
+.toc a:hover { border-color:var(--accent); color:var(--accent); }
+.toc .eng a { background:var(--accent-soft); }
+.divider { border-top:2px solid var(--accent); padding-top:14px; }
+.divider .tag { display:inline-block; font-size:12px; font-weight:700; color:var(--accent); background:var(--accent-soft); border-radius:999px; padding:2px 12px; margin-bottom:8px; }
+.divider p { margin:0; color:var(--muted); }
+.scene { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; margin-top:16px; }
+.scene .card .big { font-size:30px; line-height:1.2; }
+.scene .card .react { font-size:13px; color:var(--accent); font-weight:500; margin-top:6px; }
+.flow { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(5,1fr); gap:18px; counter-reset:n; }
+.flow li { position:relative; background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:14px 14px 16px; min-width:0; }
+.flow li .ic { font-size:28px; line-height:1.2; }
+.flow li b { display:block; margin-top:4px; font-size:15px; }
+.flow li p { margin:6px 0 0; font-size:13.5px; color:var(--muted); line-height:1.65; }
+.flow li:not(:last-child)::after { content:"▶"; position:absolute; right:-16px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--accent); }
+.flow li .who { display:block; margin-top:8px; font-size:12px; color:var(--accent); font-family:var(--font-mono); }
+@media (max-width:860px) { .flow { grid-template-columns:1fr; } .flow li:not(:last-child)::after { content:"▼"; right:auto; left:50%; top:auto; bottom:-17px; transform:translateX(-50%); } }
+.gloss { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:0 28px; margin:0; }
+.gloss div { padding:10px 0; border-bottom:1px solid var(--line); min-width:0; }
+.gloss dt { font-weight:700; font-size:14px; }
+.gloss dt span { font-family:var(--font-mono); font-weight:400; font-size:12px; color:var(--muted); margin-left:6px; }
+.gloss dd { margin:2px 0 0; font-size:13.5px; color:var(--muted); line-height:1.7; }
+.gloss-h { font-size:13px; font-weight:700; color:var(--accent); margin:22px 0 4px; }
+</style>
+<main>
+<header>
+  <h1>G1 統合デモ 全体像</h1>
+  <p class="lead">G1 が決まったコースを歩き、途中で人・バナナ・ぬいぐるみを見つけると、立ち止まって声と腕の動きで反応し、また歩き出すデモです。</p>
+  <ul class="toc">
+    <li><a href="#what">1 どんなデモ？</a></li>
+    <li><a href="#cast">2 登場するもの</a></li>
+    <li><a href="#flow">3 1回の流れ</a></li>
+    <li class="eng"><a href="#where">4 配置</a></li>
+    <li class="eng"><a href="#seq">5 シーケンス</a></li>
+    <li class="eng"><a href="#loops">6 ループ</a></li>
+    <li class="eng"><a href="#table">7 担当表</a></li>
+    <li><a href="#gloss">8 用語集</a></li>
+  </ul>
+</header>
+
+<section id="what">
+  <h2>1 どんなデモ？ <small>what</small></h2>
+  <p>G1（ユニツリー社の人型ロボット）が、決まった距離を往復します。歩いている間、カメラの映像から次の 3 つを探しています。見つけたら歩きを止め、反応が終わると歩きを再開します。</p>
+  <figure class="fig">
+    <div class="scroll">
+    <svg viewBox="0 0 900 250" style="min-width:760px;width:100%" role="img" aria-label="G1 がコースを前に歩いていき、途中にいる人・バナナ・ぬいぐるみをカメラで見つけると反応する様子">
+      <defs><marker id="sc-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="var(--accent)"/></marker></defs>
+      <rect class="z-world" x="10" y="20" width="880" height="210" rx="10"/>
+      <line x1="40" y1="170" x2="860" y2="170" stroke="var(--accent)" stroke-width="3" stroke-dasharray="10 7" marker-end="url(#sc-a)"/>
+      <text class="t-desc" x="40" y="212">コース（決まった距離を往復）</text>
+      <text x="100" y="162" font-size="52" text-anchor="middle">🤖</text>
+      <text class="t-name" x="100" y="196" text-anchor="middle" style="font-family:var(--font-body)">G1</text>
+      <path d="M135 140 Q190 100 245 110" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <text class="t-desc" x="190" y="92" text-anchor="middle">カメラでずっと見ている</text>
+      <text x="380" y="160" font-size="48" text-anchor="middle">🧍</text>
+      <text x="580" y="160" font-size="48" text-anchor="middle">🍌</text>
+      <text x="770" y="160" font-size="48" text-anchor="middle">🧸</text>
+      <g class="t-msg" text-anchor="middle" style="font-size:13px">
+        <text x="380" y="62">人</text><text x="580" y="62">バナナ</text><text x="770" y="62">ぬいぐるみ</text>
+      </g>
+      <g class="t-ok" text-anchor="middle" style="font-size:13px">
+        <text x="380" y="84">→ 「見つけた」反応</text><text x="580" y="84">→ 「驚き」反応</text><text x="770" y="84">→ 「驚き」反応</text>
+      </g>
+    </svg>
+    </div>
+    <figcaption>G1 は前に歩きながらカメラで見続け、対象を見つけたら止まって反応します。</figcaption>
+  </figure>
+  <div class="scene">
+    <div class="card"><div class="big">🧍</div><h3>人</h3><p>「見つけた」反応。検出するとすぐに声が出ます。</p><div class="react">腕の動き：見つけた（found）</div></div>
+    <div class="card"><div class="big">🍌</div><h3>バナナ</h3><p>「驚き」反応。完全に止まってから声が出ます。</p><div class="react">腕の動き：驚き（surprise）</div></div>
+    <div class="card"><div class="big">🧸</div><h3>ぬいぐるみ</h3><p>「驚き」反応。2 回続けて見えたときだけ確定します。</p><div class="react">腕の動き：驚き（surprise）</div></div>
+  </div>
+</section>
+
+<section id="cast">
+  <h2>2 登場するもの <small>who</small></h2>
+  <p>登場するのは 3 つの場所です。操作PCが考え、Jetson が G1 に伝え、G1 本体が実際に動きます。操作PC と Jetson は SSH と UDP でつながっています。</p>
+  <figure class="fig">
+    <div class="scroll">
+    <svg viewBox="0 0 1000 330" style="min-width:860px;width:100%" role="img" aria-label="頭脳の操作PCが、G1 に載ったコンピュータ Jetson を通して G1 本体のカメラ・LiDAR・脚・腕・スピーカーに命令し、測定値と映像を受け取る関係図">
+      <defs>
+        <marker id="c-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="currentColor"/></marker>
+      </defs>
+      <rect class="z-pc zone" x="10" y="20" width="220" height="250" rx="10"/>
+      <text class="t-zone" x="26" y="48" style="font-size:15px">操作PC</text>
+      <text class="t-ok" x="26" y="70">頭脳</text>
+      <text class="t-desc" x="26" y="100">映像を見て判断する</text>
+      <text class="t-desc" x="26" y="120">歩きと反応の順番を決める</text>
+      <text class="t-desc" x="26" y="150">プログラム：</text>
+      <text class="t-name" x="26" y="170">Reaction（見る）</text>
+      <text class="t-name" x="26" y="190">Patrol（歩く）</text>
+
+      <rect class="z-jet zone" x="350" y="20" width="220" height="250" rx="10"/>
+      <text class="t-zone" x="366" y="48" style="font-size:15px">Jetson</text>
+      <text class="t-ok" x="366" y="70">通訳</text>
+      <text class="t-desc" x="366" y="100">PC の指示を G1 が分かる</text>
+      <text class="t-desc" x="366" y="120">命令に直して渡す</text>
+      <text class="t-desc" x="366" y="150">G1 に載っている小型 PC</text>
+      <text class="t-desc" x="366" y="170">（Unitree SDK を使う）</text>
+
+      <rect class="z-body zone" x="690" y="20" width="200" height="250" rx="10"/>
+      <text class="t-zone" x="706" y="48" style="font-size:15px">G1 本体</text>
+      <text class="t-ok" x="706" y="70">目と体</text>
+      <text class="t-desc" x="706" y="100">カメラ：映像を撮る</text>
+      <text class="t-desc" x="706" y="120">LiDAR：前方の障害物</text>
+      <text class="t-desc" x="706" y="140">センサー：向きと距離</text>
+      <text class="t-desc" x="706" y="170">脚：歩く・止まる</text>
+      <text class="t-desc" x="706" y="190">腕：動きで反応する</text>
+      <text class="t-desc" x="706" y="210">スピーカー：声を出す</text>
+
+      <rect class="z-world zone" x="925" y="80" width="70" height="130" rx="10"/>
+      <text class="t-name" x="960" y="126" text-anchor="middle" style="font-family:var(--font-body)">人</text>
+      <text class="t-name" x="960" y="146" text-anchor="middle" style="font-family:var(--font-body)">バナナ</text>
+      <text class="t-name" x="960" y="166" text-anchor="middle" style="font-family:var(--font-body);font-size:11px">ぬいぐるみ</text>
+
+      <g stroke="currentColor" stroke-width="2" fill="none">
+        <line x1="236" y1="84" x2="344" y2="84" marker-end="url(#c-a)"/>
+        <line x1="344" y1="184" x2="236" y2="184" marker-end="url(#c-a)"/>
+        <line x1="576" y1="84" x2="684" y2="84" marker-end="url(#c-a)"/>
+        <line x1="684" y1="184" x2="576" y2="184" marker-end="url(#c-a)"/>
+        <line x1="920" y1="145" x2="896" y2="145" stroke-dasharray="4 3" marker-end="url(#c-a)"/>
+      </g>
+      <g class="t-msg" text-anchor="middle" style="font-size:13px;font-weight:700">
+        <text x="290" y="72">命令</text><text x="290" y="172">測定値・映像</text>
+        <text x="630" y="72">命令</text><text x="630" y="172">測定値・映像</text>
+      </g>
+      <g class="t-desc" text-anchor="middle">
+        <text x="290" y="106">歩け・止まれ</text><text x="290" y="122">腕を動かせ</text><text x="290" y="138">声を出せ</text>
+        <text x="290" y="206">カメラ映像</text><text x="290" y="222">向き・距離</text><text x="290" y="238">前方の障害物</text>
+        <text x="630" y="106">歩け・止まれ</text><text x="630" y="122">腕を動かせ</text><text x="630" y="138">声を出せ</text>
+        <text x="630" y="206">カメラ映像</text><text x="630" y="222">向き・距離</text><text x="630" y="238">前方の障害物</text>
+      </g>
+      <path d="M350 290 V300 H890 V290" fill="none" stroke="var(--muted)" stroke-width="1.5"/>
+      <text class="t-desc" x="620" y="320" text-anchor="middle">ここまでが G1 ロボットの中</text>
+    </svg>
+    </div>
+    <figcaption>頭脳（操作PC）だけがロボットの外にあります。判断はすべて操作PC、実際に動かすのは G1 の中、という分担です。</figcaption>
+  </figure>
+</section>
+
+<section id="flow">
+  <h2>3 1 回の流れ <small>flow</small></h2>
+  <p>反応は毎回この 5 つの順番で進みます。歩きを止めてから腕を動かすので、歩きながら腕を振ることはありません。</p>
+  <ol class="flow">
+    <li><span class="ic">🚶</span><b>1 歩く</b><p>決まったコースを一定の速さで進みます。距離と向きを測りながら歩きます。</p><span class="who">Patrol</span></li>
+    <li><span class="ic">👀</span><b>2 見つける</b><p>カメラ映像から AI が人・バナナ・ぬいぐるみを探し、見間違いを避けて確定します。</p><span class="who">Reaction</span></li>
+    <li><span class="ic">✋</span><b>3 止める</b><p>Reaction が Patrol に「止まって」と頼みます。止まったと確認できてから次へ進みます。</p><span class="who">Reaction → Patrol</span></li>
+    <li><span class="ic">🗣</span><b>4 反応する</b><p>声を出し、腕の動きを再生します。終わると腕を元の姿勢に戻します。</p><span class="who">Reaction → Jetson</span></li>
+    <li><span class="ic">🚶</span><b>5 歩き出す</b><p>Reaction が「再開して」と頼み、Patrol が残りの距離ぶんを歩きます。</p><span class="who">Reaction → Patrol</span></li>
+  </ol>
+</section>
+
+<section class="divider" id="where-top">
+  <span class="tag">ここから先はエンジニア向け</span>
+  <p>上の 3 つで全体像は十分です。以降は、どのプログラムがどの通信で何を動かすかの詳細です。分からない言葉は <a href="#gloss" style="color:var(--accent)">8 用語集</a> を見てください。</p>
+</section>
+
+<section id="where">
+  <h2>4 どこで何が動くか <small>deployment</small></h2>
+  <p>色は全図で共通です。場所は面の色、通信は線の色で区別します。</p>
+  <div class="panel" style="margin-bottom:16px">
+    <div class="legend" aria-label="場所の色">
+      <b>場所</b>
+      <span><i class="tile" style="background:var(--z-pc)"></i>操作PC</span>
+      <span><i class="tile" style="background:var(--z-jet)"></i>Jetson（G1 の PC2）</span>
+      <span><i class="tile" style="background:var(--z-body)"></i>G1 本体</span>
+      <span><i class="tile" style="background:var(--z-world)"></i>現場</span>
+    </div>
+    <div class="legend" aria-label="通信の色">
+      <b>通信</b>
+      <span><i class="sw" style="border-color:var(--ssh)"></i>SSH</span>
+      <span><i class="sw" style="border-color:var(--dds)"></i>DDS / RPC（Unitree SDK）</span>
+      <span><i class="sw" style="border-color:var(--udp)"></i>UDP</span>
+      <span><i class="sw" style="border-color:var(--ipc)"></i>PC 内の Unix socket</span>
+      <span><i class="sw dash" style="border-color:var(--fg)"></i>返事・測定値（戻り）</span>
+    </div>
+  </div>
+  <figure class="fig">
+    <div class="scroll">
+    <svg viewBox="0 0 1100 450" style="min-width:1020px;width:100%" role="img" aria-label="操作PCの Patrol と Reaction、Jetson の各 relay と resident、G1 本体の各装置を、SSH・DDS・UDP の通信でつなぐ配置図">
+      <defs>
+        <marker id="d-ssh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="var(--ssh)"/></marker>
+        <marker id="d-dds" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="var(--dds)"/></marker>
+        <marker id="d-udp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="var(--udp)"/></marker>
+        <marker id="d-ipc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="var(--ipc)"/></marker>
+      </defs>
+      <rect class="z-pc zone" x="10" y="12" width="290" height="426" rx="10"/>
+      <text class="t-zone" x="24" y="34">操作PC</text>
+      <text class="t-desc" x="24" y="430">run_integrated_demo.py が 2 つを起動・監視</text>
+      <rect class="z-jet zone" x="440" y="12" width="240" height="426" rx="10"/>
+      <text class="t-zone" x="456" y="34">Jetson（G1 の PC2）</text>
+      <rect class="z-body zone" x="780" y="12" width="180" height="426" rx="10"/>
+      <text class="t-zone" x="794" y="34">G1 本体</text>
+      <rect class="z-world zone" x="990" y="228" width="100" height="84" rx="10"/>
+
+      <rect class="hl" x="24" y="50" width="262" height="172" rx="6"/>
+      <text class="t-name" x="36" y="74">Patrol</text>
+      <text class="t-desc" x="36" y="94">patrol/run_patrol.py</text>
+      <text class="t-desc" x="36" y="120">5 段の巡回を順に実行</text>
+      <text class="t-desc" x="36" y="138">距離は odom、旋回は IMU で閉ループ</text>
+      <text class="t-desc" x="36" y="156">LiDAR が BLOCKED なら止まる</text>
+      <text class="t-desc" x="36" y="174">→ 歩行コマンドを出す（脚の担当）</text>
+      <rect class="hl" x="24" y="242" width="262" height="172" rx="6"/>
+      <text class="t-name" x="36" y="266">Reaction</text>
+      <text class="t-desc" x="36" y="286">tools/g1_dual_camera.py</text>
+      <text class="t-desc" x="36" y="312">映像を受け、YOLO11n（GPU）で検出</text>
+      <text class="t-desc" x="36" y="330">人・バナナ・ぬいぐるみを確定</text>
+      <text class="t-desc" x="36" y="348">Patrol を止め、音声と腕の動きを依頼</text>
+      <text class="t-desc" x="36" y="366">→ 順番を決める（判断の担当）</text>
+      <line x1="155" y1="224" x2="155" y2="240" stroke="var(--ipc)" stroke-width="1.8" marker-end="url(#d-ipc)" marker-start="url(#d-ipc)"/>
+      <text class="t-msg" x="166" y="236" style="font-size:10.5px">pause / resume（Unix socket）</text>
+
+      <rect class="node" x="456" y="50" width="208" height="44" rx="6"/>
+      <text class="t-name" x="466" y="70">lidar_guard_relay</text><text class="t-desc" x="466" y="86">LiDAR 点群 → 前方の状態</text>
+      <rect class="node" x="456" y="114" width="208" height="108" rx="6"/>
+      <text class="t-name" x="466" y="134">locomotion_relay</text>
+      <text class="t-desc" x="466" y="154">UDP で受けた Move を実行</text>
+      <text class="t-desc" x="466" y="172">0.40 秒来なければ StopMove</text>
+      <text class="t-desc" x="466" y="190">odom・IMU を 20ms ごとに返す</text>
+      <text class="t-desc" x="466" y="208">（LocoClient / SDK）</text>
+      <rect class="node" x="456" y="242" width="208" height="44" rx="6"/>
+      <text class="t-name" x="466" y="262">camera sender</text><text class="t-desc" x="466" y="278">VideoClient → JPEG</text>
+      <rect class="hl" x="456" y="306" width="208" height="44" rx="6"/>
+      <text class="t-name" x="466" y="326">MotionDecode resident</text><text class="t-desc" x="466" y="342">腕の動きを再生（常駐）</text>
+      <rect class="node" x="456" y="370" width="208" height="44" rx="6"/>
+      <text class="t-name" x="466" y="390">audio sender</text><text class="t-desc" x="466" y="406">AudioClient.PlayStream</text>
+
+      <rect class="node" x="794" y="50" width="152" height="44" rx="6"/>
+      <text class="t-name" x="804" y="70">LiDAR</text><text class="t-desc" x="804" y="86">Livox MID360</text>
+      <rect class="node" x="794" y="114" width="152" height="44" rx="6"/>
+      <text class="t-name" x="804" y="134">IMU・SLAM odom</text><text class="t-desc" x="804" y="150">姿勢と移動距離</text>
+      <rect class="node" x="794" y="178" width="152" height="44" rx="6"/>
+      <text class="t-name" x="804" y="198" style="font-family:var(--font-body)">脚</text><text class="t-desc" x="804" y="214">内蔵の歩行コントローラ</text>
+      <rect class="node" x="794" y="242" width="152" height="44" rx="6"/>
+      <text class="t-name" x="804" y="262" style="font-family:var(--font-body)">カメラ</text><text class="t-desc" x="804" y="278">内蔵（RealSense）</text>
+      <rect class="node" x="794" y="306" width="152" height="44" rx="6"/>
+      <text class="t-name" x="804" y="326" style="font-family:var(--font-body)">腕（上半身）</text><text class="t-desc" x="804" y="342">rt/arm_sdk で上書き</text>
+      <rect class="node" x="794" y="370" width="152" height="44" rx="6"/>
+      <text class="t-name" x="804" y="390" style="font-family:var(--font-body)">スピーカー</text><text class="t-desc" x="804" y="406">内蔵</text>
+
+      <text class="t-name" x="1040" y="252" text-anchor="middle" style="font-family:var(--font-body)">人</text>
+      <text class="t-name" x="1040" y="272" text-anchor="middle" style="font-family:var(--font-body)">バナナ</text>
+      <text class="t-name" x="1040" y="292" text-anchor="middle" style="font-family:var(--font-body)">ぬいぐるみ</text>
+      <text class="t-desc" x="1040" y="326" text-anchor="middle">現場</text>
+      <line x1="990" y1="264" x2="950" y2="264" stroke="var(--fg)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#d-ipc)"/>
+      <text class="t-msg" x="970" y="256" text-anchor="middle">映る</text>
+
+      <g stroke-width="1.8" fill="none">
+        <line x1="454" y1="72" x2="288" y2="72" stroke="var(--udp)" marker-end="url(#d-udp)"/>
+        <line x1="454" y1="136" x2="288" y2="136" stroke="var(--udp)" marker-end="url(#d-udp)"/>
+        <line x1="288" y1="200" x2="454" y2="200" stroke="var(--udp)" marker-end="url(#d-udp)"/>
+        <line x1="454" y1="264" x2="288" y2="264" stroke="var(--ssh)" marker-end="url(#d-ssh)"/>
+        <line x1="288" y1="328" x2="454" y2="328" stroke="var(--ssh)" marker-end="url(#d-ssh)" marker-start="url(#d-ssh)"/>
+        <line x1="288" y1="392" x2="454" y2="392" stroke="var(--ssh)" marker-end="url(#d-ssh)"/>
+      </g>
+      <g class="t-msg" text-anchor="middle" style="font-size:11px">
+        <text x="371" y="64">UDP 47621 LiDAR</text>
+        <text x="371" y="128">UDP 47623 odom・IMU</text>
+        <text x="371" y="192">UDP 47622 Move/Stop</text>
+        <text x="371" y="256">SSH JPEG</text>
+        <text x="371" y="320">SSH 依頼 ⇄ 結果</text>
+        <text x="371" y="384">SSH 音声</text>
+      </g>
+      <g stroke-width="1.8" fill="none">
+        <line x1="792" y1="72" x2="666" y2="72" stroke="var(--dds)" marker-end="url(#d-dds)"/>
+        <line x1="792" y1="136" x2="666" y2="136" stroke="var(--dds)" marker-end="url(#d-dds)"/>
+        <line x1="666" y1="200" x2="792" y2="200" stroke="var(--dds)" marker-end="url(#d-dds)"/>
+        <line x1="792" y1="264" x2="666" y2="264" stroke="var(--dds)" marker-end="url(#d-dds)"/>
+        <line x1="666" y1="328" x2="792" y2="328" stroke="var(--dds)" marker-end="url(#d-dds)"/>
+        <line x1="666" y1="392" x2="792" y2="392" stroke="var(--dds)" marker-end="url(#d-dds)"/>
+      </g>
+      <g class="t-msg" text-anchor="middle" style="font-size:11px">
+        <text x="729" y="64">DDS</text><text x="729" y="128">DDS</text><text x="729" y="192">Move</text>
+        <text x="729" y="256">RPC</text><text x="729" y="320">arm_sdk</text><text x="729" y="384">RPC</text>
+      </g>
+    </svg>
+    </div>
+    <figcaption>色つきの箱が、判断する側（Patrol・Reaction）と、腕を動かす側（resident）です。操作PCと Jetson の間を通るのは UDP と SSH だけで、Unitree SDK を直接叩くのは Jetson 側だけです。</figcaption>
+  </figure>
+</section>
+
+<section id="seq">
+  <h2>5 いつ何が起きるか <small>sequence</small></h2>
+  <p>「見つけて、止めて、反応して、再開する」1 回分を上から下へ並べました。A の帯の通信（Move・odom・LiDAR）は、B 以降もずっと流れ続けています。</p>
+  <figure class="fig">
+    <div class="scroll">
+    <svg viewBox="0 0 1120 754" style="min-width:1060px;width:100%" role="img" aria-label="巡回中に対象を見つけてから、Patrol を止め、音声と腕の動きで反応し、巡回を再開するまでのシーケンス図">
+<defs>
+<marker id="s-ssh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="var(--ssh)"/></marker>
+<marker id="s-dds" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="var(--dds)"/></marker>
+<marker id="s-udp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="var(--udp)"/></marker>
+<marker id="s-ipc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="var(--ipc)"/></marker>
+</defs>
+<rect x="4" y="100" width="1112" height="132" rx="6" class="phase0"/>
+<text x="12" y="116" class="t-phase">A 巡回中（常に並行）</text>
+<rect x="4" y="242" width="1112" height="104" rx="6" class="phase1"/>
+<text x="12" y="258" class="t-phase">B 見つける</text>
+<rect x="4" y="356" width="1112" height="150" rx="6" class="phase0"/>
+<text x="12" y="372" class="t-phase">C 止める</text>
+<rect x="4" y="516" width="1112" height="124" rx="6" class="phase1"/>
+<text x="12" y="532" class="t-phase">D 反応する</text>
+<rect x="4" y="650" width="1112" height="88" rx="6" class="phase0"/>
+<text x="12" y="666" class="t-phase">E 戻る</text>
+<line x1="80" y1="62" x2="80" y2="742" class="life"/>
+<line x1="240" y1="62" x2="240" y2="742" class="life"/>
+<line x1="400" y1="62" x2="400" y2="742" class="life"/>
+<line x1="560" y1="62" x2="560" y2="742" class="life"/>
+<line x1="720" y1="62" x2="720" y2="742" class="life"/>
+<line x1="880" y1="62" x2="880" y2="742" class="life"/>
+<line x1="1040" y1="62" x2="1040" y2="742" class="life"/>
+<rect x="12" y="8" width="136" height="52" rx="6" class="head z-world"/>
+<text x="80" y="30" text-anchor="middle" class="t-name">対象物</text>
+<text x="80" y="48" text-anchor="middle" class="t-desc">現場（人・バナナ等）</text>
+<rect x="172" y="8" width="136" height="52" rx="6" class="head z-body"/>
+<text x="240" y="30" text-anchor="middle" class="t-name">G1 カメラ</text>
+<text x="240" y="48" text-anchor="middle" class="t-desc">G1 本体</text>
+<rect x="332" y="8" width="136" height="52" rx="6" class="head z-pc"/>
+<text x="400" y="30" text-anchor="middle" class="t-name">Reaction</text>
+<text x="400" y="48" text-anchor="middle" class="t-desc">操作PC</text>
+<rect x="492" y="8" width="136" height="52" rx="6" class="head z-pc"/>
+<text x="560" y="30" text-anchor="middle" class="t-name">Patrol</text>
+<text x="560" y="48" text-anchor="middle" class="t-desc">操作PC</text>
+<rect x="652" y="8" width="136" height="52" rx="6" class="head z-jet"/>
+<text x="720" y="30" text-anchor="middle" class="t-name">relay 群</text>
+<text x="720" y="48" text-anchor="middle" class="t-desc">Jetson (PC2)</text>
+<rect x="812" y="8" width="136" height="52" rx="6" class="head z-jet"/>
+<text x="880" y="30" text-anchor="middle" class="t-name">MotionDecode</text>
+<text x="880" y="48" text-anchor="middle" class="t-desc">Jetson (PC2)</text>
+<rect x="972" y="8" width="136" height="52" rx="6" class="head z-body"/>
+<text x="1040" y="30" text-anchor="middle" class="t-name">G1 脚・腕・音声</text>
+<text x="1040" y="48" text-anchor="middle" class="t-desc">G1 本体</text>
+<line x1="564" y1="128" x2="716" y2="128" stroke="var(--udp)" stroke-width="1.8" marker-end="url(#s-udp)"/>
+<text x="640.0" y="122" text-anchor="middle" class="t-msg">Move vx≤0.30 / vyaw≤0.50（UDP 47622）</text>
+<line x1="724" y1="158" x2="1036" y2="158" stroke="var(--dds)" stroke-width="1.8" marker-end="url(#s-dds)"/>
+<text x="880.0" y="152" text-anchor="middle" class="t-msg">LocoClient.Move（DDS）</text>
+<line x1="716" y1="190" x2="564" y2="190" stroke="var(--udp)" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#s-udp)"/>
+<text x="640.0" y="184" text-anchor="middle" class="t-msg">odom・IMU 50Hz（UDP 47623）</text>
+<line x1="716" y1="218" x2="564" y2="218" stroke="var(--udp)" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#s-udp)"/>
+<text x="640.0" y="212" text-anchor="middle" class="t-msg">LiDAR 前方 CLEAR/BLOCKED（UDP 47621）</text>
+<line x1="84" y1="274" x2="236" y2="274" stroke="var(--ipc)" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#s-ipc)"/>
+<text x="160.0" y="268" text-anchor="middle" class="t-msg">画角に入る</text>
+<line x1="244" y1="302" x2="396" y2="302" stroke="var(--ssh)" stroke-width="1.8" marker-end="url(#s-ssh)"/>
+<text x="320.0" y="296" text-anchor="middle" class="t-msg">JPEG 30fps（G1内 VideoClient → SSH）</text>
+<path d="M404 322 H434 V340 H408" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#s-ipc)"/>
+<text x="442" y="336" class="t-msg" text-anchor="start">YOLO11n（GPU）が検出 → 連続フレームで確定</text>
+<line x1="404" y1="386" x2="556" y2="386" stroke="var(--ipc)" stroke-width="1.8" marker-end="url(#s-ipc)"/>
+<text x="480.0" y="380" text-anchor="middle" class="t-msg">pause（Unix socket）</text>
+<line x1="564" y1="414" x2="716" y2="414" stroke="var(--udp)" stroke-width="1.8" marker-end="url(#s-udp)"/>
+<text x="640.0" y="408" text-anchor="middle" class="t-msg">StopMove（UDP）</text>
+<line x1="724" y1="442" x2="1036" y2="442" stroke="var(--dds)" stroke-width="1.8" marker-end="url(#s-dds)"/>
+<text x="880.0" y="436" text-anchor="middle" class="t-msg">StopMove（DDS）</text>
+<line x1="556" y1="470" x2="404" y2="470" stroke="var(--ipc)" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#s-ipc)"/>
+<text x="480.0" y="464" text-anchor="middle" class="t-msg">PAUSED 確認・telemetry 新鮮</text>
+<line x1="404" y1="498" x2="876" y2="498" stroke="var(--ssh)" stroke-width="1.8" marker-end="url(#s-ssh)"/>
+<text x="640.0" y="492" text-anchor="middle" class="t-msg">preflight：腕は静止か（SSH）</text>
+<line x1="404" y1="546" x2="1036" y2="546" stroke="var(--ssh)" stroke-width="1.8" marker-end="url(#s-ssh)"/>
+<text x="720.0" y="540" text-anchor="middle" class="t-msg">音声 PlayStream（SSH → AudioClient）</text>
+<line x1="404" y1="574" x2="876" y2="574" stroke="var(--ssh)" stroke-width="1.8" marker-end="url(#s-ssh)"/>
+<text x="640.0" y="568" text-anchor="middle" class="t-msg">execute: found / surprise（SSH）</text>
+<line x1="884" y1="602" x2="1036" y2="602" stroke="var(--dds)" stroke-width="1.8" marker-end="url(#s-dds)"/>
+<text x="960.0" y="596" text-anchor="middle" class="t-msg">rt/arm_sdk 腕の目標角・weight 0→1→0（DDS）</text>
+<line x1="876" y1="630" x2="404" y2="630" stroke="var(--ssh)" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#s-ssh)"/>
+<text x="640.0" y="624" text-anchor="middle" class="t-msg">結果：q0 復帰・weight 0（SSH）</text>
+<line x1="404" y1="682" x2="556" y2="682" stroke="var(--ipc)" stroke-width="1.8" marker-end="url(#s-ipc)"/>
+<text x="480.0" y="676" text-anchor="middle" class="t-msg">resume（Unix socket）</text>
+<line x1="564" y1="710" x2="716" y2="710" stroke="var(--udp)" stroke-width="1.8" marker-end="url(#s-udp)"/>
+<text x="640.0" y="704" text-anchor="middle" class="t-msg">Move 再開：残り距離ぶん（UDP）</text>
+
+    </svg>
+    </div>
+    <figcaption>C の「止める」が先、D の「反応する」が後です。腕を動かす前に、歩行が止まったことと腕が静止していることを確かめます。バナナとぬいぐるみの音声は、停止を確認してから鳴ります。人の音声は検出直後に鳴ります。</figcaption>
+  </figure>
+</section>
+
+<section id="loops">
+  <h2>6 ループとフローチャート <small>loops</small></h2>
+  <p>それぞれのプログラムが回すループの周期は、7 の表にまとめました。ここでは、判断の中身が分かりにくい Patrol と Reaction のフローチャートを示します。</p>
+  <h3 style="margin-top:20px">Patrol：5 段の巡回</h3>
+  <figure class="fig">
+    <div class="scroll">
+    <svg viewBox="0 0 980 150" style="min-width:900px;width:100%" role="img" aria-label="前進2m、旋回180度、前進4m、旋回180度、前進2mの5段。前進中だけ反応を受け付ける。">
+      <defs><marker id="f-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="currentColor"/></marker></defs>
+      <g>
+        <rect class="hl" x="10" y="14" width="150" height="62" rx="6"/><text class="t-name" x="22" y="38" style="font-family:var(--font-body)">前進 2 m</text><text class="t-desc" x="22" y="58">odom 閉ループ 0.30 m/s</text>
+        <rect class="node" x="200" y="14" width="150" height="62" rx="6"/><text class="t-name" x="212" y="38" style="font-family:var(--font-body)">旋回 180°</text><text class="t-desc" x="212" y="58">IMU yaw 閉ループ</text>
+        <rect class="hl" x="390" y="14" width="150" height="62" rx="6"/><text class="t-name" x="402" y="38" style="font-family:var(--font-body)">前進 4 m</text><text class="t-desc" x="402" y="58">odom 閉ループ 0.30 m/s</text>
+        <rect class="node" x="580" y="14" width="150" height="62" rx="6"/><text class="t-name" x="592" y="38" style="font-family:var(--font-body)">旋回 180°</text><text class="t-desc" x="592" y="58">IMU yaw 閉ループ</text>
+        <rect class="hl" x="770" y="14" width="150" height="62" rx="6"/><text class="t-name" x="782" y="38" style="font-family:var(--font-body)">前進 2 m</text><text class="t-desc" x="782" y="58">odom 閉ループ 0.30 m/s</text>
+      </g>
+      <g stroke="currentColor" stroke-width="1.5">
+        <line x1="162" y1="45" x2="198" y2="45" marker-end="url(#f-a)"/><line x1="352" y1="45" x2="388" y2="45" marker-end="url(#f-a)"/>
+        <line x1="542" y1="45" x2="578" y2="45" marker-end="url(#f-a)"/><line x1="732" y1="45" x2="768" y2="45" marker-end="url(#f-a)"/>
+      </g>
+      <g class="t-ok" text-anchor="middle"><text x="85" y="104">反応を受け付ける</text><text x="465" y="104">反応を受け付ける</text><text x="845" y="104">反応を受け付ける</text></g>
+      <g class="t-warn" text-anchor="middle"><text x="275" y="104">反応しない</text><text x="655" y="104">反応しない</text></g>
+      <text class="t-desc" x="10" y="134">各段の終わりに StopMove・0.20 秒の落ち着き待ち・pause 要求の確認。反応は、前進の区間ごとに対象（人・バナナ・ぬいぐるみ）につき 1 回までです。</text>
+    </svg>
+    </div>
+    <figcaption>Patrol は 1 周で約 1 分です。逆走はできず、無限ループも禁止されています。</figcaption>
+  </figure>
+  <h3 style="margin-top:28px">Patrol：tick ごとの安全確認</h3>
+  <figure class="fig">
+    <div class="scroll">
+    <svg viewBox="0 0 760 590" style="min-width:700px;width:100%;max-width:760px" role="img" aria-label="tick ごとに pause 要求、テレメトリの鮮度、LiDAR、到達判定を順に確認し、問題がなければ Move を送るフローチャート">
+      <defs><marker id="g-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="currentColor"/></marker></defs>
+      <g stroke="currentColor" stroke-width="1.5" fill="none">
+        <line x1="210" y1="54" x2="210" y2="84" marker-end="url(#g-a)"/>
+        <line x1="210" y1="156" x2="210" y2="190" marker-end="url(#g-a)"/>
+        <line x1="210" y1="262" x2="210" y2="296" marker-end="url(#g-a)"/>
+        <line x1="210" y1="368" x2="210" y2="402" marker-end="url(#g-a)"/>
+        <line x1="210" y1="474" x2="210" y2="508" marker-end="url(#g-a)"/>
+        <path d="M110 532 H40 V32 H108" marker-end="url(#g-a)"/>
+        <line x1="312" y1="120" x2="358" y2="120" marker-end="url(#g-a)"/>
+        <line x1="312" y1="226" x2="358" y2="226" marker-end="url(#g-a)"/>
+        <line x1="312" y1="332" x2="358" y2="332" marker-end="url(#g-a)"/>
+        <line x1="312" y1="438" x2="358" y2="438" marker-end="url(#g-a)"/>
+      </g>
+      <rect class="node" x="110" y="10" width="200" height="44" rx="6"/>
+      <text class="t-name" x="210" y="30" text-anchor="middle" style="font-family:var(--font-body)">1 tick</text><text class="t-desc" x="210" y="46" text-anchor="middle">odom・IMU・LiDAR を読む</text>
+      <g>
+        <polygon class="hl" points="210,84 312,120 210,156 108,120"/><text class="t-msg" x="210" y="124" text-anchor="middle" style="stroke-width:0">pause 要求?</text>
+        <polygon class="hl" points="210,190 312,226 210,262 108,226"/><text class="t-msg" x="210" y="223" text-anchor="middle" style="stroke-width:0">測定値が古い?</text><text class="t-desc" x="210" y="238" text-anchor="middle">odom / IMU</text>
+        <polygon class="hl" points="210,296 312,332 210,368 108,332"/><text class="t-msg" x="210" y="329" text-anchor="middle" style="stroke-width:0">LiDAR BLOCKED?</text><text class="t-desc" x="210" y="344" text-anchor="middle">前進中のみ</text>
+        <polygon class="hl" points="210,402 312,438 210,474 108,438"/><text class="t-msg" x="210" y="442" text-anchor="middle" style="stroke-width:0">目標に到達?</text>
+      </g>
+      <text class="t-ok" x="222" y="176">いいえ</text><text class="t-ok" x="222" y="282">いいえ</text><text class="t-ok" x="222" y="388">いいえ</text><text class="t-ok" x="222" y="494">いいえ</text>
+      <text class="t-msg" x="334" y="114" text-anchor="middle" style="stroke-width:0">はい</text>
+      <text class="t-msg" x="334" y="220" text-anchor="middle" style="stroke-width:0">はい</text>
+      <text class="t-msg" x="334" y="326" text-anchor="middle" style="stroke-width:0">はい</text>
+      <text class="t-msg" x="334" y="432" text-anchor="middle" style="stroke-width:0">はい</text>
+      <g>
+        <rect class="node" x="360" y="92" width="390" height="56" rx="6"/>
+        <text class="t-desc" x="372" y="114" style="fill:currentColor">StopMove して PAUSED で待つ</text><text class="t-desc" x="372" y="134">resume 後、新しい測定値を確認し、残り距離・残り角度で再開</text>
+        <rect class="stop" x="360" y="198" width="390" height="56" rx="6"/>
+        <text class="t-desc" x="372" y="220" style="fill:currentColor">通信だけの欠落：即 StopMove、最大 1.0 秒で回復すれば続行</text><text class="t-warn" x="372" y="240">測定源そのものが止まった／回復しない：FINAL STOP</text>
+        <rect class="stop" x="360" y="304" width="390" height="56" rx="6"/>
+        <text class="t-desc" x="372" y="326" style="fill:currentColor">StopMove して最大 10 秒待つ。CLEAR に戻れば残り距離で再開</text><text class="t-warn" x="372" y="346">10 秒超過：FINAL STOP（旋回中は前方 BLOCKED を見ない）</text>
+        <rect class="node" x="360" y="410" width="390" height="56" rx="6"/>
+        <text class="t-desc" x="372" y="432" style="fill:currentColor">StopMove → 次の段へ</text><text class="t-desc" x="372" y="452">最終段なら 1 周完了</text>
+      </g>
+      <rect class="hl" x="110" y="508" width="200" height="48" rx="6"/>
+      <text class="t-name" x="210" y="529" text-anchor="middle" style="font-family:var(--font-body)">Move を relay へ送る</text><text class="t-desc" x="210" y="546" text-anchor="middle">vx ≤ 0.30 m/s・yaw ≤ 0.50 rad/s</text>
+      <text class="t-desc" x="26" y="300" transform="rotate(-90 26 300)" text-anchor="middle">次の tick へ</text>
+    </svg>
+    </div>
+    <figcaption>黄色の箱は「止まる」側の結果です。Move を送るのは、どの確認にも引っかからなかった tick だけです。</figcaption>
+  </figure>
+  <h3 style="margin-top:28px">Reaction：反応を起動する条件</h3>
+  <figure class="fig">
+    <div class="scroll">
+    <svg viewBox="0 0 1000 200" style="min-width:940px;width:100%" role="img" aria-label="映像を受け取り、YOLO で検出し、確定ゲートを通り、Patrol が前進中で未反応で、反応中でなければ反応を起動するフローチャート">
+      <defs><marker id="v-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1 L9 5 L0 9 z" fill="currentColor"/></marker></defs>
+      <g stroke="currentColor" stroke-width="1.5" fill="none">
+        <line x1="142" y1="80" x2="173" y2="80" marker-end="url(#v-a)"/>
+        <line x1="307" y1="80" x2="338" y2="80" marker-end="url(#v-a)"/>
+        <line x1="472" y1="80" x2="503" y2="80" marker-end="url(#v-a)"/>
+        <line x1="655" y1="80" x2="668" y2="80" marker-end="url(#v-a)"/>
+        <line x1="820" y1="80" x2="833" y2="80" marker-end="url(#v-a)"/>
+        <line x1="580" y1="125" x2="580" y2="156" marker-end="url(#v-a)"/>
+        <line x1="745" y1="125" x2="745" y2="156" marker-end="url(#v-a)"/>
+      </g>
+      <rect class="node" x="10" y="50" width="130" height="60" rx="6"/><text class="t-name" x="22" y="74" style="font-family:var(--font-body)">JPEG 受信</text><text class="t-desc" x="22" y="94">G1 カメラ 30fps</text>
+      <rect class="hl" x="175" y="50" width="130" height="60" rx="6"/><text class="t-name" x="187" y="74" style="font-family:var(--font-body)">YOLO11n</text><text class="t-desc" x="187" y="94">GPU で別スレッド</text>
+      <rect class="node" x="340" y="50" width="130" height="60" rx="6"/><text class="t-name" x="352" y="74" style="font-family:var(--font-body)">確定ゲート</text><text class="t-desc" x="352" y="94">conf 0.25・連続検出</text>
+      <polygon class="hl" points="505,80 580,35 655,80 580,125"/><text class="t-desc" x="580" y="74" text-anchor="middle" style="fill:currentColor">前進中で</text><text class="t-desc" x="580" y="90" text-anchor="middle" style="fill:currentColor">区間で未反応?</text>
+      <polygon class="hl" points="670,80 745,35 820,80 745,125"/><text class="t-desc" x="745" y="74" text-anchor="middle" style="fill:currentColor">反応中でなく</text><text class="t-desc" x="745" y="90" text-anchor="middle" style="fill:currentColor">cooldown 外?</text>
+      <rect class="hl" x="835" y="50" width="150" height="60" rx="6"/><text class="t-name" x="847" y="74" style="font-family:var(--font-body)">反応を起動</text><text class="t-desc" x="847" y="94">5 のシーケンスへ</text>
+      <rect class="stop" x="505" y="158" width="315" height="32" rx="6"/><text class="t-warn" x="662" y="179" text-anchor="middle">いいえ：見送る（何も出さない）</text>
+      <text class="t-ok" x="662" y="72" text-anchor="middle" style="font-size:11px">はい</text>
+      <text class="t-ok" x="827" y="72" text-anchor="middle" style="font-size:11px">はい</text>
+    </svg>
+    </div>
+    <figcaption>cooldown は 2.0 秒です。ぬいぐるみだけは、別々の 2 フレームで検出されて初めて確定します。</figcaption>
+  </figure>
+</section>
+
+<section id="table">
+  <h2>7 誰が何を握っているか <small>responsibility</small></h2>
+  <p>部品ごとに、動く場所、使う技術、回るループ、読むもの、制御するものを並べました。脚と腕は別の口で動くので、歩きながら腕を振ることはコード上は可能です。それを防いでいるのは、Patrol を止めてから腕を動かす順番の制御（pause → react → resume）です。</p>
+  <div class="tablewrap">
+  <table style="min-width:980px">
+    <thead><tr><th>部品</th><th>場所</th><th>技術</th><th>回るループ</th><th>読むもの</th><th>制御するもの</th></tr></thead>
+    <tbody>
+      <tr><td><b>Reaction</b></td><td><span class="pill pc">操作PC</span></td><td>Python・OpenCV・YOLO11n（CUDA）</td><td>約 10ms ごとに最新の映像と検出結果を確認（YOLO は別スレッド）</td><td>カメラ映像（JPEG）、Patrol の状態</td><td>Patrol の pause/resume、音声、腕の依頼（<b>自分では動かさない</b>）</td></tr>
+      <tr><td><b>Patrol</b></td><td><span class="pill pc">操作PC</span></td><td>Python の状態機械</td><td>tick ごとに安全確認をして Move を送る</td><td>odom・IMU（UDP 47623）、LiDAR の状態（UDP 47621）</td><td>歩行コマンド vx・vyaw（UDP 47622）</td></tr>
+      <tr><td><b>locomotion_relay</b></td><td><span class="pill jet">Jetson</span></td><td>LocoClient（unitree_sdk2py）、UDP</td><td>UDP 受信ごとに Move。20ms ごとに odom・IMU を返す。0.40 秒無通信で StopMove</td><td><code>rt/lowstate</code>（IMU）、<code>rt/unitree/slam_mapping/odom</code></td><td><b>脚</b>：Move / StopMove</td></tr>
+      <tr><td><b>lidar_guard_relay</b></td><td><span class="pill jet">Jetson</span></td><td>unitree_sdk2py（DDS 購読）、UDP</td><td>点群が届くたびに前方・後方・旋回の状態を送る</td><td><code>rt/utlidar/cloud_livox_mid360</code></td><td>なし（読むだけ）</td></tr>
+      <tr><td><b>MotionDecode resident</b></td><td><span class="pill jet">Jetson</span></td><td>MotionDecode、CycloneDDS</td><td>普段は待機。execute の依頼中だけ約 50Hz で書き込む</td><td><code>rt/lowstate</code>、腕に他の書き手がいないか</td><td><b>腕</b>：<code>rt/arm_sdk</code> に目標角と weight。脚・腰は触らない</td></tr>
+      <tr><td><b>camera sender</b></td><td><span class="pill jet">Jetson</span></td><td>VideoClient（<code>videohub_pc4</code>）、SSH</td><td>フレームごと（約 30fps）に JPEG を送る</td><td>G1 内蔵カメラ</td><td>なし</td></tr>
+      <tr><td><b>audio sender</b></td><td><span class="pill jet">Jetson</span></td><td>AudioClient.PlayStream、SSH</td><td>音声の依頼が来たときだけ</td><td>PC から来る音声データ</td><td><b>スピーカー</b>：再生のみ</td></tr>
+      <tr><td><b>run_integrated_demo.py</b></td><td><span class="pill pc">操作PC</span></td><td>Python（子プロセス管理）</td><td>起動と停止のときだけ</td><td>各プロセスの終了状態</td><td>起動順（Patrol → Reaction）と停止順（Patrol を先に）</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="margin-top:14px;font-size:14px;color:var(--muted)">腕は <code>rt/arm_sdk</code> の weight で「内蔵コントローラから腕を借りる量」を決めます。1 で完全に借り、0 で返します。反応が終わったら q0（初期姿勢）に戻してから weight を 0 にします。</p>
+</section>
+
+<section id="gloss">
+  <h2>8 用語集 <small>glossary</small></h2>
+  <h3 class="gloss-h">場所・部品</h3>
+  <dl class="gloss">
+    <div><dt>操作PC</dt><dd>運営側の Linux PC（GPU 付き）。映像の認識と、全体の順番決めを担当します。</dd></div>
+    <div><dt>Jetson<span>PC2・Orin NX</span></dt><dd>G1 に搭載された小型コンピュータ。操作PC の指示を G1 の SDK に橋渡しします。</dd></div>
+    <div><dt>Patrol<span>パトロール</span></dt><dd>決まったコースを歩く係のプログラム。操作PC で動き、歩行命令だけを出します。</dd></div>
+    <div><dt>Reaction<span>リアクション</span></dt><dd>映像を見て判断し、止める・声・腕の順番を決めるプログラム。操作PC で動きます。</dd></div>
+    <div><dt>relay<span>中継</span></dt><dd>通信を受け取って別の形で渡す小さなプログラム。Jetson 上で動きます。</dd></div>
+    <div><dt>resident<span>常駐</span></dt><dd>起動したまま待機するプログラム。毎回の立ち上げ待ちをなくします。</dd></div>
+    <div><dt>MotionDecode</dt><dd>腕の動き（目標角の時系列）を再生する仕組み。</dd></div>
+    <div><dt>YOLO11n</dt><dd>画像から物体を見つける軽量な AI モデル。GPU で動かします。</dd></div>
+  </dl>
+  <h3 class="gloss-h">センサー・測定値</h3>
+  <dl class="gloss">
+    <div><dt>LiDAR<span>Livox MID360</span></dt><dd>レーザーで周りの距離を測るセンサー。前方に障害物があるかの判定に使います。</dd></div>
+    <div><dt>IMU</dt><dd>傾きと回転を測るセンサー。旋回の角度に使います。</dd></div>
+    <div><dt>odom<span>オドメトリ</span></dt><dd>どれだけ進んだかの推定値。G1 内蔵の SLAM が出します。</dd></div>
+    <div><dt>テレメトリ</dt><dd>ロボットから送られてくる測定値（odom・IMU）の総称。</dd></div>
+    <div><dt>CLEAR / BLOCKED</dt><dd>前方に障害物がない／ある、という LiDAR の判定。</dd></div>
+  </dl>
+  <h3 class="gloss-h">通信</h3>
+  <dl class="gloss">
+    <div><dt>Unitree SDK</dt><dd>G1 を動かす公式ライブラリ（unitree_sdk2py）。歩行は LocoClient、音声は AudioClient、映像は VideoClient。</dd></div>
+    <div><dt>DDS</dt><dd>G1 の内部で部品同士が使うメッセージ通信。<code>rt/…</code> という名前（トピック）で受け渡します。</dd></div>
+    <div><dt>UDP</dt><dd>軽い通信。届かなくても再送しないので、周期的に流す指示や測定値に向きます。</dd></div>
+    <div><dt>SSH</dt><dd>操作PC から Jetson へ安全につなぐ通信。映像・音声・腕の依頼に使います。</dd></div>
+    <div><dt>Unix socket</dt><dd>同じ PC の中のプログラム同士の通信。Patrol と Reaction の連絡に使います。</dd></div>
+  </dl>
+  <h3 class="gloss-h">命令・制御</h3>
+  <dl class="gloss">
+    <div><dt>Move / StopMove</dt><dd>歩行コントローラへの命令。Move は前進・横・旋回の速さを指定し、StopMove は止めます。</dd></div>
+    <div><dt>watchdog<span>見張り</span></dt><dd>一定時間指示が来なければ自動で止める仕組み。relay は 0.40 秒で止めます。</dd></div>
+    <div><dt>閉ループ<span>odom ループ・IMU yaw ループ</span></dt><dd>測りながら動き、目標に届いたら止める制御。「0.30 m/s で進め」と速さだけ指示しても、床の滑りなどで実際の距離はずれます。そこで Patrol は tick ごとに測定値を読みます。前進は odom（進んだ距離）で「2 m / 4 m 進んだか」、旋回は IMU の yaw（向き）で「180° 回ったか」を判定します。一時停止したときも、残り距離・残り角度を計算し直して再開できます。</dd></div>
+    <div><dt>tick</dt><dd>ループの 1 回分。</dd></div>
+    <div><dt>pause / resume</dt><dd>Patrol の一時停止と再開。Reaction が頼みます。</dd></div>
+    <div><dt>preflight</dt><dd>腕を動かす前の事前確認。腕が静止しているかを見ます。</dd></div>
+    <div><dt>rt/arm_sdk・weight・q0</dt><dd>腕を内蔵コントローラから借りる口、借りる量（0〜1）、初期姿勢。</dd></div>
+    <div><dt>cooldown</dt><dd>反応のあとに次の反応を受け付けない待ち時間（2.0 秒）。</dd></div>
+    <div><dt>found / surprise</dt><dd>反応の種類。人は found、バナナとぬいぐるみは surprise。</dd></div>
+  </dl>
+</section>
+
+<section>
+  <div class="callout">
+    <h3>この資料の根拠と限界</h3>
+    <ul>
+      <li>根拠は <code>integrated_demo</code> のソース（コミット 7549e0d）です。実機では動かしていません。</li>
+      <li>ループの周期は、コードに書かれた値だけを載せました。Patrol の tick の間隔と LiDAR 中継の送信間隔は確認していません。</li>
+      <li>腕の書き込み「約 50Hz」はコードのコメントに基づきます。</li>
+      <li>Patrol と Reaction を分けた構成だけを載せました。<code>--with-wander</code> を使う古い経路は含めていません。</li>
+    </ul>
+  </div>
+</section>
+</main>

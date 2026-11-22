@@ -1,0 +1,776 @@
+{
+  "attention": "default",
+  "status": "pass",
+  "note": "ATen dispatch probe excluded from latency samples; no CUPTI.",
+  "environment": {
+    "torch": "2.9.1+cu128",
+    "cuda": "12.8",
+    "gpu": "NVIDIA GeForce RTX 3060 Ti",
+    "cudnn_version": 91002,
+    "cudnn_benchmark": false,
+    "flash_enabled": true,
+    "flash_compiled_available": false,
+    "math_enabled": true,
+    "mem_efficient_enabled": true,
+    "vision_attn": "sdpa",
+    "text_attn": "sdpa"
+  },
+  "warmup": {
+    "perception": {
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "raw_response": "C",
+      "bare_json": false,
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 3183163391152,
+        "processor_instance_id": 3183163389808,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          34
+        ],
+        "processor_s": 0.021604099999422033,
+        "device_transfer_s": 0.001573399999870162,
+        "text_decoding_s": 0.00017180000031657983,
+        "generation_latency_s": 4.413909100000637,
+        "inference_latency_s": 4.437506999999641,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.01171875,
+        "instrumented": true,
+        "ttft_generation_s": 4.407711700000618,
+        "ttft_stage_s": 4.434642799999892,
+        "decode_total_s": 0.006197400000019115,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 4.30791162109375,
+        "prefill_host_forward_s": 4.30609319999985,
+        "vision_cuda_elapsed_s": 4.14122314453125,
+        "vision_host_forward_s": 4.1407883000001675,
+        "patch_embed_cuda_elapsed_s": 4.064235595703125,
+        "patch_embed_host_forward_s": 4.064265900000464,
+        "vision_block0_cuda_elapsed_s": 0.017484800338745117,
+        "vision_block0_host_forward_s": 0.017437100000279315,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          27.0,
+          30.625,
+          33.0,
+          32.25
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0036363999997774954,
+        "stage_wall_s": 4.443543299999874,
+        "validation_parsing_s": 6.459999985963805e-05
+      }
+    },
+    "planner": {
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"CENTER\",\"target\":\"PERSON\",\"distance\":\"UNKNOWN\"}",
+      "bare_json": true,
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 3183163391152,
+        "processor_instance_id": 3183163389808,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "fb5fa091dc46179bbbe2ab2f9a6f1703268b8044b81bbacd7b7e17684d1304ff",
+        "max_new_tokens": 96,
+        "input_tokens": 380,
+        "output_tokens": 18,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          78450,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          51378,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0016267999999399763,
+        "device_transfer_s": 0.00011679999988700729,
+        "text_decoding_s": 0.0007840000007490744,
+        "generation_latency_s": 0.9293913000001339,
+        "inference_latency_s": 0.9320659000004525,
+        "peak_allocated_gib": 4.055957317352295,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.099691299999904,
+        "ttft_stage_s": 0.10148860000026616,
+        "decode_total_s": 0.8297000000002299,
+        "decode_steps": 17,
+        "decode_ms_per_token": 48.805882352954704,
+        "streamer_token_count": 18,
+        "prefill_cuda_elapsed_s": 0.09807545471191406,
+        "prefill_host_forward_s": 0.0680992999996306,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 0.9324223999992682,
+        "validation_parsing_s": 5.120000059832819e-05
+      }
+    },
+    "state_before": {
+      "last_seen_person_direction": "UNKNOWN",
+      "person_visible_last_frame": null,
+      "frames_since_person_seen": 0,
+      "transition": "UNKNOWN"
+    },
+    "state_after": {
+      "last_seen_person_direction": "CENTER",
+      "person_visible_last_frame": true,
+      "frames_since_person_seen": 0,
+      "transition": "UNKNOWN"
+    },
+    "transition": "UNKNOWN",
+    "timing": {
+      "perception_wall_s": 4.443620699999883,
+      "state_update_s": 1.630000042496249e-05,
+      "planner_wall_s": 0.9324790999999095,
+      "total_brain_s": 5.376209799999742
+    }
+  },
+  "sample": {
+    "perception": {
+      "observation": {
+        "person_visible": true,
+        "person_count": 1,
+        "person_direction": "CENTER",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "UNKNOWN"
+      },
+      "raw_response": "C",
+      "bare_json": false,
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "stage": "perception",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 3183163391152,
+        "processor_instance_id": 3183163389808,
+        "model_load_count": 1,
+        "image_count": 1,
+        "image_grids_thw": [
+          [
+            1,
+            14,
+            24
+          ]
+        ],
+        "image_tokens": 84,
+        "prompt_sha256": "4b790983a5f5715d5481eb65b57687105bd692ac01585ac4f0372fa4e5e4281f",
+        "max_new_tokens": 1,
+        "input_tokens": 161,
+        "output_tokens": 1,
+        "generated_token_ids": [
+          34
+        ],
+        "processor_s": 0.004482500000449363,
+        "device_transfer_s": 0.0006156999997983803,
+        "text_decoding_s": 0.00013130000024830224,
+        "generation_latency_s": 3.7277493000001414,
+        "inference_latency_s": 3.7331952000004094,
+        "peak_allocated_gib": 4.006528854370117,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 3.7269878999995854,
+        "ttft_stage_s": 3.7360120000003008,
+        "decode_total_s": 0.0007614000005560229,
+        "decode_steps": 0,
+        "decode_ms_per_token": null,
+        "streamer_token_count": 1,
+        "prefill_cuda_elapsed_s": 3.723905517578125,
+        "prefill_host_forward_s": 3.721767300000465,
+        "vision_cuda_elapsed_s": 3.63248828125,
+        "vision_host_forward_s": 3.6322532000003775,
+        "patch_embed_cuda_elapsed_s": 3.58335498046875,
+        "patch_embed_host_forward_s": 3.5833764999997584,
+        "vision_block0_cuda_elapsed_s": 0.002348031997680664,
+        "vision_block0_host_forward_s": 0.0022589000000152737,
+        "class_allowed_token_ids": [
+          32,
+          33,
+          34,
+          35
+        ],
+        "class_logits": [
+          27.0,
+          30.625,
+          33.0,
+          32.25
+        ],
+        "class_logits_finite": true,
+        "image_preprocessing_s": 0.0038529000003109104,
+        "stage_wall_s": 3.7375965999999607,
+        "validation_parsing_s": 2.6200000320386607e-05
+      }
+    },
+    "planner": {
+      "decision": {
+        "action": "LOOK",
+        "direction": "CENTER",
+        "target": "PERSON",
+        "distance": "UNKNOWN"
+      },
+      "raw_response": "{\"action\":\"LOOK\",\"direction\":\"CENTER\",\"target\":\"PERSON\",\"distance\":\"UNKNOWN\"}",
+      "bare_json": true,
+      "fallback": false,
+      "error": null,
+      "metrics": {
+        "stage": "planner",
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+        "dtype": "bf16",
+        "attention": "default",
+        "format": "class",
+        "model_instance_id": 3183163391152,
+        "processor_instance_id": 3183163389808,
+        "model_load_count": 1,
+        "image_count": 0,
+        "image_grids_thw": [],
+        "image_tokens": 0,
+        "prompt_sha256": "fb5fa091dc46179bbbe2ab2f9a6f1703268b8044b81bbacd7b7e17684d1304ff",
+        "max_new_tokens": 96,
+        "input_tokens": 380,
+        "output_tokens": 18,
+        "generated_token_ids": [
+          4913,
+          1311,
+          3252,
+          94428,
+          2198,
+          19071,
+          3252,
+          78450,
+          2198,
+          5657,
+          3252,
+          93183,
+          2198,
+          19348,
+          3252,
+          51378,
+          9207,
+          151645
+        ],
+        "processor_s": 0.0010815999994520098,
+        "device_transfer_s": 0.00015689999963797163,
+        "text_decoding_s": 0.00015489999987039482,
+        "generation_latency_s": 1.536356199999318,
+        "inference_latency_s": 1.5379490000004807,
+        "peak_allocated_gib": 4.055957317352295,
+        "peak_reserved_gib": 4.095703125,
+        "instrumented": true,
+        "ttft_generation_s": 0.08712529999957042,
+        "ttft_stage_s": 0.08841010000014649,
+        "decode_total_s": 1.4492308999997476,
+        "decode_steps": 17,
+        "decode_ms_per_token": 85.24887647057339,
+        "streamer_token_count": 18,
+        "prefill_cuda_elapsed_s": 0.08526089477539063,
+        "prefill_host_forward_s": 0.08109909999984666,
+        "image_preprocessing_s": 0.0,
+        "stage_wall_s": 1.5382395999995424,
+        "validation_parsing_s": 4.270000044925837e-05
+      }
+    },
+    "state_before": {
+      "last_seen_person_direction": "UNKNOWN",
+      "person_visible_last_frame": null,
+      "frames_since_person_seen": 0,
+      "transition": "UNKNOWN"
+    },
+    "state_after": {
+      "last_seen_person_direction": "CENTER",
+      "person_visible_last_frame": true,
+      "frames_since_person_seen": 0,
+      "transition": "UNKNOWN"
+    },
+    "transition": "UNKNOWN",
+    "timing": {
+      "perception_wall_s": 3.7376334000000497,
+      "state_update_s": 1.1000000085914508e-05,
+      "planner_wall_s": 1.5382884999999078,
+      "total_brain_s": 5.2759987999997975
+    }
+  },
+  "operators": [
+    {
+      "name": "aten.lift_fresh.default",
+      "count": 130
+    },
+    {
+      "name": "aten.view.default",
+      "count": 1635
+    },
+    {
+      "name": "aten.permute.default",
+      "count": 27
+    },
+    {
+      "name": "aten.stack.default",
+      "count": 4
+    },
+    {
+      "name": "aten._upsample_bicubic2d_aa.default",
+      "count": 1
+    },
+    {
+      "name": "aten.select.int",
+      "count": 215
+    },
+    {
+      "name": "aten._to_copy.default",
+      "count": 7
+    },
+    {
+      "name": "aten.sub.Tensor",
+      "count": 51
+    },
+    {
+      "name": "aten.div_.Tensor",
+      "count": 1
+    },
+    {
+      "name": "aten.unsqueeze.default",
+      "count": 1330
+    },
+    {
+      "name": "aten.slice.Tensor",
+      "count": 2411
+    },
+    {
+      "name": "aten.repeat.default",
+      "count": 2
+    },
+    {
+      "name": "aten.cat.default",
+      "count": 2263
+    },
+    {
+      "name": "aten.clone.default",
+      "count": 42
+    },
+    {
+      "name": "aten._unsafe_view.default",
+      "count": 1
+    },
+    {
+      "name": "aten.prod.default",
+      "count": 1
+    },
+    {
+      "name": "aten.floor_divide.default",
+      "count": 6
+    },
+    {
+      "name": "aten._local_scalar_dense.default",
+      "count": 2
+    },
+    {
+      "name": "aten.detach_.default",
+      "count": 121
+    },
+    {
+      "name": "aten.isin.Tensor_Tensor",
+      "count": 21
+    },
+    {
+      "name": "aten.any.default",
+      "count": 4
+    },
+    {
+      "name": "aten.is_nonzero.default",
+      "count": 103
+    },
+    {
+      "name": "aten.lt.Scalar",
+      "count": 2
+    },
+    {
+      "name": "aten.to.dtype_layout",
+      "count": 144
+    },
+    {
+      "name": "aten.ones.default",
+      "count": 5
+    },
+    {
+      "name": "aten.cumsum.default",
+      "count": 23
+    },
+    {
+      "name": "aten.ge.Scalar",
+      "count": 19
+    },
+    {
+      "name": "aten.to.dtype",
+      "count": 4578
+    },
+    {
+      "name": "aten.eq.Scalar",
+      "count": 65
+    },
+    {
+      "name": "aten.masked_fill_.Scalar",
+      "count": 20
+    },
+    {
+      "name": "aten.ne.Scalar",
+      "count": 19
+    },
+    {
+      "name": "aten.embedding.default",
+      "count": 20
+    },
+    {
+      "name": "aten.conv3d.default",
+      "count": 1
+    },
+    {
+      "name": "aten.unbind.int",
+      "count": 37
+    },
+    {
+      "name": "aten.item.default",
+      "count": 19
+    },
+    {
+      "name": "aten.linspace.default",
+      "count": 2
+    },
+    {
+      "name": "aten.add.Tensor",
+      "count": 4467
+    },
+    {
+      "name": "aten.clip.default",
+      "count": 2
+    },
+    {
+      "name": "aten.mul.Tensor",
+      "count": 7137
+    },
+    {
+      "name": "aten.numpy_T.default",
+      "count": 8
+    },
+    {
+      "name": "aten.flatten.using_ints",
+      "count": 13
+    },
+    {
+      "name": "aten.rsub.Scalar",
+      "count": 23
+    },
+    {
+      "name": "aten.resolve_conj.default",
+      "count": 87
+    },
+    {
+      "name": "aten.resolve_neg.default",
+      "count": 87
+    },
+    {
+      "name": "aten.split_with_sizes.default",
+      "count": 74
+    },
+    {
+      "name": "aten.max.default",
+      "count": 22
+    },
+    {
+      "name": "aten.arange.default",
+      "count": 27
+    },
+    {
+      "name": "aten.outer.default",
+      "count": 1
+    },
+    {
+      "name": "aten.prod.dim_int",
+      "count": 2
+    },
+    {
+      "name": "aten.sum.default",
+      "count": 5
+    },
+    {
+      "name": "aten.empty.memory_format",
+      "count": 1
+    },
+    {
+      "name": "aten.expand.default",
+      "count": 61
+    },
+    {
+      "name": "aten.reshape.default",
+      "count": 585
+    },
+    {
+      "name": "aten.gt.Scalar",
+      "count": 2
+    },
+    {
+      "name": "aten.copy_.default",
+      "count": 39
+    },
+    {
+      "name": "aten.index.Tensor",
+      "count": 26
+    },
+    {
+      "name": "aten.cos.default",
+      "count": 20
+    },
+    {
+      "name": "aten.sin.default",
+      "count": 20
+    },
+    {
+      "name": "aten.repeat_interleave.self_Tensor",
+      "count": 1
+    },
+    {
+      "name": "aten.pad.default",
+      "count": 1
+    },
+    {
+      "name": "aten.layer_norm.default",
+      "count": 52
+    },
+    {
+      "name": "aten.linear.default",
+      "count": 3847
+    },
+    {
+      "name": "aten.neg.default",
+      "count": 1112
+    },
+    {
+      "name": "aten.transpose.int",
+      "count": 2243
+    },
+    {
+      "name": "aten.scaled_dot_product_attention.default",
+      "count": 556
+    },
+    {
+      "name": "aten.gelu.default",
+      "count": 28
+    },
+    {
+      "name": "aten.to.device",
+      "count": 42
+    },
+    {
+      "name": "aten.expand_as.default",
+      "count": 2
+    },
+    {
+      "name": "aten.masked_scatter.default",
+      "count": 1
+    },
+    {
+      "name": "aten.argwhere.default",
+      "count": 1
+    },
+    {
+      "name": "aten.squeeze.dim",
+      "count": 1
+    },
+    {
+      "name": "aten.sub_.Tensor",
+      "count": 1
+    },
+    {
+      "name": "aten.index_put_.default",
+      "count": 5
+    },
+    {
+      "name": "aten.all.default",
+      "count": 20
+    },
+    {
+      "name": "aten.matmul.default",
+      "count": 19
+    },
+    {
+      "name": "aten.pow.Tensor_Scalar",
+      "count": 2147
+    },
+    {
+      "name": "aten.mean.dim",
+      "count": 2147
+    },
+    {
+      "name": "aten.rsqrt.default",
+      "count": 2147
+    },
+    {
+      "name": "aten.contiguous.default",
+      "count": 56
+    },
+    {
+      "name": "aten.silu.default",
+      "count": 532
+    },
+    {
+      "name": "aten.new_ones.default",
+      "count": 19
+    },
+    {
+      "name": "aten.detach.default",
+      "count": 1
+    },
+    {
+      "name": "aten.full_like.default",
+      "count": 1
+    },
+    {
+      "name": "aten.argmax.default",
+      "count": 19
+    },
+    {
+      "name": "aten.full.default",
+      "count": 38
+    },
+    {
+      "name": "aten.__or__.Tensor",
+      "count": 38
+    },
+    {
+      "name": "aten.bitwise_not.default",
+      "count": 19
+    },
+    {
+      "name": "aten.__and__.Tensor",
+      "count": 19
+    },
+    {
+      "name": "aten.isfinite.default",
+      "count": 1
+    },
+    {
+      "name": "aten.max.dim",
+      "count": 2
+    },
+    {
+      "name": "aten.repeat_interleave.self_int",
+      "count": 17
+    }
+  ],
+  "selected_backends": [
+    {
+      "id": 2,
+      "name": "EFFICIENT_ATTENTION",
+      "dtype": "torch.bfloat16",
+      "query_shape": [
+        1,
+        16,
+        336,
+        64
+      ],
+      "count": 24
+    },
+    {
+      "id": 0,
+      "name": "MATH",
+      "dtype": "torch.bfloat16",
+      "query_shape": [
+        1,
+        16,
+        161,
+        128
+      ],
+      "count": 28
+    },
+    {
+      "id": 0,
+      "name": "MATH",
+      "dtype": "torch.bfloat16",
+      "query_shape": [
+        1,
+        16,
+        380,
+        128
+      ],
+      "count": 28
+    },
+    {
+      "id": 0,
+      "name": "MATH",
+      "dtype": "torch.bfloat16",
+      "query_shape": [
+        1,
+        16,
+        1,
+        128
+      ],
+      "count": 476
+    }
+  ],
+  "sdpa_operators": [
+    {
+      "name": "aten.scaled_dot_product_attention.default",
+      "count": 556
+    }
+  ]
+}

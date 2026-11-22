@@ -1,0 +1,567 @@
+{
+  "profile": {
+    "name": "class_both_256",
+    "format": "class",
+    "edge": 256,
+    "minimal": false,
+    "dtype": "fp16",
+    "attention": "default",
+    "instrument": true,
+    "exact": false,
+    "constrained": true,
+    "planner_json": false,
+    "planner_class": true
+  },
+  "pipeline_status": "pass",
+  "presence_accuracy": 1.0,
+  "direction_accuracy": 0.6,
+  "presence_correct_total": [
+    18,
+    18
+  ],
+  "direction_correct_total": [
+    6,
+    10
+  ],
+  "perception_valid_rate": 1.0,
+  "planner_valid_rate": 1.0,
+  "main_pass": false,
+  "extended_scores": [
+    2,
+    2
+  ],
+  "accuracy_maintained": false,
+  "integrity_pass": true,
+  "eligible": false,
+  "tier": "REJECT",
+  "peak_allocated_gib": 4.039101600646973,
+  "peak_reserved_gib": 4.66796875,
+  "metrics": {
+    "perception_wall_s": {
+      "count": 18,
+      "mean": 1.8267551944444576,
+      "median": 1.8198652999999467,
+      "p95": 1.8906642250001369
+    },
+    "state_update_s": {
+      "count": 18,
+      "mean": 1.101666662685198e-05,
+      "median": 1.0999999631167157e-05,
+      "p95": 1.227500001732551e-05
+    },
+    "planner_wall_s": {
+      "count": 18,
+      "mean": 0.07669184999991153,
+      "median": 0.0782795499999338,
+      "p95": 0.09247177999995984
+    },
+    "total_brain_s": {
+      "count": 18,
+      "mean": 1.9035536555555457,
+      "median": 1.9007207499998913,
+      "p95": 1.9801648600000135
+    },
+    "perception": {
+      "image_preprocessing_s": {
+        "count": 18,
+        "mean": 0.003273766666704129,
+        "median": 0.003184950000104436,
+        "p95": 0.0036471250006343318
+      },
+      "processor_s": {
+        "count": 18,
+        "mean": 0.0017602833332704096,
+        "median": 0.0017409499996574596,
+        "p95": 0.0018994850001035955
+      },
+      "device_transfer_s": {
+        "count": 18,
+        "mean": 0.0003637611110510382,
+        "median": 0.0003046500000891683,
+        "p95": 0.0006054350001249986
+      },
+      "vision_cuda_elapsed_s": {
+        "count": 18,
+        "mean": 1.759567654079861,
+        "median": 1.7490403442382814,
+        "p95": 1.8262244323730468
+      },
+      "vision_host_forward_s": {
+        "count": 18,
+        "mean": 1.759592072222252,
+        "median": 1.7490694500002064,
+        "p95": 1.8262493549997088
+      },
+      "patch_embed_cuda_elapsed_s": {
+        "count": 18,
+        "mean": 1.7348983696831597,
+        "median": 1.7232819213867188,
+        "p95": 1.8018936706542967
+      },
+      "vision_block0_cuda_elapsed_s": {
+        "count": 18,
+        "mean": 0.0010217511256535848,
+        "median": 0.0009753600060939788,
+        "p95": 0.0013154783606529235
+      },
+      "prefill_cuda_elapsed_s": {
+        "count": 18,
+        "mean": 1.818118937174479,
+        "median": 1.8108125610351562,
+        "p95": 1.8826621154785155
+      },
+      "prefill_host_forward_s": {
+        "count": 18,
+        "mean": 1.8165314499999314,
+        "median": 1.80938285000002,
+        "p95": 1.8810191700002177
+      },
+      "ttft_generation_s": {
+        "count": 18,
+        "mean": 1.8201034944445382,
+        "median": 1.8129503499999373,
+        "p95": 1.8843446849999053
+      },
+      "ttft_stage_s": {
+        "count": 18,
+        "mean": 1.8255927333334512,
+        "median": 1.8181973999999173,
+        "p95": 1.8896351500005037
+      },
+      "decode_total_s": {
+        "count": 18,
+        "mean": 0.0004359555555816365,
+        "median": 0.0004061500003444962,
+        "p95": 0.0006436850002501159
+      },
+      "decode_ms_per_token": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "input_tokens": {
+        "count": 18,
+        "mean": 109,
+        "median": 109.0,
+        "p95": 109.0
+      },
+      "image_tokens": {
+        "count": 18,
+        "mean": 32,
+        "median": 32.0,
+        "p95": 32.0
+      },
+      "output_tokens": {
+        "count": 18,
+        "mean": 1,
+        "median": 1.0,
+        "p95": 1.0
+      },
+      "validation_parsing_s": {
+        "count": 18,
+        "mean": 2.5733333334048642e-05,
+        "median": 2.4250000024039764e-05,
+        "p95": 3.261000006204993e-05
+      },
+      "peak_allocated_gib": {
+        "count": 18,
+        "mean": 3.9938416481018066,
+        "median": 3.9938416481018066,
+        "p95": 3.9938416481018066
+      },
+      "peak_reserved_gib": {
+        "count": 18,
+        "mean": 4.66796875,
+        "median": 4.66796875,
+        "p95": 4.66796875
+      }
+    },
+    "planner": {
+      "image_preprocessing_s": {
+        "count": 18,
+        "mean": 0.0,
+        "median": 0.0,
+        "p95": 0.0
+      },
+      "processor_s": {
+        "count": 18,
+        "mean": 0.0009042333332824152,
+        "median": 0.0008812000000943954,
+        "p95": 0.0010381949999555217
+      },
+      "device_transfer_s": {
+        "count": 18,
+        "mean": 0.00013516111115071303,
+        "median": 0.00010705000022426248,
+        "p95": 0.0002424849998078571
+      },
+      "vision_cuda_elapsed_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "vision_host_forward_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "patch_embed_cuda_elapsed_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "vision_block0_cuda_elapsed_s": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "prefill_cuda_elapsed_s": {
+        "count": 18,
+        "mean": 0.07234187359280056,
+        "median": 0.07365797042846679,
+        "p95": 0.08798844680786132
+      },
+      "prefill_host_forward_s": {
+        "count": 18,
+        "mean": 0.05557206111102965,
+        "median": 0.05297939999991286,
+        "p95": 0.0704144300002099
+      },
+      "ttft_generation_s": {
+        "count": 18,
+        "mean": 0.07435577777763076,
+        "median": 0.0759619999998904,
+        "p95": 0.09024882999947295
+      },
+      "ttft_stage_s": {
+        "count": 18,
+        "mean": 0.07544090000000223,
+        "median": 0.07702229999995325,
+        "p95": 0.09126693499983958
+      },
+      "decode_total_s": {
+        "count": 18,
+        "mean": 0.0005038611111558566,
+        "median": 0.0004137500000069849,
+        "p95": 0.0007497400002193898
+      },
+      "decode_ms_per_token": {
+        "count": 0,
+        "mean": null,
+        "median": null,
+        "p95": null
+      },
+      "input_tokens": {
+        "count": 18,
+        "mean": 310.22222222222223,
+        "median": 310.0,
+        "p95": 311.0
+      },
+      "image_tokens": {
+        "count": 18,
+        "mean": 0,
+        "median": 0.0,
+        "p95": 0.0
+      },
+      "output_tokens": {
+        "count": 18,
+        "mean": 1,
+        "median": 1.0,
+        "p95": 1.0
+      },
+      "validation_parsing_s": {
+        "count": 18,
+        "mean": 2.7133333333040355e-05,
+        "median": 2.43499998759944e-05,
+        "p95": 4.335000044193291e-05
+      },
+      "peak_allocated_gib": {
+        "count": 18,
+        "mean": 4.038824823167589,
+        "median": 4.038913249969482,
+        "p95": 4.039101600646973
+      },
+      "peak_reserved_gib": {
+        "count": 18,
+        "mean": 4.66796875,
+        "median": 4.66796875,
+        "p95": 4.66796875
+      }
+    }
+  },
+  "run_evaluations": [
+    {
+      "pass": false,
+      "integrity_errors": [],
+      "checks": [
+        {
+          "timestamp": 3,
+          "pass": false,
+          "errors": [
+            "Planner Action mismatch"
+          ]
+        },
+        {
+          "timestamp": 7,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 8,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 9,
+          "pass": false,
+          "errors": [
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 9.5,
+          "pass": false,
+          "errors": [
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 10,
+          "pass": false,
+          "errors": [
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 10.25,
+          "pass": false,
+          "errors": [
+            "Planner Action mismatch"
+          ]
+        },
+        {
+          "timestamp": 12,
+          "pass": false,
+          "errors": [
+            "Perception direction mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 13,
+          "pass": false,
+          "errors": [
+            "Perception direction mismatch",
+            "Planner direction/target mismatch"
+          ]
+        }
+      ],
+      "planner_policy_checks": [
+        {
+          "timestamp": 3,
+          "pass": false
+        },
+        {
+          "timestamp": 7,
+          "pass": true
+        },
+        {
+          "timestamp": 8,
+          "pass": true
+        },
+        {
+          "timestamp": 9,
+          "pass": false
+        },
+        {
+          "timestamp": 9.5,
+          "pass": false
+        },
+        {
+          "timestamp": 10,
+          "pass": false
+        },
+        {
+          "timestamp": 10.25,
+          "pass": false
+        },
+        {
+          "timestamp": 12,
+          "pass": false
+        },
+        {
+          "timestamp": 13,
+          "pass": true
+        }
+      ],
+      "planner_policy_pass": false,
+      "model_reuse": true,
+      "serialization_errors": [],
+      "representation_note": "Raw codes validated strictly; canonical JSON view used only for unchanged schema/scenario checks."
+    },
+    {
+      "pass": false,
+      "integrity_errors": [],
+      "checks": [
+        {
+          "timestamp": 3,
+          "pass": false,
+          "errors": [
+            "Planner Action mismatch"
+          ]
+        },
+        {
+          "timestamp": 7,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 8,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 9,
+          "pass": false,
+          "errors": [
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 9.5,
+          "pass": false,
+          "errors": [
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 10,
+          "pass": false,
+          "errors": [
+            "Planner Action mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 10.25,
+          "pass": false,
+          "errors": [
+            "Planner Action mismatch"
+          ]
+        },
+        {
+          "timestamp": 12,
+          "pass": false,
+          "errors": [
+            "Perception direction mismatch",
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 13,
+          "pass": false,
+          "errors": [
+            "Perception direction mismatch",
+            "Planner direction/target mismatch"
+          ]
+        }
+      ],
+      "planner_policy_checks": [
+        {
+          "timestamp": 3,
+          "pass": false
+        },
+        {
+          "timestamp": 7,
+          "pass": true
+        },
+        {
+          "timestamp": 8,
+          "pass": true
+        },
+        {
+          "timestamp": 9,
+          "pass": false
+        },
+        {
+          "timestamp": 9.5,
+          "pass": false
+        },
+        {
+          "timestamp": 10,
+          "pass": false
+        },
+        {
+          "timestamp": 10.25,
+          "pass": false
+        },
+        {
+          "timestamp": 12,
+          "pass": false
+        },
+        {
+          "timestamp": 13,
+          "pass": true
+        }
+      ],
+      "planner_policy_pass": false,
+      "model_reuse": true,
+      "serialization_errors": [],
+      "representation_note": "Raw codes validated strictly; canonical JSON view used only for unchanged schema/scenario checks."
+    },
+    {
+      "pass": false,
+      "integrity_errors": [],
+      "checks": [
+        {
+          "timestamp": 8,
+          "pass": true,
+          "errors": []
+        },
+        {
+          "timestamp": 10,
+          "pass": false,
+          "errors": [
+            "Planner direction/target mismatch"
+          ]
+        },
+        {
+          "timestamp": 12,
+          "pass": false,
+          "errors": [
+            "Perception direction mismatch",
+            "Planner direction/target mismatch"
+          ]
+        }
+      ],
+      "planner_policy_checks": [
+        {
+          "timestamp": 8,
+          "pass": true
+        },
+        {
+          "timestamp": 10,
+          "pass": false
+        },
+        {
+          "timestamp": 12,
+          "pass": false
+        }
+      ],
+      "planner_policy_pass": false,
+      "model_reuse": true,
+      "serialization_errors": [],
+      "representation_note": "Raw codes validated strictly; canonical JSON view used only for unchanged schema/scenario checks."
+    }
+  ],
+  "sample_note": "Warmup and model load excluded; mean/median/p95 across 9-frame runs.",
+  "report_file": "reports\\phase34\\class_both_256_fp16.json"
+}

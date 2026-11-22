@@ -1,0 +1,16 @@
+{
+  "packages": {
+    "torch": "2.9.1+cu128",
+    "transformers": "4.57.6",
+    "accelerate": "1.12.0",
+    "pydantic": "2.12.5",
+    "Pillow": "12.1.0",
+    "numpy": "2.2.6",
+    "opencv-python": "4.13.0.92",
+    "pytest": "9.0.2"
+  },
+  "bitsandbytes_in_stable_venv": false,
+  "nvidia": "NVIDIA GeForce RTX 3060 Ti, 581.42, 8192 MiB",
+  "dependencies_modified": false,
+  "pip_check": "No broken requirements found."
+}

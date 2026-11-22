@@ -1,0 +1,60 @@
+{
+  "purpose": "Human evaluation-only labels fixed before Phase 3.2 inference; never read by model or inference runners.",
+  "direction_protocol": "Visible main body/head center: left <40%, center 40..60%, right >60%. 3s is close to LEFT/CENTER boundary; label CENTER fixed before inference. Report presence and direction separately.",
+  "labels": [
+    {
+      "timestamp": 3,
+      "person_visible": true,
+      "person_direction": "CENTER",
+      "subset": "additional"
+    },
+    {
+      "timestamp": 7,
+      "person_visible": true,
+      "person_direction": "LEFT",
+      "subset": "additional"
+    },
+    {
+      "timestamp": 8,
+      "person_visible": true,
+      "person_direction": "LEFT",
+      "subset": "transition"
+    },
+    {
+      "timestamp": 9,
+      "person_visible": false,
+      "person_direction": "UNKNOWN",
+      "subset": "additional"
+    },
+    {
+      "timestamp": 9.5,
+      "person_visible": false,
+      "person_direction": "UNKNOWN",
+      "subset": "additional"
+    },
+    {
+      "timestamp": 10,
+      "person_visible": false,
+      "person_direction": "UNKNOWN",
+      "subset": "transition"
+    },
+    {
+      "timestamp": 10.25,
+      "person_visible": false,
+      "person_direction": "UNKNOWN",
+      "subset": "additional"
+    },
+    {
+      "timestamp": 12,
+      "person_visible": true,
+      "person_direction": "LEFT",
+      "subset": "transition"
+    },
+    {
+      "timestamp": 13,
+      "person_visible": true,
+      "person_direction": "LEFT",
+      "subset": "additional"
+    }
+  ]
+}

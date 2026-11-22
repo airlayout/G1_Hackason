@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>エンタメ班 本番用スライド</title>
+<link rel="stylesheet" href="./slides.css">
+<script src="./deck.js" defer></script>
+<script src="./formats.js" defer></script>
+<script src="./slides.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <h1>エンタメ班 本番用スライド</h1>
+  <div class="tools"><button id="present">投影する</button></div>
+</header>
+<main id="workspace" class="final-deck">
+  <nav aria-label="スライド一覧">
+    <h2>スライド</h2>
+    <ol id="slides-list"></ol>
+  </nav>
+  <section aria-label="選択したスライド">
+    <article class="slide" id="preview"></article>
+    <section class="details" id="notes-panel" aria-labelledby="edit-title">
+      <div class="details-header">
+        <h2 id="edit-title">発表者メモ</h2>
+        <button id="expand-notes" type="button" aria-expanded="false" aria-controls="notes-panel">メモを全開</button>
+      </div>
+      <p id="notes-slide-title"></p>
+      <p id="view-notes"></p>
+    </section>
+  </section>
+</main>
+<dialog id="presentation" aria-label="スライド投影">
+  <div class="presentation-bar">
+    <button id="previous">前へ</button><span id="counter"></span><button id="next">次へ</button><button id="close">閉じる</button>
+  </div>
+  <article class="slide" id="projected" tabindex="-1" autofocus></article>
+</dialog>
+</body>
+</html>

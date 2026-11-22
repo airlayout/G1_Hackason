@@ -1,0 +1,529 @@
+{
+  "schema": "motiondecode-test.real-stage.v1",
+  "stage": "half",
+  "executed": true,
+  "status": "PASS",
+  "command_publishers_created": 1,
+  "commands_sent": 744,
+  "ownership_released": true,
+  "unexpected_movement": "NOT OBSERVED BY SOFTWARE; human review required",
+  "full_real_robot_test_ready": false,
+  "navigation": "NONE",
+  "SLAM": "NONE",
+  "walking": "NONE",
+  "motion_action_api": "NONE",
+  "candidate": "EESB_Frustration_00001 [5552,5613)",
+  "motion_layout": "upper-body",
+  "arm_scale": 0.5,
+  "waist_scale": 0.0,
+  "baseline_worsening_policy": "STOP",
+  "execution_strategy": "prevalidated trajectory",
+  "acquire_ramp_s": 0.4,
+  "expected_arm_service_pid": "2899",
+  "thresholds": {
+    "tracking_rad": 0.1,
+    "hold_deviation_rad": 0.03,
+    "baseline_numerical_tolerance_m": 1e-06,
+    "clearance_m": 0.015,
+    "arm_action_stale_s": 0.5
+  },
+  "candidate_revalidation_passed": true,
+  "full_amplitude_revalidation_passed": false,
+  "selected_stage_preflight_passed": true,
+  "q0_captured_monotonic_s": 7699.019064014,
+  "acquire_method": "fixed fresh q0 target with smooth 0->1 weight ramp",
+  "hold_completed": true,
+  "release_completed": true,
+  "post_release_observation_completed": true,
+  "full_collision_sweep": {
+    "started_monotonic_s": 7699.027526931,
+    "completed_monotonic_s": 7699.222427365,
+    "duration_s": 0.19490043400037393,
+    "fk_s": 0.0010962979995383648,
+    "collision_s": 0.1937207090004449,
+    "pair_count": 175,
+    "existing_penetration_pairs": [],
+    "existing_dangerous_pairs": [],
+    "new_penetration_pairs": [],
+    "new_dangerous_pairs": [],
+    "minimum_clearance_m": 0.03803516012467449,
+    "state_tick": 7720982,
+    "lowstate_age_s": 0.0,
+    "baseline_micro_worsening_policy": "LOG ONLY for this HOLD"
+  },
+  "zero_weight_sent": true,
+  "maximum_weight_sent": 1.0,
+  "positive_weight_command_count": 742,
+  "first_positive_weight_monotonic_s": 7701.971560817,
+  "first_full_weight_monotonic_s": 7702.352699016,
+  "hold_at_full_weight_completed": true,
+  "hold_duration_s": 0.75,
+  "publisher_closed": true,
+  "post_release_ownership": {
+    "passed": true,
+    "reasons": [],
+    "expected_robot_internal": [
+      {
+        "topic": "rt/arm_sdk",
+        "endpoint_guid": "011037c3-3c0a-9d00-b4bd-078300000403",
+        "participant_guid": "011037c3-3c0a-9d00-b4bd-0783000001c1",
+        "publication_handle": "11965915779817951400",
+        "hostname": "Unitree",
+        "process_name": "python3",
+        "pid": "2899",
+        "source_ips": [
+          "192.168.123.161"
+        ],
+        "classification": "EXPECTED ROBOT INTERNAL PARTICIPANT",
+        "sample_count": 0,
+        "related_publications": [
+          "rt/api/arm/response",
+          "rt/api/sport/request",
+          "rt/arm/action/state",
+          "rt/arm_sdk"
+        ],
+        "related_subscriptions": [
+          "rt/api/arm/request",
+          "rt/api/sport/response",
+          "rt/armsdk",
+          "rt/lf/bmsstate",
+          "rt/lowstate",
+          "rt/sportmodestate"
+        ]
+      }
+    ],
+    "robot_internal_traffic": "IDLE",
+    "external_arm_sdk_writers": [],
+    "own_arm_sdk_writers": [],
+    "armsdk_writers": [],
+    "arm_action": {
+      "status": "IDLE",
+      "raw": "{\"holding\": false, \"id\": 0, \"name\": \"\"}",
+      "decoded": {
+        "holding": false,
+        "id": 0,
+        "name": ""
+      },
+      "reason": "exact observed holding/id/name schema",
+      "received_monotonic": 7718.577284473,
+      "source_timestamp_ns": 1789540191083546145,
+      "publication_handle": "18264790431550004141",
+      "data": "{\"holding\": false, \"id\": 0, \"name\": \"\"}",
+      "age_s": 0.09322245400016982
+    },
+    "arm_action_telemetry_unknown": false,
+    "arm_action_unknown_allowed": false,
+    "publications": {
+      "rt/arm_sdk": [
+        {
+          "topic": "rt/arm_sdk",
+          "endpoint_guid": "011037c3-3c0a-9d00-b4bd-078300000403",
+          "participant_guid": "011037c3-3c0a-9d00-b4bd-0783000001c1",
+          "publication_handle": "11965915779817951400",
+          "hostname": "Unitree",
+          "process_name": "python3",
+          "pid": "2899",
+          "source_ips": [
+            "192.168.123.161"
+          ],
+          "classification": "EXPECTED ROBOT INTERNAL PARTICIPANT",
+          "sample_count": 0,
+          "related_publications": [
+            "rt/api/arm/response",
+            "rt/api/sport/request",
+            "rt/arm/action/state",
+            "rt/arm_sdk"
+          ],
+          "related_subscriptions": [
+            "rt/api/arm/request",
+            "rt/api/sport/response",
+            "rt/armsdk",
+            "rt/lf/bmsstate",
+            "rt/lowstate",
+            "rt/sportmodestate"
+          ]
+        }
+      ],
+      "rt/armsdk": [],
+      "rt/arm/action/state": [
+        {
+          "topic": "rt/arm/action/state",
+          "endpoint_guid": "011037c3-3c0a-9d00-b4bd-078300000e03",
+          "participant_guid": "011037c3-3c0a-9d00-b4bd-0783000001c1",
+          "publication_handle": "18264790431550004141",
+          "hostname": "Unitree",
+          "process_name": "python3",
+          "pid": "2899",
+          "source_ips": [
+            "192.168.123.161"
+          ],
+          "classification": "EXPECTED ROBOT INTERNAL PARTICIPANT",
+          "sample_count": 2075,
+          "related_publications": [
+            "rt/api/arm/response",
+            "rt/api/sport/request",
+            "rt/arm/action/state",
+            "rt/arm_sdk"
+          ],
+          "related_subscriptions": [
+            "rt/api/arm/request",
+            "rt/api/sport/response",
+            "rt/armsdk",
+            "rt/lf/bmsstate",
+            "rt/lowstate",
+            "rt/sportmodestate"
+          ]
+        }
+      ],
+      "rt/lowstate": [
+        {
+          "topic": "rt/lowstate",
+          "endpoint_guid": "01109571-8d13-3ff0-814c-b5f100000203",
+          "participant_guid": "01109571-8d13-3ff0-814c-b5f1000001c1",
+          "publication_handle": "8071878272453639840",
+          "hostname": "Unitree",
+          "process_name": "basic_service",
+          "pid": "2577",
+          "source_ips": [
+            "192.168.123.161"
+          ],
+          "classification": "UNKNOWN EXTERNAL PARTICIPANT",
+          "sample_count": 0,
+          "related_publications": [
+            "rt/api/basic_clearoip/response",
+            "rt/api/basic_clearoip_lease/response",
+            "rt/api/basic_demarcate/response",
+            "rt/api/basic_demarcate_lease/response",
+            "rt/api/basic_softlimit/response",
+            "rt/api/basic_softlimit_lease/response",
+            "rt/api/basic_taumax/response",
+            "rt/api/basic_taumax_lease/response",
+            "rt/api/config/request",
+            "rt/lf/bmsstate",
+            "rt/lf/lowstate",
+            "rt/lf/mainboardstate",
+            "rt/lf/secondary_imu",
+            "rt/lowstate",
+            "rt/secondary_imu"
+          ],
+          "related_subscriptions": [
+            "rt/api/basic_clearoip/request",
+            "rt/api/basic_clearoip_lease/request",
+            "rt/api/basic_demarcate/request",
+            "rt/api/basic_demarcate_lease/request",
+            "rt/api/basic_softlimit/request",
+            "rt/api/basic_softlimit_lease/request",
+            "rt/api/basic_taumax/request",
+            "rt/api/basic_taumax_lease/request",
+            "rt/api/config/response",
+            "rt/config_change_status",
+            "rt/lowcmd"
+          ]
+        }
+      ]
+    }
+  },
+  "release_evidence": "zero weight published + publisher closed + no own DDS writer; no firmware ACK",
+  "final_q_minus_q0_rad": [
+    0.0022498369216918945,
+    -5.965493619441986e-05,
+    0.00016070250421762466,
+    -0.0013976097106933594,
+    0.003675490617752075,
+    -0.0013501672074198723,
+    0.0006391704082489014,
+    8.521601557731628e-06,
+    0.0002008788287639618,
+    0.002675950527191162,
+    -0.0026088356971740723,
+    -0.0011721011251211166,
+    -1.3391952961683273e-05,
+    0.000440260861068964,
+    0.0015967153012752533,
+    -0.000731050968170166,
+    0.0,
+    -5.992129445075989e-05,
+    5.990266799926758e-05,
+    -0.0004673898220062256,
+    -0.00022769998759031296,
+    0.0005392897874116898,
+    -9.587407112121582e-05,
+    -0.0006711184978485107,
+    7.190555334091187e-05,
+    0.0010186433792114258,
+    8.38935375213623e-05,
+    3.595277667045593e-05,
+    -2.3968517780303955e-05
+  ],
+  "returned_to_q0": true,
+  "post_release_native_controller_movement": false,
+  "phase_terminations": [
+    {
+      "phase": "ACQUIRE_RAMP",
+      "termination_reason": "completed_duration",
+      "exception": null,
+      "requested_duration_s": 0.4,
+      "actual_duration_s": 0.4073870460006219
+    },
+    {
+      "phase": "HOLD",
+      "termination_reason": "completed_duration",
+      "exception": null,
+      "requested_duration_s": 0.75,
+      "actual_duration_s": 0.7569089290000193
+    },
+    {
+      "phase": "entry",
+      "termination_reason": "completed_duration",
+      "exception": null,
+      "requested_duration_s": 3.7887039186377964,
+      "actual_duration_s": 3.792837026999223
+    },
+    {
+      "phase": "clip",
+      "termination_reason": "completed_duration",
+      "exception": null,
+      "requested_duration_s": 3.0,
+      "actual_duration_s": 3.004137055000683
+    },
+    {
+      "phase": "return",
+      "termination_reason": "completed_duration",
+      "exception": null,
+      "requested_duration_s": 4.007449904035872,
+      "actual_duration_s": 4.012079226999958
+    },
+    {
+      "phase": "q0_hold_after",
+      "termination_reason": "completed_duration",
+      "exception": null,
+      "requested_duration_s": 0.75,
+      "actual_duration_s": 0.7539316310003414
+    },
+    {
+      "phase": "RELEASE",
+      "termination_reason": "completed_duration",
+      "exception": null,
+      "requested_duration_s": 2.0,
+      "actual_duration_s": 2.005049047000284
+    }
+  ],
+  "max_tracking_error_rad": 0.07310373467587622,
+  "max_q0_deviation_rad": 0.22283467650413513,
+  "max_leg_q0_deviation_rad": 0.0043547749519348145,
+  "max_leg_q0_deviation": {
+    "value_rad": 0.0043547749519348145,
+    "joint_index": 9,
+    "joint": "right_knee_joint",
+    "phase": "clip",
+    "monotonic_s": 7708.307900115,
+    "q0_rad": 0.6166091561317444,
+    "commanded_rad": 0.6166091561317444,
+    "actual_rad": 0.6209639310836792
+  },
+  "first_leg_deviation_crossing": null,
+  "max_leg_command_deviation_rad": 0.0,
+  "motiondecode_leg_command_found": false,
+  "max_abs_imu_roll_rad": 0.0014719617320224643,
+  "max_abs_imu_pitch_rad": 0.06099700182676315,
+  "max_imu_roll_delta_rad": 0.0015563439374091104,
+  "max_imu_pitch_delta_rad": 0.0017414167523384094,
+  "max_lowstate_dq_field_rad_s": 0.3543495833873749,
+  "runtime_velocity_hard_stop": "NONE; position/tracking hard stops unchanged",
+  "measured_right_range_rad": [
+    0.13508620858192444,
+    0.23777900636196136,
+    0.10283664241433144,
+    0.21461349725723267,
+    0.05005810409784317,
+    0.09602959640324116,
+    0.06328869611024857
+  ],
+  "minimum_measured_clearance_m": 0.03803516012467449,
+  "hard_safety_passed": true,
+  "baseline_worsening_observed": false,
+  "collision_monitor_passed": true,
+  "collision_worker_stale": false,
+  "ownership_conflict": false,
+  "collision_result_age": {
+    "count": 769,
+    "mean_s": 10.335558185230243,
+    "p95_s": 17.19186485860009,
+    "p99_s": 17.812341558999904,
+    "max_s": 17.973722769999767
+  },
+  "phase_metrics": {
+    "ACQUIRE_RAMP": {
+      "samples": 21,
+      "observed_duration_s": 0.40082919399992534,
+      "max_tracking_error_rad": 0.011229217052459717,
+      "max_measured_q0_movement_rad": 0.011229217052459717,
+      "max_leg_q0_deviation_rad": 4.017539322376251e-05,
+      "left_wrist_roll_movement_rad": 2.396106719970703e-05,
+      "left_wrist_pitch_movement_rad": 0.00045540090650320053,
+      "left_wrist_yaw_movement_rad": 0.0010665953159332275,
+      "right_wrist_roll_movement_rad": 0.0006711184978485107,
+      "right_wrist_pitch_movement_rad": 0.00028762221336364746,
+      "right_wrist_yaw_movement_rad": 0.0011504869908094406,
+      "max_lowstate_dq_rad_s": 0.11504856497049332,
+      "lowstate_max_age_s": 0.002694791000067198,
+      "collision_result_age": {
+        "count": 21,
+        "mean_s": 2.924459082571394,
+        "p95_s": 3.1056628039996212,
+        "p99_s": 3.120642527200289,
+        "max_s": 3.124387458000456
+      },
+      "ownership_safe": true,
+      "arm_action_unknown_samples": 0,
+      "collision_safe": true,
+      "hard_safety_passed": true,
+      "velocity": {
+        "sample_count": 0,
+        "runtime_velocity_hard_stop": "NONE",
+        "offline_command_velocity_limit_rad_s": 0.25,
+        "raw_velocity_max_rad_s": null,
+        "lowstate_dq_max_rad_s": null,
+        "20ms_velocity_max_rad_s": null,
+        "50ms_velocity_max_rad_s": null,
+        "100ms_velocity_max_rad_s": null
+      }
+    },
+    "HOLD": {
+      "samples": 39,
+      "observed_duration_s": 0.7507161789999373,
+      "max_tracking_error_rad": 0.02689260244369507,
+      "max_measured_q0_movement_rad": 0.02689260244369507,
+      "max_leg_q0_deviation_rad": 0.00011080503463745117,
+      "left_wrist_roll_movement_rad": 5.9917569160461426e-05,
+      "left_wrist_pitch_movement_rad": 0.00044341664761304855,
+      "left_wrist_yaw_movement_rad": 0.0008988166227936745,
+      "right_wrist_roll_movement_rad": 0.000527307391166687,
+      "right_wrist_pitch_movement_rad": 0.0007909573614597321,
+      "right_wrist_yaw_movement_rad": 0.0010905656963586807,
+      "max_lowstate_dq_rad_s": 0.1902136206626892,
+      "lowstate_max_age_s": 0.001377075999698718,
+      "collision_result_age": {
+        "count": 39,
+        "mean_s": 3.5077338132308657,
+        "p95_s": 3.8454691854002703,
+        "p99_s": 3.875140923659874,
+        "max_s": 3.882744473999992
+      },
+      "ownership_safe": true,
+      "arm_action_unknown_samples": 0,
+      "collision_safe": true,
+      "hard_safety_passed": true,
+      "velocity": {
+        "sample_count": 0,
+        "runtime_velocity_hard_stop": "NONE",
+        "offline_command_velocity_limit_rad_s": 0.25,
+        "raw_velocity_max_rad_s": null,
+        "lowstate_dq_max_rad_s": null,
+        "20ms_velocity_max_rad_s": null,
+        "50ms_velocity_max_rad_s": null,
+        "100ms_velocity_max_rad_s": null
+      }
+    },
+    "RELEASE": {
+      "samples": 101,
+      "observed_duration_s": 2.000707569000042,
+      "max_tracking_error_rad": 0.024327978491783142,
+      "max_measured_q0_movement_rad": 0.024327978491783142,
+      "max_leg_q0_deviation_rad": 0.004089921712875366,
+      "left_wrist_roll_movement_rad": 0.0006711184978485107,
+      "left_wrist_pitch_movement_rad": 0.0028642304241657257,
+      "left_wrist_yaw_movement_rad": 0.003643205389380455,
+      "right_wrist_roll_movement_rad": 0.0007310360670089722,
+      "right_wrist_pitch_movement_rad": 0.00306796096265316,
+      "right_wrist_yaw_movement_rad": 0.0020732712000608444,
+      "max_lowstate_dq_rad_s": 0.1764077991247177,
+      "lowstate_max_age_s": 0.0019201370005248464,
+      "collision_result_age": {
+        "count": 101,
+        "mean_s": 16.459684868851546,
+        "p95_s": 17.36091671000031,
+        "p99_s": 17.43945124200036,
+        "max_s": 17.459419335999883
+      },
+      "ownership_safe": true,
+      "arm_action_unknown_samples": 0,
+      "collision_safe": true,
+      "hard_safety_passed": true,
+      "velocity": {
+        "sample_count": 0,
+        "runtime_velocity_hard_stop": "NONE",
+        "offline_command_velocity_limit_rad_s": 0.25,
+        "raw_velocity_max_rad_s": null,
+        "lowstate_dq_max_rad_s": null,
+        "20ms_velocity_max_rad_s": null,
+        "50ms_velocity_max_rad_s": null,
+        "100ms_velocity_max_rad_s": null
+      }
+    },
+    "POST-RELEASE": {
+      "samples": 25,
+      "observed_duration_s": 0.5086564009998256,
+      "max_tracking_error_rad": 0.004709810018539429,
+      "max_measured_q0_movement_rad": 0.004709810018539429,
+      "max_leg_q0_deviation_rad": 0.003806471824645996,
+      "left_wrist_roll_movement_rad": 0.000527307391166687,
+      "left_wrist_pitch_movement_rad": 0.00045540090650320053,
+      "left_wrist_yaw_movement_rad": 0.0007669897750020027,
+      "right_wrist_roll_movement_rad": 0.00017976760864257812,
+      "right_wrist_pitch_movement_rad": 0.00017976388335227966,
+      "right_wrist_yaw_movement_rad": 0.0007070694118738174,
+      "max_lowstate_dq_rad_s": 0.16106799244880676,
+      "lowstate_max_age_s": 0.001224654999532504,
+      "collision_result_age": {
+        "count": 25,
+        "mean_s": 17.719861061560113,
+        "p95_s": 17.948291342800257,
+        "p99_s": 17.9686211111199,
+        "max_s": 17.973722769999767
+      },
+      "ownership_safe": true,
+      "arm_action_unknown_samples": 0,
+      "collision_safe": true,
+      "hard_safety_passed": true,
+      "velocity": {
+        "sample_count": 0,
+        "runtime_velocity_hard_stop": "NONE",
+        "offline_command_velocity_limit_rad_s": 0.25,
+        "raw_velocity_max_rad_s": null,
+        "lowstate_dq_max_rad_s": null,
+        "20ms_velocity_max_rad_s": null,
+        "50ms_velocity_max_rad_s": null,
+        "100ms_velocity_max_rad_s": null
+      }
+    }
+  },
+  "hold_result": "PASS",
+  "release_safety": "PASS",
+  "velocity_summary": {
+    "sample_count": 0,
+    "runtime_velocity_hard_stop": "NONE",
+    "offline_command_velocity_limit_rad_s": 0.25,
+    "raw_velocity_max_rad_s": null,
+    "lowstate_dq_max_rad_s": null,
+    "20ms_velocity_max_rad_s": null,
+    "50ms_velocity_max_rad_s": null,
+    "100ms_velocity_max_rad_s": null
+  },
+  "fast_loop_interval": {
+    "count": 743,
+    "mean_s": 0.01983323843068617,
+    "p95_s": 0.020747365499664737,
+    "p99_s": 0.022144270080189026,
+    "max_s": 0.023495780999837734
+  },
+  "fast_loop_rate_hz": 50.42040932925965,
+  "fast_loop_processing": {
+    "count": 744,
+    "mean_s": 0.0042257403508132955,
+    "p95_s": 0.0069001336501059995,
+    "p99_s": 0.007750176360077603,
+    "max_s": 0.009070587000678643
+  },
+  "human_review_required": true
+}

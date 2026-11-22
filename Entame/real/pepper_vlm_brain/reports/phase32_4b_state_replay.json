@@ -1,0 +1,68 @@
+{
+  "mode": "saved-observation state-only replay",
+  "planner_executed": false,
+  "note": "No new Perception inference; no Decision is generated or substituted.",
+  "frames": [
+    {
+      "timestamp": 8.0,
+      "observation": null,
+      "state_before": {
+        "last_seen_person_direction": "UNKNOWN",
+        "person_visible_last_frame": null,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "state_after": {
+        "last_seen_person_direction": "UNKNOWN",
+        "person_visible_last_frame": null,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "state_update_s": 2.00001522898674e-07,
+      "error": "Expecting value: line 4 column 23 (char 71)"
+    },
+    {
+      "timestamp": 10.0,
+      "observation": {
+        "person_visible": false,
+        "person_count": 0,
+        "person_direction": "UNKNOWN",
+        "person_distance": "UNKNOWN",
+        "blocking_obstacle": "NONE"
+      },
+      "state_before": {
+        "last_seen_person_direction": "UNKNOWN",
+        "person_visible_last_frame": null,
+        "frames_since_person_seen": 0,
+        "transition": "UNKNOWN"
+      },
+      "state_after": {
+        "last_seen_person_direction": "UNKNOWN",
+        "person_visible_last_frame": false,
+        "frames_since_person_seen": 1,
+        "transition": "UNKNOWN"
+      },
+      "state_update_s": 1.1299998732283711e-05,
+      "error": null
+    },
+    {
+      "timestamp": 12.0,
+      "observation": null,
+      "state_before": {
+        "last_seen_person_direction": "UNKNOWN",
+        "person_visible_last_frame": false,
+        "frames_since_person_seen": 1,
+        "transition": "UNKNOWN"
+      },
+      "state_after": {
+        "last_seen_person_direction": "UNKNOWN",
+        "person_visible_last_frame": false,
+        "frames_since_person_seen": 1,
+        "transition": "UNKNOWN"
+      },
+      "state_update_s": 2.00001522898674e-07,
+      "error": "Expecting value: line 4 column 23 (char 71)"
+    }
+  ],
+  "status": "failed"
+}

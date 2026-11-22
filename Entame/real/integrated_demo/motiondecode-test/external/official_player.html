@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChingMu Motion Browser</title>
+<style>
+  /* ===== 全局重置 ===== */
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { 
+    background: #0b1120;
+    color: #e2e8f0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ===== 顶部标题栏 ===== */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 1.5rem;
+    background: rgba(15, 23, 42, 0.9);
+    border-bottom: 1px solid rgba(96, 165, 250, 0.2);
+    flex-shrink: 0;
+  }
+  .header h1 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #93c5fd;
+  }
+  .header a {
+    color: #cbd5e1;
+    text-decoration: none;
+    font-size: 0.85rem;
+    padding: 0.3rem 1rem;
+    border: 1px solid #334155;
+    border-radius: 20px;
+    transition: 0.2s;
+  }
+  .header a:hover { border-color: #60a5fa; color: #fff; }
+
+  /* ===== 主体布局 ===== */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ===== 左侧数据集列表 ===== */
+  .sidebar {
+    width: 260px;
+    background: rgba(15, 23, 42, 0.6);
+    border-right: 1px solid rgba(96, 165, 250, 0.15);
+    overflow-y: auto;
+    padding: 1rem 0;
+    flex-shrink: 0;
+  }
+  .sidebar-title {
+    padding: 0 1.2rem 0.8rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #64748b;
+  }
+  .motion-item {
+    padding: 0.8rem 1.2rem;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .motion-item:hover {
+    background: rgba(59, 130, 246, 0.1);
+  }
+  .motion-item.active {
+    background: rgba(59, 130, 246, 0.15);
+    border-left-color: #3b82f6;
+  }
+  .motion-item .name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #e2e8f0;
+  }
+  .motion-item .desc {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 0.2rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* ===== 右侧播放器 ===== */
+  .player-area {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  #canvas-container {
+    flex: 1;
+    width: 100%;
+  }
+
+  /* ===== 底部控制条 ===== */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.8rem 1.5rem;
+    background: rgba(15, 23, 42, 0.9);
+    border-top: 1px solid rgba(96, 165, 250, 0.2);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .controls button {
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 0.5rem 1.2rem;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .controls button:hover { background: #3b82f6; }
+  .controls button:disabled { background: #334155; cursor: not-allowed; }
+
+  .controls input[type="range"] {
+    flex: 1;
+    min-width: 100px;
+    height: 5px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #1e293b;
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+  .controls input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    background: #3b82f6;
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(59,130,246,0.5);
+  }
+  .controls input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    background: #3b82f6;
+    border-radius: 50%;
+    border: none;
+  }
+
+  #time-display {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    min-width: 105px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hint {
+    font-size: 0.72rem;
+    color: #475569;
+    margin-left: auto;
+  }
+
+  /* 切换按钮的选中状态 */
+  .mode-btn-active {
+    background: #059669 !important; /* 绿色表示旋转模式 */
+  }
+  .mode-btn-inactive {
+    background: #475569 !important; /* 灰色表示平移模式 */
+  }
+
+  @media (max-width: 950px) {
+    .controls { gap: 0.5rem; }
+    .hint { display: none; }
+  }
+  @media (max-width: 750px) {
+    .controls { flex-wrap: wrap; }
+    #mode-toggle { order: 10; } /* 在小屏幕上强制移到最右边 */
+  }
+  @media (max-width: 640px) {
+    .sidebar { width: 190px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 顶部标题栏 -->
+<div class="header">
+  <h1>ChingMu · Motion Browser</h1>
+  <a href="index.html">← Back to Home</a>
+</div>
+
+<!-- 主体 -->
+<div class="main">
+  <!-- 左侧列表 -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-title">Available Motions</div>
+    <div id="motion-list"></div>
+  </div>
+
+  <!-- 右侧播放器 -->
+  <div class="player-area">
+    <div id="canvas-container"></div>
+    <div class="controls">
+      <button id="play-btn">⏸ Pause</button>
+      <input type="range" id="seek-bar" min="0" max="1" step="0.001" value="0">
+      <span id="time-display">0.00 / 0.00 s</span>
+      <!-- 【修改】切换按钮移到了时间显示后面，提示文字前面 -->
+      <button id="mode-toggle" class="mode-btn-inactive">🔁 旋转</button>
+      <span class="hint" id="mode-hint">左键平移 · 滚轮缩放</span>
+    </div>
+  </div>
+</div>
+
+<!-- 引入 Three.js 及 BVHLoader -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { BVHLoader } from 'three/addons/loaders/BVHLoader.js';
+
+// ===== 数据集定义（在此处添加你的 BVH 条目） =====
+const motionList = [
+  {
+    id: 'dance',
+    name: 'Dance_01',
+    desc: '舞蹈：神的随波逐流',
+    bvhFile: 'assets/dance.bvh'
+  },
+  {
+    id: 'walk',
+    name: 'Walk_01',
+    desc: '缓慢步态',
+    bvhFile: 'assets/xingzou.bvh'
+  },
+  {
+    id: 'huanying',
+    name: 'Huanying_01',
+    desc: '欢迎动作',
+    bvhFile: 'assets/huanying.bvh'
+  },
+  {
+    id: 'qiecai',
+    name: 'Qiecai_01',
+    desc: '切菜',
+    bvhFile: 'assets/qiecai.bvh'
+  },
+  {
+    id: 'zuozi',
+    name: 'Zuozi_01',
+    desc: '坐姿动作',
+    bvhFile: 'assets/zuozi.bvh'
+  }
+];
+
+// ===== 全局变量 =====
+let container, camera, scene, renderer, controls;
+let mixer = null;
+let action = null;
+let clock = null;
+let isPlaying = false;
+let duration = 0;
+let currentMotionId = null;
+let isLoading = false;
+
+// 模式状态：true=旋转模式，false=平移模式
+let isRotateMode = false;
+
+// ===== 初始化场景 =====
+function initScene() {
+  container = document.getElementById('canvas-container');
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b1120);
+
+  camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 2000);
+  camera.position.set(0, 140, 380);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  container.appendChild(renderer.domElement);
+
+  // 禁用右键菜单（双重保险）
+  renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.addEventListener('contextmenu', (e) => {
+    if (e.target.closest('#canvas-container')) e.preventDefault();
+  });
+
+  const ambient = new THREE.AmbientLight(0x606080, 1.2);
+  scene.add(ambient);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+  dirLight.position.set(80, 200, 120);
+  scene.add(dirLight);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 100, 0);
+  controls.enableDamping = true;
+  // 初始为平移模式
+  controls.mouseButtons = {
+    LEFT: THREE.MOUSE.PAN,
+    MIDDLE: THREE.MOUSE.DOLLY,
+    RIGHT: null
+  };
+  controls.touches = {
+    ONE: THREE.TOUCH.PAN,
+    TWO: THREE.TOUCH.DOLLY_PAN
+  };
+  controls.update();
+
+  const gridHelper = new THREE.GridHelper(500, 40, 0x1e293b, 0x0f172a);
+  scene.add(gridHelper);
+
+  window.addEventListener('resize', () => {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+}
+
+// ===== 切换左键模式 =====
+function toggleMode() {
+  isRotateMode = !isRotateMode;
+  const modeToggle = document.getElementById('mode-toggle');
+  const hint = document.getElementById('mode-hint');
+
+  if (isRotateMode) {
+    // 切换到旋转模式
+    controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+    modeToggle.textContent = '🔄 平移';
+    modeToggle.className = 'mode-btn-active';
+    hint.textContent = '左键旋转 · 滚轮缩放';
+  } else {
+    // 切换到平移模式
+    controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+    modeToggle.textContent = '🔁 旋转';
+    modeToggle.className = 'mode-btn-inactive';
+    hint.textContent = '左键平移 · 滚轮缩放';
+  }
+  controls.update();
+}
+
+// ===== 清除旧骨骼（只清除带标记的对象） =====
+function clearOldMotion() {
+  if (mixer) {
+    mixer.stopAllAction();
+    mixer = null;
+    action = null;
+  }
+  isPlaying = false;
+  if (clock) {
+    clock.stop();
+    clock = null;
+  }
+
+  const toRemove = [];
+  scene.traverse((child) => {
+    if (child.userData && child.userData.isMotion) {
+      toRemove.push(child);
+    }
+  });
+  toRemove.forEach(obj => {
+    if (obj.parent) obj.parent.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) obj.material.dispose();
+  });
+}
+
+// ===== 加载 BVH =====
+function loadBVH(filePath) {
+  if (isLoading) return;
+  isLoading = true;
+
+  clearOldMotion();
+
+  const loader = new BVHLoader();
+  loader.load(
+    filePath,
+    function (result) {
+      const skeleton = result.skeleton;
+      const clip = result.clip;
+
+      const boneGroup = new THREE.Group();
+      boneGroup.userData.isMotion = true;
+      boneGroup.add(skeleton.bones[0]);
+      scene.add(boneGroup);
+
+      const helper = new THREE.SkeletonHelper(skeleton.bones[0]);
+      helper.userData.isMotion = true;
+      helper.material.color.set(0xffffff);
+      helper.material.linewidth = 1;
+      scene.add(helper);
+
+      if (helper.bones && helper.bones.length > 0) {
+        helper.bones[0].visible = false;
+      }
+
+      mixer = new THREE.AnimationMixer(skeleton.bones[0]);
+      action = mixer.clipAction(clip);
+
+      duration = (clip.duration && clip.duration > 0) ? clip.duration : 1;
+
+      const seekBar = document.getElementById('seek-bar');
+      const timeDisplay = document.getElementById('time-display');
+      seekBar.max = duration;
+      seekBar.value = 0;
+      timeDisplay.textContent = `0.00 / ${duration.toFixed(1)} s`;
+
+      // 自动播放
+      isPlaying = true;
+      document.getElementById('play-btn').textContent = '⏸ Pause';
+      clock = new THREE.Clock();
+      clock.start();
+      action.play();
+
+      isLoading = false;
+    },
+    undefined,
+    function (error) {
+      console.error('❌ BVH 加载失败:', error);
+      alert('BVH 文件加载失败：' + filePath);
+      isLoading = false;
+    }
+  );
+}
+
+// ===== 渲染循环 =====
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  if (mixer && isPlaying) {
+    mixer.update(clock.getDelta());
+  }
+
+  const seekBar = document.getElementById('seek-bar');
+  const timeDisplay = document.getElementById('time-display');
+  if (action && document.activeElement !== seekBar) {
+    seekBar.value = action.time;
+    if (duration > 0) {
+      timeDisplay.textContent = `${action.time.toFixed(2)} / ${duration.toFixed(1)} s`;
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+
+// ===== 渲染左侧列表 =====
+function renderSidebar() {
+  const listContainer = document.getElementById('motion-list');
+  listContainer.innerHTML = '';
+
+  motionList.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'motion-item';
+    div.dataset.id = item.id;
+    div.innerHTML = `
+      <div class="name">${item.name}</div>
+      <div class="desc">${item.desc}</div>
+    `;
+    div.addEventListener('click', () => {
+      selectMotion(item.id);
+    });
+    listContainer.appendChild(div);
+  });
+}
+
+// ===== 选择某个动作 =====
+function selectMotion(id) {
+  if (id === currentMotionId) return;
+  const item = motionList.find(m => m.id === id);
+  if (!item) return;
+
+  document.querySelectorAll('.motion-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === id);
+  });
+
+  currentMotionId = id;
+  loadBVH(item.bvhFile);
+}
+
+// ===== UI 事件绑定 =====
+function bindControls() {
+  const playBtn = document.getElementById('play-btn');
+  const seekBar = document.getElementById('seek-bar');
+  const timeDisplay = document.getElementById('time-display');
+  const modeToggle = document.getElementById('mode-toggle');
+
+  // 播放/暂停
+  playBtn.addEventListener('click', () => {
+    if (!action) return;
+    isPlaying = !isPlaying;
+    playBtn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+    if (isPlaying) {
+      clock.start();
+      action.paused = false;
+    } else {
+      clock.stop();
+      action.paused = true;
+    }
+  });
+
+  // 进度条
+  seekBar.addEventListener('input', () => {
+    if (!action) return;
+    const t = parseFloat(seekBar.value);
+    action.time = t;
+    action.paused = true;
+    mixer.update(0);
+    if (duration > 0) {
+      timeDisplay.textContent = `${t.toFixed(2)} / ${duration.toFixed(1)} s`;
+    }
+  });
+
+  seekBar.addEventListener('change', () => {
+    if (isPlaying && action) {
+      action.paused = false;
+      clock.start();
+    }
+  });
+
+  // 模式切换按钮
+  modeToggle.addEventListener('click', toggleMode);
+}
+
+// ===== 启动 =====
+initScene();
+renderSidebar();
+bindControls();
+animate();
+
+// 默认选中第一个
+if (motionList.length > 0) {
+  selectMotion(motionList[0].id);
+}
+</script>
+</body>
+</html>

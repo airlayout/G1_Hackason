@@ -1,0 +1,13 @@
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: Memory efficient kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:915.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: Memory Efficient attention has been runtime disabled. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen/native/transformers/sdp_utils_cpp.h:552.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: Flash attention kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:917.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: Torch was not compiled with flash attention. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:726.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: cuDNN attention kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:919.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+C:\dev\robot-vlm-brain\.venv\Lib\site-packages\transformers\integrations\sdpa_attention.py:96: UserWarning: cuDNN attention has been runtime disabled. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:635.)
+  attn_output = torch.nn.functional.scaled_dot_product_attention(
+[{'name': 'aten.scaled_dot_product_attention.default', 'count': 1}]
