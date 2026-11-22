@@ -50,15 +50,15 @@ function view(points, {horizontal, vertical, top = false}, label, ghosts) {
     element("line", {x1: sx, y1: sy, x2: sx, y2: VIEW.height - 6, stroke: "#c9d8d4", "stroke-width": 9, "stroke-linecap": "round"}, svg);   // 体
   }
   for (const ghost of ghosts) {      // ほかの姿勢を、うすい点線で重ねる（違いが分かるように）
-    const other = [ghost.shoulder, ghost.elbow, ghost.wrist, ghost.hand].map(at);
+    const other = [ghost.shoulder, ghost.elbow, ghost.wrist].map(at);
     element("polyline", {points: other.map(([x, y]) => `${x},${y}`).join(" "), fill: "none", stroke: "#9aa9a6", "stroke-width": 2.5, "stroke-dasharray": "3 3", "stroke-linecap": "round", "stroke-linejoin": "round"}, svg);
   }
-  const chain = [points.shoulder, points.elbow, points.wrist, points.hand].map(at);
-  const colors = ["#0f6b60", "#12877a", "#17302f"];
-  for (let i = 0; i < 3; i++) {
+  const chain = [points.shoulder, points.elbow, points.wrist].map(at);      // 手首まで（手は較正に使わないので描かない）
+  const colors = ["#0f6b60", "#12877a"];
+  for (let i = 0; i < 2; i++) {
     element("line", {x1: chain[i][0], y1: chain[i][1], x2: chain[i+1][0], y2: chain[i+1][1], stroke: colors[i], "stroke-width": 5 - i, "stroke-linecap": "round"}, svg);
   }
-  for (const [x, y] of chain.slice(0, 3)) element("circle", {cx: x, cy: y, r: 3, fill: "#fff", stroke: "#17302f", "stroke-width": 1.5}, svg);
+  for (const [x, y] of chain) element("circle", {cx: x, cy: y, r: 3, fill: "#fff", stroke: "#17302f", "stroke-width": 1.5}, svg);
   element("text", {x: 4, y: 12, "font-size": 8, fill: "#4b5d5a"}, svg).textContent = label;
   return svg;
 }

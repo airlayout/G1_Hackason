@@ -11,7 +11,7 @@ BASE = {"shoulder_pan": 0.0, "shoulder_lift": -10.0, "elbow_flex": 10.0, "wrist_
 
 def human_for(robot):
     """ロボットの姿勢に対応する、人の角度（テスト用の、ずれた比例関係）。"""
-    return {FEATURES[j]: 0.9*robot[j] + 10.0 for j in HOME_JOINTS}
+    return {key: 0.9*robot[joint] + 10.0 for joint, key in FEATURES.items()}
 
 
 class WrapTests(unittest.TestCase):
@@ -40,10 +40,13 @@ class CalibrationPosesTests(unittest.TestCase):
         self.assertEqual(poses[0], BASE)
         self.assertAlmostEqual(poses[1]["shoulder_lift"], BASE["shoulder_lift"] + POSE_OFFSETS[1]["shoulder_lift"])
 
-    def test_every_joint_takes_at_least_two_values(self):
+    def test_calibrated_joints_take_three_values_and_wrist_stays(self):
         poses = calibration_poses(BASE, default_limits())
-        for joint in HOME_JOINTS:
-            self.assertGreaterEqual(len({round(p[joint], 3) for p in poses}), 2, joint)
+        for joint in FEATURES:
+            self.assertEqual(len({round(p[joint], 3) for p in poses}), 3, joint)
+        for joint in ("wrist_flex", "wrist_roll"):
+            self.assertNotIn(joint, FEATURES)
+            self.assertEqual({p[joint] for p in poses}, {BASE[joint]}, joint)
 
     def test_clamped_to_the_limits(self):
         limits = default_limits()
@@ -94,7 +97,7 @@ class CalibrationTests(unittest.TestCase):
             calibration.add(i, pose, human_for(pose))
         self.assertTrue(calibration.ready)
         for pose in poses:
-            for joint in HOME_JOINTS:
+            for joint in FEATURES:
                 if calibration.fits[joint]["ok"]:
                     self.assertAlmostEqual(calibration.target(joint, human_for(pose)[FEATURES[joint]]), pose[joint], places=6)
 
@@ -106,9 +109,9 @@ class CalibrationTests(unittest.TestCase):
         calibration = Calibration()
         for i, pose in enumerate(calibration_poses(BASE, default_limits())):
             human = human_for(pose)
-            del human["roll"]
+            del human["pan"]
             calibration.add(i, pose, human)
-        self.assertFalse(calibration.fits["wrist_roll"]["ok"])
+        self.assertFalse(calibration.fits["shoulder_pan"]["ok"])
         self.assertTrue(calibration.fits["shoulder_lift"]["ok"])
 
     def test_clear(self):
@@ -248,8 +251,7 @@ class DeskSkeletonTests(unittest.TestCase):
                              follow=["shoulder_lift", "elbow_flex", "wrist_flex"])
         after = self.desk.arm.read()
         self.assertAlmostEqual(after["shoulder_lift"], target["shoulder_lift"], delta=1.0)
-        self.assertAlmostEqual(after["wrist_flex"], target["wrist_flex"], delta=1.0)
-        for joint in ("elbow_flex", "shoulder_pan", "wrist_roll"):
+        for joint in ("elbow_flex", "shoulder_pan", "wrist_flex", "wrist_roll"):
             self.assertEqual(after[joint], before[joint], joint)
 
     def test_empty_features_keep_following_alive_and_hold(self):

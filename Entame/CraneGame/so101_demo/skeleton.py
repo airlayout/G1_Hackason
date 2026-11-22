@@ -5,8 +5,8 @@
   pan   上腕を真上から見た向き        → shoulder_pan
   lift  上腕の、真下からの角度        → shoulder_lift
   elbow 肘の角度（伸ばすと 180）      → elbow_flex
-  flex  前腕に対する手の曲がり         → wrist_flex
-  roll  前腕まわりの、手のひらの回転   → wrist_roll
+較正するのは肩・肘（手首まで）の3関節だけ。手首の曲げ・手のひらの回転（wrist_flex / wrist_roll）は較正せず、3姿勢の間も動かさない
+（手のひらの上下は、プレイ中に人へ指示する。ロボット側の手首は今の姿勢のまま）。
 3姿勢の値（POSE_OFFSETS）は暫定で、実機での向き・安全は未確認。ロボットは初期姿勢（未登録なら今の姿勢）を基準に、
 そこから足した姿勢へ、速度制限つきで動く。
 """
@@ -15,14 +15,13 @@ import math
 from home import HOME_JOINTS
 from limits import clamp_pose
 
-FEATURES = {"shoulder_pan": "pan", "shoulder_lift": "lift", "elbow_flex": "elbow",
-            "wrist_flex": "flex", "wrist_roll": "roll"}      # 関節 → 人の角度の名前
+FEATURES = {"shoulder_pan": "pan", "shoulder_lift": "lift", "elbow_flex": "elbow"}      # 較正する関節 → 人の角度の名前
 POSE_NAMES = ("姿勢A（基準）", "姿勢B", "姿勢C")
-# 基準の姿勢（初期姿勢）に足す量（内部の値 -100〜100）。どの関節も2通り以上の値を取るようにしてある
+# 基準の姿勢（初期姿勢）に足す量（内部の値 -100〜100）。較正する3関節は、どれも3通りの値を取る。手首は動かさない（0）
 POSE_OFFSETS = (
     dict(shoulder_pan=0, shoulder_lift=0, elbow_flex=0, wrist_flex=0, wrist_roll=0),
-    dict(shoulder_pan=30, shoulder_lift=-35, elbow_flex=35, wrist_flex=25, wrist_roll=0),
-    dict(shoulder_pan=-30, shoulder_lift=35, elbow_flex=-35, wrist_flex=-25, wrist_roll=40),
+    dict(shoulder_pan=30, shoulder_lift=-35, elbow_flex=35, wrist_flex=0, wrist_roll=0),
+    dict(shoulder_pan=-30, shoulder_lift=35, elbow_flex=-35, wrist_flex=0, wrist_roll=0),
 )
 ANGLE_LIMIT = 360.0         # 角度として受け付ける範囲（度）
 MIN_SPAN_DEG = 15.0         # 3姿勢での人の角度の幅がこれ未満の関節は、追従できない（差が小さく、ノイズに負ける）
@@ -51,7 +50,7 @@ def parse_features(data):
 
 
 def calibration_poses(base, limits):
-    """基準の姿勢から、3姿勢（関節 5 つ）を作る。可動範囲の中に収める。"""
+    """基準の姿勢から、3姿勢（関節 5 つ。手首の 2 つは基準のまま）を作る。可動範囲の中に収める。"""
     return [clamp_pose({j: max(-100.0, min(100.0, base[j] + offset[j])) for j in HOME_JOINTS}, limits)
             for offset in POSE_OFFSETS]
 

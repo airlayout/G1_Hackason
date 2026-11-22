@@ -4,19 +4,19 @@ import {armFigure} from "/skeleton_figure.js";
 
 const $ = id => document.getElementById(id);
 const JOINT_NAMES = {shoulder_pan: "台座", shoulder_lift: "肩", elbow_flex: "肘", wrist_flex: "手首の曲げ", wrist_roll: "手首の回転"};
-const ANGLE_NAMES = {pan: "横向き", lift: "上げ下げ", elbow: "肘の角度", flex: "手首の曲げ", roll: "手首の回転"};
+const ANGLE_NAMES = {pan: "横向き", lift: "上げ下げ", elbow: "肘の角度"};      // 較正に使う角度（肩・肘まで。手首・手のひらは使わない）
+const pickAngles = angles => Object.fromEntries(Object.entries(angles).filter(([key]) => key in ANGLE_NAMES));
 // 人がとる腕の形（度。skeleton_math.js の角度の定義）。ロボットの3姿勢（skeleton.py の POSE_OFFSETS）に対応させた暫定の形。
 // 対応の向きは、肩の上げ下げだけ実機で確認済み。ほかの関節は、ロボットが動いた形を見て、図と食い違えばここを直す。
 const HUMAN_POSES = [
-  {pan: 0, lift: 50, elbow: 90, flex: 0, roll: 0},
-  {pan: 40, lift: 90, elbow: 150, flex: 30, roll: 0},
-  {pan: -40, lift: 25, elbow: 50, flex: -30, roll: 40},
+  {pan: 0, lift: 50, elbow: 90},
+  {pan: 40, lift: 90, elbow: 150},
+  {pan: -40, lift: 25, elbow: 50},
 ];
 function describePose(a) {
   const side = a.pan === 0 ? "正面" : `カメラから見て${a.pan > 0 ? "右" : "左"}へ${Math.abs(a.pan)}°`;
-  const roll = a.roll === 0 ? "手のひらは下向き" : `手のひらを${a.roll}°ひねる（0°が下向き）`;
   return [`上腕: ${side}、真下から${a.lift}°上げる（90°で水平）`, `肘: ${a.elbow}°（90°で直角、180°で伸ばす）`,
-    `手首: 肘と同じ向きへ${a.flex}°曲げる（0°で前腕と一直線）`, roll];
+    "手首・手のひらは、どの向きでもよい（較正に使わない）"];
 }
 const SMOOTH_ALPHA = 0.4;
 const SEND_INTERVAL_MS = 66;        // 追従の送信間隔（約15回/秒。前の送信が終わるまで次は送らない）
@@ -132,7 +132,7 @@ function detect() {
   const began = performance.now(), side = $("side").value;
   const result = tracker.detectForVideo(video, began);
   const points = result.landmarks?.[0], world = result.worldLandmarks?.[0];
-  raw = points && world ? armFeatures(world, points.map(p => p.visibility ?? 0), side) : {};
+  raw = points && world ? pickAngles(armFeatures(world, points.map(p => p.visibility ?? 0), side)) : {};
   if (Object.keys(raw).length) {
     const next = {};
     for (const [key, value] of Object.entries(raw)) next[key] = smooth(latest?.[key], value, SMOOTH_ALPHA);
