@@ -19,8 +19,9 @@ const FLEX_STRAIGHT=1.55, FLEX_FULL=1.05, FLEX_SIGN=1;
 // 映像は鏡像にしていない。実機で 1 だと左右が逆だったので -1（2026-11-22）。手が画面の右（本人から見て左）へ行くと台座は負の側へ
 const PAN_HALF_RANGE=.3, PAN_SIGN=-1;
 // 肩は手の高さ（上げると＋）、肘は手の大きさ＝カメラへの近さ（人差し指の付け根〜小指の付け根が画面幅に占める割合。
-// 手前ほど大きい）。向きは実機で確かめる値。逆なら符号を反転する
-const SHOULDER_SIGN=1;
+// 手前ほど大きい）。向きは実機で確かめる値。逆なら符号を反転する。
+// 肩は実機で 1 だと逆（手を上げても肩が上がらない）だったので -1（2026-11-22）。肩の値が小さいほど、実機の腕は上がる
+const SHOULDER_SIGN=-1;
 const REACH_FAR=.09, REACH_NEAR=.16, REACH_SIGN=1;     // 実測の範囲（遠い小さな手 0.082〜近い大きな手 0.177）の内側
 let fingerCal={}, lastRatio=null, lastHand=null;
 // 校正はサーバーのファイル（finger_calibration.json）に保存する。ブラウザを替えても、消しても、測り直しは要らない
@@ -181,27 +182,46 @@ function markSummary(key, pose) {
   return "肩 "+pctText("shoulder_lift",pose.shoulder_lift)+" ／ 肘 "+pctText("elbow_flex",pose.elbow_flex);
 }
 
-// 仮想アーム（横から見た模式図）。角度への換算は見た目用で、実機の関節の向きとは一致しない
-const ARM = {base:[95,205], lengths:[110,100,50], jaw:45};
+// 仮想アーム（横と正面から見た模式図）。角度への換算は見た目用。向きは実機で確かめた分だけ合わせてある:
+// 肩は、値が小さいほど腕が上がる（確認済み 2026-11-22）。肘・台座・手首の回転の向きは未確認（仮）
+const ARM = {side:{base:[95,205], tag:"arm-"}, front:{base:[150,205], tag:"af-"}, lengths:[110,100,50], jaw:45};
+const ARM_SHOULDER_SIGN = -1, ARM_PAN_DEG = 0.45, ARM_PAN_SIGN = 1, ARM_ROLL_DEG = 0.9;   // 正面図: 台座＋は画面の右、手首の回転＋は時計回り
 const PREVIEW_RANGE = {shoulder_lift:20, elbow_flex:10};   // 登録前の予定姿勢で上げ下げする幅
 const toRad = deg => deg*Math.PI/180;
 function setAttrs(id, attrs) { const el=$(id); for (const [k,v] of Object.entries(attrs)) el.setAttribute(k, v.toFixed(1)); }
-function drawArm(pose) {
-  const a1 = 45 + 0.45*pose.shoulder_lift, a2 = a1 - 70 + 0.5*pose.elbow_flex, a3 = a2 - 30 + 0.5*pose.wrist_flex;
-  const spread = 3 + 0.4*Math.max(0, Math.min(100, pose.gripper));
-  const pts = [ARM.base];
+// 腕の面の中の点 (r, z)（r: 台座の軸からの水平の距離、z: 肩からの高さ）を、各リンクの角度から求める
+function armPoints(pose) {
+  const a1 = 45 + ARM_SHOULDER_SIGN*0.45*pose.shoulder_lift, a2 = a1 - 70 + 0.5*pose.elbow_flex, a3 = a2 - 30 + 0.5*pose.wrist_flex;
+  const pts = [[0,0]];
   [a1,a2,a3].forEach((a,i) => {
-    const [x,y] = pts[i];
-    pts.push([x + ARM.lengths[i]*Math.cos(toRad(a)), y - ARM.lengths[i]*Math.sin(toRad(a))]);
+    const [r,z] = pts[i];
+    pts.push([r + ARM.lengths[i]*Math.cos(toRad(a)), z + ARM.lengths[i]*Math.sin(toRad(a))]);
   });
-  setAttrs("arm-l1", {x2:pts[1][0], y2:pts[1][1]});
-  setAttrs("arm-l2", {x1:pts[1][0], y1:pts[1][1], x2:pts[2][0], y2:pts[2][1]});
-  setAttrs("arm-l3", {x1:pts[2][0], y1:pts[2][1], x2:pts[3][0], y2:pts[3][1]});
-  for (const i of [1,2,3]) setAttrs("arm-j"+i, {cx:pts[i][0], cy:pts[i][1]});
+  return {pts, tipAngle:a3};
+}
+function drawLinks(tag, screen) {          // screen: 腕の4点の画面上の位置
+  setAttrs(tag+"l1", {x2:screen[1][0], y2:screen[1][1]});
+  setAttrs(tag+"l2", {x1:screen[1][0], y1:screen[1][1], x2:screen[2][0], y2:screen[2][1]});
+  setAttrs(tag+"l3", {x1:screen[2][0], y1:screen[2][1], x2:screen[3][0], y2:screen[3][1]});
+  for (const i of [1,2,3]) setAttrs(tag+"j"+i, {cx:screen[i][0], cy:screen[i][1]});
+}
+function drawArm(pose) {
+  const {pts, tipAngle} = armPoints(pose), grip = Math.max(0, Math.min(100, pose.gripper));
+  const pan = toRad(ARM_PAN_SIGN*ARM_PAN_DEG*pose.shoulder_pan), roll = toRad(ARM_ROLL_DEG*pose.wrist_roll);
+  // 横から: 台座の回転で、腕は奥行き（r·cos）へ縮む
+  const [sx, sy] = ARM.side.base, side = pts.map(([r,z]) => [sx + r*Math.cos(pan), sy - z]);
+  drawLinks(ARM.side.tag, side);
+  const spread = 3 + 0.4*grip;
   for (const [id,sign] of [["arm-ja",1],["arm-jb",-1]]) {
-    const a = toRad(a3 + sign*spread);
-    setAttrs(id, {x1:pts[3][0], y1:pts[3][1], x2:pts[3][0] + ARM.jaw*Math.cos(a), y2:pts[3][1] - ARM.jaw*Math.sin(a)});
+    const a = toRad(tipAngle + sign*spread);
+    setAttrs(id, {x1:side[3][0], y1:side[3][1], x2:side[3][0] + ARM.jaw*Math.cos(a), y2:side[3][1] - ARM.jaw*Math.sin(a)});
   }
+  // 正面から: 台座の回転で、腕は左右（r·sin）へ振れる。手首の回転は、指の開く向きの傾きに出る
+  const [fx, fy] = ARM.front.base, front = pts.map(([r,z]) => [fx + r*Math.sin(pan), fy - z]);
+  drawLinks(ARM.front.tag, front);
+  const k = 8 + 0.35*grip, [ux, uy] = [Math.sin(roll), -Math.cos(roll)];
+  for (const [id,sign] of [["af-ja",1],["af-jb",-1]])
+    setAttrs(id, {x1:front[3][0], y1:front[3][1], x2:front[3][0] + sign*k*ux, y2:front[3][1] + sign*k*uy});
 }
 function handInput(now) {
   if (isManual()) return {height:$("height").value/100, opening:$("opening").value/100};

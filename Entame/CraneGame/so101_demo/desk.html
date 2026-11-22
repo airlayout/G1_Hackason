@@ -28,7 +28,8 @@
 <div id="calibTodo" hidden><p class="help">別のターミナルで下のコマンドを実行し、画面の指示に従って校正します（サーバーは止めなくて構いません）。終わったら「校正を確認」を押します。</p><code id="calibCmd"></code><div class="row"><button id="calibCheck">校正を確認</button></div></div>
 </section>
 <section id="armCard"><h2>仮想アーム <small>手の動きがここに出る</small></h2>
-<svg id="arm" viewBox="0 0 420 300" role="img" aria-label="アームを横から見た模式図">
+<div class="armviews"><figure><figcaption>横から <small>肩・肘・手首の曲げ・グリッパー</small></figcaption>
+<svg id="arm" class="armsvg" viewBox="0 0 420 300" role="img" aria-label="アームを横から見た模式図">
 <rect x="0" y="262" width="420" height="38" class="floor"/>
 <rect x="330" y="236" width="52" height="26" rx="8" class="candy"/>
 <rect x="60" y="238" width="70" height="24" rx="4" class="base"/>
@@ -39,7 +40,19 @@
 <line id="arm-ja" x1="0" y1="0" x2="0" y2="0" class="jaw"/>
 <line id="arm-jb" x1="0" y1="0" x2="0" y2="0" class="jaw"/>
 <circle id="arm-j0" cx="95" cy="205" r="9" class="joint"/><circle id="arm-j1" r="9" class="joint"/><circle id="arm-j2" r="9" class="joint"/><circle id="arm-j3" r="8" class="joint"/>
-</svg>
+</svg></figure>
+<figure><figcaption>正面から <small>台座の左右・手首の回転（向きは仮）</small></figcaption>
+<svg id="armFront" class="armsvg" viewBox="0 0 300 300" role="img" aria-label="アームを正面から見た模式図">
+<rect x="0" y="262" width="300" height="38" class="floor"/>
+<rect x="115" y="238" width="70" height="24" rx="4" class="base"/>
+<line id="af-l0" x1="150" y1="238" x2="150" y2="205" class="l1"/>
+<line id="af-l1" x1="150" y1="205" x2="0" y2="0" class="l1"/>
+<line id="af-l2" x1="0" y1="0" x2="0" y2="0" class="l2"/>
+<line id="af-l3" x1="0" y1="0" x2="0" y2="0" class="l3"/>
+<line id="af-ja" x1="0" y1="0" x2="0" y2="0" class="jaw"/>
+<line id="af-jb" x1="0" y1="0" x2="0" y2="0" class="jaw"/>
+<circle id="af-j0" cx="150" cy="205" r="9" class="joint"/><circle id="af-j1" r="9" class="joint"/><circle id="af-j2" r="9" class="joint"/><circle id="af-j3" r="8" class="joint"/>
+</svg></figure></div>
 <p id="armMode" class="arm-mode">現在の姿勢</p>
 <div class="meters">
 <span>手の高さ</span><div class="meter"><i id="bar-height"></i></div><output id="val-height">—</output>
