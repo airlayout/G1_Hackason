@@ -15,6 +15,7 @@ from followlog import FollowLog
 from home import capture, load_home, neutral_map, save_home
 from limits import (JOINTS, MIN_SPAN, RANGES, clamp_pose, default_limits, load_limits, parse_limits, raw, save_limits,
                     speed_raw, step_raw)
+from skeleton import FEATURES, POSE_NAMES, Calibration, PoseMover, calibration_poses, parse_features
 
 ROOT = Path(__file__).resolve().parent
 LIMITS_FILE = ROOT / "limits.json"   # モーター別の制限の保存先（起動時に自動で読む）
@@ -34,6 +35,8 @@ DEBUG_VALUES_MAX = 12       # サンプルに付く、画面側の生の値（�
 WHY_MAX = 60                # 停止の原因（画面が付ける文字列）の最大の長さ
 ARM_GAP = (1, 35)          # 上下２点の関節差の許容範囲（内部単位。表示は半分の%）
 HISTORY_MAX = 50
+PAGES = {"/": "desk.html", "/skeleton": "skeleton.html"}      # 画面（URL → ファイル）
+SCRIPTS = ("/app.js", "/limits.js", "/sync.js", "/style.css", "/skeleton.js", "/skeleton_math.js")
 FINGER_FILE = ROOT / "finger_calibration.json"   # 指の校正の保存先（1人1回。手が変わるときだけ測り直す）
 FINGER_RATIO_MAX = 3.0
 SNAPSHOT_MAX = 200          # 診断の保存の上限（件）
@@ -230,7 +233,12 @@ class Desk:
         self.cmd = {}                        # 関節ごとの (指令位置, 時刻)。スライダー移動で、目標へ一定速度で進める
         self.marks = {}
         self.followed = frozenset()          # 直前のサンプルで追従がONだった関節（途中でONにした関節の検出用）
-        self.gripper_only = False            # True の間は、グリッパーだけ追従する（腕は今の姿勢のまま）
+        self.calibration_sk = Calibration()  # 骨格版の較正（3姿勢の撮影）
+        self.mover = PoseMover()             # 骨格版の較正で、ロボットを3姿勢へ動かす
+        self.poses_sk = None                 # 3姿勢（較正を始めたときの基準から作る）
+        self.skeleton_on = False             # 骨格版で追従中
+        self.mover_last = 0.0
+        self.gripper_only = False           # True の間は、グリッパーだけ追従する（腕は今の姿勢のまま）
         self.history = []
         self.token = None
         self.note = "待機中"
@@ -252,6 +260,7 @@ class Desk:
                     soft_level=self.soft_level,
                     gripper=dict(closed=GRIPPER_CLOSED, open=GRIPPER_OPEN), gripper_only=self.gripper_only,
                     home=self.home, sync=self.baseline.state() if self.token and self.gripper_only else None,
+                    skeleton=self.skeleton_state(),
                     limits=self.limits, limit_defaults=default_limits(), limit_ranges=RANGES,
                     limit_min_span=MIN_SPAN)
 
@@ -259,6 +268,23 @@ class Desk:
         """一定間隔で呼ぶ。やわらかモード中は、目標を今の位置へ追従させる。"""
         if self.arm is not None and self.drive == "soft" and not self.token:
             self.arm.soft_track()
+        if self.arm is not None and self.mover.active and not self.token:
+            self.move_to_pose()
+
+    def move_to_pose(self):
+        """骨格版の較正の姿勢へ、指令を一歩進める。着いたら（または時間切れで）止まり、今の姿勢を保つ。"""
+        now = self.clock()
+        dt = clip(now - self.mover_last, 0, 0.12)
+        self.mover_last = now
+        current = self.arm.read()
+        goal = self.mover.step(current, now, lambda j, actual, target: self.follow_goal(j, actual, target, dt, now))
+        if goal:
+            self.arm.write(goal)
+        else:
+            self.cmd.clear()
+            self.pose = current
+            self.note = (f"{POSE_NAMES[self.mover.at]}に着きました" if self.mover.at is not None
+                         else "着かないまま時間切れ（姿勢を確認してください）")
 
     def refresh(self):
         """力を抜いた・やわらかい間は、手で動かした姿勢を画面に出すため、実機の位置を読み直す。"""
@@ -325,6 +351,89 @@ class Desk:
         self.cmd[joint] = (goal, now)
         return goal
 
+    def skeleton_state(self):
+        c = self.calibration_sk
+        return dict(names=list(POSE_NAMES), targets=self.poses_sk, captured=[i in c.captures for i in range(len(POSE_NAMES))],
+                    moving=self.mover.active, at=self.mover.at, ready=c.ready, fits=c.fits, joints=FEATURES,
+                    following=bool(self.token and self.skeleton_on))
+
+    def skeleton_pose_index(self, data):
+        index = data.get("index")
+        if type(index) is not int or not 0 <= index < len(POSE_NAMES):
+            raise ValueError("不明な姿勢")
+        return index
+
+    def skeleton_command(self, op, data):
+        """骨格版の操作（追従中でないときだけ）。較正の姿勢へ動かす・撮影・やり直し・追従の開始。"""
+        now = self.clock()
+        if op == "skeleton_reset":
+            self.mover.stop()
+            self.mover.at = None
+            self.cmd.clear()
+            self.calibration_sk.clear()
+            self.poses_sk = None
+            self.note = "骨格版の較正をやり直し"
+        elif op == "skeleton_pose":
+            index = self.skeleton_pose_index(data)
+            if self.poses_sk is None:          # 最初に動かすときの初期姿勢（未登録なら今の姿勢）が、3姿勢の基準
+                self.poses_sk = calibration_poses(self.home or capture(self.arm.read()), self.limits)
+            self.cmd.clear()
+            self.mover_last = now
+            self.mover.go(index, self.poses_sk[index], now)
+            self.note = f"{POSE_NAMES[index]}へ動かしています"
+        elif op == "skeleton_capture":
+            index = self.skeleton_pose_index(data)
+            if self.mover.active:
+                raise ValueError("ロボットが動いている間は撮影できません")
+            if self.mover.at != index:
+                raise ValueError(f"先にロボットを{POSE_NAMES[index]}へ動かしてください")
+            human = parse_features(data.get("features"))
+            if not human:
+                raise ValueError("骨格が認識できていません")
+            self.calibration_sk.add(index, self.arm.read(), human)
+            self.note = f"{POSE_NAMES[index]}を撮影"
+        elif op == "skeleton_start":
+            if not self.calibration_sk.ready:
+                raise ValueError("較正が済んでいません。3姿勢を撮影してください")
+            self.gripper_only, self.skeleton_on = False, True
+            self.mover.stop()
+            self.cmd.clear()
+            self.last = now
+            self.token = secrets.token_hex(16)
+            self.note = "追従中（骨格版）"
+            self.log_begin("skeleton")
+            return dict(**self.state(), token=self.token)
+        else:
+            raise ValueError("不明な操作")
+        return self.state()
+
+    def skeleton_sample(self, data):
+        """骨格版の追従の1サンプル。人の角度を、較正の直線でロボットの値にして、速度制限つきで指令する。
+        骨格が隠れた関節・追従をOFFにした関節は指令を出さない（今の姿勢のまま）。空の角度でも、入力途絶の停止を防ぐ。"""
+        if not self.token or data.get("token") != self.token:
+            raise ValueError("追従は停止中")
+        if not self.skeleton_on:
+            raise ValueError("骨格版の追従ではありません")
+        features = parse_features(data.get("features"))
+        follow = parse_follow(data.get("follow")) - {"gripper"}
+        now = self.clock()
+        dt = clip(now - self.last, 0, 0.12)
+        self.last = now
+        current = self.arm.read()
+        goal, want = {}, {}
+        for joint, key in FEATURES.items():
+            target = self.calibration_sk.target(joint, features[key]) if key in features and joint in follow else None
+            if target is None:
+                self.cmd.pop(joint, None)
+                continue
+            want[joint] = clip(target, raw(joint, self.limits[joint]["min"]), raw(joint, self.limits[joint]["max"]))
+            goal[joint] = self.follow_goal(joint, current[joint], want[joint], dt, now)
+        if goal:
+            self.arm.write(goal)
+        self.pose = current
+        if self.log is not None:
+            self.log.write("sample", skeleton=True, follow=sorted(follow), inp=features, dt=dt, cur=current, want=want, goal=goal)
+
     def set_limits(self, data):
         """画面からの制限の変更（reset なら既定値へ）。検証→保存→適用の順で、保存に失敗したら何も変えない。"""
         new = default_limits() if data.get("reset") is True else parse_limits(data.get("limits", {}), self.limits)
@@ -362,6 +471,8 @@ class Desk:
     def hold(self, reason):
         self.log_end(reason)
         self.token = None
+        self.skeleton_on = False
+        self.mover.stop()
         self.cmd.clear()
         self.note = reason
         self.pose = self.arm.read()
@@ -400,6 +511,8 @@ class Desk:
         elif op == "sample":
             if not self.token or data.get("token") != self.token:
                 raise ValueError("追従は停止中")
+            if self.skeleton_on:
+                raise ValueError("骨格版の追従中です（skeleton_sample を使ってください）")
             height = number(data["height"], 0, 1)
             opening = number(data["opening"], 0, 1)
             # 位置の登録が要らない関節の入力（台座 pan、肩 lift、肘 reach、手首の曲げ flex、手首の回転 roll。すべて -1〜1）。
@@ -447,15 +560,19 @@ class Desk:
                                dbg=debug_values(data.get("dbg")), dt=dt, cur=current, want=want, goal=goal,
                                sync=dict(engaged=engaged, gaps=self.baseline.gaps, hand=self.baseline.hand,
                                          anchor=self.baseline.anchor) if self.gripper_only else None)
+        elif op == "skeleton_sample":
+            self.skeleton_sample(data)
         elif self.token:
             raise ValueError("設定を変える前に追従を停止してください")
         elif op == "limits":
             self.set_limits(data)
         elif op == "home":
             self.set_home()
-        elif self.drive != "on" and op in ("move", "start"):
+        elif self.drive != "on" and op in ("move", "start", "skeleton_pose", "skeleton_start"):
             raise ValueError(f"モーターが「{DRIVE_NAMES[self.drive]}」のため動かせません。"
                              "動かすには「ON」に切り替えてください")
+        elif op.startswith("skeleton_"):
+            return self.skeleton_command(op, data)
         elif op == "move":
             j = data["joint"]
             if j not in JOINTS:
@@ -464,6 +581,7 @@ class Desk:
             actual = self.arm.read()[j]
             goal = self.next_goal(j, actual, target)
             self.arm.write({j: goal})
+            self.mover.at = None
             self.pose = self.arm.read()
         elif op == "mark":
             label = data["label"]
@@ -476,7 +594,7 @@ class Desk:
             self.note = f"{LABELS[label]}を登録"
         elif op == "start" and data.get("gripper_only") is True:
             # 全関節の追従（名前は名残）。位置の登録は要らない。始めた瞬間の手と腕の姿勢を基準にする
-            self.gripper_only = True
+            self.gripper_only, self.skeleton_on = True, False
             self.baseline.reset()
             self.followed = frozenset()
             self.cmd.clear()
@@ -486,7 +604,7 @@ class Desk:
             self.log_begin("gripper_only")
             return dict(**self.state(), token=self.token)
         elif op == "start":
-            self.gripper_only = False
+            self.gripper_only, self.skeleton_on = False, False
             missing = [name for key, name in LABELS.items() if key not in self.marks]
             if missing:
                 raise ValueError("未登録の位置があります: " + "、".join(missing))
@@ -593,8 +711,10 @@ def main():
                     except Exception as exc:
                         fail(exc)
                     return self.reply(200, desk.state())
-            if path in ("/", "/app.js", "/limits.js", "/sync.js", "/style.css"):
-                file = ROOT / ("desk.html" if path == "/" else path[1:])
+            if path in PAGES:
+                file = ROOT / PAGES[path]
+            elif path in SCRIPTS:
+                file = ROOT / path[1:]
             elif path.startswith("/assets/") and path[8:] in ASSETS:
                 file = ROOT / path[1:]
             else:
@@ -639,6 +759,8 @@ def main():
             desk.log.write("error", reason=f"{type(exc).__name__}: {exc}")
         desk.log_end("通信異常で停止")
         desk.token = None
+        desk.skeleton_on = False
+        desk.mover.stop()
         desk.fault = True
         desk.note = "通信異常: " + str(exc)
         print(desk.note, flush=True)
