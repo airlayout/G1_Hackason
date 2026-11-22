@@ -15,8 +15,8 @@ const ROLL_FULL_DEG=45, ROLL_SIGN=1;
 // FLEX_FULL で端。手前に倒すと認識が外れるので片方向だけ。向きが逆なら FLEX_SIGN を -1 にする（1 のままで実機の向きが合うことを 2026-11-22 に確認済み）
 const FLEX_STRAIGHT=1.55, FLEX_FULL=1.05, FLEX_SIGN=1;
 // 台座＝手の左右位置。手の画面内の横位置（中指の付け根の x。0〜1）が 0.5±PAN_HALF_RANGE で台座の可動範囲の両端。
-// 映像は鏡像にしていない。向きが逆なら PAN_SIGN を -1 にする（実機で確認する）
-const PAN_HALF_RANGE=.3, PAN_SIGN=1;
+// 映像は鏡像にしていない。実機で 1 だと左右が逆だったので -1（2026-11-22）。手が画面の右（本人から見て左）へ行くと台座は負の側へ
+const PAN_HALF_RANGE=.3, PAN_SIGN=-1;
 let fingerCal={}, lastRatio=null, lastHand=null;
 // 校正はサーバーのファイル（finger_calibration.json）に保存する。ブラウザを替えても、消しても、測り直しは要らない
 async function loadFinger(){
