@@ -385,13 +385,25 @@ async function loadTracker(){
   });
 }
 function closeStream(stream){stream?.getTracks().forEach(t=>t.stop());}
-bind($("enable"),async()=>{
-  if(recorder?.state==="recording") throw new Error("録画終了後に切り替えてください");
+// 映像ボタンは開閉の切り替え。開いている間は「映像を閉じる」、閉じている間は「映像を開く」
+function showCameraButton(){$("enable").textContent=camera?"映像を閉じる":"映像を開く";}
+async function closeCamera(){
+  await stop();
+  closeStream(camera); camera=null; latest=null; lastRatio=null; lastHand=null; frame=-1;
+  $("input").srcObject=null;
+  const canvas=$("overlay"); canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);
+  $("hand").textContent="停止中"; $("perf").textContent="認識 — ms／フレーム　— fps";
+}
+async function openCamera(){
   await stop();
   await loadTracker();
-  closeStream(camera); camera=null; latest=null; frame=-1;
   camera=await navigator.mediaDevices.getUserMedia(constraint($("cam").value));
   $("input").srcObject=camera; await $("input").play(); await listCameras();
+}
+bind($("enable"),async()=>{
+  if(recorder?.state==="recording") throw new Error("録画終了後に切り替えてください");
+  try{ await (camera?closeCamera():openCamera()); }
+  finally{ showCameraButton(); }
 });
 bind($("record"),async()=>{
   const stream=camera;
