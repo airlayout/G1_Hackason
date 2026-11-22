@@ -4,6 +4,11 @@ import {armFeatures, ARMS, smooth, steadyAngles, wrap} from "/skeleton_math.js";
 const $ = id => document.getElementById(id);
 const JOINT_NAMES = {shoulder_pan: "台座", shoulder_lift: "肩", elbow_flex: "肘", wrist_flex: "手首の曲げ", wrist_roll: "手首の回転"};
 const ANGLE_NAMES = {pan: "横向き", lift: "上げ下げ", elbow: "肘の角度", flex: "手首の曲げ", roll: "手首の回転"};
+const POSE_HINTS = [      // skeleton.py の POSE_OFFSETS（基準＋Aからの差）の説明。向きは実機で未確認なので、ロボットの実際の形を見てまねる
+  "基準。ロボットの初期姿勢（ホーム）の形。",
+  "Aから、台座・肩・肘・手首の曲げを、少しずつ同時に動かした形。",
+  "Bとほぼ逆向きに動かした形（手首の回転も少し回す）。",
+];
 const SMOOTH_ALPHA = 0.4;
 const SEND_INTERVAL_MS = 66;        // 追従の送信間隔（約15回/秒。前の送信が終わるまで次は送らない）
 const POLL_MS = 300;
@@ -211,13 +216,14 @@ function buildPoses() {
   sk().names.forEach((name, index) => {
     const card = document.createElement("div"); card.className = "pose"; card.id = "pose" + index;
     const title = document.createElement("h3"), img = document.createElement("img"), status = document.createElement("p"), row = document.createElement("div");
-    title.textContent = name; status.className = "help"; row.className = "row"; img.alt = name + "の撮影画像";
+    title.textContent = name; status.className = "help";
+    const about = document.createElement("p"); about.className = "help"; about.textContent = POSE_HINTS[index] ?? ""; row.className = "row"; img.alt = name + "の撮影画像";
     const move = document.createElement("button"), go = document.createElement("button");
     move.textContent = "ロボットをこの姿勢へ"; move.dataset.role = "move";        // 動かすだけ（撮影しない。姿勢の確認用）
     go.textContent = "この姿勢だけ撮り直す"; go.dataset.role = "go";
     bind(move, async () => { cancelAuto(); state = await command("skeleton_pose", {index}); render(); });
     bind(go, () => autoCalibrate([index]));
-    row.append(move, go); card.append(title, img, status, row); box.append(card);
+    row.append(move, go); card.append(title, about, img, status, row); box.append(card);
   });
 }
 function renderPoses() {
