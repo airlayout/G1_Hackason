@@ -22,7 +22,10 @@ const PAN_HALF_RANGE=.3, PAN_SIGN=-1;
 // 手前ほど大きい）。向きは実機で確かめる値。逆なら符号を反転する。
 // 肩は実機で 1 だと逆（手を上げても肩が上がらない）だったので -1（2026-11-22）。肩の値が小さいほど、実機の腕は上がる
 const SHOULDER_SIGN=-1;
-const REACH_FAR=.09, REACH_NEAR=.16, REACH_SIGN=1;     // 実測の範囲（遠い小さな手 0.082〜近い大きな手 0.177）の内側
+// 範囲は、実機で肘が -2〜91 まで動いた値のまま。手の向きや開閉でも幅は ±0.02 ほど揺れる（2026-11-22 ログ: 幅 0.12→0.09 で
+// 入力が -0.04→-0.98）ので EMA でならす（ログで再生すると、肘の目標の揺れが約半分になる）
+const REACH_FAR=.09, REACH_NEAR=.16, REACH_SIGN=1, WIDTH_SMOOTH=.25;
+let widthSmooth=null;
 let fingerCal={}, lastRatio=null, lastHand=null;
 // 校正はサーバーのファイル（finger_calibration.json）に保存する。ブラウザを替えても、消しても、測り直しは要らない
 async function loadFinger(){
@@ -97,6 +100,43 @@ function renderMarks(data) {
   }));
   $("noHistory").hidden = data.history.length > 0;
 }
+// ---- 画面に「何が問題か」を出す（追従中）----
+const HINT_WINDOW_MS=3000, OPENING_MIN_SPAN=.15, REACH_EDGE=.95;
+let serverIssues=[], inputHistory=[];
+function pushInputs(sample){
+  const t=performance.now();
+  inputHistory.push({t,opening:sample.opening,reach:sample.reach,height:sample.height});
+  while(inputHistory.length && t-inputHistory[0].t>HINT_WINDOW_MS) inputHistory.shift();
+}
+function inputHints(){
+  const out=[];
+  if(!token || inputHistory.length<20 || performance.now()-inputHistory[0].t<HINT_WINDOW_MS*0.8) return out;
+  const f=new Set(followJoints());
+  const span=k=>{const v=inputHistory.map(h=>h[k]).filter(Number.isFinite); return v.length?Math.max(...v)-Math.min(...v):null;};
+  if(f.has("gripper")){const s=span("opening"); if(s!==null && s<OPENING_MIN_SPAN) out.push("グリッパー: 親指と人差し指が動いていません（開いたり閉じたりして見せてください）");}
+  if(f.has("elbow_flex")){
+    const r=inputHistory.map(h=>h.reach).filter(Number.isFinite);
+    if(r.length && r.every(v=>v>=REACH_EDGE)) out.push("肘: 手が大きすぎます（カメラに近すぎ）。少し離れてください");
+    else if(r.length && r.every(v=>v<=-REACH_EDGE)) out.push("肘: 手が小さすぎます（カメラから遠すぎ）。少し近づいてください");
+    else if(r.length && span("reach")<.1) out.push("肘: 手の大きさが変わっていません（カメラへ近づく・離れると肘が動きます）");
+  }
+  return out;
+}
+function renderDiag(){
+  const box=$("diag");
+  const lines=[];
+  for(const i of serverIssues){
+    const n=joints[i.joint]||i.joint;
+    if(i.kind==="edge") lines.push("肩: 手が画面の端です。真ん中の高さ（顔と腰の間くらい）で止めてください。端で始めると、腕を机の側へ動かせません。腕は動かしていません");
+    else if(i.kind==="fast") lines.push(n+": 手の動きが速すぎて腕が追いつけません（差 "+i.gap+"、速度上限 "+i.speed+"%/秒）。もっとゆっくり動かしてください（1往復3秒以上）");
+    else lines.push(n+": 指令を出していますがモーターが付いてきません（差 "+i.gap+"）。動きを止めて様子を見てください");
+  }
+  lines.push(...inputHints());
+  box.hidden=!lines.length;
+  box.replaceChildren(...(lines.length?[Object.assign(document.createElement("div"),{textContent:"問題:"}),(()=>{const ul=document.createElement("ul"); for(const l of lines){const li=document.createElement("li"); li.textContent=l; ul.append(li);} return ul;})()]:[]));
+}
+setInterval(()=>{try{renderDiag();}catch{}},500);
+
 function render(data) {
   state = data;
   $("mode").textContent = data.live ? "実機接続" : "模擬モード";
@@ -107,22 +147,19 @@ function render(data) {
     if (!(j in targets)) $("slide-"+j).value = pct(j, data.pose[j]);   // 操作中の目標は上書きしない
   }
   renderCalibration(data.calibration);
-  for (const [key,name] of Object.entries(labels)) {
-    const b=$("mark-"+key), done=key in data.marks;
-    b.firstChild.textContent = (done ? "✓ " : "") + name+"を登録";
-    b.lastChild.textContent = markSummary(key, data.marks[key]);
-    b.classList.toggle("done", done);
-  }
   renderMarks(data);
   renderDrive(data);
   renderLimits(data);
   renderSync(data);
+  serverIssues=data.issues||[];
+  renderDiag();
   const blocked = data.active || data.fault || !data.calibration.done;
   const driven = data.drive === "on";   // OFF・やわらかのときは、スライダーと追従を使えない（姿勢の登録は使える）
-  $("start").disabled = blocked || !driven || Object.keys(data.marks).length !== 2;
   $("startGripper").disabled = blocked || !driven;
   $("homeSet").disabled = blocked;      // モーター OFF（手で姿勢を作る）のときも記録できる
   $("homeGo").disabled = blocked || !driven || !data.home;
+  $("restGo").disabled = blocked || !driven || !data.rest;
+  $("restState").textContent = data.rest ? "畳んだ姿勢: 教示の H2" : "畳んだ姿勢: 未教示（/teach で H2 を教示）";
   $("homeState").textContent = data.home ? "初期姿勢: 登録済み" : "初期姿勢: 未登録（追従は、動かせる範囲の真ん中が基準になる）";
   for (const b of document.querySelectorAll("#joints input")) b.disabled = blocked || !driven;
   for (const b of document.querySelectorAll("#marks button")) b.disabled = blocked;
@@ -147,8 +184,6 @@ function renderCalibration(c) {
 const recording = () => recorder?.state === "recording";
 const steps = [
   {text:"モーターを校正", help:"画面右の「モーターの校正」の案内に従い、校正を終えて「校正を確認」を押す", done:() => state?.calibration.done},
-  {text:"つかむ位置を登録", help:"現在位置のスライダーで爪を袋の左右に合わせ、「つかむ位置を登録」を押す", done:() => state && "low" in state.marks},
-  {text:"持ち上げた位置を登録", help:"肩か肘を少し動かして袋が浮く姿勢にし、「持ち上げた位置を登録」を押す", done:() => state && "high" in state.marks},
   {text:"操作用の映像を開く", help:"「カメラ一覧を更新」→ カメラを選ぶ →「映像を開く」。模擬モードではスライダー入力でも可", done:() => camera || isManual()},
   {text:"指の開閉を校正（1回だけ）", help:"「指を最大に開く」を押し、3秒後に測る間、指を大きく開いたままにする。「指をくっつける」も同じ。結果はブラウザに保存される", done:() => fingerReady() || isManual()},
   {text:"追従を試す（空運転）", help:"手を下の線に合わせ、指を開いて「追従開始」。手を上下し、つまむ・開くを試す。止めるのはスペースキー", done:() => followed},
@@ -174,8 +209,6 @@ function updateGuide() {
   else if (index < 0) next = "すべて完了です。保存した動画を再生して、袋が机から離れたことを確認してください";
   else next = "手順 " + (index + 1) + "／" + steps.length + "：" + steps[index].text + "　" + steps[index].help;
   if ($("next").textContent !== next) $("next").textContent = next;
-  const nextMark = index >= 1 && index <= 2 ? Object.keys(labels)[index-1] : null;
-  for (const key of Object.keys(labels)) $("mark-"+key).classList.toggle("next", key === nextMark);
 }
 function markSummary(key, pose) {
   if (!pose) return "未登録";
@@ -268,6 +301,7 @@ function bind(button, action) {
 }
 // why は停止の原因。サーバーのデバッグログ（debug/follow-*.jsonl）の stop に残る
 async function stop(why) {
+  if(token) await logImage(performance.now(),true);      // 停止の瞬間の映像をログに残す
   generation++; token = null; for (const k of Object.keys(targets)) delete targets[k];
   render(await command("stop", why ? {why} : {}));
 }
@@ -296,6 +330,14 @@ bind($("homeGo"),async()=>{
   if(!state || state.active) throw new Error("追従中は動かせません。先に停止してください");
   if(!state.home) throw new Error("初期姿勢が未登録です。机にグリッパーを置いた姿勢で「今の姿勢を初期姿勢にする」を押してください");
   for(const [j,v] of Object.entries(state.home)){
+    targets[j]=pct(j,v); stalls[j]=0; $("slide-"+j).value=targets[j];
+  }
+});
+// 畳んだ姿勢（教示の H2。可動域の中に丸め済み）へ、初期姿勢と同じ仕組みで少しずつ動かす
+bind($("restGo"),async()=>{
+  if(!state || state.active) throw new Error("追従中は動かせません。先に停止してください");
+  if(!state.rest) throw new Error("畳んだ姿勢が未教示です。/teach で H2（上腕を下ろし肘を直角に）を教示してください");
+  for(const [j,v] of Object.entries(state.rest)){
     targets[j]=pct(j,v); stalls[j]=0; $("slide-"+j).value=targets[j];
   }
 });
@@ -352,11 +394,6 @@ async function pollPose(){
 }
 setInterval(pollPose, DRIVE_POLL_MS);
 bind($("calibCheck"), async()=>render(await command("calibration_check")));
-for (const key of Object.keys(labels)){
-  const b=document.createElement("button"), name=document.createElement("strong"), sub=document.createElement("small");
-  b.id="mark-"+key; name.textContent=labels[key]+"を登録"; sub.textContent=markSummary(key); b.append(name,sub);
-  bind(b, async()=>render(await command("mark",{label:key}))); $("marks").append(b);
-}
 const isManual = () => state && !state.live && $("manual").checked;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 // ボタンを押してから CAL_DELAY_MS 待ち（手を構える時間）、CAL_SAMPLE_MS の間の角度の中央値を返す
@@ -402,7 +439,6 @@ bind($("snap"), async () => {
 });
 bindFingerCal($("calOpen"), "open"); bindFingerCal($("calClosed"), "closed");
 $("fingerState").textContent = fingerText(); loadFinger();
-bind($("start"), () => startFollow(false));
 bind($("startGripper"), () => startFollow(true));
 // 追従する関節のチェック（「全関節を追従」用）。サンプルごとにサーバーへ送る。サーバーは、チェックの無い関節へ指令を出さない
 const followJoints = () => [...document.querySelectorAll("#followBox input[data-joint]")].filter(c => c.checked).map(c => c.dataset.joint);
@@ -411,17 +447,57 @@ for (const [id, on] of [["followAll", true], ["followNone", false]])
 async function startFollow(gripperOnly){
   if(starting) return;
   if(!isManual() && !fingerReady()) throw new Error("先に指の開閉を校正してください（「指を最大に開く」「指をくっつける」）");
-  if(!isManual() && (!latest || performance.now()-lastSeen>300)) throw new Error("操作カメラに片手を映してください");
   starting=true;
   const sequence=++generation;
   try {
+    // ボタンを押してから START_COUNT 秒数えて始める（構えを作る時間。停止ボタン／Space で取り消せる）
+    for(let n=START_COUNT; n>0; n--){
+      $("countdown").textContent=n+"…";
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      if(sequence!==generation){info("開始を取り消しました"); return;}
+    }
+    // 開始時に手が映っていなくてもよい。映るまで腕は動かさず待つ（loop の handSeen）
+    handSeen=false; startedAt=performance.now();
     for (const k of Object.keys(targets)) delete targets[k];
     const result=await command("start", gripperOnly ? {gripper_only: true} : {});
     if(sequence!==generation){await stop("開始中に別の操作が入った"); return;}
-    token=result.token; followed=true; render(result);
-  } finally {starting=false;}
+    token=result.token; followed=true; inputHistory=[]; render(result);
+    handMiss=bodyMiss=0; startLogVideo(); logImage(performance.now(),true);      // 映像の録画を始め、開始の瞬間の画像もログに残す
+  } finally {starting=false; $("countdown").textContent="";}
 }
-function constraint(id){return {video:id?{deviceId:{exact:id}}:true,audio:false};}
+const START_COUNT=3;      // 追従を始めるまでのカウント（秒）
+const HAND_WAIT_MS=30000; // 開始後、手が映るのを待つ最長の時間
+let handSeen=false, startedAt=0;      // 追従を始めてから、手が映ったか
+// 画角: 4:3 はセンサー全体（広い）、16:9 は上下が切れる、3:4 は縦（iPhone を縦に置いて上下を広く映す）
+const FRAME={"4:3":{width:1280,height:960},"16:9":{width:1280,height:720},"3:4":{width:960,height:1280}};
+function constraint(id){
+  const f=FRAME[$("fov").value];
+  return {video:{...(id?{deviceId:{exact:id}}:{}), width:{ideal:f.width}, height:{ideal:f.height}},audio:false};
+}
+// 映像の左右反転（鏡）。表示だけ反転し、手の認識や保存する画像は元の向きのまま。設定はブラウザに覚える
+const MIRROR_KEY="desk.mirror";
+function applyMirror(){ document.querySelector(".preview").classList.toggle("mirror",$("mirror").checked); }
+try{ const saved=localStorage.getItem(MIRROR_KEY); if(saved!==null) $("mirror").checked=saved==="1"; }catch(e){ console.warn("storage",e); }
+$("mirror").addEventListener("change",()=>{
+  try{ localStorage.setItem(MIRROR_KEY,$("mirror").checked?"1":"0"); }catch(e){ console.warn("storage",e); }
+  applyMirror();
+});
+applyMirror();
+// 開いたカメラの実際の大きさに、映像と認識点の枠をそろえる（縦の映像でも歪めない）
+// ズームできるカメラは、骨格版と同じく、いちばん広い側にする
+async function fitPreview(){
+  const video=$("input"), box=document.querySelector(".preview");
+  if(!video.videoWidth||!video.videoHeight) return;
+  const ratio=video.videoWidth/video.videoHeight;
+  box.style.aspectRatio=String(ratio); box.style.width="min(100%, calc(62vh * "+ratio+"))";
+  const track=camera.getVideoTracks()[0], caps=track.getCapabilities?.() ?? {};
+  let zoom="ズーム調整なし";
+  if(caps.zoom){
+    try{ await track.applyConstraints({advanced:[{zoom:caps.zoom.min}]}); zoom="ズーム "+caps.zoom.min+"（最も広角）"; }
+    catch(e){ zoom="ズームを変えられません"; console.warn("zoom",e); }
+  }
+  $("cameraInfo").textContent=video.videoWidth+"×"+video.videoHeight+"　"+zoom;
+}
 async function listCameras(){
   const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="videoinput" && d.deviceId);
   for(const id of ["cam"]){
@@ -439,15 +515,82 @@ async function loadTracker(){
   if(tracker) return;
   const {FilesetResolver,HandLandmarker} = await import("/assets/vision_bundle.mjs");
   tracker=await HandLandmarker.createFromOptions(await FilesetResolver.forVisionTasks("/assets"),{
-    baseOptions:{modelAssetPath:"/assets/hand_landmarker.task"}, runningMode:"VIDEO", numHands:1
+    // IMAGE モード: 毎フレーム手を探し直す。VIDEO モードは前フレームの位置から追うため、手が大きく動くと
+    // 指先の点が第一関節あたりまで手前にずれた（同じ保存画像を Python の IMAGE モードで測ると指先に乗った）
+    baseOptions:{modelAssetPath:"/assets/hand_landmarker.task"}, runningMode:"IMAGE", numHands:1
   });
+  try{      // 人の骨格（肩・肘・手首）。追従ログに残すためだけに使う。読めなくても手の追従は続ける
+    const {PoseLandmarker} = await import("/assets/vision_bundle.mjs");
+    poser=await PoseLandmarker.createFromOptions(await FilesetResolver.forVisionTasks("/assets"),{
+      baseOptions:{modelAssetPath:"/assets/pose_landmarker_full.task"}, runningMode:"VIDEO", numPoses:1
+    });
+  }catch(e){console.warn("骨格の認識を読めません（ログに骨格が残りません）",e);}
 }
+
+// 追従ログ用: 人の骨格を BODY_MS ごとに測り、サンプルに付ける。映像も IMAGE_MS ごとにログへ送る（原因調査用）
+const BODY_MS=400, IMAGE_MS=1500, IMAGE_WIDTH=640;
+const BODY_POINTS={ls:11,rs:12,le:13,re:14,lw:15,rw:16};      // 左肩・右肩・左肘・右肘・左手首・右手首（画面の左右）
+let poser=null, body=null, bodyPts=null, bodyAt=-1e9, imageAt=-1e9, imageBusy=false;
+let handMiss=0, bodyMiss=0;      // 手・骨格が見つからなかった回数（追従を始めてから。ログの dbg に付ける）
+function trackBody(now){
+  const video=$("input");
+  if(!poser || !camera || video.readyState<2 || now-bodyAt<BODY_MS) return;
+  bodyAt=now;
+  try{
+    const pts=poser.detectForVideo(video,now).landmarks[0];
+    bodyPts=pts||null;
+    if(!pts) bodyMiss++;
+    body=pts?Object.fromEntries(Object.entries(BODY_POINTS).flatMap(([k,i])=>[[k+"_x",+pts[i].x.toFixed(3)],[k+"_y",+pts[i].y.toFixed(3)]])):null;
+  }catch(e){body=bodyPts=null;console.warn("骨格の認識",e);}
+}
+async function logImage(now,force=false){
+  const video=$("input");
+  if(imageBusy || !camera || video.readyState<2 || (!force && now-imageAt<IMAGE_MS)) return;
+  imageAt=now; imageBusy=true;
+  try{
+    const w=IMAGE_WIDTH, h=Math.round(w*video.videoHeight/video.videoWidth);
+    const canvas=document.createElement("canvas"); canvas.width=w; canvas.height=h;
+    const ctx=canvas.getContext("2d");
+    ctx.drawImage(video,0,0,w,h); ctx.drawImage($("overlay"),0,0,w,h);
+    if(bodyPts){      // 肩（青）・肘・手首（橙）を線でつなぐ
+      ctx.lineWidth=4; ctx.strokeStyle="#3b82f6"; ctx.beginPath();
+      ctx.moveTo(bodyPts[11].x*w,bodyPts[11].y*h); ctx.lineTo(bodyPts[12].x*w,bodyPts[12].y*h); ctx.stroke();
+      for(const [a,b,c] of [[11,13,15],[12,14,16]]){
+        ctx.strokeStyle="#f59e0b"; ctx.beginPath();
+        ctx.moveTo(bodyPts[a].x*w,bodyPts[a].y*h); ctx.lineTo(bodyPts[b].x*w,bodyPts[b].y*h); ctx.lineTo(bodyPts[c].x*w,bodyPts[c].y*h); ctx.stroke();
+      }
+    }
+    await fetch("/snapshot",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({follow:true,image:canvas.toDataURL("image/jpeg",.7),body:body||{}})});
+  }catch(e){console.warn("ログ用の画像",e);}
+  finally{imageBusy=false;}
+}
+// 追従ログ用: 追従中のカメラ映像（認識点なしの元の映像）を VIDEO_SLICE_MS ごとにサーバーへ送り、ログの隣の .webm に残す。
+// 人が動かなくても、後から同じ映像で認識と追従を再生して調べるため。映像の時刻 0 は追従の開始にほぼ合う
+const VIDEO_SLICE_MS=2000, VIDEO_BPS=4_000_000, VIDEO_MIME="video/webm;codecs=vp8";
+let logRecorder=null, videoQueue=Promise.resolve();
+function sendVideo(blob){      // 順番を保つため、前の送信が終わってから送る
+  videoQueue=videoQueue.then(async()=>{
+    const res=await fetch("/followvideo",{method:"POST",headers:{"Content-Type":"video/webm"},body:blob});
+    if(!res.ok) console.warn("ログ用の映像を保存できません",(await res.json()).error);
+  }).catch(e=>console.warn("ログ用の映像",e));
+}
+function startLogVideo(){
+  if(!camera || !window.MediaRecorder || !MediaRecorder.isTypeSupported(VIDEO_MIME)){console.warn("ログ用の映像を録画できません"); return;}
+  try{
+    const recorder=new MediaRecorder(camera,{mimeType:VIDEO_MIME,videoBitsPerSecond:VIDEO_BPS});
+    recorder.ondataavailable=e=>{if(e.data.size) sendVideo(e.data);};
+    recorder.start(VIDEO_SLICE_MS); logRecorder=recorder;
+  }catch(e){console.warn("ログ用の映像を録画できません",e);}
+}
+// 追従が止まったら（画面の停止・サーバー側の停止・エラーのどれでも）録画を止める。最後の一切れが送られる
+setInterval(()=>{if(!token && logRecorder?.state==="recording") logRecorder.stop();},500);
 function closeStream(stream){stream?.getTracks().forEach(t=>t.stop());}
 // 映像ボタンは開閉の切り替え。開いている間は「映像を閉じる」、閉じている間は「映像を開く」
 function showCameraButton(){$("enable").textContent=camera?"映像を閉じる":"映像を開く";}
 async function closeCamera(){
   await stop("映像を閉じた");
-  closeStream(camera); camera=null; latest=null; lastRatio=null; lastHand=null; frame=-1;
+  closeStream(camera); camera=null; latest=null; lastRatio=null; lastHand=null; widthSmooth=null; frame=-1;
   $("input").srcObject=null;
   const canvas=$("overlay"); canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);
   $("hand").textContent="停止中"; $("perf").textContent="認識 — ms／フレーム　— fps";
@@ -456,7 +599,7 @@ async function openCamera(){
   await stop("映像を開き直した");
   await loadTracker();
   camera=await navigator.mediaDevices.getUserMedia(constraint($("cam").value));
-  $("input").srcObject=camera; await $("input").play(); await listCameras();
+  $("input").srcObject=camera; await $("input").play(); await fitPreview(); await listCameras();
 }
 bind($("enable"),async()=>{
   if(recorder?.state==="recording") throw new Error("録画終了後に切り替えてください");
@@ -490,28 +633,36 @@ function track(now){
   const video=$("input");
   if(!tracker || !camera || video.readyState<2 || video.currentTime===frame) return;
   frame=video.currentTime;
+  // 表示は <video> ではなくこのキャンバス。認識に渡す1枚と同じ映像を描き、その上に点を重ねる。
+  // （<video> は認識の間にも先へ進むので、重ねると点が指より遅れてズレて見える）
+  const canvas=$("overlay"), ctx=canvas.getContext("2d");
+  if(canvas.width!==video.videoWidth||canvas.height!==video.videoHeight){canvas.width=video.videoWidth; canvas.height=video.videoHeight;}
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
   const began=performance.now();
-  const pts=tracker.detectForVideo(video,now).landmarks[0];
+  const found=tracker.detect(video);
+  const pts=found.landmarks[0], world=found.worldLandmarks?.[0];     // world は手の3次元（メートル）。向きを変えても大きさが変わらない
   perf.ms+=performance.now()-began; perf.count++;
   if(now-perf.shown>=500){
     $("perf").textContent="認識 "+(perf.ms/perf.count).toFixed(1)+" ms／フレーム　"+(perf.count*1000/(now-perf.shown)).toFixed(1)+" fps";
     perf.ms=0; perf.count=0; perf.shown=now;
   }
-  const canvas=$("overlay"), ctx=canvas.getContext("2d");
-  canvas.width=video.videoWidth; canvas.height=video.videoHeight;
   const w=canvas.width,h=canvas.height;
   ctx.strokeStyle="#ffe081";
   for(const y of [.28,.72]){ctx.beginPath();ctx.moveTo(0,y*h);ctx.lineTo(w,y*h);ctx.stroke();}
   // latest は消さない。認識が1フレーム抜けても追従は止めず、loop が lastSeen（0.26秒）で「手を見失った」を判断する
   lastRatio=null; lastHand=null;
-  if(!pts){$("hand").textContent="手が見えません";return;}
+  if(!pts){handMiss++;$("hand").textContent="手が見えません";return;}
   const distance=(a,b)=>Math.hypot((pts[a].x-pts[b].x)*w,(pts[a].y-pts[b].y)*h);
   const palm=distance(0,9);                     // 手首〜中指の付け根。横向きでも手のひら幅ほど縮まない
   if(palm<12){$("hand").textContent="手をもう少し大きく映してください";return;}
   const vec=(a,b)=>[(pts[b].x-pts[a].x)*w,(pts[b].y-pts[a].y)*h];
   const [tx,ty]=vec(2,4), [ix,iy]=vec(5,8);
   const angle=Math.acos(Math.max(-1,Math.min(1,(tx*ix+ty*iy)/(Math.hypot(tx,ty)*Math.hypot(ix,iy)||1))))*180/Math.PI;
-  const ratio=distance(4,8)/palm;
+  // 指の開き: 画面上の距離比は、腕を上げて手のひらが奥を向くと palm が縮んで膨らむ（実測 palm 128→16px で比 0.17→1.8）。
+  // 3次元の距離比なら、手の向きに左右されない。取れないときだけ画面上の比に戻す
+  const ratio2d=distance(4,8)/palm;
+  const world3=(a,b)=>Math.hypot(world[a].x-world[b].x,world[a].y-world[b].y,world[a].z-world[b].z);
+  const ratio=world?world3(4,8)/(world3(0,9)||1):ratio2d;
   lastRatio=ratio;
   const [rx,ry]=vec(0,9), tilt=Math.atan2(rx,-ry)*180/Math.PI;   // 真上が 0°、時計回りが＋
   const roll=Math.max(-1,Math.min(1,ROLL_SIGN*tilt/ROLL_FULL_DEG));
@@ -521,24 +672,39 @@ function track(now){
   const height=limit((.72-pts[0].y)/.44);
   const width=distance(5,17)/w;
   const lift=SHOULDER_SIGN*(2*height-1);
-  const reach=REACH_SIGN*(2*limit((width-REACH_FAR)/(REACH_NEAR-REACH_FAR))-1);
+  widthSmooth=(widthSmooth===null||now-lastSeen>500)?width:widthSmooth+WIDTH_SMOOTH*(width-widthSmooth);
+  const reach=REACH_SIGN*(2*limit((widthSmooth-REACH_FAR)/(REACH_NEAR-REACH_FAR))-1);
   lastHand={ratio,angle,tilt,shrink,pts:pts.map(({x,y,z})=>[+x.toFixed(4),+y.toFixed(4),+z.toFixed(4)])};
   latest={height,opening:limit(openingFromRatio(ratio)),roll,flex,pan,lift,reach,
     // 画面側の生の値。サーバーのデバッグログ（debug/follow-*.jsonl）に、入力の元の値として残る
-    dbg:{ratio,tilt,shrink,palm,width,x:pts[9].x,y:pts[0].y,angle}};
+    dbg:{ratio,ratio2d,tilt,shrink,palm,width,x:pts[9].x,y:pts[0].y,angle}};
   for(const i of [0,4,8]){ctx.fillStyle="#60ffb1";ctx.beginPath();ctx.arc(pts[i].x*w,pts[i].y*h,5,0,2*Math.PI);ctx.fill();}
   lastSeen=now; $("hand").textContent="手を認識　高さ "+Math.round(latest.height*100)+"% ／ 開き "+Math.round(latest.opening*100)+"%（距離比 "+ratio.toFixed(2)+"、角度 "+Math.round(angle)+"°）　傾き "+Math.round(tilt)+"°　縮み "+shrink.toFixed(2);
 }
 async function loop(now){
   try{
     track(now);
+    if(token){trackBody(now); logImage(now);}
     if(token && !pending && now-lastSample>65){
       const sample=isManual()?{height:$("height").value/100,opening:$("opening").value/100}:latest;
       pending=true; lastSample=now;
       try{
-        if(!sample || (!isManual() && now-lastSeen>260)){await stop(sample?"手を見失った（0.26秒以上）":"手の入力なし"); return;}
+        if(!sample || (!isManual() && now-lastSeen>260)){
+          if(!handSeen && !isManual()){      // 開始してからまだ一度も手が映っていない間は、止めずに待つ（腕は動かさない）
+            if(now-startedAt>HAND_WAIT_MS){await stop("手が映らないまま "+HAND_WAIT_MS/1000+" 秒"); return;}
+            const waitSeq=generation, waiting=await command("wait",{token});
+            if(waitSeq===generation) render(waiting);
+            return;
+          }
+          await stop(sample?"手を見失った（0.26秒以上）":"手の入力なし"); return;
+        }
+        handSeen=true;
+        pushInputs(sample);
         const seq=generation;
-        const result=await command("sample",{token,...sample,...(state?.gripper_only?{follow:followJoints()}:{})});
+        const seen={hand_age:Math.round(now-lastSeen),hand_miss:handMiss,body_miss:bodyMiss};      // 入力の古さと見失い回数
+        handMiss=0;
+        const result=await command("sample",{token,...sample,...(sample.dbg?{dbg:{...sample.dbg,...seen}}:{}),...(state?.gripper_only?{follow:followJoints()}:{}),...(body?{body}:{})});
+        body=null;      // 同じ測定値を二重に送らない
         if(seq===generation) render(result);
       }finally{pending=false;}
     }

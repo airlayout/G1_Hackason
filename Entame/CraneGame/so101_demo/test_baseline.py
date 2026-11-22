@@ -1,6 +1,6 @@
 import unittest
 
-from baseline import KEEP_SAMPLES, MAX_SAMPLES, Baseline
+from baseline import FORCE_SAMPLES, KEEP_SAMPLES, MAX_SAMPLES, Baseline
 from home import HOME_JOINTS, input_of, neutral_map, relative
 from limits import default_limits
 from server import Desk, MockArm
@@ -238,6 +238,114 @@ class DeskFollowSelectionTests(DeskCase):
         for bad in ("shoulder_lift", ["nope"], [1]):
             with self.assertRaises(ValueError):
                 self.sample(follow=bad, **self.ALL)
+
+
+class FoldedStartTests(unittest.TestCase):
+    """たたんだ姿勢（肩が下端）から始めて、手を上げたとき。2026-11-22 の実機で肩が全く動かなかった不具合の再現。"""
+    FOLDED = {"shoulder_pan": 0.0, "shoulder_lift": -99.0, "elbow_flex": 98.0, "wrist_flex": 7.0, "wrist_roll": 0.0}
+
+    def setUp(self):
+        self.time = [10.0]
+        limits = default_limits()
+        for j in HOME_JOINTS:
+            limits[j].update(speed=150.0, step=15.0)
+        self.desk = Desk(MockArm(), clock=lambda: self.time[0], limits=limits, sync=True)
+        self.desk.arm.pose.update(self.FOLDED)
+        self.token = self.desk.command(dict(op="start", gripper_only=True))["token"]
+
+    def sample(self, **inputs):
+        self.time[0] += 0.065
+        return self.desk.command(dict(op="sample", token=self.token, **{"height": 0.5, "opening": 0.5, **inputs}))
+
+    def test_raising_the_hand_moves_the_shoulder_away_from_the_fold(self):
+        for _ in range(KEEP_SAMPLES + 2):
+            state = self.sample(lift=1.0, reach=0.38)          # 手を下ろした構え（lift +1）で始める
+        self.assertEqual(state["sync"]["flip"], ["shoulder_lift"])
+        for _ in range(100):
+            self.sample(lift=-1.0, reach=0.38)                # 手を上げる（lift -1）
+        self.assertGreater(self.desk.arm.read()["shoulder_lift"], -10.0)
+        self.assertLess(self.desk.arm.read()["shoulder_lift"], 10.0)     # 動きは範囲の約半分まで（FLIP_TRAVEL）
+
+    def test_lowering_the_hand_returns_to_the_fold(self):
+        for _ in range(KEEP_SAMPLES + 2):
+            self.sample(lift=1.0, reach=0.38)
+        for _ in range(100):
+            self.sample(lift=-1.0, reach=0.38)
+        for _ in range(100):
+            self.sample(lift=1.0, reach=0.38)
+        self.assertAlmostEqual(self.desk.arm.read()["shoulder_lift"], -99.0, places=3)
+
+    def test_ordinary_start_is_not_flipped(self):
+        baseline = Baseline(True)
+        for _ in range(KEEP_SAMPLES):
+            baseline.update({"shoulder_lift": 0.5}, POSE, default_limits())
+        self.assertEqual(baseline.flip, {"shoulder_lift": False})
+        self.assertAlmostEqual(baseline.hand_input("shoulder_lift", -1.0), -1.0)
+
+
+class ElbowFlipTests(unittest.TestCase):
+    """追従は、たたんだ姿勢（肘 約 95＝上限側）から始まる。手を近づけると肘が伸びる向き（値が下がる）にする。
+    実機ログ(2026-11-22 22:11)で、反転が無く、近づけても肘が動かなかった。"""
+    FOLDED = {**POSE, "elbow_flex": 95.0}
+
+    def start(self, reach):
+        baseline = Baseline(True)
+        for _ in range(KEEP_SAMPLES):
+            baseline.update({"elbow_flex": reach}, self.FOLDED, default_limits())
+        return baseline
+
+    def test_mid_hand_flips_so_that_coming_closer_extends_the_elbow(self):
+        baseline = self.start(-0.27)                     # 実機ログの手の基準
+        self.assertTrue(baseline.flip["elbow_flex"])
+        closer = neutral_map(baseline.hand_input("elbow_flex", 0.85), -2.0, 100.0, 95.0)
+        self.assertLess(closer, 20.0)                    # 近づけると、教示した伸ばした姿勢（約 20）のあたりまで下がる
+        farther = neutral_map(baseline.hand_input("elbow_flex", -1.0), -2.0, 100.0, 95.0)
+        self.assertGreater(farther, 95.0 - 1e-6)         # 遠ざけても、たたんだ姿勢より先へは行かない
+
+    def test_far_hand_is_not_flipped_and_moving_away_extends(self):
+        baseline = self.start(1.0)                       # 既に手が近い構え。近づける余地は無い
+        self.assertFalse(baseline.flip["elbow_flex"])
+        away = neutral_map(baseline.hand_input("elbow_flex", -1.0), -2.0, 100.0, 95.0)
+        self.assertLess(away, -1.0)
+
+    def test_elbow_in_the_middle_of_its_range_is_not_flipped(self):
+        baseline = Baseline(True)
+        for _ in range(KEEP_SAMPLES):
+            baseline.update({"elbow_flex": -0.5}, POSE, default_limits())    # 肘 30（余地は両側にある）
+        self.assertFalse(baseline.flip["elbow_flex"])
+
+
+class CenterWaitTests(unittest.TestCase):
+    """手を画面の端で構えて始めると、腕を机側へ動かせない（2026-11-22 実機ログ）。真ん中へ来るまで基準を取らない。"""
+    MID_ARM = {**POSE, "shoulder_lift": -56.0}        # たたみきっていない（机側に余地が大きい）
+
+    def feed(self, baseline, lift, pose, n):
+        for _ in range(n):
+            baseline.update({"shoulder_lift": lift}, pose, default_limits())
+
+    def test_hand_at_the_bottom_with_room_on_the_desk_side_waits(self):
+        baseline = Baseline(True)
+        self.feed(baseline, 1.0, self.MID_ARM, KEEP_SAMPLES + 5)
+        self.assertFalse(baseline.ready)
+        self.assertTrue(baseline.edge)
+        self.assertTrue(baseline.state()["edge"])
+
+    def test_moving_the_hand_to_the_middle_starts_it(self):
+        baseline = Baseline(True)
+        self.feed(baseline, 1.0, self.MID_ARM, KEEP_SAMPLES + 5)
+        self.feed(baseline, 0.2, self.MID_ARM, KEEP_SAMPLES + 5)
+        self.assertTrue(baseline.ready)
+        self.assertFalse(baseline.edge)
+
+    def test_folded_arm_with_hand_at_the_bottom_is_not_blocked(self):
+        baseline = Baseline(True)                       # 反転する構え（たたんだ肩 -99）は、端で始めるのが正しい
+        self.feed(baseline, 1.0, {**POSE, "shoulder_lift": -99.0}, KEEP_SAMPLES)
+        self.assertTrue(baseline.ready)
+
+    def test_gives_up_waiting_after_a_while(self):
+        baseline = Baseline(True)
+        self.feed(baseline, 1.0, self.MID_ARM, FORCE_SAMPLES + 1)
+        self.assertTrue(baseline.ready)
 
 
 if __name__ == "__main__":

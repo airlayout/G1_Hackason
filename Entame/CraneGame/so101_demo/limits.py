@@ -16,6 +16,10 @@ MIN_SPAN = 5.0     # 下限と上限の最小の幅（%）
 # 既定値は、制限を設定できるようにする前の固定値と同じ（腕は毎秒 22、グリッパーは毎秒 45 の内部単位、1回 3.0）
 ARM_DEFAULT = {"speed": 11.0, "step": 1.5, "min": 0.0, "max": 100.0}
 GRIPPER_DEFAULT = {"speed": 45.0, "step": 3.0, "min": 0.0, "max": 100.0}
+# 肩・肘は重く、指令との差が約 3（内部単位）未満だと実機が動かない（不感帯）。step が 1.5%（＝3）だと、
+# 追従の指令が不感帯の中に収まって、肩・肘が上がらなくなる（2026-11-22 の実機ログ 20 本で、肩 57%・肘 60% のサンプルが詰まった）。
+# step 4% なら詰まりは 1% 前後（replay.py のシミュレーションで確認）
+HEAVY_DEFAULT = {"shoulder_lift": {"step": 4.0}, "elbow_flex": {"step": 4.0}}
 
 
 def scale(joint):
@@ -29,7 +33,7 @@ def raw(joint, percent):
 
 
 def default_limits():
-    return {j: dict(GRIPPER_DEFAULT if j == "gripper" else ARM_DEFAULT) for j in JOINTS}
+    return {j: dict(GRIPPER_DEFAULT if j == "gripper" else ARM_DEFAULT, **HEAVY_DEFAULT.get(j, {})) for j in JOINTS}
 
 
 def parse_limits(data, base):

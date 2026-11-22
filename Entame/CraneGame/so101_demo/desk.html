@@ -7,14 +7,15 @@
 <div class="cols">
 <div class="left">
 <section id="cameras"><h2>カメラ <small>手の読み取りと録画に、この1台を使う</small></h2>
-<div class="row"><button id="devices">カメラ一覧を更新</button><label>カメラ <select id="cam"><option value="">既定のカメラ</option></select></label><button id="enable">映像を開く</button></div>
+<div class="row"><button id="devices">カメラ一覧を更新</button><label>カメラ <select id="cam"><option value="">既定のカメラ</option></select></label><label>画角 <select id="fov"><option value="4:3">4:3（広い）</option><option value="16:9">16:9（上下が切れる）</option><option value="3:4">3:4（縦・上下が広い）</option></select></label><label><input type="checkbox" id="mirror" checked> 映像を左右反転（鏡）</label><button id="enable">映像を開く</button><span id="cameraInfo" class="help"></span></div>
 <div class="preview"><video id="input" autoplay muted playsinline></video><canvas id="overlay"></canvas></div>
 <p id="hand">停止中</p><div class="row"><button id="snap">診断を保存</button><span id="snapState" role="status"></span></div><p id="perf" class="help">認識 — ms／フレーム　— fps</p>
 <div class="row"><button id="calOpen">指を最大に開く（3秒後に測る）</button><button id="calClosed">指をくっつける（3秒後に測る）</button><span id="fingerState" role="status">未校正</span></div>
 <p class="help">指の開閉の校正は1回だけ（ブラウザに保存）。親指と人差し指を、最大に開いた形とくっつけた形で測り、グリッパーの最大開・最大閉に対応させます。</p>
-<div class="row"><button id="startGripper">全関節を追従（登録不要）</button> <button id="start">腕も追従（要登録）</button><span id="status" role="status">待機中</span></div>
+<div class="row"><button id="startGripper">全関節を追従（登録不要）</button><span id="countdown" role="status" aria-live="polite"></span><span id="status" role="status">待機中</span></div>
+<div id="diag" role="status" aria-live="polite" class="diag" hidden></div>
 <div id="followBox" class="row"><b>追従する関節</b>
-<label><input type="checkbox" data-joint="shoulder_pan" checked>台座</label><label><input type="checkbox" data-joint="shoulder_lift" checked>肩</label><label><input type="checkbox" data-joint="elbow_flex" checked>肘</label><label><input type="checkbox" data-joint="wrist_flex" checked>手首の曲げ</label><label><input type="checkbox" data-joint="wrist_roll" checked>手首の回転</label><label><input type="checkbox" data-joint="gripper" checked>グリッパー</label>
+<label><input type="checkbox" data-joint="shoulder_pan" checked>台座</label><label><input type="checkbox" data-joint="shoulder_lift" checked>肩</label><label><input type="checkbox" data-joint="elbow_flex" checked>肘</label><label><input type="checkbox" data-joint="wrist_flex">手首の曲げ</label><label><input type="checkbox" data-joint="wrist_roll">手首の回転</label><label><input type="checkbox" data-joint="gripper" checked>グリッパー</label>
 <button id="followAll" type="button">すべてON</button><button id="followNone" type="button">すべてOFF</button></div>
 <p class="help">「全関節を追従」用。切り分けのため、動かしたい関節だけチェックする。追従中に切り替えてもよい（OFFにした関節は今の姿勢のまま止まり、ONにした関節は、その時点の手と腕の位置から動き出す）。</p>
 <p class="help">「全関節を追従」を押したら、手を画面に映して約 0.3 秒止めてください。その構えと腕の今の姿勢が基準になり（構えは何でもかまいません）、手がそこから動いた分だけ、腕が動きます。</p>
@@ -88,11 +89,11 @@
 </div>
 </section>
 <section><h2>現在位置 <small>スライダーで動かす（可動範囲に対する 0〜100%）。登録は下の別の欄</small></h2>
-<div class="row"><button id="homeSet">今の姿勢を初期姿勢にする</button><button id="homeGo">初期姿勢へ戻す</button><span id="homeState" class="help">初期姿勢: 確認中</span></div>
+<div class="row"><button id="homeSet">今の姿勢を初期姿勢にする</button><button id="homeGo">初期姿勢へ戻す</button><button id="restGo">畳んだ姿勢へ</button><span id="homeState" class="help">初期姿勢: 確認中</span><span id="restState" class="help"></span></div>
 <p class="help">初期姿勢は、グリッパーが机に接して、モーターを OFF にしても保てる姿勢。台座・肩・肘・手首を記録する（グリッパーは含めない）。追従の行き先ではなく、「初期姿勢へ戻す」の行き先（追従は、始めたときの腕の姿勢から動く）</p>
 <div id="joints"></div>
 </section>
-<section><h2>位置の登録 <small>今の姿勢を記録する</small></h2>
+<section hidden><h2>位置の登録 <small>今の姿勢を記録する</small></h2>
 <div id="marks"></div>
 <p id="problem" role="alert"></p>
 <details open><summary>全関節の登録値</summary><div class="scroll"><table id="markTable"></table></div>

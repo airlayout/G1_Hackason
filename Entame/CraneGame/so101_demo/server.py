@@ -4,6 +4,7 @@ import json
 import math
 import mimetypes
 import secrets
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,15 +14,20 @@ from urllib.parse import urlsplit
 from baseline import Baseline
 from followlog import FollowLog
 from home import capture, load_home, neutral_map, save_home
+import reach_map
+from ik_follow import CONTROLLED_JOINTS, INPUT_JOINTS, IkFollow, hand_motion, near_home
 from palm import MIN_GAP, PALM_STATES, load_palm_up, save_palm_up
 from limits import (JOINTS, MIN_SPAN, RANGES, clamp_pose, default_limits, load_limits, parse_limits, raw, save_limits,
                     speed_raw, step_raw)
 from skeleton import FEATURES, POSE_NAMES, Calibration, PoseMover, calibration_poses, parse_features
+from rest import rest_pose
+from teach import HUMAN_IDS, HUMAN_POSES, SAME_POSE, entry, load_teach, nearest_gap, save_teach
 
 ROOT = Path(__file__).resolve().parent
 LIMITS_FILE = ROOT / "limits.json"   # モーター別の制限の保存先（起動時に自動で読む）
 HOME_FILE = ROOT / "home.json"       # 初期姿勢（追従の基準）の保存先（起動時に自動で読む）
 PALM_FILE = ROOT / "palm.json"       # 「手のひら上」の手首の回転の保存先（起動時に自動で読む）
+TEACH_FILE = ROOT / "teach.json"     # 教示（人の姿勢 H ごとのロボットの関節値）の保存先（起動時に自動で読む）
 TIMEOUT = 0.65
 LABELS = {"low": "つかむ位置", "high": "持ち上げた位置"}
 # グリッパーは登録なしの固定範囲。指の開き 0（くっつけた）→ 最大閉、1（90度に開いた）→ 最大開。
@@ -33,12 +39,24 @@ FREE_INPUTS = {"shoulder_pan": "pan", "shoulder_lift": "lift", "elbow_flex": "re
 GRIPPER_ONLY_JOINTS = ("gripper", *FREE_INPUTS)
 FOLLOW_NOTE = "追従中（全関節。位置の登録なし）"
 WAIT_NOTE = "基準を取っています: 手を止めてください（腕は動かしません）"
+EDGE_NOTE = "手を画面の真ん中の高さで止めてください（端で始めると、腕が机側へ動かせません）。腕は動かしません"
+IK_REASONS = {"home": "初期姿勢が未登録", "far": "腕が初期姿勢から離れている", "follow": "肩・肘・手首の曲げの追従がすべてONではない",
+              "baseline": "基準を取っていない", "input": "肩・肘の入力が来ていない", "units": "校正の単位が取れない"}
+IK_NOTE = "IK 追従を使えません（{}）。関節ごとの追従になります"
+# 校正が無い（模擬・テスト）ときの、各関節の可動範囲の代用（lerobot の校正の ticks）
+FALLBACK_CALIBRATION = {j: {"range_min": 800, "range_max": 3300} for j in CONTROLLED_JOINTS}
+WAIT_HAND_NOTE ="手が映るのを待っています（腕は動かしません。カメラに片手を映してください）"
 DEBUG_VALUES_MAX = 12       # サンプルに付く、画面側の生の値（デバッグログ用）の最大の数
+BODY_VALUES_MAX = 12        # サンプルに付く、人の骨格（肩・肘・手首の画像上の位置 x,y）の最大の数
+LOG_IMAGE_MAX = 300         # 追従ログ1本に残す画像の最大の数
+LOG_VIDEO_MAX = 150 * 1024 * 1024   # 追従ログ1本に残す映像（webm）の最大の大きさ（バイト）
+VIDEO_CHUNK_MAX = 8 * 1024 * 1024   # 映像1回分（数秒）の送信の最大の大きさ（バイト）
 WHY_MAX = 60                # 停止の原因（画面が付ける文字列）の最大の長さ
 ARM_GAP = (1, 35)          # 上下２点の関節差の許容範囲（内部単位。表示は半分の%）
 HISTORY_MAX = 50
-PAGES = {"/": "desk.html", "/skeleton": "skeleton.html"}      # 画面（URL → ファイル）
-SCRIPTS = ("/app.js", "/limits.js", "/sync.js", "/style.css", "/skeleton.js", "/skeleton_math.js", "/skeleton_figure.js")
+PAGES = {"/": "desk.html", "/skeleton": "skeleton.html", "/teach": "teach.html"}      # 画面（URL → ファイル）
+SCRIPTS = ("/app.js", "/limits.js", "/sync.js", "/style.css", "/skeleton.js", "/skeleton_math.js", "/skeleton_figure.js",
+           "/teach.js")
 FINGER_FILE = ROOT / "finger_calibration.json"   # 指の校正の保存先（1人1回。手が変わるときだけ測り直す）
 FINGER_RATIO_MAX = 3.0
 SNAPSHOT_MAX = 200          # 診断の保存の上限（件）
@@ -51,6 +69,8 @@ SNAPSHOT_BYTES = 3_000_000   # 診断1件の最大サイズ
 # 実測: この方式なら P=16（既定）のまま、肘は目標へ届き、肩も休め姿勢（-89）から持ち上がる。
 MOVE_STEP = 1.0
 MOVE_LAG = 3.0
+LAG_WARN_RAW = 15          # 目標と実測の差がこれを超えたら、画面に「追いつけていない」と出す
+DIAG_HOLD_S = 1.0          # 一度出した警告は、この時間は消さない（ちらつき防止）
 MOVE_HOLD_S = 0.3          # この時間より長く指令が途切れたら、指令位置を実際の位置から取り直す
 MOVE_DONE = 0.5            # 目標との差がこれ未満なら到達とみなし、今の位置で保持する
 # モーターの状態: on=固く保つ、soft=弱い力で保つ（外から押せば動く）、off=力を抜く（手で動かせる）
@@ -90,14 +110,14 @@ def parse_follow(value):
     return frozenset(value)
 
 
-def debug_values(raw):
-    """画面が付けた生の値（デバッグログ用）から、有限の数値だけを最大 DEBUG_VALUES_MAX 個取り出す。不正なら空。
+def debug_values(raw, limit=DEBUG_VALUES_MAX):
+    """画面が付けた生の値（デバッグログ用）から、有限の数値だけを最大 limit 個取り出す。不正なら空。
     ログのための値なので、不正でも追従は止めない。"""
     if not isinstance(raw, dict):
         return {}
     ok = {k: float(v) for k, v in raw.items()
           if isinstance(k, str) and type(v) in (int, float) and math.isfinite(v)}
-    return dict(list(ok.items())[:DEBUG_VALUES_MAX])
+    return dict(list(ok.items())[:limit])
 
 
 def soft_deadband(level):
@@ -142,6 +162,9 @@ class RealArm:
         self.limits = default_limits()
         if not self.robot.calibration:
             raise ValueError(f"校正データがありません: {self.robot.calibration_fpath}")
+        # IK 追従用: 校正で測った各関節の可動範囲（ticks）。関節値 1 あたりの角度の計算に使う
+        self.calibration = {j: dict(range_min=self.robot.calibration[j].range_min, range_max=self.robot.calibration[j].range_max)
+                            for j in CONTROLLED_JOINTS}
         try:
             self.robot.connect(calibrate=False)
             if not self.robot.is_calibrated:
@@ -221,8 +244,11 @@ class Desk:
 
     def __init__(self, arm, live=False, clock=time.monotonic, retry=None, why="", command="",
                  limits=None, limits_file=None, log=None, home=None, home_file=None, sync=False,
-                 palm_up=None, palm_file=None):
+                 palm_up=None, palm_file=None, teach=None, teach_file=None, ik_follow=False):
         self.arm, self.live, self.clock = arm, live, clock
+        self.ik_follow = ik_follow           # True なら、肩・肘・手首の曲げを IK で追従する（既定オフ。実機では未確認。ik_follow.py）
+        self.ik = None                       # 追従 1 回ぶんの IK の状態（IkFollow）。使えない間は None
+        self.teach, self.teach_file = dict(teach or {}), teach_file   # 教示: H の id → {"robot": 関節値, "time": 時刻}
         self.palm_up, self.palm_file = palm_up, palm_file   # 「手のひら上」の手首の回転（未登録なら None）
         self.palm_down = None                # 追従中の「手のひら下」の手首の回転（初期姿勢、無ければ追従開始時の値）
         self.log = log                       # 追従のデバッグログ（FollowLog）。None なら残さない
@@ -237,6 +263,7 @@ class Desk:
         self.soft_level = SOFT_LEVEL
         self.cmd = {}                        # 関節ごとの (指令位置, 時刻)。スライダー移動で、目標へ一定速度で進める
         self.marks = {}
+        self.lagged = {}                     # 関節 → (種類 "fast"/"stuck", 目標との差, 時刻)。画面の「何が問題か」用
         self.followed = frozenset()          # 直前のサンプルで追従がONだった関節（途中でONにした関節の検出用）
         self.calibration_sk = Calibration()  # 骨格版の較正（3姿勢の撮影）
         self.mover = PoseMover()             # 骨格版の較正で、ロボットを3姿勢へ動かす
@@ -258,14 +285,36 @@ class Desk:
             return dict(required=False, done=True, detail="模擬モードのため不要", command="")
         return dict(required=True, done=True, detail="保存済みの校正が実機と一致", command="")
 
+    def note_lag(self, joint, want, goal, actual, now):
+        """目標が実測から大きく離れた関節を記録する。fast=速度上限で指令が目標に届かない（手が速い）、
+        stuck=指令は先へ出ているのに実測が付いてこない（モーターが動かない・遅い）。"""
+        gap = abs(want - actual)
+        if gap <= LAG_WARN_RAW:
+            return
+        lead = step_raw(joint, self.limits)
+        kind = "stuck" if abs(goal - actual) >= lead - 0.3 else "fast"
+        self.lagged[joint] = (kind, gap, now)
+
+    def issues(self):
+        """追従中の、いま画面に出す問題。速度上限・実測の遅れ・差の大きさを、関節ごとに返す。"""
+        if not self.token:
+            return []
+        now = self.clock()
+        found = [dict(joint=j, kind=k, gap=round(g), speed=self.limits[j]["speed"])
+                 for j, (k, g, t) in self.lagged.items() if now - t < DIAG_HOLD_S]
+        if self.baseline.edge:
+            found.append(dict(joint="shoulder_lift", kind="edge", gap=0, speed=0))
+        return found
+
     def state(self):
         return dict(live=self.live, pose=self.pose, marks={k: v.copy() for k, v in self.marks.items()},
                     history=list(self.history), problem=self.problem(), active=self.token is not None,
-                    note=self.note, fault=self.fault, calibration=self.calibration(), drive=self.drive,
+                    note=self.note, fault=self.fault, issues=self.issues(), calibration=self.calibration(), drive=self.drive,
                     soft_level=self.soft_level,
                     gripper=dict(closed=GRIPPER_CLOSED, open=GRIPPER_OPEN), gripper_only=self.gripper_only,
-                    home=self.home, sync=self.baseline.state() if self.token and self.gripper_only else None,
-                    skeleton=self.skeleton_state(),
+                    home=self.home, rest=rest_pose(self.teach, self.limits),
+                    sync=self.baseline.state() if self.token and self.gripper_only else None,
+                    skeleton=self.skeleton_state(), teach=dict(poses=HUMAN_POSES, saved=self.teach),
                     limits=self.limits, limit_defaults=default_limits(), limit_ranges=RANGES,
                     limit_min_span=MIN_SPAN)
 
@@ -355,6 +404,37 @@ class Desk:
         goal = clip(goal, actual - lead, actual + lead)
         self.cmd[joint] = (goal, now)
         return goal
+
+    def ik_why(self, free, follow, current):
+        """IK 追従を使えない理由の鍵（IK_REASONS）。使えるなら None。"""
+        if not self.ik_follow:
+            return "off"
+        if not self.baseline.enabled or not self.baseline.ready or not set(INPUT_JOINTS) <= set(self.baseline.hand):
+            return "baseline"
+        if not set(CONTROLLED_JOINTS) <= set(follow):
+            return "follow"
+        if not set(INPUT_JOINTS) <= set(free):
+            return "input"
+        if self.ik is None:
+            if not self.home:
+                return "home"
+            if not near_home(current, self.home):
+                return "far"
+        return None
+
+    def ik_wants(self, free, follow, current, dt):
+        """IK 追従の、肩・肘・手首の曲げの目標（関節値）。使えないときは {}（関節ごとの追従になる）。"""
+        why = self.ik_why(free, follow, current)
+        if why is None and self.ik is None:
+            calibration = getattr(self.arm, "calibration", None) or FALLBACK_CALIBRATION
+            self.ik = IkFollow(reach_map.joint_units(calibration), self.home)
+        if why is not None:
+            if why == "follow":                 # 追従の関節が変わったら IK をやめる（一時的な入力の欠けでは続ける）
+                self.ik = None
+            if why != "off":
+                self.note = IK_NOTE.format(IK_REASONS[why])
+            return {}
+        return self.ik.step(*hand_motion(self.baseline.hand, free), dt)
 
     def skeleton_state(self):
         c = self.calibration_sk
@@ -489,6 +569,32 @@ class Desk:
         self.palm_up = value
         self.note = "今の手首を「手のひら上」に記録"
 
+    def write_teach(self, new):
+        """教示を保存してから反映する（保存に失敗したら何も変えない）。"""
+        if self.teach_file:
+            try:
+                save_teach(new, self.teach_file)
+            except OSError as exc:
+                raise ValueError(f"教示を保存できません: {exc}")
+        self.teach = new
+
+    def teach_save(self, key):
+        """今のロボットの姿勢を、人の姿勢 key の教示として保存する（同じ key は上書き）。"""
+        if key not in HUMAN_IDS:
+            raise ValueError("不明な人の姿勢")
+        new_entry = entry(self.arm.read())
+        self.write_teach({**self.teach, key: new_entry})
+        gap = nearest_gap(self.teach, key, new_entry["robot"])
+        self.note = f"{key} を保存"
+        if gap is not None and gap < SAME_POSE:
+            self.note += "（ほかの保存済みの姿勢とほぼ同じ値です。ロボットを動かしましたか？）"
+
+    def teach_delete(self, key):
+        if key not in self.teach:
+            raise ValueError("その姿勢は保存されていません")
+        self.write_teach({k: v for k, v in self.teach.items() if k != key})
+        self.note = f"{key} の保存を消した"
+
     def log_begin(self, mode):
         """追従の開始をデバッグログに残す（開始時の姿勢・制限・登録点つき）。"""
         if self.log is not None:
@@ -500,12 +606,51 @@ class Desk:
         if self.log is not None:
             self.log.end(reason)
 
+    def log_image(self, data):
+        """追従中の映像（認識点・人の骨格つき JPEG）を、今の追従ログの隣の画像フォルダへ保存し、ログに image の行を残す。
+        追従中でなければ保存しない（ファイル名を返す。保存しなければ None）。"""
+        import base64
+        head = "data:image/jpeg;base64,"
+        image = data.get("image")
+        if not self.token or self.log is None or self.log.path is None:
+            return None
+        if not isinstance(image, str) or not image.startswith(head):
+            raise ValueError("画像(JPEG)が必要です")
+        folder = self.log.image_folder()
+        folder.mkdir(exist_ok=True)
+        number = len(list(folder.glob("*.jpg")))
+        if number >= LOG_IMAGE_MAX:
+            return None
+        name = f"{number:04d}.jpg"
+        (folder / name).write_bytes(base64.b64decode(image[len(head):], validate=True))
+        self.log.write("image", file=f"{folder.name}/{name}", body=debug_values(data.get("body"), BODY_VALUES_MAX) or None)
+        return name
+
+    def log_video(self, chunk):
+        """追従中のカメラ映像（webm の続き）を、今のログの隣の .webm へ追記する。最後の一切れは停止の後に届くので、
+        追従中かどうかは見ず、直近のログに付ける。ログが無い・上限を超えたときは保存しない（保存後の大きさ、保存しなければ None）。"""
+        if self.log is None or self.log.path is None:
+            return None
+        if not chunk:
+            raise ValueError("映像が空です")
+        path = self.log.video_path()
+        first = not path.exists()
+        size = 0 if first else path.stat().st_size
+        if size + len(chunk) > LOG_VIDEO_MAX:
+            return None
+        with open(path, "ab") as f:
+            f.write(chunk)
+        if first:
+            self.log.write("video", file=path.name)
+        return size + len(chunk)
+
     def hold(self, reason):
         self.log_end(reason)
         self.token = None
         self.skeleton_on = False
         self.mover.stop()
         self.cmd.clear()
+        self.lagged.clear()
         self.note = reason
         self.pose = self.arm.read()
         self.arm.write(self.pose)
@@ -554,44 +699,59 @@ class Desk:
             dt = clip(now - self.last, 0, 0.12)
             self.last = now
             current = self.arm.read()
-            goal, want = {}, {}
+            goal, want, rels = {}, {}, {}
             follow = parse_follow(data.get("follow"))
             was_ready = self.baseline.ready
             engaged = self.baseline.update(free, current, self.limits) if self.gripper_only else True
             if self.gripper_only:
-                self.note = FOLLOW_NOTE if engaged else WAIT_NOTE
+                self.note = FOLLOW_NOTE if engaged else (EDGE_NOTE if self.baseline.edge else WAIT_NOTE)
                 if was_ready:                   # 追従の途中でONにした関節は、その時点の手と腕を基準にし直す（飛び出し防止）
                     for j in follow - self.followed:
                         self.cmd.pop(j, None)
                         if j in free:
                             self.baseline.rebase(j, free[j], current)
                 self.followed = follow
+            ik_want = self.ik_wants(free, follow, current, dt) if self.gripper_only and engaged else {}
             for j in ((GRIPPER_ONLY_JOINTS if self.gripper_only else JOINTS) if engaged else ()):
                 if self.gripper_only and j not in follow:      # 追従をOFFにした関節は、指令を出さない（今の姿勢のまま）
                     self.cmd.pop(j, None)
                     continue
                 if j == "gripper":
                     a, b, fraction = GRIPPER_CLOSED, GRIPPER_OPEN, opening
+                elif j in ik_want:                 # IK 追従（既定オフ）: 肩・肘・手首の曲げを先端の目標から同時に決める
+                    a, b, fraction = 0.0, ik_want[j], 1.0
                 elif self.gripper_only:
                     rel = self.baseline.hand_input(j, free[j]) if j in free else None
                     if rel is None:                # 入力が送られなければ（基準が無ければ）、その関節は今の姿勢のまま
                         continue
                     # 入力 -1〜1 を、その関節の「動かせる下限〜上限」へ写す。0 は腕の基準（始めたときの姿勢。基準を使わないなら初期姿勢）
+                    rels[j] = rel                  # 反転・基準を反映した入力（ログ用）
                     lo, hi = raw(j, self.limits[j]["min"]), raw(j, self.limits[j]["max"])
                     a, b, fraction = 0.0, neutral_map(rel, lo, hi, self.baseline.reference(j, self.home)), 1.0
                 else:
                     a, b, fraction = self.marks["low"][j], self.marks["high"][j], height
                 want[j] = a + (b-a)*fraction
                 goal[j] = self.follow_goal(j, current[j], want[j], dt, now)
+                if j != "gripper":
+                    self.note_lag(j, want[j], goal[j], current[j], now)
             if goal:
                 self.arm.write(goal)
             self.pose = current
             if self.log is not None:
                 self.log.write("sample", follow=sorted(follow) if self.gripper_only else None,
                                inp=dict(height=height, opening=opening, **{FREE_INPUTS[j]: v for j, v in free.items()}),
-                               dbg=debug_values(data.get("dbg")), dt=dt, cur=current, want=want, goal=goal,
+                               ik=list(self.ik.last) if ik_want else None,
+                               dbg=debug_values(data.get("dbg")), body=debug_values(data.get("body"), BODY_VALUES_MAX) or None, dt=dt, rel=rels, cur=current, want=want, goal=goal,
                                sync=dict(engaged=engaged, gaps=self.baseline.gaps, hand=self.baseline.hand,
-                                         anchor=self.baseline.anchor) if self.gripper_only else None)
+                                         anchor=self.baseline.anchor, flip=sorted(j for j, v in self.baseline.flip.items() if v)) if self.gripper_only else None)
+        elif op == "wait":
+            # 追従を始めたが、まだ手が映らない間の合図。姿勢は動かさず、入力途絶（TIMEOUT）で止まらないようにするだけ
+            if not self.token or data.get("token") != self.token:
+                raise ValueError("追従は停止中")
+            if self.skeleton_on:
+                raise ValueError("骨格版の追従中です")
+            self.last = self.clock()
+            self.note = WAIT_HAND_NOTE
         elif op == "skeleton_sample":
             self.skeleton_sample(data)
         elif self.token:
@@ -602,6 +762,10 @@ class Desk:
             self.set_home()
         elif op == "palm_set":
             self.set_palm_up()
+        elif op == "teach_save":
+            self.teach_save(data.get("id"))
+        elif op == "teach_delete":
+            self.teach_delete(data.get("id"))
         elif self.drive != "on" and op in ("move", "start", "skeleton_pose", "skeleton_start"):
             raise ValueError(f"モーターが「{DRIVE_NAMES[self.drive]}」のため動かせません。"
                              "動かすには「ON」に切り替えてください")
@@ -630,6 +794,7 @@ class Desk:
             # 全関節の追従（名前は名残）。位置の登録は要らない。始めた瞬間の手と腕の姿勢を基準にする
             self.gripper_only, self.skeleton_on = True, False
             self.baseline.reset()
+            self.ik = None
             self.followed = frozenset()
             self.cmd.clear()
             self.last = self.clock()
@@ -716,6 +881,8 @@ def main():
     parser.add_argument("--robot-id", help="公式の校正に使用したID")
     parser.add_argument("--calibration-dir", type=Path)
     parser.add_argument("--http-port", type=int, default=8765)
+    parser.add_argument("--ik-follow", action="store_true",
+                        help="肩・肘・手首の曲げを IK で追従する（既定オフ。シミュレーションで確認済み・実機では未確認。ik_follow.py）")
     args = parser.parse_args()
     if args.port and not args.robot_id:
         parser.error("--port には --robot-id も必要です")
@@ -758,10 +925,23 @@ def main():
             self.reply(200, file.read_bytes(), mimetypes.guess_type(file.name)[0] or "application/octet-stream")
 
         def do_POST(self):
-            if (self.path not in ("/command", "/snapshot", "/finger") or self.headers.get("Host") != address
+            video = self.path == "/followvideo"
+            if (self.path not in ("/command", "/snapshot", "/finger", "/followvideo") or self.headers.get("Host") != address
                     or self.headers.get("Origin") != "http://" + address
-                    or self.headers.get_content_type() != "application/json"):
+                    or self.headers.get_content_type() != ("video/webm" if video else "application/json")):
                 return self.reply(403, {"error": "このPCの操作画面を使用してください"})
+            if video:     # 追従中のカメラ映像の続き（生のバイト列）
+                try:
+                    size = int(self.headers.get("Content-Length", 0))
+                    if not 0 < size <= VIDEO_CHUNK_MAX:
+                        raise ValueError("映像のサイズが不正")
+                    with lock:
+                        return self.reply(200, {"saved": desk.log_video(self.rfile.read(size))})
+                except ValueError as e:
+                    return self.reply(400, {"error": str(e)})
+                except OSError as e:
+                    print(f"[video] 映像を保存できません（{e}）", file=sys.stderr, flush=True)
+                    return self.reply(500, {"error": "映像を保存できません"})
             snapshot = self.path == "/snapshot"
             try:
                 size = int(self.headers.get("Content-Length", 0))
@@ -770,6 +950,9 @@ def main():
                 data = json.loads(self.rfile.read(size))
                 if not isinstance(data, dict):
                     raise ValueError("JSONオブジェクトが必要です")
+                if snapshot and data.get("follow") is True:      # 追従ログへ残す画像（診断の保存とは別）
+                    with lock:
+                        return self.reply(200, {"saved": desk.log_image(data)})
                 if snapshot:
                     return self.reply(200, {"saved": save_snapshot(data)})
                 if self.path == "/finger":
@@ -810,11 +993,13 @@ def main():
             desk = Desk(arm, True, retry=lambda: RealArm(args), why=why, command=calibrate_command(args),
                         limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE, log=FollowLog(ROOT / "debug"),
                         home=load_home(HOME_FILE), home_file=HOME_FILE, sync=True,
-                        palm_up=load_palm_up(PALM_FILE), palm_file=PALM_FILE)
+                        palm_up=load_palm_up(PALM_FILE), palm_file=PALM_FILE,
+                        teach=load_teach(TEACH_FILE), teach_file=TEACH_FILE, ik_follow=args.ik_follow)
         else:
             desk = Desk(MockArm(), limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE,
                         log=FollowLog(ROOT / "debug"), home=load_home(HOME_FILE), home_file=HOME_FILE, sync=True,
-                        palm_up=load_palm_up(PALM_FILE), palm_file=PALM_FILE)
+                        palm_up=load_palm_up(PALM_FILE), palm_file=PALM_FILE,
+                        teach=load_teach(TEACH_FILE), teach_file=TEACH_FILE, ik_follow=args.ik_follow)
         done = threading.Event()
         def watch():
             while not done.wait(SOFT_TICK_S):

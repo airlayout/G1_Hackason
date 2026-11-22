@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from followlog import FollowLog
@@ -86,6 +87,90 @@ class DeskFollowLogTests(unittest.TestCase):
         self.assertEqual(set(sample["goal"]), {"gripper", "shoulder_pan", "wrist_roll"})
         self.assertEqual(set(sample["want"]), set(sample["goal"]))
         self.assertEqual(stop["reason"], "停止（手を見失った）")
+
+    def test_records_the_body_skeleton_in_the_sample(self):
+        self.sample(body=dict(ls_x=0.61, ls_y=0.42, rs_x=0.38, rs_y=0.43, bad="x"))
+        self.assertEqual(self.events()[1]["body"], dict(ls_x=0.61, ls_y=0.42, rs_x=0.38, rs_y=0.43))
+
+    def test_records_the_input_after_baseline_and_flip(self):
+        self.sample(lift=0.5, pan=-0.25)
+        self.assertEqual(self.events()[1]["rel"], dict(shoulder_pan=-0.25, shoulder_lift=0.5))
+
+    def test_saves_a_log_image_next_to_the_log_and_notes_it(self):
+        import base64
+        jpeg = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8fake").decode()
+        name = self.desk.log_image(dict(image=jpeg, body=dict(ls_x=0.6)))
+        folder = self.desk.log.image_folder()
+        self.assertEqual((folder / name).read_bytes(), b"\xff\xd8fake")
+        image = [e for e in self.events() if e["ev"] == "image"][0]
+        self.assertEqual((image["file"], image["body"]), (f"{folder.name}/{name}", dict(ls_x=0.6)))
+
+    def test_log_image_is_ignored_when_not_following_and_bad_image_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.desk.log_image(dict(image="nope"))
+        self.desk.command(dict(op="stop"))
+        self.assertIsNone(self.desk.log_image(dict(image="data:image/jpeg;base64,AA==")))
+
+    def test_old_logs_take_their_image_folders_with_them(self):
+        log = FollowLog(self.dir.name, keep=2)
+        for _ in range(3):
+            log.begin(mode="x")
+            log.image_folder().mkdir()
+            log.end("t")
+        logs = {p.stem for p in Path(self.dir.name).glob("follow-*.jsonl")}
+        folders = {p.name.removesuffix("-img") for p in Path(self.dir.name).glob("follow-*-img")}
+        self.assertEqual(len(logs), 2)
+        self.assertLessEqual(folders, logs)                  # 残っている画像フォルダは、残っているログのものだけ
+
+    def test_wait_keeps_following_alive_without_a_hand_and_moves_nothing(self):
+        before = self.desk.arm.read()
+        for _ in range(5):                       # TIMEOUT(0.65 秒)を超える時間、手が映らないまま待つ
+            self.time[0] += 0.3
+            self.desk.command(dict(op="wait", token=self.token))
+        self.assertEqual(self.desk.arm.read(), before)
+        self.assertEqual(self.desk.token, self.token)           # 入力途絶で止まっていない
+        self.sample(pan=0.2)                                    # 手が映ったら、そのまま追従に入れる
+        self.assertEqual(self.desk.token, self.token)
+
+    def test_wait_is_refused_when_not_following_or_with_a_wrong_token(self):
+        with self.assertRaises(ValueError):
+            self.desk.command(dict(op="wait", token="wrong"))
+        self.desk.command(dict(op="stop"))
+        with self.assertRaises(ValueError):
+            self.desk.command(dict(op="wait", token=self.token))
+
+    def test_appends_camera_video_chunks_next_to_the_log_and_notes_it_once(self):
+        self.assertEqual(self.desk.log_video(b"head"), 4)
+        self.assertEqual(self.desk.log_video(b"tail"), 8)
+        path = self.desk.log.video_path()
+        self.assertEqual((path.read_bytes(), path.stem), (b"headtail", self.desk.log.path.stem))
+        self.assertEqual([e["file"] for e in self.events() if e["ev"] == "video"], [path.name])
+
+    def test_last_video_chunk_arriving_after_stop_still_goes_to_that_log(self):
+        self.desk.log_video(b"a")
+        self.desk.command(dict(op="stop"))
+        self.assertEqual(self.desk.log_video(b"b"), 2)
+        self.assertEqual(self.desk.log.video_path().read_bytes(), b"ab")
+
+    def test_video_is_capped_and_empty_chunks_are_rejected(self):
+        import server
+        self.desk.log_video(b"abc")
+        with unittest.mock.patch.object(server, "LOG_VIDEO_MAX", 4):
+            self.assertIsNone(self.desk.log_video(b"de"))
+        self.assertEqual(self.desk.log.video_path().read_bytes(), b"abc")
+        with self.assertRaises(ValueError):
+            self.desk.log_video(b"")
+
+    def test_old_logs_take_their_videos_with_them(self):
+        log = FollowLog(self.dir.name, keep=2)
+        for _ in range(3):
+            log.begin(mode="x")
+            log.video_path().write_bytes(b"v")
+            log.end("t")
+        logs = {p.stem for p in Path(self.dir.name).glob("follow-*.jsonl")}
+        videos = {p.stem for p in Path(self.dir.name).glob("follow-*.webm")}
+        self.assertEqual(len(logs), 2)
+        self.assertLessEqual(videos, logs)
 
     def test_bad_debug_values_are_dropped_not_fatal(self):
         self.sample(dbg=dict(ok=1, bad="x", nan=float("nan"), flag=True))

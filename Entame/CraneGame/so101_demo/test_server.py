@@ -383,8 +383,10 @@ class LimitsTests(unittest.TestCase):
         limits = default_limits()
         self.assertEqual(speed_raw("elbow_flex", limits), 22)
         self.assertEqual(speed_raw("gripper", limits), 45)
-        self.assertEqual(step_raw("shoulder_lift", limits), 3.0)
+        self.assertEqual(step_raw("shoulder_pan", limits), 3.0)
         self.assertEqual(step_raw("gripper", limits), 3.0)
+        self.assertEqual(step_raw("shoulder_lift", limits), 8.0)     # 肩・肘は不感帯を超える量（実機ログで確認）
+        self.assertEqual(step_raw("elbow_flex", limits), 8.0)
 
     def test_rejects_bad_input(self):
         from limits import default_limits, parse_limits
@@ -466,7 +468,7 @@ class LimitsTests(unittest.TestCase):
         arm.write(dict(gripper=100))
         self.assertEqual(arm.robot.config.max_relative_target, {"gripper": 6.0})
         arm.write(dict(gripper=10, shoulder_lift=0))
-        self.assertEqual(arm.robot.config.max_relative_target, {"gripper": 6.0, "shoulder_lift": 3.0})
+        self.assertEqual(arm.robot.config.max_relative_target, {"gripper": 6.0, "shoulder_lift": 8.0})
 
 
 class FakeBus:
@@ -587,6 +589,53 @@ class LocalServerTests(unittest.TestCase):
                 exc.close()
             self.assertEqual(status, expected)
 
+    def post_video(self, body, origin=None, kind="video/webm"):
+        req = Request(self.url+"/followvideo", data=body, headers={"Origin": origin or self.url, "Content-Type": kind})
+        try:
+            with urlopen(req) as res:
+                return res.status, json.load(res)
+        except HTTPError as exc:
+            with exc:
+                return exc.code, json.load(exc)
+
+    def test_followvideo_takes_only_local_webm_and_saves_nothing_without_a_log(self):
+        self.assertEqual(self.post_video(b"abc"), (200, {"saved": None}))           # 追従していない＝ログが無い
+        self.assertEqual(self.post_video(b"abc", origin="https://example.org")[0], 403)
+        self.assertEqual(self.post_video(b"abc", kind="application/json")[0], 403)
+        self.assertEqual(self.post_video(b"")[0], 400)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LagIssueTests(unittest.TestCase):
+    """追従中の「何が問題か」。目標が実測から大きく離れた関節を、種類つきで返す。"""
+
+    def setUp(self):
+        self.time = 10.0
+        self.desk = Desk(MockArm(), clock=lambda: self.time)
+        self.desk.token = "t"                    # 追従中として扱う
+
+    def test_far_goal_below_step_ceiling_is_fast(self):
+        # 指令は速度上限で目標に届かず、実測の近くにある（lead 8 の天井に達していない）= 手が速い
+        self.desk.note_lag("shoulder_lift", want=60.0, goal=3.0, actual=0.0, now=self.time)
+        issue = self.desk.issues()[0]
+        self.assertEqual((issue["joint"], issue["kind"], issue["gap"]), ("shoulder_lift", "fast", 60))
+
+    def test_goal_pinned_at_step_ceiling_is_stuck(self):
+        lead = 4.0 * 2                           # step 4% = 内部の値 8
+        self.desk.note_lag("shoulder_lift", want=60.0, goal=lead, actual=0.0, now=self.time)
+        self.assertEqual(self.desk.issues()[0]["kind"], "stuck")
+
+    def test_small_gap_is_not_reported_and_warning_expires(self):
+        self.desk.note_lag("elbow_flex", want=10.0, goal=5.0, actual=0.0, now=self.time)
+        self.assertEqual(self.desk.issues(), [])
+        self.desk.note_lag("elbow_flex", want=60.0, goal=3.0, actual=0.0, now=self.time)
+        self.time += 2.0
+        self.assertEqual(self.desk.issues(), [])
+
+    def test_no_issues_when_not_following(self):
+        self.desk.note_lag("elbow_flex", want=60.0, goal=3.0, actual=0.0, now=self.time)
+        self.desk.token = None
+        self.assertEqual(self.desk.state()["issues"], [])
