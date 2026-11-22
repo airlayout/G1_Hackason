@@ -90,6 +90,52 @@ class GripperOnlyTests(unittest.TestCase):
             self.assertEqual(after[joint], before[joint])
 
 
+class WristRollTests(unittest.TestCase):
+    """グリッパーだけ追従の間に、手の傾き（roll −1〜1）で手首の回転が動く。他の関節は動かさない。"""
+
+    def start(self):
+        self.time = [10.0]
+        self.desk = Desk(MockArm(), clock=lambda: self.time[0])
+        self.token = self.desk.command(dict(op="start", gripper_only=True))["token"]
+        self.before = self.desk.arm.read()
+
+    def sample(self, **extra):
+        self.time[0] += 0.065
+        self.desk.command(dict(op="sample", token=self.token, height=0.5, opening=0.5, **extra))
+        return self.desk.arm.read()
+
+    def test_roll_moves_wrist_roll_toward_its_side(self):
+        for roll, sign in ((1.0, 1), (-1.0, -1)):
+            self.start()
+            after = self.sample(roll=roll)
+            self.assertGreater((after["wrist_roll"]-self.before["wrist_roll"])*sign, 0)
+
+    def test_roll_leaves_other_arm_joints_alone(self):
+        self.start()
+        after = self.sample(roll=1.0)
+        for joint in ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex"):
+            self.assertEqual(after[joint], self.before[joint])
+
+    def test_without_roll_wrist_roll_stays(self):
+        self.start()
+        self.assertEqual(self.sample()["wrist_roll"], self.before["wrist_roll"])
+
+    def test_roll_out_of_range_is_rejected(self):
+        self.start()
+        for bad in (1.5, -1.01, float("nan"), "1"):
+            with self.assertRaises(ValueError):
+                self.sample(roll=bad)
+
+    def test_roll_respects_limits_range(self):
+        self.start()
+        self.desk.token = None
+        self.desk.command(dict(op="limits", limits={"wrist_roll": {"min": 40, "max": 60}}))
+        self.token = self.desk.command(dict(op="start", gripper_only=True))["token"]
+        for _ in range(200):
+            after = self.sample(roll=1.0)
+        self.assertLessEqual(after["wrist_roll"], 20.0 + 1e-6)     # 60% は内部の値で +20
+
+
 class FingerCalibrationTests(unittest.TestCase):
     def test_save_merges_and_reloads(self):
         import tempfile

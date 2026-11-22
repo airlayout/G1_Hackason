@@ -7,6 +7,9 @@ const labels = {low:"つかむ位置", high:"持ち上げた位置"};
 // （2026-11-22）。校正前の表示用の仮の値は PROVISIONAL。校正が済むまで「追従開始」は使えない
 const PROVISIONAL={open:1,closed:.15};
 const CAL_DELAY_MS=3000, CAL_SAMPLE_MS=1000, CAL_STEADY=.12, CAL_MIN_GAP=.3, EDGE=.05;
+// 手首の回転＝手の傾き。手首(0)→中指の付け根(9)の線が画面の真上から何度傾いたか（画面上で時計回りが＋）。
+// ROLL_FULL_DEG 傾けると手首の可動範囲いっぱい。向きが逆なら ROLL_SIGN を -1 にする（実機・実画像で確認する）
+const ROLL_FULL_DEG=45, ROLL_SIGN=1;
 let fingerCal={}, lastRatio=null, lastHand=null;
 // 校正はサーバーのファイル（finger_calibration.json）に保存する。ブラウザを替えても、消しても、測り直しは要らない
 async function loadFinger(){
@@ -149,7 +152,7 @@ function updateGuide() {
   let next;
   if (state.fault) next = "通信異常です。実機と配線を確認し、サーバーを再起動してください";
   else if (!state.calibration.done) next = "先にモーターの校正が必要です。画面右の案内に従ってください";
-  else if (state.active) next = state.gripper_only ? "追従中（グリッパーだけ）です。指を開閉して動きを確認する。止めるにはスペースキー" : "追従中です。手を上下し、指を開閉して動きを確認する。止めるにはスペースキー";
+  else if (state.active) next = state.gripper_only ? "追従中（グリッパーと手首の回転）です。指を開閉し、手を左右に傾けて動きを確認する。止めるにはスペースキー" : "追従中です。手を上下し、指を開閉して動きを確認する。止めるにはスペースキー";
   else if (state.problem) next = "直す必要があります: " + state.problem;
   else if (index < 0) next = "すべて完了です。保存した動画を再生して、袋が机から離れたことを確認してください";
   else next = "手順 " + (index + 1) + "／" + steps.length + "：" + steps[index].text + "　" + steps[index].help;
@@ -454,10 +457,12 @@ function track(now){
   const angle=Math.acos(Math.max(-1,Math.min(1,(tx*ix+ty*iy)/(Math.hypot(tx,ty)*Math.hypot(ix,iy)||1))))*180/Math.PI;
   const ratio=distance(4,8)/palm;
   lastRatio=ratio;
-  lastHand={ratio,angle,pts:pts.map(({x,y,z})=>[+x.toFixed(4),+y.toFixed(4),+z.toFixed(4)])};
-  latest={height:limit((.72-pts[0].y)/.44),opening:limit(openingFromRatio(ratio))};
+  const [rx,ry]=vec(0,9), tilt=Math.atan2(rx,-ry)*180/Math.PI;   // 真上が 0°、時計回りが＋
+  const roll=Math.max(-1,Math.min(1,ROLL_SIGN*tilt/ROLL_FULL_DEG));
+  lastHand={ratio,angle,tilt,pts:pts.map(({x,y,z})=>[+x.toFixed(4),+y.toFixed(4),+z.toFixed(4)])};
+  latest={height:limit((.72-pts[0].y)/.44),opening:limit(openingFromRatio(ratio)),roll};
   for(const i of [0,4,8]){ctx.fillStyle="#60ffb1";ctx.beginPath();ctx.arc(pts[i].x*w,pts[i].y*h,5,0,2*Math.PI);ctx.fill();}
-  lastSeen=now; $("hand").textContent="手を認識　高さ "+Math.round(latest.height*100)+"% ／ 開き "+Math.round(latest.opening*100)+"%（距離比 "+ratio.toFixed(2)+"、角度 "+Math.round(angle)+"°）";
+  lastSeen=now; $("hand").textContent="手を認識　高さ "+Math.round(latest.height*100)+"% ／ 開き "+Math.round(latest.opening*100)+"%（距離比 "+ratio.toFixed(2)+"、角度 "+Math.round(angle)+"°）　傾き "+Math.round(tilt)+"°";
 }
 async function loop(now){
   try{
