@@ -126,6 +126,26 @@ class WristRollTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.sample(roll=bad)
 
+    def test_flex_moves_only_wrist_flex(self):
+        for flex, sign in ((1.0, 1), (-1.0, -1)):
+            self.start()
+            after = self.sample(flex=flex)
+            self.assertGreater((after["wrist_flex"]-self.before["wrist_flex"])*sign, 0)
+            for joint in ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_roll"):
+                self.assertEqual(after[joint], self.before[joint])
+
+    def test_roll_and_flex_move_together(self):
+        self.start()
+        after = self.sample(roll=1.0, flex=1.0)
+        self.assertGreater(after["wrist_roll"], self.before["wrist_roll"])
+        self.assertGreater(after["wrist_flex"], self.before["wrist_flex"])
+
+    def test_flex_out_of_range_is_rejected(self):
+        self.start()
+        for bad in (1.5, float("nan"), None):
+            with self.assertRaises(ValueError):
+                self.sample(flex=bad)
+
     def test_roll_respects_limits_range(self):
         self.start()
         self.desk.token = None

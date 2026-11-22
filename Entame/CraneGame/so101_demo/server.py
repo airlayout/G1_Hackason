@@ -20,7 +20,8 @@ LABELS = {"low": "つかむ位置", "high": "持ち上げた位置"}
 # グリッパーは登録なしの固定範囲。指の開き 0（くっつけた）→ 最大閉、1（90度に開いた）→ 最大開。
 # 向き（どちらが開くか）は実機で未確認。逆なら入れ替える（校正済みの 0〜100% が可動範囲いっぱい）。
 GRIPPER_CLOSED, GRIPPER_OPEN = 0.0, 100.0
-GRIPPER_ONLY_JOINTS = ("gripper", "wrist_roll")   # 「グリッパーだけ追従」で動かす関節（登録不要の関節）
+WRIST_INPUTS = {"wrist_roll": "roll", "wrist_flex": "flex"}   # 関節 → サンプルの項目名
+GRIPPER_ONLY_JOINTS = ("gripper", *WRIST_INPUTS)   # 「グリッパーだけ追従」で動かす関節（位置の登録が要らない関節）
 ARM_GAP = (1, 35)          # 上下２点の関節差の許容範囲（内部単位。表示は半分の%）
 HISTORY_MAX = 50
 FINGER_FILE = ROOT / "finger_calibration.json"   # 指の校正の保存先（1人1回。手が変わるときだけ測り直す）
@@ -329,7 +330,8 @@ class Desk:
                 raise ValueError("追従は停止中")
             height = number(data["height"], 0, 1)
             opening = number(data["opening"], 0, 1)
-            roll = number(data["roll"], -1, 1) if "roll" in data else None   # 手の傾き。-1〜1
+            # 手首の入力（手の傾き roll、手首の曲げ flex。どちらも -1〜1）。送られた関節だけ動かす
+            wrist = {j: number(data[key], -1, 1) for j, key in WRIST_INPUTS.items() if key in data}
             now = self.clock()
             dt = clip(now - self.last, 0, 0.12)
             self.last = now
@@ -339,9 +341,9 @@ class Desk:
                 if j == "gripper":
                     a, b, fraction = GRIPPER_CLOSED, GRIPPER_OPEN, opening
                 elif self.gripper_only:
-                    if roll is None:               # 傾きが送られなければ、手首は今の姿勢のまま
+                    if j not in wrist:             # 入力が送られなければ、その関節は今の姿勢のまま
                         continue
-                    a, b, fraction = -100.0, 100.0, (roll+1) / 2     # 手首の回転は、可動範囲いっぱいへ写す
+                    a, b, fraction = -100.0, 100.0, (wrist[j]+1) / 2     # 可動範囲いっぱいへ写す
                 else:
                     a, b, fraction = self.marks["low"][j], self.marks["high"][j], height
                 speed = speed_raw(j, self.limits)
@@ -379,7 +381,7 @@ class Desk:
             self.gripper_only = True
             self.last = self.clock()
             self.token = secrets.token_hex(16)
-            self.note = "追従中（グリッパーと手首の回転）"
+            self.note = "追従中（グリッパーと手首）"
             return dict(**self.state(), token=self.token)
         elif op == "start":
             self.gripper_only = False
