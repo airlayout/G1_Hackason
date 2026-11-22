@@ -1,18 +1,17 @@
 """初期姿勢（追従の基準）。値は limits.py と同じ内部の値（関節 -100〜100）。
 
 グリッパーが机に接した、モーターを OFF にしても保てる姿勢を、人が実機で作って記録する。
-追従（登録不要）では、手を画面の中央に置いた状態がこの姿勢に当たり、手を動かすと、動かせる下限・上限へ向かう。
+「初期姿勢へ戻す」ボタンの行き先になる。追従（登録不要）は、始めた瞬間の手の構えと腕の姿勢を基準にし（baseline.py）、
+手がそこから動いた分だけ腕が動く。基準の取り込みを使わないとき（Desk(sync=False)）は、この姿勢が入力 0 に当たる。
 保存ファイル（home.json）は起動時に自動で読む。無い・壊れているときは「未登録」（範囲の真ん中が基準）。
 """
 import json
 import math
 
-from limits import JOINTS, scale
+from limits import JOINTS
 
 HOME_JOINTS = JOINTS[:-1]        # グリッパーは含めない（指の開きで動かす）
-START_TOLERANCE = 10.0           # 追従の開始時に、初期姿勢から離れていてよい量（可動範囲に対する %）
-NAMES = {"shoulder_pan": "台座", "shoulder_lift": "肩", "elbow_flex": "肘",
-         "wrist_flex": "手首の曲げ", "wrist_roll": "手首の回転"}
+ROOM_MIN = 0.2                   # relative で、基準が端に近いときの、片側の余地の下限（入力が敏感になりすぎないように）
 
 
 def capture(pose):
@@ -65,6 +64,8 @@ def input_of(position, low, high, home=None):
     return max(-1.0, min(1.0, (position-base) / room)) if room > 0 else 0.0
 
 
-def far_joints(pose, home):
-    """初期姿勢から START_TOLERANCE より離れている関節の名前（日本語）。"""
-    return [NAMES[j] for j in HOME_JOINTS if abs(pose[j]-home[j]) > START_TOLERANCE*scale(j)]
+def relative(value, base):
+    """入力 value（-1〜1）を、基準 base を 0 にした -1〜1 へ直す。base が +1 のとき value=+1、-1 のとき -1 に届く（両端は保つ）。
+    base の側の余地が ROOM_MIN より小さいときは ROOM_MIN で割る。"""
+    room = max(1.0-base if value >= base else base+1.0, ROOM_MIN)
+    return max(-1.0, min(1.0, (value-base) / room))

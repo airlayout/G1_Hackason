@@ -10,9 +10,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from baseline import Baseline
 from followlog import FollowLog
-from home import capture, far_joints, load_home, neutral_map, save_home
-from syncgate import SyncGate
+from home import capture, load_home, neutral_map, save_home
 from limits import (JOINTS, MIN_SPAN, RANGES, clamp_pose, default_limits, load_limits, parse_limits, raw, save_limits,
                     speed_raw, step_raw)
 
@@ -29,6 +29,7 @@ FREE_INPUTS = {"shoulder_pan": "pan", "shoulder_lift": "lift", "elbow_flex": "re
 # 位置の登録なしで追従する関節（gripper_only モード。名前は、最初がグリッパーだけだった名残）。入力が送られた関節だけ動かす
 GRIPPER_ONLY_JOINTS = ("gripper", *FREE_INPUTS)
 FOLLOW_NOTE = "追従中（全関節。位置の登録なし）"
+WAIT_NOTE = "基準を取っています: 手を止めてください（腕は動かしません）"
 DEBUG_VALUES_MAX = 12       # サンプルに付く、画面側の生の値（デバッグログ用）の最大の数
 WHY_MAX = 60                # 停止の原因（画面が付ける文字列）の最大の長さ
 ARM_GAP = (1, 35)          # 上下２点の関節差の許容範囲（内部単位。表示は半分の%）
@@ -210,7 +211,7 @@ class Desk:
         self.log = log                       # 追従のデバッグログ（FollowLog）。None なら残さない
         self.limits, self.limits_file = limits or default_limits(), limits_file
         self.home, self.home_file = home, home_file      # 初期姿勢（5関節。未登録なら None）
-        self.gate = SyncGate(sync)           # 追従の開始時に、手と腕の姿勢が合うまで腕を動かさない（sync=True のとき）
+        self.baseline = Baseline(sync)       # 追従の開始時に、手と腕の姿勢を基準にする（sync=True のとき。取るまで腕は動かさない）
         if arm is not None:
             arm.set_limits(self.limits)
         self.retry, self.why, self.command_hint = retry, why, command
@@ -240,7 +241,7 @@ class Desk:
                     note=self.note, fault=self.fault, calibration=self.calibration(), drive=self.drive,
                     soft_level=self.soft_level,
                     gripper=dict(closed=GRIPPER_CLOSED, open=GRIPPER_OPEN), gripper_only=self.gripper_only,
-                    home=self.home, sync=self.gate.state() if self.token and self.gripper_only else None,
+                    home=self.home, sync=self.baseline.state() if self.token and self.gripper_only else None,
                     limits=self.limits, limit_defaults=default_limits(), limit_ranges=RANGES,
                     limit_min_span=MIN_SPAN)
 
@@ -324,14 +325,6 @@ class Desk:
         self.home = home
         self.note = "今の姿勢を初期姿勢に記録"
 
-    def check_home(self):
-        """初期姿勢があるときは、追従の開始前に、腕が初期姿勢の近くにあることを確かめる（飛び出し防止）。"""
-        if self.home is None:
-            return
-        far = far_joints(self.arm.read(), self.home)
-        if far:
-            raise ValueError("腕が初期姿勢から離れています（" + "、".join(far) + "）。「初期姿勢へ戻す」を押してください")
-
     def log_begin(self, mode):
         """追従の開始をデバッグログに残す（開始時の姿勢・制限・登録点つき）。"""
         if self.log is not None:
@@ -394,18 +387,19 @@ class Desk:
             self.last = now
             current = self.arm.read()
             goal, want = {}, {}
-            engaged = self.gate.update(free, current, self.limits, self.home) if self.gripper_only else True
+            engaged = self.baseline.update(free, current, self.limits) if self.gripper_only else True
             if self.gripper_only:
-                self.note = FOLLOW_NOTE if engaged else "同期待ち: 手を腕の姿勢に合わせてください（腕は動かしません）"
+                self.note = FOLLOW_NOTE if engaged else WAIT_NOTE
             for j in ((GRIPPER_ONLY_JOINTS if self.gripper_only else JOINTS) if engaged else ()):
                 if j == "gripper":
                     a, b, fraction = GRIPPER_CLOSED, GRIPPER_OPEN, opening
                 elif self.gripper_only:
-                    if j not in free:              # 入力が送られなければ、その関節は今の姿勢のまま
+                    rel = self.baseline.hand_input(j, free[j]) if j in free else None
+                    if rel is None:                # 入力が送られなければ（基準が無ければ）、その関節は今の姿勢のまま
                         continue
-                    # 入力 -1〜1 を、その関節の「動かせる下限〜上限」へ写す。0 が初期姿勢（未登録なら範囲の真ん中）
+                    # 入力 -1〜1 を、その関節の「動かせる下限〜上限」へ写す。0 は腕の基準（始めたときの姿勢。基準を使わないなら初期姿勢）
                     lo, hi = raw(j, self.limits[j]["min"]), raw(j, self.limits[j]["max"])
-                    a, b, fraction = 0.0, neutral_map(free[j], lo, hi, self.home and self.home[j]), 1.0
+                    a, b, fraction = 0.0, neutral_map(rel, lo, hi, self.baseline.reference(j, self.home)), 1.0
                 else:
                     a, b, fraction = self.marks["low"][j], self.marks["high"][j], height
                 speed = speed_raw(j, self.limits)
@@ -418,7 +412,8 @@ class Desk:
             if self.log is not None:
                 self.log.write("sample", inp=dict(height=height, opening=opening, **{FREE_INPUTS[j]: v for j, v in free.items()}),
                                dbg=debug_values(data.get("dbg")), dt=dt, cur=current, want=want, goal=goal,
-                               sync=dict(engaged=engaged, gaps=self.gate.gaps) if self.gripper_only else None)
+                               sync=dict(engaged=engaged, gaps=self.baseline.gaps, hand=self.baseline.hand,
+                                         anchor=self.baseline.anchor) if self.gripper_only else None)
         elif self.token:
             raise ValueError("設定を変える前に追従を停止してください")
         elif op == "limits":
@@ -447,13 +442,12 @@ class Desk:
                                                  pose=self.pose.copy())])[-HISTORY_MAX:]
             self.note = f"{LABELS[label]}を登録"
         elif op == "start" and data.get("gripper_only") is True:
-            # グリッパーだけ追従。位置の登録も、登録区間の確認も要らない（腕には指令を出さない）
-            self.check_home()
+            # 全関節の追従（名前は名残）。位置の登録は要らない。始めた瞬間の手と腕の姿勢を基準にする
             self.gripper_only = True
-            self.gate.reset()
+            self.baseline.reset()
             self.last = self.clock()
             self.token = secrets.token_hex(16)
-            self.note = "同期待ち: 手を腕の姿勢に合わせてください（腕は動かしません）" if self.gate.enabled else FOLLOW_NOTE
+            self.note = WAIT_NOTE if self.baseline.enabled else FOLLOW_NOTE
             self.log_begin("gripper_only")
             return dict(**self.state(), token=self.token)
         elif op == "start":

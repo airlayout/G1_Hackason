@@ -115,7 +115,7 @@ function render(data) {
   renderMarks(data);
   renderDrive(data);
   renderLimits(data);
-  renderSync(data, {lift:SHOULDER_SIGN, reach:REACH_SIGN, pan:PAN_SIGN, flex:FLEX_SIGN, roll:ROLL_SIGN});
+  renderSync(data);
   const blocked = data.active || data.fault || !data.calibration.done;
   const driven = data.drive === "on";   // OFF・やわらかのときは、スライダーと追従を使えない（姿勢の登録は使える）
   $("start").disabled = blocked || !driven || Object.keys(data.marks).length !== 2;
@@ -478,7 +478,8 @@ function track(now){
   const w=canvas.width,h=canvas.height;
   ctx.strokeStyle="#ffe081";
   for(const y of [.28,.72]){ctx.beginPath();ctx.moveTo(0,y*h);ctx.lineTo(w,y*h);ctx.stroke();}
-  latest=null; lastRatio=null; lastHand=null;
+  // latest は消さない。認識が1フレーム抜けても追従は止めず、loop が lastSeen（0.26秒）で「手を見失った」を判断する
+  lastRatio=null; lastHand=null;
   if(!pts){$("hand").textContent="手が見えません";return;}
   const distance=(a,b)=>Math.hypot((pts[a].x-pts[b].x)*w,(pts[a].y-pts[b].y)*h);
   const palm=distance(0,9);                     // 手首〜中指の付け根。横向きでも手のひら幅ほど縮まない

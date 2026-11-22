@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from home import HOME_JOINTS, far_joints, load_home, neutral_map, parse_home, save_home
+from home import HOME_JOINTS, load_home, neutral_map, parse_home, save_home
 from limits import default_limits
 from server import Desk, MockArm
 
@@ -51,11 +51,6 @@ class HomeFileTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_home({**HOME, "elbow_flex": 120})
 
-    def test_far_joints_lists_only_those_beyond_tolerance(self):
-        pose = {**HOME, "shoulder_lift": HOME["shoulder_lift"] + 30, "wrist_roll": 15.0}   # 許容は 10% = 内部の 20
-        self.assertEqual(far_joints(pose, HOME), ["肩"])
-        self.assertEqual(far_joints(HOME, HOME), [])
-
 
 class DeskHomeTests(unittest.TestCase):
     def setUp(self):
@@ -90,15 +85,12 @@ class DeskHomeTests(unittest.TestCase):
         self.assertAlmostEqual(up["shoulder_lift"], 100.0, places=3)
         self.assertAlmostEqual(up["elbow_flex"], -100.0, places=3)
 
-    def test_start_is_refused_when_far_from_home(self):
+    def test_start_is_allowed_from_any_pose(self):
         self.desk.command(dict(op="home"))
-        self.desk.arm.pose["shoulder_lift"] += 30
-        with self.assertRaises(ValueError) as caught:
-            self.desk.command(dict(op="start", gripper_only=True))
-        self.assertIn("肩", str(caught.exception))
-        self.assertIsNone(self.desk.token)
+        self.desk.arm.pose["shoulder_lift"] += 30          # 初期姿勢から離れていても、基準を取るので開始できる
+        self.assertTrue(self.desk.command(dict(op="start", gripper_only=True))["token"])
 
-    def test_start_without_home_is_not_checked(self):
+    def test_start_without_home_is_allowed(self):
         self.desk.arm.pose["shoulder_lift"] = 90.0
         self.assertTrue(self.desk.command(dict(op="start", gripper_only=True))["token"])
 
