@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from followlog import FollowLog
 from limits import (JOINTS, MIN_SPAN, RANGES, clamp_pose, default_limits, load_limits, parse_limits, save_limits,
                     speed_raw, step_raw)
 
@@ -20,8 +21,10 @@ LABELS = {"low": "つかむ位置", "high": "持ち上げた位置"}
 # グリッパーは登録なしの固定範囲。指の開き 0（くっつけた）→ 最大閉、1（90度に開いた）→ 最大開。
 # 向き（どちらが開くか）は実機で未確認。逆なら入れ替える（校正済みの 0〜100% が可動範囲いっぱい）。
 GRIPPER_CLOSED, GRIPPER_OPEN = 0.0, 100.0
-WRIST_INPUTS = {"wrist_roll": "roll", "wrist_flex": "flex"}   # 関節 → サンプルの項目名
-GRIPPER_ONLY_JOINTS = ("gripper", *WRIST_INPUTS)   # 「グリッパーだけ追従」で動かす関節（位置の登録が要らない関節）
+FREE_INPUTS = {"shoulder_pan": "pan", "wrist_roll": "roll", "wrist_flex": "flex"}   # 関節 → サンプルの項目名（-1〜1）
+GRIPPER_ONLY_JOINTS = ("gripper", *FREE_INPUTS)   # 「グリッパーだけ追従」で動かす関節（位置の登録が要らない関節）
+DEBUG_VALUES_MAX = 12       # サンプルに付く、画面側の生の値（デバッグログ用）の最大の数
+WHY_MAX = 60                # 停止の原因（画面が付ける文字列）の最大の長さ
 ARM_GAP = (1, 35)          # 上下２点の関節差の許容範囲（内部単位。表示は半分の%）
 HISTORY_MAX = 50
 FINGER_FILE = ROOT / "finger_calibration.json"   # 指の校正の保存先（1人1回。手が変わるときだけ測り直す）
@@ -64,6 +67,16 @@ def number(value, low, high):
 
 def clip(value, low, high):
     return min(high, max(low, value))
+
+
+def debug_values(raw):
+    """画面が付けた生の値（デバッグログ用）から、有限の数値だけを最大 DEBUG_VALUES_MAX 個取り出す。不正なら空。
+    ログのための値なので、不正でも追従は止めない。"""
+    if not isinstance(raw, dict):
+        return {}
+    ok = {k: float(v) for k, v in raw.items()
+          if isinstance(k, str) and type(v) in (int, float) and math.isfinite(v)}
+    return dict(list(ok.items())[:DEBUG_VALUES_MAX])
 
 
 def soft_deadband(level):
@@ -186,8 +199,9 @@ class Desk:
     retry を渡さない(模擬・テスト)ときは校正が不要で、最初から済みとして扱う。"""
 
     def __init__(self, arm, live=False, clock=time.monotonic, retry=None, why="", command="",
-                 limits=None, limits_file=None):
+                 limits=None, limits_file=None, log=None):
         self.arm, self.live, self.clock = arm, live, clock
+        self.log = log                       # 追従のデバッグログ（FollowLog）。None なら残さない
         self.limits, self.limits_file = limits or default_limits(), limits_file
         if arm is not None:
             arm.set_limits(self.limits)
@@ -290,7 +304,18 @@ class Desk:
         self.arm.set_limits(new)
         self.note = "制限を保存して適用"
 
+    def log_begin(self, mode):
+        """追従の開始をデバッグログに残す（開始時の姿勢・制限・登録点つき）。"""
+        if self.log is not None:
+            self.log.begin(mode=mode, live=self.live, pose=self.arm.read(), limits=self.limits, marks=self.marks)
+
+    def log_end(self, reason):
+        """追従のデバッグログを、停止の理由つきで閉じる（ログなし・追従中でなければ何もしない）。"""
+        if self.log is not None:
+            self.log.end(reason)
+
     def hold(self, reason):
+        self.log_end(reason)
         self.token = None
         self.cmd.clear()
         self.note = reason
@@ -313,12 +338,14 @@ class Desk:
                 raise ValueError("先にモーターの校正が必要です")
             self.token = None
         elif op == "stop":
-            self.hold("停止")
+            why = data.get("why")           # 画面が付ける、停止の原因（デバッグログ用）
+            self.hold("停止" + (f"（{why[:WHY_MAX]}）" if isinstance(why, str) and why else ""))
         elif op == "drive":
             mode = data["mode"]
             if mode not in DRIVE_NAMES:
                 raise ValueError("不明なモーターの状態")
             level = number(data.get("level", self.soft_level), 0, 100)
+            self.log_end("モーターの状態を切り替え")
             self.token = None                      # 追従中でも、先に追従を止める
             self.cmd.clear()
             self.arm.set_drive(mode, level)
@@ -330,27 +357,31 @@ class Desk:
                 raise ValueError("追従は停止中")
             height = number(data["height"], 0, 1)
             opening = number(data["opening"], 0, 1)
-            # 手首の入力（手の傾き roll、手首の曲げ flex。どちらも -1〜1）。送られた関節だけ動かす
-            wrist = {j: number(data[key], -1, 1) for j, key in WRIST_INPUTS.items() if key in data}
+            # 位置の登録が要らない関節の入力（台座 pan、手首の回転 roll、手首の曲げ flex。すべて -1〜1）。送られた関節だけ動かす
+            free = {j: number(data[key], -1, 1) for j, key in FREE_INPUTS.items() if key in data}
             now = self.clock()
             dt = clip(now - self.last, 0, 0.12)
             self.last = now
             current = self.arm.read()
-            goal = {}
+            goal, want = {}, {}
             for j in (GRIPPER_ONLY_JOINTS if self.gripper_only else JOINTS):
                 if j == "gripper":
                     a, b, fraction = GRIPPER_CLOSED, GRIPPER_OPEN, opening
                 elif self.gripper_only:
-                    if j not in wrist:             # 入力が送られなければ、その関節は今の姿勢のまま
+                    if j not in free:              # 入力が送られなければ、その関節は今の姿勢のまま
                         continue
-                    a, b, fraction = -100.0, 100.0, (wrist[j]+1) / 2     # 可動範囲いっぱいへ写す
+                    a, b, fraction = -100.0, 100.0, (free[j]+1) / 2      # 可動範囲いっぱいへ写す
                 else:
                     a, b, fraction = self.marks["low"][j], self.marks["high"][j], height
                 speed = speed_raw(j, self.limits)
-                delta = clip(a + (b-a)*fraction - current[j], -speed*dt, speed*dt)
+                want[j] = a + (b-a)*fraction
+                delta = clip(want[j] - current[j], -speed*dt, speed*dt)
                 goal[j] = current[j] + delta
             self.arm.write(goal)
             self.pose = current
+            if self.log is not None:
+                self.log.write("sample", inp=dict(height=height, opening=opening, **{FREE_INPUTS[j]: v for j, v in free.items()}),
+                               dbg=debug_values(data.get("dbg")), dt=dt, cur=current, want=want, goal=goal)
         elif self.token:
             raise ValueError("設定を変える前に追従を停止してください")
         elif op == "limits":
@@ -381,7 +412,8 @@ class Desk:
             self.gripper_only = True
             self.last = self.clock()
             self.token = secrets.token_hex(16)
-            self.note = "追従中（グリッパーと手首）"
+            self.note = "追従中（グリッパー・台座・手首）"
+            self.log_begin("gripper_only")
             return dict(**self.state(), token=self.token)
         elif op == "start":
             self.gripper_only = False
@@ -401,6 +433,7 @@ class Desk:
             self.last = self.clock()
             self.token = secrets.token_hex(16)
             self.note = "追従中"
+            self.log_begin("full")
             return dict(**self.state(), token=self.token)
         else:
             raise ValueError("不明な操作")
@@ -523,6 +556,8 @@ def main():
                 try:
                     result = desk.command(data)
                 except (KeyError, TypeError, ValueError) as e:
+                    if desk.token and desk.log is not None:     # 追従中に拒否された指令（原因調査用）
+                        desk.log.write("error", reason=f"{type(e).__name__}: {e}", op=str(data.get("op")))
                     return self.reply(400, {"error": str(e)})
                 except Exception as e:
                     fail(e)
@@ -530,6 +565,9 @@ def main():
             self.reply(200, result)
 
     def fail(exc):
+        if desk.log is not None:
+            desk.log.write("error", reason=f"{type(exc).__name__}: {exc}")
+        desk.log_end("通信異常で停止")
         desk.token = None
         desk.fault = True
         desk.note = "通信異常: " + str(exc)
@@ -544,9 +582,10 @@ def main():
             except ValueError as exc:      # 校正の欠落・不一致は、画面で案内して待つ
                 arm, why = None, str(exc)
             desk = Desk(arm, True, retry=lambda: RealArm(args), why=why, command=calibrate_command(args),
-                        limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE)
+                        limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE, log=FollowLog(ROOT / "debug"))
         else:
-            desk = Desk(MockArm(), limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE)
+            desk = Desk(MockArm(), limits=load_limits(LIMITS_FILE), limits_file=LIMITS_FILE,
+                        log=FollowLog(ROOT / "debug"))
         done = threading.Event()
         def watch():
             while not done.wait(SOFT_TICK_S):

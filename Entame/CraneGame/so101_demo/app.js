@@ -14,6 +14,9 @@ const ROLL_FULL_DEG=45, ROLL_SIGN=1;
 // 真っ直ぐ約1.6、奥に倒すと約1.0（2026-11-22 の実画像）。FLEX_STRAIGHT 以上は「曲げなし」（可動範囲の中央）、
 // FLEX_FULL で端。手前に倒すと認識が外れるので片方向だけ。向きが逆なら FLEX_SIGN を -1 にする（1 のままで実機の向きが合うことを 2026-11-22 に確認済み）
 const FLEX_STRAIGHT=1.55, FLEX_FULL=1.05, FLEX_SIGN=1;
+// 台座＝手の左右位置。手の画面内の横位置（中指の付け根の x。0〜1）が 0.5±PAN_HALF_RANGE で台座の可動範囲の両端。
+// 映像は鏡像にしていない。向きが逆なら PAN_SIGN を -1 にする（実機で確認する）
+const PAN_HALF_RANGE=.3, PAN_SIGN=1;
 let fingerCal={}, lastRatio=null, lastHand=null;
 // 校正はサーバーのファイル（finger_calibration.json）に保存する。ブラウザを替えても、消しても、測り直しは要らない
 async function loadFinger(){
@@ -156,7 +159,7 @@ function updateGuide() {
   let next;
   if (state.fault) next = "通信異常です。実機と配線を確認し、サーバーを再起動してください";
   else if (!state.calibration.done) next = "先にモーターの校正が必要です。画面右の案内に従ってください";
-  else if (state.active) next = state.gripper_only ? "追従中（グリッパーと手首）です。指を開閉し、手を左右に傾け、手首を奥へ曲げて動きを確認する。止めるにはスペースキー" : "追従中です。手を上下し、指を開閉して動きを確認する。止めるにはスペースキー";
+  else if (state.active) next = state.gripper_only ? "追従中（グリッパー・台座・手首）です。指を開閉し、手を左右へ動かし、傾け、手首を奥へ曲げて動きを確認する。止めるにはスペースキー" : "追従中です。手を上下し、指を開閉して動きを確認する。止めるにはスペースキー";
   else if (state.problem) next = "直す必要があります: " + state.problem;
   else if (index < 0) next = "すべて完了です。保存した動画を再生して、袋が机から離れたことを確認してください";
   else next = "手順 " + (index + 1) + "／" + steps.length + "：" + steps[index].text + "　" + steps[index].help;
@@ -234,16 +237,19 @@ async function command(op, fields={}) {
 function bind(button, action) {
   button.onclick = async () => { try { info(""); await action(); } catch(e) { info(e.message); } };
 }
-async function stop() {
+// why は停止の原因。サーバーのデバッグログ（debug/follow-*.jsonl）の stop に残る
+async function stop(why) {
   generation++; token = null; for (const k of Object.keys(targets)) delete targets[k];
-  render(await command("stop"));
+  render(await command("stop", why ? {why} : {}));
 }
-bind($("stop"),stop);
+bind($("stop"),()=>stop("停止ボタン／スペースキー"));
 initLimits({joints, command, info, render});
 window.addEventListener("keydown", e => {
   if(e.code === "Space"){e.preventDefault(); if(!e.repeat) $("stop").click();}
 });
-document.addEventListener("visibilitychange", () => {if(document.hidden && (token || starting)) $("stop").click();});
+document.addEventListener("visibilitychange", () => {
+  if(document.hidden && (token || starting)) stop("タブが隠れた").catch(e=>info(e.message));
+});
 // 現在位置: スライダーは可動範囲に対する 0〜100%。離した後も、目標へ少しずつ近づける（1回の指令で動く量はサーバーが制限）
 for (const [j,name] of Object.entries(joints)){
   const row=document.createElement("div"), text=document.createElement("span"), value=document.createElement("output"), slider=document.createElement("input");
@@ -366,7 +372,7 @@ async function startFollow(gripperOnly){
   try {
     for (const k of Object.keys(targets)) delete targets[k];
     const result=await command("start", gripperOnly ? {gripper_only: true} : {});
-    if(sequence!==generation){await stop(); return;}
+    if(sequence!==generation){await stop("開始中に別の操作が入った"); return;}
     token=result.token; followed=true; render(result);
   } finally {starting=false;}
 }
@@ -395,14 +401,14 @@ function closeStream(stream){stream?.getTracks().forEach(t=>t.stop());}
 // 映像ボタンは開閉の切り替え。開いている間は「映像を閉じる」、閉じている間は「映像を開く」
 function showCameraButton(){$("enable").textContent=camera?"映像を閉じる":"映像を開く";}
 async function closeCamera(){
-  await stop();
+  await stop("映像を閉じた");
   closeStream(camera); camera=null; latest=null; lastRatio=null; lastHand=null; frame=-1;
   $("input").srcObject=null;
   const canvas=$("overlay"); canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);
   $("hand").textContent="停止中"; $("perf").textContent="認識 — ms／フレーム　— fps";
 }
 async function openCamera(){
-  await stop();
+  await stop("映像を開き直した");
   await loadTracker();
   camera=await navigator.mediaDevices.getUserMedia(constraint($("cam").value));
   $("input").srcObject=camera; await $("input").play(); await listCameras();
@@ -465,8 +471,11 @@ function track(now){
   const roll=Math.max(-1,Math.min(1,ROLL_SIGN*tilt/ROLL_FULL_DEG));
   const shrink=palm/distance(5,17)||0;
   const flex=FLEX_SIGN*limit((FLEX_STRAIGHT-shrink)/(FLEX_STRAIGHT-FLEX_FULL));
+  const pan=PAN_SIGN*Math.max(-1,Math.min(1,(pts[9].x-.5)/PAN_HALF_RANGE));
   lastHand={ratio,angle,tilt,shrink,pts:pts.map(({x,y,z})=>[+x.toFixed(4),+y.toFixed(4),+z.toFixed(4)])};
-  latest={height:limit((.72-pts[0].y)/.44),opening:limit(openingFromRatio(ratio)),roll,flex};
+  latest={height:limit((.72-pts[0].y)/.44),opening:limit(openingFromRatio(ratio)),roll,flex,pan,
+    // 画面側の生の値。サーバーのデバッグログ（debug/follow-*.jsonl）に、入力の元の値として残る
+    dbg:{ratio,tilt,shrink,palm,x:pts[9].x,y:pts[0].y,angle}};
   for(const i of [0,4,8]){ctx.fillStyle="#60ffb1";ctx.beginPath();ctx.arc(pts[i].x*w,pts[i].y*h,5,0,2*Math.PI);ctx.fill();}
   lastSeen=now; $("hand").textContent="手を認識　高さ "+Math.round(latest.height*100)+"% ／ 開き "+Math.round(latest.opening*100)+"%（距離比 "+ratio.toFixed(2)+"、角度 "+Math.round(angle)+"°）　傾き "+Math.round(tilt)+"°　縮み "+shrink.toFixed(2);
 }
@@ -477,7 +486,7 @@ async function loop(now){
       const sample=isManual()?{height:$("height").value/100,opening:$("opening").value/100}:latest;
       pending=true; lastSample=now;
       try{
-        if(!sample || (!isManual() && now-lastSeen>260)){await stop(); return;}
+        if(!sample || (!isManual() && now-lastSeen>260)){await stop(sample?"手を見失った（0.26秒以上）":"手の入力なし"); return;}
         const seq=generation;
         const result=await command("sample",{token,...sample});
         if(seq===generation) render(result);
@@ -485,7 +494,7 @@ async function loop(now){
     }
   }catch(e){
     const wasActive=Boolean(token); token=null;
-    if(wasActive){try{await stop();}catch{}}
+    if(wasActive){try{await stop("画面側のエラー: "+e.message);}catch{}}
     info(e.message);
   }finally{requestAnimationFrame(loop);}
 }
