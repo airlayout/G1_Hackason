@@ -63,4 +63,15 @@ details{margin-top:12px}details label{display:block}
 #error{color:var(--warn);font-weight:700;position:sticky;bottom:0;background:#fff1e9;margin:0}
 #error:not(:empty){padding:10px}
 a{color:#096458}
+#syncCard{margin:10px 0;padding:12px 14px}#syncCard h3{margin:0 0 8px}
+.sync-row{display:grid;grid-template-columns:7.5em 1fr 12em;gap:10px;align-items:center;margin:6px 0;padding:2px 6px;border-radius:8px}
+.sync-row.ng{background:#fbe9e7}.sync-row.ng output{color:var(--warn);font-weight:700}
+.sync-track{position:relative;height:22px;background:#e3ebe8;border-radius:11px}
+.sync-track::before{content:"";position:absolute;left:50%;top:2px;bottom:2px;width:2px;background:#7d9a94}
+.sync-zone{position:absolute;top:0;bottom:0;background:#bfe6d6;border-radius:11px}
+.sync-robot,.sync-hand{position:absolute;top:50%;width:0;height:0;text-decoration:none}
+.sync-robot::before{content:"▲";color:#1d5fb4;font-size:16px;position:absolute;left:-8px;top:-9px}
+.sync-hand::before{content:"●";color:#0b8a4a;font-size:18px;position:absolute;left:-8px;top:-12px}
+.sync-row.ng .sync-hand::before{color:var(--warn)}
+@media(max-width:640px){.sync-row{grid-template-columns:6em 1fr}.sync-row output{grid-column:1 / -1}}
 @media(max-width:720px){header,main{padding:12px}.row{gap:5px}.right{max-width:none}}

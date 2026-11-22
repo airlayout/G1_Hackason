@@ -1,4 +1,5 @@
 import {initLimits, renderLimits} from "/limits.js";
+import {renderSync} from "/sync.js";
 const $ = id => document.getElementById(id);
 const joints = {shoulder_pan:"台座", shoulder_lift:"肩", elbow_flex:"肘", wrist_flex:"手首の曲げ", wrist_roll:"手首の回転", gripper:"グリッパー"};
 const labels = {low:"つかむ位置", high:"持ち上げた位置"};
@@ -114,6 +115,7 @@ function render(data) {
   renderMarks(data);
   renderDrive(data);
   renderLimits(data);
+  renderSync(data, {lift:SHOULDER_SIGN, reach:REACH_SIGN, pan:PAN_SIGN, flex:FLEX_SIGN, roll:ROLL_SIGN});
   const blocked = data.active || data.fault || !data.calibration.done;
   const driven = data.drive === "on";   // OFF・やわらかのときは、スライダーと追従を使えない（姿勢の登録は使える）
   $("start").disabled = blocked || !driven || Object.keys(data.marks).length !== 2;

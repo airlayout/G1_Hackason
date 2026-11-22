@@ -57,6 +57,14 @@ def neutral_map(value, low, high, home=None):
     return base + (high-base)*value if value >= 0 else base + (base-low)*value
 
 
+def input_of(position, low, high, home=None):
+    """neutral_map の逆。関節の位置 position（内部の値）を、入力 -1〜1 の尺度にする（手の入力と比べる用）。
+    基準の側に余地がない（基準が範囲の端）ときは 0。"""
+    base = (low+high) / 2 if home is None else min(high, max(low, home))
+    room = high-base if position >= base else base-low
+    return max(-1.0, min(1.0, (position-base) / room)) if room > 0 else 0.0
+
+
 def far_joints(pose, home):
     """初期姿勢から START_TOLERANCE より離れている関節の名前（日本語）。"""
     return [NAMES[j] for j in HOME_JOINTS if abs(pose[j]-home[j]) > START_TOLERANCE*scale(j)]
