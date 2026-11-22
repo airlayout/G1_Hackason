@@ -109,6 +109,38 @@ class DeskFollowLogTests(unittest.TestCase):
         self.assertNotEqual(self.desk.log.path, first)
 
 
+class ShoulderElbowTests(unittest.TestCase):
+    """肩（lift）と肘（reach）は、送られた関節だけが入力の向きへ動く。"""
+
+    def move(self, **inputs):
+        time = [10.0]
+        desk = Desk(MockArm(), clock=lambda: time[0])
+        token = desk.command(dict(op="start", gripper_only=True))["token"]
+        before = desk.arm.read()
+        time[0] += 0.065
+        desk.command(dict(op="sample", token=token, height=0.5, opening=0.5, **inputs))
+        return before, desk.arm.read()
+
+    def test_each_input_moves_only_its_joint(self):
+        for key, joint in (("lift", "shoulder_lift"), ("reach", "elbow_flex")):
+            for value, sign in ((1.0, 1), (-1.0, -1)):
+                before, after = self.move(**{key: value})
+                self.assertGreater((after[joint]-before[joint])*sign, 0)
+                for other in ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"):
+                    if other != joint:
+                        self.assertEqual(after[other], before[other])
+
+    def test_out_of_range_is_rejected(self):
+        for key in ("lift", "reach"):
+            with self.assertRaises(ValueError):
+                self.move(**{key: 1.2})
+
+    def test_all_arm_inputs_together(self):
+        before, after = self.move(pan=1, lift=1, reach=1, flex=1, roll=1)
+        for joint in ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"):
+            self.assertGreater(after[joint], before[joint])
+
+
 class PanTests(unittest.TestCase):
     def test_pan_moves_only_shoulder_pan_toward_its_side(self):
         for pan, sign in ((1.0, 1), (-1.0, -1)):

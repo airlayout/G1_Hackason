@@ -21,8 +21,10 @@ LABELS = {"low": "つかむ位置", "high": "持ち上げた位置"}
 # グリッパーは登録なしの固定範囲。指の開き 0（くっつけた）→ 最大閉、1（90度に開いた）→ 最大開。
 # 向き（どちらが開くか）は実機で未確認。逆なら入れ替える（校正済みの 0〜100% が可動範囲いっぱい）。
 GRIPPER_CLOSED, GRIPPER_OPEN = 0.0, 100.0
-FREE_INPUTS = {"shoulder_pan": "pan", "wrist_roll": "roll", "wrist_flex": "flex"}   # 関節 → サンプルの項目名（-1〜1）
-GRIPPER_ONLY_JOINTS = ("gripper", *FREE_INPUTS)   # 「グリッパーだけ追従」で動かす関節（位置の登録が要らない関節）
+FREE_INPUTS = {"shoulder_pan": "pan", "shoulder_lift": "lift", "elbow_flex": "reach",
+               "wrist_flex": "flex", "wrist_roll": "roll"}     # 関節 → サンプルの項目名（-1〜1）
+# 位置の登録なしで追従する関節（gripper_only モード。名前は、最初がグリッパーだけだった名残）。入力が送られた関節だけ動かす
+GRIPPER_ONLY_JOINTS = ("gripper", *FREE_INPUTS)
 DEBUG_VALUES_MAX = 12       # サンプルに付く、画面側の生の値（デバッグログ用）の最大の数
 WHY_MAX = 60                # 停止の原因（画面が付ける文字列）の最大の長さ
 ARM_GAP = (1, 35)          # 上下２点の関節差の許容範囲（内部単位。表示は半分の%）
@@ -357,7 +359,8 @@ class Desk:
                 raise ValueError("追従は停止中")
             height = number(data["height"], 0, 1)
             opening = number(data["opening"], 0, 1)
-            # 位置の登録が要らない関節の入力（台座 pan、手首の回転 roll、手首の曲げ flex。すべて -1〜1）。送られた関節だけ動かす
+            # 位置の登録が要らない関節の入力（台座 pan、肩 lift、肘 reach、手首の曲げ flex、手首の回転 roll。すべて -1〜1）。
+            # 送られた関節だけ動かす
             free = {j: number(data[key], -1, 1) for j, key in FREE_INPUTS.items() if key in data}
             now = self.clock()
             dt = clip(now - self.last, 0, 0.12)
@@ -412,7 +415,7 @@ class Desk:
             self.gripper_only = True
             self.last = self.clock()
             self.token = secrets.token_hex(16)
-            self.note = "追従中（グリッパー・台座・手首）"
+            self.note = "追従中（全関節。位置の登録なし）"
             self.log_begin("gripper_only")
             return dict(**self.state(), token=self.token)
         elif op == "start":

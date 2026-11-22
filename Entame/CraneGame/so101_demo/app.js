@@ -17,6 +17,10 @@ const FLEX_STRAIGHT=1.55, FLEX_FULL=1.05, FLEX_SIGN=1;
 // 台座＝手の左右位置。手の画面内の横位置（中指の付け根の x。0〜1）が 0.5±PAN_HALF_RANGE で台座の可動範囲の両端。
 // 映像は鏡像にしていない。実機で 1 だと左右が逆だったので -1（2026-11-22）。手が画面の右（本人から見て左）へ行くと台座は負の側へ
 const PAN_HALF_RANGE=.3, PAN_SIGN=-1;
+// 肩は手の高さ（上げると＋）、肘は手の大きさ＝カメラへの近さ（人差し指の付け根〜小指の付け根が画面幅に占める割合。
+// 手前ほど大きい）。向きは実機で確かめる値。逆なら符号を反転する
+const SHOULDER_SIGN=1;
+const REACH_FAR=.09, REACH_NEAR=.16, REACH_SIGN=1;     // 実測の範囲（遠い小さな手 0.082〜近い大きな手 0.177）の内側
 let fingerCal={}, lastRatio=null, lastHand=null;
 // 校正はサーバーのファイル（finger_calibration.json）に保存する。ブラウザを替えても、消しても、測り直しは要らない
 async function loadFinger(){
@@ -159,7 +163,7 @@ function updateGuide() {
   let next;
   if (state.fault) next = "通信異常です。実機と配線を確認し、サーバーを再起動してください";
   else if (!state.calibration.done) next = "先にモーターの校正が必要です。画面右の案内に従ってください";
-  else if (state.active) next = state.gripper_only ? "追従中（グリッパー・台座・手首）です。指を開閉し、手を左右へ動かし、傾け、手首を奥へ曲げて動きを確認する。止めるにはスペースキー" : "追従中です。手を上下し、指を開閉して動きを確認する。止めるにはスペースキー";
+  else if (state.active) next = state.gripper_only ? "追従中（全関節）です。指を開閉し、手を上下・左右・前後へ動かし、傾け、手首を奥へ曲げて動きを確認する。止めるにはスペースキー" : "追従中です。手を上下し、指を開閉して動きを確認する。止めるにはスペースキー";
   else if (state.problem) next = "直す必要があります: " + state.problem;
   else if (index < 0) next = "すべて完了です。保存した動画を再生して、袋が机から離れたことを確認してください";
   else next = "手順 " + (index + 1) + "／" + steps.length + "：" + steps[index].text + "　" + steps[index].help;
@@ -472,10 +476,14 @@ function track(now){
   const shrink=palm/distance(5,17)||0;
   const flex=FLEX_SIGN*limit((FLEX_STRAIGHT-shrink)/(FLEX_STRAIGHT-FLEX_FULL));
   const pan=PAN_SIGN*Math.max(-1,Math.min(1,(pts[9].x-.5)/PAN_HALF_RANGE));
+  const height=limit((.72-pts[0].y)/.44);
+  const width=distance(5,17)/w;
+  const lift=SHOULDER_SIGN*(2*height-1);
+  const reach=REACH_SIGN*(2*limit((width-REACH_FAR)/(REACH_NEAR-REACH_FAR))-1);
   lastHand={ratio,angle,tilt,shrink,pts:pts.map(({x,y,z})=>[+x.toFixed(4),+y.toFixed(4),+z.toFixed(4)])};
-  latest={height:limit((.72-pts[0].y)/.44),opening:limit(openingFromRatio(ratio)),roll,flex,pan,
+  latest={height,opening:limit(openingFromRatio(ratio)),roll,flex,pan,lift,reach,
     // 画面側の生の値。サーバーのデバッグログ（debug/follow-*.jsonl）に、入力の元の値として残る
-    dbg:{ratio,tilt,shrink,palm,x:pts[9].x,y:pts[0].y,angle}};
+    dbg:{ratio,tilt,shrink,palm,width,x:pts[9].x,y:pts[0].y,angle}};
   for(const i of [0,4,8]){ctx.fillStyle="#60ffb1";ctx.beginPath();ctx.arc(pts[i].x*w,pts[i].y*h,5,0,2*Math.PI);ctx.fill();}
   lastSeen=now; $("hand").textContent="手を認識　高さ "+Math.round(latest.height*100)+"% ／ 開き "+Math.round(latest.opening*100)+"%（距離比 "+ratio.toFixed(2)+"、角度 "+Math.round(angle)+"°）　傾き "+Math.round(tilt)+"°　縮み "+shrink.toFixed(2);
 }
