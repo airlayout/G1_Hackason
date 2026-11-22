@@ -13,6 +13,10 @@
 <div class="row"><button id="calOpen">指を最大に開く（3秒後に測る）</button><button id="calClosed">指をくっつける（3秒後に測る）</button><span id="fingerState" role="status">未校正</span></div>
 <p class="help">指の開閉の校正は1回だけ（ブラウザに保存）。親指と人差し指を、最大に開いた形とくっつけた形で測り、グリッパーの最大開・最大閉に対応させます。</p>
 <div class="row"><button id="startGripper">全関節を追従（登録不要）</button> <button id="start">腕も追従（要登録）</button><span id="status" role="status">待機中</span></div>
+<div id="followBox" class="row"><b>追従する関節</b>
+<label><input type="checkbox" data-joint="shoulder_pan" checked>台座</label><label><input type="checkbox" data-joint="shoulder_lift" checked>肩</label><label><input type="checkbox" data-joint="elbow_flex" checked>肘</label><label><input type="checkbox" data-joint="wrist_flex" checked>手首の曲げ</label><label><input type="checkbox" data-joint="wrist_roll" checked>手首の回転</label><label><input type="checkbox" data-joint="gripper" checked>グリッパー</label>
+<button id="followAll" type="button">すべてON</button><button id="followNone" type="button">すべてOFF</button></div>
+<p class="help">「全関節を追従」用。切り分けのため、動かしたい関節だけチェックする。追従中に切り替えてもよい（OFFにした関節は今の姿勢のまま止まり、ONにした関節は、その時点の手と腕の位置から動き出す）。</p>
 <p class="help">指先を近づけるとつかみ、手首を上げると持ち上げます。「全関節を追従」を押したら、手を画面に映して約 0.3 秒止めてください。その構えと腕の今の姿勢が基準になり（構えは何でもかまいません）、手がそこから動いた分だけ、腕が動きます。</p>
 <section id="syncCard" hidden><h3>手と腕の姿勢 <small id="syncState"></small></h3>
 <div id="syncRows"></div>

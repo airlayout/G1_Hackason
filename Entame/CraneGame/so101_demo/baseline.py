@@ -53,6 +53,12 @@ class Baseline:
             return value
         return relative(value, self.hand[joint]) if joint in self.hand else None
 
+    def rebase(self, joint, value, current):
+        """追従の途中でONにした関節の基準を、その時点の手の入力と腕の姿勢で取り直す（基準を使うときだけ）。"""
+        if self.enabled and self.ready:
+            self.hand[joint] = value
+            self.anchor[joint] = float(current[joint])
+
     def reference(self, joint, home):
         """入力 0 に当たる腕の位置（内部の値）。基準を使わないときは初期姿勢（未登録なら None＝範囲の真ん中）。"""
         return self.anchor[joint] if self.enabled else home and home[joint]

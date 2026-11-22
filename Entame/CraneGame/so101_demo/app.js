@@ -404,6 +404,10 @@ bindFingerCal($("calOpen"), "open"); bindFingerCal($("calClosed"), "closed");
 $("fingerState").textContent = fingerText(); loadFinger();
 bind($("start"), () => startFollow(false));
 bind($("startGripper"), () => startFollow(true));
+// 追従する関節のチェック（「全関節を追従」用）。サンプルごとにサーバーへ送る。サーバーは、チェックの無い関節へ指令を出さない
+const followJoints = () => [...document.querySelectorAll("#followBox input[data-joint]")].filter(c => c.checked).map(c => c.dataset.joint);
+for (const [id, on] of [["followAll", true], ["followNone", false]])
+  $(id).addEventListener("click", () => document.querySelectorAll("#followBox input[data-joint]").forEach(c => { c.checked = on; }));
 async function startFollow(gripperOnly){
   if(starting) return;
   if(!isManual() && !fingerReady()) throw new Error("先に指の開閉を校正してください（「指を最大に開く」「指をくっつける」）");
@@ -534,7 +538,7 @@ async function loop(now){
       try{
         if(!sample || (!isManual() && now-lastSeen>260)){await stop(sample?"手を見失った（0.26秒以上）":"手の入力なし"); return;}
         const seq=generation;
-        const result=await command("sample",{token,...sample});
+        const result=await command("sample",{token,...sample,...(state?.gripper_only?{follow:followJoints()}:{})});
         if(seq===generation) render(result);
       }finally{pending=false;}
     }

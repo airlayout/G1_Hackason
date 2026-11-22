@@ -76,6 +76,15 @@ def clip(value, low, high):
     return min(high, max(low, value))
 
 
+def parse_follow(value):
+    """追従する関節の指定（画面のチェック）。送られなければ全部。不正なら fail fast。"""
+    if value is None:
+        return frozenset(GRIPPER_ONLY_JOINTS)
+    if not isinstance(value, list) or any(j not in GRIPPER_ONLY_JOINTS for j in value):
+        raise ValueError("追従する関節の指定が不正です")
+    return frozenset(value)
+
+
 def debug_values(raw):
     """画面が付けた生の値（デバッグログ用）から、有限の数値だけを最大 DEBUG_VALUES_MAX 個取り出す。不正なら空。
     ログのための値なので、不正でも追従は止めない。"""
@@ -220,6 +229,7 @@ class Desk:
         self.soft_level = SOFT_LEVEL
         self.cmd = {}                        # 関節ごとの (指令位置, 時刻)。スライダー移動で、目標へ一定速度で進める
         self.marks = {}
+        self.followed = frozenset()          # 直前のサンプルで追従がONだった関節（途中でONにした関節の検出用）
         self.gripper_only = False            # True の間は、グリッパーだけ追従する（腕は今の姿勢のまま）
         self.history = []
         self.token = None
@@ -387,10 +397,19 @@ class Desk:
             self.last = now
             current = self.arm.read()
             goal, want = {}, {}
+            follow = parse_follow(data.get("follow"))
+            was_ready = self.baseline.ready
             engaged = self.baseline.update(free, current, self.limits) if self.gripper_only else True
             if self.gripper_only:
                 self.note = FOLLOW_NOTE if engaged else WAIT_NOTE
+                if was_ready:                   # 追従の途中でONにした関節は、その時点の手と腕を基準にし直す（飛び出し防止）
+                    for j in follow - self.followed:
+                        if j in free:
+                            self.baseline.rebase(j, free[j], current)
+                self.followed = follow
             for j in ((GRIPPER_ONLY_JOINTS if self.gripper_only else JOINTS) if engaged else ()):
+                if self.gripper_only and j not in follow:      # 追従をOFFにした関節は、指令を出さない（今の姿勢のまま）
+                    continue
                 if j == "gripper":
                     a, b, fraction = GRIPPER_CLOSED, GRIPPER_OPEN, opening
                 elif self.gripper_only:
@@ -410,7 +429,8 @@ class Desk:
                 self.arm.write(goal)
             self.pose = current
             if self.log is not None:
-                self.log.write("sample", inp=dict(height=height, opening=opening, **{FREE_INPUTS[j]: v for j, v in free.items()}),
+                self.log.write("sample", follow=sorted(follow) if self.gripper_only else None,
+                               inp=dict(height=height, opening=opening, **{FREE_INPUTS[j]: v for j, v in free.items()}),
                                dbg=debug_values(data.get("dbg")), dt=dt, cur=current, want=want, goal=goal,
                                sync=dict(engaged=engaged, gaps=self.baseline.gaps, hand=self.baseline.hand,
                                          anchor=self.baseline.anchor) if self.gripper_only else None)
@@ -445,6 +465,7 @@ class Desk:
             # 全関節の追従（名前は名残）。位置の登録は要らない。始めた瞬間の手と腕の姿勢を基準にする
             self.gripper_only = True
             self.baseline.reset()
+            self.followed = frozenset()
             self.last = self.clock()
             self.token = secrets.token_hex(16)
             self.note = WAIT_NOTE if self.baseline.enabled else FOLLOW_NOTE

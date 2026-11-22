@@ -107,7 +107,7 @@ class BaselineTests(unittest.TestCase):
         self.assertEqual(baseline.hand, {})
 
 
-class DeskBaselineTests(unittest.TestCase):
+class DeskCase(unittest.TestCase):
     def setUp(self):
         self.time = [10.0]
         limits = default_limits()
@@ -119,13 +119,15 @@ class DeskBaselineTests(unittest.TestCase):
 
     def sample(self, **inputs):
         self.time[0] += 0.065
-        return self.desk.command(dict(op="sample", token=self.token, height=0.5, opening=0.5, **inputs))
+        return self.desk.command(dict(op="sample", token=self.token, **{"height": 0.5, "opening": 0.5, **inputs}))
 
     def hold(self, count=KEEP_SAMPLES, **inputs):
         for _ in range(count):
             state = self.sample(**inputs)
         return state
 
+
+class DeskBaselineTests(DeskCase):
     def test_arm_stays_while_the_baseline_is_taken(self):
         before = self.desk.arm.read()
         state = self.sample(lift=0.6, reach=-0.3, pan=0.8, flex=0.0, roll=0.4)
@@ -173,6 +175,49 @@ class DeskBaselineTests(unittest.TestCase):
     def test_sync_is_none_when_not_following(self):
         self.desk.command(dict(op="stop"))
         self.assertIsNone(self.desk.state()["sync"])
+
+
+class DeskFollowSelectionTests(DeskCase):
+    ALL = dict(lift=0.0, reach=0.0, pan=0.0, flex=0.0, roll=0.0)
+
+    def test_only_checked_joints_move(self):
+        self.hold(follow=["shoulder_lift"], **self.ALL)
+        before = self.desk.arm.read()
+        for _ in range(60):
+            self.sample(follow=["shoulder_lift"], lift=1.0, reach=-1.0, pan=1.0, flex=1.0, roll=1.0)
+        after = self.desk.arm.read()
+        self.assertAlmostEqual(after["shoulder_lift"], 100.0, places=3)
+        for j in ("shoulder_pan", "elbow_flex", "wrist_flex", "wrist_roll", "gripper"):
+            self.assertEqual(after[j], before[j], j)
+
+    def test_unchecked_gripper_stays(self):
+        self.hold(follow=["shoulder_lift"], **self.ALL)
+        before = self.desk.arm.read()["gripper"]
+        self.sample(follow=["shoulder_lift"], opening=1.0, **self.ALL)
+        self.assertEqual(self.desk.arm.read()["gripper"], before)
+
+    def test_no_follow_key_means_all(self):
+        self.hold(**self.ALL)
+        for _ in range(60):
+            self.sample(lift=1.0, reach=-1.0, pan=0.0, flex=0.0, roll=0.0)
+        self.assertAlmostEqual(self.desk.arm.read()["shoulder_lift"], 100.0, places=3)
+        self.assertAlmostEqual(self.desk.arm.read()["elbow_flex"], -100.0, places=3)
+
+    def test_joint_turned_on_midway_starts_from_where_it_is(self):
+        self.hold(follow=["shoulder_lift"], **self.ALL)
+        for _ in range(20):                                   # 肘はOFFのまま、手だけ大きく動かす
+            self.sample(follow=["shoulder_lift"], **{**self.ALL, "reach": -1.0})
+        before = self.desk.arm.read()["elbow_flex"]
+        self.sample(follow=["shoulder_lift", "elbow_flex"], **{**self.ALL, "reach": -1.0})
+        self.assertAlmostEqual(self.desk.arm.read()["elbow_flex"], before, places=3)   # 飛ばない
+        for _ in range(60):
+            self.sample(follow=["shoulder_lift", "elbow_flex"], **{**self.ALL, "reach": 1.0})
+        self.assertGreater(self.desk.arm.read()["elbow_flex"], before)
+
+    def test_invalid_follow_is_rejected(self):
+        for bad in ("shoulder_lift", ["nope"], [1]):
+            with self.assertRaises(ValueError):
+                self.sample(follow=bad, **self.ALL)
 
 
 if __name__ == "__main__":
