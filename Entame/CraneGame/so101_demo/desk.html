@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SO-101 撮影卓</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<header><h1>SO-101 撮影卓</h1><strong id="mode">接続中</strong><button id="stop">追従停止［Space］</button></header>
+<main>
+<section id="guide"><h2>次にやること</h2><p id="next" role="status">読み込み中</p><ol id="steps"></ol></section>
+<div class="cols">
+<div class="left">
+<section id="cameras"><h2>カメラ <small>手の読み取りと録画に、この1台を使う</small></h2>
+<div class="row"><button id="devices">カメラ一覧を更新</button><label>カメラ <select id="cam"><option value="">既定のカメラ</option></select></label><button id="enable">映像を開く</button></div>
+<div class="preview"><video id="input" autoplay muted playsinline></video><canvas id="overlay"></canvas></div>
+<p id="hand">停止中</p><p id="perf" class="help">認識 — ms／フレーム　— fps</p>
+<div class="row"><button id="start">追従開始</button><span id="status" role="status">待機中</span></div>
+<p class="help">指先を近づけるとつかみ、手首を上げると持ち上げます。開始時は手を下側の線に合わせて開いてください。</p>
+<h3>録画</h3>
+<div class="row"><button id="record">● 録画開始</button><button id="finish" disabled>録画終了</button><a id="save" hidden>動画を保存</a><span id="filmState">録画待機中</span></div>
+<p class="help">この映像がそのまま録画されます（認識点・操作画面は入りません）。手・爪・お菓子が一緒に映る位置にカメラを置いてください。録画終了後に「動画を保存」を押します。</p>
+</section>
+</div>
+<aside class="right">
+<section id="calib"><h2>モーターの校正 <small>関節の 0〜100% は、校正で測った可動範囲が基準</small></h2>
+<p id="calibState" role="status">確認中</p>
+<div id="calibTodo" hidden><p class="help">別のターミナルで下のコマンドを実行し、画面の指示に従って校正します（サーバーは止めなくて構いません）。終わったら「校正を確認」を押します。</p><code id="calibCmd"></code><div class="row"><button id="calibCheck">校正を確認</button></div></div>
+</section>
+<section id="armCard"><h2>仮想アーム <small>手の動きがここに出る</small></h2>
+<svg id="arm" viewBox="0 0 420 300" role="img" aria-label="アームを横から見た模式図">
+<rect x="0" y="262" width="420" height="38" class="floor"/>
+<rect x="330" y="236" width="52" height="26" rx="8" class="candy"/>
+<rect x="60" y="238" width="70" height="24" rx="4" class="base"/>
+<line id="arm-l0" x1="95" y1="238" x2="95" y2="205" class="l1"/>
+<line id="arm-l1" x1="95" y1="205" x2="0" y2="0" class="l1"/>
+<line id="arm-l2" x1="0" y1="0" x2="0" y2="0" class="l2"/>
+<line id="arm-l3" x1="0" y1="0" x2="0" y2="0" class="l3"/>
+<line id="arm-ja" x1="0" y1="0" x2="0" y2="0" class="jaw"/>
+<line id="arm-jb" x1="0" y1="0" x2="0" y2="0" class="jaw"/>
+<circle id="arm-j0" cx="95" cy="205" r="9" class="joint"/><circle id="arm-j1" r="9" class="joint"/><circle id="arm-j2" r="9" class="joint"/><circle id="arm-j3" r="8" class="joint"/>
+</svg>
+<p id="armMode" class="arm-mode">現在の姿勢</p>
+<div class="meters">
+<span>手の高さ</span><div class="meter"><i id="bar-height"></i></div><output id="val-height">—</output>
+<span>指の開き</span><div class="meter"><i id="bar-opening"></i></div><output id="val-opening">—</output>
+</div>
+<p class="help">模式図です。関節の向き・角度は実機と一致しません。「追従開始」の前は、手の入力から求めた予定の姿勢を表示し、アームは動きません。</p>
+<details id="sim" hidden><summary>模擬入力で操作を試す</summary><label><input id="manual" type="checkbox"> カメラの代わりにスライダーを使う</label><label>手の高さ <input type="range" id="height" min="0" max="100" value="0"></label><label>指の開き <input type="range" id="opening" min="0" max="100" value="100"></label></details>
+</section>
+<section id="driveCard"><h2>モーター <small>サーバーを止めずに切り替える</small></h2>
+<div id="drive" role="group" aria-label="モーターの状態"></div>
+<label id="softRow">やわらかさ <input type="range" id="softLevel" min="0" max="100" step="1" value="15"><output id="softValue">15%</output></label>
+<p class="help">大きいほど、押されても動きにくくなります（やわらかモード中に動かして調整できます）。</p>
+<p id="driveHelp" class="help"></p>
+</section>
+<section><h2>現在位置 <small>スライダーで動かす（可動範囲に対する 0〜100%）。登録は下の別の欄</small></h2>
+<div id="joints"></div>
+</section>
+<section><h2>位置の登録 <small>今の姿勢を記録する</small></h2>
+<div id="marks"></div>
+<p id="problem" role="alert"></p>
+<details open><summary>全関節の登録値</summary><div class="scroll"><table id="markTable"></table></div>
+<p class="help">太字が各登録で使われる値。開いた幅のグリッパーは、つかむ幅より2%以上大きくします。値は可動範囲に対する%です。</p></details>
+<h3>登録履歴（新しい順）</h3>
+<p id="noHistory" class="help">まだ登録していません</p><ol id="history"></ol>
+</section>
+</aside>
+</div>
+<p id="error" role="alert"></p>
+</main><script type="module" src="/app.js"></script></body></html>

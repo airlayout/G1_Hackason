@@ -1,0 +1,388 @@
+const $ = id => document.getElementById(id);
+const joints = {shoulder_pan:"台座", shoulder_lift:"肩", elbow_flex:"肘", wrist_flex:"手首の曲げ", wrist_roll:"手首の回転", gripper:"グリッパー"};
+const labels = {low:"つかむ位置", open:"開いた幅", closed:"つかむ幅", high:"持ち上げた位置"};
+let state, token, tracker, camera, recorder, recordingURL;
+let pending = false, starting = false, generation = 0, frame = -1, lastSample = 0, lastSeen = 0, latest;
+let followed = false, historyKey = "", moving = false;
+const targets = {}, stalls = {};
+const MOVE_INTERVAL_MS = 35;   // スライダー操作の指令間隔。server.py の MOVE_STEP と合わせて、細かい刻みを速く送る
+const MOVE_STALL_LIMIT = 15;   // この回数つづけて動かなければ、その目標を諦める（約0.5秒）
+const SOFT_SEND_MS = 150;      // やわらかさのスライダーを動かしてから、実機へ送るまでの待ち
+const DRIVE_POLL_MS = 300;    // OFF・やわらかのあいだ、手で動かした姿勢を画面へ映す間隔
+const DRIVES = [
+  {mode:"off", name:"OFF", sub:"力を抜く（手で動かせる）"},
+  {mode:"soft", name:"やわらか", sub:"弱い力で保持（押すと動く）"},
+  {mode:"on", name:"ON", sub:"通常の力で保持"},
+];
+const DRIVE_HELP = {
+  off:"モーターの力が抜けています。腕が自重で下がることがあるので、手で支えてください。手で作った姿勢は「位置の登録」で記録できます。",
+  soft:"弱い力で保持しています。重い関節（肩）は少し下がることがあります。スライダーと追従は、ON に戻すと使えます。",
+  on:"通常の力で保持しています。",
+};
+const pct = (j,v) => j==="gripper" ? v : (v+100)/2;
+const rawOf = (j,p) => j==="gripper" ? p : p*2-100;
+const pctText = (j,v) => pct(j,v).toFixed(1)+"%";
+const info = message => { $("error").textContent = message; };
+const limit = value => Math.max(0, Math.min(1,value));
+const poseText = pose => "肩 "+pctText("shoulder_lift",pose.shoulder_lift)+" ／ 肘 "+pctText("elbow_flex",pose.elbow_flex)+" ／ グリッパー "+pctText("gripper",pose.gripper);
+function buildMarkTable() {
+  const head=document.createElement("tr"); head.append(document.createElement("th"));
+  for (const name of Object.values(joints)) { const th=document.createElement("th"); th.textContent=name; head.append(th); }
+  $("markTable").append(head);
+  for (const [key,name] of Object.entries(labels)) {
+    const row=document.createElement("tr"), th=document.createElement("th");
+    th.textContent=name; row.append(th);
+    for (const j of Object.keys(joints)) {
+      const td=document.createElement("td"); td.id="m-"+key+"-"+j;
+      // 開いた幅・つかむ幅はグリッパー列、つかむ位置・持ち上げた位置は腕の列が使われる
+      if ((j==="gripper") === (key==="open" || key==="closed")) td.className="used";
+      row.append(td);
+    }
+    $("markTable").append(row);
+  }
+}
+function renderMarks(data) {
+  for (const key of Object.keys(labels))
+    for (const j of Object.keys(joints)) $("m-"+key+"-"+j).textContent = data.marks[key] ? pct(j,data.marks[key][j]).toFixed(1) : "—";
+  $("problem").textContent = data.problem || "";
+  const nextKey = JSON.stringify(data.history);
+  if (nextKey === historyKey) return;
+  historyKey = nextKey;
+  $("history").replaceChildren(...[...data.history].reverse().map(h => {
+    const li=document.createElement("li"); li.textContent=h.time+"　"+labels[h.label]+"　"+poseText(h.pose); return li;
+  }));
+  $("noHistory").hidden = data.history.length > 0;
+}
+function render(data) {
+  state = data;
+  $("mode").textContent = data.live ? "実機接続" : "模擬モード";
+  $("status").textContent = data.note;
+  $("sim").hidden = data.live;
+  for (const j of Object.keys(joints)) {
+    $("pos-"+j).value = pctText(j, data.pose[j]);
+    if (!(j in targets)) $("slide-"+j).value = pct(j, data.pose[j]);   // 操作中の目標は上書きしない
+  }
+  renderCalibration(data.calibration);
+  for (const [key,name] of Object.entries(labels)) {
+    const b=$("mark-"+key), done=key in data.marks;
+    b.firstChild.textContent = (done ? "✓ " : "") + name+"を登録";
+    b.lastChild.textContent = markSummary(key, data.marks[key]);
+    b.classList.toggle("done", done);
+  }
+  renderMarks(data);
+  renderDrive(data);
+  const blocked = data.active || data.fault || !data.calibration.done;
+  const driven = data.drive === "on";   // OFF・やわらかのときは、スライダーと追従を使えない（姿勢の登録は使える）
+  $("start").disabled = blocked || !driven || Object.keys(data.marks).length !== 4;
+  for (const b of document.querySelectorAll("#joints input")) b.disabled = blocked || !driven;
+  for (const b of document.querySelectorAll("#marks button")) b.disabled = blocked;
+  for (const b of document.querySelectorAll("#drive button")) b.disabled = data.fault || !data.calibration.done;
+}
+function renderDrive(data) {
+  for (const b of document.querySelectorAll("#drive button")) b.setAttribute("aria-pressed", String(b.dataset.mode === data.drive));
+  $("driveHelp").textContent = DRIVE_HELP[data.drive] ?? "";
+  if (document.activeElement !== $("softLevel")) {          // 操作中のスライダーは上書きしない
+    $("softLevel").value = data.soft_level;
+    $("softValue").textContent = Math.round(data.soft_level)+"%";
+  }
+}
+function renderCalibration(c) {
+  $("calibState").textContent = c.done
+    ? (c.required ? "✓ 校正済み（"+c.detail+"）" : "✓ "+c.detail)
+    : "未校正: "+c.detail;
+  $("calibTodo").hidden = c.done;
+  $("calibCmd").textContent = c.command;
+}
+// 手順の表示。上から順に、最初に終わっていない手順が「次にやること」
+const recording = () => recorder?.state === "recording";
+const steps = [
+  {text:"モーターを校正", help:"画面右の「モーターの校正」の案内に従い、校正を終えて「校正を確認」を押す", done:() => state?.calibration.done},
+  {text:"つかむ位置を登録", help:"現在位置のスライダーで爪を袋の左右に合わせ、「つかむ位置を登録」を押す", done:() => state && "low" in state.marks},
+  {text:"開いた幅を登録", help:"グリッパーを広げた姿勢で「開いた幅を登録」を押す", done:() => state && "open" in state.marks},
+  {text:"つかむ幅を登録", help:"グリッパーのスライダーで袋を軽く挟む幅まで閉じ、「つかむ幅を登録」を押す（開いた幅より小さくなる）", done:() => state && "closed" in state.marks},
+  {text:"持ち上げた位置を登録", help:"肩か肘を少し動かして袋が浮く姿勢にし、「持ち上げた位置を登録」を押す", done:() => state && "high" in state.marks},
+  {text:"操作用の映像を開く", help:"「カメラ一覧を更新」→ カメラを選ぶ →「映像を開く」。模擬モードではスライダー入力でも可", done:() => camera || isManual()},
+  {text:"追従を試す（空運転）", help:"手を下の線に合わせ、指を開いて「追従開始」。手を上下し、つまむ・開くを試す。止めるのはスペースキー", done:() => followed},
+  {text:"録画を開始する", help:"カメラに手・爪・袋が一緒に映っているのを確かめ、「録画開始」を押す", done:() => recording() || Boolean(recordingURL)},
+  {text:"録画を終えて保存する", help:"追従を止めて「録画終了」→「動画を保存」。保存した動画を再生して確認する", done:() => Boolean(recordingURL) && !recording()},
+];
+function buildSteps() {
+  for (const step of steps) { const li=document.createElement("li"); li.textContent=step.text; $("steps").append(li); }
+}
+function updateGuide() {
+  if (!state) return;
+  const index = steps.findIndex(s => !s.done());
+  [...$("steps").children].forEach((li, i) => {
+    const done = steps[i].done();
+    li.className = done ? "done" : i === index ? "now" : "";
+    li.textContent = (done ? "✓ " : "") + steps[i].text;
+  });
+  let next;
+  if (state.fault) next = "通信異常です。実機と配線を確認し、サーバーを再起動してください";
+  else if (!state.calibration.done) next = "先にモーターの校正が必要です。画面右の案内に従ってください";
+  else if (state.active) next = "追従中です。手を上下し、指を開閉して動きを確認する。止めるにはスペースキー";
+  else if (state.problem) next = "直す必要があります: " + state.problem;
+  else if (index < 0) next = "すべて完了です。保存した動画を再生して、袋が机から離れたことを確認してください";
+  else next = "手順 " + (index + 1) + "／" + steps.length + "：" + steps[index].text + "　" + steps[index].help;
+  if ($("next").textContent !== next) $("next").textContent = next;
+  const nextMark = index >= 1 && index <= 4 ? Object.keys(labels)[index-1] : null;
+  for (const key of Object.keys(labels)) $("mark-"+key).classList.toggle("next", key === nextMark);
+}
+function markSummary(key, pose) {
+  if (!pose) return "未登録";
+  return key === "open" || key === "closed" ? "グリッパー "+pctText("gripper",pose.gripper)
+    : "肩 "+pctText("shoulder_lift",pose.shoulder_lift)+" ／ 肘 "+pctText("elbow_flex",pose.elbow_flex);
+}
+
+// 仮想アーム（横から見た模式図）。角度への換算は見た目用で、実機の関節の向きとは一致しない
+const ARM = {base:[95,205], lengths:[110,100,50], jaw:45};
+const PREVIEW_RANGE = {shoulder_lift:20, elbow_flex:10};   // 登録前の予定姿勢で上げ下げする幅
+const toRad = deg => deg*Math.PI/180;
+function setAttrs(id, attrs) { const el=$(id); for (const [k,v] of Object.entries(attrs)) el.setAttribute(k, v.toFixed(1)); }
+function drawArm(pose) {
+  const a1 = 45 + 0.45*pose.shoulder_lift, a2 = a1 - 70 + 0.5*pose.elbow_flex, a3 = a2 - 30 + 0.5*pose.wrist_flex;
+  const spread = 3 + 0.4*Math.max(0, Math.min(100, pose.gripper));
+  const pts = [ARM.base];
+  [a1,a2,a3].forEach((a,i) => {
+    const [x,y] = pts[i];
+    pts.push([x + ARM.lengths[i]*Math.cos(toRad(a)), y - ARM.lengths[i]*Math.sin(toRad(a))]);
+  });
+  setAttrs("arm-l1", {x2:pts[1][0], y2:pts[1][1]});
+  setAttrs("arm-l2", {x1:pts[1][0], y1:pts[1][1], x2:pts[2][0], y2:pts[2][1]});
+  setAttrs("arm-l3", {x1:pts[2][0], y1:pts[2][1], x2:pts[3][0], y2:pts[3][1]});
+  for (const i of [1,2,3]) setAttrs("arm-j"+i, {cx:pts[i][0], cy:pts[i][1]});
+  for (const [id,sign] of [["arm-ja",1],["arm-jb",-1]]) {
+    const a = toRad(a3 + sign*spread);
+    setAttrs(id, {x1:pts[3][0], y1:pts[3][1], x2:pts[3][0] + ARM.jaw*Math.cos(a), y2:pts[3][1] - ARM.jaw*Math.sin(a)});
+  }
+}
+function handInput(now) {
+  if (isManual()) return {height:$("height").value/100, opening:$("opening").value/100};
+  return latest && now - lastSeen < 300 ? latest : null;
+}
+// 手の入力から求めた予定の姿勢。登録が揃っていれば登録した2姿勢の間、なければ現在の姿勢を基準にした仮の範囲
+function targetPose({height, opening}) {
+  const m = state.marks, ready = Object.keys(labels).every(k => k in m), out = {};
+  for (const j of Object.keys(joints)) {
+    if (j === "gripper") {
+      const closed = ready ? m.closed[j] : 0, open = ready ? m.open[j] : 100;
+      out[j] = closed + (open-closed)*opening;
+    } else {
+      const a = ready ? m.low[j] : state.pose[j], b = ready ? m.high[j] : a + (PREVIEW_RANGE[j] ?? 0);
+      out[j] = a + (b-a)*height;
+    }
+  }
+  return out;
+}
+function updateArm() {
+  if (!state) return;
+  const input = handInput(performance.now());
+  let pose = state.pose, label = "現在の姿勢", preview = false;
+  if (state.active) label = "実際の姿勢（追従中）";
+  else if (input) { pose = targetPose(input); label = "予定の姿勢（アームは動いていません）"; preview = true; }
+  drawArm(pose);
+  const mode = $("armMode");
+  if (mode.textContent !== label) mode.textContent = label;
+  mode.classList.toggle("preview-mode", preview);
+  for (const k of ["height","opening"]) {
+    $("bar-"+k).style.width = input ? Math.round(input[k]*100)+"%" : "0%";
+    $("val-"+k).textContent = input ? Math.round(input[k]*100)+"%" : "—";
+  }
+}
+buildMarkTable(); buildSteps(); setInterval(updateGuide, 250); setInterval(updateArm, 50);
+async function command(op, fields={}) {
+  const res = await fetch("/command",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({op,...fields})});
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+}
+function bind(button, action) {
+  button.onclick = async () => { try { info(""); await action(); } catch(e) { info(e.message); } };
+}
+async function stop() {
+  generation++; token = null; for (const k of Object.keys(targets)) delete targets[k];
+  render(await command("stop"));
+}
+bind($("stop"),stop);
+window.addEventListener("keydown", e => {
+  if(e.code === "Space"){e.preventDefault(); if(!e.repeat) $("stop").click();}
+});
+document.addEventListener("visibilitychange", () => {if(document.hidden && (token || starting)) $("stop").click();});
+// 現在位置: スライダーは可動範囲に対する 0〜100%。離した後も、目標へ少しずつ近づける（1回の指令で動く量はサーバーが制限）
+for (const [j,name] of Object.entries(joints)){
+  const row=document.createElement("div"), text=document.createElement("span"), value=document.createElement("output"), slider=document.createElement("input");
+  text.textContent=name; value.id="pos-"+j; value.textContent="—";
+  slider.type="range"; slider.min=0; slider.max=100; slider.step=0.5; slider.value=50; slider.id="slide-"+j; slider.setAttribute("aria-label",name);
+  slider.addEventListener("input", () => { targets[j]=Number(slider.value); stalls[j]=0; });
+  row.append(text,slider,value); $("joints").append(row);
+}
+async function tickMoves(){
+  if (moving || !state || state.active || state.fault) return;
+  const names=Object.keys(targets);
+  if (!names.length) return;
+  moving=true;
+  try {
+    for (const j of names) {
+      const before=pct(j,state.pose[j]);
+      if (Math.abs(targets[j]-before)<0.5) { delete targets[j]; delete stalls[j]; continue; }
+      const data=await command("move",{joint:j,value:rawOf(j,targets[j])});
+      stalls[j]=Math.abs(pct(j,data.pose[j])-before)<0.05 ? (stalls[j]??0)+1 : 0;
+      if (stalls[j]>MOVE_STALL_LIMIT) {   // 動かない（限界・負荷）なら諦め、押し続けないよう今の位置で保持する
+        delete targets[j]; delete stalls[j];
+        render(await command("move",{joint:j,value:data.pose[j]}));
+        continue;
+      }
+      render(data);
+    }
+  } catch(e) {
+    for (const k of Object.keys(targets)) delete targets[k];
+    info(e.message);
+  } finally { moving=false; }
+}
+setInterval(tickMoves, MOVE_INTERVAL_MS);
+// モーターの切り替え。切り替えると、スライダーの目標と追従は止まる（サーバー側でも止める）
+for (const {mode,name,sub} of DRIVES) {
+  const b=document.createElement("button"), title=document.createElement("strong"), small=document.createElement("small");
+  b.dataset.mode=mode; title.textContent=name; small.textContent=sub; b.append(title,small);
+  bind(b, async()=>{
+    generation++; token=null; for (const k of Object.keys(targets)) delete targets[k];
+    render(await command("drive",{mode, level:Number($("softLevel").value)}));
+  });
+  $("drive").append(b);
+}
+// やわらかさ: やわらかモード中に動かすと、その場で保持の強さを変える（間引いて送る）
+let softTimer;
+$("softLevel").addEventListener("input", () => {
+  $("softValue").textContent = $("softLevel").value+"%";
+  if (state?.drive !== "soft") return;
+  clearTimeout(softTimer);
+  softTimer = setTimeout(async () => {
+    try { info(""); render(await command("drive",{mode:"soft", level:Number($("softLevel").value)})); }
+    catch(e) { info(e.message); }
+  }, SOFT_SEND_MS);
+});
+let polling=false;
+async function pollPose(){
+  if (polling || !state || state.drive==="on" || state.active) return;
+  polling=true;
+  try { render(await (await fetch("/state")).json()); } catch(e) { info(e.message); } finally { polling=false; }
+}
+setInterval(pollPose, DRIVE_POLL_MS);
+bind($("calibCheck"), async()=>render(await command("calibration_check")));
+for (const key of Object.keys(labels)){
+  const b=document.createElement("button"), name=document.createElement("strong"), sub=document.createElement("small");
+  b.id="mark-"+key; name.textContent=labels[key]+"を登録"; sub.textContent=markSummary(key); b.append(name,sub);
+  bind(b, async()=>render(await command("mark",{label:key}))); $("marks").append(b);
+}
+const isManual = () => state && !state.live && $("manual").checked;
+bind($("start"), async()=>{
+  if(starting) return;
+  if(!isManual() && (!latest || performance.now()-lastSeen>300)) throw new Error("操作カメラに片手を映してください");
+  starting=true;
+  const sequence=++generation;
+  try {
+    for (const k of Object.keys(targets)) delete targets[k];
+    const result=await command("start");
+    if(sequence!==generation){await stop(); return;}
+    token=result.token; followed=true; render(result);
+  } finally {starting=false;}
+});
+function constraint(id){return {video:id?{deviceId:{exact:id}}:true,audio:false};}
+async function listCameras(){
+  const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="videoinput" && d.deviceId);
+  for(const id of ["cam"]){
+    const select=$(id), selected=select.value;
+    while(select.options.length>1) select.remove(1);
+    devices.forEach((d,i)=>select.add(new Option(d.label || "カメラ "+(i+1),d.deviceId)));
+    if([...select.options].some(o=>o.value===selected)) select.value=selected;
+  }
+}
+bind($("devices"),async()=>{
+  if(!camera){const temp=await navigator.mediaDevices.getUserMedia(constraint(""));temp.getTracks().forEach(t=>t.stop());}
+  await listCameras();
+});
+async function loadTracker(){
+  if(tracker) return;
+  const {FilesetResolver,HandLandmarker} = await import("/assets/vision_bundle.mjs");
+  tracker=await HandLandmarker.createFromOptions(await FilesetResolver.forVisionTasks("/assets"),{
+    baseOptions:{modelAssetPath:"/assets/hand_landmarker.task"}, runningMode:"VIDEO", numHands:1
+  });
+}
+function closeStream(stream){stream?.getTracks().forEach(t=>t.stop());}
+bind($("enable"),async()=>{
+  if(recorder?.state==="recording") throw new Error("録画終了後に切り替えてください");
+  await stop();
+  await loadTracker();
+  closeStream(camera); camera=null; latest=null; frame=-1;
+  camera=await navigator.mediaDevices.getUserMedia(constraint($("cam").value));
+  $("input").srcObject=camera; await $("input").play(); await listCameras();
+});
+bind($("record"),async()=>{
+  const stream=camera;
+  if(!stream || stream.getVideoTracks()[0]?.readyState!=="live") throw new Error("先に「映像を開く」でカメラを開いてください");
+  if(!window.MediaRecorder) throw new Error("録画にはデスクトップ版Chromeを使ってください");
+  const mime=["video/webm;codecs=vp8","video/webm","video/mp4"].find(t=>MediaRecorder.isTypeSupported(t));
+  recorder=new MediaRecorder(stream,mime?{mimeType:mime}:{});
+  const chunks=[];
+  recorder.ondataavailable=e=>{if(e.data.size) chunks.push(e.data);};
+  recorder.onstop=()=>{
+    $("finish").disabled=true; $("record").disabled=false;
+    if(!chunks.length){info("空の動画です。カメラ接続を確認してください"); return;}
+    if(recordingURL) URL.revokeObjectURL(recordingURL);
+    const type=recorder.mimeType, ext=type.includes("mp4")?"mp4":"webm";
+    recordingURL=URL.createObjectURL(new Blob(chunks,{type}));
+    const a=$("save"); a.href=recordingURL; a.download="so101-"+Date.now()+"."+ext; a.hidden=false;
+    $("filmState").textContent="録画終了。動画を保存してください";
+  };
+  recorder.start(500); $("record").disabled=true; $("finish").disabled=false;
+  $("filmState").textContent="● 録画中";
+});
+bind($("finish"),()=>recorder.stop());
+
+const perf={ms:0,count:0,shown:0};      // 認識の処理時間と1秒あたりの処理数（500ms ごとに更新）
+function track(now){
+  const video=$("input");
+  if(!tracker || !camera || video.readyState<2 || video.currentTime===frame) return;
+  frame=video.currentTime;
+  const began=performance.now();
+  const pts=tracker.detectForVideo(video,now).landmarks[0];
+  perf.ms+=performance.now()-began; perf.count++;
+  if(now-perf.shown>=500){
+    $("perf").textContent="認識 "+(perf.ms/perf.count).toFixed(1)+" ms／フレーム　"+(perf.count*1000/(now-perf.shown)).toFixed(1)+" fps";
+    perf.ms=0; perf.count=0; perf.shown=now;
+  }
+  const canvas=$("overlay"), ctx=canvas.getContext("2d");
+  canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+  const w=canvas.width,h=canvas.height;
+  ctx.strokeStyle="#ffe081";
+  for(const y of [.28,.72]){ctx.beginPath();ctx.moveTo(0,y*h);ctx.lineTo(w,y*h);ctx.stroke();}
+  latest=null;
+  if(!pts){$("hand").textContent="手が見えません";return;}
+  const distance=(a,b)=>Math.hypot((pts[a].x-pts[b].x)*w,(pts[a].y-pts[b].y)*h);
+  const palm=distance(5,17);
+  if(palm<12){$("hand").textContent="手をもう少し大きく映してください";return;}
+  latest={height:limit((.72-pts[0].y)/.44),opening:limit((distance(4,8)/palm-.18)/.75)};
+  for(const i of [0,4,8]){ctx.fillStyle="#60ffb1";ctx.beginPath();ctx.arc(pts[i].x*w,pts[i].y*h,5,0,2*Math.PI);ctx.fill();}
+  lastSeen=now; $("hand").textContent="手を認識　高さ "+Math.round(latest.height*100)+"% ／ 開き "+Math.round(latest.opening*100)+"%";
+}
+async function loop(now){
+  try{
+    track(now);
+    if(token && !pending && now-lastSample>65){
+      const sample=isManual()?{height:$("height").value/100,opening:$("opening").value/100}:latest;
+      pending=true; lastSample=now;
+      try{
+        if(!sample || (!isManual() && now-lastSeen>260)){await stop(); return;}
+        const seq=generation;
+        const result=await command("sample",{token,...sample});
+        if(seq===generation) render(result);
+      }finally{pending=false;}
+    }
+  }catch(e){
+    const wasActive=Boolean(token); token=null;
+    if(wasActive){try{await stop();}catch{}}
+    info(e.message);
+  }finally{requestAnimationFrame(loop);}
+}
+try{render(await (await fetch("/state")).json());}catch(e){info(e.message);}
+requestAnimationFrame(loop);
