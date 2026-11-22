@@ -1,5 +1,5 @@
 // 骨格版の画面。カメラ → MediaPipe Pose → 腕の角度（skeleton_math.js）→ サーバー（/command の skeleton_*）。
-import {armFeatures, ARMS, smooth, steadyAngles} from "/skeleton_math.js";
+import {armFeatures, ARMS, smooth, steadyAngles, wrap} from "/skeleton_math.js";
 
 const $ = id => document.getElementById(id);
 const JOINT_NAMES = {shoulder_pan: "台座", shoulder_lift: "肩", elbow_flex: "肘", wrist_flex: "手首の曲げ", wrist_roll: "手首の回転"};
@@ -8,12 +8,17 @@ const SMOOTH_ALPHA = 0.4;
 const SEND_INTERVAL_MS = 66;        // 追従の送信間隔（約15回/秒。前の送信が終わるまで次は送らない）
 const POLL_MS = 300;
 const FRESH_MS = 300;               // これより古い骨格は「見えていない」とする
-const CAPTURE_FRAMES = 12, CAPTURE_TIMEOUT_MS = 3000;
+const CAPTURE_FRAMES = 15, CAPTURE_TIMEOUT_MS = 3000;
+const READY_DELAY_MS = 3000;        // ロボットが着いてから、人が姿勢をとるのを待つ時間
+const ARRIVE_TIMEOUT_MS = 20000, STEADY_TIMEOUT_MS = 60000;
+const CORE_ANGLES = ["lift", "elbow"];   // 撮影に必須の角度
+const MOVE_KEYS = ["pan", "lift", "elbow"], MIN_CHANGE_DEG = 10;   // 前の姿勢と、これ未満しか違わないときは、まねできていない
 const SNAPSHOT_QUALITY = 0.85;
 const BONES = [["shoulder", "elbow"], ["elbow", "wrist"], ["wrist", "index"], ["wrist", "pinky"], ["index", "pinky"]];
 
 let state = null, camera = null, tracker = null, token = null, sending = false, lastVideoTime = -1;
 let latest = null, latestAt = 0, raw = null;         // latest=平滑化した角度、raw=平滑化前（撮影用）
+let autoRun = 0, phaseText = "";
 let collecting = null;                               // 撮影中は、フレームごとの角度をここへ集める
 const thumbs = {};
 const perf = {ms: 0, count: 0, shown: performance.now()};
@@ -48,7 +53,7 @@ async function loadTracker() {
   });
 }
 async function stopFollow(why) {
-  token = null;
+  token = null; cancelAuto();
   state = await command("stop", why ? {why} : {});
   render();
 }
@@ -133,15 +138,13 @@ function collectFrames() {
     }, 50);
   });
 }
-async function capture(index) {
-  if (!camera) throw new Error("先に「映像を開く」でカメラを開いてください");
-  if (sk().at !== index || sk().moving) throw new Error("先にロボットをこの姿勢へ動かし、着くまで待ってください");
-  message("じっとしてください…");
-  const frames = await collectFrames();
-  const {angles, unstable} = steadyAngles(frames);
-  if (!Object.keys(angles).length) throw new Error("骨格を認識できませんでした。肩・肘・手首を映して、じっとしてください");
+const earlier = {};                 // 撮影済みの姿勢の番号 → そのときの人の角度（前の姿勢から動いたかの確認用）
+function sameAsEarlier(index, angles) {
+  return Object.entries(earlier).some(([other, before]) => Number(other) !== index && MOVE_KEYS.every(k => !(k in angles && k in before) || Math.abs(wrap(angles[k] - before[k])) < MIN_CHANGE_DEG));
+}
+async function submitCapture(index, frames, angles, unstable) {
   const image = composeSnapshot();
-  thumbs[index] = image;
+  thumbs[index] = image; earlier[index] = angles;
   try {      // 診断用の画像。保存に失敗しても較正は続ける
     await fetch("/snapshot", {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({image, info: {kind: "skeleton_calibration", pose: index, side: $("side").value, angles, unstable, frames: frames.length}})});
@@ -150,29 +153,81 @@ async function capture(index) {
   render();
   message(unstable.length ? "ぶれたため除いた角度: " + unstable.map(k => ANGLE_NAMES[k]).join("、") : "");
 }
+// ---- 自動較正: ロボットが姿勢をとる → 人がまねる → じっとしたら自動で撮影（カメラが近く、ボタンを押せないため）----
+const cancelled = () => Object.assign(new Error("中止"), {cancelled: true});
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+function say(text) { try { speechSynthesis.speak(new SpeechSynthesisUtterance(text)); } catch (e) { console.warn("speech", e); } }
+function cancelAuto() { autoRun++; phaseText = ""; }
+async function waitUntil(test, limitMs, run, timeoutText) {
+  const began = performance.now();
+  while (!test()) {
+    if (run !== autoRun) throw cancelled();
+    if (performance.now() - began > limitMs) throw new Error(timeoutText);
+    await sleep(100);
+  }
+}
+async function captureWhenSteady(index, run) {
+  const began = performance.now();
+  while (performance.now() - began < STEADY_TIMEOUT_MS) {
+    const frames = await collectFrames();
+    if (run !== autoRun) throw cancelled();
+    const {angles, unstable} = steadyAngles(frames);
+    if (!CORE_ANGLES.every(k => k in angles)) { phaseText = sk().names[index] + "：骨格が認識できません。肩・肘・手首を映してください"; continue; }
+    if (sameAsEarlier(index, angles)) { phaseText = sk().names[index] + "：前の姿勢から動いていません。ロボットと同じ姿勢をとってください"; continue; }
+    if (unstable.some(k => CORE_ANGLES.includes(k) || k === "pan")) { phaseText = sk().names[index] + "：じっとしていてください"; continue; }
+    await submitCapture(index, frames, angles, unstable);
+    return;
+  }
+  throw new Error(sk().names[index] + "を撮影できませんでした（姿勢が定まりませんでした）");
+}
+async function autoCalibrate(indices) {
+  if (!camera) throw new Error("先に「映像を開く」でカメラを開いてください");
+  const run = ++autoRun;
+  try {
+    for (const index of indices) {
+      const name = sk().names[index];
+      phaseText = name + "：ロボットが動いています"; render();
+      state = await command("skeleton_pose", {index}); render();
+      await waitUntil(() => sk().at === index && !sk().moving, ARRIVE_TIMEOUT_MS, run, "ロボットが" + name + "に着きませんでした");
+      say(name + "。同じ姿勢をとってください");
+      for (let left = Math.round(READY_DELAY_MS/1000); left > 0; left--) {
+        phaseText = `${name}：ロボットと同じ姿勢をとってください（${left}）`; await sleep(1000);
+        if (run !== autoRun) throw cancelled();
+      }
+      phaseText = name + "：じっとしていてください";
+      await captureWhenSteady(index, run);
+      say("撮影しました");
+    }
+    say(indices.length > 1 ? "較正が終わりました" : "撮影しました");
+  } catch (e) {
+    if (!e.cancelled) throw e;
+  } finally {
+    if (run === autoRun) phaseText = "";
+    render();
+  }
+}
 function buildPoses() {
   const box = $("poses"); box.textContent = "";
   sk().names.forEach((name, index) => {
     const card = document.createElement("div"); card.className = "pose"; card.id = "pose" + index;
     const title = document.createElement("h3"), img = document.createElement("img"), status = document.createElement("p"), row = document.createElement("div");
     title.textContent = name; status.className = "help"; row.className = "row"; img.alt = name + "の撮影画像";
-    const go = document.createElement("button"), shoot = document.createElement("button");
-    go.textContent = "ロボットをこの姿勢へ"; go.dataset.role = "go"; shoot.textContent = "撮影"; shoot.dataset.role = "shoot";
-    bind(go, async () => { state = await command("skeleton_pose", {index}); render(); });
-    bind(shoot, () => capture(index));
-    row.append(go, shoot); card.append(title, img, status, row); box.append(card);
+    const go = document.createElement("button");
+    go.textContent = "この姿勢だけ撮り直す"; go.dataset.role = "go";
+    bind(go, () => autoCalibrate([index]));
+    row.append(go); card.append(title, img, status, row); box.append(card);
   });
 }
 function renderPoses() {
   const s = sk();
   if ($("poses").children.length !== s.names.length) buildPoses();
-  const idle = !s.following && !s.moving;
+  const idle = !s.following && !s.moving && !phaseText;
+  $("auto").disabled = !idle || state.drive !== "on" || !camera;
   s.names.forEach((_, i) => {
     const card = $("pose" + i), img = card.querySelector("img"), status = card.querySelector("p");
-    card.querySelector('[data-role="go"]').disabled = !idle || state.drive !== "on";
-    card.querySelector('[data-role="shoot"]').disabled = !idle || !camera || s.at !== i;
+    card.querySelector('[data-role="go"]').disabled = $("auto").disabled;
     img.hidden = !thumbs[i]; if (thumbs[i] && img.src !== thumbs[i]) img.src = thumbs[i];
-    status.textContent = s.moving && s.at === null ? "" : (s.captured[i] ? "撮影済み" : s.at === i ? "ロボットは着いています。同じ姿勢をとって撮影" : "未撮影");
+    status.textContent = s.captured[i] ? "撮影済み" : "未撮影";
     status.className = s.captured[i] ? "done" : "help";
   });
 }
@@ -215,13 +270,12 @@ setInterval(async () => {
 // ---- 表示 ----
 function nextStep() {
   const s = sk();
+  if (phaseText) return phaseText;
   if (!camera) return "「映像を開く」を押してください";
   if (state.drive !== "on") return "「モーターON」を押してください";
   if (s.following) return "追従中です。止めるときは「追従停止」（Space）";
   if (s.moving) return "ロボットが動いています。着くまで待ってください";
-  const index = s.captured.indexOf(false);
-  if (index >= 0) return s.at === index ? `${s.names[index]}と同じ姿勢をとって「撮影」を押してください`
-    : `${s.names[index]}の「ロボットをこの姿勢へ」を押してください`;
+  if (s.captured.includes(false)) return "「自動で較正」を押してください（押したら、カメラから離れて姿勢をとれます）";
   return s.ready ? "「追従開始」を押してください" : "使える関節がありません。「較正をやり直す」で撮り直してください";
 }
 function render() {
@@ -238,7 +292,8 @@ function render() {
   renderPoses(); renderFits();
 }
 bind($("drive"), async () => { state = await command("drive", {mode: "on"}); render(); });
-bind($("reset"), async () => { for (const k of Object.keys(thumbs)) delete thumbs[k]; state = await command("skeleton_reset"); render(); });
+bind($("auto"), () => autoCalibrate(sk().names.map((_, i) => i)));
+bind($("reset"), async () => { cancelAuto(); for (const k of Object.keys(earlier)) delete earlier[k]; for (const k of Object.keys(thumbs)) delete thumbs[k]; state = await command("skeleton_reset"); render(); });
 bind($("stop"), () => stopFollow("停止ボタン／スペースキー"));
 document.addEventListener("keydown", e => {
   if (e.code === "Space" && !["INPUT", "SELECT", "BUTTON"].includes(e.target.tagName)) { e.preventDefault(); $("stop").click(); }

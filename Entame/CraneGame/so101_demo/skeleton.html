@@ -15,7 +15,7 @@
 <header><h1>SO-101 骨格版 <small>肩〜手の骨格推定で追従</small></h1><strong id="mode">接続中</strong><a href="/">全関節追従の画面へ</a><button id="stop">追従停止［Space］</button></header>
 <main>
 <section id="guide"><h2>次にやること</h2><p id="next" role="status">読み込み中</p>
-<ol class="help"><li>「映像を開く」で、上半身（肩・肘・手）が映るカメラを開く</li><li>「モーターON」</li><li>姿勢A・B・Cの順に、ロボットを動かす → 人が同じ姿勢をとる → 撮影</li><li>「追従開始」</li></ol>
+<ol class="help"><li>「映像を開く」で、上半身（肩・肘・手）が映るカメラを開く</li><li>「モーターON」</li><li>「自動で較正」を押して、カメラから離れる。姿勢A・B・Cの順に、ロボットが動く → 人が同じ姿勢をとってじっとする → <b>自動で撮影</b>（音声でも知らせる）</li><li>「追従開始」</li></ol>
 <p id="message" role="alert"></p></section>
 
 <section id="cameras"><h2>カメラ <small>肩・肘・手首・手が全部映るように</small></h2>
@@ -26,7 +26,8 @@
 <div id="angles" aria-live="off"></div><p id="perf" class="help">認識 — ms／フレーム</p></section>
 
 <section id="calibration"><h2>較正 <small>ロボットの3姿勢を、人がまねて撮影する</small></h2>
-<p class="help">「ロボットをこの姿勢へ」を押すと、ロボットが動きます（周りを空けてください）。着いたら、同じ姿勢を人がとって、約1秒じっとして「撮影」。3姿勢の値はまだ実機で確かめていない暫定値です。腕が危ない向きへ動いたら、追従停止（Space）。</p>
+<p class="help">「自動で較正」を押すと、ロボットが姿勢A・B・Cを順にとります（周りを空けてください）。着いて3秒たったら、人が同じ姿勢で約1秒じっとすると、自動で撮影します（前の姿勢から動いていないと撮影しません）。3姿勢の値はまだ実機で確かめていない暫定値です。腕が危ない向きへ動いたら、追従停止（Space）。</p>
+<div class="row"><button id="auto">自動で較正（A→B→C）</button></div>
 <div id="poses"></div>
 <div class="row"><button id="reset">較正をやり直す</button></div>
 <h3>関節ごとの対応（人の角度 → ロボット）</h3><table id="fits"></table></section>
