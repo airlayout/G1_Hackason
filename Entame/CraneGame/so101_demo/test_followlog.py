@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from followlog import FollowLog
+from limits import default_limits
 from server import Desk, MockArm
 
 
@@ -139,6 +140,33 @@ class ShoulderElbowTests(unittest.TestCase):
         before, after = self.move(pan=1, lift=1, reach=1, flex=1, roll=1)
         for joint in ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"):
             self.assertGreater(after[joint], before[joint])
+
+
+class LimitRangeTests(unittest.TestCase):
+    """手の入力 -1〜1 は、関節の「動かせる下限〜上限」へ写る（範囲を絞っても手の全域が使える）。"""
+
+    def reach(self, limits, **inputs):
+        time = [10.0]
+        desk = Desk(MockArm(), clock=lambda: time[0], limits=limits)
+        token = desk.command(dict(op="start", gripper_only=True))["token"]
+        desk.arm.pose["shoulder_lift"] = 0.0
+        for _ in range(400):                       # 速度制限があるので、十分な回数を送って目標へ着かせる
+            time[0] += 0.065
+            desk.command(dict(op="sample", token=token, height=0.5, opening=0.5, **inputs))
+        return desk.arm.read()["shoulder_lift"]
+
+    def test_input_ends_map_to_limit_ends(self):
+        limits = default_limits()
+        limits["shoulder_lift"].update(min=30.0, max=70.0, speed=150.0, step=15.0)
+        self.assertAlmostEqual(self.reach(limits, lift=1), 2*70-100, places=3)    # 上限 70%
+        self.assertAlmostEqual(self.reach(limits, lift=-1), 2*30-100, places=3)   # 下限 30%
+        self.assertAlmostEqual(self.reach(limits, lift=0), 0.0, places=3)         # 中央＝中間
+
+    def test_default_limits_use_the_full_range(self):
+        limits = default_limits()
+        limits["shoulder_lift"].update(speed=150.0, step=15.0)
+        self.assertAlmostEqual(self.reach(limits, lift=1), 100.0, places=3)
+        self.assertAlmostEqual(self.reach(limits, lift=-1), -100.0, places=3)
 
 
 class PanTests(unittest.TestCase):

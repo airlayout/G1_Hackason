@@ -262,6 +262,15 @@ for (const [j,name] of Object.entries(joints)){
   slider.addEventListener("input", () => { targets[j]=Number(slider.value); stalls[j]=0; });
   row.append(text,slider,value); $("joints").append(row);
 }
+// 腕を中間へ: 各関節の「動かせる下限・上限」の真ん中を目標にする。あとはスライダーと同じ仕組みで、少しずつ動く
+bind($("center"),async()=>{
+  if(!state || state.active) throw new Error("追従中は動かせません。先に停止してください");
+  for(const j of Object.keys(joints)){
+    if(j==="gripper") continue;
+    const {min,max}=state.limits[j];
+    targets[j]=(min+max)/2; stalls[j]=0; $("slide-"+j).value=targets[j];
+  }
+});
 async function tickMoves(){
   if (moving || !state || state.active || state.fault) return;
   const names=Object.keys(targets);

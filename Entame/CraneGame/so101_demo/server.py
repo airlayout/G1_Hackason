@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from followlog import FollowLog
-from limits import (JOINTS, MIN_SPAN, RANGES, clamp_pose, default_limits, load_limits, parse_limits, save_limits,
+from limits import (JOINTS, MIN_SPAN, RANGES, clamp_pose, default_limits, load_limits, parse_limits, raw, save_limits,
                     speed_raw, step_raw)
 
 ROOT = Path(__file__).resolve().parent
@@ -373,7 +373,8 @@ class Desk:
                 elif self.gripper_only:
                     if j not in free:              # 入力が送られなければ、その関節は今の姿勢のまま
                         continue
-                    a, b, fraction = -100.0, 100.0, (free[j]+1) / 2      # 可動範囲いっぱいへ写す
+                    # 入力 -1〜1 を、その関節の「動かせる下限〜上限」いっぱいへ写す（手の全域が使える。範囲の外へは出ない）
+                    a, b, fraction = raw(j, self.limits[j]["min"]), raw(j, self.limits[j]["max"]), (free[j]+1) / 2
                 else:
                     a, b, fraction = self.marks["low"][j], self.marks["high"][j], height
                 speed = speed_raw(j, self.limits)
