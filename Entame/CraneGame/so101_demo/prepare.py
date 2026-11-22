@@ -1,4 +1,4 @@
-"""Cache the pinned Google Hand Landmarker and its browser runtime."""
+"""Cache the pinned Google Hand / Pose Landmarkers and their browser runtime."""
 from hashlib import sha256
 from pathlib import Path
 from urllib.request import urlopen
@@ -11,9 +11,12 @@ for variant in ("vision_wasm_internal", "vision_wasm_nosimd_internal"):
         ASSETS[name] = PACKAGE + "wasm/" + name
 ASSETS["hand_landmarker.task"] = ("https://storage.googleapis.com/mediapipe-models/"
                                   "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task")
+ASSETS["pose_landmarker_full.task"] = ("https://storage.googleapis.com/mediapipe-models/"
+                                       "pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task")
 
 SHA256 = {
     "hand_landmarker.task": "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1",
+    "pose_landmarker_full.task": "5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1",
     "vision_bundle.mjs": "3252b10e0fd26c4095e4b6ee545c1c898120b3a3813388ecd4876abe6f1399a9",
     "vision_wasm_internal.js": "4a97e2520ba506c680ecd6ba6acfb146888afa0e2746d57f205352bc6ebb82eb",
     "vision_wasm_internal.wasm": "f00ec4731faa23b3e714d00e88d4d10e2df5c0a427d3a2b4ae6e3526fdd14ef7",
