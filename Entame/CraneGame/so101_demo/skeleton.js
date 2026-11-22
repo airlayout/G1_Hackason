@@ -212,10 +212,12 @@ function buildPoses() {
     const card = document.createElement("div"); card.className = "pose"; card.id = "pose" + index;
     const title = document.createElement("h3"), img = document.createElement("img"), status = document.createElement("p"), row = document.createElement("div");
     title.textContent = name; status.className = "help"; row.className = "row"; img.alt = name + "の撮影画像";
-    const go = document.createElement("button");
+    const move = document.createElement("button"), go = document.createElement("button");
+    move.textContent = "ロボットをこの姿勢へ"; move.dataset.role = "move";        // 動かすだけ（撮影しない。姿勢の確認用）
     go.textContent = "この姿勢だけ撮り直す"; go.dataset.role = "go";
+    bind(move, async () => { cancelAuto(); state = await command("skeleton_pose", {index}); render(); });
     bind(go, () => autoCalibrate([index]));
-    row.append(go); card.append(title, img, status, row); box.append(card);
+    row.append(move, go); card.append(title, img, status, row); box.append(card);
   });
 }
 function renderPoses() {
@@ -226,6 +228,7 @@ function renderPoses() {
   s.names.forEach((_, i) => {
     const card = $("pose" + i), img = card.querySelector("img"), status = card.querySelector("p");
     card.querySelector('[data-role="go"]').disabled = $("auto").disabled;
+    card.querySelector('[data-role="move"]').disabled = s.following || s.moving || !!phaseText || state.drive !== "on";
     img.hidden = !thumbs[i]; if (thumbs[i] && img.src !== thumbs[i]) img.src = thumbs[i];
     status.textContent = s.captured[i] ? "撮影済み" : "未撮影";
     status.className = s.captured[i] ? "done" : "help";
