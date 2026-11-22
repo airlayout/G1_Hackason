@@ -52,7 +52,8 @@ const fresh = () => latest && performance.now() - latestAt <= FRESH_MS;
 
 // ---- カメラと骨格推定 ----
 // 画角: 多くのカメラは、16:9 で撮ると4:3の映像の上下を切り取る。4:3で撮ると、センサー全体（広い視野）が映る
-const FRAME = {"4:3": {width: 1280, height: 960}, "16:9": {width: 1280, height: 720}};
+// 縦長（3:4）は、iPhone を縦に置いて上下を広く映すとき。縦の映像が来るかは、開いたあとの「幅×高さ」で確かめる
+const FRAME = {"4:3": {width: 1280, height: 960}, "16:9": {width: 1280, height: 720}, "3:4": {width: 960, height: 1280}};
 const constraint = id => ({video: {...(id ? {deviceId: {exact: id}} : {}), width: {ideal: FRAME[$("fov").value].width}, height: {ideal: FRAME[$("fov").value].height}}, audio: false});
 // 開いたカメラの実際の大きさに、映像と認識点の枠をそろえる。ズームできるカメラは、いちばん広い側にする
 async function fitCamera() {
