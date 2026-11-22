@@ -76,3 +76,4 @@ a{color:#096458}
 .sync-row.ng .sync-hand::before{color:var(--warn)}
 @media(max-width:640px){.sync-row{grid-template-columns:6em 1fr}.sync-row output{grid-column:1 / -1}}
 @media(max-width:720px){header,main{padding:12px}.row{gap:5px}.right{max-width:none}}
+#moveGuide{border-collapse:collapse;width:100%}#moveGuide caption{text-align:left;font-weight:600;padding-bottom:4px}#moveGuide th,#moveGuide td{text-align:left;vertical-align:top;padding:3px 8px 3px 0;border-top:1px solid var(--line,#ddd)}#moveGuide th{white-space:nowrap;font-weight:600}

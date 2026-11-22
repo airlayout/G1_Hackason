@@ -17,7 +17,15 @@
 <label><input type="checkbox" data-joint="shoulder_pan" checked>台座</label><label><input type="checkbox" data-joint="shoulder_lift" checked>肩</label><label><input type="checkbox" data-joint="elbow_flex" checked>肘</label><label><input type="checkbox" data-joint="wrist_flex" checked>手首の曲げ</label><label><input type="checkbox" data-joint="wrist_roll" checked>手首の回転</label><label><input type="checkbox" data-joint="gripper" checked>グリッパー</label>
 <button id="followAll" type="button">すべてON</button><button id="followNone" type="button">すべてOFF</button></div>
 <p class="help">「全関節を追従」用。切り分けのため、動かしたい関節だけチェックする。追従中に切り替えてもよい（OFFにした関節は今の姿勢のまま止まり、ONにした関節は、その時点の手と腕の位置から動き出す）。</p>
-<p class="help">指先を近づけるとつかみ、手首を上げると持ち上げます。「全関節を追従」を押したら、手を画面に映して約 0.3 秒止めてください。その構えと腕の今の姿勢が基準になり（構えは何でもかまいません）、手がそこから動いた分だけ、腕が動きます。</p>
+<p class="help">「全関節を追従」を押したら、手を画面に映して約 0.3 秒止めてください。その構えと腕の今の姿勢が基準になり（構えは何でもかまいません）、手がそこから動いた分だけ、腕が動きます。</p>
+<table id="moveGuide" class="help"><caption>どう動かすと、どの関節が動くか（手は手のひらをカメラへ向ける）</caption>
+<tr><th>肩（上げ下げ）</th><td>手を画面の<b>上へ</b>上げる → 腕が上がる。下げる → 下がる</td></tr>
+<tr><th>肘（のび縮み）</th><td>手をカメラへ<b>近づける／遠ざける</b>（手の見かけの大きさで測る。向きは実機で要確認）</td></tr>
+<tr><th>台座（左右）</th><td>手を画面の<b>左右</b>へ動かす（画面の中央が基準）</td></tr>
+<tr><th>手首の回転</th><td>手を<b>時計回りに傾ける</b>（手首をひねる）→ 時計回り</td></tr>
+<tr><th>手首の曲げ</th><td>手の指先を<b>奥へ倒す</b>（手のひらが小さく見える。手前へ倒すと認識が外れる）</td></tr>
+<tr><th>グリッパー</th><td>親指と人差し指を<b>開く／くっつける</b></td></tr></table>
+<p class="help">うまく動かないときは、まず1つの関節だけチェックして、その動きだけを試してください。</p>
 <section id="syncCard" hidden><h3>手と腕の姿勢 <small id="syncState"></small></h3>
 <div id="syncRows"></div>
 <p class="help">中央の線が、追従を始めたときの手と腕の姿勢です。緑の● が手、青の▲ が腕の、そこから動いた量です。淡い緑は、腕が手に追いついているとみなす範囲です。</p></section>

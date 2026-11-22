@@ -214,6 +214,26 @@ class DeskFollowSelectionTests(DeskCase):
             self.sample(follow=["shoulder_lift", "elbow_flex"], **{**self.ALL, "reach": 1.0})
         self.assertGreater(self.desk.arm.read()["elbow_flex"], before)
 
+    def test_command_keeps_moving_ahead_of_a_stuck_joint(self):
+        """摩擦で動かない関節でも、指令は実測位置の +1 サンプルぶんではなく、積み上がって差が開く。"""
+        self.hold(follow=["shoulder_lift"], **self.ALL)
+        written = []
+        self.desk.arm.write = lambda pose: written.append(dict(pose))     # 書いても腕は動かない（pose は不変）
+        self.desk.limits["shoulder_lift"].update(speed=11.0, step=5.0)
+        for _ in range(40):
+            self.sample(follow=["shoulder_lift"], **{**self.ALL, "lift": 1.0})
+        actual = self.desk.arm.read()["shoulder_lift"]
+        lead = written[-1]["shoulder_lift"] - actual
+        self.assertGreater(lead, 5.0)                                     # 1 サンプルぶん(約 1.4)より大きい
+        self.assertLessEqual(lead, 5.0 * 2 + 1e-6)                        # step(5%) = 10 raw を超えない
+
+    def test_command_restarts_from_the_actual_position_after_a_joint_is_turned_off(self):
+        self.hold(follow=["shoulder_lift"], **self.ALL)
+        for _ in range(5):
+            self.sample(follow=["shoulder_lift"], **{**self.ALL, "lift": 1.0})
+        self.sample(follow=[], **self.ALL)
+        self.assertNotIn("shoulder_lift", self.desk.cmd)
+
     def test_invalid_follow_is_rejected(self):
         for bad in ("shoulder_lift", ["nope"], [1]):
             with self.assertRaises(ValueError):

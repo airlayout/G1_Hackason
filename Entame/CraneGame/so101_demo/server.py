@@ -312,6 +312,19 @@ class Desk:
         self.cmd[joint] = (goal, now)
         return goal
 
+    def follow_goal(self, joint, actual, want, dt, now):
+        """追従の次の指令位置。前回の「指令位置」を速度制限ぶん目標へ進める（実測位置から毎回出すと、
+        差が 1 サンプルぶん（約 1.4）しか開かず、重い関節や摩擦で動かなくなる）。
+        ただし実際の位置からは 1 回の最大移動量(step)より先へ離さない（引っかかったときに指令だけ先へ行かない）。"""
+        previous = self.cmd.get(joint)
+        base = previous[0] if previous and now - previous[1] < MOVE_HOLD_S else actual
+        speed = speed_raw(joint, self.limits)
+        goal = base + clip(want - base, -speed*dt, speed*dt)
+        lead = step_raw(joint, self.limits)
+        goal = clip(goal, actual - lead, actual + lead)
+        self.cmd[joint] = (goal, now)
+        return goal
+
     def set_limits(self, data):
         """画面からの制限の変更（reset なら既定値へ）。検証→保存→適用の順で、保存に失敗したら何も変えない。"""
         new = default_limits() if data.get("reset") is True else parse_limits(data.get("limits", {}), self.limits)
@@ -404,11 +417,13 @@ class Desk:
                 self.note = FOLLOW_NOTE if engaged else WAIT_NOTE
                 if was_ready:                   # 追従の途中でONにした関節は、その時点の手と腕を基準にし直す（飛び出し防止）
                     for j in follow - self.followed:
+                        self.cmd.pop(j, None)
                         if j in free:
                             self.baseline.rebase(j, free[j], current)
                 self.followed = follow
             for j in ((GRIPPER_ONLY_JOINTS if self.gripper_only else JOINTS) if engaged else ()):
                 if self.gripper_only and j not in follow:      # 追従をOFFにした関節は、指令を出さない（今の姿勢のまま）
+                    self.cmd.pop(j, None)
                     continue
                 if j == "gripper":
                     a, b, fraction = GRIPPER_CLOSED, GRIPPER_OPEN, opening
@@ -421,10 +436,8 @@ class Desk:
                     a, b, fraction = 0.0, neutral_map(rel, lo, hi, self.baseline.reference(j, self.home)), 1.0
                 else:
                     a, b, fraction = self.marks["low"][j], self.marks["high"][j], height
-                speed = speed_raw(j, self.limits)
                 want[j] = a + (b-a)*fraction
-                delta = clip(want[j] - current[j], -speed*dt, speed*dt)
-                goal[j] = current[j] + delta
+                goal[j] = self.follow_goal(j, current[j], want[j], dt, now)
             if goal:
                 self.arm.write(goal)
             self.pose = current
@@ -466,6 +479,7 @@ class Desk:
             self.gripper_only = True
             self.baseline.reset()
             self.followed = frozenset()
+            self.cmd.clear()
             self.last = self.clock()
             self.token = secrets.token_hex(16)
             self.note = WAIT_NOTE if self.baseline.enabled else FOLLOW_NOTE
