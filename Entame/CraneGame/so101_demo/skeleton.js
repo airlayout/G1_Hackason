@@ -321,6 +321,7 @@ function render() {
   $("enable").textContent = camera ? "映像を閉じる" : "映像を開く";
   $("start").disabled = !s.ready || s.following || state.drive !== "on" || !camera;
   $("reset").disabled = s.following;
+  $("side").disabled = s.following || !!phaseText;      // 追従・較正の途中で腕を替えない
   renderPoses(); renderFits();
 }
 bind($("drive"), async () => { state = await command("drive", {mode: "on"}); render(); });
@@ -337,4 +338,19 @@ async function poll() {
     render();
   } catch (e) { message(e.message); }
 }
+// 追従する腕（左右）。選んだ腕は覚えておく。左右で角度の符号が逆になるものがあるため、腕を替えたら較正は無効（やり直す）
+const SIDE_KEY = "skeleton.side";
+try { const saved = localStorage.getItem(SIDE_KEY); if (saved in ARMS) $("side").value = saved; } catch (e) { console.warn("storage", e); }
+$("side").addEventListener("change", async () => {
+  try { localStorage.setItem(SIDE_KEY, $("side").value); } catch (e) { console.warn("storage", e); }
+  latest = raw = null;
+  try {
+    if (sk()?.captured.some(Boolean)) {
+      for (const k of Object.keys(thumbs)) delete thumbs[k];
+      for (const k of Object.keys(earlier)) delete earlier[k];
+      state = await command("skeleton_reset"); render();
+      message("腕を切り替えたので、較正をやり直してください");
+    }
+  } catch (e) { message(e.message); }
+});
 buildFollowJoints(); poll(); setInterval(poll, POLL_MS);
