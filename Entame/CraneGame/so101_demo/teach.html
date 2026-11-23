@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SO-101 教示</title><link rel="stylesheet" href="/style.css">
+<style>
+header{padding-top:8px;padding-bottom:8px}
+main{max-width:1500px}
+#now{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px;align-items:start}
+#now .figure{display:flex;gap:6px}#now .figure svg{width:33.3%;height:auto;display:block}
+#nowTitle{font-size:1.3rem;font-weight:700;margin:0 0 4px}
+#message{min-height:1.4em;color:var(--warn);font-weight:700;margin:2px 0 0}
+#status{font-weight:700;margin:2px 0}
+#live{display:grid;grid-template-columns:auto 1fr;gap:2px 16px;margin:8px 0;font-variant-numeric:tabular-nums}
+#save{background:var(--accent);color:#fff;border:0;font-weight:700;padding:10px 26px;font-size:1.05rem}
+#cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.card{display:flex;flex-direction:column;gap:6px;border:1px solid #e0e9e6;border-radius:10px;padding:10px;background:#fafcfb;min-width:0}
+.card.current{outline:3px solid #f0b429}
+.card h3{margin:0;font-size:.95rem}.card p{margin:0;font-size:.8rem}
+.card .figure{display:flex;gap:4px}.card .figure svg{width:33.3%;height:auto;display:block}
+.card .done{color:var(--accent);font-weight:700}.card .todo{color:var(--mute)}
+.card .row{margin:0}.card button{padding:6px 10px;min-height:36px;font-size:.85rem}
+.vals{font-variant-numeric:tabular-nums;font-size:.8rem;color:var(--mute)}
+#progress{font-weight:700}
+@media (max-width:900px){#now{grid-template-columns:minmax(0,1fr)}}
+</style></head>
+<body>
+<header><h1>SO-101 教示 <small>人の姿勢ごとに、ロボットを手で動かして保存</small></h1><strong id="mode">接続中</strong><a href="/skeleton">骨格版へ</a><a href="/">全関節追従の画面へ</a></header>
+<main>
+<section id="guide"><h2>やり方</h2>
+<ol class="help"><li>下の一覧から、人の姿勢（H）を選ぶ。保存していないものが自動で選ばれる</li>
+<li>モーターを「やわらか」か「OFF」にして、ロボットを、人の姿勢にいちばん近い形へ手で動かす（<b>肩は重いので、手で支えて静止させる</b>）</li>
+<li>「この姿勢を保存」を押す。関節の値がそのまま記録され、次の姿勢へ進む</li>
+<li>10姿勢そろうまで繰り返す。保存したあとでも、姿勢を選び直して上書きできる</li></ol>
+<p class="help">グリッパーは動かしても動かさなくてもよい（値は記録するが、対応には使わない）。H1・H2 は上腕がほぼ垂直で、人の台座の向きが測れない（ロボットの台座の値は記録する）。</p></section>
+
+<section id="control"><h2>モーターと保存</h2>
+<div class="row"><b>モーター</b><button data-drive="on">ON（固く保つ）</button><button data-drive="soft">やわらか</button><button data-drive="off">OFF（力を抜く）</button><span id="driveState"></span></div>
+<p id="status" role="status">接続中</p><p id="message" role="alert"></p></section>
+
+<section id="nowBox"><h2>いま教える姿勢 <small id="progress"></small></h2>
+<div id="now"><div><p id="nowTitle"></p><div id="nowFigure"></div><p id="nowAngles" class="vals"></p></div>
+<div><b>ロボットの今の関節値</b><div id="live"></div>
+<div class="row"><button id="save">この姿勢を保存</button><button id="skip">やらない（スキップ）</button></div>
+<p class="help">押した瞬間の関節値を、選んでいる姿勢の教示として保存します（保存済みなら上書き）。「やらない」は、この姿勢を保存せずに次へ進みます（一覧から「やっぱり教える」で戻せる。画面を開き直すと未保存に戻る）。</p></div></div></section>
+
+<section><h2>人の姿勢の一覧 <small>保存した関節値つき</small></h2><div id="cards"></div></section>
+</main>
+<script type="module" src="/teach.js"></script>
+</body></html>

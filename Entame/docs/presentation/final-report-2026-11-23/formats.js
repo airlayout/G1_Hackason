@@ -25,7 +25,11 @@ const slideFormats = [
   { id: 'trial-result', name: '検証・成果と実機素材', slots: 2, description: '本文の1行目に検証、2行目に成果を入れます。' },
   { id: 'field-issues', name: '現場の課題・2論点', slots: 0, description: '本文の1行目に実機で起きたこと、2行目に開催前の確認事項を入力します。' },
   { id: 'facility-flow', name: '施設実証の流れ・3ステップ', slots: 1, description: '本文の1行目に矢印で区切った3ステップ、2行目に目的を入力します。' },
-  { id: 'adoption-table', name: '社会実装の一覧・4分野', slots: 0, description: '分野ごとに3項目を同じ太さで示します。' }
+  { id: 'adoption-table', name: '社会実装の一覧・4分野', slots: 0, description: '分野ごとに3項目を同じ太さで示します。' },
+  { id: 'hero-photo', name: '全面画像と見出し', slots: 0, description: '画像を全面に敷き、見出しを重ねます。素材は1枚目を使います。' },
+  { id: 'crane-timeline', name: '年表・3項目（絵と年と名前）', slots: 0, description: '本文の各行を「年｜名前｜ひとこと」として3つ並べます。' },
+  { id: 'crane-demo', name: '大きな映像と3つの見どころ', slots: 0, description: '本文の1〜3行目を「操作｜結果」の見どころに、4〜5行目を映像の左右の注記にします。素材は1枚目の映像。' },
+  { id: 'crane-ladder', name: '段階のはしごと実機映像', slots: 0, description: '本文の1〜4行目を「名前｜説明｜状態」の4段階に、5行目以降を注記にします。素材は1枚目（画像または映像）。' }
 ];
 
 function slideFormat(slide, index) {
@@ -128,7 +132,8 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
   frame.append(element('h2', '', slide.title || '［タイトル］'));
 
   const lines = slide.body.split('\n').map(line => line.trim()).filter(Boolean);
-  const fieldFindings = format.id === 'field-issues' && lines.length >= 2;
+  const fieldFindings = format.id === 'field-issues' && lines.length === 2;
+  const issueCards = format.id === 'field-issues' && lines.length >= 3;
   const facilitySteps = format.id === 'facility-flow' ? lines[0]?.split(/\s*→\s*/u) : null;
   const customFacilityFlow = facilitySteps?.length === 3 && facilitySteps.every(Boolean);
   const listType = { team: 'ul', contents: 'ol', summary: 'ul', 'body-2': lines.length > 1 ? 'ul' : null }[format.id];
@@ -149,6 +154,7 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
   const portraits = format.id === 'portraits';
   const paired = portraits || (finalDeck && format.id === 'body-3');
   const findings = format.id === 'trial-result';
+  const craneFormat = craneFormats.includes(format.id);
   const hasTrialMedia = findings && items.slice(0, slots).some(item => mediaUrl(item?.url));
   const placeholders = portraits || findings || (sample && format.id === 'facility-flow')
     || (finalDeck && (photoLayout || ['team', 'body-3'].includes(format.id)));
@@ -249,7 +255,7 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
       results.append(element('dt', '', label), element('dd', '', value?.replace(/^(検証|成果)｜/u, '') || '［入力］'));
     }
     layout.append(results);
-  } else if (!paired && !fieldFindings && !customFacilityFlow && slide.body) layout.append(content);
+  } else if (!paired && !fieldFindings && !issueCards && !customFacilityFlow && !craneFormat && slide.body) layout.append(content);
   if (format.id === 'survey') {
     layout.classList.add('p4-research');
     layout.append(sample ? surveyPlaceholder() : visitReasons());
@@ -263,6 +269,8 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
     if (generated) assets.querySelector('img').alt = 'ロボットと子どもがハイタッチし、右のゲーム画面にスコア100が表示されている';
     photo.append(assets, element('figcaption', 'promo-copy', caption));
     layout.append(photo);
+  } else if (issueCards) {
+    renderIssueCards(layout, lines);
   } else if (fieldFindings) {
     const findings = element('div', 'field-findings');
     findings.append(element('p', 'slide-body trial-observed', lines[0]),
@@ -282,6 +290,8 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
     safety.append(element('h3', '', '安全性'), diagram);
     columns.append(uptime, safety);
     layout.append(columns);
+  } else if (craneFormat) {
+    renderCraneLayout(format.id, { frame, layout, lines, items });
   } else if (format.id === 'facility-flow') {
     layout.classList.add('facility-story');
     const steps = customFacilityFlow ? facilitySteps : ['施設のイベント告知','来場者とロボットの体験','来館理由を聞く'];
@@ -296,6 +306,7 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
     if (customFacilityFlow && lines.length > 1) {
       layout.append(element('p', 'slide-body', lines.slice(1).join('\n')));
     }
+    if (finalDeck && !assets.children.length) layout.append(renderQueueScene());
   } else if (format.id === 'adoption-table') {
     const table = element('table', 'adoption-table');
     table.setAttribute('aria-label', '社会実装に向けた取り組み');

@@ -50,7 +50,8 @@ const SEARCH_AHEAD_SPREAD = (2 * Math.PI) / 3;
 const SEARCH_ARRIVAL_DIST_PX = 4;
 const HEADING_SAMPLE_MIN_PX = 2; // これ以上動いたときだけ、人の進行方向を更新する
 
-export const MODE = { FOLLOW: "follow", PAUSE: "pause", WANDER: "wander", SEARCH: "search" };
+// STAY: ステイモード（救出ルールで、助けられるまで動かない）。LOVOT のセンサーホーンのモードスイッチで通常モードに戻す。
+export const MODE = { FOLLOW: "follow", PAUSE: "pause", WANDER: "wander", SEARCH: "search", STAY: "stay" };
 
 // 画面に出すラベル用の名前（"Mini: follower" のように表示する）。
 export const MODE_LABEL = {
@@ -58,6 +59,7 @@ export const MODE_LABEL = {
   [MODE.PAUSE]: "pause",
   [MODE.WANDER]: "wander",
   [MODE.SEARCH]: "search",
+  [MODE.STAY]: "stay",
 };
 
 // エディタで有効にしたときの初期値（ステージJSONの `miniRobot` と同じ形。speed は px/s）。
@@ -90,6 +92,7 @@ export function createMiniRobot(config, start, rng = Math.random) {
 
 // rng は 0〜1 の乱数。テストで固定できるよう引数にしている。
 export function updateMiniRobot(robot, dt, player, stage, rng = Math.random) {
+  if (robot.mode === MODE.STAY) return; // ステイモード: 救出されるまで動かない・人も探さない
   const visible = canSeePlayer(robot, player, stage.walls);
   if (visible) rememberPlayer(robot, player);
 
@@ -275,12 +278,17 @@ export function isMiniRobotAtStart(robot, stage) {
 }
 
 // CLEAR 条件: 人が TARGET を持って START に戻り、ミニロボットがいればそれも START に戻っている。
+// 救出ルール（rescueMission）では TARGET は取らず、ミニロボットを救出して人とミニロボットの両方が START に戻る。
 export function isStageCleared(player, miniRobot, stage) {
+  if (miniRobot?.rescueMission) {
+    const playerAtStart = Math.hypot(player.x - stage.start.x, player.y - stage.start.y) < player.radius + 14;
+    return miniRobot.rescued && playerAtStart && isMiniRobotAtStart(miniRobot, stage);
+  }
   if (!isBackAtStart(player, stage)) return false;
   return !miniRobot || isMiniRobotAtStart(miniRobot, stage);
 }
 
-// 見つかったらアウトの対象の一覧。
+// 見つかったらアウトの対象の一覧。ステイモード（囚われの身）のミニロボットは、救出されるまで対象にしない（仮置き）。
 export function detectionTargets(player, miniRobot) {
-  return miniRobot ? [player, miniRobot] : [player];
+  return miniRobot && miniRobot.mode !== MODE.STAY ? [player, miniRobot] : [player];
 }

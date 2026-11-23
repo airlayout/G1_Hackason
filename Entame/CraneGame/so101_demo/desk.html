@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SO-101 撮影卓</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<header><h1>SO-101 撮影卓</h1><strong id="mode">接続中</strong><button id="stop">追従停止［Space］</button></header>
+<main>
+<section id="guide"><h2>次にやること</h2><p id="next" role="status">読み込み中</p><ol id="steps"></ol></section>
+<div class="cols">
+<div class="left">
+<section id="cameras"><h2>カメラ <small>手の読み取りと録画に、この1台を使う</small></h2>
+<div class="row"><button id="devices">カメラ一覧を更新</button><label>カメラ <select id="cam"><option value="">既定のカメラ</option></select></label><label>画角 <select id="fov"><option value="4:3">4:3（広い）</option><option value="16:9">16:9（上下が切れる）</option><option value="3:4">3:4（縦・上下が広い）</option></select></label><label><input type="checkbox" id="mirror" checked> 映像を左右反転（鏡）</label><button id="enable">映像を開く</button><span id="cameraInfo" class="help"></span></div>
+<div class="preview"><video id="input" autoplay muted playsinline></video><canvas id="overlay"></canvas></div>
+<p id="hand">停止中</p><div class="row"><button id="snap">診断を保存</button><span id="snapState" role="status"></span></div><p id="perf" class="help">認識 — ms／フレーム　— fps</p>
+<div class="row"><button id="calOpen">指を最大に開く（3秒後に測る）</button><button id="calClosed">指をくっつける（3秒後に測る）</button><span id="fingerState" role="status">未校正</span></div>
+<p class="help">指の開閉の校正は1回だけ（ブラウザに保存）。親指と人差し指を、最大に開いた形とくっつけた形で測り、グリッパーの最大開・最大閉に対応させます。</p>
+<div class="row"><button id="startGripper">全関節を追従（登録不要）</button><span id="countdown" role="status" aria-live="polite"></span><span id="status" role="status">待機中</span></div>
+<div id="diag" role="status" aria-live="polite" class="diag" hidden></div>
+<div id="followBox" class="row"><b>追従する関節</b>
+<label><input type="checkbox" data-joint="shoulder_pan" checked>台座</label><label><input type="checkbox" data-joint="shoulder_lift" checked>肩</label><label><input type="checkbox" data-joint="elbow_flex" checked>肘</label><label><input type="checkbox" data-joint="wrist_flex">手首の曲げ</label><label><input type="checkbox" data-joint="wrist_roll">手首の回転</label><label><input type="checkbox" data-joint="gripper" checked>グリッパー</label>
+<button id="followAll" type="button">すべてON</button><button id="followNone" type="button">すべてOFF</button></div>
+<p class="help">「全関節を追従」用。切り分けのため、動かしたい関節だけチェックする。追従中に切り替えてもよい（OFFにした関節は今の姿勢のまま止まり、ONにした関節は、その時点の手と腕の位置から動き出す）。</p>
+<p class="help">「全関節を追従」を押したら、手を画面に映して約 0.3 秒止めてください。その構えと腕の今の姿勢が基準になり（構えは何でもかまいません）、手がそこから動いた分だけ、腕が動きます。</p>
+<table id="moveGuide" class="help"><caption>どう動かすと、どの関節が動くか（手は手のひらをカメラへ向ける）</caption>
+<tr><th>肩（上げ下げ）</th><td>手を画面の<b>上へ</b>上げる → 腕が上がる。下げる → 下がる</td></tr>
+<tr><th>肘（のび縮み）</th><td>手をカメラへ<b>近づける／遠ざける</b>（手の見かけの大きさで測る。向きは実機で要確認）</td></tr>
+<tr><th>台座（左右）</th><td>手を画面の<b>左右</b>へ動かす（画面の中央が基準）</td></tr>
+<tr><th>手首の回転</th><td>手を<b>時計回りに傾ける</b>（手首をひねる）→ 時計回り</td></tr>
+<tr><th>手首の曲げ</th><td>手の指先を<b>奥へ倒す</b>（手のひらが小さく見える。手前へ倒すと認識が外れる）</td></tr>
+<tr><th>グリッパー</th><td>親指と人差し指を<b>開く／くっつける</b></td></tr></table>
+<p class="help">うまく動かないときは、まず1つの関節だけチェックして、その動きだけを試してください。</p>
+<section id="syncCard" hidden><h3>手と腕の姿勢 <small id="syncState"></small></h3>
+<div id="syncRows"></div>
+<p class="help">中央の線が、追従を始めたときの手と腕の姿勢です。緑の● が手、青の▲ が腕の、そこから動いた量です。淡い緑は、腕が手に追いついているとみなす範囲です。</p></section>
+<h3>録画</h3>
+<div class="row"><button id="record">● 録画開始</button><button id="finish" disabled>録画終了</button><a id="save" hidden>動画を保存</a><span id="filmState">録画待機中</span></div>
+<p class="help">この映像がそのまま録画されます（認識点・操作画面は入りません）。手・爪・お菓子が一緒に映る位置にカメラを置いてください。録画終了後に「動画を保存」を押します。</p>
+</section>
+</div>
+<aside class="right">
+<section id="calib"><h2>モーターの校正 <small>関節の 0〜100% は、校正で測った可動範囲が基準</small></h2>
+<p id="calibState" role="status">確認中</p>
+<div id="calibTodo" hidden><p class="help">別のターミナルで下のコマンドを実行し、画面の指示に従って校正します（サーバーは止めなくて構いません）。終わったら「校正を確認」を押します。</p><code id="calibCmd"></code><div class="row"><button id="calibCheck">校正を確認</button></div></div>
+</section>
+<section id="armCard"><h2>仮想アーム <small>手の動きがここに出る</small></h2>
+<div class="armviews"><figure><figcaption>横から <small>肩・肘・手首の曲げ・グリッパー</small></figcaption>
+<svg id="arm" class="armsvg" viewBox="0 0 420 300" role="img" aria-label="アームを横から見た模式図">
+<rect x="0" y="262" width="420" height="38" class="floor"/>
+<rect x="330" y="236" width="52" height="26" rx="8" class="candy"/>
+<rect x="60" y="238" width="70" height="24" rx="4" class="base"/>
+<line id="arm-l0" x1="95" y1="238" x2="95" y2="205" class="l1"/>
+<line id="arm-l1" x1="95" y1="205" x2="0" y2="0" class="l1"/>
+<line id="arm-l2" x1="0" y1="0" x2="0" y2="0" class="l2"/>
+<line id="arm-l3" x1="0" y1="0" x2="0" y2="0" class="l3"/>
+<line id="arm-ja" x1="0" y1="0" x2="0" y2="0" class="jaw"/>
+<line id="arm-jb" x1="0" y1="0" x2="0" y2="0" class="jaw"/>
+<circle id="arm-j0" cx="95" cy="205" r="9" class="joint"/><circle id="arm-j1" r="9" class="joint"/><circle id="arm-j2" r="9" class="joint"/><circle id="arm-j3" r="8" class="joint"/>
+</svg></figure>
+<figure><figcaption>正面から <small>台座の左右・手首の回転（向きは仮）</small></figcaption>
+<svg id="armFront" class="armsvg" viewBox="0 0 300 300" role="img" aria-label="アームを正面から見た模式図">
+<rect x="0" y="262" width="300" height="38" class="floor"/>
+<rect x="115" y="238" width="70" height="24" rx="4" class="base"/>
+<line id="af-l0" x1="150" y1="238" x2="150" y2="205" class="l1"/>
+<line id="af-l1" x1="150" y1="205" x2="0" y2="0" class="l1"/>
+<line id="af-l2" x1="0" y1="0" x2="0" y2="0" class="l2"/>
+<line id="af-l3" x1="0" y1="0" x2="0" y2="0" class="l3"/>
+<line id="af-ja" x1="0" y1="0" x2="0" y2="0" class="jaw"/>
+<line id="af-jb" x1="0" y1="0" x2="0" y2="0" class="jaw"/>
+<circle id="af-j0" cx="150" cy="205" r="9" class="joint"/><circle id="af-j1" r="9" class="joint"/><circle id="af-j2" r="9" class="joint"/><circle id="af-j3" r="8" class="joint"/>
+</svg></figure></div>
+<p id="armMode" class="arm-mode">現在の姿勢</p>
+<div class="meters">
+<span>手の高さ</span><div class="meter"><i id="bar-height"></i></div><output id="val-height">—</output>
+<span>指の開き</span><div class="meter"><i id="bar-opening"></i></div><output id="val-opening">—</output>
+</div>
+<p class="help">模式図です。関節の向き・角度は実機と一致しません。「追従開始」の前は、手の入力から求めた予定の姿勢を表示し、アームは動きません。</p>
+<details id="sim" hidden><summary>模擬入力で操作を試す</summary><label><input id="manual" type="checkbox"> カメラの代わりにスライダーを使う</label><label>手の高さ <input type="range" id="height" min="0" max="100" value="0"></label><label>指の開き <input type="range" id="opening" min="0" max="100" value="100"></label></details>
+</section>
+<section id="driveCard"><h2>モーター <small>サーバーを止めずに切り替える</small></h2>
+<div id="drive" role="group" aria-label="モーターの状態"></div>
+<label id="softRow">やわらかさ <input type="range" id="softLevel" min="0" max="100" step="1" value="15"><output id="softValue">15%</output></label>
+<p class="help">大きいほど、押されても動きにくくなります（やわらかモード中に動かして調整できます）。</p>
+<p id="driveHelp" class="help"></p>
+</section>
+<section id="limitsCard"><div class="row"><h2>詳細設定 <small>モーター別の制限</small></h2><button id="limitsToggle" aria-expanded="false" aria-controls="limitsBody">詳細設定を表示</button></div>
+<div id="limitsBody" hidden>
+<p class="help">値はすべて可動範囲に対する%です。速度・移動量は「追従」で使われます（スライダー操作は、移動量の上限だけ守ります）。範囲は、追従・スライダーのどちらでも守られます。追従中は変更できません。</p>
+<div id="limitsList"></div>
+<div class="row"><button id="limitsSave">保存して適用</button><button id="limitsReset">既定値に戻す</button></div>
+<p id="limitsState" class="help" role="status"></p>
+</div>
+</section>
+<section><h2>現在位置 <small>スライダーで動かす（可動範囲に対する 0〜100%）。登録は下の別の欄</small></h2>
+<div class="row"><button id="homeSet">今の姿勢を初期姿勢にする</button><button id="homeGo">初期姿勢へ戻す</button><button id="restGo">畳んだ姿勢へ</button><span id="homeState" class="help">初期姿勢: 確認中</span><span id="restState" class="help"></span></div>
+<p class="help">初期姿勢は、グリッパーが机に接して、モーターを OFF にしても保てる姿勢。台座・肩・肘・手首を記録する（グリッパーは含めない）。追従の行き先ではなく、「初期姿勢へ戻す」の行き先（追従は、始めたときの腕の姿勢から動く）</p>
+<div id="joints"></div>
+</section>
+<section hidden><h2>位置の登録 <small>今の姿勢を記録する</small></h2>
+<div id="marks"></div>
+<p id="problem" role="alert"></p>
+<details open><summary>全関節の登録値</summary><div class="scroll"><table id="markTable"></table></div>
+<p class="help">太字が各登録で使われる値。グリッパーは登録不要で、指の開きで最大閉〜最大開が決まります。値は可動範囲に対する%です。</p></details>
+<h3>登録履歴（新しい順）</h3>
+<p id="noHistory" class="help">まだ登録していません</p><ol id="history"></ol>
+</section>
+</aside>
+</div>
+<p id="error" role="alert"></p>
+</main><script type="module" src="/app.js"></script></body></html>

@@ -4,18 +4,20 @@
 import { createPlayer, updatePlayer } from "./player.js";
 import { createGuard, updateGuard, isCaught } from "./guard.js";
 import { createSecurityCamera, updateSecurityCamera } from "./securityCamera.js";
-import { createMiniRobot, defaultMiniRobot, updateMiniRobot, isStageCleared, detectionTargets } from "./miniRobot.js";
+import { updateMiniRobot, isStageCleared, detectionTargets } from "./miniRobot.js";
+import { RULE, createPlayRobot, tryRescue } from "./rescueRule.js";
 import { renderStage } from "./render.js";
 
 // withMiniRobot: テストプレイでミニロボットを連れて行くか（ステージには保存しない）。
-export function createPlaySession(stage, withMiniRobot = false) {
+// rule: RULE.STEAL（TARGET を盗む）か RULE.RESCUE（囚われのミニロボットを救出する）。
+export function createPlaySession(stage, withMiniRobot = false, rule = RULE.STEAL) {
   return {
     stage,
-    player: createPlayer(stage.start),
+    player: createPlayer(stage.start, rule === RULE.STEAL),
     guard: createGuard(stage.guard),
     securityCameras: stage.securityCameras.map(createSecurityCamera),
-    miniRobot: withMiniRobot ? createMiniRobot(defaultMiniRobot(), stage.start) : null,
-    input: { up: false, down: false, left: false, right: false },
+    miniRobot: createPlayRobot(stage, rule, withMiniRobot),
+    input: { up: false, down: false, left: false, right: false, rescue: false },
     result: null,
   };
 }
@@ -24,6 +26,8 @@ export function stepPlaySession(session, dt) {
   if (session.result) return;
 
   updatePlayer(session.player, session.input, dt, session.stage);
+  if (session.miniRobot) tryRescue(session.miniRobot, session.player, session.input.rescue);
+  session.input.rescue = false;
   if (session.miniRobot) updateMiniRobot(session.miniRobot, dt, session.player, session.stage);
   const targets = detectionTargets(session.player, session.miniRobot);
   updateGuard(session.guard, dt, session.stage, targets);

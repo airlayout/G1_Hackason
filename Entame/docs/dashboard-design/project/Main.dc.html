@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>運営ダッシュボード</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="box-sizing: border-box; max-width: 1440px; margin: 0 auto; padding: 16px 20px 32px; display: flex; flex-direction: column; gap: 16px; background: #f2f2ef; color: #222; font-family: system-ui, -apple-system, 'Hiragino Sans', sans-serif; font-size: 14px; line-height: 1.5">
+
+  <!-- トップバー -->
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; background: #fff; border: 1.5px solid #333; padding: 10px 16px">
+    <div style="font-weight: 700; font-size: 18px">STEALTH 運営ダッシュボード</div>
+    <label style="display: flex; align-items: center; gap: 6px">ステージ
+      <select style="min-height: 36px; border: 1.5px solid #333; background: #fff; padding: 0 8px; font-size: 14px">
+        <option>level3（stage-4.json）</option>
+        <option>level6（stage-6.json）</option>
+      </select>
+    </label>
+    <div style="border: 2px solid #222; padding: 4px 14px; font-weight: 700; letter-spacing: 0.05em">PLAYING</div>
+    <div>経過 00:31</div>
+    <div style="flex: 1 1 0; min-width: 0"></div>
+    <sc-for list="{{chips}}" as="chip" hint-placeholder-count="4">
+      <div style="border: 1.5px solid #666; padding: 2px 10px; font-size: 13px; background: #fafafa">
+        <span style="font-weight: 700">{{chip.label}}</span> {{chip.state}}<span style="color: #555"> {{chip.detail}}</span>
+      </div>
+    </sc-for>
+    <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px">
+      <button style="min-height: 48px; padding: 0 24px; border: 3px solid #b00020; background: #fff; color: #b00020; font-size: 16px; font-weight: 800; cursor: pointer">緊急停止</button>
+      <div style="font-size: 11px; color: #555; max-width: 200px">追加の停止手段。コントローラ保持者の停止を置き換えない</div>
+    </div>
+  </div>
+
+  <!-- 上段: マップ + 操作 -->
+  <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+    <!-- マップ -->
+    <div style="flex: 1 1 600px; min-width: 0; background: #fff; border: 1.5px solid #333; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px">
+        <div style="font-weight: 700; font-size: 16px">マップ</div>
+        <div style="color: #555; font-size: 13px">level3 ・ 10 m × 10 m ・ 1 m = 48 px</div>
+        <div style="flex: 1 1 0"></div>
+        <label style="display: flex; align-items: center; gap: 4px; font-size: 13px"><input type="checkbox" checked="checked"> 巡回ルート</label>
+        <label style="display: flex; align-items: center; gap: 4px; font-size: 13px"><input type="checkbox" checked="checked"> 視野</label>
+        <label style="display: flex; align-items: center; gap: 4px; font-size: 13px"><input type="checkbox" checked="checked"> 安全円 1 m</label>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+        <div style="overflow-x: auto; max-width: 100%">
+          <div style="position: relative; width: 480px; height: 480px; flex: none; background: #fafafa; border: 1.5px solid #333">
+            <!-- 視野 -->
+            <div style="position: absolute; left: 0; top: 0; width: 480px; height: 480px; background: rgba(70, 70, 70, 0.18); clip-path: polygon(221px 279px, 83px 82px, 150px 52px, 221px 39px, 292px 52px, 359px 82px)"></div>
+            <div style="position: absolute; left: 0; top: 0; width: 480px; height: 480px; background: rgba(110, 110, 110, 0.32); clip-path: polygon(310px 154px, 306px 298px, 238px 279px, 187px 229px)"></div>
+            <!-- 壁 -->
+            <div style="position: absolute; left: 32px; top: 274px; width: 161px; height: 8px; background: #555"></div>
+            <div style="position: absolute; left: 248px; top: 272px; width: 208px; height: 12px; background: #555"></div>
+            <div style="position: absolute; left: 352px; top: 188px; width: 105px; height: 11px; background: #555"></div>
+            <div style="position: absolute; left: 23px; top: 188px; width: 257px; height: 9px; background: #555"></div>
+            <!-- START / TARGET -->
+            <div style="position: absolute; left: 14px; top: 230px; width: 20px; height: 20px; border: 2px solid #222; border-radius: 50%; background: #fff"></div>
+            <div style="position: absolute; left: 6px; top: 252px; font-size: 11px; font-weight: 700">START</div>
+            <div style="position: absolute; left: 446px; top: 230px; width: 20px; height: 20px; border: 2px solid #222; background: #fff"></div>
+            <div style="position: absolute; left: 418px; top: 252px; font-size: 11px; font-weight: 700">TARGET</div>
+            <!-- G1 巡回ラインとテープ -->
+            <div style="position: absolute; left: 220px; top: 279px; width: 0; height: 115px; border-left: 3px dashed #222"></div>
+            <div style="position: absolute; left: 209px; top: 278px; width: 25px; height: 3px; background: #888"></div>
+            <div style="position: absolute; left: 209px; top: 336px; width: 25px; height: 3px; background: #888"></div>
+            <div style="position: absolute; left: 209px; top: 393px; width: 25px; height: 3px; background: #888"></div>
+            <!-- 安全円 1 m -->
+            <div style="position: absolute; left: 173px; top: 272px; width: 96px; height: 96px; border: 2px dashed #b00020; border-radius: 50%; box-sizing: border-box"></div>
+            <!-- G1 推定位置 -->
+            <div style="position: absolute; left: 213px; top: 312px; width: 16px; height: 16px; border-radius: 50%; background: #222"></div>
+            <div style="position: absolute; left: 276px; top: 306px; font-size: 11px; font-weight: 700">G1（推定）</div>
+            <!-- Pepper -->
+            <div style="position: absolute; left: 302px; top: 146px; width: 16px; height: 16px; border: 2px solid #222; background: #fff; box-sizing: border-box"></div>
+            <div style="position: absolute; left: 324px; top: 140px; font-size: 11px; font-weight: 700">Pepper</div>
+            <!-- 検知バッジ -->
+            <div style="position: absolute; left: 8px; top: 8px; border: 1.5px solid #333; background: #fff; padding: 2px 8px; font-size: 12px">検知: G1 なし / Pepper なし</div>
+            <div style="position: absolute; right: 8px; bottom: 6px; font-size: 11px; color: #555">0 m 〜 10 m</div>
+          </div>
+        </div>
+
+        <div style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+          <div style="font-weight: 700; font-size: 13px">凡例</div>
+          <sc-for list="{{legend}}" as="row" hint-placeholder-count="6">
+            <div style="font-size: 13px"><span style="font-weight: 700">{{row.term}}</span><span style="color: #555"> {{row.desc}}</span></div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="font-size: 12px; color: #555">G1 の位置は指令速度 × 時間からの推定値（実測ではない）。人の位置は表示しない。ワイヤーフレームのため視野の壁による遮蔽は省略している。</div>
+    </div>
+
+    <!-- 操作 -->
+    <div style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+
+      <div style="background: #fff; border: 1.5px solid #333; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px">
+        <div style="font-weight: 700; font-size: 16px">ゲーム</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button disabled="disabled" style="min-height: 44px; padding: 0 18px; border: 1.5px dashed #888; background: #e8e8e6; color: #666; font-size: 14px">ゲーム開始</button>
+          <button style="min-height: 44px; padding: 0 18px; border: 2px solid #222; background: #fff; font-size: 14px; font-weight: 700; cursor: pointer">ゲーム終了</button>
+          <button style="min-height: 44px; padding: 0 18px; border: 1.5px solid #333; background: #fff; font-size: 14px; cursor: pointer">リセット（G1 を初期位置へ）</button>
+        </div>
+        <div style="font-size: 12px; color: #555">開始は、下の開始前チェックが全部そろうまで押せない（PLAYING 中のため今は無効）。</div>
+      </div>
+
+      <div style="background: #fff; border: 1.5px solid #333; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px">
+        <div style="font-weight: 700; font-size: 16px">G1</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button disabled="disabled" style="min-height: 44px; padding: 0 18px; border: 1.5px dashed #888; background: #e8e8e6; color: #666; font-size: 14px">巡回開始</button>
+          <button style="min-height: 44px; padding: 0 18px; border: 2px solid #222; background: #fff; font-size: 14px; font-weight: 700; cursor: pointer">巡回停止</button>        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; font-size: 13px">
+          <div><span style="color: #555">動作モード</span> sport_mode（LocoClient）</div>
+          <div><span style="color: #555">動き</span> 前進 → 旋回 180° → 前進</div>
+          <div><span style="color: #555">通信</span> 最終受信 0.2 s 前（1 s で停止）</div>
+          <div><span style="color: #555">安全停止</span> 正常（1 m 以内に人なし）</div>
+        </div>
+      </div>
+
+      <div style="background: #fff; border: 1.5px solid #333; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px">
+        <div style="font-weight: 700; font-size: 16px">Pepper</div>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px">
+          <button disabled="disabled" style="min-height: 44px; padding: 0 18px; border: 1.5px dashed #888; background: #e8e8e6; color: #666; font-size: 14px">首振り開始</button>
+          <button style="min-height: 44px; padding: 0 18px; border: 2px solid #222; background: #fff; font-size: 14px; font-weight: 700; cursor: pointer">首振り停止</button>
+          <label style="display: flex; align-items: center; gap: 4px; font-size: 13px">振り幅
+            <input type="text" value="90" style="width: 56px; min-height: 32px; border: 1.5px solid #333; padding: 0 6px"> °</label>
+          <label style="display: flex; align-items: center; gap: 4px; font-size: 13px">速度
+            <input type="text" value="28.6" style="width: 64px; min-height: 32px; border: 1.5px solid #333; padding: 0 6px"> °/s（仮値）</label>
+        </div>
+        <div style="font-size: 13px"><span style="color: #555">通信</span> NAOqi 9559 接続中 ・ <span style="color: #555">映像</span> 有線 29.7 fps</div>
+      </div>
+
+      <div style="background: #fff; border: 1.5px solid #333; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px">
+        <div style="font-weight: 700; font-size: 16px">検知と再開</div>
+        <div style="font-size: 13px"><span style="color: #555">最後の検知</span> まだなし</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button disabled="disabled" style="min-height: 44px; padding: 0 18px; border: 1.5px dashed #888; background: #e8e8e6; color: #666; font-size: 14px">再開（運営のみ）</button>        </div>
+        <div style="font-size: 12px; color: #555">検知は YOLO が自動で判定し、確定したら即 GAME OVER（安全停止 1 m も同じ）。再開は運営のボタンのみで、自動では再開しない。検知した瞬間の画像 1 枚は、あとから確認できるよう残す。</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 下段: 映像 + チェック + ログ -->
+  <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+    <div style="flex: 2 1 560px; min-width: 0; background: #fff; border: 1.5px solid #333; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 10px">
+      <div style="font-weight: 700; font-size: 16px">カメラ映像と検出</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px">
+        <div style="flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+          <div style="font-size: 13px; font-weight: 700">G1 頭部カメラ（70°）</div>
+          <div style="position: relative; aspect-ratio: 16 / 9; background: #d9d9d6; border: 1.5px solid #666">
+            <div style="position: absolute; left: 38%; top: 24%; width: 20%; height: 62%; border: 2px dashed #222"></div>
+            <div style="position: absolute; left: 38%; top: 14%; font-size: 11px; font-weight: 700; background: #fff; padding: 0 4px">person 0.82 ・ 0.1 / 0.2 s</div>
+          </div>
+        </div>
+        <div style="flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+          <div style="font-size: 13px; font-weight: 700">Pepper 上部カメラ（57.2°）</div>
+          <div style="position: relative; aspect-ratio: 16 / 9; background: #d9d9d6; border: 1.5px solid #666">
+            <div style="position: absolute; left: 12px; top: 10px; font-size: 12px; color: #444">検出なし</div>
+          </div>
+        </div>
+      </div>
+      <div style="font-size: 12px; color: #555">映像はプレイ中だけ表示し、保存は既定でしない（保存する場合は事前に参加者へ伝える）。</div>
+    </div>
+
+    <div style="flex: 1 1 280px; min-width: 0; background: #fff; border: 1.5px solid #333; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 8px">
+      <div style="font-weight: 700; font-size: 16px">開始前チェック（safety.md）</div>
+      <sc-for list="{{checks}}" as="c" hint-placeholder-count="6">
+        <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 13px"><input type="checkbox" checked="checked" style="margin-top: 3px"> {{c.text}}</label>
+      </sc-for>
+    </div>
+
+    <div style="flex: 1 1 380px; min-width: 0; background: #fff; border: 1.5px solid #333; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 8px">
+      <div style="font-weight: 700; font-size: 16px">イベントログ</div>
+      <div style="display: flex; flex-direction: column; font-size: 13px; border-top: 1px solid #999">
+        <sc-for list="{{logs}}" as="row" hint-placeholder-count="5">
+          <div style="display: flex; gap: 12px; padding: 4px 0; border-bottom: 1px solid #ccc">
+            <div style="flex: none; width: 64px; color: #555">{{row.time}}</div>
+            <div style="flex: none; width: 56px; font-weight: 700">{{row.source}}</div>
+            <div style="flex: 1 1 0; min-width: 0">{{row.text}}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      chips: [
+        { label: 'G1', state: '接続中', detail: '0.2 s' },
+        { label: 'Pepper', state: '接続中', detail: '0.1 s' },
+        { label: 'スマホ', state: '接続中', detail: '1 台' },
+        { label: '遅延', state: '38 ms', detail: '' }
+      ],
+      legend: [
+        { term: 'START / TARGET', desc: '左端と右端（丸と四角）' },
+        { term: '壁', desc: '黒い帯。実際に現場へ置く' },
+        { term: 'G1（推定）', desc: '黒丸。往復の巡回ライン上' },
+        { term: '巡回ライン', desc: '破線。片道 約 2.4 m。灰色の短い線がテープ' },
+        { term: '安全円 1 m', desc: '赤い破線。人が入ると G1 停止' },
+        { term: 'G1 の視野', desc: '70°・5 m' },
+        { term: 'Pepper の視野', desc: '57.2°・3 m（首振りで動く）' }
+      ],
+      checks: [
+        { text: 'コントローラ保持者がいて、手にコントローラを持っている' },
+        { text: 'バッテリ残量を確認した' },
+        { text: '安全距離 1 m の区画が床にマークされている' },
+        { text: 'プレイヤーに「G1 に近づかない」を口頭で伝えた' },
+        { text: 'プレイヤーに「走らない（歩行のみ）」を口頭で伝えた' },
+        { text: '停止手段を 1 度試した' }
+      ],
+      logs: [
+        { time: '12:03:10', source: '運営', text: 'ゲーム開始（level3）' },
+        { time: '12:03:11', source: 'G1', text: '巡回開始' },
+        { time: '12:03:11', source: 'Pepper', text: '首振り開始' },
+        { time: '12:03:29', source: 'スマホ', text: 'TARGET を取った' },
+        { time: '12:03:41', source: 'G1', text: '人を検出（0.82）。0.2 s 続けば GAME OVER' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

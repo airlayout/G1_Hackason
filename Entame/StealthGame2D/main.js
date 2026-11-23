@@ -2,7 +2,8 @@ import { loadStages } from "./stagesLoader.js";
 import { createPlayer, updatePlayer } from "./player.js";
 import { createGuard, updateGuard, isCaught } from "./guard.js";
 import { createSecurityCamera, updateSecurityCamera } from "./securityCamera.js";
-import { createMiniRobot, defaultMiniRobot, updateMiniRobot, isStageCleared, detectionTargets } from "./miniRobot.js";
+import { updateMiniRobot, isStageCleared, detectionTargets } from "./miniRobot.js";
+import { RULE, createPlayRobot, tryRescue } from "./rescueRule.js";
 import { renderStage } from "./render.js";
 
 const STATE = {
@@ -17,6 +18,7 @@ const ctx = canvas.getContext("2d");
 const levelSelectEl = document.getElementById("level-select");
 const levelOptionsEl = document.getElementById("level-options");
 const miniRobotToggleEl = document.getElementById("play-mini-robot");
+const rescueToggleEl = document.getElementById("play-rescue");
 const overlayEl = document.getElementById("overlay");
 const overlayTitleEl = document.getElementById("overlay-title");
 const overlayHintEl = document.getElementById("overlay-hint");
@@ -33,7 +35,7 @@ let securityCameras = [];
 let miniRobot = null;
 let lastTimestamp = 0;
 
-const input = { up: false, down: false, left: false, right: false };
+const input = { up: false, down: false, left: false, right: false, rescue: false };
 
 const KEY_MAP = {
   ArrowUp: "up",
@@ -43,6 +45,12 @@ const KEY_MAP = {
 };
 
 window.addEventListener("keydown", (event) => {
+  // Space = 救出の操作（実機では LOVOT のセンサーホーンのモードスイッチ）。1回の押下を1フレームだけ伝える。
+  if (event.key === " " && state === STATE.PLAYING) {
+    if (!event.repeat) input.rescue = true;
+    event.preventDefault();
+    return;
+  }
   const dir = KEY_MAP[event.key];
   if (dir) {
     input[dir] = true;
@@ -56,6 +64,11 @@ window.addEventListener("keyup", (event) => {
     input[dir] = false;
     event.preventDefault();
   }
+});
+
+// 救出するときは LOVOT が TARGET の位置に必ずいるので、「一緒に行く」は選べなくする。
+rescueToggleEl.addEventListener("change", () => {
+  miniRobotToggleEl.disabled = rescueToggleEl.checked;
 });
 
 function buildLevelSelect(stages) {
@@ -74,12 +87,13 @@ function startStage(stage) {
   currentStage = stage;
   canvas.width = stage.width;
   canvas.height = stage.height;
-  player = createPlayer(stage.start);
+  // ルールと、ミニロボットを連れて行くかは、ステージではなくプレイする人がレベル選択で選ぶ。
+  const rule = rescueToggleEl.checked ? RULE.RESCUE : RULE.STEAL;
+  player = createPlayer(stage.start, rule === RULE.STEAL);
   guard = createGuard(stage.guard);
   securityCameras = stage.securityCameras.map(createSecurityCamera);
-  // ミニロボットを連れて行くかは、ステージではなくプレイする人がレベル選択で選ぶ。
-  miniRobot = miniRobotToggleEl.checked ? createMiniRobot(defaultMiniRobot(), stage.start) : null;
-  input.up = input.down = input.left = input.right = false;
+  miniRobot = createPlayRobot(stage, rule, miniRobotToggleEl.checked);
+  input.up = input.down = input.left = input.right = input.rescue = false;
   state = STATE.PLAYING;
   showScreen();
 }
@@ -117,6 +131,8 @@ backButtonEl.addEventListener("click", () => {
 
 function update(dt) {
   updatePlayer(player, input, dt, currentStage);
+  if (miniRobot) tryRescue(miniRobot, player, input.rescue);
+  input.rescue = false;
   if (miniRobot) updateMiniRobot(miniRobot, dt, player, currentStage);
   const targets = detectionTargets(player, miniRobot);
   updateGuard(guard, dt, currentStage, targets);

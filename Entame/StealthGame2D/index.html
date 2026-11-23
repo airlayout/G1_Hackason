@@ -16,7 +16,8 @@
 </div>
 
 <div id="level-options">
-  <label><input id="play-mini-robot" type="checkbox" /> ミニロボットを連れて行く</label>
+  <label><input id="play-mini-robot" type="checkbox" /> LOVOT と一緒に行く（START から同行する）</label>
+  <label><input id="play-rescue" type="checkbox" /> LOVOT を救出する（TARGET の位置にいる LOVOT を START へ連れて帰る。TARGET は取らない。「一緒に行く」は無効）</label>
 </div>
 
 <div id="play-controls" class="hidden">
@@ -28,6 +29,7 @@
   矢印キーで移動し、警備員(赤)の視野(扇形)を避けてTARGETを取ろう。<br />
   視野に入ると一発GAME OVER。<br />
   TARGETを取ったらSTARTまで戻ればCLEAR。<br />
+  <b>救出ルール</b>: 囚われのミニロボット(橙)はTARGETの位置でステイモード。そばまで行ってSpaceキー(実機ではLOVOTのセンサーホーンのモードスイッチ)で通常モードにし、連れてSTARTへ帰ればCLEAR。ステイモード中のミニロボットは見つかっても判定しない。<br />
   ミニロボット(橙)を連れて行く設定のときは、ミニロボットも見つかったらGAME OVER。CLEARには人とミニロボットの両方がSTARTに戻る必要がある（ミニロボットは遅い）。
 </p>
 
