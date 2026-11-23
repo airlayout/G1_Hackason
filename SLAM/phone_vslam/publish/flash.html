@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>時刻合わせの点滅</title>
+<!--
+  2 台のスマホの映像の時刻のずれを測るための点滅（measure_sync.py）。
+  画面いっぱいを白と黒に、0.7〜1.5 秒のばらばらの間隔で切り替える（一定の間隔だと 1 周ずれても合ってしまう）。
+  2 台を、この画面が画の真ん中に大きく写る向きに置く。
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #note { position: fixed; left: 8px; bottom: 6px; font: 13px -apple-system, sans-serif; color: #888; mix-blend-mode: difference; }
+</style>
+</head>
+<body>
+<div id="note">点滅中（measure_sync.py が測る間そのまま）</div>
+<script>
+  let white = false;
+  const flip = () => {
+    white = !white;
+    document.body.style.background = white ? "#fff" : "#000";
+    setTimeout(flip, 700 + Math.random() * 800);
+  };
+  flip();
+</script>
+</body>
+</html>

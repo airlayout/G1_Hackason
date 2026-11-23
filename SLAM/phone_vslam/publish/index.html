@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>カメラ送信</title>
+<!--
+  スマホのカメラを OMEN の MediaMTX へ WebRTC（WHIP）で送るページ。
+  MediaMTX 付属の送信ページは一覧の先頭のカメラ（iPhone では前面）と、使える中で最初のコーデック
+  （AV1・VP9 が先）を選ぶ。ここでは背面カメラ・H.264 で始める。送りの本体は MediaMTX 付属の
+  publisher.js（MediaMTXWebRTCPublisher）をそのまま使う。
+
+  URL の引数: ?cam=cam1（流れの名前）&facing=environment|user&kbps=2500&w=1280&h=720&fps=15
+  既定は 15 fps・2.5 Mbps（11-18 に 30 fps・4 Mbps を 2 台で送ると Physical_AI_5G で映像の包みがまとめて落ち、
+  崩れたこまで SLAM が見失った。SLAM が使うのは 1 台あたり 5 fps ほどなので 15 fps で足りる）
+-->
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: rgba(12, 14, 18, 0.82);
+    --text: #f2f4f7;
+    --muted: #9aa3ad;
+    --go: #1fb26b;
+    --stop: #e5484d;
+    --line: rgba(255, 255, 255, 0.14);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Hiragino Sans", system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  video { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: #000; }
+  .bar { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--panel);
+    border-top: 1px solid var(--line); display: grid; gap: 10px; }
+  .status { font-size: 15px; display: flex; justify-content: space-between; gap: 8px; }
+  .status b { font-weight: 600; }
+  .status .info { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .row { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+  button { font: inherit; font-size: 17px; font-weight: 600; border: 0; border-radius: 12px;
+    padding: 14px 10px; color: var(--text); background: #2a2f36; }
+  button:active { transform: scale(0.98); opacity: 0.85; }
+  button:disabled { opacity: 0.4; }
+  #send { background: var(--go); }
+  #send.on { background: var(--stop); }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px;
+    background: var(--muted); vertical-align: middle; }
+  .dot.live { background: var(--go); }
+  .dot.err { background: var(--stop); }
+</style>
+</head>
+<body>
+<video id="video" playsinline muted autoplay></video>
+<div class="bar">
+  <div class="status"><span><span id="dot" class="dot"></span><b id="state">準備中</b></span>
+    <span class="info" id="info"></span></div>
+  <div class="row">
+    <button id="flip" type="button">前面へ</button>
+    <button id="send" type="button" disabled>送信開始</button>
+  </div>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const cam = q.get("cam") || "cam1";
+  // 送信の要求はこのページのサーバー（8443）が MediaMTX に中継する。8889 に直接送ると Safari は
+  // 8889 の証明書の警告も別に越える必要があり、その許可が切れると「Load failed」で送れなかった
+  const mtxBase = `${location.origin}/${encodeURIComponent(cam)}/`;
+  const want = {
+    kbps: Number(q.get("kbps") || 2500),
+    w: Number(q.get("w") || 1280),
+    h: Number(q.get("h") || 720),
+    fps: Number(q.get("fps") || 15),
+  };
+  let facing = q.get("facing") === "user" ? "user" : "environment";
+  let stream = null;
+  let publisher = null;
+  let wakeLock = null;
+  let codec = "h264/90000";
+  let wantSending = false;  // 送信開始を押してから止めるまで。裏に回って切れても戻ったら送り直す
+  let sendingSince = 0;
+  let live = false;
+
+  const $ = (id) => document.getElementById(id);
+  const video = $("video");
+  const sendBtn = $("send");
+  const flipBtn = $("flip");
+
+  // 状態を OMEN の記録に知らせる（スマホの画面を見なくても何が起きたか分かるように）
+  const report = (event, detail) => {
+    try {
+      navigator.sendBeacon("/log", JSON.stringify({ cam, facing, event, detail: String(detail || "") }));
+    } catch (e) { /* 知らせられなくても送りは続ける */ }
+  };
+
+  let lastReported = "";
+  const setState = (text, kind) => {
+    $("state").textContent = text;
+    $("dot").className = "dot" + (kind ? " " + kind : "");
+    const key = text.replace(/ \d+:\d+$/, "");  // 経過時間だけの変化は知らせない
+    if (key !== lastReported) { lastReported = key; report("state", text); }
+  };
+
+  const showInfo = () => {
+    const t = stream && stream.getVideoTracks()[0];
+    const s = t ? t.getSettings() : {};
+    const side = facing === "environment" ? "背面" : "前面";
+    $("info").textContent = t
+      ? `${cam}・${side}・${s.width}x${s.height}・${Math.round(s.frameRate || 0)}fps・${codec.split("/")[0].toUpperCase()}`
+      : cam;
+    flipBtn.textContent = facing === "environment" ? "前面へ" : "背面へ";
+  };
+
+  const loadPublisher = () => new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = mtxBase + "publisher.js";
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(
+      `publisher.js を読めない（OMEN の受け口が止まっている？）`));
+    document.head.appendChild(s);
+  });
+
+  const pickCodec = async () => {
+    // H.264 を選ぶ（iPhone はハードで符号化でき、OMEN の読み口も確実に解ける）。無ければ VP8
+    const pc = new RTCPeerConnection({});
+    pc.addTransceiver("video", { direction: "sendonly" });
+    const sdp = (await pc.createOffer()).sdp.toLowerCase();
+    pc.close();
+    for (const c of ["h264/90000", "vp8/90000", "vp9/90000", "av1/90000"]) {
+      if (sdp.includes(c)) return c;
+    }
+    return "h264/90000";
+  };
+
+  const stopTracks = () => {
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  };
+
+  const openCamera = async () => {
+    stopTracks();
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: facing },
+        width: { ideal: want.w },
+        height: { ideal: want.h },
+        frameRate: { ideal: want.fps },
+      },
+      audio: false,
+    });
+    // fps を保ち、帯域が足りない間は解像度の方を下げてもらう（WebRTC の符号化への印。motion は fps を保つ側）。
+    // 11-18 に「解像度を保つ（detail・maintain-resolution）」にしていたら、包みが 43 個落ちた後の約 20 秒、
+    // iPhone が 1 秒 0.2〜2 こましか送らず SLAM が見失った。SLAM は長い辺 384 まで縮めて使うので、
+    // 解像度が下がってもこまが途切れない方がよい（ユーザーの決定 11-18「解像度を動的にして良い」）。
+    // 途中で大きさが変わる録画は video_file.py（ffmpeg）で読める。始めの約 2 秒は小さい画になることがある
+    const vt = stream.getVideoTracks()[0];
+    if (vt && "contentHint" in vt) vt.contentHint = "motion";
+    video.srcObject = stream;
+    showInfo();
+  };
+
+  // publisher.js は接続（RTCPeerConnection）を外に出さないので、映像を足す所を包んで送り口に
+  // 「fps を保つ」と送る量の上限を頼む（効いたかを OMEN に知らせる）
+  const videoSenders = [];
+  const askEncoder = async (sender, when) => {
+    try {
+      const p = sender.getParameters();
+      p.degradationPreference = "maintain-framerate";
+      // 送る量の上限も符号化に直接入れる（カメラへの frameRate の頼みは iPhone では 30 のままのことがある）。
+      // encodings はつながる前は空のことがあるので、つながった後の 2 回目で入る
+      if (p.encodings && p.encodings.length) {
+        p.encodings[0].maxFramerate = want.fps;
+        p.encodings[0].maxBitrate = want.kbps * 1000;
+      }
+      await sender.setParameters(p);
+      const g = sender.getParameters();
+      const e = (g.encodings && g.encodings[0]) || {};
+      report("encoder", `${when}: degradationPreference=${g.degradationPreference ?? "unsupported"}, ` +
+        `maxFramerate=${e.maxFramerate ?? "-"}, maxBitrate=${e.maxBitrate ?? "-"}, contentHint=${sender.track ? sender.track.contentHint : "?"}`);
+    } catch (e) {
+      report("encoder", `${when}: degradationPreference not set (${e})`);
+    }
+  };
+  const origAddTrack = RTCPeerConnection.prototype.addTrack;
+  RTCPeerConnection.prototype.addTrack = function (track, ...streams) {
+    const sender = origAddTrack.call(this, track, ...streams);
+    if (track.kind === "video") {
+      videoSenders.length = 0;
+      videoSenders.push(sender);
+      askEncoder(sender, "addTrack");
+    }
+    return sender;
+  };
+
+  const keepAwake = async () => {
+    try {
+      if ("wakeLock" in navigator && !wakeLock) {
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", () => { wakeLock = null; });
+      }
+    } catch (e) { /* 画面を点けたままにできなくても送りは続ける */ }
+  };
+
+  const startSending = async () => {
+    if (!stream) await openCamera();
+    setState("つないでいます", "");
+    publisher = new MediaMTXWebRTCPublisher({
+      url: mtxBase + "whip",
+      stream,
+      videoCodec: codec,
+      videoBitrate: want.kbps,
+      audioCodec: "opus/48000",
+      audioBitrate: 32,
+      audioVoice: false,
+      onError: (err) => { live = false; setState(`つなぎ直し中: ${err}`, "err"); },
+      onConnected: () => {
+        live = true; sendingSince = Date.now(); setState("送信中", "live");
+        // つながる前の setParameters を受け付けない作りもあるので、つながった後にもう一度頼む
+        videoSenders.forEach((s) => askEncoder(s, "connected"));
+      },
+    });
+    // iOS は Safari が裏に回るとカメラを止める。戻ったらカメラを開き直して送り直す
+    stream.getVideoTracks()[0].addEventListener("ended", () => {
+      report("track", "camera track ended");
+      if (wantSending) resume();
+    });
+    wantSending = true;
+    sendBtn.textContent = "止める";
+    sendBtn.classList.add("on");
+    keepAwake();
+  };
+
+  const closePublisher = () => {
+    if (publisher) publisher.close();
+    publisher = null;
+    live = false;
+  };
+
+  const stopSending = () => {
+    wantSending = false;
+    closePublisher();
+    sendBtn.textContent = "送信開始";
+    sendBtn.classList.remove("on");
+    setState("止めました", "");
+    if (wakeLock) wakeLock.release();
+  };
+
+  let resuming = false;
+  const resume = async () => {
+    if (resuming || document.visibilityState !== "visible") return;
+    resuming = true;
+    try {
+      closePublisher();
+      await openCamera();
+      await startSending();
+    } catch (e) {
+      setState(`送り直せない: ${e.message || e}`, "err");
+    } finally {
+      resuming = false;
+    }
+  };
+
+  sendBtn.addEventListener("click", async () => {
+    report("button", wantSending ? "stop pressed" : "start pressed");
+    try {
+      if (wantSending) stopSending(); else await startSending();
+    } catch (e) {
+      setState(`失敗: ${e.message || e}`, "err");
+    }
+  });
+
+  setInterval(() => {  // 送っている長さ
+    if (!live) return;
+    const t = Math.floor((Date.now() - sendingSince) / 1000);
+    setState(`送信中 ${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`, "live");
+  }, 1000);
+
+  flipBtn.addEventListener("click", async () => {
+    const wasSending = wantSending;
+    if (wasSending) stopSending();
+    facing = facing === "environment" ? "user" : "environment";
+    try {
+      await openCamera();
+      if (wasSending) await startSending();
+      else setState("待機中（送信開始を押す）", "");
+    } catch (e) {
+      setState(`カメラを開けない: ${e.message || e}`, "err");
+    }
+  });
+
+  window.addEventListener("pagehide", () => report("page", "pagehide"));
+  window.addEventListener("error", (e) => report("error", e.message));
+  document.addEventListener("visibilitychange", () => {
+    report("visibility", document.visibilityState);
+    if (document.visibilityState !== "visible" || !wantSending) return;
+    keepAwake();
+    const t = stream && stream.getVideoTracks()[0];
+    if (!t || t.readyState === "ended" || !live) resume();
+  });
+
+  window.addEventListener("load", async () => {
+    if (!navigator.mediaDevices) {
+      setState("カメラを使えない（https で開く）", "err");
+      return;
+    }
+    try {
+      await loadPublisher();
+      codec = await pickCodec();
+      await openCamera();
+      setState("待機中（送信開始を押す）", "");
+      sendBtn.disabled = false;
+    } catch (e) {
+      setState(`${e.message || e}`, "err");
+    }
+  });
+</script>
+</body>
+</html>

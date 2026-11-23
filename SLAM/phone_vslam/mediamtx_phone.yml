@@ -1,0 +1,64 @@
+# スマホのブラウザから WebRTC で映像を受ける MediaMTX の設定（v1.21.4 で確かめた）
+#
+#   送る:  https://<OMEN の IP>:8889/cam1/publish   （スマホの Safari／Chrome）
+#   見る:  https://<OMEN の IP>:8889/cam1
+#   読む:  rtsp://127.0.0.1:8554/cam1              （OMEN の中の SLAM・録画）
+#
+# 書いていない項目は MediaMTX の既定のまま。使わない口（RTMP・HLS・SRT）は閉じる。
+# 証明書は start_mediamtx.sh が作る（server.key・server.crt。OMEN の IP 入りの自己署名）。
+
+logLevel: info
+logDestinations: [stdout]
+
+# 送り・読みは同じ LAN（Physical_AI_5G）と Tailscale と OMEN の中からだけ許す
+authInternalUsers:
+  - user: any
+    pass:
+    ips: ['127.0.0.1/32', '::1/128', '192.168.0.0/24', '100.64.0.0/10']
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+  - user: any
+    pass:
+    ips: ['127.0.0.1/32', '::1/128']
+    permissions:
+      - action: api
+      - action: metrics
+
+# 届いた映像の状態（解像度・コーデック・受けたバイト数）を OMEN の中から見る口
+api: yes
+apiAddress: 127.0.0.1:9997
+
+# SLAM と録画は OMEN の中から TCP で読む
+rtsp: yes
+rtspAddress: 127.0.0.1:8554
+rtspTransports: [tcp]
+
+rtmp: no
+hls: no
+srt: no
+moq: no
+
+# スマホのブラウザはカメラを https でしか使わせない → WebRTC のページを https にする
+webrtc: yes
+webrtcAddress: :8889
+webrtcEncryption: yes
+webrtcServerKey: server.key
+webrtcServerCert: server.crt
+webrtcAllowOrigins: ['*']
+webrtcLocalUDPAddress: :8189
+# UDP が通らない網のための逃げ道（同じ番号の TCP）
+webrtcLocalTCPAddress: :8189
+# 候補は LAN と Tailscale の 2 つだけにし、ICE の口を 1 つのソケットにする。
+# 全部の網の口（ループバック・Docker・Tailscale）を出すと口ごとに別のソケットになり、
+# iPhone との組に 127.0.0.1 や 100.99.102.70 の口が選ばれて、返事が iPhone の知らない送り元から出た。
+# iPhone は 4〜8 秒で failed にしてつなぎ直しを繰り返した（11-17）。
+webrtcIPsFromInterfaces: no
+webrtcAdditionalHosts: [192.168.0.167, 100.99.102.70]
+# 送り始めの最初の映像を待つ秒（既定 2 秒では、つないだ直後に落ちる回があった）
+webrtcTrackGatherTimeout: 8s
+
+paths:
+  # cam1・cam2 … どの名前でも受ける
+  all_others:

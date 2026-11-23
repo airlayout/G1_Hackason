@@ -1,0 +1,5 @@
+build123d==0.13.0
+matplotlib
+numpy
+pytest
+trimesh
