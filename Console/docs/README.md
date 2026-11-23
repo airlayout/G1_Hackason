@@ -1,0 +1,37 @@
+# Console/docs 目次
+
+Console（G1 開発コンソール）の資料。リンクがあるものは、リポジトリに入っている。
+
+## 実機を触る前に読む
+| 文書 | 内容 |
+|---|---|
+| [REAL_ROBOT_CHECKLIST.md](REAL_ROBOT_CHECKLIST.md) | 実機接続時の確認項目（A〜I）。カメラ（H）・担当と期限（I）を含む。旧 `NEXT_CHECKLIST.md` を統合 |
+
+## 調査・分析（2026-09-30 取得のデータ）
+| 文書 | 内容 |
+|---|---|
+| [G1_FINDINGS.md](G1_FINDINGS.md) | 実機調査の記録（確認済み／未確認を区別） |
+| [g1_analysis.md](g1_analysis.md) | 取得データの分析（観測／推測／不明を区別） |
+| [DEV_GUIDE_OFFLINE.md](DEV_GUIDE_OFFLINE.md) | ロボットに触れない間の開発ガイド、未解決課題 |
+
+## Console の仕様
+| 文書 | 内容 |
+|---|---|
+| [REQUIREMENTS.md](REQUIREMENTS.md) | 要件書（Jetson 常駐版）。要件 ID、状態、決定の記録。段階ごとに更新 |
+| [MOBILE_UI.md](MOBILE_UI.md) | 新しい12画面UI、既存機能との対応・旧UIへの戻し方・確認範囲 |
+| [DESIGN.md](DESIGN.md) | 設計書。構成、認証、運動制御・タスク・Nav2 の設計。実装済み／設計のみ／未確認を区別 |
+| [TEST_SPEC.md](TEST_SPEC.md) | テスト仕様書。自動テストと要件の対応、今後のテスト、実機確認の対応表 |
+| [API.md](API.md) / [openapi.yaml](openapi.yaml) | API 定義（`api_spec.py` から生成。手で編集しない） |
+| [REMOTE_CONTROLLER.md](REMOTE_CONTROLLER.md) | 物理リモコンの機能整理と、コンソールの位置づけ |
+| [../README.md](../README.md) | Console の使い方 |
+
+## 手元だけにある資料（git に入れない。他の人は見られない）
+`.gitignore` で対象外、または未追加のため、上の文書からはリンクしていない。
+
+- `g1_snapshot/` … Jetson から取った生データ一式（bash_history・ネットワーク情報を含む）。原本、変更禁止
+- `g1_logs/` … DDS のライブログ（`live_20260930_234841.jsonl`、75MB）
+- `g1_raw/` … 生データの台帳（`MANIFEST.md`）、原本コピー（`original/`）、伏せ字版（`redacted/`）。伏せ字は機械処理なので、共有前に目視確認する
+- `unitree-g1-developer/` … Unitree 公式の開発者ドキュメント（00〜44）
+- `../../Common/g1-safety/` … 安全・操作の資料（リモコン、起動・停止、制御レベル、ポップアップ、未確認事項）（PR #31。Common に置く）
+
+取得データを再生成する方法は `../tools/snapshot.sh`（読み取り専用）を参照。

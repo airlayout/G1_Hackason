@@ -1,0 +1,17 @@
+{
+  "title": "Nav2 停止の確認（dry-run）",
+  "description": "nav2_down.sh --dry-run。何も止めず、発進ゲートの状態と、止める予定のものを表示する。",
+  "argv": [
+    "bash",
+    "jetson/nav2_down.sh",
+    "--dry-run"
+  ],
+  "cwd": ".",
+  "group": "nav2",
+  "timeout_s": 60,
+  "verified": false,
+  "caution": [
+    "動作未確認: Jetson 上で実行したことが無い",
+    "何も止めない。発進ゲートの状態の読み取りだけ"
+  ]
+}

@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>G1 Control</title>
+<style>
+:root{color-scheme:light dark;--fs:2;--nav-h:0px;--bg:#f5f6f8;--fg:#1a1d21;--sub:#5d6670;--card:#fff;--line:#d8dce2;--btn:#e8ecf3;
+--ok:#1b7f3b;--warn:#a86200;--bad:#c62828;--mute:#7a838d}
+@media (prefers-color-scheme:dark){:root{--bg:#14171b;--fg:#e6e8eb;--sub:#a3acb6;--card:#1e2329;--line:#333a42;--btn:#2a313a;
+--ok:#4cc26d;--warn:#e0a030;--bad:#ef6a6a;--mute:#8b949e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:calc(16px*var(--fs))/1.5 -apple-system,"Hiragino Sans",sans-serif}
+main{max-width:1600px;margin:0 auto;padding:20px max(16px,env(safe-area-inset-right)) calc(40px + var(--nav-h) + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:calc(20px*var(--fs));margin:0}
+h2{font-size:calc(13px*var(--fs));font-weight:600;color:var(--sub);margin:0 0 10px;letter-spacing:.04em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+.head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.note{font-size:calc(13px*var(--fs));color:var(--sub)}
+.mock{font-size:calc(13px*var(--fs));color:var(--warn)}
+.mock select{font:inherit;margin-left:6px}
+
+/* 接続チェーン */
+.chain{list-style:none;margin:0;padding:0;display:flex;gap:6px;align-items:stretch}
+.chain li{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0;position:relative}
+.chain li+li{margin-left:18px}
+.chain li+li::before{content:"→";position:absolute;left:-19px;top:50%;transform:translateY(-50%);color:var(--mute)}
+.node-name{font-weight:600}
+.node-sub{font-size:calc(12px*var(--fs));color:var(--sub);word-break:break-all}
+.node-st{margin-top:4px;font-weight:700}
+.node-st::before{margin-right:6px}
+.s-ok{color:var(--ok)}.s-ok::before{content:"●"}
+.s-down,.s-stopped{color:var(--bad)}.s-down::before,.s-stopped::before{content:"✕"}
+.s-stale{color:var(--warn)}.s-stale::before{content:"◐"}
+.s-unknown,.s-checking{color:var(--mute)}.s-unknown::before,.s-checking::before{content:"○"}
+.chain li.is-bad{border-color:var(--bad)}
+#diag{margin:12px 0 0;font-size:calc(14px*var(--fs))}
+#diag code{background:var(--btn);padding:1px 6px;border-radius:5px;font-size:calc(13px*var(--fs))}
+
+/* モード */
+#mode{font-size:calc(30px*var(--fs));font-weight:700;margin:2px 0;line-height:1.25}
+#mode.m-ok{color:var(--ok)}
+#mode.m-debug{color:var(--warn)}
+#mode.m-none{color:var(--mute)}
+#mode-sub{font-size:calc(14px*var(--fs));color:var(--sub);min-height:1.4em}
+.ctl{font-size:calc(15px*var(--fs));font-weight:600;margin-top:4px}
+.ctl::before{margin-right:6px}
+.ctl.c-ok{color:var(--ok)}.ctl.c-ok::before{content:"●"}
+.ctl.c-warn{color:var(--warn)}.ctl.c-warn::before{content:"▲"}
+.ctl.c-mute{color:var(--mute)}.ctl.c-mute::before{content:"○"}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin:12px 0 8px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:0}
+.stat.wide{grid-column:span 2}
+.stat h3{margin:0 0 2px;font-size:calc(12px*var(--fs));font-weight:600;color:var(--sub)}
+.stat .ctl{font-size:calc(17px*var(--fs));margin-top:2px}
+.stat .sd{font-size:calc(12px*var(--fs));color:var(--sub);min-height:1.3em;overflow-wrap:anywhere}
+.stat .sv{font-size:calc(17px*var(--fs));font-weight:600;font-variant-numeric:tabular-nums}
+.stat .sv.f-fresh{color:var(--ok)}.stat .sv.f-slow{color:var(--warn)}.stat .sv.f-stale{color:var(--bad)}
+
+/* ボタン */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:4px}
+button{padding:14px 8px;border:1px solid var(--line);border-radius:10px;background:var(--btn);color:var(--fg);font:inherit;font-size:calc(15px*var(--fs));cursor:pointer}
+button.danger{border-color:var(--bad)}
+button.current{outline:2px solid var(--ok);outline-offset:1px}
+button:disabled{opacity:.4;cursor:not-allowed}
+#why{font-size:calc(13px*var(--fs));color:var(--warn)}
+#pending{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:var(--btn);font-size:calc(14px*var(--fs))}
+#pending[hidden]{display:none}
+
+/* 操作履歴 */
+#log{max-height:40vh;overflow:auto;word-break:break-all;list-style:none;margin:0;padding:0;font-size:calc(13px*var(--fs));font-variant-numeric:tabular-nums}
+#log li{padding:3px 0;border-top:1px solid var(--line)}
+#log li:first-child{border-top:0}
+#log .t{color:var(--sub);margin-right:8px}
+#log .bad{color:var(--bad)}#log .ok{color:var(--ok)}
+
+/* 状態バッジ：未実装 / 実機未確認 / 実装済み */
+.tag{display:inline-block;font-size:calc(11px*var(--fs));font-weight:600;line-height:1.5;padding:0 8px;margin-left:6px;border-radius:99px;border:1px solid;vertical-align:middle;white-space:nowrap}
+.tag.plan{color:var(--mute)}.tag.unver{color:var(--warn)}.tag.done{color:var(--ok)}
+/* 動作未確認の注意ポップアップ */
+dialog#caution{width:min(92vw,520px);max-height:88vh;overflow:auto;border:2px solid var(--warn);border-radius:12px;background:var(--card);color:var(--fg);padding:16px}
+dialog#caution::backdrop{background:rgba(0,0,0,.55)}
+#ca-title{margin:0 0 8px;font-size:calc(17px*var(--fs))}
+#ca-lines{margin:8px 0;padding-left:20px;font-size:calc(14px*var(--fs))}
+#ca-lines li{margin:4px 0}
+#ca-check{display:flex;gap:8px;align-items:center;margin:10px 0;font-size:calc(14px*var(--fs))}
+#ca-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
+#ca-ok.danger{border-color:var(--bad)}
+.planned{margin-top:10px}
+.planned button small{display:block;margin-top:2px}
+.two{display:grid;grid-template-columns:1fr;gap:14px}
+.two .card,.card.solo{margin-bottom:14px}
+.keys{display:grid;grid-template-columns:repeat(3,44px);gap:6px;justify-content:center;margin:6px 0 10px}
+.keygroups{display:flex;gap:24px;justify-content:center;flex-wrap:wrap}
+.keygroup{text-align:center;font-size:calc(12px*var(--fs));color:var(--sub)}
+.keys.rot{grid-template-columns:repeat(2,56px)}
+kbd{display:flex;align-items:center;justify-content:center;height:44px;border:1px solid var(--line);border-radius:8px;background:var(--btn);font:inherit;opacity:.4}
+#bat-soc{font-size:calc(32px*var(--fs));font-weight:700;color:var(--mute)}
+#bat-bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:6px}
+#bat-bar i{display:block;height:100%;width:0;background:var(--ok)}
+#bat-bar.low i{background:var(--warn)}#bat-bar.crit i{background:var(--bad)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:8px 0;font-size:calc(14px*var(--fs))}
+.kv dt{color:var(--sub)}.kv dd{margin:0;font-variant-numeric:tabular-nums}
+.kv.stale dd{color:var(--mute)}
+#joints{width:100%;border-collapse:collapse;font-size:calc(12px*var(--fs));margin-top:8px;font-variant-numeric:tabular-nums}
+#joints th,#joints td{text-align:right;padding:3px 6px;border-top:1px solid var(--line)}
+#joints th:first-child,#joints td:first-child{text-align:left}
+.arow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0 4px}
+.arow input[type=text]{flex:1;min-width:160px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--btn);color:inherit;font:inherit}
+.arow input[type=range]{flex:1;min-width:140px}
+.arow input[type=color]{width:44px;height:32px;padding:0;border:1px solid var(--line);border-radius:8px;background:none}
+.arow select{padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--btn);color:inherit;font:inherit}
+button.sm{padding:5px 12px;font-size:calc(13px*var(--fs))}
+.res{font-size:calc(13px*var(--fs));color:var(--sub);min-height:18px;margin-bottom:6px}
+.res.ok{color:var(--ok)}.res.bad{color:var(--bad)}.res.warn{color:var(--warn)}
+#rates{width:100%;border-collapse:collapse;font-size:calc(12px*var(--fs));font-variant-numeric:tabular-nums}#rates th,#rates td{text-align:left;padding:3px 6px;border-top:1px solid var(--line)}#rates td:last-child,#rates th:last-child{text-align:right}
+#joints tr.hot td{color:var(--warn)}
+#features{list-style:none;margin:0;padding:0;font-size:calc(14px*var(--fs))}
+#features li{padding:6px 0;border-top:1px solid var(--line)}
+#features li:first-child{border-top:0}
+#features .note{display:block}
+.tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.frow{display:flex;flex-direction:column;gap:4px;margin:14px 0}
+.frow input{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--btn);color:inherit;font:inherit;max-width:32em}
+#tab-settings details{margin:10px 0}
+.mon button{margin:0 6px}
+.node-st.s-paused{color:var(--sub)}
+.tabs button{padding:8px 18px;font-size:calc(14px*var(--fs))}
+.tabs button[aria-selected=true]{outline:2px solid var(--ok);outline-offset:1px;font-weight:700}
+.subtabs{display:flex;gap:6px;margin:-6px 0 14px;flex-wrap:wrap}
+.subtabs button{padding:5px 14px;font-size:calc(13px*var(--fs))}
+.subtabs button[aria-selected=true]{background:var(--ok);color:var(--bg);font-weight:700}
+.pads{display:flex;gap:16px;flex-wrap:nowrap;align-items:flex-end;justify-content:space-around;margin:14px 0}
+.pads .note{text-align:center;margin-top:6px}
+.pad{position:relative;width:min(170px,40vw);aspect-ratio:1;border:2px solid var(--line);border-radius:50%;background:var(--btn);touch-action:none;user-select:none;-webkit-user-select:none}
+.pad i{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:var(--ok);opacity:.85;pointer-events:none}
+.pad.on{border-color:var(--ok)}
+.mo-row{display:flex;gap:10px;flex-wrap:wrap}
+.mo-row button{flex:1;min-width:110px}
+button.big{font-weight:700;color:var(--bad)}
+#mo-estop-float{position:fixed;top:8px;right:8px;z-index:30;padding:10px 16px;background:var(--card);border:2px solid var(--bad)}
+.mo-warn{color:var(--warn)}
+#mo-state.s-bad{color:var(--bad)}#mo-state.s-on{color:var(--ok)}#mo-state.s-warn{color:var(--warn)}
+#mp-canvas{width:100%;display:block;background:#2b2f35;border-radius:8px;touch-action:manipulation;cursor:crosshair}
+.mp-loc{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line)}
+.mp-loc b{flex:1;min-width:120px;word-break:break-all}
+.mp-loc button{padding:6px 10px;font-size:calc(13px*var(--fs))}
+.tk{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px}
+.tk[data-sel=true]{border-color:var(--ok)}
+.tk code{word-break:break-all;font-size:calc(12px*var(--fs));color:var(--sub)}
+.tk-st{font-size:calc(14px*var(--fs))}
+#tk-log{max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-all;background:var(--btn);padding:8px;border-radius:8px;font-size:calc(12px*var(--fs));margin:8px 0 0}
+#dds-sum{margin:0 0 10px;font-size:calc(14px*var(--fs))}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.filters button[aria-pressed=true]{outline:2px solid var(--ok);outline-offset:1px}
+.dtable{width:100%;border-collapse:collapse;font-size:calc(12px*var(--fs))}
+.dtable th,.dtable td{text-align:left;padding:4px 6px;border-top:1px solid var(--line);vertical-align:top}
+.dtable td:nth-child(1){word-break:break-all}
+.live-ok{color:var(--ok)}.live-none{color:var(--mute)}
+
+/* ---- レスポンシブ ----
+   PC（≥1300px）: 幅 1600px、カード 2〜3 列、状態バーは上部に固定。
+   タブレット/スマホ（<900px。900〜1299px は 1 列で上部タブ）: 1 列、タブは下部固定バー、状態バーは圧縮して上部固定。 */
+[hidden]{display:none!important}  /* タブの display:grid に負けさせない */
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px}
+.kv dd{word-break:break-word;min-width:0}
+input,select,textarea{font-size:calc(16px*var(--fs))}  /* iOS が入力時に拡大しない下限 */
+#statusbar{box-shadow:0 2px 8px rgba(0,0,0,.08)}
+#diag.ok{color:var(--sub)}
+@media (min-width:1300px){
+ .two{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #tab-state{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px;align-items:start}
+ #tab-state>.two{display:contents}
+ #tab-state>section:last-child{grid-column:1/-1}
+ #tab-ops{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 14px;align-items:start}
+ #tab-ops>.two{display:block}
+ #tab-ops>section:last-child{grid-column:1/-1}
+ #tab-dds{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 14px;align-items:start}
+ #tab-dds>section:first-child{grid-row:span 4}
+ #tab-audio{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 14px;align-items:start}
+}
+@media (max-width:899px){
+ main{padding-top:10px}
+ h1{font-size:calc(17px*var(--fs))}
+ header{margin-bottom:8px}
+ #statusbar{padding:10px 12px;margin-bottom:10px;border-radius:0 0 12px 12px;margin-left:-16px;margin-right:-16px}
+ #statusbar>h2,.node-sub,#reconnect-note{display:none}
+ #statusbar>.note{font-size:calc(11px*var(--fs))}
+ .chain{gap:0}
+ .chain li{padding:6px 8px;text-align:center}
+ .chain li+li{margin-left:14px}
+ .chain li+li::before{left:-15px}
+ .node-name{font-size:calc(12px*var(--fs))}
+ .node-st{font-size:calc(13px*var(--fs));margin-top:0}
+ #diag{font-size:calc(12px*var(--fs));margin-top:8px}
+ #diag.ok{display:none}
+ .stats{grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0 4px}
+ .stat{padding:5px 8px}
+ .stat.wide{grid-column:span 3}
+ .stat .ctl,.stat .sv{font-size:calc(14px*var(--fs))}
+ .stat .sd{font-size:calc(11px*var(--fs))}
+ #mode{font-size:calc(20px*var(--fs))}
+ #mode-sub{font-size:calc(12px*var(--fs))}
+ #bat-soc{font-size:calc(24px*var(--fs))}
+ .tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;margin:0;gap:0;padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background:var(--card);border-top:1px solid var(--line);flex-wrap:nowrap}
+ .tabs button{flex:1;min-width:0;border:0;border-radius:0;background:none;padding:10px 2px;font-size:calc(12px*var(--fs));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .tabs button[aria-selected=true]{outline:0;box-shadow:inset 0 3px 0 var(--ok);color:var(--ok)}
+ :root{--fs:1.5;--nav-h:68px}
+ .card{padding:14px;border-radius:10px}
+ .kv{grid-template-columns:minmax(0,42%) 1fr;font-size:calc(13px*var(--fs))}
+ .dtable td:nth-child(2),.dtable th:nth-child(2){display:none}  /* 型は狭い画面では省く */
+ #joints th:nth-child(n+7),#joints td:nth-child(n+7){display:none}  /* kp/kd は狭い画面では省く */
+ #joints{font-size:calc(11px*var(--fs))}
+ .grid{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+ .keygroups{display:none}  /* 矢印キー案は物理キーボード前提。画面の説明文だけ残す */
+}
+@media (max-width:420px){
+ .chain li+li{margin-left:10px}
+ .tabs button{font-size:calc(11px*var(--fs))}
+ .arow input[type=text]{min-width:100%}
+}
+@media (pointer:coarse){
+ button{min-height:44px}
+ button.sm{min-height:40px;padding:8px 14px}
+ input[type=range]{height:32px}
+ input[type=color]{width:56px;height:40px}
+}
+@media (prefers-reduced-motion:no-preference){.card{transition:none}}
+</style><link rel="stylesheet" href="/mobile.css"></head><body>
+<svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m14 5-7 7 7 7"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18m-12-6 3-3 3 3m-9 3-3 3 3 3m3 3 3 3 3-3m3-9 3 3-3 3"/></symbol>
+    <symbol id="i-action" viewBox="0 0 24 24"><path d="m14 2-9 12h6l-1 8 9-12h-6z"/></symbol>
+    <symbol id="i-mode" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></symbol>
+    <symbol id="i-status" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2zM9 3v16m6-14v16"/></symbol>
+    <symbol id="i-sensor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M6 6a8.5 8.5 0 0 0 0 12M18 6a8.5 8.5 0 0 1 0 12M3 3a13 13 0 0 0 0 18M21 3a13 13 0 0 1 0 18"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="4"/></symbol>
+    <symbol id="i-turn-left" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 2 9M4 4v6h6"/></symbol>
+    <symbol id="i-turn-right" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2 9m0-15v6h-6"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 20V4m-6 6 6-6 6 6"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v11h-7v-7h-4v7H3z"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="m3 3 18 9-18 9 4-9zM7 12h14"/></symbol>
+  </defs></svg><div class="app-shell">
+<div id="environment-label" hidden>模擬環境 · 実機には接続していません</div>
+<header class="app-header">
+ <button type="button" class="icon-button" id="ui-back" aria-label="メニューを開く"><svg><use href="#i-menu"/></svg></button>
+ <div class="header-title"><h1 id="ui-title">G1 Control</h1><span id="ui-subtitle">MY ROBOT</span></div>
+ <button type="button" class="icon-button" id="ui-menu" aria-label="メニューを開く"><svg><use href="#i-menu"/></svg></button>
+</header>
+<div class="compact-status"><span id="ui-connection">確認中</span><span id="ui-mode">—</span><span id="ui-battery">—</span></div>
+<label class="mock" id="mockbar" hidden>模擬シナリオ<select id="scenario"></select></label>
+<div class="live-notice" id="ui-notice" role="status" hidden></div>
+<button id="mo-estop-float" class="danger big" type="button" hidden>運動停止</button>
+<a id="ui-task-banner" href="#tasks" hidden></a>
+<main>
+<div id="tab-home" data-tab="home" tabindex="-1">
+ <div class="section-kicker">YOUR ROBOT</div><div class="home-heading"><h2>こんにちは、G1。</h2><span id="home-connection">確認中</span></div>
+ <section class="robot-card"><div class="robot-info"><span class="model-number">UNITREE / G1</span><h3 id="home-mode">確認中</h3><a href="#mode" class="mode-badge">モードを確認 <svg><use href="#i-arrow"/></svg></a><div class="battery"><span>バッテリー</span><strong id="home-battery">—</strong><div class="battery-track"><i id="home-battery-bar"></i></div></div></div><svg class="robot-art" viewBox="0 0 180 290" role="img" aria-label="G1のイメージ"><defs><linearGradient id="body" x1="0" x2="1"><stop stop-color="#c6cbd1"/><stop offset=".45" stop-color="#f5f6f8"/><stop offset="1" stop-color="#a8afb9"/></linearGradient><linearGradient id="dark" x2="1" y2="1"><stop stop-color="#34404d"/><stop offset="1" stop-color="#101820"/></linearGradient></defs><ellipse cx="92" cy="276" rx="60" ry="8" fill="#dce1e4"/><g stroke="#89939e" stroke-width="1.3" stroke-linejoin="round"><path fill="url(#dark)" d="M72 49v15h38V49"/><rect x="65" y="10" width="52" height="45" rx="17" fill="url(#body)"/><path fill="url(#dark)" d="M67 25q24-9 48 0v14q-24 8-48 0z"/><path d="M77 31h27" stroke="#8cbdc1" stroke-width="2"/><path fill="url(#body)" d="m60 63 31-6 31 6 5 58-16 23H71l-16-23z"/><path fill="url(#dark)" d="m68 73 23-5 23 5-2 22H70z"/><path d="M84 82h14" stroke="#9ca7b4"/><path d="m69 108 22 7 23-7" fill="none"/><rect x="32" y="67" width="22" height="51" rx="10" fill="url(#body)" transform="rotate(8 43 92)"/><circle cx="39" cy="121" r="10" fill="url(#dark)"/><rect x="26" y="126" width="23" height="47" rx="9" fill="url(#body)"/><path fill="url(#dark)" d="m29 171-3 20 7 7 12-3 4-24z"/><rect x="128" y="67" width="22" height="51" rx="10" fill="url(#body)" transform="rotate(-8 139 92)"/><circle cx="143" cy="121" r="10" fill="url(#dark)"/><rect x="133" y="126" width="23" height="47" rx="9" fill="url(#body)"/><path fill="url(#dark)" d="m134 171 4 24 12 3 7-7-3-20z"/><path fill="url(#dark)" d="M68 139h46l2 24-25 12-25-12z"/><path fill="url(#body)" d="m66 161 22 6-5 42-22-1zM96 167l20-6 5 47-23 1z"/><circle cx="72" cy="211" r="11" fill="url(#dark)"/><circle cx="110" cy="211" r="11" fill="url(#dark)"/><path fill="url(#body)" d="m61 220 21 1-4 42H60zM99 221l21-1 1 43h-18z"/><path fill="url(#dark)" d="m60 258 18 1 3 12-8 3H48v-7zM103 259l18-1 12 9v7h-25l-8-3z"/></g></svg></section>
+ <p class="home-freshness" id="home-freshness">状態を取得しています。</p>
+ <a href="#remote" class="remote-launch"><span class="launch-icon"><svg><use href="#i-move"/></svg></span><span><strong>リモコン移動</strong><small>手元で、進む・曲がる。</small></span><svg><use href="#i-arrow"/></svg></a>
+ <div class="action-pair"><a href="#actions"><svg><use href="#i-action"/></svg>アクション <span>↗</span></a><a href="#mode"><svg><use href="#i-mode"/></svg>モード切り替え <span>↗</span></a></div>
+ <div class="section-title"><h3>ロボットを知る</h3><span>EXPLORE</span></div><div class="explore-grid"><a href="#status"><svg><use href="#i-status"/></svg><span>状態</span><small>機体・関節の詳細</small></a><a href="#map"><svg><use href="#i-map"/></svg><span>マップ・タスク</span><small>地図と実行状況</small></a><a href="#sensors"><svg><use href="#i-sensor"/></svg><span>センサー</span><small>カメラ・LiDAR・IMU</small></a><a href="#dds"><svg><use href="#i-code"/></svg><span>開発</span><small>DDSの通信状態</small></a></div>
+ <a class="home-voice-link" href="#voice"><svg><use href="#i-mic"/></svg>音声・読み上げ <span>↗</span></a>
+</div>
+<div id="tab-ops" data-tab="ops" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">ROBOT MODE</span><h2>動き方を選ぶ。</h2><p>現在のモードと、切り替えられるモードを確認。</p></div>
+<section class="card" aria-live="polite">
+ <h2>現在のモード</h2>
+ <div id="ops-mode" class="sv">確認中</div><div class="sd" id="ops-mode-sub"></div>
+</section>
+<section class="card">
+ <div class="head"><h2>モード切り替え<span class="tags" data-feature="mode"></span></h2><span id="why"></span></div>
+ <div class="grid" id="btns"></div>
+ <p class="note" id="speed-head">歩行速度（Regular Mode のときだけ押せます。どちらが低速かは試験で確認中）<span class="tags" data-feature="speed"></span></p>
+ <div class="grid" id="speed-btns"></div>
+ <div class="grid planned" id="planned-modes"></div>
+ <div id="pending" hidden></div>
+</section>
+
+<section class="card">
+ <h2>操作履歴（この画面）</h2>
+ <ul id="log"><li class="note">まだ操作していません</li></ul>
+</section>
+</div>
+
+<div id="tab-motion" data-tab="motion" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">REMOTE CONTROL</span><h2>手元で、動かす。</h2><p>操作を開始し、押している間だけ移動。</p></div>
+<section class="card" id="mo-card">
+ <div class="head"><h2>移動<span class="tags" data-feature="move"></span></h2><span id="mo-state"></span></div>
+ <p class="note mo-warn">ソフトの停止は安全規格を満たしません。<b>物理リモコンを手元に置き</b>、周囲を確認してから操作してください。指を離すと速度をゼロにします。通信が 0.5 秒途絶する・画面を隠す・別画面へ移ると操作権を解放します（自動では再開しません）。</p>
+ <div class="mo-row">
+  <button id="mo-claim" type="button">操作開始</button>
+  <button id="mo-release" type="button" disabled>操作終了</button>
+  <button id="mo-estop" class="danger big" type="button">緊急停止</button>
+ </div>
+<div class="remote-speed"><span>移動速度</span><div class="segmented" id="ui-drive-speed"><button data-drive-speed="0.4" aria-pressed="true">ゆっくり</button><button data-drive-speed="0.7" aria-pressed="false">標準</button><button data-drive-speed="1" aria-pressed="false">上限</button></div><p class="note">各方向の上限に対する倍率です。機体のSpeed 0/1とは別の設定です。</p></div>
+<div class="mobile-drive"><div class="dpad" role="group" aria-label="前後左右"><button data-drive="forward" class="forward" aria-label="前進、長押し" disabled>↑</button><button data-drive="left" class="left" aria-label="左移動、長押し" disabled>←</button><span class="pad-label">移動</span><button data-drive="right" class="right" aria-label="右移動、長押し" disabled>→</button><button data-drive="backward" class="backward" aria-label="後退、長押し" disabled>↓</button></div><div class="rotate-pad" role="group" aria-label="旋回"><button data-drive="turn-left" disabled>↶<small>左旋回</small></button><button data-drive="turn-right" disabled>↷<small>右旋回</small></button></div></div>
+<p class="note" id="ui-drive-state" role="status">操作を開始すると方向ボタンが使えます。</p>
+<details class="analog-controls"><summary>アナログスティックで操作</summary> <div class="pads">
+  <div><div class="pad" id="pad-move" aria-label="前後左右"><i></i></div><div class="note">前後左右（上=前進）</div></div>
+  <div><div class="pad" id="pad-turn" aria-label="旋回"><i></i></div><div class="note">旋回（左右のみ。左=反時計回り）</div></div>
+ </div>
+</details> <p class="note">キーボード: 矢印キーで前後左右、Q / E で旋回。速度は <span id="mo-vel">—</span>。上限は <span id="mo-lim">—</span>（実機未検証の初期値）。</p>
+</section>
+</div>
+<div id="tab-action" data-tab="action" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">ACTIONS</span><h2>動きで、伝える。</h2><p>機体が対応するアクションを選んで実行。</p></div>
+<section class="card">
+ <div class="head"><h2>アクション<span class="tags" data-feature="action"></span></h2><span id="ac-state"></span></div>
+ <div class="mo-row">
+  <button id="ac-claim" type="button">操作開始</button>
+  <button id="ac-release" type="button" disabled>操作終了</button>
+ </div>
+ <div class="grid" id="mo-actions"></div>
+ <p class="note">リモコンの SELECT+Y / A / X 相当。操作中で、歩行モード（FSM 500/501）のときだけ押せます。番号と効果は実機未検証。通信が 0.5 秒途絶えるか、他のタブへ移ると操作権が外れます。</p>
+</section>
+</div>
+
+<div id="tab-state" data-tab="state" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">ROBOT STATUS</span><h2>今のG1を、知る。</h2><p>機体の状態と、最後に確認できた時刻。</p></div><section class="card" id="statusbar" aria-live="polite">
+ <h2>接続状態</h2>
+ <ol class="chain">
+  <li id="n-server"><div class="node-name">コンソールサーバー</div><div class="node-sub" id="server-sub"></div><div class="node-st" id="server-st"></div></li>
+  <li id="n-g1"><div class="node-name">G1 本体</div><div class="node-sub">DDS · モーションサービス</div><div class="node-st" id="g1-st"></div></li>
+ </ol>
+ <p id="diag"></p>
+ <div class="stats" id="stats">
+  <div class="stat wide"><h3>現在のモード</h3><div id="mode" class="m-none">確認中…</div><div id="mode-sub"></div></div>
+  <div class="stat"><h3>FSM ID</h3><div class="sv" id="st-fsm">—</div><div class="sd" id="st-fsm-d"></div></div>
+  <div class="stat"><h3>標準モーションサービス</h3><div class="ctl c-mute" id="st-svc">—</div><div class="sd" id="st-svc-d"></div></div>
+  <div class="stat"><h3>デバッグモード</h3><div class="ctl c-mute" id="st-dbg">—</div><div class="sd" id="st-dbg-d"></div></div>
+  <div class="stat"><h3>脚</h3><div class="ctl c-mute" id="st-legs">—</div><div class="sd" id="st-legs-d"></div></div>
+  <div class="stat"><h3>腕モータ</h3><div class="ctl c-mute" id="st-arm">—</div><div class="sd" id="st-arm-d"></div></div>
+  <div class="stat"><h3>リモコン</h3><div class="ctl c-mute" id="st-rc">—</div><div class="sd" id="st-rc-d"></div></div>
+  <div class="stat" id="battery"><h3>バッテリー<span class="tags" data-feature="battery"></span></h3><span id="bat-soc">—</span><div id="bat-bar"><i></i></div></div>
+  <div class="stat"><h3>最終取得</h3><div class="sv" id="st-last">—</div><div class="sd" id="st-last-d"></div></div>
+  <div class="stat"><h3>レイテンシ</h3><div class="sv" id="st-lat">—</div><div class="sd">G1 への往復</div></div>
+ </div>
+
+</section>
+<div class="two">
+ <section class="card">
+  <h2>バッテリー詳細<span class="tags" data-feature="battery"></span></h2>
+  <dl class="kv" id="bat-kv"></dl>
+  <p class="note">ロボット本体の残量（<code>rt/lf/bmsstate</code>）。電圧は mV、電流は mA として換算した<b>推定</b>（単位は資料で未確認）。電流が負のときは放電中とみている。</p>
+ </section>
+ <section class="card">
+  <h2>姿勢（IMU）<span class="tags" data-feature="telemetry"></span></h2>
+  <dl class="kv" id="imu-kv"></dl>
+  <p class="note"><code>rt/lowstate</code> の <code>imu_state</code>。角度は rad を度に換算。</p>
+ </section>
+</div>
+
+<div class="two">
+ <section class="card">
+  <h2>オドメトリ<span class="tags" data-feature="telemetry"></span></h2>
+  <dl class="kv" id="odom-kv"></dl>
+  <p class="note"><code>rt/odommodestate</code>。位置は起動位置からの推定で、ドリフトする。</p>
+ </section>
+ <section class="card">
+  <h2>Jetson・メインボード<span class="tags" data-feature="telemetry"></span></h2>
+  <dl class="kv" id="sys-kv"></dl>
+  <p class="note">Jetson は <code>/proc</code>・<code>/sys</code> の読み取り、メインボードは <code>rt/lf/mainboardstate</code>。メインボードの <code>value</code> の意味は未確認（生の値を表示）。</p>
+ </section>
+</div>
+
+<section class="card">
+ <h2>リモコン・非常停止・サービス<span class="tags" data-feature="telemetry"></span></h2>
+ <dl class="kv" id="misc-kv"></dl>
+ <p class="note">イベント型のトピックは、何も起きていなければ「受信なし」。受信なしは異常を意味しない。</p>
+</section>
+</div>
+
+<div id="tab-joints" data-tab="joints" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">JOINT HEALTH</span><h2>ひとつずつ、確かめる。</h2><p>部位を選んで、関節の状態を確認。</p></div>
+<section class="card">
+ <h2>関節（29 軸）<span class="tags" data-feature="sensors"></span></h2>
+ <div class="segmented" id="ui-joint-groups" aria-label="部位"><button data-joint-group="legs" aria-pressed="true">脚</button><button data-joint-group="arms" aria-pressed="false">腕</button><button data-joint-group="waist" aria-pressed="false">腰</button></div><div id="ui-joint-list" class="joint-list"></div><dl id="ui-joint-detail" class="kv"></dl><details><summary>全29軸の一覧・指令値</summary><div id="joint-sum" class="note">—</div>
+ <div class="tscroll"><table id="joints"><thead><tr><th>関節</th><th>角度[°]</th><th>速度[rad/s]</th><th>トルク推定</th><th>温度[℃]</th><th>指令角度[°]</th><th>kp</th><th>kd</th><th>状態 mode</th><th>指令 mode</th></tr></thead><tbody></tbody></table></div>
+ </details><p class="note"><code>rt/lowstate</code>、指令は <code>rt/lowcmd</code>。関節名は SDK の並び順（脚 12・腰 3・腕 14）による対応で、実機での突き合わせは未確認。温度は 2 つの値（表面／巻線と推定）のうち高い方。</p>
+</section>
+</div>
+
+<div id="tab-audio" data-tab="audio" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">VOICE & SOUND</span><h2>声で、伝える。</h2><p>読み上げ・音量・LEDを手元から。</p></div>
+<section class="card">
+ <h2>音声・LED・読み上げ<span class="tags" data-feature="audio"></span></h2>
+ <p class="note">モーションには関係しない書き込み。モードに関係なく使える（デバッグモードでも可）。</p>
+ <div class="arow"><b>スピーカー音量</b><span id="vol-now">現在値 —</span><button id="vol-load" class="sm">読み込み</button></div>
+ <div class="arow"><input type="range" id="vol" min="0" max="100" value="50"><output id="vol-out">50</output>
+  <button id="vol-set" class="sm">反映</button><button id="vol-restore" class="sm" disabled>変更前に戻す</button></div>
+ <div class="res" id="vol-res"></div>
+ <div class="arow"><b>頭部 LED</b><input type="color" id="led" value="#00ff00"><button id="led-set" class="sm">送信</button><button id="led-off" class="sm">消灯（0,0,0）</button></div>
+ <div class="res" id="led-res">現在の色は読み取れません（戻すときは色を指定するか消灯）</div>
+ <div class="arow"><b>読み上げ</b><input type="text" id="tts" maxlength="100" placeholder="読み上げる文（100 文字まで）">
+  <select id="tts-spk"><option value="1" selected>話者 1（英語）</option><option value="0">話者 0（中国語・無音になることあり）</option></select><button id="tts-go" class="sm">読み上げ</button></div>
+ <div class="res" id="tts-res"></div>
+ <p class="note">戻り値 0 は「G1 が受け取った」だけで、実際に動いた証拠ではない。<b>音量</b>は反映後に読み戻して一致を確認する。<b>LED は色が変わったか目で、読み上げは音が出たか耳で</b>確認すること（読み戻す API が無い）。話者 ID の意味は未確認。</p>
+</section>
+<section class="card">
+ <h2>マイク・認識結果<span class="tag plan">未実装</span></h2>
+ <p class="note">生音声のトピックは無い。<code>rt/audio_msg</code> に認識結果（text / angle / confidence / language）、再生の開始・終了（<code>play_state</code>）が流れる。表示は今後（<code>docs/G1_FINDINGS.md</code> 6 章）。</p>
+</section>
+</div>
+
+<div id="tab-camera" data-tab="camera" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">SENSORS</span><h2>ロボットの視点から。</h2><p>映像、周囲の形、機体の傾きを確認。</p></div>
+<div class="segmented" id="ui-sensor-switch"><button data-sensor="camera" aria-pressed="true">カメラ</button><button data-sensor="lidar" aria-pressed="false">LiDAR</button><button data-sensor="imu" aria-pressed="false">IMU</button></div><section class="card" data-sensor-panel="camera">
+ <h2>カメラ配信プロセス（Jetson）</h2>
+ <div class="arow"><b id="cp-state">確認中…</b>
+  <button id="cp-refresh" class="sm" type="button">再確認</button>
+  <button id="cp-start" class="sm" type="button">起動</button>
+  <button id="cp-stop" class="sm" type="button">停止</button></div>
+ <div class="tscroll"><table class="dtable" id="cp-table"><thead><tr><th>デバイス</th><th>PID</th><th>ユーザー</th><th>コマンド</th></tr></thead><tbody></tbody></table></div>
+ <p class="res" id="cp-res"></p>
+ <p class="note">映像デバイスを掴んでいるプロセスの一覧。<b>自前（camera_stream.py）以外</b>が掴んでいると映像は取れません（videohub_pc4 など）。停止は camera_stream.py だけで、他のプロセスは止めません。root のプロセスは引数にデバイス名が出るものだけ見えます。</p>
+</section>
+<section class="card" data-sensor-panel="camera">
+ <h2>カメラ映像</h2>
+ <div class="arow"><button id="cv-start" class="sm" type="button">起動</button><button id="cv-stop" class="sm" type="button">停止</button><span id="cv-state"></span></div>
+ <div class="two" id="cams"></div>
+ <p class="note" id="cam-note"></p>
+</section>
+<section class="card" data-sensor-panel="lidar">
+ <h2>lidar（点群）</h2>
+ <div class="arow"><b id="ld-state">確認中…</b>
+  <button id="ld-refresh" class="sm" type="button">再確認</button>
+  <button id="ld-start" class="sm" type="button">起動</button>
+  <button id="ld-stop" class="sm" type="button">停止</button></div>
+ <p class="res" id="ld-res"></p>
+ <div class="arow" id="ld-sensor-row" hidden><b>LiDAR 本体</b><span id="ls-badge" class="tag plan">確認中…</span><small id="ls-time"></small>
+  <button id="ls-idle" class="sm" type="button">LiDAR 本体を停止</button>
+  <button id="ls-sampling" class="sm" type="button">LiDAR 本体を起動</button></div>
+ <p class="res" id="ls-res"></p>
+ <div class="arow">
+  <label>点の細かさ <select id="ld-density">
+   <option value="0.1,5000">粗（約 2.5k 点・軽い）</option>
+   <option value="0.05,10000" selected>標準（約 5k 点）</option>
+   <option value="0,30000">全点（約 11k 点・約 1.8 MB/s）</option></select></label>
+  <label>重ねる枚数 <select id="ld-stack">
+   <option value="1">1（今の 1 枚）</option>
+   <option value="5" selected>5（約 0.5 秒）</option>
+   <option value="10">10（約 1 秒）</option></select></label>
+ </div>
+ <canvas id="ld-canvas" width="960" height="640" style="width:100%;display:block;background:#0b0e12;border-radius:6px;touch-action:none;cursor:grab"></canvas>
+ <div class="arow"><span id="ld-stats">停止中</span><button id="ld-reset" class="sm" type="button">視点リセット</button></div>
+ <p class="note">Jetson の <code>lidar_stream.py</code>（<code>rt/utlidar/cloud_livox_mid360</code> を購読するだけ。モーターには触れません）の点群を中継して表示します。<b>1 フレーム（0.1 秒）は元々まばら</b>な走査なので、<b>直近の数枚を重ねる</b>と壁や床の形が見えてきます（G1 が静止しているとき向き。歩行中は尾を引きます）。生は約 20k 点（うち有効なのは約 11k）・10 Hz で、「点の細かさ」で Jetson 側の間引きを選べます（粗 0.4 MB/s・標準 0.9 MB/s・全点 1.8 MB/s）。ドラッグで回転、ホイールで拡大縮小。色は高さ（青＝低い、赤＝高い、重ねた全点での相対値）。座標は <code>livox_frame</code>（lidar 原点・単位 m）のままで、G1 の向きに対して傾いている可能性があります。円は距離（m）、赤線が x 軸・緑線が y 軸。タブを離れると取得を止めます。</p>
+</section>
+<section class="card" data-sensor-panel="imu" hidden><h2>姿勢（IMU）</h2><dl class="kv" id="ui-imu-values"></dl><p class="note">受信した姿勢を表示します。未接続・古い値は表示しません。</p></section></div>
+
+<div id="tab-map" data-tab="map" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">SPATIAL VIEW</span><h2>場所を、見渡す。</h2><p>現在位置・経路と、登録した地点。</p></div>
+ <section class="card">
+  <h2>マップ<span class="tags" data-feature="nav"></span></h2>
+  <p id="mp-excl" class="res"></p>
+  <canvas id="mp-canvas" width="300" height="200" aria-label="Nav2 の地図。クリックで地点を選ぶ"></canvas>
+  <p id="mp-msg" class="note"></p>
+  <p id="mp-info" class="note"></p>
+  <p class="note">▲=現在地、×=目的地、青線=経路、緑線=巡回ルート、黄点=登録済みの地点、赤丸=選んだ点。<b>この画面から Nav2 へ目的地や操作は送りません</b>（Goal・巡回・<code>enable_navigation</code> は現地で扱います）。座標の対応は RViz との見比べで未確認です。</p>
+ </section>
+ <section class="card">
+  <h2>地点（名前つき座標）<span class="tags" data-feature="locations"></span></h2>
+  <p id="mp-res" class="res"></p>
+  <div class="arow"><input type="text" id="mp-name" placeholder="名前（例 reception）" maxlength="40"><input type="text" id="mp-x" inputmode="decimal" placeholder="x [m]" size="7"><input type="text" id="mp-y" inputmode="decimal" placeholder="y [m]" size="7"><input type="text" id="mp-yaw" inputmode="decimal" placeholder="向き [度]" size="7"></div>
+  <div class="mo-row"><button id="mp-cur" type="button">現在地を入れる</button><button id="mp-save" type="button">登録（同名は上書き）</button></div>
+  <div id="mp-locs"></div>
+  <p class="note">地図をクリックすると x・y が入ります。登録した地点は、タスク定義の <code>{loc:名前.x}</code> <code>{loc:名前.y}</code> <code>{loc:名前.yaw_deg}</code> で参照できます。</p>
+ </section>
+</div>
+
+<div id="tab-tasks" data-tab="tasks" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">TASK RUNNER</span><h2>次の作業を、始める。</h2><p>定義されたタスクを選んで実行。</p></div>
+ <section class="card">
+  <h2>タスク<span class="tags" data-feature="tasks"></span></h2>
+  <p id="tk-msg" class="note"></p>
+  <div id="tk-list"></div>
+  <p class="note">実行できるのは <code>Console/tasks/*.json</code> に書かれたものだけです（画面からコマンドは渡せません）。同じ排他グループのタスクは同時に実行できません。コンソールを止めると実行中のタスクも止まります。</p>
+ </section>
+ <section class="card" id="tk-log-card" hidden>
+  <h2 id="tk-log-h">ログ</h2>
+  <pre id="tk-log"></pre>
+ </section>
+</div>
+
+<div id="tab-dds" data-tab="dds" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">DDS INSPECTOR</span><h2>通信を、見える形に。</h2><p>トピックとサービス、実際の受信状況。</p></div>
+ <section class="card">
+  <h2>DDS トピック</h2><label class="search-label" for="ui-dds-search">トピックを検索</label><input id="ui-dds-search" type="search" placeholder="トピック名・型・説明"><pre id="ui-dds-selected" hidden></pre><p id="ui-dds-empty" class="note" role="status" hidden>一致するトピックはありません。</p>
+  <p id="dds-sum"></p>
+  <div class="filters" id="dds-filters"></div>
+  <div class="tscroll"><table class="dtable" id="dds-table"><thead><tr><th>トピック</th><th>型</th><th>状態</th><th>受信</th><th>説明</th></tr></thead><tbody></tbody></table></div>
+  <p class="note">「受信」は表示済みトピックだけ。Jetson が最後に受信してからの経過。イベント型は何も起きなければ「受信なし」で、異常ではない。</p>
+ </section>
+ <section class="card">
+  <h2>RPC サービス（rt/api/&lt;名前&gt;/request・response）</h2>
+  <div class="tscroll"><table class="dtable" id="svc-table"><thead><tr><th>サービス</th><th>状態</th><th>説明</th></tr></thead><tbody></tbody></table></div>
+ </section>
+ <section class="card">
+  <h2>トピック受信状況（Jetson の購読）</h2>
+  <table id="rates"><thead><tr><th>トピック</th><th>最終受信から [秒]</th></tr></thead><tbody></tbody></table>
+  <p class="note">高頻度のトピックは 0.2 秒に 1 通へ間引いて読むので、頻度（Hz）は測れない。lidar・カメラは対象外。</p>
+ </section>
+
+ <section class="card" id="tp-card">
+  <h2>トピック通信<span class="tags" data-feature="topics"></span></h2>
+  <p id="tp-msg" class="res"></p>
+  <div class="arow"><input type="text" id="tp-topic" placeholder="購読するトピック（例 rt/rtc/state）" maxlength="120"><select id="tp-type" aria-label="型"></select><button id="tp-sub" type="button">購読</button></div>
+  <table class="dtable" id="tp-table"><thead><tr><th>トピック</th><th>受信</th><th>最新メッセージ</th><th></th></tr></thead><tbody></tbody></table>
+  <h3>送信（許可リストにあるものだけ）</h3>
+  <div id="tp-pub"></div>
+  <p class="note">購読は自由ですが、読める型だけです。送信は <code>--topics-file</code> に書かれた String_ トピックだけで、画面から増やせません。運動・関節・腕・RPC・リモコン入力は許可リストに書いても拒否します。<b>送信は G1 の DDS に出ます</b>。</p>
+ </section>
+ <section class="card">
+  <h2>この画面について（機能の状態）</h2>
+  <ul id="features"></ul>
+  <p class="note">位置づけと SDK との対応は <code>Console/docs/REMOTE_CONTROLLER.md</code>、実機調査は <code>Console/docs/G1_FINDINGS.md</code>。
+  各タブの内容は <code>GET /api/state</code>・<code>/api/joints</code>・<code>/api/snapshot</code> でも JSON で読める。</p>
+ </section>
+</div>
+
+<div id="tab-settings" data-tab="settings" tabindex="-1" hidden><div class="screen-heading"><span class="section-kicker">PREFERENCES</span><h2>使い方に、合わせる。</h2><p>表示と、ハブの接続設定をまとめて。</p></div>
+<section class="card"><h2>このブラウザの表示</h2><form id="ui-preferences"><label for="ui-robot-name">機体の表示名</label><input id="ui-robot-name" maxlength="20" value="マイ G1" required><label class="pref-switch"><input id="ui-compact" type="checkbox">コンパクト表示</label><button type="submit">表示設定を保存</button><p class="res" id="ui-pref-result" role="status"></p></form><p class="note">このブラウザだけの表示設定です。機体の設定は変更しません。</p></section>
+<section class="card"><h2>状態の自動確認</h2> <div class="note mon"><b>自動確認・再接続</b><span class="tags" data-feature="reconnect"></span>
+  <button id="mon-toggle" class="sm" type="button">停止する</button><button id="mon-once" class="sm" type="button" hidden>今すぐ 1 回確認</button>
+  <span id="reconnect-note"></span></div></section>
+
+<section class="card">
+ <h2>接続先の設定</h2>
+ <p class="note">環境（ネットワーク）によって変わる値です。保存すると <code>Console/settings.json</code> に書かれ、次回起動時にも使われます（git には入りません）。</p>
+ <form id="set-form" autocomplete="off">
+  <label class="frow"><b>開発用 PC の IP</b><input type="text" name="dev_pc" placeholder="例 192.168.123.99"><span class="note">コンソールを動かす操作用 PC とは別の、開発作業用 PC のアドレス。今は表示・記録のみで、接続には使いません。</span></label>
+  <label class="frow"><b>G1 本体の IP</b><input type="text" name="g1_ip" placeholder="例 192.168.123.161"><span class="note">G1 本体のアドレス。今は表示・記録のみです（G1 とは Jetson の DDS 経由で通信します）。</span></label>
+  <details><summary>詳細（カメラ／lidar ポート）</summary>
+   <label class="frow"><b>カメラ配信ポート</b><input type="text" name="camera_port" inputmode="numeric"></label>
+   <label class="frow"><b>lidar 配信ポート</b><input type="text" name="lidar_port" inputmode="numeric"></label>
+  </details>
+  <div class="arow"><button type="submit" id="set-save">保存して反映</button><span id="set-res" class="res"></span></div>
+ </form>
+</section>
+<section class="card">
+ <h2>ハブの停止</h2>
+ <p class="note">このコンソール（ハブ）自体を止めます。止めると<b>この画面から再起動できません</b>。再起動は Jetson で行います（<code>docs/JETSON_SETUP.md</code> §4）。タスク実行中と、運動の操作権が取られている間は止められません。</p>
+ <div class="arow"><button type="button" id="hub-stop" class="danger">ハブを停止する</button><span id="hub-res" class="res"></span></div>
+</section>
+</div>
+
+<p class="note" id="cadence"></p>
+</main></div><dialog id="ui-navigation" aria-labelledby="ui-navigation-title"><div class="menu-heading"><div><span class="section-kicker">NAVIGATION</span><h2 id="ui-navigation-title">メニュー</h2></div><button type="button" id="ui-menu-close" class="icon-button" aria-label="メニューを閉じる">×</button></div><nav id="nav-main" aria-label="機能メニュー"></nav><div class="menu-links" id="nav-sub" role="tablist" aria-label="画面">
+ <button role="tab" id="tab-b-home" aria-selected="false">ホーム</button>
+ <button role="tab" id="tab-b-ops" aria-selected="true">モード</button>
+ <button role="tab" id="tab-b-motion" aria-selected="false">リモコン移動</button>
+ <button role="tab" id="tab-b-action" aria-selected="false">アクション</button>
+ <button role="tab" id="tab-b-state" aria-selected="false">状態詳細</button>
+ <button role="tab" id="tab-b-joints" aria-selected="false">関節詳細</button>
+ <button role="tab" id="tab-b-audio" aria-selected="false">音声</button>
+ <button role="tab" id="tab-b-map" aria-selected="false">マップ</button>
+ <button role="tab" id="tab-b-tasks" aria-selected="false">タスク</button>
+ <button role="tab" id="tab-b-camera" aria-selected="false">センサー</button>
+ <button role="tab" id="tab-b-dds" aria-selected="false">DDS</button>
+ <button role="tab" id="tab-b-settings" aria-selected="false">設定</button>
+</div><a class="legacy-link" href="/legacy.html">従来の画面を開く ↗</a></dialog>
+<dialog id="caution" aria-labelledby="ca-title"><form method="dialog">
+  <h2 id="ca-title"></h2>
+  <div id="ca-unver"><span class="tag unver" style="margin-left:0">実機未確認</span>
+   <p class="note">この操作は、実機（G1 電源オン・コンソール経由）で動作を確認していません。結果を断定せず、物理リモコンを手元に置いて、機体の様子を目で見てください。</p>
+   <p class="note" id="ca-note"></p></div>
+  <ul id="ca-lines"></ul>
+  <label id="ca-check"><input type="checkbox" id="ca-checkbox">上の内容を確認した</label>
+  <div id="ca-btns"><button value="cancel" id="ca-cancel" type="submit" autofocus>やめる</button>
+   <button value="ok" id="ca-ok" type="submit">実行する</button></div>
+</form></dialog>
+<script src="/ui-core.js"></script>
+<script src="/mobile.js"></script>
+</body></html>

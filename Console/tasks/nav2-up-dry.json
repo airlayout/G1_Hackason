@@ -1,0 +1,17 @@
+{
+  "title": "Nav2 起動の前提確認（dry-run）",
+  "description": "g1up.sh --dry-run。何も起動せず、前提（ROS 未 source・pixi・地図・DDS 設定・発進ゲートが閉）だけ確かめ、やることを表示する。本番の起動の前に押す。",
+  "argv": [
+    "/home/unitree/g1_nav2/g1up.sh",
+    "--dry-run"
+  ],
+  "cwd": ".",
+  "group": "nav2",
+  "timeout_s": 120,
+  "verified": false,
+  "caution": [
+    "動作未確認: コンソールから g1up.sh を実行するのは初めて。警備班は ssh 端末で実行し、実機で走らせた（2026-09-24/25）",
+    "dry-run: Nav2・内蔵 SLAM・記録は起動しない。ブリッジも起動しない",
+    "発進ゲートが開いていると、ここで止まる（閉じるのは人の仕事）"
+  ]
+}

@@ -1,0 +1,30 @@
+# G1 開発コンソール（ハブ）の systemd ユニット雛形。リポジトリに置くだけで、自動では設置しない。
+#
+# 設置（Jetson で、ユーザーが sudo で実行）:
+#   sudo cp Console/jetson/g1-console.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now g1-console
+# ログイン用 URL（トークン入り）の確認:   journalctl -u g1-console -n 20
+# 止める・外す:   sudo systemctl disable --now g1-console
+#
+# 常駐するのはこのハブだけ。カメラ・lidar の配信、Nav2、タスクは常駐も自動再起動もしない（画面のボタンで起動・停止）。
+# 起動直後に運動指令は出さない（運動操作は画面で操作権を取ってから）。
+# パスと User は Jetson の実環境に合わせて直すこと（WorkingDirectory はこのリポジトリの Console）。
+[Unit]
+Description=G1 dev console (hub)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=unitree
+WorkingDirectory=/home/unitree/G1_Hackason/Console
+Environment=UNITREE_SDK_DIR=/home/unitree/unitree_sdk2_python
+Environment=PYTHONUNBUFFERED=1
+# wlan0 に IPv4 が付くまで --bind-iface が失敗するので、成功するまで再試行する
+ExecStart=/usr/bin/python3 server.py --local --bind-iface wlan0
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

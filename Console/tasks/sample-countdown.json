@@ -1,0 +1,14 @@
+{
+  "title": "動作確認（5 秒数える）",
+  "description": "タスク機能の動作確認用。ロボットには触れない。",
+  "argv": [
+    "python3",
+    "-u",
+    "-c",
+    "import time\nfor i in range(5, 0, -1):\n    print('countdown', i)\n    time.sleep(1)\nprint('done')"
+  ],
+  "cwd": ".",
+  "group": "sample",
+  "timeout_s": 30,
+  "verified": true
+}
