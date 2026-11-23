@@ -338,3 +338,9 @@ dialog::backdrop{background:#091510eb}
 .carry-scene{margin-top:.2cqw}
 
 .carry-art svg{height:16cqw}
+
+/* 13枚目：動画2本（実機 + シミュレーション）を横に並べる */
+.crane-demo-pair{display:flex;align-items:flex-end;justify-content:center;gap:2cqw}
+.crane-demo-pair .crane-demo-media{width:auto}
+.crane-demo-pair .crane-demo-media video{display:block;height:24cqw;width:auto}
+.crane-demo-pair .crane-demo-sim video{height:auto;width:56cqw}

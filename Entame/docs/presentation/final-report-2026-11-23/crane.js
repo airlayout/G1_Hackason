@@ -16,6 +16,7 @@ const craneDemoIcons = ['hand', 'claw', 'star'];
 const craneTimelineIcons = ['robot', 'phone', 'monitor'];
 const craneLadderIcons = ['joystick', 'crosshair', 'speech', 'robot'];
 const craneCheckedLabel = '実機確認済み';
+const craneBadges = { real: '実機', sim: 'シミュレーション' };
 
 function craneIcon(name) {
   const icon = element('span', 'crane-icon');
@@ -58,8 +59,8 @@ function renderCraneTimeline(layout, lines) {
 function renderCraneLadder(layout, lines, items) {
   const media = element('figure', 'crane-ladder-media');
   const url = mediaUrl(items[0]?.url);
-  if (url) media.append(renderMedia(items[0], url, '手と腕を遠隔で動かす実機映像'),
-    element('figcaption', '', '実機：手と腕を遠隔で動かす'));
+  if (url) media.append(renderMedia(items[0], url, 'ロボットアームが景品をつまむ、AIおもてなしクレーンゲームのイメージ'),
+    element('figcaption', '', 'イメージ（AI生成）'));
   const steps = element('ol', 'crane-ladder-steps');
   lines.slice(0, 4).forEach((line, i) => {
     const [label, sub, state] = craneFields(line);
@@ -76,15 +77,23 @@ function renderCraneLadder(layout, lines, items) {
   layout.append(media, steps, notes);
 }
 
-// 4枚目: 大きな映像（左：カメラの手／右：ロボットアーム）と、3つの見どころ。
-function renderCraneDemo(layout, lines, items) {
+// 4枚目: 動画を2本並べる（左：実機の遠隔操作／右：シミュレーション）と、3つの見どころ。
+function renderCraneVideo(item, label, badge) {
+  const url = mediaUrl(item?.url);
   const figure = element('figure', 'crane-demo-media');
-  const url = mediaUrl(items[0]?.url);
-  if (url) figure.append(renderMedia(items[0], url, 'カメラの前の手の動きに合わせて、シミュレーションのロボットアームが景品を取る映像'));
-  figure.append(element('span', 'crane-demo-badge', 'シミュレーション'));
+  if (url) figure.append(renderMedia(item, url, label));
+  figure.append(element('span', 'crane-demo-badge', badge));
+  return figure;
+}
+
+function renderCraneDemo(layout, lines, items) {
+  const sim = renderCraneVideo(items[0], 'カメラの前の手の動きに合わせて、シミュレーションのロボットアームが景品を取る映像', craneBadges.sim);
+  sim.classList.add('crane-demo-sim');
   const captions = element('figcaption', 'crane-demo-captions');
   captions.append(...lines.slice(3, 5).map(text => element('span', '', text)));
-  figure.append(captions);
+  sim.append(captions);
+  const pair = element('div', 'crane-demo-pair');
+  pair.append(renderCraneVideo(items[1], '実機のロボットの手と腕を、遠隔で動かす映像', craneBadges.real), sim);
   const steps = element('ol', 'crane-demo-steps');
   lines.slice(0, 3).forEach((line, i) => {
     const [action, result] = craneFields(line);
@@ -95,7 +104,7 @@ function renderCraneDemo(layout, lines, items) {
     steps.append(step);
   });
   layout.classList.add('crane-demo-layout');
-  layout.append(figure, steps);
+  layout.append(pair, steps);
 }
 
 function renderCraneLayout(id, { frame, layout, lines, items }) {
