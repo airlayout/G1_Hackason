@@ -36,9 +36,12 @@ function renderCraneHero(frame, items) {
   copy.append(...frame.children);
   const url = mediaUrl(items[0]?.url);
   const figure = element('figure', 'hero-figure');
-  figure.append(url ? renderMedia(items[0], url, '取れずに肩を落とす人のイメージ')
-    : element('span', 'asset-placeholder', '［全面の画像］'));
-  figure.append(element('figcaption', 'hero-credit', 'イメージ（AI生成）'));
+  if (url) {
+    figure.append(renderMedia(items[0], url, '取れずに肩を落とす人のイメージ'),
+      element('figcaption', 'hero-credit', 'イメージ（AI生成）'));
+  } else {
+    figure.append(element('span', 'asset-placeholder', '［全面の画像］'));
+  }
   frame.replaceChildren(figure, copy);
 }
 

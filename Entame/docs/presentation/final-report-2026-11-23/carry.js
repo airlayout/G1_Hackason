@@ -16,7 +16,7 @@ function carryDrop(x, y) {
   return '<path d="M' + x + ' ' + y + 'q-6 9 0 13q6-4 0-13z" fill="' + carryColors.sweat + '"/>';
 }
 
-// 担架を持つ人。facing は 1（右向き）か -1（左向き）。handX は担架の持ち手の位置。
+// 担架を持つ人。x は体の中心、shirt は服の色、handX は担架の持ち手の位置（向きは handX と x の大小で決まる）。
 function carryMan(x, shirt, handX) {
   const armStart = x + (handX > x ? 17 : -17);
   return '<circle cx="' + x + '" cy="64" r="16" fill="' + carryColors.skin + '" stroke="' + carryColors.ink + '" stroke-width="2.5"/>'

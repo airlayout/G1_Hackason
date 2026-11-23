@@ -297,16 +297,16 @@ dialog::backdrop{background:#091510eb}
 .crane-demo-steps li{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:1cqw;padding:.7cqw 1.2cqw;background:#edf3ed;border-top:.4cqw solid var(--green);border-radius:4px}
 .crane-demo-steps .crane-icon svg{width:3.4cqw;height:3.4cqw}
 
-/* 運営課題（issue-board）：分類ごとの列に課題カードを並べる */
-.issue-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2cqw;margin-top:1.2cqw}
-.issue-group{display:grid;align-content:start;gap:1.4cqw;min-width:0}
+/* 運営課題（issue-board）：分類ごとの列に課題カードを並べる。カードは見出しだけにして、下の絵を大きく見せる */
+.issue-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.6cqw;margin-top:.6cqw}
+.issue-group{display:grid;align-content:start;gap:.9cqw;min-width:0}
 .issue-group h3{margin:0;padding-bottom:.5cqw;border-bottom:.35cqw solid var(--green);color:var(--green);font-size:clamp(12px,2.4cqw,31px)}
-.issue-card{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:1.4cqw;padding:1.5cqw 1.4cqw;background:#edf3ed;border-radius:4px}
+.issue-card{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:1.4cqw;padding:.8cqw 1.3cqw;background:#edf3ed;border-radius:4px}
 .issue-icon{color:var(--green)}
-.issue-icon svg{display:block;width:4.6cqw;height:4.6cqw}
+.issue-icon svg{display:block;width:3.6cqw;height:3.6cqw}
 .issue-text{display:grid;gap:.2cqw;min-width:0}
 .issue-text strong{font-size:clamp(11px,2.2cqw,29px);line-height:1.3;white-space:nowrap}
-.issue-text span{color:#48665b;font-size:clamp(9px,1.55cqw,20px);line-height:1.4}
+.issue-text span{display:none}
 
 /* 体験会の目指す姿（queue-scene） */
 .queue-scene{margin:.8cqw 0 0;position:relative}
@@ -314,30 +314,11 @@ dialog::backdrop{background:#091510eb}
 .queue-caption{margin-top:.5cqw;color:#48665b;font-size:clamp(9px,1.5cqw,19px);text-align:right}
 
 /* 運営課題の下に置く、担架で運ぶイラスト（carry-scene） */
-.issue-card{padding:1cqw 1.3cqw}
-.issue-board{margin-top:.6cqw;gap:1.6cqw}
-.issue-group{gap:.9cqw}
-.carry-scene{margin:.8cqw 0 0;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:2.4cqw}
-.carry-art svg{display:block;height:15.5cqw;width:auto}
+.carry-scene{margin:.2cqw 0 0;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:2.4cqw}
+.carry-art svg{display:block;height:16cqw;width:auto}
 .carry-caption{display:grid;gap:.4cqw}
-.carry-caption strong{color:var(--green);font-size:clamp(14px,3.4cqw,44px);line-height:1.25}
+.carry-caption strong{color:var(--green);font-size:clamp(13px,3cqw,40px);line-height:1.25;white-space:nowrap}
 .carry-caption span{color:#48665b;font-size:clamp(9px,1.5cqw,19px)}
-
-/* 14枚目：絵を大きく見せるため、課題カードは見出しだけにする */
-.issue-text span{display:none}
-.issue-card{padding:.8cqw 1.3cqw}
-.issue-icon svg{width:3.6cqw;height:3.6cqw}
-.carry-art svg{height:21cqw}
-.carry-scene{margin-top:1.2cqw}
-
-.carry-art svg{height:18cqw}
-.carry-scene{margin-top:.6cqw}
-.carry-caption strong{font-size:clamp(13px,3cqw,40px);white-space:nowrap}
-
-.carry-art svg{height:17cqw}
-.carry-scene{margin-top:.2cqw}
-
-.carry-art svg{height:16cqw}
 
 /* 13枚目：動画2本（実機 + シミュレーション）を横に並べる */
 .crane-demo-pair{display:flex;align-items:flex-end;justify-content:center;gap:2cqw}

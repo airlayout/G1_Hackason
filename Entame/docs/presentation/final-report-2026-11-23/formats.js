@@ -29,7 +29,7 @@ const slideFormats = [
   { id: 'hero-photo', name: '全面画像と見出し', slots: 0, description: '画像を全面に敷き、見出しを重ねます。素材は1枚目を使います。' },
   { id: 'crane-timeline', name: '年表・3項目（絵と年と名前）', slots: 0, description: '本文の各行を「年｜名前｜ひとこと」として3つ並べます。' },
   { id: 'crane-demo', name: '大きな映像と3つの見どころ', slots: 0, description: '本文の1〜3行目を「操作｜結果」の見どころに、4〜5行目を映像の左右の注記にします。素材は1枚目の映像。' },
-  { id: 'crane-ladder', name: '段階のはしごと実機映像', slots: 0, description: '本文の1〜4行目を「名前｜説明｜状態」の4段階に、5行目以降を注記にします。素材は1枚目の映像。' }
+  { id: 'crane-ladder', name: '段階のはしごと実機映像', slots: 0, description: '本文の1〜4行目を「名前｜説明｜状態」の4段階に、5行目以降を注記にします。素材は1枚目（画像または映像）。' }
 ];
 
 function slideFormat(slide, index) {
