@@ -87,15 +87,19 @@ function renderMedia(item, url, label) {
   return media;
 }
 
+// 親子で楽しむ体験に近い項目は、マーカーで目立たせる。
+const visitFamilyLabels = ['家族や友人と過ごす', '子どもと楽しむ'];
+
 function visitReasons() {
   const entries = [['購入したい商品がある',55.9],['イベント・セールがある',35],['利用したい飲食店がある',32.8],['利用したいサービスがある',29.8],['家族や友人と過ごす',28.3],['子どもと楽しむ',25.5],['用事をまとめて済ませる',20.1]];
   const figure = element('figure', 'visit-reasons');
   const bars = element('ul', 'visit-bars');
   for (const [label, value] of entries) {
-    const row = element('li', '');
+    const family = visitFamilyLabels.includes(label);
+    const row = element('li', family ? 'visit-family' : '');
     const track = element('span', 'visit-track');
     track.setAttribute('aria-hidden', 'true');
-    const bar = element('span', value === 35 ? 'visit-fill visit-event' : 'visit-fill');
+    const bar = element('span', family ? 'visit-fill visit-family-fill' : value === 35 ? 'visit-fill visit-event' : 'visit-fill');
     bar.style.inlineSize = (value / 0.6) + '%';
     track.append(bar);
     row.append(element('span', '', label), track, element('strong', '', value.toFixed(1) + '%'));
