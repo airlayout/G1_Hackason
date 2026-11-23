@@ -31,6 +31,7 @@ HOME_FILE = ROOT / "home.json"       # 初期姿勢（追従の基準）の保�
 PALM_FILE = ROOT / "palm.json"       # 「手のひら上」の手首の回転の保存先（起動時に自動で読む）
 TEACH_FILE = ROOT / "teach.json"     # 教示（人の姿勢 H ごとのロボットの関節値）の保存先（起動時に自動で読む）
 TIMEOUT = 0.65
+SOCKET_TIMEOUT = 5.0         # HTTP の 1 接続で、読み書きを待つ最長の秒数
 LABELS = {"low": "つかむ位置", "high": "持ち上げた位置"}
 # グリッパーは登録なしの固定範囲。指の開き 0（くっつけた）→ 最大閉、1（90度に開いた）→ 最大開。
 # 向き（どちらが開くか）は実機で未確認。逆なら入れ替える（校正済みの 0〜100% が可動範囲いっぱい）。
@@ -325,7 +326,7 @@ class Desk:
         """一定間隔で呼ぶ。やわらかモード中は、目標を今の位置へ追従させる。"""
         if self.arm is not None and self.drive == "soft" and not self.token:
             self.arm.soft_track()
-        if self.arm is not None and self.mover.active and not self.token:
+        if self.arm is not None and self.mover.active and not self.token and self.drive == "on":
             self.move_to_pose()
 
     def move_to_pose(self):
@@ -683,6 +684,7 @@ class Desk:
             level = number(data.get("level", self.soft_level), 0, 100)
             self.log_end("モーターの状態を切り替え")
             self.token = None                      # 追従中でも、先に追従を止める
+            self.mover.stop()                      # 姿勢への移動も止める（ON に戻したとき、古い目標へ勝手に動き出さない）
             self.cmd.clear()
             self.arm.set_drive(mode, level)
             self.drive, self.soft_level = mode, level
@@ -893,6 +895,8 @@ def main():
     sim = SimService()
     sim_log = SimLog(ROOT / "debug")
     class Handler(BaseHTTPRequestHandler):
+        timeout = SOCKET_TIMEOUT      # 送信が途中で止まった接続を、いつまでも待たない
+
         def log_message(self, *args):
             pass
 
@@ -932,6 +936,16 @@ def main():
                 return self.reply(404, {"error": "先に prepare.py を実行してください"})
             self.reply(200, file.read_bytes(), mimetypes.guess_type(file.name)[0] or "application/octet-stream")
 
+        def body_size(self, limit):
+            """Content-Length を読む。数字でない・0 以下・limit 超えは ValueError（400 にする）。"""
+            try:
+                size = int(self.headers.get("Content-Length", 0))
+            except ValueError:
+                raise ValueError("入力サイズが不正") from None
+            if not 0 < size <= limit:
+                raise ValueError("入力サイズが不正")
+            return size
+
         def do_POST(self):
             video = self.path == "/followvideo"
             if (self.path not in ("/command", "/snapshot", "/finger", "/followvideo", "/sim/command", "/sim/log") or self.headers.get("Host") != address
@@ -940,39 +954,32 @@ def main():
                 return self.reply(403, {"error": "このPCの操作画面を使用してください"})
             if video:     # 追従中のカメラ映像の続き（生のバイト列）
                 try:
-                    size = int(self.headers.get("Content-Length", 0))
-                    if not 0 < size <= VIDEO_CHUNK_MAX:
-                        raise ValueError("映像のサイズが不正")
+                    chunk = self.rfile.read(self.body_size(VIDEO_CHUNK_MAX))      # 本文は lock の外で読む（途中で止まっても、入力途絶の監視を止めない）
                     with lock:
-                        return self.reply(200, {"saved": desk.log_video(self.rfile.read(size))})
+                        return self.reply(200, {"saved": desk.log_video(chunk)})
                 except ValueError as e:
                     return self.reply(400, {"error": str(e)})
                 except OSError as e:
                     print(f"[video] 映像を保存できません（{e}）", file=sys.stderr, flush=True)
                     return self.reply(500, {"error": "映像を保存できません"})
             if self.path == "/sim/log":      # /sim/camera の操作ログ（1 フレームごとの記録のまとめ）。debug/sim-camera-*.jsonl へ
-                size = int(self.headers.get("Content-Length", 0))
-                if not 0 < size <= SIM_LOG_BODY_MAX:
-                    return self.reply(400, {"error": "入力サイズが不正"})
                 try:
-                    return self.reply(200, {"saved": sim_log.append(self.rfile.read(size))})
+                    return self.reply(200, {"saved": sim_log.append(self.rfile.read(self.body_size(SIM_LOG_BODY_MAX)))})
                 except ValueError as e:
                     return self.reply(400, {"error": str(e)})
                 except OSError as e:
                     print(f"[sim-log] ログを保存できません（{e}）", file=sys.stderr, flush=True)
                     return self.reply(500, {"error": "ログを保存できません"})
             if self.path == "/sim/command":      # シミュレーションの操作。実機の lock も Desk も使わない
-                size = int(self.headers.get("Content-Length", 0))
-                if not 0 < size <= 2048:
-                    return self.reply(400, {"error": "入力サイズが不正"})
-                served = sim.post(self.path, self.rfile.read(size))
+                try:
+                    body = self.rfile.read(self.body_size(2048))
+                except ValueError as e:
+                    return self.reply(400, {"error": str(e)})
+                served = sim.post(self.path, body)
                 return self.reply(served[0], served[1], served[2])
             snapshot = self.path == "/snapshot"
             try:
-                size = int(self.headers.get("Content-Length", 0))
-                if not 0 < size <= (SNAPSHOT_BYTES if snapshot else 2048):
-                    raise ValueError("入力サイズが不正")
-                data = json.loads(self.rfile.read(size))
+                data = json.loads(self.rfile.read(self.body_size(SNAPSHOT_BYTES if snapshot else 2048)))
                 if not isinstance(data, dict):
                     raise ValueError("JSONオブジェクトが必要です")
                 if snapshot and data.get("follow") is True:      # 追従ログへ残す画像（診断の保存とは別）

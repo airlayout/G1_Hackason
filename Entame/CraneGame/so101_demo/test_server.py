@@ -331,6 +331,26 @@ class DriveTests(unittest.TestCase):
                 self.desk.command(data)
         self.assertEqual(self.desk.state()["drive"], "on")
 
+    def test_switching_drive_stops_a_pose_move_and_it_does_not_resume(self):
+        goal = dict(self.arm.read(), shoulder_lift=30)
+        self.desk.mover.go(0, goal, 10.0)
+        self.assertTrue(self.desk.mover.active)
+        self.desk.command(dict(op="drive", mode="off"))
+        self.assertFalse(self.desk.mover.active)
+        before = self.arm.read()
+        self.desk.tick()
+        self.desk.command(dict(op="drive", mode="on"))
+        self.desk.tick()
+        self.assertEqual(self.arm.read(), before)          # ON に戻しても、古い目標へ勝手に動かない
+
+    def test_pose_move_is_not_driven_while_torque_is_not_on(self):
+        goal = dict(self.arm.read(), shoulder_lift=30)
+        self.desk.mover.go(0, goal, 10.0)
+        self.desk.drive = "soft"                            # drive 操作を経ずに soft になっていても書かない
+        before = self.arm.read()
+        self.desk.tick()
+        self.assertEqual(self.arm.read(), before)
+
     def test_move_and_start_refused_unless_on_but_marking_allowed(self):
         for mode in ("off", "soft"):
             self.desk.command(dict(op="drive", mode=mode))
@@ -597,6 +617,24 @@ class LocalServerTests(unittest.TestCase):
         except HTTPError as exc:
             with exc:
                 return exc.code, json.load(exc)
+
+    def post_raw(self, path, length):
+        import http.client
+        host = self.url.removeprefix("http://")
+        conn = http.client.HTTPConnection(host, timeout=5)
+        conn.putrequest("POST", path)
+        for key, value in (("Origin", self.url), ("Content-Type", "application/json"), ("Content-Length", length)):
+            conn.putheader(key, value)
+        conn.endheaders()
+        try:
+            return conn.getresponse().status
+        finally:
+            conn.close()
+
+    def test_non_numeric_content_length_is_a_400_not_a_dropped_connection(self):
+        for path in ("/sim/log", "/sim/command", "/command"):
+            with self.subTest(path=path):
+                self.assertEqual(self.post_raw(path, "abc"), 400)
 
     def test_followvideo_takes_only_local_webm_and_saves_nothing_without_a_log(self):
         self.assertEqual(self.post_video(b"abc"), (200, {"saved": None}))           # 追従していない＝ログが無い
