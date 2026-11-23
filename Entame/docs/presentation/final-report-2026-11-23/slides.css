@@ -325,3 +325,26 @@ dialog::backdrop{background:#091510eb}
 .crane-demo-pair .crane-demo-media{width:auto}
 .crane-demo-pair .crane-demo-media video{display:block;height:24cqw;width:auto}
 .crane-demo-pair .crane-demo-sim video{height:auto;width:56cqw}
+
+/* 2枚目：部品の価格比べと願い（parts-cost） */
+.parts-layout{gap:1.2cqw;align-items:start}
+.parts-board{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:3cqw;align-items:start}
+.parts-problem,.parts-wish{display:grid;align-content:start;gap:.8cqw;min-width:0}
+.parts-problem h3,.parts-wish h3{margin:0;padding-bottom:.5cqw;border-bottom:.35cqw solid var(--green);color:var(--green);font-size:clamp(12px,2.4cqw,31px)}
+.parts-bars{list-style:none;margin:.6cqw 0 0;padding:0;display:flex;align-items:flex-end;justify-content:space-around;gap:2cqw}
+.parts-item{display:flex;flex-direction:column;align-items:center;gap:.4cqw;min-width:0;text-align:center}
+.parts-price{color:var(--green);font-size:clamp(14px,3.8cqw,50px);line-height:1}
+.parts-bar{display:block;width:8cqw;height:calc(var(--ratio) * 4cqw);background:var(--green);border-radius:3px 3px 0 0}
+.parts-name{font-size:clamp(11px,2.1cqw,28px);font-weight:700;line-height:1.3}
+.parts-note{color:#48665b;font-size:clamp(9px,1.6cqw,21px);line-height:1.3}
+.parts-ratio{justify-self:center;white-space:nowrap;margin:.2cqw 0 0;padding:.3cqw 1.4cqw;border-radius:99px;background:#d6efb8;color:#132725;font-size:clamp(11px,2.1cqw,28px);font-weight:700}
+.parts-art{margin:0}
+.parts-art svg{display:block;height:8.5cqw;width:auto;margin:0 auto}
+.parts-art figcaption{margin-top:.4cqw;color:#48665b;font-size:clamp(9px,1.5cqw,19px);text-align:right}
+.parts-wish-text{margin:0;color:var(--green);font-size:clamp(13px,2.6cqw,34px);font-weight:700;line-height:1.3}
+.parts-closing{margin:0;padding-top:.8cqw;border-top:1px solid var(--line);font-size:clamp(12px,2.5cqw,32px);font-weight:700;text-align:center}
+.parts-fact{display:flex;flex-wrap:wrap;align-items:center;gap:.8cqw 1.4cqw;padding:.7cqw 1.4cqw;background:#edf3ed;border-left:.5cqw solid var(--green);border-radius:4px}
+.parts-fact-head{color:var(--green);font-size:clamp(11px,2.2cqw,29px);white-space:nowrap}
+.parts-chip{padding:.2cqw 1.2cqw;border-radius:99px;background:#fff;border:1px solid #93b3a0;font-size:clamp(10px,1.9cqw,25px);font-weight:700;white-space:nowrap}
+.hide-seek-art svg{display:block;max-height:23cqw;width:auto;max-width:100%;border:1px solid #d5ddd8;border-radius:4px}
+.crane-timeline-closing{margin:2cqw 0 0;padding:1.2cqw 2cqw;border-left:.6cqw solid var(--green);background:#fff;font-size:clamp(13px,2.8cqw,36px);font-weight:800;color:var(--green)}

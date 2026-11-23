@@ -29,7 +29,8 @@ const slideFormats = [
   { id: 'hero-photo', name: '全面画像と見出し', slots: 0, description: '画像を全面に敷き、見出しを重ねます。素材は1枚目を使います。' },
   { id: 'crane-timeline', name: '年表・3項目（絵と年と名前）', slots: 0, description: '本文の各行を「年｜名前｜ひとこと」として3つ並べます。' },
   { id: 'crane-demo', name: '大きな映像と3つの見どころ', slots: 0, description: '本文の1〜3行目を「操作｜結果」の見どころに、4〜5行目を映像の左右の注記にします。素材は1枚目の映像。' },
-  { id: 'crane-ladder', name: '段階のはしごと実機映像', slots: 0, description: '本文の1〜4行目を「名前｜説明｜状態」の4段階に、5行目以降を注記にします。素材は1枚目（画像または映像）。' }
+  { id: 'crane-ladder', name: '段階のはしごと実機映像', slots: 0, description: '本文の1〜4行目を「名前｜説明｜状態」の4段階に、5行目以降を注記にします。素材は1枚目（画像または映像）。' },
+  { id: 'parts-cost', name: '部品の価格比べと願い', slots: 0, description: '本文の1〜2行目を「部品名｜補足｜価格（○万円）」の棒グラフに、3行目を「見出し｜数字｜数字」の背景の帯、4行目を願い、5行目を締めの言葉にします。' }
 ];
 
 function slideFormat(slide, index) {
@@ -155,6 +156,7 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
   const paired = portraits || (finalDeck && format.id === 'body-3');
   const findings = format.id === 'trial-result';
   const craneFormat = craneFormats.includes(format.id);
+  const partsFormat = format.id === 'parts-cost';
   const hasTrialMedia = findings && items.slice(0, slots).some(item => mediaUrl(item?.url));
   const placeholders = portraits || findings || (sample && format.id === 'facility-flow')
     || (finalDeck && (photoLayout || ['team', 'body-3'].includes(format.id)));
@@ -180,16 +182,21 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
       column.append(caption);
       assets.append(column);
     } else if (visual) {
-      const mallConcept = url === '/media/b640ccce-1b0a-457d-aacd-f70cce2f3471.jpg';
-      const threeGames = finalDeck && index === 6 && url === '/media/799fe1ae-353e-4c9d-8719-48190ec1b626.jpg';
-      const craneGame = finalDeck && findings && url === '/media/7b9f1a9b-7ba5-4a2e-9123-bd2c3ad78c04.jpg';
+      const mallConcept = item?.url === '/media/b640ccce-1b0a-457d-aacd-f70cce2f3471.jpg';
+      const threeGames = finalDeck && index === 6 && item?.url === '/media/799fe1ae-353e-4c9d-8719-48190ec1b626.jpg';
+      const craneGame = finalDeck && findings && item?.url === '/media/7b9f1a9b-7ba5-4a2e-9123-bd2c3ad78c04.jpg';
       const craneGameVideo = finalDeck && findings && item?.type === 'video'
-        && url === '/media/a839a9b0-ad7e-4a27-88a3-fedab8e86b81.mp4';
-      const hideAndSeekMap = url === '/media/e1d271a3-31bd-45bb-9625-b54d7f8a4309.jpg';
+        && item?.url === '/media/a839a9b0-ad7e-4a27-88a3-fedab8e86b81.mp4';
+      const hideAndSeekMap = item?.url === '/media/e1d271a3-31bd-45bb-9625-b54d7f8a4309.jpg';
       if (hideAndSeekMap) {
         const figure = element('figure', 'concept-photo');
-        visual.alt = '人が隠れ、巡回するロボットが見つけて声と身振りで応える流れを示す俯瞰図';
-        figure.append(visual, element('figcaption', '', '遊び方の模式図（AI生成）'));
+        if (typeof hideAndSeekDiagram === 'function') {
+          figure.append(element('div', 'hide-seek-art'), element('figcaption', '', hideSeekCaption));
+          figure.firstChild.innerHTML = hideAndSeekDiagram();
+        } else {
+          visual.alt = '人が隠れ、巡回するロボットが見つけて声と身振りで応える流れを示す俯瞰図';
+          figure.append(visual, element('figcaption', '', '遊び方の模式図（AI生成）'));
+        }
         assets.append(figure);
       } else if (craneGameVideo) {
         const figure = element('figure', 'concept-photo');
@@ -199,9 +206,9 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
         const figure = element('figure', 'concept-photo');
         const caption = element('figcaption');
         if (threeGames) {
-          visual.alt = '子どもがかくれんぼ、鬼ごっこ、クレーンゲームで遊ぶ3コマ';
+          visual.alt = '子どもがかくれんぼ、追いかけっこ、クレーンゲームで遊ぶ3コマ';
           const labels = element('div', 'three-games-labels');
-          for (const name of ['かくれんぼ', '鬼ごっこ', 'クレーンゲーム']) {
+          for (const name of ['かくれんぼ', '追いかけっこ', 'クレーンゲーム']) {
             labels.append(element('span', '', name));
           }
           caption.append(labels, element('div', 'three-games-credit', 'イメージ（AI生成）'));
@@ -235,7 +242,7 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
       ad.append(element('span', '', label), element('strong', '', message));
       const item = items[i];
       const url = mediaUrl(item?.url);
-      if (url && url === aiImage && item.type === 'image') {
+      if (url && item.url === aiImage && item.type === 'image') {
         const figure = element('figure', 'event-image');
         figure.append(renderMedia(item, url, message + '場面'),
           element('figcaption', '', 'イメージ（AI生成）'));
@@ -255,7 +262,7 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
       results.append(element('dt', '', label), element('dd', '', value?.replace(/^(検証|成果)｜/u, '') || '［入力］'));
     }
     layout.append(results);
-  } else if (!paired && !fieldFindings && !issueCards && !customFacilityFlow && !craneFormat && slide.body) layout.append(content);
+  } else if (!paired && !fieldFindings && !issueCards && !customFacilityFlow && !craneFormat && !partsFormat && slide.body) layout.append(content);
   if (format.id === 'survey') {
     layout.classList.add('p4-research');
     layout.append(sample ? surveyPlaceholder() : visitReasons());
@@ -290,6 +297,8 @@ function renderSlide(target, slide, index, finalDeck = false, total = 0, { sampl
     safety.append(element('h3', '', '安全性'), diagram);
     columns.append(uptime, safety);
     layout.append(columns);
+  } else if (partsFormat) {
+    renderPartsLayout(layout, lines);
   } else if (craneFormat) {
     renderCraneLayout(format.id, { frame, layout, lines, items });
   } else if (format.id === 'facility-flow') {
