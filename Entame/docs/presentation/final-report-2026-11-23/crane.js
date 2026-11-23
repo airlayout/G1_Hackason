@@ -56,6 +56,8 @@ function renderCraneTimeline(layout, lines) {
     list.append(item);
   });
   layout.append(list);
+  const closing = lines[3]?.trim();
+  if (closing) layout.append(element('p', 'crane-timeline-closing', closing));
 }
 
 // 3枚目: 左に実機映像、右に4段階のはしご。
