@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>エンタメ班 ブラッシュアップ提案</title>
+<style>
+:root {
+  --bg: #f5f4ef; --card: #fff; --ink: #14201c; --sub: #5a6660; --line: #d9ddd6;
+  --accent: #1b6b52; --accent-bg: #e4f1ea; --warn: #b3261e; --warn-bg: #fbe9e7; --soft: #eef0ea;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101614; --card: #19211e; --ink: #e8ede9; --sub: #9aa8a0; --line: #2d3833;
+    --accent: #6fcf9f; --accent-bg: #1c2e26; --warn: #ff8a80; --warn-bg: #3a1f1c; --soft: #212b27;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.7 -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+main { max-width: 920px; margin: 0 auto; padding: 24px 16px 120px; }
+h1 { font-size: 26px; margin: 8px 0 4px; }
+h2 { font-size: 20px; margin: 40px 0 12px; padding-left: 10px; border-left: 5px solid var(--accent); }
+h3 { font-size: 16px; margin: 0 0 6px; }
+p.lead { color: var(--sub); margin: 0 0 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 12px 0; }
+fieldset { border: 0; padding: 0; margin: 0; }
+legend { font-weight: 700; padding: 0; margin-bottom: 6px; }
+.opt { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin: 6px 0; cursor: pointer; }
+.opt:has(input:checked) { border-color: var(--accent); background: var(--accent-bg); }
+.opt input { margin-top: 6px; flex: none; }
+.opt small { display: block; color: var(--sub); line-height: 1.5; }
+.rec { font-size: 12px; color: var(--accent); font-weight: 700; margin-left: 6px; }
+.tag { display: inline-block; font-size: 12px; padding: 0 8px; border-radius: 99px; border: 1px solid var(--line); background: var(--soft); }
+.tag.ok { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.tag.plan { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.sec input { width: 64px; font-size: 15px; padding: 2px 6px; }
+.bar { height: 18px; background: var(--soft); border-radius: 9px; overflow: hidden; margin: 8px 0 4px; }
+.bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+.bar.over > i { background: var(--warn); }
+.total { font-weight: 700; }
+.total.over { color: var(--warn); }
+button { font: inherit; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.wire { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.slide { aspect-ratio: 16 / 9; border: 2px solid var(--ink); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; background: var(--card); font-size: 12px; line-height: 1.4; }
+.slide .img { flex: 1; border: 1.5px dashed var(--sub); border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--sub); padding: 4px; }
+.slide .img.row { gap: 6px; border: 0; padding: 0; }
+.slide .img.row span { flex: 1; height: 100%; border: 1.5px dashed var(--sub); border-radius: 6px; display: flex; align-items: center; justify-content: center; text-align: center; }
+.slide b.h { font-size: 13px; }
+.ladder { display: flex; flex-direction: column; gap: 3px; flex: 1; justify-content: center; }
+.ladder span { border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; background: var(--soft); }
+.cap { color: var(--sub); font-size: 13px; margin: 4px 0 0; }
+.facts td:first-child { white-space: nowrap; font-weight: 700; }
+textarea { width: 100%; min-height: 260px; font: 14px/1.6 ui-monospace, Menlo, monospace; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
+input[type=text] { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; width: 100%; background: var(--card); color: var(--ink); }
+a { color: var(--accent); }
+.sticky { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 10px 16px; margin: 0 -16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<main>
+<h1>エンタメ班 ブラッシュアップ提案</h1>
+<p class="lead">2026-11-23 13:00 発表／持ち時間 5分。<b>この資料を選ぶだけで、スライドは書き換えません。</b>選んだ結果は最下部の「選択結果」をコピーして、Claude に貼ってください。</p>
+
+<h2>0. 調べた範囲（嘘を言わないための前提）</h2>
+<div class="card">
+  <table class="facts">
+    <tr><td><span class="tag ok">既にある</span></td><td>景品の置き直しと自動補充、AIコンシェルジュの会話：<a href="https://www.4gamer.net/games/991/G999110/20251106066/">アシストキャッチャー（2025年11月公開）</a>。<br>人の遠隔操作＋配送：<a href="https://www.toreba.net/en/service">Toreba</a>、<a href="https://www.fastcompany.com/90686760/clawee-claw-game">Clawee</a>。<br>小型の二足歩行ロボが景品を運ぶ：<a href="https://www.itmedia.co.jp/news/article/0802/27/1080227036/">ロボキャッチャー（2008年頃）</a>、<a href="https://newatlas.com/robot-claw-vending-machine/14289">New Atlas</a>。</td></tr>
+    <tr><td><span class="tag plan">見つからず</span></td><td>「課金額に応じてAIが取る段階が上がる（エイムアシスト型）」仕組み。等身大ヒューマノイドで景品を取るクレーンゲーム。有料で人型ロボが代わりに取り、配送まで行うサービス。</td></tr>
+    <tr><td><span class="tag">未確認</span></td><td>「AIが操作するクレーンゲームをTwitchで配信」という2026年1月の記事は、裏付けが取れていません。中国国内の事例と特許は未調査です。</td></tr>
+  </table>
+  <p class="cap">→ 「世界初」とは断言しません。言うなら「調べた範囲では見つからなかった」までです。</p>
+</div>
+
+<h2>1. 5分の配分（秒数を動かせます）</h2>
+<div class="card">
+  <div class="presets">
+    <button type="button" data-preset="A">案A クレーン主役（推奨）</button>
+    <button type="button" data-preset="B">案B クレーン極振り</button>
+    <button type="button" data-preset="C">案C 3つの遊びを均等に</button>
+  </div>
+  <div class="bar" id="bar"><i id="barfill"></i></div>
+  <div class="total" id="total">合計 0秒 / 300秒</div>
+  <table id="times">
+    <thead><tr><th>スライド</th><th>秒（0 = 飛ばす）</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <p class="cap">案A: 3つの遊びを順に見せ、クレーンに100秒。案B: 他の2つを短くしてクレーンに125秒。案C: 3つを同じ重さで、クレーンは70秒。</p>
+</div>
+
+<h2>2. クレーン3枚の構成（画像重視・文字は見出しだけ）</h2>
+<div class="card">
+  <div class="wire">
+    <div><div class="slide"><b class="h">①「取れなくて、諦めたこと、ありませんか？」</b><div class="img">全面の大きな絵<br>景品を前に肩を落とす人</div></div><p class="cap">課題。15秒。</p></div>
+    <div><div class="slide"><b class="h">② クレーンゲームは、持ち帰るまで進化してきた</b><div class="img row"><span>オンライン<br>クレーン</span><span>2008<br>ロボキャッチャー</span><span>2025<br>アシストキャッチャー</span></div></div><p class="cap">事例。年と名前だけ。30秒。</p></div>
+    <div><div class="slide"><b class="h">③（見出し：下で選択）</b><div style="display:flex;gap:6px;flex:1"><div class="img" style="flex:1">実機の写真・動画<br><span class="tag ok">実機確認済み</span></div><div class="ladder"><span>手</span><span>照準（エイムアシスト）</span><span>言葉で指示 <span class="tag plan">構想</span></span><span>おまかせ <span class="tag plan">構想</span></span></div></div></div><p class="cap">進化系。はしごは課金額で段階が上がる。55秒。</p></div>
+  </div>
+</div>
+
+<div class="card"><fieldset data-label="1枚目の絵" data-key="hero1">
+  <legend>1枚目の絵</legend>
+  <label class="opt"><input type="radio" name="hero1" value="手元の実機写真（人型ロボとクレーン機）を全面＋文字" checked><span>B 手元の実機写真を全面に使い、文字を重ねる<span class="rec">最速</span><small>追加素材は不要。1枚目でロボットが先に見える。</small></span></label>
+  <label class="opt"><input type="radio" name="hero1" value="生成画像（プロンプトはClaudeが作成）"><span>A 生成画像を使う<small>諦める人の絵が作れる。ChatGPTなどで生成する手間がかかる。</small></span></label>
+</fieldset></div>
+
+<div class="card"><fieldset data-label="2枚目の3つの絵" data-key="tl">
+  <legend>2枚目の3つの絵</legend>
+  <label class="opt"><input type="radio" name="tl" value="自作のイラスト風SVG＋年と名前" checked><span>自作のイラスト風＋年と名前<span class="rec">推奨</span><small>他社の製品写真を転載せずに済む。</small></span></label>
+  <label class="opt"><input type="radio" name="tl" value="公式の写真を出典付きで使う"><span>公式の写真を出典付きで使う<small>見栄えは良いが、権利の確認が必要。</small></span></label>
+</fieldset></div>
+
+<div class="card"><fieldset data-label="3枚目の見出し" data-key="title">
+  <legend>3枚目の見出し（キャッチ案）</legend>
+  <label class="opt"><input type="radio" name="title" value="取れないなら、ロボに頼め。" checked><span>取れないなら、ロボに頼め。<span class="rec">推奨</span><small>諦めたくなる客に、一言で解決を示す。</small></span></label>
+  <label class="opt"><input type="radio" name="title" value="景品、ロボにおまかせ。"><span>景品、ロボにおまかせ。<small>④おまかせの段階を前面に出す。</small></span></label>
+  <label class="opt"><input type="radio" name="title" value="諦める前に、ロボを呼べ。"><span>諦める前に、ロボを呼べ。<small>客離れ防止を前面に出す。</small></span></label>
+  <label class="opt"><input type="radio" name="title" value="その景品、ロボが取りに行く。"><span>その景品、ロボが取りに行く。<small>人型が動く話題性を前面に出す（取得保証に聞こえないか注意）。</small></span></label>
+  <label class="opt"><input type="radio" name="title" value="クレーンゲーム、ロボが助太刀。"><span>クレーンゲーム、ロボが助太刀。<small>「助ける」の位置づけを前面に出す。</small></span></label>
+  <label class="opt"><input type="radio" name="title" value="__other__"><span>自分で書く<input type="text" id="titleOther" placeholder="ここに入力"></span></label>
+</fieldset></div>
+
+<div class="card"><fieldset data-label="見出し上の小さな一言" data-key="sub">
+  <legend>見出し上の小さな一言</legend>
+  <label class="opt"><input type="radio" name="sub" value="調べた範囲で世界初を狙う構想" checked><span>「調べた範囲で世界初を狙う構想」<span class="rec">推奨</span><small>主張を調査の範囲に限定でき、嘘にならない。</small></span></label>
+  <label class="opt"><input type="radio" name="sub" value="世界初を狙う構想"><span>「世界初を狙う構想」<small>短いが、調査範囲の限定がない。</small></span></label>
+  <label class="opt"><input type="radio" name="sub" value="入れない"><span>入れない<small>主張せず、質疑用メモだけに残す。</small></span></label>
+</fieldset></div>
+
+<div class="card"><fieldset data-label="はしごの段階" data-key="ladder">
+  <legend>3枚目のはしご</legend>
+  <label class="opt"><input type="radio" name="ladder" value="4段階：手→照準→言葉で指示→おまかせ" checked><span>4段階：手 → 照準 → 言葉で指示 → おまかせ<span class="rec">推奨</span><small>「言葉で指示」は構想として1行だけ。VLAの深掘りはしない。</small></span></label>
+  <label class="opt"><input type="radio" name="ladder" value="3段階：手→照準→おまかせ"><span>3段階：手 → 照準 → おまかせ<small>言葉の段階を外して、さらに簡単にする。</small></span></label>
+</fieldset></div>
+
+<div class="card"><fieldset data-label="アームとヒューマノイド" data-key="both">
+  <legend>アームとヒューマノイドの両方で提案できる、の扱い</legend>
+  <label class="opt"><input type="radio" name="both" value="はしごの下に1行（人型＝話題性、アーム＝量産）" checked><span>はしごの下に1行<small>人型は話題性、アームは量産向け、と役割を分ける。</small></span></label>
+  <label class="opt"><input type="radio" name="both" value="画面には出さず発表者メモのみ"><span>画面には出さない<small>発表者メモで話すだけ。</small></span></label>
+</fieldset></div>
+
+<div class="card"><fieldset data-label="状態の札" data-key="tags">
+  <legend>「実機確認済み」「構想」の札</legend>
+  <label class="opt"><input type="radio" name="tags" value="付ける" checked><span>付ける<span class="rec">推奨</span><small>実機確認済みは手と腕の遠隔操作のみ。他は構想。</small></span></label>
+  <label class="opt"><input type="radio" name="tags" value="付けない"><span>付けない<small>聞かれたときに口頭で説明する。</small></span></label>
+</fieldset></div>
+
+<h2>3. 発表全体の筋（つながりの修正）</h2>
+<div class="card"><fieldset data-label="直すつながり" data-key="fix">
+  <legend>直すものにチェック（筋：来る理由 → 帰らせない → 続けられる運営 → 体験会）</legend>
+  <label class="opt"><input type="checkbox" value="① 各遊びに1行のキャッチコピー" ><span>① 各遊びに1行のキャッチコピーを付ける<small>5枚目の「一言で伝わる」基準を、3つの遊びで揃える。</small></span></label>
+  <label class="opt"><input type="checkbox" value="② フィジカルAIの定義とクレーンの言い分け"><span>② 手動はAIではなく、照準以降がフィジカルAI、と言い分ける<small>6枚目の定義とずれないようにする。</small></span></label>
+  <label class="opt"><input type="checkbox" value="③ 7枚目のクレーンの説明を直す" checked><span>③ 7枚目のクレーンの説明を「取れずに帰る客を助けられるか」に直す<span class="rec">必須</span></span></label>
+  <label class="opt"><input type="checkbox" value="④ 4枚目とクレーン1枚目の橋の一文" checked><span>④ クレーン1枚目の冒頭に「来てもらった後に、諦めて帰られたら」を足す<span class="rec">必須</span><small>集客の話から客離れの話へつなぐ。</small></span></label>
+  <label class="opt"><input type="checkbox" value="⑤ 11枚目にクレーン固有の運営課題"><span>⑤ 11枚目にクレーン固有の運営課題を足す<small>取得率の設計、限度額、補充、配送。</small></span></label>
+  <label class="opt"><input type="checkbox" value="⑥ 12枚目でクレーンを第一候補に" checked><span>⑥ 12枚目の体験会でクレーンを第一候補と明記する<span class="rec">必須</span><small>測るのは、取れなかった客の継続率とアシストの追加利用率。</small></span></label>
+</fieldset></div>
+
+<div class="card"><fieldset data-label="デッキ全体のタイトル" data-key="deck">
+  <legend>「世界初!?のフィジカルAI搭載クレーンゲーム」の使い方</legend>
+  <label class="opt"><input type="radio" name="deck" value="全体は『人型ロボットでつくる、3つの遊び』のまま。クレーンのスライドだけ新タイトル" checked><span>全体は今のまま、クレーンのスライドだけ新タイトル<span class="rec">推奨</span><small>3つの遊びの筋を保てる。変更が少なく、時間内に終わる。</small></span></label>
+  <label class="opt"><input type="radio" name="deck" value="発表全体をクレーン主役のタイトルに変える"><span>発表全体をクレーン主役のタイトルにする<small>1枚目、3枚目（本日の報告）、12枚目まで直す必要がある。</small></span></label>
+</fieldset></div>
+
+<div class="card"><fieldset data-label="現在のdeck.js・formats.jsの書き換え" data-key="old">
+  <legend>すでに入っている10枚目の書き換え（未コミット）</legend>
+  <label class="opt"><input type="radio" name="old" value="3枚の実装時に置き換える（戻さない）" checked><span>3枚の実装時にまとめて置き換える</span></label>
+  <label class="opt"><input type="radio" name="old" value="先に元へ戻す（git checkout）"><span>先に元へ戻す</span></label>
+</fieldset></div>
+
+<h2>4. 選択結果</h2>
+<div class="card">
+  <textarea id="out" readonly></textarea>
+  <p class="cap">「コピー」して Claude に貼り、「この内容で書き換えて」と指示してください。許可があるまでスライドは書き換えません。</p>
+</div>
+
+<div class="sticky">
+  <button type="button" class="primary" id="copy">選択結果をコピー</button>
+  <span id="copied" class="cap"></span>
+</div>
+</main>
+
+<script>
+(function () {
+  var BUDGET = 300;
+  var SLIDES = [
+    ['1', '人型ロボットでつくる、3つの遊び'], ['2', 'メンバー'], ['3', '本日の報告'],
+    ['4', '買い物以外の来館理由をつくる'], ['5', '来館の目的が一言で伝わる企画'],
+    ['6', '人型ロボットに会い、一緒に遊ぶ'], ['7', '身近な遊びを、実機で試す'],
+    ['8', 'かくれんぼ'], ['9', '追いかけっこ'],
+    ['C1', 'クレーン① 課題'], ['C2', 'クレーン② 事例'], ['C3', 'クレーン③ 進化系'],
+    ['11', '実機で見えた運営上の課題'], ['12', '体験会の提案'], ['13', '社会実装'], ['14', 'ご清聴ありがとうございました']
+  ];
+  var PRESETS = {
+    A: [10, 10, 0, 20, 0, 15, 10, 20, 20, 15, 30, 55, 25, 35, 0, 10],
+    B: [10, 5, 0, 15, 0, 10, 10, 10, 10, 15, 30, 80, 25, 35, 0, 10],
+    C: [10, 10, 0, 20, 0, 15, 10, 30, 30, 10, 20, 40, 25, 35, 0, 10]
+  };
+  var STORE = 'entame-brushup-2026-11-23';
+
+  var tbody = document.querySelector('#times tbody');
+  var inputs = SLIDES.map(function (s, i) {
+    var tr = document.createElement('tr');
+    var th = document.createElement('td');
+    th.textContent = s[0] + ' ' + s[1];
+    var td = document.createElement('td');
+    td.className = 'sec';
+    var inp = document.createElement('input');
+    inp.type = 'number'; inp.min = '0'; inp.max = '300'; inp.step = '5';
+    inp.dataset.index = String(i);
+    td.appendChild(inp);
+    tr.appendChild(th); tr.appendChild(td);
+    tbody.appendChild(tr);
+    return inp;
+  });
+
+  function seconds() {
+    return inputs.map(function (inp) { var v = parseInt(inp.value, 10); return isNaN(v) || v < 0 ? 0 : v; });
+  }
+  function setSeconds(list) { list.forEach(function (v, i) { inputs[i].value = String(v); }); }
+
+  function refreshTotal() {
+    var sum = seconds().reduce(function (a, b) { return a + b; }, 0);
+    var over = sum > BUDGET;
+    document.getElementById('total').textContent = '合計 ' + sum + '秒 / ' + BUDGET + '秒' + (over ? '（' + (sum - BUDGET) + '秒オーバー）' : '（余り ' + (BUDGET - sum) + '秒）');
+    document.getElementById('total').className = 'total' + (over ? ' over' : '');
+    document.getElementById('bar').className = 'bar' + (over ? ' over' : '');
+    document.getElementById('barfill').style.width = Math.min(100, sum / BUDGET * 100) + '%';
+    return sum;
+  }
+
+  function checkedValue(name) {
+    var el = document.querySelector('input[name="' + name + '"]:checked');
+    if (!el) return '';
+    if (el.value === '__other__') return document.getElementById('titleOther').value.trim() || '（未入力）';
+    return el.value;
+  }
+
+  function buildSummary() {
+    var lines = ['# エンタメ班 ブラッシュアップ 選択結果', ''];
+    lines.push('## 5分の配分');
+    var sec = seconds();
+    SLIDES.forEach(function (s, i) { lines.push('- ' + s[0] + ' ' + s[1] + '：' + (sec[i] === 0 ? '飛ばす' : sec[i] + '秒')); });
+    lines.push('- 合計：' + sec.reduce(function (a, b) { return a + b; }, 0) + '秒 / ' + BUDGET + '秒', '');
+    lines.push('## クレーン3枚');
+    [['hero1', '1枚目の絵'], ['tl', '2枚目の3つの絵'], ['title', '3枚目の見出し'], ['sub', '見出し上の小さな一言'],
+     ['ladder', 'はしごの段階'], ['both', 'アームとヒューマノイド'], ['tags', '状態の札']].forEach(function (p) {
+      lines.push('- ' + p[1] + '：' + checkedValue(p[0]));
+    });
+    lines.push('', '## 発表全体');
+    lines.push('- デッキ全体のタイトル：' + checkedValue('deck'));
+    lines.push('- 現在の書き換え：' + checkedValue('old'));
+    var fixes = Array.prototype.slice.call(document.querySelectorAll('[data-key="fix"] input:checked')).map(function (e) { return e.value; });
+    lines.push('- 直すつながり：' + (fixes.length ? '' : 'なし'));
+    fixes.forEach(function (f) { lines.push('  - ' + f); });
+    lines.push('', '（まだ書き換えない。許可を待つ）');
+    return lines.join('\n');
+  }
+
+  function persist() {
+    try {
+      var data = { sec: seconds(), radios: {}, checks: [], other: document.getElementById('titleOther').value };
+      document.querySelectorAll('input[type=radio]:checked').forEach(function (r) { data.radios[r.name] = r.value; });
+      document.querySelectorAll('[data-key="fix"] input').forEach(function (c, i) { if (c.checked) data.checks.push(i); });
+      localStorage.setItem(STORE, JSON.stringify(data));
+    } catch (e) { /* 保存できなくても動作に影響しない */ }
+  }
+
+  function restore() {
+    var data = null;
+    try { data = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { data = null; }
+    if (!data || !Array.isArray(data.sec) || data.sec.length !== SLIDES.length) { setSeconds(PRESETS.A); return; }
+    setSeconds(data.sec);
+    Object.keys(data.radios || {}).forEach(function (name) {
+      document.querySelectorAll('input[name="' + name + '"]').forEach(function (r) { r.checked = (r.value === data.radios[name]); });
+    });
+    var boxes = document.querySelectorAll('[data-key="fix"] input');
+    boxes.forEach(function (c, i) { c.checked = (data.checks || []).indexOf(i) >= 0; });
+    document.getElementById('titleOther').value = data.other || '';
+  }
+
+  function update() { refreshTotal(); document.getElementById('out').value = buildSummary(); persist(); }
+
+  document.querySelectorAll('[data-preset]').forEach(function (b) {
+    b.addEventListener('click', function () { setSeconds(PRESETS[b.dataset.preset]); update(); });
+  });
+  document.addEventListener('input', update);
+  document.addEventListener('change', update);
+  document.getElementById('copy').addEventListener('click', function () {
+    var text = document.getElementById('out').value;
+    var done = function (msg) { document.getElementById('copied').textContent = msg; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done('コピーしました'); }, function () { fallbackCopy(); });
+    } else { fallbackCopy(); }
+    function fallbackCopy() {
+      var ta = document.getElementById('out'); ta.removeAttribute('readonly'); ta.select();
+      try { document.execCommand('copy'); done('コピーしました'); } catch (e) { done('下の選択結果を手動でコピーしてください'); }
+      ta.setAttribute('readonly', '');
+    }
+  });
+
+  restore();
+  update();
+})();
+</script>
+</body>
+</html>
