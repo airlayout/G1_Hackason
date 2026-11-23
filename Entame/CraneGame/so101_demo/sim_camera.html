@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カメラで操作</title>
+<link rel="stylesheet" href="/sim.css">
+<style>
+  main.cam { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto; }
+  main.cam aside { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; }
+  @media (max-width: 860px) { main.cam { grid-template-columns: 1fr; } }
+  .stage canvas#cam { cursor: default; object-fit: contain; background: #000; transform: scaleX(-1); }   /* 鏡のように左右を反転して見せる */
+  .bar { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .bar label { display: inline-flex; gap: 6px; align-items: center; padding: 4px 10px; border-radius: 8px; background: rgba(0, 0, 0, .6); color: #fff; font-size: 13px; }
+  .hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 6px 14px; border-radius: 999px; background: rgba(0, 0, 0, .7); color: #fff; font-weight: 600; max-width: 92%; text-align: center; }
+  .hint.warn { background: var(--warn); color: #1a1300; }
+  .debug { position: absolute; left: 10px; right: 10px; bottom: 52px; padding: 3px 8px; border-radius: 6px; background: rgba(0, 0, 0, .55); color: #cfe; font-size: 11px; font-variant-numeric: tabular-nums; pointer-events: none; }
+  .meters { display: grid; gap: 4px; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .meter { display: grid; grid-template-columns: 4.5em 1fr 3.5em; gap: 8px; align-items: center; }
+  .meter progress { width: 100%; height: 8px; }
+</style>
+</head>
+<body>
+<main class="cam">
+  <div class="stage" id="camstage">
+    <canvas id="cam" aria-label="カメラ映像（左右反転）"></canvas>
+    <video id="video" playsinline muted hidden></video>
+    <div class="bar">
+      <button id="open">カメラを開く</button>
+      <label><input type="checkbox" id="mosaic" checked> 背景をモザイク</label>
+      <label><input type="checkbox" id="drive" checked> カメラで操作</label>
+      <label><input type="checkbox" id="roll"> 手首も操作</label>
+    </div>
+    <div class="hint" id="hint" role="status">「カメラを開く」を押してください</div>
+    <div class="debug" id="debug" aria-label="認識の状態"></div>
+  </div>
+  <div class="stage">
+    <canvas id="view" aria-label="シミュレーションの SO-101 と机"></canvas>
+    <div class="views" role="group" aria-label="視点">
+      <button data-view="oblique" class="on">斜め</button><button data-view="top">真上</button>
+      <button data-view="side">横</button><button data-view="front">正面</button>
+    </div>
+    <div class="ctrl" role="group" aria-label="進行">
+      <button id="start" class="go">スタート</button><button id="stop">ストップ</button><button id="restart">リスタート（R）</button>
+      <label class="chip"><input type="checkbox" id="assist" checked> アシスト</label>
+    </div>
+    <div class="banner" id="banner" role="status" hidden></div>
+    <div class="prize" id="prize" role="status" hidden><span>景品ゲット！</span></div>
+  </div>
+  <aside>
+    <section aria-live="polite">
+      <h1>手で景品を取ろう</h1>
+      <p class="note">カメラの前で手を動かすと、シミュレーションの SO-101 が動きます。実機は動きません。</p>
+      <ul class="steps"><li id="step-lift">お菓子をつかんで持ち上げる</li><li id="step-got">机の穴の上へ運び、グリッパーを開いて落とす</li></ul>
+      <div class="timer" id="timer">0.0 秒</div>
+      <div class="result" id="result"></div>
+      <p class="note">アシスト: お菓子や穴に近づくと、アームが少し狙いの位置へ寄ります。お菓子の近く（黄色く光る）でグリッパーを閉じると自動でつかみ、穴の上で止まると自動で離します。</p>
+    </section>
+    <section>
+      <h2>手の動かし方（鏡に映した向き）</h2>
+      <dl class="keys">
+        <dt>左右</dt><dd>手を左右へ → 腕が左右へ回る（画面の中央が正面）</dd>
+        <dt>上下</dt><dd>手を上げ下げ → 腕が上がる・下がる（手首が画面の中ほどで真ん中）</dd>
+        <dt>前後</dt><dd>手をカメラへ近づける → 腕が前へ。遠ざけると引く（手のひらの幅で決まります）</dd>
+        <dt>手首</dt><dd>「手首も操作」を入れたときだけ、手を左右へ傾けると手首がまわる（向きは未確認）</dd>
+        <dt>つかむ</dt><dd>親指と人差し指をつまむ → 閉じる（つまむと線が赤くなる）。離すと開く。アシストが入っていれば、お菓子が黄色く光る距離で閉じるとつかみます</dd>
+      </dl>
+      <p class="note">背景のモザイクは、人の輪郭を切り抜いてその外側だけにかけます（ブラウザの中だけで処理。映像は送りません）。</p>
+    </section>
+    <section>
+      <h2>いまの手の値（-1〜1）</h2>
+      <div class="meters" id="meters"></div>
+    </section>
+    <section>
+      <h2>スライダー</h2>
+      <div class="sliders" id="sliders"></div>
+      <p class="note">キーボード（W/A/S/D・矢印・Q/E・Space・R）も使えます。</p>
+    </section>
+    <p class="note"><a href="/sim">キーボードだけの画面</a>　<a href="/">実機の操作画面へ</a></p>
+  </aside>
+</main>
+<script type="module" src="/sim.js"></script>
+<script type="module" src="/sim_camera.js"></script>
+</body>
+</html>

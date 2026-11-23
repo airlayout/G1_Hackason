@@ -21,6 +21,8 @@ from limits import (JOINTS, MIN_SPAN, RANGES, clamp_pose, default_limits, load_l
                     speed_raw, step_raw)
 from skeleton import FEATURES, POSE_NAMES, Calibration, PoseMover, calibration_poses, parse_features
 from rest import rest_pose
+from sim_log import SimLog
+from sim_web import SimService
 from teach import HUMAN_IDS, HUMAN_POSES, SAME_POSE, entry, load_teach, nearest_gap, save_teach
 
 ROOT = Path(__file__).resolve().parent
@@ -46,6 +48,7 @@ IK_NOTE = "IK 追従を使えません（{}）。関節ごとの追従になり�
 # 校正が無い（模擬・テスト）ときの、各関節の可動範囲の代用（lerobot の校正の ticks）
 FALLBACK_CALIBRATION = {j: {"range_min": 800, "range_max": 3300} for j in CONTROLLED_JOINTS}
 WAIT_HAND_NOTE ="手が映るのを待っています（腕は動かしません。カメラに片手を映してください）"
+SIM_LOG_BODY_MAX = 512 * 1024      # /sim/log の 1 回の送信の最大サイズ
 DEBUG_VALUES_MAX = 12       # サンプルに付く、画面側の生の値（デバッグログ用）の最大の数
 BODY_VALUES_MAX = 12        # サンプルに付く、人の骨格（肩・肘・手首の画像上の位置 x,y）の最大の数
 LOG_IMAGE_MAX = 300         # 追従ログ1本に残す画像の最大の数
@@ -54,9 +57,9 @@ VIDEO_CHUNK_MAX = 8 * 1024 * 1024   # 映像1回分（数秒）の送信の最�
 WHY_MAX = 60                # 停止の原因（画面が付ける文字列）の最大の長さ
 ARM_GAP = (1, 35)          # 上下２点の関節差の許容範囲（内部単位。表示は半分の%）
 HISTORY_MAX = 50
-PAGES = {"/": "desk.html", "/skeleton": "skeleton.html", "/teach": "teach.html"}      # 画面（URL → ファイル）
+PAGES = {"/": "desk.html", "/skeleton": "skeleton.html", "/teach": "teach.html", "/sim": "sim.html", "/sim/camera": "sim_camera.html"}      # 画面（URL → ファイル）
 SCRIPTS = ("/app.js", "/limits.js", "/sync.js", "/style.css", "/skeleton.js", "/skeleton_math.js", "/skeleton_figure.js",
-           "/teach.js")
+           "/teach.js", "/sim.js", "/sim_scene.js", "/sim.css", "/sim_camera.js", "/sim_hand.js")
 FINGER_FILE = ROOT / "finger_calibration.json"   # 指の校正の保存先（1人1回。手が変わるときだけ測り直す）
 FINGER_RATIO_MAX = 3.0
 SNAPSHOT_MAX = 200          # 診断の保存の上限（件）
@@ -887,6 +890,8 @@ def main():
     if args.port and not args.robot_id:
         parser.error("--port には --robot-id も必要です")
     lock = threading.Lock()
+    sim = SimService()
+    sim_log = SimLog(ROOT / "debug")
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -912,6 +917,9 @@ def main():
                     except Exception as exc:
                         fail(exc)
                     return self.reply(200, desk.state())
+            served = sim.get(path)      # /sim 系（シミュレーション。実機の Desk とは別の世界）
+            if served:
+                return self.reply(served[0], served[1], served[2])
             if path in PAGES:
                 file = ROOT / PAGES[path]
             elif path in SCRIPTS:
@@ -926,7 +934,7 @@ def main():
 
         def do_POST(self):
             video = self.path == "/followvideo"
-            if (self.path not in ("/command", "/snapshot", "/finger", "/followvideo") or self.headers.get("Host") != address
+            if (self.path not in ("/command", "/snapshot", "/finger", "/followvideo", "/sim/command", "/sim/log") or self.headers.get("Host") != address
                     or self.headers.get("Origin") != "http://" + address
                     or self.headers.get_content_type() != ("video/webm" if video else "application/json")):
                 return self.reply(403, {"error": "このPCの操作画面を使用してください"})
@@ -942,6 +950,23 @@ def main():
                 except OSError as e:
                     print(f"[video] 映像を保存できません（{e}）", file=sys.stderr, flush=True)
                     return self.reply(500, {"error": "映像を保存できません"})
+            if self.path == "/sim/log":      # /sim/camera の操作ログ（1 フレームごとの記録のまとめ）。debug/sim-camera-*.jsonl へ
+                size = int(self.headers.get("Content-Length", 0))
+                if not 0 < size <= SIM_LOG_BODY_MAX:
+                    return self.reply(400, {"error": "入力サイズが不正"})
+                try:
+                    return self.reply(200, {"saved": sim_log.append(self.rfile.read(size))})
+                except ValueError as e:
+                    return self.reply(400, {"error": str(e)})
+                except OSError as e:
+                    print(f"[sim-log] ログを保存できません（{e}）", file=sys.stderr, flush=True)
+                    return self.reply(500, {"error": "ログを保存できません"})
+            if self.path == "/sim/command":      # シミュレーションの操作。実機の lock も Desk も使わない
+                size = int(self.headers.get("Content-Length", 0))
+                if not 0 < size <= 2048:
+                    return self.reply(400, {"error": "入力サイズが不正"})
+                served = sim.post(self.path, self.rfile.read(size))
+                return self.reply(served[0], served[1], served[2])
             snapshot = self.path == "/snapshot"
             try:
                 size = int(self.headers.get("Content-Length", 0))
@@ -1019,6 +1044,7 @@ def main():
         finally:
             done.set()
             guard.join()
+            sim.close()
             with lock:
                 desk.token = None
                 if desk.arm is not None:

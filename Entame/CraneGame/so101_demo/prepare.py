@@ -1,4 +1,4 @@
-"""Cache the pinned Google Hand / Pose Landmarkers and their browser runtime."""
+"""Cache the pinned Google Hand / Pose Landmarkers, three.js (for /sim) and their browser runtime."""
 from hashlib import sha256
 from pathlib import Path
 from urllib.request import urlopen
@@ -14,7 +14,10 @@ ASSETS["hand_landmarker.task"] = ("https://storage.googleapis.com/mediapipe-mode
 ASSETS["pose_landmarker_full.task"] = ("https://storage.googleapis.com/mediapipe-models/"
                                        "pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task")
 
+ASSETS["three.module.min.js"] = "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js"
+
 SHA256 = {
+    "three.module.min.js": "3e690ac7d180b0aadf0891bea39eec643e29e2d3e75c99b18689518665f69ba6",
     "hand_landmarker.task": "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1",
     "pose_landmarker_full.task": "5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1",
     "vision_bundle.mjs": "3252b10e0fd26c4095e4b6ee545c1c898120b3a3813388ecd4876abe6f1399a9",

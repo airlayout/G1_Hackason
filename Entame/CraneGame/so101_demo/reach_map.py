@@ -48,17 +48,19 @@ def joint_units(calibration):
     return out
 
 
-def solve(x, z, units):
+def solve(x, z, units, usable=None):
     """先端 (x, z) の関節値（辞書）と、使ってよい範囲に入るか。道具の向きは pitch_for(z) を基本に、
-    遠くて届かないときだけ PITCH_RELAX（度）まで上向きへ緩める。入らないとき、値は範囲に丸めてある。"""
+    遠くて届かないときだけ PITCH_RELAX（度）まで上向きへ緩める。入らないとき、値は範囲に丸めてある。
+    usable を渡すと、使ってよい範囲を差し替える（シミュレーション用。実機は既定の USABLE）。"""
+    usable = usable or USABLE
     for relax in range(0, int(PITCH_RELAX) + 1, 5):
         lift, elbow, wrist, reached = ik_arm.inverse(x, z, pitch_for(z) + relax)
         values = {"shoulder_lift": lift / units["shoulder_lift"], "elbow_flex": elbow / units["elbow_flex"],
                   "wrist_flex": wrist / units["wrist_flex"]}
-        inside = reached and all(lo + MARGIN <= values[j] <= hi - MARGIN for j, (lo, hi) in USABLE.items())
+        inside = reached and all(lo + MARGIN <= values[j] <= hi - MARGIN for j, (lo, hi) in usable.items())
         if inside:
             break
-    return {j: min(USABLE[j][1], max(USABLE[j][0], v)) for j, v in values.items()}, inside
+    return {j: min(usable[j][1], max(usable[j][0], v)) for j, v in values.items()}, inside
 
 
 def tip_of(pose, units):
@@ -71,39 +73,40 @@ def height_above_desk(pose, units):
     return tip_of(pose, units)[0][1] - Z_DESK
 
 
-def inside_envelope(pose, units):
+def inside_envelope(pose, units, usable=None):
     """使ってよい姿勢か。先端の机からの高さが HEIGHT_MAX 以下、道具が PITCH_RANGE の向き、肩が使ってよい下限以上。
     手の入力の結び方（関節ごと・IK）に関わらず、この外の姿勢は出させない（利用者の指示 2026-11-22）。"""
+    usable = usable or USABLE
     (_, z), pitch = tip_of(pose, units)
     return (z - Z_DESK <= HEIGHT_MAX and z >= Z_DESK - DESK_TOUCH
             and PITCH_RANGE[0] <= pitch <= PITCH_RANGE[1]
-            and all(lo <= pose[j] <= hi for j, (lo, hi) in USABLE.items()))
+            and all(lo <= pose[j] <= hi for j, (lo, hi) in usable.items()))
 
 
-def clamp_to_envelope(want, safe, units, steps=32):
+def clamp_to_envelope(want, safe, units, steps=32, usable=None):
     """目標の姿勢 want が包絡の外なら、安全な姿勢 safe から want へ向かう関節空間の直線上で、包絡内で最も遠い点を返す。"""
-    if inside_envelope(want, units):
+    if inside_envelope(want, units, usable):
         return dict(want)
     best = dict(safe)
     for i in range(1, steps + 1):
         f = i / steps
         mix = {j: safe[j] + (want[j] - safe[j]) * f for j in want}
-        if not inside_envelope(mix, units):
+        if not inside_envelope(mix, units, usable):
             break
         best = mix
     return best
 
 
-def pull_in(x, z, units, steps=24):
+def pull_in(x, z, units, steps=24, usable=None):
     """目標 (x, z) が使ってよい範囲の外なら、範囲内の安全な場所（初期の高さ・前後）から目標へ向かう線上で、行ける所まで進めた点を返す。"""
-    if solve(x, z, units)[1]:
+    if solve(x, z, units, usable)[1]:
         return x, z
     sx, sz = 0.20, Z_MIN
     best = (sx, sz)
     for i in range(1, steps + 1):
         f = i / steps
         p = (sx + (x - sx) * f, sz + (z - sz) * f)
-        if solve(*p, units)[1]:
+        if solve(*p, units, usable)[1]:
             best = p
         else:
             break
