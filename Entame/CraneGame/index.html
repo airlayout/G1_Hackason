@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>クレーンゲームの設計軸と選択肢</title>
+<style>
+:root { color-scheme:light; font-family:system-ui,"Hiragino Sans",Meiryo,sans-serif; color:#162e39; background:#f5f7f8; }
+* { box-sizing:border-box }
+body { max-width:1080px; margin:auto; padding:24px; line-height:1.65 }
+header, section { background:white; border:1px solid #d4dfe2; border-radius:10px; padding:16px 22px; margin-bottom:16px }
+header { border-top:5px solid #14695d }
+h1,h2,h3 { line-height:1.32; margin:6px 0 12px }
+h1 { font-size:clamp(26px,4vw,38px) } h2 { font-size:22px } h3 { font-size:17px; margin-top:18px }
+p { margin:8px 0 } nav { display:flex; flex-wrap:wrap; gap:5px 18px; margin-top:14px }
+a { color:#075f58; text-underline-offset:3px } .scroll { overflow:auto }
+table { border-collapse:collapse; width:100%; min-width:520px; font-size:14px }
+th,td { padding:8px 10px; border-bottom:1px solid #dbe3e6; text-align:left; vertical-align:top }
+thead th { background:#eaf3f1 } tbody th { min-width:7em }
+.state { font-weight:700; white-space:nowrap; color:#116052 }
+@media(max-width:600px){body{padding:10px}header,section{padding:12px}}
+@media print{body{max-width:none;padding:0}nav{display:none}section,header{border:none}tr{break-inside:avoid}}
+</style>
+</head>
+<body>
+<header>
+<h1>クレーンゲームの設計軸と選択肢</h1>
+<p><strong>デモの体験方針</strong>　１プレイ無料。制限時間は仮に60秒とする。歩かずに片腕を操り、欲しいお菓子の個包装をそのままつかむ。回収口に運び、袋を中に入れたら獲得。子どもは何も装着せず、何も握らず、目の前の実機を見て遊ぶ。外部カメラで腕と指の動きを読み、ロボットの腕の位置とハンドの開閉を自分で操る。</p>
+<p><strong>主なプレイヤーの案</strong>　力の弱い子どもを含む、ロボット操作が初めての親子。小さな動きでも届く設計を目指す。対象年齢は試遊を踏まえて決める。</p>
+<p><strong>仮にデモを見せるなら</strong>　手を伸ばして指を閉じると、目の前のロボットも同じように動いてお菓子を拾う。操作者の素手、ロボットの手先、お菓子を同じ画角に入れ、初見の人にも動きの対応が伝わるかを見る。１分発表に向けた検討はこの一場面までとする。</p>
+<nav aria-label="目次"><a href="#audience">ターゲットと景品</a><a href="#axes">設計軸</a><a href="#mechanics">台の種類と画像</a><a href="#cases">組み合わせ例</a><a href="#criteria">評価観点</a><a href="#decisions">決定履歴</a></nav>
+</header>
+<section id="audience">
+<h2>誰が、何を取りたくて遊ぶか</h2>
+<p><strong>初回ターゲットの仮説</strong>　親子で会場に来た10〜12歳の小学生。ロボットの予備知識がなくても、通りがかりに遊びたくなる体験を想定する。</p>
+<p><strong>子どものペルソナ例</strong>　11歳。前の子が取った景品を見て立ち止まる。ロボットを操るのは初めて。「あの青いのが欲しい。自分にも取れるかな？」と、狙うものと手を伸ばす場所を探す。</p>
+<p><strong>保護者のペルソナ例</strong>　隣で見守る同行者。初めての子にも取り方が分かり、親に操作を代わってもらわずに成功できるかを気にする。</p>
+<h3>景品候補の比較</h3>
+<p>初回試遊の第一候補はお菓子。ぬいぐるみは好みが分かれるため、発表のイメージに使う候補として残す。発表素材は未決。</p>
+<div class="scroll"><table><thead><tr><th>候補</th><th>子どもが狙う理由の仮説</th><th>操作と個数の関係</th><th>試作で確かめる点</th></tr></thead><tbody>
+<tr><th>個包装のお菓子</th><td>好きな味を選ぶ、２個目は家族の分を取る。</td><td>１個増えるごとにうれしさを作れる。薄い袋や小さい包みは、つかむ場所が分かりにくい。</td><td>包装を傷めず取れるか。補充量と、食品を選ばない子の希望。</td></tr>
+<tr><th>手のひらサイズのぬいぐるみ</th><td>好きな色や動物を指さして選び、取った瞬間を家族に見せたい。</td><td>胴を囲む、横から狙うなど手の使い方が見える。２個目以降も欲しいかは絵柄や種類に左右される。</td><td>初めてでも持ち上がるか。景品ごとの形・原価・補充スペースの差。</td></tr>
+<tr><th>小型チャーム・キーホルダー</th><td>お気に入りをバッグに付ける。色違いを集める。</td><td>リングを狙う方式と相性がよい。輪が寝ていると初見の難しさが変わる。</td><td>離れていても絵柄が見え、輪を狙えるか。</td></tr>
+</tbody></table></div>
+<p><strong>比較の順番</strong>　遊ぶ前に実物を並べ「最初にどれを取りたい？」と聞く。試遊後は「もう１回なら何を狙う？」と聞き、最初の魅力と追加獲得の動機を分ける。候補ごとの獲得数だけでは、欲しさと取りやすさを区別できない。</p>
+</section>
+<section id="axes">
+<h2>設計軸</h2>
+<p>「初回方針」は合意した範囲、「推奨」はデモで先に試す候補、「未決」は比較を続ける項目。候補欄には将来用の選択肢も含む。</p>
+<div class="scroll"><table>
+<thead><tr><th>軸</th><th>状態</th><th>選択肢</th><th>判断のポイント</th></tr></thead>
+<tbody>
+<tr><th>参加料金</th><td class="state">初回は無料</td><td>無料体験／都度課金／時間制／複数回券。費用負担者はプレイヤー・主催者・協賛者が候補。</td><td>有料化を試すときは景品・時間・失敗時の条件をそろえる。100円・300円・500円は比較例。</td></tr>
+<tr><th>景品の獲得方式</th><td class="state">初回は現物を直接獲得</td><td>選んだ現物を取る／引換タグを取る／くじを引く／玉入れ・球押しなどのミッションクリアで交換。</td><td>何を狙えば何がもらえるか、見ただけで分かるか。</td></tr>
+<tr><th>操作方法</th><td class="state">外部カメラで腕と指を操作</td><td>外部カメラで素手を追跡／目印付きグリップをカメラで追跡／卓上リーダーアーム／レバー・ゲームパッド＋ボタン／Quest。</td><td>テレオペは遠隔操作の総称。入力機器ごとの楽しさ、説明・装着・交代時間を比較する。</td></tr>
+<tr><th>腕の移動量の対応</th><td class="state">腕長で個人差を補正</td><td>カメラでプレイヤーの腕の長さを推定し、開始位置からの手の移動量を腕長に対する割合に換算して、ロボット側の操作範囲に対応させる。</td><td>腕が短い子でも同じ割合だけ手を伸ばせば同じ景品に届くことを目指す。計測姿勢、奥行きの扱い、倍率は実機で検証する。</td></tr>
+<tr><th>追従の開始・停止</th><td class="state">ボタンで明示</td><td>PC画面のボタン／物理ボタン。</td><td>待機中は手が映ってもロボットは追従しない。開始を押した後だけ腕と指の動きを反映し、停止後は再び開始を押すまで待機する。</td></tr>
+<tr><th>歩行・移動</th><td class="state">初回は歩行なし</td><td>同じ場所から手を伸ばす／歩いて景品台を選ぶ／姿勢を変えて高低差を攻略する。</td><td>狙う景品を選ぶ自由と、操作の複雑さ。歩行なしでも機体の支持方法は別途検討。</td></tr>
+<tr><th>景品への働きかけ</th><td>元の個包装を直接つかむ</td><td>① 景品本体をつかむ　② 景品に付けた輪・持ち手を狙う　③ 景品を押す・ずらして落とす。</td><td>①はつかむ箇所の工夫、②は狙いの正確さ、③は重心や支え方を読むことが遊びになる。</td></tr>
+<tr><th>景品・包装</th><td>推奨は少し厚みのある小袋グミ。袋の形をそろえ、味を２種類から選べるようにする</td><td>ぬいぐるみ／小物・キーホルダー／菓子／箱物。裸・透明袋・共通のつまみ・輪・カプセル。選択制か中身が見えない方式か。</td><td>欲しさ、形状・重さ、包装と補充の手間、景品原価。</td></tr>
+<tr><th>景品の配置</th><td>推奨は回収口の近くに数袋を平置き</td><td>間隔を空ける／山積みにする／奥に難しい景品を置く。</td><td>どの味を選んでも両側から指が入るように置く。速く運べた人は残り時間でもう１個狙える。</td></tr>
+<tr><th>機体・アーム</th><td>片腕。機種は問わない</td><td>G1の片腕／安価な卓上アームとハンド。</td><td>仮に実演するなら、手元で動かせるものを使う。</td></tr>
+<tr><th>ハンド形状</th><td>形状の優先順位は設けない</td><td>２指／三本爪／多指。</td><td>素手の開閉に合わせて個包装をつかみ、放せればよい。</td></tr>
+<tr><th>視点と操作補助</th><td>推奨は実機を直接見て、運搬・開閉とも自分で操作</td><td>直接目視／外部カメラのモニター／ロボット視点。開閉・運搬まで手動／把持や帰還のみ定型化。</td><td>ヘッドセットの重さとパススルーでの酔いへの懸念があり、装着と視点は要議論。奥行きの把握、初期姿勢合わせ、自分で操作した感覚。</td></tr>
+<tr><th>成功条件</th><td class="state">回収口に入れたら獲得</td><td>持ち上げたら成功／回収口に入れたら成功／台から落とせば成功。比較用に得点・当たり穴・くじ判定も残す。</td><td>成功の瞬間がプレイヤーと観客の両方に伝わるか。</td></tr>
+<tr><th>難易度・再挑戦</th><td class="state">１個は誰でも簡単に取れ、慣れた人は複数取れる</td><td>デモは１プレイ約60秒。初めての人は30秒前後で１個、子どもも大人が声を掛ければ時間内に自分で１個取れるくらいを目安にする。残り時間は何個でも挑戦できる。</td><td>試して難しければ、袋を取りやすい向きに置くか、回収口に近づける。サービス提供時の制限時間・景品保証は未定。</td></tr>
+<tr><th>会場運営・復帰</th><td>実際の出展が決まった段階で検討</td><td>景品の受け渡し、補充、交代、中断後の復帰。</td><td>今回の１分発表の検討範囲外。</td></tr>
+</tbody></table></div>
+</section>
+<section id="bare-hand">
+<h2>装着物なしの腕と指の操作</h2>
+<p>目標は、手を伸ばす・下げる・持ち上げる動きをロボットの腕に、指でつまむ・開く動きをハンドに対応させること。握力や大きな腕振りを前提にしない。一般的なRGBカメラ１台を出発点に、操作面での位置追従と指の開閉を同時に試し、その後、高さ方向の追従を検証する。単眼の奥行き推定、必要台数、実機での精度・遅延は未確定。</p>
+<p>MediaPipe Hand LandmarkerはWebカメラから片手21点を推定する。指の開きと画像内の位置を使える。手を中心とする3D座標から、カメラに対する手首の絶対距離を直接読むことはできない。操作面とロボットの作業範囲の対応付け、子どもの手での誤認識、追跡が途切れた場合の扱い、実機への接続は未検証。<a href="https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker/python">Google公式資料・Webカメラデモ</a></p>
+<h3>手持ちのSO-101で撮影する案</h3>
+<p><a href="so101_demo/README.md">撮影手順書・GUIの起動方法・テスト結果</a></p>
+<p>実機が校正済みでPCから動く場合の撮影候補。お菓子を１袋、グリッパーが届く位置に置く。Webカメラが捉えた手の上下で腕を上げ下げし、親指と人差し指を閉じて袋をつかむ。奥行きと手先の向きは固定。開始・停止はキーで行う。操作者の指と袋が浮く瞬間を一緒に撮れれば一区切り。</p>
+<p>手元の実機では未検証。<a href="https://convolutedladybug.com/experiments">Experiment 5の実機映像</a>ではWebカメラと手のジェスチャーでSO-101が箱を器に移している。<a href="https://github.com/ABMI-software/hand_controlLerobot">PythonでWebカメラとSO-101を接続する実装候補</a>もある。</p>
+<h3>参考動画と一次資料</h3>
+<p>Xの5件は共有された検索結果。各投稿の映像・撮影機材・腕の操作範囲は未確認。以下の着眼点は試作時に見比べるためのもの。</p>
+<ul>
+<li>DexPilot：裸手で腕と多指ハンドを操る構成。研究チームが23自由度の制御を報告。<a href="https://research.nvidia.com/publication/2020-05_dexpilot-vision-based-teleoperation-dexterous-robotic-hand-arm-system">NVIDIA研究紹介・動画へのリンク</a> ／ <a href="https://x.com/WevolverApp/status/1689630535784570880">X投稿候補</a></li>
+<li>Chestnut Robotics：Webカメラによるハンド操作。Aero Hand Openの公式ROS 2資料にはwebcam teleopの起動案内がある。<a href="https://github.com/Chestnut-Robotics/aero-hand-open/blob/main/ros2/README.md">公開コード・手順</a> ／ <a href="https://x.com/ChestnutRobotic/status/1987711095533113664">X投稿候補</a></li>
+<li>果物を拾う例：小さい物をつまむ場面で、指を閉じる操作と、対象まで腕を運ぶ操作の入力元を確認したい。<a href="https://x.com/ChestnutRobotic/status/1996758258548437245">X投稿候補</a></li>
+<li>3Dプリントハンド：指の屈伸と手首の回転に着目。<a href="https://x.com/AravKaashyup/status/2103236206637257039">X投稿候補</a></li>
+<li>PaXini展示：初見の人が、素手と実機の動きの対応を見て理解できる配置に着目。<a href="https://x.com/NKworks_/status/1996754111212192055">X投稿候補</a></li>
+</ul>
+</section>
+<section id="mechanics">
+<h2>台の種類と獲得条件</h2>
+<p>三本爪はハンドの形、橋渡しは景品の置き方、くじ引きは勝ち条件を表す。一つの台に複数の特徴を組み合わせられる。</p>
+<div class="scroll"><table><thead><tr><th>種類・参考記事</th><th>操作と獲得条件</th><th>参考画像</th></tr></thead><tbody>
+<tr><th><a href="https://grabbit.co.jp/onkure/jikadori/">直取り・直置き</a></th><td>台に置いた景品をつかむ、押す、寄せるなどして獲得口へ落とす。</td><td>記事内</td></tr>
+<tr><th><a href="https://grabbit.co.jp/onkure/threeclaws/">三本爪</a></th><td>３本の爪で景品を囲み、持ち上げて獲得口に運ぶ。</td><td><a href="https://img.grabbit.co.jp/onkure/2021/01/item_07.png">三本爪の図</a></td></tr>
+<tr><th><a href="https://grabbit.co.jp/onkure/ring/">リング</a></th><td>景品に付いた輪に爪を入れ、景品を動かして落とす。</td><td>記事内</td></tr>
+<tr><th><a href="https://grabbit.co.jp/onkure/hook/">S字フック</a></th><td>フックを輪や金網に掛けて引き上げる。掛かったものを外す設定もある。</td><td><a href="https://img.grabbit.co.jp/onkure/2021/01/item_09.png">フックの図</a></td></tr>
+<tr><th><a href="https://grabbit.co.jp/onkure/bridging/">橋渡し</a></th><td>２本の棒に載った箱をずらしたり回したりし、棒の間から落とす。</td><td>記事内</td></tr>
+<tr><th><a href="https://grabbit.co.jp/onkure/kenzan/">剣山</a></th><td>突起の上に載った景品を動かし、支持面から落とす。</td><td>記事内</td></tr>
+<tr><th><a href="https://grabbit.co.jp/onkure/recoil/">反動台</a></th><td>景品の一部を持ち上げ、反動で段差を下りるように動かす。</td><td>記事内</td></tr>
+<tr><th><a href="https://grabbit.co.jp/onkure/boundball/">バウンド</a></th><td>景品や箱をボールの上に落とし、跳ねて獲得口に入れば成功。</td><td><a href="https://img.grabbit.co.jp/onkure/2021/01/item_10.png">バウンドの図</a></td></tr>
+<tr><th><a href="https://grabbit.co.jp/onkure/ball/">玉転がし</a></th><td>ボールやカプセルを転がし、指定の隙間や獲得口に落とす。</td><td>記事内</td></tr>
+<tr><th><a href="https://grabbit.co.jp/onkure/takoyaki/">たこ焼き台</a></th><td>ピンポン玉をすくって盤面に落とし、当たり穴に入れる。</td><td><a href="https://img.grabbit.co.jp/onkure/2021/01/item_08.png">たこ焼き台の図</a></td></tr>
+<tr><th><a href="https://grabbit.co.jp/onkure/kuji/">くじ引き</a></th><td>くじやカップを選んで引き上げ、当たりなら景品を獲得。</td><td><a href="https://img.grabbit.co.jp/onkure/2021/01/item_11.png">くじ引きの図</a></td></tr>
+<tr><th><a href="https://grabbit.co.jp/onkure/special/">特殊台</a></th><td>回転する穴にカプセルを入れるなど、台固有の仕掛けを攻略する総称。</td><td><a href="https://img.grabbit.co.jp/onkure/2021/01/item_12.png">特殊台の図</a></td></tr>
+</tbody></table></div></section>
+<section id="cases"><h2>これまでに比較した組み合わせ</h2>
+<p>候補の組み合わせ例。個々の軸を決めるときは、他の条件をそろえて比較する。例えば操作方法を比べるなら、同じG1・景品・勝ち条件でQuestとゲームパッドを試す。</p>
+<div class="scroll"><table><thead><tr><th>案</th><th>機体・操作</th><th>プレイヤーの狙い</th></tr></thead><tbody>
+<tr><th>A　現物の直取り</th><td>G1片腕＋ゲームパッド</td><td>欲しい現物のつかみ方を工夫する。</td></tr>
+<tr><th>B　タグ交換</th><td>G1片腕＋ゲームパッド</td><td>欲しい景品に対応するタグを取る。</td></tr>
+<tr><th>C　手の動きを写す</th><td>G1片腕＋Quest</td><td>自分の手を動かして景品を取る。元案は持ち手付きで、持ち手の採用は検討中。</td></tr>
+<tr><th>D　歩いて玉入れ</th><td>G1全身＋ゲームパッド</td><td>移動してカゴに玉を落とし、得点を景品に交換する。</td></tr>
+<tr><th>E　卓上でつかむ</th><td>専用アーム＋ボタン・動作補助</td><td>狙う位置を選び、持ち手付き景品を取る。</td></tr>
+<tr><th>F　押してゴール</th><td>腕なし車輪型＋ゲームパッド</td><td>球を押してゴールに入れ、得点を景品に交換する。</td></tr>
+</tbody></table></div></section>
+<section id="criteria"><h2>比較するときの評価観点</h2>
+<h3>初回の判断指針案</h3>
+<ol>
+<li>10歳の子が初めてでも、短いお手本を見て欲しい景品を選び、自分から手を伸ばせる。</li>
+<li>初めての子も自分の操作で１個取れる。コツをつかむと、さらに多く取れる。</li>
+<li>手を横から伸ばす、手首を返すなど、子ども自身の工夫がロボットの動きと取り方に表れる。</li>
+</ol>
+<p>Quest装着体験の対象年齢は使用機種と会場の運用を確認して確定する。MetaはQuest 2・3で10〜12歳が利用する場合、保護者が作成・管理するアカウントを案内している。会場の共用機での利用条件は別途確認する。<a href="https://www.meta.com/quest/parent-info/">Metaの保護者向け案内</a></p>
+<div class="scroll"><table><thead><tr><th>視点</th><th>観点</th><th>試遊で残す情報</th></tr></thead><tbody>
+<tr><th>プレイヤー</th><td>初見のわかりやすさ／やってみたさ／攻略の面白さ／新規性／支払い意向</td><td>何が面白かったか。デモでは初めての人が１個取れたか、どこで戸惑ったかを見る。有料でも参加したいかと、その金額・理由。</td></tr>
+<tr><th>運営</th><td>安全に回せるか／スタッフの手間／交代時間／中断からの復帰</td><td>必要区画と人数、介入回数、説明から交代までの時間、中断原因と復帰時間。</td></tr>
+<tr><th>開発</th><td>追加費用／二次開発の量／景品や操作者のばらつきに対する強さ</td><td>流用できた機材・制御、追加部材費、調整工数、景品別の試行数と成功数。</td></tr>
+</tbody></table></div></section>
+<section id="decisions"><h2>決定履歴</h2>
+<p><time datetime="2026-11-21">2026年11月21日</time>　初回体験では「Quest ＞ ゲームパッド」「現物を直接取る ＞ くじ・ミッション」「無料 ＞ 課金」「歩行なし ＞ 歩行あり」を採用。実機での成功率や支払い意向は今後の検証項目。</p>
+<p><time datetime="2026-11-21">同日追記</time>　手の動きで操る魅力を残しつつ、ヘッドセットの重さと装着の手間を減らす案を比較するため、入力機器を再検討。Quest非装着時の追跡は実機未検証。</p>
+<p><time datetime="2026-11-21">同日・最新方針</time>　カメラだけで腕と指の両方を操る方式を企画の軸に採用。力の弱い子どもにも扱えること、初見での参加しやすさ、追加機材の安さを重視する。映像から腕と指の動きを推定する技術を、プレイヤー自身が体感できる形で使う。</p>
+<p><time datetime="2026-11-21">同日追記</time>　プレイ開始・終了の意図は人がボタンで指定する。手を開く・つまむ動作はプレイ中のハンド操作に使う。</p>
+<p><time datetime="2026-11-21">同日追記</time>　腕の長さをカメラで推定して手の移動量を補正する方針を採用。</p>
+<p><time datetime="2026-11-21">同日追記</time>　ぬいぐるみは好みが分かれるため、初回の試遊ではお菓子を優先。発表で見せる景品は別に選ぶ。</p>
+<p><time datetime="2026-11-22">2026年11月22日</time>　片腕でお菓子の元の個包装をつかみ、回収口に運んで入れたら獲得。共通のつまみ・輪は製作の手間が大きく、押して落とす方式は従来の遊びとの差が小さいため、初回案から外す。ハンドは２指・三本爪・多指のいずれも候補。</p>
+<p><time datetime="2026-11-22">同日追記</time>　１個目は誰でも簡単に取れる難しさを目指す。１プレイ60秒、最初の１個まで30秒前後はデモ用の仮置き。サービス用の数値は未定。</p>
+<p><time datetime="2026-11-22">同日追記</time>　発表準備では、仮にデモを見せるとしたら何が伝われば十分かを考える。機体・ハンドの選定と獲得後の運営は保留。</p>
+</section>
+</body></html>

@@ -82,6 +82,18 @@ python3 devserver.py
   - **CLEAR には、人とミニロボットの両方が START に戻る必要がある**（人は戻ったらミニロボットを待つ）。
     ミニロボットは START から 40px（= 人の判定 24px + 人の横で止まる 16px）以内で「戻った」とみなす
 
+## 救出（レベル選択の「LOVOT を救出する」オプション）
+
+`Entame/docs/win-conditions.md` の「④ 救出する」。ステージには保存せず、レベル選択（エディタのテストプレイでも）のチェックで選ぶ。
+「LOVOT と一緒に行く」（START から同行）とは別のオプションで、救出を選ぶと「一緒に行く」は無効になる（LOVOT は TARGET の位置に必ずいるため）。
+
+- 囚われのミニロボットが **TARGET の位置**に**ステイモード**（`Mini: stay`、動かない）で置かれる。TARGET の印と取得はなし
+- ミニロボットの 0.6 m 以内（点線の円）で **Space キー**を押すと通常モード（追従）になる。実機では LOVOT の頭部のセンサーホーンのモードスイッチ
+- 通常モードになったミニロボットは人に付いてくる。**人とミニロボットの両方が START に戻れば CLEAR**。救出前は START にいても CLEAR にならない
+- 人かミニロボットが見つかったら GAME OVER は従来どおり。**ステイモード中のミニロボットは判定の対象にしない**（仮置き）
+- 実装は `rescueRule.js`。動作確認は `node --test Entame/StealthGame2D/tests/rescueRule.test.mjs`（8 件）
+- 実機での判定方法（モードスイッチを押したことの検出）は未決。`win-conditions.md` に記載
+
 ## ステージデータ（stages/*.json）
 
 ステージデータは `stages.js` ではなく、`stages/` 配下の**ステージ1つ＝JSONファイル1つ**
@@ -150,6 +162,8 @@ GUIで調整できる。LEVEL SELECT画面の「ステージエディタを開�
 - `stages/` — ステージデータ本体（JSON、1ファイル1ステージ）
 - `player.js` — プレイヤーの移動・壁衝突・ターゲット取得判定
 - `miniRobot.js` — ミニロボット（人へ最短で向かう同行ロボット）と、CLEAR 条件・検知対象の一覧
+- `rescueRule.js` — 救出ルール（ステイモードのミニロボットを置き、救出の操作で通常モードにする）
+- `tests/rescueRule.test.mjs` — 救出ルールの動作確認（`node --test`）
 - `pathfinding.js` — 壁を避けた最短経路の探索（ミニロボット用）
 - `guard.js` — 警備員の巡回移動と「距離＋視野角＋遮蔽物」の発見判定
 - `collision.js` — 円と壁の当たり判定、レイと壁のスラブ法交差判定（player/guard/editor共通）

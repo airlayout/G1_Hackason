@@ -7,12 +7,14 @@ import { moveWithWallCollision } from "./collision.js";
 const RADIUS = 10;
 const SPEED = 120; // px/sec (1.5 m/s)
 
-export function createPlayer(start) {
+// collectsTarget: TARGET に触れて取得できるか。救出ルールでは TARGET の位置にミニロボットがいるので false。
+export function createPlayer(start, collectsTarget = true) {
   return {
     x: start.x,
     y: start.y,
     radius: RADIUS,
     hasTarget: false,
+    collectsTarget,
   };
 }
 
@@ -32,7 +34,7 @@ export function updatePlayer(player, input, dt, stage) {
 
   moveWithWallCollision(player, dx, dy, player.radius, stage.walls, stage);
 
-  if (!player.hasTarget) {
+  if (player.collectsTarget && !player.hasTarget) {
     const distToTarget = Math.hypot(player.x - stage.target.x, player.y - stage.target.y);
     if (distToTarget < player.radius + 12) {
       player.hasTarget = true;

@@ -1,7 +1,8 @@
 // Canvas描画。ゲーム状態を受け取って毎フレーム描画するだけの純粋な関数群。
 
 import { computeVisionPolygon } from "./guard.js";
-import { MINI_ROBOT_COLOR, MODE_LABEL } from "./miniRobot.js";
+import { MINI_ROBOT_COLOR, MODE, MODE_LABEL } from "./miniRobot.js";
+import { RESCUE_RANGE_PX, canRescue } from "./rescueRule.js";
 import { CANVAS_FONT, CANVAS_FONT_PX, labelY } from "./canvasText.js";
 
 export function renderStage(ctx, stage, player, guard, stageLabel, securityCameras = [], miniRobot = null) {
@@ -19,7 +20,8 @@ export function renderStage(ctx, stage, player, guard, stageLabel, securityCamer
   }
 
   drawMarker(ctx, stage.start, "#3ddc84", "START");
-  if (!player.hasTarget) {
+  // 救出ルールでは TARGET の位置にミニロボットがいる（TARGET の印は出さない）。
+  if (!player.hasTarget && !miniRobot?.rescueMission) {
     drawMarker(ctx, stage.target, "#f4d35e", "TARGET");
   }
 
@@ -28,7 +30,7 @@ export function renderStage(ctx, stage, player, guard, stageLabel, securityCamer
   if (miniRobot) drawMiniRobot(ctx, miniRobot);
   drawPlayer(ctx, player);
 
-  drawHud(ctx, stageLabel, player);
+  drawHud(ctx, stageLabel, player, miniRobot);
 }
 
 const CAMERA_BODY_HALF = 9;
@@ -79,6 +81,15 @@ function drawGuard(ctx, guard) {
 }
 
 function drawMiniRobot(ctx, robot) {
+  if (robot.mode === MODE.STAY) {
+    // 救出の操作ができる範囲を点線の円で示す。
+    ctx.strokeStyle = MINI_ROBOT_COLOR;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(robot.x, robot.y, RESCUE_RANGE_PX, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
   ctx.fillStyle = MINI_ROBOT_COLOR;
   ctx.fillRect(robot.x - robot.radius, robot.y - robot.radius, robot.radius * 2, robot.radius * 2);
 
@@ -134,13 +145,22 @@ function drawVisionCone(ctx, guard, walls) {
   ctx.fill();
 }
 
-function drawHud(ctx, stageLabel, player) {
+function drawHud(ctx, stageLabel, player, miniRobot) {
   ctx.fillStyle = "#e8eaed";
   ctx.font = CANVAS_FONT;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.fillText(stageLabel, 12, CANVAS_FONT_PX + 4);
-  if (player.hasTarget) {
-    ctx.fillText("TARGET GET! Return to START", 12, (CANVAS_FONT_PX + 4) * 2);
+  const message = hudMessage(player, miniRobot);
+  if (message) ctx.fillText(message, 12, (CANVAS_FONT_PX + 4) * 2);
+}
+
+function hudMessage(player, miniRobot) {
+  if (miniRobot?.rescueMission) {
+    if (!miniRobot.rescued) {
+      return canRescue(miniRobot, player) ? "Press SPACE to rescue" : "Rescue Mini (stay mode)";
+    }
+    return "RESCUED! Return to START with Mini";
   }
+  return player.hasTarget ? "TARGET GET! Return to START" : null;
 }

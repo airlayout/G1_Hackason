@@ -22,6 +22,10 @@ const fieldVisionDistance = document.getElementById("field-vision-distance");
 const fieldCameraDirection = document.getElementById("field-camera-direction");
 const fieldCameraSwing = document.getElementById("field-camera-swing");
 const fieldMiniRobot = document.getElementById("field-mini-robot");
+const fieldRescue = document.getElementById("field-rescue");
+fieldRescue.addEventListener("change", () => {
+  fieldMiniRobot.disabled = fieldRescue.checked;
+});
 const removeCameraButton = document.getElementById("btn-remove-camera");
 const validationEl = document.getElementById("validation-messages");
 const exportArea = document.getElementById("export-output");
@@ -399,7 +403,7 @@ function refreshStageSelectOptions() {
 let playSession = null;
 let playAnimationHandle = null;
 let playLastTimestamp = 0;
-const playInput = { up: false, down: false, left: false, right: false };
+const playInput = { up: false, down: false, left: false, right: false, rescue: false };
 const PLAY_KEY_MAP = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
 
 function isPlaying() {
@@ -410,6 +414,12 @@ window.addEventListener("keydown", (event) => {
   if (!isPlaying()) return;
   if (event.key === "r" || event.key === "R") {
     if (!event.repeat) startTestPlay();
+    event.preventDefault();
+    return;
+  }
+  if (event.key === " ") {
+    // 救出の操作（実機では LOVOT のセンサーホーンのモードスイッチ）
+    if (!event.repeat) playInput.rescue = true;
     event.preventDefault();
     return;
   }
@@ -447,9 +457,9 @@ function startTestPlay() {
   editorPanel.classList.add("hidden");
   playOverlay.classList.remove("hidden");
   playOverlayTitle.textContent = "";
-  playInput.up = playInput.down = playInput.left = playInput.right = false;
+  playInput.up = playInput.down = playInput.left = playInput.right = playInput.rescue = false;
 
-  playSession = createPlaySession(loadStage(stage), fieldMiniRobot.checked);
+  playSession = createPlaySession(loadStage(stage), fieldMiniRobot.checked, fieldRescue.checked ? "rescue" : "steal");
   playSession.input = playInput;
   playLastTimestamp = 0;
   playAnimationHandle = requestAnimationFrame(playLoop);

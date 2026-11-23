@@ -1,0 +1,9 @@
+assets/
+.venv/
+__pycache__/
+debug/
+finger_calibration.json
+limits.json
+home.json
+palm.json
+teach.json
