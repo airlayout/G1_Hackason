@@ -60,8 +60,13 @@ def pelvis_replay_config(cfg) -> dict | None:
                "wz_gain": float(cf.get("wz_gain", 0.6)), "f_th": float(cf.get("f_th", 30.0)), "back_v": float(cf.get("back_v", -0.2)),
                "back_s": float(cf.get("back_s", 0.5)), "sway_label": cf.get("sway_label", None), "sway_s": float(cf.get("sway_s", 0.8)),
                "fwd_per_n": float(cf.get("fwd_per_n", 0.0)), "turn_per_n": float(cf.get("turn_per_n", 0.0)),
-               "src": str(cf.get("src", "est"))}
-        assert cmd["src"] in ("est", "contact"), f"cmd_follow.src は est か contact: {cmd['src']}"
+               "src": str(cf.get("src", "est")),
+               # 0115: src panel の時の Mz の効き [rad/s/(N·m)]・一歩ごとの揺れ（正弦波・前後 osc_x・横 osc_y [m]・向き osc_yaw_deg・osc_hz）
+               "turn_per_nm": float(cf.get("turn_per_nm", 0.0)), "osc_x": float(cf.get("osc_x", 0.0)),
+               "osc_y": float(cf.get("osc_y", 0.0)), "osc_yaw_deg": float(cf.get("osc_yaw_deg", 0.0)),
+               "osc_hz": float(cf.get("osc_hz", 1.0))}
+        assert cmd["src"] in ("est", "contact", "panel"), f"cmd_follow.src は est・contact・panel のどれか: {cmd['src']}"
+        assert cmd["osc_hz"] > 0 and min(cmd["osc_x"], cmd["osc_y"], cmd["osc_yaw_deg"]) >= 0, f"cmd_follow の揺れの値: {cf}"
         assert 0 < cmd["gain"] <= 1.5 and cmd["delay_s"] >= 0 and cmd["back_v"] <= 0 and cmd["f_th"] > 0, f"cmd_follow の値: {cf}"
     return {"cmd_follow": cmd, "release_sub": None if release is None else SUBS.index(str(release)),"file": f, "method": method, "hold_from": SUBS.index(hold_from), "start_sub": SUBS.index(start_sub),
             "kp": float(cfg.get("kp", 20.0)), "kp_rot": float(cfg.get("kp_rot", 20.0)),
@@ -209,12 +214,19 @@ class PelvisReplay:
         wz = late[:, 2] * c["wz_gain"]
         # 0113g: 押し返しの力は、台本の見積もり（est）か、レバーと手の接触センサ（contact）。11-14: シムの 3c では見積もりが
         # 本当の力より約 10 N 押し返しの向きへ片寄り（3a の上下も 6 N）、押していないのに体を回した（g3_ga）
-        f_src = env._script_teacher.hand_f_t if c["src"] == "est" else env._script_teacher.hand_c_t
-        f_back = torch.nan_to_num(-f_src[:, 0], nan=0.0)
+        # 0115: src panel は、板とレバーから体が受ける本当の力（体の前後の押し返し）と、pelvis の回りの回す力 Mz（panel_push.py）
+        if c["src"] == "panel":
+            f_back = torch.nan_to_num(env._script_teacher.body_push_t, nan=0.0)
+            mz = torch.nan_to_num(env._script_teacher.body_mz_t, nan=0.0)
+        else:
+            f_src = env._script_teacher.hand_f_t if c["src"] == "est" else env._script_teacher.hand_c_t
+            f_back = torch.nan_to_num(-f_src[:, 0], nan=0.0)
+            mz = torch.zeros_like(f_back)
         push = torch.clamp(f_back, min=0.0)
         lr = torch.where(env.door_open_lr > 0, 1.0, -1.0).to(push.dtype)  # 把手が左なら左（+yaw）へ回される
         v[:, 0] = v[:, 0] - c["fwd_per_n"] * push  # 押すほど前へ出ない（11-13 朝の 1 回目）
         wz = wz + c["turn_per_n"] * push * lr     # 押し返しで体が把手の側へ回される
+        wz = wz + c["turn_per_nm"] * mz            # 0115: 回す力 Mz の向きへ回される（左回りが正）
         on = self.phase == 4
         start = on & (f_back > c["f_th"]) & (t >= self.back_until)
         self.back_until = torch.where(start, t + c["back_s"], self.back_until)
@@ -230,8 +242,11 @@ class PelvisReplay:
 
     def _sway(self, t_now: torch.Tensor):
         """0113e: 指令に沿わせ始めてからの揺れの記録（横・向き。前後は指令の側に任せる）。記録が無ければ 0"""
-        if self.cmd is None or self.sway_k is None:
+        if self.cmd is None:
             return torch.zeros(len(t_now), 3, device=self.dev), torch.zeros(len(t_now), 3, device=self.dev)
+        osc, oscv = self._osc(t_now)
+        if self.sway_k is None:
+            return osc, oscv
         rel = torch.clamp(t_now - self.t_rel0, min=0.0) / self.dt_traj
         i0 = torch.clamp(rel.floor().long(), 0, self.sway_k)
         i1 = torch.clamp(i0 + 1, max=self.sway_k)
@@ -241,7 +256,23 @@ class PelvisReplay:
         vel = torch.stack([torch.zeros_like(d[:, 0]), (self.sway_d[i1, 1] - self.sway_d[i0, 1]) / self.dt_traj,
                            (self.sway_d[i1, 2] - self.sway_d[i0, 2]) / self.dt_traj], dim=-1)
         vel = torch.where((i0 >= self.sway_k)[:, None], torch.zeros_like(vel), vel)
-        return out, vel
+        return out + osc, vel + oscv
+
+    def _osc(self, t_now: torch.Tensor):
+        """0115: 指令に沿わせ始めてからの一歩ごとの揺れ（正弦波）。前後は sin・横と向きは cos（実機の 3c は約 1 Hz・前後 ±1〜1.7 cm・
+        横 ±1.5〜2.2 cm・向き ±1.5〜2.8°）。揺れの位置と速さ (n,3)"""
+        c = self.cmd
+        if c["osc_x"] <= 0.0 and c["osc_y"] <= 0.0 and c["osc_yaw_deg"] <= 0.0:
+            z = torch.zeros(len(t_now), 3, device=self.dev)
+            return z, z
+        w = 2.0 * np.pi * c["osc_hz"]
+        tau = torch.clamp(t_now - self.t_rel0, min=0.0)
+        amp = torch.tensor([c["osc_x"], c["osc_y"], np.radians(c["osc_yaw_deg"])], device=self.dev, dtype=torch.float32)
+        s, co = torch.sin(w * tau), torch.cos(w * tau)
+        pos = torch.stack([amp[0] * s, amp[1] * (co - 1.0), amp[2] * (co - 1.0)], dim=-1)  # 始めは 0 から
+        vel = torch.stack([amp[0] * w * co, -amp[1] * w * s, -amp[2] * w * s], dim=-1)
+        on = (self.phase == 4)[:, None]
+        return torch.where(on, pos, torch.zeros_like(pos)), torch.where(on, vel, torch.zeros_like(vel))
 
     def _robot_pose(self, env):
         pose = _tt(self.robot.data.root_link_pose_w)
@@ -282,7 +313,7 @@ class PelvisReplay:
             frac = float(self.sub_k) / float(env.config.simulator.config.sim.control_decimation)
             tx = torch.where(c4, self.tgt[:, 0] + self.vtgt[:, 0] * self.phys_dt * frac + sw[:, 0], tx)
             ty = torch.where(c4, self.tgt[:, 1] + self.vtgt[:, 1] * self.phys_dt * frac + sw[:, 1], ty)
-            robot_v = torch.where(c4[:, None], torch.stack([self.vtgt[:, 0], self.vtgt[:, 1] + swv[:, 1], self.vtgt[:, 2] + swv[:, 2],
+            robot_v = torch.where(c4[:, None], torch.stack([self.vtgt[:, 0] + swv[:, 0], self.vtgt[:, 1] + swv[:, 1], self.vtgt[:, 2] + swv[:, 2],
                                                              torch.zeros_like(swv[:, 0]), torch.zeros_like(swv[:, 0])], dim=-1), robot_v)
             yaw_t = self.tgt[:, 2] + sw[:, 2] - self.p0[:, 3]  # 下の向きの目標は p0 ＋ robot_d[:, 2]
             robot_d = torch.where(c4[:, None], torch.stack([robot_d[:, 0], robot_d[:, 1], yaw_t, torch.zeros_like(yaw_t),

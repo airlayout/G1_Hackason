@@ -1,0 +1,58 @@
+0116b（11-18）: OMEN の ~/work_inoue/doorman6/run_probe.sh（VIRAL6 の git の外。Mac の写しは G1_Hackason/Door/doorman6/run_probe.sh）に
+描画の口を足した差分。0116（VIRAL6_fix のコミット）と組で使う。
+  RENDER=1 で ++simulator.config.render_results=True・render_width/height（既定 960×720）・render_focal_length（既定 5.0）・
+  ++env.config.save_rendering_dir=<出力>/video を渡す。RENDER_EYE・RENDER_TARGET・RENDER_ENV_IDS は任意。
+  NEED_MB で始める時の空きの線を替えられる（既定は元のまま MEM_MAX＋1.5 GB）。RENDER を付けなければ元のまま。
+当て方: cd G1_Hackason/Door/doorman6 && patch -p1 < 0116b-run-probe-render.patch（OMEN は ~/work_inoue/doorman6 で同じ）
+元の版は OMEN の run_probe.sh.bak_0116。
+
+--- a/run_probe.sh	2026-11-18 13:56:24
++++ b/run_probe.sh	2026-11-18 13:56:24
+@@ -7,15 +7,30 @@
+ # 環境変数: REPO（既定 VIRAL6_fix）・CKPT（既定 45,150）・MEM_MAX（既定 8G）・MINUTES（既定 20）
+ # 共用機の作法: 自分以外の GPU の使用と空きメモリを gate.sh で待ち、cgroup（systemd-run）で囲う。
+ #   一時停止の札（PAUSE_DOORMAN_TRAINING）は評価と同じく無視して始める（IGNORE_PAUSE=1）。札は置きも外しもしない
++# 0116（11-18）: RENDER=1 で Isaac Sim の描画を入れる（評価の VIDEO=1 と同じ口。handover_sim の e2 は動画、views は PNG）。
++#   RENDER_W・RENDER_H（既定 960×720）・RENDER_FOCAL（焦点距離。既定 5.0＝横の画角 53°）・RENDER_EYE と RENDER_TARGET
++#   （env の原点から [m]。e2・views は probe_args の機体から見た位置で上書きする）・RENDER_ENV_IDS（動画を書く台。例 [0]）。
++#   動画は <出力>/video/ に。カメラの初回は RAM 12 GB の山なので MEM_MAX は 13G 以上（記憶 isaacsim601-on-omen-cameras-work）
++#   NEED_MB で始める時の空きの線を替えられる（既定 MEM_MAX＋1.5 GB。RAM 15 GiB で MEM_MAX 13G だと既定の線は空かない）
+ set -uo pipefail
+ NAME="$1"; PROBE="$2"; NUM_ENVS="$3"; shift 3
+ B="$HOME/work_inoue/doorman6"
+ REPO="${REPO:-VIRAL6_fix}"
+ CKPT="${CKPT:-$HOME/work_inoue/doorman/ckpt/start_1016_1359/model_step_045150.pt}"
+ MEM_MAX="${MEM_MAX:-8G}"
+-NEED_MB=$(( ${MEM_MAX%G} * 1024 + 1536 ))
++NEED_MB="${NEED_MB:-$(( ${MEM_MAX%G} * 1024 + 1536 ))}"
+ OUT="$B/simfix/${NAME}_$(date +%m%d_%H%M%S)"
+ mkdir -p "$OUT" "$B/tmp"
++RENDER_ARGS=()
++if [ "${RENDER:-0}" = 1 ]; then
++  RENDER_ARGS=(++simulator.config.render_results=True ++simulator.config.render_width="${RENDER_W:-960}"
++    ++simulator.config.render_height="${RENDER_H:-720}" ++simulator.config.render_focal_length="${RENDER_FOCAL:-5.0}"
++    ++env.config.save_rendering_dir="$OUT/video")
++  if [ -n "${RENDER_EYE:-}" ]; then
++    RENDER_ARGS+=(++simulator.config.render_eye="$RENDER_EYE" ++simulator.config.render_target="${RENDER_TARGET:?RENDER_EYE には RENDER_TARGET が要る}")
++  fi
++  [ -n "${RENDER_ENV_IDS:-}" ] && RENDER_ARGS+=(++simulator.config.render_env_ids="$RENDER_ENV_IDS")
++fi
+ export PATH="$HOME/miniforge3/envs/doorman6/bin:$PATH" TMPDIR="$B/tmp" OMNI_KIT_ACCEPT_EULA=YES HYDRA_FULL_ERROR=1 \
+   PYTHONUNBUFFERED=1 XDG_RUNTIME_DIR="/run/user/$(id -u)" PYTHONPATH="$B/$REPO"
+ # 段 3・4（handover_sim.py）が読む実機用のコード（G1_Hackason/Door/real の写し）と重みの npz
+@@ -34,13 +49,13 @@
+ fi
+ cd "$B/$REPO" || exit 1
+ echo "=== [$(date +%T)] start $NAME probe=$PROBE n=$NUM_ENVS out=$OUT"
+-printf '%s\n' "$@" > "$OUT/overrides.txt"
++printf '%s\n' "${RENDER_ARGS[@]}" "$@" > "$OUT/overrides.txt"
+ setsid timeout -s INT "$(( ${MINUTES:-20} * 60 ))" systemd-run --user --scope --quiet -p MemoryMax="$MEM_MAX" -p MemorySwapMax=0 -p CPUWeight=20 \
+   "${SIGINT_DEFAULT_EXEC[@]}" python gr00t/rl/simfix_probe.py +checkpoint="$CKPT" +probe="$PROBE" +probe_out="$OUT" \
+   ++num_envs="$NUM_ENVS" ++headless=True ++use_wandb=False \
+   ++env.config.reset_from_dataset.enabled=False ++env.config.reset_from_dataset.motion_file_dir="$HOME/work_inoue/doorman/LAFAN-G1" \
+   ++env.config.mirror_left_doors=False ++env.config.reset_on_overtime=False ++env.config.max_episode_length_s=200 \
+-  "$@" > "$OUT/probe.log" 2>&1 < /dev/null
++  "${RENDER_ARGS[@]}" "$@" > "$OUT/probe.log" 2>&1 < /dev/null
+ RC=$?
+ echo "=== [$(date +%T)] end $NAME rc=$RC"
+ grep -aE "^[A-Za-z]*Error|Traceback" "$OUT/probe.log" | tail -3

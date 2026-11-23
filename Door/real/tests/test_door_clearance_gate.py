@@ -202,3 +202,39 @@ def test_release_moves_hand_back_and_up_then_holds(chain):
     d = p1 - p0
     assert d[0] < -0.03 and d[2] > 0.01                   # 後ろへ 4 cm・上へ 2 cm の向きに動いた
     assert arm.release(5.0, q, quat) is None              # release_s を過ぎたら保つ
+
+
+def test_helper_push_press_sets_the_3c_forward_offset_of_the_other_hand(chain):
+    """11-16: 3c に入った周期に、添えた手の行き先を体に固めた位置より helper_push_press（負なら push_press）だけ前へ置く"""
+    offs = {}
+    for hp in (-1.0, 0.10):
+        arm, ik = _arm(chain, helper=True, helper_push_press=hp, push_press=0.02)
+        q = np.zeros(29)
+        q[ik.idx] = dscr.ScriptParams().posture
+        q[arm.helper.idx] = dscr.ScriptParams().posture * drst.MIRROR7
+        quat = np.array([1.0, 0.0, 0.0, 0.0])
+        R, T = np.eye(3), np.array([-0.40, 0.08, 0.73])
+        arm.script.ref = np.array([0.0, 0.0, 0.99])
+        with contextlib.redirect_stdout(io.StringIO()):
+            arm._helper_step(0.0, q, "3a", R, T)
+            goal_3a = arm.h_goal.copy()
+            arm._helper_step(0.02, q, "3c", R, T)
+        offs[hp] = float(arm.h_body[0] - (goal_3a - T)[0])
+    assert offs[-1.0] == pytest.approx(0.02, abs=1e-9)
+    assert offs[0.10] == pytest.approx(0.10, abs=1e-9)
+
+
+def test_helper_line_puts_the_other_hand_on_the_board_normal_through_the_pelvis(chain):
+    """11-16: 把手が左・扉 30°・体の向き 0 → 添えた手の横は 前への出 × tan(−30°)（右へ）。体が右へ 10° 回っていれば −20°"""
+    arm, ik = _arm(chain, helper=True, helper_line=True)
+    arm.h_body = np.array([0.30, 0.05, 0.10])
+    arm.script.angles = [(0.0, math.radians(30.0))] * 3
+    b = arm._helper_line_body(np.eye(3))
+    assert b[1] == pytest.approx(0.30 * math.tan(math.radians(-30.0)))
+    assert b[0] == pytest.approx(0.30) and b[2] == pytest.approx(0.10)
+    c, s = math.cos(math.radians(-10.0)), math.sin(math.radians(-10.0))
+    R = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    assert arm._helper_line_body(R)[1] == pytest.approx(0.30 * math.tan(math.radians(-20.0)))
+    arm2, _ = _arm(chain, helper=True)
+    arm2.h_body = np.array([0.30, 0.05, 0.10])
+    assert arm2._helper_line_body(np.eye(3))[1] == pytest.approx(0.05)  # 切なら体に固めたまま

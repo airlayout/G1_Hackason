@@ -116,7 +116,8 @@ class ScriptArm:
         return dfr.rot_z(pose.yaw) @ dfr.tilt_matrix(roll, pitch), np.array([pose.x, pose.y, self.pelvis_z])
 
     def step(self, now: float, q: np.ndarray, quat: np.ndarray, pose: dfr.PlanarPose,
-             tau: Optional[np.ndarray]) -> Tuple[dscr.ScriptOut, Optional[np.ndarray]]:
+             tau: Optional[np.ndarray], door_angle: Optional[float] = None) -> Tuple[dscr.ScriptOut, Optional[np.ndarray]]:
+        """door_angle [rad]: 外で測った扉の角度（台本の angle_src_3c "ext" の時に 3c・4a で使う。11-16）"""
         fpose = self.filt.step(pose)
         self.last_pose = fpose
         side = "left" if self.ik.side == "left" else "right"
@@ -129,7 +130,7 @@ class ScriptArm:
         q_act = np.asarray(q, dtype=float)[self.ik.idx]
         tau_pitch = float(tau[self.ik.idx[0]]) if tau is not None else math.nan  # 把手の側の肩 pitch
         self._update_hand_force(q, quat, tau, Rr)  # 前の周期の小段で見る（2b は基準・2c から先は力）
-        out = self.script.step(now, fpose, palm, tau_pitch, fwd, palm_angle=palm_raw)
+        out = self.script.step(now, fpose, palm, tau_pitch, fwd, palm_angle=palm_raw, door_angle_ext=door_angle)
         self.arm_other = self._helper_step(now, q, out.sub, R, T) if self.helper is not None else None
         if out.goal is None or out.stop:
             return out, None
@@ -178,14 +179,27 @@ class ScriptArm:
             self.h_goal = self._helper_palm(q, R, T)
         y = float(self.script.ref[1]) - self.script.lr * p.helper_dy
         if sub in ("3c", "4a"):  # 11-14: 4a（段 4 の入り）も 3c と同じく体に固める
-            if self.h_body is None:  # 3c に入った周期: 今の行き先を pelvis の座標に固め、左手と同じく push_press だけ前へ
-                self.h_body = R.T @ (self.h_goal - T) + np.array([p.push_press, 0.0, 0.0])
-            self.h_goal = T + R @ self.h_body
+            if self.h_body is None:  # 3c に入った周期: 今の行き先を pelvis の座標に固め、push_press（helper_push_press）だけ前へ
+                press = p.helper_push_press if p.helper_push_press >= 0.0 else p.push_press
+                self.h_body = R.T @ (self.h_goal - T) + np.array([press, 0.0, 0.0])
+            self.h_goal = T + R @ self._helper_line_body(R)
         else:
             self.h_body = None
             x, speed = (p.helper_x_press, p.helper_press_speed) if sub == "3a" else (p.helper_x_ready, p.helper_speed)
             self.h_goal = dscr._toward(self.h_goal, np.array([x, y, p.helper_z]), speed * dt)
         return self._helper_ik(q, self.h_goal, R, T)
+
+    def _helper_line_body(self, R: np.ndarray) -> np.ndarray:
+        """3c・4a の添えた手の行き先（pelvis の座標）。helper_line なら横を 前への出 × tan(φ) に置く。
+        φ ＝ −lr × 扉の角度 − 体の向き（扉の座標）＝ pelvis の座標で見た「板の法線（手から体へ）」の逆の向き。
+        手がその向きの線の上にあれば、板の押し返し（法線の向き）の力の線は pelvis を通り、体を回さない（11-16 計画 5.2）"""
+        p = self.script.p
+        if not p.helper_line:
+            return self.h_body
+        th = math.radians(min(max(self.script.angle_median_deg(), 0.0), p.helper_line_max_deg))
+        yaw = math.atan2(R[1, 0], R[0, 0])
+        phi = -self.script.lr * th - yaw
+        return np.array([self.h_body[0], self.h_body[0] * math.tan(phi), self.h_body[2]])
 
     def begin_release_other(self, now: float, q: np.ndarray, quat: np.ndarray) -> bool:
         """止まった時（POST）に、添えた手を扉の座標で後ろへ helper_back 引き始める（構えていなければ何もしない）"""

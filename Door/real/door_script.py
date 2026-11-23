@@ -163,6 +163,21 @@ class ScriptParams:
     walk_hand: str = "body"        # walk: "body"＝手を体に固める／"arc"＝手を扉の角度＋push_lead_deg の板の上に置く（11-13）
     walk_fwd_hold: float = 0.24    # walk・arc: 手の前への出がこれ未満なら、前の指令を walk_vx_hold へ落とす [m]
     walk_vx_hold: float = 0.2      # walk・arc: その時の前の指令 [m/s]（0 にすると止まって後ろへ踏み出す）
+    # 11-16（計画 docs/plan/2026-11-16-g1-door-push-line-two-hands-sim.md・⚠️ シムで確かめる案・機体では未試験）: 手の押し返しの
+    # 力の線を体の中心に通す（体を回す力＝押し返し × 力の線と体の中心との横のずれ。11-13 実機 1 回目は 8.8 秒で +33° 回された）
+    walk_face_door: float = 0.0    # walk: 3c・4a の向きの目標を、扉の角度 × これだけ蝶番の側へ回す（1.0＝板に正対。0＝3c に入った時の向き）
+    walk_face_max_deg: float = 45.0  # その回す量の上限 [°]
+    walk_center: bool = False      # walk・body: 体に固めた手の横を walk_center_y へ寄せる（手を体の中心の前へ）
+    walk_center_y: float = 0.0     # その横の行き先 [m・pelvis の座標・左が正。0＝体の中心の前]
+    walk_center_rate: float = 0.05  # 寄せる速さ [m/s]
+    helper_push_press: float = -1.0  # 3c・4a で添えた手の行き先を、体に固めた位置よりこれだけ前に置く [m]（負は push_press と同じ）
+    # 11-16 シムの n1 の結果: 扉が開くと板の押し返しは把手の側への横の力を持ち（扉 45° で押し返しと同じ大きさ）、手が体の正面でも
+    # 体を回す。体を板に正対させる（walk_face_door）のは脚の旋回が扉の開きに追いつかない。→ 手の方を、板の法線が pelvis を通る所へ
+    helper_line: bool = False      # 3c・4a で添えた手の横を、前への出 × tan(扉の角度＋体の向き) に置く（板の法線を pelvis に通す）
+    helper_line_max_deg: float = 50.0  # その扉の角度の上限 [°]
+    walk_hand_back: float = 0.0    # walk・body: 3c・4a で把手の側の手を、体に固めた位置よりこれだけ後ろへ引く [m]（0 は引かない＝
+                                   # push_press で押す）。添えた手だけで押す時に、体が回って左手が板に当たるのを避ける
+    angle_src_3c: str = "palm"     # 3c・4a の扉の角度の読み: "palm"＝手のひら（今まで）／"ext"＝step の door_angle_ext（ライダー・シムは蝶番）
     # 11-13: 3c の前の指令を walk_vx_start から walk_vx へ walk_ramp_s 秒かけて上げる（0 は一気に。当たりの衝撃を小さく）
     walk_ramp_s: float = 0.0
     walk_vx_start: float = 0.15    # 純正が歩き出す線（0.1 は 0〜10%・0.15 で 59% 応える。11-09 の掃引）
@@ -290,6 +305,18 @@ def check_params(p: ScriptParams) -> None:
         raise ValueError(f"walk_hand は {WALK_HANDS} のどれか: {p.walk_hand!r}")
     if not (0.0 <= p.walk_yaw_ff <= 2.0 and p.walk_min_fwd < p.walk_fwd_hold and 0.0 <= p.walk_vx_hold):
         raise ValueError("walk_yaw_ff は 0〜2・walk_min_fwd < walk_fwd_hold・walk_vx_hold ≥ 0")
+    if not (0.0 <= p.walk_face_door <= 1.5 and 0.0 <= p.walk_face_max_deg <= 60.0):
+        raise ValueError("walk_face_door は 0〜1.5・walk_face_max_deg は 0〜60°")
+    if p.walk_center and not (p.walk_hand == "body" and abs(p.walk_center_y) <= 0.30 and 0.01 <= p.walk_center_rate <= 0.30):
+        raise ValueError("walk_center は walk_hand body の時だけ・walk_center_y は ±0.30 m の内・walk_center_rate は 0.01〜0.30 m/s")
+    if p.helper_push_press > 0.20:
+        raise ValueError(f"helper_push_press は 0.20 m まで（負は push_press と同じ）: {p.helper_push_press}")
+    if p.angle_src_3c not in ("palm", "ext"):
+        raise ValueError(f"angle_src_3c は palm か ext: {p.angle_src_3c!r}")
+    if p.helper_line and not (p.helper and 0.0 < p.helper_line_max_deg <= 60.0):
+        raise ValueError("helper_line は helper の時だけ・helper_line_max_deg は 0〜60°")
+    if not 0.0 <= p.walk_hand_back <= 0.15 or (p.walk_hand_back > 0.0 and (p.walk_hand != "body" or not p.helper)):
+        raise ValueError("walk_hand_back は 0〜0.15 m・使う時は walk_hand body と helper（添えた手で押す）")
     if not 0.0 <= p.hook_deg <= 60.0:
         raise ValueError(f"hook_deg は 0〜60°: {p.hook_deg}")
     if p.hook_deg > 0.0:
@@ -486,13 +513,22 @@ class ScriptDoor:
         """walk: 3c に入った時の向きへ戻す回りの指令 [rad/s]。
         11-13 実機: 扉が左の手を押し返し、体が左へ回った（3c の 8.8 秒で +38°・扉 8° で止まる）"""
         p = self.p
-        ref = self.yaw_3c0 if ref is None else ref
+        if ref is None and self.yaw_3c0 is not None:
+            ref = self.yaw_3c0 - self.lr * self.face_rad()
         if ref is None or not math.isfinite(pose.yaw) or p.walk_yaw_kp <= 0.0:
             return p.walk_wz
         # 先回り: 把手の側の手が押し返されて体は把手の側へ回る（把手が左なら左回り）→ 前の速さに比べた右回りを先に入れる
         ff = -self.lr * p.walk_yaw_ff * p.walk_vx if ff else 0.0
         wz = p.walk_wz + ff + p.walk_yaw_kp * ds.wrap(ref - pose.yaw)
         return float(np.clip(wz, -p.walk_wz_max, p.walk_wz_max))
+
+    def face_rad(self) -> float:
+        """walk_face_door: 3c・4a で向きの目標を蝶番の側へ回す量 [rad・正]（扉の角度の中央値 × 倍率・上限つき）。
+        板の法線は扉の角度だけ蝶番の側へ回るので、倍率 1 で体が板に正対する（押し返しの力の線が体の前後の軸に乗る）"""
+        p = self.p
+        if p.walk_face_door <= 0.0 or self.sub not in ("3c", "4a"):
+            return 0.0
+        return math.radians(min(p.walk_face_door * max(self.angle_median_deg(), 0.0), p.walk_face_max_deg))
 
     def _hold_lat_vy(self, pose: dfr.PlanarPose) -> float:
         """walk: 3c に入った時の横の位置（扉の座標の y）へ戻す横の指令 [m/s・体の座標]。
@@ -540,7 +576,7 @@ class ScriptDoor:
             self.goal = np.asarray(palm, dtype=float).copy()
             self._go("done", t)
             return STAND, ""
-        if math.isfinite(palm_fwd) and palm_fwd < p.walk_min_fwd:
+        if math.isfinite(palm_fwd) and palm_fwd < p.walk_min_fwd and p.walk_hand_back <= 0.0:  # 11-16: 引いた手は押していない
             self.walking_until = None
             self._fail(f"手が体へ押し込まれた（手の前への出 {palm_fwd:.2f} m・線 {p.walk_min_fwd} m。扉が押し返している）", t)
             return STAND, self.reason
@@ -564,8 +600,12 @@ class ScriptDoor:
         p = self.p
         if p.walk_hand == "arc":  # 11-13: 手は扉の角度＋push_lead_deg の板の上へ（一歩ごとの体の揺れは腕で吸う）
             return self._arc_goal(deg, palm, cap_deg)
+        if p.walk_center:  # 11-16: 体に固めた手の横を、1 周期 walk_center_rate × DT ずつ walk_center_y へ寄せる
+            dy = float(np.clip(p.walk_center_y - self.palm_body[1], -p.walk_center_rate * DT, p.walk_center_rate * DT))
+            self.palm_body = np.array([self.palm_body[0], self.palm_body[1] + dy])
         c, s = math.cos(pose.yaw), math.sin(pose.yaw)
-        b = self.palm_body + np.array([p.push_press, 0.0])
+        # 11-16: walk_hand_back なら把手の側の手は押さずに引く（添えた手だけで押す）
+        b = self.palm_body + np.array([-p.walk_hand_back if p.walk_hand_back > 0.0 else p.push_press, 0.0])
         xy = np.array([pose.x, pose.y]) + np.array([c * b[0] - s * b[1], s * b[0] + c * b[1]])
         return self._lead_cap(np.array([xy[0], xy[1], self.palm_ref[2] - p.hold_extra + p.push_dz]), palm)
 
@@ -684,9 +724,10 @@ class ScriptDoor:
         return self.z_contact is not None or self.sub in ("2c", "2d", "3a", "3c", "4a", "done")
 
     def step(self, t: float, pose: dfr.PlanarPose, palm: np.ndarray, tau_pitch: float, palm_fwd: float,  # noqa: C901
-             palm_angle: Optional[np.ndarray] = None) -> ScriptOut:
+             palm_angle: Optional[np.ndarray] = None, door_angle_ext: Optional[float] = None) -> ScriptOut:
         """palm は行き先の基準（なました姿勢の手のひら）。palm_angle を渡すと扉の角度はそちらで読む
-        （なましていない姿勢の手のひら。11-12 実機: 歩く間はなましの遅れで角度の読みが 1 秒に 6.5→1.9→7.2° と跳んだ）"""
+        （なましていない姿勢の手のひら。11-12 実機: 歩く間はなましの遅れで角度の読みが 1 秒に 6.5→1.9→7.2° と跳んだ）。
+        door_angle_ext [rad・開く向きが正]: angle_src_3c "ext" の時、3c・4a の扉の角度はこちら（有限の時だけ）"""
         p = self.p
         if self.t_sub is None:
             self.t_sub = t
@@ -699,8 +740,10 @@ class ScriptDoor:
         if self.sub in ("2c", "2d", "3a", "3c") and self.goal is not None:
             self.lag = float(palm[2] - self.goal[2])
         pa = np.asarray(palm_angle, dtype=float) if palm_angle is not None else palm
-        if self.palm_ref is not None and np.isfinite(pa).all():
-            self.angle = hda.door_angle(self.line, self.palm_ref, pa, "hinge")
+        ext = (p.angle_src_3c == "ext" and self.sub in ("3c", "4a") and door_angle_ext is not None
+               and math.isfinite(float(door_angle_ext)))
+        if self.palm_ref is not None and (ext or np.isfinite(pa).all()):
+            self.angle = float(door_angle_ext) if ext else hda.door_angle(self.line, self.palm_ref, pa, "hinge")
             self.angles.append((t, self.angle))
             self.angles = [e for e in self.angles if t - e[0] <= p.angle_med_s]
         self.yaws.append((t, pose.yaw))

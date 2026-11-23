@@ -1,0 +1,385 @@
+From 66ee28c576f55902545aa77380f595acf064b1da Mon Sep 17 00:00:00 2001
+From: g1-door <g1-door@local>
+Date: Wed, 18 Nov 2026 14:16:00 +0900
+Subject: [PATCH] tools: handover sim can render the E2 run to a video and
+ shoot still views of the standing G1 (0116; probe e2 calls render_results
+ before every env.step and end_render_results at the end, the same path as the
+ door evaluation VIDEO=1 of 0015 and 0089, so each frame matches one 50 Hz
+ record row; render_eye_rel and render_target_rel place the fixed camera in
+ the frame of env cam_env robot at reset, cam_yaw_deg overrides its heading
+ since the robot yaw is random per env and turns while hanging, hide_scene
+ makes the door, the goal markers and the other robots invisible without
+ touching physics, no_reset keeps the termination flags but does not reset the
+ env so the fall stays on the video, with fell_t counted as before; the new
+ probe views hands the robot over, releases the rope and saves PNGs from given
+ views with the camera pose, intrinsics and joint angles in views_camera.json,
+ optionally again with the floor hidden; simfix_probe enables cameras only
+ with render_results; simulator.config.render_focal_length sets the evaluation
+ camera focal length; on 11-18 the 18 env E2 with rendering reproduced the
+ 10-26 E2 rows, joint angles of env 16 identical up to its fall and of env 4
+ over the whole run; default off = unchanged) (11-18)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ gr00t/rl/handover_sim.py                | 242 +++++++++++++++++++++++-
+ gr00t/rl/simfix_probe.py                |  10 +-
+ gr00t/rl/simulator/isaacsim/isaacsim.py |   3 +-
+ 3 files changed, 248 insertions(+), 7 deletions(-)
+
+diff --git a/gr00t/rl/handover_sim.py b/gr00t/rl/handover_sim.py
+index 5041500..4c5d4da 100644
+--- a/gr00t/rl/handover_sim.py
++++ b/gr00t/rl/handover_sim.py
+@@ -9,6 +9,7 @@
+ #   制御   実機と同じ door_core.py（numpy の HOMIE）を 50 Hz で回す。HOLD は全関節を既定の姿勢へ PD（行動 0）
+ #   逆算   実機と同じ door_foot_load.py。トルクは PhysX の中の PD の力の見積もり（applied_torque）＝実機の tau_est に当たる
+ # 実機用のコード（G1_Hackason/Door/real）は環境変数 DOOR_REAL_DIR の場所から読む。重みの npz は DOOR_POLICY。
++# 0116（11-18）: E2 に描画の口（動画）と、立った G1 を PNG に撮る views を足した（技術報告の素材。既定では元のまま）。
+ import math
+ import os
+ import sys
+@@ -160,6 +161,122 @@ def _grid(shares, offsets):
+     return s, o
+ 
+ 
++# ---------------------------------------------------------------------------------------------------- 描画（0116）
++# G1_Hackason（パッチ 0116、11-18）: 技術報告の動画と機体の絵のため、扉の評価の VIDEO=1 と同じ描画の口（render_results・
++# 0015・0089）を E2 と views で使う。run_probe.sh の RENDER=1 が ++simulator.config.render_results=True などを渡す。
++# 描画は物理の刻みを変えない（カメラは観るだけ）。既定（render_results が無い）では何もしない＝元のまま
++
++
++def _render_on(env):
++    return bool(env.config.simulator.config.get("render_results", False))
++
++
++def _render(env):
++    """描画が有効なら、今の姿をこま 1 枚として動画に書く（env.step の前に呼ぶ。こまと記録の行は 1 対 1）"""
++    if _render_on(env):
++        env.render_results()
++
++
++def _robot_pose(env, i=0):
++    """台 i の機体の位置（env の原点から [m]）とヨー [rad]"""
++    pos = (_t(env.simulator.robot_root_states)[i, :3] - env.env_origins[i]).detach().cpu().numpy().astype(float)
++    x, y, z, w = (float(v) for v in _t(env.simulator.base_quat)[i].detach().cpu().numpy())
++    return pos, math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
++
++
++def _camera_from_robot(env, eye_rel, target_rel, i=0, yaw_deg=None):
++    """機体の今の位置とヨー（yaw_deg を渡せばその向き [°]）から見た [前, 左, 上] [m]（上は床から）を、
++    env の原点からの位置 [x, y, z] に直す"""
++    pos, yaw = _robot_pose(env, i)
++    if yaw_deg is not None:
++        yaw = math.radians(float(yaw_deg))
++    c, s = math.cos(yaw), math.sin(yaw)
++
++    def world(rel):
++        fx, ly, up = (float(v) for v in rel)
++        return [float(pos[0] + c * fx - s * ly), float(pos[1] + s * fx + c * ly), up]
++
++    return world(eye_rel), world(target_rel)
++
++
++def _place_render_camera(env, eye_rel, target_rel, i=0, yaw_deg=None):
++    """render_results のカメラ（render_eye・render_target）を、台 i の機体から見た位置に固定する。
++    全部の台に同じずらし（env の原点から）で当たるので、正しく写るのは台 i だけ（動画は render_env_ids で台 i だけ書く）"""
++    from omegaconf import open_dict
++
++    eye, target = _camera_from_robot(env, eye_rel, target_rel, i, yaw_deg)
++    sim_cfg = env.config.simulator.config
++    with open_dict(sim_cfg):
++        sim_cfg.render_eye = eye
++        sim_cfg.render_target = target
++    return eye, target
++
++
++def _hide_scene(env, keep=("Robot", "eval_camera"), world_too=False, focus_env=None, root_extra=()):
++    """台の下の prim のうち keep 以外（扉・壁など）を描画から消す（visibility だけ。物理と当たりはそのまま）。
++    focus_env があれば、ほかの台は機体も消す（カメラだけ残す。遠くの台の機体が背景に写らないように）。
++    world_too=True なら /World の直下の envs と照明以外（床など）と、ステージの根の World・Render・Omni*・照明以外も消す
++    （機体の絵の背景を無地にする）。root_extra は根の直下で消す名前（印の玉など）。消した名前を返す（台 0・focus の分）"""
++    import omni.usd
++    from pxr import UsdGeom, UsdLux
++
++    stage = omni.usd.get_context().get_stage()
++    hidden = set()
++    show_env = 0 if focus_env is None else int(focus_env)
++
++    def hide(prim):
++        img = UsdGeom.Imageable(prim)
++        if img:
++            img.MakeInvisible()
++            hidden.add(str(prim.GetPath()).replace(f"/World/envs/env_{show_env}/", "env/"))
++        else:  # 型の無い prim（/World/ground・/Visuals など）は visibility を持たないので、子をたどって消す
++            for c in prim.GetChildren():
++                hide(c)
++
++    def is_light(prim):
++        return prim.HasAPI(UsdLux.LightAPI) or "Light" in prim.GetTypeName()
++
++    print("[handover_sim] ステージの根: " + ", ".join(f"{c.GetName()}({c.GetTypeName()})" for c in stage.GetPseudoRoot().GetChildren())
++          + " ／ /World: " + ", ".join(f"{c.GetName()}({c.GetTypeName()})" for c in stage.GetPrimAtPath("/World").GetChildren()),
++          flush=True)
++    for i in range(env.num_envs):
++        root = stage.GetPrimAtPath(f"/World/envs/env_{i}")
++        others = focus_env is not None and i != show_env
++        for child in root.GetChildren() if root.IsValid() else []:
++            if child.GetName() == "eval_camera" or (not others and child.GetName() in keep):
++                continue
++            hide(child)
++    for child in stage.GetPseudoRoot().GetChildren():
++        name = child.GetName()
++        if name in root_extra or (world_too and name not in ("World", "Render") and not name.startswith("Omni")
++                                  and not is_light(child)):
++            hide(child)
++    if world_too:
++        for child in stage.GetPrimAtPath("/World").GetChildren():
++            if child.GetName() != "envs" and not is_light(child):
++                hide(child)
++    return sorted(h for h in hidden if not h.startswith("/World/envs/env_"))
++
++
++def _keep_after_termination(env):
++    """回の終わりの判定は控えるが、台を置き直さない（倒れた後も物理のまま写すため。置き直すと立った姿へ瞬間移動する）。
++    控えた判定は env._handover_would_reset・_handover_would_timeout（reset_buf・time_out_buf と同じ形）"""
++    import torch
++
++    orig = env._check_termination
++    env._handover_would_reset = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
++    env._handover_would_timeout = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
++
++    def check():
++        orig()
++        env._handover_would_reset = env.reset_buf.bool().clone()
++        env._handover_would_timeout = env.time_out_buf.bool().clone()
++        env.reset_buf[:] = 0
++        env.time_out_buf[:] = 0
++
++    env._check_termination = check
++
++
+ # ---------------------------------------------------------------------------------------------------- E1
+ 
+ 
+@@ -250,9 +367,17 @@ class CoreLoop:
+ 
+ 
+ def probe_e2(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.06), extra=(), hold_s=3.0,
+-             stand_rope_s=30.0, release_s=2.0, stand_free_s=30.0, delay_steps=0):
++             stand_rope_s=30.0, release_s=2.0, stand_free_s=30.0, delay_steps=0,
++             render_eye_rel=None, render_target_rel=(0.0, 0.0, 0.6), hide_scene=False, no_reset=False, cam_env=0,
++             cam_yaw_deg=None, hide_root=()):
+     """E2: 綱の条件の格子で HOLD → STAND（綱そのまま 30 秒）→ 綱を 2 秒で緩める → さらに 30 秒。転倒・揺れを数える。
+-    extra: [(share, offset_y), ...] を格子の後に足す（10-23 の再現の条件など）"""
++    extra: [(share, offset_y), ...] を格子の後に足す（10-23 の再現の条件など）
++    0116（描画。render_results が有効な時だけ効く）: render_eye_rel・render_target_rel は台 cam_env の機体の置き直した直後の
++    位置とヨー（cam_yaw_deg を渡せばその向き。台の向きは乱択で HOLD の間にも回るので、渡す瞬間の向きを E2 の記録から渡す）
++    から見た [前, 左, 上] [m] にカメラを固定する（無ければ render_eye・render_target のまま。動画は
++    render_env_ids=[cam_env] で台 cam_env だけ書く）。hide_scene は扉・壁とほかの台の機体を描画から消す（物理はそのまま）。
++    hide_root はステージの根の直下で消す名前。no_reset は倒れの判定を控えるだけで置き直さない（fell_t は元と同じ数え方）。
++    台の初めの向きは乱択なので、E2 の表の回をそのまま描くときは E2 と同じ台数・同じ種で回す"""
+     import torch
+ 
+     _, dfl = door_real()
+@@ -266,6 +391,16 @@ def probe_e2(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.
+     s += [s[-1]] * (env.num_envs - n_cond)
+     o += [o[-1]] * (env.num_envs - n_cond)
+     env.reset_all()
++    cam = None
++    if _render_on(env):
++        if render_eye_rel is not None:
++            cam = _place_render_camera(env, render_eye_rel, render_target_rel, int(cam_env), cam_yaw_deg)
++        hidden = _hide_scene(env, focus_env=int(cam_env), root_extra=tuple(hide_root)) if hide_scene else []
++        pos0, yaw0 = _robot_pose(env, int(cam_env))
++        print(f"[handover_sim] 描画: 機体 {pos0.round(3).tolist()}・ヨー {math.degrees(yaw0):.1f}°・カメラ {cam}・消した {hidden}",
++              flush=True)
++    if no_reset:
++        _keep_after_termination(env)
+     rope = Rope(env, s, o)
+     share0 = rope.share.clone()
+     _hook_substep(env, rope.apply)
+@@ -279,6 +414,7 @@ def probe_e2(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.
+     total = hold_s + stand_rope_s + release_s + stand_free_s
+     while t < total:
+         q, dq, tau, quat, gyro, grav = _state_np(env)
++        _render(env)  # 0116: この行の記録と同じ時点のこま
+         if t < hold_s:
+             phase = 2  # HOLD
+             reset = _hold_step(env)
+@@ -296,7 +432,11 @@ def probe_e2(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.
+             env._delta_actions[:] = 0.0
+             act = torch.cat([torch.zeros(env.num_envs, 17, device=env.device), leg], dim=-1)
+             _, _, reset, _ = env.step({"actions": act})
+-        r = _t(reset).detach().cpu().numpy().astype(bool) & ~_t(env.time_out_buf).detach().cpu().numpy().astype(bool)
++        if no_reset:  # 0116: 置き直さない回は、控えた判定で数える（元の reset と同じ時刻に立つ）
++            reset, time_out = env._handover_would_reset, env._handover_would_timeout
++        else:
++            time_out = env.time_out_buf
++        r = _t(reset).detach().cpu().numpy().astype(bool) & ~_t(time_out).detach().cpu().numpy().astype(bool)
+         new = r & ~fell
+         fell_t[new] = t
+         fell |= r
+@@ -304,8 +444,12 @@ def probe_e2(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.
+                        ("fz_true", truth.fz()), ("rope", _t(rope.last_force).cpu().numpy())):
+             rec[key].append(v)
+         t += DT
++    if _render_on(env):
++        env.end_render_results()
+     arr = {k: np.asarray(v) for k, v in rec.items()}
+-    np.savez_compressed(out / "e2.npz", share=np.array(s), offset=np.array(o), fell=fell, fell_t=fell_t, **arr)
++    weight_n = _t(rope.mass).cpu().numpy() * G  # 0116: 台ごとの体重 [N]（足の力を体重の % にするため）
++    np.savez_compressed(out / "e2.npz", share=np.array(s), offset=np.array(o), fell=fell, fell_t=fell_t, weight_n=weight_n,
++                        no_reset=np.array(bool(no_reset)), **arr)
+     hl = np.mean(hold_load, 0) if hold_load else np.full((env.num_envs, 2), np.nan)
+     t_arr = arr["t"]
+     leg = np.abs(arr["dq"][:, :, :12])  # [時刻, 台, 12]
+@@ -338,7 +482,95 @@ def probe_e2(env, out, shares=(0.0, 0.2, 0.4, 0.6, 0.85), offsets=(0.0, 0.03, 0.
+             "collapsed": bool(fell[i] or (rope_free is not None and rope_free > 0.2) or (tilt_free is not None and tilt_free > 25.0)),
+         })
+     return {"rows": rows, "delay_steps": delay_steps, "falls": int(fell[:n_cond].sum()), "conditions": n_cond,
+-            "collapsed": int(sum(r["collapsed"] for r in rows))}
++            "collapsed": int(sum(r["collapsed"] for r in rows)), "no_reset": bool(no_reset), "render_camera": cam,
++            "cam_env": int(cam_env)}
++
++
++# ---------------------------------------------------------------------------------------------------- views（0116）
++
++
++def probe_views(env, out, views=None, share=0.5, offset_y=0.0, hold_s=3.0, stand_rope_s=3.0, release_s=2.0,
++                stand_free_s=5.0, settle_steps=4, hide_scene=True, plain=True, hide_root=("Visuals",)):
++    """0116: 吊って HOMIE に渡し、綱を緩めて自分の足で立った G1 を、views の向きから PNG に 1 枚ずつ撮る（扉・壁は描画から消す）。
++    views: {名前: [eye_rel, target_rel]}（撮る時の台 0 の機体の位置とヨーから見た [前, 左, 上] [m]、上は床から）。
++    stand_rope_s・release_s・stand_free_s が全部 0 なら HOLD のまま撮る（動画のカメラの位置決めに使う）。
++    plain=True なら床なども描画から消してもう一巡撮る（<名前>_plain.png。背景が無地）。hide_root は根の直下で初めから消す
++    名前（既定 Visuals＝床の上の印の玉）。
++    カメラの位置・内部の値と機体の位置・関節の角度を views_camera.json に残す（関節の地図を後で重ねるため。views.json は simfix_probe の結果のまとめ）"""
++    import json
++
++    import imageio.v2 as imageio
++    import torch
++
++    assert _render_on(env), "views は ++simulator.config.render_results=True（run_probe.sh の RENDER=1）が要る"
++    views = dict(views or {"side_right": [[0.0, -3.0, 0.25], [0.0, 0.0, 0.6]]})
++    env.reset_all()
++    hidden = _hide_scene(env, root_extra=tuple(hide_root)) if hide_scene else []
++    rope = Rope(env, share, offset_y)
++    share0 = rope.share.clone()
++    _hook_substep(env, rope.apply)
++    loop = CoreLoop(env, os.environ["DOOR_POLICY"], 0)
++    stand_total = stand_rope_s + release_s + stand_free_s
++    zeros17 = torch.zeros(env.num_envs, 17, device=env.device)
++    clock = {"t": 0.0}
++
++    def step():
++        t = clock["t"]
++        if t < hold_s or stand_total <= 0:
++            _hold_step(env)
++        else:
++            ts = t - hold_s
++            if stand_rope_s <= ts < stand_rope_s + release_s:
++                rope.share = share0 * (1.0 - (ts - stand_rope_s) / release_s)
++            elif ts >= stand_rope_s + release_s:
++                rope.share = share0 * 0.0
++            leg = loop.step(ts)
++            env._delta_actions[:] = 0.0
++            env.step({"actions": torch.cat([zeros17, leg], dim=-1)})
++        clock["t"] = t + DT
++
++    while clock["t"] < hold_s + stand_total:
++        step()
++    cam = env.simulator.eval_camera
++    names = list(env.config.robot.dof_names)
++    shots = []
++
++    def shoot(suffix):
++        for name, (eye_rel, target_rel) in views.items():
++            eye, target = _camera_from_robot(env, eye_rel, target_rel)
++            dev, dt_ = env.env_origins.device, env.env_origins.dtype
++            cam.set_world_poses_from_view(env.env_origins + torch.tensor(eye, device=dev, dtype=dt_),
++                                          env.env_origins + torch.tensor(target, device=dev, dtype=dt_))
++            for _ in range(int(settle_steps)):  # 置いたカメラの画が出るまで数こま進める（機体は立ったまま）
++                step()
++            img = _t(cam.data.output["rgb"])[0].detach().cpu().numpy()[..., :3]
++            path = out / f"{name}{suffix}.png"
++            imageio.imwrite(path, img)
++            q, _, _, quat, _, grav = _state_np(env)
++            pos, yaw = _robot_pose(env)
++            shots.append({
++                "file": path.name, "eye_rel": list(eye_rel), "target_rel": list(target_rel),
++                "eye_env": eye, "target_env": target, "t_s": clock["t"],
++                "robot_pos_env": pos.round(4).tolist(), "robot_yaw_deg": math.degrees(yaw),
++                "robot_quat_wxyz": quat[0].round(5).tolist(), "tilt_deg": float(_tilt_deg(grav)[0]),
++                "q": dict(zip(names, q[0].round(5).tolist())),
++                "intrinsic": _t(cam.data.intrinsic_matrices)[0].detach().cpu().numpy().round(3).tolist(),
++                "image_hw": list(img.shape[:2]), "rope_share": float(rope.share[0]),
++            })
++            print(f"[handover_sim] views: {path.name} カメラ {eye}→{target}・傾き {shots[-1]['tilt_deg']:.1f}°", flush=True)
++
++    shoot("")
++    hidden_plain = []
++    if plain:
++        hidden_plain = _hide_scene(env, world_too=True)
++        shoot("_plain")
++    meta = {"share": share, "offset_y": offset_y, "hold_s": hold_s, "stand_rope_s": stand_rope_s, "release_s": release_s,
++            "stand_free_s": stand_free_s, "hidden": hidden, "hidden_plain": hidden_plain,
++            "focal_length": float(env.config.simulator.config.get("render_focal_length", 5.0)), "horizontal_aperture": 5.0,
++            "camera_convention": "set_world_poses_from_view（Z が上の look-at）", "shots": shots}
++    (out / "views_camera.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1))
++    return {"shots": [s["file"] for s in shots], "hidden": hidden, "hidden_plain": hidden_plain,
++            "tilt_deg": [round(s["tilt_deg"], 2) for s in shots]}
+ 
+ 
+ # ---------------------------------------------------------------------------------------------------- E3
+diff --git a/gr00t/rl/simfix_probe.py b/gr00t/rl/simfix_probe.py
+index 0a3da52..3f1ca46 100644
+--- a/gr00t/rl/simfix_probe.py
++++ b/gr00t/rl/simfix_probe.py
+@@ -10,6 +10,8 @@
+ #   press     台に固定した機体で、方策の代わりに左肩 roll を内へ押し続け、目標と角度の差・力の張り付き・罰を測る（V3③・V5・V6）
+ #   clip      でたらめな大きい行動で、送った目標が可動域の端から margin の内側に収まるかを数える（V4）
+ #   homie     HOMIE だけで立つ 60 秒と歩く 30 秒（乱択・押す・遅れあり）。転倒と速さの追従を数える（V10）
++#   e1・e2・e3・views  吊った機体を HOMIE に渡す場面（handover_sim.py）。++simulator.config.render_results=True で
++#             カメラを有効にし、e2 は動画を、views は PNG を書く（0116。run_probe.sh の RENDER=1）
+ # 結果は <出力の場所>/<名前>.json（数字のまとめ）と <名前>.npz（時系列）。
+ import json
+ import logging
+@@ -492,6 +494,8 @@ PROBES = {"readback": probe_readback, "sweep": probe_sweep, "step": probe_step,
+ from gr00t.rl import handover_sim as _handover  # noqa: E402
+ 
+ PROBES.update({"e1": _handover.probe_e1, "e2": _handover.probe_e2, "e3": _handover.probe_e3})
++# 0116（11-18）: 立った G1 をいくつかの向きから PNG に撮る（カメラの位置決めと機体の絵）
++PROBES.update({"views": _handover.probe_views})
+ 
+ 
+ 
+@@ -526,8 +530,12 @@ def main(override_config: OmegaConf):
+     args_cli.seed = config.seed
+     args_cli.env_spacing = config.env.config.env_spacing
+     args_cli.output_dir = config.output_dir
+-    args_cli.enable_cameras = False
++    # G1_Hackason（パッチ 0116）: 描画（simulator.config.render_results）を入れたときだけカメラを有効にする（評価の eval_agent_trl と同じ）
++    render = bool(config.simulator.config.get("render_results", False))
++    args_cli.enable_cameras = render
+     args_cli.headless = True
++    if render and config.env.config.get("save_rendering_dir", None) is None:
++        OmegaConf.update(config, "env.config.save_rendering_dir", str(out / "video"), force_add=True)
+     kit_args = "--/app/extensions/registryEnabled=false --enable omni.kit.material.library"
+     args_cli.kit_args = f"{args_cli.kit_args} {kit_args}".strip() if getattr(args_cli, "kit_args", "") else kit_args
+     app_launcher = AppLauncher(args_cli)
+diff --git a/gr00t/rl/simulator/isaacsim/isaacsim.py b/gr00t/rl/simulator/isaacsim/isaacsim.py
+index 41a5f65..0db4065 100644
+--- a/gr00t/rl/simulator/isaacsim/isaacsim.py
++++ b/gr00t/rl/simulator/isaacsim/isaacsim.py
+@@ -1120,7 +1120,8 @@ class IsaacSim(BaseSimulator):
+                 ),
+                 data_types=["rgb"],
+                 spawn=sim_utils.PinholeCameraCfg(
+-                    focal_length=5.0,
++                    # G1_Hackason（パッチ 0116）: 焦点距離を設定で（既定 5.0＝元のまま・横の画角 53°）。機体の絵は長くして遠くから撮る
++                    focal_length=float(getattr(self.simulator_config, "render_focal_length", 5.0)),
+                     focus_distance=50.0,
+                     horizontal_aperture=5,
+                     clipping_range=(0.1, 20.0),
+-- 
+2.43.0
+
